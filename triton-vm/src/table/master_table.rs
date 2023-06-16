@@ -1,4 +1,3 @@
-use std::cmp::max;
 use std::ops::MulAssign;
 
 use itertools::Itertools;
@@ -27,11 +26,9 @@ use twenty_first::shared_math::traits::ModPowU32;
 use twenty_first::shared_math::traits::PrimitiveRootOfUnity;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
-use twenty_first::util_types::algebraic_hasher::SpongeHasher;
 use twenty_first::util_types::merkle_tree::MerkleTree;
 use twenty_first::util_types::merkle_tree_maker::MerkleTreeMaker;
 
-use triton_opcodes::instruction::Instruction;
 use triton_profiler::prof_start;
 use triton_profiler::prof_stop;
 use triton_profiler::triton_profiler::TritonProfiler;
@@ -401,65 +398,18 @@ impl MasterBaseTable {
         // the number of trace randomizers.
 
         let relevant_table_heights = [
-            Self::program_table_length(aet),
-            Self::processor_table_length(aet),
-            Self::hash_table_length(aet),
-            Self::cascade_table_length(aet),
-            Self::lookup_table_length(),
-            Self::u32_table_length(aet),
+            aet.program_table_length(),
+            aet.processor_table_length(),
+            aet.hash_table_length(),
+            aet.cascade_table_length(),
+            aet.lookup_table_length(),
+            aet.u32_table_length(),
             num_trace_randomizers,
         ];
         let max_height = relevant_table_heights.into_iter().max().unwrap();
         let max_height = max_height.try_into().unwrap();
         let padded_height = roundup_npo2(max_height);
         padded_height.try_into().unwrap()
-    }
-
-    pub fn program_table_length(aet: &AlgebraicExecutionTrace) -> usize {
-        // After adding one 1, the program table is padded to the next smallest multiple of the
-        // sponge's rate with 0s.
-        // Also note that the Program Table's side of the instruction lookup argument requires at
-        // least one padding row to account for the processor's “next instruction or argument.”
-        let min_padded_len = aet.program.len_bwords() + 1;
-        let remainder_len = min_padded_len % StarkHasher::RATE;
-        let num_zeros_to_add = match remainder_len {
-            0 => 0,
-            _ => StarkHasher::RATE - remainder_len,
-        };
-        min_padded_len + num_zeros_to_add
-    }
-
-    pub fn processor_table_length(aet: &AlgebraicExecutionTrace) -> usize {
-        aet.processor_trace.nrows()
-    }
-
-    pub fn hash_table_length(aet: &AlgebraicExecutionTrace) -> usize {
-        aet.sponge_trace.nrows() + aet.hash_trace.nrows()
-    }
-
-    pub fn cascade_table_length(aet: &AlgebraicExecutionTrace) -> usize {
-        aet.cascade_table_lookup_multiplicities.len()
-    }
-
-    pub fn lookup_table_length() -> usize {
-        1 << 8
-    }
-
-    pub fn u32_table_length(aet: &AlgebraicExecutionTrace) -> usize {
-        aet.u32_entries
-            .keys()
-            .map(|(instruction, lhs, rhs)| match instruction {
-                // for instruction `pow`, the left-hand side doesn't change between rows
-                Instruction::Pow => rhs.value(),
-                _ => max(lhs.value(), rhs.value()),
-            })
-            .map(|relevant_entry| match relevant_entry == 0 {
-                true => 2 - 1,
-                false => 2 + relevant_entry.ilog2(),
-            })
-            .sum::<u32>()
-            .try_into()
-            .unwrap()
     }
 
     pub fn new(
@@ -479,11 +429,11 @@ impl MasterBaseTable {
         let mut master_base_table = Self {
             padded_height,
             num_trace_randomizers,
-            program_table_len: Self::program_table_length(aet),
-            main_execution_len: Self::processor_table_length(aet),
-            hash_coprocessor_execution_len: Self::hash_table_length(aet),
-            cascade_table_len: Self::cascade_table_length(aet),
-            u32_coprocesor_execution_len: Self::u32_table_length(aet),
+            program_table_len: aet.program_table_length(),
+            main_execution_len: aet.processor_table_length(),
+            hash_coprocessor_execution_len: aet.hash_table_length(),
+            cascade_table_len: aet.cascade_table_length(),
+            u32_coprocesor_execution_len: aet.u32_table_length(),
             randomized_padded_trace_len,
             rand_trace_to_padded_trace_unit_distance: unit_distance,
             fri_domain,

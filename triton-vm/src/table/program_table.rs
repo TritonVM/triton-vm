@@ -22,7 +22,6 @@ use crate::table::constraint_circuit::SingleRowIndicator;
 use crate::table::constraint_circuit::SingleRowIndicator::*;
 use crate::table::cross_table_argument::CrossTableArg;
 use crate::table::cross_table_argument::LookupArg;
-use crate::table::master_table::MasterBaseTable;
 use crate::table::table_column::MasterBaseTableColumn;
 use crate::table::table_column::MasterExtTableColumn;
 use crate::table::table_column::ProgramBaseTableColumn;
@@ -228,7 +227,7 @@ impl ProgramTable {
 
         let instructions = aet.program.to_bwords();
         let program_len = instructions.len();
-        let padded_program_len = MasterBaseTable::program_table_length(aet);
+        let padded_program_len = aet.program_table_length();
 
         let one_iter = [BFieldElement::one()].into_iter();
         let zero_iter = [BFieldElement::zero()].into_iter();

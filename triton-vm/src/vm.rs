@@ -1,3 +1,4 @@
+use std::cmp::max;
 use std::collections::hash_map::Entry::*;
 use std::collections::HashMap;
 use std::collections::VecDeque;
@@ -22,6 +23,7 @@ use twenty_first::shared_math::tip5::DIGEST_LENGTH;
 use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 use twenty_first::util_types::algebraic_hasher::Domain;
+use twenty_first::util_types::algebraic_hasher::SpongeHasher;
 
 use triton_opcodes::instruction::AnInstruction::*;
 use triton_opcodes::instruction::Instruction;
@@ -35,6 +37,7 @@ use crate::error::vm_fail;
 use crate::error::InstructionError::InstructionPointerOverflow;
 use crate::error::InstructionError::*;
 use crate::op_stack::OpStack;
+use crate::stark::StarkHasher;
 use crate::table::hash_table;
 use crate::table::hash_table::HashTable;
 use crate::table::processor_table;
@@ -978,6 +981,58 @@ impl AlgebraicExecutionTrace {
             cascade_table_lookup_multiplicities: HashMap::new(),
             lookup_table_lookup_multiplicities: [0; 1 << 8],
         }
+    }
+
+    pub fn program_table_length(&self) -> usize {
+        Self::padded_program_length(&self.program)
+    }
+
+    fn padded_program_length(program: &Program) -> usize {
+        // After adding one 1, the program table is padded to the next smallest multiple of the
+        // sponge's rate with 0s.
+        // Also note that the Program Table's side of the instruction lookup argument requires at
+        // least one padding row to account for the processor's “next instruction or argument.”
+        // Both of these are captured by the “+ 1” in the following line.
+        let min_padded_len = program.len_bwords() + 1;
+        let remainder_len = min_padded_len % StarkHasher::RATE;
+        let num_zeros_to_add = match remainder_len {
+            0 => 0,
+            _ => StarkHasher::RATE - remainder_len,
+        };
+        min_padded_len + num_zeros_to_add
+    }
+
+    pub fn processor_table_length(&self) -> usize {
+        self.processor_trace.nrows()
+    }
+
+    pub fn hash_table_length(&self) -> usize {
+        self.sponge_trace.nrows() + self.hash_trace.nrows()
+    }
+
+    pub fn cascade_table_length(&self) -> usize {
+        self.cascade_table_lookup_multiplicities.len()
+    }
+
+    pub fn lookup_table_length(&self) -> usize {
+        1 << 8
+    }
+
+    pub fn u32_table_length(&self) -> usize {
+        self.u32_entries
+            .keys()
+            .map(|(instruction, lhs, rhs)| match instruction {
+                // for instruction `pow`, the left-hand side doesn't change between rows
+                Instruction::Pow => rhs.value(),
+                _ => max(lhs.value(), rhs.value()),
+            })
+            .map(|relevant_entry| match relevant_entry == 0 {
+                true => 2 - 1,
+                false => 2 + relevant_entry.ilog2(),
+            })
+            .sum::<u32>()
+            .try_into()
+            .unwrap()
     }
 
     pub fn append_hash_trace(
