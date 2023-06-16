@@ -1401,6 +1401,13 @@ pub(crate) mod triton_stark_tests {
     }
 
     #[test]
+    fn triton_table_constraints_evaluate_to_zero_sample_indices_snippet_test() {
+        let source_code_and_input =
+            SourceCodeAndInput::without_input(SAMPLE_INDICES_USING_SAFE_LISTS);
+        triton_table_constraints_evaluate_to_zero(source_code_and_input);
+    }
+
+    #[test]
     fn triton_table_constraints_evaluate_to_zero_on_small_programs_test() {
         for (program_idx, program) in small_tasm_test_programs().into_iter().enumerate() {
             println!("Testing program with index {program_idx}.");

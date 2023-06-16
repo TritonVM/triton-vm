@@ -981,3 +981,404 @@ pub const MMR_CALCULATE_NEW_PEAKS_FROM_APPEND_WITH_SAFE_LISTS : &str = "
 
                 return
     ";
+
+pub const SAMPLE_INDICES_USING_SAFE_LISTS: &str = "
+            // Prepare stack and memory
+                push 0
+                push 4096
+                push 0
+                push 2
+                write_mem
+                pop
+
+            call tasm_hashing_sample_indices_to_safe_list
+            halt
+
+            // BEFORE: _ number upper_bound
+            // AFTER: _ list
+            tasm_hashing_sample_indices_to_safe_list:
+                // assert power of two
+                dup 0 dup 0 // _ number upper_bound upper_bound upper_bound
+                push -1 add and // _ number upper_bound upper_bound&(upper_bound-1)
+                push 0 eq assert // asserts that upper_bound = 2^k for some k
+                push -1 add // _ number upper_bound-1
+
+                // create list
+                dup 1 // _ number upper_bound-1 number
+                call tasm_list_safe_u32_new_u32 // _ number upper_bound-1 list
+                dup 2 //  _ number upper_bound-1 list number
+                call tasm_list_safe_u32_set_length_u32 // _ number upper_bound-1 list
+                push 2 add // _ number upper_bound-1 address
+
+                // prepare and call loop
+                push 0 // _ number upper_bound-1 address 0
+                push 0 push 0 push 0 push 0 push 0 push 0 push 0 push 0 push 0 push 0
+                // _ number upper_bound-1 address list_index 0 0 0 0 0 0 0 0 0 0
+
+                squeeze // overwrite top 10 elements with fresh randomness
+                call tasm_hashing_sample_indices_to_safe_list_loop // _ number upper_bound-1 address number prn9 prn8 prn7 prn6 prn5 prn4 prn3 prn2 prn1 prn0
+
+                // clean up stack
+                pop pop pop pop pop pop pop pop pop pop // _ number upper_bound-1 address number
+                pop // _ number upper_bound-1 address
+                swap 2  // _ address  upper_bound-1 number
+                pop pop // _ address
+                push -2 add // _ list
+
+                return
+
+            // INVARIANT: _ number upper_bound-1 list list_index prn9 prn8 prn7 prn6 prn5 prn4 prn3 prn2 prn1 prn0
+            tasm_hashing_sample_indices_to_safe_list_loop:
+                // evaluate termination
+                dup 13 // _ number upper_bound-1 address list_index prn9 prn8 prn7 prn6 prn5 prn4 prn3 prn2 prn1 prn0 number
+                dup 11 // _ number upper_bound-1 address list_index prn9 prn8 prn7 prn6 prn5 prn4 prn3 prn2 prn1 prn0 number list_index
+                eq // _ number upper_bound-1 address list_index prn9 prn8 prn7 prn6 prn5 prn4 prn3 prn2 prn1 prn0 number==list_index
+
+                skiz return // continue if unequal
+                // _ number upper_bound-1 address list_index  prn9 prn8 prn7 prn6 prn5 prn4 prn3 prn2 prn1 prn0
+
+                // _ number upper_bound-1 address list_index prn^10
+                dup 10 // _ number upper_bound-1 address list_index prn^10 list_index
+                dup 14 // _ number upper_bound-1 address list_index prn^10 list_index number
+                eq // _ number upper_bound-1 address list_index prn^10 list_index==number
+                dup 1  // _ number upper_bound-1 address list_index prn^10 list_index==number prn0
+                push -1 eq  // _ number upper_bound-1 address list_index prn^10 list_index==number prn0==-1
+                add  // _ number upper_bound-1 address list_index prn^10 list_index==number||prn0==-1
+                push 0 eq // _ number upper_bound-1 address list_index prn^10 list_index!=number&&prn0!=-1
+                skiz call tasm_hashing_sample_indices_to_safe_list_process_top_function_body
+                // _ number upper_bound-1 address list_index prn^10
+
+                swap 9
+                swap 8
+                swap 7
+                swap 6
+                swap 5
+                swap 4
+                swap 3
+                swap 2
+                swap 1
+
+                // _ number upper_bound-1 address list_index prn^10
+                dup 10 // _ number upper_bound-1 address list_index prn^10 list_index
+                dup 14 // _ number upper_bound-1 address list_index prn^10 list_index number
+                eq // _ number upper_bound-1 address list_index prn^10 list_index==number
+                dup 1  // _ number upper_bound-1 address list_index prn^10 list_index==number prn0
+                push -1 eq  // _ number upper_bound-1 address list_index prn^10 list_index==number prn0==-1
+                add  // _ number upper_bound-1 address list_index prn^10 list_index==number||prn0==-1
+                push 0 eq // _ number upper_bound-1 address list_index prn^10 list_index!=number&&prn0!=-1
+                skiz call tasm_hashing_sample_indices_to_safe_list_process_top_function_body
+                // _ number upper_bound-1 address list_index prn^10
+
+                swap 9
+                swap 8
+                swap 7
+                swap 6
+                swap 5
+                swap 4
+                swap 3
+                swap 2
+                swap 1
+
+                // _ number upper_bound-1 address list_index prn^10
+                dup 10 // _ number upper_bound-1 address list_index prn^10 list_index
+                dup 14 // _ number upper_bound-1 address list_index prn^10 list_index number
+                eq // _ number upper_bound-1 address list_index prn^10 list_index==number
+                dup 1  // _ number upper_bound-1 address list_index prn^10 list_index==number prn0
+                push -1 eq  // _ number upper_bound-1 address list_index prn^10 list_index==number prn0==-1
+                add  // _ number upper_bound-1 address list_index prn^10 list_index==number||prn0==-1
+                push 0 eq // _ number upper_bound-1 address list_index prn^10 list_index!=number&&prn0!=-1
+                skiz call tasm_hashing_sample_indices_to_safe_list_process_top_function_body
+                // _ number upper_bound-1 address list_index prn^10
+
+                swap 9
+                swap 8
+                swap 7
+                swap 6
+                swap 5
+                swap 4
+                swap 3
+                swap 2
+                swap 1
+
+                // _ number upper_bound-1 address list_index prn^10
+                dup 10 // _ number upper_bound-1 address list_index prn^10 list_index
+                dup 14 // _ number upper_bound-1 address list_index prn^10 list_index number
+                eq // _ number upper_bound-1 address list_index prn^10 list_index==number
+                dup 1  // _ number upper_bound-1 address list_index prn^10 list_index==number prn0
+                push -1 eq  // _ number upper_bound-1 address list_index prn^10 list_index==number prn0==-1
+                add  // _ number upper_bound-1 address list_index prn^10 list_index==number||prn0==-1
+                push 0 eq // _ number upper_bound-1 address list_index prn^10 list_index!=number&&prn0!=-1
+                skiz call tasm_hashing_sample_indices_to_safe_list_process_top_function_body
+                // _ number upper_bound-1 address list_index prn^10
+
+                swap 9
+                swap 8
+                swap 7
+                swap 6
+                swap 5
+                swap 4
+                swap 3
+                swap 2
+                swap 1
+
+                // _ number upper_bound-1 address list_index prn^10
+                dup 10 // _ number upper_bound-1 address list_index prn^10 list_index
+                dup 14 // _ number upper_bound-1 address list_index prn^10 list_index number
+                eq // _ number upper_bound-1 address list_index prn^10 list_index==number
+                dup 1  // _ number upper_bound-1 address list_index prn^10 list_index==number prn0
+                push -1 eq  // _ number upper_bound-1 address list_index prn^10 list_index==number prn0==-1
+                add  // _ number upper_bound-1 address list_index prn^10 list_index==number||prn0==-1
+                push 0 eq // _ number upper_bound-1 address list_index prn^10 list_index!=number&&prn0!=-1
+                skiz call tasm_hashing_sample_indices_to_safe_list_process_top_function_body
+                // _ number upper_bound-1 address list_index prn^10
+
+                swap 9
+                swap 8
+                swap 7
+                swap 6
+                swap 5
+                swap 4
+                swap 3
+                swap 2
+                swap 1
+
+                // _ number upper_bound-1 address list_index prn^10
+                dup 10 // _ number upper_bound-1 address list_index prn^10 list_index
+                dup 14 // _ number upper_bound-1 address list_index prn^10 list_index number
+                eq // _ number upper_bound-1 address list_index prn^10 list_index==number
+                dup 1  // _ number upper_bound-1 address list_index prn^10 list_index==number prn0
+                push -1 eq  // _ number upper_bound-1 address list_index prn^10 list_index==number prn0==-1
+                add  // _ number upper_bound-1 address list_index prn^10 list_index==number||prn0==-1
+                push 0 eq // _ number upper_bound-1 address list_index prn^10 list_index!=number&&prn0!=-1
+                skiz call tasm_hashing_sample_indices_to_safe_list_process_top_function_body
+                // _ number upper_bound-1 address list_index prn^10
+
+                swap 9
+                swap 8
+                swap 7
+                swap 6
+                swap 5
+                swap 4
+                swap 3
+                swap 2
+                swap 1
+
+                // _ number upper_bound-1 address list_index prn^10
+                dup 10 // _ number upper_bound-1 address list_index prn^10 list_index
+                dup 14 // _ number upper_bound-1 address list_index prn^10 list_index number
+                eq // _ number upper_bound-1 address list_index prn^10 list_index==number
+                dup 1  // _ number upper_bound-1 address list_index prn^10 list_index==number prn0
+                push -1 eq  // _ number upper_bound-1 address list_index prn^10 list_index==number prn0==-1
+                add  // _ number upper_bound-1 address list_index prn^10 list_index==number||prn0==-1
+                push 0 eq // _ number upper_bound-1 address list_index prn^10 list_index!=number&&prn0!=-1
+                skiz call tasm_hashing_sample_indices_to_safe_list_process_top_function_body
+                // _ number upper_bound-1 address list_index prn^10
+
+                swap 9
+                swap 8
+                swap 7
+                swap 6
+                swap 5
+                swap 4
+                swap 3
+                swap 2
+                swap 1
+
+                // _ number upper_bound-1 address list_index prn^10
+                dup 10 // _ number upper_bound-1 address list_index prn^10 list_index
+                dup 14 // _ number upper_bound-1 address list_index prn^10 list_index number
+                eq // _ number upper_bound-1 address list_index prn^10 list_index==number
+                dup 1  // _ number upper_bound-1 address list_index prn^10 list_index==number prn0
+                push -1 eq  // _ number upper_bound-1 address list_index prn^10 list_index==number prn0==-1
+                add  // _ number upper_bound-1 address list_index prn^10 list_index==number||prn0==-1
+                push 0 eq // _ number upper_bound-1 address list_index prn^10 list_index!=number&&prn0!=-1
+                skiz call tasm_hashing_sample_indices_to_safe_list_process_top_function_body
+                // _ number upper_bound-1 address list_index prn^10
+
+                swap 9
+                swap 8
+                swap 7
+                swap 6
+                swap 5
+                swap 4
+                swap 3
+                swap 2
+                swap 1
+
+                // _ number upper_bound-1 address list_index prn^10
+                dup 10 // _ number upper_bound-1 address list_index prn^10 list_index
+                dup 14 // _ number upper_bound-1 address list_index prn^10 list_index number
+                eq // _ number upper_bound-1 address list_index prn^10 list_index==number
+                dup 1  // _ number upper_bound-1 address list_index prn^10 list_index==number prn0
+                push -1 eq  // _ number upper_bound-1 address list_index prn^10 list_index==number prn0==-1
+                add  // _ number upper_bound-1 address list_index prn^10 list_index==number||prn0==-1
+                push 0 eq // _ number upper_bound-1 address list_index prn^10 list_index!=number&&prn0!=-1
+                skiz call tasm_hashing_sample_indices_to_safe_list_process_top_function_body
+                // _ number upper_bound-1 address list_index prn^10
+
+                swap 9
+                swap 8
+                swap 7
+                swap 6
+                swap 5
+                swap 4
+                swap 3
+                swap 2
+                swap 1
+
+                // _ number upper_bound-1 address list_index prn^10
+                dup 10 // _ number upper_bound-1 address list_index prn^10 list_index
+                dup 14 // _ number upper_bound-1 address list_index prn^10 list_index number
+                eq // _ number upper_bound-1 address list_index prn^10 list_index==number
+                dup 1  // _ number upper_bound-1 address list_index prn^10 list_index==number prn0
+                push -1 eq  // _ number upper_bound-1 address list_index prn^10 list_index==number prn0==-1
+                add  // _ number upper_bound-1 address list_index prn^10 list_index==number||prn0==-1
+                push 0 eq // _ number upper_bound-1 address list_index prn^10 list_index!=number&&prn0!=-1
+                skiz call tasm_hashing_sample_indices_to_safe_list_process_top_function_body
+                // _ number upper_bound-1 address list_index prn^10
+
+                swap 9
+                swap 8
+                swap 7
+                swap 6
+                swap 5
+                swap 4
+                swap 3
+                swap 2
+                swap 1
+
+                // _ number upper_bound-1 address list_index prn9 prn8 prn7 prn6 prn5 prn4 prn3 prn2 prn1 prn0
+
+                dup 10
+                push 0 eq
+                push 0 eq
+                assert // crash if list_index == 0
+
+                squeeze // overwrite top 10 elements with fresh randomness
+
+                recurse
+
+            tasm_hashing_sample_indices_to_safe_list_process_top_function_body:
+                dup 0  //  _ number upper_bound-1 address list_index prn^10 prn0
+                split //  _ number upper_bound-1 address list_index prn^10 hi lo
+                dup 13 //  _ number upper_bound-1 address list_index prn^10 hi lo address
+                dup 13 //  _ number upper_bound-1 address list_index prn^10 hi lo address list_index
+                add //  _ number upper_bound-1 address list_index prn^10 hi lo address+list_index
+
+                swap 1 //  _ number upper_bound-1 address list_index prn^10 hi address+list_index lo
+                dup 15 // _ number upper_bound-1 address list_index prn^10 hi address+list_index lo upper_bound-1
+                and // _ number upper_bound-1 address list_index prn^10 hi address+list_index (lo&(upper_bound-1))
+
+                write_mem  // _ number upper_bound-1 address list_index prn^10 hi address+list_index
+                pop pop // _ number upper_bound-1 address list_index prn^10
+
+                swap 10
+                push 1 add
+                swap 10
+                // _ number upper_bound-1 address list_index+1 prn^10
+                return
+
+            // Return a pointer to a free address and allocate `size` words for this pointer
+            // Before: _ size
+            // After: _ *next_addr
+            tasm_memory_dyn_malloc:
+                push 0  // _ size *free_pointer
+                read_mem                   // _ size *free_pointer *next_addr'
+
+                // add 1 iff `next_addr` was 0, i.e. uninitialized.
+                dup 0                      // _ size *free_pointer *next_addr' *next_addr'
+                push 0                     // _ size *free_pointer *next_addr' *next_addr' 0
+                eq                         // _ size *free_pointer *next_addr' (*next_addr' == 0)
+                add                        // _ size *free_pointer *next_addr
+
+                dup 0                      // _ size *free_pointer *next_addr *next_addr
+                dup 3                      // _ size *free_pointer *next_addr *next_addr size
+
+                // Ensure that `size` does not exceed 2^32
+                split
+                swap 1
+                push 0
+                eq
+                assert
+
+                add                        // _ size *free_pointer *next_addr *(next_addr + size)
+
+                // Ensure that no more than 2^32 words are allocated, because I don't want a wrap-around
+                // in the address space
+                split
+                swap 1
+                push 0
+                eq
+                assert
+
+                swap 1                     // _ size *free_pointer *(next_addr + size) *next_addr
+                swap 3                     // _ *next_addr *free_pointer *(next_addr + size) size
+                pop                        // _ *next_addr *free_pointer *(next_addr + size)
+                write_mem
+                pop                        // _ next_addr
+                return
+
+
+            tasm_list_safe_u32_new_u32:
+                // _ capacity
+
+                // Convert capacity in number of elements to number of VM words required for that list
+                dup 0
+
+                // _ capacity (capacity_in_bfes)
+
+                push 2
+                add
+                // _ capacity (words to allocate)
+
+                call tasm_memory_dyn_malloc
+                // _ capacity *list
+
+                // Write initial length = 0 to `*list`
+                push 0
+                write_mem
+                // _ capacity *list
+
+                // Write capactiy to memory location `*list + 1`
+                push 1
+                add
+                // _ capacity (*list + 1)
+
+                swap 1
+                write_mem
+                // _ (*list + 1) capacity
+
+                push -1
+                add
+                // _ *list
+
+                return
+
+            // BEFORE: _ *list list_length
+            // AFTER: _ *list
+            tasm_list_safe_u32_set_length_u32:
+                // Verify that new length does not exceed capacity
+                dup 0
+                dup 2
+                push 1
+                add
+                read_mem
+                // Stack: *list list_length list_length (*list + 1) capacity
+
+                swap 1
+                pop
+                // Stack: *list list_length list_length capacity
+
+                lt
+                push 0
+                eq
+                // Stack: *list list_length list_length <= capacity
+
+                assert
+                // Stack: *list list_length
+
+                write_mem
+                // Stack: *list
+
+                return
+";

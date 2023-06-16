@@ -1194,6 +1194,21 @@ pub mod triton_vm_tests {
         }
     }
 
+    pub fn test_program_for_squeeze() -> SourceCodeAndInput {
+        let source_code = "squeeze halt";
+        SourceCodeAndInput::without_input(source_code)
+    }
+
+    pub fn test_program_for_absorb() -> SourceCodeAndInput {
+        let source_code = "absorb halt";
+        SourceCodeAndInput::without_input(source_code)
+    }
+
+    pub fn test_program_for_absorb_init() -> SourceCodeAndInput {
+        let source_code = "absorb_init halt";
+        SourceCodeAndInput::without_input(source_code)
+    }
+
     pub fn test_program_for_divine_sibling_noswitch() -> SourceCodeAndInput {
         let source_code = "
             push 3 \
@@ -1790,6 +1805,9 @@ pub mod triton_vm_tests {
             test_program_for_call_recurse_return(),
             test_program_for_write_mem_read_mem(),
             test_program_for_hash(),
+            test_program_for_squeeze(),
+            test_program_for_absorb(),
+            test_program_for_absorb_init(),
             test_program_for_divine_sibling_noswitch(),
             test_program_for_divine_sibling_switch(),
             test_program_for_assert_vector(),
