@@ -885,14 +885,20 @@ pub fn debug<'pgm>(
     (states, stdout, None)
 }
 
-/// Run Triton VM on the given [`Program`] with the given public and secret input.
-///
-/// See also [`simulate`] and [`debug`].
-pub fn run(
+pub struct FinalVmState {
+    pub memory: HashMap<BFieldElement, BFieldElement>,
+    pub stack: Vec<BFieldElement>,
+    pub stdin: Vec<BFieldElement>,
+    pub secin: Vec<BFieldElement>,
+    pub output: Vec<BFieldElement>,
+    pub jump_stack: Vec<(BFieldElement, BFieldElement)>,
+}
+
+pub fn run_with_final_state(
     program: &Program,
     mut stdin: Vec<BFieldElement>,
     mut secret_in: Vec<BFieldElement>,
-) -> Result<Vec<BFieldElement>> {
+) -> Result<FinalVmState> {
     let mut state = VMState::new(program);
     let mut stdout = vec![];
 
@@ -903,7 +909,25 @@ pub fn run(
         }
     }
 
-    Ok(stdout)
+    Ok(FinalVmState {
+        memory: state.ram,
+        stack: state.op_stack.stack,
+        stdin,
+        secin: secret_in,
+        output: stdout,
+        jump_stack: state.jump_stack,
+    })
+}
+
+/// Run Triton VM on the given [`Program`] with the given public and secret input.
+///
+/// See also [`simulate`] and [`debug`].
+pub fn run(
+    program: &Program,
+    stdin: Vec<BFieldElement>,
+    secret_in: Vec<BFieldElement>,
+) -> Result<Vec<BFieldElement>> {
+    run_with_final_state(program, stdin, secret_in).map(|fs| fs.output)
 }
 
 /// An Algebraic Execution Trace (AET) is the primary witness required for proof generation. It
