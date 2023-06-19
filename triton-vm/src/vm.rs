@@ -1,8 +1,10 @@
 use std::collections::hash_map::Entry::*;
 use std::collections::HashMap;
+use std::collections::VecDeque;
 use std::convert::TryInto;
 use std::fmt::Display;
 
+use anyhow::anyhow;
 use anyhow::bail;
 use anyhow::Result;
 use ndarray::s;
@@ -40,7 +42,7 @@ use crate::table::processor_table::ProcessorTraceRow;
 use crate::table::table_column::HashBaseTableColumn::*;
 use crate::table::table_column::MasterBaseTableColumn;
 use crate::table::table_column::ProcessorBaseTableColumn;
-use crate::vm::VMOutput::*;
+use crate::vm::CoProcessorCall::*;
 
 /// The number of helper variable registers
 pub const HV_REGISTER_COUNT: usize = 4;
@@ -51,6 +53,16 @@ pub struct VMState<'pgm> {
     /// The **program memory** stores the instructions (and their arguments) of the program
     /// currently being executed by Triton VM. It is read-only.
     pub program: &'pgm [Instruction],
+
+    /// A list of [`BFieldElement`]s the program can read from using instruction `read_io`.
+    pub public_input: VecDeque<BFieldElement>,
+
+    /// A list of [`BFieldElement`]s the program can read from using instructions `divine`
+    /// and `divine_sibling`.
+    pub secret_input: VecDeque<BFieldElement>,
+
+    /// A list of [`BFieldElement`]s the program can write to using instruction `write_io`.
+    pub public_output: Vec<BFieldElement>,
 
     /// The read-write **random-access memory** allows Triton VM to store arbitrary data.
     pub ram: HashMap<BFieldElement, BFieldElement>,
@@ -86,11 +98,10 @@ pub struct VMState<'pgm> {
     pub halting: bool,
 }
 
+/// A call from the main processor to one of the co-processors, including the trace for that
+/// co-processor or enough information to deduce the trace.
 #[derive(Debug, PartialEq, Eq)]
-pub enum VMOutput {
-    /// Trace output from `write_io`
-    WriteOutputSymbol(BFieldElement),
-
+pub enum CoProcessorCall {
     /// Trace of the state registers for hash coprocessor table when executing instruction `hash`
     /// or any of the Sponge instructions `absorb_init`, `absorb`, `squeeze`.
     /// One row per round in the Tip5 permutation.
@@ -109,24 +120,17 @@ impl<'pgm> VMState<'pgm> {
     /// Since `program` is read-only across individual states, and multiple
     /// inner helper functions refer to it, a read-only reference is kept in
     /// the struct.
-    pub fn new(program: &'pgm Program) -> Self {
-        let program = &program.instructions;
+    pub fn new(
+        program: &'pgm Program,
+        public_input: Vec<BFieldElement>,
+        secret_input: Vec<BFieldElement>,
+    ) -> Self {
         Self {
-            program,
+            program: &program.instructions,
+            public_input: public_input.into(),
+            secret_input: secret_input.into(),
             ..VMState::default()
         }
-    }
-
-    /// Given a state, compute `(next_state, vm_output)`.
-    pub fn step(
-        &self,
-        stdin: &mut Vec<BFieldElement>,
-        secret_in: &mut Vec<BFieldElement>,
-    ) -> Result<(VMState<'pgm>, Option<VMOutput>)> {
-        let mut next_state = self.clone();
-        next_state
-            .step_mut(stdin, secret_in)
-            .map(|vm_output| (next_state, vm_output))
     }
 
     pub fn derive_helper_variables(&self) -> [BFieldElement; HV_REGISTER_COUNT] {
@@ -202,14 +206,10 @@ impl<'pgm> VMState<'pgm> {
     }
 
     /// Perform the state transition as a mutable operation on `self`.
-    pub fn step_mut(
-        &mut self,
-        stdin: &mut Vec<BFieldElement>,
-        secret_in: &mut Vec<BFieldElement>,
-    ) -> Result<Option<VMOutput>> {
+    pub fn step(&mut self) -> Result<Option<CoProcessorCall>> {
         // All instructions increase the cycle count
         self.cycle_count += 1;
-        let mut vm_output = None;
+        let mut co_processor_trace = None;
         self.previous_instruction = match self.current_instruction() {
             Ok(instruction) => instruction.opcode_b(),
             // trying to read past the end of the program doesn't change the previous instruction
@@ -228,7 +228,9 @@ impl<'pgm> VMState<'pgm> {
             }
 
             Divine(_) => {
-                let elem = secret_in.remove(0);
+                let elem = self.secret_input.pop_front().ok_or(anyhow!(
+                    "Instruction `divine`: secret input buffer is empty."
+                ))?;
                 self.op_stack.push(elem);
                 self.instruction_pointer += 1;
             }
@@ -323,7 +325,7 @@ impl<'pgm> VMState<'pgm> {
                     self.op_stack.push(BFieldElement::zero());
                 }
 
-                vm_output = Some(Tip5Trace(Hash, Box::new(tip5_trace)));
+                co_processor_trace = Some(Tip5Trace(Hash, Box::new(tip5_trace)));
                 self.instruction_pointer += 1;
             }
 
@@ -343,7 +345,8 @@ impl<'pgm> VMState<'pgm> {
                 });
                 self.sponge_state = tip5_trace.last().unwrap().to_owned();
 
-                vm_output = Some(Tip5Trace(self.current_instruction()?, Box::new(tip5_trace)));
+                co_processor_trace =
+                    Some(Tip5Trace(self.current_instruction()?, Box::new(tip5_trace)));
                 self.instruction_pointer += 1;
             }
 
@@ -357,12 +360,12 @@ impl<'pgm> VMState<'pgm> {
                 });
                 self.sponge_state = tip5_trace.last().unwrap().to_owned();
 
-                vm_output = Some(Tip5Trace(Squeeze, Box::new(tip5_trace)));
+                co_processor_trace = Some(Tip5Trace(Squeeze, Box::new(tip5_trace)));
                 self.instruction_pointer += 1;
             }
 
             DivineSibling => {
-                self.divine_sibling(secret_in)?;
+                self.divine_sibling()?;
                 self.instruction_pointer += 1;
             }
 
@@ -417,7 +420,7 @@ impl<'pgm> VMState<'pgm> {
                 self.op_stack.push(lo);
                 self.instruction_pointer += 1;
                 let u32_table_entry = (Split, lo, hi);
-                vm_output = Some(U32TableEntries(vec![u32_table_entry]));
+                co_processor_trace = Some(U32TableEntries(vec![u32_table_entry]));
             }
 
             Lt => {
@@ -427,7 +430,7 @@ impl<'pgm> VMState<'pgm> {
                 self.op_stack.push(lt);
                 self.instruction_pointer += 1;
                 let u32_table_entry = (Lt, (lhs as u64).into(), (rhs as u64).into());
-                vm_output = Some(U32TableEntries(vec![u32_table_entry]));
+                co_processor_trace = Some(U32TableEntries(vec![u32_table_entry]));
             }
 
             And => {
@@ -437,7 +440,7 @@ impl<'pgm> VMState<'pgm> {
                 self.op_stack.push(and);
                 self.instruction_pointer += 1;
                 let u32_table_entry = (And, (lhs as u64).into(), (rhs as u64).into());
-                vm_output = Some(U32TableEntries(vec![u32_table_entry]));
+                co_processor_trace = Some(U32TableEntries(vec![u32_table_entry]));
             }
 
             Xor => {
@@ -450,7 +453,7 @@ impl<'pgm> VMState<'pgm> {
                 // and `xor` instruction using the u32 coprocessor's `and` capability:
                 // a ^ b = a + b - 2 · (a & b)
                 let u32_table_entry = (And, (lhs as u64).into(), (rhs as u64).into());
-                vm_output = Some(U32TableEntries(vec![u32_table_entry]));
+                co_processor_trace = Some(U32TableEntries(vec![u32_table_entry]));
             }
 
             Log2Floor => {
@@ -462,7 +465,7 @@ impl<'pgm> VMState<'pgm> {
                 self.op_stack.push(l2f);
                 self.instruction_pointer += 1;
                 let u32_table_entry = (Log2Floor, (lhs as u64).into(), BFIELD_ZERO);
-                vm_output = Some(U32TableEntries(vec![u32_table_entry]));
+                co_processor_trace = Some(U32TableEntries(vec![u32_table_entry]));
             }
 
             Pow => {
@@ -472,7 +475,7 @@ impl<'pgm> VMState<'pgm> {
                 self.op_stack.push(pow);
                 self.instruction_pointer += 1;
                 let u32_table_entry = (Pow, lhs, (rhs as u64).into());
-                vm_output = Some(U32TableEntries(vec![u32_table_entry]));
+                co_processor_trace = Some(U32TableEntries(vec![u32_table_entry]));
             }
 
             Div => {
@@ -488,7 +491,8 @@ impl<'pgm> VMState<'pgm> {
                 self.instruction_pointer += 1;
                 let u32_table_entry_0 = (Lt, rem, (denom as u64).into());
                 let u32_table_entry_1 = (Split, (numer as u64).into(), quot);
-                vm_output = Some(U32TableEntries(vec![u32_table_entry_0, u32_table_entry_1]));
+                co_processor_trace =
+                    Some(U32TableEntries(vec![u32_table_entry_0, u32_table_entry_1]));
             }
 
             PopCount => {
@@ -497,7 +501,7 @@ impl<'pgm> VMState<'pgm> {
                 self.op_stack.push(pop_count);
                 self.instruction_pointer += 1;
                 let u32_table_entry = (PopCount, (lhs as u64).into(), BFIELD_ZERO);
-                vm_output = Some(U32TableEntries(vec![u32_table_entry]));
+                co_processor_trace = Some(U32TableEntries(vec![u32_table_entry]));
             }
 
             XxAdd => {
@@ -531,12 +535,15 @@ impl<'pgm> VMState<'pgm> {
             }
 
             WriteIo => {
-                vm_output = Some(WriteOutputSymbol(self.op_stack.pop()?));
+                let elem_to_write = self.op_stack.pop()?;
+                self.public_output.push(elem_to_write);
                 self.instruction_pointer += 1;
             }
 
             ReadIo => {
-                let in_elem = stdin.remove(0);
+                let in_elem = self.public_input.pop_front().ok_or(anyhow!(
+                    "Instruction `read_io`: public input buffer is empty."
+                ))?;
                 self.op_stack.push(in_elem);
                 self.instruction_pointer += 1;
             }
@@ -547,7 +554,7 @@ impl<'pgm> VMState<'pgm> {
             return vm_err(OpStackTooShallow);
         }
 
-        Ok(vm_output)
+        Ok(co_processor_trace)
     }
 
     pub fn to_processor_row(&self) -> Array1<BFieldElement> {
@@ -701,7 +708,7 @@ impl<'pgm> VMState<'pgm> {
         true
     }
 
-    fn divine_sibling(&mut self, secret_in: &mut Vec<BFieldElement>) -> Result<()> {
+    fn divine_sibling(&mut self) -> Result<()> {
         // st0-st4
         let _ = self.op_stack.pop_n::<{ DIGEST_LENGTH }>()?;
 
@@ -715,17 +722,28 @@ impl<'pgm> VMState<'pgm> {
             .unwrap_or_else(|_| panic!("{node_index_elem:?} is not a u32"));
 
         // nondeterministic guess, flipped
-        let sibling_digest: [BFieldElement; DIGEST_LENGTH] = {
-            let mut tmp = [
-                secret_in.remove(0),
-                secret_in.remove(0),
-                secret_in.remove(0),
-                secret_in.remove(0),
-                secret_in.remove(0),
-            ];
-            tmp.reverse();
-            tmp
-        };
+        let sibling_elem_0 = self.secret_input.pop_front().ok_or(anyhow!(
+            "Instruction `divine_sibling`: secret input buffer is empty (0)."
+        ))?;
+        let sibling_elem_1 = self.secret_input.pop_front().ok_or(anyhow!(
+            "Instruction `divine_sibling`: secret input buffer is empty (1)."
+        ))?;
+        let sibling_elem_2 = self.secret_input.pop_front().ok_or(anyhow!(
+            "Instruction `divine_sibling`: secret input buffer is empty (2)."
+        ))?;
+        let sibling_elem_3 = self.secret_input.pop_front().ok_or(anyhow!(
+            "Instruction `divine_sibling`: secret input buffer is empty (3)."
+        ))?;
+        let sibling_elem_4 = self.secret_input.pop_front().ok_or(anyhow!(
+            "Instruction `divine_sibling`: secret input buffer is empty (4)."
+        ))?;
+        let sibling_digest: [BFieldElement; DIGEST_LENGTH] = [
+            sibling_elem_4,
+            sibling_elem_3,
+            sibling_elem_2,
+            sibling_elem_1,
+            sibling_elem_0,
+        ];
 
         // least significant bit
         let hv0 = node_index % 2;
@@ -788,14 +806,13 @@ impl<'pgm> Display for VMState<'pgm> {
 /// See also [`debug`] and [`run`].
 pub fn simulate(
     program: &Program,
-    mut stdin: Vec<BFieldElement>,
-    mut secret_in: Vec<BFieldElement>,
+    public_input: Vec<BFieldElement>,
+    secret_input: Vec<BFieldElement>,
 ) -> Result<(AlgebraicExecutionTrace, Vec<BFieldElement>)> {
     let mut aet = AlgebraicExecutionTrace::new(program.clone());
-    let mut state = VMState::new(program);
+    let mut state = VMState::new(program, public_input, secret_input);
     assert_eq!(program.len_bwords(), aet.instruction_multiplicities.len());
 
-    let mut stdout = vec![];
     while !state.halting {
         aet.processor_trace
             .push_row(state.to_processor_row().view())
@@ -807,8 +824,8 @@ pub fn simulate(
             bail!(InstructionPointerOverflow(state.instruction_pointer));
         }
 
-        let vm_output = state.step_mut(&mut stdin, &mut secret_in)?;
-        match vm_output {
+        let co_processor_trace = state.step()?;
+        match co_processor_trace {
             Some(Tip5Trace(Hash, tip5_trace)) => aet.append_hash_trace(*tip5_trace),
             Some(Tip5Trace(instruction, tip5_trace)) => {
                 aet.append_sponge_trace(instruction, *tip5_trace)
@@ -821,102 +838,72 @@ pub fn simulate(
                         .or_insert(1);
                 }
             }
-            Some(WriteOutputSymbol(written_word)) => stdout.push(written_word),
             None => (),
         }
     }
 
-    Ok((aet, stdout))
+    Ok((aet, state.public_output))
 }
 
 /// Similar to [`run`], but also returns a [`Vec`] of [`VMState`]s, one for each step of the VM.
-/// On premature termination of the VM, returns all [`VMState`]s and output for the execution up
-/// to the point of failure.
+/// On premature termination of the VM, returns all [`VMState`]s up to the point of failure.
 ///
 /// The VM's initial state is either the provided `initial_state`, or a new [`VMState`] if
-/// `initial_state` is `None`. The initial state is not included in the returned [`Vec`] of
+/// `initial_state` is `None`. The initial state is included in the returned [`Vec`] of
 /// [`VMState`]s. The initial state is the state of the VM before the first instruction is
 /// executed. The initial state must contain the same program as provided by parameter `program`,
 /// else the method will panic.
 ///
 /// If `num_cycles_to_execute` is `Some(number_of_cycles)`, the VM will execute at most
 /// `number_of_cycles` cycles. If `num_cycles_to_execute` is `None`, the VM will execute until
-/// it halts.
+/// it halts or the maximum number of cycles (2^{32}) is reached..
 ///
-/// See also [`simulate`].
+/// See also [`debug_terminal_state`] and [`simulate`].
 pub fn debug<'pgm>(
     program: &'pgm Program,
-    mut stdin: Vec<BFieldElement>,
-    mut secret_in: Vec<BFieldElement>,
+    public_input: Vec<BFieldElement>,
+    secret_input: Vec<BFieldElement>,
     initial_state: Option<VMState<'pgm>>,
     num_cycles_to_execute: Option<u32>,
-) -> (
-    Vec<VMState<'pgm>>,
-    Vec<BFieldElement>,
-    Option<anyhow::Error>,
-) {
+) -> (Vec<VMState<'pgm>>, Option<anyhow::Error>) {
     let mut states = vec![];
-    let mut stdout = vec![];
-    let mut current_state = initial_state.unwrap_or(VMState::new(program));
+    let mut state = initial_state.unwrap_or(VMState::new(program, public_input, secret_input));
     let max_cycles = match num_cycles_to_execute {
-        Some(number_of_cycles) => current_state.cycle_count + number_of_cycles,
+        Some(number_of_cycles) => state.cycle_count + number_of_cycles,
         None => u32::MAX,
     };
 
     assert_eq!(
-        current_state.program, program.instructions,
+        state.program, program.instructions,
         "The (optional) initial state must be for the given program."
     );
 
-    while !current_state.halting && current_state.cycle_count < max_cycles {
-        states.push(current_state.clone());
-        let step = current_state.step(&mut stdin, &mut secret_in);
-        let (next_state, vm_output) = match step {
-            Err(err) => return (states, stdout, Some(err)),
-            Ok((next_state, vm_output)) => (next_state, vm_output),
-        };
-
-        if let Some(WriteOutputSymbol(written_word)) = vm_output {
-            stdout.push(written_word);
+    while !state.halting && state.cycle_count < max_cycles {
+        states.push(state.clone());
+        if let Err(err) = state.step() {
+            return (states, Some(err));
         }
-        current_state = next_state;
     }
 
-    (states, stdout, None)
+    states.push(state);
+    (states, None)
 }
 
-pub struct FinalVmState {
-    pub memory: HashMap<BFieldElement, BFieldElement>,
-    pub stack: Vec<BFieldElement>,
-    pub stdin: Vec<BFieldElement>,
-    pub secin: Vec<BFieldElement>,
-    pub output: Vec<BFieldElement>,
-    pub jump_stack: Vec<(BFieldElement, BFieldElement)>,
-}
-
-pub fn run_with_final_state(
+/// Run Triton VM on the given [`Program`] with the given public and secret input, and return the
+/// final [`VMState`]. Requires substantially less RAM than [`debug`] since no intermediate states
+/// are recorded.
+///
+/// See also [`simulate`] and [`run`].
+pub fn debug_terminal_state(
     program: &Program,
-    mut stdin: Vec<BFieldElement>,
-    mut secret_in: Vec<BFieldElement>,
-) -> Result<FinalVmState> {
-    let mut state = VMState::new(program);
-    let mut stdout = vec![];
-
+    public_input: Vec<BFieldElement>,
+    secret_input: Vec<BFieldElement>,
+) -> Result<VMState> {
+    let mut state = VMState::new(program, public_input, secret_input);
     while !state.halting {
-        let vm_output = state.step_mut(&mut stdin, &mut secret_in)?;
-        if let Some(WriteOutputSymbol(written_word)) = vm_output {
-            stdout.push(written_word);
-        }
+        state.step()?;
     }
-
-    Ok(FinalVmState {
-        memory: state.ram,
-        stack: state.op_stack.stack,
-        stdin,
-        secin: secret_in,
-        output: stdout,
-        jump_stack: state.jump_stack,
-    })
+    Ok(state)
 }
 
 /// Run Triton VM on the given [`Program`] with the given public and secret input.
@@ -927,7 +914,7 @@ pub fn run(
     stdin: Vec<BFieldElement>,
     secret_in: Vec<BFieldElement>,
 ) -> Result<Vec<BFieldElement>> {
-    run_with_final_state(program, stdin, secret_in).map(|fs| fs.output)
+    debug_terminal_state(program, stdin, secret_in).map(|fs| fs.public_output)
 }
 
 /// An Algebraic Execution Trace (AET) is the primary witness required for proof generation. It
