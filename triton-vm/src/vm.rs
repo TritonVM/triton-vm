@@ -6,6 +6,7 @@ use std::fmt::Display;
 
 use anyhow::anyhow;
 use anyhow::bail;
+use anyhow::Error;
 use anyhow::Result;
 use ndarray::s;
 use ndarray::Array1;
@@ -852,7 +853,8 @@ pub fn simulate(
 /// `initial_state` is `None`. The initial state is included in the returned [`Vec`] of
 /// [`VMState`]s. The initial state is the state of the VM before the first instruction is
 /// executed. The initial state must contain the same program as provided by parameter `program`,
-/// else the method will panic.
+/// else the method will panic. If an initial state is provided, its `public_input` and
+/// `private_input` is overwritten with the provided `public_input` and `private_input`.
 ///
 /// If `num_cycles_to_execute` is `Some(number_of_cycles)`, the VM will execute at most
 /// `number_of_cycles` cycles. If `num_cycles_to_execute` is `None`, the VM will execute until
@@ -865,9 +867,17 @@ pub fn debug<'pgm>(
     secret_input: Vec<BFieldElement>,
     initial_state: Option<VMState<'pgm>>,
     num_cycles_to_execute: Option<u32>,
-) -> (Vec<VMState<'pgm>>, Option<anyhow::Error>) {
+) -> (Vec<VMState<'pgm>>, Option<Error>) {
     let mut states = vec![];
-    let mut state = initial_state.unwrap_or(VMState::new(program, public_input, secret_input));
+    let mut state = match initial_state {
+        Some(mut initial_state) => {
+            initial_state.public_input = public_input.into();
+            initial_state.secret_input = secret_input.into();
+            initial_state
+        }
+        None => VMState::new(program, public_input, secret_input),
+    };
+
     let max_cycles = match num_cycles_to_execute {
         Some(number_of_cycles) => state.cycle_count + number_of_cycles,
         None => u32::MAX,
@@ -893,15 +903,23 @@ pub fn debug<'pgm>(
 /// final [`VMState`]. Requires substantially less RAM than [`debug`] since no intermediate states
 /// are recorded.
 ///
+/// If an error is encountered, returns the error and the [`VMState`] at the point of failure.
+///
 /// See also [`simulate`] and [`run`].
 pub fn debug_terminal_state(
     program: &Program,
     public_input: Vec<BFieldElement>,
     secret_input: Vec<BFieldElement>,
-) -> Result<VMState> {
+) -> Result<VMState, (Error, VMState)> {
     let mut state = VMState::new(program, public_input, secret_input);
     while !state.halting {
-        state.step()?;
+        // The internal state transition method [`VMState::step`] is not atomic.
+        // To avoid returning an inconsistent state in case of a failed transition, the last
+        // known-to-be-consistent state is returned.
+        let previous_state = state.clone();
+        if let Err(err) = state.step() {
+            return Err((err, previous_state));
+        }
     }
     Ok(state)
 }
@@ -911,10 +929,14 @@ pub fn debug_terminal_state(
 /// See also [`simulate`] and [`debug`].
 pub fn run(
     program: &Program,
-    stdin: Vec<BFieldElement>,
-    secret_in: Vec<BFieldElement>,
+    public_input: Vec<BFieldElement>,
+    secret_input: Vec<BFieldElement>,
 ) -> Result<Vec<BFieldElement>> {
-    debug_terminal_state(program, stdin, secret_in).map(|fs| fs.public_output)
+    let mut state = VMState::new(program, public_input, secret_input);
+    while !state.halting {
+        state.step()?;
+    }
+    Ok(state.public_output)
 }
 
 /// An Algebraic Execution Trace (AET) is the primary witness required for proof generation. It
