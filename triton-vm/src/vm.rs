@@ -8,6 +8,7 @@ use std::fmt::Display;
 use anyhow::anyhow;
 use anyhow::bail;
 use anyhow::Result;
+use itertools::Itertools;
 use ndarray::s;
 use ndarray::Array1;
 use ndarray::Array2;
@@ -16,12 +17,14 @@ use num_traits::One;
 use num_traits::Zero;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::b_field_element::BFIELD_ZERO;
+use twenty_first::shared_math::digest::Digest;
 use twenty_first::shared_math::tip5;
 use twenty_first::shared_math::tip5::Tip5;
 use twenty_first::shared_math::tip5::Tip5State;
 use twenty_first::shared_math::tip5::DIGEST_LENGTH;
 use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::x_field_element::XFieldElement;
+use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
 use twenty_first::util_types::algebraic_hasher::Domain;
 use twenty_first::util_types::algebraic_hasher::SpongeHasher;
 
@@ -948,6 +951,12 @@ pub struct AlgebraicExecutionTrace {
     /// Records the state of the processor after each instruction.
     pub processor_trace: Array2<BFieldElement>,
 
+    /// The trace of hashing the program whose execution generated this `AlgebraicExecutionTrace`.
+    /// The resulting digest
+    /// 1. ties a [`Proof`](crate::proof::Proof) to the program it was produced from, and
+    /// 1. is accessible to the program being executed.
+    pub program_hash_trace: Array2<BFieldElement>,
+
     /// For the `hash` instruction, the hash trace records the internal state of the Tip5
     /// permutation for each round.
     pub hash_trace: Array2<BFieldElement>,
@@ -970,17 +979,56 @@ pub struct AlgebraicExecutionTrace {
 
 impl AlgebraicExecutionTrace {
     pub fn new(program: Program) -> Self {
-        let instruction_multiplicities = vec![0_u32; program.len_bwords()];
-        Self {
+        let program_len = program.len_bwords();
+
+        let mut aet = Self {
             program,
-            instruction_multiplicities,
+            instruction_multiplicities: vec![0_u32; program_len],
             processor_trace: Array2::default([0, processor_table::BASE_WIDTH]),
+            program_hash_trace: Array2::default([0, hash_table::BASE_WIDTH]),
             hash_trace: Array2::default([0, hash_table::BASE_WIDTH]),
             sponge_trace: Array2::default([0, hash_table::BASE_WIDTH]),
             u32_entries: HashMap::new(),
             cascade_table_lookup_multiplicities: HashMap::new(),
             lookup_table_lookup_multiplicities: [0; 1 << 8],
+        };
+        aet.fill_program_hash_trace();
+        aet
+    }
+
+    /// Hash the program and record the entire Sponge's trace for program attestation.
+    fn fill_program_hash_trace(&mut self) {
+        let padded_program_length = Self::padded_program_length(&self.program);
+
+        // padding is one 1, then as many zeros as necessary: [1, 0, 0, …]
+        let program_iter = self.program.to_bwords().into_iter();
+        let one_iter = [BFieldElement::one()].into_iter();
+        let zeros_iter = [BFieldElement::zero()].into_iter().cycle();
+        let padded_input = program_iter
+            .chain(one_iter)
+            .chain(zeros_iter)
+            .take(padded_program_length);
+
+        let mut program_sponge = StarkHasher::init();
+        for chunk in padded_input.chunks(StarkHasher::RATE).into_iter() {
+            program_sponge.state[..StarkHasher::RATE]
+                .iter_mut()
+                .zip_eq(chunk)
+                .for_each(|(sponge_state_elem, absorb_elem)| *sponge_state_elem = absorb_elem);
+            let hash_trace = StarkHasher::trace(&mut program_sponge);
+            let trace_addendum = HashTable::convert_to_hash_table_rows(hash_trace);
+
+            self.increase_lookup_multiplicities(hash_trace);
+            self.program_hash_trace
+                .append(Axis(0), trace_addendum.view())
+                .expect("shapes must be identical");
         }
+
+        // consistency check
+        let program_digest = program_sponge.state[..DIGEST_LENGTH].try_into().unwrap();
+        let program_digest = Digest::new(program_digest);
+        let expected_digest = StarkHasher::hash_varlen(&self.program.to_bwords());
+        assert_eq!(expected_digest, program_digest);
     }
 
     pub fn program_table_length(&self) -> usize {
@@ -1007,7 +1055,7 @@ impl AlgebraicExecutionTrace {
     }
 
     pub fn hash_table_length(&self) -> usize {
-        self.sponge_trace.nrows() + self.hash_trace.nrows()
+        self.sponge_trace.nrows() + self.hash_trace.nrows() + self.program_hash_trace.nrows()
     }
 
     pub fn cascade_table_length(&self) -> usize {

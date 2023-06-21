@@ -220,8 +220,35 @@ pub enum JumpStackExtTableColumn {
 #[repr(usize)]
 #[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro, Hash)]
 pub enum HashBaseTableColumn {
-    RoundNumber,
+    /// The current “mode” of the Hash Table. There are four distinct modes:
+    ///
+    /// 1. Mode 1, for hashing the `Program`. This is part of program attestation.
+    /// 1. Mode 2, for Sponge instructions, _i.e._, `absorb_init`, `absorb`, and `squeeze`.
+    /// 1. Mode 3, for the `hash` instruction.
+    /// 1. Mode 0, indicating padding rows.
+    ///
+    /// Changing the mode is only possible when the current [`RoundNumber`](Self::RoundNumber) is 5.
+    /// The mode evolves as 1 → 2 → 3 → 0.
+    /// Once mode 0 is reached, it is not possible to change the mode anymore.
+    /// Skipping any or all of the modes 2, 3, and 0 is possible in principle:
+    /// - if no Sponge instructions are executed, mode 2 will be skipped,
+    /// - if no `hash` instruction is executed, mode 3 will be skipped, and
+    /// - if the Hash Table does not require any padding, mode 0 will be skipped.
+    ///
+    /// It is not possible to skip mode 1:
+    /// the `Program` is always hashed.
+    /// The empty program is not valid since any valid `Program` must execute instruction `halt`.
+    Mode,
+
+    /// The current instruction. Only relevant for [`Mode` 1](Self::Mode) in order to distinguish
+    /// between the different Sponge instructions.
     CI,
+
+    /// The number of the current round in the permutation. The round number evolves as
+    /// - 0 → 1 → 2 → 3 → 4 → 5 (→ 0) in [`Mode`](Self::Mode)s 1, 2, and 3, and
+    /// - 0 → 0 in [`Mode` 0](Self::Mode).
+    RoundNumber,
+
     State0HighestLkIn,
     State0MidHighLkIn,
     State0MidLowLkIn,
@@ -266,10 +293,12 @@ pub enum HashBaseTableColumn {
     State13,
     State14,
     State15,
+
     State0Inv,
     State1Inv,
     State2Inv,
     State3Inv,
+
     Constant0,
     Constant1,
     Constant2,

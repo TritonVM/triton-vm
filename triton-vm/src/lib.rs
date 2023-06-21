@@ -84,7 +84,7 @@ pub fn prove_from_source(
     let (aet, public_output) = vm::simulate(&program, public_input.clone(), secret_input)?;
 
     // Hash the program to obtain its digest.
-    let program_digest = Tip5::hash(&program);
+    let program_digest = Tip5::hash_varlen(&program.to_bwords());
 
     // The default parameters give a (conjectured) security level of 160 bits.
     let parameters = StarkParameters::default();
@@ -111,7 +111,7 @@ pub fn prove(
     program: &Program,
     secret_input: &[BFieldElement],
 ) -> Result<Proof> {
-    let program_digest = Tip5::hash(program);
+    let program_digest = Tip5::hash_varlen(&program.to_bwords());
     if program_digest != claim.program_digest {
         bail!("Program digest must match claimed program digest.");
     }
@@ -130,8 +130,6 @@ pub fn verify(parameters: &StarkParameters, proof: &Proof) -> bool {
 
 #[cfg(test)]
 mod public_interface_tests {
-    use twenty_first::shared_math::bfield_codec::BFieldCodec;
-
     use crate::stark::StarkHasher;
 
     use super::*;
@@ -175,7 +173,7 @@ mod public_interface_tests {
         );
         let claim = proof.claim();
         let program = Program::from_code(source_code).unwrap();
-        let expected_program_digest = StarkHasher::hash_varlen(&program.encode());
+        let expected_program_digest = StarkHasher::hash_varlen(&program.to_bwords());
         assert_eq!(
             expected_program_digest, claim.program_digest,
             "program digest must match program"
@@ -201,7 +199,7 @@ mod public_interface_tests {
         let program = Program::from_code(source_code).unwrap();
 
         let claim = Claim {
-            program_digest: Tip5::hash(&program),
+            program_digest: StarkHasher::hash_varlen(&program.to_bwords()),
             input: vec![],
             output: vec![],
         };

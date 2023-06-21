@@ -4,7 +4,6 @@ use criterion::BenchmarkId;
 use criterion::Criterion;
 use triton_opcodes::program::Program;
 use twenty_first::shared_math::b_field_element::BFieldElement;
-use twenty_first::shared_math::tip5::Tip5;
 use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
 
 use triton_profiler::prof_start;
@@ -14,6 +13,7 @@ use triton_profiler::triton_profiler::TritonProfiler;
 use triton_vm::proof::Claim;
 use triton_vm::shared_tests::FIBONACCI_SEQUENCE;
 use triton_vm::stark::Stark;
+use triton_vm::stark::StarkHasher;
 use triton_vm::vm::simulate;
 use triton_vm::StarkParameters;
 
@@ -42,7 +42,7 @@ fn prove_fib_100(criterion: &mut Criterion) {
     let parameters = StarkParameters::default();
     let claim = Claim {
         input: public_input,
-        program_digest: Tip5::hash(&program),
+        program_digest: StarkHasher::hash_varlen(&program.to_bwords()),
         output,
     };
     let proof = Stark::prove(&parameters, &claim, &aet, &mut maybe_profiler);

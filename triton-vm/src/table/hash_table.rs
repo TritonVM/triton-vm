@@ -7,8 +7,6 @@ use ndarray::ArrayViewMut2;
 use num_traits::Zero;
 use strum::EnumCount;
 use twenty_first::shared_math::b_field_element::BFieldElement;
-use twenty_first::shared_math::b_field_element::BFIELD_ONE;
-use twenty_first::shared_math::b_field_element::BFIELD_ZERO;
 use twenty_first::shared_math::tip5::DIGEST_LENGTH;
 use twenty_first::shared_math::tip5::MDS_MATRIX_FIRST_COLUMN;
 use twenty_first::shared_math::tip5::NUM_ROUNDS;
@@ -85,7 +83,6 @@ impl ExtHashTable {
     ) -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
         let challenge = |c| circuit_builder.challenge(c);
         let constant = |c: u64| circuit_builder.b_constant(c.into());
-        let b_constant = |c| circuit_builder.b_constant(c);
 
         let base_row = |column: HashBaseTableColumn| {
             circuit_builder.input(BaseRow(column.master_base_table_index()))
@@ -95,15 +92,18 @@ impl ExtHashTable {
         };
 
         let running_evaluation_initial = circuit_builder.x_constant(EvalArg::default_initial());
+        let lookup_arg_default_initial = circuit_builder.x_constant(LookupArg::default_initial());
 
-        let round_number = base_row(RoundNumber);
-        let ci = base_row(CI);
+        let mode = base_row(Mode);
         let running_evaluation_hash_input = ext_row(HashInputRunningEvaluation);
         let running_evaluation_hash_digest = ext_row(HashDigestRunningEvaluation);
         let running_evaluation_sponge = ext_row(SpongeRunningEvaluation);
 
-        let one = constant(1);
+        let cascade_indeterminate = challenge(HashCascadeLookupIndeterminate);
+        let look_in_weight = challenge(HashCascadeLookInWeight);
+        let look_out_weight = challenge(HashCascadeLookOutWeight);
 
+        // First chunk of the program is received correctly. Relates to program attestation.
         let state_0 = Self::re_compose_16_bit_limbs(
             circuit_builder,
             base_row(State0HighestLkIn),
@@ -158,226 +158,171 @@ impl ExtHashTable {
             HashStateWeight8,
             HashStateWeight9,
         ];
-        let compressed_row: ConstraintCircuitMonad<_> = state_weights
+        let _compressed_row: ConstraintCircuitMonad<_> = state_weights
             .into_iter()
             .zip_eq(state.into_iter())
             .map(|(weight, state)| challenge(weight) * state)
             .sum();
 
-        let round_number_is_neg_1_or_0 =
-            (round_number.clone() + one.clone()) * round_number.clone();
+        // The lookup arguments with the Cascade Table for the S-Boxes are initialized correctly.
+        let cascade_log_derivative_init_circuit =
+            |look_in_column, look_out_column, cascade_log_derivative_column| {
+                let look_in = base_row(look_in_column);
+                let look_out = base_row(look_out_column);
+                let compressed_row =
+                    look_in_weight.clone() * look_in + look_out_weight.clone() * look_out;
+                let cascade_log_derivative = ext_row(cascade_log_derivative_column);
+                (cascade_log_derivative - lookup_arg_default_initial.clone())
+                    * (cascade_indeterminate.clone() - compressed_row)
+                    - constant(1)
+            };
 
-        let ci_is_hash = ci.clone() - b_constant(Instruction::Hash.opcode_b());
-        let ci_is_absorb_init = ci - b_constant(Instruction::AbsorbInit.opcode_b());
-        let current_instruction_is_absorb_init_or_hash =
-            ci_is_absorb_init.clone() * ci_is_hash.clone();
-
-        // Evaluation Argument “hash input”
-        // If the round number is -1, the running evaluation is the default initial.
-        // If the current instruction is AbsorbInit, the running evaluation is the default initial.
-        // Else, the first update has been applied to the running evaluation.
-        let hash_input_indeterminate = challenge(HashInputIndeterminate);
+        // miscellaneous initial constraints
+        let mode_is_1 = mode - constant(1);
+        let round_number_is_0 = base_row(RoundNumber);
         let running_evaluation_hash_input_is_default_initial =
-            running_evaluation_hash_input.clone() - running_evaluation_initial.clone();
-        let running_evaluation_hash_input_has_accumulated_first_row = running_evaluation_hash_input
-            - running_evaluation_initial.clone() * hash_input_indeterminate
-            - compressed_row.clone();
-        let running_evaluation_hash_input_is_initialized_correctly = (round_number.clone() + one)
-            * ci_is_absorb_init.clone()
-            * running_evaluation_hash_input_has_accumulated_first_row
-            + ci_is_hash.clone() * running_evaluation_hash_input_is_default_initial.clone()
-            + round_number * running_evaluation_hash_input_is_default_initial;
-
-        // Evaluation Argument “hash digest”
+            running_evaluation_hash_input - running_evaluation_initial.clone();
         let running_evaluation_hash_digest_is_default_initial =
             running_evaluation_hash_digest - running_evaluation_initial.clone();
-
-        // Evaluation Argument “Sponge”
-        let sponge_indeterminate = challenge(SpongeIndeterminate);
         let running_evaluation_sponge_is_default_initial =
-            running_evaluation_sponge.clone() - running_evaluation_initial.clone();
-        let running_evaluation_sponge_has_accumulated_first_row = running_evaluation_sponge
-            - running_evaluation_initial * sponge_indeterminate
-            - challenge(HashCIWeight) * b_constant(Instruction::AbsorbInit.opcode_b())
-            - compressed_row;
-        let running_evaluation_sponge_absorb_is_initialized_correctly = ci_is_hash
-            * running_evaluation_sponge_has_accumulated_first_row
-            + ci_is_absorb_init * running_evaluation_sponge_is_default_initial;
+            running_evaluation_sponge - running_evaluation_initial;
 
-        let mut constraints = vec![
-            round_number_is_neg_1_or_0,
-            current_instruction_is_absorb_init_or_hash,
-            running_evaluation_hash_input_is_initialized_correctly,
+        vec![
+            mode_is_1,
+            round_number_is_0,
+            running_evaluation_hash_input_is_default_initial,
             running_evaluation_hash_digest_is_default_initial,
-            running_evaluation_sponge_absorb_is_initialized_correctly,
-        ];
-        constraints
-            .append(&mut Self::all_cascade_log_derivative_init_circuits(circuit_builder).to_vec());
-        constraints
-    }
-
-    fn round_number_deselector<II: InputIndicator>(
-        circuit_builder: &ConstraintCircuitBuilder<II>,
-        round_number_circuit_node: &ConstraintCircuitMonad<II>,
-        round_number_to_deselect: isize,
-    ) -> ConstraintCircuitMonad<II> {
-        assert!(
-            -1 <= round_number_to_deselect && round_number_to_deselect <= NUM_ROUNDS as isize,
-            "Round number to deselect must be in the range [-1, {NUM_ROUNDS}] \
-            but got {round_number_to_deselect}."
-        );
-        // Because BFieldElements cannot be built from signed integers, we special-case -1.
-        let constant = |c: u64| circuit_builder.b_constant(c.into());
-        let factor_for_neg_1 = match round_number_to_deselect == -1 {
-            true => constant(1),
-            false => round_number_circuit_node.clone() + constant(1),
-        };
-        (0..=NUM_ROUNDS as isize)
-            .filter(|&r| r != round_number_to_deselect)
-            .map(|r| round_number_circuit_node.clone() - constant(r as u64))
-            .fold(factor_for_neg_1, |a, b| a * b)
-    }
-
-    fn cascade_log_derivative_init_circuit(
-        circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
-        look_in_column: HashBaseTableColumn,
-        look_out_column: HashBaseTableColumn,
-        cascade_log_derivative_column: HashExtTableColumn,
-    ) -> ConstraintCircuitMonad<SingleRowIndicator> {
-        let challenge = |c| circuit_builder.challenge(c);
-        let constant = |c: u64| circuit_builder.b_constant(c.into());
-        let base_row = |column_idx: HashBaseTableColumn| {
-            circuit_builder.input(BaseRow(column_idx.master_base_table_index()))
-        };
-        let ext_row = |column_idx: HashExtTableColumn| {
-            circuit_builder.input(ExtRow(column_idx.master_ext_table_index()))
-        };
-
-        let cascade_indeterminate = challenge(HashCascadeLookupIndeterminate);
-        let look_in_weight = challenge(HashCascadeLookInWeight);
-        let look_out_weight = challenge(HashCascadeLookOutWeight);
-
-        let round_number = base_row(RoundNumber);
-        let cascade_log_derivative = ext_row(cascade_log_derivative_column);
-        let default_initial = circuit_builder.x_constant(LookupArg::default_initial());
-
-        let compressed_row =
-            look_in_weight * base_row(look_in_column) + look_out_weight * base_row(look_out_column);
-
-        let cascade_log_derivative_is_default_initial =
-            cascade_log_derivative.clone() - default_initial.clone();
-        let cascade_log_derivative_updates = (cascade_log_derivative - default_initial)
-            * (cascade_indeterminate - compressed_row)
-            - constant(1);
-
-        let round_number_next_is_neg_1 = round_number.clone() + constant(1);
-        let round_number_next_is_0 = round_number;
-
-        round_number_next_is_neg_1 * cascade_log_derivative_updates
-            + round_number_next_is_0 * cascade_log_derivative_is_default_initial
-    }
-
-    fn all_cascade_log_derivative_init_circuits(
-        circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
-    ) -> [ConstraintCircuitMonad<SingleRowIndicator>; 4 * NUM_SPLIT_AND_LOOKUP] {
-        [
-            Self::cascade_log_derivative_init_circuit(
-                circuit_builder,
+            running_evaluation_sponge_is_default_initial,
+            cascade_log_derivative_init_circuit(
                 State0HighestLkIn,
                 State0HighestLkOut,
                 CascadeState0HighestClientLogDerivative,
             ),
-            Self::cascade_log_derivative_init_circuit(
-                circuit_builder,
+            cascade_log_derivative_init_circuit(
                 State0MidHighLkIn,
                 State0MidHighLkOut,
                 CascadeState0MidHighClientLogDerivative,
             ),
-            Self::cascade_log_derivative_init_circuit(
-                circuit_builder,
+            cascade_log_derivative_init_circuit(
                 State0MidLowLkIn,
                 State0MidLowLkOut,
                 CascadeState0MidLowClientLogDerivative,
             ),
-            Self::cascade_log_derivative_init_circuit(
-                circuit_builder,
+            cascade_log_derivative_init_circuit(
                 State0LowestLkIn,
                 State0LowestLkOut,
                 CascadeState0LowestClientLogDerivative,
             ),
-            Self::cascade_log_derivative_init_circuit(
-                circuit_builder,
+            cascade_log_derivative_init_circuit(
                 State1HighestLkIn,
                 State1HighestLkOut,
                 CascadeState1HighestClientLogDerivative,
             ),
-            Self::cascade_log_derivative_init_circuit(
-                circuit_builder,
+            cascade_log_derivative_init_circuit(
                 State1MidHighLkIn,
                 State1MidHighLkOut,
                 CascadeState1MidHighClientLogDerivative,
             ),
-            Self::cascade_log_derivative_init_circuit(
-                circuit_builder,
+            cascade_log_derivative_init_circuit(
                 State1MidLowLkIn,
                 State1MidLowLkOut,
                 CascadeState1MidLowClientLogDerivative,
             ),
-            Self::cascade_log_derivative_init_circuit(
-                circuit_builder,
+            cascade_log_derivative_init_circuit(
                 State1LowestLkIn,
                 State1LowestLkOut,
                 CascadeState1LowestClientLogDerivative,
             ),
-            Self::cascade_log_derivative_init_circuit(
-                circuit_builder,
+            cascade_log_derivative_init_circuit(
                 State2HighestLkIn,
                 State2HighestLkOut,
                 CascadeState2HighestClientLogDerivative,
             ),
-            Self::cascade_log_derivative_init_circuit(
-                circuit_builder,
+            cascade_log_derivative_init_circuit(
                 State2MidHighLkIn,
                 State2MidHighLkOut,
                 CascadeState2MidHighClientLogDerivative,
             ),
-            Self::cascade_log_derivative_init_circuit(
-                circuit_builder,
+            cascade_log_derivative_init_circuit(
                 State2MidLowLkIn,
                 State2MidLowLkOut,
                 CascadeState2MidLowClientLogDerivative,
             ),
-            Self::cascade_log_derivative_init_circuit(
-                circuit_builder,
+            cascade_log_derivative_init_circuit(
                 State2LowestLkIn,
                 State2LowestLkOut,
                 CascadeState2LowestClientLogDerivative,
             ),
-            Self::cascade_log_derivative_init_circuit(
-                circuit_builder,
+            cascade_log_derivative_init_circuit(
                 State3HighestLkIn,
                 State3HighestLkOut,
                 CascadeState3HighestClientLogDerivative,
             ),
-            Self::cascade_log_derivative_init_circuit(
-                circuit_builder,
+            cascade_log_derivative_init_circuit(
                 State3MidHighLkIn,
                 State3MidHighLkOut,
                 CascadeState3MidHighClientLogDerivative,
             ),
-            Self::cascade_log_derivative_init_circuit(
-                circuit_builder,
+            cascade_log_derivative_init_circuit(
                 State3MidLowLkIn,
                 State3MidLowLkOut,
                 CascadeState3MidLowClientLogDerivative,
             ),
-            Self::cascade_log_derivative_init_circuit(
-                circuit_builder,
+            cascade_log_derivative_init_circuit(
                 State3LowestLkIn,
                 State3LowestLkOut,
                 CascadeState3LowestClientLogDerivative,
             ),
         ]
+    }
+
+    /// A constraint circuit evaluating to zero if and only if the given
+    /// `round_number_circuit_node` is not equal to the given `round_number_to_deselect`.
+    fn round_number_deselector<II: InputIndicator>(
+        circuit_builder: &ConstraintCircuitBuilder<II>,
+        round_number_circuit_node: &ConstraintCircuitMonad<II>,
+        round_number_to_deselect: usize,
+    ) -> ConstraintCircuitMonad<II> {
+        assert!(
+            round_number_to_deselect <= NUM_ROUNDS,
+            "Round number must be in [0, {NUM_ROUNDS}] but got {round_number_to_deselect}."
+        );
+        let constant = |c: u64| circuit_builder.b_constant(c.into());
+
+        // To not subtract zero from the first factor: some special casing.
+        let first_factor = match round_number_to_deselect {
+            0 => constant(1),
+            _ => round_number_circuit_node.clone(),
+        };
+        (1..=NUM_ROUNDS)
+            .filter(|&r| r != round_number_to_deselect)
+            .map(|r| round_number_circuit_node.clone() - constant(r as u64))
+            .fold(first_factor, |a, b| a * b)
+    }
+
+    /// A constraint circuit evaluating to zero if and only if the given `mode_circuit_node` is
+    /// not equal to the given `mode_to_deselect`.
+    fn mode_deselector<II: InputIndicator>(
+        circuit_builder: &ConstraintCircuitBuilder<II>,
+        mode_circuit_node: &ConstraintCircuitMonad<II>,
+        mode_to_deselect: usize,
+    ) -> ConstraintCircuitMonad<II> {
+        assert!(
+            mode_to_deselect < 4,
+            "Mode to deselect must be in [0, 4) but got {mode_to_deselect}."
+        );
+
+        let constant = |c: u64| circuit_builder.b_constant(c.into());
+
+        // To not subtract zero from the first factor: some special casing.
+        let first_factor = match mode_to_deselect {
+            0 => constant(1),
+            _ => mode_circuit_node.clone(),
+        };
+        (1..4)
+            .filter(|&r| r != mode_to_deselect)
+            .map(|r| mode_circuit_node.clone() - constant(r as u64))
+            .fold(first_factor, |a, b| a * b)
     }
 
     pub fn consistency_constraints(
@@ -388,8 +333,9 @@ impl ExtHashTable {
             circuit_builder.input(BaseRow(column_id.master_base_table_index()))
         };
 
-        let round_number = base_row(RoundNumber);
+        let mode = base_row(Mode);
         let ci = base_row(CI);
+        let round_number = base_row(RoundNumber);
         let state10 = base_row(State10);
         let state11 = base_row(State11);
         let state12 = base_row(State12);
@@ -398,21 +344,29 @@ impl ExtHashTable {
         let state15 = base_row(State15);
 
         let ci_is_hash = ci.clone() - constant(Instruction::Hash.opcode() as u64);
-        let ci_is_absorb_init = ci.clone() - constant(Instruction::AbsorbInit.opcode() as u64);
         let ci_is_absorb = ci.clone() - constant(Instruction::Absorb.opcode() as u64);
-        let ci_is_squeeze = ci - constant(Instruction::Squeeze.opcode() as u64);
+        let ci_is_squeeze = ci.clone() - constant(Instruction::Squeeze.opcode() as u64);
 
-        let round_number_is_not_neg_1 =
-            Self::round_number_deselector(circuit_builder, &round_number, -1);
+        let mode_is_not_1 = Self::mode_deselector(circuit_builder, &mode, 1);
+        let mode_is_not_3 = Self::mode_deselector(circuit_builder, &mode, 3);
+        let mode_is_not_0 = Self::mode_deselector(circuit_builder, &mode, 0);
         let round_number_is_not_0 =
             Self::round_number_deselector(circuit_builder, &round_number, 0);
 
-        let if_padding_row_then_ci_is_hash = round_number_is_not_neg_1 * ci_is_hash.clone();
+        let mode_is_0_1_2_or_3 = mode.clone()
+            * (mode.clone() - constant(1))
+            * (mode.clone() - constant(2))
+            * (mode - constant(3));
 
-        let if_ci_is_hash_and_round_no_is_0_then_ = round_number_is_not_0.clone()
-            * ci_is_absorb_init
-            * ci_is_absorb.clone()
-            * ci_is_squeeze.clone();
+        let if_mode_is_1_then_ci_is_0 = mode_is_not_1 * ci.clone();
+
+        let if_mode_is_3_then_ci_is_hash = mode_is_not_3.clone() * ci_is_hash.clone();
+
+        let if_padding_mode_then_ci_is_0 = mode_is_not_0.clone() * ci.clone();
+
+        let if_padding_mode_then_round_number_is_0 = mode_is_not_0 * round_number.clone();
+
+        let if_ci_is_hash_and_round_no_is_0_then_ = round_number_is_not_0.clone() * mode_is_not_3;
         let if_ci_is_hash_and_round_no_is_0_then_state_10_is_1 =
             if_ci_is_hash_and_round_no_is_0_then_.clone() * (state10.clone() - constant(1));
         let if_ci_is_hash_and_round_no_is_0_then_state_11_is_1 =
@@ -426,8 +380,12 @@ impl ExtHashTable {
         let if_ci_is_hash_and_round_no_is_0_then_state_15_is_1 =
             if_ci_is_hash_and_round_no_is_0_then_ * (state15.clone() - constant(1));
 
+        // It is possible to deselect for instruction `absorb_init` using the mode in addition
+        // to deselecting for instructions `absorb` and `squeeze. However, the mode deselector has
+        // degree 3, but there are only 2 additional values for the current instruction that need
+        // to be de-selected: 0 and the opcode of `hash`. Hence, they are listed explicitly.
         let if_ci_is_absorb_init_and_round_no_is_0_then_ =
-            round_number_is_not_0 * ci_is_hash * ci_is_absorb * ci_is_squeeze;
+            round_number_is_not_0 * ci * ci_is_hash * ci_is_absorb * ci_is_squeeze;
         let if_ci_is_absorb_init_and_round_no_is_0_then_state_10_is_0 =
             if_ci_is_absorb_init_and_round_no_is_0_then_.clone() * state10;
         let if_ci_is_absorb_init_and_round_no_is_0_then_state_11_is_0 =
@@ -513,7 +471,11 @@ impl ExtHashTable {
             state_3_hi_limbs_are_not_all_1s * state_3_lo_limbs;
 
         let mut constraints = vec![
-            if_padding_row_then_ci_is_hash,
+            mode_is_0_1_2_or_3,
+            if_mode_is_1_then_ci_is_0,
+            if_mode_is_3_then_ci_is_hash,
+            if_padding_mode_then_ci_is_0,
+            if_padding_mode_then_round_number_is_0,
             if_ci_is_hash_and_round_no_is_0_then_state_10_is_1,
             if_ci_is_hash_and_round_no_is_0_then_state_11_is_1,
             if_ci_is_hash_and_round_no_is_0_then_state_12_is_1,
@@ -550,11 +512,8 @@ impl ExtHashTable {
                     NUM_ROUND_CONSTANTS * round_idx + round_constant_column_idx;
                 let round_constant_for_current_row =
                     circuit_builder.b_constant(ROUND_CONSTANTS[round_constant_idx_for_current_row]);
-                let round_deselector_circuit = Self::round_number_deselector(
-                    circuit_builder,
-                    &round_number,
-                    round_idx as isize,
-                );
+                let round_deselector_circuit =
+                    Self::round_number_deselector(circuit_builder, &round_number, round_idx);
                 round_constant_constraint_circuit = round_constant_constraint_circuit
                     + round_deselector_circuit
                         * (round_constant_column_circuit.clone() - round_constant_for_current_row);
@@ -592,12 +551,11 @@ impl ExtHashTable {
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
         let challenge = |c| circuit_builder.challenge(c);
         let constant = |c: u64| circuit_builder.b_constant(c.into());
-        let b_constant = |c| circuit_builder.b_constant(c);
 
-        let opcode_hash = b_constant(Instruction::Hash.opcode_b());
-        let opcode_absorb_init = b_constant(Instruction::AbsorbInit.opcode_b());
-        let opcode_absorb = b_constant(Instruction::Absorb.opcode_b());
-        let opcode_squeeze = b_constant(Instruction::Squeeze.opcode_b());
+        let opcode_hash = constant(Instruction::Hash.opcode().into());
+        let opcode_absorb_init = constant(Instruction::AbsorbInit.opcode().into());
+        let opcode_absorb = constant(Instruction::Absorb.opcode().into());
+        let opcode_squeeze = constant(Instruction::Squeeze.opcode().into());
 
         let current_base_row = |column_idx: HashBaseTableColumn| {
             circuit_builder.input(CurrentBaseRow(column_idx.master_base_table_index()))
@@ -616,14 +574,16 @@ impl ExtHashTable {
         let hash_digest_eval_indeterminate = challenge(HashDigestIndeterminate);
         let sponge_indeterminate = challenge(SpongeIndeterminate);
 
-        let round_number = current_base_row(RoundNumber);
+        let mode = current_base_row(Mode);
         let ci = current_base_row(CI);
+        let round_number = current_base_row(RoundNumber);
         let running_evaluation_hash_input = current_ext_row(HashInputRunningEvaluation);
         let running_evaluation_hash_digest = current_ext_row(HashDigestRunningEvaluation);
         let running_evaluation_sponge = current_ext_row(SpongeRunningEvaluation);
 
-        let round_number_next = next_base_row(RoundNumber);
+        let mode_next = next_base_row(Mode);
         let ci_next = next_base_row(CI);
+        let round_number_next = next_base_row(RoundNumber);
         let running_evaluation_hash_input_next = next_ext_row(HashInputRunningEvaluation);
         let running_evaluation_hash_digest_next = next_ext_row(HashDigestRunningEvaluation);
         let running_evaluation_sponge_next = next_ext_row(SpongeRunningEvaluation);
@@ -699,35 +659,40 @@ impl ExtHashTable {
         ]
         .map(challenge);
 
-        // round numbers evolve as
-        // 0 -> 1 -> 2 -> 3 -> 4 -> 5, and
-        // 5 -> -1 or 5 -> 0, and
-        // -1 -> -1
-
-        let round_number_is_not_neg_1 =
-            Self::round_number_deselector(circuit_builder, &round_number, -1);
         let round_number_is_not_5 =
             Self::round_number_deselector(circuit_builder, &round_number, 5);
 
-        let round_number_is_0_through_5_or_round_number_next_is_neg_1 =
-            round_number_is_not_neg_1 * (round_number_next.clone() + constant(1));
+        let round_number_is_0_through_4_or_round_number_next_is_0 =
+            round_number_is_not_5 * round_number_next.clone();
 
-        let round_number_is_neg_1_through_4_or_round_number_next_is_0_or_neg_1 =
-            round_number_is_not_5
-                * round_number_next.clone()
-                * (round_number_next.clone() + constant(1));
-
-        let round_number_is_neg_1_or_5_or_increments_by_one = (round_number.clone() + constant(1))
+        let next_mode_is_padding_mode_or_round_number_is_5_or_increments_by_one = mode_next.clone()
             * (round_number.clone() - constant(NUM_ROUNDS as u64))
             * (round_number_next.clone() - round_number.clone() - constant(1));
 
-        let if_ci_is_hash_then_ci_doesnt_change = (ci.clone() - opcode_absorb_init.clone())
-            * (ci.clone() - opcode_absorb.clone())
-            * (ci.clone() - opcode_squeeze.clone())
-            * (ci_next.clone() - opcode_hash.clone());
+        let if_mode_is_1_and_next_mode_is_2_then_ci_next_is_absorb_init =
+            Self::mode_deselector(circuit_builder, &mode, 1)
+                * Self::mode_deselector(circuit_builder, &mode_next, 2)
+                * (ci_next.clone() - opcode_absorb_init.clone());
 
         let if_round_number_is_not_5_then_ci_doesnt_change =
-            (round_number - constant(NUM_ROUNDS as u64)) * (ci_next.clone() - ci);
+            (round_number.clone() - constant(NUM_ROUNDS as u64)) * (ci_next.clone() - ci);
+
+        let if_round_number_is_not_5_then_mode_doesnt_change =
+            (round_number - constant(NUM_ROUNDS as u64)) * (mode_next.clone() - mode.clone());
+
+        let if_mode_is_2_then_mode_next_is_2_3_or_0 =
+            Self::mode_deselector(circuit_builder, &mode, 2)
+                * (mode_next.clone() - constant(2))
+                * (mode_next.clone() - constant(3))
+                * (mode_next.clone() - constant(0));
+
+        let if_mode_is_3_then_mode_next_is_3_or_0 =
+            Self::mode_deselector(circuit_builder, &mode, 3)
+                * (mode_next.clone() - constant(3))
+                * (mode_next.clone() - constant(0));
+
+        let if_mode_is_0_then_mode_next_is_0 =
+            Self::mode_deselector(circuit_builder, &mode, 0) * (mode_next - constant(0));
 
         // copy capacity between rounds with index 5 and 0 if instruction is “absorb”
         let round_number_next_is_not_0 =
@@ -746,6 +711,7 @@ impl ExtHashTable {
             .sum();
         let if_round_number_next_is_0_and_ci_next_is_absorb_then_capacity_doesnt_change =
             round_number_next_is_not_0.clone()
+                * ci_next.clone()
                 * (ci_next.clone() - opcode_hash.clone())
                 * (ci_next.clone() - opcode_absorb_init.clone())
                 * (ci_next.clone() - opcode_squeeze.clone())
@@ -764,6 +730,7 @@ impl ExtHashTable {
             .sum();
         let if_round_number_next_is_0_and_ci_next_is_squeeze_then_state_doesnt_change =
             round_number_next_is_not_0.clone()
+                * ci_next.clone()
                 * (ci_next.clone() - opcode_hash.clone())
                 * (ci_next.clone() - opcode_absorb_init.clone())
                 * (ci_next.clone() - opcode_absorb.clone())
@@ -774,6 +741,7 @@ impl ExtHashTable {
         // If (and only if) the row number in the next row is 0 and the current instruction in
         // the next row is corresponds to `hash`, update running evaluation “hash input.”
         let ci_next_is_not_hash = (ci_next.clone() - opcode_absorb_init.clone())
+            * ci_next.clone()
             * (ci_next.clone() - opcode_absorb.clone())
             * (ci_next.clone() - opcode_squeeze.clone());
         let running_evaluation_hash_input_remains =
@@ -798,7 +766,7 @@ impl ExtHashTable {
         // the next row corresponds to `hash`, update running evaluation “hash digest.”
         let round_number_next_is_5 = round_number_next.clone() - constant(NUM_ROUNDS as u64);
         let round_number_next_is_not_5 =
-            Self::round_number_deselector(circuit_builder, &round_number_next, NUM_ROUNDS as isize);
+            Self::round_number_deselector(circuit_builder, &round_number_next, NUM_ROUNDS);
         let running_evaluation_hash_digest_remains =
             running_evaluation_hash_digest_next.clone() - running_evaluation_hash_digest.clone();
         let hash_digest = state_next[..DIGEST_LENGTH].to_owned();
@@ -829,6 +797,7 @@ impl ExtHashTable {
             - compressed_row_next;
         let if_round_no_next_0_and_ci_next_is_spongy_then_running_eval_sponge_updates =
             round_number_next_is_not_0
+                * ci_next.clone()
                 * (ci_next.clone() - opcode_hash)
                 * running_evaluation_sponge_has_accumulated_next_row;
 
@@ -846,23 +815,123 @@ impl ExtHashTable {
                 + if_round_no_next_is_not_0_then_running_evaluation_sponge_absorb_remains
                 + if_ci_next_is_not_spongy_then_running_evaluation_sponge_absorb_remains;
 
+        // lookup arguments
+
+        let constraints = vec![
+            round_number_is_0_through_4_or_round_number_next_is_0,
+            next_mode_is_padding_mode_or_round_number_is_5_or_increments_by_one,
+            if_mode_is_1_and_next_mode_is_2_then_ci_next_is_absorb_init,
+            if_round_number_is_not_5_then_ci_doesnt_change,
+            if_round_number_is_not_5_then_mode_doesnt_change,
+            if_mode_is_2_then_mode_next_is_2_3_or_0,
+            if_mode_is_3_then_mode_next_is_3_or_0,
+            if_mode_is_0_then_mode_next_is_0,
+            if_round_number_next_is_0_and_ci_next_is_absorb_then_capacity_doesnt_change,
+            if_round_number_next_is_0_and_ci_next_is_squeeze_then_state_doesnt_change,
+            running_evaluation_hash_input_is_updated_correctly,
+            running_evaluation_hash_digest_is_updated_correctly,
+            running_evaluation_sponge_is_updated_correctly,
+            Self::cascade_log_derivative_update_circuit(
+                circuit_builder,
+                State0HighestLkIn,
+                State0HighestLkOut,
+                CascadeState0HighestClientLogDerivative,
+            ),
+            Self::cascade_log_derivative_update_circuit(
+                circuit_builder,
+                State0MidHighLkIn,
+                State0MidHighLkOut,
+                CascadeState0MidHighClientLogDerivative,
+            ),
+            Self::cascade_log_derivative_update_circuit(
+                circuit_builder,
+                State0MidLowLkIn,
+                State0MidLowLkOut,
+                CascadeState0MidLowClientLogDerivative,
+            ),
+            Self::cascade_log_derivative_update_circuit(
+                circuit_builder,
+                State0LowestLkIn,
+                State0LowestLkOut,
+                CascadeState0LowestClientLogDerivative,
+            ),
+            Self::cascade_log_derivative_update_circuit(
+                circuit_builder,
+                State1HighestLkIn,
+                State1HighestLkOut,
+                CascadeState1HighestClientLogDerivative,
+            ),
+            Self::cascade_log_derivative_update_circuit(
+                circuit_builder,
+                State1MidHighLkIn,
+                State1MidHighLkOut,
+                CascadeState1MidHighClientLogDerivative,
+            ),
+            Self::cascade_log_derivative_update_circuit(
+                circuit_builder,
+                State1MidLowLkIn,
+                State1MidLowLkOut,
+                CascadeState1MidLowClientLogDerivative,
+            ),
+            Self::cascade_log_derivative_update_circuit(
+                circuit_builder,
+                State1LowestLkIn,
+                State1LowestLkOut,
+                CascadeState1LowestClientLogDerivative,
+            ),
+            Self::cascade_log_derivative_update_circuit(
+                circuit_builder,
+                State2HighestLkIn,
+                State2HighestLkOut,
+                CascadeState2HighestClientLogDerivative,
+            ),
+            Self::cascade_log_derivative_update_circuit(
+                circuit_builder,
+                State2MidHighLkIn,
+                State2MidHighLkOut,
+                CascadeState2MidHighClientLogDerivative,
+            ),
+            Self::cascade_log_derivative_update_circuit(
+                circuit_builder,
+                State2MidLowLkIn,
+                State2MidLowLkOut,
+                CascadeState2MidLowClientLogDerivative,
+            ),
+            Self::cascade_log_derivative_update_circuit(
+                circuit_builder,
+                State2LowestLkIn,
+                State2LowestLkOut,
+                CascadeState2LowestClientLogDerivative,
+            ),
+            Self::cascade_log_derivative_update_circuit(
+                circuit_builder,
+                State3HighestLkIn,
+                State3HighestLkOut,
+                CascadeState3HighestClientLogDerivative,
+            ),
+            Self::cascade_log_derivative_update_circuit(
+                circuit_builder,
+                State3MidHighLkIn,
+                State3MidHighLkOut,
+                CascadeState3MidHighClientLogDerivative,
+            ),
+            Self::cascade_log_derivative_update_circuit(
+                circuit_builder,
+                State3MidLowLkIn,
+                State3MidLowLkOut,
+                CascadeState3MidLowClientLogDerivative,
+            ),
+            Self::cascade_log_derivative_update_circuit(
+                circuit_builder,
+                State3LowestLkIn,
+                State3LowestLkOut,
+                CascadeState3LowestClientLogDerivative,
+            ),
+        ];
+
         [
-            vec![
-                round_number_is_0_through_5_or_round_number_next_is_neg_1,
-                round_number_is_neg_1_through_4_or_round_number_next_is_0_or_neg_1,
-                round_number_is_neg_1_or_5_or_increments_by_one,
-                if_ci_is_hash_then_ci_doesnt_change,
-                if_round_number_is_not_5_then_ci_doesnt_change,
-            ],
+            constraints,
             hash_function_round_correctly_performs_update.to_vec(),
-            vec![
-                if_round_number_next_is_0_and_ci_next_is_absorb_then_capacity_doesnt_change,
-                if_round_number_next_is_0_and_ci_next_is_squeeze_then_state_doesnt_change,
-                running_evaluation_hash_input_is_updated_correctly,
-                running_evaluation_hash_digest_is_updated_correctly,
-                running_evaluation_sponge_is_updated_correctly,
-            ],
-            Self::all_cascade_log_derivative_update_circuits(circuit_builder).to_vec(),
         ]
         .concat()
     }
@@ -1026,14 +1095,12 @@ impl ExtHashTable {
             next_base_row(State15),
         ];
 
-        let round_number = current_base_row(RoundNumber);
+        let round_number_next = next_base_row(RoundNumber);
         let hash_function_round_correctly_performs_update = state_after_round_constant_addition
             .into_iter()
             .zip_eq(state_next.clone().into_iter())
             .map(|(state_element, state_element_next)| {
-                (round_number.clone() + constant(1))
-                    * (round_number.clone() - constant(NUM_ROUNDS as u64))
-                    * (state_element - state_element_next)
+                round_number_next.clone() * (state_element - state_element_next)
             })
             .collect_vec()
             .try_into()
@@ -1064,6 +1131,7 @@ impl ExtHashTable {
         let look_in_weight = challenge(HashCascadeLookInWeight);
         let look_out_weight = challenge(HashCascadeLookOutWeight);
 
+        let mode_next = next_base_row(Mode);
         let round_number_next = next_base_row(RoundNumber);
         let cascade_log_derivative = current_ext_row(cascade_log_derivative_column);
         let cascade_log_derivative_next = next_ext_row(cascade_log_derivative_column);
@@ -1077,119 +1145,15 @@ impl ExtHashTable {
             * (cascade_indeterminate - compressed_row)
             - constant(1);
 
-        let round_number_next_is_neg_1_or_5 = (round_number_next.clone() + constant(1))
-            * (round_number_next.clone() - constant(NUM_ROUNDS as u64));
-        let round_number_next_is_0_through_4 = round_number_next.clone()
-            * (round_number_next.clone() - constant(1))
-            * (round_number_next.clone() - constant(2))
-            * (round_number_next.clone() - constant(3))
-            * (round_number_next - constant(4));
+        let next_row_is_padding_row_or_round_number_next_is_5 =
+            mode_next.clone() * (round_number_next.clone() - constant(NUM_ROUNDS as u64));
+        let round_number_next_is_not_5 =
+            Self::round_number_deselector(circuit_builder, &round_number_next, 5);
+        let next_row_is_not_padding_row = Self::mode_deselector(circuit_builder, &mode_next, 0);
 
-        round_number_next_is_neg_1_or_5 * cascade_log_derivative_updates
-            + round_number_next_is_0_through_4 * cascade_log_derivative_remains
-    }
-
-    fn all_cascade_log_derivative_update_circuits(
-        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
-    ) -> [ConstraintCircuitMonad<DualRowIndicator>; 4 * NUM_SPLIT_AND_LOOKUP] {
-        [
-            Self::cascade_log_derivative_update_circuit(
-                circuit_builder,
-                State0HighestLkIn,
-                State0HighestLkOut,
-                CascadeState0HighestClientLogDerivative,
-            ),
-            Self::cascade_log_derivative_update_circuit(
-                circuit_builder,
-                State0MidHighLkIn,
-                State0MidHighLkOut,
-                CascadeState0MidHighClientLogDerivative,
-            ),
-            Self::cascade_log_derivative_update_circuit(
-                circuit_builder,
-                State0MidLowLkIn,
-                State0MidLowLkOut,
-                CascadeState0MidLowClientLogDerivative,
-            ),
-            Self::cascade_log_derivative_update_circuit(
-                circuit_builder,
-                State0LowestLkIn,
-                State0LowestLkOut,
-                CascadeState0LowestClientLogDerivative,
-            ),
-            Self::cascade_log_derivative_update_circuit(
-                circuit_builder,
-                State1HighestLkIn,
-                State1HighestLkOut,
-                CascadeState1HighestClientLogDerivative,
-            ),
-            Self::cascade_log_derivative_update_circuit(
-                circuit_builder,
-                State1MidHighLkIn,
-                State1MidHighLkOut,
-                CascadeState1MidHighClientLogDerivative,
-            ),
-            Self::cascade_log_derivative_update_circuit(
-                circuit_builder,
-                State1MidLowLkIn,
-                State1MidLowLkOut,
-                CascadeState1MidLowClientLogDerivative,
-            ),
-            Self::cascade_log_derivative_update_circuit(
-                circuit_builder,
-                State1LowestLkIn,
-                State1LowestLkOut,
-                CascadeState1LowestClientLogDerivative,
-            ),
-            Self::cascade_log_derivative_update_circuit(
-                circuit_builder,
-                State2HighestLkIn,
-                State2HighestLkOut,
-                CascadeState2HighestClientLogDerivative,
-            ),
-            Self::cascade_log_derivative_update_circuit(
-                circuit_builder,
-                State2MidHighLkIn,
-                State2MidHighLkOut,
-                CascadeState2MidHighClientLogDerivative,
-            ),
-            Self::cascade_log_derivative_update_circuit(
-                circuit_builder,
-                State2MidLowLkIn,
-                State2MidLowLkOut,
-                CascadeState2MidLowClientLogDerivative,
-            ),
-            Self::cascade_log_derivative_update_circuit(
-                circuit_builder,
-                State2LowestLkIn,
-                State2LowestLkOut,
-                CascadeState2LowestClientLogDerivative,
-            ),
-            Self::cascade_log_derivative_update_circuit(
-                circuit_builder,
-                State3HighestLkIn,
-                State3HighestLkOut,
-                CascadeState3HighestClientLogDerivative,
-            ),
-            Self::cascade_log_derivative_update_circuit(
-                circuit_builder,
-                State3MidHighLkIn,
-                State3MidHighLkOut,
-                CascadeState3MidHighClientLogDerivative,
-            ),
-            Self::cascade_log_derivative_update_circuit(
-                circuit_builder,
-                State3MidLowLkIn,
-                State3MidLowLkOut,
-                CascadeState3MidLowClientLogDerivative,
-            ),
-            Self::cascade_log_derivative_update_circuit(
-                circuit_builder,
-                State3LowestLkIn,
-                State3LowestLkOut,
-                CascadeState3LowestClientLogDerivative,
-            ),
-        ]
+        next_row_is_padding_row_or_round_number_next_is_5 * cascade_log_derivative_updates
+            + round_number_next_is_not_5 * cascade_log_derivative_remains.clone()
+            + next_row_is_not_padding_row * cascade_log_derivative_remains
     }
 
     pub fn terminal_constraints(
@@ -1220,7 +1184,7 @@ impl HashTable {
                 [NUM_ROUND_CONSTANTS * i..NUM_ROUND_CONSTANTS * (i + 1)]
                 .try_into()
                 .unwrap(),
-            _ => [BFIELD_ZERO; NUM_ROUND_CONSTANTS],
+            _ => [BFieldElement::zero(); NUM_ROUND_CONSTANTS],
         }
     }
 
@@ -1372,39 +1336,52 @@ impl HashTable {
         hash_table: &mut ArrayViewMut2<BFieldElement>,
         aet: &AlgebraicExecutionTrace,
     ) {
-        let sponge_part_start = 0;
+        let program_hash_part_start = 0;
+        let program_hash_part_end = program_hash_part_start + aet.program_hash_trace.nrows();
+        let sponge_part_start = program_hash_part_end;
         let sponge_part_end = sponge_part_start + aet.sponge_trace.nrows();
         let hash_part_start = sponge_part_end;
         let hash_part_end = hash_part_start + aet.hash_trace.nrows();
 
-        let sponge_part = hash_table.slice_mut(s![sponge_part_start..sponge_part_end, ..]);
-        aet.sponge_trace.clone().move_into(sponge_part);
-        let hash_part = hash_table.slice_mut(s![hash_part_start..hash_part_end, ..]);
-        aet.hash_trace.clone().move_into(hash_part);
+        let (mut program_hash_part, mut sponge_part, mut hash_part) = hash_table.multi_slice_mut((
+            s![program_hash_part_start..program_hash_part_end, ..],
+            s![sponge_part_start..sponge_part_end, ..],
+            s![hash_part_start..hash_part_end, ..],
+        ));
+
+        program_hash_part.assign(&aet.program_hash_trace);
+        sponge_part.assign(&aet.sponge_trace);
+        hash_part.assign(&aet.hash_trace);
+
+        let mode_column_idx = Mode.base_table_index();
+        let mut program_hash_mode_column = program_hash_part.column_mut(mode_column_idx);
+        let mut sponge_mode_column = sponge_part.column_mut(mode_column_idx);
+        let mut hash_mode_column = hash_part.column_mut(mode_column_idx);
+
+        program_hash_mode_column.fill(1_u64.into());
+        sponge_mode_column.fill(2_u64.into());
+        hash_mode_column.fill(3_u64.into());
     }
 
     pub fn pad_trace(hash_table: &mut ArrayViewMut2<BFieldElement>, hash_table_length: usize) {
-        hash_table
-            .slice_mut(s![hash_table_length.., CI.base_table_index()])
-            .fill(Instruction::Hash.opcode_b());
-        hash_table
-            .slice_mut(s![hash_table_length.., RoundNumber.base_table_index()])
-            .fill(-BFIELD_ONE);
+        let inverse_of_high_limbs = Self::inverse_or_zero_of_highest_2_limbs(BFieldElement::zero());
+        for column_id in [State0Inv, State1Inv, State2Inv, State3Inv] {
+            let column_index = column_id.base_table_index();
+            let slice_info = s![hash_table_length.., column_index];
+            let mut column = hash_table.slice_mut(slice_info);
+            column.fill(inverse_of_high_limbs);
+        }
 
-        let inverse_of_high_limbs_plus_1_minus_2_pow_32 =
-            Self::inverse_or_zero_of_highest_2_limbs(BFIELD_ZERO);
-        hash_table
-            .slice_mut(s![hash_table_length.., State0Inv.base_table_index()])
-            .fill(inverse_of_high_limbs_plus_1_minus_2_pow_32);
-        hash_table
-            .slice_mut(s![hash_table_length.., State1Inv.base_table_index()])
-            .fill(inverse_of_high_limbs_plus_1_minus_2_pow_32);
-        hash_table
-            .slice_mut(s![hash_table_length.., State2Inv.base_table_index()])
-            .fill(inverse_of_high_limbs_plus_1_minus_2_pow_32);
-        hash_table
-            .slice_mut(s![hash_table_length.., State3Inv.base_table_index()])
-            .fill(inverse_of_high_limbs_plus_1_minus_2_pow_32);
+        for (round_constant_idx, &round_constant) in
+            ROUND_CONSTANTS.iter().enumerate().take(NUM_ROUND_CONSTANTS)
+        {
+            let round_constant_column =
+                ExtHashTable::round_constant_column_by_index(round_constant_idx);
+            let round_constant_column_idx = round_constant_column.base_table_index();
+            let slice_info = s![hash_table_length.., round_constant_column_idx];
+            let mut column = hash_table.slice_mut(slice_info);
+            column.fill(round_constant);
+        }
     }
 
     pub fn extend(
@@ -1524,6 +1501,16 @@ impl HashTable {
         let cascade_look_in_weight = challenges.get_challenge(HashCascadeLookInWeight);
         let cascade_look_out_weight = challenges.get_challenge(HashCascadeLookOutWeight);
 
+        let log_derivative_summand =
+            |row: ArrayView1<BFieldElement>,
+             lk_in_col: HashBaseTableColumn,
+             lk_out_col: HashBaseTableColumn| {
+                let compressed_elements = cascade_indeterminate
+                    - cascade_look_in_weight * row[lk_in_col.base_table_index()]
+                    - cascade_look_out_weight * row[lk_out_col.base_table_index()];
+                compressed_elements.inverse()
+            };
+
         let opcode_hash = Instruction::Hash.opcode_b();
         let opcode_absorb_init = Instruction::AbsorbInit.opcode_b();
         let opcode_absorb = Instruction::Absorb.opcode_b();
@@ -1531,10 +1518,11 @@ impl HashTable {
 
         for row_idx in 0..base_table.nrows() {
             let row = base_table.row(row_idx);
+            let is_padding_row = row[Mode.base_table_index()].is_zero();
             let current_instruction = row[CI.base_table_index()];
-            let round_number = row[RoundNumber.base_table_index()];
+            let round_number = row[RoundNumber.base_table_index()].value();
 
-            if round_number.value() == NUM_ROUNDS as u64 && current_instruction == opcode_hash {
+            if round_number == NUM_ROUNDS as u64 && current_instruction == opcode_hash {
                 // add compressed digest to running evaluation “hash digest”
                 let compressed_hash_digest: XFieldElement = rate_registers(row)[..DIGEST_LENGTH]
                     .iter()
@@ -1546,7 +1534,7 @@ impl HashTable {
                     + compressed_hash_digest;
             }
 
-            if round_number.is_zero() {
+            if !is_padding_row && round_number == 0 {
                 let compressed_row: XFieldElement = state_weights
                     .iter()
                     .zip_eq(rate_registers(row).iter())
@@ -1570,71 +1558,39 @@ impl HashTable {
                 }
             }
 
-            if (0..NUM_ROUNDS as u64).contains(&round_number.value()) {
-                cascade_state_0_highest_log_derivative += (cascade_indeterminate
-                    - cascade_look_in_weight * row[State0HighestLkIn.base_table_index()]
-                    - cascade_look_out_weight * row[State0HighestLkOut.base_table_index()])
-                .inverse();
-                cascade_state_0_mid_high_log_derivative += (cascade_indeterminate
-                    - cascade_look_in_weight * row[State0MidHighLkIn.base_table_index()]
-                    - cascade_look_out_weight * row[State0MidHighLkOut.base_table_index()])
-                .inverse();
-                cascade_state_0_mid_low_log_derivative += (cascade_indeterminate
-                    - cascade_look_in_weight * row[State0MidLowLkIn.base_table_index()]
-                    - cascade_look_out_weight * row[State0MidLowLkOut.base_table_index()])
-                .inverse();
-                cascade_state_0_lowest_log_derivative += (cascade_indeterminate
-                    - cascade_look_in_weight * row[State0LowestLkIn.base_table_index()]
-                    - cascade_look_out_weight * row[State0LowestLkOut.base_table_index()])
-                .inverse();
-                cascade_state_1_highest_log_derivative += (cascade_indeterminate
-                    - cascade_look_in_weight * row[State1HighestLkIn.base_table_index()]
-                    - cascade_look_out_weight * row[State1HighestLkOut.base_table_index()])
-                .inverse();
-                cascade_state_1_mid_high_log_derivative += (cascade_indeterminate
-                    - cascade_look_in_weight * row[State1MidHighLkIn.base_table_index()]
-                    - cascade_look_out_weight * row[State1MidHighLkOut.base_table_index()])
-                .inverse();
-                cascade_state_1_mid_low_log_derivative += (cascade_indeterminate
-                    - cascade_look_in_weight * row[State1MidLowLkIn.base_table_index()]
-                    - cascade_look_out_weight * row[State1MidLowLkOut.base_table_index()])
-                .inverse();
-                cascade_state_1_lowest_log_derivative += (cascade_indeterminate
-                    - cascade_look_in_weight * row[State1LowestLkIn.base_table_index()]
-                    - cascade_look_out_weight * row[State1LowestLkOut.base_table_index()])
-                .inverse();
-                cascade_state_2_highest_log_derivative += (cascade_indeterminate
-                    - cascade_look_in_weight * row[State2HighestLkIn.base_table_index()]
-                    - cascade_look_out_weight * row[State2HighestLkOut.base_table_index()])
-                .inverse();
-                cascade_state_2_mid_high_log_derivative += (cascade_indeterminate
-                    - cascade_look_in_weight * row[State2MidHighLkIn.base_table_index()]
-                    - cascade_look_out_weight * row[State2MidHighLkOut.base_table_index()])
-                .inverse();
-                cascade_state_2_mid_low_log_derivative += (cascade_indeterminate
-                    - cascade_look_in_weight * row[State2MidLowLkIn.base_table_index()]
-                    - cascade_look_out_weight * row[State2MidLowLkOut.base_table_index()])
-                .inverse();
-                cascade_state_2_lowest_log_derivative += (cascade_indeterminate
-                    - cascade_look_in_weight * row[State2LowestLkIn.base_table_index()]
-                    - cascade_look_out_weight * row[State2LowestLkOut.base_table_index()])
-                .inverse();
-                cascade_state_3_highest_log_derivative += (cascade_indeterminate
-                    - cascade_look_in_weight * row[State3HighestLkIn.base_table_index()]
-                    - cascade_look_out_weight * row[State3HighestLkOut.base_table_index()])
-                .inverse();
-                cascade_state_3_mid_high_log_derivative += (cascade_indeterminate
-                    - cascade_look_in_weight * row[State3MidHighLkIn.base_table_index()]
-                    - cascade_look_out_weight * row[State3MidHighLkOut.base_table_index()])
-                .inverse();
-                cascade_state_3_mid_low_log_derivative += (cascade_indeterminate
-                    - cascade_look_in_weight * row[State3MidLowLkIn.base_table_index()]
-                    - cascade_look_out_weight * row[State3MidLowLkOut.base_table_index()])
-                .inverse();
-                cascade_state_3_lowest_log_derivative += (cascade_indeterminate
-                    - cascade_look_in_weight * row[State3LowestLkIn.base_table_index()]
-                    - cascade_look_out_weight * row[State3LowestLkOut.base_table_index()])
-                .inverse();
+            if !is_padding_row && round_number != NUM_ROUNDS as u64 {
+                cascade_state_0_highest_log_derivative +=
+                    log_derivative_summand(row, State0HighestLkIn, State0HighestLkOut);
+                cascade_state_0_mid_high_log_derivative +=
+                    log_derivative_summand(row, State0MidHighLkIn, State0MidHighLkOut);
+                cascade_state_0_mid_low_log_derivative +=
+                    log_derivative_summand(row, State0MidLowLkIn, State0MidLowLkOut);
+                cascade_state_0_lowest_log_derivative +=
+                    log_derivative_summand(row, State0LowestLkIn, State0LowestLkOut);
+                cascade_state_1_highest_log_derivative +=
+                    log_derivative_summand(row, State1HighestLkIn, State1HighestLkOut);
+                cascade_state_1_mid_high_log_derivative +=
+                    log_derivative_summand(row, State1MidHighLkIn, State1MidHighLkOut);
+                cascade_state_1_mid_low_log_derivative +=
+                    log_derivative_summand(row, State1MidLowLkIn, State1MidLowLkOut);
+                cascade_state_1_lowest_log_derivative +=
+                    log_derivative_summand(row, State1LowestLkIn, State1LowestLkOut);
+                cascade_state_2_highest_log_derivative +=
+                    log_derivative_summand(row, State2HighestLkIn, State2HighestLkOut);
+                cascade_state_2_mid_high_log_derivative +=
+                    log_derivative_summand(row, State2MidHighLkIn, State2MidHighLkOut);
+                cascade_state_2_mid_low_log_derivative +=
+                    log_derivative_summand(row, State2MidLowLkIn, State2MidLowLkOut);
+                cascade_state_2_lowest_log_derivative +=
+                    log_derivative_summand(row, State2LowestLkIn, State2LowestLkOut);
+                cascade_state_3_highest_log_derivative +=
+                    log_derivative_summand(row, State3HighestLkIn, State3HighestLkOut);
+                cascade_state_3_mid_high_log_derivative +=
+                    log_derivative_summand(row, State3MidHighLkIn, State3MidHighLkOut);
+                cascade_state_3_mid_low_log_derivative +=
+                    log_derivative_summand(row, State3MidLowLkIn, State3MidLowLkOut);
+                cascade_state_3_lowest_log_derivative +=
+                    log_derivative_summand(row, State3LowestLkIn, State3LowestLkOut);
             }
 
             let mut extension_row = ext_table.row_mut(row_idx);

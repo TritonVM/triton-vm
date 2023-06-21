@@ -24,7 +24,7 @@ fn verify_halt(criterion: &mut Criterion) {
     let parameters = StarkParameters::default();
     let claim = Claim {
         input: vec![],
-        program_digest: Tip5::hash(&program),
+        program_digest: Tip5::hash_varlen(&program.to_bwords()),
         output: vec![],
     };
 
