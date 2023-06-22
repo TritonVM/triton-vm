@@ -68,7 +68,31 @@ pub enum ProgramBaseTableColumn {
 #[repr(usize)]
 #[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro, Hash)]
 pub enum ProgramExtTableColumn {
+    /// The server part of the instruction lookup.
+    ///
+    /// The counterpart to [`InstructionLookupClientLogDerivative`][client].
+    ///
+    /// [client]: ProcessorExtTableColumn::InstructionLookupClientLogDerivative
     InstructionLookupServerLogDerivative,
+
+    /// An evaluation argument accumulating [`RATE`][rate] many instructions before
+    /// they are sent using [`SendChunkEvalArg`](ProgramExtTableColumn::SendChunkRunningEvaluation).
+    /// Resets to zero after each chunk.
+    /// Relevant for program attestation.
+    ///
+    /// [rate]: crate::stark::StarkHasher::RATE
+    PrepareChunkRunningEvaluation,
+
+    /// An evaluation argument over all [`RATE`][rate]-sized chunks of instructions,
+    /// which are prepared in [`PrepareChunkEvalArg`][prep].
+    /// This bus is used for sending those chunks to the Hash Table.
+    /// Relevant for program attestation.
+    ///
+    /// The counterpart to [`RcvChunkEvalArg`](HashExtTableColumn::ReceiveChunkRunningEvaluation).
+    ///
+    /// [rate]: crate::stark::StarkHasher::RATE
+    /// [prep]: ProgramExtTableColumn::PrepareChunkRunningEvaluation
+    SendChunkRunningEvaluation,
 }
 
 // -------- Processor Table --------
@@ -320,6 +344,13 @@ pub enum HashBaseTableColumn {
 #[repr(usize)]
 #[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro, Hash)]
 pub enum HashExtTableColumn {
+    /// The evaluation argument corresponding to receiving instructions in chunks of size
+    /// [`RATE`](StarkHasher::RATE). The chunks are hashed in Sponge mode.
+    /// This allows program attestation.
+    ///
+    /// The counterpart to [`SendChunkEvalArg`](ProgramExtTableColumn::SendChunkRunningEvaluation).
+    ReceiveChunkRunningEvaluation,
+
     HashInputRunningEvaluation,
     HashDigestRunningEvaluation,
 

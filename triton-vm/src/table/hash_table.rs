@@ -1398,6 +1398,8 @@ impl HashTable {
         let hash_input_eval_indeterminate = challenges.get_challenge(HashInputIndeterminate);
         let sponge_eval_indeterminate = challenges.get_challenge(SpongeIndeterminate);
         let cascade_indeterminate = challenges.get_challenge(HashCascadeLookupIndeterminate);
+        let send_chunk_indeterminate =
+            challenges.get_challenge(ProgramAttestationSendChunkIndeterminate);
 
         let mut hash_input_running_evaluation = EvalArg::default_initial();
         let mut hash_digest_running_evaluation = EvalArg::default_initial();
@@ -1418,6 +1420,7 @@ impl HashTable {
         let mut cascade_state_3_mid_high_log_derivative = LookupArg::default_initial();
         let mut cascade_state_3_mid_low_log_derivative = LookupArg::default_initial();
         let mut cascade_state_3_lowest_log_derivative = LookupArg::default_initial();
+        let mut receive_chunk_running_evaluation = EvalArg::default_initial();
 
         let two_pow_16 = BFieldElement::from(1_u64 << 16);
         let two_pow_32 = BFieldElement::from(1_u64 << 32);
@@ -1518,35 +1521,43 @@ impl HashTable {
 
         for row_idx in 0..base_table.nrows() {
             let row = base_table.row(row_idx);
-            let is_padding_row = row[Mode.base_table_index()].is_zero();
+            let mode = row[Mode.base_table_index()].value();
+            let is_padding_row = mode.is_zero();
             let current_instruction = row[CI.base_table_index()];
             let round_number = row[RoundNumber.base_table_index()].value();
 
+            if mode == 1 && round_number == 0 {
+                let compressed_chunk = EvalArg::compute_terminal(
+                    &rate_registers(row),
+                    EvalArg::default_initial(),
+                    challenges.get_challenge(ProgramAttestationPrepareChunkIndeterminate),
+                );
+                receive_chunk_running_evaluation =
+                    receive_chunk_running_evaluation * send_chunk_indeterminate + compressed_chunk;
+            }
+
             if round_number == NUM_ROUNDS as u64 && current_instruction == opcode_hash {
-                // add compressed digest to running evaluation “hash digest”
-                let compressed_hash_digest: XFieldElement = rate_registers(row)[..DIGEST_LENGTH]
+                let compressed_digest: XFieldElement = rate_registers(row)[..DIGEST_LENGTH]
                     .iter()
                     .zip_eq(state_weights[..DIGEST_LENGTH].iter())
                     .map(|(&state, &weight)| weight * state)
                     .sum();
                 hash_digest_running_evaluation = hash_digest_running_evaluation
                     * hash_digest_eval_indeterminate
-                    + compressed_hash_digest;
+                    + compressed_digest;
             }
 
             if !is_padding_row && round_number == 0 {
-                let compressed_row: XFieldElement = state_weights
+                let compressed_row: XFieldElement = rate_registers(row)
                     .iter()
-                    .zip_eq(rate_registers(row).iter())
-                    .map(|(&weight, &element)| weight * element)
+                    .zip_eq(state_weights.iter())
+                    .map(|(&state, &weight)| weight * state)
                     .sum();
-
                 if current_instruction == opcode_hash {
                     hash_input_running_evaluation = hash_input_running_evaluation
                         * hash_input_eval_indeterminate
                         + compressed_row;
                 }
-
                 if current_instruction == opcode_absorb_init
                     || current_instruction == opcode_absorb
                     || current_instruction == opcode_squeeze
@@ -1594,6 +1605,8 @@ impl HashTable {
             }
 
             let mut extension_row = ext_table.row_mut(row_idx);
+            extension_row[ReceiveChunkRunningEvaluation.ext_table_index()] =
+                receive_chunk_running_evaluation;
             extension_row[HashInputRunningEvaluation.ext_table_index()] =
                 hash_input_running_evaluation;
             extension_row[HashDigestRunningEvaluation.ext_table_index()] =

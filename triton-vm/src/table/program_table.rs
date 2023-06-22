@@ -21,6 +21,7 @@ use crate::table::constraint_circuit::DualRowIndicator::*;
 use crate::table::constraint_circuit::SingleRowIndicator;
 use crate::table::constraint_circuit::SingleRowIndicator::*;
 use crate::table::cross_table_argument::CrossTableArg;
+use crate::table::cross_table_argument::EvalArg;
 use crate::table::cross_table_argument::LookupArg;
 use crate::table::table_column::MasterBaseTableColumn;
 use crate::table::table_column::MasterExtTableColumn;
@@ -307,27 +308,40 @@ impl ProgramTable {
         assert_eq!(EXT_WIDTH, ext_table.ncols());
         assert_eq!(base_table.nrows(), ext_table.nrows());
 
+        let max_absorb_count = StarkHasher::RATE as u64 - 1;
         let address_weight = challenges.get_challenge(ProgramAddressWeight);
         let instruction_weight = challenges.get_challenge(ProgramInstructionWeight);
         let next_instruction_weight = challenges.get_challenge(ProgramNextInstructionWeight);
         let instruction_lookup_indeterminate =
             challenges.get_challenge(InstructionLookupIndeterminate);
+        let prepare_chunk_indeterminate =
+            challenges.get_challenge(ProgramAttestationPrepareChunkIndeterminate);
+        let send_chunk_indeterminate =
+            challenges.get_challenge(ProgramAttestationSendChunkIndeterminate);
 
         let mut instruction_lookup_log_derivative = LookupArg::default_initial();
+        let mut prepare_chunk_running_evaluation = EvalArg::default_initial();
+        let mut send_chunk_running_evaluation = EvalArg::default_initial();
 
         for (idx, window) in base_table.windows([2, BASE_WIDTH]).into_iter().enumerate() {
-            let row = window.slice(s![0, ..]);
-            let next_row = window.slice(s![1, ..]);
-            let mut extension_row = ext_table.slice_mut(s![idx, ..]);
+            let row = window.row(0);
+            let next_row = window.row(1);
+            let mut extension_row = ext_table.row_mut(idx);
 
             // In the Program Table, the logarithmic derivative for the instruction lookup
             // argument does record the initial in the first row, as an exception to all other
             // table-linking arguments.
+            // This is necessary because an instruction's potential argument, or else the next
+            // instruction, is recorded in the next row. To be able to check correct initialization
+            // of the logarithmic derivative, both the current and the next row must be accessible
+            // to the constraint. Only transition constraints can access both rows. Hence, the
+            // initial value of the logarithmic derivative must be independent of the second row.
             // The logarithmic derivative's final value, allowing for a meaningful cross-table
             // argument, is recorded in the first padding row. This row is guaranteed to exist
             // due to the hash-input padding mechanics.
             extension_row[InstructionLookupServerLogDerivative.ext_table_index()] =
                 instruction_lookup_log_derivative;
+
             // update the logarithmic derivative if not a padding row
             if row[IsHashInputPadding.base_table_index()].is_zero() {
                 let lookup_multiplicity = row[LookupMultiplicity.base_table_index()];
@@ -352,6 +366,35 @@ impl ProgramTable {
             .expect("Program Table must not be empty.");
         last_row[InstructionLookupServerLogDerivative.ext_table_index()] =
             instruction_lookup_log_derivative;
+
+        // Even though it means iterating almost all rows twice, it is much easier to deal with
+        // the remaining extension columns using this loop since no special casing of the first
+        // or last row is required.
+        for row_idx in 0..base_table.nrows() {
+            let row = base_table.row(row_idx);
+
+            let is_padding_row = row[IsTablePadding.base_table_index()].is_one();
+            let instruction = row[Instruction.base_table_index()];
+            let absorb_count = row[AbsorbCount.base_table_index()];
+
+            if absorb_count.is_zero() {
+                prepare_chunk_running_evaluation = EvalArg::default_initial();
+            }
+            prepare_chunk_running_evaluation =
+                prepare_chunk_running_evaluation * prepare_chunk_indeterminate + instruction;
+
+            if !is_padding_row && absorb_count.value() == max_absorb_count {
+                send_chunk_running_evaluation = send_chunk_running_evaluation
+                    * send_chunk_indeterminate
+                    + prepare_chunk_running_evaluation;
+            }
+
+            let mut extension_row = ext_table.row_mut(row_idx);
+            extension_row[PrepareChunkRunningEvaluation.ext_table_index()] =
+                prepare_chunk_running_evaluation;
+            extension_row[SendChunkRunningEvaluation.ext_table_index()] =
+                send_chunk_running_evaluation;
+        }
     }
 }
 

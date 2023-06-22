@@ -105,6 +105,26 @@ pub enum ChallengeId {
     JumpStackJsoWeight,
     JumpStackJsdWeight,
 
+    /// The indeterminate for compressing a [`RATE`][rate]-sized chunk of instructions into a
+    /// single extension field element.
+    /// Relates to program attestation.
+    ///
+    /// Used by the evaluation argument [`PrepareChunkEvalArg`][prep] and in the Hash Table.
+    ///
+    /// [rate]: crate::stark::StarkHasher::RATE
+    /// [prep]: crate::table::table_column::ProgramExtTableColumn::PrepareChunkRunningEvaluation
+    ProgramAttestationPrepareChunkIndeterminate,
+
+    /// The indeterminate for the bus over which the [`RATE`][rate]-sized chunks of instructions
+    /// are sent. Relates to program attestation.
+    /// Used by the evaluation arguments [`SendChunkEvalArg`][send] and
+    /// [`ReceiveChunkEvalArg`][recv]. See also: [`ProgramAttestationPrepareChunkIndeterminate`].
+    ///
+    /// [rate]: crate::stark::StarkHasher::RATE
+    /// [send]: crate::table::table_column::ProgramExtTableColumn::SendChunkRunningEvaluation
+    /// [recv]: crate::table::table_column::HashExtTableColumn::ReceiveChunkRunningEvaluation
+    ProgramAttestationSendChunkIndeterminate,
+
     HashCIWeight,
     HashStateWeight0,
     HashStateWeight1,
