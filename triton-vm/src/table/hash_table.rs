@@ -570,6 +570,8 @@ impl ExtHashTable {
             circuit_builder.input(NextExtRow(column_idx.master_ext_table_index()))
         };
 
+        let compress_program_digest_indeterminate = challenge(CompressProgramDigestIndeterminate);
+        let expected_program_digest = challenge(CompressedProgramDigest);
         let hash_input_eval_indeterminate = challenge(HashInputIndeterminate);
         let hash_digest_eval_indeterminate = challenge(HashDigestIndeterminate);
         let sponge_indeterminate = challenge(SpongeIndeterminate);
@@ -668,6 +670,25 @@ impl ExtHashTable {
         let next_mode_is_padding_mode_or_round_number_is_5_or_increments_by_one = mode_next.clone()
             * (round_number.clone() - constant(NUM_ROUNDS as u64))
             * (round_number_next.clone() - round_number.clone() - constant(1));
+
+        // compute the terminal of the evaluation argument, i.e., compress the digest
+        let program_digest = [
+            state_current[0].clone(),
+            state_current[1].clone(),
+            state_current[2].clone(),
+            state_current[3].clone(),
+            state_current[4].clone(),
+        ];
+        let compressed_digest = program_digest.into_iter().fold(
+            circuit_builder.x_constant(EvalArg::default_initial()),
+            |acc, digest_element| {
+                acc * compress_program_digest_indeterminate.clone() + digest_element
+            },
+        );
+        let if_mode_is_1_and_next_mode_is_not_1_then_current_digest_is_expected_program_digest =
+            Self::mode_deselector(circuit_builder, &mode, 1)
+                * (mode_next.clone() - constant(1))
+                * (compressed_digest - expected_program_digest);
 
         let if_mode_is_1_and_next_mode_is_2_then_ci_next_is_absorb_init =
             Self::mode_deselector(circuit_builder, &mode, 1)
@@ -820,6 +841,7 @@ impl ExtHashTable {
         let constraints = vec![
             round_number_is_0_through_4_or_round_number_next_is_0,
             next_mode_is_padding_mode_or_round_number_is_5_or_increments_by_one,
+            if_mode_is_1_and_next_mode_is_not_1_then_current_digest_is_expected_program_digest,
             if_mode_is_1_and_next_mode_is_2_then_ci_next_is_absorb_init,
             if_round_number_is_not_5_then_ci_doesnt_change,
             if_round_number_is_not_5_then_mode_doesnt_change,

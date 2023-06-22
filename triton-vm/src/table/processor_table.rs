@@ -2987,7 +2987,7 @@ mod constraint_polynomial_tests {
         debug_cols_next_row: &[ProcessorBaseTableColumn],
     ) {
         let circuit_builder = ConstraintCircuitBuilder::new();
-        let challenges = Challenges::placeholder(&[], &[]);
+        let challenges = Challenges::placeholder(None);
         let fake_ext_table = Array2::zeros([2, NUM_EXT_COLUMNS]);
         for (case_idx, test_rows) in master_base_tables.iter().enumerate() {
             let curr_row = test_rows.slice(s![0, ..]);
@@ -3378,8 +3378,8 @@ mod constraint_polynomial_tests {
         let mut master_base_table = Array2::zeros([2, NUM_BASE_COLUMNS]);
         let master_ext_table = Array2::zeros([2, NUM_EXT_COLUMNS]);
 
-        // We need dummy challenges to evaluate.
-        let dummy_challenges = Challenges::placeholder(&[], &[]);
+        // For this test, dummy challenges suffice to evaluate the constraints.
+        let dummy_challenges = Challenges::placeholder(None);
         for instruction in ALL_INSTRUCTIONS {
             use ProcessorBaseTableColumn::*;
             let deselector = ExtProcessorTable::instruction_deselector_current_row(

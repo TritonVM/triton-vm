@@ -33,6 +33,7 @@ use twenty_first::shared_math::x_field_element::XFieldElement;
 use crate::table::challenges::ChallengeId::*;
 use crate::table::cross_table_argument::CrossTableArg;
 use crate::table::cross_table_argument::EvalArg;
+use crate::Claim;
 
 /// A `ChallengeId` is a unique, symbolic identifier for a challenge used in Triton VM. The
 /// `ChallengeId` enum works in tandem with the struct [`Challenges`], which can be
@@ -43,6 +44,11 @@ use crate::table::cross_table_argument::EvalArg;
 #[repr(usize)]
 #[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro, Hash)]
 pub enum ChallengeId {
+    /// The indeterminate for the [Evaluation Argument](EvalArg) compressing the program digest
+    /// into a single extension field element, _i.e._, [`CompressedProgramDigest`].
+    /// Relates to program attestation.
+    CompressProgramDigestIndeterminate,
+
     /// The indeterminate for the [Evaluation Argument](EvalArg) with standard input.
     StandardInputIndeterminate,
 
@@ -178,15 +184,24 @@ pub enum ChallengeId {
     U32CiWeight,
     U32ResultWeight,
 
-    /// The terminal for the Evaluation Argument with standard input.
+    /// The terminal for the [`EvaluationArgument`](EvalArg) with standard input.
+    /// Makes use of challenge [`StandardInputIndeterminate`].
     StandardInputTerminal,
 
-    /// The terminal for the Evaluation Argument with standard output.
+    /// The terminal for the [`EvaluationArgument`](EvalArg) with standard output.
+    /// Makes use of challenge [`StandardOutputIndeterminate`].
     StandardOutputTerminal,
 
-    /// The terminal for the Evaluation Argument establishing correctness of the
-    /// [Lookup Table](crate::table::lookup_table).
+    /// The terminal for the [`EvaluationArgument`](EvalArg) establishing correctness of the
+    /// [Lookup Table](crate::table::lookup_table::LookupTable).
+    /// Makes use of challenge [`LookupTablePublicIndeterminate`].
     LookupTablePublicTerminal,
+
+    /// The digest of the program to be executed, compressed into a single extension field element.
+    /// The compression happens using an [`EvaluationArgument`](EvalArg) under challenge
+    /// [`CompressProgramDigestIndeterminate`].
+    /// Relates to program attestation.
+    CompressedProgramDigest,
 }
 
 impl ChallengeId {
@@ -204,6 +219,7 @@ pub struct Challenges {
 }
 
 impl Challenges {
+    /// The total number of challenges used in Triton VM.
     pub const fn count() -> usize {
         ChallengeId::COUNT
     }
@@ -219,27 +235,30 @@ impl Challenges {
     /// indeterminate [`StandardOutputIndeterminate`].
     /// - The [`LookupTablePublicTerminal`] is computed from the publicly known and constant
     /// lookup table and the sampled indeterminate [`LookupTablePublicIndeterminate`].
+    /// - The [`CompressedProgramDigest`] is computed from the program to be executed and the
+    /// sampled indeterminate [`CompressProgramDigestIndeterminate`].
     pub const fn num_challenges_to_sample() -> usize {
-        // When modifying this, be sure to add to the compile-time assertions of the form
-        // `const _: () = assert!(…);`
+        // When modifying this, be sure to add to the compile-time assertions in the
+        // `#[test] const fn compile_time_index_assertions() { … }`
         // at the end of this file.
-        Self::count() - 3
+        Self::count() - 4
     }
 
-    pub fn new(
-        mut challenges: Vec<XFieldElement>,
-        public_input: &[BFieldElement],
-        public_output: &[BFieldElement],
-    ) -> Self {
+    pub fn new(mut challenges: Vec<XFieldElement>, claim: &Claim) -> Self {
         assert_eq!(Self::num_challenges_to_sample(), challenges.len());
 
+        let compressed_digest = EvalArg::compute_terminal(
+            &claim.program_digest.values(),
+            EvalArg::default_initial(),
+            challenges[CompressProgramDigestIndeterminate.index()],
+        );
         let input_terminal = EvalArg::compute_terminal(
-            public_input,
+            &claim.input,
             EvalArg::default_initial(),
             challenges[StandardInputIndeterminate.index()],
         );
         let output_terminal = EvalArg::compute_terminal(
-            public_output,
+            &claim.output,
             EvalArg::default_initial(),
             challenges[StandardOutputIndeterminate.index()],
         );
@@ -252,6 +271,7 @@ impl Challenges {
         challenges.insert(StandardInputTerminal.index(), input_terminal);
         challenges.insert(StandardOutputTerminal.index(), output_terminal);
         challenges.insert(LookupTablePublicTerminal.index(), lookup_terminal);
+        challenges.insert(CompressedProgramDigest.index(), compressed_digest);
         assert_eq!(Self::count(), challenges.len());
         let challenges = challenges.try_into().unwrap();
 
@@ -260,9 +280,17 @@ impl Challenges {
 
     /// Stand-in challenges. Can be used in tests. For non-interactive STARKs, use the
     /// Fiat-Shamir heuristic to derive the actual challenges.
-    pub fn placeholder(public_input: &[BFieldElement], public_output: &[BFieldElement]) -> Self {
+    ///
+    /// If no [`Claim`] is provided, a dummy claim is used.
+    pub fn placeholder(claim: Option<&Claim>) -> Self {
+        let dummy_claim = Claim {
+            program_digest: Default::default(),
+            input: vec![],
+            output: vec![],
+        };
+        let claim = claim.unwrap_or(&dummy_claim);
         let stand_in_challenges = random_elements(Self::num_challenges_to_sample());
-        Self::new(stand_in_challenges, public_input, public_output)
+        Self::new(stand_in_challenges, claim)
     }
 
     #[inline(always)]
@@ -284,14 +312,22 @@ mod challenge_tests {
         assert!(StandardInputIndeterminate.index() < StandardInputTerminal.index());
         assert!(StandardInputIndeterminate.index() < StandardOutputTerminal.index());
         assert!(StandardInputIndeterminate.index() < LookupTablePublicTerminal.index());
+        assert!(StandardInputIndeterminate.index() < CompressedProgramDigest.index());
 
         assert!(StandardOutputIndeterminate.index() < StandardInputTerminal.index());
         assert!(StandardOutputIndeterminate.index() < StandardOutputTerminal.index());
         assert!(StandardOutputIndeterminate.index() < LookupTablePublicTerminal.index());
+        assert!(StandardOutputIndeterminate.index() < CompressedProgramDigest.index());
+
+        assert!(CompressProgramDigestIndeterminate.index() < StandardInputTerminal.index());
+        assert!(CompressProgramDigestIndeterminate.index() < StandardOutputTerminal.index());
+        assert!(CompressProgramDigestIndeterminate.index() < LookupTablePublicTerminal.index());
+        assert!(CompressProgramDigestIndeterminate.index() < CompressedProgramDigest.index());
 
         assert!(LookupTablePublicIndeterminate.index() < StandardInputTerminal.index());
         assert!(LookupTablePublicIndeterminate.index() < StandardOutputTerminal.index());
         assert!(LookupTablePublicIndeterminate.index() < LookupTablePublicTerminal.index());
+        assert!(LookupTablePublicIndeterminate.index() < CompressedProgramDigest.index());
     }
     // Ensure the compile-time assertions are actually executed by the compiler.
     const _: () = compile_time_index_assertions();

@@ -1190,6 +1190,7 @@ mod constraint_circuit_tests {
     use crate::table::program_table::ExtProgramTable;
     use crate::table::ram_table::ExtRamTable;
     use crate::table::u32_table::ExtU32Table;
+    use crate::Claim;
 
     use super::*;
 
@@ -1680,9 +1681,14 @@ mod constraint_circuit_tests {
         let mut rng = StdRng::seed_from_u64(seed);
         println!("seed: {seed}");
 
+        let dummy_claim = Claim {
+            program_digest: Default::default(),
+            input: vec![],
+            output: vec![],
+        };
         let challenges: [XFieldElement; Challenges::num_challenges_to_sample()] = rng.gen();
         let challenges = challenges.to_vec();
-        let challenges = Challenges::new(challenges, &[], &[]);
+        let challenges = Challenges::new(challenges, &dummy_claim);
 
         let num_rows = 2;
         let base_shape = [num_rows, master_table::NUM_BASE_COLUMNS];
@@ -2326,9 +2332,14 @@ mod constraint_circuit_tests {
         }
 
         // Use the Schwartz-Zippel lemma to check no two substitution rules are equal.
+        let dummy_claim = Claim {
+            program_digest: Default::default(),
+            input: vec![],
+            output: vec![],
+        };
         let challenges: [XFieldElement; Challenges::num_challenges_to_sample()] = rng.gen();
         let challenges = challenges.to_vec();
-        let challenges = Challenges::new(challenges, &[], &[]);
+        let challenges = Challenges::new(challenges, &dummy_claim);
 
         let num_rows = 2;
         let num_new_base_constraints = new_base_constraints.len();
@@ -2473,7 +2484,7 @@ mod constraint_circuit_tests {
     #[test]
     #[ignore = "(probably) requires normalization of circuit expressions"]
     fn substitution_rules_are_unique() {
-        let challenges = Challenges::placeholder(&[], &[]);
+        let challenges = Challenges::placeholder(None);
         let mut base_table_rows = Array2::from_shape_fn((2, NUM_BASE_COLUMNS), |_| random());
         let mut ext_table_rows = Array2::from_shape_fn((2, NUM_EXT_COLUMNS), |_| random());
 
