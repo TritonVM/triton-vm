@@ -3,6 +3,8 @@ use num_traits::Zero;
 use triton_opcodes::ord_n::Ord16;
 use triton_opcodes::ord_n::Ord16::*;
 use twenty_first::shared_math::b_field_element::BFieldElement;
+use twenty_first::shared_math::digest::Digest;
+use twenty_first::shared_math::tip5::DIGEST_LENGTH;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use super::error::vm_fail;
@@ -18,15 +20,16 @@ pub struct OpStack {
 /// that op-stack registers are stored in the same way as op-stack memory.
 pub const OP_STACK_REG_COUNT: usize = 16;
 
-impl Default for OpStack {
-    fn default() -> Self {
-        Self {
-            stack: vec![BFieldElement::zero(); OP_STACK_REG_COUNT],
-        }
-    }
-}
-
 impl OpStack {
+    pub fn new(program_digest: Digest) -> Self {
+        let mut stack = vec![BFieldElement::zero(); OP_STACK_REG_COUNT];
+
+        let reverse_digest = program_digest.reversed().values();
+        stack[..DIGEST_LENGTH].copy_from_slice(&reverse_digest);
+
+        Self { stack }
+    }
+
     pub fn push(&mut self, elem: BFieldElement) {
         self.stack.push(elem);
     }
@@ -135,7 +138,8 @@ mod op_stack_test {
 
     #[test]
     fn test_sanity() {
-        let mut op_stack = OpStack::default();
+        let digest = Default::default();
+        let mut op_stack = OpStack::new(digest);
 
         // verify height
         assert_eq!(op_stack.height(), 16);

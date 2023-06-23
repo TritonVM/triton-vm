@@ -53,7 +53,7 @@ use crate::vm::CoProcessorCall::*;
 /// The number of helper variable registers
 pub const HV_REGISTER_COUNT: usize = 4;
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Clone)]
 pub struct VMState<'pgm> {
     // Memory
     /// The **program memory** stores the instructions (and their arguments) of the program
@@ -131,11 +131,22 @@ impl<'pgm> VMState<'pgm> {
         public_input: Vec<BFieldElement>,
         secret_input: Vec<BFieldElement>,
     ) -> Self {
+        let program_digest = StarkHasher::hash_varlen(&program.to_bwords());
+
         Self {
             program: &program.instructions,
             public_input: public_input.into(),
             secret_input: secret_input.into(),
-            ..VMState::default()
+            public_output: vec![],
+            ram: Default::default(),
+            op_stack: OpStack::new(program_digest),
+            jump_stack: vec![],
+            cycle_count: 0,
+            instruction_pointer: 0,
+            previous_instruction: Default::default(),
+            ramp: 0,
+            sponge_state: Default::default(),
+            halting: false,
         }
     }
 

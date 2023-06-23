@@ -422,16 +422,28 @@ impl ExtProcessorTable {
         let st8_is_0 = base_row(ST8);
         let st9_is_0 = base_row(ST9);
         let st10_is_0 = base_row(ST10);
-        let st11_is_0 = base_row(ST11);
-        let st12_is_0 = base_row(ST12);
-        let st13_is_0 = base_row(ST13);
-        let st14_is_0 = base_row(ST14);
-        let st15_is_0 = base_row(ST15);
         let osp_is_16 = base_row(OSP) - constant(16);
         let osv_is_0 = base_row(OSV);
         let ramv_is_0 = base_row(RAMV);
         let ramp_is_0 = base_row(RAMP);
         let previous_instruction_is_0 = base_row(PreviousInstruction);
+
+        // compress the program digest using an Evaluation Argument
+        let program_digest = [
+            base_row(ST11),
+            base_row(ST12),
+            base_row(ST13),
+            base_row(ST14),
+            base_row(ST15),
+        ];
+        let compressed_program_digest = program_digest.into_iter().fold(
+            circuit_builder.x_constant(EvalArg::default_initial()),
+            |acc, digest_element| {
+                acc * challenge(CompressProgramDigestIndeterminate) + digest_element
+            },
+        );
+        let compressed_program_digest_is_expected_program_digest =
+            compressed_program_digest - challenge(CompressedProgramDigest);
 
         // Permutation and Evaluation Arguments with all tables the Processor Table relates to
 
@@ -536,11 +548,7 @@ impl ExtProcessorTable {
             st8_is_0,
             st9_is_0,
             st10_is_0,
-            st11_is_0,
-            st12_is_0,
-            st13_is_0,
-            st14_is_0,
-            st15_is_0,
+            compressed_program_digest_is_expected_program_digest,
             osp_is_16,
             osv_is_0,
             ramv_is_0,
