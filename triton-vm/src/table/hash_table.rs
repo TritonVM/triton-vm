@@ -6,6 +6,11 @@ use ndarray::ArrayView2;
 use ndarray::ArrayViewMut2;
 use num_traits::Zero;
 use strum::EnumCount;
+use strum::IntoEnumIterator;
+use strum_macros::Display;
+use strum_macros::EnumCount as EnumCountMacro;
+use strum_macros::EnumIter;
+use triton_opcodes::instruction::Instruction;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::tip5::DIGEST_LENGTH;
 use twenty_first::shared_math::tip5::MDS_MATRIX_FIRST_COLUMN;
@@ -16,8 +21,6 @@ use twenty_first::shared_math::tip5::ROUND_CONSTANTS;
 use twenty_first::shared_math::tip5::STATE_SIZE;
 use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::x_field_element::XFieldElement;
-
-use triton_opcodes::instruction::Instruction;
 
 use crate::table::cascade_table::CascadeTable;
 use crate::table::challenges::ChallengeId::*;
@@ -52,6 +55,73 @@ pub struct HashTable {}
 
 #[derive(Debug, Clone)]
 pub struct ExtHashTable {}
+
+/// The current “mode” of the Hash Table. The Hash Table can be in one of four distinct modes:
+///
+/// 1. Hashing the [`Program`][program]. This is part of program attestation.
+/// 1. Processing all Sponge instructions, _i.e._, `absorb_init`, `absorb`, and `squeeze`.
+/// 1. Processing the `hash` instruction.
+/// 1. Padding mode.
+///
+/// Changing the mode is only possible when the current [`RoundNumber`][round_no] is [`NUM_ROUNDS`].
+/// The mode evolves as
+/// [`ProgramHashing`][prog_hash] → [`Sponge`][sponge] → [`Hash`][hash] → [`Pad`][pad].
+/// Once mode [`Pad`][pad] is reached, it is not possible to change the mode anymore.
+/// Skipping any or all of the modes [`Sponge`][sponge], [`Hash`][hash], or [`Pad`][pad]
+/// is possible in principle:
+/// - if no Sponge instructions are executed, mode [`Sponge`][sponge] will be skipped,
+/// - if no `hash` instruction is executed, mode [`Hash`][hash] will be skipped, and
+/// - if the Hash Table does not require any padding, mode [`Pad`][pad] will be skipped.
+///
+/// It is not possible to skip mode [`ProgramHashing`][prog_hash]:
+/// the [`Program`][program] is always hashed.
+/// The empty program is not valid since any valid [`Program`][program] must execute
+/// instruction `halt`.
+///
+/// [program]: triton_opcodes::program::Program
+/// [round_no]: HashBaseTableColumn::RoundNumber
+/// [prog_hash]: Self::ProgramHashing
+/// [sponge]: Self::Sponge
+/// [hash]: Self::Hash
+/// [pad]: Self::Pad
+#[repr(u32)]
+#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro, Hash)]
+pub enum HashTableMode {
+    /// The mode in which the [`Program`][program] is hashed. This is part of program attestation.
+    ///
+    /// [program]: triton_opcodes::program::Program
+    ProgramHashing,
+
+    /// The mode in which Sponge instructions, _i.e._, `absorb_init`, `absorb`, and `squeeze`,
+    /// are processed.
+    Sponge,
+
+    /// The mode in which the `hash` instruction is processed.
+    Hash,
+
+    /// Indicator for padding rows.
+    Pad,
+}
+
+impl From<HashTableMode> for u32 {
+    fn from(value: HashTableMode) -> Self {
+        // safe cast due to the #[repr(u32)] attribute on HashTableMode
+        value as u32
+    }
+}
+
+impl From<HashTableMode> for u64 {
+    fn from(value: HashTableMode) -> Self {
+        let value: u32 = value.into();
+        value as u64
+    }
+}
+
+impl From<HashTableMode> for BFieldElement {
+    fn from(value: HashTableMode) -> Self {
+        BFieldElement::new(value.into())
+    }
+}
 
 impl ExtHashTable {
     fn re_compose_16_bit_limbs<II: InputIndicator>(
@@ -171,7 +241,8 @@ impl ExtHashTable {
             };
 
         // miscellaneous initial constraints
-        let mode_is_1 = mode - constant(1);
+        let mode_is_program_hashing =
+            Self::select_mode(circuit_builder, &mode, HashTableMode::ProgramHashing);
         let round_number_is_0 = base_row(RoundNumber);
         let running_evaluation_hash_input_is_default_initial =
             running_evaluation_hash_input - running_evaluation_initial.clone();
@@ -181,7 +252,7 @@ impl ExtHashTable {
             running_evaluation_sponge - running_evaluation_initial;
 
         vec![
-            mode_is_1,
+            mode_is_program_hashing,
             round_number_is_0,
             running_evaluation_hash_input_is_default_initial,
             running_evaluation_hash_digest_is_default_initial,
@@ -295,28 +366,41 @@ impl ExtHashTable {
     }
 
     /// A constraint circuit evaluating to zero if and only if the given `mode_circuit_node` is
+    /// equal to the given `mode_to_select`.
+    fn select_mode<II: InputIndicator>(
+        circuit_builder: &ConstraintCircuitBuilder<II>,
+        mode_circuit_node: &ConstraintCircuitMonad<II>,
+        mode_to_select: HashTableMode,
+    ) -> ConstraintCircuitMonad<II> {
+        // To not subtract zero: some special casing.
+        let mode_with_discriminant_zero = HashTableMode::iter().get(0).unwrap();
+        match mode_to_select == mode_with_discriminant_zero {
+            true => mode_circuit_node.clone(),
+            false => mode_circuit_node.clone() - circuit_builder.b_constant(mode_to_select.into()),
+        }
+    }
+
+    /// A constraint circuit evaluating to zero if and only if the given `mode_circuit_node` is
     /// not equal to the given `mode_to_deselect`.
     fn mode_deselector<II: InputIndicator>(
         circuit_builder: &ConstraintCircuitBuilder<II>,
         mode_circuit_node: &ConstraintCircuitMonad<II>,
-        mode_to_deselect: usize,
+        mode_to_deselect: HashTableMode,
     ) -> ConstraintCircuitMonad<II> {
-        assert!(
-            mode_to_deselect < 4,
-            "Mode to deselect must be in [0, 4) but got {mode_to_deselect}."
-        );
-
         let constant = |c: u64| circuit_builder.b_constant(c.into());
 
         // To not subtract zero from the first factor: some special casing.
-        let first_factor = match mode_to_deselect {
-            0 => constant(1),
-            _ => mode_circuit_node.clone(),
+        let mode_with_discriminant_zero = HashTableMode::iter().get(0).unwrap();
+        let first_factor = match mode_to_deselect == mode_with_discriminant_zero {
+            true => constant(1),
+            false => mode_circuit_node.clone(),
         };
-        (1..4)
-            .filter(|&r| r != mode_to_deselect)
-            .map(|r| mode_circuit_node.clone() - constant(r as u64))
-            .fold(first_factor, |a, b| a * b)
+
+        HashTableMode::iter()
+            .skip(1)
+            .filter(|&mode| mode != mode_to_deselect)
+            .map(|mode| mode_circuit_node.clone() - constant(mode.into()))
+            .fold(first_factor, |accumulator, factor| accumulator * factor)
     }
 
     pub fn consistency_constraints(
@@ -338,29 +422,36 @@ impl ExtHashTable {
         let state15 = base_row(State15);
 
         let ci_is_hash = ci.clone() - constant(Instruction::Hash.opcode() as u64);
+        let ci_is_absorb_init = ci.clone() - constant(Instruction::AbsorbInit.opcode() as u64);
         let ci_is_absorb = ci.clone() - constant(Instruction::Absorb.opcode() as u64);
         let ci_is_squeeze = ci.clone() - constant(Instruction::Squeeze.opcode() as u64);
 
-        let mode_is_not_1 = Self::mode_deselector(circuit_builder, &mode, 1);
-        let mode_is_not_3 = Self::mode_deselector(circuit_builder, &mode, 3);
-        let mode_is_not_0 = Self::mode_deselector(circuit_builder, &mode, 0);
+        let mode_is_not_program_hashing =
+            Self::mode_deselector(circuit_builder, &mode, HashTableMode::ProgramHashing);
+        let mode_is_not_sponge =
+            Self::mode_deselector(circuit_builder, &mode, HashTableMode::Sponge);
+        let mode_is_not_hash = Self::mode_deselector(circuit_builder, &mode, HashTableMode::Hash);
+        let mode_is_not_pad = Self::mode_deselector(circuit_builder, &mode, HashTableMode::Pad);
         let round_number_is_not_0 =
             Self::round_number_deselector(circuit_builder, &round_number, 0);
 
-        let mode_is_0_1_2_or_3 = mode.clone()
-            * (mode.clone() - constant(1))
-            * (mode.clone() - constant(2))
-            * (mode - constant(3));
+        let mode_is_a_valid_mode =
+            Self::mode_deselector(circuit_builder, &mode, HashTableMode::Pad)
+                * (mode.clone() - constant(HashTableMode::Pad.into()));
 
-        let if_mode_is_1_then_ci_is_0 = mode_is_not_1 * ci.clone();
+        let if_mode_is_program_hashing_then_ci_is_0 = mode_is_not_program_hashing * ci.clone();
 
-        let if_mode_is_3_then_ci_is_hash = mode_is_not_3.clone() * ci_is_hash.clone();
+        let if_mode_is_sponge_then_ci_is_a_sponge_instruction =
+            mode_is_not_sponge * ci_is_absorb_init * ci_is_absorb.clone() * ci_is_squeeze.clone();
 
-        let if_padding_mode_then_ci_is_0 = mode_is_not_0.clone() * ci.clone();
+        let if_mode_is_hash_then_ci_is_hash = mode_is_not_hash.clone() * ci_is_hash.clone();
 
-        let if_padding_mode_then_round_number_is_0 = mode_is_not_0 * round_number.clone();
+        let if_padding_mode_then_ci_is_0 = mode_is_not_pad.clone() * ci.clone();
 
-        let if_ci_is_hash_and_round_no_is_0_then_ = round_number_is_not_0.clone() * mode_is_not_3;
+        let if_padding_mode_then_round_number_is_0 = mode_is_not_pad * round_number.clone();
+
+        let if_ci_is_hash_and_round_no_is_0_then_ =
+            round_number_is_not_0.clone() * mode_is_not_hash;
         let if_ci_is_hash_and_round_no_is_0_then_state_10_is_1 =
             if_ci_is_hash_and_round_no_is_0_then_.clone() * (state10.clone() - constant(1));
         let if_ci_is_hash_and_round_no_is_0_then_state_11_is_1 =
@@ -465,9 +556,10 @@ impl ExtHashTable {
             state_3_hi_limbs_are_not_all_1s * state_3_lo_limbs;
 
         let mut constraints = vec![
-            mode_is_0_1_2_or_3,
-            if_mode_is_1_then_ci_is_0,
-            if_mode_is_3_then_ci_is_hash,
+            mode_is_a_valid_mode,
+            if_mode_is_program_hashing_then_ci_is_0,
+            if_mode_is_sponge_then_ci_is_a_sponge_instruction,
+            if_mode_is_hash_then_ci_is_hash,
             if_padding_mode_then_ci_is_0,
             if_padding_mode_then_round_number_is_0,
             if_ci_is_hash_and_round_no_is_0_then_state_10_is_1,
@@ -661,15 +753,16 @@ impl ExtHashTable {
         ]
         .map(challenge);
 
-        let round_number_is_not_5 =
-            Self::round_number_deselector(circuit_builder, &round_number, 5);
+        let round_number_is_not_num_rounds =
+            Self::round_number_deselector(circuit_builder, &round_number, NUM_ROUNDS);
 
         let round_number_is_0_through_4_or_round_number_next_is_0 =
-            round_number_is_not_5 * round_number_next.clone();
+            round_number_is_not_num_rounds * round_number_next.clone();
 
-        let next_mode_is_padding_mode_or_round_number_is_5_or_increments_by_one = mode_next.clone()
-            * (round_number.clone() - constant(NUM_ROUNDS as u64))
-            * (round_number_next.clone() - round_number.clone() - constant(1));
+        let next_mode_is_padding_mode_or_round_number_is_num_rounds_or_increments_by_one =
+            Self::select_mode(circuit_builder, &mode_next, HashTableMode::Pad)
+                * (round_number.clone() - constant(NUM_ROUNDS as u64))
+                * (round_number_next.clone() - round_number.clone() - constant(1));
 
         // compress the digest by computing the terminal of an evaluation argument
         let compressed_digest = state_current[..DIGEST_LENGTH].iter().fold(
@@ -678,43 +771,44 @@ impl ExtHashTable {
                 acc * compress_program_digest_indeterminate.clone() + digest_element.clone()
             },
         );
-        let if_mode_is_1_and_next_mode_is_not_1_then_current_digest_is_expected_program_digest =
-            Self::mode_deselector(circuit_builder, &mode, 1)
-                * (mode_next.clone() - constant(1))
+        let if_mode_changes_from_program_hashing_then_current_digest_is_expected_program_digest =
+            Self::mode_deselector(circuit_builder, &mode, HashTableMode::ProgramHashing)
+                * Self::select_mode(circuit_builder, &mode_next, HashTableMode::ProgramHashing)
                 * (compressed_digest - expected_program_digest);
 
-        let if_mode_is_1_and_next_mode_is_2_then_ci_next_is_absorb_init =
-            Self::mode_deselector(circuit_builder, &mode, 1)
-                * Self::mode_deselector(circuit_builder, &mode_next, 2)
+        let if_mode_is_program_hashing_and_next_mode_is_sponge_then_ci_next_is_absorb_init =
+            Self::mode_deselector(circuit_builder, &mode, HashTableMode::ProgramHashing)
+                * Self::mode_deselector(circuit_builder, &mode_next, HashTableMode::Sponge)
                 * (ci_next.clone() - opcode_absorb_init.clone());
 
-        let if_round_number_is_not_5_then_ci_doesnt_change =
+        let if_round_number_is_not_num_rounds_then_ci_doesnt_change =
             (round_number.clone() - constant(NUM_ROUNDS as u64)) * (ci_next.clone() - ci);
 
-        let if_round_number_is_not_5_then_mode_doesnt_change =
+        let if_round_number_is_not_num_rounds_then_mode_doesnt_change =
             (round_number - constant(NUM_ROUNDS as u64)) * (mode_next.clone() - mode.clone());
 
-        let if_mode_is_2_then_mode_next_is_2_3_or_0 =
-            Self::mode_deselector(circuit_builder, &mode, 2)
-                * (mode_next.clone() - constant(2))
-                * (mode_next.clone() - constant(3))
-                * (mode_next.clone() - constant(0));
+        let if_mode_is_sponge_then_mode_next_is_sponge_or_hash_or_pad =
+            Self::mode_deselector(circuit_builder, &mode, HashTableMode::Sponge)
+                * Self::select_mode(circuit_builder, &mode_next, HashTableMode::Sponge)
+                * Self::select_mode(circuit_builder, &mode_next, HashTableMode::Hash)
+                * Self::select_mode(circuit_builder, &mode_next, HashTableMode::Pad);
 
-        let if_mode_is_3_then_mode_next_is_3_or_0 =
-            Self::mode_deselector(circuit_builder, &mode, 3)
-                * (mode_next.clone() - constant(3))
-                * (mode_next.clone() - constant(0));
+        let if_mode_is_hash_then_mode_next_is_hash_or_pad =
+            Self::mode_deselector(circuit_builder, &mode, HashTableMode::Hash)
+                * Self::select_mode(circuit_builder, &mode_next, HashTableMode::Hash)
+                * Self::select_mode(circuit_builder, &mode_next, HashTableMode::Pad);
 
-        let if_mode_is_0_then_mode_next_is_0 =
-            Self::mode_deselector(circuit_builder, &mode, 0) * (mode_next.clone() - constant(0));
+        let if_mode_is_pad_then_mode_next_is_pad =
+            Self::mode_deselector(circuit_builder, &mode, HashTableMode::Pad)
+                * Self::select_mode(circuit_builder, &mode_next, HashTableMode::Pad);
 
         let round_number_next_is_not_0 =
             Self::round_number_deselector(circuit_builder, &round_number_next, 0);
         let round_number_next_is_0 = round_number_next.clone();
 
         // copy capacity between rows with
-        //  - mode_next == 1 (program hashing) and round_next == 0 and
-        //  - mode_next == 2 (sponge section) and round_next == 0 and ci_next == absorb
+        //  - mode_next == program_hashing and round_next == 0 and
+        //  - mode_next == sponge and round_next == 0 and ci_next == absorb
         let difference_of_capacity_registers = state_current[RATE..]
             .iter()
             .zip_eq(state_next[RATE..].iter())
@@ -725,16 +819,16 @@ impl ExtHashTable {
             .zip_eq(difference_of_capacity_registers)
             .map(|(weight, state_difference)| weight.clone() * state_difference)
             .sum();
-        let capacity_doesnt_change_in_mode_1_and_2_if_absorbing_starts = round_number_next_is_not_0
-            .clone()
-            * mode_next.clone()
-            * (mode_next.clone() - constant(3))
-            * (ci_next.clone() - opcode_hash.clone())
-            * (ci_next.clone() - opcode_absorb_init.clone())
-            * (ci_next.clone() - opcode_squeeze.clone())
-            * randomized_sum_of_capacity_differences;
+        let capacity_doesnt_change_in_mode_program_hashing_and_sponge_if_absorbing_starts =
+            round_number_next_is_not_0.clone()
+                * Self::select_mode(circuit_builder, &mode_next, HashTableMode::Pad)
+                * Self::select_mode(circuit_builder, &mode_next, HashTableMode::Hash)
+                * (ci_next.clone() - opcode_hash.clone())
+                * (ci_next.clone() - opcode_absorb_init.clone())
+                * (ci_next.clone() - opcode_squeeze.clone())
+                * randomized_sum_of_capacity_differences;
 
-        // copy entire state between rounds with index 5 and 0 if instruction is “squeeze”
+        // copy entire state between rounds with index NUM_ROUNDS and 0 if instruction is “squeeze”
         let difference_of_state_registers = state_current
             .iter()
             .zip_eq(state_next.iter())
@@ -779,10 +873,11 @@ impl ExtHashTable {
             + round_number_next_is_0.clone() * running_evaluation_hash_input_remains.clone()
             + (ci_next.clone() - opcode_hash.clone()) * running_evaluation_hash_input_remains;
 
-        // If (and only if) the row number in the next row is 5 and the current instruction in
-        // the next row corresponds to `hash`, update running evaluation “hash digest.”
-        let round_number_next_is_5 = round_number_next.clone() - constant(NUM_ROUNDS as u64);
-        let round_number_next_is_not_5 =
+        // If (and only if) the row number in the next row is NUM_ROUNDS and the current instruction
+        // in the next row corresponds to `hash`, update running evaluation “hash digest.”
+        let round_number_next_is_num_rounds =
+            round_number_next.clone() - constant(NUM_ROUNDS as u64);
+        let round_number_next_is_not_num_rounds =
             Self::round_number_deselector(circuit_builder, &round_number_next, NUM_ROUNDS);
         let running_evaluation_hash_digest_remains =
             running_evaluation_hash_digest_next.clone() - running_evaluation_hash_digest.clone();
@@ -795,11 +890,12 @@ impl ExtHashTable {
         let running_evaluation_hash_digest_updates = running_evaluation_hash_digest_next
             - hash_digest_eval_indeterminate * running_evaluation_hash_digest
             - compressed_row_hash_digest;
-        let running_evaluation_hash_digest_is_updated_correctly = round_number_next_is_not_5
-            * ci_next_is_not_hash
-            * running_evaluation_hash_digest_updates
-            + round_number_next_is_5 * running_evaluation_hash_digest_remains.clone()
-            + (ci_next.clone() - opcode_hash.clone()) * running_evaluation_hash_digest_remains;
+        let running_evaluation_hash_digest_is_updated_correctly =
+            round_number_next_is_not_num_rounds
+                * ci_next_is_not_hash
+                * running_evaluation_hash_digest_updates
+                + round_number_next_is_num_rounds * running_evaluation_hash_digest_remains.clone()
+                + (ci_next.clone() - opcode_hash.clone()) * running_evaluation_hash_digest_remains;
 
         // The running evaluation for “Sponge” updates correctly.
         let compressed_row_next = state_weights[..RATE]
@@ -844,25 +940,26 @@ impl ExtHashTable {
                 - compressed_chunk;
         let receive_chunk_running_evaluation_remains =
             running_evaluation_receive_chunk_next - running_evaluation_receive_chunk;
-        let receive_chunk_of_instructions_iff_next_mode_is_1_and_next_round_number_is_0 =
+        let receive_chunk_of_instructions_iff_next_mode_is_prog_hashing_and_next_round_number_is_0 =
             Self::round_number_deselector(circuit_builder, &round_number_next, 0)
-                * Self::mode_deselector(circuit_builder, &mode_next, 1)
+                * Self::mode_deselector(circuit_builder, &mode_next, HashTableMode::ProgramHashing)
                 * receive_chunk_running_evaluation_absorbs_chunk_of_instructions
                 + round_number_next * receive_chunk_running_evaluation_remains.clone()
-                + (mode_next.clone() - constant(1)) * receive_chunk_running_evaluation_remains;
+                + Self::select_mode(circuit_builder, &mode_next, HashTableMode::ProgramHashing)
+                    * receive_chunk_running_evaluation_remains;
 
         let constraints = vec![
             round_number_is_0_through_4_or_round_number_next_is_0,
-            next_mode_is_padding_mode_or_round_number_is_5_or_increments_by_one,
-            receive_chunk_of_instructions_iff_next_mode_is_1_and_next_round_number_is_0,
-            if_mode_is_1_and_next_mode_is_not_1_then_current_digest_is_expected_program_digest,
-            if_mode_is_1_and_next_mode_is_2_then_ci_next_is_absorb_init,
-            if_round_number_is_not_5_then_ci_doesnt_change,
-            if_round_number_is_not_5_then_mode_doesnt_change,
-            if_mode_is_2_then_mode_next_is_2_3_or_0,
-            if_mode_is_3_then_mode_next_is_3_or_0,
-            if_mode_is_0_then_mode_next_is_0,
-            capacity_doesnt_change_in_mode_1_and_2_if_absorbing_starts,
+            next_mode_is_padding_mode_or_round_number_is_num_rounds_or_increments_by_one,
+            receive_chunk_of_instructions_iff_next_mode_is_prog_hashing_and_next_round_number_is_0,
+            if_mode_changes_from_program_hashing_then_current_digest_is_expected_program_digest,
+            if_mode_is_program_hashing_and_next_mode_is_sponge_then_ci_next_is_absorb_init,
+            if_round_number_is_not_num_rounds_then_ci_doesnt_change,
+            if_round_number_is_not_num_rounds_then_mode_doesnt_change,
+            if_mode_is_sponge_then_mode_next_is_sponge_or_hash_or_pad,
+            if_mode_is_hash_then_mode_next_is_hash_or_pad,
+            if_mode_is_pad_then_mode_next_is_pad,
+            capacity_doesnt_change_in_mode_program_hashing_and_sponge_if_absorbing_starts,
             if_round_number_next_is_0_and_ci_next_is_squeeze_then_state_doesnt_change,
             running_evaluation_hash_input_is_updated_correctly,
             running_evaluation_hash_digest_is_updated_correctly,
@@ -1181,14 +1278,16 @@ impl ExtHashTable {
             * (cascade_indeterminate - compressed_row)
             - constant(1);
 
-        let next_row_is_padding_row_or_round_number_next_is_5 =
-            mode_next.clone() * (round_number_next.clone() - constant(NUM_ROUNDS as u64));
-        let round_number_next_is_not_5 =
-            Self::round_number_deselector(circuit_builder, &round_number_next, 5);
-        let next_row_is_not_padding_row = Self::mode_deselector(circuit_builder, &mode_next, 0);
+        let next_row_is_padding_row_or_round_number_next_is_num_rounds =
+            Self::select_mode(circuit_builder, &mode_next, HashTableMode::Pad)
+                * (round_number_next.clone() - constant(NUM_ROUNDS as u64));
+        let round_number_next_is_not_num_rounds =
+            Self::round_number_deselector(circuit_builder, &round_number_next, NUM_ROUNDS);
+        let next_row_is_not_padding_row =
+            Self::mode_deselector(circuit_builder, &mode_next, HashTableMode::Pad);
 
-        next_row_is_padding_row_or_round_number_next_is_5 * cascade_log_derivative_updates
-            + round_number_next_is_not_5 * cascade_log_derivative_remains.clone()
+        next_row_is_padding_row_or_round_number_next_is_num_rounds * cascade_log_derivative_updates
+            + round_number_next_is_not_num_rounds * cascade_log_derivative_remains.clone()
             + next_row_is_not_padding_row * cascade_log_derivative_remains
     }
 
@@ -1246,16 +1345,17 @@ impl ExtHashTable {
                 acc * compress_program_digest_indeterminate.clone() + digest_element
             },
         );
-        let if_mode_is_1_then_current_digest_is_expected_program_digest =
-            Self::mode_deselector(circuit_builder, &mode, 1)
+        let if_mode_is_program_hashing_then_current_digest_is_expected_program_digest =
+            Self::mode_deselector(circuit_builder, &mode, HashTableMode::ProgramHashing)
                 * (compressed_digest - expected_program_digest);
 
-        let if_mode_is_not_0_then_round_number_is_max_round_number =
-            mode * (round_number - max_round_number);
+        let if_mode_is_not_pad_then_round_number_is_max_round_number =
+            Self::select_mode(circuit_builder, &mode, HashTableMode::Pad)
+                * (round_number - max_round_number);
 
         vec![
-            if_mode_is_1_then_current_digest_is_expected_program_digest,
-            if_mode_is_not_0_then_round_number_is_max_round_number,
+            if_mode_is_program_hashing_then_current_digest_is_expected_program_digest,
+            if_mode_is_not_pad_then_round_number_is_max_round_number,
         ]
     }
 }
@@ -1454,9 +1554,9 @@ impl HashTable {
         let mut sponge_mode_column = sponge_part.column_mut(mode_column_idx);
         let mut hash_mode_column = hash_part.column_mut(mode_column_idx);
 
-        program_hash_mode_column.fill(1_u64.into());
-        sponge_mode_column.fill(2_u64.into());
-        hash_mode_column.fill(3_u64.into());
+        program_hash_mode_column.fill(HashTableMode::ProgramHashing.into());
+        sponge_mode_column.fill(HashTableMode::Sponge.into());
+        hash_mode_column.fill(HashTableMode::Hash.into());
     }
 
     pub fn pad_trace(hash_table: &mut ArrayViewMut2<BFieldElement>, hash_table_length: usize) {
@@ -1478,6 +1578,11 @@ impl HashTable {
             let mut column = hash_table.slice_mut(slice_info);
             column.fill(round_constant);
         }
+
+        let mode_column_index = Mode.base_table_index();
+        let mode_column_slice_info = s![hash_table_length.., mode_column_index];
+        let mut mode_column = hash_table.slice_mut(mode_column_slice_info);
+        mode_column.fill(HashTableMode::Pad.into());
     }
 
     pub fn extend(
@@ -1614,15 +1719,16 @@ impl HashTable {
         let opcode_absorb_init = Instruction::AbsorbInit.opcode_b();
         let opcode_absorb = Instruction::Absorb.opcode_b();
         let opcode_squeeze = Instruction::Squeeze.opcode_b();
+        let program_hashing_mode = HashTableMode::ProgramHashing.into();
+        let padding_mode = HashTableMode::Pad.into();
 
         for row_idx in 0..base_table.nrows() {
             let row = base_table.row(row_idx);
-            let mode = row[Mode.base_table_index()].value();
-            let is_padding_row = mode.is_zero();
+            let mode = row[Mode.base_table_index()];
             let current_instruction = row[CI.base_table_index()];
             let round_number = row[RoundNumber.base_table_index()].value();
 
-            if mode == 1 && round_number == 0 {
+            if mode == program_hashing_mode && round_number == 0 {
                 let compressed_chunk = EvalArg::compute_terminal(
                     &rate_registers(row),
                     EvalArg::default_initial(),
@@ -1643,7 +1749,7 @@ impl HashTable {
                     + compressed_digest;
             }
 
-            if !is_padding_row && round_number == 0 {
+            if mode != padding_mode && round_number == 0 {
                 let compressed_row: XFieldElement = rate_registers(row)
                     .iter()
                     .zip_eq(state_weights.iter())
@@ -1665,7 +1771,7 @@ impl HashTable {
                 }
             }
 
-            if !is_padding_row && round_number != NUM_ROUNDS as u64 {
+            if mode != padding_mode && round_number != NUM_ROUNDS as u64 {
                 cascade_state_0_highest_log_derivative +=
                     log_derivative_summand(row, State0HighestLkIn, State0HighestLkOut);
                 cascade_state_0_mid_high_log_derivative +=
