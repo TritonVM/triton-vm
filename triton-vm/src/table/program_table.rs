@@ -47,6 +47,8 @@ impl ExtProgramTable {
     pub fn initial_constraints(
         circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
+        let challenge = |c| circuit_builder.challenge(c);
+        let x_constant = |xfe| circuit_builder.x_constant(xfe);
         let base_row = |col: ProgramBaseTableColumn| {
             circuit_builder.input(BaseRow(col.master_base_table_index()))
         };
@@ -55,23 +57,41 @@ impl ExtProgramTable {
         };
 
         let address = base_row(Address);
+        let instruction = base_row(Instruction);
         let absorb_count = base_row(AbsorbCount);
         let is_hash_input_padding = base_row(IsHashInputPadding);
         let instruction_lookup_log_derivative = ext_row(InstructionLookupServerLogDerivative);
+        let prepare_chunk_running_evaluation = ext_row(PrepareChunkRunningEvaluation);
+        let send_chunk_running_evaluation = ext_row(SendChunkRunningEvaluation);
+
+        let lookup_arg_initial = x_constant(LookupArg::default_initial());
+        let eval_arg_initial = x_constant(EvalArg::default_initial());
+
+        let program_attestation_prepare_chunk_indeterminate =
+            challenge(ProgramAttestationPrepareChunkIndeterminate);
 
         let first_address_is_zero = address;
         let absorb_count_is_zero = absorb_count;
         let hash_input_padding_indicator_is_zero = is_hash_input_padding;
 
         let instruction_lookup_log_derivative_is_initialized_correctly =
-            instruction_lookup_log_derivative
-                - circuit_builder.x_constant(LookupArg::default_initial());
+            instruction_lookup_log_derivative - lookup_arg_initial;
+
+        let prepare_chunk_running_evaluation_has_absorbed_first_instruction =
+            prepare_chunk_running_evaluation
+                - eval_arg_initial.clone() * program_attestation_prepare_chunk_indeterminate
+                - instruction;
+
+        let send_chunk_running_evaluation_is_default_initial =
+            send_chunk_running_evaluation - eval_arg_initial;
 
         vec![
             first_address_is_zero,
             absorb_count_is_zero,
             hash_input_padding_indicator_is_zero,
             instruction_lookup_log_derivative_is_initialized_correctly,
+            prepare_chunk_running_evaluation_has_absorbed_first_instruction,
+            send_chunk_running_evaluation_is_default_initial,
         ]
     }
 
@@ -133,6 +153,9 @@ impl ExtProgramTable {
         let one = constant(1);
         let rate = constant(StarkHasher::RATE.try_into().unwrap());
 
+        let prepare_chunk_indeterminate = challenge(ProgramAttestationPrepareChunkIndeterminate);
+        let send_chunk_indeterminate = challenge(ProgramAttestationSendChunkIndeterminate);
+
         let address = current_base_row(Address);
         let instruction = current_base_row(Instruction);
         let lookup_multiplicity = current_base_row(LookupMultiplicity);
@@ -141,13 +164,18 @@ impl ExtProgramTable {
         let is_hash_input_padding = current_base_row(IsHashInputPadding);
         let is_table_padding = current_base_row(IsTablePadding);
         let log_derivative = current_ext_row(InstructionLookupServerLogDerivative);
+        let prepare_chunk_running_evaluation = current_ext_row(PrepareChunkRunningEvaluation);
+        let send_chunk_running_evaluation = current_ext_row(SendChunkRunningEvaluation);
 
         let address_next = next_base_row(Address);
         let instruction_next = next_base_row(Instruction);
         let absorb_count_next = next_base_row(AbsorbCount);
+        let max_minus_absorb_count_inv_next = next_base_row(MaxMinusAbsorbCountInv);
         let is_hash_input_padding_next = next_base_row(IsHashInputPadding);
         let is_table_padding_next = next_base_row(IsTablePadding);
         let log_derivative_next = next_ext_row(InstructionLookupServerLogDerivative);
+        let prepare_chunk_running_evaluation_next = next_ext_row(PrepareChunkRunningEvaluation);
+        let send_chunk_running_evaluation_next = next_ext_row(SendChunkRunningEvaluation);
 
         let address_increases_by_one = address_next - (address.clone() + one.clone());
         let is_table_padding_is_0_or_remains_unchanged =
@@ -158,7 +186,7 @@ impl ExtProgramTable {
                 * (rate.clone() - one.clone() - absorb_count.clone()))
             * absorb_count_next.clone()
             + max_minus_absorb_count_inv.clone()
-                * (absorb_count_next - absorb_count.clone() - one.clone());
+                * (absorb_count_next.clone() - absorb_count.clone() - one.clone());
 
         let hash_input_indicator_is_0_or_remains_unchanged =
             is_hash_input_padding.clone() * (is_hash_input_padding_next.clone() - one.clone());
@@ -170,23 +198,59 @@ impl ExtProgramTable {
         let hash_input_padding_is_0_after_the_first_1 =
             is_hash_input_padding.clone() * instruction_next.clone();
 
+        let next_row_is_table_padding_row = is_table_padding_next.clone() - one.clone();
         let table_padding_starts_when_hash_input_padding_is_active_and_absorb_count_is_zero =
             is_hash_input_padding.clone()
-                * (one.clone() - max_minus_absorb_count_inv * (rate - one.clone() - absorb_count))
-                * (is_table_padding_next - one.clone());
+                * (one.clone()
+                    - max_minus_absorb_count_inv.clone()
+                        * (rate.clone() - one.clone() - absorb_count.clone()))
+                * next_row_is_table_padding_row.clone();
 
         let log_derivative_remains = log_derivative_next.clone() - log_derivative.clone();
         let compressed_row = challenge(ProgramAddressWeight) * address
             + challenge(ProgramInstructionWeight) * instruction
-            + challenge(ProgramNextInstructionWeight) * instruction_next;
+            + challenge(ProgramNextInstructionWeight) * instruction_next.clone();
 
         let indeterminate = challenge(InstructionLookupIndeterminate);
         let log_derivative_updates = (log_derivative_next - log_derivative)
             * (indeterminate - compressed_row)
             - lookup_multiplicity;
         let log_derivative_updates_if_and_only_if_not_a_padding_row =
-            (one - is_hash_input_padding.clone()) * log_derivative_updates
+            (one.clone() - is_hash_input_padding.clone()) * log_derivative_updates
                 + is_hash_input_padding * log_derivative_remains;
+
+        let prepare_chunk_running_evaluation_absorbs_next_instruction =
+            prepare_chunk_running_evaluation_next.clone()
+                - prepare_chunk_indeterminate.clone() * prepare_chunk_running_evaluation
+                - instruction_next.clone();
+        let prepare_chunk_running_evaluation_resets_and_absorbs_next_instruction =
+            prepare_chunk_running_evaluation_next.clone()
+                - prepare_chunk_indeterminate
+                - instruction_next;
+        let absorb_count_is_max = rate.clone() - one.clone() - absorb_count.clone();
+        let absorb_count_is_not_max =
+            one.clone() - max_minus_absorb_count_inv * (rate.clone() - one.clone() - absorb_count);
+        let prepare_chunk_running_evaluation_resets_every_rate_rows_and_absorbs_next_instruction =
+            absorb_count_is_max * prepare_chunk_running_evaluation_absorbs_next_instruction
+                + absorb_count_is_not_max
+                    * prepare_chunk_running_evaluation_resets_and_absorbs_next_instruction;
+
+        let send_chunk_running_evaluation_absorbs_next_chunk = send_chunk_running_evaluation_next
+            .clone()
+            - send_chunk_indeterminate * send_chunk_running_evaluation.clone()
+            - prepare_chunk_running_evaluation_next;
+        let send_chunk_running_evaluation_does_not_change =
+            send_chunk_running_evaluation_next - send_chunk_running_evaluation;
+        let absorb_count_next_is_max = rate - one.clone() - absorb_count_next;
+        let absorb_count_next_is_not_max =
+            one - max_minus_absorb_count_inv_next * absorb_count_next_is_max.clone();
+
+        let send_chunk_running_eval_absorbs_chunk_iff_absorb_count_next_is_max_and_not_padding_row =
+            send_chunk_running_evaluation_absorbs_next_chunk
+                * next_row_is_table_padding_row
+                * absorb_count_next_is_not_max
+                + send_chunk_running_evaluation_does_not_change.clone() * is_table_padding_next
+                + send_chunk_running_evaluation_does_not_change * absorb_count_next_is_max;
 
         vec![
             address_increases_by_one,
@@ -197,6 +261,8 @@ impl ExtProgramTable {
             hash_input_padding_is_0_after_the_first_1,
             table_padding_starts_when_hash_input_padding_is_active_and_absorb_count_is_zero,
             log_derivative_updates_if_and_only_if_not_a_padding_row,
+            prepare_chunk_running_evaluation_resets_every_rate_rows_and_absorbs_next_instruction,
+            send_chunk_running_eval_absorbs_chunk_iff_absorb_count_next_is_max_and_not_padding_row,
         ]
     }
 
@@ -208,12 +274,20 @@ impl ExtProgramTable {
             circuit_builder.input(BaseRow(col.master_base_table_index()))
         };
 
-        let one = constant(1);
+        let absorb_count = base_row(AbsorbCount);
         let is_hash_input_padding = base_row(IsHashInputPadding);
+        let is_table_padding = base_row(IsTablePadding);
 
-        let hash_input_padding_is_one = is_hash_input_padding - one;
+        let hash_input_padding_is_one = is_hash_input_padding - constant(1);
 
-        vec![hash_input_padding_is_one]
+        let max_absorb_count = StarkHasher::RATE as u64 - 1;
+        let absorb_count_is_max_or_row_is_padding_row =
+            (absorb_count - constant(max_absorb_count)) * (is_table_padding - constant(1));
+
+        vec![
+            hash_input_padding_is_one,
+            absorb_count_is_max_or_row_is_padding_row,
+        ]
     }
 }
 
