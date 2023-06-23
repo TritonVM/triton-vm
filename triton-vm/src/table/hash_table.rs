@@ -98,10 +98,13 @@ impl ExtHashTable {
         let running_evaluation_hash_input = ext_row(HashInputRunningEvaluation);
         let running_evaluation_hash_digest = ext_row(HashDigestRunningEvaluation);
         let running_evaluation_sponge = ext_row(SpongeRunningEvaluation);
+        let running_evaluation_receive_chunk = ext_row(ReceiveChunkRunningEvaluation);
 
         let cascade_indeterminate = challenge(HashCascadeLookupIndeterminate);
         let look_in_weight = challenge(HashCascadeLookInWeight);
         let look_out_weight = challenge(HashCascadeLookOutWeight);
+        let prepare_chunk_indeterminate = challenge(ProgramAttestationPrepareChunkIndeterminate);
+        let receive_chunk_indeterminate = challenge(ProgramAttestationSendChunkIndeterminate);
 
         // First chunk of the program is received correctly. Relates to program attestation.
         let state_0 = Self::re_compose_16_bit_limbs(
@@ -132,8 +135,7 @@ impl ExtHashTable {
             base_row(State3MidLowLkIn),
             base_row(State3LowestLkIn),
         );
-
-        let state = [
+        let state_rate_part: [_; RATE] = [
             state_0,
             state_1,
             state_2,
@@ -145,24 +147,15 @@ impl ExtHashTable {
             base_row(State8),
             base_row(State9),
         ];
-
-        let state_weights = [
-            HashStateWeight0,
-            HashStateWeight1,
-            HashStateWeight2,
-            HashStateWeight3,
-            HashStateWeight4,
-            HashStateWeight5,
-            HashStateWeight6,
-            HashStateWeight7,
-            HashStateWeight8,
-            HashStateWeight9,
-        ];
-        let _compressed_row: ConstraintCircuitMonad<_> = state_weights
+        let compressed_chunk = state_rate_part
             .into_iter()
-            .zip_eq(state.into_iter())
-            .map(|(weight, state)| challenge(weight) * state)
-            .sum();
+            .fold(running_evaluation_initial.clone(), |acc, state_element| {
+                acc * prepare_chunk_indeterminate.clone() + state_element
+            });
+        let running_evaluation_receive_chunk_is_initialized_correctly =
+            running_evaluation_receive_chunk
+                - receive_chunk_indeterminate * running_evaluation_initial.clone()
+                - compressed_chunk;
 
         // The lookup arguments with the Cascade Table for the S-Boxes are initialized correctly.
         let cascade_log_derivative_init_circuit =
@@ -193,6 +186,7 @@ impl ExtHashTable {
             running_evaluation_hash_input_is_default_initial,
             running_evaluation_hash_digest_is_default_initial,
             running_evaluation_sponge_is_default_initial,
+            running_evaluation_receive_chunk_is_initialized_correctly,
             cascade_log_derivative_init_circuit(
                 State0HighestLkIn,
                 State0HighestLkOut,
@@ -570,6 +564,10 @@ impl ExtHashTable {
             circuit_builder.input(NextExtRow(column_idx.master_ext_table_index()))
         };
 
+        let running_evaluation_initial = circuit_builder.x_constant(EvalArg::default_initial());
+
+        let prepare_chunk_indeterminate = challenge(ProgramAttestationPrepareChunkIndeterminate);
+        let receive_chunk_indeterminate = challenge(ProgramAttestationSendChunkIndeterminate);
         let compress_program_digest_indeterminate = challenge(CompressProgramDigestIndeterminate);
         let expected_program_digest = challenge(CompressedProgramDigest);
         let hash_input_eval_indeterminate = challenge(HashInputIndeterminate);
@@ -579,6 +577,7 @@ impl ExtHashTable {
         let mode = current_base_row(Mode);
         let ci = current_base_row(CI);
         let round_number = current_base_row(RoundNumber);
+        let running_evaluation_receive_chunk = current_ext_row(ReceiveChunkRunningEvaluation);
         let running_evaluation_hash_input = current_ext_row(HashInputRunningEvaluation);
         let running_evaluation_hash_digest = current_ext_row(HashDigestRunningEvaluation);
         let running_evaluation_sponge = current_ext_row(SpongeRunningEvaluation);
@@ -586,6 +585,7 @@ impl ExtHashTable {
         let mode_next = next_base_row(Mode);
         let ci_next = next_base_row(CI);
         let round_number_next = next_base_row(RoundNumber);
+        let running_evaluation_receive_chunk_next = next_ext_row(ReceiveChunkRunningEvaluation);
         let running_evaluation_hash_input_next = next_ext_row(HashInputRunningEvaluation);
         let running_evaluation_hash_digest_next = next_ext_row(HashDigestRunningEvaluation);
         let running_evaluation_sponge_next = next_ext_row(SpongeRunningEvaluation);
@@ -671,18 +671,11 @@ impl ExtHashTable {
             * (round_number.clone() - constant(NUM_ROUNDS as u64))
             * (round_number_next.clone() - round_number.clone() - constant(1));
 
-        // compute the terminal of the evaluation argument, i.e., compress the digest
-        let program_digest = [
-            state_current[0].clone(),
-            state_current[1].clone(),
-            state_current[2].clone(),
-            state_current[3].clone(),
-            state_current[4].clone(),
-        ];
-        let compressed_digest = program_digest.into_iter().fold(
-            circuit_builder.x_constant(EvalArg::default_initial()),
+        // compress the digest by computing the terminal of an evaluation argument
+        let compressed_digest = state_current[..DIGEST_LENGTH].iter().fold(
+            running_evaluation_initial.clone(),
             |acc, digest_element| {
-                acc * compress_program_digest_indeterminate.clone() + digest_element
+                acc * compress_program_digest_indeterminate.clone() + digest_element.clone()
             },
         );
         let if_mode_is_1_and_next_mode_is_not_1_then_current_digest_is_expected_program_digest =
@@ -713,13 +706,15 @@ impl ExtHashTable {
                 * (mode_next.clone() - constant(0));
 
         let if_mode_is_0_then_mode_next_is_0 =
-            Self::mode_deselector(circuit_builder, &mode, 0) * (mode_next - constant(0));
+            Self::mode_deselector(circuit_builder, &mode, 0) * (mode_next.clone() - constant(0));
 
-        // copy capacity between rounds with index 5 and 0 if instruction is “absorb”
         let round_number_next_is_not_0 =
             Self::round_number_deselector(circuit_builder, &round_number_next, 0);
         let round_number_next_is_0 = round_number_next.clone();
 
+        // copy capacity between rows with
+        //  - mode_next == 1 (program hashing) and round_next == 0 and
+        //  - mode_next == 2 (sponge section) and round_next == 0 and ci_next == absorb
         let difference_of_capacity_registers = state_current[RATE..]
             .iter()
             .zip_eq(state_next[RATE..].iter())
@@ -730,13 +725,14 @@ impl ExtHashTable {
             .zip_eq(difference_of_capacity_registers)
             .map(|(weight, state_difference)| weight.clone() * state_difference)
             .sum();
-        let if_round_number_next_is_0_and_ci_next_is_absorb_then_capacity_doesnt_change =
-            round_number_next_is_not_0.clone()
-                * ci_next.clone()
-                * (ci_next.clone() - opcode_hash.clone())
-                * (ci_next.clone() - opcode_absorb_init.clone())
-                * (ci_next.clone() - opcode_squeeze.clone())
-                * randomized_sum_of_capacity_differences;
+        let capacity_doesnt_change_in_mode_1_and_2_if_absorbing_starts = round_number_next_is_not_0
+            .clone()
+            * mode_next.clone()
+            * (mode_next.clone() - constant(3))
+            * (ci_next.clone() - opcode_hash.clone())
+            * (ci_next.clone() - opcode_absorb_init.clone())
+            * (ci_next.clone() - opcode_squeeze.clone())
+            * randomized_sum_of_capacity_differences;
 
         // copy entire state between rounds with index 5 and 0 if instruction is “squeeze”
         let difference_of_state_registers = state_current
@@ -836,11 +832,29 @@ impl ExtHashTable {
                 + if_round_no_next_is_not_0_then_running_evaluation_sponge_absorb_remains
                 + if_ci_next_is_not_spongy_then_running_evaluation_sponge_absorb_remains;
 
-        // lookup arguments
+        // program attestation: absorb RATE instructions if in the right mode on the right row
+        let compressed_chunk = state_next[..RATE]
+            .iter()
+            .fold(running_evaluation_initial, |acc, rate_element| {
+                acc * prepare_chunk_indeterminate.clone() + rate_element.clone()
+            });
+        let receive_chunk_running_evaluation_absorbs_chunk_of_instructions =
+            running_evaluation_receive_chunk_next.clone()
+                - receive_chunk_indeterminate * running_evaluation_receive_chunk.clone()
+                - compressed_chunk;
+        let receive_chunk_running_evaluation_remains =
+            running_evaluation_receive_chunk_next - running_evaluation_receive_chunk;
+        let receive_chunk_of_instructions_iff_next_mode_is_1_and_next_round_number_is_0 =
+            Self::round_number_deselector(circuit_builder, &round_number_next, 0)
+                * Self::mode_deselector(circuit_builder, &mode_next, 1)
+                * receive_chunk_running_evaluation_absorbs_chunk_of_instructions
+                + round_number_next * receive_chunk_running_evaluation_remains.clone()
+                + (mode_next.clone() - constant(1)) * receive_chunk_running_evaluation_remains;
 
         let constraints = vec![
             round_number_is_0_through_4_or_round_number_next_is_0,
             next_mode_is_padding_mode_or_round_number_is_5_or_increments_by_one,
+            receive_chunk_of_instructions_iff_next_mode_is_1_and_next_round_number_is_0,
             if_mode_is_1_and_next_mode_is_not_1_then_current_digest_is_expected_program_digest,
             if_mode_is_1_and_next_mode_is_2_then_ci_next_is_absorb_init,
             if_round_number_is_not_5_then_ci_doesnt_change,
@@ -848,7 +862,7 @@ impl ExtHashTable {
             if_mode_is_2_then_mode_next_is_2_3_or_0,
             if_mode_is_3_then_mode_next_is_3_or_0,
             if_mode_is_0_then_mode_next_is_0,
-            if_round_number_next_is_0_and_ci_next_is_absorb_then_capacity_doesnt_change,
+            capacity_doesnt_change_in_mode_1_and_2_if_absorbing_starts,
             if_round_number_next_is_0_and_ci_next_is_squeeze_then_state_doesnt_change,
             running_evaluation_hash_input_is_updated_correctly,
             running_evaluation_hash_digest_is_updated_correctly,
@@ -1179,10 +1193,70 @@ impl ExtHashTable {
     }
 
     pub fn terminal_constraints(
-        _circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
+        circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
-        // no more constraints
-        vec![]
+        let challenge = |c| circuit_builder.challenge(c);
+        let constant = |c: u64| circuit_builder.b_constant(c.into());
+        let base_row = |column_idx: HashBaseTableColumn| {
+            circuit_builder.input(BaseRow(column_idx.master_base_table_index()))
+        };
+
+        let state_0 = Self::re_compose_16_bit_limbs(
+            circuit_builder,
+            base_row(State0HighestLkIn),
+            base_row(State0MidHighLkIn),
+            base_row(State0MidLowLkIn),
+            base_row(State0LowestLkIn),
+        );
+        let state_1 = Self::re_compose_16_bit_limbs(
+            circuit_builder,
+            base_row(State1HighestLkIn),
+            base_row(State1MidHighLkIn),
+            base_row(State1MidLowLkIn),
+            base_row(State1LowestLkIn),
+        );
+        let state_2 = Self::re_compose_16_bit_limbs(
+            circuit_builder,
+            base_row(State2HighestLkIn),
+            base_row(State2MidHighLkIn),
+            base_row(State2MidLowLkIn),
+            base_row(State2LowestLkIn),
+        );
+        let state_3 = Self::re_compose_16_bit_limbs(
+            circuit_builder,
+            base_row(State3HighestLkIn),
+            base_row(State3MidHighLkIn),
+            base_row(State3MidLowLkIn),
+            base_row(State3LowestLkIn),
+        );
+        let state_4 = base_row(State4);
+
+        let mode = base_row(Mode);
+        let round_number = base_row(RoundNumber);
+
+        let compress_program_digest_indeterminate = challenge(CompressProgramDigestIndeterminate);
+        let expected_program_digest = challenge(CompressedProgramDigest);
+
+        let max_round_number = constant(NUM_ROUNDS as u64);
+
+        let program_digest = [state_0, state_1, state_2, state_3, state_4];
+        let compressed_digest = program_digest.into_iter().fold(
+            circuit_builder.x_constant(EvalArg::default_initial()),
+            |acc, digest_element| {
+                acc * compress_program_digest_indeterminate.clone() + digest_element
+            },
+        );
+        let if_mode_is_1_then_current_digest_is_expected_program_digest =
+            Self::mode_deselector(circuit_builder, &mode, 1)
+                * (compressed_digest - expected_program_digest);
+
+        let if_mode_is_not_0_then_round_number_is_max_round_number =
+            mode * (round_number - max_round_number);
+
+        vec![
+            if_mode_is_1_then_current_digest_is_expected_program_digest,
+            if_mode_is_not_0_then_round_number_is_max_round_number,
+        ]
     }
 }
 
