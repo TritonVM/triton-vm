@@ -47,15 +47,17 @@ pub enum ProgramBaseTableColumn {
     /// The index in the vector of length [`Rate`] that is to be absorbed in the Sponge
     /// in order to compute the program's digest.
     /// In other words:
-    /// [`Address`](ProgramBaseTableColumn::Address) modulo [`Rate`].
+    /// [`Address`] modulo [`Rate`].
     ///
+    /// [`Address`]: ProgramBaseTableColumn::Address
     /// [`Rate`]: twenty_first::shared_math::tip5::RATE
     AbsorbCount,
 
-    /// The inverse-or-zero of [`AbsorbCount`](ProgramBaseTableColumn::AbsorbCount).
-    /// Helper variable guarantee [`AbsorbCount`]'s correct transition.
+    /// The inverse-or-zero of [`Rate`] - 1 - [`AbsorbCount`].
+    /// Helper variable to guarantee [`AbsorbCount`]'s correct transition.
     ///
     /// [`AbsorbCount`]: ProgramBaseTableColumn::AbsorbCount
+    /// [`Rate`]: twenty_first::shared_math::tip5::RATE
     MaxMinusAbsorbCountInv,
 
     /// Padding indicator for absorbing the program into the Sponge.

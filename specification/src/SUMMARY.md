@@ -25,6 +25,7 @@
     + [Contiguity of Memory-Pointer Regions](contiguity-of-memory-pointer-regions.md)
     + [Clock Jump Differences and Inner Sorting](clock-jump-differences-and-inner-sorting.md)
     + [Proof of Memory Consistency](proof-of-memory-consistency.md)
+- [Program Attestation](program-attestation.md)
 ---
 - [Index Sampling](index-sampling.md)
 - [Sum Check](sum-check.md)

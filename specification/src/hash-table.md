@@ -1,11 +1,12 @@
 # Hash Table
 
 The instruction `hash` hashes the OpStack's 10 top-most elements in one cycle.
-Similarly, the Sponge instructions `absorb_init`, `absorb`, and `squeeze` all complete in one cycle.
+Similarly, the Sponge instructions `absorb_init`, `absorb`, and `squeeze` also all complete in one cycle.
 The main processor achieves this by using a hash coprocessor.
 The Hash Table is part of the arithmetization of that coprocessor, the other two parts being the [Cascade Table](cascade-table.md) and the [Lookup Table](lookup-table.md).
+In addition to accelerating these [hashing instructions](instructions.md#hashing), the Hash Table helps with [program attestation](program-attestation.md) by hashing the [program](program-table.md).
 
-Instruction `hash` and the Sponge instructions `absorb_init`, `absorb`, and `squeeze` are quite similar.
+The arithmetization for instruction `hash`, the Sponge instructions `absorb_init`, `absorb`, and `squeeze`, and for program hashing are quite similar.
 The main differences are in updates to the `state` registers between executions of the pseudo-random permutation used in Triton VM, the permutation of [Tip5](https://eprint.iacr.org/2023/107.pdf).
 A summary of the four instructions' mechanics:
 
@@ -26,13 +27,36 @@ A summary of the four instructions' mechanics:
     1. overwrites the processor's stack registers `st0` through `st9` with the hash coprocessor's rate registers (`state0` through `state9`), and
     1. executes the 5 rounds of the Tip5 permutation.
 
-The Hash Table first records all Sponge instructions in the order the processor executed them.
-Then, the Hash Table records all `hash` instructions in the order the processor executed them.
-This allows the processor to execute `hash` instructions without affecting the Sponge's state.
+Program hashing happens in the initialization phase of Triton VM.
+The to-be-executed program has no control over it.
+Program hashing is mechanically identical to performing instruction `absorb` as often as is necessary to hash the entire program.
+A notable difference is the source of the to-be-absorbed elements:
+they come from program memory, not the processor (which is not running yet).
+Once all instructions have been absorbed, the resulting digest is checked against the publicly claimed digest.
 
-Note that `state0` through `state3`, corresponding to those states that are being split-and-looked-up in the Tip permutation, are not stored as a single field element.
+Due to the various similar but distinct tasks of the Hash Table, it has an explicit `mode` register.
+The four separate modes are `program_hashing`, `sponge`, `hash`, and `pad`, and they evolve in that order.
+Changing the mode is only possible when the permutation has been applied in full, _i.e._, when the round number is 5.
+Once mode `pad` is reached, it is not possible to change the mode anymore.
+It is not possible to skip mode `program_hashing`:
+the program is always hashed.
+Skipping any or all of the modes `sponge`, `hash`, or `pad` is possible in principle:
+
+- if no Sponge instructions are executed, mode `sponge` will be skipped,
+- if no `hash` instruction is executed, mode `hash` will be skipped, and
+- if the Hash Table does not require any padding, mode `pad` will be skipped.
+
+The distinct modes translate into distinct sections in the Hash Table, which are recorded in order:
+First, the entire Sponge's transition of hashing the program is recorded.
+Then, the Hash Table records all Sponge instructions in the order the processor executed them.
+Then, the Hash Table records all `hash` instructions in the order the processor executed them.
+Lastly, as many [padding](arithmetization.md#padding) rows as necessary are inserted.
+In total, this separation allows the processor to execute `hash` instructions without affecting the Sponge's state, and keeps [program hashing](program-attestation.md) independent from both.
+
+Note that `state0` through `state3`, corresponding to those states that are being split-and-looked-up in the Tip5 permutation, are not stored as a single field element.
 Instead, four limbs “highest”, “mid high”, “mid low”, and “lowest” are recorded in the Hash Table.
-This (basically) corresponds to storing the result of $\sigma(R \cdot \texttt{state_element})$, except that the limbs resulting from $\sigma$ are 16 bit wide, and hence, there are only 4 limbs;
+This (basically) corresponds to storing the result of $\sigma(R \cdot \texttt{state_element})$.
+In the Hash Table, the resulting limbs are 16 bit wide, and hence, there are only 4 limbs;
 the split into 8-bit limbs happens in the [Cascade Table](cascade-table.md).
 
 ## Base Columns
