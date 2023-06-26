@@ -84,7 +84,6 @@ pub struct ExtHashTable {}
 /// [sponge]: Self::Sponge
 /// [hash]: Self::Hash
 /// [pad]: Self::Pad
-#[repr(u32)]
 #[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro, Hash)]
 pub enum HashTableMode {
     /// The mode in which the [`Program`][program] is hashed. This is part of program attestation.
@@ -105,8 +104,12 @@ pub enum HashTableMode {
 
 impl From<HashTableMode> for u32 {
     fn from(value: HashTableMode) -> Self {
-        // safe cast due to the #[repr(u32)] attribute on HashTableMode
-        value as u32
+        match value {
+            HashTableMode::ProgramHashing => 1,
+            HashTableMode::Sponge => 2,
+            HashTableMode::Hash => 3,
+            HashTableMode::Pad => 0,
+        }
     }
 }
 
@@ -373,8 +376,9 @@ impl ExtHashTable {
         mode_to_select: HashTableMode,
     ) -> ConstraintCircuitMonad<II> {
         // To not subtract zero: some special casing.
-        let mode_with_discriminant_zero = HashTableMode::iter().get(0).unwrap();
-        match mode_to_select == mode_with_discriminant_zero {
+        let maybe_mode_with_discriminant_zero =
+            HashTableMode::iter().find(|&mode| u32::from(mode) == 0);
+        match Some(mode_to_select) == maybe_mode_with_discriminant_zero {
             true => mode_circuit_node.clone(),
             false => mode_circuit_node.clone() - circuit_builder.b_constant(mode_to_select.into()),
         }
@@ -390,14 +394,15 @@ impl ExtHashTable {
         let constant = |c: u64| circuit_builder.b_constant(c.into());
 
         // To not subtract zero from the first factor: some special casing.
-        let mode_with_discriminant_zero = HashTableMode::iter().get(0).unwrap();
-        let first_factor = match mode_to_deselect == mode_with_discriminant_zero {
+        let maybe_mode_with_discriminant_zero =
+            HashTableMode::iter().find(|&mode| u32::from(mode) == 0);
+        let first_factor = match Some(mode_to_deselect) == maybe_mode_with_discriminant_zero {
             true => constant(1),
             false => mode_circuit_node.clone(),
         };
 
         HashTableMode::iter()
-            .skip(1)
+            .filter(|&mode| u32::from(mode) != 0)
             .filter(|&mode| mode != mode_to_deselect)
             .map(|mode| mode_circuit_node.clone() - constant(mode.into()))
             .fold(first_factor, |accumulator, factor| accumulator * factor)
@@ -1852,6 +1857,8 @@ impl HashTable {
 
 #[cfg(test)]
 pub mod tests {
+    use std::collections::HashMap;
+
     use super::*;
 
     pub fn constraints_evaluate_to_zero(
@@ -1938,5 +1945,17 @@ pub mod tests {
         }
 
         true
+    }
+
+    #[test]
+    fn hash_table_mode_discriminant_is_unique_test() {
+        let mut discriminants_and_modes = HashMap::new();
+        for mode in HashTableMode::iter() {
+            let discriminant = u32::from(mode);
+            let maybe_entry = discriminants_and_modes.insert(discriminant, mode);
+            if let Some(entry) = maybe_entry {
+                panic!("Discriminant collision for {discriminant} between {entry} and {mode}.");
+            }
+        }
     }
 }
