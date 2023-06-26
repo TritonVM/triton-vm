@@ -375,13 +375,7 @@ impl ExtHashTable {
         mode_circuit_node: &ConstraintCircuitMonad<II>,
         mode_to_select: HashTableMode,
     ) -> ConstraintCircuitMonad<II> {
-        // To not subtract zero: some special casing.
-        let maybe_mode_with_discriminant_zero =
-            HashTableMode::iter().find(|&mode| u32::from(mode) == 0);
-        match Some(mode_to_select) == maybe_mode_with_discriminant_zero {
-            true => mode_circuit_node.clone(),
-            false => mode_circuit_node.clone() - circuit_builder.b_constant(mode_to_select.into()),
-        }
+        mode_circuit_node.clone() - circuit_builder.b_constant(mode_to_select.into())
     }
 
     /// A constraint circuit evaluating to zero if and only if the given `mode_circuit_node` is
@@ -392,20 +386,10 @@ impl ExtHashTable {
         mode_to_deselect: HashTableMode,
     ) -> ConstraintCircuitMonad<II> {
         let constant = |c: u64| circuit_builder.b_constant(c.into());
-
-        // To not subtract zero from the first factor: some special casing.
-        let maybe_mode_with_discriminant_zero =
-            HashTableMode::iter().find(|&mode| u32::from(mode) == 0);
-        let first_factor = match Some(mode_to_deselect) == maybe_mode_with_discriminant_zero {
-            true => constant(1),
-            false => mode_circuit_node.clone(),
-        };
-
         HashTableMode::iter()
-            .filter(|&mode| u32::from(mode) != 0)
             .filter(|&mode| mode != mode_to_deselect)
             .map(|mode| mode_circuit_node.clone() - constant(mode.into()))
-            .fold(first_factor, |accumulator, factor| accumulator * factor)
+            .fold(constant(1), |accumulator, factor| accumulator * factor)
     }
 
     pub fn consistency_constraints(
