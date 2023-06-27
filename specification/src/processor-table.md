@@ -1,11 +1,24 @@
 # Processor Table
 
+The Processor Table records all of Triton VM states during execution of a particular program.
+The states are recorded in chronological order.
+The first row is the initial state, the last (non-[padding](arithmetization.md#padding)) row is the terminal state, _i.e._, the state after having executed instruction `halt`.
+It is impossible to generate a valid proof if the instruction executed last is anything but `halt`.
+
+It is worth highlighting the initialization of the operational stack.
+Stack elements `st0` through `st10` are initially 0.
+However, stack elements `st11` through `st15`, _i.e._, the very bottom of the stack, are initialized with the hash digest of the program that is being executed.
+This is primarily useful for recursive verifiers: 
+they can compare their own program digest to the program digest of the proof they are verifying.
+This way, a recursive verifier can easily determine if they are actually recursing, or whether the proof they are checking was generated using an entirely different program.
+A more detailed explanation of the mechanics can be found on the page about [program attestation](program-attestation.md).
+
 ## Base Columns
 
 The processor consists of all registers defined in the [Instruction Set Architecture](isa.md).
 Each register is assigned a column in the processor table.
 
-## Extension Colums
+## Extension Columns
 
 The Processor Table has the following extension columns, corresponding to [Evaluation Arguments](evaluation-argument.md), [Permutation Arguments](permutation-argument.md), and [Lookup Arguments](lookup-argument.md):
 
@@ -71,11 +84,8 @@ However, in order to verify the correctness of `RunningEvaluationHashDigest`, th
 1. The operational stack element `st8` is 0.
 1. The operational stack element `st9` is 0.
 1. The operational stack element `st10` is 0.
-1. The operational stack element `st11` is 0.
-1. The operational stack element `st12` is 0.
-1. The operational stack element `st13` is 0.
-1. The operational stack element `st14` is 0.
-1. The operational stack element `st15` is 0.
+1. The [Evaluation Argument](evaluation-argument.md) of operational stack elements `st11` through `st15` under challenge 🥬 equals the corresponding terminal of the program digest.
+See [program attestation](program-attestation.md) for more details.
 1. The operational stack pointer `osp` is 16.
 1. The operational stack value `osv` is 0.
 1. The RAM pointer `ramp` is 0.

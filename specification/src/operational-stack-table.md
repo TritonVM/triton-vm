@@ -3,8 +3,11 @@
 The operational stack is where the program stores simple elementary operations, function arguments, and pointers to important objects.
 There are 16 registers (`st0` through `st15`) that the program can access directly.
 These registers correspond to the top of the stack.
-The rest of the operational stack is stored in a dedicated memory object called Operational Stack Underflow Memory.
+They are recorded in the [Processor Table](processor-table.md).
+
+The rest of the operational stack is stored in a dedicated memory object called “operational stack underflow memory”.
 It is initially empty.
+The evolution of the underflow memory is recorded in the Operational Stack Table.
 
 ## Base Columns
 
