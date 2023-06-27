@@ -583,15 +583,14 @@ impl ExtHashTable {
             let round_constant_column_circuit = base_row(round_constant_column);
             let mut round_constant_constraint_circuit = constant(0);
             for round_idx in 0..NUM_ROUNDS {
-                let round_constant_idx_for_current_row =
-                    NUM_ROUND_CONSTANTS * round_idx + round_constant_column_idx;
-                let round_constant_for_current_row =
-                    circuit_builder.b_constant(ROUND_CONSTANTS[round_constant_idx_for_current_row]);
+                let round_constants = HashTable::tip5_round_constants_by_round_number(round_idx);
+                let round_constant = round_constants[round_constant_column_idx];
+                let round_constant = circuit_builder.b_constant(round_constant);
                 let round_deselector_circuit =
                     Self::round_number_deselector(circuit_builder, &round_number, round_idx);
                 round_constant_constraint_circuit = round_constant_constraint_circuit
                     + round_deselector_circuit
-                        * (round_constant_column_circuit.clone() - round_constant_for_current_row);
+                        * (round_constant_column_circuit.clone() - round_constant);
             }
             constraints.push(round_constant_constraint_circuit);
         }
@@ -1557,9 +1556,8 @@ impl HashTable {
             column.fill(inverse_of_high_limbs);
         }
 
-        for (round_constant_idx, &round_constant) in
-            ROUND_CONSTANTS.iter().enumerate().take(NUM_ROUND_CONSTANTS)
-        {
+        let round_constants = Self::tip5_round_constants_by_round_number(0);
+        for (round_constant_idx, &round_constant) in round_constants.iter().enumerate() {
             let round_constant_column =
                 ExtHashTable::round_constant_column_by_index(round_constant_idx);
             let round_constant_column_idx = round_constant_column.base_table_index();
