@@ -26,10 +26,14 @@ That is, control is passed to the to-be-executed program only after the followin
 The padding follows [Tip5][tip5]'s rules for input of variable length[^input-pad].
 1. The padded instructions are copied to the [Hash Table](hash-table.md).
 1. The Hash Table computes the program's digest by iterating [Tip5][tip5] multiple times in Sponge mode.
-1. The computed digest is copied to the bottom of the [operational stack](registers.md), _i.e._, stack elements `st11` through `st15`.
+1. The program digest is copied to the bottom of the [operational stack](registers.md), _i.e._, stack elements `st11` through `st15`.
 
-The program digest is part of the generated proof.
-Since the [Hash Table](hash-table.md) is used to compute the program digest, integrity of the claimed program digest is verifiable.
+The program digest is part of the generated proof[^claim], and hence public.
+During proof verification, [AIR constraints in the Hash Table](hash-table.md#transition-constraints) establish that the claimed and the computed program digests are identical, and that the digest was computed integrally.
+This establishes verifiable integrity of the publicly claimed program digest.
+Below figure visualizes the interplay of tables and public data for proof verification.
+
+![](img/program-attestation.png)
 
 Notably, a program has access to the hash digest of _itself_.
 This is useful for recursive verification:
@@ -49,3 +53,6 @@ The distribution `$rand` is sampled from and the number of such statements deter
 [^input-pad]:
 Padding is one 1 followed by the minimal number of 0’s necessary to make the padded input length a multiple of the $\texttt{rate}$, which is 10.
 See also section 2.5 “Fixed-Length versus Variable-Length” in the [Tip5 paper][tip5].
+
+[^claim]:
+More specifically, of the _claim_, which itself is part of the proof.
