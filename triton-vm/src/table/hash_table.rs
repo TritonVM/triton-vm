@@ -103,8 +103,8 @@ pub enum HashTableMode {
 }
 
 impl From<HashTableMode> for u32 {
-    fn from(value: HashTableMode) -> Self {
-        match value {
+    fn from(mode: HashTableMode) -> Self {
+        match mode {
             HashTableMode::ProgramHashing => 1,
             HashTableMode::Sponge => 2,
             HashTableMode::Hash => 3,
@@ -114,15 +114,15 @@ impl From<HashTableMode> for u32 {
 }
 
 impl From<HashTableMode> for u64 {
-    fn from(value: HashTableMode) -> Self {
-        let value: u32 = value.into();
-        value as u64
+    fn from(mode: HashTableMode) -> Self {
+        let discriminant: u32 = mode.into();
+        discriminant as u64
     }
 }
 
 impl From<HashTableMode> for BFieldElement {
-    fn from(value: HashTableMode) -> Self {
-        BFieldElement::new(value.into())
+    fn from(mode: HashTableMode) -> Self {
+        BFieldElement::new(mode.into())
     }
 }
 
@@ -413,53 +413,50 @@ impl ExtHashTable {
         let ci_is_hash = ci.clone() - constant(Instruction::Hash.opcode() as u64);
         let ci_is_absorb_init = ci.clone() - constant(Instruction::AbsorbInit.opcode() as u64);
         let ci_is_absorb = ci.clone() - constant(Instruction::Absorb.opcode() as u64);
-        let ci_is_squeeze = ci.clone() - constant(Instruction::Squeeze.opcode() as u64);
+        let ci_is_squeeze = ci - constant(Instruction::Squeeze.opcode() as u64);
 
-        let mode_is_not_program_hashing =
-            Self::mode_deselector(circuit_builder, &mode, HashTableMode::ProgramHashing);
-        let mode_is_not_sponge =
-            Self::mode_deselector(circuit_builder, &mode, HashTableMode::Sponge);
         let mode_is_not_hash = Self::mode_deselector(circuit_builder, &mode, HashTableMode::Hash);
-        let mode_is_not_pad = Self::mode_deselector(circuit_builder, &mode, HashTableMode::Pad);
         let round_number_is_not_0 =
             Self::round_number_deselector(circuit_builder, &round_number, 0);
 
         let mode_is_a_valid_mode =
             Self::mode_deselector(circuit_builder, &mode, HashTableMode::Pad)
-                * (mode.clone() - constant(HashTableMode::Pad.into()));
+                * Self::select_mode(circuit_builder, &mode, HashTableMode::Pad);
 
-        let if_mode_is_program_hashing_then_ci_is_0 = mode_is_not_program_hashing * ci.clone();
+        let if_mode_is_not_sponge_then_ci_is_hash =
+            Self::select_mode(circuit_builder, &mode, HashTableMode::Sponge) * ci_is_hash.clone();
 
         let if_mode_is_sponge_then_ci_is_a_sponge_instruction =
-            mode_is_not_sponge * ci_is_absorb_init * ci_is_absorb.clone() * ci_is_squeeze.clone();
+            Self::mode_deselector(circuit_builder, &mode, HashTableMode::Sponge)
+                * ci_is_absorb_init
+                * ci_is_absorb.clone()
+                * ci_is_squeeze.clone();
 
-        let if_mode_is_hash_then_ci_is_hash = mode_is_not_hash.clone() * ci_is_hash.clone();
+        let if_padding_mode_then_round_number_is_0 =
+            Self::mode_deselector(circuit_builder, &mode, HashTableMode::Pad)
+                * round_number.clone();
 
-        let if_padding_mode_then_ci_is_0 = mode_is_not_pad.clone() * ci.clone();
-
-        let if_padding_mode_then_round_number_is_0 = mode_is_not_pad * round_number.clone();
-
-        let if_ci_is_hash_and_round_no_is_0_then_ =
+        let if_mode_is_hash_and_round_no_is_0_then_ =
             round_number_is_not_0.clone() * mode_is_not_hash;
-        let if_ci_is_hash_and_round_no_is_0_then_state_10_is_1 =
-            if_ci_is_hash_and_round_no_is_0_then_.clone() * (state10.clone() - constant(1));
-        let if_ci_is_hash_and_round_no_is_0_then_state_11_is_1 =
-            if_ci_is_hash_and_round_no_is_0_then_.clone() * (state11.clone() - constant(1));
-        let if_ci_is_hash_and_round_no_is_0_then_state_12_is_1 =
-            if_ci_is_hash_and_round_no_is_0_then_.clone() * (state12.clone() - constant(1));
-        let if_ci_is_hash_and_round_no_is_0_then_state_13_is_1 =
-            if_ci_is_hash_and_round_no_is_0_then_.clone() * (state13.clone() - constant(1));
-        let if_ci_is_hash_and_round_no_is_0_then_state_14_is_1 =
-            if_ci_is_hash_and_round_no_is_0_then_.clone() * (state14.clone() - constant(1));
-        let if_ci_is_hash_and_round_no_is_0_then_state_15_is_1 =
-            if_ci_is_hash_and_round_no_is_0_then_ * (state15.clone() - constant(1));
+        let if_mode_is_hash_and_round_no_is_0_then_state_10_is_1 =
+            if_mode_is_hash_and_round_no_is_0_then_.clone() * (state10.clone() - constant(1));
+        let if_mode_is_hash_and_round_no_is_0_then_state_11_is_1 =
+            if_mode_is_hash_and_round_no_is_0_then_.clone() * (state11.clone() - constant(1));
+        let if_mode_is_hash_and_round_no_is_0_then_state_12_is_1 =
+            if_mode_is_hash_and_round_no_is_0_then_.clone() * (state12.clone() - constant(1));
+        let if_mode_is_hash_and_round_no_is_0_then_state_13_is_1 =
+            if_mode_is_hash_and_round_no_is_0_then_.clone() * (state13.clone() - constant(1));
+        let if_mode_is_hash_and_round_no_is_0_then_state_14_is_1 =
+            if_mode_is_hash_and_round_no_is_0_then_.clone() * (state14.clone() - constant(1));
+        let if_mode_is_hash_and_round_no_is_0_then_state_15_is_1 =
+            if_mode_is_hash_and_round_no_is_0_then_ * (state15.clone() - constant(1));
 
         // It is possible to deselect for instruction `absorb_init` using the mode in addition
         // to deselecting for instructions `absorb` and `squeeze. However, the mode deselector has
-        // degree 3, but there are only 2 additional values for the current instruction that need
-        // to be de-selected: 0 and the opcode of `hash`. Hence, they are listed explicitly.
+        // degree 3, but there is only 1 additional value for the current instruction that need
+        // to be de-selected: the opcode of `hash`. Hence, the instructions are listed explicitly.
         let if_ci_is_absorb_init_and_round_no_is_0_then_ =
-            round_number_is_not_0 * ci * ci_is_hash * ci_is_absorb * ci_is_squeeze;
+            round_number_is_not_0 * ci_is_hash * ci_is_absorb * ci_is_squeeze;
         let if_ci_is_absorb_init_and_round_no_is_0_then_state_10_is_0 =
             if_ci_is_absorb_init_and_round_no_is_0_then_.clone() * state10;
         let if_ci_is_absorb_init_and_round_no_is_0_then_state_11_is_0 =
@@ -546,17 +543,15 @@ impl ExtHashTable {
 
         let mut constraints = vec![
             mode_is_a_valid_mode,
-            if_mode_is_program_hashing_then_ci_is_0,
+            if_mode_is_not_sponge_then_ci_is_hash,
             if_mode_is_sponge_then_ci_is_a_sponge_instruction,
-            if_mode_is_hash_then_ci_is_hash,
-            if_padding_mode_then_ci_is_0,
             if_padding_mode_then_round_number_is_0,
-            if_ci_is_hash_and_round_no_is_0_then_state_10_is_1,
-            if_ci_is_hash_and_round_no_is_0_then_state_11_is_1,
-            if_ci_is_hash_and_round_no_is_0_then_state_12_is_1,
-            if_ci_is_hash_and_round_no_is_0_then_state_13_is_1,
-            if_ci_is_hash_and_round_no_is_0_then_state_14_is_1,
-            if_ci_is_hash_and_round_no_is_0_then_state_15_is_1,
+            if_mode_is_hash_and_round_no_is_0_then_state_10_is_1,
+            if_mode_is_hash_and_round_no_is_0_then_state_11_is_1,
+            if_mode_is_hash_and_round_no_is_0_then_state_12_is_1,
+            if_mode_is_hash_and_round_no_is_0_then_state_13_is_1,
+            if_mode_is_hash_and_round_no_is_0_then_state_14_is_1,
+            if_mode_is_hash_and_round_no_is_0_then_state_15_is_1,
             if_ci_is_absorb_init_and_round_no_is_0_then_state_10_is_0,
             if_ci_is_absorb_init_and_round_no_is_0_then_state_11_is_0,
             if_ci_is_absorb_init_and_round_no_is_0_then_state_12_is_0,
@@ -790,10 +785,6 @@ impl ExtHashTable {
             Self::mode_deselector(circuit_builder, &mode, HashTableMode::Pad)
                 * Self::select_mode(circuit_builder, &mode_next, HashTableMode::Pad);
 
-        let round_number_next_is_not_0 =
-            Self::round_number_deselector(circuit_builder, &round_number_next, 0);
-        let round_number_next_is_0 = round_number_next.clone();
-
         // copy capacity between rows with
         //  - mode_next == program_hashing and round_next == 0 and
         //  - mode_next == sponge and round_next == 0 and ci_next == absorb
@@ -808,7 +799,7 @@ impl ExtHashTable {
             .map(|(weight, state_difference)| weight.clone() * state_difference)
             .sum();
         let capacity_doesnt_change_in_mode_program_hashing_and_sponge_if_absorbing_starts =
-            round_number_next_is_not_0.clone()
+            Self::round_number_deselector(circuit_builder, &round_number_next, 0)
                 * Self::select_mode(circuit_builder, &mode_next, HashTableMode::Pad)
                 * Self::select_mode(circuit_builder, &mode_next, HashTableMode::Hash)
                 * (ci_next.clone() - opcode_hash.clone())
@@ -828,8 +819,7 @@ impl ExtHashTable {
             .map(|(weight, state_difference)| weight.clone() * state_difference.clone())
             .sum();
         let if_round_number_next_is_0_and_ci_next_is_squeeze_then_state_doesnt_change =
-            round_number_next_is_not_0.clone()
-                * ci_next.clone()
+            Self::round_number_deselector(circuit_builder, &round_number_next, 0)
                 * (ci_next.clone() - opcode_hash.clone())
                 * (ci_next.clone() - opcode_absorb_init.clone())
                 * (ci_next.clone() - opcode_absorb.clone())
@@ -837,12 +827,8 @@ impl ExtHashTable {
 
         // Evaluation Arguments
 
-        // If (and only if) the row number in the next row is 0 and the current instruction in
-        // the next row is corresponds to `hash`, update running evaluation “hash input.”
-        let ci_next_is_not_hash = (ci_next.clone() - opcode_absorb_init.clone())
-            * ci_next.clone()
-            * (ci_next.clone() - opcode_absorb.clone())
-            * (ci_next.clone() - opcode_squeeze.clone());
+        // If (and only if) the row number in the next row is 0 and the mode in the next row is
+        // `hash`, update running evaluation “hash input.”
         let running_evaluation_hash_input_remains =
             running_evaluation_hash_input_next.clone() - running_evaluation_hash_input.clone();
         let tip5_input = state_next[..RATE].to_owned();
@@ -855,18 +841,18 @@ impl ExtHashTable {
         let running_evaluation_hash_input_updates = running_evaluation_hash_input_next
             - hash_input_eval_indeterminate * running_evaluation_hash_input
             - compressed_row_from_processor;
-        let running_evaluation_hash_input_is_updated_correctly = round_number_next_is_not_0.clone()
-            * ci_next_is_not_hash.clone()
-            * running_evaluation_hash_input_updates
-            + round_number_next_is_0.clone() * running_evaluation_hash_input_remains.clone()
-            + (ci_next.clone() - opcode_hash.clone()) * running_evaluation_hash_input_remains;
+        let running_evaluation_hash_input_is_updated_correctly =
+            Self::round_number_deselector(circuit_builder, &round_number_next, 0)
+                * Self::mode_deselector(circuit_builder, &mode_next, HashTableMode::Hash)
+                * running_evaluation_hash_input_updates
+                + round_number_next.clone() * running_evaluation_hash_input_remains.clone()
+                + Self::select_mode(circuit_builder, &mode_next, HashTableMode::Hash)
+                    * running_evaluation_hash_input_remains;
 
         // If (and only if) the row number in the next row is NUM_ROUNDS and the current instruction
         // in the next row corresponds to `hash`, update running evaluation “hash digest.”
         let round_number_next_is_num_rounds =
             round_number_next.clone() - constant(NUM_ROUNDS as u64);
-        let round_number_next_is_not_num_rounds =
-            Self::round_number_deselector(circuit_builder, &round_number_next, NUM_ROUNDS);
         let running_evaluation_hash_digest_remains =
             running_evaluation_hash_digest_next.clone() - running_evaluation_hash_digest.clone();
         let hash_digest = state_next[..DIGEST_LENGTH].to_owned();
@@ -879,11 +865,12 @@ impl ExtHashTable {
             - hash_digest_eval_indeterminate * running_evaluation_hash_digest
             - compressed_row_hash_digest;
         let running_evaluation_hash_digest_is_updated_correctly =
-            round_number_next_is_not_num_rounds
-                * ci_next_is_not_hash
+            Self::round_number_deselector(circuit_builder, &round_number_next, NUM_ROUNDS)
+                * Self::mode_deselector(circuit_builder, &mode_next, HashTableMode::Hash)
                 * running_evaluation_hash_digest_updates
                 + round_number_next_is_num_rounds * running_evaluation_hash_digest_remains.clone()
-                + (ci_next.clone() - opcode_hash.clone()) * running_evaluation_hash_digest_remains;
+                + Self::select_mode(circuit_builder, &mode_next, HashTableMode::Hash)
+                    * running_evaluation_hash_digest_remains;
 
         // The running evaluation for “Sponge” updates correctly.
         let compressed_row_next = state_weights[..RATE]
@@ -897,15 +884,14 @@ impl ExtHashTable {
             - challenge(HashCIWeight) * ci_next.clone()
             - compressed_row_next;
         let if_round_no_next_0_and_ci_next_is_spongy_then_running_eval_sponge_updates =
-            round_number_next_is_not_0
-                * ci_next.clone()
+            Self::round_number_deselector(circuit_builder, &round_number_next, 0)
                 * (ci_next.clone() - opcode_hash)
                 * running_evaluation_sponge_has_accumulated_next_row;
 
         let running_evaluation_sponge_absorb_remains =
             running_evaluation_sponge_next - running_evaluation_sponge;
         let if_round_no_next_is_not_0_then_running_evaluation_sponge_absorb_remains =
-            round_number_next_is_0 * running_evaluation_sponge_absorb_remains.clone();
+            round_number_next.clone() * running_evaluation_sponge_absorb_remains.clone();
         let if_ci_next_is_not_spongy_then_running_evaluation_sponge_absorb_remains =
             (ci_next.clone() - opcode_absorb_init)
                 * (ci_next.clone() - opcode_absorb)
@@ -1570,6 +1556,11 @@ impl HashTable {
         let mode_column_slice_info = s![hash_table_length.., mode_column_index];
         let mut mode_column = hash_table.slice_mut(mode_column_slice_info);
         mode_column.fill(HashTableMode::Pad.into());
+
+        let instruction_column_index = CI.base_table_index();
+        let instruction_column_slice_info = s![hash_table_length.., instruction_column_index];
+        let mut instruction_column = hash_table.slice_mut(instruction_column_slice_info);
+        instruction_column.fill(Instruction::Hash.opcode_b());
     }
 
     pub fn extend(
@@ -1689,6 +1680,14 @@ impl HashTable {
             challenges.get_challenge(HashStateWeight9),
         ];
 
+        let compressed_row = |row: ArrayView1<BFieldElement>| -> XFieldElement {
+            rate_registers(row)
+                .iter()
+                .zip_eq(state_weights.iter())
+                .map(|(&state, &weight)| weight * state)
+                .sum()
+        };
+
         let cascade_look_in_weight = challenges.get_challenge(HashCascadeLookInWeight);
         let cascade_look_out_weight = challenges.get_challenge(HashCascadeLookOutWeight);
 
@@ -1702,30 +1701,42 @@ impl HashTable {
                 compressed_elements.inverse()
             };
 
-        let opcode_hash = Instruction::Hash.opcode_b();
-        let opcode_absorb_init = Instruction::AbsorbInit.opcode_b();
-        let opcode_absorb = Instruction::Absorb.opcode_b();
-        let opcode_squeeze = Instruction::Squeeze.opcode_b();
-        let program_hashing_mode = HashTableMode::ProgramHashing.into();
-        let padding_mode = HashTableMode::Pad.into();
+        let max_round_number = (NUM_ROUNDS as u64).into();
+        let mode_program_hashing = HashTableMode::ProgramHashing.into();
+        let mode_sponge = HashTableMode::Sponge.into();
+        let mode_hash = HashTableMode::Hash.into();
+        let mode_pad = HashTableMode::Pad.into();
 
         for row_idx in 0..base_table.nrows() {
             let row = base_table.row(row_idx);
             let mode = row[Mode.base_table_index()];
             let current_instruction = row[CI.base_table_index()];
-            let round_number = row[RoundNumber.base_table_index()].value();
+            let round_number = row[RoundNumber.base_table_index()];
 
-            if mode == program_hashing_mode && round_number == 0 {
-                let compressed_chunk = EvalArg::compute_terminal(
+            if mode == mode_program_hashing && round_number.is_zero() {
+                let compressed_chunk_of_instructions = EvalArg::compute_terminal(
                     &rate_registers(row),
                     EvalArg::default_initial(),
                     challenges.get_challenge(ProgramAttestationPrepareChunkIndeterminate),
                 );
-                receive_chunk_running_evaluation =
-                    receive_chunk_running_evaluation * send_chunk_indeterminate + compressed_chunk;
+                receive_chunk_running_evaluation = receive_chunk_running_evaluation
+                    * send_chunk_indeterminate
+                    + compressed_chunk_of_instructions
             }
 
-            if round_number == NUM_ROUNDS as u64 && current_instruction == opcode_hash {
+            if mode == mode_sponge && round_number.is_zero() {
+                sponge_running_evaluation = sponge_running_evaluation * sponge_eval_indeterminate
+                    + ci_weight * current_instruction
+                    + compressed_row(row)
+            }
+
+            if mode == mode_hash && round_number.is_zero() {
+                hash_input_running_evaluation = hash_input_running_evaluation
+                    * hash_input_eval_indeterminate
+                    + compressed_row(row)
+            }
+
+            if mode == mode_hash && round_number == max_round_number {
                 let compressed_digest: XFieldElement = rate_registers(row)[..DIGEST_LENGTH]
                     .iter()
                     .zip_eq(state_weights[..DIGEST_LENGTH].iter())
@@ -1733,32 +1744,10 @@ impl HashTable {
                     .sum();
                 hash_digest_running_evaluation = hash_digest_running_evaluation
                     * hash_digest_eval_indeterminate
-                    + compressed_digest;
+                    + compressed_digest
             }
 
-            if mode != padding_mode && round_number == 0 {
-                let compressed_row: XFieldElement = rate_registers(row)
-                    .iter()
-                    .zip_eq(state_weights.iter())
-                    .map(|(&state, &weight)| weight * state)
-                    .sum();
-                if current_instruction == opcode_hash {
-                    hash_input_running_evaluation = hash_input_running_evaluation
-                        * hash_input_eval_indeterminate
-                        + compressed_row;
-                }
-                if current_instruction == opcode_absorb_init
-                    || current_instruction == opcode_absorb
-                    || current_instruction == opcode_squeeze
-                {
-                    sponge_running_evaluation = sponge_running_evaluation
-                        * sponge_eval_indeterminate
-                        + ci_weight * current_instruction
-                        + compressed_row;
-                }
-            }
-
-            if mode != padding_mode && round_number != NUM_ROUNDS as u64 {
+            if mode != mode_pad && round_number != max_round_number {
                 cascade_state_0_highest_log_derivative +=
                     log_derivative_summand(row, State0HighestLkIn, State0HighestLkOut);
                 cascade_state_0_mid_high_log_derivative +=

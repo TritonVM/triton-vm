@@ -1035,6 +1035,10 @@ impl AlgebraicExecutionTrace {
                 .expect("shapes must be identical");
         }
 
+        let instruction_column_index = CI.base_table_index();
+        let mut instruction_column = self.program_hash_trace.column_mut(instruction_column_index);
+        instruction_column.fill(Instruction::Hash.opcode_b());
+
         // consistency check
         let program_digest = program_sponge.state[..DIGEST_LENGTH].try_into().unwrap();
         let program_digest = Digest::new(program_digest);
