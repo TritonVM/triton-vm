@@ -53,3 +53,7 @@ harness = false
 [[bench]]
 name = "verify_halt"
 harness = false
+
+[[bench]]
+name = "proof_size"
+harness = false
