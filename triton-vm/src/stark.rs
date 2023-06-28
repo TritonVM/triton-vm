@@ -1,6 +1,5 @@
 use std::ops::Add;
 use std::ops::Mul;
-use std::ops::MulAssign;
 
 use anyhow::bail;
 use anyhow::Result;
@@ -556,7 +555,7 @@ impl Stark {
         quotient_domain: ArithmeticDomain,
         max_degree: Degree,
     ) where
-        FF: FiniteField + MulAssign<BFieldElement>,
+        FF: FiniteField + std::ops::MulAssign<BFieldElement>,
     {
         let max_degree = max_degree as isize;
         for (col_idx, codeword) in table.columns().into_iter().enumerate() {

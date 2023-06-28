@@ -6,8 +6,6 @@ use twenty_first::shared_math::tip5::Digest;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 use twenty_first::util_types::merkle_tree::PartialAuthenticationPath;
 
-use crate::table::master_table::NUM_BASE_COLUMNS;
-use crate::table::master_table::NUM_EXT_COLUMNS;
 use crate::Claim;
 
 type AuthenticationStructure = Vec<PartialAuthenticationPath<Digest>>;
@@ -195,10 +193,14 @@ impl BFieldCodec for ProofItem {
         use ProofItem::*;
 
         #[cfg(debug_assertions)]
-        match self {
-            OutOfDomainBaseRow(row) => assert_eq!(NUM_BASE_COLUMNS, row.len()),
-            OutOfDomainExtRow(row) => assert_eq!(NUM_EXT_COLUMNS, row.len()),
-            _ => (),
+        {
+            use crate::table::master_table::NUM_BASE_COLUMNS;
+            use crate::table::master_table::NUM_EXT_COLUMNS;
+            match self {
+                OutOfDomainBaseRow(row) => assert_eq!(NUM_BASE_COLUMNS, row.len()),
+                OutOfDomainExtRow(row) => assert_eq!(NUM_EXT_COLUMNS, row.len()),
+                _ => (),
+            }
         }
 
         let discriminant = vec![self.discriminant()];
