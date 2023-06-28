@@ -851,14 +851,12 @@ pub fn simulate(
 ///
 /// The VM's initial state is either the provided `initial_state`, or a new [`VMState`] if
 /// `initial_state` is `None`. The initial state is included in the returned [`Vec`] of
-/// [`VMState`]s. The initial state is the state of the VM before the first instruction is
-/// executed. The initial state must contain the same program as provided by parameter `program`,
-/// else the method will panic. If an initial state is provided, its `public_input` and
-/// `private_input` is overwritten with the provided `public_input` and `private_input`.
+/// [`VMState`]s. If an initial state is provided, the `program`, `public_input` and `private_input`
+/// provided to this method are ignored and the initial state's program and inputs are used instead.
 ///
 /// If `num_cycles_to_execute` is `Some(number_of_cycles)`, the VM will execute at most
 /// `number_of_cycles` cycles. If `num_cycles_to_execute` is `None`, the VM will execute until
-/// it halts or the maximum number of cycles (2^{32}) is reached..
+/// it halts or the maximum number of cycles (2^{32}) is reached.
 ///
 /// See also [`debug_terminal_state`] and [`simulate`].
 pub fn debug<'pgm>(
@@ -870,11 +868,7 @@ pub fn debug<'pgm>(
 ) -> (Vec<VMState<'pgm>>, Option<Error>) {
     let mut states = vec![];
     let mut state = match initial_state {
-        Some(mut initial_state) => {
-            initial_state.public_input = public_input.into();
-            initial_state.secret_input = secret_input.into();
-            initial_state
-        }
+        Some(initial_state) => initial_state,
         None => VMState::new(program, public_input, secret_input),
     };
 
@@ -882,11 +876,6 @@ pub fn debug<'pgm>(
         Some(number_of_cycles) => state.cycle_count + number_of_cycles,
         None => u32::MAX,
     };
-
-    assert_eq!(
-        state.program, program.instructions,
-        "The (optional) initial state must be for the given program."
-    );
 
     while !state.halting && state.cycle_count < max_cycles {
         states.push(state.clone());
@@ -903,16 +892,30 @@ pub fn debug<'pgm>(
 /// final [`VMState`]. Requires substantially less RAM than [`debug`] since no intermediate states
 /// are recorded.
 ///
+/// Parameters `initial_state` and `num_cycles_to_execute` are handled like in [`debug`];
+/// see there for more details.
+///
 /// If an error is encountered, returns the error and the [`VMState`] at the point of failure.
 ///
 /// See also [`simulate`] and [`run`].
-pub fn debug_terminal_state(
-    program: &Program,
+pub fn debug_terminal_state<'pgm>(
+    program: &'pgm Program,
     public_input: Vec<BFieldElement>,
     secret_input: Vec<BFieldElement>,
-) -> Result<VMState, (Error, VMState)> {
-    let mut state = VMState::new(program, public_input, secret_input);
-    while !state.halting {
+    initial_state: Option<VMState<'pgm>>,
+    num_cycles_to_execute: Option<u32>,
+) -> Result<VMState<'pgm>, (Error, VMState<'pgm>)> {
+    let mut state = match initial_state {
+        Some(initial_state) => initial_state,
+        None => VMState::new(program, public_input, secret_input),
+    };
+
+    let max_cycles = match num_cycles_to_execute {
+        Some(number_of_cycles) => state.cycle_count + number_of_cycles,
+        None => u32::MAX,
+    };
+
+    while !state.halting && state.cycle_count < max_cycles {
         // The internal state transition method [`VMState::step`] is not atomic.
         // To avoid returning an inconsistent state in case of a failed transition, the last
         // known-to-be-consistent state is returned.
