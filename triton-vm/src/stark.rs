@@ -139,6 +139,7 @@ impl Stark {
         let padded_height = MasterBaseTable::padded_height(aet, parameters.num_trace_randomizers);
         let max_degree = Self::derive_max_degree(padded_height, parameters.num_trace_randomizers);
         let fri = Self::derive_fri(parameters, max_degree);
+        proof_stream.enqueue(&ProofItem::Log2PaddedHeight(padded_height.ilog2()));
         prof_stop!(maybe_profiler, "derive additional parameters");
 
         prof_start!(maybe_profiler, "base tables");
@@ -437,32 +438,36 @@ impl Stark {
             fri_domain_master_base_table.master_base_matrix.view(),
             &revealed_current_row_indices,
         );
-        let auth_paths_base =
+        let base_authentication_structure =
             base_merkle_tree.get_authentication_structure(&revealed_current_row_indices);
         proof_stream.enqueue(&ProofItem::MasterBaseTableRows(revealed_base_elems));
-        proof_stream.enqueue(&ProofItem::CompressedAuthenticationPaths(auth_paths_base));
+        proof_stream.enqueue(&ProofItem::AuthenticationStructure(
+            base_authentication_structure,
+        ));
 
         let revealed_ext_elems = Self::get_revealed_elements(
             fri_domain_ext_master_table.master_ext_matrix.view(),
             &revealed_current_row_indices,
         );
-        let auth_paths_ext =
+        let ext_authentication_structure =
             ext_merkle_tree.get_authentication_structure(&revealed_current_row_indices);
         proof_stream.enqueue(&ProofItem::MasterExtTableRows(revealed_ext_elems));
-        proof_stream.enqueue(&ProofItem::CompressedAuthenticationPaths(auth_paths_ext));
+        proof_stream.enqueue(&ProofItem::AuthenticationStructure(
+            ext_authentication_structure,
+        ));
 
         // Open quotient & combination codewords at the same positions as base & ext codewords.
         let revealed_quotient_elements = revealed_current_row_indices
             .iter()
             .map(|&i| fri_quotient_codeword[i])
             .collect_vec();
-        let revealed_quotient_auth_paths =
+        let revealed_quotient_authentication_structure =
             quot_merkle_tree.get_authentication_structure(&revealed_current_row_indices);
         proof_stream.enqueue(&ProofItem::RevealedCombinationElements(
             revealed_quotient_elements,
         ));
-        proof_stream.enqueue(&ProofItem::CompressedAuthenticationPaths(
-            revealed_quotient_auth_paths,
+        proof_stream.enqueue(&ProofItem::AuthenticationStructure(
+            revealed_quotient_authentication_structure,
         ));
         prof_stop!(maybe_profiler, "open trace leafs");
 
@@ -585,7 +590,8 @@ impl Stark {
         prof_stop!(maybe_profiler, "Fiat-Shamir: Claim");
 
         prof_start!(maybe_profiler, "derive additional parameters");
-        let padded_height = proof.padded_height(parameters);
+        let log_2_padded_height = proof_stream.dequeue()?.as_log2_padded_height()?;
+        let padded_height = 1 << log_2_padded_height;
         let max_degree = Self::derive_max_degree(padded_height, parameters.num_trace_randomizers);
         let fri = Self::derive_fri(parameters, max_degree);
         let merkle_tree_height = fri.domain.length.ilog2() as usize;
@@ -711,9 +717,8 @@ impl Stark {
         prof_start!(maybe_profiler, "check leafs");
         prof_start!(maybe_profiler, "dequeue base elements");
         let base_table_rows = proof_stream.dequeue()?.as_master_base_table_rows()?;
-        let base_auth_paths = proof_stream
-            .dequeue()?
-            .as_compressed_authentication_paths()?;
+        let base_authentication_structure =
+            proof_stream.dequeue()?.as_authentication_structure()?;
         let leaf_digests_base: Vec<_> = base_table_rows
             .par_iter()
             .map(|revealed_base_elem| StarkHasher::hash_varlen(revealed_base_elem))
@@ -721,12 +726,12 @@ impl Stark {
         prof_stop!(maybe_profiler, "dequeue base elements");
 
         prof_start!(maybe_profiler, "Merkle verify (base tree)", "hash");
-        if !MerkleTree::<StarkHasher>::verify_authentication_structure_from_leaves(
+        if !MerkleTree::<StarkHasher>::verify_authentication_structure(
             base_merkle_tree_root,
             merkle_tree_height,
             &revealed_current_row_indices,
             &leaf_digests_base,
-            &base_auth_paths,
+            &base_authentication_structure,
         ) {
             bail!("Failed to verify authentication path for base codeword");
         }
@@ -734,9 +739,7 @@ impl Stark {
 
         prof_start!(maybe_profiler, "dequeue extension elements");
         let ext_table_rows = proof_stream.dequeue()?.as_master_ext_table_rows()?;
-        let auth_paths_ext = proof_stream
-            .dequeue()?
-            .as_compressed_authentication_paths()?;
+        let ext_authentication_structure = proof_stream.dequeue()?.as_authentication_structure()?;
         let leaf_digests_ext = ext_table_rows
             .par_iter()
             .map(|xvalues| {
@@ -750,12 +753,12 @@ impl Stark {
         prof_stop!(maybe_profiler, "dequeue extension elements");
 
         prof_start!(maybe_profiler, "Merkle verify (extension tree)", "hash");
-        if !MerkleTree::<StarkHasher>::verify_authentication_structure_from_leaves(
+        if !MerkleTree::<StarkHasher>::verify_authentication_structure(
             extension_tree_merkle_root,
             merkle_tree_height,
             &revealed_current_row_indices,
             &leaf_digests_ext,
-            &auth_paths_ext,
+            &ext_authentication_structure,
         ) {
             bail!("Failed to verify authentication path for extension codeword");
         }
@@ -769,18 +772,17 @@ impl Stark {
             .par_iter()
             .map(|&x| x.into())
             .collect::<Vec<_>>();
-        let revealed_quotient_auth_paths = proof_stream
-            .dequeue()?
-            .as_compressed_authentication_paths()?;
+        let revealed_quotient_authentication_structure =
+            proof_stream.dequeue()?.as_authentication_structure()?;
         prof_stop!(maybe_profiler, "dequeue quotient elements");
 
         prof_start!(maybe_profiler, "Merkle verify (combined quotient)", "hash");
-        if !MerkleTree::<StarkHasher>::verify_authentication_structure_from_leaves(
+        if !MerkleTree::<StarkHasher>::verify_authentication_structure(
             quotient_codeword_merkle_root,
             merkle_tree_height,
             &revealed_current_row_indices,
             &revealed_quotient_digests,
-            &revealed_quotient_auth_paths,
+            &revealed_quotient_authentication_structure,
         ) {
             bail!("Failed to verify authentication path for combined quotient codeword");
         }
@@ -1599,7 +1601,7 @@ pub(crate) mod triton_stark_tests {
         }
         assert!(result.unwrap());
 
-        let padded_height = proof.padded_height(&parameters);
+        let padded_height = proof.padded_height();
         let max_degree = Stark::derive_max_degree(padded_height, parameters.num_trace_randomizers);
         let fri = Stark::derive_fri(&parameters, max_degree);
         let report = profiler.report(None, Some(padded_height), Some(fri.domain.length));
@@ -1675,7 +1677,7 @@ pub(crate) mod triton_stark_tests {
         }
         assert!(result.unwrap());
 
-        let padded_height = proof.padded_height(&parameters);
+        let padded_height = proof.padded_height();
         let max_degree = Stark::derive_max_degree(padded_height, parameters.num_trace_randomizers);
         let fri = Stark::derive_fri(&parameters, max_degree);
         let report = profiler.report(None, Some(padded_height), Some(fri.domain.length));
@@ -1720,7 +1722,7 @@ pub(crate) mod triton_stark_tests {
         }
         assert!(result.unwrap());
 
-        let padded_height = proof.padded_height(&parameters);
+        let padded_height = proof.padded_height();
         let max_degree = Stark::derive_max_degree(padded_height, parameters.num_trace_randomizers);
         let fri = Stark::derive_fri(&parameters, max_degree);
         let report = profiler.report(None, Some(padded_height), Some(fri.domain.length));
@@ -1741,7 +1743,7 @@ pub(crate) mod triton_stark_tests {
             let mut profiler = profiler.unwrap();
             profiler.finish();
 
-            let padded_height = proof.padded_height(&parameters);
+            let padded_height = proof.padded_height();
             let max_degree =
                 Stark::derive_max_degree(padded_height, parameters.num_trace_randomizers);
             let fri = Stark::derive_fri(&parameters, max_degree);

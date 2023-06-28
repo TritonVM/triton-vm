@@ -4,11 +4,10 @@ use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::bfield_codec::BFieldCodec;
 use twenty_first::shared_math::tip5::Digest;
 use twenty_first::shared_math::x_field_element::XFieldElement;
-use twenty_first::util_types::merkle_tree::PartialAuthenticationPath;
 
 use crate::Claim;
 
-type AuthenticationStructure = Vec<PartialAuthenticationPath<Digest>>;
+type AuthenticationStructure = Vec<Digest>;
 
 /// A `FriResponse` is an [`AuthenticationStructure`] together with the values of the
 /// revealed leaves of the Merkle tree. Together, they correspond to the
@@ -23,13 +22,13 @@ pub struct FriResponse {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProofItem {
-    CompressedAuthenticationPaths(AuthenticationStructure),
+    AuthenticationStructure(AuthenticationStructure),
     MasterBaseTableRows(Vec<Vec<BFieldElement>>),
     MasterExtTableRows(Vec<Vec<XFieldElement>>),
     OutOfDomainBaseRow(Vec<XFieldElement>),
     OutOfDomainExtRow(Vec<XFieldElement>),
     MerkleRoot(Digest),
-    AuthenticationPath(Vec<Digest>),
+    Log2PaddedHeight(u32),
     RevealedCombinationElements(Vec<XFieldElement>),
     FriCodeword(Vec<XFieldElement>),
     FriResponse(FriResponse),
@@ -41,13 +40,13 @@ impl ProofItem {
     pub const fn discriminant(&self) -> BFieldElement {
         use ProofItem::*;
         let discriminant: u64 = match self {
-            CompressedAuthenticationPaths(_) => 0,
+            AuthenticationStructure(_) => 0,
             MasterBaseTableRows(_) => 1,
             MasterExtTableRows(_) => 2,
             OutOfDomainBaseRow(_) => 3,
             OutOfDomainExtRow(_) => 4,
             MerkleRoot(_) => 5,
-            AuthenticationPath(_) => 6,
+            Log2PaddedHeight(_) => 6,
             RevealedCombinationElements(_) => 7,
             FriCodeword(_) => 8,
             FriResponse(_) => 9,
@@ -63,7 +62,7 @@ impl ProofItem {
     /// transcript, has been considered in the Fiat-Shamir heuristic, and assuming collision
     /// resistance of the hash function in use, none of the committed-to elements have to be
     /// considered in the Fiat-Shamir heuristic again.
-    /// This also extends to the authentication paths of these elements, et cetera.
+    /// This also extends to the authentication structure of these elements, et cetera.
     pub const fn include_in_fiat_shamir_heuristic(&self) -> bool {
         use ProofItem::*;
         match self {
@@ -72,20 +71,20 @@ impl ProofItem {
             OutOfDomainExtRow(_) => true,
             Claim(_) => true,
             // all of the following are implied by a corresponding Merkle root
-            AuthenticationPath(_) => false,
-            CompressedAuthenticationPaths(_) => false,
+            AuthenticationStructure(_) => false,
             MasterBaseTableRows(_) => false,
             MasterExtTableRows(_) => false,
+            Log2PaddedHeight(_) => false,
             RevealedCombinationElements(_) => false,
             FriCodeword(_) => false,
             FriResponse(_) => false,
         }
     }
 
-    pub fn as_compressed_authentication_paths(&self) -> Result<AuthenticationStructure> {
+    pub fn as_authentication_structure(&self) -> Result<AuthenticationStructure> {
         match self {
-            Self::CompressedAuthenticationPaths(caps) => Ok(caps.to_owned()),
-            other => bail!("expected compressed authentication paths, but got {other:?}",),
+            Self::AuthenticationStructure(caps) => Ok(caps.to_owned()),
+            other => bail!("expected authentication structure, but got {other:?}",),
         }
     }
 
@@ -124,10 +123,10 @@ impl ProofItem {
         }
     }
 
-    pub fn as_authentication_path(&self) -> Result<Vec<Digest>> {
+    pub fn as_log2_padded_height(&self) -> Result<u32> {
         match self {
-            Self::AuthenticationPath(bss) => Ok(bss.to_owned()),
-            other => bail!("expected authentication path, but got {other:?}",),
+            Self::Log2PaddedHeight(log2_padded_height) => Ok(*log2_padded_height),
+            other => bail!("expected log2 padded height, but got {other:?}",),
         }
     }
 
@@ -171,13 +170,13 @@ impl BFieldCodec for ProofItem {
         let discriminant = str[0].value();
         let str = &str[1..];
         let item = match discriminant {
-            0 => Self::CompressedAuthenticationPaths(*AuthenticationStructure::decode(str)?),
+            0 => Self::AuthenticationStructure(*AuthenticationStructure::decode(str)?),
             1 => Self::MasterBaseTableRows(*Vec::<Vec<BFieldElement>>::decode(str)?),
             2 => Self::MasterExtTableRows(*Vec::<Vec<XFieldElement>>::decode(str)?),
             3 => Self::OutOfDomainBaseRow(*Vec::<XFieldElement>::decode(str)?),
             4 => Self::OutOfDomainExtRow(*Vec::<XFieldElement>::decode(str)?),
             5 => Self::MerkleRoot(*Digest::decode(str)?),
-            6 => Self::AuthenticationPath(*Vec::<Digest>::decode(str)?),
+            6 => Self::Log2PaddedHeight(*u32::decode(str)?),
             7 => Self::RevealedCombinationElements(*Vec::<XFieldElement>::decode(str)?),
             8 => Self::FriCodeword(*Vec::<XFieldElement>::decode(str)?),
             9 => Self::FriResponse(*FriResponse::decode(str)?),
@@ -205,13 +204,13 @@ impl BFieldCodec for ProofItem {
 
         let discriminant = vec![self.discriminant()];
         let encoding = match self {
-            CompressedAuthenticationPaths(something) => something.encode(),
+            AuthenticationStructure(something) => something.encode(),
             MasterBaseTableRows(something) => something.encode(),
             MasterExtTableRows(something) => something.encode(),
             OutOfDomainBaseRow(row) => row.encode(),
             OutOfDomainExtRow(row) => row.encode(),
             MerkleRoot(something) => something.encode(),
-            AuthenticationPath(something) => something.encode(),
+            Log2PaddedHeight(height) => height.encode(),
             RevealedCombinationElements(something) => something.encode(),
             FriCodeword(something) => something.encode(),
             FriResponse(something) => something.encode(),
@@ -301,7 +300,7 @@ mod proof_item_typed_tests {
     }
 
     #[test]
-    fn serialize_compressed_authentication_paths_test() {
+    fn serialize_authentication_structure_test() {
         type H = Tip5;
 
         let seed = random();
@@ -323,15 +322,11 @@ mod proof_item_typed_tests {
 
         // test encoding and decoding in a stream
         let mut proof_stream = ProofStream::<H>::new();
-        proof_stream.enqueue(&ProofItem::CompressedAuthenticationPaths(
-            auth_structure.clone(),
-        ));
+        proof_stream.enqueue(&ProofItem::AuthenticationStructure(auth_structure.clone()));
         let proof: Proof = proof_stream.into();
         let mut proof_stream = ProofStream::<H>::try_from(&proof).unwrap();
         let auth_structure_ = proof_stream.dequeue().unwrap();
-        let auth_structure_ = auth_structure_
-            .as_compressed_authentication_paths()
-            .unwrap();
+        let auth_structure_ = auth_structure_.as_authentication_structure().unwrap();
         assert_eq!(auth_structure, auth_structure_);
     }
 }

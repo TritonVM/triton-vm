@@ -93,7 +93,7 @@ impl ValueFormatter for ProofSizeFormatter {
 
 /// The base 2, integer logarithm of the FRI domain length.
 fn log_2_fri_domain_length(parameters: &StarkParameters, proof: &Proof) -> u32 {
-    let padded_height = proof.padded_height(parameters);
+    let padded_height = proof.padded_height();
     let max_degree = Stark::derive_max_degree(padded_height, parameters.num_trace_randomizers);
     let fri = Stark::derive_fri(parameters, max_degree);
     fri.domain.length.ilog2()

@@ -74,8 +74,8 @@ impl<H: AlgebraicHasher> Fri<H> {
         }
     }
 
-    /// Build the (deduplicated) Merkle authentication paths for the codeword at the given indices
-    /// and enqueue the corresponding values and (partial) authentication paths on the proof stream.
+    /// Build the Merkle authentication structure for the codeword at the given indices
+    /// and enqueue the corresponding values and the authentication structure on the proof stream.
     fn enqueue_auth_pairs(
         indices: &[usize],
         codeword: &[XFieldElement],
@@ -107,11 +107,10 @@ impl<H: AlgebraicHasher> Fri<H> {
             auth_structure,
             revealed_leaves,
         } = fri_response;
-        debug_assert_eq!(indices.len(), auth_structure.len());
         debug_assert_eq!(indices.len(), revealed_leaves.len());
         let leaf_digests = revealed_leaves.iter().map(|&xfe| xfe.into()).collect_vec();
 
-        match MerkleTree::<H>::verify_authentication_structure_from_leaves(
+        match MerkleTree::<H>::verify_authentication_structure(
             root,
             tree_height,
             indices,
@@ -152,9 +151,9 @@ impl<H: AlgebraicHasher> Fri<H> {
             .collect_vec();
 
         // query phase
-        // query step 0: enqueue authentication paths for all points `A` into proof stream
+        // query step 0: enqueue authentication structure for all points `A` into proof stream
         Self::enqueue_auth_pairs(&initial_a_indices, codeword, &merkle_trees[0], proof_stream);
-        // query step 1: loop over FRI rounds, enqueue authentication paths for all points `B`
+        // query step 1: loop over FRI rounds, enqueue authentication structure for all points `B`
         let mut current_domain_len = self.domain.length;
         let mut b_indices = initial_a_indices;
         // the last codeword is transmitted to the verifier in the clear. Thus, no co-linearity

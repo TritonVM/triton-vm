@@ -1194,16 +1194,15 @@ pub mod triton_vm_tests {
     use num_traits::One;
     use num_traits::Zero;
     use rand::rngs::ThreadRng;
+    use rand::thread_rng;
     use rand::Rng;
     use rand::RngCore;
     use twenty_first::shared_math::b_field_element::BFIELD_ZERO;
     use twenty_first::shared_math::other::random_elements;
     use twenty_first::shared_math::other::random_elements_array;
-    use twenty_first::shared_math::tip5::Digest;
     use twenty_first::shared_math::tip5::Tip5;
     use twenty_first::shared_math::traits::FiniteField;
     use twenty_first::shared_math::traits::ModPowU32;
-    use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
     use twenty_first::util_types::algebraic_hasher::SpongeHasher;
     use twenty_first::util_types::merkle_tree::MerkleTree;
     use twenty_first::util_types::merkle_tree_maker::MerkleTreeMaker;
@@ -2248,149 +2247,105 @@ pub mod triton_vm_tests {
     /// input: merkle root, number of leafs, leaf values, APs
     ///
     /// output: Result<(), VMFail>
-    const MT_AP_VERIFY: &str = concat!(
-        "read_io ",                                 // number of authentication paths to test
-        "",                                         // stack: [num]
-        "mt_ap_verify: ",                           // proper program starts here
-        "push 0 swap 1 write_mem pop ",             // store number of APs at RAM address 0
-        "",                                         // stack: []
-        "read_io read_io read_io read_io read_io ", // read Merkle root
-        "",                                         // stack: [r4 r3 r2 r1 r0]
-        "call check_aps ",                          //
-        "pop pop pop pop pop ",                     // leave clean stack: Merkle root
-        "",                                         // stack: []
-        "halt ",                                    // done – should be “return”
-        "",
-        "",                            // subroutine: check AP one at a time
-        "",                            // stack before: [* r4 r3 r2 r1 r0]
-        "",                            // stack after: [* r4 r3 r2 r1 r0]
-        "check_aps: ",                 // start function description:
-        "push 0 read_mem dup 0 ",      // get number of APs left to check
-        "",                            // stack: [* r4 r3 r2 r1 r0 0 num_left num_left]
-        "push 0 eq ",                  // see if there are authentication paths left
-        "",                            // stack: [* r4 r3 r2 r1 r0 0 num_left num_left==0]
-        "skiz return ",                // return if no authentication paths left
-        "push -1 add write_mem pop ",  // decrease number of authentication paths left to check
-        "",                            // stack: [* r4 r3 r2 r1 r0]
-        "call get_idx_and_hash_leaf ", //
-        "",                            // stack: [* r4 r3 r2 r1 r0 idx d4 d3 d2 d1 d0 0 0 0 0 0]
-        "call traverse_tree ",         //
-        "",                            // stack: [* r4 r3 r2 r1 r0 idx>>2 - - - - - - - - - -]
-        "call assert_tree_top ",       //
-        // stack: [* r4 r3 r2 r1 r0]
-        "recurse ", // check next AP
-        "",
-        "",                                         // subroutine: read index & hash leaf
-        "",                                         // stack before: [*]
-        "",                        // stack afterwards: [* idx d4 d3 d2 d1 d0 0 0 0 0 0]
-        "get_idx_and_hash_leaf: ", // start function description:
-        "read_io ",                // read node index
-        "read_io read_io read_io read_io read_io ", // read leaf's value
-        "push 0 push 0 push 0 push 0 push 0 ", // pad before fixed-length hash
-        "hash return ",            // compute leaf's digest
-        "",
-        "",                              // subroutine: go up tree
-        "",                              // stack before: [* idx - - - - - - - - - -]
-        "",                              // stack after: [* idx>>2 - - - - - - - - - -]
-        "traverse_tree: ",               // start function description:
-        "dup 10 push 1 eq skiz return ", // break loop if node index is 1
-        "divine_sibling hash recurse ",  // move up one level in the Merkle tree
-        "",
-        "",                     // subroutine: compare digests
-        "",                     // stack before: [* r4 r3 r2 r1 r0 idx a b c d e - - - - -]
-        "",                     // stack after: [* r4 r3 r2 r1 r0]
-        "assert_tree_top: ",    // start function description:
-        "pop pop pop pop pop ", // remove unnecessary “0”s from hashing
-        "",                     // stack: [* r4 r3 r2 r1 r0 idx a b c d e]
-        "swap 1 swap 2 swap 3 swap 4 swap 5 ",
-        "",                     // stack: [* r4 r3 r2 r1 r0 a b c d e idx]
-        "assert ",              //
-        "",                     // stack: [* r4 r3 r2 r1 r0 a b c d e]
-        "assert_vector ",       // actually compare to root of tree
-        "pop pop pop pop pop ", // clean up stack, leave only one root
-        "return ",              //
-    );
+    const MERKLE_TREE_AUTHENTICATION_PATH_VERIFY: &str = "
+        read_io                                     // number of authentication paths to test
+                                                    // stack: [num]
+        mt_ap_verify:                               // proper program starts here
+        push 0 swap 1 write_mem pop                 // store number of APs at RAM address 0
+                                                    // stack: []
+        read_io read_io read_io read_io read_io     // read Merkle root
+                                                    // stack: [r4 r3 r2 r1 r0]
+        call check_aps
+        pop pop pop pop pop                         // leave clean stack: Merkle root
+                                                    // stack: []
+        halt                                        // done – should be “return”
+
+        /// subroutine: check AP one at a time
+        /// stack before: [* r4 r3 r2 r1 r0]
+        /// stack after:  [* r4 r3 r2 r1 r0]
+        check_aps:
+        push 0 read_mem dup 0           // get number of APs left to check
+                                        // stack: [* r4 r3 r2 r1 r0 0 num_left num_left]
+        push 0 eq                       // see if there are authentication paths left
+                                        // stack: [* r4 r3 r2 r1 r0 0 num_left num_left==0]
+        skiz return                     // return if no authentication paths left
+        push -1 add write_mem pop       // decrease number of authentication paths left to check
+                                        // stack: [* r4 r3 r2 r1 r0]
+        call get_idx_and_leaf
+                                        // stack: [* r4 r3 r2 r1 r0 idx d4 d3 d2 d1 d0 0 0 0 0 0]
+        call traverse_tree
+                                        // stack: [* r4 r3 r2 r1 r0 idx>>1 - - - - - - - - - -]
+        call assert_tree_top
+                                        // stack: [* r4 r3 r2 r1 r0]
+        recurse                         // check next AP
+
+        /// subroutine: read index & hash leaf
+        /// stack before: [*]
+        /// stack after:  [* idx d4 d3 d2 d1 d0 0 0 0 0 0]
+        get_idx_and_leaf:
+        read_io                                     // read node index
+        read_io read_io read_io read_io read_io     // read leaf's value
+        push 0 push 0 push 0 push 0 push 0          // pad for instruction divine_sibling
+        return
+
+        // subroutine: go up tree
+        // stack before: [* idx    - - - - - - - - - -]
+        // stack after:  [* idx>>1 - - - - - - - - - -]
+        traverse_tree:
+        dup 10 push 1 eq skiz return                // break loop if node index is 1
+        divine_sibling hash recurse                 // move up one level in the Merkle tree
+
+        // subroutine: compare digests
+        // stack before: [* r4 r3 r2 r1 r0 idx a b c d e - - - - -]
+        // stack after:  [* r4 r3 r2 r1 r0]
+        assert_tree_top:
+        pop pop pop pop pop                         // remove unnecessary “0”s from hashing
+                                                    // stack: [* r4 r3 r2 r1 r0 idx a b c d e]
+        swap 1 swap 2 swap 3 swap 4 swap 5
+                                                    // stack: [* r4 r3 r2 r1 r0 a b c d e idx]
+        assert                                      // ensure the entire path was traversed
+                                                    // stack: [* r4 r3 r2 r1 r0 a b c d e]
+        assert_vector                               // actually compare to root of tree
+        pop pop pop pop pop                         // clean up stack, leave only one root
+        return
+    ";
 
     #[test]
-    fn run_tvm_mt_ap_verify_test() {
-        // generate merkle tree
+    fn triton_assembly_merkle_tree_authentication_path_verification_test() {
         type H = Tip5;
 
-        const NUM_LEAFS: usize = 64;
-        let leafs: [Digest; NUM_LEAFS] = random_elements_array();
-        let zero_padding: Digest = Digest::new([BFieldElement::zero(); DIGEST_LENGTH]);
-        let digests = leafs
-            .iter()
-            .map(|leaf| H::hash_pair(&zero_padding, leaf))
+        const TREE_HEIGHT: usize = 6;
+        const NUM_LEAVES: usize = 1 << TREE_HEIGHT;
+        let leaves: [_; NUM_LEAVES] = random_elements_array();
+        let merkle_tree: MerkleTree<H> = MTMaker::from_digests(&leaves);
+        let root = merkle_tree.get_root();
+
+        let num_authentication_paths = 3;
+        let selected_leaf_indices = (0..num_authentication_paths)
+            .map(|_| thread_rng().gen_range(0..NUM_LEAVES))
             .collect_vec();
-        let merkle_tree: MerkleTree<H> = MTMaker::from_digests(&digests);
-        let root: Digest = merkle_tree.get_root();
 
-        // generate program
-        let program = Program::from_code(MT_AP_VERIFY).unwrap();
-        let order: Vec<usize> = (0..5).rev().collect();
-
-        let selected_leaf_indices = [0, 28, 55];
-
+        let flat_authentication_path = |leaf_index| {
+            let auth_path = merkle_tree.get_authentication_structure(&[leaf_index]);
+            (0..TREE_HEIGHT)
+                .flat_map(|i| auth_path[i].reversed().values())
+                .collect_vec()
+        };
         let secret_input = selected_leaf_indices
             .iter()
-            .flat_map(|leaf_index| {
-                let auth_path = merkle_tree.get_authentication_path(*leaf_index);
-                let selected_values: Vec<_> = (0..6)
-                    .flat_map(|i| {
-                        let values = auth_path[i].values();
-                        let reordered_values: Vec<BFieldElement> =
-                            order.iter().map(|ord| values[*ord]).collect();
-                        reordered_values
-                    })
-                    .collect();
-                selected_values
-            })
+            .flat_map(|&leaf_index| flat_authentication_path(leaf_index))
             .collect_vec();
 
-        let public_input = vec![
-            // number of path tests
-            BFieldElement::new(3),
-            // Merkle root
-            root.values()[order[0]],
-            root.values()[order[1]],
-            root.values()[order[2]],
-            root.values()[order[3]],
-            root.values()[order[4]],
-            // node index 64, leaf index 0
-            BFieldElement::new(64),
-            // value of leaf with index 0
-            leafs[0].values()[order[0]],
-            leafs[0].values()[order[1]],
-            leafs[0].values()[order[2]],
-            leafs[0].values()[order[3]],
-            leafs[0].values()[order[4]],
-            // node index 92, leaf index 28
-            // 92 = 1011100_2
-            // 28 =   11100_2
-            BFieldElement::new(92),
-            // value of leaf with index 28
-            leafs[28].values()[order[0]],
-            leafs[28].values()[order[1]],
-            leafs[28].values()[order[2]],
-            leafs[28].values()[order[3]],
-            leafs[28].values()[order[4]],
-            // node index 119, leaf index 55
-            BFieldElement::new(119),
-            // 119 = 1110111_2
-            // 55  =  110111_2
-            // value of leaf with node 55
-            leafs[55].values()[order[0]],
-            leafs[55].values()[order[1]],
-            leafs[55].values()[order[2]],
-            leafs[55].values()[order[3]],
-            leafs[55].values()[order[4]],
-        ];
-        let (aet, _) = simulate(&program, public_input, secret_input).unwrap();
+        let mut public_input = vec![(num_authentication_paths as u64).into()];
+        public_input.append(&mut root.reversed().values().to_vec());
+        for &leaf_index in &selected_leaf_indices {
+            let node_index = (leaf_index + NUM_LEAVES) as u64;
+            public_input.push(node_index.into());
+            public_input.append(&mut leaves[leaf_index].reversed().values().to_vec());
+        }
 
-        let last_processor_row = aet.processor_trace.rows().into_iter().last().unwrap();
-        let last_instruction = last_processor_row[ProcessorBaseTableColumn::CI.base_table_index()];
-        assert_eq!(Instruction::Halt.opcode_b(), last_instruction);
+        let program = Program::from_code(MERKLE_TREE_AUTHENTICATION_PATH_VERIFY).unwrap();
+        run(&program, public_input, secret_input).unwrap();
     }
 
     #[test]

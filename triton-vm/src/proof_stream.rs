@@ -69,10 +69,10 @@ where
     /// according to [`ProofItem::include_in_fiat_shamir_heuristic`], the sponge state is not
     /// modified.
     /// For example:
-    /// - Merkle authentication paths do not need to be included (hashed) if the root of the tree
-    ///     in question was included (hashed) previously.
+    /// - Merkle authentication structure do not need to be hashed if the root of the tree
+    ///     in question was hashed previously.
     /// - If the proof stream is not used to sample any more randomness, _i.e._, after the last
-    ///     round of interaction, no further items need to be included.
+    ///     round of interaction, no further items need to be hashed.
     pub fn enqueue(&mut self, item: &ProofItem) {
         if item.include_in_fiat_shamir_heuristic() {
             H::absorb_repeatedly(
@@ -238,9 +238,6 @@ mod proof_stream_typed_tests {
         let merkle_tree: MerkleTree<H> = MTMaker::from_digests(&fri_codeword_digests);
         let root = merkle_tree.get_root();
 
-        let revealed_index = rng.gen_range(0..codeword_len);
-        let auth_path = merkle_tree.get_authentication_path(revealed_index);
-
         let num_revealed_indices = rng.gen_range(1..=codeword_len);
         let revealed_indices = random_elements(rng.next_u64(), num_revealed_indices)
             .into_iter()
@@ -274,9 +271,7 @@ mod proof_stream_typed_tests {
         let mut proof_stream = ProofStream::<H>::new();
 
         sponge_states.push_back(proof_stream.sponge_state.state);
-        proof_stream.enqueue(&ProofItem::CompressedAuthenticationPaths(
-            auth_structure.clone(),
-        ));
+        proof_stream.enqueue(&ProofItem::AuthenticationStructure(auth_structure.clone()));
         sponge_states.push_back(proof_stream.sponge_state.state);
         proof_stream.enqueue(&ProofItem::MasterBaseTableRows(base_rows.clone()));
         sponge_states.push_back(proof_stream.sponge_state.state);
@@ -287,8 +282,6 @@ mod proof_stream_typed_tests {
         proof_stream.enqueue(&ProofItem::OutOfDomainExtRow(ood_ext_row.clone()));
         sponge_states.push_back(proof_stream.sponge_state.state);
         proof_stream.enqueue(&ProofItem::MerkleRoot(root));
-        sponge_states.push_back(proof_stream.sponge_state.state);
-        proof_stream.enqueue(&ProofItem::AuthenticationPath(auth_path.clone()));
         sponge_states.push_back(proof_stream.sponge_state.state);
         proof_stream.enqueue(&ProofItem::RevealedCombinationElements(
             combination_elements.clone(),
@@ -310,7 +303,7 @@ mod proof_stream_typed_tests {
             Some(proof_stream.sponge_state.state)
         );
         match proof_stream.dequeue().unwrap() {
-            ProofItem::CompressedAuthenticationPaths(auth_structure_) => {
+            ProofItem::AuthenticationStructure(auth_structure_) => {
                 assert_eq!(auth_structure, auth_structure_)
             }
             _ => panic!(),
@@ -358,15 +351,6 @@ mod proof_stream_typed_tests {
         );
         match proof_stream.dequeue().unwrap() {
             ProofItem::MerkleRoot(root_) => assert_eq!(root, root_),
-            _ => panic!(),
-        };
-
-        assert_eq!(
-            sponge_states.pop_front(),
-            Some(proof_stream.sponge_state.state)
-        );
-        match proof_stream.dequeue().unwrap() {
-            ProofItem::AuthenticationPath(auth_path_) => assert_eq!(auth_path, auth_path_),
             _ => panic!(),
         };
 
@@ -446,7 +430,7 @@ mod proof_stream_typed_tests {
             revealed_leaves,
         } = maybe_same_fri_response;
         let maybe_same_leaf_digests = revealed_leaves.iter().map(|&xfe| xfe.into()).collect_vec();
-        let verdict = MerkleTree::<H>::verify_authentication_structure_from_leaves(
+        let verdict = MerkleTree::<H>::verify_authentication_structure(
             merkle_tree.get_root(),
             tree_height,
             &indices_to_check,

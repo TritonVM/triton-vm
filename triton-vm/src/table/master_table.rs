@@ -102,12 +102,6 @@ pub const NUM_EXT_COLUMNS: usize = program_table::EXT_WIDTH
 /// The total number of columns across all tables.
 pub const NUM_COLUMNS: usize = NUM_BASE_COLUMNS + NUM_EXT_COLUMNS;
 
-/// The binary logarithm of the smallest possible `padded_height`.
-/// The (unpadded) [`LookupTable`] always has a height of 2^8.
-///
-/// See [`MasterBaseTable::pad()`] for more details about padding.
-pub const LOG2_MIN_PADDED_HEIGHT: usize = 8;
-
 pub const PROGRAM_TABLE_START: usize = 0;
 pub const PROGRAM_TABLE_END: usize = PROGRAM_TABLE_START + program_table::BASE_WIDTH;
 pub const PROCESSOR_TABLE_START: usize = PROGRAM_TABLE_END;
@@ -965,7 +959,6 @@ mod master_table_tests {
     use crate::table::master_table::transition_quotient_zerofier_inverse;
     use crate::table::master_table::TableId::*;
     use crate::table::master_table::EXT_DEGREE_LOWERING_TABLE_END;
-    use crate::table::master_table::LOG2_MIN_PADDED_HEIGHT;
     use crate::table::master_table::NUM_BASE_COLUMNS;
     use crate::table::master_table::NUM_COLUMNS;
     use crate::table::master_table::NUM_EXT_COLUMNS;
@@ -994,7 +987,6 @@ mod master_table_tests {
     use crate::table::table_column::U32BaseTableColumn;
     use crate::table::table_column::U32ExtTableColumn;
     use crate::table::u32_table;
-    use crate::StarkParameters;
 
     #[test]
     fn base_table_width_is_correct() {
@@ -1362,14 +1354,5 @@ mod master_table_tests {
                 column.master_ext_table_index()
             );
         }
-    }
-
-    #[test]
-    fn smallest_possible_padded_height_is_correct_test() {
-        let (_, proof) = crate::prove_from_source("halt", &[], &[]).unwrap();
-        let parameters = StarkParameters::default();
-        let smallest_padded_height_exp = proof.padded_height(&parameters).ilog2();
-        let smallest_padded_height_exp: usize = smallest_padded_height_exp.try_into().unwrap();
-        assert_eq!(smallest_padded_height_exp, LOG2_MIN_PADDED_HEIGHT);
     }
 }

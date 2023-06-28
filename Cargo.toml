@@ -26,9 +26,9 @@ readme = "README.md"
 documentation = "https://triton-vm.org/spec/"
 
 [workspace.dependencies]
-twenty-first = "0.28"
-triton-opcodes = "0.29.1"
-triton-profiler = "0.28"
+twenty-first = "0.30"
+triton-opcodes = { path = "./triton-opcodes" }
+triton-profiler = { path = "./triton-profiler" }
 itertools = "0.10"
 syn = "2.0"
 quote = "1.0"
