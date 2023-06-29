@@ -1,16 +1,27 @@
+use std::collections::HashMap;
+use std::ops::AddAssign;
+
 use criterion::criterion_group;
 use criterion::criterion_main;
 use criterion::measurement::Measurement;
 use criterion::measurement::ValueFormatter;
+use criterion::BenchmarkGroup;
 use criterion::BenchmarkId;
 use criterion::Criterion;
 use criterion::Throughput;
+use itertools::Itertools;
+use strum_macros::Display;
+use strum_macros::EnumCount;
+use strum_macros::EnumIter;
 use twenty_first::shared_math::bfield_codec::BFieldCodec;
 
+use triton_vm::proof_stream::ProofStream;
 use triton_vm::prove_from_source;
+use triton_vm::shared_tests::SourceCodeAndInput;
 use triton_vm::shared_tests::FIBONACCI_SEQUENCE;
 use triton_vm::shared_tests::VERIFY_SUDOKU;
 use triton_vm::stark::Stark;
+use triton_vm::stark::StarkHasher;
 use triton_vm::Proof;
 use triton_vm::StarkParameters;
 
@@ -44,35 +55,63 @@ impl Measurement for ProofSize {
     }
 }
 
+/// Several orders of magnitude data can come in.
+#[derive(Clone, Copy, Debug, Display, EnumCount, EnumIter)]
+enum DataSizeOrderOfMagnitude {
+    Bytes,
+    KiloBytes,
+    MegaBytes,
+    GigaBytes,
+}
+
+impl DataSizeOrderOfMagnitude {
+    /// The order of magnitude the given number of bytes falls in.
+    fn order_of_magnitude(num_bytes: f64) -> Self {
+        use DataSizeOrderOfMagnitude::*;
+        match num_bytes {
+            b if b < KiloBytes.min_bytes_in_order_of_magnitude() => Bytes,
+            b if b < MegaBytes.min_bytes_in_order_of_magnitude() => KiloBytes,
+            b if b < GigaBytes.min_bytes_in_order_of_magnitude() => MegaBytes,
+            _ => GigaBytes,
+        }
+    }
+
+    /// The minimal number of bytes to be considered some order of magnitude.
+    fn min_bytes_in_order_of_magnitude(&self) -> f64 {
+        use DataSizeOrderOfMagnitude::*;
+        match self {
+            Bytes => 1.0,
+            KiloBytes => 1024.0,
+            MegaBytes => 1024.0 * 1024.0,
+            GigaBytes => 1024.0 * 1024.0 * 1024.0,
+        }
+    }
+
+    /// The typical abbreviation for this order of magnitude.
+    fn abbreviation(&self) -> &'static str {
+        use DataSizeOrderOfMagnitude::*;
+        match self {
+            Bytes => "bytes",
+            KiloBytes => "KiB",
+            MegaBytes => "MiB",
+            GigaBytes => "GiB",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 struct ProofSizeFormatter;
 
 impl ValueFormatter for ProofSizeFormatter {
     fn scale_values(&self, typical_value: f64, values: &mut [f64]) -> &'static str {
         let bytes_per_bfe = 8.0;
-        let divisor_kib = 1024.0;
-        let divisor_mib = 1024.0 * divisor_kib;
-        let divisor_gib = 1024.0 * divisor_mib;
-
         let size_in_bytes = typical_value * bytes_per_bfe;
-        let size_in_kib = size_in_bytes / divisor_kib;
-        let size_in_mib = size_in_bytes / divisor_mib;
-        let size_in_gib = size_in_bytes / divisor_gib;
-
-        values.iter_mut().for_each(|v| *v *= bytes_per_bfe);
-        let values_in_bytes = values.iter_mut();
-        if size_in_kib < 1.0 {
-            "bytes"
-        } else if size_in_mib < 1.0 {
-            values_in_bytes.for_each(|v| *v /= divisor_kib);
-            "KiB"
-        } else if size_in_gib < 1.0 {
-            values_in_bytes.for_each(|v| *v /= divisor_mib);
-            "MiB"
-        } else {
-            values_in_bytes.for_each(|v| *v /= divisor_gib);
-            "GiB"
-        }
+        let order_of_magnitude = DataSizeOrderOfMagnitude::order_of_magnitude(size_in_bytes);
+        let normalization_divisor = order_of_magnitude.min_bytes_in_order_of_magnitude();
+        values
+            .iter_mut()
+            .for_each(|value| *value = (*value * bytes_per_bfe) / normalization_divisor);
+        order_of_magnitude.abbreviation()
     }
 
     fn scale_throughputs(
@@ -87,19 +126,12 @@ impl ValueFormatter for ProofSizeFormatter {
     fn scale_for_machines(&self, values: &mut [f64]) -> &'static str {
         let bytes_per_bfe = 8.0;
         values.iter_mut().for_each(|v| *v *= bytes_per_bfe);
-        "bytes"
+        DataSizeOrderOfMagnitude::Bytes.abbreviation()
     }
 }
 
-/// The base 2, integer logarithm of the FRI domain length.
-fn log_2_fri_domain_length(parameters: &StarkParameters, proof: &Proof) -> u32 {
-    let padded_height = proof.padded_height();
-    let max_degree = Stark::derive_max_degree(padded_height, parameters.num_trace_randomizers);
-    let fri = Stark::derive_fri(parameters, max_degree);
-    fri.domain.length.ilog2()
-}
-
-fn proof_size(c: &mut Criterion<ProofSize>) {
+/// The source code for verifying a Sudoku with an example Sudoku provided as input.
+fn program_verify_sudoku() -> SourceCodeAndInput {
     let sudoku = [
         1, 2, 3, /**/ 4, 5, 6, /**/ 7, 8, 9, //
         4, 5, 6, /**/ 7, 8, 9, /**/ 1, 2, 3, //
@@ -113,64 +145,142 @@ fn proof_size(c: &mut Criterion<ProofSize>) {
         6, 7, 8, /**/ 9, 1, 2, /**/ 3, 4, 5, //
         9, 1, 2, /**/ 3, 4, 5, /**/ 6, 7, 8, //
     ];
+    SourceCodeAndInput {
+        source_code: VERIFY_SUDOKU.to_string(),
+        input: sudoku.to_vec(),
+        secret_input: vec![],
+    }
+}
 
-    let (parameters, proof) = prove_from_source("halt", &[], &[]).unwrap();
-    let fri_dom_len_halt = log_2_fri_domain_length(&parameters, &proof);
-    let bench_id_halt = BenchmarkId::new("halt", fri_dom_len_halt);
+/// The source code for computing some Fibonacci number, accepting as input which number of the
+/// sequence to compute.
+fn program_fib(nth_element: u64) -> SourceCodeAndInput {
+    SourceCodeAndInput {
+        source_code: FIBONACCI_SEQUENCE.to_string(),
+        input: vec![nth_element],
+        secret_input: vec![],
+    }
+}
 
-    let (parameters, proof) = prove_from_source(FIBONACCI_SEQUENCE, &[100], &[]).unwrap();
-    let fri_dom_len_fib_100 = log_2_fri_domain_length(&parameters, &proof);
-    let bench_id_fib_100 = BenchmarkId::new("fib_100", fri_dom_len_fib_100);
+/// The base 2, integer logarithm of the FRI domain length.
+fn log_2_fri_domain_length(parameters: &StarkParameters, proof: &Proof) -> u32 {
+    let padded_height = proof.padded_height();
+    let max_degree = Stark::derive_max_degree(padded_height, parameters.num_trace_randomizers);
+    let fri = Stark::derive_fri(parameters, max_degree);
+    fri.domain.length.ilog2()
+}
 
-    let (parameters, proof) = prove_from_source(FIBONACCI_SEQUENCE, &[500], &[]).unwrap();
-    let fri_dom_len_fib_500 = log_2_fri_domain_length(&parameters, &proof);
-    let bench_id_fib_500 = BenchmarkId::new("fib_500", fri_dom_len_fib_500);
+/// List the sizes of the proof's parts. If the same item type is contained multiple times, the
+/// sizes for that type are accumulated.
+fn break_down_proof_size(proof: &Proof) -> HashMap<String, usize> {
+    let mut proof_size_breakdown = HashMap::new();
+    let proof_stream: ProofStream<StarkHasher> = proof.try_into().unwrap();
+    for proof_item in proof_stream.items.iter() {
+        let item_name = proof_item.to_string();
+        let item_len = proof_item.encode().len();
+        proof_size_breakdown
+            .entry(item_name)
+            .or_insert(0)
+            .add_assign(item_len);
+    }
+    proof_size_breakdown
+}
 
-    let (parameters, proof) = prove_from_source(VERIFY_SUDOKU, &sudoku, &[]).unwrap();
-    let fri_dom_len_sudoku = log_2_fri_domain_length(&parameters, &proof);
-    let bench_id_sudoku = BenchmarkId::new("sudoku", fri_dom_len_sudoku);
+/// Sort given HashMap by its values in descending order.
+fn sort_hash_map_by_value_descending<K, V>(hash_map: HashMap<K, V>) -> Vec<(K, V)>
+where
+    V: Ord + Copy,
+{
+    let mut vec = hash_map.into_iter().collect_vec();
+    vec.sort_by_key(|&(_, value)| value);
+    vec.reverse();
+    vec
+}
 
-    let mut group = c.benchmark_group("proof_size");
-    group.bench_function(bench_id_halt, |bencher| {
-        bencher.iter_custom(|iters| {
-            let mut total_len = 0;
-            for _ in 0..iters {
-                let (_, proof) = prove_from_source("halt", &[], &[]).unwrap();
-                total_len += proof.encode().len();
-            }
-            ProofSize(total_len as f64)
+/// Print a tabular breakdown of the proof size.
+fn print_proof_size_breakdown(program_name: &str, proof: &Proof) {
+    let total_proof_size = proof.encode().len();
+    let proof_size_breakdown = break_down_proof_size(proof);
+    let proof_size_breakdown = sort_hash_map_by_value_descending(proof_size_breakdown);
+
+    println!();
+    println!("Proof size breakdown for {program_name}:");
+    println!(
+        "| {:<30} | {:>10} | {:>6} |",
+        "Category", "Size [bfe]", "[%]"
+    );
+    println!("|:{:-<30}-|-{:->10}:|-{:->6}:|", "", "", "");
+    for (category, size) in proof_size_breakdown {
+        let relative_size = (size as f64) / (total_proof_size as f64) * 100.0;
+        println!("| {category:<30} | {size:>10} | {relative_size:>6.2} |");
+    }
+    println!();
+}
+
+/// Create `num_iterations` many proofs for the program with the supplied source code and
+/// public & private input, summing up the lengths of all proofs.
+fn sum_of_proof_lengths_for_source_code(
+    source: &SourceCodeAndInput,
+    num_iterations: u64,
+) -> ProofSize {
+    let mut sum_of_proof_lengths = 0;
+    for _ in 0..num_iterations {
+        let (_, proof) =
+            prove_from_source(&source.source_code, &source.input, &source.secret_input).unwrap();
+        sum_of_proof_lengths += proof.encode().len();
+    }
+    ProofSize(sum_of_proof_lengths as f64)
+}
+
+/// Given the name and source for some program, generate a proof for its correct execution
+/// and a benchmark ID for that proof. The benchmark ID contains the length of the FRI domain.
+fn generate_proof_and_benchmark_id(
+    program_name: &str,
+    program_halt: &SourceCodeAndInput,
+) -> (Proof, BenchmarkId) {
+    let (parameters, proof) = prove_from_source(
+        &program_halt.source_code,
+        &program_halt.input,
+        &program_halt.secret_input,
+    )
+    .unwrap();
+    let log_2_fri_domain_length = log_2_fri_domain_length(&parameters, &proof);
+    let benchmark_id = BenchmarkId::new(program_name, log_2_fri_domain_length);
+    (proof, benchmark_id)
+}
+
+/// Benchmark the proof size and print a breakdown of the proof's size.
+fn generate_statistics_for_program(
+    benchmark_group: &mut BenchmarkGroup<ProofSize>,
+    program_name: &str,
+    program: &SourceCodeAndInput,
+) {
+    let (proof, benchmark_id) = generate_proof_and_benchmark_id(program_name, program);
+    print_proof_size_breakdown(program_name, &proof);
+    benchmark_proof_size(benchmark_group, benchmark_id, program);
+}
+
+/// Benchmark the proof size for the given program.
+fn benchmark_proof_size(
+    benchmark_group: &mut BenchmarkGroup<ProofSize>,
+    benchmark_id: BenchmarkId,
+    source: &SourceCodeAndInput,
+) {
+    benchmark_group.bench_function(benchmark_id, |bencher| {
+        bencher.iter_custom(|num_iterations| {
+            sum_of_proof_lengths_for_source_code(source, num_iterations)
         })
     });
-    group.bench_function(bench_id_fib_100, |bencher| {
-        bencher.iter_custom(|iters| {
-            let mut total_len = 0;
-            for _ in 0..iters {
-                let (_, proof) = prove_from_source(FIBONACCI_SEQUENCE, &[100], &[]).unwrap();
-                total_len += proof.encode().len();
-            }
-            ProofSize(total_len as f64)
-        })
-    });
-    group.bench_function(bench_id_fib_500, |bencher| {
-        bencher.iter_custom(|iters| {
-            let mut total_len = 0;
-            for _ in 0..iters {
-                let (_, proof) = prove_from_source(FIBONACCI_SEQUENCE, &[500], &[]).unwrap();
-                total_len += proof.encode().len();
-            }
-            ProofSize(total_len as f64)
-        })
-    });
-    group.bench_function(bench_id_sudoku, |bencher| {
-        bencher.iter_custom(|iters| {
-            let mut total_len = 0;
-            for _ in 0..iters {
-                let (_, proof) = prove_from_source(VERIFY_SUDOKU, &sudoku, &[]).unwrap();
-                total_len += proof.encode().len();
-            }
-            ProofSize(total_len as f64)
-        })
-    });
+}
+
+fn generate_statistics_for_various_programs(criterion: &mut Criterion<ProofSize>) {
+    let mut benchmark_group = criterion.benchmark_group("proof_size");
+
+    let program_halt = SourceCodeAndInput::without_input("halt");
+    generate_statistics_for_program(&mut benchmark_group, "halt", &program_halt);
+    generate_statistics_for_program(&mut benchmark_group, "fib_100", &program_fib(100));
+    generate_statistics_for_program(&mut benchmark_group, "fib_500", &program_fib(500));
+    generate_statistics_for_program(&mut benchmark_group, "sudoku", &program_verify_sudoku());
 }
 
 fn proof_size_measurements() -> Criterion<ProofSize> {
@@ -182,6 +292,6 @@ fn proof_size_measurements() -> Criterion<ProofSize> {
 criterion_group!(
     name = benches;
     config =  proof_size_measurements();
-    targets = proof_size
+    targets = generate_statistics_for_various_programs
 );
 criterion_main!(benches);

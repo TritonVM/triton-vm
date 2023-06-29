@@ -62,7 +62,7 @@ impl Proof {
 /// One additional piece of public information not explicitly listed in the [`Claim`] is the
 /// `padded_height`, an upper bound on the length of the computation.
 /// It is derivable from a [`Proof`] by calling [`Proof::padded_height()`].
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, GetSize, BFieldCodec)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, GetSize, BFieldCodec, Hash)]
 pub struct Claim {
     /// The hash digest of the program that was executed. The hash function in use is Tip5.
     pub program_digest: Digest,

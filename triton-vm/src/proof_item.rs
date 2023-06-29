@@ -1,5 +1,7 @@
 use anyhow::bail;
 use anyhow::Result;
+use strum_macros::Display;
+use strum_macros::EnumCount;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::bfield_codec::BFieldCodec;
 use twenty_first::shared_math::tip5::Digest;
@@ -12,7 +14,7 @@ type AuthenticationStructure = Vec<Digest>;
 /// A `FriResponse` is an [`AuthenticationStructure`] together with the values of the
 /// revealed leaves of the Merkle tree. Together, they correspond to the
 /// queried indices of the FRI codeword (of that round).
-#[derive(Debug, Clone, PartialEq, Eq, BFieldCodec)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, BFieldCodec)]
 pub struct FriResponse {
     /// The authentication structure of the Merkle tree.
     pub auth_structure: AuthenticationStructure,
@@ -20,7 +22,7 @@ pub struct FriResponse {
     pub revealed_leaves: Vec<XFieldElement>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Display, EnumCount)]
 pub enum ProofItem {
     AuthenticationStructure(AuthenticationStructure),
     MasterBaseTableRows(Vec<Vec<BFieldElement>>),
