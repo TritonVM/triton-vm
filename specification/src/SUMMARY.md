@@ -4,7 +4,6 @@
     + [Data Structures](data-structures.md)
     + [Registers](registers.md)
     + [Instructions](instructions.md)
-    + [Pseudo Instructions](pseudo-instructions.md)
 - [Arithmetization](arithmetization.md)
     + [Program Table](program-table.md)
     + [Processor Table](processor-table.md)
