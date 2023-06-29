@@ -84,7 +84,7 @@ However, in order to verify the correctness of `RunningEvaluationHashDigest`, th
 1. The operational stack element `st8` is 0.
 1. The operational stack element `st9` is 0.
 1. The operational stack element `st10` is 0.
-1. The [Evaluation Argument](evaluation-argument.md) of operational stack elements `st11` through `st15` under challenge 🥬 equals the corresponding terminal of the program digest.
+1. The [Evaluation Argument](evaluation-argument.md) of operational stack elements `st11` through `st15` with respect to indeterminate 🥬 equals the public part of program digest challenge, 🫑.
 See [program attestation](program-attestation.md) for more details.
 1. The operational stack pointer `osp` is 16.
 1. The operational stack value `osv` is 0.
@@ -121,11 +121,7 @@ See [program attestation](program-attestation.md) for more details.
 1. `st8`
 1. `st9`
 1. `st10`
-1. `st11`
-1. `st12`
-1. `st13`
-1. `st14`
-1. `st15`
+1. `🥬^5 + st11·🥬^4 + st12·🥬^3 + st13·🥬^2 + st14·🥬 + st15 - 🫑`
 1. `osp`
 1. `osv`
 1. `ramp`
