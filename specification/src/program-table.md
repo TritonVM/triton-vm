@@ -23,7 +23,7 @@ The corresponding Program Table consists of 7 base columns:
 ## Extension Columns
 
 A [Lookup Argument](lookup-argument.md) with the [Processor Table](processor-table.md) establishes that the processor has loaded the correct instruction (and its argument) from program memory.
-To establish the program memory's side of the Lookup Argument, the Program Table has extension column, `InstructionLookupServerLogDerivative`.
+To establish the program memory's side of the Lookup Argument, the Program Table has extension column `InstructionLookupServerLogDerivative`.
 
 For sending the padded program to the [Hash Table](hash-table.md), a combination of two [Evaluation Arguments](evaluation-argument.md) is used.
 The first, `PrepareChunkRunningEvaluation`, absorbs one chunk of $\texttt{rate}$ (_i.e._ 10) instructions at a time, after which it is reset and starts absorbing again.

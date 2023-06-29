@@ -22,6 +22,10 @@ There are 9 Arithmetic Execution Tables in TritonVM.
 Their relation is described by below figure.
 A a blue arrow indicates a [Permutation Argument](permutation-argument.md), a red arrow indicates an [Evaluation Argument](evaluation-argument.md), a purple arrow indicates a [Lookup Argument](lookup-argument.md), and the green arrow is the [Contiguity Argument](contiguity-of-memory-pointer-regions.md).
 
+The grayed-out elements “program digest”, “input”, and “output” are not AETs but publicly available information.
+Together, they constitute the claim for which Triton VM produces a proof.
+See “[Arguments Using Public Information](arithmetization.md#arguments-using-public-information)” and “[Program Attestation](program-attestation.md)” for the [Evaluation Argument](evaluation-argument.md)s with which they are linked into the rest of the proof system.
+
 ![](img/aet-relations.png)
 
 ### Base Tables

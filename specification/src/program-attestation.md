@@ -1,11 +1,11 @@
 # Program Attestation
 
 “Program attestation” is the notion of cryptographically linking a program to the proof produced by that program's execution.
-Informally, program attestation allows Triton VM to prove statements of the form:
+Informally, program attestation allows Triton VM to prove claims of the form:
 
 > There exists a program with hash digest X that, given input Y, produces output Z.
 
-Without program attestation, Triton VM would only be able to prove statements of the form:
+Without program attestation, Triton VM would only be able to prove claims of the form:
 
 > There exists a program that, given input Y, produces output Z.
 
@@ -47,8 +47,8 @@ This way, the recursive verifier can know whether it is actually recursing, or w
 
 [^zk]:
 Since hash functions are deterministic, a programmer desiring resistance against enumeration attacks might want to include [blinding elements][blinding]
-This is easily possible in, for example, dead code, by including statements of the form `push $rand`.
-The distribution `$rand` is sampled from and the number of such statements determine the security level against enumeration attacks.
+This is easily possible in, for example, dead code, by including instructions like `push $rand`.
+The distribution `$rand` is sampled from and the number of such instructions determine the security level against enumeration attacks.
 
 [^input-pad]:
 Padding is one 1 followed by the minimal number of 0’s necessary to make the padded input length a multiple of the $\texttt{rate}$, which is 10.
