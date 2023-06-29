@@ -1,7 +1,6 @@
 use std::ops::Add;
 use std::ops::Mul;
 
-use itertools::Itertools;
 use num_traits::One;
 use num_traits::Zero;
 use twenty_first::shared_math::b_field_element::BFieldElement;
@@ -107,23 +106,6 @@ impl CrossTableArg for LookupArg {
         symbols
             .iter()
             .map(|symbol| (challenge - symbol.lift()).inverse())
-            .fold(initial, XFieldElement::add)
-    }
-}
-
-impl LookupArg {
-    pub fn compute_terminal_with_multiplicities(
-        symbols: &[BFieldElement],
-        multiplicities: &[u32],
-        initial: XFieldElement,
-        challenge: XFieldElement,
-    ) -> XFieldElement {
-        symbols
-            .iter()
-            .zip_eq(multiplicities.iter())
-            .map(|(symbol, &multiplicity)| {
-                (challenge - symbol.lift()).inverse() * XFieldElement::from(multiplicity)
-            })
             .fold(initial, XFieldElement::add)
     }
 }
