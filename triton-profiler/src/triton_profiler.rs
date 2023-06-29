@@ -1,6 +1,7 @@
 use std::cmp::max;
 use std::collections::HashMap;
 use std::fmt::Display;
+use std::ops::AddAssign;
 use std::time::Duration;
 use std::time::Instant;
 use std::vec;
@@ -121,9 +122,9 @@ impl TritonProfiler {
         for task in self.profile.iter() {
             if let Some(category) = &task.category {
                 category_times
-                    .entry(category.clone())
-                    .and_modify(|e| *e += task.time)
-                    .or_insert(task.time);
+                    .entry(category.to_string())
+                    .or_insert(Duration::ZERO)
+                    .add_assign(task.time);
             }
         }
 
