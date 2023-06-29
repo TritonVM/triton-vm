@@ -127,6 +127,13 @@ impl From<HashTableMode> for BFieldElement {
 }
 
 impl ExtHashTable {
+    /// Construct one of the states 0 through 3 from its constituent limbs.
+    /// For example, state 0 (prior to it being looked up in the split-and-lookup S-Box, which is
+    /// usually the desired version of the state) is constructed from limbs
+    /// [`State0HighestLkIn`] through [`State0LowestLkIn`].
+    ///
+    /// States 4 through 15 are directly accessible. See also the slightly related
+    /// [`Self::state_column_by_index`].
     fn re_compose_16_bit_limbs<II: InputIndicator>(
         circuit_builder: &ConstraintCircuitBuilder<II>,
         highest: ConstraintCircuitMonad<II>,
@@ -403,12 +410,6 @@ impl ExtHashTable {
         let mode = base_row(Mode);
         let ci = base_row(CI);
         let round_number = base_row(RoundNumber);
-        let state10 = base_row(State10);
-        let state11 = base_row(State11);
-        let state12 = base_row(State12);
-        let state13 = base_row(State13);
-        let state14 = base_row(State14);
-        let state15 = base_row(State15);
 
         let ci_is_hash = ci.clone() - constant(Instruction::Hash.opcode() as u64);
         let ci_is_absorb_init = ci.clone() - constant(Instruction::AbsorbInit.opcode() as u64);
@@ -438,18 +439,12 @@ impl ExtHashTable {
 
         let if_mode_is_hash_and_round_no_is_0_then_ =
             round_number_is_not_0.clone() * mode_is_not_hash;
-        let if_mode_is_hash_and_round_no_is_0_then_state_10_is_1 =
-            if_mode_is_hash_and_round_no_is_0_then_.clone() * (state10.clone() - constant(1));
-        let if_mode_is_hash_and_round_no_is_0_then_state_11_is_1 =
-            if_mode_is_hash_and_round_no_is_0_then_.clone() * (state11.clone() - constant(1));
-        let if_mode_is_hash_and_round_no_is_0_then_state_12_is_1 =
-            if_mode_is_hash_and_round_no_is_0_then_.clone() * (state12.clone() - constant(1));
-        let if_mode_is_hash_and_round_no_is_0_then_state_13_is_1 =
-            if_mode_is_hash_and_round_no_is_0_then_.clone() * (state13.clone() - constant(1));
-        let if_mode_is_hash_and_round_no_is_0_then_state_14_is_1 =
-            if_mode_is_hash_and_round_no_is_0_then_.clone() * (state14.clone() - constant(1));
-        let if_mode_is_hash_and_round_no_is_0_then_state_15_is_1 =
-            if_mode_is_hash_and_round_no_is_0_then_ * (state15.clone() - constant(1));
+        let mut if_mode_is_hash_and_round_no_is_0_then_states_10_through_15_are_1 = (10..=15)
+            .map(|state_index| {
+                let state_element = base_row(Self::state_column_by_index(state_index));
+                if_mode_is_hash_and_round_no_is_0_then_.clone() * (state_element - constant(1))
+            })
+            .collect_vec();
 
         // It is possible to deselect for instruction `absorb_init` using the mode in addition
         // to deselecting for instructions `absorb` and `squeeze. However, the mode deselector has
@@ -457,18 +452,12 @@ impl ExtHashTable {
         // to be de-selected: the opcode of `hash`. Hence, the instructions are listed explicitly.
         let if_ci_is_absorb_init_and_round_no_is_0_then_ =
             round_number_is_not_0 * ci_is_hash * ci_is_absorb * ci_is_squeeze;
-        let if_ci_is_absorb_init_and_round_no_is_0_then_state_10_is_0 =
-            if_ci_is_absorb_init_and_round_no_is_0_then_.clone() * state10;
-        let if_ci_is_absorb_init_and_round_no_is_0_then_state_11_is_0 =
-            if_ci_is_absorb_init_and_round_no_is_0_then_.clone() * state11;
-        let if_ci_is_absorb_init_and_round_no_is_0_then_state_12_is_0 =
-            if_ci_is_absorb_init_and_round_no_is_0_then_.clone() * state12;
-        let if_ci_is_absorb_init_and_round_no_is_0_then_state_13_is_0 =
-            if_ci_is_absorb_init_and_round_no_is_0_then_.clone() * state13;
-        let if_ci_is_absorb_init_and_round_no_is_0_then_state_14_is_0 =
-            if_ci_is_absorb_init_and_round_no_is_0_then_.clone() * state14;
-        let if_ci_is_absorb_init_and_round_no_is_0_then_state_15_is_0 =
-            if_ci_is_absorb_init_and_round_no_is_0_then_ * state15;
+        let mut if_ci_is_absorb_init_and_round_no_is_0_then_states_10_through_15_are_0 = (10..=15)
+            .map(|state_index| {
+                let state_element = base_row(Self::state_column_by_index(state_index));
+                if_ci_is_absorb_init_and_round_no_is_0_then_.clone() * state_element
+            })
+            .collect_vec();
 
         // consistency of the inverse of the highest 2 limbs minus 2^32 - 1
         let one = constant(1);
@@ -546,18 +535,6 @@ impl ExtHashTable {
             if_mode_is_not_sponge_then_ci_is_hash,
             if_mode_is_sponge_then_ci_is_a_sponge_instruction,
             if_padding_mode_then_round_number_is_0,
-            if_mode_is_hash_and_round_no_is_0_then_state_10_is_1,
-            if_mode_is_hash_and_round_no_is_0_then_state_11_is_1,
-            if_mode_is_hash_and_round_no_is_0_then_state_12_is_1,
-            if_mode_is_hash_and_round_no_is_0_then_state_13_is_1,
-            if_mode_is_hash_and_round_no_is_0_then_state_14_is_1,
-            if_mode_is_hash_and_round_no_is_0_then_state_15_is_1,
-            if_ci_is_absorb_init_and_round_no_is_0_then_state_10_is_0,
-            if_ci_is_absorb_init_and_round_no_is_0_then_state_11_is_0,
-            if_ci_is_absorb_init_and_round_no_is_0_then_state_12_is_0,
-            if_ci_is_absorb_init_and_round_no_is_0_then_state_13_is_0,
-            if_ci_is_absorb_init_and_round_no_is_0_then_state_14_is_0,
-            if_ci_is_absorb_init_and_round_no_is_0_then_state_15_is_0,
             state_0_hi_limbs_inv_is_inv_or_is_zero,
             state_1_hi_limbs_inv_is_inv_or_is_zero,
             state_2_hi_limbs_inv_is_inv_or_is_zero,
@@ -571,6 +548,10 @@ impl ExtHashTable {
             if_state_2_hi_limbs_are_all_1_then_state_2_lo_limbs_are_all_0,
             if_state_3_hi_limbs_are_all_1_then_state_3_lo_limbs_are_all_0,
         ];
+
+        constraints.append(&mut if_mode_is_hash_and_round_no_is_0_then_states_10_through_15_are_1);
+        constraints
+            .append(&mut if_ci_is_absorb_init_and_round_no_is_0_then_states_10_through_15_are_0);
 
         for round_constant_column_idx in 0..NUM_ROUND_CONSTANTS {
             let round_constant_column =
@@ -593,6 +574,9 @@ impl ExtHashTable {
         constraints
     }
 
+    /// The [`HashBaseTableColumn`] for the round constant corresponding to the given index.
+    /// Valid indices are 0 through 15, corresponding to the 16 round constants
+    /// [`Constant0`] through [`Constant15`].
     fn round_constant_column_by_index(index: usize) -> HashBaseTableColumn {
         match index {
             0 => Constant0,
@@ -612,6 +596,30 @@ impl ExtHashTable {
             14 => Constant14,
             15 => Constant15,
             _ => panic!("invalid constant column index"),
+        }
+    }
+
+    /// The [`HashBaseTableColumn`] for the state corresponding to the given index.
+    /// Valid indices are 4 through 15, corresponding to the 12 state columns
+    /// [`State4`] through [`State15`].
+    ///
+    /// States with indices 0 through 3 have to be assembled from the respective limbs;
+    /// see [`Self::re_compose_16_bit_limbs`].
+    fn state_column_by_index(index: usize) -> HashBaseTableColumn {
+        match index {
+            4 => State4,
+            5 => State5,
+            6 => State6,
+            7 => State7,
+            8 => State8,
+            9 => State9,
+            10 => State10,
+            11 => State11,
+            12 => State12,
+            13 => State13,
+            14 => State14,
+            15 => State15,
+            _ => panic!("invalid state column index"),
         }
     }
 
