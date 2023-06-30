@@ -130,6 +130,10 @@ pub fn verify(parameters: &StarkParameters, proof: &Proof) -> bool {
 
 #[cfg(test)]
 mod public_interface_tests {
+    use crate::shared_tests::create_proofs_directory;
+    use crate::shared_tests::load_proof;
+    use crate::shared_tests::proof_file_exists;
+    use crate::shared_tests::save_proof;
     use twenty_first::shared_math::bfield_codec::BFieldCodec;
 
     use crate::stark::StarkHasher;
@@ -209,5 +213,21 @@ mod public_interface_tests {
         let proof = prove(&parameters, &claim, &program, &[]).unwrap();
         let verdict = verify(&parameters, &proof);
         assert!(verdict);
+    }
+
+    #[test]
+    fn save_proof_to_and_load_from_disk_test() {
+        let filename = "nop_halt.tsp";
+        if !proof_file_exists(filename) {
+            create_proofs_directory().unwrap();
+        }
+
+        let source_code = "nop halt";
+        let (_, proof) = prove_from_source(source_code, &[], &[]).unwrap();
+
+        save_proof(filename, proof.clone()).unwrap();
+        let loaded_proof = load_proof(filename).unwrap();
+
+        assert_eq!(proof, loaded_proof);
     }
 }

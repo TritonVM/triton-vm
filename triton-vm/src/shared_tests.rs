@@ -4,7 +4,7 @@ use std::io::Read;
 use std::io::Write;
 use std::path::Path;
 
-use anyhow::Error;
+use anyhow::anyhow;
 use anyhow::Result;
 use triton_opcodes::program::Program;
 use twenty_first::shared_math::b_field_element::BFieldElement;
@@ -97,23 +97,16 @@ impl SourceCodeAndInput {
     }
 }
 
-pub fn test_hash_nop_nop_lt() -> SourceCodeAndInput {
-    SourceCodeAndInput::without_input("hash nop hash nop nop hash push 3 push 2 lt assert halt")
-}
-
 pub fn test_halt() -> SourceCodeAndInput {
     SourceCodeAndInput::without_input("halt")
 }
 
 pub fn proofs_directory() -> String {
-    "proofs/".to_owned()
+    "proofs/".to_string()
 }
 
 pub fn create_proofs_directory() -> Result<()> {
-    match create_dir_all(proofs_directory()) {
-        Ok(ay) => Ok(ay),
-        Err(e) => Err(Error::new(e)),
-    }
+    create_dir_all(proofs_directory()).map_err(|e| anyhow!(e))
 }
 
 pub fn proofs_directory_exists() -> bool {
@@ -121,24 +114,20 @@ pub fn proofs_directory_exists() -> bool {
 }
 
 pub fn proof_file_exists(filename: &str) -> bool {
-    if !Path::new(&proofs_directory()).is_dir() {
+    if !proofs_directory_exists() {
         return false;
     }
     let full_filename = format!("{}{filename}", proofs_directory());
-    if File::open(full_filename).is_err() {
-        return false;
-    }
-    true
+    File::open(full_filename).is_ok()
 }
 
 pub fn load_proof(filename: &str) -> Result<Proof> {
     let full_filename = format!("{}{filename}", proofs_directory());
-    let mut contents: Vec<u8> = vec![];
+    let mut file_content = vec![];
     let mut file_handle = File::open(full_filename)?;
-    let i = file_handle.read_to_end(&mut contents)?;
-    println!("Read {i} bytes of proof data from disk.");
-    let proof: Proof = bincode::deserialize(&contents).expect("Cannot deserialize proof.");
-
+    let num_bytes_read = file_handle.read_to_end(&mut file_content)?;
+    println!("Read {num_bytes_read} bytes of proof data from disk.");
+    let proof: Proof = bincode::deserialize(&file_content).expect("Cannot deserialize proof.");
     Ok(proof)
 }
 

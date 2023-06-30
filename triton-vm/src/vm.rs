@@ -1835,6 +1835,7 @@ pub mod triton_vm_tests {
     pub fn property_based_test_programs() -> Vec<SourceCodeAndInput> {
         vec![
             property_based_test_program_for_assert_vector(),
+            property_based_test_program_for_sponge_instructions(),
             property_based_test_program_for_split(),
             property_based_test_program_for_eq(),
             property_based_test_program_for_lsb(),
