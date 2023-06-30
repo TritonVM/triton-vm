@@ -64,7 +64,7 @@ the value `a` was supplied as a secret input.
 | Instruction      | Opcode | old OpStack     | new OpStack                   | Description                                                                                             |
 |:-----------------|-------:|:----------------|:------------------------------|:--------------------------------------------------------------------------------------------------------|
 | `hash`           |     48 | `_jihgfedcba`   | `_yxwvu00000`                 | Overwrites the stack's 10 top-most elements with their hash digest (length 5) and 5 zeros.              |
-| `divine_sibling` |     56 | `_ i*****edcba` | e.g., `_ (i div 2)edcbazyxwv` | Helps traversing a Merkle tree during authentication path verification. See extended description below. |
+| `divine_sibling` |     56 | `_ iedcba*****` | e.g., `_ (i div 2)edcbazyxwv` | Helps traversing a Merkle tree during authentication path verification. See extended description below. |
 | `assert_vector`  |     64 | `_`             | `_`                           | Assert equality of `st(i)` to `st(i+5)` for `0 <= i < 4`. Crashes the VM if any pair is unequal.        |
 | `absorb_init`    |     72 | `_jihgfedcba`   | `_jihgfedcba`                 | Resets the Sponge's state and absorbs the stack's ten top-most elements.                                |
 | `absorb`         |     80 | `_jihgfedcba`   | `_jihgfedcba`                 | Absorbs the stack's ten top-most elements into the Sponge state.                                        |
@@ -78,12 +78,12 @@ The top elements of the stack `st0` through `st4` are set to zero.
 For example, the old stack was `_ jihgfedcba` and the new stack is `_ εδγβα 00000`.
 
 The instruction `divine_sibling` works as follows.
-The 11th element of the stack `i` is taken as the node index for a Merkle tree that is claimed to include data whose digest is the content of stack registers `st0` through `st4`, i.e., `edcba`.
+The 11th element of the stack `i` is taken as the node index for a Merkle tree that is claimed to include data whose digest is the content of stack registers `st5` through `st9`, i.e., `edcba`.
 The sibling digest of `edcba` is `zyxwv` and is read from the input interface of secret data.
 The least-significant bit of `i` indicates whether `edcba` is the digest of a left leaf or a right leaf of the Merkle tree's base level.
 Depending on this least significant bit of `i`, `divine_sibling` either
-1. (`i` = 0 mod 2, _i.e._, current node is left sibling) does not change registers `st0` through `st4` and moves `zyxwv` into registers `st5` through `st9`, or
-2. (`i` = 1 mod 2, _i.e._, current node is right sibling) moves `edcba` into registers `st5` through `st9` and moves `zyxwv` into registers `st0` through `st4`.
+1. (`i` = 0 mod 2, _i.e._, current node is left sibling) moves `edcba` into registers `st0` through `st4` and moves `zyxwv` into registers `st5` through `st9`, or
+2. (`i` = 1 mod 2, _i.e._, current node is right sibling) does not change registers `st5` through `st9` and moves `zyxwv` into registers `st0` through `st4`.
 
 The 11th element of the operational stack `i` is shifted by 1 bit to the right, _i.e._, the least-significant bit is dropped.
 In conjunction with instruction `hash` and `assert_vector`, the instruction `divine_sibling` allows to efficiently verify a Merkle authentication path.
