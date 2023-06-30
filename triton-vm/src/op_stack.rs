@@ -1,3 +1,4 @@
+use anyhow::anyhow;
 use anyhow::Result;
 use num_traits::Zero;
 use triton_opcodes::ord_n::Ord16;
@@ -5,7 +6,6 @@ use triton_opcodes::ord_n::Ord16::*;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
-use super::error::vm_fail;
 use super::error::InstructionError::*;
 
 #[derive(Debug, Clone)]
@@ -38,7 +38,7 @@ impl OpStack {
     }
 
     pub fn pop(&mut self) -> Result<BFieldElement> {
-        self.stack.pop().ok_or_else(|| vm_fail(OpStackTooShallow))
+        self.stack.pop().ok_or_else(|| anyhow!(OpStackTooShallow))
     }
 
     pub fn pop_x(&mut self) -> Result<XFieldElement> {
@@ -48,7 +48,7 @@ impl OpStack {
     pub fn pop_u32(&mut self) -> Result<u32> {
         let elem = self.pop()?;
         elem.try_into()
-            .map_err(|_| vm_fail(FailedU32Conversion(elem)))
+            .map_err(|_| anyhow!(FailedU32Conversion(elem)))
     }
 
     pub fn pop_n<const N: usize>(&mut self) -> Result<[BFieldElement; N]> {
@@ -128,10 +128,10 @@ impl OpStack {
 
 #[cfg(test)]
 mod op_stack_test {
+    use triton_opcodes::ord_n::Ord16;
     use twenty_first::shared_math::b_field_element::BFieldElement;
 
     use crate::op_stack::OpStack;
-    use triton_opcodes::ord_n::Ord16;
 
     #[test]
     fn test_sanity() {

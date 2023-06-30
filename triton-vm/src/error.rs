@@ -2,14 +2,12 @@ use std::error::Error;
 use std::fmt::Display;
 use std::fmt::Formatter;
 
-use anyhow::Result;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 
 use InstructionError::*;
 
 #[derive(Debug, Clone)]
 pub enum InstructionError {
-    InstructionPointerUnderflow,
     InstructionPointerOverflow(usize),
     OpStackTooShallow,
     JumpStackTooShallow,
@@ -17,18 +15,12 @@ pub enum InstructionError {
     InverseOfZero,
     DivisionByZero,
     LogarithmOfZero,
-    RunawayInstructionArg,
-    UngracefulTermination,
     FailedU32Conversion(BFieldElement),
 }
 
 impl Display for InstructionError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            InstructionPointerUnderflow => {
-                write!(f, "Instruction pointer points to before start of program",)
-            }
-
             InstructionPointerOverflow(ip) => {
                 write!(f, "Instruction pointer {ip} points outside of program")
             }
@@ -60,20 +52,6 @@ impl Display for InstructionError {
                 write!(f, "The logarithm of 0 does not exist")
             }
 
-            RunawayInstructionArg => {
-                write!(
-                    f,
-                    "A numeric argument to an instruction occurred out of place"
-                )
-            }
-
-            UngracefulTermination => {
-                write!(
-                    f,
-                    "The Virtual Machine must terminate using instruction Halt"
-                )
-            }
-
             FailedU32Conversion(word) => {
                 write!(
                     f,
@@ -87,10 +65,72 @@ impl Display for InstructionError {
 
 impl Error for InstructionError {}
 
-pub fn vm_err<T>(runtime_error: InstructionError) -> Result<T> {
-    Err(vm_fail(runtime_error))
-}
+#[cfg(test)]
+mod tests {
+    use triton_opcodes::program::Program;
 
-pub fn vm_fail(runtime_error: InstructionError) -> anyhow::Error {
-    anyhow::Error::new(runtime_error)
+    use crate::vm::run;
+
+    #[test]
+    #[should_panic(expected = "Instruction pointer 1 points outside of program")]
+    fn test_vm_err() {
+        let program = Program::from_code("nop").unwrap();
+        run(&program, vec![], vec![]).unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected = "Operational stack is too shallow")]
+    fn shrink_op_stack_too_much_test() {
+        let program = Program::from_code("pop halt").unwrap();
+        run(&program, vec![], vec![]).unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected = "Jump stack does not contain return address")]
+    fn return_without_call_test() {
+        let program = Program::from_code("return halt").unwrap();
+        run(&program, vec![], vec![]).unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected = "Jump stack does not contain return address")]
+    fn recurse_without_call_test() {
+        let program = Program::from_code("recurse halt").unwrap();
+        run(&program, vec![], vec![]).unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected = "Assertion failed: st0 must be 1. ip: 2, clk: 2, st0: 0")]
+    fn assert_false_test() {
+        let program = Program::from_code("push 0 assert halt").unwrap();
+        run(&program, vec![], vec![]).unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected = "0 does not have a multiplicative inverse")]
+    fn inverse_of_zero_test() {
+        let program = Program::from_code("push 0 invert halt").unwrap();
+        run(&program, vec![], vec![]).unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected = "Division by 0 is impossible")]
+    fn division_by_zero_test() {
+        let program = Program::from_code("push 0 push 5 div halt").unwrap();
+        run(&program, vec![], vec![]).unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected = "The logarithm of 0 does not exist")]
+    fn log_of_zero_test() {
+        let program = Program::from_code("push 0 log_2_floor halt").unwrap();
+        run(&program, vec![], vec![]).unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected = "Failed to convert BFieldElement 4294967297 into u32")]
+    fn failed_u32_conversion_test() {
+        let program = Program::from_code("push 4294967297 push 1 and halt").unwrap();
+        run(&program, vec![], vec![]).unwrap();
+    }
 }

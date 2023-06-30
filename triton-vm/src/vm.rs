@@ -14,6 +14,12 @@ use ndarray::Array2;
 use ndarray::Axis;
 use num_traits::One;
 use num_traits::Zero;
+use triton_opcodes::instruction::AnInstruction::*;
+use triton_opcodes::instruction::Instruction;
+use triton_opcodes::ord_n::Ord16;
+use triton_opcodes::ord_n::Ord16::*;
+use triton_opcodes::ord_n::Ord8;
+use triton_opcodes::program::Program;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::b_field_element::BFIELD_ZERO;
 use twenty_first::shared_math::tip5;
@@ -24,15 +30,6 @@ use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 use twenty_first::util_types::algebraic_hasher::Domain;
 
-use triton_opcodes::instruction::AnInstruction::*;
-use triton_opcodes::instruction::Instruction;
-use triton_opcodes::ord_n::Ord16;
-use triton_opcodes::ord_n::Ord16::*;
-use triton_opcodes::ord_n::Ord8;
-use triton_opcodes::program::Program;
-
-use crate::error::vm_err;
-use crate::error::vm_fail;
 use crate::error::InstructionError::InstructionPointerOverflow;
 use crate::error::InstructionError::*;
 use crate::op_stack::OpStack;
@@ -282,7 +279,7 @@ impl<'pgm> VMState<'pgm> {
             Assert => {
                 let elem = self.op_stack.pop()?;
                 if !elem.is_one() {
-                    return vm_err(AssertionFailed(
+                    bail!(AssertionFailed(
                         self.instruction_pointer,
                         self.cycle_count,
                         elem,
@@ -372,7 +369,7 @@ impl<'pgm> VMState<'pgm> {
 
             AssertVector => {
                 if !self.assert_vector() {
-                    return vm_err(AssertionFailed(
+                    bail!(AssertionFailed(
                         self.instruction_pointer,
                         self.cycle_count,
                         self.op_stack
@@ -400,7 +397,7 @@ impl<'pgm> VMState<'pgm> {
             Invert => {
                 let elem = self.op_stack.pop()?;
                 if elem.is_zero() {
-                    return vm_err(InverseOfZero);
+                    bail!(InverseOfZero);
                 }
                 self.op_stack.push(elem.inverse());
                 self.instruction_pointer += 1;
@@ -460,7 +457,7 @@ impl<'pgm> VMState<'pgm> {
             Log2Floor => {
                 let lhs = self.op_stack.pop_u32()?;
                 if lhs.is_zero() {
-                    return vm_err(LogarithmOfZero);
+                    bail!(LogarithmOfZero);
                 }
                 let l2f = BFieldElement::new(lhs.ilog2().into());
                 self.op_stack.push(l2f);
@@ -483,7 +480,7 @@ impl<'pgm> VMState<'pgm> {
                 let numer = self.op_stack.pop_u32()?;
                 let denom = self.op_stack.pop_u32()?;
                 if denom.is_zero() {
-                    return vm_err(DivisionByZero);
+                    bail!(DivisionByZero);
                 }
                 let quot = BFieldElement::new((numer / denom) as u64);
                 let rem = BFieldElement::new((numer % denom) as u64);
@@ -522,7 +519,7 @@ impl<'pgm> VMState<'pgm> {
             XInvert => {
                 let elem: XFieldElement = self.op_stack.pop_x()?;
                 if elem.is_zero() {
-                    return vm_err(InverseOfZero);
+                    bail!(InverseOfZero);
                 }
                 self.op_stack.push_x(elem.inverse());
                 self.instruction_pointer += 1;
@@ -552,7 +549,7 @@ impl<'pgm> VMState<'pgm> {
 
         // Check that no instruction left the OpStack with too few elements
         if self.op_stack.is_too_shallow() {
-            return vm_err(OpStackTooShallow);
+            bail!(OpStackTooShallow);
         }
 
         Ok(co_processor_trace)
@@ -654,7 +651,7 @@ impl<'pgm> VMState<'pgm> {
     pub fn current_instruction(&self) -> Result<Instruction> {
         self.program
             .get(self.instruction_pointer)
-            .ok_or_else(|| vm_fail(InstructionPointerOverflow(self.instruction_pointer)))
+            .ok_or_else(|| anyhow!(InstructionPointerOverflow(self.instruction_pointer)))
             .copied()
     }
 
@@ -670,21 +667,21 @@ impl<'pgm> VMState<'pgm> {
         let ni_pointer = self.instruction_pointer + ci_size;
         self.program
             .get(ni_pointer)
-            .ok_or_else(|| vm_fail(InstructionPointerOverflow(ni_pointer)))
+            .ok_or_else(|| anyhow!(InstructionPointerOverflow(ni_pointer)))
             .copied()
     }
 
     fn jump_stack_pop(&mut self) -> Result<(BFieldElement, BFieldElement)> {
         self.jump_stack
             .pop()
-            .ok_or_else(|| vm_fail(JumpStackTooShallow))
+            .ok_or_else(|| anyhow!(JumpStackTooShallow))
     }
 
     fn jump_stack_peek(&mut self) -> Result<(BFieldElement, BFieldElement)> {
         self.jump_stack
             .last()
             .copied()
-            .ok_or_else(|| vm_fail(JumpStackTooShallow))
+            .ok_or_else(|| anyhow!(JumpStackTooShallow))
     }
 
     fn memory_get(&self, mem_addr: &BFieldElement) -> BFieldElement {
