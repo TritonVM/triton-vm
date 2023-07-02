@@ -12,7 +12,7 @@ use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
-use crate::op_stack::OP_STACK_REG_COUNT;
+use crate::op_stack::NUM_OP_STACK_REGISTERS;
 use crate::table::challenges::ChallengeId::*;
 use crate::table::challenges::Challenges;
 use crate::table::constraint_circuit::ConstraintCircuitBuilder;
@@ -189,7 +189,7 @@ impl OpStackTable {
             let osv = processor_row[ProcessorBaseTableColumn::OSV.base_table_index()];
             // The (honest) prover can only grow the Op Stack's size by at most 1 per execution
             // step. Hence, the following (a) works, and (b) sorts.
-            let osp_minus_16 = osp.value() as usize - OP_STACK_REG_COUNT;
+            let osp_minus_16 = osp.value() as usize - NUM_OP_STACK_REGISTERS;
             let op_stack_row = (clk, ib1, osv);
             match osp_minus_16.cmp(&pre_processed_op_stack_table.len()) {
                 Ordering::Less => pre_processed_op_stack_table[osp_minus_16].push(op_stack_row),
@@ -203,7 +203,7 @@ impl OpStackTable {
         for (osp_minus_16, rows_with_this_osp) in
             pre_processed_op_stack_table.into_iter().enumerate()
         {
-            let osp = BFieldElement::new((osp_minus_16 + OP_STACK_REG_COUNT) as u64);
+            let osp = BFieldElement::new((osp_minus_16 + NUM_OP_STACK_REGISTERS) as u64);
             for (clk, ib1, osv) in rows_with_this_osp {
                 op_stack_table[[op_stack_table_row, CLK.base_table_index()]] = clk;
                 op_stack_table[[op_stack_table_row, IB1ShrinkStack.base_table_index()]] = ib1;

@@ -2963,8 +2963,7 @@ mod constraint_polynomial_tests {
     use crate::table::master_table::MasterTable;
     use crate::table::master_table::NUM_BASE_COLUMNS;
     use crate::table::master_table::NUM_EXT_COLUMNS;
-    use crate::table::processor_table::ProcessorTraceRow;
-    use crate::vm::simulate;
+    use crate::vm::debug;
 
     use super::*;
 
@@ -2973,10 +2972,11 @@ mod constraint_polynomial_tests {
     fn print_simple_processor_table_row_test() {
         let code = "push 2 push -1 add assert halt";
         let program = Program::from_code(code).unwrap();
-        let (aet, _) = simulate(&program, vec![], vec![]).unwrap();
+        let (states, _) = debug(&program, vec![], vec![], None, None);
+
         println!();
-        for row in aet.processor_trace.rows() {
-            println!("{}", ProcessorTraceRow { row });
+        for state in states {
+            println!("{state}");
         }
     }
 

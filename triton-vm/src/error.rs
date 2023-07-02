@@ -10,7 +10,7 @@ use InstructionError::*;
 pub enum InstructionError {
     InstructionPointerOverflow(usize),
     OpStackTooShallow,
-    JumpStackTooShallow,
+    JumpStackIsEmpty,
     AssertionFailed(usize, u32, BFieldElement),
     InverseOfZero,
     DivisionByZero,
@@ -29,8 +29,8 @@ impl Display for InstructionError {
                 write!(f, "Operational stack is too shallow")
             }
 
-            JumpStackTooShallow => {
-                write!(f, "Jump stack does not contain return address")
+            JumpStackIsEmpty => {
+                write!(f, "Jump stack is empty.")
             }
 
             AssertionFailed(ip, clk, st0) => {
@@ -86,14 +86,14 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Jump stack does not contain return address")]
+    #[should_panic(expected = "Jump stack is empty.")]
     fn return_without_call_test() {
         let program = Program::from_code("return halt").unwrap();
         run(&program, vec![], vec![]).unwrap();
     }
 
     #[test]
-    #[should_panic(expected = "Jump stack does not contain return address")]
+    #[should_panic(expected = "Jump stack is empty.")]
     fn recurse_without_call_test() {
         let program = Program::from_code("recurse halt").unwrap();
         run(&program, vec![], vec![]).unwrap();

@@ -35,9 +35,9 @@ use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
 use twenty_first::util_types::algebraic_hasher::Domain;
 use twenty_first::util_types::algebraic_hasher::SpongeHasher;
 
-use crate::error::InstructionError::InstructionPointerOverflow;
 use crate::error::InstructionError::*;
 use crate::op_stack::OpStack;
+use crate::op_stack::NUM_OP_STACK_REGISTERS;
 use crate::stark::StarkHasher;
 use crate::table::hash_table;
 use crate::table::hash_table::HashTable;
@@ -150,30 +150,16 @@ impl<'pgm> VMState<'pgm> {
 
     pub fn derive_helper_variables(&self) -> [BFieldElement; HV_REGISTER_COUNT] {
         let mut hvs = [BFieldElement::zero(); HV_REGISTER_COUNT];
+        let current_instruction = match self.current_instruction() {
+            Ok(instruction) => instruction,
+            Err(_) => return hvs,
+        };
 
-        let current_instruction = self.current_instruction();
-        if current_instruction.is_err() {
-            return hvs;
-        }
-        let current_instruction = current_instruction.unwrap();
-
-        // if current instruction shrinks the stack
-        if matches!(
-            current_instruction,
-            Pop | Skiz
-                | Assert
-                | WriteMem
-                | WriteIo
-                | Add
-                | Mul
-                | Eq
-                | XbMul
-                | Lt
-                | And
-                | Xor
-                | Pow
-        ) {
-            hvs[3] = (self.op_stack.osp() - BFieldElement::new(16)).inverse_or_zero();
+        if Self::instruction_shrinks_stack(current_instruction) {
+            let op_stack_pointer = self.op_stack.op_stack_pointer();
+            let maximum_op_stack_pointer = BFieldElement::new(NUM_OP_STACK_REGISTERS as u64);
+            let op_stack_pointer_minus_maximum = op_stack_pointer - maximum_op_stack_pointer;
+            hvs[3] = op_stack_pointer_minus_maximum.inverse_or_zero();
         }
 
         match current_instruction {
@@ -188,19 +174,19 @@ impl<'pgm> VMState<'pgm> {
                 hvs[3] = BFieldElement::new((arg_val >> 3) % 2);
             }
             Skiz => {
-                let nia = self.nia().value();
+                let nia = self.next_instruction_or_argument().value();
+                let st0 = self.op_stack.peek_at(ST0);
                 hvs[0] = BFieldElement::new(nia % 2);
                 hvs[1] = BFieldElement::new(nia / 2);
-                let st0 = self.op_stack.safe_peek(ST0);
                 hvs[2] = st0.inverse_or_zero();
             }
             DivineSibling => {
-                let node_index = self.op_stack.safe_peek(ST10).value();
+                let node_index = self.op_stack.peek_at(ST10).value();
                 // set hv0 register to least significant bit of st10
                 hvs[0] = BFieldElement::new(node_index % 2);
             }
             Split => {
-                let elem = self.op_stack.safe_peek(ST0);
+                let elem = self.op_stack.peek_at(ST0);
                 let n: u64 = elem.value();
                 let lo = BFieldElement::new(n & 0xffff_ffff);
                 let hi = BFieldElement::new(n >> 32);
@@ -210,14 +196,19 @@ impl<'pgm> VMState<'pgm> {
                 }
             }
             Eq => {
-                let lhs = self.op_stack.safe_peek(ST0);
-                let rhs = self.op_stack.safe_peek(ST1);
+                let lhs = self.op_stack.peek_at(ST0);
+                let rhs = self.op_stack.peek_at(ST1);
                 hvs[0] = (rhs - lhs).inverse_or_zero();
             }
             _ => (),
         }
 
         hvs
+    }
+
+    fn instruction_shrinks_stack(instruction: Instruction) -> bool {
+        matches!(instruction, Pop | Skiz | Assert | WriteMem | WriteIo | Add)
+            || matches!(instruction, Mul | Eq | XbMul | Lt | And | Xor | Pow)
     }
 
     /// Perform the state transition as a mutable operation on `self`.
@@ -251,14 +242,13 @@ impl<'pgm> VMState<'pgm> {
             }
 
             Dup(arg) => {
-                let elem = self.op_stack.safe_peek(arg);
+                let elem = self.op_stack.peek_at(arg);
                 self.op_stack.push(elem);
                 self.instruction_pointer += 2;
             }
 
             Swap(arg) => {
-                // st[0] ... st[n] -> st[n] ... st[0]
-                self.op_stack.safe_swap(arg);
+                self.op_stack.swap(arg);
                 self.instruction_pointer += 2;
             }
 
@@ -269,8 +259,7 @@ impl<'pgm> VMState<'pgm> {
             Skiz => {
                 let elem = self.op_stack.pop()?;
                 self.instruction_pointer += if elem.is_zero() {
-                    let next_instruction = self.next_instruction()?;
-                    1 + next_instruction.size()
+                    1 + self.next_instruction()?.size()
                 } else {
                     1
                 };
@@ -311,7 +300,7 @@ impl<'pgm> VMState<'pgm> {
             }
 
             ReadMem => {
-                let ramp = self.op_stack.safe_peek(ST0);
+                let ramp = self.op_stack.peek_at(ST0);
                 let ramv = self.memory_get(&ramp);
                 self.op_stack.push(ramv);
                 self.ramp = ramp.value();
@@ -319,7 +308,7 @@ impl<'pgm> VMState<'pgm> {
             }
 
             WriteMem => {
-                let ramp = self.op_stack.safe_peek(ST1);
+                let ramp = self.op_stack.peek_at(ST1);
                 let ramv = self.op_stack.pop()?;
                 self.ramp = ramp.value();
                 self.ram.insert(ramp, ramv);
@@ -327,7 +316,7 @@ impl<'pgm> VMState<'pgm> {
             }
 
             Hash => {
-                let to_hash = self.op_stack.pop_n::<{ tip5::RATE }>()?;
+                let to_hash = self.op_stack.pop_multiple::<{ tip5::RATE }>()?;
                 let mut hash_input = Tip5State::new(Domain::FixedLength);
                 hash_input.state[..tip5::RATE].copy_from_slice(&to_hash);
                 let tip5_trace = Tip5::trace(&mut hash_input);
@@ -346,7 +335,7 @@ impl<'pgm> VMState<'pgm> {
 
             AbsorbInit | Absorb => {
                 // fetch top elements but don't alter the stack
-                let to_absorb = self.op_stack.pop_n::<{ tip5::RATE }>()?;
+                let to_absorb = self.op_stack.pop_multiple::<{ tip5::RATE }>()?;
                 for i in (0..tip5::RATE).rev() {
                     self.op_stack.push(to_absorb[i]);
                 }
@@ -366,7 +355,7 @@ impl<'pgm> VMState<'pgm> {
             }
 
             Squeeze => {
-                let _ = self.op_stack.pop_n::<{ tip5::RATE }>()?;
+                let _ = self.op_stack.pop_multiple::<{ tip5::RATE }>()?;
                 for i in (0..tip5::RATE).rev() {
                     self.op_stack.push(self.sponge_state[i]);
                 }
@@ -389,9 +378,7 @@ impl<'pgm> VMState<'pgm> {
                     bail!(AssertionFailed(
                         self.instruction_pointer,
                         self.cycle_count,
-                        self.op_stack
-                            .peek(0)
-                            .expect("Could not unwrap top of stack."),
+                        self.op_stack.peek_at(ST0)
                     ));
                 }
                 self.instruction_pointer += 1;
@@ -520,32 +507,32 @@ impl<'pgm> VMState<'pgm> {
             }
 
             XxAdd => {
-                let lhs: XFieldElement = self.op_stack.pop_x()?;
-                let rhs: XFieldElement = self.op_stack.safe_peek_x();
-                self.op_stack.push_x(lhs + rhs);
+                let lhs: XFieldElement = self.op_stack.pop_extension_field_element()?;
+                let rhs: XFieldElement = self.op_stack.peek_at_top_extension_field_element();
+                self.op_stack.push_extension_field_element(lhs + rhs);
                 self.instruction_pointer += 1;
             }
 
             XxMul => {
-                let lhs: XFieldElement = self.op_stack.pop_x()?;
-                let rhs: XFieldElement = self.op_stack.safe_peek_x();
-                self.op_stack.push_x(lhs * rhs);
+                let lhs: XFieldElement = self.op_stack.pop_extension_field_element()?;
+                let rhs: XFieldElement = self.op_stack.peek_at_top_extension_field_element();
+                self.op_stack.push_extension_field_element(lhs * rhs);
                 self.instruction_pointer += 1;
             }
 
             XInvert => {
-                let elem: XFieldElement = self.op_stack.pop_x()?;
+                let elem: XFieldElement = self.op_stack.pop_extension_field_element()?;
                 if elem.is_zero() {
                     bail!(InverseOfZero);
                 }
-                self.op_stack.push_x(elem.inverse());
+                self.op_stack.push_extension_field_element(elem.inverse());
                 self.instruction_pointer += 1;
             }
 
             XbMul => {
                 let lhs: BFieldElement = self.op_stack.pop()?;
-                let rhs: XFieldElement = self.op_stack.pop_x()?;
-                self.op_stack.push_x(lhs.lift() * rhs);
+                let rhs: XFieldElement = self.op_stack.pop_extension_field_element()?;
+                self.op_stack.push_extension_field_element(lhs.lift() * rhs);
                 self.instruction_pointer += 1;
             }
 
@@ -574,61 +561,60 @@ impl<'pgm> VMState<'pgm> {
 
     pub fn to_processor_row(&self) -> Array1<BFieldElement> {
         use ProcessorBaseTableColumn::*;
-        let mut row = Array1::zeros(processor_table::BASE_WIDTH);
+        let mut processor_row = Array1::zeros(processor_table::BASE_WIDTH);
 
         let current_instruction = self.current_instruction().unwrap_or(Nop);
-        let hvs = self.derive_helper_variables();
-        let ramp = self.ramp.into();
+        let helper_variables = self.derive_helper_variables();
+        let ram_pointer = self.ramp.into();
 
-        row[CLK.base_table_index()] = BFieldElement::new(self.cycle_count as u64);
-        row[PreviousInstruction.base_table_index()] = self.previous_instruction;
-        row[IP.base_table_index()] = (self.instruction_pointer as u32).into();
-        row[CI.base_table_index()] = current_instruction.opcode_b();
-        row[NIA.base_table_index()] = self.nia();
-        row[IB0.base_table_index()] = current_instruction.ib(Ord8::IB0);
-        row[IB1.base_table_index()] = current_instruction.ib(Ord8::IB1);
-        row[IB2.base_table_index()] = current_instruction.ib(Ord8::IB2);
-        row[IB3.base_table_index()] = current_instruction.ib(Ord8::IB3);
-        row[IB4.base_table_index()] = current_instruction.ib(Ord8::IB4);
-        row[IB5.base_table_index()] = current_instruction.ib(Ord8::IB5);
-        row[IB6.base_table_index()] = current_instruction.ib(Ord8::IB6);
-        row[IB7.base_table_index()] = current_instruction.ib(Ord8::IB7);
-        row[JSP.base_table_index()] = self.jsp();
-        row[JSO.base_table_index()] = self.jso();
-        row[JSD.base_table_index()] = self.jsd();
-        row[ST0.base_table_index()] = self.op_stack.st(Ord16::ST0);
-        row[ST1.base_table_index()] = self.op_stack.st(Ord16::ST1);
-        row[ST2.base_table_index()] = self.op_stack.st(Ord16::ST2);
-        row[ST3.base_table_index()] = self.op_stack.st(Ord16::ST3);
-        row[ST4.base_table_index()] = self.op_stack.st(Ord16::ST4);
-        row[ST5.base_table_index()] = self.op_stack.st(Ord16::ST5);
-        row[ST6.base_table_index()] = self.op_stack.st(Ord16::ST6);
-        row[ST7.base_table_index()] = self.op_stack.st(Ord16::ST7);
-        row[ST8.base_table_index()] = self.op_stack.st(Ord16::ST8);
-        row[ST9.base_table_index()] = self.op_stack.st(Ord16::ST9);
-        row[ST10.base_table_index()] = self.op_stack.st(Ord16::ST10);
-        row[ST11.base_table_index()] = self.op_stack.st(Ord16::ST11);
-        row[ST12.base_table_index()] = self.op_stack.st(Ord16::ST12);
-        row[ST13.base_table_index()] = self.op_stack.st(Ord16::ST13);
-        row[ST14.base_table_index()] = self.op_stack.st(Ord16::ST14);
-        row[ST15.base_table_index()] = self.op_stack.st(Ord16::ST15);
-        row[OSP.base_table_index()] = self.op_stack.osp();
-        row[OSV.base_table_index()] = self.op_stack.osv();
-        row[HV0.base_table_index()] = hvs[0];
-        row[HV1.base_table_index()] = hvs[1];
-        row[HV2.base_table_index()] = hvs[2];
-        row[HV3.base_table_index()] = hvs[3];
-        row[RAMP.base_table_index()] = ramp;
-        row[RAMV.base_table_index()] = self.memory_get(&ramp);
+        processor_row[CLK.base_table_index()] = (self.cycle_count as u64).into();
+        processor_row[PreviousInstruction.base_table_index()] = self.previous_instruction;
+        processor_row[IP.base_table_index()] = (self.instruction_pointer as u32).into();
+        processor_row[CI.base_table_index()] = current_instruction.opcode_b();
+        processor_row[NIA.base_table_index()] = self.next_instruction_or_argument();
+        processor_row[IB0.base_table_index()] = current_instruction.ib(Ord8::IB0);
+        processor_row[IB1.base_table_index()] = current_instruction.ib(Ord8::IB1);
+        processor_row[IB2.base_table_index()] = current_instruction.ib(Ord8::IB2);
+        processor_row[IB3.base_table_index()] = current_instruction.ib(Ord8::IB3);
+        processor_row[IB4.base_table_index()] = current_instruction.ib(Ord8::IB4);
+        processor_row[IB5.base_table_index()] = current_instruction.ib(Ord8::IB5);
+        processor_row[IB6.base_table_index()] = current_instruction.ib(Ord8::IB6);
+        processor_row[IB7.base_table_index()] = current_instruction.ib(Ord8::IB7);
+        processor_row[JSP.base_table_index()] = self.jump_stack_pointer();
+        processor_row[JSO.base_table_index()] = self.jump_stack_origin();
+        processor_row[JSD.base_table_index()] = self.jump_stack_destination();
+        processor_row[ST0.base_table_index()] = self.op_stack.peek_at(Ord16::ST0);
+        processor_row[ST1.base_table_index()] = self.op_stack.peek_at(Ord16::ST1);
+        processor_row[ST2.base_table_index()] = self.op_stack.peek_at(Ord16::ST2);
+        processor_row[ST3.base_table_index()] = self.op_stack.peek_at(Ord16::ST3);
+        processor_row[ST4.base_table_index()] = self.op_stack.peek_at(Ord16::ST4);
+        processor_row[ST5.base_table_index()] = self.op_stack.peek_at(Ord16::ST5);
+        processor_row[ST6.base_table_index()] = self.op_stack.peek_at(Ord16::ST6);
+        processor_row[ST7.base_table_index()] = self.op_stack.peek_at(Ord16::ST7);
+        processor_row[ST8.base_table_index()] = self.op_stack.peek_at(Ord16::ST8);
+        processor_row[ST9.base_table_index()] = self.op_stack.peek_at(Ord16::ST9);
+        processor_row[ST10.base_table_index()] = self.op_stack.peek_at(Ord16::ST10);
+        processor_row[ST11.base_table_index()] = self.op_stack.peek_at(Ord16::ST11);
+        processor_row[ST12.base_table_index()] = self.op_stack.peek_at(Ord16::ST12);
+        processor_row[ST13.base_table_index()] = self.op_stack.peek_at(Ord16::ST13);
+        processor_row[ST14.base_table_index()] = self.op_stack.peek_at(Ord16::ST14);
+        processor_row[ST15.base_table_index()] = self.op_stack.peek_at(Ord16::ST15);
+        processor_row[OSP.base_table_index()] = self.op_stack.op_stack_pointer();
+        processor_row[OSV.base_table_index()] = self.op_stack.op_stack_value();
+        processor_row[HV0.base_table_index()] = helper_variables[0];
+        processor_row[HV1.base_table_index()] = helper_variables[1];
+        processor_row[HV2.base_table_index()] = helper_variables[2];
+        processor_row[HV3.base_table_index()] = helper_variables[3];
+        processor_row[RAMP.base_table_index()] = ram_pointer;
+        processor_row[RAMV.base_table_index()] = self.memory_get(&ram_pointer);
 
-        row
+        processor_row
     }
 
     fn eq(lhs: BFieldElement, rhs: BFieldElement) -> BFieldElement {
-        if lhs == rhs {
-            BFieldElement::one()
-        } else {
-            BFieldElement::zero()
+        match lhs == rhs {
+            true => BFieldElement::one(),
+            false => BFieldElement::zero(),
         }
     }
 
@@ -640,7 +626,7 @@ impl<'pgm> VMState<'pgm> {
     /// to account for the hash-input padding separator of the program.
     ///
     /// If the instruction pointer is out of bounds, the returned NIA is 0.
-    fn nia(&self) -> BFieldElement {
+    fn next_instruction_or_argument(&self) -> BFieldElement {
         let Ok(current_instruction) = self.current_instruction() else {
             return BFieldElement::zero();
         };
@@ -653,79 +639,62 @@ impl<'pgm> VMState<'pgm> {
         }
     }
 
-    /// Jump-stack pointer
-    fn jsp(&self) -> BFieldElement {
-        BFieldElement::new(self.jump_stack.len() as u64)
+    fn jump_stack_pointer(&self) -> BFieldElement {
+        (self.jump_stack.len() as u64).into()
     }
 
-    /// Jump-stack origin
-    fn jso(&self) -> BFieldElement {
-        self.jump_stack
-            .last()
-            .map(|(o, _d)| *o)
-            .unwrap_or_else(BFieldElement::zero)
+    fn jump_stack_origin(&self) -> BFieldElement {
+        let maybe_origin = self.jump_stack.last().map(|(o, _d)| *o);
+        maybe_origin.unwrap_or_else(BFieldElement::zero)
     }
 
-    /// Jump-stack destination
-    fn jsd(&self) -> BFieldElement {
-        self.jump_stack
-            .last()
-            .map(|(_o, d)| *d)
-            .unwrap_or_else(BFieldElement::zero)
+    fn jump_stack_destination(&self) -> BFieldElement {
+        let maybe_destination = self.jump_stack.last().map(|(_o, d)| *d);
+        maybe_destination.unwrap_or_else(BFieldElement::zero)
     }
 
     pub fn current_instruction(&self) -> Result<Instruction> {
-        self.program
-            .get(self.instruction_pointer)
-            .ok_or_else(|| anyhow!(InstructionPointerOverflow(self.instruction_pointer)))
-            .copied()
+        let maybe_current_instruction = self.program.get(self.instruction_pointer).copied();
+        maybe_current_instruction.ok_or(anyhow!(InstructionPointerOverflow(
+            self.instruction_pointer
+        )))
     }
 
-    /// Return the next instruction on the tape, skipping arguments
+    /// Return the next instruction on the tape, skipping arguments.
     ///
-    /// Note that this is not necessarily the next instruction to execute,
-    /// since the current instruction could be a jump, but it is either
-    /// program[ip + 1] or program[ip + 2] depending on whether the current
-    /// instruction takes an argument or not.
+    /// Note that this is not necessarily the next instruction to execute, since the current
+    /// instruction could be a jump, but it is either program[ip + 1] or program[ip + 2],
+    /// depending on whether the current instruction takes an argument.
     pub fn next_instruction(&self) -> Result<Instruction> {
-        let ci = self.current_instruction()?;
-        let ci_size = ci.size();
-        let ni_pointer = self.instruction_pointer + ci_size;
-        self.program
-            .get(ni_pointer)
-            .ok_or_else(|| anyhow!(InstructionPointerOverflow(ni_pointer)))
-            .copied()
+        let current_instruction = self.current_instruction()?;
+        let next_instruction_pointer = self.instruction_pointer + current_instruction.size();
+        let maybe_next_instruction = self.program.get(next_instruction_pointer).copied();
+        maybe_next_instruction.ok_or(anyhow!(InstructionPointerOverflow(
+            next_instruction_pointer
+        )))
     }
 
     fn jump_stack_pop(&mut self) -> Result<(BFieldElement, BFieldElement)> {
-        self.jump_stack
-            .pop()
-            .ok_or_else(|| anyhow!(JumpStackTooShallow))
+        let maybe_jump_stack_element = self.jump_stack.pop();
+        maybe_jump_stack_element.ok_or(anyhow!(JumpStackIsEmpty))
     }
 
     fn jump_stack_peek(&mut self) -> Result<(BFieldElement, BFieldElement)> {
-        self.jump_stack
-            .last()
-            .copied()
-            .ok_or_else(|| anyhow!(JumpStackTooShallow))
+        let maybe_jump_stack_element = self.jump_stack.last().copied();
+        maybe_jump_stack_element.ok_or(anyhow!(JumpStackIsEmpty))
     }
 
-    fn memory_get(&self, mem_addr: &BFieldElement) -> BFieldElement {
-        self.ram
-            .get(mem_addr)
-            .copied()
-            .unwrap_or_else(BFieldElement::zero)
+    fn memory_get(&self, memory_address: &BFieldElement) -> BFieldElement {
+        let maybe_memory_value = self.ram.get(memory_address).copied();
+        maybe_memory_value.unwrap_or_else(BFieldElement::zero)
     }
 
     fn assert_vector(&self) -> bool {
-        for i in 0..DIGEST_LENGTH {
-            // Safe as long as 2 * DIGEST_LEN <= OP_STACK_REG_COUNT
-            let lhs = i.try_into().expect("Digest element position (lhs)");
-            let rhs = (i + DIGEST_LENGTH)
-                .try_into()
-                .expect("Digest element position (rhs)");
-
-            if self.op_stack.safe_peek(lhs) != self.op_stack.safe_peek(rhs) {
+        for index in 0..DIGEST_LENGTH {
+            // Safe as long as 2 * DIGEST_LEN <= NUM_OP_STACK_REGISTERS
+            let lhs = index.try_into().unwrap();
+            let rhs = (index + DIGEST_LENGTH).try_into().unwrap();
+            if self.op_stack.peek_at(lhs) != self.op_stack.peek_at(rhs) {
                 return false;
             }
         }
@@ -733,81 +702,53 @@ impl<'pgm> VMState<'pgm> {
     }
 
     fn divine_sibling(&mut self) -> Result<()> {
-        // st0-st4
-        let _ = self.op_stack.pop_n::<{ DIGEST_LENGTH }>()?;
+        let _st0_through_st4 = self.op_stack.pop_multiple::<{ DIGEST_LENGTH }>()?;
+        let known_digest = self.op_stack.pop_multiple()?;
 
-        // st5-st9
-        let known_digest = self.op_stack.pop_n::<{ DIGEST_LENGTH }>()?;
+        let node_index = self.op_stack.pop_u32()?;
+        let parent_node_index = node_index / 2;
+        self.op_stack.push((parent_node_index as u64).into());
 
-        // st10
-        let node_index_elem: BFieldElement = self.op_stack.pop()?;
-        let node_index: u32 = node_index_elem
-            .try_into()
-            .unwrap_or_else(|_| panic!("{node_index_elem:?} is not a u32"));
+        let mut sibling_digest = self.secret_input_pop_multiple()?;
+        sibling_digest.reverse();
+        let (left_digest, right_digest) =
+            Self::put_known_digest_on_correct_side(node_index, known_digest, sibling_digest);
 
-        // nondeterministic guess, flipped
-        let sibling_elem_0 = self.secret_input.pop_front().ok_or(anyhow!(
-            "Instruction `divine_sibling`: secret input buffer is empty (0)."
-        ))?;
-        let sibling_elem_1 = self.secret_input.pop_front().ok_or(anyhow!(
-            "Instruction `divine_sibling`: secret input buffer is empty (1)."
-        ))?;
-        let sibling_elem_2 = self.secret_input.pop_front().ok_or(anyhow!(
-            "Instruction `divine_sibling`: secret input buffer is empty (2)."
-        ))?;
-        let sibling_elem_3 = self.secret_input.pop_front().ok_or(anyhow!(
-            "Instruction `divine_sibling`: secret input buffer is empty (3)."
-        ))?;
-        let sibling_elem_4 = self.secret_input.pop_front().ok_or(anyhow!(
-            "Instruction `divine_sibling`: secret input buffer is empty (4)."
-        ))?;
-        let sibling_digest: [BFieldElement; DIGEST_LENGTH] = [
-            sibling_elem_4,
-            sibling_elem_3,
-            sibling_elem_2,
-            sibling_elem_1,
-            sibling_elem_0,
-        ];
-
-        // least significant bit
-        let hv0 = node_index % 2;
-
-        // push new node index
-        // st10
-        self.op_stack
-            .push(BFieldElement::new(node_index as u64 >> 1));
-
-        // push 2 digests, in correct order
-        // Correct order means the following:
-        //
-        // | sponge | stack | digest element | hv0 == 0 | hv0 == 1 |
-        // |--------|-------|----------------|----------|----------|
-        // | r0     | st0   | left0          | known0   | sibling0 |
-        // | r1     | st1   | left1          | known1   | sibling1 |
-        // | r2     | st2   | left2          | known2   | sibling2 |
-        // | r3     | st3   | left3          | known3   | sibling3 |
-        // | r4     | st4   | left4          | known4   | sibling4 |
-        // | r5     | st5   | right0         | sibling0 | known0   |
-        // | r6     | st6   | right1         | sibling1 | known1   |
-        // | r7     | st7   | right2         | sibling2 | known2   |
-        // | r8     | st8   | right3         | sibling3 | known3   |
-        // | r9     | st9   | right4         | sibling4 | known4   |
-
-        let (top_digest, runner_up) = if hv0 == 0 {
-            (known_digest, sibling_digest)
-        } else {
-            (sibling_digest, known_digest)
-        };
-
-        for digest_element in runner_up.iter().rev() {
-            self.op_stack.push(*digest_element);
+        for &digest_element in right_digest.iter().rev() {
+            self.op_stack.push(digest_element);
         }
-
-        for digest_element in top_digest.iter().rev() {
-            self.op_stack.push(*digest_element);
+        for &digest_element in left_digest.iter().rev() {
+            self.op_stack.push(digest_element);
         }
 
         Ok(())
+    }
+
+    fn secret_input_pop_multiple<const N: usize>(&mut self) -> Result<[BFieldElement; N]> {
+        let mut popped_elements = [BFieldElement::zero(); N];
+        for element in popped_elements.iter_mut() {
+            *element = self
+                .secret_input
+                .pop_front()
+                .ok_or(anyhow!("Secret input buffer is empty."))?;
+        }
+        Ok(popped_elements)
+    }
+
+    /// If the given node index indicates a left node, puts the known digest to the left.
+    /// Otherwise, puts the known digest to the right.
+    /// Returns the left and right digests in that order.
+    fn put_known_digest_on_correct_side(
+        node_index: u32,
+        known_digest: [BFieldElement; 5],
+        sibling_digest: [BFieldElement; 5],
+    ) -> ([BFieldElement; 5], [BFieldElement; 5]) {
+        let is_left_node = node_index % 2 == 0;
+        if is_left_node {
+            (known_digest, sibling_digest)
+        } else {
+            (sibling_digest, known_digest)
+        }
     }
 }
 
@@ -1208,7 +1149,7 @@ pub mod triton_vm_tests {
     use twenty_first::util_types::merkle_tree_maker::MerkleTreeMaker;
 
     use crate::error::InstructionError;
-    use crate::op_stack::OP_STACK_REG_COUNT;
+    use crate::op_stack::NUM_OP_STACK_REGISTERS;
     use crate::shared_tests::SourceCodeAndInput;
     use crate::shared_tests::FIBONACCI_SEQUENCE;
     use crate::shared_tests::VERIFY_SUDOKU;
@@ -2096,12 +2037,14 @@ pub mod triton_vm_tests {
 
     #[test]
     #[allow(clippy::assertions_on_constants)]
-    fn tvm_op_stack_big_enough_test() {
+    const fn op_stack_is_big_enough_test() {
         assert!(
-            DIGEST_LENGTH <= OP_STACK_REG_COUNT,
-            "The OpStack must be large enough to hold a single digest"
+            2 * DIGEST_LENGTH <= NUM_OP_STACK_REGISTERS,
+            "The OpStack must be large enough to hold two digests."
         );
     }
+
+    const _COMPILE_TIME_ASSERTION: () = op_stack_is_big_enough_test();
 
     #[test]
     fn run_tvm_hello_world_1_test() {
