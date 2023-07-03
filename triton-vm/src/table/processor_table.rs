@@ -997,8 +997,8 @@ impl ExtProcessorTable {
             next_base_row(ST15) - curr_base_row(OSV),
             // The OpStack pointer, osp, is decremented by 1.
             next_base_row(OSP) - (curr_base_row(OSP) - constant(1)),
-            // The helper variable register hv3 holds the inverse of (osp - 16).
-            (curr_base_row(OSP) - constant(16)) * curr_base_row(HV3) - constant(1),
+            // The helper variable register hv0 holds the inverse of (osp - 16).
+            (curr_base_row(OSP) - constant(16)) * curr_base_row(HV0) - constant(1),
         ]
     }
 
@@ -1391,11 +1391,11 @@ impl ExtProcessorTable {
 
         // The next instruction nia is decomposed into helper variables hv.
         let nia_decomposes_to_hvs =
-            curr_base_row(NIA) - (curr_base_row(HV0) + constant(2) * curr_base_row(HV1));
+            curr_base_row(NIA) - curr_base_row(HV2) - constant(2) * curr_base_row(HV3);
 
-        // The relevant helper variable hv1 is either 0 or 1.
-        // Here, hv0 == 1 means that nia takes an argument.
-        let hv0_is_0_or_1 = curr_base_row(HV0) * (curr_base_row(HV0) - one());
+        // The relevant helper variable hv2 is either 0 or 1.
+        // Here, hv2 == 1 means that nia takes an argument.
+        let hv2_is_0_or_1 = curr_base_row(HV2) * (curr_base_row(HV2) - one());
 
         // If `st0` is non-zero, register `ip` is incremented by 1.
         // If `st0` is 0 and `nia` takes no argument, register `ip` is incremented by 2.
@@ -1403,19 +1403,19 @@ impl ExtProcessorTable {
         //
         // Written as Disjunctive Normal Form, the last constraint can be expressed as:
         // 6. (Register `st0` is 0 or `ip` is incremented by 1), and
-        // (`st0` has a multiplicative inverse or `hv` is 1 or `ip` is incremented by 2), and
-        // (`st0` has a multiplicative inverse or `hv0` is 0 or `ip` is incremented by 3).
+        // (`st0` has a multiplicative inverse or `hv2` is 1 or `ip` is incremented by 2), and
+        // (`st0` has a multiplicative inverse or `hv2` is 0 or `ip` is incremented by 3).
         let ip_case_1 = (next_base_row(IP) - curr_base_row(IP) - constant(1)) * curr_base_row(ST0);
         let ip_case_2 = (next_base_row(IP) - curr_base_row(IP) - constant(2))
-            * (curr_base_row(ST0) * curr_base_row(HV2) - one())
-            * (curr_base_row(HV0) - one());
+            * (curr_base_row(ST0) * curr_base_row(HV1) - one())
+            * (curr_base_row(HV2) - one());
         let ip_case_3 = (next_base_row(IP) - curr_base_row(IP) - constant(3))
-            * (curr_base_row(ST0) * curr_base_row(HV2) - one())
-            * curr_base_row(HV0);
+            * (curr_base_row(ST0) * curr_base_row(HV1) - one())
+            * curr_base_row(HV2);
         let ip_incr_by_1_or_2_or_3 = ip_case_1 + ip_case_2 + ip_case_3;
 
         let specific_constraints =
-            vec![nia_decomposes_to_hvs, hv0_is_0_or_1, ip_incr_by_1_or_2_or_3];
+            vec![nia_decomposes_to_hvs, hv2_is_0_or_1, ip_incr_by_1_or_2_or_3];
         [
             specific_constraints,
             Self::instruction_group_keep_jump_stack(circuit_builder),
@@ -1812,24 +1812,24 @@ impl ExtProcessorTable {
             circuit_builder.input(NextBaseRow(col.master_base_table_index()))
         };
 
-        // Helper variable hv0 is the inverse-or-zero of the difference of the stack's two top-most
-        // elements: `hv0·(hv0·(st1 - st0) - 1)`
-        let hv0_is_inverse_of_diff_or_hv0_is_0 = curr_base_row(HV0)
-            * (curr_base_row(HV0) * (curr_base_row(ST1) - curr_base_row(ST0)) - one());
+        // Helper variable hv1 is the inverse-or-zero of the difference of the stack's two top-most
+        // elements: `hv1·(hv1·(st1 - st0) - 1)`
+        let hv1_is_inverse_of_diff_or_hv1_is_0 = curr_base_row(HV1)
+            * (curr_base_row(HV1) * (curr_base_row(ST1) - curr_base_row(ST0)) - one());
 
-        // Helper variable hv0 is the inverse-or-zero of the difference of the stack's two
-        // top-most elements: `(st1 - st0)·(hv0·(st1 - st0) - 1)`
-        let hv0_is_inverse_of_diff_or_diff_is_0 = (curr_base_row(ST1) - curr_base_row(ST0))
-            * (curr_base_row(HV0) * (curr_base_row(ST1) - curr_base_row(ST0)) - one());
+        // Helper variable hv1 is the inverse-or-zero of the difference of the stack's two
+        // top-most elements: `(st1 - st0)·(hv1·(st1 - st0) - 1)`
+        let hv1_is_inverse_of_diff_or_diff_is_0 = (curr_base_row(ST1) - curr_base_row(ST0))
+            * (curr_base_row(HV1) * (curr_base_row(ST1) - curr_base_row(ST0)) - one());
 
         // The new top of the stack is 1 if the difference between the stack's two top-most
-        // elements is not invertible, 0 otherwise: `st0' - (1 - hv0·(st1 - st0))`
+        // elements is not invertible, 0 otherwise: `st0' - (1 - hv1·(st1 - st0))`
         let st0_becomes_1_if_diff_is_not_invertible = next_base_row(ST0)
-            - (one() - curr_base_row(HV0) * (curr_base_row(ST1) - curr_base_row(ST0)));
+            - (one() - curr_base_row(HV1) * (curr_base_row(ST1) - curr_base_row(ST0)));
 
         let specific_constraints = vec![
-            hv0_is_inverse_of_diff_or_hv0_is_0,
-            hv0_is_inverse_of_diff_or_diff_is_0,
+            hv1_is_inverse_of_diff_or_hv1_is_0,
+            hv1_is_inverse_of_diff_or_diff_is_0,
             st0_becomes_1_if_diff_is_not_invertible,
         ];
         [
@@ -3098,7 +3098,7 @@ mod constraint_polynomial_tests {
             get_test_row_from_source_code("push 0 skiz assert halt", 1),
             get_test_row_from_source_code("push 0 skiz push 1 halt", 1),
         ];
-        test_constraints_for_rows_with_debug_info(Skiz, &test_rows, &[IP, ST0, HV0, HV1], &[IP]);
+        test_constraints_for_rows_with_debug_info(Skiz, &test_rows, &[IP, ST0, HV3, HV2], &[IP]);
     }
 
     #[test]
@@ -3374,8 +3374,8 @@ mod constraint_polynomial_tests {
         test_constraints_for_rows_with_debug_info(
             XbMul,
             &test_rows,
-            &[ST0, ST1, ST2, ST3, OSP, HV3],
-            &[ST0, ST1, ST2, ST3, OSP, HV3],
+            &[ST0, ST1, ST2, ST3, OSP, HV0],
+            &[ST0, ST1, ST2, ST3, OSP, HV0],
         );
     }
 

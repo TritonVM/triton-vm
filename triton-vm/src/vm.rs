@@ -49,7 +49,7 @@ use crate::table::table_column::ProcessorBaseTableColumn;
 use crate::vm::CoProcessorCall::*;
 
 /// The number of helper variable registers
-pub const HV_REGISTER_COUNT: usize = 4;
+pub const NUM_HELPER_VARIABLE_REGISTERS: usize = 4;
 
 #[derive(Debug, Clone)]
 pub struct VMState<'pgm> {
@@ -148,8 +148,8 @@ impl<'pgm> VMState<'pgm> {
         }
     }
 
-    pub fn derive_helper_variables(&self) -> [BFieldElement; HV_REGISTER_COUNT] {
-        let mut hvs = [BFieldElement::zero(); HV_REGISTER_COUNT];
+    pub fn derive_helper_variables(&self) -> [BFieldElement; NUM_HELPER_VARIABLE_REGISTERS] {
+        let mut hvs = [BFieldElement::zero(); NUM_HELPER_VARIABLE_REGISTERS];
         let current_instruction = match self.current_instruction() {
             Ok(instruction) => instruction,
             Err(_) => return hvs,
@@ -159,7 +159,7 @@ impl<'pgm> VMState<'pgm> {
             let op_stack_pointer = self.op_stack.op_stack_pointer();
             let maximum_op_stack_pointer = BFieldElement::new(NUM_OP_STACK_REGISTERS as u64);
             let op_stack_pointer_minus_maximum = op_stack_pointer - maximum_op_stack_pointer;
-            hvs[3] = op_stack_pointer_minus_maximum.inverse_or_zero();
+            hvs[0] = op_stack_pointer_minus_maximum.inverse_or_zero();
         }
 
         match current_instruction {
@@ -174,11 +174,11 @@ impl<'pgm> VMState<'pgm> {
                 hvs[3] = BFieldElement::new((arg_val >> 3) % 2);
             }
             Skiz => {
-                let nia = self.next_instruction_or_argument().value();
                 let st0 = self.op_stack.peek_at(ST0);
-                hvs[0] = BFieldElement::new(nia % 2);
-                hvs[1] = BFieldElement::new(nia / 2);
-                hvs[2] = st0.inverse_or_zero();
+                let nia = self.next_instruction_or_argument().value();
+                hvs[1] = st0.inverse_or_zero();
+                hvs[2] = BFieldElement::new(nia % 2);
+                hvs[3] = BFieldElement::new(nia / 2);
             }
             DivineSibling => {
                 let node_index = self.op_stack.peek_at(ST10).value();
@@ -198,7 +198,7 @@ impl<'pgm> VMState<'pgm> {
             Eq => {
                 let lhs = self.op_stack.peek_at(ST0);
                 let rhs = self.op_stack.peek_at(ST1);
-                hvs[0] = (rhs - lhs).inverse_or_zero();
+                hvs[1] = (rhs - lhs).inverse_or_zero();
             }
             _ => (),
         }
