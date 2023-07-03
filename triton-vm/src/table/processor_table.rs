@@ -1390,16 +1390,18 @@ impl ExtProcessorTable {
         };
 
         // The next instruction nia is decomposed into helper variables hv.
-        let nia_decomposes_to_hvs =
-            curr_base_row(NIA) - curr_base_row(HV2) - constant(2) * curr_base_row(HV3);
-
-        // The relevant helper variable hv2 is either 0 or 1.
-        // Here, hv2 == 1 means that nia takes an argument.
-        let hv2_is_0_or_1 = curr_base_row(HV2) * (curr_base_row(HV2) - one());
+        let nia_decomposes_to_hvs = curr_base_row(NIA)
+            - curr_base_row(HV2)
+            - constant(1 << 1) * curr_base_row(HV3)
+            - constant(1 << 3) * curr_base_row(HV4)
+            - constant(1 << 5) * curr_base_row(HV5)
+            - constant(1 << 7) * curr_base_row(HV6);
 
         // If `st0` is non-zero, register `ip` is incremented by 1.
         // If `st0` is 0 and `nia` takes no argument, register `ip` is incremented by 2.
         // If `st0` is 0 and `nia` takes an argument, register `ip` is incremented by 3.
+        //
+        // The opcodes are constructed such that hv2 == 1 means that nia takes an argument.
         //
         // Written as Disjunctive Normal Form, the last constraint can be expressed as:
         // 6. (Register `st0` is 0 or `ip` is incremented by 1), and
@@ -1414,15 +1416,40 @@ impl ExtProcessorTable {
             * curr_base_row(HV2);
         let ip_incr_by_1_or_2_or_3 = ip_case_1 + ip_case_2 + ip_case_3;
 
-        let specific_constraints =
-            vec![nia_decomposes_to_hvs, hv2_is_0_or_1, ip_incr_by_1_or_2_or_3];
         [
-            specific_constraints,
+            vec![nia_decomposes_to_hvs, ip_incr_by_1_or_2_or_3],
+            Self::next_instruction_range_check_constraints_for_instruction_skiz(circuit_builder),
             Self::instruction_group_keep_jump_stack(circuit_builder),
             Self::instruction_group_shrink_op_stack(circuit_builder),
             Self::instruction_group_keep_ram(circuit_builder),
         ]
         .concat()
+    }
+
+    fn next_instruction_range_check_constraints_for_instruction_skiz(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
+        let constant = |c: u32| circuit_builder.b_constant(c.into());
+        let curr_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
+        };
+
+        let helper_variable_is_0_or_1 =
+            |hv: ProcessorBaseTableColumn| curr_base_row(hv) * (curr_base_row(hv) - constant(1));
+        let helper_variable_is_0_or_1_or_2_or_3 = |hv: ProcessorBaseTableColumn| {
+            curr_base_row(hv)
+                * (curr_base_row(hv) - constant(1))
+                * (curr_base_row(hv) - constant(2))
+                * (curr_base_row(hv) - constant(3))
+        };
+
+        vec![
+            helper_variable_is_0_or_1(HV2),
+            helper_variable_is_0_or_1_or_2_or_3(HV3),
+            helper_variable_is_0_or_1_or_2_or_3(HV4),
+            helper_variable_is_0_or_1_or_2_or_3(HV5),
+            helper_variable_is_0_or_1_or_2_or_3(HV6),
+        ]
     }
 
     fn instruction_call(
@@ -3098,7 +3125,12 @@ mod constraint_polynomial_tests {
             get_test_row_from_source_code("push 0 skiz assert halt", 1),
             get_test_row_from_source_code("push 0 skiz push 1 halt", 1),
         ];
-        test_constraints_for_rows_with_debug_info(Skiz, &test_rows, &[IP, ST0, HV3, HV2], &[IP]);
+        test_constraints_for_rows_with_debug_info(
+            Skiz,
+            &test_rows,
+            &[IP, NIA, ST0, HV6, HV5, HV4, HV3, HV2],
+            &[IP],
+        );
     }
 
     #[test]
