@@ -558,7 +558,11 @@ mod instruction_tests {
     use strum::IntoEnumIterator;
     use twenty_first::shared_math::b_field_element::BFieldElement;
 
+    use crate::instruction::all_instruction_names;
+    use crate::instruction::all_instructions_without_args;
+    use crate::instruction::Instruction;
     use crate::instruction::ALL_INSTRUCTIONS;
+    use crate::ord_n::Ord16::*;
     use crate::ord_n::Ord8;
     use crate::program::Program;
 
@@ -687,5 +691,41 @@ mod instruction_tests {
         for instr in ALL_INSTRUCTIONS {
             println!("{:>3} {: <10}", instr.opcode(), format!("{}", instr.name()));
         }
+    }
+
+    #[test]
+    /// Serves no other purpose than to increase code coverage results.
+    fn run_constant_methods_test() {
+        all_instructions_without_args();
+        all_instruction_names();
+    }
+
+    #[test]
+    fn convert_various_types_to_instructions() {
+        let _push = Instruction::try_from(1_usize).unwrap();
+        let _dup = Instruction::try_from(9_u64).unwrap();
+        let _swap = Instruction::try_from(17_u32).unwrap();
+        let _pop = Instruction::try_from(2_usize).unwrap();
+    }
+
+    #[test]
+    fn change_arguments_of_various_instructions() {
+        let push = Instruction::Push(0_u64.into()).change_arg(7_u64.into());
+        let dup = Instruction::Dup(ST0).change_arg(1024_u64.into());
+        let swap = Instruction::Swap(ST0).change_arg(1337_u64.into());
+        let pop = Instruction::Pop.change_arg(7_u64.into());
+
+        assert!(push.is_some());
+        assert!(dup.is_none());
+        assert!(swap.is_none());
+        assert!(pop.is_none());
+    }
+
+    #[test]
+    fn print_various_instructions() {
+        println!("instruction_push: {:?}", Instruction::Push(7_u64.into()));
+        println!("instruction_assert: {}", Instruction::Assert);
+        println!("instruction_invert: {:?}", Instruction::Invert);
+        println!("instruction_dup: {}", Instruction::Dup(ST14));
     }
 }
