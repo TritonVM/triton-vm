@@ -51,14 +51,14 @@ pub enum ProgramBaseTableColumn {
     ///
     /// [`Address`]: ProgramBaseTableColumn::Address
     /// [`Rate`]: twenty_first::shared_math::tip5::RATE
-    AbsorbCount,
+    IndexInChunk,
 
-    /// The inverse-or-zero of [`Rate`] - 1 - [`AbsorbCount`].
-    /// Helper variable to guarantee [`AbsorbCount`]'s correct transition.
+    /// The inverse-or-zero of [`Rate`] - 1 - [`IndexInChunk`].
+    /// Helper variable to guarantee [`IndexInChunk`]'s correct transition.
     ///
-    /// [`AbsorbCount`]: ProgramBaseTableColumn::AbsorbCount
+    /// [`IndexInChunk`]: ProgramBaseTableColumn::IndexInChunk
     /// [`Rate`]: twenty_first::shared_math::tip5::RATE
-    MaxMinusAbsorbCountInv,
+    MaxMinusIndexInChunkInv,
 
     /// Padding indicator for absorbing the program into the Sponge.
     IsHashInputPadding,

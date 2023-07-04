@@ -13,15 +13,15 @@ use ndarray::Axis;
 use num_traits::One;
 use num_traits::Zero;
 use strum::EnumCount;
-use twenty_first::shared_math::b_field_element::BFieldElement;
-use twenty_first::shared_math::b_field_element::BFIELD_ONE;
-use twenty_first::shared_math::traits::Inverse;
-use twenty_first::shared_math::x_field_element::XFieldElement;
-
 use triton_opcodes::instruction::AnInstruction::*;
 use triton_opcodes::instruction::Instruction;
 use triton_opcodes::instruction::ALL_INSTRUCTIONS;
 use triton_opcodes::ord_n::Ord8;
+use twenty_first::shared_math::b_field_element::BFieldElement;
+use twenty_first::shared_math::b_field_element::BFIELD_ONE;
+use twenty_first::shared_math::digest::DIGEST_LENGTH;
+use twenty_first::shared_math::traits::Inverse;
+use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use crate::table::challenges::ChallengeId;
 use crate::table::challenges::ChallengeId::*;
@@ -428,8 +428,9 @@ impl ExtProcessorTable {
         let ramp_is_0 = base_row(RAMP);
         let previous_instruction_is_0 = base_row(PreviousInstruction);
 
-        // compress the program digest using an Evaluation Argument
-        let program_digest = [
+        // Compress the program digest using an Evaluation Argument.
+        // Lowest index in the digest corresponds to lowest index on the stack.
+        let program_digest: [_; DIGEST_LENGTH] = [
             base_row(ST11),
             base_row(ST12),
             base_row(ST13),
@@ -2952,7 +2953,6 @@ impl<'a> Display for ExtProcessorTraceRow<'a> {
 #[cfg(test)]
 mod constraint_polynomial_tests {
     use ndarray::Array2;
-
     use triton_opcodes::ord_n::Ord16;
     use triton_opcodes::program::Program;
 

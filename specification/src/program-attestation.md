@@ -39,6 +39,7 @@ Notably, a program has access to the hash digest of _itself_.
 This is useful for recursive verification:
 since the program digest is both part of the proof that is being verified _and_ accessible during execution, the two can be checked for equality _at runtime_.
 This way, the recursive verifier can know whether it is actually recursing, or whether it is verifying a proof for some other program.
+After all, the hash digest of the verifier program cannot be hardcoded into the verifier program, because that would be a circular dependency.
 
 ---
 
@@ -47,8 +48,8 @@ This way, the recursive verifier can know whether it is actually recursing, or w
 
 [^zk]:
 Since hash functions are deterministic, a programmer desiring resistance against enumeration attacks might want to include [blinding elements][blinding]
-This is easily possible in, for example, dead code, by including instructions like `push $rand`.
-The distribution `$rand` is sampled from and the number of such instructions determine the security level against enumeration attacks.
+This is easily possible in, for example, dead code, by including instructions like `push random_element`.
+The distribution `random_element` is sampled from and the number of such instructions determine the security level against enumeration attacks.
 
 [^input-pad]:
 Padding is one 1 followed by the minimal number of 0’s necessary to make the padded input length a multiple of the $\texttt{rate}$, which is 10.

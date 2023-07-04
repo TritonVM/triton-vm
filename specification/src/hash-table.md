@@ -140,8 +140,11 @@ If the round number is 0 and the current `Mode` is `hash`, then register `state_
 1. For `i` $\in\{10, \dots, 15\}$:
 If the round number is 0 and the current instruction is `absorb_init`, then register `state_i` is 0.
 1. For `i` $\in\{0, \dots, 3\}$:
-let `state_i_hi_limbs_minus_2_pow_32` be 0 if and only if both of the two high limbs of `state_i` are their maximum value.
-That is, `state_i_hi_limbs_minus_2_pow_32` is an alias for the difference between $2^{32} - 1$ and the re-composed highest two limbs of `state_i`, _i.e._, $2^{16} \cdot{}$`state_i_highest_lk_in`${}+{}$`state_i_mid_high_lk_in`.
+ensure that decomposition of `state_i` is unique.
+That is, if both high limbs of `state_i` are the maximum value, then both low limbs are 0[^oxfoi].
+To make the corresponding polynomials low degree, register `state_i_inv` holds the inverse-or-zero of the re-composed highest two limbs of `state_i` subtracted from their maximum value.
+Let `state_i_hi_limbs_minus_2_pow_32` be an alias for that difference:
+`state_i_hi_limbs_minus_2_pow_32` ${}:= 2^{32} - 1 - 2^{16} \cdot{}$`state_i_highest_lk_in`${}-{}$`state_i_mid_high_lk_in`.
     1. If the two high limbs of `state_i` are both the maximum possible value, then the two low limbs of `state_i` are both 0.
     1. The `state_i_inv` is the inverse of `state_i_hi_limbs_minus_2_pow_32` or `state_i_inv` is 0.
     1. The `state_i_inv` is the inverse of `state_i_hi_limbs_minus_2_pow_32` or `state_i_hi_limbs_minus_2_pow_32` is 0.
@@ -246,3 +249,6 @@ For hints, see the [Tip5 paper](https://eprint.iacr.org/2023/107.pdf).
 
 1. `🥬^5 + state_0·🥬^4 + state_1·🥬^3 + state_2·🥬^2 + state_3·🥬 + state_4 - 🫑`
 1. `(Mode - 0)·(round_no - 5)`
+
+[^oxfoi]:
+This is a special property of the Oxfoi prime.
