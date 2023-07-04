@@ -19,7 +19,7 @@ the remaining registers exist only to enable an efficient arithmetization and ar
 | `st0` through `st15`   | operational stack registers               | contain explicit operational stack values                                                                                                                                                                                 |
 | *`osp`                 | operational stack pointer                 | contains the OpStack address of the top of the operational stack                                                                                                                                                          |
 | *`osv`                 | operational stack value                   | contains the (stack) memory value at the given address                                                                                                                                                                    |
-| *`hv0` through `hv3`   | helper variable registers                 | helper variables for some arithmetic operations                                                                                                                                                                           |
+| *`hv0` through `hv6`   | helper variable registers                 | helper variables for some arithmetic operations                                                                                                                                                                           |
 | *`ramp`                | RAM pointer                               | contains an address pointing into the RAM                                                                                                                                                                                 |
 | *`ramv`                | RAM value                                 | contains the value of the RAM element at the address currently held in `ramp`                                                                                                                                             |
 | *`cjd_mul`             | clock jump difference lookup multiplicity | multiplicity with which the current `clk` is [looked up](lookup-argument.md) by the [Op Stack Table](operational-stack-table.md), [RAM Table](random-access-memory-table.md), and [Jump Stack Table](jump-stack-table.md) |
@@ -58,7 +58,7 @@ They exist only to allow efficient arithmetization.
 ## Helper Variables
 
 Some instructions require helper variables in order to generate an efficient arithmetization.
-To this end, there are 4 helper variable registers, labeled `hv0` through `hv3`.
+To this end, there are 7 helper variable registers, labeled `hv0` through `hv6`.
 These registers are part of the arithmetization of the architecture, but not needed to define the instruction set.
 
 Because they are only needed for some instructions, the helper variables are not generally defined.

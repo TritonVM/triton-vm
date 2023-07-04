@@ -23,9 +23,9 @@ The following table lists and briefly explains all instruction groups.
 | `stack_remains_and_top_3_unconstrained`  | operational stack's top 3 elements are unconstrained, rest of stack remains unchanged                                                                       |
 | `unary_operation`                        | operational stack's top-most element is unconstrained, rest of stack remains unchanged                                                                      |
 | `keep_stack`                             | operational stack remains unchanged                                                                                                                         |
-| `stack_shrinks_and_top_3_unconstrained`  | operational stack elements starting from `st3` are shifted up by one position, highest three elements of the resulting stack are unconstrained. Needs `hv3` |
-| `binary_operation`                       | operational stack elements starting from `st2` are shifted up by one position, highest two elements of the resulting stack are unconstrained. Needs `hv3`   |
-| `shrink_stack`                           | operational stack elements starting from `st1` are shifted up by one position. Needs `hv3`                                                                  |
+| `stack_shrinks_and_top_3_unconstrained`  | operational stack elements starting from `st3` are shifted up by one position, highest three elements of the resulting stack are unconstrained. Needs `hv0` |
+| `binary_operation`                       | operational stack elements starting from `st2` are shifted up by one position, highest two elements of the resulting stack are unconstrained. Needs `hv0`   |
+| `shrink_stack`                           | operational stack elements starting from `st1` are shifted up by one position. Needs `hv0`                                                                  |
 
 Below figure gives a comprehensive overview over the subset relation between all instruction groups.
 
@@ -317,7 +317,7 @@ Contains all constraints from instruction group `unary_operation`, and additiona
 
 ## Group `stack_shrinks_and_top_3_unconstrained`
 
-This instruction group requires helper variable `hv3` to hold the multiplicative inverse of `(osp - 16)`.
+This instruction group requires helper variable `hv0` to hold the multiplicative inverse of `(osp - 16)`.
 In effect, this means that the OpStack pointer can only be decremented if it is not 16, i.e., if OpStack Underflow Memory is not empty.
 Since the stack can only change by one element at a time, this prevents stack underflow.
 
@@ -337,7 +337,7 @@ Since the stack can only change by one element at a time, this prevents stack un
 1. The stack element in `st15` is moved into `st14`.
 1. The stack element at the top of OpStack underflow, i.e., `osv`, is moved into `st15`.
 1. The OpStack pointer is decremented by 1.
-1. The helper variable register `hv3` holds the inverse of `(osp - 16)`.
+1. The helper variable register `hv0` holds the inverse of `(osp - 16)`.
 
 ### Polynomials
 
@@ -355,7 +355,7 @@ Since the stack can only change by one element at a time, this prevents stack un
 1. `st14' - st15`
 1. `st15' - osv`
 1. `osp' - (osp - 1)`
-1. `(osp - 16)·hv3 - 1`
+1. `(osp - 16)·hv0 - 1`
 
 ## Group `binary_operation`
 
