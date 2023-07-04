@@ -3510,6 +3510,11 @@ mod constraint_polynomial_tests {
 
 #[cfg(test)]
 pub mod tests {
+    use strum::IntoEnumIterator;
+    use triton_opcodes::instruction::Instruction;
+
+    use crate::table::master_table::AIR_TARGET_DEGREE;
+
     use super::*;
 
     pub fn constraints_evaluate_to_zero(
@@ -3599,5 +3604,32 @@ pub mod tests {
         }
 
         true
+    }
+
+    #[test]
+    fn opcode_decomposition_for_skiz_is_unique_test() {
+        let highest_possible_opcode = (3 << 7) * (3 << 5) * (3 << 3) * (3 << 1) * 2;
+        for instruction in Instruction::iter() {
+            let opcode = instruction.opcode();
+            assert!(
+                opcode < highest_possible_opcode,
+                "Opcode for {instruction} is too high."
+            );
+        }
+    }
+
+    #[test]
+    fn range_check_for_skiz_is_as_efficient_as_possible_test() {
+        let range_check_constraints =
+            ExtProcessorTable::next_instruction_range_check_constraints_for_instruction_skiz(
+                &ConstraintCircuitBuilder::new(),
+            );
+        let range_check_constraints = range_check_constraints.iter();
+        let all_degrees = range_check_constraints.map(|c| c.clone().consume().degree());
+        let max_constraint_degree = all_degrees.max().unwrap_or(0);
+        assert!(
+            AIR_TARGET_DEGREE <= max_constraint_degree,
+            "Can the range check constraints be of a higher degree, saving columns?"
+        );
     }
 }
