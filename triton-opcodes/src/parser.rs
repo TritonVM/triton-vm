@@ -206,7 +206,7 @@ fn an_instruction(s: &str) -> ParseResult<AnInstruction<String>> {
     // OpStack manipulation
     let pop = instruction("pop", Pop);
     let push = push_instruction();
-    let divine = instruction("divine", Divine(None));
+    let divine = instruction("divine", Divine);
     let dup = dup_instruction();
     let swap = swap_instruction();
 

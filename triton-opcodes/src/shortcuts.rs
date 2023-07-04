@@ -14,7 +14,7 @@ pub fn push(value: u64) -> LabelledInstruction {
 }
 
 pub fn divine() -> LabelledInstruction {
-    Instruction(Divine(None))
+    Instruction(Divine)
 }
 
 pub fn dup(st: u64) -> LabelledInstruction {

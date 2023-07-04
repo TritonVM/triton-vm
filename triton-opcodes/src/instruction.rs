@@ -9,7 +9,6 @@ use serde_derive::Deserialize;
 use serde_derive::Serialize;
 use strum::EnumCount;
 use strum::IntoEnumIterator;
-use strum_macros::Display as DisplayMacro;
 use strum_macros::EnumCount as EnumCountMacro;
 use strum_macros::EnumIter;
 use twenty_first::shared_math::b_field_element::BFieldElement;
@@ -47,21 +46,6 @@ impl Display for LabelledInstruction {
     }
 }
 
-#[derive(
-    Debug,
-    DisplayMacro,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    Hash,
-    EnumCountMacro,
-    GetSize,
-    Serialize,
-    Deserialize,
-)]
-pub enum DivinationHint {}
-
 /// A Triton VM instruction. See the
 /// [Instruction Set Architecture](https://triton-vm.org/spec/isa.html)
 /// for more details.
@@ -84,7 +68,7 @@ pub enum AnInstruction<Dest: PartialEq + Default> {
     // OpStack manipulation
     Pop,
     Push(BFieldElement),
-    Divine(Option<DivinationHint>),
+    Divine,
     Dup(Ord16),
     Swap(Ord16),
 
@@ -141,7 +125,7 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
     pub fn strip(&self) -> Self {
         match self {
             Push(_) => Push(Default::default()),
-            Divine(_) => Divine(Default::default()),
+            Divine => Divine,
             Dup(_) => Dup(Default::default()),
             Swap(_) => Swap(Default::default()),
             Call(_) => Call(Default::default()),
@@ -186,7 +170,7 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
         match self {
             Pop => 2,
             Push(_) => 1,
-            Divine(_) => 8,
+            Divine => 8,
             Dup(_) => 9,
             Swap(_) => 17,
             Nop => 16,
@@ -229,7 +213,7 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
         match self {
             Pop => "pop",
             Push(_) => "push",
-            Divine(_) => "divine",
+            Divine => "divine",
             Dup(_) => "dup",
             Swap(_) => "swap",
             Nop => "nop",
@@ -294,7 +278,7 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
         match self {
             Pop => Pop,
             Push(x) => Push(*x),
-            Divine(x) => Divine(*x),
+            Divine => Divine,
             Dup(x) => Dup(*x),
             Swap(x) => Swap(*x),
             Nop => Nop,
@@ -339,7 +323,6 @@ impl<Dest: Display + PartialEq + Default> Display for AnInstruction<Dest> {
         write!(f, "{}", self.name())?;
         match self {
             Push(arg) => write!(f, " {arg}"),
-            Divine(Some(hint)) => write!(f, "_{}", format!("{hint}").to_ascii_lowercase()),
             Dup(arg) | Swap(arg) => write!(f, " {arg}"),
             Call(arg) => write!(f, " {arg}"),
             _ => Ok(()),
@@ -461,7 +444,7 @@ const fn all_instructions_without_args() -> [AnInstruction<BFieldElement>; Instr
     [
         Pop,
         Push(BFIELD_ZERO),
-        Divine(None),
+        Divine,
         Dup(ST0),
         Swap(ST0),
         Nop,
