@@ -1389,6 +1389,10 @@ impl ExtProcessorTable {
             circuit_builder.input(NextBaseRow(col.master_base_table_index()))
         };
 
+        let hv1_is_inverse_of_st0 = curr_base_row(HV1) * curr_base_row(ST0) - one();
+        let hv1_is_inverse_of_st0_or_hv1_is_0 = hv1_is_inverse_of_st0.clone() * curr_base_row(HV1);
+        let hv1_is_inverse_of_st0_or_st0_is_0 = hv1_is_inverse_of_st0 * curr_base_row(ST0);
+
         // The next instruction nia is decomposed into helper variables hv.
         let nia_decomposes_to_hvs = curr_base_row(NIA)
             - curr_base_row(HV2)
@@ -1403,8 +1407,8 @@ impl ExtProcessorTable {
         //
         // The opcodes are constructed such that hv2 == 1 means that nia takes an argument.
         //
-        // Written as Disjunctive Normal Form, the last constraint can be expressed as:
-        // 6. (Register `st0` is 0 or `ip` is incremented by 1), and
+        // Written as Disjunctive Normal Form, the constraint can be expressed as:
+        // (Register `st0` is 0 or `ip` is incremented by 1), and
         // (`st0` has a multiplicative inverse or `hv2` is 1 or `ip` is incremented by 2), and
         // (`st0` has a multiplicative inverse or `hv2` is 0 or `ip` is incremented by 3).
         let ip_case_1 = (next_base_row(IP) - curr_base_row(IP) - constant(1)) * curr_base_row(ST0);
@@ -1416,8 +1420,14 @@ impl ExtProcessorTable {
             * curr_base_row(HV2);
         let ip_incr_by_1_or_2_or_3 = ip_case_1 + ip_case_2 + ip_case_3;
 
+        let specific_constraints = vec![
+            hv1_is_inverse_of_st0_or_hv1_is_0,
+            hv1_is_inverse_of_st0_or_st0_is_0,
+            nia_decomposes_to_hvs,
+            ip_incr_by_1_or_2_or_3,
+        ];
         [
-            vec![nia_decomposes_to_hvs, ip_incr_by_1_or_2_or_3],
+            specific_constraints,
             Self::next_instruction_range_check_constraints_for_instruction_skiz(circuit_builder),
             Self::instruction_group_keep_jump_stack(circuit_builder),
             Self::instruction_group_shrink_op_stack(circuit_builder),
@@ -1434,21 +1444,21 @@ impl ExtProcessorTable {
             circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
         };
 
-        let helper_variable_is_0_or_1 =
-            |hv: ProcessorBaseTableColumn| curr_base_row(hv) * (curr_base_row(hv) - constant(1));
-        let helper_variable_is_0_or_1_or_2_or_3 = |hv: ProcessorBaseTableColumn| {
-            curr_base_row(hv)
-                * (curr_base_row(hv) - constant(1))
-                * (curr_base_row(hv) - constant(2))
-                * (curr_base_row(hv) - constant(3))
+        let is_0_or_1 =
+            |var: ProcessorBaseTableColumn| curr_base_row(var) * (curr_base_row(var) - constant(1));
+        let is_0_or_1_or_2_or_3 = |var: ProcessorBaseTableColumn| {
+            curr_base_row(var)
+                * (curr_base_row(var) - constant(1))
+                * (curr_base_row(var) - constant(2))
+                * (curr_base_row(var) - constant(3))
         };
 
         vec![
-            helper_variable_is_0_or_1(HV2),
-            helper_variable_is_0_or_1_or_2_or_3(HV3),
-            helper_variable_is_0_or_1_or_2_or_3(HV4),
-            helper_variable_is_0_or_1_or_2_or_3(HV5),
-            helper_variable_is_0_or_1_or_2_or_3(HV6),
+            is_0_or_1(HV2),
+            is_0_or_1_or_2_or_3(HV3),
+            is_0_or_1_or_2_or_3(HV4),
+            is_0_or_1_or_2_or_3(HV5),
+            is_0_or_1_or_2_or_3(HV6),
         ]
     }
 
