@@ -121,50 +121,6 @@ pub enum AnInstruction<Dest: PartialEq + Default> {
 }
 
 impl<Dest: PartialEq + Default> AnInstruction<Dest> {
-    /// Drop the specific argument in favor of a default one.
-    pub fn strip(&self) -> Self {
-        match self {
-            Push(_) => Push(Default::default()),
-            Divine => Divine,
-            Dup(_) => Dup(Default::default()),
-            Swap(_) => Swap(Default::default()),
-            Call(_) => Call(Default::default()),
-            Pop => Pop,
-            Nop => Nop,
-            Skiz => Skiz,
-            Return => Return,
-            Recurse => Recurse,
-            Assert => Assert,
-            Halt => Halt,
-            ReadMem => ReadMem,
-            WriteMem => WriteMem,
-            Hash => Hash,
-            DivineSibling => DivineSibling,
-            AssertVector => AssertVector,
-            AbsorbInit => AbsorbInit,
-            Absorb => Absorb,
-            Squeeze => Squeeze,
-            Add => Add,
-            Mul => Mul,
-            Invert => Invert,
-            Eq => Eq,
-            Split => Split,
-            Lt => Lt,
-            And => And,
-            Xor => Xor,
-            Log2Floor => Log2Floor,
-            Pow => Pow,
-            Div => Div,
-            PopCount => PopCount,
-            XxAdd => XxAdd,
-            XxMul => XxMul,
-            XInvert => XInvert,
-            XbMul => XbMul,
-            ReadIo => ReadIo,
-            WriteIo => WriteIo,
-        }
-    }
-
     /// Assign a unique positive integer to each `Instruction`.
     pub fn opcode(&self) -> u32 {
         match self {
