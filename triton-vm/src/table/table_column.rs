@@ -141,6 +141,9 @@ pub enum ProcessorBaseTableColumn {
     HV1,
     HV2,
     HV3,
+    HV4,
+    HV5,
+    HV6,
     RAMP,
     RAMV,
     /// The number of clock jump differences of magnitude `CLK` in all memory-like tables.

@@ -997,8 +997,8 @@ impl ExtProcessorTable {
             next_base_row(ST15) - curr_base_row(OSV),
             // The OpStack pointer, osp, is decremented by 1.
             next_base_row(OSP) - (curr_base_row(OSP) - constant(1)),
-            // The helper variable register hv3 holds the inverse of (osp - 16).
-            (curr_base_row(OSP) - constant(16)) * curr_base_row(HV3) - constant(1),
+            // The helper variable register hv0 holds the inverse of (osp - 16).
+            (curr_base_row(OSP) - constant(16)) * curr_base_row(HV0) - constant(1),
         ]
     }
 
@@ -1389,40 +1389,77 @@ impl ExtProcessorTable {
             circuit_builder.input(NextBaseRow(col.master_base_table_index()))
         };
 
-        // The next instruction nia is decomposed into helper variables hv.
-        let nia_decomposes_to_hvs =
-            curr_base_row(NIA) - (curr_base_row(HV0) + constant(2) * curr_base_row(HV1));
+        let hv1_is_inverse_of_st0 = curr_base_row(HV1) * curr_base_row(ST0) - one();
+        let hv1_is_inverse_of_st0_or_hv1_is_0 = hv1_is_inverse_of_st0.clone() * curr_base_row(HV1);
+        let hv1_is_inverse_of_st0_or_st0_is_0 = hv1_is_inverse_of_st0 * curr_base_row(ST0);
 
-        // The relevant helper variable hv1 is either 0 or 1.
-        // Here, hv0 == 1 means that nia takes an argument.
-        let hv0_is_0_or_1 = curr_base_row(HV0) * (curr_base_row(HV0) - one());
+        // The next instruction nia is decomposed into helper variables hv.
+        let nia_decomposes_to_hvs = curr_base_row(NIA)
+            - curr_base_row(HV2)
+            - constant(1 << 1) * curr_base_row(HV3)
+            - constant(1 << 3) * curr_base_row(HV4)
+            - constant(1 << 5) * curr_base_row(HV5)
+            - constant(1 << 7) * curr_base_row(HV6);
 
         // If `st0` is non-zero, register `ip` is incremented by 1.
         // If `st0` is 0 and `nia` takes no argument, register `ip` is incremented by 2.
         // If `st0` is 0 and `nia` takes an argument, register `ip` is incremented by 3.
         //
-        // Written as Disjunctive Normal Form, the last constraint can be expressed as:
-        // 6. (Register `st0` is 0 or `ip` is incremented by 1), and
-        // (`st0` has a multiplicative inverse or `hv` is 1 or `ip` is incremented by 2), and
-        // (`st0` has a multiplicative inverse or `hv0` is 0 or `ip` is incremented by 3).
+        // The opcodes are constructed such that hv2 == 1 means that nia takes an argument.
+        //
+        // Written as Disjunctive Normal Form, the constraint can be expressed as:
+        // (Register `st0` is 0 or `ip` is incremented by 1), and
+        // (`st0` has a multiplicative inverse or `hv2` is 1 or `ip` is incremented by 2), and
+        // (`st0` has a multiplicative inverse or `hv2` is 0 or `ip` is incremented by 3).
         let ip_case_1 = (next_base_row(IP) - curr_base_row(IP) - constant(1)) * curr_base_row(ST0);
         let ip_case_2 = (next_base_row(IP) - curr_base_row(IP) - constant(2))
-            * (curr_base_row(ST0) * curr_base_row(HV2) - one())
-            * (curr_base_row(HV0) - one());
+            * (curr_base_row(ST0) * curr_base_row(HV1) - one())
+            * (curr_base_row(HV2) - one());
         let ip_case_3 = (next_base_row(IP) - curr_base_row(IP) - constant(3))
-            * (curr_base_row(ST0) * curr_base_row(HV2) - one())
-            * curr_base_row(HV0);
+            * (curr_base_row(ST0) * curr_base_row(HV1) - one())
+            * curr_base_row(HV2);
         let ip_incr_by_1_or_2_or_3 = ip_case_1 + ip_case_2 + ip_case_3;
 
-        let specific_constraints =
-            vec![nia_decomposes_to_hvs, hv0_is_0_or_1, ip_incr_by_1_or_2_or_3];
+        let specific_constraints = vec![
+            hv1_is_inverse_of_st0_or_hv1_is_0,
+            hv1_is_inverse_of_st0_or_st0_is_0,
+            nia_decomposes_to_hvs,
+            ip_incr_by_1_or_2_or_3,
+        ];
         [
             specific_constraints,
+            Self::next_instruction_range_check_constraints_for_instruction_skiz(circuit_builder),
             Self::instruction_group_keep_jump_stack(circuit_builder),
             Self::instruction_group_shrink_op_stack(circuit_builder),
             Self::instruction_group_keep_ram(circuit_builder),
         ]
         .concat()
+    }
+
+    fn next_instruction_range_check_constraints_for_instruction_skiz(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
+        let constant = |c: u32| circuit_builder.b_constant(c.into());
+        let curr_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
+        };
+
+        let is_0_or_1 =
+            |var: ProcessorBaseTableColumn| curr_base_row(var) * (curr_base_row(var) - constant(1));
+        let is_0_or_1_or_2_or_3 = |var: ProcessorBaseTableColumn| {
+            curr_base_row(var)
+                * (curr_base_row(var) - constant(1))
+                * (curr_base_row(var) - constant(2))
+                * (curr_base_row(var) - constant(3))
+        };
+
+        vec![
+            is_0_or_1(HV2),
+            is_0_or_1_or_2_or_3(HV3),
+            is_0_or_1_or_2_or_3(HV4),
+            is_0_or_1_or_2_or_3(HV5),
+            is_0_or_1_or_2_or_3(HV6),
+        ]
     }
 
     fn instruction_call(
@@ -1812,24 +1849,24 @@ impl ExtProcessorTable {
             circuit_builder.input(NextBaseRow(col.master_base_table_index()))
         };
 
-        // Helper variable hv0 is the inverse-or-zero of the difference of the stack's two top-most
-        // elements: `hv0·(hv0·(st1 - st0) - 1)`
-        let hv0_is_inverse_of_diff_or_hv0_is_0 = curr_base_row(HV0)
-            * (curr_base_row(HV0) * (curr_base_row(ST1) - curr_base_row(ST0)) - one());
+        // Helper variable hv1 is the inverse-or-zero of the difference of the stack's two top-most
+        // elements: `hv1·(hv1·(st1 - st0) - 1)`
+        let hv1_is_inverse_of_diff_or_hv1_is_0 = curr_base_row(HV1)
+            * (curr_base_row(HV1) * (curr_base_row(ST1) - curr_base_row(ST0)) - one());
 
-        // Helper variable hv0 is the inverse-or-zero of the difference of the stack's two
-        // top-most elements: `(st1 - st0)·(hv0·(st1 - st0) - 1)`
-        let hv0_is_inverse_of_diff_or_diff_is_0 = (curr_base_row(ST1) - curr_base_row(ST0))
-            * (curr_base_row(HV0) * (curr_base_row(ST1) - curr_base_row(ST0)) - one());
+        // Helper variable hv1 is the inverse-or-zero of the difference of the stack's two
+        // top-most elements: `(st1 - st0)·(hv1·(st1 - st0) - 1)`
+        let hv1_is_inverse_of_diff_or_diff_is_0 = (curr_base_row(ST1) - curr_base_row(ST0))
+            * (curr_base_row(HV1) * (curr_base_row(ST1) - curr_base_row(ST0)) - one());
 
         // The new top of the stack is 1 if the difference between the stack's two top-most
-        // elements is not invertible, 0 otherwise: `st0' - (1 - hv0·(st1 - st0))`
+        // elements is not invertible, 0 otherwise: `st0' - (1 - hv1·(st1 - st0))`
         let st0_becomes_1_if_diff_is_not_invertible = next_base_row(ST0)
-            - (one() - curr_base_row(HV0) * (curr_base_row(ST1) - curr_base_row(ST0)));
+            - (one() - curr_base_row(HV1) * (curr_base_row(ST1) - curr_base_row(ST0)));
 
         let specific_constraints = vec![
-            hv0_is_inverse_of_diff_or_hv0_is_0,
-            hv0_is_inverse_of_diff_or_diff_is_0,
+            hv1_is_inverse_of_diff_or_hv1_is_0,
+            hv1_is_inverse_of_diff_or_diff_is_0,
             st0_becomes_1_if_diff_is_not_invertible,
         ];
         [
@@ -3098,7 +3135,12 @@ mod constraint_polynomial_tests {
             get_test_row_from_source_code("push 0 skiz assert halt", 1),
             get_test_row_from_source_code("push 0 skiz push 1 halt", 1),
         ];
-        test_constraints_for_rows_with_debug_info(Skiz, &test_rows, &[IP, ST0, HV0, HV1], &[IP]);
+        test_constraints_for_rows_with_debug_info(
+            Skiz,
+            &test_rows,
+            &[IP, NIA, ST0, HV6, HV5, HV4, HV3, HV2],
+            &[IP],
+        );
     }
 
     #[test]
@@ -3374,8 +3416,8 @@ mod constraint_polynomial_tests {
         test_constraints_for_rows_with_debug_info(
             XbMul,
             &test_rows,
-            &[ST0, ST1, ST2, ST3, OSP, HV3],
-            &[ST0, ST1, ST2, ST3, OSP, HV3],
+            &[ST0, ST1, ST2, ST3, OSP, HV0],
+            &[ST0, ST1, ST2, ST3, OSP, HV0],
         );
     }
 
@@ -3478,6 +3520,11 @@ mod constraint_polynomial_tests {
 
 #[cfg(test)]
 pub mod tests {
+    use strum::IntoEnumIterator;
+    use triton_opcodes::instruction::Instruction;
+
+    use crate::table::master_table::AIR_TARGET_DEGREE;
+
     use super::*;
 
     pub fn constraints_evaluate_to_zero(
@@ -3567,5 +3614,32 @@ pub mod tests {
         }
 
         true
+    }
+
+    #[test]
+    fn opcode_decomposition_for_skiz_is_unique_test() {
+        let highest_possible_opcode = (3 << 7) * (3 << 5) * (3 << 3) * (3 << 1) * 2;
+        for instruction in Instruction::iter() {
+            let opcode = instruction.opcode();
+            assert!(
+                opcode < highest_possible_opcode,
+                "Opcode for {instruction} is too high."
+            );
+        }
+    }
+
+    #[test]
+    fn range_check_for_skiz_is_as_efficient_as_possible_test() {
+        let range_check_constraints =
+            ExtProcessorTable::next_instruction_range_check_constraints_for_instruction_skiz(
+                &ConstraintCircuitBuilder::new(),
+            );
+        let range_check_constraints = range_check_constraints.iter();
+        let all_degrees = range_check_constraints.map(|c| c.clone().consume().degree());
+        let max_constraint_degree = all_degrees.max().unwrap_or(0);
+        assert!(
+            AIR_TARGET_DEGREE <= max_constraint_degree,
+            "Can the range check constraints be of a higher degree, saving columns?"
+        );
     }
 }

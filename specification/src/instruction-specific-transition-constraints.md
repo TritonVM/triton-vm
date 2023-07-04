@@ -207,50 +207,63 @@ It has no additional transition constraints.
 For the correct behavior of instruction `skiz`, the instruction pointer `ip` needs to increment by either 1, or 2, or 3.
 The concrete value depends on the top of the stack `st0` and the next instruction, held in `nia`.
 
+Helper variable `hv1` helps with identifying whether `st0` is 0.
+To this end, it holds the inverse-or-zero of `st0`, _i.e._, is 0 if and only if `st0` is 0, and is the inverse of `st0` otherwise.
+
 Efficient arithmetization of instruction `skiz` makes use of one of the properties of [opcodes](instructions.md#regarding-opcodes).
 Concretely, the least significant bit of an opcode is 1 if and only if the instruction takes an argument.
 The arithmetization of `skiz` can incorporate this simple flag by decomposing `nia` into helper variable registers `hv`,
 similarly to how `ci` is (always) deconstructed into instruction bit registers `ib`.
+Correct decomposition is guaranteed by employing a [range check](https://en.wikipedia.org/wiki/Bounds_checking).
 
 This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `keep_jump_stack`, `shrink_stack`, and `keep_ram`.
 Additionally, it defines the following transition constraints.
 
 ### Description
 
-1. The jump stack pointer `jsp` does not change.
-1. The last jump's origin `jso` does not change.
-1. The last jump's destination `jsd` does not change.
-1. The next instruction `nia` is decomposed into helper variables `hv`.
-1. The relevant helper variable `hv1` is either 0 or 1.
-    Here, `hv1 == 1` means that `nia` takes an argument.
+1. Helper variable `hv1` is the inverse of `st0` or 0.
+1. Helper variable `hv1` is the inverse of `st0` or `st0` is 0.
+1. The next instruction `nia` is decomposed into helper variables `hv2` through `hv6`.
+1. The indicator helper variable `hv2` is either 0 or 1.
+    Here, `hv2 == 1` means that `nia` takes an argument.
+1. The helper variable `hv3` is either 0 or 1 or 2 or 3.
+1. The helper variable `hv4` is either 0 or 1 or 2 or 3.
+1. The helper variable `hv5` is either 0 or 1 or 2 or 3.
+1. The helper variable `hv6` is either 0 or 1 or 2 or 3.
 1. If `st0` is non-zero, register `ip` is incremented by 1.
 If `st0` is 0 and `nia` takes no argument, register `ip` is incremented by 2.
 If `st0` is 0 and `nia` takes an argument, register `ip` is incremented by 3.
 
 Written as Disjunctive Normal Form, the last constraint can be expressed as:
-6. (Register `st0` is 0 or `ip` is incremented by 1), and
-(`st0` has a multiplicative inverse or `hv0` is 1 or `ip` is incremented by 2), and
-(`st0` has a multiplicative inverse or `hv0` is 0 or `ip` is incremented by 3).
+
+10. (Register `st0` is 0 or `ip` is incremented by 1), and
+(`st0` has a multiplicative inverse or `hv2` is 1 or `ip` is incremented by 2), and
+(`st0` has a multiplicative inverse or `hv2` is 0 or `ip` is incremented by 3).
 
 Since the three cases are mutually exclusive, the three respective polynomials can be summed up into one.
 
 ### Polynomials
 
-1. `jsp' - jsp`
-1. `jso' - jso`
-1. `jsd' - jsd`
-1. `nia - (hv0 + 4·hv1 + 8·hv2)`
-1. `hv1·(hv1 - 1)`
-1. `(ip' - (ip + 1)·st0) + ((ip' - (ip + 2))·(st0·hv2 - 1)·(hv0 - 1)) + ((ip' - (ip + 3))·(st0·hv2 - 1)·hv0)`
+1. `(st0·hv1 - 1)·hv1`
+1. `(st0·hv1 - 1)·st0`
+1. `nia - hv2 - 2·hv3 - 8·hv4 - 32·hv5 - 128·hv6`
+1. `hv2·(hv2 - 1)`
+1. `hv3·(hv3 - 1)·(hv3 - 2)·(hv3 - 3)`
+1. `hv4·(hv4 - 1)·(hv4 - 2)·(hv4 - 3)`
+1. `hv5·(hv5 - 1)·(hv5 - 2)·(hv5 - 3)`
+1. `hv6·(hv6 - 1)·(hv6 - 2)·(hv6 - 3)`
+1. `(ip' - (ip + 1)·st0)`<br />
+    ` + ((ip' - (ip + 2))·(st0·hv1 - 1)·(hv2 - 1))`<br />
+    ` + ((ip' - (ip + 3))·(st0·hv1 - 1)·hv2)`
 
 ### Helper variable definitions for `skiz`
 
-Note:
-The concrete decomposition of `nia` into helper variables `hv` as well as the concretely relevant `hv` determining whether `nia` takes an argument (currently `hv0`) are subject to change.
-
-1. `hv0 = nia % 2`
-1. `hv1 = nia / 2`
-1. `hv2 = inverse(st0)` (if `st0 ≠ 0`)
+1. `hv1 = inverse(st0)` (if `st0 ≠ 0`)
+1. `hv2 = nia mod 2`
+1. `hv3 = (nia >> 1) mod 4`
+1. `hv4 = (nia >> 3) mod 4`
+1. `hv5 = (nia >> 5) mod 4`
+1. `hv6 = nia >> 7`
 
 ## Instruction `call` + `d`
 
@@ -492,20 +505,20 @@ Additionally, it defines the following transition constraints.
 
 ### Description
 
-1. Helper variable `hv0` is the inverse of the difference of the stack's two top-most elements or 0.
-1. Helper variable `hv0` is the inverse of the difference of the stack's two top-most elements or the difference is 0.
+1. Helper variable `hv1` is the inverse of the difference of the stack's two top-most elements or 0.
+1. Helper variable `hv1` is the inverse of the difference of the stack's two top-most elements or the difference is 0.
 1. The new top of the stack is 1 if the difference between the stack's two top-most elements is not invertible, 0 otherwise.
 
 ### Polynomials
 
-1. `hv0·(hv0·(st1 - st0) - 1)`
-1. `(st1 - st0)·(hv0·(st1 - st0) - 1)`
-1. `st0' - (1 - hv0·(st1 - st0))`
+1. `hv1·(hv1·(st1 - st0) - 1)`
+1. `(st1 - st0)·(hv1·(st1 - st0) - 1)`
+1. `st0' - (1 - hv1·(st1 - st0))`
 
 ### Helper variable definitions for `eq`
 
-1. `hv0 = inverse(rhs - lhs)` if `rhs - lhs ≠ 0`.
-1. `hv0 = 0` if `rhs - lhs = 0`.
+1. `hv1 = inverse(rhs - lhs)` if `rhs - lhs ≠ 0`.
+1. `hv1 = 0` if `rhs - lhs = 0`.
 
 ## Instruction `split`
 
