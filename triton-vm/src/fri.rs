@@ -275,7 +275,7 @@ impl<H: AlgebraicHasher> Fri<H> {
         }
         prof_stop!(maybe_profiler, "roots and alpha");
 
-        prof_start!(maybe_profiler, "last codeword matches root");
+        prof_start!(maybe_profiler, "last codeword matches root", "hash");
         // Extract last codeword
         let last_codeword = proof_stream.dequeue()?.as_fri_codeword()?;
 
