@@ -1,13 +1,20 @@
 # Arithmetization
 
 An arithmetization defines two things:
+
 1. algebraic execution tables (AETs), and
 1. arithmetic intermediate representation (AIR) constraints.
 
-The nature of Triton VM is that the execution trace is spread out over multiple tables, but linked through permutation and evaluation arguments.
-
-Elsewhere, the acronym AET stands for algebraic execution *trace*.
-In the nomenclature of this note, a trace is a special kind of table that tracks the values of a set of registers across time.
+For Triton VM, the execution trace is spread over multiple tables.
+These tables are linked by [various cryptographic arguments](table-linking.md).
+This division allows for a separation of concerns.
+For example, the main processor's trace is recorded in the [Processor Table](processor-table.md).
+The main processor can delegate the execution of somewhat-difficult-to-arithmetize instructions like `hash` or `xor` to a co-processor.
+The arithmetization of the co-processor is largely independent from the main processor and recorded in its separate trace.
+For example, [instructions relating to hashing](instructions.md#hashing) are executed by the hash co-processor.
+Its trace is recorded in the [Hash Table](hash-table.md).
+Similarly, [bitwise instructions](instructions.md#bitwise-arithmetic-on-stack) are executed by the u32 co-processor, and the corresponding trace recorded in the [U32 Table](u32-table.md).
+Another example for the separation of concerns is [memory consistency](memory-consistency.md), the bulk of which is delegated to the [Operational Stack Table](operational-stack-table.md), [RAM Table](random-access-memory-table.md), and [Jump Stack Table](jump-stack-table.md).
 
 ## Algebraic Execution Tables
 
@@ -15,15 +22,11 @@ There are 9 Arithmetic Execution Tables in TritonVM.
 Their relation is described by below figure.
 A a blue arrow indicates a [Permutation Argument](permutation-argument.md), a red arrow indicates an [Evaluation Argument](evaluation-argument.md), a purple arrow indicates a [Lookup Argument](lookup-argument.md), and the green arrow is the [Contiguity Argument](contiguity-of-memory-pointer-regions.md).
 
+The grayed-out elements “program digest”, “input”, and “output” are not AETs but publicly available information.
+Together, they constitute the claim for which Triton VM produces a proof.
+See “[Arguments Using Public Information](arithmetization.md#arguments-using-public-information)” and “[Program Attestation](program-attestation.md)” for the [Evaluation Argument](evaluation-argument.md)s with which they are linked into the rest of the proof system.
+
 ![](img/aet-relations.png)
-
-Public (but not secret!) input and output are given to the Verifier explicitly.
-As a consequence, neither the input nor the output symbols are recorded in a table.
-Correct use of public input (respectively, output) in the Processor is ensured through an Evaluation Argument.
-Given the list of input (or output) symbols, the verifier can compute the Evaluation Argument's terminal explicitly, and consequently compare it to the corresponding terminal in the Processor Table.
-The correctness of the [Lookup Table](lookup-table.md) is checked analogously.
-
-Despite the fact that neither public input nor output have a dedicated table, them having Evaluation Arguments with the Processor Table justifies their appearance in above figure.
 
 ### Base Tables
 
@@ -33,7 +36,7 @@ Together, these columns are referred to as table's _base_ columns, and make up t
 
 ### Extension Tables
 
-The entries of a table's columns corresponding to Permutation, Evaluation, and Lookup Arguments are elements from the _X-field_ $\mathbb{F}_{p^3}$.
+The entries of a table's columns corresponding to [Permutation](permutation-argument.md), [Evaluation](evaluation-argument.md), and [Lookup Arguments](lookup-argument.md) are elements from the _X-field_ $\mathbb{F}_{p^3}$.
 These columns are referred to as a table's _extension_ columns, both because the entries are elements of the X-field and because the entries can only be computed using the base tables, through an _extension_ process.
 Together, these columns are referred to as a table's _extension_ columns, and make up the _extension table_.
 
@@ -46,9 +49,25 @@ The height $h$ of the longest AET determines the padded height for all tables, w
 ## Arithmetic Intermediate Representation
 
 For each table, up to four lists containing constraints of different type are given:
+
 1. Initial Constraints, defining values in a table's first row,
 1. Consistency Constraints, establishing consistency within any given row,
 1. Transition Constraints, establishing the consistency of two consecutive rows in relation to each other, and
 1. Terminal Constraints, defining values in a table's last row.
 
 Together, all these constraints constitute the AIR constraints.
+
+## Arguments Using Public Information
+
+Triton VM uses a number of public arguments.
+That is, one side of the link can be computed by the verifier using publicly available information;
+the other side of the link is verified through one or more AIR constraints.
+
+The two most prominent instances of this are public input and output:
+both are given to the verifier explicitly.
+The verifier can compute the terminal of an [Evaluation Argument](evaluation-argument.md) using public input (respectively, output).
+In the [Processor Table](processor-table.md), AIR constraints guarantee that the used input (respectively, output) symbols are accumulated similarly.
+Comparing the two terminal values establishes that use of public input (respectively, production of public output) was integral.
+
+The third public argument establishes correctness of the [Lookup Table](lookup-table.md), and is explained there.
+The fourth public argument relates to [program attestation](program-attestation.md), and is also explained on its corresponding page.

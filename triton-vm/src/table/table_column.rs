@@ -35,16 +35,66 @@ use crate::table::master_table::U32_TABLE_START;
 #[repr(usize)]
 #[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro, Hash)]
 pub enum ProgramBaseTableColumn {
+    /// An instruction's address.
     Address,
+
+    /// The (opcode of the) instruction.
     Instruction,
+
+    /// How often an instruction has been executed.
     LookupMultiplicity,
-    IsPadding,
+
+    /// The index in the vector of length [`Rate`] that is to be absorbed in the Sponge
+    /// in order to compute the program's digest.
+    /// In other words:
+    /// [`Address`] modulo [`Rate`].
+    ///
+    /// [`Address`]: ProgramBaseTableColumn::Address
+    /// [`Rate`]: twenty_first::shared_math::tip5::RATE
+    IndexInChunk,
+
+    /// The inverse-or-zero of [`Rate`] - 1 - [`IndexInChunk`].
+    /// Helper variable to guarantee [`IndexInChunk`]'s correct transition.
+    ///
+    /// [`IndexInChunk`]: ProgramBaseTableColumn::IndexInChunk
+    /// [`Rate`]: twenty_first::shared_math::tip5::RATE
+    MaxMinusIndexInChunkInv,
+
+    /// Padding indicator for absorbing the program into the Sponge.
+    IsHashInputPadding,
+
+    /// Padding indicator for rows only required due to the dominating length of some other table.
+    IsTablePadding,
 }
 
 #[repr(usize)]
 #[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro, Hash)]
 pub enum ProgramExtTableColumn {
+    /// The server part of the instruction lookup.
+    ///
+    /// The counterpart to [`InstructionLookupClientLogDerivative`][client].
+    ///
+    /// [client]: ProcessorExtTableColumn::InstructionLookupClientLogDerivative
     InstructionLookupServerLogDerivative,
+
+    /// An evaluation argument accumulating [`RATE`][rate] many instructions before
+    /// they are sent using [`SendChunkEvalArg`](ProgramExtTableColumn::SendChunkRunningEvaluation).
+    /// Resets to zero after each chunk.
+    /// Relevant for program attestation.
+    ///
+    /// [rate]: crate::stark::StarkHasher::RATE
+    PrepareChunkRunningEvaluation,
+
+    /// An evaluation argument over all [`RATE`][rate]-sized chunks of instructions,
+    /// which are prepared in [`PrepareChunkEvalArg`][prep].
+    /// This bus is used for sending those chunks to the Hash Table.
+    /// Relevant for program attestation.
+    ///
+    /// The counterpart to [`RcvChunkEvalArg`](HashExtTableColumn::ReceiveChunkRunningEvaluation).
+    ///
+    /// [rate]: crate::stark::StarkHasher::RATE
+    /// [prep]: ProgramExtTableColumn::PrepareChunkRunningEvaluation
+    SendChunkRunningEvaluation,
 }
 
 // -------- Processor Table --------
@@ -196,8 +246,30 @@ pub enum JumpStackExtTableColumn {
 #[repr(usize)]
 #[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro, Hash)]
 pub enum HashBaseTableColumn {
-    RoundNumber,
+    /// The indicator for the [`HashTableMode`][mode].
+    ///
+    /// [mode]: crate::table::hash_table::HashTableMode
+    Mode,
+
+    /// The current instruction. Only relevant for [`Mode`][mode] [`Sponge`][mode_sponge]
+    /// in order to distinguish between the different Sponge instructions.
+    ///
+    /// [mode]: Self::Mode
+    /// [mode_sponge]: crate::table::hash_table::HashTableMode::Sponge
     CI,
+
+    /// The number of the current round in the permutation. The round number evolves as
+    /// - 0 → 1 → 2 → 3 → 4 → 5 (→ 0) in [`Mode`][mode]s
+    /// [`ProgramHashing`][mode_prog_hash], [`Sponge`][mode_sponge] and [`Hash`][mode_hash].
+    /// - 0 → 0 in [`Mode`][mode] [`Pad`][mode_pad].
+    ///
+    /// [mode]: Self::Mode
+    /// [mode_prog_hash]: crate::table::hash_table::HashTableMode::ProgramHashing
+    /// [mode_sponge]: crate::table::hash_table::HashTableMode::Sponge
+    /// [mode_hash]: crate::table::hash_table::HashTableMode::Hash
+    /// [mode_pad]: crate::table::hash_table::HashTableMode::Pad
+    RoundNumber,
+
     State0HighestLkIn,
     State0MidHighLkIn,
     State0MidLowLkIn,
@@ -242,10 +314,12 @@ pub enum HashBaseTableColumn {
     State13,
     State14,
     State15,
+
     State0Inv,
     State1Inv,
     State2Inv,
     State3Inv,
+
     Constant0,
     Constant1,
     Constant2,
@@ -267,6 +341,13 @@ pub enum HashBaseTableColumn {
 #[repr(usize)]
 #[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro, Hash)]
 pub enum HashExtTableColumn {
+    /// The evaluation argument corresponding to receiving instructions in chunks of size
+    /// [`RATE`](StarkHasher::RATE). The chunks are hashed in Sponge mode.
+    /// This allows program attestation.
+    ///
+    /// The counterpart to [`SendChunkEvalArg`](ProgramExtTableColumn::SendChunkRunningEvaluation).
+    ReceiveChunkRunningEvaluation,
+
     HashInputRunningEvaluation,
     HashDigestRunningEvaluation,
 

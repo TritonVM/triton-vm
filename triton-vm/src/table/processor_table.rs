@@ -13,15 +13,15 @@ use ndarray::Axis;
 use num_traits::One;
 use num_traits::Zero;
 use strum::EnumCount;
-use twenty_first::shared_math::b_field_element::BFieldElement;
-use twenty_first::shared_math::b_field_element::BFIELD_ONE;
-use twenty_first::shared_math::traits::Inverse;
-use twenty_first::shared_math::x_field_element::XFieldElement;
-
 use triton_opcodes::instruction::AnInstruction::*;
 use triton_opcodes::instruction::Instruction;
 use triton_opcodes::instruction::ALL_INSTRUCTIONS;
 use triton_opcodes::ord_n::Ord8;
+use twenty_first::shared_math::b_field_element::BFieldElement;
+use twenty_first::shared_math::b_field_element::BFIELD_ONE;
+use twenty_first::shared_math::digest::DIGEST_LENGTH;
+use twenty_first::shared_math::traits::Inverse;
+use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use crate::table::challenges::ChallengeId;
 use crate::table::challenges::ChallengeId::*;
@@ -422,16 +422,29 @@ impl ExtProcessorTable {
         let st8_is_0 = base_row(ST8);
         let st9_is_0 = base_row(ST9);
         let st10_is_0 = base_row(ST10);
-        let st11_is_0 = base_row(ST11);
-        let st12_is_0 = base_row(ST12);
-        let st13_is_0 = base_row(ST13);
-        let st14_is_0 = base_row(ST14);
-        let st15_is_0 = base_row(ST15);
         let osp_is_16 = base_row(OSP) - constant(16);
         let osv_is_0 = base_row(OSV);
         let ramv_is_0 = base_row(RAMV);
         let ramp_is_0 = base_row(RAMP);
         let previous_instruction_is_0 = base_row(PreviousInstruction);
+
+        // Compress the program digest using an Evaluation Argument.
+        // Lowest index in the digest corresponds to lowest index on the stack.
+        let program_digest: [_; DIGEST_LENGTH] = [
+            base_row(ST11),
+            base_row(ST12),
+            base_row(ST13),
+            base_row(ST14),
+            base_row(ST15),
+        ];
+        let compressed_program_digest = program_digest.into_iter().fold(
+            circuit_builder.x_constant(EvalArg::default_initial()),
+            |acc, digest_element| {
+                acc * challenge(CompressProgramDigestIndeterminate) + digest_element
+            },
+        );
+        let compressed_program_digest_is_expected_program_digest =
+            compressed_program_digest - challenge(CompressedProgramDigest);
 
         // Permutation and Evaluation Arguments with all tables the Processor Table relates to
 
@@ -536,11 +549,7 @@ impl ExtProcessorTable {
             st8_is_0,
             st9_is_0,
             st10_is_0,
-            st11_is_0,
-            st12_is_0,
-            st13_is_0,
-            st14_is_0,
-            st15_is_0,
+            compressed_program_digest_is_expected_program_digest,
             osp_is_16,
             osv_is_0,
             ramv_is_0,
@@ -2944,7 +2953,6 @@ impl<'a> Display for ExtProcessorTraceRow<'a> {
 #[cfg(test)]
 mod constraint_polynomial_tests {
     use ndarray::Array2;
-
     use triton_opcodes::ord_n::Ord16;
     use triton_opcodes::program::Program;
 
@@ -2987,7 +2995,7 @@ mod constraint_polynomial_tests {
         debug_cols_next_row: &[ProcessorBaseTableColumn],
     ) {
         let circuit_builder = ConstraintCircuitBuilder::new();
-        let challenges = Challenges::placeholder(&[], &[]);
+        let challenges = Challenges::placeholder(None);
         let fake_ext_table = Array2::zeros([2, NUM_EXT_COLUMNS]);
         for (case_idx, test_rows) in master_base_tables.iter().enumerate() {
             let curr_row = test_rows.slice(s![0, ..]);
@@ -3378,8 +3386,8 @@ mod constraint_polynomial_tests {
         let mut master_base_table = Array2::zeros([2, NUM_BASE_COLUMNS]);
         let master_ext_table = Array2::zeros([2, NUM_EXT_COLUMNS]);
 
-        // We need dummy challenges to evaluate.
-        let dummy_challenges = Challenges::placeholder(&[], &[]);
+        // For this test, dummy challenges suffice to evaluate the constraints.
+        let dummy_challenges = Challenges::placeholder(None);
         for instruction in ALL_INSTRUCTIONS {
             use ProcessorBaseTableColumn::*;
             let deselector = ExtProcessorTable::instruction_deselector_current_row(

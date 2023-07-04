@@ -1,7 +1,6 @@
 use criterion::criterion_group;
 use criterion::criterion_main;
 use criterion::Criterion;
-use twenty_first::shared_math::tip5::Tip5;
 use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
 
 use triton_opcodes::program::Program;
@@ -12,6 +11,7 @@ use triton_profiler::triton_profiler::TritonProfiler;
 use triton_vm::proof::Claim;
 use triton_vm::shared_tests::save_proof;
 use triton_vm::stark::Stark;
+use triton_vm::stark::StarkHasher;
 use triton_vm::stark::StarkParameters;
 use triton_vm::vm::simulate;
 
@@ -37,7 +37,7 @@ fn prove_halt(_criterion: &mut Criterion) {
     let parameters = StarkParameters::default();
     let claim = Claim {
         input: vec![],
-        program_digest: Tip5::hash(&program),
+        program_digest: StarkHasher::hash_varlen(&program.to_bwords()),
         output,
     };
     let proof = Stark::prove(&parameters, &claim, &aet, &mut maybe_profiler);

@@ -111,7 +111,7 @@ For honest provers, the gcd is guaranteed to be one. As a result, the protocol h
 ### Soundness.
 If the table has at least one non-contiguous region, then $f_{\mathsf{rp}}(X)$ and $f_{\mathsf{fd}}(X)$ share at least one factor.
 As a result, no Bézout coefficients $f_\mathsf{bc0}(X)$ and $f_\mathsf{bc1}(X)$ can exist such that $f_\mathsf{bc0}(X) \cdot f_{\mathsf{rp}}(X) + f_\mathsf{bc1}(X) \cdot f_{\mathsf{fd}}(X) = 1$.
-The verifier therefore probes unequal polynomials of degree at most $2T - 2$, where $T$ is the length of the execution trace, which is upper bounded by $2^32$.
+The verifier therefore probes unequal polynomials of degree at most $2T - 2$, where $T$ is the length of the execution trace, which is upper bounded by $2^{32}$.
 According to the Schwartz-Zippel lemma, the false positive probability is at most $(2T - 2) / \vert \mathbb{F} \vert$. $\square$
 
 ### Zero-Knowledge.

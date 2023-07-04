@@ -158,6 +158,8 @@ impl GrandCrossTableArg {
             |column: LookupExtTableColumn| ext_row(column.master_ext_table_index());
         let u32_ext_row = |column: U32ExtTableColumn| ext_row(column.master_ext_table_index());
 
+        let program_attestation = program_ext_row(SendChunkRunningEvaluation)
+            - hash_ext_row(ReceiveChunkRunningEvaluation);
         let input_to_processor =
             challenge(StandardInputTerminal) - processor_ext_row(InputTableEvalArg);
         let processor_to_output =
@@ -209,6 +211,7 @@ impl GrandCrossTableArg {
             - jump_stack_ext_row(j_stack_cjdld);
 
         vec![
+            program_attestation,
             input_to_processor,
             processor_to_output,
             instruction_lookup,

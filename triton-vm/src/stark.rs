@@ -165,7 +165,7 @@ impl Stark {
         prof_start!(maybe_profiler, "Fiat-Shamir", "hash");
         proof_stream.enqueue(&ProofItem::MerkleRoot(base_merkle_tree_root));
         let extension_weights = proof_stream.sample_scalars(Challenges::num_challenges_to_sample());
-        let extension_challenges = Challenges::new(extension_weights, &claim.input, &claim.output);
+        let extension_challenges = Challenges::new(extension_weights, claim);
         prof_stop!(maybe_profiler, "Fiat-Shamir");
 
         prof_start!(maybe_profiler, "extend");
@@ -595,7 +595,7 @@ impl Stark {
         let base_merkle_tree_root = proof_stream.dequeue()?.as_merkle_root()?;
         let extension_challenge_weights =
             proof_stream.sample_scalars(Challenges::num_challenges_to_sample());
-        let challenges = Challenges::new(extension_challenge_weights, &claim.input, &claim.output);
+        let challenges = Challenges::new(extension_challenge_weights, &claim);
         let extension_tree_merkle_root = proof_stream.dequeue()?.as_merkle_root()?;
         // Sample weights for quotient codeword, which is a part of the combination codeword.
         // See corresponding part in the prover for a more detailed explanation.
@@ -973,7 +973,7 @@ pub(crate) mod triton_stark_tests {
 
         let claim = Claim {
             input: stdin,
-            program_digest: Tip5::hash(&aet.program),
+            program_digest: StarkHasher::hash_varlen(&aet.program.to_bwords()),
             output: stdout,
         };
         let padded_height = MasterBaseTable::padded_height(&aet, parameters.num_trace_randomizers);
@@ -1009,7 +1009,7 @@ pub(crate) mod triton_stark_tests {
         let (parameters, claim, unpadded_master_base_table, master_base_table) =
             parse_simulate_pad(code, stdin, secret_in);
 
-        let dummy_challenges = Challenges::placeholder(&claim.input, &claim.output);
+        let dummy_challenges = Challenges::placeholder(Some(&claim));
         let master_ext_table =
             master_base_table.extend(&dummy_challenges, parameters.num_randomizer_polynomials);
 
@@ -1219,7 +1219,7 @@ pub(crate) mod triton_stark_tests {
 
     #[test]
     fn constraint_polynomials_use_right_variable_count_test() {
-        let challenges = Challenges::placeholder(&[], &[]);
+        let challenges = Challenges::placeholder(None);
         let base_row = Array1::<BFieldElement>::zeros(NUM_BASE_COLUMNS);
         let ext_row = Array1::zeros(NUM_EXT_COLUMNS);
 
@@ -1332,7 +1332,7 @@ pub(crate) mod triton_stark_tests {
     fn number_of_quotient_degree_bounds_match_number_of_constraints_test() {
         let base_row = Array1::<BFieldElement>::zeros(NUM_BASE_COLUMNS);
         let ext_row = Array1::zeros(NUM_EXT_COLUMNS);
-        let challenges = Challenges::placeholder(&[], &[]);
+        let challenges = Challenges::placeholder(None);
         let padded_height = 2;
         let num_trace_randomizers = 2;
         let interpolant_degree = interpolant_degree(padded_height, num_trace_randomizers);

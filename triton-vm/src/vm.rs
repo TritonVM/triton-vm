@@ -1,3 +1,4 @@
+use std::cmp::max;
 use std::collections::hash_map::Entry::*;
 use std::collections::HashMap;
 use std::collections::VecDeque;
@@ -8,6 +9,7 @@ use anyhow::anyhow;
 use anyhow::bail;
 use anyhow::Error;
 use anyhow::Result;
+use itertools::Itertools;
 use ndarray::s;
 use ndarray::Array1;
 use ndarray::Array2;
@@ -22,17 +24,21 @@ use triton_opcodes::ord_n::Ord8;
 use triton_opcodes::program::Program;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::b_field_element::BFIELD_ZERO;
+use twenty_first::shared_math::digest::Digest;
 use twenty_first::shared_math::tip5;
 use twenty_first::shared_math::tip5::Tip5;
 use twenty_first::shared_math::tip5::Tip5State;
 use twenty_first::shared_math::tip5::DIGEST_LENGTH;
 use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::x_field_element::XFieldElement;
+use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
 use twenty_first::util_types::algebraic_hasher::Domain;
+use twenty_first::util_types::algebraic_hasher::SpongeHasher;
 
 use crate::error::InstructionError::InstructionPointerOverflow;
 use crate::error::InstructionError::*;
 use crate::op_stack::OpStack;
+use crate::stark::StarkHasher;
 use crate::table::hash_table;
 use crate::table::hash_table::HashTable;
 use crate::table::processor_table;
@@ -45,7 +51,7 @@ use crate::vm::CoProcessorCall::*;
 /// The number of helper variable registers
 pub const HV_REGISTER_COUNT: usize = 4;
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Clone)]
 pub struct VMState<'pgm> {
     // Memory
     /// The **program memory** stores the instructions (and their arguments) of the program
@@ -123,11 +129,22 @@ impl<'pgm> VMState<'pgm> {
         public_input: Vec<BFieldElement>,
         secret_input: Vec<BFieldElement>,
     ) -> Self {
+        let program_digest = StarkHasher::hash_varlen(&program.to_bwords());
+
         Self {
             program: &program.instructions,
             public_input: public_input.into(),
             secret_input: secret_input.into(),
-            ..VMState::default()
+            public_output: vec![],
+            ram: Default::default(),
+            op_stack: OpStack::new(program_digest),
+            jump_stack: vec![],
+            cycle_count: 0,
+            instruction_pointer: 0,
+            previous_instruction: Default::default(),
+            ramp: 0,
+            sponge_state: Default::default(),
+            halting: false,
         }
     }
 
@@ -615,16 +632,25 @@ impl<'pgm> VMState<'pgm> {
         }
     }
 
+    /// The “next instruction or argument” (NIA) is
+    /// - the argument of the current instruction if it has one, or
+    /// - the opcode of the next instruction otherwise.
+    ///
+    /// If the current instruction has no argument and there is no next instruction, the NIA is 1
+    /// to account for the hash-input padding separator of the program.
+    ///
+    /// If the instruction pointer is out of bounds, the returned NIA is 0.
     fn nia(&self) -> BFieldElement {
-        self.current_instruction()
-            .map(|curr_instr| {
-                curr_instr.arg().unwrap_or_else(|| {
-                    self.next_instruction()
-                        .map(|next_instr| next_instr.opcode_b())
-                        .unwrap_or_else(|_| BFieldElement::zero())
-                })
-            })
-            .unwrap_or_else(|_| BFieldElement::zero())
+        let Ok(current_instruction) = self.current_instruction() else {
+            return BFieldElement::zero();
+        };
+        if let Some(argument) = current_instruction.arg() {
+            return argument;
+        }
+        match self.next_instruction() {
+            Ok(next_instruction) => next_instruction.opcode_b(),
+            Err(_) => BFieldElement::one(),
+        }
     }
 
     /// Jump-stack pointer
@@ -958,6 +984,12 @@ pub struct AlgebraicExecutionTrace {
     /// Records the state of the processor after each instruction.
     pub processor_trace: Array2<BFieldElement>,
 
+    /// The trace of hashing the program whose execution generated this `AlgebraicExecutionTrace`.
+    /// The resulting digest
+    /// 1. ties a [`Proof`](crate::proof::Proof) to the program it was produced from, and
+    /// 1. is accessible to the program being executed.
+    pub program_hash_trace: Array2<BFieldElement>,
+
     /// For the `hash` instruction, the hash trace records the internal state of the Tip5
     /// permutation for each round.
     pub hash_trace: Array2<BFieldElement>,
@@ -980,17 +1012,112 @@ pub struct AlgebraicExecutionTrace {
 
 impl AlgebraicExecutionTrace {
     pub fn new(program: Program) -> Self {
-        let instruction_multiplicities = vec![0_u32; program.len_bwords()];
-        Self {
+        let program_len = program.len_bwords();
+
+        let mut aet = Self {
             program,
-            instruction_multiplicities,
+            instruction_multiplicities: vec![0_u32; program_len],
             processor_trace: Array2::default([0, processor_table::BASE_WIDTH]),
+            program_hash_trace: Array2::default([0, hash_table::BASE_WIDTH]),
             hash_trace: Array2::default([0, hash_table::BASE_WIDTH]),
             sponge_trace: Array2::default([0, hash_table::BASE_WIDTH]),
             u32_entries: HashMap::new(),
             cascade_table_lookup_multiplicities: HashMap::new(),
             lookup_table_lookup_multiplicities: [0; 1 << 8],
+        };
+        aet.fill_program_hash_trace();
+        aet
+    }
+
+    /// Hash the program and record the entire Sponge's trace for program attestation.
+    fn fill_program_hash_trace(&mut self) {
+        let padded_program_length = Self::padded_program_length(&self.program);
+
+        // padding is one 1, then as many zeros as necessary: [1, 0, 0, …]
+        let program_iter = self.program.to_bwords().into_iter();
+        let one_iter = [BFieldElement::one()].into_iter();
+        let zeros_iter = [BFieldElement::zero()].into_iter().cycle();
+        let padded_input = program_iter
+            .chain(one_iter)
+            .chain(zeros_iter)
+            .take(padded_program_length);
+
+        let mut program_sponge = StarkHasher::init();
+        for chunk in padded_input.chunks(StarkHasher::RATE).into_iter() {
+            program_sponge.state[..StarkHasher::RATE]
+                .iter_mut()
+                .zip_eq(chunk)
+                .for_each(|(sponge_state_elem, absorb_elem)| *sponge_state_elem = absorb_elem);
+            let hash_trace = StarkHasher::trace(&mut program_sponge);
+            let trace_addendum = HashTable::convert_to_hash_table_rows(hash_trace);
+
+            self.increase_lookup_multiplicities(hash_trace);
+            self.program_hash_trace
+                .append(Axis(0), trace_addendum.view())
+                .expect("shapes must be identical");
         }
+
+        let instruction_column_index = CI.base_table_index();
+        let mut instruction_column = self.program_hash_trace.column_mut(instruction_column_index);
+        instruction_column.fill(Instruction::Hash.opcode_b());
+
+        // consistency check
+        let program_digest = program_sponge.state[..DIGEST_LENGTH].try_into().unwrap();
+        let program_digest = Digest::new(program_digest);
+        let expected_digest = StarkHasher::hash_varlen(&self.program.to_bwords());
+        assert_eq!(expected_digest, program_digest);
+    }
+
+    pub fn program_table_length(&self) -> usize {
+        Self::padded_program_length(&self.program)
+    }
+
+    fn padded_program_length(program: &Program) -> usize {
+        // After adding one 1, the program table is padded to the next smallest multiple of the
+        // sponge's rate with 0s.
+        // Also note that the Program Table's side of the instruction lookup argument requires at
+        // least one padding row to account for the processor's “next instruction or argument.”
+        // Both of these are captured by the “+ 1” in the following line.
+        let min_padded_len = program.len_bwords() + 1;
+        let remainder_len = min_padded_len % StarkHasher::RATE;
+        let num_zeros_to_add = match remainder_len {
+            0 => 0,
+            _ => StarkHasher::RATE - remainder_len,
+        };
+        min_padded_len + num_zeros_to_add
+    }
+
+    pub fn processor_table_length(&self) -> usize {
+        self.processor_trace.nrows()
+    }
+
+    pub fn hash_table_length(&self) -> usize {
+        self.sponge_trace.nrows() + self.hash_trace.nrows() + self.program_hash_trace.nrows()
+    }
+
+    pub fn cascade_table_length(&self) -> usize {
+        self.cascade_table_lookup_multiplicities.len()
+    }
+
+    pub fn lookup_table_length(&self) -> usize {
+        1 << 8
+    }
+
+    pub fn u32_table_length(&self) -> usize {
+        self.u32_entries
+            .keys()
+            .map(|(instruction, lhs, rhs)| match instruction {
+                // for instruction `pow`, the left-hand side doesn't change between rows
+                Instruction::Pow => rhs.value(),
+                _ => max(lhs.value(), rhs.value()),
+            })
+            .map(|relevant_entry| match relevant_entry == 0 {
+                true => 2 - 1,
+                false => 2 + relevant_entry.ilog2(),
+            })
+            .sum::<u32>()
+            .try_into()
+            .unwrap()
     }
 
     pub fn append_hash_trace(
