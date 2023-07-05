@@ -8,7 +8,6 @@ use anyhow::anyhow;
 use anyhow::Result;
 use triton_opcodes::program::Program;
 use twenty_first::shared_math::b_field_element::BFieldElement;
-use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
 
 use triton_profiler::prof_start;
 use triton_profiler::prof_stop;
@@ -53,7 +52,7 @@ pub fn parse_simulate_prove(
 
     let claim = Claim {
         input: public_input,
-        program_digest: StarkHasher::hash_varlen(&aet.program.to_bwords()),
+        program_digest: aet.program.hash::<StarkHasher>(),
         output: public_output,
     };
 

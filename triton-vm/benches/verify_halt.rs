@@ -4,14 +4,13 @@ use criterion::BenchmarkId;
 use criterion::Criterion;
 use triton_opcodes::program::Program;
 use triton_profiler::triton_profiler::TritonProfiler;
-use twenty_first::shared_math::tip5::Tip5;
-use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
 
 use triton_vm::proof::Claim;
 use triton_vm::shared_tests::load_proof;
 use triton_vm::shared_tests::proof_file_exists;
 use triton_vm::shared_tests::save_proof;
 use triton_vm::stark::Stark;
+use triton_vm::stark::StarkHasher;
 use triton_vm::stark::StarkParameters;
 use triton_vm::vm::simulate;
 
@@ -24,7 +23,7 @@ fn verify_halt(criterion: &mut Criterion) {
     let parameters = StarkParameters::default();
     let claim = Claim {
         input: vec![],
-        program_digest: Tip5::hash_varlen(&program.to_bwords()),
+        program_digest: program.hash::<StarkHasher>(),
         output: vec![],
     };
 

@@ -976,7 +976,7 @@ pub(crate) mod triton_stark_tests {
 
         let claim = Claim {
             input: stdin,
-            program_digest: StarkHasher::hash_varlen(&aet.program.to_bwords()),
+            program_digest: aet.program.hash::<StarkHasher>(),
             output: stdout,
         };
         let padded_height = MasterBaseTable::padded_height(&aet, parameters.num_trace_randomizers);

@@ -7,7 +7,6 @@ use triton_profiler::prof_start;
 use triton_profiler::prof_stop;
 use triton_profiler::triton_profiler::Report;
 use triton_profiler::triton_profiler::TritonProfiler;
-use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
 
 use triton_vm::proof::Claim;
 use triton_vm::shared_tests::save_proof;
@@ -38,7 +37,7 @@ fn prove_halt(criterion: &mut Criterion) {
     let parameters = StarkParameters::default();
     let claim = Claim {
         input: vec![],
-        program_digest: StarkHasher::hash_varlen(&program.to_bwords()),
+        program_digest: program.hash::<StarkHasher>(),
         output,
     };
     let proof = Stark::prove(&parameters, &claim, &aet, &mut maybe_profiler);

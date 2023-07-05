@@ -31,7 +31,6 @@ use twenty_first::shared_math::tip5::Tip5State;
 use twenty_first::shared_math::tip5::DIGEST_LENGTH;
 use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::x_field_element::XFieldElement;
-use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
 use twenty_first::util_types::algebraic_hasher::Domain;
 use twenty_first::util_types::algebraic_hasher::SpongeHasher;
 
@@ -129,7 +128,7 @@ impl<'pgm> VMState<'pgm> {
         public_input: Vec<BFieldElement>,
         secret_input: Vec<BFieldElement>,
     ) -> Self {
-        let program_digest = StarkHasher::hash_varlen(&program.to_bwords());
+        let program_digest = program.hash::<StarkHasher>();
 
         Self {
             program: &program.instructions,
@@ -244,7 +243,7 @@ impl<'pgm> VMState<'pgm> {
                 self.instruction_pointer += 2;
             }
 
-            Divine(_) => {
+            Divine => {
                 let elem = self.secret_input.pop_front().ok_or(anyhow!(
                     "Instruction `divine`: secret input buffer is empty."
                 ))?;
@@ -1019,7 +1018,7 @@ impl AlgebraicExecutionTrace {
         // consistency check
         let program_digest = program_sponge.state[..DIGEST_LENGTH].try_into().unwrap();
         let program_digest = Digest::new(program_digest);
-        let expected_digest = StarkHasher::hash_varlen(&self.program.to_bwords());
+        let expected_digest = self.program.hash::<StarkHasher>();
         assert_eq!(expected_digest, program_digest);
     }
 

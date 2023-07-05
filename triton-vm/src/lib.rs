@@ -7,12 +7,11 @@ use anyhow::Result;
 use triton_opcodes::program::Program;
 pub use twenty_first::shared_math::b_field_element::BFieldElement;
 pub use twenty_first::shared_math::tip5::Digest;
-use twenty_first::shared_math::tip5::Tip5;
-use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
 
 pub use crate::proof::Claim;
 pub use crate::proof::Proof;
 use crate::stark::Stark;
+use crate::stark::StarkHasher;
 pub use crate::stark::StarkParameters;
 
 pub mod arithmetic_domain;
@@ -83,7 +82,7 @@ pub fn prove_from_source(
     let (aet, public_output) = vm::simulate(&program, public_input.clone(), secret_input)?;
 
     // Hash the program to obtain its digest.
-    let program_digest = Tip5::hash_varlen(&program.to_bwords());
+    let program_digest = program.hash::<StarkHasher>();
 
     // The default parameters give a (conjectured) security level of 160 bits.
     let parameters = StarkParameters::default();
@@ -110,7 +109,7 @@ pub fn prove(
     program: &Program,
     secret_input: &[BFieldElement],
 ) -> Result<Proof> {
-    let program_digest = Tip5::hash_varlen(&program.to_bwords());
+    let program_digest = program.hash::<StarkHasher>();
     if program_digest != claim.program_digest {
         bail!("Program digest must match claimed program digest.");
     }
@@ -176,7 +175,7 @@ mod public_interface_tests {
             "Prover must return default STARK parameters"
         );
         let program = Program::from_code(source_code).unwrap();
-        let expected_program_digest = StarkHasher::hash_varlen(&program.to_bwords());
+        let expected_program_digest = program.hash::<StarkHasher>();
         assert_eq!(
             expected_program_digest, claim.program_digest,
             "program digest must match program"
@@ -202,7 +201,7 @@ mod public_interface_tests {
         let program = Program::from_code(source_code).unwrap();
 
         let claim = Claim {
-            program_digest: StarkHasher::hash_varlen(&program.to_bwords()),
+            program_digest: program.hash::<StarkHasher>(),
             input: vec![],
             output: vec![],
         };

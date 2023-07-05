@@ -2203,7 +2203,7 @@ impl ExtProcessorTable {
         match instruction {
             Pop => ExtProcessorTable::instruction_pop(circuit_builder),
             Push(_) => ExtProcessorTable::instruction_push(circuit_builder),
-            Divine(_) => ExtProcessorTable::instruction_divine(circuit_builder),
+            Divine => ExtProcessorTable::instruction_divine(circuit_builder),
             Dup(_) => ExtProcessorTable::instruction_dup(circuit_builder),
             Swap(_) => ExtProcessorTable::instruction_swap(circuit_builder),
             Nop => ExtProcessorTable::instruction_nop(circuit_builder),

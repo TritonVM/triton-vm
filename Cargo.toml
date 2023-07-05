@@ -27,7 +27,7 @@ documentation = "https://triton-vm.org/spec/"
 
 [workspace.dependencies]
 twenty-first = "0.30"
-triton-opcodes = "0.30"
+triton-opcodes = "0.31"
 triton-profiler = "0.30"
 itertools = "0.10"
 syn = "2.0"

@@ -4,7 +4,6 @@ use criterion::BenchmarkId;
 use criterion::Criterion;
 use triton_opcodes::program::Program;
 use twenty_first::shared_math::b_field_element::BFieldElement;
-use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
 
 use triton_profiler::prof_start;
 use triton_profiler::prof_stop;
@@ -42,7 +41,7 @@ fn prove_fib_100(criterion: &mut Criterion) {
     let parameters = StarkParameters::default();
     let claim = Claim {
         input: public_input,
-        program_digest: StarkHasher::hash_varlen(&program.to_bwords()),
+        program_digest: program.hash::<StarkHasher>(),
         output,
     };
     let proof = Stark::prove(&parameters, &claim, &aet, &mut maybe_profiler);
