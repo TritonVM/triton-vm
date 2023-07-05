@@ -2,9 +2,10 @@ use std::collections::HashMap;
 use std::fmt::Display;
 use std::vec;
 
-use anyhow::bail;
+use anyhow::anyhow;
 use anyhow::Result;
 use get_size::GetSize;
+use lazy_static::lazy_static;
 use serde_derive::Deserialize;
 use serde_derive::Serialize;
 use strum::EnumCount;
@@ -24,6 +25,16 @@ use crate::ord_n::Ord8;
 pub type Instruction = AnInstruction<BFieldElement>;
 pub const ALL_INSTRUCTIONS: [Instruction; Instruction::COUNT] = all_instructions_without_args();
 pub const ALL_INSTRUCTION_NAMES: [&str; Instruction::COUNT] = all_instruction_names();
+
+lazy_static! {
+    pub static ref OPCODE_TO_INSTRUCTION_MAP: HashMap<u32, Instruction> = {
+        let mut opcode_to_instruction_map = HashMap::new();
+        for instruction in Instruction::iter() {
+            opcode_to_instruction_map.insert(instruction.opcode(), instruction);
+        }
+        opcode_to_instruction_map
+    };
+}
 
 /// A `LabelledInstruction` has `call` addresses encoded as label names.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -122,7 +133,7 @@ pub enum AnInstruction<Dest: PartialEq + Default> {
 
 impl<Dest: PartialEq + Default> AnInstruction<Dest> {
     /// Assign a unique positive integer to each `Instruction`.
-    pub fn opcode(&self) -> u32 {
+    pub const fn opcode(&self) -> u32 {
         match self {
             Pop => 2,
             Push(_) => 1,
@@ -290,11 +301,8 @@ impl Instruction {
     /// Get the argument of the instruction, if it has one.
     pub fn arg(&self) -> Option<BFieldElement> {
         match self {
-            // Double-word instructions (instructions that take arguments)
-            Push(arg) => Some(*arg),
-            Dup(arg) => Some(arg.into()),
-            Swap(arg) => Some(arg.into()),
-            Call(arg) => Some(*arg),
+            Push(arg) | Call(arg) => Some(*arg),
+            Dup(arg) | Swap(arg) => Some(arg.into()),
             _ => None,
         }
     }
@@ -329,10 +337,10 @@ impl TryFrom<u32> for Instruction {
     type Error = anyhow::Error;
 
     fn try_from(opcode: u32) -> Result<Self> {
-        match Instruction::iter().find(|instruction| instruction.opcode() == opcode) {
-            Some(instruction) => Ok(instruction),
-            None => bail!("No instruction with opcode {opcode} exists."),
-        }
+        OPCODE_TO_INSTRUCTION_MAP
+            .get(&opcode)
+            .copied()
+            .ok_or(anyhow!("No instruction with opcode {opcode} exists."))
     }
 }
 
@@ -340,7 +348,8 @@ impl TryFrom<u64> for Instruction {
     type Error = anyhow::Error;
 
     fn try_from(opcode: u64) -> Result<Self> {
-        (opcode as u32).try_into()
+        let opcode = u32::try_from(opcode)?;
+        opcode.try_into()
     }
 }
 
@@ -348,14 +357,15 @@ impl TryFrom<usize> for Instruction {
     type Error = anyhow::Error;
 
     fn try_from(opcode: usize) -> Result<Self> {
-        (opcode as u32).try_into()
+        let opcode = u32::try_from(opcode)?;
+        opcode.try_into()
     }
 }
 
 /// Convert a program with labels to a program with absolute positions
 pub fn convert_labels(program: &[LabelledInstruction]) -> Vec<Instruction> {
-    let mut label_map = HashMap::<String, usize>::new();
-    let mut instruction_pointer: usize = 0;
+    let mut label_map = HashMap::new();
+    let mut instruction_pointer = 0;
 
     // 1. Add all labels to a map
     for labelled_instruction in program.iter() {

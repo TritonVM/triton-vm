@@ -50,6 +50,7 @@ ndarray = { version = "0.15", features = ["rayon"] }
 nom = "7.1"
 colored = "2.0"
 unicode-width = "0.1.5"
+lazy_static = "1.4"
 
 [workspace.dependencies.cargo-husky]
 version = "1.0"
