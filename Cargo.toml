@@ -44,6 +44,12 @@ strum = "0.24.1"
 strum_macros = "0.24.1"
 proptest = "1.0"
 criterion = { version = "0.5", features = ["html_reports"] }
+bincode = "1.3"
+rayon = "1.5"
+ndarray = { version = "0.15", features = ["rayon"] }
+nom = "7.1"
+colored = "2.0"
+unicode-width = "0.1.5"
 
 [workspace.dependencies.cargo-husky]
 version = "1.0"

@@ -15,9 +15,8 @@ readme.workspace = true
 twenty-first.workspace = true
 rand.workspace = true
 criterion.workspace = true
-
-colored = "2.0"
-unicode-width = "0.1.5"
+colored.workspace = true
+unicode-width.workspace = true
 
 [dev-dependencies]
 proptest.workspace = true
