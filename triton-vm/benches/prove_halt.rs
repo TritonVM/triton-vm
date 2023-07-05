@@ -1,13 +1,14 @@
 use criterion::criterion_group;
 use criterion::criterion_main;
+use criterion::BenchmarkId;
 use criterion::Criterion;
-use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
-
 use triton_opcodes::program::Program;
 use triton_profiler::prof_start;
 use triton_profiler::prof_stop;
 use triton_profiler::triton_profiler::Report;
 use triton_profiler::triton_profiler::TritonProfiler;
+use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
+
 use triton_vm::proof::Claim;
 use triton_vm::shared_tests::save_proof;
 use triton_vm::stark::Stark;
@@ -16,7 +17,7 @@ use triton_vm::stark::StarkParameters;
 use triton_vm::vm::simulate;
 
 /// cargo criterion --bench prove_halt
-fn prove_halt(_criterion: &mut Criterion) {
+fn prove_halt(criterion: &mut Criterion) {
     let mut maybe_profiler = Some(TritonProfiler::new("Prove Halt"));
     let mut report: Report = Report::placeholder();
 
@@ -54,6 +55,16 @@ fn prove_halt(_criterion: &mut Criterion) {
             Some(fri.domain.length),
         );
     };
+
+    let bench_id = BenchmarkId::new("ProveHalt", 0);
+    let mut group = criterion.benchmark_group("prove_halt");
+    group.sample_size(10);
+    group.bench_function(bench_id, |bencher| {
+        bencher.iter(|| {
+            let _ = Stark::prove(&parameters, &claim, &aet, &mut None);
+        });
+    });
+    group.finish();
 
     // save proof
     let filename = "halt.tsp";
