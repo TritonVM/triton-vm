@@ -8,6 +8,8 @@ use serde_derive::Deserialize;
 use serde_derive::Serialize;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::bfield_codec::BFieldCodec;
+use twenty_first::shared_math::digest::Digest;
+use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
 
 use crate::instruction::convert_labels;
 use crate::instruction::Instruction;
@@ -172,13 +174,20 @@ impl Program {
     pub fn is_empty(&self) -> bool {
         self.instructions.is_empty()
     }
+
+    /// Hash the program using the given `AlgebraicHasher`.
+    pub fn hash<H: AlgebraicHasher>(&self) -> Digest {
+        H::hash_varlen(&self.to_bwords())
+    }
 }
 
 #[cfg(test)]
 mod test {
-    use crate::parser::parser_tests::program_gen;
     use rand::thread_rng;
     use rand::Rng;
+    use twenty_first::shared_math::tip5::Tip5;
+
+    use crate::parser::parser_tests::program_gen;
 
     use super::*;
 
@@ -233,5 +242,29 @@ mod test {
         let encoded = vec![];
         let err = Program::decode(&encoded).err().unwrap();
         assert_eq!("Sequence to decode must not be empty.", err.to_string(),);
+    }
+
+    #[test]
+    fn hash_simple_program() {
+        let program = Program::from_code("halt").unwrap();
+        let digest = program.hash::<Tip5>();
+
+        let expected_digest = [
+            4843866011885844809,
+            16618866032559590857,
+            18247689143239181392,
+            7637465675240023996,
+            9104890367162237026,
+        ]
+        .map(BFieldElement::new);
+        let expected_digest = Digest::new(expected_digest);
+
+        assert_eq!(expected_digest, digest);
+    }
+
+    #[test]
+    fn empty_program_is_empty() {
+        let program = Program::from_code("").unwrap();
+        assert!(program.is_empty());
     }
 }
