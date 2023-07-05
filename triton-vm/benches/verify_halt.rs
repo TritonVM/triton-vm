@@ -46,7 +46,7 @@ fn verify_halt(criterion: &mut Criterion) {
     };
 
     let mut profiler = Some(TritonProfiler::new("Verify Halt"));
-    let verdict = Stark::verify(&parameters, &proof, &mut profiler)
+    let verdict = Stark::verify(&parameters, &claim, &proof, &mut profiler)
         .map_err(|e| panic!("The Verifier is unhappy! {e}"))
         .unwrap();
     assert!(verdict);
@@ -67,7 +67,7 @@ fn verify_halt(criterion: &mut Criterion) {
     group.sample_size(10);
     group.bench_function(bench_id, |bencher| {
         bencher.iter(|| {
-            let _ = Stark::verify(&parameters, &proof, &mut None);
+            let _ = Stark::verify(&parameters, &claim, &proof, &mut None);
         });
     });
     group.finish();

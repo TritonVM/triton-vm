@@ -42,19 +42,6 @@ impl Proof {
         }
         log_2_padded_height.expect("The proof must contain a log_2_padded_height.")
     }
-
-    /// The [`Claim`] that this proof is for.
-    pub fn claim(&self) -> Claim {
-        let proof_stream = ProofStream::<stark::StarkHasher>::try_from(self).unwrap();
-        let mut claim = None;
-        for item in proof_stream.items {
-            if let Ok(found_claim) = item.as_claim() {
-                assert!(claim.is_none(), "The proof must contain exactly one claim.");
-                claim = Some(found_claim);
-            }
-        }
-        claim.expect("The proof must contain a claim.")
-    }
 }
 
 /// Contains the public information of a verifiably correct computation.

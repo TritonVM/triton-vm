@@ -48,7 +48,7 @@ where
         b_field_elements.len()
     }
 
-    fn encode_and_pad_item(item: &ProofItem) -> Vec<BFieldElement> {
+    fn encode_and_pad_item(item: &impl BFieldCodec) -> Vec<BFieldElement> {
         let encoding = item.encode();
         let last_chunk_len = (encoding.len() + 1) % H::RATE;
         let num_padding_zeros = match last_chunk_len {
@@ -63,6 +63,19 @@ where
         .concat()
     }
 
+    /// Alters the Fiat-Shamir's sponge state with the encoding of the given item.
+    /// Does _not_ record the given item in the proof stream.
+    /// This is useful for items that are not sent to the verifier, _e.g._, the
+    /// [`Claim`](crate::proof::Claim).
+    ///
+    /// See also [`Self::enqueue()`] and [`Self::dequeue()`].
+    pub fn alter_fiat_shamir_state_with(&mut self, item: &impl BFieldCodec) {
+        H::absorb_repeatedly(
+            &mut self.sponge_state,
+            Self::encode_and_pad_item(item).iter(),
+        )
+    }
+
     /// Send a proof item as prover to verifier.
     /// Some items do not need to be included in the Fiat-Shamir heuristic, _i.e._, they do not
     /// need to modify the sponge state. For those items, namely those that evaluate to `false`
@@ -75,10 +88,7 @@ where
     ///     round of interaction, no further items need to be hashed.
     pub fn enqueue(&mut self, item: &ProofItem) {
         if item.include_in_fiat_shamir_heuristic() {
-            H::absorb_repeatedly(
-                &mut self.sponge_state,
-                Self::encode_and_pad_item(item).iter(),
-            )
+            self.alter_fiat_shamir_state_with(item);
         }
         self.items.push(item.clone());
     }
@@ -89,14 +99,12 @@ where
         let Some(item) = self.items.get(self.items_index) else {
             bail!("Queue must be non-empty in order to dequeue.");
         };
+        let item = item.to_owned();
         if item.include_in_fiat_shamir_heuristic() {
-            H::absorb_repeatedly(
-                &mut self.sponge_state,
-                Self::encode_and_pad_item(item).iter(),
-            )
+            self.alter_fiat_shamir_state_with(&item);
         }
         self.items_index += 1;
-        Ok(item.clone())
+        Ok(item)
     }
 
     /// Given an `upper_bound` that is a power of 2, produce `num_indices` uniform random numbers
@@ -183,7 +191,6 @@ where
 
 #[cfg(test)]
 mod proof_stream_typed_tests {
-    use crate::Claim;
     use itertools::Itertools;
     use rand::distributions::Standard;
     use rand::prelude::Distribution;
@@ -258,15 +265,6 @@ mod proof_stream_typed_tests {
             revealed_leaves,
         };
 
-        let program_digest = random_elements(rng.next_u64(), 1)[0];
-        let input = random_elements(rng.next_u64(), 5);
-        let output = random_elements(rng.next_u64(), 5);
-        let claim = Claim {
-            program_digest,
-            input,
-            output,
-        };
-
         let mut sponge_states = VecDeque::new();
         let mut proof_stream = ProofStream::<H>::new();
 
@@ -290,8 +288,6 @@ mod proof_stream_typed_tests {
         proof_stream.enqueue(&ProofItem::FriCodeword(fri_codeword.clone()));
         sponge_states.push_back(proof_stream.sponge_state.state);
         proof_stream.enqueue(&ProofItem::FriResponse(fri_response.clone()));
-        sponge_states.push_back(proof_stream.sponge_state.state);
-        proof_stream.enqueue(&ProofItem::Claim(claim.clone()));
         sponge_states.push_back(proof_stream.sponge_state.state);
 
         let proof = proof_stream.into();
@@ -380,15 +376,6 @@ mod proof_stream_typed_tests {
         );
         match proof_stream.dequeue().unwrap() {
             ProofItem::FriResponse(fri_response_) => assert_eq!(fri_response, fri_response_),
-            _ => panic!(),
-        };
-
-        assert_eq!(
-            sponge_states.pop_front(),
-            Some(proof_stream.sponge_state.state)
-        );
-        match proof_stream.dequeue().unwrap() {
-            ProofItem::Claim(claim_) => assert_eq!(claim, claim_),
             _ => panic!(),
         };
 

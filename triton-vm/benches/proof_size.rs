@@ -225,7 +225,7 @@ fn sum_of_proof_lengths_for_source_code(
 ) -> ProofSize {
     let mut sum_of_proof_lengths = 0;
     for _ in 0..num_iterations {
-        let (_, proof) =
+        let (_, _, proof) =
             prove_from_source(&source.source_code, &source.input, &source.secret_input).unwrap();
         sum_of_proof_lengths += proof.encode().len();
     }
@@ -238,7 +238,7 @@ fn generate_proof_and_benchmark_id(
     program_name: &str,
     program_halt: &SourceCodeAndInput,
 ) -> (Proof, BenchmarkId) {
-    let (parameters, proof) = prove_from_source(
+    let (parameters, _, proof) = prove_from_source(
         &program_halt.source_code,
         &program_halt.input,
         &program_halt.secret_input,
