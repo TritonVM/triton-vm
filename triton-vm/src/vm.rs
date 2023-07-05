@@ -223,350 +223,452 @@ impl<'pgm> VMState<'pgm> {
 
     /// Perform the state transition as a mutable operation on `self`.
     pub fn step(&mut self) -> Result<Option<CoProcessorCall>> {
-        // All instructions increase the cycle count
-        self.cycle_count += 1;
-        let mut co_processor_trace = None;
         self.previous_instruction = match self.current_instruction() {
             Ok(instruction) => instruction.opcode_b(),
             // trying to read past the end of the program doesn't change the previous instruction
             Err(_) => self.previous_instruction,
         };
 
-        match self.current_instruction()? {
-            Pop => {
-                self.op_stack.pop()?;
-                self.instruction_pointer += 1;
-            }
+        let maybe_co_processor_trace = match self.current_instruction()? {
+            Pop => self.instruction_pop()?,
+            Push(arg) => self.instruction_push(arg),
+            Divine => self.instruction_divine()?,
+            Dup(arg) => self.instruction_dup(arg),
+            Swap(arg) => self.instruction_swap(arg),
+            Nop => self.instruction_nop(),
+            Skiz => self.instruction_skiz()?,
+            Call(addr) => self.instruction_call(addr),
+            Return => self.instruction_return()?,
+            Recurse => self.instruction_recurse()?,
+            Assert => self.instruction_assert()?,
+            Halt => self.instruction_halt(),
+            ReadMem => self.instruction_read_mem(),
+            WriteMem => self.instruction_write_mem()?,
+            Hash => self.instruction_hash()?,
+            AbsorbInit | Absorb => self.instruction_absorb()?,
+            Squeeze => self.instruction_squeeze()?,
+            DivineSibling => self.instruction_divine_sibling()?,
+            AssertVector => self.instruction_assert_vector()?,
+            Add => self.instruction_add()?,
+            Mul => self.instruction_mul()?,
+            Invert => self.instruction_invert()?,
+            Eq => self.instruction_eq()?,
+            Split => self.instruction_split()?,
+            Lt => self.instruction_lt()?,
+            And => self.instruction_and()?,
+            Xor => self.instruction_xor()?,
+            Log2Floor => self.instruction_log_2_floor()?,
+            Pow => self.instruction_pow()?,
+            Div => self.instruction_div()?,
+            PopCount => self.instruction_pop_count()?,
+            XxAdd => self.instruction_xx_add()?,
+            XxMul => self.instruction_xx_mul()?,
+            XInvert => self.instruction_x_invert()?,
+            XbMul => self.instruction_xb_mul()?,
+            WriteIo => self.instruction_write_io()?,
+            ReadIo => self.instruction_read_io()?,
+        };
 
-            Push(arg) => {
-                self.op_stack.push(arg);
-                self.instruction_pointer += 2;
-            }
-
-            Divine => {
-                let elem = self.secret_input.pop_front().ok_or(anyhow!(
-                    "Instruction `divine`: secret input buffer is empty."
-                ))?;
-                self.op_stack.push(elem);
-                self.instruction_pointer += 1;
-            }
-
-            Dup(arg) => {
-                let elem = self.op_stack.peek_at(arg);
-                self.op_stack.push(elem);
-                self.instruction_pointer += 2;
-            }
-
-            Swap(arg) => {
-                self.op_stack.swap(arg);
-                self.instruction_pointer += 2;
-            }
-
-            Nop => {
-                self.instruction_pointer += 1;
-            }
-
-            Skiz => {
-                let elem = self.op_stack.pop()?;
-                self.instruction_pointer += if elem.is_zero() {
-                    1 + self.next_instruction()?.size()
-                } else {
-                    1
-                };
-            }
-
-            Call(addr) => {
-                let o_plus_2 = self.instruction_pointer as u32 + 2;
-                let pair = (BFieldElement::new(o_plus_2 as u64), addr);
-                self.jump_stack.push(pair);
-                self.instruction_pointer = addr.value() as usize;
-            }
-
-            Return => {
-                let (orig_addr, _dest_addr) = self.jump_stack_pop()?;
-                self.instruction_pointer = orig_addr.value() as usize;
-            }
-
-            Recurse => {
-                let (_orig_addr, dest_addr) = self.jump_stack_peek()?;
-                self.instruction_pointer = dest_addr.value() as usize;
-            }
-
-            Assert => {
-                let elem = self.op_stack.pop()?;
-                if !elem.is_one() {
-                    bail!(AssertionFailed(
-                        self.instruction_pointer,
-                        self.cycle_count,
-                        elem,
-                    ));
-                }
-                self.instruction_pointer += 1;
-            }
-
-            Halt => {
-                self.halting = true;
-                self.instruction_pointer += 1;
-            }
-
-            ReadMem => {
-                let ramp = self.op_stack.peek_at(ST0);
-                let ramv = self.memory_get(&ramp);
-                self.op_stack.push(ramv);
-                self.ramp = ramp.value();
-                self.instruction_pointer += 1;
-            }
-
-            WriteMem => {
-                let ramp = self.op_stack.peek_at(ST1);
-                let ramv = self.op_stack.pop()?;
-                self.ramp = ramp.value();
-                self.ram.insert(ramp, ramv);
-                self.instruction_pointer += 1;
-            }
-
-            Hash => {
-                let to_hash = self.op_stack.pop_multiple::<{ tip5::RATE }>()?;
-                let mut hash_input = Tip5State::new(Domain::FixedLength);
-                hash_input.state[..tip5::RATE].copy_from_slice(&to_hash);
-                let tip5_trace = Tip5::trace(&mut hash_input);
-                let hash_output = &tip5_trace[tip5_trace.len() - 1][0..DIGEST_LENGTH];
-
-                for i in (0..DIGEST_LENGTH).rev() {
-                    self.op_stack.push(hash_output[i]);
-                }
-                for _ in 0..DIGEST_LENGTH {
-                    self.op_stack.push(BFieldElement::zero());
-                }
-
-                co_processor_trace = Some(Tip5Trace(Hash, Box::new(tip5_trace)));
-                self.instruction_pointer += 1;
-            }
-
-            AbsorbInit | Absorb => {
-                // fetch top elements but don't alter the stack
-                let to_absorb = self.op_stack.pop_multiple::<{ tip5::RATE }>()?;
-                for i in (0..tip5::RATE).rev() {
-                    self.op_stack.push(to_absorb[i]);
-                }
-
-                if self.current_instruction()? == AbsorbInit {
-                    self.sponge_state = Tip5State::new(Domain::VariableLength).state;
-                }
-                self.sponge_state[..tip5::RATE].copy_from_slice(&to_absorb);
-                let tip5_trace = Tip5::trace(&mut Tip5State {
-                    state: self.sponge_state,
-                });
-                self.sponge_state = tip5_trace.last().unwrap().to_owned();
-
-                co_processor_trace =
-                    Some(Tip5Trace(self.current_instruction()?, Box::new(tip5_trace)));
-                self.instruction_pointer += 1;
-            }
-
-            Squeeze => {
-                let _ = self.op_stack.pop_multiple::<{ tip5::RATE }>()?;
-                for i in (0..tip5::RATE).rev() {
-                    self.op_stack.push(self.sponge_state[i]);
-                }
-                let tip5_trace = Tip5::trace(&mut Tip5State {
-                    state: self.sponge_state,
-                });
-                self.sponge_state = tip5_trace.last().unwrap().to_owned();
-
-                co_processor_trace = Some(Tip5Trace(Squeeze, Box::new(tip5_trace)));
-                self.instruction_pointer += 1;
-            }
-
-            DivineSibling => {
-                self.divine_sibling()?;
-                self.instruction_pointer += 1;
-            }
-
-            AssertVector => {
-                if !self.assert_vector() {
-                    bail!(AssertionFailed(
-                        self.instruction_pointer,
-                        self.cycle_count,
-                        self.op_stack.peek_at(ST0)
-                    ));
-                }
-                self.instruction_pointer += 1;
-            }
-
-            Add => {
-                let lhs = self.op_stack.pop()?;
-                let rhs = self.op_stack.pop()?;
-                self.op_stack.push(lhs + rhs);
-                self.instruction_pointer += 1;
-            }
-
-            Mul => {
-                let lhs = self.op_stack.pop()?;
-                let rhs = self.op_stack.pop()?;
-                self.op_stack.push(lhs * rhs);
-                self.instruction_pointer += 1;
-            }
-
-            Invert => {
-                let elem = self.op_stack.pop()?;
-                if elem.is_zero() {
-                    bail!(InverseOfZero);
-                }
-                self.op_stack.push(elem.inverse());
-                self.instruction_pointer += 1;
-            }
-
-            Eq => {
-                let lhs = self.op_stack.pop()?;
-                let rhs = self.op_stack.pop()?;
-                self.op_stack.push(Self::eq(lhs, rhs));
-                self.instruction_pointer += 1;
-            }
-
-            Split => {
-                let elem = self.op_stack.pop()?;
-                let lo = BFieldElement::new(elem.value() & 0xffff_ffff);
-                let hi = BFieldElement::new(elem.value() >> 32);
-                self.op_stack.push(hi);
-                self.op_stack.push(lo);
-                self.instruction_pointer += 1;
-                let u32_table_entry = (Split, lo, hi);
-                co_processor_trace = Some(U32TableEntries(vec![u32_table_entry]));
-            }
-
-            Lt => {
-                let lhs = self.op_stack.pop_u32()?;
-                let rhs = self.op_stack.pop_u32()?;
-                let lt = BFieldElement::new((lhs < rhs) as u64);
-                self.op_stack.push(lt);
-                self.instruction_pointer += 1;
-                let u32_table_entry = (Lt, (lhs as u64).into(), (rhs as u64).into());
-                co_processor_trace = Some(U32TableEntries(vec![u32_table_entry]));
-            }
-
-            And => {
-                let lhs = self.op_stack.pop_u32()?;
-                let rhs = self.op_stack.pop_u32()?;
-                let and = BFieldElement::new((lhs & rhs) as u64);
-                self.op_stack.push(and);
-                self.instruction_pointer += 1;
-                let u32_table_entry = (And, (lhs as u64).into(), (rhs as u64).into());
-                co_processor_trace = Some(U32TableEntries(vec![u32_table_entry]));
-            }
-
-            Xor => {
-                let lhs = self.op_stack.pop_u32()?;
-                let rhs = self.op_stack.pop_u32()?;
-                let xor = BFieldElement::new((lhs ^ rhs) as u64);
-                self.op_stack.push(xor);
-                self.instruction_pointer += 1;
-                // Triton VM uses the following equality to compute the results of both the `and`
-                // and `xor` instruction using the u32 coprocessor's `and` capability:
-                // a ^ b = a + b - 2 · (a & b)
-                let u32_table_entry = (And, (lhs as u64).into(), (rhs as u64).into());
-                co_processor_trace = Some(U32TableEntries(vec![u32_table_entry]));
-            }
-
-            Log2Floor => {
-                let lhs = self.op_stack.pop_u32()?;
-                if lhs.is_zero() {
-                    bail!(LogarithmOfZero);
-                }
-                let l2f = BFieldElement::new(lhs.ilog2().into());
-                self.op_stack.push(l2f);
-                self.instruction_pointer += 1;
-                let u32_table_entry = (Log2Floor, (lhs as u64).into(), BFIELD_ZERO);
-                co_processor_trace = Some(U32TableEntries(vec![u32_table_entry]));
-            }
-
-            Pow => {
-                let lhs = self.op_stack.pop()?;
-                let rhs = self.op_stack.pop_u32()?;
-                let pow = lhs.mod_pow(rhs as u64);
-                self.op_stack.push(pow);
-                self.instruction_pointer += 1;
-                let u32_table_entry = (Pow, lhs, (rhs as u64).into());
-                co_processor_trace = Some(U32TableEntries(vec![u32_table_entry]));
-            }
-
-            Div => {
-                let numer = self.op_stack.pop_u32()?;
-                let denom = self.op_stack.pop_u32()?;
-                if denom.is_zero() {
-                    bail!(DivisionByZero);
-                }
-                let quot = BFieldElement::new((numer / denom) as u64);
-                let rem = BFieldElement::new((numer % denom) as u64);
-                self.op_stack.push(quot);
-                self.op_stack.push(rem);
-                self.instruction_pointer += 1;
-                let u32_table_entry_0 = (Lt, rem, (denom as u64).into());
-                let u32_table_entry_1 = (Split, (numer as u64).into(), quot);
-                co_processor_trace =
-                    Some(U32TableEntries(vec![u32_table_entry_0, u32_table_entry_1]));
-            }
-
-            PopCount => {
-                let lhs = self.op_stack.pop_u32()?;
-                let pop_count = BFieldElement::new(lhs.count_ones() as u64);
-                self.op_stack.push(pop_count);
-                self.instruction_pointer += 1;
-                let u32_table_entry = (PopCount, (lhs as u64).into(), BFIELD_ZERO);
-                co_processor_trace = Some(U32TableEntries(vec![u32_table_entry]));
-            }
-
-            XxAdd => {
-                let lhs: XFieldElement = self.op_stack.pop_extension_field_element()?;
-                let rhs: XFieldElement = self.op_stack.peek_at_top_extension_field_element();
-                self.op_stack.push_extension_field_element(lhs + rhs);
-                self.instruction_pointer += 1;
-            }
-
-            XxMul => {
-                let lhs: XFieldElement = self.op_stack.pop_extension_field_element()?;
-                let rhs: XFieldElement = self.op_stack.peek_at_top_extension_field_element();
-                self.op_stack.push_extension_field_element(lhs * rhs);
-                self.instruction_pointer += 1;
-            }
-
-            XInvert => {
-                let elem: XFieldElement = self.op_stack.pop_extension_field_element()?;
-                if elem.is_zero() {
-                    bail!(InverseOfZero);
-                }
-                self.op_stack.push_extension_field_element(elem.inverse());
-                self.instruction_pointer += 1;
-            }
-
-            XbMul => {
-                let lhs: BFieldElement = self.op_stack.pop()?;
-                let rhs: XFieldElement = self.op_stack.pop_extension_field_element()?;
-                self.op_stack.push_extension_field_element(lhs.lift() * rhs);
-                self.instruction_pointer += 1;
-            }
-
-            WriteIo => {
-                let elem_to_write = self.op_stack.pop()?;
-                self.public_output.push(elem_to_write);
-                self.instruction_pointer += 1;
-            }
-
-            ReadIo => {
-                let in_elem = self.public_input.pop_front().ok_or(anyhow!(
-                    "Instruction `read_io`: public input buffer is empty."
-                ))?;
-                self.op_stack.push(in_elem);
-                self.instruction_pointer += 1;
-            }
-        }
-
-        // Check that no instruction left the OpStack with too few elements
         if self.op_stack.is_too_shallow() {
             bail!(OpStackTooShallow);
         }
 
+        self.cycle_count += 1;
+        Ok(maybe_co_processor_trace)
+    }
+
+    fn instruction_pop(&mut self) -> Result<Option<CoProcessorCall>> {
+        self.op_stack.pop()?;
+        self.instruction_pointer += 1;
+        Ok(None)
+    }
+
+    fn instruction_push(&mut self, arg: BFieldElement) -> Option<CoProcessorCall> {
+        self.op_stack.push(arg);
+        self.instruction_pointer += 2;
+        None
+    }
+
+    fn instruction_divine(&mut self) -> Result<Option<CoProcessorCall>> {
+        let elem = self.secret_input.pop_front().ok_or(anyhow!(
+            "Instruction `divine`: secret input buffer is empty."
+        ))?;
+        self.op_stack.push(elem);
+        self.instruction_pointer += 1;
+        Ok(None)
+    }
+
+    fn instruction_dup(&mut self, arg: Ord16) -> Option<CoProcessorCall> {
+        let elem = self.op_stack.peek_at(arg);
+        self.op_stack.push(elem);
+        self.instruction_pointer += 2;
+        None
+    }
+
+    fn instruction_swap(&mut self, arg: Ord16) -> Option<CoProcessorCall> {
+        self.op_stack.swap(arg);
+        self.instruction_pointer += 2;
+        None
+    }
+
+    fn instruction_nop(&mut self) -> Option<CoProcessorCall> {
+        self.instruction_pointer += 1;
+        None
+    }
+
+    fn instruction_skiz(&mut self) -> Result<Option<CoProcessorCall>> {
+        let elem = self.op_stack.pop()?;
+        self.instruction_pointer += match elem.is_zero() {
+            true => 1 + self.next_instruction()?.size(),
+            false => 1,
+        };
+        Ok(None)
+    }
+
+    fn instruction_call(&mut self, addr: BFieldElement) -> Option<CoProcessorCall> {
+        let o_plus_2 = self.instruction_pointer as u32 + 2;
+        let pair = (BFieldElement::new(o_plus_2 as u64), addr);
+        self.jump_stack.push(pair);
+        self.instruction_pointer = addr.value() as usize;
+        None
+    }
+
+    fn instruction_return(&mut self) -> Result<Option<CoProcessorCall>> {
+        let (orig_addr, _dest_addr) = self.jump_stack_pop()?;
+        self.instruction_pointer = orig_addr.value() as usize;
+        Ok(None)
+    }
+
+    fn instruction_recurse(&mut self) -> Result<Option<CoProcessorCall>> {
+        let (_orig_addr, dest_addr) = self.jump_stack_peek()?;
+        self.instruction_pointer = dest_addr.value() as usize;
+        Ok(None)
+    }
+
+    fn instruction_assert(&mut self) -> Result<Option<CoProcessorCall>> {
+        let elem = self.op_stack.pop()?;
+        if !elem.is_one() {
+            bail!(AssertionFailed(
+                self.instruction_pointer,
+                self.cycle_count,
+                elem,
+            ));
+        }
+        self.instruction_pointer += 1;
+        Ok(None)
+    }
+
+    fn instruction_halt(&mut self) -> Option<CoProcessorCall> {
+        self.halting = true;
+        self.instruction_pointer += 1;
+        None
+    }
+
+    fn instruction_read_mem(&mut self) -> Option<CoProcessorCall> {
+        let ramp = self.op_stack.peek_at(ST0);
+        let ramv = self.memory_get(&ramp);
+        self.op_stack.push(ramv);
+        self.ramp = ramp.value();
+        self.instruction_pointer += 1;
+        None
+    }
+
+    fn instruction_write_mem(&mut self) -> Result<Option<CoProcessorCall>> {
+        let ramp = self.op_stack.peek_at(ST1);
+        let ramv = self.op_stack.pop()?;
+        self.ramp = ramp.value();
+        self.ram.insert(ramp, ramv);
+        self.instruction_pointer += 1;
+        Ok(None)
+    }
+
+    fn instruction_hash(&mut self) -> Result<Option<CoProcessorCall>> {
+        let to_hash = self.op_stack.pop_multiple::<{ tip5::RATE }>()?;
+        let mut hash_input = Tip5State::new(Domain::FixedLength);
+        hash_input.state[..tip5::RATE].copy_from_slice(&to_hash);
+        let tip5_trace = Tip5::trace(&mut hash_input);
+        let hash_output = &tip5_trace[tip5_trace.len() - 1][0..DIGEST_LENGTH];
+
+        for i in (0..DIGEST_LENGTH).rev() {
+            self.op_stack.push(hash_output[i]);
+        }
+        for _ in 0..DIGEST_LENGTH {
+            self.op_stack.push(BFieldElement::zero());
+        }
+        let co_processor_trace = Some(Tip5Trace(Hash, Box::new(tip5_trace)));
+
+        self.instruction_pointer += 1;
         Ok(co_processor_trace)
+    }
+
+    fn instruction_absorb(&mut self) -> Result<Option<CoProcessorCall>> {
+        // fetch top elements but don't alter the stack
+        let to_absorb = self.op_stack.pop_multiple::<{ tip5::RATE }>()?;
+        for i in (0..tip5::RATE).rev() {
+            self.op_stack.push(to_absorb[i]);
+        }
+
+        if self.current_instruction()? == AbsorbInit {
+            self.sponge_state = Tip5State::new(Domain::VariableLength).state;
+        }
+        self.sponge_state[..tip5::RATE].copy_from_slice(&to_absorb);
+        let tip5_trace = Tip5::trace(&mut Tip5State {
+            state: self.sponge_state,
+        });
+        self.sponge_state = tip5_trace.last().unwrap().to_owned();
+        let co_processor_trace = Some(Tip5Trace(self.current_instruction()?, Box::new(tip5_trace)));
+
+        self.instruction_pointer += 1;
+        Ok(co_processor_trace)
+    }
+
+    fn instruction_squeeze(&mut self) -> Result<Option<CoProcessorCall>> {
+        let _ = self.op_stack.pop_multiple::<{ tip5::RATE }>()?;
+        for i in (0..tip5::RATE).rev() {
+            self.op_stack.push(self.sponge_state[i]);
+        }
+        let tip5_trace = Tip5::trace(&mut Tip5State {
+            state: self.sponge_state,
+        });
+        self.sponge_state = tip5_trace.last().unwrap().to_owned();
+        let co_processor_trace = Some(Tip5Trace(Squeeze, Box::new(tip5_trace)));
+
+        self.instruction_pointer += 1;
+        Ok(co_processor_trace)
+    }
+
+    fn instruction_divine_sibling(&mut self) -> Result<Option<CoProcessorCall>> {
+        let _st0_through_st4 = self.op_stack.pop_multiple::<{ DIGEST_LENGTH }>()?;
+        let known_digest = self.op_stack.pop_multiple()?;
+
+        let node_index = self.op_stack.pop_u32()?;
+        let parent_node_index = node_index / 2;
+        self.op_stack.push((parent_node_index as u64).into());
+
+        let mut sibling_digest = self.secret_input_pop_multiple()?;
+        sibling_digest.reverse();
+        let (left_digest, right_digest) =
+            Self::put_known_digest_on_correct_side(node_index, known_digest, sibling_digest);
+
+        for &digest_element in right_digest.iter().rev() {
+            self.op_stack.push(digest_element);
+        }
+        for &digest_element in left_digest.iter().rev() {
+            self.op_stack.push(digest_element);
+        }
+        self.instruction_pointer += 1;
+        Ok(None)
+    }
+
+    fn instruction_assert_vector(&mut self) -> Result<Option<CoProcessorCall>> {
+        if !self.assert_vector() {
+            bail!(AssertionFailed(
+                self.instruction_pointer,
+                self.cycle_count,
+                self.op_stack.peek_at(ST0)
+            ));
+        }
+        self.instruction_pointer += 1;
+        Ok(None)
+    }
+
+    fn instruction_add(&mut self) -> Result<Option<CoProcessorCall>> {
+        let lhs = self.op_stack.pop()?;
+        let rhs = self.op_stack.pop()?;
+        self.op_stack.push(lhs + rhs);
+        self.instruction_pointer += 1;
+        Ok(None)
+    }
+
+    fn instruction_mul(&mut self) -> Result<Option<CoProcessorCall>> {
+        let lhs = self.op_stack.pop()?;
+        let rhs = self.op_stack.pop()?;
+        self.op_stack.push(lhs * rhs);
+        self.instruction_pointer += 1;
+        Ok(None)
+    }
+
+    fn instruction_invert(&mut self) -> Result<Option<CoProcessorCall>> {
+        let elem = self.op_stack.pop()?;
+        if elem.is_zero() {
+            bail!(InverseOfZero);
+        }
+        self.op_stack.push(elem.inverse());
+        self.instruction_pointer += 1;
+        Ok(None)
+    }
+
+    fn instruction_eq(&mut self) -> Result<Option<CoProcessorCall>> {
+        let lhs = self.op_stack.pop()?;
+        let rhs = self.op_stack.pop()?;
+        self.op_stack.push(Self::eq(lhs, rhs));
+        self.instruction_pointer += 1;
+        Ok(None)
+    }
+
+    fn instruction_split(&mut self) -> Result<Option<CoProcessorCall>> {
+        let elem = self.op_stack.pop()?;
+        let lo = BFieldElement::new(elem.value() & 0xffff_ffff);
+        let hi = BFieldElement::new(elem.value() >> 32);
+        self.op_stack.push(hi);
+        self.op_stack.push(lo);
+
+        let u32_table_entry = (Split, lo, hi);
+        let co_processor_trace = Some(U32TableEntries(vec![u32_table_entry]));
+
+        self.instruction_pointer += 1;
+        Ok(co_processor_trace)
+    }
+
+    fn instruction_lt(&mut self) -> Result<Option<CoProcessorCall>> {
+        let lhs = self.op_stack.pop_u32()?;
+        let rhs = self.op_stack.pop_u32()?;
+        let lt = BFieldElement::new((lhs < rhs) as u64);
+        self.op_stack.push(lt);
+
+        let u32_table_entry = (Lt, (lhs as u64).into(), (rhs as u64).into());
+        let co_processor_trace = Some(U32TableEntries(vec![u32_table_entry]));
+
+        self.instruction_pointer += 1;
+        Ok(co_processor_trace)
+    }
+
+    fn instruction_and(&mut self) -> Result<Option<CoProcessorCall>> {
+        let lhs = self.op_stack.pop_u32()?;
+        let rhs = self.op_stack.pop_u32()?;
+        let and = BFieldElement::new((lhs & rhs) as u64);
+        self.op_stack.push(and);
+
+        let u32_table_entry = (And, (lhs as u64).into(), (rhs as u64).into());
+        let co_processor_trace = Some(U32TableEntries(vec![u32_table_entry]));
+
+        self.instruction_pointer += 1;
+        Ok(co_processor_trace)
+    }
+
+    fn instruction_xor(&mut self) -> Result<Option<CoProcessorCall>> {
+        let lhs = self.op_stack.pop_u32()?;
+        let rhs = self.op_stack.pop_u32()?;
+        let xor = BFieldElement::new((lhs ^ rhs) as u64);
+        self.op_stack.push(xor);
+
+        // Triton VM uses the following equality to compute the results of both the `and`
+        // and `xor` instruction using the u32 coprocessor's `and` capability:
+        // a ^ b = a + b - 2 · (a & b)
+        let u32_table_entry = (And, (lhs as u64).into(), (rhs as u64).into());
+        let co_processor_trace = Some(U32TableEntries(vec![u32_table_entry]));
+
+        self.instruction_pointer += 1;
+        Ok(co_processor_trace)
+    }
+
+    fn instruction_log_2_floor(&mut self) -> Result<Option<CoProcessorCall>> {
+        let lhs = self.op_stack.pop_u32()?;
+        if lhs.is_zero() {
+            bail!(LogarithmOfZero);
+        }
+        let l2f = BFieldElement::new(lhs.ilog2().into());
+        self.op_stack.push(l2f);
+
+        let u32_table_entry = (Log2Floor, (lhs as u64).into(), BFIELD_ZERO);
+        let co_processor_trace = Some(U32TableEntries(vec![u32_table_entry]));
+
+        self.instruction_pointer += 1;
+        Ok(co_processor_trace)
+    }
+
+    fn instruction_pow(&mut self) -> Result<Option<CoProcessorCall>> {
+        let lhs = self.op_stack.pop()?;
+        let rhs = self.op_stack.pop_u32()?;
+        let pow = lhs.mod_pow(rhs as u64);
+        self.op_stack.push(pow);
+
+        let u32_table_entry = (Pow, lhs, (rhs as u64).into());
+        let co_processor_trace = Some(U32TableEntries(vec![u32_table_entry]));
+
+        self.instruction_pointer += 1;
+        Ok(co_processor_trace)
+    }
+
+    fn instruction_div(&mut self) -> Result<Option<CoProcessorCall>> {
+        let numerator = self.op_stack.pop_u32()?;
+        let denominator = self.op_stack.pop_u32()?;
+        if denominator.is_zero() {
+            bail!(DivisionByZero);
+        }
+        let quotient = BFieldElement::new((numerator / denominator) as u64);
+        let remainder = BFieldElement::new((numerator % denominator) as u64);
+        self.op_stack.push(quotient);
+        self.op_stack.push(remainder);
+
+        let u32_table_entry_0 = (Lt, remainder, (denominator as u64).into());
+        let u32_table_entry_1 = (Split, (numerator as u64).into(), quotient);
+        let co_processor_trace = Some(U32TableEntries(vec![u32_table_entry_0, u32_table_entry_1]));
+
+        self.instruction_pointer += 1;
+        Ok(co_processor_trace)
+    }
+
+    fn instruction_pop_count(&mut self) -> Result<Option<CoProcessorCall>> {
+        let lhs = self.op_stack.pop_u32()?;
+        let pop_count = BFieldElement::new(lhs.count_ones() as u64);
+        self.op_stack.push(pop_count);
+
+        let u32_table_entry = (PopCount, (lhs as u64).into(), BFIELD_ZERO);
+        let co_processor_trace = Some(U32TableEntries(vec![u32_table_entry]));
+
+        self.instruction_pointer += 1;
+        Ok(co_processor_trace)
+    }
+
+    fn instruction_xx_add(&mut self) -> Result<Option<CoProcessorCall>> {
+        let lhs: XFieldElement = self.op_stack.pop_extension_field_element()?;
+        let rhs: XFieldElement = self.op_stack.peek_at_top_extension_field_element();
+        self.op_stack.push_extension_field_element(lhs + rhs);
+        self.instruction_pointer += 1;
+        Ok(None)
+    }
+
+    fn instruction_xx_mul(&mut self) -> Result<Option<CoProcessorCall>> {
+        let lhs: XFieldElement = self.op_stack.pop_extension_field_element()?;
+        let rhs: XFieldElement = self.op_stack.peek_at_top_extension_field_element();
+        self.op_stack.push_extension_field_element(lhs * rhs);
+        self.instruction_pointer += 1;
+        Ok(None)
+    }
+
+    fn instruction_x_invert(&mut self) -> Result<Option<CoProcessorCall>> {
+        let elem: XFieldElement = self.op_stack.pop_extension_field_element()?;
+        if elem.is_zero() {
+            bail!(InverseOfZero);
+        }
+        self.op_stack.push_extension_field_element(elem.inverse());
+        self.instruction_pointer += 1;
+        Ok(None)
+    }
+
+    fn instruction_xb_mul(&mut self) -> Result<Option<CoProcessorCall>> {
+        let lhs: BFieldElement = self.op_stack.pop()?;
+        let rhs: XFieldElement = self.op_stack.pop_extension_field_element()?;
+        self.op_stack.push_extension_field_element(lhs.lift() * rhs);
+        self.instruction_pointer += 1;
+        Ok(None)
+    }
+
+    fn instruction_write_io(&mut self) -> Result<Option<CoProcessorCall>> {
+        let elem_to_write = self.op_stack.pop()?;
+        self.public_output.push(elem_to_write);
+        self.instruction_pointer += 1;
+        Ok(None)
+    }
+
+    fn instruction_read_io(&mut self) -> Result<Option<CoProcessorCall>> {
+        let in_elem = self.public_input.pop_front().ok_or(anyhow!(
+            "Instruction `read_io`: public input buffer is empty."
+        ))?;
+        self.op_stack.push(in_elem);
+        self.instruction_pointer += 1;
+        Ok(None)
     }
 
     pub fn to_processor_row(&self) -> Array1<BFieldElement> {
@@ -712,29 +814,6 @@ impl<'pgm> VMState<'pgm> {
             }
         }
         true
-    }
-
-    fn divine_sibling(&mut self) -> Result<()> {
-        let _st0_through_st4 = self.op_stack.pop_multiple::<{ DIGEST_LENGTH }>()?;
-        let known_digest = self.op_stack.pop_multiple()?;
-
-        let node_index = self.op_stack.pop_u32()?;
-        let parent_node_index = node_index / 2;
-        self.op_stack.push((parent_node_index as u64).into());
-
-        let mut sibling_digest = self.secret_input_pop_multiple()?;
-        sibling_digest.reverse();
-        let (left_digest, right_digest) =
-            Self::put_known_digest_on_correct_side(node_index, known_digest, sibling_digest);
-
-        for &digest_element in right_digest.iter().rev() {
-            self.op_stack.push(digest_element);
-        }
-        for &digest_element in left_digest.iter().rev() {
-            self.op_stack.push(digest_element);
-        }
-
-        Ok(())
     }
 
     fn secret_input_pop_multiple<const N: usize>(&mut self) -> Result<[BFieldElement; N]> {

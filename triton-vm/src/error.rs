@@ -100,7 +100,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Assertion failed: st0 must be 1. ip: 2, clk: 2, st0: 0")]
+    #[should_panic(expected = "Assertion failed: st0 must be 1. ip: 2, clk: 1, st0: 0")]
     fn assert_false_test() {
         let program = Program::from_code("push 0 assert halt").unwrap();
         run(&program, vec![], vec![]).unwrap();
