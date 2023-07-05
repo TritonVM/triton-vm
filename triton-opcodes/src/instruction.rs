@@ -312,6 +312,22 @@ impl Instruction {
         self.arg().is_some()
     }
 
+    /// Indicates whether the instruction shrinks the operational stack.
+    pub fn shrinks_op_stack(&self) -> bool {
+        matches!(self, Pop | Skiz | Assert)
+            || matches!(self, WriteMem | WriteIo)
+            || matches!(self, Add | Mul | Eq | XbMul)
+            || matches!(self, And | Xor | Lt | Pow)
+    }
+
+    /// Indicates whether the instruction operates on base field elements that are also u32s.
+    pub fn is_u32_instruction(&self) -> bool {
+        matches!(
+            self,
+            Split | Lt | And | Xor | Log2Floor | Pow | Div | PopCount
+        )
+    }
+
     /// Change the argument of the instruction, if it has one.
     /// Returns `None` if the instruction does not have an argument or
     /// if the argument is out of range.
@@ -676,5 +692,54 @@ mod instruction_tests {
         println!("instruction_assert: {}", Instruction::Assert);
         println!("instruction_invert: {:?}", Instruction::Invert);
         println!("instruction_dup: {}", Instruction::Dup(ST14));
+    }
+
+    #[test]
+    fn instruction_size_is_consistent_with_having_arguments() {
+        for instruction in Instruction::iter() {
+            match instruction.has_arg() {
+                true => assert_eq!(2, instruction.size()),
+                false => assert_eq!(1, instruction.size()),
+            }
+        }
+    }
+
+    #[test]
+    fn opcodes_are_consistent_with_argument_indication_bit() {
+        let argument_indicator_bit_mask = 1;
+        for instruction in Instruction::iter() {
+            let opcode = instruction.opcode();
+            println!("Testing instruction {instruction} with opcode {opcode}.");
+            assert_eq!(
+                instruction.has_arg(),
+                opcode & argument_indicator_bit_mask != 0
+            );
+        }
+    }
+
+    #[test]
+    fn opcodes_are_consistent_with_shrink_stack_indication_bit() {
+        let shrink_stack_indicator_bit_mask = 2;
+        for instruction in Instruction::iter() {
+            let opcode = instruction.opcode();
+            println!("Testing instruction {instruction} with opcode {opcode}.");
+            assert_eq!(
+                instruction.shrinks_op_stack(),
+                opcode & shrink_stack_indicator_bit_mask != 0
+            );
+        }
+    }
+
+    #[test]
+    fn opcodes_are_consistent_with_u32_indication_bit() {
+        let u32_indicator_bit_mask = 4;
+        for instruction in Instruction::iter() {
+            let opcode = instruction.opcode();
+            println!("Testing instruction {instruction} with opcode {opcode}.");
+            assert_eq!(
+                instruction.is_u32_instruction(),
+                opcode & u32_indicator_bit_mask != 0
+            );
+        }
     }
 }
