@@ -467,7 +467,7 @@ const fn all_instruction_names() -> [&'static str; Instruction::COUNT] {
 }
 
 /// Indicators for all the possible bits in an [`Instruction`](Instruction).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, EnumCount)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, EnumCount, EnumIter)]
 pub enum InstructionBit {
     #[default]
     IB0,
@@ -534,6 +534,7 @@ mod instruction_tests {
     use itertools::Itertools;
     use num_traits::One;
     use num_traits::Zero;
+    use std::collections::HashMap;
     use strum::EnumCount;
     use strum::IntoEnumIterator;
     use twenty_first::shared_math::b_field_element::BFieldElement;
@@ -546,64 +547,29 @@ mod instruction_tests {
     use crate::op_stack::OpStackElement::*;
     use crate::program::Program;
 
-    use super::AnInstruction;
     use super::AnInstruction::*;
 
     #[test]
-    fn opcode_test() {
-        // test for duplicates
-        let mut opcodes = vec![];
-        for instruction in AnInstruction::<BFieldElement>::iter() {
-            assert!(
-                !opcodes.contains(&instruction.opcode()),
-                "Have different instructions with same opcode."
-            );
-            opcodes.push(instruction.opcode());
+    fn opcodes_are_unique() {
+        let mut opcodes_to_instruction_map = HashMap::new();
+        for instruction in Instruction::iter() {
+            let opcode = instruction.opcode();
+            let maybe_entry = opcodes_to_instruction_map.insert(opcode, instruction);
+            if let Some(other_instruction) = maybe_entry {
+                panic!("{other_instruction} and {instruction} both have opcode {opcode}.",);
+            }
         }
+    }
 
-        for opc in opcodes.iter() {
-            println!(
-                "opcode {} exists: {}",
-                opc,
-                AnInstruction::<BFieldElement>::try_from(*opc).unwrap()
-            );
-        }
-
-        // assert size of list corresponds to number of opcodes
+    #[test]
+    fn number_of_instruction_bits_is_correct() {
+        let all_opcodes = Instruction::iter().map(|instruction| instruction.opcode());
+        let highest_opcode = all_opcodes.max().unwrap();
+        let num_required_bits_for_highest_opcode = highest_opcode.ilog2() + 1;
         assert_eq!(
-            AnInstruction::<BFieldElement>::COUNT,
-            opcodes.len(),
-            "Mismatch in number of instructions!"
+            InstructionBit::COUNT,
+            num_required_bits_for_highest_opcode as usize
         );
-
-        // assert iter method also covers push
-        assert!(
-            opcodes.contains(&AnInstruction::<BFieldElement>::Push(Default::default()).opcode()),
-            "list of opcodes needs to contain push"
-        );
-
-        // test for width
-        let max_opcode: u32 = AnInstruction::<BFieldElement>::iter()
-            .map(|inst| inst.opcode())
-            .max()
-            .unwrap();
-        let mut num_bits = 0;
-        while (1 << num_bits) < max_opcode {
-            num_bits += 1;
-        }
-        assert!(
-            num_bits <= InstructionBit::COUNT,
-            "Biggest instruction needs more than {} bits :(",
-            InstructionBit::COUNT
-        );
-
-        // assert consistency
-        for instruction in AnInstruction::<BFieldElement>::iter() {
-            assert!(
-                instruction == instruction.opcode().try_into().unwrap(),
-                "instruction to opcode map must be consistent"
-            );
-        }
     }
 
     #[test]
@@ -645,17 +611,10 @@ mod instruction_tests {
 
     #[test]
     fn ib_registers_are_binary_test() {
-        use crate::instruction::InstructionBit::*;
-
         for instruction in ALL_INSTRUCTIONS {
-            let all_ibs: [InstructionBit; InstructionBit::COUNT] =
-                [IB0, IB1, IB2, IB3, IB4, IB5, IB6, IB7];
-            for ib in all_ibs {
-                let ib_value = instruction.ib(ib);
-                assert!(
-                    ib_value.is_zero() || ib_value.is_one(),
-                    "IB{ib} for instruction {instruction} is 0 or 1 ({ib_value})",
-                );
+            for instruction_bit in InstructionBit::iter() {
+                let ib_value = instruction.ib(instruction_bit);
+                assert!(ib_value.is_zero() || ib_value.is_one(),);
             }
         }
     }
@@ -756,6 +715,16 @@ mod instruction_tests {
                 instruction.is_u32_instruction(),
                 opcode & u32_indicator_bit_mask != 0
             );
+        }
+    }
+
+    #[test]
+    fn instruction_bits_are_consistent() {
+        for instruction_bit in InstructionBit::iter() {
+            println!("Testing instruction bit {instruction_bit}.");
+            let bit_index = usize::from(instruction_bit);
+            let recovered_instruction_bit = InstructionBit::try_from(bit_index).unwrap();
+            assert_eq!(instruction_bit, recovered_instruction_bit);
         }
     }
 }
