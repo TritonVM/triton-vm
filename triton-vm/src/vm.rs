@@ -143,7 +143,7 @@ impl<'pgm> VMState<'pgm> {
             Err(_) => return hvs,
         };
 
-        if Self::instruction_shrinks_stack(current_instruction) {
+        if current_instruction.shrinks_op_stack() {
             let op_stack_pointer = self.op_stack.op_stack_pointer();
             let maximum_op_stack_pointer = BFieldElement::new(OpStackElement::COUNT as u64);
             let op_stack_pointer_minus_maximum = op_stack_pointer - maximum_op_stack_pointer;
@@ -203,11 +203,6 @@ impl<'pgm> VMState<'pgm> {
         decomposition[3] = (opcode >> 5) % 4;
         decomposition[4] = opcode >> 7;
         decomposition
-    }
-
-    fn instruction_shrinks_stack(instruction: Instruction) -> bool {
-        matches!(instruction, Pop | Skiz | Assert | WriteMem | WriteIo | Add)
-            || matches!(instruction, Mul | Eq | XbMul | Lt | And | Xor | Pow)
     }
 
     /// Perform the state transition as a mutable operation on `self`.
