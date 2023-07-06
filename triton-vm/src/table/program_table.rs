@@ -12,6 +12,7 @@ use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 use twenty_first::util_types::algebraic_hasher::SpongeHasher;
 
+use crate::aet::AlgebraicExecutionTrace;
 use crate::stark::StarkHasher;
 use crate::table::challenges::ChallengeId::*;
 use crate::table::challenges::Challenges;
@@ -29,7 +30,6 @@ use crate::table::table_column::ProgramBaseTableColumn;
 use crate::table::table_column::ProgramBaseTableColumn::*;
 use crate::table::table_column::ProgramExtTableColumn;
 use crate::table::table_column::ProgramExtTableColumn::*;
-use crate::vm::AlgebraicExecutionTrace;
 
 use super::constraint_circuit::ConstraintCircuitMonad;
 

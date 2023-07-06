@@ -8,6 +8,7 @@ use anyhow::anyhow;
 use anyhow::Result;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 
+use crate::aet::AlgebraicExecutionTrace;
 use crate::prof_start;
 use crate::prof_stop;
 use crate::profiler::TritonProfiler;
@@ -18,7 +19,6 @@ use crate::stark::Stark;
 use crate::stark::StarkHasher;
 use crate::stark::StarkParameters;
 use crate::vm::simulate;
-use crate::vm::AlgebraicExecutionTrace;
 
 pub fn parse_setup_simulate(
     code: &str,

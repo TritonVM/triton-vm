@@ -15,6 +15,7 @@ use twenty_first::shared_math::b_field_element::BFIELD_ONE;
 use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
+use crate::aet::AlgebraicExecutionTrace;
 use crate::instruction::Instruction;
 use crate::table::challenges::ChallengeId::*;
 use crate::table::challenges::Challenges;
@@ -33,7 +34,6 @@ use crate::table::table_column::U32BaseTableColumn;
 use crate::table::table_column::U32BaseTableColumn::*;
 use crate::table::table_column::U32ExtTableColumn;
 use crate::table::table_column::U32ExtTableColumn::*;
-use crate::vm::AlgebraicExecutionTrace;
 
 pub const BASE_WIDTH: usize = U32BaseTableColumn::COUNT;
 pub const EXT_WIDTH: usize = U32ExtTableColumn::COUNT;

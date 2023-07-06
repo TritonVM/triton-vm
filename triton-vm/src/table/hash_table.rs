@@ -21,6 +21,7 @@ use twenty_first::shared_math::tip5::STATE_SIZE;
 use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
+use crate::aet::AlgebraicExecutionTrace;
 use crate::instruction::Instruction;
 use crate::table::cascade_table::CascadeTable;
 use crate::table::challenges::ChallengeId::*;
@@ -41,7 +42,6 @@ use crate::table::table_column::HashExtTableColumn;
 use crate::table::table_column::HashExtTableColumn::*;
 use crate::table::table_column::MasterBaseTableColumn;
 use crate::table::table_column::MasterExtTableColumn;
-use crate::vm::AlgebraicExecutionTrace;
 
 pub const BASE_WIDTH: usize = HashBaseTableColumn::COUNT;
 pub const EXT_WIDTH: usize = HashExtTableColumn::COUNT;

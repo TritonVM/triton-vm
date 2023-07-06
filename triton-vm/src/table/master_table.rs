@@ -27,6 +27,7 @@ use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
 use twenty_first::util_types::merkle_tree::MerkleTree;
 use twenty_first::util_types::merkle_tree_maker::MerkleTreeMaker;
 
+use crate::aet::AlgebraicExecutionTrace;
 use crate::arithmetic_domain::ArithmeticDomain;
 use crate::prof_start;
 use crate::prof_stop;
@@ -47,7 +48,6 @@ use crate::table::program_table::ProgramTable;
 use crate::table::ram_table::RamTable;
 use crate::table::u32_table::U32Table;
 use crate::table::*;
-use crate::vm::AlgebraicExecutionTrace;
 
 /// The degree of the AIR after the degree lowering step.
 ///

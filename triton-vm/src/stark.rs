@@ -30,6 +30,7 @@ use twenty_first::util_types::merkle_tree::CpuParallel;
 use twenty_first::util_types::merkle_tree::MerkleTree;
 use twenty_first::util_types::merkle_tree_maker::MerkleTreeMaker;
 
+use crate::aet::AlgebraicExecutionTrace;
 use crate::arithmetic_domain::ArithmeticDomain;
 use crate::fri::Fri;
 use crate::prof_itr0;
@@ -43,7 +44,6 @@ use crate::proof_stream::ProofStream;
 use crate::table::challenges::Challenges;
 use crate::table::extension_table::Evaluable;
 use crate::table::master_table::*;
-use crate::vm::AlgebraicExecutionTrace;
 
 pub type StarkHasher = Tip5;
 pub type StarkProofStream = ProofStream<StarkHasher>;
@@ -903,6 +903,7 @@ pub(crate) mod triton_stark_tests {
     use rand_core::RngCore;
     use twenty_first::shared_math::other::random_elements;
 
+    use crate::aet::AlgebraicExecutionTrace;
     use crate::instruction::AnInstruction;
     use crate::program::Program;
     use crate::shared_tests::*;
@@ -950,7 +951,6 @@ pub(crate) mod triton_stark_tests {
     use crate::vm::triton_vm_tests::property_based_test_programs;
     use crate::vm::triton_vm_tests::small_tasm_test_programs;
     use crate::vm::triton_vm_tests::test_hash_nop_nop_lt;
-    use crate::vm::AlgebraicExecutionTrace;
 
     use super::*;
 

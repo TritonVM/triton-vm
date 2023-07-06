@@ -14,6 +14,7 @@ use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
+use crate::aet::AlgebraicExecutionTrace;
 use crate::instruction::Instruction;
 use crate::table::challenges::ChallengeId::*;
 use crate::table::challenges::Challenges;
@@ -32,7 +33,6 @@ use crate::table::table_column::JumpStackExtTableColumn::*;
 use crate::table::table_column::MasterBaseTableColumn;
 use crate::table::table_column::MasterExtTableColumn;
 use crate::table::table_column::ProcessorBaseTableColumn;
-use crate::vm::AlgebraicExecutionTrace;
 
 use super::constraint_circuit::ConstraintCircuitMonad;
 

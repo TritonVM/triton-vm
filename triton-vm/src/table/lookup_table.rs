@@ -10,6 +10,7 @@ use twenty_first::shared_math::tip5;
 use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
+use crate::aet::AlgebraicExecutionTrace;
 use crate::table::challenges::ChallengeId;
 use crate::table::challenges::ChallengeId::*;
 use crate::table::challenges::Challenges;
@@ -28,7 +29,6 @@ use crate::table::table_column::LookupExtTableColumn;
 use crate::table::table_column::LookupExtTableColumn::*;
 use crate::table::table_column::MasterBaseTableColumn;
 use crate::table::table_column::MasterExtTableColumn;
-use crate::vm::AlgebraicExecutionTrace;
 
 pub const BASE_WIDTH: usize = LookupBaseTableColumn::COUNT;
 pub const EXT_WIDTH: usize = LookupExtTableColumn::COUNT;

@@ -14,6 +14,7 @@ use crate::stark::Stark;
 use crate::stark::StarkHasher;
 pub use crate::stark::StarkParameters;
 
+pub mod aet;
 pub mod arithmetic_domain;
 pub mod error;
 pub mod fri;
