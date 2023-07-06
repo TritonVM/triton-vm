@@ -6,11 +6,12 @@ use serde_derive::Serialize;
 use strum_macros::EnumCount as EnumCountMacro;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 
-use Ord16::*;
-use Ord8::*;
+use InstructionBit::*;
+use OpStackElement::*;
 
+/// Indicators for all the possible bits in an [`Instruction`](crate::instruction::Instruction).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, EnumCountMacro)]
-pub enum Ord8 {
+pub enum InstructionBit {
     #[default]
     IB0,
     IB1,
@@ -22,16 +23,16 @@ pub enum Ord8 {
     IB7,
 }
 
-impl Display for Ord8 {
+impl Display for InstructionBit {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let n: usize = (*self).into();
-        write!(f, "{n}")
+        let bit_index = usize::from(*self);
+        write!(f, "{bit_index}")
     }
 }
 
-impl From<Ord8> for usize {
-    fn from(n: Ord8) -> Self {
-        match n {
+impl From<InstructionBit> for usize {
+    fn from(instruction_bit: InstructionBit) -> Self {
+        match instruction_bit {
             IB0 => 0,
             IB1 => 1,
             IB2 => 2,
@@ -44,11 +45,11 @@ impl From<Ord8> for usize {
     }
 }
 
-impl TryFrom<usize> for Ord8 {
+impl TryFrom<usize> for InstructionBit {
     type Error = String;
 
-    fn try_from(value: usize) -> Result<Self, Self::Error> {
-        match value {
+    fn try_from(bit_index: usize) -> Result<Self, Self::Error> {
+        match bit_index {
             0 => Ok(IB0),
             1 => Ok(IB1),
             2 => Ok(IB2),
@@ -57,21 +58,24 @@ impl TryFrom<usize> for Ord8 {
             5 => Ok(IB5),
             6 => Ok(IB6),
             7 => Ok(IB7),
-            _ => Err(format!("{value} is out of range for Ord8")),
+            _ => Err(format!(
+                "Index {bit_index} is out of range for `InstructionBit`."
+            )),
         }
     }
 }
 
-impl From<Ord8> for BFieldElement {
-    fn from(n: Ord8) -> Self {
-        let n: usize = n.into();
-        BFieldElement::new(n as u64)
+impl From<InstructionBit> for BFieldElement {
+    fn from(instruction_bit: InstructionBit) -> Self {
+        let instruction_bit = usize::from(instruction_bit) as u64;
+        instruction_bit.into()
     }
 }
 
-/// `Ord16` represents numbers that are exactly 0--15.
+/// Represents numbers that are exactly 0 through 15, corresponding to those
+/// [`OpStack`](crate::op_stack::OpStack) registers directly accessible by Triton VM.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, GetSize, Serialize, Deserialize)]
-pub enum Ord16 {
+pub enum OpStackElement {
     #[default]
     ST0,
     ST1,
@@ -91,16 +95,16 @@ pub enum Ord16 {
     ST15,
 }
 
-impl Display for Ord16 {
+impl Display for OpStackElement {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let n: usize = (*self).into();
-        write!(f, "{n}")
+        let stack_index = u32::from(self);
+        write!(f, "{stack_index}")
     }
 }
 
-impl From<Ord16> for u32 {
-    fn from(n: Ord16) -> Self {
-        match n {
+impl From<OpStackElement> for u32 {
+    fn from(stack_element: OpStackElement) -> Self {
+        match stack_element {
             ST0 => 0,
             ST1 => 1,
             ST2 => 2,
@@ -121,18 +125,17 @@ impl From<Ord16> for u32 {
     }
 }
 
-impl From<Ord16> for u64 {
-    fn from(n: Ord16) -> Self {
-        let v: u32 = n.into();
-        v.into()
+impl From<&OpStackElement> for u32 {
+    fn from(stack_element: &OpStackElement) -> Self {
+        (*stack_element).into()
     }
 }
 
-impl TryFrom<u32> for Ord16 {
+impl TryFrom<u32> for OpStackElement {
     type Error = String;
 
-    fn try_from(n: u32) -> Result<Self, Self::Error> {
-        match n {
+    fn try_from(stack_index: u32) -> Result<Self, Self::Error> {
+        match stack_index {
             0 => Ok(ST0),
             1 => Ok(ST1),
             2 => Ok(ST2),
@@ -149,77 +152,59 @@ impl TryFrom<u32> for Ord16 {
             13 => Ok(ST13),
             14 => Ok(ST14),
             15 => Ok(ST15),
-            _ => Err(format!("{n} is out of range for Ord16")),
+            _ => Err(format!(
+                "Index {stack_index} is out of range for `OpStackElement`."
+            )),
         }
     }
 }
 
-impl TryFrom<u64> for Ord16 {
+impl From<OpStackElement> for u64 {
+    fn from(stack_element: OpStackElement) -> Self {
+        u32::from(stack_element).into()
+    }
+}
+
+impl TryFrom<u64> for OpStackElement {
     type Error = String;
 
-    fn try_from(n: u64) -> Result<Self, Self::Error> {
-        let n: u32 = match n.try_into() {
-            Ok(n) => n,
-            Err(_) => return Err(format!("{n} is out of range for Ord16")),
-        };
-        n.try_into()
+    fn try_from(stack_index: u64) -> Result<Self, Self::Error> {
+        let stack_index = u32::try_from(stack_index)
+            .map_err(|_| format!("Index {stack_index} is out of range for `OpStackElement`."))?;
+        stack_index.try_into()
     }
 }
 
-impl From<&Ord16> for u32 {
-    fn from(n: &Ord16) -> Self {
-        (*n).into()
+impl From<OpStackElement> for usize {
+    fn from(stack_element: OpStackElement) -> Self {
+        u32::from(stack_element) as usize
     }
 }
 
-impl From<Ord16> for usize {
-    fn from(n: Ord16) -> Self {
-        let n: u32 = n.into();
-        n as usize
+impl From<&OpStackElement> for usize {
+    fn from(stack_element: &OpStackElement) -> Self {
+        (*stack_element).into()
     }
 }
 
-impl From<&Ord16> for usize {
-    fn from(n: &Ord16) -> Self {
-        (*n).into()
+impl TryFrom<usize> for OpStackElement {
+    type Error = String;
+
+    fn try_from(stack_index: usize) -> Result<Self, Self::Error> {
+        let stack_index =
+            u32::try_from(stack_index).map_err(|_| "Cannot convert usize to u32.".to_string())?;
+        stack_index.try_into()
     }
 }
 
-impl From<Ord16> for BFieldElement {
-    fn from(n: Ord16) -> Self {
-        let n: u32 = n.into();
-        n.into()
+impl From<OpStackElement> for BFieldElement {
+    fn from(stack_element: OpStackElement) -> Self {
+        u32::from(stack_element).into()
     }
 }
 
-impl From<&Ord16> for BFieldElement {
-    fn from(n: &Ord16) -> Self {
-        (*n).into()
-    }
-}
-
-impl TryFrom<usize> for Ord16 {
-    type Error = &'static str;
-
-    fn try_from(value: usize) -> Result<Self, Self::Error> {
-        match value {
-            0 => Ok(ST0),
-            1 => Ok(ST1),
-            2 => Ok(ST2),
-            3 => Ok(ST3),
-            4 => Ok(ST4),
-            5 => Ok(ST5),
-            6 => Ok(ST6),
-            7 => Ok(ST7),
-            8 => Ok(ST8),
-            9 => Ok(ST9),
-            10 => Ok(ST10),
-            11 => Ok(ST11),
-            12 => Ok(ST12),
-            13 => Ok(ST13),
-            14 => Ok(ST14),
-            15 => Ok(ST15),
-            _ => Err("usize out of range for Ord16"),
-        }
+impl From<&OpStackElement> for BFieldElement {
+    fn from(stack_element: &OpStackElement) -> Self {
+        (*stack_element).into()
     }
 }

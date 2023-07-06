@@ -5,7 +5,7 @@ use std::ops::Mul;
 use crate::instruction::AnInstruction::*;
 use crate::instruction::Instruction;
 use crate::instruction::ALL_INSTRUCTIONS;
-use crate::ord_n::Ord8;
+use crate::ord_n::InstructionBit;
 use itertools::Itertools;
 use ndarray::parallel::prelude::*;
 use ndarray::s;
@@ -1106,19 +1106,19 @@ impl ExtProcessorTable {
     fn instruction_deselector_common_functionality<II: InputIndicator>(
         circuit_builder: &ConstraintCircuitBuilder<II>,
         instruction: Instruction,
-        instruction_bucket_polynomials: [ConstraintCircuitMonad<II>; Ord8::COUNT],
+        instruction_bucket_polynomials: [ConstraintCircuitMonad<II>; InstructionBit::COUNT],
     ) -> ConstraintCircuitMonad<II> {
         let one = circuit_builder.b_constant(1_u32.into());
 
-        let selector_bits: [_; Ord8::COUNT] = [
-            instruction.ib(Ord8::IB0),
-            instruction.ib(Ord8::IB1),
-            instruction.ib(Ord8::IB2),
-            instruction.ib(Ord8::IB3),
-            instruction.ib(Ord8::IB4),
-            instruction.ib(Ord8::IB5),
-            instruction.ib(Ord8::IB6),
-            instruction.ib(Ord8::IB7),
+        let selector_bits: [_; InstructionBit::COUNT] = [
+            instruction.ib(InstructionBit::IB0),
+            instruction.ib(InstructionBit::IB1),
+            instruction.ib(InstructionBit::IB2),
+            instruction.ib(InstructionBit::IB3),
+            instruction.ib(InstructionBit::IB4),
+            instruction.ib(InstructionBit::IB5),
+            instruction.ib(InstructionBit::IB6),
+            instruction.ib(InstructionBit::IB7),
         ];
         let deselector_polynomials =
             selector_bits.map(|b| one.clone() - circuit_builder.b_constant(b));
@@ -2989,7 +2989,7 @@ impl<'a> Display for ExtProcessorTraceRow<'a> {
 
 #[cfg(test)]
 mod constraint_polynomial_tests {
-    use crate::ord_n::Ord16;
+    use crate::ord_n::OpStackElement;
     use crate::program::Program;
     use ndarray::Array2;
 
@@ -3104,7 +3104,7 @@ mod constraint_polynomial_tests {
     fn transition_constraints_for_instruction_dup_test() {
         let test_rows = [get_test_row_from_source_code("push 1 dup 0 halt", 1)];
         test_constraints_for_rows_with_debug_info(
-            Dup(Ord16::ST0),
+            Dup(OpStackElement::ST0),
             &test_rows,
             &[ST0, ST1, ST2],
             &[ST0, ST1, ST2],
@@ -3118,7 +3118,7 @@ mod constraint_polynomial_tests {
             2,
         )];
         test_constraints_for_rows_with_debug_info(
-            Swap(Ord16::ST0),
+            Swap(OpStackElement::ST0),
             &test_rows,
             &[ST0, ST1, ST2],
             &[ST0, ST1, ST2],
@@ -3445,14 +3445,14 @@ mod constraint_polynomial_tests {
                 .filter(|other_instruction| *other_instruction != instruction)
             {
                 let mut curr_row = master_base_table.slice_mut(s![0, ..]);
-                curr_row[IB0.master_base_table_index()] = other_instruction.ib(Ord8::IB0);
-                curr_row[IB1.master_base_table_index()] = other_instruction.ib(Ord8::IB1);
-                curr_row[IB2.master_base_table_index()] = other_instruction.ib(Ord8::IB2);
-                curr_row[IB3.master_base_table_index()] = other_instruction.ib(Ord8::IB3);
-                curr_row[IB4.master_base_table_index()] = other_instruction.ib(Ord8::IB4);
-                curr_row[IB5.master_base_table_index()] = other_instruction.ib(Ord8::IB5);
-                curr_row[IB6.master_base_table_index()] = other_instruction.ib(Ord8::IB6);
-                curr_row[IB7.master_base_table_index()] = other_instruction.ib(Ord8::IB7);
+                curr_row[IB0.master_base_table_index()] = other_instruction.ib(InstructionBit::IB0);
+                curr_row[IB1.master_base_table_index()] = other_instruction.ib(InstructionBit::IB1);
+                curr_row[IB2.master_base_table_index()] = other_instruction.ib(InstructionBit::IB2);
+                curr_row[IB3.master_base_table_index()] = other_instruction.ib(InstructionBit::IB3);
+                curr_row[IB4.master_base_table_index()] = other_instruction.ib(InstructionBit::IB4);
+                curr_row[IB5.master_base_table_index()] = other_instruction.ib(InstructionBit::IB5);
+                curr_row[IB6.master_base_table_index()] = other_instruction.ib(InstructionBit::IB6);
+                curr_row[IB7.master_base_table_index()] = other_instruction.ib(InstructionBit::IB7);
                 let result = deselector.clone().consume().evaluate(
                     master_base_table.view(),
                     master_ext_table.view(),
@@ -3469,14 +3469,14 @@ mod constraint_polynomial_tests {
 
             // Positive tests
             let mut curr_row = master_base_table.slice_mut(s![0, ..]);
-            curr_row[IB0.master_base_table_index()] = instruction.ib(Ord8::IB0);
-            curr_row[IB1.master_base_table_index()] = instruction.ib(Ord8::IB1);
-            curr_row[IB2.master_base_table_index()] = instruction.ib(Ord8::IB2);
-            curr_row[IB3.master_base_table_index()] = instruction.ib(Ord8::IB3);
-            curr_row[IB4.master_base_table_index()] = instruction.ib(Ord8::IB4);
-            curr_row[IB5.master_base_table_index()] = instruction.ib(Ord8::IB5);
-            curr_row[IB6.master_base_table_index()] = instruction.ib(Ord8::IB6);
-            curr_row[IB7.master_base_table_index()] = instruction.ib(Ord8::IB7);
+            curr_row[IB0.master_base_table_index()] = instruction.ib(InstructionBit::IB0);
+            curr_row[IB1.master_base_table_index()] = instruction.ib(InstructionBit::IB1);
+            curr_row[IB2.master_base_table_index()] = instruction.ib(InstructionBit::IB2);
+            curr_row[IB3.master_base_table_index()] = instruction.ib(InstructionBit::IB3);
+            curr_row[IB4.master_base_table_index()] = instruction.ib(InstructionBit::IB4);
+            curr_row[IB5.master_base_table_index()] = instruction.ib(InstructionBit::IB5);
+            curr_row[IB6.master_base_table_index()] = instruction.ib(InstructionBit::IB6);
+            curr_row[IB7.master_base_table_index()] = instruction.ib(InstructionBit::IB7);
             let result = deselector.consume().evaluate(
                 master_base_table.view(),
                 master_ext_table.view(),

@@ -6,8 +6,8 @@ use twenty_first::shared_math::digest::Digest;
 use twenty_first::shared_math::tip5::DIGEST_LENGTH;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
-use crate::ord_n::Ord16;
-use crate::ord_n::Ord16::*;
+use crate::ord_n::OpStackElement;
+use crate::ord_n::OpStackElement::*;
 
 use super::error::InstructionError::*;
 
@@ -73,7 +73,7 @@ impl OpStack {
     }
 
     /// Fetches the indicated stack element without modifying the stack.
-    pub(crate) fn peek_at(&self, stack_element: Ord16) -> BFieldElement {
+    pub(crate) fn peek_at(&self, stack_element: OpStackElement) -> BFieldElement {
         let stack_element_index = usize::from(stack_element);
         let top_of_stack_index = self.stack.len() - 1;
         self.stack[top_of_stack_index - stack_element_index]
@@ -86,7 +86,7 @@ impl OpStack {
     }
 
     /// Swaps the top of the stack with the indicated stack element.
-    pub(crate) fn swap(&mut self, stack_element: Ord16) {
+    pub(crate) fn swap_top_with(&mut self, stack_element: OpStackElement) {
         let stack_element_index = usize::from(stack_element);
         let top_of_stack_index = self.stack.len() - 1;
         self.stack
@@ -122,7 +122,7 @@ mod op_stack_test {
     use twenty_first::shared_math::b_field_element::BFieldElement;
 
     use crate::op_stack::OpStack;
-    use crate::ord_n::Ord16;
+    use crate::ord_n::OpStackElement;
 
     #[test]
     fn sanity_test() {
@@ -150,22 +150,22 @@ mod op_stack_test {
 
         // verify that all accessible items are different
         let mut container = vec![
-            op_stack.peek_at(Ord16::ST0),
-            op_stack.peek_at(Ord16::ST1),
-            op_stack.peek_at(Ord16::ST2),
-            op_stack.peek_at(Ord16::ST3),
-            op_stack.peek_at(Ord16::ST4),
-            op_stack.peek_at(Ord16::ST5),
-            op_stack.peek_at(Ord16::ST6),
-            op_stack.peek_at(Ord16::ST7),
-            op_stack.peek_at(Ord16::ST8),
-            op_stack.peek_at(Ord16::ST9),
-            op_stack.peek_at(Ord16::ST10),
-            op_stack.peek_at(Ord16::ST11),
-            op_stack.peek_at(Ord16::ST12),
-            op_stack.peek_at(Ord16::ST13),
-            op_stack.peek_at(Ord16::ST14),
-            op_stack.peek_at(Ord16::ST15),
+            op_stack.peek_at(OpStackElement::ST0),
+            op_stack.peek_at(OpStackElement::ST1),
+            op_stack.peek_at(OpStackElement::ST2),
+            op_stack.peek_at(OpStackElement::ST3),
+            op_stack.peek_at(OpStackElement::ST4),
+            op_stack.peek_at(OpStackElement::ST5),
+            op_stack.peek_at(OpStackElement::ST6),
+            op_stack.peek_at(OpStackElement::ST7),
+            op_stack.peek_at(OpStackElement::ST8),
+            op_stack.peek_at(OpStackElement::ST9),
+            op_stack.peek_at(OpStackElement::ST10),
+            op_stack.peek_at(OpStackElement::ST11),
+            op_stack.peek_at(OpStackElement::ST12),
+            op_stack.peek_at(OpStackElement::ST13),
+            op_stack.peek_at(OpStackElement::ST14),
+            op_stack.peek_at(OpStackElement::ST15),
             op_stack.op_stack_value(),
         ];
         let len_before = container.len();

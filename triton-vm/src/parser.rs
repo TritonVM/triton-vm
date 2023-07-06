@@ -26,8 +26,8 @@ use crate::instruction::AnInstruction;
 use crate::instruction::AnInstruction::*;
 use crate::instruction::LabelledInstruction;
 use crate::instruction::ALL_INSTRUCTION_NAMES;
-use crate::ord_n::Ord16;
-use crate::ord_n::Ord16::*;
+use crate::ord_n::OpStackElement;
+use crate::ord_n::OpStackElement::*;
 
 #[derive(Debug, PartialEq)]
 pub struct ParseError<'a> {
@@ -393,7 +393,7 @@ fn field_element(s_orig: &str) -> ParseResult<BFieldElement> {
     Ok((s, BFieldElement::new(n as u64)))
 }
 
-fn stack_register(s: &str) -> ParseResult<Ord16> {
+fn stack_register(s: &str) -> ParseResult<OpStackElement> {
     let (s, n) = digit1(s)?;
     let stack_register = match n {
         "0" => ST0,

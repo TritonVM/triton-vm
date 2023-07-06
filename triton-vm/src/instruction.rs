@@ -17,9 +17,9 @@ use twenty_first::shared_math::b_field_element::BFIELD_ZERO;
 
 use AnInstruction::*;
 
-use crate::ord_n::Ord16;
-use crate::ord_n::Ord16::*;
-use crate::ord_n::Ord8;
+use crate::ord_n::InstructionBit;
+use crate::ord_n::OpStackElement;
+use crate::ord_n::OpStackElement::*;
 
 /// An `Instruction` has `call` addresses encoded as absolute integers.
 pub type Instruction = AnInstruction<BFieldElement>;
@@ -80,8 +80,8 @@ pub enum AnInstruction<Dest: PartialEq + Default> {
     Pop,
     Push(BFieldElement),
     Divine,
-    Dup(Ord16),
-    Swap(Ord16),
+    Dup(OpStackElement),
+    Swap(OpStackElement),
 
     // Control flow
     Nop,
@@ -231,7 +231,7 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
     }
 
     /// Get the i'th instruction bit
-    pub fn ib(&self, arg: Ord8) -> BFieldElement {
+    pub fn ib(&self, arg: InstructionBit) -> BFieldElement {
         let opcode = self.opcode();
         let bit_number: usize = arg.into();
 
@@ -527,8 +527,8 @@ mod instruction_tests {
     use crate::instruction::all_instructions_without_args;
     use crate::instruction::Instruction;
     use crate::instruction::ALL_INSTRUCTIONS;
-    use crate::ord_n::Ord16::*;
-    use crate::ord_n::Ord8;
+    use crate::ord_n::InstructionBit;
+    use crate::ord_n::OpStackElement::*;
     use crate::program::Program;
 
     use super::AnInstruction;
@@ -577,9 +577,9 @@ mod instruction_tests {
             num_bits += 1;
         }
         assert!(
-            num_bits <= Ord8::COUNT,
+            num_bits <= InstructionBit::COUNT,
             "Biggest instruction needs more than {} bits :(",
-            Ord8::COUNT
+            InstructionBit::COUNT
         );
 
         // assert consistency
@@ -630,10 +630,11 @@ mod instruction_tests {
 
     #[test]
     fn ib_registers_are_binary_test() {
-        use Ord8::*;
+        use InstructionBit::*;
 
         for instruction in ALL_INSTRUCTIONS {
-            let all_ibs: [Ord8; Ord8::COUNT] = [IB0, IB1, IB2, IB3, IB4, IB5, IB6, IB7];
+            let all_ibs: [InstructionBit; InstructionBit::COUNT] =
+                [IB0, IB1, IB2, IB3, IB4, IB5, IB6, IB7];
             for ib in all_ibs {
                 let ib_value = instruction.ib(ib);
                 assert!(

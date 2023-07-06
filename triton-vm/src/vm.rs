@@ -33,9 +33,9 @@ use crate::instruction::AnInstruction::*;
 use crate::instruction::Instruction;
 use crate::op_stack::OpStack;
 use crate::op_stack::NUM_OP_STACK_REGISTERS;
-use crate::ord_n::Ord16;
-use crate::ord_n::Ord16::*;
-use crate::ord_n::Ord8;
+use crate::ord_n::InstructionBit;
+use crate::ord_n::OpStackElement;
+use crate::ord_n::OpStackElement::*;
 use crate::program::Program;
 use crate::stark::StarkHasher;
 use crate::table::hash_table;
@@ -231,13 +231,13 @@ impl<'pgm> VMState<'pgm> {
 
         let maybe_co_processor_trace = match self.current_instruction()? {
             Pop => self.instruction_pop()?,
-            Push(arg) => self.instruction_push(arg),
+            Push(field_element) => self.instruction_push(field_element),
             Divine => self.instruction_divine()?,
-            Dup(arg) => self.instruction_dup(arg),
-            Swap(arg) => self.instruction_swap(arg),
+            Dup(stack_element) => self.instruction_dup(stack_element),
+            Swap(stack_element) => self.instruction_swap(stack_element),
             Nop => self.instruction_nop(),
             Skiz => self.instruction_skiz()?,
-            Call(addr) => self.instruction_call(addr),
+            Call(address) => self.instruction_call(address),
             Return => self.instruction_return()?,
             Recurse => self.instruction_recurse()?,
             Assert => self.instruction_assert()?,
@@ -283,8 +283,8 @@ impl<'pgm> VMState<'pgm> {
         Ok(None)
     }
 
-    fn instruction_push(&mut self, arg: BFieldElement) -> Option<CoProcessorCall> {
-        self.op_stack.push(arg);
+    fn instruction_push(&mut self, field_element: BFieldElement) -> Option<CoProcessorCall> {
+        self.op_stack.push(field_element);
         self.instruction_pointer += 2;
         None
     }
@@ -298,15 +298,15 @@ impl<'pgm> VMState<'pgm> {
         Ok(None)
     }
 
-    fn instruction_dup(&mut self, arg: Ord16) -> Option<CoProcessorCall> {
-        let elem = self.op_stack.peek_at(arg);
-        self.op_stack.push(elem);
+    fn instruction_dup(&mut self, stack_element: OpStackElement) -> Option<CoProcessorCall> {
+        let stack_element = self.op_stack.peek_at(stack_element);
+        self.op_stack.push(stack_element);
         self.instruction_pointer += 2;
         None
     }
 
-    fn instruction_swap(&mut self, arg: Ord16) -> Option<CoProcessorCall> {
-        self.op_stack.swap(arg);
+    fn instruction_swap(&mut self, stack_element: OpStackElement) -> Option<CoProcessorCall> {
+        self.op_stack.swap_top_with(stack_element);
         self.instruction_pointer += 2;
         None
     }
@@ -684,33 +684,33 @@ impl<'pgm> VMState<'pgm> {
         processor_row[IP.base_table_index()] = (self.instruction_pointer as u32).into();
         processor_row[CI.base_table_index()] = current_instruction.opcode_b();
         processor_row[NIA.base_table_index()] = self.next_instruction_or_argument();
-        processor_row[IB0.base_table_index()] = current_instruction.ib(Ord8::IB0);
-        processor_row[IB1.base_table_index()] = current_instruction.ib(Ord8::IB1);
-        processor_row[IB2.base_table_index()] = current_instruction.ib(Ord8::IB2);
-        processor_row[IB3.base_table_index()] = current_instruction.ib(Ord8::IB3);
-        processor_row[IB4.base_table_index()] = current_instruction.ib(Ord8::IB4);
-        processor_row[IB5.base_table_index()] = current_instruction.ib(Ord8::IB5);
-        processor_row[IB6.base_table_index()] = current_instruction.ib(Ord8::IB6);
-        processor_row[IB7.base_table_index()] = current_instruction.ib(Ord8::IB7);
+        processor_row[IB0.base_table_index()] = current_instruction.ib(InstructionBit::IB0);
+        processor_row[IB1.base_table_index()] = current_instruction.ib(InstructionBit::IB1);
+        processor_row[IB2.base_table_index()] = current_instruction.ib(InstructionBit::IB2);
+        processor_row[IB3.base_table_index()] = current_instruction.ib(InstructionBit::IB3);
+        processor_row[IB4.base_table_index()] = current_instruction.ib(InstructionBit::IB4);
+        processor_row[IB5.base_table_index()] = current_instruction.ib(InstructionBit::IB5);
+        processor_row[IB6.base_table_index()] = current_instruction.ib(InstructionBit::IB6);
+        processor_row[IB7.base_table_index()] = current_instruction.ib(InstructionBit::IB7);
         processor_row[JSP.base_table_index()] = self.jump_stack_pointer();
         processor_row[JSO.base_table_index()] = self.jump_stack_origin();
         processor_row[JSD.base_table_index()] = self.jump_stack_destination();
-        processor_row[ST0.base_table_index()] = self.op_stack.peek_at(Ord16::ST0);
-        processor_row[ST1.base_table_index()] = self.op_stack.peek_at(Ord16::ST1);
-        processor_row[ST2.base_table_index()] = self.op_stack.peek_at(Ord16::ST2);
-        processor_row[ST3.base_table_index()] = self.op_stack.peek_at(Ord16::ST3);
-        processor_row[ST4.base_table_index()] = self.op_stack.peek_at(Ord16::ST4);
-        processor_row[ST5.base_table_index()] = self.op_stack.peek_at(Ord16::ST5);
-        processor_row[ST6.base_table_index()] = self.op_stack.peek_at(Ord16::ST6);
-        processor_row[ST7.base_table_index()] = self.op_stack.peek_at(Ord16::ST7);
-        processor_row[ST8.base_table_index()] = self.op_stack.peek_at(Ord16::ST8);
-        processor_row[ST9.base_table_index()] = self.op_stack.peek_at(Ord16::ST9);
-        processor_row[ST10.base_table_index()] = self.op_stack.peek_at(Ord16::ST10);
-        processor_row[ST11.base_table_index()] = self.op_stack.peek_at(Ord16::ST11);
-        processor_row[ST12.base_table_index()] = self.op_stack.peek_at(Ord16::ST12);
-        processor_row[ST13.base_table_index()] = self.op_stack.peek_at(Ord16::ST13);
-        processor_row[ST14.base_table_index()] = self.op_stack.peek_at(Ord16::ST14);
-        processor_row[ST15.base_table_index()] = self.op_stack.peek_at(Ord16::ST15);
+        processor_row[ST0.base_table_index()] = self.op_stack.peek_at(OpStackElement::ST0);
+        processor_row[ST1.base_table_index()] = self.op_stack.peek_at(OpStackElement::ST1);
+        processor_row[ST2.base_table_index()] = self.op_stack.peek_at(OpStackElement::ST2);
+        processor_row[ST3.base_table_index()] = self.op_stack.peek_at(OpStackElement::ST3);
+        processor_row[ST4.base_table_index()] = self.op_stack.peek_at(OpStackElement::ST4);
+        processor_row[ST5.base_table_index()] = self.op_stack.peek_at(OpStackElement::ST5);
+        processor_row[ST6.base_table_index()] = self.op_stack.peek_at(OpStackElement::ST6);
+        processor_row[ST7.base_table_index()] = self.op_stack.peek_at(OpStackElement::ST7);
+        processor_row[ST8.base_table_index()] = self.op_stack.peek_at(OpStackElement::ST8);
+        processor_row[ST9.base_table_index()] = self.op_stack.peek_at(OpStackElement::ST9);
+        processor_row[ST10.base_table_index()] = self.op_stack.peek_at(OpStackElement::ST10);
+        processor_row[ST11.base_table_index()] = self.op_stack.peek_at(OpStackElement::ST11);
+        processor_row[ST12.base_table_index()] = self.op_stack.peek_at(OpStackElement::ST12);
+        processor_row[ST13.base_table_index()] = self.op_stack.peek_at(OpStackElement::ST13);
+        processor_row[ST14.base_table_index()] = self.op_stack.peek_at(OpStackElement::ST14);
+        processor_row[ST15.base_table_index()] = self.op_stack.peek_at(OpStackElement::ST15);
         processor_row[OSP.base_table_index()] = self.op_stack.op_stack_pointer();
         processor_row[OSV.base_table_index()] = self.op_stack.op_stack_value();
         processor_row[HV0.base_table_index()] = helper_variables[0];
