@@ -577,7 +577,7 @@ impl ExtProcessorTable {
             circuit_builder.input(BaseRow(col.master_base_table_index()))
         };
 
-        // The composition of instruction buckets ib0-ib7 corresponds the current instruction ci.
+        // The composition of instruction bits ib0-ib7 corresponds the current instruction ci.
         let ib_composition = base_row(IB0)
             + constant(1 << 1) * base_row(IB1)
             + constant(1 << 2) * base_row(IB2)
@@ -1106,7 +1106,7 @@ impl ExtProcessorTable {
     fn instruction_deselector_common_functionality<II: InputIndicator>(
         circuit_builder: &ConstraintCircuitBuilder<II>,
         instruction: Instruction,
-        instruction_bucket_polynomials: [ConstraintCircuitMonad<II>; InstructionBit::COUNT],
+        instruction_bit_polynomials: [ConstraintCircuitMonad<II>; InstructionBit::COUNT],
     ) -> ConstraintCircuitMonad<II> {
         let one = circuit_builder.b_constant(1_u32.into());
 
@@ -1123,10 +1123,10 @@ impl ExtProcessorTable {
         let deselector_polynomials =
             selector_bits.map(|b| one.clone() - circuit_builder.b_constant(b));
 
-        instruction_bucket_polynomials
+        instruction_bit_polynomials
             .into_iter()
             .zip_eq(deselector_polynomials.into_iter())
-            .map(|(bucket_poly, deselector_poly)| bucket_poly - deselector_poly)
+            .map(|(instruction_bit_poly, deselector_poly)| instruction_bit_poly - deselector_poly)
             .fold(one, ConstraintCircuitMonad::mul)
     }
 
@@ -1140,7 +1140,7 @@ impl ExtProcessorTable {
             circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
         };
 
-        let instruction_bucket_polynomials = [
+        let instruction_bit_polynomials = [
             curr_base_row(IB0),
             curr_base_row(IB1),
             curr_base_row(IB2),
@@ -1154,7 +1154,7 @@ impl ExtProcessorTable {
         Self::instruction_deselector_common_functionality(
             circuit_builder,
             instruction,
-            instruction_bucket_polynomials,
+            instruction_bit_polynomials,
         )
     }
 
@@ -1168,7 +1168,7 @@ impl ExtProcessorTable {
             circuit_builder.input(NextBaseRow(col.master_base_table_index()))
         };
 
-        let instruction_bucket_polynomials = [
+        let instruction_bit_polynomials = [
             next_base_row(IB0),
             next_base_row(IB1),
             next_base_row(IB2),
@@ -1182,7 +1182,7 @@ impl ExtProcessorTable {
         Self::instruction_deselector_common_functionality(
             circuit_builder,
             instruction,
-            instruction_bucket_polynomials,
+            instruction_bit_polynomials,
         )
     }
 
@@ -1196,7 +1196,7 @@ impl ExtProcessorTable {
             circuit_builder.input(BaseRow(col.master_base_table_index()))
         };
 
-        let instruction_bucket_polynomials = [
+        let instruction_bit_polynomials = [
             base_row(IB0),
             base_row(IB1),
             base_row(IB2),
@@ -1210,7 +1210,7 @@ impl ExtProcessorTable {
         Self::instruction_deselector_common_functionality(
             circuit_builder,
             instruction,
-            instruction_bucket_polynomials,
+            instruction_bit_polynomials,
         )
     }
 
