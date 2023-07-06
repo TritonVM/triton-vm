@@ -64,7 +64,7 @@ impl<H: AlgebraicHasher> Fri<H> {
         expansion_factor: usize,
         colinearity_checks_count: usize,
     ) -> Self {
-        let domain = ArithmeticDomain::new(offset, domain_length);
+        let domain = ArithmeticDomain::of_length_with_offset(domain_length, offset);
         let _hasher = PhantomData;
         Self {
             domain,

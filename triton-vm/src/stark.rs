@@ -190,7 +190,7 @@ impl Stark {
         prof_stop!(maybe_profiler, "ext tables");
 
         prof_start!(maybe_profiler, "quotient-domain codewords");
-        let trace_domain = ArithmeticDomain::new_no_offset(master_base_table.padded_height);
+        let trace_domain = ArithmeticDomain::of_length(master_base_table.padded_height);
         // When debugging, it is useful to check the degree of some intermediate polynomials.
         // The quotient domain is chosen to be _just_ large enough to perform all the necessary
         // computations on polynomials. Concretely, the maximal degree of a polynomial over the
@@ -204,7 +204,7 @@ impl Stark {
         } else {
             let offset = fri.domain.offset;
             let length = roundup_npo2(max_degree as u64);
-            ArithmeticDomain::new(offset, length as usize)
+            ArithmeticDomain::of_length_with_offset(length as usize, offset)
         };
         let unit_distance = fri.domain.length / quotient_domain.length;
         let base_quotient_domain_codewords = fri_domain_master_base_table
@@ -285,7 +285,7 @@ impl Stark {
         debug_assert_eq!(fri.domain.length, quot_merkle_tree.get_leaf_count());
 
         prof_start!(maybe_profiler, "out-of-domain rows");
-        let trace_domain_generator = derive_domain_generator(padded_height as u64);
+        let trace_domain_generator = ArithmeticDomain::generator_for_length(padded_height as u64);
         let out_of_domain_point_curr_row = proof_stream.sample_scalars(1)[0];
         let out_of_domain_point_next_row = trace_domain_generator * out_of_domain_point_curr_row;
 
@@ -612,7 +612,7 @@ impl Stark {
         prof_stop!(maybe_profiler, "Fiat-Shamir 1");
 
         prof_start!(maybe_profiler, "dequeue ood point and rows", "hash");
-        let trace_domain_generator = derive_domain_generator(padded_height as u64);
+        let trace_domain_generator = ArithmeticDomain::generator_for_length(padded_height as u64);
         let out_of_domain_point_curr_row = proof_stream.sample_scalars(1)[0];
         let out_of_domain_point_next_row = trace_domain_generator * out_of_domain_point_curr_row;
 
@@ -1781,7 +1781,7 @@ pub(crate) mod triton_stark_tests {
     #[test]
     pub fn deep_update_test() {
         let domain_length = 1 << 10;
-        let domain = ArithmeticDomain::new_no_offset(domain_length);
+        let domain = ArithmeticDomain::of_length(domain_length);
 
         let poly_degree = thread_rng().gen_range(2..20);
         let low_deg_poly_coeffs: Vec<XFieldElement> = random_elements(poly_degree);

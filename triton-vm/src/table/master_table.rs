@@ -17,13 +17,11 @@ use strum_macros::EnumCount as EnumCountMacro;
 use strum_macros::EnumIter;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::Degree;
-use twenty_first::shared_math::other::is_power_of_two;
 use twenty_first::shared_math::other::roundup_npo2;
 use twenty_first::shared_math::polynomial::Polynomial;
 use twenty_first::shared_math::traits::FiniteField;
 use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::traits::ModPowU32;
-use twenty_first::shared_math::traits::PrimitiveRootOfUnity;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
 use twenty_first::util_types::merkle_tree::MerkleTree;
@@ -240,7 +238,7 @@ where
 
     fn randomized_trace_domain(&self) -> ArithmeticDomain {
         let randomized_trace_domain_len = self.randomized_padded_trace_len();
-        ArithmeticDomain::new_no_offset(randomized_trace_domain_len)
+        ArithmeticDomain::of_length(randomized_trace_domain_len)
     }
 
     /// Low-degree extends all columns.
@@ -927,14 +925,6 @@ pub fn interpolant_degree(padded_height: usize, num_trace_randomizers: usize) ->
     (randomized_padded_trace_len(padded_height, num_trace_randomizers) - 1) as Degree
 }
 
-pub fn derive_domain_generator(domain_length: u64) -> BFieldElement {
-    debug_assert!(
-        0 == domain_length || is_power_of_two(domain_length),
-        "The domain length must be a power of 2 but was {domain_length}.",
-    );
-    BFieldElement::primitive_root_of_unity(domain_length).unwrap()
-}
-
 #[cfg(test)]
 mod master_table_tests {
     use ndarray::s;
@@ -1093,10 +1083,10 @@ mod master_table_tests {
     fn zerofiers_are_correct_test() {
         let big_order = 16;
         let big_offset = BFieldElement::generator();
-        let big_domain = ArithmeticDomain::new(big_offset, big_order as usize);
+        let big_domain = ArithmeticDomain::of_length_with_offset(big_order as usize, big_offset);
 
         let small_order = 8;
-        let small_domain = ArithmeticDomain::new_no_offset(small_order as usize);
+        let small_domain = ArithmeticDomain::of_length(small_order as usize);
 
         let initial_zerofier_inv = initial_quotient_zerofier_inverse(big_domain);
         let initial_zerofier = BFieldElement::batch_inversion(initial_zerofier_inv.to_vec());

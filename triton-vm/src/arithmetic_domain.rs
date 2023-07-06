@@ -1,11 +1,12 @@
 use std::ops::MulAssign;
 
-use crate::table::master_table::derive_domain_generator;
 use num_traits::One;
 use twenty_first::shared_math::b_field_element::BFieldElement;
+use twenty_first::shared_math::other::is_power_of_two;
 use twenty_first::shared_math::polynomial::Polynomial;
 use twenty_first::shared_math::traits::FiniteField;
 use twenty_first::shared_math::traits::ModPowU32;
+use twenty_first::shared_math::traits::PrimitiveRootOfUnity;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ArithmeticDomain {
@@ -15,17 +16,32 @@ pub struct ArithmeticDomain {
 }
 
 impl ArithmeticDomain {
-    pub fn new(offset: BFieldElement, length: usize) -> Self {
-        let generator = derive_domain_generator(length as u64);
+    /// Create a new domain with the given length and offset.
+    pub fn of_length_with_offset(length: usize, offset: BFieldElement) -> Self {
         Self {
             offset,
-            generator,
+            generator: Self::generator_for_length(length as u64),
             length,
         }
     }
 
-    pub fn new_no_offset(length: usize) -> Self {
-        Self::new(BFieldElement::one(), length)
+    /// Create a new domain with the given length. No offset is applied.
+    pub fn of_length(length: usize) -> Self {
+        Self {
+            offset: BFieldElement::one(),
+            generator: Self::generator_for_length(length as u64),
+            length,
+        }
+    }
+
+    /// Derive a generator for a domain of the given length.
+    /// The domain length must be a power of 2.
+    pub fn generator_for_length(domain_length: u64) -> BFieldElement {
+        assert!(
+            0 == domain_length || is_power_of_two(domain_length),
+            "The domain length must be a power of 2 but was {domain_length}.",
+        );
+        BFieldElement::primitive_root_of_unity(domain_length).unwrap()
     }
 
     pub fn evaluate<FF>(&self, polynomial: &Polynomial<FF>) -> Vec<FF>
@@ -86,7 +102,7 @@ mod domain_tests {
         for order in [4, 8, 32] {
             let generator = BFieldElement::primitive_root_of_unity(order).unwrap();
             let offset = BFieldElement::generator();
-            let b_domain = ArithmeticDomain::new(offset, order as usize);
+            let b_domain = ArithmeticDomain::of_length_with_offset(order as usize, offset);
 
             let expected_b_values: Vec<BFieldElement> =
                 (0..order).map(|i| offset * generator.mod_pow(i)).collect();
