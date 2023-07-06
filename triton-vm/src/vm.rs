@@ -1198,21 +1198,39 @@ impl AlgebraicExecutionTrace {
         // The last row in the trace is the permutation's result, meaning that no lookups are
         // performed on it. Therefore, we skip it.
         for row in hash_permutation_trace.iter().rev().skip(1) {
-            for &state_element in row[0..tip5::NUM_SPLIT_AND_LOOKUP].iter() {
-                for limb in HashTable::base_field_element_into_16_bit_limbs(state_element) {
-                    match self.cascade_table_lookup_multiplicities.entry(limb) {
-                        Occupied(mut cascade_table_entry) => *cascade_table_entry.get_mut() += 1,
-                        Vacant(cascade_table_entry) => {
-                            cascade_table_entry.insert(1);
-                            let limb_lo = limb & 0xff;
-                            let limb_hi = (limb >> 8) & 0xff;
-                            self.lookup_table_lookup_multiplicities[limb_lo as usize] += 1;
-                            self.lookup_table_lookup_multiplicities[limb_hi as usize] += 1;
-                        }
-                    }
+            self.increase_lookup_multiplicities_for_row(row);
+        }
+    }
+
+    /// Given one row of the hash function's permutation trace, increase the multiplicities of the
+    /// relevant entries in the cascade table and/or the lookup table.
+    fn increase_lookup_multiplicities_for_row(&mut self, row: &[BFieldElement; tip5::STATE_SIZE]) {
+        for &state_element in row[0..tip5::NUM_SPLIT_AND_LOOKUP].iter() {
+            self.increase_lookup_multiplicities_for_state_element(state_element);
+        }
+    }
+
+    /// Given one state element, increase the multiplicities of the corresponding entries in the
+    /// cascade table and/or the lookup table.
+    fn increase_lookup_multiplicities_for_state_element(&mut self, state_element: BFieldElement) {
+        for limb in HashTable::base_field_element_into_16_bit_limbs(state_element) {
+            match self.cascade_table_lookup_multiplicities.entry(limb) {
+                Occupied(mut cascade_table_entry) => *cascade_table_entry.get_mut() += 1,
+                Vacant(cascade_table_entry) => {
+                    cascade_table_entry.insert(1);
+                    self.increase_lookup_table_multiplicities_for_limb(limb);
                 }
             }
         }
+    }
+
+    /// Given one 16-bit limb, increase the multiplicities of the corresponding entries in the
+    /// lookup table.
+    fn increase_lookup_table_multiplicities_for_limb(&mut self, limb: u16) {
+        let limb_lo = limb & 0xff;
+        let limb_hi = (limb >> 8) & 0xff;
+        self.lookup_table_lookup_multiplicities[limb_lo as usize] += 1;
+        self.lookup_table_lookup_multiplicities[limb_hi as usize] += 1;
     }
 }
 
