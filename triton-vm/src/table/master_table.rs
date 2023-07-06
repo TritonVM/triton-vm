@@ -27,11 +27,10 @@ use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
 use twenty_first::util_types::merkle_tree::MerkleTree;
 use twenty_first::util_types::merkle_tree_maker::MerkleTreeMaker;
 
-use triton_profiler::prof_start;
-use triton_profiler::prof_stop;
-use triton_profiler::triton_profiler::TritonProfiler;
-
 use crate::arithmetic_domain::ArithmeticDomain;
+use crate::prof_start;
+use crate::prof_stop;
+use crate::profiler::TritonProfiler;
 use crate::stark::MTMaker;
 use crate::stark::StarkHasher;
 use crate::table::cascade_table::CascadeTable;

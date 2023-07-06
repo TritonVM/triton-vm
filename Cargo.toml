@@ -1,8 +1,6 @@
 [workspace]
 members = [
     "triton-vm",
-    "triton-opcodes",
-    "triton-profiler",
     "constraint-evaluation-generator",
 ]
 
@@ -27,8 +25,6 @@ documentation = "https://triton-vm.org/spec/"
 
 [workspace.dependencies]
 twenty-first = "0.30"
-triton-opcodes = "0.31"
-triton-profiler = "0.30"
 itertools = "0.10"
 syn = "2.0"
 quote = "1.0"
@@ -51,6 +47,7 @@ nom = "7.1"
 colored = "2.0"
 unicode-width = "0.1.5"
 lazy_static = "1.4"
+prettyplease = "0.2"
 
 [workspace.dependencies.cargo-husky]
 version = "1.0"

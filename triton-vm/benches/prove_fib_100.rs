@@ -2,13 +2,13 @@ use criterion::criterion_group;
 use criterion::criterion_main;
 use criterion::BenchmarkId;
 use criterion::Criterion;
-use triton_opcodes::program::Program;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 
-use triton_profiler::prof_start;
-use triton_profiler::prof_stop;
-use triton_profiler::triton_profiler::Report;
-use triton_profiler::triton_profiler::TritonProfiler;
+use triton_vm::prof_start;
+use triton_vm::prof_stop;
+use triton_vm::profiler::Report;
+use triton_vm::profiler::TritonProfiler;
+use triton_vm::program::Program;
 use triton_vm::proof::Claim;
 use triton_vm::shared_tests::FIBONACCI_SEQUENCE;
 use triton_vm::stark::Stark;

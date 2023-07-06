@@ -10,7 +10,6 @@ use strum::IntoEnumIterator;
 use strum_macros::Display;
 use strum_macros::EnumCount as EnumCountMacro;
 use strum_macros::EnumIter;
-use triton_opcodes::instruction::Instruction;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::tip5::DIGEST_LENGTH;
 use twenty_first::shared_math::tip5::MDS_MATRIX_FIRST_COLUMN;
@@ -22,6 +21,7 @@ use twenty_first::shared_math::tip5::STATE_SIZE;
 use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
+use crate::instruction::Instruction;
 use crate::table::cascade_table::CascadeTable;
 use crate::table::challenges::ChallengeId::*;
 use crate::table::challenges::Challenges;

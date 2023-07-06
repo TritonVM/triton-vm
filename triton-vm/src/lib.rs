@@ -4,10 +4,10 @@
 
 use anyhow::bail;
 use anyhow::Result;
-use triton_opcodes::program::Program;
 pub use twenty_first::shared_math::b_field_element::BFieldElement;
 pub use twenty_first::shared_math::tip5::Digest;
 
+use crate::program::Program;
 pub use crate::proof::Claim;
 pub use crate::proof::Proof;
 use crate::stark::Stark;
@@ -17,7 +17,13 @@ pub use crate::stark::StarkParameters;
 pub mod arithmetic_domain;
 pub mod error;
 pub mod fri;
+pub mod instruction;
+pub mod instruction_shortcuts;
 pub mod op_stack;
+pub mod ord_n;
+pub mod parser;
+pub mod profiler;
+pub mod program;
 pub mod proof;
 pub mod proof_item;
 pub mod proof_stream;

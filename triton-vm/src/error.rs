@@ -67,7 +67,7 @@ impl Error for InstructionError {}
 
 #[cfg(test)]
 mod tests {
-    use triton_opcodes::program::Program;
+    use crate::program::Program;
 
     use crate::vm::run;
 

@@ -15,10 +15,6 @@ use num_traits::One;
 use rayon::prelude::*;
 use serde::Deserialize;
 use serde::Serialize;
-use triton_profiler::prof_itr0;
-use triton_profiler::prof_start;
-use triton_profiler::prof_stop;
-use triton_profiler::triton_profiler::TritonProfiler;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::Degree;
 use twenty_first::shared_math::other::roundup_npo2;
@@ -36,6 +32,10 @@ use twenty_first::util_types::merkle_tree_maker::MerkleTreeMaker;
 
 use crate::arithmetic_domain::ArithmeticDomain;
 use crate::fri::Fri;
+use crate::prof_itr0;
+use crate::prof_start;
+use crate::prof_stop;
+use crate::profiler::TritonProfiler;
 use crate::proof::Claim;
 use crate::proof::Proof;
 use crate::proof_item::ProofItem;
@@ -901,10 +901,10 @@ pub(crate) mod triton_stark_tests {
     use rand::thread_rng;
     use rand::Rng;
     use rand_core::RngCore;
-    use triton_opcodes::instruction::AnInstruction;
-    use triton_opcodes::program::Program;
     use twenty_first::shared_math::other::random_elements;
 
+    use crate::instruction::AnInstruction;
+    use crate::program::Program;
     use crate::shared_tests::*;
     use crate::table::cascade_table;
     use crate::table::cascade_table::ExtCascadeTable;

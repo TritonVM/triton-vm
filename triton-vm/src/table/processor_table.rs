@@ -2,6 +2,10 @@ use std::cmp::max;
 use std::fmt::Display;
 use std::ops::Mul;
 
+use crate::instruction::AnInstruction::*;
+use crate::instruction::Instruction;
+use crate::instruction::ALL_INSTRUCTIONS;
+use crate::ord_n::Ord8;
 use itertools::Itertools;
 use ndarray::parallel::prelude::*;
 use ndarray::s;
@@ -13,10 +17,6 @@ use ndarray::Axis;
 use num_traits::One;
 use num_traits::Zero;
 use strum::EnumCount;
-use triton_opcodes::instruction::AnInstruction::*;
-use triton_opcodes::instruction::Instruction;
-use triton_opcodes::instruction::ALL_INSTRUCTIONS;
-use triton_opcodes::ord_n::Ord8;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::b_field_element::BFIELD_ONE;
 use twenty_first::shared_math::digest::DIGEST_LENGTH;
@@ -2989,9 +2989,9 @@ impl<'a> Display for ExtProcessorTraceRow<'a> {
 
 #[cfg(test)]
 mod constraint_polynomial_tests {
+    use crate::ord_n::Ord16;
+    use crate::program::Program;
     use ndarray::Array2;
-    use triton_opcodes::ord_n::Ord16;
-    use triton_opcodes::program::Program;
 
     use crate::error::InstructionError;
     use crate::error::InstructionError::DivisionByZero;
@@ -3520,8 +3520,8 @@ mod constraint_polynomial_tests {
 
 #[cfg(test)]
 pub mod tests {
+    use crate::instruction::Instruction;
     use strum::IntoEnumIterator;
-    use triton_opcodes::instruction::Instruction;
 
     use crate::table::master_table::AIR_TARGET_DEGREE;
 

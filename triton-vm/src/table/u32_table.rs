@@ -15,8 +15,7 @@ use twenty_first::shared_math::b_field_element::BFIELD_ONE;
 use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
-use triton_opcodes::instruction::Instruction;
-
+use crate::instruction::Instruction;
 use crate::table::challenges::ChallengeId::*;
 use crate::table::challenges::Challenges;
 use crate::table::constraint_circuit::ConstraintCircuitBuilder;

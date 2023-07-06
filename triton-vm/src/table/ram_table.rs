@@ -10,12 +10,12 @@ use ndarray::Axis;
 use num_traits::One;
 use num_traits::Zero;
 use strum::EnumCount;
-use triton_opcodes::instruction::Instruction;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::polynomial::Polynomial;
 use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
+use crate::instruction::Instruction;
 use crate::table::challenges::ChallengeId::*;
 use crate::table::challenges::Challenges;
 use crate::table::constraint_circuit::ConstraintCircuitBuilder;

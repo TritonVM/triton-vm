@@ -2,9 +2,9 @@ use criterion::criterion_group;
 use criterion::criterion_main;
 use criterion::BenchmarkId;
 use criterion::Criterion;
-use triton_opcodes::program::Program;
-use triton_profiler::triton_profiler::TritonProfiler;
 
+use triton_vm::profiler::TritonProfiler;
+use triton_vm::program::Program;
 use triton_vm::proof::Claim;
 use triton_vm::shared_tests::load_proof;
 use triton_vm::shared_tests::proof_file_exists;

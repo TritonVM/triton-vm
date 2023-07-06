@@ -6,13 +6,12 @@ use std::path::Path;
 
 use anyhow::anyhow;
 use anyhow::Result;
-use triton_opcodes::program::Program;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 
-use triton_profiler::prof_start;
-use triton_profiler::prof_stop;
-use triton_profiler::triton_profiler::TritonProfiler;
-
+use crate::prof_start;
+use crate::prof_stop;
+use crate::profiler::TritonProfiler;
+use crate::program::Program;
 use crate::proof::Claim;
 use crate::proof::Proof;
 use crate::stark::Stark;

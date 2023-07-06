@@ -10,11 +10,11 @@ use ndarray::ArrayView2;
 use ndarray::ArrayViewMut2;
 use ndarray::Axis;
 use strum::EnumCount;
-use triton_opcodes::instruction::Instruction;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
+use crate::instruction::Instruction;
 use crate::table::challenges::ChallengeId::*;
 use crate::table::challenges::Challenges;
 use crate::table::constraint_circuit::ConstraintCircuitBuilder;
@@ -388,8 +388,9 @@ impl Display for JumpStackTraceRow {
 
 #[cfg(test)]
 pub mod tests {
-    use super::*;
     use num_traits::Zero;
+
+    use super::*;
 
     pub fn constraints_evaluate_to_zero(
         master_base_trace_table: ArrayView2<BFieldElement>,
