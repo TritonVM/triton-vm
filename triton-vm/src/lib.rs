@@ -20,7 +20,6 @@ pub mod fri;
 pub mod instruction;
 pub mod instruction_shortcuts;
 pub mod op_stack;
-pub mod ord_n;
 pub mod parser;
 pub mod profiler;
 pub mod program;

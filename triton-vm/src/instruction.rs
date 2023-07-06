@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::fmt::Display;
+use std::result;
 use std::vec;
 
 use anyhow::anyhow;
@@ -10,16 +11,16 @@ use serde_derive::Deserialize;
 use serde_derive::Serialize;
 use strum::EnumCount;
 use strum::IntoEnumIterator;
-use strum_macros::EnumCount as EnumCountMacro;
+use strum_macros::EnumCount;
 use strum_macros::EnumIter;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::b_field_element::BFIELD_ZERO;
 
 use AnInstruction::*;
 
-use crate::ord_n::InstructionBit;
-use crate::ord_n::OpStackElement;
-use crate::ord_n::OpStackElement::*;
+use crate::instruction::InstructionBit::*;
+use crate::op_stack::OpStackElement;
+use crate::op_stack::OpStackElement::*;
 
 /// An `Instruction` has `call` addresses encoded as absolute integers.
 pub type Instruction = AnInstruction<BFieldElement>;
@@ -63,17 +64,7 @@ impl Display for LabelledInstruction {
 ///
 /// The type parameter `Dest` describes the type of addresses (absolute or labels).
 #[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    Hash,
-    EnumCountMacro,
-    EnumIter,
-    GetSize,
-    Serialize,
-    Deserialize,
+    Debug, Clone, Copy, PartialEq, Eq, Hash, EnumCount, EnumIter, GetSize, Serialize, Deserialize,
 )]
 pub enum AnInstruction<Dest: PartialEq + Default> {
     // OpStack manipulation
@@ -475,43 +466,67 @@ const fn all_instruction_names() -> [&'static str; Instruction::COUNT] {
     names
 }
 
-pub mod sample_programs {
-    pub const PUSH_PUSH_ADD_POP_S: &str = "
-        push 1
-        push 1
-        add
-        pop
-    ";
+/// Indicators for all the possible bits in an [`Instruction`](Instruction).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, EnumCount)]
+pub enum InstructionBit {
+    #[default]
+    IB0,
+    IB1,
+    IB2,
+    IB3,
+    IB4,
+    IB5,
+    IB6,
+    IB7,
+}
 
-    pub const EDGY_RAM_WRITES: &str = concat!();
+impl Display for InstructionBit {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let bit_index = usize::from(*self);
+        write!(f, "{bit_index}")
+    }
+}
 
-    pub const READ_WRITE_X3: &str = "
-        read_io
-        read_io
-        read_io
-        write_io
-        write_io
-        write_io
-    ";
+impl From<InstructionBit> for usize {
+    fn from(instruction_bit: InstructionBit) -> Self {
+        match instruction_bit {
+            IB0 => 0,
+            IB1 => 1,
+            IB2 => 2,
+            IB3 => 3,
+            IB4 => 4,
+            IB5 => 5,
+            IB6 => 6,
+            IB7 => 7,
+        }
+    }
+}
 
-    pub const READ_X3_WRITE_X14: &str = "
-        read_io read_io read_io
-        dup 0 dup 2 dup 4
-        dup 0 dup 2 dup 4
-        dup 0 dup 2 dup 4
-        dup 0 dup2
-        write_io write_io write_io write_io
-        write_io write_io write_io write_io
-        write_io write_io write_io write_io
-        write_io write_io
-    ";
+impl TryFrom<usize> for InstructionBit {
+    type Error = String;
 
-    pub const HASH_HASH_HASH_HALT: &str = "
-        hash
-        hash
-        hash
-        halt
-    ";
+    fn try_from(bit_index: usize) -> result::Result<Self, Self::Error> {
+        match bit_index {
+            0 => Ok(IB0),
+            1 => Ok(IB1),
+            2 => Ok(IB2),
+            3 => Ok(IB3),
+            4 => Ok(IB4),
+            5 => Ok(IB5),
+            6 => Ok(IB6),
+            7 => Ok(IB7),
+            _ => Err(format!(
+                "Index {bit_index} is out of range for `InstructionBit`."
+            )),
+        }
+    }
+}
+
+impl From<InstructionBit> for BFieldElement {
+    fn from(instruction_bit: InstructionBit) -> Self {
+        let instruction_bit = usize::from(instruction_bit) as u64;
+        instruction_bit.into()
+    }
 }
 
 #[cfg(test)]
@@ -526,9 +541,9 @@ mod instruction_tests {
     use crate::instruction::all_instruction_names;
     use crate::instruction::all_instructions_without_args;
     use crate::instruction::Instruction;
+    use crate::instruction::InstructionBit;
     use crate::instruction::ALL_INSTRUCTIONS;
-    use crate::ord_n::InstructionBit;
-    use crate::ord_n::OpStackElement::*;
+    use crate::op_stack::OpStackElement::*;
     use crate::program::Program;
 
     use super::AnInstruction;
@@ -630,7 +645,7 @@ mod instruction_tests {
 
     #[test]
     fn ib_registers_are_binary_test() {
-        use InstructionBit::*;
+        use crate::instruction::InstructionBit::*;
 
         for instruction in ALL_INSTRUCTIONS {
             let all_ibs: [InstructionBit; InstructionBit::COUNT] =

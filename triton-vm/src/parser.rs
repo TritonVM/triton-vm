@@ -26,8 +26,8 @@ use crate::instruction::AnInstruction;
 use crate::instruction::AnInstruction::*;
 use crate::instruction::LabelledInstruction;
 use crate::instruction::ALL_INSTRUCTION_NAMES;
-use crate::ord_n::OpStackElement;
-use crate::ord_n::OpStackElement::*;
+use crate::op_stack::OpStackElement;
+use crate::op_stack::OpStackElement::*;
 
 #[derive(Debug, PartialEq)]
 pub struct ParseError<'a> {

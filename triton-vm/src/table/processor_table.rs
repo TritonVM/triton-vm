@@ -4,8 +4,8 @@ use std::ops::Mul;
 
 use crate::instruction::AnInstruction::*;
 use crate::instruction::Instruction;
+use crate::instruction::InstructionBit;
 use crate::instruction::ALL_INSTRUCTIONS;
-use crate::ord_n::InstructionBit;
 use itertools::Itertools;
 use ndarray::parallel::prelude::*;
 use ndarray::s;
@@ -2989,7 +2989,7 @@ impl<'a> Display for ExtProcessorTraceRow<'a> {
 
 #[cfg(test)]
 mod constraint_polynomial_tests {
-    use crate::ord_n::OpStackElement;
+    use crate::op_stack::OpStackElement;
     use crate::program::Program;
     use ndarray::Array2;
 

@@ -1,29 +1,41 @@
+use std::fmt::Display;
+use std::result;
+
 use anyhow::anyhow;
 use anyhow::Result;
+use get_size::GetSize;
 use num_traits::Zero;
+use serde_derive::Deserialize;
+use serde_derive::Serialize;
+use strum::EnumCount;
+use strum_macros::EnumCount;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::digest::Digest;
 use twenty_first::shared_math::tip5::DIGEST_LENGTH;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
-use crate::ord_n::OpStackElement;
-use crate::ord_n::OpStackElement::*;
+use crate::op_stack::OpStackElement::*;
 
 use super::error::InstructionError::*;
 
+/// The operational stack of Triton VM.
+/// It always contains at least [`OpStackElement::COUNT`] elements. Initially, the bottom-most
+/// [`DIGEST_LENGTH`] elements equal the digest of the program being executed.
+/// The remaining elements are initially 0.
+///
+/// The OpStack is represented as one contiguous piece of memory, and Triton VM uses it as such.
+/// For reasons of arithmetization, however, there is a distinction between the op-stack registers
+/// and the op-stack underflow memory. The op-stack registers are the first
+/// [`OpStackElement::COUNT`] elements of the op-stack, and the op-stack underflow memory is the
+/// remaining elements.
 #[derive(Debug, Clone)]
 pub struct OpStack {
     pub stack: Vec<BFieldElement>,
 }
 
-/// The number of op-stack registers, and the internal index at which the op-stack underflow memory
-/// has index 0. This offset is used to adjust for the fact that op-stack registers and the
-/// op-stack underflow memory are stored in the same vector.
-pub const NUM_OP_STACK_REGISTERS: usize = 16;
-
 impl OpStack {
     pub fn new(program_digest: Digest) -> Self {
-        let mut stack = vec![BFieldElement::zero(); NUM_OP_STACK_REGISTERS];
+        let mut stack = vec![BFieldElement::zero(); OpStackElement::COUNT];
 
         let reverse_digest = program_digest.reversed().values();
         stack[..DIGEST_LENGTH].copy_from_slice(&reverse_digest);
@@ -94,9 +106,9 @@ impl OpStack {
     }
 
     /// `true` if and only if the op-stack contains fewer elements than the number of
-    /// op-stack registers, _i.e._, [`NUM_OP_STACK_REGISTERS`].
+    /// op-stack registers, _i.e._, [`OpStackElement::COUNT`].
     pub(crate) fn is_too_shallow(&self) -> bool {
-        self.stack.len() < NUM_OP_STACK_REGISTERS
+        self.stack.len() < OpStackElement::COUNT
     }
 
     /// The address of the next free address of the op-stack.
@@ -109,11 +121,149 @@ impl OpStack {
     /// is empty.
     pub(crate) fn op_stack_value(&self) -> BFieldElement {
         let top_of_stack_index = self.stack.len() - 1;
-        if top_of_stack_index < NUM_OP_STACK_REGISTERS {
+        if top_of_stack_index < OpStackElement::COUNT {
             return BFieldElement::zero();
         }
-        let op_stack_value_index = top_of_stack_index - NUM_OP_STACK_REGISTERS;
+        let op_stack_value_index = top_of_stack_index - OpStackElement::COUNT;
         self.stack[op_stack_value_index]
+    }
+}
+
+/// Represents the [`OpStack`] registers directly accessible by Triton VM.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, GetSize, Serialize, Deserialize, EnumCount,
+)]
+pub enum OpStackElement {
+    #[default]
+    ST0,
+    ST1,
+    ST2,
+    ST3,
+    ST4,
+    ST5,
+    ST6,
+    ST7,
+    ST8,
+    ST9,
+    ST10,
+    ST11,
+    ST12,
+    ST13,
+    ST14,
+    ST15,
+}
+
+impl Display for OpStackElement {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let stack_index = u32::from(self);
+        write!(f, "{stack_index}")
+    }
+}
+
+impl From<OpStackElement> for u32 {
+    fn from(stack_element: OpStackElement) -> Self {
+        match stack_element {
+            ST0 => 0,
+            ST1 => 1,
+            ST2 => 2,
+            ST3 => 3,
+            ST4 => 4,
+            ST5 => 5,
+            ST6 => 6,
+            ST7 => 7,
+            ST8 => 8,
+            ST9 => 9,
+            ST10 => 10,
+            ST11 => 11,
+            ST12 => 12,
+            ST13 => 13,
+            ST14 => 14,
+            ST15 => 15,
+        }
+    }
+}
+
+impl From<&OpStackElement> for u32 {
+    fn from(stack_element: &OpStackElement) -> Self {
+        (*stack_element).into()
+    }
+}
+
+impl TryFrom<u32> for OpStackElement {
+    type Error = String;
+
+    fn try_from(stack_index: u32) -> result::Result<Self, Self::Error> {
+        match stack_index {
+            0 => Ok(ST0),
+            1 => Ok(ST1),
+            2 => Ok(ST2),
+            3 => Ok(ST3),
+            4 => Ok(ST4),
+            5 => Ok(ST5),
+            6 => Ok(ST6),
+            7 => Ok(ST7),
+            8 => Ok(ST8),
+            9 => Ok(ST9),
+            10 => Ok(ST10),
+            11 => Ok(ST11),
+            12 => Ok(ST12),
+            13 => Ok(ST13),
+            14 => Ok(ST14),
+            15 => Ok(ST15),
+            _ => Err(format!(
+                "Index {stack_index} is out of range for `OpStackElement`."
+            )),
+        }
+    }
+}
+
+impl From<OpStackElement> for u64 {
+    fn from(stack_element: OpStackElement) -> Self {
+        u32::from(stack_element).into()
+    }
+}
+
+impl TryFrom<u64> for OpStackElement {
+    type Error = String;
+
+    fn try_from(stack_index: u64) -> result::Result<Self, Self::Error> {
+        let stack_index = u32::try_from(stack_index)
+            .map_err(|_| format!("Index {stack_index} is out of range for `OpStackElement`."))?;
+        stack_index.try_into()
+    }
+}
+
+impl From<OpStackElement> for usize {
+    fn from(stack_element: OpStackElement) -> Self {
+        u32::from(stack_element) as usize
+    }
+}
+
+impl From<&OpStackElement> for usize {
+    fn from(stack_element: &OpStackElement) -> Self {
+        (*stack_element).into()
+    }
+}
+
+impl TryFrom<usize> for OpStackElement {
+    type Error = String;
+
+    fn try_from(stack_index: usize) -> result::Result<Self, Self::Error> {
+        let stack_index =
+            u32::try_from(stack_index).map_err(|_| "Cannot convert usize to u32.".to_string())?;
+        stack_index.try_into()
+    }
+}
+
+impl From<OpStackElement> for BFieldElement {
+    fn from(stack_element: OpStackElement) -> Self {
+        u32::from(stack_element).into()
+    }
+}
+
+impl From<&OpStackElement> for BFieldElement {
+    fn from(stack_element: &OpStackElement) -> Self {
+        (*stack_element).into()
     }
 }
 
@@ -122,7 +272,7 @@ mod op_stack_test {
     use twenty_first::shared_math::b_field_element::BFieldElement;
 
     use crate::op_stack::OpStack;
-    use crate::ord_n::OpStackElement;
+    use crate::op_stack::OpStackElement;
 
     #[test]
     fn sanity_test() {

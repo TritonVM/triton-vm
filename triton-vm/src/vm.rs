@@ -16,6 +16,7 @@ use ndarray::Array2;
 use ndarray::Axis;
 use num_traits::One;
 use num_traits::Zero;
+use strum::EnumCount;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::b_field_element::BFIELD_ZERO;
 use twenty_first::shared_math::digest::Digest;
@@ -32,10 +33,8 @@ use crate::error::InstructionError::*;
 use crate::instruction::AnInstruction::*;
 use crate::instruction::Instruction;
 use crate::op_stack::OpStack;
-use crate::op_stack::NUM_OP_STACK_REGISTERS;
-use crate::ord_n::InstructionBit;
-use crate::ord_n::OpStackElement;
-use crate::ord_n::OpStackElement::*;
+use crate::op_stack::OpStackElement;
+use crate::op_stack::OpStackElement::*;
 use crate::program::Program;
 use crate::stark::StarkHasher;
 use crate::table::hash_table;
@@ -156,7 +155,7 @@ impl<'pgm> VMState<'pgm> {
 
         if Self::instruction_shrinks_stack(current_instruction) {
             let op_stack_pointer = self.op_stack.op_stack_pointer();
-            let maximum_op_stack_pointer = BFieldElement::new(NUM_OP_STACK_REGISTERS as u64);
+            let maximum_op_stack_pointer = BFieldElement::new(OpStackElement::COUNT as u64);
             let op_stack_pointer_minus_maximum = op_stack_pointer - maximum_op_stack_pointer;
             hvs[0] = op_stack_pointer_minus_maximum.inverse_or_zero();
         }
@@ -672,6 +671,7 @@ impl<'pgm> VMState<'pgm> {
     }
 
     pub fn to_processor_row(&self) -> Array1<BFieldElement> {
+        use crate::instruction::InstructionBit;
         use ProcessorBaseTableColumn::*;
         let mut processor_row = Array1::zeros(processor_table::BASE_WIDTH);
 
@@ -806,7 +806,7 @@ impl<'pgm> VMState<'pgm> {
 
     fn assert_vector(&self) -> bool {
         for index in 0..DIGEST_LENGTH {
-            // Safe as long as 2 * DIGEST_LEN <= NUM_OP_STACK_REGISTERS
+            // Safe as long as 2 * DIGEST_LEN <= OpStackElement::COUNT
             let lhs = index.try_into().unwrap();
             let rhs = (index + DIGEST_LENGTH).try_into().unwrap();
             if self.op_stack.peek_at(lhs) != self.op_stack.peek_at(rhs) {
@@ -1259,7 +1259,6 @@ pub mod triton_vm_tests {
     use twenty_first::util_types::merkle_tree_maker::MerkleTreeMaker;
 
     use crate::error::InstructionError;
-    use crate::op_stack::NUM_OP_STACK_REGISTERS;
     use crate::shared_tests::SourceCodeAndInput;
     use crate::shared_tests::FIBONACCI_SEQUENCE;
     use crate::shared_tests::VERIFY_SUDOKU;
@@ -2149,7 +2148,7 @@ pub mod triton_vm_tests {
     #[allow(clippy::assertions_on_constants)]
     const fn op_stack_is_big_enough_test() {
         assert!(
-            2 * DIGEST_LENGTH <= NUM_OP_STACK_REGISTERS,
+            2 * DIGEST_LENGTH <= OpStackElement::COUNT,
             "The OpStack must be large enough to hold two digests."
         );
     }
