@@ -41,6 +41,10 @@ pub fn call(label: String) -> LabelledInstruction {
     Instruction(Call(label))
 }
 
+pub fn label(label: String) -> LabelledInstruction {
+    Label(label)
+}
+
 pub fn return_() -> LabelledInstruction {
     Instruction(Return)
 }
@@ -173,6 +177,7 @@ pub fn write_io() -> LabelledInstruction {
 mod test {
     use crate::op_stack::OpStackElement::ST0;
     use crate::op_stack::OpStackElement::ST1;
+    use itertools::Itertools;
 
     use super::*;
 
@@ -222,5 +227,17 @@ mod test {
     #[should_panic(expected = "cannot be used")]
     fn swap_panics_on_zero() {
         swap(0);
+    }
+
+    #[test]
+    fn print_source_code_constructed_from_shortcuts() {
+        let initialization_code = vec![push(1), call("my_label".to_string()), halt()];
+        let dead_code = vec![pop(), divine(), dup(0), swap(1), nop(), skiz()];
+        let termination_code = vec![label("my_label".to_string()), assert_(), return_()];
+        let source_code = [initialization_code, dead_code, termination_code]
+            .concat()
+            .iter()
+            .join("\n");
+        println!("{source_code}");
     }
 }
