@@ -1,5 +1,3 @@
-use twenty_first::shared_math::b_field_element::BFieldElement;
-
 use super::instruction::AnInstruction::*;
 use super::instruction::LabelledInstruction;
 use super::instruction::LabelledInstruction::*;
@@ -9,24 +7,24 @@ pub fn pop() -> LabelledInstruction {
     Instruction(Pop)
 }
 
-pub fn push(value: u64) -> LabelledInstruction {
-    Instruction(Push(BFieldElement::new(value)))
+pub fn push(field_element: u64) -> LabelledInstruction {
+    Instruction(Push(field_element.into()))
 }
 
 pub fn divine() -> LabelledInstruction {
     Instruction(Divine)
 }
 
-pub fn dup(st: u64) -> LabelledInstruction {
-    Instruction(Dup(st.try_into().unwrap()))
+pub fn dup(stack_index: u64) -> LabelledInstruction {
+    Instruction(Dup(stack_index.try_into().unwrap()))
 }
 
-pub fn swap(st: u64) -> LabelledInstruction {
+pub fn swap(stack_index: u64) -> LabelledInstruction {
     assert_ne!(
-        0, st,
-        "Instruction `swap` cannot be used on stack register 0."
+        0, stack_index,
+        "Instruction `swap` cannot be used on stack element 0."
     );
-    Instruction(Swap(st.try_into().unwrap()))
+    Instruction(Swap(stack_index.try_into().unwrap()))
 }
 
 // Control flow
@@ -169,4 +167,60 @@ pub fn read_io() -> LabelledInstruction {
 
 pub fn write_io() -> LabelledInstruction {
     Instruction(WriteIo)
+}
+
+#[cfg(test)]
+mod test {
+    use crate::op_stack::OpStackElement::ST0;
+    use crate::op_stack::OpStackElement::ST1;
+
+    use super::*;
+
+    #[test]
+    fn shortcuts_correspond_to_expected_instructions() {
+        let label = "label".to_string();
+        assert_eq!(pop(), Instruction(Pop));
+        assert_eq!(push(7), Instruction(Push(7_u64.into())));
+        assert_eq!(divine(), Instruction(Divine));
+        assert_eq!(dup(0), Instruction(Dup(ST0)));
+        assert_eq!(swap(1), Instruction(Swap(ST1)));
+        assert_eq!(nop(), Instruction(Nop));
+        assert_eq!(skiz(), Instruction(Skiz));
+        assert_eq!(call(label.clone()), Instruction(Call(label)));
+        assert_eq!(return_(), Instruction(Return));
+        assert_eq!(recurse(), Instruction(Recurse));
+        assert_eq!(assert_(), Instruction(Assert));
+        assert_eq!(halt(), Instruction(Halt));
+        assert_eq!(read_mem(), Instruction(ReadMem));
+        assert_eq!(write_mem(), Instruction(WriteMem));
+        assert_eq!(hash(), Instruction(Hash));
+        assert_eq!(divine_sibling(), Instruction(DivineSibling));
+        assert_eq!(assert_vector(), Instruction(AssertVector));
+        assert_eq!(absorb_init(), Instruction(AbsorbInit));
+        assert_eq!(absorb(), Instruction(Absorb));
+        assert_eq!(squeeze(), Instruction(Squeeze));
+        assert_eq!(add(), Instruction(Add));
+        assert_eq!(mul(), Instruction(Mul));
+        assert_eq!(invert(), Instruction(Invert));
+        assert_eq!(eq(), Instruction(Eq));
+        assert_eq!(split(), Instruction(Split));
+        assert_eq!(lt(), Instruction(Lt));
+        assert_eq!(and(), Instruction(And));
+        assert_eq!(xor(), Instruction(Xor));
+        assert_eq!(log_2_floor(), Instruction(Log2Floor));
+        assert_eq!(pow(), Instruction(Pow));
+        assert_eq!(div(), Instruction(Div));
+        assert_eq!(xxadd(), Instruction(XxAdd));
+        assert_eq!(xxmul(), Instruction(XxMul));
+        assert_eq!(xinvert(), Instruction(XInvert));
+        assert_eq!(xbmul(), Instruction(XbMul));
+        assert_eq!(read_io(), Instruction(ReadIo));
+        assert_eq!(write_io(), Instruction(WriteIo));
+    }
+
+    #[test]
+    #[should_panic(expected = "cannot be used")]
+    fn swap_panics_on_zero() {
+        swap(0);
+    }
 }

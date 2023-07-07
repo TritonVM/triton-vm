@@ -31,16 +31,12 @@ fn verify_halt(criterion: &mut Criterion) {
     let mut maybe_cycle_count = None;
 
     let proof = if proof_file_exists(filename) {
-        load_proof(filename)
-            .map_err(|e| panic!("Could not load proof from disk: {e:?}"))
-            .unwrap()
+        load_proof(filename).unwrap()
     } else {
         let (aet, _) = simulate(&program, vec![], vec![]).unwrap();
         maybe_cycle_count = Some(aet.processor_trace.nrows());
         let proof = Stark::prove(&parameters, &claim, &aet, &mut None);
-        save_proof(filename, proof.clone())
-            .map_err(|e| panic!("Problem! could not save proof to disk: {e:?}"))
-            .unwrap();
+        save_proof(filename, proof.clone()).unwrap();
         proof
     };
 
@@ -52,7 +48,7 @@ fn verify_halt(criterion: &mut Criterion) {
 
     let mut profiler = profiler.unwrap();
     profiler.finish();
-    let padded_height = proof.padded_height();
+    let padded_height = proof.padded_height().unwrap();
     let max_degree = Stark::derive_max_degree(padded_height, parameters.num_trace_randomizers);
     let fri = Stark::derive_fri(&parameters, max_degree);
     let report = profiler.report(

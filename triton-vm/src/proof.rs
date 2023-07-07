@@ -1,3 +1,6 @@
+use anyhow::anyhow;
+use anyhow::bail;
+use anyhow::Result;
 use get_size::GetSize;
 use serde::Deserialize;
 use serde::Serialize;
@@ -24,23 +27,21 @@ impl GetSize for Proof {
 }
 
 impl Proof {
-    /// Given the parameters used to generate this proof,
-    /// compute the height of the trace used during proof generation.
+    /// Get the height of the trace used during proof generation.
     /// This is an upper bound on the length of the computation this proof is for.
     /// It it one of the main contributing factors to the length of the FRI domain.
-    pub fn padded_height(&self) -> usize {
-        let proof_stream = ProofStream::<stark::StarkHasher>::try_from(self).unwrap();
-        let mut log_2_padded_height = None;
+    pub fn padded_height(&self) -> Result<usize> {
+        let proof_stream = ProofStream::<stark::StarkHasher>::try_from(self)?;
+        let mut padded_height = None;
         for item in proof_stream.items {
-            if let Ok(found_log_2_padded_height) = item.as_log2_padded_height() {
-                assert!(
-                    log_2_padded_height.is_none(),
-                    "The proof must contain exactly one log_2_padded_height."
-                );
-                log_2_padded_height = Some(1 << found_log_2_padded_height);
+            if let Ok(log_2_padded_height) = item.as_log2_padded_height() {
+                match padded_height.is_some() {
+                    true => bail!("The proof must contain at most one log_2_padded_height."),
+                    false => padded_height = Some(1 << log_2_padded_height),
+                }
             }
         }
-        log_2_padded_height.expect("The proof must contain a log_2_padded_height.")
+        padded_height.ok_or(anyhow!("The proof must contain a log_2_padded_height."))
     }
 }
 
@@ -77,11 +78,13 @@ impl Claim {
 
 #[cfg(test)]
 pub mod test_claim_proof {
-
     use rand::random;
     use twenty_first::shared_math::b_field_element::BFieldElement;
     use twenty_first::shared_math::bfield_codec::BFieldCodec;
     use twenty_first::shared_math::other::random_elements;
+
+    use crate::proof_item::ProofItem;
+    use crate::stark::StarkHasher;
 
     use super::*;
 
@@ -110,5 +113,25 @@ pub mod test_claim_proof {
         assert_eq!(claim.program_digest, decoded.program_digest);
         assert_eq!(claim.input, decoded.input);
         assert_eq!(claim.output, decoded.output);
+    }
+
+    #[test]
+    fn proof_with_no_log_2_padded_height_gives_err() {
+        let mut proof_stream = ProofStream::<StarkHasher>::new();
+        proof_stream.enqueue(&ProofItem::MerkleRoot(random()));
+        let proof: Proof = proof_stream.into();
+        let maybe_padded_height = proof.padded_height();
+        assert!(maybe_padded_height.is_err());
+    }
+
+    #[test]
+    fn proof_with_multiple_log_2_padded_height_gives_err() {
+        let mut proof_stream = ProofStream::<StarkHasher>::new();
+        proof_stream.enqueue(&ProofItem::Log2PaddedHeight(8));
+        proof_stream.enqueue(&ProofItem::MerkleRoot(random()));
+        proof_stream.enqueue(&ProofItem::Log2PaddedHeight(7));
+        let proof: Proof = proof_stream.into();
+        let maybe_padded_height = proof.padded_height();
+        assert!(maybe_padded_height.is_err());
     }
 }

@@ -573,9 +573,7 @@ mod triton_xfri_tests {
         // reset sponge state to start verification
         proof_stream.sponge_state = H::init();
         let verdict = fri.verify(&mut proof_stream, &mut None);
-        if let Err(e) = verdict {
-            panic!("Found error: {e}");
-        }
+        verdict.unwrap();
     }
 
     #[test]
@@ -600,9 +598,7 @@ mod triton_xfri_tests {
         // reset sponge state to start verification
         proof_stream.sponge_state = H::init();
         let verdict = fri.verify(&mut proof_stream, &mut None);
-        if let Err(e) = verdict {
-            panic!("Found error: {e}");
-        }
+        verdict.unwrap();
     }
 
     #[test]
@@ -727,8 +723,6 @@ mod triton_xfri_tests {
         }
 
         let verdict = fri.verify(&mut verifier_proof_stream, &mut None);
-        if let Err(e) = verdict {
-            panic!("Found error: {e}");
-        }
+        verdict.unwrap();
     }
 }
