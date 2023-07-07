@@ -522,19 +522,15 @@ impl TryFrom<usize> for InstructionBit {
     }
 }
 
-impl From<InstructionBit> for BFieldElement {
-    fn from(instruction_bit: InstructionBit) -> Self {
-        let instruction_bit = usize::from(instruction_bit) as u64;
-        instruction_bit.into()
-    }
-}
-
 #[cfg(test)]
 mod instruction_tests {
+    use std::collections::HashMap;
+
     use itertools::Itertools;
     use num_traits::One;
     use num_traits::Zero;
-    use std::collections::HashMap;
+    use rand::thread_rng;
+    use rand::Rng;
     use strum::EnumCount;
     use strum::IntoEnumIterator;
     use twenty_first::shared_math::b_field_element::BFieldElement;
@@ -726,5 +722,12 @@ mod instruction_tests {
             let recovered_instruction_bit = InstructionBit::try_from(bit_index).unwrap();
             assert_eq!(instruction_bit, recovered_instruction_bit);
         }
+    }
+
+    #[test]
+    fn instruction_bit_conversion_fails_for_invalid_bit_index() {
+        let invalid_bit_index = thread_rng().gen_range(InstructionBit::COUNT..=usize::MAX);
+        let maybe_instruction_bit = InstructionBit::try_from(invalid_bit_index);
+        assert!(maybe_instruction_bit.is_err());
     }
 }
