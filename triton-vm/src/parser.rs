@@ -94,9 +94,10 @@ pub fn to_labelled(instructions: &[ParsedInstruction]) -> Vec<LabelledInstructio
 /// once with the `context()` message.
 pub fn pretty_print_error(s: &str, mut e: VerboseError<&str>) -> String {
     let (_root_s, root_error) = e.errors[0].clone();
-    if matches!(root_error, VerboseErrorKind::Nom(ErrorKind::Fail))
-        || matches!(root_error, VerboseErrorKind::Nom(ErrorKind::Eof))
-    {
+    if matches!(
+        root_error,
+        VerboseErrorKind::Nom(ErrorKind::Fail) | VerboseErrorKind::Nom(ErrorKind::Eof)
+    ) {
         e.errors.remove(0);
     }
     convert_error(s, e)
@@ -175,7 +176,7 @@ fn scan_missing_duplicate_labels<'a>(
 /// error type, but we want `nom::error::VerboseError` as it allows `context()`.
 type ParseResult<'input, Out> = IResult<&'input str, Out, VerboseError<&'input str>>;
 
-fn program(s: &str) -> ParseResult<Vec<ParsedInstruction>> {
+pub fn program(s: &str) -> ParseResult<Vec<ParsedInstruction>> {
     let (s, _) = comment_or_whitespace0(s)?;
     let (s, instructions) = many0(alt((label, labelled_instruction)))(s)?;
     let (s, _) = context("expecting label, instruction or eof", eof)(s)?;
@@ -190,6 +191,7 @@ fn labelled_instruction(s_instr: &str) -> ParseResult<ParsedInstruction> {
 
 fn label(label_s: &str) -> ParseResult<ParsedInstruction> {
     let (s, addr) = label_addr(label_s)?;
+    let (s, _) = token0("")(s)?; // whitespace between label and ':' is allowed
     let (s, _) = token0(":")(s)?; // don't require space after ':'
 
     // Checking if `<label>:` is an instruction must happen after parsing `:`, since otherwise
@@ -494,6 +496,35 @@ fn token1<'a>(token: &'a str) -> impl Fn(&'a str) -> ParseResult<()> {
         let (s, _) = comment_or_whitespace1(s)?;
         Ok((s, ()))
     }
+}
+
+/// Parse [Triton assembly][tasm] into a list of labelled
+/// [`Instruction`](crate::instruction::LabelledInstruction)s
+///
+/// The labels for instruction `call`, if any, are also parsed.
+/// Instruction `call` can refer to a label defined later in the program, _i.e.,_ labels
+/// are not checked for existence or uniqueness by this parser.
+///
+/// [tasm]: https://triton-vm.org/spec/instructions.html
+#[macro_export]
+macro_rules! triton_asm {
+    ($($source_code:tt)*) => {{
+        let source_code = stringify!($($source_code)*);
+        let (_, instructions) = $crate::parser::program(source_code).unwrap();
+        $crate::parser::to_labelled(&instructions)
+    }};
+}
+
+/// Parse an entire program written in [Triton assembly][tasm].
+/// The resulting [`Program`](crate::program::Program) can be [run](crate::vm::run).
+///
+/// [tasm]: https://triton-vm.org/spec/instructions.html
+#[macro_export]
+macro_rules! triton_program {
+    ($($source_code:tt)*) => {{
+        let labelled_instructions = $crate::triton_asm!($($source_code)*);
+        $crate::program::Program::new(&labelled_instructions)
+    }};
 }
 
 #[cfg(test)]
@@ -933,5 +964,67 @@ pub mod parser_tests {
             ]),
             message: "labels can start with an underscore",
         });
+    }
+
+    #[test]
+    fn triton_asm_macro() {
+        let instructions = triton_asm!(write_io push 17 call which_label lt swap 3);
+        assert_eq!(Instruction(WriteIo), instructions[0]);
+        assert_eq!(Instruction(Push(17_u64.into())), instructions[1]);
+        assert_eq!(
+            Instruction(Call("which_label".to_string())),
+            instructions[2]
+        );
+        assert_eq!(Instruction(Lt), instructions[3]);
+        assert_eq!(Instruction(Swap(ST3)), instructions[4]);
+    }
+
+    #[test]
+    fn triton_asm_macro_with_a_single_return() {
+        let instructions = triton_asm!(return);
+        assert_eq!(Instruction(Return), instructions[0]);
+    }
+
+    #[test]
+    fn triton_asm_macro_with_a_single_assert() {
+        let instructions = triton_asm!(assert);
+        assert_eq!(Instruction(Assert), instructions[0]);
+    }
+
+    #[test]
+    fn triton_asm_macro_with_only_assert_and_return() {
+        let instructions = triton_asm!(assert return);
+        assert_eq!(Instruction(Assert), instructions[0]);
+        assert_eq!(Instruction(Return), instructions[1]);
+    }
+
+    #[test]
+    fn triton_program_macro() {
+        let program = triton_program!(
+            // main entry point
+            call routine_1
+            call routine_2 // inline comment
+            halt
+
+            // single line content regarding subroutine 1
+            routine_1:
+                /*
+                 * multi-line comment
+                 */
+                call routine_3
+                return
+
+            // subroutine 2 starts here
+            routine_2:
+                push 18 push 7 add
+                push 25 eq assert
+                return
+
+            routine_3:
+            alternative_label:
+                nop nop
+                return
+        );
+        println!("{program}");
     }
 }
