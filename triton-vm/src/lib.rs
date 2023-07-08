@@ -19,7 +19,6 @@ pub mod arithmetic_domain;
 pub mod error;
 pub mod fri;
 pub mod instruction;
-pub mod instruction_shortcuts;
 pub mod op_stack;
 pub mod parser;
 pub mod profiler;
