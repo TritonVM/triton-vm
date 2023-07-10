@@ -18,6 +18,9 @@ use crate::op_stack::OpStackElement::*;
 
 use super::error::InstructionError::*;
 
+/// The number of registers dedicated to the top of the operational stack.
+pub const NUM_OP_STACK_REGISTERS: usize = OpStackElement::COUNT;
+
 /// The operational stack of Triton VM.
 /// It always contains at least [`OpStackElement::COUNT`] elements. Initially, the bottom-most
 /// [`DIGEST_LENGTH`] elements equal the digest of the program being executed.
