@@ -337,7 +337,7 @@ mod test {
         for _ in 0..50 {
             let program_len = rng.gen_range(20..420);
             let source_code = program_gen(program_len);
-            let program = Program::from_code(&source_code).unwrap();
+            let program = triton_program!({ source_code });
 
             let encoded = program.encode();
             let decoded = *Program::decode(&encoded).unwrap();
@@ -406,5 +406,30 @@ mod test {
     fn empty_program_is_empty() {
         let program = triton_program!();
         assert!(program.is_empty());
+    }
+
+    #[test]
+    fn test_creating_program_from_code() {
+        let element_3 = thread_rng().gen_range(0_u64..BFieldElement::P);
+        let element_2 = 1337_usize;
+        let element_1 = "17";
+        let element_0 = BFieldElement::new(0);
+        let instruction_push = Instruction::Push(42_u64.into());
+        let dup_arg = 1;
+        let label = "my_label".to_string();
+
+        let source_code = format!(
+            "push {element_3} push {element_2} push {element_1} push {element_0}
+             call {label} halt
+             {label}:
+                {instruction_push}
+                dup {dup_arg}
+                skiz
+                recurse
+                return"
+        );
+        let program_from_code = Program::from_code(&source_code).unwrap();
+        let program_from_macro = triton_program!({ source_code });
+        assert_eq!(program_from_code, program_from_macro);
     }
 }

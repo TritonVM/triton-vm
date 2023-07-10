@@ -2,6 +2,8 @@
 //! of programs written in Triton assembly. The proof system is a zk-STARK, which is a
 //! state-of-the-art ZKPS.
 
+#![recursion_limit = "4096"]
+
 use anyhow::bail;
 use anyhow::Result;
 pub use twenty_first::shared_math::b_field_element::BFieldElement;
@@ -31,6 +33,70 @@ mod shared_tests;
 pub mod stark;
 pub mod table;
 pub mod vm;
+
+#[macro_use]
+pub mod macros {
+    /// Parse an entire program written in [Triton assembly][tasm].
+    /// The resulting [`Program`] can be [run](Program::run).
+    ///
+    /// [tasm]: https://triton-vm.org/spec/instructions.html
+    #[macro_export]
+    macro_rules! triton_program {
+        ($($source_code:tt)*) => {{
+            let labelled_instructions = $crate::triton_asm!($($source_code)*);
+            $crate::program::Program::new(&labelled_instructions)
+        }};
+    }
+
+    /// Parse [Triton assembly][tasm] into a list of labelled
+    /// [`Instruction`](instruction::LabelledInstruction)s
+    ///
+    /// The labels for instruction `call`, if any, are also parsed. Instruction `call` can refer to
+    /// a label defined later in the program, _i.e.,_ labels are not checked for existence or
+    /// uniqueness by this parser.
+    ///
+    /// [tasm]: https://triton-vm.org/spec/instructions.html
+    #[macro_export]
+    macro_rules! triton_asm {
+        ($($source_code:tt)*) => {{
+            let source_code = $crate::triton_asm_format!("",; $($source_code)*);
+            let (_, instructions) = $crate::parser::program(&source_code).unwrap();
+            $crate::parser::to_labelled(&instructions)
+        }};
+    }
+
+    /// A `format_args!`-like expansion that allows interpolation of Triton assembly instructions
+    /// in an invocation of the [`triton_asm!`](triton_asm) and [`triton_program!`](triton_program)
+    /// macros.
+    ///
+    /// [Documentation to `format_args!` on rust-lang.org][format_args].
+    ///
+    /// [format_args]: https://doc.rust-lang.org/std/macro.format_args.html
+    #[macro_export]
+    macro_rules! triton_asm_format {
+        ($fmt:expr, $($args:expr,)*; ) => {
+            format_args!($fmt $(,$args)*).to_string()
+        };
+        ($fmt:expr, $($args:expr,)*; $instr:ident: $($tail:tt)*) => {
+            $crate::triton_asm_format!(
+                concat!($fmt, " ", stringify!($instr:), " "), $($args,)*; $($tail)*
+            )
+        };
+        ($fmt:expr, $($args:expr,)*; $instr:ident $($tail:tt)*) => {
+            $crate::triton_asm_format!(
+                concat!($fmt, " ", stringify!($instr), " "), $($args,)*; $($tail)*
+            )
+        };
+        ($fmt:expr, $($args:expr,)*; $arg:literal $($tail:tt)*) => {
+            $crate::triton_asm_format!(
+                concat!($fmt, " ", stringify!($arg), " "), $($args,)*; $($tail)*
+            )
+        };
+        ($fmt:expr, $($args:expr,)*; {$e:expr} $($tail:tt)*) => {
+            $crate::triton_asm_format!(concat!($fmt, "{}"), $($args,)* $e,; $($tail)*)
+        };
+    }
+}
 
 /// Prove correct execution of a program written in Triton assembly.
 /// This is a convenience function, abstracting away the details of the STARK construction.

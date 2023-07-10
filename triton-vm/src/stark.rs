@@ -1725,8 +1725,7 @@ pub(crate) mod triton_stark_tests {
         let mut rng = ThreadRng::default();
         let st0 = (rng.next_u32() as u64) << 32;
 
-        let source_code = format!("push {st0} log_2_floor halt");
-        let program = Program::from_code(&source_code).unwrap();
+        let program = triton_program!(push {st0} log_2_floor halt);
         let (parameters, claim, proof) =
             prove_with_low_security_level(&program, vec![], vec![], &mut None);
         let result = Stark::verify(&parameters, &claim, &proof, &mut None);

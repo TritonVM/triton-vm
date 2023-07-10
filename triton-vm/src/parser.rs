@@ -498,35 +498,6 @@ fn token1<'a>(token: &'a str) -> impl Fn(&'a str) -> ParseResult<()> {
     }
 }
 
-/// Parse [Triton assembly][tasm] into a list of labelled
-/// [`Instruction`](crate::instruction::LabelledInstruction)s
-///
-/// The labels for instruction `call`, if any, are also parsed.
-/// Instruction `call` can refer to a label defined later in the program, _i.e.,_ labels
-/// are not checked for existence or uniqueness by this parser.
-///
-/// [tasm]: https://triton-vm.org/spec/instructions.html
-#[macro_export]
-macro_rules! triton_asm {
-    ($($source_code:tt)*) => {{
-        let source_code = stringify!($($source_code)*);
-        let (_, instructions) = $crate::parser::program(source_code).unwrap();
-        $crate::parser::to_labelled(&instructions)
-    }};
-}
-
-/// Parse an entire program written in [Triton assembly][tasm].
-/// The resulting [`Program`](crate::program::Program) can be [run](crate::vm::run).
-///
-/// [tasm]: https://triton-vm.org/spec/instructions.html
-#[macro_export]
-macro_rules! triton_program {
-    ($($source_code:tt)*) => {{
-        let labelled_instructions = $crate::triton_asm!($($source_code)*);
-        $crate::program::Program::new(&labelled_instructions)
-    }};
-}
-
 #[cfg(test)]
 pub mod parser_tests {
     use itertools::Itertools;
@@ -537,6 +508,8 @@ pub mod parser_tests {
     use LabelledInstruction::*;
 
     use crate::program::Program;
+    use crate::triton_asm;
+    use crate::triton_program;
 
     use super::*;
 
@@ -1026,5 +999,15 @@ pub mod parser_tests {
                 return
         );
         println!("{program}");
+    }
+
+    #[test]
+    fn triton_program_macro_interpolates_various_types() {
+        let push_arg = thread_rng().gen_range(0_u64..BFieldElement::P);
+        let instruction_push = Instruction(Push(push_arg.into()));
+        let swap_argument = "1";
+        triton_program!({instruction_push} push {push_arg} swap {swap_argument} eq assert halt)
+            .run(vec![], vec![])
+            .unwrap();
     }
 }

@@ -1045,11 +1045,10 @@ pub mod triton_vm_tests {
         let st3 = rng.gen_range(0..BFieldElement::P);
         let st4 = rng.gen_range(0..BFieldElement::P);
 
-        let source_code = format!(
-            "push {st4} push {st3} push {st2} push {st1} push {st0} \
-            read_io read_io read_io read_io read_io assert_vector halt",
+        let program = triton_program!(
+            push {st4} push {st3} push {st2} push {st1} push {st0}
+            read_io read_io read_io read_io read_io assert_vector halt
         );
-        let program = Program::from_code(&source_code).unwrap();
 
         ProgramAndInput {
             program,
@@ -1084,8 +1083,7 @@ pub mod triton_vm_tests {
         Tip5::squeeze(&mut sponge);
         let sponge_output = Tip5::squeeze(&mut sponge);
 
-        let source_code = format!(
-            "
+        let program = triton_program!(
             push {st9} push {st8} push {st7} push {st6} push {st5}
             push {st4} push {st3} push {st2} push {st1} push {st0}
             absorb_init hash squeeze absorb absorb hash squeeze absorb squeeze squeeze
@@ -1100,9 +1098,7 @@ pub mod triton_vm_tests {
             read_io eq assert // st8
             read_io eq assert // st9
             halt
-            ",
         );
-        let program = Program::from_code(&source_code).unwrap();
 
         ProgramAndInput {
             program,
@@ -1126,8 +1122,7 @@ pub mod triton_vm_tests {
         let hi = st0 >> 32;
         let lo = st0 & 0xffff_ffff;
 
-        let source_code = format!("push {st0} split read_io eq assert read_io eq assert halt");
-        let program = Program::from_code(&source_code).unwrap();
+        let program = triton_program!(push {st0} split read_io eq assert read_io eq assert halt);
         ProgramAndInput {
             program,
             public_input: vec![lo, hi],
@@ -1147,8 +1142,8 @@ pub mod triton_vm_tests {
         let mut rng = ThreadRng::default();
         let st0 = rng.next_u64() % BFieldElement::P;
 
-        let source_code = format!("push {st0} dup 0 read_io eq assert dup 0 divine eq assert halt");
-        let program = Program::from_code(&source_code).unwrap();
+        let program =
+            triton_program!(push {st0} dup 0 read_io eq assert dup 0 divine eq assert halt);
         ProgramAndInput {
             program,
             public_input: vec![st0],
@@ -1170,14 +1165,11 @@ pub mod triton_vm_tests {
         let lsb = st0 % 2;
         let st0_shift_right = st0 >> 1;
 
-        let source_code = format!(
-            "
+        let program = triton_program!(
             push {st0} call lsb read_io eq assert read_io eq assert halt
             lsb:
                 push 2 swap 1 div return
-            "
         );
-        let program = Program::from_code(&source_code).unwrap();
         ProgramAndInput {
             program,
             public_input: vec![lsb.into(), st0_shift_right.into()],
@@ -1212,11 +1204,10 @@ pub mod triton_vm_tests {
             false => 0,
         };
 
-        let source_code = format!(
-            "push {st1_0} push {st0_0} lt read_io eq assert \
-             push {st1_1} push {st0_1} lt read_io eq assert halt"
+        let program = triton_program!(
+            push {st1_0} push {st0_0} lt read_io eq assert
+            push {st1_1} push {st0_1} lt read_io eq assert halt
         );
-        let program = Program::from_code(&source_code).unwrap();
         ProgramAndInput {
             program,
             public_input: vec![result_0, result_1],
@@ -1241,11 +1232,10 @@ pub mod triton_vm_tests {
         let st0_1 = rng.next_u32();
         let result_1 = st0_1.bitand(st1_1);
 
-        let source_code = format!(
-            "push {st1_0} push {st0_0} and read_io eq assert \
-             push {st1_1} push {st0_1} and read_io eq assert halt"
+        let program = triton_program!(
+            push {st1_0} push {st0_0} and read_io eq assert
+            push {st1_1} push {st0_1} and read_io eq assert halt
         );
-        let program = Program::from_code(&source_code).unwrap();
         ProgramAndInput {
             program,
             public_input: vec![result_0.into(), result_1.into()],
@@ -1270,11 +1260,10 @@ pub mod triton_vm_tests {
         let st0_1 = rng.next_u32();
         let result_1 = st0_1.bitxor(st1_1);
 
-        let source_code = format!(
-            "push {st1_0} push {st0_0} xor read_io eq assert \
-             push {st1_1} push {st0_1} xor read_io eq assert halt"
+        let program = triton_program!(
+            push {st1_0} push {st0_0} xor read_io eq assert
+            push {st1_1} push {st0_1} xor read_io eq assert halt
         );
-        let program = Program::from_code(&source_code).unwrap();
         ProgramAndInput {
             program,
             public_input: vec![result_0.into(), result_1.into()],
@@ -1308,11 +1297,10 @@ pub mod triton_vm_tests {
         let st0_1 = rng.next_u32();
         let l2f_1 = st0_1.ilog2();
 
-        let source_code = format!(
-            "push {st0_0} log_2_floor read_io eq assert \
-             push {st0_1} log_2_floor read_io eq assert halt"
+        let program = triton_program!(
+            push {st0_0} log_2_floor read_io eq assert
+            push {st0_1} log_2_floor read_io eq assert halt
         );
-        let program = Program::from_code(&source_code).unwrap();
         ProgramAndInput {
             program,
             public_input: vec![l2f_0.into(), l2f_1.into()],
@@ -1359,11 +1347,10 @@ pub mod triton_vm_tests {
         let exp_1 = rng.next_u32();
         let result_1 = base_1.mod_pow_u32(exp_1).value();
 
-        let source_code = format!(
-            "push {exp_0} push {base_0} pow read_io eq assert \
-             push {exp_1} push {base_1} pow read_io eq assert halt"
+        let program = triton_program!(
+            push {exp_0} push {base_0} pow read_io eq assert
+            push {exp_1} push {base_1} pow read_io eq assert halt
         );
-        let program = Program::from_code(&source_code).unwrap();
         ProgramAndInput {
             program,
             public_input: vec![result_0, result_1],
@@ -1383,10 +1370,9 @@ pub mod triton_vm_tests {
         let quotient = numerator / denominator;
         let remainder = numerator % denominator;
 
-        let source_code = format!(
-            "push {denominator} push {numerator} div read_io eq assert read_io eq assert halt"
+        let program = triton_program!(
+            push {denominator} push {numerator} div read_io eq assert read_io eq assert halt
         );
-        let program = Program::from_code(&source_code).unwrap();
         ProgramAndInput {
             program,
             public_input: vec![remainder.into(), quotient.into()],
@@ -1406,8 +1392,7 @@ pub mod triton_vm_tests {
         let mut rng = ThreadRng::default();
         let st0 = rng.next_u32();
         let pop_count = st0.count_ones();
-        let source_code = format!("push {st0} pop_count read_io eq assert halt",);
-        let program = Program::from_code(&source_code).unwrap();
+        let program = triton_program!(push {st0} pop_count read_io eq assert halt);
         ProgramAndInput {
             program,
             public_input: vec![pop_count.into()],
@@ -1419,13 +1404,12 @@ pub mod triton_vm_tests {
         let mut rng = ThreadRng::default();
         let st0_u32 = rng.next_u32();
         let st0_not_u32 = ((rng.next_u32() as u64) << 32) + (rng.next_u32() as u64);
-        let source_code = format!(
-            "push {st0_u32} call is_u32 assert
-             push {st0_not_u32} call is_u32 push 0 eq assert halt
-             is_u32:
-                 split pop push 0 eq return"
+        let program = triton_program!(
+            push {st0_u32} call is_u32 assert
+            push {st0_not_u32} call is_u32 push 0 eq assert halt
+            is_u32:
+                 split pop push 0 eq return
         );
-        let program = Program::from_code(&source_code).unwrap();
         ProgramAndInput::without_input(program)
     }
 
@@ -1498,7 +1482,7 @@ pub mod triton_vm_tests {
         }
 
         source_code.push_str("halt");
-        let program = Program::from_code(&source_code).unwrap();
+        let program = triton_program!({ source_code });
         ProgramAndInput::without_input(program)
     }
 
@@ -1514,14 +1498,11 @@ pub mod triton_vm_tests {
         let mut rng = ThreadRng::default();
         let st0 = (rng.next_u32() as u64) << 32;
 
-        let source_code = format!(
-            "
+        let program = triton_program!(
             push {st0} call is_u32 assert halt
             is_u32:
                 split pop push 0 eq return
-            "
         );
-        let program = Program::from_code(&source_code).unwrap();
         let program_and_input = ProgramAndInput::without_input(program);
         let err = program_and_input.run().err();
         let err = err.unwrap();
