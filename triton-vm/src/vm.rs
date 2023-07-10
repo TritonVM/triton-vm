@@ -1971,22 +1971,21 @@ pub mod triton_vm_tests {
 
     #[test]
     fn run_tvm_swap_test() {
-        let code = "push 1 push 2 swap 1 assert write_io halt";
-        let program = Program::from_code(code).unwrap();
+        let program = triton_program!(push 1 push 2 swap 1 assert write_io halt);
         let standard_out = program.run(vec![], vec![]).unwrap();
         assert_eq!(BFieldElement::new(2), standard_out[0]);
     }
 
     #[test]
     fn read_mem_unitialized() {
-        let program = Program::from_code("read_mem halt").unwrap();
+        let program = triton_program!(read_mem halt);
         let (aet, _) = program.trace_execution(vec![], vec![]).unwrap();
         assert_eq!(2, aet.processor_trace.nrows());
     }
 
     #[test]
     fn program_without_halt_test() {
-        let program = Program::from_code("nop").unwrap();
+        let program = triton_program!(nop);
         let err = program.trace_execution(vec![], vec![]).err();
         let Some(err) = err else {
             panic!("Program without halt must fail.");

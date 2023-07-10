@@ -14,7 +14,7 @@ use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
 
 use crate::aet::AlgebraicExecutionTrace;
 use crate::error::InstructionError::InstructionPointerOverflow;
-use crate::instruction::convert_labels;
+use crate::instruction::convert_all_labels_to_addresses;
 use crate::instruction::Instruction;
 use crate::instruction::LabelledInstruction;
 use crate::parser::parse;
@@ -134,9 +134,9 @@ impl IntoIterator for Program {
 impl Program {
     /// Create a `Program` from a slice of `Instruction`.
     pub fn new(input: &[LabelledInstruction]) -> Self {
-        let instructions = convert_labels(input)
+        let instructions = convert_all_labels_to_addresses(input)
             .iter()
-            .flat_map(|instr| vec![*instr; instr.size()])
+            .flat_map(|&instr| vec![instr; instr.size()])
             .collect::<Vec<_>>();
 
         Program { instructions }
@@ -327,6 +327,7 @@ mod test {
     use twenty_first::shared_math::tip5::Tip5;
 
     use crate::parser::parser_tests::program_gen;
+    use crate::triton_program;
 
     use super::*;
 
@@ -347,7 +348,7 @@ mod test {
 
     #[test]
     fn decode_program_with_missing_argument_as_last_instruction() {
-        let program = Program::from_code("push 3 push 3 eq assert push 3").unwrap();
+        let program = triton_program!(push 3 push 3 eq assert push 3);
         let program_length = program.len_bwords() as u64;
         let encoded = program.encode();
 
@@ -363,7 +364,7 @@ mod test {
 
     #[test]
     fn decode_program_with_length_mismatch() {
-        let program = Program::from_code("nop nop hash push 0 skiz end: halt call end").unwrap();
+        let program = triton_program!(nop nop hash push 0 skiz end: halt call end);
         let program_length = program.len_bwords() as u64;
         let mut encoded = program.encode();
 
@@ -385,7 +386,7 @@ mod test {
 
     #[test]
     fn hash_simple_program() {
-        let program = Program::from_code("halt").unwrap();
+        let program = triton_program!(halt);
         let digest = program.hash::<Tip5>();
 
         let expected_digest = [
@@ -403,7 +404,7 @@ mod test {
 
     #[test]
     fn empty_program_is_empty() {
-        let program = Program::from_code("").unwrap();
+        let program = triton_program!();
         assert!(program.is_empty());
     }
 }

@@ -3007,8 +3007,7 @@ mod constraint_polynomial_tests {
     #[test]
     /// helps identifying whether the printing causes an infinite loop
     fn print_simple_processor_table_row_test() {
-        let code = "push 2 push -1 add assert halt";
-        let program = Program::from_code(code).unwrap();
+        let program = triton_program!(push 2 push -1 add assert halt);
         let (states, _) = program.debug(vec![], vec![], None, None);
 
         println!();

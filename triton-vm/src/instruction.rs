@@ -1,7 +1,7 @@
+use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::result;
-use std::vec;
 
 use anyhow::anyhow;
 use anyhow::Result;
@@ -369,46 +369,51 @@ impl TryFrom<usize> for Instruction {
     }
 }
 
-/// Convert a program with labels to a program with absolute positions
-pub fn convert_labels(program: &[LabelledInstruction]) -> Vec<Instruction> {
-    let mut label_map = HashMap::new();
-    let mut instruction_pointer = 0;
-
-    // 1. Add all labels to a map
-    for labelled_instruction in program.iter() {
-        match labelled_instruction {
-            LabelledInstruction::Label(label_name) => {
-                label_map.insert(label_name.clone(), instruction_pointer);
-            }
-
-            LabelledInstruction::Instruction(instr) => {
-                instruction_pointer += instr.size();
-            }
-        }
-    }
-
-    // 2. Convert every label to the lookup value of that map
+/// Convert a program with labels to a program with absolute addresses.
+pub fn convert_all_labels_to_addresses(program: &[LabelledInstruction]) -> Vec<Instruction> {
+    let label_map = build_label_to_address_map(program);
     program
         .iter()
-        .flat_map(|labelled_instruction| convert_labels_helper(labelled_instruction, &label_map))
+        .flat_map(|instruction| convert_label_to_address_for_instruction(instruction, &label_map))
         .collect()
 }
 
-fn convert_labels_helper(
-    instruction: &LabelledInstruction,
+fn build_label_to_address_map(program: &[LabelledInstruction]) -> HashMap<String, usize> {
+    use LabelledInstruction::*;
+
+    let mut label_map = HashMap::new();
+    let mut instruction_pointer = 0;
+
+    for labelled_instruction in program.iter() {
+        match labelled_instruction {
+            Label(label) => match label_map.entry(label.clone()) {
+                Entry::Occupied(_) => panic!("Duplicate label: {label}"),
+                Entry::Vacant(entry) => {
+                    entry.insert(instruction_pointer);
+                }
+            },
+            Instruction(instruction) => instruction_pointer += instruction.size(),
+        }
+    }
+    label_map
+}
+
+/// Convert a single instruction with a labelled call target to an instruction with an absolute
+/// address as the call target. Discards all labels.
+fn convert_label_to_address_for_instruction(
+    labelled_instruction: &LabelledInstruction,
     label_map: &HashMap<String, usize>,
-) -> Vec<Instruction> {
-    match instruction {
-        LabelledInstruction::Label(_) => vec![],
-
-        LabelledInstruction::Instruction(instr) => {
-            let unlabelled_instruction: Instruction = instr.map_call_address(|label_name| {
-                let label_not_found = format!("Label not found: {label_name}");
-                let absolute_address = label_map.get(label_name).expect(&label_not_found);
-                BFieldElement::new(*absolute_address as u64)
+) -> Option<Instruction> {
+    match labelled_instruction {
+        LabelledInstruction::Label(_) => None,
+        LabelledInstruction::Instruction(instruction) => {
+            let instruction_with_absolute_address = instruction.map_call_address(|label| {
+                let &absolute_address = label_map
+                    .get(label)
+                    .unwrap_or_else(|| panic!("Label not found: {label}"));
+                BFieldElement::new(absolute_address as u64)
             });
-
-            vec![unlabelled_instruction]
+            Some(instruction_with_absolute_address)
         }
     }
 }
@@ -541,7 +546,7 @@ mod instruction_tests {
     use crate::instruction::InstructionBit;
     use crate::instruction::ALL_INSTRUCTIONS;
     use crate::op_stack::OpStackElement::*;
-    use crate::program::Program;
+    use crate::triton_program;
 
     use super::AnInstruction::*;
 
@@ -570,13 +575,7 @@ mod instruction_tests {
 
     #[test]
     fn parse_push_pop_test() {
-        let code = "
-            push 1
-            push 1
-            add
-            pop
-        ";
-        let program = Program::from_code(code).unwrap();
+        let program = triton_program!(push 1 push 1 add pop);
         let instructions = program.into_iter().collect_vec();
         let expected = vec![
             Push(BFieldElement::one()),
@@ -589,19 +588,15 @@ mod instruction_tests {
     }
 
     #[test]
+    #[should_panic(expected = "Duplicate label: foo")]
     fn fail_on_duplicate_labels_test() {
-        let code = "
+        triton_program!(
             push 2
             call foo
             bar: push 2
             foo: push 3
             foo: push 4
             halt
-        ";
-        let program = Program::from_code(code);
-        assert!(
-            program.is_err(),
-            "Duplicate labels should result in a parse error"
         );
     }
 

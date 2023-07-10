@@ -67,68 +67,68 @@ impl Error for InstructionError {}
 
 #[cfg(test)]
 mod tests {
-    use crate::program::Program;
+    use crate::triton_program;
 
     #[test]
     #[should_panic(expected = "Instruction pointer 1 points outside of program")]
     fn test_vm_err() {
-        let program = Program::from_code("nop").unwrap();
+        let program = triton_program!(nop);
         program.run(vec![], vec![]).unwrap();
     }
 
     #[test]
     #[should_panic(expected = "Operational stack is too shallow")]
     fn shrink_op_stack_too_much_test() {
-        let program = Program::from_code("pop halt").unwrap();
+        let program = triton_program!(pop halt);
         program.run(vec![], vec![]).unwrap();
     }
 
     #[test]
     #[should_panic(expected = "Jump stack is empty.")]
     fn return_without_call_test() {
-        let program = Program::from_code("return halt").unwrap();
+        let program = triton_program!(return halt);
         program.run(vec![], vec![]).unwrap();
     }
 
     #[test]
     #[should_panic(expected = "Jump stack is empty.")]
     fn recurse_without_call_test() {
-        let program = Program::from_code("recurse halt").unwrap();
+        let program = triton_program!(recurse halt);
         program.run(vec![], vec![]).unwrap();
     }
 
     #[test]
     #[should_panic(expected = "Assertion failed: st0 must be 1. ip: 2, clk: 1, st0: 0")]
     fn assert_false_test() {
-        let program = Program::from_code("push 0 assert halt").unwrap();
+        let program = triton_program!(push 0 assert halt);
         program.run(vec![], vec![]).unwrap();
     }
 
     #[test]
     #[should_panic(expected = "0 does not have a multiplicative inverse")]
     fn inverse_of_zero_test() {
-        let program = Program::from_code("push 0 invert halt").unwrap();
+        let program = triton_program!(push 0 invert halt);
         program.run(vec![], vec![]).unwrap();
     }
 
     #[test]
     #[should_panic(expected = "Division by 0 is impossible")]
     fn division_by_zero_test() {
-        let program = Program::from_code("push 0 push 5 div halt").unwrap();
+        let program = triton_program!(push 0 push 5 div halt);
         program.run(vec![], vec![]).unwrap();
     }
 
     #[test]
     #[should_panic(expected = "The logarithm of 0 does not exist")]
     fn log_of_zero_test() {
-        let program = Program::from_code("push 0 log_2_floor halt").unwrap();
+        let program = triton_program!(push 0 log_2_floor halt);
         program.run(vec![], vec![]).unwrap();
     }
 
     #[test]
     #[should_panic(expected = "Failed to convert BFieldElement 4294967297 into u32")]
     fn failed_u32_conversion_test() {
-        let program = Program::from_code("push 4294967297 push 1 and halt").unwrap();
+        let program = triton_program!(push 4294967297 push 1 and halt);
         program.run(vec![], vec![]).unwrap();
     }
 }

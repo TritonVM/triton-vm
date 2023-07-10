@@ -203,10 +203,7 @@ mod public_interface_tests {
     #[test]
     fn lib_prove_verify() {
         let parameters = StarkParameters::default();
-
-        let source_code = "push 1 assert halt";
-        let program = Program::from_code(source_code).unwrap();
-
+        let program = triton_program!(push 1 assert halt);
         let claim = Claim {
             program_digest: program.hash::<StarkHasher>(),
             input: vec![],
