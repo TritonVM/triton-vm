@@ -19,7 +19,7 @@ use triton_vm::example_programs::FIBONACCI_SEQUENCE;
 use triton_vm::example_programs::VERIFY_SUDOKU;
 use triton_vm::program::Program;
 use triton_vm::proof_stream::ProofStream;
-use triton_vm::prove_from_source;
+use triton_vm::prove_program;
 use triton_vm::stark::Stark;
 use triton_vm::stark::StarkHasher;
 use triton_vm::triton_program;
@@ -237,15 +237,15 @@ fn print_proof_size_breakdown(program_name: &str, proof: &Proof) {
 /// Create `num_iterations` many proofs for the program with the supplied source code and
 /// public & private input, summing up the lengths of all proofs.
 fn sum_of_proof_lengths_for_source_code(
-    source: &ProgramAndInput,
+    program_and_input: &ProgramAndInput,
     num_iterations: u64,
 ) -> ProofSize {
     let mut sum_of_proof_lengths = 0;
     for _ in 0..num_iterations {
-        let (_, _, proof) = prove_from_source(
-            &source.program.to_string(),
-            &source.public_input,
-            &source.secret_input,
+        let (_, _, proof) = prove_program(
+            &program_and_input.program,
+            &program_and_input.public_input,
+            &program_and_input.secret_input,
         )
         .unwrap();
         sum_of_proof_lengths += proof.encode().len();
@@ -257,12 +257,12 @@ fn sum_of_proof_lengths_for_source_code(
 /// and a benchmark ID for that proof. The benchmark ID contains the length of the FRI domain.
 fn generate_proof_and_benchmark_id(
     program_name: &str,
-    program_halt: &ProgramAndInput,
+    program_and_input: &ProgramAndInput,
 ) -> (Proof, BenchmarkId) {
-    let (parameters, _, proof) = prove_from_source(
-        &program_halt.program.to_string(),
-        &program_halt.public_input,
-        &program_halt.secret_input,
+    let (parameters, _, proof) = prove_program(
+        &program_and_input.program,
+        &program_and_input.public_input,
+        &program_and_input.secret_input,
     )
     .unwrap();
     let log_2_fri_domain_length = log_2_fri_domain_length(&parameters, &proof);
