@@ -15,16 +15,25 @@ use strum_macros::EnumCount;
 use strum_macros::EnumIter;
 use twenty_first::shared_math::bfield_codec::BFieldCodec;
 
+use triton_vm::example_programs::FIBONACCI_SEQUENCE;
+use triton_vm::example_programs::VERIFY_SUDOKU;
+use triton_vm::program::Program;
 use triton_vm::proof_stream::ProofStream;
 use triton_vm::prove_from_source;
-use triton_vm::shared_tests::SourceCodeAndInput;
-use triton_vm::shared_tests::FIBONACCI_SEQUENCE;
-use triton_vm::shared_tests::VERIFY_SUDOKU;
 use triton_vm::stark::Stark;
 use triton_vm::stark::StarkHasher;
+use triton_vm::triton_program;
 use triton_vm::Proof;
 use triton_vm::StarkParameters;
 
+/// Ties together a program and its inputs.
+struct ProgramAndInput {
+    program: Program,
+    public_input: Vec<u64>,
+    secret_input: Vec<u64>,
+}
+
+/// The measurement unit for Criterion.
 #[derive(Debug, Clone, Copy)]
 struct ProofSize(f64);
 
@@ -131,7 +140,7 @@ impl ValueFormatter for ProofSizeFormatter {
 }
 
 /// The source code for verifying a Sudoku with an example Sudoku provided as input.
-fn program_verify_sudoku() -> SourceCodeAndInput {
+fn program_verify_sudoku() -> ProgramAndInput {
     let sudoku = [
         1, 2, 3, /**/ 4, 5, 6, /**/ 7, 8, 9, //
         4, 5, 6, /**/ 7, 8, 9, /**/ 1, 2, 3, //
@@ -145,19 +154,27 @@ fn program_verify_sudoku() -> SourceCodeAndInput {
         6, 7, 8, /**/ 9, 1, 2, /**/ 3, 4, 5, //
         9, 1, 2, /**/ 3, 4, 5, /**/ 6, 7, 8, //
     ];
-    SourceCodeAndInput {
-        source_code: VERIFY_SUDOKU.to_string(),
-        input: sudoku.to_vec(),
+    ProgramAndInput {
+        program: VERIFY_SUDOKU.clone(),
+        public_input: sudoku.to_vec(),
         secret_input: vec![],
     }
 }
 
-/// The source code for computing some Fibonacci number, accepting as input which number of the
+/// The program for computing some Fibonacci number, accepting as input which number of the
 /// sequence to compute.
-fn program_fib(nth_element: u64) -> SourceCodeAndInput {
-    SourceCodeAndInput {
-        source_code: FIBONACCI_SEQUENCE.to_string(),
-        input: vec![nth_element],
+fn program_fib(nth_element: u64) -> ProgramAndInput {
+    ProgramAndInput {
+        program: FIBONACCI_SEQUENCE.clone(),
+        public_input: vec![nth_element],
+        secret_input: vec![],
+    }
+}
+
+fn program_halt() -> ProgramAndInput {
+    ProgramAndInput {
+        program: triton_program!(halt),
+        public_input: vec![],
         secret_input: vec![],
     }
 }
@@ -220,13 +237,17 @@ fn print_proof_size_breakdown(program_name: &str, proof: &Proof) {
 /// Create `num_iterations` many proofs for the program with the supplied source code and
 /// public & private input, summing up the lengths of all proofs.
 fn sum_of_proof_lengths_for_source_code(
-    source: &SourceCodeAndInput,
+    source: &ProgramAndInput,
     num_iterations: u64,
 ) -> ProofSize {
     let mut sum_of_proof_lengths = 0;
     for _ in 0..num_iterations {
-        let (_, _, proof) =
-            prove_from_source(&source.source_code, &source.input, &source.secret_input).unwrap();
+        let (_, _, proof) = prove_from_source(
+            &source.program.to_string(),
+            &source.public_input,
+            &source.secret_input,
+        )
+        .unwrap();
         sum_of_proof_lengths += proof.encode().len();
     }
     ProofSize(sum_of_proof_lengths as f64)
@@ -236,11 +257,11 @@ fn sum_of_proof_lengths_for_source_code(
 /// and a benchmark ID for that proof. The benchmark ID contains the length of the FRI domain.
 fn generate_proof_and_benchmark_id(
     program_name: &str,
-    program_halt: &SourceCodeAndInput,
+    program_halt: &ProgramAndInput,
 ) -> (Proof, BenchmarkId) {
     let (parameters, _, proof) = prove_from_source(
-        &program_halt.source_code,
-        &program_halt.input,
+        &program_halt.program.to_string(),
+        &program_halt.public_input,
         &program_halt.secret_input,
     )
     .unwrap();
@@ -253,7 +274,7 @@ fn generate_proof_and_benchmark_id(
 fn generate_statistics_for_program(
     benchmark_group: &mut BenchmarkGroup<ProofSize>,
     program_name: &str,
-    program: &SourceCodeAndInput,
+    program: &ProgramAndInput,
 ) {
     let (proof, benchmark_id) = generate_proof_and_benchmark_id(program_name, program);
     print_proof_size_breakdown(program_name, &proof);
@@ -264,7 +285,7 @@ fn generate_statistics_for_program(
 fn benchmark_proof_size(
     benchmark_group: &mut BenchmarkGroup<ProofSize>,
     benchmark_id: BenchmarkId,
-    source: &SourceCodeAndInput,
+    source: &ProgramAndInput,
 ) {
     benchmark_group.bench_function(benchmark_id, |bencher| {
         bencher.iter_custom(|num_iterations| {
@@ -276,8 +297,7 @@ fn benchmark_proof_size(
 fn generate_statistics_for_various_programs(criterion: &mut Criterion<ProofSize>) {
     let mut benchmark_group = criterion.benchmark_group("proof_size");
 
-    let program_halt = SourceCodeAndInput::without_input("halt");
-    generate_statistics_for_program(&mut benchmark_group, "halt", &program_halt);
+    generate_statistics_for_program(&mut benchmark_group, "halt", &program_halt());
     generate_statistics_for_program(&mut benchmark_group, "fib_100", &program_fib(100));
     generate_statistics_for_program(&mut benchmark_group, "fib_500", &program_fib(500));
     generate_statistics_for_program(&mut benchmark_group, "sudoku", &program_verify_sudoku());

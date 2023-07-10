@@ -2995,11 +2995,12 @@ mod constraint_polynomial_tests {
 
     use crate::error::InstructionError;
     use crate::error::InstructionError::DivisionByZero;
-    use crate::shared_tests::SourceCodeAndInput;
-    use crate::stark::triton_stark_tests::parse_simulate_pad;
+    use crate::shared_tests::ProgramAndInput;
+    use crate::stark::triton_stark_tests::master_base_table_for_low_security_level;
     use crate::table::master_table::MasterTable;
     use crate::table::master_table::NUM_BASE_COLUMNS;
     use crate::table::master_table::NUM_EXT_COLUMNS;
+    use crate::triton_program;
     use crate::vm::debug;
 
     use super::*;
@@ -3017,9 +3018,10 @@ mod constraint_polynomial_tests {
         }
     }
 
-    fn get_test_row_from_source_code(source_code: &str, row_num: usize) -> Array2<BFieldElement> {
-        let (_, _, unpadded_master_base_table, _) = parse_simulate_pad(source_code, vec![], vec![]);
-        unpadded_master_base_table
+    fn test_row_from_program(program: &Program, row_num: usize) -> Array2<BFieldElement> {
+        let (_, _, master_base_table) =
+            master_base_table_for_low_security_level(program, vec![], vec![]);
+        master_base_table
             .trace_table()
             .slice(s![row_num..=row_num + 1, ..])
             .to_owned()
@@ -3080,7 +3082,7 @@ mod constraint_polynomial_tests {
 
     #[test]
     fn transition_constraints_for_instruction_pop_test() {
-        let test_rows = [get_test_row_from_source_code("push 1 pop halt", 1)];
+        let test_rows = [test_row_from_program(&triton_program!(push 1 pop halt), 1)];
         test_constraints_for_rows_with_debug_info(
             Pop,
             &test_rows,
@@ -3091,7 +3093,7 @@ mod constraint_polynomial_tests {
 
     #[test]
     fn transition_constraints_for_instruction_push_test() {
-        let test_rows = [get_test_row_from_source_code("push 1 halt", 0)];
+        let test_rows = [test_row_from_program(&triton_program!(push 1 halt), 0)];
         test_constraints_for_rows_with_debug_info(
             Push(BFieldElement::one()),
             &test_rows,
@@ -3102,7 +3104,10 @@ mod constraint_polynomial_tests {
 
     #[test]
     fn transition_constraints_for_instruction_dup_test() {
-        let test_rows = [get_test_row_from_source_code("push 1 dup 0 halt", 1)];
+        let test_rows = [test_row_from_program(
+            &triton_program!(push 1 dup 0 halt),
+            1,
+        )];
         test_constraints_for_rows_with_debug_info(
             Dup(OpStackElement::ST0),
             &test_rows,
@@ -3113,8 +3118,8 @@ mod constraint_polynomial_tests {
 
     #[test]
     fn transition_constraints_for_instruction_swap_test() {
-        let test_rows = [get_test_row_from_source_code(
-            "push 1 push 2 swap 1 halt",
+        let test_rows = [test_row_from_program(
+            &triton_program!(push 1 push 2 swap 1 halt),
             2,
         )];
         test_constraints_for_rows_with_debug_info(
@@ -3131,9 +3136,9 @@ mod constraint_polynomial_tests {
         // Case 1: ST0 is zero, nia is instruction of size 1
         // Case 2: ST0 is zero, nia is instruction of size 2
         let test_rows = [
-            get_test_row_from_source_code("push 1 skiz halt", 1),
-            get_test_row_from_source_code("push 0 skiz assert halt", 1),
-            get_test_row_from_source_code("push 0 skiz push 1 halt", 1),
+            test_row_from_program(&triton_program!(push 1 skiz halt), 1),
+            test_row_from_program(&triton_program!(push 0 skiz assert halt), 1),
+            test_row_from_program(&triton_program!(push 0 skiz push 1 halt), 1),
         ];
         test_constraints_for_rows_with_debug_info(
             Skiz,
@@ -3145,7 +3150,10 @@ mod constraint_polynomial_tests {
 
     #[test]
     fn transition_constraints_for_instruction_call_test() {
-        let test_rows = [get_test_row_from_source_code("call label label: halt", 0)];
+        let test_rows = [test_row_from_program(
+            &triton_program!(call label label: halt),
+            0,
+        )];
         test_constraints_for_rows_with_debug_info(
             Call(Default::default()),
             &test_rows,
@@ -3156,8 +3164,8 @@ mod constraint_polynomial_tests {
 
     #[test]
     fn transition_constraints_for_instruction_return_test() {
-        let test_rows = [get_test_row_from_source_code(
-            "call label halt label: return",
+        let test_rows = [test_row_from_program(
+            &triton_program!(call label halt label: return),
             1,
         )];
         test_constraints_for_rows_with_debug_info(
@@ -3170,8 +3178,8 @@ mod constraint_polynomial_tests {
 
     #[test]
     fn transition_constraints_for_instruction_recurse_test() {
-        let test_rows = [get_test_row_from_source_code(
-            "push 2 call label halt label: push -1 add dup 0 skiz recurse return ",
+        let test_rows = [test_row_from_program(
+            &triton_program!(push 2 call label halt label: push -1 add dup 0 skiz recurse return),
             6,
         )];
         test_constraints_for_rows_with_debug_info(
@@ -3184,8 +3192,8 @@ mod constraint_polynomial_tests {
 
     #[test]
     fn transition_constraints_for_instruction_read_mem_test() {
-        let test_rows = [get_test_row_from_source_code(
-            "push 5 push 3 write_mem read_mem halt",
+        let test_rows = [test_row_from_program(
+            &triton_program!(push 5 push 3 write_mem read_mem halt),
             3,
         )];
         test_constraints_for_rows_with_debug_info(
@@ -3198,8 +3206,8 @@ mod constraint_polynomial_tests {
 
     #[test]
     fn transition_constraints_for_instruction_write_mem_test() {
-        let test_rows = [get_test_row_from_source_code(
-            "push 5 push 3 write_mem read_mem halt",
+        let test_rows = [test_row_from_program(
+            &triton_program!(push 5 push 3 write_mem read_mem halt),
             2,
         )];
         test_constraints_for_rows_with_debug_info(
@@ -3213,8 +3221,8 @@ mod constraint_polynomial_tests {
     #[test]
     fn transition_constraints_for_instruction_eq_test() {
         let test_rows = [
-            get_test_row_from_source_code("push 3 push 3 eq assert halt", 2),
-            get_test_row_from_source_code("push 3 push 2 eq push 0 eq assert halt", 2),
+            test_row_from_program(&triton_program!(push 3 push 3 eq assert halt), 2),
+            test_row_from_program(&triton_program!(push 3 push 2 eq push 0 eq assert halt), 2),
         ];
         test_constraints_for_rows_with_debug_info(Eq, &test_rows, &[ST0, ST1, HV0], &[ST0]);
     }
@@ -3222,15 +3230,15 @@ mod constraint_polynomial_tests {
     #[test]
     fn transition_constraints_for_instruction_split_test() {
         let test_rows = [
-            get_test_row_from_source_code("push -1 split halt", 1),
-            get_test_row_from_source_code("push  0 split halt", 1),
-            get_test_row_from_source_code("push  1 split halt", 1),
-            get_test_row_from_source_code("push  2 split halt", 1),
-            get_test_row_from_source_code("push  3 split halt", 1),
+            test_row_from_program(&triton_program!(push -1 split halt), 1),
+            test_row_from_program(&triton_program!(push  0 split halt), 1),
+            test_row_from_program(&triton_program!(push  1 split halt), 1),
+            test_row_from_program(&triton_program!(push  2 split halt), 1),
+            test_row_from_program(&triton_program!(push  3 split halt), 1),
             // test pushing push 2^32 +- 1
-            get_test_row_from_source_code("push 4294967295 split halt", 1),
-            get_test_row_from_source_code("push 4294967296 split halt", 1),
-            get_test_row_from_source_code("push 4294967297 split halt", 1),
+            test_row_from_program(&triton_program!(push 4294967295 split halt), 1),
+            test_row_from_program(&triton_program!(push 4294967296 split halt), 1),
+            test_row_from_program(&triton_program!(push 4294967297 split halt), 1),
         ];
         test_constraints_for_rows_with_debug_info(
             Split,
@@ -3243,18 +3251,21 @@ mod constraint_polynomial_tests {
     #[test]
     fn transition_constraints_for_instruction_lt_test() {
         let test_rows = [
-            get_test_row_from_source_code("push 3 push 3 lt push 0 eq assert halt", 2),
-            get_test_row_from_source_code("push 3 push 2 lt push 1 eq assert halt", 2),
-            get_test_row_from_source_code("push 2 push 3 lt push 0 eq assert halt", 2),
-            get_test_row_from_source_code("push 512 push 513 lt push 0 eq assert halt", 2),
+            test_row_from_program(&triton_program!(push 3 push 3 lt push 0 eq assert halt), 2),
+            test_row_from_program(&triton_program!(push 3 push 2 lt push 1 eq assert halt), 2),
+            test_row_from_program(&triton_program!(push 2 push 3 lt push 0 eq assert halt), 2),
+            test_row_from_program(
+                &triton_program!(push 512 push 513 lt push 0 eq assert halt),
+                2,
+            ),
         ];
         test_constraints_for_rows_with_debug_info(Lt, &test_rows, &[ST0, ST1], &[ST0]);
     }
 
     #[test]
     fn transition_constraints_for_instruction_and_test() {
-        let test_rows = [get_test_row_from_source_code(
-            "push 5 push 12 and push 4 eq assert halt",
+        let test_rows = [test_row_from_program(
+            &triton_program!(push 5 push 12 and push 4 eq assert halt),
             2,
         )];
         test_constraints_for_rows_with_debug_info(And, &test_rows, &[ST0, ST1], &[ST0]);
@@ -3262,8 +3273,8 @@ mod constraint_polynomial_tests {
 
     #[test]
     fn transition_constraints_for_instruction_xor_test() {
-        let test_rows = [get_test_row_from_source_code(
-            "push 5 push 12 xor push 9 eq assert halt",
+        let test_rows = [test_row_from_program(
+            &triton_program!(push 5 push 12 xor push 9 eq assert halt),
             2,
         )];
         test_constraints_for_rows_with_debug_info(Xor, &test_rows, &[ST0, ST1], &[ST0]);
@@ -3272,23 +3283,74 @@ mod constraint_polynomial_tests {
     #[test]
     fn transition_constraints_for_instruction_log2floor_test() {
         let test_rows = [
-            get_test_row_from_source_code("push  1 log_2_floor push  0 eq assert halt", 1),
-            get_test_row_from_source_code("push  2 log_2_floor push  1 eq assert halt", 1),
-            get_test_row_from_source_code("push  3 log_2_floor push  1 eq assert halt", 1),
-            get_test_row_from_source_code("push  4 log_2_floor push  2 eq assert halt", 1),
-            get_test_row_from_source_code("push  5 log_2_floor push  2 eq assert halt", 1),
-            get_test_row_from_source_code("push  6 log_2_floor push  2 eq assert halt", 1),
-            get_test_row_from_source_code("push  7 log_2_floor push  2 eq assert halt", 1),
-            get_test_row_from_source_code("push  8 log_2_floor push  3 eq assert halt", 1),
-            get_test_row_from_source_code("push  9 log_2_floor push  3 eq assert halt", 1),
-            get_test_row_from_source_code("push 10 log_2_floor push  3 eq assert halt", 1),
-            get_test_row_from_source_code("push 11 log_2_floor push  3 eq assert halt", 1),
-            get_test_row_from_source_code("push 12 log_2_floor push  3 eq assert halt", 1),
-            get_test_row_from_source_code("push 13 log_2_floor push  3 eq assert halt", 1),
-            get_test_row_from_source_code("push 14 log_2_floor push  3 eq assert halt", 1),
-            get_test_row_from_source_code("push 15 log_2_floor push  3 eq assert halt", 1),
-            get_test_row_from_source_code("push 16 log_2_floor push  4 eq assert halt", 1),
-            get_test_row_from_source_code("push 17 log_2_floor push  4 eq assert halt", 1),
+            test_row_from_program(
+                &triton_program!(push  1 log_2_floor push  0 eq assert halt),
+                1,
+            ),
+            test_row_from_program(
+                &triton_program!(push  2 log_2_floor push  1 eq assert halt),
+                1,
+            ),
+            test_row_from_program(
+                &triton_program!(push  3 log_2_floor push  1 eq assert halt),
+                1,
+            ),
+            test_row_from_program(
+                &triton_program!(push  4 log_2_floor push  2 eq assert halt),
+                1,
+            ),
+            test_row_from_program(
+                &triton_program!(push  5 log_2_floor push  2 eq assert halt),
+                1,
+            ),
+            test_row_from_program(
+                &triton_program!(push  6 log_2_floor push  2 eq assert halt),
+                1,
+            ),
+            test_row_from_program(
+                &triton_program!(push  7 log_2_floor push  2 eq assert halt),
+                1,
+            ),
+            test_row_from_program(
+                &triton_program!(push  8 log_2_floor push  3 eq assert halt),
+                1,
+            ),
+            test_row_from_program(
+                &triton_program!(push  9 log_2_floor push  3 eq assert halt),
+                1,
+            ),
+            test_row_from_program(
+                &triton_program!(push 10 log_2_floor push  3 eq assert halt),
+                1,
+            ),
+            test_row_from_program(
+                &triton_program!(push 11 log_2_floor push  3 eq assert halt),
+                1,
+            ),
+            test_row_from_program(
+                &triton_program!(push 12 log_2_floor push  3 eq assert halt),
+                1,
+            ),
+            test_row_from_program(
+                &triton_program!(push 13 log_2_floor push  3 eq assert halt),
+                1,
+            ),
+            test_row_from_program(
+                &triton_program!(push 14 log_2_floor push  3 eq assert halt),
+                1,
+            ),
+            test_row_from_program(
+                &triton_program!(push 15 log_2_floor push  3 eq assert halt),
+                1,
+            ),
+            test_row_from_program(
+                &triton_program!(push 16 log_2_floor push  4 eq assert halt),
+                1,
+            ),
+            test_row_from_program(
+                &triton_program!(push 17 log_2_floor push  4 eq assert halt),
+                1,
+            ),
         ];
         test_constraints_for_rows_with_debug_info(Log2Floor, &test_rows, &[ST0, ST1], &[ST0]);
     }
@@ -3296,26 +3358,86 @@ mod constraint_polynomial_tests {
     #[test]
     fn transition_constraints_for_instruction_pow_test() {
         let test_rows = [
-            get_test_row_from_source_code("push 0 push  0 pow push   1 eq assert halt", 2),
-            get_test_row_from_source_code("push 1 push  0 pow push   0 eq assert halt", 2),
-            get_test_row_from_source_code("push 2 push  0 pow push   0 eq assert halt", 2),
-            get_test_row_from_source_code("push 0 push  1 pow push   1 eq assert halt", 2),
-            get_test_row_from_source_code("push 1 push  1 pow push   1 eq assert halt", 2),
-            get_test_row_from_source_code("push 2 push  1 pow push   1 eq assert halt", 2),
-            get_test_row_from_source_code("push 0 push  2 pow push   1 eq assert halt", 2),
-            get_test_row_from_source_code("push 1 push  2 pow push   2 eq assert halt", 2),
-            get_test_row_from_source_code("push 2 push  2 pow push   4 eq assert halt", 2),
-            get_test_row_from_source_code("push 3 push  2 pow push   8 eq assert halt", 2),
-            get_test_row_from_source_code("push 4 push  2 pow push  16 eq assert halt", 2),
-            get_test_row_from_source_code("push 5 push  2 pow push  32 eq assert halt", 2),
-            get_test_row_from_source_code("push 0 push  3 pow push   1 eq assert halt", 2),
-            get_test_row_from_source_code("push 1 push  3 pow push   3 eq assert halt", 2),
-            get_test_row_from_source_code("push 2 push  3 pow push   9 eq assert halt", 2),
-            get_test_row_from_source_code("push 3 push  3 pow push  27 eq assert halt", 2),
-            get_test_row_from_source_code("push 4 push  3 pow push  81 eq assert halt", 2),
-            get_test_row_from_source_code("push 0 push 17 pow push   1 eq assert halt", 2),
-            get_test_row_from_source_code("push 1 push 17 pow push  17 eq assert halt", 2),
-            get_test_row_from_source_code("push 2 push 17 pow push 289 eq assert halt", 2),
+            test_row_from_program(
+                &triton_program!(push 0 push  0 pow push   1 eq assert halt),
+                2,
+            ),
+            test_row_from_program(
+                &triton_program!(push 1 push  0 pow push   0 eq assert halt),
+                2,
+            ),
+            test_row_from_program(
+                &triton_program!(push 2 push  0 pow push   0 eq assert halt),
+                2,
+            ),
+            test_row_from_program(
+                &triton_program!(push 0 push  1 pow push   1 eq assert halt),
+                2,
+            ),
+            test_row_from_program(
+                &triton_program!(push 1 push  1 pow push   1 eq assert halt),
+                2,
+            ),
+            test_row_from_program(
+                &triton_program!(push 2 push  1 pow push   1 eq assert halt),
+                2,
+            ),
+            test_row_from_program(
+                &triton_program!(push 0 push  2 pow push   1 eq assert halt),
+                2,
+            ),
+            test_row_from_program(
+                &triton_program!(push 1 push  2 pow push   2 eq assert halt),
+                2,
+            ),
+            test_row_from_program(
+                &triton_program!(push 2 push  2 pow push   4 eq assert halt),
+                2,
+            ),
+            test_row_from_program(
+                &triton_program!(push 3 push  2 pow push   8 eq assert halt),
+                2,
+            ),
+            test_row_from_program(
+                &triton_program!(push 4 push  2 pow push  16 eq assert halt),
+                2,
+            ),
+            test_row_from_program(
+                &triton_program!(push 5 push  2 pow push  32 eq assert halt),
+                2,
+            ),
+            test_row_from_program(
+                &triton_program!(push 0 push  3 pow push   1 eq assert halt),
+                2,
+            ),
+            test_row_from_program(
+                &triton_program!(push 1 push  3 pow push   3 eq assert halt),
+                2,
+            ),
+            test_row_from_program(
+                &triton_program!(push 2 push  3 pow push   9 eq assert halt),
+                2,
+            ),
+            test_row_from_program(
+                &triton_program!(push 3 push  3 pow push  27 eq assert halt),
+                2,
+            ),
+            test_row_from_program(
+                &triton_program!(push 4 push  3 pow push  81 eq assert halt),
+                2,
+            ),
+            test_row_from_program(
+                &triton_program!(push 0 push 17 pow push   1 eq assert halt),
+                2,
+            ),
+            test_row_from_program(
+                &triton_program!(push 1 push 17 pow push  17 eq assert halt),
+                2,
+            ),
+            test_row_from_program(
+                &triton_program!(push 2 push 17 pow push 289 eq assert halt),
+                2,
+            ),
         ];
         test_constraints_for_rows_with_debug_info(Pow, &test_rows, &[ST0, ST1], &[ST0]);
     }
@@ -3323,16 +3445,16 @@ mod constraint_polynomial_tests {
     #[test]
     fn transition_constraints_for_instruction_div_test() {
         let test_rows = [
-            get_test_row_from_source_code(
-                "push 2 push 3 div push 1 eq assert push 1 eq assert halt",
+            test_row_from_program(
+                &triton_program!(push 2 push 3 div push 1 eq assert push 1 eq assert halt),
                 2,
             ),
-            get_test_row_from_source_code(
-                "push 3 push 7 div push 1 eq assert push 2 eq assert halt",
+            test_row_from_program(
+                &triton_program!(push 3 push 7 div push 1 eq assert push 2 eq assert halt),
                 2,
             ),
-            get_test_row_from_source_code(
-                "push 4 push 7 div push 3 eq assert push 1 eq assert halt",
+            test_row_from_program(
+                &triton_program!(push 4 push 7 div push 3 eq assert push 1 eq assert halt),
                 2,
             ),
         ];
@@ -3341,7 +3463,9 @@ mod constraint_polynomial_tests {
 
     #[test]
     fn division_by_zero_is_impossible_test() {
-        let err = SourceCodeAndInput::without_input("div").simulate().err();
+        let err = ProgramAndInput::without_input(triton_program!(div))
+            .simulate()
+            .err();
         let Some(err) = err else {
             panic!("Dividing by 0 must fail.");
         };
@@ -3356,12 +3480,12 @@ mod constraint_polynomial_tests {
     #[test]
     fn transition_constraints_for_instruction_xxadd_test() {
         let test_rows = [
-            get_test_row_from_source_code(
-                "push 5 push 6 push 7 push 8 push 9 push 10 xxadd halt",
+            test_row_from_program(
+                &triton_program!(push 5 push 6 push 7 push 8 push 9 push 10 xxadd halt),
                 6,
             ),
-            get_test_row_from_source_code(
-                "push 2 push 3 push 4 push -2 push -3 push -4 xxadd halt",
+            test_row_from_program(
+                &triton_program!(push 2 push 3 push 4 push -2 push -3 push -4 xxadd halt),
                 6,
             ),
         ];
@@ -3376,12 +3500,12 @@ mod constraint_polynomial_tests {
     #[test]
     fn transition_constraints_for_instruction_xxmul_test() {
         let test_rows = [
-            get_test_row_from_source_code(
-                "push 5 push 6 push 7 push 8 push 9 push 10 xxmul halt",
+            test_row_from_program(
+                &triton_program!(push 5 push 6 push 7 push 8 push 9 push 10 xxmul halt),
                 6,
             ),
-            get_test_row_from_source_code(
-                "push 2 push 3 push 4 push -2 push -3 push -4 xxmul halt",
+            test_row_from_program(
+                &triton_program!(push 2 push 3 push 4 push -2 push -3 push -4 xxmul halt),
                 6,
             ),
         ];
@@ -3396,8 +3520,8 @@ mod constraint_polynomial_tests {
     #[test]
     fn transition_constraints_for_instruction_xinvert_test() {
         let test_rows = [
-            get_test_row_from_source_code("push 5 push 6 push 7 xinvert halt", 3),
-            get_test_row_from_source_code("push -2 push -3 push -4 xinvert halt", 3),
+            test_row_from_program(&triton_program!(push 5 push 6 push 7 xinvert halt), 3),
+            test_row_from_program(&triton_program!(push -2 push -3 push -4 xinvert halt), 3),
         ];
         test_constraints_for_rows_with_debug_info(
             XInvert,
@@ -3410,8 +3534,8 @@ mod constraint_polynomial_tests {
     #[test]
     fn transition_constraints_for_instruction_xbmul_test() {
         let test_rows = [
-            get_test_row_from_source_code("push 5 push 6 push 7 push 2 xbmul halt", 4),
-            get_test_row_from_source_code("push 2 push 3 push 4 push -2 xbmul halt", 4),
+            test_row_from_program(&triton_program!(push 5 push 6 push 7 push 2 xbmul halt), 4),
+            test_row_from_program(&triton_program!(push 2 push 3 push 4 push -2 xbmul halt), 4),
         ];
         test_constraints_for_rows_with_debug_info(
             XbMul,

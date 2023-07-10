@@ -4,13 +4,12 @@ use criterion::BenchmarkId;
 use criterion::Criterion;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 
+use triton_vm::example_programs::FIBONACCI_SEQUENCE;
 use triton_vm::prof_start;
 use triton_vm::prof_stop;
 use triton_vm::profiler::Report;
 use triton_vm::profiler::TritonProfiler;
-use triton_vm::program::Program;
 use triton_vm::proof::Claim;
-use triton_vm::shared_tests::FIBONACCI_SEQUENCE;
 use triton_vm::stark::Stark;
 use triton_vm::stark::StarkHasher;
 use triton_vm::vm::simulate;
@@ -28,10 +27,7 @@ fn prove_fib_100(criterion: &mut Criterion) {
 
     // stark object
     prof_start!(maybe_profiler, "parse program");
-    let program = match Program::from_code(FIBONACCI_SEQUENCE) {
-        Err(e) => panic!("Cannot compile source code into program: {e}"),
-        Ok(p) => p,
-    };
+    let program = FIBONACCI_SEQUENCE.clone();
     prof_stop!(maybe_profiler, "parse program");
     let public_input = [100].map(BFieldElement::new).to_vec();
     prof_start!(maybe_profiler, "generate AET");

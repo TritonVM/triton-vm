@@ -933,8 +933,8 @@ mod master_table_tests {
     use twenty_first::shared_math::traits::FiniteField;
 
     use crate::arithmetic_domain::ArithmeticDomain;
-    use crate::stark::triton_stark_tests::parse_simulate_pad;
-    use crate::stark::triton_stark_tests::parse_simulate_pad_extend;
+    use crate::stark::triton_stark_tests::master_base_table_for_low_security_level;
+    use crate::stark::triton_stark_tests::master_tables_for_low_security_level;
     use crate::table::cascade_table;
     use crate::table::degree_lowering_table;
     use crate::table::degree_lowering_table::DegreeLoweringBaseTableColumn;
@@ -976,10 +976,12 @@ mod master_table_tests {
     use crate::table::table_column::U32BaseTableColumn;
     use crate::table::table_column::U32ExtTableColumn;
     use crate::table::u32_table;
+    use crate::triton_program;
 
     #[test]
     fn base_table_width_is_correct() {
-        let (_, _, _, master_base_table) = parse_simulate_pad("halt", vec![], vec![]);
+        let (_, _, master_base_table) =
+            master_base_table_for_low_security_level(&triton_program!(halt), vec![], vec![]);
 
         assert_eq!(
             program_table::BASE_WIDTH,
@@ -1025,8 +1027,8 @@ mod master_table_tests {
 
     #[test]
     fn ext_table_width_is_correct() {
-        let (parameters, _, _, _, master_ext_table, _) =
-            parse_simulate_pad_extend("halt", vec![], vec![]);
+        let (parameters, _, _, master_ext_table, _) =
+            master_tables_for_low_security_level(&triton_program!(halt), vec![], vec![]);
 
         assert_eq!(
             program_table::EXT_WIDTH,

@@ -7,12 +7,11 @@ use triton_vm::prof_start;
 use triton_vm::prof_stop;
 use triton_vm::profiler::Report;
 use triton_vm::profiler::TritonProfiler;
-use triton_vm::program::Program;
 use triton_vm::proof::Claim;
-use triton_vm::shared_tests::save_proof;
 use triton_vm::stark::Stark;
 use triton_vm::stark::StarkHasher;
 use triton_vm::stark::StarkParameters;
+use triton_vm::triton_program;
 use triton_vm::vm::simulate;
 
 /// cargo criterion --bench prove_halt
@@ -20,15 +19,10 @@ fn prove_halt(criterion: &mut Criterion) {
     let mut maybe_profiler = Some(TritonProfiler::new("Prove Halt"));
     let mut report: Report = Report::placeholder();
 
-    // stark object
     prof_start!(maybe_profiler, "parse program");
-    let program = match Program::from_code("halt") {
-        Err(e) => panic!("Cannot compile source code into program: {e}"),
-        Ok(p) => p,
-    };
+    let program = triton_program!(halt);
     prof_stop!(maybe_profiler, "parse program");
 
-    // witness
     prof_start!(maybe_profiler, "generate AET");
     let (aet, output) = simulate(&program, vec![], vec![]).unwrap();
     prof_stop!(maybe_profiler, "generate AET");
@@ -64,12 +58,6 @@ fn prove_halt(criterion: &mut Criterion) {
         });
     });
     group.finish();
-
-    // save proof
-    let filename = "halt.tsp";
-    if let Err(e) = save_proof(filename, proof) {
-        println!("Error saving proof: {e:?}");
-    }
 
     println!("{report}");
 }

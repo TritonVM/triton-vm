@@ -372,7 +372,7 @@ fn call_instruction<'a>() -> impl Fn(&'a str) -> ParseResult<AnInstruction<Strin
 }
 
 fn field_element(s_orig: &str) -> ParseResult<BFieldElement> {
-    let (s, negative) = opt(tag("-"))(s_orig)?;
+    let (s, negative) = opt(token0("-"))(s_orig)?;
     let (s, n) = digit1(s)?;
 
     let mut n: i128 = match n.parse() {

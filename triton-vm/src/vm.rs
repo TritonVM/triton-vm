@@ -990,8 +990,6 @@ pub mod triton_vm_tests {
     use itertools::Itertools;
     use ndarray::Array1;
     use ndarray::ArrayView1;
-    use num_traits::One;
-    use num_traits::Zero;
     use rand::rngs::ThreadRng;
     use rand::thread_rng;
     use rand::Rng;
@@ -1007,11 +1005,11 @@ pub mod triton_vm_tests {
     use twenty_first::util_types::merkle_tree_maker::MerkleTreeMaker;
 
     use crate::error::InstructionError;
-    use crate::shared_tests::SourceCodeAndInput;
-    use crate::shared_tests::FIBONACCI_SEQUENCE;
-    use crate::shared_tests::VERIFY_SUDOKU;
+    use crate::example_programs::*;
+    use crate::shared_tests::ProgramAndInput;
     use crate::stark::MTMaker;
     use crate::table::processor_table::ProcessorTraceRow;
+    use crate::triton_program;
 
     use super::*;
 
@@ -1023,42 +1021,9 @@ pub mod triton_vm_tests {
             .join(", ")
     }
 
-    pub const GCD_X_Y: &str = "
-        read_io  // _ a
-        read_io  // _ a b
-        dup 1    // _ a b a
-        dup 1    // _ a b a b
-        lt       // _ a b b<a
-        skiz     // _ a b
-            swap 1   // _ d n where n > d
-
-        // ---
-        loop_cond:
-        dup 1
-        push 0 
-        eq 
-        skiz 
-            call terminate  // _ d n where d != 0
-        dup 1  // _ d n d
-        dup 1  // _ d n d n
-        div    // _ d n q r
-        swap 2 // _ d r q n
-        pop    // _ d r q
-        pop    // _ d r
-        swap 1 // _ r d
-        call loop_cond
-        // ---
-        
-        terminate:
-            // _ d n where d == 0
-            write_io // _ d
-            halt
-        ";
-
     #[test]
     fn initialise_table_test() {
-        let code = GCD_X_Y;
-        let program = Program::from_code(code).unwrap();
+        let program = GREATEST_COMMON_DIVISOR.clone();
         let stdin = vec![BFieldElement::new(42), BFieldElement::new(56)];
         let (aet, stdout) = simulate(&program, stdin, vec![]).unwrap();
 
@@ -1073,7 +1038,7 @@ pub mod triton_vm_tests {
 
     #[test]
     fn run_tvm_gcd_test() {
-        let program = Program::from_code(GCD_X_Y).unwrap();
+        let program = GREATEST_COMMON_DIVISOR.clone();
         let stdin = vec![42_u64.into(), 56_u64.into()];
         let stdout = run(&program, stdin, vec![]).unwrap();
 
@@ -1083,126 +1048,140 @@ pub mod triton_vm_tests {
         assert_eq!(BFieldElement::new(14), stdout[0]);
     }
 
-    pub fn test_hash_nop_nop_lt() -> SourceCodeAndInput {
-        SourceCodeAndInput::without_input("hash nop hash nop nop hash push 3 push 2 lt assert halt")
-    }
-
-    pub fn test_program_for_halt() -> SourceCodeAndInput {
-        SourceCodeAndInput::without_input("halt")
-    }
-
-    pub fn test_program_for_push_pop_dup_swap_nop() -> SourceCodeAndInput {
-        SourceCodeAndInput::without_input(
-            "push 1 push 2 pop assert \
-            push 1 dup 0 assert assert \
-            push 1 push 2 swap 1 assert pop \
-            nop nop nop halt",
+    pub(crate) fn test_hash_nop_nop_lt() -> ProgramAndInput {
+        ProgramAndInput::without_input(
+            triton_program!(hash nop hash nop nop hash push 3 push 2 lt assert halt),
         )
     }
 
-    pub fn test_program_for_divine() -> SourceCodeAndInput {
-        SourceCodeAndInput {
-            source_code: "divine assert halt".to_string(),
-            input: vec![],
+    pub(crate) fn test_program_for_halt() -> ProgramAndInput {
+        ProgramAndInput::without_input(triton_program!(halt))
+    }
+
+    pub(crate) fn test_program_for_push_pop_dup_swap_nop() -> ProgramAndInput {
+        ProgramAndInput::without_input(triton_program!(
+            push 1 push 2 pop assert
+            push 1 dup  0 assert assert
+            push 1 push 2 swap 1 assert pop
+            nop nop nop halt
+        ))
+    }
+
+    pub(crate) fn test_program_for_divine() -> ProgramAndInput {
+        ProgramAndInput {
+            program: triton_program!(divine assert halt),
+            public_input: vec![],
             secret_input: vec![1],
         }
     }
 
-    pub fn test_program_for_skiz() -> SourceCodeAndInput {
-        SourceCodeAndInput::without_input("push 1 skiz push 0 skiz assert push 1 skiz halt")
+    pub(crate) fn test_program_for_skiz() -> ProgramAndInput {
+        ProgramAndInput::without_input(
+            triton_program!(push 1 skiz push 0 skiz assert push 1 skiz halt),
+        )
     }
 
-    pub fn test_program_for_call_recurse_return() -> SourceCodeAndInput {
-        let source_code = "push 2 call label halt label: push -1 add dup 0 skiz recurse return";
-        SourceCodeAndInput::without_input(source_code)
+    pub(crate) fn test_program_for_call_recurse_return() -> ProgramAndInput {
+        ProgramAndInput::without_input(
+            triton_program!(push 2 call label halt label: push -1 add dup 0 skiz recurse return),
+        )
     }
 
-    pub fn test_program_for_write_mem_read_mem() -> SourceCodeAndInput {
-        SourceCodeAndInput::without_input("push 2 push 1 write_mem push 0 pop read_mem assert halt")
+    pub(crate) fn test_program_for_write_mem_read_mem() -> ProgramAndInput {
+        ProgramAndInput::without_input(
+            triton_program!(push 2 push 1 write_mem push 0 pop read_mem assert halt),
+        )
     }
 
-    pub fn test_program_for_hash() -> SourceCodeAndInput {
-        let source_code = "push 0 push 0 push 0 push 1 push 2 push 3 hash \
-            pop pop pop pop pop read_io eq assert halt";
+    pub(crate) fn test_program_for_hash() -> ProgramAndInput {
+        let program = triton_program!(
+            push 0 // filler to keep the OpStack large enough throughout the program
+            push 0 push 0 push 1 push 2 push 3
+            hash
+            pop pop pop pop pop
+            read_io eq assert halt
+        );
         let hash_input = [3, 2, 1, 0, 0, 0, 0, 0, 0, 0].map(BFieldElement::new);
         let digest = Tip5::hash_10(&hash_input).map(|e| e.value());
-        SourceCodeAndInput {
-            source_code: source_code.to_string(),
-            input: vec![digest.to_vec()[0]],
+        ProgramAndInput {
+            program,
+            public_input: vec![digest.to_vec()[0]],
             secret_input: vec![],
         }
     }
 
-    pub fn test_program_for_divine_sibling_noswitch() -> SourceCodeAndInput {
-        let source_code = "
-            push 3 \
-            push 4 push 2 push 2 push 2 push 1 \
-            push 5679457 push 1337 push 345887 push -234578456 push 23657565 \
-            divine_sibling \
-            push 1 add assert assert assert assert assert \
-            assert \
-            push -1 add assert \
-            push -1 add assert \
-            push -1 add assert \
-            push -3 add assert \
-            assert halt ";
-        SourceCodeAndInput {
-            source_code: source_code.to_string(),
-            input: vec![],
+    pub(crate) fn test_program_for_divine_sibling_noswitch() -> ProgramAndInput {
+        let program = triton_program!(
+            push 3
+            push 4 push 2 push 2 push 2 push 1
+            push 5679457 push 1337 push 345887 push -234578456 push 23657565
+            divine_sibling
+            push 1 add assert assert assert assert assert
+            assert
+            push -1 add assert
+            push -1 add assert
+            push -1 add assert
+            push -3 add assert
+            assert halt
+        );
+        ProgramAndInput {
+            program,
+            public_input: vec![],
             secret_input: vec![1, 1, 1, 1, 0],
         }
     }
 
-    pub fn test_program_for_divine_sibling_switch() -> SourceCodeAndInput {
-        let source_code = "
-            push 2 \
-            push 4 push 2 push 2 push 2 push 1 \
-            push 5679457 push 1337 push 345887 push -234578456 push 23657565 \
-            divine_sibling \
-            assert \
-            push -1 add assert \
-            push -1 add assert \
-            push -1 add assert \
-            push -3 add assert \
-            push 1 add assert assert assert assert assert \
-            assert halt ";
-        SourceCodeAndInput {
-            source_code: source_code.to_string(),
-            input: vec![],
+    pub(crate) fn test_program_for_divine_sibling_switch() -> ProgramAndInput {
+        let program = triton_program!(
+            push 2
+            push 4 push 2 push 2 push 2 push 1
+            push 5679457 push 1337 push 345887 push -234578456 push 23657565
+            divine_sibling
+            assert
+            push -1 add assert
+            push -1 add assert
+            push -1 add assert
+            push -3 add assert
+            push 1 add assert assert assert assert assert
+            assert halt
+        );
+        ProgramAndInput {
+            program,
+            public_input: vec![],
             secret_input: vec![1, 1, 1, 1, 0],
         }
     }
 
-    pub fn test_program_for_assert_vector() -> SourceCodeAndInput {
-        SourceCodeAndInput::without_input(
-            "push 1 push 2 push 3 push 4 push 5 \
-             push 1 push 2 push 3 push 4 push 5 \
-             assert_vector halt",
-        )
+    pub(crate) fn test_program_for_assert_vector() -> ProgramAndInput {
+        ProgramAndInput::without_input(triton_program!(
+            push 1 push 2 push 3 push 4 push 5
+            push 1 push 2 push 3 push 4 push 5
+            assert_vector halt
+        ))
     }
 
-    pub fn test_program_for_sponge_instructions() -> SourceCodeAndInput {
-        SourceCodeAndInput::without_input(
-            "absorb_init push 3 push 2 push 1 absorb absorb squeeze halt",
-        )
+    pub(crate) fn test_program_for_sponge_instructions() -> ProgramAndInput {
+        ProgramAndInput::without_input(triton_program!(
+            absorb_init push 3 push 2 push 1 absorb absorb squeeze halt
+        ))
     }
 
-    pub fn test_program_for_sponge_instructions_2() -> SourceCodeAndInput {
-        SourceCodeAndInput::without_input(
-            "hash absorb_init push 3 push 2 push 1 absorb absorb squeeze halt",
-        )
+    pub(crate) fn test_program_for_sponge_instructions_2() -> ProgramAndInput {
+        ProgramAndInput::without_input(triton_program!(
+            hash absorb_init push 3 push 2 push 1 absorb absorb squeeze halt
+        ))
     }
 
-    pub fn test_program_for_many_sponge_instructions() -> SourceCodeAndInput {
-        SourceCodeAndInput::without_input(
-            "absorb_init squeeze absorb absorb absorb squeeze squeeze squeeze absorb \
-            absorb_init absorb_init absorb_init absorb absorb_init squeeze squeeze \
-            absorb_init squeeze hash absorb hash squeeze hash absorb hash squeeze \
-            absorb_init absorb absorb absorb absorb absorb absorb absorb halt",
-        )
+    pub(crate) fn test_program_for_many_sponge_instructions() -> ProgramAndInput {
+        ProgramAndInput::without_input(triton_program!(
+            absorb_init squeeze absorb absorb absorb squeeze squeeze squeeze absorb
+            absorb_init absorb_init absorb_init absorb absorb_init squeeze squeeze
+            absorb_init squeeze hash absorb hash squeeze hash absorb hash squeeze
+            absorb_init absorb absorb absorb absorb absorb absorb absorb halt
+        ))
     }
 
-    pub fn property_based_test_program_for_assert_vector() -> SourceCodeAndInput {
+    pub(crate) fn property_based_test_program_for_assert_vector() -> ProgramAndInput {
         let mut rng = ThreadRng::default();
         let st0 = rng.gen_range(0..BFieldElement::P);
         let st1 = rng.gen_range(0..BFieldElement::P);
@@ -1214,15 +1193,16 @@ pub mod triton_vm_tests {
             "push {st4} push {st3} push {st2} push {st1} push {st0} \
             read_io read_io read_io read_io read_io assert_vector halt",
         );
+        let program = Program::from_code(&source_code).unwrap();
 
-        SourceCodeAndInput {
-            source_code,
-            input: vec![st4, st3, st2, st1, st0],
+        ProgramAndInput {
+            program,
+            public_input: vec![st4, st3, st2, st1, st0],
             secret_input: vec![],
         }
     }
 
-    pub fn property_based_test_program_for_sponge_instructions() -> SourceCodeAndInput {
+    pub(crate) fn property_based_test_program_for_sponge_instructions() -> ProgramAndInput {
         let mut rng = ThreadRng::default();
         let st0 = rng.gen_range(0..BFieldElement::P);
         let st1 = rng.gen_range(0..BFieldElement::P);
@@ -1266,68 +1246,69 @@ pub mod triton_vm_tests {
             halt
             ",
         );
+        let program = Program::from_code(&source_code).unwrap();
 
-        SourceCodeAndInput {
-            source_code,
-            input: sponge_output.map(|e| e.value()).to_vec(),
+        ProgramAndInput {
+            program,
+            public_input: sponge_output.map(|e| e.value()).to_vec(),
             secret_input: vec![],
         }
     }
 
-    pub fn test_program_for_add_mul_invert() -> SourceCodeAndInput {
-        SourceCodeAndInput::without_input(
-            "push 2 push -1 add assert \
-            push -1 push -1 mul assert \
-            push 3 dup 0 invert mul assert \
-            halt",
-        )
+    pub(crate) fn test_program_for_add_mul_invert() -> ProgramAndInput {
+        ProgramAndInput::without_input(triton_program!(
+            push  2 push -1 add assert
+            push -1 push -1 mul assert
+            push  3 dup 0 invert mul assert
+            halt
+        ))
     }
 
-    pub fn property_based_test_program_for_split() -> SourceCodeAndInput {
+    pub(crate) fn property_based_test_program_for_split() -> ProgramAndInput {
         let mut rng = ThreadRng::default();
         let st0 = rng.next_u64() % BFieldElement::P;
         let hi = st0 >> 32;
         let lo = st0 & 0xffff_ffff;
 
         let source_code = format!("push {st0} split read_io eq assert read_io eq assert halt");
-        SourceCodeAndInput {
-            source_code,
-            input: vec![lo, hi],
+        let program = Program::from_code(&source_code).unwrap();
+        ProgramAndInput {
+            program,
+            public_input: vec![lo, hi],
             secret_input: vec![],
         }
     }
 
-    pub fn test_program_for_eq() -> SourceCodeAndInput {
-        SourceCodeAndInput {
-            source_code: "read_io divine eq assert halt".to_string(),
-            input: vec![42],
+    pub(crate) fn test_program_for_eq() -> ProgramAndInput {
+        ProgramAndInput {
+            program: triton_program!(read_io divine eq assert halt),
+            public_input: vec![42],
             secret_input: vec![42],
         }
     }
 
-    pub fn property_based_test_program_for_eq() -> SourceCodeAndInput {
+    pub(crate) fn property_based_test_program_for_eq() -> ProgramAndInput {
         let mut rng = ThreadRng::default();
         let st0 = rng.next_u64() % BFieldElement::P;
 
         let source_code = format!("push {st0} dup 0 read_io eq assert dup 0 divine eq assert halt");
-        SourceCodeAndInput {
-            source_code,
-            input: vec![st0],
+        let program = Program::from_code(&source_code).unwrap();
+        ProgramAndInput {
+            program,
+            public_input: vec![st0],
             secret_input: vec![st0],
         }
     }
 
-    pub fn test_program_for_lsb() -> SourceCodeAndInput {
-        SourceCodeAndInput::without_input(
-            "
+    pub(crate) fn test_program_for_lsb() -> ProgramAndInput {
+        ProgramAndInput::without_input(triton_program!(
             push 3 call lsb assert assert halt
             lsb:
                 push 2 swap 1 div return
-            ",
-        )
+        ))
     }
 
-    pub fn property_based_test_program_for_lsb() -> SourceCodeAndInput {
+    pub(crate) fn property_based_test_program_for_lsb() -> ProgramAndInput {
         let mut rng = ThreadRng::default();
         let st0 = rng.next_u32();
         let lsb = st0 % 2;
@@ -1340,24 +1321,25 @@ pub mod triton_vm_tests {
                 push 2 swap 1 div return
             "
         );
-        SourceCodeAndInput {
-            source_code,
-            input: vec![lsb.into(), st0_shift_right.into()],
+        let program = Program::from_code(&source_code).unwrap();
+        ProgramAndInput {
+            program,
+            public_input: vec![lsb.into(), st0_shift_right.into()],
             secret_input: vec![],
         }
     }
 
-    pub fn test_program_0_lt_0() -> SourceCodeAndInput {
-        SourceCodeAndInput::without_input("push 0 push 0 lt halt")
+    pub(crate) fn test_program_0_lt_0() -> ProgramAndInput {
+        ProgramAndInput::without_input(triton_program!(push 0 push 0 lt halt))
     }
 
-    pub fn test_program_for_lt() -> SourceCodeAndInput {
-        SourceCodeAndInput::without_input(
-            "push 5 push 2 lt assert push 2 push 5 lt push 0 eq assert halt",
-        )
+    pub(crate) fn test_program_for_lt() -> ProgramAndInput {
+        ProgramAndInput::without_input(triton_program!(
+            push 5 push 2 lt assert push 2 push 5 lt push 0 eq assert halt
+        ))
     }
 
-    pub fn property_based_test_program_for_lt() -> SourceCodeAndInput {
+    pub(crate) fn property_based_test_program_for_lt() -> ProgramAndInput {
         let mut rng = ThreadRng::default();
 
         let st1_0 = rng.next_u32();
@@ -1378,20 +1360,21 @@ pub mod triton_vm_tests {
             "push {st1_0} push {st0_0} lt read_io eq assert \
              push {st1_1} push {st0_1} lt read_io eq assert halt"
         );
-        SourceCodeAndInput {
-            source_code,
-            input: vec![result_0, result_1],
+        let program = Program::from_code(&source_code).unwrap();
+        ProgramAndInput {
+            program,
+            public_input: vec![result_0, result_1],
             secret_input: vec![],
         }
     }
 
-    pub fn test_program_for_and() -> SourceCodeAndInput {
-        SourceCodeAndInput::without_input(
-            "push 5 push 3 and assert push 12 push 5 and push 4 eq assert halt",
-        )
+    pub(crate) fn test_program_for_and() -> ProgramAndInput {
+        ProgramAndInput::without_input(triton_program!(
+            push 5 push 3 and assert push 12 push 5 and push 4 eq assert halt
+        ))
     }
 
-    pub fn property_based_test_program_for_and() -> SourceCodeAndInput {
+    pub(crate) fn property_based_test_program_for_and() -> ProgramAndInput {
         let mut rng = ThreadRng::default();
 
         let st1_0 = rng.next_u32();
@@ -1406,20 +1389,21 @@ pub mod triton_vm_tests {
             "push {st1_0} push {st0_0} and read_io eq assert \
              push {st1_1} push {st0_1} and read_io eq assert halt"
         );
-        SourceCodeAndInput {
-            source_code,
-            input: vec![result_0.into(), result_1.into()],
+        let program = Program::from_code(&source_code).unwrap();
+        ProgramAndInput {
+            program,
+            public_input: vec![result_0.into(), result_1.into()],
             secret_input: vec![],
         }
     }
 
-    pub fn test_program_for_xor() -> SourceCodeAndInput {
-        SourceCodeAndInput::without_input(
-            "push 7 push 6 xor assert push 5 push 12 xor push 9 eq assert halt",
-        )
+    pub(crate) fn test_program_for_xor() -> ProgramAndInput {
+        ProgramAndInput::without_input(triton_program!(
+            push 7 push 6 xor assert push 5 push 12 xor push 9 eq assert halt
+        ))
     }
 
-    pub fn property_based_test_program_for_xor() -> SourceCodeAndInput {
+    pub(crate) fn property_based_test_program_for_xor() -> ProgramAndInput {
         let mut rng = ThreadRng::default();
 
         let st1_0 = rng.next_u32();
@@ -1434,31 +1418,32 @@ pub mod triton_vm_tests {
             "push {st1_0} push {st0_0} xor read_io eq assert \
              push {st1_1} push {st0_1} xor read_io eq assert halt"
         );
-        SourceCodeAndInput {
-            source_code,
-            input: vec![result_0.into(), result_1.into()],
+        let program = Program::from_code(&source_code).unwrap();
+        ProgramAndInput {
+            program,
+            public_input: vec![result_0.into(), result_1.into()],
             secret_input: vec![],
         }
     }
 
-    pub fn test_program_for_log2floor() -> SourceCodeAndInput {
-        SourceCodeAndInput::without_input(
-            "push  1 log_2_floor push  0 eq assert \
-             push  2 log_2_floor push  1 eq assert \
-             push  3 log_2_floor push  1 eq assert \
-             push  4 log_2_floor push  2 eq assert \
-             push  7 log_2_floor push  2 eq assert \
-             push  8 log_2_floor push  3 eq assert \
-             push 15 log_2_floor push  3 eq assert \
-             push 16 log_2_floor push  4 eq assert \
-             push 31 log_2_floor push  4 eq assert \
-             push 32 log_2_floor push  5 eq assert \
-             push 33 log_2_floor push  5 eq assert \
-             push 4294967295 log_2_floor push 31 eq assert halt",
-        )
+    pub(crate) fn test_program_for_log2floor() -> ProgramAndInput {
+        ProgramAndInput::without_input(triton_program!(
+            push  1 log_2_floor push  0 eq assert
+            push  2 log_2_floor push  1 eq assert
+            push  3 log_2_floor push  1 eq assert
+            push  4 log_2_floor push  2 eq assert
+            push  7 log_2_floor push  2 eq assert
+            push  8 log_2_floor push  3 eq assert
+            push 15 log_2_floor push  3 eq assert
+            push 16 log_2_floor push  4 eq assert
+            push 31 log_2_floor push  4 eq assert
+            push 32 log_2_floor push  5 eq assert
+            push 33 log_2_floor push  5 eq assert
+            push 4294967295 log_2_floor push 31 eq assert halt
+        ))
     }
 
-    pub fn property_based_test_program_for_log2floor() -> SourceCodeAndInput {
+    pub(crate) fn property_based_test_program_for_log2floor() -> ProgramAndInput {
         let mut rng = ThreadRng::default();
 
         let st0_0 = rng.next_u32();
@@ -1471,42 +1456,43 @@ pub mod triton_vm_tests {
             "push {st0_0} log_2_floor read_io eq assert \
              push {st0_1} log_2_floor read_io eq assert halt"
         );
-        SourceCodeAndInput {
-            source_code,
-            input: vec![l2f_0.into(), l2f_1.into()],
+        let program = Program::from_code(&source_code).unwrap();
+        ProgramAndInput {
+            program,
+            public_input: vec![l2f_0.into(), l2f_1.into()],
             secret_input: vec![],
         }
     }
 
-    pub fn test_program_for_pow() -> SourceCodeAndInput {
-        SourceCodeAndInput::without_input(
+    pub(crate) fn test_program_for_pow() -> ProgramAndInput {
+        ProgramAndInput::without_input(triton_program!(
             // push <exponent: u32> push <base: BFE> pow push <result: BFE> eq assert
-            "push  0 push 0 pow push    1 eq assert \
-             push  0 push 1 pow push    1 eq assert \
-             push  0 push 2 pow push    1 eq assert \
-             push  1 push 0 pow push    0 eq assert \
-             push  2 push 0 pow push    0 eq assert \
-             push  2 push 5 pow push   25 eq assert \
-             push  5 push 2 pow push   32 eq assert \
-             push 10 push 2 pow push 1024 eq assert \
-             push  3 push 3 pow push   27 eq assert \
-             push  3 push 5 pow push  125 eq assert \
-             push  9 push 7 pow push 40353607 eq assert \
-             push 3040597274 push 05218640216028681988 pow push 11160453713534536216 eq assert \
-             push 2378067562 push 13711477740065654150 pow push 06848017529532358230 eq assert \
-             push  129856251 push 00218966585049330803 pow push 08283208434666229347 eq assert \
-             push 1657936293 push 04999758396092641065 pow push 11426020017566937356 eq assert \
-             push 3474149688 push 05702231339458623568 pow push 02862889945380025510 eq assert \
-             push 2243935791 push 09059335263701504667 pow push 04293137302922963369 eq assert \
-             push 1783029319 push 00037306102533222534 pow push 10002149917806048099 eq assert \
-             push 3608140376 push 17716542154416103060 pow push 11885601801443303960 eq assert \
-             push 1220084884 push 07207865095616988291 pow push 05544378138345942897 eq assert \
-             push 3539668245 push 13491612301110950186 pow push 02612675697712040250 eq assert \
-             halt",
-        )
+            push  0 push 0 pow push    1 eq assert
+            push  0 push 1 pow push    1 eq assert
+            push  0 push 2 pow push    1 eq assert
+            push  1 push 0 pow push    0 eq assert
+            push  2 push 0 pow push    0 eq assert
+            push  2 push 5 pow push   25 eq assert
+            push  5 push 2 pow push   32 eq assert
+            push 10 push 2 pow push 1024 eq assert
+            push  3 push 3 pow push   27 eq assert
+            push  3 push 5 pow push  125 eq assert
+            push  9 push 7 pow push 40353607 eq assert
+            push 3040597274 push 05218640216028681988 pow push 11160453713534536216 eq assert
+            push 2378067562 push 13711477740065654150 pow push 06848017529532358230 eq assert
+            push  129856251 push 00218966585049330803 pow push 08283208434666229347 eq assert
+            push 1657936293 push 04999758396092641065 pow push 11426020017566937356 eq assert
+            push 3474149688 push 05702231339458623568 pow push 02862889945380025510 eq assert
+            push 2243935791 push 09059335263701504667 pow push 04293137302922963369 eq assert
+            push 1783029319 push 00037306102533222534 pow push 10002149917806048099 eq assert
+            push 3608140376 push 17716542154416103060 pow push 11885601801443303960 eq assert
+            push 1220084884 push 07207865095616988291 pow push 05544378138345942897 eq assert
+            push 3539668245 push 13491612301110950186 pow push 02612675697712040250 eq assert
+            halt
+        ))
     }
 
-    pub fn property_based_test_program_for_pow() -> SourceCodeAndInput {
+    pub(crate) fn property_based_test_program_for_pow() -> ProgramAndInput {
         let mut rng = ThreadRng::default();
 
         let base_0: BFieldElement = rng.gen();
@@ -1521,18 +1507,19 @@ pub mod triton_vm_tests {
             "push {exp_0} push {base_0} pow read_io eq assert \
              push {exp_1} push {base_1} pow read_io eq assert halt"
         );
-        SourceCodeAndInput {
-            source_code,
-            input: vec![result_0, result_1],
+        let program = Program::from_code(&source_code).unwrap();
+        ProgramAndInput {
+            program,
+            public_input: vec![result_0, result_1],
             secret_input: vec![],
         }
     }
 
-    pub fn test_program_for_div() -> SourceCodeAndInput {
-        SourceCodeAndInput::without_input("push 2 push 3 div assert assert halt")
+    pub(crate) fn test_program_for_div() -> ProgramAndInput {
+        ProgramAndInput::without_input(triton_program!(push 2 push 3 div assert assert halt))
     }
 
-    pub fn property_based_test_program_for_div() -> SourceCodeAndInput {
+    pub(crate) fn property_based_test_program_for_div() -> ProgramAndInput {
         let mut rng = ThreadRng::default();
 
         let denominator = rng.next_u32();
@@ -1543,46 +1530,50 @@ pub mod triton_vm_tests {
         let source_code = format!(
             "push {denominator} push {numerator} div read_io eq assert read_io eq assert halt"
         );
-        SourceCodeAndInput {
-            source_code,
-            input: vec![remainder.into(), quotient.into()],
+        let program = Program::from_code(&source_code).unwrap();
+        ProgramAndInput {
+            program,
+            public_input: vec![remainder.into(), quotient.into()],
             secret_input: vec![],
         }
     }
 
-    pub fn test_program_for_starting_with_pop_count() -> SourceCodeAndInput {
-        SourceCodeAndInput::without_input("pop_count dup 0 push 0 eq assert halt")
+    pub(crate) fn test_program_for_starting_with_pop_count() -> ProgramAndInput {
+        ProgramAndInput::without_input(triton_program!(pop_count dup 0 push 0 eq assert halt))
     }
 
-    pub fn test_program_for_pop_count() -> SourceCodeAndInput {
-        SourceCodeAndInput::without_input("push 10 pop_count push 2 eq assert halt")
+    pub(crate) fn test_program_for_pop_count() -> ProgramAndInput {
+        ProgramAndInput::without_input(triton_program!(push 10 pop_count push 2 eq assert halt))
     }
 
-    pub fn property_based_test_program_for_pop_count() -> SourceCodeAndInput {
+    pub(crate) fn property_based_test_program_for_pop_count() -> ProgramAndInput {
         let mut rng = ThreadRng::default();
         let st0 = rng.next_u32();
         let pop_count = st0.count_ones();
         let source_code = format!("push {st0} pop_count read_io eq assert halt",);
-        SourceCodeAndInput {
-            source_code,
-            input: vec![pop_count.into()],
+        let program = Program::from_code(&source_code).unwrap();
+        ProgramAndInput {
+            program,
+            public_input: vec![pop_count.into()],
             secret_input: vec![],
         }
     }
 
-    pub fn property_based_test_program_for_is_u32() -> SourceCodeAndInput {
+    fn property_based_test_program_for_is_u32() -> ProgramAndInput {
         let mut rng = ThreadRng::default();
         let st0_u32 = rng.next_u32();
         let st0_not_u32 = ((rng.next_u32() as u64) << 32) + (rng.next_u32() as u64);
-        SourceCodeAndInput::without_input(&format!(
-            "push {st0_u32} call is_u32 assert \
+        let source_code = format!(
+            "push {st0_u32} call is_u32 assert
              push {st0_not_u32} call is_u32 push 0 eq assert halt
              is_u32:
                  split pop push 0 eq return"
-        ))
+        );
+        let program = Program::from_code(&source_code).unwrap();
+        ProgramAndInput::without_input(program)
     }
 
-    pub fn property_based_test_program_for_random_ram_access() -> SourceCodeAndInput {
+    fn property_based_test_program_for_random_ram_access() -> ProgramAndInput {
         let mut rng = ThreadRng::default();
         let num_memory_accesses = rng.gen_range(10..50);
         let memory_addresses: Vec<BFieldElement> = random_elements(num_memory_accesses);
@@ -1651,7 +1642,8 @@ pub mod triton_vm_tests {
         }
 
         source_code.push_str("halt");
-        SourceCodeAndInput::without_input(&source_code)
+        let program = Program::from_code(&source_code).unwrap();
+        ProgramAndInput::without_input(program)
     }
 
     #[test]
@@ -1662,18 +1654,20 @@ pub mod triton_vm_tests {
     }
 
     #[test]
-    pub fn negative_property_is_u32_test() {
+    fn negative_property_is_u32_test() {
         let mut rng = ThreadRng::default();
         let st0 = (rng.next_u32() as u64) << 32;
 
-        let program = SourceCodeAndInput::without_input(&format!(
+        let source_code = format!(
             "
             push {st0} call is_u32 assert halt
             is_u32:
                 split pop push 0 eq return
             "
-        ));
-        let err = program.simulate().err();
+        );
+        let program = Program::from_code(&source_code).unwrap();
+        let program_and_input = ProgramAndInput::without_input(program);
+        let err = program_and_input.simulate().err();
         let err = err.unwrap();
         let err = err.downcast::<InstructionError>().unwrap();
         let AssertionFailed(_, _, _) = err else {
@@ -1681,45 +1675,54 @@ pub mod triton_vm_tests {
         };
     }
 
-    pub fn test_program_for_split() -> SourceCodeAndInput {
-        SourceCodeAndInput::without_input(
-            "push -2 split push 4294967295 eq assert push 4294967294 eq assert \
-             push -1 split push 0 eq assert push 4294967295 eq assert \
-             push  0 split push 0 eq assert push 0 eq assert \
-             push  1 split push 1 eq assert push 0 eq assert \
-             push  2 split push 2 eq assert push 0 eq assert \
-             push 4294967297 split assert assert \
-             halt",
-        )
+    pub(crate) fn test_program_for_split() -> ProgramAndInput {
+        ProgramAndInput::without_input(triton_program!(
+            push -2 split push 4294967295 eq assert push 4294967294 eq assert
+            push -1 split push 0 eq assert push 4294967295 eq assert
+            push  0 split push 0 eq assert push 0 eq assert
+            push  1 split push 1 eq assert push 0 eq assert
+            push  2 split push 2 eq assert push 0 eq assert
+            push 4294967297 split assert assert
+            halt
+        ))
     }
 
-    pub fn test_program_for_xxadd() -> SourceCodeAndInput {
-        SourceCodeAndInput::without_input("push 5 push 6 push 7 push 8 push 9 push 10 xxadd halt")
+    pub(crate) fn test_program_for_xxadd() -> ProgramAndInput {
+        ProgramAndInput::without_input(triton_program!(
+            push 5 push 6 push 7 push 8 push 9 push 10 xxadd halt
+        ))
     }
 
-    pub fn test_program_for_xxmul() -> SourceCodeAndInput {
-        SourceCodeAndInput::without_input("push 5 push 6 push 7 push 8 push 9 push 10 xxmul halt")
+    pub(crate) fn test_program_for_xxmul() -> ProgramAndInput {
+        ProgramAndInput::without_input(triton_program!(
+            push 5 push 6 push 7 push 8 push 9 push 10 xxmul halt
+        ))
     }
 
-    pub fn test_program_for_xinvert() -> SourceCodeAndInput {
-        SourceCodeAndInput::without_input("push 5 push 6 push 7 xinvert halt")
+    pub(crate) fn test_program_for_xinvert() -> ProgramAndInput {
+        ProgramAndInput::without_input(triton_program!(
+            push 5 push 6 push 7 xinvert halt
+        ))
     }
 
-    pub fn test_program_for_xbmul() -> SourceCodeAndInput {
-        SourceCodeAndInput::without_input("push 5 push 6 push 7 push 8 xbmul halt")
+    pub(crate) fn test_program_for_xbmul() -> ProgramAndInput {
+        ProgramAndInput::without_input(triton_program!(
+            push 5 push 6 push 7 push 8 xbmul halt
+        ))
     }
 
-    pub fn test_program_for_read_io_write_io() -> SourceCodeAndInput {
-        SourceCodeAndInput {
-            source_code:
-                "read_io assert read_io read_io dup 1 dup 1 add write_io mul write_io halt"
-                    .to_string(),
-            input: vec![1, 3, 14],
+    pub(crate) fn test_program_for_read_io_write_io() -> ProgramAndInput {
+        let program = triton_program!(
+            read_io assert read_io read_io dup 1 dup 1 add write_io mul write_io halt
+        );
+        ProgramAndInput {
+            program,
+            public_input: vec![1, 3, 14],
             secret_input: vec![],
         }
     }
 
-    pub fn small_tasm_test_programs() -> Vec<SourceCodeAndInput> {
+    pub(crate) fn small_tasm_test_programs() -> Vec<ProgramAndInput> {
         vec![
             test_program_for_halt(),
             test_hash_nop_nop_lt(),
@@ -1756,7 +1759,7 @@ pub mod triton_vm_tests {
         ]
     }
 
-    pub fn property_based_test_programs() -> Vec<SourceCodeAndInput> {
+    pub(crate) fn property_based_test_programs() -> Vec<ProgramAndInput> {
         vec![
             property_based_test_program_for_assert_vector(),
             property_based_test_program_for_sponge_instructions(),
@@ -1777,18 +1780,17 @@ pub mod triton_vm_tests {
 
     #[test]
     fn xxadd_test() {
-        let stdin_words = vec![2, 3, 5, 7, 11, 13];
-        let xxadd_code = "
+        let program = triton_program!(
             read_io read_io read_io
             read_io read_io read_io
             xxadd
             swap 2
             write_io write_io write_io
             halt
-        ";
-        let program = SourceCodeAndInput {
-            source_code: xxadd_code.to_string(),
-            input: stdin_words,
+        );
+        let program = ProgramAndInput {
+            program,
+            public_input: vec![2, 3, 5, 7, 11, 13],
             secret_input: vec![],
         };
 
@@ -1800,18 +1802,17 @@ pub mod triton_vm_tests {
 
     #[test]
     fn xxmul_test() {
-        let stdin_words = vec![2, 3, 5, 7, 11, 13];
-        let xxmul_code = "
+        let program = triton_program!(
             read_io read_io read_io
             read_io read_io read_io
             xxmul
             swap 2
             write_io write_io write_io
             halt
-        ";
-        let program = SourceCodeAndInput {
-            source_code: xxmul_code.to_string(),
-            input: stdin_words,
+        );
+        let program = ProgramAndInput {
+            program,
+            public_input: vec![2, 3, 5, 7, 11, 13],
             secret_input: vec![],
         };
 
@@ -1823,8 +1824,7 @@ pub mod triton_vm_tests {
 
     #[test]
     fn xinv_test() {
-        let stdin_words = vec![2, 3, 5];
-        let xinv_code = "
+        let program = triton_program!(
             read_io read_io read_io
             dup 2 dup 2 dup 2
             dup 2 dup 2 dup 2
@@ -1834,39 +1834,42 @@ pub mod triton_vm_tests {
             xinvert
             swap 2
             write_io write_io write_io
-            halt";
-        let program = SourceCodeAndInput {
-            source_code: xinv_code.to_string(),
-            input: stdin_words,
+            halt
+        );
+        let program = ProgramAndInput {
+            program,
+            public_input: vec![2, 3, 5],
             secret_input: vec![],
         };
 
         let (_, actual_stdout) = program.simulate().unwrap();
-        let expected_stdout = vec![
-            BFieldElement::zero(),
-            BFieldElement::zero(),
-            BFieldElement::one(),
-            BFieldElement::new(16360893149904808002),
-            BFieldElement::new(14209859389160351173),
-            BFieldElement::new(4432433203958274678),
-        ];
+        let expected_stdout = [
+            0,
+            0,
+            1,
+            16360893149904808002,
+            14209859389160351173,
+            4432433203958274678,
+        ]
+        .map(BFieldElement::new)
+        .to_vec();
 
         assert_eq!(expected_stdout, actual_stdout);
     }
 
     #[test]
     fn xbmul_test() {
-        let stdin_words = vec![2, 3, 5, 7];
-        let xbmul_code: &str = "
+        let program = triton_program!(
             read_io read_io read_io
             read_io
             xbmul
             swap 2
             write_io write_io write_io
-            halt";
-        let program = SourceCodeAndInput {
-            source_code: xbmul_code.to_string(),
-            input: stdin_words,
+            halt
+        );
+        let program = ProgramAndInput {
+            program,
+            public_input: vec![2, 3, 5, 7],
             secret_input: vec![],
         };
 
@@ -1878,15 +1881,12 @@ pub mod triton_vm_tests {
 
     #[test]
     fn pseudo_sub_test() {
-        let (_, actual_stdout) = SourceCodeAndInput::without_input(
-            "
+        let program = triton_program!(
             push 7 push 19 call sub write_io halt
             sub:
                 swap 1 push -1 mul add return
-            ",
-        )
-        .simulate()
-        .unwrap();
+        );
+        let (_, actual_stdout) = ProgramAndInput::without_input(program).simulate().unwrap();
         let expected_stdout = vec![BFieldElement::new(12)];
 
         assert_eq!(expected_stdout, actual_stdout);
@@ -1900,12 +1900,11 @@ pub mod triton_vm_tests {
             "The OpStack must be large enough to hold two digests."
         );
     }
-
     const _COMPILE_TIME_ASSERTION: () = op_stack_is_big_enough_test();
 
     #[test]
     fn run_tvm_hello_world_1_test() {
-        let code = "
+        let program = triton_program!(
             push  10 write_io
             push  33 write_io
             push 100 write_io
@@ -1921,20 +1920,14 @@ pub mod triton_vm_tests {
             push 101 write_io
             push  72 write_io
             halt
-        ";
-        let program = Program::from_code(code).unwrap();
-        let (aet, _) = simulate(&program, vec![], vec![]).unwrap();
-        let last_processor_row = aet.processor_trace.rows().into_iter().last().unwrap();
-        let st0 = last_processor_row[ProcessorBaseTableColumn::ST0.base_table_index()];
-        assert_eq!(BFIELD_ZERO, st0);
-
-        println!("{last_processor_row}");
+        );
+        let terminal_state = debug_terminal_state(&program, vec![], vec![], None, None).unwrap();
+        assert_eq!(BFIELD_ZERO, terminal_state.op_stack.peek_at(ST0));
     }
 
     #[test]
     fn run_tvm_halt_then_do_stuff_test() {
-        let halt_then_do_stuff = "halt push 1 push 2 add invert write_io";
-        let program = Program::from_code(halt_then_do_stuff).unwrap();
+        let program = triton_program!(halt push 1 push 2 add invert write_io);
         let (aet, _) = simulate(&program, vec![], vec![]).unwrap();
 
         let last_processor_row = aet.processor_trace.rows().into_iter().last().unwrap();
@@ -1943,11 +1936,13 @@ pub mod triton_vm_tests {
 
         let last_instruction = last_processor_row[ProcessorBaseTableColumn::CI.base_table_index()];
         assert_eq!(Instruction::Halt.opcode_b(), last_instruction);
+
+        println!("{last_processor_row}");
     }
 
     #[test]
     fn run_tvm_basic_ram_read_write_test() {
-        let basic_ram_read_write_code = "
+        let program = triton_program!(
             push  5 push  6 write_mem pop
             push 15 push 16 write_mem pop
             push  5         read_mem  pop pop
@@ -1956,24 +1951,18 @@ pub mod triton_vm_tests {
             push 15         read_mem
             push  5         read_mem
             halt
-            ";
-        let program = Program::from_code(basic_ram_read_write_code).unwrap();
-        let (aet, _) = simulate(&program, vec![], vec![]).unwrap();
+        );
 
-        let st0_idx = ProcessorBaseTableColumn::ST0.base_table_index();
-        let st1_idx = ProcessorBaseTableColumn::ST1.base_table_index();
-        let st2_idx = ProcessorBaseTableColumn::ST2.base_table_index();
-        let st3_idx = ProcessorBaseTableColumn::ST3.base_table_index();
-        let last_processor_row = aet.processor_trace.rows().into_iter().last().unwrap();
-        assert_eq!(BFieldElement::new(7), last_processor_row[st0_idx]);
-        assert_eq!(BFieldElement::new(5), last_processor_row[st1_idx]);
-        assert_eq!(BFieldElement::new(16), last_processor_row[st2_idx]);
-        assert_eq!(BFieldElement::new(15), last_processor_row[st3_idx]);
+        let terminal_state = debug_terminal_state(&program, vec![], vec![], None, None).unwrap();
+        assert_eq!(BFieldElement::new(7), terminal_state.op_stack.peek_at(ST0));
+        assert_eq!(BFieldElement::new(5), terminal_state.op_stack.peek_at(ST1));
+        assert_eq!(BFieldElement::new(16), terminal_state.op_stack.peek_at(ST2));
+        assert_eq!(BFieldElement::new(15), terminal_state.op_stack.peek_at(ST3));
     }
 
     #[test]
     fn run_tvm_edgy_ram_writes_test() {
-        let edgy_ram_writes_code = "
+        let program = triton_program!(
                         //       ┌ stack cannot shrink beyond this point
                         //       ↓
                         // _ 0 0 |
@@ -1990,27 +1979,20 @@ pub mod triton_vm_tests {
             pop         // _ 3 5 |
             read_mem    // _ 3 5 | 3
             halt
-        ";
-        let program = Program::from_code(edgy_ram_writes_code).unwrap();
-        let (aet, _) = simulate(&program, vec![], vec![]).unwrap();
+        );
 
-        let st0_idx = ProcessorBaseTableColumn::ST0.base_table_index();
-        let st1_idx = ProcessorBaseTableColumn::ST1.base_table_index();
-        let st2_idx = ProcessorBaseTableColumn::ST2.base_table_index();
-        let last_processor_row = aet.processor_trace.rows().into_iter().last().unwrap();
-        assert_eq!(BFieldElement::new(3), last_processor_row[st0_idx]);
-        assert_eq!(BFieldElement::new(5), last_processor_row[st1_idx]);
-        assert_eq!(BFieldElement::new(3), last_processor_row[st2_idx]);
+        let terminal_state = debug_terminal_state(&program, vec![], vec![], None, None).unwrap();
+        assert_eq!(BFieldElement::new(3), terminal_state.op_stack.peek_at(ST0));
+        assert_eq!(BFieldElement::new(5), terminal_state.op_stack.peek_at(ST1));
+        assert_eq!(BFieldElement::new(3), terminal_state.op_stack.peek_at(ST2));
     }
 
     #[test]
     fn run_tvm_sample_weights_test() {
-        // TVM assembly to sample weights for the recursive verifier
-        //
-        // input: seed, num_weights
-        //
-        // output: num_weights-many random weights
-        let sample_weights_code = "
+        // sample weights for the recursive verifier
+        // - input: seed, num_weights
+        // - output: num_weights-many random weights
+        let program = triton_program!(
             push 17 push 13 push 11        // get seed - should be an argument
             read_io                        // number of weights - should be argument
             sample_weights:                // proper program starts here
@@ -2031,84 +2013,10 @@ pub mod triton_vm_tests {
               swap 13 swap 10 swap 7       // re-organize stack
               pop pop pop pop pop pop pop  // remove unnecessary remnants of digest
               recurse                      // repeat
-        ";
-        let program = Program::from_code(sample_weights_code).unwrap();
-        println!("Successfully parsed the program.");
+        );
         let public_input = vec![BFieldElement::new(11)];
-        let (aet, _) = simulate(&program, public_input, vec![]).unwrap();
-
-        let last_processor_row = aet.processor_trace.rows().into_iter().last().unwrap();
-        let last_instruction = last_processor_row[ProcessorBaseTableColumn::CI.base_table_index()];
-        assert_eq!(Instruction::Halt.opcode_b(), last_instruction);
+        run(&program, public_input, vec![]).unwrap();
     }
-
-    /// TVM assembly to verify Merkle authentication paths
-    ///
-    /// input: merkle root, number of leafs, leaf values, APs
-    ///
-    /// output: Result<(), VMFail>
-    const MERKLE_TREE_AUTHENTICATION_PATH_VERIFY: &str = "
-        read_io                                     // number of authentication paths to test
-                                                    // stack: [num]
-        mt_ap_verify:                               // proper program starts here
-        push 0 swap 1 write_mem pop                 // store number of APs at RAM address 0
-                                                    // stack: []
-        read_io read_io read_io read_io read_io     // read Merkle root
-                                                    // stack: [r4 r3 r2 r1 r0]
-        call check_aps
-        pop pop pop pop pop                         // leave clean stack: Merkle root
-                                                    // stack: []
-        halt                                        // done – should be “return”
-
-        /// subroutine: check AP one at a time
-        /// stack before: [* r4 r3 r2 r1 r0]
-        /// stack after:  [* r4 r3 r2 r1 r0]
-        check_aps:
-        push 0 read_mem dup 0           // get number of APs left to check
-                                        // stack: [* r4 r3 r2 r1 r0 0 num_left num_left]
-        push 0 eq                       // see if there are authentication paths left
-                                        // stack: [* r4 r3 r2 r1 r0 0 num_left num_left==0]
-        skiz return                     // return if no authentication paths left
-        push -1 add write_mem pop       // decrease number of authentication paths left to check
-                                        // stack: [* r4 r3 r2 r1 r0]
-        call get_idx_and_leaf
-                                        // stack: [* r4 r3 r2 r1 r0 idx d4 d3 d2 d1 d0 0 0 0 0 0]
-        call traverse_tree
-                                        // stack: [* r4 r3 r2 r1 r0 idx>>1 - - - - - - - - - -]
-        call assert_tree_top
-                                        // stack: [* r4 r3 r2 r1 r0]
-        recurse                         // check next AP
-
-        /// subroutine: read index & hash leaf
-        /// stack before: [*]
-        /// stack after:  [* idx d4 d3 d2 d1 d0 0 0 0 0 0]
-        get_idx_and_leaf:
-        read_io                                     // read node index
-        read_io read_io read_io read_io read_io     // read leaf's value
-        push 0 push 0 push 0 push 0 push 0          // pad for instruction divine_sibling
-        return
-
-        // subroutine: go up tree
-        // stack before: [* idx    - - - - - - - - - -]
-        // stack after:  [* idx>>1 - - - - - - - - - -]
-        traverse_tree:
-        dup 10 push 1 eq skiz return                // break loop if node index is 1
-        divine_sibling hash recurse                 // move up one level in the Merkle tree
-
-        // subroutine: compare digests
-        // stack before: [* r4 r3 r2 r1 r0 idx a b c d e - - - - -]
-        // stack after:  [* r4 r3 r2 r1 r0]
-        assert_tree_top:
-        pop pop pop pop pop                         // remove unnecessary “0”s from hashing
-                                                    // stack: [* r4 r3 r2 r1 r0 idx a b c d e]
-        swap 1 swap 2 swap 3 swap 4 swap 5
-                                                    // stack: [* r4 r3 r2 r1 r0 a b c d e idx]
-        assert                                      // ensure the entire path was traversed
-                                                    // stack: [* r4 r3 r2 r1 r0 a b c d e]
-        assert_vector                               // actually compare to root of tree
-        pop pop pop pop pop                         // clean up stack, leave only one root
-        return
-    ";
 
     #[test]
     fn triton_assembly_merkle_tree_authentication_path_verification_test() {
@@ -2144,14 +2052,14 @@ pub mod triton_vm_tests {
             public_input.append(&mut leaves[leaf_index].reversed().values().to_vec());
         }
 
-        let program = Program::from_code(MERKLE_TREE_AUTHENTICATION_PATH_VERIFY).unwrap();
+        let program = MERKLE_TREE_AUTHENTICATION_PATH_VERIFY.clone();
         run(&program, public_input, secret_input).unwrap();
     }
 
     #[test]
     fn run_tvm_get_colinear_y_test() {
         // see also: get_colinear_y in src/shared_math/polynomial.rs
-        let get_colinear_y_code = "
+        let get_colinear_y_program = triton_program!(
             read_io                         // p2_x
             read_io read_io                 // p1_y p1_x
             read_io read_io                 // p0_y p0_x
@@ -2161,25 +2069,20 @@ pub mod triton_vm_tests {
             invert mul add                  // compute result
             swap 3 pop pop pop              // leave a clean stack
             write_io halt
-        ";
+        );
 
-        let program = Program::from_code(get_colinear_y_code).unwrap();
         println!("Successfully parsed the program.");
         let public_input = [7, 2, 1, 3, 4].map(BFieldElement::new).to_vec();
-        let (aet, out) = simulate(&program, public_input, vec![]).unwrap();
-        assert_eq!(BFieldElement::new(4), out[0]);
-
-        let last_processor_row = aet.processor_trace.rows().into_iter().last().unwrap();
-        let last_instruction = last_processor_row[ProcessorBaseTableColumn::CI.base_table_index()];
-        assert_eq!(Instruction::Halt.opcode_b(), last_instruction);
+        let output = run(&get_colinear_y_program, public_input, vec![]).unwrap();
+        assert_eq!(BFieldElement::new(4), output[0]);
     }
 
     #[test]
     fn run_tvm_countdown_from_10_test() {
-        let countdown_code = "
+        let countdown_program = triton_program!(
             push 10
             call loop
-            
+
             loop:
                 dup 0
                 write_io
@@ -2190,18 +2093,16 @@ pub mod triton_vm_tests {
                   recurse
                 write_io
                 halt
-            ";
+        );
 
-        let program = Program::from_code(countdown_code).unwrap();
-        let standard_out = run(&program, vec![], vec![]).unwrap();
+        let standard_out = run(&countdown_program, vec![], vec![]).unwrap();
         let expected = (0..=10).map(BFieldElement::new).rev().collect_vec();
         assert_eq!(expected, standard_out);
     }
 
     #[test]
     fn run_tvm_fibonacci_tvm() {
-        let code = FIBONACCI_SEQUENCE;
-        let program = Program::from_code(code).unwrap();
+        let program = FIBONACCI_SEQUENCE.clone();
         let standard_out = run(&program, vec![7_u64.into()], vec![]).unwrap();
         assert_eq!(Some(&BFieldElement::new(21)), standard_out.get(0));
     }
@@ -2238,7 +2139,7 @@ pub mod triton_vm_tests {
 
     #[test]
     fn verify_sudoku_test() {
-        let program = Program::from_code(VERIFY_SUDOKU).unwrap();
+        let program = VERIFY_SUDOKU.clone();
         let stdin = [
             8, 5, 9, /**/ 7, 6, 1, /**/ 4, 2, 3, //
             4, 2, 6, /**/ 8, 5, 3, /**/ 7, 9, 1, //

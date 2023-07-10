@@ -903,7 +903,7 @@ pub(crate) mod triton_stark_tests {
     use rand_core::RngCore;
     use twenty_first::shared_math::other::random_elements;
 
-    use crate::aet::AlgebraicExecutionTrace;
+    use crate::example_programs::*;
     use crate::instruction::AnInstruction;
     use crate::program::Program;
     use crate::shared_tests::*;
@@ -947,79 +947,50 @@ pub(crate) mod triton_stark_tests {
     use crate::table::table_column::RamBaseTableColumn;
     use crate::table::u32_table;
     use crate::table::u32_table::ExtU32Table;
+    use crate::triton_program;
     use crate::vm::simulate;
     use crate::vm::triton_vm_tests::property_based_test_programs;
     use crate::vm::triton_vm_tests::small_tasm_test_programs;
     use crate::vm::triton_vm_tests::test_hash_nop_nop_lt;
+    use crate::vm::triton_vm_tests::test_program_for_halt;
 
     use super::*;
 
-    pub fn parse_setup_simulate(
-        code: &str,
+    pub(crate) fn master_base_table_for_low_security_level(
+        program: &Program,
         public_input: Vec<BFieldElement>,
         secret_input: Vec<BFieldElement>,
-    ) -> (AlgebraicExecutionTrace, Vec<BFieldElement>) {
-        let program = Program::from_code(code).unwrap();
-        simulate(&program, public_input, secret_input).unwrap()
+    ) -> (StarkParameters, Claim, MasterBaseTable) {
+        let (aet, stdout) = simulate(program, public_input.clone(), secret_input).unwrap();
+        let parameters = stark_parameters_with_low_security_level();
+        let claim = construct_claim(&aet, public_input, stdout);
+        let master_base_table = construct_master_base_table(&parameters, &aet);
+
+        (parameters, claim, master_base_table)
     }
 
-    pub fn parse_simulate_pad(
-        code: &str,
-        stdin: Vec<BFieldElement>,
-        secret_in: Vec<BFieldElement>,
-    ) -> (StarkParameters, Claim, MasterBaseTable, MasterBaseTable) {
-        let (aet, stdout) = parse_setup_simulate(code, stdin.clone(), secret_in);
-
-        let log_expansion_factor = 2;
-        let security_level = 32;
-        let parameters = StarkParameters::new(security_level, log_expansion_factor);
-
-        let claim = Claim {
-            input: stdin,
-            program_digest: aet.program.hash::<StarkHasher>(),
-            output: stdout,
-        };
-        let padded_height = MasterBaseTable::padded_height(&aet, parameters.num_trace_randomizers);
-        let max_degree = Stark::derive_max_degree(padded_height, parameters.num_trace_randomizers);
-        let fri = Stark::derive_fri(&parameters, max_degree);
-
-        let mut master_base_table =
-            MasterBaseTable::new(&aet, parameters.num_trace_randomizers, fri.domain);
-
-        let unpadded_master_base_table = master_base_table.clone();
-        master_base_table.pad();
-
-        (
-            parameters,
-            claim,
-            unpadded_master_base_table,
-            master_base_table,
-        )
-    }
-
-    pub fn parse_simulate_pad_extend(
-        code: &str,
-        stdin: Vec<BFieldElement>,
-        secret_in: Vec<BFieldElement>,
+    pub(crate) fn master_tables_for_low_security_level(
+        program: &Program,
+        public_input: Vec<BFieldElement>,
+        secret_input: Vec<BFieldElement>,
     ) -> (
         StarkParameters,
         Claim,
         MasterBaseTable,
-        MasterBaseTable,
         MasterExtTable,
         Challenges,
     ) {
-        let (parameters, claim, unpadded_master_base_table, master_base_table) =
-            parse_simulate_pad(code, stdin, secret_in);
+        let (parameters, claim, mut master_base_table) =
+            master_base_table_for_low_security_level(program, public_input, secret_input);
 
         let dummy_challenges = Challenges::placeholder(Some(&claim));
+        master_base_table.pad();
         let master_ext_table =
             master_base_table.extend(&dummy_challenges, parameters.num_randomizer_polynomials);
 
         (
             parameters,
             claim,
-            unpadded_master_base_table,
             master_base_table,
             master_ext_table,
             dummy_challenges,
@@ -1028,17 +999,18 @@ pub(crate) mod triton_stark_tests {
 
     #[test]
     pub fn print_ram_table_example_for_specification() {
-        let program = "
-        push  5 push  6 write_mem pop
-        push 15 push 16 write_mem pop
-        push  5 read_mem pop pop
-        push 15 read_mem pop pop
-        push  5 push  7 write_mem pop
-        push 15 read_mem
-        push  5 read_mem
-        halt
-        ";
-        let (_, _, master_base_table, _) = parse_simulate_pad(program, vec![], vec![]);
+        let program = triton_program!(
+            push  5 push  6 write_mem pop
+            push 15 push 16 write_mem pop
+            push  5 read_mem pop pop
+            push 15 read_mem pop pop
+            push  5 push  7 write_mem pop
+            push 15 read_mem
+            push  5 read_mem
+            halt
+        );
+        let (_, _, master_base_table) =
+            master_base_table_for_low_security_level(&program, vec![], vec![]);
 
         println!();
         println!("Processor Table:");
@@ -1138,10 +1110,12 @@ pub(crate) mod triton_stark_tests {
 
     #[test]
     pub fn check_io_terminals() {
-        let read_nop_code = "read_io read_io read_io nop nop write_io push 17 write_io halt";
+        let read_nop_program = triton_program!(
+            read_io read_io read_io nop nop write_io push 17 write_io halt
+        );
         let public_input = [3, 5, 7].map(BFieldElement::new).to_vec();
-        let (_, claim, _, _, master_ext_table, all_challenges) =
-            parse_simulate_pad_extend(read_nop_code, public_input, vec![]);
+        let (_, claim, _, master_ext_table, all_challenges) =
+            master_tables_for_low_security_level(&read_nop_program, public_input, vec![]);
 
         let processor_table = master_ext_table.table(ProcessorTable);
         let processor_table_last_row = processor_table.slice(s![-1, ..]);
@@ -1177,9 +1151,9 @@ pub(crate) mod triton_stark_tests {
 
         for (code_idx, code_with_input) in code_collection.into_iter().enumerate() {
             println!("Checking Grand Cross-Table Argument for TASM snippet {code_idx}.");
-            let (_, _, _, master_base_table, master_ext_table, challenges) =
-                parse_simulate_pad_extend(
-                    &code_with_input.source_code,
+            let (_, _, master_base_table, master_ext_table, challenges) =
+                master_tables_for_low_security_level(
+                    &code_with_input.program,
                     code_with_input.public_input(),
                     code_with_input.secret_input(),
                 );
@@ -1382,14 +1356,14 @@ pub(crate) mod triton_stark_tests {
 
     #[test]
     fn triton_table_constraints_evaluate_to_zero_on_halt_test() {
-        triton_table_constraints_evaluate_to_zero(test_halt());
+        triton_table_constraints_evaluate_to_zero(test_program_for_halt());
     }
 
     #[test]
     fn triton_table_constraints_evaluate_to_zero_on_fibonacci_test() {
-        let source_code_and_input = SourceCodeAndInput {
-            source_code: FIBONACCI_SEQUENCE.to_string(),
-            input: vec![100],
+        let source_code_and_input = ProgramAndInput {
+            program: FIBONACCI_SEQUENCE.clone(),
+            public_input: vec![100],
             secret_input: vec![],
         };
         triton_table_constraints_evaluate_to_zero(source_code_and_input);
@@ -1397,8 +1371,9 @@ pub(crate) mod triton_stark_tests {
 
     #[test]
     fn triton_table_constraints_evaluate_to_zero_on_big_mmr_snippet_test() {
-        let source_code_and_input =
-            SourceCodeAndInput::without_input(MMR_CALCULATE_NEW_PEAKS_FROM_APPEND_WITH_SAFE_LISTS);
+        let source_code_and_input = ProgramAndInput::without_input(
+            CALCULATE_NEW_MMR_PEAKS_FROM_APPEND_WITH_SAFE_LISTS.clone(),
+        );
         triton_table_constraints_evaluate_to_zero(source_code_and_input);
     }
 
@@ -1418,12 +1393,13 @@ pub(crate) mod triton_stark_tests {
         }
     }
 
-    pub fn triton_table_constraints_evaluate_to_zero(source_code_and_input: SourceCodeAndInput) {
-        let (_, _, _, master_base_table, master_ext_table, challenges) = parse_simulate_pad_extend(
-            &source_code_and_input.source_code,
-            source_code_and_input.public_input(),
-            source_code_and_input.secret_input(),
-        );
+    fn triton_table_constraints_evaluate_to_zero(source_code_and_input: ProgramAndInput) {
+        let (_, _, master_base_table, master_ext_table, challenges) =
+            master_tables_for_low_security_level(
+                &source_code_and_input.program,
+                source_code_and_input.public_input(),
+                source_code_and_input.secret_input(),
+            );
 
         assert_eq!(
             master_base_table.master_base_matrix.nrows(),
@@ -1485,15 +1461,16 @@ pub(crate) mod triton_stark_tests {
 
     #[test]
     fn derived_constraints_evaluate_to_zero_on_halt_test() {
-        derived_constraints_evaluate_to_zero(test_halt());
+        derived_constraints_evaluate_to_zero(test_program_for_halt());
     }
 
-    pub fn derived_constraints_evaluate_to_zero(source_code_and_input: SourceCodeAndInput) {
-        let (_, _, _, master_base_table, master_ext_table, challenges) = parse_simulate_pad_extend(
-            &source_code_and_input.source_code,
-            source_code_and_input.public_input(),
-            source_code_and_input.secret_input(),
-        );
+    fn derived_constraints_evaluate_to_zero(source_code_and_input: ProgramAndInput) {
+        let (_, _, master_base_table, master_ext_table, challenges) =
+            master_tables_for_low_security_level(
+                &source_code_and_input.program,
+                source_code_and_input.public_input(),
+                source_code_and_input.secret_input(),
+            );
 
         let zero = XFieldElement::zero();
         let master_base_trace_table = master_base_table.trace_table();
@@ -1566,29 +1543,24 @@ pub(crate) mod triton_stark_tests {
 
     #[test]
     fn triton_prove_verify_simple_program_test() {
-        let code_with_input = test_hash_nop_nop_lt();
-        let (parameters, claim, proof) = parse_simulate_prove(
-            &code_with_input.source_code,
-            code_with_input.public_input(),
-            code_with_input.secret_input(),
+        let program_with_input = test_hash_nop_nop_lt();
+        let (parameters, claim, proof) = prove_with_low_security_level(
+            &program_with_input.program,
+            program_with_input.public_input(),
+            program_with_input.secret_input(),
             &mut None,
         );
 
-        println!("between prove and verify");
-
-        let result = Stark::verify(&parameters, &claim, &proof, &mut None);
-        if let Err(e) = result {
-            panic!("The Verifier is unhappy! {e}");
-        }
-        assert!(result.unwrap());
+        let verdict = Stark::verify(&parameters, &claim, &proof, &mut None).unwrap();
+        assert!(verdict);
     }
 
     #[test]
     fn triton_prove_verify_halt_test() {
-        let code_with_input = test_halt();
+        let code_with_input = test_program_for_halt();
         let mut profiler = Some(TritonProfiler::new("Prove Halt"));
-        let (parameters, claim, proof) = parse_simulate_prove(
-            &code_with_input.source_code,
+        let (parameters, claim, proof) = prove_with_low_security_level(
+            &code_with_input.program,
             code_with_input.public_input(),
             code_with_input.secret_input(),
             &mut profiler,
@@ -1612,11 +1584,11 @@ pub(crate) mod triton_stark_tests {
     #[test]
     #[ignore = "used for tracking&debugging deserialization errors"]
     fn triton_prove_halt_save_error_test() {
-        let code_with_input = test_halt();
+        let code_with_input = test_program_for_halt();
 
         for _ in 0..100 {
-            let (parameters, claim, proof) = parse_simulate_prove(
-                &code_with_input.source_code,
+            let (parameters, claim, proof) = prove_with_low_security_level(
+                &code_with_input.program,
                 code_with_input.public_input(),
                 code_with_input.secret_input(),
                 &mut None,
@@ -1637,9 +1609,9 @@ pub(crate) mod triton_stark_tests {
     #[test]
     #[ignore = "used for tracking&debugging deserialization errors"]
     fn triton_load_verify_halt_test() {
-        let code_with_input = test_halt();
-        let (parameters, claim, _) = parse_simulate_prove(
-            &code_with_input.source_code,
+        let code_with_input = test_program_for_halt();
+        let (parameters, claim, _) = prove_with_low_security_level(
+            &code_with_input.program,
             code_with_input.public_input(),
             code_with_input.secret_input(),
             &mut None,
@@ -1653,13 +1625,12 @@ pub(crate) mod triton_stark_tests {
 
     #[test]
     fn prove_verify_fibonacci_100_test() {
-        let source_code = FIBONACCI_SEQUENCE;
         let stdin = [100].map(BFieldElement::new).to_vec();
         let secret_in = vec![];
 
         let mut profiler = Some(TritonProfiler::new("Prove Fib 100"));
         let (parameters, claim, proof) =
-            parse_simulate_prove(source_code, stdin, secret_in, &mut profiler);
+            prove_with_low_security_level(&FIBONACCI_SEQUENCE, stdin, secret_in, &mut profiler);
         let mut profiler = profiler.unwrap();
         profiler.finish();
 
@@ -1680,13 +1651,11 @@ pub(crate) mod triton_stark_tests {
 
     #[test]
     fn prove_verify_fib_shootout_test() {
-        let code = FIBONACCI_SEQUENCE;
-
         for (fib_seq_idx, fib_seq_val) in [(0, 1), (7, 21), (11, 144)] {
             let stdin = [fib_seq_idx].map(BFieldElement::new).to_vec();
             let secret_in = vec![];
             let (parameters, claim, proof) =
-                parse_simulate_prove(code, stdin, secret_in, &mut None);
+                prove_with_low_security_level(&FIBONACCI_SEQUENCE, stdin, secret_in, &mut None);
             match Stark::verify(&parameters, &claim, &proof, &mut None) {
                 Ok(result) => assert!(result, "The Verifier disagrees!"),
                 Err(err) => panic!("The Verifier is unhappy! {err}"),
@@ -1698,15 +1667,20 @@ pub(crate) mod triton_stark_tests {
 
     #[test]
     fn constraints_evaluate_to_zero_on_many_u32_operations_test() {
-        let many_u32_instructions = SourceCodeAndInput::without_input(MANY_U32_INSTRUCTIONS);
+        let many_u32_instructions =
+            ProgramAndInput::without_input(PROGRAM_WITH_MANY_U32_INSTRUCTIONS.clone());
         triton_table_constraints_evaluate_to_zero(many_u32_instructions);
     }
 
     #[test]
     fn triton_prove_verify_many_u32_operations_test() {
         let mut profiler = Some(TritonProfiler::new("Prove Many U32 Ops"));
-        let (parameters, claim, proof) =
-            parse_simulate_prove(MANY_U32_INSTRUCTIONS, vec![], vec![], &mut profiler);
+        let (parameters, claim, proof) = prove_with_low_security_level(
+            &PROGRAM_WITH_MANY_U32_INSTRUCTIONS,
+            vec![],
+            vec![],
+            &mut profiler,
+        );
         let mut profiler = profiler.unwrap();
         profiler.finish();
 
@@ -1726,14 +1700,12 @@ pub(crate) mod triton_stark_tests {
     #[test]
     #[ignore = "stress test"]
     fn prove_fib_successively_larger() {
-        let source_code = FIBONACCI_SEQUENCE;
-
         for fibonacci_number in [100, 200, 400, 800, 1600, 3200, 6400, 12800, 25600, 51200] {
             let stdin = [fibonacci_number].map(BFieldElement::new).to_vec();
             let fib_test_name = format!("element #{fibonacci_number:>4} from Fibonacci sequence");
             let mut profiler = Some(TritonProfiler::new(&fib_test_name));
             let (parameters, _, proof) =
-                parse_simulate_prove(source_code, stdin, vec![], &mut profiler);
+                prove_with_low_security_level(&FIBONACCI_SEQUENCE, stdin, vec![], &mut profiler);
             let mut profiler = profiler.unwrap();
             profiler.finish();
 
@@ -1753,8 +1725,9 @@ pub(crate) mod triton_stark_tests {
         let st0 = (rng.next_u32() as u64) << 32;
 
         let source_code = format!("push {st0} log_2_floor halt");
+        let program = Program::from_code(&source_code).unwrap();
         let (parameters, claim, proof) =
-            parse_simulate_prove(&source_code, vec![], vec![], &mut None);
+            prove_with_low_security_level(&program, vec![], vec![], &mut None);
         let result = Stark::verify(&parameters, &claim, &proof, &mut None);
         assert!(result.is_ok());
         assert!(result.unwrap());
@@ -1763,9 +1736,9 @@ pub(crate) mod triton_stark_tests {
     #[test]
     #[should_panic(expected = "The logarithm of 0 does not exist")]
     pub fn negative_log_2_floor_of_0_test() {
-        let source_code = "push 0 log_2_floor halt";
+        let program = triton_program!(push 0 log_2_floor halt);
         let (parameters, claim, proof) =
-            parse_simulate_prove(source_code, vec![], vec![], &mut None);
+            prove_with_low_security_level(&program, vec![], vec![], &mut None);
         let result = Stark::verify(&parameters, &claim, &proof, &mut None);
         assert!(result.is_ok());
         assert!(result.unwrap());
