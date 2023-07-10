@@ -1646,16 +1646,9 @@ pub(crate) mod triton_stark_tests {
         );
 
         let filename = "halt_error.tsp";
-        let proof = match load_proof(filename) {
-            Ok(p) => p,
-            Err(e) => panic!("Could not load proof from disk at {filename}: {e}"),
-        };
-
-        let result = Stark::verify(&parameters, &claim, &proof, &mut None);
-        if let Err(e) = result {
-            panic!("Verifier is unhappy! {e}");
-        }
-        assert!(result.unwrap());
+        let proof = load_proof(filename).unwrap();
+        let verdict = Stark::verify(&parameters, &claim, &proof, &mut None).unwrap();
+        assert!(verdict);
     }
 
     #[test]

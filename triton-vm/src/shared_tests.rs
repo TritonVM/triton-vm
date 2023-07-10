@@ -134,14 +134,8 @@ pub fn save_proof(filename: &str, proof: Proof) -> Result<()> {
         create_proofs_directory()?;
     }
     let full_filename = format!("{}{filename}", proofs_directory());
-    let mut file_handle = match File::create(full_filename.clone()) {
-        Ok(fh) => fh,
-        Err(e) => panic!("Cannot write proof to disk at {full_filename}: {e:?}"),
-    };
-    let binary = match bincode::serialize(&proof) {
-        Ok(b) => b,
-        Err(e) => panic!("Cannot serialize proof: {e:?}"),
-    };
+    let mut file_handle = File::create(full_filename)?;
+    let binary = bincode::serialize(&proof)?;
     let amount = file_handle.write(&binary)?;
     println!("Wrote {amount} bytes of proof data to disk.");
     Ok(())

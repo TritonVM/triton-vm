@@ -138,9 +138,8 @@ impl<'pgm> VMState<'pgm> {
 
     pub fn derive_helper_variables(&self) -> [BFieldElement; NUM_HELPER_VARIABLE_REGISTERS] {
         let mut hvs = [BFieldElement::zero(); NUM_HELPER_VARIABLE_REGISTERS];
-        let current_instruction = match self.current_instruction() {
-            Ok(instruction) => instruction,
-            Err(_) => return hvs,
+        let Ok(current_instruction) = self.current_instruction() else {
+            return hvs;
         };
 
         if current_instruction.shrinks_op_stack() {
