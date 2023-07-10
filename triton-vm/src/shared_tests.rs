@@ -21,7 +21,6 @@ use crate::stark::Stark;
 use crate::stark::StarkHasher;
 use crate::stark::StarkParameters;
 use crate::table::master_table::MasterBaseTable;
-use crate::vm::simulate;
 
 /// Prove correct execution of the given program.
 /// Return the used parameters and the generated claim & proof.
@@ -31,9 +30,11 @@ pub(crate) fn prove_with_low_security_level(
     secret_input: Vec<BFieldElement>,
     maybe_profiler: &mut Option<TritonProfiler>,
 ) -> (StarkParameters, Claim, Proof) {
-    prof_start!(maybe_profiler, "simulate");
-    let (aet, public_output) = simulate(program, public_input.clone(), secret_input).unwrap();
-    prof_stop!(maybe_profiler, "simulate");
+    prof_start!(maybe_profiler, "trace program");
+    let (aet, public_output) = program
+        .trace_execution(public_input.clone(), secret_input)
+        .unwrap();
+    prof_stop!(maybe_profiler, "trace program");
 
     let parameters = stark_parameters_with_low_security_level();
     let claim = construct_claim(&aet, public_input, public_output);
@@ -104,8 +105,9 @@ impl ProgramAndInput {
             .collect()
     }
 
-    pub fn simulate(&self) -> Result<(AlgebraicExecutionTrace, Vec<BFieldElement>)> {
-        simulate(&self.program, self.public_input(), self.secret_input())
+    /// A thin wrapper around [`Program::run`].
+    pub fn run(&self) -> Result<Vec<BFieldElement>> {
+        self.program.run(self.public_input(), self.secret_input())
     }
 }
 

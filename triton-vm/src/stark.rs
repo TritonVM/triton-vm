@@ -948,7 +948,6 @@ pub(crate) mod triton_stark_tests {
     use crate::table::u32_table;
     use crate::table::u32_table::ExtU32Table;
     use crate::triton_program;
-    use crate::vm::simulate;
     use crate::vm::triton_vm_tests::property_based_test_programs;
     use crate::vm::triton_vm_tests::small_tasm_test_programs;
     use crate::vm::triton_vm_tests::test_hash_nop_nop_lt;
@@ -961,7 +960,9 @@ pub(crate) mod triton_stark_tests {
         public_input: Vec<BFieldElement>,
         secret_input: Vec<BFieldElement>,
     ) -> (StarkParameters, Claim, MasterBaseTable) {
-        let (aet, stdout) = simulate(program, public_input.clone(), secret_input).unwrap();
+        let (aet, stdout) = program
+            .trace_execution(public_input.clone(), secret_input)
+            .unwrap();
         let parameters = stark_parameters_with_low_security_level();
         let claim = construct_claim(&aet, public_input, stdout);
         let master_base_table = construct_master_base_table(&parameters, &aet);

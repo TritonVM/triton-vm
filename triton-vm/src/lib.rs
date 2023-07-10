@@ -85,7 +85,7 @@ pub fn prove_from_source(
     // - if any of the two inputs does not conform to the program,
     // - because of a bug in the program, among other things.
     // If the VM crashes, proof generation will fail.
-    let (aet, public_output) = vm::simulate(&program, public_input.clone(), secret_input)?;
+    let (aet, public_output) = program.trace_execution(public_input.clone(), secret_input)?;
 
     // Hash the program to obtain its digest.
     let program_digest = program.hash::<StarkHasher>();
@@ -119,7 +119,8 @@ pub fn prove(
     if program_digest != claim.program_digest {
         bail!("Program digest must match claimed program digest.");
     }
-    let (aet, public_output) = vm::simulate(program, claim.input.clone(), secret_input.to_vec())?;
+    let (aet, public_output) =
+        program.trace_execution(claim.input.clone(), secret_input.to_vec())?;
     if public_output != claim.output {
         bail!("Program output must match claimed program output.");
     }

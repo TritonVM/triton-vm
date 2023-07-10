@@ -12,7 +12,6 @@ use triton_vm::profiler::TritonProfiler;
 use triton_vm::proof::Claim;
 use triton_vm::stark::Stark;
 use triton_vm::stark::StarkHasher;
-use triton_vm::vm::simulate;
 use triton_vm::StarkParameters;
 
 /// cargo criterion --bench prove_fib_100
@@ -31,7 +30,9 @@ fn prove_fib_100(criterion: &mut Criterion) {
     prof_stop!(maybe_profiler, "parse program");
     let public_input = [100].map(BFieldElement::new).to_vec();
     prof_start!(maybe_profiler, "generate AET");
-    let (aet, output) = simulate(&program, public_input.clone(), vec![]).unwrap();
+    let (aet, output) = program
+        .trace_execution(public_input.clone(), vec![])
+        .unwrap();
     prof_stop!(maybe_profiler, "generate AET");
 
     let parameters = StarkParameters::default();

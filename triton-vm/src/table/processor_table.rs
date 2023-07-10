@@ -3001,7 +3001,6 @@ mod constraint_polynomial_tests {
     use crate::table::master_table::NUM_BASE_COLUMNS;
     use crate::table::master_table::NUM_EXT_COLUMNS;
     use crate::triton_program;
-    use crate::vm::debug;
 
     use super::*;
 
@@ -3010,7 +3009,7 @@ mod constraint_polynomial_tests {
     fn print_simple_processor_table_row_test() {
         let code = "push 2 push -1 add assert halt";
         let program = Program::from_code(code).unwrap();
-        let (states, _) = debug(&program, vec![], vec![], None, None);
+        let (states, _) = program.debug(vec![], vec![], None, None);
 
         println!();
         for state in states {
@@ -3464,7 +3463,7 @@ mod constraint_polynomial_tests {
     #[test]
     fn division_by_zero_is_impossible_test() {
         let err = ProgramAndInput::without_input(triton_program!(div))
-            .simulate()
+            .run()
             .err();
         let Some(err) = err else {
             panic!("Dividing by 0 must fail.");

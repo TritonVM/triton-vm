@@ -2,7 +2,10 @@ use std::cmp::max;
 use std::collections::hash_map::Entry::Occupied;
 use std::collections::hash_map::Entry::Vacant;
 use std::collections::HashMap;
+use std::ops::AddAssign;
 
+use anyhow::anyhow;
+use anyhow::Result;
 use itertools::Itertools;
 use ndarray::s;
 use ndarray::Array2;
@@ -23,6 +26,9 @@ use crate::table::hash_table::HashTable;
 use crate::table::processor_table;
 use crate::table::table_column::HashBaseTableColumn::CI;
 use crate::table::table_column::MasterBaseTableColumn;
+use crate::vm::CoProcessorCall;
+use crate::vm::CoProcessorCall::*;
+use crate::vm::VMState;
 
 /// An Algebraic Execution Trace (AET) is the primary witness required for proof generation. It
 /// holds every intermediate state of the processor and all co-processors, alongside additional
@@ -191,6 +197,26 @@ impl AlgebraicExecutionTrace {
         self.hash_trace
             .append(Axis(0), hash_trace_addendum.view())
             .expect("shapes must be identical");
+    }
+
+    pub fn record_state(&mut self, state: &VMState) -> Result<()> {
+        self.processor_trace
+            .push_row(state.to_processor_row().view())
+            .map_err(|e| anyhow!(e))
+    }
+
+    pub fn record_co_processor_call(&mut self, co_processor_call: CoProcessorCall) {
+        match co_processor_call {
+            Tip5Trace(Instruction::Hash, tip5_trace) => self.append_hash_trace(*tip5_trace),
+            Tip5Trace(instruction, tip5_trace) => {
+                self.append_sponge_trace(instruction, *tip5_trace)
+            }
+            U32TableEntries(u32_entries) => {
+                for u32_entry in u32_entries {
+                    self.u32_entries.entry(u32_entry).or_insert(0).add_assign(1);
+                }
+            }
+        }
     }
 
     pub fn append_sponge_trace(

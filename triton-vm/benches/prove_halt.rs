@@ -12,7 +12,6 @@ use triton_vm::stark::Stark;
 use triton_vm::stark::StarkHasher;
 use triton_vm::stark::StarkParameters;
 use triton_vm::triton_program;
-use triton_vm::vm::simulate;
 
 /// cargo criterion --bench prove_halt
 fn prove_halt(criterion: &mut Criterion) {
@@ -24,7 +23,7 @@ fn prove_halt(criterion: &mut Criterion) {
     prof_stop!(maybe_profiler, "parse program");
 
     prof_start!(maybe_profiler, "generate AET");
-    let (aet, output) = simulate(&program, vec![], vec![]).unwrap();
+    let (aet, output) = program.trace_execution(vec![], vec![]).unwrap();
     prof_stop!(maybe_profiler, "generate AET");
 
     let cycle_count = aet.processor_trace.nrows();

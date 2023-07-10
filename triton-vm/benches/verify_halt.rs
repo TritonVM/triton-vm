@@ -9,7 +9,6 @@ use triton_vm::stark::Stark;
 use triton_vm::stark::StarkHasher;
 use triton_vm::stark::StarkParameters;
 use triton_vm::triton_program;
-use triton_vm::vm::simulate;
 
 /// cargo criterion --bench verify_halt
 fn verify_halt(criterion: &mut Criterion) {
@@ -22,7 +21,7 @@ fn verify_halt(criterion: &mut Criterion) {
         output: vec![],
     };
 
-    let (aet, _) = simulate(&program, vec![], vec![]).unwrap();
+    let (aet, _) = program.trace_execution(vec![], vec![]).unwrap();
     let proof = Stark::prove(&parameters, &claim, &aet, &mut None);
 
     let mut profiler = Some(TritonProfiler::new("Verify Halt"));
