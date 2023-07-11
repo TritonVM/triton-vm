@@ -117,7 +117,7 @@ pub enum ChallengeId {
     ///
     /// Used by the evaluation argument [`PrepareChunkEvalArg`][prep] and in the Hash Table.
     ///
-    /// [rate]: crate::stark::StarkHasher::RATE
+    /// [rate]: twenty_first::shared_math::tip5::RATE
     /// [prep]: crate::table::table_column::ProgramExtTableColumn::PrepareChunkRunningEvaluation
     ProgramAttestationPrepareChunkIndeterminate,
 
@@ -126,7 +126,7 @@ pub enum ChallengeId {
     /// Used by the evaluation arguments [`SendChunkEvalArg`][send] and
     /// [`ReceiveChunkEvalArg`][recv]. See also: [`ProgramAttestationPrepareChunkIndeterminate`].
     ///
-    /// [rate]: crate::stark::StarkHasher::RATE
+    /// [rate]: twenty_first::shared_math::tip5::RATE
     /// [send]: crate::table::table_column::ProgramExtTableColumn::SendChunkRunningEvaluation
     /// [recv]: crate::table::table_column::HashExtTableColumn::ReceiveChunkRunningEvaluation
     ProgramAttestationSendChunkIndeterminate,

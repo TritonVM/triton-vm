@@ -78,7 +78,7 @@ pub struct ExtHashTable {}
 /// The empty program is not valid since any valid [`Program`][program] must execute
 /// instruction `halt`.
 ///
-/// [program]: triton_opcodes::program::Program
+/// [program]: crate::program::Program
 /// [round_no]: HashBaseTableColumn::RoundNumber
 /// [prog_hash]: Self::ProgramHashing
 /// [sponge]: Self::Sponge
@@ -88,7 +88,7 @@ pub struct ExtHashTable {}
 pub enum HashTableMode {
     /// The mode in which the [`Program`][program] is hashed. This is part of program attestation.
     ///
-    /// [program]: triton_opcodes::program::Program
+    /// [program]: crate::program::Program
     ProgramHashing,
 
     /// The mode in which Sponge instructions, _i.e._, `absorb_init`, `absorb`, and `squeeze`,

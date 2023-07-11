@@ -1016,7 +1016,7 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
     }
 
     /// Returns all nodes used in the multicircuit.
-    /// This is distinct from [`ConstraintCircuitBuilder::all_nodes`] because it
+    /// This is distinct from `ConstraintCircuitBuilder::all_nodes` because it
     /// 1. only considers nodes used in the given multicircuit, not all nodes in the builder,
     /// 2. returns the nodes as [`ConstraintCircuit`]s, not as [`ConstraintCircuitMonad`]s, and
     /// 3. keeps duplicates, allowing to count how often a node occurs.

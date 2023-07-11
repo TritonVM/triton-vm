@@ -37,7 +37,8 @@ pub mod vm;
 #[macro_use]
 pub mod macros {
     /// Parse an entire program written in [Triton assembly][tasm].
-    /// The resulting [`Program`] can be [run](Program::run).
+    /// The resulting [`Program`](crate::program::Program) can be
+    /// [run](crate::program::Program::run).
     ///
     /// It is possible to use string-like interpolation to insert instructions, arguments, labels,
     /// or other substrings into the program.
@@ -62,9 +63,9 @@ pub mod macros {
     ///
     /// Any type with an appropriate [`Display`](std::fmt::Display) implementation can be
     /// interpolated. This includes, for example, primitive types like `u64` and `&str`, but also
-    /// [`Instruction`](instruction::Instruction)s,
-    /// [`BFieldElement`](triton_vm::BFieldElement)s, and
-    /// [`Label`](instruction::LabelledInstruction)s, among others.
+    /// [`Instruction`](crate::instruction::Instruction)s,
+    /// [`BFieldElement`](crate::BFieldElement)s, and
+    /// [`Label`](crate::instruction::LabelledInstruction)s, among others.
     ///
     /// ```
     /// # use triton_vm::triton_program;
@@ -106,7 +107,7 @@ pub mod macros {
     }
 
     /// Parse [Triton assembly][tasm] into a list of labelled
-    /// [`Instruction`](instruction::LabelledInstruction)s.
+    /// [`Instruction`](crate::instruction::LabelledInstruction)s.
     /// Similar to [`triton_program!`](crate::triton_program), it is possible to use string-like
     /// interpolation to insert instructions, arguments, labels, or other expressions.
     ///

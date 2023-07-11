@@ -9,7 +9,7 @@ use twenty_first::shared_math::x_field_element::XFieldElement;
 
 type AuthenticationStructure = Vec<Digest>;
 
-/// A `FriResponse` is an [`AuthenticationStructure`] together with the values of the
+/// A `FriResponse` is an `AuthenticationStructure` together with the values of the
 /// revealed leaves of the Merkle tree. Together, they correspond to the
 /// queried indices of the FRI codeword (of that round).
 #[derive(Debug, Clone, PartialEq, Eq, Hash, BFieldCodec)]

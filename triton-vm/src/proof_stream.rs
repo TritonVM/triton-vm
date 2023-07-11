@@ -121,7 +121,7 @@ where
             .collect()
     }
 
-    /// A thin wrapper around [`H::sample_scalars`].
+    /// A thin wrapper around [`H::sample_scalars`](AlgebraicHasher::sample_scalars).
     pub fn sample_scalars(&mut self, num_scalars: usize) -> Vec<XFieldElement> {
         H::sample_scalars(&mut self.sponge_state, num_scalars)
     }

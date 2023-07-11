@@ -82,7 +82,7 @@ pub enum ProgramExtTableColumn {
     /// Resets to zero after each chunk.
     /// Relevant for program attestation.
     ///
-    /// [rate]: crate::stark::StarkHasher::RATE
+    /// [rate]: twenty_first::shared_math::tip5::RATE
     PrepareChunkRunningEvaluation,
 
     /// An evaluation argument over all [`RATE`][rate]-sized chunks of instructions,
@@ -92,7 +92,7 @@ pub enum ProgramExtTableColumn {
     ///
     /// The counterpart to [`RcvChunkEvalArg`](HashExtTableColumn::ReceiveChunkRunningEvaluation).
     ///
-    /// [rate]: crate::stark::StarkHasher::RATE
+    /// [rate]: twenty_first::shared_math::tip5::RATE
     /// [prep]: ProgramExtTableColumn::PrepareChunkRunningEvaluation
     SendChunkRunningEvaluation,
 }
@@ -345,10 +345,12 @@ pub enum HashBaseTableColumn {
 #[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro, Hash)]
 pub enum HashExtTableColumn {
     /// The evaluation argument corresponding to receiving instructions in chunks of size
-    /// [`RATE`](StarkHasher::RATE). The chunks are hashed in Sponge mode.
+    /// [`RATE`][rate]. The chunks are hashed in Sponge mode.
     /// This allows program attestation.
     ///
     /// The counterpart to [`SendChunkEvalArg`](ProgramExtTableColumn::SendChunkRunningEvaluation).
+    ///
+    /// [rate]: twenty_first::shared_math::tip5::RATE
     ReceiveChunkRunningEvaluation,
 
     HashInputRunningEvaluation,

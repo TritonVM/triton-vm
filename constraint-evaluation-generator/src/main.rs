@@ -694,7 +694,7 @@ fn generate_degree_lowering_table_code(
     quote!(
         //! The degree lowering table contains the introduced variables that allow
         //! lowering the degree of the AIR. See
-        //! [`master_table::AIR_TARGET_DEGREE`]
+        //! [`crate::table::master_table::AIR_TARGET_DEGREE`]
         //! for additional information.
         //!
         //! This file has been auto-generated. Any modifications _will_ be lost.
