@@ -432,4 +432,13 @@ mod test {
         let program_from_macro = triton_program!({ source_code });
         assert_eq!(program_from_code, program_from_macro);
     }
+
+    #[test]
+    fn parser_macro_with_interpolated_label_as_first_argument() {
+        let label = "my_label";
+        let program = triton_program!(
+            {label}: push 1 assert halt
+        );
+        program.run(vec![], vec![]).unwrap();
+    }
 }

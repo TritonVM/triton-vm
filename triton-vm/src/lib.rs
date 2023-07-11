@@ -157,7 +157,7 @@ pub mod macros {
         };
         ($fmt:expr, $($args:expr,)*; $instr:ident: $($tail:tt)*) => {
             $crate::triton_asm_format!(
-                concat!($fmt, " ", stringify!($instr:), " "), $($args,)*; $($tail)*
+                concat!($fmt, " ", stringify!($instr), ": "), $($args,)*; $($tail)*
             )
         };
         ($fmt:expr, $($args:expr,)*; $instr:ident $($tail:tt)*) => {
@@ -169,6 +169,9 @@ pub mod macros {
             $crate::triton_asm_format!(
                 concat!($fmt, " ", stringify!($arg), " "), $($args,)*; $($tail)*
             )
+        };
+        ($fmt:expr, $($args:expr,)*; {$e:expr}: $($tail:tt)*) => {
+            $crate::triton_asm_format!(concat!($fmt, "{}:"), $($args,)* $e,; $($tail)*)
         };
         ($fmt:expr, $($args:expr,)*; {$e:expr} $($tail:tt)*) => {
             $crate::triton_asm_format!(concat!($fmt, "{}"), $($args,)* $e,; $($tail)*)
