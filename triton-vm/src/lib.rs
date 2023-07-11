@@ -166,6 +166,23 @@ macro_rules! triton_asm {
     }};
 }
 
+/// Like [`assert_eq!`], but returns a [`Result`] instead of panicking.
+/// Can only be used in functions that return a [`Result`].
+/// Thin wrapper around [`anyhow::ensure!`].
+macro_rules! ensure_eq {
+    ($left:expr, $right:expr) => {{
+        anyhow::ensure!(
+            $left == $right,
+            "Expected `{}` to equal `{}`.\nleft: {:?}\nright: {:?}\n",
+            stringify!($left),
+            stringify!($right),
+            $left,
+            $right,
+        )
+    }};
+}
+pub(crate) use ensure_eq;
+
 /// Prove correct execution of a program written in Triton assembly.
 /// This is a convenience function, abstracting away the details of the STARK construction.
 /// If you want to have more control over the STARK construction, this method can serve as a
@@ -247,14 +264,10 @@ pub fn prove(
     secret_input: &[BFieldElement],
 ) -> Result<Proof> {
     let program_digest = program.hash::<StarkHasher>();
-    if program_digest != claim.program_digest {
-        bail!("Program digest must match claimed program digest.");
-    }
+    ensure_eq!(program_digest, claim.program_digest);
     let (aet, public_output) =
         program.trace_execution(claim.input.clone(), secret_input.to_vec())?;
-    if public_output != claim.output {
-        bail!("Program output must match claimed program output.");
-    }
+    ensure_eq!(public_output, claim.output);
     let proof = Stark::prove(parameters, claim, &aet, &mut None);
     Ok(proof)
 }
@@ -360,5 +373,23 @@ mod public_interface_tests {
         let loaded_proof = load_proof(filename).unwrap();
 
         assert_eq!(proof, loaded_proof);
+    }
+
+    /// Invocations of the `ensure_eq!` macro for testing purposes must be wrapped in their own
+    /// function due to the return type requirements, which _must_ be
+    /// - `Result<_>` for any method invoking the `ensure_eq!` macro, and
+    /// - `()` for any method annotated with `#[test]`.
+    fn method_with_failing_ensure_eq_macro() -> Result<()> {
+        ensure_eq!("a", "a");
+        let left_hand_side = 2;
+        let right_hand_side = 1;
+        ensure_eq!(left_hand_side, right_hand_side);
+        Ok(())
+    }
+
+    #[test]
+    #[should_panic(expected = "Expected `left_hand_side` to equal `right_hand_side`.")]
+    fn ensure_eq_macro() {
+        method_with_failing_ensure_eq_macro().unwrap()
     }
 }

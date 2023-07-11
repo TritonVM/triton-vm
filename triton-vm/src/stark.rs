@@ -32,6 +32,7 @@ use twenty_first::util_types::merkle_tree_maker::MerkleTreeMaker;
 
 use crate::aet::AlgebraicExecutionTrace;
 use crate::arithmetic_domain::ArithmeticDomain;
+use crate::ensure_eq;
 use crate::fri::Fri;
 use crate::prof_itr0;
 use crate::prof_start;
@@ -792,26 +793,11 @@ impl Stark {
 
         prof_start!(maybe_profiler, "linear combination");
         let num_checks = parameters.num_combination_codeword_checks;
-        let num_revealed_row_indices = revealed_current_row_indices.len();
-        let num_base_table_rows = base_table_rows.len();
-        let num_ext_table_rows = ext_table_rows.len();
-        let num_revealed_quotient_values = revealed_quotient_values.len();
-        let num_revealed_fri_values = revealed_fri_values.len();
-        if num_revealed_row_indices != num_checks
-            || num_base_table_rows != num_checks
-            || num_ext_table_rows != num_checks
-            || num_revealed_quotient_values != num_checks
-            || num_revealed_fri_values != num_checks
-        {
-            bail!(
-                "Expected {num_checks} revealed indices and values, but got \
-                    {num_revealed_row_indices} revealed row indices, \
-                    {num_base_table_rows} base table rows, \
-                    {num_ext_table_rows} extension table rows, \
-                    {num_revealed_quotient_values} quotient values, and \
-                    {num_revealed_fri_values} FRI values."
-            );
-        }
+        ensure_eq!(num_checks, revealed_current_row_indices.len());
+        ensure_eq!(num_checks, revealed_fri_values.len());
+        ensure_eq!(num_checks, revealed_quotient_values.len());
+        ensure_eq!(num_checks, base_table_rows.len());
+        ensure_eq!(num_checks, ext_table_rows.len());
         prof_start!(maybe_profiler, "main loop");
         for (row_idx, base_row, ext_row, quotient_value, fri_value) in izip!(
             revealed_current_row_indices,

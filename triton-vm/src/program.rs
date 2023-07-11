@@ -13,6 +13,7 @@ use twenty_first::shared_math::digest::Digest;
 use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
 
 use crate::aet::AlgebraicExecutionTrace;
+use crate::ensure_eq;
 use crate::error::InstructionError::InstructionPointerOverflow;
 use crate::instruction::convert_all_labels_to_addresses;
 use crate::instruction::Instruction;
@@ -51,12 +52,7 @@ impl BFieldCodec for Program {
         }
         let program_length = sequence[0].value() as usize;
         let sequence = &sequence[1..];
-        if sequence.len() != program_length {
-            bail!(
-                "Sequence to decode must have length {program_length}, but has length {}.",
-                sequence.len()
-            );
-        }
+        ensure_eq!(program_length, sequence.len());
 
         let mut idx = 0;
         let mut instructions = Vec::with_capacity(program_length);
@@ -84,9 +80,7 @@ impl BFieldCodec for Program {
             idx += instruction.size();
         }
 
-        if idx != program_length {
-            bail!("Decoded program must have length {program_length}, but has length {idx}.",);
-        }
+        ensure_eq!(idx, program_length);
         Ok(Box::new(Program { instructions }))
     }
 
@@ -363,18 +357,12 @@ mod test {
     }
 
     #[test]
+    #[should_panic(expected = "Expected `program_length` to equal `sequence.len()`.")]
     fn decode_program_with_length_mismatch() {
         let program = triton_program!(nop nop hash push 0 skiz end: halt call end);
-        let program_length = program.len_bwords() as u64;
         let mut encoded = program.encode();
-
-        encoded[0] = BFieldElement::new(program_length + 1);
-
-        let err = Program::decode(&encoded).err().unwrap();
-        assert_eq!(
-            "Sequence to decode must have length 10, but has length 9.",
-            err.to_string(),
-        );
+        encoded[0] += 1_u64.into();
+        Program::decode(&encoded).unwrap();
     }
 
     #[test]
