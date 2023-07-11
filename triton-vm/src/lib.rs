@@ -39,7 +39,64 @@ pub mod macros {
     /// Parse an entire program written in [Triton assembly][tasm].
     /// The resulting [`Program`] can be [run](Program::run).
     ///
+    /// It is possible to use string-like interpolation to insert instructions, arguments, labels,
+    /// or other substrings into the program.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use triton_vm::triton_program;
+    /// let program = triton_program!(
+    ///     read_io push 5 mul
+    ///     call check_eq_15
+    ///     push 1 write_io
+    ///     halt
+    ///     // assert that the top of the stack is 15
+    ///     check_eq_15:
+    ///         push 15 eq assert
+    ///         return
+    /// );
+    /// let output = program.run(vec![3_u64.into()], vec![]).unwrap();
+    /// assert_eq!(vec![1_u64.into()], output);
+    /// ```
+    ///
+    /// Any type with an appropriate [`Display`](std::fmt::Display) implementation can be
+    /// interpolated. This includes, for example, primitive types like `u64` and `&str`, but also
+    /// [`Instruction`](instruction::Instruction)s,
+    /// [`BFieldElement`](triton_vm::BFieldElement)s, and
+    /// [`Label`](instruction::LabelledInstruction)s, among others.
+    ///
+    /// ```
+    /// # use triton_vm::triton_program;
+    /// # use triton_vm::BFieldElement;
+    /// # use triton_vm::instruction::Instruction;
+    /// let element_0 = BFieldElement::new(0);
+    /// let label = "my_label";
+    /// let instruction_push = Instruction::Push(42_u64.into());
+    /// let dup_arg = 1;
+    /// let program = triton_program!(
+    ///     push {element_0}
+    ///     call {label} halt
+    ///     {label}:
+    ///        {instruction_push}
+    ///        dup {dup_arg}
+    ///        skiz recurse return
+    /// );
+    /// ```
+    ///
+    /// # Panics
+    ///
+    /// **Panics** if the program cannot be parsed.
+    /// Examples for parsing errors are:
+    /// - unknown (_e.g._ misspelled) instructions
+    /// - invalid instruction arguments, _e.g._, `push 1.5` or `swap 42`
+    /// - missing or duplicate labels
+    /// - invalid labels, _e.g._, using a reserved keyword or starting a label with a digit
+    ///
+    /// For a version that returns a `Result`, see [`Program::from_code()`][from_code].
+    ///
     /// [tasm]: https://triton-vm.org/spec/instructions.html
+    /// [from_code]: crate::program::Program::from_code
     #[macro_export]
     macro_rules! triton_program {
         ($($source_code:tt)*) => {{
@@ -49,11 +106,32 @@ pub mod macros {
     }
 
     /// Parse [Triton assembly][tasm] into a list of labelled
-    /// [`Instruction`](instruction::LabelledInstruction)s
+    /// [`Instruction`](instruction::LabelledInstruction)s.
+    /// Similar to [`triton_program!`](crate::triton_program), it is possible to use string-like
+    /// interpolation to insert instructions, arguments, labels, or other expressions.
     ///
     /// The labels for instruction `call`, if any, are also parsed. Instruction `call` can refer to
     /// a label defined later in the program, _i.e.,_ labels are not checked for existence or
     /// uniqueness by this parser.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use triton_vm::triton_asm;
+    /// let push_argument = 42;
+    /// let instructions = triton_asm!(
+    ///     push 1 call some_label
+    ///     push {push_argument}
+    ///     some_other_label: skiz halt return
+    /// );
+    /// assert_eq!(6, instructions.len());
+    /// ```
+    ///
+    /// # Panics
+    ///
+    /// **Panics** if the instructions cannot be parsed.
+    /// For examples, see [`triton_program!`](crate::triton_program), with the exception that
+    /// labels are not checked for existence or uniqueness.
     ///
     /// [tasm]: https://triton-vm.org/spec/instructions.html
     #[macro_export]
@@ -65,13 +143,12 @@ pub mod macros {
         }};
     }
 
-    /// A `format_args!`-like expansion that allows interpolation of Triton assembly instructions
-    /// in an invocation of the [`triton_asm!`](triton_asm) and [`triton_program!`](triton_program)
-    /// macros.
+    /// Interpolate the arguments similar to `format_args!`. Allows interpolation of Triton assembly
+    /// instructions in the [`triton_asm!`](crate::triton_asm) and
+    /// [`triton_program!`](crate::triton_program) macros.
+    /// Primarily intended for internal use.
     ///
-    /// [Documentation to `format_args!` on rust-lang.org][format_args].
-    ///
-    /// [format_args]: https://doc.rust-lang.org/std/macro.format_args.html
+    /// [`format_args!` on rust-lang.org](https://doc.rust-lang.org/std/macro.format_args.html)
     #[macro_export]
     macro_rules! triton_asm_format {
         ($fmt:expr, $($args:expr,)*; ) => {
