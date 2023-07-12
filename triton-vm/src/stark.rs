@@ -268,6 +268,9 @@ impl Stark {
         prof_start!(maybe_profiler, "commit to quotient codeword");
         prof_start!(maybe_profiler, "LDE", "LDE");
         let quotient_interpolation_poly = quotient_domain.interpolate(&quotient_codeword.to_vec());
+        let _segments = Self::split_polynomial_into_segments::<{ AIR_TARGET_DEGREE as usize }, _>(
+            &quotient_interpolation_poly,
+        );
         let fri_quotient_codeword = Array1::from(fri.domain.evaluate(&quotient_interpolation_poly));
         prof_stop!(maybe_profiler, "LDE");
         prof_start!(maybe_profiler, "interpret XFEs as Digests");
@@ -553,6 +556,36 @@ impl Stark {
         out_of_domain_value: XFieldElement,
     ) -> XFieldElement {
         (in_domain_value - out_of_domain_value) / (in_domain_point - out_of_domain_point)
+    }
+
+    /// Losslessly split the given polynomial `f` into `N` segments of (roughly) equal degree.
+    /// The degree of each segment is at most `f.degree() / N`.
+    /// It holds that `f(x) = Σ_{i=0}^{N-1} x^i·f_i(x^N)`, where the `f_i` are the segments.
+    ///
+    /// For example, let
+    /// - `N = 3`, and
+    /// - `f(x) = 7·x^7 + 6·x^6 + 5·x^5 + 4·x^4 + 3·x^3 + 2·x^2 + 1·x + 0`.
+    ///
+    /// Then, the function returns the array:
+    ///
+    /// ```text
+    /// [f_0(x) = 6·x^2 + 3·x + 0,
+    ///  f_1(x) = 7·x^2 + 4·x + 1,
+    ///  f_2(x) =         5·x + 2]
+    /// ```
+    ///
+    /// The following equality holds: `f(x) == f_0(x^3) + x·f_1(x^3) + x^2·f_2(x^3)`.
+    fn split_polynomial_into_segments<const N: usize, FF: FiniteField>(
+        polynomial: &Polynomial<FF>,
+    ) -> [Polynomial<FF>; N] {
+        let mut segments = vec![];
+        for segment_index in 0..N {
+            let coefficient_iter_at_start = polynomial.coefficients.iter().skip(segment_index);
+            let segment_coefficients = coefficient_iter_at_start.step_by(N).copied().collect();
+            let segment = Polynomial::new(segment_coefficients);
+            segments.push(segment);
+        }
+        segments.try_into().unwrap()
     }
 
     #[cfg(debug_assertions)]
@@ -1764,5 +1797,77 @@ pub(crate) mod triton_stark_tests {
             domain_length as isize - 1,
             poly_of_hopefully_high_degree.degree()
         );
+    }
+
+    fn assert_polynomial_and_segments_property<const N: usize, FF: FiniteField>(
+        f: &Polynomial<FF>,
+        segments: &[Polynomial<FF>; N],
+        x: FF,
+    ) {
+        let x_pow_n = x.mod_pow_u32(N as u32);
+        let evaluate_segment = |(segment_idx, segment): (_, &Polynomial<_>)| {
+            segment.evaluate(&x_pow_n) * x.mod_pow_u32(segment_idx as u32)
+        };
+        let evaluated_segments = segments.iter().enumerate().map(evaluate_segment);
+        let sum_of_evaluated_segments = evaluated_segments.fold(FF::zero(), |acc, x| acc + x);
+        assert_eq!(f.evaluate(&x), sum_of_evaluated_segments);
+    }
+
+    fn assert_segments_degrees_are_small_enough<const N: usize, FF: FiniteField>(
+        f: &Polynomial<FF>,
+        segments: &[Polynomial<FF>; N],
+    ) {
+        let max_allowed_degree = f.degree() / (N as isize);
+        let all_degrees_are_small_enough =
+            segments.iter().all(|s| s.degree() <= max_allowed_degree);
+        assert!(all_degrees_are_small_enough);
+    }
+
+    #[test]
+    fn test_splitting_polynomial_into_2_segments() {
+        let coefficients: [XFieldElement; 100] = thread_rng().gen();
+        let f = Polynomial::new(coefficients.to_vec());
+        let segments = Stark::split_polynomial_into_segments::<2, _>(&f);
+        assert_segments_degrees_are_small_enough(&f, &segments);
+        for _ in 0..10 {
+            let x = thread_rng().gen();
+            assert_polynomial_and_segments_property(&f, &segments, x);
+        }
+    }
+
+    #[test]
+    fn test_splitting_polynomial_into_3_segments() {
+        let coefficients: [BFieldElement; 35] = thread_rng().gen();
+        let f = Polynomial::new(coefficients.to_vec());
+        let segments = Stark::split_polynomial_into_segments::<3, _>(&f);
+        assert_segments_degrees_are_small_enough(&f, &segments);
+        for _ in 0..10 {
+            let x = thread_rng().gen();
+            assert_polynomial_and_segments_property(&f, &segments, x);
+        }
+    }
+
+    #[test]
+    fn test_splitting_polynomial_into_4_segments() {
+        let coefficients: [BFieldElement; 211] = thread_rng().gen();
+        let f = Polynomial::new(coefficients.to_vec());
+        let segments = Stark::split_polynomial_into_segments::<4, _>(&f);
+        assert_segments_degrees_are_small_enough(&f, &segments);
+        for _ in 0..10 {
+            let x = thread_rng().gen();
+            assert_polynomial_and_segments_property(&f, &segments, x);
+        }
+    }
+
+    #[test]
+    fn test_splitting_polynomial_into_7_segments() {
+        let coefficients: [XFieldElement; 53] = thread_rng().gen();
+        let f = Polynomial::new(coefficients.to_vec());
+        let segments = Stark::split_polynomial_into_segments::<7, _>(&f);
+        assert_segments_degrees_are_small_enough(&f, &segments);
+        for _ in 0..10 {
+            let x = thread_rng().gen();
+            assert_polynomial_and_segments_property(&f, &segments, x);
+        }
     }
 }
