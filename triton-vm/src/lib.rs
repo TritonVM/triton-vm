@@ -166,12 +166,32 @@ macro_rules! triton_asm {
     }};
 }
 
-/// Compile a single [Triton assembly][tasm] instruction. Output a
-/// [`LabelledInstruction`].
+/// Compile a single [Triton assembly][tasm] instruction into a [`LabelledInstruction`].
 ///
 /// [tasm]: https://triton-vm.org/spec/instructions.html
 #[macro_export]
 macro_rules! triton_instr {
+    (push $arg:literal) => {{
+        let argument = $crate::BFieldElement::new($arg);
+        let instruction = $crate::instruction::AnInstruction::<String>::Push(argument);
+        $crate::instruction::LabelledInstruction::Instruction(instruction)
+    }};
+    (dup $arg:literal) => {{
+        let argument: $crate::op_stack::OpStackElement = u32::try_into($arg).unwrap();
+        let instruction = $crate::instruction::AnInstruction::<String>::Dup(argument);
+        $crate::instruction::LabelledInstruction::Instruction(instruction)
+    }};
+    (swap $arg:literal) => {{
+        assert_ne!(0_u32, $arg, "`swap 0` is illegal.");
+        let argument: $crate::op_stack::OpStackElement = u32::try_into($arg).unwrap();
+        let instruction = $crate::instruction::AnInstruction::<String>::Swap(argument);
+        $crate::instruction::LabelledInstruction::Instruction(instruction)
+    }};
+    (call $arg:ident) => {{
+        let argument = stringify!($arg).to_string();
+        let instruction = $crate::instruction::AnInstruction::<String>::Call(argument);
+        $crate::instruction::LabelledInstruction::Instruction(instruction)
+    }};
     ($instr:ident) => {{
         let (_, instructions) = $crate::parser::tokenize(stringify!($instr)).unwrap();
         instructions[0].to_labelled_instruction()

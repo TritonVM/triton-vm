@@ -1017,7 +1017,26 @@ pub mod parser_tests {
     }
 
     #[test]
-    fn triton_instruction_macro() {
-        assert_eq!(LabelledInstruction::Instruction(Halt), triton_instr!(halt));
+    fn test_triton_instruction_macro_on_simple_instructions() {
+        assert_eq!(Instruction(Halt), triton_instr!(halt));
+        assert_eq!(Instruction(Add), triton_instr!(add));
+        assert_eq!(Instruction(Pop), triton_instr!(pop));
+    }
+
+    #[test]
+    #[should_panic(expected = "not_an_instruction")]
+    fn negative_test_of_triton_instruction_macro() {
+        triton_instr!(not_an_instruction);
+    }
+
+    #[test]
+    fn test_triton_instruction_macro_on_instructions_with_argument() {
+        assert_eq!(Instruction(Push(7_u64.into())), triton_instr!(push 7));
+        assert_eq!(Instruction(Dup(ST3)), triton_instr!(dup 3));
+        assert_eq!(Instruction(Swap(ST5)), triton_instr!(swap 5));
+        assert_eq!(
+            Instruction(Call("my_label".to_string())),
+            triton_instr!(call my_label)
+        );
     }
 }
