@@ -318,10 +318,7 @@ impl Program {
     /// Run Triton VM on the given program with the given public and secret input,
     /// but record the number of cycles spent in each callable block of instructions.
     /// This function returns a Result wrapping a program profiler report, which is a
-    /// Vec of triples:
-    ///   - call_stack_depth : usize
-    ///   - label : String
-    ///   - cycle_count : u32
+    /// Vec of [`ProfileLine`]s.
     ///
     /// Note that the program is given as a list of [`LabelledInstruction`]s rather
     /// than as a [`Program`] because we need the labels to build a meaningful profiler
@@ -329,12 +326,11 @@ impl Program {
     ///
     /// See also [`run`](Self::run), [`trace_execution`](Self::trace_execution) and
     /// [`debug`](Self::debug).
-    #[allow(clippy::type_complexity)]
     pub fn profile(
         labelled_instructions: &[LabelledInstruction],
         public_input: Vec<BFieldElement>,
         secret_input: Vec<BFieldElement>,
-    ) -> Result<(Vec<BFieldElement>, Vec<(usize, String, u32)>)> {
+    ) -> Result<(Vec<BFieldElement>, Vec<ProfileLine>)> {
         let program = Self::new(labelled_instructions);
         let label_to_address_map = build_label_to_address_map(labelled_instructions);
         let address_to_label_map = label_to_address_map
@@ -354,22 +350,39 @@ impl Program {
                         .get(&(address.value() as usize))
                         .unwrap()
                         .to_owned();
-                    call_stack.push((label, clk));
+                    profile.push(ProfileLine::new(call_stack.len(), label, 0));
+                    let index = profile.len() - 1;
+                    call_stack.push((clk, index));
                 }
                 Instruction::Return => {
-                    let (label, clk_start) = call_stack.pop().unwrap();
-                    profile.push((call_stack.len(), label.to_owned(), clk - clk_start));
+                    let (clk_start, index) = call_stack.pop().unwrap();
+                    profile[index].cycle_count = clk - clk_start;
                 }
                 _ => {}
             };
 
             state.step()?;
         }
-        profile.push((0, "total".to_string(), state.cycle_count));
-
-        profile.reverse();
+        profile.push(ProfileLine::new(0, "total".to_string(), state.cycle_count));
 
         Ok((state.public_output, profile))
+    }
+}
+
+/// A single line in a profile report for profiling Triton Assembly programs.
+pub struct ProfileLine {
+    pub call_stack_depth: usize,
+    pub label: String,
+    pub cycle_count: u32,
+}
+
+impl ProfileLine {
+    pub fn new(call_stack_depth: usize, label: String, cycle_count: u32) -> Self {
+        ProfileLine {
+            call_stack_depth,
+            label,
+            cycle_count,
+        }
     }
 }
 
@@ -491,19 +504,24 @@ mod test {
     }
 
     #[test]
-    fn test_profile_equivalence() {
+    fn test_profile() {
         let labelled_instructions = calculate_new_mmr_peaks_from_append_with_safe_lists();
         let (profile_output, profile) =
             Program::profile(&labelled_instructions, vec![], vec![]).unwrap();
-        let run_output = Program::new(&labelled_instructions)
-            .run(vec![], vec![])
+        let program = Program::new(&labelled_instructions);
+        let debug_terminal_state = program
+            .debug_terminal_state(vec![], vec![], None, None)
             .unwrap();
-        assert_eq!(profile_output, run_output);
+        assert_eq!(profile_output, debug_terminal_state.public_output);
+        assert_eq!(
+            profile.last().unwrap().cycle_count,
+            debug_terminal_state.cycle_count
+        );
 
         println!("Profile of Tasm Program:");
-        for (call_stack_depth, label, cycle_count) in profile {
-            let indentation = vec!["  "; call_stack_depth].join("");
-            println!("{indentation} {label}: {cycle_count}");
+        for line in profile {
+            let indentation = vec!["  "; line.call_stack_depth].join("");
+            println!("{indentation} {}: {}", line.label, line.cycle_count);
         }
     }
 }
