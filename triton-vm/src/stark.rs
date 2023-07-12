@@ -1799,7 +1799,9 @@ pub(crate) mod triton_stark_tests {
         );
     }
 
-    fn assert_polynomial_and_segments_property<const N: usize, FF: FiniteField>(
+    /// Re-compose the segments of a polynomial and assert that the result is equal to the
+    /// polynomial itself. Uses the Schwartz-Zippel lemma to test polynomial equality.
+    fn assert_polynomial_equals_recomposed_segments<const N: usize, FF: FiniteField>(
         f: &Polynomial<FF>,
         segments: &[Polynomial<FF>; N],
         x: FF,
@@ -1824,50 +1826,46 @@ pub(crate) mod triton_stark_tests {
     }
 
     #[test]
-    fn test_splitting_polynomial_into_2_segments() {
-        let coefficients: [XFieldElement; 100] = thread_rng().gen();
+    fn test_splitting_polynomial_into_segments_of_unequal_size() {
+        let coefficients: [XFieldElement; 211] = thread_rng().gen();
         let f = Polynomial::new(coefficients.to_vec());
-        let segments = Stark::split_polynomial_into_segments::<2, _>(&f);
-        assert_segments_degrees_are_small_enough(&f, &segments);
-        for _ in 0..10 {
-            let x = thread_rng().gen();
-            assert_polynomial_and_segments_property(&f, &segments, x);
-        }
+
+        let segments_2 = Stark::split_polynomial_into_segments::<2, _>(&f);
+        let segments_3 = Stark::split_polynomial_into_segments::<3, _>(&f);
+        let segments_4 = Stark::split_polynomial_into_segments::<4, _>(&f);
+        let segments_7 = Stark::split_polynomial_into_segments::<7, _>(&f);
+
+        assert_segments_degrees_are_small_enough(&f, &segments_2);
+        assert_segments_degrees_are_small_enough(&f, &segments_3);
+        assert_segments_degrees_are_small_enough(&f, &segments_4);
+        assert_segments_degrees_are_small_enough(&f, &segments_7);
+
+        let x = thread_rng().gen();
+        assert_polynomial_equals_recomposed_segments(&f, &segments_2, x);
+        assert_polynomial_equals_recomposed_segments(&f, &segments_3, x);
+        assert_polynomial_equals_recomposed_segments(&f, &segments_4, x);
+        assert_polynomial_equals_recomposed_segments(&f, &segments_7, x);
     }
 
     #[test]
-    fn test_splitting_polynomial_into_3_segments() {
-        let coefficients: [BFieldElement; 35] = thread_rng().gen();
+    fn test_splitting_polynomial_into_segments_of_equal_size() {
+        let coefficients: [BFieldElement; 2 * 3 * 4 * 7] = thread_rng().gen();
         let f = Polynomial::new(coefficients.to_vec());
-        let segments = Stark::split_polynomial_into_segments::<3, _>(&f);
-        assert_segments_degrees_are_small_enough(&f, &segments);
-        for _ in 0..10 {
-            let x = thread_rng().gen();
-            assert_polynomial_and_segments_property(&f, &segments, x);
-        }
-    }
 
-    #[test]
-    fn test_splitting_polynomial_into_4_segments() {
-        let coefficients: [BFieldElement; 211] = thread_rng().gen();
-        let f = Polynomial::new(coefficients.to_vec());
-        let segments = Stark::split_polynomial_into_segments::<4, _>(&f);
-        assert_segments_degrees_are_small_enough(&f, &segments);
-        for _ in 0..10 {
-            let x = thread_rng().gen();
-            assert_polynomial_and_segments_property(&f, &segments, x);
-        }
-    }
+        let segments_2 = Stark::split_polynomial_into_segments::<2, _>(&f);
+        let segments_3 = Stark::split_polynomial_into_segments::<3, _>(&f);
+        let segments_4 = Stark::split_polynomial_into_segments::<4, _>(&f);
+        let segments_7 = Stark::split_polynomial_into_segments::<7, _>(&f);
 
-    #[test]
-    fn test_splitting_polynomial_into_7_segments() {
-        let coefficients: [XFieldElement; 53] = thread_rng().gen();
-        let f = Polynomial::new(coefficients.to_vec());
-        let segments = Stark::split_polynomial_into_segments::<7, _>(&f);
-        assert_segments_degrees_are_small_enough(&f, &segments);
-        for _ in 0..10 {
-            let x = thread_rng().gen();
-            assert_polynomial_and_segments_property(&f, &segments, x);
-        }
+        assert_segments_degrees_are_small_enough(&f, &segments_2);
+        assert_segments_degrees_are_small_enough(&f, &segments_3);
+        assert_segments_degrees_are_small_enough(&f, &segments_4);
+        assert_segments_degrees_are_small_enough(&f, &segments_7);
+
+        let x = thread_rng().gen();
+        assert_polynomial_equals_recomposed_segments(&f, &segments_2, x);
+        assert_polynomial_equals_recomposed_segments(&f, &segments_3, x);
+        assert_polynomial_equals_recomposed_segments(&f, &segments_4, x);
+        assert_polynomial_equals_recomposed_segments(&f, &segments_7, x);
     }
 }
