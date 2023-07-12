@@ -378,7 +378,9 @@ pub fn convert_all_labels_to_addresses(program: &[LabelledInstruction]) -> Vec<I
         .collect()
 }
 
-fn build_label_to_address_map(program: &[LabelledInstruction]) -> HashMap<String, usize> {
+pub(crate) fn build_label_to_address_map(
+    program: &[LabelledInstruction],
+) -> HashMap<String, usize> {
     use LabelledInstruction::*;
 
     let mut label_map = HashMap::new();

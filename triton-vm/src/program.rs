@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fmt::Display;
 use std::io::Cursor;
 
@@ -15,6 +16,7 @@ use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
 use crate::aet::AlgebraicExecutionTrace;
 use crate::ensure_eq;
 use crate::error::InstructionError::InstructionPointerOverflow;
+use crate::instruction::build_label_to_address_map;
 use crate::instruction::convert_all_labels_to_addresses;
 use crate::instruction::Instruction;
 use crate::instruction::LabelledInstruction;
@@ -312,6 +314,63 @@ impl Program {
         }
         Ok(state)
     }
+
+    /// Run Triton VM on the given program with the given public and secret input,
+    /// but record the number of cycles spent in each callable block of instructions.
+    /// This function returns a Result wrapping a program profiler report, which is a
+    /// Vec of triples:
+    ///   - call_stack_depth : usize
+    ///   - label : String
+    ///   - cycle_count : u32
+    ///
+    /// Note that the program is given as a list of [`LabelledInstruction`]s rather
+    /// than as a [`Program`] because we need the labels to build a meaningful profiler
+    /// report.
+    ///
+    /// See also [`run`](Self::run), [`trace_execution`](Self::trace_execution) and
+    /// [`debug`](Self::debug).
+    #[allow(clippy::type_complexity)]
+    pub fn profile(
+        labelled_instructions: &[LabelledInstruction],
+        public_input: Vec<BFieldElement>,
+        secret_input: Vec<BFieldElement>,
+    ) -> Result<(Vec<BFieldElement>, Vec<(usize, String, u32)>)> {
+        let program = Self::new(labelled_instructions);
+        let label_to_address_map = build_label_to_address_map(labelled_instructions);
+        let address_to_label_map = label_to_address_map
+            .into_iter()
+            .map(|(k, v)| (v, k))
+            .collect::<HashMap<_, _>>();
+        let mut state = VMState::new(&program, public_input, secret_input);
+
+        let mut profile = vec![];
+        let mut call_stack = vec![];
+        while !state.halting {
+            let clk = state.cycle_count;
+
+            match state.current_instruction()? {
+                Instruction::Call(address) => {
+                    let label = address_to_label_map
+                        .get(&(address.value() as usize))
+                        .unwrap()
+                        .to_owned();
+                    call_stack.push((label, clk));
+                }
+                Instruction::Return => {
+                    let (label, clk_start) = call_stack.pop().unwrap();
+                    profile.push((call_stack.len(), label.to_owned(), clk - clk_start));
+                }
+                _ => {}
+            };
+
+            state.step()?;
+        }
+        profile.push((0, "total".to_string(), state.cycle_count));
+
+        profile.reverse();
+
+        Ok((state.public_output, profile))
+    }
 }
 
 #[cfg(test)]
@@ -320,6 +379,7 @@ mod test {
     use rand::Rng;
     use twenty_first::shared_math::tip5::Tip5;
 
+    use crate::example_programs::calculate_new_mmr_peaks_from_append_with_safe_lists;
     use crate::parser::parser_tests::program_gen;
     use crate::triton_program;
 
@@ -428,5 +488,22 @@ mod test {
             {label}: push 1 assert halt
         );
         program.run(vec![], vec![]).unwrap();
+    }
+
+    #[test]
+    fn test_profile_equivalence() {
+        let labelled_instructions = calculate_new_mmr_peaks_from_append_with_safe_lists();
+        let (profile_output, profile) =
+            Program::profile(&labelled_instructions, vec![], vec![]).unwrap();
+        let run_output = Program::new(&labelled_instructions)
+            .run(vec![], vec![])
+            .unwrap();
+        assert_eq!(profile_output, run_output);
+
+        println!("Profile of Tasm Program:");
+        for (call_stack_depth, label, cycle_count) in profile {
+            let indentation = vec!["  "; call_stack_depth].join("");
+            println!("{indentation} {label}: {cycle_count}");
+        }
     }
 }
