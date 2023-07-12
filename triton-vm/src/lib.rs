@@ -34,7 +34,7 @@ pub mod stark;
 pub mod table;
 pub mod vm;
 
-/// Parse an entire program written in [Triton assembly][tasm].
+/// Compile an entire program written in [Triton assembly][tasm].
 /// The resulting [`Program`](crate::program::Program) can be
 /// [run](crate::program::Program::run).
 ///
@@ -56,7 +56,7 @@ pub mod vm;
 ///         return
 /// );
 /// let output = program.run(vec![3_u64.into()], vec![]).unwrap();
-/// assert_eq!(vec![1_u64.into()], output);
+/// assert_eq!(1, output[0].value());
 /// ```
 ///
 /// Any type with an appropriate [`Display`](std::fmt::Display) implementation can be
@@ -104,7 +104,7 @@ macro_rules! triton_program {
     }};
 }
 
-/// Parse [Triton assembly][tasm] into a list of labelled
+/// Compile [Triton assembly][tasm] into a list of labelled
 /// [`Instruction`](crate::instruction::LabelledInstruction)s.
 /// Similar to [`triton_program!`](crate::triton_program), it is possible to use string-like
 /// interpolation to insert instructions, arguments, labels, or other expressions.
@@ -123,7 +123,7 @@ macro_rules! triton_program {
 ///     push {push_argument}
 ///     some_other_label: skiz halt return
 /// );
-/// assert_eq!(6, instructions.len());
+/// assert_eq!(7, instructions.len());
 /// ```
 ///
 /// # Panics
@@ -161,8 +161,20 @@ macro_rules! triton_asm {
     };
     ($($source_code:tt)*) => {{
         let source_code = $crate::triton_asm!(@fmt "",; $($source_code)*);
-        let (_, instructions) = $crate::parser::program(&source_code).unwrap();
-        $crate::parser::to_labelled(&instructions)
+        let (_, instructions) = $crate::parser::tokenize(&source_code).unwrap();
+        $crate::parser::to_labelled_instructions(&instructions)
+    }};
+}
+
+/// Compile a single [Triton assembly][tasm] instruction. Output a
+/// [`LabelledInstruction`].
+///
+/// [tasm]: https://triton-vm.org/spec/instructions.html
+#[macro_export]
+macro_rules! triton_instr {
+    ($instr:ident) => {{
+        let (_, instructions) = $crate::parser::tokenize(stringify!($instr)).unwrap();
+        instructions[0].to_labelled_instruction()
     }};
 }
 

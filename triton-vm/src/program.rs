@@ -19,7 +19,7 @@ use crate::instruction::convert_all_labels_to_addresses;
 use crate::instruction::Instruction;
 use crate::instruction::LabelledInstruction;
 use crate::parser::parse;
-use crate::parser::to_labelled;
+use crate::parser::to_labelled_instructions;
 use crate::vm::VMState;
 
 /// A `Program` is a `Vec<Instruction>` that contains duplicate elements for instructions with a
@@ -139,7 +139,7 @@ impl Program {
     /// Create a `Program` by parsing source code.
     pub fn from_code(code: &str) -> Result<Self> {
         parse(code)
-            .map(|program| Program::new(&to_labelled(&program)))
+            .map(|program| Program::new(&to_labelled_instructions(&program)))
             .map_err(|err| anyhow::anyhow!("{}", err))
     }
 

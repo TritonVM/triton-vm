@@ -35,18 +35,21 @@ pub struct ParseError<'a> {
     pub errors: VerboseError<&'a str>,
 }
 
-/// A `ParsedInstruction` has `call` addresses encoded as label names.
+/// `InstructionToken` is either an instruction with a label, or a
+/// label itself. It is intermediate object used in some middle
+/// point of the compilation pipeline. You probably want
+/// [`LabelledInstruction`].
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum ParsedInstruction<'a> {
+pub enum InstructionToken<'a> {
     Instruction(AnInstruction<String>, &'a str),
     Label(String, &'a str),
 }
 
-impl<'a> std::fmt::Display for ParsedInstruction<'a> {
+impl<'a> std::fmt::Display for InstructionToken<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ParsedInstruction::Instruction(instr, _) => write!(f, "{instr}"),
-            ParsedInstruction::Label(label_name, _) => write!(f, "{label_name}:"),
+            InstructionToken::Instruction(instr, _) => write!(f, "{instr}"),
+            InstructionToken::Label(label_name, _) => write!(f, "{label_name}:"),
         }
     }
 }
@@ -59,16 +62,16 @@ impl<'a> std::fmt::Display for ParseError<'a> {
 
 impl<'a> Error for ParseError<'a> {}
 
-impl<'a> ParsedInstruction<'a> {
+impl<'a> InstructionToken<'a> {
     pub fn token_str(&self) -> &'a str {
         match self {
-            ParsedInstruction::Instruction(_, token_str) => token_str,
-            ParsedInstruction::Label(_, token_str) => token_str,
+            InstructionToken::Instruction(_, token_str) => token_str,
+            InstructionToken::Label(_, token_str) => token_str,
         }
     }
 
-    pub fn to_labelled(&self) -> LabelledInstruction {
-        use ParsedInstruction::*;
+    pub fn to_labelled_instruction(&self) -> LabelledInstruction {
+        use InstructionToken::*;
         match self {
             Instruction(instr, _) => LabelledInstruction::Instruction(instr.to_owned()),
             Label(label, _) => LabelledInstruction::Label(label.to_owned()),
@@ -76,10 +79,10 @@ impl<'a> ParsedInstruction<'a> {
     }
 }
 
-pub fn to_labelled(instructions: &[ParsedInstruction]) -> Vec<LabelledInstruction> {
+pub fn to_labelled_instructions(instructions: &[InstructionToken]) -> Vec<LabelledInstruction> {
     instructions
         .iter()
-        .map(|instruction| instruction.to_labelled())
+        .map(|instruction| instruction.to_labelled_instruction())
         .collect()
 }
 
@@ -104,8 +107,8 @@ pub fn pretty_print_error(s: &str, mut e: VerboseError<&str>) -> String {
 }
 
 /// Parse a program
-pub fn parse(input: &str) -> Result<Vec<ParsedInstruction>, ParseError> {
-    let instructions = match program(input).finish() {
+pub fn parse(input: &str) -> Result<Vec<InstructionToken>, ParseError> {
+    let instructions = match tokenize(input).finish() {
         Ok((_s, instructions)) => Ok(instructions),
         Err(errors) => Err(ParseError { input, errors }),
     }?;
@@ -117,15 +120,15 @@ pub fn parse(input: &str) -> Result<Vec<ParsedInstruction>, ParseError> {
 
 fn scan_missing_duplicate_labels<'a>(
     input: &'a str,
-    instructions: &[ParsedInstruction<'a>],
+    instructions: &[InstructionToken<'a>],
 ) -> Result<(), ParseError<'a>> {
-    let mut seen: HashMap<&str, ParsedInstruction> = HashMap::default();
-    let mut duplicates: HashSet<ParsedInstruction> = HashSet::default();
-    let mut missings: HashSet<ParsedInstruction> = HashSet::default();
+    let mut seen: HashMap<&str, InstructionToken> = HashMap::default();
+    let mut duplicates: HashSet<InstructionToken> = HashSet::default();
+    let mut missings: HashSet<InstructionToken> = HashSet::default();
 
     // Find duplicate labels, including the first occurrence of each duplicate.
     for instruction in instructions.iter() {
-        if let ParsedInstruction::Label(label, _token_s) = instruction {
+        if let InstructionToken::Label(label, _token_s) = instruction {
             if let Some(first_label) = seen.get(label.as_str()) {
                 duplicates.insert(first_label.to_owned());
                 duplicates.insert(instruction.to_owned());
@@ -137,7 +140,7 @@ fn scan_missing_duplicate_labels<'a>(
 
     // Find missing labels
     for instruction in instructions.iter() {
-        if let ParsedInstruction::Instruction(Call(addr), _token_s) = instruction {
+        if let InstructionToken::Instruction(Call(addr), _token_s) = instruction {
             if !seen.contains_key(addr.as_str()) {
                 missings.insert(instruction.to_owned());
             }
@@ -176,7 +179,8 @@ fn scan_missing_duplicate_labels<'a>(
 /// error type, but we want `nom::error::VerboseError` as it allows `context()`.
 type ParseResult<'input, Out> = IResult<&'input str, Out, VerboseError<&'input str>>;
 
-pub fn program(s: &str) -> ParseResult<Vec<ParsedInstruction>> {
+///
+pub fn tokenize(s: &str) -> ParseResult<Vec<InstructionToken>> {
     let (s, _) = comment_or_whitespace0(s)?;
     let (s, instructions) = many0(alt((label, labelled_instruction)))(s)?;
     let (s, _) = context("expecting label, instruction or eof", eof)(s)?;
@@ -184,12 +188,12 @@ pub fn program(s: &str) -> ParseResult<Vec<ParsedInstruction>> {
     Ok((s, instructions))
 }
 
-fn labelled_instruction(s_instr: &str) -> ParseResult<ParsedInstruction> {
+fn labelled_instruction(s_instr: &str) -> ParseResult<InstructionToken> {
     let (s, instr) = an_instruction(s_instr)?;
-    Ok((s, ParsedInstruction::Instruction(instr, s_instr)))
+    Ok((s, InstructionToken::Instruction(instr, s_instr)))
 }
 
-fn label(label_s: &str) -> ParseResult<ParsedInstruction> {
+fn label(label_s: &str) -> ParseResult<InstructionToken> {
     let (s, addr) = label_addr(label_s)?;
     let (s, _) = token0("")(s)?; // whitespace between label and ':' is allowed
     let (s, _) = token0(":")(s)?; // don't require space after ':'
@@ -201,7 +205,7 @@ fn label(label_s: &str) -> ParseResult<ParsedInstruction> {
         return cut(context("label cannot be named after instruction", fail))(label_s);
     }
 
-    Ok((s, ParsedInstruction::Label(addr, label_s)))
+    Ok((s, InstructionToken::Label(addr, label_s)))
 }
 
 fn an_instruction(s: &str) -> ParseResult<AnInstruction<String>> {
@@ -509,6 +513,7 @@ pub mod parser_tests {
 
     use crate::program::Program;
     use crate::triton_asm;
+    use crate::triton_instr;
     use crate::triton_program;
 
     use super::*;
@@ -530,7 +535,7 @@ pub mod parser_tests {
         match parse(test_case.input) {
             Ok(actual) => assert_eq!(
                 test_case.expected,
-                Program::new(&to_labelled(&actual)),
+                Program::new(&to_labelled_instructions(&actual)),
                 "{}",
                 test_case.message
             ),
@@ -1009,5 +1014,10 @@ pub mod parser_tests {
         triton_program!({instruction_push} push {push_arg} swap {swap_argument} eq assert halt)
             .run(vec![], vec![])
             .unwrap();
+    }
+
+    #[test]
+    fn triton_instruction_macro() {
+        assert_eq!(LabelledInstruction::Instruction(Halt), triton_instr!(halt));
     }
 }
