@@ -321,7 +321,7 @@ impl Program {
     /// Vec of [`ProfileLine`]s.
     ///
     /// Note that the program is given as a list of [`LabelledInstruction`]s rather
-    /// than as a [`Program`] because we need the labels to build a meaningful profiler
+    /// than as a [`Program`] because the labels are needed to build a meaningful profiler
     /// report.
     ///
     /// See also [`run`](Self::run), [`trace_execution`](Self::trace_execution) and
@@ -331,37 +331,36 @@ impl Program {
         public_input: Vec<BFieldElement>,
         secret_input: Vec<BFieldElement>,
     ) -> Result<(Vec<BFieldElement>, Vec<ProfileLine>)> {
-        let program = Self::new(labelled_instructions);
-        let label_to_address_map = build_label_to_address_map(labelled_instructions);
-        let address_to_label_map = label_to_address_map
+        let address_to_label_map = build_label_to_address_map(labelled_instructions)
             .into_iter()
-            .map(|(k, v)| (v, k))
+            .map(|(label, address)| (address, label))
             .collect::<HashMap<_, _>>();
-        let mut state = VMState::new(&program, public_input, secret_input);
-
-        let mut profile = vec![];
         let mut call_stack = vec![];
-        while !state.halting {
-            let clk = state.cycle_count;
+        let mut profile = vec![];
 
-            match state.current_instruction()? {
-                Instruction::Call(address) => {
-                    let label = address_to_label_map
-                        .get(&(address.value() as usize))
-                        .unwrap()
-                        .to_owned();
-                    profile.push(ProfileLine::new(call_stack.len(), label, 0));
-                    let index = profile.len() - 1;
-                    call_stack.push((clk, index));
-                }
-                Instruction::Return => {
-                    let (clk_start, index) = call_stack.pop().unwrap();
-                    profile[index].cycle_count = clk - clk_start;
-                }
-                _ => {}
-            };
+        let program = Self::new(labelled_instructions);
+        let mut state = VMState::new(&program, public_input, secret_input);
+        while !state.halting {
+            if let Instruction::Call(address) = state.current_instruction()? {
+                let address = address.value() as usize;
+                let label = address_to_label_map[&address].to_owned();
+                let profile_line = ProfileLine::new(call_stack.len(), label, 0);
+                let profile_line_number = profile.len();
+                profile.push(profile_line);
+                call_stack.push((state.cycle_count, profile_line_number));
+            }
+
+            if let Instruction::Return = state.current_instruction()? {
+                let (clk_start, profile_line_number) = call_stack.pop().unwrap();
+                profile[profile_line_number].cycle_count = state.cycle_count - clk_start;
+            }
 
             state.step()?;
+        }
+
+        for (clk_start, profile_line_number) in call_stack {
+            profile[profile_line_number].cycle_count = state.cycle_count - clk_start;
+            profile[profile_line_number].label += " (open)";
         }
         profile.push(ProfileLine::new(0, "total".to_string(), state.cycle_count));
 
@@ -394,6 +393,7 @@ mod test {
 
     use crate::example_programs::calculate_new_mmr_peaks_from_append_with_safe_lists;
     use crate::parser::parser_tests::program_gen;
+    use crate::triton_asm;
     use crate::triton_program;
 
     use super::*;
@@ -523,5 +523,27 @@ mod test {
             let indentation = vec!["  "; line.call_stack_depth].join("");
             println!("{indentation} {}: {}", line.label, line.cycle_count);
         }
+    }
+
+    #[test]
+    fn test_profile_with_open_calls() {
+        let labelled_instructions = triton_asm! {
+            push 2 call outer_fn
+            outer_fn:
+                call inner_fn
+                dup 0 skiz recurse halt
+            inner_fn:
+                push -1 add return
+        };
+        let (_, profile) = Program::profile(&labelled_instructions, vec![], vec![]).unwrap();
+
+        println!();
+        for line in profile.iter() {
+            let indentation = vec!["  "; line.call_stack_depth].join("");
+            println!("{indentation} {}: {}", line.label, line.cycle_count);
+        }
+
+        let maybe_open_call = profile.iter().find(|line| line.label.contains("(open)"));
+        assert!(maybe_open_call.is_some());
     }
 }
