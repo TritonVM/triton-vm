@@ -508,6 +508,7 @@ pub mod parser_tests {
     use rand::distributions::WeightedIndex;
     use rand::prelude::*;
     use rand::Rng;
+    use twenty_first::shared_math::digest::DIGEST_LENGTH;
 
     use LabelledInstruction::*;
 
@@ -1048,6 +1049,10 @@ pub mod parser_tests {
 
         let instructions = triton_asm![read_io; 15];
         let expected_instructions = vec![Instruction(ReadIo); 15];
+        assert_eq!(expected_instructions, instructions);
+
+        let instructions = triton_asm![divine; DIGEST_LENGTH];
+        let expected_instructions = vec![Instruction(Divine); DIGEST_LENGTH];
         assert_eq!(expected_instructions, instructions);
     }
 }

@@ -176,11 +176,11 @@ macro_rules! triton_asm {
         $crate::triton_asm!(@fmt concat!($fmt, "{}"), $($args,)* $e,; $($tail)*)
     };
 
-    [push $arg:literal; $num:literal] => { vec![ $crate::triton_instr!(push $arg); $num ] };
-    [dup $arg:literal; $num:literal] => { vec![ $crate::triton_instr!(dup $arg); $num ] };
-    [swap $arg:literal; $num:literal] => { vec![ $crate::triton_instr!(swap $arg); $num ] };
-    [call $arg:ident; $num:literal] => { vec![ $crate::triton_instr!(call $arg); $num ] };
-    [$instr:ident; $num:literal] => { vec![ $crate::triton_instr!($instr); $num ] };
+    [push $arg:literal; $num:expr] => { vec![ $crate::triton_instr!(push $arg); $num ] };
+    [dup $arg:literal; $num:expr] => { vec![ $crate::triton_instr!(dup $arg); $num ] };
+    [swap $arg:literal; $num:expr] => { vec![ $crate::triton_instr!(swap $arg); $num ] };
+    [call $arg:ident; $num:expr] => { vec![ $crate::triton_instr!(call $arg); $num ] };
+    [$instr:ident; $num:expr] => { vec![ $crate::triton_instr!($instr); $num ] };
 
     {$($source_code:tt)*} => {{
         let source_code = $crate::triton_asm!(@fmt "",; $($source_code)*);
