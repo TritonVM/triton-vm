@@ -1039,4 +1039,15 @@ pub mod parser_tests {
             triton_instr!(call my_label)
         );
     }
+
+    #[test]
+    fn test_triton_asm_macro_repeating_one_instruction() {
+        let instructions = triton_asm![push 42; 3];
+        let expected_instructions = vec![Instruction(Push(42_u64.into())); 3];
+        assert_eq!(expected_instructions, instructions);
+
+        let instructions = triton_asm![read_io; 15];
+        let expected_instructions = vec![Instruction(ReadIo); 15];
+        assert_eq!(expected_instructions, instructions);
+    }
 }

@@ -98,7 +98,7 @@ pub mod vm;
 /// [from_code]: crate::program::Program::from_code
 #[macro_export]
 macro_rules! triton_program {
-    ($($source_code:tt)*) => {{
+    {$($source_code:tt)*} => {{
         let labelled_instructions = $crate::triton_asm!($($source_code)*);
         $crate::program::Program::new(&labelled_instructions)
     }};
@@ -108,6 +108,8 @@ macro_rules! triton_program {
 /// [`Instruction`](crate::instruction::LabelledInstruction)s.
 /// Similar to [`triton_program!`](crate::triton_program), it is possible to use string-like
 /// interpolation to insert instructions, arguments, labels, or other expressions.
+///
+/// Similar to [`vec!], a single instruction can be repeated a specified number of times.
 ///
 /// The labels for instruction `call`, if any, are also parsed. Instruction `call` can refer to
 /// a label defined later in the program, _i.e.,_ labels are not checked for existence or
@@ -125,6 +127,20 @@ macro_rules! triton_program {
 /// );
 /// assert_eq!(7, instructions.len());
 /// ```
+///
+/// One instruction repeated several times:
+///
+/// ```
+/// # use triton_vm::triton_asm;
+/// # use triton_vm::instruction::LabelledInstruction;
+/// # use triton_vm::instruction::AnInstruction::ReadIo;
+/// let instructions = triton_asm![read_io; 3];
+/// assert_eq!(3, instructions.len());
+/// assert_eq!(LabelledInstruction::Instruction(ReadIo), instructions[0]);
+/// assert_eq!(LabelledInstruction::Instruction(ReadIo), instructions[1]);
+/// assert_eq!(LabelledInstruction::Instruction(ReadIo), instructions[2]);
+/// ```
+///
 ///
 /// # Panics
 ///
@@ -159,7 +175,14 @@ macro_rules! triton_asm {
     (@fmt $fmt:expr, $($args:expr,)*; {$e:expr} $($tail:tt)*) => {
         $crate::triton_asm!(@fmt concat!($fmt, "{}"), $($args,)* $e,; $($tail)*)
     };
-    ($($source_code:tt)*) => {{
+
+    [push $arg:literal; $num:literal] => { vec![ $crate::triton_instr!(push $arg); $num ] };
+    [dup $arg:literal; $num:literal] => { vec![ $crate::triton_instr!(dup $arg); $num ] };
+    [swap $arg:literal; $num:literal] => { vec![ $crate::triton_instr!(swap $arg); $num ] };
+    [call $arg:ident; $num:literal] => { vec![ $crate::triton_instr!(call $arg); $num ] };
+    [$instr:ident; $num:literal] => { vec![ $crate::triton_instr!($instr); $num ] };
+
+    {$($source_code:tt)*} => {{
         let source_code = $crate::triton_asm!(@fmt "",; $($source_code)*);
         let (_, instructions) = $crate::parser::tokenize(&source_code).unwrap();
         $crate::parser::to_labelled_instructions(&instructions)
@@ -167,6 +190,16 @@ macro_rules! triton_asm {
 }
 
 /// Compile a single [Triton assembly][tasm] instruction into a [`LabelledInstruction`].
+///
+/// # Examples
+///
+/// ```
+/// # use triton_vm::triton_instr;
+/// # use triton_vm::instruction::LabelledInstruction;
+/// # use triton_vm::instruction::AnInstruction::Call;
+/// let instruction = triton_instr!(call my_label);
+/// assert_eq!(LabelledInstruction::Instruction(Call("my_label".to_string())), instruction);
+/// ```
 ///
 /// [tasm]: https://triton-vm.org/spec/instructions.html
 #[macro_export]
