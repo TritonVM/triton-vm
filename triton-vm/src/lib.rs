@@ -204,7 +204,7 @@ macro_rules! triton_asm {
 /// [tasm]: https://triton-vm.org/spec/instructions.html
 #[macro_export]
 macro_rules! triton_instr {
-    (push $arg:literal) => {{
+    (push $arg:expr) => {{
         let argument = $crate::BFieldElement::new($arg);
         let instruction = $crate::instruction::AnInstruction::<String>::Push(argument);
         $crate::instruction::LabelledInstruction::Instruction(instruction)
