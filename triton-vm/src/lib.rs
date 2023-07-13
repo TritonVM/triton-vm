@@ -170,10 +170,10 @@ macro_rules! triton_asm {
         )
     };
     (@fmt $fmt:expr, $($args:expr,)*; {$e:expr}: $($tail:tt)*) => {
-        $crate::triton_asm!(@fmt concat!($fmt, "{}:"), $($args,)* $e,; $($tail)*)
+        $crate::triton_asm!(@fmt concat!($fmt, "{}: "), $($args,)* $e,; $($tail)*)
     };
     (@fmt $fmt:expr, $($args:expr,)*; {$e:expr} $($tail:tt)*) => {
-        $crate::triton_asm!(@fmt concat!($fmt, "{}"), $($args,)* $e,; $($tail)*)
+        $crate::triton_asm!(@fmt concat!($fmt, "{} "), $($args,)* $e,; $($tail)*)
     };
 
     [push $arg:literal; $num:expr] => { vec![ $crate::triton_instr!(push $arg); $num ] };
