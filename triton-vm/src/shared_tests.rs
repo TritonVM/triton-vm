@@ -70,8 +70,7 @@ pub(crate) fn construct_master_base_table(
     aet: &AlgebraicExecutionTrace,
 ) -> MasterBaseTable {
     let padded_height = MasterBaseTable::padded_height(aet, parameters.num_trace_randomizers);
-    let max_degree = Stark::derive_max_degree(padded_height, parameters.num_trace_randomizers);
-    let fri = Stark::derive_fri(parameters, max_degree);
+    let fri = Stark::derive_fri(parameters, padded_height);
     MasterBaseTable::new(aet, parameters.num_trace_randomizers, fri.domain)
 }
 

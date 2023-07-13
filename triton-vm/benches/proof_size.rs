@@ -182,8 +182,7 @@ fn program_halt() -> ProgramAndInput {
 /// The base 2, integer logarithm of the FRI domain length.
 fn log_2_fri_domain_length(parameters: &StarkParameters, proof: &Proof) -> u32 {
     let padded_height = proof.padded_height().unwrap();
-    let max_degree = Stark::derive_max_degree(padded_height, parameters.num_trace_randomizers);
-    let fri = Stark::derive_fri(parameters, max_degree);
+    let fri = Stark::derive_fri(parameters, padded_height);
     fri.domain.length.ilog2()
 }
 

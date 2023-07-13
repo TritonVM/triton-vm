@@ -141,7 +141,7 @@ impl Stark {
         prof_start!(maybe_profiler, "derive additional parameters");
         let padded_height = MasterBaseTable::padded_height(aet, parameters.num_trace_randomizers);
         let max_degree = Self::derive_max_degree(padded_height, parameters.num_trace_randomizers);
-        let fri = Self::derive_fri(parameters, max_degree);
+        let fri = Self::derive_fri(parameters, padded_height);
         proof_stream.enqueue(&ProofItem::Log2PaddedHeight(padded_height.ilog2()));
         prof_stop!(maybe_profiler, "derive additional parameters");
 
@@ -537,11 +537,17 @@ impl Stark {
         (roundup_npo2(max_degree_with_origin.degree as u64) - 1) as Degree
     }
 
-    /// Compute the parameters for FRI. The size of the FRI domain depends on the
-    /// quotients' maximum degree, see [`derive_max_degree`](Self::derive_max_degree).
-    /// It also depends on the FRI expansion factor, which is a parameter of the STARK.
-    pub fn derive_fri(parameters: &StarkParameters, max_degree: Degree) -> Fri<StarkHasher> {
-        let fri_domain_length = parameters.fri_expansion_factor * (max_degree as usize + 1);
+    /// Compute the parameters for FRI. The length of the FRI domain, _i.e._, the number of
+    /// elements in the FRI domain, has a major influence on proving time. It is influenced by the
+    /// length of the execution trace and the FRI expansion factor, a security parameter.
+    ///
+    /// In principle, the FRI domain is also influenced by the AIR's degree
+    /// (see [`AIR_TARGET_DEGREE`]). However, by segmenting the quotient polynomial into
+    /// [`AIR_TARGET_DEGREE`]-many parts, that influence is mitigated.
+    pub fn derive_fri(parameters: &StarkParameters, padded_height: usize) -> Fri<StarkHasher> {
+        let interpolant_degree =
+            interpolant_degree(padded_height, parameters.num_trace_randomizers);
+        let fri_domain_length = parameters.fri_expansion_factor * (interpolant_degree as usize + 1);
         let fri_coset_offset = BFieldElement::generator();
         Fri::new(
             fri_coset_offset,
@@ -666,8 +672,7 @@ impl Stark {
         prof_start!(maybe_profiler, "derive additional parameters");
         let log_2_padded_height = proof_stream.dequeue()?.as_log2_padded_height()?;
         let padded_height = 1 << log_2_padded_height;
-        let max_degree = Self::derive_max_degree(padded_height, parameters.num_trace_randomizers);
-        let fri = Self::derive_fri(parameters, max_degree);
+        let fri = Self::derive_fri(parameters, padded_height);
         let merkle_tree_height = fri.domain.length.ilog2() as usize;
         prof_stop!(maybe_profiler, "derive additional parameters");
 
@@ -1682,8 +1687,7 @@ pub(crate) mod triton_stark_tests {
         assert!(result.unwrap());
 
         let padded_height = proof.padded_height().unwrap();
-        let max_degree = Stark::derive_max_degree(padded_height, parameters.num_trace_randomizers);
-        let fri = Stark::derive_fri(&parameters, max_degree);
+        let fri = Stark::derive_fri(&parameters, padded_height);
         let report = profiler.report(None, Some(padded_height), Some(fri.domain.length));
         println!("{report}");
     }
@@ -1750,8 +1754,7 @@ pub(crate) mod triton_stark_tests {
         assert!(result.unwrap());
 
         let padded_height = proof.padded_height().unwrap();
-        let max_degree = Stark::derive_max_degree(padded_height, parameters.num_trace_randomizers);
-        let fri = Stark::derive_fri(&parameters, max_degree);
+        let fri = Stark::derive_fri(&parameters, padded_height);
         let report = profiler.report(None, Some(padded_height), Some(fri.domain.length));
         println!("{report}");
     }
@@ -1798,8 +1801,7 @@ pub(crate) mod triton_stark_tests {
         assert!(result.unwrap());
 
         let padded_height = proof.padded_height().unwrap();
-        let max_degree = Stark::derive_max_degree(padded_height, parameters.num_trace_randomizers);
-        let fri = Stark::derive_fri(&parameters, max_degree);
+        let fri = Stark::derive_fri(&parameters, padded_height);
         let report = profiler.report(None, Some(padded_height), Some(fri.domain.length));
         println!("{report}");
     }
@@ -1817,9 +1819,7 @@ pub(crate) mod triton_stark_tests {
             profiler.finish();
 
             let padded_height = proof.padded_height().unwrap();
-            let max_degree =
-                Stark::derive_max_degree(padded_height, parameters.num_trace_randomizers);
-            let fri = Stark::derive_fri(&parameters, max_degree);
+            let fri = Stark::derive_fri(&parameters, padded_height);
             let report = profiler.report(None, Some(padded_height), Some(fri.domain.length));
             println!("{report}");
         }
