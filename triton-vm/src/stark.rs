@@ -192,21 +192,7 @@ impl Stark {
 
         prof_start!(maybe_profiler, "quotient-domain codewords");
         let trace_domain = ArithmeticDomain::of_length(master_base_table.padded_height);
-        // When debugging, it is useful to check the degree of some intermediate polynomials.
-        // The quotient domain is chosen to be _just_ large enough to perform all the necessary
-        // computations on polynomials. Concretely, the maximal degree of a polynomial over the
-        // quotient domain is at most only slightly larger than the maximal degree allowed in the
-        // STARK proof, and could be equal. This makes computation for the prover much faster.
-        // However, it can also make it impossible to check if some operation (e.g., dividing out
-        // the zerofier) has (erroneously) increased the polynomial's degree beyond the allowed
-        // maximum.
-        let quotient_domain = if cfg!(debug_assertions) {
-            fri.domain
-        } else {
-            let offset = fri.domain.offset;
-            let length = roundup_npo2(max_degree as u64);
-            ArithmeticDomain::of_length_with_offset(length as usize, offset)
-        };
+        let quotient_domain = Self::quotient_domain(fri.domain, max_degree);
         let unit_distance = fri.domain.length / quotient_domain.length;
         let base_quotient_domain_codewords = fri_domain_master_base_table
             .master_base_matrix
@@ -483,6 +469,24 @@ impl Stark {
         }
 
         proof_stream.into()
+    }
+
+    /// An [`ArithmeticDomain`] _just_ large enough to perform all the necessary computations on
+    /// polynomials. Concretely, the maximal degree of a polynomial over the quotient domain is at
+    /// most only slightly larger than the maximal degree allowed in the STARK proof, and could be
+    /// equal. This makes computation for the prover much faster.
+    ///
+    /// When debugging, it is useful to check the degree of some intermediate polynomials.
+    /// However, the quotient domain's minimal length can make it impossible to check if some
+    /// operation (e.g., dividing out the zerofier) has (erroneously) increased the polynomial's
+    /// degree beyond the allowed maximum. Hence, the quotient domain is set to equal the FRI
+    /// domain when debugging and testing.
+    fn quotient_domain(fri_domain: ArithmeticDomain, max_degree: Degree) -> ArithmeticDomain {
+        let domain_length = roundup_npo2(max_degree as u64) as usize;
+        match cfg!(debug_assertions) {
+            true => fri_domain,
+            false => ArithmeticDomain::of_length_with_offset(domain_length, fri_domain.offset),
+        }
     }
 
     /// Compute the upper bound to use for the maximum degree the quotients given the length of the
