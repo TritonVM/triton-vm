@@ -7,6 +7,8 @@ use twenty_first::shared_math::bfield_codec::BFieldCodec;
 use twenty_first::shared_math::tip5::Digest;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
+use crate::stark::NUM_QUOTIENT_SEGMENTS;
+
 type AuthenticationStructure = Vec<Digest>;
 
 /// A `FriResponse` is an `AuthenticationStructure` together with the values of the
@@ -27,9 +29,10 @@ pub enum ProofItem {
     MasterExtTableRows(Vec<Vec<XFieldElement>>),
     OutOfDomainBaseRow(Vec<XFieldElement>),
     OutOfDomainExtRow(Vec<XFieldElement>),
+    OutOfDomainQuotientSegments([XFieldElement; NUM_QUOTIENT_SEGMENTS]),
     MerkleRoot(Digest),
     Log2PaddedHeight(u32),
-    RevealedCombinationElements(Vec<XFieldElement>),
+    QuotientSegmentsElements(Vec<[XFieldElement; NUM_QUOTIENT_SEGMENTS]>),
     FriCodeword(Vec<XFieldElement>),
     FriResponse(FriResponse),
 }
@@ -44,9 +47,10 @@ impl ProofItem {
             MasterExtTableRows(_) => 2,
             OutOfDomainBaseRow(_) => 3,
             OutOfDomainExtRow(_) => 4,
+            OutOfDomainQuotientSegments(_) => 10,
             MerkleRoot(_) => 5,
             Log2PaddedHeight(_) => 6,
-            RevealedCombinationElements(_) => 7,
+            QuotientSegmentsElements(_) => 7,
             FriCodeword(_) => 8,
             FriResponse(_) => 9,
         };
@@ -67,12 +71,13 @@ impl ProofItem {
             MerkleRoot(_) => true,
             OutOfDomainBaseRow(_) => true,
             OutOfDomainExtRow(_) => true,
+            OutOfDomainQuotientSegments(_) => true,
             // all of the following are implied by a corresponding Merkle root
             AuthenticationStructure(_) => false,
             MasterBaseTableRows(_) => false,
             MasterExtTableRows(_) => false,
             Log2PaddedHeight(_) => false,
-            RevealedCombinationElements(_) => false,
+            QuotientSegmentsElements(_) => false,
             FriCodeword(_) => false,
             FriResponse(_) => false,
         }
@@ -113,6 +118,15 @@ impl ProofItem {
         }
     }
 
+    pub fn as_out_of_domain_quotient_segments(
+        &self,
+    ) -> Result<[XFieldElement; NUM_QUOTIENT_SEGMENTS]> {
+        match self {
+            Self::OutOfDomainQuotientSegments(xs) => Ok(*xs),
+            other => bail!("expected out of domain quotient segments, but got {other:?}",),
+        }
+    }
+
     pub fn as_merkle_root(&self) -> Result<Digest> {
         match self {
             Self::MerkleRoot(bs) => Ok(*bs),
@@ -127,10 +141,12 @@ impl ProofItem {
         }
     }
 
-    pub fn as_revealed_combination_elements(&self) -> Result<Vec<XFieldElement>> {
+    pub fn as_quotient_segments_elements(
+        &self,
+    ) -> Result<Vec<[XFieldElement; NUM_QUOTIENT_SEGMENTS]>> {
         match self {
-            Self::RevealedCombinationElements(xs) => Ok(xs.to_owned()),
-            other => bail!("expected revealed combination elements, but got {other:?}",),
+            Self::QuotientSegmentsElements(xs) => Ok(xs.to_owned()),
+            other => bail!("expected quotient segments' elements, but got {other:?}",),
         }
     }
 
@@ -167,9 +183,14 @@ impl BFieldCodec for ProofItem {
             4 => Self::OutOfDomainExtRow(*Vec::<XFieldElement>::decode(str)?),
             5 => Self::MerkleRoot(*Digest::decode(str)?),
             6 => Self::Log2PaddedHeight(*u32::decode(str)?),
-            7 => Self::RevealedCombinationElements(*Vec::<XFieldElement>::decode(str)?),
+            7 => Self::QuotientSegmentsElements(
+                *Vec::<[XFieldElement; NUM_QUOTIENT_SEGMENTS]>::decode(str)?,
+            ),
             8 => Self::FriCodeword(*Vec::<XFieldElement>::decode(str)?),
             9 => Self::FriResponse(*FriResponse::decode(str)?),
+            10 => Self::OutOfDomainQuotientSegments(
+                *<[XFieldElement; NUM_QUOTIENT_SEGMENTS]>::decode(str)?,
+            ),
             i => bail!("Unknown discriminant {i} for ProofItem."),
         };
         Ok(Box::new(item))
@@ -198,9 +219,10 @@ impl BFieldCodec for ProofItem {
             MasterExtTableRows(something) => something.encode(),
             OutOfDomainBaseRow(row) => row.encode(),
             OutOfDomainExtRow(row) => row.encode(),
+            OutOfDomainQuotientSegments(segments) => segments.encode(),
             MerkleRoot(something) => something.encode(),
             Log2PaddedHeight(height) => height.encode(),
-            RevealedCombinationElements(something) => something.encode(),
+            QuotientSegmentsElements(something) => something.encode(),
             FriCodeword(something) => something.encode(),
             FriResponse(something) => something.encode(),
         };

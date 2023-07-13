@@ -5,17 +5,13 @@ use anyhow::bail;
 use anyhow::Result;
 use itertools::izip;
 use itertools::Itertools;
-use ndarray::s;
-use ndarray::Array1;
-use ndarray::ArrayBase;
-use ndarray::ArrayView1;
-use ndarray::ArrayView2;
-use ndarray::Axis;
+use ndarray::prelude::*;
 use num_traits::One;
 use rayon::prelude::*;
 use serde::Deserialize;
 use serde::Serialize;
 use twenty_first::shared_math::b_field_element::BFieldElement;
+use twenty_first::shared_math::digest::Digest;
 use twenty_first::shared_math::mpolynomial::Degree;
 use twenty_first::shared_math::other::roundup_npo2;
 use twenty_first::shared_math::polynomial::Polynomial;
@@ -52,6 +48,12 @@ pub type StarkProofStream = ProofStream<StarkHasher>;
 /// The Merkle tree maker in use. Keeping this as a type alias should make it easier to switch
 /// between different Merkle tree makers.
 pub type MTMaker = CpuParallel;
+
+/// The number of segments the quotient polynomial is split into.
+/// Helps keeping the FRI domain small.
+pub(crate) const NUM_QUOTIENT_SEGMENTS: usize = AIR_TARGET_DEGREE as usize;
+
+const NUM_DEEP_CODEWORD_COMPONENTS: usize = 3;
 
 /// All the security-related parameters for the zk-STARK.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash)]
@@ -245,33 +247,47 @@ impl Stark {
         );
 
         // Note: `*` is the element-wise (Hadamard) product
-        let weighted_codewords = master_quotient_table * quotient_combination_weights;
-        let quotient_codeword = weighted_codewords.sum_axis(Axis(1));
+        let weighted_quotient_codewords = master_quotient_table * quotient_combination_weights;
+        let quotient_codeword = weighted_quotient_codewords.sum_axis(Axis(1));
 
         assert_eq!(quotient_domain.length, quotient_codeword.len());
         prof_stop!(maybe_profiler, "linearly combine quotient codewords");
 
-        prof_start!(maybe_profiler, "commit to quotient codeword");
+        prof_start!(maybe_profiler, "commit to quotient codeword segments");
         prof_start!(maybe_profiler, "LDE", "LDE");
         let quotient_interpolation_poly = quotient_domain.interpolate(&quotient_codeword.to_vec());
-        let _segments = Self::split_polynomial_into_segments::<{ AIR_TARGET_DEGREE as usize }, _>(
-            &quotient_interpolation_poly,
-        );
-        let fri_quotient_codeword = Array1::from(fri.domain.evaluate(&quotient_interpolation_poly));
+        let quotient_segments: [_; NUM_QUOTIENT_SEGMENTS] =
+            Self::split_polynomial_into_segments(&quotient_interpolation_poly);
+        let quotient_segment_polynomials = Array1::from(quotient_segments.to_vec());
+        let fri_domain_quotient_segment_codewords =
+            quotient_segments.map(|segment| fri.domain.evaluate(&segment));
+        let fri_domain_quotient_segment_codewords = Array2::from_shape_vec(
+            [fri.domain.length, NUM_QUOTIENT_SEGMENTS].f(),
+            fri_domain_quotient_segment_codewords.concat(),
+        )
+        .unwrap();
+        let quotient_domain_quotient_segment_codewords =
+            fri_domain_quotient_segment_codewords.slice(s![..; unit_distance, ..]);
         prof_stop!(maybe_profiler, "LDE");
-        prof_start!(maybe_profiler, "interpret XFEs as Digests");
-        let fri_quotient_codeword_digests = fri_quotient_codeword
-            .iter()
-            .map(|&x| x.into())
-            .collect_vec();
-        prof_stop!(maybe_profiler, "interpret XFEs as Digests");
+        prof_start!(maybe_profiler, "hash rows of quotient segments", "hash");
+        let interpret_xfe_as_bfes = |xfe: &XFieldElement| xfe.coefficients.to_vec();
+        let hash_row = |row: ArrayView1<_>| {
+            let row_as_bfes = row.iter().map(interpret_xfe_as_bfes).concat();
+            StarkHasher::hash_varlen(&row_as_bfes)
+        };
+        let quotient_segments_rows = fri_domain_quotient_segment_codewords
+            .axis_iter(Axis(0))
+            .into_par_iter();
+        let fri_domain_quotient_segment_codewords_digests =
+            quotient_segments_rows.map(hash_row).collect::<Vec<_>>();
+        prof_stop!(maybe_profiler, "hash rows of quotient segments");
         prof_start!(maybe_profiler, "Merkle tree", "hash");
         let quot_merkle_tree: MerkleTree<StarkHasher> =
-            MTMaker::from_digests(&fri_quotient_codeword_digests);
+            MTMaker::from_digests(&fri_domain_quotient_segment_codewords_digests);
         let quot_merkle_tree_root = quot_merkle_tree.get_root();
         proof_stream.enqueue(&ProofItem::MerkleRoot(quot_merkle_tree_root));
         prof_stop!(maybe_profiler, "Merkle tree");
-        prof_stop!(maybe_profiler, "commit to quotient codeword");
+        prof_stop!(maybe_profiler, "commit to quotient codeword segments");
         debug_assert_eq!(fri.domain.length, quot_merkle_tree.get_leaf_count());
 
         prof_start!(maybe_profiler, "out-of-domain rows");
@@ -305,39 +321,74 @@ impl Stark {
         proof_stream.enqueue(&ProofItem::OutOfDomainExtRow(
             out_of_domain_next_ext_row.to_vec(),
         ));
+
+        let out_of_domain_point_curr_row_pow_num_segments =
+            out_of_domain_point_curr_row.mod_pow_u32(NUM_QUOTIENT_SEGMENTS as u32);
+        let out_of_domain_curr_row_quot_segments = quotient_segment_polynomials
+            .map(|poly| poly.evaluate(&out_of_domain_point_curr_row_pow_num_segments))
+            .to_vec()
+            .try_into()
+            .unwrap();
+        proof_stream.enqueue(&ProofItem::OutOfDomainQuotientSegments(
+            out_of_domain_curr_row_quot_segments,
+        ));
         prof_stop!(maybe_profiler, "out-of-domain rows");
 
         // Get weights for remainder of the combination codeword.
         prof_start!(maybe_profiler, "Fiat-Shamir", "hash");
-        let num_base_and_ext_codeword_weights = NUM_BASE_COLUMNS + NUM_EXT_COLUMNS;
-        let base_and_ext_codeword_weights =
-            proof_stream.sample_scalars(num_base_and_ext_codeword_weights);
+        let num_base_and_ext_and_quotient_segment_codeword_weights =
+            NUM_BASE_COLUMNS + NUM_EXT_COLUMNS + NUM_QUOTIENT_SEGMENTS;
+        let base_and_ext_and_quotient_segment_codeword_weights =
+            proof_stream.sample_scalars(num_base_and_ext_and_quotient_segment_codeword_weights);
         prof_stop!(maybe_profiler, "Fiat-Shamir");
 
         prof_start!(maybe_profiler, "base&ext: linear combination", "CC");
         let extension_codewords =
             extension_quotient_domain_codewords.slice(s![.., ..NUM_EXT_COLUMNS]);
-        let (base_weights, ext_weights) = base_and_ext_codeword_weights.split_at(NUM_BASE_COLUMNS);
+        let (base_weights, ext_and_quotient_segment_weights) =
+            base_and_ext_and_quotient_segment_codeword_weights.split_at(NUM_BASE_COLUMNS);
+        let (ext_weights, quotient_segment_weights) =
+            ext_and_quotient_segment_weights.split_at(NUM_EXT_COLUMNS);
         let base_weights = Array1::from(base_weights.to_vec());
         let ext_weights = Array1::from(ext_weights.to_vec());
+        let quotient_segment_weights = Array1::from(quotient_segment_weights.to_vec());
 
         assert_eq!(base_weights.len(), base_quotient_domain_codewords.ncols());
         assert_eq!(ext_weights.len(), extension_codewords.ncols());
+        assert_eq!(quotient_segment_weights.len(), NUM_QUOTIENT_SEGMENTS);
 
         // Note: `*` is the element-wise (Hadamard) product
         let weighted_base_codewords = &base_quotient_domain_codewords * base_weights;
         let weighted_ext_codewords = &extension_codewords * &ext_weights;
+        let weighted_quotient_segment_codewords =
+            &quotient_domain_quotient_segment_codewords * &quotient_segment_weights;
 
         let base_and_ext_codeword =
             weighted_base_codewords.sum_axis(Axis(1)) + weighted_ext_codewords.sum_axis(Axis(1));
+        let quotient_segments_codeword = weighted_quotient_segment_codewords.sum_axis(Axis(1));
 
         assert_eq!(quotient_domain.length, base_and_ext_codeword.len());
         prof_stop!(maybe_profiler, "base&ext: linear combination");
 
         prof_start!(maybe_profiler, "DEEP");
-        prof_start!(maybe_profiler, "base&ext");
+        prof_start!(maybe_profiler, "interpolate");
         let base_and_ext_interpolation_poly =
             quotient_domain.interpolate(&base_and_ext_codeword.to_vec());
+        let quotient_segments_interpolation_poly =
+            quotient_domain.interpolate(&quotient_segments_codeword.to_vec());
+        prof_stop!(maybe_profiler, "interpolate");
+        prof_start!(maybe_profiler, "base&ext next row");
+        let out_of_domain_curr_row_base_and_ext_value =
+            base_and_ext_interpolation_poly.evaluate(&out_of_domain_point_curr_row);
+        let base_and_ext_curr_row_deep_codeword = Self::deep_codeword(
+            &base_and_ext_codeword.to_vec(),
+            quotient_domain,
+            out_of_domain_point_curr_row,
+            out_of_domain_curr_row_base_and_ext_value,
+        );
+        prof_stop!(maybe_profiler, "base&ext next row");
+
+        prof_start!(maybe_profiler, "base&ext next row");
         let out_of_domain_next_row_base_and_ext_value =
             base_and_ext_interpolation_poly.evaluate(&out_of_domain_point_next_row);
         let base_and_ext_next_row_deep_codeword = Self::deep_codeword(
@@ -346,57 +397,38 @@ impl Stark {
             out_of_domain_point_next_row,
             out_of_domain_next_row_base_and_ext_value,
         );
-        prof_stop!(maybe_profiler, "base&ext");
+        prof_stop!(maybe_profiler, "base&ext next row");
 
-        prof_start!(maybe_profiler, "base&ext + quot");
-        let base_and_ext_and_quot_codeword = (base_and_ext_codeword + quotient_codeword).to_vec();
-        let base_and_ext_and_quot_interpolation_poly =
-            quotient_domain.interpolate(&base_and_ext_and_quot_codeword);
-        let out_of_domain_curr_row_base_and_ext_and_quot_value =
-            base_and_ext_and_quot_interpolation_poly.evaluate(&out_of_domain_point_curr_row);
-        let base_and_ext_and_quot_curr_row_deep_codeword = Self::deep_codeword(
-            &base_and_ext_and_quot_codeword,
+        prof_start!(maybe_profiler, "segmented quotient");
+        let out_of_domain_curr_row_quot_segments_value = quotient_segments_interpolation_poly
+            .evaluate(&out_of_domain_point_curr_row_pow_num_segments);
+        let quotient_segments_curr_row_deep_codeword = Self::deep_codeword(
+            &quotient_segments_codeword.to_vec(),
             quotient_domain,
-            out_of_domain_point_curr_row,
-            out_of_domain_curr_row_base_and_ext_and_quot_value,
+            out_of_domain_point_curr_row_pow_num_segments,
+            out_of_domain_curr_row_quot_segments_value,
         );
-        prof_stop!(maybe_profiler, "base&ext + quot");
+        prof_stop!(maybe_profiler, "segmented quotient");
         prof_stop!(maybe_profiler, "DEEP");
 
-        #[cfg(debug_assertions)]
-        {
-            let out_of_domain_quotient_value =
-                quotient_interpolation_poly.evaluate(&out_of_domain_point_curr_row);
-            let base_and_ext_weights = Array1::from(base_and_ext_codeword_weights);
-            let out_of_domain_curr_row_base_and_ext_value = Self::linearly_sum_base_and_ext_row(
-                out_of_domain_curr_base_row.view(),
-                out_of_domain_curr_ext_row.view(),
-                base_and_ext_weights.view(),
-                &mut None,
-            );
-            assert_eq!(
-                out_of_domain_curr_row_base_and_ext_and_quot_value,
-                out_of_domain_curr_row_base_and_ext_value + out_of_domain_quotient_value,
-            );
-            let out_of_domain_next_row_base_and_ext_value_2 = Self::linearly_sum_base_and_ext_row(
-                out_of_domain_next_base_row.view(),
-                out_of_domain_next_ext_row.view(),
-                base_and_ext_weights.view(),
-                &mut None,
-            );
-            assert_eq!(
-                out_of_domain_next_row_base_and_ext_value,
-                out_of_domain_next_row_base_and_ext_value_2,
-            );
-        }
-
         prof_start!(maybe_profiler, "combined DEEP polynomial");
+        prof_start!(maybe_profiler, "Fiat-Shamir", "hash");
+        let deep_codeword_weights =
+            Array1::from(proof_stream.sample_scalars(NUM_DEEP_CODEWORD_COMPONENTS));
+        prof_stop!(maybe_profiler, "Fiat-Shamir");
         prof_start!(maybe_profiler, "sum", "CC");
-        let base_and_ext_and_quot_curr_row_deep_codeword =
-            Array1::from(base_and_ext_and_quot_curr_row_deep_codeword);
-        let base_and_ext_next_row_deep_codeword = Array1::from(base_and_ext_next_row_deep_codeword);
-        let deep_codeword =
-            &base_and_ext_and_quot_curr_row_deep_codeword + &base_and_ext_next_row_deep_codeword;
+        let deep_codeword_components = [
+            base_and_ext_curr_row_deep_codeword,
+            base_and_ext_next_row_deep_codeword,
+            quotient_segments_curr_row_deep_codeword,
+        ];
+        let deep_codeword_components = Array2::from_shape_vec(
+            [quotient_domain.length, NUM_DEEP_CODEWORD_COMPONENTS].f(),
+            deep_codeword_components.concat(),
+        )
+        .unwrap();
+        let weighted_deep_codeword_components = &deep_codeword_components * &deep_codeword_weights;
+        let deep_codeword = weighted_deep_codeword_components.sum_axis(Axis(1));
         prof_stop!(maybe_profiler, "sum");
         prof_start!(maybe_profiler, "LDE", "LDE");
         let fri_deep_codeword =
@@ -447,14 +479,17 @@ impl Stark {
         ));
 
         // Open quotient & combination codewords at the same positions as base & ext codewords.
-        let revealed_quotient_elements = revealed_current_row_indices
+        let into_fixed_width_row =
+            |row: ArrayView1<_>| -> [_; NUM_QUOTIENT_SEGMENTS] { row.to_vec().try_into().unwrap() };
+        let revealed_quotient_segments_rows = revealed_current_row_indices
             .iter()
-            .map(|&i| fri_quotient_codeword[i])
+            .map(|&i| fri_domain_quotient_segment_codewords.row(i))
+            .map(into_fixed_width_row)
             .collect_vec();
         let revealed_quotient_authentication_structure =
             quot_merkle_tree.get_authentication_structure(&revealed_current_row_indices);
-        proof_stream.enqueue(&ProofItem::RevealedCombinationElements(
-            revealed_quotient_elements,
+        proof_stream.enqueue(&ProofItem::QuotientSegmentsElements(
+            revealed_quotient_segments_rows,
         ));
         proof_stream.enqueue(&ProofItem::AuthenticationStructure(
             revealed_quotient_authentication_structure,
@@ -653,16 +688,23 @@ impl Stark {
         let trace_domain_generator = ArithmeticDomain::generator_for_length(padded_height as u64);
         let out_of_domain_point_curr_row = proof_stream.sample_scalars(1)[0];
         let out_of_domain_point_next_row = trace_domain_generator * out_of_domain_point_curr_row;
+        let out_of_domain_point_curr_row_pow_num_segments =
+            out_of_domain_point_curr_row.mod_pow_u32(NUM_QUOTIENT_SEGMENTS as u32);
 
         let out_of_domain_curr_base_row = proof_stream.dequeue()?.as_out_of_domain_base_row()?;
         let out_of_domain_curr_ext_row = proof_stream.dequeue()?.as_out_of_domain_ext_row()?;
         let out_of_domain_next_base_row = proof_stream.dequeue()?.as_out_of_domain_base_row()?;
         let out_of_domain_next_ext_row = proof_stream.dequeue()?.as_out_of_domain_ext_row()?;
+        let out_of_domain_curr_row_quot_segments = proof_stream
+            .dequeue()?
+            .as_out_of_domain_quotient_segments()?;
 
         let out_of_domain_curr_base_row = Array1::from(out_of_domain_curr_base_row);
         let out_of_domain_curr_ext_row = Array1::from(out_of_domain_curr_ext_row);
         let out_of_domain_next_base_row = Array1::from(out_of_domain_next_base_row);
         let out_of_domain_next_ext_row = Array1::from(out_of_domain_next_ext_row);
+        let out_of_domain_curr_row_quot_segments =
+            Array1::from(out_of_domain_curr_row_quot_segments.to_vec());
         prof_stop!(maybe_profiler, "dequeue ood point and rows");
 
         prof_start!(maybe_profiler, "out-of-domain quotient element");
@@ -719,14 +761,33 @@ impl Stark {
 
         prof_start!(maybe_profiler, "inner product", "CC");
         let out_of_domain_quotient_value =
-            (&quot_codeword_weights * &Array1::from(quotient_summands)).sum();
+            quot_codeword_weights.dot(&Array1::from(quotient_summands));
         prof_stop!(maybe_profiler, "inner product");
         prof_stop!(maybe_profiler, "out-of-domain quotient element");
 
+        prof_start!(maybe_profiler, "verify quotient's segments");
+        let powers_of_out_of_domain_point_curr_row = (0..NUM_QUOTIENT_SEGMENTS as u32)
+            .map(|exponent| out_of_domain_point_curr_row.mod_pow_u32(exponent))
+            .collect::<Array1<_>>();
+        let sum_of_evaluated_out_of_domain_quotient_segments =
+            powers_of_out_of_domain_point_curr_row.dot(&out_of_domain_curr_row_quot_segments);
+        ensure_eq!(
+            out_of_domain_quotient_value,
+            sum_of_evaluated_out_of_domain_quotient_segments
+        );
+        prof_stop!(maybe_profiler, "verify quotient's segments");
+
         prof_start!(maybe_profiler, "Fiat-Shamir 2", "hash");
-        let num_base_and_ext_codeword_weights = NUM_BASE_COLUMNS + NUM_EXT_COLUMNS;
-        let base_and_ext_codeword_weights =
-            Array1::from(proof_stream.sample_scalars(num_base_and_ext_codeword_weights));
+        let num_base_and_ext_and_quotient_segment_codeword_weights =
+            NUM_BASE_COLUMNS + NUM_EXT_COLUMNS + NUM_QUOTIENT_SEGMENTS;
+        let base_and_ext_and_quotient_segment_codeword_weights =
+            proof_stream.sample_scalars(num_base_and_ext_and_quotient_segment_codeword_weights);
+        let (base_and_ext_codeword_weights, quotient_segment_codeword_weights) =
+            base_and_ext_and_quotient_segment_codeword_weights
+                .split_at(NUM_BASE_COLUMNS + NUM_EXT_COLUMNS);
+        let base_and_ext_codeword_weights = Array1::from(base_and_ext_codeword_weights.to_vec());
+        let quotient_segment_codeword_weights =
+            Array1::from(quotient_segment_codeword_weights.to_vec());
         prof_stop!(maybe_profiler, "Fiat-Shamir 2");
 
         prof_start!(maybe_profiler, "sum out-of-domain values", "CC");
@@ -736,15 +797,20 @@ impl Stark {
             base_and_ext_codeword_weights.view(),
             maybe_profiler,
         );
-        let out_of_domain_curr_row_base_and_ext_and_quot_value =
-            out_of_domain_curr_row_base_and_ext_value + out_of_domain_quotient_value;
         let out_of_domain_next_row_base_and_ext_value = Self::linearly_sum_base_and_ext_row(
             out_of_domain_next_base_row.view(),
             out_of_domain_next_ext_row.view(),
             base_and_ext_codeword_weights.view(),
             maybe_profiler,
         );
+        let out_of_domain_curr_row_quotient_segment_value =
+            quotient_segment_codeword_weights.dot(&out_of_domain_curr_row_quot_segments);
         prof_stop!(maybe_profiler, "sum out-of-domain values");
+
+        prof_start!(maybe_profiler, "Fiat-Shamir", "hash");
+        let deep_codeword_weights =
+            Array1::from(proof_stream.sample_scalars(NUM_DEEP_CODEWORD_COMPONENTS));
+        prof_stop!(maybe_profiler, "Fiat-Shamir");
 
         // verify low degree of combination polynomial with FRI
         prof_start!(maybe_profiler, "FRI");
@@ -803,24 +869,21 @@ impl Stark {
         }
         prof_stop!(maybe_profiler, "Merkle verify (extension tree)");
 
-        prof_start!(maybe_profiler, "dequeue quotient elements");
-        let revealed_quotient_values =
-            proof_stream.dequeue()?.as_revealed_combination_elements()?;
-        // Interpret the leaves, which are XFieldElements, as Digests, without hashing.
-        let revealed_quotient_digests = revealed_quotient_values
-            .par_iter()
-            .map(|&x| x.into())
-            .collect::<Vec<_>>();
+        prof_start!(maybe_profiler, "dequeue quotient segments' elements");
+        let revealed_quotient_segments_elements =
+            proof_stream.dequeue()?.as_quotient_segments_elements()?;
+        let revealed_quotient_segments_digests =
+            Self::hash_quotient_segment_elements(&revealed_quotient_segments_elements);
         let revealed_quotient_authentication_structure =
             proof_stream.dequeue()?.as_authentication_structure()?;
-        prof_stop!(maybe_profiler, "dequeue quotient elements");
+        prof_stop!(maybe_profiler, "dequeue quotient segments' elements");
 
         prof_start!(maybe_profiler, "Merkle verify (combined quotient)", "hash");
         if !MerkleTree::<StarkHasher>::verify_authentication_structure(
             quotient_codeword_merkle_root,
             merkle_tree_height,
             &revealed_current_row_indices,
-            &revealed_quotient_digests,
+            &revealed_quotient_segments_digests,
             &revealed_quotient_authentication_structure,
         ) {
             bail!("Failed to verify authentication path for combined quotient codeword");
@@ -832,15 +895,15 @@ impl Stark {
         let num_checks = parameters.num_combination_codeword_checks;
         ensure_eq!(num_checks, revealed_current_row_indices.len());
         ensure_eq!(num_checks, revealed_fri_values.len());
-        ensure_eq!(num_checks, revealed_quotient_values.len());
+        ensure_eq!(num_checks, revealed_quotient_segments_elements.len());
         ensure_eq!(num_checks, base_table_rows.len());
         ensure_eq!(num_checks, ext_table_rows.len());
         prof_start!(maybe_profiler, "main loop");
-        for (row_idx, base_row, ext_row, quotient_value, fri_value) in izip!(
+        for (row_idx, base_row, ext_row, quotient_segments_elements, fri_value) in izip!(
             revealed_current_row_indices,
             base_table_rows,
             ext_table_rows,
-            revealed_quotient_values,
+            revealed_quotient_segments_elements,
             revealed_fri_values,
         ) {
             prof_itr0!(maybe_profiler, "main loop");
@@ -857,14 +920,16 @@ impl Stark {
                 base_and_ext_codeword_weights.view(),
                 maybe_profiler,
             );
+            let quotient_segments_curr_row_element = quotient_segment_codeword_weights
+                .dot(&Array1::from(quotient_segments_elements.to_vec()));
             prof_stop!(maybe_profiler, "base & ext elements");
 
             prof_start!(maybe_profiler, "DEEP update");
-            let base_and_ext_and_quot_curr_row_deep_value = Self::deep_update(
+            let base_and_ext_curr_row_deep_value = Self::deep_update(
                 current_fri_domain_value,
-                base_and_ext_curr_row_element + quotient_value,
+                base_and_ext_curr_row_element,
                 out_of_domain_point_curr_row,
-                out_of_domain_curr_row_base_and_ext_and_quot_value,
+                out_of_domain_curr_row_base_and_ext_value,
             );
             let base_and_ext_next_row_deep_value = Self::deep_update(
                 current_fri_domain_value,
@@ -872,22 +937,41 @@ impl Stark {
                 out_of_domain_point_next_row,
                 out_of_domain_next_row_base_and_ext_value,
             );
+            let quot_curr_row_deep_value = Self::deep_update(
+                current_fri_domain_value,
+                quotient_segments_curr_row_element,
+                out_of_domain_point_curr_row_pow_num_segments,
+                out_of_domain_curr_row_quotient_segment_value,
+            );
             prof_stop!(maybe_profiler, "DEEP update");
 
             prof_start!(maybe_profiler, "combination codeword equality");
+            let deep_value_components = Array1::from(vec![
+                base_and_ext_curr_row_deep_value,
+                base_and_ext_next_row_deep_value,
+                quot_curr_row_deep_value,
+            ]);
+            let deep_value = deep_codeword_weights.dot(&deep_value_components);
             let randomizer_codewords_contribution = randomizer_row.sum();
-            if fri_value
-                != base_and_ext_and_quot_curr_row_deep_value
-                    + base_and_ext_next_row_deep_value
-                    + randomizer_codewords_contribution
-            {
-                bail!("Revealed and computed leaf of the combination codeword must equal.");
-            }
+            ensure_eq!(fri_value, deep_value + randomizer_codewords_contribution);
             prof_stop!(maybe_profiler, "combination codeword equality");
         }
         prof_stop!(maybe_profiler, "main loop");
         prof_stop!(maybe_profiler, "linear combination");
         Ok(true)
+    }
+
+    fn hash_quotient_segment_elements(
+        quotient_segment_rows: &[[XFieldElement; NUM_QUOTIENT_SEGMENTS]],
+    ) -> Vec<Digest> {
+        let interpret_xfe_as_bfes = |xfe: XFieldElement| xfe.coefficients.to_vec();
+        let collect_row_as_bfes =
+            |row: &[_; NUM_QUOTIENT_SEGMENTS]| row.map(interpret_xfe_as_bfes).concat();
+        quotient_segment_rows
+            .par_iter()
+            .map(collect_row_as_bfes)
+            .map(|row| StarkHasher::hash_varlen(&row))
+            .collect()
     }
 
     fn linearly_sum_base_and_ext_row<FF>(
@@ -918,7 +1002,6 @@ impl Stark {
 #[cfg(test)]
 pub(crate) mod triton_stark_tests {
     use itertools::izip;
-    use ndarray::Array1;
     use num_traits::Zero;
     use rand::prelude::ThreadRng;
     use rand::thread_rng;
