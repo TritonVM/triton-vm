@@ -1581,15 +1581,13 @@ pub(crate) mod triton_stark_tests {
                 &mut None,
             );
 
-            let filename = "halt_error.tsp";
-            let result = Stark::verify(&parameters, &claim, &proof, &mut None);
-            if let Err(e) = result {
-                if let Err(e) = save_proof(filename, proof) {
-                    panic!("Unsyntactical proof and can't save! {e}");
-                }
-                panic!("Saved proof to {filename} because verifier is unhappy! {e}");
-            }
-            assert!(result.unwrap());
+            let verdict = Stark::verify(&parameters, &claim, &proof, &mut None);
+            if verdict.is_err() {
+                let filename = "halt_error.tsp";
+                save_proof(filename, proof).unwrap();
+                eprintln!("Saved proof to {filename}.");
+            };
+            assert!(verdict.unwrap());
         }
     }
 
