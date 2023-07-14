@@ -6,6 +6,7 @@ use anyhow::Result;
 use itertools::izip;
 use itertools::Itertools;
 use ndarray::prelude::*;
+use ndarray::Zip;
 use num_traits::One;
 use rayon::prelude::*;
 use serde::Deserialize;
@@ -234,10 +235,8 @@ impl Stark {
             master_quotient_table.ncols()
         );
 
-        // Note: `*` is the element-wise (Hadamard) product
-        let weighted_quotient_codewords = master_quotient_table * quotient_combination_weights;
-        let quotient_codeword = weighted_quotient_codewords.sum_axis(Axis(1));
-
+        let quotient_codeword =
+            Self::random_linear_sum(master_quotient_table.view(), quotient_combination_weights);
         assert_eq!(quotient_domain.length, quotient_codeword.len());
         prof_stop!(maybe_profiler, "linearly combine quotient codewords");
 
@@ -317,31 +316,34 @@ impl Stark {
             true => master_base_table.fri_domain_table(),
             false => master_base_table.quotient_domain_table(),
         };
+
         let short_domain_ext_codewords = match fri.domain.length <= quotient_domain.length {
             true => master_ext_table.fri_domain_table(),
             false => master_ext_table.quotient_domain_table(),
         };
-        let shorter_domain_ext_codewords =
+        let short_domain_ext_codewords =
             short_domain_ext_codewords.slice(s![.., ..NUM_EXT_COLUMNS]);
+
         let short_domain_quot_segment_codewords = match fri.domain.length <= quotient_domain.length
         {
-            true => fri_domain_quotient_segment_codewords.clone(),
+            true => fri_domain_quotient_segment_codewords.view(),
             false => {
                 let unit_distance = fri.domain.length / quotient_domain.length;
-                let short_domain_quot_segment_codewords =
-                    fri_domain_quotient_segment_codewords.slice(s![..; unit_distance, ..]);
-                short_domain_quot_segment_codewords.to_owned()
+                fri_domain_quotient_segment_codewords.slice(s![..; unit_distance, ..])
             }
         };
-        // Note: `*` is the element-wise (Hadamard) product
-        let weighted_base_codewords = &short_domain_base_codewords * base_weights;
-        let weighted_ext_codewords = &shorter_domain_ext_codewords * &ext_weights;
-        let weighted_quotient_segment_codewords =
-            &short_domain_quot_segment_codewords * &quotient_segment_weights;
 
-        let base_and_ext_codeword =
-            weighted_base_codewords.sum_axis(Axis(1)) + weighted_ext_codewords.sum_axis(Axis(1));
-        let quotient_segments_codeword = weighted_quotient_segment_codewords.sum_axis(Axis(1));
+        // Function `random_linear_sum` can only deal with `XFieldElement`. Lifting the base
+        // codewords to `XFieldElement` is more expensive than avoiding parallelism.
+        let weighted_base_codeword = &short_domain_base_codewords * base_weights;
+        let base_codeword = weighted_base_codeword.sum_axis(Axis(1));
+        let ext_codeword = Self::random_linear_sum(short_domain_ext_codewords, ext_weights);
+        let base_and_ext_codeword = base_codeword + ext_codeword;
+
+        let quotient_segments_codeword = Self::random_linear_sum(
+            short_domain_quot_segment_codewords.view(),
+            quotient_segment_weights,
+        );
 
         assert_eq!(short_domain.length, base_and_ext_codeword.len());
         assert_eq!(short_domain.length, quotient_segments_codeword.len());
@@ -487,6 +489,21 @@ impl Stark {
         }
 
         proof_stream.into()
+    }
+
+    fn random_linear_sum(
+        codewords: ArrayView2<XFieldElement>,
+        weights: Array1<XFieldElement>,
+    ) -> Array1<XFieldElement> {
+        assert_eq!(codewords.ncols(), weights.len());
+        let mut random_linear_sum = Array1::zeros(codewords.nrows());
+        Zip::from(codewords.axis_iter(Axis(0)))
+            .and(random_linear_sum.axis_iter_mut(Axis(0)))
+            .par_for_each(|codeword, target_element| {
+                let random_linear_element = codeword.dot(&weights);
+                Array0::from_elem((), random_linear_element).move_into(target_element);
+            });
+        random_linear_sum
     }
 
     fn sample_linear_combination_weights(
