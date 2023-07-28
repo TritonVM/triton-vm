@@ -111,6 +111,8 @@ macro_rules! triton_program {
 ///
 /// Similar to [`vec!], a single instruction can be repeated a specified number of times.
 ///
+/// Furthermore, a list of LabelledInstructions can be inserted like so: `[&list]`.
+///
 /// The labels for instruction `call`, if any, are also parsed. Instruction `call` can refer to
 /// a label defined later in the program, _i.e.,_ labels are not checked for existence or
 /// uniqueness by this parser.
@@ -141,6 +143,23 @@ macro_rules! triton_program {
 /// assert_eq!(LabelledInstruction::Instruction(ReadIo), instructions[2]);
 /// ```
 ///
+/// Inserting substring of labelled instructions:
+///
+/// ```
+/// let insert_me = triton_asm!(
+///     pop
+///     pop
+/// );
+/// let wrapper = triton_asm!(
+///     push 0
+///     [&insert_me]
+///     push 1
+/// );
+/// assert_eq!(LabelledInstruction::Instruction(Push(BFieldElement::new(0))), wrapper[0]);
+/// assert_eq!(LabelledInstruction::Instruction(Pop), wrapper[1]);
+/// assert_eq!(LabelledInstruction::Instruction(Pop), wrapper[2]);
+/// assert_eq!(LabelledInstruction::Instruction(Push(BFieldElement::new(1))), wrapper[3]);
+///```
 ///
 /// # Panics
 ///
@@ -151,37 +170,49 @@ macro_rules! triton_program {
 /// [tasm]: https://triton-vm.org/spec/instructions.html
 #[macro_export]
 macro_rules! triton_asm {
+    // we have reached the end; quit parsing
     (@fmt $fmt:expr, $($args:expr,)*; ) => {
         format_args!($fmt $(,$args)*).to_string()
     };
+    // label (e.g., "some_function:")
     (@fmt $fmt:expr, $($args:expr,)*; $instr:ident: $($tail:tt)*) => {
         $crate::triton_asm!(@fmt
             concat!($fmt, " ", stringify!($instr), ": "), $($args,)*; $($tail)*
         )
     };
+    // instruction
     (@fmt $fmt:expr, $($args:expr,)*; $instr:ident $($tail:tt)*) => {
         $crate::triton_asm!(@fmt
             concat!($fmt, " ", stringify!($instr), " "), $($args,)*; $($tail)*
         )
     };
+    // instruction argument
     (@fmt $fmt:expr, $($args:expr,)*; $arg:literal $($tail:tt)*) => {
         $crate::triton_asm!(@fmt
             concat!($fmt, " ", stringify!($arg), " "), $($args,)*; $($tail)*
         )
     };
+    // an expression wrapped in curly braces followed by colon (e.g., "{entrypoint}:")
     (@fmt $fmt:expr, $($args:expr,)*; {$e:expr}: $($tail:tt)*) => {
         $crate::triton_asm!(@fmt concat!($fmt, "{}: "), $($args,)* $e,; $($tail)*)
     };
+    // a reference expression wrapped in curly braces (e.g., "{&instructions_list}")
+    (@fmt $fmt:expr, $($args:expr,)*; {&$e:expr} $($tail:tt)*) => {
+        $crate::triton_asm!(@fmt concat!($fmt, "{} "), $($args,)* $crate::instruction::LabelledInstructions($e),; $($tail)*)
+    };
+    // an expression wrapped in curly braces (e.g., "{entrypoint}")
     (@fmt $fmt:expr, $($args:expr,)*; {$e:expr} $($tail:tt)*) => {
         $crate::triton_asm!(@fmt concat!($fmt, "{} "), $($args,)* $e,; $($tail)*)
     };
 
+    // repeated instruction, with or without argument
     [push $arg:literal; $num:expr] => { vec![ $crate::triton_instr!(push $arg); $num ] };
     [dup $arg:literal; $num:expr] => { vec![ $crate::triton_instr!(dup $arg); $num ] };
     [swap $arg:literal; $num:expr] => { vec![ $crate::triton_instr!(swap $arg); $num ] };
     [call $arg:ident; $num:expr] => { vec![ $crate::triton_instr!(call $arg); $num ] };
     [$instr:ident; $num:expr] => { vec![ $crate::triton_instr!($instr); $num ] };
 
+    // entry point for macro
     {$($source_code:tt)*} => {{
         let source_code = $crate::triton_asm!(@fmt "",; $($source_code)*);
         let (_, instructions) = $crate::parser::tokenize(&source_code).unwrap();

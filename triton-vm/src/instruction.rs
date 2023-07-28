@@ -1,6 +1,7 @@
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::fmt::Display;
+use std::ops::Deref;
 use std::result;
 
 use anyhow::anyhow;
@@ -55,6 +56,32 @@ impl Display for LabelledInstruction {
             LabelledInstruction::Instruction(instr) => write!(f, "{instr}"),
             LabelledInstruction::Label(label_name) => write!(f, "{label_name}:"),
         }
+    }
+}
+
+/// Wrapper for Vec<LabelledInstruction>, use in triton_asm! macro.
+pub struct LabelledInstructions(pub Vec<LabelledInstruction>);
+
+///.Guarantees that referencing an object of type LabelledInstructions is akin to
+/// referencing the underlying Vec. For example, let
+/// `instruction_list : LabelledInstructions`, then
+/// `&instruction_list : &[LabelledInstruction]`.
+impl Deref for LabelledInstructions {
+    type Target = Vec<LabelledInstruction>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+/// The purpose of the wrapper around Vec<LabelledInstruction> is to be able to format it
+/// with minimal overhead. This trait achieves that.
+impl Display for LabelledInstructions {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for li in self.iter() {
+            writeln!(f, "{}", *li)?;
+        }
+        std::fmt::Result::Ok(())
     }
 }
 
