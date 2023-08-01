@@ -152,7 +152,7 @@ macro_rules! triton_program {
 /// );
 /// let wrapper = triton_asm!(
 ///     push 0
-///     [&insert_me]
+///     {&insert_me}
 ///     push 1
 /// );
 /// assert_eq!(LabelledInstruction::Instruction(Push(BFieldElement::new(0))), wrapper[0]);
@@ -198,7 +198,7 @@ macro_rules! triton_asm {
     };
     // a reference expression wrapped in curly braces (e.g., "{&instructions_list}")
     (@fmt $fmt:expr, $($args:expr,)*; {&$e:expr} $($tail:tt)*) => {
-        $crate::triton_asm!(@fmt concat!($fmt, "{} "), $($args,)* $crate::instruction::LabelledInstructions($e),; $($tail)*)
+        $crate::triton_asm!(@fmt concat!($fmt, "{} "), $($args,)* $crate::instruction::LabelledInstructions($e).to_string(),; $($tail)*)
     };
     // an expression wrapped in curly braces (e.g., "{entrypoint}")
     (@fmt $fmt:expr, $($args:expr,)*; {$e:expr} $($tail:tt)*) => {
