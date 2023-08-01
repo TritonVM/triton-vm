@@ -145,7 +145,8 @@ macro_rules! triton_program {
 ///
 /// Inserting substring of labelled instructions:
 ///
-/// ```
+/// ```ignore
+/// # use triton_vm::BFieldElement;
 /// let insert_me = triton_asm!(
 ///     pop
 ///     pop
