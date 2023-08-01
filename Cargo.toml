@@ -1,8 +1,5 @@
 [workspace]
-members = [
-    "triton-vm",
-    "constraint-evaluation-generator",
-]
+members = ["triton-vm", "constraint-evaluation-generator"]
 
 [profile.test]
 opt-level = 1
@@ -14,7 +11,7 @@ lto = "thin"
 lto = "thin"
 
 [workspace.package]
-version = "0.31.1"
+version = "0.32.0"
 edition = "2021"
 authors = ["Triton Software AG"]
 license = "Apache-2.0"
@@ -24,7 +21,7 @@ readme = "README.md"
 documentation = "https://triton-vm.org/spec/"
 
 [workspace.dependencies]
-twenty-first = "0.30"
+twenty-first = "0.31"
 itertools = "0.10"
 syn = "2.0"
 quote = "1.0"
