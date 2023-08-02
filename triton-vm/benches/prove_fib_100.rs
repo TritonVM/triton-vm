@@ -44,8 +44,7 @@ fn prove_fib_100(criterion: &mut Criterion) {
     let proof = Stark::prove(&parameters, &claim, &aet, &mut maybe_profiler);
 
     let padded_height = proof.padded_height().unwrap();
-    let max_degree = Stark::derive_max_degree(padded_height, parameters.num_trace_randomizers);
-    let fri = Stark::derive_fri(&parameters, max_degree);
+    let fri = Stark::derive_fri(&parameters, padded_height);
 
     if let Some(profiler) = maybe_profiler.as_mut() {
         profiler.finish();

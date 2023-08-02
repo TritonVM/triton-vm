@@ -254,7 +254,7 @@ mod proof_stream_typed_tests {
 
         let ood_base_row = random_elements(rng.next_u64(), NUM_BASE_COLUMNS);
         let ood_ext_row = random_elements(rng.next_u64(), NUM_EXT_COLUMNS);
-        let combination_elements = random_elements(rng.next_u64(), 5);
+        let quot_elements = random_elements(rng.next_u64(), 5);
 
         let revealed_leaves = revealed_indices
             .iter()
@@ -281,9 +281,7 @@ mod proof_stream_typed_tests {
         sponge_states.push_back(proof_stream.sponge_state.state);
         proof_stream.enqueue(&ProofItem::MerkleRoot(root));
         sponge_states.push_back(proof_stream.sponge_state.state);
-        proof_stream.enqueue(&ProofItem::RevealedCombinationElements(
-            combination_elements.clone(),
-        ));
+        proof_stream.enqueue(&ProofItem::QuotientSegmentsElements(quot_elements.clone()));
         sponge_states.push_back(proof_stream.sponge_state.state);
         proof_stream.enqueue(&ProofItem::FriCodeword(fri_codeword.clone()));
         sponge_states.push_back(proof_stream.sponge_state.state);
@@ -355,8 +353,8 @@ mod proof_stream_typed_tests {
             Some(proof_stream.sponge_state.state)
         );
         match proof_stream.dequeue().unwrap() {
-            ProofItem::RevealedCombinationElements(combination_elements_) => {
-                assert_eq!(combination_elements, combination_elements_)
+            ProofItem::QuotientSegmentsElements(quot_elements_) => {
+                assert_eq!(quot_elements, quot_elements_)
             }
             _ => panic!(),
         };

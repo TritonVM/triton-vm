@@ -16,6 +16,7 @@ use strum_macros::Display;
 use strum_macros::EnumCount as EnumCountMacro;
 use strum_macros::EnumIter;
 use twenty_first::shared_math::b_field_element::BFieldElement;
+use twenty_first::shared_math::digest::Digest;
 use twenty_first::shared_math::mpolynomial::Degree;
 use twenty_first::shared_math::other::roundup_npo2;
 use twenty_first::shared_math::polynomial::Polynomial;
@@ -160,34 +161,33 @@ pub enum TableId {
 }
 
 /// A Master Table is, in some sense, a top-level table of Triton VM. It contains all the data
-/// but little logic beyond bookkeeping and presenting the data in a useful way. Conversely, the
+/// but little logic beyond bookkeeping and presenting the data in useful ways. Conversely, the
 /// individual tables contain no data but all of the respective logic. Master Tables are
 /// responsible for managing the individual tables and for presenting the right data to the right
 /// tables, serving as a clean interface between the VM and the individual tables.
 ///
 /// As a mental model, it is perfectly fine to think of the data for the individual tables as
-/// completely separate from each other. Only the cross-table argument links all tables together.
+/// completely separate from each other. Only the [cross-table arguments][cross_arg] link all tables
+/// together.
 ///
 /// Conceptually, there are three Master Tables: the Master Base Table, the Master Extension
 /// Table, and the Master Quotient Table. The lifecycle of the Master Tables is as follows:
 /// 1. The Master Base Table is instantiated and filled using the Algebraic Execution Trace.
-///     This is the first time a Master Base Table is instantiated. It is in column-major form.
 /// 2. The Master Base Table is padded using logic from the individual tables.
 /// 3. The still-empty entries in the Master Base Table are filled with random elements. This
 ///     step is also known as “trace randomization.”
-/// 4. Each column of the Master Base Table is low-degree extended. The result is the Master Base
-///     Table over the FRI domain. This is the second and last time a Master Base Table is
-///     instantiated. It is in row-major form.
-/// 5. The Master Base Table and the Master Base Table over the FRI domain are used to derive the
-///     Master Extension Table using logic from the individual tables. This is the first time a
-///     Master Extension Table is instantiated. It is in column-major form.
+/// 4. Each column of the Master Base Table is [low-degree extended][lde]. The results are stored in
+///     the Master Base Table. Methods [`quotient_domain_table`][quot_table],
+///     [`fri_domain_table`][fri_table], [`interpolation_polynomials`][inter_poly], and [`row`][row]
+///     can now be used without causing panic.
+/// 5. The Master Base Table is used to derive the Master Extension Table using logic from the
+///     individual tables.
 /// 6. The Master Extension Table is trace-randomized.
-/// 7. Each column of the Master Extension Table is low-degree extended. The result is the Master
-///     Extension Table over the FRI domain. This is the second and last time a Master Extension
-///     Table is instantiated. It is in row-major form.
-/// 8. Using the Master Base Table over the FRI domain and the Master Extension Table over the
-///     FRI domain, the Quotient Master Table is derived using the AIR. Each individual table
-///     defines that part of the AIR that is relevant to it.
+/// 7. Each column of the Master Extension Table is [low-degree extended][lde]. The effects are
+///    the same as for the Master Base Table.
+/// 8. Using the Master Base Table and the Master Extension Table, the Quotient Master Table is
+///     derived using the AIR. Each individual table defines that part of the AIR that is relevant
+///     to it.
 ///
 /// The following points are of note:
 /// - The Master Extension Table's rightmost columns are the randomizer codewords. These are
@@ -196,198 +196,367 @@ pub enum TableId {
 ///     is also stored in the Master Quotient Table. Even though the cross-table argument is not
 ///     a table, it does define part of the AIR. Hence, the cross-table argument does not contribute
 ///     to padding or extending the Master Tables, but is incorporated when deriving the Master
-///     Qoutient Table.
-/// - For better performance, it is possible to derive the Master Quotient Table (step 8) from the
-///     Master Base Table and Master Extension Table over a smaller domain than the FRI domain –
-///     the “quotient domain.” The quotient domain is a subset of the FRI domain. This
-///     performance improvement changes nothing conceptually.
-pub trait MasterTable<FF>
+///     Quotient Table.
+///
+/// [cross_arg]: cross_table_argument::GrandCrossTableArg
+/// [lde]: Self::low_degree_extend_all_columns
+/// [quot_table]: Self::quotient_domain_table
+/// [fri_table]: Self::fri_domain_table
+/// [inter_poly]: Self::interpolation_polynomials
+/// [row]: Self::row
+pub trait MasterTable<FF>: Sync
 where
     FF: FiniteField + MulAssign<BFieldElement>,
     Standard: Distribution<FF>,
 {
-    fn randomized_padded_trace_len(&self) -> usize;
-    fn rand_trace_to_padded_trace_unit_distance(&self) -> usize;
+    fn trace_domain(&self) -> ArithmeticDomain;
+    fn randomized_trace_domain(&self) -> ArithmeticDomain;
+    fn quotient_domain(&self) -> ArithmeticDomain;
+    fn fri_domain(&self) -> ArithmeticDomain;
 
     /// Presents underlying trace data, excluding trace randomizers and randomizer polynomials.
-    /// Makes little sense over the FRI domain.
     fn trace_table(&self) -> ArrayView2<FF>;
 
     /// Mutably presents underlying trace data, excluding trace randomizers and randomizer
-    /// polynomials. Makes little sense over the FRI domain.
+    /// polynomials.
     fn trace_table_mut(&mut self) -> ArrayViewMut2<FF>;
 
-    /// Presents all underlying data.
-    fn master_matrix(&self) -> ArrayView2<FF>;
+    fn randomized_trace_table(&self) -> ArrayView2<FF>;
 
-    /// Presents all underlying data in a mutable manner.
-    fn master_matrix_mut(&mut self) -> ArrayViewMut2<FF>;
-    fn fri_domain(&self) -> ArithmeticDomain;
+    fn randomized_trace_table_mut(&mut self) -> ArrayViewMut2<FF>;
 
-    /// set all rows _not_ needed for the (padded) trace to random values
+    /// The low-degree extended randomized trace data over the quotient domain. Includes randomizer
+    /// polynomials. Requires having called
+    /// [`low_degree_extend_all_columns`](Self::low_degree_extend_all_columns) first.
+    fn quotient_domain_table(&self) -> ArrayView2<FF>;
+
+    /// The low-degree extended randomized trace data over the FRI domain. Includes randomizer
+    /// polynomials. Requires having called
+    /// [`low_degree_extend_all_columns`](Self::low_degree_extend_all_columns) first.
+    fn fri_domain_table(&self) -> ArrayView2<FF>;
+
+    /// Set all rows _not_ part of the actual (padded) trace to random values.
     fn randomize_trace(&mut self) {
-        let randomized_padded_trace_len = self.randomized_padded_trace_len();
-        let unit_distance = self.rand_trace_to_padded_trace_unit_distance();
+        let unit_distance = self.randomized_trace_domain().length / self.trace_domain().length;
         (1..unit_distance).for_each(|offset| {
-            self.master_matrix_mut()
-                .slice_mut(s![offset..randomized_padded_trace_len; unit_distance, ..])
+            self.randomized_trace_table_mut()
+                .slice_mut(s![offset..; unit_distance, ..])
                 .par_mapv_inplace(|_| random::<FF>())
         });
     }
 
-    fn randomized_trace_domain(&self) -> ArithmeticDomain {
-        let randomized_trace_domain_len = self.randomized_padded_trace_len();
-        ArithmeticDomain::of_length(randomized_trace_domain_len)
-    }
-
-    /// Low-degree extends all columns.
-    /// Returns the thusly extended columns as well as the polynomials interpolating the columns.
-    /// The number of rows in the resulting table is equal to the length of the FRI domain.
-    /// The returned table is in row-major order.
-    /// The interpolation polynomials can be used to compute out-of-domain rows, _e.g._, for DEEP.
-    fn low_degree_extend_all_columns(&self) -> (Array2<FF>, Array1<Polynomial<FF>>)
-    where
-        Self: Sync,
-    {
+    /// Low-degree extend all columns of the randomized trace domain table. The resulting
+    /// low-degree extended columns can be accessed using
+    /// [`quotient_domain_table`](Self::quotient_domain_table) and
+    /// [`fri_domain_table`](Self::fri_domain_table).
+    fn low_degree_extend_all_columns(&mut self) {
+        let evaluation_domain = match self.fri_domain().length > self.quotient_domain().length {
+            true => self.fri_domain(),
+            false => self.quotient_domain(),
+        };
         let randomized_trace_domain = self.randomized_trace_domain();
-
-        let num_rows = self.fri_domain().length;
-        let num_columns = self.master_matrix().ncols();
+        let num_rows = evaluation_domain.length;
+        let num_columns = self.randomized_trace_table().ncols();
         let mut interpolation_polynomials = Array1::zeros(num_columns);
         let mut extended_columns = Array2::zeros([num_rows, num_columns]);
         Zip::from(extended_columns.axis_iter_mut(Axis(1)))
-            .and(self.master_matrix().axis_iter(Axis(1)))
+            .and(self.randomized_trace_table().axis_iter(Axis(1)))
             .and(interpolation_polynomials.axis_iter_mut(Axis(0)))
             .par_for_each(|lde_column, trace_column, poly| {
-                let inter_poly = randomized_trace_domain.interpolate(&trace_column.to_vec());
-                let fri_codeword = self.fri_domain().evaluate(&inter_poly);
-                Array1::from(fri_codeword).move_into(lde_column);
-                Array0::from_elem((), inter_poly).move_into(poly);
+                let trace_column = trace_column.as_slice().unwrap();
+                let interpolation_polynomial = randomized_trace_domain.interpolate(trace_column);
+                let lde_codeword = evaluation_domain.evaluate(&interpolation_polynomial);
+                Array1::from(lde_codeword).move_into(lde_column);
+                Array0::from_elem((), interpolation_polynomial).move_into(poly);
             });
-        (extended_columns, interpolation_polynomials)
+        self.memoize_low_degree_extended_table(extended_columns);
+        self.memoize_interpolation_polynomials(interpolation_polynomials);
     }
+
+    /// Not intended for direct use, but through [`Self::low_degree_extend_all_columns`].
+    fn memoize_low_degree_extended_table(&mut self, low_degree_extended_columns: Array2<FF>);
+
+    /// Requires having called
+    /// [`low_degree_extend_all_columns`](Self::low_degree_extend_all_columns) first.
+    fn low_degree_extended_table(&self) -> ArrayView2<FF>;
+
+    /// Memoize the polynomials interpolating the columns.
+    /// Not intended for direct use, but through [`Self::low_degree_extend_all_columns`].
+    fn memoize_interpolation_polynomials(
+        &mut self,
+        interpolation_polynomials: Array1<Polynomial<FF>>,
+    );
+
+    /// Requires having called
+    /// [`low_degree_extend_all_columns`](Self::low_degree_extend_all_columns) first.    
+    fn interpolation_polynomials(&self) -> ArrayView1<Polynomial<XFieldElement>>;
+
+    /// Get one row of the table at an arbitrary index. Notably, the index does not have to be in
+    /// any of the domains. In other words, can be used to compute out-of-domain rows. Requires
+    /// having called [`low_degree_extend_all_columns`](Self::low_degree_extend_all_columns) first.
+    /// Does not include randomizer polynomials.
+    fn row(&self, row_index: XFieldElement) -> Array1<XFieldElement>;
+
+    /// Compute a Merkle tree of the FRI domain table. Every row gives one leaf in the tree.
+    /// The function [`hash_row`](Self::hash_one_row) is used to hash each row.
+    fn merkle_tree(&self, maybe_profiler: &mut Option<TritonProfiler>) -> MerkleTree<StarkHasher> {
+        prof_start!(maybe_profiler, "leafs");
+        let hashed_rows = self.hash_all_fri_domain_rows();
+        prof_stop!(maybe_profiler, "leafs");
+
+        prof_start!(maybe_profiler, "Merkle tree");
+        let merkle_tree = MTMaker::from_digests(&hashed_rows);
+        prof_stop!(maybe_profiler, "Merkle tree");
+
+        merkle_tree
+    }
+
+    fn hash_all_fri_domain_rows(&self) -> Vec<Digest> {
+        let fri_domain_table = self.fri_domain_table();
+        let all_rows = fri_domain_table.axis_iter(Axis(0)).into_par_iter();
+        all_rows.map(Self::hash_one_row).collect::<Vec<_>>()
+    }
+
+    fn hash_one_row(row: ArrayView1<FF>) -> Digest;
 }
 
 #[derive(Clone)]
 pub struct MasterBaseTable {
-    pub padded_height: usize,
     pub num_trace_randomizers: usize,
 
-    pub program_table_len: usize,
-    pub main_execution_len: usize,
-    pub hash_coprocessor_execution_len: usize,
-    pub cascade_table_len: usize,
-    pub u32_coprocesor_execution_len: usize,
+    program_table_len: usize,
+    main_execution_len: usize,
+    hash_coprocessor_execution_len: usize,
+    cascade_table_len: usize,
+    u32_coprocesor_execution_len: usize,
 
-    pub randomized_padded_trace_len: usize,
+    trace_domain: ArithmeticDomain,
+    randomized_trace_domain: ArithmeticDomain,
+    quotient_domain: ArithmeticDomain,
+    fri_domain: ArithmeticDomain,
 
-    /// how many elements to skip in the randomized (padded) trace domain to only refer to
-    /// elements in the _non_-randomized (padded) trace domain
-    pub rand_trace_to_padded_trace_unit_distance: usize,
-
-    pub fri_domain: ArithmeticDomain,
-    pub master_base_matrix: Array2<BFieldElement>,
+    randomized_trace_table: Array2<BFieldElement>,
+    low_degree_extended_table: Option<Array2<BFieldElement>>,
+    interpolation_polynomials: Option<Array1<Polynomial<XFieldElement>>>,
 }
 
 pub struct MasterExtTable {
-    pub padded_height: usize,
     pub num_trace_randomizers: usize,
     pub num_randomizer_polynomials: usize,
 
-    pub randomized_padded_trace_len: usize,
+    trace_domain: ArithmeticDomain,
+    randomized_trace_domain: ArithmeticDomain,
+    quotient_domain: ArithmeticDomain,
+    fri_domain: ArithmeticDomain,
 
-    /// how many elements to skip in the randomized (padded) trace domain to only refer to
-    /// elements in the _non_-randomized (padded) trace domain
-    pub rand_trace_to_padded_trace_unit_distance: usize,
-
-    pub fri_domain: ArithmeticDomain,
-    pub master_ext_matrix: Array2<XFieldElement>,
+    randomized_trace_table: Array2<XFieldElement>,
+    low_degree_extended_table: Option<Array2<XFieldElement>>,
+    interpolation_polynomials: Option<Array1<Polynomial<XFieldElement>>>,
 }
 
 impl MasterTable<BFieldElement> for MasterBaseTable {
-    fn randomized_padded_trace_len(&self) -> usize {
-        self.randomized_padded_trace_len
+    fn trace_domain(&self) -> ArithmeticDomain {
+        self.trace_domain
     }
 
-    fn rand_trace_to_padded_trace_unit_distance(&self) -> usize {
-        self.rand_trace_to_padded_trace_unit_distance
+    fn randomized_trace_domain(&self) -> ArithmeticDomain {
+        self.randomized_trace_domain
     }
 
-    fn trace_table(&self) -> ArrayView2<BFieldElement> {
-        self.master_base_matrix
-            .slice(s![..; self.rand_trace_to_padded_trace_unit_distance, ..])
-    }
-
-    fn trace_table_mut(&mut self) -> ArrayViewMut2<BFieldElement> {
-        self.master_base_matrix
-            .slice_mut(s![..; self.rand_trace_to_padded_trace_unit_distance, ..])
-    }
-
-    fn master_matrix(&self) -> ArrayView2<BFieldElement> {
-        self.master_base_matrix.view()
-    }
-
-    fn master_matrix_mut(&mut self) -> ArrayViewMut2<BFieldElement> {
-        self.master_base_matrix.view_mut()
+    fn quotient_domain(&self) -> ArithmeticDomain {
+        self.quotient_domain
     }
 
     fn fri_domain(&self) -> ArithmeticDomain {
         self.fri_domain
+    }
+
+    fn trace_table(&self) -> ArrayView2<BFieldElement> {
+        let unit_distance = self.randomized_trace_domain().length / self.trace_domain().length;
+        self.randomized_trace_table.slice(s![..; unit_distance, ..])
+    }
+
+    fn trace_table_mut(&mut self) -> ArrayViewMut2<BFieldElement> {
+        let unit_distance = self.randomized_trace_domain().length / self.trace_domain().length;
+        self.randomized_trace_table
+            .slice_mut(s![..; unit_distance, ..])
+    }
+
+    fn randomized_trace_table(&self) -> ArrayView2<BFieldElement> {
+        self.randomized_trace_table.view()
+    }
+
+    fn randomized_trace_table_mut(&mut self) -> ArrayViewMut2<BFieldElement> {
+        self.randomized_trace_table.view_mut()
+    }
+
+    fn quotient_domain_table(&self) -> ArrayView2<BFieldElement> {
+        let Some(low_degree_extended_table) = &self.low_degree_extended_table else {
+            panic!("Low-degree extended columns must be computed first.");
+        };
+        if self.quotient_domain().length >= self.fri_domain().length {
+            return low_degree_extended_table.view();
+        }
+        let unit_distance = self.fri_domain().length / self.quotient_domain().length;
+        low_degree_extended_table.slice(s![..; unit_distance, ..])
+    }
+
+    fn fri_domain_table(&self) -> ArrayView2<BFieldElement> {
+        let Some(low_degree_extended_table) = &self.low_degree_extended_table else {
+            panic!("Low-degree extended columns must be computed first.");
+        };
+        if self.fri_domain().length >= self.quotient_domain().length {
+            return low_degree_extended_table.view();
+        }
+        let unit_distance = self.quotient_domain().length / self.fri_domain().length;
+        low_degree_extended_table.slice(s![..; unit_distance, ..])
+    }
+
+    fn memoize_low_degree_extended_table(
+        &mut self,
+        low_degree_extended_columns: Array2<BFieldElement>,
+    ) {
+        self.low_degree_extended_table = Some(low_degree_extended_columns);
+    }
+
+    fn low_degree_extended_table(&self) -> ArrayView2<BFieldElement> {
+        let Some(low_degree_extended_table) = &self.low_degree_extended_table else {
+            panic!("Low-degree extended columns must be computed first.");
+        };
+        low_degree_extended_table.view()
+    }
+
+    fn memoize_interpolation_polynomials(
+        &mut self,
+        interpolation_polynomials: Array1<Polynomial<BFieldElement>>,
+    ) {
+        let interpolation_polynomials = interpolation_polynomials.map(|polynomial| {
+            let coefficients = polynomial.coefficients.iter();
+            let lifted_coefficients = coefficients.map(|b| b.lift()).collect_vec();
+            Polynomial::new(lifted_coefficients)
+        });
+        self.interpolation_polynomials = Some(interpolation_polynomials);
+    }
+
+    fn interpolation_polynomials(&self) -> ArrayView1<Polynomial<XFieldElement>> {
+        let Some(interpolation_polynomials) = &self.interpolation_polynomials else {
+            panic!("Interpolation polynomials must be computed first.");
+        };
+        interpolation_polynomials.view()
+    }
+
+    fn row(&self, row_index: XFieldElement) -> Array1<XFieldElement> {
+        self.interpolation_polynomials()
+            .map(|polynomial| polynomial.evaluate(&row_index))
+    }
+
+    fn hash_one_row(row: ArrayView1<BFieldElement>) -> Digest {
+        StarkHasher::hash_varlen(row.as_slice().unwrap())
     }
 }
 
 impl MasterTable<XFieldElement> for MasterExtTable {
-    fn randomized_padded_trace_len(&self) -> usize {
-        self.randomized_padded_trace_len
+    fn trace_domain(&self) -> ArithmeticDomain {
+        self.trace_domain
     }
 
-    fn rand_trace_to_padded_trace_unit_distance(&self) -> usize {
-        self.rand_trace_to_padded_trace_unit_distance
+    fn randomized_trace_domain(&self) -> ArithmeticDomain {
+        self.randomized_trace_domain
     }
 
-    fn trace_table(&self) -> ArrayView2<XFieldElement> {
-        self.master_ext_matrix
-            .slice(s![..; self.rand_trace_to_padded_trace_unit_distance, ..NUM_EXT_COLUMNS])
-    }
-
-    fn trace_table_mut(&mut self) -> ArrayViewMut2<XFieldElement> {
-        self.master_ext_matrix
-            .slice_mut(s![..; self.rand_trace_to_padded_trace_unit_distance, ..NUM_EXT_COLUMNS])
-    }
-
-    fn master_matrix(&self) -> ArrayView2<XFieldElement> {
-        self.master_ext_matrix.view()
-    }
-
-    fn master_matrix_mut(&mut self) -> ArrayViewMut2<XFieldElement> {
-        self.master_ext_matrix.view_mut()
+    fn quotient_domain(&self) -> ArithmeticDomain {
+        self.quotient_domain
     }
 
     fn fri_domain(&self) -> ArithmeticDomain {
         self.fri_domain
     }
+
+    fn trace_table(&self) -> ArrayView2<XFieldElement> {
+        let unit_distance = self.randomized_trace_domain().length / self.trace_domain().length;
+        self.randomized_trace_table
+            .slice(s![..; unit_distance, ..NUM_EXT_COLUMNS])
+    }
+
+    fn trace_table_mut(&mut self) -> ArrayViewMut2<XFieldElement> {
+        let unit_distance = self.randomized_trace_domain().length / self.trace_domain().length;
+        self.randomized_trace_table
+            .slice_mut(s![..; unit_distance, ..NUM_EXT_COLUMNS])
+    }
+
+    fn randomized_trace_table(&self) -> ArrayView2<XFieldElement> {
+        self.randomized_trace_table.view()
+    }
+
+    fn randomized_trace_table_mut(&mut self) -> ArrayViewMut2<XFieldElement> {
+        self.randomized_trace_table.view_mut()
+    }
+
+    fn quotient_domain_table(&self) -> ArrayView2<XFieldElement> {
+        let Some(low_degree_extended_table) = &self.low_degree_extended_table else {
+            panic!("Low-degree extended columns must be computed first.");
+        };
+        if self.quotient_domain().length >= self.fri_domain().length {
+            return low_degree_extended_table.view();
+        }
+        let unit_distance = self.fri_domain().length / self.quotient_domain().length;
+        low_degree_extended_table.slice(s![..; unit_distance, ..])
+    }
+
+    fn fri_domain_table(&self) -> ArrayView2<XFieldElement> {
+        let Some(low_degree_extended_table) = &self.low_degree_extended_table else {
+            panic!("Low-degree extended columns must be computed first.");
+        };
+        if self.fri_domain().length >= self.quotient_domain().length {
+            return low_degree_extended_table.view();
+        }
+        let unit_distance = self.quotient_domain().length / self.fri_domain().length;
+        low_degree_extended_table.slice(s![..; unit_distance, ..])
+    }
+
+    fn memoize_low_degree_extended_table(
+        &mut self,
+        low_degree_extended_columns: Array2<XFieldElement>,
+    ) {
+        self.low_degree_extended_table = Some(low_degree_extended_columns);
+    }
+
+    fn low_degree_extended_table(&self) -> ArrayView2<XFieldElement> {
+        let Some(low_degree_extended_table) = &self.low_degree_extended_table else {
+            panic!("Low-degree extended columns must be computed first.");
+        };
+        low_degree_extended_table.view()
+    }
+
+    fn memoize_interpolation_polynomials(
+        &mut self,
+        interpolation_polynomials: Array1<Polynomial<XFieldElement>>,
+    ) {
+        self.interpolation_polynomials = Some(interpolation_polynomials);
+    }
+
+    fn interpolation_polynomials(&self) -> ArrayView1<Polynomial<XFieldElement>> {
+        let Some(interpolation_polynomials) = &self.interpolation_polynomials else {
+            panic!("Interpolation polynomials must be computed first.");
+        };
+        interpolation_polynomials.view()
+    }
+
+    fn row(&self, row_index: XFieldElement) -> Array1<XFieldElement> {
+        self.interpolation_polynomials()
+            .slice(s![..NUM_EXT_COLUMNS])
+            .map(|polynomial| polynomial.evaluate(&row_index))
+    }
+
+    fn hash_one_row(row: ArrayView1<XFieldElement>) -> Digest {
+        let interpret_xfe_as_bfes = |xfe: &XFieldElement| xfe.coefficients.to_vec();
+        let row_as_bfes = row.iter().map(interpret_xfe_as_bfes).concat();
+        StarkHasher::hash_varlen(&row_as_bfes)
+    }
 }
 
 impl MasterBaseTable {
-    pub fn padded_height(aet: &AlgebraicExecutionTrace, num_trace_randomizers: usize) -> usize {
-        // The number of trace randomizers influences the padded height for the following reason.
-        // The interpolant degree is the next power of two of the sum of the padded height and the
-        // number of trace randomizers. In the interpolant degree, the padded height must not be
-        // “overshadowed” by the number of trace randomizers. For example:
-        //
-        // ```rust
-        // let num_trace_randomizers = 1024;
-        // let padded_height = 256;
-        // let interpolant_degree = roundup_npo2(padded_height + num_trace_randomizers); // 2048
-        //
-        // let padded_height = 512;
-        // let interpolant_degree = roundup_npo2(padded_height + num_trace_randomizers); // 2048 (!)
-        // ```
-        //
-        // To guarantee a unique padded height given an interpolant degree and
-        // the number of trace randomizers degree, the padded height must be at least as large as
-        // the number of trace randomizers.
-
+    pub fn padded_height(aet: &AlgebraicExecutionTrace) -> usize {
         let relevant_table_heights = [
             aet.program_table_length(),
             aet.processor_table_length(),
@@ -395,7 +564,6 @@ impl MasterBaseTable {
             aet.cascade_table_length(),
             aet.lookup_table_length(),
             aet.u32_table_length(),
-            num_trace_randomizers,
         ];
         let max_height = relevant_table_heights.into_iter().max().unwrap();
         let max_height = max_height.try_into().unwrap();
@@ -406,29 +574,34 @@ impl MasterBaseTable {
     pub fn new(
         aet: &AlgebraicExecutionTrace,
         num_trace_randomizers: usize,
+        quotient_domain: ArithmeticDomain,
         fri_domain: ArithmeticDomain,
     ) -> Self {
-        let padded_height = Self::padded_height(aet, num_trace_randomizers);
+        let padded_height = Self::padded_height(aet);
+        let trace_domain = ArithmeticDomain::of_length(padded_height);
+
         let randomized_padded_trace_len =
             randomized_padded_trace_len(padded_height, num_trace_randomizers);
-        let unit_distance = randomized_padded_trace_len / padded_height;
+        let randomized_trace_domain = ArithmeticDomain::of_length(randomized_padded_trace_len);
 
         let num_rows = randomized_padded_trace_len;
         let num_columns = NUM_BASE_COLUMNS;
-        let master_base_matrix = Array2::zeros([num_rows, num_columns].f());
+        let randomized_trace_table = Array2::zeros([num_rows, num_columns].f());
 
         let mut master_base_table = Self {
-            padded_height,
             num_trace_randomizers,
             program_table_len: aet.program_table_length(),
             main_execution_len: aet.processor_table_length(),
             hash_coprocessor_execution_len: aet.hash_table_length(),
             cascade_table_len: aet.cascade_table_length(),
             u32_coprocesor_execution_len: aet.u32_table_length(),
-            randomized_padded_trace_len,
-            rand_trace_to_padded_trace_unit_distance: unit_distance,
+            trace_domain,
+            randomized_trace_domain,
+            quotient_domain,
             fri_domain,
-            master_base_matrix,
+            randomized_trace_table,
+            low_degree_extended_table: None,
+            interpolation_polynomials: None,
         };
 
         // memory-like tables must be filled in before clock jump differences are known, hence
@@ -505,41 +678,6 @@ impl MasterBaseTable {
         DegreeLoweringTable::fill_derived_base_columns(&mut self.trace_table_mut());
     }
 
-    /// Returns the low-degree extended columns as well as the columns' interpolation polynomials.
-    /// The polynomials are in the same order as the columns.
-    /// The interpolation polynomials can be used to compute out-of-domain rows, _e.g._, for DEEP.
-    pub fn to_fri_domain_table(&self) -> (Self, Array1<Polynomial<BFieldElement>>) {
-        let (master_base_matrix, interpolation_polynomials) = self.low_degree_extend_all_columns();
-        let master_base_table = Self {
-            master_base_matrix,
-            ..*self
-        };
-        (master_base_table, interpolation_polynomials)
-    }
-
-    /// Compute the Merkle tree of the base table. Every row is one leaf in the tree.
-    /// Therefore, constructing the tree is a two-step process:
-    /// 1. Hash each row.
-    /// 1. Construct the tree from the hashed rows.
-    pub fn merkle_tree(
-        &self,
-        maybe_profiler: &mut Option<TritonProfiler>,
-    ) -> MerkleTree<StarkHasher> {
-        prof_start!(maybe_profiler, "leafs");
-        let hashed_rows = self
-            .master_base_matrix
-            .axis_iter(Axis(0))
-            .into_par_iter()
-            .map(|row| StarkHasher::hash_varlen(&row.to_vec()))
-            .collect::<Vec<_>>();
-        prof_stop!(maybe_profiler, "leafs");
-        prof_start!(maybe_profiler, "Merkle tree");
-        let merkle_tree = MTMaker::from_digests(&hashed_rows);
-        prof_stop!(maybe_profiler, "Merkle tree");
-
-        merkle_tree
-    }
-
     /// Create a `MasterExtTable` from a `MasterBaseTable` by `.extend()`ing each individual base
     /// table. The `.extend()` for each table is specific to that table, but always involves
     /// adding some number of columns.
@@ -549,21 +687,23 @@ impl MasterBaseTable {
         num_randomizer_polynomials: usize,
     ) -> MasterExtTable {
         // randomizer polynomials
-        let num_rows = self.master_base_matrix.nrows();
+        let num_rows = self.randomized_trace_table().nrows();
         let num_columns = NUM_EXT_COLUMNS + num_randomizer_polynomials;
-        let mut master_ext_matrix = Array2::zeros([num_rows, num_columns].f());
-        master_ext_matrix
+        let mut randomized_trace_extension_table = Array2::zeros([num_rows, num_columns].f());
+        randomized_trace_extension_table
             .slice_mut(s![.., NUM_EXT_COLUMNS..])
             .par_mapv_inplace(|_| random::<XFieldElement>());
 
         let mut master_ext_table = MasterExtTable {
-            padded_height: self.padded_height,
             num_trace_randomizers: self.num_trace_randomizers,
             num_randomizer_polynomials,
-            randomized_padded_trace_len: self.randomized_padded_trace_len,
-            rand_trace_to_padded_trace_unit_distance: self.rand_trace_to_padded_trace_unit_distance,
-            fri_domain: self.fri_domain,
-            master_ext_matrix,
+            trace_domain: self.trace_domain(),
+            randomized_trace_domain: self.randomized_trace_domain(),
+            quotient_domain: self.quotient_domain(),
+            fri_domain: self.fri_domain(),
+            randomized_trace_table: randomized_trace_extension_table,
+            low_degree_extended_table: None,
+            interpolation_polynomials: None,
         };
 
         ProgramTable::extend(
@@ -637,69 +777,31 @@ impl MasterBaseTable {
         }
     }
 
-    /// Returns a view of the specified table, excluding the trace randomizers.
+    /// A view of the specified table, without any randomizers.
     pub fn table(&self, id: TableId) -> ArrayView2<BFieldElement> {
         let (table_start, table_end) = Self::table_slice_info(id);
-        let unit_distance = self.rand_trace_to_padded_trace_unit_distance;
-        self.master_base_matrix
+        let unit_distance = self.randomized_trace_domain().length / self.trace_domain().length;
+        self.randomized_trace_table
             .slice(s![..; unit_distance, table_start..table_end])
     }
 
-    /// Returns a mutable view of the specified table, excluding the trace randomizers.
+    /// A mutable view of the specified table, without any randomizers.
     pub fn table_mut(&mut self, id: TableId) -> ArrayViewMut2<BFieldElement> {
         let (table_start, table_end) = Self::table_slice_info(id);
-        let unit_distance = self.rand_trace_to_padded_trace_unit_distance;
-        self.master_base_matrix
+        let unit_distance = self.randomized_trace_domain().length / self.trace_domain().length;
+        self.randomized_trace_table
             .slice_mut(s![..; unit_distance, table_start..table_end])
     }
 }
 
 impl MasterExtTable {
-    /// Returns the low-degree extended columns as well as the columns' interpolation polynomials.
-    /// The polynomials are in the same order as the columns.
-    /// The interpolation polynomials can be used to compute out-of-domain rows, _e.g._, for DEEP.
-    pub fn to_fri_domain_table(&self) -> (Self, Array1<Polynomial<XFieldElement>>) {
-        let (master_ext_matrix, interpolation_polynomials) = self.low_degree_extend_all_columns();
-        let master_ext_table = Self {
-            master_ext_matrix,
-            ..*self
-        };
-        (master_ext_table, interpolation_polynomials)
-    }
-
-    pub fn randomizer_polynomials(&self) -> Vec<Array1<XFieldElement>> {
-        let mut randomizer_polynomials = Vec::with_capacity(self.num_randomizer_polynomials);
-        for col_idx in NUM_EXT_COLUMNS..self.master_ext_matrix.ncols() {
-            let randomizer_polynomial = self.master_ext_matrix.column(col_idx);
-            randomizer_polynomials.push(randomizer_polynomial.to_owned());
-        }
+    pub fn fri_domain_randomizer_polynomials(&self) -> Vec<Array1<XFieldElement>> {
+        let fri_domain_table = self.fri_domain_table();
+        let randomizer_polynomials = fri_domain_table.slice(s![.., NUM_EXT_COLUMNS..]);
         randomizer_polynomials
-    }
-
-    pub fn merkle_tree(
-        &self,
-        maybe_profiler: &mut Option<TritonProfiler>,
-    ) -> MerkleTree<StarkHasher> {
-        prof_start!(maybe_profiler, "leafs");
-        let hashed_rows = self
-            .master_ext_matrix
-            .axis_iter(Axis(0))
-            .into_par_iter()
-            .map(|row| {
-                let contiguous_row_bfe = row
-                    .to_vec()
-                    .iter()
-                    .map(|xfe| xfe.coefficients.to_vec())
-                    .concat();
-                StarkHasher::hash_varlen(&contiguous_row_bfe)
-            })
-            .collect::<Vec<_>>();
-        prof_stop!(maybe_profiler, "leafs");
-        prof_start!(maybe_profiler, "Merkle tree");
-        let ret = MTMaker::from_digests(&hashed_rows);
-        prof_stop!(maybe_profiler, "Merkle tree");
-
-        ret
+            .axis_iter(Axis(1))
+            .map(|column| column.to_owned())
+            .collect()
     }
 
     fn table_slice_info(id: TableId) -> (usize, usize) {
@@ -723,17 +825,17 @@ impl MasterExtTable {
 
     /// Returns a view of the entire master table, excluding the trace randomizers.
     pub fn table(&self, id: TableId) -> ArrayView2<XFieldElement> {
-        let unit_distance = self.rand_trace_to_padded_trace_unit_distance;
         let (table_start, table_end) = Self::table_slice_info(id);
-        self.master_ext_matrix
+        let unit_distance = self.randomized_trace_domain().length / self.trace_domain().length;
+        self.randomized_trace_table
             .slice(s![..; unit_distance, table_start..table_end])
     }
 
     /// Returns a mutable view of the specified table, excluding the trace randomizers.
     pub fn table_mut(&mut self, id: TableId) -> ArrayViewMut2<XFieldElement> {
-        let unit_distance = self.rand_trace_to_padded_trace_unit_distance;
         let (table_start, table_end) = Self::table_slice_info(id);
-        self.master_ext_matrix
+        let unit_distance = self.randomized_trace_domain().length / self.trace_domain().length;
+        self.randomized_trace_table
             .slice_mut(s![..; unit_distance, table_start..table_end])
     }
 }
@@ -946,6 +1048,7 @@ mod master_table_tests {
     use crate::table::master_table::initial_quotient_zerofier_inverse;
     use crate::table::master_table::terminal_quotient_zerofier_inverse;
     use crate::table::master_table::transition_quotient_zerofier_inverse;
+    use crate::table::master_table::MasterTable;
     use crate::table::master_table::TableId::*;
     use crate::table::master_table::EXT_DEGREE_LOWERING_TABLE_END;
     use crate::table::master_table::NUM_BASE_COLUMNS;
@@ -1074,7 +1177,7 @@ mod master_table_tests {
         assert_eq!(
             parameters.num_randomizer_polynomials,
             master_ext_table
-                .master_ext_matrix
+                .randomized_trace_table()
                 .slice(s![.., EXT_DEGREE_LOWERING_TABLE_END..])
                 .ncols()
         );
