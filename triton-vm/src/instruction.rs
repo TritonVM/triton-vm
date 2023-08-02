@@ -58,6 +58,15 @@ impl Display for LabelledInstruction {
     }
 }
 
+/// Helps printing instructions with their labels.
+pub fn stringify_instructions(instructions: &[LabelledInstruction]) -> String {
+    instructions
+        .iter()
+        .map(|instruction| instruction.to_string())
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 /// A Triton VM instruction. See the
 /// [Instruction Set Architecture](https://triton-vm.org/spec/isa.html)
 /// for more details.
@@ -544,10 +553,12 @@ mod instruction_tests {
 
     use crate::instruction::all_instruction_names;
     use crate::instruction::all_instructions_without_args;
+    use crate::instruction::stringify_instructions;
     use crate::instruction::Instruction;
     use crate::instruction::InstructionBit;
     use crate::instruction::ALL_INSTRUCTIONS;
     use crate::op_stack::OpStackElement::*;
+    use crate::triton_asm;
     use crate::triton_program;
 
     use super::AnInstruction::*;
@@ -726,5 +737,12 @@ mod instruction_tests {
         let invalid_bit_index = thread_rng().gen_range(InstructionBit::COUNT..=usize::MAX);
         let maybe_instruction_bit = InstructionBit::try_from(invalid_bit_index);
         assert!(maybe_instruction_bit.is_err());
+    }
+
+    #[test]
+    fn stringify_some_instructions() {
+        let instructions = triton_asm!(push 3 invert push 2 mul push 1 add write_io halt);
+        let code = stringify_instructions(&instructions);
+        println!("{code}");
     }
 }
