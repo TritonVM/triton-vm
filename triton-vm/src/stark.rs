@@ -332,10 +332,8 @@ impl Stark {
 
         prof_start!(maybe_profiler, "linear combination");
         prof_start!(maybe_profiler, "base", "CC");
-        // Function `random_linear_sum` can only deal with `XFieldElement`. Lifting the base
-        // codewords to `XFieldElement` is more expensive than avoiding parallelism.
-        let weighted_base_codeword = &short_domain_base_codewords * base_weights;
-        let base_codeword = weighted_base_codeword.sum_axis(Axis(1));
+        let base_codeword =
+            Self::random_linear_sum_base_field(short_domain_base_codewords, base_weights);
         prof_stop!(maybe_profiler, "base");
         prof_start!(maybe_profiler, "ext", "CC");
         let ext_codeword = Self::random_linear_sum(short_domain_ext_codewords, ext_weights);
@@ -489,6 +487,30 @@ impl Stark {
         Self::debug_print_proof_size(&proof_stream);
 
         proof_stream.into()
+    }
+
+    fn random_linear_sum_base_field(
+        codewords: ArrayView2<BFieldElement>,
+        weights: Array1<XFieldElement>,
+    ) -> Array1<XFieldElement> {
+        assert_eq!(codewords.ncols(), weights.len());
+        let weight_coefficients_0: Array1<_> = weights.iter().map(|&w| w.coefficients[0]).collect();
+        let weight_coefficients_1: Array1<_> = weights.iter().map(|&w| w.coefficients[1]).collect();
+        let weight_coefficients_2: Array1<_> = weights.iter().map(|&w| w.coefficients[2]).collect();
+
+        let mut random_linear_sum = Array1::zeros(codewords.nrows());
+        Zip::from(codewords.axis_iter(Axis(0)))
+            .and(random_linear_sum.axis_iter_mut(Axis(0)))
+            .par_for_each(|codeword, target_element| {
+                let random_linear_element_coefficients = [
+                    codeword.dot(&weight_coefficients_0),
+                    codeword.dot(&weight_coefficients_1),
+                    codeword.dot(&weight_coefficients_2),
+                ];
+                let random_linear_element = XFieldElement::new(random_linear_element_coefficients);
+                Array0::from_elem((), random_linear_element).move_into(target_element);
+            });
+        random_linear_sum
     }
 
     fn random_linear_sum(
