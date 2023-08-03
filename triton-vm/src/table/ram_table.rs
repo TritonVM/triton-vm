@@ -235,15 +235,14 @@ impl RamTable {
         assert_eq!(EXT_WIDTH, ext_table.ncols());
         assert_eq!(base_table.nrows(), ext_table.nrows());
 
-        let clk_weight = challenges.get_challenge(RamClkWeight);
-        let ramp_weight = challenges.get_challenge(RamRampWeight);
-        let ramv_weight = challenges.get_challenge(RamRamvWeight);
-        let previous_instruction_weight = challenges.get_challenge(RamPreviousInstructionWeight);
-        let processor_perm_indeterminate = challenges.get_challenge(RamIndeterminate);
-        let bezout_relation_indeterminate =
-            challenges.get_challenge(RamTableBezoutRelationIndeterminate);
+        let clk_weight = challenges[RamClkWeight];
+        let ramp_weight = challenges[RamRampWeight];
+        let ramv_weight = challenges[RamRamvWeight];
+        let previous_instruction_weight = challenges[RamPreviousInstructionWeight];
+        let processor_perm_indeterminate = challenges[RamIndeterminate];
+        let bezout_relation_indeterminate = challenges[RamTableBezoutRelationIndeterminate];
         let clock_jump_difference_lookup_indeterminate =
-            challenges.get_challenge(ClockJumpDifferenceLookupIndeterminate);
+            challenges[ClockJumpDifferenceLookupIndeterminate];
 
         let mut running_product_for_perm_arg = PermArg::default_initial();
         let mut clock_jump_diff_lookup_log_derivative = LookupArg::default_initial();

@@ -20,6 +20,9 @@
 
 use std::fmt::Debug;
 use std::hash::Hash;
+use std::ops::Index;
+use std::ops::Range;
+use std::ops::RangeInclusive;
 
 use strum::EnumCount;
 use strum_macros::Display;
@@ -292,10 +295,29 @@ impl Challenges {
         let stand_in_challenges = random_elements(Self::num_challenges_to_sample());
         Self::new(stand_in_challenges, claim)
     }
+}
 
-    #[inline(always)]
-    pub fn get_challenge(&self, id: ChallengeId) -> XFieldElement {
-        self.challenges[id.index()]
+impl Index<ChallengeId> for Challenges {
+    type Output = XFieldElement;
+
+    fn index(&self, id: ChallengeId) -> &Self::Output {
+        &self.challenges[id.index()]
+    }
+}
+
+impl Index<Range<ChallengeId>> for Challenges {
+    type Output = [XFieldElement];
+
+    fn index(&self, indices: Range<ChallengeId>) -> &Self::Output {
+        &self.challenges[indices.start.index()..indices.end.index()]
+    }
+}
+
+impl Index<RangeInclusive<ChallengeId>> for Challenges {
+    type Output = [XFieldElement];
+
+    fn index(&self, indices: RangeInclusive<ChallengeId>) -> &Self::Output {
+        &self.challenges[indices.start().index()..=indices.end().index()]
     }
 }
 

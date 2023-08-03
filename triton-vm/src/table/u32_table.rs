@@ -570,11 +570,11 @@ impl U32Table {
         assert_eq!(EXT_WIDTH, ext_table.ncols());
         assert_eq!(base_table.nrows(), ext_table.nrows());
 
-        let ci_weight = challenges.get_challenge(U32CiWeight);
-        let lhs_weight = challenges.get_challenge(U32LhsWeight);
-        let rhs_weight = challenges.get_challenge(U32RhsWeight);
-        let result_weight = challenges.get_challenge(U32ResultWeight);
-        let lookup_indeterminate = challenges.get_challenge(U32Indeterminate);
+        let ci_weight = challenges[U32CiWeight];
+        let lhs_weight = challenges[U32LhsWeight];
+        let rhs_weight = challenges[U32RhsWeight];
+        let result_weight = challenges[U32ResultWeight];
+        let lookup_indeterminate = challenges[U32Indeterminate];
 
         let mut running_sum_log_derivative = LookupArg::default_initial();
         for row_idx in 0..base_table.nrows() {

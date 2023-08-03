@@ -165,7 +165,7 @@ impl ProcessorTable {
                 if prev_row[CI.base_table_index()] == Instruction::ReadIo.opcode_b() {
                     let input_symbol = current_row[ST0.base_table_index()];
                     input_table_running_evaluation = input_table_running_evaluation
-                        * challenges.get_challenge(StandardInputIndeterminate)
+                        * challenges[StandardInputIndeterminate]
                         + input_symbol;
                 }
             }
@@ -174,7 +174,7 @@ impl ProcessorTable {
             if current_row[CI.base_table_index()] == Instruction::WriteIo.opcode_b() {
                 let output_symbol = current_row[ST0.base_table_index()];
                 output_table_running_evaluation = output_table_running_evaluation
-                    * challenges.get_challenge(StandardOutputIndeterminate)
+                    * challenges[StandardOutputIndeterminate]
                     + output_symbol;
             }
 
@@ -183,12 +183,10 @@ impl ProcessorTable {
                 let ip = current_row[IP.base_table_index()];
                 let ci = current_row[CI.base_table_index()];
                 let nia = current_row[NIA.base_table_index()];
-                let compressed_row_for_instruction_lookup = ip
-                    * challenges.get_challenge(ProgramAddressWeight)
-                    + ci * challenges.get_challenge(ProgramInstructionWeight)
-                    + nia * challenges.get_challenge(ProgramNextInstructionWeight);
-                instruction_lookup_log_derivative += (challenges
-                    .get_challenge(InstructionLookupIndeterminate)
+                let compressed_row_for_instruction_lookup = ip * challenges[ProgramAddressWeight]
+                    + ci * challenges[ProgramInstructionWeight]
+                    + nia * challenges[ProgramNextInstructionWeight];
+                instruction_lookup_log_derivative += (challenges[InstructionLookupIndeterminate]
                     - compressed_row_for_instruction_lookup)
                     .inverse();
             }
@@ -199,69 +197,56 @@ impl ProcessorTable {
             let osp = current_row[OSP.base_table_index()];
             let osv = current_row[OSV.base_table_index()];
             let compressed_row_for_op_stack_table_permutation_argument = clk
-                * challenges.get_challenge(OpStackClkWeight)
-                + ib1 * challenges.get_challenge(OpStackIb1Weight)
-                + osp * challenges.get_challenge(OpStackOspWeight)
-                + osv * challenges.get_challenge(OpStackOsvWeight);
-            op_stack_table_running_product *= challenges.get_challenge(OpStackIndeterminate)
+                * challenges[OpStackClkWeight]
+                + ib1 * challenges[OpStackIb1Weight]
+                + osp * challenges[OpStackOspWeight]
+                + osv * challenges[OpStackOsvWeight];
+            op_stack_table_running_product *= challenges[OpStackIndeterminate]
                 - compressed_row_for_op_stack_table_permutation_argument;
 
             // RAM Table
             let ramv = current_row[RAMV.base_table_index()];
             let ramp = current_row[RAMP.base_table_index()];
             let previous_instruction = current_row[PreviousInstruction.base_table_index()];
-            let compressed_row_for_ram_table_permutation_argument = clk
-                * challenges.get_challenge(RamClkWeight)
-                + ramp * challenges.get_challenge(RamRampWeight)
-                + ramv * challenges.get_challenge(RamRamvWeight)
-                + previous_instruction * challenges.get_challenge(RamPreviousInstructionWeight);
-            ram_table_running_product *= challenges.get_challenge(RamIndeterminate)
-                - compressed_row_for_ram_table_permutation_argument;
+            let compressed_row_for_ram_table_permutation_argument = clk * challenges[RamClkWeight]
+                + ramp * challenges[RamRampWeight]
+                + ramv * challenges[RamRamvWeight]
+                + previous_instruction * challenges[RamPreviousInstructionWeight];
+            ram_table_running_product *=
+                challenges[RamIndeterminate] - compressed_row_for_ram_table_permutation_argument;
 
             // JumpStack Table
             let ci = current_row[CI.base_table_index()];
             let jsp = current_row[JSP.base_table_index()];
             let jso = current_row[JSO.base_table_index()];
             let jsd = current_row[JSD.base_table_index()];
-            let compressed_row_for_jump_stack_table = clk
-                * challenges.get_challenge(JumpStackClkWeight)
-                + ci * challenges.get_challenge(JumpStackCiWeight)
-                + jsp * challenges.get_challenge(JumpStackJspWeight)
-                + jso * challenges.get_challenge(JumpStackJsoWeight)
-                + jsd * challenges.get_challenge(JumpStackJsdWeight);
-            jump_stack_running_product *= challenges.get_challenge(JumpStackIndeterminate)
-                - compressed_row_for_jump_stack_table;
+            let compressed_row_for_jump_stack_table = clk * challenges[JumpStackClkWeight]
+                + ci * challenges[JumpStackCiWeight]
+                + jsp * challenges[JumpStackJspWeight]
+                + jso * challenges[JumpStackJsoWeight]
+                + jsd * challenges[JumpStackJsdWeight];
+            jump_stack_running_product *=
+                challenges[JumpStackIndeterminate] - compressed_row_for_jump_stack_table;
 
             // Hash Table – Hash's input from Processor to Hash Coprocessor
             let st_0_through_9 = [ST0, ST1, ST2, ST3, ST4, ST5, ST6, ST7, ST8, ST9]
                 .map(|st| current_row[st.base_table_index()]);
-            let hash_state_weights = [
-                HashStateWeight0,
-                HashStateWeight1,
-                HashStateWeight2,
-                HashStateWeight3,
-                HashStateWeight4,
-                HashStateWeight5,
-                HashStateWeight6,
-                HashStateWeight7,
-                HashStateWeight8,
-                HashStateWeight9,
-            ]
-            .map(|id| challenges.get_challenge(id));
+            let hash_state_weights = &challenges[HashStateWeight0..HashStateWeight10];
             let compressed_row_for_hash_input_and_sponge: XFieldElement = st_0_through_9
                 .into_iter()
-                .zip_eq(hash_state_weights.into_iter())
-                .map(|(st, weight)| weight * st)
+                .zip_eq(hash_state_weights.iter())
+                .map(|(st, &weight)| weight * st)
                 .sum();
+            let hash_digest_weights = &challenges[HashStateWeight0..HashStateWeight5];
             let compressed_row_for_hash_digest: XFieldElement = st_0_through_9[5..=9]
                 .iter()
-                .zip_eq(hash_state_weights[0..=4].iter())
+                .zip_eq(hash_digest_weights.iter())
                 .map(|(&st, &weight)| weight * st)
                 .sum();
 
             if current_row[CI.base_table_index()] == Instruction::Hash.opcode_b() {
                 hash_input_running_evaluation = hash_input_running_evaluation
-                    * challenges.get_challenge(HashInputIndeterminate)
+                    * challenges[HashInputIndeterminate]
                     + compressed_row_for_hash_input_and_sponge;
             }
 
@@ -269,7 +254,7 @@ impl ProcessorTable {
             if let Some(prev_row) = previous_row {
                 if prev_row[CI.base_table_index()] == Instruction::Hash.opcode_b() {
                     hash_digest_running_evaluation = hash_digest_running_evaluation
-                        * challenges.get_challenge(HashDigestIndeterminate)
+                        * challenges[HashDigestIndeterminate]
                         + compressed_row_for_hash_digest;
                 }
             }
@@ -281,8 +266,8 @@ impl ProcessorTable {
                     || prev_row[CI.base_table_index()] == Instruction::Squeeze.opcode_b()
                 {
                     sponge_running_evaluation = sponge_running_evaluation
-                        * challenges.get_challenge(SpongeIndeterminate)
-                        + challenges.get_challenge(HashCIWeight) * prev_row[CI.base_table_index()]
+                        * challenges[SpongeIndeterminate]
+                        + challenges[HashCIWeight] * prev_row[CI.base_table_index()]
                         + compressed_row_for_hash_input_and_sponge;
                 }
             }
@@ -292,25 +277,23 @@ impl ProcessorTable {
                 let previously_current_instruction = prev_row[CI.base_table_index()];
                 if previously_current_instruction == Instruction::Split.opcode_b() {
                     let compressed_row = current_row[ST0.base_table_index()]
-                        * challenges.get_challenge(U32LhsWeight)
-                        + current_row[ST1.base_table_index()]
-                            * challenges.get_challenge(U32RhsWeight)
-                        + prev_row[CI.base_table_index()] * challenges.get_challenge(U32CiWeight);
+                        * challenges[U32LhsWeight]
+                        + current_row[ST1.base_table_index()] * challenges[U32RhsWeight]
+                        + prev_row[CI.base_table_index()] * challenges[U32CiWeight];
                     u32_table_running_sum_log_derivative +=
-                        (challenges.get_challenge(U32Indeterminate) - compressed_row).inverse();
+                        (challenges[U32Indeterminate] - compressed_row).inverse();
                 }
                 if previously_current_instruction == Instruction::Lt.opcode_b()
                     || previously_current_instruction == Instruction::And.opcode_b()
                     || previously_current_instruction == Instruction::Pow.opcode_b()
                 {
                     let compressed_row = prev_row[ST0.base_table_index()]
-                        * challenges.get_challenge(U32LhsWeight)
-                        + prev_row[ST1.base_table_index()] * challenges.get_challenge(U32RhsWeight)
-                        + prev_row[CI.base_table_index()] * challenges.get_challenge(U32CiWeight)
-                        + current_row[ST0.base_table_index()]
-                            * challenges.get_challenge(U32ResultWeight);
+                        * challenges[U32LhsWeight]
+                        + prev_row[ST1.base_table_index()] * challenges[U32RhsWeight]
+                        + prev_row[CI.base_table_index()] * challenges[U32CiWeight]
+                        + current_row[ST0.base_table_index()] * challenges[U32ResultWeight];
                     u32_table_running_sum_log_derivative +=
-                        (challenges.get_challenge(U32Indeterminate) - compressed_row).inverse();
+                        (challenges[U32Indeterminate] - compressed_row).inverse();
                 }
                 if previously_current_instruction == Instruction::Xor.opcode_b() {
                     // Triton VM uses the following equality to compute the results of both the
@@ -322,43 +305,38 @@ impl ProcessorTable {
                     let st0 = current_row[ST0.base_table_index()];
                     let from_xor_in_processor_to_and_in_u32_coprocessor =
                         (st0_prev + st1_prev - st0) / BFieldElement::new(2);
-                    let compressed_row = st0_prev * challenges.get_challenge(U32LhsWeight)
-                        + st1_prev * challenges.get_challenge(U32RhsWeight)
-                        + Instruction::And.opcode_b() * challenges.get_challenge(U32CiWeight)
+                    let compressed_row = st0_prev * challenges[U32LhsWeight]
+                        + st1_prev * challenges[U32RhsWeight]
+                        + Instruction::And.opcode_b() * challenges[U32CiWeight]
                         + from_xor_in_processor_to_and_in_u32_coprocessor
-                            * challenges.get_challenge(U32ResultWeight);
+                            * challenges[U32ResultWeight];
                     u32_table_running_sum_log_derivative +=
-                        (challenges.get_challenge(U32Indeterminate) - compressed_row).inverse();
+                        (challenges[U32Indeterminate] - compressed_row).inverse();
                 }
                 if previously_current_instruction == Instruction::Log2Floor.opcode_b()
                     || previously_current_instruction == Instruction::PopCount.opcode_b()
                 {
                     let compressed_row = prev_row[ST0.base_table_index()]
-                        * challenges.get_challenge(U32LhsWeight)
-                        + prev_row[CI.base_table_index()] * challenges.get_challenge(U32CiWeight)
-                        + current_row[ST0.base_table_index()]
-                            * challenges.get_challenge(U32ResultWeight);
+                        * challenges[U32LhsWeight]
+                        + prev_row[CI.base_table_index()] * challenges[U32CiWeight]
+                        + current_row[ST0.base_table_index()] * challenges[U32ResultWeight];
                     u32_table_running_sum_log_derivative +=
-                        (challenges.get_challenge(U32Indeterminate) - compressed_row).inverse();
+                        (challenges[U32Indeterminate] - compressed_row).inverse();
                 }
                 if previously_current_instruction == Instruction::Div.opcode_b() {
                     let compressed_row_for_lt_check = current_row[ST0.base_table_index()]
-                        * challenges.get_challenge(U32LhsWeight)
-                        + prev_row[ST1.base_table_index()] * challenges.get_challenge(U32RhsWeight)
-                        + Instruction::Lt.opcode_b() * challenges.get_challenge(U32CiWeight)
-                        + BFieldElement::one() * challenges.get_challenge(U32ResultWeight);
+                        * challenges[U32LhsWeight]
+                        + prev_row[ST1.base_table_index()] * challenges[U32RhsWeight]
+                        + Instruction::Lt.opcode_b() * challenges[U32CiWeight]
+                        + BFieldElement::one() * challenges[U32ResultWeight];
                     let compressed_row_for_range_check = prev_row[ST0.base_table_index()]
-                        * challenges.get_challenge(U32LhsWeight)
-                        + current_row[ST1.base_table_index()]
-                            * challenges.get_challenge(U32RhsWeight)
-                        + Instruction::Split.opcode_b() * challenges.get_challenge(U32CiWeight);
+                        * challenges[U32LhsWeight]
+                        + current_row[ST1.base_table_index()] * challenges[U32RhsWeight]
+                        + Instruction::Split.opcode_b() * challenges[U32CiWeight];
                     u32_table_running_sum_log_derivative +=
-                        (challenges.get_challenge(U32Indeterminate) - compressed_row_for_lt_check)
-                            .inverse();
-                    u32_table_running_sum_log_derivative += (challenges
-                        .get_challenge(U32Indeterminate)
-                        - compressed_row_for_range_check)
-                        .inverse();
+                        (challenges[U32Indeterminate] - compressed_row_for_lt_check).inverse();
+                    u32_table_running_sum_log_derivative +=
+                        (challenges[U32Indeterminate] - compressed_row_for_range_check).inverse();
                 }
             }
 
@@ -366,7 +344,7 @@ impl ProcessorTable {
             let lookup_multiplicity =
                 current_row[ClockJumpDifferenceLookupMultiplicity.base_table_index()];
             clock_jump_diff_lookup_op_stack_log_derivative +=
-                (challenges.get_challenge(ClockJumpDifferenceLookupIndeterminate) - clk).inverse()
+                (challenges[ClockJumpDifferenceLookupIndeterminate] - clk).inverse()
                     * lookup_multiplicity;
 
             let mut extension_row = ext_table.row_mut(row_idx);

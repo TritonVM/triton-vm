@@ -1315,7 +1315,7 @@ pub(crate) mod triton_stark_tests {
         let ine = EvalArg::compute_terminal(
             &claim.input,
             EvalArg::default_initial(),
-            all_challenges.get_challenge(StandardInputIndeterminate),
+            all_challenges[StandardInputIndeterminate],
         );
         assert_eq!(ptie, ine, "The input evaluation arguments do not match.");
 
@@ -1323,7 +1323,7 @@ pub(crate) mod triton_stark_tests {
         let oute = EvalArg::compute_terminal(
             &claim.output,
             EvalArg::default_initial(),
-            all_challenges.get_challenge(StandardOutputIndeterminate),
+            all_challenges[StandardOutputIndeterminate],
         );
         assert_eq!(ptoe, oute, "The output evaluation arguments do not match.");
     }
@@ -1353,12 +1353,12 @@ pub(crate) mod triton_stark_tests {
             let processor_table = master_ext_table.table(ProcessorTable);
             let processor_table_last_row = processor_table.slice(s![-1, ..]);
             assert_eq!(
-                challenges.get_challenge(StandardInputTerminal),
+                challenges[StandardInputTerminal],
                 processor_table_last_row[InputTableEvalArg.ext_table_index()],
                 "The input terminal must match for TASM snippet #{code_idx}."
             );
             assert_eq!(
-                challenges.get_challenge(StandardOutputTerminal),
+                challenges[StandardOutputTerminal],
                 processor_table_last_row[OutputTableEvalArg.ext_table_index()],
                 "The output terminal must match for TASM snippet #{code_idx}."
             );
@@ -1366,7 +1366,7 @@ pub(crate) mod triton_stark_tests {
             let lookup_table = master_ext_table.table(LookupTable);
             let lookup_table_last_row = lookup_table.slice(s![-1, ..]);
             assert_eq!(
-                challenges.get_challenge(LookupTablePublicTerminal),
+                challenges[LookupTablePublicTerminal],
                 lookup_table_last_row[PublicEvaluationArgument.ext_table_index()],
                 "The lookup's terminal must match for TASM snippet #{code_idx}."
             );

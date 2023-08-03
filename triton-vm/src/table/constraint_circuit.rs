@@ -572,7 +572,7 @@ impl<II: InputIndicator> ConstraintCircuit<II> {
             XConstant(xfe) => xfe,
             BConstant(bfe) => bfe.lift(),
             Input(input) => input.evaluate(base_table, ext_table),
-            Challenge(challenge_id) => challenges.get_challenge(challenge_id),
+            Challenge(challenge_id) => challenges[challenge_id],
             BinaryOperation(binop, lhs, rhs) => {
                 let lhs_value = lhs
                     .as_ref()

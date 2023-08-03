@@ -297,13 +297,13 @@ impl OpStackTable {
         assert_eq!(EXT_WIDTH, ext_table.ncols());
         assert_eq!(base_table.nrows(), ext_table.nrows());
 
-        let clk_weight = challenges.get_challenge(OpStackClkWeight);
-        let ib1_weight = challenges.get_challenge(OpStackIb1Weight);
-        let osp_weight = challenges.get_challenge(OpStackOspWeight);
-        let osv_weight = challenges.get_challenge(OpStackOsvWeight);
-        let perm_arg_indeterminate = challenges.get_challenge(OpStackIndeterminate);
+        let clk_weight = challenges[OpStackClkWeight];
+        let ib1_weight = challenges[OpStackIb1Weight];
+        let osp_weight = challenges[OpStackOspWeight];
+        let osv_weight = challenges[OpStackOsvWeight];
+        let perm_arg_indeterminate = challenges[OpStackIndeterminate];
         let clock_jump_difference_lookup_indeterminate =
-            challenges.get_challenge(ClockJumpDifferenceLookupIndeterminate);
+            challenges[ClockJumpDifferenceLookupIndeterminate];
 
         let mut running_product = PermArg::default_initial();
         let mut clock_jump_diff_lookup_log_derivative = LookupArg::default_initial();

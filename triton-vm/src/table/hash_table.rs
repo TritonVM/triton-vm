@@ -1580,13 +1580,12 @@ impl HashTable {
         assert_eq!(EXT_WIDTH, ext_table.ncols());
         assert_eq!(base_table.nrows(), ext_table.nrows());
 
-        let ci_weight = challenges.get_challenge(HashCIWeight);
-        let hash_digest_eval_indeterminate = challenges.get_challenge(HashDigestIndeterminate);
-        let hash_input_eval_indeterminate = challenges.get_challenge(HashInputIndeterminate);
-        let sponge_eval_indeterminate = challenges.get_challenge(SpongeIndeterminate);
-        let cascade_indeterminate = challenges.get_challenge(HashCascadeLookupIndeterminate);
-        let send_chunk_indeterminate =
-            challenges.get_challenge(ProgramAttestationSendChunkIndeterminate);
+        let ci_weight = challenges[HashCIWeight];
+        let hash_digest_eval_indeterminate = challenges[HashDigestIndeterminate];
+        let hash_input_eval_indeterminate = challenges[HashInputIndeterminate];
+        let sponge_eval_indeterminate = challenges[SpongeIndeterminate];
+        let cascade_indeterminate = challenges[HashCascadeLookupIndeterminate];
+        let send_chunk_indeterminate = challenges[ProgramAttestationSendChunkIndeterminate];
 
         let mut hash_input_running_evaluation = EvalArg::default_initial();
         let mut hash_digest_running_evaluation = EvalArg::default_initial();
@@ -1675,19 +1674,7 @@ impl HashTable {
             ]
         };
 
-        let state_weights = [
-            challenges.get_challenge(HashStateWeight0),
-            challenges.get_challenge(HashStateWeight1),
-            challenges.get_challenge(HashStateWeight2),
-            challenges.get_challenge(HashStateWeight3),
-            challenges.get_challenge(HashStateWeight4),
-            challenges.get_challenge(HashStateWeight5),
-            challenges.get_challenge(HashStateWeight6),
-            challenges.get_challenge(HashStateWeight7),
-            challenges.get_challenge(HashStateWeight8),
-            challenges.get_challenge(HashStateWeight9),
-        ];
-
+        let state_weights = &challenges[HashStateWeight0..HashStateWeight10];
         let compressed_row = |row: ArrayView1<BFieldElement>| -> XFieldElement {
             rate_registers(row)
                 .iter()
@@ -1696,8 +1683,8 @@ impl HashTable {
                 .sum()
         };
 
-        let cascade_look_in_weight = challenges.get_challenge(HashCascadeLookInWeight);
-        let cascade_look_out_weight = challenges.get_challenge(HashCascadeLookOutWeight);
+        let cascade_look_in_weight = challenges[HashCascadeLookInWeight];
+        let cascade_look_out_weight = challenges[HashCascadeLookOutWeight];
 
         let log_derivative_summand =
             |row: ArrayView1<BFieldElement>,
@@ -1725,7 +1712,7 @@ impl HashTable {
                 let compressed_chunk_of_instructions = EvalArg::compute_terminal(
                     &rate_registers(row),
                     EvalArg::default_initial(),
-                    challenges.get_challenge(ProgramAttestationPrepareChunkIndeterminate),
+                    challenges[ProgramAttestationPrepareChunkIndeterminate],
                 );
                 receive_chunk_running_evaluation = receive_chunk_running_evaluation
                     * send_chunk_indeterminate

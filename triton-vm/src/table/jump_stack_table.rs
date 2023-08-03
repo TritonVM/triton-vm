@@ -318,14 +318,14 @@ impl JumpStackTable {
         assert_eq!(EXT_WIDTH, ext_table.ncols());
         assert_eq!(base_table.nrows(), ext_table.nrows());
 
-        let clk_weight = challenges.get_challenge(JumpStackClkWeight);
-        let ci_weight = challenges.get_challenge(JumpStackCiWeight);
-        let jsp_weight = challenges.get_challenge(JumpStackJspWeight);
-        let jso_weight = challenges.get_challenge(JumpStackJsoWeight);
-        let jsd_weight = challenges.get_challenge(JumpStackJsdWeight);
-        let perm_arg_indeterminate = challenges.get_challenge(JumpStackIndeterminate);
+        let clk_weight = challenges[JumpStackClkWeight];
+        let ci_weight = challenges[JumpStackCiWeight];
+        let jsp_weight = challenges[JumpStackJspWeight];
+        let jso_weight = challenges[JumpStackJsoWeight];
+        let jsd_weight = challenges[JumpStackJsdWeight];
+        let perm_arg_indeterminate = challenges[JumpStackIndeterminate];
         let clock_jump_difference_lookup_indeterminate =
-            challenges.get_challenge(ClockJumpDifferenceLookupIndeterminate);
+            challenges[ClockJumpDifferenceLookupIndeterminate];
 
         let mut running_product = PermArg::default_initial();
         let mut clock_jump_diff_lookup_log_derivative = LookupArg::default_initial();

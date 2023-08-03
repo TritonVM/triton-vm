@@ -86,10 +86,10 @@ impl LookupTable {
         assert_eq!(EXT_WIDTH, ext_table.ncols());
         assert_eq!(base_table.nrows(), ext_table.nrows());
 
-        let look_in_weight = challenges.get_challenge(LookupTableInputWeight);
-        let look_out_weight = challenges.get_challenge(LookupTableOutputWeight);
-        let cascade_indeterminate = challenges.get_challenge(CascadeLookupIndeterminate);
-        let public_indeterminate = challenges.get_challenge(LookupTablePublicIndeterminate);
+        let look_in_weight = challenges[LookupTableInputWeight];
+        let look_out_weight = challenges[LookupTableOutputWeight];
+        let cascade_indeterminate = challenges[CascadeLookupIndeterminate];
+        let public_indeterminate = challenges[LookupTablePublicIndeterminate];
 
         let mut cascade_table_running_sum_log_derivative = LookupArg::default_initial();
         let mut public_running_evaluation = EvalArg::default_initial();

@@ -382,15 +382,12 @@ impl ProgramTable {
         assert_eq!(base_table.nrows(), ext_table.nrows());
 
         let max_index_in_chunk = StarkHasher::RATE as u64 - 1;
-        let address_weight = challenges.get_challenge(ProgramAddressWeight);
-        let instruction_weight = challenges.get_challenge(ProgramInstructionWeight);
-        let next_instruction_weight = challenges.get_challenge(ProgramNextInstructionWeight);
-        let instruction_lookup_indeterminate =
-            challenges.get_challenge(InstructionLookupIndeterminate);
-        let prepare_chunk_indeterminate =
-            challenges.get_challenge(ProgramAttestationPrepareChunkIndeterminate);
-        let send_chunk_indeterminate =
-            challenges.get_challenge(ProgramAttestationSendChunkIndeterminate);
+        let address_weight = challenges[ProgramAddressWeight];
+        let instruction_weight = challenges[ProgramInstructionWeight];
+        let next_instruction_weight = challenges[ProgramNextInstructionWeight];
+        let instruction_lookup_indeterminate = challenges[InstructionLookupIndeterminate];
+        let prepare_chunk_indeterminate = challenges[ProgramAttestationPrepareChunkIndeterminate];
+        let send_chunk_indeterminate = challenges[ProgramAttestationSendChunkIndeterminate];
 
         let mut instruction_lookup_log_derivative = LookupArg::default_initial();
         let mut prepare_chunk_running_evaluation = EvalArg::default_initial();

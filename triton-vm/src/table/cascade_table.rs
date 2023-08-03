@@ -79,13 +79,13 @@ impl CascadeTable {
 
         let two_pow_8 = BFieldElement::new(1 << 8);
 
-        let hash_indeterminate = challenges.get_challenge(HashCascadeLookupIndeterminate);
-        let hash_input_weight = challenges.get_challenge(HashCascadeLookInWeight);
-        let hash_output_weight = challenges.get_challenge(HashCascadeLookOutWeight);
+        let hash_indeterminate = challenges[HashCascadeLookupIndeterminate];
+        let hash_input_weight = challenges[HashCascadeLookInWeight];
+        let hash_output_weight = challenges[HashCascadeLookOutWeight];
 
-        let lookup_indeterminate = challenges.get_challenge(CascadeLookupIndeterminate);
-        let lookup_input_weight = challenges.get_challenge(LookupTableInputWeight);
-        let lookup_output_weight = challenges.get_challenge(LookupTableOutputWeight);
+        let lookup_indeterminate = challenges[CascadeLookupIndeterminate];
+        let lookup_input_weight = challenges[LookupTableInputWeight];
+        let lookup_output_weight = challenges[LookupTableOutputWeight];
 
         for row_idx in 0..base_table.nrows() {
             let base_row = base_table.row(row_idx);

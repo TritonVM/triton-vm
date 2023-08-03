@@ -566,7 +566,7 @@ fn get_binding_name<II: InputIndicator>(circuit: &ConstraintCircuit<II>) -> Toke
         CircuitExpression::Input(idx) => quote!(#idx),
         CircuitExpression::Challenge(challenge) => {
             let challenge_ident = format_ident!("{challenge}");
-            quote!(challenges.get_challenge(#challenge_ident))
+            quote!(challenges[#challenge_ident])
         }
         CircuitExpression::BinaryOperation(_, _, _) => {
             let node_ident = format_ident!("node_{}", circuit.id);
