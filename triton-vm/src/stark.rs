@@ -307,47 +307,51 @@ impl Stark {
         assert_eq!(NUM_QUOTIENT_SEGMENTS, quotient_segment_weights.len());
         prof_stop!(maybe_profiler, "Fiat-Shamir");
 
-        prof_start!(maybe_profiler, "base&ext: linear combination", "CC");
-        let short_domain = match fri.domain.length <= quotient_domain.length {
+        let fri_domain_is_short_domain = fri.domain.length <= quotient_domain.length;
+        let short_domain = match fri_domain_is_short_domain {
             true => fri.domain,
             false => quotient_domain,
         };
-        let short_domain_base_codewords = match fri.domain.length <= quotient_domain.length {
+        let short_domain_base_codewords = match fri_domain_is_short_domain {
             true => master_base_table.fri_domain_table(),
             false => master_base_table.quotient_domain_table(),
         };
-
-        let short_domain_ext_codewords = match fri.domain.length <= quotient_domain.length {
+        let short_domain_ext_codewords = match fri_domain_is_short_domain {
             true => master_ext_table.fri_domain_table(),
             false => master_ext_table.quotient_domain_table(),
         };
         let short_domain_ext_codewords =
             short_domain_ext_codewords.slice(s![.., ..NUM_EXT_COLUMNS]);
 
-        let short_domain_quot_segment_codewords = match fri.domain.length <= quotient_domain.length
-        {
-            true => fri_domain_quotient_segment_codewords.view(),
-            false => {
-                let unit_distance = fri.domain.length / quotient_domain.length;
-                fri_domain_quotient_segment_codewords.slice(s![..; unit_distance, ..])
-            }
+        let fri_to_quotient_domain_unit_distance = match fri_domain_is_short_domain {
+            true => 1,
+            false => fri.domain.length / quotient_domain.length,
         };
+        let short_domain_quot_segment_codewords = fri_domain_quotient_segment_codewords
+            .slice(s![..; fri_to_quotient_domain_unit_distance, ..]);
 
+        prof_start!(maybe_profiler, "linear combination");
+        prof_start!(maybe_profiler, "base", "CC");
         // Function `random_linear_sum` can only deal with `XFieldElement`. Lifting the base
         // codewords to `XFieldElement` is more expensive than avoiding parallelism.
         let weighted_base_codeword = &short_domain_base_codewords * base_weights;
         let base_codeword = weighted_base_codeword.sum_axis(Axis(1));
+        prof_stop!(maybe_profiler, "base");
+        prof_start!(maybe_profiler, "ext", "CC");
         let ext_codeword = Self::random_linear_sum(short_domain_ext_codewords, ext_weights);
+        prof_stop!(maybe_profiler, "ext");
         let base_and_ext_codeword = base_codeword + ext_codeword;
 
+        prof_start!(maybe_profiler, "quotient", "CC");
         let quotient_segments_codeword = Self::random_linear_sum(
             short_domain_quot_segment_codewords.view(),
             quotient_segment_weights,
         );
+        prof_stop!(maybe_profiler, "quotient");
 
         assert_eq!(short_domain.length, base_and_ext_codeword.len());
         assert_eq!(short_domain.length, quotient_segments_codeword.len());
-        prof_stop!(maybe_profiler, "base&ext: linear combination");
+        prof_stop!(maybe_profiler, "linear combination");
 
         prof_start!(maybe_profiler, "DEEP");
         prof_start!(maybe_profiler, "interpolate");
@@ -409,7 +413,7 @@ impl Stark {
         let weighted_deep_codeword_components = &deep_codeword_components * &deep_codeword_weights;
         let deep_codeword = weighted_deep_codeword_components.sum_axis(Axis(1));
         prof_stop!(maybe_profiler, "sum");
-        let fri_deep_codeword = match fri.domain.length <= quotient_domain.length {
+        let fri_deep_codeword = match fri_domain_is_short_domain {
             true => deep_codeword,
             false => {
                 prof_start!(maybe_profiler, "LDE", "LDE");
@@ -482,11 +486,7 @@ impl Stark {
         prof_stop!(maybe_profiler, "open trace leafs");
 
         #[cfg(debug_assertions)]
-        {
-            let transcript_length = proof_stream.transcript_length();
-            let kib = (transcript_length * 8 / 1024) + 1;
-            println!("Created proof containing {transcript_length} B-field elements ({kib} kiB).");
-        }
+        Self::debug_print_proof_size(&proof_stream);
 
         proof_stream.into()
     }
@@ -561,17 +561,18 @@ impl Stark {
     /// When debugging, it is useful to check the degree of some intermediate polynomials.
     /// However, the quotient domain's minimal length can make it impossible to check if some
     /// operation (e.g., dividing out the zerofier) has (erroneously) increased the polynomial's
-    /// degree beyond the allowed maximum. Hence, the quotient domain is set to equal the longer
-    /// out of {FRI domain, quotient domain} when debugging and testing.
+    /// degree beyond the allowed maximum. Hence, a larger quotient domain is chosen when debugging
+    /// and testing.
     pub(crate) fn quotient_domain(
         fri_domain: ArithmeticDomain,
         max_degree: Degree,
     ) -> ArithmeticDomain {
-        let domain_length = roundup_npo2(max_degree as u64) as usize;
-        match cfg!(debug_assertions) && fri_domain.length > domain_length {
-            true => fri_domain,
-            false => ArithmeticDomain::of_length_with_offset(domain_length, fri_domain.offset),
-        }
+        let maybe_blowup_factor = match cfg!(debug_assertions) {
+            true => 2,
+            false => 1,
+        };
+        let domain_length = maybe_blowup_factor * roundup_npo2(max_degree as u64) as usize;
+        ArithmeticDomain::of_length_with_offset(domain_length, fri_domain.offset)
     }
 
     /// Compute the upper bound to use for the maximum degree the quotients given the length of the
@@ -703,6 +704,13 @@ impl Stark {
                 Must be of maximal degree {max_degree:>5}."
             );
         }
+    }
+
+    #[cfg(debug_assertions)]
+    fn debug_print_proof_size(proof_stream: &ProofStream<StarkHasher>) {
+        let transcript_length = proof_stream.transcript_length();
+        let kib = (transcript_length * 8 / 1024) + 1;
+        println!("Created proof containing {transcript_length} B-field elements ({kib} kiB).");
     }
 
     pub fn verify(
