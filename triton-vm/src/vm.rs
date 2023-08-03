@@ -27,6 +27,8 @@ use crate::op_stack::OpStack;
 use crate::op_stack::OpStackElement;
 use crate::op_stack::OpStackElement::*;
 use crate::program::Program;
+use crate::program::PublicInput;
+use crate::program::SecretInput;
 use crate::stark::StarkHasher;
 use crate::table::processor_table;
 use crate::table::processor_table::ProcessorTraceRow;
@@ -45,11 +47,11 @@ pub struct VMState<'pgm> {
     pub program: &'pgm [Instruction],
 
     /// A list of [`BFieldElement`]s the program can read from using instruction `read_io`.
-    pub public_input: VecDeque<BFieldElement>,
+    pub public_input_stream: VecDeque<BFieldElement>,
 
     /// A list of [`BFieldElement`]s the program can read from using instructions `divine`
     /// and `divine_sibling`.
-    pub secret_input: VecDeque<BFieldElement>,
+    pub secret_input_stream: VecDeque<BFieldElement>,
 
     /// A list of [`BFieldElement`]s the program can write to using instruction `write_io`.
     pub public_output: Vec<BFieldElement>,
@@ -112,17 +114,17 @@ impl<'pgm> VMState<'pgm> {
     /// the struct.
     pub fn new(
         program: &'pgm Program,
-        public_input: Vec<BFieldElement>,
-        secret_input: Vec<BFieldElement>,
+        public_input: PublicInput,
+        secret_input: SecretInput,
     ) -> Self {
         let program_digest = program.hash::<StarkHasher>();
 
         Self {
             program: &program.instructions,
-            public_input: public_input.into(),
-            secret_input: secret_input.into(),
+            public_input_stream: public_input.stream.into(),
+            secret_input_stream: secret_input.stream.into(),
             public_output: vec![],
-            ram: Default::default(),
+            ram: secret_input.ram,
             op_stack: OpStack::new(program_digest),
             jump_stack: vec![],
             cycle_count: 0,
@@ -271,7 +273,7 @@ impl<'pgm> VMState<'pgm> {
     }
 
     fn instruction_divine(&mut self) -> Result<Option<CoProcessorCall>> {
-        let elem = self.secret_input.pop_front().ok_or(anyhow!(
+        let elem = self.secret_input_stream.pop_front().ok_or(anyhow!(
             "Instruction `divine`: secret input buffer is empty."
         ))?;
         self.op_stack.push(elem);
@@ -644,7 +646,7 @@ impl<'pgm> VMState<'pgm> {
     }
 
     fn instruction_read_io(&mut self) -> Result<Option<CoProcessorCall>> {
-        let in_elem = self.public_input.pop_front().ok_or(anyhow!(
+        let in_elem = self.public_input_stream.pop_front().ok_or(anyhow!(
             "Instruction `read_io`: public input buffer is empty."
         ))?;
         self.op_stack.push(in_elem);
@@ -802,7 +804,7 @@ impl<'pgm> VMState<'pgm> {
         let mut popped_elements = [BFieldElement::zero(); N];
         for element in popped_elements.iter_mut() {
             *element = self
-                .secret_input
+                .secret_input_stream
                 .pop_front()
                 .ok_or(anyhow!("Secret input buffer is empty."))?;
         }
@@ -862,6 +864,7 @@ pub mod triton_vm_tests {
 
     use crate::error::InstructionError;
     use crate::example_programs::*;
+    use crate::shared_tests::prove_with_low_security_level;
     use crate::shared_tests::ProgramAndInput;
     use crate::stark::MTMaker;
     use crate::table::processor_table::ProcessorTraceRow;
@@ -880,8 +883,8 @@ pub mod triton_vm_tests {
     #[test]
     fn initialise_table_test() {
         let program = GREATEST_COMMON_DIVISOR.clone();
-        let stdin = vec![BFieldElement::new(42), BFieldElement::new(56)];
-        let (aet, stdout) = program.trace_execution(stdin, vec![]).unwrap();
+        let stdin = vec![42, 56].into();
+        let (aet, stdout) = program.trace_execution(stdin, [].into()).unwrap();
 
         println!(
             "VM output: [{}]",
@@ -895,8 +898,8 @@ pub mod triton_vm_tests {
     #[test]
     fn run_tvm_gcd_test() {
         let program = GREATEST_COMMON_DIVISOR.clone();
-        let stdin = vec![42_u64.into(), 56_u64.into()];
-        let stdout = program.run(stdin, vec![]).unwrap();
+        let stdin = vec![42, 56].into();
+        let stdout = program.run(stdin, [].into()).unwrap();
 
         let stdout = Array1::from(stdout);
         println!("VM output: [{}]", pretty_print_array_view(stdout.view()));
@@ -1759,7 +1762,7 @@ pub mod triton_vm_tests {
             halt
         );
         let terminal_state = program
-            .debug_terminal_state(vec![], vec![], None, None)
+            .debug_terminal_state([].into(), [].into(), None, None)
             .unwrap();
         assert_eq!(BFIELD_ZERO, terminal_state.op_stack.peek_at(ST0));
     }
@@ -1767,7 +1770,7 @@ pub mod triton_vm_tests {
     #[test]
     fn run_tvm_halt_then_do_stuff_test() {
         let program = triton_program!(halt push 1 push 2 add invert write_io);
-        let (aet, _) = program.trace_execution(vec![], vec![]).unwrap();
+        let (aet, _) = program.trace_execution([].into(), [].into()).unwrap();
 
         let last_processor_row = aet.processor_trace.rows().into_iter().last().unwrap();
         let clk_count = last_processor_row[ProcessorBaseTableColumn::CLK.base_table_index()];
@@ -1793,7 +1796,7 @@ pub mod triton_vm_tests {
         );
 
         let terminal_state = program
-            .debug_terminal_state(vec![], vec![], None, None)
+            .debug_terminal_state([].into(), [].into(), None, None)
             .unwrap();
         assert_eq!(BFieldElement::new(7), terminal_state.op_stack.peek_at(ST0));
         assert_eq!(BFieldElement::new(5), terminal_state.op_stack.peek_at(ST1));
@@ -1823,7 +1826,7 @@ pub mod triton_vm_tests {
         );
 
         let terminal_state = program
-            .debug_terminal_state(vec![], vec![], None, None)
+            .debug_terminal_state([].into(), [].into(), None, None)
             .unwrap();
         assert_eq!(BFieldElement::new(3), terminal_state.op_stack.peek_at(ST0));
         assert_eq!(BFieldElement::new(5), terminal_state.op_stack.peek_at(ST1));
@@ -1857,8 +1860,8 @@ pub mod triton_vm_tests {
               pop pop pop pop pop pop pop  // remove unnecessary remnants of digest
               recurse                      // repeat
         );
-        let public_input = vec![BFieldElement::new(11)];
-        program.run(public_input, vec![]).unwrap();
+        let public_input = vec![11].into();
+        program.run(public_input, [].into()).unwrap();
     }
 
     #[test]
@@ -1896,7 +1899,9 @@ pub mod triton_vm_tests {
         }
 
         let program = MERKLE_TREE_AUTHENTICATION_PATH_VERIFY.clone();
-        program.run(public_input, secret_input).unwrap();
+        program
+            .run(public_input.into(), secret_input.into())
+            .unwrap();
     }
 
     #[test]
@@ -1915,8 +1920,8 @@ pub mod triton_vm_tests {
         );
 
         println!("Successfully parsed the program.");
-        let public_input = [7, 2, 1, 3, 4].map(BFieldElement::new).to_vec();
-        let output = get_colinear_y_program.run(public_input, vec![]).unwrap();
+        let public_input = vec![7, 2, 1, 3, 4].into();
+        let output = get_colinear_y_program.run(public_input, [].into()).unwrap();
         assert_eq!(BFieldElement::new(4), output[0]);
     }
 
@@ -1938,7 +1943,7 @@ pub mod triton_vm_tests {
                 halt
         );
 
-        let standard_out = countdown_program.run(vec![], vec![]).unwrap();
+        let standard_out = countdown_program.run([].into(), [].into()).unwrap();
         let expected = (0..=10).map(BFieldElement::new).rev().collect_vec();
         assert_eq!(expected, standard_out);
     }
@@ -1946,28 +1951,70 @@ pub mod triton_vm_tests {
     #[test]
     fn run_tvm_fibonacci_tvm() {
         let program = FIBONACCI_SEQUENCE.clone();
-        let standard_out = program.run(vec![7_u64.into()], vec![]).unwrap();
-        assert_eq!(Some(&BFieldElement::new(21)), standard_out.get(0));
+        let standard_out = program.run(vec![7].into(), [].into()).unwrap();
+        assert_eq!(BFieldElement::new(21), standard_out[0]);
     }
 
     #[test]
     fn run_tvm_swap_test() {
         let program = triton_program!(push 1 push 2 swap 1 assert write_io halt);
-        let standard_out = program.run(vec![], vec![]).unwrap();
+        let standard_out = program.run([].into(), [].into()).unwrap();
         assert_eq!(BFieldElement::new(2), standard_out[0]);
     }
 
     #[test]
     fn read_mem_unitialized() {
         let program = triton_program!(read_mem halt);
-        let (aet, _) = program.trace_execution(vec![], vec![]).unwrap();
+        let (aet, _) = program.trace_execution([].into(), [].into()).unwrap();
         assert_eq!(2, aet.processor_trace.nrows());
+    }
+
+    #[test]
+    fn read_non_deterministically_initialized_ram_at_address_0() {
+        let program = triton_program!(read_mem write_io halt);
+
+        let mut initial_ram = HashMap::new();
+        initial_ram.insert(0_u64.into(), 42_u64.into());
+
+        let public_input = PublicInput::new(vec![]);
+        let secret_input = SecretInput::new(vec![]).with_ram(initial_ram);
+
+        let public_output = program
+            .run(public_input.clone(), secret_input.clone())
+            .unwrap();
+        assert_eq!(42, public_output[0].value());
+
+        prove_with_low_security_level(&program, public_input, secret_input, &mut None);
+    }
+
+    #[test]
+    fn read_non_deterministically_initialized_ram_at_random_address() {
+        let random_address = thread_rng().gen_range(1..2_u64.pow(16));
+        let program = triton_program!(
+            read_mem write_io
+            push {random_address} read_mem write_io
+            halt
+        );
+
+        let mut initial_ram = HashMap::new();
+        initial_ram.insert(random_address.into(), 1337_u64.into());
+
+        let public_input = PublicInput::new(vec![]);
+        let secret_input = SecretInput::new(vec![]).with_ram(initial_ram);
+
+        let public_output = program
+            .run(public_input.clone(), secret_input.clone())
+            .unwrap();
+        assert_eq!(0, public_output[0].value());
+        assert_eq!(1337, public_output[1].value());
+
+        prove_with_low_security_level(&program, public_input, secret_input, &mut None);
     }
 
     #[test]
     fn program_without_halt_test() {
         let program = triton_program!(nop);
-        let err = program.trace_execution(vec![], vec![]).err();
+        let err = program.trace_execution([].into(), [].into()).err();
         let Some(err) = err else {
             panic!("Program without halt must fail.");
         };
@@ -1982,7 +2029,7 @@ pub mod triton_vm_tests {
     #[test]
     fn verify_sudoku_test() {
         let program = VERIFY_SUDOKU.clone();
-        let stdin = [
+        let stdin = vec![
             8, 5, 9, /**/ 7, 6, 1, /**/ 4, 2, 3, //
             4, 2, 6, /**/ 8, 5, 3, /**/ 7, 9, 1, //
             7, 1, 3, /**/ 9, 2, 4, /**/ 8, 5, 6, //
@@ -1995,15 +2042,14 @@ pub mod triton_vm_tests {
             6, 7, 2, /**/ 1, 9, 5, /**/ 3, 4, 8, //
             1, 9, 8, /**/ 3, 4, 2, /**/ 5, 6, 7, //
         ]
-        .map(BFieldElement::new)
-        .to_vec();
-        let secret_in = vec![];
+        .into();
+        let secret_in = [].into();
         if let Err(e) = program.trace_execution(stdin, secret_in) {
             panic!("The VM encountered an error: {e}");
         }
 
         // rows and columns adhere to Sudoku rules, boxes do not
-        let bad_stdin = [
+        let bad_stdin = vec![
             1, 2, 3, /**/ 4, 5, 7, /**/ 8, 9, 6, //
             4, 3, 1, /**/ 5, 2, 9, /**/ 6, 7, 8, //
             2, 7, 9, /**/ 6, 1, 3, /**/ 5, 8, 4, //
@@ -2016,9 +2062,8 @@ pub mod triton_vm_tests {
             9, 4, 8, /**/ 1, 3, 5, /**/ 2, 6, 7, //
             8, 9, 7, /**/ 2, 6, 1, /**/ 3, 4, 5, //
         ]
-        .map(BFieldElement::new)
-        .to_vec();
-        let secret_in = vec![];
+        .into();
+        let secret_in = [].into();
         let err = program.trace_execution(bad_stdin, secret_in).err();
         let Some(err) = err else {
             panic!("Sudoku verifier must fail on bad Sudoku.");

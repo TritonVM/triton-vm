@@ -21,7 +21,7 @@ fn verify_halt(criterion: &mut Criterion) {
         output: vec![],
     };
 
-    let (aet, _) = program.trace_execution(vec![], vec![]).unwrap();
+    let (aet, _) = program.trace_execution([].into(), [].into()).unwrap();
     let proof = Stark::prove(&parameters, &claim, &aet, &mut None);
 
     let mut profiler = Some(TritonProfiler::new("Verify Halt"));

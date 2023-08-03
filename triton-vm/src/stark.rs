@@ -1143,19 +1143,21 @@ pub(crate) mod triton_stark_tests {
     use crate::vm::triton_vm_tests::small_tasm_test_programs;
     use crate::vm::triton_vm_tests::test_hash_nop_nop_lt;
     use crate::vm::triton_vm_tests::test_program_for_halt;
+    use crate::PublicInput;
+    use crate::SecretInput;
 
     use super::*;
 
     pub(crate) fn master_base_table_for_low_security_level(
         program: &Program,
-        public_input: Vec<BFieldElement>,
-        secret_input: Vec<BFieldElement>,
+        public_input: PublicInput,
+        secret_input: SecretInput,
     ) -> (StarkParameters, Claim, MasterBaseTable) {
         let (aet, stdout) = program
             .trace_execution(public_input.clone(), secret_input)
             .unwrap();
         let parameters = stark_parameters_with_low_security_level();
-        let claim = construct_claim(&aet, public_input, stdout);
+        let claim = construct_claim(&aet, public_input.stream, stdout);
         let master_base_table = construct_master_base_table(&parameters, &aet);
 
         (parameters, claim, master_base_table)
@@ -1163,8 +1165,8 @@ pub(crate) mod triton_stark_tests {
 
     pub(crate) fn master_tables_for_low_security_level(
         program: &Program,
-        public_input: Vec<BFieldElement>,
-        secret_input: Vec<BFieldElement>,
+        public_input: PublicInput,
+        secret_input: SecretInput,
     ) -> (
         StarkParameters,
         Claim,
@@ -1202,7 +1204,7 @@ pub(crate) mod triton_stark_tests {
             halt
         );
         let (_, _, master_base_table) =
-            master_base_table_for_low_security_level(&program, vec![], vec![]);
+            master_base_table_for_low_security_level(&program, [].into(), [].into());
 
         println!();
         println!("Processor Table:");
@@ -1305,9 +1307,9 @@ pub(crate) mod triton_stark_tests {
         let read_nop_program = triton_program!(
             read_io read_io read_io nop nop write_io push 17 write_io halt
         );
-        let public_input = [3, 5, 7].map(BFieldElement::new).to_vec();
+        let public_input = vec![3, 5, 7].into();
         let (_, claim, _, master_ext_table, all_challenges) =
-            master_tables_for_low_security_level(&read_nop_program, public_input, vec![]);
+            master_tables_for_low_security_level(&read_nop_program, public_input, [].into());
 
         let processor_table = master_ext_table.table(ProcessorTable);
         let processor_table_last_row = processor_table.slice(s![-1, ..]);
@@ -1814,8 +1816,8 @@ pub(crate) mod triton_stark_tests {
 
     #[test]
     fn prove_verify_fibonacci_100_test() {
-        let stdin = [100].map(BFieldElement::new).to_vec();
-        let secret_in = vec![];
+        let stdin = vec![100].into();
+        let secret_in = [].into();
 
         let mut profiler = Some(TritonProfiler::new("Prove Fib 100"));
         let (parameters, claim, proof) =
@@ -1840,8 +1842,8 @@ pub(crate) mod triton_stark_tests {
     #[test]
     fn prove_verify_fib_shootout_test() {
         for (fib_seq_idx, fib_seq_val) in [(0, 1), (7, 21), (11, 144)] {
-            let stdin = [fib_seq_idx].map(BFieldElement::new).to_vec();
-            let secret_in = vec![];
+            let stdin = vec![fib_seq_idx].into();
+            let secret_in = [].into();
             let (parameters, claim, proof) =
                 prove_with_low_security_level(&FIBONACCI_SEQUENCE, stdin, secret_in, &mut None);
             match Stark::verify(&parameters, &claim, &proof, &mut None) {
@@ -1865,8 +1867,8 @@ pub(crate) mod triton_stark_tests {
         let mut profiler = Some(TritonProfiler::new("Prove Many U32 Ops"));
         let (parameters, claim, proof) = prove_with_low_security_level(
             &PROGRAM_WITH_MANY_U32_INSTRUCTIONS,
-            vec![],
-            vec![],
+            [].into(),
+            [].into(),
             &mut profiler,
         );
         let mut profiler = profiler.unwrap();
@@ -1888,11 +1890,11 @@ pub(crate) mod triton_stark_tests {
     #[ignore = "stress test"]
     fn prove_fib_successively_larger() {
         for fibonacci_number in [100, 200, 400, 800, 1600, 3200, 6400, 12800, 25600, 51200] {
-            let stdin = [fibonacci_number].map(BFieldElement::new).to_vec();
+            let stdin = vec![fibonacci_number].into();
             let fib_test_name = format!("element #{fibonacci_number:>4} from Fibonacci sequence");
             let mut profiler = Some(TritonProfiler::new(&fib_test_name));
             let (parameters, _, proof) =
-                prove_with_low_security_level(&FIBONACCI_SEQUENCE, stdin, vec![], &mut profiler);
+                prove_with_low_security_level(&FIBONACCI_SEQUENCE, stdin, [].into(), &mut profiler);
             let mut profiler = profiler.unwrap();
             profiler.finish();
 
@@ -1911,7 +1913,7 @@ pub(crate) mod triton_stark_tests {
 
         let program = triton_program!(push {st0} log_2_floor halt);
         let (parameters, claim, proof) =
-            prove_with_low_security_level(&program, vec![], vec![], &mut None);
+            prove_with_low_security_level(&program, [].into(), [].into(), &mut None);
         let result = Stark::verify(&parameters, &claim, &proof, &mut None);
         assert!(result.is_ok());
         assert!(result.unwrap());
@@ -1922,7 +1924,7 @@ pub(crate) mod triton_stark_tests {
     pub fn negative_log_2_floor_of_0_test() {
         let program = triton_program!(push 0 log_2_floor halt);
         let (parameters, claim, proof) =
-            prove_with_low_security_level(&program, vec![], vec![], &mut None);
+            prove_with_low_security_level(&program, [].into(), [].into(), &mut None);
         let result = Stark::verify(&parameters, &claim, &proof, &mut None);
         assert!(result.is_ok());
         assert!(result.unwrap());

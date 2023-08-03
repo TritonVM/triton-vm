@@ -89,7 +89,6 @@ See [program attestation](program-attestation.md) for more details.
 1. The operational stack pointer `osp` is 16.
 1. The operational stack value `osv` is 0.
 1. The RAM pointer `ramp` is 0.
-1. The RAM value `ramv` is 0.
 1. `RunningEvaluationStandardInput` is 1.
 1. `RunningEvaluationStandardOutput` is 1.
 1. `InstructionLookupClientLogDerivative` has absorbed the first row with respect to challenges 🥝, 🥥, and 🫐 and indeterminate 🪥.
@@ -125,7 +124,6 @@ See [program attestation](program-attestation.md) for more details.
 1. `osp`
 1. `osv`
 1. `ramp`
-1. `ramv`
 1. `RunningEvaluationStandardInput - 1`
 1. `RunningEvaluationStandardOutput - 1`
 1. `InstructionLookupClientLogDerivative · (🪥 - 🥝·ip - 🥥·ci - 🫐·nia) - 1`

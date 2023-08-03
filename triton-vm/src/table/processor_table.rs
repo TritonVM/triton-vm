@@ -402,7 +402,6 @@ impl ExtProcessorTable {
         let st10_is_0 = base_row(ST10);
         let osp_is_16 = base_row(OSP) - constant(16);
         let osv_is_0 = base_row(OSV);
-        let ramv_is_0 = base_row(RAMV);
         let ramp_is_0 = base_row(RAMP);
         let previous_instruction_is_0 = base_row(PreviousInstruction);
 
@@ -460,8 +459,9 @@ impl ExtProcessorTable {
 
         // ram table
         let ram_indeterminate = challenge(RamIndeterminate);
-        // note: `clk`, `ramp`, and `ramv` are already constrained to be 0.
-        let compressed_row_for_ram_table = constant(0);
+        let ram_ramv_weight = challenge(RamRamvWeight);
+        // note: `clk`, and `ramp` are already constrained to be 0.
+        let compressed_row_for_ram_table = ram_ramv_weight * base_row(RAMV);
         let running_product_for_ram_table_is_initialized_correctly = ext_row(RamTablePermArg)
             - x_constant(PermArg::default_initial())
                 * (ram_indeterminate - compressed_row_for_ram_table);
@@ -530,7 +530,6 @@ impl ExtProcessorTable {
             compressed_program_digest_is_expected_program_digest,
             osp_is_16,
             osv_is_0,
-            ramv_is_0,
             ramp_is_0,
             previous_instruction_is_0,
             running_evaluation_for_standard_input_is_initialized_correctly,
@@ -2986,7 +2985,7 @@ mod constraint_polynomial_tests {
     /// helps identifying whether the printing causes an infinite loop
     fn print_simple_processor_table_row_test() {
         let program = triton_program!(push 2 push -1 add assert halt);
-        let (states, _) = program.debug(vec![], vec![], None, None);
+        let (states, _) = program.debug([].into(), [].into(), None, None);
 
         println!();
         for state in states {
@@ -2996,7 +2995,7 @@ mod constraint_polynomial_tests {
 
     fn test_row_from_program(program: &Program, row_num: usize) -> Array2<BFieldElement> {
         let (_, _, master_base_table) =
-            master_base_table_for_low_security_level(program, vec![], vec![]);
+            master_base_table_for_low_security_level(program, [].into(), [].into());
         master_base_table
             .trace_table()
             .slice(s![row_num..=row_num + 1, ..])

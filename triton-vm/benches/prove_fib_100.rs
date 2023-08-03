@@ -2,7 +2,6 @@ use criterion::criterion_group;
 use criterion::criterion_main;
 use criterion::BenchmarkId;
 use criterion::Criterion;
-use twenty_first::shared_math::b_field_element::BFieldElement;
 
 use triton_vm::example_programs::FIBONACCI_SEQUENCE;
 use triton_vm::prof_start;
@@ -12,6 +11,7 @@ use triton_vm::profiler::TritonProfiler;
 use triton_vm::proof::Claim;
 use triton_vm::stark::Stark;
 use triton_vm::stark::StarkHasher;
+use triton_vm::PublicInput;
 use triton_vm::StarkParameters;
 
 /// cargo criterion --bench prove_fib_100
@@ -28,16 +28,16 @@ fn prove_fib_100(criterion: &mut Criterion) {
     prof_start!(maybe_profiler, "parse program");
     let program = FIBONACCI_SEQUENCE.clone();
     prof_stop!(maybe_profiler, "parse program");
-    let public_input = [100].map(BFieldElement::new).to_vec();
+    let public_input: PublicInput = vec![100].into();
     prof_start!(maybe_profiler, "generate AET");
     let (aet, output) = program
-        .trace_execution(public_input.clone(), vec![])
+        .trace_execution(public_input.clone(), [].into())
         .unwrap();
     prof_stop!(maybe_profiler, "generate AET");
 
     let parameters = StarkParameters::default();
     let claim = Claim {
-        input: public_input,
+        input: public_input.stream,
         program_digest: program.hash::<StarkHasher>(),
         output,
     };

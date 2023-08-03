@@ -23,7 +23,7 @@ fn prove_halt(criterion: &mut Criterion) {
     prof_stop!(maybe_profiler, "parse program");
 
     prof_start!(maybe_profiler, "generate AET");
-    let (aet, output) = program.trace_execution(vec![], vec![]).unwrap();
+    let (aet, output) = program.trace_execution([].into(), [].into()).unwrap();
     prof_stop!(maybe_profiler, "generate AET");
 
     let cycle_count = aet.processor_trace.nrows();

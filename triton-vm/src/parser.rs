@@ -1013,7 +1013,7 @@ pub mod parser_tests {
         let instruction_push = Instruction(Push(push_arg.into()));
         let swap_argument = "1";
         triton_program!({instruction_push} push {push_arg} swap {swap_argument} eq assert halt)
-            .run(vec![], vec![])
+            .run([].into(), [].into())
             .unwrap();
     }
 

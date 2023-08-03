@@ -21,13 +21,15 @@ use crate::stark::Stark;
 use crate::stark::StarkHasher;
 use crate::stark::StarkParameters;
 use crate::table::master_table::MasterBaseTable;
+use crate::PublicInput;
+use crate::SecretInput;
 
 /// Prove correct execution of the given program.
 /// Return the used parameters and the generated claim & proof.
 pub(crate) fn prove_with_low_security_level(
     program: &Program,
-    public_input: Vec<BFieldElement>,
-    secret_input: Vec<BFieldElement>,
+    public_input: PublicInput,
+    secret_input: SecretInput,
     maybe_profiler: &mut Option<TritonProfiler>,
 ) -> (StarkParameters, Claim, Proof) {
     prof_start!(maybe_profiler, "trace program");
@@ -37,7 +39,7 @@ pub(crate) fn prove_with_low_security_level(
     prof_stop!(maybe_profiler, "trace program");
 
     let parameters = stark_parameters_with_low_security_level();
-    let claim = construct_claim(&aet, public_input, public_output);
+    let claim = construct_claim(&aet, public_input.stream, public_output);
 
     prof_start!(maybe_profiler, "prove");
     let proof = Stark::prove(&parameters, &claim, &aet, maybe_profiler);
@@ -97,18 +99,12 @@ impl ProgramAndInput {
         }
     }
 
-    pub fn public_input(&self) -> Vec<BFieldElement> {
-        self.public_input
-            .iter()
-            .map(|&x| BFieldElement::new(x))
-            .collect()
+    pub fn public_input(&self) -> PublicInput {
+        self.public_input.clone().into()
     }
 
-    pub fn secret_input(&self) -> Vec<BFieldElement> {
-        self.secret_input
-            .iter()
-            .map(|&x| BFieldElement::new(x))
-            .collect()
+    pub fn secret_input(&self) -> SecretInput {
+        self.secret_input.clone().into()
     }
 
     /// A thin wrapper around [`Program::run`].

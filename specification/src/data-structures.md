@@ -10,6 +10,7 @@ There are four separate notions of memory:
 4. *Jump Stack Memory*, which stores the entire jump stack.
 
 ## Operational Stack
+
 The stack is a last-in;first-out data structure that allows the program to store intermediate variables, pass arguments, and keep pointers to objects held in RAM.
 In this document, the operational stack is either referred to as just “stack” or, if more clarity is desired, “OpStack.”
 
@@ -23,6 +24,23 @@ For reasons of arithmetization, the stack is actually split into two distinct pa
 
 The motivation and the interplay between the two parts is described and exemplified in [arithmetization of the OpStack table](operational-stack-table.md).
 
+## Random Access Memory
+
+Triton VM has dedicated Random Access Memory.
+It can hold up to $p$ many base field elements, where $p$ is the Oxfoi prime[^1].
+Programs can read from and write to RAM using [instructions](instructions.md#memory-access) `read_mem` and `write_mem`.
+
+The initial RAM is determined by the entity running Triton VM.
+Populating RAM this way can be beneficial for a program's execution and proving time, especially if substantial amounts of data from the input streams needs to be persisted in RAM.
+This initialization is one form of secret input, and one of two mechanisms that make Triton VM a non-deterministic virtual machine.
+The other mechanism is [dedicated instructions](instructions.md#opstack-manipulation).
+
 ## Jump Stack
 Another last-in;first-out data structure that keeps track of return and destination addresses.
 This stack changes only when control follows a `call` or `return` instruction.
+
+---
+
+[^1]:
+Of course, the machine running Triton VM might have stricter limitations:
+storing or accessing $(2^{64} - 2^{32} + 1)^2$ bits $\approx 4\cdot10^{25}$ TiB of data is a non-trivial engineering feat.

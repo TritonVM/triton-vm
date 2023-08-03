@@ -339,9 +339,6 @@ impl ExtRamTable {
             ClockJumpDifferenceLookupClientLogDerivative.master_ext_table_index(),
         ));
 
-        let write_mem_opcode = circuit_builder.b_constant(Instruction::WriteMem.opcode_b());
-        let ramv_is_0_or_was_written_to =
-            ramv.clone() * (write_mem_opcode - previous_instruction.clone());
         let bezout_coefficient_polynomial_coefficient_0_is_0 = bcpc0;
         let bezout_coefficient_0_is_0 = bc0;
         let bezout_coefficient_1_is_bezout_coefficient_polynomial_coefficient_1 = bc1 - bcpc1;
@@ -364,7 +361,6 @@ impl ExtRamTable {
             rppa - (rppa_challenge - compressed_row_for_permutation_argument);
 
         vec![
-            ramv_is_0_or_was_written_to,
             bezout_coefficient_polynomial_coefficient_0_is_0,
             bezout_coefficient_0_is_0,
             bezout_coefficient_1_is_bezout_coefficient_polynomial_coefficient_1,
@@ -456,14 +452,8 @@ impl ExtRamTable {
         //      implies the ramv doesn't change
         let op_code_write_mem = circuit_builder.b_constant(Instruction::WriteMem.opcode_b());
         let ramp_changes_or_write_mem_or_ramv_stays = (one.clone() - ramp_changes.clone())
-            * (op_code_write_mem.clone() - previous_instruction_next.clone())
-            * (ramv_next.clone() - ramv);
-
-        // (ramp changes) and (previous instruction is not write_mem)
-        //      implies the next ramv is 0
-        let ramp_stays_or_write_mem_or_ramv_next_is_0 = ramp_diff.clone()
             * (op_code_write_mem - previous_instruction_next.clone())
-            * ramv_next.clone();
+            * (ramv_next.clone() - ramv);
 
         let bcbp0_only_changes_if_ramp_changes =
             (one.clone() - ramp_changes.clone()) * (bcpc0_next.clone() - bcpc0);
@@ -513,7 +503,6 @@ impl ExtRamTable {
             iord_is_0_or_iord_is_inverse_of_ramp_diff,
             ramp_diff_is_0_or_iord_is_inverse_of_ramp_diff,
             ramp_changes_or_write_mem_or_ramv_stays,
-            ramp_stays_or_write_mem_or_ramv_next_is_0,
             bcbp0_only_changes_if_ramp_changes,
             bcbp1_only_changes_if_ramp_changes,
             running_product_ramp_updates_correctly,

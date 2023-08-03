@@ -1078,7 +1078,7 @@ mod master_table_tests {
     #[test]
     fn base_table_width_is_correct() {
         let (_, _, master_base_table) =
-            master_base_table_for_low_security_level(&triton_program!(halt), vec![], vec![]);
+            master_base_table_for_low_security_level(&triton_program!(halt), [].into(), [].into());
 
         assert_eq!(
             program_table::BASE_WIDTH,
@@ -1125,7 +1125,7 @@ mod master_table_tests {
     #[test]
     fn ext_table_width_is_correct() {
         let (parameters, _, _, master_ext_table, _) =
-            master_tables_for_low_security_level(&triton_program!(halt), vec![], vec![]);
+            master_tables_for_low_security_level(&triton_program!(halt), [].into(), [].into());
 
         assert_eq!(
             program_table::EXT_WIDTH,

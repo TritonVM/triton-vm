@@ -4,12 +4,16 @@
 
 #![recursion_limit = "4096"]
 
+use std::collections::HashMap;
+
 use anyhow::bail;
 use anyhow::Result;
 pub use twenty_first::shared_math::b_field_element::BFieldElement;
 pub use twenty_first::shared_math::tip5::Digest;
 
 use crate::program::Program;
+pub use crate::program::PublicInput;
+pub use crate::program::SecretInput;
 pub use crate::proof::Claim;
 pub use crate::proof::Proof;
 use crate::stark::Stark;
@@ -55,7 +59,7 @@ pub mod vm;
 ///         push 15 eq assert
 ///         return
 /// );
-/// let output = program.run(vec![3_u64.into()], vec![]).unwrap();
+/// let output = program.run(vec![3].into(), [].into()).unwrap();
 /// assert_eq!(1, output[0].value());
 /// ```
 ///
@@ -301,28 +305,37 @@ pub(crate) use ensure_eq;
 /// The default STARK parameters used by Triton VM give a (conjectured) security level of 160 bits.
 pub fn prove_program(
     program: &Program,
-    public_input: &[u64],
-    secret_input: &[u64],
+    public_input_stream: &[u64],
+    secret_input_stream: &[u64],
+    initial_ram: Option<HashMap<u64, u64>>,
 ) -> Result<(StarkParameters, Claim, Proof)> {
     let canonical_representation_error =
-        "input must contain only elements in canonical representation, i.e., \
+        "must contain only elements in canonical representation, i.e., \
         elements smaller than the prime field's modulus 2^64 - 2^32 + 1.";
-    if public_input.iter().any(|&e| e > BFieldElement::MAX) {
-        bail!("Public {canonical_representation_error})");
+    if public_input_stream.iter().any(|&e| e > BFieldElement::MAX) {
+        bail!("Public input stream {canonical_representation_error})");
     }
-    if secret_input.iter().any(|&e| e > BFieldElement::MAX) {
-        bail!("Secret {canonical_representation_error}");
+    if secret_input_stream.iter().any(|&e| e > BFieldElement::MAX) {
+        bail!("Secret input stream {canonical_representation_error}");
+    }
+    if let Some(ram) = &initial_ram {
+        if ram.keys().any(|&e| e > BFieldElement::MAX) {
+            bail!("RAM addresses {canonical_representation_error}");
+        }
+        if ram.values().any(|&e| e > BFieldElement::MAX) {
+            bail!("RAM values {canonical_representation_error}");
+        }
     }
 
-    // Convert the public and secret inputs to BFieldElements.
-    let public_input = public_input
-        .iter()
-        .map(|&e| BFieldElement::new(e))
-        .collect::<Vec<_>>();
-    let secret_input = secret_input
-        .iter()
-        .map(|&e| BFieldElement::new(e))
-        .collect::<Vec<_>>();
+    // Convert public and secret inputs to BFieldElements.
+    let public_input: PublicInput = public_input_stream.to_owned().into();
+    let secret_input: SecretInput = secret_input_stream.to_owned().into();
+
+    let initial_ram = match initial_ram {
+        Some(ram) => ram.into_iter().map(|(k, v)| (k.into(), v.into())).collect(),
+        None => HashMap::new(),
+    };
+    let secret_input = secret_input.with_ram(initial_ram);
 
     // Generate
     // - the witness required for proof generation, i.e., the Algebraic Execution Trace (AET), and
@@ -347,7 +360,7 @@ pub fn prove_program(
     // proof is zero-knowledge with respect to everything else.
     let claim = Claim {
         program_digest,
-        input: public_input,
+        input: public_input.stream,
         output: public_output,
     };
 
@@ -363,12 +376,11 @@ pub fn prove(
     parameters: &StarkParameters,
     claim: &Claim,
     program: &Program,
-    secret_input: &[BFieldElement],
+    secret_input: SecretInput,
 ) -> Result<Proof> {
     let program_digest = program.hash::<StarkHasher>();
     ensure_eq!(program_digest, claim.program_digest);
-    let (aet, public_output) =
-        program.trace_execution(claim.input.clone(), secret_input.to_vec())?;
+    let (aet, public_output) = program.trace_execution((&claim.input).into(), secret_input)?;
     ensure_eq!(public_output, claim.output);
     let proof = Stark::prove(parameters, claim, &aet, &mut None);
     Ok(proof)
@@ -422,7 +434,7 @@ mod public_interface_tests {
         ];
 
         let (parameters, claim, proof) =
-            prove_program(&program, &public_input, &secret_input).unwrap();
+            prove_program(&program, &public_input, &secret_input, None).unwrap();
         assert_eq!(
             StarkParameters::default(),
             parameters,
@@ -447,6 +459,24 @@ mod public_interface_tests {
     }
 
     #[test]
+    fn lib_use_initial_ram() {
+        let program = triton_program!(
+            push 51 read_mem
+            push 42 read_mem
+            swap 1 swap 2 mul
+            write_io halt
+        );
+
+        let initial_ram = [(42, 17), (51, 13)].into();
+        let (parameters, claim, proof) =
+            prove_program(&program, &[], &[], Some(initial_ram)).unwrap();
+        assert_eq!(13 * 17, claim.output[0].value());
+
+        let verdict = verify(&parameters, &claim, &proof);
+        assert!(verdict);
+    }
+
+    #[test]
     fn lib_prove_verify() {
         let parameters = StarkParameters::default();
         let program = triton_program!(push 1 assert halt);
@@ -456,7 +486,7 @@ mod public_interface_tests {
             output: vec![],
         };
 
-        let proof = prove(&parameters, &claim, &program, &[]).unwrap();
+        let proof = prove(&parameters, &claim, &program, [].into()).unwrap();
         let verdict = verify(&parameters, &claim, &proof);
         assert!(verdict);
     }
@@ -469,7 +499,7 @@ mod public_interface_tests {
         }
 
         let program = triton_program!(nop halt);
-        let (_, _, proof) = prove_program(&program, &[], &[]).unwrap();
+        let (_, _, proof) = prove_program(&program, &[], &[], None).unwrap();
 
         save_proof(filename, proof.clone()).unwrap();
         let loaded_proof = load_proof(filename).unwrap();
@@ -503,7 +533,7 @@ mod public_interface_tests {
         let source_code = triton_asm!(push 6 {&snippet_0} {&snippet_1} halt);
 
         let program = triton_program!({ &source_code });
-        let public_output = program.run(vec![], vec![]).unwrap();
+        let public_output = program.run([].into(), [].into()).unwrap();
 
         let expected_output = [8, 7, 6].map(BFieldElement::new).to_vec();
         assert_eq!(expected_output, public_output);

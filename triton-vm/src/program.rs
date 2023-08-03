@@ -184,8 +184,8 @@ impl Program {
     /// See also [`trace_execution`](Self::trace_execution) and [`debug`](Self::debug).
     pub fn run(
         &self,
-        public_input: Vec<BFieldElement>,
-        secret_input: Vec<BFieldElement>,
+        public_input: PublicInput,
+        secret_input: SecretInput,
     ) -> Result<Vec<BFieldElement>> {
         let mut state = VMState::new(self, public_input, secret_input);
         while !state.halting {
@@ -205,8 +205,8 @@ impl Program {
     /// [run]: Self::run
     pub fn trace_execution(
         &self,
-        public_input: Vec<BFieldElement>,
-        secret_input: Vec<BFieldElement>,
+        public_input: PublicInput,
+        secret_input: SecretInput,
     ) -> Result<(AlgebraicExecutionTrace, Vec<BFieldElement>)> {
         let mut aet = AlgebraicExecutionTrace::new(self.clone());
         let mut state = VMState::new(self, public_input, secret_input);
@@ -247,8 +247,8 @@ impl Program {
     /// [`trace_execution`](Self::trace_execution).
     pub fn debug<'pgm>(
         &'pgm self,
-        public_input: Vec<BFieldElement>,
-        secret_input: Vec<BFieldElement>,
+        public_input: PublicInput,
+        secret_input: SecretInput,
         initial_state: Option<VMState<'pgm>>,
         num_cycles_to_execute: Option<u32>,
     ) -> (Vec<VMState<'pgm>>, Option<Error>) {
@@ -288,8 +288,8 @@ impl Program {
     /// [debug]: Self::debug
     pub fn debug_terminal_state<'pgm>(
         &'pgm self,
-        public_input: Vec<BFieldElement>,
-        secret_input: Vec<BFieldElement>,
+        public_input: PublicInput,
+        secret_input: SecretInput,
         initial_state: Option<VMState<'pgm>>,
         num_cycles_to_execute: Option<u32>,
     ) -> Result<VMState<'pgm>, (Error, VMState<'pgm>)> {
@@ -328,8 +328,8 @@ impl Program {
     /// [`debug`](Self::debug).
     pub fn profile(
         labelled_instructions: &[LabelledInstruction],
-        public_input: Vec<BFieldElement>,
-        secret_input: Vec<BFieldElement>,
+        public_input: PublicInput,
+        secret_input: SecretInput,
     ) -> Result<(Vec<BFieldElement>, Vec<ProfileLine>)> {
         let address_to_label_map = build_label_to_address_map(labelled_instructions)
             .into_iter()
@@ -382,6 +382,109 @@ impl ProfileLine {
             label,
             cycle_count,
         }
+    }
+}
+
+#[derive(Clone, Debug, BFieldCodec)]
+pub struct PublicInput {
+    pub stream: Vec<BFieldElement>,
+}
+
+impl From<Vec<BFieldElement>> for PublicInput {
+    fn from(stream: Vec<BFieldElement>) -> Self {
+        PublicInput { stream }
+    }
+}
+
+impl From<&Vec<BFieldElement>> for PublicInput {
+    fn from(stream: &Vec<BFieldElement>) -> Self {
+        PublicInput {
+            stream: stream.to_owned(),
+        }
+    }
+}
+
+impl From<&[BFieldElement]> for PublicInput {
+    fn from(stream: &[BFieldElement]) -> Self {
+        PublicInput {
+            stream: stream.to_vec(),
+        }
+    }
+}
+
+impl From<Vec<u64>> for PublicInput {
+    fn from(stream: Vec<u64>) -> Self {
+        PublicInput {
+            stream: stream.iter().map(|&element| element.into()).collect(),
+        }
+    }
+}
+
+impl From<[u64; 0]> for PublicInput {
+    fn from(_stream: [u64; 0]) -> Self {
+        PublicInput { stream: vec![] }
+    }
+}
+
+impl PublicInput {
+    pub fn new(stream: Vec<BFieldElement>) -> Self {
+        PublicInput { stream }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct SecretInput {
+    pub stream: Vec<BFieldElement>,
+    pub ram: HashMap<BFieldElement, BFieldElement>,
+}
+
+impl From<Vec<BFieldElement>> for SecretInput {
+    fn from(stream: Vec<BFieldElement>) -> Self {
+        SecretInput {
+            stream,
+            ram: HashMap::new(),
+        }
+    }
+}
+
+impl From<&[BFieldElement]> for SecretInput {
+    fn from(stream: &[BFieldElement]) -> Self {
+        SecretInput {
+            stream: stream.to_vec(),
+            ram: HashMap::new(),
+        }
+    }
+}
+
+impl From<Vec<u64>> for SecretInput {
+    fn from(stream: Vec<u64>) -> Self {
+        SecretInput {
+            stream: stream.iter().map(|&element| element.into()).collect(),
+            ram: HashMap::new(),
+        }
+    }
+}
+
+impl From<[u64; 0]> for SecretInput {
+    fn from(_stream: [u64; 0]) -> Self {
+        SecretInput {
+            stream: vec![],
+            ram: HashMap::new(),
+        }
+    }
+}
+
+impl SecretInput {
+    pub fn new(stream: Vec<BFieldElement>) -> Self {
+        SecretInput {
+            stream,
+            ram: HashMap::new(),
+        }
+    }
+
+    pub fn with_ram(mut self, ram: HashMap<BFieldElement, BFieldElement>) -> Self {
+        self.ram = ram;
+        self
     }
 }
 
@@ -500,17 +603,17 @@ mod test {
         let program = triton_program!(
             {label}: push 1 assert halt
         );
-        program.run(vec![], vec![]).unwrap();
+        program.run([].into(), [].into()).unwrap();
     }
 
     #[test]
     fn test_profile() {
         let labelled_instructions = calculate_new_mmr_peaks_from_append_with_safe_lists();
         let (profile_output, profile) =
-            Program::profile(&labelled_instructions, vec![], vec![]).unwrap();
+            Program::profile(&labelled_instructions, [].into(), [].into()).unwrap();
         let program = Program::new(&labelled_instructions);
         let debug_terminal_state = program
-            .debug_terminal_state(vec![], vec![], None, None)
+            .debug_terminal_state([].into(), [].into(), None, None)
             .unwrap();
         assert_eq!(profile_output, debug_terminal_state.public_output);
         assert_eq!(
@@ -535,7 +638,7 @@ mod test {
             inner_fn:
                 push -1 add return
         };
-        let (_, profile) = Program::profile(&labelled_instructions, vec![], vec![]).unwrap();
+        let (_, profile) = Program::profile(&labelled_instructions, [].into(), [].into()).unwrap();
 
         println!();
         for line in profile.iter() {

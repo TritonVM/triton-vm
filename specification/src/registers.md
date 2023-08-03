@@ -48,10 +48,6 @@ They exist only to allow efficient arithmetization.
 
 ## RAM
 
-TritonVM has dedicated Random-Access Memory.
-Programs can read from and write to RAM using instructions `read_mem` and `write_mem`.
-The address to read from – respectively, to write to – is the stack's second-to-top-most OpStack element, i.e, `st1`.
-
 The registers `ramp` and `ramv` are not directly accessible by the program running in TritonVM.
 They exist only to allow efficient arithmetization.
 

@@ -245,6 +245,7 @@ fn sum_of_proof_lengths_for_source_code(
             &program_and_input.program,
             &program_and_input.public_input,
             &program_and_input.secret_input,
+            None,
         )
         .unwrap();
         sum_of_proof_lengths += proof.encode().len();
@@ -262,6 +263,7 @@ fn generate_proof_and_benchmark_id(
         &program_and_input.program,
         &program_and_input.public_input,
         &program_and_input.secret_input,
+        None,
     )
     .unwrap();
     let log_2_fri_domain_length = log_2_fri_domain_length(&parameters, &proof);
