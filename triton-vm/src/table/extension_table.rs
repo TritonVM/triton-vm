@@ -1,4 +1,5 @@
 use std::fmt::Display;
+use std::mem::MaybeUninit;
 
 use itertools::Itertools;
 use ndarray::parallel::prelude::*;
@@ -142,7 +143,7 @@ pub trait Quotientable: Evaluable<BFieldElement> {
     fn fill_initial_quotients(
         master_base_table: ArrayView2<BFieldElement>,
         master_ext_table: ArrayView2<XFieldElement>,
-        quot_table: &mut ArrayViewMut2<XFieldElement>,
+        quot_table: &mut ArrayViewMut2<MaybeUninit<XFieldElement>>,
         zerofier_inverse: ArrayView1<BFieldElement>,
         challenges: &Challenges,
     ) {
@@ -153,22 +154,22 @@ pub trait Quotientable: Evaluable<BFieldElement> {
             .axis_iter_mut(Axis(0))
             .into_par_iter()
             .enumerate()
-            .for_each(|(row_index, quot_row)| {
-                let mut quotient_table_row = Array1::from(Self::evaluate_initial_constraints(
-                    master_base_table.row(row_index),
-                    master_ext_table.row(row_index),
-                    challenges,
-                ));
-                let z_inv = zerofier_inverse[row_index];
-                quotient_table_row.mapv_inplace(|a| a * z_inv);
-                quotient_table_row.move_into(quot_row);
+            .for_each(|(row_index, quotient_table_row)| {
+                let base_row = master_base_table.row(row_index);
+                let ext_row = master_ext_table.row(row_index);
+                Self::evaluate_initial_constraints(base_row, ext_row, challenges)
+                    .into_iter()
+                    .map(|numerator| numerator * zerofier_inverse[row_index])
+                    .map(MaybeUninit::new)
+                    .collect::<Array1<_>>()
+                    .move_into(quotient_table_row);
             });
     }
 
     fn fill_consistency_quotients(
         master_base_table: ArrayView2<BFieldElement>,
         master_ext_table: ArrayView2<XFieldElement>,
-        quot_table: &mut ArrayViewMut2<XFieldElement>,
+        quot_table: &mut ArrayViewMut2<MaybeUninit<XFieldElement>>,
         zerofier_inverse: ArrayView1<BFieldElement>,
         challenges: &Challenges,
     ) {
@@ -179,22 +180,22 @@ pub trait Quotientable: Evaluable<BFieldElement> {
             .axis_iter_mut(Axis(0))
             .into_par_iter()
             .enumerate()
-            .for_each(|(row_index, quot_row)| {
-                let mut quotient_table_row = Array1::from(Self::evaluate_consistency_constraints(
-                    master_base_table.row(row_index),
-                    master_ext_table.row(row_index),
-                    challenges,
-                ));
-                let z_inv = zerofier_inverse[row_index];
-                quotient_table_row.mapv_inplace(|a| a * z_inv);
-                quotient_table_row.move_into(quot_row);
+            .for_each(|(row_index, quotient_table_row)| {
+                let base_row = master_base_table.row(row_index);
+                let ext_row = master_ext_table.row(row_index);
+                Self::evaluate_consistency_constraints(base_row, ext_row, challenges)
+                    .into_iter()
+                    .map(|numerator| numerator * zerofier_inverse[row_index])
+                    .map(MaybeUninit::new)
+                    .collect::<Array1<_>>()
+                    .move_into(quotient_table_row);
             });
     }
 
     fn fill_transition_quotients(
         master_base_table: ArrayView2<BFieldElement>,
         master_ext_table: ArrayView2<XFieldElement>,
-        quot_table: &mut ArrayViewMut2<XFieldElement>,
+        quot_table: &mut ArrayViewMut2<MaybeUninit<XFieldElement>>,
         zerofier_inverse: ArrayView1<BFieldElement>,
         challenges: &Challenges,
         trace_domain: ArithmeticDomain,
@@ -212,28 +213,30 @@ pub trait Quotientable: Evaluable<BFieldElement> {
             .axis_iter_mut(Axis(0))
             .into_par_iter()
             .enumerate()
-            .for_each(|(current_row_index, quot_row)| {
+            .for_each(|(current_row_index, quotient_table_row)| {
                 // bitwise logical and `domain_length_bit_mask` performs the modulo operation:
                 // `domain.length - 1` is a bit-mask with all 1s because `domain.length` is 2^k
                 // for some k.
                 let next_row_index = (current_row_index + unit_distance) & domain_length_bit_mask;
-                let mut quotient_table_row = Array1::from(Self::evaluate_transition_constraints(
+                Self::evaluate_transition_constraints(
                     master_base_table.row(current_row_index),
                     master_ext_table.row(current_row_index),
                     master_base_table.row(next_row_index),
                     master_ext_table.row(next_row_index),
                     challenges,
-                ));
-                let z_inv = zerofier_inverse[current_row_index];
-                quotient_table_row.mapv_inplace(|a| a * z_inv);
-                quotient_table_row.move_into(quot_row);
+                )
+                .into_iter()
+                .map(|numerator| numerator * zerofier_inverse[current_row_index])
+                .map(MaybeUninit::new)
+                .collect::<Array1<_>>()
+                .move_into(quotient_table_row);
             });
     }
 
     fn fill_terminal_quotients(
         master_base_table: ArrayView2<BFieldElement>,
         master_ext_table: ArrayView2<XFieldElement>,
-        quot_table: &mut ArrayViewMut2<XFieldElement>,
+        quot_table: &mut ArrayViewMut2<MaybeUninit<XFieldElement>>,
         zerofier_inverse: ArrayView1<BFieldElement>,
         challenges: &Challenges,
     ) {
@@ -244,15 +247,15 @@ pub trait Quotientable: Evaluable<BFieldElement> {
             .axis_iter_mut(Axis(0))
             .into_par_iter()
             .enumerate()
-            .for_each(|(row_index, quot_row)| {
-                let mut quotient_table_row = Array1::from(Self::evaluate_terminal_constraints(
-                    master_base_table.row(row_index),
-                    master_ext_table.row(row_index),
-                    challenges,
-                ));
-                let z_inv = zerofier_inverse[row_index];
-                quotient_table_row.mapv_inplace(|a| a * z_inv);
-                quotient_table_row.move_into(quot_row);
+            .for_each(|(row_index, quotient_table_row)| {
+                let base_row = master_base_table.row(row_index);
+                let ext_row = master_ext_table.row(row_index);
+                Self::evaluate_terminal_constraints(base_row, ext_row, challenges)
+                    .into_iter()
+                    .map(|numerator| numerator * zerofier_inverse[row_index])
+                    .map(MaybeUninit::new)
+                    .collect::<Array1<_>>()
+                    .move_into(quotient_table_row);
             });
     }
 

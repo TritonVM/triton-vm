@@ -945,31 +945,19 @@ pub fn all_quotients(
     );
 
     prof_start!(maybe_profiler, "malloc");
-    let mut quotient_table = Array2::zeros([quotient_domain.length, num_quotients()]);
+    let mut quotient_table = Array2::uninit([quotient_domain.length, num_quotients()]);
     prof_stop!(maybe_profiler, "malloc");
 
-    let init_section_start = 0;
-    let init_section_end = init_section_start + MasterExtTable::num_initial_quotients();
-    let cons_section_start = init_section_end;
-    let cons_section_end = cons_section_start + MasterExtTable::num_consistency_quotients();
-    let tran_section_start = cons_section_end;
-    let tran_section_end = tran_section_start + MasterExtTable::num_transition_quotients();
-    let term_section_start = tran_section_end;
-    let term_section_end = term_section_start + MasterExtTable::num_terminal_quotients();
-
-    let (mut init_quot_table, mut cons_quot_table, mut tran_quot_table, mut term_quot_table) =
-        quotient_table.multi_slice_mut((
-            s![.., init_section_start..init_section_end],
-            s![.., cons_section_start..cons_section_end],
-            s![.., tran_section_start..tran_section_end],
-            s![.., term_section_start..term_section_end],
-        ));
+    let init_section_end = MasterExtTable::num_initial_quotients();
+    let cons_section_end = init_section_end + MasterExtTable::num_consistency_quotients();
+    let tran_section_end = cons_section_end + MasterExtTable::num_transition_quotients();
+    let term_section_end = tran_section_end + MasterExtTable::num_terminal_quotients();
 
     prof_start!(maybe_profiler, "initial");
     MasterExtTable::fill_initial_quotients(
         quotient_domain_master_base_table,
         quotient_domain_master_ext_table,
-        &mut init_quot_table,
+        &mut quotient_table.slice_mut(s![.., ..init_section_end]),
         initial_quotient_zerofier_inverse(quotient_domain).view(),
         challenges,
     );
@@ -979,7 +967,7 @@ pub fn all_quotients(
     MasterExtTable::fill_consistency_quotients(
         quotient_domain_master_base_table,
         quotient_domain_master_ext_table,
-        &mut cons_quot_table,
+        &mut quotient_table.slice_mut(s![.., init_section_end..cons_section_end]),
         consistency_quotient_zerofier_inverse(trace_domain, quotient_domain).view(),
         challenges,
     );
@@ -989,7 +977,7 @@ pub fn all_quotients(
     MasterExtTable::fill_transition_quotients(
         quotient_domain_master_base_table,
         quotient_domain_master_ext_table,
-        &mut tran_quot_table,
+        &mut quotient_table.slice_mut(s![.., cons_section_end..tran_section_end]),
         transition_quotient_zerofier_inverse(trace_domain, quotient_domain).view(),
         challenges,
         trace_domain,
@@ -1001,13 +989,13 @@ pub fn all_quotients(
     MasterExtTable::fill_terminal_quotients(
         quotient_domain_master_base_table,
         quotient_domain_master_ext_table,
-        &mut term_quot_table,
+        &mut quotient_table.slice_mut(s![.., tran_section_end..term_section_end]),
         terminal_quotient_zerofier_inverse(trace_domain, quotient_domain).view(),
         challenges,
     );
     prof_stop!(maybe_profiler, "terminal");
 
-    quotient_table
+    unsafe { quotient_table.assume_init() }
 }
 
 pub fn num_quotients() -> usize {
