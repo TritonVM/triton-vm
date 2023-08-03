@@ -201,7 +201,7 @@ impl Stark {
         let ext_quotient_domain_codewords = master_ext_table.quotient_domain_table();
         prof_stop!(maybe_profiler, "quotient-domain codewords");
 
-        prof_start!(maybe_profiler, "quotient codewords", "AIR");
+        prof_start!(maybe_profiler, "quotient codewords");
         let master_quotient_table = all_quotients(
             base_quotient_domain_codewords,
             ext_quotient_domain_codewords,

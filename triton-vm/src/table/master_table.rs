@@ -953,7 +953,7 @@ pub fn all_quotients(
     let tran_section_end = cons_section_end + MasterExtTable::num_transition_quotients();
     let term_section_end = tran_section_end + MasterExtTable::num_terminal_quotients();
 
-    prof_start!(maybe_profiler, "initial");
+    prof_start!(maybe_profiler, "initial", "AIR");
     MasterExtTable::fill_initial_quotients(
         quotient_domain_master_base_table,
         quotient_domain_master_ext_table,
@@ -963,7 +963,7 @@ pub fn all_quotients(
     );
     prof_stop!(maybe_profiler, "initial");
 
-    prof_start!(maybe_profiler, "consistency");
+    prof_start!(maybe_profiler, "consistency", "AIR");
     MasterExtTable::fill_consistency_quotients(
         quotient_domain_master_base_table,
         quotient_domain_master_ext_table,
@@ -973,7 +973,7 @@ pub fn all_quotients(
     );
     prof_stop!(maybe_profiler, "consistency");
 
-    prof_start!(maybe_profiler, "transition");
+    prof_start!(maybe_profiler, "transition", "AIR");
     MasterExtTable::fill_transition_quotients(
         quotient_domain_master_base_table,
         quotient_domain_master_ext_table,
@@ -985,7 +985,7 @@ pub fn all_quotients(
     );
     prof_stop!(maybe_profiler, "transition");
 
-    prof_start!(maybe_profiler, "terminal");
+    prof_start!(maybe_profiler, "terminal", "AIR");
     MasterExtTable::fill_terminal_quotients(
         quotient_domain_master_base_table,
         quotient_domain_master_ext_table,
