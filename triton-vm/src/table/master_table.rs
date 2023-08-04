@@ -447,7 +447,10 @@ impl MasterTable<BFieldElement> for MasterBaseTable {
 
     fn row(&self, row_index: XFieldElement) -> Array1<XFieldElement> {
         self.interpolation_polynomials()
+            .into_par_iter()
             .map(|polynomial| polynomial.evaluate(&row_index))
+            .collect::<Vec<_>>()
+            .into()
     }
 
     fn hash_one_row(row: ArrayView1<BFieldElement>) -> Digest {
@@ -545,7 +548,10 @@ impl MasterTable<XFieldElement> for MasterExtTable {
     fn row(&self, row_index: XFieldElement) -> Array1<XFieldElement> {
         self.interpolation_polynomials()
             .slice(s![..NUM_EXT_COLUMNS])
+            .into_par_iter()
             .map(|polynomial| polynomial.evaluate(&row_index))
+            .collect::<Vec<_>>()
+            .into()
     }
 
     fn hash_one_row(row: ArrayView1<XFieldElement>) -> Digest {
