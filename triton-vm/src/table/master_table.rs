@@ -1,4 +1,5 @@
 use std::ops::MulAssign;
+use std::ops::Range;
 
 use itertools::Itertools;
 use ndarray::parallel::prelude::*;
@@ -767,36 +768,36 @@ impl MasterBaseTable {
         master_ext_table
     }
 
-    fn table_slice_info(id: TableId) -> (usize, usize) {
+    fn column_indices_for_table(id: TableId) -> Range<usize> {
         use TableId::*;
         match id {
-            ProgramTable => (PROGRAM_TABLE_START, PROGRAM_TABLE_END),
-            ProcessorTable => (PROCESSOR_TABLE_START, PROCESSOR_TABLE_END),
-            OpStackTable => (OP_STACK_TABLE_START, OP_STACK_TABLE_END),
-            RamTable => (RAM_TABLE_START, RAM_TABLE_END),
-            JumpStackTable => (JUMP_STACK_TABLE_START, JUMP_STACK_TABLE_END),
-            HashTable => (HASH_TABLE_START, HASH_TABLE_END),
-            CascadeTable => (CASCADE_TABLE_START, CASCADE_TABLE_END),
-            LookupTable => (LOOKUP_TABLE_START, LOOKUP_TABLE_END),
-            U32Table => (U32_TABLE_START, U32_TABLE_END),
-            DegreeLoweringTable => (DEGREE_LOWERING_TABLE_START, DEGREE_LOWERING_TABLE_END),
+            ProgramTable => PROGRAM_TABLE_START..PROGRAM_TABLE_END,
+            ProcessorTable => PROCESSOR_TABLE_START..PROCESSOR_TABLE_END,
+            OpStackTable => OP_STACK_TABLE_START..OP_STACK_TABLE_END,
+            RamTable => RAM_TABLE_START..RAM_TABLE_END,
+            JumpStackTable => JUMP_STACK_TABLE_START..JUMP_STACK_TABLE_END,
+            HashTable => HASH_TABLE_START..HASH_TABLE_END,
+            CascadeTable => CASCADE_TABLE_START..CASCADE_TABLE_END,
+            LookupTable => LOOKUP_TABLE_START..LOOKUP_TABLE_END,
+            U32Table => U32_TABLE_START..U32_TABLE_END,
+            DegreeLoweringTable => DEGREE_LOWERING_TABLE_START..DEGREE_LOWERING_TABLE_END,
         }
     }
 
     /// A view of the specified table, without any randomizers.
-    pub fn table(&self, id: TableId) -> ArrayView2<BFieldElement> {
-        let (table_start, table_end) = Self::table_slice_info(id);
+    pub fn table(&self, table_id: TableId) -> ArrayView2<BFieldElement> {
+        let column_indices = Self::column_indices_for_table(table_id);
         let unit_distance = self.randomized_trace_domain().length / self.trace_domain().length;
         self.randomized_trace_table
-            .slice(s![..; unit_distance, table_start..table_end])
+            .slice(s![..; unit_distance, column_indices])
     }
 
     /// A mutable view of the specified table, without any randomizers.
-    pub fn table_mut(&mut self, id: TableId) -> ArrayViewMut2<BFieldElement> {
-        let (table_start, table_end) = Self::table_slice_info(id);
+    pub fn table_mut(&mut self, table_id: TableId) -> ArrayViewMut2<BFieldElement> {
+        let column_indices = Self::column_indices_for_table(table_id);
         let unit_distance = self.randomized_trace_domain().length / self.trace_domain().length;
         self.randomized_trace_table
-            .slice_mut(s![..; unit_distance, table_start..table_end])
+            .slice_mut(s![..; unit_distance, column_indices])
     }
 }
 
@@ -810,39 +811,36 @@ impl MasterExtTable {
             .collect()
     }
 
-    fn table_slice_info(id: TableId) -> (usize, usize) {
+    fn column_indices_for_table(id: TableId) -> Range<usize> {
         use TableId::*;
         match id {
-            ProgramTable => (EXT_PROGRAM_TABLE_START, EXT_PROGRAM_TABLE_END),
-            ProcessorTable => (EXT_PROCESSOR_TABLE_START, EXT_PROCESSOR_TABLE_END),
-            OpStackTable => (EXT_OP_STACK_TABLE_START, EXT_OP_STACK_TABLE_END),
-            RamTable => (EXT_RAM_TABLE_START, EXT_RAM_TABLE_END),
-            JumpStackTable => (EXT_JUMP_STACK_TABLE_START, EXT_JUMP_STACK_TABLE_END),
-            HashTable => (EXT_HASH_TABLE_START, EXT_HASH_TABLE_END),
-            CascadeTable => (EXT_CASCADE_TABLE_START, EXT_CASCADE_TABLE_END),
-            LookupTable => (EXT_LOOKUP_TABLE_START, EXT_LOOKUP_TABLE_END),
-            U32Table => (EXT_U32_TABLE_START, EXT_U32_TABLE_END),
-            DegreeLoweringTable => (
-                EXT_DEGREE_LOWERING_TABLE_START,
-                EXT_DEGREE_LOWERING_TABLE_END,
-            ),
+            ProgramTable => EXT_PROGRAM_TABLE_START..EXT_PROGRAM_TABLE_END,
+            ProcessorTable => EXT_PROCESSOR_TABLE_START..EXT_PROCESSOR_TABLE_END,
+            OpStackTable => EXT_OP_STACK_TABLE_START..EXT_OP_STACK_TABLE_END,
+            RamTable => EXT_RAM_TABLE_START..EXT_RAM_TABLE_END,
+            JumpStackTable => EXT_JUMP_STACK_TABLE_START..EXT_JUMP_STACK_TABLE_END,
+            HashTable => EXT_HASH_TABLE_START..EXT_HASH_TABLE_END,
+            CascadeTable => EXT_CASCADE_TABLE_START..EXT_CASCADE_TABLE_END,
+            LookupTable => EXT_LOOKUP_TABLE_START..EXT_LOOKUP_TABLE_END,
+            U32Table => EXT_U32_TABLE_START..EXT_U32_TABLE_END,
+            DegreeLoweringTable => EXT_DEGREE_LOWERING_TABLE_START..EXT_DEGREE_LOWERING_TABLE_END,
         }
     }
 
-    /// Returns a view of the entire master table, excluding the trace randomizers.
-    pub fn table(&self, id: TableId) -> ArrayView2<XFieldElement> {
-        let (table_start, table_end) = Self::table_slice_info(id);
+    /// A view of the specified table, without any randomizers.
+    pub fn table(&self, table_id: TableId) -> ArrayView2<XFieldElement> {
+        let column_indices = Self::column_indices_for_table(table_id);
         let unit_distance = self.randomized_trace_domain().length / self.trace_domain().length;
         self.randomized_trace_table
-            .slice(s![..; unit_distance, table_start..table_end])
+            .slice(s![..; unit_distance, column_indices])
     }
 
-    /// Returns a mutable view of the specified table, excluding the trace randomizers.
-    pub fn table_mut(&mut self, id: TableId) -> ArrayViewMut2<XFieldElement> {
-        let (table_start, table_end) = Self::table_slice_info(id);
+    /// A mutable view of the specified table, without any randomizers.
+    pub fn table_mut(&mut self, table_id: TableId) -> ArrayViewMut2<XFieldElement> {
+        let column_indices = Self::column_indices_for_table(table_id);
         let unit_distance = self.randomized_trace_domain().length / self.trace_domain().length;
         self.randomized_trace_table
-            .slice_mut(s![..; unit_distance, table_start..table_end])
+            .slice_mut(s![..; unit_distance, column_indices])
     }
 }
 
