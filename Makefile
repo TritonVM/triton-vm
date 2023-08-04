@@ -56,7 +56,9 @@ build-constraints:
 
 clean-constraints:
 	git restore --staged triton-vm/src/table/constraints.rs
+	git restore --staged triton-vm/src/table/degree_lowering_table.rs
 	git restore triton-vm/src/table/constraints.rs
+	git restore triton-vm/src/table/degree_lowering_table.rs
 
 fmt-only:
 	cargo fmt $(FMT_ARGS)

@@ -1,0 +1,44 @@
+name: Coverage
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+
+jobs:
+  coverage:
+    name: Coverage
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Install stable toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+
+      - name: Build AIR constraints
+        run: make build-constraints
+
+      - name: Install tarpaulin
+        uses: baptiste0928/cargo-install@v2
+        with:
+          crate: cargo-tarpaulin
+          version: "^0.26"
+
+      - name: Run tarpaulin
+        run: cargo tarpaulin --all-features --all-targets --workspace --timeout 600 --out Lcov
+
+      - name: Upload coverage to coveralls.io
+        uses: coverallsapp/github-action@v2
+
+      - name: Archive coverage results
+        uses: actions/upload-artifact@v3
+        with:
+          name: coverage-report
+          path: lcov.info
