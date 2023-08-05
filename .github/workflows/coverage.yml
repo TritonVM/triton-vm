@@ -32,7 +32,7 @@ jobs:
           version: "^0.26"
 
       - name: Run tarpaulin
-        run: cargo tarpaulin --all-features --all-targets --workspace --timeout 600 --out Lcov
+        run: cargo tarpaulin --all-features --all-targets --workspace --engine llvm --timeout 600 --out Lcov
 
       - name: Upload coverage to coveralls.io
         uses: coverallsapp/github-action@v2
