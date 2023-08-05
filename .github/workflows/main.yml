@@ -10,7 +10,7 @@ name: Rust
 
 jobs:
   build:
-    name: Build, lint, test and bench
+    name: Build, lint, test, bench, coverage
     runs-on: ubuntu-latest
     steps:
       - name: Checkout sources
@@ -47,12 +47,6 @@ jobs:
       - name: Build constraints
         run: make build-constraints
 
-      - name: Build tests
-        run: make build-tests
-
-      - name: Build bench
-        run: make build-bench
-
       - name: Run fmt
         run: make fmt-only
 
@@ -60,7 +54,7 @@ jobs:
         run: make clippy-only
 
       - name: Run tests
-        run: make test
+        run: cargo test --all-targets
 
       - name: Run benchmarks
-        run: make bench
+        run: cargo bench --all-targets

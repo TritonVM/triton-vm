@@ -4,6 +4,7 @@
 [![GitHub CI](https://github.com/TritonVM/triton-vm/actions/workflows/main.yml/badge.svg)](https://github.com/TritonVM/triton-vm/actions)
 [![crates.io](https://img.shields.io/crates/v/triton-vm.svg)](https://crates.io/crates/triton-vm)
 [![Spec: online](https://img.shields.io/badge/Spec-online-success)](https://triton-vm.org/spec/)
+[![Coverage Status](https://coveralls.io/repos/github/TritonVM/triton-vm/badge.svg?branch=master)](https://coveralls.io/github/TritonVM/triton-vm?branch=master)
 
 Triton is a virtual machine that comes with Algebraic Execution Tables (AET) and Arithmetic Intermediate Representations (AIR) for use in combination with a [STARK proof system](https://neptune.cash/learn/stark-anatomy/).
 It defines a Turing complete [Instruction Set Architecture](https://triton-vm.org/spec/isa.html), as well as the corresponding [arithmetization](https://triton-vm.org/spec/arithmetization.html) of the VM.
