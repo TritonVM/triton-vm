@@ -13,18 +13,8 @@ use crate::stark;
 
 /// Contains the necessary cryptographic information to verify a computation.
 /// Should be used together with a [`Claim`].
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, BFieldCodec)]
+#[derive(Debug, Clone, GetSize, Serialize, Deserialize, PartialEq, Eq, BFieldCodec)]
 pub struct Proof(pub Vec<BFieldElement>);
-
-impl GetSize for Proof {
-    fn get_stack_size() -> usize {
-        std::mem::size_of::<Self>()
-    }
-
-    fn get_heap_size(&self) -> usize {
-        self.0.len() * std::mem::size_of::<BFieldElement>()
-    }
-}
 
 impl Proof {
     /// Get the height of the trace used during proof generation.
