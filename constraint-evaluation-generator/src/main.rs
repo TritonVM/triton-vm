@@ -447,7 +447,7 @@ fn tokenize_circuits<II: InputIndicator>(
     // Get all unique reference counts.
     let mut visited_counters = constraint_circuits
         .iter()
-        .flat_map(|constraint| constraint.get_all_visited_counters())
+        .flat_map(|constraint| constraint.all_visited_counters())
         .collect_vec();
     visited_counters.sort_unstable();
     visited_counters.dedup();

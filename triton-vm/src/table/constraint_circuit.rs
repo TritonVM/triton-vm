@@ -7,7 +7,6 @@
 //! Because the graph has multiple roots, it is called a “multitree.”
 
 use itertools::Itertools;
-use std::borrow::BorrowMut;
 use std::cell::RefCell;
 use std::cmp;
 use std::collections::HashMap;
@@ -393,26 +392,6 @@ impl<II: InputIndicator> Display for ConstraintCircuit<II> {
 }
 
 impl<II: InputIndicator> ConstraintCircuit<II> {
-    /// Increment `visited_counter` by one for each reachable node
-    fn increment_visit_count_for_tree(&mut self) {
-        self.visited_counter += 1;
-        if let BinaryOperation(_, lhs, rhs) = self.expression.borrow_mut() {
-            lhs.as_ref().borrow_mut().increment_visit_count_for_tree();
-            rhs.as_ref().borrow_mut().increment_visit_count_for_tree();
-        }
-    }
-
-    /// Count how often each node is referenced when traversing from the given starting points.
-    /// The result is stored in the `visited_counter` field of each node.
-    pub fn refresh_visit_counters(ccs: &mut [ConstraintCircuit<II>]) {
-        for cc in ccs.iter_mut() {
-            cc.reset_visit_count_for_tree();
-        }
-        for cc in ccs.iter_mut() {
-            cc.increment_visit_count_for_tree();
-        }
-    }
-
     /// Reset the visited counters for the entire subtree
     fn reset_visit_count_for_tree(&mut self) {
         self.visited_counter = 0;
@@ -464,47 +443,39 @@ impl<II: InputIndicator> ConstraintCircuit<II> {
 
     /// Return degree of the multivariate polynomial represented by this circuit
     pub fn degree(&self) -> Degree {
+        if self.is_zero() {
+            return -1;
+        }
+
         match &self.expression {
             BinaryOperation(binop, lhs, rhs) => {
-                let lhs_degree = lhs.borrow().degree();
-                let rhs_degree = rhs.borrow().degree();
+                let degree_lhs = lhs.borrow().degree();
+                let degree_rhs = rhs.borrow().degree();
+                let degree_additive = cmp::max(degree_lhs, degree_rhs);
+                let degree_multiplicative = match degree_lhs == -1 || degree_rhs == -1 {
+                    true => -1,
+                    false => degree_lhs + degree_rhs,
+                };
                 match binop {
-                    BinOp::Add | BinOp::Sub => cmp::max(lhs_degree, rhs_degree),
-                    BinOp::Mul => match lhs_degree == -1 || rhs_degree == -1 {
-                        true => -1,
-                        false => lhs_degree + rhs_degree,
-                    },
+                    BinOp::Add | BinOp::Sub => degree_additive,
+                    BinOp::Mul => degree_multiplicative,
                 }
             }
             Input(_) => 1,
-            XConstant(xfe) => match xfe.is_zero() {
-                true => -1,
-                false => 0,
-            },
-            BConstant(bfe) => match bfe.is_zero() {
-                true => -1,
-                false => 0,
-            },
-            Challenge(_) => 0,
+            BConstant(_) | XConstant(_) | Challenge(_) => 0,
         }
     }
 
-    /// Return all visited counters in the subtree
-    pub fn get_all_visited_counters(&self) -> Vec<usize> {
-        // Maybe this could be solved smarter with dynamic programming
-        // but we probably don't need that as our circuits aren't too big.
-        match &self.expression {
-            BinaryOperation(_, lhs, rhs) => {
-                let lhs_counters = lhs.as_ref().borrow().get_all_visited_counters();
-                let rhs_counters = rhs.as_ref().borrow().get_all_visited_counters();
-                let own_counter = vec![self.visited_counter];
-                let mut all_counters = vec![own_counter, lhs_counters, rhs_counters].concat();
-                all_counters.sort_unstable();
-                all_counters.dedup();
-                all_counters
-            }
-            _ => vec![self.visited_counter],
-        }
+    /// All unique visited counters in the subtree, sorted.
+    pub fn all_visited_counters(&self) -> Vec<usize> {
+        let mut visited_counters = vec![self.visited_counter];
+        if let BinaryOperation(_, lhs, rhs) = &self.expression {
+            visited_counters.extend(lhs.as_ref().borrow().all_visited_counters());
+            visited_counters.extend(rhs.as_ref().borrow().all_visited_counters());
+        };
+        visited_counters.sort_unstable();
+        visited_counters.dedup();
+        visited_counters
     }
 
     /// Return true if the contained multivariate polynomial consists of only a single term. This
@@ -529,17 +500,6 @@ impl<II: InputIndicator> ConstraintCircuit<II> {
         match self.expression {
             XConstant(xfe) => xfe.is_one(),
             BConstant(bfe) => bfe.is_one(),
-            _ => false,
-        }
-    }
-
-    /// Return true iff the evaluation value of this node depends on a challenge.
-    pub fn is_randomized(&self) -> bool {
-        match &self.expression {
-            Challenge(_) => true,
-            BinaryOperation(_, lhs, rhs) => {
-                lhs.as_ref().borrow().is_randomized() || rhs.as_ref().borrow().is_randomized()
-            }
             _ => false,
         }
     }
@@ -902,9 +862,10 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
         num_base_cols: usize,
         num_ext_cols: usize,
     ) -> (Vec<Self>, Vec<Self>) {
-        if target_degree <= 1 {
-            panic!("Target degree must be greater than 1. Got {target_degree}.");
-        }
+        assert!(
+            target_degree > 1,
+            "Target degree must be greater than 1. Got {target_degree}."
+        );
 
         let mut base_constraints = vec![];
         let mut ext_constraints = vec![];
@@ -1317,11 +1278,7 @@ mod constraint_circuit_tests {
         let digest_prior = hasher0.finish();
 
         // Increase visited counter and verify digest is unchanged
-        circuit
-            .circuit
-            .as_ref()
-            .borrow_mut()
-            .increment_visit_count_for_tree();
+        circuit.circuit.as_ref().borrow_mut().visited_counter += 1;
         let mut hasher1 = DefaultHasher::new();
         circuit.hash(&mut hasher1);
         let digest_after = hasher1.finish();
