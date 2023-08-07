@@ -4,16 +4,14 @@
 
 #![recursion_limit = "4096"]
 
-use std::collections::HashMap;
-
 use anyhow::bail;
 use anyhow::Result;
 pub use twenty_first::shared_math::b_field_element::BFieldElement;
 pub use twenty_first::shared_math::tip5::Digest;
 
-use crate::program::Program;
+pub use crate::program::NonDeterminism;
+pub use crate::program::Program;
 pub use crate::program::PublicInput;
-pub use crate::program::SecretInput;
 pub use crate::proof::Claim;
 pub use crate::proof::Proof;
 use crate::stark::Stark;
@@ -305,37 +303,14 @@ pub(crate) use ensure_eq;
 /// The default STARK parameters used by Triton VM give a (conjectured) security level of 160 bits.
 pub fn prove_program(
     program: &Program,
-    public_input_stream: &[u64],
-    secret_input_stream: &[u64],
-    initial_ram: Option<HashMap<u64, u64>>,
+    public_input: &[u64],
+    non_determinism: &NonDeterminism<u64>,
 ) -> Result<(StarkParameters, Claim, Proof)> {
-    let canonical_representation_error =
-        "must contain only elements in canonical representation, i.e., \
-        elements smaller than the prime field's modulus 2^64 - 2^32 + 1.";
-    if public_input_stream.iter().any(|&e| e > BFieldElement::MAX) {
-        bail!("Public input stream {canonical_representation_error})");
-    }
-    if secret_input_stream.iter().any(|&e| e > BFieldElement::MAX) {
-        bail!("Secret input stream {canonical_representation_error}");
-    }
-    if let Some(ram) = &initial_ram {
-        if ram.keys().any(|&e| e > BFieldElement::MAX) {
-            bail!("RAM addresses {canonical_representation_error}");
-        }
-        if ram.values().any(|&e| e > BFieldElement::MAX) {
-            bail!("RAM values {canonical_representation_error}");
-        }
-    }
+    input_elements_have_unique_representation(public_input, non_determinism)?;
 
     // Convert public and secret inputs to BFieldElements.
-    let public_input: PublicInput = public_input_stream.to_owned().into();
-    let secret_input: SecretInput = secret_input_stream.to_owned().into();
-
-    let initial_ram = match initial_ram {
-        Some(ram) => ram.into_iter().map(|(k, v)| (k.into(), v.into())).collect(),
-        None => HashMap::new(),
-    };
-    let secret_input = secret_input.with_ram(initial_ram);
+    let public_input: PublicInput = public_input.to_owned().into();
+    let non_determinism = non_determinism.into();
 
     // Generate
     // - the witness required for proof generation, i.e., the Algebraic Execution Trace (AET), and
@@ -348,7 +323,7 @@ pub fn prove_program(
     // - if any of the two inputs does not conform to the program,
     // - because of a bug in the program, among other things.
     // If the VM crashes, proof generation will fail.
-    let (aet, public_output) = program.trace_execution(public_input.clone(), secret_input)?;
+    let (aet, public_output) = program.trace_execution(public_input.clone(), non_determinism)?;
 
     // Hash the program to obtain its digest.
     let program_digest = program.hash::<StarkHasher>();
@@ -360,7 +335,7 @@ pub fn prove_program(
     // proof is zero-knowledge with respect to everything else.
     let claim = Claim {
         program_digest,
-        input: public_input.stream,
+        input: public_input.individual_tokens,
         output: public_output,
     };
 
@@ -370,17 +345,44 @@ pub fn prove_program(
     Ok((parameters, claim, proof))
 }
 
+fn input_elements_have_unique_representation(
+    public_input: &[u64],
+    non_determinism: &NonDeterminism<u64>,
+) -> Result<()> {
+    let max_value = BFieldElement::MAX;
+    let canonical_representation_error =
+        "must contain only elements in canonical representation, i.e., \
+        elements smaller than the prime field's modulus 2^64 - 2^32 + 1.";
+    if public_input.iter().any(|&e| e > max_value) {
+        bail!("Public input stream {canonical_representation_error})");
+    }
+    if non_determinism
+        .individual_tokens
+        .iter()
+        .any(|&e| e > max_value)
+    {
+        bail!("Secret input stream {canonical_representation_error}");
+    }
+    if non_determinism.ram.keys().any(|&e| e > max_value) {
+        bail!("RAM addresses {canonical_representation_error}");
+    }
+    if non_determinism.ram.values().any(|&e| e > max_value) {
+        bail!("RAM values {canonical_representation_error}");
+    }
+    Ok(())
+}
+
 /// A convenience function for proving a [`Claim`] and the program that claim corresponds to.
 /// Method [`prove_program`] gives a simpler interface with less control.
 pub fn prove(
     parameters: &StarkParameters,
     claim: &Claim,
     program: &Program,
-    secret_input: SecretInput,
+    non_determinism: NonDeterminism<BFieldElement>,
 ) -> Result<Proof> {
     let program_digest = program.hash::<StarkHasher>();
     ensure_eq!(program_digest, claim.program_digest);
-    let (aet, public_output) = program.trace_execution((&claim.input).into(), secret_input)?;
+    let (aet, public_output) = program.trace_execution((&claim.input).into(), non_determinism)?;
     ensure_eq!(public_output, claim.output);
     let proof = Stark::prove(parameters, claim, &aet, &mut None);
     Ok(proof)
@@ -433,8 +435,9 @@ mod public_interface_tests {
             17174585125955027015,
         ];
 
+        let non_determinism = NonDeterminism::new(secret_input);
         let (parameters, claim, proof) =
-            prove_program(&program, &public_input, &secret_input, None).unwrap();
+            prove_program(&program, &public_input, &non_determinism).unwrap();
         assert_eq!(
             StarkParameters::default(),
             parameters,
@@ -468,8 +471,8 @@ mod public_interface_tests {
         );
 
         let initial_ram = [(42, 17), (51, 13)].into();
-        let (parameters, claim, proof) =
-            prove_program(&program, &[], &[], Some(initial_ram)).unwrap();
+        let non_determinism = NonDeterminism::new(vec![]).with_ram(initial_ram);
+        let (parameters, claim, proof) = prove_program(&program, &[], &non_determinism).unwrap();
         assert_eq!(13 * 17, claim.output[0].value());
 
         let verdict = verify(&parameters, &claim, &proof);
@@ -499,7 +502,7 @@ mod public_interface_tests {
         }
 
         let program = triton_program!(nop halt);
-        let (_, _, proof) = prove_program(&program, &[], &[], None).unwrap();
+        let (_, _, proof) = prove_program(&program, &[], &[].into()).unwrap();
 
         save_proof(filename, proof.clone()).unwrap();
         let loaded_proof = load_proof(filename).unwrap();

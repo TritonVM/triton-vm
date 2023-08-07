@@ -37,7 +37,7 @@ fn prove_fib_100(criterion: &mut Criterion) {
 
     let parameters = StarkParameters::default();
     let claim = Claim {
-        input: public_input.stream,
+        input: public_input.individual_tokens,
         program_digest: program.hash::<StarkHasher>(),
         output,
     };

@@ -1143,21 +1143,21 @@ pub(crate) mod triton_stark_tests {
     use crate::vm::triton_vm_tests::small_tasm_test_programs;
     use crate::vm::triton_vm_tests::test_hash_nop_nop_lt;
     use crate::vm::triton_vm_tests::test_program_for_halt;
+    use crate::NonDeterminism;
     use crate::PublicInput;
-    use crate::SecretInput;
 
     use super::*;
 
     pub(crate) fn master_base_table_for_low_security_level(
         program: &Program,
         public_input: PublicInput,
-        secret_input: SecretInput,
+        non_determinism: NonDeterminism<BFieldElement>,
     ) -> (StarkParameters, Claim, MasterBaseTable) {
         let (aet, stdout) = program
-            .trace_execution(public_input.clone(), secret_input)
+            .trace_execution(public_input.clone(), non_determinism)
             .unwrap();
         let parameters = stark_parameters_with_low_security_level();
-        let claim = construct_claim(&aet, public_input.stream, stdout);
+        let claim = construct_claim(&aet, public_input.individual_tokens, stdout);
         let master_base_table = construct_master_base_table(&parameters, &aet);
 
         (parameters, claim, master_base_table)
@@ -1166,7 +1166,7 @@ pub(crate) mod triton_stark_tests {
     pub(crate) fn master_tables_for_low_security_level(
         program: &Program,
         public_input: PublicInput,
-        secret_input: SecretInput,
+        non_determinism: NonDeterminism<BFieldElement>,
     ) -> (
         StarkParameters,
         Claim,
@@ -1175,7 +1175,7 @@ pub(crate) mod triton_stark_tests {
         Challenges,
     ) {
         let (parameters, claim, mut master_base_table) =
-            master_base_table_for_low_security_level(program, public_input, secret_input);
+            master_base_table_for_low_security_level(program, public_input, non_determinism);
 
         let dummy_challenges = Challenges::placeholder(Some(&claim));
         master_base_table.pad();
@@ -1349,7 +1349,7 @@ pub(crate) mod triton_stark_tests {
                 master_tables_for_low_security_level(
                     &code_with_input.program,
                     code_with_input.public_input(),
-                    code_with_input.secret_input(),
+                    code_with_input.non_determinism(),
                 );
 
             let processor_table = master_ext_table.table(ProcessorTable);
@@ -1558,7 +1558,7 @@ pub(crate) mod triton_stark_tests {
         let source_code_and_input = ProgramAndInput {
             program: FIBONACCI_SEQUENCE.clone(),
             public_input: vec![100],
-            secret_input: vec![],
+            non_determinism: [].into(),
         };
         triton_table_constraints_evaluate_to_zero(source_code_and_input);
     }
@@ -1592,7 +1592,7 @@ pub(crate) mod triton_stark_tests {
             master_tables_for_low_security_level(
                 &source_code_and_input.program,
                 source_code_and_input.public_input(),
-                source_code_and_input.secret_input(),
+                source_code_and_input.non_determinism(),
             );
 
         assert_eq!(
@@ -1663,7 +1663,7 @@ pub(crate) mod triton_stark_tests {
             master_tables_for_low_security_level(
                 &source_code_and_input.program,
                 source_code_and_input.public_input(),
-                source_code_and_input.secret_input(),
+                source_code_and_input.non_determinism(),
             );
 
         let zero = XFieldElement::zero();
@@ -1741,7 +1741,7 @@ pub(crate) mod triton_stark_tests {
         let (parameters, claim, proof) = prove_with_low_security_level(
             &program_with_input.program,
             program_with_input.public_input(),
-            program_with_input.secret_input(),
+            program_with_input.non_determinism(),
             &mut None,
         );
 
@@ -1756,7 +1756,7 @@ pub(crate) mod triton_stark_tests {
         let (parameters, claim, proof) = prove_with_low_security_level(
             &code_with_input.program,
             code_with_input.public_input(),
-            code_with_input.secret_input(),
+            code_with_input.non_determinism(),
             &mut profiler,
         );
         let mut profiler = profiler.unwrap();
@@ -1783,7 +1783,7 @@ pub(crate) mod triton_stark_tests {
             let (parameters, claim, proof) = prove_with_low_security_level(
                 &code_with_input.program,
                 code_with_input.public_input(),
-                code_with_input.secret_input(),
+                code_with_input.non_determinism(),
                 &mut None,
             );
 
@@ -1804,7 +1804,7 @@ pub(crate) mod triton_stark_tests {
         let (parameters, claim, _) = prove_with_low_security_level(
             &code_with_input.program,
             code_with_input.public_input(),
-            code_with_input.secret_input(),
+            code_with_input.non_determinism(),
             &mut None,
         );
 

@@ -12,6 +12,7 @@ use num_traits::Zero;
 use strum::EnumCount;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::b_field_element::BFIELD_ZERO;
+use twenty_first::shared_math::digest::Digest;
 use twenty_first::shared_math::tip5;
 use twenty_first::shared_math::tip5::Tip5;
 use twenty_first::shared_math::tip5::Tip5State;
@@ -26,9 +27,9 @@ use crate::instruction::Instruction;
 use crate::op_stack::OpStack;
 use crate::op_stack::OpStackElement;
 use crate::op_stack::OpStackElement::*;
+use crate::program::NonDeterminism;
 use crate::program::Program;
 use crate::program::PublicInput;
-use crate::program::SecretInput;
 use crate::stark::StarkHasher;
 use crate::table::processor_table;
 use crate::table::processor_table::ProcessorTraceRow;
@@ -47,14 +48,16 @@ pub struct VMState<'pgm> {
     pub program: &'pgm [Instruction],
 
     /// A list of [`BFieldElement`]s the program can read from using instruction `read_io`.
-    pub public_input_stream: VecDeque<BFieldElement>,
-
-    /// A list of [`BFieldElement`]s the program can read from using instructions `divine`
-    /// and `divine_sibling`.
-    pub secret_input_stream: VecDeque<BFieldElement>,
+    pub public_input: VecDeque<BFieldElement>,
 
     /// A list of [`BFieldElement`]s the program can write to using instruction `write_io`.
     pub public_output: Vec<BFieldElement>,
+
+    /// A list of [`BFieldElement`]s the program can read from using instruction `divine`.
+    pub secret_individual_tokens: VecDeque<BFieldElement>,
+
+    /// A list of [`Digest`]s the program can read from using instruction `divine_sibling`.
+    pub secret_digests: VecDeque<Digest>,
 
     /// The read-write **random-access memory** allows Triton VM to store arbitrary data.
     pub ram: HashMap<BFieldElement, BFieldElement>,
@@ -115,16 +118,17 @@ impl<'pgm> VMState<'pgm> {
     pub fn new(
         program: &'pgm Program,
         public_input: PublicInput,
-        secret_input: SecretInput,
+        non_determinism: NonDeterminism<BFieldElement>,
     ) -> Self {
         let program_digest = program.hash::<StarkHasher>();
 
         Self {
             program: &program.instructions,
-            public_input_stream: public_input.stream.into(),
-            secret_input_stream: secret_input.stream.into(),
+            public_input: public_input.individual_tokens.into(),
             public_output: vec![],
-            ram: secret_input.ram,
+            secret_individual_tokens: non_determinism.individual_tokens.into(),
+            secret_digests: non_determinism.digests.into(),
+            ram: non_determinism.ram,
             op_stack: OpStack::new(program_digest),
             jump_stack: vec![],
             cycle_count: 0,
@@ -273,7 +277,7 @@ impl<'pgm> VMState<'pgm> {
     }
 
     fn instruction_divine(&mut self) -> Result<Option<CoProcessorCall>> {
-        let elem = self.secret_input_stream.pop_front().ok_or(anyhow!(
+        let elem = self.secret_individual_tokens.pop_front().ok_or(anyhow!(
             "Instruction `divine`: secret input buffer is empty."
         ))?;
         self.op_stack.push(elem);
@@ -428,8 +432,7 @@ impl<'pgm> VMState<'pgm> {
         let parent_node_index = node_index / 2;
         self.op_stack.push((parent_node_index as u64).into());
 
-        let mut sibling_digest = self.secret_input_pop_multiple()?;
-        sibling_digest.reverse();
+        let sibling_digest = self.pop_secret_digest()?;
         let (left_digest, right_digest) =
             Self::put_known_digest_on_correct_side(node_index, known_digest, sibling_digest);
 
@@ -646,7 +649,7 @@ impl<'pgm> VMState<'pgm> {
     }
 
     fn instruction_read_io(&mut self) -> Result<Option<CoProcessorCall>> {
-        let in_elem = self.public_input_stream.pop_front().ok_or(anyhow!(
+        let in_elem = self.public_input.pop_front().ok_or(anyhow!(
             "Instruction `read_io`: public input buffer is empty."
         ))?;
         self.op_stack.push(in_elem);
@@ -800,15 +803,12 @@ impl<'pgm> VMState<'pgm> {
         true
     }
 
-    fn secret_input_pop_multiple<const N: usize>(&mut self) -> Result<[BFieldElement; N]> {
-        let mut popped_elements = [BFieldElement::zero(); N];
-        for element in popped_elements.iter_mut() {
-            *element = self
-                .secret_input_stream
-                .pop_front()
-                .ok_or(anyhow!("Secret input buffer is empty."))?;
-        }
-        Ok(popped_elements)
+    fn pop_secret_digest(&mut self) -> Result<[BFieldElement; DIGEST_LENGTH]> {
+        let digest = self
+            .secret_digests
+            .pop_front()
+            .ok_or(anyhow!("Secret digest buffer is empty."))?;
+        Ok(digest.values())
     }
 
     /// If the given node index indicates a left node, puts the known digest to the left.
@@ -816,9 +816,12 @@ impl<'pgm> VMState<'pgm> {
     /// Returns the left and right digests in that order.
     fn put_known_digest_on_correct_side(
         node_index: u32,
-        known_digest: [BFieldElement; 5],
-        sibling_digest: [BFieldElement; 5],
-    ) -> ([BFieldElement; 5], [BFieldElement; 5]) {
+        known_digest: [BFieldElement; DIGEST_LENGTH],
+        sibling_digest: [BFieldElement; DIGEST_LENGTH],
+    ) -> (
+        [BFieldElement; DIGEST_LENGTH],
+        [BFieldElement; DIGEST_LENGTH],
+    ) {
         let is_left_node = node_index % 2 == 0;
         if is_left_node {
             (known_digest, sibling_digest)
@@ -930,7 +933,7 @@ pub mod triton_vm_tests {
         ProgramAndInput {
             program: triton_program!(divine assert halt),
             public_input: vec![],
-            secret_input: vec![1],
+            non_determinism: vec![1].into(),
         }
     }
 
@@ -965,49 +968,71 @@ pub mod triton_vm_tests {
         ProgramAndInput {
             program,
             public_input: vec![digest.to_vec()[0]],
-            secret_input: vec![],
+            non_determinism: [].into(),
         }
     }
 
     pub(crate) fn test_program_for_divine_sibling_noswitch() -> ProgramAndInput {
         let program = triton_program!(
-            push 3
-            push 4 push 2 push 2 push 2 push 1
-            push 5679457 push 1337 push 345887 push -234578456 push 23657565
+            push  3
+            push  4 push  2 push  2 push  2 push  1
+            push 17 push 18 push 19 push 20 push 21
             divine_sibling
-            push 1 add assert assert assert assert assert
-            assert
-            push -1 add assert
-            push -1 add assert
-            push -1 add assert
-            push -3 add assert
+
+            push 0 eq assert
+            push 1 eq assert
+            push 2 eq assert
+            push 3 eq assert
+            push 4 eq assert
+
+            push 1 eq assert
+            push 2 eq assert
+            push 2 eq assert
+            push 2 eq assert
+            push 4 eq assert
+
             assert halt
         );
+
+        let dummy_digest = Digest([0, 1, 2, 3, 4].map(BFieldElement::new));
+        let non_determinism = NonDeterminism::new(vec![]).with_digests(vec![dummy_digest]);
+
         ProgramAndInput {
             program,
             public_input: vec![],
-            secret_input: vec![1, 1, 1, 1, 0],
+            non_determinism,
         }
     }
 
     pub(crate) fn test_program_for_divine_sibling_switch() -> ProgramAndInput {
         let program = triton_program!(
-            push 2
-            push 4 push 2 push 2 push 2 push 1
-            push 5679457 push 1337 push 345887 push -234578456 push 23657565
+            push  2
+            push  4 push  2 push  2 push  2 push  1
+            push 17 push 18 push 19 push 20 push 21
             divine_sibling
-            assert
-            push -1 add assert
-            push -1 add assert
-            push -1 add assert
-            push -3 add assert
-            push 1 add assert assert assert assert assert
+
+            push 1 eq assert
+            push 2 eq assert
+            push 2 eq assert
+            push 2 eq assert
+            push 4 eq assert
+
+            push 0 eq assert
+            push 1 eq assert
+            push 2 eq assert
+            push 3 eq assert
+            push 4 eq assert
+
             assert halt
         );
+
+        let dummy_digest = Digest([0, 1, 2, 3, 4].map(BFieldElement::new));
+        let non_determinism = NonDeterminism::new(vec![]).with_digests(vec![dummy_digest]);
+
         ProgramAndInput {
             program,
             public_input: vec![],
-            secret_input: vec![1, 1, 1, 1, 0],
+            non_determinism,
         }
     }
 
@@ -1056,7 +1081,7 @@ pub mod triton_vm_tests {
         ProgramAndInput {
             program,
             public_input: vec![st4, st3, st2, st1, st0],
-            secret_input: vec![],
+            non_determinism: [].into(),
         }
     }
 
@@ -1106,7 +1131,7 @@ pub mod triton_vm_tests {
         ProgramAndInput {
             program,
             public_input: sponge_output.map(|e| e.value()).to_vec(),
-            secret_input: vec![],
+            non_determinism: [].into(),
         }
     }
 
@@ -1129,7 +1154,7 @@ pub mod triton_vm_tests {
         ProgramAndInput {
             program,
             public_input: vec![lo, hi],
-            secret_input: vec![],
+            non_determinism: [].into(),
         }
     }
 
@@ -1137,7 +1162,7 @@ pub mod triton_vm_tests {
         ProgramAndInput {
             program: triton_program!(read_io divine eq assert halt),
             public_input: vec![42],
-            secret_input: vec![42],
+            non_determinism: vec![42].into(),
         }
     }
 
@@ -1150,7 +1175,7 @@ pub mod triton_vm_tests {
         ProgramAndInput {
             program,
             public_input: vec![st0],
-            secret_input: vec![st0],
+            non_determinism: vec![st0].into(),
         }
     }
 
@@ -1176,7 +1201,7 @@ pub mod triton_vm_tests {
         ProgramAndInput {
             program,
             public_input: vec![lsb.into(), st0_shift_right.into()],
-            secret_input: vec![],
+            non_determinism: [].into(),
         }
     }
 
@@ -1214,7 +1239,7 @@ pub mod triton_vm_tests {
         ProgramAndInput {
             program,
             public_input: vec![result_0, result_1],
-            secret_input: vec![],
+            non_determinism: [].into(),
         }
     }
 
@@ -1242,7 +1267,7 @@ pub mod triton_vm_tests {
         ProgramAndInput {
             program,
             public_input: vec![result_0.into(), result_1.into()],
-            secret_input: vec![],
+            non_determinism: [].into(),
         }
     }
 
@@ -1270,7 +1295,7 @@ pub mod triton_vm_tests {
         ProgramAndInput {
             program,
             public_input: vec![result_0.into(), result_1.into()],
-            secret_input: vec![],
+            non_determinism: [].into(),
         }
     }
 
@@ -1307,7 +1332,7 @@ pub mod triton_vm_tests {
         ProgramAndInput {
             program,
             public_input: vec![l2f_0.into(), l2f_1.into()],
-            secret_input: vec![],
+            non_determinism: [].into(),
         }
     }
 
@@ -1357,7 +1382,7 @@ pub mod triton_vm_tests {
         ProgramAndInput {
             program,
             public_input: vec![result_0, result_1],
-            secret_input: vec![],
+            non_determinism: [].into(),
         }
     }
 
@@ -1379,7 +1404,7 @@ pub mod triton_vm_tests {
         ProgramAndInput {
             program,
             public_input: vec![remainder.into(), quotient.into()],
-            secret_input: vec![],
+            non_determinism: [].into(),
         }
     }
 
@@ -1399,7 +1424,7 @@ pub mod triton_vm_tests {
         ProgramAndInput {
             program,
             public_input: vec![pop_count.into()],
-            secret_input: vec![],
+            non_determinism: [].into(),
         }
     }
 
@@ -1558,7 +1583,7 @@ pub mod triton_vm_tests {
         ProgramAndInput {
             program,
             public_input: vec![1, 3, 14],
-            secret_input: vec![],
+            non_determinism: [].into(),
         }
     }
 
@@ -1631,7 +1656,7 @@ pub mod triton_vm_tests {
         let program = ProgramAndInput {
             program,
             public_input: vec![2, 3, 5, 7, 11, 13],
-            secret_input: vec![],
+            non_determinism: [].into(),
         };
 
         let actual_stdout = program.run().unwrap();
@@ -1653,7 +1678,7 @@ pub mod triton_vm_tests {
         let program = ProgramAndInput {
             program,
             public_input: vec![2, 3, 5, 7, 11, 13],
-            secret_input: vec![],
+            non_determinism: [].into(),
         };
 
         let actual_stdout = program.run().unwrap();
@@ -1679,7 +1704,7 @@ pub mod triton_vm_tests {
         let program = ProgramAndInput {
             program,
             public_input: vec![2, 3, 5],
-            secret_input: vec![],
+            non_determinism: [].into(),
         };
 
         let actual_stdout = program.run().unwrap();
@@ -1710,7 +1735,7 @@ pub mod triton_vm_tests {
         let program = ProgramAndInput {
             program,
             public_input: vec![2, 3, 5, 7],
-            secret_input: vec![],
+            non_determinism: [].into(),
         };
 
         let actual_stdout = program.run().unwrap();
@@ -1879,29 +1904,22 @@ pub mod triton_vm_tests {
             .map(|_| thread_rng().gen_range(0..NUM_LEAVES))
             .collect_vec();
 
-        let flat_authentication_path = |leaf_index| {
-            let auth_path = merkle_tree.get_authentication_structure(&[leaf_index]);
-            (0..TREE_HEIGHT)
-                .flat_map(|i| auth_path[i].reversed().values())
-                .collect_vec()
-        };
-        let secret_input = selected_leaf_indices
+        let auth_path_digests = selected_leaf_indices
             .iter()
-            .flat_map(|&leaf_index| flat_authentication_path(leaf_index))
-            .collect_vec();
+            .flat_map(|&leaf_index| merkle_tree.get_authentication_structure(&[leaf_index]))
+            .collect();
+        let non_determinism = NonDeterminism::new(vec![]).with_digests(auth_path_digests);
 
         let mut public_input = vec![(num_authentication_paths as u64).into()];
-        public_input.append(&mut root.reversed().values().to_vec());
+        public_input.extend(root.reversed().values().to_vec());
         for &leaf_index in &selected_leaf_indices {
             let node_index = (leaf_index + NUM_LEAVES) as u64;
             public_input.push(node_index.into());
-            public_input.append(&mut leaves[leaf_index].reversed().values().to_vec());
+            public_input.extend(leaves[leaf_index].reversed().values().to_vec());
         }
 
         let program = MERKLE_TREE_AUTHENTICATION_PATH_VERIFY.clone();
-        program
-            .run(public_input.into(), secret_input.into())
-            .unwrap();
+        program.run(public_input.into(), non_determinism).unwrap();
     }
 
     #[test]
@@ -1977,7 +1995,7 @@ pub mod triton_vm_tests {
         initial_ram.insert(0_u64.into(), 42_u64.into());
 
         let public_input = PublicInput::new(vec![]);
-        let secret_input = SecretInput::new(vec![]).with_ram(initial_ram);
+        let secret_input = NonDeterminism::new(vec![]).with_ram(initial_ram);
 
         let public_output = program
             .run(public_input.clone(), secret_input.clone())
@@ -2000,7 +2018,7 @@ pub mod triton_vm_tests {
         initial_ram.insert(random_address.into(), 1337_u64.into());
 
         let public_input = PublicInput::new(vec![]);
-        let secret_input = SecretInput::new(vec![]).with_ram(initial_ram);
+        let secret_input = NonDeterminism::new(vec![]).with_ram(initial_ram);
 
         let public_output = program
             .run(public_input.clone(), secret_input.clone())
