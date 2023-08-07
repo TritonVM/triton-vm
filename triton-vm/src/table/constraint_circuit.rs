@@ -312,8 +312,8 @@ impl<II: InputIndicator> Hash for CircuitExpression<II> {
             BinaryOperation(binop, lhs, rhs) => {
                 "binop".hash(state);
                 binop.hash(state);
-                lhs.as_ref().borrow().hash(state);
-                rhs.as_ref().borrow().hash(state);
+                lhs.borrow().hash(state);
+                rhs.borrow().hash(state);
             }
         }
     }
@@ -342,7 +342,7 @@ impl<II: InputIndicator> Hash for ConstraintCircuit<II> {
 
 impl<II: InputIndicator> Hash for ConstraintCircuitMonad<II> {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.circuit.as_ref().borrow().hash(state)
+        self.circuit.borrow().hash(state)
     }
 }
 
@@ -379,13 +379,7 @@ impl<II: InputIndicator> Display for ConstraintCircuit<II> {
                 write!(f, "#{self_challenge_id}")
             }
             BinaryOperation(operation, lhs, rhs) => {
-                write!(
-                    f,
-                    "({}) {} ({})",
-                    lhs.as_ref().borrow(),
-                    operation,
-                    rhs.as_ref().borrow()
-                )
+                write!(f, "({}) {operation} ({})", lhs.borrow(), rhs.borrow())
             }
         }
     }
@@ -397,8 +391,8 @@ impl<II: InputIndicator> ConstraintCircuit<II> {
         self.visited_counter = 0;
 
         if let BinaryOperation(_, lhs, rhs) = &self.expression {
-            lhs.as_ref().borrow_mut().reset_visit_count_for_tree();
-            rhs.as_ref().borrow_mut().reset_visit_count_for_tree();
+            lhs.borrow_mut().reset_visit_count_for_tree();
+            rhs.borrow_mut().reset_visit_count_for_tree();
         }
     }
 
@@ -418,8 +412,8 @@ impl<II: InputIndicator> ConstraintCircuit<II> {
 
         self.visited_counter += 1;
         if let BinaryOperation(_, lhs, rhs) = &self.expression {
-            lhs.as_ref().borrow_mut().inner_has_unique_ids(ids);
-            rhs.as_ref().borrow_mut().inner_has_unique_ids(ids);
+            lhs.borrow_mut().inner_has_unique_ids(ids);
+            rhs.borrow_mut().inner_has_unique_ids(ids);
         }
     }
 
@@ -470,8 +464,8 @@ impl<II: InputIndicator> ConstraintCircuit<II> {
     pub fn all_visited_counters(&self) -> Vec<usize> {
         let mut visited_counters = vec![self.visited_counter];
         if let BinaryOperation(_, lhs, rhs) = &self.expression {
-            visited_counters.extend(lhs.as_ref().borrow().all_visited_counters());
-            visited_counters.extend(rhs.as_ref().borrow().all_visited_counters());
+            visited_counters.extend(lhs.borrow().all_visited_counters());
+            visited_counters.extend(rhs.borrow().all_visited_counters());
         };
         visited_counters.sort_unstable();
         visited_counters.dedup();
@@ -515,9 +509,7 @@ impl<II: InputIndicator> ConstraintCircuit<II> {
             Input(indicator) => indicator.is_base_table_column(),
             Challenge(_) => false,
             BinaryOperation(_, lhs, rhs) => {
-                let lhs = lhs.as_ref().borrow();
-                let rhs = rhs.as_ref().borrow();
-                lhs.evaluates_to_base_element() && rhs.evaluates_to_base_element()
+                lhs.borrow().evaluates_to_base_element() && rhs.borrow().evaluates_to_base_element()
             }
         }
     }
@@ -534,14 +526,8 @@ impl<II: InputIndicator> ConstraintCircuit<II> {
             Input(input) => input.evaluate(base_table, ext_table),
             Challenge(challenge_id) => challenges[challenge_id],
             BinaryOperation(binop, lhs, rhs) => {
-                let lhs_value = lhs
-                    .as_ref()
-                    .borrow()
-                    .evaluate(base_table, ext_table, challenges);
-                let rhs_value = rhs
-                    .as_ref()
-                    .borrow()
-                    .evaluate(base_table, ext_table, challenges);
+                let lhs_value = lhs.borrow().evaluate(base_table, ext_table, challenges);
+                let rhs_value = rhs.borrow().evaluate(base_table, ext_table, challenges);
                 binop.operation(lhs_value, rhs_value)
             }
         }
@@ -557,8 +543,8 @@ impl<II: InputIndicator> ConstraintCircuit<II> {
         constraint.visited_counter += 1;
         let num_unvisited_children = match &constraint.expression {
             BinaryOperation(_, lhs, rhs) => {
-                let num_left = Self::count_nodes_inner(&mut lhs.as_ref().borrow_mut());
-                let num_right = Self::count_nodes_inner(&mut rhs.as_ref().borrow_mut());
+                let num_left = Self::count_nodes_inner(&mut lhs.borrow_mut());
+                let num_right = Self::count_nodes_inner(&mut rhs.borrow_mut());
                 num_left + num_right
             }
             _ => 0,
@@ -597,21 +583,15 @@ impl<II: InputIndicator> Debug for ConstraintCircuitMonad<II> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ConstraintCircuitMonad")
             .field("id", &self.circuit)
-            .field(
-                "all_nodes length: ",
-                &self.builder.all_nodes.as_ref().borrow().len(),
-            )
-            .field(
-                "id_counter_ref value: ",
-                &self.builder.id_counter.as_ref().borrow(),
-            )
+            .field("all_nodes length: ", &self.builder.all_nodes.borrow().len())
+            .field("id_counter_ref value: ", &self.builder.id_counter.borrow())
             .finish()
     }
 }
 
 impl<II: InputIndicator> Display for ConstraintCircuitMonad<II> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.circuit.as_ref().borrow())
+        write!(f, "{}", self.circuit.borrow())
     }
 }
 
@@ -633,7 +613,7 @@ fn binop<II: InputIndicator>(
     lhs: ConstraintCircuitMonad<II>,
     rhs: ConstraintCircuitMonad<II>,
 ) -> ConstraintCircuitMonad<II> {
-    let id = lhs.builder.id_counter.as_ref().borrow().to_owned();
+    let id = lhs.builder.id_counter.borrow().to_owned();
     let expression = BinaryOperation(binop, lhs.circuit.clone(), rhs.circuit.clone());
     let circuit = ConstraintCircuit {
         id,
@@ -646,7 +626,7 @@ fn binop<II: InputIndicator>(
         builder: lhs.builder.clone(),
     };
 
-    let mut all_nodes = lhs.builder.all_nodes.as_ref().borrow_mut();
+    let mut all_nodes = lhs.builder.all_nodes.borrow_mut();
     if let Some(same_node) = all_nodes.get(&new_node) {
         return same_node.to_owned();
     }
@@ -670,7 +650,7 @@ fn binop<II: InputIndicator>(
         }
     }
 
-    *lhs.builder.id_counter.as_ref().borrow_mut() += 1;
+    *lhs.builder.id_counter.borrow_mut() += 1;
     let was_inserted = all_nodes.insert(new_node.clone());
     assert!(was_inserted, "Binop-created value must be new");
     new_node
@@ -719,10 +699,9 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
         let max_from_hash_map = self
             .builder
             .all_nodes
-            .as_ref()
             .borrow()
             .iter()
-            .map(|x| x.circuit.as_ref().borrow().id)
+            .map(|x| x.circuit.borrow().id)
             .max()
             .unwrap();
 
@@ -732,7 +711,7 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
     }
 
     fn find_equivalent_expression(&self) -> Option<Rc<RefCell<ConstraintCircuit<II>>>> {
-        if let BinaryOperation(op, lhs, rhs) = &self.circuit.as_ref().borrow().expression {
+        if let BinaryOperation(op, lhs, rhs) = &self.circuit.borrow().expression {
             // a + 0 = a ∧ a - 0 = a
             if matches!(op, BinOp::Add | BinOp::Sub) && rhs.borrow().is_zero() {
                 return Some(lhs.clone());
@@ -790,7 +769,7 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
     /// This operation mutates self and returns true if a change was applied anywhere in the tree.
     fn constant_fold_inner(&mut self) -> (bool, Option<Rc<RefCell<ConstraintCircuit<II>>>>) {
         let mut change_tracker = false;
-        let self_expr = self.circuit.as_ref().borrow().expression.clone();
+        let self_expr = self.circuit.borrow().expression.clone();
         if let BinaryOperation(_, lhs, rhs) = &self_expr {
             let mut lhs_as_monadic_value = ConstraintCircuitMonad {
                 circuit: lhs.clone(),
@@ -813,7 +792,7 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
             let equivalent_circuit = equivalent_circuit.as_ref().unwrap().clone();
             let id_to_remove = self.circuit.borrow().id;
             self.builder.substitute(id_to_remove, equivalent_circuit);
-            self.builder.all_nodes.as_ref().borrow_mut().remove(self);
+            self.builder.all_nodes.borrow_mut().remove(self);
         }
 
         (change_tracker, equivalent_circuit)
@@ -1038,8 +1017,8 @@ impl<II: InputIndicator> ConstraintCircuitBuilder<II> {
     }
 
     pub fn get_node_by_id(&self, id: usize) -> Option<ConstraintCircuitMonad<II>> {
-        for node in self.all_nodes.as_ref().borrow().iter() {
-            if node.circuit.as_ref().borrow().id == id {
+        for node in self.all_nodes.borrow().iter() {
+            if node.circuit.borrow().id == id {
                 return Some(node.clone());
             }
         }
@@ -1078,7 +1057,7 @@ impl<II: InputIndicator> ConstraintCircuitBuilder<II> {
             }
         }
 
-        let id = self.id_counter.as_ref().borrow().to_owned();
+        let id = self.id_counter.borrow().to_owned();
         let circuit = ConstraintCircuit {
             id,
             visited_counter: 0,
@@ -1090,11 +1069,11 @@ impl<II: InputIndicator> ConstraintCircuitBuilder<II> {
             builder: self.clone(),
         };
 
-        let mut all_nodes = self.all_nodes.as_ref().borrow_mut();
+        let mut all_nodes = self.all_nodes.borrow_mut();
         if let Some(same_node) = all_nodes.get(&new_node) {
             same_node.to_owned()
         } else {
-            *self.id_counter.as_ref().borrow_mut() += 1;
+            *self.id_counter.borrow_mut() += 1;
             all_nodes.insert(new_node.clone());
             new_node
         }
@@ -1102,18 +1081,18 @@ impl<II: InputIndicator> ConstraintCircuitBuilder<II> {
 
     /// Substitute all nodes with ID `old_id` with the given `new` node.
     pub fn substitute(&self, old_id: usize, new: Rc<RefCell<ConstraintCircuit<II>>>) {
-        for node in self.all_nodes.as_ref().borrow().clone().into_iter() {
-            if node.circuit.as_ref().borrow().id == old_id {
+        for node in self.all_nodes.borrow().clone().into_iter() {
+            if node.circuit.borrow().id == old_id {
                 continue;
             }
 
             if let BinaryOperation(_, ref mut lhs, ref mut rhs) =
-                node.circuit.as_ref().borrow_mut().expression
+                node.circuit.borrow_mut().expression
             {
-                if lhs.as_ref().borrow().id == old_id {
+                if lhs.borrow().id == old_id {
                     *lhs = new.clone();
                 }
-                if rhs.as_ref().borrow().id == old_id {
+                if rhs.borrow().id == old_id {
                     *rhs = new.clone();
                 }
             }
@@ -1220,8 +1199,8 @@ mod constraint_circuit_tests {
     ) -> ConstraintCircuitMonad<II> {
         match &val.expression {
             BinaryOperation(op, lhs, rhs) => {
-                let lhs_ref = deep_copy_inner(&lhs.as_ref().borrow(), builder);
-                let rhs_ref = deep_copy_inner(&rhs.as_ref().borrow(), builder);
+                let lhs_ref = deep_copy_inner(&lhs.borrow(), builder);
+                let rhs_ref = deep_copy_inner(&rhs.borrow(), builder);
                 binop(*op, lhs_ref, rhs_ref)
             }
             XConstant(xfe) => builder.x_constant(*xfe),
@@ -1278,7 +1257,7 @@ mod constraint_circuit_tests {
         let digest_prior = hasher0.finish();
 
         // Increase visited counter and verify digest is unchanged
-        circuit.circuit.as_ref().borrow_mut().visited_counter += 1;
+        circuit.circuit.borrow_mut().visited_counter += 1;
         let mut hasher1 = DefaultHasher::new();
         circuit.hash(&mut hasher1);
         let digest_after = hasher1.finish();
@@ -1315,7 +1294,7 @@ mod constraint_circuit_tests {
         assert_ne!(zero, one);
 
         // Verify that constant folding can handle a = a * 1
-        let var_0_copy_0 = deep_copy(&var_0.circuit.as_ref().borrow());
+        let var_0_copy_0 = deep_copy(&var_0.circuit.borrow());
         let var_0_mul_one_0 = var_0_copy_0.clone() * one.clone();
         assert_ne!(var_0_copy_0, var_0_mul_one_0);
         let mut circuits = [var_0_copy_0, var_0_mul_one_0];
@@ -1332,7 +1311,7 @@ mod constraint_circuit_tests {
         );
 
         // Verify that constant folding can handle a = 1 * a
-        let var_0_copy_1 = deep_copy(&var_0.circuit.as_ref().borrow());
+        let var_0_copy_1 = deep_copy(&var_0.circuit.borrow());
         let var_0_one_mul_1 = one.clone() * var_0_copy_1.clone();
         assert_ne!(var_0_copy_1, var_0_one_mul_1);
         let mut circuits = [var_0_copy_1, var_0_one_mul_1];
@@ -1349,7 +1328,7 @@ mod constraint_circuit_tests {
         );
 
         // Verify that constant folding can handle a = 1 * a * 1
-        let var_0_copy_2 = deep_copy(&var_0.circuit.as_ref().borrow());
+        let var_0_copy_2 = deep_copy(&var_0.circuit.borrow());
         let var_0_one_mul_2 = one.clone() * var_0_copy_2.clone() * one;
         assert_ne!(var_0_copy_2, var_0_one_mul_2);
         let mut circuits = [var_0_copy_2, var_0_one_mul_2];
@@ -1366,7 +1345,7 @@ mod constraint_circuit_tests {
         );
 
         // Verify that constant folding handles a + 0 = a
-        let var_0_copy_3 = deep_copy(&var_0.circuit.as_ref().borrow());
+        let var_0_copy_3 = deep_copy(&var_0.circuit.borrow());
         let var_0_plus_zero_3 = var_0_copy_3.clone() + zero.clone();
         assert_ne!(var_0_copy_3, var_0_plus_zero_3);
         let mut circuits = [var_0_copy_3, var_0_plus_zero_3];
@@ -1383,7 +1362,7 @@ mod constraint_circuit_tests {
         );
 
         // Verify that constant folding handles a + (a * 0) = a
-        let var_0_copy_4 = deep_copy(&var_0.circuit.as_ref().borrow());
+        let var_0_copy_4 = deep_copy(&var_0.circuit.borrow());
         let var_0_plus_zero_4 = var_0_copy_4.clone() + var_0_copy_4.clone() * zero.clone();
         assert_ne!(var_0_copy_4, var_0_plus_zero_4);
         let mut circuits = [var_0_copy_4, var_0_plus_zero_4];
@@ -1400,7 +1379,7 @@ mod constraint_circuit_tests {
         );
 
         // Verify that constant folding does not equate `0 - a` with `a`
-        let var_0_copy_5 = deep_copy(&var_0.circuit.as_ref().borrow());
+        let var_0_copy_5 = deep_copy(&var_0.circuit.borrow());
         let zero_minus_var_0 = zero - var_0_copy_5.clone();
         assert_ne!(var_0_copy_5, zero_minus_var_0);
         let mut circuits = [var_0_copy_5, zero_minus_var_0];
@@ -1425,7 +1404,7 @@ mod constraint_circuit_tests {
             let zero = circuit_builder.x_constant(0.into());
 
             // Verify that constant folding can handle a = a * 1
-            let copy_0 = deep_copy(&circuit.circuit.as_ref().borrow());
+            let copy_0 = deep_copy(&circuit.circuit.borrow());
             let copy_0_alt = copy_0.clone() * one.clone();
             assert_ne!(copy_0, copy_0_alt);
             let mut circuits = [copy_0.clone(), copy_0_alt.clone()];
@@ -1442,7 +1421,7 @@ mod constraint_circuit_tests {
             );
 
             // Verify that constant folding can handle a = 1 * a
-            let copy_1 = deep_copy(&circuit.circuit.as_ref().borrow());
+            let copy_1 = deep_copy(&circuit.circuit.borrow());
             let copy_1_alt = one.clone() * copy_1.clone();
             assert_ne!(copy_1, copy_1_alt);
             let mut circuits = [copy_1, copy_1_alt];
@@ -1459,7 +1438,7 @@ mod constraint_circuit_tests {
             );
 
             // Verify that constant folding can handle a = 1 * a * 1
-            let copy_2 = deep_copy(&circuit.circuit.as_ref().borrow());
+            let copy_2 = deep_copy(&circuit.circuit.borrow());
             let copy_2_alt = one.clone() * copy_2.clone() * one.clone();
             assert_ne!(copy_2, copy_2_alt);
             let mut circuits = [copy_2, copy_2_alt];
@@ -1476,7 +1455,7 @@ mod constraint_circuit_tests {
             );
 
             // Verify that constant folding handles a + 0 = a
-            let copy_3 = deep_copy(&circuit.circuit.as_ref().borrow());
+            let copy_3 = deep_copy(&circuit.circuit.borrow());
             let copy_3_alt = copy_3.clone() + zero.clone();
             assert_ne!(copy_3, copy_3_alt);
             let mut circuits = [copy_3, copy_3_alt];
@@ -1493,7 +1472,7 @@ mod constraint_circuit_tests {
             );
 
             // Verify that constant folding handles a + (a * 0) = a
-            let copy_4 = deep_copy(&circuit.circuit.as_ref().borrow());
+            let copy_4 = deep_copy(&circuit.circuit.borrow());
             let copy_4_alt = copy_4.clone() + copy_4.clone() * zero.clone();
             assert_ne!(copy_4, copy_4_alt);
             let mut circuits = [copy_4, copy_4_alt];
@@ -1510,7 +1489,7 @@ mod constraint_circuit_tests {
             );
 
             // Verify that constant folding handles a + (0 * a) = a
-            let copy_5 = deep_copy(&circuit.circuit.as_ref().borrow());
+            let copy_5 = deep_copy(&circuit.circuit.borrow());
             let copy_5_alt = copy_5.clone() + copy_5.clone() * zero.clone();
             assert_ne!(copy_5, copy_5_alt);
             let mut circuits = [copy_5, copy_5_alt];
@@ -1528,14 +1507,14 @@ mod constraint_circuit_tests {
 
             // Verify that constant folding does not equate `0 - a` with `a`
             // But only if `a != 0`
-            let copy_6 = deep_copy(&circuit.circuit.as_ref().borrow());
+            let copy_6 = deep_copy(&circuit.circuit.borrow());
             let zero_minus_copy_6 = zero.clone() - copy_6.clone();
             assert_ne!(copy_6, zero_minus_copy_6);
             let mut circuits = [copy_6, zero_minus_copy_6];
             ConstraintCircuitMonad::constant_folding(&mut circuits);
-            let copy_6_is_zero = circuits[0].circuit.as_ref().borrow().is_zero();
-            let copy_6_expr = circuits[0].circuit.as_ref().borrow().expression.clone();
-            let zero_minus_copy_6_expr = circuits[1].circuit.as_ref().borrow().expression.clone();
+            let copy_6_is_zero = circuits[0].circuit.borrow().is_zero();
+            let copy_6_expr = circuits[0].circuit.borrow().expression.clone();
+            let zero_minus_copy_6_expr = circuits[1].circuit.borrow().expression.clone();
 
             // An X field and a B field leaf will never be equal
             if copy_6_is_zero
@@ -1568,7 +1547,7 @@ mod constraint_circuit_tests {
             }
 
             // Verify that constant folding handles a - 0 = a
-            let copy_7 = deep_copy(&circuit.circuit.as_ref().borrow());
+            let copy_7 = deep_copy(&circuit.circuit.borrow());
             let copy_7_alt = copy_7.clone() - zero.clone();
             assert_ne!(copy_7, copy_7_alt);
             let mut circuits = [copy_7, copy_7_alt];
@@ -1603,8 +1582,8 @@ mod constraint_circuit_tests {
     ) -> XFieldElement {
         let value = match &constraint.expression {
             BinaryOperation(binop, lhs, rhs) => {
-                let lhs = lhs.as_ref().borrow();
-                let rhs = rhs.as_ref().borrow();
+                let lhs = lhs.borrow();
+                let rhs = rhs.borrow();
                 let lhs = evaluate_assert_unique(&lhs, challenges, base_rows, ext_rows, values);
                 let rhs = evaluate_assert_unique(&rhs, challenges, base_rows, ext_rows, values);
                 binop.operation(lhs, rhs)
@@ -2275,14 +2254,14 @@ mod constraint_circuit_tests {
             ("ext", &new_ext_constraints),
         ] {
             for (i, constraint) in constraints.iter().enumerate() {
-                let expression = constraint.circuit.as_ref().borrow().expression.clone();
+                let expression = constraint.circuit.borrow().expression.clone();
                 let BinaryOperation(BinOp::Sub, lhs, rhs) = expression else {
                     panic!("New {constraint_type} constraint {i} must be a subtraction.");
                 };
-                let Input(input_indicator) = lhs.as_ref().borrow().expression.clone() else {
+                let Input(input_indicator) = lhs.borrow().expression.clone() else {
                     panic!("New {constraint_type} constraint {i} must be a simple substitution.");
                 };
-                let substitution_rule = rhs.as_ref().borrow().clone();
+                let substitution_rule = rhs.borrow().clone();
                 assert_substitution_rule_uses_legal_variables(input_indicator, &substitution_rule);
                 substitution_rules.push(substitution_rule);
             }
@@ -2355,8 +2334,8 @@ mod constraint_circuit_tests {
     ) {
         match substitution_rule.expression.clone() {
             BinaryOperation(_, lhs, rhs) => {
-                let lhs = lhs.as_ref().borrow();
-                let rhs = rhs.as_ref().borrow();
+                let lhs = lhs.borrow();
+                let rhs = rhs.borrow();
                 assert_substitution_rule_uses_legal_variables(new_var, &lhs);
                 assert_substitution_rule_uses_legal_variables(new_var, &rhs);
             }
