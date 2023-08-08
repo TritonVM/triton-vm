@@ -2424,10 +2424,10 @@ mod constraint_circuit_tests {
         let mut base_table_rows = Array2::from_shape_fn((2, NUM_BASE_COLUMNS), |_| random());
         let mut ext_table_rows = Array2::from_shape_fn((2, NUM_EXT_COLUMNS), |_| random());
 
-        DegreeLoweringTable::fill_derived_base_columns(&mut base_table_rows.view_mut());
+        DegreeLoweringTable::fill_derived_base_columns(base_table_rows.view_mut());
         DegreeLoweringTable::fill_derived_ext_columns(
             base_table_rows.view(),
-            &mut ext_table_rows.view_mut(),
+            ext_table_rows.view_mut(),
             &challenges,
         );
 

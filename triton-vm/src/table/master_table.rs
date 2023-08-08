@@ -13,8 +13,9 @@ use num_traits::One;
 use rand::distributions::Standard;
 use rand::prelude::Distribution;
 use rand::random;
+use strum::EnumCount;
 use strum_macros::Display;
-use strum_macros::EnumCount as EnumCountMacro;
+use strum_macros::EnumCount;
 use strum_macros::EnumIter;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::digest::Digest;
@@ -48,6 +49,7 @@ use crate::table::op_stack_table::OpStackTable;
 use crate::table::processor_table::ProcessorTable;
 use crate::table::program_table::ProgramTable;
 use crate::table::ram_table::RamTable;
+use crate::table::table_column::*;
 use crate::table::u32_table::U32Table;
 use crate::table::*;
 
@@ -147,7 +149,7 @@ pub const EXT_DEGREE_LOWERING_TABLE_END: usize =
     EXT_DEGREE_LOWERING_TABLE_START + degree_lowering_table::EXT_WIDTH;
 
 /// A `TableId` uniquely determines one of Triton VM's tables.
-#[derive(Debug, Copy, Clone, Display, EnumCountMacro, EnumIter, PartialEq, Eq, Hash)]
+#[derive(Debug, Copy, Clone, Display, EnumCount, EnumIter, PartialEq, Eq, Hash)]
 pub enum TableId {
     ProgramTable,
     ProcessorTable,
@@ -562,6 +564,8 @@ impl MasterTable<XFieldElement> for MasterExtTable {
     }
 }
 
+type ExtendFunction = fn(ArrayView2<BFieldElement>, ArrayViewMut2<XFieldElement>, &Challenges);
+
 impl MasterBaseTable {
     pub fn padded_height(aet: &AlgebraicExecutionTrace) -> usize {
         let relevant_table_heights = [
@@ -682,7 +686,7 @@ impl MasterBaseTable {
         let u32_table = &mut self.table_mut(TableId::U32Table);
         U32Table::pad_trace(u32_table, u32_table_len);
 
-        DegreeLoweringTable::fill_derived_base_columns(&mut self.trace_table_mut());
+        DegreeLoweringTable::fill_derived_base_columns(self.trace_table_mut());
     }
 
     /// Create a `MasterExtTable` from a `MasterBaseTable` by `.extend()`ing each individual base
@@ -713,59 +717,101 @@ impl MasterBaseTable {
             interpolation_polynomials: None,
         };
 
-        ProgramTable::extend(
-            self.table(TableId::ProgramTable),
-            master_ext_table.table_mut(TableId::ProgramTable),
-            challenges,
-        );
-        ProcessorTable::extend(
-            self.table(TableId::ProcessorTable),
-            master_ext_table.table_mut(TableId::ProcessorTable),
-            challenges,
-        );
-        OpStackTable::extend(
-            self.table(TableId::OpStackTable),
-            master_ext_table.table_mut(TableId::OpStackTable),
-            challenges,
-        );
-        RamTable::extend(
-            self.table(TableId::RamTable),
-            master_ext_table.table_mut(TableId::RamTable),
-            challenges,
-        );
-        JumpStackTable::extend(
-            self.table(TableId::JumpStackTable),
-            master_ext_table.table_mut(TableId::JumpStackTable),
-            challenges,
-        );
-        HashTable::extend(
-            self.table(TableId::HashTable),
-            master_ext_table.table_mut(TableId::HashTable),
-            challenges,
-        );
-        CascadeTable::extend(
-            self.table(TableId::CascadeTable),
-            master_ext_table.table_mut(TableId::CascadeTable),
-            challenges,
-        );
-        LookupTable::extend(
-            self.table(TableId::LookupTable),
-            master_ext_table.table_mut(TableId::LookupTable),
-            challenges,
-        );
-        U32Table::extend(
-            self.table(TableId::U32Table),
-            master_ext_table.table_mut(TableId::U32Table),
-            challenges,
-        );
+        // Due to limitations in ndarray, a 10-way multi-slice is not possible. Hence, (1) slicing
+        // has to be done in multiple steps, and (2) cannot be put into a method.
+        let unit_distance = self.randomized_trace_domain().length / self.trace_domain().length;
+        let mut master_ext_table_without_randomizers = master_ext_table
+            .randomized_trace_table
+            .slice_mut(s![..; unit_distance, ..NUM_EXT_COLUMNS]);
+        let (program_table, mut rest) = master_ext_table_without_randomizers.multi_slice_mut((
+            s![.., ..ProgramExtTableColumn::COUNT],
+            s![.., ProgramExtTableColumn::COUNT..],
+        ));
+        let (processor_table, mut rest) = rest.multi_slice_mut((
+            s![.., ..ProcessorExtTableColumn::COUNT],
+            s![.., ProcessorExtTableColumn::COUNT..],
+        ));
+        let (op_stack_table, mut rest) = rest.multi_slice_mut((
+            s![.., ..OpStackExtTableColumn::COUNT],
+            s![.., OpStackExtTableColumn::COUNT..],
+        ));
+        let (ram_table, mut rest) = rest.multi_slice_mut((
+            s![.., ..RamExtTableColumn::COUNT],
+            s![.., RamExtTableColumn::COUNT..],
+        ));
+        let (jump_stack_table, mut rest) = rest.multi_slice_mut((
+            s![.., ..JumpStackExtTableColumn::COUNT],
+            s![.., JumpStackExtTableColumn::COUNT..],
+        ));
+        let (hash_table, mut rest) = rest.multi_slice_mut((
+            s![.., ..HashExtTableColumn::COUNT],
+            s![.., HashExtTableColumn::COUNT..],
+        ));
+        let (cascade_table, mut rest) = rest.multi_slice_mut((
+            s![.., ..CascadeExtTableColumn::COUNT],
+            s![.., CascadeExtTableColumn::COUNT..],
+        ));
+        let (lookup_table, mut rest) = rest.multi_slice_mut((
+            s![.., ..LookupExtTableColumn::COUNT],
+            s![.., LookupExtTableColumn::COUNT..],
+        ));
+        let u32_table = rest.slice_mut(s![.., ..U32ExtTableColumn::COUNT]);
+
+        let extension_tables = [
+            program_table,
+            processor_table,
+            op_stack_table,
+            ram_table,
+            jump_stack_table,
+            hash_table,
+            cascade_table,
+            lookup_table,
+            u32_table,
+        ];
+
+        Self::all_extend_functions()
+            .into_par_iter()
+            .zip_eq(self.base_tables_for_extending().into_par_iter())
+            .zip_eq(extension_tables.into_par_iter())
+            .for_each(|((extend, base_table), ext_table)| {
+                extend(base_table, ext_table, challenges)
+            });
 
         DegreeLoweringTable::fill_derived_ext_columns(
             self.trace_table(),
-            &mut master_ext_table.trace_table_mut(),
+            master_ext_table.trace_table_mut(),
             challenges,
         );
 
         master_ext_table
+    }
+
+    fn all_extend_functions() -> [ExtendFunction; TableId::COUNT - 1] {
+        [
+            ProgramTable::extend,
+            ProcessorTable::extend,
+            OpStackTable::extend,
+            RamTable::extend,
+            JumpStackTable::extend,
+            HashTable::extend,
+            CascadeTable::extend,
+            LookupTable::extend,
+            U32Table::extend,
+        ]
+    }
+
+    fn base_tables_for_extending(&self) -> [ArrayView2<BFieldElement>; TableId::COUNT - 1] {
+        [
+            self.table(TableId::ProgramTable),
+            self.table(TableId::ProcessorTable),
+            self.table(TableId::OpStackTable),
+            self.table(TableId::RamTable),
+            self.table(TableId::JumpStackTable),
+            self.table(TableId::HashTable),
+            self.table(TableId::CascadeTable),
+            self.table(TableId::LookupTable),
+            self.table(TableId::U32Table),
+        ]
     }
 
     fn column_indices_for_table(id: TableId) -> Range<usize> {
