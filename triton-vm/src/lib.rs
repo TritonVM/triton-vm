@@ -349,24 +349,20 @@ fn input_elements_have_unique_representation(
     public_input: &[u64],
     non_determinism: &NonDeterminism<u64>,
 ) -> Result<()> {
-    let max_value = BFieldElement::MAX;
+    let max = BFieldElement::MAX;
     let canonical_representation_error =
         "must contain only elements in canonical representation, i.e., \
         elements smaller than the prime field's modulus 2^64 - 2^32 + 1.";
-    if public_input.iter().any(|&e| e > max_value) {
-        bail!("Public input stream {canonical_representation_error})");
+    if public_input.iter().any(|&e| e > max) {
+        bail!("Public input {canonical_representation_error})");
     }
-    if non_determinism
-        .individual_tokens
-        .iter()
-        .any(|&e| e > max_value)
-    {
-        bail!("Secret input stream {canonical_representation_error}");
+    if non_determinism.individual_tokens.iter().any(|&e| e > max) {
+        bail!("Secret input {canonical_representation_error}");
     }
-    if non_determinism.ram.keys().any(|&e| e > max_value) {
+    if non_determinism.ram.keys().any(|&e| e > max) {
         bail!("RAM addresses {canonical_representation_error}");
     }
-    if non_determinism.ram.values().any(|&e| e > max_value) {
+    if non_determinism.ram.values().any(|&e| e > max) {
         bail!("RAM values {canonical_representation_error}");
     }
     Ok(())
@@ -396,6 +392,9 @@ pub fn verify(parameters: &StarkParameters, claim: &Claim, proof: &Proof) -> boo
 
 #[cfg(test)]
 mod public_interface_tests {
+    use rand::thread_rng;
+    use rand::Rng;
+
     use crate::shared_tests::create_proofs_directory;
     use crate::shared_tests::load_proof;
     use crate::shared_tests::proof_file_exists;
@@ -508,6 +507,68 @@ mod public_interface_tests {
         let loaded_proof = load_proof(filename).unwrap();
 
         assert_eq!(proof, loaded_proof);
+    }
+
+    #[test]
+    fn canonical_representation_failures() {
+        let valid_public_input = thread_rng()
+            .gen::<[BFieldElement; 10]>()
+            .map(|bfe| bfe.value());
+        let invalid_public_input = [thread_rng().gen_range(BFieldElement::MAX..=u64::MAX)];
+
+        let valid_secret_input = thread_rng()
+            .gen::<[BFieldElement; 10]>()
+            .map(|bfe| bfe.value());
+        let invalid_secret_input = [thread_rng().gen_range(BFieldElement::MAX..=u64::MAX)];
+
+        let valid_initial_ram = thread_rng()
+            .gen::<[(BFieldElement, BFieldElement); 10]>()
+            .map(|(key, val)| (key.value(), val.value()));
+        let invalid_key_initial_ram = [(
+            thread_rng().gen_range(BFieldElement::MAX..=u64::MAX),
+            thread_rng().gen::<BFieldElement>().value(),
+        )];
+        let invalid_val_initial_ram = [(
+            thread_rng().gen::<BFieldElement>().value(),
+            thread_rng().gen_range(BFieldElement::MAX..=u64::MAX),
+        )];
+
+        let valid_non_determinism =
+            NonDeterminism::new(valid_secret_input.into()).with_ram(valid_initial_ram.into());
+        let invalid_secret_input_non_determinism =
+            NonDeterminism::new(invalid_secret_input.into()).with_ram(valid_initial_ram.into());
+        let invalid_key_initial_ram_non_determinism =
+            NonDeterminism::new(valid_secret_input.into()).with_ram(invalid_key_initial_ram.into());
+        let invalid_val_initial_ram_non_determinism =
+            NonDeterminism::new(valid_secret_input.into()).with_ram(invalid_val_initial_ram.into());
+
+        let public_input_error = input_elements_have_unique_representation(
+            &invalid_public_input,
+            &valid_non_determinism,
+        )
+        .unwrap_err();
+        assert!(public_input_error.to_string().contains("Public input"));
+
+        let secret_input_error = input_elements_have_unique_representation(
+            &valid_public_input,
+            &invalid_secret_input_non_determinism,
+        )
+        .unwrap_err();
+        assert!(secret_input_error.to_string().contains("Secret input"));
+
+        let initial_ram_key_error = input_elements_have_unique_representation(
+            &valid_public_input,
+            &invalid_key_initial_ram_non_determinism,
+        )
+        .unwrap_err();
+        assert!(initial_ram_key_error.to_string().contains("RAM addresses"));
+
+        let initial_ram_val_error = input_elements_have_unique_representation(
+            &valid_public_input,
+            &invalid_val_initial_ram_non_determinism,
+        )
+        .unwrap_err();
+        assert!(initial_ram_val_error.to_string().contains("RAM values"));
     }
 
     /// Invocations of the `ensure_eq!` macro for testing purposes must be wrapped in their own
