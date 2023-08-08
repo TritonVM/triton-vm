@@ -96,23 +96,13 @@ impl AlgebraicExecutionTrace {
 
     /// Hash the program and record the entire Sponge's trace for program attestation.
     fn fill_program_hash_trace(&mut self) {
-        let padded_program_length = Self::padded_program_length(&self.program);
-
-        // padding is one 1, then as many zeros as necessary: [1, 0, 0, …]
-        let program_iter = self.program.to_bwords().into_iter();
-        let one_iter = [BFieldElement::one()].into_iter();
-        let zeros_iter = [BFieldElement::zero()].into_iter().cycle();
-        let padded_input = program_iter
-            .chain(one_iter)
-            .chain(zeros_iter)
-            .take(padded_program_length);
-
+        let padded_program = Self::hash_input_pad_program(&self.program);
         let mut program_sponge = StarkHasher::init();
-        for chunk in padded_input.chunks(StarkHasher::RATE).into_iter() {
+        for chunk in padded_program.chunks(StarkHasher::RATE) {
             program_sponge.state[..StarkHasher::RATE]
                 .iter_mut()
                 .zip_eq(chunk)
-                .for_each(|(sponge_state_elem, absorb_elem)| *sponge_state_elem = absorb_elem);
+                .for_each(|(sponge_state_elem, &absorb_elem)| *sponge_state_elem = absorb_elem);
             let hash_trace = StarkHasher::trace(&mut program_sponge);
             let trace_addendum = HashTable::convert_to_hash_table_rows(hash_trace);
 
@@ -131,6 +121,20 @@ impl AlgebraicExecutionTrace {
         let program_digest = Digest::new(program_digest);
         let expected_digest = self.program.hash::<StarkHasher>();
         assert_eq!(expected_digest, program_digest);
+    }
+
+    fn hash_input_pad_program(program: &Program) -> Vec<BFieldElement> {
+        let padded_program_length = Self::padded_program_length(program);
+
+        // padding is one 1, then as many zeros as necessary: [1, 0, 0, …]
+        let program_iter = program.to_bwords().into_iter();
+        let one_iter = [BFieldElement::one()].into_iter();
+        let zeros_iter = [BFieldElement::zero()].into_iter().cycle();
+        program_iter
+            .chain(one_iter)
+            .chain(zeros_iter)
+            .take(padded_program_length)
+            .collect()
     }
 
     pub fn program_table_length(&self) -> usize {
@@ -283,5 +287,24 @@ impl AlgebraicExecutionTrace {
         let limb_hi = (limb >> 8) & 0xff;
         self.lookup_table_lookup_multiplicities[limb_lo as usize] += 1;
         self.lookup_table_lookup_multiplicities[limb_hi as usize] += 1;
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::triton_asm;
+    use crate::triton_program;
+    use twenty_first::shared_math::b_field_element::BFIELD_ONE;
+
+    use super::*;
+
+    #[test]
+    fn pad_program_requiring_no_padding_zeros() {
+        let eight_nops = triton_asm![nop; 8];
+        let program = triton_program!({&eight_nops} halt);
+        let padded_program = AlgebraicExecutionTrace::hash_input_pad_program(&program);
+
+        let expected = vec![program.to_bwords(), vec![BFIELD_ONE]].concat();
+        assert_eq!(expected, padded_program);
     }
 }
