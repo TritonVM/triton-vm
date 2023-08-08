@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::fmt::Display;
+use std::hash::Hash;
 use std::io::Cursor;
 
 use anyhow::bail;
@@ -184,10 +185,10 @@ impl Program {
     /// See also [`trace_execution`](Self::trace_execution) and [`debug`](Self::debug).
     pub fn run(
         &self,
-        public_input: Vec<BFieldElement>,
-        secret_input: Vec<BFieldElement>,
+        public_input: PublicInput,
+        non_determinism: NonDeterminism<BFieldElement>,
     ) -> Result<Vec<BFieldElement>> {
-        let mut state = VMState::new(self, public_input, secret_input);
+        let mut state = VMState::new(self, public_input, non_determinism);
         while !state.halting {
             state.step()?;
         }
@@ -205,11 +206,11 @@ impl Program {
     /// [run]: Self::run
     pub fn trace_execution(
         &self,
-        public_input: Vec<BFieldElement>,
-        secret_input: Vec<BFieldElement>,
+        public_input: PublicInput,
+        non_determinism: NonDeterminism<BFieldElement>,
     ) -> Result<(AlgebraicExecutionTrace, Vec<BFieldElement>)> {
         let mut aet = AlgebraicExecutionTrace::new(self.clone());
-        let mut state = VMState::new(self, public_input, secret_input);
+        let mut state = VMState::new(self, public_input, non_determinism);
         assert_eq!(self.len_bwords(), aet.instruction_multiplicities.len());
 
         while !state.halting {
@@ -247,15 +248,15 @@ impl Program {
     /// [`trace_execution`](Self::trace_execution).
     pub fn debug<'pgm>(
         &'pgm self,
-        public_input: Vec<BFieldElement>,
-        secret_input: Vec<BFieldElement>,
+        public_input: PublicInput,
+        non_determinism: NonDeterminism<BFieldElement>,
         initial_state: Option<VMState<'pgm>>,
         num_cycles_to_execute: Option<u32>,
     ) -> (Vec<VMState<'pgm>>, Option<Error>) {
         let mut states = vec![];
         let mut state = match initial_state {
             Some(initial_state) => initial_state,
-            None => VMState::new(self, public_input, secret_input),
+            None => VMState::new(self, public_input, non_determinism),
         };
 
         let max_cycles = match num_cycles_to_execute {
@@ -288,14 +289,14 @@ impl Program {
     /// [debug]: Self::debug
     pub fn debug_terminal_state<'pgm>(
         &'pgm self,
-        public_input: Vec<BFieldElement>,
-        secret_input: Vec<BFieldElement>,
+        public_input: PublicInput,
+        non_determinism: NonDeterminism<BFieldElement>,
         initial_state: Option<VMState<'pgm>>,
         num_cycles_to_execute: Option<u32>,
     ) -> Result<VMState<'pgm>, (Error, VMState<'pgm>)> {
         let mut state = match initial_state {
             Some(initial_state) => initial_state,
-            None => VMState::new(self, public_input, secret_input),
+            None => VMState::new(self, public_input, non_determinism),
         };
 
         let max_cycles = match num_cycles_to_execute {
@@ -328,8 +329,8 @@ impl Program {
     /// [`debug`](Self::debug).
     pub fn profile(
         labelled_instructions: &[LabelledInstruction],
-        public_input: Vec<BFieldElement>,
-        secret_input: Vec<BFieldElement>,
+        public_input: PublicInput,
+        non_determinism: NonDeterminism<BFieldElement>,
     ) -> Result<(Vec<BFieldElement>, Vec<ProfileLine>)> {
         let address_to_label_map = build_label_to_address_map(labelled_instructions)
             .into_iter()
@@ -339,7 +340,7 @@ impl Program {
         let mut profile = vec![];
 
         let program = Self::new(labelled_instructions);
-        let mut state = VMState::new(&program, public_input, secret_input);
+        let mut state = VMState::new(&program, public_input, non_determinism);
         while !state.halting {
             if let Instruction::Call(address) = state.current_instruction()? {
                 let address = address.value() as usize;
@@ -385,8 +386,174 @@ impl ProfileLine {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, BFieldCodec)]
+pub struct PublicInput {
+    pub individual_tokens: Vec<BFieldElement>,
+}
+
+impl From<Vec<BFieldElement>> for PublicInput {
+    fn from(individual_tokens: Vec<BFieldElement>) -> Self {
+        PublicInput { individual_tokens }
+    }
+}
+
+impl From<&Vec<BFieldElement>> for PublicInput {
+    fn from(tokens: &Vec<BFieldElement>) -> Self {
+        PublicInput {
+            individual_tokens: tokens.to_owned(),
+        }
+    }
+}
+
+impl From<&[BFieldElement]> for PublicInput {
+    fn from(tokens: &[BFieldElement]) -> Self {
+        PublicInput {
+            individual_tokens: tokens.to_vec(),
+        }
+    }
+}
+
+impl From<Vec<u64>> for PublicInput {
+    fn from(tokens: Vec<u64>) -> Self {
+        PublicInput {
+            individual_tokens: tokens.iter().map(|&element| element.into()).collect(),
+        }
+    }
+}
+
+impl From<[u64; 0]> for PublicInput {
+    fn from(_tokens: [u64; 0]) -> Self {
+        PublicInput {
+            individual_tokens: vec![],
+        }
+    }
+}
+
+impl PublicInput {
+    pub fn new(individual_tokens: Vec<BFieldElement>) -> Self {
+        PublicInput { individual_tokens }
+    }
+}
+
+/// All sources of non-determinism for a program. This includes elements that can be read using
+/// instruction `divine`, digests that can be read using instruction `divine_sibling`,
+/// and a initial state of random-access memory.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct NonDeterminism<E>
+where
+    E: Into<BFieldElement> + Eq + Hash,
+{
+    pub individual_tokens: Vec<E>,
+    pub digests: Vec<Digest>,
+    pub ram: HashMap<E, E>,
+}
+
+impl From<Vec<BFieldElement>> for NonDeterminism<BFieldElement> {
+    fn from(tokens: Vec<BFieldElement>) -> Self {
+        NonDeterminism {
+            individual_tokens: tokens,
+            digests: vec![],
+            ram: HashMap::new(),
+        }
+    }
+}
+
+impl From<&[BFieldElement]> for NonDeterminism<BFieldElement> {
+    fn from(tokens: &[BFieldElement]) -> Self {
+        NonDeterminism {
+            individual_tokens: tokens.to_vec(),
+            digests: vec![],
+            ram: HashMap::new(),
+        }
+    }
+}
+
+impl From<Vec<u64>> for NonDeterminism<BFieldElement> {
+    fn from(tokens: Vec<u64>) -> Self {
+        NonDeterminism {
+            individual_tokens: tokens.iter().map(|&element| element.into()).collect(),
+            digests: vec![],
+            ram: HashMap::new(),
+        }
+    }
+}
+
+impl From<Vec<u64>> for NonDeterminism<u64> {
+    fn from(individual_tokens: Vec<u64>) -> Self {
+        NonDeterminism {
+            individual_tokens,
+            digests: vec![],
+            ram: HashMap::new(),
+        }
+    }
+}
+
+impl From<[u64; 0]> for NonDeterminism<BFieldElement> {
+    fn from(_: [u64; 0]) -> Self {
+        NonDeterminism {
+            individual_tokens: vec![],
+            digests: vec![],
+            ram: HashMap::new(),
+        }
+    }
+}
+
+impl From<[u64; 0]> for NonDeterminism<u64> {
+    fn from(_: [u64; 0]) -> Self {
+        NonDeterminism {
+            individual_tokens: vec![],
+            digests: vec![],
+            ram: HashMap::new(),
+        }
+    }
+}
+
+impl From<&NonDeterminism<u64>> for NonDeterminism<BFieldElement> {
+    fn from(other: &NonDeterminism<u64>) -> Self {
+        let individual_tokens = other
+            .individual_tokens
+            .iter()
+            .map(|&element| element.into())
+            .collect();
+        let ram = other
+            .ram
+            .iter()
+            .map(|(&key, &value)| (key.into(), value.into()))
+            .collect();
+        NonDeterminism {
+            individual_tokens,
+            digests: other.digests.clone(),
+            ram,
+        }
+    }
+}
+
+impl<E> NonDeterminism<E>
+where
+    E: Into<BFieldElement> + Eq + Hash,
+{
+    pub fn new(individual_tokens: Vec<E>) -> Self {
+        NonDeterminism {
+            individual_tokens,
+            digests: vec![],
+            ram: HashMap::new(),
+        }
+    }
+
+    pub fn with_digests(mut self, digests: Vec<Digest>) -> Self {
+        self.digests = digests;
+        self
+    }
+
+    pub fn with_ram(mut self, ram: HashMap<E, E>) -> Self {
+        self.ram = ram;
+        self
+    }
+}
+
 #[cfg(test)]
 mod test {
+    use itertools::Itertools;
     use rand::thread_rng;
     use rand::Rng;
     use twenty_first::shared_math::tip5::Tip5;
@@ -470,6 +637,38 @@ mod test {
     }
 
     #[test]
+    fn from_various_types_to_public_input() {
+        let tokens = thread_rng().gen::<[BFieldElement; 12]>().to_vec();
+        let public_input = PublicInput::new(tokens.clone());
+
+        assert_eq!(public_input, tokens.clone().into());
+        assert_eq!(public_input, (&tokens).into());
+        assert_eq!(public_input, tokens[..].into());
+        assert_eq!(public_input, (&tokens[..]).into());
+
+        let tokens = tokens.into_iter().map(|e| e.value()).collect_vec();
+        assert_eq!(public_input, tokens.into());
+
+        assert_eq!(PublicInput::new(vec![]), [].into());
+    }
+
+    #[test]
+    fn from_various_types_to_non_determinism() {
+        let tokens = thread_rng().gen::<[BFieldElement; 12]>().to_vec();
+        let non_determinism = NonDeterminism::new(tokens.clone());
+
+        assert_eq!(non_determinism, tokens.clone().into());
+        assert_eq!(non_determinism, tokens[..].into());
+        assert_eq!(non_determinism, (&tokens[..]).into());
+
+        let tokens = tokens.into_iter().map(|e| e.value()).collect_vec();
+        assert_eq!(non_determinism, tokens.into());
+
+        assert_eq!(NonDeterminism::<u64>::new(vec![]), [].into());
+        assert_eq!(NonDeterminism::<BFieldElement>::new(vec![]), [].into());
+    }
+
+    #[test]
     fn test_creating_program_from_code() {
         let element_3 = thread_rng().gen_range(0_u64..BFieldElement::P);
         let element_2 = 1337_usize;
@@ -500,17 +699,17 @@ mod test {
         let program = triton_program!(
             {label}: push 1 assert halt
         );
-        program.run(vec![], vec![]).unwrap();
+        program.run([].into(), [].into()).unwrap();
     }
 
     #[test]
     fn test_profile() {
         let labelled_instructions = calculate_new_mmr_peaks_from_append_with_safe_lists();
         let (profile_output, profile) =
-            Program::profile(&labelled_instructions, vec![], vec![]).unwrap();
+            Program::profile(&labelled_instructions, [].into(), [].into()).unwrap();
         let program = Program::new(&labelled_instructions);
         let debug_terminal_state = program
-            .debug_terminal_state(vec![], vec![], None, None)
+            .debug_terminal_state([].into(), [].into(), None, None)
             .unwrap();
         assert_eq!(profile_output, debug_terminal_state.public_output);
         assert_eq!(
@@ -535,7 +734,7 @@ mod test {
             inner_fn:
                 push -1 add return
         };
-        let (_, profile) = Program::profile(&labelled_instructions, vec![], vec![]).unwrap();
+        let (_, profile) = Program::profile(&labelled_instructions, [].into(), [].into()).unwrap();
 
         println!();
         for line in profile.iter() {

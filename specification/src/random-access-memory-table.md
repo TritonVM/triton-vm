@@ -159,7 +159,6 @@ Both types of challenges are X-field elements, _i.e._, elements of $\mathbb{F}_{
 
 ## Initial Constraints
 
-1. RAM value `ramv` is 0 or `previous_instruction` is `write_mem`.
 1. The first coefficient of the Bézout coefficient polynomial 0 `bcpc0` is 0.
 1. The Bézout coefficient 0 `bc0` is 0.
 1. The Bézout coefficient 1 `bc1` is equal to the first coefficient of the Bézout coefficient polynomial `bcpc1`.
@@ -170,7 +169,6 @@ Both types of challenges are X-field elements, _i.e._, elements of $\mathbb{F}_{
 
 ### Initial Constraints as Polynomials
 
-1. `ramv·(previous_instruction - opcode(write_mem))`
 1. `bcpc0`
 1. `bc0`
 1. `bc1 - bcpc1`
@@ -186,7 +184,6 @@ None.
 ## Transition Constraints
 
 1. If `(ramp - ramp')` is 0, then `iord` is 0, else `iord` is the multiplicative inverse of `(ramp' - ramp)`.
-1. If the `ramp` changes and `previous_instruction` in the next row is not `write_mem`, then the RAM value `ramv` in the next row is 0.
 1. If the `ramp` does not change and `previous_instruction` in the next row is not `write_mem`, then the RAM value `ramv` does not change.
 1. The Bézout coefficient polynomial coefficients are allowed to change only when the `ramp` changes.
 1. The running product polynomial `rpp` accumulates a factor `(🧼 - ramp)` whenever `ramp` changes.
@@ -197,7 +194,6 @@ None.
 Written as Disjunctive Normal Form, the same constraints can be expressed as:
 1. `iord` is 0 or `iord` is the inverse of `(ramp' - ramp)`.
 1. `(ramp' - ramp)` is zero or `iord` is the inverse of `(ramp' - ramp)`.
-1. `(ramp' - ramp)` is zero or `previous_instruction'` is `opcode(write_mem)` or `ramv'` 0.
 1. `(ramp' - ramp)` non-zero or `previous_instruction'` is `opcode(write_mem)` or `ramv'` is `ramv`.
 1. `bcpc0' - bcpc0` is zero or `(ramp' - ramp)` is nonzero.
 1. `bcpc1' - bcpc1` is zero or `(ramp' - ramp)` is nonzero.
@@ -213,7 +209,6 @@ Written as Disjunctive Normal Form, the same constraints can be expressed as:
 
 1. `iord·(iord·(ramp' - ramp) - 1)`
 1. `(ramp' - ramp)·(iord·(ramp' - ramp) - 1)`
-1. `(ramp' - ramp)·(previous_instruction - opcode(write_mem))·ramv'`
 1. `(1 - iord·(ramp' - ramp))·(previous_instruction - opcode(write_mem))·(ramv' - ramv)`
 1. `(iord·(ramp' - ramp) - 1)·(bcpc0' - bcpc0)`
 1. `(iord·(ramp' - ramp) - 1)·(bcpc1' - bcpc1)`

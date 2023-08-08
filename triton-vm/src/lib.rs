@@ -9,7 +9,9 @@ use anyhow::Result;
 pub use twenty_first::shared_math::b_field_element::BFieldElement;
 pub use twenty_first::shared_math::tip5::Digest;
 
-use crate::program::Program;
+pub use crate::program::NonDeterminism;
+pub use crate::program::Program;
+pub use crate::program::PublicInput;
 pub use crate::proof::Claim;
 pub use crate::proof::Proof;
 use crate::stark::Stark;
@@ -55,7 +57,7 @@ pub mod vm;
 ///         push 15 eq assert
 ///         return
 /// );
-/// let output = program.run(vec![3_u64.into()], vec![]).unwrap();
+/// let output = program.run(vec![3].into(), [].into()).unwrap();
 /// assert_eq!(1, output[0].value());
 /// ```
 ///
@@ -302,27 +304,13 @@ pub(crate) use ensure_eq;
 pub fn prove_program(
     program: &Program,
     public_input: &[u64],
-    secret_input: &[u64],
+    non_determinism: &NonDeterminism<u64>,
 ) -> Result<(StarkParameters, Claim, Proof)> {
-    let canonical_representation_error =
-        "input must contain only elements in canonical representation, i.e., \
-        elements smaller than the prime field's modulus 2^64 - 2^32 + 1.";
-    if public_input.iter().any(|&e| e > BFieldElement::MAX) {
-        bail!("Public {canonical_representation_error})");
-    }
-    if secret_input.iter().any(|&e| e > BFieldElement::MAX) {
-        bail!("Secret {canonical_representation_error}");
-    }
+    input_elements_have_unique_representation(public_input, non_determinism)?;
 
-    // Convert the public and secret inputs to BFieldElements.
-    let public_input = public_input
-        .iter()
-        .map(|&e| BFieldElement::new(e))
-        .collect::<Vec<_>>();
-    let secret_input = secret_input
-        .iter()
-        .map(|&e| BFieldElement::new(e))
-        .collect::<Vec<_>>();
+    // Convert public and secret inputs to BFieldElements.
+    let public_input: PublicInput = public_input.to_owned().into();
+    let non_determinism = non_determinism.into();
 
     // Generate
     // - the witness required for proof generation, i.e., the Algebraic Execution Trace (AET), and
@@ -335,7 +323,7 @@ pub fn prove_program(
     // - if any of the two inputs does not conform to the program,
     // - because of a bug in the program, among other things.
     // If the VM crashes, proof generation will fail.
-    let (aet, public_output) = program.trace_execution(public_input.clone(), secret_input)?;
+    let (aet, public_output) = program.trace_execution(public_input.clone(), non_determinism)?;
 
     // Hash the program to obtain its digest.
     let program_digest = program.hash::<StarkHasher>();
@@ -347,7 +335,7 @@ pub fn prove_program(
     // proof is zero-knowledge with respect to everything else.
     let claim = Claim {
         program_digest,
-        input: public_input,
+        input: public_input.individual_tokens,
         output: public_output,
     };
 
@@ -357,18 +345,40 @@ pub fn prove_program(
     Ok((parameters, claim, proof))
 }
 
+fn input_elements_have_unique_representation(
+    public_input: &[u64],
+    non_determinism: &NonDeterminism<u64>,
+) -> Result<()> {
+    let max = BFieldElement::MAX;
+    let canonical_representation_error =
+        "must contain only elements in canonical representation, i.e., \
+        elements smaller than the prime field's modulus 2^64 - 2^32 + 1.";
+    if public_input.iter().any(|&e| e > max) {
+        bail!("Public input {canonical_representation_error})");
+    }
+    if non_determinism.individual_tokens.iter().any(|&e| e > max) {
+        bail!("Secret input {canonical_representation_error}");
+    }
+    if non_determinism.ram.keys().any(|&e| e > max) {
+        bail!("RAM addresses {canonical_representation_error}");
+    }
+    if non_determinism.ram.values().any(|&e| e > max) {
+        bail!("RAM values {canonical_representation_error}");
+    }
+    Ok(())
+}
+
 /// A convenience function for proving a [`Claim`] and the program that claim corresponds to.
 /// Method [`prove_program`] gives a simpler interface with less control.
 pub fn prove(
     parameters: &StarkParameters,
     claim: &Claim,
     program: &Program,
-    secret_input: &[BFieldElement],
+    non_determinism: NonDeterminism<BFieldElement>,
 ) -> Result<Proof> {
     let program_digest = program.hash::<StarkHasher>();
     ensure_eq!(program_digest, claim.program_digest);
-    let (aet, public_output) =
-        program.trace_execution(claim.input.clone(), secret_input.to_vec())?;
+    let (aet, public_output) = program.trace_execution((&claim.input).into(), non_determinism)?;
     ensure_eq!(public_output, claim.output);
     let proof = Stark::prove(parameters, claim, &aet, &mut None);
     Ok(proof)
@@ -382,6 +392,9 @@ pub fn verify(parameters: &StarkParameters, claim: &Claim, proof: &Proof) -> boo
 
 #[cfg(test)]
 mod public_interface_tests {
+    use rand::thread_rng;
+    use rand::Rng;
+
     use crate::shared_tests::create_proofs_directory;
     use crate::shared_tests::load_proof;
     use crate::shared_tests::proof_file_exists;
@@ -421,8 +434,9 @@ mod public_interface_tests {
             17174585125955027015,
         ];
 
+        let non_determinism = NonDeterminism::new(secret_input);
         let (parameters, claim, proof) =
-            prove_program(&program, &public_input, &secret_input).unwrap();
+            prove_program(&program, &public_input, &non_determinism).unwrap();
         assert_eq!(
             StarkParameters::default(),
             parameters,
@@ -447,6 +461,24 @@ mod public_interface_tests {
     }
 
     #[test]
+    fn lib_use_initial_ram() {
+        let program = triton_program!(
+            push 51 read_mem
+            push 42 read_mem
+            swap 1 swap 2 mul
+            write_io halt
+        );
+
+        let initial_ram = [(42, 17), (51, 13)].into();
+        let non_determinism = NonDeterminism::new(vec![]).with_ram(initial_ram);
+        let (parameters, claim, proof) = prove_program(&program, &[], &non_determinism).unwrap();
+        assert_eq!(13 * 17, claim.output[0].value());
+
+        let verdict = verify(&parameters, &claim, &proof);
+        assert!(verdict);
+    }
+
+    #[test]
     fn lib_prove_verify() {
         let parameters = StarkParameters::default();
         let program = triton_program!(push 1 assert halt);
@@ -456,7 +488,7 @@ mod public_interface_tests {
             output: vec![],
         };
 
-        let proof = prove(&parameters, &claim, &program, &[]).unwrap();
+        let proof = prove(&parameters, &claim, &program, [].into()).unwrap();
         let verdict = verify(&parameters, &claim, &proof);
         assert!(verdict);
     }
@@ -469,12 +501,74 @@ mod public_interface_tests {
         }
 
         let program = triton_program!(nop halt);
-        let (_, _, proof) = prove_program(&program, &[], &[]).unwrap();
+        let (_, _, proof) = prove_program(&program, &[], &[].into()).unwrap();
 
         save_proof(filename, proof.clone()).unwrap();
         let loaded_proof = load_proof(filename).unwrap();
 
         assert_eq!(proof, loaded_proof);
+    }
+
+    #[test]
+    fn canonical_representation_failures() {
+        let valid_public_input = thread_rng()
+            .gen::<[BFieldElement; 10]>()
+            .map(|bfe| bfe.value());
+        let invalid_public_input = [thread_rng().gen_range(BFieldElement::MAX..=u64::MAX)];
+
+        let valid_secret_input = thread_rng()
+            .gen::<[BFieldElement; 10]>()
+            .map(|bfe| bfe.value());
+        let invalid_secret_input = [thread_rng().gen_range(BFieldElement::MAX..=u64::MAX)];
+
+        let valid_initial_ram = thread_rng()
+            .gen::<[(BFieldElement, BFieldElement); 10]>()
+            .map(|(key, val)| (key.value(), val.value()));
+        let invalid_key_initial_ram = [(
+            thread_rng().gen_range(BFieldElement::MAX..=u64::MAX),
+            thread_rng().gen::<BFieldElement>().value(),
+        )];
+        let invalid_val_initial_ram = [(
+            thread_rng().gen::<BFieldElement>().value(),
+            thread_rng().gen_range(BFieldElement::MAX..=u64::MAX),
+        )];
+
+        let valid_non_determinism =
+            NonDeterminism::new(valid_secret_input.into()).with_ram(valid_initial_ram.into());
+        let invalid_secret_input_non_determinism =
+            NonDeterminism::new(invalid_secret_input.into()).with_ram(valid_initial_ram.into());
+        let invalid_key_initial_ram_non_determinism =
+            NonDeterminism::new(valid_secret_input.into()).with_ram(invalid_key_initial_ram.into());
+        let invalid_val_initial_ram_non_determinism =
+            NonDeterminism::new(valid_secret_input.into()).with_ram(invalid_val_initial_ram.into());
+
+        let public_input_error = input_elements_have_unique_representation(
+            &invalid_public_input,
+            &valid_non_determinism,
+        )
+        .unwrap_err();
+        assert!(public_input_error.to_string().contains("Public input"));
+
+        let secret_input_error = input_elements_have_unique_representation(
+            &valid_public_input,
+            &invalid_secret_input_non_determinism,
+        )
+        .unwrap_err();
+        assert!(secret_input_error.to_string().contains("Secret input"));
+
+        let initial_ram_key_error = input_elements_have_unique_representation(
+            &valid_public_input,
+            &invalid_key_initial_ram_non_determinism,
+        )
+        .unwrap_err();
+        assert!(initial_ram_key_error.to_string().contains("RAM addresses"));
+
+        let initial_ram_val_error = input_elements_have_unique_representation(
+            &valid_public_input,
+            &invalid_val_initial_ram_non_determinism,
+        )
+        .unwrap_err();
+        assert!(initial_ram_val_error.to_string().contains("RAM values"));
     }
 
     /// Invocations of the `ensure_eq!` macro for testing purposes must be wrapped in their own
@@ -503,7 +597,7 @@ mod public_interface_tests {
         let source_code = triton_asm!(push 6 {&snippet_0} {&snippet_1} halt);
 
         let program = triton_program!({ &source_code });
-        let public_output = program.run(vec![], vec![]).unwrap();
+        let public_output = program.run([].into(), [].into()).unwrap();
 
         let expected_output = [8, 7, 6].map(BFieldElement::new).to_vec();
         assert_eq!(expected_output, public_output);

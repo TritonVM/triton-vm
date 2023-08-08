@@ -23,6 +23,7 @@ use triton_vm::prove_program;
 use triton_vm::stark::Stark;
 use triton_vm::stark::StarkHasher;
 use triton_vm::triton_program;
+use triton_vm::NonDeterminism;
 use triton_vm::Proof;
 use triton_vm::StarkParameters;
 
@@ -30,7 +31,7 @@ use triton_vm::StarkParameters;
 struct ProgramAndInput {
     program: Program,
     public_input: Vec<u64>,
-    secret_input: Vec<u64>,
+    non_determinism: NonDeterminism<u64>,
 }
 
 /// The measurement unit for Criterion.
@@ -157,7 +158,7 @@ fn program_verify_sudoku() -> ProgramAndInput {
     ProgramAndInput {
         program: VERIFY_SUDOKU.clone(),
         public_input: sudoku.to_vec(),
-        secret_input: vec![],
+        non_determinism: [].into(),
     }
 }
 
@@ -167,7 +168,7 @@ fn program_fib(nth_element: u64) -> ProgramAndInput {
     ProgramAndInput {
         program: FIBONACCI_SEQUENCE.clone(),
         public_input: vec![nth_element],
-        secret_input: vec![],
+        non_determinism: [].into(),
     }
 }
 
@@ -175,7 +176,7 @@ fn program_halt() -> ProgramAndInput {
     ProgramAndInput {
         program: triton_program!(halt),
         public_input: vec![],
-        secret_input: vec![],
+        non_determinism: [].into(),
     }
 }
 
@@ -244,7 +245,7 @@ fn sum_of_proof_lengths_for_source_code(
         let (_, _, proof) = prove_program(
             &program_and_input.program,
             &program_and_input.public_input,
-            &program_and_input.secret_input,
+            &program_and_input.non_determinism,
         )
         .unwrap();
         sum_of_proof_lengths += proof.encode().len();
@@ -261,7 +262,7 @@ fn generate_proof_and_benchmark_id(
     let (parameters, _, proof) = prove_program(
         &program_and_input.program,
         &program_and_input.public_input,
-        &program_and_input.secret_input,
+        &program_and_input.non_determinism,
     )
     .unwrap();
     let log_2_fri_domain_length = log_2_fri_domain_length(&parameters, &proof);
