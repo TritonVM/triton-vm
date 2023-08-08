@@ -385,45 +385,43 @@ impl ProfileLine {
     }
 }
 
-#[derive(Clone, Debug, BFieldCodec)]
+#[derive(Clone, Debug, PartialEq, Eq, BFieldCodec)]
 pub struct PublicInput {
     pub individual_tokens: Vec<BFieldElement>,
 }
 
 impl From<Vec<BFieldElement>> for PublicInput {
-    fn from(stream: Vec<BFieldElement>) -> Self {
-        PublicInput {
-            individual_tokens: stream,
-        }
+    fn from(individual_tokens: Vec<BFieldElement>) -> Self {
+        PublicInput { individual_tokens }
     }
 }
 
 impl From<&Vec<BFieldElement>> for PublicInput {
-    fn from(stream: &Vec<BFieldElement>) -> Self {
+    fn from(tokens: &Vec<BFieldElement>) -> Self {
         PublicInput {
-            individual_tokens: stream.to_owned(),
+            individual_tokens: tokens.to_owned(),
         }
     }
 }
 
 impl From<&[BFieldElement]> for PublicInput {
-    fn from(stream: &[BFieldElement]) -> Self {
+    fn from(tokens: &[BFieldElement]) -> Self {
         PublicInput {
-            individual_tokens: stream.to_vec(),
+            individual_tokens: tokens.to_vec(),
         }
     }
 }
 
 impl From<Vec<u64>> for PublicInput {
-    fn from(stream: Vec<u64>) -> Self {
+    fn from(tokens: Vec<u64>) -> Self {
         PublicInput {
-            individual_tokens: stream.iter().map(|&element| element.into()).collect(),
+            individual_tokens: tokens.iter().map(|&element| element.into()).collect(),
         }
     }
 }
 
 impl From<[u64; 0]> for PublicInput {
-    fn from(_stream: [u64; 0]) -> Self {
+    fn from(_tokens: [u64; 0]) -> Self {
         PublicInput {
             individual_tokens: vec![],
         }
@@ -431,10 +429,8 @@ impl From<[u64; 0]> for PublicInput {
 }
 
 impl PublicInput {
-    pub fn new(stream: Vec<BFieldElement>) -> Self {
-        PublicInput {
-            individual_tokens: stream,
-        }
+    pub fn new(individual_tokens: Vec<BFieldElement>) -> Self {
+        PublicInput { individual_tokens }
     }
 }
 
@@ -550,6 +546,7 @@ impl<E: Into<BFieldElement>> NonDeterminism<E> {
 
 #[cfg(test)]
 mod test {
+    use itertools::Itertools;
     use rand::thread_rng;
     use rand::Rng;
     use twenty_first::shared_math::tip5::Tip5;
@@ -630,6 +627,22 @@ mod test {
     fn empty_program_is_empty() {
         let program = triton_program!();
         assert!(program.is_empty());
+    }
+
+    #[test]
+    fn from_various_types_to_public_input() {
+        let tokens = thread_rng().gen::<[BFieldElement; 12]>().to_vec();
+        let public_input = PublicInput::new(tokens.clone());
+
+        assert_eq!(public_input, tokens.clone().into());
+        assert_eq!(public_input, (&tokens).into());
+        assert_eq!(public_input, tokens[..].into());
+        assert_eq!(public_input, (&tokens[..]).into());
+
+        let tokens = tokens.into_iter().map(|e| e.value()).collect_vec();
+        assert_eq!(public_input, tokens.into());
+
+        assert_eq!(PublicInput::new(vec![]), [].into());
     }
 
     #[test]
