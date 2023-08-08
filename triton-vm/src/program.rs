@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::fmt::Display;
+use std::hash::Hash;
 use std::io::Cursor;
 
 use anyhow::bail;
@@ -437,8 +438,11 @@ impl PublicInput {
 /// All sources of non-determinism for a program. This includes elements that can be read using
 /// instruction `divine`, digests that can be read using instruction `divine_sibling`,
 /// and a initial state of random-access memory.
-#[derive(Clone, Debug)]
-pub struct NonDeterminism<E: Into<BFieldElement>> {
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct NonDeterminism<E>
+where
+    E: Into<BFieldElement> + Eq + Hash,
+{
     pub individual_tokens: Vec<E>,
     pub digests: Vec<Digest>,
     pub ram: HashMap<E, E>,
@@ -524,7 +528,10 @@ impl From<&NonDeterminism<u64>> for NonDeterminism<BFieldElement> {
     }
 }
 
-impl<E: Into<BFieldElement>> NonDeterminism<E> {
+impl<E> NonDeterminism<E>
+where
+    E: Into<BFieldElement> + Eq + Hash,
+{
     pub fn new(individual_tokens: Vec<E>) -> Self {
         NonDeterminism {
             individual_tokens,
@@ -643,6 +650,22 @@ mod test {
         assert_eq!(public_input, tokens.into());
 
         assert_eq!(PublicInput::new(vec![]), [].into());
+    }
+
+    #[test]
+    fn from_various_types_to_non_determinism() {
+        let tokens = thread_rng().gen::<[BFieldElement; 12]>().to_vec();
+        let non_determinism = NonDeterminism::new(tokens.clone());
+
+        assert_eq!(non_determinism, tokens.clone().into());
+        assert_eq!(non_determinism, tokens[..].into());
+        assert_eq!(non_determinism, (&tokens[..]).into());
+
+        let tokens = tokens.into_iter().map(|e| e.value()).collect_vec();
+        assert_eq!(non_determinism, tokens.into());
+
+        assert_eq!(NonDeterminism::<u64>::new(vec![]), [].into());
+        assert_eq!(NonDeterminism::<BFieldElement>::new(vec![]), [].into());
     }
 
     #[test]
