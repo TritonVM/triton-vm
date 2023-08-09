@@ -1067,57 +1067,23 @@ pub fn interpolant_degree(padded_height: usize, num_trace_randomizers: usize) ->
 #[cfg(test)]
 mod master_table_tests {
     use ndarray::s;
+    use ndarray::Array2;
     use num_traits::Zero;
+    use strum::EnumCount;
     use strum::IntoEnumIterator;
     use twenty_first::shared_math::b_field_element::BFieldElement;
     use twenty_first::shared_math::traits::FiniteField;
 
     use crate::arithmetic_domain::ArithmeticDomain;
-    use crate::stark::triton_stark_tests::master_base_table_for_low_security_level;
-    use crate::stark::triton_stark_tests::master_tables_for_low_security_level;
-    use crate::table::cascade_table;
-    use crate::table::degree_lowering_table;
+    use crate::stark::triton_stark_tests::*;
     use crate::table::degree_lowering_table::DegreeLoweringBaseTableColumn;
     use crate::table::degree_lowering_table::DegreeLoweringExtTableColumn;
-    use crate::table::hash_table;
-    use crate::table::jump_stack_table;
-    use crate::table::lookup_table;
-    use crate::table::master_table::consistency_quotient_zerofier_inverse;
-    use crate::table::master_table::initial_quotient_zerofier_inverse;
-    use crate::table::master_table::terminal_quotient_zerofier_inverse;
-    use crate::table::master_table::transition_quotient_zerofier_inverse;
-    use crate::table::master_table::MasterTable;
     use crate::table::master_table::TableId::*;
-    use crate::table::master_table::EXT_DEGREE_LOWERING_TABLE_END;
-    use crate::table::master_table::NUM_BASE_COLUMNS;
-    use crate::table::master_table::NUM_COLUMNS;
-    use crate::table::master_table::NUM_EXT_COLUMNS;
-    use crate::table::op_stack_table;
-    use crate::table::processor_table;
-    use crate::table::program_table;
-    use crate::table::ram_table;
-    use crate::table::table_column::CascadeBaseTableColumn;
-    use crate::table::table_column::CascadeExtTableColumn;
-    use crate::table::table_column::HashBaseTableColumn;
-    use crate::table::table_column::HashExtTableColumn;
-    use crate::table::table_column::JumpStackBaseTableColumn;
-    use crate::table::table_column::JumpStackExtTableColumn;
-    use crate::table::table_column::LookupBaseTableColumn;
-    use crate::table::table_column::LookupExtTableColumn;
-    use crate::table::table_column::MasterBaseTableColumn;
-    use crate::table::table_column::MasterExtTableColumn;
-    use crate::table::table_column::OpStackBaseTableColumn;
-    use crate::table::table_column::OpStackExtTableColumn;
-    use crate::table::table_column::ProcessorBaseTableColumn;
-    use crate::table::table_column::ProcessorExtTableColumn;
-    use crate::table::table_column::ProgramBaseTableColumn;
-    use crate::table::table_column::ProgramExtTableColumn;
-    use crate::table::table_column::RamBaseTableColumn;
-    use crate::table::table_column::RamExtTableColumn;
-    use crate::table::table_column::U32BaseTableColumn;
-    use crate::table::table_column::U32ExtTableColumn;
-    use crate::table::u32_table;
+    use crate::table::table_column::*;
+    use crate::table::*;
     use crate::triton_program;
+
+    use super::*;
 
     #[test]
     fn base_table_width_is_correct() {
@@ -1486,5 +1452,83 @@ mod master_table_tests {
                 column.master_ext_table_index()
             );
         }
+    }
+
+    #[test]
+    fn master_ext_table_mut() {
+        let num_randomizer_polynomials = 3;
+
+        let trace_domain = ArithmeticDomain::of_length(1 << 8);
+        let randomized_trace_domain = ArithmeticDomain::of_length(1 << 9);
+        let quotient_domain = ArithmeticDomain::of_length(1 << 10);
+        let fri_domain = ArithmeticDomain::of_length(1 << 11);
+
+        let randomized_trace_table = Array2::zeros((
+            randomized_trace_domain.length,
+            NUM_EXT_COLUMNS + num_randomizer_polynomials,
+        ));
+
+        let mut master_table = MasterExtTable {
+            num_trace_randomizers: 16,
+            num_randomizer_polynomials,
+            trace_domain,
+            randomized_trace_domain,
+            quotient_domain,
+            fri_domain,
+            randomized_trace_table,
+            low_degree_extended_table: None,
+            interpolation_polynomials: None,
+        };
+
+        let num_rows = trace_domain.length;
+        Array2::from_elem((num_rows, ProgramExtTableColumn::COUNT), 1.into())
+            .move_into(&mut master_table.table_mut(ProgramTable));
+        Array2::from_elem((num_rows, ProcessorExtTableColumn::COUNT), 2.into())
+            .move_into(&mut master_table.table_mut(ProcessorTable));
+        Array2::from_elem((num_rows, OpStackExtTableColumn::COUNT), 3.into())
+            .move_into(&mut master_table.table_mut(OpStackTable));
+        Array2::from_elem((num_rows, RamExtTableColumn::COUNT), 4.into())
+            .move_into(&mut master_table.table_mut(RamTable));
+        Array2::from_elem((num_rows, JumpStackExtTableColumn::COUNT), 5.into())
+            .move_into(&mut master_table.table_mut(JumpStackTable));
+        Array2::from_elem((num_rows, HashExtTableColumn::COUNT), 6.into())
+            .move_into(&mut master_table.table_mut(HashTable));
+        Array2::from_elem((num_rows, CascadeExtTableColumn::COUNT), 7.into())
+            .move_into(&mut master_table.table_mut(CascadeTable));
+        Array2::from_elem((num_rows, LookupExtTableColumn::COUNT), 8.into())
+            .move_into(&mut master_table.table_mut(LookupTable));
+        Array2::from_elem((num_rows, U32ExtTableColumn::COUNT), 9.into())
+            .move_into(&mut master_table.table_mut(U32Table));
+
+        let trace_domain_element = |column| {
+            let maybe_element = master_table.randomized_trace_table.get((0, column));
+            let xfe = maybe_element.unwrap().to_owned();
+            xfe.unlift().unwrap().value()
+        };
+        let not_trace_domain_element = |column| {
+            let maybe_element = master_table.randomized_trace_table.get((1, column));
+            let xfe = maybe_element.unwrap().to_owned();
+            xfe.unlift().unwrap().value()
+        };
+
+        assert_eq!(1, trace_domain_element(EXT_PROGRAM_TABLE_START));
+        assert_eq!(2, trace_domain_element(EXT_PROCESSOR_TABLE_START));
+        assert_eq!(3, trace_domain_element(EXT_OP_STACK_TABLE_START));
+        assert_eq!(4, trace_domain_element(EXT_RAM_TABLE_START));
+        assert_eq!(5, trace_domain_element(EXT_JUMP_STACK_TABLE_START));
+        assert_eq!(6, trace_domain_element(EXT_HASH_TABLE_START));
+        assert_eq!(7, trace_domain_element(EXT_CASCADE_TABLE_START));
+        assert_eq!(8, trace_domain_element(EXT_LOOKUP_TABLE_START));
+        assert_eq!(9, trace_domain_element(EXT_U32_TABLE_START));
+
+        assert_eq!(0, not_trace_domain_element(EXT_PROGRAM_TABLE_START));
+        assert_eq!(0, not_trace_domain_element(EXT_PROCESSOR_TABLE_START));
+        assert_eq!(0, not_trace_domain_element(EXT_OP_STACK_TABLE_START));
+        assert_eq!(0, not_trace_domain_element(EXT_RAM_TABLE_START));
+        assert_eq!(0, not_trace_domain_element(EXT_JUMP_STACK_TABLE_START));
+        assert_eq!(0, not_trace_domain_element(EXT_HASH_TABLE_START));
+        assert_eq!(0, not_trace_domain_element(EXT_CASCADE_TABLE_START));
+        assert_eq!(0, not_trace_domain_element(EXT_LOOKUP_TABLE_START));
+        assert_eq!(0, not_trace_domain_element(EXT_U32_TABLE_START));
     }
 }
