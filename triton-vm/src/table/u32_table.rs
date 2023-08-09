@@ -534,7 +534,7 @@ impl U32Table {
         section
     }
 
-    pub fn pad_trace(u32_table: &mut ArrayViewMut2<BFieldElement>, u32_table_len: usize) {
+    pub fn pad_trace(mut u32_table: ArrayViewMut2<BFieldElement>, u32_table_len: usize) {
         let mut padding_row = Array1::zeros([BASE_WIDTH]);
         padding_row[[CI.base_table_index()]] = Instruction::Split.opcode_b();
         padding_row[[BitsMinus33Inv.base_table_index()]] = (-BFieldElement::new(33)).inverse();

@@ -564,6 +564,7 @@ impl MasterTable<XFieldElement> for MasterExtTable {
     }
 }
 
+type PadFunction = fn(ArrayViewMut2<BFieldElement>, usize);
 type ExtendFunction = fn(ArrayView2<BFieldElement>, ArrayViewMut2<XFieldElement>, &Challenges);
 
 impl MasterBaseTable {
@@ -653,40 +654,100 @@ impl MasterBaseTable {
     /// Concretely, the Number Theory Transform (NTT) performed by the prover is particularly
     /// efficient over the used base field when the number of rows is a power of two.
     pub fn pad(&mut self) {
-        let program_table_len = self.program_table_len;
-        let main_execution_len = self.main_execution_len;
-        let hash_coprocessor_execution_len = self.hash_coprocessor_execution_len;
-        let cascade_table_len = self.cascade_table_len;
-        let u32_table_len = self.u32_coprocesor_execution_len;
+        let table_lengths = self.all_table_lengths();
 
-        let program_table = &mut self.table_mut(TableId::ProgramTable);
-        ProgramTable::pad_trace(program_table, program_table_len);
+        // Due to limitations in ndarray, a 10-way multi-slice is not possible. Hence, (1) slicing
+        // has to be done in multiple steps, and (2) cannot be put into a method.
+        let unit_distance = self.randomized_trace_domain().length / self.trace_domain().length;
+        let mut master_table_without_randomizers = self
+            .randomized_trace_table
+            .slice_mut(s![..; unit_distance, ..]);
+        let (program_table, mut rest) = master_table_without_randomizers.multi_slice_mut((
+            s![.., ..ProgramBaseTableColumn::COUNT],
+            s![.., ProgramBaseTableColumn::COUNT..],
+        ));
+        let (processor_table, mut rest) = rest.multi_slice_mut((
+            s![.., ..ProcessorBaseTableColumn::COUNT],
+            s![.., ProcessorBaseTableColumn::COUNT..],
+        ));
+        let (op_stack_table, mut rest) = rest.multi_slice_mut((
+            s![.., ..OpStackBaseTableColumn::COUNT],
+            s![.., OpStackBaseTableColumn::COUNT..],
+        ));
+        let (ram_table, mut rest) = rest.multi_slice_mut((
+            s![.., ..RamBaseTableColumn::COUNT],
+            s![.., RamBaseTableColumn::COUNT..],
+        ));
+        let (jump_stack_table, mut rest) = rest.multi_slice_mut((
+            s![.., ..JumpStackBaseTableColumn::COUNT],
+            s![.., JumpStackBaseTableColumn::COUNT..],
+        ));
+        let (hash_table, mut rest) = rest.multi_slice_mut((
+            s![.., ..HashBaseTableColumn::COUNT],
+            s![.., HashBaseTableColumn::COUNT..],
+        ));
+        let (cascade_table, mut rest) = rest.multi_slice_mut((
+            s![.., ..CascadeBaseTableColumn::COUNT],
+            s![.., CascadeBaseTableColumn::COUNT..],
+        ));
+        let (lookup_table, mut rest) = rest.multi_slice_mut((
+            s![.., ..LookupBaseTableColumn::COUNT],
+            s![.., LookupBaseTableColumn::COUNT..],
+        ));
+        let (u32_table, _) = rest.multi_slice_mut((
+            s![.., ..U32BaseTableColumn::COUNT],
+            s![.., U32BaseTableColumn::COUNT..],
+        ));
 
-        let processor_table = &mut self.table_mut(TableId::ProcessorTable);
-        ProcessorTable::pad_trace(processor_table, main_execution_len);
+        let base_tables = [
+            program_table,
+            processor_table,
+            op_stack_table,
+            ram_table,
+            jump_stack_table,
+            hash_table,
+            cascade_table,
+            lookup_table,
+            u32_table,
+        ];
 
-        let op_stack_table = &mut self.table_mut(TableId::OpStackTable);
-        OpStackTable::pad_trace(op_stack_table, main_execution_len);
-
-        let ram_table = &mut self.table_mut(TableId::RamTable);
-        RamTable::pad_trace(ram_table, main_execution_len);
-
-        let jump_stack_table = &mut self.table_mut(TableId::JumpStackTable);
-        JumpStackTable::pad_trace(jump_stack_table, main_execution_len);
-
-        let hash_table = &mut self.table_mut(TableId::HashTable);
-        HashTable::pad_trace(hash_table, hash_coprocessor_execution_len);
-
-        let cascade_table = &mut self.table_mut(TableId::CascadeTable);
-        CascadeTable::pad_trace(cascade_table, cascade_table_len);
-
-        let lookup_table = &mut self.table_mut(TableId::LookupTable);
-        LookupTable::pad_trace(lookup_table);
-
-        let u32_table = &mut self.table_mut(TableId::U32Table);
-        U32Table::pad_trace(u32_table, u32_table_len);
+        Self::all_pad_functions()
+            .into_par_iter()
+            .zip_eq(base_tables.into_par_iter())
+            .zip_eq(table_lengths.into_par_iter())
+            .for_each(|((pad, base_table), table_length)| {
+                pad(base_table, table_length);
+            });
 
         DegreeLoweringTable::fill_derived_base_columns(self.trace_table_mut());
+    }
+
+    fn all_pad_functions() -> [PadFunction; TableId::COUNT - 1] {
+        [
+            ProgramTable::pad_trace,
+            ProcessorTable::pad_trace,
+            OpStackTable::pad_trace,
+            RamTable::pad_trace,
+            JumpStackTable::pad_trace,
+            HashTable::pad_trace,
+            CascadeTable::pad_trace,
+            LookupTable::pad_trace,
+            U32Table::pad_trace,
+        ]
+    }
+
+    fn all_table_lengths(&self) -> [usize; TableId::COUNT - 1] {
+        [
+            self.program_table_len,
+            self.main_execution_len,
+            self.main_execution_len,
+            self.main_execution_len,
+            self.main_execution_len,
+            self.hash_coprocessor_execution_len,
+            self.cascade_table_len,
+            1 << 8,
+            self.u32_coprocesor_execution_len,
+        ]
     }
 
     /// Create a `MasterExtTable` from a `MasterBaseTable` by `.extend()`ing each individual base

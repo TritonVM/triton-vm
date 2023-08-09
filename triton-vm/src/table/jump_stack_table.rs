@@ -249,7 +249,7 @@ impl JumpStackTable {
     }
 
     pub fn pad_trace(
-        jump_stack_table: &mut ArrayViewMut2<BFieldElement>,
+        mut jump_stack_table: ArrayViewMut2<BFieldElement>,
         processor_table_len: usize,
     ) {
         assert!(

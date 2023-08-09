@@ -103,7 +103,7 @@ impl ProcessorTable {
     }
 
     pub fn pad_trace(
-        processor_table: &mut ArrayViewMut2<BFieldElement>,
+        mut processor_table: ArrayViewMut2<BFieldElement>,
         processor_table_len: usize,
     ) {
         assert!(

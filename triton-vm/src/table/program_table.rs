@@ -338,7 +338,7 @@ impl ProgramTable {
         }
     }
 
-    pub fn pad_trace(program_table: &mut ArrayViewMut2<BFieldElement>, program_len: usize) {
+    pub fn pad_trace(mut program_table: ArrayViewMut2<BFieldElement>, program_len: usize) {
         let addresses =
             (program_len..program_table.nrows()).map(|a| BFieldElement::new(a.try_into().unwrap()));
         let addresses = Array1::from_iter(addresses);

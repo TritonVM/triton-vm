@@ -56,10 +56,7 @@ impl CascadeTable {
         }
     }
 
-    pub fn pad_trace(
-        cascade_table: &mut ArrayViewMut2<BFieldElement>,
-        cascade_table_length: usize,
-    ) {
+    pub fn pad_trace(mut cascade_table: ArrayViewMut2<BFieldElement>, cascade_table_length: usize) {
         cascade_table
             .slice_mut(s![cascade_table_length.., IsPadding.base_table_index()])
             .fill(BFIELD_ONE);
