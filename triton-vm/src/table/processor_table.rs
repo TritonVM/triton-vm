@@ -2,10 +2,6 @@ use std::cmp::max;
 use std::fmt::Display;
 use std::ops::Mul;
 
-use crate::instruction::AnInstruction::*;
-use crate::instruction::Instruction;
-use crate::instruction::InstructionBit;
-use crate::instruction::ALL_INSTRUCTIONS;
 use itertools::Itertools;
 use ndarray::parallel::prelude::*;
 use ndarray::s;
@@ -24,6 +20,10 @@ use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use crate::aet::AlgebraicExecutionTrace;
+use crate::instruction::AnInstruction::*;
+use crate::instruction::Instruction;
+use crate::instruction::InstructionBit;
+use crate::instruction::ALL_INSTRUCTIONS;
 use crate::table::challenges::ChallengeId;
 use crate::table::challenges::ChallengeId::*;
 use crate::table::challenges::Challenges;
@@ -600,18 +600,12 @@ impl ExtProcessorTable {
 
     fn indicator_polynomial(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
-        i: usize,
+        index: usize,
     ) -> ConstraintCircuitMonad<DualRowIndicator> {
         let one = || circuit_builder.b_constant(1_u32.into());
-        let hv = |idx| match idx {
-            0 => circuit_builder.input(CurrentBaseRow(HV0.master_base_table_index())),
-            1 => circuit_builder.input(CurrentBaseRow(HV1.master_base_table_index())),
-            2 => circuit_builder.input(CurrentBaseRow(HV2.master_base_table_index())),
-            3 => circuit_builder.input(CurrentBaseRow(HV3.master_base_table_index())),
-            j => panic!("Index for helper variable must be in range 0..4, got {j}."),
-        };
+        let hv = |idx| Self::helper_variable(circuit_builder, idx);
 
-        match i {
+        match index {
             0 => (one() - hv(3)) * (one() - hv(2)) * (one() - hv(1)) * (one() - hv(0)),
             1 => (one() - hv(3)) * (one() - hv(2)) * (one() - hv(1)) * hv(0),
             2 => (one() - hv(3)) * (one() - hv(2)) * hv(1) * (one() - hv(0)),
@@ -628,7 +622,23 @@ impl ExtProcessorTable {
             13 => hv(3) * hv(2) * (one() - hv(1)) * hv(0),
             14 => hv(3) * hv(2) * hv(1) * (one() - hv(0)),
             15 => hv(3) * hv(2) * hv(1) * hv(0),
-            _ => panic!("No indicator polynomial with index {i} exists: there are only 16."),
+            i => unimplemented!("Indicator polynomial index {i} out of bounds."),
+        }
+    }
+
+    fn helper_variable(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+        index: usize,
+    ) -> ConstraintCircuitMonad<DualRowIndicator> {
+        match index {
+            0 => circuit_builder.input(CurrentBaseRow(HV0.master_base_table_index())),
+            1 => circuit_builder.input(CurrentBaseRow(HV1.master_base_table_index())),
+            2 => circuit_builder.input(CurrentBaseRow(HV2.master_base_table_index())),
+            3 => circuit_builder.input(CurrentBaseRow(HV3.master_base_table_index())),
+            4 => circuit_builder.input(CurrentBaseRow(HV4.master_base_table_index())),
+            5 => circuit_builder.input(CurrentBaseRow(HV5.master_base_table_index())),
+            6 => circuit_builder.input(CurrentBaseRow(HV6.master_base_table_index())),
+            i => unimplemented!("Helper variable index {i} out of bounds."),
         }
     }
 
@@ -2966,12 +2976,12 @@ impl<'a> Display for ExtProcessorTraceRow<'a> {
 
 #[cfg(test)]
 mod constraint_polynomial_tests {
-    use crate::op_stack::OpStackElement;
-    use crate::program::Program;
     use ndarray::Array2;
 
     use crate::error::InstructionError;
     use crate::error::InstructionError::DivisionByZero;
+    use crate::op_stack::OpStackElement;
+    use crate::program::Program;
     use crate::shared_tests::ProgramAndInput;
     use crate::stark::triton_stark_tests::master_base_table_for_low_security_level;
     use crate::table::master_table::MasterTable;
@@ -3619,9 +3629,11 @@ mod constraint_polynomial_tests {
 
 #[cfg(test)]
 pub mod tests {
-    use crate::instruction::Instruction;
+    use rand::thread_rng;
+    use rand::Rng;
     use strum::IntoEnumIterator;
 
+    use crate::instruction::Instruction;
     use crate::table::master_table::AIR_TARGET_DEGREE;
 
     use super::*;
@@ -3717,11 +3729,11 @@ pub mod tests {
 
     #[test]
     fn opcode_decomposition_for_skiz_is_unique_test() {
-        let highest_possible_opcode = (3 << 7) * (3 << 5) * (3 << 3) * (3 << 1) * 2;
+        let max_value_of_skiz_constraint_for_nia_decomposition =
+            (3 << 7) * (3 << 5) * (3 << 3) * (3 << 1) * 2;
         for instruction in Instruction::iter() {
-            let opcode = instruction.opcode();
             assert!(
-                opcode < highest_possible_opcode,
+                instruction.opcode() < max_value_of_skiz_constraint_for_nia_decomposition,
                 "Opcode for {instruction} is too high."
             );
         }
@@ -3740,5 +3752,37 @@ pub mod tests {
             AIR_TARGET_DEGREE <= max_constraint_degree,
             "Can the range check constraints be of a higher degree, saving columns?"
         );
+    }
+
+    #[test]
+    fn helper_variables_in_bounds() {
+        let circuit_builder = ConstraintCircuitBuilder::new();
+        for index in 0..7 {
+            ExtProcessorTable::helper_variable(&circuit_builder, index);
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "out of bounds")]
+    fn helper_variables_out_of_bounds() {
+        let index = thread_rng().gen_range(7..usize::MAX);
+        let circuit_builder = ConstraintCircuitBuilder::new();
+        ExtProcessorTable::helper_variable(&circuit_builder, index);
+    }
+
+    #[test]
+    fn indicator_polynomial_in_bounds() {
+        let circuit_builder = ConstraintCircuitBuilder::new();
+        for index in 0..16 {
+            ExtProcessorTable::indicator_polynomial(&circuit_builder, index);
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "out of bounds")]
+    fn indicator_polynomial_out_of_bounds() {
+        let index = thread_rng().gen_range(16..usize::MAX);
+        let circuit_builder = ConstraintCircuitBuilder::new();
+        ExtProcessorTable::indicator_polynomial(&circuit_builder, index);
     }
 }
