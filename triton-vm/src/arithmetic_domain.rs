@@ -134,4 +134,26 @@ mod domain_tests {
             }
         }
     }
+
+    #[test]
+    fn low_degree_extension() {
+        let short_domain_len = 32;
+        let long_domain_len = 128;
+        let unit_distance = long_domain_len / short_domain_len;
+
+        let short_domain = ArithmeticDomain::of_length(short_domain_len);
+        let long_domain = ArithmeticDomain::of_length(long_domain_len);
+
+        let polynomial = Polynomial::new([1, 2, 3, 4].map(BFieldElement::new).to_vec());
+        let short_codeword = short_domain.evaluate(&polynomial);
+        let long_codeword = short_domain.low_degree_extension(&short_codeword, long_domain);
+
+        assert_eq!(long_codeword.len(), long_domain_len);
+
+        let long_codeword_sub_view = long_codeword
+            .into_iter()
+            .step_by(unit_distance)
+            .collect_vec();
+        assert_eq!(short_codeword, long_codeword_sub_view);
+    }
 }
