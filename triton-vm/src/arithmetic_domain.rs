@@ -16,22 +16,20 @@ pub struct ArithmeticDomain {
 }
 
 impl ArithmeticDomain {
-    /// Create a new domain with the given length and offset.
-    pub fn of_length_with_offset(length: usize, offset: BFieldElement) -> Self {
-        Self {
-            offset,
-            generator: Self::generator_for_length(length as u64),
-            length,
-        }
-    }
-
-    /// Create a new domain with the given length. No offset is applied.
+    /// Create a new domain with the given length.
+    /// No offset is applied, but can added through [`with_offset()`](Self::with_offset).
     pub fn of_length(length: usize) -> Self {
         Self {
             offset: BFieldElement::one(),
             generator: Self::generator_for_length(length as u64),
             length,
         }
+    }
+
+    /// Set the offset of the domain.
+    pub fn with_offset(mut self, offset: BFieldElement) -> Self {
+        self.offset = offset;
+        self
     }
 
     /// Derive a generator for a domain of the given length.
@@ -102,7 +100,7 @@ mod domain_tests {
         for order in [4, 8, 32] {
             let generator = BFieldElement::primitive_root_of_unity(order).unwrap();
             let offset = BFieldElement::generator();
-            let b_domain = ArithmeticDomain::of_length_with_offset(order as usize, offset);
+            let b_domain = ArithmeticDomain::of_length(order as usize).with_offset(offset);
 
             let expected_b_values: Vec<BFieldElement> =
                 (0..order).map(|i| offset * generator.mod_pow(i)).collect();

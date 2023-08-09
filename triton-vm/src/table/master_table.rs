@@ -1181,7 +1181,7 @@ mod master_table_tests {
     fn zerofiers_are_correct_test() {
         let big_order = 16;
         let big_offset = BFieldElement::generator();
-        let big_domain = ArithmeticDomain::of_length_with_offset(big_order as usize, big_offset);
+        let big_domain = ArithmeticDomain::of_length(big_order as usize).with_offset(big_offset);
 
         let small_order = 8;
         let small_domain = ArithmeticDomain::of_length(small_order as usize);

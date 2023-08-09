@@ -594,7 +594,7 @@ impl Stark {
             false => 1,
         };
         let domain_length = maybe_blowup_factor * roundup_npo2(max_degree as u64) as usize;
-        ArithmeticDomain::of_length_with_offset(domain_length, fri_domain.offset)
+        ArithmeticDomain::of_length(domain_length).with_offset(fri_domain.offset)
     }
 
     /// Compute the upper bound to use for the maximum degree the quotients given the length of the
