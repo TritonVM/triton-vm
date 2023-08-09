@@ -228,10 +228,7 @@ impl OpStackTable {
         clock_jump_differences
     }
 
-    pub fn pad_trace(
-        op_stack_table: &mut ArrayViewMut2<BFieldElement>,
-        processor_table_len: usize,
-    ) {
+    pub fn pad_trace(mut op_stack_table: ArrayViewMut2<BFieldElement>, processor_table_len: usize) {
         assert!(
             processor_table_len > 0,
             "Processor Table must have at least 1 row."

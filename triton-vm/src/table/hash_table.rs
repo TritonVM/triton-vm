@@ -1541,7 +1541,7 @@ impl HashTable {
         hash_mode_column.fill(HashTableMode::Hash.into());
     }
 
-    pub fn pad_trace(hash_table: &mut ArrayViewMut2<BFieldElement>, hash_table_length: usize) {
+    pub fn pad_trace(mut hash_table: ArrayViewMut2<BFieldElement>, hash_table_length: usize) {
         let inverse_of_high_limbs = Self::inverse_or_zero_of_highest_2_limbs(BFieldElement::zero());
         for column_id in [State0Inv, State1Inv, State2Inv, State3Inv] {
             let column_index = column_id.base_table_index();

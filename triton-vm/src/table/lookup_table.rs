@@ -69,9 +69,7 @@ impl LookupTable {
         lookup_multiplicities.move_into(lookup_multiplicities_column);
     }
 
-    pub fn pad_trace(lookup_table: &mut ArrayViewMut2<BFieldElement>) {
-        // The Lookup Table is always fully populated.
-        let lookup_table_length: usize = 1 << 8;
+    pub fn pad_trace(mut lookup_table: ArrayViewMut2<BFieldElement>, lookup_table_length: usize) {
         lookup_table
             .slice_mut(s![lookup_table_length.., IsPadding.base_table_index()])
             .fill(BFIELD_ONE);

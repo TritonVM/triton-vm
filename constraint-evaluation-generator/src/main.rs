@@ -769,7 +769,7 @@ fn generate_fill_base_columns_code(substitutions: &Substitutions) -> TokenStream
 
     quote!(
     #[allow(unused_variables)]
-    pub fn fill_derived_base_columns(master_base_table: &mut ArrayViewMut2<BFieldElement>) {
+    pub fn fill_derived_base_columns(mut master_base_table: ArrayViewMut2<BFieldElement>) {
         assert_eq!(NUM_BASE_COLUMNS, master_base_table.ncols());
         #init_substitutions
         #cons_substitutions
@@ -811,9 +811,10 @@ fn generate_fill_ext_columns_code(substitutions: &Substitutions) -> TokenStream 
 
     quote!(
         #[allow(unused_variables)]
+        #[allow(unused_mut)]
         pub fn fill_derived_ext_columns(
             master_base_table: ArrayView2<BFieldElement>,
-            master_ext_table: &mut ArrayViewMut2<XFieldElement>,
+            mut master_ext_table: ArrayViewMut2<XFieldElement>,
             challenges: &Challenges,
         ) {
             assert_eq!(NUM_BASE_COLUMNS, master_base_table.ncols());

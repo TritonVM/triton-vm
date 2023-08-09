@@ -2,6 +2,7 @@ use std::cmp::Ordering;
 
 use ndarray::s;
 use ndarray::Array1;
+use ndarray::ArrayView1;
 use ndarray::ArrayView2;
 use ndarray::ArrayViewMut2;
 use num_traits::One;
@@ -337,7 +338,7 @@ impl ProgramTable {
         }
     }
 
-    pub fn pad_trace(program_table: &mut ArrayViewMut2<BFieldElement>, program_len: usize) {
+    pub fn pad_trace(mut program_table: ArrayViewMut2<BFieldElement>, program_len: usize) {
         let addresses =
             (program_len..program_table.nrows()).map(|a| BFieldElement::new(a.try_into().unwrap()));
         let addresses = Array1::from_iter(addresses);
@@ -381,21 +382,13 @@ impl ProgramTable {
         assert_eq!(EXT_WIDTH, ext_table.ncols());
         assert_eq!(base_table.nrows(), ext_table.nrows());
 
-        let max_index_in_chunk = StarkHasher::RATE as u64 - 1;
-        let address_weight = challenges[ProgramAddressWeight];
-        let instruction_weight = challenges[ProgramInstructionWeight];
-        let next_instruction_weight = challenges[ProgramNextInstructionWeight];
-        let instruction_lookup_indeterminate = challenges[InstructionLookupIndeterminate];
-        let prepare_chunk_indeterminate = challenges[ProgramAttestationPrepareChunkIndeterminate];
-        let send_chunk_indeterminate = challenges[ProgramAttestationSendChunkIndeterminate];
-
         let mut instruction_lookup_log_derivative = LookupArg::default_initial();
         let mut prepare_chunk_running_evaluation = EvalArg::default_initial();
         let mut send_chunk_running_evaluation = EvalArg::default_initial();
 
-        for (idx, window) in base_table.windows([2, BASE_WIDTH]).into_iter().enumerate() {
-            let row = window.row(0);
-            let next_row = window.row(1);
+        for (idx, consecutive_rows) in base_table.windows([2, BASE_WIDTH]).into_iter().enumerate() {
+            let row = consecutive_rows.row(0);
+            let next_row = consecutive_rows.row(1);
             let mut extension_row = ext_table.row_mut(idx);
 
             // In the Program Table, the logarithmic derivative for the instruction lookup
@@ -412,59 +405,113 @@ impl ProgramTable {
             extension_row[InstructionLookupServerLogDerivative.ext_table_index()] =
                 instruction_lookup_log_derivative;
 
-            // update the logarithmic derivative if not a padding row
-            if row[IsHashInputPadding.base_table_index()].is_zero() {
-                let lookup_multiplicity = row[LookupMultiplicity.base_table_index()];
-                let address = row[Address.base_table_index()];
-                let instruction = row[Instruction.base_table_index()];
-                let next_instruction = next_row[Instruction.base_table_index()];
+            instruction_lookup_log_derivative = Self::update_instruction_lookup_log_derivative(
+                challenges,
+                row,
+                next_row,
+                instruction_lookup_log_derivative,
+            );
+            prepare_chunk_running_evaluation = Self::update_prepare_chunk_running_evaluation(
+                row,
+                challenges,
+                prepare_chunk_running_evaluation,
+            );
+            send_chunk_running_evaluation = Self::update_send_chunk_running_evaluation(
+                row,
+                challenges,
+                send_chunk_running_evaluation,
+                prepare_chunk_running_evaluation,
+            );
 
-                let compressed_row_for_instruction_lookup = address * address_weight
-                    + instruction * instruction_weight
-                    + next_instruction * next_instruction_weight;
-                instruction_lookup_log_derivative += (instruction_lookup_indeterminate
-                    - compressed_row_for_instruction_lookup)
-                    .inverse()
-                    * lookup_multiplicity;
-            }
-        }
-
-        let mut last_row = ext_table
-            .rows_mut()
-            .into_iter()
-            .last()
-            .expect("Program Table must not be empty.");
-        last_row[InstructionLookupServerLogDerivative.ext_table_index()] =
-            instruction_lookup_log_derivative;
-
-        // Even though it means iterating almost all rows twice, it is much easier to deal with
-        // the remaining extension columns using this loop since no special casing of the first
-        // or last row is required.
-        for row_idx in 0..base_table.nrows() {
-            let row = base_table.row(row_idx);
-
-            let is_padding_row = row[IsTablePadding.base_table_index()].is_one();
-            let instruction = row[Instruction.base_table_index()];
-            let index_in_chunk = row[IndexInChunk.base_table_index()];
-
-            if index_in_chunk.is_zero() {
-                prepare_chunk_running_evaluation = EvalArg::default_initial();
-            }
-            prepare_chunk_running_evaluation =
-                prepare_chunk_running_evaluation * prepare_chunk_indeterminate + instruction;
-
-            if !is_padding_row && index_in_chunk.value() == max_index_in_chunk {
-                send_chunk_running_evaluation = send_chunk_running_evaluation
-                    * send_chunk_indeterminate
-                    + prepare_chunk_running_evaluation;
-            }
-
-            let mut extension_row = ext_table.row_mut(row_idx);
             extension_row[PrepareChunkRunningEvaluation.ext_table_index()] =
                 prepare_chunk_running_evaluation;
             extension_row[SendChunkRunningEvaluation.ext_table_index()] =
                 send_chunk_running_evaluation;
         }
+
+        // special treatment for the last row
+        let base_rows_iter = base_table.rows().into_iter();
+        let ext_rows_iter = ext_table.rows_mut().into_iter();
+        let last_base_row = base_rows_iter.last().unwrap();
+        let mut last_ext_row = ext_rows_iter.last().unwrap();
+
+        prepare_chunk_running_evaluation = Self::update_prepare_chunk_running_evaluation(
+            last_base_row,
+            challenges,
+            prepare_chunk_running_evaluation,
+        );
+        send_chunk_running_evaluation = Self::update_send_chunk_running_evaluation(
+            last_base_row,
+            challenges,
+            send_chunk_running_evaluation,
+            prepare_chunk_running_evaluation,
+        );
+
+        last_ext_row[InstructionLookupServerLogDerivative.ext_table_index()] =
+            instruction_lookup_log_derivative;
+        last_ext_row[PrepareChunkRunningEvaluation.ext_table_index()] =
+            prepare_chunk_running_evaluation;
+        last_ext_row[SendChunkRunningEvaluation.ext_table_index()] = send_chunk_running_evaluation;
+    }
+
+    fn update_instruction_lookup_log_derivative(
+        challenges: &Challenges,
+        row: ArrayView1<BFieldElement>,
+        next_row: ArrayView1<BFieldElement>,
+        instruction_lookup_log_derivative: XFieldElement,
+    ) -> XFieldElement {
+        if row[IsHashInputPadding.base_table_index()].is_one() {
+            return instruction_lookup_log_derivative;
+        }
+        instruction_lookup_log_derivative
+            + Self::instruction_lookup_log_derivative_summand(row, next_row, challenges)
+    }
+
+    fn instruction_lookup_log_derivative_summand(
+        row: ArrayView1<BFieldElement>,
+        next_row: ArrayView1<BFieldElement>,
+        challenges: &Challenges,
+    ) -> XFieldElement {
+        let compressed_row = row[Address.base_table_index()] * challenges[ProgramAddressWeight]
+            + row[Instruction.base_table_index()] * challenges[ProgramInstructionWeight]
+            + next_row[Instruction.base_table_index()] * challenges[ProgramNextInstructionWeight];
+        (challenges[InstructionLookupIndeterminate] - compressed_row).inverse()
+            * row[LookupMultiplicity.base_table_index()]
+    }
+
+    fn update_prepare_chunk_running_evaluation(
+        row: ArrayView1<BFieldElement>,
+        challenges: &Challenges,
+        prepare_chunk_running_evaluation: XFieldElement,
+    ) -> XFieldElement {
+        let running_evaluation_resets = row[IndexInChunk.base_table_index()].is_zero();
+        let prepare_chunk_running_evaluation = match running_evaluation_resets {
+            true => EvalArg::default_initial(),
+            false => prepare_chunk_running_evaluation,
+        };
+
+        prepare_chunk_running_evaluation * challenges[ProgramAttestationPrepareChunkIndeterminate]
+            + row[Instruction.base_table_index()]
+    }
+
+    fn update_send_chunk_running_evaluation(
+        row: ArrayView1<BFieldElement>,
+        challenges: &Challenges,
+        send_chunk_running_evaluation: XFieldElement,
+        prepare_chunk_running_evaluation: XFieldElement,
+    ) -> XFieldElement {
+        let index_in_chunk = row[IndexInChunk.base_table_index()];
+        let is_table_padding_row = row[IsTablePadding.base_table_index()].is_one();
+        let max_index_in_chunk = StarkHasher::RATE as u64 - 1;
+        let running_evaluation_needs_update =
+            !is_table_padding_row && index_in_chunk.value() == max_index_in_chunk;
+
+        if !running_evaluation_needs_update {
+            return send_chunk_running_evaluation;
+        }
+
+        send_chunk_running_evaluation * challenges[ProgramAttestationSendChunkIndeterminate]
+            + prepare_chunk_running_evaluation
     }
 }
 

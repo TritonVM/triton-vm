@@ -156,7 +156,7 @@ impl RamTable {
         clock_jump_differences
     }
 
-    pub fn pad_trace(ram_table: &mut ArrayViewMut2<BFieldElement>, processor_table_len: usize) {
+    pub fn pad_trace(mut ram_table: ArrayViewMut2<BFieldElement>, processor_table_len: usize) {
         assert!(
             processor_table_len > 0,
             "Processor Table must have at least 1 row."
