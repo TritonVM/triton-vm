@@ -1,13 +1,13 @@
-use anyhow::anyhow;
-use anyhow::bail;
 use anyhow::Result;
 use get_size::GetSize;
+use itertools::Itertools;
 use serde::Deserialize;
 use serde::Serialize;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::bfield_codec::BFieldCodec;
 use twenty_first::shared_math::tip5::Digest;
 
+use crate::ensure_eq;
 use crate::proof_stream::ProofStream;
 use crate::stark;
 
@@ -22,16 +22,13 @@ impl Proof {
     /// It it one of the main contributing factors to the length of the FRI domain.
     pub fn padded_height(&self) -> Result<usize> {
         let proof_stream = ProofStream::<stark::StarkHasher>::try_from(self)?;
-        let mut padded_height = None;
-        for item in proof_stream.items {
-            if let Ok(log_2_padded_height) = item.as_log2_padded_height() {
-                match padded_height.is_some() {
-                    true => bail!("The proof must contain at most one log_2_padded_height."),
-                    false => padded_height = Some(1 << log_2_padded_height),
-                }
-            }
-        }
-        padded_height.ok_or(anyhow!("The proof must contain a log_2_padded_height."))
+        let proof_items = proof_stream.items.iter();
+        let log_2_padded_heights = proof_items
+            .filter_map(|item| item.as_log2_padded_height().ok())
+            .collect_vec();
+
+        ensure_eq!(1, log_2_padded_heights.len());
+        Ok(1 << log_2_padded_heights[0])
     }
 }
 
