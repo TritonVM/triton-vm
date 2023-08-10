@@ -420,9 +420,6 @@ impl<II: InputIndicator> ConstraintCircuit<II> {
     /// Verify that a multicircuit has unique IDs. Panics otherwise.
     /// Also determines how often each node is referenced and stores the result in the
     /// `visited_counter` field of each node.
-    /// This makes this function very similar to
-    /// [`refresh_visit_counters`](ConstraintCircuit::refresh_visit_counters),
-    /// but it also checks for duplicate IDs.
     pub fn assert_has_unique_ids(constraints: &mut [ConstraintCircuit<II>]) {
         let mut ids: HashMap<usize, ConstraintCircuit<II>> = HashMap::new();
         // The inner uniqueness checks relies on visit counters being 0 for unseen nodes.
@@ -554,8 +551,7 @@ impl<II: InputIndicator> ConstraintCircuit<II> {
     }
 
     /// Count the total number of unique nodes in the given multicircuit.
-    /// Also refreshes the visit counter for each node, similar to
-    /// [`refresh_visit_counters`](ConstraintCircuit::refresh_visit_counters).
+    /// Also refreshes the visit counter for each node.
     pub fn count_nodes(constraints: &mut [ConstraintCircuit<II>]) -> usize {
         // The uniqueness of nodes is determined by their visit count.
         // To ensure a correct node count, the visit count must be reset before counting nodes.
