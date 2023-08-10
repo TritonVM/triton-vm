@@ -32,8 +32,8 @@ use twenty_first::util_types::merkle_tree_maker::MerkleTreeMaker;
 
 use crate::aet::AlgebraicExecutionTrace;
 use crate::arithmetic_domain::ArithmeticDomain;
-use crate::prof_start;
-use crate::prof_stop;
+use crate::profiler::prof_start;
+use crate::profiler::prof_stop;
 use crate::profiler::TritonProfiler;
 use crate::stark::MTMaker;
 use crate::stark::StarkHasher;

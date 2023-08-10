@@ -11,8 +11,8 @@ use anyhow::Result;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 
 use crate::aet::AlgebraicExecutionTrace;
-use crate::prof_start;
-use crate::prof_stop;
+use crate::profiler::prof_start;
+use crate::profiler::prof_stop;
 use crate::profiler::TritonProfiler;
 use crate::program::Program;
 use crate::proof::Claim;

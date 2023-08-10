@@ -21,8 +21,8 @@ use twenty_first::util_types::merkle_tree::MerkleTree;
 use twenty_first::util_types::merkle_tree_maker::MerkleTreeMaker;
 
 use crate::arithmetic_domain::ArithmeticDomain;
-use crate::prof_start;
-use crate::prof_stop;
+use crate::profiler::prof_start;
+use crate::profiler::prof_stop;
 use crate::profiler::TritonProfiler;
 use crate::proof_item::FriResponse;
 use crate::proof_item::ProofItem;

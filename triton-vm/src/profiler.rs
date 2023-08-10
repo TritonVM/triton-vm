@@ -601,7 +601,10 @@ impl Display for Report {
     }
 }
 
-#[macro_export]
+/// Start a profiling task.
+/// Requires an `Option<Profiler>` as first argument. Does nothing if this is `None`.
+/// The second argument is the name of the task.
+/// The third argument is an optional task category.
 macro_rules! prof_start {
     ($p: ident, $s : expr, $c : expr) => {
         if let Some(profiler) = $p.as_mut() {
@@ -614,8 +617,11 @@ macro_rules! prof_start {
         }
     };
 }
+pub(crate) use prof_start;
 
-#[macro_export]
+/// Stop a profiling task. Requires the same arguments as [`prof_start`], except that the task's
+/// category (if any) is inferred. Notably, the task's name needs to be an exact match to prevent
+/// the accidental stopping of a different task.
 macro_rules! prof_stop {
     ($p: ident, $s : expr) => {
         if let Some(profiler) = $p.as_mut() {
@@ -623,8 +629,11 @@ macro_rules! prof_stop {
         }
     };
 }
+pub(crate) use prof_stop;
 
-#[macro_export]
+/// Profile one iteration of a loop. Requires the same arguments as [`prof_start`].
+/// This macro should be invoked inside the loop in question.
+/// The profiling of the loop has to be stopped with [`prof_stop`] after the loop.
 macro_rules! prof_itr0 {
     ($p : ident, $s : expr, $c : expr) => {
         if let Some(profiler) = $p.as_mut() {
@@ -637,6 +646,7 @@ macro_rules! prof_itr0 {
         }
     };
 }
+pub(crate) use prof_itr0;
 
 #[cfg(test)]
 pub mod triton_profiler_tests {
