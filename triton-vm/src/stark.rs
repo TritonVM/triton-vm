@@ -148,7 +148,7 @@ impl Stark {
         prof_stop!(maybe_profiler, "derive additional parameters");
 
         prof_start!(maybe_profiler, "base tables");
-        prof_start!(maybe_profiler, "create");
+        prof_start!(maybe_profiler, "create", "gen");
         let mut master_base_table = MasterBaseTable::new(
             aet,
             parameters.num_trace_randomizers,
@@ -157,43 +157,50 @@ impl Stark {
         );
         prof_stop!(maybe_profiler, "create");
 
-        prof_start!(maybe_profiler, "pad");
+        prof_start!(maybe_profiler, "pad", "gen");
         master_base_table.pad();
         prof_stop!(maybe_profiler, "pad");
 
-        prof_start!(maybe_profiler, "LDE", "LDE");
+        prof_start!(maybe_profiler, "randomize trace", "gen");
         master_base_table.randomize_trace();
+        prof_stop!(maybe_profiler, "randomize trace");
+
+        prof_start!(maybe_profiler, "LDE", "LDE");
         master_base_table.low_degree_extend_all_columns();
         prof_stop!(maybe_profiler, "LDE");
 
         prof_start!(maybe_profiler, "Merkle tree", "hash");
         let base_merkle_tree = master_base_table.merkle_tree(maybe_profiler);
-        let base_merkle_tree_root = base_merkle_tree.get_root();
         prof_stop!(maybe_profiler, "Merkle tree");
 
         prof_start!(maybe_profiler, "Fiat-Shamir", "hash");
-        proof_stream.enqueue(&ProofItem::MerkleRoot(base_merkle_tree_root));
-        let extension_weights = proof_stream.sample_scalars(Challenges::num_challenges_to_sample());
-        let extension_challenges = Challenges::new(extension_weights, claim);
+        proof_stream.enqueue(&ProofItem::MerkleRoot(base_merkle_tree.get_root()));
+        let challenges = proof_stream.sample_scalars(Challenges::num_challenges_to_sample());
+        let challenges = Challenges::new(challenges, claim);
         prof_stop!(maybe_profiler, "Fiat-Shamir");
 
-        prof_start!(maybe_profiler, "extend");
+        prof_start!(maybe_profiler, "extend", "gen");
         let mut master_ext_table =
-            master_base_table.extend(&extension_challenges, parameters.num_randomizer_polynomials);
+            master_base_table.extend(&challenges, parameters.num_randomizer_polynomials);
         prof_stop!(maybe_profiler, "extend");
+
+        prof_start!(maybe_profiler, "randomize trace", "gen");
+        master_ext_table.randomize_trace();
+        prof_stop!(maybe_profiler, "randomize trace");
         prof_stop!(maybe_profiler, "base tables");
 
         prof_start!(maybe_profiler, "ext tables");
         prof_start!(maybe_profiler, "LDE", "LDE");
-        master_ext_table.randomize_trace();
         master_ext_table.low_degree_extend_all_columns();
         prof_stop!(maybe_profiler, "LDE");
 
         prof_start!(maybe_profiler, "Merkle tree", "hash");
         let ext_merkle_tree = master_ext_table.merkle_tree(maybe_profiler);
-        let ext_merkle_tree_root = ext_merkle_tree.get_root();
-        proof_stream.enqueue(&ProofItem::MerkleRoot(ext_merkle_tree_root));
         prof_stop!(maybe_profiler, "Merkle tree");
+
+        prof_start!(maybe_profiler, "Fiat-Shamir", "hash");
+        proof_stream.enqueue(&ProofItem::MerkleRoot(ext_merkle_tree.get_root()));
+        prof_stop!(maybe_profiler, "Fiat-Shamir");
         prof_stop!(maybe_profiler, "ext tables");
 
         prof_start!(maybe_profiler, "quotient-domain codewords");
@@ -207,7 +214,7 @@ impl Stark {
             ext_quotient_domain_codewords,
             master_base_table.trace_domain(),
             quotient_domain,
-            &extension_challenges,
+            &challenges,
             maybe_profiler,
         );
         prof_stop!(maybe_profiler, "quotient codewords");
@@ -358,7 +365,7 @@ impl Stark {
         let quotient_segments_interpolation_poly =
             short_domain.interpolate(&quotient_segments_codeword.to_vec());
         prof_stop!(maybe_profiler, "interpolate");
-        prof_start!(maybe_profiler, "base&ext next row");
+        prof_start!(maybe_profiler, "base&ext curr row");
         let out_of_domain_curr_row_base_and_ext_value =
             base_and_ext_interpolation_poly.evaluate(&out_of_domain_point_curr_row);
         let base_and_ext_curr_row_deep_codeword = Self::deep_codeword(
@@ -367,7 +374,7 @@ impl Stark {
             out_of_domain_point_curr_row,
             out_of_domain_curr_row_base_and_ext_value,
         );
-        prof_stop!(maybe_profiler, "base&ext next row");
+        prof_stop!(maybe_profiler, "base&ext curr row");
 
         prof_start!(maybe_profiler, "base&ext next row");
         let out_of_domain_next_row_base_and_ext_value =
