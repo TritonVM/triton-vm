@@ -1,6 +1,126 @@
 //! Triton Virtual Machine is a Zero-Knowledge Proof System (ZKPS) for proving correct execution
 //! of programs written in Triton assembly. The proof system is a zk-STARK, which is a
 //! state-of-the-art ZKPS.
+//!
+//! Generally, all arithmetic performed by Triton VM happens in the prime field with
+//! 2^64 - 2^32 + 1 elements. Instructions for u32 operations are provided.
+//!
+//! For a full overview over all available instructions and their effects, see the
+//! [specification](https://triton-vm.org/spec/instructions.html).
+//!
+//! # Examples
+//!
+//! When using convenience function [`prove_program()`], all input must be in canonical
+//! representation, _i.e._, smaller than the prime field's modulus 2^64 - 2^32 + 1.
+//! Otherwise, proof generation will be aborted.
+//!
+//! Functions [`prove()`] and [`verify()`] natively operate on [`BFieldElement`]s, _i.e_, elements
+//! of the prime field.
+//!
+//! ## Factorial
+//!
+//! Compute the factorial of the given public input.
+//!
+//! The execution of the factorial program is already fully determined by the public input.
+//! Hence, in this case, there is no need for specifying non-determinism.
+//! Keep reading for an example that does use non-determinism.
+//!
+//! The [`triton_program!`] macro is used to conveniently write Triton assembly. In below example,
+//! the state of the operational stack is shown as a comment after most instructions.
+//!
+//! ```
+//! # use triton_vm::*;
+//! let factorial_program = triton_program!(
+//!     read_io             // n
+//!     push 1              // n 1
+//!     call factorial      // 0 n!
+//!     write_io            // 0
+//!     halt
+//!
+//!     factorial:          // n acc
+//!         // if n == 0: return
+//!         dup 1           // n acc n
+//!         push 0 eq       // n acc n==0
+//!         skiz            // n acc
+//!             return      // 0 acc
+//!         // else: multiply accumulator with n and recurse
+//!         dup 1           // n acc n
+//!         mul             // n acc·n
+//!         swap 1          // acc·n n
+//!         push -1 add     // acc·n n-1
+//!         swap 1          // n-1 acc·n
+//!         recurse
+//! );
+//! let public_input = [10];
+//! let non_determinism = [].into();
+//!
+//! let (parameters, claim, proof) =
+//!     prove_program(&factorial_program, &public_input, &non_determinism).unwrap();
+//!
+//! let verdict = verify(&parameters, &claim, &proof);
+//! assert!(verdict);
+//!
+//! let public_output = claim.public_output();
+//! assert_eq!(1, public_output.len());
+//! assert_eq!(3628800, public_output[0]);
+//! ```
+//!
+//! ## Non-Determinism
+//!
+//! In the following example, a public field elements equality to the sum of some squared secret
+//! elements is proven. For demonstration purposes, some of the secret elements come from secret in,
+//! and some are read from RAM, which can be initialized arbitrarily.
+//!
+//! Note that the non-determinism is not required for proof verification, and does not appear in
+//! the claim or the proof. It is only used for proof generation. This way, the verifier can be
+//! convinced that the prover did indeed know some input that satisfies the claim, but learns
+//! nothing beyond that fact.
+//!
+//! The third potential source of non-determinism is intended for verifying Merkle authentication
+//! paths. It is not used in this example. See [`NonDeterminism`] for more information.
+//!
+//! ```
+//! # use triton_vm::*;
+//! let sum_of_squares_program = triton_program!(
+//!     read_io                         // n
+//!     call sum_of_squares_secret_in   // n sum_1
+//!     call sum_of_squares_ram         // n sum_1 sum_2
+//!     add                             // n sum_1+sum_2
+//!     eq                              // n==(sum_1+sum_2)
+//!     assert                          // abort the VM if n!=(sum_1+sum_2)
+//!     halt
+//!
+//!     sum_of_squares_secret_in:
+//!         divine dup 0 mul            // s₁²
+//!         divine dup 0 mul add        // s₁²+s₂²
+//!         divine dup 0 mul add        // s₁²+s₂²+s₃²
+//!         return
+//!
+//!     sum_of_squares_ram:
+//!         push 17                     // 17
+//!         read_mem                    // 17 s₄
+//!         dup 0 mul                   // 17 s₄²
+//!         swap 1 pop                  // s₄²
+//!         push 42                     // s₄² 42
+//!         read_mem                    // s₄² 42 s₅
+//!         dup 0 mul                   // s₄² 42 s₅²
+//!         swap 1 pop                  // s₄² s₅²
+//!         add                         // s₄²+s₅²
+//!         return
+//! );
+//! let public_input = [597];
+//! let secret_input = [5, 9, 11];
+//! let initial_ram = [(17, 3), (42, 19)];
+//! let non_determinism = NonDeterminism::new(secret_input.into());
+//! let non_determinism = non_determinism.with_ram(initial_ram.into());
+//!
+//! let (parameters, claim, proof) =
+//!    prove_program(&sum_of_squares_program, &public_input, &non_determinism).unwrap();
+//!
+//! let verdict = verify(&parameters, &claim, &proof);
+//! assert!(verdict);
+//! ```
+//!
 
 #![recursion_limit = "4096"]
 
