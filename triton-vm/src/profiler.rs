@@ -417,18 +417,6 @@ pub struct Report {
 }
 
 impl Report {
-    pub fn placeholder() -> Self {
-        Report {
-            name: "".to_string(),
-            tasks: vec![],
-            total_time: Duration::ZERO,
-            category_times: HashMap::new(),
-            cycle_count: None,
-            padded_height: None,
-            fri_domain_len: None,
-        }
-    }
-
     fn display_time_aligned(time: Duration) -> String {
         let unaligned_time = format!("{time:.2?}");
         let time_components: Vec<_> = unaligned_time.split('.').collect();
