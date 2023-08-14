@@ -1777,7 +1777,10 @@ pub(crate) mod triton_stark_tests {
 
         let padded_height = proof.padded_height().unwrap();
         let fri = Stark::derive_fri(&parameters, padded_height);
-        let report = profiler.report(None, Some(padded_height), Some(fri.domain.length));
+        let report = profiler
+            .report()
+            .with_padded_height(padded_height)
+            .with_fri_domain_len(fri.domain.length);
         println!("{report}");
     }
 
@@ -1842,7 +1845,10 @@ pub(crate) mod triton_stark_tests {
 
         let padded_height = proof.padded_height().unwrap();
         let fri = Stark::derive_fri(&parameters, padded_height);
-        let report = profiler.report(None, Some(padded_height), Some(fri.domain.length));
+        let report = profiler
+            .report()
+            .with_padded_height(padded_height)
+            .with_fri_domain_len(fri.domain.length);
         println!("{report}");
     }
 
@@ -1889,7 +1895,10 @@ pub(crate) mod triton_stark_tests {
 
         let padded_height = proof.padded_height().unwrap();
         let fri = Stark::derive_fri(&parameters, padded_height);
-        let report = profiler.report(None, Some(padded_height), Some(fri.domain.length));
+        let report = profiler
+            .report()
+            .with_padded_height(padded_height)
+            .with_fri_domain_len(fri.domain.length);
         println!("{report}");
     }
 
@@ -1907,7 +1916,10 @@ pub(crate) mod triton_stark_tests {
 
             let padded_height = proof.padded_height().unwrap();
             let fri = Stark::derive_fri(&parameters, padded_height);
-            let report = profiler.report(None, Some(padded_height), Some(fri.domain.length));
+            let report = profiler
+                .report()
+                .with_padded_height(padded_height)
+                .with_fri_domain_len(fri.domain.length);
             println!("{report}");
         }
     }

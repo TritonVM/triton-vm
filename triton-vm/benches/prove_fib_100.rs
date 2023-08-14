@@ -41,14 +41,13 @@ fn prove_fib_100(criterion: &mut Criterion) {
     group.finish();
 
     println!("Writing report ...");
-    let cycle_count = aet.processor_trace.nrows();
     let padded_height = proof.padded_height().unwrap();
     let fri = Stark::derive_fri(&parameters, padded_height);
-    let report = profiler.report(
-        Some(cycle_count),
-        Some(padded_height),
-        Some(fri.domain.length),
-    );
+    let report = profiler
+        .report()
+        .with_cycle_count(aet.processor_trace.nrows())
+        .with_padded_height(padded_height)
+        .with_fri_domain_len(fri.domain.length);
     println!("{report}");
 }
 

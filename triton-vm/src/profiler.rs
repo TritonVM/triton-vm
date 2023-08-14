@@ -84,12 +84,7 @@ impl TritonProfiler {
         self.total_time = self.timer.elapsed();
     }
 
-    pub fn report(
-        &mut self,
-        cycle_count: Option<usize>,
-        padded_height: Option<usize>,
-        fri_domain_len: Option<usize>,
-    ) -> Report {
+    pub fn report(&mut self) -> Report {
         assert!(!self.profile.is_empty(), "Nothing to report on.");
         assert!(
             self.stack.is_empty(),
@@ -189,9 +184,9 @@ impl TritonProfiler {
             name: self.name.clone(),
             total_time: self.total_time,
             category_times,
-            cycle_count,
-            padded_height,
-            fri_domain_len,
+            cycle_count: None,
+            padded_height: None,
+            fri_domain_len: None,
         }
     }
 
@@ -417,6 +412,21 @@ pub struct Report {
 }
 
 impl Report {
+    pub fn with_cycle_count(mut self, cycle_count: usize) -> Self {
+        self.cycle_count = Some(cycle_count);
+        self
+    }
+
+    pub fn with_padded_height(mut self, padded_height: usize) -> Self {
+        self.padded_height = Some(padded_height);
+        self
+    }
+
+    pub fn with_fri_domain_len(mut self, fri_domain_len: usize) -> Self {
+        self.fri_domain_len = Some(fri_domain_len);
+        self
+    }
+
     fn display_time_aligned(time: Duration) -> String {
         let unaligned_time = format!("{time:.2?}");
         let time_components: Vec<_> = unaligned_time.split('.').collect();
@@ -706,7 +716,7 @@ pub mod triton_profiler_tests {
         }
 
         profiler.finish();
-        println!("{}", profiler.report(None, None, None));
+        println!("{}", profiler.report());
     }
 
     #[test]
@@ -717,9 +727,23 @@ pub mod triton_profiler_tests {
         prof_stop!(profiler, "clk_freq_test");
         let mut profiler = profiler.unwrap();
         profiler.finish();
-        println!("{}", profiler.report(None, None, None));
-        println!("{}", profiler.report(Some(0), Some(0), Some(0)));
-        println!("{}", profiler.report(Some(10), Some(12), Some(13)));
+
+        let report_with_no_optionals = profiler.report();
+        println!("{report_with_no_optionals}");
+
+        let report_with_optionals_set_to_0 = profiler
+            .report()
+            .with_cycle_count(0)
+            .with_padded_height(0)
+            .with_fri_domain_len(0);
+        println!("{report_with_optionals_set_to_0}");
+
+        let report_with_optionals_set = profiler
+            .report()
+            .with_cycle_count(10)
+            .with_padded_height(12)
+            .with_fri_domain_len(32);
+        println!("{report_with_optionals_set}");
     }
 
     #[test]
@@ -758,6 +782,6 @@ pub mod triton_profiler_tests {
         }
 
         profiler.finish();
-        println!("{}", profiler.report(None, None, None));
+        println!("{}", profiler.report());
     }
 }

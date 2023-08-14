@@ -32,11 +32,11 @@ fn verify_halt(criterion: &mut Criterion) {
     profiler.finish();
     let padded_height = proof.padded_height().unwrap();
     let fri = Stark::derive_fri(&parameters, padded_height);
-    let report = profiler.report(
-        Some(aet.processor_trace.nrows()),
-        Some(padded_height),
-        Some(fri.domain.length),
-    );
+    let report = profiler
+        .report()
+        .with_cycle_count(aet.processor_trace.nrows())
+        .with_padded_height(padded_height)
+        .with_fri_domain_len(fri.domain.length);
 
     let bench_id = BenchmarkId::new("VerifyHalt", 0);
     let mut group = criterion.benchmark_group("verify_halt");
