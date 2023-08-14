@@ -49,7 +49,7 @@ name = "prove_halt"
 harness = false
 
 [[bench]]
-name = "prove_fib_100"
+name = "prove_fib"
 harness = false
 
 [[bench]]
