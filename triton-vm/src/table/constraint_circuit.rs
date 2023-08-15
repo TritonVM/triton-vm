@@ -1107,12 +1107,11 @@ mod constraint_circuit_tests {
     use rand::rngs::StdRng;
     use rand::thread_rng;
     use rand::Rng;
-    use rand::RngCore;
     use rand::SeedableRng;
-    use twenty_first::shared_math::other::random_elements;
+    use strum::EnumCount;
+    use strum::IntoEnumIterator;
 
     use crate::table::cascade_table::ExtCascadeTable;
-    use crate::table::challenges::ChallengeId::U32Indeterminate;
     use crate::table::challenges::Challenges;
     use crate::table::constraint_circuit::SingleRowIndicator::*;
     use crate::table::degree_lowering_table::DegreeLoweringTable;
@@ -1130,62 +1129,55 @@ mod constraint_circuit_tests {
 
     use super::*;
 
-    fn random_circuit_builder() -> (
-        ConstraintCircuitMonad<DualRowIndicator>,
-        ConstraintCircuitBuilder<DualRowIndicator>,
-    ) {
+    fn random_circuit() -> ConstraintCircuitMonad<DualRowIndicator> {
         let mut rng = thread_rng();
-        let num_base_columns = 50;
-        let num_ext_columns = 40;
-        let var_count = 2 * (num_base_columns + num_ext_columns);
+        let num_base_columns = rng.gen_range(1..120);
+        let num_ext_columns = rng.gen_range(1..40);
         let circuit_builder = ConstraintCircuitBuilder::new();
-        let b_constants: Vec<BFieldElement> = random_elements(var_count);
-        let x_constants: Vec<XFieldElement> = random_elements(var_count);
-        let circuit_input =
-            DualRowIndicator::NextBaseRow(rng.next_u64() as usize % num_base_columns);
-        let mut ret_circuit = circuit_builder.input(circuit_input);
-        for _ in 0..100 {
-            let circuit = match rng.next_u64() % 6 {
-                0 => {
-                    // p(x, y, z) = x
-                    circuit_builder.input(DualRowIndicator::CurrentBaseRow(
-                        rng.next_u64() as usize % num_base_columns,
-                    ))
-                }
-                1 => {
-                    // p(x, y, z) = xfe
-                    circuit_builder.x_constant(x_constants[rng.next_u64() as usize % var_count])
-                }
-                2 => {
-                    // p(x, y, z) = rand_i
-                    circuit_builder.challenge(U32Indeterminate)
-                }
-                3 => {
-                    // p(x, y, z) = 0
-                    circuit_builder.x_constant(XFieldElement::zero())
-                }
-                4 => {
-                    // p(x, y, z) = bfe
-                    circuit_builder.b_constant(b_constants[rng.next_u64() as usize % var_count])
-                }
-                5 => {
-                    // p(x, y, z) = rand_i * x
-                    let input_value =
-                        DualRowIndicator::CurrentExtRow(rng.next_u64() as usize % num_ext_columns);
-                    let challenge_id = U32Indeterminate;
-                    circuit_builder.input(input_value) * circuit_builder.challenge(challenge_id)
-                }
-                _ => unreachable!(),
-            };
-            match rng.next_u32() % 3 {
-                0 => ret_circuit = ret_circuit * circuit,
-                1 => ret_circuit = ret_circuit + circuit,
-                2 => ret_circuit = ret_circuit - circuit,
+        let initial_input = DualRowIndicator::NextBaseRow(rng.gen_range(0..num_base_columns));
+        let mut random_circuit = circuit_builder.input(initial_input);
+
+        let num_nodes_in_circuit = rng.gen_range(50..300);
+        for _ in 0..num_nodes_in_circuit {
+            let node = random_circuit_node(&circuit_builder, num_base_columns, num_ext_columns);
+            match rng.gen_range(0..3) {
+                0 => random_circuit = random_circuit * node,
+                1 => random_circuit = random_circuit + node,
+                2 => random_circuit = random_circuit - node,
                 _ => unreachable!(),
             }
         }
+        random_circuit
+    }
 
-        (ret_circuit, circuit_builder)
+    fn random_circuit_node(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+        num_base_columns: usize,
+        num_ext_columns: usize,
+    ) -> ConstraintCircuitMonad<DualRowIndicator> {
+        let mut rng = thread_rng();
+        let base_col_index = rng.gen_range(0..num_base_columns);
+        let ext_col_index = rng.gen_range(0..num_ext_columns);
+        match rng.gen_range(0..39) {
+            0..=4 => circuit_builder.input(DualRowIndicator::CurrentBaseRow(base_col_index)),
+            5..=9 => circuit_builder.input(DualRowIndicator::NextBaseRow(base_col_index)),
+            10..=14 => circuit_builder.input(DualRowIndicator::CurrentExtRow(ext_col_index)),
+            15..=19 => circuit_builder.input(DualRowIndicator::NextExtRow(ext_col_index)),
+            20..=24 => circuit_builder.b_constant(rng.gen()),
+            25..=29 => circuit_builder.x_constant(rng.gen()),
+            30..=34 => circuit_builder.challenge(random_challenge_id()),
+            35 => circuit_builder.b_constant(0_u64.into()),
+            36 => circuit_builder.x_constant(0.into()),
+            37 => circuit_builder.b_constant(1_u64.into()),
+            38 => circuit_builder.x_constant(1.into()),
+            _ => unreachable!(),
+        }
+    }
+
+    fn random_challenge_id() -> ChallengeId {
+        let random_index = thread_rng().gen_range(0..ChallengeId::COUNT);
+        let all_challenge_ids = ChallengeId::iter().collect_vec();
+        all_challenge_ids[random_index]
     }
 
     // Make a deep copy of a Multicircuit and return it as a ConstraintCircuitMonad
@@ -1216,13 +1208,13 @@ mod constraint_circuit_tests {
         // The Multicircuits are put into a hash set. Hence, it is important that `Eq` and `Hash`
         // agree whether two nodes are equal: k1 == k2 => h(k1) == h(k2)
         for _ in 0..100 {
-            let (circuit, circuit_builder) = random_circuit_builder();
+            let circuit = random_circuit();
             let mut hasher0 = DefaultHasher::new();
             circuit.hash(&mut hasher0);
             let hash0 = hasher0.finish();
             assert_eq!(circuit, circuit);
 
-            let zero = circuit_builder.x_constant(0.into());
+            let zero = circuit.builder.x_constant(0.into());
             let same_circuit = circuit.clone() + zero;
             let mut hasher1 = DefaultHasher::new();
             same_circuit.hash(&mut hasher1);
@@ -1247,7 +1239,7 @@ mod constraint_circuit_tests {
         // This means that the hash of a node may not depend on: `visited_counter`, `counter`,
         // `id_counter_ref`, or `all_nodes`. The reason for this constraint is that `all_nodes`
         // contains the digest of all nodes in the multi tree.
-        let (circuit, _circuit_builder) = random_circuit_builder();
+        let circuit = random_circuit();
         let mut hasher0 = DefaultHasher::new();
         circuit.hash(&mut hasher0);
         let digest_prior = hasher0.finish();
@@ -1295,16 +1287,7 @@ mod constraint_circuit_tests {
         assert_ne!(var_0_copy_0, var_0_mul_one_0);
         let mut circuits = [var_0_copy_0, var_0_mul_one_0];
         ConstraintCircuitMonad::constant_folding(&mut circuits);
-        assert_eq!(
-            circuits[0], circuits[1],
-            "{} != {}",
-            circuits[0], circuits[1]
-        );
-        assert_eq!(
-            circuits[1], circuits[0],
-            "{} != {}",
-            circuits[1], circuits[0]
-        );
+        assert_eq!(circuits[0], circuits[1]);
 
         // Verify that constant folding can handle a = 1 * a
         let var_0_copy_1 = deep_copy(&var_0.circuit.borrow());
@@ -1312,16 +1295,7 @@ mod constraint_circuit_tests {
         assert_ne!(var_0_copy_1, var_0_one_mul_1);
         let mut circuits = [var_0_copy_1, var_0_one_mul_1];
         ConstraintCircuitMonad::constant_folding(&mut circuits);
-        assert_eq!(
-            circuits[0], circuits[1],
-            "{} != {}",
-            circuits[0], circuits[1]
-        );
-        assert_eq!(
-            circuits[1], circuits[0],
-            "{} != {}",
-            circuits[1], circuits[0]
-        );
+        assert_eq!(circuits[0], circuits[1]);
 
         // Verify that constant folding can handle a = 1 * a * 1
         let var_0_copy_2 = deep_copy(&var_0.circuit.borrow());
@@ -1329,16 +1303,7 @@ mod constraint_circuit_tests {
         assert_ne!(var_0_copy_2, var_0_one_mul_2);
         let mut circuits = [var_0_copy_2, var_0_one_mul_2];
         ConstraintCircuitMonad::constant_folding(&mut circuits);
-        assert_eq!(
-            circuits[0], circuits[1],
-            "{} != {}",
-            circuits[0], circuits[1]
-        );
-        assert_eq!(
-            circuits[1], circuits[0],
-            "{} != {}",
-            circuits[1], circuits[0]
-        );
+        assert_eq!(circuits[0], circuits[1]);
 
         // Verify that constant folding handles a + 0 = a
         let var_0_copy_3 = deep_copy(&var_0.circuit.borrow());
@@ -1346,16 +1311,7 @@ mod constraint_circuit_tests {
         assert_ne!(var_0_copy_3, var_0_plus_zero_3);
         let mut circuits = [var_0_copy_3, var_0_plus_zero_3];
         ConstraintCircuitMonad::constant_folding(&mut circuits);
-        assert_eq!(
-            circuits[0], circuits[1],
-            "{} != {}",
-            circuits[0], circuits[1]
-        );
-        assert_eq!(
-            circuits[1], circuits[0],
-            "{} != {}",
-            circuits[1], circuits[0]
-        );
+        assert_eq!(circuits[0], circuits[1]);
 
         // Verify that constant folding handles a + (a * 0) = a
         let var_0_copy_4 = deep_copy(&var_0.circuit.borrow());
@@ -1363,16 +1319,7 @@ mod constraint_circuit_tests {
         assert_ne!(var_0_copy_4, var_0_plus_zero_4);
         let mut circuits = [var_0_copy_4, var_0_plus_zero_4];
         ConstraintCircuitMonad::constant_folding(&mut circuits);
-        assert_eq!(
-            circuits[0], circuits[1],
-            "{} != {}",
-            circuits[0], circuits[1]
-        );
-        assert_eq!(
-            circuits[1], circuits[0],
-            "{} != {}",
-            circuits[1], circuits[0]
-        );
+        assert_eq!(circuits[0], circuits[1]);
 
         // Verify that constant folding does not equate `0 - a` with `a`
         let var_0_copy_5 = deep_copy(&var_0.circuit.borrow());
@@ -1380,24 +1327,15 @@ mod constraint_circuit_tests {
         assert_ne!(var_0_copy_5, zero_minus_var_0);
         let mut circuits = [var_0_copy_5, zero_minus_var_0];
         ConstraintCircuitMonad::constant_folding(&mut circuits);
-        assert_ne!(
-            circuits[0], circuits[1],
-            "{} == {}",
-            circuits[0], circuits[1]
-        );
-        assert_ne!(
-            circuits[1], circuits[0],
-            "{} == {}",
-            circuits[1], circuits[0]
-        );
+        assert_ne!(circuits[0], circuits[1]);
     }
 
     #[test]
     fn constant_folding_pbt() {
         for _ in 0..200 {
-            let (circuit, circuit_builder) = random_circuit_builder();
-            let one = circuit_builder.x_constant(1.into());
-            let zero = circuit_builder.x_constant(0.into());
+            let circuit = random_circuit();
+            let one = circuit.builder.x_constant(1.into());
+            let zero = circuit.builder.x_constant(0.into());
 
             // Verify that constant folding can handle a = a * 1
             let copy_0 = deep_copy(&circuit.circuit.borrow());
@@ -1405,16 +1343,7 @@ mod constraint_circuit_tests {
             assert_ne!(copy_0, copy_0_alt);
             let mut circuits = [copy_0.clone(), copy_0_alt.clone()];
             ConstraintCircuitMonad::constant_folding(&mut circuits);
-            assert_eq!(
-                circuits[0], circuits[1],
-                "{} != {}",
-                circuits[0], circuits[1]
-            );
-            assert_eq!(
-                circuits[1], circuits[0],
-                "{} != {}",
-                circuits[1], circuits[0]
-            );
+            assert_eq!(circuits[0], circuits[1]);
 
             // Verify that constant folding can handle a = 1 * a
             let copy_1 = deep_copy(&circuit.circuit.borrow());
@@ -1422,16 +1351,7 @@ mod constraint_circuit_tests {
             assert_ne!(copy_1, copy_1_alt);
             let mut circuits = [copy_1, copy_1_alt];
             ConstraintCircuitMonad::constant_folding(&mut circuits);
-            assert_eq!(
-                circuits[0], circuits[1],
-                "{} != {}",
-                circuits[0], circuits[1]
-            );
-            assert_eq!(
-                circuits[1], circuits[0],
-                "{} != {}",
-                circuits[1], circuits[0]
-            );
+            assert_eq!(circuits[0], circuits[1]);
 
             // Verify that constant folding can handle a = 1 * a * 1
             let copy_2 = deep_copy(&circuit.circuit.borrow());
@@ -1439,16 +1359,7 @@ mod constraint_circuit_tests {
             assert_ne!(copy_2, copy_2_alt);
             let mut circuits = [copy_2, copy_2_alt];
             ConstraintCircuitMonad::constant_folding(&mut circuits);
-            assert_eq!(
-                circuits[0], circuits[1],
-                "{} != {}",
-                circuits[0], circuits[1]
-            );
-            assert_eq!(
-                circuits[1], circuits[0],
-                "{} != {}",
-                circuits[1], circuits[0]
-            );
+            assert_eq!(circuits[0], circuits[1]);
 
             // Verify that constant folding handles a + 0 = a
             let copy_3 = deep_copy(&circuit.circuit.borrow());
@@ -1456,16 +1367,7 @@ mod constraint_circuit_tests {
             assert_ne!(copy_3, copy_3_alt);
             let mut circuits = [copy_3, copy_3_alt];
             ConstraintCircuitMonad::constant_folding(&mut circuits);
-            assert_eq!(
-                circuits[0], circuits[1],
-                "{} != {}",
-                circuits[0], circuits[1]
-            );
-            assert_eq!(
-                circuits[1], circuits[0],
-                "{} != {}",
-                circuits[1], circuits[0]
-            );
+            assert_eq!(circuits[0], circuits[1]);
 
             // Verify that constant folding handles a + (a * 0) = a
             let copy_4 = deep_copy(&circuit.circuit.borrow());
@@ -1473,16 +1375,7 @@ mod constraint_circuit_tests {
             assert_ne!(copy_4, copy_4_alt);
             let mut circuits = [copy_4, copy_4_alt];
             ConstraintCircuitMonad::constant_folding(&mut circuits);
-            assert_eq!(
-                circuits[0], circuits[1],
-                "{} != {}",
-                circuits[0], circuits[1]
-            );
-            assert_eq!(
-                circuits[1], circuits[0],
-                "{} != {}",
-                circuits[1], circuits[0]
-            );
+            assert_eq!(circuits[0], circuits[1]);
 
             // Verify that constant folding handles a + (0 * a) = a
             let copy_5 = deep_copy(&circuit.circuit.borrow());
@@ -1490,16 +1383,7 @@ mod constraint_circuit_tests {
             assert_ne!(copy_5, copy_5_alt);
             let mut circuits = [copy_5, copy_5_alt];
             ConstraintCircuitMonad::constant_folding(&mut circuits);
-            assert_eq!(
-                circuits[0], circuits[1],
-                "{} != {}",
-                circuits[0], circuits[1]
-            );
-            assert_eq!(
-                circuits[1], circuits[0],
-                "{} != {}",
-                circuits[1], circuits[0]
-            );
+            assert_eq!(circuits[0], circuits[1]);
 
             // Verify that constant folding does not equate `0 - a` with `a`
             // But only if `a != 0`
@@ -1513,33 +1397,13 @@ mod constraint_circuit_tests {
             let zero_minus_copy_6_expr = circuits[1].circuit.borrow().expression.clone();
 
             // An X field and a B field leaf will never be equal
-            if copy_6_is_zero
-                && (matches!(copy_6_expr, CircuitExpression::BConstant(_))
-                    && matches!(zero_minus_copy_6_expr, CircuitExpression::BConstant(_))
-                    || matches!(copy_6_expr, CircuitExpression::XConstant(_))
-                        && matches!(zero_minus_copy_6_expr, CircuitExpression::XConstant(_)))
-            {
-                assert_eq!(
-                    circuits[0], circuits[1],
-                    "{} != {}",
-                    circuits[0], circuits[1]
-                );
-                assert_eq!(
-                    circuits[1], circuits[0],
-                    "{} != {}",
-                    circuits[1], circuits[0]
-                );
-            } else {
-                assert_ne!(
-                    circuits[0], circuits[1],
-                    "{} == {}",
-                    circuits[0], circuits[1]
-                );
-                assert_ne!(
-                    circuits[1], circuits[0],
-                    "{} == {}",
-                    circuits[1], circuits[0]
-                );
+            let copy_6_and_zero_minus_copy_6_have_same_constant_type = matches!(
+                (copy_6_expr, zero_minus_copy_6_expr),
+                (BConstant(_), BConstant(_)) | (XConstant(_), XConstant(_))
+            );
+            match copy_6_is_zero && copy_6_and_zero_minus_copy_6_have_same_constant_type {
+                true => assert_eq!(circuits[0], circuits[1]),
+                false => assert_ne!(circuits[0], circuits[1]),
             }
 
             // Verify that constant folding handles a - 0 = a
@@ -1548,16 +1412,7 @@ mod constraint_circuit_tests {
             assert_ne!(copy_7, copy_7_alt);
             let mut circuits = [copy_7, copy_7_alt];
             ConstraintCircuitMonad::constant_folding(&mut circuits);
-            assert_eq!(
-                circuits[0], circuits[1],
-                "{} != {}",
-                circuits[0], circuits[1]
-            );
-            assert_eq!(
-                circuits[1], circuits[0],
-                "{} != {}",
-                circuits[1], circuits[0]
-            );
+            assert_eq!(circuits[0], circuits[1]);
         }
     }
 
