@@ -501,7 +501,7 @@ fn tokenize_circuits<II: InputIndicator>(
         base_constraints
             .into_iter()
             .map(|bfe| bfe.lift())
-            .chain(ext_constraints.into_iter())
+            .chain(ext_constraints)
             .collect()
     );
 
@@ -511,7 +511,7 @@ fn tokenize_circuits<II: InputIndicator>(
         let ext_constraints = [#(#tokenized_ext_constraints),*];
         base_constraints
             .into_iter()
-            .chain(ext_constraints.into_iter())
+            .chain(ext_constraints)
             .collect()
     );
 
