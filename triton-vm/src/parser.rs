@@ -610,7 +610,7 @@ pub mod parser_tests {
             .filter(|name| !difficult_instructions.contains(name))
             .collect_vec();
 
-        let generators = vec![vec!["simple"], difficult_instructions].concat();
+        let generators = [vec!["simple"], difficult_instructions].concat();
         // Test difficult instructions more frequently.
         let weights = vec![simple_instructions.len(), 2, 6, 6, 2, 10];
 

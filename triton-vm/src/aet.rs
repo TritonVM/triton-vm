@@ -304,7 +304,7 @@ mod test {
         let program = triton_program!({&eight_nops} halt);
         let padded_program = AlgebraicExecutionTrace::hash_input_pad_program(&program);
 
-        let expected = vec![program.to_bwords(), vec![BFIELD_ONE]].concat();
+        let expected = [program.to_bwords(), vec![BFIELD_ONE]].concat();
         assert_eq!(expected, padded_program);
     }
 }

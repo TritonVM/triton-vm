@@ -1112,7 +1112,7 @@ impl ExtProcessorTable {
 
         instruction_bit_polynomials
             .into_iter()
-            .zip_eq(deselector_polynomials.into_iter())
+            .zip_eq(deselector_polynomials)
             .map(|(instruction_bit_poly, deselector_poly)| instruction_bit_poly - deselector_poly)
             .fold(one, ConstraintCircuitMonad::mul)
     }
@@ -2456,7 +2456,7 @@ impl ExtProcessorTable {
         ];
         let compressed_row = weights
             .into_iter()
-            .zip_eq(state.into_iter())
+            .zip_eq(state)
             .map(|(weight, state)| weight * state)
             .sum();
 
@@ -2508,7 +2508,7 @@ impl ExtProcessorTable {
         ];
         let compressed_row = weights
             .into_iter()
-            .zip_eq(state.into_iter())
+            .zip_eq(state)
             .map(|(weight, state)| weight * state)
             .sum();
 
@@ -2578,7 +2578,7 @@ impl ExtProcessorTable {
         ];
         let compressed_row_next = weights
             .into_iter()
-            .zip_eq(state_next.into_iter())
+            .zip_eq(state_next)
             .map(|(weight, st_next)| weight * st_next)
             .sum();
 
@@ -2730,7 +2730,7 @@ impl ExtProcessorTable {
         });
         let all_instructions_and_their_transition_constraints = ALL_INSTRUCTIONS
             .into_iter()
-            .zip_eq(all_transition_constraints_by_instruction.into_iter())
+            .zip_eq(all_transition_constraints_by_instruction)
             .collect_vec()
             .try_into()
             .unwrap();
@@ -2762,7 +2762,7 @@ impl ExtProcessorTable {
             Self::log_derivative_with_u32_table_updates_correctly(circuit_builder),
         ];
 
-        vec![
+        [
             instruction_independent_constraints,
             doubly_deselected_transition_constraints,
             table_linking_constraints,

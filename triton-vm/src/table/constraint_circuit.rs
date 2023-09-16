@@ -903,7 +903,7 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
             .map(|c| c.clone().consume())
             .collect_vec();
         let all_nodes = Self::all_nodes_in_multicircuit(&multicircuit);
-        let all_nodes: HashSet<_> = HashSet::from_iter(all_nodes.into_iter());
+        let all_nodes: HashSet<_> = HashSet::from_iter(all_nodes);
 
         // Only nodes with degree > target_degree need changing.
         let high_degree_nodes = all_nodes

@@ -1213,7 +1213,7 @@ impl ExtHashTable {
         let round_number_next = next_base_row(RoundNumber);
         let hash_function_round_correctly_performs_update = state_after_round_constant_addition
             .into_iter()
-            .zip_eq(state_next.clone().into_iter())
+            .zip_eq(state_next.clone())
             .map(|(state_element, state_element_next)| {
                 round_number_next.clone() * (state_element - state_element_next)
             })

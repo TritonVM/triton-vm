@@ -1,5 +1,6 @@
 [workspace]
 members = ["triton-vm", "constraint-evaluation-generator"]
+resolver = "2"
 
 [profile.test]
 opt-level = 1

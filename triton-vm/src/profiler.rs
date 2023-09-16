@@ -668,8 +668,11 @@ pub mod triton_profiler_tests {
     }
 
     fn random_category(rng: &mut ThreadRng) -> String {
-        let options = vec!["setup", "compute", "drop", "cleanup"];
-        options[rng.next_u32() as usize % options.len()].to_string()
+        let categories = ["setup", "compute", "drop", "cleanup"];
+        let num_categories = categories.len();
+        let category_index = rng.gen_range(0..num_categories);
+        let category = categories[category_index];
+        category.to_string()
     }
 
     #[test]
