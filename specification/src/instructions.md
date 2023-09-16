@@ -114,7 +114,7 @@ Triton VM cannot know the number of elements that will be absorbed.
 | `and`         |     14 | `_ b a`     | `_ a&b`       | Bitwise and of the stack's two top-most elements. Crashes the VM if `a` or `b` is not u32.                                                                                 |
 | `xor`         |     22 | `_ b a`     | `_ a^b`       | Bitwise exclusive or of the stack's two top-most elements. Crashes the VM if `a` or `b` is not u32.                                                                        |
 | `log_2_floor` |     12 | `_ a`       | `_ ⌊log₂(a)⌋` | The number of bits in `a` minus 1, _i.e._, $\lfloor\log_2\texttt{a}\rfloor$. Crashes the VM if `a` is 0 or not u32.                                                        |
-| `pow`         |     30 | `_ e b`     | `_ b**e`      | The top of the stack to the power of the stack's runner up. Crashes the VM if `a` or `b` is not u32. The result might be no u32 – care advised.                            |
+| `pow`         |     30 | `_ e b`     | `_ b**e`      | The top of the stack to the power of the stack's runner up. Crashes the VM if exponent `e` is not u32.                                                                     |
 | `div`         |     20 | `_ d n`     | `_ q r`       | Division with remainder of numerator `n` by denominator `d`. Guarantees the properties `n == q·d + r` and `r < d`. Crashes the VM if `n` or `d` is not u32 or if `d` is 0. |
 | `pop_count`   |     28 | `_ a`       | `_ w`         | Computes the [hamming weight](https://en.wikipedia.org/wiki/Hamming_weight) or “population count” of `a`. Crashes the VM if `a` is not u32.                                |
 

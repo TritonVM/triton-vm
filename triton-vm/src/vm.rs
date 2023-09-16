@@ -564,12 +564,12 @@ impl<'pgm> VMState<'pgm> {
     }
 
     fn instruction_pow(&mut self) -> Result<Option<CoProcessorCall>> {
-        let lhs = self.op_stack.pop()?;
-        let rhs = self.op_stack.pop_u32()?;
-        let pow = lhs.mod_pow(rhs as u64);
-        self.op_stack.push(pow);
+        let base = self.op_stack.pop()?;
+        let exponent = self.op_stack.pop_u32()? as u64;
+        let base_pow_exponent = base.mod_pow(exponent);
+        self.op_stack.push(base_pow_exponent);
 
-        let u32_table_entry = (Pow, lhs, (rhs as u64).into());
+        let u32_table_entry = (Pow, base, exponent.into());
         let co_processor_trace = Some(U32TableEntries(vec![u32_table_entry]));
 
         self.instruction_pointer += 1;
