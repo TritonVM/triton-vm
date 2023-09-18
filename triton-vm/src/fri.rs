@@ -47,9 +47,6 @@ pub enum FriValidationError {
 
 #[derive(Debug, Clone)]
 pub struct Fri<H> {
-    // In STARK, the expansion factor <FRI domain length> / max_degree, where
-    // `max_degree` is the max degree of any interpolation rounded up to the
-    // nearest power of 2.
     pub expansion_factor: usize,
     pub num_colinearity_checks: usize,
     pub domain: ArithmeticDomain,
@@ -61,14 +58,14 @@ impl<H: AlgebraicHasher> Fri<H> {
         offset: BFieldElement,
         domain_length: usize,
         expansion_factor: usize,
-        colinearity_checks_count: usize,
+        num_colinearity_checks: usize,
     ) -> Self {
         let domain = ArithmeticDomain::of_length(domain_length).with_offset(offset);
         let _hasher = PhantomData;
         Self {
             domain,
             expansion_factor,
-            num_colinearity_checks: colinearity_checks_count,
+            num_colinearity_checks,
             _hasher,
         }
     }
@@ -436,262 +433,222 @@ impl<H: AlgebraicHasher> Fri<H> {
 }
 
 #[cfg(test)]
-mod triton_xfri_tests {
+mod tests {
+    use std::cmp::max;
+    use std::cmp::min;
+
     use itertools::Itertools;
-    use num_traits::Zero;
-    use rand::thread_rng;
-    use rand::Rng;
+    use proptest::collection::vec;
+    use proptest::prelude::*;
     use twenty_first::shared_math::b_field_element::BFieldElement;
-    use twenty_first::shared_math::other::random_elements;
+    use twenty_first::shared_math::other::roundup_npo2;
+    use twenty_first::shared_math::polynomial::Polynomial;
     use twenty_first::shared_math::tip5::Tip5;
     use twenty_first::shared_math::tip5::RATE;
-    use twenty_first::shared_math::traits::CyclicGroupGenerator;
-    use twenty_first::shared_math::traits::ModPowU32;
-    use twenty_first::shared_math::x_field_element::XFieldElement;
     use twenty_first::util_types::algebraic_hasher::SpongeHasher;
+
+    use ProofItem::*;
+
+    use crate::shared_tests::*;
 
     use super::*;
 
-    #[test]
-    fn sample_indices_test() {
-        type H = Tip5;
-
-        let subgroup_order = 1 << 20;
-        let expansion_factor = 4;
-        let colinearity_checks = 16;
-        // todo: Figure out by how much to oversample for the given parameters.
-        let oversampling_summand = 10;
-
-        let random_bfield_elements: [BFieldElement; RATE] =
-            random_elements(RATE).try_into().unwrap();
-        let mut sponge_state = H::init();
-        H::absorb(&mut sponge_state, &random_bfield_elements);
-
-        let num_indices_to_sample = colinearity_checks + oversampling_summand;
-        let fri = get_x_field_fri_test_object::<H>(
-            subgroup_order,
-            expansion_factor,
-            num_indices_to_sample,
-        );
-        let mut indices = H::sample_indices(
-            &mut sponge_state,
-            fri.domain.length as u32,
-            fri.num_colinearity_checks,
-        );
-        indices.sort_unstable();
-        indices.dedup();
-        let num_unique_indices = indices.len();
-
-        assert!(
-            num_unique_indices >= colinearity_checks,
-            "Too few unique indices: only got {num_unique_indices} uniques \
-            (expecting at least {colinearity_checks} uniques) \
-            after sampling {num_indices_to_sample} indices \
-            from a domain of length {}.",
-            fri.domain.length,
-        );
+    prop_compose! {
+        fn arbitrary_element_to_absorb()(
+            absorb_array in vec(arbitrary_bfield_element(), RATE)
+        ) -> [BFieldElement; RATE] {
+            absorb_array.try_into().unwrap()
+        }
     }
 
-    #[test]
-    fn num_rounds_are_reasonable() {
-        let mut rng = thread_rng();
-        for _ in 0..1 << 11 {
-            let log_2_expansion_factor = rng.gen_range(0..=8);
-            let expansion_factor = 1 << log_2_expansion_factor;
+    prop_compose! {
+        fn arbitrary_fri()(
+            fri in arbitrary_fri_supporting_degree(-1)
+        ) -> Fri<Tip5> {
+            fri
+        }
+    }
 
-            let log_2_domain_length = rng.gen_range(log_2_expansion_factor..=20);
-            let domain_length = 1 << log_2_domain_length;
+    prop_compose! {
+        fn arbitrary_fri_supporting_degree(min_supported_degree: i64)(
+            log_2_expansion_factor in 1_usize..=8
+        )(
+            log_2_expansion_factor in Just(log_2_expansion_factor),
+            log_2_domain_length in log_2_expansion_factor..=18,
+            num_colinearity_checks in 1_usize..=320,
+            offset in arbitrary_bfield_element(),
+        ) -> Fri<Tip5> {
+            let expansion_factor = (1 << log_2_expansion_factor) as usize;
+            let sampled_domain_length = (1 << log_2_domain_length) as usize;
 
-            let num_colinearity_checks = rng.gen_range(1..=320);
+            let min_domain_length = match min_supported_degree {
+                d if d <= -1 => 0,
+                _ => roundup_npo2(min_supported_degree as u64 + 1) as usize,
+            };
+            let min_expanded_domain_length = min_domain_length * expansion_factor;
+            let domain_length = max(sampled_domain_length, min_expanded_domain_length);
 
-            let fri = get_x_field_fri_test_object::<Tip5>(
-                domain_length,
-                expansion_factor,
-                num_colinearity_checks,
+            Fri::<Tip5>::new(offset, domain_length, expansion_factor, num_colinearity_checks)
+        }
+    }
+
+    prop_compose! {
+        fn arbitrary_supported_polynomial(fri: &Fri::<Tip5>)(
+            degree in -1_i64..=fri.first_round_max_degree() as i64,
+        )(
+            polynomial in arbitrary_polynomial_of_degree(degree),
+        ) -> Polynomial<XFieldElement> {
+            polynomial
+        }
+    }
+
+    prop_compose! {
+        fn arbitrary_unsupported_polynomial(fri: &Fri::<Tip5>)(
+            degree in 1 + fri.first_round_max_degree()..2 * (1 + fri.first_round_max_degree()),
+        )(
+            polynomial in arbitrary_polynomial_of_degree(degree as i64),
+        ) -> Polynomial<XFieldElement> {
+            polynomial
+        }
+    }
+
+    prop_compose! {
+        fn arbitrary_matching_fri_and_polynomial_pair()(
+            fri in arbitrary_fri(),
+        )(
+            polynomial in arbitrary_supported_polynomial(&fri),
+            fri in Just(fri),
+        ) -> (Fri::<Tip5>, Polynomial<XFieldElement>) {
+            (fri, polynomial)
+        }
+    }
+
+    prop_compose! {
+        fn arbitrary_non_matching_fri_and_polynomial_pair()(
+            fri in arbitrary_fri(),
+        )(
+            polynomial in arbitrary_unsupported_polynomial(&fri),
+            fri in Just(fri),
+        ) -> (Fri::<Tip5>, Polynomial<XFieldElement>) {
+            (fri, polynomial)
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn sample_indices_test(
+            fri in arbitrary_fri(),
+            initial_absorb in arbitrary_element_to_absorb(),
+        ) {
+            let mut sponge_state = Tip5::init();
+            Tip5::absorb(&mut sponge_state, &initial_absorb);
+
+            // todo: Figure out by how much to oversample for the given parameters.
+            let oversampling_summand = 1 << 13;
+            let num_indices_to_sample = fri.num_colinearity_checks + oversampling_summand;
+            let indices = Tip5::sample_indices(
+                &mut sponge_state,
+                fri.domain.length as u32,
+                num_indices_to_sample,
             );
+            let num_unique_indices = indices.iter().unique().count();
+
+            let required_unique_indices = min(fri.domain.length, fri.num_colinearity_checks);
+            prop_assert!(num_unique_indices >= required_unique_indices);
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn num_rounds_are_reasonable(fri in arbitrary_fri()) {
             let expected_last_round_max_degree = fri.first_round_max_degree() >> fri.num_rounds();
-
-            println!("fri: {:?}", fri);
-            println!("expected_last_round_max_degree = {expected_last_round_max_degree}");
-
-            assert_eq!(expected_last_round_max_degree, fri.last_round_max_degree());
-
+            prop_assert_eq!(expected_last_round_max_degree, fri.last_round_max_degree());
             if fri.num_rounds() > 0 {
-                assert!(fri.num_colinearity_checks <= expected_last_round_max_degree);
-                assert!(expected_last_round_max_degree < 2 * fri.num_colinearity_checks);
+                prop_assert!(fri.num_colinearity_checks <= expected_last_round_max_degree);
+                prop_assert!(expected_last_round_max_degree < 2 * fri.num_colinearity_checks);
             }
         }
     }
 
-    #[test]
-    fn fri_on_x_field_test() {
-        type H = Tip5;
-
-        let subgroup_order = 1024;
-        let expansion_factor = 4;
-        let colinearity_check_count = 6;
-        let fri: Fri<H> =
-            get_x_field_fri_test_object(subgroup_order, expansion_factor, colinearity_check_count);
-        let mut proof_stream = ProofStream::new();
-
-        // corresponds to the linear polynomial `x`
-        let subgroup = fri.domain.generator.lift().get_cyclic_group_elements(None);
-
-        fri.prove(&subgroup, &mut proof_stream);
-
-        // reset sponge state to start verification
-        proof_stream.sponge_state = H::init();
-        let verdict = fri.verify(&mut proof_stream, &mut None);
-        verdict.unwrap();
-    }
-
-    #[test]
-    fn prove_and_verify_low_degree_of_twice_cubing_plus_one() {
-        type H = Tip5;
-
-        let subgroup_order = 1024;
-        let expansion_factor = 4;
-        let colinearity_check_count = 6;
-        let fri: Fri<H> =
-            get_x_field_fri_test_object(subgroup_order, expansion_factor, colinearity_check_count);
-        let mut proof_stream = ProofStream::new();
-
-        let zero = XFieldElement::zero();
-        let one = XFieldElement::one();
-        let two = one + one;
-        let poly = Polynomial::<XFieldElement>::new(vec![one, zero, zero, two]);
-        let codeword = fri.domain.evaluate(&poly);
-
-        fri.prove(&codeword, &mut proof_stream);
-
-        // reset sponge state to start verification
-        proof_stream.sponge_state = H::init();
-        let verdict = fri.verify(&mut proof_stream, &mut None);
-        verdict.unwrap();
-    }
-
-    #[test]
-    fn fri_x_field_limit_test() {
-        type H = Tip5;
-
-        let subgroup_order = 128;
-        let expansion_factor = 4;
-        let colinearity_check_count = 6;
-        let fri: Fri<H> =
-            get_x_field_fri_test_object(subgroup_order, expansion_factor, colinearity_check_count);
-        let subgroup = fri.domain.generator.lift().get_cyclic_group_elements(None);
-
-        let mut points: Vec<XFieldElement>;
-        for n in [1, 5, 20, 30, 31] {
-            points = subgroup.clone().iter().map(|p| p.mod_pow_u32(n)).collect();
+    proptest! {
+        #[test]
+        fn prove_and_verify_low_degree_of_twice_cubing_plus_one(
+            fri in arbitrary_fri_supporting_degree(3)
+        ) {
+            let coefficients = [1, 0, 0, 2].map(|c| c.into()).to_vec();
+            let polynomial = Polynomial::new(coefficients);
+            let codeword = fri.domain.evaluate(&polynomial);
 
             let mut proof_stream = ProofStream::new();
-            fri.prove(&points, &mut proof_stream);
+            fri.prove(&codeword, &mut proof_stream);
 
             // reset sponge state to start verification
-            proof_stream.sponge_state = H::init();
-            let verify_result = fri.verify(&mut proof_stream, &mut None);
-            if verify_result.is_err() {
-                panic!(
-                    "There are {} points, |<128>^{n}| = {}, and verify_result = {verify_result:?}",
-                    points.len(),
-                    points.iter().unique().count(),
-                );
-            }
-
-            // Reset proof stream's read items
-            proof_stream.sponge_state = H::init();
-            proof_stream.items_index = 0;
-
-            // Manipulate Merkle root of 0 and verify failure with expected error message.
-            // This uses the domain-specific knowledge that the first element on the proof stream
-            // is the first Merkle root.
-            let random_digest = thread_rng().gen();
-            proof_stream.items[0] = ProofItem::MerkleRoot(random_digest);
-
-            let bad_verify_result = fri.verify(&mut proof_stream, &mut None);
-            assert!(bad_verify_result.is_err());
-            println!("bad_verify_result = {bad_verify_result:?}");
-
-            // TODO: Add negative test with bad Merkle authentication path
-            // This probably requires manipulating the proof stream somehow.
+            proof_stream.sponge_state = Tip5::init();
+            let verdict = fri.verify(&mut proof_stream, &mut None);
+            prop_assert!(verdict.is_ok());
         }
-
-        // Negative test with too high degree
-        let too_high = subgroup_order as u32 / expansion_factor as u32;
-        points = subgroup.iter().map(|p| p.mod_pow_u32(too_high)).collect();
-        let mut proof_stream = ProofStream::new();
-        fri.prove(&points, &mut proof_stream);
-        let verify_result = fri.verify(&mut proof_stream, &mut None);
-        assert!(verify_result.is_err());
     }
 
-    fn get_x_field_fri_test_object<H: AlgebraicHasher>(
-        subgroup_order: u64,
-        expansion_factor: usize,
-        colinearity_checks: usize,
-    ) -> Fri<H> {
-        let offset = BFieldElement::generator();
-        let fri: Fri<H> = Fri::new(
-            offset,
-            subgroup_order as usize,
-            expansion_factor,
-            colinearity_checks,
-        );
-        fri
+    proptest! {
+        #[test]
+        fn prove_and_verify_low_degree_polynomial(
+            (fri, polynomial) in arbitrary_matching_fri_and_polynomial_pair(),
+        ) {
+            debug_assert!(polynomial.degree() <= fri.first_round_max_degree() as isize);
+            let codeword = fri.domain.evaluate(&polynomial);
+            let mut proof_stream = ProofStream::new();
+            fri.prove(&codeword, &mut proof_stream);
+
+            // reset sponge state to start verification
+            proof_stream.sponge_state = Tip5::init();
+            let verdict = fri.verify(&mut proof_stream, &mut None);
+            prop_assert!(verdict.is_ok());
+        }
     }
 
-    #[test]
-    fn test_fri_deserialization() {
-        type H = Tip5;
+    proptest! {
+        #[test]
+        fn prove_and_fail_to_verify_high_degree_polynomial(
+            (fri, polynomial) in arbitrary_non_matching_fri_and_polynomial_pair(),
+        ) {
+            debug_assert!(polynomial.degree() > fri.first_round_max_degree() as isize);
+            let codeword = fri.domain.evaluate(&polynomial);
+            let mut proof_stream = ProofStream::new();
+            fri.prove(&codeword, &mut proof_stream);
 
-        let subgroup_order = 64;
-        let expansion_factor = 4;
-        let colinearity_check_count = 2;
-        let fri =
-            get_x_field_fri_test_object(subgroup_order, expansion_factor, colinearity_check_count);
+            // reset sponge state to start verification
+            proof_stream.sponge_state = Tip5::init();
+            let verdict = fri.verify(&mut proof_stream, &mut None);
+            prop_assert!(verdict.is_err());
+        }
+    }
 
-        let mut prover_proof_stream = ProofStream::new();
+    // todo: add test fuzzing proof_stream
 
-        let zero = XFieldElement::zero();
-        let one = XFieldElement::one();
-        let two = one + one;
-        let poly = Polynomial::<XFieldElement>::new(vec![one, zero, zero, two]);
-        let codeword = fri.domain.evaluate(&poly);
+    proptest! {
+        #[test]
+        fn serialization(fri in arbitrary_fri_supporting_degree(3)) {
+            let coefficients = [1, 0, 0, 2].map(|c| c.into()).to_vec();
+            let polynomial = Polynomial::new(coefficients);
+            let codeword = fri.domain.evaluate(&polynomial);
 
-        fri.prove(&codeword, &mut prover_proof_stream);
+            let mut prover_proof_stream = ProofStream::new();
+            fri.prove(&codeword, &mut prover_proof_stream);
+            let proof = (&prover_proof_stream).into();
+            let verifier_proof_stream = ProofStream::<Tip5>::try_from(&proof).unwrap();
 
-        let proof = (&prover_proof_stream).into();
-        let mut verifier_proof_stream: ProofStream<H> = ProofStream::try_from(&proof).unwrap();
-
-        assert_eq!(prover_proof_stream.len(), verifier_proof_stream.len());
-        for (prover_item, verifier_item) in prover_proof_stream
-            .items
-            .iter()
-            .zip_eq(verifier_proof_stream.items.iter())
-        {
-            use ProofItem::*;
-            match prover_item {
-                MerkleRoot(prover_root) => {
-                    assert_eq!(*prover_root, verifier_item.as_merkle_root().unwrap())
-                }
-                FriResponse(prover_response) => {
-                    assert_eq!(*prover_response, verifier_item.as_fri_response().unwrap())
-                }
-                FriCodeword(prover_codeword) => {
-                    assert_eq!(*prover_codeword, verifier_item.as_fri_codeword().unwrap())
-                }
-                _ => {
-                    panic!(
-                        "Did not recognize FRI proof items.\n\
-                         Prover item:   {prover_item:?}\n\
-                         Verifier item: {verifier_item:?}"
-                    )
+            let prover_items = prover_proof_stream.items.iter();
+            let verifier_items = verifier_proof_stream.items.iter();
+            for (prover_item, verifier_item) in prover_items.zip_eq(verifier_items) {
+                match (prover_item, verifier_item) {
+                    (MerkleRoot(p), MerkleRoot(v)) => prop_assert_eq!(p, v),
+                    (FriResponse(p), FriResponse(v)) => prop_assert_eq!(p, v),
+                    (FriCodeword(p), FriCodeword(v)) => prop_assert_eq!(p, v),
+                    _ => panic!(
+                        "Unknown items.\nProver: {prover_item:?}\nVerifier: {verifier_item:?}"
+                    ),
                 }
             }
         }
-
-        let verdict = fri.verify(&mut verifier_proof_stream, &mut None);
-        verdict.unwrap();
     }
 }

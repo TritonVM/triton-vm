@@ -8,7 +8,12 @@ use std::path::Path;
 
 use anyhow::anyhow;
 use anyhow::Result;
+use proptest::collection::vec;
+use proptest::prelude::*;
 use twenty_first::shared_math::b_field_element::BFieldElement;
+use twenty_first::shared_math::polynomial::Polynomial;
+use twenty_first::shared_math::x_field_element::XFieldElement;
+use twenty_first::shared_math::x_field_element::EXTENSION_DEGREE;
 
 use crate::aet::AlgebraicExecutionTrace;
 use crate::profiler::prof_start;
@@ -23,6 +28,62 @@ use crate::stark::StarkParameters;
 use crate::table::master_table::MasterBaseTable;
 use crate::NonDeterminism;
 use crate::PublicInput;
+
+prop_compose! {
+    pub(crate) fn arbitrary_bfield_element()(value in 0..BFieldElement::P) -> BFieldElement {
+        BFieldElement::new(value)
+    }
+}
+
+prop_compose! {
+    pub(crate) fn arbitrary_non_zero_bfield_element()(
+        value in 1..BFieldElement::P
+    ) -> BFieldElement {
+        BFieldElement::new(value)
+    }
+}
+
+prop_compose! {
+    pub(crate) fn arbitrary_xfield_element()(
+        coefficients in vec(arbitrary_bfield_element(), EXTENSION_DEGREE)
+    ) -> XFieldElement {
+        XFieldElement::new(coefficients.try_into().unwrap())
+    }
+}
+
+prop_compose! {
+    pub(crate) fn arbitrary_non_zero_xfield_element()(
+        coefficient_0 in arbitrary_non_zero_bfield_element(),
+        coefficient_1 in arbitrary_bfield_element(),
+        coefficient_2 in arbitrary_bfield_element(),
+    ) -> XFieldElement {
+        let coefficients = [coefficient_0, coefficient_1, coefficient_2];
+        XFieldElement::new(coefficients)
+    }
+}
+
+prop_compose! {
+    pub(crate) fn arbitrary_polynomial()(
+        degree in -1_i64..1 << 10,
+    )(
+        polynomial in arbitrary_polynomial_of_degree(degree),
+    ) -> Polynomial<XFieldElement> {
+        polynomial
+    }
+}
+
+prop_compose! {
+    pub(crate) fn arbitrary_polynomial_of_degree(degree: i64)(
+        leading_coefficient in arbitrary_non_zero_xfield_element(),
+        other_coefficients in vec(arbitrary_xfield_element(), degree.try_into().unwrap_or(0)),
+    ) -> Polynomial<XFieldElement> {
+        let coefficients = match degree >= 0 {
+            true => [other_coefficients, vec![leading_coefficient]].concat(),
+            false => vec![],
+        };
+        Polynomial::new(coefficients)
+    }
+}
 
 /// Prove correct execution of the given program.
 /// Return the used parameters and the generated claim & proof.
