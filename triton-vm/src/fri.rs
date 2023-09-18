@@ -51,7 +51,7 @@ pub struct Fri<H> {
     // `max_degree` is the max degree of any interpolation rounded up to the
     // nearest power of 2.
     pub expansion_factor: usize,
-    pub colinearity_checks_count: usize,
+    pub num_colinearity_checks: usize,
     pub domain: ArithmeticDomain,
     _hasher: PhantomData<H>,
 }
@@ -68,7 +68,7 @@ impl<H: AlgebraicHasher> Fri<H> {
         Self {
             domain,
             expansion_factor,
-            colinearity_checks_count,
+            num_colinearity_checks: colinearity_checks_count,
             _hasher,
         }
     }
@@ -138,7 +138,7 @@ impl<H: AlgebraicHasher> Fri<H> {
 
         // Fiat-Shamir to get indices at which to reveal the codeword
         let initial_a_indices =
-            proof_stream.sample_indices(self.domain.length, self.colinearity_checks_count);
+            proof_stream.sample_indices(self.domain.length, self.num_colinearity_checks);
         let initial_b_indices = initial_a_indices
             .iter()
             .map(|&idx| (idx + self.domain.length / 2) % self.domain.length)
@@ -182,12 +182,12 @@ impl<H: AlgebraicHasher> Fri<H> {
     ) -> Vec<(Vec<XFieldElement>, MerkleTree<H>)> {
         let one = XFieldElement::one();
         let two_inv = one / (one + one);
-        let (num_rounds, _) = self.num_rounds();
+        let num_rounds = self.num_rounds();
 
         let mut subgroup_generator = self.domain.generator;
         let mut offset = self.domain.offset;
         let mut codeword = codeword.to_vec();
-        let mut codewords_and_merkle_trees = Vec::with_capacity(num_rounds as usize);
+        let mut codewords_and_merkle_trees = Vec::with_capacity(num_rounds);
 
         // Compute and send Merkle root
         let mut digests = Vec::with_capacity(codeword.len());
@@ -252,8 +252,7 @@ impl<H: AlgebraicHasher> Fri<H> {
         maybe_profiler: &mut Option<TritonProfiler>,
     ) -> Result<Vec<(usize, XFieldElement)>> {
         prof_start!(maybe_profiler, "init");
-        let (num_rounds, degree_of_last_round) = self.num_rounds();
-        let num_rounds = num_rounds as usize;
+        let num_rounds = self.num_rounds();
 
         // Extract all roots and calculate alpha based on Fiat-Shamir challenge
         let mut roots = Vec::with_capacity(num_rounds);
@@ -303,10 +302,11 @@ impl<H: AlgebraicHasher> Fri<H> {
         intt::<XFieldElement>(&mut last_polynomial, last_fri_domain_generator, log_2_of_n);
         let last_poly_degree = Polynomial::new(last_polynomial).degree();
 
-        if last_poly_degree > degree_of_last_round as isize {
-            println!(
+        let last_round_max_degree = self.last_round_max_degree();
+        if last_poly_degree > last_round_max_degree as isize {
+            eprintln!(
                 "last_poly_degree is {last_poly_degree}, \
-                 degree_of_last_round is {degree_of_last_round}",
+                 last_round_max_degree is {last_round_max_degree}",
             );
             bail!(FriValidationError::LastIterationTooHighDegree);
         }
@@ -317,7 +317,7 @@ impl<H: AlgebraicHasher> Fri<H> {
         // query step 0: get "A" indices and verify set membership of corresponding values.
         prof_start!(maybe_profiler, "sample indices");
         let mut a_indices =
-            proof_stream.sample_indices(self.domain.length, self.colinearity_checks_count);
+            proof_stream.sample_indices(self.domain.length, self.num_colinearity_checks);
         prof_stop!(maybe_profiler, "sample indices");
 
         prof_start!(maybe_profiler, "dequeue and authenticate", "hash");
@@ -355,10 +355,10 @@ impl<H: AlgebraicHasher> Fri<H> {
                 &b_indices,
                 proof_stream,
             )?;
-            debug_assert_eq!(self.colinearity_checks_count, a_indices.len());
-            debug_assert_eq!(self.colinearity_checks_count, b_indices.len());
-            debug_assert_eq!(self.colinearity_checks_count, a_values.len());
-            debug_assert_eq!(self.colinearity_checks_count, b_values.len());
+            debug_assert_eq!(self.num_colinearity_checks, a_indices.len());
+            debug_assert_eq!(self.num_colinearity_checks, b_indices.len());
+            debug_assert_eq!(self.num_colinearity_checks, a_values.len());
+            debug_assert_eq!(self.num_colinearity_checks, b_values.len());
 
             if r == 0 {
                 // save other half of indices and revealed leafs of first round for returning
@@ -373,7 +373,7 @@ impl<H: AlgebraicHasher> Fri<H> {
             current_domain_len /= 2;
             current_tree_height -= 1;
             let c_indices = a_indices.iter().map(|x| x % current_domain_len).collect();
-            let c_values = (0..self.colinearity_checks_count)
+            let c_values = (0..self.num_colinearity_checks)
                 .into_par_iter()
                 .map(|i| {
                     Polynomial::<XFieldElement>::get_colinear_y(
@@ -395,7 +395,7 @@ impl<H: AlgebraicHasher> Fri<H> {
         // last codeword from the proofstream.
         prof_start!(maybe_profiler, "compare last codeword");
         a_indices = a_indices.iter().map(|x| x % current_domain_len).collect();
-        if (0..self.colinearity_checks_count).any(|i| last_codeword[a_indices[i]] != a_values[i]) {
+        if (0..self.num_colinearity_checks).any(|i| last_codeword[a_indices[i]] != a_values[i]) {
             bail!(FriValidationError::MismatchingLastCodeword);
         }
         prof_stop!(maybe_profiler, "compare last codeword");
@@ -418,20 +418,25 @@ impl<H: AlgebraicHasher> Fri<H> {
         evaluation_argument.lift()
     }
 
-    fn num_rounds(&self) -> (u8, u32) {
-        let max_degree = (self.domain.length / self.expansion_factor) - 1;
-        let mut rounds_count = log_2_ceil(max_degree as u128 + 1) as u8;
-        let mut max_degree_of_last_round = 0u32;
-        if self.expansion_factor < self.colinearity_checks_count {
-            let num_missed_rounds = log_2_ceil(
-                (self.colinearity_checks_count as f64 / self.expansion_factor as f64).ceil()
-                    as u128,
-            ) as u8;
-            rounds_count -= num_missed_rounds;
-            max_degree_of_last_round = 2u32.pow(num_missed_rounds as u32) - 1;
-        }
+    pub fn num_rounds(&self) -> usize {
+        let first_round_code_dimension = self.first_round_max_degree() + 1;
+        let max_num_rounds = log_2_ceil(first_round_code_dimension as u128);
 
-        (rounds_count, max_degree_of_last_round)
+        // Skip rounds for which Merkle tree verification cost exceeds arithmetic cost,
+        // because more than half the codeword's locations are queried.
+        let num_rounds_checking_all_locations = self.num_colinearity_checks.ilog2() as u64;
+        let num_rounds_checking_most_locations = num_rounds_checking_all_locations + 1;
+
+        max_num_rounds.saturating_sub(num_rounds_checking_most_locations) as usize
+    }
+
+    pub fn last_round_max_degree(&self) -> usize {
+        self.first_round_max_degree() >> self.num_rounds()
+    }
+
+    pub fn first_round_max_degree(&self) -> usize {
+        assert!(self.domain.length >= self.expansion_factor);
+        (self.domain.length / self.expansion_factor) - 1
     }
 }
 
@@ -476,7 +481,7 @@ mod triton_xfri_tests {
         let mut indices = H::sample_indices(
             &mut sponge_state,
             fri.domain.length as u32,
-            fri.colinearity_checks_count,
+            fri.num_colinearity_checks,
         );
         indices.sort_unstable();
         indices.dedup();
@@ -493,65 +498,34 @@ mod triton_xfri_tests {
     }
 
     #[test]
-    fn get_rounds_count_test() {
-        type Hasher = Tip5;
+    fn num_rounds_are_reasonable() {
+        let mut rng = thread_rng();
+        for _ in 0..1 << 11 {
+            let log_2_expansion_factor = rng.gen_range(0..=8);
+            let expansion_factor = 1 << log_2_expansion_factor;
 
-        let subgroup_order = 512;
-        let expansion_factor = 4;
-        let mut fri = get_x_field_fri_test_object::<Hasher>(subgroup_order, expansion_factor, 2);
+            let log_2_domain_length = rng.gen_range(log_2_expansion_factor..=20);
+            let domain_length = 1 << log_2_domain_length;
 
-        assert_eq!((7, 0), fri.num_rounds());
-        fri.colinearity_checks_count = 8;
-        assert_eq!((6, 1), fri.num_rounds());
-        fri.colinearity_checks_count = 10;
-        assert_eq!((5, 3), fri.num_rounds());
-        fri.colinearity_checks_count = 16;
-        assert_eq!((5, 3), fri.num_rounds());
-        fri.colinearity_checks_count = 17;
-        assert_eq!((4, 7), fri.num_rounds());
-        fri.colinearity_checks_count = 18;
-        assert_eq!((4, 7), fri.num_rounds());
-        fri.colinearity_checks_count = 31;
-        assert_eq!((4, 7), fri.num_rounds());
-        fri.colinearity_checks_count = 32;
-        assert_eq!((4, 7), fri.num_rounds());
-        fri.colinearity_checks_count = 33;
-        assert_eq!((3, 15), fri.num_rounds());
+            let num_colinearity_checks = rng.gen_range(1..=320);
 
-        fri.domain.length = 256;
-        assert_eq!((2, 15), fri.num_rounds());
-        fri.colinearity_checks_count = 32;
-        assert_eq!((3, 7), fri.num_rounds());
+            let fri = get_x_field_fri_test_object::<Tip5>(
+                domain_length,
+                expansion_factor,
+                num_colinearity_checks,
+            );
+            let expected_last_round_max_degree = fri.first_round_max_degree() >> fri.num_rounds();
 
-        fri.colinearity_checks_count = 32;
-        fri.domain.length = 1048576;
-        fri.expansion_factor = 8;
-        assert_eq!((15, 3), fri.num_rounds());
+            println!("fri: {:?}", fri);
+            println!("expected_last_round_max_degree = {expected_last_round_max_degree}");
 
-        fri.colinearity_checks_count = 33;
-        fri.domain.length = 1048576;
-        fri.expansion_factor = 8;
-        assert_eq!((14, 7), fri.num_rounds());
+            assert_eq!(expected_last_round_max_degree, fri.last_round_max_degree());
 
-        fri.colinearity_checks_count = 63;
-        fri.domain.length = 1048576;
-        fri.expansion_factor = 8;
-        assert_eq!((14, 7), fri.num_rounds());
-
-        fri.colinearity_checks_count = 64;
-        fri.domain.length = 1048576;
-        fri.expansion_factor = 8;
-        assert_eq!((14, 7), fri.num_rounds());
-
-        fri.colinearity_checks_count = 65;
-        fri.domain.length = 1048576;
-        fri.expansion_factor = 8;
-        assert_eq!((13, 15), fri.num_rounds());
-
-        fri.domain.length = 256;
-        fri.expansion_factor = 4;
-        fri.colinearity_checks_count = 17;
-        assert_eq!((3, 7), fri.num_rounds());
+            if fri.num_rounds() > 0 {
+                assert!(fri.num_colinearity_checks <= expected_last_round_max_degree);
+                assert!(expected_last_round_max_degree < 2 * fri.num_colinearity_checks);
+            }
+        }
     }
 
     #[test]
