@@ -377,8 +377,8 @@ impl<H: AlgebraicHasher> Fri<H> {
                 .into_par_iter()
                 .map(|i| {
                     Polynomial::<XFieldElement>::get_colinear_y(
-                        (self.get_evaluation_argument(a_indices[i], r), a_values[i]),
-                        (self.get_evaluation_argument(b_indices[i], r), b_values[i]),
+                        (self.domain_value(a_indices[i], r), a_values[i]),
+                        (self.domain_value(b_indices[i], r), b_values[i]),
                         alphas[r],
                     )
                 })
@@ -410,12 +410,11 @@ impl<H: AlgebraicHasher> Fri<H> {
     /// Given index `i` of the FRI codeword in round `round`, compute the corresponding value in the
     /// FRI (co-)domain. This corresponds to `ω^i` in `f(ω^i)` from
     /// [STARK-Anatomy](https://neptune.cash/learn/stark-anatomy/fri/#split-and-fold).
-    fn get_evaluation_argument(&self, idx: usize, round: usize) -> XFieldElement {
-        let domain_value = self.domain.offset * self.domain.generator.mod_pow_u32(idx as u32);
-        let round_exponent = 2u32.pow(round as u32);
-        let evaluation_argument = domain_value.mod_pow_u32(round_exponent);
-
-        evaluation_argument.lift()
+    pub fn domain_value(&self, idx: usize, round: usize) -> XFieldElement {
+        let domain_value = self.domain.domain_value(idx as u32);
+        let round_adjusting_exponent = 1 << round;
+        let round_adjusted_domain_value = domain_value.mod_pow(round_adjusting_exponent);
+        round_adjusted_domain_value.lift()
     }
 
     pub fn num_rounds(&self) -> usize {
