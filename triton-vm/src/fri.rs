@@ -158,11 +158,7 @@ impl<H: AlgebraicHasher> Fri<H> {
         // the last codeword is transmitted to the verifier in the clear. Thus, no co-linearity
         // check is needed for the last codeword and we only have to look at the interval given here
         for r in 0..merkle_trees.len() - 1 {
-            debug_assert_eq!(
-                codewords[r].len(),
-                current_domain_len,
-                "Current domain and current codeword must have the same length."
-            );
+            assert_eq!(codewords[r].len(), current_domain_len);
             b_indices = b_indices
                 .iter()
                 .map(|x| (x + current_domain_len / 2) % current_domain_len)
@@ -343,14 +339,14 @@ impl<H: AlgebraicHasher> Fri<H> {
 
         // query step 1:  loop over FRI rounds, verify "B"s, compute values for "C"s
         prof_start!(maybe_profiler, "loop");
-        for r in 0..num_rounds {
+        for round in 0..num_rounds {
             // get "B" indices and verify set membership of corresponding values
             b_indices = b_indices
                 .iter()
                 .map(|x| (x + current_domain_len / 2) % current_domain_len)
                 .collect();
             let b_values = Self::dequeue_and_authenticate(
-                roots[r],
+                roots[round],
                 current_tree_height,
                 &b_indices,
                 proof_stream,
@@ -360,7 +356,7 @@ impl<H: AlgebraicHasher> Fri<H> {
             debug_assert_eq!(self.num_colinearity_checks, a_values.len());
             debug_assert_eq!(self.num_colinearity_checks, b_values.len());
 
-            if r == 0 {
+            if round == 0 {
                 // save other half of indices and revealed leafs of first round for returning
                 revealed_indices_and_elements_second_half = b_indices
                     .iter()
@@ -376,11 +372,11 @@ impl<H: AlgebraicHasher> Fri<H> {
             let c_values = (0..self.num_colinearity_checks)
                 .into_par_iter()
                 .map(|i| {
-                    Polynomial::<XFieldElement>::get_colinear_y(
-                        (self.domain_value(a_indices[i], r), a_values[i]),
-                        (self.domain_value(b_indices[i], r), b_values[i]),
-                        alphas[r],
-                    )
+                    let point_a_x = self.domain_value(a_indices[i], round);
+                    let point_b_x = self.domain_value(b_indices[i], round);
+                    let point_a = (point_a_x, a_values[i]);
+                    let point_b = (point_b_x, b_values[i]);
+                    Polynomial::<XFieldElement>::get_colinear_y(point_a, point_b, alphas[round])
                 })
                 .collect();
 
