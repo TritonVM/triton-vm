@@ -91,19 +91,76 @@ mod domain_tests {
 
     use super::*;
 
+    use crate::shared_tests::*;
+    use proptest::prelude::*;
+
+    prop_compose! {
+        fn arbitrary_domain()(
+            length in (0_u64..17).prop_map(|x| 1 << x),
+            offset in arbitrary_bfield_element(),
+        ) -> ArithmeticDomain {
+            let generator = BFieldElement::primitive_root_of_unity(length).unwrap();
+            ArithmeticDomain {
+                offset,
+                generator,
+                length: length as usize,
+            }
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn evaluate_empty_polynomial(
+            domain in arbitrary_domain(),
+            polynomial in arbitrary_polynomial_of_degree(-1),
+        ) {
+            domain.evaluate(&polynomial);
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn evaluate_constant_polynomial(
+            domain in arbitrary_domain(),
+            polynomial in arbitrary_polynomial_of_degree(0),
+        ) {
+            domain.evaluate(&polynomial);
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn evaluate_linear_polynomial(
+            domain in arbitrary_domain(),
+            polynomial in arbitrary_polynomial_of_degree(1),
+        ) {
+            domain.evaluate(&polynomial);
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn evaluate_polynomial(
+            domain in arbitrary_domain(),
+            polynomial in arbitrary_polynomial(),
+        ) {
+            domain.evaluate(&polynomial);
+        }
+    }
+
     #[test]
     fn domain_values_test() {
-        // f(x) = x^3
-        let x_squared_coefficients = vec![0u64.into(), 0u64.into(), 0u64.into(), 1u64.into()];
-        let poly = Polynomial::<BFieldElement>::new(x_squared_coefficients.clone());
+        let x_cubed_coefficients = [0, 0, 0, 1].map(BFieldElement::new).to_vec();
+        let poly = Polynomial::new(x_cubed_coefficients.clone());
 
         for order in [4, 8, 32] {
             let generator = BFieldElement::primitive_root_of_unity(order).unwrap();
             let offset = BFieldElement::generator();
             let b_domain = ArithmeticDomain::of_length(order as usize).with_offset(offset);
 
-            let expected_b_values: Vec<BFieldElement> =
-                (0..order).map(|i| offset * generator.mod_pow(i)).collect();
+            let expected_b_values = (0..order)
+                .map(|i| offset * generator.mod_pow(i))
+                .collect_vec();
             let actual_b_values_1 = b_domain.domain_values();
             let actual_b_values_2 = (0..order as u32)
                 .map(|i| b_domain.domain_value(i))
@@ -118,7 +175,7 @@ mod domain_tests {
             );
 
             let values = b_domain.evaluate(&poly);
-            assert_ne!(values, x_squared_coefficients);
+            assert_ne!(values, x_cubed_coefficients);
 
             let interpolant = b_domain.interpolate(&values);
             assert_eq!(poly, interpolant);

@@ -488,7 +488,7 @@ mod tests {
             let min_expanded_domain_length = min_domain_length * expansion_factor;
             let domain_length = max(sampled_domain_length, min_expanded_domain_length);
 
-            Fri::<Tip5>::new(offset, domain_length, expansion_factor, num_colinearity_checks)
+            Fri::new(offset, domain_length, expansion_factor, num_colinearity_checks)
         }
     }
 
