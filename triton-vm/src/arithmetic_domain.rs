@@ -44,9 +44,24 @@ impl ArithmeticDomain {
 
     pub fn evaluate<FF>(&self, polynomial: &Polynomial<FF>) -> Vec<FF>
     where
-        FF: FiniteField + MulAssign<BFieldElement>,
+        FF: FiniteField + MulAssign<BFieldElement> + From<BFieldElement>,
     {
-        polynomial.fast_coset_evaluate(self.offset, self.generator, self.length)
+        // The limitation arises in `Polynomial::fast_coset_evaluate` in dependency `twenty-first`.
+        let batch_evaluation_is_possible = self.length >= polynomial.coefficients.len();
+        match batch_evaluation_is_possible {
+            true => polynomial.fast_coset_evaluate(self.offset, self.generator, self.length),
+            false => self.evaluate_in_every_point_individually(polynomial),
+        }
+    }
+
+    fn evaluate_in_every_point_individually<FF>(&self, polynomial: &Polynomial<FF>) -> Vec<FF>
+    where
+        FF: FiniteField + MulAssign<BFieldElement> + From<BFieldElement>,
+    {
+        self.domain_values()
+            .iter()
+            .map(|&v| polynomial.evaluate(&v.into()))
+            .collect()
     }
 
     pub fn interpolate<FF>(&self, values: &[FF]) -> Polynomial<FF>
@@ -58,7 +73,7 @@ impl ArithmeticDomain {
 
     pub fn low_degree_extension<FF>(&self, codeword: &[FF], target_domain: Self) -> Vec<FF>
     where
-        FF: FiniteField + MulAssign<BFieldElement>,
+        FF: FiniteField + MulAssign<BFieldElement> + From<BFieldElement>,
     {
         target_domain.evaluate(&self.interpolate(codeword))
     }

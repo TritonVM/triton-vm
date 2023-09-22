@@ -209,7 +209,7 @@ pub enum TableId {
 /// [row]: Self::row
 pub trait MasterTable<FF>: Sync
 where
-    FF: FiniteField + MulAssign<BFieldElement>,
+    FF: FiniteField + MulAssign<BFieldElement> + From<BFieldElement>,
     Standard: Distribution<FF>,
 {
     fn trace_domain(&self) -> ArithmeticDomain;
