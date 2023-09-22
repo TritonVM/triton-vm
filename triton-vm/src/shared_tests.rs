@@ -81,7 +81,9 @@ prop_compose! {
             true => [other_coefficients, vec![leading_coefficient]].concat(),
             false => vec![],
         };
-        Polynomial::new(coefficients)
+        let polynomial = Polynomial::new(coefficients);
+        assert_eq!(degree, polynomial.degree() as i64);
+        polynomial
     }
 }
 
