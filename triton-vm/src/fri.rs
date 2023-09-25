@@ -60,6 +60,10 @@ impl<H: AlgebraicHasher> Fri<H> {
         expansion_factor: usize,
         num_colinearity_checks: usize,
     ) -> Self {
+        assert!(expansion_factor > 1);
+        assert!(expansion_factor.is_power_of_two());
+        assert!(domain_length >= expansion_factor);
+
         let domain = ArithmeticDomain::of_length(domain_length).with_offset(offset);
         let _hasher = PhantomData;
         Self {
@@ -645,6 +649,61 @@ mod tests {
             expansion_factor,
             num_colinearity_checks,
         )
+    }
+
+    #[test]
+    #[should_panic]
+    fn too_small_expansion_factor_is_rejected() {
+        let offset = BFieldElement::zero();
+        let domain_length = 2;
+        let expansion_factor = 1;
+        let num_colinearity_checks = 1;
+        Fri::<Tip5>::new(
+            offset,
+            domain_length,
+            expansion_factor,
+            num_colinearity_checks,
+        );
+    }
+
+    proptest! {
+        #[test]
+        #[should_panic]
+        fn expansion_factor_not_a_power_of_two_is_rejected(
+            expansion_factor in 2..=usize::MAX,
+            offset in arbitrary_bfield_element(),
+        ) {
+            if expansion_factor.is_power_of_two() {
+                return Ok(());
+            }
+            let domain_length = 2 * expansion_factor;
+            let num_colinearity_checks = 1;
+            Fri::<Tip5>::new(
+                offset,
+                domain_length,
+                expansion_factor,
+                num_colinearity_checks,
+            );
+        }
+    }
+
+    proptest! {
+        #[test]
+        #[should_panic]
+        fn domain_size_smaller_than_expansion_factor_is_rejected(
+            log_2_expansion_factor in 1..=8,
+            offset in arbitrary_bfield_element(),
+        ) {
+            let expansion_factor = (1 << log_2_expansion_factor) as usize;
+            let domain_length = expansion_factor - 1;
+            let num_colinearity_checks = 1;
+            Fri::<Tip5>::new(
+                offset,
+                domain_length,
+                expansion_factor,
+                num_colinearity_checks,
+            );
+        }
     }
 
     // todo: add test fuzzing proof_stream
