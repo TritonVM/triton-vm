@@ -11,8 +11,8 @@ use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::other::log_2_ceil;
 use twenty_first::shared_math::polynomial::Polynomial;
 use twenty_first::shared_math::tip5::Digest;
-use twenty_first::shared_math::traits::CyclicGroupGenerator;
 use twenty_first::shared_math::traits::FiniteField;
+use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
 use twenty_first::util_types::merkle_tree::MerkleTree;
@@ -124,14 +124,10 @@ impl<H: AlgebraicHasher> Fri<H> {
         codeword: &[XFieldElement],
         proof_stream: &mut ProofStream<H>,
     ) -> (Vec<usize>, Digest) {
-        debug_assert_eq!(
-            self.domain.length,
-            codeword.len(),
-            "Initial codeword length must match FRI domain length."
-        );
+        debug_assert_eq!(self.domain.length, codeword.len());
 
-        let (codewords, merkle_trees): (Vec<_>, Vec<_>) =
-            self.commit(codeword, proof_stream).into_iter().unzip();
+        let (codewords, merkle_trees) = self.commit(codeword, proof_stream);
+        debug_assert_eq!(codewords.len(), merkle_trees.len());
 
         // Fiat-Shamir to get indices at which to reveal the codeword
         let initial_a_indices =
@@ -172,69 +168,60 @@ impl<H: AlgebraicHasher> Fri<H> {
         &self,
         codeword: &[XFieldElement],
         proof_stream: &mut ProofStream<H>,
-    ) -> Vec<(Vec<XFieldElement>, MerkleTree<H>)> {
+    ) -> (Vec<Vec<XFieldElement>>, Vec<MerkleTree<H>>) {
         let one = XFieldElement::one();
-        let two_inv = one / (one + one);
-        let num_rounds = self.num_rounds();
+        let two_inverse = XFieldElement::from(2).inverse();
 
-        let mut subgroup_generator = self.domain.generator;
-        let mut offset = self.domain.offset;
-        let mut codeword = codeword.to_vec();
-        let mut codewords_and_merkle_trees = Vec::with_capacity(num_rounds);
+        let mut current_codeword = codeword.to_vec();
+        let mut all_codewords = vec![];
+        let mut all_merkle_trees = vec![];
 
-        // Compute and send Merkle root
-        let mut digests = Vec::with_capacity(codeword.len());
-        codeword
-            .par_iter()
-            .map(|&xfe| xfe.into())
-            .collect_into_vec(&mut digests);
+        let digests = Self::codeword_as_digests(&current_codeword);
+        let merkle_tree = MTMaker::from_digests(&digests);
+        let merkle_root = ProofItem::MerkleRoot(merkle_tree.get_root());
+        proof_stream.enqueue(&merkle_root);
 
-        let mt = MTMaker::from_digests(&digests);
-        proof_stream.enqueue(&ProofItem::MerkleRoot(mt.get_root()));
-        codewords_and_merkle_trees.push((codeword.clone(), mt));
+        all_codewords.push(current_codeword.clone());
+        all_merkle_trees.push(merkle_tree);
 
-        for _round in 0..num_rounds {
-            // Get challenge for folding
-            let alpha = proof_stream.sample_scalars(1)[0];
+        let mut current_domain = self.domain;
+        for _ in 0..self.num_rounds() {
+            let folding_challenge = proof_stream.sample_scalars(1)[0];
 
-            let x_offset = subgroup_generator
-                .get_cyclic_group_elements(None)
-                .into_par_iter()
-                .map(|x| x * offset)
-                .collect();
-            let x_offset_inverses = BFieldElement::batch_inversion(x_offset);
+            let domain_points = current_domain.domain_values();
+            let domain_point_inverses = BFieldElement::batch_inversion(domain_points);
 
-            let n = codeword.len();
-            codeword = (0..n / 2)
+            let n = current_codeword.len();
+            current_codeword = (0..n / 2)
                 .into_par_iter()
                 .map(|i| {
-                    let scaled_offset_inv = alpha * x_offset_inverses[i];
-                    let left_summand = (one + scaled_offset_inv) * codeword[i];
-                    let right_summand = (one - scaled_offset_inv) * codeword[n / 2 + i];
-                    (left_summand + right_summand) * two_inv
+                    let scaled_offset_inv = folding_challenge * domain_point_inverses[i];
+                    let left_summand = (one + scaled_offset_inv) * current_codeword[i];
+                    let right_summand = (one - scaled_offset_inv) * current_codeword[n / 2 + i];
+                    (left_summand + right_summand) * two_inverse
                 })
                 .collect();
 
-            // Compute and send Merkle root. We have to do that within this loop, since the next
-            // round's alpha must be calculated from the previous round's Merkle root.
-            codeword
-                .par_iter()
-                .map(|&xfe| xfe.into())
-                .collect_into_vec(&mut digests);
+            let digests = Self::codeword_as_digests(&current_codeword);
+            let merkle_tree = MTMaker::from_digests(&digests);
+            let merkle_root = ProofItem::MerkleRoot(merkle_tree.get_root());
+            proof_stream.enqueue(&merkle_root);
 
-            let mt = MTMaker::from_digests(&digests);
-            proof_stream.enqueue(&ProofItem::MerkleRoot(mt.get_root()));
-            codewords_and_merkle_trees.push((codeword.clone(), mt));
+            all_codewords.push(current_codeword.clone());
+            all_merkle_trees.push(merkle_tree);
 
-            // Update subgroup generator and offset
-            subgroup_generator = subgroup_generator * subgroup_generator;
-            offset = offset * offset;
+            current_domain.generator = current_domain.generator.square();
+            current_domain.offset = current_domain.offset.square();
         }
 
-        // Send the last codeword in the clear
-        proof_stream.enqueue(&ProofItem::FriCodeword(codeword));
+        let last_codeword = ProofItem::FriCodeword(current_codeword);
+        proof_stream.enqueue(&last_codeword);
 
-        codewords_and_merkle_trees
+        (all_codewords, all_merkle_trees)
+    }
+
+    fn codeword_as_digests(codeword: &[XFieldElement]) -> Vec<Digest> {
+        codeword.par_iter().map(|&xfe| xfe.into()).collect()
     }
 
     /// Verify low-degreeness of the polynomial on the proof stream.
