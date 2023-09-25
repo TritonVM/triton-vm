@@ -438,6 +438,7 @@ mod tests {
     use std::cmp::min;
 
     use itertools::Itertools;
+    use num_traits::Zero;
     use proptest::collection::vec;
     use proptest::prelude::*;
     use twenty_first::shared_math::b_field_element::BFieldElement;
@@ -621,6 +622,29 @@ mod tests {
             let verdict = fri.verify(&mut proof_stream, &mut None);
             prop_assert!(verdict.is_err());
         }
+    }
+
+    #[test]
+    fn smallest_possible_fri_has_no_rounds() {
+        assert_eq!(0, smallest_fri().num_rounds());
+    }
+
+    #[test]
+    fn smallest_possible_fri_can_only_verify_constant_polynomials() {
+        assert_eq!(0, smallest_fri().first_round_max_degree());
+    }
+
+    fn smallest_fri() -> Fri<Tip5> {
+        let offset = BFieldElement::zero();
+        let domain_length = 2;
+        let expansion_factor = 2;
+        let num_colinearity_checks = 1;
+        Fri::new(
+            offset,
+            domain_length,
+            expansion_factor,
+            num_colinearity_checks,
+        )
     }
 
     // todo: add test fuzzing proof_stream
