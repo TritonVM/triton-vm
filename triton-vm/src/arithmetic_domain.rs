@@ -46,14 +46,14 @@ impl ArithmeticDomain {
     where
         FF: FiniteField + MulAssign<BFieldElement>,
     {
-        polynomial.fast_coset_evaluate(&self.offset, self.generator, self.length)
+        polynomial.fast_coset_evaluate(self.offset, self.generator, self.length)
     }
 
     pub fn interpolate<FF>(&self, values: &[FF]) -> Polynomial<FF>
     where
         FF: FiniteField + MulAssign<BFieldElement>,
     {
-        Polynomial::fast_coset_interpolate(&self.offset, self.generator, values)
+        Polynomial::fast_coset_interpolate(self.offset, self.generator, values)
     }
 
     pub fn low_degree_extension<FF>(&self, codeword: &[FF], target_domain: Self) -> Vec<FF>
