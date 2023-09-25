@@ -8,13 +8,11 @@ use itertools::Itertools;
 use num_traits::One;
 use rayon::iter::*;
 use twenty_first::shared_math::b_field_element::BFieldElement;
-use twenty_first::shared_math::ntt::intt;
 use twenty_first::shared_math::other::log_2_ceil;
 use twenty_first::shared_math::polynomial::Polynomial;
 use twenty_first::shared_math::tip5::Digest;
 use twenty_first::shared_math::traits::CyclicGroupGenerator;
 use twenty_first::shared_math::traits::FiniteField;
-use twenty_first::shared_math::traits::ModPowU32;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
 use twenty_first::util_types::merkle_tree::MerkleTree;
@@ -286,27 +284,7 @@ impl<H: AlgebraicHasher> Fri<H> {
         // Verify that last codeword is of sufficiently low degree
 
         prof_start!(maybe_profiler, "last codeword has low degree");
-        // Compute interpolant to get the degree of the last codeword.
-        // Note that we don't have to scale the polynomial back to the trace subgroup since we
-        // only check its degree and don't use it further.
-        let log_2_of_n = last_codeword.len().ilog2();
-        let mut last_polynomial = last_codeword.clone();
-
-        let last_fri_domain_generator = self
-            .domain
-            .generator
-            .mod_pow_u32(2u32.pow(num_rounds as u32));
-        intt::<XFieldElement>(&mut last_polynomial, last_fri_domain_generator, log_2_of_n);
-        let last_poly_degree = Polynomial::new(last_polynomial).degree();
-
-        let last_round_max_degree = self.last_round_max_degree();
-        if last_poly_degree > last_round_max_degree as isize {
-            eprintln!(
-                "last_poly_degree is {last_poly_degree}, \
-                 last_round_max_degree is {last_round_max_degree}",
-            );
-            bail!(FriValidationError::LastIterationTooHighDegree);
-        }
+        self.assert_last_round_polynomial_is_of_low_degree(&last_codeword)?;
         prof_stop!(maybe_profiler, "last codeword has low degree");
 
         // Query phase
@@ -402,6 +380,19 @@ impl<H: AlgebraicHasher> Fri<H> {
             .chain(revealed_indices_and_elements_second_half)
             .collect_vec();
         Ok(revealed_indices_and_elements)
+    }
+
+    fn assert_last_round_polynomial_is_of_low_degree(
+        &self,
+        last_codeword: &[XFieldElement],
+    ) -> Result<()> {
+        // The domain's offset is irrelevant for the polynomial's degree.
+        let last_round_domain = ArithmeticDomain::of_length(last_codeword.len());
+        let last_round_polynomial = last_round_domain.interpolate(last_codeword);
+        if last_round_polynomial.degree() > self.last_round_max_degree() as isize {
+            bail!(FriValidationError::LastIterationTooHighDegree);
+        }
+        Ok(())
     }
 
     /// Given index `i` of the FRI codeword in round `round`, compute the corresponding value in the
