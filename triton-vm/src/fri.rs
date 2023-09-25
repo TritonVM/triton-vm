@@ -53,16 +53,14 @@ pub struct Fri<H> {
 
 impl<H: AlgebraicHasher> Fri<H> {
     pub fn new(
-        offset: BFieldElement,
-        domain_length: usize,
+        domain: ArithmeticDomain,
         expansion_factor: usize,
         num_colinearity_checks: usize,
     ) -> Self {
         assert!(expansion_factor > 1);
         assert!(expansion_factor.is_power_of_two());
-        assert!(domain_length >= expansion_factor);
+        assert!(domain.length >= expansion_factor);
 
-        let domain = ArithmeticDomain::of_length(domain_length).with_offset(offset);
         let _hasher = PhantomData;
         Self {
             domain,
@@ -433,7 +431,6 @@ mod tests {
     use std::cmp::min;
 
     use itertools::Itertools;
-    use num_traits::Zero;
     use proptest::collection::vec;
     use proptest::prelude::*;
     use twenty_first::shared_math::b_field_element::BFieldElement;
@@ -484,7 +481,8 @@ mod tests {
             let min_expanded_domain_length = min_domain_length * expansion_factor;
             let domain_length = max(sampled_domain_length, min_expanded_domain_length);
 
-            Fri::new(offset, domain_length, expansion_factor, num_colinearity_checks)
+            let fri_domain = ArithmeticDomain::of_length(domain_length).with_offset(offset);
+            Fri::new(fri_domain, expansion_factor, num_colinearity_checks)
         }
     }
 
@@ -630,31 +628,19 @@ mod tests {
     }
 
     fn smallest_fri() -> Fri<Tip5> {
-        let offset = BFieldElement::zero();
-        let domain_length = 2;
+        let domain = ArithmeticDomain::of_length(2);
         let expansion_factor = 2;
         let num_colinearity_checks = 1;
-        Fri::new(
-            offset,
-            domain_length,
-            expansion_factor,
-            num_colinearity_checks,
-        )
+        Fri::new(domain, expansion_factor, num_colinearity_checks)
     }
 
     #[test]
     #[should_panic]
     fn too_small_expansion_factor_is_rejected() {
-        let offset = BFieldElement::zero();
-        let domain_length = 2;
+        let domain = ArithmeticDomain::of_length(2);
         let expansion_factor = 1;
         let num_colinearity_checks = 1;
-        Fri::<Tip5>::new(
-            offset,
-            domain_length,
-            expansion_factor,
-            num_colinearity_checks,
-        );
+        Fri::<Tip5>::new(domain, expansion_factor, num_colinearity_checks);
     }
 
     proptest! {
@@ -667,11 +653,10 @@ mod tests {
             if expansion_factor.is_power_of_two() {
                 return Ok(());
             }
-            let domain_length = 2 * expansion_factor;
+            let domain = ArithmeticDomain::of_length(2 * expansion_factor).with_offset(offset);
             let num_colinearity_checks = 1;
             Fri::<Tip5>::new(
-                offset,
-                domain_length,
+                domain,
                 expansion_factor,
                 num_colinearity_checks,
             );
@@ -686,11 +671,10 @@ mod tests {
             offset in arbitrary_bfield_element(),
         ) {
             let expansion_factor = (1 << log_2_expansion_factor) as usize;
-            let domain_length = expansion_factor - 1;
+            let domain = ArithmeticDomain::of_length(expansion_factor - 1).with_offset(offset);
             let num_colinearity_checks = 1;
             Fri::<Tip5>::new(
-                offset,
-                domain_length,
+                domain,
                 expansion_factor,
                 num_colinearity_checks,
             );
