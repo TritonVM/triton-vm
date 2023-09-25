@@ -39,7 +39,7 @@ impl fmt::Display for FriValidationError {
 pub enum FriValidationError {
     BadMerkleAuthenticationPath,
     MismatchingLastCodeword,
-    LastIterationTooHighDegree,
+    LastRoundPolynomialHasTooHighDegree,
     BadMerkleRootForLastCodeword,
 }
 
@@ -390,7 +390,7 @@ impl<H: AlgebraicHasher> Fri<H> {
         let last_round_domain = ArithmeticDomain::of_length(last_codeword.len());
         let last_round_polynomial = last_round_domain.interpolate(last_codeword);
         if last_round_polynomial.degree() > self.last_round_max_degree() as isize {
-            bail!(FriValidationError::LastIterationTooHighDegree);
+            bail!(FriValidationError::LastRoundPolynomialHasTooHighDegree);
         }
         Ok(())
     }
