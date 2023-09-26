@@ -56,8 +56,8 @@ struct FriProver<'stream, H: AlgebraicHasher> {
     rounds: Vec<ProverRound<H>>,
     first_round_domain: ArithmeticDomain,
     num_rounds: usize,
-    #[allow(dead_code)]
     num_colinearity_checks: usize,
+    first_round_colinearity_check_indices: Vec<usize>,
 }
 
 struct ProverRound<H: AlgebraicHasher> {
@@ -109,6 +109,63 @@ impl<'stream, H: AlgebraicHasher> FriProver<'stream, H> {
         let last_codeword = self.rounds.last().unwrap().codeword.clone();
         let proof_item = ProofItem::FriCodeword(last_codeword);
         self.proof_stream.enqueue(&proof_item);
+    }
+
+    fn query(&mut self) {
+        self.sample_colinearity_indices();
+
+        let initial_a_indices = &self.first_round_colinearity_check_indices.clone();
+        self.authentically_reveal_codeword_of_round_at_indices(0, initial_a_indices);
+
+        let num_rounds_that_have_a_next_round = self.rounds.len() - 1;
+        for round_number in 0..num_rounds_that_have_a_next_round {
+            let b_indices = self.colinearity_check_b_indices_for_round(round_number);
+            self.authentically_reveal_codeword_of_round_at_indices(round_number, &b_indices);
+        }
+    }
+
+    fn sample_colinearity_indices(&mut self) {
+        let indices_upper_bound = self.first_round_domain.length;
+        self.first_round_colinearity_check_indices = self
+            .proof_stream
+            .sample_indices(indices_upper_bound, self.num_colinearity_checks);
+    }
+
+    fn all_top_level_colinearity_check_indices(&self) -> Vec<usize> {
+        let a_indices = self.first_round_colinearity_check_indices.clone();
+        let b_indices = self.colinearity_check_b_indices_for_round(0);
+        a_indices.into_iter().chain(b_indices).collect()
+    }
+
+    fn colinearity_check_b_indices_for_round(&self, round_number: usize) -> Vec<usize> {
+        let domain_length = self.rounds[round_number].domain.length;
+        self.first_round_colinearity_check_indices
+            .iter()
+            .map(|&a_index| (a_index + domain_length / 2) % domain_length)
+            .collect()
+    }
+
+    fn authentically_reveal_codeword_of_round_at_indices(
+        &mut self,
+        round_number: usize,
+        indices: &[usize],
+    ) {
+        let codeword = &self.rounds[round_number].codeword;
+        let revealed_leaves = indices.iter().map(|&i| codeword[i]).collect_vec();
+
+        let merkle_tree = &self.rounds[round_number].merkle_tree;
+        let auth_structure = merkle_tree.get_authentication_structure(indices);
+
+        let fri_response = FriResponse {
+            auth_structure,
+            revealed_leaves,
+        };
+        let proof_item = ProofItem::FriResponse(fri_response);
+        self.proof_stream.enqueue(&proof_item)
+    }
+
+    fn initial_merkle_root(&self) -> Digest {
+        self.rounds[0].merkle_tree.get_root()
     }
 }
 
@@ -185,54 +242,7 @@ impl<H: AlgebraicHasher> Fri<H> {
             first_round_domain: self.domain,
             num_rounds: self.num_rounds(),
             num_colinearity_checks: self.num_colinearity_checks,
-        }
-    }
-
-    /// Build the Merkle authentication structure for the codeword at the given indices
-    /// and enqueue the corresponding values and the authentication structure on the proof stream.
-    fn enqueue_auth_pairs(
-        indices: &[usize],
-        codeword: &[XFieldElement],
-        merkle_tree: &MerkleTree<H>,
-        proof_stream: &mut ProofStream<H>,
-    ) {
-        let auth_structure = merkle_tree.get_authentication_structure(indices);
-        let revealed_leaves = indices.iter().map(|&i| codeword[i]).collect_vec();
-        let fri_response = FriResponse {
-            auth_structure,
-            revealed_leaves,
-        };
-        let fri_response = ProofItem::FriResponse(fri_response);
-        proof_stream.enqueue(&fri_response)
-    }
-
-    /// Given a merkle `root`, the `tree_height`, the `indices` of the values to dequeue from the
-    /// proof stream, and the (correctly set) `proof_stream`, verify whether the values at the
-    /// `indices` are members of the set committed to by the merkle `root` and return these values
-    /// if they are. Fails otherwise.
-    fn dequeue_and_authenticate(
-        root: Digest,
-        tree_height: usize,
-        indices: &[usize],
-        proof_stream: &mut ProofStream<H>,
-    ) -> Result<Vec<XFieldElement>> {
-        let fri_response = proof_stream.dequeue()?.as_fri_response()?;
-        let FriResponse {
-            auth_structure,
-            revealed_leaves,
-        } = fri_response;
-        debug_assert_eq!(indices.len(), revealed_leaves.len());
-        let leaf_digests = revealed_leaves.iter().map(|&xfe| xfe.into()).collect_vec();
-
-        match MerkleTree::<H>::verify_authentication_structure(
-            root,
-            tree_height,
-            indices,
-            &leaf_digests,
-            &auth_structure,
-        ) {
-            true => Ok(revealed_leaves),
-            false => bail!(FriValidationError::BadMerkleAuthenticationPath),
+            first_round_colinearity_check_indices: vec![],
         }
     }
 
@@ -244,50 +254,11 @@ impl<H: AlgebraicHasher> Fri<H> {
     ) -> (Vec<usize>, Digest) {
         let mut fri_prover = self.prover(proof_stream);
         fri_prover.commit(codeword);
-        let rounds = fri_prover.rounds;
+        fri_prover.query();
 
-        // Fiat-Shamir to get indices at which to reveal the codeword
-        let initial_a_indices =
-            proof_stream.sample_indices(self.domain.length, self.num_colinearity_checks);
-        let initial_b_indices = initial_a_indices
-            .iter()
-            .map(|&idx| (idx + self.domain.length / 2) % self.domain.length)
-            .collect_vec();
-        let top_level_indices = initial_a_indices
-            .iter()
-            .copied()
-            .chain(initial_b_indices)
-            .collect_vec();
-
-        // query phase
-        // query step 0: enqueue authentication structure for all points `A` into proof stream
-        Self::enqueue_auth_pairs(
-            &initial_a_indices,
-            codeword,
-            &rounds[0].merkle_tree,
-            proof_stream,
-        );
-        // query step 1: loop over FRI rounds, enqueue authentication structure for all points `B`
-        let mut current_domain_len = self.domain.length;
-        let mut b_indices = initial_a_indices;
-        // the last codeword is transmitted to the verifier in the clear. Thus, no co-linearity
-        // check is needed for the last codeword
-        for round in rounds.iter().dropping_back(1) {
-            b_indices = b_indices
-                .iter()
-                .map(|x| (x + current_domain_len / 2) % current_domain_len)
-                .collect();
-            Self::enqueue_auth_pairs(
-                &b_indices,
-                &round.codeword,
-                &round.merkle_tree,
-                proof_stream,
-            );
-            current_domain_len /= 2;
-        }
-
-        let merkle_root_of_1st_round = rounds[0].merkle_tree.get_root();
-        (top_level_indices, merkle_root_of_1st_round)
+        let top_level_indices = fri_prover.all_top_level_colinearity_check_indices();
+        let initial_merkle_root = fri_prover.initial_merkle_root();
+        (top_level_indices, initial_merkle_root)
     }
 
     /// Verify low-degreeness of the polynomial on the proof stream.
@@ -431,6 +402,36 @@ impl<H: AlgebraicHasher> Fri<H> {
             .chain(revealed_indices_and_elements_second_half)
             .collect_vec();
         Ok(revealed_indices_and_elements)
+    }
+
+    /// Given a merkle `root`, the `tree_height`, the `indices` of the values to dequeue from the
+    /// proof stream, and the (correctly set) `proof_stream`, verify whether the values at the
+    /// `indices` are members of the set committed to by the merkle `root` and return these values
+    /// if they are. Fails otherwise.
+    fn dequeue_and_authenticate(
+        root: Digest,
+        tree_height: usize,
+        indices: &[usize],
+        proof_stream: &mut ProofStream<H>,
+    ) -> Result<Vec<XFieldElement>> {
+        let fri_response = proof_stream.dequeue()?.as_fri_response()?;
+        let FriResponse {
+            auth_structure,
+            revealed_leaves,
+        } = fri_response;
+        debug_assert_eq!(indices.len(), revealed_leaves.len());
+        let leaf_digests = revealed_leaves.iter().map(|&xfe| xfe.into()).collect_vec();
+
+        match MerkleTree::<H>::verify_authentication_structure(
+            root,
+            tree_height,
+            indices,
+            &leaf_digests,
+            &auth_structure,
+        ) {
+            true => Ok(revealed_leaves),
+            false => bail!(FriValidationError::BadMerkleAuthenticationPath),
+        }
     }
 
     fn assert_last_round_polynomial_is_of_low_degree(
