@@ -43,12 +43,120 @@ pub enum FriValidationError {
     BadMerkleRootForLastCodeword,
 }
 
-#[derive(Debug, Clone)]
-pub struct Fri<H> {
+#[derive(Debug, Clone, Copy)]
+pub struct Fri<H: AlgebraicHasher> {
     pub expansion_factor: usize,
     pub num_colinearity_checks: usize,
     pub domain: ArithmeticDomain,
     _hasher: PhantomData<H>,
+}
+
+struct FriProver<'stream, H: AlgebraicHasher> {
+    proof_stream: &'stream mut ProofStream<H>,
+    rounds: Vec<ProverRound<H>>,
+    first_round_domain: ArithmeticDomain,
+    num_rounds: usize,
+    #[allow(dead_code)]
+    num_colinearity_checks: usize,
+}
+
+struct ProverRound<H: AlgebraicHasher> {
+    domain: ArithmeticDomain,
+    codeword: Vec<XFieldElement>,
+    merkle_tree: MerkleTree<H>,
+}
+
+impl<'stream, H: AlgebraicHasher> FriProver<'stream, H> {
+    fn commit(&mut self, codeword: &[XFieldElement]) {
+        self.commit_to_first_round(codeword);
+        for _ in 0..self.num_rounds {
+            self.commit_to_next_round();
+        }
+        self.send_last_codeword();
+    }
+
+    fn commit_to_first_round(&mut self, codeword: &[XFieldElement]) {
+        let first_round = ProverRound::new(self.first_round_domain, codeword);
+        self.commit_to_round(&first_round);
+        self.store_round(first_round);
+    }
+
+    fn commit_to_next_round(&mut self) {
+        let next_round = self.construct_next_round();
+        self.commit_to_round(&next_round);
+        self.store_round(next_round);
+    }
+
+    fn commit_to_round(&mut self, round: &ProverRound<H>) {
+        let merkle_root = round.merkle_tree.get_root();
+        let proof_item = ProofItem::MerkleRoot(merkle_root);
+        self.proof_stream.enqueue(&proof_item);
+    }
+
+    fn store_round(&mut self, round: ProverRound<H>) {
+        self.rounds.push(round);
+    }
+
+    fn construct_next_round(&mut self) -> ProverRound<H> {
+        let previous_round = self.rounds.last().unwrap();
+        let folding_challenge = self.proof_stream.sample_scalars(1)[0];
+        let codeword = previous_round.split_and_fold(folding_challenge);
+        let domain = previous_round.domain_of_half_the_length();
+        ProverRound::new(domain, &codeword)
+    }
+
+    fn send_last_codeword(&mut self) {
+        let last_codeword = self.rounds.last().unwrap().codeword.clone();
+        let proof_item = ProofItem::FriCodeword(last_codeword);
+        self.proof_stream.enqueue(&proof_item);
+    }
+}
+
+impl<H: AlgebraicHasher> ProverRound<H> {
+    fn new(domain: ArithmeticDomain, codeword: &[XFieldElement]) -> Self {
+        debug_assert_eq!(domain.length, codeword.len());
+        Self {
+            domain,
+            codeword: codeword.to_vec(),
+            merkle_tree: Self::merkle_tree_from_codeword(codeword),
+        }
+    }
+
+    fn merkle_tree_from_codeword(codeword: &[XFieldElement]) -> MerkleTree<H> {
+        let digests = Self::codeword_as_digests(codeword);
+        MTMaker::from_digests(&digests)
+    }
+
+    fn codeword_as_digests(codeword: &[XFieldElement]) -> Vec<Digest> {
+        codeword.par_iter().map(|&xfe| xfe.into()).collect()
+    }
+
+    fn split_and_fold(&self, folding_challenge: XFieldElement) -> Vec<XFieldElement> {
+        let one = XFieldElement::one();
+        let two_inverse = XFieldElement::from(2).inverse();
+
+        let domain_points = self.domain.domain_values();
+        let domain_point_inverses = BFieldElement::batch_inversion(domain_points);
+
+        let n = self.codeword.len();
+        (0..n / 2)
+            .into_par_iter()
+            .map(|i| {
+                let scaled_offset_inv = folding_challenge * domain_point_inverses[i];
+                let left_summand = (one + scaled_offset_inv) * self.codeword[i];
+                let right_summand = (one - scaled_offset_inv) * self.codeword[n / 2 + i];
+                (left_summand + right_summand) * two_inverse
+            })
+            .collect()
+    }
+
+    fn domain_of_half_the_length(&self) -> ArithmeticDomain {
+        ArithmeticDomain {
+            generator: self.domain.generator.square(),
+            offset: self.domain.offset.square(),
+            length: self.domain.length / 2,
+        }
+    }
 }
 
 impl<H: AlgebraicHasher> Fri<H> {
@@ -67,6 +175,16 @@ impl<H: AlgebraicHasher> Fri<H> {
             expansion_factor,
             num_colinearity_checks,
             _hasher,
+        }
+    }
+
+    fn prover<'stream>(&'stream self, proof_stream: &'stream mut ProofStream<H>) -> FriProver<H> {
+        FriProver {
+            proof_stream,
+            rounds: vec![],
+            first_round_domain: self.domain,
+            num_rounds: self.num_rounds(),
+            num_colinearity_checks: self.num_colinearity_checks,
         }
     }
 
@@ -124,10 +242,9 @@ impl<H: AlgebraicHasher> Fri<H> {
         codeword: &[XFieldElement],
         proof_stream: &mut ProofStream<H>,
     ) -> (Vec<usize>, Digest) {
-        debug_assert_eq!(self.domain.length, codeword.len());
-
-        let (codewords, merkle_trees) = self.commit(codeword, proof_stream);
-        debug_assert_eq!(codewords.len(), merkle_trees.len());
+        let mut fri_prover = self.prover(proof_stream);
+        fri_prover.commit(codeword);
+        let rounds = fri_prover.rounds;
 
         // Fiat-Shamir to get indices at which to reveal the codeword
         let initial_a_indices =
@@ -144,84 +261,33 @@ impl<H: AlgebraicHasher> Fri<H> {
 
         // query phase
         // query step 0: enqueue authentication structure for all points `A` into proof stream
-        Self::enqueue_auth_pairs(&initial_a_indices, codeword, &merkle_trees[0], proof_stream);
+        Self::enqueue_auth_pairs(
+            &initial_a_indices,
+            codeword,
+            &rounds[0].merkle_tree,
+            proof_stream,
+        );
         // query step 1: loop over FRI rounds, enqueue authentication structure for all points `B`
         let mut current_domain_len = self.domain.length;
         let mut b_indices = initial_a_indices;
         // the last codeword is transmitted to the verifier in the clear. Thus, no co-linearity
-        // check is needed for the last codeword and we only have to look at the interval given here
-        for r in 0..merkle_trees.len() - 1 {
-            assert_eq!(codewords[r].len(), current_domain_len);
+        // check is needed for the last codeword
+        for round in rounds.iter().dropping_back(1) {
             b_indices = b_indices
                 .iter()
                 .map(|x| (x + current_domain_len / 2) % current_domain_len)
                 .collect();
-            Self::enqueue_auth_pairs(&b_indices, &codewords[r], &merkle_trees[r], proof_stream);
+            Self::enqueue_auth_pairs(
+                &b_indices,
+                &round.codeword,
+                &round.merkle_tree,
+                proof_stream,
+            );
             current_domain_len /= 2;
         }
 
-        let merkle_root_of_1st_round = merkle_trees[0].get_root();
+        let merkle_root_of_1st_round = rounds[0].merkle_tree.get_root();
         (top_level_indices, merkle_root_of_1st_round)
-    }
-
-    fn commit(
-        &self,
-        codeword: &[XFieldElement],
-        proof_stream: &mut ProofStream<H>,
-    ) -> (Vec<Vec<XFieldElement>>, Vec<MerkleTree<H>>) {
-        let one = XFieldElement::one();
-        let two_inverse = XFieldElement::from(2).inverse();
-
-        let mut current_codeword = codeword.to_vec();
-        let mut all_codewords = vec![];
-        let mut all_merkle_trees = vec![];
-
-        let digests = Self::codeword_as_digests(&current_codeword);
-        let merkle_tree = MTMaker::from_digests(&digests);
-        let merkle_root = ProofItem::MerkleRoot(merkle_tree.get_root());
-        proof_stream.enqueue(&merkle_root);
-
-        all_codewords.push(current_codeword.clone());
-        all_merkle_trees.push(merkle_tree);
-
-        let mut current_domain = self.domain;
-        for _ in 0..self.num_rounds() {
-            let folding_challenge = proof_stream.sample_scalars(1)[0];
-
-            let domain_points = current_domain.domain_values();
-            let domain_point_inverses = BFieldElement::batch_inversion(domain_points);
-
-            let n = current_codeword.len();
-            current_codeword = (0..n / 2)
-                .into_par_iter()
-                .map(|i| {
-                    let scaled_offset_inv = folding_challenge * domain_point_inverses[i];
-                    let left_summand = (one + scaled_offset_inv) * current_codeword[i];
-                    let right_summand = (one - scaled_offset_inv) * current_codeword[n / 2 + i];
-                    (left_summand + right_summand) * two_inverse
-                })
-                .collect();
-
-            let digests = Self::codeword_as_digests(&current_codeword);
-            let merkle_tree = MTMaker::from_digests(&digests);
-            let merkle_root = ProofItem::MerkleRoot(merkle_tree.get_root());
-            proof_stream.enqueue(&merkle_root);
-
-            all_codewords.push(current_codeword.clone());
-            all_merkle_trees.push(merkle_tree);
-
-            current_domain.generator = current_domain.generator.square();
-            current_domain.offset = current_domain.offset.square();
-        }
-
-        let last_codeword = ProofItem::FriCodeword(current_codeword);
-        proof_stream.enqueue(&last_codeword);
-
-        (all_codewords, all_merkle_trees)
-    }
-
-    fn codeword_as_digests(codeword: &[XFieldElement]) -> Vec<Digest> {
-        codeword.par_iter().map(|&xfe| xfe.into()).collect()
     }
 
     /// Verify low-degreeness of the polynomial on the proof stream.
