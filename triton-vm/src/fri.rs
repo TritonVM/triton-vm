@@ -163,10 +163,6 @@ impl<'stream, H: AlgebraicHasher> FriProver<'stream, H> {
         let proof_item = ProofItem::FriResponse(fri_response);
         self.proof_stream.enqueue(&proof_item)
     }
-
-    fn initial_merkle_root(&self) -> Digest {
-        self.rounds[0].merkle_tree.get_root()
-    }
 }
 
 impl<H: AlgebraicHasher> ProverRound<H> {
@@ -251,14 +247,13 @@ impl<H: AlgebraicHasher> Fri<H> {
         &self,
         codeword: &[XFieldElement],
         proof_stream: &mut ProofStream<H>,
-    ) -> (Vec<usize>, Digest) {
+    ) -> Vec<usize> {
         let mut fri_prover = self.prover(proof_stream);
+
         fri_prover.commit(codeword);
         fri_prover.query();
 
-        let top_level_indices = fri_prover.all_top_level_colinearity_check_indices();
-        let initial_merkle_root = fri_prover.initial_merkle_root();
-        (top_level_indices, initial_merkle_root)
+        fri_prover.all_top_level_colinearity_check_indices()
     }
 
     /// Verify low-degreeness of the polynomial on the proof stream.

@@ -440,8 +440,7 @@ impl Stark {
         prof_stop!(maybe_profiler, "combined DEEP polynomial");
 
         prof_start!(maybe_profiler, "FRI");
-        let (revealed_current_row_indices, _) =
-            fri.prove(&fri_combination_codeword, &mut proof_stream);
+        let revealed_current_row_indices = fri.prove(&fri_combination_codeword, &mut proof_stream);
         assert_eq!(
             parameters.num_combination_codeword_checks,
             revealed_current_row_indices.len()
