@@ -101,7 +101,7 @@ impl<'stream, H: AlgebraicHasher> FriProver<'stream, H> {
         let previous_round = self.rounds.last().unwrap();
         let folding_challenge = self.proof_stream.sample_scalars(1)[0];
         let codeword = previous_round.split_and_fold(folding_challenge);
-        let domain = previous_round.domain_of_half_the_length();
+        let domain = previous_round.domain.halve();
         ProverRound::new(domain, &codeword)
     }
 
@@ -202,14 +202,6 @@ impl<H: AlgebraicHasher> ProverRound<H> {
             })
             .collect()
     }
-
-    fn domain_of_half_the_length(&self) -> ArithmeticDomain {
-        ArithmeticDomain {
-            generator: self.domain.generator.square(),
-            offset: self.domain.offset.square(),
-            length: self.domain.length / 2,
-        }
-    }
 }
 
 impl<H: AlgebraicHasher> Fri<H> {
@@ -242,18 +234,18 @@ impl<H: AlgebraicHasher> Fri<H> {
         }
     }
 
-    /// Create a FRI proof and return chosen indices of round 0 and Merkle root of round 0 codeword
+    /// Create a FRI proof and return indices of revealed elements of round 0.
     pub fn prove(
         &self,
         codeword: &[XFieldElement],
         proof_stream: &mut ProofStream<H>,
     ) -> Vec<usize> {
-        let mut fri_prover = self.prover(proof_stream);
+        let mut prover = self.prover(proof_stream);
 
-        fri_prover.commit(codeword);
-        fri_prover.query();
+        prover.commit(codeword);
+        prover.query();
 
-        fri_prover.all_top_level_colinearity_check_indices()
+        prover.all_top_level_colinearity_check_indices()
     }
 
     /// Verify low-degreeness of the polynomial on the proof stream.

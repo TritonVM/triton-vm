@@ -96,6 +96,16 @@ impl ArithmeticDomain {
         );
         domain_values
     }
+
+    #[must_use]
+    pub fn halve(&self) -> Self {
+        assert!(self.length >= 2);
+        Self {
+            offset: self.offset.square(),
+            generator: self.generator.square(),
+            length: self.length / 2,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -111,15 +121,29 @@ mod domain_tests {
 
     prop_compose! {
         fn arbitrary_domain()(
-            length in (0_u64..17).prop_map(|x| 1 << x),
+            length in (0_usize..17).prop_map(|x| 1 << x),
+        )(
+            domain in arbitrary_domain_of_length(length),
+        ) -> ArithmeticDomain {
+            domain
+        }
+    }
+
+    prop_compose! {
+        fn arbitrary_halveable_domain()(
+            length in (2_usize..17).prop_map(|x| 1 << x),
+        )(
+            domain in arbitrary_domain_of_length(length),
+        ) -> ArithmeticDomain {
+            domain
+        }
+    }
+
+    prop_compose! {
+        fn arbitrary_domain_of_length(length: usize)(
             offset in arbitrary_bfield_element(),
         ) -> ArithmeticDomain {
-            let generator = BFieldElement::primitive_root_of_unity(length).unwrap();
-            ArithmeticDomain {
-                offset,
-                generator,
-                length: length as usize,
-            }
+            ArithmeticDomain::of_length(length).with_offset(offset)
         }
     }
 
@@ -225,5 +249,37 @@ mod domain_tests {
             .step_by(unit_distance)
             .collect_vec();
         assert_eq!(short_codeword, long_codeword_sub_view);
+    }
+
+    proptest! {
+        #[test]
+        fn halving_domain_squares_all_points(domain in arbitrary_halveable_domain()) {
+            let half_domain = domain.halve();
+            prop_assert_eq!(domain.length / 2, half_domain.length);
+
+            let domain_points = domain.domain_values();
+            let half_domain_points = half_domain.domain_values();
+
+            for (domain_point, halved_domain_point) in domain_points
+                .into_iter()
+                .zip(half_domain_points.into_iter())
+            {
+                prop_assert_eq!(domain_point.square(), halved_domain_point);
+            }
+        }
+    }
+
+    #[test]
+    #[should_panic]
+    fn domain_of_length_one_cannot_be_halved() {
+        let domain = ArithmeticDomain::of_length(1);
+        let _ = domain.halve();
+    }
+
+    #[test]
+    #[should_panic]
+    fn domain_of_length_zero_cannot_be_halved() {
+        let domain = ArithmeticDomain::of_length(0);
+        let _ = domain.halve();
     }
 }
