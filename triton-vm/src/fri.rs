@@ -204,6 +204,94 @@ impl<H: AlgebraicHasher> ProverRound<H> {
     }
 }
 
+struct FriVerifier<'stream, H: AlgebraicHasher> {
+    proof_stream: &'stream mut ProofStream<H>,
+    rounds: Vec<VerifierRound>,
+    first_round_domain: ArithmeticDomain,
+    #[allow(dead_code)]
+    expansion_factor: usize,
+    num_rounds: usize,
+    #[allow(dead_code)]
+    num_colinearity_checks: usize,
+    #[allow(dead_code)]
+    first_round_colinearity_check_indices: Vec<usize>,
+}
+
+struct VerifierRound {
+    domain: ArithmeticDomain,
+    #[allow(dead_code)]
+    partially_revealed_codeword: Vec<XFieldElement>,
+    merkle_root: Digest,
+    folding_challenge: Option<XFieldElement>,
+}
+
+impl<'stream, H: AlgebraicHasher> FriVerifier<'stream, H> {
+    fn initialize_verification_rounds(&mut self) -> Result<()> {
+        self.initialize_first_round()?;
+        for _ in 0..self.num_rounds {
+            self.initialize_next_round()?;
+        }
+        Ok(())
+    }
+
+    fn initialize_first_round(&mut self) -> Result<()> {
+        let first_round = self.construct_first_round()?;
+        self.store_round(first_round);
+        Ok(())
+    }
+
+    fn initialize_next_round(&mut self) -> Result<()> {
+        let next_round = self.construct_next_round()?;
+        self.store_round(next_round);
+        Ok(())
+    }
+
+    fn construct_first_round(&mut self) -> Result<VerifierRound> {
+        let domain = self.first_round_domain;
+        self.construct_round_with_domain(domain)
+    }
+
+    fn construct_next_round(&mut self) -> Result<VerifierRound> {
+        let previous_round = self.rounds.last().unwrap();
+        let domain = previous_round.domain.halve();
+        self.construct_round_with_domain(domain)
+    }
+
+    fn construct_round_with_domain(&mut self, domain: ArithmeticDomain) -> Result<VerifierRound> {
+        let merkle_root = self.proof_stream.dequeue()?.as_merkle_root()?;
+        let folding_challenge = self.maybe_sample_folding_challenge();
+
+        let verifier_round = VerifierRound {
+            domain,
+            partially_revealed_codeword: vec![],
+            merkle_root,
+            folding_challenge,
+        };
+        Ok(verifier_round)
+    }
+
+    fn maybe_sample_folding_challenge(&mut self) -> Option<XFieldElement> {
+        match self.need_more_folding_challenges() {
+            true => Some(self.proof_stream.sample_scalars(1)[0]),
+            false => None,
+        }
+    }
+
+    fn need_more_folding_challenges(&self) -> bool {
+        if self.num_rounds == 0 {
+            return false;
+        }
+
+        let num_initialized_rounds = self.rounds.len();
+        let num_rounds_that_have_a_next_round = self.num_rounds - 1;
+        num_initialized_rounds <= num_rounds_that_have_a_next_round
+    }
+
+    fn store_round(&mut self, round: VerifierRound) {
+        self.rounds.push(round);
+    }
+}
+
 impl<H: AlgebraicHasher> Fri<H> {
     pub fn new(
         domain: ArithmeticDomain,
@@ -248,6 +336,21 @@ impl<H: AlgebraicHasher> Fri<H> {
         prover.all_top_level_colinearity_check_indices()
     }
 
+    fn verifier<'stream>(
+        &'stream self,
+        proof_stream: &'stream mut ProofStream<H>,
+    ) -> FriVerifier<H> {
+        FriVerifier {
+            proof_stream,
+            rounds: vec![],
+            first_round_domain: self.domain,
+            expansion_factor: self.expansion_factor,
+            num_rounds: self.num_rounds(),
+            num_colinearity_checks: self.num_colinearity_checks,
+            first_round_colinearity_check_indices: vec![],
+        }
+    }
+
     /// Verify low-degreeness of the polynomial on the proof stream.
     /// Returns the indices and revealed elements of the codeword at the top level of the FRI proof.
     pub fn verify(
@@ -256,26 +359,19 @@ impl<H: AlgebraicHasher> Fri<H> {
         maybe_profiler: &mut Option<TritonProfiler>,
     ) -> Result<Vec<(usize, XFieldElement)>> {
         prof_start!(maybe_profiler, "init");
-        let num_rounds = self.num_rounds();
-
-        // Extract all roots and calculate alpha based on Fiat-Shamir challenge
-        let mut roots = Vec::with_capacity(num_rounds);
-        let mut alphas = Vec::with_capacity(num_rounds);
-
-        let first_root = proof_stream.dequeue()?.as_merkle_root()?;
-        roots.push(first_root);
+        let mut verifier = self.verifier(proof_stream);
         prof_stop!(maybe_profiler, "init");
 
         prof_start!(maybe_profiler, "roots and alpha");
-        for _round in 0..num_rounds {
-            // Get a challenge from the proof stream
-            let alpha = proof_stream.sample_scalars(1)[0];
-            alphas.push(alpha);
-
-            let root = proof_stream.dequeue()?.as_merkle_root()?;
-            roots.push(root);
-        }
+        verifier.initialize_verification_rounds()?;
         prof_stop!(maybe_profiler, "roots and alpha");
+
+        let roots = verifier.rounds.iter().map(|r| r.merkle_root).collect_vec();
+        let alphas = verifier
+            .rounds
+            .iter()
+            .filter_map(|r| r.folding_challenge)
+            .collect_vec();
 
         prof_start!(maybe_profiler, "last codeword matches root", "hash");
         // Extract last codeword
@@ -327,7 +423,7 @@ impl<H: AlgebraicHasher> Fri<H> {
 
         // query step 1:  loop over FRI rounds, verify "B"s, compute values for "C"s
         prof_start!(maybe_profiler, "loop");
-        for round in 0..num_rounds {
+        for round in 0..self.num_rounds() {
             // get "B" indices and verify set membership of corresponding values
             b_indices = b_indices
                 .iter()
