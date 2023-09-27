@@ -123,11 +123,10 @@ where
     H: AlgebraicHasher,
 {
     fn decode(sequence: &[BFieldElement]) -> Result<Box<Self>> {
-        let items = *Vec::<ProofItem>::decode(sequence)?;
-        let proof_stream = ProofStream {
+        let items = *Vec::decode(sequence)?;
+        let proof_stream = Self {
             items,
-            items_index: 0,
-            sponge_state: H::init(),
+            ..Self::new()
         };
         Ok(Box::new(proof_stream))
     }
