@@ -11,7 +11,7 @@ use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
 use crate::proof::Proof;
 use crate::proof_item::ProofItem;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Default, Debug, Clone, PartialEq, Eq)]
 pub struct ProofStream<H>
 where
     H: AlgebraicHasher,
@@ -124,15 +124,6 @@ where
     /// A thin wrapper around [`H::sample_scalars`](AlgebraicHasher::sample_scalars).
     pub fn sample_scalars(&mut self, num_scalars: usize) -> Vec<XFieldElement> {
         H::sample_scalars(&mut self.sponge_state, num_scalars)
-    }
-}
-
-impl<H> Default for ProofStream<H>
-where
-    H: AlgebraicHasher,
-{
-    fn default() -> Self {
-        Self::new()
     }
 }
 
