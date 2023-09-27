@@ -27,6 +27,8 @@ use crate::proof_item::ProofItem;
 use crate::proof_stream::ProofStream;
 use crate::stark::MTMaker;
 
+pub type AuthenticationStructure = Vec<Digest>;
+
 impl Error for FriValidationError {}
 
 impl fmt::Display for FriValidationError {
@@ -37,6 +39,7 @@ impl fmt::Display for FriValidationError {
 
 #[derive(PartialEq, Eq, Debug)]
 pub enum FriValidationError {
+    IncorrectNumberOfRevealedLeaves,
     BadMerkleAuthenticationPath,
     MismatchingLastCodeword,
     LastRoundPolynomialHasTooHighDegree,
@@ -112,10 +115,10 @@ impl<'stream, H: AlgebraicHasher> FriProver<'stream, H> {
     }
 
     fn query(&mut self) {
-        self.sample_colinearity_indices();
+        self.sample_first_round_colinearity_check_indices();
 
-        let initial_a_indices = &self.first_round_colinearity_check_indices.clone();
-        self.authentically_reveal_codeword_of_round_at_indices(0, initial_a_indices);
+        let initial_a_indices = self.first_round_colinearity_check_indices.clone();
+        self.authentically_reveal_codeword_of_round_at_indices(0, &initial_a_indices);
 
         let num_rounds_that_have_a_next_round = self.rounds.len() - 1;
         for round_number in 0..num_rounds_that_have_a_next_round {
@@ -124,7 +127,7 @@ impl<'stream, H: AlgebraicHasher> FriProver<'stream, H> {
         }
     }
 
-    fn sample_colinearity_indices(&mut self) {
+    fn sample_first_round_colinearity_check_indices(&mut self) {
         let indices_upper_bound = self.first_round_domain.length;
         self.first_round_colinearity_check_indices = self
             .proof_stream
@@ -206,19 +209,15 @@ struct FriVerifier<'stream, H: AlgebraicHasher> {
     first_round_domain: ArithmeticDomain,
     last_round_codeword: Vec<XFieldElement>,
     last_round_max_degree: usize,
-    #[allow(dead_code)]
-    expansion_factor: usize,
     num_rounds: usize,
-    #[allow(dead_code)]
     num_colinearity_checks: usize,
-    #[allow(dead_code)]
     first_round_colinearity_check_indices: Vec<usize>,
 }
 
 struct VerifierRound {
     domain: ArithmeticDomain,
-    #[allow(dead_code)]
-    partially_revealed_codeword: Vec<XFieldElement>,
+    partially_revealed_codeword_a: Vec<XFieldElement>,
+    partially_revealed_codeword_b: Vec<XFieldElement>,
     merkle_root: Digest,
     folding_challenge: Option<XFieldElement>,
 }
@@ -266,7 +265,8 @@ impl<'stream, H: AlgebraicHasher> FriVerifier<'stream, H> {
 
         let verifier_round = VerifierRound {
             domain,
-            partially_revealed_codeword: vec![],
+            partially_revealed_codeword_a: vec![],
+            partially_revealed_codeword_b: vec![],
             merkle_root,
             folding_challenge,
         };
@@ -302,6 +302,7 @@ impl<'stream, H: AlgebraicHasher> FriVerifier<'stream, H> {
     fn authenticate_last_round_codeword(&self) -> Result<()> {
         self.assert_last_round_codeword_matches_last_round_commitment()?;
         self.assert_last_round_codword_corresponds_to_low_degree_polynomial()?;
+        self.assert_last_round_codeword_is_consistent_with_last_round_computed_colinear_values()?;
         Ok(())
     }
 
@@ -332,6 +333,211 @@ impl<'stream, H: AlgebraicHasher> FriVerifier<'stream, H> {
     fn last_round_polynomial(&self) -> Polynomial<XFieldElement> {
         let domain = self.rounds.last().unwrap().domain;
         domain.interpolate(&self.last_round_codeword)
+    }
+
+    fn assert_last_round_codeword_is_consistent_with_last_round_computed_colinear_values(
+        &self,
+    ) -> Result<()> {
+        let partial_colinearly_computed_codeword =
+            self.colinearly_computed_last_round_codeword_at_indices_a();
+        let partial_received_codeword = self.received_last_round_codeword_at_indices_a();
+
+        match partial_received_codeword == partial_colinearly_computed_codeword {
+            true => Ok(()),
+            false => bail!(FriValidationError::MismatchingLastCodeword),
+        }
+    }
+
+    fn colinearly_computed_last_round_codeword_at_indices_a(&self) -> &[XFieldElement] {
+        &self.rounds.last().unwrap().partially_revealed_codeword_a
+    }
+
+    fn received_last_round_codeword_at_indices_a(&self) -> Vec<XFieldElement> {
+        let last_round_number = self.rounds.len() - 1;
+        let last_round_indices_a = self.colinearity_check_a_indices_for_round(last_round_number);
+        last_round_indices_a
+            .iter()
+            .map(|&last_round_index_a| self.last_round_codeword[last_round_index_a])
+            .collect()
+    }
+
+    fn compute_last_round_colinear_values_of_partially_revealed_codewords(&mut self) -> Result<()> {
+        self.sample_first_round_colinearity_check_indices();
+        self.receive_authentic_partially_revealed_codewords()?;
+        self.compute_colinear_values_from_partially_revealed_codewords();
+        Ok(())
+    }
+
+    fn sample_first_round_colinearity_check_indices(&mut self) {
+        let upper_bound = self.first_round_domain.length;
+        self.first_round_colinearity_check_indices = self
+            .proof_stream
+            .sample_indices(upper_bound, self.num_colinearity_checks);
+    }
+
+    fn receive_authentic_partially_revealed_codewords(&mut self) -> Result<()> {
+        let auth_structure = self.receive_a_values_for_first_round()?;
+        self.authenticate_a_values_for_first_round(&auth_structure)?;
+
+        let num_rounds_that_have_a_next_round = self.rounds.len() - 1;
+        for round_number in 0..num_rounds_that_have_a_next_round {
+            let auth_structure = self.receive_b_values_for_round(round_number)?;
+            self.authenticate_b_values_for_round(round_number, &auth_structure)?;
+        }
+        Ok(())
+    }
+
+    fn receive_a_values_for_first_round(&mut self) -> Result<AuthenticationStructure> {
+        let fri_response = self.proof_stream.dequeue()?.as_fri_response()?;
+        let FriResponse {
+            auth_structure,
+            revealed_leaves,
+        } = fri_response;
+
+        if self.num_colinearity_checks != revealed_leaves.len() {
+            bail!(FriValidationError::IncorrectNumberOfRevealedLeaves);
+        }
+
+        self.rounds[0].partially_revealed_codeword_a = revealed_leaves;
+        Ok(auth_structure)
+    }
+
+    fn receive_b_values_for_round(
+        &mut self,
+        round_number: usize,
+    ) -> Result<AuthenticationStructure> {
+        let fri_response = self.proof_stream.dequeue()?.as_fri_response()?;
+        let FriResponse {
+            auth_structure,
+            revealed_leaves,
+        } = fri_response;
+
+        if self.num_colinearity_checks != revealed_leaves.len() {
+            bail!(FriValidationError::IncorrectNumberOfRevealedLeaves);
+        }
+
+        self.rounds[round_number].partially_revealed_codeword_b = revealed_leaves;
+        Ok(auth_structure)
+    }
+
+    fn authenticate_a_values_for_first_round(
+        &self,
+        auth_structure: &AuthenticationStructure,
+    ) -> Result<()> {
+        let round = &self.rounds[0];
+
+        let revealed_leaves = &round.partially_revealed_codeword_a;
+        let revealed_digests = codeword_as_digests(revealed_leaves);
+
+        let merkle_tree_height = round.domain.length.ilog2() as usize;
+        let indices = &self.colinearity_check_a_indices_for_round(0);
+
+        match MerkleTree::<H>::verify_authentication_structure(
+            round.merkle_root,
+            merkle_tree_height,
+            indices,
+            &revealed_digests,
+            auth_structure,
+        ) {
+            true => Ok(()),
+            false => bail!(FriValidationError::BadMerkleAuthenticationPath),
+        }
+    }
+
+    fn authenticate_b_values_for_round(
+        &self,
+        round_number: usize,
+        auth_structure: &AuthenticationStructure,
+    ) -> Result<()> {
+        let round = &self.rounds[round_number];
+
+        let revealed_leaves = &round.partially_revealed_codeword_b;
+        let revealed_digests = codeword_as_digests(revealed_leaves);
+
+        let merkle_tree_height = round.domain.length.ilog2() as usize;
+        let indices = &self.colinearity_check_b_indices_for_round(round_number);
+
+        match MerkleTree::<H>::verify_authentication_structure(
+            round.merkle_root,
+            merkle_tree_height,
+            indices,
+            &revealed_digests,
+            auth_structure,
+        ) {
+            true => Ok(()),
+            false => bail!(FriValidationError::BadMerkleAuthenticationPath),
+        }
+    }
+
+    fn colinearity_check_a_indices_for_round(&self, round_number: usize) -> Vec<usize> {
+        let domain_length = self.rounds[round_number].domain.length;
+        let offset = 0;
+        self.colinearity_check_indices_with_offset_and_modulus(offset, domain_length)
+    }
+
+    fn colinearity_check_b_indices_for_round(&self, round_number: usize) -> Vec<usize> {
+        let domain_length = self.rounds[round_number].domain.length;
+        let offset = domain_length / 2;
+        self.colinearity_check_indices_with_offset_and_modulus(offset, domain_length)
+    }
+
+    fn colinearity_check_indices_with_offset_and_modulus(
+        &self,
+        offset: usize,
+        modulus: usize,
+    ) -> Vec<usize> {
+        self.first_round_colinearity_check_indices
+            .iter()
+            .map(|&i| (i + offset) % modulus)
+            .collect()
+    }
+
+    fn compute_colinear_values_from_partially_revealed_codewords(&mut self) {
+        let num_rounds_that_have_a_next_round = self.rounds.len() - 1;
+        for round_number in 0..num_rounds_that_have_a_next_round {
+            let folded_partial_codeword = self.fold_partial_codeword_of_round(round_number);
+            let next_round = &mut self.rounds[round_number + 1];
+            next_round.partially_revealed_codeword_a = folded_partial_codeword;
+        }
+    }
+
+    fn fold_partial_codeword_of_round(&self, round_number: usize) -> Vec<XFieldElement> {
+        let round = &self.rounds[round_number];
+        let a_indices = self.colinearity_check_a_indices_for_round(round_number);
+        let b_indices = self.colinearity_check_b_indices_for_round(round_number);
+        let a_values = &round.partially_revealed_codeword_a;
+        let b_values = &round.partially_revealed_codeword_b;
+        let domain = round.domain;
+        let folding_challenge = round.folding_challenge.unwrap();
+
+        (0..self.num_colinearity_checks)
+            .into_par_iter()
+            .map(|i| {
+                let point_a_x = domain.domain_value(a_indices[i] as u32).lift();
+                let point_b_x = domain.domain_value(b_indices[i] as u32).lift();
+                let point_a = (point_a_x, a_values[i]);
+                let point_b = (point_b_x, b_values[i]);
+                Polynomial::get_colinear_y(point_a, point_b, folding_challenge)
+            })
+            .collect()
+    }
+
+    fn first_round_partially_revealed_codeword(&self) -> Vec<(usize, XFieldElement)> {
+        let values_a = self.rounds[0].partially_revealed_codeword_a.clone();
+        let values_b = self.rounds[0].partially_revealed_codeword_b.clone();
+
+        let indices_a = self.colinearity_check_a_indices_for_round(0).into_iter();
+
+        let values_b_for_first_round_have_been_revealed = self.num_rounds > 0;
+        let indices_b = match values_b_for_first_round_have_been_revealed {
+            true => self.colinearity_check_b_indices_for_round(0).into_iter(),
+            false => vec![].into_iter(),
+        };
+
+        let codeword_a = indices_a.zip_eq(values_a);
+        let codeword_b = indices_b.zip_eq(values_b);
+
+        codeword_a.chain(codeword_b).collect()
     }
 }
 
@@ -389,7 +595,6 @@ impl<H: AlgebraicHasher> Fri<H> {
             first_round_domain: self.domain,
             last_round_codeword: vec![],
             last_round_max_degree: self.last_round_max_degree(),
-            expansion_factor: self.expansion_factor,
             num_rounds: self.num_rounds(),
             num_colinearity_checks: self.num_colinearity_checks,
             first_round_colinearity_check_indices: vec![],
@@ -408,151 +613,15 @@ impl<H: AlgebraicHasher> Fri<H> {
         verifier.initialize()?;
         prof_stop!(maybe_profiler, "init");
 
+        prof_start!(maybe_profiler, "fold all rounds");
+        verifier.compute_last_round_colinear_values_of_partially_revealed_codewords()?;
+        prof_stop!(maybe_profiler, "fold all rounds");
+
         prof_start!(maybe_profiler, "authenticate last round codeword");
         verifier.authenticate_last_round_codeword()?;
         prof_stop!(maybe_profiler, "authenticate last round codeword");
 
-        let roots = verifier.rounds.iter().map(|r| r.merkle_root).collect_vec();
-        let alphas = verifier
-            .rounds
-            .iter()
-            .filter_map(|r| r.folding_challenge)
-            .collect_vec();
-        let last_codeword = verifier.last_round_codeword;
-
-        // Query phase
-        prof_start!(maybe_profiler, "query phase");
-        // query step 0: get "A" indices and verify set membership of corresponding values.
-        prof_start!(maybe_profiler, "sample indices");
-        let mut a_indices =
-            proof_stream.sample_indices(self.domain.length, self.num_colinearity_checks);
-        prof_stop!(maybe_profiler, "sample indices");
-
-        prof_start!(maybe_profiler, "dequeue and authenticate", "hash");
-        let tree_height = self.domain.length.ilog2() as usize;
-        let mut a_values =
-            Self::dequeue_and_authenticate(roots[0], tree_height, &a_indices, proof_stream)?;
-        prof_stop!(maybe_profiler, "dequeue and authenticate");
-
-        // save indices and revealed leafs of first round's codeword for returning
-        let revealed_indices_and_elements_first_half = a_indices
-            .iter()
-            .copied()
-            .zip_eq(a_values.iter().copied())
-            .collect_vec();
-        // these indices and values will be computed in the first iteration of the main loop below
-        let mut revealed_indices_and_elements_second_half = vec![];
-
-        // set up "B" for offsetting inside loop.  Note that "B" and "A" indices can be calcuated
-        // from each other.
-        let mut b_indices = a_indices.clone();
-        let mut current_domain_len = self.domain.length;
-        let mut current_tree_height = tree_height;
-
-        // query step 1:  loop over FRI rounds, verify "B"s, compute values for "C"s
-        prof_start!(maybe_profiler, "loop");
-        for round in 0..self.num_rounds() {
-            // get "B" indices and verify set membership of corresponding values
-            b_indices = b_indices
-                .iter()
-                .map(|x| (x + current_domain_len / 2) % current_domain_len)
-                .collect();
-            let b_values = Self::dequeue_and_authenticate(
-                roots[round],
-                current_tree_height,
-                &b_indices,
-                proof_stream,
-            )?;
-            debug_assert_eq!(self.num_colinearity_checks, a_indices.len());
-            debug_assert_eq!(self.num_colinearity_checks, b_indices.len());
-            debug_assert_eq!(self.num_colinearity_checks, a_values.len());
-            debug_assert_eq!(self.num_colinearity_checks, b_values.len());
-
-            if round == 0 {
-                // save other half of indices and revealed leafs of first round for returning
-                revealed_indices_and_elements_second_half = b_indices
-                    .iter()
-                    .copied()
-                    .zip_eq(b_values.iter().copied())
-                    .collect_vec();
-            }
-
-            // compute "C" indices and values for next round from "A" and "B" of current round
-            current_domain_len /= 2;
-            current_tree_height -= 1;
-            let c_indices = a_indices.iter().map(|x| x % current_domain_len).collect();
-            let c_values = (0..self.num_colinearity_checks)
-                .into_par_iter()
-                .map(|i| {
-                    let point_a_x = self.domain_value(a_indices[i], round);
-                    let point_b_x = self.domain_value(b_indices[i], round);
-                    let point_a = (point_a_x, a_values[i]);
-                    let point_b = (point_b_x, b_values[i]);
-                    Polynomial::<XFieldElement>::get_colinear_y(point_a, point_b, alphas[round])
-                })
-                .collect();
-
-            // next rounds "A"s correspond to current rounds "C"s
-            a_indices = c_indices;
-            a_values = c_values;
-        }
-        prof_stop!(maybe_profiler, "loop");
-        prof_stop!(maybe_profiler, "query phase");
-
-        // Finally compare "C" values (which are named "A" values in this enclosing scope) with
-        // last codeword from the proofstream.
-        prof_start!(maybe_profiler, "compare last codeword");
-        a_indices = a_indices.iter().map(|x| x % current_domain_len).collect();
-        if (0..self.num_colinearity_checks).any(|i| last_codeword[a_indices[i]] != a_values[i]) {
-            bail!(FriValidationError::MismatchingLastCodeword);
-        }
-        prof_stop!(maybe_profiler, "compare last codeword");
-
-        let revealed_indices_and_elements = revealed_indices_and_elements_first_half
-            .into_iter()
-            .chain(revealed_indices_and_elements_second_half)
-            .collect_vec();
-        Ok(revealed_indices_and_elements)
-    }
-
-    /// Given a merkle `root`, the `tree_height`, the `indices` of the values to dequeue from the
-    /// proof stream, and the (correctly set) `proof_stream`, verify whether the values at the
-    /// `indices` are members of the set committed to by the merkle `root` and return these values
-    /// if they are. Fails otherwise.
-    fn dequeue_and_authenticate(
-        root: Digest,
-        tree_height: usize,
-        indices: &[usize],
-        proof_stream: &mut ProofStream<H>,
-    ) -> Result<Vec<XFieldElement>> {
-        let fri_response = proof_stream.dequeue()?.as_fri_response()?;
-        let FriResponse {
-            auth_structure,
-            revealed_leaves,
-        } = fri_response;
-        debug_assert_eq!(indices.len(), revealed_leaves.len());
-        let leaf_digests = revealed_leaves.iter().map(|&xfe| xfe.into()).collect_vec();
-
-        match MerkleTree::<H>::verify_authentication_structure(
-            root,
-            tree_height,
-            indices,
-            &leaf_digests,
-            &auth_structure,
-        ) {
-            true => Ok(revealed_leaves),
-            false => bail!(FriValidationError::BadMerkleAuthenticationPath),
-        }
-    }
-
-    /// Given index `i` of the FRI codeword in round `round`, compute the corresponding value in the
-    /// FRI (co-)domain. This corresponds to `ω^i` in `f(ω^i)` from
-    /// [STARK-Anatomy](https://neptune.cash/learn/stark-anatomy/fri/#split-and-fold).
-    pub fn domain_value(&self, idx: usize, round: usize) -> XFieldElement {
-        let domain_value = self.domain.domain_value(idx as u32);
-        let round_adjusting_exponent = 1 << round;
-        let round_adjusted_domain_value = domain_value.mod_pow(round_adjusting_exponent);
-        round_adjusted_domain_value.lift()
+        Ok(verifier.first_round_partially_revealed_codeword())
     }
 
     pub fn num_rounds(&self) -> usize {
