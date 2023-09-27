@@ -33,15 +33,6 @@ where
         }
     }
 
-    pub fn is_empty(&self) -> bool {
-        self.items.is_empty()
-    }
-
-    /// The number of items in the proof stream.
-    pub fn len(&self) -> usize {
-        self.items.len()
-    }
-
     /// The number of field elements required to encode the proof.
     pub fn transcript_length(&self) -> usize {
         let Proof(b_field_elements) = self.into();
