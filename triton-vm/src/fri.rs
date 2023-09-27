@@ -651,6 +651,7 @@ mod tests {
     use twenty_first::shared_math::polynomial::Polynomial;
     use twenty_first::shared_math::tip5::Tip5;
     use twenty_first::shared_math::tip5::RATE;
+    use twenty_first::shared_math::x_field_element::EXTENSION_DEGREE;
     use twenty_first::util_types::algebraic_hasher::SpongeHasher;
 
     use ProofItem::*;
@@ -921,5 +922,61 @@ mod tests {
                 }
             }
         }
+    }
+
+    proptest! {
+        #[test]
+        fn last_round_codeword_unequal_to_last_round_commitment_results_in_validation_failure(
+            fri in arbitrary_fri(),
+            polynomial in arbitrary_polynomial(),
+            disturbance_index: usize,
+        ) {
+            let mut proof_stream = ProofStream::new();
+            let mut verifier = fri.verifier(&mut proof_stream);
+
+            let codeword = fri.domain.evaluate(&polynomial);
+            verifier.last_round_codeword = codeword.clone();
+
+            let dummy_last_round = dummy_verifier_round_from_codeword(&codeword);
+            verifier.rounds.push(dummy_last_round);
+
+            let maybe_last_rounds_roots_are_equal =
+                verifier.assert_last_round_codeword_matches_last_round_commitment();
+            prop_assert!(maybe_last_rounds_roots_are_equal.is_ok());
+
+            let incorrect_codeword = disturb_codeword_at_position(codeword, disturbance_index);
+            verifier.last_round_codeword = incorrect_codeword;
+
+            let maybe_last_rounds_roots_are_equal =
+                verifier.assert_last_round_codeword_matches_last_round_commitment();
+            prop_assert!(maybe_last_rounds_roots_are_equal.is_err());
+        }
+    }
+
+    fn dummy_verifier_round_from_codeword(codeword: &[XFieldElement]) -> VerifierRound {
+        let leaf_digests = codeword_as_digests(codeword);
+        let merkle_tree: MerkleTree<Tip5> = MTMaker::from_digests(&leaf_digests);
+        let merkle_root = merkle_tree.get_root();
+        dummy_verifier_round_with_merkle_root(merkle_root)
+    }
+
+    fn dummy_verifier_round_with_merkle_root(root: Digest) -> VerifierRound {
+        VerifierRound {
+            domain: ArithmeticDomain::of_length(2),
+            partial_codeword_a: vec![],
+            partial_codeword_b: vec![],
+            merkle_root: root,
+            folding_challenge: None,
+        }
+    }
+
+    fn disturb_codeword_at_position(
+        mut codeword: Vec<XFieldElement>,
+        position: usize,
+    ) -> Vec<XFieldElement> {
+        let xfield_element_coefficient_index = position % EXTENSION_DEGREE;
+        let disturbance_index = position % codeword.len();
+        codeword[disturbance_index].increment(xfield_element_coefficient_index);
+        codeword
     }
 }
