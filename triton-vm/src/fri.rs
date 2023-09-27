@@ -176,12 +176,8 @@ impl<H: AlgebraicHasher> ProverRound<H> {
     }
 
     fn merkle_tree_from_codeword(codeword: &[XFieldElement]) -> MerkleTree<H> {
-        let digests = Self::codeword_as_digests(codeword);
+        let digests = codeword_as_digests(codeword);
         MTMaker::from_digests(&digests)
-    }
-
-    fn codeword_as_digests(codeword: &[XFieldElement]) -> Vec<Digest> {
-        codeword.par_iter().map(|&xfe| xfe.into()).collect()
     }
 
     fn split_and_fold(&self, folding_challenge: XFieldElement) -> Vec<XFieldElement> {
@@ -208,6 +204,8 @@ struct FriVerifier<'stream, H: AlgebraicHasher> {
     proof_stream: &'stream mut ProofStream<H>,
     rounds: Vec<VerifierRound>,
     first_round_domain: ArithmeticDomain,
+    last_round_codeword: Vec<XFieldElement>,
+    last_round_max_degree: usize,
     #[allow(dead_code)]
     expansion_factor: usize,
     num_rounds: usize,
@@ -226,6 +224,11 @@ struct VerifierRound {
 }
 
 impl<'stream, H: AlgebraicHasher> FriVerifier<'stream, H> {
+    fn initialize(&mut self) -> Result<()> {
+        self.initialize_verification_rounds()?;
+        self.receive_last_round_codeword()
+    }
+
     fn initialize_verification_rounds(&mut self) -> Result<()> {
         self.initialize_first_round()?;
         for _ in 0..self.num_rounds {
@@ -290,6 +293,46 @@ impl<'stream, H: AlgebraicHasher> FriVerifier<'stream, H> {
     fn store_round(&mut self, round: VerifierRound) {
         self.rounds.push(round);
     }
+
+    fn receive_last_round_codeword(&mut self) -> Result<()> {
+        self.last_round_codeword = self.proof_stream.dequeue()?.as_fri_codeword()?;
+        Ok(())
+    }
+
+    fn authenticate_last_round_codeword(&self) -> Result<()> {
+        self.assert_last_round_codeword_matches_last_round_commitment()?;
+        self.assert_last_round_codword_corresponds_to_low_degree_polynomial()?;
+        Ok(())
+    }
+
+    fn assert_last_round_codeword_matches_last_round_commitment(&self) -> Result<()> {
+        if self.last_round_merkle_root() != self.last_round_codeword_merkle_root() {
+            bail!(FriValidationError::BadMerkleRootForLastCodeword);
+        }
+        Ok(())
+    }
+
+    fn last_round_codeword_merkle_root(&self) -> Digest {
+        let codeword_digests = codeword_as_digests(&self.last_round_codeword);
+        let merkle_tree: MerkleTree<H> = MTMaker::from_digests(&codeword_digests);
+        merkle_tree.get_root()
+    }
+
+    fn last_round_merkle_root(&self) -> Digest {
+        self.rounds.last().unwrap().merkle_root
+    }
+
+    fn assert_last_round_codword_corresponds_to_low_degree_polynomial(&self) -> Result<()> {
+        if self.last_round_polynomial().degree() > self.last_round_max_degree as isize {
+            bail!(FriValidationError::LastRoundPolynomialHasTooHighDegree);
+        }
+        Ok(())
+    }
+
+    fn last_round_polynomial(&self) -> Polynomial<XFieldElement> {
+        let domain = self.rounds.last().unwrap().domain;
+        domain.interpolate(&self.last_round_codeword)
+    }
 }
 
 impl<H: AlgebraicHasher> Fri<H> {
@@ -344,6 +387,8 @@ impl<H: AlgebraicHasher> Fri<H> {
             proof_stream,
             rounds: vec![],
             first_round_domain: self.domain,
+            last_round_codeword: vec![],
+            last_round_max_degree: self.last_round_max_degree(),
             expansion_factor: self.expansion_factor,
             num_rounds: self.num_rounds(),
             num_colinearity_checks: self.num_colinearity_checks,
@@ -360,11 +405,12 @@ impl<H: AlgebraicHasher> Fri<H> {
     ) -> Result<Vec<(usize, XFieldElement)>> {
         prof_start!(maybe_profiler, "init");
         let mut verifier = self.verifier(proof_stream);
+        verifier.initialize()?;
         prof_stop!(maybe_profiler, "init");
 
-        prof_start!(maybe_profiler, "roots and alpha");
-        verifier.initialize_verification_rounds()?;
-        prof_stop!(maybe_profiler, "roots and alpha");
+        prof_start!(maybe_profiler, "authenticate last round codeword");
+        verifier.authenticate_last_round_codeword()?;
+        prof_stop!(maybe_profiler, "authenticate last round codeword");
 
         let roots = verifier.rounds.iter().map(|r| r.merkle_root).collect_vec();
         let alphas = verifier
@@ -372,25 +418,7 @@ impl<H: AlgebraicHasher> Fri<H> {
             .iter()
             .filter_map(|r| r.folding_challenge)
             .collect_vec();
-
-        prof_start!(maybe_profiler, "last codeword matches root", "hash");
-        // Extract last codeword
-        let last_codeword = proof_stream.dequeue()?.as_fri_codeword()?;
-
-        // Check if last codeword matches the given root
-        let codeword_digests = last_codeword.iter().map(|&xfe| xfe.into()).collect_vec();
-        let last_codeword_mt: MerkleTree<H> = MTMaker::from_digests(&codeword_digests);
-        let last_root = roots.last().unwrap();
-        if *last_root != last_codeword_mt.get_root() {
-            bail!(FriValidationError::BadMerkleRootForLastCodeword);
-        }
-        prof_stop!(maybe_profiler, "last codeword matches root");
-
-        // Verify that last codeword is of sufficiently low degree
-
-        prof_start!(maybe_profiler, "last codeword has low degree");
-        self.assert_last_round_polynomial_is_of_low_degree(&last_codeword)?;
-        prof_stop!(maybe_profiler, "last codeword has low degree");
+        let last_codeword = verifier.last_round_codeword;
 
         // Query phase
         prof_start!(maybe_profiler, "query phase");
@@ -517,19 +545,6 @@ impl<H: AlgebraicHasher> Fri<H> {
         }
     }
 
-    fn assert_last_round_polynomial_is_of_low_degree(
-        &self,
-        last_codeword: &[XFieldElement],
-    ) -> Result<()> {
-        // The domain's offset is irrelevant for the polynomial's degree.
-        let last_round_domain = ArithmeticDomain::of_length(last_codeword.len());
-        let last_round_polynomial = last_round_domain.interpolate(last_codeword);
-        if last_round_polynomial.degree() > self.last_round_max_degree() as isize {
-            bail!(FriValidationError::LastRoundPolynomialHasTooHighDegree);
-        }
-        Ok(())
-    }
-
     /// Given index `i` of the FRI codeword in round `round`, compute the corresponding value in the
     /// FRI (co-)domain. This corresponds to `ω^i` in `f(ω^i)` from
     /// [STARK-Anatomy](https://neptune.cash/learn/stark-anatomy/fri/#split-and-fold).
@@ -560,6 +575,10 @@ impl<H: AlgebraicHasher> Fri<H> {
         assert!(self.domain.length >= self.expansion_factor);
         (self.domain.length / self.expansion_factor) - 1
     }
+}
+
+fn codeword_as_digests(codeword: &[XFieldElement]) -> Vec<Digest> {
+    codeword.par_iter().map(|&xfe| xfe.into()).collect()
 }
 
 #[cfg(test)]
