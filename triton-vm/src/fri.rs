@@ -1,5 +1,3 @@
-use std::error::Error;
-use std::fmt;
 use std::marker::PhantomData;
 
 use anyhow::bail;
@@ -7,6 +5,7 @@ use anyhow::Result;
 use itertools::Itertools;
 use num_traits::One;
 use rayon::iter::*;
+use strum_macros::Display;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::other::log_2_ceil;
 use twenty_first::shared_math::polynomial::Polynomial;
@@ -29,15 +28,7 @@ use crate::stark::MTMaker;
 
 pub type AuthenticationStructure = Vec<Digest>;
 
-impl Error for FriValidationError {}
-
-impl fmt::Display for FriValidationError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Deserialization error for LowDegreeProof: {self:?}")
-    }
-}
-
-#[derive(PartialEq, Eq, Debug)]
+#[derive(PartialEq, Eq, Debug, Display)]
 pub enum FriValidationError {
     IncorrectNumberOfRevealedLeaves,
     BadMerkleAuthenticationPath,
