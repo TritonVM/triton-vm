@@ -171,7 +171,7 @@ where
 }
 
 #[cfg(test)]
-mod proof_stream_typed_tests {
+mod tests {
     use itertools::Itertools;
     use rand::distributions::Standard;
     use rand::prelude::Distribution;
@@ -404,5 +404,28 @@ mod proof_stream_typed_tests {
             &auth_structure,
         );
         assert!(verdict);
+    }
+
+    #[test]
+    #[should_panic(expected = "Queue must be non-empty")]
+    fn dequeuing_from_empty_stream_fails() {
+        let mut proof_stream = ProofStream::<Tip5>::new();
+        proof_stream.dequeue().unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected = "Queue must be non-empty")]
+    fn dequeuing_more_items_than_have_been_enqueued_fails() {
+        let mut proof_stream = ProofStream::<Tip5>::new();
+        proof_stream.enqueue(&ProofItem::FriCodeword(vec![]));
+        proof_stream.enqueue(&ProofItem::Log2PaddedHeight(7));
+        proof_stream.dequeue().unwrap();
+        proof_stream.dequeue().unwrap();
+        proof_stream.dequeue().unwrap();
+    }
+
+    #[test]
+    fn encoded_length_of_prove_stream_is_not_known_at_compile_time() {
+        assert!(ProofStream::<Tip5>::static_length().is_none());
     }
 }
