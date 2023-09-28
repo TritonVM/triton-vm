@@ -290,64 +290,6 @@ impl<'stream, H: AlgebraicHasher> FriVerifier<'stream, H> {
         Ok(())
     }
 
-    fn authenticate_last_round_codeword(&self) -> Result<()> {
-        self.assert_last_round_codeword_matches_last_round_commitment()?;
-        self.assert_last_round_codeword_corresponds_to_low_degree_polynomial()?;
-        self.assert_last_round_codeword_agrees_with_last_round_folded_codeword()?;
-        Ok(())
-    }
-
-    fn assert_last_round_codeword_matches_last_round_commitment(&self) -> Result<()> {
-        if self.last_round_merkle_root() != self.last_round_codeword_merkle_root() {
-            bail!(FriValidationError::BadMerkleRootForLastCodeword);
-        }
-        Ok(())
-    }
-
-    fn last_round_codeword_merkle_root(&self) -> Digest {
-        let codeword_digests = codeword_as_digests(&self.last_round_codeword);
-        let merkle_tree: MerkleTree<H> = MTMaker::from_digests(&codeword_digests);
-        merkle_tree.get_root()
-    }
-
-    fn last_round_merkle_root(&self) -> Digest {
-        self.rounds.last().unwrap().merkle_root
-    }
-
-    fn assert_last_round_codeword_corresponds_to_low_degree_polynomial(&self) -> Result<()> {
-        if self.last_round_polynomial().degree() > self.last_round_max_degree as isize {
-            bail!(FriValidationError::LastRoundPolynomialHasTooHighDegree);
-        }
-        Ok(())
-    }
-
-    fn last_round_polynomial(&self) -> Polynomial<XFieldElement> {
-        let domain = self.rounds.last().unwrap().domain;
-        domain.interpolate(&self.last_round_codeword)
-    }
-
-    fn assert_last_round_codeword_agrees_with_last_round_folded_codeword(&self) -> Result<()> {
-        let partial_folded_codeword = self.folded_last_round_codeword_at_indices_a();
-        let partial_received_codeword = self.received_last_round_codeword_at_indices_a();
-        match partial_received_codeword == partial_folded_codeword {
-            true => Ok(()),
-            false => bail!(FriValidationError::MismatchingLastCodeword),
-        }
-    }
-
-    fn folded_last_round_codeword_at_indices_a(&self) -> &[XFieldElement] {
-        &self.rounds.last().unwrap().partial_codeword_a
-    }
-
-    fn received_last_round_codeword_at_indices_a(&self) -> Vec<XFieldElement> {
-        let last_round_number = self.rounds.len() - 1;
-        let last_round_indices_a = self.colinearity_check_a_indices_for_round(last_round_number);
-        last_round_indices_a
-            .iter()
-            .map(|&last_round_index_a| self.last_round_codeword[last_round_index_a])
-            .collect()
-    }
-
     fn compute_last_round_folded_partial_codeword(&mut self) -> Result<()> {
         self.sample_first_round_colinearity_check_indices();
         self.receive_authentic_partially_revealed_codewords()?;
@@ -457,29 +399,6 @@ impl<'stream, H: AlgebraicHasher> FriVerifier<'stream, H> {
         }
     }
 
-    fn colinearity_check_a_indices_for_round(&self, round_number: usize) -> Vec<usize> {
-        let domain_length = self.rounds[round_number].domain.length;
-        let a_offset = 0;
-        self.colinearity_check_indices_with_offset_and_modulus(a_offset, domain_length)
-    }
-
-    fn colinearity_check_b_indices_for_round(&self, round_number: usize) -> Vec<usize> {
-        let domain_length = self.rounds[round_number].domain.length;
-        let b_offset = domain_length / 2;
-        self.colinearity_check_indices_with_offset_and_modulus(b_offset, domain_length)
-    }
-
-    fn colinearity_check_indices_with_offset_and_modulus(
-        &self,
-        offset: usize,
-        modulus: usize,
-    ) -> Vec<usize> {
-        self.first_round_colinearity_check_indices
-            .iter()
-            .map(|&i| (i + offset) % modulus)
-            .collect()
-    }
-
     fn successively_fold_partial_codeword_of_each_round(&mut self) {
         let num_rounds_that_have_a_next_round = self.rounds.len() - 1;
         for round_number in 0..num_rounds_that_have_a_next_round {
@@ -508,6 +427,86 @@ impl<'stream, H: AlgebraicHasher> FriVerifier<'stream, H> {
                 Polynomial::get_colinear_y(point_a, point_b, folding_challenge)
             })
             .collect()
+    }
+
+    fn colinearity_check_a_indices_for_round(&self, round_number: usize) -> Vec<usize> {
+        let domain_length = self.rounds[round_number].domain.length;
+        let a_offset = 0;
+        self.colinearity_check_indices_with_offset_and_modulus(a_offset, domain_length)
+    }
+
+    fn colinearity_check_b_indices_for_round(&self, round_number: usize) -> Vec<usize> {
+        let domain_length = self.rounds[round_number].domain.length;
+        let b_offset = domain_length / 2;
+        self.colinearity_check_indices_with_offset_and_modulus(b_offset, domain_length)
+    }
+
+    fn colinearity_check_indices_with_offset_and_modulus(
+        &self,
+        offset: usize,
+        modulus: usize,
+    ) -> Vec<usize> {
+        self.first_round_colinearity_check_indices
+            .iter()
+            .map(|&i| (i + offset) % modulus)
+            .collect()
+    }
+
+    fn authenticate_last_round_codeword(&self) -> Result<()> {
+        self.assert_last_round_codeword_matches_last_round_commitment()?;
+        self.assert_last_round_codeword_agrees_with_last_round_folded_codeword()?;
+        self.assert_last_round_codeword_corresponds_to_low_degree_polynomial()
+    }
+
+    fn assert_last_round_codeword_matches_last_round_commitment(&self) -> Result<()> {
+        if self.last_round_merkle_root() != self.last_round_codeword_merkle_root() {
+            bail!(FriValidationError::BadMerkleRootForLastCodeword);
+        }
+        Ok(())
+    }
+
+    fn last_round_codeword_merkle_root(&self) -> Digest {
+        let codeword_digests = codeword_as_digests(&self.last_round_codeword);
+        let merkle_tree: MerkleTree<H> = MTMaker::from_digests(&codeword_digests);
+        merkle_tree.get_root()
+    }
+
+    fn last_round_merkle_root(&self) -> Digest {
+        self.rounds.last().unwrap().merkle_root
+    }
+
+    fn assert_last_round_codeword_agrees_with_last_round_folded_codeword(&self) -> Result<()> {
+        let partial_folded_codeword = self.folded_last_round_codeword_at_indices_a();
+        let partial_received_codeword = self.received_last_round_codeword_at_indices_a();
+        match partial_received_codeword == partial_folded_codeword {
+            true => Ok(()),
+            false => bail!(FriValidationError::MismatchingLastCodeword),
+        }
+    }
+
+    fn folded_last_round_codeword_at_indices_a(&self) -> &[XFieldElement] {
+        &self.rounds.last().unwrap().partial_codeword_a
+    }
+
+    fn received_last_round_codeword_at_indices_a(&self) -> Vec<XFieldElement> {
+        let last_round_number = self.rounds.len() - 1;
+        let last_round_indices_a = self.colinearity_check_a_indices_for_round(last_round_number);
+        last_round_indices_a
+            .iter()
+            .map(|&last_round_index_a| self.last_round_codeword[last_round_index_a])
+            .collect()
+    }
+
+    fn assert_last_round_codeword_corresponds_to_low_degree_polynomial(&self) -> Result<()> {
+        if self.last_round_polynomial().degree() > self.last_round_max_degree as isize {
+            bail!(FriValidationError::LastRoundPolynomialHasTooHighDegree);
+        }
+        Ok(())
+    }
+
+    fn last_round_polynomial(&self) -> Polynomial<XFieldElement> {
+        let domain = self.rounds.last().unwrap().domain;
+        domain.interpolate(&self.last_round_codeword)
     }
 
     fn first_round_partially_revealed_codeword(&self) -> Vec<(usize, XFieldElement)> {
@@ -539,23 +538,11 @@ impl<H: AlgebraicHasher> Fri<H> {
         assert!(expansion_factor.is_power_of_two());
         assert!(domain.length >= expansion_factor);
 
-        let _hasher = PhantomData;
         Self {
             domain,
             expansion_factor,
             num_colinearity_checks,
-            _hasher,
-        }
-    }
-
-    fn prover<'stream>(&'stream self, proof_stream: &'stream mut ProofStream<H>) -> FriProver<H> {
-        FriProver {
-            proof_stream,
-            rounds: vec![],
-            first_round_domain: self.domain,
-            num_rounds: self.num_rounds(),
-            num_colinearity_checks: self.num_colinearity_checks,
-            first_round_colinearity_check_indices: vec![],
+            _hasher: PhantomData,
         }
     }
 
@@ -573,16 +560,11 @@ impl<H: AlgebraicHasher> Fri<H> {
         prover.all_top_level_colinearity_check_indices()
     }
 
-    fn verifier<'stream>(
-        &'stream self,
-        proof_stream: &'stream mut ProofStream<H>,
-    ) -> FriVerifier<H> {
-        FriVerifier {
+    fn prover<'stream>(&'stream self, proof_stream: &'stream mut ProofStream<H>) -> FriProver<H> {
+        FriProver {
             proof_stream,
             rounds: vec![],
             first_round_domain: self.domain,
-            last_round_codeword: vec![],
-            last_round_max_degree: self.last_round_max_degree(),
             num_rounds: self.num_rounds(),
             num_colinearity_checks: self.num_colinearity_checks,
             first_round_colinearity_check_indices: vec![],
@@ -610,6 +592,22 @@ impl<H: AlgebraicHasher> Fri<H> {
         prof_stop!(maybe_profiler, "authenticate last round codeword");
 
         Ok(verifier.first_round_partially_revealed_codeword())
+    }
+
+    fn verifier<'stream>(
+        &'stream self,
+        proof_stream: &'stream mut ProofStream<H>,
+    ) -> FriVerifier<H> {
+        FriVerifier {
+            proof_stream,
+            rounds: vec![],
+            first_round_domain: self.domain,
+            last_round_codeword: vec![],
+            last_round_max_degree: self.last_round_max_degree(),
+            num_rounds: self.num_rounds(),
+            num_colinearity_checks: self.num_colinearity_checks,
+            first_round_colinearity_check_indices: vec![],
+        }
     }
 
     pub fn num_rounds(&self) -> usize {
