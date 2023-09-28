@@ -45,16 +45,16 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ steps.vars.outputs.rustc-version }}-${{ hashFiles('**/Cargo.toml') }}
 
       - name: Build constraints
-        run: make build-constraints
+        run: cargo run --bin constraint-evaluation-generator
 
       - name: Run fmt
-        run: make fmt-only
+        run: cargo fmt --all -- --check
 
       - name: Run clippy
-        run: make clippy-only
+        run: cargo clippy --all-targets -- -D warnings
 
       - name: Run tests
-        run: cargo test --all-targets
+        run: cargo test
 
       - name: Build benchmarks
         run: cargo bench --all-targets --no-run
