@@ -77,11 +77,11 @@ where
     ///     in question was hashed previously.
     /// - If the proof stream is not used to sample any more randomness, _i.e._, after the last
     ///     round of interaction, no further items need to be hashed.
-    pub fn enqueue(&mut self, item: &ProofItem) {
+    pub fn enqueue(&mut self, item: ProofItem) {
         if item.include_in_fiat_shamir_heuristic() {
-            self.alter_fiat_shamir_state_with(item);
+            self.alter_fiat_shamir_state_with(&item);
         }
-        self.items.push(item.clone());
+        self.items.push(item);
     }
 
     /// Receive a proof item from prover as verifier.
@@ -250,23 +250,23 @@ mod tests {
         let mut proof_stream = ProofStream::<H>::new();
 
         sponge_states.push_back(proof_stream.sponge_state.state);
-        proof_stream.enqueue(&ProofItem::AuthenticationStructure(auth_structure.clone()));
+        proof_stream.enqueue(ProofItem::AuthenticationStructure(auth_structure.clone()));
         sponge_states.push_back(proof_stream.sponge_state.state);
-        proof_stream.enqueue(&ProofItem::MasterBaseTableRows(base_rows.clone()));
+        proof_stream.enqueue(ProofItem::MasterBaseTableRows(base_rows.clone()));
         sponge_states.push_back(proof_stream.sponge_state.state);
-        proof_stream.enqueue(&ProofItem::MasterExtTableRows(ext_rows.clone()));
+        proof_stream.enqueue(ProofItem::MasterExtTableRows(ext_rows.clone()));
         sponge_states.push_back(proof_stream.sponge_state.state);
-        proof_stream.enqueue(&ProofItem::OutOfDomainBaseRow(ood_base_row.clone()));
+        proof_stream.enqueue(ProofItem::OutOfDomainBaseRow(ood_base_row.clone()));
         sponge_states.push_back(proof_stream.sponge_state.state);
-        proof_stream.enqueue(&ProofItem::OutOfDomainExtRow(ood_ext_row.clone()));
+        proof_stream.enqueue(ProofItem::OutOfDomainExtRow(ood_ext_row.clone()));
         sponge_states.push_back(proof_stream.sponge_state.state);
-        proof_stream.enqueue(&ProofItem::MerkleRoot(root));
+        proof_stream.enqueue(ProofItem::MerkleRoot(root));
         sponge_states.push_back(proof_stream.sponge_state.state);
-        proof_stream.enqueue(&ProofItem::QuotientSegmentsElements(quot_elements.clone()));
+        proof_stream.enqueue(ProofItem::QuotientSegmentsElements(quot_elements.clone()));
         sponge_states.push_back(proof_stream.sponge_state.state);
-        proof_stream.enqueue(&ProofItem::FriCodeword(fri_codeword.clone()));
+        proof_stream.enqueue(ProofItem::FriCodeword(fri_codeword.clone()));
         sponge_states.push_back(proof_stream.sponge_state.state);
-        proof_stream.enqueue(&ProofItem::FriResponse(fri_response.clone()));
+        proof_stream.enqueue(ProofItem::FriResponse(fri_response.clone()));
         sponge_states.push_back(proof_stream.sponge_state.state);
 
         let proof = proof_stream.into();
@@ -386,7 +386,7 @@ mod tests {
         };
 
         let mut proof_stream = ProofStream::<H>::new();
-        proof_stream.enqueue(&ProofItem::FriResponse(fri_response));
+        proof_stream.enqueue(ProofItem::FriResponse(fri_response));
 
         // TODO: Also check that deserializing from Proof works here.
 
@@ -417,8 +417,8 @@ mod tests {
     #[should_panic(expected = "Queue must be non-empty")]
     fn dequeuing_more_items_than_have_been_enqueued_fails() {
         let mut proof_stream = ProofStream::<Tip5>::new();
-        proof_stream.enqueue(&ProofItem::FriCodeword(vec![]));
-        proof_stream.enqueue(&ProofItem::Log2PaddedHeight(7));
+        proof_stream.enqueue(ProofItem::FriCodeword(vec![]));
+        proof_stream.enqueue(ProofItem::Log2PaddedHeight(7));
         proof_stream.dequeue().unwrap();
         proof_stream.dequeue().unwrap();
         proof_stream.dequeue().unwrap();

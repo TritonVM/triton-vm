@@ -144,7 +144,7 @@ impl Stark {
         let max_degree = Self::derive_max_degree(padded_height, parameters.num_trace_randomizers);
         let fri = Self::derive_fri(parameters, padded_height);
         let quotient_domain = Self::quotient_domain(fri.domain, max_degree);
-        proof_stream.enqueue(&ProofItem::Log2PaddedHeight(padded_height.ilog2()));
+        proof_stream.enqueue(ProofItem::Log2PaddedHeight(padded_height.ilog2()));
         prof_stop!(maybe_profiler, "derive additional parameters");
 
         prof_start!(maybe_profiler, "base tables");
@@ -174,7 +174,7 @@ impl Stark {
         prof_stop!(maybe_profiler, "Merkle tree");
 
         prof_start!(maybe_profiler, "Fiat-Shamir", "hash");
-        proof_stream.enqueue(&ProofItem::MerkleRoot(base_merkle_tree.get_root()));
+        proof_stream.enqueue(ProofItem::MerkleRoot(base_merkle_tree.get_root()));
         let challenges = proof_stream.sample_scalars(Challenges::num_challenges_to_sample());
         let challenges = Challenges::new(challenges, claim);
         prof_stop!(maybe_profiler, "Fiat-Shamir");
@@ -199,7 +199,7 @@ impl Stark {
         prof_stop!(maybe_profiler, "Merkle tree");
 
         prof_start!(maybe_profiler, "Fiat-Shamir", "hash");
-        proof_stream.enqueue(&ProofItem::MerkleRoot(ext_merkle_tree.get_root()));
+        proof_stream.enqueue(ProofItem::MerkleRoot(ext_merkle_tree.get_root()));
         prof_stop!(maybe_profiler, "Fiat-Shamir");
         prof_stop!(maybe_profiler, "ext tables");
 
@@ -270,7 +270,7 @@ impl Stark {
         let quot_merkle_tree: MerkleTree<StarkHasher> =
             MTMaker::from_digests(&fri_domain_quotient_segment_codewords_digests);
         let quot_merkle_tree_root = quot_merkle_tree.get_root();
-        proof_stream.enqueue(&ProofItem::MerkleRoot(quot_merkle_tree_root));
+        proof_stream.enqueue(ProofItem::MerkleRoot(quot_merkle_tree_root));
         prof_stop!(maybe_profiler, "Merkle tree");
         prof_stop!(maybe_profiler, "commit to quotient codeword segments");
         debug_assert_eq!(fri.domain.length, quot_merkle_tree.get_leaf_count());
@@ -280,16 +280,16 @@ impl Stark {
         let out_of_domain_point_curr_row = proof_stream.sample_scalars(1)[0];
         let out_of_domain_point_next_row = trace_domain_generator * out_of_domain_point_curr_row;
 
-        proof_stream.enqueue(&ProofItem::OutOfDomainBaseRow(
+        proof_stream.enqueue(ProofItem::OutOfDomainBaseRow(
             master_base_table.row(out_of_domain_point_curr_row).to_vec(),
         ));
-        proof_stream.enqueue(&ProofItem::OutOfDomainExtRow(
+        proof_stream.enqueue(ProofItem::OutOfDomainExtRow(
             master_ext_table.row(out_of_domain_point_curr_row).to_vec(),
         ));
-        proof_stream.enqueue(&ProofItem::OutOfDomainBaseRow(
+        proof_stream.enqueue(ProofItem::OutOfDomainBaseRow(
             master_base_table.row(out_of_domain_point_next_row).to_vec(),
         ));
-        proof_stream.enqueue(&ProofItem::OutOfDomainExtRow(
+        proof_stream.enqueue(ProofItem::OutOfDomainExtRow(
             master_ext_table.row(out_of_domain_point_next_row).to_vec(),
         ));
 
@@ -300,7 +300,7 @@ impl Stark {
             .to_vec()
             .try_into()
             .unwrap();
-        proof_stream.enqueue(&ProofItem::OutOfDomainQuotientSegments(
+        proof_stream.enqueue(ProofItem::OutOfDomainQuotientSegments(
             out_of_domain_curr_row_quot_segments,
         ));
         prof_stop!(maybe_profiler, "out-of-domain rows");
@@ -455,8 +455,8 @@ impl Stark {
         );
         let base_authentication_structure =
             base_merkle_tree.get_authentication_structure(&revealed_current_row_indices);
-        proof_stream.enqueue(&ProofItem::MasterBaseTableRows(revealed_base_elems));
-        proof_stream.enqueue(&ProofItem::AuthenticationStructure(
+        proof_stream.enqueue(ProofItem::MasterBaseTableRows(revealed_base_elems));
+        proof_stream.enqueue(ProofItem::AuthenticationStructure(
             base_authentication_structure,
         ));
 
@@ -466,8 +466,8 @@ impl Stark {
         );
         let ext_authentication_structure =
             ext_merkle_tree.get_authentication_structure(&revealed_current_row_indices);
-        proof_stream.enqueue(&ProofItem::MasterExtTableRows(revealed_ext_elems));
-        proof_stream.enqueue(&ProofItem::AuthenticationStructure(
+        proof_stream.enqueue(ProofItem::MasterExtTableRows(revealed_ext_elems));
+        proof_stream.enqueue(ProofItem::AuthenticationStructure(
             ext_authentication_structure,
         ));
 
@@ -481,10 +481,10 @@ impl Stark {
             .collect_vec();
         let revealed_quotient_authentication_structure =
             quot_merkle_tree.get_authentication_structure(&revealed_current_row_indices);
-        proof_stream.enqueue(&ProofItem::QuotientSegmentsElements(
+        proof_stream.enqueue(ProofItem::QuotientSegmentsElements(
             revealed_quotient_segments_rows,
         ));
-        proof_stream.enqueue(&ProofItem::AuthenticationStructure(
+        proof_stream.enqueue(ProofItem::AuthenticationStructure(
             revealed_quotient_authentication_structure,
         ));
         prof_stop!(maybe_profiler, "open trace leafs");

@@ -84,7 +84,7 @@ impl<'stream, H: AlgebraicHasher> FriProver<'stream, H> {
     fn commit_to_round(&mut self, round: &ProverRound<H>) {
         let merkle_root = round.merkle_tree.get_root();
         let proof_item = ProofItem::MerkleRoot(merkle_root);
-        self.proof_stream.enqueue(&proof_item);
+        self.proof_stream.enqueue(proof_item);
     }
 
     fn store_round(&mut self, round: ProverRound<H>) {
@@ -102,7 +102,7 @@ impl<'stream, H: AlgebraicHasher> FriProver<'stream, H> {
     fn send_last_codeword(&mut self) {
         let last_codeword = self.rounds.last().unwrap().codeword.clone();
         let proof_item = ProofItem::FriCodeword(last_codeword);
-        self.proof_stream.enqueue(&proof_item);
+        self.proof_stream.enqueue(proof_item);
     }
 
     fn query(&mut self) {
@@ -155,7 +155,7 @@ impl<'stream, H: AlgebraicHasher> FriProver<'stream, H> {
             revealed_leaves,
         };
         let proof_item = ProofItem::FriResponse(fri_response);
-        self.proof_stream.enqueue(&proof_item)
+        self.proof_stream.enqueue(proof_item)
     }
 }
 
