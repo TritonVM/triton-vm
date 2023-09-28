@@ -10,14 +10,14 @@ name: Rust
 
 jobs:
   build:
-    name: Build, lint, test, bench, coverage
+    name: Build, lint, test
     runs-on: ubuntu-latest
     steps:
       - name: Checkout sources
         uses: actions/checkout@v3
 
       - name: Install stable toolchain
-        uses: actions-rs/toolchain@b2417cde72dcf67f306c0ae8e0828a81bf0b189f # v1.0.7, 2020-03-24
+        uses: actions-rs/toolchain@v1
         with:
           profile: minimal
           toolchain: stable
@@ -34,7 +34,7 @@ jobs:
       # 1. Use `**/Cargo.toml` in cache key because Cargo.lock isn't committed.
       # 2. Don't include target/ -- only cache building 3rd-party libraries.
       - name: Use build cache
-        uses: actions/cache@9b0c1fce7a93df8e3bb8926b0d6e9d89e92f20a7 # v3.0.11, 2022-10-13
+        uses: actions/cache@v3
         with:
           path: |
             ~/.cargo/bin/
@@ -56,5 +56,5 @@ jobs:
       - name: Run tests
         run: cargo test --all-targets
 
-      - name: Run benchmarks
-        run: cargo bench --all-targets
+      - name: Build benchmarks
+        run: cargo bench --all-targets --no-run
