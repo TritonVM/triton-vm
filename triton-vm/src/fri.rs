@@ -646,12 +646,14 @@ mod tests {
     use itertools::Itertools;
     use proptest::collection::vec;
     use proptest::prelude::*;
+    use rand::prelude::IteratorRandom;
+    use rand::prelude::StdRng;
+    use rand_core::SeedableRng;
     use twenty_first::shared_math::b_field_element::BFieldElement;
     use twenty_first::shared_math::other::roundup_npo2;
     use twenty_first::shared_math::polynomial::Polynomial;
     use twenty_first::shared_math::tip5::Tip5;
     use twenty_first::shared_math::tip5::RATE;
-    use twenty_first::shared_math::x_field_element::EXTENSION_DEGREE;
     use twenty_first::util_types::algebraic_hasher::SpongeHasher;
 
     use ProofItem::*;
@@ -790,8 +792,7 @@ mod tests {
             let mut proof_stream = ProofStream::new();
             fri.prove(&codeword, &mut proof_stream);
 
-            // reset sponge state to start verification
-            proof_stream.sponge_state = Tip5::init();
+            let mut proof_stream = prepare_proof_stream_for_verification(proof_stream);
             let verdict = fri.verify(&mut proof_stream, &mut None);
             prop_assert!(verdict.is_ok());
         }
@@ -807,8 +808,7 @@ mod tests {
             let mut proof_stream = ProofStream::new();
             fri.prove(&codeword, &mut proof_stream);
 
-            // reset sponge state to start verification
-            proof_stream.sponge_state = Tip5::init();
+            let mut proof_stream = prepare_proof_stream_for_verification(proof_stream);
             let verdict = fri.verify(&mut proof_stream, &mut None);
             prop_assert!(verdict.is_ok());
         }
@@ -824,8 +824,7 @@ mod tests {
             let mut proof_stream = ProofStream::new();
             fri.prove(&codeword, &mut proof_stream);
 
-            // reset sponge state to start verification
-            proof_stream.sponge_state = Tip5::init();
+            let mut proof_stream = prepare_proof_stream_for_verification(proof_stream);
             let verdict = fri.verify(&mut proof_stream, &mut None);
             prop_assert!(verdict.is_err());
         }
@@ -929,54 +928,159 @@ mod tests {
         fn last_round_codeword_unequal_to_last_round_commitment_results_in_validation_failure(
             fri in arbitrary_fri(),
             polynomial in arbitrary_polynomial(),
-            disturbance_index: usize,
+            rng_seed: u64
         ) {
+            let codeword = fri.domain.evaluate(&polynomial);
             let mut proof_stream = ProofStream::new();
-            let mut verifier = fri.verifier(&mut proof_stream);
+            fri.prove(&codeword, &mut proof_stream);
+
+            let proof_stream = prepare_proof_stream_for_verification(proof_stream);
+            let mut proof_stream =
+                modify_last_round_codeword_in_proof_stream_using_seed(proof_stream, rng_seed);
+
+            let verdict = fri.verify(&mut proof_stream, &mut None);
+            let err = verdict.unwrap_err();
+            let err = err.downcast::<FriValidationError>().unwrap();
+            prop_assert_eq!(FriValidationError::BadMerkleRootForLastCodeword, err);
+        }
+    }
+
+    #[must_use]
+    fn prepare_proof_stream_for_verification<H: AlgebraicHasher>(
+        mut proof_stream: ProofStream<H>,
+    ) -> ProofStream<H> {
+        proof_stream.items_index = 0;
+        proof_stream.sponge_state = H::init();
+        proof_stream
+    }
+
+    #[must_use]
+    fn modify_last_round_codeword_in_proof_stream_using_seed<H: AlgebraicHasher>(
+        mut proof_stream: ProofStream<H>,
+        seed: u64,
+    ) -> ProofStream<H> {
+        let mut proof_items = proof_stream.items.iter_mut();
+        let last_round_codeword = proof_items.find_map(fri_codeword_filter()).unwrap();
+
+        let mut rng = StdRng::seed_from_u64(seed);
+        let modification_index = rng.gen_range(0..last_round_codeword.len());
+        let replacement_element = rng.gen();
+
+        last_round_codeword[modification_index] = replacement_element;
+        proof_stream
+    }
+
+    fn fri_codeword_filter() -> fn(&mut ProofItem) -> Option<&mut Vec<XFieldElement>> {
+        |proof_item| match proof_item {
+            FriCodeword(codeword) => Some(codeword),
+            _ => None,
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn revealing_wrong_number_of_leaves_results_in_validation_failure(
+            fri in arbitrary_fri(),
+            polynomial in arbitrary_polynomial(),
+            rng_seed: u64
+        ) {
+            let codeword = fri.domain.evaluate(&polynomial);
+            let mut proof_stream = ProofStream::new();
+            fri.prove(&codeword, &mut proof_stream);
+
+            let proof_stream = prepare_proof_stream_for_verification(proof_stream);
+            let mut proof_stream =
+                modify_some_fri_response_in_proof_stream_using_seed(proof_stream, rng_seed);
+
+            let verdict = fri.verify(&mut proof_stream, &mut None);
+            let err = verdict.unwrap_err();
+            let err = err.downcast::<FriValidationError>().unwrap();
+            prop_assert_eq!(FriValidationError::IncorrectNumberOfRevealedLeaves, err);
+        }
+    }
+
+    #[must_use]
+    fn modify_some_fri_response_in_proof_stream_using_seed<H: AlgebraicHasher>(
+        mut proof_stream: ProofStream<H>,
+        seed: u64,
+    ) -> ProofStream<H> {
+        let proof_items = proof_stream.items.iter_mut();
+        let fri_responses = proof_items.filter_map(fri_response_filter());
+
+        let mut rng = StdRng::seed_from_u64(seed);
+        let fri_response = fri_responses.choose(&mut rng).unwrap();
+        let revealed_leaves = &mut fri_response.revealed_leaves;
+        let modification_index = rng.gen_range(0..revealed_leaves.len());
+        match rng.gen() {
+            true => drop(revealed_leaves.remove(modification_index)),
+            false => revealed_leaves.insert(modification_index, rng.gen()),
+        };
+
+        proof_stream
+    }
+
+    fn fri_response_filter() -> fn(&mut ProofItem) -> Option<&mut super::FriResponse> {
+        |proof_item| match proof_item {
+            FriResponse(fri_response) => Some(fri_response),
+            _ => None,
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn incorrect_authentication_structure_results_in_validation_failure(
+            fri in arbitrary_fri(),
+            polynomial in arbitrary_polynomial(),
+            rng_seed: u64
+        ) {
+            let all_authentication_structures_are_trivial =
+                fri.num_colinearity_checks >= fri.domain.length;
+            if all_authentication_structures_are_trivial {
+                return Ok(());
+            }
 
             let codeword = fri.domain.evaluate(&polynomial);
-            verifier.last_round_codeword = codeword.clone();
+            let mut proof_stream = ProofStream::new();
+            fri.prove(&codeword, &mut proof_stream);
 
-            let dummy_last_round = dummy_verifier_round_from_codeword(&codeword);
-            verifier.rounds.push(dummy_last_round);
+            let proof_stream = prepare_proof_stream_for_verification(proof_stream);
+            let mut proof_stream =
+                modify_some_auth_structure_in_proof_stream_using_seed(proof_stream, rng_seed);
 
-            let maybe_last_rounds_roots_are_equal =
-                verifier.assert_last_round_codeword_matches_last_round_commitment();
-            prop_assert!(maybe_last_rounds_roots_are_equal.is_ok());
-
-            let incorrect_codeword = disturb_codeword_at_position(codeword, disturbance_index);
-            verifier.last_round_codeword = incorrect_codeword;
-
-            let maybe_last_rounds_roots_are_equal =
-                verifier.assert_last_round_codeword_matches_last_round_commitment();
-            prop_assert!(maybe_last_rounds_roots_are_equal.is_err());
+            let verdict = fri.verify(&mut proof_stream, &mut None);
+            let err = verdict.unwrap_err();
+            let err = err.downcast::<FriValidationError>().unwrap();
+            prop_assert_eq!(FriValidationError::BadMerkleAuthenticationPath, err);
         }
     }
 
-    fn dummy_verifier_round_from_codeword(codeword: &[XFieldElement]) -> VerifierRound {
-        let leaf_digests = codeword_as_digests(codeword);
-        let merkle_tree: MerkleTree<Tip5> = MTMaker::from_digests(&leaf_digests);
-        let merkle_root = merkle_tree.get_root();
-        dummy_verifier_round_with_merkle_root(merkle_root)
+    #[must_use]
+    fn modify_some_auth_structure_in_proof_stream_using_seed<H: AlgebraicHasher>(
+        mut proof_stream: ProofStream<H>,
+        seed: u64,
+    ) -> ProofStream<H> {
+        let proof_items = proof_stream.items.iter_mut();
+        let auth_structures = proof_items.filter_map(non_trivial_auth_structure_filter());
+
+        let mut rng = StdRng::seed_from_u64(seed);
+        let auth_structure = auth_structures.choose(&mut rng).unwrap();
+        let modification_index = rng.gen_range(0..auth_structure.len());
+        match rng.gen_range(0..3) {
+            0 => drop(auth_structure.remove(modification_index)),
+            1 => auth_structure.insert(modification_index, rng.gen()),
+            2 => auth_structure[modification_index] = rng.gen(),
+            _ => unreachable!(),
+        };
+
+        proof_stream
     }
 
-    fn dummy_verifier_round_with_merkle_root(root: Digest) -> VerifierRound {
-        VerifierRound {
-            domain: ArithmeticDomain::of_length(2),
-            partial_codeword_a: vec![],
-            partial_codeword_b: vec![],
-            merkle_root: root,
-            folding_challenge: None,
+    fn non_trivial_auth_structure_filter(
+    ) -> fn(&mut ProofItem) -> Option<&mut super::AuthenticationStructure> {
+        |proof_item| match proof_item {
+            FriResponse(fri_response) if fri_response.auth_structure.is_empty() => None,
+            FriResponse(fri_response) => Some(&mut fri_response.auth_structure),
+            _ => None,
         }
-    }
-
-    fn disturb_codeword_at_position(
-        mut codeword: Vec<XFieldElement>,
-        position: usize,
-    ) -> Vec<XFieldElement> {
-        let xfield_element_coefficient_index = position % EXTENSION_DEGREE;
-        let disturbance_index = position % codeword.len();
-        codeword[disturbance_index].increment(xfield_element_coefficient_index);
-        codeword
     }
 }
