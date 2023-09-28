@@ -6,6 +6,7 @@ use std::result;
 use anyhow::anyhow;
 use anyhow::Result;
 use get_size::GetSize;
+use itertools::Itertools;
 use lazy_static::lazy_static;
 use serde_derive::Deserialize;
 use serde_derive::Serialize;
@@ -60,11 +61,7 @@ impl Display for LabelledInstruction {
 
 /// Helps printing instructions with their labels.
 pub fn stringify_instructions(instructions: &[LabelledInstruction]) -> String {
-    instructions
-        .iter()
-        .map(|instruction| instruction.to_string())
-        .collect::<Vec<_>>()
-        .join("\n")
+    instructions.iter().join("\n")
 }
 
 /// A Triton VM instruction. See the
