@@ -501,7 +501,7 @@ const fn all_instructions_without_args() -> [AnInstruction<BFieldElement>; Instr
         Push(BFIELD_ZERO),
         Divine,
         Dup(ST0),
-        Swap(ST1),
+        Swap(ST0),
         Nop,
         Skiz,
         Call(BFIELD_ZERO),
@@ -814,6 +814,7 @@ mod instruction_tests {
     #[test]
     fn instructions_act_on_op_stack_as_indicated() {
         for test_instruction in all_instructions_without_args() {
+            let test_instruction = replace_illegal_arguments_in_instruction(test_instruction);
             let (program, stack_size_before_test_instruction) =
                 construct_test_program_for_instruction(test_instruction);
             let stack_size_after_test_instruction = terminal_op_stack_size_for_program(program);
@@ -824,6 +825,15 @@ mod instruction_tests {
                 test_instruction,
                 stack_size_difference,
             );
+        }
+    }
+
+    fn replace_illegal_arguments_in_instruction(
+        instruction: AnInstruction<BFieldElement>,
+    ) -> AnInstruction<BFieldElement> {
+        match instruction {
+            Swap(ST0) => Swap(ST1),
+            _ => instruction,
         }
     }
 
