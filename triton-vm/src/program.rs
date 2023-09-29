@@ -386,7 +386,7 @@ impl ProfileLine {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, BFieldCodec)]
+#[derive(Clone, Default, Debug, PartialEq, Eq, BFieldCodec)]
 pub struct PublicInput {
     pub individual_tokens: Vec<BFieldElement>,
 }
