@@ -50,6 +50,27 @@ pub enum LabelledInstruction {
     Label(String),
 }
 
+impl LabelledInstruction {
+    pub const fn grows_op_stack(&self) -> bool {
+        self.op_stack_size_influence() > 0
+    }
+
+    pub const fn does_not_change_op_stack_size(&self) -> bool {
+        self.op_stack_size_influence() == 0
+    }
+
+    pub const fn shrinks_op_stack(&self) -> bool {
+        self.op_stack_size_influence() < 0
+    }
+
+    pub const fn op_stack_size_influence(&self) -> i32 {
+        match self {
+            LabelledInstruction::Instruction(instruction) => instruction.op_stack_size_influence(),
+            LabelledInstruction::Label(_) => 0,
+        }
+    }
+}
+
 impl Display for LabelledInstruction {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -868,5 +889,40 @@ mod instruction_tests {
             test_instruction.grows_op_stack(),
             "{test_instruction}"
         );
+    }
+
+    #[test]
+    fn labelled_instructions_act_on_op_stack_as_indicated() {
+        for test_instruction in all_instructions_without_args() {
+            let labelled_instruction =
+                test_instruction.map_call_address(|_| "dummy_label".to_string());
+            let labelled_instruction = LabelledInstruction::Instruction(labelled_instruction);
+
+            assert_eq!(
+                test_instruction.op_stack_size_influence(),
+                labelled_instruction.op_stack_size_influence()
+            );
+            assert_eq!(
+                test_instruction.grows_op_stack(),
+                labelled_instruction.grows_op_stack()
+            );
+            assert_eq!(
+                test_instruction.does_not_change_op_stack_size(),
+                labelled_instruction.does_not_change_op_stack_size()
+            );
+            assert_eq!(
+                test_instruction.shrinks_op_stack(),
+                labelled_instruction.shrinks_op_stack()
+            );
+        }
+    }
+
+    #[test]
+    fn labels_indicate_no_change_to_op_stack() {
+        let labelled_instruction = LabelledInstruction::Label("dummy_label".to_string());
+        assert_eq!(0, labelled_instruction.op_stack_size_influence());
+        assert!(!labelled_instruction.grows_op_stack());
+        assert!(labelled_instruction.does_not_change_op_stack_size());
+        assert!(!labelled_instruction.shrinks_op_stack());
     }
 }
