@@ -300,7 +300,7 @@ mod proof_item_typed_tests {
 
         // test encoding and decoding in a stream
         let mut proof_stream = ProofStream::<H>::new();
-        proof_stream.enqueue(&ProofItem::FriResponse(fri_response.clone()));
+        proof_stream.enqueue(ProofItem::FriResponse(fri_response.clone()));
         let proof: Proof = proof_stream.into();
         let mut proof_stream = ProofStream::<H>::try_from(&proof).unwrap();
         let fri_response_ = proof_stream.dequeue().unwrap();
@@ -331,7 +331,7 @@ mod proof_item_typed_tests {
 
         // test encoding and decoding in a stream
         let mut proof_stream = ProofStream::<H>::new();
-        proof_stream.enqueue(&ProofItem::AuthenticationStructure(auth_structure.clone()));
+        proof_stream.enqueue(ProofItem::AuthenticationStructure(auth_structure.clone()));
         let proof: Proof = proof_stream.into();
         let mut proof_stream = ProofStream::<H>::try_from(&proof).unwrap();
         let auth_structure_ = proof_stream.dequeue().unwrap();

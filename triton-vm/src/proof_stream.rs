@@ -11,7 +11,7 @@ use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
 use crate::proof::Proof;
 use crate::proof_item::ProofItem;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Default, Debug, Clone, PartialEq, Eq)]
 pub struct ProofStream<H>
 where
     H: AlgebraicHasher,
@@ -31,15 +31,6 @@ where
             items_index: 0,
             sponge_state: H::init(),
         }
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.items.is_empty()
-    }
-
-    /// The number of items in the proof stream.
-    pub fn len(&self) -> usize {
-        self.items.len()
     }
 
     /// The number of field elements required to encode the proof.
@@ -86,11 +77,11 @@ where
     ///     in question was hashed previously.
     /// - If the proof stream is not used to sample any more randomness, _i.e._, after the last
     ///     round of interaction, no further items need to be hashed.
-    pub fn enqueue(&mut self, item: &ProofItem) {
+    pub fn enqueue(&mut self, item: ProofItem) {
         if item.include_in_fiat_shamir_heuristic() {
-            self.alter_fiat_shamir_state_with(item);
+            self.alter_fiat_shamir_state_with(&item);
         }
-        self.items.push(item.clone());
+        self.items.push(item);
     }
 
     /// Receive a proof item from prover as verifier.
@@ -127,25 +118,15 @@ where
     }
 }
 
-impl<H> Default for ProofStream<H>
-where
-    H: AlgebraicHasher,
-{
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl<H> BFieldCodec for ProofStream<H>
 where
     H: AlgebraicHasher,
 {
     fn decode(sequence: &[BFieldElement]) -> Result<Box<Self>> {
-        let items = *Vec::<ProofItem>::decode(sequence)?;
-        let proof_stream = ProofStream {
+        let items = *Vec::decode(sequence)?;
+        let proof_stream = Self {
             items,
-            items_index: 0,
-            sponge_state: H::init(),
+            ..Self::new()
         };
         Ok(Box::new(proof_stream))
     }
@@ -190,7 +171,7 @@ where
 }
 
 #[cfg(test)]
-mod proof_stream_typed_tests {
+mod tests {
     use itertools::Itertools;
     use rand::distributions::Standard;
     use rand::prelude::Distribution;
@@ -269,23 +250,23 @@ mod proof_stream_typed_tests {
         let mut proof_stream = ProofStream::<H>::new();
 
         sponge_states.push_back(proof_stream.sponge_state.state);
-        proof_stream.enqueue(&ProofItem::AuthenticationStructure(auth_structure.clone()));
+        proof_stream.enqueue(ProofItem::AuthenticationStructure(auth_structure.clone()));
         sponge_states.push_back(proof_stream.sponge_state.state);
-        proof_stream.enqueue(&ProofItem::MasterBaseTableRows(base_rows.clone()));
+        proof_stream.enqueue(ProofItem::MasterBaseTableRows(base_rows.clone()));
         sponge_states.push_back(proof_stream.sponge_state.state);
-        proof_stream.enqueue(&ProofItem::MasterExtTableRows(ext_rows.clone()));
+        proof_stream.enqueue(ProofItem::MasterExtTableRows(ext_rows.clone()));
         sponge_states.push_back(proof_stream.sponge_state.state);
-        proof_stream.enqueue(&ProofItem::OutOfDomainBaseRow(ood_base_row.clone()));
+        proof_stream.enqueue(ProofItem::OutOfDomainBaseRow(ood_base_row.clone()));
         sponge_states.push_back(proof_stream.sponge_state.state);
-        proof_stream.enqueue(&ProofItem::OutOfDomainExtRow(ood_ext_row.clone()));
+        proof_stream.enqueue(ProofItem::OutOfDomainExtRow(ood_ext_row.clone()));
         sponge_states.push_back(proof_stream.sponge_state.state);
-        proof_stream.enqueue(&ProofItem::MerkleRoot(root));
+        proof_stream.enqueue(ProofItem::MerkleRoot(root));
         sponge_states.push_back(proof_stream.sponge_state.state);
-        proof_stream.enqueue(&ProofItem::QuotientSegmentsElements(quot_elements.clone()));
+        proof_stream.enqueue(ProofItem::QuotientSegmentsElements(quot_elements.clone()));
         sponge_states.push_back(proof_stream.sponge_state.state);
-        proof_stream.enqueue(&ProofItem::FriCodeword(fri_codeword.clone()));
+        proof_stream.enqueue(ProofItem::FriCodeword(fri_codeword.clone()));
         sponge_states.push_back(proof_stream.sponge_state.state);
-        proof_stream.enqueue(&ProofItem::FriResponse(fri_response.clone()));
+        proof_stream.enqueue(ProofItem::FriResponse(fri_response.clone()));
         sponge_states.push_back(proof_stream.sponge_state.state);
 
         let proof = proof_stream.into();
@@ -405,7 +386,7 @@ mod proof_stream_typed_tests {
         };
 
         let mut proof_stream = ProofStream::<H>::new();
-        proof_stream.enqueue(&ProofItem::FriResponse(fri_response));
+        proof_stream.enqueue(ProofItem::FriResponse(fri_response));
 
         // TODO: Also check that deserializing from Proof works here.
 
@@ -423,5 +404,28 @@ mod proof_stream_typed_tests {
             &auth_structure,
         );
         assert!(verdict);
+    }
+
+    #[test]
+    #[should_panic(expected = "Queue must be non-empty")]
+    fn dequeuing_from_empty_stream_fails() {
+        let mut proof_stream = ProofStream::<Tip5>::new();
+        proof_stream.dequeue().unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected = "Queue must be non-empty")]
+    fn dequeuing_more_items_than_have_been_enqueued_fails() {
+        let mut proof_stream = ProofStream::<Tip5>::new();
+        proof_stream.enqueue(ProofItem::FriCodeword(vec![]));
+        proof_stream.enqueue(ProofItem::Log2PaddedHeight(7));
+        proof_stream.dequeue().unwrap();
+        proof_stream.dequeue().unwrap();
+        proof_stream.dequeue().unwrap();
+    }
+
+    #[test]
+    fn encoded_length_of_prove_stream_is_not_known_at_compile_time() {
+        assert!(ProofStream::<Tip5>::static_length().is_none());
     }
 }

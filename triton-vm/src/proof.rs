@@ -105,7 +105,7 @@ pub mod test_claim_proof {
     #[test]
     fn proof_with_no_log_2_padded_height_gives_err() {
         let mut proof_stream = ProofStream::<StarkHasher>::new();
-        proof_stream.enqueue(&ProofItem::MerkleRoot(random()));
+        proof_stream.enqueue(ProofItem::MerkleRoot(random()));
         let proof: Proof = proof_stream.into();
         let maybe_padded_height = proof.padded_height();
         assert!(maybe_padded_height.is_err());
@@ -114,9 +114,9 @@ pub mod test_claim_proof {
     #[test]
     fn proof_with_multiple_log_2_padded_height_gives_err() {
         let mut proof_stream = ProofStream::<StarkHasher>::new();
-        proof_stream.enqueue(&ProofItem::Log2PaddedHeight(8));
-        proof_stream.enqueue(&ProofItem::MerkleRoot(random()));
-        proof_stream.enqueue(&ProofItem::Log2PaddedHeight(7));
+        proof_stream.enqueue(ProofItem::Log2PaddedHeight(8));
+        proof_stream.enqueue(ProofItem::MerkleRoot(random()));
+        proof_stream.enqueue(ProofItem::Log2PaddedHeight(7));
         let proof: Proof = proof_stream.into();
         let maybe_padded_height = proof.padded_height();
         assert!(maybe_padded_height.is_err());
