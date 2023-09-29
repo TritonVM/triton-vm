@@ -280,6 +280,69 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
             WriteIo => WriteIo,
         }
     }
+
+    pub const fn grows_op_stack(&self) -> bool {
+        self.op_stack_size_influence() > 0
+    }
+
+    pub const fn does_not_change_op_stack_size(&self) -> bool {
+        self.op_stack_size_influence() == 0
+    }
+
+    pub const fn shrinks_op_stack(&self) -> bool {
+        self.op_stack_size_influence() < 0
+    }
+
+    pub const fn op_stack_size_influence(&self) -> i32 {
+        match self {
+            Pop => -1,
+            Push(_) => 1,
+            Divine => 1,
+            Dup(_) => 1,
+            Swap(_) => 0,
+            Nop => 0,
+            Skiz => -1,
+            Call(_) => 0,
+            Return => 0,
+            Recurse => 0,
+            Assert => -1,
+            Halt => 0,
+            ReadMem => 1,
+            WriteMem => -1,
+            Hash => 0,
+            DivineSibling => 0,
+            AssertVector => 0,
+            AbsorbInit => 0,
+            Absorb => 0,
+            Squeeze => 0,
+            Add => -1,
+            Mul => -1,
+            Invert => 0,
+            Eq => -1,
+            Split => 1,
+            Lt => -1,
+            And => -1,
+            Xor => -1,
+            Log2Floor => 0,
+            Pow => -1,
+            Div => 0,
+            PopCount => 0,
+            XxAdd => 0,
+            XxMul => 0,
+            XInvert => 0,
+            XbMul => -1,
+            ReadIo => 1,
+            WriteIo => -1,
+        }
+    }
+
+    /// Indicates whether the instruction operates on base field elements that are also u32s.
+    pub fn is_u32_instruction(&self) -> bool {
+        matches!(
+            self,
+            Split | Lt | And | Xor | Log2Floor | Pow | Div | PopCount
+        )
+    }
 }
 
 impl<Dest: Display + PartialEq + Default> Display for AnInstruction<Dest> {
@@ -309,25 +372,10 @@ impl Instruction {
         self.arg().is_some()
     }
 
-    /// Indicates whether the instruction shrinks the operational stack.
-    pub fn shrinks_op_stack(&self) -> bool {
-        matches!(self, Pop | Skiz | Assert)
-            || matches!(self, WriteMem | WriteIo)
-            || matches!(self, Add | Mul | Eq | XbMul)
-            || matches!(self, And | Xor | Lt | Pow)
-    }
-
-    /// Indicates whether the instruction operates on base field elements that are also u32s.
-    pub fn is_u32_instruction(&self) -> bool {
-        matches!(
-            self,
-            Split | Lt | And | Xor | Log2Floor | Pow | Div | PopCount
-        )
-    }
-
     /// Change the argument of the instruction, if it has one.
     /// Returns `None` if the instruction does not have an argument or
     /// if the argument is out of range.
+    #[must_use]
     pub fn change_arg(&self, new_arg: BFieldElement) -> Option<Self> {
         let maybe_ord_16 = new_arg.value().try_into();
         match self {
@@ -432,7 +480,7 @@ const fn all_instructions_without_args() -> [AnInstruction<BFieldElement>; Instr
         Push(BFIELD_ZERO),
         Divine,
         Dup(ST0),
-        Swap(ST0),
+        Swap(ST1),
         Nop,
         Skiz,
         Call(BFIELD_ZERO),
@@ -537,6 +585,7 @@ impl TryFrom<usize> for InstructionBit {
 
 #[cfg(test)]
 mod instruction_tests {
+    use std::cmp::Ordering;
     use std::collections::HashMap;
 
     use itertools::Itertools;
@@ -547,18 +596,16 @@ mod instruction_tests {
     use strum::EnumCount;
     use strum::IntoEnumIterator;
     use twenty_first::shared_math::b_field_element::BFieldElement;
+    use twenty_first::shared_math::b_field_element::BFIELD_ZERO;
+    use twenty_first::shared_math::digest::Digest;
 
-    use crate::instruction::all_instruction_names;
-    use crate::instruction::all_instructions_without_args;
-    use crate::instruction::stringify_instructions;
-    use crate::instruction::Instruction;
-    use crate::instruction::InstructionBit;
-    use crate::instruction::ALL_INSTRUCTIONS;
-    use crate::op_stack::OpStackElement::*;
+    use crate::instruction::*;
+    use crate::op_stack::NUM_OP_STACK_REGISTERS;
     use crate::triton_asm;
     use crate::triton_program;
-
-    use super::AnInstruction::*;
+    use crate::vm::triton_vm_tests::test_program_for_call_recurse_return;
+    use crate::NonDeterminism;
+    use crate::Program;
 
     #[test]
     fn opcodes_are_unique() {
@@ -741,5 +788,85 @@ mod instruction_tests {
         let instructions = triton_asm!(push 3 invert push 2 mul push 1 add write_io halt);
         let code = stringify_instructions(&instructions);
         println!("{code}");
+    }
+
+    #[test]
+    fn instructions_act_on_op_stack_as_indicated() {
+        for test_instruction in all_instructions_without_args() {
+            let (program, stack_size_before_test_instruction) =
+                construct_test_program_for_instruction(test_instruction);
+            let stack_size_after_test_instruction = terminal_op_stack_size_for_program(program);
+
+            let stack_size_difference =
+                stack_size_after_test_instruction.cmp(&stack_size_before_test_instruction);
+            assert_op_stack_size_changed_as_instruction_indicates(
+                test_instruction,
+                stack_size_difference,
+            );
+        }
+    }
+
+    fn construct_test_program_for_instruction(
+        instruction: AnInstruction<BFieldElement>,
+    ) -> (Program, usize) {
+        match instruction_requires_jump_stack_setup(instruction) {
+            true => program_with_jump_stack_setup_for_instruction(),
+            false => program_without_jump_stack_setup_for_instruction(instruction),
+        }
+    }
+
+    fn instruction_requires_jump_stack_setup(instruction: Instruction) -> bool {
+        matches!(instruction, Call(_) | Return | Recurse)
+    }
+
+    fn program_with_jump_stack_setup_for_instruction() -> (Program, usize) {
+        let program = test_program_for_call_recurse_return().program;
+        let stack_size = NUM_OP_STACK_REGISTERS;
+        (program, stack_size)
+    }
+
+    fn program_without_jump_stack_setup_for_instruction(
+        test_instruction: AnInstruction<BFieldElement>,
+    ) -> (Program, usize) {
+        let num_push_instructions = 10;
+        let push_instructions = triton_asm![push 1; num_push_instructions];
+        let program = triton_program!({&push_instructions} {test_instruction} nop halt);
+
+        let stack_size_when_reaching_test_instruction =
+            NUM_OP_STACK_REGISTERS + num_push_instructions;
+        (program, stack_size_when_reaching_test_instruction)
+    }
+
+    fn terminal_op_stack_size_for_program(program: Program) -> usize {
+        let public_input = vec![BFIELD_ZERO].into();
+        let mock_digests = vec![Digest::default()];
+        let non_determinism: NonDeterminism<_> = vec![BFIELD_ZERO].into();
+        let non_determinism = non_determinism.with_digests(mock_digests);
+
+        let terminal_state = program
+            .debug_terminal_state(public_input, non_determinism, None, None)
+            .unwrap();
+        terminal_state.op_stack.stack.len()
+    }
+
+    fn assert_op_stack_size_changed_as_instruction_indicates(
+        test_instruction: AnInstruction<BFieldElement>,
+        stack_size_difference: Ordering,
+    ) {
+        assert_eq!(
+            stack_size_difference == Ordering::Less,
+            test_instruction.shrinks_op_stack(),
+            "{test_instruction}"
+        );
+        assert_eq!(
+            stack_size_difference == Ordering::Equal,
+            test_instruction.does_not_change_op_stack_size(),
+            "{test_instruction}"
+        );
+        assert_eq!(
+            stack_size_difference == Ordering::Greater,
+            test_instruction.grows_op_stack(),
+            "{test_instruction}"
+        );
     }
 }

@@ -944,9 +944,16 @@ pub mod triton_vm_tests {
     }
 
     pub(crate) fn test_program_for_call_recurse_return() -> ProgramAndInput {
-        ProgramAndInput::without_input(
-            triton_program!(push 2 call label halt label: push -1 add dup 0 skiz recurse return),
-        )
+        ProgramAndInput::without_input(triton_program!(
+            push 2
+            call label
+            pop halt
+            label:
+                push -1 add dup 0
+                skiz
+                    recurse
+                return
+        ))
     }
 
     pub(crate) fn test_program_for_write_mem_read_mem() -> ProgramAndInput {
