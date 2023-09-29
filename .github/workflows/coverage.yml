@@ -23,7 +23,7 @@ jobs:
           toolchain: stable
 
       - name: Build AIR constraints
-        run: make build-constraints
+        run: cargo run --bin constraint-evaluation-generator
 
       - name: Install tarpaulin
         uses: baptiste0928/cargo-install@v2
