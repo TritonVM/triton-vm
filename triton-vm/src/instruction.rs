@@ -55,8 +55,8 @@ impl LabelledInstruction {
         self.op_stack_size_influence() > 0
     }
 
-    pub const fn does_not_change_op_stack_size(&self) -> bool {
-        self.op_stack_size_influence() == 0
+    pub const fn changes_op_stack_size(&self) -> bool {
+        self.op_stack_size_influence() != 0
     }
 
     pub const fn shrinks_op_stack(&self) -> bool {
@@ -306,8 +306,8 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
         self.op_stack_size_influence() > 0
     }
 
-    pub const fn does_not_change_op_stack_size(&self) -> bool {
-        self.op_stack_size_influence() == 0
+    pub const fn changes_op_stack_size(&self) -> bool {
+        self.op_stack_size_influence() != 0
     }
 
     pub const fn shrinks_op_stack(&self) -> bool {
@@ -891,7 +891,7 @@ mod instruction_tests {
         );
         assert_eq!(
             stack_size_difference == Ordering::Equal,
-            test_instruction.does_not_change_op_stack_size(),
+            !test_instruction.changes_op_stack_size(),
             "{test_instruction}"
         );
         assert_eq!(
@@ -917,8 +917,8 @@ mod instruction_tests {
                 labelled_instruction.grows_op_stack()
             );
             assert_eq!(
-                test_instruction.does_not_change_op_stack_size(),
-                labelled_instruction.does_not_change_op_stack_size()
+                test_instruction.changes_op_stack_size(),
+                labelled_instruction.changes_op_stack_size()
             );
             assert_eq!(
                 test_instruction.shrinks_op_stack(),
@@ -932,7 +932,7 @@ mod instruction_tests {
         let labelled_instruction = LabelledInstruction::Label("dummy_label".to_string());
         assert_eq!(0, labelled_instruction.op_stack_size_influence());
         assert!(!labelled_instruction.grows_op_stack());
-        assert!(labelled_instruction.does_not_change_op_stack_size());
+        assert!(!labelled_instruction.changes_op_stack_size());
         assert!(!labelled_instruction.shrinks_op_stack());
     }
 }
