@@ -7,9 +7,8 @@ use twenty_first::shared_math::bfield_codec::BFieldCodec;
 use twenty_first::shared_math::tip5::Digest;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
+use crate::fri::AuthenticationStructure;
 use crate::stark::NUM_QUOTIENT_SEGMENTS;
-
-type AuthenticationStructure = Vec<Digest>;
 
 /// A `FriResponse` is an `AuthenticationStructure` together with the values of the
 /// revealed leaves of the Merkle tree. Together, they correspond to the

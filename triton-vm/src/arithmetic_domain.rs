@@ -44,9 +44,24 @@ impl ArithmeticDomain {
 
     pub fn evaluate<FF>(&self, polynomial: &Polynomial<FF>) -> Vec<FF>
     where
-        FF: FiniteField + MulAssign<BFieldElement>,
+        FF: FiniteField + MulAssign<BFieldElement> + From<BFieldElement>,
     {
-        polynomial.fast_coset_evaluate(self.offset, self.generator, self.length)
+        // The limitation arises in `Polynomial::fast_coset_evaluate` in dependency `twenty-first`.
+        let batch_evaluation_is_possible = self.length >= polynomial.coefficients.len();
+        match batch_evaluation_is_possible {
+            true => polynomial.fast_coset_evaluate(self.offset, self.generator, self.length),
+            false => self.evaluate_in_every_point_individually(polynomial),
+        }
+    }
+
+    fn evaluate_in_every_point_individually<FF>(&self, polynomial: &Polynomial<FF>) -> Vec<FF>
+    where
+        FF: FiniteField + MulAssign<BFieldElement> + From<BFieldElement>,
+    {
+        self.domain_values()
+            .iter()
+            .map(|&v| polynomial.evaluate(&v.into()))
+            .collect()
     }
 
     pub fn interpolate<FF>(&self, values: &[FF]) -> Polynomial<FF>
@@ -58,7 +73,7 @@ impl ArithmeticDomain {
 
     pub fn low_degree_extension<FF>(&self, codeword: &[FF], target_domain: Self) -> Vec<FF>
     where
-        FF: FiniteField + MulAssign<BFieldElement>,
+        FF: FiniteField + MulAssign<BFieldElement> + From<BFieldElement>,
     {
         target_domain.evaluate(&self.interpolate(codeword))
     }
@@ -81,6 +96,16 @@ impl ArithmeticDomain {
         );
         domain_values
     }
+
+    #[must_use]
+    pub fn halve(&self) -> Self {
+        assert!(self.length >= 2);
+        Self {
+            offset: self.offset.square(),
+            generator: self.generator.square(),
+            length: self.length / 2,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -91,19 +116,90 @@ mod domain_tests {
 
     use super::*;
 
+    use crate::shared_tests::*;
+    use proptest::prelude::*;
+
+    prop_compose! {
+        fn arbitrary_domain()(
+            length in (0_usize..17).prop_map(|x| 1 << x),
+        )(
+            domain in arbitrary_domain_of_length(length),
+        ) -> ArithmeticDomain {
+            domain
+        }
+    }
+
+    prop_compose! {
+        fn arbitrary_halveable_domain()(
+            length in (2_usize..17).prop_map(|x| 1 << x),
+        )(
+            domain in arbitrary_domain_of_length(length),
+        ) -> ArithmeticDomain {
+            domain
+        }
+    }
+
+    prop_compose! {
+        fn arbitrary_domain_of_length(length: usize)(
+            offset in arbitrary_bfield_element(),
+        ) -> ArithmeticDomain {
+            ArithmeticDomain::of_length(length).with_offset(offset)
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn evaluate_empty_polynomial(
+            domain in arbitrary_domain(),
+            polynomial in arbitrary_polynomial_of_degree(-1),
+        ) {
+            domain.evaluate(&polynomial);
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn evaluate_constant_polynomial(
+            domain in arbitrary_domain(),
+            polynomial in arbitrary_polynomial_of_degree(0),
+        ) {
+            domain.evaluate(&polynomial);
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn evaluate_linear_polynomial(
+            domain in arbitrary_domain(),
+            polynomial in arbitrary_polynomial_of_degree(1),
+        ) {
+            domain.evaluate(&polynomial);
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn evaluate_polynomial(
+            domain in arbitrary_domain(),
+            polynomial in arbitrary_polynomial(),
+        ) {
+            domain.evaluate(&polynomial);
+        }
+    }
+
     #[test]
     fn domain_values_test() {
-        // f(x) = x^3
-        let x_squared_coefficients = vec![0u64.into(), 0u64.into(), 0u64.into(), 1u64.into()];
-        let poly = Polynomial::<BFieldElement>::new(x_squared_coefficients.clone());
+        let x_cubed_coefficients = [0, 0, 0, 1].map(BFieldElement::new).to_vec();
+        let poly = Polynomial::new(x_cubed_coefficients.clone());
 
         for order in [4, 8, 32] {
             let generator = BFieldElement::primitive_root_of_unity(order).unwrap();
             let offset = BFieldElement::generator();
             let b_domain = ArithmeticDomain::of_length(order as usize).with_offset(offset);
 
-            let expected_b_values: Vec<BFieldElement> =
-                (0..order).map(|i| offset * generator.mod_pow(i)).collect();
+            let expected_b_values = (0..order)
+                .map(|i| offset * generator.mod_pow(i))
+                .collect_vec();
             let actual_b_values_1 = b_domain.domain_values();
             let actual_b_values_2 = (0..order as u32)
                 .map(|i| b_domain.domain_value(i))
@@ -118,7 +214,7 @@ mod domain_tests {
             );
 
             let values = b_domain.evaluate(&poly);
-            assert_ne!(values, x_squared_coefficients);
+            assert_ne!(values, x_cubed_coefficients);
 
             let interpolant = b_domain.interpolate(&values);
             assert_eq!(poly, interpolant);
@@ -153,5 +249,37 @@ mod domain_tests {
             .step_by(unit_distance)
             .collect_vec();
         assert_eq!(short_codeword, long_codeword_sub_view);
+    }
+
+    proptest! {
+        #[test]
+        fn halving_domain_squares_all_points(domain in arbitrary_halveable_domain()) {
+            let half_domain = domain.halve();
+            prop_assert_eq!(domain.length / 2, half_domain.length);
+
+            let domain_points = domain.domain_values();
+            let half_domain_points = half_domain.domain_values();
+
+            for (domain_point, halved_domain_point) in domain_points
+                .into_iter()
+                .zip(half_domain_points.into_iter())
+            {
+                prop_assert_eq!(domain_point.square(), halved_domain_point);
+            }
+        }
+    }
+
+    #[test]
+    #[should_panic]
+    fn domain_of_length_one_cannot_be_halved() {
+        let domain = ArithmeticDomain::of_length(1);
+        let _ = domain.halve();
+    }
+
+    #[test]
+    #[should_panic]
+    fn domain_of_length_zero_cannot_be_halved() {
+        let domain = ArithmeticDomain::of_length(0);
+        let _ = domain.halve();
     }
 }

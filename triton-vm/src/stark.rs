@@ -440,8 +440,7 @@ impl Stark {
         prof_stop!(maybe_profiler, "combined DEEP polynomial");
 
         prof_start!(maybe_profiler, "FRI");
-        let (revealed_current_row_indices, _) =
-            fri.prove(&fri_combination_codeword, &mut proof_stream);
+        let revealed_current_row_indices = fri.prove(&fri_combination_codeword, &mut proof_stream);
         assert_eq!(
             parameters.num_combination_codeword_checks,
             revealed_current_row_indices.len()
@@ -627,11 +626,12 @@ impl Stark {
     pub fn derive_fri(parameters: &StarkParameters, padded_height: usize) -> Fri<StarkHasher> {
         let interpolant_degree =
             interpolant_degree(padded_height, parameters.num_trace_randomizers);
-        let fri_domain_length = parameters.fri_expansion_factor * (interpolant_degree as usize + 1);
-        let fri_coset_offset = BFieldElement::generator();
+        let interpolant_codeword_length = interpolant_degree as usize + 1;
+        let fri_domain_length = parameters.fri_expansion_factor * interpolant_codeword_length;
+        let coset_offset = BFieldElement::generator();
+        let domain = ArithmeticDomain::of_length(fri_domain_length).with_offset(coset_offset);
         Fri::new(
-            fri_coset_offset,
-            fri_domain_length,
+            domain,
             parameters.fri_expansion_factor,
             parameters.num_colinearity_checks,
         )
