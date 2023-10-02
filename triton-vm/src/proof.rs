@@ -66,12 +66,15 @@ impl Claim {
 
 #[cfg(test)]
 pub mod test_claim_proof {
+    use proptest::collection::vec;
+    use proptest::prelude::*;
     use rand::random;
     use twenty_first::shared_math::b_field_element::BFieldElement;
     use twenty_first::shared_math::bfield_codec::BFieldCodec;
     use twenty_first::shared_math::other::random_elements;
 
     use crate::proof_item::ProofItem;
+    use crate::shared_tests::arbitrary_bfield_element;
     use crate::stark::StarkHasher;
 
     use super::*;
@@ -121,5 +124,14 @@ pub mod test_claim_proof {
         let proof: Proof = proof_stream.into();
         let maybe_padded_height = proof.padded_height();
         assert!(maybe_padded_height.is_err());
+    }
+
+    proptest! {
+        #[test]
+        fn decoding_arbitrary_proof_data_does_not_panic(
+            proof_data in vec(arbitrary_bfield_element(), 0..1000),
+        ) {
+            let _ = Proof::decode(&proof_data);
+        }
     }
 }
