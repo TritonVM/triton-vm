@@ -1,4 +1,5 @@
 use anyhow::Result;
+use arbitrary::Arbitrary;
 use get_size::GetSize;
 use itertools::Itertools;
 use serde::Deserialize;
@@ -13,7 +14,7 @@ use crate::stark;
 
 /// Contains the necessary cryptographic information to verify a computation.
 /// Should be used together with a [`Claim`].
-#[derive(Debug, Clone, GetSize, Serialize, Deserialize, PartialEq, Eq, BFieldCodec)]
+#[derive(Debug, Clone, GetSize, Serialize, Deserialize, PartialEq, Eq, BFieldCodec, Arbitrary)]
 pub struct Proof(pub Vec<BFieldElement>);
 
 impl Proof {

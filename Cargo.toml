@@ -23,6 +23,7 @@ documentation = "https://triton-vm.org/spec/"
 
 [workspace.dependencies]
 anyhow = "1.0"
+arbitrary = { version = "1", features = ["derive"] }
 bincode = "1.3"
 colored = "2.0"
 criterion = { version = "0.5", features = ["html_reports"] }

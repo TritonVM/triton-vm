@@ -19,6 +19,7 @@ readme.workspace = true
 
 [dependencies]
 anyhow.workspace = true
+arbitrary.workspace = true
 bincode.workspace = true
 colored.workspace = true
 criterion.workspace = true
@@ -43,6 +44,7 @@ unicode-width.workspace = true
 [dev-dependencies]
 cargo-husky.workspace = true
 proptest.workspace = true
+proptest-arbitrary-interop.workspace = true
 
 [[bench]]
 name = "prove_halt"
