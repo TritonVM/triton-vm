@@ -201,17 +201,6 @@ impl BFieldCodec for ProofItem {
     fn encode(&self) -> Vec<BFieldElement> {
         use ProofItem::*;
 
-        #[cfg(debug_assertions)]
-        {
-            use crate::table::master_table::NUM_BASE_COLUMNS;
-            use crate::table::master_table::NUM_EXT_COLUMNS;
-            match self {
-                OutOfDomainBaseRow(row) => assert_eq!(NUM_BASE_COLUMNS, row.len()),
-                OutOfDomainExtRow(row) => assert_eq!(NUM_EXT_COLUMNS, row.len()),
-                _ => (),
-            }
-        }
-
         let discriminant = vec![self.discriminant()];
         let encoding = match self {
             AuthenticationStructure(something) => something.encode(),
