@@ -65,7 +65,7 @@ pub trait Evaluable<FF: FiniteField> {
     }
 }
 
-pub trait Quotientable: Evaluable<BFieldElement> {
+pub(crate) trait Quotientable: Evaluable<BFieldElement> {
     /// Compute the degrees of the quotients from all AIR constraints that apply to the table.
     fn all_degrees_with_origin(
         table_name: &str,
@@ -75,12 +75,12 @@ pub trait Quotientable: Evaluable<BFieldElement> {
         let initial_degrees_with_origin = Self::initial_quotient_degree_bounds(interpolant_degree)
             .into_iter()
             .enumerate()
-            .map(|(i, d)| DegreeWithOrigin {
-                degree: d,
+            .map(|(origin_index, degree)| DegreeWithOrigin {
+                degree,
                 interpolant_degree,
                 zerofier_degree: 1,
                 origin_table_name: table_name.to_owned(),
-                origin_index: i,
+                origin_index,
                 origin_table_height: padded_height,
                 origin_constraint_type: ConstraintType::Initial,
             })
@@ -90,12 +90,12 @@ pub trait Quotientable: Evaluable<BFieldElement> {
             Self::consistency_quotient_degree_bounds(interpolant_degree, padded_height)
                 .into_iter()
                 .enumerate()
-                .map(|(i, d)| DegreeWithOrigin {
-                    degree: d,
+                .map(|(origin_index, degree)| DegreeWithOrigin {
+                    degree,
                     interpolant_degree,
                     zerofier_degree: padded_height as Degree,
                     origin_table_name: table_name.to_owned(),
-                    origin_index: i,
+                    origin_index,
                     origin_table_height: padded_height,
                     origin_constraint_type: ConstraintType::Consistency,
                 })
@@ -105,12 +105,12 @@ pub trait Quotientable: Evaluable<BFieldElement> {
             Self::transition_quotient_degree_bounds(interpolant_degree, padded_height)
                 .into_iter()
                 .enumerate()
-                .map(|(i, d)| DegreeWithOrigin {
-                    degree: d,
+                .map(|(origin_index, degree)| DegreeWithOrigin {
+                    degree,
                     interpolant_degree,
                     zerofier_degree: padded_height as Degree - 1,
                     origin_table_name: table_name.to_owned(),
-                    origin_index: i,
+                    origin_index,
                     origin_table_height: padded_height,
                     origin_constraint_type: ConstraintType::Transition,
                 })
@@ -120,12 +120,12 @@ pub trait Quotientable: Evaluable<BFieldElement> {
             Self::terminal_quotient_degree_bounds(interpolant_degree)
                 .into_iter()
                 .enumerate()
-                .map(|(i, d)| DegreeWithOrigin {
-                    degree: d,
+                .map(|(origin_index, degree)| DegreeWithOrigin {
+                    degree,
                     interpolant_degree,
                     zerofier_degree: 1,
                     origin_table_name: table_name.to_owned(),
-                    origin_index: i,
+                    origin_index,
                     origin_table_height: padded_height,
                     origin_constraint_type: ConstraintType::Terminal,
                 })
@@ -302,7 +302,7 @@ pub trait Quotientable: Evaluable<BFieldElement> {
 /// polynomials. Concretely, the degree of the zerofier polynomials differs between the
 /// constraint types.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
-pub enum ConstraintType {
+pub(crate) enum ConstraintType {
     Initial,
     Consistency,
     Transition,
@@ -323,7 +323,7 @@ impl Display for ConstraintType {
 /// Helps debugging and benchmarking. The maximal degree achieved in any table dictates the length
 /// of the FRI domain, which in turn is responsible for the main performance bottleneck.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
-pub struct DegreeWithOrigin {
+pub(crate) struct DegreeWithOrigin {
     pub degree: Degree,
     pub interpolant_degree: Degree,
     pub zerofier_degree: Degree,
@@ -335,12 +335,9 @@ pub struct DegreeWithOrigin {
 
 impl Display for DegreeWithOrigin {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        assert!(self.degree > 0);
         let zerofier_corrected_degree = self.degree + self.zerofier_degree;
-        let degree = if self.interpolant_degree != 0 {
-            zerofier_corrected_degree / self.interpolant_degree
-        } else {
-            zerofier_corrected_degree
-        };
+        let degree = zerofier_corrected_degree / self.interpolant_degree;
         write!(
             f,
             "Degree of poly for table {} (index {:02}) of type “{}” is {}.",

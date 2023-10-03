@@ -951,14 +951,14 @@ impl MasterExtTable {
     }
 }
 
-pub fn all_degrees_with_origin(
+pub(crate) fn all_degrees_with_origin(
     interpolant_degree: Degree,
     padded_height: usize,
 ) -> Vec<DegreeWithOrigin> {
     MasterExtTable::all_degrees_with_origin("master table", interpolant_degree, padded_height)
 }
 
-pub fn max_degree_with_origin(
+pub(crate) fn max_degree_with_origin(
     interpolant_degree: Degree,
     padded_height: usize,
 ) -> DegreeWithOrigin {
