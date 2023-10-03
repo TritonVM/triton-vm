@@ -3,6 +3,7 @@ use std::fmt::Display;
 use std::hash::Hash;
 use std::io::Cursor;
 
+use anyhow::anyhow;
 use anyhow::bail;
 use anyhow::Error;
 use anyhow::Result;
@@ -130,11 +131,11 @@ impl IntoIterator for Program {
 
 impl Program {
     /// Create a `Program` from a slice of `Instruction`.
-    pub fn new(input: &[LabelledInstruction]) -> Self {
-        let instructions = convert_all_labels_to_addresses(input)
+    pub fn new(labelled_instructions: &[LabelledInstruction]) -> Self {
+        let instructions = convert_all_labels_to_addresses(labelled_instructions)
             .iter()
             .flat_map(|&instr| vec![instr; instr.size()])
-            .collect::<Vec<_>>();
+            .collect();
 
         Program { instructions }
     }
@@ -142,8 +143,9 @@ impl Program {
     /// Create a `Program` by parsing source code.
     pub fn from_code(code: &str) -> Result<Self> {
         parse(code)
-            .map(|program| Program::new(&to_labelled_instructions(&program)))
-            .map_err(|err| anyhow::anyhow!("{}", err))
+            .map(|tokens| to_labelled_instructions(&tokens))
+            .map(|instructions| Program::new(&instructions))
+            .map_err(|err| anyhow!("{err}"))
     }
 
     /// Convert a `Program` to a `Vec<BFieldElement>`.

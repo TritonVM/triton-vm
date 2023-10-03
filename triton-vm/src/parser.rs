@@ -109,70 +109,82 @@ pub fn pretty_print_error(s: &str, mut e: VerboseError<&str>) -> String {
 /// Parse a program
 pub fn parse(input: &str) -> Result<Vec<InstructionToken>, ParseError> {
     let instructions = match tokenize(input).finish() {
-        Ok((_s, instructions)) => Ok(instructions),
+        Ok((_, instructions)) => Ok(instructions),
         Err(errors) => Err(ParseError { input, errors }),
     }?;
 
-    scan_missing_duplicate_labels(input, &instructions)?;
+    ensure_no_missing_or_duplicate_labels(input, &instructions)?;
 
     Ok(instructions)
 }
 
-fn scan_missing_duplicate_labels<'a>(
+fn ensure_no_missing_or_duplicate_labels<'a>(
     input: &'a str,
     instructions: &[InstructionToken<'a>],
 ) -> Result<(), ParseError<'a>> {
-    let mut seen: HashMap<&str, InstructionToken> = HashMap::default();
-    let mut duplicates: HashSet<InstructionToken> = HashSet::default();
-    let mut missings: HashSet<InstructionToken> = HashSet::default();
-
-    // Find duplicate labels, including the first occurrence of each duplicate.
+    // identify all and duplicate labels
+    let mut seen_labels: HashMap<&str, InstructionToken> = HashMap::default();
+    let mut duplicate_labels = HashSet::default();
     for instruction in instructions.iter() {
-        if let InstructionToken::Label(label, _token_s) = instruction {
-            if let Some(first_label) = seen.get(label.as_str()) {
-                duplicates.insert(first_label.to_owned());
-                duplicates.insert(instruction.to_owned());
+        if let InstructionToken::Label(label, _) = instruction {
+            if let Some(first_occurrence) = seen_labels.get(label.as_str()) {
+                duplicate_labels.insert(first_occurrence.to_owned());
+                duplicate_labels.insert(instruction.to_owned());
             } else {
-                seen.insert(label.as_str(), instruction.to_owned());
+                seen_labels.insert(label.as_str(), instruction.to_owned());
             }
         }
     }
 
-    // Find missing labels
-    for instruction in instructions.iter() {
-        if let InstructionToken::Instruction(Call(addr), _token_s) = instruction {
-            if !seen.contains_key(addr.as_str()) {
-                missings.insert(instruction.to_owned());
-            }
-        }
-    }
+    let missing_labels = identify_missing_labels(instructions, seen_labels);
 
-    if duplicates.is_empty() && missings.is_empty() {
+    if duplicate_labels.is_empty() && missing_labels.is_empty() {
         return Ok(());
     }
 
-    // Collect duplicate and missing error messages
-    let mut errors: Vec<(&str, VerboseErrorKind)> =
-        Vec::with_capacity(duplicates.len() + missings.len());
-
-    for duplicate in duplicates {
-        let error = (
-            duplicate.token_str(),
-            VerboseErrorKind::Context("duplicate label"),
-        );
-        errors.push(error);
-    }
-
-    for missing in missings {
-        let error = (
-            missing.token_str(),
-            VerboseErrorKind::Context("missing label"),
-        );
-        errors.push(error);
-    }
-
-    let errors = VerboseError { errors };
+    let errors = errors_for_duplicate_and_missing_labels(duplicate_labels, missing_labels);
     Err(ParseError { input, errors })
+}
+
+fn identify_missing_labels<'a>(
+    instructions: &[InstructionToken<'a>],
+    seen_labels: HashMap<&str, InstructionToken>,
+) -> HashSet<InstructionToken<'a>> {
+    let mut missing_labels = HashSet::default();
+    for instruction in instructions.iter() {
+        if let InstructionToken::Instruction(Call(label), _) = instruction {
+            if !seen_labels.contains_key(label.as_str()) {
+                missing_labels.insert(instruction.to_owned());
+            }
+        }
+    }
+    missing_labels
+}
+
+fn errors_for_duplicate_and_missing_labels<'a>(
+    duplicate_labels: HashSet<InstructionToken<'a>>,
+    missing_labels: HashSet<InstructionToken<'a>>,
+) -> VerboseError<&'a str> {
+    let duplicate_label_error_context = VerboseErrorKind::Context("duplicate label");
+    let missing_label_error_context = VerboseErrorKind::Context("missing label");
+
+    let duplicate_label_errors =
+        errors_for_labels_with_context(duplicate_labels, duplicate_label_error_context);
+    let missing_label_errors =
+        errors_for_labels_with_context(missing_labels, missing_label_error_context);
+
+    let errors = [duplicate_label_errors, missing_label_errors].concat();
+    VerboseError { errors }
+}
+
+fn errors_for_labels_with_context(
+    labels: HashSet<InstructionToken>,
+    context: VerboseErrorKind,
+) -> Vec<(&str, VerboseErrorKind)> {
+    labels
+        .into_iter()
+        .map(|label| (label.token_str(), context.clone()))
+        .collect()
 }
 
 /// Auxiliary type alias: `IResult` defaults to `nom::error::Error` as concrete
