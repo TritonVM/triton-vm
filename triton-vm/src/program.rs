@@ -260,11 +260,7 @@ impl Program {
             Some(initial_state) => initial_state,
             None => VMState::new(self, public_input, non_determinism),
         };
-
-        let max_cycles = match num_cycles_to_execute {
-            Some(number_of_cycles) => state.cycle_count + number_of_cycles,
-            None => u32::MAX,
-        };
+        let max_cycles = Self::max_cycle_to_reach(&state, num_cycles_to_execute);
 
         while !state.halting && state.cycle_count < max_cycles {
             states.push(state.clone());
@@ -300,22 +296,23 @@ impl Program {
             Some(initial_state) => initial_state,
             None => VMState::new(self, public_input, non_determinism),
         };
-
-        let max_cycles = match num_cycles_to_execute {
-            Some(number_of_cycles) => state.cycle_count + number_of_cycles,
-            None => u32::MAX,
-        };
+        let max_cycles = Self::max_cycle_to_reach(&state, num_cycles_to_execute);
 
         while !state.halting && state.cycle_count < max_cycles {
-            // The internal state transition method [`VMState::step`] is not atomic.
-            // To avoid returning an inconsistent state in case of a failed transition, the last
-            // known-to-be-consistent state is returned.
-            let previous_state = state.clone();
+            // [`VMState::step`] is not atomic – avoid returning an inconsistent state
+            let consistent_state = state.clone();
             if let Err(err) = state.step() {
-                return Err((err, previous_state));
+                return Err((err, consistent_state));
             }
         }
         Ok(state)
+    }
+
+    fn max_cycle_to_reach(state: &VMState, num_cycles_to_execute: Option<u32>) -> u32 {
+        match num_cycles_to_execute {
+            Some(number_of_cycles) => state.cycle_count + number_of_cycles,
+            None => u32::MAX,
+        }
     }
 
     /// Run Triton VM on the given program with the given public and secret input,
