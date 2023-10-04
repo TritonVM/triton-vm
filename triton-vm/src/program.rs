@@ -342,7 +342,7 @@ impl Program {
         let mut state = VMState::new(&program, public_input, non_determinism);
         while !state.halting {
             if let Instruction::Call(address) = state.current_instruction()? {
-                let address = address.value() as usize;
+                let address = address.value();
                 let label = address_to_label_map[&address].to_owned();
                 let profile_line = ProfileLine::new(call_stack.len(), label, 0);
                 let profile_line_number = profile.len();

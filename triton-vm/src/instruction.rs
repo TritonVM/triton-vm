@@ -66,7 +66,7 @@ impl LabelledInstruction {
     pub const fn op_stack_size_influence(&self) -> i32 {
         match self {
             LabelledInstruction::Instruction(instruction) => instruction.op_stack_size_influence(),
-            LabelledInstruction::Label(_) => 0,
+            _ => 0,
         }
     }
 }
@@ -453,9 +453,7 @@ pub fn convert_all_labels_to_addresses(program: &[LabelledInstruction]) -> Vec<I
         .collect()
 }
 
-pub(crate) fn build_label_to_address_map(
-    program: &[LabelledInstruction],
-) -> HashMap<String, usize> {
+pub(crate) fn build_label_to_address_map(program: &[LabelledInstruction]) -> HashMap<String, u64> {
     use LabelledInstruction::*;
 
     let mut label_map = HashMap::new();
@@ -469,7 +467,7 @@ pub(crate) fn build_label_to_address_map(
                     entry.insert(instruction_pointer);
                 }
             },
-            Instruction(instruction) => instruction_pointer += instruction.size(),
+            Instruction(instruction) => instruction_pointer += instruction.size() as u64,
         }
     }
     label_map
@@ -479,20 +477,19 @@ pub(crate) fn build_label_to_address_map(
 /// address as the call target. Discards all labels.
 fn convert_label_to_address_for_instruction(
     labelled_instruction: &LabelledInstruction,
-    label_map: &HashMap<String, usize>,
+    label_map: &HashMap<String, u64>,
 ) -> Option<Instruction> {
-    match labelled_instruction {
-        LabelledInstruction::Label(_) => None,
-        LabelledInstruction::Instruction(instruction) => {
-            let instruction_with_absolute_address = instruction.map_call_address(|label| {
-                let &absolute_address = label_map
-                    .get(label)
-                    .unwrap_or_else(|| panic!("Label not found: {label}"));
-                BFieldElement::new(absolute_address as u64)
-            });
-            Some(instruction_with_absolute_address)
-        }
-    }
+    let LabelledInstruction::Instruction(instruction) = labelled_instruction else {
+        return None;
+    };
+
+    let instruction_with_absolute_address = instruction.map_call_address(|label| {
+        label_map
+            .get(label)
+            .map(|&address| BFieldElement::new(address))
+            .unwrap_or_else(|| panic!("Label not found: {label}"))
+    });
+    Some(instruction_with_absolute_address)
 }
 
 const fn all_instructions_without_args() -> [AnInstruction<BFieldElement>; Instruction::COUNT] {
