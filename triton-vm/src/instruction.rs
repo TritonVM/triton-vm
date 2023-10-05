@@ -49,6 +49,8 @@ pub enum LabelledInstruction {
 
     /// Labels look like "`<name>:`" and are translated into absolute addresses.
     Label(String),
+
+    Breakpoint,
 }
 
 impl LabelledInstruction {
@@ -77,6 +79,7 @@ impl Display for LabelledInstruction {
         match self {
             LabelledInstruction::Instruction(instr) => write!(f, "{instr}"),
             LabelledInstruction::Label(label_name) => write!(f, "{label_name}:"),
+            LabelledInstruction::Breakpoint => write!(f, "break"),
         }
     }
 }
@@ -469,6 +472,7 @@ pub(crate) fn build_label_to_address_map(program: &[LabelledInstruction]) -> Has
                 }
             },
             Instruction(instruction) => instruction_pointer += instruction.size() as u64,
+            Breakpoint => (),
         }
     }
     label_map

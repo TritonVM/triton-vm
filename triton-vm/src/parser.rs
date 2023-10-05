@@ -36,6 +36,7 @@ pub struct ParseError<'a> {
 pub enum InstructionToken<'a> {
     Instruction(AnInstruction<String>, &'a str),
     Label(String, &'a str),
+    Breakpoint(&'a str),
 }
 
 impl<'a> Display for InstructionToken<'a> {
@@ -43,6 +44,7 @@ impl<'a> Display for InstructionToken<'a> {
         match self {
             InstructionToken::Instruction(instr, _) => write!(f, "{instr}"),
             InstructionToken::Label(label_name, _) => write!(f, "{label_name}:"),
+            InstructionToken::Breakpoint(_) => write!(f, "break"),
         }
     }
 }
@@ -60,6 +62,7 @@ impl<'a> InstructionToken<'a> {
         match self {
             InstructionToken::Instruction(_, token_str) => token_str,
             InstructionToken::Label(_, token_str) => token_str,
+            InstructionToken::Breakpoint(token_str) => token_str,
         }
     }
 
@@ -68,6 +71,7 @@ impl<'a> InstructionToken<'a> {
         match self {
             Instruction(instr, _) => LabelledInstruction::Instruction(instr.to_owned()),
             Label(label, _) => LabelledInstruction::Label(label.to_owned()),
+            Breakpoint(_) => LabelledInstruction::Breakpoint,
         }
     }
 }
@@ -187,7 +191,7 @@ type ParseResult<'input, Out> = IResult<&'input str, Out, VerboseError<&'input s
 ///
 pub fn tokenize(s: &str) -> ParseResult<Vec<InstructionToken>> {
     let (s, _) = comment_or_whitespace0(s)?;
-    let (s, instructions) = many0(alt((label, labelled_instruction)))(s)?;
+    let (s, instructions) = many0(alt((label, labelled_instruction, breakpoint)))(s)?;
     let (s, _) = context("expecting label, instruction or eof", eof)(s)?;
 
     Ok((s, instructions))
@@ -211,6 +215,11 @@ fn label(label_s: &str) -> ParseResult<InstructionToken> {
     }
 
     Ok((s, InstructionToken::Label(addr, label_s)))
+}
+
+fn breakpoint(breakpoint_s: &str) -> ParseResult<InstructionToken> {
+    let (s, _) = token1("break")(breakpoint_s)?;
+    Ok((s, InstructionToken::Breakpoint(breakpoint_s)))
 }
 
 fn an_instruction(s: &str) -> ParseResult<AnInstruction<String>> {
@@ -1062,5 +1071,18 @@ pub(crate) mod tests {
         let instructions = triton_asm![divine; DIGEST_LENGTH];
         let expected_instructions = vec![Instruction(Divine); DIGEST_LENGTH];
         assert_eq!(expected_instructions, instructions);
+    }
+
+    #[test]
+    fn break_gets_turned_into_labelled_instruction() {
+        let instructions = triton_asm![break];
+        let expected_instructions = vec![Breakpoint];
+        assert_eq!(expected_instructions, instructions);
+    }
+
+    #[test]
+    fn break_does_not_propagate_to_full_program() {
+        let program = triton_program! { break halt break };
+        assert_eq!(1, program.instructions.len());
     }
 }
