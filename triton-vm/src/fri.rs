@@ -644,6 +644,7 @@ mod tests {
     use itertools::Itertools;
     use proptest::collection::vec;
     use proptest::prelude::*;
+    use proptest_arbitrary_interop::arb;
     use rand::prelude::IteratorRandom;
     use rand::prelude::StdRng;
     use rand_core::SeedableRng;
@@ -1079,6 +1080,16 @@ mod tests {
             FriResponse(fri_response) if fri_response.auth_structure.is_empty() => None,
             FriResponse(fri_response) => Some(&mut fri_response.auth_structure),
             _ => None,
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn verifying_arbitrary_proof_does_not_panic(
+            fri in arbitrary_fri(),
+            mut proof_stream in arb::<ProofStream<Tip5>>(),
+        ) {
+            let _ = fri.verify(&mut proof_stream, &mut None);
         }
     }
 }

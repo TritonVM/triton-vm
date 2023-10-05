@@ -1,5 +1,6 @@
 use anyhow::bail;
 use anyhow::Result;
+use arbitrary::Arbitrary;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::b_field_element::BFIELD_ONE;
 use twenty_first::shared_math::b_field_element::BFIELD_ZERO;
@@ -11,7 +12,7 @@ use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
 use crate::proof::Proof;
 use crate::proof_item::ProofItem;
 
-#[derive(Default, Debug, Clone, PartialEq, Eq)]
+#[derive(Default, Debug, Clone, PartialEq, Eq, Arbitrary)]
 pub struct ProofStream<H>
 where
     H: AlgebraicHasher,

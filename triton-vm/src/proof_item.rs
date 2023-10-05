@@ -1,5 +1,6 @@
 use anyhow::bail;
 use anyhow::Result;
+use arbitrary::Arbitrary;
 use strum_macros::Display;
 use strum_macros::EnumCount;
 use twenty_first::shared_math::b_field_element::BFieldElement;
@@ -13,7 +14,7 @@ use crate::stark::NUM_QUOTIENT_SEGMENTS;
 /// A `FriResponse` is an `AuthenticationStructure` together with the values of the
 /// revealed leaves of the Merkle tree. Together, they correspond to the
 /// queried indices of the FRI codeword (of that round).
-#[derive(Debug, Clone, PartialEq, Eq, Hash, BFieldCodec)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, BFieldCodec, Arbitrary)]
 pub struct FriResponse {
     /// The authentication structure of the Merkle tree.
     pub auth_structure: AuthenticationStructure,
@@ -21,7 +22,7 @@ pub struct FriResponse {
     pub revealed_leaves: Vec<XFieldElement>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Display, EnumCount)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Display, EnumCount, Arbitrary)]
 pub enum ProofItem {
     AuthenticationStructure(AuthenticationStructure),
     MasterBaseTableRows(Vec<Vec<BFieldElement>>),
@@ -199,17 +200,6 @@ impl BFieldCodec for ProofItem {
     /// length of the rest.
     fn encode(&self) -> Vec<BFieldElement> {
         use ProofItem::*;
-
-        #[cfg(debug_assertions)]
-        {
-            use crate::table::master_table::NUM_BASE_COLUMNS;
-            use crate::table::master_table::NUM_EXT_COLUMNS;
-            match self {
-                OutOfDomainBaseRow(row) => assert_eq!(NUM_BASE_COLUMNS, row.len()),
-                OutOfDomainExtRow(row) => assert_eq!(NUM_EXT_COLUMNS, row.len()),
-                _ => (),
-            }
-        }
 
         let discriminant = vec![self.discriminant()];
         let encoding = match self {

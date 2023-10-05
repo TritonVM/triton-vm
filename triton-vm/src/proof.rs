@@ -1,4 +1,5 @@
 use anyhow::Result;
+use arbitrary::Arbitrary;
 use get_size::GetSize;
 use itertools::Itertools;
 use serde::Deserialize;
@@ -13,7 +14,7 @@ use crate::stark;
 
 /// Contains the necessary cryptographic information to verify a computation.
 /// Should be used together with a [`Claim`].
-#[derive(Debug, Clone, GetSize, Serialize, Deserialize, PartialEq, Eq, BFieldCodec)]
+#[derive(Debug, Clone, GetSize, Serialize, Deserialize, PartialEq, Eq, BFieldCodec, Arbitrary)]
 pub struct Proof(pub Vec<BFieldElement>);
 
 impl Proof {
@@ -37,7 +38,9 @@ impl Proof {
 /// One additional piece of public information not explicitly listed in the [`Claim`] is the
 /// `padded_height`, an upper bound on the length of the computation.
 /// It is derivable from a [`Proof`] by calling [`Proof::padded_height()`].
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, GetSize, BFieldCodec, Hash)]
+#[derive(
+    Debug, Clone, Serialize, Deserialize, PartialEq, Eq, GetSize, BFieldCodec, Hash, Arbitrary,
+)]
 pub struct Claim {
     /// The hash digest of the program that was executed. The hash function in use is Tip5.
     pub program_digest: Digest,
@@ -65,12 +68,15 @@ impl Claim {
 
 #[cfg(test)]
 pub mod test_claim_proof {
+    use proptest::collection::vec;
+    use proptest::prelude::*;
     use rand::random;
     use twenty_first::shared_math::b_field_element::BFieldElement;
     use twenty_first::shared_math::bfield_codec::BFieldCodec;
     use twenty_first::shared_math::other::random_elements;
 
     use crate::proof_item::ProofItem;
+    use crate::shared_tests::arbitrary_bfield_element;
     use crate::stark::StarkHasher;
 
     use super::*;
@@ -120,5 +126,14 @@ pub mod test_claim_proof {
         let proof: Proof = proof_stream.into();
         let maybe_padded_height = proof.padded_height();
         assert!(maybe_padded_height.is_err());
+    }
+
+    proptest! {
+        #[test]
+        fn decoding_arbitrary_proof_data_does_not_panic(
+            proof_data in vec(arbitrary_bfield_element(), 0..1000),
+        ) {
+            let _ = Proof::decode(&proof_data);
+        }
     }
 }
