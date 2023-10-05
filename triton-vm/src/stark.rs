@@ -3,6 +3,8 @@ use std::ops::Mul;
 
 use anyhow::bail;
 use anyhow::Result;
+use arbitrary::Arbitrary;
+use arbitrary::Unstructured;
 use itertools::izip;
 use itertools::Itertools;
 use ndarray::prelude::*;
@@ -122,6 +124,14 @@ impl Default for StarkParameters {
         let security_level = 160;
 
         Self::new(security_level, log_2_of_fri_expansion_factor)
+    }
+}
+
+impl<'a> Arbitrary<'a> for StarkParameters {
+    fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
+        let security_level = u.int_in_range(1..=640)?;
+        let log_2_of_fri_expansion_factor = u.int_in_range(1..=8)?;
+        Ok(Self::new(security_level, log_2_of_fri_expansion_factor))
     }
 }
 
@@ -1095,6 +1105,8 @@ impl Stark {
 pub(crate) mod triton_stark_tests {
     use itertools::izip;
     use num_traits::Zero;
+    use proptest::prelude::*;
+    use proptest_arbitrary_interop::arb;
     use rand::prelude::ThreadRng;
     use rand::thread_rng;
     use rand::Rng;
@@ -1900,6 +1912,17 @@ pub(crate) mod triton_stark_tests {
             .with_padded_height(padded_height)
             .with_fri_domain_len(fri.domain.length);
         println!("{report}");
+    }
+
+    proptest! {
+        #[test]
+        fn verifying_arbitrary_proof_does_not_panic(
+            parameters in arb::<StarkParameters>(),
+            claim in arb::<Claim>(),
+            proof in arb::<Proof>(),
+        ) {
+            let _ = Stark::verify(&parameters, &claim, &proof, &mut None);
+        }
     }
 
     #[test]
