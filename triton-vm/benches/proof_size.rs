@@ -10,9 +10,9 @@ use criterion::BenchmarkId;
 use criterion::Criterion;
 use criterion::Throughput;
 use itertools::Itertools;
-use strum_macros::Display;
-use strum_macros::EnumCount;
-use strum_macros::EnumIter;
+use strum::Display;
+use strum::EnumCount;
+use strum::EnumIter;
 use twenty_first::shared_math::bfield_codec::BFieldCodec;
 
 use triton_vm::example_programs::FIBONACCI_SEQUENCE;

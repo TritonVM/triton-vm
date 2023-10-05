@@ -5,11 +5,10 @@ use ndarray::ArrayView1;
 use ndarray::ArrayView2;
 use ndarray::ArrayViewMut2;
 use num_traits::Zero;
+use strum::Display;
 use strum::EnumCount;
+use strum::EnumIter;
 use strum::IntoEnumIterator;
-use strum_macros::Display;
-use strum_macros::EnumCount as EnumCountMacro;
-use strum_macros::EnumIter;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::tip5::DIGEST_LENGTH;
 use twenty_first::shared_math::tip5::MDS_MATRIX_FIRST_COLUMN;
@@ -84,7 +83,7 @@ pub struct ExtHashTable {}
 /// [sponge]: Self::Sponge
 /// [hash]: Self::Hash
 /// [pad]: Self::Pad
-#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro, Hash)]
+#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCount, Hash)]
 pub enum HashTableMode {
     /// The mode in which the [`Program`][program] is hashed. This is part of program attestation.
     ///

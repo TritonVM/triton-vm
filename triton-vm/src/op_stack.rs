@@ -8,7 +8,6 @@ use num_traits::Zero;
 use serde_derive::Deserialize;
 use serde_derive::Serialize;
 use strum::EnumCount;
-use strum_macros::EnumCount;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::digest::Digest;
 use twenty_first::shared_math::tip5::DIGEST_LENGTH;

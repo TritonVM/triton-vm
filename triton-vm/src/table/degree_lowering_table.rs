@@ -1,9 +1,8 @@
 use ndarray::ArrayView2;
 use ndarray::ArrayViewMut2;
+use strum::Display;
 use strum::EnumCount;
-use strum_macros::Display;
-use strum_macros::EnumCount as EnumCountMacro;
-use strum_macros::EnumIter;
+use strum::EnumIter;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
@@ -16,10 +15,10 @@ pub const FULL_WIDTH: usize = BASE_WIDTH + EXT_WIDTH;
 // This file is a placeholder for auto-generated code.
 // Run `cargo run --bin constraint-evaluation-generator` to generate the actual code.
 
-#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro, Hash)]
+#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCount, Hash)]
 pub enum DegreeLoweringBaseTableColumn {}
 
-#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro, Hash)]
+#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCount, Hash)]
 pub enum DegreeLoweringExtTableColumn {}
 
 #[derive(Debug, Clone)]

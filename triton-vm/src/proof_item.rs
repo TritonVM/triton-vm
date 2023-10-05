@@ -1,8 +1,8 @@
 use anyhow::bail;
 use anyhow::Result;
 use arbitrary::Arbitrary;
-use strum_macros::Display;
-use strum_macros::EnumCount;
+use strum::Display;
+use strum::EnumCount;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::bfield_codec::BFieldCodec;
 use twenty_first::shared_math::tip5::Digest;

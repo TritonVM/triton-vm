@@ -11,9 +11,8 @@ use lazy_static::lazy_static;
 use serde_derive::Deserialize;
 use serde_derive::Serialize;
 use strum::EnumCount;
+use strum::EnumIter;
 use strum::IntoEnumIterator;
-use strum_macros::EnumCount;
-use strum_macros::EnumIter;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::b_field_element::BFIELD_ZERO;
 

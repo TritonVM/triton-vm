@@ -37,7 +37,6 @@ rayon.workspace = true
 serde.workspace = true
 serde_derive.workspace = true
 strum.workspace = true
-strum_macros.workspace = true
 twenty-first.workspace = true
 unicode-width.workspace = true
 

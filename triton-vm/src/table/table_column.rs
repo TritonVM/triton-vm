@@ -3,9 +3,9 @@
 
 use std::hash::Hash;
 
-use strum_macros::Display;
-use strum_macros::EnumCount as EnumCountMacro;
-use strum_macros::EnumIter;
+use strum::Display;
+use strum::EnumCount;
+use strum::EnumIter;
 
 use crate::table::degree_lowering_table::DegreeLoweringBaseTableColumn;
 use crate::table::degree_lowering_table::DegreeLoweringExtTableColumn;
@@ -33,7 +33,7 @@ use crate::table::master_table::U32_TABLE_START;
 // -------- Program Table --------
 
 #[repr(usize)]
-#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro, Hash)]
+#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCount, Hash)]
 pub enum ProgramBaseTableColumn {
     /// An instruction's address.
     Address,
@@ -68,7 +68,7 @@ pub enum ProgramBaseTableColumn {
 }
 
 #[repr(usize)]
-#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro, Hash)]
+#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCount, Hash)]
 pub enum ProgramExtTableColumn {
     /// The server part of the instruction lookup.
     ///
@@ -100,7 +100,7 @@ pub enum ProgramExtTableColumn {
 // -------- Processor Table --------
 
 #[repr(usize)]
-#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro, Hash)]
+#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCount, Hash)]
 pub enum ProcessorBaseTableColumn {
     CLK,
     IsPadding,
@@ -151,7 +151,7 @@ pub enum ProcessorBaseTableColumn {
 }
 
 #[repr(usize)]
-#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro, Hash)]
+#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCount, Hash)]
 pub enum ProcessorExtTableColumn {
     InputTableEvalArg,
     OutputTableEvalArg,
@@ -179,7 +179,7 @@ pub enum ProcessorExtTableColumn {
 // -------- OpStack Table --------
 
 #[repr(usize)]
-#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro, Hash)]
+#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCount, Hash)]
 pub enum OpStackBaseTableColumn {
     CLK,
     IB1ShrinkStack,
@@ -188,7 +188,7 @@ pub enum OpStackBaseTableColumn {
 }
 
 #[repr(usize)]
-#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro, Hash)]
+#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCount, Hash)]
 pub enum OpStackExtTableColumn {
     RunningProductPermArg,
     /// The (running sum of the) logarithmic derivative for the clock jump difference Lookup
@@ -199,7 +199,7 @@ pub enum OpStackExtTableColumn {
 // -------- RAM Table --------
 
 #[repr(usize)]
-#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro, Hash)]
+#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCount, Hash)]
 pub enum RamBaseTableColumn {
     CLK,
     PreviousInstruction,
@@ -211,7 +211,7 @@ pub enum RamBaseTableColumn {
 }
 
 #[repr(usize)]
-#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro, Hash)]
+#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCount, Hash)]
 pub enum RamExtTableColumn {
     RunningProductOfRAMP,
     FormalDerivative,
@@ -226,7 +226,7 @@ pub enum RamExtTableColumn {
 // -------- JumpStack Table --------
 
 #[repr(usize)]
-#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro, Hash)]
+#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCount, Hash)]
 pub enum JumpStackBaseTableColumn {
     CLK,
     CI,
@@ -236,7 +236,7 @@ pub enum JumpStackBaseTableColumn {
 }
 
 #[repr(usize)]
-#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro, Hash)]
+#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCount, Hash)]
 pub enum JumpStackExtTableColumn {
     RunningProductPermArg,
     /// The (running sum of the) logarithmic derivative for the clock jump difference Lookup
@@ -247,7 +247,7 @@ pub enum JumpStackExtTableColumn {
 // -------- Hash Table --------
 
 #[repr(usize)]
-#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro, Hash)]
+#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCount, Hash)]
 pub enum HashBaseTableColumn {
     /// The indicator for the [`HashTableMode`][mode].
     ///
@@ -342,7 +342,7 @@ pub enum HashBaseTableColumn {
 }
 
 #[repr(usize)]
-#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro, Hash)]
+#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCount, Hash)]
 pub enum HashExtTableColumn {
     /// The evaluation argument corresponding to receiving instructions in chunks of size
     /// [`RATE`][rate]. The chunks are hashed in Sponge mode.
@@ -382,7 +382,7 @@ pub enum HashExtTableColumn {
 // -------- Cascade Table --------
 
 #[repr(usize)]
-#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro, Hash)]
+#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCount, Hash)]
 pub enum CascadeBaseTableColumn {
     /// Indicator for padding rows.
     IsPadding,
@@ -404,7 +404,7 @@ pub enum CascadeBaseTableColumn {
 }
 
 #[repr(usize)]
-#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro, Hash)]
+#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCount, Hash)]
 pub enum CascadeExtTableColumn {
     /// The (running sum of the) logarithmic derivative for the Lookup Argument with the Hash Table.
     /// In every row, the sum accumulates `LookupMultiplicity / (X - Combo)` where `X` is a
@@ -426,7 +426,7 @@ pub enum CascadeExtTableColumn {
 // -------- Lookup Table --------
 
 #[repr(usize)]
-#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro, Hash)]
+#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCount, Hash)]
 pub enum LookupBaseTableColumn {
     /// Indicator for padding rows.
     IsPadding,
@@ -442,7 +442,7 @@ pub enum LookupBaseTableColumn {
 }
 
 #[repr(usize)]
-#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro, Hash)]
+#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCount, Hash)]
 pub enum LookupExtTableColumn {
     /// The (running sum of the) logarithmic derivative for the Lookup Argument with the Cascade
     /// Table. In every row, accumulates the summand `LookupMultiplicity / Combo` where `Combo` is
@@ -457,7 +457,7 @@ pub enum LookupExtTableColumn {
 // -------- U32 Table --------
 
 #[repr(usize)]
-#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro, Hash)]
+#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCount, Hash)]
 pub enum U32BaseTableColumn {
     /// Marks the beginning of an independent section within the U32 table.
     CopyFlag,
@@ -494,7 +494,7 @@ pub enum U32BaseTableColumn {
 }
 
 #[repr(usize)]
-#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro, Hash)]
+#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCount, Hash)]
 pub enum U32ExtTableColumn {
     /// The (running sum of the) logarithmic derivative for the Lookup Argument with the
     /// Processor Table.

@@ -24,10 +24,9 @@ use std::ops::Index;
 use std::ops::Range;
 use std::ops::RangeInclusive;
 
+use strum::Display;
 use strum::EnumCount;
-use strum_macros::Display;
-use strum_macros::EnumCount as EnumCountMacro;
-use strum_macros::EnumIter;
+use strum::EnumIter;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::other::random_elements;
 use twenty_first::shared_math::tip5::LOOKUP_TABLE;
@@ -45,7 +44,7 @@ use crate::Claim;
 /// Since almost all challenges relate to the Processor Table in some form, the words “Processor
 /// Table” are usually omitted from the `ChallengeId`'s name.
 #[repr(usize)]
-#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro, Hash)]
+#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCount, Hash)]
 pub enum ChallengeId {
     /// The indeterminate for the [Evaluation Argument](EvalArg) compressing the program digest
     /// into a single extension field element, _i.e._, [`CompressedProgramDigest`].

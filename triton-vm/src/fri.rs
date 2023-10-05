@@ -5,7 +5,7 @@ use anyhow::Result;
 use itertools::Itertools;
 use num_traits::One;
 use rayon::iter::*;
-use strum_macros::Display;
+use strum::Display;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::other::log_2_ceil;
 use twenty_first::shared_math::polynomial::Polynomial;

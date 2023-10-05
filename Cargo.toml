@@ -43,8 +43,7 @@ rand_core = "0.6.4"
 rayon = "1.7"
 serde = { version = "1", features = ["derive"] }
 serde_derive = "1"
-strum = "0.25"
-strum_macros = "0.25"
+strum = { version = "0.25", features = ["derive"] }
 syn = "2.0"
 twenty-first = "0.34"
 unicode-width = "0.1"
