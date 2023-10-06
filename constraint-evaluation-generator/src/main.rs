@@ -474,7 +474,7 @@ fn tokenize_circuits<II: InputIndicator>(
         .chain(ext_constraints.iter())
         .map(|circuit| match circuit.degree() {
             d if d > 1 => quote!(interpolant_degree * #d - zerofier_degree),
-            d if d == 1 => quote!(interpolant_degree - zerofier_degree),
+            1 => quote!(interpolant_degree - zerofier_degree),
             _ => unreachable!("Constraint degree must be positive"),
         })
         .collect_vec();
