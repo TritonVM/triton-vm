@@ -181,7 +181,7 @@ fn program_halt() -> ProgramAndInput {
 }
 
 /// The base 2, integer logarithm of the FRI domain length.
-fn log_2_fri_domain_length(parameters: &StarkParameters, proof: &Proof) -> u32 {
+fn log_2_fri_domain_length(parameters: StarkParameters, proof: &Proof) -> u32 {
     let padded_height = proof.padded_height().unwrap();
     let fri = Stark::derive_fri(parameters, padded_height);
     fri.domain.length.ilog2()
@@ -265,7 +265,7 @@ fn generate_proof_and_benchmark_id(
         &program_and_input.non_determinism,
     )
     .unwrap();
-    let log_2_fri_domain_length = log_2_fri_domain_length(&parameters, &proof);
+    let log_2_fri_domain_length = log_2_fri_domain_length(parameters, &proof);
     let benchmark_id = BenchmarkId::new(program_name, log_2_fri_domain_length);
     (proof, benchmark_id)
 }

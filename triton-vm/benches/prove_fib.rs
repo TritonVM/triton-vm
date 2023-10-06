@@ -33,7 +33,7 @@ fn fib_benchmark_group(criterion: &mut Criterion, claim: &Claim, aet: &Algebraic
 
     let parameters = StarkParameters::default();
     group.bench_function(bench_id, |bencher| {
-        bencher.iter(|| Stark::prove(&parameters, claim, aet, &mut None))
+        bencher.iter(|| Stark::prove(parameters, claim, aet, &mut None))
     });
     group.finish();
 }
@@ -42,12 +42,12 @@ fn prover_timing_report(claim: &Claim, aet: &AlgebraicExecutionTrace) -> Report 
     let profile_name = format!("Prove Fibonacci {FIBONACCI_INDEX}");
     let parameters = StarkParameters::default();
     let mut profiler = Some(TritonProfiler::new(&profile_name));
-    let proof = Stark::prove(&parameters, claim, aet, &mut profiler);
+    let proof = Stark::prove(parameters, claim, aet, &mut profiler);
     let mut profiler = profiler.unwrap();
     profiler.finish();
 
     let padded_height = proof.padded_height().unwrap();
-    let fri = Stark::derive_fri(&parameters, padded_height);
+    let fri = Stark::derive_fri(parameters, padded_height);
     profiler
         .report()
         .with_cycle_count(aet.processor_trace.nrows())

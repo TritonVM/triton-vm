@@ -105,7 +105,7 @@ pub(crate) fn prove_with_low_security_level(
     let claim = construct_claim(&aet, public_input.individual_tokens, public_output);
 
     prof_start!(maybe_profiler, "prove");
-    let proof = Stark::prove(&parameters, &claim, &aet, maybe_profiler);
+    let proof = Stark::prove(parameters, &claim, &aet, maybe_profiler);
     prof_stop!(maybe_profiler, "prove");
 
     (parameters, claim, proof)
@@ -131,7 +131,7 @@ pub(crate) fn stark_parameters_with_low_security_level() -> StarkParameters {
 }
 
 pub(crate) fn construct_master_base_table(
-    parameters: &StarkParameters,
+    parameters: StarkParameters,
     aet: &AlgebraicExecutionTrace,
 ) -> MasterBaseTable {
     let padded_height = MasterBaseTable::padded_height(aet);

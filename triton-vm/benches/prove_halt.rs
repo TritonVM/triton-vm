@@ -22,7 +22,7 @@ fn prove_halt(criterion: &mut Criterion) {
         output,
     };
     let mut profiler = Some(TritonProfiler::new("Prove Halt"));
-    let proof = Stark::prove(&parameters, &claim, &aet, &mut profiler);
+    let proof = Stark::prove(parameters, &claim, &aet, &mut profiler);
     let mut profiler = profiler.unwrap();
     profiler.finish();
 
@@ -31,14 +31,14 @@ fn prove_halt(criterion: &mut Criterion) {
     group.sample_size(10);
     group.bench_function(bench_id, |bencher| {
         bencher.iter(|| {
-            let _proof = Stark::prove(&parameters, &claim, &aet, &mut None);
+            let _proof = Stark::prove(parameters, &claim, &aet, &mut None);
         });
     });
     group.finish();
 
     println!("Writing report ...");
     let padded_height = proof.padded_height().unwrap();
-    let fri = Stark::derive_fri(&parameters, padded_height);
+    let fri = Stark::derive_fri(parameters, padded_height);
     let report = profiler
         .report()
         .with_cycle_count(aet.processor_trace.nrows())

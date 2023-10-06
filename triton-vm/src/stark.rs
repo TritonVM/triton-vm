@@ -139,7 +139,7 @@ pub struct Stark {}
 
 impl Stark {
     pub fn prove(
-        parameters: &StarkParameters,
+        parameters: StarkParameters,
         claim: &Claim,
         aet: &AlgebraicExecutionTrace,
         maybe_profiler: &mut Option<TritonProfiler>,
@@ -633,7 +633,7 @@ impl Stark {
     /// In principle, the FRI domain is also influenced by the AIR's degree
     /// (see [`AIR_TARGET_DEGREE`]). However, by segmenting the quotient polynomial into
     /// [`AIR_TARGET_DEGREE`]-many parts, that influence is mitigated.
-    pub fn derive_fri(parameters: &StarkParameters, padded_height: usize) -> Fri<StarkHasher> {
+    pub fn derive_fri(parameters: StarkParameters, padded_height: usize) -> Fri<StarkHasher> {
         let interpolant_degree =
             interpolant_degree(padded_height, parameters.num_trace_randomizers);
         let interpolant_codeword_length = interpolant_degree as usize + 1;
@@ -753,7 +753,7 @@ impl Stark {
     }
 
     pub fn verify(
-        parameters: &StarkParameters,
+        parameters: StarkParameters,
         claim: &Claim,
         proof: &Proof,
         maybe_profiler: &mut Option<TritonProfiler>,
@@ -1177,7 +1177,7 @@ pub(crate) mod triton_stark_tests {
             .unwrap();
         let parameters = stark_parameters_with_low_security_level();
         let claim = construct_claim(&aet, public_input.individual_tokens, stdout);
-        let master_base_table = construct_master_base_table(&parameters, &aet);
+        let master_base_table = construct_master_base_table(parameters, &aet);
 
         (parameters, claim, master_base_table)
     }
@@ -1764,7 +1764,7 @@ pub(crate) mod triton_stark_tests {
             &mut None,
         );
 
-        let verdict = Stark::verify(&parameters, &claim, &proof, &mut None).unwrap();
+        let verdict = Stark::verify(parameters, &claim, &proof, &mut None).unwrap();
         assert!(verdict);
     }
 
@@ -1781,14 +1781,14 @@ pub(crate) mod triton_stark_tests {
         let mut profiler = profiler.unwrap();
         profiler.finish();
 
-        let result = Stark::verify(&parameters, &claim, &proof, &mut None);
+        let result = Stark::verify(parameters, &claim, &proof, &mut None);
         if let Err(e) = result {
             panic!("The Verifier is unhappy! {e}");
         }
         assert!(result.unwrap());
 
         let padded_height = proof.padded_height().unwrap();
-        let fri = Stark::derive_fri(&parameters, padded_height);
+        let fri = Stark::derive_fri(parameters, padded_height);
         let report = profiler
             .report()
             .with_padded_height(padded_height)
@@ -1809,7 +1809,7 @@ pub(crate) mod triton_stark_tests {
                 &mut None,
             );
 
-            let verdict = Stark::verify(&parameters, &claim, &proof, &mut None);
+            let verdict = Stark::verify(parameters, &claim, &proof, &mut None);
             if verdict.is_err() {
                 let filename = "halt_error.tsp";
                 save_proof(filename, proof).unwrap();
@@ -1832,7 +1832,7 @@ pub(crate) mod triton_stark_tests {
 
         let filename = "halt_error.tsp";
         let proof = load_proof(filename).unwrap();
-        let verdict = Stark::verify(&parameters, &claim, &proof, &mut None).unwrap();
+        let verdict = Stark::verify(parameters, &claim, &proof, &mut None).unwrap();
         assert!(verdict);
     }
 
@@ -1849,14 +1849,14 @@ pub(crate) mod triton_stark_tests {
 
         println!("between prove and verify");
 
-        let result = Stark::verify(&parameters, &claim, &proof, &mut None);
+        let result = Stark::verify(parameters, &claim, &proof, &mut None);
         if let Err(e) = result {
             panic!("The Verifier is unhappy! {e}");
         }
         assert!(result.unwrap());
 
         let padded_height = proof.padded_height().unwrap();
-        let fri = Stark::derive_fri(&parameters, padded_height);
+        let fri = Stark::derive_fri(parameters, padded_height);
         let report = profiler
             .report()
             .with_padded_height(padded_height)
@@ -1871,7 +1871,7 @@ pub(crate) mod triton_stark_tests {
             let secret_in = [].into();
             let (parameters, claim, proof) =
                 prove_with_low_security_level(&FIBONACCI_SEQUENCE, stdin, secret_in, &mut None);
-            match Stark::verify(&parameters, &claim, &proof, &mut None) {
+            match Stark::verify(parameters, &claim, &proof, &mut None) {
                 Ok(result) => assert!(result, "The Verifier disagrees!"),
                 Err(err) => panic!("The Verifier is unhappy! {err}"),
             }
@@ -1899,14 +1899,14 @@ pub(crate) mod triton_stark_tests {
         let mut profiler = profiler.unwrap();
         profiler.finish();
 
-        let result = Stark::verify(&parameters, &claim, &proof, &mut None);
+        let result = Stark::verify(parameters, &claim, &proof, &mut None);
         if let Err(e) = result {
             panic!("The Verifier is unhappy! {e}");
         }
         assert!(result.unwrap());
 
         let padded_height = proof.padded_height().unwrap();
-        let fri = Stark::derive_fri(&parameters, padded_height);
+        let fri = Stark::derive_fri(parameters, padded_height);
         let report = profiler
             .report()
             .with_padded_height(padded_height)
@@ -1921,7 +1921,7 @@ pub(crate) mod triton_stark_tests {
             claim in arb::<Claim>(),
             proof in arb::<Proof>(),
         ) {
-            let _ = Stark::verify(&parameters, &claim, &proof, &mut None);
+            let _ = Stark::verify(parameters, &claim, &proof, &mut None);
         }
     }
 
@@ -1938,7 +1938,7 @@ pub(crate) mod triton_stark_tests {
             profiler.finish();
 
             let padded_height = proof.padded_height().unwrap();
-            let fri = Stark::derive_fri(&parameters, padded_height);
+            let fri = Stark::derive_fri(parameters, padded_height);
             let report = profiler
                 .report()
                 .with_padded_height(padded_height)
@@ -1956,7 +1956,7 @@ pub(crate) mod triton_stark_tests {
         let program = triton_program!(push {st0} log_2_floor halt);
         let (parameters, claim, proof) =
             prove_with_low_security_level(&program, [].into(), [].into(), &mut None);
-        let result = Stark::verify(&parameters, &claim, &proof, &mut None);
+        let result = Stark::verify(parameters, &claim, &proof, &mut None);
         assert!(result.is_ok());
         assert!(result.unwrap());
     }
@@ -1967,7 +1967,7 @@ pub(crate) mod triton_stark_tests {
         let program = triton_program!(push 0 log_2_floor halt);
         let (parameters, claim, proof) =
             prove_with_low_security_level(&program, [].into(), [].into(), &mut None);
-        let result = Stark::verify(&parameters, &claim, &proof, &mut None);
+        let result = Stark::verify(parameters, &claim, &proof, &mut None);
         assert!(result.is_ok());
         assert!(result.unwrap());
     }

@@ -22,16 +22,16 @@ fn verify_halt(criterion: &mut Criterion) {
     };
 
     let (aet, _) = program.trace_execution([].into(), [].into()).unwrap();
-    let proof = Stark::prove(&parameters, &claim, &aet, &mut None);
+    let proof = Stark::prove(parameters, &claim, &aet, &mut None);
 
     let mut profiler = Some(TritonProfiler::new("Verify Halt"));
-    let verdict = Stark::verify(&parameters, &claim, &proof, &mut profiler).unwrap();
+    let verdict = Stark::verify(parameters, &claim, &proof, &mut profiler).unwrap();
     assert!(verdict);
 
     let mut profiler = profiler.unwrap();
     profiler.finish();
     let padded_height = proof.padded_height().unwrap();
-    let fri = Stark::derive_fri(&parameters, padded_height);
+    let fri = Stark::derive_fri(parameters, padded_height);
     let report = profiler
         .report()
         .with_cycle_count(aet.processor_trace.nrows())
@@ -43,7 +43,7 @@ fn verify_halt(criterion: &mut Criterion) {
     group.sample_size(10);
     group.bench_function(bench_id, |bencher| {
         bencher.iter(|| {
-            let _ = Stark::verify(&parameters, &claim, &proof, &mut None);
+            let _ = Stark::verify(parameters, &claim, &proof, &mut None);
         });
     });
     group.finish();
