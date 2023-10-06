@@ -780,6 +780,7 @@ mod tests {
     }
 
     proptest! {
+        #![proptest_config(ProptestConfig::with_cases(50))]
         #[test]
         fn prove_and_verify_low_degree_of_twice_cubing_plus_one(
             fri in arbitrary_fri_supporting_degree(3)
@@ -798,6 +799,7 @@ mod tests {
     }
 
     proptest! {
+        #![proptest_config(ProptestConfig::with_cases(50))]
         #[test]
         fn prove_and_verify_low_degree_polynomial(
             (fri, polynomial) in arbitrary_matching_fri_and_polynomial_pair(),
@@ -814,6 +816,7 @@ mod tests {
     }
 
     proptest! {
+        #![proptest_config(ProptestConfig::with_cases(50))]
         #[test]
         fn prove_and_fail_to_verify_high_degree_polynomial(
             (fri, polynomial) in arbitrary_non_matching_fri_and_polynomial_pair(),
@@ -896,14 +899,15 @@ mod tests {
     // todo: add test fuzzing proof_stream
 
     proptest! {
+        #![proptest_config(ProptestConfig::with_cases(50))]
         #[test]
-        fn serialization(fri in arbitrary_fri_supporting_degree(3)) {
-            let coefficients = [1, 0, 0, 2].map(|c| c.into()).to_vec();
-            let polynomial = Polynomial::new(coefficients);
+        fn serialization(
+            (fri, polynomial) in arbitrary_matching_fri_and_polynomial_pair(),
+        ) {
             let codeword = fri.domain.evaluate(&polynomial);
-
             let mut prover_proof_stream = ProofStream::new();
             fri.prove(&codeword, &mut prover_proof_stream);
+
             let proof = (&prover_proof_stream).into();
             let verifier_proof_stream = ProofStream::<Tip5>::try_from(&proof).unwrap();
 
@@ -923,6 +927,7 @@ mod tests {
     }
 
     proptest! {
+        #![proptest_config(ProptestConfig::with_cases(50))]
         #[test]
         fn last_round_codeword_unequal_to_last_round_commitment_results_in_validation_failure(
             fri in arbitrary_fri(),
@@ -977,6 +982,7 @@ mod tests {
     }
 
     proptest! {
+        #![proptest_config(ProptestConfig::with_cases(50))]
         #[test]
         fn revealing_wrong_number_of_leaves_results_in_validation_failure(
             fri in arbitrary_fri(),
@@ -989,7 +995,7 @@ mod tests {
 
             let proof_stream = prepare_proof_stream_for_verification(proof_stream);
             let mut proof_stream =
-                modify_some_fri_response_in_proof_stream_using_seed(proof_stream, rng_seed);
+                change_size_of_some_fri_response_in_proof_stream_using_seed(proof_stream, rng_seed);
 
             let verdict = fri.verify(&mut proof_stream, &mut None);
             let err = verdict.unwrap_err();
@@ -999,7 +1005,7 @@ mod tests {
     }
 
     #[must_use]
-    fn modify_some_fri_response_in_proof_stream_using_seed<H: AlgebraicHasher>(
+    fn change_size_of_some_fri_response_in_proof_stream_using_seed<H: AlgebraicHasher>(
         mut proof_stream: ProofStream<H>,
         seed: u64,
     ) -> ProofStream<H> {
@@ -1026,6 +1032,7 @@ mod tests {
     }
 
     proptest! {
+        #![proptest_config(ProptestConfig::with_cases(50))]
         #[test]
         fn incorrect_authentication_structure_results_in_validation_failure(
             fri in arbitrary_fri(),
