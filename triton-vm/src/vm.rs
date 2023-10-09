@@ -3,6 +3,7 @@ use std::collections::VecDeque;
 use std::convert::TryInto;
 use std::fmt::Display;
 
+use crate::error::InstructionError;
 use anyhow::anyhow;
 use anyhow::bail;
 use anyhow::Result;
@@ -447,15 +448,27 @@ impl<'pgm> VMState<'pgm> {
     }
 
     fn instruction_assert_vector(&mut self) -> Result<Option<CoProcessorCall>> {
-        if !self.assert_vector() {
-            bail!(AssertionFailed(
-                self.instruction_pointer,
-                self.cycle_count,
-                self.op_stack.peek_at(ST0)
-            ));
+        for index in 0..DIGEST_LENGTH {
+            let lhs = index.try_into().unwrap();
+            let rhs = (index + DIGEST_LENGTH).try_into().unwrap();
+            if self.op_stack.peek_at(lhs) != self.op_stack.peek_at(rhs) {
+                bail!(self.new_vector_assertion_failure(index));
+            }
         }
         self.instruction_pointer += 1;
         Ok(None)
+    }
+
+    fn new_vector_assertion_failure(&self, failing_index_lhs: usize) -> InstructionError {
+        let failing_position_lhs = failing_index_lhs.try_into().unwrap();
+        let failing_position_rhs = (failing_index_lhs + DIGEST_LENGTH).try_into().unwrap();
+        VectorAssertionFailed(
+            self.instruction_pointer,
+            self.cycle_count,
+            failing_position_lhs,
+            self.op_stack.peek_at(failing_position_lhs),
+            self.op_stack.peek_at(failing_position_rhs),
+        )
     }
 
     fn instruction_add(&mut self) -> Result<Option<CoProcessorCall>> {
@@ -789,18 +802,6 @@ impl<'pgm> VMState<'pgm> {
     fn memory_get(&self, memory_address: &BFieldElement) -> BFieldElement {
         let maybe_memory_value = self.ram.get(memory_address).copied();
         maybe_memory_value.unwrap_or_else(BFieldElement::zero)
-    }
-
-    fn assert_vector(&self) -> bool {
-        for index in 0..DIGEST_LENGTH {
-            // Safe as long as 2 * DIGEST_LEN <= OpStackElement::COUNT
-            let lhs = index.try_into().unwrap();
-            let rhs = (index + DIGEST_LENGTH).try_into().unwrap();
-            if self.op_stack.peek_at(lhs) != self.op_stack.peek_at(rhs) {
-                return false;
-            }
-        }
-        true
     }
 
     fn pop_secret_digest(&mut self) -> Result<[BFieldElement; DIGEST_LENGTH]> {
