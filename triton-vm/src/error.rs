@@ -37,8 +37,8 @@ impl Display for InstructionError {
                 let failing_index_lhs: usize = failing_position_lhs.into();
                 let failing_index_rhs = failing_index_lhs + DIGEST_LENGTH;
                 write!(f, "Vector assertion failed: ")?;
-                write!(f, "op_stack[{failing_index_lhs}] = {lhs} != ")?;
-                write!(f, "{rhs} = op_stack[{failing_index_rhs}]. ")?;
+                write!(f, "op_stack[{failing_index_lhs}] == {lhs} != ")?;
+                write!(f, "{rhs} == op_stack[{failing_index_rhs}]. ")?;
                 write!(f, "ip: {ip}, clk: {clk}")
             }
             InverseOfZero => write!(f, "0 does not have a multiplicative inverse"),
@@ -94,6 +94,17 @@ mod tests {
     #[should_panic(expected = "Assertion failed: st0 must be 1. ip: 2, clk: 1, st0: 0")]
     fn assert_false() {
         let program = triton_program!(push 0 assert halt);
+        program.run([].into(), [].into()).unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected = "op_stack[1] == 10 != 1 == op_stack[6]")]
+    fn print_unequal_vec_assert_error() {
+        let program = triton_program! {
+            push 4 push 3 push 2 push  1 push 0
+            push 4 push 3 push 2 push 10 push 0
+            assert_vector halt
+        };
         program.run([].into(), [].into()).unwrap();
     }
 
