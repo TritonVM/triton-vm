@@ -185,7 +185,7 @@ The following additional constraints also apply to every pair of rows.
 1.  1. If the current instruction is `split`, then the logarithmic derivative for the Lookup Argument with the U32 Table accumulates `st0` and `st1` in the next row and `ci` in the current row with respect to challenges 🥜, 🌰, and 🥑, and indeterminate 🧷.
     1. If the current instruction is `lt`, `and`, `xor`, or `pow`, then the logarithmic derivative for the Lookup Argument with the U32 Table accumulates `st0`, `st1`, and `ci` in the current row and `st0` in the next row with respect to challenges 🥜, 🌰, 🥑, and 🥕, and indeterminate 🧷.
     1. If the current instruction is `log_2_floor`, then the logarithmic derivative for the Lookup Argument with the U32 Table accumulates `st0` and `ci` in the current row and `st0` in the next row with respect to challenges 🥜, 🥑, and 🥕, and indeterminate 🧷.
-    1. If the current instruction is `div`, then the logarithmic derivative for the Lookup Argument with the U32 Table accumulates both
+    1. If the current instruction is `div_mod`, then the logarithmic derivative for the Lookup Argument with the U32 Table accumulates both
         1. `st0` in the next row and `st1` in the current row as well as the constants `opcode(lt)` and `1` with respect to challenges 🥜, 🌰, 🥑, and 🥕, and indeterminate 🧷.
         1. `st0` in the current row and `st1` in the next row as well as `opcode(split)` with respect to challenges 🥜, 🌰, and 🥑, and indeterminate 🧷.
     1. If the current instruction is `pop_count`, then the logarithmic derivative for the Lookup Argument with the U32 Table accumulates `st0` and `ci` in the current row and `st0` in the next row with respect to challenges 🥜, 🥑, and 🥕, and indeterminate 🧷.
@@ -219,7 +219,7 @@ The following additional constraints also apply to every pair of rows.
     1. `+ xor_deselector·((U32LookupClientLogDerivative' - U32LookupClientLogDerivative)·(🧷 - 🥜·st0 - 🌰·st1 - 🥑·ci - 🥕·st0') - 1)`
     1. `+ pow_deselector·((U32LookupClientLogDerivative' - U32LookupClientLogDerivative)·(🧷 - 🥜·st0 - 🌰·st1 - 🥑·ci - 🥕·st0') - 1)`
     1. `+ log_2_floor_deselector·((U32LookupClientLogDerivative' - U32LookupClientLogDerivative)·(🧷 - 🥜·st0 - 🥑·ci - 🥕·st0') - 1)`
-    1. `+ div_deselector·(`<br />
+    1. `+ div_mod_deselector·(`<br />
     &emsp;&emsp;`(U32LookupClientLogDerivative' - U32LookupClientLogDerivative)·(🧷 - 🥜·st0' - 🌰·st1 - 🥑·opcode(lt) - 🥕·1)·(🧷 - 🥜·st0 - 🌰·st1' - 🥑·opcode(split))`<br />
     &emsp;&emsp;`- (🧷 - 🥜·st0' - 🌰·st1 - 🥑·opcode(lt) - 🥕·1)`<br />
     &emsp;&emsp;`- (🧷 - 🥜·st0 - 🌰·st1' - 🥑·opcode(split))`<br />

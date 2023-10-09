@@ -247,7 +247,7 @@ impl<'pgm> VMState<'pgm> {
             Xor => self.instruction_xor()?,
             Log2Floor => self.instruction_log_2_floor()?,
             Pow => self.instruction_pow()?,
-            Div => self.instruction_div()?,
+            DivMod => self.instruction_div_mod()?,
             PopCount => self.instruction_pop_count()?,
             XxAdd => self.instruction_xx_add()?,
             XxMul => self.instruction_xx_mul()?,
@@ -589,7 +589,7 @@ impl<'pgm> VMState<'pgm> {
         Ok(co_processor_trace)
     }
 
-    fn instruction_div(&mut self) -> Result<Option<CoProcessorCall>> {
+    fn instruction_div_mod(&mut self) -> Result<Option<CoProcessorCall>> {
         let numerator = self.op_stack.pop_u32()?;
         let denominator = self.op_stack.pop_u32()?;
         if denominator.is_zero() {
@@ -1191,7 +1191,7 @@ pub mod triton_vm_tests {
         ProgramAndInput::without_input(triton_program!(
             push 3 call lsb assert assert halt
             lsb:
-                push 2 swap 1 div return
+                push 2 swap 1 div_mod return
         ))
     }
 
@@ -1204,7 +1204,7 @@ pub mod triton_vm_tests {
         let program = triton_program!(
             push {st0} call lsb read_io eq assert read_io eq assert halt
             lsb:
-                push 2 swap 1 div return
+                push 2 swap 1 div_mod return
         );
         ProgramAndInput {
             program,
@@ -1394,11 +1394,11 @@ pub mod triton_vm_tests {
         }
     }
 
-    pub(crate) fn test_program_for_div() -> ProgramAndInput {
-        ProgramAndInput::without_input(triton_program!(push 2 push 3 div assert assert halt))
+    pub(crate) fn test_program_for_div_mod() -> ProgramAndInput {
+        ProgramAndInput::without_input(triton_program!(push 2 push 3 div_mod assert assert halt))
     }
 
-    pub(crate) fn property_based_test_program_for_div() -> ProgramAndInput {
+    pub(crate) fn property_based_test_program_for_div_mod() -> ProgramAndInput {
         let mut rng = ThreadRng::default();
 
         let denominator = rng.next_u32();
@@ -1407,7 +1407,7 @@ pub mod triton_vm_tests {
         let remainder = numerator % denominator;
 
         let program = triton_program!(
-            push {denominator} push {numerator} div read_io eq assert read_io eq assert halt
+            push {denominator} push {numerator} div_mod read_io eq assert read_io eq assert halt
         );
         ProgramAndInput {
             program,
@@ -1621,7 +1621,7 @@ pub mod triton_vm_tests {
             test_program_for_xor(),
             test_program_for_log2floor(),
             test_program_for_pow(),
-            test_program_for_div(),
+            test_program_for_div_mod(),
             test_program_for_starting_with_pop_count(),
             test_program_for_pop_count(),
             test_program_for_xxadd(),
@@ -1644,7 +1644,7 @@ pub mod triton_vm_tests {
             property_based_test_program_for_xor(),
             property_based_test_program_for_log2floor(),
             property_based_test_program_for_pow(),
-            property_based_test_program_for_div(),
+            property_based_test_program_for_div_mod(),
             property_based_test_program_for_pop_count(),
             property_based_test_program_for_is_u32(),
             property_based_test_program_for_random_ram_access(),

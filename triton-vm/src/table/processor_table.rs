@@ -323,7 +323,7 @@ impl ProcessorTable {
                     u32_table_running_sum_log_derivative +=
                         (challenges[U32Indeterminate] - compressed_row).inverse();
                 }
-                if previously_current_instruction == Instruction::Div.opcode_b() {
+                if previously_current_instruction == Instruction::DivMod.opcode_b() {
                     let compressed_row_for_lt_check = current_row[ST0.base_table_index()]
                         * challenges[U32LhsWeight]
                         + prev_row[ST1.base_table_index()] * challenges[U32RhsWeight]
@@ -1967,7 +1967,7 @@ impl ExtProcessorTable {
         .concat()
     }
 
-    fn instruction_div(
+    fn instruction_div_mod(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
         let curr_base_row = |col: ProcessorBaseTableColumn| {
@@ -2218,7 +2218,7 @@ impl ExtProcessorTable {
             Xor => ExtProcessorTable::instruction_xor(circuit_builder),
             Log2Floor => ExtProcessorTable::instruction_log_2_floor(circuit_builder),
             Pow => ExtProcessorTable::instruction_pow(circuit_builder),
-            Div => ExtProcessorTable::instruction_div(circuit_builder),
+            DivMod => ExtProcessorTable::instruction_div_mod(circuit_builder),
             PopCount => ExtProcessorTable::instruction_pop_count(circuit_builder),
             XxAdd => ExtProcessorTable::instruction_xxadd(circuit_builder),
             XxMul => ExtProcessorTable::instruction_xxmul(circuit_builder),
@@ -2626,8 +2626,8 @@ impl ExtProcessorTable {
             Self::instruction_deselector_current_row(circuit_builder, Instruction::Pow);
         let log_2_floor_deselector =
             Self::instruction_deselector_current_row(circuit_builder, Instruction::Log2Floor);
-        let div_deselector =
-            Self::instruction_deselector_current_row(circuit_builder, Instruction::Div);
+        let div_mod_deselector =
+            Self::instruction_deselector_current_row(circuit_builder, Instruction::DivMod);
         let pop_count_deselector =
             Self::instruction_deselector_current_row(circuit_builder, Instruction::PopCount);
 
@@ -2654,12 +2654,12 @@ impl ExtProcessorTable {
             - challenge(U32LhsWeight) * curr_base_row(ST0)
             - challenge(U32CiWeight) * curr_base_row(CI)
             - challenge(U32ResultWeight) * next_base_row(ST0);
-        let div_factor_for_lt = challenge(U32Indeterminate)
+        let div_mod_factor_for_lt = challenge(U32Indeterminate)
             - challenge(U32LhsWeight) * next_base_row(ST0)
             - challenge(U32RhsWeight) * curr_base_row(ST1)
             - challenge(U32CiWeight) * constant(Instruction::Lt.opcode())
             - challenge(U32ResultWeight);
-        let div_factor_for_range_check = challenge(U32Indeterminate)
+        let div_mod_factor_for_range_check = challenge(U32Indeterminate)
             - challenge(U32LhsWeight) * curr_base_row(ST0)
             - challenge(U32RhsWeight) * next_base_row(ST1)
             - challenge(U32CiWeight) * constant(Instruction::Split.opcode());
@@ -2679,12 +2679,12 @@ impl ExtProcessorTable {
         let xor_summand = xor_deselector * running_sum_absorb_xor_factor;
         let pow_summand = pow_deselector * running_sum_absorbs_binop_factor;
         let log_2_floor_summand = log_2_floor_deselector * running_sum_absorbs_unop_factor.clone();
-        let div_summand = div_deselector
+        let div_mod_summand = div_mod_deselector
             * ((running_sum_next.clone() - running_sum.clone())
-                * div_factor_for_lt.clone()
-                * div_factor_for_range_check.clone()
-                - div_factor_for_lt
-                - div_factor_for_range_check);
+                * div_mod_factor_for_lt.clone()
+                * div_mod_factor_for_range_check.clone()
+                - div_mod_factor_for_lt
+                - div_mod_factor_for_range_check);
         let pop_count_summand = pop_count_deselector * running_sum_absorbs_unop_factor;
         let no_update_summand = (one() - curr_base_row(IB2)) * (running_sum_next - running_sum);
 
@@ -2694,7 +2694,7 @@ impl ExtProcessorTable {
             + xor_summand
             + pow_summand
             + log_2_floor_summand
-            + div_summand
+            + div_mod_summand
             + pop_count_summand
             + no_update_summand
     }
@@ -3428,27 +3428,27 @@ mod constraint_polynomial_tests {
     }
 
     #[test]
-    fn transition_constraints_for_instruction_div_test() {
+    fn transition_constraints_for_instruction_div_mod_test() {
         let test_rows = [
             test_row_from_program(
-                &triton_program!(push 2 push 3 div push 1 eq assert push 1 eq assert halt),
+                &triton_program!(push 2 push 3 div_mod push 1 eq assert push 1 eq assert halt),
                 2,
             ),
             test_row_from_program(
-                &triton_program!(push 3 push 7 div push 1 eq assert push 2 eq assert halt),
+                &triton_program!(push 3 push 7 div_mod push 1 eq assert push 2 eq assert halt),
                 2,
             ),
             test_row_from_program(
-                &triton_program!(push 4 push 7 div push 3 eq assert push 1 eq assert halt),
+                &triton_program!(push 4 push 7 div_mod push 3 eq assert push 1 eq assert halt),
                 2,
             ),
         ];
-        test_constraints_for_rows_with_debug_info(Div, &test_rows, &[ST0, ST1], &[ST0, ST1]);
+        test_constraints_for_rows_with_debug_info(DivMod, &test_rows, &[ST0, ST1], &[ST0, ST1]);
     }
 
     #[test]
     fn division_by_zero_is_impossible_test() {
-        let err = ProgramAndInput::without_input(triton_program!(div))
+        let err = ProgramAndInput::without_input(triton_program!(div_mod))
             .run()
             .err();
         let Some(err) = err else {

@@ -69,7 +69,7 @@ fn greatest_common_divisor() -> Program {
             call terminate  // _ d n where d != 0
         dup 1               // _ d n d
         dup 1               // _ d n d n
-        div                 // _ d n q r
+        div_mod             // _ d n q r
         swap 2              // _ d r q n
         pop                 // _ d r q
         pop                 // _ d r
@@ -90,8 +90,8 @@ fn program_with_many_u32_instructions() -> Program {
         push     5 push     7 pow
         push 69584 push  6796 xor
         push 64972 push  3915 and
-        push 98668 push 15787 div
-        push 15787 push 98668 div
+        push 98668 push 15787 div_mod
+        push 15787 push 98668 div_mod
         push 98141 push  7397 and
         push 67749 push 60797 lt
         push 49528 split
@@ -102,10 +102,10 @@ fn program_with_many_u32_instructions() -> Program {
         push 86323 push 37607 xor
         push 32374 push 20636 pow
         push 97416 log_2_floor
-        push 14392 push 31589 div
+        push 14392 push 31589 div_mod
         halt
         lsb:
-            push 2 swap 1 div return
+            push 2 swap 1 div_mod return
         is_u32:
             split pop push 0 eq return
     )

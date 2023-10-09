@@ -255,7 +255,7 @@ fn an_instruction(s: &str) -> ParseResult<AnInstruction<String>> {
     let absorb = instruction("absorb", Absorb);
     let squeeze = instruction("squeeze", Squeeze);
 
-    let hashing_related = alt((hash, divine_sibling, absorb_init, absorb, squeeze));
+    let hashing_related = alt((hash, absorb_init, absorb, squeeze));
 
     // Arithmetic on stack instructions
     let add = instruction("add", Add);
@@ -268,7 +268,7 @@ fn an_instruction(s: &str) -> ParseResult<AnInstruction<String>> {
     let xor = instruction("xor", Xor);
     let log_2_floor = instruction("log_2_floor", Log2Floor);
     let pow = instruction("pow", Pow);
-    let div = instruction("div", Div);
+    let div_mod = instruction("div_mod", DivMod);
     let pop_count = instruction("pop_count", PopCount);
     let xxadd = instruction("xxadd", XxAdd);
     let xxmul = instruction("xxmul", XxMul);
@@ -276,7 +276,8 @@ fn an_instruction(s: &str) -> ParseResult<AnInstruction<String>> {
     let xbmul = instruction("xbmul", XbMul);
 
     let base_field_arithmetic_on_stack = alt((add, mul, invert, eq));
-    let bitwise_arithmetic_on_stack = alt((split, lt, and, xor, log_2_floor, pow, div, pop_count));
+    let bitwise_arithmetic_on_stack =
+        alt((split, lt, and, xor, log_2_floor, pow, div_mod, pop_count));
     let extension_field_arithmetic_on_stack = alt((xxadd, xxmul, xinvert, xbmul));
     let arithmetic_on_stack = alt((
         base_field_arithmetic_on_stack,
@@ -295,7 +296,7 @@ fn an_instruction(s: &str) -> ParseResult<AnInstruction<String>> {
     // Successfully parsing "assert" before trying "assert_vector" can lead to
     // picking the wrong one. By trying them in the order of longest first, less
     // backtracking is necessary.
-    let syntax_ambiguous = alt((assert_vector, assert_, divine));
+    let syntax_ambiguous = alt((assert_vector, assert_, divine_sibling, divine));
 
     alt((
         opstack_manipulation,

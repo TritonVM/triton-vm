@@ -134,7 +134,7 @@ pub enum AnInstruction<Dest: PartialEq + Default> {
     Xor,
     Log2Floor,
     Pow,
-    Div,
+    DivMod,
     PopCount,
 
     // Extension field arithmetic on stack
@@ -182,7 +182,7 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
             Xor => 22,
             Log2Floor => 12,
             Pow => 30,
-            Div => 20,
+            DivMod => 20,
             PopCount => 28,
             XxAdd => 104,
             XxMul => 112,
@@ -225,7 +225,7 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
             Xor => "xor",
             Log2Floor => "log_2_floor",
             Pow => "pow",
-            Div => "div",
+            DivMod => "div_mod",
             PopCount => "pop_count",
             XxAdd => "xxadd",
             XxMul => "xxmul",
@@ -290,7 +290,7 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
             Xor => Xor,
             Log2Floor => Log2Floor,
             Pow => Pow,
-            Div => Div,
+            DivMod => DivMod,
             PopCount => PopCount,
             XxAdd => XxAdd,
             XxMul => XxMul,
@@ -345,7 +345,7 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
             Xor => -1,
             Log2Floor => 0,
             Pow => -1,
-            Div => 0,
+            DivMod => 0,
             PopCount => 0,
             XxAdd => 0,
             XxMul => 0,
@@ -360,7 +360,7 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
     pub fn is_u32_instruction(&self) -> bool {
         matches!(
             self,
-            Split | Lt | And | Xor | Log2Floor | Pow | Div | PopCount
+            Split | Lt | And | Xor | Log2Floor | Pow | DivMod | PopCount
         )
     }
 }
@@ -523,7 +523,7 @@ const fn all_instructions_without_args() -> [AnInstruction<BFieldElement>; Instr
         Xor,
         Log2Floor,
         Pow,
-        Div,
+        DivMod,
         PopCount,
         XxAdd,
         XxMul,

@@ -156,7 +156,7 @@ mod tests {
     #[test]
     #[should_panic(expected = "Division by 0 is impossible")]
     fn division_by_zero_test() {
-        let program = triton_program!(push 0 push 5 div halt);
+        let program = triton_program!(push 0 push 5 div_mod halt);
         program.run([].into(), [].into()).unwrap();
     }
 

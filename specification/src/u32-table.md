@@ -75,7 +75,7 @@ $$a \texttt{ xor } b = a + b - 2 \cdot (a \texttt{ and } b)$$
 
 Credit for this trick goes, to the best of our knowledge, to [Daniel Lubarov](https://github.com/dlubarov).
 
-For the remaining u32 instruction `div`, the processor triggers the creation of two sections in the U32 Table:
+For the remaining u32 instruction `div_mod`, the processor triggers the creation of two sections in the U32 Table:
 
 - One section to ensure that the remainder `r` is smaller than the divisor `d`.
 The processor requests the result of `lt` by setting the U32 Table's `CI` register to the opcode of `lt`.

@@ -573,12 +573,12 @@ This instruction uses all constraints defined by [instruction groups](instructio
 Beyond that, this instruction has no transition constraints.
 Instead, correct transition is guaranteed by the [U32 Table](u32-table.md).
 
-## Instruction `div`
+## Instruction `div_mod`
 
 This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `step_1`, `stack_remains_and_top_3_unconstrained`, and `keep_ram`.
 Additionally, it defines the following transition constraints.
 
-Recall that instruction `div` takes stack `_ d n` and computes `_ q r` where `n` is the numerator, `d` is the denominator, `r` is the remainder, and `q` is the quotient.
+Recall that instruction `div_mod` takes stack `_ d n` and computes `_ q r` where `n` is the numerator, `d` is the denominator, `r` is the remainder, and `q` is the quotient.
 The following two properties are guaranteed by the [U32 Table](u32-table.md):
 1. The remainder `r` is smaller than the denominator `d`, and
 1. all four of `n`, `d`, `q`, and `r` are u32s.
