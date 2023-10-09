@@ -1,0 +1,51 @@
+# https://git-cliff.org/docs/configuration
+
+[changelog]
+# Template engine: https://keats.github.io/tera/docs/
+
+header = ""
+body = """
+release Triton VM {{ version }}
+{% for group, commits in commits | group_by(attribute="group") %}
+    # {{ group | striptags | trim  | upper_first }}
+    {% for commit in commits %}
+        - {% if commit.breaking %}(!) {% endif %}{{ commit.message | upper_first }} ({{ commit.id | truncate(length=8, end="") }})\
+    {% endfor %}
+{% endfor %}\n
+"""
+footer = "Note: (!) indicates a breaking change.\n"
+trim = true
+
+postprocessors = []
+
+[git]
+
+conventional_commits = true
+filter_unconventional = true
+split_commits = false
+commit_preprocessors = []
+
+# Use <!-- prio --> hack to sort the categories. See: https://github.com/orhun/git-cliff/issues/9
+commit_parsers = [
+  { message = "^feat",            group = "<!-- 00 --> ✨ Features" },
+  { message = "^fix",             group = "<!-- 10 --> 🐛 Bug Fixes" },
+  { message = "^perf",            group = "<!-- 20 --> ⚡️ Performance" },
+  { message = "^doc",             group = "<!-- 30 --> 📝 Documentation" },
+  { message = "^chore\\(deps\\)", skip = true },
+  { message = "^chore\\(pr\\)",   skip = true },
+  { message = "^chore\\(pull\\)", skip = true },
+  { message = "^chore|ci|misc",   group = "<!-- 40 --> 🔧 Miscellaneous" },
+  { message = "^refactor",        group = "<!-- 50 --> ♻️ Refactor" },
+  { message = "^test",            group = "<!-- 60 --> ✅ Testing" },
+  { body = ".*security",          group = "<!-- 70 --> 🔒️ Security" },
+  { message = "^revert",          group = "<!-- 80 --> ⏪️ Revert" },
+  { message = "^style",           group = "<!-- 90 --> 💄 Styling" },
+]
+
+protect_breaking_commits = false
+filter_commits = false
+tag_pattern = "v[0-9]*\\.[0-9]*\\.[0-9]*"
+skip_tags = ""
+ignore_tags = ""
+topo_order = false
+sort_commits = "oldest"
