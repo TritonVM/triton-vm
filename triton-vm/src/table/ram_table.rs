@@ -531,7 +531,7 @@ impl ExtRamTable {
 }
 
 #[cfg(test)]
-pub mod tests {
+pub(crate) mod tests {
     use super::*;
 
     pub fn constraints_evaluate_to_zero(

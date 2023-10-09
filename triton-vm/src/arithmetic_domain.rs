@@ -109,7 +109,7 @@ impl ArithmeticDomain {
 }
 
 #[cfg(test)]
-mod domain_tests {
+mod tests {
     use itertools::Itertools;
     use twenty_first::shared_math::b_field_element::BFieldElement;
     use twenty_first::shared_math::traits::PrimitiveRootOfUnity;
@@ -188,7 +188,7 @@ mod domain_tests {
     }
 
     #[test]
-    fn domain_values_test() {
+    fn domain_values() {
         let x_cubed_coefficients = [0, 0, 0, 1].map(BFieldElement::new).to_vec();
         let poly = Polynomial::new(x_cubed_coefficients.clone());
 

@@ -845,7 +845,7 @@ impl<'pgm> Display for VMState<'pgm> {
 }
 
 #[cfg(test)]
-pub mod triton_vm_tests {
+pub(crate) mod tests {
     use std::ops::BitAnd;
     use std::ops::BitXor;
 
@@ -885,7 +885,7 @@ pub mod triton_vm_tests {
     }
 
     #[test]
-    fn initialise_table_test() {
+    fn initialise_table() {
         let program = GREATEST_COMMON_DIVISOR.clone();
         let stdin = vec![42, 56].into();
         let (aet, stdout) = program.trace_execution(stdin, [].into()).unwrap();
@@ -900,7 +900,7 @@ pub mod triton_vm_tests {
     }
 
     #[test]
-    fn run_tvm_gcd_test() {
+    fn run_tvm_gcd() {
         let program = GREATEST_COMMON_DIVISOR.clone();
         let stdin = vec![42, 56].into();
         let stdout = program.run(stdin, [].into()).unwrap();
@@ -911,7 +911,7 @@ pub mod triton_vm_tests {
         assert_eq!(BFieldElement::new(14), stdout[0]);
     }
 
-    pub(crate) fn test_hash_nop_nop_lt() -> ProgramAndInput {
+    pub(crate) fn test_program_hash_nop_nop_lt() -> ProgramAndInput {
         ProgramAndInput::without_input(
             triton_program!(hash nop hash nop nop hash push 3 push 2 lt assert halt),
         )
@@ -1530,7 +1530,7 @@ pub mod triton_vm_tests {
     }
 
     #[test]
-    fn negative_property_is_u32_test() {
+    fn negative_property_is_u32() {
         let mut rng = ThreadRng::default();
         let st0 = (rng.next_u32() as u64) << 32;
 
@@ -1598,7 +1598,7 @@ pub mod triton_vm_tests {
     pub(crate) fn small_tasm_test_programs() -> Vec<ProgramAndInput> {
         vec![
             test_program_for_halt(),
-            test_hash_nop_nop_lt(),
+            test_program_hash_nop_nop_lt(),
             test_program_for_push_pop_dup_swap_nop(),
             test_program_for_divine(),
             test_program_for_skiz(),
@@ -1652,7 +1652,7 @@ pub mod triton_vm_tests {
     }
 
     #[test]
-    fn xxadd_test() {
+    fn xxadd() {
         let program = triton_program!(
             read_io read_io read_io
             read_io read_io read_io
@@ -1674,7 +1674,7 @@ pub mod triton_vm_tests {
     }
 
     #[test]
-    fn xxmul_test() {
+    fn xxmul() {
         let program = triton_program!(
             read_io read_io read_io
             read_io read_io read_io
@@ -1696,7 +1696,7 @@ pub mod triton_vm_tests {
     }
 
     #[test]
-    fn xinv_test() {
+    fn xinv() {
         let program = triton_program!(
             read_io read_io read_io
             dup 2 dup 2 dup 2
@@ -1731,7 +1731,7 @@ pub mod triton_vm_tests {
     }
 
     #[test]
-    fn xbmul_test() {
+    fn xbmul() {
         let program = triton_program!(
             read_io read_io read_io
             read_io
@@ -1753,7 +1753,7 @@ pub mod triton_vm_tests {
     }
 
     #[test]
-    fn pseudo_sub_test() {
+    fn pseudo_sub() {
         let program = triton_program!(
             push 7 push 19 call sub write_io halt
             sub:
@@ -1767,16 +1767,16 @@ pub mod triton_vm_tests {
 
     #[test]
     #[allow(clippy::assertions_on_constants)]
-    const fn op_stack_is_big_enough_test() {
+    const fn op_stack_is_big_enough() {
         assert!(
             2 * DIGEST_LENGTH <= OpStackElement::COUNT,
             "The OpStack must be large enough to hold two digests."
         );
     }
-    const _COMPILE_TIME_ASSERTION: () = op_stack_is_big_enough_test();
+    const _COMPILE_TIME_ASSERTION: () = op_stack_is_big_enough();
 
     #[test]
-    fn run_tvm_hello_world_1_test() {
+    fn run_tvm_hello_world_1() {
         let program = triton_program!(
             push  10 write_io
             push  33 write_io
@@ -1801,7 +1801,7 @@ pub mod triton_vm_tests {
     }
 
     #[test]
-    fn run_tvm_halt_then_do_stuff_test() {
+    fn run_tvm_halt_then_do_stuff() {
         let program = triton_program!(halt push 1 push 2 add invert write_io);
         let (aet, _) = program.trace_execution([].into(), [].into()).unwrap();
 
@@ -1816,7 +1816,7 @@ pub mod triton_vm_tests {
     }
 
     #[test]
-    fn run_tvm_basic_ram_read_write_test() {
+    fn run_tvm_basic_ram_read_write() {
         let program = triton_program!(
             push  5 push  6 write_mem pop
             push 15 push 16 write_mem pop
@@ -1838,7 +1838,7 @@ pub mod triton_vm_tests {
     }
 
     #[test]
-    fn run_tvm_edgy_ram_writes_test() {
+    fn run_tvm_edgy_ram_writes() {
         let program = triton_program!(
                         //       ┌ stack cannot shrink beyond this point
                         //       ↓
@@ -1867,7 +1867,7 @@ pub mod triton_vm_tests {
     }
 
     #[test]
-    fn run_tvm_sample_weights_test() {
+    fn run_tvm_sample_weights() {
         // sample weights for the recursive verifier
         // - input: seed, num_weights
         // - output: num_weights-many random weights
@@ -1898,7 +1898,7 @@ pub mod triton_vm_tests {
     }
 
     #[test]
-    fn triton_assembly_merkle_tree_authentication_path_verification_test() {
+    fn triton_assembly_merkle_tree_authentication_path_verification() {
         type H = Tip5;
 
         const TREE_HEIGHT: usize = 6;
@@ -1931,7 +1931,7 @@ pub mod triton_vm_tests {
     }
 
     #[test]
-    fn run_tvm_get_colinear_y_test() {
+    fn run_tvm_get_colinear_y() {
         // see also: get_colinear_y in src/shared_math/polynomial.rs
         let get_colinear_y_program = triton_program!(
             read_io                         // p2_x
@@ -1952,7 +1952,7 @@ pub mod triton_vm_tests {
     }
 
     #[test]
-    fn run_tvm_countdown_from_10_test() {
+    fn run_tvm_countdown_from_10() {
         let countdown_program = triton_program!(
             push 10
             call loop
@@ -1982,7 +1982,7 @@ pub mod triton_vm_tests {
     }
 
     #[test]
-    fn run_tvm_swap_test() {
+    fn run_tvm_swap() {
         let program = triton_program!(push 1 push 2 swap 1 assert write_io halt);
         let standard_out = program.run([].into(), [].into()).unwrap();
         assert_eq!(BFieldElement::new(2), standard_out[0]);
@@ -2038,7 +2038,7 @@ pub mod triton_vm_tests {
     }
 
     #[test]
-    fn program_without_halt_test() {
+    fn program_without_halt() {
         let program = triton_program!(nop);
         let err = program.trace_execution([].into(), [].into()).err();
         let Some(err) = err else {
@@ -2053,7 +2053,7 @@ pub mod triton_vm_tests {
     }
 
     #[test]
-    fn verify_sudoku_test() {
+    fn verify_sudoku() {
         let program = VERIFY_SUDOKU.clone();
         let stdin = vec![
             8, 5, 9, /**/ 7, 6, 1, /**/ 4, 2, 3, //

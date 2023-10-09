@@ -1125,7 +1125,7 @@ pub fn interpolant_degree(padded_height: usize, num_trace_randomizers: usize) ->
 }
 
 #[cfg(test)]
-mod master_table_tests {
+mod tests {
     use ndarray::s;
     use ndarray::Array2;
     use num_traits::Zero;
@@ -1135,7 +1135,7 @@ mod master_table_tests {
     use twenty_first::shared_math::traits::FiniteField;
 
     use crate::arithmetic_domain::ArithmeticDomain;
-    use crate::stark::triton_stark_tests::*;
+    use crate::stark::tests::*;
     use crate::table::degree_lowering_table::DegreeLoweringBaseTableColumn;
     use crate::table::degree_lowering_table::DegreeLoweringExtTableColumn;
     use crate::table::master_table::TableId::*;
@@ -1248,7 +1248,7 @@ mod master_table_tests {
     }
 
     #[test]
-    fn zerofiers_are_correct_test() {
+    fn zerofiers_are_correct() {
         let big_order = 16;
         let big_offset = BFieldElement::generator();
         let big_domain = ArithmeticDomain::of_length(big_order as usize).with_offset(big_offset);

@@ -775,7 +775,7 @@ impl MasterExtTableColumn for DegreeLoweringExtTableColumn {
 // --------------------------------------------------------------------
 
 #[cfg(test)]
-mod table_column_tests {
+mod tests {
     use strum::IntoEnumIterator;
 
     use crate::table::cascade_table;

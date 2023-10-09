@@ -516,7 +516,7 @@ fn token1<'a>(token: &'a str) -> impl Fn(&'a str) -> ParseResult<()> {
 }
 
 #[cfg(test)]
-pub mod parser_tests {
+pub(crate) mod tests {
     use itertools::Itertools;
     use rand::distributions::WeightedIndex;
     use rand::prelude::*;
@@ -695,7 +695,7 @@ pub mod parser_tests {
     }
 
     #[test]
-    fn parse_program_empty_test() {
+    fn parse_program_empty() {
         parse_program_prop(TestCase {
             input: "",
             expected: Program::new(&[]),
@@ -761,7 +761,7 @@ pub mod parser_tests {
     }
 
     #[test]
-    fn parse_program_whitespace_test() {
+    fn parse_program_whitespace() {
         parse_program_neg_prop(NegativeTestCase {
             input: "poppop",
             expected_error: "n/a",
@@ -813,7 +813,7 @@ pub mod parser_tests {
     }
 
     #[test]
-    fn parse_program_label_test() {
+    fn parse_program_label() {
         parse_program_prop(TestCase {
             input: "foo: call foo",
             expected: Program::new(&[
@@ -876,7 +876,7 @@ pub mod parser_tests {
     }
 
     #[test]
-    fn parse_program_nonexistent_instructions_test() {
+    fn parse_program_nonexistent_instructions() {
         parse_program_neg_prop(NegativeTestCase {
             input: "swap 0",
             expected_error: "instruction `swap` cannot take argument `0`",
@@ -900,7 +900,7 @@ pub mod parser_tests {
     }
 
     #[test]
-    fn parse_program_bracket_syntax_test() {
+    fn parse_program_bracket_syntax() {
         parse_program_prop(TestCase {
             input: "foo: [foo]",
             expected: Program::new(&[
@@ -919,7 +919,7 @@ pub mod parser_tests {
     }
 
     #[test]
-    fn parse_program_test() {
+    fn parse_program() {
         for size in 0..100 {
             let code = program_gen(size * 10);
 
@@ -1031,7 +1031,7 @@ pub mod parser_tests {
     }
 
     #[test]
-    fn test_triton_instruction_macro_on_simple_instructions() {
+    fn triton_instruction_macro_parses_simple_instructions() {
         assert_eq!(Instruction(Halt), triton_instr!(halt));
         assert_eq!(Instruction(Add), triton_instr!(add));
         assert_eq!(Instruction(Pop), triton_instr!(pop));
@@ -1039,12 +1039,12 @@ pub mod parser_tests {
 
     #[test]
     #[should_panic(expected = "not_an_instruction")]
-    fn negative_test_of_triton_instruction_macro() {
+    fn triton_instruction_macro_fails_when_encountering_unknown_instruction() {
         triton_instr!(not_an_instruction);
     }
 
     #[test]
-    fn test_triton_instruction_macro_on_instructions_with_argument() {
+    fn triton_instruction_macro_parses_instructions_with_argument() {
         assert_eq!(Instruction(Push(7_u64.into())), triton_instr!(push 7));
         assert_eq!(Instruction(Dup(ST3)), triton_instr!(dup 3));
         assert_eq!(Instruction(Swap(ST5)), triton_instr!(swap 5));
@@ -1055,7 +1055,7 @@ pub mod parser_tests {
     }
 
     #[test]
-    fn test_triton_asm_macro_repeating_one_instruction() {
+    fn triton_asm_macro_can_repeat_instructions() {
         let instructions = triton_asm![push 42; 3];
         let expected_instructions = vec![Instruction(Push(42_u64.into())); 3];
         assert_eq!(expected_instructions, instructions);

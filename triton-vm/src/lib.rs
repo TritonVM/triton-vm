@@ -511,20 +511,17 @@ pub fn verify(parameters: StarkParameters, claim: &Claim, proof: &Proof) -> bool
 }
 
 #[cfg(test)]
-mod public_interface_tests {
+mod tests {
     use rand::thread_rng;
     use rand::Rng;
 
-    use crate::shared_tests::create_proofs_directory;
-    use crate::shared_tests::load_proof;
-    use crate::shared_tests::proof_file_exists;
-    use crate::shared_tests::save_proof;
+    use crate::shared_tests::*;
     use crate::stark::StarkHasher;
 
     use super::*;
 
     #[test]
-    pub fn lockscript_test() {
+    fn lockscript() {
         // Program proves the knowledge of a hash preimage
         let program = triton_program!(
             divine divine divine divine divine
@@ -614,7 +611,7 @@ mod public_interface_tests {
     }
 
     #[test]
-    fn save_proof_to_and_load_from_disk_test() {
+    fn save_proof_to_and_load_from_disk() {
         let filename = "nop_halt.tsp";
         if !proof_file_exists(filename) {
             create_proofs_directory().unwrap();

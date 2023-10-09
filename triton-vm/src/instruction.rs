@@ -601,7 +601,7 @@ impl TryFrom<usize> for InstructionBit {
 }
 
 #[cfg(test)]
-mod instruction_tests {
+mod tests {
     use std::cmp::Ordering;
     use std::collections::HashMap;
 
@@ -620,7 +620,7 @@ mod instruction_tests {
     use crate::op_stack::NUM_OP_STACK_REGISTERS;
     use crate::triton_asm;
     use crate::triton_program;
-    use crate::vm::triton_vm_tests::test_program_for_call_recurse_return;
+    use crate::vm::tests::test_program_for_call_recurse_return;
     use crate::NonDeterminism;
     use crate::Program;
 
@@ -648,7 +648,7 @@ mod instruction_tests {
     }
 
     #[test]
-    fn parse_push_pop_test() {
+    fn parse_push_pop() {
         let program = triton_program!(push 1 push 1 add pop);
         let instructions = program.into_iter().collect_vec();
         let expected = vec![
@@ -663,7 +663,7 @@ mod instruction_tests {
 
     #[test]
     #[should_panic(expected = "Duplicate label: foo")]
-    fn fail_on_duplicate_labels_test() {
+    fn fail_on_duplicate_labels() {
         triton_program!(
             push 2
             call foo
@@ -675,7 +675,7 @@ mod instruction_tests {
     }
 
     #[test]
-    fn ib_registers_are_binary_test() {
+    fn ib_registers_are_binary() {
         for instruction in ALL_INSTRUCTIONS {
             for instruction_bit in InstructionBit::iter() {
                 let ib_value = instruction.ib(instruction_bit);
@@ -685,7 +685,7 @@ mod instruction_tests {
     }
 
     #[test]
-    fn instruction_to_opcode_to_instruction_is_consistent_test() {
+    fn instruction_to_opcode_to_instruction_is_consistent() {
         for instr in ALL_INSTRUCTIONS {
             assert_eq!(instr, instr.opcode().try_into().unwrap());
         }
@@ -700,7 +700,7 @@ mod instruction_tests {
 
     #[test]
     /// Serves no other purpose than to increase code coverage results.
-    fn run_constant_methods_test() {
+    fn run_constant_methods() {
         all_instructions_without_args();
         all_instruction_names();
     }

@@ -647,7 +647,7 @@ macro_rules! prof_itr0 {
 pub(crate) use prof_itr0;
 
 #[cfg(test)]
-pub mod triton_profiler_tests {
+mod tests {
     use std::thread::sleep;
     use std::time::Duration;
 

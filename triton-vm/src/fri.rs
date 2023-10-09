@@ -745,7 +745,7 @@ mod tests {
 
     proptest! {
         #[test]
-        fn sample_indices_test(
+        fn sample_indices(
             fri in arbitrary_fri(),
             initial_absorb in arbitrary_element_to_absorb(),
         ) {

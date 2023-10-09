@@ -270,14 +270,14 @@ impl From<&OpStackElement> for BFieldElement {
 }
 
 #[cfg(test)]
-mod op_stack_test {
+mod tests {
     use twenty_first::shared_math::b_field_element::BFieldElement;
 
     use crate::op_stack::OpStack;
     use crate::op_stack::OpStackElement;
 
     #[test]
-    fn sanity_test() {
+    fn sanity() {
         let digest = Default::default();
         let mut op_stack = OpStack::new(digest);
 

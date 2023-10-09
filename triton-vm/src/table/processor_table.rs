@@ -2975,25 +2975,27 @@ impl<'a> Display for ExtProcessorTraceRow<'a> {
 }
 
 #[cfg(test)]
-mod constraint_polynomial_tests {
+pub(crate) mod tests {
     use ndarray::Array2;
+    use rand::thread_rng;
+    use rand::Rng;
+    use strum::IntoEnumIterator;
 
     use crate::error::InstructionError;
     use crate::error::InstructionError::DivisionByZero;
+    use crate::instruction::Instruction;
     use crate::op_stack::OpStackElement;
     use crate::program::Program;
     use crate::shared_tests::ProgramAndInput;
-    use crate::stark::triton_stark_tests::master_base_table_for_low_security_level;
-    use crate::table::master_table::MasterTable;
-    use crate::table::master_table::NUM_BASE_COLUMNS;
-    use crate::table::master_table::NUM_EXT_COLUMNS;
+    use crate::stark::tests::master_base_table_for_low_security_level;
+    use crate::table::master_table::*;
     use crate::triton_program;
 
     use super::*;
 
     #[test]
     /// helps identifying whether the printing causes an infinite loop
-    fn print_simple_processor_table_row_test() {
+    fn print_simple_processor_table_row() {
         let program = triton_program!(push 2 push -1 add assert halt);
         let (states, _) = program.debug([].into(), [].into(), None, None);
 
@@ -3066,7 +3068,7 @@ mod constraint_polynomial_tests {
     }
 
     #[test]
-    fn transition_constraints_for_instruction_pop_test() {
+    fn transition_constraints_for_instruction_pop() {
         let test_rows = [test_row_from_program(&triton_program!(push 1 pop halt), 1)];
         test_constraints_for_rows_with_debug_info(
             Pop,
@@ -3077,7 +3079,7 @@ mod constraint_polynomial_tests {
     }
 
     #[test]
-    fn transition_constraints_for_instruction_push_test() {
+    fn transition_constraints_for_instruction_push() {
         let test_rows = [test_row_from_program(&triton_program!(push 1 halt), 0)];
         test_constraints_for_rows_with_debug_info(
             Push(BFieldElement::one()),
@@ -3088,7 +3090,7 @@ mod constraint_polynomial_tests {
     }
 
     #[test]
-    fn transition_constraints_for_instruction_dup_test() {
+    fn transition_constraints_for_instruction_dup() {
         let test_rows = [test_row_from_program(
             &triton_program!(push 1 dup 0 halt),
             1,
@@ -3102,7 +3104,7 @@ mod constraint_polynomial_tests {
     }
 
     #[test]
-    fn transition_constraints_for_instruction_swap_test() {
+    fn transition_constraints_for_instruction_swap() {
         let test_rows = [test_row_from_program(
             &triton_program!(push 1 push 2 swap 1 halt),
             2,
@@ -3116,7 +3118,7 @@ mod constraint_polynomial_tests {
     }
 
     #[test]
-    fn transition_constraints_for_instruction_skiz_test() {
+    fn transition_constraints_for_instruction_skiz() {
         // Case 0: ST0 is non-zero
         // Case 1: ST0 is zero, nia is instruction of size 1
         // Case 2: ST0 is zero, nia is instruction of size 2
@@ -3134,7 +3136,7 @@ mod constraint_polynomial_tests {
     }
 
     #[test]
-    fn transition_constraints_for_instruction_call_test() {
+    fn transition_constraints_for_instruction_call() {
         let test_rows = [test_row_from_program(
             &triton_program!(call label label: halt),
             0,
@@ -3148,7 +3150,7 @@ mod constraint_polynomial_tests {
     }
 
     #[test]
-    fn transition_constraints_for_instruction_return_test() {
+    fn transition_constraints_for_instruction_return() {
         let test_rows = [test_row_from_program(
             &triton_program!(call label halt label: return),
             1,
@@ -3162,7 +3164,7 @@ mod constraint_polynomial_tests {
     }
 
     #[test]
-    fn transition_constraints_for_instruction_recurse_test() {
+    fn transition_constraints_for_instruction_recurse() {
         let test_rows = [test_row_from_program(
             &triton_program!(push 2 call label halt label: push -1 add dup 0 skiz recurse return),
             6,
@@ -3176,7 +3178,7 @@ mod constraint_polynomial_tests {
     }
 
     #[test]
-    fn transition_constraints_for_instruction_read_mem_test() {
+    fn transition_constraints_for_instruction_read_mem() {
         let test_rows = [test_row_from_program(
             &triton_program!(push 5 push 3 write_mem read_mem halt),
             3,
@@ -3190,7 +3192,7 @@ mod constraint_polynomial_tests {
     }
 
     #[test]
-    fn transition_constraints_for_instruction_write_mem_test() {
+    fn transition_constraints_for_instruction_write_mem() {
         let test_rows = [test_row_from_program(
             &triton_program!(push 5 push 3 write_mem read_mem halt),
             2,
@@ -3204,7 +3206,7 @@ mod constraint_polynomial_tests {
     }
 
     #[test]
-    fn transition_constraints_for_instruction_eq_test() {
+    fn transition_constraints_for_instruction_eq() {
         let test_rows = [
             test_row_from_program(&triton_program!(push 3 push 3 eq assert halt), 2),
             test_row_from_program(&triton_program!(push 3 push 2 eq push 0 eq assert halt), 2),
@@ -3213,7 +3215,7 @@ mod constraint_polynomial_tests {
     }
 
     #[test]
-    fn transition_constraints_for_instruction_split_test() {
+    fn transition_constraints_for_instruction_split() {
         let test_rows = [
             test_row_from_program(&triton_program!(push -1 split halt), 1),
             test_row_from_program(&triton_program!(push  0 split halt), 1),
@@ -3234,7 +3236,7 @@ mod constraint_polynomial_tests {
     }
 
     #[test]
-    fn transition_constraints_for_instruction_lt_test() {
+    fn transition_constraints_for_instruction_lt() {
         let test_rows = [
             test_row_from_program(&triton_program!(push 3 push 3 lt push 0 eq assert halt), 2),
             test_row_from_program(&triton_program!(push 3 push 2 lt push 1 eq assert halt), 2),
@@ -3248,7 +3250,7 @@ mod constraint_polynomial_tests {
     }
 
     #[test]
-    fn transition_constraints_for_instruction_and_test() {
+    fn transition_constraints_for_instruction_and() {
         let test_rows = [test_row_from_program(
             &triton_program!(push 5 push 12 and push 4 eq assert halt),
             2,
@@ -3257,7 +3259,7 @@ mod constraint_polynomial_tests {
     }
 
     #[test]
-    fn transition_constraints_for_instruction_xor_test() {
+    fn transition_constraints_for_instruction_xor() {
         let test_rows = [test_row_from_program(
             &triton_program!(push 5 push 12 xor push 9 eq assert halt),
             2,
@@ -3266,7 +3268,7 @@ mod constraint_polynomial_tests {
     }
 
     #[test]
-    fn transition_constraints_for_instruction_log2floor_test() {
+    fn transition_constraints_for_instruction_log2floor() {
         let test_rows = [
             test_row_from_program(
                 &triton_program!(push  1 log_2_floor push  0 eq assert halt),
@@ -3341,7 +3343,7 @@ mod constraint_polynomial_tests {
     }
 
     #[test]
-    fn transition_constraints_for_instruction_pow_test() {
+    fn transition_constraints_for_instruction_pow() {
         let test_rows = [
             test_row_from_program(
                 &triton_program!(push 0 push  0 pow push   1 eq assert halt),
@@ -3428,7 +3430,7 @@ mod constraint_polynomial_tests {
     }
 
     #[test]
-    fn transition_constraints_for_instruction_div_mod_test() {
+    fn transition_constraints_for_instruction_div_mod() {
         let test_rows = [
             test_row_from_program(
                 &triton_program!(push 2 push 3 div_mod push 1 eq assert push 1 eq assert halt),
@@ -3447,7 +3449,7 @@ mod constraint_polynomial_tests {
     }
 
     #[test]
-    fn division_by_zero_is_impossible_test() {
+    fn division_by_zero_is_impossible() {
         let err = ProgramAndInput::without_input(triton_program!(div_mod))
             .run()
             .err();
@@ -3463,7 +3465,7 @@ mod constraint_polynomial_tests {
     }
 
     #[test]
-    fn transition_constraints_for_instruction_xxadd_test() {
+    fn transition_constraints_for_instruction_xxadd() {
         let test_rows = [
             test_row_from_program(
                 &triton_program!(push 5 push 6 push 7 push 8 push 9 push 10 xxadd halt),
@@ -3483,7 +3485,7 @@ mod constraint_polynomial_tests {
     }
 
     #[test]
-    fn transition_constraints_for_instruction_xxmul_test() {
+    fn transition_constraints_for_instruction_xxmul() {
         let test_rows = [
             test_row_from_program(
                 &triton_program!(push 5 push 6 push 7 push 8 push 9 push 10 xxmul halt),
@@ -3503,7 +3505,7 @@ mod constraint_polynomial_tests {
     }
 
     #[test]
-    fn transition_constraints_for_instruction_xinvert_test() {
+    fn transition_constraints_for_instruction_xinvert() {
         let test_rows = [
             test_row_from_program(&triton_program!(push 5 push 6 push 7 xinvert halt), 3),
             test_row_from_program(&triton_program!(push -2 push -3 push -4 xinvert halt), 3),
@@ -3517,7 +3519,7 @@ mod constraint_polynomial_tests {
     }
 
     #[test]
-    fn transition_constraints_for_instruction_xbmul_test() {
+    fn transition_constraints_for_instruction_xbmul() {
         let test_rows = [
             test_row_from_program(&triton_program!(push 5 push 6 push 7 push 2 xbmul halt), 4),
             test_row_from_program(&triton_program!(push 2 push 3 push 4 push -2 xbmul halt), 4),
@@ -3531,7 +3533,7 @@ mod constraint_polynomial_tests {
     }
 
     #[test]
-    fn instruction_deselector_gives_0_for_all_other_instructions_test() {
+    fn instruction_deselector_gives_0_for_all_other_instructions() {
         let circuit_builder = ConstraintCircuitBuilder::new();
 
         let mut master_base_table = Array2::zeros([2, NUM_BASE_COLUMNS]);
@@ -3625,18 +3627,6 @@ mod constraint_polynomial_tests {
             );
         }
     }
-}
-
-#[cfg(test)]
-pub mod tests {
-    use rand::thread_rng;
-    use rand::Rng;
-    use strum::IntoEnumIterator;
-
-    use crate::instruction::Instruction;
-    use crate::table::master_table::AIR_TARGET_DEGREE;
-
-    use super::*;
 
     pub fn constraints_evaluate_to_zero(
         master_base_trace_table: ArrayView2<BFieldElement>,
@@ -3728,7 +3718,7 @@ pub mod tests {
     }
 
     #[test]
-    fn opcode_decomposition_for_skiz_is_unique_test() {
+    fn opcode_decomposition_for_skiz_is_unique() {
         let max_value_of_skiz_constraint_for_nia_decomposition =
             (3 << 7) * (3 << 5) * (3 << 3) * (3 << 1) * 2;
         for instruction in Instruction::iter() {
@@ -3740,7 +3730,7 @@ pub mod tests {
     }
 
     #[test]
-    fn range_check_for_skiz_is_as_efficient_as_possible_test() {
+    fn range_check_for_skiz_is_as_efficient_as_possible() {
         let range_check_constraints =
             ExtProcessorTable::next_instruction_range_check_constraints_for_instruction_skiz(
                 &ConstraintCircuitBuilder::new(),

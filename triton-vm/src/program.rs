@@ -551,14 +551,14 @@ where
 }
 
 #[cfg(test)]
-mod test {
+mod tests {
     use itertools::Itertools;
     use rand::thread_rng;
     use rand::Rng;
     use twenty_first::shared_math::tip5::Tip5;
 
     use crate::example_programs::calculate_new_mmr_peaks_from_append_with_safe_lists;
-    use crate::parser::parser_tests::program_gen;
+    use crate::parser::tests::program_gen;
     use crate::triton_asm;
     use crate::triton_program;
 

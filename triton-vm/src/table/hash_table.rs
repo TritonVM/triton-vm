@@ -1821,7 +1821,7 @@ impl HashTable {
 }
 
 #[cfg(test)]
-pub mod tests {
+pub(crate) mod tests {
     use std::collections::HashMap;
 
     use super::*;
@@ -1913,7 +1913,7 @@ pub mod tests {
     }
 
     #[test]
-    fn hash_table_mode_discriminant_is_unique_test() {
+    fn hash_table_mode_discriminant_is_unique() {
         let mut discriminants_and_modes = HashMap::new();
         for mode in HashTableMode::iter() {
             let discriminant = u32::from(mode);

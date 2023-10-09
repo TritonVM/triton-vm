@@ -321,7 +321,7 @@ impl Index<RangeInclusive<ChallengeId>> for Challenges {
 }
 
 #[cfg(test)]
-mod challenge_tests {
+mod tests {
     use super::*;
 
     #[test]

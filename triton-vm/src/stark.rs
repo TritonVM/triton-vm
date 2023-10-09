@@ -1102,7 +1102,7 @@ impl Stark {
 }
 
 #[cfg(test)]
-pub(crate) mod triton_stark_tests {
+pub(crate) mod tests {
     use itertools::izip;
     use num_traits::Zero;
     use proptest::prelude::*;
@@ -1158,10 +1158,7 @@ pub(crate) mod triton_stark_tests {
     use crate::table::u32_table;
     use crate::table::u32_table::ExtU32Table;
     use crate::triton_program;
-    use crate::vm::triton_vm_tests::property_based_test_programs;
-    use crate::vm::triton_vm_tests::small_tasm_test_programs;
-    use crate::vm::triton_vm_tests::test_hash_nop_nop_lt;
-    use crate::vm::triton_vm_tests::test_program_for_halt;
+    use crate::vm::tests::*;
     use crate::NonDeterminism;
     use crate::PublicInput;
 
@@ -1211,7 +1208,7 @@ pub(crate) mod triton_stark_tests {
     }
 
     #[test]
-    pub fn print_ram_table_example_for_specification() {
+    fn print_ram_table_example_for_specification() {
         let program = triton_program!(
             push  5 push  6 write_mem pop
             push 15 push 16 write_mem pop
@@ -1312,7 +1309,7 @@ pub(crate) mod triton_stark_tests {
 
     /// To be used with `-- --nocapture`. Has mainly informative purpose.
     #[test]
-    pub fn print_all_constraint_degrees() {
+    fn print_all_constraint_degrees() {
         let padded_height = 2;
         let num_trace_randomizers = 2;
         let interpolant_degree = interpolant_degree(padded_height, num_trace_randomizers);
@@ -1322,7 +1319,7 @@ pub(crate) mod triton_stark_tests {
     }
 
     #[test]
-    pub fn check_io_terminals() {
+    fn check_io_terminals() {
         let read_nop_program = triton_program!(
             read_io read_io read_io nop nop write_io push 17 write_io halt
         );
@@ -1350,7 +1347,7 @@ pub(crate) mod triton_stark_tests {
     }
 
     #[test]
-    pub fn check_grand_cross_table_argument() {
+    fn check_grand_cross_table_argument() {
         let mut code_collection = small_tasm_test_programs();
         code_collection.append(&mut property_based_test_programs());
 
@@ -1408,7 +1405,7 @@ pub(crate) mod triton_stark_tests {
     }
 
     #[test]
-    fn constraint_polynomials_use_right_variable_count_test() {
+    fn constraint_polynomials_use_right_variable_count() {
         let challenges = Challenges::placeholder(None);
         let base_row = Array1::<BFieldElement>::zeros(NUM_BASE_COLUMNS);
         let ext_row = Array1::zeros(NUM_EXT_COLUMNS);
@@ -1519,7 +1516,7 @@ pub(crate) mod triton_stark_tests {
     }
 
     #[test]
-    fn number_of_quotient_degree_bounds_match_number_of_constraints_test() {
+    fn number_of_quotient_degree_bounds_match_number_of_constraints() {
         let base_row = Array1::<BFieldElement>::zeros(NUM_BASE_COLUMNS);
         let ext_row = Array1::zeros(NUM_EXT_COLUMNS);
         let challenges = Challenges::placeholder(None);
@@ -1568,12 +1565,12 @@ pub(crate) mod triton_stark_tests {
     }
 
     #[test]
-    fn triton_table_constraints_evaluate_to_zero_on_halt_test() {
+    fn triton_table_constraints_evaluate_to_zero_on_halt() {
         triton_table_constraints_evaluate_to_zero(test_program_for_halt());
     }
 
     #[test]
-    fn triton_table_constraints_evaluate_to_zero_on_fibonacci_test() {
+    fn triton_table_constraints_evaluate_to_zero_on_fibonacci() {
         let source_code_and_input = ProgramAndInput {
             program: FIBONACCI_SEQUENCE.clone(),
             public_input: vec![100],
@@ -1583,7 +1580,7 @@ pub(crate) mod triton_stark_tests {
     }
 
     #[test]
-    fn triton_table_constraints_evaluate_to_zero_on_big_mmr_snippet_test() {
+    fn triton_table_constraints_evaluate_to_zero_on_big_mmr_snippet() {
         let source_code_and_input = ProgramAndInput::without_input(
             CALCULATE_NEW_MMR_PEAKS_FROM_APPEND_WITH_SAFE_LISTS.clone(),
         );
@@ -1591,7 +1588,7 @@ pub(crate) mod triton_stark_tests {
     }
 
     #[test]
-    fn triton_table_constraints_evaluate_to_zero_on_small_programs_test() {
+    fn triton_table_constraints_evaluate_to_zero_on_small_programs() {
         for (program_idx, program) in small_tasm_test_programs().into_iter().enumerate() {
             println!("Testing program with index {program_idx}.");
             triton_table_constraints_evaluate_to_zero(program);
@@ -1599,7 +1596,7 @@ pub(crate) mod triton_stark_tests {
     }
 
     #[test]
-    fn triton_table_constraints_evaluate_to_zero_on_property_based_programs_test() {
+    fn triton_table_constraints_evaluate_to_zero_on_property_based_programs() {
         for (program_idx, program) in property_based_test_programs().into_iter().enumerate() {
             println!("Testing program with index {program_idx}.");
             triton_table_constraints_evaluate_to_zero(program);
@@ -1673,7 +1670,7 @@ pub(crate) mod triton_stark_tests {
     }
 
     #[test]
-    fn derived_constraints_evaluate_to_zero_on_halt_test() {
+    fn derived_constraints_evaluate_to_zero_on_halt() {
         derived_constraints_evaluate_to_zero(test_program_for_halt());
     }
 
@@ -1755,8 +1752,8 @@ pub(crate) mod triton_stark_tests {
     }
 
     #[test]
-    fn triton_prove_verify_simple_program_test() {
-        let program_with_input = test_hash_nop_nop_lt();
+    fn triton_prove_verify_simple_program() {
+        let program_with_input = test_program_hash_nop_nop_lt();
         let (parameters, claim, proof) = prove_with_low_security_level(
             &program_with_input.program,
             program_with_input.public_input(),
@@ -1769,7 +1766,7 @@ pub(crate) mod triton_stark_tests {
     }
 
     #[test]
-    fn triton_prove_verify_halt_test() {
+    fn triton_prove_verify_halt() {
         let code_with_input = test_program_for_halt();
         let mut profiler = Some(TritonProfiler::new("Prove Halt"));
         let (parameters, claim, proof) = prove_with_low_security_level(
@@ -1798,7 +1795,7 @@ pub(crate) mod triton_stark_tests {
 
     #[test]
     #[ignore = "used for tracking&debugging deserialization errors"]
-    fn triton_prove_halt_save_error_test() {
+    fn triton_prove_halt_save_error() {
         let code_with_input = test_program_for_halt();
 
         for _ in 0..100 {
@@ -1821,7 +1818,7 @@ pub(crate) mod triton_stark_tests {
 
     #[test]
     #[ignore = "used for tracking&debugging deserialization errors"]
-    fn triton_load_verify_halt_test() {
+    fn triton_load_verify_halt() {
         let code_with_input = test_program_for_halt();
         let (parameters, claim, _) = prove_with_low_security_level(
             &code_with_input.program,
@@ -1837,7 +1834,7 @@ pub(crate) mod triton_stark_tests {
     }
 
     #[test]
-    fn prove_verify_fibonacci_100_test() {
+    fn prove_verify_fibonacci_100() {
         let stdin = vec![100].into();
         let secret_in = [].into();
 
@@ -1865,7 +1862,7 @@ pub(crate) mod triton_stark_tests {
     }
 
     #[test]
-    fn prove_verify_fib_shootout_test() {
+    fn prove_verify_fib_shootout() {
         for (fib_seq_idx, fib_seq_val) in [(0, 1), (7, 21), (11, 144)] {
             let stdin = vec![fib_seq_idx].into();
             let secret_in = [].into();
@@ -1881,14 +1878,14 @@ pub(crate) mod triton_stark_tests {
     }
 
     #[test]
-    fn constraints_evaluate_to_zero_on_many_u32_operations_test() {
+    fn constraints_evaluate_to_zero_on_many_u32_operations() {
         let many_u32_instructions =
             ProgramAndInput::without_input(PROGRAM_WITH_MANY_U32_INSTRUCTIONS.clone());
         triton_table_constraints_evaluate_to_zero(many_u32_instructions);
     }
 
     #[test]
-    fn triton_prove_verify_many_u32_operations_test() {
+    fn triton_prove_verify_many_u32_operations() {
         let mut profiler = Some(TritonProfiler::new("Prove Many U32 Ops"));
         let (parameters, claim, proof) = prove_with_low_security_level(
             &PROGRAM_WITH_MANY_U32_INSTRUCTIONS,
@@ -1949,7 +1946,7 @@ pub(crate) mod triton_stark_tests {
 
     #[test]
     #[should_panic(expected = "Failed to convert BFieldElement")]
-    pub fn negative_log_2_floor_test() {
+    pub fn negative_log_2_floor() {
         let mut rng = ThreadRng::default();
         let st0 = (rng.next_u32() as u64) << 32;
 
@@ -1963,7 +1960,7 @@ pub(crate) mod triton_stark_tests {
 
     #[test]
     #[should_panic(expected = "The logarithm of 0 does not exist")]
-    pub fn negative_log_2_floor_of_0_test() {
+    pub fn negative_log_2_floor_of_0() {
         let program = triton_program!(push 0 log_2_floor halt);
         let (parameters, claim, proof) =
             prove_with_low_security_level(&program, [].into(), [].into(), &mut None);
@@ -1973,7 +1970,7 @@ pub(crate) mod triton_stark_tests {
     }
 
     #[test]
-    pub fn deep_update_test() {
+    fn deep_update() {
         let domain_length = 1 << 10;
         let domain = ArithmeticDomain::of_length(domain_length);
 
@@ -2035,7 +2032,7 @@ pub(crate) mod triton_stark_tests {
     }
 
     #[test]
-    fn test_splitting_polynomial_into_segments_of_unequal_size() {
+    fn split_polynomial_into_segments_of_unequal_size() {
         let coefficients: [XFieldElement; 211] = thread_rng().gen();
         let f = Polynomial::new(coefficients.to_vec());
 
@@ -2057,7 +2054,7 @@ pub(crate) mod triton_stark_tests {
     }
 
     #[test]
-    fn test_splitting_polynomial_into_segments_of_equal_size() {
+    fn split_polynomial_into_segments_of_equal_size() {
         let coefficients: [BFieldElement; 2 * 3 * 4 * 7] = thread_rng().gen();
         let f = Polynomial::new(coefficients.to_vec());
 

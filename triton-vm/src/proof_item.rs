@@ -224,7 +224,7 @@ impl BFieldCodec for ProofItem {
 }
 
 #[cfg(test)]
-mod proof_item_typed_tests {
+mod tests {
     use itertools::Itertools;
     use rand::distributions::Standard;
     use rand::prelude::StdRng;
@@ -268,7 +268,7 @@ mod proof_item_typed_tests {
     }
 
     #[test]
-    fn serialize_fri_response_test() {
+    fn serialize_fri_response() {
         type H = Tip5;
 
         let seed = random();
@@ -299,7 +299,7 @@ mod proof_item_typed_tests {
     }
 
     #[test]
-    fn serialize_authentication_structure_test() {
+    fn serialize_authentication_structure() {
         type H = Tip5;
 
         let seed = random();

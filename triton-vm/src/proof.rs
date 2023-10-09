@@ -67,7 +67,7 @@ impl Claim {
 }
 
 #[cfg(test)]
-pub mod test_claim_proof {
+mod tests {
     use proptest::collection::vec;
     use proptest::prelude::*;
     use rand::random;
@@ -82,7 +82,7 @@ pub mod test_claim_proof {
     use super::*;
 
     #[test]
-    fn test_decode_proof() {
+    fn decode_proof() {
         let data: Vec<BFieldElement> = random_elements(348);
         let proof = Proof(data);
 
@@ -93,7 +93,7 @@ pub mod test_claim_proof {
     }
 
     #[test]
-    fn test_decode_claim() {
+    fn decode_claim() {
         let claim = Claim {
             program_digest: random(),
             input: random_elements(346),

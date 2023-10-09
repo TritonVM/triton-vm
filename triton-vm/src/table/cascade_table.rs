@@ -313,7 +313,7 @@ impl ExtCascadeTable {
 }
 
 #[cfg(test)]
-pub mod tests {
+pub(crate) mod tests {
     use super::*;
     use num_traits::Zero;
 

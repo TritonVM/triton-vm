@@ -291,7 +291,7 @@ impl AlgebraicExecutionTrace {
 }
 
 #[cfg(test)]
-mod test {
+mod tests {
     use crate::triton_asm;
     use crate::triton_program;
     use twenty_first::shared_math::b_field_element::BFIELD_ONE;

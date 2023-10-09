@@ -338,7 +338,7 @@ impl OpStackTable {
 }
 
 #[cfg(test)]
-pub mod tests {
+pub(crate) mod tests {
     use num_traits::Zero;
 
     use super::*;

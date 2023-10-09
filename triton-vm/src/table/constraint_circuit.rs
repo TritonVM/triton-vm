@@ -1097,7 +1097,7 @@ impl<II: InputIndicator> ConstraintCircuitBuilder<II> {
 }
 
 #[cfg(test)]
-mod constraint_circuit_tests {
+mod tests {
     use std::collections::hash_map::DefaultHasher;
     use std::hash::Hasher;
 
@@ -1204,7 +1204,7 @@ mod constraint_circuit_tests {
     }
 
     #[test]
-    fn equality_and_hash_agree_test() {
+    fn equality_and_hash_agree() {
         // The Multicircuits are put into a hash set. Hence, it is important that `Eq` and `Hash`
         // agree whether two nodes are equal: k1 == k2 => h(k1) == h(k2)
         for _ in 0..100 {
@@ -1227,7 +1227,7 @@ mod constraint_circuit_tests {
     }
 
     #[test]
-    fn multi_circuit_hash_is_unchanged_by_meta_data_test() {
+    fn multi_circuit_hash_is_unchanged_by_meta_data() {
         // From https://doc.rust-lang.org/std/collections/struct.HashSet.html
         // "It is a logic error for a key to be modified in such a way that the key’s hash, as
         // determined by the Hash trait, or its equality, as determined by the Eq trait, changes
@@ -1266,7 +1266,7 @@ mod constraint_circuit_tests {
     }
 
     #[test]
-    fn circuit_equality_check_and_constant_folding_test() {
+    fn circuit_equality_check_and_constant_folding() {
         let circuit_builder: ConstraintCircuitBuilder<DualRowIndicator> =
             ConstraintCircuitBuilder::new();
         let var_0 = circuit_builder.input(DualRowIndicator::CurrentBaseRow(0));
@@ -1517,7 +1517,7 @@ mod constraint_circuit_tests {
     }
 
     #[test]
-    fn constant_folding_processor_table_test() {
+    fn constant_folding_processor_table() {
         let init = build_constraints(&ExtProcessorTable::initial_constraints);
         let cons = build_constraints(&ExtProcessorTable::consistency_constraints);
         let tran = build_constraints(&ExtProcessorTable::transition_constraints);
@@ -1529,7 +1529,7 @@ mod constraint_circuit_tests {
     }
 
     #[test]
-    fn constant_folding_program_table_test() {
+    fn constant_folding_program_table() {
         let init = build_constraints(&ExtProgramTable::initial_constraints);
         let cons = build_constraints(&ExtProgramTable::consistency_constraints);
         let tran = build_constraints(&ExtProgramTable::transition_constraints);
@@ -1541,7 +1541,7 @@ mod constraint_circuit_tests {
     }
 
     #[test]
-    fn constant_folding_jump_stack_table_test() {
+    fn constant_folding_jump_stack_table() {
         let init = build_constraints(&ExtJumpStackTable::initial_constraints);
         let cons = build_constraints(&ExtJumpStackTable::consistency_constraints);
         let tran = build_constraints(&ExtJumpStackTable::transition_constraints);
@@ -1553,7 +1553,7 @@ mod constraint_circuit_tests {
     }
 
     #[test]
-    fn constant_folding_op_stack_table_test() {
+    fn constant_folding_op_stack_table() {
         let init = build_constraints(&ExtOpStackTable::initial_constraints);
         let cons = build_constraints(&ExtOpStackTable::consistency_constraints);
         let tran = build_constraints(&ExtOpStackTable::transition_constraints);
@@ -1565,7 +1565,7 @@ mod constraint_circuit_tests {
     }
 
     #[test]
-    fn constant_folding_ram_table_test() {
+    fn constant_folding_ram_table() {
         let init = build_constraints(&ExtRamTable::initial_constraints);
         let cons = build_constraints(&ExtRamTable::consistency_constraints);
         let tran = build_constraints(&ExtRamTable::transition_constraints);
@@ -1577,7 +1577,7 @@ mod constraint_circuit_tests {
     }
 
     #[test]
-    fn constant_folding_hash_table_test() {
+    fn constant_folding_hash_table() {
         let init = build_constraints(&ExtHashTable::initial_constraints);
         let cons = build_constraints(&ExtHashTable::consistency_constraints);
         let tran = build_constraints(&ExtHashTable::transition_constraints);
@@ -1589,7 +1589,7 @@ mod constraint_circuit_tests {
     }
 
     #[test]
-    fn constant_folding_u32_table_test() {
+    fn constant_folding_u32_table() {
         let init = build_constraints(&ExtU32Table::initial_constraints);
         let cons = build_constraints(&ExtU32Table::consistency_constraints);
         let tran = build_constraints(&ExtU32Table::transition_constraints);
@@ -1601,7 +1601,7 @@ mod constraint_circuit_tests {
     }
 
     #[test]
-    fn constant_folding_cascade_table_test() {
+    fn constant_folding_cascade_table() {
         let init = build_constraints(&ExtCascadeTable::initial_constraints);
         let cons = build_constraints(&ExtCascadeTable::consistency_constraints);
         let tran = build_constraints(&ExtCascadeTable::transition_constraints);
@@ -1613,7 +1613,7 @@ mod constraint_circuit_tests {
     }
 
     #[test]
-    fn constant_folding_lookup_table_test() {
+    fn constant_folding_lookup_table() {
         let init = build_constraints(&ExtLookupTable::initial_constraints);
         let cons = build_constraints(&ExtLookupTable::consistency_constraints);
         let tran = build_constraints(&ExtLookupTable::transition_constraints);
@@ -1625,7 +1625,7 @@ mod constraint_circuit_tests {
     }
 
     #[test]
-    fn simple_degree_lowering_test() {
+    fn simple_degree_lowering() {
         let builder = ConstraintCircuitBuilder::new();
         let x = || builder.input(BaseRow(0));
         let x_pow_3 = x() * x() * x();
@@ -1647,7 +1647,7 @@ mod constraint_circuit_tests {
     }
 
     #[test]
-    fn somewhat_simple_degree_lowering_test() {
+    fn somewhat_simple_degree_lowering() {
         let builder = ConstraintCircuitBuilder::new();
         let x = |i| builder.input(BaseRow(i));
         let y = |i| builder.input(ExtRow(i));
@@ -1677,7 +1677,7 @@ mod constraint_circuit_tests {
     }
 
     #[test]
-    fn less_simple_degree_lowering_test() {
+    fn less_simple_degree_lowering() {
         let builder = ConstraintCircuitBuilder::new();
         let x = |i| builder.input(BaseRow(i));
 
@@ -1701,7 +1701,7 @@ mod constraint_circuit_tests {
     }
 
     #[test]
-    fn program_table_initial_constraints_degree_lowering_test() {
+    fn program_table_initial_constraints_degree_lowering() {
         lower_degree_and_assert_properties(
             &mut build_multicircuit(&ExtProgramTable::initial_constraints),
             AIR_TARGET_DEGREE,
@@ -1711,7 +1711,7 @@ mod constraint_circuit_tests {
     }
 
     #[test]
-    fn program_table_consistency_constraints_degree_lowering_test() {
+    fn program_table_consistency_constraints_degree_lowering() {
         lower_degree_and_assert_properties(
             &mut build_multicircuit(&ExtProgramTable::consistency_constraints),
             AIR_TARGET_DEGREE,
@@ -1721,7 +1721,7 @@ mod constraint_circuit_tests {
     }
 
     #[test]
-    fn program_table_transition_constraints_degree_lowering_test() {
+    fn program_table_transition_constraints_degree_lowering() {
         lower_degree_and_assert_properties(
             &mut build_multicircuit(&ExtProgramTable::transition_constraints),
             AIR_TARGET_DEGREE,
@@ -1731,7 +1731,7 @@ mod constraint_circuit_tests {
     }
 
     #[test]
-    fn program_table_terminal_constraints_degree_lowering_test() {
+    fn program_table_terminal_constraints_degree_lowering() {
         lower_degree_and_assert_properties(
             &mut build_multicircuit(&ExtProgramTable::terminal_constraints),
             AIR_TARGET_DEGREE,
@@ -1741,7 +1741,7 @@ mod constraint_circuit_tests {
     }
 
     #[test]
-    fn processor_table_initial_constraints_degree_lowering_test() {
+    fn processor_table_initial_constraints_degree_lowering() {
         lower_degree_and_assert_properties(
             &mut build_multicircuit(&ExtProcessorTable::initial_constraints),
             AIR_TARGET_DEGREE,
@@ -1751,7 +1751,7 @@ mod constraint_circuit_tests {
     }
 
     #[test]
-    fn processor_table_consistency_constraints_degree_lowering_test() {
+    fn processor_table_consistency_constraints_degree_lowering() {
         lower_degree_and_assert_properties(
             &mut build_multicircuit(&ExtProcessorTable::consistency_constraints),
             AIR_TARGET_DEGREE,
@@ -1761,7 +1761,7 @@ mod constraint_circuit_tests {
     }
 
     #[test]
-    fn processor_table_transition_constraints_degree_lowering_test() {
+    fn processor_table_transition_constraints_degree_lowering() {
         lower_degree_and_assert_properties(
             &mut build_multicircuit(&ExtProcessorTable::transition_constraints),
             AIR_TARGET_DEGREE,
@@ -1771,7 +1771,7 @@ mod constraint_circuit_tests {
     }
 
     #[test]
-    fn processor_table_terminal_constraints_degree_lowering_test() {
+    fn processor_table_terminal_constraints_degree_lowering() {
         lower_degree_and_assert_properties(
             &mut build_multicircuit(&ExtProcessorTable::terminal_constraints),
             AIR_TARGET_DEGREE,
@@ -1781,7 +1781,7 @@ mod constraint_circuit_tests {
     }
 
     #[test]
-    fn op_stack_table_initial_constraints_degree_lowering_test() {
+    fn op_stack_table_initial_constraints_degree_lowering() {
         lower_degree_and_assert_properties(
             &mut build_multicircuit(&ExtOpStackTable::initial_constraints),
             AIR_TARGET_DEGREE,
@@ -1791,7 +1791,7 @@ mod constraint_circuit_tests {
     }
 
     #[test]
-    fn op_stack_table_consistency_constraints_degree_lowering_test() {
+    fn op_stack_table_consistency_constraints_degree_lowering() {
         lower_degree_and_assert_properties(
             &mut build_multicircuit(&ExtOpStackTable::consistency_constraints),
             AIR_TARGET_DEGREE,
@@ -1801,7 +1801,7 @@ mod constraint_circuit_tests {
     }
 
     #[test]
-    fn op_stack_table_transition_constraints_degree_lowering_test() {
+    fn op_stack_table_transition_constraints_degree_lowering() {
         lower_degree_and_assert_properties(
             &mut build_multicircuit(&ExtOpStackTable::transition_constraints),
             AIR_TARGET_DEGREE,
@@ -1811,7 +1811,7 @@ mod constraint_circuit_tests {
     }
 
     #[test]
-    fn op_stack_table_terminal_constraints_degree_lowering_test() {
+    fn op_stack_table_terminal_constraints_degree_lowering() {
         lower_degree_and_assert_properties(
             &mut build_multicircuit(&ExtOpStackTable::terminal_constraints),
             AIR_TARGET_DEGREE,
@@ -1821,7 +1821,7 @@ mod constraint_circuit_tests {
     }
 
     #[test]
-    fn ram_table_initial_constraints_degree_lowering_test() {
+    fn ram_table_initial_constraints_degree_lowering() {
         lower_degree_and_assert_properties(
             &mut build_multicircuit(&ExtRamTable::initial_constraints),
             AIR_TARGET_DEGREE,
@@ -1831,7 +1831,7 @@ mod constraint_circuit_tests {
     }
 
     #[test]
-    fn ram_table_consistency_constraints_degree_lowering_test() {
+    fn ram_table_consistency_constraints_degree_lowering() {
         lower_degree_and_assert_properties(
             &mut build_multicircuit(&ExtRamTable::consistency_constraints),
             AIR_TARGET_DEGREE,
@@ -1841,7 +1841,7 @@ mod constraint_circuit_tests {
     }
 
     #[test]
-    fn ram_table_transition_constraints_degree_lowering_test() {
+    fn ram_table_transition_constraints_degree_lowering() {
         lower_degree_and_assert_properties(
             &mut build_multicircuit(&ExtRamTable::transition_constraints),
             AIR_TARGET_DEGREE,
@@ -1851,7 +1851,7 @@ mod constraint_circuit_tests {
     }
 
     #[test]
-    fn ram_table_terminal_constraints_degree_lowering_test() {
+    fn ram_table_terminal_constraints_degree_lowering() {
         lower_degree_and_assert_properties(
             &mut build_multicircuit(&ExtRamTable::terminal_constraints),
             AIR_TARGET_DEGREE,
@@ -1861,7 +1861,7 @@ mod constraint_circuit_tests {
     }
 
     #[test]
-    fn jump_stack_table_initial_constraints_degree_lowering_test() {
+    fn jump_stack_table_initial_constraints_degree_lowering() {
         lower_degree_and_assert_properties(
             &mut build_multicircuit(&ExtJumpStackTable::initial_constraints),
             AIR_TARGET_DEGREE,
@@ -1871,7 +1871,7 @@ mod constraint_circuit_tests {
     }
 
     #[test]
-    fn jump_stack_table_consistency_constraints_degree_lowering_test() {
+    fn jump_stack_table_consistency_constraints_degree_lowering() {
         lower_degree_and_assert_properties(
             &mut build_multicircuit(&ExtJumpStackTable::consistency_constraints),
             AIR_TARGET_DEGREE,
@@ -1881,7 +1881,7 @@ mod constraint_circuit_tests {
     }
 
     #[test]
-    fn jump_stack_table_transition_constraints_degree_lowering_test() {
+    fn jump_stack_table_transition_constraints_degree_lowering() {
         lower_degree_and_assert_properties(
             &mut build_multicircuit(&ExtJumpStackTable::transition_constraints),
             AIR_TARGET_DEGREE,
@@ -1891,7 +1891,7 @@ mod constraint_circuit_tests {
     }
 
     #[test]
-    fn jump_stack_table_terminal_constraints_degree_lowering_test() {
+    fn jump_stack_table_terminal_constraints_degree_lowering() {
         lower_degree_and_assert_properties(
             &mut build_multicircuit(&ExtJumpStackTable::terminal_constraints),
             AIR_TARGET_DEGREE,
@@ -1901,7 +1901,7 @@ mod constraint_circuit_tests {
     }
 
     #[test]
-    fn hash_table_initial_constraints_degree_lowering_test() {
+    fn hash_table_initial_constraints_degree_lowering() {
         lower_degree_and_assert_properties(
             &mut build_multicircuit(&ExtHashTable::initial_constraints),
             AIR_TARGET_DEGREE,
@@ -1911,7 +1911,7 @@ mod constraint_circuit_tests {
     }
 
     #[test]
-    fn hash_table_consistency_constraints_degree_lowering_test() {
+    fn hash_table_consistency_constraints_degree_lowering() {
         lower_degree_and_assert_properties(
             &mut build_multicircuit(&ExtHashTable::consistency_constraints),
             AIR_TARGET_DEGREE,
@@ -1921,7 +1921,7 @@ mod constraint_circuit_tests {
     }
 
     #[test]
-    fn hash_table_transition_constraints_degree_lowering_test() {
+    fn hash_table_transition_constraints_degree_lowering() {
         lower_degree_and_assert_properties(
             &mut build_multicircuit(&ExtHashTable::transition_constraints),
             AIR_TARGET_DEGREE,
@@ -1931,7 +1931,7 @@ mod constraint_circuit_tests {
     }
 
     #[test]
-    fn hash_table_terminal_constraints_degree_lowering_test() {
+    fn hash_table_terminal_constraints_degree_lowering() {
         lower_degree_and_assert_properties(
             &mut build_multicircuit(&ExtHashTable::terminal_constraints),
             AIR_TARGET_DEGREE,
@@ -1941,7 +1941,7 @@ mod constraint_circuit_tests {
     }
 
     #[test]
-    fn cascade_table_initial_constraints_degree_lowering_test() {
+    fn cascade_table_initial_constraints_degree_lowering() {
         lower_degree_and_assert_properties(
             &mut build_multicircuit(&ExtCascadeTable::initial_constraints),
             AIR_TARGET_DEGREE,
@@ -1951,7 +1951,7 @@ mod constraint_circuit_tests {
     }
 
     #[test]
-    fn cascade_table_consistency_constraints_degree_lowering_test() {
+    fn cascade_table_consistency_constraints_degree_lowering() {
         lower_degree_and_assert_properties(
             &mut build_multicircuit(&ExtCascadeTable::consistency_constraints),
             AIR_TARGET_DEGREE,
@@ -1961,7 +1961,7 @@ mod constraint_circuit_tests {
     }
 
     #[test]
-    fn cascade_table_transition_constraints_degree_lowering_test() {
+    fn cascade_table_transition_constraints_degree_lowering() {
         lower_degree_and_assert_properties(
             &mut build_multicircuit(&ExtCascadeTable::transition_constraints),
             AIR_TARGET_DEGREE,
@@ -1971,7 +1971,7 @@ mod constraint_circuit_tests {
     }
 
     #[test]
-    fn cascade_table_terminal_constraints_degree_lowering_test() {
+    fn cascade_table_terminal_constraints_degree_lowering() {
         lower_degree_and_assert_properties(
             &mut build_multicircuit(&ExtCascadeTable::terminal_constraints),
             AIR_TARGET_DEGREE,
@@ -1981,7 +1981,7 @@ mod constraint_circuit_tests {
     }
 
     #[test]
-    fn lookup_table_initial_constraints_degree_lowering_test() {
+    fn lookup_table_initial_constraints_degree_lowering() {
         lower_degree_and_assert_properties(
             &mut build_multicircuit(&ExtLookupTable::initial_constraints),
             AIR_TARGET_DEGREE,
@@ -1991,7 +1991,7 @@ mod constraint_circuit_tests {
     }
 
     #[test]
-    fn lookup_table_consistency_constraints_degree_lowering_test() {
+    fn lookup_table_consistency_constraints_degree_lowering() {
         lower_degree_and_assert_properties(
             &mut build_multicircuit(&ExtLookupTable::consistency_constraints),
             AIR_TARGET_DEGREE,
@@ -2001,7 +2001,7 @@ mod constraint_circuit_tests {
     }
 
     #[test]
-    fn lookup_table_transition_constraints_degree_lowering_test() {
+    fn lookup_table_transition_constraints_degree_lowering() {
         lower_degree_and_assert_properties(
             &mut build_multicircuit(&ExtLookupTable::transition_constraints),
             AIR_TARGET_DEGREE,
@@ -2011,7 +2011,7 @@ mod constraint_circuit_tests {
     }
 
     #[test]
-    fn lookup_table_terminal_constraints_degree_lowering_test() {
+    fn lookup_table_terminal_constraints_degree_lowering() {
         lower_degree_and_assert_properties(
             &mut build_multicircuit(&ExtLookupTable::terminal_constraints),
             AIR_TARGET_DEGREE,
@@ -2021,7 +2021,7 @@ mod constraint_circuit_tests {
     }
 
     #[test]
-    fn u32_table_initial_constraints_degree_lowering_test() {
+    fn u32_table_initial_constraints_degree_lowering() {
         lower_degree_and_assert_properties(
             &mut build_multicircuit(&ExtU32Table::initial_constraints),
             AIR_TARGET_DEGREE,
@@ -2031,7 +2031,7 @@ mod constraint_circuit_tests {
     }
 
     #[test]
-    fn u32_table_consistency_constraints_degree_lowering_test() {
+    fn u32_table_consistency_constraints_degree_lowering() {
         lower_degree_and_assert_properties(
             &mut build_multicircuit(&ExtU32Table::consistency_constraints),
             AIR_TARGET_DEGREE,
@@ -2041,7 +2041,7 @@ mod constraint_circuit_tests {
     }
 
     #[test]
-    fn u32_table_transition_constraints_degree_lowering_test() {
+    fn u32_table_transition_constraints_degree_lowering() {
         lower_degree_and_assert_properties(
             &mut build_multicircuit(&ExtU32Table::transition_constraints),
             AIR_TARGET_DEGREE,
@@ -2051,7 +2051,7 @@ mod constraint_circuit_tests {
     }
 
     #[test]
-    fn u32_table_terminal_constraints_degree_lowering_test() {
+    fn u32_table_terminal_constraints_degree_lowering() {
         lower_degree_and_assert_properties(
             &mut build_multicircuit(&ExtU32Table::terminal_constraints),
             AIR_TARGET_DEGREE,
