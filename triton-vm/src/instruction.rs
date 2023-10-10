@@ -1,6 +1,8 @@
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::fmt::Display;
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 use std::result;
 
 use anyhow::anyhow;
@@ -71,7 +73,7 @@ impl LabelledInstruction {
 }
 
 impl Display for LabelledInstruction {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         match self {
             LabelledInstruction::Instruction(instr) => write!(f, "{instr}"),
             LabelledInstruction::Label(label_name) => write!(f, "{label_name}:"),
@@ -366,7 +368,7 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
 }
 
 impl<Dest: Display + PartialEq + Default> Display for AnInstruction<Dest> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         write!(f, "{}", self.name())?;
         match self {
             Push(arg) => write!(f, " {arg}"),
@@ -559,7 +561,7 @@ pub enum InstructionBit {
 }
 
 impl Display for InstructionBit {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         let bit_index = usize::from(*self);
         write!(f, "{bit_index}")
     }

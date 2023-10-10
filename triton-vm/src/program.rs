@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 use std::fmt::Display;
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 use std::hash::Hash;
 use std::io::Cursor;
 
@@ -36,7 +38,7 @@ pub struct Program {
 }
 
 impl Display for Program {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         let mut stream = self.instructions.iter();
         while let Some(instruction) = stream.next() {
             writeln!(f, "{instruction}")?;

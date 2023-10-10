@@ -6,29 +6,27 @@
 //! constraint polynomials, with each root corresponding to a different constraint polynomial.
 //! Because the graph has multiple roots, it is called a “multitree.”
 
-use itertools::Itertools;
 use std::cell::RefCell;
 use std::cmp;
-use std::collections::HashMap;
-use std::collections::HashSet;
-use std::fmt::Debug;
-use std::fmt::Display;
+use std::collections::*;
+use std::fmt::Result as FmtResult;
+use std::fmt::*;
 use std::hash::Hash;
+use std::hash::Hasher;
 use std::iter::Sum;
-use std::ops::Add;
-use std::ops::Mul;
-use std::ops::Sub;
+use std::ops::*;
 use std::rc::Rc;
 
+use itertools::Itertools;
 use ndarray::ArrayView2;
 use num_traits::One;
 use num_traits::Zero;
+use quote::quote;
+use quote::ToTokens;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::Degree;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
-use quote::quote;
-use quote::ToTokens;
 use CircuitExpression::*;
 
 use crate::table::challenges::ChallengeId;
@@ -42,7 +40,7 @@ pub enum BinOp {
 }
 
 impl Display for BinOp {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         match self {
             BinOp::Add => write!(f, "+"),
             BinOp::Sub => write!(f, "-"),
@@ -113,7 +111,7 @@ pub enum SingleRowIndicator {
 }
 
 impl Display for SingleRowIndicator {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         use SingleRowIndicator::*;
         let input_indicator: String = match self {
             BaseRow(i) => format!("base_row[{i}]"),
@@ -188,7 +186,7 @@ pub enum DualRowIndicator {
 }
 
 impl Display for DualRowIndicator {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         use DualRowIndicator::*;
         let input_indicator: String = match self {
             CurrentBaseRow(i) => format!("current_base_row[{i}]"),
@@ -291,7 +289,7 @@ pub enum CircuitExpression<II: InputIndicator> {
 }
 
 impl<II: InputIndicator> Hash for CircuitExpression<II> {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+    fn hash<H: Hasher>(&self, state: &mut H) {
         match self {
             BConstant(bfe) => {
                 "bfe".hash(state);
@@ -335,13 +333,13 @@ impl<II: InputIndicator> PartialEq for CircuitExpression<II> {
 }
 
 impl<II: InputIndicator> Hash for ConstraintCircuit<II> {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+    fn hash<H: Hasher>(&self, state: &mut H) {
         self.expression.hash(state)
     }
 }
 
 impl<II: InputIndicator> Hash for ConstraintCircuitMonad<II> {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+    fn hash<H: Hasher>(&self, state: &mut H) {
         self.circuit.borrow().hash(state)
     }
 }
@@ -366,7 +364,7 @@ impl<II: InputIndicator> PartialEq for ConstraintCircuit<II> {
 }
 
 impl<II: InputIndicator> Display for ConstraintCircuit<II> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         match &self.expression {
             XConstant(xfe) => {
                 write!(f, "{xfe}")
@@ -576,7 +574,7 @@ pub struct ConstraintCircuitMonad<II: InputIndicator> {
 impl<II: InputIndicator> Debug for ConstraintCircuitMonad<II> {
     // We cannot derive `Debug` as `all_nodes` contains itself which a derived `Debug` will
     // attempt to print as well, thus leading to infinite recursion.
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         f.debug_struct("ConstraintCircuitMonad")
             .field("id", &self.circuit)
             .field("all_nodes length: ", &self.builder.all_nodes.borrow().len())
@@ -586,7 +584,7 @@ impl<II: InputIndicator> Debug for ConstraintCircuitMonad<II> {
 }
 
 impl<II: InputIndicator> Display for ConstraintCircuitMonad<II> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         write!(f, "{}", self.circuit.borrow())
     }
 }

@@ -1,14 +1,10 @@
 use std::cmp::Ordering;
 use std::fmt::Display;
 use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 
 use ndarray::parallel::prelude::*;
-use ndarray::s;
-use ndarray::Array1;
-use ndarray::ArrayView1;
-use ndarray::ArrayView2;
-use ndarray::ArrayViewMut2;
-use ndarray::Axis;
+use ndarray::*;
 use strum::EnumCount;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::traits::Inverse;
@@ -18,23 +14,13 @@ use crate::aet::AlgebraicExecutionTrace;
 use crate::instruction::Instruction;
 use crate::table::challenges::ChallengeId::*;
 use crate::table::challenges::Challenges;
-use crate::table::constraint_circuit::ConstraintCircuitBuilder;
-use crate::table::constraint_circuit::DualRowIndicator;
 use crate::table::constraint_circuit::DualRowIndicator::*;
-use crate::table::constraint_circuit::SingleRowIndicator;
 use crate::table::constraint_circuit::SingleRowIndicator::*;
-use crate::table::cross_table_argument::CrossTableArg;
-use crate::table::cross_table_argument::LookupArg;
-use crate::table::cross_table_argument::PermArg;
-use crate::table::table_column::JumpStackBaseTableColumn;
+use crate::table::constraint_circuit::*;
+use crate::table::cross_table_argument::*;
 use crate::table::table_column::JumpStackBaseTableColumn::*;
-use crate::table::table_column::JumpStackExtTableColumn;
 use crate::table::table_column::JumpStackExtTableColumn::*;
-use crate::table::table_column::MasterBaseTableColumn;
-use crate::table::table_column::MasterExtTableColumn;
-use crate::table::table_column::ProcessorBaseTableColumn;
-
-use super::constraint_circuit::ConstraintCircuitMonad;
+use crate::table::table_column::*;
 
 pub const BASE_WIDTH: usize = JumpStackBaseTableColumn::COUNT;
 pub const EXT_WIDTH: usize = JumpStackExtTableColumn::COUNT;
@@ -371,7 +357,7 @@ pub struct JumpStackTraceRow {
 }
 
 impl Display for JumpStackTraceRow {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         let width = 5;
         write!(
             f,

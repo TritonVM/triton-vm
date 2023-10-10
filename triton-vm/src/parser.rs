@@ -1,26 +1,18 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::error::Error;
+use std::fmt::Display;
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 
 use nom::branch::alt;
-use nom::bytes::complete::tag;
-use nom::bytes::complete::take_while;
-use nom::bytes::complete::take_while1;
+use nom::bytes::complete::*;
 use nom::character::complete::digit1;
-use nom::combinator::cut;
-use nom::combinator::eof;
-use nom::combinator::fail;
-use nom::combinator::opt;
-use nom::error::context;
-use nom::error::convert_error;
-use nom::error::ErrorKind;
-use nom::error::VerboseError;
-use nom::error::VerboseErrorKind;
-use nom::multi::many0;
-use nom::multi::many1;
+use nom::combinator::*;
+use nom::error::*;
+use nom::multi::*;
 use nom::Finish;
 use nom::IResult;
-use twenty_first::shared_math::b_field_element::BFieldElement;
 
 use crate::instruction::AnInstruction;
 use crate::instruction::AnInstruction::*;
@@ -28,6 +20,7 @@ use crate::instruction::LabelledInstruction;
 use crate::instruction::ALL_INSTRUCTION_NAMES;
 use crate::op_stack::OpStackElement;
 use crate::op_stack::OpStackElement::*;
+use crate::BFieldElement;
 
 #[derive(Debug, PartialEq)]
 pub struct ParseError<'a> {
@@ -45,8 +38,8 @@ pub enum InstructionToken<'a> {
     Label(String, &'a str),
 }
 
-impl<'a> std::fmt::Display for InstructionToken<'a> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl<'a> Display for InstructionToken<'a> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         match self {
             InstructionToken::Instruction(instr, _) => write!(f, "{instr}"),
             InstructionToken::Label(label_name, _) => write!(f, "{label_name}:"),
@@ -54,8 +47,8 @@ impl<'a> std::fmt::Display for InstructionToken<'a> {
     }
 }
 
-impl<'a> std::fmt::Display for ParseError<'a> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl<'a> Display for ParseError<'a> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         write!(f, "{}", pretty_print_error(self.input, self.errors.clone()))
     }
 }
@@ -517,6 +510,8 @@ fn token1<'a>(token: &'a str) -> impl Fn(&'a str) -> ParseResult<()> {
 
 #[cfg(test)]
 pub(crate) mod tests {
+    use std::cmp::max;
+
     use itertools::Itertools;
     use rand::distributions::WeightedIndex;
     use rand::prelude::*;
@@ -582,17 +577,17 @@ pub(crate) mod tests {
     }
 
     fn whitespace_gen(max_size: usize) -> String {
-        let mut rng = rand::thread_rng();
+        let mut rng = thread_rng();
         let spaces = [" ", "\t", "\r", "\r\n", "\n", " // comment\n"];
         let weights = [5, 1, 1, 1, 2, 1];
         assert_eq!(spaces.len(), weights.len(), "all generators have weights");
         let dist = WeightedIndex::new(weights).expect("a weighted distribution of generators");
-        let size = rng.gen_range(1..=std::cmp::max(1, max_size));
+        let size = rng.gen_range(1..=max(1, max_size));
         (0..size).map(|_| spaces[dist.sample(&mut rng)]).collect()
     }
 
     fn label_gen(size: usize) -> String {
-        let mut rng = rand::thread_rng();
+        let mut rng = thread_rng();
         let mut new_label = || -> String { (0..size).map(|_| rng.gen_range('a'..='z')).collect() };
         let mut label = new_label();
         while is_instruction_name(&label) {
@@ -602,7 +597,7 @@ pub(crate) mod tests {
     }
 
     fn new_label_gen(labels: &mut Vec<String>) -> String {
-        let mut rng = rand::thread_rng();
+        let mut rng = thread_rng();
         let count = labels.len() * 3 / 2;
         let index = rng.gen_range(0..=count);
 
@@ -685,7 +680,7 @@ pub(crate) mod tests {
         for label in labels.into_iter().sorted().dedup() {
             program.push(vec![format!("{label}:")]);
         }
-        program.shuffle(&mut rand::thread_rng());
+        program.shuffle(&mut thread_rng());
 
         program
             .into_iter()

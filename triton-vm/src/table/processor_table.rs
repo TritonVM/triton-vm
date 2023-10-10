@@ -1,15 +1,12 @@
 use std::cmp::max;
 use std::fmt::Display;
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 use std::ops::Mul;
 
 use itertools::Itertools;
 use ndarray::parallel::prelude::*;
-use ndarray::s;
-use ndarray::Array1;
-use ndarray::ArrayView1;
-use ndarray::ArrayView2;
-use ndarray::ArrayViewMut2;
-use ndarray::Axis;
+use ndarray::*;
 use num_traits::One;
 use num_traits::Zero;
 use strum::EnumCount;
@@ -27,23 +24,13 @@ use crate::instruction::ALL_INSTRUCTIONS;
 use crate::table::challenges::ChallengeId;
 use crate::table::challenges::ChallengeId::*;
 use crate::table::challenges::Challenges;
-use crate::table::constraint_circuit::ConstraintCircuitBuilder;
-use crate::table::constraint_circuit::ConstraintCircuitMonad;
-use crate::table::constraint_circuit::DualRowIndicator;
 use crate::table::constraint_circuit::DualRowIndicator::*;
-use crate::table::constraint_circuit::InputIndicator;
-use crate::table::constraint_circuit::SingleRowIndicator;
 use crate::table::constraint_circuit::SingleRowIndicator::*;
-use crate::table::cross_table_argument::CrossTableArg;
-use crate::table::cross_table_argument::EvalArg;
-use crate::table::cross_table_argument::LookupArg;
-use crate::table::cross_table_argument::PermArg;
-use crate::table::table_column::MasterBaseTableColumn;
-use crate::table::table_column::MasterExtTableColumn;
-use crate::table::table_column::ProcessorBaseTableColumn;
+use crate::table::constraint_circuit::*;
+use crate::table::cross_table_argument::*;
 use crate::table::table_column::ProcessorBaseTableColumn::*;
-use crate::table::table_column::ProcessorExtTableColumn;
 use crate::table::table_column::ProcessorExtTableColumn::*;
+use crate::table::table_column::*;
 
 pub const BASE_WIDTH: usize = ProcessorBaseTableColumn::COUNT;
 pub const EXT_WIDTH: usize = ProcessorExtTableColumn::COUNT;
@@ -2790,12 +2777,12 @@ pub struct ProcessorTraceRow<'a> {
 }
 
 impl<'a> Display for ProcessorTraceRow<'a> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        fn row(f: &mut std::fmt::Formatter<'_>, s: String) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        fn row(f: &mut Formatter<'_>, s: String) -> FmtResult {
             writeln!(f, "│ {s: <103} │")
         }
 
-        fn row_blank(f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        fn row_blank(f: &mut Formatter<'_>) -> FmtResult {
             row(f, "".into())
         }
 
@@ -2942,15 +2929,13 @@ pub struct ExtProcessorTraceRow<'a> {
 }
 
 impl<'a> Display for ExtProcessorTraceRow<'a> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let row = |form: &mut std::fmt::Formatter<'_>,
-                   desc: &str,
-                   col: ProcessorExtTableColumn|
-         -> std::fmt::Result {
-            // without the extra `format!()`, alignment in `writeln!()` fails
-            let formatted_col_elem = format!("{}", self.row[col.ext_table_index()]);
-            writeln!(form, "     │ {desc: <18}  {formatted_col_elem:>73} │")
-        };
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        let row =
+            |form: &mut Formatter<'_>, desc: &str, col: ProcessorExtTableColumn| -> FmtResult {
+                // without the extra `format!()`, alignment in `writeln!()` fails
+                let formatted_col_elem = format!("{}", self.row[col.ext_table_index()]);
+                writeln!(form, "     │ {desc: <18}  {formatted_col_elem:>73} │")
+            };
         writeln!(
             f,
             "     ╭───────────────────────────────────────────────────────\

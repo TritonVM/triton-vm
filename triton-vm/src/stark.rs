@@ -724,6 +724,7 @@ impl Stark {
     }
 
     #[cfg(debug_assertions)]
+    #[allow(clippy::absolute_paths)]
     fn debug_check_degree<FF>(
         table: ArrayView2<FF>,
         quotient_domain: ArithmeticDomain,

@@ -1,12 +1,14 @@
 use std::error::Error;
 use std::fmt::Display;
 use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 
-use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::digest::DIGEST_LENGTH;
 
-use crate::op_stack::OpStackElement;
 use InstructionError::*;
+
+use crate::op_stack::OpStackElement;
+use crate::BFieldElement;
 
 #[derive(Debug, Clone)]
 pub enum InstructionError {
@@ -22,7 +24,7 @@ pub enum InstructionError {
 }
 
 impl Display for InstructionError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         match self {
             InstructionPointerOverflow(ip) => {
                 write!(f, "Instruction pointer {ip} points outside of program")
@@ -56,9 +58,10 @@ impl Error for InstructionError {}
 
 #[cfg(test)]
 mod tests {
-    use crate::triton_program;
     use proptest::prelude::*;
     use proptest_arbitrary_interop::arb;
+
+    use crate::triton_program;
 
     use super::*;
 

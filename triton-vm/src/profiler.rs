@@ -1,7 +1,11 @@
 use std::cmp::max;
 use std::collections::HashMap;
+use std::env::var as env_var;
 use std::fmt::Display;
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 use std::ops::AddAssign;
+use std::path::Path;
 use std::time::Duration;
 use std::time::Instant;
 use std::vec;
@@ -211,7 +215,7 @@ impl TritonProfiler {
             category,
         });
 
-        if std::env::var(GET_PROFILE_OUTPUT_AS_YOU_GO_ENV_VAR_NAME).is_ok() {
+        if env_var(GET_PROFILE_OUTPUT_AS_YOU_GO_ENV_VAR_NAME).is_ok() {
             println!("start: {name}");
         }
     }
@@ -271,7 +275,7 @@ impl TritonProfiler {
         let duration = now - self.profile[index].time;
         self.profile[index].time = duration;
 
-        if std::env::var(GET_PROFILE_OUTPUT_AS_YOU_GO_ENV_VAR_NAME).is_ok() {
+        if env_var(GET_PROFILE_OUTPUT_AS_YOU_GO_ENV_VAR_NAME).is_ok() {
             println!("stop:  {name} – took {duration:.2?}");
         }
     }
@@ -307,7 +311,7 @@ impl TritonProfiler {
 }
 
 impl Profiler for TritonProfiler {
-    fn start_profiling(&mut self, benchmark_id: &str, benchmark_dir: &std::path::Path) {
+    fn start_profiling(&mut self, benchmark_id: &str, benchmark_dir: &Path) {
         let dir = benchmark_dir
             .to_str()
             .expect("Directory must be valid unicode");
@@ -316,7 +320,7 @@ impl Profiler for TritonProfiler {
         self.start(&name, category);
     }
 
-    fn stop_profiling(&mut self, benchmark_id: &str, benchmark_dir: &std::path::Path) {
+    fn stop_profiling(&mut self, benchmark_id: &str, benchmark_dir: &Path) {
         let dir = benchmark_dir
             .to_str()
             .expect("Directory must be valid unicode");
@@ -439,7 +443,7 @@ impl Report {
 }
 
 impl Display for Report {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         let max_name_width = self
             .tasks
             .iter()

@@ -2,8 +2,9 @@ use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::convert::TryInto;
 use std::fmt::Display;
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 
-use crate::error::InstructionError;
 use anyhow::anyhow;
 use anyhow::bail;
 use anyhow::Result;
@@ -15,27 +16,22 @@ use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::b_field_element::BFIELD_ZERO;
 use twenty_first::shared_math::digest::Digest;
 use twenty_first::shared_math::tip5;
-use twenty_first::shared_math::tip5::Tip5;
-use twenty_first::shared_math::tip5::Tip5State;
-use twenty_first::shared_math::tip5::DIGEST_LENGTH;
+use twenty_first::shared_math::tip5::*;
 use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 use twenty_first::util_types::algebraic_hasher::Domain;
 
+use crate::error::InstructionError;
 use crate::error::InstructionError::*;
 use crate::instruction::AnInstruction::*;
 use crate::instruction::Instruction;
-use crate::op_stack::OpStack;
-use crate::op_stack::OpStackElement;
 use crate::op_stack::OpStackElement::*;
-use crate::program::NonDeterminism;
-use crate::program::Program;
-use crate::program::PublicInput;
+use crate::op_stack::*;
+use crate::program::*;
 use crate::stark::StarkHasher;
 use crate::table::processor_table;
 use crate::table::processor_table::ProcessorTraceRow;
-use crate::table::table_column::MasterBaseTableColumn;
-use crate::table::table_column::ProcessorBaseTableColumn;
+use crate::table::table_column::*;
 use crate::vm::CoProcessorCall::*;
 
 /// The number of helper variable registers
@@ -833,7 +829,7 @@ impl<'pgm> VMState<'pgm> {
 }
 
 impl<'pgm> Display for VMState<'pgm> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         match self.current_instruction() {
             Ok(_) => {
                 let row = self.to_processor_row();

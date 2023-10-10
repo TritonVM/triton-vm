@@ -1,4 +1,6 @@
 use std::fmt::Display;
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 use std::mem::MaybeUninit;
 
 use itertools::Itertools;
@@ -310,7 +312,7 @@ pub(crate) enum ConstraintType {
 }
 
 impl Display for ConstraintType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         match self {
             ConstraintType::Initial => write!(f, "initial"),
             ConstraintType::Consistency => write!(f, "consistency"),
@@ -334,7 +336,7 @@ pub(crate) struct DegreeWithOrigin {
 }
 
 impl Display for DegreeWithOrigin {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         assert!(self.degree > 0);
         let zerofier_corrected_degree = self.degree + self.zerofier_degree;
         let degree = zerofier_corrected_degree / self.interpolant_degree;

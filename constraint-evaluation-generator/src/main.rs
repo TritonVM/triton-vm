@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use std::fs::write;
 
 use itertools::Itertools;
 use proc_macro2::TokenStream;
@@ -945,5 +946,5 @@ fn write_code_to_file(code: TokenStream, file_name: &str) {
     let syntax_tree = syn::parse2(code).unwrap();
     let code = prettyplease::unparse(&syntax_tree);
     let path = format!("triton-vm/src/table/{file_name}.rs");
-    std::fs::write(path, code).unwrap();
+    write(path, code).unwrap();
 }

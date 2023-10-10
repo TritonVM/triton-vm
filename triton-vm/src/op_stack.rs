@@ -1,4 +1,6 @@
 use std::fmt::Display;
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 use std::result;
 
 use anyhow::anyhow;
@@ -156,7 +158,7 @@ pub enum OpStackElement {
 }
 
 impl Display for OpStackElement {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         let stack_index = u32::from(self);
         write!(f, "{stack_index}")
     }
