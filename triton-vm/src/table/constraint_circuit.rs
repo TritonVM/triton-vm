@@ -935,7 +935,7 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
             .max()
             .unwrap();
         nodes_and_occurrences.retain(|_, &mut count| count == max_occurrences);
-        let mut candidate_nodes = nodes_and_occurrences.keys().cloned().collect_vec();
+        let mut candidate_nodes = nodes_and_occurrences.keys().copied().collect_vec();
 
         // If there are still multiple nodes, pick the one with the highest degree.
         let max_degree = candidate_nodes
