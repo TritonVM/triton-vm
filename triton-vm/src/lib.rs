@@ -688,22 +688,31 @@ mod tests {
         assert!(initial_ram_val_error.to_string().contains("RAM values"));
     }
 
-    /// Invocations of the `ensure_eq!` macro for testing purposes must be wrapped in their own
-    /// function due to the return type requirements, which _must_ be
-    /// - `Result<_>` for any method invoking the `ensure_eq!` macro, and
-    /// - `()` for any method annotated with `#[test]`.
-    fn method_with_failing_ensure_eq_macro() -> Result<()> {
-        ensure_eq!("a", "a");
-        let left_hand_side = 2;
-        let right_hand_side = 1;
-        ensure_eq!(left_hand_side, right_hand_side);
+    #[test]
+    fn succeeding_ensure_eq_macro() {
+        method_with_succeeding_ensure_eq_macro().unwrap()
+    }
+
+    fn method_with_succeeding_ensure_eq_macro() -> Result<()> {
+        ensure_eq!(1, 1);
         Ok(())
     }
 
     #[test]
     #[should_panic(expected = "Expected `left_hand_side` to equal `right_hand_side`.")]
-    fn ensure_eq_macro() {
+    fn failing_ensure_eq_macro() {
         method_with_failing_ensure_eq_macro().unwrap()
+    }
+
+    /// Invocations of the `ensure_eq!` macro for testing purposes must be wrapped in their own
+    /// function due to the return type requirements, which _must_ be
+    /// - `Result<_>` for any method invoking the `ensure_eq!` macro, and
+    /// - `()` for any method annotated with `#[test]`.
+    fn method_with_failing_ensure_eq_macro() -> Result<()> {
+        let left_hand_side = 2;
+        let right_hand_side = 1;
+        ensure_eq!(left_hand_side, right_hand_side);
+        Ok(())
     }
 
     #[test]
