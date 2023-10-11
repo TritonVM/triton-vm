@@ -60,8 +60,8 @@ pub struct AlgebraicExecutionTrace {
     /// permutation for each round.
     pub hash_trace: Array2<BFieldElement>,
 
-    /// For the Sponge instructions, i.e., `absorb_init`, `absorb`, and `squeeze`, the Sponge
-    /// trace records the internal state of the Tip5 permutation for each round.
+    /// For the Sponge instructions, i.e., `sponge_init`, `sponge_absorb`, and `sponge_squeeze`,
+    /// the Sponge trace records the internal state of the Tip5 permutation for each round.
     pub sponge_trace: Array2<BFieldElement>,
 
     /// The u32 entries hold all pairs of BFieldElements that were written to the U32 Table,
@@ -231,7 +231,7 @@ impl AlgebraicExecutionTrace {
     fn append_sponge_trace(&mut self, instruction: Instruction, trace: PermutationTrace) {
         assert!(matches!(
             instruction,
-            Instruction::AbsorbInit | Instruction::Absorb | Instruction::Squeeze
+            Instruction::SpongeInit | Instruction::SpongeAbsorb | Instruction::SpongeSqueeze
         ));
         self.increase_lookup_multiplicities(trace);
         let mut sponge_trace_addendum = HashTable::convert_to_hash_table_rows(trace);

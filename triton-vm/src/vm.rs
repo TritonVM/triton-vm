@@ -79,8 +79,8 @@ pub struct VMState<'pgm> {
     pub ramp: u64,
 
     /// The current state of the one, global Sponge that can be manipulated using instructions
-    /// `AbsorbInit`, `Absorb`, and `Squeeze`. Instruction `AbsorbInit` resets the state prior to
-    /// absorbing.
+    /// `SpongeInit`, `SpongeAbsorb`, and `SpongeSqueeze`. Instruction `SpongeInit` resets the
+    /// Sponge state.
     /// Note that this is the _full_ state, including capacity. The capacity should never be
     /// exposed outside of the VM.
     pub sponge_state: [BFieldElement; tip5::STATE_SIZE],
@@ -95,7 +95,7 @@ pub struct VMState<'pgm> {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum CoProcessorCall {
     /// Trace of the state registers for hash coprocessor table when executing instruction `hash`
-    /// or any of the Sponge instructions `absorb_init`, `absorb`, `squeeze`.
+    /// or any of the Sponge instructions `sponge_init`, `absorb`, `squeeze`.
     /// One row per round in the Tip5 permutation.
     Tip5Trace(Instruction, Box<PermutationTrace>),
 
@@ -226,8 +226,9 @@ impl<'pgm> VMState<'pgm> {
             ReadMem => self.read_mem(),
             WriteMem => self.write_mem()?,
             Hash => self.hash()?,
-            AbsorbInit | Absorb => self.absorb()?,
-            Squeeze => self.squeeze()?,
+            SpongeInit => self.sponge_init(),
+            SpongeAbsorb => self.sponge_absorb()?,
+            SpongeSqueeze => self.sponge_squeeze()?,
             DivineSibling => self.divine_sibling()?,
             AssertVector => self.assert_vector()?,
             Add => self.add()?,
@@ -382,28 +383,31 @@ impl<'pgm> VMState<'pgm> {
         Ok(co_processor_trace)
     }
 
-    fn absorb(&mut self) -> Result<Option<CoProcessorCall>> {
+    fn sponge_init(&mut self) -> Option<CoProcessorCall> {
+        self.sponge_state = Tip5State::new(Domain::VariableLength).state;
+        self.instruction_pointer += 1;
+        None
+    }
+
+    fn sponge_absorb(&mut self) -> Result<Option<CoProcessorCall>> {
         // fetch top elements but don't alter the stack
         let to_absorb = self.op_stack.pop_multiple::<{ tip5::RATE }>()?;
         for i in (0..tip5::RATE).rev() {
             self.op_stack.push(to_absorb[i]);
         }
 
-        if self.current_instruction()? == AbsorbInit {
-            self.sponge_state = Tip5State::new(Domain::VariableLength).state;
-        }
         self.sponge_state[..tip5::RATE].copy_from_slice(&to_absorb);
         let tip5_trace = Tip5::trace(&mut Tip5State {
             state: self.sponge_state,
         });
         self.sponge_state = tip5_trace.last().unwrap().to_owned();
-        let co_processor_trace = Some(Tip5Trace(self.current_instruction()?, Box::new(tip5_trace)));
+        let co_processor_trace = Some(Tip5Trace(SpongeAbsorb, Box::new(tip5_trace)));
 
         self.instruction_pointer += 1;
         Ok(co_processor_trace)
     }
 
-    fn squeeze(&mut self) -> Result<Option<CoProcessorCall>> {
+    fn sponge_squeeze(&mut self) -> Result<Option<CoProcessorCall>> {
         let _ = self.op_stack.pop_multiple::<{ tip5::RATE }>()?;
         for i in (0..tip5::RATE).rev() {
             self.op_stack.push(self.sponge_state[i]);
@@ -412,7 +416,7 @@ impl<'pgm> VMState<'pgm> {
             state: self.sponge_state,
         });
         self.sponge_state = tip5_trace.last().unwrap().to_owned();
-        let co_processor_trace = Some(Tip5Trace(Squeeze, Box::new(tip5_trace)));
+        let co_processor_trace = Some(Tip5Trace(SpongeSqueeze, Box::new(tip5_trace)));
 
         self.instruction_pointer += 1;
         Ok(co_processor_trace)
@@ -1102,22 +1106,26 @@ pub(crate) mod tests {
 
     pub(crate) fn test_program_for_sponge_instructions() -> ProgramAndInput {
         ProgramAndInput::without_input(triton_program!(
-            absorb_init push 3 push 2 push 1 absorb absorb squeeze halt
+            sponge_init push 3 push 2 push 1 sponge_absorb sponge_absorb sponge_squeeze halt
         ))
     }
 
     pub(crate) fn test_program_for_sponge_instructions_2() -> ProgramAndInput {
         ProgramAndInput::without_input(triton_program!(
-            hash absorb_init push 3 push 2 push 1 absorb absorb squeeze halt
+            hash sponge_init push 3 push 2 push 1 sponge_absorb sponge_absorb sponge_squeeze halt
         ))
     }
 
     pub(crate) fn test_program_for_many_sponge_instructions() -> ProgramAndInput {
         ProgramAndInput::without_input(triton_program!(
-            absorb_init squeeze absorb absorb absorb squeeze squeeze squeeze absorb
-            absorb_init absorb_init absorb_init absorb absorb_init squeeze squeeze
-            absorb_init squeeze hash absorb hash squeeze hash absorb hash squeeze
-            absorb_init absorb absorb absorb absorb absorb absorb absorb halt
+            sponge_init sponge_squeeze sponge_absorb sponge_absorb sponge_absorb
+            sponge_squeeze sponge_squeeze sponge_squeeze sponge_absorb
+            sponge_init sponge_init sponge_init sponge_absorb
+            sponge_init sponge_squeeze sponge_squeeze
+            sponge_init sponge_squeeze hash sponge_absorb hash sponge_squeeze
+            hash sponge_absorb hash sponge_squeeze
+            sponge_init sponge_absorb sponge_absorb sponge_absorb sponge_absorb sponge_absorb
+            sponge_absorb sponge_absorb halt
         ))
     }
 
@@ -1170,7 +1178,8 @@ pub(crate) mod tests {
         let program = triton_program!(
             push {st9} push {st8} push {st7} push {st6} push {st5}
             push {st4} push {st3} push {st2} push {st1} push {st0}
-            absorb_init hash squeeze absorb absorb hash squeeze absorb squeeze squeeze
+            sponge_init hash sponge_squeeze sponge_absorb sponge_absorb
+            hash sponge_squeeze sponge_absorb sponge_squeeze sponge_squeeze
             read_io eq assert // st0
             read_io eq assert // st1
             read_io eq assert // st2

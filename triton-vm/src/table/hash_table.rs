@@ -65,7 +65,8 @@ pub struct ExtHashTable {}
 /// The current “mode” of the Hash Table. The Hash Table can be in one of four distinct modes:
 ///
 /// 1. Hashing the [`Program`][program]. This is part of program attestation.
-/// 1. Processing all Sponge instructions, _i.e._, `absorb_init`, `absorb`, and `squeeze`.
+/// 1. Processing all Sponge instructions, _i.e._, `sponge_init`, `sponge_absorb`,
+///     and `sponge_squeeze`.
 /// 1. Processing the `hash` instruction.
 /// 1. Padding mode.
 ///
@@ -97,8 +98,8 @@ pub enum HashTableMode {
     /// [program]: crate::program::Program
     ProgramHashing,
 
-    /// The mode in which Sponge instructions, _i.e._, `absorb_init`, `absorb`, and `squeeze`,
-    /// are processed.
+    /// The mode in which Sponge instructions, _i.e._, `sponge_init`, `sponge_absorb`,
+    /// and `sponge_squeeze`, are processed.
     Sponge,
 
     /// The mode in which the `hash` instruction is processed.
@@ -413,9 +414,9 @@ impl ExtHashTable {
         let round_number = base_row(RoundNumber);
 
         let ci_is_hash = ci.clone() - opcode(Instruction::Hash);
-        let ci_is_absorb_init = ci.clone() - opcode(Instruction::AbsorbInit);
-        let ci_is_absorb = ci.clone() - opcode(Instruction::Absorb);
-        let ci_is_squeeze = ci - opcode(Instruction::Squeeze);
+        let ci_is_sponge_init = ci.clone() - opcode(Instruction::SpongeInit);
+        let ci_is_sponge_absorb = ci.clone() - opcode(Instruction::SpongeAbsorb);
+        let ci_is_sponge_squeeze = ci - opcode(Instruction::SpongeSqueeze);
 
         let mode_is_not_hash = Self::mode_deselector(circuit_builder, &mode, HashTableMode::Hash);
         let round_number_is_not_0 =
@@ -430,9 +431,9 @@ impl ExtHashTable {
 
         let if_mode_is_sponge_then_ci_is_a_sponge_instruction =
             Self::mode_deselector(circuit_builder, &mode, HashTableMode::Sponge)
-                * ci_is_absorb_init
-                * ci_is_absorb.clone()
-                * ci_is_squeeze.clone();
+                * ci_is_sponge_init
+                * ci_is_sponge_absorb.clone()
+                * ci_is_sponge_squeeze.clone();
 
         let if_padding_mode_then_round_number_is_0 =
             Self::mode_deselector(circuit_builder, &mode, HashTableMode::Pad)
@@ -447,16 +448,16 @@ impl ExtHashTable {
             })
             .collect_vec();
 
-        // It is possible to deselect for instruction `absorb_init` using the mode in addition
+        // It is possible to deselect for instruction `sponge_init` using the mode in addition
         // to deselecting for instructions `absorb` and `squeeze. However, the mode deselector has
         // degree 3, but there is only 1 additional value for the current instruction that need
         // to be de-selected: the opcode of `hash`. Hence, the instructions are listed explicitly.
-        let if_ci_is_absorb_init_and_round_no_is_0_then_ =
-            round_number_is_not_0 * ci_is_hash * ci_is_absorb * ci_is_squeeze;
-        let mut if_ci_is_absorb_init_and_round_no_is_0_then_states_10_through_15_are_0 = (10..=15)
+        let if_ci_is_sponge_init_and_round_no_is_0_then_ =
+            round_number_is_not_0 * ci_is_hash * ci_is_sponge_absorb * ci_is_sponge_squeeze;
+        let mut if_ci_is_sponge_init_and_round_no_is_0_then_states_10_through_15_are_0 = (10..=15)
             .map(|state_index| {
                 let state_element = base_row(Self::state_column_by_index(state_index));
-                if_ci_is_absorb_init_and_round_no_is_0_then_.clone() * state_element
+                if_ci_is_sponge_init_and_round_no_is_0_then_.clone() * state_element
             })
             .collect_vec();
 
@@ -552,7 +553,7 @@ impl ExtHashTable {
 
         constraints.append(&mut if_mode_is_hash_and_round_no_is_0_then_states_10_through_15_are_1);
         constraints
-            .append(&mut if_ci_is_absorb_init_and_round_no_is_0_then_states_10_through_15_are_0);
+            .append(&mut if_ci_is_sponge_init_and_round_no_is_0_then_states_10_through_15_are_0);
 
         for round_constant_column_idx in 0..NUM_ROUND_CONSTANTS {
             let round_constant_column =
@@ -631,9 +632,9 @@ impl ExtHashTable {
         let constant = |c: u64| circuit_builder.b_constant(c.into());
 
         let opcode_hash = constant(Instruction::Hash.opcode().into());
-        let opcode_absorb_init = constant(Instruction::AbsorbInit.opcode().into());
-        let opcode_absorb = constant(Instruction::Absorb.opcode().into());
-        let opcode_squeeze = constant(Instruction::Squeeze.opcode().into());
+        let opcode_sponge_init = constant(Instruction::SpongeInit.opcode().into());
+        let opcode_sponge_absorb = constant(Instruction::SpongeAbsorb.opcode().into());
+        let opcode_sponge_squeeze = constant(Instruction::SpongeSqueeze.opcode().into());
 
         let current_base_row = |column_idx: HashBaseTableColumn| {
             circuit_builder.input(CurrentBaseRow(column_idx.master_base_table_index()))
@@ -768,10 +769,10 @@ impl ExtHashTable {
                 * Self::select_mode(circuit_builder, &mode_next, HashTableMode::ProgramHashing)
                 * (compressed_digest - expected_program_digest);
 
-        let if_mode_is_program_hashing_and_next_mode_is_sponge_then_ci_next_is_absorb_init =
+        let if_mode_is_program_hashing_and_next_mode_is_sponge_then_ci_next_is_sponge_init =
             Self::mode_deselector(circuit_builder, &mode, HashTableMode::ProgramHashing)
                 * Self::mode_deselector(circuit_builder, &mode_next, HashTableMode::Sponge)
-                * (ci_next.clone() - opcode_absorb_init.clone());
+                * (ci_next.clone() - opcode_sponge_init.clone());
 
         let if_round_number_is_not_num_rounds_then_ci_doesnt_change =
             (round_number.clone() - constant(NUM_ROUNDS as u64)) * (ci_next.clone() - ci);
@@ -796,7 +797,7 @@ impl ExtHashTable {
 
         // copy capacity between rows with
         //  - mode_next == program_hashing and round_next == 0 and
-        //  - mode_next == sponge and round_next == 0 and ci_next == absorb
+        //  - mode_next == sponge and round_next == 0 and ci_next == sponge_absorb
         let difference_of_capacity_registers = state_current[RATE..]
             .iter()
             .zip_eq(state_next[RATE..].iter())
@@ -812,8 +813,8 @@ impl ExtHashTable {
                 * Self::select_mode(circuit_builder, &mode_next, HashTableMode::Pad)
                 * Self::select_mode(circuit_builder, &mode_next, HashTableMode::Hash)
                 * (ci_next.clone() - opcode_hash.clone())
-                * (ci_next.clone() - opcode_absorb_init.clone())
-                * (ci_next.clone() - opcode_squeeze.clone())
+                * (ci_next.clone() - opcode_sponge_init.clone())
+                * (ci_next.clone() - opcode_sponge_squeeze.clone())
                 * randomized_sum_of_capacity_differences;
 
         // copy entire state between rounds with index NUM_ROUNDS and 0 if instruction is “squeeze”
@@ -830,8 +831,8 @@ impl ExtHashTable {
         let if_round_number_next_is_0_and_ci_next_is_squeeze_then_state_doesnt_change =
             Self::round_number_deselector(circuit_builder, &round_number_next, 0)
                 * (ci_next.clone() - opcode_hash.clone())
-                * (ci_next.clone() - opcode_absorb_init.clone())
-                * (ci_next.clone() - opcode_absorb.clone())
+                * (ci_next.clone() - opcode_sponge_init.clone())
+                * (ci_next.clone() - opcode_sponge_absorb.clone())
                 * randomized_sum_of_state_differences;
 
         // Evaluation Arguments
@@ -902,9 +903,9 @@ impl ExtHashTable {
         let if_round_no_next_is_not_0_then_running_evaluation_sponge_absorb_remains =
             round_number_next.clone() * running_evaluation_sponge_absorb_remains.clone();
         let if_ci_next_is_not_spongy_then_running_evaluation_sponge_absorb_remains =
-            (ci_next.clone() - opcode_absorb_init)
-                * (ci_next.clone() - opcode_absorb)
-                * (ci_next - opcode_squeeze)
+            (ci_next.clone() - opcode_sponge_init)
+                * (ci_next.clone() - opcode_sponge_absorb)
+                * (ci_next - opcode_sponge_squeeze)
                 * running_evaluation_sponge_absorb_remains;
         let running_evaluation_sponge_is_updated_correctly =
             if_round_no_next_0_and_ci_next_is_spongy_then_running_eval_sponge_updates
@@ -936,7 +937,7 @@ impl ExtHashTable {
             next_mode_is_padding_mode_or_round_number_is_num_rounds_or_increments_by_one,
             receive_chunk_of_instructions_iff_next_mode_is_prog_hashing_and_next_round_number_is_0,
             if_mode_changes_from_program_hashing_then_current_digest_is_expected_program_digest,
-            if_mode_is_program_hashing_and_next_mode_is_sponge_then_ci_next_is_absorb_init,
+            if_mode_is_program_hashing_and_next_mode_is_sponge_then_ci_next_is_sponge_init,
             if_round_number_is_not_num_rounds_then_ci_doesnt_change,
             if_round_number_is_not_num_rounds_then_mode_doesnt_change,
             if_mode_is_sponge_then_mode_next_is_sponge_or_hash_or_pad,

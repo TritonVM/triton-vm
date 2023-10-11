@@ -248,9 +248,9 @@ impl ProcessorTable {
 
             // Hash Table – Sponge
             if let Some(prev_row) = previous_row {
-                if prev_row[CI.base_table_index()] == Instruction::AbsorbInit.opcode_b()
-                    || prev_row[CI.base_table_index()] == Instruction::Absorb.opcode_b()
-                    || prev_row[CI.base_table_index()] == Instruction::Squeeze.opcode_b()
+                if prev_row[CI.base_table_index()] == Instruction::SpongeInit.opcode_b()
+                    || prev_row[CI.base_table_index()] == Instruction::SpongeAbsorb.opcode_b()
+                    || prev_row[CI.base_table_index()] == Instruction::SpongeSqueeze.opcode_b()
                 {
                     sponge_running_evaluation = sponge_running_evaluation
                         * challenges[SpongeIndeterminate]
@@ -1712,7 +1712,7 @@ impl ExtProcessorTable {
         .concat()
     }
 
-    fn instruction_absorb_init(
+    fn instruction_sponge_init(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
         [
@@ -1723,7 +1723,7 @@ impl ExtProcessorTable {
         .concat()
     }
 
-    fn instruction_absorb(
+    fn instruction_sponge_absorb(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
         [
@@ -1734,7 +1734,7 @@ impl ExtProcessorTable {
         .concat()
     }
 
-    fn instruction_squeeze(
+    fn instruction_sponge_squeeze(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
         [
@@ -2192,9 +2192,9 @@ impl ExtProcessorTable {
             Hash => ExtProcessorTable::instruction_hash(circuit_builder),
             DivineSibling => ExtProcessorTable::instruction_divine_sibling(circuit_builder),
             AssertVector => ExtProcessorTable::instruction_assert_vector(circuit_builder),
-            AbsorbInit => ExtProcessorTable::instruction_absorb_init(circuit_builder),
-            Absorb => ExtProcessorTable::instruction_absorb(circuit_builder),
-            Squeeze => ExtProcessorTable::instruction_squeeze(circuit_builder),
+            SpongeInit => ExtProcessorTable::instruction_sponge_init(circuit_builder),
+            SpongeAbsorb => ExtProcessorTable::instruction_sponge_absorb(circuit_builder),
+            SpongeSqueeze => ExtProcessorTable::instruction_sponge_squeeze(circuit_builder),
             Add => ExtProcessorTable::instruction_add(circuit_builder),
             Mul => ExtProcessorTable::instruction_mul(circuit_builder),
             Invert => ExtProcessorTable::instruction_invert(circuit_builder),
@@ -2526,17 +2526,17 @@ impl ExtProcessorTable {
             circuit_builder.input(NextExtRow(col.master_ext_table_index()))
         };
 
-        let absorb_init_deselector =
-            Self::instruction_deselector_current_row(circuit_builder, Instruction::AbsorbInit);
-        let absorb_deselector =
-            Self::instruction_deselector_current_row(circuit_builder, Instruction::Absorb);
-        let squeeze_deselector =
-            Self::instruction_deselector_current_row(circuit_builder, Instruction::Squeeze);
+        let sponge_init_deselector =
+            Self::instruction_deselector_current_row(circuit_builder, Instruction::SpongeInit);
+        let sponge_absorb_deselector =
+            Self::instruction_deselector_current_row(circuit_builder, Instruction::SpongeAbsorb);
+        let sponge_squeeze_deselector =
+            Self::instruction_deselector_current_row(circuit_builder, Instruction::SpongeSqueeze);
 
         let sponge_instruction_selector = (curr_base_row(CI)
-            - constant(Instruction::AbsorbInit.opcode()))
-            * (curr_base_row(CI) - constant(Instruction::Absorb.opcode()))
-            * (curr_base_row(CI) - constant(Instruction::Squeeze.opcode()));
+            - constant(Instruction::SpongeInit.opcode()))
+            * (curr_base_row(CI) - constant(Instruction::SpongeAbsorb.opcode()))
+            * (curr_base_row(CI) - constant(Instruction::SpongeSqueeze.opcode()));
 
         let weights = [
             HashStateWeight0,
@@ -2576,9 +2576,9 @@ impl ExtProcessorTable {
         let running_evaluation_remains = next_ext_row(SpongeEvalArg) - curr_ext_row(SpongeEvalArg);
 
         sponge_instruction_selector * running_evaluation_remains
-            + absorb_init_deselector * running_evaluation_updates.clone()
-            + absorb_deselector * running_evaluation_updates.clone()
-            + squeeze_deselector * running_evaluation_updates
+            + sponge_init_deselector * running_evaluation_updates.clone()
+            + sponge_absorb_deselector * running_evaluation_updates.clone()
+            + sponge_squeeze_deselector * running_evaluation_updates
     }
 
     fn log_derivative_with_u32_table_updates_correctly(
