@@ -23,6 +23,7 @@ use crate::program::Program;
 use crate::stark::StarkHasher;
 use crate::table::hash_table;
 use crate::table::hash_table::HashTable;
+use crate::table::hash_table::PERMUTATION_TRACE_LENGTH;
 use crate::table::processor_table;
 use crate::table::table_column::HashBaseTableColumn::CI;
 use crate::table::table_column::MasterBaseTableColumn;
@@ -191,7 +192,7 @@ impl AlgebraicExecutionTrace {
 
     pub fn append_hash_trace(
         &mut self,
-        hash_permutation_trace: [[BFieldElement; tip5::STATE_SIZE]; tip5::NUM_ROUNDS + 1],
+        hash_permutation_trace: [[BFieldElement; tip5::STATE_SIZE]; PERMUTATION_TRACE_LENGTH],
     ) {
         self.increase_lookup_multiplicities(hash_permutation_trace);
         let mut hash_trace_addendum = HashTable::convert_to_hash_table_rows(hash_permutation_trace);
@@ -226,7 +227,7 @@ impl AlgebraicExecutionTrace {
     pub fn append_sponge_trace(
         &mut self,
         instruction: Instruction,
-        hash_permutation_trace: [[BFieldElement; tip5::STATE_SIZE]; tip5::NUM_ROUNDS + 1],
+        hash_permutation_trace: [[BFieldElement; tip5::STATE_SIZE]; PERMUTATION_TRACE_LENGTH],
     ) {
         assert!(matches!(
             instruction,
@@ -249,7 +250,7 @@ impl AlgebraicExecutionTrace {
     /// and increases the multiplicities accordingly
     fn increase_lookup_multiplicities(
         &mut self,
-        hash_permutation_trace: [[BFieldElement; tip5::STATE_SIZE]; tip5::NUM_ROUNDS + 1],
+        hash_permutation_trace: [[BFieldElement; tip5::STATE_SIZE]; PERMUTATION_TRACE_LENGTH],
     ) {
         // The last row in the trace is the permutation's result: no lookups are performed for it.
         let rows_for_which_lookups_are_performed = hash_permutation_trace.iter().dropping_back(1);

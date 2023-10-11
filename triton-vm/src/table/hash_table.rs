@@ -48,6 +48,7 @@ pub const FULL_WIDTH: usize = BASE_WIDTH + EXT_WIDTH;
 
 pub const POWER_MAP_EXPONENT: u64 = 7;
 pub const NUM_ROUND_CONSTANTS: usize = STATE_SIZE;
+pub const PERMUTATION_TRACE_LENGTH: usize = NUM_ROUNDS + 1;
 
 #[derive(Debug, Clone)]
 pub struct HashTable {}
@@ -1394,9 +1395,9 @@ impl HashTable {
     ///
     /// The current instruction is not set.
     pub fn convert_to_hash_table_rows(
-        hash_permutation_trace: [[BFieldElement; STATE_SIZE]; NUM_ROUNDS + 1],
+        hash_permutation_trace: [[BFieldElement; STATE_SIZE]; PERMUTATION_TRACE_LENGTH],
     ) -> Array2<BFieldElement> {
-        let mut hash_trace_addendum = Array2::zeros([NUM_ROUNDS + 1, BASE_WIDTH]);
+        let mut hash_trace_addendum = Array2::zeros([PERMUTATION_TRACE_LENGTH, BASE_WIDTH]);
         for (round_number, mut row) in hash_trace_addendum.rows_mut().into_iter().enumerate() {
             let trace_row = hash_permutation_trace[round_number];
             row[RoundNumber.base_table_index()] = BFieldElement::from(round_number as u64);

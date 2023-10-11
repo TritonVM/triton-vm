@@ -29,6 +29,7 @@ use crate::op_stack::OpStackElement::*;
 use crate::op_stack::*;
 use crate::program::*;
 use crate::stark::StarkHasher;
+use crate::table::hash_table::PERMUTATION_TRACE_LENGTH;
 use crate::table::processor_table;
 use crate::table::processor_table::ProcessorTraceRow;
 use crate::table::table_column::*;
@@ -99,7 +100,7 @@ pub enum CoProcessorCall {
     /// One row per round in the Tip5 permutation.
     Tip5Trace(
         Instruction,
-        Box<[[BFieldElement; tip5::STATE_SIZE]; 1 + tip5::NUM_ROUNDS]>,
+        Box<[[BFieldElement; tip5::STATE_SIZE]; PERMUTATION_TRACE_LENGTH]>,
     ),
 
     /// Executed u32 instruction as well as its left-hand side and right-hand side
