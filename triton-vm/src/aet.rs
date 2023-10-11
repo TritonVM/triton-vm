@@ -251,9 +251,9 @@ impl AlgebraicExecutionTrace {
         &mut self,
         hash_permutation_trace: [[BFieldElement; tip5::STATE_SIZE]; tip5::NUM_ROUNDS + 1],
     ) {
-        // The last row in the trace is the permutation's result, meaning that no lookups are
-        // performed on it. Therefore, we skip it.
-        for row in hash_permutation_trace.iter().rev().skip(1) {
+        // The last row in the trace is the permutation's result: no lookups are performed for it.
+        let rows_for_which_lookups_are_performed = hash_permutation_trace.iter().dropping_back(1);
+        for row in rows_for_which_lookups_are_performed {
             self.increase_lookup_multiplicities_for_row(row);
         }
     }
