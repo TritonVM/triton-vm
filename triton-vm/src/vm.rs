@@ -17,7 +17,6 @@ use twenty_first::shared_math::digest::Digest;
 use twenty_first::shared_math::tip5;
 use twenty_first::shared_math::tip5::*;
 use twenty_first::shared_math::traits::Inverse;
-use twenty_first::shared_math::x_field_element::XFieldElement;
 use twenty_first::util_types::algebraic_hasher::Domain;
 
 use crate::error::InstructionError;
@@ -209,50 +208,49 @@ impl<'pgm> VMState<'pgm> {
 
     /// Perform the state transition as a mutable operation on `self`.
     pub fn step(&mut self) -> Result<Option<CoProcessorCall>> {
-        self.previous_instruction = match self.current_instruction() {
-            Ok(instruction) => instruction.opcode_b(),
-            // trying to read past the end of the program doesn't change the previous instruction
-            Err(_) => self.previous_instruction,
-        };
+        // trying to read past the end of the program doesn't change the previous instruction
+        if let Ok(instruction) = self.current_instruction() {
+            self.previous_instruction = instruction.opcode_b();
+        }
 
         let maybe_co_processor_trace = match self.current_instruction()? {
-            Pop => self.instruction_pop()?,
-            Push(field_element) => self.instruction_push(field_element),
-            Divine => self.instruction_divine()?,
-            Dup(stack_element) => self.instruction_dup(stack_element),
-            Swap(stack_element) => self.instruction_swap(stack_element),
-            Nop => self.instruction_nop(),
-            Skiz => self.instruction_skiz()?,
-            Call(address) => self.instruction_call(address),
-            Return => self.instruction_return()?,
-            Recurse => self.instruction_recurse()?,
-            Assert => self.instruction_assert()?,
-            Halt => self.instruction_halt(),
-            ReadMem => self.instruction_read_mem(),
-            WriteMem => self.instruction_write_mem()?,
-            Hash => self.instruction_hash()?,
-            AbsorbInit | Absorb => self.instruction_absorb()?,
-            Squeeze => self.instruction_squeeze()?,
-            DivineSibling => self.instruction_divine_sibling()?,
-            AssertVector => self.instruction_assert_vector()?,
-            Add => self.instruction_add()?,
-            Mul => self.instruction_mul()?,
-            Invert => self.instruction_invert()?,
-            Eq => self.instruction_eq()?,
-            Split => self.instruction_split()?,
-            Lt => self.instruction_lt()?,
-            And => self.instruction_and()?,
-            Xor => self.instruction_xor()?,
-            Log2Floor => self.instruction_log_2_floor()?,
-            Pow => self.instruction_pow()?,
-            DivMod => self.instruction_div_mod()?,
-            PopCount => self.instruction_pop_count()?,
-            XxAdd => self.instruction_xx_add()?,
-            XxMul => self.instruction_xx_mul()?,
-            XInvert => self.instruction_x_invert()?,
-            XbMul => self.instruction_xb_mul()?,
-            WriteIo => self.instruction_write_io()?,
-            ReadIo => self.instruction_read_io()?,
+            Pop => self.pop()?,
+            Push(field_element) => self.push(field_element),
+            Divine => self.divine()?,
+            Dup(stack_element) => self.dup(stack_element),
+            Swap(stack_element) => self.swap(stack_element),
+            Nop => self.nop(),
+            Skiz => self.skiz()?,
+            Call(address) => self.call(address),
+            Return => self.return_from_call()?,
+            Recurse => self.recurse()?,
+            Assert => self.assert()?,
+            Halt => self.halt(),
+            ReadMem => self.read_mem(),
+            WriteMem => self.write_mem()?,
+            Hash => self.hash()?,
+            AbsorbInit | Absorb => self.absorb()?,
+            Squeeze => self.squeeze()?,
+            DivineSibling => self.divine_sibling()?,
+            AssertVector => self.assert_vector()?,
+            Add => self.add()?,
+            Mul => self.mul()?,
+            Invert => self.invert()?,
+            Eq => self.eq()?,
+            Split => self.split()?,
+            Lt => self.lt()?,
+            And => self.and()?,
+            Xor => self.xor()?,
+            Log2Floor => self.log_2_floor()?,
+            Pow => self.pow()?,
+            DivMod => self.div_mod()?,
+            PopCount => self.pop_count()?,
+            XxAdd => self.xx_add()?,
+            XxMul => self.xx_mul()?,
+            XInvert => self.x_invert()?,
+            XbMul => self.xb_mul()?,
+            WriteIo => self.write_io()?,
+            ReadIo => self.read_io()?,
         };
 
         if self.op_stack.is_too_shallow() {
@@ -263,112 +261,112 @@ impl<'pgm> VMState<'pgm> {
         Ok(maybe_co_processor_trace)
     }
 
-    fn instruction_pop(&mut self) -> Result<Option<CoProcessorCall>> {
+    fn pop(&mut self) -> Result<Option<CoProcessorCall>> {
         self.op_stack.pop()?;
         self.instruction_pointer += 1;
         Ok(None)
     }
 
-    fn instruction_push(&mut self, field_element: BFieldElement) -> Option<CoProcessorCall> {
-        self.op_stack.push(field_element);
+    fn push(&mut self, element: BFieldElement) -> Option<CoProcessorCall> {
+        self.op_stack.push(element);
         self.instruction_pointer += 2;
         None
     }
 
-    fn instruction_divine(&mut self) -> Result<Option<CoProcessorCall>> {
-        let elem = self.secret_individual_tokens.pop_front().ok_or(anyhow!(
+    fn divine(&mut self) -> Result<Option<CoProcessorCall>> {
+        let element = self.secret_individual_tokens.pop_front().ok_or(anyhow!(
             "Instruction `divine`: secret input buffer is empty."
         ))?;
-        self.op_stack.push(elem);
+        self.op_stack.push(element);
         self.instruction_pointer += 1;
         Ok(None)
     }
 
-    fn instruction_dup(&mut self, stack_element: OpStackElement) -> Option<CoProcessorCall> {
-        let stack_element = self.op_stack.peek_at(stack_element);
-        self.op_stack.push(stack_element);
+    fn dup(&mut self, stack_register: OpStackElement) -> Option<CoProcessorCall> {
+        let element = self.op_stack.peek_at(stack_register);
+        self.op_stack.push(element);
         self.instruction_pointer += 2;
         None
     }
 
-    fn instruction_swap(&mut self, stack_element: OpStackElement) -> Option<CoProcessorCall> {
-        self.op_stack.swap_top_with(stack_element);
+    fn swap(&mut self, stack_register: OpStackElement) -> Option<CoProcessorCall> {
+        self.op_stack.swap_top_with(stack_register);
         self.instruction_pointer += 2;
         None
     }
 
-    fn instruction_nop(&mut self) -> Option<CoProcessorCall> {
+    fn nop(&mut self) -> Option<CoProcessorCall> {
         self.instruction_pointer += 1;
         None
     }
 
-    fn instruction_skiz(&mut self) -> Result<Option<CoProcessorCall>> {
-        let elem = self.op_stack.pop()?;
-        self.instruction_pointer += match elem.is_zero() {
+    fn skiz(&mut self) -> Result<Option<CoProcessorCall>> {
+        let top_of_stack = self.op_stack.pop()?;
+        self.instruction_pointer += match top_of_stack.is_zero() {
             true => 1 + self.next_instruction()?.size(),
             false => 1,
         };
         Ok(None)
     }
 
-    fn instruction_call(&mut self, addr: BFieldElement) -> Option<CoProcessorCall> {
-        let o_plus_2 = self.instruction_pointer as u32 + 2;
-        let pair = (BFieldElement::new(o_plus_2 as u64), addr);
-        self.jump_stack.push(pair);
-        self.instruction_pointer = addr.value() as usize;
+    fn call(&mut self, call_destination: BFieldElement) -> Option<CoProcessorCall> {
+        let size_of_instruction_call = 2;
+        let call_origin = (self.instruction_pointer as u32 + size_of_instruction_call).into();
+        let jump_stack_entry = (call_origin, call_destination);
+        self.jump_stack.push(jump_stack_entry);
+
+        self.instruction_pointer = call_destination.value() as usize;
         None
     }
 
-    fn instruction_return(&mut self) -> Result<Option<CoProcessorCall>> {
-        let (orig_addr, _dest_addr) = self.jump_stack_pop()?;
-        self.instruction_pointer = orig_addr.value() as usize;
+    fn return_from_call(&mut self) -> Result<Option<CoProcessorCall>> {
+        let (call_origin, _) = self.jump_stack_pop()?;
+        self.instruction_pointer = call_origin.value() as usize;
         Ok(None)
     }
 
-    fn instruction_recurse(&mut self) -> Result<Option<CoProcessorCall>> {
-        let (_orig_addr, dest_addr) = self.jump_stack_peek()?;
-        self.instruction_pointer = dest_addr.value() as usize;
+    fn recurse(&mut self) -> Result<Option<CoProcessorCall>> {
+        let (_, call_destination) = self.jump_stack_peek()?;
+        self.instruction_pointer = call_destination.value() as usize;
         Ok(None)
     }
 
-    fn instruction_assert(&mut self) -> Result<Option<CoProcessorCall>> {
-        let elem = self.op_stack.pop()?;
-        if !elem.is_one() {
-            bail!(AssertionFailed(
-                self.instruction_pointer,
-                self.cycle_count,
-                elem,
-            ));
+    fn assert(&mut self) -> Result<Option<CoProcessorCall>> {
+        let top_of_stack = self.op_stack.pop()?;
+        if !top_of_stack.is_one() {
+            let assertion_failed =
+                AssertionFailed(self.instruction_pointer, self.cycle_count, top_of_stack);
+            bail!(assertion_failed);
         }
         self.instruction_pointer += 1;
         Ok(None)
     }
 
-    fn instruction_halt(&mut self) -> Option<CoProcessorCall> {
+    fn halt(&mut self) -> Option<CoProcessorCall> {
         self.halting = true;
         self.instruction_pointer += 1;
         None
     }
 
-    fn instruction_read_mem(&mut self) -> Option<CoProcessorCall> {
-        let ramp = self.op_stack.peek_at(ST0);
-        let ramv = self.memory_get(&ramp);
-        self.op_stack.push(ramv);
-        self.ramp = ramp.value();
+    fn read_mem(&mut self) -> Option<CoProcessorCall> {
+        let ram_pointer = self.op_stack.peek_at(ST0);
+        let ram_value = self.memory_get(&ram_pointer);
+        self.op_stack.push(ram_value);
+        self.ramp = ram_pointer.value();
         self.instruction_pointer += 1;
         None
     }
 
-    fn instruction_write_mem(&mut self) -> Result<Option<CoProcessorCall>> {
-        let ramp = self.op_stack.peek_at(ST1);
-        let ramv = self.op_stack.pop()?;
-        self.ramp = ramp.value();
-        self.ram.insert(ramp, ramv);
+    fn write_mem(&mut self) -> Result<Option<CoProcessorCall>> {
+        let ram_pointer = self.op_stack.peek_at(ST1);
+        let ram_value = self.op_stack.pop()?;
+        self.ramp = ram_pointer.value();
+        self.ram.insert(ram_pointer, ram_value);
         self.instruction_pointer += 1;
         Ok(None)
     }
 
-    fn instruction_hash(&mut self) -> Result<Option<CoProcessorCall>> {
+    fn hash(&mut self) -> Result<Option<CoProcessorCall>> {
         let to_hash = self.op_stack.pop_multiple::<{ tip5::RATE }>()?;
         let mut hash_input = Tip5State::new(Domain::FixedLength);
         hash_input.state[..tip5::RATE].copy_from_slice(&to_hash);
@@ -387,7 +385,7 @@ impl<'pgm> VMState<'pgm> {
         Ok(co_processor_trace)
     }
 
-    fn instruction_absorb(&mut self) -> Result<Option<CoProcessorCall>> {
+    fn absorb(&mut self) -> Result<Option<CoProcessorCall>> {
         // fetch top elements but don't alter the stack
         let to_absorb = self.op_stack.pop_multiple::<{ tip5::RATE }>()?;
         for i in (0..tip5::RATE).rev() {
@@ -408,7 +406,7 @@ impl<'pgm> VMState<'pgm> {
         Ok(co_processor_trace)
     }
 
-    fn instruction_squeeze(&mut self) -> Result<Option<CoProcessorCall>> {
+    fn squeeze(&mut self) -> Result<Option<CoProcessorCall>> {
         let _ = self.op_stack.pop_multiple::<{ tip5::RATE }>()?;
         for i in (0..tip5::RATE).rev() {
             self.op_stack.push(self.sponge_state[i]);
@@ -423,13 +421,13 @@ impl<'pgm> VMState<'pgm> {
         Ok(co_processor_trace)
     }
 
-    fn instruction_divine_sibling(&mut self) -> Result<Option<CoProcessorCall>> {
+    fn divine_sibling(&mut self) -> Result<Option<CoProcessorCall>> {
         let _st0_through_st4 = self.op_stack.pop_multiple::<{ DIGEST_LENGTH }>()?;
         let known_digest = self.op_stack.pop_multiple()?;
 
         let node_index = self.op_stack.pop_u32()?;
         let parent_node_index = node_index / 2;
-        self.op_stack.push((parent_node_index as u64).into());
+        self.op_stack.push(parent_node_index.into());
 
         let sibling_digest = self.pop_secret_digest()?;
         let (left_digest, right_digest) =
@@ -445,7 +443,7 @@ impl<'pgm> VMState<'pgm> {
         Ok(None)
     }
 
-    fn instruction_assert_vector(&mut self) -> Result<Option<CoProcessorCall>> {
+    fn assert_vector(&mut self) -> Result<Option<CoProcessorCall>> {
         for index in 0..DIGEST_LENGTH {
             let lhs = index.try_into().unwrap();
             let rhs = (index + DIGEST_LENGTH).try_into().unwrap();
@@ -469,7 +467,7 @@ impl<'pgm> VMState<'pgm> {
         )
     }
 
-    fn instruction_add(&mut self) -> Result<Option<CoProcessorCall>> {
+    fn add(&mut self) -> Result<Option<CoProcessorCall>> {
         let lhs = self.op_stack.pop()?;
         let rhs = self.op_stack.pop()?;
         self.op_stack.push(lhs + rhs);
@@ -477,7 +475,7 @@ impl<'pgm> VMState<'pgm> {
         Ok(None)
     }
 
-    fn instruction_mul(&mut self) -> Result<Option<CoProcessorCall>> {
+    fn mul(&mut self) -> Result<Option<CoProcessorCall>> {
         let lhs = self.op_stack.pop()?;
         let rhs = self.op_stack.pop()?;
         self.op_stack.push(lhs * rhs);
@@ -485,28 +483,29 @@ impl<'pgm> VMState<'pgm> {
         Ok(None)
     }
 
-    fn instruction_invert(&mut self) -> Result<Option<CoProcessorCall>> {
-        let elem = self.op_stack.pop()?;
-        if elem.is_zero() {
+    fn invert(&mut self) -> Result<Option<CoProcessorCall>> {
+        let top_of_stack = self.op_stack.pop()?;
+        if top_of_stack.is_zero() {
             bail!(InverseOfZero);
         }
-        self.op_stack.push(elem.inverse());
+        self.op_stack.push(top_of_stack.inverse());
         self.instruction_pointer += 1;
         Ok(None)
     }
 
-    fn instruction_eq(&mut self) -> Result<Option<CoProcessorCall>> {
+    fn eq(&mut self) -> Result<Option<CoProcessorCall>> {
         let lhs = self.op_stack.pop()?;
         let rhs = self.op_stack.pop()?;
-        self.op_stack.push(Self::eq(lhs, rhs));
+        let eq: u32 = (lhs == rhs).into();
+        self.op_stack.push(eq.into());
         self.instruction_pointer += 1;
         Ok(None)
     }
 
-    fn instruction_split(&mut self) -> Result<Option<CoProcessorCall>> {
-        let elem = self.op_stack.pop()?;
-        let lo = BFieldElement::new(elem.value() & 0xffff_ffff);
-        let hi = BFieldElement::new(elem.value() >> 32);
+    fn split(&mut self) -> Result<Option<CoProcessorCall>> {
+        let top_of_stack = self.op_stack.pop()?;
+        let lo = BFieldElement::new(top_of_stack.value() & 0xffff_ffff);
+        let hi = BFieldElement::new(top_of_stack.value() >> 32);
         self.op_stack.push(hi);
         self.op_stack.push(lo);
 
@@ -517,7 +516,7 @@ impl<'pgm> VMState<'pgm> {
         Ok(co_processor_trace)
     }
 
-    fn instruction_lt(&mut self) -> Result<Option<CoProcessorCall>> {
+    fn lt(&mut self) -> Result<Option<CoProcessorCall>> {
         let lhs = self.op_stack.pop_u32()?;
         let rhs = self.op_stack.pop_u32()?;
         let lt: u32 = (lhs < rhs).into();
@@ -530,7 +529,7 @@ impl<'pgm> VMState<'pgm> {
         Ok(co_processor_trace)
     }
 
-    fn instruction_and(&mut self) -> Result<Option<CoProcessorCall>> {
+    fn and(&mut self) -> Result<Option<CoProcessorCall>> {
         let lhs = self.op_stack.pop_u32()?;
         let rhs = self.op_stack.pop_u32()?;
         let and = lhs & rhs;
@@ -543,7 +542,7 @@ impl<'pgm> VMState<'pgm> {
         Ok(co_processor_trace)
     }
 
-    fn instruction_xor(&mut self) -> Result<Option<CoProcessorCall>> {
+    fn xor(&mut self) -> Result<Option<CoProcessorCall>> {
         let lhs = self.op_stack.pop_u32()?;
         let rhs = self.op_stack.pop_u32()?;
         let xor = lhs ^ rhs;
@@ -559,22 +558,22 @@ impl<'pgm> VMState<'pgm> {
         Ok(co_processor_trace)
     }
 
-    fn instruction_log_2_floor(&mut self) -> Result<Option<CoProcessorCall>> {
-        let lhs = self.op_stack.pop_u32()?;
-        if lhs.is_zero() {
+    fn log_2_floor(&mut self) -> Result<Option<CoProcessorCall>> {
+        let top_of_stack = self.op_stack.pop_u32()?;
+        if top_of_stack.is_zero() {
             bail!(LogarithmOfZero);
         }
-        let l2f = BFieldElement::new(lhs.ilog2().into());
-        self.op_stack.push(l2f);
+        let log_2_floor = top_of_stack.ilog2();
+        self.op_stack.push(log_2_floor.into());
 
-        let u32_table_entry = U32TableEntry::new(Log2Floor, lhs, 0);
+        let u32_table_entry = U32TableEntry::new(Log2Floor, top_of_stack, 0);
         let co_processor_trace = Some(SingleU32TableEntry(u32_table_entry));
 
         self.instruction_pointer += 1;
         Ok(co_processor_trace)
     }
 
-    fn instruction_pow(&mut self) -> Result<Option<CoProcessorCall>> {
+    fn pow(&mut self) -> Result<Option<CoProcessorCall>> {
         let base = self.op_stack.pop()?;
         let exponent = self.op_stack.pop_u32()?;
         let base_pow_exponent = base.mod_pow(exponent.into());
@@ -588,7 +587,7 @@ impl<'pgm> VMState<'pgm> {
         Ok(co_processor_trace)
     }
 
-    fn instruction_div_mod(&mut self) -> Result<Option<CoProcessorCall>> {
+    fn div_mod(&mut self) -> Result<Option<CoProcessorCall>> {
         let numerator = self.op_stack.pop_u32()?;
         let denominator = self.op_stack.pop_u32()?;
         if denominator.is_zero() {
@@ -611,64 +610,65 @@ impl<'pgm> VMState<'pgm> {
         Ok(co_processor_trace)
     }
 
-    fn instruction_pop_count(&mut self) -> Result<Option<CoProcessorCall>> {
-        let element = self.op_stack.pop_u32()?;
-        let pop_count = element.count_ones();
+    fn pop_count(&mut self) -> Result<Option<CoProcessorCall>> {
+        let top_of_stack = self.op_stack.pop_u32()?;
+        let pop_count = top_of_stack.count_ones();
         self.op_stack.push(pop_count.into());
 
-        let u32_table_entry = U32TableEntry::new(PopCount, element, 0);
+        let u32_table_entry = U32TableEntry::new(PopCount, top_of_stack, 0);
         let co_processor_trace = Some(SingleU32TableEntry(u32_table_entry));
 
         self.instruction_pointer += 1;
         Ok(co_processor_trace)
     }
 
-    fn instruction_xx_add(&mut self) -> Result<Option<CoProcessorCall>> {
-        let lhs: XFieldElement = self.op_stack.pop_extension_field_element()?;
-        let rhs: XFieldElement = self.op_stack.peek_at_top_extension_field_element();
+    fn xx_add(&mut self) -> Result<Option<CoProcessorCall>> {
+        let lhs = self.op_stack.pop_extension_field_element()?;
+        let rhs = self.op_stack.peek_at_top_extension_field_element();
         self.op_stack.push_extension_field_element(lhs + rhs);
         self.instruction_pointer += 1;
         Ok(None)
     }
 
-    fn instruction_xx_mul(&mut self) -> Result<Option<CoProcessorCall>> {
-        let lhs: XFieldElement = self.op_stack.pop_extension_field_element()?;
-        let rhs: XFieldElement = self.op_stack.peek_at_top_extension_field_element();
+    fn xx_mul(&mut self) -> Result<Option<CoProcessorCall>> {
+        let lhs = self.op_stack.pop_extension_field_element()?;
+        let rhs = self.op_stack.peek_at_top_extension_field_element();
         self.op_stack.push_extension_field_element(lhs * rhs);
         self.instruction_pointer += 1;
         Ok(None)
     }
 
-    fn instruction_x_invert(&mut self) -> Result<Option<CoProcessorCall>> {
-        let elem: XFieldElement = self.op_stack.pop_extension_field_element()?;
-        if elem.is_zero() {
+    fn x_invert(&mut self) -> Result<Option<CoProcessorCall>> {
+        let top_of_stack = self.op_stack.pop_extension_field_element()?;
+        if top_of_stack.is_zero() {
             bail!(InverseOfZero);
         }
-        self.op_stack.push_extension_field_element(elem.inverse());
+        self.op_stack
+            .push_extension_field_element(top_of_stack.inverse());
         self.instruction_pointer += 1;
         Ok(None)
     }
 
-    fn instruction_xb_mul(&mut self) -> Result<Option<CoProcessorCall>> {
-        let lhs: BFieldElement = self.op_stack.pop()?;
-        let rhs: XFieldElement = self.op_stack.pop_extension_field_element()?;
+    fn xb_mul(&mut self) -> Result<Option<CoProcessorCall>> {
+        let lhs = self.op_stack.pop()?;
+        let rhs = self.op_stack.pop_extension_field_element()?;
         self.op_stack.push_extension_field_element(lhs.lift() * rhs);
         self.instruction_pointer += 1;
         Ok(None)
     }
 
-    fn instruction_write_io(&mut self) -> Result<Option<CoProcessorCall>> {
-        let elem_to_write = self.op_stack.pop()?;
-        self.public_output.push(elem_to_write);
+    fn write_io(&mut self) -> Result<Option<CoProcessorCall>> {
+        let top_of_stack = self.op_stack.pop()?;
+        self.public_output.push(top_of_stack);
         self.instruction_pointer += 1;
         Ok(None)
     }
 
-    fn instruction_read_io(&mut self) -> Result<Option<CoProcessorCall>> {
-        let in_elem = self.public_input.pop_front().ok_or(anyhow!(
+    fn read_io(&mut self) -> Result<Option<CoProcessorCall>> {
+        let read_element = self.public_input.pop_front().ok_or(anyhow!(
             "Instruction `read_io`: public input buffer is empty."
         ))?;
-        self.op_stack.push(in_elem);
+        self.op_stack.push(read_element);
         self.instruction_pointer += 1;
         Ok(None)
     }
@@ -727,13 +727,6 @@ impl<'pgm> VMState<'pgm> {
         processor_row[RAMV.base_table_index()] = self.memory_get(&ram_pointer);
 
         processor_row
-    }
-
-    fn eq(lhs: BFieldElement, rhs: BFieldElement) -> BFieldElement {
-        match lhs == rhs {
-            true => BFieldElement::one(),
-            false => BFieldElement::zero(),
-        }
     }
 
     /// The “next instruction or argument” (NIA) is
