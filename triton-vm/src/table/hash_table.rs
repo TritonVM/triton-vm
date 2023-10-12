@@ -48,7 +48,9 @@ pub const FULL_WIDTH: usize = BASE_WIDTH + EXT_WIDTH;
 
 pub const POWER_MAP_EXPONENT: u64 = 7;
 pub const NUM_ROUND_CONSTANTS: usize = STATE_SIZE;
-pub const PERMUTATION_TRACE_LENGTH: usize = NUM_ROUNDS + 1;
+
+const PERMUTATION_TRACE_LENGTH: usize = NUM_ROUNDS + 1;
+pub type PermutationTrace = [[BFieldElement; STATE_SIZE]; PERMUTATION_TRACE_LENGTH];
 
 #[derive(Debug, Clone)]
 pub struct HashTable {}
@@ -1394,12 +1396,10 @@ impl HashTable {
     /// - adding the looked-up value for each limb.
     ///
     /// The current instruction is not set.
-    pub fn convert_to_hash_table_rows(
-        hash_permutation_trace: [[BFieldElement; STATE_SIZE]; PERMUTATION_TRACE_LENGTH],
-    ) -> Array2<BFieldElement> {
+    pub fn convert_to_hash_table_rows(trace: PermutationTrace) -> Array2<BFieldElement> {
         let mut hash_trace_addendum = Array2::zeros([PERMUTATION_TRACE_LENGTH, BASE_WIDTH]);
         for (round_number, mut row) in hash_trace_addendum.rows_mut().into_iter().enumerate() {
-            let trace_row = hash_permutation_trace[round_number];
+            let trace_row = trace[round_number];
             row[RoundNumber.base_table_index()] = BFieldElement::from(round_number as u64);
 
             let st_0_limbs = Self::base_field_element_into_16_bit_limbs(trace_row[0]);
