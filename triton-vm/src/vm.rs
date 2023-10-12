@@ -94,13 +94,14 @@ pub struct VMState<'pgm> {
 /// co-processor or enough information to deduce the trace.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum CoProcessorCall {
+    SpongeStateReset,
+
     /// Trace of the state registers for hash coprocessor table when executing instruction `hash`
-    /// or any of the Sponge instructions `sponge_init`, `absorb`, `squeeze`.
+    /// or ore of the Sponge instructions `sponge_absorb` and `sponge_squeeze`.
     /// One row per round in the Tip5 permutation.
     Tip5Trace(Instruction, Box<PermutationTrace>),
 
     SingleU32TableEntry(U32TableEntry),
-
     DoubleU32TableEntry([U32TableEntry; 2]),
 }
 
@@ -386,7 +387,7 @@ impl<'pgm> VMState<'pgm> {
     fn sponge_init(&mut self) -> Option<CoProcessorCall> {
         self.sponge_state = Tip5State::new(Domain::VariableLength).state;
         self.instruction_pointer += 1;
-        None
+        Some(SpongeStateReset)
     }
 
     fn sponge_absorb(&mut self) -> Result<Option<CoProcessorCall>> {

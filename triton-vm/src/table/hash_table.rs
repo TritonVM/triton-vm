@@ -1,9 +1,5 @@
 use itertools::Itertools;
-use ndarray::s;
-use ndarray::Array2;
-use ndarray::ArrayView1;
-use ndarray::ArrayView2;
-use ndarray::ArrayViewMut2;
+use ndarray::*;
 use num_traits::Zero;
 use strum::Display;
 use strum::EnumCount;
@@ -1384,116 +1380,156 @@ impl HashTable {
         [0, 16, 32, 48].map(|shift| ((r_times_x >> shift) & 0xffff) as u16)
     }
 
-    /// Given a trace of the Tip5 permutation, construct a trace corresponding to the columns of
-    /// the Hash Table. This includes
+    /// Convert a permutation trace to a segment in the Hash Table.
     ///
-    /// - adding the round number
-    /// - adding the round constants,
-    /// - decomposing the first [`NUM_SPLIT_AND_LOOKUP`] (== 4) state elements into their
-    ///     constituent limbs,
-    /// - setting the inverse-or-zero for proving correct limb decomposition, and
-    /// - adding the looked-up value for each limb.
-    ///
-    /// The current instruction is not set.
-    pub fn convert_to_hash_table_rows(trace: PermutationTrace) -> Array2<BFieldElement> {
-        let mut hash_trace_addendum = Array2::zeros([PERMUTATION_TRACE_LENGTH, BASE_WIDTH]);
-        for (round_number, mut row) in hash_trace_addendum.rows_mut().into_iter().enumerate() {
-            let trace_row = trace[round_number];
-            row[RoundNumber.base_table_index()] = BFieldElement::from(round_number as u64);
-
-            let st_0_limbs = Self::base_field_element_into_16_bit_limbs(trace_row[0]);
-            let st_0_look_in_split = st_0_limbs.map(|limb| BFieldElement::new(limb.into()));
-            row[State0LowestLkIn.base_table_index()] = st_0_look_in_split[0];
-            row[State0MidLowLkIn.base_table_index()] = st_0_look_in_split[1];
-            row[State0MidHighLkIn.base_table_index()] = st_0_look_in_split[2];
-            row[State0HighestLkIn.base_table_index()] = st_0_look_in_split[3];
-
-            let st_0_look_out_split = st_0_limbs.map(CascadeTable::lookup_16_bit_limb);
-            row[State0LowestLkOut.base_table_index()] = st_0_look_out_split[0];
-            row[State0MidLowLkOut.base_table_index()] = st_0_look_out_split[1];
-            row[State0MidHighLkOut.base_table_index()] = st_0_look_out_split[2];
-            row[State0HighestLkOut.base_table_index()] = st_0_look_out_split[3];
-
-            let st_1_limbs = Self::base_field_element_into_16_bit_limbs(trace_row[1]);
-            let st_1_look_in_split = st_1_limbs.map(|limb| BFieldElement::new(limb.into()));
-            row[State1LowestLkIn.base_table_index()] = st_1_look_in_split[0];
-            row[State1MidLowLkIn.base_table_index()] = st_1_look_in_split[1];
-            row[State1MidHighLkIn.base_table_index()] = st_1_look_in_split[2];
-            row[State1HighestLkIn.base_table_index()] = st_1_look_in_split[3];
-
-            let st_1_look_out_split = st_1_limbs.map(CascadeTable::lookup_16_bit_limb);
-            row[State1LowestLkOut.base_table_index()] = st_1_look_out_split[0];
-            row[State1MidLowLkOut.base_table_index()] = st_1_look_out_split[1];
-            row[State1MidHighLkOut.base_table_index()] = st_1_look_out_split[2];
-            row[State1HighestLkOut.base_table_index()] = st_1_look_out_split[3];
-
-            let st_2_limbs = Self::base_field_element_into_16_bit_limbs(trace_row[2]);
-            let st_2_look_in_split = st_2_limbs.map(|limb| BFieldElement::new(limb.into()));
-            row[State2LowestLkIn.base_table_index()] = st_2_look_in_split[0];
-            row[State2MidLowLkIn.base_table_index()] = st_2_look_in_split[1];
-            row[State2MidHighLkIn.base_table_index()] = st_2_look_in_split[2];
-            row[State2HighestLkIn.base_table_index()] = st_2_look_in_split[3];
-
-            let st_2_look_out_split = st_2_limbs.map(CascadeTable::lookup_16_bit_limb);
-            row[State2LowestLkOut.base_table_index()] = st_2_look_out_split[0];
-            row[State2MidLowLkOut.base_table_index()] = st_2_look_out_split[1];
-            row[State2MidHighLkOut.base_table_index()] = st_2_look_out_split[2];
-            row[State2HighestLkOut.base_table_index()] = st_2_look_out_split[3];
-
-            let st_3_limbs = Self::base_field_element_into_16_bit_limbs(trace_row[3]);
-            let st_3_look_in_split = st_3_limbs.map(|limb| BFieldElement::new(limb.into()));
-            row[State3LowestLkIn.base_table_index()] = st_3_look_in_split[0];
-            row[State3MidLowLkIn.base_table_index()] = st_3_look_in_split[1];
-            row[State3MidHighLkIn.base_table_index()] = st_3_look_in_split[2];
-            row[State3HighestLkIn.base_table_index()] = st_3_look_in_split[3];
-
-            let st_3_look_out_split = st_3_limbs.map(CascadeTable::lookup_16_bit_limb);
-            row[State3LowestLkOut.base_table_index()] = st_3_look_out_split[0];
-            row[State3MidLowLkOut.base_table_index()] = st_3_look_out_split[1];
-            row[State3MidHighLkOut.base_table_index()] = st_3_look_out_split[2];
-            row[State3HighestLkOut.base_table_index()] = st_3_look_out_split[3];
-
-            row[State4.base_table_index()] = trace_row[4];
-            row[State5.base_table_index()] = trace_row[5];
-            row[State6.base_table_index()] = trace_row[6];
-            row[State7.base_table_index()] = trace_row[7];
-            row[State8.base_table_index()] = trace_row[8];
-            row[State9.base_table_index()] = trace_row[9];
-            row[State10.base_table_index()] = trace_row[10];
-            row[State11.base_table_index()] = trace_row[11];
-            row[State12.base_table_index()] = trace_row[12];
-            row[State13.base_table_index()] = trace_row[13];
-            row[State14.base_table_index()] = trace_row[14];
-            row[State15.base_table_index()] = trace_row[15];
-
-            row[State0Inv.base_table_index()] =
-                Self::inverse_or_zero_of_highest_2_limbs(trace_row[0]);
-            row[State1Inv.base_table_index()] =
-                Self::inverse_or_zero_of_highest_2_limbs(trace_row[1]);
-            row[State2Inv.base_table_index()] =
-                Self::inverse_or_zero_of_highest_2_limbs(trace_row[2]);
-            row[State3Inv.base_table_index()] =
-                Self::inverse_or_zero_of_highest_2_limbs(trace_row[3]);
-
-            let round_constants = Self::tip5_round_constants_by_round_number(round_number);
-            row[Constant0.base_table_index()] = round_constants[0];
-            row[Constant1.base_table_index()] = round_constants[1];
-            row[Constant2.base_table_index()] = round_constants[2];
-            row[Constant3.base_table_index()] = round_constants[3];
-            row[Constant4.base_table_index()] = round_constants[4];
-            row[Constant5.base_table_index()] = round_constants[5];
-            row[Constant6.base_table_index()] = round_constants[6];
-            row[Constant7.base_table_index()] = round_constants[7];
-            row[Constant8.base_table_index()] = round_constants[8];
-            row[Constant9.base_table_index()] = round_constants[9];
-            row[Constant10.base_table_index()] = round_constants[10];
-            row[Constant11.base_table_index()] = round_constants[11];
-            row[Constant12.base_table_index()] = round_constants[12];
-            row[Constant13.base_table_index()] = round_constants[13];
-            row[Constant14.base_table_index()] = round_constants[14];
-            row[Constant15.base_table_index()] = round_constants[15];
+    /// **Note**: The current instruction [`CI`] is _not_ set.
+    pub fn trace_to_table_rows(trace: PermutationTrace) -> Array2<BFieldElement> {
+        let mut table_rows = Array2::default([0, BASE_WIDTH]);
+        for (round_number, &trace_row) in trace.iter().enumerate() {
+            let table_row = Self::trace_row_to_table_row(trace_row, round_number);
+            table_rows.push_row(table_row.view()).unwrap();
         }
-        hash_trace_addendum
+        table_rows
+    }
+
+    pub fn trace_row_to_table_row(
+        trace_row: [BFieldElement; STATE_SIZE],
+        round_number: usize,
+    ) -> Array1<BFieldElement> {
+        let row = Array1::zeros([BASE_WIDTH]);
+        let row = Self::fill_row_with_round_number(row, round_number);
+        let row = Self::fill_row_with_split_state_elements_using_trace_row(row, trace_row);
+        let row = Self::fill_row_with_unsplit_state_elements_using_trace_row(row, trace_row);
+        let row = Self::fill_row_with_state_inverses_using_trace_row(row, trace_row);
+        Self::fill_row_with_round_constants_for_round(row, round_number)
+    }
+
+    fn fill_row_with_round_number(
+        mut row: Array1<BFieldElement>,
+        round_number: usize,
+    ) -> Array1<BFieldElement> {
+        row[RoundNumber.base_table_index()] = BFieldElement::from(round_number as u64);
+        row
+    }
+
+    fn fill_row_with_split_state_elements_using_trace_row(
+        row: Array1<BFieldElement>,
+        trace_row: [BFieldElement; STATE_SIZE],
+    ) -> Array1<BFieldElement> {
+        let row = Self::fill_split_state_element_0_of_row_using_trace_row(row, trace_row);
+        let row = Self::fill_split_state_element_1_of_row_using_trace_row(row, trace_row);
+        let row = Self::fill_split_state_element_2_of_row_using_trace_row(row, trace_row);
+        Self::fill_split_state_element_3_of_row_using_trace_row(row, trace_row)
+    }
+
+    fn fill_split_state_element_0_of_row_using_trace_row(
+        mut row: Array1<BFieldElement>,
+        trace_row: [BFieldElement; STATE_SIZE],
+    ) -> Array1<BFieldElement> {
+        let limbs = Self::base_field_element_into_16_bit_limbs(trace_row[0]);
+        let look_in_split = limbs.map(|limb| BFieldElement::new(limb.into()));
+        row[State0LowestLkIn.base_table_index()] = look_in_split[0];
+        row[State0MidLowLkIn.base_table_index()] = look_in_split[1];
+        row[State0MidHighLkIn.base_table_index()] = look_in_split[2];
+        row[State0HighestLkIn.base_table_index()] = look_in_split[3];
+
+        let look_out_split = limbs.map(CascadeTable::lookup_16_bit_limb);
+        row[State0LowestLkOut.base_table_index()] = look_out_split[0];
+        row[State0MidLowLkOut.base_table_index()] = look_out_split[1];
+        row[State0MidHighLkOut.base_table_index()] = look_out_split[2];
+        row[State0HighestLkOut.base_table_index()] = look_out_split[3];
+
+        row
+    }
+
+    fn fill_split_state_element_1_of_row_using_trace_row(
+        mut row: Array1<BFieldElement>,
+        trace_row: [BFieldElement; STATE_SIZE],
+    ) -> Array1<BFieldElement> {
+        let limbs = Self::base_field_element_into_16_bit_limbs(trace_row[1]);
+        let look_in_split = limbs.map(|limb| BFieldElement::new(limb.into()));
+        row[State1LowestLkIn.base_table_index()] = look_in_split[0];
+        row[State1MidLowLkIn.base_table_index()] = look_in_split[1];
+        row[State1MidHighLkIn.base_table_index()] = look_in_split[2];
+        row[State1HighestLkIn.base_table_index()] = look_in_split[3];
+
+        let look_out_split = limbs.map(CascadeTable::lookup_16_bit_limb);
+        row[State1LowestLkOut.base_table_index()] = look_out_split[0];
+        row[State1MidLowLkOut.base_table_index()] = look_out_split[1];
+        row[State1MidHighLkOut.base_table_index()] = look_out_split[2];
+        row[State1HighestLkOut.base_table_index()] = look_out_split[3];
+
+        row
+    }
+
+    fn fill_split_state_element_2_of_row_using_trace_row(
+        mut row: Array1<BFieldElement>,
+        trace_row: [BFieldElement; STATE_SIZE],
+    ) -> Array1<BFieldElement> {
+        let limbs = Self::base_field_element_into_16_bit_limbs(trace_row[2]);
+        let look_in_split = limbs.map(|limb| BFieldElement::new(limb.into()));
+        row[State2LowestLkIn.base_table_index()] = look_in_split[0];
+        row[State2MidLowLkIn.base_table_index()] = look_in_split[1];
+        row[State2MidHighLkIn.base_table_index()] = look_in_split[2];
+        row[State2HighestLkIn.base_table_index()] = look_in_split[3];
+
+        let look_out_split = limbs.map(CascadeTable::lookup_16_bit_limb);
+        row[State2LowestLkOut.base_table_index()] = look_out_split[0];
+        row[State2MidLowLkOut.base_table_index()] = look_out_split[1];
+        row[State2MidHighLkOut.base_table_index()] = look_out_split[2];
+        row[State2HighestLkOut.base_table_index()] = look_out_split[3];
+
+        row
+    }
+
+    fn fill_split_state_element_3_of_row_using_trace_row(
+        mut row: Array1<BFieldElement>,
+        trace_row: [BFieldElement; STATE_SIZE],
+    ) -> Array1<BFieldElement> {
+        let limbs = Self::base_field_element_into_16_bit_limbs(trace_row[3]);
+        let look_in_split = limbs.map(|limb| BFieldElement::new(limb.into()));
+        row[State3LowestLkIn.base_table_index()] = look_in_split[0];
+        row[State3MidLowLkIn.base_table_index()] = look_in_split[1];
+        row[State3MidHighLkIn.base_table_index()] = look_in_split[2];
+        row[State3HighestLkIn.base_table_index()] = look_in_split[3];
+
+        let look_out_split = limbs.map(CascadeTable::lookup_16_bit_limb);
+        row[State3LowestLkOut.base_table_index()] = look_out_split[0];
+        row[State3MidLowLkOut.base_table_index()] = look_out_split[1];
+        row[State3MidHighLkOut.base_table_index()] = look_out_split[2];
+        row[State3HighestLkOut.base_table_index()] = look_out_split[3];
+
+        row
+    }
+
+    fn fill_row_with_unsplit_state_elements_using_trace_row(
+        mut row: Array1<BFieldElement>,
+        trace_row: [BFieldElement; STATE_SIZE],
+    ) -> Array1<BFieldElement> {
+        row[State4.base_table_index()] = trace_row[4];
+        row[State5.base_table_index()] = trace_row[5];
+        row[State6.base_table_index()] = trace_row[6];
+        row[State7.base_table_index()] = trace_row[7];
+        row[State8.base_table_index()] = trace_row[8];
+        row[State9.base_table_index()] = trace_row[9];
+        row[State10.base_table_index()] = trace_row[10];
+        row[State11.base_table_index()] = trace_row[11];
+        row[State12.base_table_index()] = trace_row[12];
+        row[State13.base_table_index()] = trace_row[13];
+        row[State14.base_table_index()] = trace_row[14];
+        row[State15.base_table_index()] = trace_row[15];
+        row
+    }
+
+    fn fill_row_with_state_inverses_using_trace_row(
+        mut row: Array1<BFieldElement>,
+        trace_row: [BFieldElement; STATE_SIZE],
+    ) -> Array1<BFieldElement> {
+        row[State0Inv.base_table_index()] = Self::inverse_or_zero_of_highest_2_limbs(trace_row[0]);
+        row[State1Inv.base_table_index()] = Self::inverse_or_zero_of_highest_2_limbs(trace_row[1]);
+        row[State2Inv.base_table_index()] = Self::inverse_or_zero_of_highest_2_limbs(trace_row[2]);
+        row[State3Inv.base_table_index()] = Self::inverse_or_zero_of_highest_2_limbs(trace_row[3]);
+        row
     }
 
     /// The inverse-or-zero of (2^32 - 1 - 2^16·`highest` - `mid_high`) where `highest`
@@ -1507,6 +1543,30 @@ impl HashTable {
         let two_pow_32_minus_1 = BFieldElement::new((1 << 32) - 1);
         let to_invert = two_pow_32_minus_1 - high_limbs;
         to_invert.inverse_or_zero()
+    }
+
+    fn fill_row_with_round_constants_for_round(
+        mut row: Array1<BFieldElement>,
+        round_number: usize,
+    ) -> Array1<BFieldElement> {
+        let round_constants = Self::tip5_round_constants_by_round_number(round_number);
+        row[Constant0.base_table_index()] = round_constants[0];
+        row[Constant1.base_table_index()] = round_constants[1];
+        row[Constant2.base_table_index()] = round_constants[2];
+        row[Constant3.base_table_index()] = round_constants[3];
+        row[Constant4.base_table_index()] = round_constants[4];
+        row[Constant5.base_table_index()] = round_constants[5];
+        row[Constant6.base_table_index()] = round_constants[6];
+        row[Constant7.base_table_index()] = round_constants[7];
+        row[Constant8.base_table_index()] = round_constants[8];
+        row[Constant9.base_table_index()] = round_constants[9];
+        row[Constant10.base_table_index()] = round_constants[10];
+        row[Constant11.base_table_index()] = round_constants[11];
+        row[Constant12.base_table_index()] = round_constants[12];
+        row[Constant13.base_table_index()] = round_constants[13];
+        row[Constant14.base_table_index()] = round_constants[14];
+        row[Constant15.base_table_index()] = round_constants[15];
+        row
     }
 
     pub fn fill_trace(
