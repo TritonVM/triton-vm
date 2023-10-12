@@ -9,6 +9,7 @@ use ndarray::ArrayViewMut2;
 use ndarray::Axis;
 use num_traits::One;
 use num_traits::Zero;
+use std::cmp::max;
 use strum::EnumCount;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::b_field_element::BFIELD_ONE;
@@ -38,6 +39,51 @@ use crate::table::table_column::U32ExtTableColumn::*;
 pub const BASE_WIDTH: usize = U32BaseTableColumn::COUNT;
 pub const EXT_WIDTH: usize = U32ExtTableColumn::COUNT;
 pub const FULL_WIDTH: usize = BASE_WIDTH + EXT_WIDTH;
+
+/// An executed u32 instruction as well as its operands.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct U32TableEntry {
+    pub instruction: Instruction,
+    pub left_operand: BFieldElement,
+    pub right_operand: BFieldElement,
+}
+
+impl U32TableEntry {
+    pub fn new(instruction: Instruction, left_operand: u32, right_operand: u32) -> Self {
+        let left_operand: u64 = left_operand.into();
+        let right_operand: u64 = right_operand.into();
+        Self {
+            instruction,
+            left_operand: left_operand.into(),
+            right_operand: right_operand.into(),
+        }
+    }
+
+    pub fn new_from_base_field_element(
+        instruction: Instruction,
+        left_operand: BFieldElement,
+        right_operand: BFieldElement,
+    ) -> Self {
+        Self {
+            instruction,
+            left_operand,
+            right_operand,
+        }
+    }
+
+    /// The number of rows this entry contributes to the U32 Table.
+    pub fn table_length_contribution(&self) -> u32 {
+        let dominant_operand = match self.instruction {
+            // for instruction `pow`, the left-hand side doesn't change between rows
+            Instruction::Pow => self.right_operand.value(),
+            _ => max(self.left_operand.value(), self.right_operand.value()),
+        };
+        match dominant_operand == 0 {
+            true => 2 - 1,
+            false => 2 + dominant_operand.ilog2(),
+        }
+    }
+}
 
 pub struct U32Table {}
 
@@ -402,16 +448,15 @@ impl ExtU32Table {
 impl U32Table {
     pub fn fill_trace(u32_table: &mut ArrayViewMut2<BFieldElement>, aet: &AlgebraicExecutionTrace) {
         let mut next_section_start = 0;
-        for (&(instruction, lhs, rhs), &multiplicity) in aet.u32_entries.iter() {
+        for (&u32_table_entry, &multiplicity) in aet.u32_entries.iter() {
             let mut first_row = Array2::zeros([1, BASE_WIDTH]);
             first_row[[0, CopyFlag.base_table_index()]] = BFieldElement::one();
             first_row[[0, Bits.base_table_index()]] = BFieldElement::zero();
             first_row[[0, BitsMinus33Inv.base_table_index()]] = (-BFieldElement::new(33)).inverse();
-            first_row[[0, CI.base_table_index()]] = instruction.opcode_b();
-            first_row[[0, LHS.base_table_index()]] = lhs;
-            first_row[[0, RHS.base_table_index()]] = rhs;
-            first_row[[0, LookupMultiplicity.base_table_index()]] =
-                BFieldElement::new(multiplicity);
+            first_row[[0, CI.base_table_index()]] = u32_table_entry.instruction.opcode_b();
+            first_row[[0, LHS.base_table_index()]] = u32_table_entry.left_operand;
+            first_row[[0, RHS.base_table_index()]] = u32_table_entry.right_operand;
+            first_row[[0, LookupMultiplicity.base_table_index()]] = multiplicity.into();
             let u32_section = Self::u32_section_next_row(first_row);
 
             let next_section_end = next_section_start + u32_section.nrows();

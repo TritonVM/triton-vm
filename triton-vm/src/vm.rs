@@ -13,7 +13,6 @@ use num_traits::One;
 use num_traits::Zero;
 use strum::EnumCount;
 use twenty_first::shared_math::b_field_element::BFieldElement;
-use twenty_first::shared_math::b_field_element::BFIELD_ZERO;
 use twenty_first::shared_math::digest::Digest;
 use twenty_first::shared_math::tip5;
 use twenty_first::shared_math::tip5::*;
@@ -33,6 +32,7 @@ use crate::table::hash_table::PERMUTATION_TRACE_LENGTH;
 use crate::table::processor_table;
 use crate::table::processor_table::ProcessorTraceRow;
 use crate::table::table_column::*;
+use crate::table::u32_table::U32TableEntry;
 use crate::vm::CoProcessorCall::*;
 
 /// The number of helper variable registers
@@ -93,7 +93,7 @@ pub struct VMState<'pgm> {
 
 /// A call from the main processor to one of the co-processors, including the trace for that
 /// co-processor or enough information to deduce the trace.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum CoProcessorCall {
     /// Trace of the state registers for hash coprocessor table when executing instruction `hash`
     /// or any of the Sponge instructions `absorb_init`, `absorb`, `squeeze`.
@@ -103,8 +103,9 @@ pub enum CoProcessorCall {
         Box<[[BFieldElement; tip5::STATE_SIZE]; PERMUTATION_TRACE_LENGTH]>,
     ),
 
-    /// Executed u32 instruction as well as its left-hand side and right-hand side
-    U32TableEntries(Vec<(Instruction, BFieldElement, BFieldElement)>),
+    SingleU32TableEntry(U32TableEntry),
+
+    DoubleU32TableEntry([U32TableEntry; 2]),
 }
 
 impl<'pgm> VMState<'pgm> {
@@ -509,8 +510,8 @@ impl<'pgm> VMState<'pgm> {
         self.op_stack.push(hi);
         self.op_stack.push(lo);
 
-        let u32_table_entry = (Split, lo, hi);
-        let co_processor_trace = Some(U32TableEntries(vec![u32_table_entry]));
+        let u32_table_entry = U32TableEntry::new_from_base_field_element(Split, lo, hi);
+        let co_processor_trace = Some(SingleU32TableEntry(u32_table_entry));
 
         self.instruction_pointer += 1;
         Ok(co_processor_trace)
@@ -519,11 +520,11 @@ impl<'pgm> VMState<'pgm> {
     fn instruction_lt(&mut self) -> Result<Option<CoProcessorCall>> {
         let lhs = self.op_stack.pop_u32()?;
         let rhs = self.op_stack.pop_u32()?;
-        let lt = BFieldElement::new((lhs < rhs) as u64);
-        self.op_stack.push(lt);
+        let lt: u32 = (lhs < rhs).into();
+        self.op_stack.push(lt.into());
 
-        let u32_table_entry = (Lt, (lhs as u64).into(), (rhs as u64).into());
-        let co_processor_trace = Some(U32TableEntries(vec![u32_table_entry]));
+        let u32_table_entry = U32TableEntry::new(Lt, lhs, rhs);
+        let co_processor_trace = Some(SingleU32TableEntry(u32_table_entry));
 
         self.instruction_pointer += 1;
         Ok(co_processor_trace)
@@ -532,11 +533,11 @@ impl<'pgm> VMState<'pgm> {
     fn instruction_and(&mut self) -> Result<Option<CoProcessorCall>> {
         let lhs = self.op_stack.pop_u32()?;
         let rhs = self.op_stack.pop_u32()?;
-        let and = BFieldElement::new((lhs & rhs) as u64);
-        self.op_stack.push(and);
+        let and = lhs & rhs;
+        self.op_stack.push(and.into());
 
-        let u32_table_entry = (And, (lhs as u64).into(), (rhs as u64).into());
-        let co_processor_trace = Some(U32TableEntries(vec![u32_table_entry]));
+        let u32_table_entry = U32TableEntry::new(And, lhs, rhs);
+        let co_processor_trace = Some(SingleU32TableEntry(u32_table_entry));
 
         self.instruction_pointer += 1;
         Ok(co_processor_trace)
@@ -545,14 +546,14 @@ impl<'pgm> VMState<'pgm> {
     fn instruction_xor(&mut self) -> Result<Option<CoProcessorCall>> {
         let lhs = self.op_stack.pop_u32()?;
         let rhs = self.op_stack.pop_u32()?;
-        let xor = BFieldElement::new((lhs ^ rhs) as u64);
-        self.op_stack.push(xor);
+        let xor = lhs ^ rhs;
+        self.op_stack.push(xor.into());
 
         // Triton VM uses the following equality to compute the results of both the `and`
         // and `xor` instruction using the u32 coprocessor's `and` capability:
         // a ^ b = a + b - 2 · (a & b)
-        let u32_table_entry = (And, (lhs as u64).into(), (rhs as u64).into());
-        let co_processor_trace = Some(U32TableEntries(vec![u32_table_entry]));
+        let u32_table_entry = U32TableEntry::new(And, lhs, rhs);
+        let co_processor_trace = Some(SingleU32TableEntry(u32_table_entry));
 
         self.instruction_pointer += 1;
         Ok(co_processor_trace)
@@ -566,8 +567,8 @@ impl<'pgm> VMState<'pgm> {
         let l2f = BFieldElement::new(lhs.ilog2().into());
         self.op_stack.push(l2f);
 
-        let u32_table_entry = (Log2Floor, (lhs as u64).into(), BFIELD_ZERO);
-        let co_processor_trace = Some(U32TableEntries(vec![u32_table_entry]));
+        let u32_table_entry = U32TableEntry::new(Log2Floor, lhs, 0);
+        let co_processor_trace = Some(SingleU32TableEntry(u32_table_entry));
 
         self.instruction_pointer += 1;
         Ok(co_processor_trace)
@@ -575,12 +576,13 @@ impl<'pgm> VMState<'pgm> {
 
     fn instruction_pow(&mut self) -> Result<Option<CoProcessorCall>> {
         let base = self.op_stack.pop()?;
-        let exponent = self.op_stack.pop_u32()? as u64;
-        let base_pow_exponent = base.mod_pow(exponent);
+        let exponent = self.op_stack.pop_u32()?;
+        let base_pow_exponent = base.mod_pow(exponent.into());
         self.op_stack.push(base_pow_exponent);
 
-        let u32_table_entry = (Pow, base, exponent.into());
-        let co_processor_trace = Some(U32TableEntries(vec![u32_table_entry]));
+        let u32_table_entry =
+            U32TableEntry::new_from_base_field_element(Pow, base, exponent.into());
+        let co_processor_trace = Some(SingleU32TableEntry(u32_table_entry));
 
         self.instruction_pointer += 1;
         Ok(co_processor_trace)
@@ -592,26 +594,30 @@ impl<'pgm> VMState<'pgm> {
         if denominator.is_zero() {
             bail!(DivisionByZero);
         }
-        let quotient = BFieldElement::new((numerator / denominator) as u64);
-        let remainder = BFieldElement::new((numerator % denominator) as u64);
-        self.op_stack.push(quotient);
-        self.op_stack.push(remainder);
+        let quotient = numerator / denominator;
+        let remainder = numerator % denominator;
 
-        let u32_table_entry_0 = (Lt, remainder, (denominator as u64).into());
-        let u32_table_entry_1 = (Split, (numerator as u64).into(), quotient);
-        let co_processor_trace = Some(U32TableEntries(vec![u32_table_entry_0, u32_table_entry_1]));
+        self.op_stack.push(quotient.into());
+        self.op_stack.push(remainder.into());
+
+        let remainder_is_less_than_denominator = U32TableEntry::new(Lt, remainder, denominator);
+        let numerator_and_quotient_range_check = U32TableEntry::new(Split, numerator, quotient);
+        let co_processor_trace = Some(DoubleU32TableEntry([
+            remainder_is_less_than_denominator,
+            numerator_and_quotient_range_check,
+        ]));
 
         self.instruction_pointer += 1;
         Ok(co_processor_trace)
     }
 
     fn instruction_pop_count(&mut self) -> Result<Option<CoProcessorCall>> {
-        let lhs = self.op_stack.pop_u32()?;
-        let pop_count = BFieldElement::new(lhs.count_ones() as u64);
-        self.op_stack.push(pop_count);
+        let element = self.op_stack.pop_u32()?;
+        let pop_count = element.count_ones();
+        self.op_stack.push(pop_count.into());
 
-        let u32_table_entry = (PopCount, (lhs as u64).into(), BFIELD_ZERO);
-        let co_processor_trace = Some(U32TableEntries(vec![u32_table_entry]));
+        let u32_table_entry = U32TableEntry::new(PopCount, element, 0);
+        let co_processor_trace = Some(SingleU32TableEntry(u32_table_entry));
 
         self.instruction_pointer += 1;
         Ok(co_processor_trace)

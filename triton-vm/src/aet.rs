@@ -1,4 +1,3 @@
-use std::cmp::max;
 use std::collections::hash_map::Entry::Occupied;
 use std::collections::hash_map::Entry::Vacant;
 use std::collections::HashMap;
@@ -27,6 +26,7 @@ use crate::table::hash_table::PERMUTATION_TRACE_LENGTH;
 use crate::table::processor_table;
 use crate::table::table_column::HashBaseTableColumn::CI;
 use crate::table::table_column::MasterBaseTableColumn;
+use crate::table::u32_table::U32TableEntry;
 use crate::vm::CoProcessorCall;
 use crate::vm::CoProcessorCall::*;
 use crate::vm::VMState;
@@ -67,7 +67,7 @@ pub struct AlgebraicExecutionTrace {
     /// The u32 entries hold all pairs of BFieldElements that were written to the U32 Table,
     /// alongside the u32 instruction that was executed at the time. Additionally, it records how
     /// often the instruction was executed with these arguments.
-    pub u32_entries: HashMap<(Instruction, BFieldElement, BFieldElement), u64>,
+    pub u32_entries: HashMap<U32TableEntry, u64>,
 
     /// Records how often each entry in the cascade table was looked up.
     pub cascade_table_lookup_multiplicities: HashMap<u16, u64>,
@@ -176,15 +176,7 @@ impl AlgebraicExecutionTrace {
     pub fn u32_table_length(&self) -> usize {
         self.u32_entries
             .keys()
-            .map(|(instruction, lhs, rhs)| match instruction {
-                // for instruction `pow`, the left-hand side doesn't change between rows
-                Instruction::Pow => rhs.value(),
-                _ => max(lhs.value(), rhs.value()),
-            })
-            .map(|relevant_entry| match relevant_entry == 0 {
-                true => 2 - 1,
-                false => 2 + relevant_entry.ilog2(),
-            })
+            .map(|entry| entry.table_length_contribution())
             .sum::<u32>()
             .try_into()
             .unwrap()
@@ -216,15 +208,17 @@ impl AlgebraicExecutionTrace {
             Tip5Trace(instruction, tip5_trace) => {
                 self.append_sponge_trace(instruction, *tip5_trace)
             }
-            U32TableEntries(u32_entries) => {
-                for u32_entry in u32_entries {
-                    self.u32_entries.entry(u32_entry).or_insert(0).add_assign(1);
-                }
+            SingleU32TableEntry(u32_entry) => {
+                self.record_u32_table_entry(u32_entry);
+            }
+            DoubleU32TableEntry([u32_entry_0, u32_entry_1]) => {
+                self.record_u32_table_entry(u32_entry_0);
+                self.record_u32_table_entry(u32_entry_1);
             }
         }
     }
 
-    pub fn append_sponge_trace(
+    fn append_sponge_trace(
         &mut self,
         instruction: Instruction,
         hash_permutation_trace: [[BFieldElement; tip5::STATE_SIZE]; PERMUTATION_TRACE_LENGTH],
@@ -288,6 +282,10 @@ impl AlgebraicExecutionTrace {
         let limb_hi = (limb >> 8) & 0xff;
         self.lookup_table_lookup_multiplicities[limb_lo as usize] += 1;
         self.lookup_table_lookup_multiplicities[limb_hi as usize] += 1;
+    }
+
+    fn record_u32_table_entry(&mut self, u32_entry: U32TableEntry) {
+        self.u32_entries.entry(u32_entry).or_insert(0).add_assign(1)
     }
 }
 
