@@ -1750,19 +1750,24 @@ impl HashTable {
                 compressed_elements.inverse()
             };
 
-        let max_round_number = (NUM_ROUNDS as u64).into();
-        let mode_program_hashing = HashTableMode::ProgramHashing.into();
-        let mode_sponge = HashTableMode::Sponge.into();
-        let mode_hash = HashTableMode::Hash.into();
-        let mode_pad = HashTableMode::Pad.into();
-
         for row_idx in 0..base_table.nrows() {
             let row = base_table.row(row_idx);
-            let mode = row[Mode.base_table_index()];
-            let current_instruction = row[CI.base_table_index()];
-            let round_number = row[RoundNumber.base_table_index()];
 
-            if mode == mode_program_hashing && round_number.is_zero() {
+            let mode = row[Mode.base_table_index()];
+            let in_program_hashing_mode = mode == HashTableMode::ProgramHashing.into();
+            let in_sponge_mode = mode == HashTableMode::Sponge.into();
+            let in_hash_mode = mode == HashTableMode::Hash.into();
+            let in_pad_mode = mode == HashTableMode::Pad.into();
+
+            let round_number = row[RoundNumber.base_table_index()];
+            let in_round_0 = round_number.is_zero();
+            let in_last_round = round_number == (NUM_ROUNDS as u64).into();
+
+            let current_instruction = row[CI.base_table_index()];
+            let current_instruction_is_sponge_init =
+                current_instruction == Instruction::SpongeInit.opcode_b();
+
+            if in_program_hashing_mode && in_round_0 {
                 let compressed_chunk_of_instructions = EvalArg::compute_terminal(
                     &rate_registers(row),
                     EvalArg::default_initial(),
@@ -1773,19 +1778,24 @@ impl HashTable {
                     + compressed_chunk_of_instructions
             }
 
-            if mode == mode_sponge && round_number.is_zero() {
+            if in_sponge_mode && in_round_0 && current_instruction_is_sponge_init {
+                sponge_running_evaluation = sponge_running_evaluation * sponge_eval_indeterminate
+                    + ci_weight * current_instruction
+            }
+
+            if in_sponge_mode && in_round_0 && !current_instruction_is_sponge_init {
                 sponge_running_evaluation = sponge_running_evaluation * sponge_eval_indeterminate
                     + ci_weight * current_instruction
                     + compressed_row(row)
             }
 
-            if mode == mode_hash && round_number.is_zero() {
+            if in_hash_mode && in_round_0 {
                 hash_input_running_evaluation = hash_input_running_evaluation
                     * hash_input_eval_indeterminate
                     + compressed_row(row)
             }
 
-            if mode == mode_hash && round_number == max_round_number {
+            if in_hash_mode && in_last_round {
                 let compressed_digest: XFieldElement = rate_registers(row)[..DIGEST_LENGTH]
                     .iter()
                     .zip_eq(state_weights[..DIGEST_LENGTH].iter())
@@ -1796,7 +1806,7 @@ impl HashTable {
                     + compressed_digest
             }
 
-            if mode != mode_pad && round_number != max_round_number {
+            if !in_pad_mode && !in_last_round {
                 cascade_state_0_highest_log_derivative +=
                     log_derivative_summand(row, State0HighestLkIn, State0HighestLkOut);
                 cascade_state_0_mid_high_log_derivative +=

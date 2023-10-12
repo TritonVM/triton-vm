@@ -248,8 +248,13 @@ impl ProcessorTable {
 
             // Hash Table – Sponge
             if let Some(prev_row) = previous_row {
-                if prev_row[CI.base_table_index()] == Instruction::SpongeInit.opcode_b()
-                    || prev_row[CI.base_table_index()] == Instruction::SpongeAbsorb.opcode_b()
+                if prev_row[CI.base_table_index()] == Instruction::SpongeInit.opcode_b() {
+                    sponge_running_evaluation = sponge_running_evaluation
+                        * challenges[SpongeIndeterminate]
+                        + challenges[HashCIWeight] * Instruction::SpongeInit.opcode_b();
+                }
+
+                if prev_row[CI.base_table_index()] == Instruction::SpongeAbsorb.opcode_b()
                     || prev_row[CI.base_table_index()] == Instruction::SpongeSqueeze.opcode_b()
                 {
                     sponge_running_evaluation = sponge_running_evaluation
