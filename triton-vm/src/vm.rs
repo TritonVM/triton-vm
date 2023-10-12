@@ -1179,7 +1179,7 @@ pub(crate) mod tests {
         let program = triton_program!(
             push {st9} push {st8} push {st7} push {st6} push {st5}
             push {st4} push {st3} push {st2} push {st1} push {st0}
-            sponge_init hash sponge_squeeze sponge_absorb sponge_absorb
+            sponge_init sponge_absorb hash sponge_squeeze sponge_absorb sponge_absorb
             hash sponge_squeeze sponge_absorb sponge_squeeze sponge_squeeze
             read_io eq assert // st0
             read_io eq assert // st1
