@@ -18,6 +18,7 @@ use twenty_first::shared_math::tip5;
 use twenty_first::shared_math::tip5::*;
 use twenty_first::shared_math::traits::Inverse;
 use twenty_first::util_types::algebraic_hasher::Domain;
+use twenty_first::util_types::algebraic_hasher::SpongeHasher;
 
 use crate::error::InstructionError;
 use crate::error::InstructionError::*;
@@ -97,7 +98,7 @@ pub enum CoProcessorCall {
     SpongeStateReset,
 
     /// Trace of the state registers for hash coprocessor table when executing instruction `hash`
-    /// or ore of the Sponge instructions `sponge_absorb` and `sponge_squeeze`.
+    /// or one of the Sponge instructions `sponge_absorb` and `sponge_squeeze`.
     /// One row per round in the Tip5 permutation.
     Tip5Trace(Instruction, Box<PermutationTrace>),
 
@@ -385,7 +386,7 @@ impl<'pgm> VMState<'pgm> {
     }
 
     fn sponge_init(&mut self) -> Option<CoProcessorCall> {
-        self.sponge_state = Tip5State::new(Domain::VariableLength).state;
+        self.sponge_state = Tip5::init().state;
         self.instruction_pointer += 1;
         Some(SpongeStateReset)
     }
