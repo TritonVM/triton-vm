@@ -95,6 +95,19 @@ impl AlgebraicExecutionTrace {
         aet
     }
 
+    pub fn padded_height(&self) -> usize {
+        let relevant_table_heights = [
+            self.program_table_length(),
+            self.processor_table_length(),
+            self.hash_table_length(),
+            self.cascade_table_length(),
+            self.lookup_table_length(),
+            self.u32_table_length(),
+        ];
+        let max_height = relevant_table_heights.into_iter().max().unwrap();
+        max_height.next_power_of_two()
+    }
+
     /// Hash the program and record the entire Sponge's trace for program attestation.
     fn fill_program_hash_trace(&mut self) {
         let padded_program = Self::hash_input_pad_program(&self.program);

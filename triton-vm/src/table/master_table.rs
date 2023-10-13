@@ -566,26 +566,13 @@ type PadFunction = fn(ArrayViewMut2<BFieldElement>, usize);
 type ExtendFunction = fn(ArrayView2<BFieldElement>, ArrayViewMut2<XFieldElement>, &Challenges);
 
 impl MasterBaseTable {
-    pub fn padded_height(aet: &AlgebraicExecutionTrace) -> usize {
-        let relevant_table_heights = [
-            aet.program_table_length(),
-            aet.processor_table_length(),
-            aet.hash_table_length(),
-            aet.cascade_table_length(),
-            aet.lookup_table_length(),
-            aet.u32_table_length(),
-        ];
-        let max_height = relevant_table_heights.into_iter().max().unwrap();
-        max_height.next_power_of_two()
-    }
-
     pub fn new(
         aet: &AlgebraicExecutionTrace,
         num_trace_randomizers: usize,
         quotient_domain: ArithmeticDomain,
         fri_domain: ArithmeticDomain,
     ) -> Self {
-        let padded_height = Self::padded_height(aet);
+        let padded_height = aet.padded_height();
         let trace_domain = ArithmeticDomain::of_length(padded_height);
 
         let randomized_padded_trace_len =

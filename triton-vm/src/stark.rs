@@ -149,7 +149,7 @@ impl Stark {
         prof_stop!(maybe_profiler, "Fiat-Shamir: claim");
 
         prof_start!(maybe_profiler, "derive additional parameters");
-        let padded_height = MasterBaseTable::padded_height(aet);
+        let padded_height = aet.padded_height();
         let max_degree = Self::derive_max_degree(padded_height, parameters.num_trace_randomizers);
         let fri = Self::derive_fri(parameters, padded_height);
         let quotient_domain = Self::quotient_domain(fri.domain, max_degree);
