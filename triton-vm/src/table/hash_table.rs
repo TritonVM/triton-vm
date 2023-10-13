@@ -46,6 +46,10 @@ pub const BASE_WIDTH: usize = HashBaseTableColumn::COUNT;
 pub const EXT_WIDTH: usize = HashExtTableColumn::COUNT;
 pub const FULL_WIDTH: usize = BASE_WIDTH + EXT_WIDTH;
 
+/// See [`HashTable::base_field_element_into_16_bit_limbs`] for more details.
+const MONTGOMERY_MODULUS: BFieldElement =
+    BFieldElement::new(((1_u128 << 64) % BFieldElement::P as u128) as u64);
+
 pub const POWER_MAP_EXPONENT: u64 = 7;
 pub const NUM_ROUND_CONSTANTS: usize = STATE_SIZE;
 
@@ -118,13 +122,14 @@ impl From<HashTableMode> for u32 {
 impl From<HashTableMode> for u64 {
     fn from(mode: HashTableMode) -> Self {
         let discriminant: u32 = mode.into();
-        discriminant as u64
+        discriminant.into()
     }
 }
 
 impl From<HashTableMode> for BFieldElement {
     fn from(mode: HashTableMode) -> Self {
-        BFieldElement::new(mode.into())
+        let discriminant: u32 = mode.into();
+        discriminant.into()
     }
 }
 
@@ -144,20 +149,13 @@ impl ExtHashTable {
         lowest: ConstraintCircuitMonad<II>,
     ) -> ConstraintCircuitMonad<II> {
         let constant = |c: u64| circuit_builder.b_constant(c.into());
+        let montgomery_modulus_inv = circuit_builder.b_constant(MONTGOMERY_MODULUS.inverse());
 
-        // R is the field element congruent to 2^64 modulo p, accounting for native
-        // representation of field elements in Montgomery form.
-        // State elements are multiplied by R prior to decomposition into limbs.
-        // After re-composition from limbs, the result must be multiplied by R_inv.
-        // See `HashTable::base_field_element_16_bit_limbs` for some more details.
-        let capital_r = BFieldElement::new(((1_u128 << 64) % BFieldElement::P as u128) as u64);
-        let capital_r_inv = circuit_builder.b_constant(capital_r.inverse());
-
-        (highest * constant(1 << 48)
+        let sum_of_shifted_limbs = highest * constant(1 << 48)
             + mid_high * constant(1 << 32)
             + mid_low * constant(1 << 16)
-            + lowest)
-            * capital_r_inv
+            + lowest;
+        sum_of_shifted_limbs * montgomery_modulus_inv
     }
 
     pub fn initial_constraints(
@@ -404,6 +402,7 @@ impl ExtHashTable {
     pub fn consistency_constraints(
         circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
+        let opcode = |instruction: Instruction| circuit_builder.b_constant(instruction.opcode_b());
         let constant = |c: u64| circuit_builder.b_constant(c.into());
         let base_row = |column_id: HashBaseTableColumn| {
             circuit_builder.input(BaseRow(column_id.master_base_table_index()))
@@ -413,10 +412,10 @@ impl ExtHashTable {
         let ci = base_row(CI);
         let round_number = base_row(RoundNumber);
 
-        let ci_is_hash = ci.clone() - constant(Instruction::Hash.opcode() as u64);
-        let ci_is_absorb_init = ci.clone() - constant(Instruction::AbsorbInit.opcode() as u64);
-        let ci_is_absorb = ci.clone() - constant(Instruction::Absorb.opcode() as u64);
-        let ci_is_squeeze = ci - constant(Instruction::Squeeze.opcode() as u64);
+        let ci_is_hash = ci.clone() - opcode(Instruction::Hash);
+        let ci_is_absorb_init = ci.clone() - opcode(Instruction::AbsorbInit);
+        let ci_is_absorb = ci.clone() - opcode(Instruction::Absorb);
+        let ci_is_squeeze = ci - opcode(Instruction::Squeeze);
 
         let mode_is_not_hash = Self::mode_deselector(circuit_builder, &mode, HashTableMode::Hash);
         let round_number_is_not_0 =
@@ -1380,9 +1379,8 @@ impl HashTable {
     ///
     /// Note: this is distinct from the seemingly similar [`raw_u16s`](BFieldElement::raw_u16s).
     pub fn base_field_element_into_16_bit_limbs(x: BFieldElement) -> [u16; 4] {
-        let capital_r = BFieldElement::new(((1_u128 << 64) % BFieldElement::P as u128) as u64);
-        let r_times_x = capital_r * x;
-        [0, 16, 32, 48].map(|shift| ((r_times_x.value() >> shift) & 0xffff) as u16)
+        let r_times_x = (MONTGOMERY_MODULUS * x).value();
+        [0, 16, 32, 48].map(|shift| ((r_times_x >> shift) & 0xffff) as u16)
     }
 
     /// Given a trace of the Tip5 permutation, construct a trace corresponding to the columns of
@@ -1403,7 +1401,7 @@ impl HashTable {
             row[RoundNumber.base_table_index()] = BFieldElement::from(round_number as u64);
 
             let st_0_limbs = Self::base_field_element_into_16_bit_limbs(trace_row[0]);
-            let st_0_look_in_split = st_0_limbs.map(|limb| BFieldElement::new(limb as u64));
+            let st_0_look_in_split = st_0_limbs.map(|limb| BFieldElement::new(limb.into()));
             row[State0LowestLkIn.base_table_index()] = st_0_look_in_split[0];
             row[State0MidLowLkIn.base_table_index()] = st_0_look_in_split[1];
             row[State0MidHighLkIn.base_table_index()] = st_0_look_in_split[2];
@@ -1416,7 +1414,7 @@ impl HashTable {
             row[State0HighestLkOut.base_table_index()] = st_0_look_out_split[3];
 
             let st_1_limbs = Self::base_field_element_into_16_bit_limbs(trace_row[1]);
-            let st_1_look_in_split = st_1_limbs.map(|limb| BFieldElement::new(limb as u64));
+            let st_1_look_in_split = st_1_limbs.map(|limb| BFieldElement::new(limb.into()));
             row[State1LowestLkIn.base_table_index()] = st_1_look_in_split[0];
             row[State1MidLowLkIn.base_table_index()] = st_1_look_in_split[1];
             row[State1MidHighLkIn.base_table_index()] = st_1_look_in_split[2];
@@ -1429,7 +1427,7 @@ impl HashTable {
             row[State1HighestLkOut.base_table_index()] = st_1_look_out_split[3];
 
             let st_2_limbs = Self::base_field_element_into_16_bit_limbs(trace_row[2]);
-            let st_2_look_in_split = st_2_limbs.map(|limb| BFieldElement::new(limb as u64));
+            let st_2_look_in_split = st_2_limbs.map(|limb| BFieldElement::new(limb.into()));
             row[State2LowestLkIn.base_table_index()] = st_2_look_in_split[0];
             row[State2MidLowLkIn.base_table_index()] = st_2_look_in_split[1];
             row[State2MidHighLkIn.base_table_index()] = st_2_look_in_split[2];
@@ -1442,7 +1440,7 @@ impl HashTable {
             row[State2HighestLkOut.base_table_index()] = st_2_look_out_split[3];
 
             let st_3_limbs = Self::base_field_element_into_16_bit_limbs(trace_row[3]);
-            let st_3_look_in_split = st_3_limbs.map(|limb| BFieldElement::new(limb as u64));
+            let st_3_look_in_split = st_3_limbs.map(|limb| BFieldElement::new(limb.into()));
             row[State3LowestLkIn.base_table_index()] = st_3_look_in_split[0];
             row[State3MidLowLkIn.base_table_index()] = st_3_look_in_split[1];
             row[State3MidHighLkIn.base_table_index()] = st_3_look_in_split[2];
@@ -1502,8 +1500,8 @@ impl HashTable {
     /// significant limb.
     fn inverse_or_zero_of_highest_2_limbs(state_element: BFieldElement) -> BFieldElement {
         let limbs = Self::base_field_element_into_16_bit_limbs(state_element);
-        let highest = limbs[3] as u64;
-        let mid_high = limbs[2] as u64;
+        let highest: u64 = limbs[3].into();
+        let mid_high: u64 = limbs[2].into();
         let high_limbs = BFieldElement::new((highest << 16) + mid_high);
         let two_pow_32_minus_1 = BFieldElement::new((1 << 32) - 1);
         let to_invert = two_pow_32_minus_1 - high_limbs;
@@ -1612,12 +1610,7 @@ impl HashTable {
         let two_pow_32 = BFieldElement::from(1_u64 << 32);
         let two_pow_48 = BFieldElement::from(1_u64 << 48);
 
-        // Before decomposition into limbs, the state element is multiplied by R (capital_r).
-        // After re-composition, we need to divide by R to get the original state element.
-        // See `Self::base_field_element_16_bit_limbs` for more details.
-        let capital_r = BFieldElement::new(((1_u128 << 64) % BFieldElement::P as u128) as u64);
-        let capital_r_inv = capital_r.inverse();
-
+        let montgomery_modulus_inverse = MONTGOMERY_MODULUS.inverse();
         let re_compose_state_element =
             |row: ArrayView1<BFieldElement>,
              highest: HashBaseTableColumn,
@@ -1628,7 +1621,7 @@ impl HashTable {
                     + row[mid_high.base_table_index()] * two_pow_32
                     + row[mid_low.base_table_index()] * two_pow_16
                     + row[lowest.base_table_index()])
-                    * capital_r_inv
+                    * montgomery_modulus_inverse
             };
 
         let rate_registers = |row: ArrayView1<BFieldElement>| {
