@@ -66,13 +66,13 @@ the value `a` was supplied as a secret input.
 | `hash`           |     48 | `_jihgfedcba`   | `_yxwvu00000`                 | Overwrites the stack's 10 top-most elements with their hash digest (length 5) and 5 zeros.              |
 | `divine_sibling` |     56 | `_ iedcba*****` | e.g., `_ (i div 2)edcbazyxwv` | Helps traversing a Merkle tree during authentication path verification. See extended description below. |
 | `assert_vector`  |     64 | `_`             | `_`                           | Assert equality of `st(i)` to `st(i+5)` for `0 <= i < 4`. Crashes the VM if any pair is unequal.        |
-| `absorb_init`    |     72 | `_jihgfedcba`   | `_jihgfedcba`                 | Resets the Sponge's state and absorbs the stack's ten top-most elements.                                |
-| `absorb`         |     80 | `_jihgfedcba`   | `_jihgfedcba`                 | Absorbs the stack's ten top-most elements into the Sponge state.                                        |
-| `squeeze`        |     88 | `_jihgfedcba`   | `_zyxwvutsrq`                 | Squeezes the Sponge, overwriting the stack's ten top-most elements                                      |
+| `sponge_init`    |     72 | `_`             | `_`                           | Initializes (resets) the Sponge's state. Must be the first Sponge instruction executed.                 |
+| `sponge_absorb`  |     80 | `_`             | `_`                           | Absorbs the stack's ten top-most elements into the Sponge state.                                        |
+| `sponge_squeeze` |     88 | `_jihgfedcba`   | `_zyxwvutsrq`                 | Squeezes the Sponge, overwriting the stack's ten top-most elements                                      |
 
 The instruction `hash` works as follows.
 The stack's 10 top-most elements (`jihgfedcba`) are reversed and concatenated with six zeros, resulting in `abcdefghij000000`.
-The permutation `xlix` is applied to `abcdefghij000000`, resulting in `αβγδεζηθικuvwxyz`.
+The Tip5 permutation is applied to `abcdefghij000000`, resulting in `αβγδεζηθικuvwxyz`.
 The first five elements of this result, i.e., `αβγδε`, are reversed and written to the stack, overwriting `st5` through `st9`.
 The top elements of the stack `st0` through `st4` are set to zero.
 For example, the old stack was `_ jihgfedcba` and the new stack is `_ εδγβα 00000`.
@@ -88,10 +88,10 @@ Depending on this least significant bit of `i`, `divine_sibling` either
 The 11th element of the operational stack `i` is shifted by 1 bit to the right, _i.e._, the least-significant bit is dropped.
 In conjunction with instruction `hash` and `assert_vector`, the instruction `divine_sibling` allows to efficiently verify a Merkle authentication path.
 
-The instructions `absorb_init`, `absorb`, and `squeeze` are the interface for using the permutation `xlix` in a [Sponge](https://keccak.team/sponge_duplex.html) construction.
+The instructions `sponge_init`, `sponge_absorb`, and `sponge_squeeze` are the interface for using the Tip5 permutation in a [Sponge](https://keccak.team/sponge_duplex.html) construction.
 The capacity is never accessible to the program that's being executed by Triton VM.
 At any given time, at most one Sponge state exists.
-Only instruction `absorb_init` resets the state of the Sponge, and only the three Sponge instructions influence the Sponge's state.
+Only instruction `sponge_init` resets the state of the Sponge, and only the three Sponge instructions influence the Sponge's state.
 Notably, executing instruction `hash` does not modify the Sponge's state.
 When using the Sponge instructions, it is the programmer's responsibility to take care of proper input padding:
 Triton VM cannot know the number of elements that will be absorbed.
