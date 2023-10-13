@@ -184,34 +184,11 @@ impl ExtHashTable {
         let receive_chunk_indeterminate = challenge(ProgramAttestationSendChunkIndeterminate);
 
         // First chunk of the program is received correctly. Relates to program attestation.
-        let state_0 = Self::re_compose_16_bit_limbs(
-            circuit_builder,
-            base_row(State0HighestLkIn),
-            base_row(State0MidHighLkIn),
-            base_row(State0MidLowLkIn),
-            base_row(State0LowestLkIn),
-        );
-        let state_1 = Self::re_compose_16_bit_limbs(
-            circuit_builder,
-            base_row(State1HighestLkIn),
-            base_row(State1MidHighLkIn),
-            base_row(State1MidLowLkIn),
-            base_row(State1LowestLkIn),
-        );
-        let state_2 = Self::re_compose_16_bit_limbs(
-            circuit_builder,
-            base_row(State2HighestLkIn),
-            base_row(State2MidHighLkIn),
-            base_row(State2MidLowLkIn),
-            base_row(State2LowestLkIn),
-        );
-        let state_3 = Self::re_compose_16_bit_limbs(
-            circuit_builder,
-            base_row(State3HighestLkIn),
-            base_row(State3MidHighLkIn),
-            base_row(State3MidLowLkIn),
-            base_row(State3LowestLkIn),
-        );
+        let [state_0, state_1, state_2, state_3] =
+            Self::re_compose_states_0_through_3_before_lookup(
+                circuit_builder,
+                Self::indicate_column_index_in_base_row,
+            );
         let state_rate_part: [_; RATE] = [
             state_0,
             state_1,
@@ -671,34 +648,11 @@ impl ExtHashTable {
         let running_evaluation_hash_digest_next = next_ext_row(HashDigestRunningEvaluation);
         let running_evaluation_sponge_next = next_ext_row(SpongeRunningEvaluation);
 
-        let state_0 = Self::re_compose_16_bit_limbs(
-            circuit_builder,
-            current_base_row(State0HighestLkIn),
-            current_base_row(State0MidHighLkIn),
-            current_base_row(State0MidLowLkIn),
-            current_base_row(State0LowestLkIn),
-        );
-        let state_1 = Self::re_compose_16_bit_limbs(
-            circuit_builder,
-            current_base_row(State1HighestLkIn),
-            current_base_row(State1MidHighLkIn),
-            current_base_row(State1MidLowLkIn),
-            current_base_row(State1LowestLkIn),
-        );
-        let state_2 = Self::re_compose_16_bit_limbs(
-            circuit_builder,
-            current_base_row(State2HighestLkIn),
-            current_base_row(State2MidHighLkIn),
-            current_base_row(State2MidLowLkIn),
-            current_base_row(State2LowestLkIn),
-        );
-        let state_3 = Self::re_compose_16_bit_limbs(
-            circuit_builder,
-            current_base_row(State3HighestLkIn),
-            current_base_row(State3MidHighLkIn),
-            current_base_row(State3MidLowLkIn),
-            current_base_row(State3LowestLkIn),
-        );
+        let [state_0, state_1, state_2, state_3] =
+            Self::re_compose_states_0_through_3_before_lookup(
+                circuit_builder,
+                Self::indicate_column_index_in_current_base_row,
+            );
 
         let state_current = [
             state_0,
@@ -1049,6 +1003,54 @@ impl ExtHashTable {
         .concat()
     }
 
+    fn indicate_column_index_in_base_row(column: HashBaseTableColumn) -> SingleRowIndicator {
+        BaseRow(column.master_base_table_index())
+    }
+
+    fn indicate_column_index_in_current_base_row(column: HashBaseTableColumn) -> DualRowIndicator {
+        CurrentBaseRow(column.master_base_table_index())
+    }
+
+    fn indicate_column_index_in_next_base_row(column: HashBaseTableColumn) -> DualRowIndicator {
+        NextBaseRow(column.master_base_table_index())
+    }
+
+    fn re_compose_states_0_through_3_before_lookup<II: InputIndicator>(
+        circuit_builder: &ConstraintCircuitBuilder<II>,
+        base_row_to_input_indicator: fn(HashBaseTableColumn) -> II,
+    ) -> [ConstraintCircuitMonad<II>; 4] {
+        let input = |input_indicator: II| circuit_builder.input(input_indicator);
+        let state_0 = Self::re_compose_16_bit_limbs(
+            circuit_builder,
+            input(base_row_to_input_indicator(State0HighestLkIn)),
+            input(base_row_to_input_indicator(State0MidHighLkIn)),
+            input(base_row_to_input_indicator(State0MidLowLkIn)),
+            input(base_row_to_input_indicator(State0LowestLkIn)),
+        );
+        let state_1 = Self::re_compose_16_bit_limbs(
+            circuit_builder,
+            input(base_row_to_input_indicator(State1HighestLkIn)),
+            input(base_row_to_input_indicator(State1MidHighLkIn)),
+            input(base_row_to_input_indicator(State1MidLowLkIn)),
+            input(base_row_to_input_indicator(State1LowestLkIn)),
+        );
+        let state_2 = Self::re_compose_16_bit_limbs(
+            circuit_builder,
+            input(base_row_to_input_indicator(State2HighestLkIn)),
+            input(base_row_to_input_indicator(State2MidHighLkIn)),
+            input(base_row_to_input_indicator(State2MidLowLkIn)),
+            input(base_row_to_input_indicator(State2LowestLkIn)),
+        );
+        let state_3 = Self::re_compose_16_bit_limbs(
+            circuit_builder,
+            input(base_row_to_input_indicator(State3HighestLkIn)),
+            input(base_row_to_input_indicator(State3MidHighLkIn)),
+            input(base_row_to_input_indicator(State3MidLowLkIn)),
+            input(base_row_to_input_indicator(State3LowestLkIn)),
+        );
+        [state_0, state_1, state_2, state_3]
+    }
+
     fn tip5_constraints_as_circuits(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> (
@@ -1160,35 +1162,11 @@ impl ExtHashTable {
                 .try_into()
                 .unwrap();
 
-        let state_0_next = Self::re_compose_16_bit_limbs(
-            circuit_builder,
-            next_base_row(State0HighestLkIn),
-            next_base_row(State0MidHighLkIn),
-            next_base_row(State0MidLowLkIn),
-            next_base_row(State0LowestLkIn),
-        );
-        let state_1_next = Self::re_compose_16_bit_limbs(
-            circuit_builder,
-            next_base_row(State1HighestLkIn),
-            next_base_row(State1MidHighLkIn),
-            next_base_row(State1MidLowLkIn),
-            next_base_row(State1LowestLkIn),
-        );
-        let state_2_next = Self::re_compose_16_bit_limbs(
-            circuit_builder,
-            next_base_row(State2HighestLkIn),
-            next_base_row(State2MidHighLkIn),
-            next_base_row(State2MidLowLkIn),
-            next_base_row(State2LowestLkIn),
-        );
-        let state_3_next = Self::re_compose_16_bit_limbs(
-            circuit_builder,
-            next_base_row(State3HighestLkIn),
-            next_base_row(State3MidHighLkIn),
-            next_base_row(State3MidLowLkIn),
-            next_base_row(State3LowestLkIn),
-        );
-
+        let [state_0_next, state_1_next, state_2_next, state_3_next] =
+            Self::re_compose_states_0_through_3_before_lookup(
+                circuit_builder,
+                Self::indicate_column_index_in_next_base_row,
+            );
         let state_next = [
             state_0_next,
             state_1_next,
@@ -1280,34 +1258,11 @@ impl ExtHashTable {
             circuit_builder.input(BaseRow(column_idx.master_base_table_index()))
         };
 
-        let state_0 = Self::re_compose_16_bit_limbs(
-            circuit_builder,
-            base_row(State0HighestLkIn),
-            base_row(State0MidHighLkIn),
-            base_row(State0MidLowLkIn),
-            base_row(State0LowestLkIn),
-        );
-        let state_1 = Self::re_compose_16_bit_limbs(
-            circuit_builder,
-            base_row(State1HighestLkIn),
-            base_row(State1MidHighLkIn),
-            base_row(State1MidLowLkIn),
-            base_row(State1LowestLkIn),
-        );
-        let state_2 = Self::re_compose_16_bit_limbs(
-            circuit_builder,
-            base_row(State2HighestLkIn),
-            base_row(State2MidHighLkIn),
-            base_row(State2MidLowLkIn),
-            base_row(State2LowestLkIn),
-        );
-        let state_3 = Self::re_compose_16_bit_limbs(
-            circuit_builder,
-            base_row(State3HighestLkIn),
-            base_row(State3MidHighLkIn),
-            base_row(State3MidLowLkIn),
-            base_row(State3LowestLkIn),
-        );
+        let [state_0, state_1, state_2, state_3] =
+            Self::re_compose_states_0_through_3_before_lookup(
+                circuit_builder,
+                Self::indicate_column_index_in_base_row,
+            );
         let state_4 = base_row(State4);
 
         let mode = base_row(Mode);
