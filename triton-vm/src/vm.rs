@@ -905,10 +905,14 @@ pub(crate) mod tests {
     use itertools::Itertools;
     use ndarray::Array1;
     use ndarray::ArrayView1;
+    use rand::prelude::SliceRandom;
+    use rand::prelude::StdRng;
+    use rand::random;
     use rand::rngs::ThreadRng;
     use rand::thread_rng;
     use rand::Rng;
     use rand::RngCore;
+    use rand_core::SeedableRng;
     use twenty_first::shared_math::b_field_element::BFIELD_ZERO;
     use twenty_first::shared_math::other::random_elements;
     use twenty_first::shared_math::other::random_elements_array;
@@ -925,6 +929,7 @@ pub(crate) mod tests {
     use crate::shared_tests::ProgramAndInput;
     use crate::stark::MTMaker;
     use crate::table::processor_table::ProcessorTraceRow;
+    use crate::triton_asm;
     use crate::triton_program;
 
     use super::*;
@@ -1151,52 +1156,53 @@ pub(crate) mod tests {
     }
 
     pub(crate) fn property_based_test_program_for_sponge_instructions() -> ProgramAndInput {
-        let mut rng = ThreadRng::default();
-        let st0 = rng.gen_range(0..BFieldElement::P);
-        let st1 = rng.gen_range(0..BFieldElement::P);
-        let st2 = rng.gen_range(0..BFieldElement::P);
-        let st3 = rng.gen_range(0..BFieldElement::P);
-        let st4 = rng.gen_range(0..BFieldElement::P);
-        let st5 = rng.gen_range(0..BFieldElement::P);
-        let st6 = rng.gen_range(0..BFieldElement::P);
-        let st7 = rng.gen_range(0..BFieldElement::P);
-        let st8 = rng.gen_range(0..BFieldElement::P);
-        let st9 = rng.gen_range(0..BFieldElement::P);
+        let seed = random();
+        let mut rng = StdRng::seed_from_u64(seed);
+        println!("property_based_test_program_for_sponge_instructions seed: {seed}");
 
-        let sponge_input =
-            [st0, st1, st2, st3, st4, st5, st6, st7, st8, st9].map(BFieldElement::new);
+        let sponge_input = rng.gen();
+        let mut sponge_state = Tip5::init();
+        let mut sponge_io = sponge_input;
+        let mut sponge_and_hash_instructions = vec![];
 
-        let mut sponge = Tip5::init();
-        Tip5::absorb(&mut sponge, &sponge_input);
-        let sponge_output = Tip5::squeeze(&mut sponge);
-        Tip5::absorb(&mut sponge, &sponge_output);
-        Tip5::absorb(&mut sponge, &sponge_output);
-        let sponge_output = Tip5::squeeze(&mut sponge);
-        Tip5::absorb(&mut sponge, &sponge_output);
-        Tip5::squeeze(&mut sponge);
-        let sponge_output = Tip5::squeeze(&mut sponge);
+        let possible_instructions: [Instruction; 4] =
+            [SpongeInit, SpongeAbsorb, SpongeSqueeze, Hash];
+        let zero_digest = [BFIELD_ZERO; DIGEST_LENGTH];
+        let num_instructions = rng.gen_range(0..100);
 
+        for _ in 0..num_instructions {
+            let &instruction = possible_instructions.choose(&mut rng).unwrap();
+            sponge_and_hash_instructions.push(instruction);
+
+            match instruction {
+                SpongeInit => sponge_state = Tip5::init(),
+                SpongeAbsorb => Tip5::absorb(&mut sponge_state, &sponge_io),
+                SpongeSqueeze => sponge_io = Tip5::squeeze(&mut sponge_state),
+                Hash => {
+                    let digest = Tip5::hash_10(&sponge_io);
+                    sponge_io = [zero_digest, digest].concat().try_into().unwrap();
+                }
+                _ => unreachable!(),
+            }
+        }
+
+        let output_equality_assertions = (0..RATE)
+            .flat_map(|_| triton_asm![read_io eq assert])
+            .collect_vec();
+
+        let [st0, st1, st2, st3, st4, st5, st6, st7, st8, st9] = sponge_input;
         let program = triton_program!(
             push {st9} push {st8} push {st7} push {st6} push {st5}
             push {st4} push {st3} push {st2} push {st1} push {st0}
-            sponge_init sponge_absorb hash sponge_squeeze sponge_absorb sponge_absorb
-            hash sponge_squeeze sponge_absorb sponge_squeeze sponge_squeeze
-            read_io eq assert // st0
-            read_io eq assert // st1
-            read_io eq assert // st2
-            read_io eq assert // st3
-            read_io eq assert // st4
-            read_io eq assert // st5
-            read_io eq assert // st6
-            read_io eq assert // st7
-            read_io eq assert // st8
-            read_io eq assert // st9
+            sponge_init
+            {&sponge_and_hash_instructions}
+            {&output_equality_assertions}
             halt
         );
 
         ProgramAndInput {
             program,
-            public_input: sponge_output.map(|e| e.value()).to_vec(),
+            public_input: sponge_io.map(|e| e.value()).to_vec(),
             non_determinism: [].into(),
         }
     }
