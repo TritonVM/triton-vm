@@ -827,10 +827,65 @@ impl<'pgm> VMState<'pgm> {
 
 impl<'pgm> Display for VMState<'pgm> {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        fn print_row(f: &mut Formatter<'_>, s: String) -> FmtResult {
+            writeln!(f, "│ {s: <103} │")
+        }
         match self.current_instruction() {
             Ok(_) => {
                 let row = self.to_processor_row();
-                write!(f, "{}", ProcessorTraceRow { row: row.view() })
+                write!(f, "{}", ProcessorTraceRow { row: row.view() })?;
+                writeln!(f)?;
+                writeln!(
+                    f,
+                    "╭─────────────────────────────────────────────────────────────────\
+                    ────────────────────────────────────────╮"
+                )?;
+                let width = 20;
+                print_row(
+                    f,
+                    format!(
+                        "sp0-3:    [ {:>width$} | {:>width$} | {:>width$} | {:>width$} ]",
+                        self.sponge_state[0].value(),
+                        self.sponge_state[1].value(),
+                        self.sponge_state[2].value(),
+                        self.sponge_state[3].value(),
+                    ),
+                )?;
+                print_row(
+                    f,
+                    format!(
+                        "sp4-7:    [ {:>width$} | {:>width$} | {:>width$} | {:>width$} ]",
+                        self.sponge_state[4].value(),
+                        self.sponge_state[5].value(),
+                        self.sponge_state[6].value(),
+                        self.sponge_state[7].value(),
+                    ),
+                )?;
+                print_row(
+                    f,
+                    format!(
+                        "sp8-11:   [ {:>width$} | {:>width$} | {:>width$} | {:>width$} ]",
+                        self.sponge_state[8].value(),
+                        self.sponge_state[9].value(),
+                        self.sponge_state[10].value(),
+                        self.sponge_state[11].value(),
+                    ),
+                )?;
+                print_row(
+                    f,
+                    format!(
+                        "sp12-15:  [ {:>width$} | {:>width$} | {:>width$} | {:>width$} ]",
+                        self.sponge_state[12].value(),
+                        self.sponge_state[13].value(),
+                        self.sponge_state[14].value(),
+                        self.sponge_state[15].value(),
+                    ),
+                )?;
+                write!(
+                    f,
+                    "╰─────────────────────────────────────────────────────────────────\
+                    ────────────────────────────────────────╯"
+                )
             }
             Err(_) => write!(f, "END-OF-FILE"),
         }

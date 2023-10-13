@@ -2801,11 +2801,14 @@ impl<'a> Display for ProcessorTraceRow<'a> {
             _ => instruction,
         };
 
-        writeln!(f, " ╭───────────────────────────╮")?;
-        writeln!(f, " │ {: <25} │", format!("{instruction_with_arg}"))?;
         writeln!(
             f,
-            "╭┴───────────────────────────┴────────────────────────────────────\
+            " ╭────────────────────────────────────────────────────────╮"
+        )?;
+        writeln!(f, " │ {: <54} │", format!("{instruction_with_arg}"))?;
+        writeln!(
+            f,
+            "╭┴────────────────────────────────────────────────────────┴───────\
             ────────────────────┬───────────────────╮"
         )?;
 
@@ -2890,17 +2893,27 @@ impl<'a> Display for ProcessorTraceRow<'a> {
 
         row_blank(f)?;
 
-        let w = 2;
         row(
             f,
             format!(
-                "hv0-3:    [ {:>w$} | {:>w$} | {:>w$} | {:>w$} ]",
+                "hv0-3:    [ {:>width$} | {:>width$} | {:>width$} | {:>width$} ]",
                 self.row[HV0.base_table_index()].value(),
                 self.row[HV1.base_table_index()].value(),
                 self.row[HV2.base_table_index()].value(),
                 self.row[HV3.base_table_index()].value(),
             ),
         )?;
+        row(
+            f,
+            format!(
+                "hv4-6:    [ {:>width$} | {:>width$} | {:>width$} ]",
+                self.row[HV4.base_table_index()].value(),
+                self.row[HV5.base_table_index()].value(),
+                self.row[HV6.base_table_index()].value(),
+            ),
+        )?;
+
+        let w = 2;
         row(
             f,
             format!(
