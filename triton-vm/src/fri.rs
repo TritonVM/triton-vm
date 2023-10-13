@@ -649,7 +649,6 @@ mod tests {
     use rand::prelude::StdRng;
     use rand_core::SeedableRng;
     use twenty_first::shared_math::b_field_element::BFieldElement;
-    use twenty_first::shared_math::other::roundup_npo2;
     use twenty_first::shared_math::polynomial::Polynomial;
     use twenty_first::shared_math::tip5::Tip5;
     use twenty_first::shared_math::tip5::RATE;
@@ -691,7 +690,7 @@ mod tests {
 
             let min_domain_length = match min_supported_degree {
                 d if d <= -1 => 0,
-                _ => roundup_npo2(min_supported_degree as u64 + 1) as usize,
+                _ => (min_supported_degree as u64 + 1).next_power_of_two() as usize,
             };
             let min_expanded_domain_length = min_domain_length * expansion_factor;
             let domain_length = max(sampled_domain_length, min_expanded_domain_length);

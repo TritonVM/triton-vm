@@ -19,7 +19,6 @@ use strum::EnumIter;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::digest::Digest;
 use twenty_first::shared_math::mpolynomial::Degree;
-use twenty_first::shared_math::other::roundup_npo2;
 use twenty_first::shared_math::polynomial::Polynomial;
 use twenty_first::shared_math::traits::FiniteField;
 use twenty_first::shared_math::traits::Inverse;
@@ -577,9 +576,7 @@ impl MasterBaseTable {
             aet.u32_table_length(),
         ];
         let max_height = relevant_table_heights.into_iter().max().unwrap();
-        let max_height = max_height.try_into().unwrap();
-        let padded_height = roundup_npo2(max_height);
-        padded_height.try_into().unwrap()
+        max_height.next_power_of_two()
     }
 
     pub fn new(
@@ -1116,8 +1113,8 @@ pub fn num_quotients() -> usize {
 }
 
 pub fn randomized_padded_trace_len(padded_height: usize, num_trace_randomizers: usize) -> usize {
-    let total_table_length = (padded_height + num_trace_randomizers).try_into().unwrap();
-    roundup_npo2(total_table_length).try_into().unwrap()
+    let total_table_length = padded_height + num_trace_randomizers;
+    total_table_length.next_power_of_two()
 }
 
 pub fn interpolant_degree(padded_height: usize, num_trace_randomizers: usize) -> Degree {

@@ -16,7 +16,6 @@ use serde::Serialize;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::digest::Digest;
 use twenty_first::shared_math::mpolynomial::Degree;
-use twenty_first::shared_math::other::roundup_npo2;
 use twenty_first::shared_math::polynomial::Polynomial;
 use twenty_first::shared_math::tip5::Tip5;
 use twenty_first::shared_math::traits::FiniteField;
@@ -609,21 +608,25 @@ impl Stark {
             true => 2,
             false => 1,
         };
-        let domain_length = maybe_blowup_factor * roundup_npo2(max_degree as u64) as usize;
+        let domain_length = (max_degree as u64).next_power_of_two() as usize;
+        let domain_length = maybe_blowup_factor * domain_length;
         ArithmeticDomain::of_length(domain_length).with_offset(fri_domain.offset)
     }
 
     /// Compute the upper bound to use for the maximum degree the quotients given the length of the
     /// trace and the number of trace randomizers.
     /// The degree of the quotients depends on the constraints, _i.e._, the AIR.
-    /// The upper bound is computed as follows:
-    /// 1. Compute the degree of the trace interpolation polynomials.
-    /// 1. Compute the maximum degree of the quotients.
-    /// 1. Round up to the next power of 2.
     pub fn derive_max_degree(padded_height: usize, num_trace_randomizers: usize) -> Degree {
         let interpolant_degree = interpolant_degree(padded_height, num_trace_randomizers);
-        let max_degree_with_origin = max_degree_with_origin(interpolant_degree, padded_height);
-        (roundup_npo2(max_degree_with_origin.degree as u64) - 1) as Degree
+        let max_constraint_degree_with_origin =
+            max_degree_with_origin(interpolant_degree, padded_height);
+        let max_constraint_degree = max_constraint_degree_with_origin.degree as u64;
+        let min_arithmetic_domain_length_supporting_max_constraint_degree =
+            max_constraint_degree.next_power_of_two();
+        let max_degree_supported_by_that_smallest_arithmetic_domain =
+            min_arithmetic_domain_length_supporting_max_constraint_degree - 1;
+
+        max_degree_supported_by_that_smallest_arithmetic_domain as Degree
     }
 
     /// Compute the parameters for FRI. The length of the FRI domain, _i.e._, the number of
