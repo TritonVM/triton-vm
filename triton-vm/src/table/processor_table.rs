@@ -2574,16 +2574,19 @@ impl ExtProcessorTable {
             .map(|(weight, st_next)| weight * st_next)
             .sum();
 
-        let running_evaluation_updates = next_ext_row(SpongeEvalArg)
+        // Use domain-specific knowledge: the compressed row (i.e., random linear sum) of the
+        // initial Sponge state is 0.
+        let running_evaluation_updates_for_sponge_init = next_ext_row(SpongeEvalArg)
             - challenge(SpongeIndeterminate) * curr_ext_row(SpongeEvalArg)
-            - challenge(HashCIWeight) * curr_base_row(CI)
-            - compressed_row_next;
+            - challenge(HashCIWeight) * curr_base_row(CI);
+        let running_evaluation_updates_for_absorb_and_squeeze =
+            running_evaluation_updates_for_sponge_init.clone() - compressed_row_next;
         let running_evaluation_remains = next_ext_row(SpongeEvalArg) - curr_ext_row(SpongeEvalArg);
 
         sponge_instruction_selector * running_evaluation_remains
-            + sponge_init_deselector * running_evaluation_updates.clone()
-            + sponge_absorb_deselector * running_evaluation_updates.clone()
-            + sponge_squeeze_deselector * running_evaluation_updates
+            + sponge_init_deselector * running_evaluation_updates_for_sponge_init
+            + sponge_absorb_deselector * running_evaluation_updates_for_absorb_and_squeeze.clone()
+            + sponge_squeeze_deselector * running_evaluation_updates_for_absorb_and_squeeze
     }
 
     fn log_derivative_with_u32_table_updates_correctly(

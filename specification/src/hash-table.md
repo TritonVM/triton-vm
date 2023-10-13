@@ -136,8 +136,9 @@ Both types of challenges are X-field elements, _i.e._, elements of $\mathbb{F}_{
 1. If the `Mode` is `sponge`, then the current instruction is a Sponge instruction.
 1. If the `Mode` is `pad`, then the `round_no` is 0.
 1. If the current instruction is `sponge_init`, then the `round_no` is 0.
-1. For `i` $\in\{0, \dots, 15\}$:
+1. For `i` $\in\{10, \dots, 15\}$:
 If the current instruction `CI` is `sponge_init`, then register `state_i` is 0.
+(_Note_: the remaining registers, corresponding to the rate, are guaranteed to be 0 through the Evaluation Argument “Sponge” with the processor.)
 1. For `i` $\in\{10, \dots, 15\}$:
 If the round number is 0 and the current `Mode` is `hash`, then register `state_i` is 1.
 1. For `i` $\in\{0, \dots, 3\}$:
@@ -158,7 +159,7 @@ Let `state_i_hi_limbs_minus_2_pow_32` be an alias for that difference:
 1. `(Mode - 0)·(Mode - 1)·(Mode - 3)`<br />
     ` ·(CI - opcode(sponge_init))·(CI - opcode(sponge_absorb))·(CI - opcode(sponge_squeeze))`
 1. `(Mode - 1)·(Mode - 2)·(Mode - 3)·(round_no - 0)`
-1. For `i` $\in\{0, \dots, 15\}$:<br />
+1. For `i` $\in\{10, \dots, 15\}$:<br />
     `·(CI - opcode(hash))·(CI - opcode(sponge_absorb))·(CI - opcode(sponge_squeeze))`<br />
     `·(state_i - 0)`
 1. For `i` $\in\{10, \dots, 15\}$:<br />
@@ -183,8 +184,10 @@ define `state_i_hi_limbs_minus_2_pow_32 := 2^32 - 1 - 2^16·state_i_highest_lk_i
 1. If the `Mode` is `sponge`, then the `Mode` in the next row is `sponge` or `hash` or `pad`.
 1. If the `Mode` is `hash`, then the `Mode` in the next row is `hash` or `pad`.
 1. If the `Mode` is `pad`, then the `Mode` in the next row is `pad`.
-1. If the `round_no` in the next row is 0 and the `Mode` in the next row is `program_hashing`, then the capacity's state registers don't change.
-1. If the `round_no` in the next row is 0 and the current instruction in the next row is `sponge_absorb`, then the capacity's state registers don't change.
+1. If the `round_no` in the next row is 0
+and the `Mode` in the next row is either `program_hashing` or `sponge`
+and the instruction in the next row is either `sponge_absorb` or `sponge_init`,
+then the capacity's state registers don't change.
 1. If the `round_no` in the next row is 0 and the current instruction in the next row is `sponge_squeeze`, then none of the state registers change.
 1. If the `round_no` in the next row is 0 and the `Mode` in the next row is `hash`, then `RunningEvaluationHashInput` accumulates the next row with respect to challenges 🧄₀ through 🧄₉ and indeterminate 🚪.
 Otherwise, it remains unchanged.
@@ -211,10 +214,8 @@ If the `round_no` is `r`, the `state` registers adhere to the rules of applying 
 1. `(Mode - 0)·(Mode - 1)·(Mode - 2)·(Mode' - 0)·(Mode' - 3)`
 1. `(Mode - 1)·(Mode - 2)·(Mode - 3)·(Mode' - 0)`
 1. `(round_no' - 1)·(round_no' - 2)·(round_no' - 3)·(round_no' - 4)·(round_no' - 5)`<br />
-    `·(Mode' - 0)·(Mode' - 2)·(Mode' - 3)`<br />
-    `·(🧄₁₀·(state_10' - state_10) + 🧄₁₁·(state_11' - state_11) + 🧄₁₂·(state_12' - state_12) + 🧄₁₃·(state_13' - state_13) + 🧄₁₄·(state_14' - state_14) + 🧄₁₅·(state_15' - state_15))`
-1. `(round_no' - 1)·(round_no' - 2)·(round_no' - 3)·(round_no' - 4)·(round_no' - 5)`<br />
-    `·(CI' - opcode(hash))·(CI' - opcode(sponge_init))·(CI' - opcode(sponge_squeeze))`<br />
+    `·(Mode' - 3)·(Mode' - 0)`<br />
+    `·(CI' - opcode(sponge_init))`<br />
     `·(🧄₁₀·(state_10' - state_10) + 🧄₁₁·(state_11' - state_11) + 🧄₁₂·(state_12' - state_12) + 🧄₁₃·(state_13' - state_13) + 🧄₁₄·(state_14' - state_14) + 🧄₁₅·(state_15' - state_15))`
 1. `(round_no' - 1)·(round_no' - 2)·(round_no' - 3)·(round_no' - 4)·(round_no' - 5)`<br />
     `·(CI' - opcode(hash))·(CI' - opcode(sponge_init))·(CI' - opcode(sponge_absorb))`<br />
@@ -238,7 +239,8 @@ If the `round_no` is `r`, the `state` registers adhere to the rules of applying 
 1. For `i` $\in \{0, \dots, 3\}$ and `limb` $\in \{$`highest`, `mid_high`, `mid_low`, `lowest` $\}$:<br />
     `(round_no' - 5)·(Mode' - 0)·(CI' - opcode(sponge_init))·((state_i_limb_LookupClientLogDerivative' - state_i_limb_LookupClientLogDerivative)·(🧺 - 🍒·state_i_limb_lkin' - 🍓·state_i_limb_lkout') - 1)`<br />
     `+ (round_no' - 0)·(round_no' - 1)·(round_no' - 2)·(round_no' - 3)·(round_no' - 4)`<br />
-    `·(CI' - opcode(hash))·(CI' - opcode(sponge_absorb))·(CI' - opcode(sponge_squeeze))`<br />
+    `·(state_i_limb_LookupClientLogDerivative' - state_i_limb_LookupClientLogDerivative)`<br />
+    `+ (CI' - opcode(hash))·(CI' - opcode(sponge_absorb))·(CI' - opcode(sponge_squeeze))`<br />
     `·(state_i_limb_LookupClientLogDerivative' - state_i_limb_LookupClientLogDerivative)`
 1. The remaining constraints are left as an exercise to the reader.
 For hints, see the [Tip5 paper](https://eprint.iacr.org/2023/107.pdf).
