@@ -35,6 +35,7 @@ use crate::vm::VMState;
 pub struct Program {
     pub instructions: Vec<Instruction>,
     pub address_to_label: HashMap<u64, String>,
+    pub breakpoints: Vec<bool>,
 }
 
 impl Display for Program {
@@ -88,10 +89,13 @@ impl BFieldCodec for Program {
         }
 
         ensure_eq!(read_idx, program_length);
+        ensure_eq!(instructions.len(), program_length);
+        let breakpoints = vec![false; program_length];
 
         Ok(Box::new(Program {
             instructions,
             address_to_label: HashMap::new(),
+            breakpoints,
         }))
     }
 
@@ -137,22 +141,19 @@ impl IntoIterator for Program {
 }
 
 impl Program {
-    /// Create a `Program` from a slice of `Instruction`.
+    /// Create a `Program` from a slice of `LabelledInstruction`s.
     pub fn new(labelled_instructions: &[LabelledInstruction]) -> Self {
         let label_to_address = Self::build_label_to_address_map(labelled_instructions);
-        let instructions = labelled_instructions
-            .iter()
-            .flat_map(|instr| Self::turn_label_to_address_for_instruction(instr, &label_to_address))
-            .flat_map(|instr| vec![instr; instr.size()])
-            .collect();
-        let address_to_label = label_to_address
-            .into_iter()
-            .map(|(label, address)| (address, label))
-            .collect();
+        let instructions =
+            Self::turn_labels_into_addresses(labelled_instructions, &label_to_address);
+        let address_to_label = Self::flip_map(label_to_address);
+        let breakpoints = Self::extract_breakpoints(labelled_instructions);
 
+        assert_eq!(instructions.len(), breakpoints.len());
         Program {
             instructions,
             address_to_label,
+            breakpoints,
         }
     }
 
@@ -177,8 +178,17 @@ impl Program {
         label_map
     }
 
-    /// Convert a single instruction with a labelled call target to an instruction with an absolute
-    /// address as the call target. Discards all labels.
+    fn turn_labels_into_addresses(
+        labelled_instructions: &[LabelledInstruction],
+        label_to_address: &HashMap<String, u64>,
+    ) -> Vec<Instruction> {
+        labelled_instructions
+            .iter()
+            .flat_map(|instr| Self::turn_label_to_address_for_instruction(instr, label_to_address))
+            .flat_map(|instr| vec![instr; instr.size()])
+            .collect()
+    }
+
     fn turn_label_to_address_for_instruction(
         labelled_instruction: &LabelledInstruction,
         label_map: &HashMap<String, u64>,
@@ -194,6 +204,28 @@ impl Program {
                 .unwrap_or_else(|| panic!("Label not found: {label}"))
         });
         Some(instruction_with_absolute_address)
+    }
+
+    fn flip_map<Key, Value: Eq + Hash>(map: HashMap<Key, Value>) -> HashMap<Value, Key> {
+        map.into_iter().map(|(key, value)| (value, key)).collect()
+    }
+
+    fn extract_breakpoints(labelled_instructions: &[LabelledInstruction]) -> Vec<bool> {
+        let mut breakpoints = vec![];
+        let mut break_before_next_instruction = false;
+
+        for instruction in labelled_instructions {
+            match instruction {
+                LabelledInstruction::Breakpoint => break_before_next_instruction = true,
+                LabelledInstruction::Instruction(instruction) => {
+                    breakpoints.extend(vec![break_before_next_instruction; instruction.size()]);
+                    break_before_next_instruction = false;
+                }
+                _ => (),
+            }
+        }
+
+        breakpoints
     }
 
     /// Create a `Program` by parsing source code.
@@ -794,5 +826,17 @@ mod tests {
 
         let maybe_open_call = profile.iter().find(|line| line.label.contains("(open)"));
         assert!(maybe_open_call.is_some());
+    }
+
+    #[test]
+    fn breakpoints_propagate_to_debug_information_as_expected() {
+        let program = triton_program! {
+            break push 1 push 2
+            break break break break
+            pop pop hash halt
+            break // no effect
+        };
+        let expected_breakpoints = vec![true, true, false, false, true, false, false, false];
+        assert_eq!(expected_breakpoints, program.breakpoints);
     }
 }
