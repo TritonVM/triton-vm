@@ -66,33 +66,28 @@ impl BFieldCodec for Program {
         let sequence = &sequence[1..];
         ensure_eq!(program_length, sequence.len());
 
-        let mut idx = 0;
+        let mut read_idx = 0;
         let mut instructions = Vec::with_capacity(program_length);
-        while idx < program_length {
-            let opcode: u32 = match sequence[idx].value().try_into() {
-                Ok(opcode) => opcode,
-                Err(_) => bail!("Invalid opcode {} at index {idx}.", sequence[idx].value()),
-            };
-            let instruction: Instruction = opcode.try_into()?;
-            if !instruction.has_arg() {
-                instructions.push(instruction);
-            } else if instructions.len() + 1 >= program_length {
-                bail!("Missing argument for instruction {instruction} at index {idx}.");
-            } else {
-                let instruction = match instruction.change_arg(sequence[idx + 1]) {
-                    Some(instruction) => instruction,
-                    None => {
-                        bail!("Invalid argument for instruction {instruction} at index {idx}.")
-                    }
-                };
-                // Instructions with argument are recorded twice to align the `instruction_pointer`.
-                instructions.push(instruction);
-                instructions.push(instruction);
+        while read_idx < program_length {
+            let opcode = sequence[read_idx];
+            let mut instruction: Instruction = opcode
+                .try_into()
+                .expect("Invalid opcode {opcode} at index {idx}.");
+            if instruction.has_arg() && instructions.len() + instruction.size() > program_length {
+                bail!("Missing argument for instruction {instruction} at index {read_idx}.");
             }
-            idx += instruction.size();
+            if instruction.has_arg() {
+                let arg = sequence[read_idx + 1];
+                instruction = instruction
+                    .change_arg(arg)
+                    .expect("Invalid argument {arg} for instruction {instruction} at index {idx}.");
+            }
+
+            instructions.extend(vec![instruction; instruction.size()]);
+            read_idx += instruction.size();
         }
 
-        ensure_eq!(idx, program_length);
+        ensure_eq!(read_idx, program_length);
 
         Ok(Box::new(Program {
             instructions,

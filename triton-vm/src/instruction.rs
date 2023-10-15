@@ -449,6 +449,15 @@ impl TryFrom<usize> for Instruction {
     }
 }
 
+impl TryFrom<BFieldElement> for Instruction {
+    type Error = anyhow::Error;
+
+    fn try_from(opcode: BFieldElement) -> Result<Self> {
+        let opcode = u32::try_from(opcode)?;
+        opcode.try_into()
+    }
+}
+
 const fn all_instructions_without_args() -> [AnInstruction<BFieldElement>; Instruction::COUNT] {
     [
         Pop,
