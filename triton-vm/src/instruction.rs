@@ -410,6 +410,7 @@ impl Instruction {
                 Err(_) => None,
             },
             Swap(_) => match maybe_ord_16 {
+                Ok(ST0) => None,
                 Ok(ord_16) => Some(Swap(ord_16)),
                 Err(_) => None,
             },
@@ -672,14 +673,18 @@ mod tests {
 
     #[test]
     fn change_arguments_of_various_instructions() {
-        let push = Instruction::Push(0_u64.into()).change_arg(7_u64.into());
-        let dup = Instruction::Dup(ST0).change_arg(1024_u64.into());
-        let swap = Instruction::Swap(ST0).change_arg(1337_u64.into());
-        let pop = Instruction::Pop.change_arg(7_u64.into());
+        let push = Push(0_u64.into()).change_arg(7_u64.into());
+        let dup = Dup(ST0).change_arg(1024_u64.into());
+        let swap = Swap(ST0).change_arg(1337_u64.into());
+        let swap_0 = Swap(ST0).change_arg(0_u64.into());
+        let swap_1 = Swap(ST0).change_arg(1_u64.into());
+        let pop = Pop.change_arg(7_u64.into());
 
         assert!(push.is_some());
         assert!(dup.is_none());
         assert!(swap.is_none());
+        assert!(swap_0.is_none());
+        assert!(swap_1.is_some());
         assert!(pop.is_none());
     }
 
