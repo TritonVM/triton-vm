@@ -1,4 +1,3 @@
-use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::fmt::Formatter;
@@ -260,9 +259,10 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
         ((opcode >> bit_number) & 1).into()
     }
 
-    fn map_call_address<F, NewDest: PartialEq + Default>(&self, f: F) -> AnInstruction<NewDest>
+    pub(crate) fn map_call_address<F, NewDest>(&self, f: F) -> AnInstruction<NewDest>
     where
         F: Fn(&Dest) -> NewDest,
+        NewDest: PartialEq + Default,
     {
         match self {
             Pop => Pop,
@@ -446,55 +446,6 @@ impl TryFrom<usize> for Instruction {
         let opcode = u32::try_from(opcode)?;
         opcode.try_into()
     }
-}
-
-/// Convert a program with labels to a program with absolute addresses.
-pub fn convert_all_labels_to_addresses(program: &[LabelledInstruction]) -> Vec<Instruction> {
-    let label_map = build_label_to_address_map(program);
-    program
-        .iter()
-        .flat_map(|instruction| convert_label_to_address_for_instruction(instruction, &label_map))
-        .collect()
-}
-
-pub(crate) fn build_label_to_address_map(program: &[LabelledInstruction]) -> HashMap<String, u64> {
-    use LabelledInstruction::*;
-
-    let mut label_map = HashMap::new();
-    let mut instruction_pointer = 0;
-
-    for labelled_instruction in program.iter() {
-        match labelled_instruction {
-            Label(label) => match label_map.entry(label.clone()) {
-                Entry::Occupied(_) => panic!("Duplicate label: {label}"),
-                Entry::Vacant(entry) => {
-                    entry.insert(instruction_pointer);
-                }
-            },
-            Instruction(instruction) => instruction_pointer += instruction.size() as u64,
-            Breakpoint => (),
-        }
-    }
-    label_map
-}
-
-/// Convert a single instruction with a labelled call target to an instruction with an absolute
-/// address as the call target. Discards all labels.
-fn convert_label_to_address_for_instruction(
-    labelled_instruction: &LabelledInstruction,
-    label_map: &HashMap<String, u64>,
-) -> Option<Instruction> {
-    let LabelledInstruction::Instruction(instruction) = labelled_instruction else {
-        return None;
-    };
-
-    let instruction_with_absolute_address = instruction.map_call_address(|label| {
-        label_map
-            .get(label)
-            .map(|&address| BFieldElement::new(address))
-            .unwrap_or_else(|| panic!("Label not found: {label}"))
-    });
-    Some(instruction_with_absolute_address)
 }
 
 const fn all_instructions_without_args() -> [AnInstruction<BFieldElement>; Instruction::COUNT] {

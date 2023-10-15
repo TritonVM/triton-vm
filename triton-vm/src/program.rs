@@ -1,3 +1,4 @@
+use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::fmt::Formatter;
@@ -20,8 +21,6 @@ use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
 use crate::aet::AlgebraicExecutionTrace;
 use crate::ensure_eq;
 use crate::error::InstructionError::InstructionPointerOverflow;
-use crate::instruction::build_label_to_address_map;
-use crate::instruction::convert_all_labels_to_addresses;
 use crate::instruction::Instruction;
 use crate::instruction::LabelledInstruction;
 use crate::parser::parse;
@@ -35,6 +34,7 @@ use crate::vm::VMState;
 #[derive(Debug, Clone, Default, PartialEq, Eq, GetSize, Serialize, Deserialize)]
 pub struct Program {
     pub instructions: Vec<Instruction>,
+    pub address_to_label: HashMap<u64, String>,
 }
 
 impl Display for Program {
@@ -87,7 +87,11 @@ impl BFieldCodec for Program {
         }
 
         ensure_eq!(idx, program_length);
-        Ok(Box::new(Program { instructions }))
+
+        Ok(Box::new(Program {
+            instructions,
+            address_to_label: HashMap::new(),
+        }))
     }
 
     fn encode(&self) -> Vec<BFieldElement> {
@@ -134,12 +138,61 @@ impl IntoIterator for Program {
 impl Program {
     /// Create a `Program` from a slice of `Instruction`.
     pub fn new(labelled_instructions: &[LabelledInstruction]) -> Self {
-        let instructions = convert_all_labels_to_addresses(labelled_instructions)
+        let label_to_address = Self::build_label_to_address_map(labelled_instructions);
+        let instructions = labelled_instructions
             .iter()
-            .flat_map(|&instr| vec![instr; instr.size()])
+            .flat_map(|instr| Self::turn_label_to_address_for_instruction(instr, &label_to_address))
+            .flat_map(|instr| vec![instr; instr.size()])
+            .collect();
+        let address_to_label = label_to_address
+            .into_iter()
+            .map(|(label, address)| (address, label))
             .collect();
 
-        Program { instructions }
+        Program {
+            instructions,
+            address_to_label,
+        }
+    }
+
+    fn build_label_to_address_map(program: &[LabelledInstruction]) -> HashMap<String, u64> {
+        use LabelledInstruction::*;
+
+        let mut label_map = HashMap::new();
+        let mut instruction_pointer = 0;
+
+        for labelled_instruction in program.iter() {
+            match labelled_instruction {
+                Label(label) => match label_map.entry(label.clone()) {
+                    Entry::Occupied(_) => panic!("Duplicate label: {label}"),
+                    Entry::Vacant(entry) => {
+                        entry.insert(instruction_pointer);
+                    }
+                },
+                Instruction(instruction) => instruction_pointer += instruction.size() as u64,
+                Breakpoint => (),
+            }
+        }
+        label_map
+    }
+
+    /// Convert a single instruction with a labelled call target to an instruction with an absolute
+    /// address as the call target. Discards all labels.
+    fn turn_label_to_address_for_instruction(
+        labelled_instruction: &LabelledInstruction,
+        label_map: &HashMap<String, u64>,
+    ) -> Option<Instruction> {
+        let LabelledInstruction::Instruction(instruction) = labelled_instruction else {
+            return None;
+        };
+
+        let instruction_with_absolute_address = instruction.map_call_address(|label| {
+            label_map
+                .get(label)
+                .map(|&address| BFieldElement::new(address))
+                .unwrap_or_else(|| panic!("Label not found: {label}"))
+        });
+        Some(instruction_with_absolute_address)
     }
 
     /// Create a `Program` by parsing source code.
@@ -317,35 +370,24 @@ impl Program {
         }
     }
 
-    /// Run Triton VM on the given program with the given public and secret input,
-    /// but record the number of cycles spent in each callable block of instructions.
-    /// This function returns a Result wrapping a program profiler report, which is a
-    /// Vec of [`ProfileLine`]s.
-    ///
-    /// Note that the program is given as a list of [`LabelledInstruction`]s rather
-    /// than as a [`Program`] because the labels are needed to build a meaningful profiler
-    /// report.
+    /// Run Triton VM with the given public and secret input, but record the number of cycles spent
+    /// in each callable block of instructions. This function returns a Result wrapping a program
+    /// profiler report, which is a Vec of [`ProfileLine`]s.
     ///
     /// See also [`run`](Self::run), [`trace_execution`](Self::trace_execution) and
     /// [`debug`](Self::debug).
     pub fn profile(
-        labelled_instructions: &[LabelledInstruction],
+        &self,
         public_input: PublicInput,
         non_determinism: NonDeterminism<BFieldElement>,
     ) -> Result<(Vec<BFieldElement>, Vec<ProfileLine>)> {
-        let address_to_label_map = build_label_to_address_map(labelled_instructions)
-            .into_iter()
-            .map(|(label, address)| (address, label))
-            .collect::<HashMap<_, _>>();
         let mut call_stack = vec![];
         let mut profile = vec![];
 
-        let program = Self::new(labelled_instructions);
-        let mut state = VMState::new(&program, public_input, non_determinism);
+        let mut state = VMState::new(self, public_input, non_determinism);
         while !state.halting {
             if let Instruction::Call(address) = state.current_instruction()? {
-                let address = address.value();
-                let label = address_to_label_map[&address].to_owned();
+                let label = self.label_for_address(address);
                 let profile_line = ProfileLine::new(call_stack.len(), label, 0);
                 let profile_line_number = profile.len();
                 profile.push(profile_line);
@@ -367,6 +409,15 @@ impl Program {
         profile.push(ProfileLine::new(0, "total".to_string(), state.cycle_count));
 
         Ok((state.public_output, profile))
+    }
+
+    fn label_for_address(&self, address: BFieldElement) -> String {
+        let address = address.value();
+        let substitute_for_unknown_label = format! {"address_{address}"};
+        self.address_to_label
+            .get(&address)
+            .unwrap_or(&substitute_for_unknown_label)
+            .to_owned()
     }
 }
 
@@ -559,9 +610,8 @@ mod tests {
     use rand::Rng;
     use twenty_first::shared_math::tip5::Tip5;
 
-    use crate::example_programs::calculate_new_mmr_peaks_from_append_with_safe_lists;
+    use crate::example_programs::CALCULATE_NEW_MMR_PEAKS_FROM_APPEND_WITH_SAFE_LISTS;
     use crate::parser::tests::program_gen;
-    use crate::triton_asm;
     use crate::triton_program;
 
     use super::*;
@@ -705,10 +755,8 @@ mod tests {
 
     #[test]
     fn test_profile() {
-        let labelled_instructions = calculate_new_mmr_peaks_from_append_with_safe_lists();
-        let (profile_output, profile) =
-            Program::profile(&labelled_instructions, [].into(), [].into()).unwrap();
-        let program = Program::new(&labelled_instructions);
+        let program = CALCULATE_NEW_MMR_PEAKS_FROM_APPEND_WITH_SAFE_LISTS.clone();
+        let (profile_output, profile) = program.profile([].into(), [].into()).unwrap();
         let debug_terminal_state = program
             .debug_terminal_state([].into(), [].into(), None, None)
             .unwrap();
@@ -727,7 +775,7 @@ mod tests {
 
     #[test]
     fn test_profile_with_open_calls() {
-        let labelled_instructions = triton_asm! {
+        let program = triton_program! {
             push 2 call outer_fn
             outer_fn:
                 call inner_fn
@@ -735,7 +783,7 @@ mod tests {
             inner_fn:
                 push -1 add return
         };
-        let (_, profile) = Program::profile(&labelled_instructions, [].into(), [].into()).unwrap();
+        let (_, profile) = program.profile([].into(), [].into()).unwrap();
 
         println!();
         for line in profile.iter() {
