@@ -450,34 +450,22 @@ impl Program {
         public_input: PublicInput,
         non_determinism: NonDeterminism<BFieldElement>,
     ) -> Result<(Vec<BFieldElement>, Vec<ProfileLine>)> {
-        let mut call_stack = vec![];
-        let mut profile = vec![];
-
+        let mut profiler = VMProfiler::new();
         let mut state = VMState::new(self, public_input, non_determinism);
         while !state.halting {
             if let Instruction::Call(address) = state.current_instruction()? {
                 let label = self.label_for_address(address);
-                let profile_line = ProfileLine::new(call_stack.len(), label, 0);
-                let profile_line_number = profile.len();
-                profile.push(profile_line);
-                call_stack.push((state.cycle_count, profile_line_number));
+                profiler.enter_span_with_label_at_cycle(label, state.cycle_count);
             }
-
             if let Instruction::Return = state.current_instruction()? {
-                let (clk_start, profile_line_number) = call_stack.pop().unwrap();
-                profile[profile_line_number].cycle_count = state.cycle_count - clk_start;
+                profiler.exit_span_at_cycle(state.cycle_count);
             }
 
             state.step()?;
         }
 
-        for (clk_start, profile_line_number) in call_stack {
-            profile[profile_line_number].cycle_count = state.cycle_count - clk_start;
-            profile[profile_line_number].label += " (open)";
-        }
-        profile.push(ProfileLine::new(0, "total".to_string(), state.cycle_count));
-
-        Ok((state.public_output, profile))
+        let report = profiler.report_at_cycle(state.cycle_count);
+        Ok((state.public_output, report))
     }
 
     fn label_for_address(&self, address: BFieldElement) -> String {
@@ -490,7 +478,48 @@ impl Program {
     }
 }
 
+#[derive(Debug, Clone, Default)]
+struct VMProfiler {
+    call_stack: Vec<(u32, usize)>,
+    profile: Vec<ProfileLine>,
+}
+
+impl VMProfiler {
+    fn new() -> Self {
+        VMProfiler {
+            call_stack: vec![],
+            profile: vec![],
+        }
+    }
+
+    fn enter_span_with_label_at_cycle(&mut self, label: String, cycle: u32) {
+        let call_stack_depth = self.call_stack.len();
+        let profile_line = ProfileLine::new(call_stack_depth, label, 0);
+        let profile_line_number = self.profile.len();
+        self.profile.push(profile_line);
+        self.call_stack.push((cycle, profile_line_number));
+    }
+
+    fn exit_span_at_cycle(&mut self, cycle: u32) {
+        let Some((clk_start, profile_line_number)) = self.call_stack.pop() else {
+            return;
+        };
+        self.profile[profile_line_number].cycle_count = cycle - clk_start;
+    }
+
+    fn report_at_cycle(mut self, cycle: u32) -> Vec<ProfileLine> {
+        for (clk_start, profile_line_number) in self.call_stack {
+            self.profile[profile_line_number].cycle_count = cycle - clk_start;
+            self.profile[profile_line_number].label += " (open)";
+        }
+        self.profile
+            .push(ProfileLine::new(0, "total".to_string(), cycle));
+        self.profile
+    }
+}
+
 /// A single line in a profile report for profiling Triton Assembly programs.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ProfileLine {
     pub call_stack_depth: usize,
     pub label: String,
