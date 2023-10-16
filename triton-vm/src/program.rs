@@ -875,4 +875,20 @@ mod tests {
         let expected_breakpoints = vec![true, true, false, false, true, false, false, false];
         assert_eq!(expected_breakpoints, program.breakpoints);
     }
+
+    #[test]
+    fn print_program_without_any_debug_information() {
+        let program = triton_program! {
+            call foo
+            call bar
+            call baz
+            halt
+            foo: nop nop return
+            bar: call baz return
+            baz: push 1 return
+        };
+        let encoding = program.encode();
+        let program = Program::decode(&encoding).unwrap();
+        println!("{program}");
+    }
 }
