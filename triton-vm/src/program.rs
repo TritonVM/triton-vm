@@ -914,6 +914,16 @@ mod tests {
     }
 
     #[test]
+    #[should_panic(expected = "Jump stack is empty")]
+    fn profile_with_too_many_returns() {
+        let program = triton_program! {
+            call foo return halt
+            foo: return
+        };
+        let _ = program.profile([].into(), [].into()).unwrap();
+    }
+
+    #[test]
     fn breakpoints_propagate_to_debug_information_as_expected() {
         let program = triton_program! {
             break push 1 push 2
