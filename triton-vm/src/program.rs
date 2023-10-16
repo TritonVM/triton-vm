@@ -31,7 +31,7 @@ use crate::vm::VMState;
 /// size of 2. This means that the index in the vector corresponds to the VM's
 /// `instruction_pointer`. These duplicate values should most often be skipped/ignored,
 /// e.g. when pretty-printing.
-#[derive(Debug, Clone, Default, PartialEq, Eq, GetSize, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Eq, GetSize, Serialize, Deserialize)]
 pub struct Program {
     pub instructions: Vec<Instruction>,
     pub address_to_label: HashMap<u64, String>,
@@ -48,6 +48,12 @@ impl Display for Program {
             }
         }
         Ok(())
+    }
+}
+
+impl PartialEq for Program {
+    fn eq(&self, other: &Program) -> bool {
+        self.instructions.eq(&other.instructions)
     }
 }
 
