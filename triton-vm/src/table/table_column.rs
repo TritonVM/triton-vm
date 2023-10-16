@@ -263,7 +263,9 @@ pub enum HashBaseTableColumn {
 
     /// The number of the current round in the permutation. The round number evolves as
     /// - 0 → 1 → 2 → 3 → 4 → 5 (→ 0) in [`Mode`][mode]s
-    /// [`ProgramHashing`][mode_prog_hash], [`Sponge`][mode_sponge] and [`Hash`][mode_hash].
+    /// [`ProgramHashing`][mode_prog_hash], [`Sponge`][mode_sponge] and [`Hash`][mode_hash],
+    /// - 0 → 0 in [`Mode`][mode] [`Sponge`][mode_sponge] if the current instruction [`CI`] is
+    /// `sponge_init`, as an exception to above rule, and
     /// - 0 → 0 in [`Mode`][mode] [`Pad`][mode_pad].
     ///
     /// [mode]: Self::Mode

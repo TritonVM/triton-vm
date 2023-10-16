@@ -1,9 +1,5 @@
 use itertools::Itertools;
-use ndarray::s;
-use ndarray::Array2;
-use ndarray::ArrayView1;
-use ndarray::ArrayView2;
-use ndarray::ArrayViewMut2;
+use ndarray::*;
 use num_traits::Zero;
 use strum::Display;
 use strum::EnumCount;
@@ -21,6 +17,10 @@ use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use crate::aet::AlgebraicExecutionTrace;
+use crate::instruction::AnInstruction::Hash;
+use crate::instruction::AnInstruction::SpongeAbsorb;
+use crate::instruction::AnInstruction::SpongeInit;
+use crate::instruction::AnInstruction::SpongeSqueeze;
 use crate::instruction::Instruction;
 use crate::table::cascade_table::CascadeTable;
 use crate::table::challenges::ChallengeId::*;
@@ -65,7 +65,8 @@ pub struct ExtHashTable {}
 /// The current “mode” of the Hash Table. The Hash Table can be in one of four distinct modes:
 ///
 /// 1. Hashing the [`Program`][program]. This is part of program attestation.
-/// 1. Processing all Sponge instructions, _i.e._, `absorb_init`, `absorb`, and `squeeze`.
+/// 1. Processing all Sponge instructions, _i.e._, `sponge_init`, `sponge_absorb`,
+///     and `sponge_squeeze`.
 /// 1. Processing the `hash` instruction.
 /// 1. Padding mode.
 ///
@@ -97,8 +98,8 @@ pub enum HashTableMode {
     /// [program]: crate::program::Program
     ProgramHashing,
 
-    /// The mode in which Sponge instructions, _i.e._, `absorb_init`, `absorb`, and `squeeze`,
-    /// are processed.
+    /// The mode in which Sponge instructions, _i.e._, `sponge_init`, `sponge_absorb`,
+    /// and `sponge_squeeze`, are processed.
     Sponge,
 
     /// The mode in which the `hash` instruction is processed.
@@ -187,34 +188,11 @@ impl ExtHashTable {
         let receive_chunk_indeterminate = challenge(ProgramAttestationSendChunkIndeterminate);
 
         // First chunk of the program is received correctly. Relates to program attestation.
-        let state_0 = Self::re_compose_16_bit_limbs(
-            circuit_builder,
-            base_row(State0HighestLkIn),
-            base_row(State0MidHighLkIn),
-            base_row(State0MidLowLkIn),
-            base_row(State0LowestLkIn),
-        );
-        let state_1 = Self::re_compose_16_bit_limbs(
-            circuit_builder,
-            base_row(State1HighestLkIn),
-            base_row(State1MidHighLkIn),
-            base_row(State1MidLowLkIn),
-            base_row(State1LowestLkIn),
-        );
-        let state_2 = Self::re_compose_16_bit_limbs(
-            circuit_builder,
-            base_row(State2HighestLkIn),
-            base_row(State2MidHighLkIn),
-            base_row(State2MidLowLkIn),
-            base_row(State2LowestLkIn),
-        );
-        let state_3 = Self::re_compose_16_bit_limbs(
-            circuit_builder,
-            base_row(State3HighestLkIn),
-            base_row(State3MidHighLkIn),
-            base_row(State3MidLowLkIn),
-            base_row(State3LowestLkIn),
-        );
+        let [state_0, state_1, state_2, state_3] =
+            Self::re_compose_states_0_through_3_before_lookup(
+                circuit_builder,
+                Self::indicate_column_index_in_base_row,
+            );
         let state_rate_part: [_; RATE] = [
             state_0,
             state_1,
@@ -399,6 +377,23 @@ impl ExtHashTable {
             .fold(constant(1), |accumulator, factor| accumulator * factor)
     }
 
+    fn instruction_deselector<II: InputIndicator>(
+        circuit_builder: &ConstraintCircuitBuilder<II>,
+        current_instruction_node: &ConstraintCircuitMonad<II>,
+        instruction_to_deselect: Instruction,
+    ) -> ConstraintCircuitMonad<II> {
+        let constant = |c: u64| circuit_builder.b_constant(c.into());
+        let opcode = |instruction: Instruction| circuit_builder.b_constant(instruction.opcode_b());
+        let relevant_instructions = [Hash, SpongeInit, SpongeAbsorb, SpongeSqueeze];
+        assert!(relevant_instructions.contains(&instruction_to_deselect));
+
+        relevant_instructions
+            .iter()
+            .filter(|&instruction| instruction != &instruction_to_deselect)
+            .map(|&instruction| current_instruction_node.clone() - opcode(instruction))
+            .fold(constant(1), |accumulator, factor| accumulator * factor)
+    }
+
     pub fn consistency_constraints(
         circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
@@ -412,10 +407,10 @@ impl ExtHashTable {
         let ci = base_row(CI);
         let round_number = base_row(RoundNumber);
 
-        let ci_is_hash = ci.clone() - opcode(Instruction::Hash);
-        let ci_is_absorb_init = ci.clone() - opcode(Instruction::AbsorbInit);
-        let ci_is_absorb = ci.clone() - opcode(Instruction::Absorb);
-        let ci_is_squeeze = ci - opcode(Instruction::Squeeze);
+        let ci_is_hash = ci.clone() - opcode(Hash);
+        let ci_is_sponge_init = ci.clone() - opcode(SpongeInit);
+        let ci_is_sponge_absorb = ci.clone() - opcode(SpongeAbsorb);
+        let ci_is_sponge_squeeze = ci - opcode(SpongeSqueeze);
 
         let mode_is_not_hash = Self::mode_deselector(circuit_builder, &mode, HashTableMode::Hash);
         let round_number_is_not_0 =
@@ -430,35 +425,29 @@ impl ExtHashTable {
 
         let if_mode_is_sponge_then_ci_is_a_sponge_instruction =
             Self::mode_deselector(circuit_builder, &mode, HashTableMode::Sponge)
-                * ci_is_absorb_init
-                * ci_is_absorb.clone()
-                * ci_is_squeeze.clone();
+                * ci_is_sponge_init
+                * ci_is_sponge_absorb.clone()
+                * ci_is_sponge_squeeze.clone();
 
         let if_padding_mode_then_round_number_is_0 =
             Self::mode_deselector(circuit_builder, &mode, HashTableMode::Pad)
                 * round_number.clone();
 
-        let if_mode_is_hash_and_round_no_is_0_then_ =
-            round_number_is_not_0.clone() * mode_is_not_hash;
-        let mut if_mode_is_hash_and_round_no_is_0_then_states_10_through_15_are_1 = (10..=15)
-            .map(|state_index| {
+        let if_ci_is_sponge_init_then_ = ci_is_hash * ci_is_sponge_absorb * ci_is_sponge_squeeze;
+        let if_ci_is_sponge_init_then_round_number_is_0 =
+            if_ci_is_sponge_init_then_.clone() * round_number.clone();
+
+        let if_ci_is_sponge_init_then_rate_is_0 = (10..=15).map(|state_index| {
+            let state_element = base_row(Self::state_column_by_index(state_index));
+            if_ci_is_sponge_init_then_.clone() * state_element
+        });
+
+        let if_mode_is_hash_and_round_no_is_0_then_ = round_number_is_not_0 * mode_is_not_hash;
+        let if_mode_is_hash_and_round_no_is_0_then_states_10_through_15_are_1 =
+            (10..=15).map(|state_index| {
                 let state_element = base_row(Self::state_column_by_index(state_index));
                 if_mode_is_hash_and_round_no_is_0_then_.clone() * (state_element - constant(1))
-            })
-            .collect_vec();
-
-        // It is possible to deselect for instruction `absorb_init` using the mode in addition
-        // to deselecting for instructions `absorb` and `squeeze. However, the mode deselector has
-        // degree 3, but there is only 1 additional value for the current instruction that need
-        // to be de-selected: the opcode of `hash`. Hence, the instructions are listed explicitly.
-        let if_ci_is_absorb_init_and_round_no_is_0_then_ =
-            round_number_is_not_0 * ci_is_hash * ci_is_absorb * ci_is_squeeze;
-        let mut if_ci_is_absorb_init_and_round_no_is_0_then_states_10_through_15_are_0 = (10..=15)
-            .map(|state_index| {
-                let state_element = base_row(Self::state_column_by_index(state_index));
-                if_ci_is_absorb_init_and_round_no_is_0_then_.clone() * state_element
-            })
-            .collect_vec();
+            });
 
         // consistency of the inverse of the highest 2 limbs minus 2^32 - 1
         let one = constant(1);
@@ -536,6 +525,7 @@ impl ExtHashTable {
             if_mode_is_not_sponge_then_ci_is_hash,
             if_mode_is_sponge_then_ci_is_a_sponge_instruction,
             if_padding_mode_then_round_number_is_0,
+            if_ci_is_sponge_init_then_round_number_is_0,
             state_0_hi_limbs_inv_is_inv_or_is_zero,
             state_1_hi_limbs_inv_is_inv_or_is_zero,
             state_2_hi_limbs_inv_is_inv_or_is_zero,
@@ -550,9 +540,8 @@ impl ExtHashTable {
             if_state_3_hi_limbs_are_all_1_then_state_3_lo_limbs_are_all_0,
         ];
 
-        constraints.append(&mut if_mode_is_hash_and_round_no_is_0_then_states_10_through_15_are_1);
-        constraints
-            .append(&mut if_ci_is_absorb_init_and_round_no_is_0_then_states_10_through_15_are_0);
+        constraints.extend(if_ci_is_sponge_init_then_rate_is_0);
+        constraints.extend(if_mode_is_hash_and_round_no_is_0_then_states_10_through_15_are_1);
 
         for round_constant_column_idx in 0..NUM_ROUND_CONSTANTS {
             let round_constant_column =
@@ -605,7 +594,8 @@ impl ExtHashTable {
     /// [`State4`] through [`State15`].
     ///
     /// States with indices 0 through 3 have to be assembled from the respective limbs;
-    /// see [`Self::re_compose_16_bit_limbs`].
+    /// see [`Self::re_compose_states_0_through_3_before_lookup`]
+    /// or [`Self::re_compose_16_bit_limbs`].
     fn state_column_by_index(index: usize) -> HashBaseTableColumn {
         match index {
             4 => State4,
@@ -628,12 +618,13 @@ impl ExtHashTable {
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
         let challenge = |c| circuit_builder.challenge(c);
+        let opcode = |instruction: Instruction| circuit_builder.b_constant(instruction.opcode_b());
         let constant = |c: u64| circuit_builder.b_constant(c.into());
 
-        let opcode_hash = constant(Instruction::Hash.opcode().into());
-        let opcode_absorb_init = constant(Instruction::AbsorbInit.opcode().into());
-        let opcode_absorb = constant(Instruction::Absorb.opcode().into());
-        let opcode_squeeze = constant(Instruction::Squeeze.opcode().into());
+        let opcode_hash = opcode(Hash);
+        let opcode_sponge_init = opcode(SpongeInit);
+        let opcode_sponge_absorb = opcode(SpongeAbsorb);
+        let opcode_sponge_squeeze = opcode(SpongeSqueeze);
 
         let current_base_row = |column_idx: HashBaseTableColumn| {
             circuit_builder.input(CurrentBaseRow(column_idx.master_base_table_index()))
@@ -674,34 +665,11 @@ impl ExtHashTable {
         let running_evaluation_hash_digest_next = next_ext_row(HashDigestRunningEvaluation);
         let running_evaluation_sponge_next = next_ext_row(SpongeRunningEvaluation);
 
-        let state_0 = Self::re_compose_16_bit_limbs(
-            circuit_builder,
-            current_base_row(State0HighestLkIn),
-            current_base_row(State0MidHighLkIn),
-            current_base_row(State0MidLowLkIn),
-            current_base_row(State0LowestLkIn),
-        );
-        let state_1 = Self::re_compose_16_bit_limbs(
-            circuit_builder,
-            current_base_row(State1HighestLkIn),
-            current_base_row(State1MidHighLkIn),
-            current_base_row(State1MidLowLkIn),
-            current_base_row(State1LowestLkIn),
-        );
-        let state_2 = Self::re_compose_16_bit_limbs(
-            circuit_builder,
-            current_base_row(State2HighestLkIn),
-            current_base_row(State2MidHighLkIn),
-            current_base_row(State2MidLowLkIn),
-            current_base_row(State2LowestLkIn),
-        );
-        let state_3 = Self::re_compose_16_bit_limbs(
-            circuit_builder,
-            current_base_row(State3HighestLkIn),
-            current_base_row(State3MidHighLkIn),
-            current_base_row(State3MidLowLkIn),
-            current_base_row(State3LowestLkIn),
-        );
+        let [state_0, state_1, state_2, state_3] =
+            Self::re_compose_states_0_through_3_before_lookup(
+                circuit_builder,
+                Self::indicate_column_index_in_current_base_row,
+            );
 
         let state_current = [
             state_0,
@@ -753,6 +721,7 @@ impl ExtHashTable {
 
         let next_mode_is_padding_mode_or_round_number_is_num_rounds_or_increments_by_one =
             Self::select_mode(circuit_builder, &mode_next, HashTableMode::Pad)
+                * (ci.clone() - opcode_sponge_init.clone())
                 * (round_number.clone() - constant(NUM_ROUNDS as u64))
                 * (round_number_next.clone() - round_number.clone() - constant(1));
 
@@ -768,16 +737,20 @@ impl ExtHashTable {
                 * Self::select_mode(circuit_builder, &mode_next, HashTableMode::ProgramHashing)
                 * (compressed_digest - expected_program_digest);
 
-        let if_mode_is_program_hashing_and_next_mode_is_sponge_then_ci_next_is_absorb_init =
+        let if_mode_is_program_hashing_and_next_mode_is_sponge_then_ci_next_is_sponge_init =
             Self::mode_deselector(circuit_builder, &mode, HashTableMode::ProgramHashing)
                 * Self::mode_deselector(circuit_builder, &mode_next, HashTableMode::Sponge)
-                * (ci_next.clone() - opcode_absorb_init.clone());
+                * (ci_next.clone() - opcode_sponge_init.clone());
 
-        let if_round_number_is_not_num_rounds_then_ci_doesnt_change =
-            (round_number.clone() - constant(NUM_ROUNDS as u64)) * (ci_next.clone() - ci);
+        let if_round_number_is_not_max_and_ci_is_not_sponge_init_then_ci_doesnt_change =
+            (round_number.clone() - constant(NUM_ROUNDS as u64))
+                * (ci.clone() - opcode_sponge_init.clone())
+                * (ci_next.clone() - ci.clone());
 
-        let if_round_number_is_not_num_rounds_then_mode_doesnt_change =
-            (round_number - constant(NUM_ROUNDS as u64)) * (mode_next.clone() - mode.clone());
+        let if_round_number_is_not_max_and_ci_is_not_sponge_init_then_mode_doesnt_change =
+            (round_number - constant(NUM_ROUNDS as u64))
+                * (ci.clone() - opcode_sponge_init.clone())
+                * (mode_next.clone() - mode.clone());
 
         let if_mode_is_sponge_then_mode_next_is_sponge_or_hash_or_pad =
             Self::mode_deselector(circuit_builder, &mode, HashTableMode::Sponge)
@@ -794,9 +767,6 @@ impl ExtHashTable {
             Self::mode_deselector(circuit_builder, &mode, HashTableMode::Pad)
                 * Self::select_mode(circuit_builder, &mode_next, HashTableMode::Pad);
 
-        // copy capacity between rows with
-        //  - mode_next == program_hashing and round_next == 0 and
-        //  - mode_next == sponge and round_next == 0 and ci_next == absorb
         let difference_of_capacity_registers = state_current[RATE..]
             .iter()
             .zip_eq(state_next[RATE..].iter())
@@ -806,17 +776,15 @@ impl ExtHashTable {
             .iter()
             .zip_eq(difference_of_capacity_registers)
             .map(|(weight, state_difference)| weight.clone() * state_difference)
-            .sum();
-        let capacity_doesnt_change_in_mode_program_hashing_and_sponge_if_absorbing_starts =
-            Self::round_number_deselector(circuit_builder, &round_number_next, 0)
-                * Self::select_mode(circuit_builder, &mode_next, HashTableMode::Pad)
-                * Self::select_mode(circuit_builder, &mode_next, HashTableMode::Hash)
-                * (ci_next.clone() - opcode_hash.clone())
-                * (ci_next.clone() - opcode_absorb_init.clone())
-                * (ci_next.clone() - opcode_squeeze.clone())
-                * randomized_sum_of_capacity_differences;
+            .sum::<ConstraintCircuitMonad<_>>();
 
-        // copy entire state between rounds with index NUM_ROUNDS and 0 if instruction is “squeeze”
+        let capacity_doesnt_change_at_section_start_when_program_hashing_or_absorbing =
+            Self::round_number_deselector(circuit_builder, &round_number_next, 0)
+                * Self::select_mode(circuit_builder, &mode_next, HashTableMode::Hash)
+                * Self::select_mode(circuit_builder, &mode_next, HashTableMode::Pad)
+                * (ci_next.clone() - opcode_sponge_init.clone())
+                * randomized_sum_of_capacity_differences.clone();
+
         let difference_of_state_registers = state_current
             .iter()
             .zip_eq(state_next.iter())
@@ -829,9 +797,7 @@ impl ExtHashTable {
             .sum();
         let if_round_number_next_is_0_and_ci_next_is_squeeze_then_state_doesnt_change =
             Self::round_number_deselector(circuit_builder, &round_number_next, 0)
-                * (ci_next.clone() - opcode_hash.clone())
-                * (ci_next.clone() - opcode_absorb_init.clone())
-                * (ci_next.clone() - opcode_absorb.clone())
+                * Self::instruction_deselector(circuit_builder, &ci_next, SpongeSqueeze)
                 * randomized_sum_of_state_differences;
 
         // Evaluation Arguments
@@ -887,29 +853,29 @@ impl ExtHashTable {
             .zip_eq(state_next[..RATE].iter())
             .map(|(weight, st_next)| weight.clone() * st_next.clone())
             .sum();
-        let running_evaluation_sponge_has_accumulated_next_row = running_evaluation_sponge_next
-            .clone()
+        let running_evaluation_sponge_has_accumulated_ci = running_evaluation_sponge_next.clone()
             - sponge_indeterminate * running_evaluation_sponge.clone()
-            - challenge(HashCIWeight) * ci_next.clone()
-            - compressed_row_next;
-        let if_round_no_next_0_and_ci_next_is_spongy_then_running_eval_sponge_updates =
+            - challenge(HashCIWeight) * ci_next.clone();
+        let running_evaluation_sponge_has_accumulated_next_row =
+            running_evaluation_sponge_has_accumulated_ci.clone() - compressed_row_next;
+        let if_round_no_next_0_and_ci_next_is_spongy_then_running_evaluation_sponge_updates =
             Self::round_number_deselector(circuit_builder, &round_number_next, 0)
                 * (ci_next.clone() - opcode_hash)
                 * running_evaluation_sponge_has_accumulated_next_row;
 
-        let running_evaluation_sponge_absorb_remains =
+        let running_evaluation_sponge_remains =
             running_evaluation_sponge_next - running_evaluation_sponge;
-        let if_round_no_next_is_not_0_then_running_evaluation_sponge_absorb_remains =
-            round_number_next.clone() * running_evaluation_sponge_absorb_remains.clone();
-        let if_ci_next_is_not_spongy_then_running_evaluation_sponge_absorb_remains =
-            (ci_next.clone() - opcode_absorb_init)
-                * (ci_next.clone() - opcode_absorb)
-                * (ci_next - opcode_squeeze)
-                * running_evaluation_sponge_absorb_remains;
+        let if_round_no_next_is_not_0_then_running_evaluation_sponge_remains =
+            round_number_next.clone() * running_evaluation_sponge_remains.clone();
+        let if_ci_next_is_not_spongy_then_running_evaluation_sponge_remains = (ci_next.clone()
+            - opcode_sponge_init)
+            * (ci_next.clone() - opcode_sponge_absorb)
+            * (ci_next - opcode_sponge_squeeze)
+            * running_evaluation_sponge_remains;
         let running_evaluation_sponge_is_updated_correctly =
-            if_round_no_next_0_and_ci_next_is_spongy_then_running_eval_sponge_updates
-                + if_round_no_next_is_not_0_then_running_evaluation_sponge_absorb_remains
-                + if_ci_next_is_not_spongy_then_running_evaluation_sponge_absorb_remains;
+            if_round_no_next_0_and_ci_next_is_spongy_then_running_evaluation_sponge_updates
+                + if_round_no_next_is_not_0_then_running_evaluation_sponge_remains
+                + if_ci_next_is_not_spongy_then_running_evaluation_sponge_remains;
 
         // program attestation: absorb RATE instructions if in the right mode on the right row
         let compressed_chunk = state_next[..RATE]
@@ -936,13 +902,13 @@ impl ExtHashTable {
             next_mode_is_padding_mode_or_round_number_is_num_rounds_or_increments_by_one,
             receive_chunk_of_instructions_iff_next_mode_is_prog_hashing_and_next_round_number_is_0,
             if_mode_changes_from_program_hashing_then_current_digest_is_expected_program_digest,
-            if_mode_is_program_hashing_and_next_mode_is_sponge_then_ci_next_is_absorb_init,
-            if_round_number_is_not_num_rounds_then_ci_doesnt_change,
-            if_round_number_is_not_num_rounds_then_mode_doesnt_change,
+            if_mode_is_program_hashing_and_next_mode_is_sponge_then_ci_next_is_sponge_init,
+            if_round_number_is_not_max_and_ci_is_not_sponge_init_then_ci_doesnt_change,
+            if_round_number_is_not_max_and_ci_is_not_sponge_init_then_mode_doesnt_change,
             if_mode_is_sponge_then_mode_next_is_sponge_or_hash_or_pad,
             if_mode_is_hash_then_mode_next_is_hash_or_pad,
             if_mode_is_pad_then_mode_next_is_pad,
-            capacity_doesnt_change_in_mode_program_hashing_and_sponge_if_absorbing_starts,
+            capacity_doesnt_change_at_section_start_when_program_hashing_or_absorbing,
             if_round_number_next_is_0_and_ci_next_is_squeeze_then_state_doesnt_change,
             running_evaluation_hash_input_is_updated_correctly,
             running_evaluation_hash_digest_is_updated_correctly,
@@ -1050,6 +1016,54 @@ impl ExtHashTable {
             hash_function_round_correctly_performs_update.to_vec(),
         ]
         .concat()
+    }
+
+    fn indicate_column_index_in_base_row(column: HashBaseTableColumn) -> SingleRowIndicator {
+        BaseRow(column.master_base_table_index())
+    }
+
+    fn indicate_column_index_in_current_base_row(column: HashBaseTableColumn) -> DualRowIndicator {
+        CurrentBaseRow(column.master_base_table_index())
+    }
+
+    fn indicate_column_index_in_next_base_row(column: HashBaseTableColumn) -> DualRowIndicator {
+        NextBaseRow(column.master_base_table_index())
+    }
+
+    fn re_compose_states_0_through_3_before_lookup<II: InputIndicator>(
+        circuit_builder: &ConstraintCircuitBuilder<II>,
+        base_row_to_input_indicator: fn(HashBaseTableColumn) -> II,
+    ) -> [ConstraintCircuitMonad<II>; 4] {
+        let input = |input_indicator: II| circuit_builder.input(input_indicator);
+        let state_0 = Self::re_compose_16_bit_limbs(
+            circuit_builder,
+            input(base_row_to_input_indicator(State0HighestLkIn)),
+            input(base_row_to_input_indicator(State0MidHighLkIn)),
+            input(base_row_to_input_indicator(State0MidLowLkIn)),
+            input(base_row_to_input_indicator(State0LowestLkIn)),
+        );
+        let state_1 = Self::re_compose_16_bit_limbs(
+            circuit_builder,
+            input(base_row_to_input_indicator(State1HighestLkIn)),
+            input(base_row_to_input_indicator(State1MidHighLkIn)),
+            input(base_row_to_input_indicator(State1MidLowLkIn)),
+            input(base_row_to_input_indicator(State1LowestLkIn)),
+        );
+        let state_2 = Self::re_compose_16_bit_limbs(
+            circuit_builder,
+            input(base_row_to_input_indicator(State2HighestLkIn)),
+            input(base_row_to_input_indicator(State2MidHighLkIn)),
+            input(base_row_to_input_indicator(State2MidLowLkIn)),
+            input(base_row_to_input_indicator(State2LowestLkIn)),
+        );
+        let state_3 = Self::re_compose_16_bit_limbs(
+            circuit_builder,
+            input(base_row_to_input_indicator(State3HighestLkIn)),
+            input(base_row_to_input_indicator(State3MidHighLkIn)),
+            input(base_row_to_input_indicator(State3MidLowLkIn)),
+            input(base_row_to_input_indicator(State3LowestLkIn)),
+        );
+        [state_0, state_1, state_2, state_3]
     }
 
     fn tip5_constraints_as_circuits(
@@ -1163,35 +1177,11 @@ impl ExtHashTable {
                 .try_into()
                 .unwrap();
 
-        let state_0_next = Self::re_compose_16_bit_limbs(
-            circuit_builder,
-            next_base_row(State0HighestLkIn),
-            next_base_row(State0MidHighLkIn),
-            next_base_row(State0MidLowLkIn),
-            next_base_row(State0LowestLkIn),
-        );
-        let state_1_next = Self::re_compose_16_bit_limbs(
-            circuit_builder,
-            next_base_row(State1HighestLkIn),
-            next_base_row(State1MidHighLkIn),
-            next_base_row(State1MidLowLkIn),
-            next_base_row(State1LowestLkIn),
-        );
-        let state_2_next = Self::re_compose_16_bit_limbs(
-            circuit_builder,
-            next_base_row(State2HighestLkIn),
-            next_base_row(State2MidHighLkIn),
-            next_base_row(State2MidLowLkIn),
-            next_base_row(State2LowestLkIn),
-        );
-        let state_3_next = Self::re_compose_16_bit_limbs(
-            circuit_builder,
-            next_base_row(State3HighestLkIn),
-            next_base_row(State3MidHighLkIn),
-            next_base_row(State3MidLowLkIn),
-            next_base_row(State3LowestLkIn),
-        );
-
+        let [state_0_next, state_1_next, state_2_next, state_3_next] =
+            Self::re_compose_states_0_through_3_before_lookup(
+                circuit_builder,
+                Self::indicate_column_index_in_next_base_row,
+            );
         let state_next = [
             state_0_next,
             state_1_next,
@@ -1232,7 +1222,8 @@ impl ExtHashTable {
         cascade_log_derivative_column: HashExtTableColumn,
     ) -> ConstraintCircuitMonad<DualRowIndicator> {
         let challenge = |c| circuit_builder.challenge(c);
-        let constant = |c: u64| circuit_builder.b_constant(c.into());
+        let opcode = |instruction: Instruction| circuit_builder.b_constant(instruction.opcode_b());
+        let constant = |c: u32| circuit_builder.b_constant(c.into());
         let next_base_row = |column_idx: HashBaseTableColumn| {
             circuit_builder.input(NextBaseRow(column_idx.master_base_table_index()))
         };
@@ -1247,6 +1238,7 @@ impl ExtHashTable {
         let look_in_weight = challenge(HashCascadeLookInWeight);
         let look_out_weight = challenge(HashCascadeLookOutWeight);
 
+        let ci_next = next_base_row(CI);
         let mode_next = next_base_row(Mode);
         let round_number_next = next_base_row(RoundNumber);
         let cascade_log_derivative = current_ext_row(cascade_log_derivative_column);
@@ -1261,57 +1253,30 @@ impl ExtHashTable {
             * (cascade_indeterminate - compressed_row)
             - constant(1);
 
-        let next_row_is_padding_row_or_round_number_next_is_num_rounds =
+        let next_row_is_padding_row_or_round_number_next_is_max_or_ci_next_is_sponge_init =
             Self::select_mode(circuit_builder, &mode_next, HashTableMode::Pad)
-                * (round_number_next.clone() - constant(NUM_ROUNDS as u64));
+                * (round_number_next.clone() - constant(NUM_ROUNDS as u32))
+                * (ci_next.clone() - opcode(SpongeInit));
         let round_number_next_is_not_num_rounds =
             Self::round_number_deselector(circuit_builder, &round_number_next, NUM_ROUNDS);
-        let next_row_is_not_padding_row =
-            Self::mode_deselector(circuit_builder, &mode_next, HashTableMode::Pad);
+        let current_instruction_next_is_not_sponge_init =
+            Self::instruction_deselector(circuit_builder, &ci_next, SpongeInit);
 
-        next_row_is_padding_row_or_round_number_next_is_num_rounds * cascade_log_derivative_updates
+        next_row_is_padding_row_or_round_number_next_is_max_or_ci_next_is_sponge_init
+            * cascade_log_derivative_updates
             + round_number_next_is_not_num_rounds * cascade_log_derivative_remains.clone()
-            + next_row_is_not_padding_row * cascade_log_derivative_remains
+            + current_instruction_next_is_not_sponge_init * cascade_log_derivative_remains
     }
 
     pub fn terminal_constraints(
         circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
         let challenge = |c| circuit_builder.challenge(c);
+        let opcode = |instruction: Instruction| circuit_builder.b_constant(instruction.opcode_b());
         let constant = |c: u64| circuit_builder.b_constant(c.into());
         let base_row = |column_idx: HashBaseTableColumn| {
             circuit_builder.input(BaseRow(column_idx.master_base_table_index()))
         };
-
-        let state_0 = Self::re_compose_16_bit_limbs(
-            circuit_builder,
-            base_row(State0HighestLkIn),
-            base_row(State0MidHighLkIn),
-            base_row(State0MidLowLkIn),
-            base_row(State0LowestLkIn),
-        );
-        let state_1 = Self::re_compose_16_bit_limbs(
-            circuit_builder,
-            base_row(State1HighestLkIn),
-            base_row(State1MidHighLkIn),
-            base_row(State1MidLowLkIn),
-            base_row(State1LowestLkIn),
-        );
-        let state_2 = Self::re_compose_16_bit_limbs(
-            circuit_builder,
-            base_row(State2HighestLkIn),
-            base_row(State2MidHighLkIn),
-            base_row(State2MidLowLkIn),
-            base_row(State2LowestLkIn),
-        );
-        let state_3 = Self::re_compose_16_bit_limbs(
-            circuit_builder,
-            base_row(State3HighestLkIn),
-            base_row(State3MidHighLkIn),
-            base_row(State3MidLowLkIn),
-            base_row(State3LowestLkIn),
-        );
-        let state_4 = base_row(State4);
 
         let mode = base_row(Mode);
         let round_number = base_row(RoundNumber);
@@ -1321,6 +1286,12 @@ impl ExtHashTable {
 
         let max_round_number = constant(NUM_ROUNDS as u64);
 
+        let [state_0, state_1, state_2, state_3] =
+            Self::re_compose_states_0_through_3_before_lookup(
+                circuit_builder,
+                Self::indicate_column_index_in_base_row,
+            );
+        let state_4 = base_row(State4);
         let program_digest = [state_0, state_1, state_2, state_3, state_4];
         let compressed_digest = program_digest.into_iter().fold(
             circuit_builder.x_constant(EvalArg::default_initial()),
@@ -1332,13 +1303,14 @@ impl ExtHashTable {
             Self::mode_deselector(circuit_builder, &mode, HashTableMode::ProgramHashing)
                 * (compressed_digest - expected_program_digest);
 
-        let if_mode_is_not_pad_then_round_number_is_max_round_number =
+        let if_mode_is_not_pad_and_ci_is_not_sponge_init_then_round_number_is_max_round_number =
             Self::select_mode(circuit_builder, &mode, HashTableMode::Pad)
+                * (base_row(CI) - opcode(SpongeInit))
                 * (round_number - max_round_number);
 
         vec![
             if_mode_is_program_hashing_then_current_digest_is_expected_program_digest,
-            if_mode_is_not_pad_then_round_number_is_max_round_number,
+            if_mode_is_not_pad_and_ci_is_not_sponge_init_then_round_number_is_max_round_number,
         ]
     }
 }
@@ -1383,116 +1355,156 @@ impl HashTable {
         [0, 16, 32, 48].map(|shift| ((r_times_x >> shift) & 0xffff) as u16)
     }
 
-    /// Given a trace of the Tip5 permutation, construct a trace corresponding to the columns of
-    /// the Hash Table. This includes
+    /// Convert a permutation trace to a segment in the Hash Table.
     ///
-    /// - adding the round number
-    /// - adding the round constants,
-    /// - decomposing the first [`NUM_SPLIT_AND_LOOKUP`] (== 4) state elements into their
-    ///     constituent limbs,
-    /// - setting the inverse-or-zero for proving correct limb decomposition, and
-    /// - adding the looked-up value for each limb.
-    ///
-    /// The current instruction is not set.
-    pub fn convert_to_hash_table_rows(trace: PermutationTrace) -> Array2<BFieldElement> {
-        let mut hash_trace_addendum = Array2::zeros([PERMUTATION_TRACE_LENGTH, BASE_WIDTH]);
-        for (round_number, mut row) in hash_trace_addendum.rows_mut().into_iter().enumerate() {
-            let trace_row = trace[round_number];
-            row[RoundNumber.base_table_index()] = BFieldElement::from(round_number as u64);
-
-            let st_0_limbs = Self::base_field_element_into_16_bit_limbs(trace_row[0]);
-            let st_0_look_in_split = st_0_limbs.map(|limb| BFieldElement::new(limb.into()));
-            row[State0LowestLkIn.base_table_index()] = st_0_look_in_split[0];
-            row[State0MidLowLkIn.base_table_index()] = st_0_look_in_split[1];
-            row[State0MidHighLkIn.base_table_index()] = st_0_look_in_split[2];
-            row[State0HighestLkIn.base_table_index()] = st_0_look_in_split[3];
-
-            let st_0_look_out_split = st_0_limbs.map(CascadeTable::lookup_16_bit_limb);
-            row[State0LowestLkOut.base_table_index()] = st_0_look_out_split[0];
-            row[State0MidLowLkOut.base_table_index()] = st_0_look_out_split[1];
-            row[State0MidHighLkOut.base_table_index()] = st_0_look_out_split[2];
-            row[State0HighestLkOut.base_table_index()] = st_0_look_out_split[3];
-
-            let st_1_limbs = Self::base_field_element_into_16_bit_limbs(trace_row[1]);
-            let st_1_look_in_split = st_1_limbs.map(|limb| BFieldElement::new(limb.into()));
-            row[State1LowestLkIn.base_table_index()] = st_1_look_in_split[0];
-            row[State1MidLowLkIn.base_table_index()] = st_1_look_in_split[1];
-            row[State1MidHighLkIn.base_table_index()] = st_1_look_in_split[2];
-            row[State1HighestLkIn.base_table_index()] = st_1_look_in_split[3];
-
-            let st_1_look_out_split = st_1_limbs.map(CascadeTable::lookup_16_bit_limb);
-            row[State1LowestLkOut.base_table_index()] = st_1_look_out_split[0];
-            row[State1MidLowLkOut.base_table_index()] = st_1_look_out_split[1];
-            row[State1MidHighLkOut.base_table_index()] = st_1_look_out_split[2];
-            row[State1HighestLkOut.base_table_index()] = st_1_look_out_split[3];
-
-            let st_2_limbs = Self::base_field_element_into_16_bit_limbs(trace_row[2]);
-            let st_2_look_in_split = st_2_limbs.map(|limb| BFieldElement::new(limb.into()));
-            row[State2LowestLkIn.base_table_index()] = st_2_look_in_split[0];
-            row[State2MidLowLkIn.base_table_index()] = st_2_look_in_split[1];
-            row[State2MidHighLkIn.base_table_index()] = st_2_look_in_split[2];
-            row[State2HighestLkIn.base_table_index()] = st_2_look_in_split[3];
-
-            let st_2_look_out_split = st_2_limbs.map(CascadeTable::lookup_16_bit_limb);
-            row[State2LowestLkOut.base_table_index()] = st_2_look_out_split[0];
-            row[State2MidLowLkOut.base_table_index()] = st_2_look_out_split[1];
-            row[State2MidHighLkOut.base_table_index()] = st_2_look_out_split[2];
-            row[State2HighestLkOut.base_table_index()] = st_2_look_out_split[3];
-
-            let st_3_limbs = Self::base_field_element_into_16_bit_limbs(trace_row[3]);
-            let st_3_look_in_split = st_3_limbs.map(|limb| BFieldElement::new(limb.into()));
-            row[State3LowestLkIn.base_table_index()] = st_3_look_in_split[0];
-            row[State3MidLowLkIn.base_table_index()] = st_3_look_in_split[1];
-            row[State3MidHighLkIn.base_table_index()] = st_3_look_in_split[2];
-            row[State3HighestLkIn.base_table_index()] = st_3_look_in_split[3];
-
-            let st_3_look_out_split = st_3_limbs.map(CascadeTable::lookup_16_bit_limb);
-            row[State3LowestLkOut.base_table_index()] = st_3_look_out_split[0];
-            row[State3MidLowLkOut.base_table_index()] = st_3_look_out_split[1];
-            row[State3MidHighLkOut.base_table_index()] = st_3_look_out_split[2];
-            row[State3HighestLkOut.base_table_index()] = st_3_look_out_split[3];
-
-            row[State4.base_table_index()] = trace_row[4];
-            row[State5.base_table_index()] = trace_row[5];
-            row[State6.base_table_index()] = trace_row[6];
-            row[State7.base_table_index()] = trace_row[7];
-            row[State8.base_table_index()] = trace_row[8];
-            row[State9.base_table_index()] = trace_row[9];
-            row[State10.base_table_index()] = trace_row[10];
-            row[State11.base_table_index()] = trace_row[11];
-            row[State12.base_table_index()] = trace_row[12];
-            row[State13.base_table_index()] = trace_row[13];
-            row[State14.base_table_index()] = trace_row[14];
-            row[State15.base_table_index()] = trace_row[15];
-
-            row[State0Inv.base_table_index()] =
-                Self::inverse_or_zero_of_highest_2_limbs(trace_row[0]);
-            row[State1Inv.base_table_index()] =
-                Self::inverse_or_zero_of_highest_2_limbs(trace_row[1]);
-            row[State2Inv.base_table_index()] =
-                Self::inverse_or_zero_of_highest_2_limbs(trace_row[2]);
-            row[State3Inv.base_table_index()] =
-                Self::inverse_or_zero_of_highest_2_limbs(trace_row[3]);
-
-            let round_constants = Self::tip5_round_constants_by_round_number(round_number);
-            row[Constant0.base_table_index()] = round_constants[0];
-            row[Constant1.base_table_index()] = round_constants[1];
-            row[Constant2.base_table_index()] = round_constants[2];
-            row[Constant3.base_table_index()] = round_constants[3];
-            row[Constant4.base_table_index()] = round_constants[4];
-            row[Constant5.base_table_index()] = round_constants[5];
-            row[Constant6.base_table_index()] = round_constants[6];
-            row[Constant7.base_table_index()] = round_constants[7];
-            row[Constant8.base_table_index()] = round_constants[8];
-            row[Constant9.base_table_index()] = round_constants[9];
-            row[Constant10.base_table_index()] = round_constants[10];
-            row[Constant11.base_table_index()] = round_constants[11];
-            row[Constant12.base_table_index()] = round_constants[12];
-            row[Constant13.base_table_index()] = round_constants[13];
-            row[Constant14.base_table_index()] = round_constants[14];
-            row[Constant15.base_table_index()] = round_constants[15];
+    /// **Note**: The current instruction [`CI`] is _not_ set.
+    pub fn trace_to_table_rows(trace: PermutationTrace) -> Array2<BFieldElement> {
+        let mut table_rows = Array2::default([0, BASE_WIDTH]);
+        for (round_number, &trace_row) in trace.iter().enumerate() {
+            let table_row = Self::trace_row_to_table_row(trace_row, round_number);
+            table_rows.push_row(table_row.view()).unwrap();
         }
-        hash_trace_addendum
+        table_rows
+    }
+
+    pub fn trace_row_to_table_row(
+        trace_row: [BFieldElement; STATE_SIZE],
+        round_number: usize,
+    ) -> Array1<BFieldElement> {
+        let row = Array1::zeros([BASE_WIDTH]);
+        let row = Self::fill_row_with_round_number(row, round_number);
+        let row = Self::fill_row_with_split_state_elements_using_trace_row(row, trace_row);
+        let row = Self::fill_row_with_unsplit_state_elements_using_trace_row(row, trace_row);
+        let row = Self::fill_row_with_state_inverses_using_trace_row(row, trace_row);
+        Self::fill_row_with_round_constants_for_round(row, round_number)
+    }
+
+    fn fill_row_with_round_number(
+        mut row: Array1<BFieldElement>,
+        round_number: usize,
+    ) -> Array1<BFieldElement> {
+        row[RoundNumber.base_table_index()] = BFieldElement::from(round_number as u64);
+        row
+    }
+
+    fn fill_row_with_split_state_elements_using_trace_row(
+        row: Array1<BFieldElement>,
+        trace_row: [BFieldElement; STATE_SIZE],
+    ) -> Array1<BFieldElement> {
+        let row = Self::fill_split_state_element_0_of_row_using_trace_row(row, trace_row);
+        let row = Self::fill_split_state_element_1_of_row_using_trace_row(row, trace_row);
+        let row = Self::fill_split_state_element_2_of_row_using_trace_row(row, trace_row);
+        Self::fill_split_state_element_3_of_row_using_trace_row(row, trace_row)
+    }
+
+    fn fill_split_state_element_0_of_row_using_trace_row(
+        mut row: Array1<BFieldElement>,
+        trace_row: [BFieldElement; STATE_SIZE],
+    ) -> Array1<BFieldElement> {
+        let limbs = Self::base_field_element_into_16_bit_limbs(trace_row[0]);
+        let look_in_split = limbs.map(|limb| BFieldElement::new(limb.into()));
+        row[State0LowestLkIn.base_table_index()] = look_in_split[0];
+        row[State0MidLowLkIn.base_table_index()] = look_in_split[1];
+        row[State0MidHighLkIn.base_table_index()] = look_in_split[2];
+        row[State0HighestLkIn.base_table_index()] = look_in_split[3];
+
+        let look_out_split = limbs.map(CascadeTable::lookup_16_bit_limb);
+        row[State0LowestLkOut.base_table_index()] = look_out_split[0];
+        row[State0MidLowLkOut.base_table_index()] = look_out_split[1];
+        row[State0MidHighLkOut.base_table_index()] = look_out_split[2];
+        row[State0HighestLkOut.base_table_index()] = look_out_split[3];
+
+        row
+    }
+
+    fn fill_split_state_element_1_of_row_using_trace_row(
+        mut row: Array1<BFieldElement>,
+        trace_row: [BFieldElement; STATE_SIZE],
+    ) -> Array1<BFieldElement> {
+        let limbs = Self::base_field_element_into_16_bit_limbs(trace_row[1]);
+        let look_in_split = limbs.map(|limb| BFieldElement::new(limb.into()));
+        row[State1LowestLkIn.base_table_index()] = look_in_split[0];
+        row[State1MidLowLkIn.base_table_index()] = look_in_split[1];
+        row[State1MidHighLkIn.base_table_index()] = look_in_split[2];
+        row[State1HighestLkIn.base_table_index()] = look_in_split[3];
+
+        let look_out_split = limbs.map(CascadeTable::lookup_16_bit_limb);
+        row[State1LowestLkOut.base_table_index()] = look_out_split[0];
+        row[State1MidLowLkOut.base_table_index()] = look_out_split[1];
+        row[State1MidHighLkOut.base_table_index()] = look_out_split[2];
+        row[State1HighestLkOut.base_table_index()] = look_out_split[3];
+
+        row
+    }
+
+    fn fill_split_state_element_2_of_row_using_trace_row(
+        mut row: Array1<BFieldElement>,
+        trace_row: [BFieldElement; STATE_SIZE],
+    ) -> Array1<BFieldElement> {
+        let limbs = Self::base_field_element_into_16_bit_limbs(trace_row[2]);
+        let look_in_split = limbs.map(|limb| BFieldElement::new(limb.into()));
+        row[State2LowestLkIn.base_table_index()] = look_in_split[0];
+        row[State2MidLowLkIn.base_table_index()] = look_in_split[1];
+        row[State2MidHighLkIn.base_table_index()] = look_in_split[2];
+        row[State2HighestLkIn.base_table_index()] = look_in_split[3];
+
+        let look_out_split = limbs.map(CascadeTable::lookup_16_bit_limb);
+        row[State2LowestLkOut.base_table_index()] = look_out_split[0];
+        row[State2MidLowLkOut.base_table_index()] = look_out_split[1];
+        row[State2MidHighLkOut.base_table_index()] = look_out_split[2];
+        row[State2HighestLkOut.base_table_index()] = look_out_split[3];
+
+        row
+    }
+
+    fn fill_split_state_element_3_of_row_using_trace_row(
+        mut row: Array1<BFieldElement>,
+        trace_row: [BFieldElement; STATE_SIZE],
+    ) -> Array1<BFieldElement> {
+        let limbs = Self::base_field_element_into_16_bit_limbs(trace_row[3]);
+        let look_in_split = limbs.map(|limb| BFieldElement::new(limb.into()));
+        row[State3LowestLkIn.base_table_index()] = look_in_split[0];
+        row[State3MidLowLkIn.base_table_index()] = look_in_split[1];
+        row[State3MidHighLkIn.base_table_index()] = look_in_split[2];
+        row[State3HighestLkIn.base_table_index()] = look_in_split[3];
+
+        let look_out_split = limbs.map(CascadeTable::lookup_16_bit_limb);
+        row[State3LowestLkOut.base_table_index()] = look_out_split[0];
+        row[State3MidLowLkOut.base_table_index()] = look_out_split[1];
+        row[State3MidHighLkOut.base_table_index()] = look_out_split[2];
+        row[State3HighestLkOut.base_table_index()] = look_out_split[3];
+
+        row
+    }
+
+    fn fill_row_with_unsplit_state_elements_using_trace_row(
+        mut row: Array1<BFieldElement>,
+        trace_row: [BFieldElement; STATE_SIZE],
+    ) -> Array1<BFieldElement> {
+        row[State4.base_table_index()] = trace_row[4];
+        row[State5.base_table_index()] = trace_row[5];
+        row[State6.base_table_index()] = trace_row[6];
+        row[State7.base_table_index()] = trace_row[7];
+        row[State8.base_table_index()] = trace_row[8];
+        row[State9.base_table_index()] = trace_row[9];
+        row[State10.base_table_index()] = trace_row[10];
+        row[State11.base_table_index()] = trace_row[11];
+        row[State12.base_table_index()] = trace_row[12];
+        row[State13.base_table_index()] = trace_row[13];
+        row[State14.base_table_index()] = trace_row[14];
+        row[State15.base_table_index()] = trace_row[15];
+        row
+    }
+
+    fn fill_row_with_state_inverses_using_trace_row(
+        mut row: Array1<BFieldElement>,
+        trace_row: [BFieldElement; STATE_SIZE],
+    ) -> Array1<BFieldElement> {
+        row[State0Inv.base_table_index()] = Self::inverse_or_zero_of_highest_2_limbs(trace_row[0]);
+        row[State1Inv.base_table_index()] = Self::inverse_or_zero_of_highest_2_limbs(trace_row[1]);
+        row[State2Inv.base_table_index()] = Self::inverse_or_zero_of_highest_2_limbs(trace_row[2]);
+        row[State3Inv.base_table_index()] = Self::inverse_or_zero_of_highest_2_limbs(trace_row[3]);
+        row
     }
 
     /// The inverse-or-zero of (2^32 - 1 - 2^16·`highest` - `mid_high`) where `highest`
@@ -1506,6 +1518,30 @@ impl HashTable {
         let two_pow_32_minus_1 = BFieldElement::new((1 << 32) - 1);
         let to_invert = two_pow_32_minus_1 - high_limbs;
         to_invert.inverse_or_zero()
+    }
+
+    fn fill_row_with_round_constants_for_round(
+        mut row: Array1<BFieldElement>,
+        round_number: usize,
+    ) -> Array1<BFieldElement> {
+        let round_constants = Self::tip5_round_constants_by_round_number(round_number);
+        row[Constant0.base_table_index()] = round_constants[0];
+        row[Constant1.base_table_index()] = round_constants[1];
+        row[Constant2.base_table_index()] = round_constants[2];
+        row[Constant3.base_table_index()] = round_constants[3];
+        row[Constant4.base_table_index()] = round_constants[4];
+        row[Constant5.base_table_index()] = round_constants[5];
+        row[Constant6.base_table_index()] = round_constants[6];
+        row[Constant7.base_table_index()] = round_constants[7];
+        row[Constant8.base_table_index()] = round_constants[8];
+        row[Constant9.base_table_index()] = round_constants[9];
+        row[Constant10.base_table_index()] = round_constants[10];
+        row[Constant11.base_table_index()] = round_constants[11];
+        row[Constant12.base_table_index()] = round_constants[12];
+        row[Constant13.base_table_index()] = round_constants[13];
+        row[Constant14.base_table_index()] = round_constants[14];
+        row[Constant15.base_table_index()] = round_constants[15];
+        row
     }
 
     pub fn fill_trace(
@@ -1689,19 +1725,24 @@ impl HashTable {
                 compressed_elements.inverse()
             };
 
-        let max_round_number = (NUM_ROUNDS as u64).into();
-        let mode_program_hashing = HashTableMode::ProgramHashing.into();
-        let mode_sponge = HashTableMode::Sponge.into();
-        let mode_hash = HashTableMode::Hash.into();
-        let mode_pad = HashTableMode::Pad.into();
-
         for row_idx in 0..base_table.nrows() {
             let row = base_table.row(row_idx);
-            let mode = row[Mode.base_table_index()];
-            let current_instruction = row[CI.base_table_index()];
-            let round_number = row[RoundNumber.base_table_index()];
 
-            if mode == mode_program_hashing && round_number.is_zero() {
+            let mode = row[Mode.base_table_index()];
+            let in_program_hashing_mode = mode == HashTableMode::ProgramHashing.into();
+            let in_sponge_mode = mode == HashTableMode::Sponge.into();
+            let in_hash_mode = mode == HashTableMode::Hash.into();
+            let in_pad_mode = mode == HashTableMode::Pad.into();
+
+            let round_number = row[RoundNumber.base_table_index()];
+            let in_round_0 = round_number.is_zero();
+            let in_last_round = round_number == (NUM_ROUNDS as u64).into();
+
+            let current_instruction = row[CI.base_table_index()];
+            let current_instruction_is_sponge_init =
+                current_instruction == Instruction::SpongeInit.opcode_b();
+
+            if in_program_hashing_mode && in_round_0 {
                 let compressed_chunk_of_instructions = EvalArg::compute_terminal(
                     &rate_registers(row),
                     EvalArg::default_initial(),
@@ -1712,19 +1753,24 @@ impl HashTable {
                     + compressed_chunk_of_instructions
             }
 
-            if mode == mode_sponge && round_number.is_zero() {
+            if in_sponge_mode && in_round_0 && current_instruction_is_sponge_init {
+                sponge_running_evaluation = sponge_running_evaluation * sponge_eval_indeterminate
+                    + ci_weight * current_instruction
+            }
+
+            if in_sponge_mode && in_round_0 && !current_instruction_is_sponge_init {
                 sponge_running_evaluation = sponge_running_evaluation * sponge_eval_indeterminate
                     + ci_weight * current_instruction
                     + compressed_row(row)
             }
 
-            if mode == mode_hash && round_number.is_zero() {
+            if in_hash_mode && in_round_0 {
                 hash_input_running_evaluation = hash_input_running_evaluation
                     * hash_input_eval_indeterminate
                     + compressed_row(row)
             }
 
-            if mode == mode_hash && round_number == max_round_number {
+            if in_hash_mode && in_last_round {
                 let compressed_digest: XFieldElement = rate_registers(row)[..DIGEST_LENGTH]
                     .iter()
                     .zip_eq(state_weights[..DIGEST_LENGTH].iter())
@@ -1735,7 +1781,7 @@ impl HashTable {
                     + compressed_digest
             }
 
-            if mode != mode_pad && round_number != max_round_number {
+            if !in_pad_mode && !in_last_round && !current_instruction_is_sponge_init {
                 cascade_state_0_highest_log_derivative +=
                     log_derivative_summand(row, State0HighestLkIn, State0HighestLkOut);
                 cascade_state_0_mid_high_log_derivative +=
@@ -1816,6 +1862,10 @@ impl HashTable {
 
 #[cfg(test)]
 pub(crate) mod tests {
+    use crate::stark::tests::master_tables_for_low_security_level;
+    use crate::table::master_table::MasterTable;
+    use crate::triton_asm;
+    use crate::triton_program;
     use std::collections::HashMap;
 
     use super::*;
@@ -1915,6 +1965,48 @@ pub(crate) mod tests {
             if let Some(entry) = maybe_entry {
                 panic!("Discriminant collision for {discriminant} between {entry} and {mode}.");
             }
+        }
+    }
+
+    #[test]
+    fn terminal_constraints_hold_for_sponge_init_edge_case() {
+        let many_useless_absorbs = (0..7_991)
+            .flat_map(|_| triton_asm![sponge_init sponge_absorb])
+            .collect_vec();
+        let program = triton_program! {
+            sponge_init sponge_init sponge_init sponge_init
+            {&many_useless_absorbs}
+            sponge_init
+            halt
+        };
+
+        let (_, _, master_base_table, master_ext_table, challenges) =
+            master_tables_for_low_security_level(&program, [].into(), [].into());
+
+        let master_base_trace_table = master_base_table.trace_table();
+        let master_ext_trace_table = master_ext_table.trace_table();
+
+        let last_row = master_base_trace_table.slice(s![-1.., ..]);
+        let last_opcode = last_row[[0, HashBaseTableColumn::CI.master_base_table_index()]];
+        let last_instruction: Instruction = last_opcode.value().try_into().unwrap();
+        assert_eq!(Instruction::SpongeInit, last_instruction);
+
+        let circuit_builder = ConstraintCircuitBuilder::new();
+        for (constraint_idx, constraint) in ExtHashTable::terminal_constraints(&circuit_builder)
+            .into_iter()
+            .map(|constraint_monad| constraint_monad.consume())
+            .enumerate()
+        {
+            let evaluated_constraint = constraint.evaluate(
+                master_base_trace_table.slice(s![-1.., ..]),
+                master_ext_trace_table.slice(s![-1.., ..]),
+                &challenges,
+            );
+            assert_eq!(
+                XFieldElement::zero(),
+                evaluated_constraint,
+                "Terminal constraint {constraint_idx} failed."
+            );
         }
     }
 }

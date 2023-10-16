@@ -181,7 +181,9 @@ The following additional constraints also apply to every pair of rows.
 1. The running product for the JumpStack Table absorbs the next row with respect to challenges 🍇, 🍅, 🍌, 🍏, and 🍐 and indeterminate 🧴.
 1. If the current instruction in the next row is `hash`, the running evaluation “Hash Input” absorbs the next row with respect to challenges 🧄₀ through 🧄₉ and indeterminate 🚪. Otherwise, it remains unchanged.
 1. If the current instruction is `hash`, the running evaluation “Hash Digest” absorbs the next row with respect to challenges 🧄₀ through 🧄₄ and indeterminate 🪟. Otherwise, it remains unchanged.
-1. If the current instruction is `absorb_init`, `absorb`, or `squeeze`, then the running evaluation “Sponge” absorbs the current instruction and the next row with respect to challenges 🧅 and 🧄₀ through 🧄₉ and indeterminate 🧽. Otherwise, it remains unchanged.
+1. If the current instruction is `sponge_init`, then the running evaluation “Sponge” absorbs the current instruction and the Sponge's default initial state with respect to challenges 🧅 and 🧄₀ through 🧄₉ and indeterminate 🧽.
+Else if the current instruction is `sponge_absorb` or `sponge_squeeze`, then the running evaluation “Sponge” absorbs the current instruction and the next row with respect to challenges 🧅 and 🧄₀ through 🧄₉ and indeterminate 🧽.
+Otherwise, the running evaluation remains unchanged.
 1.  1. If the current instruction is `split`, then the logarithmic derivative for the Lookup Argument with the U32 Table accumulates `st0` and `st1` in the next row and `ci` in the current row with respect to challenges 🥜, 🌰, and 🥑, and indeterminate 🧷.
     1. If the current instruction is `lt`, `and`, `xor`, or `pow`, then the logarithmic derivative for the Lookup Argument with the U32 Table accumulates `st0`, `st1`, and `ci` in the current row and `st0` in the next row with respect to challenges 🥜, 🌰, 🥑, and 🥕, and indeterminate 🧷.
     1. If the current instruction is `log_2_floor`, then the logarithmic derivative for the Lookup Argument with the U32 Table accumulates `st0` and `ci` in the current row and `st0` in the next row with respect to challenges 🥜, 🥑, and 🥕, and indeterminate 🧷.
@@ -210,8 +212,8 @@ The following additional constraints also apply to every pair of rows.
     `+ hash_deselector'·(RunningEvaluationHashInput' - 🚪·RunningEvaluationHashInput - 🧄₀·st0' - 🧄₁·st1' - 🧄₂·st2' - 🧄₃·st3' - 🧄₄·st4' - 🧄₅·st5' - 🧄₆·st6' - 🧄₇·st7' - 🧄₈·st8' - 🧄₉·st9')`
 1. `(ci - opcode(hash))·(RunningEvaluationHashDigest' - RunningEvaluationHashDigest)`<br />
     `+ hash_deselector·(RunningEvaluationHashDigest' - 🪟·RunningEvaluationHashDigest - 🧄₀·st5' - 🧄₁·st6' - 🧄₂·st7' - 🧄₃·st8' - 🧄₄·st9')`
-1. `(ci - opcode(absorb_init))·(ci - opcode(absorb)·(ci - opcode(squeeze))·(RunningEvaluationHashDigest' - RunningEvaluationHashDigest)`<br />
-    `+ (absorb_init_deselector + absorb_deselector + squeeze_deselector)`<br />
+1. `(ci - opcode(sponge_init))·(ci - opcode(sponge_absorb)·(ci - opcode(sponge_squeeze))·(RunningEvaluationHashDigest' - RunningEvaluationHashDigest)`<br />
+    `+ (sponge_init_deselector + sponge_absorb_deselector + sponge_squeeze_deselector)`<br />
     `·(RunningEvaluationSponge' - 🧽·RunningEvaluationSponge - 🧅·ci - 🧄₀·st0' - 🧄₁·st1' - 🧄₂·st2' - 🧄₃·st3' - 🧄₄·st4' - 🧄₅·st5' - 🧄₆·st6' - 🧄₇·st7' - 🧄₈·st8' - 🧄₉·st9')`
 1.  1. `split_deselector·((U32LookupClientLogDerivative' - U32LookupClientLogDerivative)·(🧷 - 🥜·st0' - 🌰·st1' - 🥑·ci) - 1)`
     1. `+ lt_deselector·((U32LookupClientLogDerivative' - U32LookupClientLogDerivative)·(🧷 - 🥜·st0 - 🌰·st1 - 🥑·ci - 🥕·st0') - 1)`

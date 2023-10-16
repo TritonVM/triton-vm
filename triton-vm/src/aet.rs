@@ -15,6 +15,7 @@ use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::digest::Digest;
 use twenty_first::shared_math::digest::DIGEST_LENGTH;
 use twenty_first::shared_math::tip5;
+use twenty_first::shared_math::tip5::Tip5;
 use twenty_first::util_types::algebraic_hasher::SpongeHasher;
 
 use crate::instruction::Instruction;
@@ -60,8 +61,8 @@ pub struct AlgebraicExecutionTrace {
     /// permutation for each round.
     pub hash_trace: Array2<BFieldElement>,
 
-    /// For the Sponge instructions, i.e., `absorb_init`, `absorb`, and `squeeze`, the Sponge
-    /// trace records the internal state of the Tip5 permutation for each round.
+    /// For the Sponge instructions, i.e., `sponge_init`, `sponge_absorb`, and `sponge_squeeze`,
+    /// the Sponge trace records the internal state of the Tip5 permutation for each round.
     pub sponge_trace: Array2<BFieldElement>,
 
     /// The u32 entries hold all pairs of BFieldElements that were written to the U32 Table,
@@ -118,7 +119,7 @@ impl AlgebraicExecutionTrace {
                 .zip_eq(chunk)
                 .for_each(|(sponge_state_elem, &absorb_elem)| *sponge_state_elem = absorb_elem);
             let hash_trace = StarkHasher::trace(&mut program_sponge);
-            let trace_addendum = HashTable::convert_to_hash_table_rows(hash_trace);
+            let trace_addendum = HashTable::trace_to_table_rows(hash_trace);
 
             self.increase_lookup_multiplicities(hash_trace);
             self.program_hash_trace
@@ -195,17 +196,6 @@ impl AlgebraicExecutionTrace {
             .unwrap()
     }
 
-    pub fn append_hash_trace(&mut self, trace: PermutationTrace) {
-        self.increase_lookup_multiplicities(trace);
-        let mut hash_trace_addendum = HashTable::convert_to_hash_table_rows(trace);
-        hash_trace_addendum
-            .slice_mut(s![.., CI.base_table_index()])
-            .fill(Instruction::Hash.opcode_b());
-        self.hash_trace
-            .append(Axis(0), hash_trace_addendum.view())
-            .expect("shapes must be identical");
-    }
-
     pub fn record_state(&mut self, state: &VMState) -> Result<()> {
         self.processor_trace
             .push_row(state.to_processor_row().view())
@@ -215,6 +205,7 @@ impl AlgebraicExecutionTrace {
     pub fn record_co_processor_call(&mut self, co_processor_call: CoProcessorCall) {
         match co_processor_call {
             Tip5Trace(Instruction::Hash, tip5_trace) => self.append_hash_trace(*tip5_trace),
+            SpongeStateReset => self.append_initial_sponge_state(),
             Tip5Trace(instruction, tip5_trace) => {
                 self.append_sponge_trace(instruction, *tip5_trace)
             }
@@ -228,13 +219,32 @@ impl AlgebraicExecutionTrace {
         }
     }
 
+    pub fn append_hash_trace(&mut self, trace: PermutationTrace) {
+        self.increase_lookup_multiplicities(trace);
+        let mut hash_trace_addendum = HashTable::trace_to_table_rows(trace);
+        hash_trace_addendum
+            .slice_mut(s![.., CI.base_table_index()])
+            .fill(Instruction::Hash.opcode_b());
+        self.hash_trace
+            .append(Axis(0), hash_trace_addendum.view())
+            .expect("shapes must be identical");
+    }
+
+    fn append_initial_sponge_state(&mut self) {
+        let round_number = 0;
+        let initial_state = Tip5::init().state;
+        let mut hash_table_row = HashTable::trace_row_to_table_row(initial_state, round_number);
+        hash_table_row[CI.base_table_index()] = Instruction::SpongeInit.opcode_b();
+        self.sponge_trace.push_row(hash_table_row.view()).unwrap();
+    }
+
     fn append_sponge_trace(&mut self, instruction: Instruction, trace: PermutationTrace) {
         assert!(matches!(
             instruction,
-            Instruction::AbsorbInit | Instruction::Absorb | Instruction::Squeeze
+            Instruction::SpongeAbsorb | Instruction::SpongeSqueeze
         ));
         self.increase_lookup_multiplicities(trace);
-        let mut sponge_trace_addendum = HashTable::convert_to_hash_table_rows(trace);
+        let mut sponge_trace_addendum = HashTable::trace_to_table_rows(trace);
         sponge_trace_addendum
             .slice_mut(s![.., CI.base_table_index()])
             .fill(instruction.opcode_b());

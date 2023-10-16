@@ -441,19 +441,19 @@ Additionally, it defines the following transition constraints.
 1. `st8 - st3`
 1. `st9 - st4`
 
-## Instruction `absorb_init`
+## Instruction `sponge_init`
 
 This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `step_1`, `keep_stack`, and `keep_ram`.
 Beyond that, this instruction has no transition constraints.
 Instead, correct transition is guaranteed by the [Hash Table](hash-table.md).
 
-## Instruction `absorb`
+## Instruction `sponge_absorb`
 
 This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `step_1`, `keep_stack`, and `keep_ram`.
 Beyond that, this instruction has no transition constraints.
 Instead, correct transition is guaranteed by the [Hash Table](hash-table.md).
 
-## Instruction `squeeze`
+## Instruction `sponge_squeeze`
 
 This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `step_1`, `stack_remains_and_top_10_unconstrained`, and `keep_ram`.
 Beyond that, this instruction has no transition constraints.

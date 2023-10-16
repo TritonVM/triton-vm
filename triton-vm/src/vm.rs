@@ -18,6 +18,7 @@ use twenty_first::shared_math::tip5;
 use twenty_first::shared_math::tip5::*;
 use twenty_first::shared_math::traits::Inverse;
 use twenty_first::util_types::algebraic_hasher::Domain;
+use twenty_first::util_types::algebraic_hasher::SpongeHasher;
 
 use crate::error::InstructionError;
 use crate::error::InstructionError::*;
@@ -79,8 +80,8 @@ pub struct VMState<'pgm> {
     pub ramp: u64,
 
     /// The current state of the one, global Sponge that can be manipulated using instructions
-    /// `AbsorbInit`, `Absorb`, and `Squeeze`. Instruction `AbsorbInit` resets the state prior to
-    /// absorbing.
+    /// `SpongeInit`, `SpongeAbsorb`, and `SpongeSqueeze`. Instruction `SpongeInit` resets the
+    /// Sponge state.
     /// Note that this is the _full_ state, including capacity. The capacity should never be
     /// exposed outside of the VM.
     pub sponge_state: [BFieldElement; tip5::STATE_SIZE],
@@ -94,13 +95,14 @@ pub struct VMState<'pgm> {
 /// co-processor or enough information to deduce the trace.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum CoProcessorCall {
+    SpongeStateReset,
+
     /// Trace of the state registers for hash coprocessor table when executing instruction `hash`
-    /// or any of the Sponge instructions `absorb_init`, `absorb`, `squeeze`.
+    /// or one of the Sponge instructions `sponge_absorb` and `sponge_squeeze`.
     /// One row per round in the Tip5 permutation.
     Tip5Trace(Instruction, Box<PermutationTrace>),
 
     SingleU32TableEntry(U32TableEntry),
-
     DoubleU32TableEntry([U32TableEntry; 2]),
 }
 
@@ -226,8 +228,9 @@ impl<'pgm> VMState<'pgm> {
             ReadMem => self.read_mem(),
             WriteMem => self.write_mem()?,
             Hash => self.hash()?,
-            AbsorbInit | Absorb => self.absorb()?,
-            Squeeze => self.squeeze()?,
+            SpongeInit => self.sponge_init(),
+            SpongeAbsorb => self.sponge_absorb()?,
+            SpongeSqueeze => self.sponge_squeeze()?,
             DivineSibling => self.divine_sibling()?,
             AssertVector => self.assert_vector()?,
             Add => self.add()?,
@@ -382,28 +385,31 @@ impl<'pgm> VMState<'pgm> {
         Ok(co_processor_trace)
     }
 
-    fn absorb(&mut self) -> Result<Option<CoProcessorCall>> {
+    fn sponge_init(&mut self) -> Option<CoProcessorCall> {
+        self.sponge_state = Tip5::init().state;
+        self.instruction_pointer += 1;
+        Some(SpongeStateReset)
+    }
+
+    fn sponge_absorb(&mut self) -> Result<Option<CoProcessorCall>> {
         // fetch top elements but don't alter the stack
         let to_absorb = self.op_stack.pop_multiple::<{ tip5::RATE }>()?;
         for i in (0..tip5::RATE).rev() {
             self.op_stack.push(to_absorb[i]);
         }
 
-        if self.current_instruction()? == AbsorbInit {
-            self.sponge_state = Tip5State::new(Domain::VariableLength).state;
-        }
         self.sponge_state[..tip5::RATE].copy_from_slice(&to_absorb);
         let tip5_trace = Tip5::trace(&mut Tip5State {
             state: self.sponge_state,
         });
         self.sponge_state = tip5_trace.last().unwrap().to_owned();
-        let co_processor_trace = Some(Tip5Trace(self.current_instruction()?, Box::new(tip5_trace)));
+        let co_processor_trace = Some(Tip5Trace(SpongeAbsorb, Box::new(tip5_trace)));
 
         self.instruction_pointer += 1;
         Ok(co_processor_trace)
     }
 
-    fn squeeze(&mut self) -> Result<Option<CoProcessorCall>> {
+    fn sponge_squeeze(&mut self) -> Result<Option<CoProcessorCall>> {
         let _ = self.op_stack.pop_multiple::<{ tip5::RATE }>()?;
         for i in (0..tip5::RATE).rev() {
             self.op_stack.push(self.sponge_state[i]);
@@ -412,7 +418,7 @@ impl<'pgm> VMState<'pgm> {
             state: self.sponge_state,
         });
         self.sponge_state = tip5_trace.last().unwrap().to_owned();
-        let co_processor_trace = Some(Tip5Trace(Squeeze, Box::new(tip5_trace)));
+        let co_processor_trace = Some(Tip5Trace(SpongeSqueeze, Box::new(tip5_trace)));
 
         self.instruction_pointer += 1;
         Ok(co_processor_trace)
@@ -900,10 +906,14 @@ pub(crate) mod tests {
     use itertools::Itertools;
     use ndarray::Array1;
     use ndarray::ArrayView1;
+    use rand::prelude::SliceRandom;
+    use rand::prelude::StdRng;
+    use rand::random;
     use rand::rngs::ThreadRng;
     use rand::thread_rng;
     use rand::Rng;
     use rand::RngCore;
+    use rand_core::SeedableRng;
     use twenty_first::shared_math::b_field_element::BFIELD_ZERO;
     use twenty_first::shared_math::other::random_elements;
     use twenty_first::shared_math::other::random_elements_array;
@@ -920,6 +930,7 @@ pub(crate) mod tests {
     use crate::shared_tests::ProgramAndInput;
     use crate::stark::MTMaker;
     use crate::table::processor_table::ProcessorTraceRow;
+    use crate::triton_asm;
     use crate::triton_program;
 
     use super::*;
@@ -1102,22 +1113,26 @@ pub(crate) mod tests {
 
     pub(crate) fn test_program_for_sponge_instructions() -> ProgramAndInput {
         ProgramAndInput::without_input(triton_program!(
-            absorb_init push 3 push 2 push 1 absorb absorb squeeze halt
+            sponge_init push 3 push 2 push 1 sponge_absorb sponge_absorb sponge_squeeze halt
         ))
     }
 
     pub(crate) fn test_program_for_sponge_instructions_2() -> ProgramAndInput {
         ProgramAndInput::without_input(triton_program!(
-            hash absorb_init push 3 push 2 push 1 absorb absorb squeeze halt
+            hash sponge_init push 3 push 2 push 1 sponge_absorb sponge_absorb sponge_squeeze halt
         ))
     }
 
     pub(crate) fn test_program_for_many_sponge_instructions() -> ProgramAndInput {
         ProgramAndInput::without_input(triton_program!(
-            absorb_init squeeze absorb absorb absorb squeeze squeeze squeeze absorb
-            absorb_init absorb_init absorb_init absorb absorb_init squeeze squeeze
-            absorb_init squeeze hash absorb hash squeeze hash absorb hash squeeze
-            absorb_init absorb absorb absorb absorb absorb absorb absorb halt
+            sponge_init sponge_squeeze sponge_absorb sponge_absorb sponge_absorb
+            sponge_squeeze sponge_squeeze sponge_squeeze sponge_absorb
+            sponge_init sponge_init sponge_init sponge_absorb
+            sponge_init sponge_squeeze sponge_squeeze
+            sponge_init sponge_squeeze hash sponge_absorb hash sponge_squeeze
+            hash sponge_absorb hash sponge_squeeze
+            sponge_init sponge_absorb sponge_absorb sponge_absorb sponge_absorb sponge_absorb
+            sponge_absorb sponge_absorb halt
         ))
     }
 
@@ -1142,51 +1157,53 @@ pub(crate) mod tests {
     }
 
     pub(crate) fn property_based_test_program_for_sponge_instructions() -> ProgramAndInput {
-        let mut rng = ThreadRng::default();
-        let st0 = rng.gen_range(0..BFieldElement::P);
-        let st1 = rng.gen_range(0..BFieldElement::P);
-        let st2 = rng.gen_range(0..BFieldElement::P);
-        let st3 = rng.gen_range(0..BFieldElement::P);
-        let st4 = rng.gen_range(0..BFieldElement::P);
-        let st5 = rng.gen_range(0..BFieldElement::P);
-        let st6 = rng.gen_range(0..BFieldElement::P);
-        let st7 = rng.gen_range(0..BFieldElement::P);
-        let st8 = rng.gen_range(0..BFieldElement::P);
-        let st9 = rng.gen_range(0..BFieldElement::P);
+        let seed = random();
+        let mut rng = StdRng::seed_from_u64(seed);
+        println!("property_based_test_program_for_sponge_instructions seed: {seed}");
 
-        let sponge_input =
-            [st0, st1, st2, st3, st4, st5, st6, st7, st8, st9].map(BFieldElement::new);
+        let sponge_input = rng.gen();
+        let mut sponge_state = Tip5::init();
+        let mut sponge_io = sponge_input;
+        let mut sponge_and_hash_instructions = vec![];
 
-        let mut sponge = Tip5::init();
-        Tip5::absorb(&mut sponge, &sponge_input);
-        let sponge_output = Tip5::squeeze(&mut sponge);
-        Tip5::absorb(&mut sponge, &sponge_output);
-        Tip5::absorb(&mut sponge, &sponge_output);
-        let sponge_output = Tip5::squeeze(&mut sponge);
-        Tip5::absorb(&mut sponge, &sponge_output);
-        Tip5::squeeze(&mut sponge);
-        let sponge_output = Tip5::squeeze(&mut sponge);
+        let possible_instructions: [Instruction; 4] =
+            [SpongeInit, SpongeAbsorb, SpongeSqueeze, Hash];
+        let zero_digest = [BFIELD_ZERO; DIGEST_LENGTH];
+        let num_instructions = rng.gen_range(0..100);
 
+        for _ in 0..num_instructions {
+            let &instruction = possible_instructions.choose(&mut rng).unwrap();
+            sponge_and_hash_instructions.push(instruction);
+
+            match instruction {
+                SpongeInit => sponge_state = Tip5::init(),
+                SpongeAbsorb => Tip5::absorb(&mut sponge_state, &sponge_io),
+                SpongeSqueeze => sponge_io = Tip5::squeeze(&mut sponge_state),
+                Hash => {
+                    let digest = Tip5::hash_10(&sponge_io);
+                    sponge_io = [zero_digest, digest].concat().try_into().unwrap();
+                }
+                _ => unreachable!(),
+            }
+        }
+
+        let output_equality_assertions = (0..RATE)
+            .flat_map(|_| triton_asm![read_io eq assert])
+            .collect_vec();
+
+        let [st0, st1, st2, st3, st4, st5, st6, st7, st8, st9] = sponge_input;
         let program = triton_program!(
             push {st9} push {st8} push {st7} push {st6} push {st5}
             push {st4} push {st3} push {st2} push {st1} push {st0}
-            absorb_init hash squeeze absorb absorb hash squeeze absorb squeeze squeeze
-            read_io eq assert // st0
-            read_io eq assert // st1
-            read_io eq assert // st2
-            read_io eq assert // st3
-            read_io eq assert // st4
-            read_io eq assert // st5
-            read_io eq assert // st6
-            read_io eq assert // st7
-            read_io eq assert // st8
-            read_io eq assert // st9
+            sponge_init
+            {&sponge_and_hash_instructions}
+            {&output_equality_assertions}
             halt
         );
 
         ProgramAndInput {
             program,
-            public_input: sponge_output.map(|e| e.value()).to_vec(),
+            public_input: sponge_io.map(|e| e.value()).to_vec(),
             non_determinism: [].into(),
         }
     }

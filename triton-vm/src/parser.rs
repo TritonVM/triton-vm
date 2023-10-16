@@ -244,11 +244,11 @@ fn an_instruction(s: &str) -> ParseResult<AnInstruction<String>> {
     let hash = instruction("hash", Hash);
     let divine_sibling = instruction("divine_sibling", DivineSibling);
     let assert_vector = instruction("assert_vector", AssertVector);
-    let absorb_init = instruction("absorb_init", AbsorbInit);
-    let absorb = instruction("absorb", Absorb);
-    let squeeze = instruction("squeeze", Squeeze);
+    let sponge_init = instruction("sponge_init", SpongeInit);
+    let sponge_absorb = instruction("sponge_absorb", SpongeAbsorb);
+    let sponge_squeeze = instruction("sponge_squeeze", SpongeSqueeze);
 
-    let hashing_related = alt((hash, absorb_init, absorb, squeeze));
+    let hashing_related = alt((hash, sponge_init, sponge_absorb, sponge_squeeze));
 
     // Arithmetic on stack instructions
     let add = instruction("add", Add);
