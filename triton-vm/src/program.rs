@@ -235,7 +235,7 @@ impl Program {
     pub fn labelled_instructions(&self) -> Vec<LabelledInstruction> {
         let call_targets = self.call_targets();
         let instructions_with_labels = self.instructions.iter().map(|instruction| {
-            instruction.map_call_address(|&address| self.label_for_address(address))
+            instruction.map_call_address(|&address| self.label_for_address(address.value()))
         });
 
         let mut labelled_instructions = vec![];
@@ -244,12 +244,11 @@ impl Program {
         while let Some(instruction) = instruction_stream.next() {
             let instruction_size = instruction.size() as u64;
             if call_targets.contains(&address) {
-                let address = address.into();
                 let label = self.label_for_address(address);
                 let label = LabelledInstruction::Label(label);
                 labelled_instructions.push(label);
             }
-            if self.breakpoints[address as usize] {
+            if self.is_breakpoint(address) {
                 labelled_instructions.push(LabelledInstruction::Breakpoint);
             }
             labelled_instructions.push(LabelledInstruction::Instruction(instruction));
@@ -270,6 +269,11 @@ impl Program {
                 _ => None,
             })
             .collect()
+    }
+
+    pub fn is_breakpoint(&self, address: u64) -> bool {
+        let address: usize = address.try_into().unwrap();
+        self.breakpoints.get(address).unwrap_or(&false).to_owned()
     }
 
     /// Convert a `Program` to a `Vec<BFieldElement>`.
@@ -454,7 +458,7 @@ impl Program {
         let mut state = VMState::new(self, public_input, non_determinism);
         while !state.halting {
             if let Instruction::Call(address) = state.current_instruction()? {
-                let label = self.label_for_address(address);
+                let label = self.label_for_address(address.value());
                 profiler.enter_span_with_label_at_cycle(label, state.cycle_count);
             }
             if let Instruction::Return = state.current_instruction()? {
@@ -468,8 +472,7 @@ impl Program {
         Ok((state.public_output, report))
     }
 
-    fn label_for_address(&self, address: BFieldElement) -> String {
-        let address = address.value();
+    pub fn label_for_address(&self, address: u64) -> String {
         let substitute_for_unknown_label = format! {"address_{address}"};
         self.address_to_label
             .get(&address)
