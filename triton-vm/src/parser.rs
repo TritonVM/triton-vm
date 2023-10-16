@@ -1085,4 +1085,35 @@ pub(crate) mod tests {
         let program = triton_program! { break halt break };
         assert_eq!(1, program.instructions.len());
     }
+
+    #[test]
+    fn printing_program_includes_debug_information() {
+        let source_code = "\
+            call foo\n\
+            break\n\
+            call bar\n\
+            halt\n\
+            foo:\n\
+            break\n\
+            call baz\n\
+            push 1\n\
+            nop\n\
+            return\n\
+            baz:\n\
+            hash\n\
+            return\n\
+            nop\n\
+            pop\n\
+            bar:\n\
+            divine\n\
+            skiz\n\
+            split\n\
+            break\n\
+            return\n\
+        ";
+        let program = Program::from_code(source_code).unwrap();
+        let printed_program = format!("{program}");
+        assert_eq!(source_code, &printed_program);
+        println!("{program}");
+    }
 }

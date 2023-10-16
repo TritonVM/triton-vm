@@ -1,5 +1,6 @@
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::fmt::Display;
 use std::fmt::Formatter;
 use std::fmt::Result as FmtResult;
@@ -40,13 +41,8 @@ pub struct Program {
 
 impl Display for Program {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
-        let mut stream = self.instructions.iter();
-        while let Some(instruction) = stream.next() {
+        for instruction in self.labelled_instructions() {
             writeln!(f, "{instruction}")?;
-            // 2-word instructions already print their arguments
-            for _ in 1..instruction.size() {
-                stream.next();
-            }
         }
         Ok(())
     }
@@ -234,6 +230,46 @@ impl Program {
             .map(|tokens| to_labelled_instructions(&tokens))
             .map(|instructions| Program::new(&instructions))
             .map_err(|err| anyhow!("{err}"))
+    }
+
+    pub fn labelled_instructions(&self) -> Vec<LabelledInstruction> {
+        let call_targets = self.call_targets();
+        let instructions_with_labels = self.instructions.iter().map(|instruction| {
+            instruction.map_call_address(|&address| self.label_for_address(address))
+        });
+
+        let mut labelled_instructions = vec![];
+        let mut address = 0;
+        let mut instruction_stream = instructions_with_labels.into_iter();
+        while let Some(instruction) = instruction_stream.next() {
+            let instruction_size = instruction.size() as u64;
+            if call_targets.contains(&address) {
+                let address = address.into();
+                let label = self.label_for_address(address);
+                let label = LabelledInstruction::Label(label);
+                labelled_instructions.push(label);
+            }
+            if self.breakpoints[address as usize] {
+                labelled_instructions.push(LabelledInstruction::Breakpoint);
+            }
+            labelled_instructions.push(LabelledInstruction::Instruction(instruction));
+
+            for _ in 1..instruction_size {
+                instruction_stream.next();
+            }
+            address += instruction_size;
+        }
+        labelled_instructions
+    }
+
+    fn call_targets(&self) -> HashSet<u64> {
+        self.instructions
+            .iter()
+            .filter_map(|instruction| match instruction {
+                Instruction::Call(address) => Some(address.value()),
+                _ => None,
+            })
+            .collect()
     }
 
     /// Convert a `Program` to a `Vec<BFieldElement>`.
