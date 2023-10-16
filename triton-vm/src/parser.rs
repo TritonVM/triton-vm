@@ -1083,7 +1083,7 @@ pub(crate) mod tests {
     #[test]
     fn break_does_not_propagate_to_full_program() {
         let program = triton_program! { break halt break };
-        assert_eq!(1, program.instructions.len());
+        assert_eq!(1, program.len_bwords());
     }
 
     #[test]

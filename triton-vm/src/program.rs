@@ -40,10 +40,9 @@ use crate::vm::VMState;
 /// in a [`Claim`](crate::Claim), _i.e._, is consistent with Triton VM's [program attestation].
 ///
 /// A program may contain debug information, such as label names and breakpoints.
-/// It is recommended to access this information through methods
-/// [`label_for_address()`][label_for_address] and [`is_breakpoint()`][is_breakpoint].
-/// Some operations, most notably [BField-encoding](BFieldCodec::encode), discard this debug
-/// information.
+/// Access this information through methods [`label_for_address()`][label_for_address] and
+/// [`is_breakpoint()`][is_breakpoint]. Some operations, most notably
+/// [BField-encoding](BFieldCodec::encode), discard this debug information.
 ///
 /// [program attestation]: https://triton-vm.org/spec/program-attestation.html
 /// [tip5]: twenty_first::shared_math::tip5::Tip5
@@ -52,8 +51,8 @@ use crate::vm::VMState;
 #[derive(Debug, Clone, Default, Eq, GetSize, Serialize, Deserialize)]
 pub struct Program {
     pub instructions: Vec<Instruction>,
-    pub address_to_label: HashMap<u64, String>,
-    pub breakpoints: Vec<bool>,
+    address_to_label: HashMap<u64, String>,
+    breakpoints: Vec<bool>,
 }
 
 impl Display for Program {
@@ -103,12 +102,11 @@ impl BFieldCodec for Program {
 
         ensure_eq!(read_idx, program_length);
         ensure_eq!(instructions.len(), program_length);
-        let breakpoints = vec![false; program_length];
 
         Ok(Box::new(Program {
             instructions,
             address_to_label: HashMap::new(),
-            breakpoints,
+            breakpoints: vec![],
         }))
     }
 
@@ -923,8 +921,17 @@ mod tests {
             pop pop hash halt
             break // no effect
         };
-        let expected_breakpoints = vec![true, true, false, false, true, false, false, false];
-        assert_eq!(expected_breakpoints, program.breakpoints);
+
+        assert!(program.is_breakpoint(0));
+        assert!(!program.is_breakpoint(2));
+        assert!(program.is_breakpoint(4));
+        assert!(!program.is_breakpoint(5));
+        assert!(!program.is_breakpoint(6));
+        assert!(!program.is_breakpoint(7));
+
+        // going beyond the length of the program must not break things
+        assert!(!program.is_breakpoint(8));
+        assert!(!program.is_breakpoint(9));
     }
 
     #[test]
