@@ -28,25 +28,13 @@ pub struct ParseError<'a> {
     pub errors: VerboseError<&'a str>,
 }
 
-/// `InstructionToken` is either an instruction with a label, or a
-/// label itself. It is intermediate object used in some middle
-/// point of the compilation pipeline. You probably want
+/// An intermediate object for the parsing / compilation pipeline. You probably want
 /// [`LabelledInstruction`].
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum InstructionToken<'a> {
     Instruction(AnInstruction<String>, &'a str),
     Label(String, &'a str),
     Breakpoint(&'a str),
-}
-
-impl<'a> Display for InstructionToken<'a> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
-        match self {
-            InstructionToken::Instruction(instr, _) => write!(f, "{instr}"),
-            InstructionToken::Label(label_name, _) => write!(f, "{label_name}:"),
-            InstructionToken::Breakpoint(_) => write!(f, "break"),
-        }
-    }
 }
 
 impl<'a> Display for ParseError<'a> {
@@ -188,7 +176,6 @@ fn errors_for_labels_with_context(
 /// error type, but we want `nom::error::VerboseError` as it allows `context()`.
 type ParseResult<'input, Out> = IResult<&'input str, Out, VerboseError<&'input str>>;
 
-///
 pub fn tokenize(s: &str) -> ParseResult<Vec<InstructionToken>> {
     let (s, _) = comment_or_whitespace0(s)?;
     let (s, instructions) = many0(alt((label, labelled_instruction, breakpoint)))(s)?;
