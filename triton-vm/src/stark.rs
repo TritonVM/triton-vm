@@ -1119,7 +1119,6 @@ pub(crate) mod tests {
 
     use crate::example_programs::*;
     use crate::instruction::AnInstruction;
-    use crate::instruction::Instruction;
     use crate::program::Program;
     use crate::shared_tests::*;
     use crate::table::cascade_table;
@@ -1153,7 +1152,6 @@ pub(crate) mod tests {
     use crate::table::program_table::ExtProgramTable;
     use crate::table::ram_table;
     use crate::table::ram_table::ExtRamTable;
-    use crate::table::table_column::HashBaseTableColumn;
     use crate::table::table_column::LookupExtTableColumn::PublicEvaluationArgument;
     use crate::table::table_column::MasterBaseTableColumn;
     use crate::table::table_column::MasterExtTableColumn;
@@ -1163,7 +1161,6 @@ pub(crate) mod tests {
     use crate::table::table_column::RamBaseTableColumn;
     use crate::table::u32_table;
     use crate::table::u32_table::ExtU32Table;
-    use crate::triton_asm;
     use crate::triton_program;
     use crate::vm::tests::*;
     use crate::NonDeterminism;
@@ -2080,37 +2077,5 @@ pub(crate) mod tests {
         assert_polynomial_equals_recomposed_segments(&f, &segments_3, x);
         assert_polynomial_equals_recomposed_segments(&f, &segments_4, x);
         assert_polynomial_equals_recomposed_segments(&f, &segments_7, x);
-    }
-
-    #[test]
-    #[ignore = "long run time"]
-    fn constraints_hold_when_hash_table_dominates_and_last_hash_table_row_is_sponge_init() {
-        let many_useless_absorbs = (0..7_991)
-            .flat_map(|_| triton_asm![sponge_init sponge_absorb])
-            .collect_vec();
-        let program = triton_program! {
-            sponge_init sponge_init sponge_init sponge_init
-            {&many_useless_absorbs}
-            sponge_init
-            halt
-        };
-        let (aet, _) = program.trace_execution([].into(), [].into()).unwrap();
-
-        assert_eq!(
-            aet.padded_height(),
-            aet.hash_table_length(),
-            "Hash Table must be longest table and must not have “Pad” section."
-        );
-        assert!(
-            aet.hash_trace.is_empty(),
-            "Hash Table must not have “Hash” section."
-        );
-
-        let last_sponge_trace_row = aet.sponge_trace.rows().into_iter().last().unwrap();
-        let last_sponge_opcode = last_sponge_trace_row[HashBaseTableColumn::CI.base_table_index()];
-        let last_sponge_instruction: Instruction = last_sponge_opcode.value().try_into().unwrap();
-        assert_eq!(Instruction::SpongeInit, last_sponge_instruction);
-
-        triton_table_constraints_evaluate_to_zero(ProgramAndInput::without_input(program));
     }
 }

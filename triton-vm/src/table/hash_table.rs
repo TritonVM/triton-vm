@@ -1862,6 +1862,10 @@ impl HashTable {
 
 #[cfg(test)]
 pub(crate) mod tests {
+    use crate::stark::tests::master_tables_for_low_security_level;
+    use crate::table::master_table::MasterTable;
+    use crate::triton_asm;
+    use crate::triton_program;
     use std::collections::HashMap;
 
     use super::*;
@@ -1961,6 +1965,48 @@ pub(crate) mod tests {
             if let Some(entry) = maybe_entry {
                 panic!("Discriminant collision for {discriminant} between {entry} and {mode}.");
             }
+        }
+    }
+
+    #[test]
+    fn terminal_constraints_hold_for_sponge_init_edge_case() {
+        let many_useless_absorbs = (0..7_991)
+            .flat_map(|_| triton_asm![sponge_init sponge_absorb])
+            .collect_vec();
+        let program = triton_program! {
+            sponge_init sponge_init sponge_init sponge_init
+            {&many_useless_absorbs}
+            sponge_init
+            halt
+        };
+
+        let (_, _, master_base_table, master_ext_table, challenges) =
+            master_tables_for_low_security_level(&program, [].into(), [].into());
+
+        let master_base_trace_table = master_base_table.trace_table();
+        let master_ext_trace_table = master_ext_table.trace_table();
+
+        let last_row = master_base_trace_table.slice(s![-1.., ..]);
+        let last_opcode = last_row[[0, HashBaseTableColumn::CI.master_base_table_index()]];
+        let last_instruction: Instruction = last_opcode.value().try_into().unwrap();
+        assert_eq!(Instruction::SpongeInit, last_instruction);
+
+        let circuit_builder = ConstraintCircuitBuilder::new();
+        for (constraint_idx, constraint) in ExtHashTable::terminal_constraints(&circuit_builder)
+            .into_iter()
+            .map(|constraint_monad| constraint_monad.consume())
+            .enumerate()
+        {
+            let evaluated_constraint = constraint.evaluate(
+                master_base_trace_table.slice(s![-1.., ..]),
+                master_ext_trace_table.slice(s![-1.., ..]),
+                &challenges,
+            );
+            assert_eq!(
+                XFieldElement::zero(),
+                evaluated_constraint,
+                "Terminal constraint {constraint_idx} failed."
+            );
         }
     }
 }
