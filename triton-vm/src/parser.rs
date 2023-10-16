@@ -28,23 +28,13 @@ pub struct ParseError<'a> {
     pub errors: VerboseError<&'a str>,
 }
 
-/// `InstructionToken` is either an instruction with a label, or a
-/// label itself. It is intermediate object used in some middle
-/// point of the compilation pipeline. You probably want
+/// An intermediate object for the parsing / compilation pipeline. You probably want
 /// [`LabelledInstruction`].
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum InstructionToken<'a> {
     Instruction(AnInstruction<String>, &'a str),
     Label(String, &'a str),
-}
-
-impl<'a> Display for InstructionToken<'a> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
-        match self {
-            InstructionToken::Instruction(instr, _) => write!(f, "{instr}"),
-            InstructionToken::Label(label_name, _) => write!(f, "{label_name}:"),
-        }
-    }
+    Breakpoint(&'a str),
 }
 
 impl<'a> Display for ParseError<'a> {
@@ -60,6 +50,7 @@ impl<'a> InstructionToken<'a> {
         match self {
             InstructionToken::Instruction(_, token_str) => token_str,
             InstructionToken::Label(_, token_str) => token_str,
+            InstructionToken::Breakpoint(token_str) => token_str,
         }
     }
 
@@ -68,6 +59,7 @@ impl<'a> InstructionToken<'a> {
         match self {
             Instruction(instr, _) => LabelledInstruction::Instruction(instr.to_owned()),
             Label(label, _) => LabelledInstruction::Label(label.to_owned()),
+            Breakpoint(_) => LabelledInstruction::Breakpoint,
         }
     }
 }
@@ -184,10 +176,9 @@ fn errors_for_labels_with_context(
 /// error type, but we want `nom::error::VerboseError` as it allows `context()`.
 type ParseResult<'input, Out> = IResult<&'input str, Out, VerboseError<&'input str>>;
 
-///
 pub fn tokenize(s: &str) -> ParseResult<Vec<InstructionToken>> {
     let (s, _) = comment_or_whitespace0(s)?;
-    let (s, instructions) = many0(alt((label, labelled_instruction)))(s)?;
+    let (s, instructions) = many0(alt((label, labelled_instruction, breakpoint)))(s)?;
     let (s, _) = context("expecting label, instruction or eof", eof)(s)?;
 
     Ok((s, instructions))
@@ -211,6 +202,11 @@ fn label(label_s: &str) -> ParseResult<InstructionToken> {
     }
 
     Ok((s, InstructionToken::Label(addr, label_s)))
+}
+
+fn breakpoint(breakpoint_s: &str) -> ParseResult<InstructionToken> {
+    let (s, _) = token1("break")(breakpoint_s)?;
+    Ok((s, InstructionToken::Breakpoint(breakpoint_s)))
 }
 
 fn an_instruction(s: &str) -> ParseResult<AnInstruction<String>> {
@@ -1062,5 +1058,49 @@ pub(crate) mod tests {
         let instructions = triton_asm![divine; DIGEST_LENGTH];
         let expected_instructions = vec![Instruction(Divine); DIGEST_LENGTH];
         assert_eq!(expected_instructions, instructions);
+    }
+
+    #[test]
+    fn break_gets_turned_into_labelled_instruction() {
+        let instructions = triton_asm![break];
+        let expected_instructions = vec![Breakpoint];
+        assert_eq!(expected_instructions, instructions);
+    }
+
+    #[test]
+    fn break_does_not_propagate_to_full_program() {
+        let program = triton_program! { break halt break };
+        assert_eq!(1, program.len_bwords());
+    }
+
+    #[test]
+    fn printing_program_includes_debug_information() {
+        let source_code = "\
+            call foo\n\
+            break\n\
+            call bar\n\
+            halt\n\
+            foo:\n\
+            break\n\
+            call baz\n\
+            push 1\n\
+            nop\n\
+            return\n\
+            baz:\n\
+            hash\n\
+            return\n\
+            nop\n\
+            pop\n\
+            bar:\n\
+            divine\n\
+            skiz\n\
+            split\n\
+            break\n\
+            return\n\
+        ";
+        let program = Program::from_code(source_code).unwrap();
+        let printed_program = format!("{program}");
+        assert_eq!(source_code, &printed_program);
+        println!("{program}");
     }
 }

@@ -1,4 +1,3 @@
-use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::fmt::Formatter;
@@ -49,6 +48,8 @@ pub enum LabelledInstruction {
 
     /// Labels look like "`<name>:`" and are translated into absolute addresses.
     Label(String),
+
+    Breakpoint,
 }
 
 impl LabelledInstruction {
@@ -77,6 +78,7 @@ impl Display for LabelledInstruction {
         match self {
             LabelledInstruction::Instruction(instr) => write!(f, "{instr}"),
             LabelledInstruction::Label(label_name) => write!(f, "{label_name}:"),
+            LabelledInstruction::Breakpoint => write!(f, "break"),
         }
     }
 }
@@ -257,9 +259,10 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
         ((opcode >> bit_number) & 1).into()
     }
 
-    fn map_call_address<F, NewDest: PartialEq + Default>(&self, f: F) -> AnInstruction<NewDest>
+    pub(crate) fn map_call_address<F, NewDest>(&self, f: F) -> AnInstruction<NewDest>
     where
         F: Fn(&Dest) -> NewDest,
+        NewDest: PartialEq + Default,
     {
         match self {
             Pop => Pop,
@@ -407,6 +410,7 @@ impl Instruction {
                 Err(_) => None,
             },
             Swap(_) => match maybe_ord_16 {
+                Ok(ST0) => None,
                 Ok(ord_16) => Some(Swap(ord_16)),
                 Err(_) => None,
             },
@@ -445,52 +449,13 @@ impl TryFrom<usize> for Instruction {
     }
 }
 
-/// Convert a program with labels to a program with absolute addresses.
-pub fn convert_all_labels_to_addresses(program: &[LabelledInstruction]) -> Vec<Instruction> {
-    let label_map = build_label_to_address_map(program);
-    program
-        .iter()
-        .flat_map(|instruction| convert_label_to_address_for_instruction(instruction, &label_map))
-        .collect()
-}
+impl TryFrom<BFieldElement> for Instruction {
+    type Error = anyhow::Error;
 
-pub(crate) fn build_label_to_address_map(program: &[LabelledInstruction]) -> HashMap<String, u64> {
-    use LabelledInstruction::*;
-
-    let mut label_map = HashMap::new();
-    let mut instruction_pointer = 0;
-
-    for labelled_instruction in program.iter() {
-        match labelled_instruction {
-            Label(label) => match label_map.entry(label.clone()) {
-                Entry::Occupied(_) => panic!("Duplicate label: {label}"),
-                Entry::Vacant(entry) => {
-                    entry.insert(instruction_pointer);
-                }
-            },
-            Instruction(instruction) => instruction_pointer += instruction.size() as u64,
-        }
+    fn try_from(opcode: BFieldElement) -> Result<Self> {
+        let opcode = u32::try_from(opcode)?;
+        opcode.try_into()
     }
-    label_map
-}
-
-/// Convert a single instruction with a labelled call target to an instruction with an absolute
-/// address as the call target. Discards all labels.
-fn convert_label_to_address_for_instruction(
-    labelled_instruction: &LabelledInstruction,
-    label_map: &HashMap<String, u64>,
-) -> Option<Instruction> {
-    let LabelledInstruction::Instruction(instruction) = labelled_instruction else {
-        return None;
-    };
-
-    let instruction_with_absolute_address = instruction.map_call_address(|label| {
-        label_map
-            .get(label)
-            .map(|&address| BFieldElement::new(address))
-            .unwrap_or_else(|| panic!("Label not found: {label}"))
-    });
-    Some(instruction_with_absolute_address)
 }
 
 const fn all_instructions_without_args() -> [AnInstruction<BFieldElement>; Instruction::COUNT] {
@@ -717,14 +682,18 @@ mod tests {
 
     #[test]
     fn change_arguments_of_various_instructions() {
-        let push = Instruction::Push(0_u64.into()).change_arg(7_u64.into());
-        let dup = Instruction::Dup(ST0).change_arg(1024_u64.into());
-        let swap = Instruction::Swap(ST0).change_arg(1337_u64.into());
-        let pop = Instruction::Pop.change_arg(7_u64.into());
+        let push = Push(0_u64.into()).change_arg(7_u64.into());
+        let dup = Dup(ST0).change_arg(1024_u64.into());
+        let swap = Swap(ST0).change_arg(1337_u64.into());
+        let swap_0 = Swap(ST0).change_arg(0_u64.into());
+        let swap_1 = Swap(ST0).change_arg(1_u64.into());
+        let pop = Pop.change_arg(7_u64.into());
 
         assert!(push.is_some());
         assert!(dup.is_none());
         assert!(swap.is_none());
+        assert!(swap_0.is_none());
+        assert!(swap_1.is_some());
         assert!(pop.is_none());
     }
 

@@ -1,4 +1,6 @@
+use std::collections::hash_map::Entry;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::fmt::Display;
 use std::fmt::Formatter;
 use std::fmt::Result as FmtResult;
@@ -20,34 +22,51 @@ use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
 use crate::aet::AlgebraicExecutionTrace;
 use crate::ensure_eq;
 use crate::error::InstructionError::InstructionPointerOverflow;
-use crate::instruction::build_label_to_address_map;
-use crate::instruction::convert_all_labels_to_addresses;
 use crate::instruction::Instruction;
 use crate::instruction::LabelledInstruction;
 use crate::parser::parse;
 use crate::parser::to_labelled_instructions;
 use crate::vm::VMState;
 
-/// A `Program` is a `Vec<Instruction>` that contains duplicate elements for instructions with a
-/// size of 2. This means that the index in the vector corresponds to the VM's
-/// `instruction_pointer`. These duplicate values should most often be skipped/ignored,
-/// e.g. when pretty-printing.
-#[derive(Debug, Clone, Default, PartialEq, Eq, GetSize, Serialize, Deserialize)]
+/// A program for Triton VM.
+/// It can be
+/// [`run`](Program::run),
+/// [`debugged`](Program::debug)
+/// (also the RAM-friendlier [`debug_terminal_state`](Program::debug_terminal_state)),
+/// [`profiled`](Program::profile),
+/// and its execution can be [`traced`](Program::trace_execution).
+///
+/// [`Hashing`](Program::hash) a program under [`Tip5`][tip5] yields a [`Digest`] that can be used
+/// in a [`Claim`](crate::Claim), _i.e._, is consistent with Triton VM's [program attestation].
+///
+/// A program may contain debug information, such as label names and breakpoints.
+/// Access this information through methods [`label_for_address()`][label_for_address] and
+/// [`is_breakpoint()`][is_breakpoint]. Some operations, most notably
+/// [BField-encoding](BFieldCodec::encode), discard this debug information.
+///
+/// [program attestation]: https://triton-vm.org/spec/program-attestation.html
+/// [tip5]: twenty_first::shared_math::tip5::Tip5
+/// [label_for_address]: Program::label_for_address
+/// [is_breakpoint]: Program::is_breakpoint
+#[derive(Debug, Clone, Default, Eq, GetSize, Serialize, Deserialize)]
 pub struct Program {
     pub instructions: Vec<Instruction>,
+    address_to_label: HashMap<u64, String>,
+    breakpoints: Vec<bool>,
 }
 
 impl Display for Program {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
-        let mut stream = self.instructions.iter();
-        while let Some(instruction) = stream.next() {
+        for instruction in self.labelled_instructions() {
             writeln!(f, "{instruction}")?;
-            // 2-word instructions already print their arguments
-            for _ in 1..instruction.size() {
-                stream.next();
-            }
         }
         Ok(())
+    }
+}
+
+impl PartialEq for Program {
+    fn eq(&self, other: &Program) -> bool {
+        self.instructions.eq(&other.instructions)
     }
 }
 
@@ -60,34 +79,35 @@ impl BFieldCodec for Program {
         let sequence = &sequence[1..];
         ensure_eq!(program_length, sequence.len());
 
-        let mut idx = 0;
+        let mut read_idx = 0;
         let mut instructions = Vec::with_capacity(program_length);
-        while idx < program_length {
-            let opcode: u32 = match sequence[idx].value().try_into() {
-                Ok(opcode) => opcode,
-                Err(_) => bail!("Invalid opcode {} at index {idx}.", sequence[idx].value()),
-            };
-            let instruction: Instruction = opcode.try_into()?;
-            if !instruction.has_arg() {
-                instructions.push(instruction);
-            } else if instructions.len() + 1 >= program_length {
-                bail!("Missing argument for instruction {instruction} at index {idx}.");
-            } else {
-                let instruction = match instruction.change_arg(sequence[idx + 1]) {
-                    Some(instruction) => instruction,
-                    None => {
-                        bail!("Invalid argument for instruction {instruction} at index {idx}.")
-                    }
-                };
-                // Instructions with argument are recorded twice to align the `instruction_pointer`.
-                instructions.push(instruction);
-                instructions.push(instruction);
+        while read_idx < program_length {
+            let opcode = sequence[read_idx];
+            let mut instruction: Instruction = opcode
+                .try_into()
+                .expect("Invalid opcode {opcode} at index {idx}.");
+            if instruction.has_arg() && instructions.len() + instruction.size() > program_length {
+                bail!("Missing argument for instruction {instruction} at index {read_idx}.");
             }
-            idx += instruction.size();
+            if instruction.has_arg() {
+                let arg = sequence[read_idx + 1];
+                instruction = instruction
+                    .change_arg(arg)
+                    .expect("Invalid argument {arg} for instruction {instruction} at index {idx}.");
+            }
+
+            instructions.extend(vec![instruction; instruction.size()]);
+            read_idx += instruction.size();
         }
 
-        ensure_eq!(idx, program_length);
-        Ok(Box::new(Program { instructions }))
+        ensure_eq!(read_idx, program_length);
+        ensure_eq!(instructions.len(), program_length);
+
+        Ok(Box::new(Program {
+            instructions,
+            address_to_label: HashMap::new(),
+            breakpoints: vec![],
+        }))
     }
 
     fn encode(&self) -> Vec<BFieldElement> {
@@ -132,14 +152,91 @@ impl IntoIterator for Program {
 }
 
 impl Program {
-    /// Create a `Program` from a slice of `Instruction`.
+    /// Create a `Program` from a slice of `LabelledInstruction`s.
     pub fn new(labelled_instructions: &[LabelledInstruction]) -> Self {
-        let instructions = convert_all_labels_to_addresses(labelled_instructions)
-            .iter()
-            .flat_map(|&instr| vec![instr; instr.size()])
-            .collect();
+        let label_to_address = Self::build_label_to_address_map(labelled_instructions);
+        let instructions =
+            Self::turn_labels_into_addresses(labelled_instructions, &label_to_address);
+        let address_to_label = Self::flip_map(label_to_address);
+        let breakpoints = Self::extract_breakpoints(labelled_instructions);
 
-        Program { instructions }
+        assert_eq!(instructions.len(), breakpoints.len());
+        Program {
+            instructions,
+            address_to_label,
+            breakpoints,
+        }
+    }
+
+    fn build_label_to_address_map(program: &[LabelledInstruction]) -> HashMap<String, u64> {
+        use LabelledInstruction::*;
+
+        let mut label_map = HashMap::new();
+        let mut instruction_pointer = 0;
+
+        for labelled_instruction in program.iter() {
+            match labelled_instruction {
+                Label(label) => match label_map.entry(label.clone()) {
+                    Entry::Occupied(_) => panic!("Duplicate label: {label}"),
+                    Entry::Vacant(entry) => {
+                        entry.insert(instruction_pointer);
+                    }
+                },
+                Instruction(instruction) => instruction_pointer += instruction.size() as u64,
+                Breakpoint => (),
+            }
+        }
+        label_map
+    }
+
+    fn turn_labels_into_addresses(
+        labelled_instructions: &[LabelledInstruction],
+        label_to_address: &HashMap<String, u64>,
+    ) -> Vec<Instruction> {
+        labelled_instructions
+            .iter()
+            .flat_map(|instr| Self::turn_label_to_address_for_instruction(instr, label_to_address))
+            .flat_map(|instr| vec![instr; instr.size()])
+            .collect()
+    }
+
+    fn turn_label_to_address_for_instruction(
+        labelled_instruction: &LabelledInstruction,
+        label_map: &HashMap<String, u64>,
+    ) -> Option<Instruction> {
+        let LabelledInstruction::Instruction(instruction) = labelled_instruction else {
+            return None;
+        };
+
+        let instruction_with_absolute_address = instruction.map_call_address(|label| {
+            label_map
+                .get(label)
+                .map(|&address| BFieldElement::new(address))
+                .unwrap_or_else(|| panic!("Label not found: {label}"))
+        });
+        Some(instruction_with_absolute_address)
+    }
+
+    fn flip_map<Key, Value: Eq + Hash>(map: HashMap<Key, Value>) -> HashMap<Value, Key> {
+        map.into_iter().map(|(key, value)| (value, key)).collect()
+    }
+
+    fn extract_breakpoints(labelled_instructions: &[LabelledInstruction]) -> Vec<bool> {
+        let mut breakpoints = vec![];
+        let mut break_before_next_instruction = false;
+
+        for instruction in labelled_instructions {
+            match instruction {
+                LabelledInstruction::Breakpoint => break_before_next_instruction = true,
+                LabelledInstruction::Instruction(instruction) => {
+                    breakpoints.extend(vec![break_before_next_instruction; instruction.size()]);
+                    break_before_next_instruction = false;
+                }
+                _ => (),
+            }
+        }
+
+        breakpoints
     }
 
     /// Create a `Program` by parsing source code.
@@ -150,11 +247,55 @@ impl Program {
             .map_err(|err| anyhow!("{err}"))
     }
 
-    /// Convert a `Program` to a `Vec<BFieldElement>`.
+    pub fn labelled_instructions(&self) -> Vec<LabelledInstruction> {
+        let call_targets = self.call_targets();
+        let instructions_with_labels = self.instructions.iter().map(|instruction| {
+            instruction.map_call_address(|&address| self.label_for_address(address.value()))
+        });
+
+        let mut labelled_instructions = vec![];
+        let mut address = 0;
+        let mut instruction_stream = instructions_with_labels.into_iter();
+        while let Some(instruction) = instruction_stream.next() {
+            let instruction_size = instruction.size() as u64;
+            if call_targets.contains(&address) {
+                let label = self.label_for_address(address);
+                let label = LabelledInstruction::Label(label);
+                labelled_instructions.push(label);
+            }
+            if self.is_breakpoint(address) {
+                labelled_instructions.push(LabelledInstruction::Breakpoint);
+            }
+            labelled_instructions.push(LabelledInstruction::Instruction(instruction));
+
+            for _ in 1..instruction_size {
+                instruction_stream.next();
+            }
+            address += instruction_size;
+        }
+        labelled_instructions
+    }
+
+    fn call_targets(&self) -> HashSet<u64> {
+        self.instructions
+            .iter()
+            .filter_map(|instruction| match instruction {
+                Instruction::Call(address) => Some(address.value()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    pub fn is_breakpoint(&self, address: u64) -> bool {
+        let address: usize = address.try_into().unwrap();
+        self.breakpoints.get(address).unwrap_or(&false).to_owned()
+    }
+
+    /// Turn the program into a sequence of `BFieldElement`s. Each instruction is encoded as its
+    /// opcode, followed by its argument (if any).
     ///
-    /// Every single-word instruction is converted to a single word.
-    ///
-    /// Every double-word instruction is converted to two words.
+    /// **Note**: This is _almost_ (but not quite!) equivalent to [encoding](BFieldCodec::encode)
+    /// the program. For that, use [`encode()`](Self::encode()) instead.
     pub fn to_bwords(&self) -> Vec<BFieldElement> {
         self.clone()
             .into_iter()
@@ -317,60 +458,88 @@ impl Program {
         }
     }
 
-    /// Run Triton VM on the given program with the given public and secret input,
-    /// but record the number of cycles spent in each callable block of instructions.
-    /// This function returns a Result wrapping a program profiler report, which is a
-    /// Vec of [`ProfileLine`]s.
-    ///
-    /// Note that the program is given as a list of [`LabelledInstruction`]s rather
-    /// than as a [`Program`] because the labels are needed to build a meaningful profiler
-    /// report.
+    /// Run Triton VM with the given public and secret input, but record the number of cycles spent
+    /// in each callable block of instructions. This function returns a Result wrapping a program
+    /// profiler report, which is a Vec of [`ProfileLine`]s.
     ///
     /// See also [`run`](Self::run), [`trace_execution`](Self::trace_execution) and
     /// [`debug`](Self::debug).
     pub fn profile(
-        labelled_instructions: &[LabelledInstruction],
+        &self,
         public_input: PublicInput,
         non_determinism: NonDeterminism<BFieldElement>,
     ) -> Result<(Vec<BFieldElement>, Vec<ProfileLine>)> {
-        let address_to_label_map = build_label_to_address_map(labelled_instructions)
-            .into_iter()
-            .map(|(label, address)| (address, label))
-            .collect::<HashMap<_, _>>();
-        let mut call_stack = vec![];
-        let mut profile = vec![];
-
-        let program = Self::new(labelled_instructions);
-        let mut state = VMState::new(&program, public_input, non_determinism);
+        let mut profiler = VMProfiler::new();
+        let mut state = VMState::new(self, public_input, non_determinism);
         while !state.halting {
             if let Instruction::Call(address) = state.current_instruction()? {
-                let address = address.value();
-                let label = address_to_label_map[&address].to_owned();
-                let profile_line = ProfileLine::new(call_stack.len(), label, 0);
-                let profile_line_number = profile.len();
-                profile.push(profile_line);
-                call_stack.push((state.cycle_count, profile_line_number));
+                let label = self.label_for_address(address.value());
+                profiler.enter_span_with_label_at_cycle(label, state.cycle_count);
             }
-
             if let Instruction::Return = state.current_instruction()? {
-                let (clk_start, profile_line_number) = call_stack.pop().unwrap();
-                profile[profile_line_number].cycle_count = state.cycle_count - clk_start;
+                profiler.exit_span_at_cycle(state.cycle_count);
             }
 
             state.step()?;
         }
 
-        for (clk_start, profile_line_number) in call_stack {
-            profile[profile_line_number].cycle_count = state.cycle_count - clk_start;
-            profile[profile_line_number].label += " (open)";
-        }
-        profile.push(ProfileLine::new(0, "total".to_string(), state.cycle_count));
+        let report = profiler.report_at_cycle(state.cycle_count);
+        Ok((state.public_output, report))
+    }
 
-        Ok((state.public_output, profile))
+    /// The label for the given address, or a deterministic, unique substitute if no label is found.
+    /// Uniqueness is relevant for printing and subsequent parsing, avoiding duplicate labels.
+    pub fn label_for_address(&self, address: u64) -> String {
+        let substitute_for_unknown_label = format! {"address_{address}"};
+        self.address_to_label
+            .get(&address)
+            .unwrap_or(&substitute_for_unknown_label)
+            .to_owned()
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+struct VMProfiler {
+    call_stack: Vec<(u32, usize)>,
+    profile: Vec<ProfileLine>,
+}
+
+impl VMProfiler {
+    fn new() -> Self {
+        VMProfiler {
+            call_stack: vec![],
+            profile: vec![],
+        }
+    }
+
+    fn enter_span_with_label_at_cycle(&mut self, label: String, cycle: u32) {
+        let call_stack_depth = self.call_stack.len();
+        let profile_line = ProfileLine::new(call_stack_depth, label, 0);
+        let profile_line_number = self.profile.len();
+        self.profile.push(profile_line);
+        self.call_stack.push((cycle, profile_line_number));
+    }
+
+    fn exit_span_at_cycle(&mut self, cycle: u32) {
+        let Some((clk_start, profile_line_number)) = self.call_stack.pop() else {
+            return;
+        };
+        self.profile[profile_line_number].cycle_count = cycle - clk_start;
+    }
+
+    fn report_at_cycle(mut self, cycle: u32) -> Vec<ProfileLine> {
+        for (clk_start, profile_line_number) in self.call_stack {
+            self.profile[profile_line_number].cycle_count = cycle - clk_start;
+            self.profile[profile_line_number].label += " (open)";
+        }
+        self.profile
+            .push(ProfileLine::new(0, "total".to_string(), cycle));
+        self.profile
     }
 }
 
 /// A single line in a profile report for profiling Triton Assembly programs.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ProfileLine {
     pub call_stack_depth: usize,
     pub label: String,
@@ -559,9 +728,8 @@ mod tests {
     use rand::Rng;
     use twenty_first::shared_math::tip5::Tip5;
 
-    use crate::example_programs::calculate_new_mmr_peaks_from_append_with_safe_lists;
+    use crate::example_programs::CALCULATE_NEW_MMR_PEAKS_FROM_APPEND_WITH_SAFE_LISTS;
     use crate::parser::tests::program_gen;
-    use crate::triton_asm;
     use crate::triton_program;
 
     use super::*;
@@ -705,10 +873,8 @@ mod tests {
 
     #[test]
     fn test_profile() {
-        let labelled_instructions = calculate_new_mmr_peaks_from_append_with_safe_lists();
-        let (profile_output, profile) =
-            Program::profile(&labelled_instructions, [].into(), [].into()).unwrap();
-        let program = Program::new(&labelled_instructions);
+        let program = CALCULATE_NEW_MMR_PEAKS_FROM_APPEND_WITH_SAFE_LISTS.clone();
+        let (profile_output, profile) = program.profile([].into(), [].into()).unwrap();
         let debug_terminal_state = program
             .debug_terminal_state([].into(), [].into(), None, None)
             .unwrap();
@@ -727,7 +893,7 @@ mod tests {
 
     #[test]
     fn test_profile_with_open_calls() {
-        let labelled_instructions = triton_asm! {
+        let program = triton_program! {
             push 2 call outer_fn
             outer_fn:
                 call inner_fn
@@ -735,7 +901,7 @@ mod tests {
             inner_fn:
                 push -1 add return
         };
-        let (_, profile) = Program::profile(&labelled_instructions, [].into(), [].into()).unwrap();
+        let (_, profile) = program.profile([].into(), [].into()).unwrap();
 
         println!();
         for line in profile.iter() {
@@ -745,5 +911,52 @@ mod tests {
 
         let maybe_open_call = profile.iter().find(|line| line.label.contains("(open)"));
         assert!(maybe_open_call.is_some());
+    }
+
+    #[test]
+    #[should_panic(expected = "Jump stack is empty")]
+    fn profile_with_too_many_returns() {
+        let program = triton_program! {
+            call foo return halt
+            foo: return
+        };
+        let _ = program.profile([].into(), [].into()).unwrap();
+    }
+
+    #[test]
+    fn breakpoints_propagate_to_debug_information_as_expected() {
+        let program = triton_program! {
+            break push 1 push 2
+            break break break break
+            pop pop hash halt
+            break // no effect
+        };
+
+        assert!(program.is_breakpoint(0));
+        assert!(!program.is_breakpoint(2));
+        assert!(program.is_breakpoint(4));
+        assert!(!program.is_breakpoint(5));
+        assert!(!program.is_breakpoint(6));
+        assert!(!program.is_breakpoint(7));
+
+        // going beyond the length of the program must not break things
+        assert!(!program.is_breakpoint(8));
+        assert!(!program.is_breakpoint(9));
+    }
+
+    #[test]
+    fn print_program_without_any_debug_information() {
+        let program = triton_program! {
+            call foo
+            call bar
+            call baz
+            halt
+            foo: nop nop return
+            bar: call baz return
+            baz: push 1 return
+        };
+        let encoding = program.encode();
+        let program = Program::decode(&encoding).unwrap();
+        println!("{program}");
     }
 }
