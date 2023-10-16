@@ -28,10 +28,27 @@ use crate::parser::parse;
 use crate::parser::to_labelled_instructions;
 use crate::vm::VMState;
 
-/// A `Program` is a `Vec<Instruction>` that contains duplicate elements for instructions with a
-/// size of 2. This means that the index in the vector corresponds to the VM's
-/// `instruction_pointer`. These duplicate values should most often be skipped/ignored,
-/// e.g. when pretty-printing.
+/// A program for Triton VM.
+/// It can be
+/// [`run`](Program::run),
+/// [`debugged`](Program::debug)
+/// (also the RAM-friendlier [`debug_terminal_state`](Program::debug_terminal_state)),
+/// [`profiled`](Program::profile),
+/// and its execution can be [`traced`](Program::trace_execution).
+///
+/// [`Hashing`](Program::hash) a program under [`Tip5`][tip5] yields a [`Digest`] that can be used
+/// in a [`Claim`](crate::Claim), _i.e._, is consistent with Triton VM's [program attestation].
+///
+/// A program may contain debug information, such as label names and breakpoints.
+/// It is recommended to access this information through methods
+/// [`label_for_address()`][label_for_address] and [`is_breakpoint()`][is_breakpoint].
+/// Some operations, most notably [BField-encoding](BFieldCodec::encode), discard this debug
+/// information.
+///
+/// [program attestation]: https://triton-vm.org/spec/program-attestation.html
+/// [tip5]: twenty_first::shared_math::tip5::Tip5
+/// [label_for_address]: Program::label_for_address
+/// [is_breakpoint]: Program::is_breakpoint
 #[derive(Debug, Clone, Default, Eq, GetSize, Serialize, Deserialize)]
 pub struct Program {
     pub instructions: Vec<Instruction>,
@@ -276,11 +293,11 @@ impl Program {
         self.breakpoints.get(address).unwrap_or(&false).to_owned()
     }
 
-    /// Convert a `Program` to a `Vec<BFieldElement>`.
+    /// Turn the program into a sequence of `BFieldElement`s. Each instruction is encoded as its
+    /// opcode, followed by its argument (if any).
     ///
-    /// Every single-word instruction is converted to a single word.
-    ///
-    /// Every double-word instruction is converted to two words.
+    /// **Note**: This is _almost_ (but not quite!) equivalent to [encoding](BFieldCodec::encode)
+    /// the program. For that, use [`encode()`](Self::encode()) instead.
     pub fn to_bwords(&self) -> Vec<BFieldElement> {
         self.clone()
             .into_iter()
@@ -472,6 +489,8 @@ impl Program {
         Ok((state.public_output, report))
     }
 
+    /// The label for the given address, or a deterministic, unique substitute if no label is found.
+    /// Uniqueness is relevant for printing and subsequent parsing, avoiding duplicate labels.
     pub fn label_for_address(&self, address: u64) -> String {
         let substitute_for_unknown_label = format! {"address_{address}"};
         self.address_to_label
