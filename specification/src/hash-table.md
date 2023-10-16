@@ -17,9 +17,7 @@ A summary of the four instructions' mechanics:
     1. overwrites the processor's stack registers `state_0` through `state_4` with 0, and
     1. overwrites the processor's stack registers `state_5` through `state_9` with the hash coprocessor's registers `state_0` through `state_4`.
 - Instruction `sponge_init`
-    1. sets all the hash coprocessor's rate registers (`state_0` through `state_9`) to equal the processor's stack registers `state_0` through `state_9`,
-    1. sets all the hash coprocessor's capacity registers (`state_10` through `state_15`) to 0, and
-    1. executes the 5 rounds of the Tip5 permutation.
+    1. sets all the hash coprocessor's registers (`state_0` through `state_15`) to 0.
 - Instruction `sponge_absorb`
     1. overwrites the hash coprocessor's rate registers (`state_0` through `state_9`) with the processor's stack registers `state_0` through `state_9`, and
     1. executes the 5 rounds of the Tip5 permutation.
@@ -135,7 +133,7 @@ Both types of challenges are X-field elements, _i.e._, elements of $\mathbb{F}_{
 1. If the `Mode` is `program_hashing`, `hash`, or `pad`, then the current instruction is the opcode of `hash`.
 1. If the `Mode` is `sponge`, then the current instruction is a Sponge instruction.
 1. If the `Mode` is `pad`, then the `round_no` is 0.
-1. If the current instruction is `sponge_init`, then the `round_no` is 0.
+1. If the current instruction `CI` is `sponge_init`, then the `round_no` is 0.
 1. For `i` $\in\{10, \dots, 15\}$:
 If the current instruction `CI` is `sponge_init`, then register `state_i` is 0.
 (_Note_: the remaining registers, corresponding to the rate, are guaranteed to be 0 through the Evaluation Argument “Sponge” with the processor.)
@@ -159,6 +157,7 @@ Let `state_i_hi_limbs_minus_2_pow_32` be an alias for that difference:
 1. `(Mode - 0)·(Mode - 1)·(Mode - 3)`<br />
     ` ·(CI - opcode(sponge_init))·(CI - opcode(sponge_absorb))·(CI - opcode(sponge_squeeze))`
 1. `(Mode - 1)·(Mode - 2)·(Mode - 3)·(round_no - 0)`
+1. `(CI - opcode(hash))·(CI - opcode(sponge_absorb))·(CI - opcode(sponge_squeeze))·(round_no - 0)`
 1. For `i` $\in\{10, \dots, 15\}$:<br />
     `·(CI - opcode(hash))·(CI - opcode(sponge_absorb))·(CI - opcode(sponge_squeeze))`<br />
     `·(state_i - 0)`
@@ -178,7 +177,7 @@ define `state_i_hi_limbs_minus_2_pow_32 := 2^32 - 1 - 2^16·state_i_highest_lk_i
 1. If the `Mode` is not `pad` and the current instruction `CI` is not `sponge_init` and the `round_no` is not 5, then the `round_no` increments by 1.
 1. If the `Mode` in the next row is `program_hashing` and the `round_no` in the next row is 0, then receive a chunk of instructions with respect to challenges 🪣 and 🪑.
 1. If the `Mode` changes from `program_hashing`, then the [Evaluation Argument](evaluation-argument.md) of `state_0` through `state_4` with respect to indeterminate 🥬 equals the public program digest challenge, 🫑.
-1. If the `Mode` is `program_hashing` and the `Mode` in the next row is `sponge`, then the current instructions in the next row is `sponge_init`.
+1. If the `Mode` is `program_hashing` and the `Mode` in the next row is `sponge`, then the current instruction in the next row is `sponge_init`.
 1. If the `round_no` is not 5 and the current instruction `CI` is not `sponge_init`, then the current instruction does not change.
 1. If the `round_no` is not 5 and the current instruction `CI` is not `sponge_init`, then the `Mode` does not change.
 1. If the `Mode` is `sponge`, then the `Mode` in the next row is `sponge` or `hash` or `pad`.
