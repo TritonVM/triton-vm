@@ -204,18 +204,10 @@ impl AlgebraicExecutionTrace {
 
     pub fn record_co_processor_call(&mut self, co_processor_call: CoProcessorCall) {
         match co_processor_call {
-            Tip5Trace(Instruction::Hash, tip5_trace) => self.append_hash_trace(*tip5_trace),
+            Tip5Trace(Instruction::Hash, trace) => self.append_hash_trace(*trace),
             SpongeStateReset => self.append_initial_sponge_state(),
-            Tip5Trace(instruction, tip5_trace) => {
-                self.append_sponge_trace(instruction, *tip5_trace)
-            }
-            SingleU32TableEntry(u32_entry) => {
-                self.record_u32_table_entry(u32_entry);
-            }
-            DoubleU32TableEntry([u32_entry_0, u32_entry_1]) => {
-                self.record_u32_table_entry(u32_entry_0);
-                self.record_u32_table_entry(u32_entry_1);
-            }
+            Tip5Trace(instruction, trace) => self.append_sponge_trace(instruction, *trace),
+            U32Call(u32_entry) => self.record_u32_table_entry(u32_entry),
         }
     }
 

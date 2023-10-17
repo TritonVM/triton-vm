@@ -366,9 +366,9 @@ impl Program {
                 false => bail!(InstructionPointerOverflow(state.instruction_pointer)),
             }
 
-            let maybe_co_processor_call = state.step()?;
-            if let Some(co_processor_call) = maybe_co_processor_call {
-                aet.record_co_processor_call(co_processor_call);
+            let co_processor_calls = state.step()?;
+            for call in co_processor_calls {
+                aet.record_co_processor_call(call);
             }
         }
 
