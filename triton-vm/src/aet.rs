@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::ops::AddAssign;
 
 use anyhow::anyhow;
+use anyhow::bail;
 use anyhow::Result;
 use itertools::Itertools;
 use ndarray::s;
@@ -18,6 +19,7 @@ use twenty_first::shared_math::tip5;
 use twenty_first::shared_math::tip5::Tip5;
 use twenty_first::util_types::algebraic_hasher::SpongeHasher;
 
+use crate::error::InstructionError::InstructionPointerOverflow;
 use crate::instruction::Instruction;
 use crate::program::Program;
 use crate::stark::StarkHasher;
@@ -197,6 +199,19 @@ impl AlgebraicExecutionTrace {
     }
 
     pub fn record_state(&mut self, state: &VMState) -> Result<()> {
+        self.record_instruction_lookup(state.instruction_pointer)?;
+        self.append_state_to_processor_trace(state)
+    }
+
+    fn record_instruction_lookup(&mut self, instruction_pointer: usize) -> Result<()> {
+        if instruction_pointer >= self.instruction_multiplicities.len() {
+            bail!(InstructionPointerOverflow(instruction_pointer));
+        }
+        self.instruction_multiplicities[instruction_pointer] += 1;
+        Ok(())
+    }
+
+    fn append_state_to_processor_trace(&mut self, state: &VMState) -> Result<()> {
         self.processor_trace
             .push_row(state.to_processor_row().view())
             .map_err(|e| anyhow!(e))
