@@ -60,3 +60,7 @@ harness = false
 [[bench]]
 name = "proof_size"
 harness = false
+
+[[bench]]
+name = "trace_mmr_new_peak_calculation"
+harness = false
