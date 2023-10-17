@@ -217,7 +217,7 @@ impl<'pgm> VMState<'pgm> {
             Push(field_element) => self.push(field_element),
             Divine => self.divine()?,
             Dup(stack_element) => self.dup(stack_element),
-            Swap(stack_element) => self.swap(stack_element),
+            Swap(stack_element) => self.swap(stack_element)?,
             Nop => self.nop(),
             Skiz => self.skiz()?,
             Call(address) => self.call(address),
@@ -289,10 +289,13 @@ impl<'pgm> VMState<'pgm> {
         None
     }
 
-    fn swap(&mut self, stack_register: OpStackElement) -> Option<CoProcessorCall> {
+    fn swap(&mut self, stack_register: OpStackElement) -> Result<Option<CoProcessorCall>> {
+        if stack_register == ST0 {
+            bail!(SwapST0);
+        }
         self.op_stack.swap_top_with(stack_register);
         self.instruction_pointer += 2;
-        None
+        Ok(None)
     }
 
     fn nop(&mut self) -> Option<CoProcessorCall> {

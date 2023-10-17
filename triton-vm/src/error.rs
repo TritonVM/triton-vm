@@ -17,6 +17,7 @@ pub enum InstructionError {
     JumpStackIsEmpty,
     AssertionFailed(usize, u32, BFieldElement),
     VectorAssertionFailed(usize, u32, OpStackElement, BFieldElement, BFieldElement),
+    SwapST0,
     InverseOfZero,
     DivisionByZero,
     LogarithmOfZero,
@@ -43,6 +44,7 @@ impl Display for InstructionError {
                 write!(f, "{rhs} == op_stack[{failing_index_rhs}]. ")?;
                 write!(f, "ip: {ip}, clk: {clk}")
             }
+            SwapST0 => write!(f, "Cannot swap stack element 0 with itself"),
             InverseOfZero => write!(f, "0 does not have a multiplicative inverse"),
             DivisionByZero => write!(f, "Division by 0 is impossible"),
             LogarithmOfZero => write!(f, "The logarithm of 0 does not exist"),
@@ -61,7 +63,11 @@ mod tests {
     use proptest::prelude::*;
     use proptest_arbitrary_interop::arb;
 
+    use crate::instruction::AnInstruction::*;
+    use crate::instruction::LabelledInstruction;
+    use crate::op_stack::OpStackElement::ST0;
     use crate::triton_program;
+    use crate::Program;
 
     use super::*;
 
@@ -108,6 +114,16 @@ mod tests {
             push 4 push 3 push 2 push 10 push 0
             assert_vector halt
         };
+        program.run([].into(), [].into()).unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected = "swap stack element 0")]
+    fn swap_st0() {
+        // The parser rejects this program. Therefore, construct it manually.
+        let swap_0 = LabelledInstruction::Instruction(Swap(ST0));
+        let halt = LabelledInstruction::Instruction(Halt);
+        let program = Program::new(&[swap_0, halt]);
         program.run([].into(), [].into()).unwrap();
     }
 
