@@ -75,7 +75,7 @@ pub struct VMState<'pgm> {
     pub previous_instruction: BFieldElement,
 
     /// RAM pointer
-    pub ramp: u64,
+    pub ram_pointer: u64,
 
     /// The current state of the one, global Sponge that can be manipulated using instructions
     /// `SpongeInit`, `SpongeAbsorb`, and `SpongeSqueeze`. Instruction `SpongeInit` resets the
@@ -127,7 +127,7 @@ impl<'pgm> VMState<'pgm> {
             cycle_count: 0,
             instruction_pointer: 0,
             previous_instruction: Default::default(),
-            ramp: 0,
+            ram_pointer: 0,
             sponge_state: Default::default(),
             halting: false,
         }
@@ -351,7 +351,7 @@ impl<'pgm> VMState<'pgm> {
         let ram_pointer = self.op_stack.peek_at(ST0);
         let ram_value = self.memory_get(&ram_pointer);
         self.op_stack.push(ram_value);
-        self.ramp = ram_pointer.value();
+        self.ram_pointer = ram_pointer.value();
         self.instruction_pointer += 1;
         vec![]
     }
@@ -359,7 +359,7 @@ impl<'pgm> VMState<'pgm> {
     fn write_mem(&mut self) -> Result<Vec<CoProcessorCall>> {
         let ram_pointer = self.op_stack.peek_at(ST1);
         let ram_value = self.op_stack.pop()?;
-        self.ramp = ram_pointer.value();
+        self.ram_pointer = ram_pointer.value();
         self.ram.insert(ram_pointer, ram_value);
         self.instruction_pointer += 1;
         Ok(vec![])
@@ -682,7 +682,7 @@ impl<'pgm> VMState<'pgm> {
 
         let current_instruction = self.current_instruction().unwrap_or(Nop);
         let helper_variables = self.derive_helper_variables();
-        let ram_pointer = self.ramp.into();
+        let ram_pointer = self.ram_pointer.into();
 
         processor_row[CLK.base_table_index()] = (self.cycle_count as u64).into();
         processor_row[PreviousInstruction.base_table_index()] = self.previous_instruction;
