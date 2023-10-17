@@ -46,31 +46,26 @@ impl OpStack {
         Self { stack }
     }
 
-    /// Push an element onto the op-stack.
     pub(crate) fn push(&mut self, element: BFieldElement) {
         self.stack.push(element);
     }
 
-    /// Push an extension field element onto the op-stack.
     pub(crate) fn push_extension_field_element(&mut self, element: XFieldElement) {
         for coefficient in element.coefficients.into_iter().rev() {
             self.push(coefficient);
         }
     }
 
-    /// Pop an element from the op-stack.
     pub(crate) fn pop(&mut self) -> Result<BFieldElement> {
         self.stack.pop().ok_or_else(|| anyhow!(OpStackTooShallow))
     }
 
-    /// Pop an extension field element from the op-stack.
     pub(crate) fn pop_extension_field_element(&mut self) -> Result<XFieldElement> {
         let coefficients = self.pop_multiple()?;
         let element = XFieldElement::new(coefficients);
         Ok(element)
     }
 
-    /// Pop a u32 from the op-stack.
     pub(crate) fn pop_u32(&mut self) -> Result<u32> {
         let element = self.pop()?;
         element
@@ -78,7 +73,6 @@ impl OpStack {
             .map_err(|_| anyhow!(FailedU32Conversion(element)))
     }
 
-    /// Pop multiple elements from the op-stack.
     pub(crate) fn pop_multiple<const N: usize>(&mut self) -> Result<[BFieldElement; N]> {
         let mut popped_elements = [BFieldElement::zero(); N];
         for element in popped_elements.iter_mut() {
@@ -87,20 +81,17 @@ impl OpStack {
         Ok(popped_elements)
     }
 
-    /// Fetches the indicated stack element without modifying the stack.
     pub(crate) fn peek_at(&self, stack_element: OpStackElement) -> BFieldElement {
         let stack_element_index = usize::from(stack_element);
         let top_of_stack_index = self.stack.len() - 1;
         self.stack[top_of_stack_index - stack_element_index]
     }
 
-    /// Fetches the top-most extension field element without modifying the stack.
     pub(crate) fn peek_at_top_extension_field_element(&self) -> XFieldElement {
         let coefficients = [self.peek_at(ST0), self.peek_at(ST1), self.peek_at(ST2)];
         XFieldElement::new(coefficients)
     }
 
-    /// Swaps the top of the stack with the indicated stack element.
     pub(crate) fn swap_top_with(&mut self, stack_element: OpStackElement) {
         let stack_element_index = usize::from(stack_element);
         let top_of_stack_index = self.stack.len() - 1;
@@ -108,14 +99,12 @@ impl OpStack {
             .swap(top_of_stack_index, top_of_stack_index - stack_element_index);
     }
 
-    /// `true` if and only if the op-stack contains fewer elements than the number of
-    /// op-stack registers, _i.e._, [`OpStackElement::COUNT`].
     pub(crate) fn is_too_shallow(&self) -> bool {
         self.stack.len() < OpStackElement::COUNT
     }
 
-    /// The address of the next free address of the op-stack.
-    /// Equivalent to the current length of the op-stack.
+    /// The address of the next free address of the op-stack. Equivalent to the current length of
+    /// the op-stack.
     pub(crate) fn op_stack_pointer(&self) -> BFieldElement {
         (self.stack.len() as u64).into()
     }

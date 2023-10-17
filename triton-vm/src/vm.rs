@@ -40,7 +40,6 @@ pub const NUM_HELPER_VARIABLE_REGISTERS: usize = 7;
 
 #[derive(Debug, Clone)]
 pub struct VMState<'pgm> {
-    // Memory
     /// The **program memory** stores the instructions (and their arguments) of the program
     /// currently being executed by Triton VM. It is read-only.
     pub program: &'pgm [Instruction],
@@ -66,7 +65,6 @@ pub struct VMState<'pgm> {
     /// The **Jump-stack memory** stores the entire jump stack.
     pub jump_stack: Vec<(BFieldElement, BFieldElement)>,
 
-    // Registers
     /// Number of cycles the program has been running for
     pub cycle_count: u32,
 
@@ -86,7 +84,6 @@ pub struct VMState<'pgm> {
     /// exposed outside of the VM.
     pub sponge_state: [BFieldElement; tip5::STATE_SIZE],
 
-    // Bookkeeping
     /// Indicates whether the terminating instruction `halt` has been executed.
     pub halting: bool,
 }
