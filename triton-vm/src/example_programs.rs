@@ -1,8 +1,6 @@
 use lazy_static::lazy_static;
 
-use crate::instruction::LabelledInstruction;
 use crate::program::Program;
-use crate::triton_asm;
 use crate::triton_program;
 
 lazy_static! {
@@ -12,7 +10,7 @@ lazy_static! {
         program_with_many_u32_instructions();
     pub static ref VERIFY_SUDOKU: Program = verify_sudoku();
     pub static ref CALCULATE_NEW_MMR_PEAKS_FROM_APPEND_WITH_SAFE_LISTS: Program =
-        Program::new(&calculate_new_mmr_peaks_from_append_with_safe_lists());
+        calculate_new_mmr_peaks_from_append_with_safe_lists();
     pub static ref MERKLE_TREE_AUTHENTICATION_PATH_VERIFY: Program =
         merkle_tree_authentication_path_verify();
 }
@@ -416,8 +414,8 @@ fn verify_sudoku() -> Program {
     )
 }
 
-pub(crate) fn calculate_new_mmr_peaks_from_append_with_safe_lists() -> Vec<LabelledInstruction> {
-    triton_asm!(
+pub(crate) fn calculate_new_mmr_peaks_from_append_with_safe_lists() -> Program {
+    triton_program!(
         // Stack and memory setup
         push 0
         push 3
