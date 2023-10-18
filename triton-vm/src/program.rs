@@ -490,7 +490,7 @@ impl Program {
     /// The label for the given address, or a deterministic, unique substitute if no label is found.
     /// Uniqueness is relevant for printing and subsequent parsing, avoiding duplicate labels.
     pub fn label_for_address(&self, address: u64) -> String {
-        let substitute_for_unknown_label = format! {"address_{address}"};
+        let substitute_for_unknown_label = format!("address_{address}");
         self.address_to_label
             .get(&address)
             .unwrap_or(&substitute_for_unknown_label)
@@ -500,7 +500,7 @@ impl Program {
 
 #[derive(Debug, Clone, Default)]
 struct VMProfiler {
-    call_stack: Vec<(u32, usize)>,
+    call_stack: Vec<usize>,
     profile: Vec<ProfileLine>,
 }
 
@@ -512,47 +512,92 @@ impl VMProfiler {
         }
     }
 
-    fn enter_span_with_label_at_cycle(&mut self, label: String, cycle: u32) {
-        let call_stack_depth = self.call_stack.len();
-        let profile_line = ProfileLine::new(call_stack_depth, label, 0);
-        let profile_line_number = self.profile.len();
+    fn enter_span_with_label_at_cycle(&mut self, label: impl Into<String>, cycle: u32) {
+        let call_stack_len = self.call_stack.len();
+        let line_number = self.profile.len();
+
+        let profile_line = ProfileLine::new(label, cycle).at_call_depth(call_stack_len);
+
         self.profile.push(profile_line);
-        self.call_stack.push((cycle, profile_line_number));
+        self.call_stack.push(line_number);
     }
 
     fn exit_span_at_cycle(&mut self, cycle: u32) {
-        let Some((clk_start, profile_line_number)) = self.call_stack.pop() else {
-            return;
+        let maybe_top_of_call_stack = self.call_stack.pop();
+        if let Some(line_number) = maybe_top_of_call_stack {
+            self.profile[line_number].return_at_cycle(cycle);
         };
-        self.profile[profile_line_number].cycle_count = cycle - clk_start;
     }
 
     fn report_at_cycle(mut self, cycle: u32) -> Vec<ProfileLine> {
-        for (clk_start, profile_line_number) in self.call_stack {
-            self.profile[profile_line_number].cycle_count = cycle - clk_start;
-            self.profile[profile_line_number].label += " (open)";
+        self.stop_all_at_cycle(cycle);
+        self.add_total(cycle);
+        self.profile
+    }
+
+    fn stop_all_at_cycle(&mut self, cycle: u32) {
+        for &line_number in self.call_stack.iter() {
+            self.profile[line_number].stop_at_cycle(cycle);
         }
-        self.profile
-            .push(ProfileLine::new(0, "total".to_string(), cycle));
-        self.profile
+    }
+
+    fn add_total(&mut self, cycle: u32) {
+        let mut line = ProfileLine::new("total", 0);
+        line.return_at_cycle(cycle);
+        self.profile.push(line);
     }
 }
 
 /// A single line in a profile report for profiling Triton Assembly programs.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ProfileLine {
-    pub call_stack_depth: usize,
     pub label: String,
-    pub cycle_count: u32,
+    pub call_depth: usize,
+    pub start_cycle: u32,
+    pub stop_cycle: u32,
+    pub call_has_returned: bool,
 }
 
 impl ProfileLine {
-    pub fn new(call_stack_depth: usize, label: String, cycle_count: u32) -> Self {
-        ProfileLine {
-            call_stack_depth,
-            label,
-            cycle_count,
+    pub fn new(label: impl Into<String>, start_cycle: u32) -> Self {
+        Self {
+            label: label.into(),
+            call_depth: 0,
+            start_cycle,
+            stop_cycle: 0,
+            call_has_returned: false,
         }
+    }
+
+    pub fn at_call_depth(mut self, call_stack_depth: usize) -> Self {
+        self.call_depth = call_stack_depth;
+        self
+    }
+
+    pub fn return_at_cycle(&mut self, cycle: u32) {
+        self.stop_at_cycle(cycle);
+        self.call_has_returned = true;
+    }
+
+    pub fn stop_at_cycle(&mut self, cycle: u32) {
+        self.stop_cycle = cycle;
+    }
+
+    pub fn cycle_count(&self) -> u32 {
+        self.stop_cycle.saturating_sub(self.start_cycle)
+    }
+}
+
+impl Display for ProfileLine {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        let indentation = "  ".repeat(self.call_depth);
+        let label = &self.label;
+        let cycle_count = self.cycle_count();
+        let open_indicator = match self.call_has_returned {
+            true => "",
+            false => " (open)",
+        };
+        write!(f, "{indentation}{label}{open_indicator}: {cycle_count}",)
     }
 }
 
@@ -880,14 +925,13 @@ mod tests {
             .unwrap();
         assert_eq!(profile_output, debug_terminal_state.public_output);
         assert_eq!(
-            profile.last().unwrap().cycle_count,
+            profile.last().unwrap().cycle_count(),
             debug_terminal_state.cycle_count
         );
 
         println!("Profile of Tasm Program:");
         for line in profile {
-            let indentation = vec!["  "; line.call_stack_depth].join("");
-            println!("{indentation} {}: {}", line.label, line.cycle_count);
+            println!("{line}");
         }
     }
 
@@ -905,17 +949,16 @@ mod tests {
 
         println!();
         for line in profile.iter() {
-            let indentation = vec!["  "; line.call_stack_depth].join("");
-            println!("{indentation} {}: {}", line.label, line.cycle_count);
+            println!("{line}");
         }
 
-        let maybe_open_call = profile.iter().find(|line| line.label.contains("(open)"));
+        let maybe_open_call = profile.iter().find(|line| !line.call_has_returned);
         assert!(maybe_open_call.is_some());
     }
 
     #[test]
     #[should_panic(expected = "Jump stack is empty")]
-    fn profile_with_too_many_returns() {
+    fn program_with_too_many_returns_crashes_vm_but_not_profiler() {
         let program = triton_program! {
             call foo return halt
             foo: return
