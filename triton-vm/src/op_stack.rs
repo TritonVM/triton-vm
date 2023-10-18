@@ -1,9 +1,9 @@
 use std::fmt::Display;
 use std::fmt::Formatter;
 use std::fmt::Result as FmtResult;
-use std::result;
 
 use anyhow::anyhow;
+use anyhow::bail;
 use anyhow::Result;
 use get_size::GetSize;
 use num_traits::Zero;
@@ -182,9 +182,9 @@ impl From<&OpStackElement> for u32 {
 }
 
 impl TryFrom<u32> for OpStackElement {
-    type Error = String;
+    type Error = anyhow::Error;
 
-    fn try_from(stack_index: u32) -> result::Result<Self, Self::Error> {
+    fn try_from(stack_index: u32) -> Result<Self> {
         match stack_index {
             0 => Ok(ST0),
             1 => Ok(ST1),
@@ -202,9 +202,7 @@ impl TryFrom<u32> for OpStackElement {
             13 => Ok(ST13),
             14 => Ok(ST14),
             15 => Ok(ST15),
-            _ => Err(format!(
-                "Index {stack_index} is out of range for `OpStackElement`."
-            )),
+            _ => bail!("Index {stack_index} is out of range for `OpStackElement`."),
         }
     }
 }
@@ -216,12 +214,10 @@ impl From<OpStackElement> for u64 {
 }
 
 impl TryFrom<u64> for OpStackElement {
-    type Error = String;
+    type Error = anyhow::Error;
 
-    fn try_from(stack_index: u64) -> result::Result<Self, Self::Error> {
-        let stack_index = u32::try_from(stack_index)
-            .map_err(|_| format!("Index {stack_index} is out of range for `OpStackElement`."))?;
-        stack_index.try_into()
+    fn try_from(stack_index: u64) -> Result<Self> {
+        u32::try_from(stack_index)?.try_into()
     }
 }
 
@@ -238,12 +234,10 @@ impl From<&OpStackElement> for usize {
 }
 
 impl TryFrom<usize> for OpStackElement {
-    type Error = String;
+    type Error = anyhow::Error;
 
-    fn try_from(stack_index: usize) -> result::Result<Self, Self::Error> {
-        let stack_index =
-            u32::try_from(stack_index).map_err(|_| "Cannot convert usize to u32.".to_string())?;
-        stack_index.try_into()
+    fn try_from(stack_index: usize) -> Result<Self> {
+        u32::try_from(stack_index)?.try_into()
     }
 }
 
