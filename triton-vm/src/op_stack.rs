@@ -15,9 +15,8 @@ use twenty_first::shared_math::digest::Digest;
 use twenty_first::shared_math::tip5::DIGEST_LENGTH;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
+use crate::error::InstructionError::*;
 use crate::op_stack::OpStackElement::*;
-
-use super::error::InstructionError::*;
 
 /// The number of registers dedicated to the top of the operational stack.
 pub const NUM_OP_STACK_REGISTERS: usize = OpStackElement::COUNT;

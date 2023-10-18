@@ -19,23 +19,13 @@ use crate::aet::AlgebraicExecutionTrace;
 use crate::instruction::Instruction;
 use crate::table::challenges::ChallengeId::*;
 use crate::table::challenges::Challenges;
-use crate::table::constraint_circuit::ConstraintCircuitBuilder;
-use crate::table::constraint_circuit::DualRowIndicator;
 use crate::table::constraint_circuit::DualRowIndicator::*;
-use crate::table::constraint_circuit::SingleRowIndicator;
 use crate::table::constraint_circuit::SingleRowIndicator::*;
-use crate::table::cross_table_argument::CrossTableArg;
-use crate::table::cross_table_argument::LookupArg;
-use crate::table::cross_table_argument::PermArg;
-use crate::table::table_column::MasterBaseTableColumn;
-use crate::table::table_column::MasterExtTableColumn;
-use crate::table::table_column::ProcessorBaseTableColumn;
-use crate::table::table_column::RamBaseTableColumn;
+use crate::table::constraint_circuit::*;
+use crate::table::cross_table_argument::*;
 use crate::table::table_column::RamBaseTableColumn::*;
-use crate::table::table_column::RamExtTableColumn;
 use crate::table::table_column::RamExtTableColumn::*;
-
-use super::constraint_circuit::ConstraintCircuitMonad;
+use crate::table::table_column::*;
 
 pub const BASE_WIDTH: usize = RamBaseTableColumn::COUNT;
 pub const EXT_WIDTH: usize = RamExtTableColumn::COUNT;

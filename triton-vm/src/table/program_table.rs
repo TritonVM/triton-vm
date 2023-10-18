@@ -17,22 +17,15 @@ use crate::aet::AlgebraicExecutionTrace;
 use crate::stark::StarkHasher;
 use crate::table::challenges::ChallengeId::*;
 use crate::table::challenges::Challenges;
-use crate::table::constraint_circuit::ConstraintCircuitBuilder;
-use crate::table::constraint_circuit::DualRowIndicator;
 use crate::table::constraint_circuit::DualRowIndicator::*;
-use crate::table::constraint_circuit::SingleRowIndicator;
 use crate::table::constraint_circuit::SingleRowIndicator::*;
+use crate::table::constraint_circuit::*;
 use crate::table::cross_table_argument::CrossTableArg;
 use crate::table::cross_table_argument::EvalArg;
 use crate::table::cross_table_argument::LookupArg;
-use crate::table::table_column::MasterBaseTableColumn;
-use crate::table::table_column::MasterExtTableColumn;
-use crate::table::table_column::ProgramBaseTableColumn;
 use crate::table::table_column::ProgramBaseTableColumn::*;
-use crate::table::table_column::ProgramExtTableColumn;
 use crate::table::table_column::ProgramExtTableColumn::*;
-
-use super::constraint_circuit::ConstraintCircuitMonad;
+use crate::table::table_column::*;
 
 pub const BASE_WIDTH: usize = ProgramBaseTableColumn::COUNT;
 pub const EXT_WIDTH: usize = ProgramExtTableColumn::COUNT;
