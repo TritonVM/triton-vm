@@ -6,6 +6,7 @@ use anyhow::anyhow;
 use anyhow::bail;
 use anyhow::Result;
 use get_size::GetSize;
+use itertools::Itertools;
 use num_traits::Zero;
 use serde_derive::Deserialize;
 use serde_derive::Serialize;
@@ -113,11 +114,45 @@ impl OpStack {
     /// is empty.
     pub(crate) fn op_stack_value(&self) -> BFieldElement {
         let top_of_stack_index = self.stack.len() - 1;
-        if top_of_stack_index < OpStackElement::COUNT {
-            return BFieldElement::zero();
+        let underflow_start = top_of_stack_index - OpStackElement::COUNT;
+        self.stack.get(underflow_start).copied().unwrap_or_default()
+    }
+}
+
+/// Indicates changes to the op-stack underflow memory.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, GetSize, Serialize, Deserialize)]
+pub(crate) enum UnderflowIO {
+    Read(BFieldElement),
+    Write(BFieldElement),
+}
+
+impl UnderflowIO {
+    /// Remove spurious read/write sequences arising from temporary stack changes.
+    ///
+    /// For example, the sequence `[Read(5), Write(5), Read(7)]` can be replaced with `[Read(7)]`.
+    /// Similarly, the sequence `[Write(5), Write(3), Read(3), Read(5), Write(7)]` can be replaced
+    /// with `[Write(7)]`.
+    pub(crate) fn canonicalize_sequence(sequence: &mut Vec<Self>) {
+        while let Some(index) = Self::index_of_dual_pair(sequence) {
+            sequence.remove(index);
+            sequence.remove(index);
         }
-        let op_stack_value_index = top_of_stack_index - OpStackElement::COUNT;
-        self.stack[op_stack_value_index]
+    }
+
+    fn index_of_dual_pair(sequence: &[Self]) -> Option<usize> {
+        sequence
+            .iter()
+            .tuple_windows()
+            .find_position(|(&left, &right)| left.is_dual_to(right))
+            .map(|(index, _)| index)
+    }
+
+    fn is_dual_to(&self, other: Self) -> bool {
+        match (self, other) {
+            (&Self::Read(read), Self::Write(write)) => read == write,
+            (&Self::Write(write), Self::Read(read)) => read == write,
+            _ => false,
+        }
     }
 }
 
@@ -257,8 +292,7 @@ impl From<&OpStackElement> for BFieldElement {
 mod tests {
     use twenty_first::shared_math::b_field_element::BFieldElement;
 
-    use crate::op_stack::OpStack;
-    use crate::op_stack::OpStackElement;
+    use super::*;
 
     #[test]
     fn sanity() {
@@ -336,5 +370,42 @@ mod tests {
         // verify underflow
         op_stack.pop().expect("can't pop");
         assert!(op_stack.is_too_shallow());
+    }
+
+    #[test]
+    fn canonicalize_empty_underflow_io_sequence() {
+        let mut sequence = vec![];
+        UnderflowIO::canonicalize_sequence(&mut sequence);
+
+        let expected_sequence = Vec::<UnderflowIO>::new();
+        assert_eq!(expected_sequence, sequence);
+    }
+
+    #[test]
+    fn canonicalize_simple_underflow_io_sequence() {
+        let mut sequence = vec![
+            UnderflowIO::Read(5_u64.into()),
+            UnderflowIO::Write(5_u64.into()),
+            UnderflowIO::Read(7_u64.into()),
+        ];
+        UnderflowIO::canonicalize_sequence(&mut sequence);
+
+        let expected_sequence = vec![UnderflowIO::Read(7_u64.into())];
+        assert_eq!(expected_sequence, sequence);
+    }
+
+    #[test]
+    fn canonicalize_medium_complex_underflow_io_sequence() {
+        let mut sequence = vec![
+            UnderflowIO::Write(5_u64.into()),
+            UnderflowIO::Write(3_u64.into()),
+            UnderflowIO::Read(3_u64.into()),
+            UnderflowIO::Read(5_u64.into()),
+            UnderflowIO::Write(7_u64.into()),
+        ];
+        UnderflowIO::canonicalize_sequence(&mut sequence);
+
+        let expected_sequence = vec![UnderflowIO::Write(7_u64.into())];
+        assert_eq!(expected_sequence, sequence);
     }
 }
