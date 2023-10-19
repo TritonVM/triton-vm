@@ -29,6 +29,7 @@ use crate::op_stack::*;
 use crate::program::*;
 use crate::stark::StarkHasher;
 use crate::table::hash_table::PermutationTrace;
+use crate::table::op_stack_table::OpStackTableEntry;
 use crate::table::processor_table;
 use crate::table::processor_table::ProcessorTraceRow;
 use crate::table::table_column::*;
@@ -100,6 +101,8 @@ pub enum CoProcessorCall {
     Tip5Trace(Instruction, Box<PermutationTrace>),
 
     U32Call(U32TableEntry),
+
+    OpStackCall(OpStackTableEntry),
 }
 
 impl<'pgm> VMState<'pgm> {
@@ -257,32 +260,59 @@ impl<'pgm> VMState<'pgm> {
         Ok(co_processor_calls)
     }
 
+    fn underflow_io_sequence_to_co_processor_calls(
+        &self,
+        underflow_io_sequence: Vec<UnderflowIO>,
+    ) -> Vec<CoProcessorCall> {
+        let op_stack_table_entries = OpStackTableEntry::from_underflow_io_sequence(
+            self.cycle_count,
+            self.op_stack.op_stack_pointer(),
+            underflow_io_sequence,
+        );
+        op_stack_table_entries
+            .into_iter()
+            .map(OpStackCall)
+            .collect()
+    }
+
     fn pop(&mut self) -> Result<Vec<CoProcessorCall>> {
-        self.op_stack.pop()?;
+        let (_, underflow_io) = self.op_stack.pop()?;
+
+        let op_stack_calls = self.underflow_io_sequence_to_co_processor_calls(vec![underflow_io]);
+
         self.instruction_pointer += 1;
-        Ok(vec![])
+        Ok(op_stack_calls)
     }
 
     fn push(&mut self, element: BFieldElement) -> Vec<CoProcessorCall> {
-        self.op_stack.push(element);
+        let underflow_io = self.op_stack.push(element);
+
+        let op_stack_calls = self.underflow_io_sequence_to_co_processor_calls(vec![underflow_io]);
+
         self.instruction_pointer += 2;
-        vec![]
+        op_stack_calls
     }
 
     fn divine(&mut self) -> Result<Vec<CoProcessorCall>> {
         let element = self.secret_individual_tokens.pop_front().ok_or(anyhow!(
             "Instruction `divine`: secret input buffer is empty."
         ))?;
-        self.op_stack.push(element);
+        let underflow_io = self.op_stack.push(element);
+
+        let op_stack_calls = self.underflow_io_sequence_to_co_processor_calls(vec![underflow_io]);
+
         self.instruction_pointer += 1;
-        Ok(vec![])
+        Ok(op_stack_calls)
     }
 
     fn dup(&mut self, stack_register: OpStackElement) -> Vec<CoProcessorCall> {
         let element = self.op_stack.peek_at(stack_register);
-        self.op_stack.push(element);
+        let underflow_io = self.op_stack.push(element);
+
+        let op_stack_calls = self.underflow_io_sequence_to_co_processor_calls(vec![underflow_io]);
+
         self.instruction_pointer += 2;
-        vec![]
+        op_stack_calls
     }
 
     fn swap(&mut self, stack_register: OpStackElement) -> Result<Vec<CoProcessorCall>> {
@@ -300,12 +330,15 @@ impl<'pgm> VMState<'pgm> {
     }
 
     fn skiz(&mut self) -> Result<Vec<CoProcessorCall>> {
-        let (top_of_stack, _) = self.op_stack.pop()?;
+        let (top_of_stack, underflow_io) = self.op_stack.pop()?;
+
+        let op_stack_calls = self.underflow_io_sequence_to_co_processor_calls(vec![underflow_io]);
+
         self.instruction_pointer += match top_of_stack.is_zero() {
             true => 1 + self.next_instruction()?.size(),
             false => 1,
         };
-        Ok(vec![])
+        Ok(op_stack_calls)
     }
 
     fn call(&mut self, call_destination: BFieldElement) -> Vec<CoProcessorCall> {
@@ -331,14 +364,18 @@ impl<'pgm> VMState<'pgm> {
     }
 
     fn assert(&mut self) -> Result<Vec<CoProcessorCall>> {
-        let (top_of_stack, _) = self.op_stack.pop()?;
+        let (top_of_stack, underflow_io) = self.op_stack.pop()?;
+
+        let op_stack_calls = self.underflow_io_sequence_to_co_processor_calls(vec![underflow_io]);
+
         if !top_of_stack.is_one() {
             let assertion_failed =
                 AssertionFailed(self.instruction_pointer, self.cycle_count, top_of_stack);
             bail!(assertion_failed);
         }
+
         self.instruction_pointer += 1;
-        Ok(vec![])
+        Ok(op_stack_calls)
     }
 
     fn halt(&mut self) -> Vec<CoProcessorCall> {
@@ -349,36 +386,50 @@ impl<'pgm> VMState<'pgm> {
 
     fn read_mem(&mut self) -> Vec<CoProcessorCall> {
         let ram_pointer = self.op_stack.peek_at(ST0);
-        let ram_value = self.memory_get(&ram_pointer);
-        self.op_stack.push(ram_value);
         self.ram_pointer = ram_pointer.value();
+
+        let ram_value = self.memory_get(&ram_pointer);
+        let underflow_io = self.op_stack.push(ram_value);
+
+        let op_stack_calls = self.underflow_io_sequence_to_co_processor_calls(vec![underflow_io]);
+
         self.instruction_pointer += 1;
-        vec![]
+        op_stack_calls
     }
 
     fn write_mem(&mut self) -> Result<Vec<CoProcessorCall>> {
         let ram_pointer = self.op_stack.peek_at(ST1);
-        let (ram_value, _) = self.op_stack.pop()?;
+        let (ram_value, underflow_io) = self.op_stack.pop()?;
         self.ram_pointer = ram_pointer.value();
         self.ram.insert(ram_pointer, ram_value);
+
+        let op_stack_calls = self.underflow_io_sequence_to_co_processor_calls(vec![underflow_io]);
+
         self.instruction_pointer += 1;
-        Ok(vec![])
+        Ok(op_stack_calls)
     }
 
     fn hash(&mut self) -> Result<Vec<CoProcessorCall>> {
-        let (to_hash, _) = self.op_stack.pop_multiple::<{ tip5::RATE }>()?;
+        let (to_hash, underflow_io) = self.op_stack.pop_multiple::<{ tip5::RATE }>()?;
+        let mut all_underflow_io = underflow_io.to_vec();
+
         let mut hash_input = Tip5State::new(Domain::FixedLength);
         hash_input.state[..tip5::RATE].copy_from_slice(&to_hash);
         let tip5_trace = Tip5::trace(&mut hash_input);
         let hash_output = &tip5_trace[tip5_trace.len() - 1][0..DIGEST_LENGTH];
 
         for i in (0..DIGEST_LENGTH).rev() {
-            self.op_stack.push(hash_output[i]);
+            let underflow_io = self.op_stack.push(hash_output[i]);
+            all_underflow_io.push(underflow_io);
         }
         for _ in 0..DIGEST_LENGTH {
-            self.op_stack.push(BFieldElement::zero());
+            let underflow_io = self.op_stack.push(BFieldElement::zero());
+            all_underflow_io.push(underflow_io);
         }
-        let co_processor_calls = vec![Tip5Trace(Hash, Box::new(tip5_trace))];
+
+        let mut co_processor_calls =
+            self.underflow_io_sequence_to_co_processor_calls(all_underflow_io);
+        co_processor_calls.push(Tip5Trace(Hash, Box::new(tip5_trace)));
 
         self.instruction_pointer += 1;
         Ok(co_processor_calls)
@@ -392,9 +443,11 @@ impl<'pgm> VMState<'pgm> {
 
     fn sponge_absorb(&mut self) -> Result<Vec<CoProcessorCall>> {
         // fetch top elements but don't alter the stack
-        let (to_absorb, _) = self.op_stack.pop_multiple::<{ tip5::RATE }>()?;
+        let (to_absorb, underflow_io) = self.op_stack.pop_multiple::<{ tip5::RATE }>()?;
+        let mut all_underflow_io = underflow_io.to_vec();
         for i in (0..tip5::RATE).rev() {
-            self.op_stack.push(to_absorb[i]);
+            let underflow_io = self.op_stack.push(to_absorb[i]);
+            all_underflow_io.push(underflow_io);
         }
 
         self.sponge_state[..tip5::RATE].copy_from_slice(&to_absorb);
@@ -402,47 +455,65 @@ impl<'pgm> VMState<'pgm> {
             state: self.sponge_state,
         });
         self.sponge_state = tip5_trace.last().unwrap().to_owned();
-        let co_processor_calls = vec![Tip5Trace(SpongeAbsorb, Box::new(tip5_trace))];
+
+        let mut co_processor_calls =
+            self.underflow_io_sequence_to_co_processor_calls(all_underflow_io);
+        co_processor_calls.push(Tip5Trace(SpongeAbsorb, Box::new(tip5_trace)));
 
         self.instruction_pointer += 1;
         Ok(co_processor_calls)
     }
 
     fn sponge_squeeze(&mut self) -> Result<Vec<CoProcessorCall>> {
-        let _ = self.op_stack.pop_multiple::<{ tip5::RATE }>()?;
+        let (_, underflow_io) = self.op_stack.pop_multiple::<{ tip5::RATE }>()?;
+        let mut all_underflow_io = underflow_io.to_vec();
         for i in (0..tip5::RATE).rev() {
-            self.op_stack.push(self.sponge_state[i]);
+            let underflow_io = self.op_stack.push(self.sponge_state[i]);
+            all_underflow_io.push(underflow_io);
         }
         let tip5_trace = Tip5::trace(&mut Tip5State {
             state: self.sponge_state,
         });
         self.sponge_state = tip5_trace.last().unwrap().to_owned();
-        let co_processor_calls = vec![Tip5Trace(SpongeSqueeze, Box::new(tip5_trace))];
+
+        let mut co_processor_calls =
+            self.underflow_io_sequence_to_co_processor_calls(all_underflow_io);
+        co_processor_calls.push(Tip5Trace(SpongeSqueeze, Box::new(tip5_trace)));
 
         self.instruction_pointer += 1;
         Ok(co_processor_calls)
     }
 
     fn divine_sibling(&mut self) -> Result<Vec<CoProcessorCall>> {
-        let _st0_through_st4 = self.op_stack.pop_multiple::<{ DIGEST_LENGTH }>()?;
-        let (known_digest, _) = self.op_stack.pop_multiple()?;
+        let (_st0_through_st4, underflow_io) = self.op_stack.pop_multiple::<{ DIGEST_LENGTH }>()?;
+        let mut all_underflow_io = underflow_io.to_vec();
+        let (known_digest, underflow_io) = self.op_stack.pop_multiple()?;
+        all_underflow_io.extend(underflow_io);
 
-        let (node_index, _) = self.op_stack.pop_u32()?;
+        let (node_index, underflow_io) = self.op_stack.pop_u32()?;
+        all_underflow_io.push(underflow_io);
+
         let parent_node_index = node_index / 2;
-        self.op_stack.push(parent_node_index.into());
+        let underflow_io = self.op_stack.push(parent_node_index.into());
+        all_underflow_io.push(underflow_io);
 
         let sibling_digest = self.pop_secret_digest()?;
         let (left_digest, right_digest) =
             Self::put_known_digest_on_correct_side(node_index, known_digest, sibling_digest);
 
         for &digest_element in right_digest.iter().rev() {
-            self.op_stack.push(digest_element);
+            let underflow_io = self.op_stack.push(digest_element);
+            all_underflow_io.push(underflow_io);
         }
         for &digest_element in left_digest.iter().rev() {
-            self.op_stack.push(digest_element);
+            let underflow_io = self.op_stack.push(digest_element);
+            all_underflow_io.push(underflow_io);
         }
+
+        let op_stack_calls = self.underflow_io_sequence_to_co_processor_calls(vec![underflow_io]);
+
         self.instruction_pointer += 1;
-        Ok(vec![])
+        Ok(op_stack_calls)
     }
 
     fn assert_vector(&mut self) -> Result<Vec<CoProcessorCall>> {
@@ -470,19 +541,27 @@ impl<'pgm> VMState<'pgm> {
     }
 
     fn add(&mut self) -> Result<Vec<CoProcessorCall>> {
-        let (lhs, _) = self.op_stack.pop()?;
-        let (rhs, _) = self.op_stack.pop()?;
-        self.op_stack.push(lhs + rhs);
+        let (lhs, underflow_io_lhs) = self.op_stack.pop()?;
+        let (rhs, underflow_io_rhs) = self.op_stack.pop()?;
+        let underflow_io_result = self.op_stack.push(lhs + rhs);
+
+        let underflow_io = vec![underflow_io_lhs, underflow_io_rhs, underflow_io_result];
+        let op_stack_calls = self.underflow_io_sequence_to_co_processor_calls(underflow_io);
+
         self.instruction_pointer += 1;
-        Ok(vec![])
+        Ok(op_stack_calls)
     }
 
     fn mul(&mut self) -> Result<Vec<CoProcessorCall>> {
-        let (lhs, _) = self.op_stack.pop()?;
-        let (rhs, _) = self.op_stack.pop()?;
-        self.op_stack.push(lhs * rhs);
+        let (lhs, underflow_io_lhs) = self.op_stack.pop()?;
+        let (rhs, underflow_io_rhs) = self.op_stack.pop()?;
+        let underflow_io_result = self.op_stack.push(lhs * rhs);
+
+        let underflow_io = vec![underflow_io_lhs, underflow_io_rhs, underflow_io_result];
+        let op_stack_calls = self.underflow_io_sequence_to_co_processor_calls(underflow_io);
+
         self.instruction_pointer += 1;
-        Ok(vec![])
+        Ok(op_stack_calls)
     }
 
     fn invert(&mut self) -> Result<Vec<CoProcessorCall>> {
@@ -490,100 +569,128 @@ impl<'pgm> VMState<'pgm> {
         if top_of_stack.is_zero() {
             bail!(InverseOfZero);
         }
-        self.op_stack.push(top_of_stack.inverse());
+        let _ = self.op_stack.push(top_of_stack.inverse());
         self.instruction_pointer += 1;
         Ok(vec![])
     }
 
     fn eq(&mut self) -> Result<Vec<CoProcessorCall>> {
-        let (lhs, _) = self.op_stack.pop()?;
-        let (rhs, _) = self.op_stack.pop()?;
+        let (lhs, underflow_io_lhs) = self.op_stack.pop()?;
+        let (rhs, underflow_io_rhs) = self.op_stack.pop()?;
         let eq: u32 = (lhs == rhs).into();
-        self.op_stack.push(eq.into());
+        let underflow_io_eq = self.op_stack.push(eq.into());
+
+        let underflow_io = vec![underflow_io_lhs, underflow_io_rhs, underflow_io_eq];
+        let op_stack_calls = self.underflow_io_sequence_to_co_processor_calls(underflow_io);
+
         self.instruction_pointer += 1;
-        Ok(vec![])
+        Ok(op_stack_calls)
     }
 
     fn split(&mut self) -> Result<Vec<CoProcessorCall>> {
-        let (top_of_stack, _) = self.op_stack.pop()?;
+        let (top_of_stack, underflow_io_top) = self.op_stack.pop()?;
         let lo = BFieldElement::new(top_of_stack.value() & 0xffff_ffff);
         let hi = BFieldElement::new(top_of_stack.value() >> 32);
-        self.op_stack.push(hi);
-        self.op_stack.push(lo);
+        let underflow_io_hi = self.op_stack.push(hi);
+        let underflow_io_lo = self.op_stack.push(lo);
+
+        let underflow_io = vec![underflow_io_top, underflow_io_hi, underflow_io_lo];
+        let mut co_processor_calls = self.underflow_io_sequence_to_co_processor_calls(underflow_io);
 
         let u32_table_entry = U32TableEntry::new_from_base_field_element(Split, lo, hi);
-        let co_processor_calls = vec![U32Call(u32_table_entry)];
+        let u32_call = U32Call(u32_table_entry);
+        co_processor_calls.push(u32_call);
 
         self.instruction_pointer += 1;
         Ok(co_processor_calls)
     }
 
     fn lt(&mut self) -> Result<Vec<CoProcessorCall>> {
-        let (lhs, _) = self.op_stack.pop_u32()?;
-        let (rhs, _) = self.op_stack.pop_u32()?;
+        let (lhs, underflow_io_lhs) = self.op_stack.pop_u32()?;
+        let (rhs, underflow_io_rhs) = self.op_stack.pop_u32()?;
         let lt: u32 = (lhs < rhs).into();
-        self.op_stack.push(lt.into());
+        let underflow_io_result = self.op_stack.push(lt.into());
+
+        let underflow_io = vec![underflow_io_lhs, underflow_io_rhs, underflow_io_result];
+        let mut co_processor_calls = self.underflow_io_sequence_to_co_processor_calls(underflow_io);
 
         let u32_table_entry = U32TableEntry::new(Lt, lhs, rhs);
-        let co_processor_calls = vec![U32Call(u32_table_entry)];
+        let u32_call = U32Call(u32_table_entry);
+        co_processor_calls.push(u32_call);
 
         self.instruction_pointer += 1;
         Ok(co_processor_calls)
     }
 
     fn and(&mut self) -> Result<Vec<CoProcessorCall>> {
-        let (lhs, _) = self.op_stack.pop_u32()?;
-        let (rhs, _) = self.op_stack.pop_u32()?;
+        let (lhs, underflow_io_lhs) = self.op_stack.pop_u32()?;
+        let (rhs, underflow_io_rhs) = self.op_stack.pop_u32()?;
         let and = lhs & rhs;
-        self.op_stack.push(and.into());
+        let underflow_io_and = self.op_stack.push(and.into());
+
+        let underflow_io = vec![underflow_io_lhs, underflow_io_rhs, underflow_io_and];
+        let mut co_processor_calls = self.underflow_io_sequence_to_co_processor_calls(underflow_io);
 
         let u32_table_entry = U32TableEntry::new(And, lhs, rhs);
-        let co_processor_calls = vec![U32Call(u32_table_entry)];
+        let u32_call = U32Call(u32_table_entry);
+        co_processor_calls.push(u32_call);
 
         self.instruction_pointer += 1;
         Ok(co_processor_calls)
     }
 
     fn xor(&mut self) -> Result<Vec<CoProcessorCall>> {
-        let (lhs, _) = self.op_stack.pop_u32()?;
-        let (rhs, _) = self.op_stack.pop_u32()?;
+        let (lhs, underflow_io_lhs) = self.op_stack.pop_u32()?;
+        let (rhs, underflow_io_rhs) = self.op_stack.pop_u32()?;
         let xor = lhs ^ rhs;
-        self.op_stack.push(xor.into());
+        let underflow_io_xor = self.op_stack.push(xor.into());
+
+        let underflow_io = vec![underflow_io_lhs, underflow_io_rhs, underflow_io_xor];
+        let mut co_processor_calls = self.underflow_io_sequence_to_co_processor_calls(underflow_io);
 
         // Triton VM uses the following equality to compute the results of both the `and`
         // and `xor` instruction using the u32 coprocessor's `and` capability:
         // a ^ b = a + b - 2 · (a & b)
         let u32_table_entry = U32TableEntry::new(And, lhs, rhs);
-        let co_processor_calls = vec![U32Call(u32_table_entry)];
+        let u32_call = U32Call(u32_table_entry);
+        co_processor_calls.push(u32_call);
 
         self.instruction_pointer += 1;
         Ok(co_processor_calls)
     }
 
     fn log_2_floor(&mut self) -> Result<Vec<CoProcessorCall>> {
-        let (top_of_stack, _) = self.op_stack.pop_u32()?;
+        let (top_of_stack, underflow_io_top) = self.op_stack.pop_u32()?;
         if top_of_stack.is_zero() {
             bail!(LogarithmOfZero);
         }
         let log_2_floor = top_of_stack.ilog2();
-        self.op_stack.push(log_2_floor.into());
+        let underflow_io_result = self.op_stack.push(log_2_floor.into());
+
+        let underflow_io = vec![underflow_io_top, underflow_io_result];
+        let mut co_processor_calls = self.underflow_io_sequence_to_co_processor_calls(underflow_io);
 
         let u32_table_entry = U32TableEntry::new(Log2Floor, top_of_stack, 0);
-        let co_processor_calls = vec![U32Call(u32_table_entry)];
+        let u32_call = U32Call(u32_table_entry);
+        co_processor_calls.push(u32_call);
 
         self.instruction_pointer += 1;
         Ok(co_processor_calls)
     }
 
     fn pow(&mut self) -> Result<Vec<CoProcessorCall>> {
-        let (base, _) = self.op_stack.pop()?;
-        let (exponent, _) = self.op_stack.pop_u32()?;
+        let (base, underflow_io_base) = self.op_stack.pop()?;
+        let (exponent, underflow_io_exp) = self.op_stack.pop_u32()?;
         let base_pow_exponent = base.mod_pow(exponent.into());
-        self.op_stack.push(base_pow_exponent);
+        let underflow_io_result = self.op_stack.push(base_pow_exponent);
+
+        let underflow_io = vec![underflow_io_base, underflow_io_exp, underflow_io_result];
+        let mut co_processor_calls = self.underflow_io_sequence_to_co_processor_calls(underflow_io);
 
         let u32_table_entry =
             U32TableEntry::new_from_base_field_element(Pow, base, exponent.into());
-        let co_processor_calls = vec![U32Call(u32_table_entry)];
+        let u32_call = U32Call(u32_table_entry);
+        co_processor_calls.push(u32_call);
 
         self.instruction_pointer += 1;
         Ok(co_processor_calls)
@@ -598,8 +705,8 @@ impl<'pgm> VMState<'pgm> {
         let quotient = numerator / denominator;
         let remainder = numerator % denominator;
 
-        self.op_stack.push(quotient.into());
-        self.op_stack.push(remainder.into());
+        let _ = self.op_stack.push(quotient.into());
+        let _ = self.op_stack.push(remainder.into());
 
         let remainder_is_less_than_denominator = U32TableEntry::new(Lt, remainder, denominator);
         let numerator_and_quotient_range_check = U32TableEntry::new(Split, numerator, quotient);
@@ -615,7 +722,7 @@ impl<'pgm> VMState<'pgm> {
     fn pop_count(&mut self) -> Result<Vec<CoProcessorCall>> {
         let (top_of_stack, _) = self.op_stack.pop_u32()?;
         let pop_count = top_of_stack.count_ones();
-        self.op_stack.push(pop_count.into());
+        let _ = self.op_stack.push(pop_count.into());
 
         let u32_table_entry = U32TableEntry::new(PopCount, top_of_stack, 0);
         let co_processor_calls = vec![U32Call(u32_table_entry)];
@@ -627,7 +734,7 @@ impl<'pgm> VMState<'pgm> {
     fn xx_add(&mut self) -> Result<Vec<CoProcessorCall>> {
         let (lhs, _) = self.op_stack.pop_extension_field_element()?;
         let rhs = self.op_stack.peek_at_top_extension_field_element();
-        self.op_stack.push_extension_field_element(lhs + rhs);
+        let _ = self.op_stack.push_extension_field_element(lhs + rhs);
         self.instruction_pointer += 1;
         Ok(vec![])
     }
@@ -635,7 +742,7 @@ impl<'pgm> VMState<'pgm> {
     fn xx_mul(&mut self) -> Result<Vec<CoProcessorCall>> {
         let (lhs, _) = self.op_stack.pop_extension_field_element()?;
         let rhs = self.op_stack.peek_at_top_extension_field_element();
-        self.op_stack.push_extension_field_element(lhs * rhs);
+        let _ = self.op_stack.push_extension_field_element(lhs * rhs);
         self.instruction_pointer += 1;
         Ok(vec![])
     }
@@ -645,34 +752,41 @@ impl<'pgm> VMState<'pgm> {
         if top_of_stack.is_zero() {
             bail!(InverseOfZero);
         }
-        self.op_stack
-            .push_extension_field_element(top_of_stack.inverse());
+        let inverse = top_of_stack.inverse();
+        let _ = self.op_stack.push_extension_field_element(inverse);
         self.instruction_pointer += 1;
         Ok(vec![])
     }
 
     fn xb_mul(&mut self) -> Result<Vec<CoProcessorCall>> {
-        let (lhs, _) = self.op_stack.pop()?;
+        let (lhs, underflow_io) = self.op_stack.pop()?;
         let (rhs, _) = self.op_stack.pop_extension_field_element()?;
-        self.op_stack.push_extension_field_element(lhs.lift() * rhs);
+        let _ = self.op_stack.push_extension_field_element(lhs.lift() * rhs);
+
+        let op_stack_calls = self.underflow_io_sequence_to_co_processor_calls(vec![underflow_io]);
+
         self.instruction_pointer += 1;
-        Ok(vec![])
+        Ok(op_stack_calls)
     }
 
     fn write_io(&mut self) -> Result<Vec<CoProcessorCall>> {
-        let (top_of_stack, _) = self.op_stack.pop()?;
+        let (top_of_stack, underflow_io) = self.op_stack.pop()?;
         self.public_output.push(top_of_stack);
+
+        let op_stack_calls = self.underflow_io_sequence_to_co_processor_calls(vec![underflow_io]);
         self.instruction_pointer += 1;
-        Ok(vec![])
+        Ok(op_stack_calls)
     }
 
     fn read_io(&mut self) -> Result<Vec<CoProcessorCall>> {
         let read_element = self.public_input.pop_front().ok_or(anyhow!(
             "Instruction `read_io`: public input buffer is empty."
         ))?;
-        self.op_stack.push(read_element);
+        let underflow_io = self.op_stack.push(read_element);
+
+        let op_stack_calls = self.underflow_io_sequence_to_co_processor_calls(vec![underflow_io]);
         self.instruction_pointer += 1;
-        Ok(vec![])
+        Ok(op_stack_calls)
     }
 
     pub fn to_processor_row(&self) -> Array1<BFieldElement> {

@@ -1,5 +1,6 @@
 use std::cmp::Ordering;
 
+use arbitrary::Arbitrary;
 use ndarray::parallel::prelude::*;
 use ndarray::s;
 use ndarray::Array1;
@@ -14,6 +15,7 @@ use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use crate::aet::AlgebraicExecutionTrace;
 use crate::op_stack::OpStackElement;
+use crate::op_stack::UnderflowIO;
 use crate::table::challenges::ChallengeId::*;
 use crate::table::challenges::Challenges;
 use crate::table::constraint_circuit::DualRowIndicator::*;
@@ -33,6 +35,51 @@ pub struct OpStackTable {}
 
 #[derive(Debug, Clone)]
 pub struct ExtOpStackTable {}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Arbitrary)]
+pub struct OpStackTableEntry {
+    pub clk: u32,
+    pub op_stack_pointer: BFieldElement,
+    pub underflow_io: UnderflowIO,
+}
+
+impl OpStackTableEntry {
+    pub fn new(clk: u32, op_stack_pointer: BFieldElement, underflow_io: UnderflowIO) -> Self {
+        Self {
+            clk,
+            op_stack_pointer,
+            underflow_io,
+        }
+    }
+
+    pub fn shrinks_stack(&self) -> bool {
+        self.underflow_io.shrinks_stack()
+    }
+
+    pub fn grows_stack(&self) -> bool {
+        self.underflow_io.grows_stack()
+    }
+
+    pub fn from_underflow_io_sequence(
+        clk: u32,
+        mut op_stack_pointer: BFieldElement,
+        mut underflow_io_sequence: Vec<UnderflowIO>,
+    ) -> Vec<Self> {
+        UnderflowIO::canonicalize_sequence(&mut underflow_io_sequence);
+        let mut op_stack_table_entries = vec![];
+        for underflow_io in underflow_io_sequence {
+            if underflow_io.shrinks_stack() {
+                op_stack_pointer.decrement();
+            }
+            let op_stack_table_entry = Self::new(clk, op_stack_pointer, underflow_io);
+            op_stack_table_entries.push(op_stack_table_entry);
+            if underflow_io.grows_stack() {
+                op_stack_pointer.increment();
+            }
+        }
+        op_stack_table_entries
+    }
+}
 
 impl ExtOpStackTable {
     pub fn initial_constraints(
@@ -329,7 +376,13 @@ impl OpStackTable {
 
 #[cfg(test)]
 pub(crate) mod tests {
+    use std::cmp::max;
+
+    use itertools::Itertools;
     use num_traits::Zero;
+    use proptest::collection::vec;
+    use proptest::prelude::*;
+    use proptest_arbitrary_interop::arb;
 
     use super::*;
 
@@ -419,5 +472,82 @@ pub(crate) mod tests {
         }
 
         true
+    }
+
+    proptest! {
+        #[test]
+        fn op_stack_table_entry_either_shrinks_stack_or_grows_stack(
+            entry in arb::<OpStackTableEntry>()
+        ) {
+            let shrinks_stack = entry.shrinks_stack();
+            let grows_stack = entry.grows_stack();
+            assert!(shrinks_stack ^ grows_stack);
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn op_stack_pointer_in_sequence_of_op_stack_table_entries(
+                clk: u32,
+                osp in OpStackElement::COUNT..1024,
+                base_field_elements in vec(arb::<BFieldElement>(), 0..32),
+                sequence_of_writes: bool,
+        ) {
+            let sequence_length = base_field_elements.len();
+            let osp = match sequence_of_writes {
+                true => osp,
+                false => max(osp, sequence_length),
+            };
+
+            let sequence_length = u64::try_from(sequence_length).unwrap();
+            let osp = u64::try_from(osp).unwrap();
+
+            let underflow_io_operation = match sequence_of_writes {
+                true => UnderflowIO::Write,
+                false => UnderflowIO::Read,
+            };
+            let underflow_io = base_field_elements
+                .into_iter()
+                .map(underflow_io_operation)
+                .collect();
+
+            let op_stack_pointer = osp.into();
+            let entries =
+                OpStackTableEntry::from_underflow_io_sequence(clk, op_stack_pointer, underflow_io);
+            let op_stack_pointers = entries
+                .iter()
+                .map(|entry| entry.op_stack_pointer.value())
+                .sorted()
+                .collect_vec();
+
+            let expected_lowest_osp = match sequence_of_writes {
+                true => osp,
+                false => osp - sequence_length,
+            };
+            let expected_largest_osp = match sequence_of_writes {
+                true => osp + sequence_length,
+                false => osp,
+            };
+            let expected_op_stack_pointers =
+                (expected_lowest_osp..expected_largest_osp).collect_vec();
+
+            prop_assert_eq!(expected_op_stack_pointers, op_stack_pointers);
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn clk_stays_same_in_sequence_of_op_stack_table_entries(
+                clk: u32,
+                osp in OpStackElement::COUNT..1024,
+                underflow_io in vec(arb::<UnderflowIO>(), 0..OpStackElement::COUNT),
+        ) {
+            let op_stack_pointer = u64::try_from(osp).unwrap().into();
+            let entries =
+                OpStackTableEntry::from_underflow_io_sequence(clk, op_stack_pointer, underflow_io);
+            let clk_values = entries.iter().map(|entry| entry.clk).collect_vec();
+            let all_clk_values_are_clk = clk_values.iter().all(|&c| c == clk);
+            prop_assert!(all_clk_values_are_clk);
+        }
     }
 }

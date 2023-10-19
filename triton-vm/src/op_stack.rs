@@ -5,6 +5,7 @@ use std::fmt::Result as FmtResult;
 use anyhow::anyhow;
 use anyhow::bail;
 use anyhow::Result;
+use arbitrary::Arbitrary;
 use get_size::GetSize;
 use itertools::Itertools;
 use num_traits::Zero;
@@ -145,8 +146,9 @@ impl OpStack {
 }
 
 /// Indicates changes to the op-stack underflow memory.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, GetSize, Serialize, Deserialize)]
-pub(crate) enum UnderflowIO {
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, GetSize, Serialize, Deserialize, Arbitrary)]
+#[must_use = "The change to underflow memory should be handled."]
+pub enum UnderflowIO {
     Read(BFieldElement),
     Write(BFieldElement),
 }
@@ -157,10 +159,10 @@ impl UnderflowIO {
     /// For example, the sequence `[Read(5), Write(5), Read(7)]` can be replaced with `[Read(7)]`.
     /// Similarly, the sequence `[Write(5), Write(3), Read(3), Read(5), Write(7)]` can be replaced
     /// with `[Write(7)]`.
-    pub(crate) fn canonicalize_sequence(sequence: &mut Vec<Self>) {
+    pub fn canonicalize_sequence(sequence: &mut Vec<Self>) {
         while let Some(index) = Self::index_of_dual_pair(sequence) {
-            sequence.remove(index);
-            sequence.remove(index);
+            let _ = sequence.remove(index);
+            let _ = sequence.remove(index);
         }
     }
 
@@ -177,6 +179,20 @@ impl UnderflowIO {
             (&Self::Read(read), Self::Write(write)) => read == write,
             (&Self::Write(write), Self::Read(read)) => read == write,
             _ => false,
+        }
+    }
+
+    pub fn shrinks_stack(&self) -> bool {
+        match self {
+            Self::Read(_) => true,
+            Self::Write(_) => false,
+        }
+    }
+
+    pub fn grows_stack(&self) -> bool {
+        match self {
+            Self::Read(_) => false,
+            Self::Write(_) => true,
         }
     }
 }
@@ -315,6 +331,8 @@ impl From<&OpStackElement> for BFieldElement {
 
 #[cfg(test)]
 mod tests {
+    use proptest::prelude::*;
+    use proptest_arbitrary_interop::arb;
     use twenty_first::shared_math::b_field_element::BFieldElement;
 
     use super::*;
@@ -333,7 +351,7 @@ mod tests {
 
         // push elements 1 thru 17
         for i in 1..=17 {
-            op_stack.push(BFieldElement::new(i as u64));
+            let _ = op_stack.push(BFieldElement::new(i as u64));
         }
 
         // verify height
@@ -371,7 +389,7 @@ mod tests {
 
         // pop 11 elements
         for _ in 0..11 {
-            op_stack.pop().expect("can't pop");
+            let _ = op_stack.pop().expect("can't pop");
         }
 
         // verify height
@@ -382,8 +400,8 @@ mod tests {
         );
 
         // pop 2 XFieldElements
-        op_stack.pop_extension_field_element().expect("can't pop");
-        op_stack.pop_extension_field_element().expect("can't pop");
+        let _ = op_stack.pop_extension_field_element().expect("can't pop");
+        let _ = op_stack.pop_extension_field_element().expect("can't pop");
 
         // verify height
         assert_eq!(op_stack.stack.len(), 16);
@@ -393,7 +411,7 @@ mod tests {
         );
 
         // verify underflow
-        op_stack.pop().expect("can't pop");
+        let _ = op_stack.pop().expect("can't pop");
         assert!(op_stack.is_too_shallow());
     }
 
@@ -442,5 +460,14 @@ mod tests {
 
         let expected_sequence = vec![UnderflowIO::Write(7_u64.into())];
         assert_eq!(expected_sequence, sequence);
+    }
+
+    proptest! {
+        #[test]
+        fn underflow_io_either_shrinks_stack_or_grows_stack(underflow_io in arb::<UnderflowIO>()) {
+            let shrinks_stack = underflow_io.shrinks_stack();
+            let grows_stack = underflow_io.grows_stack();
+            assert!(shrinks_stack ^ grows_stack);
+        }
     }
 }

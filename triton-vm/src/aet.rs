@@ -223,6 +223,7 @@ impl AlgebraicExecutionTrace {
             SpongeStateReset => self.append_initial_sponge_state(),
             Tip5Trace(instruction, trace) => self.append_sponge_trace(instruction, *trace),
             U32Call(u32_entry) => self.record_u32_table_entry(u32_entry),
+            OpStackCall(_) => (), // todo
         }
     }
 
