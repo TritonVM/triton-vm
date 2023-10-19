@@ -300,7 +300,7 @@ impl<'pgm> VMState<'pgm> {
     }
 
     fn skiz(&mut self) -> Result<Vec<CoProcessorCall>> {
-        let top_of_stack = self.op_stack.pop()?;
+        let (top_of_stack, _) = self.op_stack.pop()?;
         self.instruction_pointer += match top_of_stack.is_zero() {
             true => 1 + self.next_instruction()?.size(),
             false => 1,
@@ -331,7 +331,7 @@ impl<'pgm> VMState<'pgm> {
     }
 
     fn assert(&mut self) -> Result<Vec<CoProcessorCall>> {
-        let top_of_stack = self.op_stack.pop()?;
+        let (top_of_stack, _) = self.op_stack.pop()?;
         if !top_of_stack.is_one() {
             let assertion_failed =
                 AssertionFailed(self.instruction_pointer, self.cycle_count, top_of_stack);
@@ -358,7 +358,7 @@ impl<'pgm> VMState<'pgm> {
 
     fn write_mem(&mut self) -> Result<Vec<CoProcessorCall>> {
         let ram_pointer = self.op_stack.peek_at(ST1);
-        let ram_value = self.op_stack.pop()?;
+        let (ram_value, _) = self.op_stack.pop()?;
         self.ram_pointer = ram_pointer.value();
         self.ram.insert(ram_pointer, ram_value);
         self.instruction_pointer += 1;
@@ -366,7 +366,7 @@ impl<'pgm> VMState<'pgm> {
     }
 
     fn hash(&mut self) -> Result<Vec<CoProcessorCall>> {
-        let to_hash = self.op_stack.pop_multiple::<{ tip5::RATE }>()?;
+        let (to_hash, _) = self.op_stack.pop_multiple::<{ tip5::RATE }>()?;
         let mut hash_input = Tip5State::new(Domain::FixedLength);
         hash_input.state[..tip5::RATE].copy_from_slice(&to_hash);
         let tip5_trace = Tip5::trace(&mut hash_input);
@@ -392,7 +392,7 @@ impl<'pgm> VMState<'pgm> {
 
     fn sponge_absorb(&mut self) -> Result<Vec<CoProcessorCall>> {
         // fetch top elements but don't alter the stack
-        let to_absorb = self.op_stack.pop_multiple::<{ tip5::RATE }>()?;
+        let (to_absorb, _) = self.op_stack.pop_multiple::<{ tip5::RATE }>()?;
         for i in (0..tip5::RATE).rev() {
             self.op_stack.push(to_absorb[i]);
         }
@@ -425,9 +425,9 @@ impl<'pgm> VMState<'pgm> {
 
     fn divine_sibling(&mut self) -> Result<Vec<CoProcessorCall>> {
         let _st0_through_st4 = self.op_stack.pop_multiple::<{ DIGEST_LENGTH }>()?;
-        let known_digest = self.op_stack.pop_multiple()?;
+        let (known_digest, _) = self.op_stack.pop_multiple()?;
 
-        let node_index = self.op_stack.pop_u32()?;
+        let (node_index, _) = self.op_stack.pop_u32()?;
         let parent_node_index = node_index / 2;
         self.op_stack.push(parent_node_index.into());
 
@@ -470,23 +470,23 @@ impl<'pgm> VMState<'pgm> {
     }
 
     fn add(&mut self) -> Result<Vec<CoProcessorCall>> {
-        let lhs = self.op_stack.pop()?;
-        let rhs = self.op_stack.pop()?;
+        let (lhs, _) = self.op_stack.pop()?;
+        let (rhs, _) = self.op_stack.pop()?;
         self.op_stack.push(lhs + rhs);
         self.instruction_pointer += 1;
         Ok(vec![])
     }
 
     fn mul(&mut self) -> Result<Vec<CoProcessorCall>> {
-        let lhs = self.op_stack.pop()?;
-        let rhs = self.op_stack.pop()?;
+        let (lhs, _) = self.op_stack.pop()?;
+        let (rhs, _) = self.op_stack.pop()?;
         self.op_stack.push(lhs * rhs);
         self.instruction_pointer += 1;
         Ok(vec![])
     }
 
     fn invert(&mut self) -> Result<Vec<CoProcessorCall>> {
-        let top_of_stack = self.op_stack.pop()?;
+        let (top_of_stack, _) = self.op_stack.pop()?;
         if top_of_stack.is_zero() {
             bail!(InverseOfZero);
         }
@@ -496,8 +496,8 @@ impl<'pgm> VMState<'pgm> {
     }
 
     fn eq(&mut self) -> Result<Vec<CoProcessorCall>> {
-        let lhs = self.op_stack.pop()?;
-        let rhs = self.op_stack.pop()?;
+        let (lhs, _) = self.op_stack.pop()?;
+        let (rhs, _) = self.op_stack.pop()?;
         let eq: u32 = (lhs == rhs).into();
         self.op_stack.push(eq.into());
         self.instruction_pointer += 1;
@@ -505,7 +505,7 @@ impl<'pgm> VMState<'pgm> {
     }
 
     fn split(&mut self) -> Result<Vec<CoProcessorCall>> {
-        let top_of_stack = self.op_stack.pop()?;
+        let (top_of_stack, _) = self.op_stack.pop()?;
         let lo = BFieldElement::new(top_of_stack.value() & 0xffff_ffff);
         let hi = BFieldElement::new(top_of_stack.value() >> 32);
         self.op_stack.push(hi);
@@ -519,8 +519,8 @@ impl<'pgm> VMState<'pgm> {
     }
 
     fn lt(&mut self) -> Result<Vec<CoProcessorCall>> {
-        let lhs = self.op_stack.pop_u32()?;
-        let rhs = self.op_stack.pop_u32()?;
+        let (lhs, _) = self.op_stack.pop_u32()?;
+        let (rhs, _) = self.op_stack.pop_u32()?;
         let lt: u32 = (lhs < rhs).into();
         self.op_stack.push(lt.into());
 
@@ -532,8 +532,8 @@ impl<'pgm> VMState<'pgm> {
     }
 
     fn and(&mut self) -> Result<Vec<CoProcessorCall>> {
-        let lhs = self.op_stack.pop_u32()?;
-        let rhs = self.op_stack.pop_u32()?;
+        let (lhs, _) = self.op_stack.pop_u32()?;
+        let (rhs, _) = self.op_stack.pop_u32()?;
         let and = lhs & rhs;
         self.op_stack.push(and.into());
 
@@ -545,8 +545,8 @@ impl<'pgm> VMState<'pgm> {
     }
 
     fn xor(&mut self) -> Result<Vec<CoProcessorCall>> {
-        let lhs = self.op_stack.pop_u32()?;
-        let rhs = self.op_stack.pop_u32()?;
+        let (lhs, _) = self.op_stack.pop_u32()?;
+        let (rhs, _) = self.op_stack.pop_u32()?;
         let xor = lhs ^ rhs;
         self.op_stack.push(xor.into());
 
@@ -561,7 +561,7 @@ impl<'pgm> VMState<'pgm> {
     }
 
     fn log_2_floor(&mut self) -> Result<Vec<CoProcessorCall>> {
-        let top_of_stack = self.op_stack.pop_u32()?;
+        let (top_of_stack, _) = self.op_stack.pop_u32()?;
         if top_of_stack.is_zero() {
             bail!(LogarithmOfZero);
         }
@@ -576,8 +576,8 @@ impl<'pgm> VMState<'pgm> {
     }
 
     fn pow(&mut self) -> Result<Vec<CoProcessorCall>> {
-        let base = self.op_stack.pop()?;
-        let exponent = self.op_stack.pop_u32()?;
+        let (base, _) = self.op_stack.pop()?;
+        let (exponent, _) = self.op_stack.pop_u32()?;
         let base_pow_exponent = base.mod_pow(exponent.into());
         self.op_stack.push(base_pow_exponent);
 
@@ -590,8 +590,8 @@ impl<'pgm> VMState<'pgm> {
     }
 
     fn div_mod(&mut self) -> Result<Vec<CoProcessorCall>> {
-        let numerator = self.op_stack.pop_u32()?;
-        let denominator = self.op_stack.pop_u32()?;
+        let (numerator, _) = self.op_stack.pop_u32()?;
+        let (denominator, _) = self.op_stack.pop_u32()?;
         if denominator.is_zero() {
             bail!(DivisionByZero);
         }
@@ -613,7 +613,7 @@ impl<'pgm> VMState<'pgm> {
     }
 
     fn pop_count(&mut self) -> Result<Vec<CoProcessorCall>> {
-        let top_of_stack = self.op_stack.pop_u32()?;
+        let (top_of_stack, _) = self.op_stack.pop_u32()?;
         let pop_count = top_of_stack.count_ones();
         self.op_stack.push(pop_count.into());
 
@@ -625,7 +625,7 @@ impl<'pgm> VMState<'pgm> {
     }
 
     fn xx_add(&mut self) -> Result<Vec<CoProcessorCall>> {
-        let lhs = self.op_stack.pop_extension_field_element()?;
+        let (lhs, _) = self.op_stack.pop_extension_field_element()?;
         let rhs = self.op_stack.peek_at_top_extension_field_element();
         self.op_stack.push_extension_field_element(lhs + rhs);
         self.instruction_pointer += 1;
@@ -633,7 +633,7 @@ impl<'pgm> VMState<'pgm> {
     }
 
     fn xx_mul(&mut self) -> Result<Vec<CoProcessorCall>> {
-        let lhs = self.op_stack.pop_extension_field_element()?;
+        let (lhs, _) = self.op_stack.pop_extension_field_element()?;
         let rhs = self.op_stack.peek_at_top_extension_field_element();
         self.op_stack.push_extension_field_element(lhs * rhs);
         self.instruction_pointer += 1;
@@ -641,7 +641,7 @@ impl<'pgm> VMState<'pgm> {
     }
 
     fn x_invert(&mut self) -> Result<Vec<CoProcessorCall>> {
-        let top_of_stack = self.op_stack.pop_extension_field_element()?;
+        let (top_of_stack, _) = self.op_stack.pop_extension_field_element()?;
         if top_of_stack.is_zero() {
             bail!(InverseOfZero);
         }
@@ -652,15 +652,15 @@ impl<'pgm> VMState<'pgm> {
     }
 
     fn xb_mul(&mut self) -> Result<Vec<CoProcessorCall>> {
-        let lhs = self.op_stack.pop()?;
-        let rhs = self.op_stack.pop_extension_field_element()?;
+        let (lhs, _) = self.op_stack.pop()?;
+        let (rhs, _) = self.op_stack.pop_extension_field_element()?;
         self.op_stack.push_extension_field_element(lhs.lift() * rhs);
         self.instruction_pointer += 1;
         Ok(vec![])
     }
 
     fn write_io(&mut self) -> Result<Vec<CoProcessorCall>> {
-        let top_of_stack = self.op_stack.pop()?;
+        let (top_of_stack, _) = self.op_stack.pop()?;
         self.public_output.push(top_of_stack);
         self.instruction_pointer += 1;
         Ok(vec![])
@@ -717,7 +717,7 @@ impl<'pgm> VMState<'pgm> {
         processor_row[ST14.base_table_index()] = self.op_stack.peek_at(OpStackElement::ST14);
         processor_row[ST15.base_table_index()] = self.op_stack.peek_at(OpStackElement::ST15);
         processor_row[OSP.base_table_index()] = self.op_stack.op_stack_pointer();
-        processor_row[OSV.base_table_index()] = self.op_stack.op_stack_value();
+        processor_row[OSV.base_table_index()] = self.op_stack.first_underflow_element();
         processor_row[HV0.base_table_index()] = helper_variables[0];
         processor_row[HV1.base_table_index()] = helper_variables[1];
         processor_row[HV2.base_table_index()] = helper_variables[2];

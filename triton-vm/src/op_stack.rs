@@ -15,6 +15,7 @@ use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::digest::Digest;
 use twenty_first::shared_math::tip5::DIGEST_LENGTH;
 use twenty_first::shared_math::x_field_element::XFieldElement;
+use twenty_first::shared_math::x_field_element::EXTENSION_DEGREE;
 
 use crate::error::InstructionError::*;
 use crate::op_stack::OpStackElement::*;
@@ -47,39 +48,58 @@ impl OpStack {
         Self { stack }
     }
 
-    pub(crate) fn push(&mut self, element: BFieldElement) {
+    pub(crate) fn push(&mut self, element: BFieldElement) -> UnderflowIO {
         self.stack.push(element);
+        UnderflowIO::Write(self.first_underflow_element())
     }
 
-    pub(crate) fn push_extension_field_element(&mut self, element: XFieldElement) {
+    pub(crate) fn push_extension_field_element(
+        &mut self,
+        element: XFieldElement,
+    ) -> [UnderflowIO; EXTENSION_DEGREE] {
+        let mut underflow_io = vec![];
         for coefficient in element.coefficients.into_iter().rev() {
-            self.push(coefficient);
+            let underflow_write = self.push(coefficient);
+            underflow_io.push(underflow_write);
         }
+        underflow_io.try_into().unwrap()
     }
 
-    pub(crate) fn pop(&mut self) -> Result<BFieldElement> {
-        self.stack.pop().ok_or_else(|| anyhow!(OpStackTooShallow))
+    pub(crate) fn pop(&mut self) -> Result<(BFieldElement, UnderflowIO)> {
+        let underflow_io = UnderflowIO::Read(self.first_underflow_element());
+        let element = self.stack.pop().ok_or_else(|| anyhow!(OpStackTooShallow))?;
+        Ok((element, underflow_io))
     }
 
-    pub(crate) fn pop_extension_field_element(&mut self) -> Result<XFieldElement> {
-        let coefficients = self.pop_multiple()?;
+    pub(crate) fn pop_extension_field_element(
+        &mut self,
+    ) -> Result<(XFieldElement, [UnderflowIO; EXTENSION_DEGREE])> {
+        let (coefficients, underflow_io) = self.pop_multiple()?;
         let element = XFieldElement::new(coefficients);
-        Ok(element)
+        Ok((element, underflow_io))
     }
 
-    pub(crate) fn pop_u32(&mut self) -> Result<u32> {
-        let element = self.pop()?;
-        element
+    pub(crate) fn pop_u32(&mut self) -> Result<(u32, UnderflowIO)> {
+        let (element, underflow_io) = self.pop()?;
+        let element = element
             .try_into()
-            .map_err(|_| anyhow!(FailedU32Conversion(element)))
+            .map_err(|_| anyhow!(FailedU32Conversion(element)))?;
+        Ok((element, underflow_io))
     }
 
-    pub(crate) fn pop_multiple<const N: usize>(&mut self) -> Result<[BFieldElement; N]> {
-        let mut popped_elements = [BFieldElement::zero(); N];
-        for element in popped_elements.iter_mut() {
-            *element = self.pop()?;
+    pub(crate) fn pop_multiple<const N: usize>(
+        &mut self,
+    ) -> Result<([BFieldElement; N], [UnderflowIO; N])> {
+        let mut elements = vec![];
+        let mut underflow_io = vec![];
+        for _ in 0..N {
+            let (element, underflow_read) = self.pop()?;
+            elements.push(element);
+            underflow_io.push(underflow_read);
         }
-        Ok(popped_elements)
+        let elements = elements.try_into().unwrap();
+        let underflow_io = underflow_io.try_into().unwrap();
+        Ok((elements, underflow_io))
     }
 
     pub(crate) fn peek_at(&self, stack_element: OpStackElement) -> BFieldElement {
@@ -112,7 +132,7 @@ impl OpStack {
 
     /// The first element of the op-stack underflow memory, or 0 if the op-stack underflow memory
     /// is empty.
-    pub(crate) fn op_stack_value(&self) -> BFieldElement {
+    pub(crate) fn first_underflow_element(&self) -> BFieldElement {
         let top_of_stack_index = self.stack.len() - 1;
         let underflow_start = top_of_stack_index - OpStackElement::COUNT;
         self.stack.get(underflow_start).copied().unwrap_or_default()
@@ -336,7 +356,7 @@ mod tests {
             op_stack.peek_at(ST13),
             op_stack.peek_at(ST14),
             op_stack.peek_at(ST15),
-            op_stack.op_stack_value(),
+            op_stack.first_underflow_element(),
         ];
         let len_before = container.len();
         container.sort_by_key(|a| a.value());
