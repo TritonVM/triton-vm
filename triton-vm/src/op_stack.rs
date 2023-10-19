@@ -133,9 +133,14 @@ impl OpStack {
     /// The first element of the op-stack underflow memory, or 0 if the op-stack underflow memory
     /// is empty.
     pub(crate) fn first_underflow_element(&self) -> BFieldElement {
-        let top_of_stack_index = self.stack.len() - 1;
-        let underflow_start = top_of_stack_index - OpStackElement::COUNT;
-        self.stack.get(underflow_start).copied().unwrap_or_default()
+        let default = BFieldElement::zero();
+        let Some(top_of_stack_index) = self.stack.len().checked_sub(1) else {
+            return default;
+        };
+        let Some(underflow_start) = top_of_stack_index.checked_sub(OpStackElement::COUNT) else {
+            return default;
+        };
+        self.stack.get(underflow_start).copied().unwrap_or(default)
     }
 }
 
@@ -390,6 +395,16 @@ mod tests {
         // verify underflow
         op_stack.pop().expect("can't pop");
         assert!(op_stack.is_too_shallow());
+    }
+
+    #[test]
+    fn trying_to_access_first_underflow_element_never_panics() {
+        let mut op_stack = OpStack::new(Default::default());
+        let way_too_long = 2 * op_stack.stack.len();
+        for _ in 0..way_too_long {
+            let _ = op_stack.pop();
+            let _ = op_stack.first_underflow_element();
+        }
     }
 
     #[test]
