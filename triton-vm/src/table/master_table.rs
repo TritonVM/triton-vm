@@ -731,7 +731,7 @@ impl MasterBaseTable {
         [
             self.program_table_len,
             processor_table_len,
-            self.main_execution_len,
+            self.op_stack_table_len,
             ram_table_len,
             jump_stack_table_len,
             self.hash_coprocessor_execution_len,

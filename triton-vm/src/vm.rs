@@ -143,7 +143,7 @@ impl<'pgm> VMState<'pgm> {
         };
 
         if current_instruction.shrinks_op_stack() {
-            let op_stack_pointer = self.op_stack.op_stack_pointer();
+            let op_stack_pointer = self.op_stack.pointer();
             let maximum_op_stack_pointer = BFieldElement::new(OpStackElement::COUNT as u64);
             let op_stack_pointer_minus_maximum = op_stack_pointer - maximum_op_stack_pointer;
             hvs[0] = op_stack_pointer_minus_maximum.inverse_or_zero();
@@ -266,7 +266,7 @@ impl<'pgm> VMState<'pgm> {
     ) -> Vec<CoProcessorCall> {
         let op_stack_table_entries = OpStackTableEntry::from_underflow_io_sequence(
             self.cycle_count,
-            self.op_stack.op_stack_pointer(),
+            self.op_stack.pointer(),
             underflow_io_sequence,
         );
         op_stack_table_entries
@@ -830,8 +830,7 @@ impl<'pgm> VMState<'pgm> {
         processor_row[ST13.base_table_index()] = self.op_stack.peek_at(OpStackElement::ST13);
         processor_row[ST14.base_table_index()] = self.op_stack.peek_at(OpStackElement::ST14);
         processor_row[ST15.base_table_index()] = self.op_stack.peek_at(OpStackElement::ST15);
-        processor_row[OSP.base_table_index()] = self.op_stack.op_stack_pointer();
-        processor_row[OSV.base_table_index()] = self.op_stack.first_underflow_element();
+        processor_row[OpStackPointer.base_table_index()] = self.op_stack.pointer();
         processor_row[HV0.base_table_index()] = helper_variables[0];
         processor_row[HV1.base_table_index()] = helper_variables[1];
         processor_row[HV2.base_table_index()] = helper_variables[2];

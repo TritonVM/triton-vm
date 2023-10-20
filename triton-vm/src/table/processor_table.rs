@@ -181,13 +181,13 @@ impl ProcessorTable {
             // OpStack table
             let clk = current_row[CLK.base_table_index()];
             let ib1 = current_row[IB1.base_table_index()];
-            let osp = current_row[OSP.base_table_index()];
-            let osv = current_row[OSV.base_table_index()];
+            let osp = current_row[OpStackPointer.base_table_index()];
+            let osv = current_row[ST15.base_table_index()]; // todo
             let compressed_row_for_op_stack_table_permutation_argument = clk
                 * challenges[OpStackClkWeight]
                 + ib1 * challenges[OpStackIb1Weight]
-                + osp * challenges[OpStackOspWeight]
-                + osv * challenges[OpStackOsvWeight];
+                + osp * challenges[OpStackPointerWeight]
+                + osv * challenges[OpStackFirstUnderflowElementWeight];
             op_stack_table_running_product *= challenges[OpStackIndeterminate]
                 - compressed_row_for_op_stack_table_permutation_argument;
 
@@ -392,8 +392,7 @@ impl ExtProcessorTable {
         let st8_is_0 = base_row(ST8);
         let st9_is_0 = base_row(ST9);
         let st10_is_0 = base_row(ST10);
-        let osp_is_16 = base_row(OSP) - constant(16);
-        let osv_is_0 = base_row(OSV);
+        let op_stack_pointer_is_16 = base_row(OpStackPointer) - constant(16);
         let ramp_is_0 = base_row(RAMP);
         let previous_instruction_is_0 = base_row(PreviousInstruction);
 
@@ -440,10 +439,11 @@ impl ExtProcessorTable {
         // op-stack table
         let op_stack_indeterminate = challenge(OpStackIndeterminate);
         let op_stack_ib1_weight = challenge(OpStackIb1Weight);
-        let op_stack_osp_weight = challenge(OpStackOspWeight);
-        // note: `clk` and `osv` are already constrained to be 0, `osp` to be 16
+        let op_stack_pointer_weight = challenge(OpStackPointerWeight);
+        // note: `clk` and `first_underflow_element` are already constrained to be 0, and
+        // `op_stack_pointer` to be 16
         let compressed_row_for_op_stack_table =
-            op_stack_ib1_weight * base_row(IB1) + op_stack_osp_weight * constant(16);
+            op_stack_ib1_weight * base_row(IB1) + op_stack_pointer_weight * constant(16);
         let running_product_for_op_stack_table_is_initialized_correctly =
             ext_row(OpStackTablePermArg)
                 - x_constant(PermArg::default_initial())
@@ -520,8 +520,7 @@ impl ExtProcessorTable {
             st9_is_0,
             st10_is_0,
             compressed_program_digest_is_expected_program_digest,
-            osp_is_16,
-            osv_is_0,
+            op_stack_pointer_is_16,
             ramp_is_0,
             previous_instruction_is_0,
             running_evaluation_for_standard_input_is_initialized_correctly,
@@ -800,10 +799,8 @@ impl ExtProcessorTable {
             next_base_row(ST13) - curr_base_row(ST13),
             next_base_row(ST14) - curr_base_row(ST14),
             next_base_row(ST15) - curr_base_row(ST15),
-            // The top of the OpStack underflow, i.e., osv, does not change.
-            next_base_row(OSV) - curr_base_row(OSV),
-            // The OpStack pointer, osp, does not change.
-            next_base_row(OSP) - curr_base_row(OSP),
+            // The OpStack pointer does not change.
+            next_base_row(OpStackPointer) - curr_base_row(OpStackPointer),
         ]
     }
 
@@ -919,10 +916,8 @@ impl ExtProcessorTable {
             next_base_row(ST13) - curr_base_row(ST12),
             next_base_row(ST14) - curr_base_row(ST13),
             next_base_row(ST15) - curr_base_row(ST14),
-            // The stack element in st15 is moved to the top of OpStack underflow, i.e., osv.
-            next_base_row(OSV) - curr_base_row(ST15),
             // The OpStack pointer is incremented by 1.
-            next_base_row(OSP) - (curr_base_row(OSP) + constant(1)),
+            next_base_row(OpStackPointer) - (curr_base_row(OpStackPointer) + constant(1)),
         ]
     }
 
@@ -972,12 +967,10 @@ impl ExtProcessorTable {
             next_base_row(ST12) - curr_base_row(ST13),
             next_base_row(ST13) - curr_base_row(ST14),
             next_base_row(ST14) - curr_base_row(ST15),
-            // The stack element at the top of OpStack underflow, i.e., osv, is moved into st15.
-            next_base_row(ST15) - curr_base_row(OSV),
-            // The OpStack pointer, osp, is decremented by 1.
-            next_base_row(OSP) - (curr_base_row(OSP) - constant(1)),
-            // The helper variable register hv0 holds the inverse of (osp - 16).
-            (curr_base_row(OSP) - constant(16)) * curr_base_row(HV0) - constant(1),
+            // The OpStack pointer, is decremented by 1.
+            next_base_row(OpStackPointer) - (curr_base_row(OpStackPointer) - constant(1)),
+            // The helper variable register hv0 holds the inverse of (`op_stack_pointer` - 16).
+            (curr_base_row(OpStackPointer) - constant(16)) * curr_base_row(HV0) - constant(1),
         ]
     }
 
@@ -1333,8 +1326,7 @@ impl ExtProcessorTable {
             (one() - indicator_poly(13)) * (next_base_row(ST13) - curr_base_row(ST13)),
             (one() - indicator_poly(14)) * (next_base_row(ST14) - curr_base_row(ST14)),
             (one() - indicator_poly(15)) * (next_base_row(ST15) - curr_base_row(ST15)),
-            next_base_row(OSV) - curr_base_row(OSV),
-            next_base_row(OSP) - curr_base_row(OSP),
+            next_base_row(OpStackPointer) - curr_base_row(OpStackPointer),
         ];
         [
             specific_constraints,
@@ -2347,8 +2339,8 @@ impl ExtProcessorTable {
 
         let compressed_row = challenge(OpStackClkWeight) * next_base_row(CLK)
             + challenge(OpStackIb1Weight) * next_base_row(IB1)
-            + challenge(OpStackOspWeight) * next_base_row(OSP)
-            + challenge(OpStackOsvWeight) * next_base_row(OSV);
+            + challenge(OpStackPointerWeight) * next_base_row(OpStackPointer)
+            + challenge(OpStackFirstUnderflowElementWeight) * next_base_row(ST15); // todo!!!
 
         next_ext_row(OpStackTablePermArg)
             - curr_ext_row(OpStackTablePermArg) * (challenge(OpStackIndeterminate) - compressed_row)
@@ -2842,7 +2834,7 @@ impl<'a> Display for ProcessorTraceRow<'a> {
         row(
             f,
             format!(
-                "ramp: {:>width$} │ ramv: {:>width$} │",
+                "ramp: {:>width$} │ ramv: {:>width$} ╵",
                 self.row[RAMP.base_table_index()].value(),
                 self.row[RAMV.base_table_index()].value(),
             ),
@@ -2850,9 +2842,8 @@ impl<'a> Display for ProcessorTraceRow<'a> {
         row(
             f,
             format!(
-                "osp:  {:>width$} │ osv:  {:>width$} ╵",
-                self.row[OSP.base_table_index()].value(),
-                self.row[OSV.base_table_index()].value(),
+                "osp:  {:>width$} ╵",
+                self.row[OpStackPointer.base_table_index()].value(),
             ),
         )?;
 
@@ -3533,8 +3524,8 @@ pub(crate) mod tests {
         test_constraints_for_rows_with_debug_info(
             XbMul,
             &test_rows,
-            &[ST0, ST1, ST2, ST3, OSP, HV0],
-            &[ST0, ST1, ST2, ST3, OSP, HV0],
+            &[ST0, ST1, ST2, ST3, OpStackPointer, HV0],
+            &[ST0, ST1, ST2, ST3, OpStackPointer, HV0],
         );
     }
 

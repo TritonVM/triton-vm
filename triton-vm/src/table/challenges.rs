@@ -99,8 +99,8 @@ pub enum ChallengeId {
 
     OpStackClkWeight,
     OpStackIb1Weight,
-    OpStackOspWeight,
-    OpStackOsvWeight,
+    OpStackPointerWeight,
+    OpStackFirstUnderflowElementWeight,
 
     RamClkWeight,
     RamRampWeight,

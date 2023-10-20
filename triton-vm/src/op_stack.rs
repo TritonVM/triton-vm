@@ -127,7 +127,7 @@ impl OpStack {
 
     /// The address of the next free address of the op-stack. Equivalent to the current length of
     /// the op-stack.
-    pub(crate) fn op_stack_pointer(&self) -> BFieldElement {
+    pub(crate) fn pointer(&self) -> BFieldElement {
         (self.stack.len() as u64).into()
     }
 
@@ -351,10 +351,7 @@ mod tests {
 
         // verify height
         assert_eq!(op_stack.stack.len(), 16);
-        assert_eq!(
-            op_stack.op_stack_pointer().value() as usize,
-            op_stack.stack.len()
-        );
+        assert_eq!(op_stack.pointer().value() as usize, op_stack.stack.len());
 
         // push elements 1 thru 17
         for i in 1..=17 {
@@ -363,10 +360,7 @@ mod tests {
 
         // verify height
         assert_eq!(op_stack.stack.len(), 33);
-        assert_eq!(
-            op_stack.op_stack_pointer().value() as usize,
-            op_stack.stack.len()
-        );
+        assert_eq!(op_stack.pointer().value() as usize, op_stack.stack.len());
 
         // verify that all accessible items are different
         let mut container = vec![
@@ -401,10 +395,7 @@ mod tests {
 
         // verify height
         assert_eq!(op_stack.stack.len(), 22);
-        assert_eq!(
-            op_stack.op_stack_pointer().value() as usize,
-            op_stack.stack.len()
-        );
+        assert_eq!(op_stack.pointer().value() as usize, op_stack.stack.len());
 
         // pop 2 XFieldElements
         let _ = op_stack.pop_extension_field_element().expect("can't pop");
@@ -412,10 +403,7 @@ mod tests {
 
         // verify height
         assert_eq!(op_stack.stack.len(), 16);
-        assert_eq!(
-            op_stack.op_stack_pointer().value() as usize,
-            op_stack.stack.len()
-        );
+        assert_eq!(op_stack.pointer().value() as usize, op_stack.stack.len());
 
         // verify underflow
         let _ = op_stack.pop().expect("can't pop");
