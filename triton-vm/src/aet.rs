@@ -23,13 +23,13 @@ use crate::error::InstructionError::InstructionPointerOverflow;
 use crate::instruction::Instruction;
 use crate::program::Program;
 use crate::stark::StarkHasher;
-use crate::table::hash_table;
 use crate::table::hash_table::HashTable;
 use crate::table::hash_table::PermutationTrace;
-use crate::table::processor_table;
+use crate::table::op_stack_table::OpStackTableEntry;
 use crate::table::table_column::HashBaseTableColumn::CI;
 use crate::table::table_column::MasterBaseTableColumn;
 use crate::table::u32_table::U32TableEntry;
+use crate::table::*;
 use crate::vm::CoProcessorCall;
 use crate::vm::CoProcessorCall::*;
 use crate::vm::VMState;
@@ -52,6 +52,8 @@ pub struct AlgebraicExecutionTrace {
 
     /// Records the state of the processor after each instruction.
     pub processor_trace: Array2<BFieldElement>,
+
+    pub op_stack_underflow_trace: Array2<BFieldElement>,
 
     /// The trace of hashing the program whose execution generated this `AlgebraicExecutionTrace`.
     /// The resulting digest
@@ -87,6 +89,7 @@ impl AlgebraicExecutionTrace {
             program,
             instruction_multiplicities: vec![0_u32; program_len],
             processor_trace: Array2::default([0, processor_table::BASE_WIDTH]),
+            op_stack_underflow_trace: Array2::default([0, op_stack_table::BASE_WIDTH]),
             program_hash_trace: Array2::default([0, hash_table::BASE_WIDTH]),
             hash_trace: Array2::default([0, hash_table::BASE_WIDTH]),
             sponge_trace: Array2::default([0, hash_table::BASE_WIDTH]),
@@ -177,6 +180,10 @@ impl AlgebraicExecutionTrace {
         self.processor_trace.nrows()
     }
 
+    pub fn op_stack_table_length(&self) -> usize {
+        self.op_stack_underflow_trace.nrows()
+    }
+
     pub fn hash_table_length(&self) -> usize {
         self.sponge_trace.nrows() + self.hash_trace.nrows() + self.program_hash_trace.nrows()
     }
@@ -223,7 +230,7 @@ impl AlgebraicExecutionTrace {
             SpongeStateReset => self.append_initial_sponge_state(),
             Tip5Trace(instruction, trace) => self.append_sponge_trace(instruction, *trace),
             U32Call(u32_entry) => self.record_u32_table_entry(u32_entry),
-            OpStackCall(_) => (), // todo
+            OpStackCall(op_stack_entry) => self.record_op_stack_entry(op_stack_entry),
         }
     }
 
@@ -306,6 +313,13 @@ impl AlgebraicExecutionTrace {
 
     fn record_u32_table_entry(&mut self, u32_entry: U32TableEntry) {
         self.u32_entries.entry(u32_entry).or_insert(0).add_assign(1)
+    }
+
+    fn record_op_stack_entry(&mut self, op_stack_entry: OpStackTableEntry) {
+        let op_stack_table_row = op_stack_entry.to_base_table_row();
+        self.op_stack_underflow_trace
+            .push_row(op_stack_table_row.view())
+            .unwrap();
     }
 }
 

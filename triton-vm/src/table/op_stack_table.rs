@@ -8,6 +8,8 @@ use ndarray::ArrayView1;
 use ndarray::ArrayView2;
 use ndarray::ArrayViewMut2;
 use ndarray::Axis;
+use num_traits::One;
+use num_traits::Zero;
 use strum::EnumCount;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::traits::Inverse;
@@ -78,6 +80,20 @@ impl OpStackTableEntry {
             }
         }
         op_stack_table_entries
+    }
+
+    pub fn to_base_table_row(self) -> Array1<BFieldElement> {
+        let shrink_stack_indicator = match self.shrinks_stack() {
+            true => BFieldElement::one(),
+            false => BFieldElement::zero(),
+        };
+
+        let mut row = Array1::zeros(BASE_WIDTH);
+        row[CLK.base_table_index()] = self.clk.into();
+        row[IB1ShrinkStack.base_table_index()] = shrink_stack_indicator;
+        row[OSP.base_table_index()] = self.op_stack_pointer;
+        row[OSV.base_table_index()] = self.underflow_io.payload();
+        row
     }
 }
 

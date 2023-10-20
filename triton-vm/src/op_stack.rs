@@ -195,6 +195,13 @@ impl UnderflowIO {
             Self::Write(_) => true,
         }
     }
+
+    pub fn payload(self) -> BFieldElement {
+        match self {
+            Self::Read(payload) => payload,
+            Self::Write(payload) => payload,
+        }
+    }
 }
 
 /// Represents the [`OpStack`] registers directly accessible by Triton VM.

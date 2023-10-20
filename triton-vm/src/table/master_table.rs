@@ -146,6 +146,8 @@ pub const EXT_DEGREE_LOWERING_TABLE_START: usize = EXT_U32_TABLE_END;
 pub const EXT_DEGREE_LOWERING_TABLE_END: usize =
     EXT_DEGREE_LOWERING_TABLE_START + degree_lowering_table::EXT_WIDTH;
 
+const NUM_TABLES_WITHOUT_DEGREE_LOWERING: usize = TableId::COUNT - 1;
+
 /// A `TableId` uniquely determines one of Triton VM's tables.
 #[derive(Debug, Copy, Clone, Display, EnumCount, EnumIter, PartialEq, Eq, Hash)]
 pub enum TableId {
@@ -327,6 +329,7 @@ pub struct MasterBaseTable {
 
     program_table_len: usize,
     main_execution_len: usize,
+    op_stack_table_len: usize,
     hash_coprocessor_execution_len: usize,
     cascade_table_len: usize,
     u32_coprocesor_execution_len: usize,
@@ -587,6 +590,7 @@ impl MasterBaseTable {
             num_trace_randomizers,
             program_table_len: aet.program_table_length(),
             main_execution_len: aet.processor_table_length(),
+            op_stack_table_len: aet.op_stack_table_length(),
             hash_coprocessor_execution_len: aet.hash_table_length(),
             cascade_table_len: aet.cascade_table_length(),
             u32_coprocesor_execution_len: aet.u32_table_length(),
@@ -705,7 +709,7 @@ impl MasterBaseTable {
         DegreeLoweringTable::fill_derived_base_columns(self.trace_table_mut());
     }
 
-    fn all_pad_functions() -> [PadFunction; TableId::COUNT - 1] {
+    fn all_pad_functions() -> [PadFunction; NUM_TABLES_WITHOUT_DEGREE_LOWERING] {
         [
             ProgramTable::pad_trace,
             ProcessorTable::pad_trace,
@@ -719,13 +723,17 @@ impl MasterBaseTable {
         ]
     }
 
-    fn all_table_lengths(&self) -> [usize; TableId::COUNT - 1] {
+    fn all_table_lengths(&self) -> [usize; NUM_TABLES_WITHOUT_DEGREE_LOWERING] {
+        let processor_table_len = self.main_execution_len;
+        let ram_table_len = self.main_execution_len;
+        let jump_stack_table_len = self.main_execution_len;
+
         [
             self.program_table_len,
+            processor_table_len,
             self.main_execution_len,
-            self.main_execution_len,
-            self.main_execution_len,
-            self.main_execution_len,
+            ram_table_len,
+            jump_stack_table_len,
             self.hash_coprocessor_execution_len,
             self.cascade_table_len,
             1 << 8,
@@ -830,7 +838,7 @@ impl MasterBaseTable {
         master_ext_table
     }
 
-    fn all_extend_functions() -> [ExtendFunction; TableId::COUNT - 1] {
+    fn all_extend_functions() -> [ExtendFunction; NUM_TABLES_WITHOUT_DEGREE_LOWERING] {
         [
             ProgramTable::extend,
             ProcessorTable::extend,
@@ -844,7 +852,9 @@ impl MasterBaseTable {
         ]
     }
 
-    fn base_tables_for_extending(&self) -> [ArrayView2<BFieldElement>; TableId::COUNT - 1] {
+    fn base_tables_for_extending(
+        &self,
+    ) -> [ArrayView2<BFieldElement>; NUM_TABLES_WITHOUT_DEGREE_LOWERING] {
         [
             self.table(TableId::ProgramTable),
             self.table(TableId::ProcessorTable),
