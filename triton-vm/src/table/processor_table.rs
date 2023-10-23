@@ -113,11 +113,12 @@ impl ProcessorTable {
             processor_table.slice_mut(s![processor_table_len.., CLK.base_table_index()]),
         );
 
-        // The 3 memory-like tables do not have a padding indicator. Hence, clock jump differences
-        // are being looked up in their padding sections. The clock jump differences in that
-        // section are always 1. The lookup multiplicities of clock value 1 must be increased
-        // accordingly: one per padding row, times the number of memory-like tables, which is 3.
-        let num_padding_rows = 3 * (processor_table.nrows() - processor_table_len);
+        // The memory-like tables “RAM” and “Jump Stack” do not have a padding indicator. Hence,
+        // clock jump differences are being looked up in their padding sections. The clock jump
+        // differences in that section are always 1. The lookup multiplicities of clock value 1 must
+        // be increased accordingly: one per padding row, times the number of memory-like tables
+        // without padding indicator, which is 2.
+        let num_padding_rows = 2 * (processor_table.nrows() - processor_table_len);
         let num_pad_rows = BFieldElement::new(num_padding_rows as u64);
         let mut row_1 = processor_table.row_mut(1);
         row_1[ClockJumpDifferenceLookupMultiplicity.base_table_index()] += num_pad_rows;
