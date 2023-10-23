@@ -69,10 +69,18 @@ impl OpStackTableEntry {
 
     pub fn from_underflow_io_sequence(
         clk: u32,
-        mut op_stack_pointer: BFieldElement,
+        op_stack_pointer_after_sequence_execution: BFieldElement,
         mut underflow_io_sequence: Vec<UnderflowIO>,
     ) -> Vec<Self> {
         UnderflowIO::canonicalize_sequence(&mut underflow_io_sequence);
+        assert!(UnderflowIO::is_uniform_sequence(&underflow_io_sequence));
+
+        let sequence_length: BFieldElement =
+            u32::try_from(underflow_io_sequence.len()).unwrap().into();
+        let mut op_stack_pointer = match UnderflowIO::is_writing_sequence(&underflow_io_sequence) {
+            true => op_stack_pointer_after_sequence_execution - sequence_length,
+            false => op_stack_pointer_after_sequence_execution + sequence_length,
+        };
         let mut op_stack_table_entries = vec![];
         for underflow_io in underflow_io_sequence {
             if underflow_io.shrinks_stack() {
@@ -393,8 +401,6 @@ impl OpStackTable {
 
 #[cfg(test)]
 pub(crate) mod tests {
-    use std::cmp::max;
-
     use itertools::Itertools;
     use num_traits::Zero;
     use proptest::collection::vec;
@@ -509,16 +515,10 @@ pub(crate) mod tests {
         fn op_stack_pointer_in_sequence_of_op_stack_table_entries(
                 clk: u32,
                 stack_pointer in OpStackElement::COUNT..1024,
-                base_field_elements in vec(arb::<BFieldElement>(), 0..32),
+                base_field_elements in vec(arb::<BFieldElement>(), 0..OpStackElement::COUNT),
                 sequence_of_writes: bool,
         ) {
-            let sequence_length = base_field_elements.len();
-            let stack_pointer = match sequence_of_writes {
-                true => stack_pointer,
-                false => max(stack_pointer, sequence_length),
-            };
-
-            let sequence_length = u64::try_from(sequence_length).unwrap();
+            let sequence_length = u64::try_from(base_field_elements.len()).unwrap();
             let stack_pointer = u64::try_from(stack_pointer).unwrap();
 
             let underflow_io_operation = match sequence_of_writes {
@@ -539,17 +539,11 @@ pub(crate) mod tests {
                 .sorted()
                 .collect_vec();
 
-            let expected_lowest_stack_pointer = match sequence_of_writes {
-                true => stack_pointer,
-                false => stack_pointer - sequence_length,
+            let expected_stack_pointer_range = match sequence_of_writes {
+                true => stack_pointer - sequence_length..stack_pointer,
+                false => stack_pointer..stack_pointer + sequence_length,
             };
-            let expected_largest_stack_pointer = match sequence_of_writes {
-                true => stack_pointer + sequence_length,
-                false => stack_pointer,
-            };
-            let expected_op_stack_pointers =
-                (expected_lowest_stack_pointer..expected_largest_stack_pointer).collect_vec();
-
+            let expected_op_stack_pointers = expected_stack_pointer_range.collect_vec();
             prop_assert_eq!(expected_op_stack_pointers, op_stack_pointers);
         }
     }
@@ -559,8 +553,18 @@ pub(crate) mod tests {
         fn clk_stays_same_in_sequence_of_op_stack_table_entries(
                 clk: u32,
                 stack_pointer in OpStackElement::COUNT..1024,
-                underflow_io in vec(arb::<UnderflowIO>(), 0..OpStackElement::COUNT),
+                base_field_elements in vec(arb::<BFieldElement>(), 0..OpStackElement::COUNT),
+                sequence_of_writes: bool,
         ) {
+            let underflow_io_operation = match sequence_of_writes {
+                true => UnderflowIO::Write,
+                false => UnderflowIO::Read,
+            };
+            let underflow_io = base_field_elements
+                .into_iter()
+                .map(underflow_io_operation)
+                .collect();
+
             let op_stack_pointer = u64::try_from(stack_pointer).unwrap().into();
             let entries =
                 OpStackTableEntry::from_underflow_io_sequence(clk, op_stack_pointer, underflow_io);

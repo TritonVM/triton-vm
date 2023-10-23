@@ -182,6 +182,28 @@ impl UnderflowIO {
         }
     }
 
+    /// Whether the sequence of underflow IOs consists of either only reads or only writes.
+    pub fn is_uniform_sequence(sequence: &[Self]) -> bool {
+        sequence.iter().all(|io| io.is_same_type_as(sequence[0]))
+    }
+
+    fn is_same_type_as(&self, other: Self) -> bool {
+        matches!(
+            (self, other),
+            (&Self::Read(_), Self::Read(_)) | (&Self::Write(_), Self::Write(_))
+        )
+    }
+
+    /// Whether the sequence of underflow IOs consists of only writes.
+    pub fn is_writing_sequence(sequence: &[Self]) -> bool {
+        sequence.iter().all(|io| io.grows_stack())
+    }
+
+    /// Whether the sequence of underflow IOs consists of only reads.
+    pub fn is_reading_sequence(sequence: &[Self]) -> bool {
+        sequence.iter().all(|io| io.shrinks_stack())
+    }
+
     pub fn shrinks_stack(&self) -> bool {
         match self {
             Self::Read(_) => true,
