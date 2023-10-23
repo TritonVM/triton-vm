@@ -485,35 +485,26 @@ impl<'pgm> VMState<'pgm> {
     }
 
     fn divine_sibling(&mut self) -> Result<Vec<CoProcessorCall>> {
-        let (_st0_through_st4, underflow_io) = self.op_stack.pop_multiple::<{ DIGEST_LENGTH }>()?;
-        let mut all_underflow_io = underflow_io.to_vec();
-        let (known_digest, underflow_io) = self.op_stack.pop_multiple()?;
-        all_underflow_io.extend(underflow_io);
-
-        let (node_index, underflow_io) = self.op_stack.pop_u32()?;
-        all_underflow_io.push(underflow_io);
+        let _st0_through_st4 = self.op_stack.pop_multiple::<{ DIGEST_LENGTH }>()?;
+        let (known_digest, _) = self.op_stack.pop_multiple()?;
+        let (node_index, _) = self.op_stack.pop_u32()?;
 
         let parent_node_index = node_index / 2;
-        let underflow_io = self.op_stack.push(parent_node_index.into());
-        all_underflow_io.push(underflow_io);
+        let _ = self.op_stack.push(parent_node_index.into());
 
         let sibling_digest = self.pop_secret_digest()?;
         let (left_digest, right_digest) =
             Self::put_known_digest_on_correct_side(node_index, known_digest, sibling_digest);
 
         for &digest_element in right_digest.iter().rev() {
-            let underflow_io = self.op_stack.push(digest_element);
-            all_underflow_io.push(underflow_io);
+            let _ = self.op_stack.push(digest_element);
         }
         for &digest_element in left_digest.iter().rev() {
-            let underflow_io = self.op_stack.push(digest_element);
-            all_underflow_io.push(underflow_io);
+            let _ = self.op_stack.push(digest_element);
         }
 
-        let op_stack_calls = self.underflow_io_sequence_to_co_processor_calls(vec![underflow_io]);
-
         self.instruction_pointer += 1;
-        Ok(op_stack_calls)
+        Ok(vec![])
     }
 
     fn assert_vector(&mut self) -> Result<Vec<CoProcessorCall>> {
