@@ -360,6 +360,7 @@ impl From<&OpStackElement> for BFieldElement {
 
 #[cfg(test)]
 mod tests {
+    use proptest::collection::vec;
     use proptest::prelude::*;
     use proptest_arbitrary_interop::arb;
     use twenty_first::shared_math::b_field_element::BFieldElement;
@@ -485,6 +486,22 @@ mod tests {
             let shrinks_stack = underflow_io.shrinks_stack();
             let grows_stack = underflow_io.grows_stack();
             assert!(shrinks_stack ^ grows_stack);
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn non_empty_uniform_underflow_io_sequence_is_either_reading_or_writing(
+            sequence in vec(arb::<UnderflowIO>(), 1..OpStackElement::COUNT),
+        ) {
+            let is_reading_sequence = UnderflowIO::is_reading_sequence(&sequence);
+            let is_writing_sequence = UnderflowIO::is_writing_sequence(&sequence);
+            if UnderflowIO::is_uniform_sequence(&sequence) {
+                prop_assert!(is_reading_sequence ^ is_writing_sequence);
+            } else {
+                prop_assert!(!is_reading_sequence);
+                prop_assert!(!is_writing_sequence);
+            }
         }
     }
 }
