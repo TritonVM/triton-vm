@@ -47,44 +47,20 @@ impl ProcessorTable {
         clk_jump_diffs_ram: &[BFieldElement],
         clk_jump_diffs_jump_stack: &[BFieldElement],
     ) {
-        // compute the lookup multiplicities of the clock jump differences
         let num_rows = aet.processor_trace.nrows();
         let mut clk_jump_diff_multiplicities = Array1::zeros([num_rows]);
-        for clk_jump_diff in clk_jump_diffs_op_stack.iter() {
+        for clk_jump_diff in clk_jump_diffs_op_stack
+            .iter()
+            .chain(clk_jump_diffs_ram)
+            .chain(clk_jump_diffs_jump_stack)
+        {
             let clk = clk_jump_diff.value() as usize;
-            match clk < num_rows {
-                true => clk_jump_diff_multiplicities[clk] += BFIELD_ONE,
-                false => panic!(
-                    "Op Stack: clock jump diff {clk} must fit in trace with {num_rows} rows."
-                ),
-            }
-        }
-        for clk_jump_diff in clk_jump_diffs_ram.iter() {
-            let clk = clk_jump_diff.value() as usize;
-            match clk < num_rows {
-                true => clk_jump_diff_multiplicities[clk] += BFIELD_ONE,
-                false => {
-                    panic!("RAM: clock jump diff {clk} must fit in trace with {num_rows} rows.")
-                }
-            }
-        }
-        for clk_jump_diff in clk_jump_diffs_jump_stack.iter() {
-            let clk = clk_jump_diff.value() as usize;
-            match clk < num_rows {
-                true => clk_jump_diff_multiplicities[clk] += BFIELD_ONE,
-                false => panic!(
-                    "Jump Stack: clock jump diff {clk} must fit in trace with {num_rows} rows."
-                ),
-            }
+            clk_jump_diff_multiplicities[clk] += BFIELD_ONE;
         }
 
-        // fill the processor table from the AET and the lookup multiplicities
-        let mut processor_table_to_fill =
-            processor_table.slice_mut(s![0..aet.processor_trace.nrows(), ..]);
-        aet.processor_trace
-            .clone()
-            .move_into(&mut processor_table_to_fill);
-        processor_table_to_fill
+        let mut processor_table = processor_table.slice_mut(s![0..num_rows, ..]);
+        processor_table.assign(&aet.processor_trace);
+        processor_table
             .column_mut(ClockJumpDifferenceLookupMultiplicity.base_table_index())
             .assign(&clk_jump_diff_multiplicities);
     }
