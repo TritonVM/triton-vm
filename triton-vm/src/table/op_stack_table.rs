@@ -569,4 +569,48 @@ pub(crate) mod tests {
             prop_assert!(all_clk_values_are_clk);
         }
     }
+
+    proptest! {
+        #[test]
+        fn compare_rows_with_unequal_stack_pointer_and_equal_clk(
+            stack_pointer_0: u64,
+            stack_pointer_1: u64,
+            clk: u64,
+        ) {
+            let mut row_0 = Array1::zeros(BASE_WIDTH);
+            row_0[StackPointer.base_table_index()] = stack_pointer_0.into();
+            row_0[CLK.base_table_index()] = clk.into();
+
+            let mut row_1 = Array1::zeros(BASE_WIDTH);
+            row_1[StackPointer.base_table_index()] = stack_pointer_1.into();
+            row_1[CLK.base_table_index()] = clk.into();
+
+            let stack_pointer_comparison = stack_pointer_0.cmp(&stack_pointer_1);
+            let row_comparison = OpStackTable::compare_rows(row_0.view(), row_1.view());
+
+            assert_eq!(stack_pointer_comparison, row_comparison);
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn compare_rows_with_equal_stack_pointer_and_unequal_clk(
+            stack_pointer: u64,
+            clk_0: u64,
+            clk_1: u64,
+        ) {
+            let mut row_0 = Array1::zeros(BASE_WIDTH);
+            row_0[StackPointer.base_table_index()] = stack_pointer.into();
+            row_0[CLK.base_table_index()] = clk_0.into();
+
+            let mut row_1 = Array1::zeros(BASE_WIDTH);
+            row_1[StackPointer.base_table_index()] = stack_pointer.into();
+            row_1[CLK.base_table_index()] = clk_1.into();
+
+            let clk_comparison = clk_0.cmp(&clk_1);
+            let row_comparison = OpStackTable::compare_rows(row_0.view(), row_1.view());
+
+            assert_eq!(clk_comparison, row_comparison);
+        }
+    }
 }
