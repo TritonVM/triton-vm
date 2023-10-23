@@ -10,8 +10,7 @@ use ndarray::*;
 use num_traits::One;
 use num_traits::Zero;
 use strum::EnumCount;
-use twenty_first::shared_math::b_field_element::BFieldElement;
-use twenty_first::shared_math::b_field_element::BFIELD_ONE;
+use twenty_first::shared_math::b_field_element::*;
 use twenty_first::shared_math::digest::DIGEST_LENGTH;
 use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::x_field_element::XFieldElement;
@@ -21,6 +20,7 @@ use crate::instruction::AnInstruction::*;
 use crate::instruction::Instruction;
 use crate::instruction::InstructionBit;
 use crate::instruction::ALL_INSTRUCTIONS;
+use crate::op_stack::OpStackElement;
 use crate::table::challenges::ChallengeId;
 use crate::table::challenges::ChallengeId::*;
 use crate::table::challenges::Challenges;
@@ -178,20 +178,14 @@ impl ProcessorTable {
                     .inverse();
             }
 
-            // OpStack table
-            let clk = current_row[CLK.base_table_index()];
-            let ib1 = current_row[IB1.base_table_index()];
-            let osp = current_row[OpStackPointer.base_table_index()];
-            let osv = current_row[ST15.base_table_index()]; // todo
-            let compressed_row_for_op_stack_table_permutation_argument = clk
-                * challenges[OpStackClkWeight]
-                + ib1 * challenges[OpStackIb1Weight]
-                + osp * challenges[OpStackPointerWeight]
-                + osv * challenges[OpStackFirstUnderflowElementWeight];
-            op_stack_table_running_product *= challenges[OpStackIndeterminate]
-                - compressed_row_for_op_stack_table_permutation_argument;
+            op_stack_table_running_product *= Self::factor_for_op_stack_table_running_product(
+                previous_row,
+                current_row,
+                challenges,
+            );
 
             // RAM Table
+            let clk = current_row[CLK.base_table_index()];
             let ramv = current_row[RAMV.base_table_index()];
             let ramp = current_row[RAMP.base_table_index()];
             let previous_instruction = current_row[PreviousInstruction.base_table_index()];
@@ -357,6 +351,80 @@ impl ProcessorTable {
             previous_row = Some(current_row);
         }
     }
+
+    fn factor_for_op_stack_table_running_product(
+        maybe_previous_row: Option<ArrayView1<BFieldElement>>,
+        current_row: ArrayView1<BFieldElement>,
+        challenges: &Challenges,
+    ) -> XFieldElement {
+        let default_factor = XFieldElement::one();
+
+        let is_padding_row = current_row[IsPadding.base_table_index()].is_one();
+        if is_padding_row {
+            return default_factor;
+        }
+
+        let Some(previous_row) = maybe_previous_row else {
+            return default_factor;
+        };
+
+        let previous_opcode = previous_row[CI.base_table_index()];
+        let Ok(previous_instruction): Result<Instruction, _> = previous_opcode.try_into() else {
+            return default_factor;
+        };
+
+        // shorter stack means relevant information is on top of stack, i.e., in stack registers
+        let row_with_shorter_stack = match previous_instruction.grows_op_stack() {
+            true => previous_row.view(),
+            false => current_row.view(),
+        };
+        let op_stack_delta = previous_instruction
+            .op_stack_size_influence()
+            .unsigned_abs() as usize;
+
+        let mut factor = default_factor;
+        for op_stack_pointer_offset in 0..op_stack_delta {
+            let max_stack_element_index = OpStackElement::COUNT - 1;
+            let stack_element_index = max_stack_element_index - op_stack_pointer_offset;
+            let stack_element_column = Self::op_stack_column_by_index(stack_element_index);
+            let underflow_element = row_with_shorter_stack[stack_element_column.base_table_index()];
+
+            let op_stack_pointer = row_with_shorter_stack[OpStackPointer.base_table_index()];
+            let offset = BFieldElement::new(op_stack_pointer_offset as u64);
+            let offset_op_stack_pointer = op_stack_pointer + offset;
+
+            let clk = previous_row[CLK.base_table_index()];
+            let ib1_shrink_stack = previous_row[IB1.base_table_index()];
+            let compressed_row = clk * challenges[OpStackClkWeight]
+                + ib1_shrink_stack * challenges[OpStackIb1Weight]
+                + offset_op_stack_pointer * challenges[OpStackPointerWeight]
+                + underflow_element * challenges[OpStackFirstUnderflowElementWeight];
+            factor *= challenges[OpStackIndeterminate] - compressed_row;
+        }
+        factor
+    }
+
+    fn op_stack_column_by_index(index: usize) -> ProcessorBaseTableColumn {
+        match index {
+            0 => ST0,
+            1 => ST1,
+            2 => ST2,
+            3 => ST3,
+            4 => ST4,
+            5 => ST5,
+            6 => ST6,
+            7 => ST7,
+            8 => ST8,
+            9 => ST9,
+            10 => ST10,
+            11 => ST11,
+            12 => ST12,
+            13 => ST13,
+            14 => ST14,
+            15 => ST15,
+            i => panic!("Op Stack column index must be in [0, 15], not {i}."),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -436,18 +504,8 @@ impl ExtProcessorTable {
         let running_evaluation_for_standard_output_is_initialized_correctly =
             ext_row(OutputTableEvalArg) - x_constant(EvalArg::default_initial());
 
-        // op-stack table
-        let op_stack_indeterminate = challenge(OpStackIndeterminate);
-        let op_stack_ib1_weight = challenge(OpStackIb1Weight);
-        let op_stack_pointer_weight = challenge(OpStackPointerWeight);
-        // note: `clk` and `first_underflow_element` are already constrained to be 0, and
-        // `op_stack_pointer` to be 16
-        let compressed_row_for_op_stack_table =
-            op_stack_ib1_weight * base_row(IB1) + op_stack_pointer_weight * constant(16);
         let running_product_for_op_stack_table_is_initialized_correctly =
-            ext_row(OpStackTablePermArg)
-                - x_constant(PermArg::default_initial())
-                    * (op_stack_indeterminate - compressed_row_for_op_stack_table);
+            ext_row(OpStackTablePermArg) - x_constant(PermArg::default_initial());
 
         // ram table
         let ram_indeterminate = challenge(RamIndeterminate);
@@ -792,6 +850,12 @@ impl ExtProcessorTable {
         let next_base_row = |col: ProcessorBaseTableColumn| {
             circuit_builder.input(NextBaseRow(col.master_base_table_index()))
         };
+        let curr_ext_row = |col: ProcessorExtTableColumn| {
+            circuit_builder.input(CurrentExtRow(col.master_ext_table_index()))
+        };
+        let next_ext_row = |col: ProcessorExtTableColumn| {
+            circuit_builder.input(NextExtRow(col.master_ext_table_index()))
+        };
 
         vec![
             next_base_row(ST11) - curr_base_row(ST11),
@@ -799,8 +863,8 @@ impl ExtProcessorTable {
             next_base_row(ST13) - curr_base_row(ST13),
             next_base_row(ST14) - curr_base_row(ST14),
             next_base_row(ST15) - curr_base_row(ST15),
-            // The OpStack pointer does not change.
             next_base_row(OpStackPointer) - curr_base_row(OpStackPointer),
+            next_ext_row(OpStackTablePermArg) - curr_ext_row(OpStackTablePermArg),
         ]
     }
 
@@ -892,17 +956,33 @@ impl ExtProcessorTable {
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
         let constant = |c: u32| circuit_builder.b_constant(c.into());
+        let challenge = |c: ChallengeId| circuit_builder.challenge(c);
         let curr_base_row = |col: ProcessorBaseTableColumn| {
             circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
         };
         let next_base_row = |col: ProcessorBaseTableColumn| {
             circuit_builder.input(NextBaseRow(col.master_base_table_index()))
         };
+        let curr_ext_row = |col: ProcessorExtTableColumn| {
+            circuit_builder.input(CurrentExtRow(col.master_ext_table_index()))
+        };
+        let next_ext_row = |col: ProcessorExtTableColumn| {
+            circuit_builder.input(NextExtRow(col.master_ext_table_index()))
+        };
+
+        let compressed_row_for_op_stack_permutation_argument = challenge(OpStackClkWeight)
+            * curr_base_row(CLK)
+            + challenge(OpStackIb1Weight) * curr_base_row(IB1)
+            + challenge(OpStackPointerWeight) * curr_base_row(OpStackPointer)
+            + challenge(OpStackFirstUnderflowElementWeight) * curr_base_row(ST15);
+        let factor_for_op_stack_permutation_argument =
+            challenge(OpStackIndeterminate) - compressed_row_for_op_stack_permutation_argument;
+        let running_product_op_stack_table_has_accumulated_last_element_of_current_row =
+            next_ext_row(OpStackTablePermArg)
+                - curr_ext_row(OpStackTablePermArg) * factor_for_op_stack_permutation_argument;
 
         vec![
-            // The stack element in st1 is moved into st2.
             next_base_row(ST2) - curr_base_row(ST1),
-            // And so on...
             next_base_row(ST3) - curr_base_row(ST2),
             next_base_row(ST4) - curr_base_row(ST3),
             next_base_row(ST5) - curr_base_row(ST4),
@@ -916,8 +996,8 @@ impl ExtProcessorTable {
             next_base_row(ST13) - curr_base_row(ST12),
             next_base_row(ST14) - curr_base_row(ST13),
             next_base_row(ST15) - curr_base_row(ST14),
-            // The OpStack pointer is incremented by 1.
             next_base_row(OpStackPointer) - (curr_base_row(OpStackPointer) + constant(1)),
+            running_product_op_stack_table_has_accumulated_last_element_of_current_row,
         ]
     }
 
@@ -944,19 +1024,33 @@ impl ExtProcessorTable {
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
         let constant = |c: u32| circuit_builder.b_constant(c.into());
+        let challenge = |c: ChallengeId| circuit_builder.challenge(c);
         let curr_base_row = |col: ProcessorBaseTableColumn| {
             circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
         };
         let next_base_row = |col: ProcessorBaseTableColumn| {
             circuit_builder.input(NextBaseRow(col.master_base_table_index()))
         };
+        let curr_ext_row = |col: ProcessorExtTableColumn| {
+            circuit_builder.input(CurrentExtRow(col.master_ext_table_index()))
+        };
+        let next_ext_row = |col: ProcessorExtTableColumn| {
+            circuit_builder.input(NextExtRow(col.master_ext_table_index()))
+        };
 
+        let compressed_row_for_op_stack_permutation_argument = challenge(OpStackClkWeight)
+            * curr_base_row(CLK)
+            + challenge(OpStackIb1Weight) * curr_base_row(IB1)
+            + challenge(OpStackPointerWeight) * next_base_row(OpStackPointer)
+            + challenge(OpStackFirstUnderflowElementWeight) * next_base_row(ST15);
+        let factor_for_op_stack_permutation_argument =
+            challenge(OpStackIndeterminate) - compressed_row_for_op_stack_permutation_argument;
+        let running_product_op_stack_table_has_accumulated_last_element_of_next_row =
+            next_ext_row(OpStackTablePermArg)
+                - curr_ext_row(OpStackTablePermArg) * factor_for_op_stack_permutation_argument;
         vec![
-            // The stack element in st4 is moved into st3.
             next_base_row(ST3) - curr_base_row(ST4),
-            // The stack element in st5 is moved into st4.
             next_base_row(ST4) - curr_base_row(ST5),
-            // And so on...
             next_base_row(ST5) - curr_base_row(ST6),
             next_base_row(ST6) - curr_base_row(ST7),
             next_base_row(ST7) - curr_base_row(ST8),
@@ -967,8 +1061,8 @@ impl ExtProcessorTable {
             next_base_row(ST12) - curr_base_row(ST13),
             next_base_row(ST13) - curr_base_row(ST14),
             next_base_row(ST14) - curr_base_row(ST15),
-            // The OpStack pointer, is decremented by 1.
             next_base_row(OpStackPointer) - (curr_base_row(OpStackPointer) - constant(1)),
+            running_product_op_stack_table_has_accumulated_last_element_of_next_row,
             // The helper variable register hv0 holds the inverse of (`op_stack_pointer` - 16).
             (curr_base_row(OpStackPointer) - constant(16)) * curr_base_row(HV0) - constant(1),
         ]
@@ -2323,29 +2417,6 @@ impl ExtProcessorTable {
             + write_io_deselector * running_evaluation_updates
     }
 
-    fn running_product_for_op_stack_table_updates_correctly(
-        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
-    ) -> ConstraintCircuitMonad<DualRowIndicator> {
-        let challenge = |c: ChallengeId| circuit_builder.challenge(c);
-        let next_base_row = |col: ProcessorBaseTableColumn| {
-            circuit_builder.input(NextBaseRow(col.master_base_table_index()))
-        };
-        let curr_ext_row = |col: ProcessorExtTableColumn| {
-            circuit_builder.input(CurrentExtRow(col.master_ext_table_index()))
-        };
-        let next_ext_row = |col: ProcessorExtTableColumn| {
-            circuit_builder.input(NextExtRow(col.master_ext_table_index()))
-        };
-
-        let compressed_row = challenge(OpStackClkWeight) * next_base_row(CLK)
-            + challenge(OpStackIb1Weight) * next_base_row(IB1)
-            + challenge(OpStackPointerWeight) * next_base_row(OpStackPointer)
-            + challenge(OpStackFirstUnderflowElementWeight) * next_base_row(ST15); // todo!!!
-
-        next_ext_row(OpStackTablePermArg)
-            - curr_ext_row(OpStackTablePermArg) * (challenge(OpStackIndeterminate) - compressed_row)
-    }
-
     fn running_product_for_ram_table_updates_correctly(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> ConstraintCircuitMonad<DualRowIndicator> {
@@ -2740,7 +2811,6 @@ impl ExtProcessorTable {
             Self::running_evaluation_for_standard_input_updates_correctly(circuit_builder),
             Self::log_derivative_for_instruction_lookup_updates_correctly(circuit_builder),
             Self::running_evaluation_for_standard_output_updates_correctly(circuit_builder),
-            Self::running_product_for_op_stack_table_updates_correctly(circuit_builder),
             Self::running_product_for_ram_table_updates_correctly(circuit_builder),
             Self::running_product_for_jump_stack_table_updates_correctly(circuit_builder),
             Self::running_evaluation_hash_input_updates_correctly(circuit_builder),
@@ -2974,6 +3044,7 @@ impl<'a> Display for ExtProcessorTraceRow<'a> {
 #[cfg(test)]
 pub(crate) mod tests {
     use ndarray::Array2;
+    use proptest::prelude::*;
     use rand::thread_rng;
     use rand::Rng;
     use strum::IntoEnumIterator;
@@ -3771,5 +3842,22 @@ pub(crate) mod tests {
         let index = thread_rng().gen_range(16..usize::MAX);
         let circuit_builder = ConstraintCircuitBuilder::new();
         ExtProcessorTable::indicator_polynomial(&circuit_builder, index);
+    }
+
+    #[test]
+    fn can_get_op_stack_column_for_in_range_index() {
+        for index in 0..OpStackElement::COUNT {
+            let _ = ProcessorTable::op_stack_column_by_index(index);
+        }
+    }
+
+    proptest! {
+        #[test]
+        #[should_panic(expected="[0, 15]")]
+        fn cannot_get_op_stack_column_for_out_of_range_index(
+            index in OpStackElement::COUNT..,
+        ) {
+            let _ = ProcessorTable::op_stack_column_by_index(index);
+        }
     }
 }
