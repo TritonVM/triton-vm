@@ -2921,41 +2921,6 @@ impl<'a> Display for ProcessorTraceRow<'a> {
     }
 }
 
-pub struct ExtProcessorTraceRow<'a> {
-    pub row: ArrayView1<'a, XFieldElement>,
-}
-
-impl<'a> Display for ExtProcessorTraceRow<'a> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
-        let row =
-            |form: &mut Formatter<'_>, desc: &str, col: ProcessorExtTableColumn| -> FmtResult {
-                // without the extra `format!()`, alignment in `writeln!()` fails
-                let formatted_col_elem = format!("{}", self.row[col.ext_table_index()]);
-                writeln!(form, "     │ {desc: <18}  {formatted_col_elem:>73} │")
-            };
-        writeln!(
-            f,
-            "     ╭───────────────────────────────────────────────────────\
-            ────────────────────────────────────────╮"
-        )?;
-        row(f, "input_table_ea", InputTableEvalArg)?;
-        row(f, "output_table_ea", OutputTableEvalArg)?;
-        row(f, "instr_lookup_ld", InstructionLookupClientLogDerivative)?;
-        row(f, "opstack_table_pa", OpStackTablePermArg)?;
-        row(f, "ram_table_pa", RamTablePermArg)?;
-        row(f, "jumpstack_table_pa", JumpStackTablePermArg)?;
-        row(f, "hash_input_ea", HashInputEvalArg)?;
-        row(f, "hash_digest_ea", HashDigestEvalArg)?;
-        row(f, "sponge_absorb_ea", SpongeEvalArg)?;
-        row(f, "u32_table_pa", U32LookupClientLogDerivative)?;
-        write!(
-            f,
-            "     ╰───────────────────────────────────────────────────────\
-            ────────────────────────────────────────╯"
-        )
-    }
-}
-
 #[cfg(test)]
 pub(crate) mod tests {
     use ndarray::Array2;
