@@ -3045,7 +3045,9 @@ impl<'a> Display for ExtProcessorTraceRow<'a> {
 #[cfg(test)]
 pub(crate) mod tests {
     use ndarray::Array2;
+    use proptest::collection::vec;
     use proptest::prelude::*;
+    use proptest_arbitrary_interop::arb;
     use rand::thread_rng;
     use rand::Rng;
     use strum::IntoEnumIterator;
@@ -3859,6 +3861,28 @@ pub(crate) mod tests {
             index in OpStackElement::COUNT..,
         ) {
             let _ = ProcessorTable::op_stack_column_by_index(index);
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn constructing_factor_for_op_stack_table_running_product_never_panics(
+            has_previous_row: bool,
+            previous_row in vec(arb::<BFieldElement>(), BASE_WIDTH),
+            current_row in vec(arb::<BFieldElement>(), BASE_WIDTH),
+            challenges in arb::<Challenges>(),
+        ) {
+            let previous_row = Array1::from(previous_row);
+            let current_row = Array1::from(current_row);
+            let maybe_previous_row = match has_previous_row {
+                true => Some(previous_row.view()),
+                false => None,
+            };
+            let _ = ProcessorTable::factor_for_op_stack_table_running_product(
+                maybe_previous_row,
+                current_row.view(),
+                &challenges
+            );
         }
     }
 }
