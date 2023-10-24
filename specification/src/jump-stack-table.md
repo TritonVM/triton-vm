@@ -125,7 +125,7 @@ In total, above steps ensure that the Permutation Argument between the Jump Stac
 Memory-consistency follows from two more primitive properties:
 
 1. Contiguity of regions of constant memory pointer.
-  Since the memory pointer for the JumpStack table, `jsp` can change by at most one per cycle, it is possible to enforce a full sorting using AIR constraints.
+  Since the memory pointer for the Jump Stack table, `jsp` can change by at most one per cycle, it is possible to enforce a full sorting using AIR constraints.
 2. Correct inner-sorting within contiguous regions.
   Specifically, the rows within each contiguous region of constant memory pointer should be sorted for clock cycle.
   This property is established by the clock jump difference [Lookup Argument](lookup-argument.md).

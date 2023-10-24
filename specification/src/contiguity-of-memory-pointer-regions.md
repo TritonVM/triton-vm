@@ -1,15 +1,15 @@
 # Contiguity of Memory-Pointer Regions
 
-## Contiguity for OpStack Table
+## Contiguity for Op Stack Table
 
-In each cycle, the memory pointer for the OpStack Table, `osp`, can only ever increase by one, remain the same, or decrease by one. As a result, it is easy to enforce that the entire table is sorted for memory pointer using one initial constraint and one transition constraint.
+In each cycle, the memory pointer for the Op Stack Table, `osp`, can only ever increase by one, remain the same, or decrease by one. As a result, it is easy to enforce that the entire table is sorted for memory pointer using one initial constraint and one transition constraint.
 
  - Initial constraint: `osp` starts with zero, so in terms of polynomials the constraint is `osp`.
  - Transition constraint: the new `osp` is either the same as the previous or one larger. The polynomial representation for this constraint is `(osp' - osp - 1) * (osp' - osp)`.
 
-## Contiguity for JumpStack Table
+## Contiguity for Jump Stack Table
 
-Analogously to the OpStack Table, the JumpStack's memory pointer `jsp` can only ever decrease by one, remain the same, or increase by one, within each cycle. As a result, similar constraints establish that the entire table is sorted for memory pointer.
+Analogously to the Op Stack Table, the Jump Stack's memory pointer `jsp` can only ever decrease by one, remain the same, or increase by one, within each cycle. As a result, similar constraints establish that the entire table is sorted for memory pointer.
 
  - Initial constraint: `jsp` starts with zero, so in terms of polynomials the constraint is `jsp`.
  - Transition constraint: the new `jsp` is either the same as the previous or one larger. The polynomial representation for this constraint is `(jsp' - jsp - 1) * (jsp' - jsp)`.

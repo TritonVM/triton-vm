@@ -134,8 +134,8 @@ Additionally, it defines the following transition constraints.
 1. If `i` is not 13, then `st13` does not change.
 1. If `i` is not 14, then `st14` does not change.
 1. If `i` is not 15, then `st15` does not change.
-1. The top of the OpStack underflow, i.e., `osv`, does not change.
-1. The OpStack pointer does not change.
+1. The top of the op stack underflow, i.e., `osv`, does not change.
+1. The op stack pointer does not change.
 
 ### Polynomials
 

@@ -17,7 +17,7 @@ the remaining registers exist only to enable an efficient arithmetization and ar
 | `jso`                  | jump stack origin                         | contains the value of the instruction pointer of the last `call`                                                                                                                                                          |
 | `jsd`                  | jump stack destination                    | contains the argument of the last `call`                                                                                                                                                                                  |
 | `st0` through `st15`   | operational stack registers               | contain explicit operational stack values                                                                                                                                                                                 |
-| *`osp`                 | operational stack pointer                 | contains the OpStack address of the top of the operational stack                                                                                                                                                          |
+| *`osp`                 | operational stack pointer                 | contains the op stack address of the top of the operational stack                                                                                                                                                         |
 | *`osv`                 | operational stack value                   | contains the (stack) memory value at the given address                                                                                                                                                                    |
 | *`hv0` through `hv6`   | helper variable registers                 | helper variables for some arithmetic operations                                                                                                                                                                           |
 | *`ramp`                | RAM pointer                               | contains an address pointing into the RAM                                                                                                                                                                                 |
@@ -33,9 +33,9 @@ For reasons of arithmetization, `ci` is decomposed, giving rise to the *instruct
 
 ## Stack
 
-The stack is represented by 16 registers called *stack registers* (`st0` – `st15`) plus the OpStack Underflow Memory.
-The top 16 elements of the OpStack are directly accessible, the remainder of the OpStack, i.e, the part held in OpStack Underflow Memory, is not.
-In order to access elements of the OpStack held in OpStack Underflow Memory, the stack has to shrink by discarding elements from the top – potentially after writing them to RAM – thus moving lower elements into the stack registers.
+The stack is represented by 16 registers called *stack registers* (`st0` – `st15`) plus the op stack underflow memory.
+The top 16 elements of the op stack are directly accessible, the remainder of the op stack, i.e, the part held in op stack underflow memory, is not.
+In order to access elements of the op stack held in op stack underflow memory, the stack has to shrink by discarding elements from the top – potentially after writing them to RAM – thus moving lower elements into the stack registers.
 
 The stack grows upwards, in line with the metaphor that justifies the name "stack".
 

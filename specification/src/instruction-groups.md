@@ -197,8 +197,8 @@ Contains all constraints from instruction group `keep_jump_stack`, and additiona
 1. The stack element in `st12` is moved into `st13`.
 1. The stack element in `st13` is moved into `st14`.
 1. The stack element in `st14` is moved into `st15`.
-1. The stack element in `st15` is moved to the top of OpStack underflow, i.e., `osv`.
-1. The OpStack pointer is incremented by 1.
+1. The stack element in `st15` is moved to the top of op stack underflow, i.e., `osv`.
+1. The op stack pointer is incremented by 1.
 
 ### Polynomials
 
@@ -240,8 +240,8 @@ Contains all constraints from instruction group `stack_grows_and_top_2_unconstra
 1. The stack element in `st13` does not change.
 1. The stack element in `st14` does not change.
 1. The stack element in `st15` does not change.
-1. The top of the OpStack underflow, i.e., `osv`, does not change.
-1. The OpStack pointer does not change.
+1. The top of the op stack underflow, i.e., `osv`, does not change.
+1. The op stack pointer does not change.
 
 ### Polynomials
 
@@ -318,7 +318,7 @@ Contains all constraints from instruction group `unary_operation`, and additiona
 ## Group `stack_shrinks_and_top_3_unconstrained`
 
 This instruction group requires helper variable `hv0` to hold the multiplicative inverse of `(osp - 16)`.
-In effect, this means that the OpStack pointer can only be decremented if it is not 16, i.e., if OpStack Underflow Memory is not empty.
+In effect, this means that the op stack pointer can only be decremented if it is not 16, i.e., if op stack underflow memory is not empty.
 Since the stack can only change by one element at a time, this prevents stack underflow.
 
 ### Description
@@ -335,8 +335,8 @@ Since the stack can only change by one element at a time, this prevents stack un
 1. The stack element in `st13` is moved into `st12`.
 1. The stack element in `st14` is moved into `st13`.
 1. The stack element in `st15` is moved into `st14`.
-1. The stack element at the top of OpStack underflow, i.e., `osv`, is moved into `st15`.
-1. The OpStack pointer is decremented by 1.
+1. The stack element at the top of op stack underflow, i.e., `osv`, is moved into `st15`.
+1. The op stack pointer is decremented by 1.
 1. The helper variable register `hv0` holds the inverse of `(osp - 16)`.
 
 ### Polynomials
