@@ -111,11 +111,10 @@ The Op Stack Table has 2 extension columns, `rppa` and `ClockJumpDifferenceLooku
 
 ## Padding
 
-A padding row is a direct copy of the Op Stack Table's row with the highest value for column `clk`, called template row, with the exception of the cycle count column `clk`.
-In a padding row, the value of column `clk` is 1 greater than the value of column `clk` in the template row.
-The padding row is inserted right below the template row.
-These steps are repeated until the desired padded height is reached.
-In total, above steps ensure that the Permutation Argument between the Op Stack Table and the [Processor Table](processor-table.md) holds up.
+The last row in the Op Stack Table is taken as the padding template row.
+Should the Op Stack Table be empty, the row (`clk`, `shrink_stack`, `stack_pointer`, `first_underflow_element`) = (0, 0, 16, 0) is used instead.
+In the template row, the `shrink_stack` indicator is set to 2, signifying padding.
+The template row is inserted below the last row until the desired padded height is reached.
 
 ## Memory-Consistency
 
