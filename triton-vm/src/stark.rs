@@ -1115,10 +1115,13 @@ pub(crate) mod tests {
     use rand::thread_rng;
     use rand::Rng;
     use rand_core::RngCore;
+    use strum::EnumCount;
     use twenty_first::shared_math::other::random_elements;
 
     use crate::example_programs::*;
     use crate::instruction::AnInstruction;
+    use crate::instruction::Instruction;
+    use crate::op_stack::OpStackElement;
     use crate::program::Program;
     use crate::shared_tests::*;
     use crate::table::cascade_table;
@@ -1155,6 +1158,7 @@ pub(crate) mod tests {
     use crate::table::table_column::LookupExtTableColumn::PublicEvaluationArgument;
     use crate::table::table_column::MasterBaseTableColumn;
     use crate::table::table_column::MasterExtTableColumn;
+    use crate::table::table_column::OpStackBaseTableColumn;
     use crate::table::table_column::ProcessorBaseTableColumn;
     use crate::table::table_column::ProcessorExtTableColumn::InputTableEvalArg;
     use crate::table::table_column::ProcessorExtTableColumn::OutputTableEvalArg;
@@ -1247,40 +1251,19 @@ pub(crate) mod tests {
 
             let prev_instruction =
                 row[ProcessorBaseTableColumn::PreviousInstruction.base_table_index()].value();
-            let curr_instruction = row[ProcessorBaseTableColumn::CI.base_table_index()].value();
-            let next_instruction_or_arg =
-                row[ProcessorBaseTableColumn::NIA.base_table_index()].value();
-
-            // sorry about this mess – this is just a test.
-            let pi = match AnInstruction::<BFieldElement>::try_from(prev_instruction) {
+            let pi = match Instruction::try_from(prev_instruction) {
                 Ok(AnInstruction::Halt) | Err(_) => "-".to_string(),
-                Ok(instr) => instr.to_string().split('0').collect_vec()[0].to_owned(),
+                Ok(instr) => instr.name().to_string(),
             };
-            let ci = AnInstruction::<BFieldElement>::try_from(curr_instruction).unwrap();
-            let nia = if ci.size() == 2 {
-                next_instruction_or_arg.to_string()
-            } else {
-                AnInstruction::<BFieldElement>::try_from(next_instruction_or_arg)
-                    .unwrap()
-                    .to_string()
-                    .split('0')
-                    .collect_vec()[0]
-                    .to_owned()
-            };
-            let ci_string = if ci.size() == 1 {
-                ci.to_string()
-            } else {
-                ci.to_string().split('0').collect_vec()[0].to_owned()
-            };
-            let interesting_cols = [clk, pi, ci_string, nia, st0, st1, st2, st3, ramp, ramv];
-            println!(
-                "{}",
-                interesting_cols
-                    .iter()
-                    .map(|ff| format!("{:>10}", format!("{ff}")))
-                    .collect_vec()
-                    .join(" | ")
-            );
+            let (ci, nia) = ci_and_nia_from_master_table_row(row);
+
+            let interesting_cols = [clk, pi, ci, nia, st0, st1, st2, st3, ramp, ramv];
+            let interesting_cols = interesting_cols
+                .iter()
+                .map(|ff| format!("{:>10}", format!("{ff}")))
+                .collect_vec()
+                .join(" | ");
+            println!("{interesting_cols}");
         }
         println!();
         println!("RAM Table:");
@@ -1295,20 +1278,126 @@ pub(crate) mod tests {
 
             let prev_instruction =
                 row[RamBaseTableColumn::PreviousInstruction.base_table_index()].value();
-            let pi = match AnInstruction::<BFieldElement>::try_from(prev_instruction) {
+            let pi = match Instruction::try_from(prev_instruction) {
                 Ok(AnInstruction::Halt) | Err(_) => "-".to_string(),
-                Ok(instr) => instr.to_string().split('0').collect_vec()[0].to_owned(),
+                Ok(instr) => instr.name().to_string(),
             };
-            let interersting_cols = [clk, pi, ramp, ramv, iord];
-            println!(
-                "{}",
-                interersting_cols
-                    .iter()
-                    .map(|ff| format!("{:>10}", format!("{ff}")))
-                    .collect_vec()
-                    .join(" | ")
-            );
+
+            let interesting_cols = [clk, pi, ramp, ramv, iord];
+            let interesting_cols = interesting_cols
+                .iter()
+                .map(|ff| format!("{:>10}", format!("{ff}")))
+                .collect_vec()
+                .join(" | ");
+            println!("{interesting_cols}");
         }
+    }
+
+    #[test]
+    fn print_op_stack_table_example_for_specification() {
+        let num_interesting_rows = 30;
+        let fake_op_stack_size = 4;
+
+        let program = triton_program! {
+            push 42 push 43 push 44 push 45 push 46 push 47 push 48
+            nop pop pop pop pop
+            push 77 swap 3 push 78 swap 3 push 79
+            pop pop pop pop pop pop
+            halt
+        };
+        let (_, _, master_base_table) =
+            master_base_table_for_low_security_level(&program, [].into(), [].into());
+
+        println!();
+        println!("Processor Table:");
+        println!(
+            "| clk        | ci         | nia        | st0        | st1        \
+             | st2        | st3        | underflow  | pointer    |"
+        );
+        println!(
+            "|-----------:|:-----------|-----------:|-----------:|-----------:\
+             |-----------:|-----------:|:-----------|-----------:|"
+        );
+        for row in master_base_table
+            .table(ProcessorTable)
+            .rows()
+            .into_iter()
+            .take(num_interesting_rows)
+        {
+            let clk = row[ProcessorBaseTableColumn::CLK.base_table_index()].to_string();
+            let st0 = row[ProcessorBaseTableColumn::ST0.base_table_index()].to_string();
+            let st1 = row[ProcessorBaseTableColumn::ST1.base_table_index()].to_string();
+            let st2 = row[ProcessorBaseTableColumn::ST2.base_table_index()].to_string();
+            let st3 = row[ProcessorBaseTableColumn::ST3.base_table_index()].to_string();
+            let st4 = row[ProcessorBaseTableColumn::ST4.base_table_index()].to_string();
+            let st5 = row[ProcessorBaseTableColumn::ST5.base_table_index()].to_string();
+            let st6 = row[ProcessorBaseTableColumn::ST6.base_table_index()].to_string();
+            let st7 = row[ProcessorBaseTableColumn::ST7.base_table_index()].to_string();
+            let st8 = row[ProcessorBaseTableColumn::ST8.base_table_index()].to_string();
+            let st9 = row[ProcessorBaseTableColumn::ST9.base_table_index()].to_string();
+
+            let osp = row[ProcessorBaseTableColumn::OpStackPointer.base_table_index()];
+            let osp =
+                (osp.value() + fake_op_stack_size).saturating_sub(OpStackElement::COUNT as u64);
+
+            let underflow_size = osp.saturating_sub(fake_op_stack_size);
+            let underflow_candidates = [st4, st5, st6, st7, st8, st9];
+            let underflow = underflow_candidates
+                .into_iter()
+                .take(underflow_size as usize);
+            let underflow = underflow.map(|ff| format!("{:>2}", format!("{ff}")));
+            let underflow = format!("[{}]", underflow.collect_vec().join(", "));
+
+            let osp = osp.to_string();
+            let (ci, nia) = ci_and_nia_from_master_table_row(row);
+
+            let interesting_cols = [clk, ci, nia, st0, st1, st2, st3, underflow, osp];
+            let interesting_cols = interesting_cols
+                .map(|ff| format!("{:>10}", format!("{ff}")))
+                .join(" | ");
+            println!("{interesting_cols}");
+        }
+
+        println!();
+        println!("Op Stack Table:");
+        println!("|        clk |        ib1 |    pointer |      value |");
+        println!("|-----------:|-----------:|-----------:|-----------:|");
+        for row in master_base_table
+            .table(TableId::OpStackTable)
+            .rows()
+            .into_iter()
+            .take(num_interesting_rows)
+        {
+            let clk = row[OpStackBaseTableColumn::CLK.base_table_index()].to_string();
+            let ib1 = row[OpStackBaseTableColumn::IB1ShrinkStack.base_table_index()].to_string();
+
+            let osp = row[OpStackBaseTableColumn::StackPointer.base_table_index()];
+            let osp =
+                (osp.value() + fake_op_stack_size).saturating_sub(OpStackElement::COUNT as u64);
+            let osp = osp.to_string();
+
+            let value =
+                row[OpStackBaseTableColumn::FirstUnderflowElement.base_table_index()].to_string();
+
+            let interesting_cols = [clk, ib1, osp, value];
+            let interesting_cols = interesting_cols
+                .map(|ff| format!("{:>10}", format!("{ff}")))
+                .join(" | ");
+            println!("{interesting_cols}");
+        }
+    }
+
+    fn ci_and_nia_from_master_table_row(row: ArrayView1<BFieldElement>) -> (String, String) {
+        let curr_instruction = row[ProcessorBaseTableColumn::CI.base_table_index()].value();
+        let next_instruction_or_arg = row[ProcessorBaseTableColumn::NIA.base_table_index()].value();
+
+        let curr_instruction = Instruction::try_from(curr_instruction).unwrap();
+        let nia = if curr_instruction.has_arg() {
+            next_instruction_or_arg.to_string()
+        } else {
+            "".to_string()
+        };
+        (curr_instruction.name().to_string(), nia)
     }
 
     /// To be used with `-- --nocapture`. Has mainly informative purpose.

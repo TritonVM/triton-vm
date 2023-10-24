@@ -34,6 +34,19 @@ The Processor Table has the following extension columns, corresponding to [Evalu
 1. `U32LookupClientLogDerivative` for the Lookup Argument with the [U32 Table](u32-table.md).
 1. `ClockJumpDifferenceLookupServerLogDerivative` for the Lookup Argument of clock jump differences with the [Op Stack Table](operational-stack-table.md), the [RAM Table](random-access-memory-table.md), and the [Jump Stack Table](jump-stack-table.md).
 
+### Permutation Argument with the Op Stack Table
+
+The [Permutation Arguments](permutation-argument.md) with the [Op Stack Table](operational-stack-table.md) `RunningProductOpStackTable` establishes consistency of the op stack underflow memory.
+The number of factors incorporated into the running product at any given cycle depends on the executed instruction in this cycle:
+for every element pushed to or popped from the stack, there is one factor.
+Namely, if the op stack grows, every element spilling from `st15` into op stack underflow memory will be incorporated as one factor;
+and if the op stack shrinks, every element from op stack underflow memory being transferred into `st15` will be one factor.
+
+One key insight for this Permutation Argument is that the processor will always have access to the elements that are to be read from or written to underflow memory:
+if the instruction grows the op stack, then the elements in question currently reside in the directly accessible, top part of the stack;
+if the instruction shrinks the op stack, then the elements in question will be in the top part of the stack in the next cycle.
+In either case, the [Transition Constraint](arithmetization.md#arithmetic-intermediate-representation) for the Permutation Argument can incorporate the explicitly listed elements as well as the corresponding trivial-to-compute `op_stack_pointer`.
+
 ## Padding
 
 A padding row is a copy of the Processor Table's last row with the following modifications:

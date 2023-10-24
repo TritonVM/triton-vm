@@ -1,13 +1,20 @@
 # Data Structures
 
 ## Memory
+
 The term *memory* refers to a data structure that gives read access (and possibly write access, too) to elements indicated by an *address*.
 Regardless of the data structure, the address lives in the B-field.
 There are four separate notions of memory:
+
+1. *Program Memory*, from which the VM reads instructions.
+1. *Op Stack Memory*, which stores the operational stack.
 1. *RAM*, to which the VM can read and write field elements.
-2. *Program Memory*, from which the VM reads instructions.
-3. *Op Stack Memory*, which stores the operational stack.
-4. *Jump Stack Memory*, which stores the entire jump stack.
+1. *Jump Stack Memory*, which stores the entire jump stack.
+
+## Program Memory
+
+Program memory holds the instructions of the program currently executed by Triton VM.
+It is immutable.
 
 ## Operational Stack
 
@@ -36,8 +43,10 @@ This initialization is one form of secret input, and one of two mechanisms that 
 The other mechanism is [dedicated instructions](instructions.md#opstack-manipulation).
 
 ## Jump Stack
+
 Another last-in;first-out data structure that keeps track of return and destination addresses.
 This stack changes only when control follows a `call` or `return` instruction.
+Furthermore, executing instruction `recurse` requires a non-empty jump stack.
 
 ---
 

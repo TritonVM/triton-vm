@@ -197,7 +197,7 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
         }
     }
 
-    const fn name(&self) -> &'static str {
+    pub(crate) const fn name(&self) -> &'static str {
         match self {
             Pop => "pop",
             Push(_) => "push",
