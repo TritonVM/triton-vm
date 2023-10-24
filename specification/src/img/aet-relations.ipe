@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <!DOCTYPE ipe SYSTEM "ipe.dtd">
 <ipe version="70218" creator="Ipe 7.2.24">
-<info created="D:20200729150742" modified="D:20230627105938"/>
+<info created="D:20200729150742" modified="D:20231024132138"/>
 <preamble>\usepackage{lmodern}
 \renewcommand*\familydefault{\sfdefault}
 \usepackage[T1]{fontenc}</preamble>
@@ -354,7 +354,7 @@ h
 236 128 c
 216 128 l
 </path>
-<path layer="perm_args" stroke="darkblue" pen="heavier" cap="1" join="1" arrow="pointed/small" rarrow="pointed/small">
+<path layer="perm_args" stroke="darkblue" pen="heavier" cap="1" join="1" arrow="pointed/small" rarrow="farc/small">
 180 124 m
 180 108 l
 180 104
