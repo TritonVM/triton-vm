@@ -1370,8 +1370,14 @@ impl ExtProcessorTable {
         let curr_base_row = |col: ProcessorBaseTableColumn| {
             circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
         };
+        let curr_ext_row = |col: ProcessorExtTableColumn| {
+            circuit_builder.input(CurrentExtRow(col.master_ext_table_index()))
+        };
         let next_base_row = |col: ProcessorBaseTableColumn| {
             circuit_builder.input(NextBaseRow(col.master_base_table_index()))
+        };
+        let next_ext_row = |col: ProcessorExtTableColumn| {
+            circuit_builder.input(NextExtRow(col.master_ext_table_index()))
         };
 
         let specific_constraints = vec![
@@ -1422,6 +1428,7 @@ impl ExtProcessorTable {
             (one() - indicator_poly(14)) * (next_base_row(ST14) - curr_base_row(ST14)),
             (one() - indicator_poly(15)) * (next_base_row(ST15) - curr_base_row(ST15)),
             next_base_row(OpStackPointer) - curr_base_row(OpStackPointer),
+            next_ext_row(OpStackTablePermArg) - curr_ext_row(OpStackTablePermArg),
         ];
         [
             specific_constraints,
