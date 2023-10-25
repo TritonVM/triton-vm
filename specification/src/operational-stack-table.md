@@ -121,7 +121,7 @@ The template row is inserted below the last row until the desired padded height 
 Memory-consistency follows from two more primitive properties:
 
 1. Contiguity of regions of constant memory pointer.
-  Since the memory pointer for the Op Stack table, `osp` can change by at most one per cycle, it is possible to enforce a full sorting using AIR constraints.
+  Since in Op Stack Table, the `stack_pointer` can change by at most one per cycle, it is possible to enforce a full sorting using AIR constraints.
 2. Correct inner-sorting within contiguous regions.
   Specifically, the rows within each contiguous region of constant memory pointer should be sorted for clock cycle.
   This property is established by the clock jump difference [Lookup Argument](lookup-argument.md).
@@ -135,18 +135,16 @@ Both types of challenges are X-field elements, _i.e._, elements of $\mathbb{F}_{
 
 ## Initial Constraints
 
-1. `clk` is 0
-1. `osv` is 0.
-1. `osp` is the number of available stack registers, _i.e._, 16.
-1. The running product for the permutation argument with the Processor Table `rppa` starts off having accumulated the first row with respect to challenges 🍋, 🍊, 🍉, and 🫒 and indeterminate 🪤.
+1. The `stack_pointer` is the number of available stack registers, _i.e._, 16.
+1. If the row is not a padding row, the running product for the permutation argument with the Processor Table `rppa` starts off having accumulated the first row with respect to challenges 🍋, 🍊, 🍉, and 🫒 and indeterminate 🪤.
+  Otherwise, it is the Permutation Argument's default initial, _i.e._, 1.
 1. The logarithmic derivative for the clock jump difference lookup `ClockJumpDifferenceLookupClientLogDerivative` is 0.
 
 ### Initial Constraints as Polynomials
 
-1. `clk`
-1. `osv`
-1. `osp - 16`
-1. `rppa - (🪤 - 🍋·clk - 🍊·ib1 - 🍉·osp - 🫒osv)`
+1. `stack_pointer - 16`
+1. `(shrink_stack - 2)·(rppa - (🪤 - 🍋·clk - 🍊·shrink_stack - 🍉·stack_pointer - 🫒·first_underflow_element))`<br />
+    `+ (shrink_stack - 0)·(shrink_stack - 1)·(rppa - 1)`
 1. `ClockJumpDifferenceLookupClientLogDerivative`
 
 ## Consistency Constraints
@@ -155,30 +153,36 @@ None.
 
 ## Transition Constraints
 
-1.
-  - the `osp` increases by 1, *or*
-  - the `osp` does not change AND the `osv` does not change, *or*
-  - the `osp` does not change AND the shrink stack indicator `shrink_stack` is 1.
-1. The running product for the permutation argument with the Processor Table `rppa` absorbs the next row with respect to challenges 🍋, 🍊, 🍉, and 🫒 and indeterminate 🪤.
-1. If the op stack pointer `osp` does not change, then the logarithmic derivative for the clock jump difference lookup `ClockJumpDifferenceLookupClientLogDerivative` accumulates a factor `(clk' - clk)` relative to indeterminate 🪞.
-  Otherwise, it remains the same.
+1.  - the `stack_pointer` increases by 1, *or*
+    - the `stack_pointer` does not change AND the `first_underflow_element` does not change, *or*
+    - the `stack_pointer` does not change AND the shrink stack indicator `shrink_stack` in the next row is 0.
+1. If thex next row is not a padding row, the running product for the permutation argument with the Processor Table `rppa` absorbs the next row with respect to challenges 🍋, 🍊, 🍉, and 🫒 and indeterminate 🪤.
+  Otherwise, the running product remains unchanged.
+1. If the current row is a padding row, then the next row is a padding row.
+1. If the next row is not a padding row and the op stack pointer `stack_pointer` does not change, then the logarithmic derivative for the clock jump difference lookup `ClockJumpDifferenceLookupClientLogDerivative` accumulates a factor `(clk' - clk)` relative to indeterminate 🪞.
+  Otherwise, it remains the unchanged.
 
 Written as Disjunctive Normal Form, the same constraints can be expressed as:
 
-1.
-  - the `osp` increases by 1 or the `osp` does not change
-  - the `osp` increases by 1 or the `osv` does not change or the shrink stack indicator `shrink_stack` is 1
-1. `rppa' = rppa·(🪤 - 🍋·clk' - 🍊·ib1' - 🍉·osp' - 🫒osv')`
-1. - the `osp` changes or the logarithmic derivative accumulates a summand, and
-   - the `osp` does not change or the logarithmic derivative does not change.
+1. The `stack_pointer` increases by 1 or the `stack_pointer` does not change.
+1. The `stack_pointer` increases by 1 or the `first_underflow_element` does not change or the shrink stack indicator `shrink_stack` in the next row is 0.
+1.  - The next row is a padding row or `rppa` has accumulated the next row, and
+    - the next row is not a padding row or `rppa` remains unchanged.
+1. The current row is not a padding row or the next row is a padding row.
+1.  - the `stack_pointer` changes or the next row is a padding row or the logarithmic derivative accumulates a summand,
+    - the `stack_pointer` remains unchanged or the logarithmic derivative remains unchanged, and
+    - the next row is not a padding row or the logarithmic derivative remains unchanged.
 
 ### Transition Constraints as Polynomials
 
-1. `(osp' - (osp + 1))·(osp' - osp)`
-1. `(osp' - (osp + 1))·(osv' - osv)·(1 - shrink_stack)`
-1. `rppa' - rppa·(🪤 - 🍋·clk' - 🍊·ib1' - 🍉·osp' - 🫒osv')`
-1. `(osp' - (osp + 1))·((ClockJumpDifferenceLookupClientLogDerivative' - ClockJumpDifferenceLookupClientLogDerivative) · (🪞 - clk' + clk) - 1)`<br />
-   `+ (osp' - osp)·(ClockJumpDifferenceLookupClientLogDerivative' - ClockJumpDifferenceLookupClientLogDerivative)`
+1. `(stack_pointer' - stack_pointer - 1)·(stack_pointer' - stack_pointer)`
+1. `(stack_pointer' - stack_pointer - 1)·(first_underflow_element' - first_underflow_element)·(shrink_stack' - 0)`
+1. `(shrink_stack' - 2)·(rppa' - rppa·(🪤 - 🍋·clk' - 🍊·shrink_stack' - 🍉·stack_pointer' - 🫒first_underflow_element'))`<br />
+    `+ (shrink_stack' - 0)·(shrink_stack' - 1)·(rppa' - rppa)`
+1. `(shrink_stack - 0)·(shrink_stack - 1)·(shrink_stack' - 2)`
+1. `(stack_pointer' - stack_pointer - 1)·(shrink_stack' - 2)·((ClockJumpDifferenceLookupClientLogDerivative' - ClockJumpDifferenceLookupClientLogDerivative) · (🪞 - clk' + clk) - 1)`<br />
+   `+ (stack_pointer' - stack_pointer)·(ClockJumpDifferenceLookupClientLogDerivative' - ClockJumpDifferenceLookupClientLogDerivative)`<br />
+   `+ (shrink_stack' - 0)·(shrink_stack' - 1)·(ClockJumpDifferenceLookupClientLogDerivative' - ClockJumpDifferenceLookupClientLogDerivative)`
 
 ## Terminal Constraints
 
