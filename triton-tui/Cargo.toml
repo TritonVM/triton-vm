@@ -1,0 +1,35 @@
+[package]
+name = "triton-tui"
+description = "A TUI that helps debugging programs written for Triton VM."
+
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+repository.workspace = true
+
+[dependencies]
+better-panic = "0.3"
+clap = { version = "4", features = ["derive", "cargo", "wrap_help", "unicode", "string", "unstable-styles"] }
+color-eyre = "0.6"
+config = "0.13"
+crossterm = { version = "0.27", features = ["serde", "event-stream"] }
+derive_deref = "1"
+directories = "5"
+futures = "0.3"
+human-panic = "1"
+json5 = "0.4"
+lazy_static = "1"
+libc = "0.2"
+pretty_assertions = "1"
+ratatui = { version = "0.24", features = ["serde", "macros"] }
+serde = { version = "1", features = ["derive"] }
+signal-hook = "0.3"
+strip-ansi-escapes = "0.2"
+tokio = { version = "1", features = ["full"] }
+tokio-util = "0.7"
+tracing = "0.1"
+tracing-error = "0.2"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "serde"] }
