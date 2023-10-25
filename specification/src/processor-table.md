@@ -99,13 +99,12 @@ However, in order to verify the correctness of `RunningEvaluationHashDigest`, th
 1. The operational stack element `st10` is 0.
 1. The [Evaluation Argument](evaluation-argument.md) of operational stack elements `st11` through `st15` with respect to indeterminate 🥬 equals the public part of program digest challenge, 🫑.
 See [program attestation](program-attestation.md) for more details.
-1. The operational stack pointer `osp` is 16.
-1. The operational stack value `osv` is 0.
+1. The `op_stack_pointer` is 16.
 1. The RAM pointer `ramp` is 0.
 1. `RunningEvaluationStandardInput` is 1.
 1. `RunningEvaluationStandardOutput` is 1.
 1. `InstructionLookupClientLogDerivative` has absorbed the first row with respect to challenges 🥝, 🥥, and 🫐 and indeterminate 🪥.
-1. `RunningProductOpStackTable` has absorbed the first row with respect to challenges 🍋, 🍊, 🍉, and 🫒 and indeterminate 🪤.
+1. `RunningProductOpStackTable` is 1.
 1. `RunningProductRamTable` has absorbed the first row with respect to challenges 🍍, 🍈, 🍎, and 🌽 and indeterminate 🛋.
 1. `RunningProductJumpStackTable` has absorbed the first row with respect to challenges 🍇, 🍅, 🍌, 🍏, and 🍐 and indeterminate 🧴.
 1. `RunningEvaluationHashInput` has absorbed the first row with respect to challenges 🧄₀ through 🧄₉ and indeterminate 🚪 if the current instruction is `hash`. Otherwise, it is 1.
@@ -134,13 +133,12 @@ See [program attestation](program-attestation.md) for more details.
 1. `st9`
 1. `st10`
 1. `🥬^5 + st11·🥬^4 + st12·🥬^3 + st13·🥬^2 + st14·🥬 + st15 - 🫑`
-1. `osp`
-1. `osv`
+1. `op_stack_pointer - 16`
 1. `ramp`
 1. `RunningEvaluationStandardInput - 1`
 1. `RunningEvaluationStandardOutput - 1`
 1. `InstructionLookupClientLogDerivative · (🪥 - 🥝·ip - 🥥·ci - 🫐·nia) - 1`
-1. `RunningProductOpStackTable - (🪤 - 🍋·clk - 🍊·ib1 - 🍉·osp - 🫒·osv)`
+1. `RunningProductOpStackTable - 1`
 1. `RunningProductRamTable - (🛋 - 🍍·clk - 🍈·ramp - 🍎·ramv - 🌽·previous_instruction)`
 1. `RunningProductJumpStackTable - (🧴 - 🍇·clk - 🍅·ci - 🍌·jsp - 🍏·jso - 🍐·jsd)`
 1. `(ci - opcode(hash))·(RunningEvaluationHashInput - 1)`<br />
@@ -189,7 +187,6 @@ The following additional constraints also apply to every pair of rows.
 1. The running evaluation for standard input absorbs `st0` of the next row with respect to 🛏 if the current instruction is `read_io`, and remains unchanged otherwise.
 1. The running evaluation for standard output absorbs `st0` of the next row with respect to 🧯 if the current instruction in the next row is `write_io`, and remains unchanged otherwise.
 1. If the next row is not a padding row, the logarithmic derivative for the Program Table absorbs the next row with respect to challenges 🥝, 🥥, and 🫐 and indeterminate 🪥. Otherwise, it remains unchanged.
-1. The running product for the Op Stack Table absorbs the next row with respect to challenges 🍋, 🍊, 🍉, and 🫒 and indeterminate 🪤.
 1. The running product for the RAM Table absorbs the next row with respect to challenges 🍍, 🍈, 🍎, and 🌽 and indeterminate 🛋.
 1. The running product for the Jump Stack Table absorbs the next row with respect to challenges 🍇, 🍅, 🍌, 🍏, and 🍐 and indeterminate 🧴.
 1. If the current instruction in the next row is `hash`, the running evaluation “Hash Input” absorbs the next row with respect to challenges 🧄₀ through 🧄₉ and indeterminate 🚪. Otherwise, it remains unchanged.
@@ -218,7 +215,6 @@ Otherwise, the running evaluation remains unchanged.
     `+ write_io_deselector'·(RunningEvaluationStandardOutput' - 🧯·RunningEvaluationStandardOutput - st0')`
 1. `(1 - IsPadding') · ((InstructionLookupClientLogDerivative' - InstructionLookupClientLogDerivative) · (🛁 - 🥝·ip' - 🥥·ci' - 🫐·nia') - 1)`<br />
     `+ IsPadding'·(RunningProductInstructionTable' - RunningProductInstructionTable)`
-1. `RunningProductOpStackTable' - RunningProductOpStackTable·(🪤 - 🍋·clk' - 🍊·ib1' - 🍉·osp' - 🫒·osv')`
 1. `RunningProductRamTable' - RunningProductRamTable·(🛋 - 🍍·clk' - 🍈·ramp' - 🍎·ramv' - 🌽·previous_instruction')`
 1. `RunningProductJumpStackTable' - RunningProductJumpStackTable·(🧴 - 🍇·clk' - 🍅·ci' - 🍌·jsp' - 🍏·jso' - 🍐·jsd')`
 1. `(ci' - opcode(hash))·(RunningEvaluationHashInput' - RunningEvaluationHashInput)`<br />
