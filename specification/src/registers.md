@@ -17,7 +17,7 @@ the remaining registers exist only to enable an efficient arithmetization and ar
 | `jso`                  | jump stack origin                         | contains the value of the instruction pointer of the last `call`                                                                                                                                                          |
 | `jsd`                  | jump stack destination                    | contains the argument of the last `call`                                                                                                                                                                                  |
 | `st0` through `st15`   | operational stack registers               | contain explicit operational stack values                                                                                                                                                                                 |
-| *`osp`                 | operational stack pointer                 | contains the op stack address of the top of the operational stack                                                                                                                                                         |
+| *`op_stack_pointer`    | operational stack pointer                 | the current size of the operational stack                                                                                                                                                                                 |
 | *`osv`                 | operational stack value                   | contains the (stack) memory value at the given address                                                                                                                                                                    |
 | *`hv0` through `hv6`   | helper variable registers                 | helper variables for some arithmetic operations                                                                                                                                                                           |
 | *`ramp`                | RAM pointer                               | contains an address pointing into the RAM                                                                                                                                                                                 |
@@ -40,11 +40,14 @@ In order to access elements of the op stack held in op stack underflow memory, t
 The stack grows upwards, in line with the metaphor that justifies the name "stack".
 
 For reasons of arithmetization, the stack always contains a minimum of 16 elements.
-All these elements are initially 0.
 Trying to run an instruction which would result in a stack of smaller total length than 16 crashes the VM.
 
-The registers `osp` and `osv` are not directly accessible by the program running in TritonVM.
-They exist only to allow efficient arithmetization.
+Stack elements `st0` through `st10` are initially 0.
+Stack elements `st11` through `st15`, _i.e._, the very bottom of the stack, are initialized with the hash digest of the program that is being executed.
+See [the mechanics of program attestation](program-attestation.md#mechanics) for further explanations on stack initialization.
+
+The register `op_stack_pointer` is not directly accessible by the program running in TritonVM.
+It exists only to allow efficient arithmetization.
 
 ## RAM
 

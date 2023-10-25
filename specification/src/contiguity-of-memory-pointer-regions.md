@@ -2,10 +2,12 @@
 
 ## Contiguity for Op Stack Table
 
-In each cycle, the memory pointer for the Op Stack Table, `osp`, can only ever increase by one, remain the same, or decrease by one. As a result, it is easy to enforce that the entire table is sorted for memory pointer using one initial constraint and one transition constraint.
+In each cycle, the memory pointer for the Op Stack Table, `op_stack_pointer`, can only ever increase by one, remain the same, or decrease by one.
+As a result, it is easy to enforce that the entire table is sorted for memory pointer using one initial constraint and one transition constraint.
 
- - Initial constraint: `osp` starts with zero, so in terms of polynomials the constraint is `osp`.
- - Transition constraint: the new `osp` is either the same as the previous or one larger. The polynomial representation for this constraint is `(osp' - osp - 1) * (osp' - osp)`.
+ - Initial constraint: `op_stack_pointer` starts with 16[^op_stack], so in terms of polynomials the constraint is `op_stack_pointer - 16`.
+ - Transition constraint: the new `op_stack_pointer` is either the same as the previous or one larger.
+    The polynomial representation for this constraint is `(op_stack_pointer' - op_stack_pointer - 1) · (op_stack_pointer' - op_stack_pointer)`.
 
 ## Contiguity for Jump Stack Table
 
@@ -147,3 +149,7 @@ None.
 ### Terminal
 
  - `bc0 ⋅ rpp + bc1 ⋅ fd - 1`
+
+---
+
+[^op_stack]: See [data structures](data-structures.md#operational-stack) and [registers](registers.md#stack) for explanations of the specific value 16.
