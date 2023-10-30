@@ -663,7 +663,6 @@ impl ExtProcessorTable {
             3 => circuit_builder.input(CurrentBaseRow(HV3.master_base_table_index())),
             4 => circuit_builder.input(CurrentBaseRow(HV4.master_base_table_index())),
             5 => circuit_builder.input(CurrentBaseRow(HV5.master_base_table_index())),
-            6 => circuit_builder.input(CurrentBaseRow(HV6.master_base_table_index())),
             i => unimplemented!("Helper variable index {i} out of bounds."),
         }
     }
@@ -1040,8 +1039,6 @@ impl ExtProcessorTable {
             next_base_row(ST14) - curr_base_row(ST15),
             next_base_row(OpStackPointer) - (curr_base_row(OpStackPointer) - constant(1)),
             running_product_op_stack_table_has_accumulated_last_element_of_next_row,
-            // The helper variable register hv0 holds the inverse of (`op_stack_pointer` - 16).
-            (curr_base_row(OpStackPointer) - constant(16)) * curr_base_row(HV0) - constant(1),
         ]
     }
 
@@ -1438,40 +1435,40 @@ impl ExtProcessorTable {
             circuit_builder.input(NextBaseRow(col.master_base_table_index()))
         };
 
-        let hv1_is_inverse_of_st0 = curr_base_row(HV1) * curr_base_row(ST0) - one();
-        let hv1_is_inverse_of_st0_or_hv1_is_0 = hv1_is_inverse_of_st0.clone() * curr_base_row(HV1);
-        let hv1_is_inverse_of_st0_or_st0_is_0 = hv1_is_inverse_of_st0 * curr_base_row(ST0);
+        let hv0_is_inverse_of_st0 = curr_base_row(HV0) * curr_base_row(ST0) - one();
+        let hv0_is_inverse_of_st0_or_hv0_is_0 = hv0_is_inverse_of_st0.clone() * curr_base_row(HV0);
+        let hv0_is_inverse_of_st0_or_st0_is_0 = hv0_is_inverse_of_st0 * curr_base_row(ST0);
 
         // The next instruction nia is decomposed into helper variables hv.
         let nia_decomposes_to_hvs = curr_base_row(NIA)
-            - curr_base_row(HV2)
-            - constant(1 << 1) * curr_base_row(HV3)
-            - constant(1 << 3) * curr_base_row(HV4)
-            - constant(1 << 5) * curr_base_row(HV5)
-            - constant(1 << 7) * curr_base_row(HV6);
+            - curr_base_row(HV1)
+            - constant(1 << 1) * curr_base_row(HV2)
+            - constant(1 << 3) * curr_base_row(HV3)
+            - constant(1 << 5) * curr_base_row(HV4)
+            - constant(1 << 7) * curr_base_row(HV5);
 
         // If `st0` is non-zero, register `ip` is incremented by 1.
         // If `st0` is 0 and `nia` takes no argument, register `ip` is incremented by 2.
         // If `st0` is 0 and `nia` takes an argument, register `ip` is incremented by 3.
         //
-        // The opcodes are constructed such that hv2 == 1 means that nia takes an argument.
+        // The opcodes are constructed such that hv1 == 1 means that nia takes an argument.
         //
         // Written as Disjunctive Normal Form, the constraint can be expressed as:
         // (Register `st0` is 0 or `ip` is incremented by 1), and
-        // (`st0` has a multiplicative inverse or `hv2` is 1 or `ip` is incremented by 2), and
-        // (`st0` has a multiplicative inverse or `hv2` is 0 or `ip` is incremented by 3).
+        // (`st0` has a multiplicative inverse or `hv1` is 1 or `ip` is incremented by 2), and
+        // (`st0` has a multiplicative inverse or `hv1` is 0 or `ip` is incremented by 3).
         let ip_case_1 = (next_base_row(IP) - curr_base_row(IP) - constant(1)) * curr_base_row(ST0);
         let ip_case_2 = (next_base_row(IP) - curr_base_row(IP) - constant(2))
-            * (curr_base_row(ST0) * curr_base_row(HV1) - one())
-            * (curr_base_row(HV2) - one());
+            * (curr_base_row(ST0) * curr_base_row(HV0) - one())
+            * (curr_base_row(HV1) - one());
         let ip_case_3 = (next_base_row(IP) - curr_base_row(IP) - constant(3))
-            * (curr_base_row(ST0) * curr_base_row(HV1) - one())
-            * curr_base_row(HV2);
+            * (curr_base_row(ST0) * curr_base_row(HV0) - one())
+            * curr_base_row(HV1);
         let ip_incr_by_1_or_2_or_3 = ip_case_1 + ip_case_2 + ip_case_3;
 
         let specific_constraints = vec![
-            hv1_is_inverse_of_st0_or_hv1_is_0,
-            hv1_is_inverse_of_st0_or_st0_is_0,
+            hv0_is_inverse_of_st0_or_hv0_is_0,
+            hv0_is_inverse_of_st0_or_st0_is_0,
             nia_decomposes_to_hvs,
             ip_incr_by_1_or_2_or_3,
         ];
@@ -1503,11 +1500,11 @@ impl ExtProcessorTable {
         };
 
         vec![
-            is_0_or_1(HV2),
+            is_0_or_1(HV1),
+            is_0_or_1_or_2_or_3(HV2),
             is_0_or_1_or_2_or_3(HV3),
             is_0_or_1_or_2_or_3(HV4),
             is_0_or_1_or_2_or_3(HV5),
-            is_0_or_1_or_2_or_3(HV6),
         ]
     }
 
@@ -1898,24 +1895,24 @@ impl ExtProcessorTable {
             circuit_builder.input(NextBaseRow(col.master_base_table_index()))
         };
 
-        // Helper variable hv1 is the inverse-or-zero of the difference of the stack's two top-most
-        // elements: `hv1·(hv1·(st1 - st0) - 1)`
-        let hv1_is_inverse_of_diff_or_hv1_is_0 = curr_base_row(HV1)
-            * (curr_base_row(HV1) * (curr_base_row(ST1) - curr_base_row(ST0)) - one());
+        // Helper variable hv0 is the inverse-or-zero of the difference of the stack's two top-most
+        // elements: `hv0·(hv0·(st1 - st0) - 1)`
+        let hv0_is_inverse_of_diff_or_hv0_is_0 = curr_base_row(HV0)
+            * (curr_base_row(HV0) * (curr_base_row(ST1) - curr_base_row(ST0)) - one());
 
-        // Helper variable hv1 is the inverse-or-zero of the difference of the stack's two
-        // top-most elements: `(st1 - st0)·(hv1·(st1 - st0) - 1)`
-        let hv1_is_inverse_of_diff_or_diff_is_0 = (curr_base_row(ST1) - curr_base_row(ST0))
-            * (curr_base_row(HV1) * (curr_base_row(ST1) - curr_base_row(ST0)) - one());
+        // Helper variable hv0 is the inverse-or-zero of the difference of the stack's two
+        // top-most elements: `(st1 - st0)·(hv0·(st1 - st0) - 1)`
+        let hv0_is_inverse_of_diff_or_diff_is_0 = (curr_base_row(ST1) - curr_base_row(ST0))
+            * (curr_base_row(HV0) * (curr_base_row(ST1) - curr_base_row(ST0)) - one());
 
         // The new top of the stack is 1 if the difference between the stack's two top-most
-        // elements is not invertible, 0 otherwise: `st0' - (1 - hv1·(st1 - st0))`
+        // elements is not invertible, 0 otherwise: `st0' - (1 - hv0·(st1 - st0))`
         let st0_becomes_1_if_diff_is_not_invertible = next_base_row(ST0)
-            - (one() - curr_base_row(HV1) * (curr_base_row(ST1) - curr_base_row(ST0)));
+            - (one() - curr_base_row(HV0) * (curr_base_row(ST1) - curr_base_row(ST0)));
 
         let specific_constraints = vec![
-            hv1_is_inverse_of_diff_or_hv1_is_0,
-            hv1_is_inverse_of_diff_or_diff_is_0,
+            hv0_is_inverse_of_diff_or_hv0_is_0,
+            hv0_is_inverse_of_diff_or_diff_is_0,
             st0_becomes_1_if_diff_is_not_invertible,
         ];
         [
@@ -2959,10 +2956,9 @@ impl<'a> Display for ProcessorTraceRow<'a> {
         row(
             f,
             format!(
-                "hv4-6:    [ {:>width$} | {:>width$} | {:>width$} ]",
+                "hv4-5:    [ {:>width$} | {:>width$} ]",
                 self.row[HV4.base_table_index()].value(),
                 self.row[HV5.base_table_index()].value(),
-                self.row[HV6.base_table_index()].value(),
             ),
         )?;
 
@@ -3009,6 +3005,7 @@ pub(crate) mod tests {
     use crate::stark::tests::master_base_table_for_low_security_level;
     use crate::table::master_table::*;
     use crate::triton_program;
+    use crate::vm::NUM_HELPER_VARIABLE_REGISTERS;
 
     use super::*;
 
@@ -3149,7 +3146,7 @@ pub(crate) mod tests {
         test_constraints_for_rows_with_debug_info(
             Skiz,
             &test_rows,
-            &[IP, NIA, ST0, HV6, HV5, HV4, HV3, HV2],
+            &[IP, NIA, ST0, HV5, HV4, HV3, HV2],
             &[IP],
         );
     }
@@ -3766,7 +3763,7 @@ pub(crate) mod tests {
     #[test]
     fn helper_variables_in_bounds() {
         let circuit_builder = ConstraintCircuitBuilder::new();
-        for index in 0..7 {
+        for index in 0..NUM_HELPER_VARIABLE_REGISTERS {
             ExtProcessorTable::helper_variable(&circuit_builder, index);
         }
     }
@@ -3774,7 +3771,7 @@ pub(crate) mod tests {
     #[test]
     #[should_panic(expected = "out of bounds")]
     fn helper_variables_out_of_bounds() {
-        let index = thread_rng().gen_range(7..usize::MAX);
+        let index = thread_rng().gen_range(NUM_HELPER_VARIABLE_REGISTERS..usize::MAX);
         let circuit_builder = ConstraintCircuitBuilder::new();
         ExtProcessorTable::helper_variable(&circuit_builder, index);
     }

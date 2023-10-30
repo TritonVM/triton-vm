@@ -9,23 +9,23 @@ Continuing above example, instruction group `keep_jump_stack` contains all trans
 The next section treats each instruction group in detail.
 The following table lists and briefly explains all instruction groups.
 
-| group name                               | description                                                                                                                                                 |
-|:-----------------------------------------|:------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `decompose_arg`                          | instruction's argument held in `nia` is binary decomposed into helper registers `hv0` through `hv3`                                                         |
-| `keep_ram`                               | RAM does not change, _i.e._,registers `ramp` and `ramv` do not change                                                                                       |
-| `keep_jump_stack`                        | jump stack does not change, _i.e._, registers `jsp`, `jso`, and `jsd` do not change                                                                         |
-| `step_1`                                 | jump stack does not change and instruction pointer `ip` increases by 1                                                                                      |
-| `step_2`                                 | jump stack does not change and instruction pointer `ip` increases by 2                                                                                      |
-| `stack_grows_and_top_2_unconstrained`    | operational stack elements starting from `st1` are shifted down by one position, highest two elements of the resulting stack are unconstrained              |
-| `grow_stack`                             | operational stack elements are shifted down by one position, top element of the resulting stack is unconstrained                                            |
-| `stack_remains_and_top_11_unconstrained` | operational stack's top 11 elements are unconstrained, rest of stack remains unchanged                                                                      |
-| `stack_remains_and_top_10_unconstrained` | operational stack's top 10 elements are unconstrained, rest of stack remains unchanged                                                                      |
-| `stack_remains_and_top_3_unconstrained`  | operational stack's top 3 elements are unconstrained, rest of stack remains unchanged                                                                       |
-| `unary_operation`                        | operational stack's top-most element is unconstrained, rest of stack remains unchanged                                                                      |
-| `keep_stack`                             | operational stack remains unchanged                                                                                                                         |
-| `stack_shrinks_and_top_3_unconstrained`  | operational stack elements starting from `st3` are shifted up by one position, highest three elements of the resulting stack are unconstrained. Needs `hv0` |
-| `binary_operation`                       | operational stack elements starting from `st2` are shifted up by one position, highest two elements of the resulting stack are unconstrained. Needs `hv0`   |
-| `shrink_stack`                           | operational stack elements starting from `st1` are shifted up by one position. Needs `hv0`                                                                  |
+| group name                               | description                                                                                                                                     |
+|:-----------------------------------------|:------------------------------------------------------------------------------------------------------------------------------------------------|
+| `decompose_arg`                          | instruction's argument held in `nia` is binary decomposed into helper registers `hv0` through `hv3`                                             |
+| `keep_ram`                               | RAM does not change, _i.e._,registers `ramp` and `ramv` do not change                                                                           |
+| `keep_jump_stack`                        | jump stack does not change, _i.e._, registers `jsp`, `jso`, and `jsd` do not change                                                             |
+| `step_1`                                 | jump stack does not change and instruction pointer `ip` increases by 1                                                                          |
+| `step_2`                                 | jump stack does not change and instruction pointer `ip` increases by 2                                                                          |
+| `stack_grows_and_top_2_unconstrained`    | operational stack elements starting from `st1` are shifted down by one position, highest two elements of the resulting stack are unconstrained  |
+| `grow_stack`                             | operational stack elements are shifted down by one position, top element of the resulting stack is unconstrained                                |
+| `stack_remains_and_top_11_unconstrained` | operational stack's top 11 elements are unconstrained, rest of stack remains unchanged                                                          |
+| `stack_remains_and_top_10_unconstrained` | operational stack's top 10 elements are unconstrained, rest of stack remains unchanged                                                          |
+| `stack_remains_and_top_3_unconstrained`  | operational stack's top 3 elements are unconstrained, rest of stack remains unchanged                                                           |
+| `unary_operation`                        | operational stack's top-most element is unconstrained, rest of stack remains unchanged                                                          |
+| `keep_stack`                             | operational stack remains unchanged                                                                                                             |
+| `stack_shrinks_and_top_3_unconstrained`  | operational stack elements starting from `st3` are shifted up by one position, highest three elements of the resulting stack are unconstrained. |
+| `binary_operation`                       | operational stack elements starting from `st2` are shifted up by one position, highest two elements of the resulting stack are unconstrained.   |
+| `shrink_stack`                           | operational stack elements starting from `st1` are shifted up by one position.                                                                  |
 
 Below figure gives a comprehensive overview over the subset relation between all instruction groups.
 
@@ -317,10 +317,6 @@ Contains all constraints from instruction group `unary_operation`, and additiona
 
 ## Group `stack_shrinks_and_top_3_unconstrained`
 
-This instruction group requires helper variable `hv0` to hold the multiplicative inverse of `(op_stack_pointer - 16)`.
-In effect, this means that the op stack pointer can only be decremented if it is not 16, i.e., if op stack underflow memory is not empty.
-Since the stack can only change by one element at a time, this prevents stack underflow.
-
 ### Description
 
 1. The stack element in `st4` is moved into `st3`.
@@ -336,7 +332,6 @@ Since the stack can only change by one element at a time, this prevents stack un
 1. The stack element in `st14` is moved into `st13`.
 1. The stack element in `st15` is moved into `st14`.
 1. The op stack pointer is decremented by 1.
-1. The helper variable register `hv0` holds the inverse of `(op_stack_pointer - 16)`.
 1. The running product for the Op Stack Table absorbs clock cycle and instruction bit 1 from the current row as well as op stack pointer and stack element 15 from the next row with respect to challenges 🍋, 🍊, 🍉, and 🫒 and indeterminate 🪤.
 
 ### Polynomials
@@ -354,7 +349,6 @@ Since the stack can only change by one element at a time, this prevents stack un
 1. `st13' - st14`
 1. `st14' - st15`
 1. `op_stack_pointer' - (op_stack_pointer - 1)`
-1. `(op_stack_pointer - 16)·hv0 - 1`
 1. `RunningProductOpStackTable' - RunningProductOpStackTable·(🪤 - 🍋·clk - 🍊·ib1 - 🍉·op_stack_pointer' - 🫒·st15')`
 
 ## Group `binary_operation`

@@ -11,7 +11,6 @@ use anyhow::Result;
 use ndarray::Array1;
 use num_traits::One;
 use num_traits::Zero;
-use strum::EnumCount;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::digest::Digest;
 use twenty_first::shared_math::tip5;
@@ -37,7 +36,7 @@ use crate::table::u32_table::U32TableEntry;
 use crate::vm::CoProcessorCall::*;
 
 /// The number of helper variable registers
-pub const NUM_HELPER_VARIABLE_REGISTERS: usize = 7;
+pub const NUM_HELPER_VARIABLE_REGISTERS: usize = 6;
 
 #[derive(Debug, Clone)]
 pub struct VMState<'pgm> {
@@ -142,17 +141,7 @@ impl<'pgm> VMState<'pgm> {
             return hvs;
         };
 
-        if current_instruction.shrinks_op_stack() {
-            let op_stack_pointer = self.op_stack.pointer();
-            let maximum_op_stack_pointer = BFieldElement::new(OpStackElement::COUNT as u64);
-            let op_stack_pointer_minus_maximum = op_stack_pointer - maximum_op_stack_pointer;
-            hvs[0] = op_stack_pointer_minus_maximum.inverse_or_zero();
-        }
-
         match current_instruction {
-            // For instructions making use of indicator polynomials, i.e., `dup` and `swap`.
-            // Sets the corresponding helper variables to the bit-decomposed argument such that the
-            // indicator polynomials of the AIR actually evaluate to 0.
             Dup(arg) | Swap(arg) => {
                 let arg_val: u64 = arg.into();
                 hvs[0] = BFieldElement::new(arg_val % 2);
@@ -162,22 +151,20 @@ impl<'pgm> VMState<'pgm> {
             }
             Skiz => {
                 let st0 = self.op_stack.peek_at(ST0);
-                hvs[1] = st0.inverse_or_zero();
+                hvs[0] = st0.inverse_or_zero();
                 let next_opcode = self.next_instruction_or_argument().value();
                 let decomposition = Self::decompose_opcode_for_instruction_skiz(next_opcode);
                 let decomposition = decomposition.map(BFieldElement::new);
-                hvs[2..7].copy_from_slice(&decomposition);
+                hvs[1..6].copy_from_slice(&decomposition);
             }
             DivineSibling => {
                 let node_index = self.op_stack.peek_at(ST10).value();
-                // set hv0 register to least significant bit of st10
                 hvs[0] = BFieldElement::new(node_index % 2);
             }
             Split => {
-                let elem = self.op_stack.peek_at(ST0);
-                let n: u64 = elem.value();
-                let lo = BFieldElement::new(n & 0xffff_ffff);
-                let hi = BFieldElement::new(n >> 32);
+                let top_of_stack: u64 = self.op_stack.peek_at(ST0).value();
+                let lo = BFieldElement::new(top_of_stack & 0xffff_ffff);
+                let hi = BFieldElement::new(top_of_stack >> 32);
                 if !lo.is_zero() {
                     let max_val_of_hi = BFieldElement::new(2_u64.pow(32) - 1);
                     hvs[0] = (hi - max_val_of_hi).inverse_or_zero();
@@ -186,7 +173,7 @@ impl<'pgm> VMState<'pgm> {
             Eq => {
                 let lhs = self.op_stack.peek_at(ST0);
                 let rhs = self.op_stack.peek_at(ST1);
-                hvs[1] = (rhs - lhs).inverse_or_zero();
+                hvs[0] = (rhs - lhs).inverse_or_zero();
             }
             _ => (),
         }
@@ -828,7 +815,6 @@ impl<'pgm> VMState<'pgm> {
         processor_row[HV3.base_table_index()] = helper_variables[3];
         processor_row[HV4.base_table_index()] = helper_variables[4];
         processor_row[HV5.base_table_index()] = helper_variables[5];
-        processor_row[HV6.base_table_index()] = helper_variables[6];
         processor_row[RAMP.base_table_index()] = ram_pointer;
         processor_row[RAMV.base_table_index()] = self.memory_get(&ram_pointer);
 
@@ -1017,6 +1003,7 @@ pub(crate) mod tests {
     use rand::Rng;
     use rand::RngCore;
     use rand_core::SeedableRng;
+    use strum::EnumCount;
     use twenty_first::shared_math::b_field_element::BFIELD_ZERO;
     use twenty_first::shared_math::other::random_elements;
     use twenty_first::shared_math::other::random_elements_array;

@@ -223,13 +223,13 @@ Additionally, it defines the following transition constraints.
 
 1. Helper variable `hv1` is the inverse of `st0` or 0.
 1. Helper variable `hv1` is the inverse of `st0` or `st0` is 0.
-1. The next instruction `nia` is decomposed into helper variables `hv2` through `hv6`.
-1. The indicator helper variable `hv2` is either 0 or 1.
-    Here, `hv2 == 1` means that `nia` takes an argument.
+1. The next instruction `nia` is decomposed into helper variables `hv1` through `hv5`.
+1. The indicator helper variable `hv1` is either 0 or 1.
+    Here, `hv1 == 1` means that `nia` takes an argument.
+1. The helper variable `hv2` is either 0 or 1 or 2 or 3.
 1. The helper variable `hv3` is either 0 or 1 or 2 or 3.
 1. The helper variable `hv4` is either 0 or 1 or 2 or 3.
 1. The helper variable `hv5` is either 0 or 1 or 2 or 3.
-1. The helper variable `hv6` is either 0 or 1 or 2 or 3.
 1. If `st0` is non-zero, register `ip` is incremented by 1.
 If `st0` is 0 and `nia` takes no argument, register `ip` is incremented by 2.
 If `st0` is 0 and `nia` takes an argument, register `ip` is incremented by 3.
@@ -237,33 +237,33 @@ If `st0` is 0 and `nia` takes an argument, register `ip` is incremented by 3.
 Written as Disjunctive Normal Form, the last constraint can be expressed as:
 
 10. (Register `st0` is 0 or `ip` is incremented by 1), and
-(`st0` has a multiplicative inverse or `hv2` is 1 or `ip` is incremented by 2), and
-(`st0` has a multiplicative inverse or `hv2` is 0 or `ip` is incremented by 3).
+(`st0` has a multiplicative inverse or `hv1` is 1 or `ip` is incremented by 2), and
+(`st0` has a multiplicative inverse or `hv1` is 0 or `ip` is incremented by 3).
 
 Since the three cases are mutually exclusive, the three respective polynomials can be summed up into one.
 
 ### Polynomials
 
-1. `(st0·hv1 - 1)·hv1`
-1. `(st0·hv1 - 1)·st0`
-1. `nia - hv2 - 2·hv3 - 8·hv4 - 32·hv5 - 128·hv6`
-1. `hv2·(hv2 - 1)`
+1. `(st0·hv0 - 1)·hv0`
+1. `(st0·hv0 - 1)·st0`
+1. `nia - hv1 - 2·hv2 - 8·hv3 - 32·hv4 - 128·hv5`
+1. `hv1·(hv1 - 1)`
+1. `hv2·(hv2 - 1)·(hv2 - 2)·(hv2 - 3)`
 1. `hv3·(hv3 - 1)·(hv3 - 2)·(hv3 - 3)`
 1. `hv4·(hv4 - 1)·(hv4 - 2)·(hv4 - 3)`
 1. `hv5·(hv5 - 1)·(hv5 - 2)·(hv5 - 3)`
-1. `hv6·(hv6 - 1)·(hv6 - 2)·(hv6 - 3)`
 1. `(ip' - (ip + 1)·st0)`<br />
-    ` + ((ip' - (ip + 2))·(st0·hv1 - 1)·(hv2 - 1))`<br />
-    ` + ((ip' - (ip + 3))·(st0·hv1 - 1)·hv2)`
+    ` + ((ip' - (ip + 2))·(st0·hv0 - 1)·(hv1 - 1))`<br />
+    ` + ((ip' - (ip + 3))·(st0·hv0 - 1)·hv1)`
 
 ### Helper variable definitions for `skiz`
 
-1. `hv1 = inverse(st0)` (if `st0 ≠ 0`)
-1. `hv2 = nia mod 2`
-1. `hv3 = (nia >> 1) mod 4`
-1. `hv4 = (nia >> 3) mod 4`
-1. `hv5 = (nia >> 5) mod 4`
-1. `hv6 = nia >> 7`
+1. `hv0 = inverse(st0)` (if `st0 ≠ 0`)
+1. `hv1 = nia mod 2`
+1. `hv2 = (nia >> 1) mod 4`
+1. `hv3 = (nia >> 3) mod 4`
+1. `hv4 = (nia >> 5) mod 4`
+1. `hv5 = nia >> 7`
 
 ## Instruction `call` + `d`
 
@@ -505,20 +505,20 @@ Additionally, it defines the following transition constraints.
 
 ### Description
 
-1. Helper variable `hv1` is the inverse of the difference of the stack's two top-most elements or 0.
-1. Helper variable `hv1` is the inverse of the difference of the stack's two top-most elements or the difference is 0.
+1. Helper variable `hv0` is the inverse of the difference of the stack's two top-most elements or 0.
+1. Helper variable `hv0` is the inverse of the difference of the stack's two top-most elements or the difference is 0.
 1. The new top of the stack is 1 if the difference between the stack's two top-most elements is not invertible, 0 otherwise.
 
 ### Polynomials
 
-1. `hv1·(hv1·(st1 - st0) - 1)`
-1. `(st1 - st0)·(hv1·(st1 - st0) - 1)`
-1. `st0' - (1 - hv1·(st1 - st0))`
+1. `hv0·(hv0·(st1 - st0) - 1)`
+1. `(st1 - st0)·(hv0·(st1 - st0) - 1)`
+1. `st0' - (1 - hv0·(st1 - st0))`
 
 ### Helper variable definitions for `eq`
 
-1. `hv1 = inverse(rhs - lhs)` if `rhs - lhs ≠ 0`.
-1. `hv1 = 0` if `rhs - lhs = 0`.
+1. `hv0 = inverse(rhs - lhs)` if `rhs ≠ lhs`.
+1. `hv0 = 0` if `rhs = lhs`.
 
 ## Instruction `split`
 
