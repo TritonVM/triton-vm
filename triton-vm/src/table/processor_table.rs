@@ -196,7 +196,7 @@ impl ProcessorTable {
                 .map(|(st, &weight)| weight * st)
                 .sum();
             let hash_digest_weights = &challenges[HashStateWeight0..HashStateWeight5];
-            let compressed_row_for_hash_digest: XFieldElement = st_0_through_9[5..=9]
+            let compressed_row_for_hash_digest: XFieldElement = st_0_through_9[0..DIGEST_LENGTH]
                 .iter()
                 .zip_eq(hash_digest_weights.iter())
                 .map(|(&st, &weight)| weight * st)
@@ -587,8 +587,7 @@ impl ExtProcessorTable {
             + constant(1 << 3) * base_row(IB3)
             + constant(1 << 4) * base_row(IB4)
             + constant(1 << 5) * base_row(IB5)
-            + constant(1 << 6) * base_row(IB6)
-            + constant(1 << 7) * base_row(IB7);
+            + constant(1 << 6) * base_row(IB6);
         let ci_corresponds_to_ib0_thru_ib7 = base_row(CI) - ib_composition;
 
         let ib0_is_bit = base_row(IB0) * (base_row(IB0) - constant(1));
@@ -598,7 +597,6 @@ impl ExtProcessorTable {
         let ib4_is_bit = base_row(IB4) * (base_row(IB4) - constant(1));
         let ib5_is_bit = base_row(IB5) * (base_row(IB5) - constant(1));
         let ib6_is_bit = base_row(IB6) * (base_row(IB6) - constant(1));
-        let ib7_is_bit = base_row(IB7) * (base_row(IB7) - constant(1));
         let is_padding_is_bit = base_row(IsPadding) * (base_row(IsPadding) - constant(1));
 
         // In padding rows, the clock jump difference lookup multiplicity is 0. The one row
@@ -617,7 +615,6 @@ impl ExtProcessorTable {
             ib4_is_bit,
             ib5_is_bit,
             ib6_is_bit,
-            ib7_is_bit,
             is_padding_is_bit,
             ci_corresponds_to_ib0_thru_ib7,
             clock_jump_diff_lookup_multiplicity_is_0_in_padding_rows,
@@ -932,30 +929,12 @@ impl ExtProcessorTable {
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
         let constant = |c: u32| circuit_builder.b_constant(c.into());
-        let challenge = |c: ChallengeId| circuit_builder.challenge(c);
         let curr_base_row = |col: ProcessorBaseTableColumn| {
             circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
         };
         let next_base_row = |col: ProcessorBaseTableColumn| {
             circuit_builder.input(NextBaseRow(col.master_base_table_index()))
         };
-        let curr_ext_row = |col: ProcessorExtTableColumn| {
-            circuit_builder.input(CurrentExtRow(col.master_ext_table_index()))
-        };
-        let next_ext_row = |col: ProcessorExtTableColumn| {
-            circuit_builder.input(NextExtRow(col.master_ext_table_index()))
-        };
-
-        let compressed_row_for_op_stack_permutation_argument = challenge(OpStackClkWeight)
-            * curr_base_row(CLK)
-            + challenge(OpStackIb1Weight) * curr_base_row(IB1)
-            + challenge(OpStackPointerWeight) * curr_base_row(OpStackPointer)
-            + challenge(OpStackFirstUnderflowElementWeight) * curr_base_row(ST15);
-        let factor_for_op_stack_permutation_argument =
-            challenge(OpStackIndeterminate) - compressed_row_for_op_stack_permutation_argument;
-        let running_product_op_stack_table_has_accumulated_last_element_of_current_row =
-            next_ext_row(OpStackTablePermArg)
-                - curr_ext_row(OpStackTablePermArg) * factor_for_op_stack_permutation_argument;
 
         vec![
             next_base_row(ST2) - curr_base_row(ST1),
@@ -973,7 +952,7 @@ impl ExtProcessorTable {
             next_base_row(ST14) - curr_base_row(ST13),
             next_base_row(ST15) - curr_base_row(ST14),
             next_base_row(OpStackPointer) - (curr_base_row(OpStackPointer) + constant(1)),
-            running_product_op_stack_table_has_accumulated_last_element_of_current_row,
+            Self::running_product_op_stack_accounts_for_growing_stack_by::<1>(circuit_builder),
         ]
     }
 
@@ -1000,30 +979,13 @@ impl ExtProcessorTable {
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
         let constant = |c: u32| circuit_builder.b_constant(c.into());
-        let challenge = |c: ChallengeId| circuit_builder.challenge(c);
         let curr_base_row = |col: ProcessorBaseTableColumn| {
             circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
         };
         let next_base_row = |col: ProcessorBaseTableColumn| {
             circuit_builder.input(NextBaseRow(col.master_base_table_index()))
         };
-        let curr_ext_row = |col: ProcessorExtTableColumn| {
-            circuit_builder.input(CurrentExtRow(col.master_ext_table_index()))
-        };
-        let next_ext_row = |col: ProcessorExtTableColumn| {
-            circuit_builder.input(NextExtRow(col.master_ext_table_index()))
-        };
 
-        let compressed_row_for_op_stack_permutation_argument = challenge(OpStackClkWeight)
-            * curr_base_row(CLK)
-            + challenge(OpStackIb1Weight) * curr_base_row(IB1)
-            + challenge(OpStackPointerWeight) * next_base_row(OpStackPointer)
-            + challenge(OpStackFirstUnderflowElementWeight) * next_base_row(ST15);
-        let factor_for_op_stack_permutation_argument =
-            challenge(OpStackIndeterminate) - compressed_row_for_op_stack_permutation_argument;
-        let running_product_op_stack_table_has_accumulated_last_element_of_next_row =
-            next_ext_row(OpStackTablePermArg)
-                - curr_ext_row(OpStackTablePermArg) * factor_for_op_stack_permutation_argument;
         vec![
             next_base_row(ST3) - curr_base_row(ST4),
             next_base_row(ST4) - curr_base_row(ST5),
@@ -1038,7 +1000,7 @@ impl ExtProcessorTable {
             next_base_row(ST13) - curr_base_row(ST14),
             next_base_row(ST14) - curr_base_row(ST15),
             next_base_row(OpStackPointer) - (curr_base_row(OpStackPointer) - constant(1)),
-            running_product_op_stack_table_has_accumulated_last_element_of_next_row,
+            Self::running_product_op_stack_accounts_for_shrinking_stack_by::<1>(circuit_builder),
         ]
     }
 
@@ -1158,7 +1120,6 @@ impl ExtProcessorTable {
             instruction.ib(InstructionBit::IB4),
             instruction.ib(InstructionBit::IB5),
             instruction.ib(InstructionBit::IB6),
-            instruction.ib(InstructionBit::IB7),
         ];
         let deselector_polynomials =
             selector_bits.map(|b| one.clone() - circuit_builder.b_constant(b));
@@ -1188,7 +1149,6 @@ impl ExtProcessorTable {
             curr_base_row(IB4),
             curr_base_row(IB5),
             curr_base_row(IB6),
-            curr_base_row(IB7),
         ];
 
         Self::instruction_deselector_common_functionality(
@@ -1216,7 +1176,6 @@ impl ExtProcessorTable {
             next_base_row(IB4),
             next_base_row(IB5),
             next_base_row(IB6),
-            next_base_row(IB7),
         ];
 
         Self::instruction_deselector_common_functionality(
@@ -1244,7 +1203,6 @@ impl ExtProcessorTable {
             base_row(IB4),
             base_row(IB5),
             base_row(IB6),
-            base_row(IB7),
         ];
 
         Self::instruction_deselector_common_functionality(
@@ -1691,11 +1649,28 @@ impl ExtProcessorTable {
     fn instruction_hash(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
+        let constant = |c: u32| circuit_builder.b_constant(c.into());
+        let curr_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
+        };
+        let next_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(NextBaseRow(col.master_base_table_index()))
+        };
+
+        let op_stack_shrinks_by_5_and_top_5_unconstrained = vec![
+            next_base_row(ST5) - curr_base_row(ST10),
+            next_base_row(ST6) - curr_base_row(ST11),
+            next_base_row(ST7) - curr_base_row(ST12),
+            next_base_row(ST8) - curr_base_row(ST13),
+            next_base_row(ST9) - curr_base_row(ST14),
+            next_base_row(ST10) - curr_base_row(ST15),
+            next_base_row(OpStackPointer) - curr_base_row(OpStackPointer) + constant(5),
+            Self::running_product_op_stack_accounts_for_shrinking_stack_by::<5>(circuit_builder),
+        ];
+
         [
             Self::instruction_group_step_1(circuit_builder),
-            Self::instruction_group_op_stack_remains_and_top_ten_elements_unconstrained(
-                circuit_builder,
-            ),
+            op_stack_shrinks_by_5_and_top_5_unconstrained,
             Self::instruction_group_keep_ram(circuit_builder),
         ]
         .concat()
@@ -2398,6 +2373,90 @@ impl ExtProcessorTable {
             + write_io_deselector * running_evaluation_updates
     }
 
+    fn running_product_op_stack_accounts_for_growing_stack_by<const N: usize>(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> ConstraintCircuitMonad<DualRowIndicator> {
+        let constant = |c: u32| circuit_builder.b_constant(c.into());
+        let curr_ext_row = |col: ProcessorExtTableColumn| {
+            circuit_builder.input(CurrentExtRow(col.master_ext_table_index()))
+        };
+        let next_ext_row = |col: ProcessorExtTableColumn| {
+            circuit_builder.input(NextExtRow(col.master_ext_table_index()))
+        };
+        let single_grow_factor = |op_stack_pointer_offset| {
+            Self::single_factor_for_permutation_argument_with_op_stack_table(
+                circuit_builder,
+                CurrentBaseRow,
+                op_stack_pointer_offset,
+            )
+        };
+
+        let mut factor = constant(1);
+        for op_stack_pointer_offset in 0..N {
+            factor = factor * single_grow_factor(op_stack_pointer_offset);
+        }
+
+        next_ext_row(OpStackTablePermArg) - curr_ext_row(OpStackTablePermArg) * factor
+    }
+
+    fn running_product_op_stack_accounts_for_shrinking_stack_by<const N: usize>(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> ConstraintCircuitMonad<DualRowIndicator> {
+        let constant = |c: u32| circuit_builder.b_constant(c.into());
+        let curr_ext_row = |col: ProcessorExtTableColumn| {
+            circuit_builder.input(CurrentExtRow(col.master_ext_table_index()))
+        };
+        let next_ext_row = |col: ProcessorExtTableColumn| {
+            circuit_builder.input(NextExtRow(col.master_ext_table_index()))
+        };
+        let single_shrink_factor = |op_stack_pointer_offset| {
+            Self::single_factor_for_permutation_argument_with_op_stack_table(
+                circuit_builder,
+                NextBaseRow,
+                op_stack_pointer_offset,
+            )
+        };
+
+        let mut factor = constant(1);
+        for op_stack_pointer_offset in 0..N {
+            factor = factor * single_shrink_factor(op_stack_pointer_offset);
+        }
+
+        next_ext_row(OpStackTablePermArg) - curr_ext_row(OpStackTablePermArg) * factor
+    }
+
+    fn single_factor_for_permutation_argument_with_op_stack_table(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+        row_with_shorter_stack_indicator: fn(usize) -> DualRowIndicator,
+        op_stack_pointer_offset: usize,
+    ) -> ConstraintCircuitMonad<DualRowIndicator> {
+        let constant = |c: u32| circuit_builder.b_constant(c.into());
+        let challenge = |c: ChallengeId| circuit_builder.challenge(c);
+        let curr_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
+        };
+        let row_with_shorter_stack = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(row_with_shorter_stack_indicator(
+                col.master_base_table_index(),
+            ))
+        };
+
+        let max_stack_element_index = OpStackElement::COUNT - 1;
+        let stack_element_index = max_stack_element_index - op_stack_pointer_offset;
+        let stack_element = ProcessorTable::op_stack_column_by_index(stack_element_index);
+        let underflow_element = row_with_shorter_stack(stack_element);
+
+        let op_stack_pointer = row_with_shorter_stack(OpStackPointer);
+        let offset = constant(op_stack_pointer_offset as u32);
+        let offset_op_stack_pointer = op_stack_pointer + offset;
+
+        let compressed_row = challenge(OpStackClkWeight) * curr_base_row(CLK)
+            + challenge(OpStackIb1Weight) * curr_base_row(IB1)
+            + challenge(OpStackPointerWeight) * offset_op_stack_pointer
+            + challenge(OpStackFirstUnderflowElementWeight) * underflow_element;
+        challenge(OpStackIndeterminate) - compressed_row
+    }
+
     fn running_product_for_ram_table_updates_correctly(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> ConstraintCircuitMonad<DualRowIndicator> {
@@ -2536,11 +2595,11 @@ impl ExtProcessorTable {
         ]
         .map(challenge);
         let state = [
-            next_base_row(ST5),
-            next_base_row(ST6),
-            next_base_row(ST7),
-            next_base_row(ST8),
-            next_base_row(ST9),
+            next_base_row(ST0),
+            next_base_row(ST1),
+            next_base_row(ST2),
+            next_base_row(ST3),
+            next_base_row(ST4),
         ];
         let compressed_row = weights
             .into_iter()
@@ -2967,7 +3026,7 @@ impl<'a> Display for ProcessorTraceRow<'a> {
             f,
             format!(
                 "ib0-7:    \
-                [ {:>w$} | {:>w$} | {:>w$} | {:>w$} | {:>w$} | {:>w$} | {:>w$} | {:>w$} ]",
+                [ {:>w$} | {:>w$} | {:>w$} | {:>w$} | {:>w$} | {:>w$} | {:>w$} ]",
                 self.row[IB0.base_table_index()].value(),
                 self.row[IB1.base_table_index()].value(),
                 self.row[IB2.base_table_index()].value(),
@@ -2975,7 +3034,6 @@ impl<'a> Display for ProcessorTraceRow<'a> {
                 self.row[IB4.base_table_index()].value(),
                 self.row[IB5.base_table_index()].value(),
                 self.row[IB6.base_table_index()].value(),
-                self.row[IB7.base_table_index()].value(),
             ),
         )?;
         write!(
@@ -3579,7 +3637,6 @@ pub(crate) mod tests {
                 curr_row[IB4.master_base_table_index()] = other_instruction.ib(InstructionBit::IB4);
                 curr_row[IB5.master_base_table_index()] = other_instruction.ib(InstructionBit::IB5);
                 curr_row[IB6.master_base_table_index()] = other_instruction.ib(InstructionBit::IB6);
-                curr_row[IB7.master_base_table_index()] = other_instruction.ib(InstructionBit::IB7);
                 let result = deselector.clone().consume().evaluate(
                     master_base_table.view(),
                     master_ext_table.view(),
@@ -3603,7 +3660,6 @@ pub(crate) mod tests {
             curr_row[IB4.master_base_table_index()] = instruction.ib(InstructionBit::IB4);
             curr_row[IB5.master_base_table_index()] = instruction.ib(InstructionBit::IB5);
             curr_row[IB6.master_base_table_index()] = instruction.ib(InstructionBit::IB6);
-            curr_row[IB7.master_base_table_index()] = instruction.ib(InstructionBit::IB7);
             let result = deselector.consume().evaluate(
                 master_base_table.view(),
                 master_ext_table.view(),

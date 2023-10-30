@@ -115,7 +115,6 @@ pub enum ProcessorBaseTableColumn {
     IB4,
     IB5,
     IB6,
-    IB7,
     JSP,
     JSO,
     JSD,

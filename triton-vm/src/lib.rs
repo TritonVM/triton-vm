@@ -525,7 +525,7 @@ mod tests {
         // Program proves the knowledge of a hash preimage
         let program = triton_program!(
             divine divine divine divine divine
-            hash pop pop pop pop pop
+            hash
             push 09456474867485907852
             push 12765666850723567758
             push 08551752384389703074

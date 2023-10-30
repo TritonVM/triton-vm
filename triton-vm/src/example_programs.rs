@@ -138,39 +138,38 @@ fn merkle_tree_authentication_path_verify() -> Program {
         push -1 add write_mem pop       // decrease number of authentication paths left to check
                                         // stack: [* r4 r3 r2 r1 r0]
         call get_idx_and_leaf
-                                        // stack: [* r4 r3 r2 r1 r0 idx d4 d3 d2 d1 d0 0 0 0 0 0]
+                                        // stack: [* r4 r3 r2 r1 r0 idx l4 l3 l2 l1 l0]
         call traverse_tree
-                                        // stack: [* r4 r3 r2 r1 r0 idx>>1 - - - - - - - - - -]
+                                        // stack: [* r4 r3 r2 r1 r0   1 d4 d3 d2 d1 d0]
         call assert_tree_top
                                         // stack: [* r4 r3 r2 r1 r0]
         recurse                         // check next AP
 
         // subroutine: read index & hash leaf
         // stack before: [*]
-        // stack after:  [* idx d4 d3 d2 d1 d0 0 0 0 0 0]
+        // stack after:  [* idx l4 l3 l2 l1 l0]
         get_idx_and_leaf:
         read_io                                     // read node index
         read_io read_io read_io read_io read_io     // read leaf's value
-        push 0 push 0 push 0 push 0 push 0          // pad for instruction divine_sibling
         return
 
         // subroutine: go up tree
-        // stack before: [* idx    - - - - - - - - - -]
-        // stack after:  [* idx>>1 - - - - - - - - - -]
+        // stack before: [* r4 r3 r2 r1 r0 idx l4 l3 l2 l1 l0]
+        // stack after:  [* r4 r3 r2 r1 r0   1 d4 d3 d2 d1 d0]
         traverse_tree:
-        dup 10 push 1 eq skiz return                // break loop if node index is 1
+        dup 5 push 1 eq skiz return                 // break loop if node index is 1
+        push 0 push 0 push 0 push 0 push 0          // prepare for instruction `divine_sibling`
         divine_sibling hash recurse                 // move up one level in the Merkle tree
 
         // subroutine: compare digests
-        // stack before: [* r4 r3 r2 r1 r0 idx a b c d e - - - - -]
+        // stack before: [* r4 r3 r2 r1 r0   1 d4 d3 d2 d1 d0]
         // stack after:  [* r4 r3 r2 r1 r0]
         assert_tree_top:
-        pop pop pop pop pop                         // remove unnecessary “0”s from hashing
-                                                    // stack: [* r4 r3 r2 r1 r0 idx a b c d e]
+                                                    // stack: [* r4 r3 r2 r1 r0   1 d4 d3 d2 d1 d0]
         swap 1 swap 2 swap 3 swap 4 swap 5
-                                                    // stack: [* r4 r3 r2 r1 r0 a b c d e idx]
+                                                    // stack: [* r4 r3 r2 r1 r0 d4 d3 d2 d1 d0   1]
         assert                                      // ensure the entire path was traversed
-                                                    // stack: [* r4 r3 r2 r1 r0 a b c d e]
+                                                    // stack: [* r4 r3 r2 r1 r0 d4 d3 d2 d1 d0]
         assert_vector                               // actually compare to root of tree
         pop pop pop pop pop                         // clean up stack, leave only one root
         return
@@ -545,7 +544,6 @@ pub(crate) fn calculate_new_mmr_peaks_from_append_with_safe_lists() -> Program {
                 // Stack: _ old_leaf_count_hi old_leaf_count_lo rll *auth_path *peaks *peaks [digest (new_hash)] [digests (previous_peak)]
 
                 hash
-                pop pop pop pop pop
                 // Stack: _ old_leaf_count_hi old_leaf_count_lo rll *auth_path *peaks *peaks [digests (new_peak)]
 
                 call tasm_list_safe_u32_push_digest

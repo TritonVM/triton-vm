@@ -170,16 +170,16 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
             Halt => 0,
             ReadMem => 40,
             WriteMem => 26,
-            Hash => 48,
-            DivineSibling => 56,
-            AssertVector => 64,
-            SpongeInit => 72,
-            SpongeAbsorb => 80,
-            SpongeSqueeze => 88,
-            Add => 34,
-            Mul => 42,
-            Invert => 96,
-            Eq => 50,
+            Hash => 34,
+            DivineSibling => 48,
+            AssertVector => 56,
+            SpongeInit => 64,
+            SpongeAbsorb => 72,
+            SpongeSqueeze => 80,
+            Add => 42,
+            Mul => 50,
+            Invert => 88,
+            Eq => 58,
             Split => 4,
             Lt => 6,
             And => 14,
@@ -188,12 +188,12 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
             Pow => 30,
             DivMod => 20,
             PopCount => 28,
-            XxAdd => 104,
-            XxMul => 112,
-            XInvert => 120,
-            XbMul => 58,
-            ReadIo => 128,
-            WriteIo => 66,
+            XxAdd => 96,
+            XxMul => 104,
+            XInvert => 112,
+            XbMul => 66,
+            ReadIo => 120,
+            WriteIo => 74,
         }
     }
 
@@ -334,7 +334,7 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
             Halt => 0,
             ReadMem => 1,
             WriteMem => -1,
-            Hash => 0,
+            Hash => -5,
             DivineSibling => 0,
             AssertVector => 0,
             SpongeInit => 0,
@@ -522,7 +522,6 @@ pub enum InstructionBit {
     IB4,
     IB5,
     IB6,
-    IB7,
 }
 
 impl Display for InstructionBit {
@@ -542,7 +541,6 @@ impl From<InstructionBit> for usize {
             IB4 => 4,
             IB5 => 5,
             IB6 => 6,
-            IB7 => 7,
         }
     }
 }
@@ -559,7 +557,6 @@ impl TryFrom<usize> for InstructionBit {
             4 => Ok(IB4),
             5 => Ok(IB5),
             6 => Ok(IB6),
-            7 => Ok(IB7),
             _ => Err(format!(
                 "Index {bit_index} is out of range for `InstructionBit`."
             )),

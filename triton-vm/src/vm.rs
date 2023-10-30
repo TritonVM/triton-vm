@@ -409,10 +409,6 @@ impl<'pgm> VMState<'pgm> {
             let underflow_io = self.op_stack.push(hash_output[i]);
             all_underflow_io.push(underflow_io);
         }
-        for _ in 0..DIGEST_LENGTH {
-            let underflow_io = self.op_stack.push(BFieldElement::zero());
-            all_underflow_io.push(underflow_io);
-        }
 
         let mut co_processor_calls =
             self.underflow_io_sequence_to_co_processor_calls(all_underflow_io);
@@ -788,7 +784,6 @@ impl<'pgm> VMState<'pgm> {
         processor_row[IB4.base_table_index()] = current_instruction.ib(InstructionBit::IB4);
         processor_row[IB5.base_table_index()] = current_instruction.ib(InstructionBit::IB5);
         processor_row[IB6.base_table_index()] = current_instruction.ib(InstructionBit::IB6);
-        processor_row[IB7.base_table_index()] = current_instruction.ib(InstructionBit::IB7);
         processor_row[JSP.base_table_index()] = self.jump_stack_pointer();
         processor_row[JSO.base_table_index()] = self.jump_stack_origin();
         processor_row[JSD.base_table_index()] = self.jump_stack_destination();
@@ -995,7 +990,7 @@ pub(crate) mod tests {
     use itertools::Itertools;
     use ndarray::Array1;
     use ndarray::ArrayView1;
-    use rand::prelude::SliceRandom;
+    use rand::prelude::IteratorRandom;
     use rand::prelude::StdRng;
     use rand::random;
     use rand::rngs::ThreadRng;
@@ -1004,6 +999,8 @@ pub(crate) mod tests {
     use rand::RngCore;
     use rand_core::SeedableRng;
     use strum::EnumCount;
+    use strum::EnumIter;
+    use strum::IntoEnumIterator;
     use twenty_first::shared_math::b_field_element::BFIELD_ZERO;
     use twenty_first::shared_math::other::random_elements;
     use twenty_first::shared_math::other::random_elements_array;
@@ -1061,9 +1058,17 @@ pub(crate) mod tests {
     }
 
     pub(crate) fn test_program_hash_nop_nop_lt() -> ProgramAndInput {
-        ProgramAndInput::without_input(
-            triton_program!(hash nop hash nop nop hash push 3 push 2 lt assert halt),
-        )
+        let push_5_zeros = triton_asm![push 0; 5];
+        let program = triton_program! {
+            {&push_5_zeros} hash
+            nop
+            {&push_5_zeros} hash
+            nop nop
+            {&push_5_zeros} hash
+            push 3 push 2 lt assert
+            halt
+        };
+        ProgramAndInput::without_input(program)
     }
 
     pub(crate) fn test_program_for_halt() -> ProgramAndInput {
@@ -1117,7 +1122,6 @@ pub(crate) mod tests {
             push 0 // filler to keep the OpStack large enough throughout the program
             push 0 push 0 push 1 push 2 push 3
             hash
-            pop pop pop pop pop
             read_io eq assert halt
         );
         let hash_input = [3, 2, 1, 0, 0, 0, 0, 0, 0, 0].map(BFieldElement::new);
@@ -1208,22 +1212,35 @@ pub(crate) mod tests {
     }
 
     pub(crate) fn test_program_for_sponge_instructions_2() -> ProgramAndInput {
-        ProgramAndInput::without_input(triton_program!(
-            hash sponge_init push 3 push 2 push 1 sponge_absorb sponge_absorb sponge_squeeze halt
-        ))
+        let push_5_zeros = triton_asm![push 0; 5];
+        let program = triton_program! {
+            {&push_5_zeros} hash
+            sponge_init
+            push 3 push 2 push 1
+            sponge_absorb
+            sponge_absorb
+            sponge_squeeze
+            halt
+        };
+        ProgramAndInput::without_input(program)
     }
 
     pub(crate) fn test_program_for_many_sponge_instructions() -> ProgramAndInput {
-        ProgramAndInput::without_input(triton_program!(
+        let push_5_zeros = triton_asm![push 0; 5];
+        let program = triton_program! {
             sponge_init sponge_squeeze sponge_absorb sponge_absorb sponge_absorb
             sponge_squeeze sponge_squeeze sponge_squeeze sponge_absorb
             sponge_init sponge_init sponge_init sponge_absorb
             sponge_init sponge_squeeze sponge_squeeze
-            sponge_init sponge_squeeze hash sponge_absorb hash sponge_squeeze
-            hash sponge_absorb hash sponge_squeeze
+            sponge_init sponge_squeeze
+            {&push_5_zeros} hash sponge_absorb
+            {&push_5_zeros} hash sponge_squeeze
+            {&push_5_zeros} hash sponge_absorb
+            {&push_5_zeros} hash sponge_squeeze
             sponge_init sponge_absorb sponge_absorb sponge_absorb sponge_absorb sponge_absorb
             sponge_absorb sponge_absorb halt
-        ))
+        };
+        ProgramAndInput::without_input(program)
     }
 
     pub(crate) fn property_based_test_program_for_assert_vector() -> ProgramAndInput {
@@ -1246,6 +1263,46 @@ pub(crate) mod tests {
         }
     }
 
+    /// Test helper for `property_based_test_program_for_sponge_instructions`.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, EnumCount, EnumIter)]
+    enum SpongeAndHashInstructions {
+        SpongeInit,
+        SpongeAbsorb,
+        SpongeSqueeze,
+        Hash,
+    }
+
+    impl SpongeAndHashInstructions {
+        /// Fill the stack with enough elements that any chain of instructions will not underflow.
+        fn to_vm_instruction_sequence(self) -> Vec<Instruction> {
+            let push_5_zeros = vec![Push(0_u64.into()); 5];
+            match self {
+                Self::SpongeInit => vec![SpongeInit],
+                Self::SpongeAbsorb => vec![SpongeAbsorb],
+                Self::SpongeSqueeze => vec![SpongeSqueeze],
+                Self::Hash => [vec![Hash], push_5_zeros].concat(),
+            }
+        }
+
+        fn execute(
+            self,
+            mut sponge_state: Tip5State,
+            mut sponge_io: [BFieldElement; RATE],
+        ) -> (Tip5State, [BFieldElement; RATE]) {
+            let zero_digest = [BFIELD_ZERO; DIGEST_LENGTH];
+            match self {
+                Self::SpongeInit => sponge_state = Tip5::init(),
+                Self::SpongeAbsorb => Tip5::absorb(&mut sponge_state, &sponge_io),
+                Self::SpongeSqueeze => sponge_io = Tip5::squeeze(&mut sponge_state),
+                Self::Hash => {
+                    let digest = Tip5::hash_10(&sponge_io);
+                    sponge_io = [zero_digest, digest].concat().try_into().unwrap();
+                }
+            }
+            (sponge_state, sponge_io)
+        }
+    }
+
     pub(crate) fn property_based_test_program_for_sponge_instructions() -> ProgramAndInput {
         let seed = random();
         let mut rng = StdRng::seed_from_u64(seed);
@@ -1256,25 +1313,12 @@ pub(crate) mod tests {
         let mut sponge_io = sponge_input;
         let mut sponge_and_hash_instructions = vec![];
 
-        let possible_instructions: [Instruction; 4] =
-            [SpongeInit, SpongeAbsorb, SpongeSqueeze, Hash];
-        let zero_digest = [BFIELD_ZERO; DIGEST_LENGTH];
         let num_instructions = rng.gen_range(0..100);
 
         for _ in 0..num_instructions {
-            let &instruction = possible_instructions.choose(&mut rng).unwrap();
-            sponge_and_hash_instructions.push(instruction);
-
-            match instruction {
-                SpongeInit => sponge_state = Tip5::init(),
-                SpongeAbsorb => Tip5::absorb(&mut sponge_state, &sponge_io),
-                SpongeSqueeze => sponge_io = Tip5::squeeze(&mut sponge_state),
-                Hash => {
-                    let digest = Tip5::hash_10(&sponge_io);
-                    sponge_io = [zero_digest, digest].concat().try_into().unwrap();
-                }
-                _ => unreachable!(),
-            }
+            let instruction = SpongeAndHashInstructions::iter().choose(&mut rng).unwrap();
+            sponge_and_hash_instructions.extend(instruction.to_vm_instruction_sequence());
+            (sponge_state, sponge_io) = instruction.execute(sponge_state, sponge_io);
         }
 
         let output_equality_assertions = (0..RATE)
@@ -2019,37 +2063,6 @@ pub(crate) mod tests {
         assert_eq!(BFieldElement::new(3), terminal_state.op_stack.peek_at(ST0));
         assert_eq!(BFieldElement::new(5), terminal_state.op_stack.peek_at(ST1));
         assert_eq!(BFieldElement::new(3), terminal_state.op_stack.peek_at(ST2));
-    }
-
-    #[test]
-    fn run_tvm_sample_weights() {
-        // sample weights for the recursive verifier
-        // - input: seed, num_weights
-        // - output: num_weights-many random weights
-        let program = triton_program!(
-            push 17 push 13 push 11        // get seed - should be an argument
-            read_io                        // number of weights - should be argument
-            sample_weights:                // proper program starts here
-            call sample_weights_loop       // setup done, start sampling loop
-            pop pop                        // clean up stack: RAM value & pointer
-            pop pop pop pop                // clean up stack: seed & countdown
-            halt                           // done - should be return
-
-            sample_weights_loop:           // subroutine: loop until all weights are sampled
-              dup 0 push 0 eq skiz return  // no weights left
-              push -1 add                  // decrease number of weights to still sample
-              push 0 push 0 push 0 push 0  // prepare for hashing
-              push 0 push 0 push 0 push 0  // prepare for hashing
-              dup 11 dup 11 dup 11 dup 11  // prepare for hashing
-              hash                         // hash seed & countdown
-              swap 13 swap 10 pop          // re-organize stack
-              swap 13 swap 10 pop          // re-organize stack
-              swap 13 swap 10 swap 7       // re-organize stack
-              pop pop pop pop pop pop pop  // remove unnecessary remnants of digest
-              recurse                      // repeat
-        );
-        let public_input = vec![11].into();
-        program.run(public_input, [].into()).unwrap();
     }
 
     #[test]
