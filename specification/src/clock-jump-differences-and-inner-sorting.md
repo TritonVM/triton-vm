@@ -1,6 +1,6 @@
 # Clock Jump Differences and Inner Sorting
 
-The previous sections show how it is proven that in the JumpStack, OpStack, and RAM Tables, the regions of constant memory pointer are contiguous. The next step is to prove that within each contiguous region of constant memory pointer, the rows are sorted for clock cycle. That is the topic of this section.
+The previous sections show how it is proven that in the Jump Stack, Op Stack, and RAM Tables, the regions of constant memory pointer are contiguous. The next step is to prove that within each contiguous region of constant memory pointer, the rows are sorted for clock cycle. That is the topic of this section.
 
 The problem arises from *clock jumps*, which describes the phenomenon when the clock cycle increases even though the memory pointer does not change.
 If arbitrary jumps were allowed, nothing would prevent the cheating prover from using a table where higher rows correspond to later states, giving rise to an exploitable attack.

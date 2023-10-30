@@ -21,7 +21,6 @@ use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
 
 use crate::aet::AlgebraicExecutionTrace;
 use crate::ensure_eq;
-use crate::error::InstructionError::InstructionPointerOverflow;
 use crate::instruction::Instruction;
 use crate::instruction::LabelledInstruction;
 use crate::parser::parse;
@@ -360,15 +359,9 @@ impl Program {
 
         while !state.halting {
             aet.record_state(&state)?;
-
-            match state.instruction_pointer < aet.instruction_multiplicities.len() {
-                true => aet.instruction_multiplicities[state.instruction_pointer] += 1,
-                false => bail!(InstructionPointerOverflow(state.instruction_pointer)),
-            }
-
-            let maybe_co_processor_call = state.step()?;
-            if let Some(co_processor_call) = maybe_co_processor_call {
-                aet.record_co_processor_call(co_processor_call);
+            let co_processor_calls = state.step()?;
+            for call in co_processor_calls {
+                aet.record_co_processor_call(call);
             }
         }
 

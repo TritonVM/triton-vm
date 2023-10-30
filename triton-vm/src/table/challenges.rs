@@ -18,6 +18,7 @@
 //! table. Instead, the terminal of the Evaluation Argument is computed directly from the
 //! public input (respectively output) and the indeterminate.
 
+use arbitrary::Arbitrary;
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::ops::Index;
@@ -99,8 +100,8 @@ pub enum ChallengeId {
 
     OpStackClkWeight,
     OpStackIb1Weight,
-    OpStackOspWeight,
-    OpStackOsvWeight,
+    OpStackPointerWeight,
+    OpStackFirstUnderflowElementWeight,
 
     RamClkWeight,
     RamRampWeight,
@@ -216,6 +217,7 @@ impl ChallengeId {
 /// known only at runtime. The challenges are indexed using enum [`ChallengeId`]. The `Challenges`
 /// struct is essentially a thin wrapper around an array of [`XFieldElement`]s, providing
 /// convenience methods.
+#[derive(Debug, Clone, Arbitrary)]
 pub struct Challenges {
     pub challenges: [XFieldElement; Self::count()],
 }

@@ -1,11 +1,13 @@
 use std::fmt::Display;
 use std::fmt::Formatter;
 use std::fmt::Result as FmtResult;
-use std::result;
 
 use anyhow::anyhow;
+use anyhow::bail;
 use anyhow::Result;
+use arbitrary::Arbitrary;
 use get_size::GetSize;
+use itertools::Itertools;
 use num_traits::Zero;
 use serde_derive::Deserialize;
 use serde_derive::Serialize;
@@ -14,6 +16,7 @@ use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::digest::Digest;
 use twenty_first::shared_math::tip5::DIGEST_LENGTH;
 use twenty_first::shared_math::x_field_element::XFieldElement;
+use twenty_first::shared_math::x_field_element::EXTENSION_DEGREE;
 
 use crate::error::InstructionError::*;
 use crate::op_stack::OpStackElement::*;
@@ -46,61 +49,71 @@ impl OpStack {
         Self { stack }
     }
 
-    /// Push an element onto the op-stack.
-    pub(crate) fn push(&mut self, element: BFieldElement) {
+    pub(crate) fn push(&mut self, element: BFieldElement) -> UnderflowIO {
         self.stack.push(element);
+        UnderflowIO::Write(self.first_underflow_element())
     }
 
-    /// Push an extension field element onto the op-stack.
-    pub(crate) fn push_extension_field_element(&mut self, element: XFieldElement) {
+    pub(crate) fn push_extension_field_element(
+        &mut self,
+        element: XFieldElement,
+    ) -> [UnderflowIO; EXTENSION_DEGREE] {
+        let mut underflow_io = vec![];
         for coefficient in element.coefficients.into_iter().rev() {
-            self.push(coefficient);
+            let underflow_write = self.push(coefficient);
+            underflow_io.push(underflow_write);
         }
+        underflow_io.try_into().unwrap()
     }
 
-    /// Pop an element from the op-stack.
-    pub(crate) fn pop(&mut self) -> Result<BFieldElement> {
-        self.stack.pop().ok_or_else(|| anyhow!(OpStackTooShallow))
+    pub(crate) fn pop(&mut self) -> Result<(BFieldElement, UnderflowIO)> {
+        let underflow_io = UnderflowIO::Read(self.first_underflow_element());
+        let element = self.stack.pop().ok_or_else(|| anyhow!(OpStackTooShallow))?;
+        Ok((element, underflow_io))
     }
 
-    /// Pop an extension field element from the op-stack.
-    pub(crate) fn pop_extension_field_element(&mut self) -> Result<XFieldElement> {
-        let coefficients = self.pop_multiple()?;
+    pub(crate) fn pop_extension_field_element(
+        &mut self,
+    ) -> Result<(XFieldElement, [UnderflowIO; EXTENSION_DEGREE])> {
+        let (coefficients, underflow_io) = self.pop_multiple()?;
         let element = XFieldElement::new(coefficients);
-        Ok(element)
+        Ok((element, underflow_io))
     }
 
-    /// Pop a u32 from the op-stack.
-    pub(crate) fn pop_u32(&mut self) -> Result<u32> {
-        let element = self.pop()?;
-        element
+    pub(crate) fn pop_u32(&mut self) -> Result<(u32, UnderflowIO)> {
+        let (element, underflow_io) = self.pop()?;
+        let element = element
             .try_into()
-            .map_err(|_| anyhow!(FailedU32Conversion(element)))
+            .map_err(|_| anyhow!(FailedU32Conversion(element)))?;
+        Ok((element, underflow_io))
     }
 
-    /// Pop multiple elements from the op-stack.
-    pub(crate) fn pop_multiple<const N: usize>(&mut self) -> Result<[BFieldElement; N]> {
-        let mut popped_elements = [BFieldElement::zero(); N];
-        for element in popped_elements.iter_mut() {
-            *element = self.pop()?;
+    pub(crate) fn pop_multiple<const N: usize>(
+        &mut self,
+    ) -> Result<([BFieldElement; N], [UnderflowIO; N])> {
+        let mut elements = vec![];
+        let mut underflow_io = vec![];
+        for _ in 0..N {
+            let (element, underflow_read) = self.pop()?;
+            elements.push(element);
+            underflow_io.push(underflow_read);
         }
-        Ok(popped_elements)
+        let elements = elements.try_into().unwrap();
+        let underflow_io = underflow_io.try_into().unwrap();
+        Ok((elements, underflow_io))
     }
 
-    /// Fetches the indicated stack element without modifying the stack.
     pub(crate) fn peek_at(&self, stack_element: OpStackElement) -> BFieldElement {
         let stack_element_index = usize::from(stack_element);
         let top_of_stack_index = self.stack.len() - 1;
         self.stack[top_of_stack_index - stack_element_index]
     }
 
-    /// Fetches the top-most extension field element without modifying the stack.
     pub(crate) fn peek_at_top_extension_field_element(&self) -> XFieldElement {
         let coefficients = [self.peek_at(ST0), self.peek_at(ST1), self.peek_at(ST2)];
         XFieldElement::new(coefficients)
     }
 
-    /// Swaps the top of the stack with the indicated stack element.
     pub(crate) fn swap_top_with(&mut self, stack_element: OpStackElement) {
         let stack_element_index = usize::from(stack_element);
         let top_of_stack_index = self.stack.len() - 1;
@@ -108,27 +121,108 @@ impl OpStack {
             .swap(top_of_stack_index, top_of_stack_index - stack_element_index);
     }
 
-    /// `true` if and only if the op-stack contains fewer elements than the number of
-    /// op-stack registers, _i.e._, [`OpStackElement::COUNT`].
     pub(crate) fn is_too_shallow(&self) -> bool {
         self.stack.len() < OpStackElement::COUNT
     }
 
-    /// The address of the next free address of the op-stack.
-    /// Equivalent to the current length of the op-stack.
-    pub(crate) fn op_stack_pointer(&self) -> BFieldElement {
+    /// The address of the next free address of the op-stack. Equivalent to the current length of
+    /// the op-stack.
+    pub(crate) fn pointer(&self) -> BFieldElement {
         (self.stack.len() as u64).into()
     }
 
     /// The first element of the op-stack underflow memory, or 0 if the op-stack underflow memory
     /// is empty.
-    pub(crate) fn op_stack_value(&self) -> BFieldElement {
-        let top_of_stack_index = self.stack.len() - 1;
-        if top_of_stack_index < OpStackElement::COUNT {
-            return BFieldElement::zero();
+    pub(crate) fn first_underflow_element(&self) -> BFieldElement {
+        let default = BFieldElement::zero();
+        let Some(top_of_stack_index) = self.stack.len().checked_sub(1) else {
+            return default;
+        };
+        let Some(underflow_start) = top_of_stack_index.checked_sub(OpStackElement::COUNT) else {
+            return default;
+        };
+        self.stack.get(underflow_start).copied().unwrap_or(default)
+    }
+}
+
+/// Indicates changes to the op-stack underflow memory.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, GetSize, Serialize, Deserialize, Arbitrary)]
+#[must_use = "The change to underflow memory should be handled."]
+pub enum UnderflowIO {
+    Read(BFieldElement),
+    Write(BFieldElement),
+}
+
+impl UnderflowIO {
+    /// Remove spurious read/write sequences arising from temporary stack changes.
+    ///
+    /// For example, the sequence `[Read(5), Write(5), Read(7)]` can be replaced with `[Read(7)]`.
+    /// Similarly, the sequence `[Write(5), Write(3), Read(3), Read(5), Write(7)]` can be replaced
+    /// with `[Write(7)]`.
+    pub fn canonicalize_sequence(sequence: &mut Vec<Self>) {
+        while let Some(index) = Self::index_of_dual_pair(sequence) {
+            let _ = sequence.remove(index);
+            let _ = sequence.remove(index);
         }
-        let op_stack_value_index = top_of_stack_index - OpStackElement::COUNT;
-        self.stack[op_stack_value_index]
+    }
+
+    fn index_of_dual_pair(sequence: &[Self]) -> Option<usize> {
+        sequence
+            .iter()
+            .tuple_windows()
+            .find_position(|(&left, &right)| left.is_dual_to(right))
+            .map(|(index, _)| index)
+    }
+
+    fn is_dual_to(&self, other: Self) -> bool {
+        match (self, other) {
+            (&Self::Read(read), Self::Write(write)) => read == write,
+            (&Self::Write(write), Self::Read(read)) => read == write,
+            _ => false,
+        }
+    }
+
+    /// Whether the sequence of underflow IOs consists of either only reads or only writes.
+    pub fn is_uniform_sequence(sequence: &[Self]) -> bool {
+        sequence.iter().all(|io| io.is_same_type_as(sequence[0]))
+    }
+
+    fn is_same_type_as(&self, other: Self) -> bool {
+        matches!(
+            (self, other),
+            (&Self::Read(_), Self::Read(_)) | (&Self::Write(_), Self::Write(_))
+        )
+    }
+
+    /// Whether the sequence of underflow IOs consists of only writes.
+    pub fn is_writing_sequence(sequence: &[Self]) -> bool {
+        sequence.iter().all(|io| io.grows_stack())
+    }
+
+    /// Whether the sequence of underflow IOs consists of only reads.
+    pub fn is_reading_sequence(sequence: &[Self]) -> bool {
+        sequence.iter().all(|io| io.shrinks_stack())
+    }
+
+    pub fn shrinks_stack(&self) -> bool {
+        match self {
+            Self::Read(_) => true,
+            Self::Write(_) => false,
+        }
+    }
+
+    pub fn grows_stack(&self) -> bool {
+        match self {
+            Self::Read(_) => false,
+            Self::Write(_) => true,
+        }
+    }
+
+    pub fn payload(self) -> BFieldElement {
+        match self {
+            Self::Read(payload) => payload,
+            Self::Write(payload) => payload,
+        }
     }
 }
 
@@ -193,9 +287,9 @@ impl From<&OpStackElement> for u32 {
 }
 
 impl TryFrom<u32> for OpStackElement {
-    type Error = String;
+    type Error = anyhow::Error;
 
-    fn try_from(stack_index: u32) -> result::Result<Self, Self::Error> {
+    fn try_from(stack_index: u32) -> Result<Self> {
         match stack_index {
             0 => Ok(ST0),
             1 => Ok(ST1),
@@ -213,9 +307,7 @@ impl TryFrom<u32> for OpStackElement {
             13 => Ok(ST13),
             14 => Ok(ST14),
             15 => Ok(ST15),
-            _ => Err(format!(
-                "Index {stack_index} is out of range for `OpStackElement`."
-            )),
+            _ => bail!("Index {stack_index} is out of range for `OpStackElement`."),
         }
     }
 }
@@ -227,12 +319,10 @@ impl From<OpStackElement> for u64 {
 }
 
 impl TryFrom<u64> for OpStackElement {
-    type Error = String;
+    type Error = anyhow::Error;
 
-    fn try_from(stack_index: u64) -> result::Result<Self, Self::Error> {
-        let stack_index = u32::try_from(stack_index)
-            .map_err(|_| format!("Index {stack_index} is out of range for `OpStackElement`."))?;
-        stack_index.try_into()
+    fn try_from(stack_index: u64) -> Result<Self> {
+        u32::try_from(stack_index)?.try_into()
     }
 }
 
@@ -249,12 +339,10 @@ impl From<&OpStackElement> for usize {
 }
 
 impl TryFrom<usize> for OpStackElement {
-    type Error = String;
+    type Error = anyhow::Error;
 
-    fn try_from(stack_index: usize) -> result::Result<Self, Self::Error> {
-        let stack_index =
-            u32::try_from(stack_index).map_err(|_| "Cannot convert usize to u32.".to_string())?;
-        stack_index.try_into()
+    fn try_from(stack_index: usize) -> Result<Self> {
+        u32::try_from(stack_index)?.try_into()
     }
 }
 
@@ -272,10 +360,12 @@ impl From<&OpStackElement> for BFieldElement {
 
 #[cfg(test)]
 mod tests {
+    use proptest::collection::vec;
+    use proptest::prelude::*;
+    use proptest_arbitrary_interop::arb;
     use twenty_first::shared_math::b_field_element::BFieldElement;
 
-    use crate::op_stack::OpStack;
-    use crate::op_stack::OpStackElement;
+    use super::*;
 
     #[test]
     fn sanity() {
@@ -284,42 +374,36 @@ mod tests {
 
         // verify height
         assert_eq!(op_stack.stack.len(), 16);
-        assert_eq!(
-            op_stack.op_stack_pointer().value() as usize,
-            op_stack.stack.len()
-        );
+        assert_eq!(op_stack.pointer().value() as usize, op_stack.stack.len());
 
         // push elements 1 thru 17
         for i in 1..=17 {
-            op_stack.push(BFieldElement::new(i as u64));
+            let _ = op_stack.push(BFieldElement::new(i as u64));
         }
 
         // verify height
         assert_eq!(op_stack.stack.len(), 33);
-        assert_eq!(
-            op_stack.op_stack_pointer().value() as usize,
-            op_stack.stack.len()
-        );
+        assert_eq!(op_stack.pointer().value() as usize, op_stack.stack.len());
 
         // verify that all accessible items are different
         let mut container = vec![
-            op_stack.peek_at(OpStackElement::ST0),
-            op_stack.peek_at(OpStackElement::ST1),
-            op_stack.peek_at(OpStackElement::ST2),
-            op_stack.peek_at(OpStackElement::ST3),
-            op_stack.peek_at(OpStackElement::ST4),
-            op_stack.peek_at(OpStackElement::ST5),
-            op_stack.peek_at(OpStackElement::ST6),
-            op_stack.peek_at(OpStackElement::ST7),
-            op_stack.peek_at(OpStackElement::ST8),
-            op_stack.peek_at(OpStackElement::ST9),
-            op_stack.peek_at(OpStackElement::ST10),
-            op_stack.peek_at(OpStackElement::ST11),
-            op_stack.peek_at(OpStackElement::ST12),
-            op_stack.peek_at(OpStackElement::ST13),
-            op_stack.peek_at(OpStackElement::ST14),
-            op_stack.peek_at(OpStackElement::ST15),
-            op_stack.op_stack_value(),
+            op_stack.peek_at(ST0),
+            op_stack.peek_at(ST1),
+            op_stack.peek_at(ST2),
+            op_stack.peek_at(ST3),
+            op_stack.peek_at(ST4),
+            op_stack.peek_at(ST5),
+            op_stack.peek_at(ST6),
+            op_stack.peek_at(ST7),
+            op_stack.peek_at(ST8),
+            op_stack.peek_at(ST9),
+            op_stack.peek_at(ST10),
+            op_stack.peek_at(ST11),
+            op_stack.peek_at(ST12),
+            op_stack.peek_at(ST13),
+            op_stack.peek_at(ST14),
+            op_stack.peek_at(ST15),
+            op_stack.first_underflow_element(),
         ];
         let len_before = container.len();
         container.sort_by_key(|a| a.value());
@@ -329,29 +413,95 @@ mod tests {
 
         // pop 11 elements
         for _ in 0..11 {
-            op_stack.pop().expect("can't pop");
+            let _ = op_stack.pop().expect("can't pop");
         }
 
         // verify height
         assert_eq!(op_stack.stack.len(), 22);
-        assert_eq!(
-            op_stack.op_stack_pointer().value() as usize,
-            op_stack.stack.len()
-        );
+        assert_eq!(op_stack.pointer().value() as usize, op_stack.stack.len());
 
         // pop 2 XFieldElements
-        op_stack.pop_extension_field_element().expect("can't pop");
-        op_stack.pop_extension_field_element().expect("can't pop");
+        let _ = op_stack.pop_extension_field_element().expect("can't pop");
+        let _ = op_stack.pop_extension_field_element().expect("can't pop");
 
         // verify height
         assert_eq!(op_stack.stack.len(), 16);
-        assert_eq!(
-            op_stack.op_stack_pointer().value() as usize,
-            op_stack.stack.len()
-        );
+        assert_eq!(op_stack.pointer().value() as usize, op_stack.stack.len());
 
         // verify underflow
-        op_stack.pop().expect("can't pop");
+        let _ = op_stack.pop().expect("can't pop");
         assert!(op_stack.is_too_shallow());
+    }
+
+    #[test]
+    fn trying_to_access_first_underflow_element_never_panics() {
+        let mut op_stack = OpStack::new(Default::default());
+        let way_too_long = 2 * op_stack.stack.len();
+        for _ in 0..way_too_long {
+            let _ = op_stack.pop();
+            let _ = op_stack.first_underflow_element();
+        }
+    }
+
+    #[test]
+    fn canonicalize_empty_underflow_io_sequence() {
+        let mut sequence = vec![];
+        UnderflowIO::canonicalize_sequence(&mut sequence);
+
+        let expected_sequence = Vec::<UnderflowIO>::new();
+        assert_eq!(expected_sequence, sequence);
+    }
+
+    #[test]
+    fn canonicalize_simple_underflow_io_sequence() {
+        let mut sequence = vec![
+            UnderflowIO::Read(5_u64.into()),
+            UnderflowIO::Write(5_u64.into()),
+            UnderflowIO::Read(7_u64.into()),
+        ];
+        UnderflowIO::canonicalize_sequence(&mut sequence);
+
+        let expected_sequence = vec![UnderflowIO::Read(7_u64.into())];
+        assert_eq!(expected_sequence, sequence);
+    }
+
+    #[test]
+    fn canonicalize_medium_complex_underflow_io_sequence() {
+        let mut sequence = vec![
+            UnderflowIO::Write(5_u64.into()),
+            UnderflowIO::Write(3_u64.into()),
+            UnderflowIO::Read(3_u64.into()),
+            UnderflowIO::Read(5_u64.into()),
+            UnderflowIO::Write(7_u64.into()),
+        ];
+        UnderflowIO::canonicalize_sequence(&mut sequence);
+
+        let expected_sequence = vec![UnderflowIO::Write(7_u64.into())];
+        assert_eq!(expected_sequence, sequence);
+    }
+
+    proptest! {
+        #[test]
+        fn underflow_io_either_shrinks_stack_or_grows_stack(underflow_io in arb::<UnderflowIO>()) {
+            let shrinks_stack = underflow_io.shrinks_stack();
+            let grows_stack = underflow_io.grows_stack();
+            assert!(shrinks_stack ^ grows_stack);
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn non_empty_uniform_underflow_io_sequence_is_either_reading_or_writing(
+            sequence in vec(arb::<UnderflowIO>(), 1..OpStackElement::COUNT),
+        ) {
+            let is_reading_sequence = UnderflowIO::is_reading_sequence(&sequence);
+            let is_writing_sequence = UnderflowIO::is_writing_sequence(&sequence);
+            if UnderflowIO::is_uniform_sequence(&sequence) {
+                prop_assert!(is_reading_sequence ^ is_writing_sequence);
+            } else {
+                prop_assert!(!is_reading_sequence);
+                prop_assert!(!is_writing_sequence);
+            }
+        }
     }
 }

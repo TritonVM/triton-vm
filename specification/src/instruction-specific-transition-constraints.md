@@ -134,8 +134,8 @@ Additionally, it defines the following transition constraints.
 1. If `i` is not 13, then `st13` does not change.
 1. If `i` is not 14, then `st14` does not change.
 1. If `i` is not 15, then `st15` does not change.
-1. The top of the OpStack underflow, i.e., `osv`, does not change.
-1. The OpStack pointer does not change.
+1. The op stack pointer does not change.
+1. The running product for the Op Stack Table remains unchanged.
 
 ### Polynomials
 
@@ -185,8 +185,8 @@ Additionally, it defines the following transition constraints.
 1. `(1 - ind_13(hv3, hv2, hv1, hv0))·(st13' - st13)`
 1. `(1 - ind_14(hv3, hv2, hv1, hv0))·(st14' - st14)`
 1. `(1 - ind_15(hv3, hv2, hv1, hv0))·(st15' - st15)`
-1. `osv' - osv`
-1. `osp' - osp`
+1. `op_stack_pointer' - op_stack_pointer`
+1. `RunningProductOpStackTable' - RunningProductOpStackTable`
 
 ### Helper variable definitions for `swap` + `i`
 

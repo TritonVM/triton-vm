@@ -197,8 +197,8 @@ Contains all constraints from instruction group `keep_jump_stack`, and additiona
 1. The stack element in `st12` is moved into `st13`.
 1. The stack element in `st13` is moved into `st14`.
 1. The stack element in `st14` is moved into `st15`.
-1. The stack element in `st15` is moved to the top of OpStack underflow, i.e., `osv`.
-1. The OpStack pointer is incremented by 1.
+1. The op stack pointer is incremented by 1.
+1. The running product for the Op Stack Table absorbs the current row with respect to challenges 🍋, 🍊, 🍉, and 🫒 and indeterminate 🪤.
 
 ### Polynomials
 
@@ -216,8 +216,8 @@ Contains all constraints from instruction group `keep_jump_stack`, and additiona
 1. `st13' - st12`
 1. `st14' - st13`
 1. `st15' - st14`
-1. `osv' - st15`
-1. `osp' - (osp + 1)`
+1. `op_stack_pointer' - (op_stack_pointer + 1)`
+1. `RunningProductOpStackTable' - RunningProductOpStackTable·(🪤 - 🍋·clk - 🍊·ib1 - 🍉·op_stack_pointer - 🫒·st15)`
 
 ## Group `grow_stack`
 
@@ -240,8 +240,8 @@ Contains all constraints from instruction group `stack_grows_and_top_2_unconstra
 1. The stack element in `st13` does not change.
 1. The stack element in `st14` does not change.
 1. The stack element in `st15` does not change.
-1. The top of the OpStack underflow, i.e., `osv`, does not change.
-1. The OpStack pointer does not change.
+1. The op stack pointer does not change.
+1. The running product for the Op Stack Table remains unchanged.
 
 ### Polynomials
 
@@ -250,8 +250,8 @@ Contains all constraints from instruction group `stack_grows_and_top_2_unconstra
 1. `st13' - st13`
 1. `st14' - st14`
 1. `st15' - st15`
-1. `osv' - osv`
-1. `osp' - osp`
+1. `op_stack_pointer' - op_stack_pointer`
+1. `RunningProductOpStackTable' - RunningProductOpStackTable`
 
 ## Group `stack_remains_and_top_10_unconstrained`
 
@@ -317,8 +317,8 @@ Contains all constraints from instruction group `unary_operation`, and additiona
 
 ## Group `stack_shrinks_and_top_3_unconstrained`
 
-This instruction group requires helper variable `hv0` to hold the multiplicative inverse of `(osp - 16)`.
-In effect, this means that the OpStack pointer can only be decremented if it is not 16, i.e., if OpStack Underflow Memory is not empty.
+This instruction group requires helper variable `hv0` to hold the multiplicative inverse of `(op_stack_pointer - 16)`.
+In effect, this means that the op stack pointer can only be decremented if it is not 16, i.e., if op stack underflow memory is not empty.
 Since the stack can only change by one element at a time, this prevents stack underflow.
 
 ### Description
@@ -335,9 +335,9 @@ Since the stack can only change by one element at a time, this prevents stack un
 1. The stack element in `st13` is moved into `st12`.
 1. The stack element in `st14` is moved into `st13`.
 1. The stack element in `st15` is moved into `st14`.
-1. The stack element at the top of OpStack underflow, i.e., `osv`, is moved into `st15`.
-1. The OpStack pointer is decremented by 1.
-1. The helper variable register `hv0` holds the inverse of `(osp - 16)`.
+1. The op stack pointer is decremented by 1.
+1. The helper variable register `hv0` holds the inverse of `(op_stack_pointer - 16)`.
+1. The running product for the Op Stack Table absorbs clock cycle and instruction bit 1 from the current row as well as op stack pointer and stack element 15 from the next row with respect to challenges 🍋, 🍊, 🍉, and 🫒 and indeterminate 🪤.
 
 ### Polynomials
 
@@ -353,9 +353,9 @@ Since the stack can only change by one element at a time, this prevents stack un
 1. `st12' - st13`
 1. `st13' - st14`
 1. `st14' - st15`
-1. `st15' - osv`
-1. `osp' - (osp - 1)`
-1. `(osp - 16)·hv0 - 1`
+1. `op_stack_pointer' - (op_stack_pointer - 1)`
+1. `(op_stack_pointer - 16)·hv0 - 1`
+1. `RunningProductOpStackTable' - RunningProductOpStackTable·(🪤 - 🍋·clk - 🍊·ib1 - 🍉·op_stack_pointer' - 🫒·st15')`
 
 ## Group `binary_operation`
 

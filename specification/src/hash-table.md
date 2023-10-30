@@ -1,6 +1,6 @@
 # Hash Table
 
-The instruction `hash` hashes the OpStack's 10 top-most elements in one cycle.
+The instruction `hash` hashes the Op Stack's 10 top-most elements in one cycle.
 Similarly, the Sponge instructions `sponge_init`, `sponge_absorb`, and `sponge_squeeze` also all complete in one cycle.
 The main processor achieves this by using a hash coprocessor.
 The Hash Table is part of the arithmetization of that coprocessor, the other two parts being the [Cascade Table](cascade-table.md) and the [Lookup Table](lookup-table.md).

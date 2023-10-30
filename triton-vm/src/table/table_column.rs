@@ -135,8 +135,7 @@ pub enum ProcessorBaseTableColumn {
     ST13,
     ST14,
     ST15,
-    OSP,
-    OSV,
+    OpStackPointer,
     HV0,
     HV1,
     HV2,
@@ -183,8 +182,8 @@ pub enum ProcessorExtTableColumn {
 pub enum OpStackBaseTableColumn {
     CLK,
     IB1ShrinkStack,
-    OSP,
-    OSV,
+    StackPointer,
+    FirstUnderflowElement,
 }
 
 #[repr(usize)]

@@ -25,14 +25,27 @@ The Processor Table has the following extension columns, corresponding to [Evalu
 1. `RunningEvaluationStandardInput` for the Evaluation Argument with the input symbols.
 1. `RunningEvaluationStandardOutput` for the Evaluation Argument with the output symbols.
 1. `InstructionLookupClientLogDerivative` for the Lookup Argument with the [Program Table](program-table.md)
-1. `RunningProductOpStackTable` for the Permutation Argument with the [OpStack Table](operational-stack-table.md).
+1. `RunningProductOpStackTable` for the Permutation Argument with the [Op Stack Table](operational-stack-table.md).
 1. `RunningProductRamTable` for the Permutation Argument with the [RAM Table](random-access-memory-table.md).
 1. `RunningProductJumpStackTable` for the Permutation Argument with the [Jump Stack Table](jump-stack-table.md).
 1. `RunningEvaluationHashInput` for the Evaluation Argument with the [Hash Table](hash-table.md) for copying the input to the hash function from the processor to the hash coprocessor.
 1. `RunningEvaluationHashDigest` for the Evaluation Argument with the [Hash Table](hash-table.md) for copying the hash digest from the hash coprocessor to the processor.
 1. `RunningEvaluationSponge` for the Evaluation Argument with the [Hash Table](hash-table.md) for copying the 10 next to-be-absorbed elements from the processor to the hash coprocessor or the 10 next squeezed elements from the hash coprocessor to the processor, depending on the instruction.
 1. `U32LookupClientLogDerivative` for the Lookup Argument with the [U32 Table](u32-table.md).
-1. `ClockJumpDifferenceLookupServerLogDerivative` for the Lookup Argument of clock jump differences with the [OpStack Table](operational-stack-table.md), the [RAM Table](random-access-memory-table.md), and the [JumpStack Table](jump-stack-table.md).
+1. `ClockJumpDifferenceLookupServerLogDerivative` for the Lookup Argument of clock jump differences with the [Op Stack Table](operational-stack-table.md), the [RAM Table](random-access-memory-table.md), and the [Jump Stack Table](jump-stack-table.md).
+
+### Permutation Argument with the Op Stack Table
+
+The [Permutation Arguments](permutation-argument.md) with the [Op Stack Table](operational-stack-table.md) `RunningProductOpStackTable` establishes consistency of the op stack underflow memory.
+The number of factors incorporated into the running product at any given cycle depends on the executed instruction in this cycle:
+for every element pushed to or popped from the stack, there is one factor.
+Namely, if the op stack grows, every element spilling from `st15` into op stack underflow memory will be incorporated as one factor;
+and if the op stack shrinks, every element from op stack underflow memory being transferred into `st15` will be one factor.
+
+One key insight for this Permutation Argument is that the processor will always have access to the elements that are to be read from or written to underflow memory:
+if the instruction grows the op stack, then the elements in question currently reside in the directly accessible, top part of the stack;
+if the instruction shrinks the op stack, then the elements in question will be in the top part of the stack in the next cycle.
+In either case, the [Transition Constraint](arithmetization.md#arithmetic-intermediate-representation) for the Permutation Argument can incorporate the explicitly listed elements as well as the corresponding trivial-to-compute `op_stack_pointer`.
 
 ## Padding
 
@@ -86,13 +99,12 @@ However, in order to verify the correctness of `RunningEvaluationHashDigest`, th
 1. The operational stack element `st10` is 0.
 1. The [Evaluation Argument](evaluation-argument.md) of operational stack elements `st11` through `st15` with respect to indeterminate 🥬 equals the public part of program digest challenge, 🫑.
 See [program attestation](program-attestation.md) for more details.
-1. The operational stack pointer `osp` is 16.
-1. The operational stack value `osv` is 0.
+1. The `op_stack_pointer` is 16.
 1. The RAM pointer `ramp` is 0.
 1. `RunningEvaluationStandardInput` is 1.
 1. `RunningEvaluationStandardOutput` is 1.
 1. `InstructionLookupClientLogDerivative` has absorbed the first row with respect to challenges 🥝, 🥥, and 🫐 and indeterminate 🪥.
-1. `RunningProductOpStackTable` has absorbed the first row with respect to challenges 🍋, 🍊, 🍉, and 🫒 and indeterminate 🪤.
+1. `RunningProductOpStackTable` is 1.
 1. `RunningProductRamTable` has absorbed the first row with respect to challenges 🍍, 🍈, 🍎, and 🌽 and indeterminate 🛋.
 1. `RunningProductJumpStackTable` has absorbed the first row with respect to challenges 🍇, 🍅, 🍌, 🍏, and 🍐 and indeterminate 🧴.
 1. `RunningEvaluationHashInput` has absorbed the first row with respect to challenges 🧄₀ through 🧄₉ and indeterminate 🚪 if the current instruction is `hash`. Otherwise, it is 1.
@@ -121,13 +133,12 @@ See [program attestation](program-attestation.md) for more details.
 1. `st9`
 1. `st10`
 1. `🥬^5 + st11·🥬^4 + st12·🥬^3 + st13·🥬^2 + st14·🥬 + st15 - 🫑`
-1. `osp`
-1. `osv`
+1. `op_stack_pointer - 16`
 1. `ramp`
 1. `RunningEvaluationStandardInput - 1`
 1. `RunningEvaluationStandardOutput - 1`
 1. `InstructionLookupClientLogDerivative · (🪥 - 🥝·ip - 🥥·ci - 🫐·nia) - 1`
-1. `RunningProductOpStackTable - (🪤 - 🍋·clk - 🍊·ib1 - 🍉·osp - 🫒·osv)`
+1. `RunningProductOpStackTable - 1`
 1. `RunningProductRamTable - (🛋 - 🍍·clk - 🍈·ramp - 🍎·ramv - 🌽·previous_instruction)`
 1. `RunningProductJumpStackTable - (🧴 - 🍇·clk - 🍅·ci - 🍌·jsp - 🍏·jso - 🍐·jsd)`
 1. `(ci - opcode(hash))·(RunningEvaluationHashInput - 1)`<br />
@@ -176,9 +187,8 @@ The following additional constraints also apply to every pair of rows.
 1. The running evaluation for standard input absorbs `st0` of the next row with respect to 🛏 if the current instruction is `read_io`, and remains unchanged otherwise.
 1. The running evaluation for standard output absorbs `st0` of the next row with respect to 🧯 if the current instruction in the next row is `write_io`, and remains unchanged otherwise.
 1. If the next row is not a padding row, the logarithmic derivative for the Program Table absorbs the next row with respect to challenges 🥝, 🥥, and 🫐 and indeterminate 🪥. Otherwise, it remains unchanged.
-1. The running product for the OpStack Table absorbs the next row with respect to challenges 🍋, 🍊, 🍉, and 🫒 and indeterminate 🪤.
 1. The running product for the RAM Table absorbs the next row with respect to challenges 🍍, 🍈, 🍎, and 🌽 and indeterminate 🛋.
-1. The running product for the JumpStack Table absorbs the next row with respect to challenges 🍇, 🍅, 🍌, 🍏, and 🍐 and indeterminate 🧴.
+1. The running product for the Jump Stack Table absorbs the next row with respect to challenges 🍇, 🍅, 🍌, 🍏, and 🍐 and indeterminate 🧴.
 1. If the current instruction in the next row is `hash`, the running evaluation “Hash Input” absorbs the next row with respect to challenges 🧄₀ through 🧄₉ and indeterminate 🚪. Otherwise, it remains unchanged.
 1. If the current instruction is `hash`, the running evaluation “Hash Digest” absorbs the next row with respect to challenges 🧄₀ through 🧄₄ and indeterminate 🪟. Otherwise, it remains unchanged.
 1. If the current instruction is `sponge_init`, then the running evaluation “Sponge” absorbs the current instruction and the Sponge's default initial state with respect to challenges 🧅 and 🧄₀ through 🧄₉ and indeterminate 🧽.
@@ -205,7 +215,6 @@ Otherwise, the running evaluation remains unchanged.
     `+ write_io_deselector'·(RunningEvaluationStandardOutput' - 🧯·RunningEvaluationStandardOutput - st0')`
 1. `(1 - IsPadding') · ((InstructionLookupClientLogDerivative' - InstructionLookupClientLogDerivative) · (🛁 - 🥝·ip' - 🥥·ci' - 🫐·nia') - 1)`<br />
     `+ IsPadding'·(RunningProductInstructionTable' - RunningProductInstructionTable)`
-1. `RunningProductOpStackTable' - RunningProductOpStackTable·(🪤 - 🍋·clk' - 🍊·ib1' - 🍉·osp' - 🫒·osv')`
 1. `RunningProductRamTable' - RunningProductRamTable·(🛋 - 🍍·clk' - 🍈·ramp' - 🍎·ramv' - 🌽·previous_instruction')`
 1. `RunningProductJumpStackTable' - RunningProductJumpStackTable·(🧴 - 🍇·clk' - 🍅·ci' - 🍌·jsp' - 🍏·jso' - 🍐·jsd')`
 1. `(ci' - opcode(hash))·(RunningEvaluationHashInput' - RunningEvaluationHashInput)`<br />
