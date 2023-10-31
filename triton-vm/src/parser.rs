@@ -318,11 +318,12 @@ fn pop_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>> {
         let (s, stack_register) = stack_register(s)?;
         let (s, _) = comment_or_whitespace1(s)?; // require space after field element
 
-        if stack_register == ST0 {
-            return cut(context("instruction `pop` cannot take argument `0`", fail))(s);
+        let instruction = Pop(stack_register);
+        if instruction.has_illegal_argument() {
+            return cut(context("illegal argument for instruction `pop`", fail))(s);
         }
 
-        Ok((s, Pop(stack_register)))
+        Ok((s, instruction))
     }
 }
 
@@ -352,11 +353,12 @@ fn swap_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>> {
         let (s, stack_register) = stack_register(s)?;
         let (s, _) = comment_or_whitespace1(s)?;
 
-        if stack_register == ST0 {
+        let instruction = Swap(stack_register);
+        if instruction.has_illegal_argument() {
             return cut(context("instruction `swap` cannot take argument `0`", fail))(s);
         }
 
-        Ok((s, Swap(stack_register)))
+        Ok((s, instruction))
     }
 }
 
@@ -647,7 +649,7 @@ pub(crate) mod tests {
             }
 
             "pop" => {
-                let arg: usize = rng.gen_range(1..15);
+                let arg: usize = rng.gen_range(1..=5);
                 vec!["pop".to_string(), format!("{arg}")]
             }
 
@@ -889,7 +891,7 @@ pub(crate) mod tests {
     fn parse_program_nonexistent_instructions() {
         parse_program_neg_prop(NegativeTestCase {
             input: "pop 0",
-            expected_error: "instruction `pop` cannot take argument `0`",
+            expected_error: "illegal argument for instruction `pop`",
             expected_error_count: 1,
             message: "instruction `pop` cannot take argument `0`",
         });

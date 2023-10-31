@@ -367,7 +367,7 @@ macro_rules! triton_asm {
 #[macro_export]
 macro_rules! triton_instr {
     (pop $arg:literal) => {{
-        assert_ne!(0_u32, $arg, "`pop 0` is illegal.");
+        assert!(1_u32 <= $arg && $arg <= 5, "`pop {}` is illegal.", $arg);
         let argument: $crate::op_stack::OpStackElement = u32::try_into($arg).unwrap();
         let instruction = $crate::instruction::AnInstruction::<String>::Pop(argument);
         $crate::instruction::LabelledInstruction::Instruction(instruction)
@@ -740,9 +740,15 @@ mod tests {
 
     #[test]
     fn triton_asm_interpolation_of_many_pops() {
-        let push_64 = triton_asm![push 0; 64];
-        let pop_64 = triton_asm![pop 8; 8];
-        let program = triton_program! { push 1 { &push_64 } { &pop_64 } assert halt };
+        let push_25 = triton_asm![push 0; 25];
+        let pop_25 = triton_asm![pop 5; 5];
+        let program = triton_program! { push 1 { &push_25 } { &pop_25 } assert halt };
         let _ = program.run([].into(), [].into()).unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected = "`pop 0` is illegal.")]
+    fn parsing_pop_with_illegal_argument_fails() {
+        let _ = triton_instr!(pop 0);
     }
 }

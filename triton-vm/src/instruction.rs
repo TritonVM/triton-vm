@@ -368,6 +368,14 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
             Split | Lt | And | Xor | Log2Floor | Pow | DivMod | PopCount
         )
     }
+
+    pub fn has_illegal_argument(&self) -> bool {
+        match self {
+            Pop(st) => *st < ST1 || ST5 < *st,
+            Swap(ST0) => true,
+            _ => false,
+        }
+    }
 }
 
 impl<Dest: Display + PartialEq + Default> Display for AnInstruction<Dest> {
@@ -422,10 +430,6 @@ impl Instruction {
             return None;
         };
         new_instruction
-    }
-
-    fn has_illegal_argument(&self) -> bool {
-        matches!(self, Pop(ST0) | Swap(ST0))
     }
 }
 
@@ -693,7 +697,7 @@ mod tests {
         let swap_0 = Swap(ST0).change_arg(0_u64.into());
         let swap_1 = Swap(ST0).change_arg(1_u64.into());
         let pop_0 = Pop(ST8).change_arg(0_u64.into());
-        let pop_8 = Pop(ST0).change_arg(8_u64.into());
+        let pop_2 = Pop(ST0).change_arg(2_u64.into());
         let nop = Nop.change_arg(7_u64.into());
 
         assert!(push.is_some());
@@ -702,7 +706,7 @@ mod tests {
         assert!(swap_0.is_none());
         assert!(swap_1.is_some());
         assert!(pop_0.is_none());
-        assert!(pop_8.is_some());
+        assert!(pop_2.is_some());
         assert!(nop.is_none());
     }
 

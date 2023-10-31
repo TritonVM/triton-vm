@@ -1228,6 +1228,9 @@ impl ExtProcessorTable {
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
         let stack_does_not_shrink_by_0 = Self::indicator_polynomial(circuit_builder, 0);
 
+        let stack_does_not_shrink_by_too_much = (6..OpStackElement::COUNT)
+            .map(|idx| Self::indicator_polynomial(circuit_builder, idx))
+            .collect_vec();
         [
             Self::instruction_group_step_2(circuit_builder),
             Self::instruction_group_decompose_arg(circuit_builder),
@@ -1237,16 +1240,7 @@ impl ExtProcessorTable {
             Self::conditional_constraints_for_shrinking_stack_by::<3>(circuit_builder),
             Self::conditional_constraints_for_shrinking_stack_by::<4>(circuit_builder),
             Self::conditional_constraints_for_shrinking_stack_by::<5>(circuit_builder),
-            Self::conditional_constraints_for_shrinking_stack_by::<6>(circuit_builder),
-            Self::conditional_constraints_for_shrinking_stack_by::<7>(circuit_builder),
-            Self::conditional_constraints_for_shrinking_stack_by::<8>(circuit_builder),
-            Self::conditional_constraints_for_shrinking_stack_by::<9>(circuit_builder),
-            Self::conditional_constraints_for_shrinking_stack_by::<10>(circuit_builder),
-            Self::conditional_constraints_for_shrinking_stack_by::<11>(circuit_builder),
-            Self::conditional_constraints_for_shrinking_stack_by::<12>(circuit_builder),
-            Self::conditional_constraints_for_shrinking_stack_by::<13>(circuit_builder),
-            Self::conditional_constraints_for_shrinking_stack_by::<14>(circuit_builder),
-            Self::conditional_constraints_for_shrinking_stack_by::<15>(circuit_builder),
+            stack_does_not_shrink_by_too_much,
             Self::instruction_group_keep_ram(circuit_builder),
         ]
         .concat()
@@ -3119,6 +3113,7 @@ pub(crate) mod tests {
     use crate::error::InstructionError;
     use crate::error::InstructionError::DivisionByZero;
     use crate::instruction::Instruction;
+    use crate::instruction::LabelledInstruction;
     use crate::op_stack::OpStackElement;
     use crate::program::Program;
     use crate::shared_tests::ProgramAndInput;
@@ -3204,27 +3199,48 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn transition_constraints_for_instruction_pop_1() {
-        let test_rows = [test_row_from_program(
-            &triton_program!(push 3 pop 1 halt),
-            1,
-        )];
-        test_constraints_for_rows_with_debug_info(
-            Pop(OpStackElement::ST1),
-            &test_rows,
-            &[ST0, ST1, ST2],
-            &[ST0, ST1, ST2],
-        );
+    #[should_panic(expected = "at least 1, at most 5")]
+    fn transition_constraints_for_instruction_pop_0() {
+        transition_constraints_for_instruction_pop_n(0);
     }
 
-    #[test]
-    fn transition_constraints_for_instruction_pop_2() {
-        let test_rows = [test_row_from_program(
-            &triton_program!(push 3 push 4 pop 2 halt),
-            2,
-        )];
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(20))]
+        #[test]
+        fn transition_constraints_for_instruction_pop_n_in_range(
+            n in 1..=5_usize,
+        ) {
+            transition_constraints_for_instruction_pop_n(n);
+        }
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(20))]
+        #[test]
+        #[should_panic(expected = "at least 1, at most 5")]
+        fn transition_constraints_for_instruction_pop_n_too_large(
+            n in 6..OpStackElement::COUNT,
+        ) {
+            transition_constraints_for_instruction_pop_n(n);
+        }
+    }
+
+    fn transition_constraints_for_instruction_pop_n(n: usize) {
+        let stack_element: OpStackElement = n.try_into().unwrap();
+
+        let mut instructions = vec![Push(BFIELD_ZERO); n];
+        instructions.push(Pop(stack_element));
+        instructions.push(Halt);
+
+        let instructions = instructions
+            .into_iter()
+            .map(LabelledInstruction::Instruction)
+            .collect_vec();
+        let program = Program::new(&instructions);
+        let test_rows = [test_row_from_program(&program, n)];
+
         test_constraints_for_rows_with_debug_info(
-            Pop(OpStackElement::ST2),
+            Pop(stack_element),
             &test_rows,
             &[ST0, ST1, ST2],
             &[ST0, ST1, ST2],

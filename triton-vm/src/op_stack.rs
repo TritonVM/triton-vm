@@ -234,6 +234,8 @@ impl UnderflowIO {
     Copy,
     PartialEq,
     Eq,
+    PartialOrd,
+    Ord,
     Hash,
     Default,
     GetSize,

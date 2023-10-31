@@ -264,8 +264,8 @@ impl<'pgm> VMState<'pgm> {
     }
 
     fn pop(&mut self, n: OpStackElement) -> Result<Vec<CoProcessorCall>> {
-        if n == ST0 {
-            bail!(Pop0);
+        if Instruction::Pop(n).has_illegal_argument() {
+            bail!(IllegalPop(n.into()));
         }
 
         let mut all_underflow_io = vec![];

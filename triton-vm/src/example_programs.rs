@@ -463,7 +463,7 @@ pub(crate) fn calculate_new_mmr_peaks_from_append_with_safe_lists() -> Program {
         push 0
         push 323
         write_mem
-        pop 13
+        pop 5 pop 5 pop 3
 
         // Call the main function, followed by `halt`
             call tasm_mmr_calculate_new_peaks_from_append_safe
