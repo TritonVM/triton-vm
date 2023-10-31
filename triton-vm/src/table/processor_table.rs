@@ -1389,22 +1389,22 @@ impl ExtProcessorTable {
         };
 
         let specific_constraints = vec![
-            indicator_poly(0) * (next_base_row(ST0) - curr_base_row(ST0)),
-            indicator_poly(1) * (next_base_row(ST0) - curr_base_row(ST1)),
-            indicator_poly(2) * (next_base_row(ST0) - curr_base_row(ST2)),
-            indicator_poly(3) * (next_base_row(ST0) - curr_base_row(ST3)),
-            indicator_poly(4) * (next_base_row(ST0) - curr_base_row(ST4)),
-            indicator_poly(5) * (next_base_row(ST0) - curr_base_row(ST5)),
-            indicator_poly(6) * (next_base_row(ST0) - curr_base_row(ST6)),
-            indicator_poly(7) * (next_base_row(ST0) - curr_base_row(ST7)),
-            indicator_poly(8) * (next_base_row(ST0) - curr_base_row(ST8)),
-            indicator_poly(9) * (next_base_row(ST0) - curr_base_row(ST9)),
-            indicator_poly(10) * (next_base_row(ST0) - curr_base_row(ST10)),
-            indicator_poly(11) * (next_base_row(ST0) - curr_base_row(ST11)),
-            indicator_poly(12) * (next_base_row(ST0) - curr_base_row(ST12)),
-            indicator_poly(13) * (next_base_row(ST0) - curr_base_row(ST13)),
-            indicator_poly(14) * (next_base_row(ST0) - curr_base_row(ST14)),
-            indicator_poly(15) * (next_base_row(ST0) - curr_base_row(ST15)),
+            indicator_poly(0) * (next_base_row(ST0) - curr_base_row(ST0))
+                + indicator_poly(1) * (next_base_row(ST0) - curr_base_row(ST1))
+                + indicator_poly(2) * (next_base_row(ST0) - curr_base_row(ST2))
+                + indicator_poly(3) * (next_base_row(ST0) - curr_base_row(ST3))
+                + indicator_poly(4) * (next_base_row(ST0) - curr_base_row(ST4))
+                + indicator_poly(5) * (next_base_row(ST0) - curr_base_row(ST5))
+                + indicator_poly(6) * (next_base_row(ST0) - curr_base_row(ST6))
+                + indicator_poly(7) * (next_base_row(ST0) - curr_base_row(ST7))
+                + indicator_poly(8) * (next_base_row(ST0) - curr_base_row(ST8))
+                + indicator_poly(9) * (next_base_row(ST0) - curr_base_row(ST9))
+                + indicator_poly(10) * (next_base_row(ST0) - curr_base_row(ST10))
+                + indicator_poly(11) * (next_base_row(ST0) - curr_base_row(ST11))
+                + indicator_poly(12) * (next_base_row(ST0) - curr_base_row(ST12))
+                + indicator_poly(13) * (next_base_row(ST0) - curr_base_row(ST13))
+                + indicator_poly(14) * (next_base_row(ST0) - curr_base_row(ST14))
+                + indicator_poly(15) * (next_base_row(ST0) - curr_base_row(ST15)),
         ];
         [
             specific_constraints,
@@ -1430,37 +1430,37 @@ impl ExtProcessorTable {
         };
 
         let specific_constraints = vec![
-            indicator_poly(0),
-            indicator_poly(1) * (next_base_row(ST1) - curr_base_row(ST0)),
-            indicator_poly(2) * (next_base_row(ST2) - curr_base_row(ST0)),
-            indicator_poly(3) * (next_base_row(ST3) - curr_base_row(ST0)),
-            indicator_poly(4) * (next_base_row(ST4) - curr_base_row(ST0)),
-            indicator_poly(5) * (next_base_row(ST5) - curr_base_row(ST0)),
-            indicator_poly(6) * (next_base_row(ST6) - curr_base_row(ST0)),
-            indicator_poly(7) * (next_base_row(ST7) - curr_base_row(ST0)),
-            indicator_poly(8) * (next_base_row(ST8) - curr_base_row(ST0)),
-            indicator_poly(9) * (next_base_row(ST9) - curr_base_row(ST0)),
-            indicator_poly(10) * (next_base_row(ST10) - curr_base_row(ST0)),
-            indicator_poly(11) * (next_base_row(ST11) - curr_base_row(ST0)),
-            indicator_poly(12) * (next_base_row(ST12) - curr_base_row(ST0)),
-            indicator_poly(13) * (next_base_row(ST13) - curr_base_row(ST0)),
-            indicator_poly(14) * (next_base_row(ST14) - curr_base_row(ST0)),
-            indicator_poly(15) * (next_base_row(ST15) - curr_base_row(ST0)),
-            indicator_poly(1) * (next_base_row(ST0) - curr_base_row(ST1)),
-            indicator_poly(2) * (next_base_row(ST0) - curr_base_row(ST2)),
-            indicator_poly(3) * (next_base_row(ST0) - curr_base_row(ST3)),
-            indicator_poly(4) * (next_base_row(ST0) - curr_base_row(ST4)),
-            indicator_poly(5) * (next_base_row(ST0) - curr_base_row(ST5)),
-            indicator_poly(6) * (next_base_row(ST0) - curr_base_row(ST6)),
-            indicator_poly(7) * (next_base_row(ST0) - curr_base_row(ST7)),
-            indicator_poly(8) * (next_base_row(ST0) - curr_base_row(ST8)),
-            indicator_poly(9) * (next_base_row(ST0) - curr_base_row(ST9)),
-            indicator_poly(10) * (next_base_row(ST0) - curr_base_row(ST10)),
-            indicator_poly(11) * (next_base_row(ST0) - curr_base_row(ST11)),
-            indicator_poly(12) * (next_base_row(ST0) - curr_base_row(ST12)),
-            indicator_poly(13) * (next_base_row(ST0) - curr_base_row(ST13)),
-            indicator_poly(14) * (next_base_row(ST0) - curr_base_row(ST14)),
-            indicator_poly(15) * (next_base_row(ST0) - curr_base_row(ST15)),
+            indicator_poly(0)
+                + indicator_poly(1) * (next_base_row(ST1) - curr_base_row(ST0))
+                + indicator_poly(2) * (next_base_row(ST2) - curr_base_row(ST0))
+                + indicator_poly(3) * (next_base_row(ST3) - curr_base_row(ST0))
+                + indicator_poly(4) * (next_base_row(ST4) - curr_base_row(ST0))
+                + indicator_poly(5) * (next_base_row(ST5) - curr_base_row(ST0))
+                + indicator_poly(6) * (next_base_row(ST6) - curr_base_row(ST0))
+                + indicator_poly(7) * (next_base_row(ST7) - curr_base_row(ST0))
+                + indicator_poly(8) * (next_base_row(ST8) - curr_base_row(ST0))
+                + indicator_poly(9) * (next_base_row(ST9) - curr_base_row(ST0))
+                + indicator_poly(10) * (next_base_row(ST10) - curr_base_row(ST0))
+                + indicator_poly(11) * (next_base_row(ST11) - curr_base_row(ST0))
+                + indicator_poly(12) * (next_base_row(ST12) - curr_base_row(ST0))
+                + indicator_poly(13) * (next_base_row(ST13) - curr_base_row(ST0))
+                + indicator_poly(14) * (next_base_row(ST14) - curr_base_row(ST0))
+                + indicator_poly(15) * (next_base_row(ST15) - curr_base_row(ST0)),
+            indicator_poly(1) * (next_base_row(ST0) - curr_base_row(ST1))
+                + indicator_poly(2) * (next_base_row(ST0) - curr_base_row(ST2))
+                + indicator_poly(3) * (next_base_row(ST0) - curr_base_row(ST3))
+                + indicator_poly(4) * (next_base_row(ST0) - curr_base_row(ST4))
+                + indicator_poly(5) * (next_base_row(ST0) - curr_base_row(ST5))
+                + indicator_poly(6) * (next_base_row(ST0) - curr_base_row(ST6))
+                + indicator_poly(7) * (next_base_row(ST0) - curr_base_row(ST7))
+                + indicator_poly(8) * (next_base_row(ST0) - curr_base_row(ST8))
+                + indicator_poly(9) * (next_base_row(ST0) - curr_base_row(ST9))
+                + indicator_poly(10) * (next_base_row(ST0) - curr_base_row(ST10))
+                + indicator_poly(11) * (next_base_row(ST0) - curr_base_row(ST11))
+                + indicator_poly(12) * (next_base_row(ST0) - curr_base_row(ST12))
+                + indicator_poly(13) * (next_base_row(ST0) - curr_base_row(ST13))
+                + indicator_poly(14) * (next_base_row(ST0) - curr_base_row(ST14))
+                + indicator_poly(15) * (next_base_row(ST0) - curr_base_row(ST15)),
             (one() - indicator_poly(1)) * (next_base_row(ST1) - curr_base_row(ST1)),
             (one() - indicator_poly(2)) * (next_base_row(ST2) - curr_base_row(ST2)),
             (one() - indicator_poly(3)) * (next_base_row(ST3) - curr_base_row(ST3)),
