@@ -575,7 +575,6 @@ impl TryFrom<usize> for InstructionBit {
 
 #[cfg(test)]
 mod tests {
-    use std::cmp::Ordering;
     use std::collections::HashMap;
 
     use itertools::Itertools;
@@ -742,6 +741,7 @@ mod tests {
     fn opcodes_are_consistent_with_shrink_stack_indication_bit() {
         let shrink_stack_indicator_bit_mask = 2;
         for instruction in Instruction::iter() {
+            let instruction = replace_illegal_arguments_in_instruction(instruction);
             let opcode = instruction.opcode();
             println!("Testing instruction {instruction} with opcode {opcode}.");
             assert_eq!(
@@ -796,11 +796,12 @@ mod tests {
                 construct_test_program_for_instruction(test_instruction);
             let stack_size_after_test_instruction = terminal_op_stack_size_for_program(program);
 
-            let stack_size_difference =
-                stack_size_after_test_instruction.cmp(&stack_size_before_test_instruction);
-            assert_op_stack_size_changed_as_instruction_indicates(
-                test_instruction,
+            let stack_size_difference = (stack_size_after_test_instruction as i32)
+                - (stack_size_before_test_instruction as i32);
+            assert_eq!(
+                test_instruction.op_stack_size_influence(),
                 stack_size_difference,
+                "{test_instruction}"
             );
         }
     }
@@ -819,7 +820,7 @@ mod tests {
         instruction: AnInstruction<BFieldElement>,
     ) -> (Program, usize) {
         match instruction_requires_jump_stack_setup(instruction) {
-            true => program_with_jump_stack_setup_for_instruction(),
+            true => program_with_jump_stack_setup(),
             false => program_without_jump_stack_setup_for_instruction(instruction),
         }
     }
@@ -828,7 +829,7 @@ mod tests {
         matches!(instruction, Call(_) | Return | Recurse)
     }
 
-    fn program_with_jump_stack_setup_for_instruction() -> (Program, usize) {
+    fn program_with_jump_stack_setup() -> (Program, usize) {
         let program = test_program_for_call_recurse_return().program;
         let stack_size = NUM_OP_STACK_REGISTERS;
         (program, stack_size)
@@ -856,27 +857,6 @@ mod tests {
             .debug_terminal_state(public_input, non_determinism, None, None)
             .unwrap();
         terminal_state.op_stack.stack.len()
-    }
-
-    fn assert_op_stack_size_changed_as_instruction_indicates(
-        test_instruction: AnInstruction<BFieldElement>,
-        stack_size_difference: Ordering,
-    ) {
-        assert_eq!(
-            stack_size_difference == Ordering::Less,
-            test_instruction.shrinks_op_stack(),
-            "{test_instruction}"
-        );
-        assert_eq!(
-            stack_size_difference == Ordering::Equal,
-            !test_instruction.changes_op_stack_size(),
-            "{test_instruction}"
-        );
-        assert_eq!(
-            stack_size_difference == Ordering::Greater,
-            test_instruction.grows_op_stack(),
-            "{test_instruction}"
-        );
     }
 
     #[test]
