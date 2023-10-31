@@ -145,7 +145,7 @@ impl ExtProgramTable {
         };
 
         let one = constant(1);
-        let rate = constant(StarkHasher::RATE.try_into().unwrap());
+        let rate_minus_one = constant(u64::try_from(StarkHasher::RATE).unwrap() - 1);
 
         let prepare_chunk_indeterminate = challenge(ProgramAttestationPrepareChunkIndeterminate);
         let send_chunk_indeterminate = challenge(ProgramAttestationSendChunkIndeterminate);
@@ -177,7 +177,7 @@ impl ExtProgramTable {
 
         let index_in_chunk_cycles_correctly = (one.clone()
             - max_minus_index_in_chunk_inv.clone()
-                * (rate.clone() - one.clone() - index_in_chunk.clone()))
+                * (rate_minus_one.clone() - index_in_chunk.clone()))
             * index_in_chunk_next.clone()
             + max_minus_index_in_chunk_inv.clone()
                 * (index_in_chunk_next.clone() - index_in_chunk.clone() - one.clone());
@@ -197,7 +197,7 @@ impl ExtProgramTable {
             is_hash_input_padding.clone()
                 * (one.clone()
                     - max_minus_index_in_chunk_inv.clone()
-                        * (rate.clone() - one.clone() - index_in_chunk.clone()))
+                        * (rate_minus_one.clone() - index_in_chunk.clone()))
                 * next_row_is_table_padding_row.clone();
 
         let log_derivative_remains = log_derivative_next.clone() - log_derivative.clone();
@@ -221,9 +221,9 @@ impl ExtProgramTable {
             prepare_chunk_running_evaluation_next.clone()
                 - prepare_chunk_indeterminate
                 - instruction_next;
-        let index_in_chunk_is_max = rate.clone() - one.clone() - index_in_chunk.clone();
-        let index_in_chunk_is_not_max = one.clone()
-            - max_minus_index_in_chunk_inv * (rate.clone() - one.clone() - index_in_chunk);
+        let index_in_chunk_is_max = rate_minus_one.clone() - index_in_chunk.clone();
+        let index_in_chunk_is_not_max =
+            one.clone() - max_minus_index_in_chunk_inv * (rate_minus_one.clone() - index_in_chunk);
         let prepare_chunk_running_evaluation_resets_every_rate_rows_and_absorbs_next_instruction =
             index_in_chunk_is_max * prepare_chunk_running_evaluation_absorbs_next_instruction
                 + index_in_chunk_is_not_max
@@ -235,7 +235,7 @@ impl ExtProgramTable {
             - prepare_chunk_running_evaluation_next;
         let send_chunk_running_evaluation_does_not_change =
             send_chunk_running_evaluation_next - send_chunk_running_evaluation;
-        let index_in_chunk_next_is_max = rate - one.clone() - index_in_chunk_next;
+        let index_in_chunk_next_is_max = rate_minus_one - index_in_chunk_next;
         let index_in_chunk_next_is_not_max =
             one - max_minus_index_in_chunk_inv_next * index_in_chunk_next_is_max.clone();
 

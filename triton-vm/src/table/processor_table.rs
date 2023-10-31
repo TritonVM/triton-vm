@@ -999,7 +999,7 @@ impl ExtProcessorTable {
             next_base_row(ST12) - curr_base_row(ST13),
             next_base_row(ST13) - curr_base_row(ST14),
             next_base_row(ST14) - curr_base_row(ST15),
-            next_base_row(OpStackPointer) - (curr_base_row(OpStackPointer) - constant(1)),
+            next_base_row(OpStackPointer) - curr_base_row(OpStackPointer) + constant(1),
             Self::running_product_op_stack_accounts_for_shrinking_stack_by::<1>(circuit_builder),
         ]
     }
