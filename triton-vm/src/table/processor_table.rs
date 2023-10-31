@@ -345,8 +345,7 @@ impl ProcessorTable {
             return default_factor;
         };
 
-        let previous_opcode = previous_row[CI.base_table_index()];
-        let Ok(previous_instruction): Result<Instruction, _> = previous_opcode.try_into() else {
+        let Some(previous_instruction) = Self::instruction_from_row(previous_row) else {
             return default_factor;
         };
 
@@ -379,6 +378,18 @@ impl ProcessorTable {
             factor *= challenges[OpStackIndeterminate] - compressed_row;
         }
         factor
+    }
+
+    fn instruction_from_row(row: ArrayView1<BFieldElement>) -> Option<Instruction> {
+        let opcode = row[CI.base_table_index()];
+        let instruction: Instruction = opcode.try_into().ok()?;
+
+        if instruction.has_arg() {
+            let arg = row[NIA.base_table_index()];
+            return instruction.change_arg(arg);
+        }
+
+        Some(instruction)
     }
 
     fn op_stack_column_by_index(index: usize) -> ProcessorBaseTableColumn {
