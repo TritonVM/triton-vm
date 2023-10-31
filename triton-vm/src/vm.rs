@@ -12,6 +12,7 @@ use ndarray::Array1;
 use num_traits::One;
 use num_traits::Zero;
 use twenty_first::shared_math::b_field_element::BFieldElement;
+use twenty_first::shared_math::b_field_element::BFIELD_ZERO;
 use twenty_first::shared_math::digest::Digest;
 use twenty_first::shared_math::tip5;
 use twenty_first::shared_math::tip5::*;
@@ -72,7 +73,7 @@ pub struct VMState<'pgm> {
     pub instruction_pointer: usize,
 
     /// The instruction that was executed last
-    pub previous_instruction: BFieldElement,
+    pub previous_instruction: Option<Instruction>,
 
     /// RAM pointer
     pub ram_pointer: u64,
@@ -195,7 +196,7 @@ impl<'pgm> VMState<'pgm> {
     pub fn step(&mut self) -> Result<Vec<CoProcessorCall>> {
         // trying to read past the end of the program doesn't change the previous instruction
         if let Ok(instruction) = self.current_instruction() {
-            self.previous_instruction = instruction.opcode_b();
+            self.previous_instruction = Some(instruction);
         }
 
         let co_processor_calls = match self.current_instruction()? {
@@ -776,12 +777,16 @@ impl<'pgm> VMState<'pgm> {
         use ProcessorBaseTableColumn::*;
         let mut processor_row = Array1::zeros(processor_table::BASE_WIDTH);
 
+        let previous_instruction = match self.previous_instruction {
+            Some(instruction) => instruction.opcode_b(),
+            None => BFIELD_ZERO,
+        };
         let current_instruction = self.current_instruction().unwrap_or(Nop);
         let helper_variables = self.derive_helper_variables();
         let ram_pointer = self.ram_pointer.into();
 
         processor_row[CLK.base_table_index()] = (self.cycle_count as u64).into();
-        processor_row[PreviousInstruction.base_table_index()] = self.previous_instruction;
+        processor_row[PreviousInstruction.base_table_index()] = previous_instruction;
         processor_row[IP.base_table_index()] = (self.instruction_pointer as u32).into();
         processor_row[CI.base_table_index()] = current_instruction.opcode_b();
         processor_row[NIA.base_table_index()] = self.next_instruction_or_argument();
