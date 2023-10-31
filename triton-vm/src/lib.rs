@@ -100,11 +100,11 @@
 //!         push 17                     // 17
 //!         read_mem                    // 17 s₄
 //!         dup 0 mul                   // 17 s₄²
-//!         swap 1 pop                  // s₄²
+//!         swap 1 pop 1                // s₄²
 //!         push 42                     // s₄² 42
 //!         read_mem                    // s₄² 42 s₅
 //!         dup 0 mul                   // s₄² 42 s₅²
-//!         swap 1 pop                  // s₄² s₅²
+//!         swap 1 pop 1                // s₄² s₅²
 //!         add                         // s₄²+s₅²
 //!         return
 //! );
@@ -728,7 +728,7 @@ mod tests {
     fn nested_triton_asm_interpolation() {
         let triple_write = triton_asm![write_io; 3];
         let snippet_0 = triton_asm!(push 7 nop call my_label);
-        let snippet_1 = triton_asm!(pop pop halt my_label: push 8 {&triple_write});
+        let snippet_1 = triton_asm!(pop 2 halt my_label: push 8 {&triple_write});
         let source_code = triton_asm!(push 6 {&snippet_0} {&snippet_1} halt);
 
         let program = triton_program!({ &source_code });

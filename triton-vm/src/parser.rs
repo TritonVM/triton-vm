@@ -622,7 +622,7 @@ pub(crate) mod tests {
     fn instruction_gen(labels: &mut Vec<String>) -> Vec<String> {
         let mut rng = thread_rng();
 
-        let difficult_instructions = vec!["push", "dup", "swap", "skiz", "call"];
+        let difficult_instructions = vec!["pop", "push", "dup", "swap", "skiz", "call"];
         let simple_instructions = ALL_INSTRUCTION_NAMES
             .into_iter()
             .filter(|name| !difficult_instructions.contains(name))
@@ -630,7 +630,7 @@ pub(crate) mod tests {
 
         let generators = [vec!["simple"], difficult_instructions].concat();
         // Test difficult instructions more frequently.
-        let weights = vec![simple_instructions.len(), 2, 6, 6, 2, 10];
+        let weights = vec![simple_instructions.len(), 2, 2, 6, 6, 2, 10];
 
         assert_eq!(
             generators.len(),
@@ -644,6 +644,11 @@ pub(crate) mod tests {
                 let index: usize = rng.gen_range(0..simple_instructions.len());
                 let instruction = simple_instructions[index];
                 vec![instruction.to_string()]
+            }
+
+            "pop" => {
+                let arg: usize = rng.gen_range(1..15);
+                vec!["pop".to_string(), format!("{arg}")]
             }
 
             "push" => {
@@ -839,7 +844,7 @@ pub(crate) mod tests {
 
         // FIXME: Increase coverage of negative tests for duplicate labels.
         parse_program_neg_prop(NegativeTestCase {
-            input: "foo: pop foo: pop call foo",
+            input: "foo: pop 1 foo: pop 1 call foo",
             expected_error: "duplicate label",
             expected_error_count: 2,
             message: "labels cannot occur twice",
@@ -847,7 +852,7 @@ pub(crate) mod tests {
 
         // FIXME: Increase coverage of negative tests for missing labels.
         parse_program_neg_prop(NegativeTestCase {
-            input: "foo: pop call herp call derp",
+            input: "foo: pop 1 call herp call derp",
             expected_error: "missing label",
             expected_error_count: 2,
             message: "non-existent labels cannot be called",
@@ -1110,7 +1115,7 @@ pub(crate) mod tests {
             hash\n\
             return\n\
             nop\n\
-            pop\n\
+            pop 1\n\
             bar:\n\
             divine\n\
             skiz\n\

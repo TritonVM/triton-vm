@@ -83,7 +83,7 @@ mod tests {
     #[test]
     #[should_panic(expected = "Operational stack is too shallow")]
     fn shrink_op_stack_too_much() {
-        let program = triton_program!(pop halt);
+        let program = triton_program!(pop 3 halt);
         program.run([].into(), [].into()).unwrap();
     }
 

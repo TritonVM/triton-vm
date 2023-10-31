@@ -1085,9 +1085,9 @@ pub(crate) mod tests {
 
     pub(crate) fn test_program_for_push_pop_dup_swap_nop() -> ProgramAndInput {
         ProgramAndInput::without_input(triton_program!(
-            push 1 push 2 pop assert
+            push 1 push 2 pop 1 assert
             push 1 dup  0 assert assert
-            push 1 push 2 swap 1 assert pop
+            push 1 push 2 swap 1 assert pop 1
             nop nop nop halt
         ))
     }
@@ -1110,7 +1110,7 @@ pub(crate) mod tests {
         ProgramAndInput::without_input(triton_program!(
             push 2
             call label
-            pop halt
+            pop 1 halt
             label:
                 push -1 add dup 0
                 skiz
@@ -1121,7 +1121,7 @@ pub(crate) mod tests {
 
     pub(crate) fn test_program_for_write_mem_read_mem() -> ProgramAndInput {
         ProgramAndInput::without_input(
-            triton_program!(push 2 push 1 write_mem push 0 pop read_mem assert halt),
+            triton_program!(push 2 push 1 write_mem push 0 pop 1 read_mem assert halt),
         )
     }
 
@@ -1651,7 +1651,7 @@ pub(crate) mod tests {
             push {st0_u32} call is_u32 assert
             push {st0_not_u32} call is_u32 push 0 eq assert halt
             is_u32:
-                 split pop push 0 eq return
+                 split pop 1 push 0 eq return
         );
         ProgramAndInput::without_input(program)
     }
@@ -1661,22 +1661,20 @@ pub(crate) mod tests {
         let num_memory_accesses = rng.gen_range(10..50);
         let memory_addresses: Vec<BFieldElement> = random_elements(num_memory_accesses);
         let mut memory_values: Vec<BFieldElement> = random_elements(num_memory_accesses);
-        let mut source_code = String::new();
+        let mut instructions = vec![];
 
         // Read some memory before first write to ensure that the memory is initialized with 0s.
         // Not all addresses are read to have different access patterns:
         // - Some addresses are read before written to.
         // - Other addresses are written to before read.
         for memory_address in memory_addresses.iter().take(num_memory_accesses / 4) {
-            source_code.push_str(&format!(
-                "push {memory_address} read_mem push 0 eq assert pop "
-            ));
+            instructions.extend(triton_asm!(push {memory_address} read_mem push 0 eq assert pop 1));
         }
 
         // Write everything to RAM.
         for (memory_address, memory_value) in memory_addresses.iter().zip_eq(memory_values.iter()) {
-            source_code.push_str(&format!(
-                "push {memory_address} push {memory_value} write_mem pop "
+            instructions.extend(triton_asm!(
+                push {memory_address} push {memory_value} write_mem pop 1
             ));
         }
 
@@ -1689,8 +1687,8 @@ pub(crate) mod tests {
         for idx in reading_permutation {
             let memory_address = memory_addresses[idx];
             let memory_value = memory_values[idx];
-            source_code.push_str(&format!(
-                "push {memory_address} read_mem push {memory_value} eq assert pop "
+            instructions.extend(triton_asm!(
+                push {memory_address} read_mem push {memory_value} eq assert pop 1
             ));
         }
 
@@ -1704,8 +1702,8 @@ pub(crate) mod tests {
             let memory_address = memory_addresses[writing_permutation[idx]];
             let new_memory_value = rng.gen();
             memory_values[writing_permutation[idx]] = new_memory_value;
-            source_code.push_str(&format!(
-                "push {memory_address} push {new_memory_value} write_mem pop "
+            instructions.extend(triton_asm!(
+                push {memory_address} push {new_memory_value} write_mem pop 1
             ));
         }
 
@@ -1719,13 +1717,12 @@ pub(crate) mod tests {
         for idx in reading_permutation {
             let memory_address = memory_addresses[idx];
             let memory_value = memory_values[idx];
-            source_code.push_str(&format!(
-                "push {memory_address} read_mem push {memory_value} eq assert pop "
+            instructions.extend(triton_asm!(
+                push {memory_address} read_mem push {memory_value} eq assert pop 1
             ));
         }
 
-        source_code.push_str("halt");
-        let program = triton_program!({ source_code });
+        let program = triton_program! { { &instructions } halt };
         ProgramAndInput::without_input(program)
     }
 
@@ -1744,7 +1741,7 @@ pub(crate) mod tests {
         let program = triton_program!(
             push {st0} call is_u32 assert halt
             is_u32:
-                split pop push 0 eq return
+                split pop 1 push 0 eq return
         );
         let program_and_input = ProgramAndInput::without_input(program);
         let err = program_and_input.run().err();
@@ -2025,11 +2022,11 @@ pub(crate) mod tests {
     #[test]
     fn run_tvm_basic_ram_read_write() {
         let program = triton_program!(
-            push  5 push  6 write_mem pop
-            push 15 push 16 write_mem pop
-            push  5         read_mem  pop pop
-            push 15         read_mem  pop pop
-            push  5 push  7 write_mem pop
+            push  5 push  6 write_mem pop 1
+            push 15 push 16 write_mem pop 1
+            push  5         read_mem  pop 2
+            push 15         read_mem  pop 2
+            push  5 push  7 write_mem pop 1
             push 15         read_mem
             push  5         read_mem
             halt
@@ -2056,11 +2053,11 @@ pub(crate) mod tests {
             swap 1      // _ 0 5 | 0
             push 3      // _ 0 5 | 0 3
             swap 1      // _ 0 5 | 3 0
-            pop         // _ 0 5 | 3
+            pop 1       // _ 0 5 | 3
             write_mem   // _ 0 5 |
             read_mem    // _ 0 5 | 3
             swap 2      // _ 3 5 | 0
-            pop         // _ 3 5 |
+            pop 1       // _ 3 5 |
             read_mem    // _ 3 5 | 3
             halt
         );
@@ -2117,7 +2114,7 @@ pub(crate) mod tests {
             dup 3 push -1 mul dup 5 add mul // dy·(p2_x - p0_x)
             dup 3 dup 3 push -1 mul add     // dx = p0_x - p1_x
             invert mul add                  // compute result
-            swap 3 pop pop pop              // leave a clean stack
+            swap 3 pop 3                    // leave a clean stack
             write_io halt
         );
 
