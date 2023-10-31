@@ -2222,7 +2222,7 @@ impl ExtProcessorTable {
         instruction: Instruction,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
         match instruction {
-            Pop => ExtProcessorTable::instruction_pop(circuit_builder),
+            Pop(_) => ExtProcessorTable::instruction_pop(circuit_builder),
             Push(_) => ExtProcessorTable::instruction_push(circuit_builder),
             Divine => ExtProcessorTable::instruction_divine(circuit_builder),
             Dup(_) => ExtProcessorTable::instruction_dup(circuit_builder),
@@ -3142,10 +3142,27 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn transition_constraints_for_instruction_pop() {
-        let test_rows = [test_row_from_program(&triton_program!(push 1 pop halt), 1)];
+    fn transition_constraints_for_instruction_pop_1() {
+        let test_rows = [test_row_from_program(
+            &triton_program!(push 3 pop 1 halt),
+            1,
+        )];
         test_constraints_for_rows_with_debug_info(
-            Pop,
+            Pop(OpStackElement::ST1),
+            &test_rows,
+            &[ST0, ST1, ST2],
+            &[ST0, ST1, ST2],
+        );
+    }
+
+    #[test]
+    fn transition_constraints_for_instruction_pop_2() {
+        let test_rows = [test_row_from_program(
+            &triton_program!(push 3 push 4 pop 2 halt),
+            2,
+        )];
+        test_constraints_for_rows_with_debug_info(
+            Pop(OpStackElement::ST2),
             &test_rows,
             &[ST0, ST1, ST2],
             &[ST0, ST1, ST2],

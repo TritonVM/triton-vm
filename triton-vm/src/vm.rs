@@ -142,7 +142,7 @@ impl<'pgm> VMState<'pgm> {
         };
 
         match current_instruction {
-            Dup(arg) | Swap(arg) => {
+            Pop(arg) | Dup(arg) | Swap(arg) => {
                 let arg_val: u64 = arg.into();
                 hvs[0] = BFieldElement::new(arg_val % 2);
                 hvs[1] = BFieldElement::new((arg_val >> 1) % 2);
@@ -199,7 +199,7 @@ impl<'pgm> VMState<'pgm> {
         }
 
         let co_processor_calls = match self.current_instruction()? {
-            Pop => self.pop()?,
+            Pop(n) => self.pop(n)?,
             Push(field_element) => self.push(field_element),
             Divine => self.divine()?,
             Dup(stack_element) => self.dup(stack_element),
@@ -262,12 +262,20 @@ impl<'pgm> VMState<'pgm> {
             .collect()
     }
 
-    fn pop(&mut self) -> Result<Vec<CoProcessorCall>> {
-        let (_, underflow_io) = self.op_stack.pop()?;
+    fn pop(&mut self, n: OpStackElement) -> Result<Vec<CoProcessorCall>> {
+        if n == ST0 {
+            bail!(Pop0);
+        }
 
-        let op_stack_calls = self.underflow_io_sequence_to_co_processor_calls(vec![underflow_io]);
+        let mut all_underflow_io = vec![];
+        for _ in 0..n.into() {
+            let (_, underflow_io) = self.op_stack.pop()?;
+            all_underflow_io.push(underflow_io);
+        }
 
-        self.instruction_pointer += 1;
+        let op_stack_calls = self.underflow_io_sequence_to_co_processor_calls(all_underflow_io);
+
+        self.instruction_pointer += 2;
         Ok(op_stack_calls)
     }
 

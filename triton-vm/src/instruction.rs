@@ -98,7 +98,7 @@ pub fn stringify_instructions(instructions: &[LabelledInstruction]) -> String {
 )]
 pub enum AnInstruction<Dest: PartialEq + Default> {
     // OpStack manipulation
-    Pop,
+    Pop(OpStackElement),
     Push(BFieldElement),
     Divine,
     Dup(OpStackElement),
@@ -156,7 +156,7 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
     /// Assign a unique positive integer to each `Instruction`.
     pub const fn opcode(&self) -> u32 {
         match self {
-            Pop => 2,
+            Pop(_) => 2,
             Push(_) => 1,
             Divine => 8,
             Dup(_) => 9,
@@ -199,7 +199,7 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
 
     pub(crate) const fn name(&self) -> &'static str {
         match self {
-            Pop => "pop",
+            Pop(_) => "pop",
             Push(_) => "push",
             Divine => "divine",
             Dup(_) => "dup",
@@ -245,7 +245,7 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
     }
 
     pub fn size(&self) -> usize {
-        match matches!(self, Push(_) | Dup(_) | Swap(_) | Call(_)) {
+        match matches!(self, Pop(_) | Push(_) | Dup(_) | Swap(_) | Call(_)) {
             true => 2,
             false => 1,
         }
@@ -265,7 +265,7 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
         NewDest: PartialEq + Default,
     {
         match self {
-            Pop => Pop,
+            Pop(x) => Pop(*x),
             Push(x) => Push(*x),
             Divine => Divine,
             Dup(x) => Dup(*x),
@@ -320,7 +320,7 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
 
     pub const fn op_stack_size_influence(&self) -> i32 {
         match self {
-            Pop => -1,
+            Pop(n) => -(n.index() as i32),
             Push(_) => 1,
             Divine => 1,
             Dup(_) => 1,
@@ -375,7 +375,7 @@ impl<Dest: Display + PartialEq + Default> Display for AnInstruction<Dest> {
         write!(f, "{}", self.name())?;
         match self {
             Push(arg) => write!(f, " {arg}"),
-            Dup(arg) | Swap(arg) => write!(f, " {arg}"),
+            Pop(arg) | Dup(arg) | Swap(arg) => write!(f, " {arg}"),
             Call(arg) => write!(f, " {arg}"),
             _ => Ok(()),
         }
@@ -387,7 +387,7 @@ impl Instruction {
     pub fn arg(&self) -> Option<BFieldElement> {
         match self {
             Push(arg) | Call(arg) => Some(*arg),
-            Dup(arg) | Swap(arg) => Some(arg.into()),
+            Pop(arg) | Dup(arg) | Swap(arg) => Some(arg.into()),
             _ => None,
         }
     }
@@ -402,21 +402,30 @@ impl Instruction {
     /// if the argument is out of range.
     #[must_use]
     pub fn change_arg(&self, new_arg: BFieldElement) -> Option<Self> {
-        let maybe_ord_16 = new_arg.value().try_into();
-        match self {
+        let instruction_with_infallible_substitution = match self {
             Push(_) => Some(Push(new_arg)),
-            Dup(_) => match maybe_ord_16 {
-                Ok(ord_16) => Some(Dup(ord_16)),
-                Err(_) => None,
-            },
-            Swap(_) => match maybe_ord_16 {
-                Ok(ST0) => None,
-                Ok(ord_16) => Some(Swap(ord_16)),
-                Err(_) => None,
-            },
             Call(_) => Some(Call(new_arg)),
             _ => None,
+        };
+        if instruction_with_infallible_substitution.is_some() {
+            return instruction_with_infallible_substitution;
         }
+
+        let stack_element = new_arg.value().try_into().ok()?;
+        let new_instruction = match self {
+            Pop(_) => Some(Pop(stack_element)),
+            Dup(_) => Some(Dup(stack_element)),
+            Swap(_) => Some(Swap(stack_element)),
+            _ => None,
+        };
+        if new_instruction?.has_illegal_argument() {
+            return None;
+        };
+        new_instruction
+    }
+
+    fn has_illegal_argument(&self) -> bool {
+        matches!(self, Pop(ST0) | Swap(ST0))
     }
 }
 
@@ -460,7 +469,7 @@ impl TryFrom<BFieldElement> for Instruction {
 
 const fn all_instructions_without_args() -> [AnInstruction<BFieldElement>; Instruction::COUNT] {
     [
-        Pop,
+        Pop(ST0),
         Push(BFIELD_ZERO),
         Divine,
         Dup(ST0),
@@ -613,13 +622,13 @@ mod tests {
 
     #[test]
     fn parse_push_pop() {
-        let program = triton_program!(push 1 push 1 add pop);
+        let program = triton_program!(push 1 push 1 add pop 2);
         let instructions = program.into_iter().collect_vec();
         let expected = vec![
             Push(BFieldElement::one()),
             Push(BFieldElement::one()),
             Add,
-            Pop,
+            Pop(ST2),
         ];
 
         assert_eq!(expected, instructions);
@@ -643,7 +652,7 @@ mod tests {
         for instruction in ALL_INSTRUCTIONS {
             for instruction_bit in InstructionBit::iter() {
                 let ib_value = instruction.ib(instruction_bit);
-                assert!(ib_value.is_zero() || ib_value.is_one(),);
+                assert!(ib_value.is_zero() ^ ib_value.is_one());
             }
         }
     }
@@ -684,14 +693,18 @@ mod tests {
         let swap = Swap(ST0).change_arg(1337_u64.into());
         let swap_0 = Swap(ST0).change_arg(0_u64.into());
         let swap_1 = Swap(ST0).change_arg(1_u64.into());
-        let pop = Pop.change_arg(7_u64.into());
+        let pop_0 = Pop(ST8).change_arg(0_u64.into());
+        let pop_8 = Pop(ST0).change_arg(8_u64.into());
+        let nop = Nop.change_arg(7_u64.into());
 
         assert!(push.is_some());
         assert!(dup.is_none());
         assert!(swap.is_none());
         assert!(swap_0.is_none());
         assert!(swap_1.is_some());
-        assert!(pop.is_none());
+        assert!(pop_0.is_none());
+        assert!(pop_8.is_some());
+        assert!(nop.is_none());
     }
 
     #[test]
@@ -796,6 +809,7 @@ mod tests {
         instruction: AnInstruction<BFieldElement>,
     ) -> AnInstruction<BFieldElement> {
         match instruction {
+            Pop(ST0) => Pop(ST3),
             Swap(ST0) => Swap(ST1),
             _ => instruction,
         }

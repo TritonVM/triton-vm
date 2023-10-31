@@ -211,7 +211,7 @@ fn breakpoint(breakpoint_s: &str) -> ParseResult<InstructionToken> {
 
 fn an_instruction(s: &str) -> ParseResult<AnInstruction<String>> {
     // OpStack manipulation
-    let pop = instruction("pop", Pop);
+    let pop = pop_instruction();
     let push = push_instruction();
     let divine = instruction("divine", Divine);
     let dup = dup_instruction();
@@ -309,6 +309,20 @@ fn instruction<'a>(
     move |s: &'a str| {
         let (s, _) = token1(name)(s)?; // require space after instruction name
         Ok((s, instruction.clone()))
+    }
+}
+
+fn pop_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>> {
+    move |s: &str| {
+        let (s, _) = token1("pop")(s)?; // require space after instruction name
+        let (s, stack_register) = stack_register(s)?;
+        let (s, _) = comment_or_whitespace1(s)?; // require space after field element
+
+        if stack_register == ST0 {
+            return cut(context("instruction `pop` cannot take argument `0`", fail))(s);
+        }
+
+        Ok((s, Pop(stack_register)))
     }
 }
 
@@ -869,6 +883,12 @@ pub(crate) mod tests {
     #[test]
     fn parse_program_nonexistent_instructions() {
         parse_program_neg_prop(NegativeTestCase {
+            input: "pop 0",
+            expected_error: "instruction `pop` cannot take argument `0`",
+            expected_error_count: 1,
+            message: "instruction `pop` cannot take argument `0`",
+        });
+        parse_program_neg_prop(NegativeTestCase {
             input: "swap 0",
             expected_error: "instruction `swap` cannot take argument `0`",
             expected_error_count: 1,
@@ -1025,7 +1045,7 @@ pub(crate) mod tests {
     fn triton_instruction_macro_parses_simple_instructions() {
         assert_eq!(Instruction(Halt), triton_instr!(halt));
         assert_eq!(Instruction(Add), triton_instr!(add));
-        assert_eq!(Instruction(Pop), triton_instr!(pop));
+        assert_eq!(Instruction(Pop(ST3)), triton_instr!(pop 3));
     }
 
     #[test]
