@@ -156,30 +156,30 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
     /// Assign a unique positive integer to each `Instruction`.
     pub const fn opcode(&self) -> u32 {
         match self {
-            Pop(_) => 2,
+            Pop(_) => 3,
             Push(_) => 1,
             Divine => 8,
             Dup(_) => 9,
             Swap(_) => 17,
             Nop => 16,
-            Skiz => 10,
+            Skiz => 2,
             Call(_) => 25,
             Return => 24,
             Recurse => 32,
-            Assert => 18,
+            Assert => 10,
             Halt => 0,
             ReadMem => 40,
-            WriteMem => 26,
-            Hash => 34,
+            WriteMem => 18,
+            Hash => 26,
             DivineSibling => 48,
             AssertVector => 56,
             SpongeInit => 64,
             SpongeAbsorb => 72,
             SpongeSqueeze => 80,
-            Add => 42,
-            Mul => 50,
+            Add => 34,
+            Mul => 42,
             Invert => 88,
-            Eq => 58,
+            Eq => 50,
             Split => 4,
             Lt => 6,
             And => 14,
@@ -191,9 +191,9 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
             XxAdd => 96,
             XxMul => 104,
             XInvert => 112,
-            XbMul => 66,
+            XbMul => 58,
             ReadIo => 120,
-            WriteIo => 74,
+            WriteIo => 66,
         }
     }
 
@@ -683,7 +683,7 @@ mod tests {
         let _push = Instruction::try_from(1_usize).unwrap();
         let _dup = Instruction::try_from(9_u64).unwrap();
         let _swap = Instruction::try_from(17_u32).unwrap();
-        let _pop = Instruction::try_from(2_usize).unwrap();
+        let _pop = Instruction::try_from(3_usize).unwrap();
     }
 
     #[test]
