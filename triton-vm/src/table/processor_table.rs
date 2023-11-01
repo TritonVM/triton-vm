@@ -963,7 +963,7 @@ impl ExtProcessorTable {
             next_base_row(ST14) - curr_base_row(ST13),
             next_base_row(ST15) - curr_base_row(ST14),
             next_base_row(OpStackPointer) - (curr_base_row(OpStackPointer) + constant(1)),
-            Self::running_product_op_stack_accounts_for_growing_stack_by::<1>(circuit_builder),
+            Self::running_product_op_stack_accounts_for_growing_stack_by(circuit_builder, 1),
         ]
     }
 
@@ -1011,7 +1011,7 @@ impl ExtProcessorTable {
             next_base_row(ST13) - curr_base_row(ST14),
             next_base_row(ST14) - curr_base_row(ST15),
             next_base_row(OpStackPointer) - curr_base_row(OpStackPointer) + constant(1),
-            Self::running_product_op_stack_accounts_for_shrinking_stack_by::<1>(circuit_builder),
+            Self::running_product_op_stack_accounts_for_shrinking_stack_by(circuit_builder, 1),
         ]
     }
 
@@ -1235,11 +1235,7 @@ impl ExtProcessorTable {
             Self::instruction_group_step_2(circuit_builder),
             Self::instruction_group_decompose_arg(circuit_builder),
             vec![stack_does_not_shrink_by_0],
-            Self::conditional_constraints_for_shrinking_stack_by::<1>(circuit_builder),
-            Self::conditional_constraints_for_shrinking_stack_by::<2>(circuit_builder),
-            Self::conditional_constraints_for_shrinking_stack_by::<3>(circuit_builder),
-            Self::conditional_constraints_for_shrinking_stack_by::<4>(circuit_builder),
-            Self::conditional_constraints_for_shrinking_stack_by::<5>(circuit_builder),
+            Self::stack_shrinks_by_any_of(circuit_builder, &[1, 2, 3, 4, 5]),
             stack_does_not_shrink_by_too_much,
             Self::instruction_group_keep_ram(circuit_builder),
         ]
@@ -1688,7 +1684,7 @@ impl ExtProcessorTable {
             next_base_row(ST9) - curr_base_row(ST14),
             next_base_row(ST10) - curr_base_row(ST15),
             next_base_row(OpStackPointer) - curr_base_row(OpStackPointer) + constant(5),
-            Self::running_product_op_stack_accounts_for_shrinking_stack_by::<5>(circuit_builder),
+            Self::running_product_op_stack_accounts_for_shrinking_stack_by(circuit_builder, 5),
         ];
 
         [
@@ -2396,8 +2392,73 @@ impl ExtProcessorTable {
             + write_io_deselector * running_evaluation_updates
     }
 
-    fn conditional_constraints_for_shrinking_stack_by<const N: usize>(
+    /// Reduces the number of constraints by summing mutually exclusive constraints. The mutual
+    /// exclusion is due to the conditional nature of the constraints.
+    ///
+    /// For example, the constraints for shrinking the stack by 2, 3, and 4 elements are:
+    ///
+    /// ```markdown
+    /// |            shrink by 2 |            shrink by 3 |            shrink by 4 |
+    /// |-----------------------:|-----------------------:|-----------------------:|
+    /// |     ind_2·(st0' - st2) |     ind_3·(st0' - st3) |     ind_4·(st0' - st4) |
+    /// |     ind_2·(st1' - st3) |     ind_3·(st1' - st4) |     ind_4·(st1' - st5) |
+    /// |                      … |                      … |                      … |
+    /// |   ind_2·(st11' - st13) |   ind_3·(st11' - st14) |   ind_4·(st11' - st15) |
+    /// |   ind_2·(st12' - st14) |   ind_3·(st12' - st15) | ind_4·(osp' - osp + 4) |
+    /// |   ind_2·(st13' - st15) | ind_3·(osp' - osp + 3) | ind_4·(rp' - rp·fac_4) |
+    /// | ind_2·(osp' - osp + 2) | ind_3·(rp' - rp·fac_3) |                        |
+    /// | ind_2·(rp' - rp·fac_2) |                        |                        |
+    /// ```
+    ///
+    /// This method sums these constraints “per row”. That is, the resulting constraints are:
+    ///
+    /// ```markdown
+    /// |                                                  shrink by 2 or 3 or 4 |
+    /// |-----------------------------------------------------------------------:|
+    /// |           ind_2·(st0' - st2) + ind_3·(st0' - st3) + ind_4·(st0' - st4) |
+    /// |           ind_2·(st1' - st3) + ind_3·(st1' - st4) + ind_4·(st1' - st5) |
+    /// |                                                                      … |
+    /// |     ind_2·(st11' - st13) + ind_3·(st11' - st14) + ind_4·(st11' - st15) |
+    /// |   ind_2·(st12' - st14) + ind_3·(st12' - st15) + ind_4·(osp' - osp + 4) |
+    /// | ind_2·(st13' - st15) + ind_3·(osp' - osp + 3) + ind_4·(rp' - rp·fac_4) |
+    /// |                        ind_2·(osp' - osp + 2) + ind_3·(rp' - rp·fac_3) |
+    /// |                                                 ind_2·(rp' - rp·fac_2) |
+    /// ```
+    ///
+    /// Syntax in above example:
+    /// - `ind_n` is the indicator polynomial for `n`
+    /// - `osp` is the op stack pointer
+    /// - `rp` is the running product for the permutation argument
+    /// - `fac_n` is the factor for the running product
+    fn stack_shrinks_by_any_of(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+        shrinkages: &[usize],
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
+        let all_constraints_for_all_shrinkages = shrinkages
+            .iter()
+            .map(|&n| Self::conditional_constraints_for_shrinking_stack_by(circuit_builder, n))
+            .collect_vec();
+        let num_constraints = all_constraints_for_all_shrinkages
+            .iter()
+            .map(|x| x.len())
+            .max()
+            .unwrap_or(0);
+
+        let zero_constraint = || circuit_builder.b_constant(0_u32.into());
+        let mut combined_constraints = vec![];
+        for i in 0..num_constraints {
+            let combined_constraint = all_constraints_for_all_shrinkages
+                .iter()
+                .filter_map(|constraints_for_one_shrinkage| constraints_for_one_shrinkage.get(i))
+                .fold(zero_constraint(), |acc, summand| acc + summand.clone());
+            combined_constraints.push(combined_constraint);
+        }
+        combined_constraints
+    }
+
+    fn conditional_constraints_for_shrinking_stack_by(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+        n: usize,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
         let constant = |c: usize| circuit_builder.b_constant(u32::try_from(c).unwrap().into());
         let curr_base_row = |col: ProcessorBaseTableColumn| {
@@ -2408,16 +2469,16 @@ impl ExtProcessorTable {
         };
 
         let op_stack_pointer_shrinks_by_n =
-            next_base_row(OpStackPointer) - curr_base_row(OpStackPointer) + constant(N);
+            next_base_row(OpStackPointer) - curr_base_row(OpStackPointer) + constant(n);
 
         let mut constraints = vec![
             op_stack_pointer_shrinks_by_n,
-            Self::running_product_op_stack_accounts_for_shrinking_stack_by::<N>(circuit_builder),
+            Self::running_product_op_stack_accounts_for_shrinking_stack_by(circuit_builder, n),
         ];
 
-        for i in N..OpStackElement::COUNT {
+        for i in n..OpStackElement::COUNT {
             let curr_stack_element = ProcessorTable::op_stack_column_by_index(i);
-            let next_stack_element = ProcessorTable::op_stack_column_by_index(i - N);
+            let next_stack_element = ProcessorTable::op_stack_column_by_index(i - n);
             let element_i_is_shifted_by_n =
                 next_base_row(next_stack_element) - curr_base_row(curr_stack_element);
             constraints.push(element_i_is_shifted_by_n);
@@ -2425,12 +2486,13 @@ impl ExtProcessorTable {
 
         constraints
             .into_iter()
-            .map(|constraint| Self::indicator_polynomial(circuit_builder, N) * constraint)
+            .map(|constraint| Self::indicator_polynomial(circuit_builder, n) * constraint)
             .collect()
     }
 
-    fn running_product_op_stack_accounts_for_growing_stack_by<const N: usize>(
+    fn running_product_op_stack_accounts_for_growing_stack_by(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+        n: usize,
     ) -> ConstraintCircuitMonad<DualRowIndicator> {
         let constant = |c: u32| circuit_builder.b_constant(c.into());
         let curr_ext_row = |col: ProcessorExtTableColumn| {
@@ -2448,15 +2510,16 @@ impl ExtProcessorTable {
         };
 
         let mut factor = constant(1);
-        for op_stack_pointer_offset in 0..N {
+        for op_stack_pointer_offset in 0..n {
             factor = factor * single_grow_factor(op_stack_pointer_offset);
         }
 
         next_ext_row(OpStackTablePermArg) - curr_ext_row(OpStackTablePermArg) * factor
     }
 
-    fn running_product_op_stack_accounts_for_shrinking_stack_by<const N: usize>(
+    fn running_product_op_stack_accounts_for_shrinking_stack_by(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+        n: usize,
     ) -> ConstraintCircuitMonad<DualRowIndicator> {
         let constant = |c: u32| circuit_builder.b_constant(c.into());
         let curr_ext_row = |col: ProcessorExtTableColumn| {
@@ -2474,7 +2537,7 @@ impl ExtProcessorTable {
         };
 
         let mut factor = constant(1);
-        for op_stack_pointer_offset in 0..N {
+        for op_stack_pointer_offset in 0..n {
             factor = factor * single_shrink_factor(op_stack_pointer_offset);
         }
 
