@@ -45,6 +45,7 @@ serde = { version = "1", features = ["derive"] }
 serde_derive = "1"
 strum = { version = "0.25", features = ["derive"] }
 syn = "2.0"
+test-strategy = "0.3.1"
 twenty-first = "0.34"
 unicode-width = "0.1"
 

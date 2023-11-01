@@ -111,13 +111,16 @@ impl ArithmeticDomain {
 #[cfg(test)]
 mod tests {
     use itertools::Itertools;
+    use proptest::prelude::*;
+    use proptest_arbitrary_interop::arb;
+    use test_strategy::proptest;
     use twenty_first::shared_math::b_field_element::BFieldElement;
     use twenty_first::shared_math::traits::PrimitiveRootOfUnity;
-
-    use super::*;
+    use twenty_first::shared_math::x_field_element::XFieldElement;
 
     use crate::shared_tests::*;
-    use proptest::prelude::*;
+
+    use super::*;
 
     prop_compose! {
         fn arbitrary_domain()(
@@ -141,50 +144,42 @@ mod tests {
 
     prop_compose! {
         fn arbitrary_domain_of_length(length: usize)(
-            offset in arbitrary_bfield_element(),
+            offset in arb(),
         ) -> ArithmeticDomain {
             ArithmeticDomain::of_length(length).with_offset(offset)
         }
     }
 
-    proptest! {
-        #[test]
-        fn evaluate_empty_polynomial(
-            domain in arbitrary_domain(),
-            polynomial in arbitrary_polynomial_of_degree(-1),
-        ) {
-            domain.evaluate(&polynomial);
-        }
+    #[proptest]
+    fn evaluate_empty_polynomial(
+        #[strategy(arbitrary_domain())] domain: ArithmeticDomain,
+        #[strategy(arbitrary_polynomial_of_degree(-1))] polynomial: Polynomial<XFieldElement>,
+    ) {
+        domain.evaluate(&polynomial);
     }
 
-    proptest! {
-        #[test]
-        fn evaluate_constant_polynomial(
-            domain in arbitrary_domain(),
-            polynomial in arbitrary_polynomial_of_degree(0),
-        ) {
-            domain.evaluate(&polynomial);
-        }
+    #[proptest]
+    fn evaluate_constant_polynomial(
+        #[strategy(arbitrary_domain())] domain: ArithmeticDomain,
+        #[strategy(arbitrary_polynomial_of_degree(0))] polynomial: Polynomial<XFieldElement>,
+    ) {
+        domain.evaluate(&polynomial);
     }
 
-    proptest! {
-        #[test]
-        fn evaluate_linear_polynomial(
-            domain in arbitrary_domain(),
-            polynomial in arbitrary_polynomial_of_degree(1),
-        ) {
-            domain.evaluate(&polynomial);
-        }
+    #[proptest]
+    fn evaluate_linear_polynomial(
+        #[strategy(arbitrary_domain())] domain: ArithmeticDomain,
+        #[strategy(arbitrary_polynomial_of_degree(1))] polynomial: Polynomial<XFieldElement>,
+    ) {
+        domain.evaluate(&polynomial);
     }
 
-    proptest! {
-        #[test]
-        fn evaluate_polynomial(
-            domain in arbitrary_domain(),
-            polynomial in arbitrary_polynomial(),
-        ) {
-            domain.evaluate(&polynomial);
-        }
+    #[proptest]
+    fn evaluate_polynomial(
+        #[strategy(arbitrary_domain())] domain: ArithmeticDomain,
+        #[strategy(arbitrary_polynomial())] polynomial: Polynomial<XFieldElement>,
+    ) {
+        domain.evaluate(&polynomial);
     }
 
     #[test]
@@ -251,21 +246,21 @@ mod tests {
         assert_eq!(short_codeword, long_codeword_sub_view);
     }
 
-    proptest! {
-        #[test]
-        fn halving_domain_squares_all_points(domain in arbitrary_halveable_domain()) {
-            let half_domain = domain.halve();
-            prop_assert_eq!(domain.length / 2, half_domain.length);
+    #[proptest]
+    fn halving_domain_squares_all_points(
+        #[strategy(arbitrary_halveable_domain())] domain: ArithmeticDomain,
+    ) {
+        let half_domain = domain.halve();
+        prop_assert_eq!(domain.length / 2, half_domain.length);
 
-            let domain_points = domain.domain_values();
-            let half_domain_points = half_domain.domain_values();
+        let domain_points = domain.domain_values();
+        let half_domain_points = half_domain.domain_values();
 
-            for (domain_point, halved_domain_point) in domain_points
-                .into_iter()
-                .zip(half_domain_points.into_iter())
-            {
-                prop_assert_eq!(domain_point.square(), halved_domain_point);
-            }
+        for (domain_point, halved_domain_point) in domain_points
+            .into_iter()
+            .zip(half_domain_points.into_iter())
+        {
+            prop_assert_eq!(domain_point.square(), halved_domain_point);
         }
     }
 

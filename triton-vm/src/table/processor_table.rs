@@ -3167,11 +3167,11 @@ impl<'a> Display for ProcessorTraceRow<'a> {
 pub(crate) mod tests {
     use ndarray::Array2;
     use proptest::collection::vec;
-    use proptest::prelude::*;
     use proptest_arbitrary_interop::arb;
     use rand::thread_rng;
     use rand::Rng;
     use strum::IntoEnumIterator;
+    use test_strategy::proptest;
 
     use crate::error::InstructionError;
     use crate::error::InstructionError::DivisionByZero;
@@ -3267,25 +3267,17 @@ pub(crate) mod tests {
         transition_constraints_for_instruction_pop_n(0);
     }
 
-    proptest! {
-        #![proptest_config(ProptestConfig::with_cases(20))]
-        #[test]
-        fn transition_constraints_for_instruction_pop_n_in_range(
-            n in 1..=5_usize,
-        ) {
-            transition_constraints_for_instruction_pop_n(n);
-        }
+    #[proptest(cases = 20)]
+    fn transition_constraints_for_instruction_pop_n_in_range(#[strategy(1..=5_usize)] n: usize) {
+        transition_constraints_for_instruction_pop_n(n);
     }
 
-    proptest! {
-        #![proptest_config(ProptestConfig::with_cases(20))]
-        #[test]
-        #[should_panic(expected = "at least 1, at most 5")]
-        fn transition_constraints_for_instruction_pop_n_too_large(
-            n in 6..OpStackElement::COUNT,
-        ) {
-            transition_constraints_for_instruction_pop_n(n);
-        }
+    #[proptest(cases = 20)]
+    #[should_panic(expected = "at least 1, at most 5")]
+    fn transition_constraints_for_instruction_pop_n_too_large(
+        #[strategy(6..OpStackElement::COUNT)] n: usize,
+    ) {
+        transition_constraints_for_instruction_pop_n(n);
     }
 
     fn transition_constraints_for_instruction_pop_n(n: usize) {
@@ -4013,35 +4005,31 @@ pub(crate) mod tests {
         }
     }
 
-    proptest! {
-        #[test]
-        #[should_panic(expected="[0, 15]")]
-        fn cannot_get_op_stack_column_for_out_of_range_index(
-            index in OpStackElement::COUNT..,
-        ) {
-            let _ = ProcessorTable::op_stack_column_by_index(index);
-        }
+    #[proptest]
+    #[should_panic(expected = "[0, 15]")]
+    fn cannot_get_op_stack_column_for_out_of_range_index(
+        #[strategy(OpStackElement::COUNT..)] index: usize,
+    ) {
+        let _ = ProcessorTable::op_stack_column_by_index(index);
     }
 
-    proptest! {
-        #[test]
-        fn constructing_factor_for_op_stack_table_running_product_never_panics(
-            has_previous_row: bool,
-            previous_row in vec(arb::<BFieldElement>(), BASE_WIDTH),
-            current_row in vec(arb::<BFieldElement>(), BASE_WIDTH),
-            challenges in arb::<Challenges>(),
-        ) {
-            let previous_row = Array1::from(previous_row);
-            let current_row = Array1::from(current_row);
-            let maybe_previous_row = match has_previous_row {
-                true => Some(previous_row.view()),
-                false => None,
-            };
-            let _ = ProcessorTable::factor_for_op_stack_table_running_product(
-                maybe_previous_row,
-                current_row.view(),
-                &challenges
-            );
-        }
+    #[proptest]
+    fn constructing_factor_for_op_stack_table_running_product_never_panics(
+        has_previous_row: bool,
+        #[strategy(vec(arb(), BASE_WIDTH))] previous_row: Vec<BFieldElement>,
+        #[strategy(vec(arb(), BASE_WIDTH))] current_row: Vec<BFieldElement>,
+        #[strategy(arb())] challenges: Challenges,
+    ) {
+        let previous_row = Array1::from(previous_row);
+        let current_row = Array1::from(current_row);
+        let maybe_previous_row = match has_previous_row {
+            true => Some(previous_row.view()),
+            false => None,
+        };
+        let _ = ProcessorTable::factor_for_op_stack_table_running_product(
+            maybe_previous_row,
+            current_row.view(),
+            &challenges,
+        );
     }
 }

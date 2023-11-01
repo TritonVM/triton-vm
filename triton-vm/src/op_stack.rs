@@ -243,7 +243,6 @@ impl UnderflowIO {
     Deserialize,
     EnumCount,
     EnumIter,
-    Arbitrary,
 )]
 pub enum OpStackElement {
     #[default]
@@ -405,6 +404,7 @@ mod tests {
     use proptest::prelude::*;
     use proptest_arbitrary_interop::arb;
     use strum::IntoEnumIterator;
+    use test_strategy::proptest;
     use twenty_first::shared_math::b_field_element::BFieldElement;
 
     use super::*;
@@ -540,28 +540,26 @@ mod tests {
         assert_eq!(expected_sequence, sequence);
     }
 
-    proptest! {
-        #[test]
-        fn underflow_io_either_shrinks_stack_or_grows_stack(underflow_io in arb::<UnderflowIO>()) {
-            let shrinks_stack = underflow_io.shrinks_stack();
-            let grows_stack = underflow_io.grows_stack();
-            assert!(shrinks_stack ^ grows_stack);
-        }
+    #[proptest]
+    fn underflow_io_either_shrinks_stack_or_grows_stack(
+        #[strategy(arb())] underflow_io: UnderflowIO,
+    ) {
+        let shrinks_stack = underflow_io.shrinks_stack();
+        let grows_stack = underflow_io.grows_stack();
+        assert!(shrinks_stack ^ grows_stack);
     }
 
-    proptest! {
-        #[test]
-        fn non_empty_uniform_underflow_io_sequence_is_either_reading_or_writing(
-            sequence in vec(arb::<UnderflowIO>(), 1..OpStackElement::COUNT),
-        ) {
-            let is_reading_sequence = UnderflowIO::is_reading_sequence(&sequence);
-            let is_writing_sequence = UnderflowIO::is_writing_sequence(&sequence);
-            if UnderflowIO::is_uniform_sequence(&sequence) {
-                prop_assert!(is_reading_sequence ^ is_writing_sequence);
-            } else {
-                prop_assert!(!is_reading_sequence);
-                prop_assert!(!is_writing_sequence);
-            }
+    #[proptest]
+    fn non_empty_uniform_underflow_io_sequence_is_either_reading_or_writing(
+        #[strategy(vec(arb(), 1..OpStackElement::COUNT))] sequence: Vec<UnderflowIO>,
+    ) {
+        let is_reading_sequence = UnderflowIO::is_reading_sequence(&sequence);
+        let is_writing_sequence = UnderflowIO::is_writing_sequence(&sequence);
+        if UnderflowIO::is_uniform_sequence(&sequence) {
+            prop_assert!(is_reading_sequence ^ is_writing_sequence);
+        } else {
+            prop_assert!(!is_reading_sequence);
+            prop_assert!(!is_writing_sequence);
         }
     }
 }

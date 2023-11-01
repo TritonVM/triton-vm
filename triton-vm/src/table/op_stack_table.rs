@@ -1,6 +1,6 @@
+use arbitrary::Arbitrary;
 use std::cmp::Ordering;
 
-use arbitrary::Arbitrary;
 use itertools::Itertools;
 use ndarray::parallel::prelude::*;
 use ndarray::s;
@@ -406,6 +406,7 @@ pub(crate) mod tests {
     use proptest::collection::vec;
     use proptest::prelude::*;
     use proptest_arbitrary_interop::arb;
+    use test_strategy::proptest;
 
     use crate::op_stack::OpStackElement;
 
@@ -499,122 +500,112 @@ pub(crate) mod tests {
         true
     }
 
-    proptest! {
-        #[test]
-        fn op_stack_table_entry_either_shrinks_stack_or_grows_stack(
-            entry in arb::<OpStackTableEntry>()
-        ) {
-            let shrinks_stack = entry.shrinks_stack();
-            let grows_stack = entry.grows_stack();
-            assert!(shrinks_stack ^ grows_stack);
-        }
+    #[proptest]
+    fn op_stack_table_entry_either_shrinks_stack_or_grows_stack(
+        #[strategy(arb())] entry: OpStackTableEntry,
+    ) {
+        let shrinks_stack = entry.shrinks_stack();
+        let grows_stack = entry.grows_stack();
+        assert!(shrinks_stack ^ grows_stack);
     }
 
-    proptest! {
-        #[test]
-        fn op_stack_pointer_in_sequence_of_op_stack_table_entries(
-                clk: u32,
-                stack_pointer in OpStackElement::COUNT..1024,
-                base_field_elements in vec(arb::<BFieldElement>(), 0..OpStackElement::COUNT),
-                sequence_of_writes: bool,
-        ) {
-            let sequence_length = u64::try_from(base_field_elements.len()).unwrap();
-            let stack_pointer = u64::try_from(stack_pointer).unwrap();
+    #[proptest]
+    fn op_stack_pointer_in_sequence_of_op_stack_table_entries(
+        clk: u32,
+        #[strategy(OpStackElement::COUNT..1024)] stack_pointer: usize,
+        #[strategy(vec(arb(), ..OpStackElement::COUNT))] base_field_elements: Vec<BFieldElement>,
+        sequence_of_writes: bool,
+    ) {
+        let sequence_length = u64::try_from(base_field_elements.len()).unwrap();
+        let stack_pointer = u64::try_from(stack_pointer).unwrap();
 
-            let underflow_io_operation = match sequence_of_writes {
-                true => UnderflowIO::Write,
-                false => UnderflowIO::Read,
-            };
-            let underflow_io = base_field_elements
-                .into_iter()
-                .map(underflow_io_operation)
-                .collect();
+        let underflow_io_operation = match sequence_of_writes {
+            true => UnderflowIO::Write,
+            false => UnderflowIO::Read,
+        };
+        let underflow_io = base_field_elements
+            .into_iter()
+            .map(underflow_io_operation)
+            .collect();
 
-            let op_stack_pointer = stack_pointer.into();
-            let entries =
-                OpStackTableEntry::from_underflow_io_sequence(clk, op_stack_pointer, underflow_io);
-            let op_stack_pointers = entries
-                .iter()
-                .map(|entry| entry.op_stack_pointer.value())
-                .sorted()
-                .collect_vec();
+        let op_stack_pointer = stack_pointer.into();
+        let entries =
+            OpStackTableEntry::from_underflow_io_sequence(clk, op_stack_pointer, underflow_io);
+        let op_stack_pointers = entries
+            .iter()
+            .map(|entry| entry.op_stack_pointer.value())
+            .sorted()
+            .collect_vec();
 
-            let expected_stack_pointer_range = match sequence_of_writes {
-                true => stack_pointer - sequence_length..stack_pointer,
-                false => stack_pointer..stack_pointer + sequence_length,
-            };
-            let expected_op_stack_pointers = expected_stack_pointer_range.collect_vec();
-            prop_assert_eq!(expected_op_stack_pointers, op_stack_pointers);
-        }
+        let expected_stack_pointer_range = match sequence_of_writes {
+            true => stack_pointer - sequence_length..stack_pointer,
+            false => stack_pointer..stack_pointer + sequence_length,
+        };
+        let expected_op_stack_pointers = expected_stack_pointer_range.collect_vec();
+        prop_assert_eq!(expected_op_stack_pointers, op_stack_pointers);
     }
 
-    proptest! {
-        #[test]
-        fn clk_stays_same_in_sequence_of_op_stack_table_entries(
-                clk: u32,
-                stack_pointer in OpStackElement::COUNT..1024,
-                base_field_elements in vec(arb::<BFieldElement>(), 0..OpStackElement::COUNT),
-                sequence_of_writes: bool,
-        ) {
-            let underflow_io_operation = match sequence_of_writes {
-                true => UnderflowIO::Write,
-                false => UnderflowIO::Read,
-            };
-            let underflow_io = base_field_elements
-                .into_iter()
-                .map(underflow_io_operation)
-                .collect();
+    #[proptest]
+    fn clk_stays_same_in_sequence_of_op_stack_table_entries(
+        clk: u32,
+        #[strategy(OpStackElement::COUNT..1024)] stack_pointer: usize,
+        #[strategy(vec(arb(), ..OpStackElement::COUNT))] base_field_elements: Vec<BFieldElement>,
+        sequence_of_writes: bool,
+    ) {
+        let underflow_io_operation = match sequence_of_writes {
+            true => UnderflowIO::Write,
+            false => UnderflowIO::Read,
+        };
+        let underflow_io = base_field_elements
+            .into_iter()
+            .map(underflow_io_operation)
+            .collect();
 
-            let op_stack_pointer = u64::try_from(stack_pointer).unwrap().into();
-            let entries =
-                OpStackTableEntry::from_underflow_io_sequence(clk, op_stack_pointer, underflow_io);
-            let clk_values = entries.iter().map(|entry| entry.clk).collect_vec();
-            let all_clk_values_are_clk = clk_values.iter().all(|&c| c == clk);
-            prop_assert!(all_clk_values_are_clk);
-        }
+        let op_stack_pointer = u64::try_from(stack_pointer).unwrap().into();
+        let entries =
+            OpStackTableEntry::from_underflow_io_sequence(clk, op_stack_pointer, underflow_io);
+        let clk_values = entries.iter().map(|entry| entry.clk).collect_vec();
+        let all_clk_values_are_clk = clk_values.iter().all(|&c| c == clk);
+        prop_assert!(all_clk_values_are_clk);
     }
 
-    proptest! {
-        #[test]
-        fn compare_rows_with_unequal_stack_pointer_and_equal_clk(
-            stack_pointer_0: u64,
-            stack_pointer_1: u64,
-            clk: u64,
-        ) {
-            let mut row_0 = Array1::zeros(BASE_WIDTH);
-            row_0[StackPointer.base_table_index()] = stack_pointer_0.into();
-            row_0[CLK.base_table_index()] = clk.into();
+    #[proptest]
+    fn compare_rows_with_unequal_stack_pointer_and_equal_clk(
+        stack_pointer_0: u64,
+        stack_pointer_1: u64,
+        clk: u64,
+    ) {
+        let mut row_0 = Array1::zeros(BASE_WIDTH);
+        row_0[StackPointer.base_table_index()] = stack_pointer_0.into();
+        row_0[CLK.base_table_index()] = clk.into();
 
-            let mut row_1 = Array1::zeros(BASE_WIDTH);
-            row_1[StackPointer.base_table_index()] = stack_pointer_1.into();
-            row_1[CLK.base_table_index()] = clk.into();
+        let mut row_1 = Array1::zeros(BASE_WIDTH);
+        row_1[StackPointer.base_table_index()] = stack_pointer_1.into();
+        row_1[CLK.base_table_index()] = clk.into();
 
-            let stack_pointer_comparison = stack_pointer_0.cmp(&stack_pointer_1);
-            let row_comparison = OpStackTable::compare_rows(row_0.view(), row_1.view());
+        let stack_pointer_comparison = stack_pointer_0.cmp(&stack_pointer_1);
+        let row_comparison = OpStackTable::compare_rows(row_0.view(), row_1.view());
 
-            assert_eq!(stack_pointer_comparison, row_comparison);
-        }
+        assert_eq!(stack_pointer_comparison, row_comparison);
     }
 
-    proptest! {
-        #[test]
-        fn compare_rows_with_equal_stack_pointer_and_unequal_clk(
-            stack_pointer: u64,
-            clk_0: u64,
-            clk_1: u64,
-        ) {
-            let mut row_0 = Array1::zeros(BASE_WIDTH);
-            row_0[StackPointer.base_table_index()] = stack_pointer.into();
-            row_0[CLK.base_table_index()] = clk_0.into();
+    #[proptest]
+    fn compare_rows_with_equal_stack_pointer_and_unequal_clk(
+        stack_pointer: u64,
+        clk_0: u64,
+        clk_1: u64,
+    ) {
+        let mut row_0 = Array1::zeros(BASE_WIDTH);
+        row_0[StackPointer.base_table_index()] = stack_pointer.into();
+        row_0[CLK.base_table_index()] = clk_0.into();
 
-            let mut row_1 = Array1::zeros(BASE_WIDTH);
-            row_1[StackPointer.base_table_index()] = stack_pointer.into();
-            row_1[CLK.base_table_index()] = clk_1.into();
+        let mut row_1 = Array1::zeros(BASE_WIDTH);
+        row_1[StackPointer.base_table_index()] = stack_pointer.into();
+        row_1[CLK.base_table_index()] = clk_1.into();
 
-            let clk_comparison = clk_0.cmp(&clk_1);
-            let row_comparison = OpStackTable::compare_rows(row_0.view(), row_1.view());
+        let clk_comparison = clk_0.cmp(&clk_1);
+        let row_comparison = OpStackTable::compare_rows(row_0.view(), row_1.view());
 
-            assert_eq!(clk_comparison, row_comparison);
-        }
+        assert_eq!(clk_comparison, row_comparison);
     }
 }

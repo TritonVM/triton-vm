@@ -642,12 +642,11 @@ mod tests {
     use std::cmp::min;
 
     use itertools::Itertools;
-    use proptest::collection::vec;
     use proptest::prelude::*;
     use proptest_arbitrary_interop::arb;
-    use rand::prelude::IteratorRandom;
-    use rand::prelude::StdRng;
+    use rand::prelude::*;
     use rand_core::SeedableRng;
+    use test_strategy::proptest;
     use twenty_first::shared_math::b_field_element::BFieldElement;
     use twenty_first::shared_math::polynomial::Polynomial;
     use twenty_first::shared_math::tip5::Tip5;
@@ -659,14 +658,6 @@ mod tests {
     use crate::shared_tests::*;
 
     use super::*;
-
-    prop_compose! {
-        fn arbitrary_element_to_absorb()(
-            absorb_array in vec(arbitrary_bfield_element(), RATE)
-        ) -> [BFieldElement; RATE] {
-            absorb_array.try_into().unwrap()
-        }
-    }
 
     prop_compose! {
         fn arbitrary_fri()(
@@ -683,7 +674,7 @@ mod tests {
             log_2_expansion_factor in Just(log_2_expansion_factor),
             log_2_domain_length in log_2_expansion_factor..=18,
             num_colinearity_checks in 1_usize..=320,
-            offset in arbitrary_bfield_element(),
+            offset in arb(),
         ) -> Fri<Tip5> {
             let expansion_factor = (1 << log_2_expansion_factor) as usize;
             let sampled_domain_length = (1 << log_2_domain_length) as usize;
@@ -700,135 +691,85 @@ mod tests {
         }
     }
 
-    prop_compose! {
-        fn arbitrary_supported_polynomial(fri: &Fri::<Tip5>)(
-            degree in -1_i64..=fri.first_round_max_degree() as i64,
-        )(
-            polynomial in arbitrary_polynomial_of_degree(degree),
-        ) -> Polynomial<XFieldElement> {
-            polynomial
+    #[proptest]
+    fn sample_indices(
+        #[strategy(arbitrary_fri())] fri: Fri<Tip5>,
+        #[strategy(arb())] initial_absorb: [BFieldElement; RATE],
+    ) {
+        let mut sponge_state = Tip5::init();
+        Tip5::absorb(&mut sponge_state, &initial_absorb);
+
+        // todo: Figure out by how much to oversample for the given parameters.
+        let oversampling_summand = 1 << 13;
+        let num_indices_to_sample = fri.num_colinearity_checks + oversampling_summand;
+        let indices = Tip5::sample_indices(
+            &mut sponge_state,
+            fri.domain.length as u32,
+            num_indices_to_sample,
+        );
+        let num_unique_indices = indices.iter().unique().count();
+
+        let required_unique_indices = min(fri.domain.length, fri.num_colinearity_checks);
+        prop_assert!(num_unique_indices >= required_unique_indices);
+    }
+
+    #[proptest]
+    fn num_rounds_are_reasonable(#[strategy(arbitrary_fri())] fri: Fri<Tip5>) {
+        let expected_last_round_max_degree = fri.first_round_max_degree() >> fri.num_rounds();
+        prop_assert_eq!(expected_last_round_max_degree, fri.last_round_max_degree());
+        if fri.num_rounds() > 0 {
+            prop_assert!(fri.num_colinearity_checks <= expected_last_round_max_degree);
+            prop_assert!(expected_last_round_max_degree < 2 * fri.num_colinearity_checks);
         }
     }
 
-    prop_compose! {
-        fn arbitrary_unsupported_polynomial(fri: &Fri::<Tip5>)(
-            degree in 1 + fri.first_round_max_degree()..2 * (1 + fri.first_round_max_degree()),
-        )(
-            polynomial in arbitrary_polynomial_of_degree(degree as i64),
-        ) -> Polynomial<XFieldElement> {
-            polynomial
-        }
+    #[proptest(cases = 20)]
+    fn prove_and_verify_low_degree_of_twice_cubing_plus_one(
+        #[strategy(arbitrary_fri_supporting_degree(3))] fri: Fri<Tip5>,
+    ) {
+        let coefficients = [1, 0, 0, 2].map(|c| c.into()).to_vec();
+        let polynomial = Polynomial::new(coefficients);
+        let codeword = fri.domain.evaluate(&polynomial);
+
+        let mut proof_stream = ProofStream::new();
+        fri.prove(&codeword, &mut proof_stream);
+
+        let mut proof_stream = prepare_proof_stream_for_verification(proof_stream);
+        let verdict = fri.verify(&mut proof_stream, &mut None);
+        prop_assert!(verdict.is_ok());
     }
 
-    prop_compose! {
-        fn arbitrary_matching_fri_and_polynomial_pair()(
-            fri in arbitrary_fri(),
-        )(
-            polynomial in arbitrary_supported_polynomial(&fri),
-            fri in Just(fri),
-        ) -> (Fri::<Tip5>, Polynomial<XFieldElement>) {
-            (fri, polynomial)
-        }
+    #[proptest(cases = 50)]
+    fn prove_and_verify_low_degree_polynomial(
+        #[strategy(arbitrary_fri())] fri: Fri<Tip5>,
+        #[strategy(-1_i64..=#fri.first_round_max_degree() as i64)] _degree: i64,
+        #[strategy(arbitrary_polynomial_of_degree(#_degree))] polynomial: Polynomial<XFieldElement>,
+    ) {
+        debug_assert!(polynomial.degree() <= fri.first_round_max_degree() as isize);
+        let codeword = fri.domain.evaluate(&polynomial);
+        let mut proof_stream = ProofStream::new();
+        fri.prove(&codeword, &mut proof_stream);
+
+        let mut proof_stream = prepare_proof_stream_for_verification(proof_stream);
+        let verdict = fri.verify(&mut proof_stream, &mut None);
+        prop_assert!(verdict.is_ok());
     }
 
-    prop_compose! {
-        fn arbitrary_non_matching_fri_and_polynomial_pair()(
-            fri in arbitrary_fri(),
-        )(
-            polynomial in arbitrary_unsupported_polynomial(&fri),
-            fri in Just(fri),
-        ) -> (Fri::<Tip5>, Polynomial<XFieldElement>) {
-            (fri, polynomial)
-        }
-    }
+    #[proptest(cases = 50)]
+    fn prove_and_fail_to_verify_high_degree_polynomial(
+        #[strategy(arbitrary_fri())] fri: Fri<Tip5>,
+        #[strategy(Just((1 + #fri.first_round_max_degree()) as i64))] _too_high_degree: i64,
+        #[strategy(#_too_high_degree..2 * #_too_high_degree)] _degree: i64,
+        #[strategy(arbitrary_polynomial_of_degree(#_degree))] polynomial: Polynomial<XFieldElement>,
+    ) {
+        debug_assert!(polynomial.degree() > fri.first_round_max_degree() as isize);
+        let codeword = fri.domain.evaluate(&polynomial);
+        let mut proof_stream = ProofStream::new();
+        fri.prove(&codeword, &mut proof_stream);
 
-    proptest! {
-        #[test]
-        fn sample_indices(
-            fri in arbitrary_fri(),
-            initial_absorb in arbitrary_element_to_absorb(),
-        ) {
-            let mut sponge_state = Tip5::init();
-            Tip5::absorb(&mut sponge_state, &initial_absorb);
-
-            // todo: Figure out by how much to oversample for the given parameters.
-            let oversampling_summand = 1 << 13;
-            let num_indices_to_sample = fri.num_colinearity_checks + oversampling_summand;
-            let indices = Tip5::sample_indices(
-                &mut sponge_state,
-                fri.domain.length as u32,
-                num_indices_to_sample,
-            );
-            let num_unique_indices = indices.iter().unique().count();
-
-            let required_unique_indices = min(fri.domain.length, fri.num_colinearity_checks);
-            prop_assert!(num_unique_indices >= required_unique_indices);
-        }
-    }
-
-    proptest! {
-        #[test]
-        fn num_rounds_are_reasonable(fri in arbitrary_fri()) {
-            let expected_last_round_max_degree = fri.first_round_max_degree() >> fri.num_rounds();
-            prop_assert_eq!(expected_last_round_max_degree, fri.last_round_max_degree());
-            if fri.num_rounds() > 0 {
-                prop_assert!(fri.num_colinearity_checks <= expected_last_round_max_degree);
-                prop_assert!(expected_last_round_max_degree < 2 * fri.num_colinearity_checks);
-            }
-        }
-    }
-
-    proptest! {
-        #![proptest_config(ProptestConfig::with_cases(50))]
-        #[test]
-        fn prove_and_verify_low_degree_of_twice_cubing_plus_one(
-            fri in arbitrary_fri_supporting_degree(3)
-        ) {
-            let coefficients = [1, 0, 0, 2].map(|c| c.into()).to_vec();
-            let polynomial = Polynomial::new(coefficients);
-            let codeword = fri.domain.evaluate(&polynomial);
-
-            let mut proof_stream = ProofStream::new();
-            fri.prove(&codeword, &mut proof_stream);
-
-            let mut proof_stream = prepare_proof_stream_for_verification(proof_stream);
-            let verdict = fri.verify(&mut proof_stream, &mut None);
-            prop_assert!(verdict.is_ok());
-        }
-    }
-
-    proptest! {
-        #![proptest_config(ProptestConfig::with_cases(50))]
-        #[test]
-        fn prove_and_verify_low_degree_polynomial(
-            (fri, polynomial) in arbitrary_matching_fri_and_polynomial_pair(),
-        ) {
-            debug_assert!(polynomial.degree() <= fri.first_round_max_degree() as isize);
-            let codeword = fri.domain.evaluate(&polynomial);
-            let mut proof_stream = ProofStream::new();
-            fri.prove(&codeword, &mut proof_stream);
-
-            let mut proof_stream = prepare_proof_stream_for_verification(proof_stream);
-            let verdict = fri.verify(&mut proof_stream, &mut None);
-            prop_assert!(verdict.is_ok());
-        }
-    }
-
-    proptest! {
-        #![proptest_config(ProptestConfig::with_cases(50))]
-        #[test]
-        fn prove_and_fail_to_verify_high_degree_polynomial(
-            (fri, polynomial) in arbitrary_non_matching_fri_and_polynomial_pair(),
-        ) {
-            debug_assert!(polynomial.degree() > fri.first_round_max_degree() as isize);
-            let codeword = fri.domain.evaluate(&polynomial);
-            let mut proof_stream = ProofStream::new();
-            fri.prove(&codeword, &mut proof_stream);
-
-            let mut proof_stream = prepare_proof_stream_for_verification(proof_stream);
-            let verdict = fri.verify(&mut proof_stream, &mut None);
-            prop_assert!(verdict.is_err());
-        }
+        let mut proof_stream = prepare_proof_stream_for_verification(proof_stream);
+        let verdict = fri.verify(&mut proof_stream, &mut None);
+        prop_assert!(verdict.is_err());
     }
 
     #[test]
@@ -857,95 +798,77 @@ mod tests {
         Fri::<Tip5>::new(domain, expansion_factor, num_colinearity_checks);
     }
 
-    proptest! {
-        #[test]
-        #[should_panic]
-        fn expansion_factor_not_a_power_of_two_is_rejected(
-            expansion_factor in 2..=usize::MAX,
-            offset in arbitrary_bfield_element(),
-        ) {
-            if expansion_factor.is_power_of_two() {
-                return Ok(());
-            }
-            let domain = ArithmeticDomain::of_length(2 * expansion_factor).with_offset(offset);
-            let num_colinearity_checks = 1;
-            Fri::<Tip5>::new(
-                domain,
-                expansion_factor,
-                num_colinearity_checks,
-            );
+    #[proptest]
+    #[should_panic]
+    fn expansion_factor_not_a_power_of_two_is_rejected(
+        #[strategy(2_usize..)] expansion_factor: usize,
+        #[strategy(arb())] offset: BFieldElement,
+    ) {
+        if expansion_factor.is_power_of_two() {
+            return Ok(());
         }
+        let domain = ArithmeticDomain::of_length(2 * expansion_factor).with_offset(offset);
+        let num_colinearity_checks = 1;
+        Fri::<Tip5>::new(domain, expansion_factor, num_colinearity_checks);
     }
 
-    proptest! {
-        #[test]
-        #[should_panic]
-        fn domain_size_smaller_than_expansion_factor_is_rejected(
-            log_2_expansion_factor in 1..=8,
-            offset in arbitrary_bfield_element(),
-        ) {
-            let expansion_factor = (1 << log_2_expansion_factor) as usize;
-            let domain = ArithmeticDomain::of_length(expansion_factor - 1).with_offset(offset);
-            let num_colinearity_checks = 1;
-            Fri::<Tip5>::new(
-                domain,
-                expansion_factor,
-                num_colinearity_checks,
-            );
-        }
+    #[proptest]
+    #[should_panic]
+    fn domain_size_smaller_than_expansion_factor_is_rejected(
+        #[strategy(1_usize..=8)] log_2_expansion_factor: usize,
+        #[strategy(arb())] offset: BFieldElement,
+    ) {
+        let expansion_factor = (1 << log_2_expansion_factor) as usize;
+        let domain = ArithmeticDomain::of_length(expansion_factor - 1).with_offset(offset);
+        let num_colinearity_checks = 1;
+        Fri::<Tip5>::new(domain, expansion_factor, num_colinearity_checks);
     }
 
     // todo: add test fuzzing proof_stream
 
-    proptest! {
-        #![proptest_config(ProptestConfig::with_cases(50))]
-        #[test]
-        fn serialization(
-            (fri, polynomial) in arbitrary_matching_fri_and_polynomial_pair(),
-        ) {
-            let codeword = fri.domain.evaluate(&polynomial);
-            let mut prover_proof_stream = ProofStream::new();
-            fri.prove(&codeword, &mut prover_proof_stream);
+    #[proptest(cases = 50)]
+    fn serialization(
+        #[strategy(arbitrary_fri())] fri: Fri<Tip5>,
+        #[strategy(-1_i64..=#fri.first_round_max_degree() as i64)] _degree: i64,
+        #[strategy(arbitrary_polynomial_of_degree(#_degree))] polynomial: Polynomial<XFieldElement>,
+    ) {
+        let codeword = fri.domain.evaluate(&polynomial);
+        let mut prover_proof_stream = ProofStream::new();
+        fri.prove(&codeword, &mut prover_proof_stream);
 
-            let proof = (&prover_proof_stream).into();
-            let verifier_proof_stream = ProofStream::<Tip5>::try_from(&proof).unwrap();
+        let proof = (&prover_proof_stream).into();
+        let verifier_proof_stream = ProofStream::<Tip5>::try_from(&proof).unwrap();
 
-            let prover_items = prover_proof_stream.items.iter();
-            let verifier_items = verifier_proof_stream.items.iter();
-            for (prover_item, verifier_item) in prover_items.zip_eq(verifier_items) {
-                match (prover_item, verifier_item) {
-                    (MerkleRoot(p), MerkleRoot(v)) => prop_assert_eq!(p, v),
-                    (FriResponse(p), FriResponse(v)) => prop_assert_eq!(p, v),
-                    (FriCodeword(p), FriCodeword(v)) => prop_assert_eq!(p, v),
-                    _ => panic!(
-                        "Unknown items.\nProver: {prover_item:?}\nVerifier: {verifier_item:?}"
-                    ),
-                }
+        let prover_items = prover_proof_stream.items.iter();
+        let verifier_items = verifier_proof_stream.items.iter();
+        for (prover_item, verifier_item) in prover_items.zip_eq(verifier_items) {
+            match (prover_item, verifier_item) {
+                (MerkleRoot(p), MerkleRoot(v)) => prop_assert_eq!(p, v),
+                (FriResponse(p), FriResponse(v)) => prop_assert_eq!(p, v),
+                (FriCodeword(p), FriCodeword(v)) => prop_assert_eq!(p, v),
+                _ => panic!("Unknown items.\nProver: {prover_item:?}\nVerifier: {verifier_item:?}"),
             }
         }
     }
 
-    proptest! {
-        #![proptest_config(ProptestConfig::with_cases(50))]
-        #[test]
-        fn last_round_codeword_unequal_to_last_round_commitment_results_in_validation_failure(
-            fri in arbitrary_fri(),
-            polynomial in arbitrary_polynomial(),
-            rng_seed: u64
-        ) {
-            let codeword = fri.domain.evaluate(&polynomial);
-            let mut proof_stream = ProofStream::new();
-            fri.prove(&codeword, &mut proof_stream);
+    #[proptest(cases = 50)]
+    fn last_round_codeword_unequal_to_last_round_commitment_results_in_validation_failure(
+        #[strategy(arbitrary_fri())] fri: Fri<Tip5>,
+        #[strategy(arbitrary_polynomial())] polynomial: Polynomial<XFieldElement>,
+        rng_seed: u64,
+    ) {
+        let codeword = fri.domain.evaluate(&polynomial);
+        let mut proof_stream = ProofStream::new();
+        fri.prove(&codeword, &mut proof_stream);
 
-            let proof_stream = prepare_proof_stream_for_verification(proof_stream);
-            let mut proof_stream =
-                modify_last_round_codeword_in_proof_stream_using_seed(proof_stream, rng_seed);
+        let proof_stream = prepare_proof_stream_for_verification(proof_stream);
+        let mut proof_stream =
+            modify_last_round_codeword_in_proof_stream_using_seed(proof_stream, rng_seed);
 
-            let verdict = fri.verify(&mut proof_stream, &mut None);
-            let err = verdict.unwrap_err();
-            let err = err.downcast::<FriValidationError>().unwrap();
-            prop_assert_eq!(FriValidationError::BadMerkleRootForLastCodeword, err);
-        }
+        let verdict = fri.verify(&mut proof_stream, &mut None);
+        let err = verdict.unwrap_err();
+        let err = err.downcast::<FriValidationError>().unwrap();
+        prop_assert_eq!(FriValidationError::BadMerkleRootForLastCodeword, err);
     }
 
     #[must_use]
@@ -980,27 +903,24 @@ mod tests {
         }
     }
 
-    proptest! {
-        #![proptest_config(ProptestConfig::with_cases(50))]
-        #[test]
-        fn revealing_wrong_number_of_leaves_results_in_validation_failure(
-            fri in arbitrary_fri(),
-            polynomial in arbitrary_polynomial(),
-            rng_seed: u64
-        ) {
-            let codeword = fri.domain.evaluate(&polynomial);
-            let mut proof_stream = ProofStream::new();
-            fri.prove(&codeword, &mut proof_stream);
+    #[proptest(cases = 50)]
+    fn revealing_wrong_number_of_leaves_results_in_validation_failure(
+        #[strategy(arbitrary_fri())] fri: Fri<Tip5>,
+        #[strategy(arbitrary_polynomial())] polynomial: Polynomial<XFieldElement>,
+        rng_seed: u64,
+    ) {
+        let codeword = fri.domain.evaluate(&polynomial);
+        let mut proof_stream = ProofStream::new();
+        fri.prove(&codeword, &mut proof_stream);
 
-            let proof_stream = prepare_proof_stream_for_verification(proof_stream);
-            let mut proof_stream =
-                change_size_of_some_fri_response_in_proof_stream_using_seed(proof_stream, rng_seed);
+        let proof_stream = prepare_proof_stream_for_verification(proof_stream);
+        let mut proof_stream =
+            change_size_of_some_fri_response_in_proof_stream_using_seed(proof_stream, rng_seed);
 
-            let verdict = fri.verify(&mut proof_stream, &mut None);
-            let err = verdict.unwrap_err();
-            let err = err.downcast::<FriValidationError>().unwrap();
-            prop_assert_eq!(FriValidationError::IncorrectNumberOfRevealedLeaves, err);
-        }
+        let verdict = fri.verify(&mut proof_stream, &mut None);
+        let err = verdict.unwrap_err();
+        let err = err.downcast::<FriValidationError>().unwrap();
+        prop_assert_eq!(FriValidationError::IncorrectNumberOfRevealedLeaves, err);
     }
 
     #[must_use]
@@ -1030,33 +950,30 @@ mod tests {
         }
     }
 
-    proptest! {
-        #![proptest_config(ProptestConfig::with_cases(50))]
-        #[test]
-        fn incorrect_authentication_structure_results_in_validation_failure(
-            fri in arbitrary_fri(),
-            polynomial in arbitrary_polynomial(),
-            rng_seed: u64
-        ) {
-            let all_authentication_structures_are_trivial =
-                fri.num_colinearity_checks >= fri.domain.length;
-            if all_authentication_structures_are_trivial {
-                return Ok(());
-            }
-
-            let codeword = fri.domain.evaluate(&polynomial);
-            let mut proof_stream = ProofStream::new();
-            fri.prove(&codeword, &mut proof_stream);
-
-            let proof_stream = prepare_proof_stream_for_verification(proof_stream);
-            let mut proof_stream =
-                modify_some_auth_structure_in_proof_stream_using_seed(proof_stream, rng_seed);
-
-            let verdict = fri.verify(&mut proof_stream, &mut None);
-            let err = verdict.unwrap_err();
-            let err = err.downcast::<FriValidationError>().unwrap();
-            prop_assert_eq!(FriValidationError::BadMerkleAuthenticationPath, err);
+    #[proptest(cases = 50)]
+    fn incorrect_authentication_structure_results_in_validation_failure(
+        #[strategy(arbitrary_fri())] fri: Fri<Tip5>,
+        #[strategy(arbitrary_polynomial())] polynomial: Polynomial<XFieldElement>,
+        rng_seed: u64,
+    ) {
+        let all_authentication_structures_are_trivial =
+            fri.num_colinearity_checks >= fri.domain.length;
+        if all_authentication_structures_are_trivial {
+            return Ok(());
         }
+
+        let codeword = fri.domain.evaluate(&polynomial);
+        let mut proof_stream = ProofStream::new();
+        fri.prove(&codeword, &mut proof_stream);
+
+        let proof_stream = prepare_proof_stream_for_verification(proof_stream);
+        let mut proof_stream =
+            modify_some_auth_structure_in_proof_stream_using_seed(proof_stream, rng_seed);
+
+        let verdict = fri.verify(&mut proof_stream, &mut None);
+        let err = verdict.unwrap_err();
+        let err = err.downcast::<FriValidationError>().unwrap();
+        prop_assert_eq!(FriValidationError::BadMerkleAuthenticationPath, err);
     }
 
     #[must_use]
@@ -1089,13 +1006,11 @@ mod tests {
         }
     }
 
-    proptest! {
-        #[test]
-        fn verifying_arbitrary_proof_does_not_panic(
-            fri in arbitrary_fri(),
-            mut proof_stream in arb::<ProofStream<Tip5>>(),
-        ) {
-            let _ = fri.verify(&mut proof_stream, &mut None);
-        }
+    #[proptest]
+    fn verifying_arbitrary_proof_does_not_panic(
+        #[strategy(arbitrary_fri())] fri: Fri<Tip5>,
+        #[strategy(arb())] mut proof_stream: ProofStream<Tip5>,
+    ) {
+        let _ = fri.verify(&mut proof_stream, &mut None);
     }
 }

@@ -1109,13 +1109,13 @@ impl Stark {
 pub(crate) mod tests {
     use itertools::izip;
     use num_traits::Zero;
-    use proptest::prelude::*;
     use proptest_arbitrary_interop::arb;
     use rand::prelude::ThreadRng;
     use rand::thread_rng;
     use rand::Rng;
     use rand_core::RngCore;
     use strum::EnumCount;
+    use test_strategy::proptest;
     use twenty_first::shared_math::other::random_elements;
 
     use crate::example_programs::*;
@@ -2004,15 +2004,13 @@ pub(crate) mod tests {
         println!("{report}");
     }
 
-    proptest! {
-        #[test]
-        fn verifying_arbitrary_proof_does_not_panic(
-            parameters in arb::<StarkParameters>(),
-            claim in arb::<Claim>(),
-            proof in arb::<Proof>(),
-        ) {
-            let _ = Stark::verify(parameters, &claim, &proof, &mut None);
-        }
+    #[proptest]
+    fn verifying_arbitrary_proof_does_not_panic(
+        #[strategy(arb())] parameters: StarkParameters,
+        #[strategy(arb())] claim: Claim,
+        #[strategy(arb())] proof: Proof,
+    ) {
+        let _ = Stark::verify(parameters, &claim, &proof, &mut None);
     }
 
     #[test]

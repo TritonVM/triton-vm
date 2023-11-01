@@ -64,6 +64,7 @@ impl Error for InstructionError {}
 mod tests {
     use proptest::prelude::*;
     use proptest_arbitrary_interop::arb;
+    use test_strategy::proptest;
 
     use crate::instruction::AnInstruction::*;
     use crate::instruction::LabelledInstruction;
@@ -129,46 +130,42 @@ mod tests {
         program.run([].into(), [].into()).unwrap();
     }
 
-    proptest! {
-        #[test]
-        fn assert_unequal_vec(
-            test_vector in arb::<[BFieldElement; DIGEST_LENGTH]>(),
-            disturbance_index in 0..DIGEST_LENGTH,
-            random_element in arb::<BFieldElement>(),
-        ) {
-            let mut disturbed_vector = test_vector;
-            disturbed_vector[disturbance_index] = random_element;
+    #[proptest]
+    fn assert_unequal_vec(
+        #[strategy(arb())] test_vector: [BFieldElement; DIGEST_LENGTH],
+        #[strategy(0..DIGEST_LENGTH)] disturbance_index: usize,
+        #[strategy(arb())]
+        #[filter(#test_vector[#disturbance_index] != #random_element)]
+        random_element: BFieldElement,
+    ) {
+        let mut disturbed_vector = test_vector;
+        disturbed_vector[disturbance_index] = random_element;
 
-            if disturbed_vector == test_vector {
-                return Ok(());
-            }
+        let program = triton_program! {
+            push {test_vector[4]}
+            push {test_vector[3]}
+            push {test_vector[2]}
+            push {test_vector[1]}
+            push {test_vector[0]}
 
-            let program = triton_program!{
-                push {test_vector[4]}
-                push {test_vector[3]}
-                push {test_vector[2]}
-                push {test_vector[1]}
-                push {test_vector[0]}
+            push {disturbed_vector[4]}
+            push {disturbed_vector[3]}
+            push {disturbed_vector[2]}
+            push {disturbed_vector[1]}
+            push {disturbed_vector[0]}
 
-                push {disturbed_vector[4]}
-                push {disturbed_vector[3]}
-                push {disturbed_vector[2]}
-                push {disturbed_vector[1]}
-                push {disturbed_vector[0]}
+            assert_vector
+            halt
+        };
 
-                assert_vector
-                halt
-            };
+        let err = program.run([].into(), [].into()).unwrap_err();
 
-            let err = program.run([].into(), [].into()).unwrap_err();
-
-            let err = err.downcast::<InstructionError>().unwrap();
-            let VectorAssertionFailed(_, _, index, _, _) = err else {
-                panic!("VM panicked with unexpected error {err}.")
-            };
-            let index: usize = index.into();
-            prop_assert_eq!(disturbance_index, index);
-        }
+        let err = err.downcast::<InstructionError>().unwrap();
+        let VectorAssertionFailed(_, _, index, _, _) = err else {
+            panic!("VM panicked with unexpected error {err}.")
+        };
+        let index: usize = index.into();
+        prop_assert_eq!(disturbance_index, index);
     }
 
     #[test]
