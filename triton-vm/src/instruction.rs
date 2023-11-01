@@ -98,7 +98,7 @@ pub fn stringify_instructions(instructions: &[LabelledInstruction]) -> String {
 )]
 pub enum AnInstruction<Dest: PartialEq + Default> {
     // OpStack manipulation
-    Pop,
+    Pop(OpStackElement),
     Push(BFieldElement),
     Divine,
     Dup(OpStackElement),
@@ -156,30 +156,30 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
     /// Assign a unique positive integer to each `Instruction`.
     pub const fn opcode(&self) -> u32 {
         match self {
-            Pop => 2,
+            Pop(_) => 3,
             Push(_) => 1,
             Divine => 8,
             Dup(_) => 9,
             Swap(_) => 17,
             Nop => 16,
-            Skiz => 10,
+            Skiz => 2,
             Call(_) => 25,
             Return => 24,
             Recurse => 32,
-            Assert => 18,
+            Assert => 10,
             Halt => 0,
             ReadMem => 40,
-            WriteMem => 26,
-            Hash => 34,
+            WriteMem => 18,
+            Hash => 26,
             DivineSibling => 48,
             AssertVector => 56,
             SpongeInit => 64,
             SpongeAbsorb => 72,
             SpongeSqueeze => 80,
-            Add => 42,
-            Mul => 50,
+            Add => 34,
+            Mul => 42,
             Invert => 88,
-            Eq => 58,
+            Eq => 50,
             Split => 4,
             Lt => 6,
             And => 14,
@@ -191,15 +191,15 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
             XxAdd => 96,
             XxMul => 104,
             XInvert => 112,
-            XbMul => 66,
+            XbMul => 58,
             ReadIo => 120,
-            WriteIo => 74,
+            WriteIo => 66,
         }
     }
 
     pub(crate) const fn name(&self) -> &'static str {
         match self {
-            Pop => "pop",
+            Pop(_) => "pop",
             Push(_) => "push",
             Divine => "divine",
             Dup(_) => "dup",
@@ -245,7 +245,7 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
     }
 
     pub fn size(&self) -> usize {
-        match matches!(self, Push(_) | Dup(_) | Swap(_) | Call(_)) {
+        match matches!(self, Pop(_) | Push(_) | Dup(_) | Swap(_) | Call(_)) {
             true => 2,
             false => 1,
         }
@@ -265,7 +265,7 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
         NewDest: PartialEq + Default,
     {
         match self {
-            Pop => Pop,
+            Pop(x) => Pop(*x),
             Push(x) => Push(*x),
             Divine => Divine,
             Dup(x) => Dup(*x),
@@ -320,7 +320,7 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
 
     pub const fn op_stack_size_influence(&self) -> i32 {
         match self {
-            Pop => -1,
+            Pop(n) => -(n.index() as i32),
             Push(_) => 1,
             Divine => 1,
             Dup(_) => 1,
@@ -368,6 +368,14 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
             Split | Lt | And | Xor | Log2Floor | Pow | DivMod | PopCount
         )
     }
+
+    pub fn has_illegal_argument(&self) -> bool {
+        match self {
+            Pop(st) => *st < ST1 || ST5 < *st,
+            Swap(ST0) => true,
+            _ => false,
+        }
+    }
 }
 
 impl<Dest: Display + PartialEq + Default> Display for AnInstruction<Dest> {
@@ -375,7 +383,7 @@ impl<Dest: Display + PartialEq + Default> Display for AnInstruction<Dest> {
         write!(f, "{}", self.name())?;
         match self {
             Push(arg) => write!(f, " {arg}"),
-            Dup(arg) | Swap(arg) => write!(f, " {arg}"),
+            Pop(arg) | Dup(arg) | Swap(arg) => write!(f, " {arg}"),
             Call(arg) => write!(f, " {arg}"),
             _ => Ok(()),
         }
@@ -387,7 +395,7 @@ impl Instruction {
     pub fn arg(&self) -> Option<BFieldElement> {
         match self {
             Push(arg) | Call(arg) => Some(*arg),
-            Dup(arg) | Swap(arg) => Some(arg.into()),
+            Pop(arg) | Dup(arg) | Swap(arg) => Some(arg.into()),
             _ => None,
         }
     }
@@ -402,21 +410,26 @@ impl Instruction {
     /// if the argument is out of range.
     #[must_use]
     pub fn change_arg(&self, new_arg: BFieldElement) -> Option<Self> {
-        let maybe_ord_16 = new_arg.value().try_into();
-        match self {
+        let instruction_with_infallible_substitution = match self {
             Push(_) => Some(Push(new_arg)),
-            Dup(_) => match maybe_ord_16 {
-                Ok(ord_16) => Some(Dup(ord_16)),
-                Err(_) => None,
-            },
-            Swap(_) => match maybe_ord_16 {
-                Ok(ST0) => None,
-                Ok(ord_16) => Some(Swap(ord_16)),
-                Err(_) => None,
-            },
             Call(_) => Some(Call(new_arg)),
             _ => None,
+        };
+        if instruction_with_infallible_substitution.is_some() {
+            return instruction_with_infallible_substitution;
         }
+
+        let stack_element = new_arg.value().try_into().ok()?;
+        let new_instruction = match self {
+            Pop(_) => Some(Pop(stack_element)),
+            Dup(_) => Some(Dup(stack_element)),
+            Swap(_) => Some(Swap(stack_element)),
+            _ => None,
+        };
+        if new_instruction?.has_illegal_argument() {
+            return None;
+        };
+        new_instruction
     }
 }
 
@@ -460,7 +473,7 @@ impl TryFrom<BFieldElement> for Instruction {
 
 const fn all_instructions_without_args() -> [AnInstruction<BFieldElement>; Instruction::COUNT] {
     [
-        Pop,
+        Pop(ST0),
         Push(BFIELD_ZERO),
         Divine,
         Dup(ST0),
@@ -566,7 +579,6 @@ impl TryFrom<usize> for InstructionBit {
 
 #[cfg(test)]
 mod tests {
-    use std::cmp::Ordering;
     use std::collections::HashMap;
 
     use itertools::Itertools;
@@ -613,13 +625,13 @@ mod tests {
 
     #[test]
     fn parse_push_pop() {
-        let program = triton_program!(push 1 push 1 add pop);
+        let program = triton_program!(push 1 push 1 add pop 2);
         let instructions = program.into_iter().collect_vec();
         let expected = vec![
             Push(BFieldElement::one()),
             Push(BFieldElement::one()),
             Add,
-            Pop,
+            Pop(ST2),
         ];
 
         assert_eq!(expected, instructions);
@@ -643,7 +655,7 @@ mod tests {
         for instruction in ALL_INSTRUCTIONS {
             for instruction_bit in InstructionBit::iter() {
                 let ib_value = instruction.ib(instruction_bit);
-                assert!(ib_value.is_zero() || ib_value.is_one(),);
+                assert!(ib_value.is_zero() ^ ib_value.is_one());
             }
         }
     }
@@ -674,7 +686,7 @@ mod tests {
         let _push = Instruction::try_from(1_usize).unwrap();
         let _dup = Instruction::try_from(9_u64).unwrap();
         let _swap = Instruction::try_from(17_u32).unwrap();
-        let _pop = Instruction::try_from(2_usize).unwrap();
+        let _pop = Instruction::try_from(3_usize).unwrap();
     }
 
     #[test]
@@ -684,14 +696,18 @@ mod tests {
         let swap = Swap(ST0).change_arg(1337_u64.into());
         let swap_0 = Swap(ST0).change_arg(0_u64.into());
         let swap_1 = Swap(ST0).change_arg(1_u64.into());
-        let pop = Pop.change_arg(7_u64.into());
+        let pop_0 = Pop(ST8).change_arg(0_u64.into());
+        let pop_2 = Pop(ST0).change_arg(2_u64.into());
+        let nop = Nop.change_arg(7_u64.into());
 
         assert!(push.is_some());
         assert!(dup.is_none());
         assert!(swap.is_none());
         assert!(swap_0.is_none());
         assert!(swap_1.is_some());
-        assert!(pop.is_none());
+        assert!(pop_0.is_none());
+        assert!(pop_2.is_some());
+        assert!(nop.is_none());
     }
 
     #[test]
@@ -729,6 +745,7 @@ mod tests {
     fn opcodes_are_consistent_with_shrink_stack_indication_bit() {
         let shrink_stack_indicator_bit_mask = 2;
         for instruction in Instruction::iter() {
+            let instruction = replace_illegal_arguments_in_instruction(instruction);
             let opcode = instruction.opcode();
             println!("Testing instruction {instruction} with opcode {opcode}.");
             assert_eq!(
@@ -783,11 +800,12 @@ mod tests {
                 construct_test_program_for_instruction(test_instruction);
             let stack_size_after_test_instruction = terminal_op_stack_size_for_program(program);
 
-            let stack_size_difference =
-                stack_size_after_test_instruction.cmp(&stack_size_before_test_instruction);
-            assert_op_stack_size_changed_as_instruction_indicates(
-                test_instruction,
+            let stack_size_difference = (stack_size_after_test_instruction as i32)
+                - (stack_size_before_test_instruction as i32);
+            assert_eq!(
+                test_instruction.op_stack_size_influence(),
                 stack_size_difference,
+                "{test_instruction}"
             );
         }
     }
@@ -796,6 +814,7 @@ mod tests {
         instruction: AnInstruction<BFieldElement>,
     ) -> AnInstruction<BFieldElement> {
         match instruction {
+            Pop(ST0) => Pop(ST3),
             Swap(ST0) => Swap(ST1),
             _ => instruction,
         }
@@ -805,7 +824,7 @@ mod tests {
         instruction: AnInstruction<BFieldElement>,
     ) -> (Program, usize) {
         match instruction_requires_jump_stack_setup(instruction) {
-            true => program_with_jump_stack_setup_for_instruction(),
+            true => program_with_jump_stack_setup(),
             false => program_without_jump_stack_setup_for_instruction(instruction),
         }
     }
@@ -814,7 +833,7 @@ mod tests {
         matches!(instruction, Call(_) | Return | Recurse)
     }
 
-    fn program_with_jump_stack_setup_for_instruction() -> (Program, usize) {
+    fn program_with_jump_stack_setup() -> (Program, usize) {
         let program = test_program_for_call_recurse_return().program;
         let stack_size = NUM_OP_STACK_REGISTERS;
         (program, stack_size)
@@ -842,27 +861,6 @@ mod tests {
             .debug_terminal_state(public_input, non_determinism, None, None)
             .unwrap();
         terminal_state.op_stack.stack.len()
-    }
-
-    fn assert_op_stack_size_changed_as_instruction_indicates(
-        test_instruction: AnInstruction<BFieldElement>,
-        stack_size_difference: Ordering,
-    ) {
-        assert_eq!(
-            stack_size_difference == Ordering::Less,
-            test_instruction.shrinks_op_stack(),
-            "{test_instruction}"
-        );
-        assert_eq!(
-            stack_size_difference == Ordering::Equal,
-            !test_instruction.changes_op_stack_size(),
-            "{test_instruction}"
-        );
-        assert_eq!(
-            stack_size_difference == Ordering::Greater,
-            test_instruction.grows_op_stack(),
-            "{test_instruction}"
-        );
     }
 
     #[test]

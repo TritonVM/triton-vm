@@ -12,6 +12,7 @@ use ndarray::Array1;
 use num_traits::One;
 use num_traits::Zero;
 use twenty_first::shared_math::b_field_element::BFieldElement;
+use twenty_first::shared_math::b_field_element::BFIELD_ZERO;
 use twenty_first::shared_math::digest::Digest;
 use twenty_first::shared_math::tip5;
 use twenty_first::shared_math::tip5::*;
@@ -72,7 +73,7 @@ pub struct VMState<'pgm> {
     pub instruction_pointer: usize,
 
     /// The instruction that was executed last
-    pub previous_instruction: BFieldElement,
+    pub previous_instruction: Option<Instruction>,
 
     /// RAM pointer
     pub ram_pointer: u64,
@@ -142,7 +143,7 @@ impl<'pgm> VMState<'pgm> {
         };
 
         match current_instruction {
-            Dup(arg) | Swap(arg) => {
+            Pop(arg) | Dup(arg) | Swap(arg) => {
                 let arg_val: u64 = arg.into();
                 hvs[0] = BFieldElement::new(arg_val % 2);
                 hvs[1] = BFieldElement::new((arg_val >> 1) % 2);
@@ -195,11 +196,11 @@ impl<'pgm> VMState<'pgm> {
     pub fn step(&mut self) -> Result<Vec<CoProcessorCall>> {
         // trying to read past the end of the program doesn't change the previous instruction
         if let Ok(instruction) = self.current_instruction() {
-            self.previous_instruction = instruction.opcode_b();
+            self.previous_instruction = Some(instruction);
         }
 
         let co_processor_calls = match self.current_instruction()? {
-            Pop => self.pop()?,
+            Pop(n) => self.pop(n)?,
             Push(field_element) => self.push(field_element),
             Divine => self.divine()?,
             Dup(stack_element) => self.dup(stack_element),
@@ -262,12 +263,20 @@ impl<'pgm> VMState<'pgm> {
             .collect()
     }
 
-    fn pop(&mut self) -> Result<Vec<CoProcessorCall>> {
-        let (_, underflow_io) = self.op_stack.pop()?;
+    fn pop(&mut self, n: OpStackElement) -> Result<Vec<CoProcessorCall>> {
+        if Instruction::Pop(n).has_illegal_argument() {
+            bail!(IllegalPop(n.into()));
+        }
 
-        let op_stack_calls = self.underflow_io_sequence_to_co_processor_calls(vec![underflow_io]);
+        let mut all_underflow_io = vec![];
+        for _ in 0..n.into() {
+            let (_, underflow_io) = self.op_stack.pop()?;
+            all_underflow_io.push(underflow_io);
+        }
 
-        self.instruction_pointer += 1;
+        let op_stack_calls = self.underflow_io_sequence_to_co_processor_calls(all_underflow_io);
+
+        self.instruction_pointer += 2;
         Ok(op_stack_calls)
     }
 
@@ -768,12 +777,16 @@ impl<'pgm> VMState<'pgm> {
         use ProcessorBaseTableColumn::*;
         let mut processor_row = Array1::zeros(processor_table::BASE_WIDTH);
 
+        let previous_instruction = match self.previous_instruction {
+            Some(instruction) => instruction.opcode_b(),
+            None => BFIELD_ZERO,
+        };
         let current_instruction = self.current_instruction().unwrap_or(Nop);
         let helper_variables = self.derive_helper_variables();
         let ram_pointer = self.ram_pointer.into();
 
         processor_row[CLK.base_table_index()] = (self.cycle_count as u64).into();
-        processor_row[PreviousInstruction.base_table_index()] = self.previous_instruction;
+        processor_row[PreviousInstruction.base_table_index()] = previous_instruction;
         processor_row[IP.base_table_index()] = (self.instruction_pointer as u32).into();
         processor_row[CI.base_table_index()] = current_instruction.opcode_b();
         processor_row[NIA.base_table_index()] = self.next_instruction_or_argument();
@@ -1077,9 +1090,9 @@ pub(crate) mod tests {
 
     pub(crate) fn test_program_for_push_pop_dup_swap_nop() -> ProgramAndInput {
         ProgramAndInput::without_input(triton_program!(
-            push 1 push 2 pop assert
+            push 1 push 2 pop 1 assert
             push 1 dup  0 assert assert
-            push 1 push 2 swap 1 assert pop
+            push 1 push 2 swap 1 assert pop 1
             nop nop nop halt
         ))
     }
@@ -1102,7 +1115,7 @@ pub(crate) mod tests {
         ProgramAndInput::without_input(triton_program!(
             push 2
             call label
-            pop halt
+            pop 1 halt
             label:
                 push -1 add dup 0
                 skiz
@@ -1113,7 +1126,7 @@ pub(crate) mod tests {
 
     pub(crate) fn test_program_for_write_mem_read_mem() -> ProgramAndInput {
         ProgramAndInput::without_input(
-            triton_program!(push 2 push 1 write_mem push 0 pop read_mem assert halt),
+            triton_program!(push 2 push 1 write_mem push 0 pop 1 read_mem assert halt),
         )
     }
 
@@ -1643,7 +1656,7 @@ pub(crate) mod tests {
             push {st0_u32} call is_u32 assert
             push {st0_not_u32} call is_u32 push 0 eq assert halt
             is_u32:
-                 split pop push 0 eq return
+                 split pop 1 push 0 eq return
         );
         ProgramAndInput::without_input(program)
     }
@@ -1653,22 +1666,20 @@ pub(crate) mod tests {
         let num_memory_accesses = rng.gen_range(10..50);
         let memory_addresses: Vec<BFieldElement> = random_elements(num_memory_accesses);
         let mut memory_values: Vec<BFieldElement> = random_elements(num_memory_accesses);
-        let mut source_code = String::new();
+        let mut instructions = vec![];
 
         // Read some memory before first write to ensure that the memory is initialized with 0s.
         // Not all addresses are read to have different access patterns:
         // - Some addresses are read before written to.
         // - Other addresses are written to before read.
         for memory_address in memory_addresses.iter().take(num_memory_accesses / 4) {
-            source_code.push_str(&format!(
-                "push {memory_address} read_mem push 0 eq assert pop "
-            ));
+            instructions.extend(triton_asm!(push {memory_address} read_mem push 0 eq assert pop 1));
         }
 
         // Write everything to RAM.
         for (memory_address, memory_value) in memory_addresses.iter().zip_eq(memory_values.iter()) {
-            source_code.push_str(&format!(
-                "push {memory_address} push {memory_value} write_mem pop "
+            instructions.extend(triton_asm!(
+                push {memory_address} push {memory_value} write_mem pop 1
             ));
         }
 
@@ -1681,8 +1692,8 @@ pub(crate) mod tests {
         for idx in reading_permutation {
             let memory_address = memory_addresses[idx];
             let memory_value = memory_values[idx];
-            source_code.push_str(&format!(
-                "push {memory_address} read_mem push {memory_value} eq assert pop "
+            instructions.extend(triton_asm!(
+                push {memory_address} read_mem push {memory_value} eq assert pop 1
             ));
         }
 
@@ -1696,8 +1707,8 @@ pub(crate) mod tests {
             let memory_address = memory_addresses[writing_permutation[idx]];
             let new_memory_value = rng.gen();
             memory_values[writing_permutation[idx]] = new_memory_value;
-            source_code.push_str(&format!(
-                "push {memory_address} push {new_memory_value} write_mem pop "
+            instructions.extend(triton_asm!(
+                push {memory_address} push {new_memory_value} write_mem pop 1
             ));
         }
 
@@ -1711,13 +1722,12 @@ pub(crate) mod tests {
         for idx in reading_permutation {
             let memory_address = memory_addresses[idx];
             let memory_value = memory_values[idx];
-            source_code.push_str(&format!(
-                "push {memory_address} read_mem push {memory_value} eq assert pop "
+            instructions.extend(triton_asm!(
+                push {memory_address} read_mem push {memory_value} eq assert pop 1
             ));
         }
 
-        source_code.push_str("halt");
-        let program = triton_program!({ source_code });
+        let program = triton_program! { { &instructions } halt };
         ProgramAndInput::without_input(program)
     }
 
@@ -1736,7 +1746,7 @@ pub(crate) mod tests {
         let program = triton_program!(
             push {st0} call is_u32 assert halt
             is_u32:
-                split pop push 0 eq return
+                split pop 1 push 0 eq return
         );
         let program_and_input = ProgramAndInput::without_input(program);
         let err = program_and_input.run().err();
@@ -2017,11 +2027,11 @@ pub(crate) mod tests {
     #[test]
     fn run_tvm_basic_ram_read_write() {
         let program = triton_program!(
-            push  5 push  6 write_mem pop
-            push 15 push 16 write_mem pop
-            push  5         read_mem  pop pop
-            push 15         read_mem  pop pop
-            push  5 push  7 write_mem pop
+            push  5 push  6 write_mem pop 1
+            push 15 push 16 write_mem pop 1
+            push  5         read_mem  pop 2
+            push 15         read_mem  pop 2
+            push  5 push  7 write_mem pop 1
             push 15         read_mem
             push  5         read_mem
             halt
@@ -2048,11 +2058,11 @@ pub(crate) mod tests {
             swap 1      // _ 0 5 | 0
             push 3      // _ 0 5 | 0 3
             swap 1      // _ 0 5 | 3 0
-            pop         // _ 0 5 | 3
+            pop 1       // _ 0 5 | 3
             write_mem   // _ 0 5 |
             read_mem    // _ 0 5 | 3
             swap 2      // _ 3 5 | 0
-            pop         // _ 3 5 |
+            pop 1       // _ 3 5 |
             read_mem    // _ 3 5 | 3
             halt
         );
@@ -2109,7 +2119,7 @@ pub(crate) mod tests {
             dup 3 push -1 mul dup 5 add mul // dy·(p2_x - p0_x)
             dup 3 dup 3 push -1 mul add     // dx = p0_x - p1_x
             invert mul add                  // compute result
-            swap 3 pop pop pop              // leave a clean stack
+            swap 3 pop 3                    // leave a clean stack
             write_io halt
         );
 

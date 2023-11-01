@@ -964,14 +964,16 @@ mod tests {
         let program = triton_program! {
             break push 1 push 2
             break break break break
-            pop pop hash halt
+            pop 2 hash halt
             break // no effect
         };
 
         assert!(program.is_breakpoint(0));
+        assert!(program.is_breakpoint(1));
         assert!(!program.is_breakpoint(2));
+        assert!(!program.is_breakpoint(3));
         assert!(program.is_breakpoint(4));
-        assert!(!program.is_breakpoint(5));
+        assert!(program.is_breakpoint(5));
         assert!(!program.is_breakpoint(6));
         assert!(!program.is_breakpoint(7));
 

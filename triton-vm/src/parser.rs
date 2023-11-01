@@ -211,7 +211,7 @@ fn breakpoint(breakpoint_s: &str) -> ParseResult<InstructionToken> {
 
 fn an_instruction(s: &str) -> ParseResult<AnInstruction<String>> {
     // OpStack manipulation
-    let pop = instruction("pop", Pop);
+    let pop = pop_instruction();
     let push = push_instruction();
     let divine = instruction("divine", Divine);
     let dup = dup_instruction();
@@ -312,6 +312,21 @@ fn instruction<'a>(
     }
 }
 
+fn pop_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>> {
+    move |s: &str| {
+        let (s, _) = token1("pop")(s)?; // require space after instruction name
+        let (s, stack_register) = stack_register(s)?;
+        let (s, _) = comment_or_whitespace1(s)?; // require space after field element
+
+        let instruction = Pop(stack_register);
+        if instruction.has_illegal_argument() {
+            return cut(context("illegal argument for instruction `pop`", fail))(s);
+        }
+
+        Ok((s, instruction))
+    }
+}
+
 fn push_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>> {
     move |s: &str| {
         let (s, _) = token1("push")(s)?; // require space after instruction name
@@ -338,11 +353,12 @@ fn swap_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>> {
         let (s, stack_register) = stack_register(s)?;
         let (s, _) = comment_or_whitespace1(s)?;
 
-        if stack_register == ST0 {
+        let instruction = Swap(stack_register);
+        if instruction.has_illegal_argument() {
             return cut(context("instruction `swap` cannot take argument `0`", fail))(s);
         }
 
-        Ok((s, Swap(stack_register)))
+        Ok((s, instruction))
     }
 }
 
@@ -608,7 +624,7 @@ pub(crate) mod tests {
     fn instruction_gen(labels: &mut Vec<String>) -> Vec<String> {
         let mut rng = thread_rng();
 
-        let difficult_instructions = vec!["push", "dup", "swap", "skiz", "call"];
+        let difficult_instructions = vec!["pop", "push", "dup", "swap", "skiz", "call"];
         let simple_instructions = ALL_INSTRUCTION_NAMES
             .into_iter()
             .filter(|name| !difficult_instructions.contains(name))
@@ -616,7 +632,7 @@ pub(crate) mod tests {
 
         let generators = [vec!["simple"], difficult_instructions].concat();
         // Test difficult instructions more frequently.
-        let weights = vec![simple_instructions.len(), 2, 6, 6, 2, 10];
+        let weights = vec![simple_instructions.len(), 2, 2, 6, 6, 2, 10];
 
         assert_eq!(
             generators.len(),
@@ -630,6 +646,11 @@ pub(crate) mod tests {
                 let index: usize = rng.gen_range(0..simple_instructions.len());
                 let instruction = simple_instructions[index];
                 vec![instruction.to_string()]
+            }
+
+            "pop" => {
+                let arg: usize = rng.gen_range(1..=5);
+                vec!["pop".to_string(), format!("{arg}")]
             }
 
             "push" => {
@@ -825,7 +846,7 @@ pub(crate) mod tests {
 
         // FIXME: Increase coverage of negative tests for duplicate labels.
         parse_program_neg_prop(NegativeTestCase {
-            input: "foo: pop foo: pop call foo",
+            input: "foo: pop 1 foo: pop 1 call foo",
             expected_error: "duplicate label",
             expected_error_count: 2,
             message: "labels cannot occur twice",
@@ -833,7 +854,7 @@ pub(crate) mod tests {
 
         // FIXME: Increase coverage of negative tests for missing labels.
         parse_program_neg_prop(NegativeTestCase {
-            input: "foo: pop call herp call derp",
+            input: "foo: pop 1 call herp call derp",
             expected_error: "missing label",
             expected_error_count: 2,
             message: "non-existent labels cannot be called",
@@ -868,6 +889,12 @@ pub(crate) mod tests {
 
     #[test]
     fn parse_program_nonexistent_instructions() {
+        parse_program_neg_prop(NegativeTestCase {
+            input: "pop 0",
+            expected_error: "illegal argument for instruction `pop`",
+            expected_error_count: 1,
+            message: "instruction `pop` cannot take argument `0`",
+        });
         parse_program_neg_prop(NegativeTestCase {
             input: "swap 0",
             expected_error: "instruction `swap` cannot take argument `0`",
@@ -1025,7 +1052,7 @@ pub(crate) mod tests {
     fn triton_instruction_macro_parses_simple_instructions() {
         assert_eq!(Instruction(Halt), triton_instr!(halt));
         assert_eq!(Instruction(Add), triton_instr!(add));
-        assert_eq!(Instruction(Pop), triton_instr!(pop));
+        assert_eq!(Instruction(Pop(ST3)), triton_instr!(pop 3));
     }
 
     #[test]
@@ -1090,7 +1117,7 @@ pub(crate) mod tests {
             hash\n\
             return\n\
             nop\n\
-            pop\n\
+            pop 1\n\
             bar:\n\
             divine\n\
             skiz\n\

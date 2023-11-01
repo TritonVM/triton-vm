@@ -100,11 +100,11 @@
 //!         push 17                     // 17
 //!         read_mem                    // 17 s₄
 //!         dup 0 mul                   // 17 s₄²
-//!         swap 1 pop                  // s₄²
+//!         swap 1 pop 1                // s₄²
 //!         push 42                     // s₄² 42
 //!         read_mem                    // s₄² 42 s₅
 //!         dup 0 mul                   // s₄² 42 s₅²
-//!         swap 1 pop                  // s₄² s₅²
+//!         swap 1 pop 1                // s₄² s₅²
 //!         add                         // s₄²+s₅²
 //!         return
 //! );
@@ -274,9 +274,11 @@ macro_rules! triton_program {
 /// # use triton_vm::instruction::LabelledInstruction;
 /// # use triton_vm::instruction::AnInstruction::Push;
 /// # use triton_vm::instruction::AnInstruction::Pop;
+/// # use triton_vm::op_stack::OpStackElement::ST1;
 /// let insert_me = triton_asm!(
-///     pop
-///     pop
+///     pop 1
+///     nop
+///     pop 1
 /// );
 /// let surrounding_code = triton_asm!(
 ///     push 0
@@ -285,10 +287,10 @@ macro_rules! triton_program {
 /// );
 /// # let zero = BFieldElement::new(0);
 /// # assert_eq!(LabelledInstruction::Instruction(Push(zero)), surrounding_code[0]);
-/// assert_eq!(LabelledInstruction::Instruction(Pop), surrounding_code[1]);
-/// assert_eq!(LabelledInstruction::Instruction(Pop), surrounding_code[2]);
+/// assert_eq!(LabelledInstruction::Instruction(Pop(ST1)), surrounding_code[1]);
+/// assert_eq!(LabelledInstruction::Instruction(Pop(ST1)), surrounding_code[3]);
 /// # let one = BFieldElement::new(1);
-/// # assert_eq!(LabelledInstruction::Instruction(Push(one)), surrounding_code[3]);
+/// # assert_eq!(LabelledInstruction::Instruction(Push(one)), surrounding_code[4]);
 ///```
 ///
 /// # Panics
@@ -333,6 +335,7 @@ macro_rules! triton_asm {
     };
 
     // repeated instructions
+    [pop $arg:literal; $num:expr] => { vec![ $crate::triton_instr!(pop $arg); $num ] };
     [push $arg:literal; $num:expr] => { vec![ $crate::triton_instr!(push $arg); $num ] };
     [dup $arg:literal; $num:expr] => { vec![ $crate::triton_instr!(dup $arg); $num ] };
     [swap $arg:literal; $num:expr] => { vec![ $crate::triton_instr!(swap $arg); $num ] };
@@ -363,6 +366,12 @@ macro_rules! triton_asm {
 /// [tasm]: https://triton-vm.org/spec/instructions.html
 #[macro_export]
 macro_rules! triton_instr {
+    (pop $arg:literal) => {{
+        assert!(1_u32 <= $arg && $arg <= 5, "`pop {}` is illegal.", $arg);
+        let argument: $crate::op_stack::OpStackElement = u32::try_into($arg).unwrap();
+        let instruction = $crate::instruction::AnInstruction::<String>::Pop(argument);
+        $crate::instruction::LabelledInstruction::Instruction(instruction)
+    }};
     (push $arg:expr) => {{
         let argument = $crate::BFieldElement::new($arg);
         let instruction = $crate::instruction::AnInstruction::<String>::Push(argument);
@@ -719,7 +728,7 @@ mod tests {
     fn nested_triton_asm_interpolation() {
         let triple_write = triton_asm![write_io; 3];
         let snippet_0 = triton_asm!(push 7 nop call my_label);
-        let snippet_1 = triton_asm!(pop pop halt my_label: push 8 {&triple_write});
+        let snippet_1 = triton_asm!(pop 2 halt my_label: push 8 {&triple_write});
         let source_code = triton_asm!(push 6 {&snippet_0} {&snippet_1} halt);
 
         let program = triton_program!({ &source_code });
@@ -727,5 +736,19 @@ mod tests {
 
         let expected_output = [8, 7, 6].map(BFieldElement::new).to_vec();
         assert_eq!(expected_output, public_output);
+    }
+
+    #[test]
+    fn triton_asm_interpolation_of_many_pops() {
+        let push_25 = triton_asm![push 0; 25];
+        let pop_25 = triton_asm![pop 5; 5];
+        let program = triton_program! { push 1 { &push_25 } { &pop_25 } assert halt };
+        let _ = program.run([].into(), [].into()).unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected = "`pop 0` is illegal.")]
+    fn parsing_pop_with_illegal_argument_fails() {
+        let _ = triton_instr!(pop 0);
     }
 }

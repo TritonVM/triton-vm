@@ -12,6 +12,7 @@ use num_traits::Zero;
 use serde_derive::Deserialize;
 use serde_derive::Serialize;
 use strum::EnumCount;
+use strum::EnumIter;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::digest::Digest;
 use twenty_first::shared_math::tip5::DIGEST_LENGTH;
@@ -228,7 +229,21 @@ impl UnderflowIO {
 
 /// Represents the [`OpStack`] registers directly accessible by Triton VM.
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, GetSize, Serialize, Deserialize, EnumCount,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Default,
+    GetSize,
+    Serialize,
+    Deserialize,
+    EnumCount,
+    EnumIter,
+    Arbitrary,
 )]
 pub enum OpStackElement {
     #[default]
@@ -250,16 +265,9 @@ pub enum OpStackElement {
     ST15,
 }
 
-impl Display for OpStackElement {
-    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
-        let stack_index = u32::from(self);
-        write!(f, "{stack_index}")
-    }
-}
-
-impl From<OpStackElement> for u32 {
-    fn from(stack_element: OpStackElement) -> Self {
-        match stack_element {
+impl OpStackElement {
+    pub const fn index(self) -> u32 {
+        match self {
             ST0 => 0,
             ST1 => 1,
             ST2 => 2,
@@ -280,9 +288,22 @@ impl From<OpStackElement> for u32 {
     }
 }
 
+impl Display for OpStackElement {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        let index = self.index();
+        write!(f, "{index}")
+    }
+}
+
+impl From<OpStackElement> for u32 {
+    fn from(stack_element: OpStackElement) -> Self {
+        stack_element.index()
+    }
+}
+
 impl From<&OpStackElement> for u32 {
-    fn from(stack_element: &OpStackElement) -> Self {
-        (*stack_element).into()
+    fn from(&stack_element: &OpStackElement) -> Self {
+        stack_element.into()
     }
 }
 
@@ -333,8 +354,28 @@ impl From<OpStackElement> for usize {
 }
 
 impl From<&OpStackElement> for usize {
-    fn from(stack_element: &OpStackElement) -> Self {
-        (*stack_element).into()
+    fn from(&stack_element: &OpStackElement) -> Self {
+        stack_element.into()
+    }
+}
+
+impl From<OpStackElement> for i32 {
+    fn from(stack_element: OpStackElement) -> Self {
+        u32::from(stack_element) as i32
+    }
+}
+
+impl From<&OpStackElement> for i32 {
+    fn from(&stack_element: &OpStackElement) -> Self {
+        stack_element.into()
+    }
+}
+
+impl TryFrom<i32> for OpStackElement {
+    type Error = anyhow::Error;
+
+    fn try_from(stack_index: i32) -> Result<Self> {
+        u32::try_from(stack_index)?.try_into()
     }
 }
 
@@ -353,8 +394,8 @@ impl From<OpStackElement> for BFieldElement {
 }
 
 impl From<&OpStackElement> for BFieldElement {
-    fn from(stack_element: &OpStackElement) -> Self {
-        (*stack_element).into()
+    fn from(&stack_element: &OpStackElement) -> Self {
+        stack_element.into()
     }
 }
 
@@ -363,6 +404,7 @@ mod tests {
     use proptest::collection::vec;
     use proptest::prelude::*;
     use proptest_arbitrary_interop::arb;
+    use strum::IntoEnumIterator;
     use twenty_first::shared_math::b_field_element::BFieldElement;
 
     use super::*;
@@ -440,6 +482,24 @@ mod tests {
         for _ in 0..way_too_long {
             let _ = op_stack.pop();
             let _ = op_stack.first_underflow_element();
+        }
+    }
+
+    #[test]
+    fn conversion_from_stack_element_to_u32_and_back_is_identity() {
+        for stack_element in OpStackElement::iter() {
+            let stack_index = u32::from(&stack_element);
+            let stack_element_again = OpStackElement::try_from(stack_index).unwrap();
+            assert_eq!(stack_element, stack_element_again);
+        }
+    }
+
+    #[test]
+    fn conversion_from_stack_element_to_i32_and_back_is_identity() {
+        for stack_element in OpStackElement::iter() {
+            let stack_index = i32::from(&stack_element);
+            let stack_element_again = OpStackElement::try_from(stack_index).unwrap();
+            assert_eq!(stack_element, stack_element_again);
         }
     }
 

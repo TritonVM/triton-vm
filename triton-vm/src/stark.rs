@@ -1218,11 +1218,11 @@ pub(crate) mod tests {
     #[test]
     fn print_ram_table_example_for_specification() {
         let program = triton_program!(
-            push  5 push  6 write_mem pop
-            push 15 push 16 write_mem pop
-            push  5 read_mem pop pop
-            push 15 read_mem pop pop
-            push  5 push  7 write_mem pop
+            push  5 push  6 write_mem pop 1
+            push 15 push 16 write_mem pop 1
+            push  5 read_mem pop 2
+            push 15 read_mem pop 2
+            push  5 push  7 write_mem pop 1
             push 15 read_mem
             push  5 read_mem
             halt
@@ -1300,9 +1300,9 @@ pub(crate) mod tests {
 
         let program = triton_program! {
             push 42 push 43 push 44 push 45 push 46 push 47 push 48
-            nop pop pop pop pop
+            nop pop 1 pop 2 pop 1
             push 77 swap 3 push 78 swap 3 push 79
-            pop pop pop pop pop pop
+            pop 1 pop 2 pop 3
             halt
         };
         let (_, _, master_base_table) =

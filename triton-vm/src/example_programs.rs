@@ -28,7 +28,7 @@ fn fibonacci_sequence() -> Program {
         call fib_loop
 
         // pop zero, write result
-        pop
+        pop 1
         write_io
         halt
 
@@ -69,8 +69,7 @@ fn greatest_common_divisor() -> Program {
         dup 1               // _ d n d n
         div_mod             // _ d n q r
         swap 2              // _ d r q n
-        pop                 // _ d r q
-        pop                 // _ d r
+        pop 2               // _ d r
         swap 1              // _ r d
         call loop_cond
 
@@ -105,7 +104,7 @@ fn program_with_many_u32_instructions() -> Program {
         lsb:
             push 2 swap 1 div_mod return
         is_u32:
-            split pop push 0 eq return
+            split pop 1 push 0 eq return
     )
 }
 
@@ -117,12 +116,12 @@ fn merkle_tree_authentication_path_verify() -> Program {
         read_io                                     // number of authentication paths to test
                                                     // stack: [num]
         mt_ap_verify:                               // proper program starts here
-        push 0 swap 1 write_mem pop                 // store number of APs at RAM address 0
+        push 0 swap 1 write_mem pop 1               // store number of APs at RAM address 0
                                                     // stack: []
         read_io read_io read_io read_io read_io     // read Merkle root
                                                     // stack: [r4 r3 r2 r1 r0]
         call check_aps
-        pop pop pop pop pop                         // leave clean stack: Merkle root
+        pop 5                                       // leave clean stack: Merkle root
                                                     // stack: []
         halt                                        // done – should be “return”
 
@@ -135,7 +134,7 @@ fn merkle_tree_authentication_path_verify() -> Program {
         push 0 eq                       // see if there are authentication paths left
                                         // stack: [* r4 r3 r2 r1 r0 0 num_left num_left==0]
         skiz return                     // return if no authentication paths left
-        push -1 add write_mem pop       // decrease number of authentication paths left to check
+        push -1 add write_mem pop 1     // decrease number of authentication paths left to check
                                         // stack: [* r4 r3 r2 r1 r0]
         call get_idx_and_leaf
                                         // stack: [* r4 r3 r2 r1 r0 idx l4 l3 l2 l1 l0]
@@ -171,7 +170,7 @@ fn merkle_tree_authentication_path_verify() -> Program {
         assert                                      // ensure the entire path was traversed
                                                     // stack: [* r4 r3 r2 r1 r0 d4 d3 d2 d1 d0]
         assert_vector                               // actually compare to root of tree
-        pop pop pop pop pop                         // clean up stack, leave only one root
+        pop 5                                       // clean up stack, leave only one root
         return
     )
 }
@@ -192,15 +191,16 @@ fn verify_sudoku() -> Program {
         // For mapping legal Sudoku digits to distinct primes. Helps with checking consistency of
         // rows, columns, and boxes.
         initialize_primes:
-            push 1 push  2 write_mem pop
-            push 2 push  3 write_mem pop
-            push 3 push  5 write_mem pop
-            push 4 push  7 write_mem pop
-            push 5 push 11 write_mem pop
-            push 6 push 13 write_mem pop
-            push 7 push 17 write_mem pop
-            push 8 push 19 write_mem pop
-            push 9 push 23 write_mem pop
+            push 1 push  2 write_mem
+            push 2 push  3 write_mem
+            push 3 push  5 write_mem
+            push 4 push  7 write_mem
+            push 5 push 11 write_mem
+            push 6 push 13 write_mem
+            push 7 push 17 write_mem
+            push 8 push 19 write_mem
+            push 9 push 23 write_mem
+            pop 5 pop 4
             return
 
         read_sudoku:
@@ -232,14 +232,14 @@ fn verify_sudoku() -> Program {
             read_io                       // _ d
             read_mem                      // _ d p
             swap 1                        // _ p d
-            pop                           // _ p
+            pop 1                         // _ p
             return
 
         initialize_flag:
             push 0
             push 1
             write_mem
-            pop
+            pop 1
             return
 
         write_sudoku_and_check_rows:      // row0 row1 row2 row3 row4 row5 row6 row7 row8
@@ -253,7 +253,7 @@ fn verify_sudoku() -> Program {
             call write_and_check_one_row  // row0 row1 72
             call write_and_check_one_row  // row0 81
             call write_and_check_one_row  // 90
-            pop                           // ⊥
+            pop 1                         // ⊥
             return
 
         write_and_check_one_row:          // s0 s1 s2 s3 s4 s5 s6 s7 s8 mem_addr
@@ -274,7 +274,7 @@ fn verify_sudoku() -> Program {
             push 0                        // (mem_addr+9) 0
             push 0                        // (mem_addr+9) 0 0
             write_mem                     // (mem_addr+9) 0
-            pop                           // (mem_addr+9)
+            pop 1                         // (mem_addr+9)
             return
 
         multiply_and_write:               // s mem_addr acc
@@ -320,7 +320,7 @@ fn verify_sudoku() -> Program {
             call get_column_element
             call get_column_element
             call get_column_element
-            pop
+            pop 1
             call check_9_numbers
             return
 
@@ -387,7 +387,7 @@ fn verify_sudoku() -> Program {
             add
             read_mem
             swap 1
-            pop
+            pop 1
             call check_9_numbers
             return
 
@@ -408,7 +408,7 @@ fn verify_sudoku() -> Program {
             push 0
             push 0
             write_mem
-            pop
+            pop 1
             return
     )
 }
@@ -427,55 +427,43 @@ pub(crate) fn calculate_new_mmr_peaks_from_append_with_safe_lists() -> Program {
         push 6
         push 02628975953172153832
         write_mem
-        pop
         push 10
         push 01807330184488272967
         write_mem
-        pop
         push 12
         push 06595477061838874830
         write_mem
-        pop
         push 1
         push 2
         write_mem
-        pop
         push 11
         push 10897391716490043893
         write_mem
-        pop
         push 7
         push 01838589939278841373
         write_mem
-        pop
         push 8
         push 05057320540678713304
         write_mem
-        pop
         push 4
         push 00880730500905369322
         write_mem
-        pop
         push 5
         push 06845409670928290394
         write_mem
-        pop
         push 3
         push 04594396536654736100
         write_mem
-        pop
         push 2
         push 64
         write_mem
-        pop
         push 9
         push 05415221245149797169
         write_mem
-        pop
         push 0
         push 323
         write_mem
-        pop
+        pop 5 pop 5 pop 3
 
         // Call the main function, followed by `halt`
             call tasm_mmr_calculate_new_peaks_from_append_safe
@@ -487,7 +475,7 @@ pub(crate) fn calculate_new_mmr_peaks_from_append_with_safe_lists() -> Program {
             tasm_mmr_calculate_new_peaks_from_append_safe:
                 dup 5 dup 5 dup 5 dup 5 dup 5 dup 5
                 call tasm_list_safe_u32_push_digest
-                pop pop pop pop pop
+                pop 5
                 // stack: _ old_leaf_count_hi old_leaf_count_lo *peaks
 
                 // Create auth_path return value (vector living in RAM)
@@ -506,8 +494,8 @@ pub(crate) fn calculate_new_mmr_peaks_from_append_with_safe_lists() -> Program {
                 call tasm_mmr_calculate_new_peaks_from_append_safe_while
                 // stack: _ old_leaf_count_hi old_leaf_count_lo *auth_path *peaks (rll = 0)
 
-                pop
-                swap 3 pop swap 1 pop
+                pop 1
+                swap 3 pop 1 swap 1 pop 1
                 // stack: _ *peaks *auth_path
 
                 return
@@ -562,7 +550,7 @@ pub(crate) fn calculate_new_mmr_peaks_from_append_with_safe_lists() -> Program {
             // Before: _ value_hi value_lo
             // After: _ (value + 1)_hi (value + 1)_lo
             tasm_arithmetic_u64_incr_carry:
-                pop
+                pop 1
                 push 1
                 add
                 dup 0
@@ -643,7 +631,7 @@ pub(crate) fn calculate_new_mmr_peaks_from_append_with_safe_lists() -> Program {
 
                 // stack : _  *list, address
 
-                pop
+                pop 1
                 // stack : _  *list
 
                 // Increase length indicator by one
@@ -657,7 +645,7 @@ pub(crate) fn calculate_new_mmr_peaks_from_append_with_safe_lists() -> Program {
                 write_mem
                 // stack : _  *list
 
-                pop
+                pop 1
                 // stack : _
 
                 return
@@ -710,7 +698,7 @@ pub(crate) fn calculate_new_mmr_peaks_from_append_with_safe_lists() -> Program {
                 return
 
             tasm_arithmetic_u64_decr_carry:
-                pop
+                pop 1
                 push -1
                 add
                 dup 0
@@ -734,7 +722,7 @@ pub(crate) fn calculate_new_mmr_peaks_from_append_with_safe_lists() -> Program {
                 // Stack: *list list_length list_length (*list + 1) capacity
 
                 swap 1
-                pop
+                pop 1
                 // Stack: *list list_length list_length capacity
 
                 lt
@@ -766,10 +754,10 @@ pub(crate) fn calculate_new_mmr_peaks_from_append_with_safe_lists() -> Program {
 
             tasm_arithmetic_u64_log_2_floor_then:
                 // value_hi != 0
-                // stack: // stack: _ value_lo value_hi 1
-                pop
+                // stack: _ value_lo value_hi 1
                 swap 1
-                pop
+                swap 2
+                pop 2
                 // stack: _ value_hi
 
                 log_2_floor
@@ -785,7 +773,7 @@ pub(crate) fn calculate_new_mmr_peaks_from_append_with_safe_lists() -> Program {
             tasm_arithmetic_u64_log_2_floor_else:
                 // value_hi == 0
                 // stack: _ value_lo value_hi
-                pop
+                pop 1
                 log_2_floor
                 return
 
@@ -844,7 +832,7 @@ pub(crate) fn calculate_new_mmr_peaks_from_append_with_safe_lists() -> Program {
 
                 // Stack: _  [elements], address_for_last_unread_element
 
-                pop
+                pop 1
                 // Stack: _  [elements]
 
                 return
@@ -924,9 +912,9 @@ pub(crate) fn calculate_new_mmr_peaks_from_append_with_safe_lists() -> Program {
 
                 swap 1                     // _ size *free_pointer *(next_addr + size) *next_addr
                 swap 3                     // _ *next_addr *free_pointer *(next_addr + size) size
-                pop                        // _ *next_addr *free_pointer *(next_addr + size)
+                pop 1                      // _ *next_addr *free_pointer *(next_addr + size)
                 write_mem
-                pop                        // _ next_addr
+                pop 1                      // _ next_addr
                 return
 
             // BEFORE: rhs_hi rhs_lo lhs_hi lhs_lo
