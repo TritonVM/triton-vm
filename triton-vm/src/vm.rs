@@ -1108,7 +1108,7 @@ pub(crate) mod tests {
 
     pub(crate) fn test_program_for_divine() -> ProgramAndInput {
         ProgramAndInput {
-            program: triton_program!(divine assert halt),
+            program: triton_program!(divine 1 assert halt),
             public_input: vec![],
             non_determinism: vec![1].into(),
         }
@@ -1389,7 +1389,7 @@ pub(crate) mod tests {
 
     pub(crate) fn test_program_for_eq() -> ProgramAndInput {
         ProgramAndInput {
-            program: triton_program!(read_io divine eq assert halt),
+            program: triton_program!(read_io divine 1 eq assert halt),
             public_input: vec![42],
             non_determinism: vec![42].into(),
         }
@@ -1400,7 +1400,7 @@ pub(crate) mod tests {
         let st0 = rng.next_u64() % BFieldElement::P;
 
         let program =
-            triton_program!(push {st0} dup 0 read_io eq assert dup 0 divine eq assert halt);
+            triton_program!(push {st0} dup 0 read_io eq assert dup 0 divine 1 eq assert halt);
         ProgramAndInput {
             program,
             public_input: vec![st0],

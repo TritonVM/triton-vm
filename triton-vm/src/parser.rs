@@ -1139,7 +1139,7 @@ pub(crate) mod tests {
             nop\n\
             pop 1\n\
             bar:\n\
-            divine\n\
+            divine 1\n\
             skiz\n\
             split\n\
             break\n\

@@ -91,9 +91,9 @@
 //!     halt
 //!
 //!     sum_of_squares_secret_in:
-//!         divine dup 0 mul            // s₁²
-//!         divine dup 0 mul add        // s₁²+s₂²
-//!         divine dup 0 mul add        // s₁²+s₂²+s₃²
+//!         divine 1 dup 0 mul            // s₁²
+//!         divine 1 dup 0 mul add        // s₁²+s₂²
+//!         divine 1 dup 0 mul add        // s₁²+s₂²+s₃²
 //!         return
 //!
 //!     sum_of_squares_ram:
@@ -540,7 +540,7 @@ mod tests {
     fn lockscript() {
         // Program proves the knowledge of a hash preimage
         let program = triton_program!(
-            divine divine divine divine divine
+            divine 5
             hash
             push 09456474867485907852
             push 12765666850723567758
