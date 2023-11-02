@@ -90,9 +90,9 @@ impl BFieldCodec for Program {
             }
             if instruction.has_arg() {
                 let arg = sequence[read_idx + 1];
-                instruction = instruction
-                    .change_arg(arg)
-                    .expect("Invalid argument {arg} for instruction {instruction} at index {idx}.");
+                instruction = instruction.change_arg(arg).ok_or(anyhow!(
+                    "Invalid argument {arg} for instruction {instruction} at index {read_idx}."
+                ))?;
             }
 
             instructions.extend(vec![instruction; instruction.size()]);
