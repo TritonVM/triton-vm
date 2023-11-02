@@ -157,7 +157,6 @@ fn merkle_tree_authentication_path_verify() -> Program {
         // stack after:  [* r4 r3 r2 r1 r0   1 d4 d3 d2 d1 d0]
         traverse_tree:
         dup 5 push 1 eq skiz return                 // break loop if node index is 1
-        push 0 push 0 push 0 push 0 push 0          // prepare for instruction `divine_sibling`
         divine_sibling hash recurse                 // move up one level in the Merkle tree
 
         // subroutine: compare digests

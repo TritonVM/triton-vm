@@ -159,7 +159,7 @@ impl<'pgm> VMState<'pgm> {
                 hvs[1..6].copy_from_slice(&decomposition);
             }
             DivineSibling => {
-                let node_index = self.op_stack.peek_at(ST10).value();
+                let node_index = self.op_stack.peek_at(ST5).value();
                 hvs[0] = BFieldElement::new(node_index % 2);
             }
             Split => {
@@ -486,7 +486,6 @@ impl<'pgm> VMState<'pgm> {
     }
 
     fn divine_sibling(&mut self) -> Result<Vec<CoProcessorCall>> {
-        let _st0_through_st4 = self.op_stack.pop_multiple::<{ DIGEST_LENGTH }>()?;
         let (known_digest, _) = self.op_stack.pop_multiple()?;
         let (node_index, _) = self.op_stack.pop_u32()?;
 
@@ -500,12 +499,15 @@ impl<'pgm> VMState<'pgm> {
         for &digest_element in right_digest.iter().rev() {
             let _ = self.op_stack.push(digest_element);
         }
+        let mut all_underflow_io = vec![];
         for &digest_element in left_digest.iter().rev() {
-            let _ = self.op_stack.push(digest_element);
+            let underflow_io = self.op_stack.push(digest_element);
+            all_underflow_io.push(underflow_io);
         }
+        let op_stack_calls = self.underflow_io_sequence_to_co_processor_calls(all_underflow_io);
 
         self.instruction_pointer += 1;
-        Ok(vec![])
+        Ok(op_stack_calls)
     }
 
     fn assert_vector(&mut self) -> Result<Vec<CoProcessorCall>> {
@@ -1155,24 +1157,17 @@ pub(crate) mod tests {
         }
     }
 
-    pub(crate) fn test_program_for_divine_sibling_noswitch() -> ProgramAndInput {
+    pub(crate) fn test_program_for_divine_sibling_no_switch() -> ProgramAndInput {
         let program = triton_program!(
-            push  3
-            push  4 push  2 push  2 push  2 push  1
-            push 17 push 18 push 19 push 20 push 21
+            push 3
+            push 4 push 2 push 2 push 2 push 1
             divine_sibling
 
-            push 0 eq assert
-            push 1 eq assert
-            push 2 eq assert
-            push 3 eq assert
-            push 4 eq assert
+            push 4 push 3 push 2 push 1 push 0
+            assert_vector pop 5 pop 5
 
-            push 1 eq assert
-            push 2 eq assert
-            push 2 eq assert
-            push 2 eq assert
-            push 4 eq assert
+            push 4 push 2 push 2 push 2 push 1
+            assert_vector pop 5 pop 5
 
             assert halt
         );
@@ -1189,22 +1184,15 @@ pub(crate) mod tests {
 
     pub(crate) fn test_program_for_divine_sibling_switch() -> ProgramAndInput {
         let program = triton_program!(
-            push  2
-            push  4 push  2 push  2 push  2 push  1
-            push 17 push 18 push 19 push 20 push 21
+            push 2
+            push 4 push 2 push 2 push 2 push 1
             divine_sibling
 
-            push 1 eq assert
-            push 2 eq assert
-            push 2 eq assert
-            push 2 eq assert
-            push 4 eq assert
+            push 4 push 2 push 2 push 2 push 1
+            assert_vector pop 5 pop 5
 
-            push 0 eq assert
-            push 1 eq assert
-            push 2 eq assert
-            push 3 eq assert
-            push 4 eq assert
+            push 4 push 3 push 2 push 1 push 0
+            assert_vector pop 5 pop 5
 
             assert halt
         );
@@ -1823,7 +1811,7 @@ pub(crate) mod tests {
             test_program_for_call_recurse_return(),
             test_program_for_write_mem_read_mem(),
             test_program_for_hash(),
-            test_program_for_divine_sibling_noswitch(),
+            test_program_for_divine_sibling_no_switch(),
             test_program_for_divine_sibling_switch(),
             test_program_for_assert_vector(),
             test_program_for_sponge_instructions(),

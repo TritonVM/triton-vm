@@ -338,7 +338,7 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
             ReadMem => 1,
             WriteMem => -1,
             Hash => -5,
-            DivineSibling => 0,
+            DivineSibling => 5,
             AssertVector => 0,
             SpongeInit => 0,
             SpongeAbsorb => 0,

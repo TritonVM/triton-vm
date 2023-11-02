@@ -1703,10 +1703,10 @@ impl ExtProcessorTable {
         .concat()
     }
 
-    /// Recall that in a Merkle tree, the indices of left (respectively right)
-    /// leafs have 0 (respectively 1) as their least significant bit. The first
-    /// two polynomials achieve that helper variable hv0 holds the result of
-    /// st10 mod 2. The second polynomial sets the new value of st10 to st10 div 2.
+    /// Recall that in a Merkle tree, the indices of left (respectively right) leafs have 0
+    /// (respectively 1) as their least significant bit. The first two polynomials achieve that
+    /// helper variable hv0 holds the result of st5 mod 2. The second polynomial sets the new value
+    /// of st10 to st5 div 2.
     fn instruction_divine_sibling(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
@@ -1719,44 +1719,49 @@ impl ExtProcessorTable {
             circuit_builder.input(NextBaseRow(col.master_base_table_index()))
         };
 
-        // Helper variable hv0 is either 0 or 1.
         let hv0_is_0_or_1 = curr_base_row(HV0) * (curr_base_row(HV0) - one());
 
-        // The 11th stack register is shifted by 1 bit to the right.
-        let st10_is_shifted_1_bit_right =
-            next_base_row(ST10) * constant(2) + curr_base_row(HV0) - curr_base_row(ST10);
+        let new_st10_is_previous_st5_div_2 =
+            next_base_row(ST10) * constant(2) + curr_base_row(HV0) - curr_base_row(ST5);
 
-        // The second pentuplet either stays where it is, or is moved to the top
-        let maybe_move_st5 = (one() - curr_base_row(HV0))
-            * (curr_base_row(ST5) - next_base_row(ST0))
-            + curr_base_row(HV0) * (curr_base_row(ST5) - next_base_row(ST5));
-        let maybe_move_st6 = (one() - curr_base_row(HV0))
-            * (curr_base_row(ST6) - next_base_row(ST1))
-            + curr_base_row(HV0) * (curr_base_row(ST6) - next_base_row(ST6));
-        let maybe_move_st7 = (one() - curr_base_row(HV0))
-            * (curr_base_row(ST7) - next_base_row(ST2))
-            + curr_base_row(HV0) * (curr_base_row(ST7) - next_base_row(ST7));
-        let maybe_move_st8 = (one() - curr_base_row(HV0))
-            * (curr_base_row(ST8) - next_base_row(ST3))
-            + curr_base_row(HV0) * (curr_base_row(ST8) - next_base_row(ST8));
-        let maybe_move_st9 = (one() - curr_base_row(HV0))
-            * (curr_base_row(ST9) - next_base_row(ST4))
-            + curr_base_row(HV0) * (curr_base_row(ST9) - next_base_row(ST9));
+        let maybe_move_st0 = (one() - curr_base_row(HV0))
+            * (next_base_row(ST0) - curr_base_row(ST0))
+            + curr_base_row(HV0) * (next_base_row(ST5) - curr_base_row(ST0));
+        let maybe_move_st1 = (one() - curr_base_row(HV0))
+            * (next_base_row(ST1) - curr_base_row(ST1))
+            + curr_base_row(HV0) * (next_base_row(ST6) - curr_base_row(ST1));
+        let maybe_move_st2 = (one() - curr_base_row(HV0))
+            * (next_base_row(ST2) - curr_base_row(ST2))
+            + curr_base_row(HV0) * (next_base_row(ST7) - curr_base_row(ST2));
+        let maybe_move_st3 = (one() - curr_base_row(HV0))
+            * (next_base_row(ST3) - curr_base_row(ST3))
+            + curr_base_row(HV0) * (next_base_row(ST8) - curr_base_row(ST3));
+        let maybe_move_st4 = (one() - curr_base_row(HV0))
+            * (next_base_row(ST4) - curr_base_row(ST4))
+            + curr_base_row(HV0) * (next_base_row(ST9) - curr_base_row(ST4));
 
-        let specific_constraints = vec![
+        let maybe_shift_known_digest_down_the_stack = vec![
             hv0_is_0_or_1,
-            st10_is_shifted_1_bit_right,
-            maybe_move_st5,
-            maybe_move_st6,
-            maybe_move_st7,
-            maybe_move_st8,
-            maybe_move_st9,
+            new_st10_is_previous_st5_div_2,
+            maybe_move_st0,
+            maybe_move_st1,
+            maybe_move_st2,
+            maybe_move_st3,
+            maybe_move_st4,
+        ];
+
+        let op_stack_grows_by_5_and_top_11_elements_unconstrained = vec![
+            next_base_row(ST11) - curr_base_row(ST6),
+            next_base_row(ST12) - curr_base_row(ST7),
+            next_base_row(ST13) - curr_base_row(ST8),
+            next_base_row(ST14) - curr_base_row(ST9),
+            next_base_row(ST15) - curr_base_row(ST10),
+            next_base_row(OpStackPointer) - curr_base_row(OpStackPointer) - constant(5),
+            Self::running_product_op_stack_accounts_for_growing_stack_by(circuit_builder, 5),
         ];
         [
-            specific_constraints,
-            Self::instruction_group_op_stack_remains_and_top_eleven_elements_unconstrained(
-                circuit_builder,
-            ),
+            maybe_shift_known_digest_down_the_stack,
+            op_stack_grows_by_5_and_top_11_elements_unconstrained,
             Self::instruction_group_step_1(circuit_builder),
             Self::instruction_group_keep_ram(circuit_builder),
         ]
@@ -3238,6 +3243,7 @@ pub(crate) mod tests {
     use rand::Rng;
     use strum::IntoEnumIterator;
     use test_strategy::proptest;
+    use twenty_first::shared_math::digest::Digest;
 
     use crate::error::InstructionError;
     use crate::error::InstructionError::DivisionByZero;
@@ -3250,6 +3256,7 @@ pub(crate) mod tests {
     use crate::table::master_table::*;
     use crate::triton_program;
     use crate::vm::NUM_HELPER_VARIABLE_REGISTERS;
+    use crate::NonDeterminism;
 
     use super::*;
 
@@ -3570,6 +3577,28 @@ pub(crate) mod tests {
             &test_rows,
             &[ST0, ST1, RAMP, RAMV],
             &[ST0, ST1, RAMP, RAMV],
+        );
+    }
+
+    #[test]
+    fn transition_constraints_for_instruction_divine_sibling() {
+        let programs = [
+            triton_program!(push 2 swap 5 divine_sibling halt),
+            triton_program!(push 3 swap 5 divine_sibling halt),
+        ];
+        let dummy_digest = Digest::new([1, 2, 3, 4, 5].map(BFieldElement::new));
+        let non_determinism = NonDeterminism::new(vec![]).with_digests(vec![dummy_digest]);
+        let programs_with_input = programs.map(|program| ProgramAndInput {
+            program,
+            public_input: vec![],
+            non_determinism: non_determinism.clone(),
+        });
+        let test_rows = programs_with_input.map(|p_w_i| test_row_from_program_with_input(p_w_i, 2));
+        test_constraints_for_rows_with_debug_info(
+            DivineSibling,
+            &test_rows,
+            &[ST0, ST1, ST2, ST3, ST4, ST5],
+            &[ST0, ST1, ST2, ST3, ST4, ST5, ST6, ST7, ST8, ST9, ST10],
         );
     }
 
