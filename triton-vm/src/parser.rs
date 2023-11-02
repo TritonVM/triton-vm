@@ -213,7 +213,7 @@ fn an_instruction(s: &str) -> ParseResult<AnInstruction<String>> {
     // OpStack manipulation
     let pop = pop_instruction();
     let push = push_instruction();
-    let divine = instruction("divine", Divine);
+    let divine = divine_instruction();
     let dup = dup_instruction();
     let swap = swap_instruction();
 
@@ -334,6 +334,21 @@ fn push_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>> {
         let (s, _) = comment_or_whitespace1(s)?; // require space after field element
 
         Ok((s, Push(elem)))
+    }
+}
+
+fn divine_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>> {
+    move |s: &str| {
+        let (s, _) = token1("divine")(s)?; // require space after instruction name
+        let (s, stack_register) = stack_register(s)?;
+        let (s, _) = comment_or_whitespace1(s)?;
+
+        let instruction = Divine(stack_register);
+        if instruction.has_illegal_argument() {
+            return cut(context("illegal argument for instruction `divine`", fail))(s);
+        }
+
+        Ok((s, instruction))
     }
 }
 
@@ -624,7 +639,7 @@ pub(crate) mod tests {
     fn instruction_gen(labels: &mut Vec<String>) -> Vec<String> {
         let mut rng = thread_rng();
 
-        let difficult_instructions = vec!["pop", "push", "dup", "swap", "skiz", "call"];
+        let difficult_instructions = vec!["pop", "push", "divine", "dup", "swap", "skiz", "call"];
         let simple_instructions = ALL_INSTRUCTION_NAMES
             .into_iter()
             .filter(|name| !difficult_instructions.contains(name))
@@ -632,7 +647,7 @@ pub(crate) mod tests {
 
         let generators = [vec!["simple"], difficult_instructions].concat();
         // Test difficult instructions more frequently.
-        let weights = vec![simple_instructions.len(), 2, 2, 6, 6, 2, 10];
+        let weights = vec![simple_instructions.len(), 2, 2, 2, 6, 6, 2, 10];
 
         assert_eq!(
             generators.len(),
@@ -657,6 +672,11 @@ pub(crate) mod tests {
                 let max: i128 = BFieldElement::MAX as i128;
                 let arg: i128 = rng.gen_range(-max..max);
                 vec!["push".to_string(), format!("{arg}")]
+            }
+
+            "divine" => {
+                let arg: usize = rng.gen_range(1..=5);
+                vec!["divine".to_string(), format!("{arg}")]
             }
 
             "dup" => {
@@ -1082,8 +1102,8 @@ pub(crate) mod tests {
         let expected_instructions = vec![Instruction(ReadIo); 15];
         assert_eq!(expected_instructions, instructions);
 
-        let instructions = triton_asm![divine; DIGEST_LENGTH];
-        let expected_instructions = vec![Instruction(Divine); DIGEST_LENGTH];
+        let instructions = triton_asm![divine 3; DIGEST_LENGTH];
+        let expected_instructions = vec![Instruction(Divine(ST3)); DIGEST_LENGTH];
         assert_eq!(expected_instructions, instructions);
     }
 

@@ -143,7 +143,7 @@ impl<'pgm> VMState<'pgm> {
         };
 
         match current_instruction {
-            Pop(arg) | Dup(arg) | Swap(arg) => {
+            Pop(arg) | Divine(arg) | Dup(arg) | Swap(arg) => {
                 let arg_val: u64 = arg.into();
                 hvs[0] = BFieldElement::new(arg_val % 2);
                 hvs[1] = BFieldElement::new((arg_val >> 1) % 2);
@@ -202,7 +202,7 @@ impl<'pgm> VMState<'pgm> {
         let co_processor_calls = match self.current_instruction()? {
             Pop(n) => self.pop(n)?,
             Push(field_element) => self.push(field_element),
-            Divine => self.divine()?,
+            Divine(n) => self.divine(n)?,
             Dup(stack_element) => self.dup(stack_element),
             Swap(stack_element) => self.swap(stack_element)?,
             Nop => self.nop(),
@@ -289,15 +289,24 @@ impl<'pgm> VMState<'pgm> {
         op_stack_calls
     }
 
-    fn divine(&mut self) -> Result<Vec<CoProcessorCall>> {
-        let element = self.secret_individual_tokens.pop_front().ok_or(anyhow!(
-            "Instruction `divine`: secret input buffer is empty."
-        ))?;
-        let underflow_io = self.op_stack.push(element);
+    fn divine(&mut self, n: OpStackElement) -> Result<Vec<CoProcessorCall>> {
+        if Instruction::Divine(n).has_illegal_argument() {
+            bail!(IllegalDivine(n.into()));
+        }
 
-        let op_stack_calls = self.underflow_io_sequence_to_co_processor_calls(vec![underflow_io]);
+        let mut all_underflow_io = vec![];
+        for i in 0..n.into() {
+            let maybe_element = self.secret_individual_tokens.pop_front();
+            let element = maybe_element.ok_or(anyhow!(
+                "Instruction `divine {n}`: secret input buffer is empty after {i}."
+            ))?;
+            let underflow_io = self.op_stack.push(element);
+            all_underflow_io.push(underflow_io);
+        }
 
-        self.instruction_pointer += 1;
+        let op_stack_calls = self.underflow_io_sequence_to_co_processor_calls(all_underflow_io);
+
+        self.instruction_pointer += 2;
         Ok(op_stack_calls)
     }
 

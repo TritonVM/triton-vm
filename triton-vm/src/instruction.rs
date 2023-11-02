@@ -100,7 +100,7 @@ pub enum AnInstruction<Dest: PartialEq + Default> {
     // OpStack manipulation
     Pop(OpStackElement),
     Push(BFieldElement),
-    Divine,
+    Divine(OpStackElement),
     Dup(OpStackElement),
     Swap(OpStackElement),
 
@@ -158,27 +158,27 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
         match self {
             Pop(_) => 3,
             Push(_) => 1,
-            Divine => 8,
-            Dup(_) => 9,
-            Swap(_) => 17,
-            Nop => 16,
+            Divine(_) => 9,
+            Dup(_) => 17,
+            Swap(_) => 25,
+            Nop => 8,
             Skiz => 2,
-            Call(_) => 25,
-            Return => 24,
-            Recurse => 32,
+            Call(_) => 33,
+            Return => 16,
+            Recurse => 24,
             Assert => 10,
             Halt => 0,
-            ReadMem => 40,
+            ReadMem => 32,
             WriteMem => 18,
             Hash => 26,
-            DivineSibling => 48,
-            AssertVector => 56,
-            SpongeInit => 64,
-            SpongeAbsorb => 72,
-            SpongeSqueeze => 80,
+            DivineSibling => 40,
+            AssertVector => 48,
+            SpongeInit => 56,
+            SpongeAbsorb => 64,
+            SpongeSqueeze => 72,
             Add => 34,
             Mul => 42,
-            Invert => 88,
+            Invert => 80,
             Eq => 50,
             Split => 4,
             Lt => 6,
@@ -188,11 +188,11 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
             Pow => 30,
             DivMod => 20,
             PopCount => 28,
-            XxAdd => 96,
-            XxMul => 104,
-            XInvert => 112,
+            XxAdd => 88,
+            XxMul => 96,
+            XInvert => 104,
             XbMul => 58,
-            ReadIo => 120,
+            ReadIo => 112,
             WriteIo => 66,
         }
     }
@@ -201,7 +201,7 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
         match self {
             Pop(_) => "pop",
             Push(_) => "push",
-            Divine => "divine",
+            Divine(_) => "divine",
             Dup(_) => "dup",
             Swap(_) => "swap",
             Nop => "nop",
@@ -245,9 +245,12 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
     }
 
     pub fn size(&self) -> usize {
-        match matches!(self, Pop(_) | Push(_) | Dup(_) | Swap(_) | Call(_)) {
-            true => 2,
-            false => 1,
+        match self {
+            Pop(_) | Push(_) => 2,
+            Divine(_) => 2,
+            Dup(_) | Swap(_) => 2,
+            Call(_) => 2,
+            _ => 1,
         }
     }
 
@@ -267,7 +270,7 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
         match self {
             Pop(x) => Pop(*x),
             Push(x) => Push(*x),
-            Divine => Divine,
+            Divine(x) => Divine(*x),
             Dup(x) => Dup(*x),
             Swap(x) => Swap(*x),
             Nop => Nop,
@@ -322,7 +325,7 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
         match self {
             Pop(n) => -(n.index() as i32),
             Push(_) => 1,
-            Divine => 1,
+            Divine(n) => n.index() as i32,
             Dup(_) => 1,
             Swap(_) => 0,
             Nop => 0,
@@ -372,6 +375,7 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
     pub fn has_illegal_argument(&self) -> bool {
         match self {
             Pop(st) => *st < ST1 || ST5 < *st,
+            Divine(st) => *st < ST1 || ST5 < *st,
             Swap(ST0) => true,
             _ => false,
         }
@@ -383,7 +387,7 @@ impl<Dest: Display + PartialEq + Default> Display for AnInstruction<Dest> {
         write!(f, "{}", self.name())?;
         match self {
             Push(arg) => write!(f, " {arg}"),
-            Pop(arg) | Dup(arg) | Swap(arg) => write!(f, " {arg}"),
+            Pop(arg) | Divine(arg) | Dup(arg) | Swap(arg) => write!(f, " {arg}"),
             Call(arg) => write!(f, " {arg}"),
             _ => Ok(()),
         }
@@ -395,7 +399,7 @@ impl Instruction {
     pub fn arg(&self) -> Option<BFieldElement> {
         match self {
             Push(arg) | Call(arg) => Some(*arg),
-            Pop(arg) | Dup(arg) | Swap(arg) => Some(arg.into()),
+            Pop(arg) | Divine(arg) | Dup(arg) | Swap(arg) => Some(arg.into()),
             _ => None,
         }
     }
@@ -422,6 +426,7 @@ impl Instruction {
         let stack_element = new_arg.value().try_into().ok()?;
         let new_instruction = match self {
             Pop(_) => Some(Pop(stack_element)),
+            Divine(_) => Some(Divine(stack_element)),
             Dup(_) => Some(Dup(stack_element)),
             Swap(_) => Some(Swap(stack_element)),
             _ => None,
@@ -475,7 +480,7 @@ const fn all_instructions_without_args() -> [AnInstruction<BFieldElement>; Instr
     [
         Pop(ST0),
         Push(BFIELD_ZERO),
-        Divine,
+        Divine(ST0),
         Dup(ST0),
         Swap(ST0),
         Nop,
@@ -815,6 +820,7 @@ mod tests {
     ) -> AnInstruction<BFieldElement> {
         match instruction {
             Pop(ST0) => Pop(ST3),
+            Divine(ST0) => Divine(ST1),
             Swap(ST0) => Swap(ST1),
             _ => instruction,
         }

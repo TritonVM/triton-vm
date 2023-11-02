@@ -337,6 +337,7 @@ macro_rules! triton_asm {
     // repeated instructions
     [pop $arg:literal; $num:expr] => { vec![ $crate::triton_instr!(pop $arg); $num ] };
     [push $arg:literal; $num:expr] => { vec![ $crate::triton_instr!(push $arg); $num ] };
+    [divine $arg:literal; $num:expr] => { vec![ $crate::triton_instr!(divine $arg); $num ] };
     [dup $arg:literal; $num:expr] => { vec![ $crate::triton_instr!(dup $arg); $num ] };
     [swap $arg:literal; $num:expr] => { vec![ $crate::triton_instr!(swap $arg); $num ] };
     [call $arg:ident; $num:expr] => { vec![ $crate::triton_instr!(call $arg); $num ] };
@@ -375,6 +376,12 @@ macro_rules! triton_instr {
     (push $arg:expr) => {{
         let argument = $crate::BFieldElement::new($arg);
         let instruction = $crate::instruction::AnInstruction::<String>::Push(argument);
+        $crate::instruction::LabelledInstruction::Instruction(instruction)
+    }};
+    (divine $arg:literal) => {{
+        assert!(1_u32 <= $arg && $arg <= 5, "`divine {}` is illegal.", $arg);
+        let argument: $crate::op_stack::OpStackElement = u32::try_into($arg).unwrap();
+        let instruction = $crate::instruction::AnInstruction::<String>::Divine(argument);
         $crate::instruction::LabelledInstruction::Instruction(instruction)
     }};
     (dup $arg:literal) => {{
