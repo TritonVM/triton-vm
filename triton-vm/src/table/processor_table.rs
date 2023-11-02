@@ -3265,9 +3265,29 @@ pub(crate) mod tests {
         }
     }
 
-    fn test_row_from_program(program: &Program, row_num: usize) -> Array2<BFieldElement> {
-        let (_, _, master_base_table) =
-            master_base_table_for_low_security_level(program, [].into(), [].into());
+    fn test_row_from_program(program: Program, row_num: usize) -> Array2<BFieldElement> {
+        let program_and_input = ProgramAndInput {
+            program,
+            public_input: [].into(),
+            non_determinism: [].into(),
+        };
+        test_row_from_program_with_input(program_and_input, row_num)
+    }
+
+    fn test_row_from_program_with_input(
+        program_and_input: ProgramAndInput,
+        row_num: usize,
+    ) -> Array2<BFieldElement> {
+        let ProgramAndInput {
+            program,
+            public_input,
+            non_determinism,
+        } = program_and_input;
+        let (_, _, master_base_table) = master_base_table_for_low_security_level(
+            &program,
+            public_input.into(),
+            (&non_determinism).into(),
+        );
         master_base_table
             .trace_table()
             .slice(s![row_num..=row_num + 1, ..])
@@ -3358,7 +3378,7 @@ pub(crate) mod tests {
             .map(LabelledInstruction::Instruction)
             .collect_vec();
         let program = Program::new(&instructions);
-        let test_rows = [test_row_from_program(&program, n)];
+        let test_rows = [test_row_from_program(program, n)];
 
         test_constraints_for_rows_with_debug_info(
             Pop(stack_element),
@@ -3370,7 +3390,7 @@ pub(crate) mod tests {
 
     #[test]
     fn transition_constraints_for_instruction_push() {
-        let test_rows = [test_row_from_program(&triton_program!(push 1 halt), 0)];
+        let test_rows = [test_row_from_program(triton_program!(push 1 halt), 0)];
         test_constraints_for_rows_with_debug_info(
             Push(BFieldElement::one()),
             &test_rows,
@@ -3380,11 +3400,66 @@ pub(crate) mod tests {
     }
 
     #[test]
+    #[should_panic(expected = "at least 1, at most 5")]
+    fn transition_constraints_for_instruction_divine_0() {
+        transition_constraints_for_instruction_divine_n(0);
+    }
+
+    #[proptest(cases = 20)]
+    fn transition_constraints_for_instruction_divine_n_in_range(#[strategy(1..=5_usize)] n: usize) {
+        transition_constraints_for_instruction_divine_n(n);
+    }
+
+    #[proptest(cases = 20)]
+    #[should_panic(expected = "at least 1, at most 5")]
+    fn transition_constraints_for_instruction_divine_n_too_large(
+        #[strategy(6..OpStackElement::COUNT)] n: usize,
+    ) {
+        transition_constraints_for_instruction_divine_n(n);
+    }
+
+    fn transition_constraints_for_instruction_divine_n(n: usize) {
+        let stack_element = n.try_into().unwrap();
+
+        let instructions = [Divine(stack_element), Halt];
+        let instructions = instructions.map(LabelledInstruction::Instruction).to_vec();
+
+        let program_and_input = ProgramAndInput {
+            program: Program::new(&instructions),
+            public_input: vec![],
+            non_determinism: (1..=16).collect_vec().into(),
+        };
+        let test_rows = [test_row_from_program_with_input(program_and_input, 0)];
+
+        test_constraints_for_rows_with_debug_info(
+            Divine(stack_element),
+            &test_rows,
+            &[ST0, ST1, ST2],
+            &[ST0, ST1, ST2],
+        );
+    }
+
+    #[test]
     fn transition_constraints_for_instruction_dup() {
-        let test_rows = [test_row_from_program(
-            &triton_program!(push 1 dup 0 halt),
-            1,
-        )];
+        let programs = [
+            triton_program!(dup  0 halt),
+            triton_program!(dup  1 halt),
+            triton_program!(dup  2 halt),
+            triton_program!(dup  3 halt),
+            triton_program!(dup  4 halt),
+            triton_program!(dup  5 halt),
+            triton_program!(dup  6 halt),
+            triton_program!(dup  7 halt),
+            triton_program!(dup  8 halt),
+            triton_program!(dup  9 halt),
+            triton_program!(dup 10 halt),
+            triton_program!(dup 11 halt),
+            triton_program!(dup 12 halt),
+            triton_program!(dup 13 halt),
+            triton_program!(dup 14 halt),
+            triton_program!(dup 15 halt),
+        ];
+        let test_rows = programs.map(|program| test_row_from_program(program, 0));
         test_constraints_for_rows_with_debug_info(
             Dup(OpStackElement::ST0),
             &test_rows,
@@ -3395,10 +3470,24 @@ pub(crate) mod tests {
 
     #[test]
     fn transition_constraints_for_instruction_swap() {
-        let test_rows = [test_row_from_program(
-            &triton_program!(push 1 push 2 swap 1 halt),
-            2,
-        )];
+        let programs = [
+            triton_program!(swap  1 halt),
+            triton_program!(swap  2 halt),
+            triton_program!(swap  3 halt),
+            triton_program!(swap  4 halt),
+            triton_program!(swap  5 halt),
+            triton_program!(swap  6 halt),
+            triton_program!(swap  7 halt),
+            triton_program!(swap  8 halt),
+            triton_program!(swap  9 halt),
+            triton_program!(swap 10 halt),
+            triton_program!(swap 11 halt),
+            triton_program!(swap 12 halt),
+            triton_program!(swap 13 halt),
+            triton_program!(swap 14 halt),
+            triton_program!(swap 15 halt),
+        ];
+        let test_rows = programs.map(|program| test_row_from_program(program, 0));
         test_constraints_for_rows_with_debug_info(
             Swap(OpStackElement::ST0),
             &test_rows,
@@ -3409,14 +3498,12 @@ pub(crate) mod tests {
 
     #[test]
     fn transition_constraints_for_instruction_skiz() {
-        // Case 0: ST0 is non-zero
-        // Case 1: ST0 is zero, nia is instruction of size 1
-        // Case 2: ST0 is zero, nia is instruction of size 2
-        let test_rows = [
-            test_row_from_program(&triton_program!(push 1 skiz halt), 1),
-            test_row_from_program(&triton_program!(push 0 skiz assert halt), 1),
-            test_row_from_program(&triton_program!(push 0 skiz push 1 halt), 1),
+        let programs = [
+            triton_program!(push 1 skiz halt),        // ST0 is non-zero
+            triton_program!(push 0 skiz assert halt), // ST0 is zero, next instruction of size 1
+            triton_program!(push 0 skiz push 1 halt), // ST0 is zero, next instruction of size 2
         ];
+        let test_rows = programs.map(|program| test_row_from_program(program, 1));
         test_constraints_for_rows_with_debug_info(
             Skiz,
             &test_rows,
@@ -3427,10 +3514,8 @@ pub(crate) mod tests {
 
     #[test]
     fn transition_constraints_for_instruction_call() {
-        let test_rows = [test_row_from_program(
-            &triton_program!(call label label: halt),
-            0,
-        )];
+        let programs = [triton_program!(call label label: halt)];
+        let test_rows = programs.map(|program| test_row_from_program(program, 0));
         test_constraints_for_rows_with_debug_info(
             Call(Default::default()),
             &test_rows,
@@ -3441,10 +3526,8 @@ pub(crate) mod tests {
 
     #[test]
     fn transition_constraints_for_instruction_return() {
-        let test_rows = [test_row_from_program(
-            &triton_program!(call label halt label: return),
-            1,
-        )];
+        let programs = [triton_program!(call label halt label: return)];
+        let test_rows = programs.map(|program| test_row_from_program(program, 1));
         test_constraints_for_rows_with_debug_info(
             Return,
             &test_rows,
@@ -3455,10 +3538,9 @@ pub(crate) mod tests {
 
     #[test]
     fn transition_constraints_for_instruction_recurse() {
-        let test_rows = [test_row_from_program(
-            &triton_program!(push 2 call label halt label: push -1 add dup 0 skiz recurse return),
-            6,
-        )];
+        let programs =
+            [triton_program!(push 2 call label halt label: push -1 add dup 0 skiz recurse return)];
+        let test_rows = programs.map(|program| test_row_from_program(program, 6));
         test_constraints_for_rows_with_debug_info(
             Recurse,
             &test_rows,
@@ -3469,10 +3551,8 @@ pub(crate) mod tests {
 
     #[test]
     fn transition_constraints_for_instruction_read_mem() {
-        let test_rows = [test_row_from_program(
-            &triton_program!(push 5 push 3 write_mem read_mem halt),
-            3,
-        )];
+        let programs = [triton_program!(push 5 push 3 write_mem read_mem halt)];
+        let test_rows = programs.map(|program| test_row_from_program(program, 3));
         test_constraints_for_rows_with_debug_info(
             ReadMem,
             &test_rows,
@@ -3483,10 +3563,8 @@ pub(crate) mod tests {
 
     #[test]
     fn transition_constraints_for_instruction_write_mem() {
-        let test_rows = [test_row_from_program(
-            &triton_program!(push 5 push 3 write_mem read_mem halt),
-            2,
-        )];
+        let programs = [triton_program!(push 5 push 3 write_mem read_mem halt)];
+        let test_rows = programs.map(|program| test_row_from_program(program, 2));
         test_constraints_for_rows_with_debug_info(
             WriteMem,
             &test_rows,
@@ -3497,26 +3575,28 @@ pub(crate) mod tests {
 
     #[test]
     fn transition_constraints_for_instruction_eq() {
-        let test_rows = [
-            test_row_from_program(&triton_program!(push 3 push 3 eq assert halt), 2),
-            test_row_from_program(&triton_program!(push 3 push 2 eq push 0 eq assert halt), 2),
+        let programs = [
+            triton_program!(push 3 push 3 eq assert halt),
+            triton_program!(push 3 push 2 eq push 0 eq assert halt),
         ];
+        let test_rows = programs.map(|program| test_row_from_program(program, 2));
         test_constraints_for_rows_with_debug_info(Eq, &test_rows, &[ST0, ST1, HV0], &[ST0]);
     }
 
     #[test]
     fn transition_constraints_for_instruction_split() {
-        let test_rows = [
-            test_row_from_program(&triton_program!(push -1 split halt), 1),
-            test_row_from_program(&triton_program!(push  0 split halt), 1),
-            test_row_from_program(&triton_program!(push  1 split halt), 1),
-            test_row_from_program(&triton_program!(push  2 split halt), 1),
-            test_row_from_program(&triton_program!(push  3 split halt), 1),
+        let programs = [
+            triton_program!(push -1 split halt),
+            triton_program!(push  0 split halt),
+            triton_program!(push  1 split halt),
+            triton_program!(push  2 split halt),
+            triton_program!(push  3 split halt),
             // test pushing push 2^32 +- 1
-            test_row_from_program(&triton_program!(push 4294967295 split halt), 1),
-            test_row_from_program(&triton_program!(push 4294967296 split halt), 1),
-            test_row_from_program(&triton_program!(push 4294967297 split halt), 1),
+            triton_program!(push 4294967295 split halt),
+            triton_program!(push 4294967296 split halt),
+            triton_program!(push 4294967297 split halt),
         ];
+        let test_rows = programs.map(|program| test_row_from_program(program, 1));
         test_constraints_for_rows_with_debug_info(
             Split,
             &test_rows,
@@ -3527,22 +3607,20 @@ pub(crate) mod tests {
 
     #[test]
     fn transition_constraints_for_instruction_lt() {
-        let test_rows = [
-            test_row_from_program(&triton_program!(push 3 push 3 lt push 0 eq assert halt), 2),
-            test_row_from_program(&triton_program!(push 3 push 2 lt push 1 eq assert halt), 2),
-            test_row_from_program(&triton_program!(push 2 push 3 lt push 0 eq assert halt), 2),
-            test_row_from_program(
-                &triton_program!(push 512 push 513 lt push 0 eq assert halt),
-                2,
-            ),
+        let programs = [
+            triton_program!(push   3 push   3 lt push 0 eq assert halt),
+            triton_program!(push   3 push   2 lt push 1 eq assert halt),
+            triton_program!(push   2 push   3 lt push 0 eq assert halt),
+            triton_program!(push 512 push 513 lt push 0 eq assert halt),
         ];
+        let test_rows = programs.map(|program| test_row_from_program(program, 2));
         test_constraints_for_rows_with_debug_info(Lt, &test_rows, &[ST0, ST1], &[ST0]);
     }
 
     #[test]
     fn transition_constraints_for_instruction_and() {
         let test_rows = [test_row_from_program(
-            &triton_program!(push 5 push 12 and push 4 eq assert halt),
+            triton_program!(push 5 push 12 and push 4 eq assert halt),
             2,
         )];
         test_constraints_for_rows_with_debug_info(And, &test_rows, &[ST0, ST1], &[ST0]);
@@ -3551,7 +3629,7 @@ pub(crate) mod tests {
     #[test]
     fn transition_constraints_for_instruction_xor() {
         let test_rows = [test_row_from_program(
-            &triton_program!(push 5 push 12 xor push 9 eq assert halt),
+            triton_program!(push 5 push 12 xor push 9 eq assert halt),
             2,
         )];
         test_constraints_for_rows_with_debug_info(Xor, &test_rows, &[ST0, ST1], &[ST0]);
@@ -3559,182 +3637,65 @@ pub(crate) mod tests {
 
     #[test]
     fn transition_constraints_for_instruction_log2floor() {
-        let test_rows = [
-            test_row_from_program(
-                &triton_program!(push  1 log_2_floor push  0 eq assert halt),
-                1,
-            ),
-            test_row_from_program(
-                &triton_program!(push  2 log_2_floor push  1 eq assert halt),
-                1,
-            ),
-            test_row_from_program(
-                &triton_program!(push  3 log_2_floor push  1 eq assert halt),
-                1,
-            ),
-            test_row_from_program(
-                &triton_program!(push  4 log_2_floor push  2 eq assert halt),
-                1,
-            ),
-            test_row_from_program(
-                &triton_program!(push  5 log_2_floor push  2 eq assert halt),
-                1,
-            ),
-            test_row_from_program(
-                &triton_program!(push  6 log_2_floor push  2 eq assert halt),
-                1,
-            ),
-            test_row_from_program(
-                &triton_program!(push  7 log_2_floor push  2 eq assert halt),
-                1,
-            ),
-            test_row_from_program(
-                &triton_program!(push  8 log_2_floor push  3 eq assert halt),
-                1,
-            ),
-            test_row_from_program(
-                &triton_program!(push  9 log_2_floor push  3 eq assert halt),
-                1,
-            ),
-            test_row_from_program(
-                &triton_program!(push 10 log_2_floor push  3 eq assert halt),
-                1,
-            ),
-            test_row_from_program(
-                &triton_program!(push 11 log_2_floor push  3 eq assert halt),
-                1,
-            ),
-            test_row_from_program(
-                &triton_program!(push 12 log_2_floor push  3 eq assert halt),
-                1,
-            ),
-            test_row_from_program(
-                &triton_program!(push 13 log_2_floor push  3 eq assert halt),
-                1,
-            ),
-            test_row_from_program(
-                &triton_program!(push 14 log_2_floor push  3 eq assert halt),
-                1,
-            ),
-            test_row_from_program(
-                &triton_program!(push 15 log_2_floor push  3 eq assert halt),
-                1,
-            ),
-            test_row_from_program(
-                &triton_program!(push 16 log_2_floor push  4 eq assert halt),
-                1,
-            ),
-            test_row_from_program(
-                &triton_program!(push 17 log_2_floor push  4 eq assert halt),
-                1,
-            ),
+        let programs = [
+            triton_program!(push  1 log_2_floor push  0 eq assert halt),
+            triton_program!(push  2 log_2_floor push  1 eq assert halt),
+            triton_program!(push  3 log_2_floor push  1 eq assert halt),
+            triton_program!(push  4 log_2_floor push  2 eq assert halt),
+            triton_program!(push  5 log_2_floor push  2 eq assert halt),
+            triton_program!(push  6 log_2_floor push  2 eq assert halt),
+            triton_program!(push  7 log_2_floor push  2 eq assert halt),
+            triton_program!(push  8 log_2_floor push  3 eq assert halt),
+            triton_program!(push  9 log_2_floor push  3 eq assert halt),
+            triton_program!(push 10 log_2_floor push  3 eq assert halt),
+            triton_program!(push 11 log_2_floor push  3 eq assert halt),
+            triton_program!(push 12 log_2_floor push  3 eq assert halt),
+            triton_program!(push 13 log_2_floor push  3 eq assert halt),
+            triton_program!(push 14 log_2_floor push  3 eq assert halt),
+            triton_program!(push 15 log_2_floor push  3 eq assert halt),
+            triton_program!(push 16 log_2_floor push  4 eq assert halt),
+            triton_program!(push 17 log_2_floor push  4 eq assert halt),
         ];
+        let test_rows = programs.map(|program| test_row_from_program(program, 1));
         test_constraints_for_rows_with_debug_info(Log2Floor, &test_rows, &[ST0, ST1], &[ST0]);
     }
 
     #[test]
     fn transition_constraints_for_instruction_pow() {
-        let test_rows = [
-            test_row_from_program(
-                &triton_program!(push 0 push  0 pow push   1 eq assert halt),
-                2,
-            ),
-            test_row_from_program(
-                &triton_program!(push 1 push  0 pow push   0 eq assert halt),
-                2,
-            ),
-            test_row_from_program(
-                &triton_program!(push 2 push  0 pow push   0 eq assert halt),
-                2,
-            ),
-            test_row_from_program(
-                &triton_program!(push 0 push  1 pow push   1 eq assert halt),
-                2,
-            ),
-            test_row_from_program(
-                &triton_program!(push 1 push  1 pow push   1 eq assert halt),
-                2,
-            ),
-            test_row_from_program(
-                &triton_program!(push 2 push  1 pow push   1 eq assert halt),
-                2,
-            ),
-            test_row_from_program(
-                &triton_program!(push 0 push  2 pow push   1 eq assert halt),
-                2,
-            ),
-            test_row_from_program(
-                &triton_program!(push 1 push  2 pow push   2 eq assert halt),
-                2,
-            ),
-            test_row_from_program(
-                &triton_program!(push 2 push  2 pow push   4 eq assert halt),
-                2,
-            ),
-            test_row_from_program(
-                &triton_program!(push 3 push  2 pow push   8 eq assert halt),
-                2,
-            ),
-            test_row_from_program(
-                &triton_program!(push 4 push  2 pow push  16 eq assert halt),
-                2,
-            ),
-            test_row_from_program(
-                &triton_program!(push 5 push  2 pow push  32 eq assert halt),
-                2,
-            ),
-            test_row_from_program(
-                &triton_program!(push 0 push  3 pow push   1 eq assert halt),
-                2,
-            ),
-            test_row_from_program(
-                &triton_program!(push 1 push  3 pow push   3 eq assert halt),
-                2,
-            ),
-            test_row_from_program(
-                &triton_program!(push 2 push  3 pow push   9 eq assert halt),
-                2,
-            ),
-            test_row_from_program(
-                &triton_program!(push 3 push  3 pow push  27 eq assert halt),
-                2,
-            ),
-            test_row_from_program(
-                &triton_program!(push 4 push  3 pow push  81 eq assert halt),
-                2,
-            ),
-            test_row_from_program(
-                &triton_program!(push 0 push 17 pow push   1 eq assert halt),
-                2,
-            ),
-            test_row_from_program(
-                &triton_program!(push 1 push 17 pow push  17 eq assert halt),
-                2,
-            ),
-            test_row_from_program(
-                &triton_program!(push 2 push 17 pow push 289 eq assert halt),
-                2,
-            ),
+        let programs = [
+            triton_program!(push 0 push  0 pow push   1 eq assert halt),
+            triton_program!(push 1 push  0 pow push   0 eq assert halt),
+            triton_program!(push 2 push  0 pow push   0 eq assert halt),
+            triton_program!(push 0 push  1 pow push   1 eq assert halt),
+            triton_program!(push 1 push  1 pow push   1 eq assert halt),
+            triton_program!(push 2 push  1 pow push   1 eq assert halt),
+            triton_program!(push 0 push  2 pow push   1 eq assert halt),
+            triton_program!(push 1 push  2 pow push   2 eq assert halt),
+            triton_program!(push 2 push  2 pow push   4 eq assert halt),
+            triton_program!(push 3 push  2 pow push   8 eq assert halt),
+            triton_program!(push 4 push  2 pow push  16 eq assert halt),
+            triton_program!(push 5 push  2 pow push  32 eq assert halt),
+            triton_program!(push 0 push  3 pow push   1 eq assert halt),
+            triton_program!(push 1 push  3 pow push   3 eq assert halt),
+            triton_program!(push 2 push  3 pow push   9 eq assert halt),
+            triton_program!(push 3 push  3 pow push  27 eq assert halt),
+            triton_program!(push 4 push  3 pow push  81 eq assert halt),
+            triton_program!(push 0 push 17 pow push   1 eq assert halt),
+            triton_program!(push 1 push 17 pow push  17 eq assert halt),
+            triton_program!(push 2 push 17 pow push 289 eq assert halt),
         ];
+        let test_rows = programs.map(|program| test_row_from_program(program, 2));
         test_constraints_for_rows_with_debug_info(Pow, &test_rows, &[ST0, ST1], &[ST0]);
     }
 
     #[test]
     fn transition_constraints_for_instruction_div_mod() {
-        let test_rows = [
-            test_row_from_program(
-                &triton_program!(push 2 push 3 div_mod push 1 eq assert push 1 eq assert halt),
-                2,
-            ),
-            test_row_from_program(
-                &triton_program!(push 3 push 7 div_mod push 1 eq assert push 2 eq assert halt),
-                2,
-            ),
-            test_row_from_program(
-                &triton_program!(push 4 push 7 div_mod push 3 eq assert push 1 eq assert halt),
-                2,
-            ),
+        let programs = [
+            triton_program!(push 2 push 3 div_mod push 1 eq assert push 1 eq assert halt),
+            triton_program!(push 3 push 7 div_mod push 1 eq assert push 2 eq assert halt),
+            triton_program!(push 4 push 7 div_mod push 3 eq assert push 1 eq assert halt),
         ];
+        let test_rows = programs.map(|program| test_row_from_program(program, 2));
         test_constraints_for_rows_with_debug_info(DivMod, &test_rows, &[ST0, ST1], &[ST0, ST1]);
     }
 
@@ -3756,16 +3717,11 @@ pub(crate) mod tests {
 
     #[test]
     fn transition_constraints_for_instruction_xxadd() {
-        let test_rows = [
-            test_row_from_program(
-                &triton_program!(push 5 push 6 push 7 push 8 push 9 push 10 xxadd halt),
-                6,
-            ),
-            test_row_from_program(
-                &triton_program!(push 2 push 3 push 4 push -2 push -3 push -4 xxadd halt),
-                6,
-            ),
+        let programs = [
+            triton_program!(push 5 push 6 push 7 push 8 push 9 push 10 xxadd halt),
+            triton_program!(push 2 push 3 push 4 push -2 push -3 push -4 xxadd halt),
         ];
+        let test_rows = programs.map(|program| test_row_from_program(program, 6));
         test_constraints_for_rows_with_debug_info(
             XxAdd,
             &test_rows,
@@ -3776,16 +3732,11 @@ pub(crate) mod tests {
 
     #[test]
     fn transition_constraints_for_instruction_xxmul() {
-        let test_rows = [
-            test_row_from_program(
-                &triton_program!(push 5 push 6 push 7 push 8 push 9 push 10 xxmul halt),
-                6,
-            ),
-            test_row_from_program(
-                &triton_program!(push 2 push 3 push 4 push -2 push -3 push -4 xxmul halt),
-                6,
-            ),
+        let programs = [
+            triton_program!(push 5 push 6 push 7 push 8 push 9 push 10 xxmul halt),
+            triton_program!(push 2 push 3 push 4 push -2 push -3 push -4 xxmul halt),
         ];
+        let test_rows = programs.map(|program| test_row_from_program(program, 6));
         test_constraints_for_rows_with_debug_info(
             XxMul,
             &test_rows,
@@ -3796,10 +3747,11 @@ pub(crate) mod tests {
 
     #[test]
     fn transition_constraints_for_instruction_xinvert() {
-        let test_rows = [
-            test_row_from_program(&triton_program!(push 5 push 6 push 7 xinvert halt), 3),
-            test_row_from_program(&triton_program!(push -2 push -3 push -4 xinvert halt), 3),
+        let programs = [
+            triton_program!(push 5 push 6 push 7 xinvert halt),
+            triton_program!(push -2 push -3 push -4 xinvert halt),
         ];
+        let test_rows = programs.map(|program| test_row_from_program(program, 3));
         test_constraints_for_rows_with_debug_info(
             XInvert,
             &test_rows,
@@ -3810,10 +3762,11 @@ pub(crate) mod tests {
 
     #[test]
     fn transition_constraints_for_instruction_xbmul() {
-        let test_rows = [
-            test_row_from_program(&triton_program!(push 5 push 6 push 7 push 2 xbmul halt), 4),
-            test_row_from_program(&triton_program!(push 2 push 3 push 4 push -2 xbmul halt), 4),
+        let programs = [
+            triton_program!(push 5 push 6 push 7 push 2 xbmul halt),
+            triton_program!(push 2 push 3 push 4 push -2 xbmul halt),
         ];
+        let test_rows = programs.map(|program| test_row_from_program(program, 4));
         test_constraints_for_rows_with_debug_info(
             XbMul,
             &test_rows,
