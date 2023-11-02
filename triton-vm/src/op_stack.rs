@@ -17,7 +17,6 @@ use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::digest::Digest;
 use twenty_first::shared_math::tip5::DIGEST_LENGTH;
 use twenty_first::shared_math::x_field_element::XFieldElement;
-use twenty_first::shared_math::x_field_element::EXTENSION_DEGREE;
 
 use crate::error::InstructionError::*;
 use crate::op_stack::OpStackElement::*;
@@ -38,6 +37,7 @@ pub const NUM_OP_STACK_REGISTERS: usize = OpStackElement::COUNT;
 #[derive(Debug, Clone)]
 pub struct OpStack {
     pub stack: Vec<BFieldElement>,
+    underflow_io_sequence: Vec<UnderflowIO>,
 }
 
 impl OpStack {
@@ -47,61 +47,64 @@ impl OpStack {
         let reverse_digest = program_digest.reversed().values();
         stack[..DIGEST_LENGTH].copy_from_slice(&reverse_digest);
 
-        Self { stack }
-    }
-
-    pub(crate) fn push(&mut self, element: BFieldElement) -> UnderflowIO {
-        self.stack.push(element);
-        UnderflowIO::Write(self.first_underflow_element())
-    }
-
-    pub(crate) fn push_extension_field_element(
-        &mut self,
-        element: XFieldElement,
-    ) -> [UnderflowIO; EXTENSION_DEGREE] {
-        let mut underflow_io = vec![];
-        for coefficient in element.coefficients.into_iter().rev() {
-            let underflow_write = self.push(coefficient);
-            underflow_io.push(underflow_write);
+        Self {
+            stack,
+            underflow_io_sequence: vec![],
         }
-        underflow_io.try_into().unwrap()
     }
 
-    pub(crate) fn pop(&mut self) -> Result<(BFieldElement, UnderflowIO)> {
-        let underflow_io = UnderflowIO::Read(self.first_underflow_element());
+    pub(crate) fn push(&mut self, element: BFieldElement) {
+        self.stack.push(element);
+        self.record_underflow_io(UnderflowIO::Write);
+    }
+
+    pub(crate) fn pop(&mut self) -> Result<BFieldElement> {
+        self.record_underflow_io(UnderflowIO::Read);
         let element = self.stack.pop().ok_or_else(|| anyhow!(OpStackTooShallow))?;
-        Ok((element, underflow_io))
+        Ok(element)
     }
 
-    pub(crate) fn pop_extension_field_element(
-        &mut self,
-    ) -> Result<(XFieldElement, [UnderflowIO; EXTENSION_DEGREE])> {
-        let (coefficients, underflow_io) = self.pop_multiple()?;
+    fn record_underflow_io(&mut self, io_type: fn(BFieldElement) -> UnderflowIO) {
+        let underflow_io = io_type(self.first_underflow_element());
+        self.underflow_io_sequence.push(underflow_io);
+    }
+
+    pub(crate) fn start_recording_underflow_io_sequence(&mut self) {
+        self.underflow_io_sequence.clear();
+    }
+
+    pub(crate) fn stop_recording_underflow_io_sequence(&mut self) -> Vec<UnderflowIO> {
+        self.underflow_io_sequence.drain(..).collect()
+    }
+
+    pub(crate) fn push_extension_field_element(&mut self, element: XFieldElement) {
+        for coefficient in element.coefficients.into_iter().rev() {
+            self.push(coefficient);
+        }
+    }
+
+    pub(crate) fn pop_extension_field_element(&mut self) -> Result<XFieldElement> {
+        let coefficients = self.pop_multiple()?;
         let element = XFieldElement::new(coefficients);
-        Ok((element, underflow_io))
+        Ok(element)
     }
 
-    pub(crate) fn pop_u32(&mut self) -> Result<(u32, UnderflowIO)> {
-        let (element, underflow_io) = self.pop()?;
+    pub(crate) fn pop_u32(&mut self) -> Result<u32> {
+        let element = self.pop()?;
         let element = element
             .try_into()
             .map_err(|_| anyhow!(FailedU32Conversion(element)))?;
-        Ok((element, underflow_io))
+        Ok(element)
     }
 
-    pub(crate) fn pop_multiple<const N: usize>(
-        &mut self,
-    ) -> Result<([BFieldElement; N], [UnderflowIO; N])> {
+    pub(crate) fn pop_multiple<const N: usize>(&mut self) -> Result<[BFieldElement; N]> {
         let mut elements = vec![];
-        let mut underflow_io = vec![];
         for _ in 0..N {
-            let (element, underflow_read) = self.pop()?;
+            let element = self.pop()?;
             elements.push(element);
-            underflow_io.push(underflow_read);
         }
         let elements = elements.try_into().unwrap();
-        let underflow_io = underflow_io.try_into().unwrap();
-        Ok((elements, underflow_io))
+        Ok(elements)
     }
 
     pub(crate) fn peek_at(&self, stack_element: OpStackElement) -> BFieldElement {
@@ -420,7 +423,7 @@ mod tests {
 
         // push elements 1 thru 17
         for i in 1..=17 {
-            let _ = op_stack.push(BFieldElement::new(i as u64));
+            op_stack.push(BFieldElement::new(i as u64));
         }
 
         // verify height
