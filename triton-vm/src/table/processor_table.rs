@@ -187,10 +187,10 @@ impl ProcessorTable {
                 challenges[JumpStackIndeterminate] - compressed_row_for_jump_stack_table;
 
             // Hash Table – Hash's input from Processor to Hash Coprocessor
-            let st_0_through_9 = [ST0, ST1, ST2, ST3, ST4, ST5, ST6, ST7, ST8, ST9]
-                .map(|st| current_row[st.base_table_index()]);
+            let st_0_through_9 = [ST0, ST1, ST2, ST3, ST4, ST5, ST6, ST7, ST8, ST9];
             let hash_state_weights = &challenges[HashStateWeight0..HashStateWeight10];
-            let compressed_row_for_hash_input_and_sponge: XFieldElement = st_0_through_9
+            let compressed_row_for_hash_input_and_sponge_squeeze: XFieldElement = st_0_through_9
+                .map(|st| current_row[st.base_table_index()])
                 .into_iter()
                 .zip_eq(hash_state_weights.iter())
                 .map(|(st, &weight)| weight * st)
@@ -198,14 +198,15 @@ impl ProcessorTable {
             let hash_digest_weights = &challenges[HashStateWeight0..HashStateWeight5];
             let compressed_row_for_hash_digest: XFieldElement = st_0_through_9[0..DIGEST_LENGTH]
                 .iter()
+                .map(|st| current_row[st.base_table_index()])
                 .zip_eq(hash_digest_weights.iter())
-                .map(|(&st, &weight)| weight * st)
+                .map(|(st, &weight)| weight * st)
                 .sum();
 
             if current_row[CI.base_table_index()] == Instruction::Hash.opcode_b() {
                 hash_input_running_evaluation = hash_input_running_evaluation
                     * challenges[HashInputIndeterminate]
-                    + compressed_row_for_hash_input_and_sponge;
+                    + compressed_row_for_hash_input_and_sponge_squeeze;
             }
 
             // Hash Table – Hash's output from Hash Coprocessor to Processor
@@ -225,13 +226,24 @@ impl ProcessorTable {
                         + challenges[HashCIWeight] * Instruction::SpongeInit.opcode_b();
                 }
 
-                if prev_row[CI.base_table_index()] == Instruction::SpongeAbsorb.opcode_b()
-                    || prev_row[CI.base_table_index()] == Instruction::SpongeSqueeze.opcode_b()
-                {
+                if prev_row[CI.base_table_index()] == Instruction::SpongeAbsorb.opcode_b() {
+                    let compressed_row: XFieldElement = st_0_through_9
+                        .map(|st| prev_row[st.base_table_index()])
+                        .into_iter()
+                        .zip_eq(hash_state_weights.iter())
+                        .map(|(st, &weight)| weight * st)
+                        .sum();
                     sponge_running_evaluation = sponge_running_evaluation
                         * challenges[SpongeIndeterminate]
-                        + challenges[HashCIWeight] * prev_row[CI.base_table_index()]
-                        + compressed_row_for_hash_input_and_sponge;
+                        + challenges[HashCIWeight] * Instruction::SpongeAbsorb.opcode_b()
+                        + compressed_row;
+                }
+
+                if prev_row[CI.base_table_index()] == Instruction::SpongeSqueeze.opcode_b() {
+                    sponge_running_evaluation = sponge_running_evaluation
+                        * challenges[SpongeIndeterminate]
+                        + challenges[HashCIWeight] * Instruction::SpongeSqueeze.opcode_b()
+                        + compressed_row_for_hash_input_and_sponge_squeeze;
                 }
             }
 
@@ -825,52 +837,6 @@ impl ExtProcessorTable {
         ]
     }
 
-    fn instruction_group_op_stack_remains_and_top_eleven_elements_unconstrained(
-        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
-    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        let curr_base_row = |col: ProcessorBaseTableColumn| {
-            circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
-        };
-        let next_base_row = |col: ProcessorBaseTableColumn| {
-            circuit_builder.input(NextBaseRow(col.master_base_table_index()))
-        };
-        let curr_ext_row = |col: ProcessorExtTableColumn| {
-            circuit_builder.input(CurrentExtRow(col.master_ext_table_index()))
-        };
-        let next_ext_row = |col: ProcessorExtTableColumn| {
-            circuit_builder.input(NextExtRow(col.master_ext_table_index()))
-        };
-
-        vec![
-            next_base_row(ST11) - curr_base_row(ST11),
-            next_base_row(ST12) - curr_base_row(ST12),
-            next_base_row(ST13) - curr_base_row(ST13),
-            next_base_row(ST14) - curr_base_row(ST14),
-            next_base_row(ST15) - curr_base_row(ST15),
-            next_base_row(OpStackPointer) - curr_base_row(OpStackPointer),
-            next_ext_row(OpStackTablePermArg) - curr_ext_row(OpStackTablePermArg),
-        ]
-    }
-
-    fn instruction_group_op_stack_remains_and_top_ten_elements_unconstrained(
-        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
-    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        let curr_base_row = |col: ProcessorBaseTableColumn| {
-            circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
-        };
-        let next_base_row = |col: ProcessorBaseTableColumn| {
-            circuit_builder.input(NextBaseRow(col.master_base_table_index()))
-        };
-
-        let specific_constraints = vec![next_base_row(ST10) - curr_base_row(ST10)];
-        let inherited_constraints =
-            Self::instruction_group_op_stack_remains_and_top_eleven_elements_unconstrained(
-                circuit_builder,
-            );
-
-        [specific_constraints, inherited_constraints].concat()
-    }
-
     fn instruction_group_op_stack_remains_and_top_three_elements_unconstrained(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
@@ -881,7 +847,14 @@ impl ExtProcessorTable {
             circuit_builder.input(NextBaseRow(col.master_base_table_index()))
         };
 
-        let specific_constraints = vec![
+        let curr_ext_row = |col: ProcessorExtTableColumn| {
+            circuit_builder.input(CurrentExtRow(col.master_ext_table_index()))
+        };
+        let next_ext_row = |col: ProcessorExtTableColumn| {
+            circuit_builder.input(NextExtRow(col.master_ext_table_index()))
+        };
+
+        vec![
             next_base_row(ST3) - curr_base_row(ST3),
             next_base_row(ST4) - curr_base_row(ST4),
             next_base_row(ST5) - curr_base_row(ST5),
@@ -889,13 +862,15 @@ impl ExtProcessorTable {
             next_base_row(ST7) - curr_base_row(ST7),
             next_base_row(ST8) - curr_base_row(ST8),
             next_base_row(ST9) - curr_base_row(ST9),
-        ];
-        let inherited_constraints =
-            Self::instruction_group_op_stack_remains_and_top_ten_elements_unconstrained(
-                circuit_builder,
-            );
-
-        [specific_constraints, inherited_constraints].concat()
+            next_base_row(ST10) - curr_base_row(ST10),
+            next_base_row(ST11) - curr_base_row(ST11),
+            next_base_row(ST12) - curr_base_row(ST12),
+            next_base_row(ST13) - curr_base_row(ST13),
+            next_base_row(ST14) - curr_base_row(ST14),
+            next_base_row(ST15) - curr_base_row(ST15),
+            next_base_row(OpStackPointer) - curr_base_row(OpStackPointer),
+            next_ext_row(OpStackTablePermArg) - curr_ext_row(OpStackTablePermArg),
+        ]
     }
 
     fn instruction_group_unop(
@@ -1807,7 +1782,7 @@ impl ExtProcessorTable {
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
         [
             Self::instruction_group_step_1(circuit_builder),
-            Self::instruction_group_keep_op_stack(circuit_builder),
+            Self::constraints_for_shrinking_stack_by(circuit_builder, 10),
             Self::instruction_group_keep_ram(circuit_builder),
         ]
         .concat()
@@ -1818,9 +1793,7 @@ impl ExtProcessorTable {
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
         [
             Self::instruction_group_step_1(circuit_builder),
-            Self::instruction_group_op_stack_remains_and_top_ten_elements_unconstrained(
-                circuit_builder,
-            ),
+            Self::constraints_for_growing_stack_by(circuit_builder, 10),
             Self::instruction_group_keep_ram(circuit_builder),
         ]
         .concat()
@@ -2493,7 +2466,7 @@ impl ExtProcessorTable {
         combined_constraints
     }
 
-    fn conditional_constraints_for_shrinking_stack_by(
+    fn constraints_for_shrinking_stack_by(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
         n: usize,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
@@ -2520,14 +2493,10 @@ impl ExtProcessorTable {
                 next_base_row(next_stack_element) - curr_base_row(curr_stack_element);
             constraints.push(element_i_is_shifted_by_n);
         }
-
         constraints
-            .into_iter()
-            .map(|constraint| Self::indicator_polynomial(circuit_builder, n) * constraint)
-            .collect()
     }
 
-    fn conditional_constraints_for_growing_stack_by(
+    fn constraints_for_growing_stack_by(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
         n: usize,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
@@ -2554,8 +2523,24 @@ impl ExtProcessorTable {
                 next_base_row(next_stack_element) - curr_base_row(curr_stack_element);
             constraints.push(element_i_is_shifted_by_n);
         }
-
         constraints
+    }
+
+    fn conditional_constraints_for_shrinking_stack_by(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+        n: usize,
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
+        Self::constraints_for_shrinking_stack_by(circuit_builder, n)
+            .into_iter()
+            .map(|constraint| Self::indicator_polynomial(circuit_builder, n) * constraint)
+            .collect()
+    }
+
+    fn conditional_constraints_for_growing_stack_by(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+        n: usize,
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
+        Self::constraints_for_growing_stack_by(circuit_builder, n)
             .into_iter()
             .map(|constraint| Self::indicator_polynomial(circuit_builder, n) * constraint)
             .collect()
@@ -2727,18 +2712,7 @@ impl ExtProcessorTable {
             HashStateWeight9,
         ]
         .map(challenge);
-        let state = [
-            next_base_row(ST0),
-            next_base_row(ST1),
-            next_base_row(ST2),
-            next_base_row(ST3),
-            next_base_row(ST4),
-            next_base_row(ST5),
-            next_base_row(ST6),
-            next_base_row(ST7),
-            next_base_row(ST8),
-            next_base_row(ST9),
-        ];
+        let state = [ST0, ST1, ST2, ST3, ST4, ST5, ST6, ST7, ST8, ST9].map(next_base_row);
         let compressed_row = weights
             .into_iter()
             .zip_eq(state)
@@ -2784,13 +2758,7 @@ impl ExtProcessorTable {
             HashStateWeight4,
         ]
         .map(challenge);
-        let state = [
-            next_base_row(ST0),
-            next_base_row(ST1),
-            next_base_row(ST2),
-            next_base_row(ST3),
-            next_base_row(ST4),
-        ];
+        let state = [ST0, ST1, ST2, ST3, ST4].map(next_base_row);
         let compressed_row = weights
             .into_iter()
             .zip_eq(state)
@@ -2849,21 +2817,16 @@ impl ExtProcessorTable {
             HashStateWeight9,
         ]
         .map(challenge);
-        let state_next = [
-            next_base_row(ST0),
-            next_base_row(ST1),
-            next_base_row(ST2),
-            next_base_row(ST3),
-            next_base_row(ST4),
-            next_base_row(ST5),
-            next_base_row(ST6),
-            next_base_row(ST7),
-            next_base_row(ST8),
-            next_base_row(ST9),
-        ];
+        let state = [ST0, ST1, ST2, ST3, ST4, ST5, ST6, ST7, ST8, ST9];
+        let compressed_row_current = weights
+            .clone()
+            .into_iter()
+            .zip_eq(state.map(curr_base_row))
+            .map(|(weight, st_curr)| weight * st_curr)
+            .sum();
         let compressed_row_next = weights
             .into_iter()
-            .zip_eq(state_next)
+            .zip_eq(state.map(next_base_row))
             .map(|(weight, st_next)| weight * st_next)
             .sum();
 
@@ -2872,14 +2835,16 @@ impl ExtProcessorTable {
         let running_evaluation_updates_for_sponge_init = next_ext_row(SpongeEvalArg)
             - challenge(SpongeIndeterminate) * curr_ext_row(SpongeEvalArg)
             - challenge(HashCIWeight) * curr_base_row(CI);
-        let running_evaluation_updates_for_absorb_and_squeeze =
+        let running_evaluation_updates_for_absorb =
+            running_evaluation_updates_for_sponge_init.clone() - compressed_row_current;
+        let running_evaluation_updates_for_squeeze =
             running_evaluation_updates_for_sponge_init.clone() - compressed_row_next;
         let running_evaluation_remains = next_ext_row(SpongeEvalArg) - curr_ext_row(SpongeEvalArg);
 
         sponge_instruction_selector * running_evaluation_remains
             + sponge_init_deselector * running_evaluation_updates_for_sponge_init
-            + sponge_absorb_deselector * running_evaluation_updates_for_absorb_and_squeeze.clone()
-            + sponge_squeeze_deselector * running_evaluation_updates_for_absorb_and_squeeze
+            + sponge_absorb_deselector * running_evaluation_updates_for_absorb
+            + sponge_squeeze_deselector * running_evaluation_updates_for_squeeze
     }
 
     fn log_derivative_with_u32_table_updates_correctly(
@@ -3254,6 +3219,7 @@ pub(crate) mod tests {
     use crate::shared_tests::ProgramAndInput;
     use crate::stark::tests::master_base_table_for_low_security_level;
     use crate::table::master_table::*;
+    use crate::triton_asm;
     use crate::triton_program;
     use crate::vm::NUM_HELPER_VARIABLE_REGISTERS;
     use crate::NonDeterminism;
@@ -3598,6 +3564,42 @@ pub(crate) mod tests {
             DivineSibling,
             &test_rows,
             &[ST0, ST1, ST2, ST3, ST4, ST5],
+            &[ST0, ST1, ST2, ST3, ST4, ST5, ST6, ST7, ST8, ST9, ST10],
+        );
+    }
+
+    #[test]
+    fn transition_constraints_for_instruction_sponge_init() {
+        let programs = [triton_program!(sponge_init halt)];
+        let test_rows = programs.map(|program| test_row_from_program(program, 0));
+        test_constraints_for_rows_with_debug_info(SpongeInit, &test_rows, &[], &[]);
+    }
+
+    #[test]
+    fn transition_constraints_for_instruction_sponge_absorb() {
+        let push_10_zeros = triton_asm![push 0; 10];
+        let push_10_ones = triton_asm![push 1; 10];
+        let programs = [
+            triton_program!(sponge_init {&push_10_zeros} sponge_absorb halt),
+            triton_program!(sponge_init {&push_10_ones} sponge_absorb halt),
+        ];
+        let test_rows = programs.map(|program| test_row_from_program(program, 11));
+        test_constraints_for_rows_with_debug_info(
+            SpongeAbsorb,
+            &test_rows,
+            &[ST0, ST1, ST2, ST3, ST4, ST5, ST6, ST7, ST8, ST9, ST10],
+            &[ST0, ST1, ST2, ST3, ST4, ST5, ST6, ST7, ST8, ST9, ST10],
+        );
+    }
+
+    #[test]
+    fn transition_constraints_for_instruction_sponge_squeeze() {
+        let programs = [triton_program!(sponge_init sponge_squeeze halt)];
+        let test_rows = programs.map(|program| test_row_from_program(program, 1));
+        test_constraints_for_rows_with_debug_info(
+            SpongeSqueeze,
+            &test_rows,
+            &[ST0, ST1, ST2, ST3, ST4, ST5, ST6, ST7, ST8, ST9, ST10],
             &[ST0, ST1, ST2, ST3, ST4, ST5, ST6, ST7, ST8, ST9, ST10],
         );
     }

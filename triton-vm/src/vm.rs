@@ -430,12 +430,7 @@ impl<'pgm> VMState<'pgm> {
     }
 
     fn sponge_absorb(&mut self) -> Result<Vec<CoProcessorCall>> {
-        // fetch top elements but don't alter the stack
         let to_absorb = self.op_stack.pop_multiple::<{ tip5::RATE }>()?;
-        for i in (0..tip5::RATE).rev() {
-            self.op_stack.push(to_absorb[i]);
-        }
-
         self.sponge_state[..tip5::RATE].copy_from_slice(&to_absorb);
         let tip5_trace = Tip5::trace(&mut Tip5State {
             state: self.sponge_state,
@@ -449,7 +444,6 @@ impl<'pgm> VMState<'pgm> {
     }
 
     fn sponge_squeeze(&mut self) -> Result<Vec<CoProcessorCall>> {
-        let _ = self.op_stack.pop_multiple::<{ tip5::RATE }>()?;
         for i in (0..tip5::RATE).rev() {
             self.op_stack.push(self.sponge_state[i]);
         }
@@ -1155,20 +1149,22 @@ pub(crate) mod tests {
     }
 
     pub(crate) fn test_program_for_sponge_instructions() -> ProgramAndInput {
+        let push_10_zeros = triton_asm![push 0; 10];
         ProgramAndInput::without_input(triton_program!(
-            sponge_init push 3 push 2 push 1 sponge_absorb sponge_absorb sponge_squeeze halt
+            sponge_init
+            {&push_10_zeros} sponge_absorb
+            {&push_10_zeros} sponge_absorb
+            sponge_squeeze halt
         ))
     }
 
     pub(crate) fn test_program_for_sponge_instructions_2() -> ProgramAndInput {
         let push_5_zeros = triton_asm![push 0; 5];
         let program = triton_program! {
-            {&push_5_zeros} hash
             sponge_init
-            push 3 push 2 push 1
-            sponge_absorb
-            sponge_absorb
-            sponge_squeeze
+            sponge_squeeze sponge_absorb
+            {&push_5_zeros} hash
+            sponge_squeeze sponge_absorb
             halt
         };
         ProgramAndInput::without_input(program)
@@ -1176,18 +1172,30 @@ pub(crate) mod tests {
 
     pub(crate) fn test_program_for_many_sponge_instructions() -> ProgramAndInput {
         let push_5_zeros = triton_asm![push 0; 5];
-        let program = triton_program! {
-            sponge_init sponge_squeeze sponge_absorb sponge_absorb sponge_absorb
-            sponge_squeeze sponge_squeeze sponge_squeeze sponge_absorb
-            sponge_init sponge_init sponge_init sponge_absorb
-            sponge_init sponge_squeeze sponge_squeeze
-            sponge_init sponge_squeeze
-            {&push_5_zeros} hash sponge_absorb
-            {&push_5_zeros} hash sponge_squeeze
-            {&push_5_zeros} hash sponge_absorb
-            {&push_5_zeros} hash sponge_squeeze
-            sponge_init sponge_absorb sponge_absorb sponge_absorb sponge_absorb sponge_absorb
-            sponge_absorb sponge_absorb halt
+        let push_10_zeros = triton_asm![push 0; 10];
+        let program = triton_program! {         //  elements on stack
+            sponge_init                         //  0
+            sponge_squeeze sponge_absorb        //  0
+            {&push_10_zeros} sponge_absorb      //  0
+            {&push_10_zeros} sponge_absorb      //  0
+            sponge_squeeze sponge_squeeze       // 20
+            sponge_squeeze sponge_absorb        // 20
+            sponge_init sponge_init sponge_init // 20
+            sponge_absorb                       // 10
+            sponge_init                         // 10
+            sponge_squeeze sponge_squeeze       // 30
+            sponge_init sponge_squeeze          // 40
+            {&push_5_zeros} hash sponge_absorb  // 30
+            {&push_5_zeros} hash sponge_squeeze // 40
+            {&push_5_zeros} hash sponge_absorb  // 30
+            {&push_5_zeros} hash sponge_squeeze // 40
+            sponge_init                         // 40
+            sponge_absorb sponge_absorb         // 20
+            sponge_absorb sponge_absorb         //  0
+            {&push_10_zeros} sponge_absorb      //  0
+            {&push_10_zeros} sponge_absorb      //  0
+            {&push_10_zeros} sponge_absorb      //  0
+            halt
         };
         ProgramAndInput::without_input(program)
     }
@@ -1225,10 +1233,12 @@ pub(crate) mod tests {
         /// Fill the stack with enough elements that any chain of instructions will not underflow.
         fn to_vm_instruction_sequence(self) -> Vec<Instruction> {
             let push_5_zeros = vec![Push(0_u64.into()); 5];
+            let push_10_zeros = vec![Push(0_u64.into()); 10];
+
             match self {
                 Self::SpongeInit => vec![SpongeInit],
-                Self::SpongeAbsorb => vec![SpongeAbsorb],
-                Self::SpongeSqueeze => vec![SpongeSqueeze],
+                Self::SpongeAbsorb => [vec![SpongeAbsorb], push_10_zeros].concat(),
+                Self::SpongeSqueeze => vec![Pop(ST5), Pop(ST5), SpongeSqueeze],
                 Self::Hash => [vec![Hash], push_5_zeros].concat(),
             }
         }
@@ -1241,7 +1251,10 @@ pub(crate) mod tests {
             let zero_digest = [BFIELD_ZERO; DIGEST_LENGTH];
             match self {
                 Self::SpongeInit => sponge_state = Tip5::init(),
-                Self::SpongeAbsorb => Tip5::absorb(&mut sponge_state, &sponge_io),
+                Self::SpongeAbsorb => {
+                    Tip5::absorb(&mut sponge_state, &sponge_io);
+                    sponge_io = [BFIELD_ZERO; RATE];
+                }
                 Self::SpongeSqueeze => sponge_io = Tip5::squeeze(&mut sponge_state),
                 Self::Hash => {
                     let digest = Tip5::hash_10(&sponge_io);

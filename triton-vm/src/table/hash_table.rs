@@ -1970,15 +1970,22 @@ pub(crate) mod tests {
 
     #[test]
     fn terminal_constraints_hold_for_sponge_init_edge_case() {
-        let many_useless_absorbs = (0..7_991)
-            .flat_map(|_| triton_asm![sponge_init sponge_absorb])
+        let many_sponge_inits = triton_asm![sponge_init; 23_631];
+        let many_squeeze_absorbs = (0..2_100)
+            .flat_map(|_| triton_asm!(sponge_squeeze sponge_absorb))
             .collect_vec();
         let program = triton_program! {
-            sponge_init sponge_init sponge_init sponge_init
-            {&many_useless_absorbs}
+            {&many_sponge_inits}
+            {&many_squeeze_absorbs}
             sponge_init
             halt
         };
+
+        let (aet, _) = program.trace_execution([].into(), [].into()).unwrap();
+        dbg!(aet.padded_height());
+        dbg!(aet.hash_table_length());
+        dbg!(aet.op_stack_table_length());
+        dbg!(aet.cascade_table_length());
 
         let (_, _, master_base_table, master_ext_table, challenges) =
             master_tables_for_low_security_level(&program, [].into(), [].into());
