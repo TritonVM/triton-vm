@@ -220,13 +220,13 @@ fn an_instruction(s: &str) -> ParseResult<AnInstruction<String>> {
     let opstack_manipulation = alt((pop, push, dup, swap));
 
     // Control flow
+    let halt = instruction("halt", Halt);
     let nop = instruction("nop", Nop);
     let skiz = instruction("skiz", Skiz);
     let call = call_instruction();
     let return_ = instruction("return", Return);
     let recurse = instruction("recurse", Recurse);
     let assert_ = instruction("assert", Assert);
-    let halt = instruction("halt", Halt);
 
     let control_flow = alt((nop, skiz, call, return_, recurse, halt));
 

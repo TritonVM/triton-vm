@@ -105,13 +105,13 @@ pub enum AnInstruction<Dest: PartialEq + Default> {
     Swap(OpStackElement),
 
     // Control flow
+    Halt,
     Nop,
     Skiz,
     Call(Dest),
     Return,
     Recurse,
     Assert,
-    Halt,
 
     // Memory access
     ReadMem,
@@ -161,13 +161,13 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
             Divine(_) => 9,
             Dup(_) => 17,
             Swap(_) => 25,
+            Halt => 0,
             Nop => 8,
             Skiz => 2,
             Call(_) => 33,
             Return => 16,
             Recurse => 24,
             Assert => 10,
-            Halt => 0,
             ReadMem => 32,
             WriteMem => 18,
             Hash => 26,
@@ -204,13 +204,13 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
             Divine(_) => "divine",
             Dup(_) => "dup",
             Swap(_) => "swap",
+            Halt => "halt",
             Nop => "nop",
             Skiz => "skiz",
             Call(_) => "call",
             Return => "return",
             Recurse => "recurse",
             Assert => "assert",
-            Halt => "halt",
             ReadMem => "read_mem",
             WriteMem => "write_mem",
             Hash => "hash",
@@ -273,13 +273,13 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
             Divine(x) => Divine(*x),
             Dup(x) => Dup(*x),
             Swap(x) => Swap(*x),
+            Halt => Halt,
             Nop => Nop,
             Skiz => Skiz,
             Call(label) => Call(f(label)),
             Return => Return,
             Recurse => Recurse,
             Assert => Assert,
-            Halt => Halt,
             ReadMem => ReadMem,
             WriteMem => WriteMem,
             Hash => Hash,
@@ -328,13 +328,13 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
             Divine(n) => n.index() as i32,
             Dup(_) => 1,
             Swap(_) => 0,
+            Halt => 0,
             Nop => 0,
             Skiz => -1,
             Call(_) => 0,
             Return => 0,
             Recurse => 0,
             Assert => -1,
-            Halt => 0,
             ReadMem => 1,
             WriteMem => -1,
             Hash => -5,
@@ -483,13 +483,13 @@ const fn all_instructions_without_args() -> [AnInstruction<BFieldElement>; Instr
         Divine(ST0),
         Dup(ST0),
         Swap(ST0),
+        Halt,
         Nop,
         Skiz,
         Call(BFIELD_ZERO),
         Return,
         Recurse,
         Assert,
-        Halt,
         ReadMem,
         WriteMem,
         Hash,
@@ -605,6 +605,73 @@ mod tests {
     use crate::NonDeterminism;
     use crate::Program;
 
+    #[derive(Debug, Clone, Copy, EnumCount, EnumIter)]
+    enum InstructionBucket {
+        HasArg,
+        ShrinksStack,
+        IsU32,
+    }
+
+    impl InstructionBucket {
+        fn contains(self, instruction: Instruction) -> bool {
+            match self {
+                InstructionBucket::HasArg => instruction.has_arg(),
+                InstructionBucket::ShrinksStack => instruction.shrinks_op_stack(),
+                InstructionBucket::IsU32 => instruction.is_u32_instruction(),
+            }
+        }
+    }
+
+    impl Instruction {
+        #[must_use]
+        fn replace_default_argument_if_illegal(self) -> Self {
+            match self {
+                Pop(ST0) => Pop(ST1),
+                Divine(ST0) => Divine(ST1),
+                Swap(ST0) => Swap(ST1),
+                _ => self,
+            }
+        }
+
+        fn flag_set(self) -> u32 {
+            let instruction = self.replace_default_argument_if_illegal();
+            InstructionBucket::iter()
+                .map(|bucket| bucket.contains(instruction) as u32)
+                .enumerate()
+                .map(|(bucket_index, contains_self)| contains_self << bucket_index)
+                .fold(0, |acc, bit_flag| acc | bit_flag)
+        }
+
+        fn computed_opcode(self) -> u32 {
+            let mut index_within_flag_set = 0;
+            for other_instruction in Instruction::iter() {
+                if other_instruction == self {
+                    break;
+                }
+                if other_instruction.flag_set() == self.flag_set() {
+                    index_within_flag_set += 1;
+                }
+            }
+
+            index_within_flag_set * 2_u32.pow(InstructionBucket::COUNT as u32) + self.flag_set()
+        }
+    }
+
+    #[test]
+    fn computed_and_actual_opcodes_are_identical() {
+        for instruction in Instruction::iter() {
+            let opcode = instruction.computed_opcode();
+            let name = instruction.name();
+            println!("{opcode: >3} {name}");
+        }
+
+        for instruction in Instruction::iter() {
+            let expected_opcode = instruction.computed_opcode();
+            let opcode = instruction.opcode();
+            assert_eq!(expected_opcode, opcode, "{instruction}");
+        }
+    }
+
     #[test]
     fn opcodes_are_unique() {
         let mut opcodes_to_instruction_map = HashMap::new();
@@ -669,13 +736,6 @@ mod tests {
     fn instruction_to_opcode_to_instruction_is_consistent() {
         for instr in ALL_INSTRUCTIONS {
             assert_eq!(instr, instr.opcode().try_into().unwrap());
-        }
-    }
-
-    #[test]
-    fn print_all_instructions_and_opcodes() {
-        for instr in ALL_INSTRUCTIONS {
-            println!("{:>3} {: <10}", instr.opcode(), format!("{}", instr.name()));
         }
     }
 
@@ -750,7 +810,7 @@ mod tests {
     fn opcodes_are_consistent_with_shrink_stack_indication_bit() {
         let shrink_stack_indicator_bit_mask = 2;
         for instruction in Instruction::iter() {
-            let instruction = replace_illegal_arguments_in_instruction(instruction);
+            let instruction = instruction.replace_default_argument_if_illegal();
             let opcode = instruction.opcode();
             println!("Testing instruction {instruction} with opcode {opcode}.");
             assert_eq!(
@@ -800,7 +860,7 @@ mod tests {
     #[test]
     fn instructions_act_on_op_stack_as_indicated() {
         for test_instruction in all_instructions_without_args() {
-            let test_instruction = replace_illegal_arguments_in_instruction(test_instruction);
+            let test_instruction = test_instruction.replace_default_argument_if_illegal();
             let (program, stack_size_before_test_instruction) =
                 construct_test_program_for_instruction(test_instruction);
             let stack_size_after_test_instruction = terminal_op_stack_size_for_program(program);
@@ -812,17 +872,6 @@ mod tests {
                 stack_size_difference,
                 "{test_instruction}"
             );
-        }
-    }
-
-    fn replace_illegal_arguments_in_instruction(
-        instruction: AnInstruction<BFieldElement>,
-    ) -> AnInstruction<BFieldElement> {
-        match instruction {
-            Pop(ST0) => Pop(ST3),
-            Divine(ST0) => Divine(ST1),
-            Swap(ST0) => Swap(ST1),
-            _ => instruction,
         }
     }
 
