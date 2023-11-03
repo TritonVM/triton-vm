@@ -105,6 +105,7 @@ impl AlgebraicExecutionTrace {
         let relevant_table_heights = [
             self.program_table_length(),
             self.processor_table_length(),
+            self.op_stack_table_length(),
             self.hash_table_length(),
             self.cascade_table_length(),
             self.lookup_table_length(),
