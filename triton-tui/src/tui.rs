@@ -18,7 +18,7 @@ use tokio::time::interval;
 use tokio_util::sync::CancellationToken;
 use tracing::error;
 
-use crate::cli::Cli;
+use crate::args::Args;
 
 pub(crate) type IO = std::io::Stdout;
 
@@ -57,8 +57,8 @@ pub(crate) struct Tui {
 
 impl Tui {
     pub fn new() -> Result<Self> {
-        let tick_rate = Cli::default().tick_rate;
-        let frame_rate = Cli::default().frame_rate;
+        let tick_rate = Args::default().tick_rate;
+        let frame_rate = Args::default().frame_rate;
         let terminal = Terminal::new(Backend::new(io()))?;
         let (event_tx, event_rx) = unbounded_channel();
         let cancellation_token = CancellationToken::new();

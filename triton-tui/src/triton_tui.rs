@@ -34,12 +34,12 @@ impl TritonTUI {
         let config = Config::new()?;
         let mode = Mode::Home;
         Ok(Self {
+            config,
             tick_rate,
             frame_rate,
             components: vec![Box::new(home), Box::new(fps)],
             should_quit: false,
             should_suspend: false,
-            config,
             mode,
             recent_key_events: Vec::new(),
         })

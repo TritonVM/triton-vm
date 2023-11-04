@@ -7,7 +7,7 @@ const DEFAULT_FRAME_RATE: f64 = 16.0;
 
 #[derive(Parser, Debug)]
 #[command(author, version = version(), about)]
-pub(crate) struct Cli {
+pub(crate) struct Args {
     #[arg(
         short,
         long,
@@ -27,7 +27,7 @@ pub(crate) struct Cli {
     pub frame_rate: f64,
 }
 
-impl Default for Cli {
+impl Default for Args {
     fn default() -> Self {
         Self {
             tick_rate: DEFAULT_TICK_RATE,
@@ -43,7 +43,7 @@ mod tests {
     #[test]
     fn default_cli_and_clap_default_parsing_produce_same_values() {
         let cli_args: Vec<String> = vec![];
-        let args = Cli::parse_from(cli_args);
+        let args = Args::parse_from(cli_args);
         assert_eq!(DEFAULT_TICK_RATE, args.tick_rate);
         assert_eq!(DEFAULT_FRAME_RATE, args.frame_rate);
     }
