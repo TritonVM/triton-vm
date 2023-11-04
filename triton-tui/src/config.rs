@@ -45,8 +45,9 @@ pub(crate) struct Config {
 impl Config {
     pub fn new() -> Result<Self, ConfigError> {
         let default_config = json5::from_str(DEFAULT_CONFIG).map_err(|e| {
-            error!("Unable to parse default config: {e}");
-            ConfigError::custom(format!("Unable to parse default config: {e}"))
+            let error = format!("Unable to parse default config: {e}");
+            error!(error);
+            ConfigError::custom(error)
         })?;
 
         let mut cfg = Self::aggregate_config_from_various_locations()?;
