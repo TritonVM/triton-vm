@@ -13,6 +13,7 @@ use super::Frame;
 pub(crate) struct Home {
     command_tx: Option<UnboundedSender<Action>>,
     config: Config,
+    counter: i64,
 }
 
 impl Home {
@@ -34,15 +35,17 @@ impl Component for Home {
 
     fn update(&mut self, action: Action) -> Result<Option<Action>> {
         match action {
-            Action::Tick => {}
-            Action::Refresh => {}
+            Action::IncrementCounter => self.counter += 1,
+            Action::DecrementCounter => self.counter -= 1,
             _ => {}
         }
         Ok(None)
     }
 
     fn draw(&mut self, f: &mut Frame<'_>, area: Rect) -> Result<()> {
-        f.render_widget(Paragraph::new("hello world"), area);
+        let counter = self.counter;
+        let message = format!("Press e to increment, n to decrement.\n\n\t{counter}");
+        f.render_widget(Paragraph::new(message), area);
         Ok(())
     }
 }

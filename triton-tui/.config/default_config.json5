@@ -5,6 +5,8 @@
       "<Ctrl-d>": "Quit",
       "<Ctrl-c>": "Quit",
       "<Ctrl-z>": "Suspend",
+      "<e>": "Increment",
+      "<n>": "Decrement",
     },
   }
 }
