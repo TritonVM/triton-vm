@@ -12,12 +12,12 @@ use super::Component;
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct FpsCounter {
     app_start_time: Instant,
-    app_frames: u32,
-    app_fps: f64,
+    app_ticks: u32,
+    app_ticks_per_s: f64,
 
     render_start_time: Instant,
     render_frames: u32,
-    render_fps: f64,
+    render_frames_per_s: f64,
 }
 
 impl Default for FpsCounter {
@@ -30,22 +30,22 @@ impl FpsCounter {
     pub fn new() -> Self {
         Self {
             app_start_time: Instant::now(),
-            app_frames: 0,
-            app_fps: 0.0,
+            app_ticks: 0,
+            app_ticks_per_s: 0.0,
             render_start_time: Instant::now(),
             render_frames: 0,
-            render_fps: 0.0,
+            render_frames_per_s: 0.0,
         }
     }
 
     fn app_tick(&mut self) -> Result<()> {
-        self.app_frames += 1;
+        self.app_ticks += 1;
         let now = Instant::now();
         let elapsed = (now - self.app_start_time).as_secs_f64();
         if elapsed >= 1.0 {
-            self.app_fps = self.app_frames as f64 / elapsed;
+            self.app_ticks_per_s = self.app_ticks as f64 / elapsed;
             self.app_start_time = now;
-            self.app_frames = 0;
+            self.app_ticks = 0;
         }
         Ok(())
     }
@@ -55,7 +55,7 @@ impl FpsCounter {
         let now = Instant::now();
         let elapsed = (now - self.render_start_time).as_secs_f64();
         if elapsed >= 1.0 {
-            self.render_fps = self.render_frames as f64 / elapsed;
+            self.render_frames_per_s = self.render_frames as f64 / elapsed;
             self.render_start_time = now;
             self.render_frames = 0;
         }
@@ -87,7 +87,7 @@ impl Component for FpsCounter {
 
         let s = format!(
             "{:.2} ticks per sec (app) {:.2} frames per sec (render)",
-            self.app_fps, self.render_fps
+            self.app_ticks_per_s, self.render_frames_per_s
         );
         let block = Block::default().title(block::Title::from(s.dim()).alignment(Alignment::Right));
         f.render_widget(block, rect);
