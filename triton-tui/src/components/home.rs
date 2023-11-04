@@ -1,6 +1,7 @@
 use color_eyre::eyre::Result;
 use crossterm::event::*;
 use ratatui::prelude::*;
+use ratatui::widgets::block::*;
 use ratatui::widgets::*;
 use tokio::sync::mpsc::UnboundedSender;
 
@@ -57,7 +58,21 @@ impl Component for Home {
     fn draw(&mut self, f: &mut Frame<'_>, area: Rect) -> Result<()> {
         let counter = self.counter;
         let message = format!("Press e to increment, n to decrement.\n\n\t{counter}");
-        f.render_widget(Paragraph::new(message), area);
+
+        let title = Title::from(" Triton TUI ").alignment(Alignment::Center);
+        let block = Block::default()
+            .title(title)
+            .borders(Borders::ALL)
+            .padding(Padding::uniform(2));
+
+        let paragraph = Paragraph::new(message)
+            .block(block)
+            .alignment(Alignment::Center)
+            .wrap(Wrap { trim: true });
+
+        let area = area.inner(&Margin::new(10, 5));
+
+        f.render_widget(paragraph, area);
         Ok(())
     }
 }
