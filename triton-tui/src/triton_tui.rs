@@ -88,10 +88,10 @@ impl TritonTUI {
                 }
                 match action {
                     Action::Tick => self.recent_key_events.clear(),
-                    Action::Render => self.render(&action_tx, &mut tui)?,
+                    Action::Render => self.render(&mut tui)?,
                     Action::Resize(w, h) => {
                         tui.resize(Rect::new(0, 0, w, h))?;
-                        self.render(&action_tx, &mut tui)?;
+                        self.render(&mut tui)?;
                     }
                     Action::Suspend => self.should_suspend = true,
                     Action::Resume => self.should_suspend = false,
@@ -124,17 +124,17 @@ impl TritonTUI {
         Ok(tui)
     }
 
-    fn render(&mut self, action_tx: &UnboundedSender<Action>, tui: &mut Tui) -> Result<()> {
+    fn render(&mut self, tui: &mut Tui) -> Result<()> {
+        let mut draw_result = Ok(());
         tui.draw(|f| {
             for component in self.components.iter_mut() {
-                if let Err(e) = component.draw(f, f.size()) {
-                    action_tx
-                        .send(Action::Error(format!("Failed to draw: {e:?}")))
-                        .unwrap();
+                let maybe_err = component.draw(f, f.size());
+                if maybe_err.is_err() {
+                    draw_result = maybe_err;
                 }
             }
         })?;
-        Ok(())
+        draw_result
     }
 
     fn handle_key_sequence(
