@@ -147,7 +147,7 @@ impl Tui {
                             None => {},
                         }
                     },
-                    _ = cancellation_token.cancelled() => break,
+                    _ = cancellation_token.cancelled() => return,
                     _ = tick_delay => event_tx.send(Event::Tick).unwrap(),
                     _ = render_delay => event_tx.send(Event::Render).unwrap(),
                 }
