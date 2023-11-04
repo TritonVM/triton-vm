@@ -1,4 +1,5 @@
 use color_eyre::eyre::Result;
+use crossterm::event::*;
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 use tokio::sync::mpsc::UnboundedSender;
@@ -31,6 +32,17 @@ impl Component for Home {
     fn register_config_handler(&mut self, config: Config) -> Result<()> {
         self.config = config;
         Ok(())
+    }
+
+    fn handle_mouse_events(&mut self, event: MouseEvent) -> Result<Option<Action>> {
+        let MouseEvent { kind, .. } = event;
+        match kind {
+            MouseEventKind::Down(MouseButton::Left) => Ok(Some(Action::IncrementCounter)),
+            MouseEventKind::Down(MouseButton::Right) => Ok(Some(Action::DecrementCounter)),
+            MouseEventKind::ScrollUp => Ok(Some(Action::IncrementCounter)),
+            MouseEventKind::ScrollDown => Ok(Some(Action::DecrementCounter)),
+            _ => Ok(None),
+        }
     }
 
     fn update(&mut self, action: Action) -> Result<Option<Action>> {

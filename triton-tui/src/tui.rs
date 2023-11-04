@@ -71,8 +71,8 @@ impl Tui {
             event_tx,
             frame_rate,
             tick_rate,
-            mouse: false,
-            paste: false,
+            mouse: true,
+            paste: true,
         })
     }
 
