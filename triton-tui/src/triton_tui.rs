@@ -18,9 +18,9 @@ use crate::tui::*;
 use crate::utils::trace_dbg;
 
 pub(crate) struct TritonTUI {
+    pub args: Args,
     pub config: Config,
-    pub tick_rate: f64,
-    pub frame_rate: f64,
+    pub tui: Tui,
     pub components: Vec<Box<dyn Component>>,
     pub should_quit: bool,
     pub should_suspend: bool,
@@ -30,27 +30,26 @@ pub(crate) struct TritonTUI {
 
 impl TritonTUI {
     pub fn new(args: Args) -> Result<Self> {
+        let config = Config::new()?;
+        let tui = Self::tui(args)?;
         let home = Home::new();
         let fps = FpsCounter::default();
-        let config = Config::new()?;
         let mode = Mode::Home;
         Ok(Self {
+            args,
             config,
-            tick_rate: args.tick_rate,
-            frame_rate: args.frame_rate,
+            tui,
             components: vec![Box::new(home), Box::new(fps)],
             should_quit: false,
             should_suspend: false,
             mode,
-            recent_key_events: Vec::new(),
+            recent_key_events: vec![],
         })
     }
 
     pub async fn run(&mut self) -> Result<()> {
         let (action_tx, mut action_rx) = mpsc::unbounded_channel();
-
-        let mut tui = self.tui()?;
-        tui.enter()?;
+        self.tui.enter()?;
 
         trace_dbg!("Tui entered");
 
@@ -63,11 +62,11 @@ impl TritonTUI {
         }
 
         for component in self.components.iter_mut() {
-            component.init(tui.size()?)?;
+            component.init(self.tui.size()?)?;
         }
 
         while !self.should_quit {
-            if let Some(e) = tui.next().await {
+            if let Some(e) = self.tui.next().await {
                 match e {
                     Event::Quit => action_tx.send(Action::Quit)?,
                     Event::Tick => action_tx.send(Action::Tick)?,
@@ -89,10 +88,10 @@ impl TritonTUI {
                 }
                 match action {
                     Action::Tick => self.recent_key_events.clear(),
-                    Action::Render => self.render(&mut tui)?,
+                    Action::Render => self.render()?,
                     Action::Resize(w, h) => {
-                        tui.resize(Rect::new(0, 0, w, h))?;
-                        self.render(&mut tui)?;
+                        self.tui.resize(Rect::new(0, 0, w, h))?;
+                        self.render()?;
                     }
                     Action::Suspend => self.should_suspend = true,
                     Action::Resume => self.should_suspend = false,
@@ -106,28 +105,28 @@ impl TritonTUI {
                 }
             }
             if self.should_suspend {
-                tui.suspend()?;
+                self.tui.suspend()?;
                 action_tx.send(Action::Resume)?;
-                tui = self.tui()?;
-                tui.resume()?;
+                self.tui = Self::tui(self.args)?;
+                self.tui.resume()?;
             }
         }
 
-        tui.exit()
+        self.tui.exit()
     }
 
-    fn tui(&self) -> Result<Tui> {
+    fn tui(args: Args) -> Result<Tui> {
         let mut tui = Tui::new()?;
-        tui.tick_rate(self.tick_rate);
-        tui.frame_rate(self.frame_rate);
+        tui.tick_rate(args.tick_rate);
+        tui.frame_rate(args.frame_rate);
         tui.mouse(true);
         tui.paste(true);
         Ok(tui)
     }
 
-    fn render(&mut self, tui: &mut Tui) -> Result<()> {
+    fn render(&mut self) -> Result<()> {
         let mut draw_result = Ok(());
-        tui.draw(|f| {
+        self.tui.draw(|f| {
             for component in self.components.iter_mut() {
                 let maybe_err = component.draw(f, f.size());
                 if maybe_err.is_err() {
