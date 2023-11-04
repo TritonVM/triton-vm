@@ -5,7 +5,7 @@ use crate::utils::version;
 const DEFAULT_TICK_RATE: f64 = 1.0;
 const DEFAULT_FRAME_RATE: f64 = 16.0;
 
-#[derive(Parser, Debug)]
+#[derive(Parser, Debug, Clone, Copy)]
 #[command(author, version = version(), about)]
 pub(crate) struct Args {
     #[arg(

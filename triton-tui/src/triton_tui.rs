@@ -7,6 +7,7 @@ use tracing::debug;
 use tracing::info;
 
 use crate::action::Action;
+use crate::args::Args;
 use crate::components::fps::FpsCounter;
 use crate::components::home::Home;
 use crate::components::Component;
@@ -28,15 +29,15 @@ pub(crate) struct TritonTUI {
 }
 
 impl TritonTUI {
-    pub fn new(tick_rate: f64, frame_rate: f64) -> Result<Self> {
+    pub fn new(args: Args) -> Result<Self> {
         let home = Home::new();
         let fps = FpsCounter::default();
         let config = Config::new()?;
         let mode = Mode::Home;
         Ok(Self {
             config,
-            tick_rate,
-            frame_rate,
+            tick_rate: args.tick_rate,
+            frame_rate: args.frame_rate,
             components: vec![Box::new(home), Box::new(fps)],
             should_quit: false,
             should_suspend: false,

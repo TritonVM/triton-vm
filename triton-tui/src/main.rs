@@ -21,6 +21,6 @@ async fn main() -> Result<()> {
     initialize_panic_handler()?;
 
     let args = Args::parse();
-    let mut tui = TritonTUI::new(args.tick_rate, args.frame_rate)?;
+    let mut tui = TritonTUI::new(args)?;
     tui.run().await
 }
