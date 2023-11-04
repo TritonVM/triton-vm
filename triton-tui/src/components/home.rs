@@ -6,6 +6,7 @@ use ratatui::widgets::*;
 use tokio::sync::mpsc::UnboundedSender;
 
 use crate::action::Action;
+use crate::components::centered_rect;
 use crate::config::Config;
 
 use super::Component;
@@ -56,22 +57,24 @@ impl Component for Home {
     }
 
     fn draw(&mut self, f: &mut Frame<'_>, area: Rect) -> Result<()> {
-        let counter = self.counter;
-        let message = format!("Press e to increment, n to decrement.\n\n\t{counter}");
-
         let title = Title::from(" Triton TUI ").alignment(Alignment::Center);
+        let text = vec![
+            Line::from("[w]rite program"),
+            Line::from("[l]oad program"),
+            Line::from("[q]uit"),
+        ];
+
         let block = Block::default()
             .title(title)
             .borders(Borders::ALL)
-            .padding(Padding::uniform(2));
+            .padding(Padding::uniform(1));
 
-        let paragraph = Paragraph::new(message)
+        let paragraph = Paragraph::new(text)
             .block(block)
-            .alignment(Alignment::Center)
+            .alignment(Alignment::Left)
             .wrap(Wrap { trim: true });
 
-        let area = area.inner(&Margin::new(10, 5));
-
+        let area = centered_rect(area, 50, 50);
         f.render_widget(paragraph, area);
         Ok(())
     }

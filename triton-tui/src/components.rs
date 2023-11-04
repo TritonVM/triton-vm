@@ -1,8 +1,7 @@
 use color_eyre::eyre::Result;
 use crossterm::event::KeyEvent;
 use crossterm::event::MouseEvent;
-use ratatui::layout::Rect;
-use ratatui::Frame;
+use ratatui::prelude::*;
 use tokio::sync::mpsc::UnboundedSender;
 
 use crate::action::Action;
@@ -123,4 +122,21 @@ pub(crate) trait Component {
     ///
     /// * `Result<()>` - An Ok result or an error.
     fn draw(&mut self, f: &mut Frame<'_>, area: Rect) -> Result<()>;
+}
+
+/// helper function to create a centered rect using up certain percentage of the available rect `r`
+fn centered_rect(area: Rect, percent_x: u16, percent_y: u16) -> Rect {
+    let area = centered_rect_in_direction(area, percent_y, Direction::Vertical);
+    centered_rect_in_direction(area, percent_x, Direction::Horizontal)
+}
+
+fn centered_rect_in_direction(area: Rect, percentage: u16, direction: Direction) -> Rect {
+    Layout::default()
+        .direction(direction)
+        .constraints([
+            Constraint::Percentage((100 - percentage) / 2),
+            Constraint::Percentage(percentage),
+            Constraint::Percentage((100 - percentage) / 2),
+        ])
+        .split(area)[1]
 }
