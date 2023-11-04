@@ -10,6 +10,7 @@ pub(crate) mod utils;
 use args::Args;
 use clap::Parser;
 use color_eyre::eyre::Result;
+use tracing::error;
 
 use crate::triton_tui::TritonTUI;
 use crate::utils::initialize_logging;
@@ -21,6 +22,11 @@ async fn main() -> Result<()> {
     initialize_panic_handler()?;
 
     let args = Args::parse();
-    let mut tui = TritonTUI::new(args)?;
-    tui.run().await
+    let mut triton_tui = TritonTUI::new(args)?;
+    if let Err(e) = triton_tui.run().await {
+        let error = format!("{e}");
+        error!(error);
+        triton_tui.terminate()?;
+    };
+    Ok(())
 }

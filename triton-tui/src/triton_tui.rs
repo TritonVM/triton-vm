@@ -153,4 +153,10 @@ impl TritonTUI {
         }
         Ok(())
     }
+
+    pub fn terminate(&mut self) -> Result<()> {
+        self.tui.exit()?;
+        self.should_quit = true;
+        Ok(())
+    }
 }
