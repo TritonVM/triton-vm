@@ -93,6 +93,10 @@ impl TritonTUI {
                         self.tui.resize(Rect::new(0, 0, w, h))?;
                         self.render()?;
                     }
+                    Action::Mode(mode) => {
+                        self.mode = mode;
+                        self.render()?;
+                    }
                     Action::Suspend => self.should_suspend = true,
                     Action::Resume => self.should_suspend = false,
                     Action::Quit => self.should_quit = true,

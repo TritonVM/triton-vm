@@ -5,4 +5,5 @@ use serde::Serialize;
 pub(crate) enum Mode {
     #[default]
     Home,
+    Help,
 }

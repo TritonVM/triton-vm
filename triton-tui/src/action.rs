@@ -2,9 +2,12 @@ use std::fmt;
 
 use serde::de;
 use serde::de::Deserializer;
+use serde::de::IntoDeserializer;
 use serde::de::Visitor;
 use serde::Deserialize;
 use serde::Serialize;
+
+use crate::mode::Mode;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub(crate) enum Action {
@@ -16,9 +19,9 @@ pub(crate) enum Action {
     Quit,
     Refresh,
     Error(String),
-    Help,
     IncrementCounter,
     DecrementCounter,
+    Mode(Mode),
 }
 
 impl<'de> Deserialize<'de> for Action {
@@ -46,28 +49,52 @@ impl<'de> Deserialize<'de> for Action {
                     "Resume" => Ok(Action::Resume),
                     "Quit" => Ok(Action::Quit),
                     "Refresh" => Ok(Action::Refresh),
-                    "Help" => Ok(Action::Help),
                     "Increment" => Ok(Action::IncrementCounter),
                     "Decrement" => Ok(Action::DecrementCounter),
-                    data if data.starts_with("Error(") => {
-                        let error_msg = data.trim_start_matches("Error(").trim_end_matches(')');
-                        Ok(Action::Error(error_msg.to_string()))
-                    }
-                    data if data.starts_with("Resize(") => {
-                        let parts: Vec<&str> = data
-                            .trim_start_matches("Resize(")
-                            .trim_end_matches(')')
-                            .split(',')
-                            .collect();
-                        if parts.len() == 2 {
-                            let width: u16 = parts[0].trim().parse().map_err(E::custom)?;
-                            let height: u16 = parts[1].trim().parse().map_err(E::custom)?;
-                            Ok(Action::Resize(width, height))
-                        } else {
-                            Err(E::custom(format!("Invalid Resize format: {}", value)))
-                        }
-                    }
-                    _ => Err(E::custom(format!("Unknown Action variant: {}", value))),
+                    mode if mode.starts_with("Mode::") => Self::parse_mode(mode),
+                    data if data.starts_with("Error(") => Self::parse_error(data),
+                    data if data.starts_with("Resize(") => Self::parse_resize(data),
+                    _ => Err(E::custom(format!("Unknown Action variant: {value}"))),
+                }
+            }
+        }
+
+        impl ActionVisitor {
+            fn parse_mode<E>(mode: &str) -> Result<Action, E>
+            where
+                E: de::Error,
+            {
+                let maybe_mode_and_variant = mode.split("::").collect::<Vec<_>>();
+                let maybe_variant = maybe_mode_and_variant.get(1).copied();
+                let mode_variant =
+                    maybe_variant.ok_or(E::custom(format!("Missing Mode variant: {mode}")))?;
+                let mode = Mode::deserialize(mode_variant.into_deserializer())?;
+                Ok(Action::Mode(mode))
+            }
+
+            fn parse_error<E>(data: &str) -> Result<Action, E>
+            where
+                E: de::Error,
+            {
+                let error_msg = data.trim_start_matches("Error(").trim_end_matches(')');
+                Ok(Action::Error(error_msg.to_string()))
+            }
+
+            fn parse_resize<E>(data: &str) -> Result<Action, E>
+            where
+                E: de::Error,
+            {
+                let parts: Vec<&str> = data
+                    .trim_start_matches("Resize(")
+                    .trim_end_matches(')')
+                    .split(',')
+                    .collect();
+                if parts.len() == 2 {
+                    let width: u16 = parts[0].trim().parse().map_err(E::custom)?;
+                    let height: u16 = parts[1].trim().parse().map_err(E::custom)?;
+                    Ok(Action::Resize(width, height))
+                } else {
+                    Err(E::custom(format!("Invalid Resize format: {data}")))
                 }
             }
         }

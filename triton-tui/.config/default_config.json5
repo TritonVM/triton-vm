@@ -1,12 +1,16 @@
 {
-  "keybindings": {
-    "Home": {
-      "<q>": "Quit",
-      "<Ctrl-d>": "Quit",
-      "<Ctrl-c>": "Quit",
-      "<Ctrl-z>": "Suspend",
-      "<e>": "Increment",
-      "<n>": "Decrement",
-    },
-  }
+    "keybindings": {
+        "Home": {
+            "<q>": "Quit",
+            "<?>": "Mode::Help",
+            "<Ctrl-c>": "Quit",
+            "<Ctrl-z>": "Suspend",
+        },
+        "Help": {
+            "<q>": "Mode::Home",
+            "<esc>": "Mode::Home",
+            "<Ctrl-c>": "Quit",
+            "<Ctrl-z>": "Suspend",
+        }
+    }
 }
