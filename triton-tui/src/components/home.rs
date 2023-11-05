@@ -30,7 +30,7 @@ impl Component for Home {
         Ok(())
     }
 
-    fn handle_mouse_events(&mut self, event: MouseEvent) -> Result<Option<Action>> {
+    fn handle_mouse_event(&mut self, event: MouseEvent) -> Result<Option<Action>> {
         let MouseEvent { kind, .. } = event;
         match kind {
             MouseEventKind::Down(MouseButton::Left) => Ok(Some(Action::IncrementCounter)),

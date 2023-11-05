@@ -82,7 +82,7 @@ impl TritonTUI {
                     _ => {}
                 }
                 for component in self.components.iter_mut().flatten() {
-                    if let Some(action) = component.handle_events(Some(e.clone()))? {
+                    if let Some(action) = component.handle_event(Some(e.clone()))? {
                         action_tx.send(action)?;
                     }
                 }
