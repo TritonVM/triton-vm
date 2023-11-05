@@ -7,7 +7,7 @@
             "<Ctrl-z>": "Suspend",
         },
         "Help": {
-            "<q>": "Mode::Home",
+            "<q>": "Quit",
             "<esc>": "Mode::Home",
             "<Ctrl-c>": "Quit",
             "<Ctrl-z>": "Suspend",

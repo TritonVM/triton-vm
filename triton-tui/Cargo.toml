@@ -20,6 +20,7 @@ derive_deref = "1"
 directories = "5"
 futures = "0.3"
 human-panic = "1"
+itertools = "0.11"
 json5 = "0.4"
 lazy_static = "1"
 libc = "0.2"
@@ -28,6 +29,7 @@ ratatui = { version = "0.24", features = ["serde", "macros"] }
 serde = { version = "1", features = ["derive"] }
 signal-hook = "0.3"
 strip-ansi-escapes = "0.2"
+strum = { version = "0.25.0", features = ["derive"] }
 tokio = { version = "1", features = ["full"] }
 tokio-util = "0.7"
 tracing = "0.1"

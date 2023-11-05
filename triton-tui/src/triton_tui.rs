@@ -1,6 +1,7 @@
 use color_eyre::eyre::Result;
 use crossterm::event::KeyEvent;
 use ratatui::prelude::Rect;
+use strum::EnumCount;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::UnboundedSender;
 use tracing::debug;
@@ -9,6 +10,7 @@ use tracing::info;
 use crate::action::Action;
 use crate::args::Args;
 use crate::components::fps::FpsCounter;
+use crate::components::help::Help;
 use crate::components::home::Home;
 use crate::components::Component;
 use crate::config::Config;
@@ -21,7 +23,7 @@ pub(crate) struct TritonTUI {
     pub args: Args,
     pub config: Config,
     pub tui: Tui,
-    pub components: Vec<Box<dyn Component>>,
+    pub components: [Vec<Box<dyn Component>>; Mode::COUNT],
     pub should_quit: bool,
     pub should_suspend: bool,
     pub mode: Mode,
@@ -32,14 +34,18 @@ impl TritonTUI {
     pub fn new(args: Args) -> Result<Self> {
         let config = Config::new()?;
         let tui = Self::tui(args)?;
-        let home = Home::new();
-        let fps = FpsCounter::default();
         let mode = Mode::Home;
+
+        let mut components: [Vec<Box<dyn Component>>; Mode::COUNT] = Default::default();
+        components[Mode::Home.id()].push(Box::<Home>::default());
+        components[Mode::Home.id()].push(Box::<FpsCounter>::default());
+        components[Mode::Help.id()].push(Box::<Help>::default());
+
         Ok(Self {
             args,
             config,
             tui,
-            components: vec![Box::new(home), Box::new(fps)],
+            components,
             should_quit: false,
             should_suspend: false,
             mode,
@@ -53,15 +59,15 @@ impl TritonTUI {
 
         trace_dbg!("Tui entered");
 
-        for component in self.components.iter_mut() {
+        for component in self.components.iter_mut().flatten() {
             component.register_action_handler(action_tx.clone())?;
         }
 
-        for component in self.components.iter_mut() {
+        for component in self.components.iter_mut().flatten() {
             component.register_config_handler(self.config.clone())?;
         }
 
-        for component in self.components.iter_mut() {
+        for component in self.components.iter_mut().flatten() {
             component.init(self.tui.size()?)?;
         }
 
@@ -75,7 +81,7 @@ impl TritonTUI {
                     Event::Resize(x, y) => action_tx.send(Action::Resize(x, y))?,
                     _ => {}
                 }
-                for component in self.components.iter_mut() {
+                for component in self.components.iter_mut().flatten() {
                     if let Some(action) = component.handle_events(Some(e.clone()))? {
                         action_tx.send(action)?;
                     }
@@ -102,7 +108,7 @@ impl TritonTUI {
                     Action::Quit => self.should_quit = true,
                     _ => {}
                 }
-                for component in self.components.iter_mut() {
+                for component in self.components.iter_mut().flatten() {
                     if let Some(action) = component.update(action.clone())? {
                         action_tx.send(action)?
                     };
@@ -129,9 +135,10 @@ impl TritonTUI {
     }
 
     fn render(&mut self) -> Result<()> {
+        let mode_id = self.mode.id();
         let mut draw_result = Ok(());
         self.tui.draw(|f| {
-            for component in self.components.iter_mut() {
+            for component in self.components[mode_id].iter_mut() {
                 let maybe_err = component.draw(f, f.size());
                 if maybe_err.is_err() {
                     draw_result = maybe_err;

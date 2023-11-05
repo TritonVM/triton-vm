@@ -1,11 +1,9 @@
 use std::fmt;
 
+use itertools::Itertools;
 use serde::de;
-use serde::de::Deserializer;
-use serde::de::IntoDeserializer;
-use serde::de::Visitor;
-use serde::Deserialize;
-use serde::Serialize;
+use serde::de::*;
+use serde::*;
 
 use crate::mode::Mode;
 
@@ -64,7 +62,7 @@ impl<'de> Deserialize<'de> for Action {
             where
                 E: de::Error,
             {
-                let maybe_mode_and_variant = mode.split("::").collect::<Vec<_>>();
+                let maybe_mode_and_variant = mode.split("::").collect_vec();
                 let maybe_variant = maybe_mode_and_variant.get(1).copied();
                 let mode_variant =
                     maybe_variant.ok_or(E::custom(format!("Missing Mode variant: {mode}")))?;

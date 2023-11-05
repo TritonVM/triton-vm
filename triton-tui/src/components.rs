@@ -9,6 +9,7 @@ use crate::config::Config;
 use crate::tui::Event;
 
 pub(crate) mod fps;
+pub(crate) mod help;
 pub(crate) mod home;
 
 /// `Component` is a trait that represents a visual and interactive element of the user interface.

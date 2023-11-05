@@ -19,12 +19,6 @@ pub(crate) struct Home {
     counter: i64,
 }
 
-impl Home {
-    pub fn new() -> Self {
-        Self::default()
-    }
-}
-
 impl Component for Home {
     fn register_action_handler(&mut self, tx: UnboundedSender<Action>) -> Result<()> {
         self.command_tx = Some(tx);
@@ -57,17 +51,14 @@ impl Component for Home {
     }
 
     fn draw(&mut self, f: &mut Frame<'_>, area: Rect) -> Result<()> {
-        let title = Title::from(" Triton TUI ").alignment(Alignment::Center);
+        let title = Title::from(" Triton TUI ").alignment(Alignment::Left);
         let text = vec![
             Line::from("[w]rite program"),
             Line::from("[l]oad program"),
             Line::from("[q]uit"),
         ];
 
-        let block = Block::default()
-            .title(title)
-            .borders(Borders::ALL)
-            .padding(Padding::uniform(1));
+        let block = Block::default().title(title).padding(Padding::uniform(1));
 
         let paragraph = Paragraph::new(text)
             .block(block)
