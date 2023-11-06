@@ -18,18 +18,17 @@
 //! table. Instead, the terminal of the Evaluation Argument is computed directly from the
 //! public input (respectively output) and the indeterminate.
 
-use arbitrary::Arbitrary;
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::ops::Index;
 use std::ops::Range;
 use std::ops::RangeInclusive;
 
+use arbitrary::Arbitrary;
 use strum::Display;
 use strum::EnumCount;
 use strum::EnumIter;
 use twenty_first::shared_math::b_field_element::BFieldElement;
-use twenty_first::shared_math::other::random_elements;
 use twenty_first::shared_math::tip5::LOOKUP_TABLE;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
@@ -281,21 +280,6 @@ impl Challenges {
 
         Self { challenges }
     }
-
-    /// Stand-in challenges. Can be used in tests. For non-interactive STARKs, use the
-    /// Fiat-Shamir heuristic to derive the actual challenges.
-    ///
-    /// If no [`Claim`] is provided, a dummy claim is used.
-    pub fn placeholder(claim: Option<&Claim>) -> Self {
-        let dummy_claim = Claim {
-            program_digest: Default::default(),
-            input: vec![],
-            output: vec![],
-        };
-        let claim = claim.unwrap_or(&dummy_claim);
-        let stand_in_challenges = random_elements(Self::num_challenges_to_sample());
-        Self::new(stand_in_challenges, claim)
-    }
 }
 
 impl Index<ChallengeId> for Challenges {
@@ -323,8 +307,43 @@ impl Index<RangeInclusive<ChallengeId>> for Challenges {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
+    use itertools::Itertools;
+    use twenty_first::shared_math::b_field_element::BFIELD_ZERO;
+    use twenty_first::shared_math::other::random_elements;
+
     use super::*;
+
+    impl Challenges {
+        /// Stand-in challenges. Can be used in tests. For non-interactive STARKs, use the
+        /// Fiat-Shamir heuristic to derive the actual challenges.
+        ///
+        /// If no [`Claim`] is provided, a dummy claim is used.
+        pub fn placeholder(claim: Option<&Claim>) -> Self {
+            let dummy_claim = Claim {
+                program_digest: Default::default(),
+                input: vec![],
+                output: vec![],
+            };
+            let claim = claim.unwrap_or(&dummy_claim);
+            let stand_in_challenges = random_elements(Self::num_challenges_to_sample());
+            Self::new(stand_in_challenges, claim)
+        }
+
+        pub fn deterministic_placeholder(claim: Option<&Claim>) -> Self {
+            let dummy_claim = Claim {
+                program_digest: Default::default(),
+                input: vec![],
+                output: vec![],
+            };
+            let claim = claim.unwrap_or(&dummy_claim);
+            let stand_in_challenges = (1..=Self::num_challenges_to_sample())
+                .map(|i| BFieldElement::new(i as u64))
+                .map(|bfe| XFieldElement::new([BFIELD_ZERO, bfe, BFIELD_ZERO]))
+                .collect_vec();
+            Self::new(stand_in_challenges, claim)
+        }
+    }
 
     #[test]
     const fn compile_time_index_assertions() {

@@ -1129,6 +1129,7 @@ mod tests {
     use twenty_first::shared_math::traits::FiniteField;
 
     use crate::arithmetic_domain::ArithmeticDomain;
+    use crate::shared_tests::ProgramAndInput;
     use crate::stark::tests::*;
     use crate::table::degree_lowering_table::DegreeLoweringBaseTableColumn;
     use crate::table::degree_lowering_table::DegreeLoweringExtTableColumn;
@@ -1141,8 +1142,8 @@ mod tests {
 
     #[test]
     fn base_table_width_is_correct() {
-        let (_, _, master_base_table) =
-            master_base_table_for_low_security_level(&triton_program!(halt), [].into(), [].into());
+        let program = ProgramAndInput::without_input(triton_program!(halt));
+        let (_, _, master_base_table) = master_base_table_for_low_security_level(program);
 
         assert_eq!(
             program_table::BASE_WIDTH,
@@ -1188,8 +1189,8 @@ mod tests {
 
     #[test]
     fn ext_table_width_is_correct() {
-        let (parameters, _, _, master_ext_table, _) =
-            master_tables_for_low_security_level(&triton_program!(halt), [].into(), [].into());
+        let program = ProgramAndInput::without_input(triton_program!(halt));
+        let (parameters, _, _, master_ext_table, _) = master_tables_for_low_security_level(program);
 
         assert_eq!(
             program_table::EXT_WIDTH,

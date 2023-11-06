@@ -1862,6 +1862,7 @@ impl HashTable {
 
 #[cfg(test)]
 pub(crate) mod tests {
+    use crate::shared_tests::ProgramAndInput;
     use crate::stark::tests::master_tables_for_low_security_level;
     use crate::table::master_table::MasterTable;
     use crate::triton_asm;
@@ -1988,7 +1989,7 @@ pub(crate) mod tests {
         dbg!(aet.cascade_table_length());
 
         let (_, _, master_base_table, master_ext_table, challenges) =
-            master_tables_for_low_security_level(&program, [].into(), [].into());
+            master_tables_for_low_security_level(ProgramAndInput::without_input(program));
 
         let master_base_trace_table = master_base_table.trace_table();
         let master_ext_trace_table = master_ext_table.trace_table();

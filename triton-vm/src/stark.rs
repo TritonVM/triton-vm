@@ -1122,7 +1122,6 @@ pub(crate) mod tests {
     use crate::instruction::AnInstruction;
     use crate::instruction::Instruction;
     use crate::op_stack::OpStackElement;
-    use crate::program::Program;
     use crate::shared_tests::*;
     use crate::table::cascade_table;
     use crate::table::cascade_table::ExtCascadeTable;
@@ -1167,16 +1166,21 @@ pub(crate) mod tests {
     use crate::table::u32_table::ExtU32Table;
     use crate::triton_program;
     use crate::vm::tests::*;
-    use crate::NonDeterminism;
     use crate::PublicInput;
 
     use super::*;
 
     pub(crate) fn master_base_table_for_low_security_level(
-        program: &Program,
-        public_input: PublicInput,
-        non_determinism: NonDeterminism<BFieldElement>,
+        program_and_input: ProgramAndInput,
     ) -> (StarkParameters, Claim, MasterBaseTable) {
+        let ProgramAndInput {
+            program,
+            public_input,
+            non_determinism,
+        } = program_and_input;
+        let public_input: PublicInput = public_input.into();
+        let non_determinism = (&non_determinism).into();
+
         let (aet, stdout) = program
             .trace_execution(public_input.clone(), non_determinism)
             .unwrap();
@@ -1188,9 +1192,7 @@ pub(crate) mod tests {
     }
 
     pub(crate) fn master_tables_for_low_security_level(
-        program: &Program,
-        public_input: PublicInput,
-        non_determinism: NonDeterminism<BFieldElement>,
+        program_and_input: ProgramAndInput,
     ) -> (
         StarkParameters,
         Claim,
@@ -1199,19 +1201,19 @@ pub(crate) mod tests {
         Challenges,
     ) {
         let (parameters, claim, mut master_base_table) =
-            master_base_table_for_low_security_level(program, public_input, non_determinism);
+            master_base_table_for_low_security_level(program_and_input);
 
-        let dummy_challenges = Challenges::placeholder(Some(&claim));
+        let challenges = Challenges::deterministic_placeholder(Some(&claim));
         master_base_table.pad();
         let master_ext_table =
-            master_base_table.extend(&dummy_challenges, parameters.num_randomizer_polynomials);
+            master_base_table.extend(&challenges, parameters.num_randomizer_polynomials);
 
         (
             parameters,
             claim,
             master_base_table,
             master_ext_table,
-            dummy_challenges,
+            challenges,
         )
     }
 
@@ -1228,7 +1230,7 @@ pub(crate) mod tests {
             halt
         );
         let (_, _, master_base_table) =
-            master_base_table_for_low_security_level(&program, [].into(), [].into());
+            master_base_table_for_low_security_level(ProgramAndInput::without_input(program));
 
         println!();
         println!("Processor Table:");
@@ -1306,7 +1308,7 @@ pub(crate) mod tests {
             halt
         };
         let (_, _, master_base_table) =
-            master_base_table_for_low_security_level(&program, [].into(), [].into());
+            master_base_table_for_low_security_level(ProgramAndInput::without_input(program));
 
         println!();
         println!("Processor Table:");
@@ -1416,9 +1418,10 @@ pub(crate) mod tests {
         let read_nop_program = triton_program!(
             read_io 3 nop nop write_io push 17 write_io halt
         );
-        let public_input = vec![3, 5, 7].into();
+        let mut program_and_input = ProgramAndInput::without_input(read_nop_program);
+        program_and_input.public_input = vec![3, 5, 7];
         let (_, claim, _, master_ext_table, all_challenges) =
-            master_tables_for_low_security_level(&read_nop_program, public_input, [].into());
+            master_tables_for_low_security_level(program_and_input);
 
         let processor_table = master_ext_table.table(ProcessorTable);
         let processor_table_last_row = processor_table.slice(s![-1, ..]);
@@ -1452,14 +1455,10 @@ pub(crate) mod tests {
             .map(|c| c.consume())
             .collect_vec();
 
-        for (code_idx, code_with_input) in code_collection.into_iter().enumerate() {
+        for (code_idx, program_and_input) in code_collection.into_iter().enumerate() {
             println!("Checking Grand Cross-Table Argument for TASM snippet {code_idx}.");
             let (_, _, master_base_table, master_ext_table, challenges) =
-                master_tables_for_low_security_level(
-                    &code_with_input.program,
-                    code_with_input.public_input(),
-                    code_with_input.non_determinism(),
-                );
+                master_tables_for_low_security_level(program_and_input);
 
             let processor_table = master_ext_table.table(ProcessorTable);
             let processor_table_last_row = processor_table.slice(s![-1, ..]);
@@ -1696,13 +1695,9 @@ pub(crate) mod tests {
         }
     }
 
-    fn triton_table_constraints_evaluate_to_zero(source_code_and_input: ProgramAndInput) {
+    fn triton_table_constraints_evaluate_to_zero(program_and_input: ProgramAndInput) {
         let (_, _, master_base_table, master_ext_table, challenges) =
-            master_tables_for_low_security_level(
-                &source_code_and_input.program,
-                source_code_and_input.public_input(),
-                source_code_and_input.non_determinism(),
-            );
+            master_tables_for_low_security_level(program_and_input);
 
         assert_eq!(
             master_base_table.randomized_trace_table().nrows(),
@@ -1767,13 +1762,9 @@ pub(crate) mod tests {
         derived_constraints_evaluate_to_zero(test_program_for_halt());
     }
 
-    fn derived_constraints_evaluate_to_zero(source_code_and_input: ProgramAndInput) {
+    fn derived_constraints_evaluate_to_zero(program_and_input: ProgramAndInput) {
         let (_, _, master_base_table, master_ext_table, challenges) =
-            master_tables_for_low_security_level(
-                &source_code_and_input.program,
-                source_code_and_input.public_input(),
-                source_code_and_input.non_determinism(),
-            );
+            master_tables_for_low_security_level(program_and_input);
 
         let zero = XFieldElement::zero();
         let master_base_trace_table = master_base_table.trace_table();

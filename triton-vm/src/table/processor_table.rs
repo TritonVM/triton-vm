@@ -3321,7 +3321,7 @@ pub(crate) mod tests {
     use crate::op_stack::OpStackElement;
     use crate::program::Program;
     use crate::shared_tests::ProgramAndInput;
-    use crate::stark::tests::master_base_table_for_low_security_level;
+    use crate::stark::tests::master_tables_for_low_security_level;
     use crate::table::master_table::*;
     use crate::triton_asm;
     use crate::triton_program;
@@ -3342,57 +3342,65 @@ pub(crate) mod tests {
         }
     }
 
-    fn test_row_from_program(program: Program, row_num: usize) -> Array2<BFieldElement> {
-        let program_and_input = ProgramAndInput {
-            program,
-            public_input: [].into(),
-            non_determinism: [].into(),
-        };
-        test_row_from_program_with_input(program_and_input, row_num)
+    #[derive(Debug, Clone)]
+    struct TestRows {
+        pub challenges: Challenges,
+        pub consecutive_master_base_table_rows: Array2<BFieldElement>,
+        pub consecutive_ext_base_table_rows: Array2<XFieldElement>,
+    }
+
+    #[derive(Debug, Clone)]
+    struct TestRowsDebugInfo {
+        pub instruction: Instruction,
+        pub debug_cols_curr_row: Vec<ProcessorBaseTableColumn>,
+        pub debug_cols_next_row: Vec<ProcessorBaseTableColumn>,
+    }
+
+    fn test_row_from_program(program: Program, row_num: usize) -> TestRows {
+        test_row_from_program_with_input(ProgramAndInput::without_input(program), row_num)
     }
 
     fn test_row_from_program_with_input(
         program_and_input: ProgramAndInput,
         row_num: usize,
-    ) -> Array2<BFieldElement> {
-        let ProgramAndInput {
-            program,
-            public_input,
-            non_determinism,
-        } = program_and_input;
-        let (_, _, master_base_table) = master_base_table_for_low_security_level(
-            &program,
-            public_input.into(),
-            (&non_determinism).into(),
-        );
-        master_base_table
-            .trace_table()
-            .slice(s![row_num..=row_num + 1, ..])
-            .to_owned()
+    ) -> TestRows {
+        let (_, _, master_base_table, master_ext_table, challenges) =
+            master_tables_for_low_security_level(program_and_input);
+        TestRows {
+            challenges,
+            consecutive_master_base_table_rows: master_base_table
+                .trace_table()
+                .slice(s![row_num..=row_num + 1, ..])
+                .to_owned(),
+            consecutive_ext_base_table_rows: master_ext_table
+                .trace_table()
+                .slice(s![row_num..=row_num + 1, ..])
+                .to_owned(),
+        }
     }
 
-    fn test_constraints_for_rows_with_debug_info(
-        instruction: Instruction,
-        master_base_tables: &[Array2<BFieldElement>],
-        debug_cols_curr_row: &[ProcessorBaseTableColumn],
-        debug_cols_next_row: &[ProcessorBaseTableColumn],
+    fn assert_constraints_for_rows_with_debug_info(
+        test_rows: &[TestRows],
+        debug_info: TestRowsDebugInfo,
     ) {
+        let instruction = debug_info.instruction;
         let circuit_builder = ConstraintCircuitBuilder::new();
-        let challenges = Challenges::placeholder(None);
-        let fake_ext_table = Array2::zeros([2, NUM_EXT_COLUMNS]);
-        for (case_idx, test_rows) in master_base_tables.iter().enumerate() {
-            let curr_row = test_rows.slice(s![0, ..]);
-            let next_row = test_rows.slice(s![1, ..]);
+        let transition_constraints = ExtProcessorTable::get_transition_constraints_for_instruction(
+            &circuit_builder,
+            instruction,
+        );
 
-            // Print debug information
-            println!(
-                "Testing all constraints of {instruction} for test row with index {case_idx}…"
-            );
-            for &c in debug_cols_curr_row {
-                print!("{} = {}, ", c, curr_row[c.master_base_table_index()]);
+        for (case_idx, rows) in test_rows.iter().enumerate() {
+            let curr_row = rows.consecutive_master_base_table_rows.slice(s![0, ..]);
+            let next_row = rows.consecutive_master_base_table_rows.slice(s![1, ..]);
+
+            println!("Testing all constraints of {instruction} for test case {case_idx}…");
+            for &c in debug_info.debug_cols_curr_row.iter() {
+                print!("{c}  = {}, ", curr_row[c.master_base_table_index()]);
             }
-            for &c in debug_cols_next_row {
-                print!("{}' = {}, ", c, next_row[c.master_base_table_index()]);
+            println!();
+            for &c in debug_info.debug_cols_next_row.iter() {
+                print!("{c}' = {}, ", next_row[c.master_base_table_index()]);
             }
             println!();
 
@@ -3401,22 +3409,15 @@ pub(crate) mod tests {
                 curr_row[CI.master_base_table_index()],
                 "The test is trying to check the wrong transition constraint polynomials."
             );
-            for (constraint_idx, constraint_circuit) in
-                ExtProcessorTable::get_transition_constraints_for_instruction(
-                    &circuit_builder,
-                    instruction,
-                )
-                .into_iter()
-                .enumerate()
-            {
-                let evaluation_result = constraint_circuit.consume().evaluate(
-                    test_rows.view(),
-                    fake_ext_table.view(),
-                    &challenges,
+
+            for (constraint_idx, constraint) in transition_constraints.iter().enumerate() {
+                let evaluation_result = constraint.clone().consume().evaluate(
+                    rows.consecutive_master_base_table_rows.view(),
+                    rows.consecutive_ext_base_table_rows.view(),
+                    &rows.challenges,
                 );
-                assert_eq!(
-                    XFieldElement::zero(),
-                    evaluation_result,
+                assert!(
+                    evaluation_result.is_zero(),
                     "For case {case_idx}, transition constraint polynomial with \
                     index {constraint_idx} must evaluate to zero. Got {evaluation_result} instead.",
                 );
@@ -3457,23 +3458,24 @@ pub(crate) mod tests {
         let program = Program::new(&instructions);
         let test_rows = [test_row_from_program(program, n)];
 
-        test_constraints_for_rows_with_debug_info(
-            Pop(stack_element),
-            &test_rows,
-            &[ST0, ST1, ST2],
-            &[ST0, ST1, ST2],
-        );
+        let debug_info = TestRowsDebugInfo {
+            instruction: Pop(stack_element),
+            debug_cols_curr_row: vec![ST0, ST1, ST2],
+            debug_cols_next_row: vec![ST0, ST1, ST2],
+        };
+        assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
 
     #[test]
     fn transition_constraints_for_instruction_push() {
         let test_rows = [test_row_from_program(triton_program!(push 1 halt), 0)];
-        test_constraints_for_rows_with_debug_info(
-            Push(BFieldElement::one()),
-            &test_rows,
-            &[ST0, ST1, ST2],
-            &[ST0, ST1, ST2],
-        );
+
+        let debug_info = TestRowsDebugInfo {
+            instruction: Push(BFieldElement::one()),
+            debug_cols_curr_row: vec![ST0, ST1, ST2],
+            debug_cols_next_row: vec![ST0, ST1, ST2],
+        };
+        assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
 
     #[test]
@@ -3508,12 +3510,12 @@ pub(crate) mod tests {
         };
         let test_rows = [test_row_from_program_with_input(program_and_input, 0)];
 
-        test_constraints_for_rows_with_debug_info(
-            Divine(stack_element),
-            &test_rows,
-            &[ST0, ST1, ST2],
-            &[ST0, ST1, ST2],
-        );
+        let debug_info = TestRowsDebugInfo {
+            instruction: Divine(stack_element),
+            debug_cols_curr_row: vec![ST0, ST1, ST2],
+            debug_cols_next_row: vec![ST0, ST1, ST2],
+        };
+        assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
 
     #[test]
@@ -3537,12 +3539,13 @@ pub(crate) mod tests {
             triton_program!(dup 15 halt),
         ];
         let test_rows = programs.map(|program| test_row_from_program(program, 0));
-        test_constraints_for_rows_with_debug_info(
-            Dup(OpStackElement::ST0),
-            &test_rows,
-            &[ST0, ST1, ST2],
-            &[ST0, ST1, ST2],
-        );
+
+        let debug_info = TestRowsDebugInfo {
+            instruction: Dup(OpStackElement::ST0),
+            debug_cols_curr_row: vec![ST0, ST1, ST2],
+            debug_cols_next_row: vec![ST0, ST1, ST2],
+        };
+        assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
 
     #[test]
@@ -3565,12 +3568,12 @@ pub(crate) mod tests {
             triton_program!(swap 15 halt),
         ];
         let test_rows = programs.map(|program| test_row_from_program(program, 0));
-        test_constraints_for_rows_with_debug_info(
-            Swap(OpStackElement::ST0),
-            &test_rows,
-            &[ST0, ST1, ST2],
-            &[ST0, ST1, ST2],
-        );
+        let debug_info = TestRowsDebugInfo {
+            instruction: Swap(OpStackElement::ST0),
+            debug_cols_curr_row: vec![ST0, ST1, ST2],
+            debug_cols_next_row: vec![ST0, ST1, ST2],
+        };
+        assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
 
     #[test]
@@ -3581,36 +3584,36 @@ pub(crate) mod tests {
             triton_program!(push 0 skiz push 1 halt), // ST0 is zero, next instruction of size 2
         ];
         let test_rows = programs.map(|program| test_row_from_program(program, 1));
-        test_constraints_for_rows_with_debug_info(
-            Skiz,
-            &test_rows,
-            &[IP, NIA, ST0, HV5, HV4, HV3, HV2],
-            &[IP],
-        );
+        let debug_info = TestRowsDebugInfo {
+            instruction: Skiz,
+            debug_cols_curr_row: vec![IP, NIA, ST0, HV5, HV4, HV3, HV2],
+            debug_cols_next_row: vec![IP],
+        };
+        assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
 
     #[test]
     fn transition_constraints_for_instruction_call() {
         let programs = [triton_program!(call label label: halt)];
         let test_rows = programs.map(|program| test_row_from_program(program, 0));
-        test_constraints_for_rows_with_debug_info(
-            Call(Default::default()),
-            &test_rows,
-            &[IP, CI, NIA, JSP, JSO, JSD],
-            &[IP, CI, NIA, JSP, JSO, JSD],
-        );
+        let debug_info = TestRowsDebugInfo {
+            instruction: Call(Default::default()),
+            debug_cols_curr_row: vec![IP, CI, NIA, JSP, JSO, JSD],
+            debug_cols_next_row: vec![IP, CI, NIA, JSP, JSO, JSD],
+        };
+        assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
 
     #[test]
     fn transition_constraints_for_instruction_return() {
         let programs = [triton_program!(call label halt label: return)];
         let test_rows = programs.map(|program| test_row_from_program(program, 1));
-        test_constraints_for_rows_with_debug_info(
-            Return,
-            &test_rows,
-            &[IP, JSP, JSO, JSD],
-            &[IP, JSP, JSO, JSD],
-        );
+        let debug_info = TestRowsDebugInfo {
+            instruction: Return,
+            debug_cols_curr_row: vec![IP, JSP, JSO, JSD],
+            debug_cols_next_row: vec![IP, JSP, JSO, JSD],
+        };
+        assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
 
     #[test]
@@ -3618,36 +3621,36 @@ pub(crate) mod tests {
         let programs =
             [triton_program!(push 2 call label halt label: push -1 add dup 0 skiz recurse return)];
         let test_rows = programs.map(|program| test_row_from_program(program, 6));
-        test_constraints_for_rows_with_debug_info(
-            Recurse,
-            &test_rows,
-            &[IP, JSP, JSO, JSD],
-            &[IP, JSP, JSO, JSD],
-        );
+        let debug_info = TestRowsDebugInfo {
+            instruction: Recurse,
+            debug_cols_curr_row: vec![IP, JSP, JSO, JSD],
+            debug_cols_next_row: vec![IP, JSP, JSO, JSD],
+        };
+        assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
 
     #[test]
     fn transition_constraints_for_instruction_read_mem() {
         let programs = [triton_program!(push 5 push 3 write_mem read_mem halt)];
         let test_rows = programs.map(|program| test_row_from_program(program, 3));
-        test_constraints_for_rows_with_debug_info(
-            ReadMem,
-            &test_rows,
-            &[ST0, ST1, RAMP, RAMV],
-            &[ST0, ST1, RAMP, RAMV],
-        );
+        let debug_info = TestRowsDebugInfo {
+            instruction: ReadMem,
+            debug_cols_curr_row: vec![ST0, ST1, RAMP, RAMV],
+            debug_cols_next_row: vec![ST0, ST1, RAMP, RAMV],
+        };
+        assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
 
     #[test]
     fn transition_constraints_for_instruction_write_mem() {
         let programs = [triton_program!(push 5 push 3 write_mem read_mem halt)];
         let test_rows = programs.map(|program| test_row_from_program(program, 2));
-        test_constraints_for_rows_with_debug_info(
-            WriteMem,
-            &test_rows,
-            &[ST0, ST1, RAMP, RAMV],
-            &[ST0, ST1, RAMP, RAMV],
-        );
+        let debug_info = TestRowsDebugInfo {
+            instruction: WriteMem,
+            debug_cols_curr_row: vec![ST0, ST1, RAMP, RAMV],
+            debug_cols_next_row: vec![ST0, ST1, RAMP, RAMV],
+        };
+        assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
 
     #[test]
@@ -3664,19 +3667,25 @@ pub(crate) mod tests {
             non_determinism: non_determinism.clone(),
         });
         let test_rows = programs_with_input.map(|p_w_i| test_row_from_program_with_input(p_w_i, 2));
-        test_constraints_for_rows_with_debug_info(
-            DivineSibling,
-            &test_rows,
-            &[ST0, ST1, ST2, ST3, ST4, ST5],
-            &[ST0, ST1, ST2, ST3, ST4, ST5, ST6, ST7, ST8, ST9, ST10],
-        );
+
+        let debug_info = TestRowsDebugInfo {
+            instruction: DivineSibling,
+            debug_cols_curr_row: vec![ST0, ST1, ST2, ST3, ST4, ST5],
+            debug_cols_next_row: vec![ST0, ST1, ST2, ST3, ST4, ST5, ST6, ST7, ST8, ST9, ST10],
+        };
+        assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
 
     #[test]
     fn transition_constraints_for_instruction_sponge_init() {
         let programs = [triton_program!(sponge_init halt)];
         let test_rows = programs.map(|program| test_row_from_program(program, 0));
-        test_constraints_for_rows_with_debug_info(SpongeInit, &test_rows, &[], &[]);
+        let debug_info = TestRowsDebugInfo {
+            instruction: SpongeInit,
+            debug_cols_curr_row: vec![],
+            debug_cols_next_row: vec![],
+        };
+        assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
 
     #[test]
@@ -3688,24 +3697,24 @@ pub(crate) mod tests {
             triton_program!(sponge_init {&push_10_ones} sponge_absorb halt),
         ];
         let test_rows = programs.map(|program| test_row_from_program(program, 11));
-        test_constraints_for_rows_with_debug_info(
-            SpongeAbsorb,
-            &test_rows,
-            &[ST0, ST1, ST2, ST3, ST4, ST5, ST6, ST7, ST8, ST9, ST10],
-            &[ST0, ST1, ST2, ST3, ST4, ST5, ST6, ST7, ST8, ST9, ST10],
-        );
+        let debug_info = TestRowsDebugInfo {
+            instruction: SpongeAbsorb,
+            debug_cols_curr_row: vec![ST0, ST1, ST2, ST3, ST4, ST5, ST6, ST7, ST8, ST9, ST10],
+            debug_cols_next_row: vec![ST0, ST1, ST2, ST3, ST4, ST5, ST6, ST7, ST8, ST9, ST10],
+        };
+        assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
 
     #[test]
     fn transition_constraints_for_instruction_sponge_squeeze() {
         let programs = [triton_program!(sponge_init sponge_squeeze halt)];
         let test_rows = programs.map(|program| test_row_from_program(program, 1));
-        test_constraints_for_rows_with_debug_info(
-            SpongeSqueeze,
-            &test_rows,
-            &[ST0, ST1, ST2, ST3, ST4, ST5, ST6, ST7, ST8, ST9, ST10],
-            &[ST0, ST1, ST2, ST3, ST4, ST5, ST6, ST7, ST8, ST9, ST10],
-        );
+        let debug_info = TestRowsDebugInfo {
+            instruction: SpongeSqueeze,
+            debug_cols_curr_row: vec![ST0, ST1, ST2, ST3, ST4, ST5, ST6, ST7, ST8, ST9, ST10],
+            debug_cols_next_row: vec![ST0, ST1, ST2, ST3, ST4, ST5, ST6, ST7, ST8, ST9, ST10],
+        };
+        assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
 
     #[test]
@@ -3715,7 +3724,12 @@ pub(crate) mod tests {
             triton_program!(push 3 push 2 eq push 0 eq assert halt),
         ];
         let test_rows = programs.map(|program| test_row_from_program(program, 2));
-        test_constraints_for_rows_with_debug_info(Eq, &test_rows, &[ST0, ST1, HV0], &[ST0]);
+        let debug_info = TestRowsDebugInfo {
+            instruction: Eq,
+            debug_cols_curr_row: vec![ST0, ST1, HV0],
+            debug_cols_next_row: vec![ST0],
+        };
+        assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
 
     #[test]
@@ -3732,12 +3746,12 @@ pub(crate) mod tests {
             triton_program!(push 4294967297 split halt),
         ];
         let test_rows = programs.map(|program| test_row_from_program(program, 1));
-        test_constraints_for_rows_with_debug_info(
-            Split,
-            &test_rows,
-            &[ST0, ST1, HV0],
-            &[ST0, ST1, HV0],
-        );
+        let debug_info = TestRowsDebugInfo {
+            instruction: Split,
+            debug_cols_curr_row: vec![ST0, ST1, HV0],
+            debug_cols_next_row: vec![ST0, ST1, HV0],
+        };
+        assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
 
     #[test]
@@ -3749,7 +3763,12 @@ pub(crate) mod tests {
             triton_program!(push 512 push 513 lt push 0 eq assert halt),
         ];
         let test_rows = programs.map(|program| test_row_from_program(program, 2));
-        test_constraints_for_rows_with_debug_info(Lt, &test_rows, &[ST0, ST1], &[ST0]);
+        let debug_info = TestRowsDebugInfo {
+            instruction: Lt,
+            debug_cols_curr_row: vec![ST0, ST1],
+            debug_cols_next_row: vec![ST0],
+        };
+        assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
 
     #[test]
@@ -3758,7 +3777,12 @@ pub(crate) mod tests {
             triton_program!(push 5 push 12 and push 4 eq assert halt),
             2,
         )];
-        test_constraints_for_rows_with_debug_info(And, &test_rows, &[ST0, ST1], &[ST0]);
+        let debug_info = TestRowsDebugInfo {
+            instruction: And,
+            debug_cols_curr_row: vec![ST0, ST1],
+            debug_cols_next_row: vec![ST0],
+        };
+        assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
 
     #[test]
@@ -3767,7 +3791,12 @@ pub(crate) mod tests {
             triton_program!(push 5 push 12 xor push 9 eq assert halt),
             2,
         )];
-        test_constraints_for_rows_with_debug_info(Xor, &test_rows, &[ST0, ST1], &[ST0]);
+        let debug_info = TestRowsDebugInfo {
+            instruction: Xor,
+            debug_cols_curr_row: vec![ST0, ST1],
+            debug_cols_next_row: vec![ST0],
+        };
+        assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
 
     #[test]
@@ -3791,8 +3820,14 @@ pub(crate) mod tests {
             triton_program!(push 16 log_2_floor push  4 eq assert halt),
             triton_program!(push 17 log_2_floor push  4 eq assert halt),
         ];
+
         let test_rows = programs.map(|program| test_row_from_program(program, 1));
-        test_constraints_for_rows_with_debug_info(Log2Floor, &test_rows, &[ST0, ST1], &[ST0]);
+        let debug_info = TestRowsDebugInfo {
+            instruction: Log2Floor,
+            debug_cols_curr_row: vec![ST0, ST1],
+            debug_cols_next_row: vec![ST0],
+        };
+        assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
 
     #[test]
@@ -3819,8 +3854,14 @@ pub(crate) mod tests {
             triton_program!(push 1 push 17 pow push  17 eq assert halt),
             triton_program!(push 2 push 17 pow push 289 eq assert halt),
         ];
+
         let test_rows = programs.map(|program| test_row_from_program(program, 2));
-        test_constraints_for_rows_with_debug_info(Pow, &test_rows, &[ST0, ST1], &[ST0]);
+        let debug_info = TestRowsDebugInfo {
+            instruction: Pow,
+            debug_cols_curr_row: vec![ST0, ST1],
+            debug_cols_next_row: vec![ST0],
+        };
+        assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
 
     #[test]
@@ -3831,7 +3872,12 @@ pub(crate) mod tests {
             triton_program!(push 4 push 7 div_mod push 3 eq assert push 1 eq assert halt),
         ];
         let test_rows = programs.map(|program| test_row_from_program(program, 2));
-        test_constraints_for_rows_with_debug_info(DivMod, &test_rows, &[ST0, ST1], &[ST0, ST1]);
+        let debug_info = TestRowsDebugInfo {
+            instruction: DivMod,
+            debug_cols_curr_row: vec![ST0, ST1],
+            debug_cols_next_row: vec![ST0, ST1],
+        };
+        assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
 
     #[test]
@@ -3857,12 +3903,12 @@ pub(crate) mod tests {
             triton_program!(push 2 push 3 push 4 push -2 push -3 push -4 xxadd halt),
         ];
         let test_rows = programs.map(|program| test_row_from_program(program, 6));
-        test_constraints_for_rows_with_debug_info(
-            XxAdd,
-            &test_rows,
-            &[ST0, ST1, ST2, ST3, ST4, ST5],
-            &[ST0, ST1, ST2, ST3, ST4, ST5],
-        );
+        let debug_info = TestRowsDebugInfo {
+            instruction: XxAdd,
+            debug_cols_curr_row: vec![ST0, ST1, ST2, ST3, ST4, ST5],
+            debug_cols_next_row: vec![ST0, ST1, ST2, ST3, ST4, ST5],
+        };
+        assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
 
     #[test]
@@ -3872,12 +3918,12 @@ pub(crate) mod tests {
             triton_program!(push 2 push 3 push 4 push -2 push -3 push -4 xxmul halt),
         ];
         let test_rows = programs.map(|program| test_row_from_program(program, 6));
-        test_constraints_for_rows_with_debug_info(
-            XxMul,
-            &test_rows,
-            &[ST0, ST1, ST2, ST3, ST4, ST5],
-            &[ST0, ST1, ST2, ST3, ST4, ST5],
-        );
+        let debug_info = TestRowsDebugInfo {
+            instruction: XxMul,
+            debug_cols_curr_row: vec![ST0, ST1, ST2, ST3, ST4, ST5],
+            debug_cols_next_row: vec![ST0, ST1, ST2, ST3, ST4, ST5],
+        };
+        assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
 
     #[test]
@@ -3887,12 +3933,12 @@ pub(crate) mod tests {
             triton_program!(push -2 push -3 push -4 xinvert halt),
         ];
         let test_rows = programs.map(|program| test_row_from_program(program, 3));
-        test_constraints_for_rows_with_debug_info(
-            XInvert,
-            &test_rows,
-            &[ST0, ST1, ST2],
-            &[ST0, ST1, ST2],
-        );
+        let debug_info = TestRowsDebugInfo {
+            instruction: XInvert,
+            debug_cols_curr_row: vec![ST0, ST1, ST2],
+            debug_cols_next_row: vec![ST0, ST1, ST2],
+        };
+        assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
 
     #[test]
@@ -3902,12 +3948,12 @@ pub(crate) mod tests {
             triton_program!(push 2 push 3 push 4 push -2 xbmul halt),
         ];
         let test_rows = programs.map(|program| test_row_from_program(program, 4));
-        test_constraints_for_rows_with_debug_info(
-            XbMul,
-            &test_rows,
-            &[ST0, ST1, ST2, ST3, OpStackPointer, HV0],
-            &[ST0, ST1, ST2, ST3, OpStackPointer, HV0],
-        );
+        let debug_info = TestRowsDebugInfo {
+            instruction: XbMul,
+            debug_cols_curr_row: vec![ST0, ST1, ST2, ST3, OpStackPointer, HV0],
+            debug_cols_next_row: vec![ST0, ST1, ST2, ST3, OpStackPointer, HV0],
+        };
+        assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
 
     #[test]
@@ -3943,13 +3989,12 @@ pub(crate) mod tests {
             non_determinism: [].into(),
         };
         let test_rows = [test_row_from_program_with_input(program_and_input, 0)];
-
-        test_constraints_for_rows_with_debug_info(
-            ReadIo(stack_element),
-            &test_rows,
-            &[ST0, ST1, ST2],
-            &[ST0, ST1, ST2],
-        );
+        let debug_info = TestRowsDebugInfo {
+            instruction: ReadIo(stack_element),
+            debug_cols_curr_row: vec![ST0, ST1, ST2],
+            debug_cols_next_row: vec![ST0, ST1, ST2],
+        };
+        assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
 
     #[test]
@@ -3959,7 +4004,12 @@ pub(crate) mod tests {
             triton_program!(push 42 write_io halt),
         ];
         let test_rows = programs.map(|program| test_row_from_program(program, 1));
-        test_constraints_for_rows_with_debug_info(WriteIo, &test_rows, &[ST0, ST1], &[ST0, ST1]);
+        let debug_info = TestRowsDebugInfo {
+            instruction: WriteIo,
+            debug_cols_curr_row: vec![ST0, ST1],
+            debug_cols_next_row: vec![ST0, ST1],
+        };
+        assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
 
     #[test]
