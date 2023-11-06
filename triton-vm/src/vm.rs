@@ -970,6 +970,7 @@ pub(crate) mod tests {
     use twenty_first::shared_math::b_field_element::BFIELD_ZERO;
     use twenty_first::shared_math::other::random_elements;
     use twenty_first::shared_math::other::random_elements_array;
+    use twenty_first::shared_math::polynomial::Polynomial;
     use twenty_first::shared_math::tip5::Tip5;
     use twenty_first::shared_math::traits::FiniteField;
     use twenty_first::shared_math::traits::ModPowU32;
@@ -2019,9 +2020,16 @@ pub(crate) mod tests {
         program.run(public_input.into(), non_determinism).unwrap();
     }
 
-    #[test]
-    fn run_tvm_get_colinear_y() {
-        // see also: get_colinear_y in src/shared_math/polynomial.rs
+    #[proptest]
+    fn run_tvm_get_colinear_y(
+        #[strategy(arb())] p0: (BFieldElement, BFieldElement),
+        #[strategy(arb())]
+        #[filter(#p0.0 != #p1.0)]
+        p1: (BFieldElement, BFieldElement),
+        #[strategy(arb())] p2_x: BFieldElement,
+    ) {
+        let p2_y = Polynomial::get_colinear_y(p0, p1, p2_x);
+
         let get_colinear_y_program = triton_program!(
             read_io 5                       // p0 p1 p2_x
             swap 3 push -1 mul dup 1 add    // dy = p0_y - p1_y
@@ -2032,10 +2040,9 @@ pub(crate) mod tests {
             write_io halt
         );
 
-        println!("Successfully parsed the program.");
-        let public_input = vec![7, 2, 1, 3, 4].into();
+        let public_input = vec![p2_x, p1.1, p1.0, p0.1, p0.0].into();
         let output = get_colinear_y_program.run(public_input, [].into()).unwrap();
-        assert_eq!(BFieldElement::new(4), output[0]);
+        prop_assert_eq!(p2_y, output[0]);
     }
 
     #[test]
