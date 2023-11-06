@@ -947,6 +947,8 @@ pub(crate) mod tests {
     use itertools::Itertools;
     use ndarray::Array1;
     use ndarray::ArrayView1;
+    use proptest::prelude::*;
+    use proptest_arbitrary_interop::arb;
     use rand::prelude::IteratorRandom;
     use rand::prelude::StdRng;
     use rand::random;
@@ -958,12 +960,14 @@ pub(crate) mod tests {
     use strum::EnumCount;
     use strum::EnumIter;
     use strum::IntoEnumIterator;
+    use test_strategy::proptest;
     use twenty_first::shared_math::b_field_element::BFIELD_ZERO;
     use twenty_first::shared_math::other::random_elements;
     use twenty_first::shared_math::other::random_elements_array;
     use twenty_first::shared_math::tip5::Tip5;
     use twenty_first::shared_math::traits::FiniteField;
     use twenty_first::shared_math::traits::ModPowU32;
+    use twenty_first::shared_math::x_field_element::XFieldElement;
     use twenty_first::util_types::algebraic_hasher::SpongeHasher;
     use twenty_first::util_types::merkle_tree::MerkleTree;
     use twenty_first::util_types::merkle_tree_maker::MerkleTreeMaker;
@@ -1809,118 +1813,125 @@ pub(crate) mod tests {
         ]
     }
 
-    #[test]
-    fn xxadd() {
+    #[proptest]
+    fn xxadd(
+        #[strategy(arb())] left_operand: XFieldElement,
+        #[strategy(arb())] right_operand: XFieldElement,
+    ) {
         let program = triton_program!(
-            read_io read_io read_io
-            read_io read_io read_io
+            push {right_operand.coefficients[2]}
+            push {right_operand.coefficients[1]}
+            push {right_operand.coefficients[0]}
+            push {left_operand.coefficients[2]}
+            push {left_operand.coefficients[1]}
+            push {left_operand.coefficients[0]}
             xxadd
-            swap 2
             write_io write_io write_io
             halt
         );
         let program = ProgramAndInput {
             program,
-            public_input: vec![2, 3, 5, 7, 11, 13],
+            public_input: [].into(),
             non_determinism: [].into(),
         };
 
         let actual_stdout = program.run().unwrap();
-        let expected_stdout = [9, 14, 18].map(BFieldElement::new).to_vec();
+        let expected_stdout = (left_operand + right_operand).coefficients.to_vec();
 
-        assert_eq!(expected_stdout, actual_stdout);
+        prop_assert_eq!(expected_stdout, actual_stdout);
     }
 
-    #[test]
-    fn xxmul() {
+    #[proptest]
+    fn xxmul(
+        #[strategy(arb())] left_operand: XFieldElement,
+        #[strategy(arb())] right_operand: XFieldElement,
+    ) {
         let program = triton_program!(
-            read_io read_io read_io
-            read_io read_io read_io
+            push {right_operand.coefficients[2]}
+            push {right_operand.coefficients[1]}
+            push {right_operand.coefficients[0]}
+            push {left_operand.coefficients[2]}
+            push {left_operand.coefficients[1]}
+            push {left_operand.coefficients[0]}
             xxmul
-            swap 2
             write_io write_io write_io
             halt
         );
         let program = ProgramAndInput {
             program,
-            public_input: vec![2, 3, 5, 7, 11, 13],
+            public_input: [].into(),
             non_determinism: [].into(),
         };
 
         let actual_stdout = program.run().unwrap();
-        let expected_stdout = [108, 123, 22].map(BFieldElement::new).to_vec();
+        let expected_stdout = (left_operand * right_operand).coefficients.to_vec();
 
-        assert_eq!(expected_stdout, actual_stdout);
+        prop_assert_eq!(expected_stdout, actual_stdout);
     }
 
-    #[test]
-    fn xinv() {
+    #[proptest]
+    fn xinv(
+        #[strategy(arb())]
+        #[filter(!#operand.is_zero())]
+        operand: XFieldElement,
+    ) {
         let program = triton_program!(
-            read_io read_io read_io
-            dup 2 dup 2 dup 2
-            dup 2 dup 2 dup 2
-            xinvert xxmul
-            swap 2
-            write_io write_io write_io
+            push {operand.coefficients[2]}
+            push {operand.coefficients[1]}
+            push {operand.coefficients[0]}
             xinvert
-            swap 2
             write_io write_io write_io
             halt
         );
         let program = ProgramAndInput {
             program,
-            public_input: vec![2, 3, 5],
+            public_input: [].into(),
             non_determinism: [].into(),
         };
 
         let actual_stdout = program.run().unwrap();
-        let expected_stdout = [
-            0,
-            0,
-            1,
-            16360893149904808002,
-            14209859389160351173,
-            4432433203958274678,
-        ]
-        .map(BFieldElement::new)
-        .to_vec();
+        let expected_stdout = operand.inverse().coefficients.to_vec();
 
-        assert_eq!(expected_stdout, actual_stdout);
+        prop_assert_eq!(expected_stdout, actual_stdout);
     }
 
-    #[test]
-    fn xbmul() {
+    #[proptest]
+    fn xbmul(#[strategy(arb())] scalar: BFieldElement, #[strategy(arb())] operand: XFieldElement) {
         let program = triton_program!(
-            read_io read_io read_io
-            read_io
+            push {operand.coefficients[2]}
+            push {operand.coefficients[1]}
+            push {operand.coefficients[0]}
+            push {scalar}
             xbmul
-            swap 2
             write_io write_io write_io
             halt
         );
         let program = ProgramAndInput {
             program,
-            public_input: vec![2, 3, 5, 7],
+            public_input: [].into(),
             non_determinism: [].into(),
         };
 
         let actual_stdout = program.run().unwrap();
-        let expected_stdout = [14, 21, 35].map(BFieldElement::new).to_vec();
+        let expected_stdout = (scalar * operand).coefficients.to_vec();
 
-        assert_eq!(expected_stdout, actual_stdout);
+        prop_assert_eq!(expected_stdout, actual_stdout);
     }
 
-    #[test]
-    fn pseudo_sub() {
+    #[proptest]
+    fn pseudo_sub(
+        #[strategy(arb())] minuend: BFieldElement,
+        #[strategy(arb())] subtrahend: BFieldElement,
+    ) {
         let program = triton_program!(
-            push 7 push 19 call sub write_io halt
+            push {subtrahend} push {minuend} call sub write_io halt
             sub:
                 swap 1 push -1 mul add return
         );
         let actual_stdout = ProgramAndInput::without_input(program).run().unwrap();
-        let expected_stdout = vec![BFieldElement::new(12)];
+        let expected_stdout = vec![minuend - subtrahend];
 
-        assert_eq!(expected_stdout, actual_stdout);
+        prop_assert_eq!(expected_stdout, actual_stdout);
     }
 
     #[test]
