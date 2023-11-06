@@ -143,7 +143,7 @@ impl<'pgm> VMState<'pgm> {
         };
 
         match current_instruction {
-            Pop(arg) | Divine(arg) | Dup(arg) | Swap(arg) => {
+            Pop(arg) | Divine(arg) | Dup(arg) | Swap(arg) | ReadIo(arg) => {
                 let arg_val: u64 = arg.into();
                 hvs[0] = BFieldElement::new(arg_val % 2);
                 hvs[1] = BFieldElement::new((arg_val >> 1) % 2);
@@ -238,7 +238,7 @@ impl<'pgm> VMState<'pgm> {
             XInvert => self.x_invert()?,
             XbMul => self.xb_mul()?,
             WriteIo => self.write_io()?,
-            ReadIo => self.read_io()?,
+            ReadIo(n) => self.read_io(n)?,
         };
         let op_stack_calls = self.stop_recording_op_stack_calls();
         co_processor_calls.extend(op_stack_calls);
@@ -706,13 +706,19 @@ impl<'pgm> VMState<'pgm> {
         Ok(vec![])
     }
 
-    fn read_io(&mut self) -> Result<Vec<CoProcessorCall>> {
-        let read_element = self.public_input.pop_front().ok_or(anyhow!(
-            "Instruction `read_io`: public input buffer is empty."
-        ))?;
-        self.op_stack.push(read_element);
+    fn read_io(&mut self, n: OpStackElement) -> Result<Vec<CoProcessorCall>> {
+        if Instruction::ReadIo(n).has_illegal_argument() {
+            bail!(IllegalReadIo(n.into()));
+        }
 
-        self.instruction_pointer += 1;
+        for i in 0..n.into() {
+            let read_element = self.public_input.pop_front().ok_or(anyhow!(
+                "Instruction `read_io {n}`: public input buffer is empty after {i}."
+            ))?;
+            self.op_stack.push(read_element);
+        }
+
+        self.instruction_pointer += 2;
         Ok(vec![])
     }
 

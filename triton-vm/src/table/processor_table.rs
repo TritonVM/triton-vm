@@ -126,11 +126,14 @@ impl ProcessorTable {
 
             // Input table
             if let Some(prev_row) = previous_row {
-                if prev_row[CI.base_table_index()] == Instruction::ReadIo.opcode_b() {
-                    let input_symbol = current_row[ST0.base_table_index()];
-                    input_table_running_evaluation = input_table_running_evaluation
-                        * challenges[StandardInputIndeterminate]
-                        + input_symbol;
+                if let Some(Instruction::ReadIo(st)) = Self::instruction_from_row(prev_row) {
+                    for i in (0..st.index()).rev() {
+                        let input_symbol_column = Self::op_stack_column_by_index(i as usize);
+                        let input_symbol = current_row[input_symbol_column.base_table_index()];
+                        input_table_running_evaluation = input_table_running_evaluation
+                            * challenges[StandardInputIndeterminate]
+                            + input_symbol;
+                    }
                 }
             }
 
@@ -2256,7 +2259,7 @@ impl ExtProcessorTable {
             XxMul => ExtProcessorTable::instruction_xxmul(circuit_builder),
             XInvert => ExtProcessorTable::instruction_xinv(circuit_builder),
             XbMul => ExtProcessorTable::instruction_xbmul(circuit_builder),
-            ReadIo => ExtProcessorTable::instruction_read_io(circuit_builder),
+            ReadIo(_) => ExtProcessorTable::instruction_read_io(circuit_builder),
             WriteIo => ExtProcessorTable::instruction_write_io(circuit_builder),
         }
     }
@@ -2299,9 +2302,9 @@ impl ExtProcessorTable {
             circuit_builder.input(NextExtRow(col.master_ext_table_index()))
         };
 
-        let read_io_deselector =
-            Self::instruction_deselector_current_row(circuit_builder, Instruction::ReadIo);
-        let read_io_selector = curr_base_row(CI) - constant(Instruction::ReadIo.opcode());
+        let read_io = Instruction::ReadIo(Default::default());
+        let read_io_deselector = Self::instruction_deselector_current_row(circuit_builder, read_io);
+        let read_io_selector = curr_base_row(CI) - constant(read_io.opcode());
 
         let running_evaluation_updates = next_ext_row(InputTableEvalArg)
             - challenge(StandardInputIndeterminate) * curr_ext_row(InputTableEvalArg)

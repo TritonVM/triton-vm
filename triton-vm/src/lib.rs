@@ -258,12 +258,12 @@ macro_rules! triton_program {
 /// ```
 /// # use triton_vm::triton_asm;
 /// # use triton_vm::instruction::LabelledInstruction;
-/// # use triton_vm::instruction::AnInstruction::ReadIo;
-/// let instructions = triton_asm![read_io; 3];
+/// # use triton_vm::instruction::AnInstruction::SpongeAbsorb;
+/// let instructions = triton_asm![sponge_absorb; 3];
 /// assert_eq!(3, instructions.len());
-/// assert_eq!(LabelledInstruction::Instruction(ReadIo), instructions[0]);
-/// assert_eq!(LabelledInstruction::Instruction(ReadIo), instructions[1]);
-/// assert_eq!(LabelledInstruction::Instruction(ReadIo), instructions[2]);
+/// assert_eq!(LabelledInstruction::Instruction(SpongeAbsorb), instructions[0]);
+/// assert_eq!(LabelledInstruction::Instruction(SpongeAbsorb), instructions[1]);
+/// assert_eq!(LabelledInstruction::Instruction(SpongeAbsorb), instructions[2]);
 /// ```
 ///
 /// Inserting substring of labelled instructions:
@@ -341,6 +341,7 @@ macro_rules! triton_asm {
     [dup $arg:literal; $num:expr] => { vec![ $crate::triton_instr!(dup $arg); $num ] };
     [swap $arg:literal; $num:expr] => { vec![ $crate::triton_instr!(swap $arg); $num ] };
     [call $arg:ident; $num:expr] => { vec![ $crate::triton_instr!(call $arg); $num ] };
+    [read_io $arg:literal; $num:expr] => { vec![ $crate::triton_instr!(read_io $arg); $num ] };
     [$instr:ident; $num:expr] => { vec![ $crate::triton_instr!($instr); $num ] };
 
     // entry point
@@ -398,6 +399,12 @@ macro_rules! triton_instr {
     (call $arg:ident) => {{
         let argument = stringify!($arg).to_string();
         let instruction = $crate::instruction::AnInstruction::<String>::Call(argument);
+        $crate::instruction::LabelledInstruction::Instruction(instruction)
+    }};
+    (read_io $arg:literal) => {{
+        assert!(1_u32 <= $arg && $arg <= 5, "`read_io {}` is illegal.", $arg);
+        let argument: $crate::op_stack::OpStackElement = u32::try_into($arg).unwrap();
+        let instruction = $crate::instruction::AnInstruction::<String>::ReadIo(argument);
         $crate::instruction::LabelledInstruction::Instruction(instruction)
     }};
     ($instr:ident) => {{
