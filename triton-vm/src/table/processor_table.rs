@@ -2058,23 +2058,18 @@ impl ExtProcessorTable {
             circuit_builder.input(NextBaseRow(col.master_base_table_index()))
         };
 
-        let st0_becomes_st0_plus_st3 =
-            next_base_row(ST0) - (curr_base_row(ST0) + curr_base_row(ST3));
-        let st1_becomes_st1_plus_st4 =
-            next_base_row(ST1) - (curr_base_row(ST1) + curr_base_row(ST4));
-        let st2_becomes_st2_plus_st5 =
-            next_base_row(ST2) - (curr_base_row(ST2) + curr_base_row(ST5));
-
+        let st0_becomes_st0_plus_st3 = next_base_row(ST0) - curr_base_row(ST0) - curr_base_row(ST3);
+        let st1_becomes_st1_plus_st4 = next_base_row(ST1) - curr_base_row(ST1) - curr_base_row(ST4);
+        let st2_becomes_st2_plus_st5 = next_base_row(ST2) - curr_base_row(ST2) - curr_base_row(ST5);
         let specific_constraints = vec![
             st0_becomes_st0_plus_st3,
             st1_becomes_st1_plus_st4,
             st2_becomes_st2_plus_st5,
         ];
+
         [
             specific_constraints,
-            Self::instruction_group_op_stack_remains_and_top_three_elements_unconstrained(
-                circuit_builder,
-            ),
+            Self::constraints_for_shrinking_stack_by_3_and_top_3_unconstrained(circuit_builder),
             Self::instruction_group_step_1(circuit_builder),
             Self::instruction_group_keep_ram(circuit_builder),
         ]
@@ -2113,9 +2108,7 @@ impl ExtProcessorTable {
         ];
         [
             specific_constraints,
-            Self::instruction_group_op_stack_remains_and_top_three_elements_unconstrained(
-                circuit_builder,
-            ),
+            Self::constraints_for_shrinking_stack_by_3_and_top_3_unconstrained(circuit_builder),
             Self::instruction_group_step_1(circuit_builder),
             Self::instruction_group_keep_ram(circuit_builder),
         ]
@@ -2376,6 +2369,33 @@ impl ExtProcessorTable {
 
         write_io_selector * running_evaluation_remains
             + write_io_deselector * running_evaluation_updates
+    }
+
+    fn constraints_for_shrinking_stack_by_3_and_top_3_unconstrained(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
+        let constant = |c: u64| circuit_builder.b_constant(c.into());
+        let curr_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
+        };
+        let next_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(NextBaseRow(col.master_base_table_index()))
+        };
+
+        vec![
+            next_base_row(ST3) - curr_base_row(ST6),
+            next_base_row(ST4) - curr_base_row(ST7),
+            next_base_row(ST5) - curr_base_row(ST8),
+            next_base_row(ST6) - curr_base_row(ST9),
+            next_base_row(ST7) - curr_base_row(ST10),
+            next_base_row(ST8) - curr_base_row(ST11),
+            next_base_row(ST9) - curr_base_row(ST12),
+            next_base_row(ST10) - curr_base_row(ST13),
+            next_base_row(ST11) - curr_base_row(ST14),
+            next_base_row(ST12) - curr_base_row(ST15),
+            next_base_row(OpStackPointer) - curr_base_row(OpStackPointer) + constant(3),
+            Self::running_product_op_stack_accounts_for_shrinking_stack_by(circuit_builder, 3),
+        ]
     }
 
     fn stack_shrinks_by_any_of(

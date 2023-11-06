@@ -113,11 +113,6 @@ impl OpStack {
         self.stack[top_of_stack_index - stack_element_index]
     }
 
-    pub(crate) fn peek_at_top_extension_field_element(&self) -> XFieldElement {
-        let coefficients = [self.peek_at(ST0), self.peek_at(ST1), self.peek_at(ST2)];
-        XFieldElement::new(coefficients)
-    }
-
     pub(crate) fn swap_top_with(&mut self, stack_element: OpStackElement) {
         let stack_element_index = usize::from(stack_element);
         let top_of_stack_index = self.stack.len() - 1;

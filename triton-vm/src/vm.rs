@@ -664,7 +664,7 @@ impl<'pgm> VMState<'pgm> {
 
     fn xx_add(&mut self) -> Result<Vec<CoProcessorCall>> {
         let lhs = self.op_stack.pop_extension_field_element()?;
-        let rhs = self.op_stack.peek_at_top_extension_field_element();
+        let rhs = self.op_stack.pop_extension_field_element()?;
         self.op_stack.push_extension_field_element(lhs + rhs);
         self.instruction_pointer += 1;
         Ok(vec![])
@@ -672,7 +672,7 @@ impl<'pgm> VMState<'pgm> {
 
     fn xx_mul(&mut self) -> Result<Vec<CoProcessorCall>> {
         let lhs = self.op_stack.pop_extension_field_element()?;
-        let rhs = self.op_stack.peek_at_top_extension_field_element();
+        let rhs = self.op_stack.pop_extension_field_element()?;
         self.op_stack.push_extension_field_element(lhs * rhs);
         self.instruction_pointer += 1;
         Ok(vec![])
