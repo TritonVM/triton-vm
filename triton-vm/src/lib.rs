@@ -31,7 +31,7 @@
 //! ```
 //! # use triton_vm::*;
 //! let factorial_program = triton_program!(
-//!     read_io             // n
+//!     read_io 1           // n
 //!     push 1              // n 1
 //!     call factorial      // 0 n!
 //!     write_io            // 0
@@ -82,7 +82,7 @@
 //! ```
 //! # use triton_vm::*;
 //! let sum_of_squares_program = triton_program!(
-//!     read_io                         // n
+//!     read_io 1                       // n
 //!     call sum_of_squares_secret_in   // n sum_1
 //!     call sum_of_squares_ram         // n sum_1 sum_2
 //!     add                             // n sum_1+sum_2
@@ -168,7 +168,7 @@ pub mod vm;
 /// ```
 /// # use triton_vm::triton_program;
 /// let program = triton_program!(
-///     read_io push 5 mul
+///     read_io 1 push 5 mul
 ///     call check_eq_15
 ///     push 1 write_io
 ///     halt
@@ -555,7 +555,7 @@ mod tests {
             push 03612858832443241113
             push 12064501419749299924
             assert_vector
-            read_io read_io read_io read_io read_io
+            read_io 5
             halt
         );
 
