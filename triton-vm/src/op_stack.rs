@@ -13,6 +13,7 @@ use serde_derive::Deserialize;
 use serde_derive::Serialize;
 use strum::EnumCount;
 use strum::EnumIter;
+use strum::IntoEnumIterator;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::digest::Digest;
 use twenty_first::shared_math::tip5::DIGEST_LENGTH;
@@ -432,6 +433,19 @@ impl NumberOfWords {
             Self::N5 => 5,
         }
     }
+
+    pub(crate) fn legal_values() -> [usize; Self::COUNT] {
+        let legal_indices = Self::iter().map(|n| n.num_words()).collect_vec();
+        legal_indices.try_into().unwrap()
+    }
+
+    pub(crate) fn illegal_values() -> [usize; OpStackElement::COUNT - Self::COUNT] {
+        let all_values = OpStackElement::iter().map(|st| st.index() as usize);
+        let illegal_values = all_values
+            .filter(|i| !Self::legal_values().contains(i))
+            .collect_vec();
+        illegal_values.try_into().unwrap()
+    }
 }
 
 impl Display for NumberOfWords {
@@ -764,5 +778,10 @@ mod tests {
             .collect_vec();
         let expected_range = (1..=5).collect_vec();
         assert_eq!(computed_range, expected_range);
+    }
+
+    #[test]
+    fn compute_illegal_values_of_number_of_words() {
+        let _ = NumberOfWords::illegal_values();
     }
 }

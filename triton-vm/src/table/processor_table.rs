@@ -20,6 +20,7 @@ use crate::instruction::AnInstruction::*;
 use crate::instruction::Instruction;
 use crate::instruction::InstructionBit;
 use crate::instruction::ALL_INSTRUCTIONS;
+use crate::op_stack::NumberOfWords;
 use crate::op_stack::OpStackElement;
 use crate::table::challenges::ChallengeId;
 use crate::table::challenges::ChallengeId::*;
@@ -1216,17 +1217,11 @@ impl ExtProcessorTable {
     fn instruction_pop(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        let stack_does_not_shrink_by_0 = Self::indicator_polynomial(circuit_builder, 0);
-
-        let stack_does_not_shrink_by_too_much = (6..OpStackElement::COUNT)
-            .map(|idx| Self::indicator_polynomial(circuit_builder, idx))
-            .collect_vec();
         [
             Self::instruction_group_step_2(circuit_builder),
             Self::instruction_group_decompose_arg(circuit_builder),
-            vec![stack_does_not_shrink_by_0],
-            Self::stack_shrinks_by_any_of(circuit_builder, &[1, 2, 3, 4, 5]),
-            stack_does_not_shrink_by_too_much,
+            Self::stack_shrinks_by_any_of(circuit_builder, &NumberOfWords::legal_values()),
+            Self::prohibit_any_illegal_number_of_words(circuit_builder),
             Self::instruction_group_keep_ram(circuit_builder),
             Self::instruction_group_no_io(circuit_builder),
         ]
@@ -1257,17 +1252,11 @@ impl ExtProcessorTable {
     fn instruction_divine(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        let stack_does_not_grow_by_0 = Self::indicator_polynomial(circuit_builder, 0);
-        let stack_does_not_grow_by_too_much = (6..OpStackElement::COUNT)
-            .map(|idx| Self::indicator_polynomial(circuit_builder, idx))
-            .collect_vec();
-
         [
             Self::instruction_group_step_2(circuit_builder),
             Self::instruction_group_decompose_arg(circuit_builder),
-            vec![stack_does_not_grow_by_0],
-            Self::stack_grows_by_any_of(circuit_builder, &[1, 2, 3, 4, 5]),
-            stack_does_not_grow_by_too_much,
+            Self::stack_grows_by_any_of(circuit_builder, &NumberOfWords::legal_values()),
+            Self::prohibit_any_illegal_number_of_words(circuit_builder),
             Self::instruction_group_keep_ram(circuit_builder),
             Self::instruction_group_no_io(circuit_builder),
         ]
@@ -2247,15 +2236,10 @@ impl ExtProcessorTable {
     fn instruction_read_io(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        let dont_read_0_elements = Self::indicator_polynomial(circuit_builder, 0);
-        let dont_read_too_many_elements = (6..OpStackElement::COUNT)
-            .map(|idx| Self::indicator_polynomial(circuit_builder, idx))
-            .collect_vec();
-
-        let constraint_groups_for_legal_arguments = (1..=5)
+        let constraint_groups_for_legal_arguments = NumberOfWords::legal_values()
             .map(|n| Self::grow_stack_by_n_and_read_n_symbols_from_input(circuit_builder, n))
-            .collect_vec();
-        let read_any_of_1_through_5_elements = Self::combine_mutually_exclusive_constraint_groups(
+            .to_vec();
+        let read_any_legal_number_of_words = Self::combine_mutually_exclusive_constraint_groups(
             circuit_builder,
             constraint_groups_for_legal_arguments,
         );
@@ -2263,9 +2247,8 @@ impl ExtProcessorTable {
         [
             Self::instruction_group_step_2(circuit_builder),
             Self::instruction_group_decompose_arg(circuit_builder),
-            vec![dont_read_0_elements],
-            read_any_of_1_through_5_elements,
-            dont_read_too_many_elements,
+            read_any_legal_number_of_words,
+            Self::prohibit_any_illegal_number_of_words(circuit_builder),
             Self::instruction_group_keep_ram(circuit_builder),
             vec![Self::running_evaluation_for_standard_output_remains_unchanged(circuit_builder)],
         ]
@@ -2275,14 +2258,9 @@ impl ExtProcessorTable {
     fn instruction_write_io(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        let dont_write_0_elements = Self::indicator_polynomial(circuit_builder, 0);
-        let dont_write_too_many_elements = (6..OpStackElement::COUNT)
-            .map(|idx| Self::indicator_polynomial(circuit_builder, idx))
-            .collect_vec();
-
-        let constraint_groups_for_legal_arguments = (1..=5)
+        let constraint_groups_for_legal_arguments = NumberOfWords::legal_values()
             .map(|n| Self::shrink_stack_by_n_and_write_n_symbols_to_output(circuit_builder, n))
-            .collect_vec();
+            .to_vec();
         let write_any_of_1_through_5_elements = Self::combine_mutually_exclusive_constraint_groups(
             circuit_builder,
             constraint_groups_for_legal_arguments,
@@ -2291,9 +2269,8 @@ impl ExtProcessorTable {
         [
             Self::instruction_group_step_2(circuit_builder),
             Self::instruction_group_decompose_arg(circuit_builder),
-            vec![dont_write_0_elements],
             write_any_of_1_through_5_elements,
-            dont_write_too_many_elements,
+            Self::prohibit_any_illegal_number_of_words(circuit_builder),
             Self::instruction_group_keep_ram(circuit_builder),
             vec![Self::running_evaluation_for_standard_input_remains_unchanged(circuit_builder)],
         ]
@@ -2344,6 +2321,14 @@ impl ExtProcessorTable {
             ReadIo(_) => ExtProcessorTable::instruction_read_io(circuit_builder),
             WriteIo(_) => ExtProcessorTable::instruction_write_io(circuit_builder),
         }
+    }
+
+    fn prohibit_any_illegal_number_of_words(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
+        NumberOfWords::illegal_values()
+            .map(|n| Self::indicator_polynomial(circuit_builder, n))
+            .to_vec()
     }
 
     fn log_derivative_accumulates_clk_next(
