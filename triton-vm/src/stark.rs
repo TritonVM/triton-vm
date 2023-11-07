@@ -1443,10 +1443,236 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn check_grand_cross_table_argument() {
-        let mut code_collection = small_tasm_test_programs();
-        code_collection.append(&mut property_based_test_programs());
+    fn check_grand_cross_table_argument_for_test_program_for_halt() {
+        check_grand_cross_table_argument(test_program_for_halt())
+    }
 
+    #[test]
+    fn check_grand_cross_table_argument_for_test_program_hash_nop_nop_lt() {
+        check_grand_cross_table_argument(test_program_hash_nop_nop_lt())
+    }
+
+    #[test]
+    fn check_grand_cross_table_argument_for_test_program_for_push_pop_dup_swap_nop() {
+        check_grand_cross_table_argument(test_program_for_push_pop_dup_swap_nop())
+    }
+
+    #[test]
+    fn check_grand_cross_table_argument_for_test_program_for_divine() {
+        check_grand_cross_table_argument(test_program_for_divine())
+    }
+
+    #[test]
+    fn check_grand_cross_table_argument_for_test_program_for_skiz() {
+        check_grand_cross_table_argument(test_program_for_skiz())
+    }
+
+    #[test]
+    fn check_grand_cross_table_argument_for_test_program_for_call_recurse_return() {
+        check_grand_cross_table_argument(test_program_for_call_recurse_return())
+    }
+
+    #[test]
+    fn check_grand_cross_table_argument_for_test_program_for_write_mem_read_mem() {
+        check_grand_cross_table_argument(test_program_for_write_mem_read_mem())
+    }
+
+    #[test]
+    fn check_grand_cross_table_argument_for_test_program_for_hash() {
+        check_grand_cross_table_argument(test_program_for_hash())
+    }
+
+    #[test]
+    fn check_grand_cross_table_argument_for_test_program_for_divine_sibling_no_switch() {
+        check_grand_cross_table_argument(test_program_for_divine_sibling_no_switch())
+    }
+
+    #[test]
+    fn check_grand_cross_table_argument_for_test_program_for_divine_sibling_switch() {
+        check_grand_cross_table_argument(test_program_for_divine_sibling_switch())
+    }
+
+    #[test]
+    fn check_grand_cross_table_argument_for_test_program_for_assert_vector() {
+        check_grand_cross_table_argument(test_program_for_assert_vector())
+    }
+
+    #[test]
+    fn check_grand_cross_table_argument_for_test_program_for_sponge_instructions() {
+        check_grand_cross_table_argument(test_program_for_sponge_instructions())
+    }
+
+    #[test]
+    fn check_grand_cross_table_argument_for_test_program_for_sponge_instructions_2() {
+        check_grand_cross_table_argument(test_program_for_sponge_instructions_2())
+    }
+
+    #[test]
+    fn check_grand_cross_table_argument_for_test_program_for_many_sponge_instructions() {
+        check_grand_cross_table_argument(test_program_for_many_sponge_instructions())
+    }
+
+    #[test]
+    fn check_grand_cross_table_argument_for_test_program_for_add_mul_invert() {
+        check_grand_cross_table_argument(test_program_for_add_mul_invert())
+    }
+
+    #[test]
+    fn check_grand_cross_table_argument_for_test_program_for_eq() {
+        check_grand_cross_table_argument(test_program_for_eq())
+    }
+
+    #[test]
+    fn check_grand_cross_table_argument_for_test_program_for_lsb() {
+        check_grand_cross_table_argument(test_program_for_lsb())
+    }
+
+    #[test]
+    fn check_grand_cross_table_argument_for_test_program_for_split() {
+        check_grand_cross_table_argument(test_program_for_split())
+    }
+
+    #[test]
+    fn check_grand_cross_table_argument_for_test_program_0_lt_0() {
+        check_grand_cross_table_argument(test_program_0_lt_0())
+    }
+
+    #[test]
+    fn check_grand_cross_table_argument_for_test_program_for_lt() {
+        check_grand_cross_table_argument(test_program_for_lt())
+    }
+
+    #[test]
+    fn check_grand_cross_table_argument_for_test_program_for_and() {
+        check_grand_cross_table_argument(test_program_for_and())
+    }
+
+    #[test]
+    fn check_grand_cross_table_argument_for_test_program_for_xor() {
+        check_grand_cross_table_argument(test_program_for_xor())
+    }
+
+    #[test]
+    fn check_grand_cross_table_argument_for_test_program_for_log2floor() {
+        check_grand_cross_table_argument(test_program_for_log2floor())
+    }
+
+    #[test]
+    fn check_grand_cross_table_argument_for_test_program_for_pow() {
+        check_grand_cross_table_argument(test_program_for_pow())
+    }
+
+    #[test]
+    fn check_grand_cross_table_argument_for_test_program_for_div_mod() {
+        check_grand_cross_table_argument(test_program_for_div_mod())
+    }
+
+    #[test]
+    fn check_grand_cross_table_argument_for_test_program_for_starting_with_pop_count() {
+        check_grand_cross_table_argument(test_program_for_starting_with_pop_count())
+    }
+
+    #[test]
+    fn check_grand_cross_table_argument_for_test_program_for_pop_count() {
+        check_grand_cross_table_argument(test_program_for_pop_count())
+    }
+
+    #[test]
+    fn check_grand_cross_table_argument_for_test_program_for_xxadd() {
+        check_grand_cross_table_argument(test_program_for_xxadd())
+    }
+
+    #[test]
+    fn check_grand_cross_table_argument_for_test_program_for_xxmul() {
+        check_grand_cross_table_argument(test_program_for_xxmul())
+    }
+
+    #[test]
+    fn check_grand_cross_table_argument_for_test_program_for_xinvert() {
+        check_grand_cross_table_argument(test_program_for_xinvert())
+    }
+
+    #[test]
+    fn check_grand_cross_table_argument_for_test_program_for_xbmul() {
+        check_grand_cross_table_argument(test_program_for_xbmul())
+    }
+
+    #[test]
+    fn check_grand_cross_table_argument_for_test_program_for_read_io_write_io() {
+        check_grand_cross_table_argument(test_program_for_read_io_write_io())
+    }
+
+    #[test]
+    fn check_grand_cross_table_argument_for_property_based_test_program_for_assert_vector() {
+        check_grand_cross_table_argument(property_based_test_program_for_assert_vector())
+    }
+
+    #[test]
+    fn check_grand_cross_table_argument_for_property_based_test_program_for_sponge_instructions() {
+        check_grand_cross_table_argument(property_based_test_program_for_sponge_instructions())
+    }
+
+    #[test]
+    fn check_grand_cross_table_argument_for_property_based_test_program_for_split() {
+        check_grand_cross_table_argument(property_based_test_program_for_split())
+    }
+
+    #[test]
+    fn check_grand_cross_table_argument_for_property_based_test_program_for_eq() {
+        check_grand_cross_table_argument(property_based_test_program_for_eq())
+    }
+
+    #[test]
+    fn check_grand_cross_table_argument_for_property_based_test_program_for_lsb() {
+        check_grand_cross_table_argument(property_based_test_program_for_lsb())
+    }
+
+    #[test]
+    fn check_grand_cross_table_argument_for_property_based_test_program_for_lt() {
+        check_grand_cross_table_argument(property_based_test_program_for_lt())
+    }
+
+    #[test]
+    fn check_grand_cross_table_argument_for_property_based_test_program_for_and() {
+        check_grand_cross_table_argument(property_based_test_program_for_and())
+    }
+
+    #[test]
+    fn check_grand_cross_table_argument_for_property_based_test_program_for_xor() {
+        check_grand_cross_table_argument(property_based_test_program_for_xor())
+    }
+
+    #[test]
+    fn check_grand_cross_table_argument_for_property_based_test_program_for_log2floor() {
+        check_grand_cross_table_argument(property_based_test_program_for_log2floor())
+    }
+
+    #[test]
+    fn check_grand_cross_table_argument_for_property_based_test_program_for_pow() {
+        check_grand_cross_table_argument(property_based_test_program_for_pow())
+    }
+
+    #[test]
+    fn check_grand_cross_table_argument_for_property_based_test_program_for_div_mod() {
+        check_grand_cross_table_argument(property_based_test_program_for_div_mod())
+    }
+
+    #[test]
+    fn check_grand_cross_table_argument_for_property_based_test_program_for_pop_count() {
+        check_grand_cross_table_argument(property_based_test_program_for_pop_count())
+    }
+
+    #[test]
+    fn check_grand_cross_table_argument_for_property_based_test_program_for_is_u32() {
+        check_grand_cross_table_argument(property_based_test_program_for_is_u32())
+    }
+
+    #[test]
+    fn check_grand_cross_table_argument_for_property_based_test_program_for_random_ram_access() {
+        check_grand_cross_table_argument(property_based_test_program_for_random_ram_access())
+    }
+
+    fn check_grand_cross_table_argument(program_and_input: ProgramAndInput) {
         let zero = XFieldElement::zero();
         let circuit_builder = ConstraintCircuitBuilder::new();
         let terminal_constraints = GrandCrossTableArg::terminal_constraints(&circuit_builder);
@@ -1455,44 +1681,38 @@ pub(crate) mod tests {
             .map(|c| c.consume())
             .collect_vec();
 
-        for (code_idx, program_and_input) in code_collection.into_iter().enumerate() {
-            println!("Checking Grand Cross-Table Argument for TASM snippet {code_idx}.");
-            let (_, _, master_base_table, master_ext_table, challenges) =
-                master_tables_for_low_security_level(program_and_input);
+        let (_, _, master_base_table, master_ext_table, challenges) =
+            master_tables_for_low_security_level(program_and_input);
 
-            let processor_table = master_ext_table.table(ProcessorTable);
-            let processor_table_last_row = processor_table.slice(s![-1, ..]);
+        let processor_table = master_ext_table.table(ProcessorTable);
+        let processor_table_last_row = processor_table.slice(s![-1, ..]);
+        assert_eq!(
+            challenges[StandardInputTerminal],
+            processor_table_last_row[InputTableEvalArg.ext_table_index()],
+        );
+        assert_eq!(
+            challenges[StandardOutputTerminal],
+            processor_table_last_row[OutputTableEvalArg.ext_table_index()],
+        );
+
+        let lookup_table = master_ext_table.table(LookupTable);
+        let lookup_table_last_row = lookup_table.slice(s![-1, ..]);
+        assert_eq!(
+            challenges[LookupTablePublicTerminal],
+            lookup_table_last_row[PublicEvaluationArgument.ext_table_index()],
+        );
+
+        let master_base_trace_table = master_base_table.trace_table();
+        let master_ext_trace_table = master_ext_table.trace_table();
+        let last_master_base_row = master_base_trace_table.slice(s![-1.., ..]);
+        let last_master_ext_row = master_ext_trace_table.slice(s![-1.., ..]);
+
+        for (i, constraint) in terminal_constraints.iter().enumerate() {
             assert_eq!(
-                challenges[StandardInputTerminal],
-                processor_table_last_row[InputTableEvalArg.ext_table_index()],
-                "The input terminal must match for TASM snippet #{code_idx}."
+                zero,
+                constraint.evaluate(last_master_base_row, last_master_ext_row, &challenges),
+                "Terminal constraint {i} must evaluate to 0."
             );
-            assert_eq!(
-                challenges[StandardOutputTerminal],
-                processor_table_last_row[OutputTableEvalArg.ext_table_index()],
-                "The output terminal must match for TASM snippet #{code_idx}."
-            );
-
-            let lookup_table = master_ext_table.table(LookupTable);
-            let lookup_table_last_row = lookup_table.slice(s![-1, ..]);
-            assert_eq!(
-                challenges[LookupTablePublicTerminal],
-                lookup_table_last_row[PublicEvaluationArgument.ext_table_index()],
-                "The lookup's terminal must match for TASM snippet #{code_idx}."
-            );
-
-            let master_base_trace_table = master_base_table.trace_table();
-            let master_ext_trace_table = master_ext_table.trace_table();
-            let last_master_base_row = master_base_trace_table.slice(s![-1.., ..]);
-            let last_master_ext_row = master_ext_trace_table.slice(s![-1.., ..]);
-
-            for (i, constraint) in terminal_constraints.iter().enumerate() {
-                assert_eq!(
-                    zero,
-                    constraint.evaluate(last_master_base_row, last_master_ext_row, &challenges),
-                    "Terminal constraint {i} must evaluate to 0 for snippet #{code_idx}."
-                );
-            }
         }
     }
 
@@ -1680,19 +1900,237 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn triton_table_constraints_evaluate_to_zero_on_small_programs() {
-        for (program_idx, program) in small_tasm_test_programs().into_iter().enumerate() {
-            println!("Testing program with index {program_idx}.");
-            triton_table_constraints_evaluate_to_zero(program);
-        }
+    fn constraints_evaluate_to_zero_on_program_for_halt() {
+        triton_table_constraints_evaluate_to_zero(test_program_for_halt())
     }
 
     #[test]
-    fn triton_table_constraints_evaluate_to_zero_on_property_based_programs() {
-        for (program_idx, program) in property_based_test_programs().into_iter().enumerate() {
-            println!("Testing program with index {program_idx}.");
-            triton_table_constraints_evaluate_to_zero(program);
-        }
+    fn constraints_evaluate_to_zero_on_program_hash_nop_nop_lt() {
+        triton_table_constraints_evaluate_to_zero(test_program_hash_nop_nop_lt())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_program_for_push_pop_dup_swap_nop() {
+        triton_table_constraints_evaluate_to_zero(test_program_for_push_pop_dup_swap_nop())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_program_for_divine() {
+        triton_table_constraints_evaluate_to_zero(test_program_for_divine())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_program_for_skiz() {
+        triton_table_constraints_evaluate_to_zero(test_program_for_skiz())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_program_for_call_recurse_return() {
+        triton_table_constraints_evaluate_to_zero(test_program_for_call_recurse_return())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_program_for_write_mem_read_mem() {
+        triton_table_constraints_evaluate_to_zero(test_program_for_write_mem_read_mem())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_program_for_hash() {
+        triton_table_constraints_evaluate_to_zero(test_program_for_hash())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_program_for_divine_sibling_no_switch() {
+        triton_table_constraints_evaluate_to_zero(test_program_for_divine_sibling_no_switch())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_program_for_divine_sibling_switch() {
+        triton_table_constraints_evaluate_to_zero(test_program_for_divine_sibling_switch())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_program_for_assert_vector() {
+        triton_table_constraints_evaluate_to_zero(test_program_for_assert_vector())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_program_for_sponge_instructions() {
+        triton_table_constraints_evaluate_to_zero(test_program_for_sponge_instructions())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_program_for_sponge_instructions_2() {
+        triton_table_constraints_evaluate_to_zero(test_program_for_sponge_instructions_2())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_program_for_many_sponge_instructions() {
+        triton_table_constraints_evaluate_to_zero(test_program_for_many_sponge_instructions())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_program_for_add_mul_invert() {
+        triton_table_constraints_evaluate_to_zero(test_program_for_add_mul_invert())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_program_for_eq() {
+        triton_table_constraints_evaluate_to_zero(test_program_for_eq())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_program_for_lsb() {
+        triton_table_constraints_evaluate_to_zero(test_program_for_lsb())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_program_for_split() {
+        triton_table_constraints_evaluate_to_zero(test_program_for_split())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_program_0_lt_0() {
+        triton_table_constraints_evaluate_to_zero(test_program_0_lt_0())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_program_for_lt() {
+        triton_table_constraints_evaluate_to_zero(test_program_for_lt())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_program_for_and() {
+        triton_table_constraints_evaluate_to_zero(test_program_for_and())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_program_for_xor() {
+        triton_table_constraints_evaluate_to_zero(test_program_for_xor())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_program_for_log2floor() {
+        triton_table_constraints_evaluate_to_zero(test_program_for_log2floor())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_program_for_pow() {
+        triton_table_constraints_evaluate_to_zero(test_program_for_pow())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_program_for_div_mod() {
+        triton_table_constraints_evaluate_to_zero(test_program_for_div_mod())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_program_for_starting_with_pop_count() {
+        triton_table_constraints_evaluate_to_zero(test_program_for_starting_with_pop_count())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_program_for_pop_count() {
+        triton_table_constraints_evaluate_to_zero(test_program_for_pop_count())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_program_for_xxadd() {
+        triton_table_constraints_evaluate_to_zero(test_program_for_xxadd())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_program_for_xxmul() {
+        triton_table_constraints_evaluate_to_zero(test_program_for_xxmul())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_program_for_xinvert() {
+        triton_table_constraints_evaluate_to_zero(test_program_for_xinvert())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_program_for_xbmul() {
+        triton_table_constraints_evaluate_to_zero(test_program_for_xbmul())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_program_for_read_io_write_io() {
+        triton_table_constraints_evaluate_to_zero(test_program_for_read_io_write_io())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_property_based_test_program_for_assert_vector() {
+        triton_table_constraints_evaluate_to_zero(property_based_test_program_for_assert_vector())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_property_based_test_program_for_sponge_instructions() {
+        triton_table_constraints_evaluate_to_zero(
+            property_based_test_program_for_sponge_instructions(),
+        )
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_property_based_test_program_for_split() {
+        triton_table_constraints_evaluate_to_zero(property_based_test_program_for_split())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_property_based_test_program_for_eq() {
+        triton_table_constraints_evaluate_to_zero(property_based_test_program_for_eq())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_property_based_test_program_for_lsb() {
+        triton_table_constraints_evaluate_to_zero(property_based_test_program_for_lsb())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_property_based_test_program_for_lt() {
+        triton_table_constraints_evaluate_to_zero(property_based_test_program_for_lt())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_property_based_test_program_for_and() {
+        triton_table_constraints_evaluate_to_zero(property_based_test_program_for_and())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_property_based_test_program_for_xor() {
+        triton_table_constraints_evaluate_to_zero(property_based_test_program_for_xor())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_property_based_test_program_for_log2floor() {
+        triton_table_constraints_evaluate_to_zero(property_based_test_program_for_log2floor())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_property_based_test_program_for_pow() {
+        triton_table_constraints_evaluate_to_zero(property_based_test_program_for_pow())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_property_based_test_program_for_div_mod() {
+        triton_table_constraints_evaluate_to_zero(property_based_test_program_for_div_mod())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_property_based_test_program_for_pop_count() {
+        triton_table_constraints_evaluate_to_zero(property_based_test_program_for_pop_count())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_property_based_test_program_for_is_u32() {
+        triton_table_constraints_evaluate_to_zero(property_based_test_program_for_is_u32())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_property_based_test_program_for_random_ram_access() {
+        triton_table_constraints_evaluate_to_zero(
+            property_based_test_program_for_random_ram_access(),
+        )
     }
 
     fn triton_table_constraints_evaluate_to_zero(program_and_input: ProgramAndInput) {

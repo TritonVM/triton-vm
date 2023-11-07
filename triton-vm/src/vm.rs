@@ -1608,7 +1608,7 @@ pub(crate) mod tests {
         }
     }
 
-    fn property_based_test_program_for_is_u32() -> ProgramAndInput {
+    pub(crate) fn property_based_test_program_for_is_u32() -> ProgramAndInput {
         let mut rng = ThreadRng::default();
         let st0_u32 = rng.next_u32();
         let st0_not_u32 = ((rng.next_u32() as u64) << 32) + (rng.next_u32() as u64);
@@ -1621,7 +1621,7 @@ pub(crate) mod tests {
         ProgramAndInput::without_input(program)
     }
 
-    fn property_based_test_program_for_random_ram_access() -> ProgramAndInput {
+    pub(crate) fn property_based_test_program_for_random_ram_access() -> ProgramAndInput {
         let mut rng = ThreadRng::default();
         let num_memory_accesses = rng.gen_range(10..50);
         let memory_addresses: Vec<BFieldElement> = random_elements(num_memory_accesses);
@@ -1762,62 +1762,6 @@ pub(crate) mod tests {
             public_input: vec![1, 3, 14],
             non_determinism: [].into(),
         }
-    }
-
-    pub(crate) fn small_tasm_test_programs() -> Vec<ProgramAndInput> {
-        vec![
-            test_program_for_halt(),
-            test_program_hash_nop_nop_lt(),
-            test_program_for_push_pop_dup_swap_nop(),
-            test_program_for_divine(),
-            test_program_for_skiz(),
-            test_program_for_call_recurse_return(),
-            test_program_for_write_mem_read_mem(),
-            test_program_for_hash(),
-            test_program_for_divine_sibling_no_switch(),
-            test_program_for_divine_sibling_switch(),
-            test_program_for_assert_vector(),
-            test_program_for_sponge_instructions(),
-            test_program_for_sponge_instructions_2(),
-            test_program_for_many_sponge_instructions(),
-            test_program_for_add_mul_invert(),
-            test_program_for_eq(),
-            test_program_for_lsb(),
-            test_program_for_split(),
-            test_program_0_lt_0(),
-            test_program_for_lt(),
-            test_program_for_and(),
-            test_program_for_xor(),
-            test_program_for_log2floor(),
-            test_program_for_pow(),
-            test_program_for_div_mod(),
-            test_program_for_starting_with_pop_count(),
-            test_program_for_pop_count(),
-            test_program_for_xxadd(),
-            test_program_for_xxmul(),
-            test_program_for_xinvert(),
-            test_program_for_xbmul(),
-            test_program_for_read_io_write_io(),
-        ]
-    }
-
-    pub(crate) fn property_based_test_programs() -> Vec<ProgramAndInput> {
-        vec![
-            property_based_test_program_for_assert_vector(),
-            property_based_test_program_for_sponge_instructions(),
-            property_based_test_program_for_split(),
-            property_based_test_program_for_eq(),
-            property_based_test_program_for_lsb(),
-            property_based_test_program_for_lt(),
-            property_based_test_program_for_and(),
-            property_based_test_program_for_xor(),
-            property_based_test_program_for_log2floor(),
-            property_based_test_program_for_pow(),
-            property_based_test_program_for_div_mod(),
-            property_based_test_program_for_pop_count(),
-            property_based_test_program_for_is_u32(),
-            property_based_test_program_for_random_ram_access(),
-        ]
     }
 
     #[proptest]
