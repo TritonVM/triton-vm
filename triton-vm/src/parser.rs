@@ -949,7 +949,7 @@ pub(crate) mod tests {
     fn parse_program_nonexistent_instructions() {
         parse_program_neg_prop(NegativeTestCase {
             input: "pop 0",
-            expected_error: "illegal argument for instruction `pop`",
+            expected_error: "expecting label, instruction or eof",
             expected_error_count: 1,
             message: "instruction `pop` cannot take argument `0`",
         });

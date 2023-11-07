@@ -765,7 +765,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "`pop 0` is illegal.")]
+    #[should_panic(expected = "Index 0 is out of range for `NumberOfWords`")]
     fn parsing_pop_with_illegal_argument_fails() {
         let _ = triton_instr!(pop 0);
     }

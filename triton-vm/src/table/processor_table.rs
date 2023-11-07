@@ -3469,7 +3469,7 @@ pub(crate) mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "at least 1, at most 5")]
+    #[should_panic(expected = "out of range for `NumberOfWords`")]
     fn transition_constraints_for_instruction_pop_0() {
         transition_constraints_for_instruction_pop_n(0);
     }
@@ -3480,7 +3480,7 @@ pub(crate) mod tests {
     }
 
     #[proptest(cases = 20)]
-    #[should_panic(expected = "at least 1, at most 5")]
+    #[should_panic(expected = "out of range for `NumberOfWords`")]
     fn transition_constraints_for_instruction_pop_n_too_large(
         #[strategy(6..OpStackElement::COUNT)] n: usize,
     ) {
@@ -3522,7 +3522,7 @@ pub(crate) mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "at least 1, at most 5")]
+    #[should_panic(expected = "out of range for `NumberOfWords`")]
     fn transition_constraints_for_instruction_divine_0() {
         transition_constraints_for_instruction_divine_n(0);
     }
@@ -3533,7 +3533,7 @@ pub(crate) mod tests {
     }
 
     #[proptest(cases = 20)]
-    #[should_panic(expected = "at least 1, at most 5")]
+    #[should_panic(expected = "out of range for `NumberOfWords`")]
     fn transition_constraints_for_instruction_divine_n_too_large(
         #[strategy(6..OpStackElement::COUNT)] n: usize,
     ) {
@@ -4000,7 +4000,7 @@ pub(crate) mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "at least 1, at most 5")]
+    #[should_panic(expected = "out of range for `NumberOfWords`")]
     fn transition_constraints_for_instruction_read_io_0() {
         transition_constraints_for_instruction_read_io_n(0);
     }
@@ -4013,7 +4013,7 @@ pub(crate) mod tests {
     }
 
     #[proptest(cases = 20)]
-    #[should_panic(expected = "at least 1, at most 5")]
+    #[should_panic(expected = "out of range for `NumberOfWords`")]
     fn transition_constraints_for_instruction_read_io_n_too_large(
         #[strategy(6..OpStackElement::COUNT)] n: usize,
     ) {
@@ -4041,7 +4041,7 @@ pub(crate) mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "at least 1, at most 5")]
+    #[should_panic(expected = "out of range for `NumberOfWords`")]
     fn transition_constraints_for_instruction_write_io_0() {
         transition_constraints_for_instruction_write_io_n(0);
     }
@@ -4054,7 +4054,7 @@ pub(crate) mod tests {
     }
 
     #[proptest(cases = 20)]
-    #[should_panic(expected = "at least 1, at most 5")]
+    #[should_panic(expected = "out of range for `NumberOfWords`")]
     fn transition_constraints_for_instruction_write_io_n_too_large(
         #[strategy(6..OpStackElement::COUNT)] n: usize,
     ) {
