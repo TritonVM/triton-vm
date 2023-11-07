@@ -1416,7 +1416,7 @@ pub(crate) mod tests {
     #[test]
     fn check_io_terminals() {
         let read_nop_program = triton_program!(
-            read_io 3 nop nop write_io push 17 write_io halt
+            read_io 3 nop nop write_io 2 push 17 write_io 1 halt
         );
         let mut program_and_input = ProgramAndInput::without_input(read_nop_program);
         program_and_input.public_input = vec![3, 5, 7];

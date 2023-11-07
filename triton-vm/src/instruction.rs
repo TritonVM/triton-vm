@@ -149,7 +149,7 @@ pub enum AnInstruction<Dest: PartialEq + Default> {
 
     // Read/write
     ReadIo(OpStackElement),
-    WriteIo,
+    WriteIo(OpStackElement),
 }
 
 impl<Dest: PartialEq + Default> AnInstruction<Dest> {
@@ -193,7 +193,7 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
             XInvert => 80,
             XbMul => 82,
             ReadIo(_) => 41,
-            WriteIo => 90,
+            WriteIo(_) => 11,
         }
     }
 
@@ -236,7 +236,7 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
             XInvert => "xinvert",
             XbMul => "xbmul",
             ReadIo(_) => "read_io",
-            WriteIo => "write_io",
+            WriteIo(_) => "write_io",
         }
     }
 
@@ -250,7 +250,7 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
             Divine(_) => 2,
             Dup(_) | Swap(_) => 2,
             Call(_) => 2,
-            ReadIo(_) => 2,
+            ReadIo(_) | WriteIo(_) => 2,
             _ => 1,
         }
     }
@@ -306,7 +306,7 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
             XInvert => XInvert,
             XbMul => XbMul,
             ReadIo(x) => ReadIo(*x),
-            WriteIo => WriteIo,
+            WriteIo(x) => WriteIo(*x),
         }
     }
 
@@ -361,7 +361,7 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
             XInvert => 0,
             XbMul => -1,
             ReadIo(n) => n.index() as i32,
-            WriteIo => -1,
+            WriteIo(n) => -(n.index() as i32),
         }
     }
 
@@ -379,6 +379,7 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
             Divine(st) => *st < ST1 || ST5 < *st,
             Swap(ST0) => true,
             ReadIo(st) => *st < ST1 || ST5 < *st,
+            WriteIo(st) => *st < ST1 || ST5 < *st,
             _ => false,
         }
     }
@@ -389,8 +390,9 @@ impl<Dest: Display + PartialEq + Default> Display for AnInstruction<Dest> {
         write!(f, "{}", self.name())?;
         match self {
             Push(arg) => write!(f, " {arg}"),
-            Pop(arg) | Divine(arg) | Dup(arg) | Swap(arg) | ReadIo(arg) => write!(f, " {arg}"),
+            Pop(arg) | Divine(arg) | Dup(arg) | Swap(arg) => write!(f, " {arg}"),
             Call(arg) => write!(f, " {arg}"),
+            ReadIo(arg) | WriteIo(arg) => write!(f, " {arg}"),
             _ => Ok(()),
         }
     }
@@ -401,7 +403,8 @@ impl Instruction {
     pub fn arg(&self) -> Option<BFieldElement> {
         match self {
             Push(arg) | Call(arg) => Some(*arg),
-            Pop(arg) | Divine(arg) | Dup(arg) | Swap(arg) | ReadIo(arg) => Some(arg.into()),
+            Pop(arg) | Divine(arg) | Dup(arg) | Swap(arg) => Some(arg.into()),
+            ReadIo(arg) | WriteIo(arg) => Some(arg.into()),
             _ => None,
         }
     }
@@ -432,6 +435,7 @@ impl Instruction {
             Dup(_) => Some(Dup(stack_element)),
             Swap(_) => Some(Swap(stack_element)),
             ReadIo(_) => Some(ReadIo(stack_element)),
+            WriteIo(_) => Some(WriteIo(stack_element)),
             _ => None,
         };
         if new_instruction?.has_illegal_argument() {
@@ -518,7 +522,7 @@ const fn all_instructions_without_args() -> [AnInstruction<BFieldElement>; Instr
         XInvert,
         XbMul,
         ReadIo(ST0),
-        WriteIo,
+        WriteIo(ST0),
     ]
 }
 
@@ -633,6 +637,7 @@ mod tests {
                 Divine(ST0) => Divine(ST1),
                 Swap(ST0) => Swap(ST1),
                 ReadIo(ST0) => ReadIo(ST1),
+                WriteIo(ST0) => WriteIo(ST1),
                 _ => self,
             }
         }
@@ -856,7 +861,7 @@ mod tests {
 
     #[test]
     fn stringify_some_instructions() {
-        let instructions = triton_asm!(push 3 invert push 2 mul push 1 add write_io halt);
+        let instructions = triton_asm!(push 3 invert push 2 mul push 1 add write_io 1 halt);
         let code = stringify_instructions(&instructions);
         println!("{code}");
     }

@@ -136,11 +136,14 @@ impl ProcessorTable {
                             + input_symbol;
                     }
                 }
-                if Some(Instruction::WriteIo) == previous_instruction {
-                    let output_symbol = prev_row[ST0.base_table_index()];
-                    output_table_running_evaluation = output_table_running_evaluation
-                        * challenges[StandardOutputIndeterminate]
-                        + output_symbol;
+                if let Some(Instruction::WriteIo(st)) = previous_instruction {
+                    for i in 0..st.index() {
+                        let output_symbol_column = Self::op_stack_column_by_index(i as usize);
+                        let output_symbol = prev_row[output_symbol_column.base_table_index()];
+                        output_table_running_evaluation = output_table_running_evaluation
+                            * challenges[StandardOutputIndeterminate]
+                            + output_symbol;
+                    }
                 }
             }
 
@@ -2272,25 +2275,25 @@ impl ExtProcessorTable {
     fn instruction_write_io(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        let challenge = |c: ChallengeId| circuit_builder.challenge(c);
-        let curr_base_row = |col: ProcessorBaseTableColumn| {
-            circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
-        };
-        let curr_ext_row = |col: ProcessorExtTableColumn| {
-            circuit_builder.input(CurrentExtRow(col.master_ext_table_index()))
-        };
-        let next_ext_row = |col: ProcessorExtTableColumn| {
-            circuit_builder.input(NextExtRow(col.master_ext_table_index()))
-        };
+        let dont_write_0_elements = Self::indicator_polynomial(circuit_builder, 0);
+        let dont_write_too_many_elements = (6..OpStackElement::COUNT)
+            .map(|idx| Self::indicator_polynomial(circuit_builder, idx))
+            .collect_vec();
 
-        let running_evaluation_accumulates_one_factor = next_ext_row(OutputTableEvalArg)
-            - challenge(StandardOutputIndeterminate) * curr_ext_row(OutputTableEvalArg)
-            - curr_base_row(ST0);
+        let constraint_groups_for_legal_arguments = (1..=5)
+            .map(|n| Self::shrink_stack_by_n_and_write_n_symbols_to_output(circuit_builder, n))
+            .collect_vec();
+        let write_any_of_1_through_5_elements = Self::combine_mutually_exclusive_constraint_groups(
+            circuit_builder,
+            constraint_groups_for_legal_arguments,
+        );
 
         [
-            Self::instruction_group_step_1(circuit_builder),
-            Self::instruction_group_shrink_op_stack(circuit_builder),
-            vec![running_evaluation_accumulates_one_factor],
+            Self::instruction_group_step_2(circuit_builder),
+            Self::instruction_group_decompose_arg(circuit_builder),
+            vec![dont_write_0_elements],
+            write_any_of_1_through_5_elements,
+            dont_write_too_many_elements,
             Self::instruction_group_keep_ram(circuit_builder),
             vec![Self::running_evaluation_for_standard_input_remains_unchanged(circuit_builder)],
         ]
@@ -2339,7 +2342,7 @@ impl ExtProcessorTable {
             XInvert => ExtProcessorTable::instruction_xinv(circuit_builder),
             XbMul => ExtProcessorTable::instruction_xbmul(circuit_builder),
             ReadIo(_) => ExtProcessorTable::instruction_read_io(circuit_builder),
-            WriteIo => ExtProcessorTable::instruction_write_io(circuit_builder),
+            WriteIo(_) => ExtProcessorTable::instruction_write_io(circuit_builder),
         }
     }
 
@@ -2426,6 +2429,45 @@ impl ExtProcessorTable {
                 indeterminate() * running_evaluation + next_base_row(stack_element);
         }
         next_ext_row(InputTableEvalArg) - running_evaluation
+    }
+
+    fn shrink_stack_by_n_and_write_n_symbols_to_output(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+        n: usize,
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
+        let running_evaluation_update =
+            Self::running_evaluation_standard_output_accumulates_n_symbols(circuit_builder, n);
+        let conditional_running_evaluation_update =
+            running_evaluation_update * Self::indicator_polynomial(circuit_builder, n);
+
+        let mut constraints =
+            Self::conditional_constraints_for_shrinking_stack_by(circuit_builder, n);
+        constraints.push(conditional_running_evaluation_update);
+        constraints
+    }
+
+    fn running_evaluation_standard_output_accumulates_n_symbols(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+        n: usize,
+    ) -> ConstraintCircuitMonad<DualRowIndicator> {
+        let indeterminate = || circuit_builder.challenge(StandardOutputIndeterminate);
+        let curr_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
+        };
+        let curr_ext_row = |col: ProcessorExtTableColumn| {
+            circuit_builder.input(CurrentExtRow(col.master_ext_table_index()))
+        };
+        let next_ext_row = |col: ProcessorExtTableColumn| {
+            circuit_builder.input(NextExtRow(col.master_ext_table_index()))
+        };
+
+        let mut running_evaluation = curr_ext_row(OutputTableEvalArg);
+        for i in 0..n {
+            let stack_element = ProcessorTable::op_stack_column_by_index(i);
+            running_evaluation =
+                indeterminate() * running_evaluation + curr_base_row(stack_element);
+        }
+        next_ext_row(OutputTableEvalArg) - running_evaluation
     }
 
     fn log_derivative_for_instruction_lookup_updates_correctly(
@@ -3998,16 +4040,42 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn transition_constraints_for_instruction_write_io() {
-        let programs = [
-            triton_program!(push 17 write_io halt),
-            triton_program!(push 42 write_io halt),
-        ];
-        let test_rows = programs.map(|program| test_row_from_program(program, 1));
+    #[should_panic(expected = "at least 1, at most 5")]
+    fn transition_constraints_for_instruction_write_io_0() {
+        transition_constraints_for_instruction_write_io_n(0);
+    }
+
+    #[proptest(cases = 20)]
+    fn transition_constraints_for_instruction_write_io_n_in_range(
+        #[strategy(1..=5_usize)] n: usize,
+    ) {
+        transition_constraints_for_instruction_write_io_n(n);
+    }
+
+    #[proptest(cases = 20)]
+    #[should_panic(expected = "at least 1, at most 5")]
+    fn transition_constraints_for_instruction_write_io_n_too_large(
+        #[strategy(6..OpStackElement::COUNT)] n: usize,
+    ) {
+        transition_constraints_for_instruction_write_io_n(n);
+    }
+
+    fn transition_constraints_for_instruction_write_io_n(n: usize) {
+        let stack_element = n.try_into().unwrap();
+
+        let instructions = [Divine(OpStackElement::ST5), WriteIo(stack_element), Halt];
+        let instructions = instructions.map(LabelledInstruction::Instruction).to_vec();
+
+        let program_and_input = ProgramAndInput {
+            program: Program::new(&instructions),
+            public_input: [].into(),
+            non_determinism: (1..=16).collect_vec().into(),
+        };
+        let test_rows = [test_row_from_program_with_input(program_and_input, 1)];
         let debug_info = TestRowsDebugInfo {
-            instruction: WriteIo,
-            debug_cols_curr_row: vec![ST0, ST1],
-            debug_cols_next_row: vec![ST0, ST1],
+            instruction: WriteIo(stack_element),
+            debug_cols_curr_row: vec![ST0, ST1, ST2, ST3, ST4, ST5],
+            debug_cols_next_row: vec![ST0, ST1, ST2, ST3, ST4, ST5],
         };
         assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }

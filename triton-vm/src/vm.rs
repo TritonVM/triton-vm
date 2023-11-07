@@ -143,7 +143,7 @@ impl<'pgm> VMState<'pgm> {
         };
 
         match current_instruction {
-            Pop(arg) | Divine(arg) | Dup(arg) | Swap(arg) | ReadIo(arg) => {
+            Pop(arg) | Divine(arg) | Dup(arg) | Swap(arg) | ReadIo(arg) | WriteIo(arg) => {
                 let arg_val: u64 = arg.into();
                 hvs[0] = BFieldElement::new(arg_val % 2);
                 hvs[1] = BFieldElement::new((arg_val >> 1) % 2);
@@ -237,7 +237,7 @@ impl<'pgm> VMState<'pgm> {
             XxMul => self.xx_mul()?,
             XInvert => self.x_invert()?,
             XbMul => self.xb_mul()?,
-            WriteIo => self.write_io()?,
+            WriteIo(n) => self.write_io(n)?,
             ReadIo(n) => self.read_io(n)?,
         };
         let op_stack_calls = self.stop_recording_op_stack_calls();
@@ -698,11 +698,17 @@ impl<'pgm> VMState<'pgm> {
         Ok(vec![])
     }
 
-    fn write_io(&mut self) -> Result<Vec<CoProcessorCall>> {
-        let top_of_stack = self.op_stack.pop()?;
-        self.public_output.push(top_of_stack);
+    fn write_io(&mut self, n: OpStackElement) -> Result<Vec<CoProcessorCall>> {
+        if Instruction::WriteIo(n).has_illegal_argument() {
+            bail!(IllegalWriteIo(n.into()));
+        }
 
-        self.instruction_pointer += 1;
+        for _ in 0..n.into() {
+            let top_of_stack = self.op_stack.pop()?;
+            self.public_output.push(top_of_stack);
+        }
+
+        self.instruction_pointer += 2;
         Ok(vec![])
     }
 
@@ -1756,7 +1762,7 @@ pub(crate) mod tests {
 
     pub(crate) fn test_program_for_read_io_write_io() -> ProgramAndInput {
         let program = triton_program!(
-            read_io 1 assert read_io 2 dup 1 dup 1 add write_io mul write_io halt
+            read_io 1 assert read_io 2 dup 1 dup 1 add write_io 1 mul push 5 write_io 2 halt
         );
         ProgramAndInput {
             program,
@@ -1778,7 +1784,7 @@ pub(crate) mod tests {
             push {left_operand.coefficients[1]}
             push {left_operand.coefficients[0]}
             xxadd
-            write_io write_io write_io
+            write_io 3
             halt
         );
         let program = ProgramAndInput {
@@ -1806,7 +1812,7 @@ pub(crate) mod tests {
             push {left_operand.coefficients[1]}
             push {left_operand.coefficients[0]}
             xxmul
-            write_io write_io write_io
+            write_io 3
             halt
         );
         let program = ProgramAndInput {
@@ -1832,7 +1838,7 @@ pub(crate) mod tests {
             push {operand.coefficients[1]}
             push {operand.coefficients[0]}
             xinvert
-            write_io write_io write_io
+            write_io 3
             halt
         );
         let program = ProgramAndInput {
@@ -1855,7 +1861,7 @@ pub(crate) mod tests {
             push {operand.coefficients[0]}
             push {scalar}
             xbmul
-            write_io write_io write_io
+            write_io 3
             halt
         );
         let program = ProgramAndInput {
@@ -1876,7 +1882,7 @@ pub(crate) mod tests {
         #[strategy(arb())] subtrahend: BFieldElement,
     ) {
         let program = triton_program!(
-            push {subtrahend} push {minuend} call sub write_io halt
+            push {subtrahend} push {minuend} call sub write_io 1 halt
             sub:
                 swap 1 push -1 mul add return
         );
@@ -1897,22 +1903,23 @@ pub(crate) mod tests {
     const _COMPILE_TIME_ASSERTION: () = op_stack_is_big_enough();
 
     #[test]
-    fn run_tvm_hello_world_1() {
+    fn run_tvm_hello_world() {
         let program = triton_program!(
-            push  10 write_io
-            push  33 write_io
-            push 100 write_io
-            push 108 write_io
-            push 114 write_io
-            push 111 write_io
-            push  87 write_io
-            push  32 write_io
-            push  44 write_io
-            push 111 write_io
-            push 108 write_io
-            push 108 write_io
-            push 101 write_io
-            push  72 write_io
+            push  10 // \n
+            push  33 // !
+            push 100 // d
+            push 108 // l
+            push 114 // r
+            push 111 // o
+            push  87 // W
+            push  32 //
+            push  44 // ,
+            push 111 // o
+            push 108 // l
+            push 108 // l
+            push 101 // e
+            push  72 // H
+            write_io 5 write_io 5 write_io 4
             halt
         );
         let terminal_state = program
@@ -1923,7 +1930,7 @@ pub(crate) mod tests {
 
     #[test]
     fn run_tvm_halt_then_do_stuff() {
-        let program = triton_program!(halt push 1 push 2 add invert write_io);
+        let program = triton_program!(halt push 1 push 2 add invert write_io 5);
         let (aet, _) = program.trace_execution([].into(), [].into()).unwrap();
 
         let last_processor_row = aet.processor_trace.rows().into_iter().last().unwrap();
@@ -2037,7 +2044,7 @@ pub(crate) mod tests {
             dup 3 dup 3 push -1 mul add     // dx = p0_x - p1_x
             invert mul add                  // compute result
             swap 3 pop 3                    // leave a clean stack
-            write_io halt
+            write_io 1 halt
         );
 
         let public_input = vec![p2_x, p1.1, p1.0, p0.1, p0.0].into();
@@ -2053,13 +2060,13 @@ pub(crate) mod tests {
 
             loop:
                 dup 0
-                write_io
+                write_io 1
                 push -1
                 add
                 dup 0
                 skiz
                   recurse
-                write_io
+                write_io 1
                 halt
         );
 
@@ -2077,7 +2084,7 @@ pub(crate) mod tests {
 
     #[test]
     fn run_tvm_swap() {
-        let program = triton_program!(push 1 push 2 swap 1 assert write_io halt);
+        let program = triton_program!(push 1 push 2 swap 1 assert write_io 1 halt);
         let standard_out = program.run([].into(), [].into()).unwrap();
         assert_eq!(BFieldElement::new(2), standard_out[0]);
     }
@@ -2091,7 +2098,7 @@ pub(crate) mod tests {
 
     #[test]
     fn read_non_deterministically_initialized_ram_at_address_0() {
-        let program = triton_program!(read_mem write_io halt);
+        let program = triton_program!(read_mem write_io 1 halt);
 
         let mut initial_ram = HashMap::new();
         initial_ram.insert(0_u64.into(), 42_u64.into());
@@ -2111,8 +2118,8 @@ pub(crate) mod tests {
     fn read_non_deterministically_initialized_ram_at_random_address() {
         let random_address = thread_rng().gen_range(1..2_u64.pow(16));
         let program = triton_program!(
-            read_mem write_io
-            push {random_address} read_mem write_io
+            read_mem write_io 1
+            push {random_address} read_mem write_io 1
             halt
         );
 

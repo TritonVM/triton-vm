@@ -20,6 +20,7 @@ pub enum InstructionError {
     IllegalPop(usize),
     IllegalDivine(usize),
     IllegalReadIo(usize),
+    IllegalWriteIo(usize),
     SwapST0,
     InverseOfZero,
     DivisionByZero,
@@ -50,6 +51,9 @@ impl Display for InstructionError {
             IllegalPop(st) => write!(f, "must pop at least 1, at most 5 elements, not {st}"),
             IllegalDivine(st) => write!(f, "must divine at least 1, at most 5 elements, not {st}"),
             IllegalReadIo(st) => write!(f, "must read_io at least 1, at most 5 elements, not {st}"),
+            IllegalWriteIo(st) => {
+                write!(f, "must write_io at least 1, at most 5 elements, not {st}")
+            }
             SwapST0 => write!(f, "Cannot swap stack element 0 with itself"),
             InverseOfZero => write!(f, "0 does not have a multiplicative inverse"),
             DivisionByZero => write!(f, "Division by 0 is impossible"),
