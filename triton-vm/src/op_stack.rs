@@ -396,6 +396,166 @@ impl From<&OpStackElement> for BFieldElement {
     }
 }
 
+/// Represents the argument, _i.e._, the `n`, for instructions like `pop n` or `read_io n`.
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Default,
+    GetSize,
+    Serialize,
+    Deserialize,
+    EnumCount,
+    EnumIter,
+)]
+pub enum StackChangeArg {
+    #[default]
+    N1,
+    N2,
+    N3,
+    N4,
+    N5,
+}
+
+impl StackChangeArg {
+    pub const fn index(self) -> usize {
+        match self {
+            Self::N1 => 1,
+            Self::N2 => 2,
+            Self::N3 => 3,
+            Self::N4 => 4,
+            Self::N5 => 5,
+        }
+    }
+}
+
+impl Display for StackChangeArg {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        let index = self.index();
+        write!(f, "{index}")
+    }
+}
+
+impl From<StackChangeArg> for usize {
+    fn from(stack_changing_argument: StackChangeArg) -> Self {
+        stack_changing_argument.index()
+    }
+}
+
+impl From<&StackChangeArg> for usize {
+    fn from(&stack_changing_argument: &StackChangeArg) -> Self {
+        stack_changing_argument.into()
+    }
+}
+
+impl From<StackChangeArg> for u32 {
+    fn from(stack_changing_argument: StackChangeArg) -> Self {
+        stack_changing_argument.index() as u32
+    }
+}
+
+impl From<&StackChangeArg> for u32 {
+    fn from(&stack_changing_argument: &StackChangeArg) -> Self {
+        stack_changing_argument.into()
+    }
+}
+
+impl From<StackChangeArg> for u64 {
+    fn from(stack_changing_argument: StackChangeArg) -> Self {
+        u32::from(stack_changing_argument).into()
+    }
+}
+
+impl From<&StackChangeArg> for u64 {
+    fn from(&stack_changing_argument: &StackChangeArg) -> Self {
+        stack_changing_argument.into()
+    }
+}
+
+impl From<StackChangeArg> for OpStackElement {
+    fn from(stack_changing_argument: StackChangeArg) -> Self {
+        OpStackElement::try_from(stack_changing_argument.index()).unwrap()
+    }
+}
+
+impl From<&StackChangeArg> for OpStackElement {
+    fn from(&stack_changing_argument: &StackChangeArg) -> Self {
+        stack_changing_argument.into()
+    }
+}
+
+impl From<StackChangeArg> for BFieldElement {
+    fn from(stack_changing_argument: StackChangeArg) -> Self {
+        u32::from(stack_changing_argument).into()
+    }
+}
+
+impl From<&StackChangeArg> for BFieldElement {
+    fn from(&stack_changing_argument: &StackChangeArg) -> Self {
+        stack_changing_argument.into()
+    }
+}
+
+impl TryFrom<usize> for StackChangeArg {
+    type Error = anyhow::Error;
+
+    fn try_from(stack_changing_argument: usize) -> Result<Self> {
+        match stack_changing_argument {
+            1 => Ok(Self::N1),
+            2 => Ok(Self::N2),
+            3 => Ok(Self::N3),
+            4 => Ok(Self::N4),
+            5 => Ok(Self::N5),
+            _ => bail!("Index {stack_changing_argument} is out of range for `StackChangeArg`."),
+        }
+    }
+}
+
+impl TryFrom<u32> for StackChangeArg {
+    type Error = anyhow::Error;
+
+    fn try_from(stack_changing_argument: u32) -> Result<Self> {
+        usize::try_from(stack_changing_argument)?.try_into()
+    }
+}
+
+impl TryFrom<OpStackElement> for StackChangeArg {
+    type Error = anyhow::Error;
+
+    fn try_from(stack_changing_argument: OpStackElement) -> Result<Self> {
+        usize::try_from(stack_changing_argument)?.try_into()
+    }
+}
+
+impl TryFrom<u64> for StackChangeArg {
+    type Error = anyhow::Error;
+
+    fn try_from(stack_changing_argument: u64) -> Result<Self> {
+        usize::try_from(stack_changing_argument)?.try_into()
+    }
+}
+
+impl TryFrom<BFieldElement> for StackChangeArg {
+    type Error = anyhow::Error;
+
+    fn try_from(stack_changing_argument: BFieldElement) -> Result<Self> {
+        u32::try_from(stack_changing_argument)?.try_into()
+    }
+}
+
+impl TryFrom<&BFieldElement> for StackChangeArg {
+    type Error = anyhow::Error;
+
+    fn try_from(&stack_changing_argument: &BFieldElement) -> Result<Self> {
+        stack_changing_argument.try_into()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use proptest::collection::vec;
@@ -559,5 +719,50 @@ mod tests {
             prop_assert!(!is_reading_sequence);
             prop_assert!(!is_writing_sequence);
         }
+    }
+
+    #[test]
+    fn conversion_from_stack_changing_argument_to_usize_and_back_is_identity() {
+        for stack_changing_argument in StackChangeArg::iter() {
+            let stack_index = usize::from(&stack_changing_argument);
+            let stack_changing_argument_again = StackChangeArg::try_from(stack_index).unwrap();
+            assert_eq!(stack_changing_argument, stack_changing_argument_again);
+        }
+    }
+
+    #[test]
+    fn conversion_from_stack_changing_argument_to_u64_and_back_is_identity() {
+        for stack_changing_argument in StackChangeArg::iter() {
+            let stack_index = u64::from(&stack_changing_argument);
+            let stack_changing_argument_again = StackChangeArg::try_from(stack_index).unwrap();
+            assert_eq!(stack_changing_argument, stack_changing_argument_again);
+        }
+    }
+
+    #[test]
+    fn conversion_from_stack_changing_argument_to_op_stack_element_and_back_is_identity() {
+        for stack_changing_argument in StackChangeArg::iter() {
+            let stack_element = OpStackElement::from(&stack_changing_argument);
+            let stack_changing_argument_again = StackChangeArg::try_from(stack_element).unwrap();
+            assert_eq!(stack_changing_argument, stack_changing_argument_again);
+        }
+    }
+
+    #[test]
+    fn out_of_range_stack_changing_argument_gives_error() {
+        let stack_changing_argument = StackChangeArg::iter().last().unwrap();
+        let mut stack_index = BFieldElement::from(&stack_changing_argument);
+        stack_index.increment();
+        let maybe_stack_changing_argument = StackChangeArg::try_from(&stack_index);
+        assert!(maybe_stack_changing_argument.is_err());
+    }
+
+    #[test]
+    fn stack_change_arg_to_b_field_element_gives_expected_range() {
+        let computed_range = StackChangeArg::iter()
+            .map(|stack_change_arg| BFieldElement::from(&stack_change_arg).value())
+            .collect_vec();
+        let expected_range = (1..=5).collect_vec();
+        assert_eq!(computed_range, expected_range);
     }
 }
