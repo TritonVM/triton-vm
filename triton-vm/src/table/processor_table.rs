@@ -129,7 +129,7 @@ impl ProcessorTable {
                 let previous_instruction = Self::instruction_from_row(prev_row);
                 if let Some(Instruction::ReadIo(st)) = previous_instruction {
                     for i in (0..st.index()).rev() {
-                        let input_symbol_column = Self::op_stack_column_by_index(i as usize);
+                        let input_symbol_column = Self::op_stack_column_by_index(i);
                         let input_symbol = current_row[input_symbol_column.base_table_index()];
                         input_table_running_evaluation = input_table_running_evaluation
                             * challenges[StandardInputIndeterminate]
@@ -138,7 +138,7 @@ impl ProcessorTable {
                 }
                 if let Some(Instruction::WriteIo(st)) = previous_instruction {
                     for i in 0..st.index() {
-                        let output_symbol_column = Self::op_stack_column_by_index(i as usize);
+                        let output_symbol_column = Self::op_stack_column_by_index(i);
                         let output_symbol = prev_row[output_symbol_column.base_table_index()];
                         output_table_running_evaluation = output_table_running_evaluation
                             * challenges[StandardOutputIndeterminate]
@@ -3361,6 +3361,7 @@ pub(crate) mod tests {
     use crate::instruction::Instruction;
     use crate::instruction::LabelledInstruction;
     use crate::op_stack::OpStackElement;
+    use crate::op_stack::StackChangeArg::*;
     use crate::program::Program;
     use crate::shared_tests::ProgramAndInput;
     use crate::stark::tests::master_tables_for_low_security_level;
@@ -3487,10 +3488,10 @@ pub(crate) mod tests {
     }
 
     fn transition_constraints_for_instruction_pop_n(n: usize) {
-        let stack_element: OpStackElement = n.try_into().unwrap();
+        let arg = n.try_into().unwrap();
 
         let mut instructions = vec![Push(BFIELD_ZERO); n];
-        instructions.push(Pop(stack_element));
+        instructions.push(Pop(arg));
         instructions.push(Halt);
 
         let instructions = instructions
@@ -3501,7 +3502,7 @@ pub(crate) mod tests {
         let test_rows = [test_row_from_program(program, n)];
 
         let debug_info = TestRowsDebugInfo {
-            instruction: Pop(stack_element),
+            instruction: Pop(arg),
             debug_cols_curr_row: vec![ST0, ST1, ST2],
             debug_cols_next_row: vec![ST0, ST1, ST2],
         };
@@ -4063,7 +4064,7 @@ pub(crate) mod tests {
     fn transition_constraints_for_instruction_write_io_n(n: usize) {
         let stack_element = n.try_into().unwrap();
 
-        let instructions = [Divine(OpStackElement::ST5), WriteIo(stack_element), Halt];
+        let instructions = [Divine(N5), WriteIo(stack_element), Halt];
         let instructions = instructions.map(LabelledInstruction::Instruction).to_vec();
 
         let program_and_input = ProgramAndInput {

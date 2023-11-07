@@ -22,9 +22,12 @@ use AnInstruction::*;
 use crate::instruction::InstructionBit::*;
 use crate::op_stack::OpStackElement;
 use crate::op_stack::OpStackElement::*;
+use crate::op_stack::StackChangeArg;
+use crate::op_stack::StackChangeArg::*;
 
 /// An `Instruction` has `call` addresses encoded as absolute integers.
 pub type Instruction = AnInstruction<BFieldElement>;
+
 pub const ALL_INSTRUCTIONS: [Instruction; Instruction::COUNT] = all_instructions_without_args();
 pub const ALL_INSTRUCTION_NAMES: [&str; Instruction::COUNT] = all_instruction_names();
 
@@ -98,9 +101,9 @@ pub fn stringify_instructions(instructions: &[LabelledInstruction]) -> String {
 )]
 pub enum AnInstruction<Dest: PartialEq + Default> {
     // OpStack manipulation
-    Pop(OpStackElement),
+    Pop(StackChangeArg),
     Push(BFieldElement),
-    Divine(OpStackElement),
+    Divine(StackChangeArg),
     Dup(OpStackElement),
     Swap(OpStackElement),
 
@@ -148,8 +151,8 @@ pub enum AnInstruction<Dest: PartialEq + Default> {
     XbMul,
 
     // Read/write
-    ReadIo(OpStackElement),
-    WriteIo(OpStackElement),
+    ReadIo(StackChangeArg),
+    WriteIo(StackChangeArg),
 }
 
 impl<Dest: PartialEq + Default> AnInstruction<Dest> {
@@ -374,14 +377,7 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
     }
 
     pub fn has_illegal_argument(&self) -> bool {
-        match self {
-            Pop(st) => *st < ST1 || ST5 < *st,
-            Divine(st) => *st < ST1 || ST5 < *st,
-            Swap(ST0) => true,
-            ReadIo(st) => *st < ST1 || ST5 < *st,
-            WriteIo(st) => *st < ST1 || ST5 < *st,
-            _ => false,
-        }
+        matches!(self, Swap(ST0))
     }
 }
 
@@ -390,7 +386,8 @@ impl<Dest: Display + PartialEq + Default> Display for AnInstruction<Dest> {
         write!(f, "{}", self.name())?;
         match self {
             Push(arg) => write!(f, " {arg}"),
-            Pop(arg) | Divine(arg) | Dup(arg) | Swap(arg) => write!(f, " {arg}"),
+            Pop(arg) | Divine(arg) => write!(f, " {arg}"),
+            Dup(arg) | Swap(arg) => write!(f, " {arg}"),
             Call(arg) => write!(f, " {arg}"),
             ReadIo(arg) | WriteIo(arg) => write!(f, " {arg}"),
             _ => Ok(()),
@@ -403,7 +400,8 @@ impl Instruction {
     pub fn arg(&self) -> Option<BFieldElement> {
         match self {
             Push(arg) | Call(arg) => Some(*arg),
-            Pop(arg) | Divine(arg) | Dup(arg) | Swap(arg) => Some(arg.into()),
+            Pop(arg) | Divine(arg) => Some(arg.into()),
+            Dup(arg) | Swap(arg) => Some(arg.into()),
             ReadIo(arg) | WriteIo(arg) => Some(arg.into()),
             _ => None,
         }
@@ -428,14 +426,13 @@ impl Instruction {
             return instruction_with_infallible_substitution;
         }
 
-        let stack_element = new_arg.value().try_into().ok()?;
         let new_instruction = match self {
-            Pop(_) => Some(Pop(stack_element)),
-            Divine(_) => Some(Divine(stack_element)),
-            Dup(_) => Some(Dup(stack_element)),
-            Swap(_) => Some(Swap(stack_element)),
-            ReadIo(_) => Some(ReadIo(stack_element)),
-            WriteIo(_) => Some(WriteIo(stack_element)),
+            Pop(_) => Some(Pop(new_arg.try_into().ok()?)),
+            Divine(_) => Some(Divine(new_arg.try_into().ok()?)),
+            Dup(_) => Some(Dup(new_arg.value().try_into().ok()?)),
+            Swap(_) => Some(Swap(new_arg.value().try_into().ok()?)),
+            ReadIo(_) => Some(ReadIo(new_arg.try_into().ok()?)),
+            WriteIo(_) => Some(WriteIo(new_arg.try_into().ok()?)),
             _ => None,
         };
         if new_instruction?.has_illegal_argument() {
@@ -485,9 +482,9 @@ impl TryFrom<BFieldElement> for Instruction {
 
 const fn all_instructions_without_args() -> [AnInstruction<BFieldElement>; Instruction::COUNT] {
     [
-        Pop(ST0),
+        Pop(N1),
         Push(BFIELD_ZERO),
-        Divine(ST0),
+        Divine(N1),
         Dup(ST0),
         Swap(ST0),
         Halt,
@@ -521,8 +518,8 @@ const fn all_instructions_without_args() -> [AnInstruction<BFieldElement>; Instr
         XxMul,
         XInvert,
         XbMul,
-        ReadIo(ST0),
-        WriteIo(ST0),
+        ReadIo(N1),
+        WriteIo(N1),
     ]
 }
 
@@ -633,11 +630,7 @@ mod tests {
         #[must_use]
         fn replace_default_argument_if_illegal(self) -> Self {
             match self {
-                Pop(ST0) => Pop(ST1),
-                Divine(ST0) => Divine(ST1),
                 Swap(ST0) => Swap(ST1),
-                ReadIo(ST0) => ReadIo(ST1),
-                WriteIo(ST0) => WriteIo(ST1),
                 _ => self,
             }
         }
@@ -712,7 +705,7 @@ mod tests {
             Push(BFieldElement::one()),
             Push(BFieldElement::one()),
             Add,
-            Pop(ST2),
+            Pop(N2),
         ];
 
         assert_eq!(expected, instructions);
@@ -770,8 +763,8 @@ mod tests {
         let swap = Swap(ST0).change_arg(1337_u64.into());
         let swap_0 = Swap(ST0).change_arg(0_u64.into());
         let swap_1 = Swap(ST0).change_arg(1_u64.into());
-        let pop_0 = Pop(ST8).change_arg(0_u64.into());
-        let pop_2 = Pop(ST0).change_arg(2_u64.into());
+        let pop_0 = Pop(N4).change_arg(0_u64.into());
+        let pop_2 = Pop(N1).change_arg(2_u64.into());
         let nop = Nop.change_arg(7_u64.into());
 
         assert!(push.is_some());

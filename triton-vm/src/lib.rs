@@ -274,7 +274,7 @@ macro_rules! triton_program {
 /// # use triton_vm::instruction::LabelledInstruction;
 /// # use triton_vm::instruction::AnInstruction::Push;
 /// # use triton_vm::instruction::AnInstruction::Pop;
-/// # use triton_vm::op_stack::OpStackElement::ST1;
+/// # use triton_vm::op_stack::StackChangeArg::N1;
 /// let insert_me = triton_asm!(
 ///     pop 1
 ///     nop
@@ -287,8 +287,8 @@ macro_rules! triton_program {
 /// );
 /// # let zero = BFieldElement::new(0);
 /// # assert_eq!(LabelledInstruction::Instruction(Push(zero)), surrounding_code[0]);
-/// assert_eq!(LabelledInstruction::Instruction(Pop(ST1)), surrounding_code[1]);
-/// assert_eq!(LabelledInstruction::Instruction(Pop(ST1)), surrounding_code[3]);
+/// assert_eq!(LabelledInstruction::Instruction(Pop(N1)), surrounding_code[1]);
+/// assert_eq!(LabelledInstruction::Instruction(Pop(N1)), surrounding_code[3]);
 /// # let one = BFieldElement::new(1);
 /// # assert_eq!(LabelledInstruction::Instruction(Push(one)), surrounding_code[4]);
 ///```
@@ -370,8 +370,7 @@ macro_rules! triton_asm {
 #[macro_export]
 macro_rules! triton_instr {
     (pop $arg:literal) => {{
-        assert!(1_u32 <= $arg && $arg <= 5, "`pop {}` is illegal.", $arg);
-        let argument: $crate::op_stack::OpStackElement = u32::try_into($arg).unwrap();
+        let argument: $crate::op_stack::StackChangeArg = u32::try_into($arg).unwrap();
         let instruction = $crate::instruction::AnInstruction::<String>::Pop(argument);
         $crate::instruction::LabelledInstruction::Instruction(instruction)
     }};
@@ -381,8 +380,7 @@ macro_rules! triton_instr {
         $crate::instruction::LabelledInstruction::Instruction(instruction)
     }};
     (divine $arg:literal) => {{
-        assert!(1_u32 <= $arg && $arg <= 5, "`divine {}` is illegal.", $arg);
-        let argument: $crate::op_stack::OpStackElement = u32::try_into($arg).unwrap();
+        let argument: $crate::op_stack::StackChangeArg = u32::try_into($arg).unwrap();
         let instruction = $crate::instruction::AnInstruction::<String>::Divine(argument);
         $crate::instruction::LabelledInstruction::Instruction(instruction)
     }};
@@ -403,14 +401,12 @@ macro_rules! triton_instr {
         $crate::instruction::LabelledInstruction::Instruction(instruction)
     }};
     (read_io $arg:literal) => {{
-        assert!(1_u32 <= $arg && $arg <= 5, "`read_io {}` is illegal.", $arg);
-        let argument: $crate::op_stack::OpStackElement = u32::try_into($arg).unwrap();
+        let argument: $crate::op_stack::StackChangeArg = u32::try_into($arg).unwrap();
         let instruction = $crate::instruction::AnInstruction::<String>::ReadIo(argument);
         $crate::instruction::LabelledInstruction::Instruction(instruction)
     }};
     (write_io $arg:literal) => {{
-        assert!(1_u32 <= $arg && $arg <= 5, "`write_io {}` is illegal", $arg);
-        let argument: $crate::op_stack::OpStackElement = u32::try_into($arg).unwrap();
+        let argument: $crate::op_stack::StackChangeArg = u32::try_into($arg).unwrap();
         let instruction = $crate::instruction::AnInstruction::<String>::WriteIo(argument);
         $crate::instruction::LabelledInstruction::Instruction(instruction)
     }};
