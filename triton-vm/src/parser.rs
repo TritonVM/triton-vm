@@ -18,6 +18,8 @@ use crate::instruction::AnInstruction;
 use crate::instruction::AnInstruction::*;
 use crate::instruction::LabelledInstruction;
 use crate::instruction::ALL_INSTRUCTION_NAMES;
+use crate::op_stack::NumberOfWords;
+use crate::op_stack::NumberOfWords::*;
 use crate::op_stack::OpStackElement;
 use crate::op_stack::OpStackElement::*;
 use crate::BFieldElement;
@@ -315,15 +317,10 @@ fn instruction<'a>(
 fn pop_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>> {
     move |s: &str| {
         let (s, _) = token1("pop")(s)?; // require space after instruction name
-        let (s, stack_register) = stack_register(s)?;
+        let (s, arg) = number_of_words(s)?;
         let (s, _) = comment_or_whitespace1(s)?; // require space after field element
 
-        let instruction = Pop(stack_register);
-        if instruction.has_illegal_argument() {
-            return cut(context("illegal argument for instruction `pop`", fail))(s);
-        }
-
-        Ok((s, instruction))
+        Ok((s, Pop(arg)))
     }
 }
 
@@ -340,15 +337,10 @@ fn push_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>> {
 fn divine_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>> {
     move |s: &str| {
         let (s, _) = token1("divine")(s)?; // require space after instruction name
-        let (s, stack_register) = stack_register(s)?;
+        let (s, arg) = number_of_words(s)?;
         let (s, _) = comment_or_whitespace1(s)?;
 
-        let instruction = Divine(stack_register);
-        if instruction.has_illegal_argument() {
-            return cut(context("illegal argument for instruction `divine`", fail))(s);
-        }
-
-        Ok((s, instruction))
+        Ok((s, Divine(arg)))
     }
 }
 
@@ -411,30 +403,20 @@ fn call_instruction<'a>() -> impl Fn(&'a str) -> ParseResult<AnInstruction<Strin
 fn read_io_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>> {
     move |s: &str| {
         let (s, _) = token1("read_io")(s)?; // require space after instruction name
-        let (s, stack_register) = stack_register(s)?;
+        let (s, arg) = number_of_words(s)?;
         let (s, _) = comment_or_whitespace1(s)?;
 
-        let instruction = ReadIo(stack_register);
-        if instruction.has_illegal_argument() {
-            return cut(context("illegal argument for instruction `read_io`", fail))(s);
-        }
-
-        Ok((s, instruction))
+        Ok((s, ReadIo(arg)))
     }
 }
 
 fn write_io_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>> {
     move |s: &str| {
         let (s, _) = token1("write_io")(s)?; // require space after instruction name
-        let (s, stack_register) = stack_register(s)?;
+        let (s, arg) = number_of_words(s)?;
         let (s, _) = comment_or_whitespace1(s)?;
 
-        let instruction = WriteIo(stack_register);
-        if instruction.has_illegal_argument() {
-            return cut(context("illegal argument for instruction `write_io`", fail))(s);
-        }
-
-        Ok((s, instruction))
+        Ok((s, WriteIo(arg)))
     }
 }
 
@@ -485,6 +467,20 @@ fn stack_register(s: &str) -> ParseResult<OpStackElement> {
     };
 
     Ok((s, stack_register))
+}
+
+fn number_of_words(s: &str) -> ParseResult<NumberOfWords> {
+    let (s, n) = digit1(s)?;
+    let arg = match n {
+        "1" => N1,
+        "2" => N2,
+        "3" => N3,
+        "4" => N4,
+        "5" => N5,
+        _ => return context("using an out-of-bounds argument (1-5 allowed)", fail)(s),
+    };
+
+    Ok((s, arg))
 }
 
 /// Parse a label address. This is used in "`<label>:`" and in "`call <label>`".
@@ -953,7 +949,7 @@ pub(crate) mod tests {
     fn parse_program_nonexistent_instructions() {
         parse_program_neg_prop(NegativeTestCase {
             input: "pop 0",
-            expected_error: "illegal argument for instruction `pop`",
+            expected_error: "expecting label, instruction or eof",
             expected_error_count: 1,
             message: "instruction `pop` cannot take argument `0`",
         });
@@ -1041,7 +1037,7 @@ pub(crate) mod tests {
     #[test]
     fn triton_asm_macro() {
         let instructions = triton_asm!(write_io 3 push 17 call which_label lt swap 3);
-        assert_eq!(Instruction(WriteIo(ST3)), instructions[0]);
+        assert_eq!(Instruction(WriteIo(N3)), instructions[0]);
         assert_eq!(Instruction(Push(17_u64.into())), instructions[1]);
         assert_eq!(
             Instruction(Call("which_label".to_string())),
@@ -1114,7 +1110,7 @@ pub(crate) mod tests {
     fn triton_instruction_macro_parses_simple_instructions() {
         assert_eq!(Instruction(Halt), triton_instr!(halt));
         assert_eq!(Instruction(Add), triton_instr!(add));
-        assert_eq!(Instruction(Pop(ST3)), triton_instr!(pop 3));
+        assert_eq!(Instruction(Pop(N3)), triton_instr!(pop 3));
     }
 
     #[test]
@@ -1141,11 +1137,11 @@ pub(crate) mod tests {
         assert_eq!(expected_instructions, instructions);
 
         let instructions = triton_asm![read_io 2; 15];
-        let expected_instructions = vec![Instruction(ReadIo(ST2)); 15];
+        let expected_instructions = vec![Instruction(ReadIo(N2)); 15];
         assert_eq!(expected_instructions, instructions);
 
         let instructions = triton_asm![divine 3; DIGEST_LENGTH];
-        let expected_instructions = vec![Instruction(Divine(ST3)); DIGEST_LENGTH];
+        let expected_instructions = vec![Instruction(Divine(N3)); DIGEST_LENGTH];
         assert_eq!(expected_instructions, instructions);
     }
 

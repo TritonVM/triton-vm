@@ -143,8 +143,8 @@ impl<'pgm> VMState<'pgm> {
         };
 
         match current_instruction {
-            Pop(arg) | Divine(arg) | Dup(arg) | Swap(arg) | ReadIo(arg) | WriteIo(arg) => {
-                let arg_val: u64 = arg.into();
+            Pop(_) | Divine(_) | Dup(_) | Swap(_) | ReadIo(_) | WriteIo(_) => {
+                let arg_val: u64 = current_instruction.arg().unwrap().value();
                 hvs[0] = BFieldElement::new(arg_val % 2);
                 hvs[1] = BFieldElement::new((arg_val >> 1) % 2);
                 hvs[2] = BFieldElement::new((arg_val >> 2) % 2);
@@ -276,12 +276,8 @@ impl<'pgm> VMState<'pgm> {
             .collect()
     }
 
-    fn pop(&mut self, n: OpStackElement) -> Result<Vec<CoProcessorCall>> {
-        if Instruction::Pop(n).has_illegal_argument() {
-            bail!(IllegalPop(n.into()));
-        }
-
-        for _ in 0..n.into() {
+    fn pop(&mut self, n: NumberOfWords) -> Result<Vec<CoProcessorCall>> {
+        for _ in 0..n.num_words() {
             self.op_stack.pop()?;
         }
 
@@ -296,12 +292,8 @@ impl<'pgm> VMState<'pgm> {
         vec![]
     }
 
-    fn divine(&mut self, n: OpStackElement) -> Result<Vec<CoProcessorCall>> {
-        if Instruction::Divine(n).has_illegal_argument() {
-            bail!(IllegalDivine(n.into()));
-        }
-
-        for i in 0..n.into() {
+    fn divine(&mut self, n: NumberOfWords) -> Result<Vec<CoProcessorCall>> {
+        for i in 0..n.num_words() {
             let element = self.secret_individual_tokens.pop_front().ok_or(anyhow!(
                 "Instruction `divine {n}`: secret input buffer is empty after {i}."
             ))?;
@@ -698,12 +690,8 @@ impl<'pgm> VMState<'pgm> {
         Ok(vec![])
     }
 
-    fn write_io(&mut self, n: OpStackElement) -> Result<Vec<CoProcessorCall>> {
-        if Instruction::WriteIo(n).has_illegal_argument() {
-            bail!(IllegalWriteIo(n.into()));
-        }
-
-        for _ in 0..n.into() {
+    fn write_io(&mut self, n: NumberOfWords) -> Result<Vec<CoProcessorCall>> {
+        for _ in 0..n.num_words() {
             let top_of_stack = self.op_stack.pop()?;
             self.public_output.push(top_of_stack);
         }
@@ -712,12 +700,8 @@ impl<'pgm> VMState<'pgm> {
         Ok(vec![])
     }
 
-    fn read_io(&mut self, n: OpStackElement) -> Result<Vec<CoProcessorCall>> {
-        if Instruction::ReadIo(n).has_illegal_argument() {
-            bail!(IllegalReadIo(n.into()));
-        }
-
-        for i in 0..n.into() {
+    fn read_io(&mut self, n: NumberOfWords) -> Result<Vec<CoProcessorCall>> {
+        for i in 0..n.num_words() {
             let read_element = self.public_input.pop_front().ok_or(anyhow!(
                 "Instruction `read_io {n}`: public input buffer is empty after {i}."
             ))?;
@@ -987,6 +971,7 @@ pub(crate) mod tests {
 
     use crate::error::InstructionError;
     use crate::example_programs::*;
+    use crate::op_stack::NumberOfWords::*;
     use crate::shared_tests::prove_with_low_security_level;
     use crate::shared_tests::ProgramAndInput;
     use crate::stark::MTMaker;
@@ -1255,7 +1240,7 @@ pub(crate) mod tests {
             match self {
                 Self::SpongeInit => vec![SpongeInit],
                 Self::SpongeAbsorb => [vec![SpongeAbsorb], push_10_zeros].concat(),
-                Self::SpongeSqueeze => vec![Pop(ST5), Pop(ST5), SpongeSqueeze],
+                Self::SpongeSqueeze => vec![Pop(N5), Pop(N5), SpongeSqueeze],
                 Self::Hash => [vec![Hash], push_5_zeros].concat(),
             }
         }

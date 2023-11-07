@@ -20,6 +20,7 @@ use crate::instruction::AnInstruction::*;
 use crate::instruction::Instruction;
 use crate::instruction::InstructionBit;
 use crate::instruction::ALL_INSTRUCTIONS;
+use crate::op_stack::NumberOfWords;
 use crate::op_stack::OpStackElement;
 use crate::table::challenges::ChallengeId;
 use crate::table::challenges::ChallengeId::*;
@@ -128,8 +129,8 @@ impl ProcessorTable {
             if let Some(prev_row) = previous_row {
                 let previous_instruction = Self::instruction_from_row(prev_row);
                 if let Some(Instruction::ReadIo(st)) = previous_instruction {
-                    for i in (0..st.index()).rev() {
-                        let input_symbol_column = Self::op_stack_column_by_index(i as usize);
+                    for i in (0..st.num_words()).rev() {
+                        let input_symbol_column = Self::op_stack_column_by_index(i);
                         let input_symbol = current_row[input_symbol_column.base_table_index()];
                         input_table_running_evaluation = input_table_running_evaluation
                             * challenges[StandardInputIndeterminate]
@@ -137,8 +138,8 @@ impl ProcessorTable {
                     }
                 }
                 if let Some(Instruction::WriteIo(st)) = previous_instruction {
-                    for i in 0..st.index() {
-                        let output_symbol_column = Self::op_stack_column_by_index(i as usize);
+                    for i in 0..st.num_words() {
+                        let output_symbol_column = Self::op_stack_column_by_index(i);
                         let output_symbol = prev_row[output_symbol_column.base_table_index()];
                         output_table_running_evaluation = output_table_running_evaluation
                             * challenges[StandardOutputIndeterminate]
@@ -1216,17 +1217,11 @@ impl ExtProcessorTable {
     fn instruction_pop(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        let stack_does_not_shrink_by_0 = Self::indicator_polynomial(circuit_builder, 0);
-
-        let stack_does_not_shrink_by_too_much = (6..OpStackElement::COUNT)
-            .map(|idx| Self::indicator_polynomial(circuit_builder, idx))
-            .collect_vec();
         [
             Self::instruction_group_step_2(circuit_builder),
             Self::instruction_group_decompose_arg(circuit_builder),
-            vec![stack_does_not_shrink_by_0],
-            Self::stack_shrinks_by_any_of(circuit_builder, &[1, 2, 3, 4, 5]),
-            stack_does_not_shrink_by_too_much,
+            Self::stack_shrinks_by_any_of(circuit_builder, &NumberOfWords::legal_values()),
+            Self::prohibit_any_illegal_number_of_words(circuit_builder),
             Self::instruction_group_keep_ram(circuit_builder),
             Self::instruction_group_no_io(circuit_builder),
         ]
@@ -1257,17 +1252,11 @@ impl ExtProcessorTable {
     fn instruction_divine(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        let stack_does_not_grow_by_0 = Self::indicator_polynomial(circuit_builder, 0);
-        let stack_does_not_grow_by_too_much = (6..OpStackElement::COUNT)
-            .map(|idx| Self::indicator_polynomial(circuit_builder, idx))
-            .collect_vec();
-
         [
             Self::instruction_group_step_2(circuit_builder),
             Self::instruction_group_decompose_arg(circuit_builder),
-            vec![stack_does_not_grow_by_0],
-            Self::stack_grows_by_any_of(circuit_builder, &[1, 2, 3, 4, 5]),
-            stack_does_not_grow_by_too_much,
+            Self::stack_grows_by_any_of(circuit_builder, &NumberOfWords::legal_values()),
+            Self::prohibit_any_illegal_number_of_words(circuit_builder),
             Self::instruction_group_keep_ram(circuit_builder),
             Self::instruction_group_no_io(circuit_builder),
         ]
@@ -2247,15 +2236,10 @@ impl ExtProcessorTable {
     fn instruction_read_io(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        let dont_read_0_elements = Self::indicator_polynomial(circuit_builder, 0);
-        let dont_read_too_many_elements = (6..OpStackElement::COUNT)
-            .map(|idx| Self::indicator_polynomial(circuit_builder, idx))
-            .collect_vec();
-
-        let constraint_groups_for_legal_arguments = (1..=5)
+        let constraint_groups_for_legal_arguments = NumberOfWords::legal_values()
             .map(|n| Self::grow_stack_by_n_and_read_n_symbols_from_input(circuit_builder, n))
-            .collect_vec();
-        let read_any_of_1_through_5_elements = Self::combine_mutually_exclusive_constraint_groups(
+            .to_vec();
+        let read_any_legal_number_of_words = Self::combine_mutually_exclusive_constraint_groups(
             circuit_builder,
             constraint_groups_for_legal_arguments,
         );
@@ -2263,9 +2247,8 @@ impl ExtProcessorTable {
         [
             Self::instruction_group_step_2(circuit_builder),
             Self::instruction_group_decompose_arg(circuit_builder),
-            vec![dont_read_0_elements],
-            read_any_of_1_through_5_elements,
-            dont_read_too_many_elements,
+            read_any_legal_number_of_words,
+            Self::prohibit_any_illegal_number_of_words(circuit_builder),
             Self::instruction_group_keep_ram(circuit_builder),
             vec![Self::running_evaluation_for_standard_output_remains_unchanged(circuit_builder)],
         ]
@@ -2275,14 +2258,9 @@ impl ExtProcessorTable {
     fn instruction_write_io(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        let dont_write_0_elements = Self::indicator_polynomial(circuit_builder, 0);
-        let dont_write_too_many_elements = (6..OpStackElement::COUNT)
-            .map(|idx| Self::indicator_polynomial(circuit_builder, idx))
-            .collect_vec();
-
-        let constraint_groups_for_legal_arguments = (1..=5)
+        let constraint_groups_for_legal_arguments = NumberOfWords::legal_values()
             .map(|n| Self::shrink_stack_by_n_and_write_n_symbols_to_output(circuit_builder, n))
-            .collect_vec();
+            .to_vec();
         let write_any_of_1_through_5_elements = Self::combine_mutually_exclusive_constraint_groups(
             circuit_builder,
             constraint_groups_for_legal_arguments,
@@ -2291,9 +2269,8 @@ impl ExtProcessorTable {
         [
             Self::instruction_group_step_2(circuit_builder),
             Self::instruction_group_decompose_arg(circuit_builder),
-            vec![dont_write_0_elements],
             write_any_of_1_through_5_elements,
-            dont_write_too_many_elements,
+            Self::prohibit_any_illegal_number_of_words(circuit_builder),
             Self::instruction_group_keep_ram(circuit_builder),
             vec![Self::running_evaluation_for_standard_input_remains_unchanged(circuit_builder)],
         ]
@@ -2344,6 +2321,14 @@ impl ExtProcessorTable {
             ReadIo(_) => ExtProcessorTable::instruction_read_io(circuit_builder),
             WriteIo(_) => ExtProcessorTable::instruction_write_io(circuit_builder),
         }
+    }
+
+    fn prohibit_any_illegal_number_of_words(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
+        NumberOfWords::illegal_values()
+            .map(|n| Self::indicator_polynomial(circuit_builder, n))
+            .to_vec()
     }
 
     fn log_derivative_accumulates_clk_next(
@@ -3360,6 +3345,7 @@ pub(crate) mod tests {
     use crate::error::InstructionError::DivisionByZero;
     use crate::instruction::Instruction;
     use crate::instruction::LabelledInstruction;
+    use crate::op_stack::NumberOfWords::*;
     use crate::op_stack::OpStackElement;
     use crate::program::Program;
     use crate::shared_tests::ProgramAndInput;
@@ -3468,7 +3454,7 @@ pub(crate) mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "at least 1, at most 5")]
+    #[should_panic(expected = "out of range for `NumberOfWords`")]
     fn transition_constraints_for_instruction_pop_0() {
         transition_constraints_for_instruction_pop_n(0);
     }
@@ -3479,7 +3465,7 @@ pub(crate) mod tests {
     }
 
     #[proptest(cases = 20)]
-    #[should_panic(expected = "at least 1, at most 5")]
+    #[should_panic(expected = "out of range for `NumberOfWords`")]
     fn transition_constraints_for_instruction_pop_n_too_large(
         #[strategy(6..OpStackElement::COUNT)] n: usize,
     ) {
@@ -3487,10 +3473,10 @@ pub(crate) mod tests {
     }
 
     fn transition_constraints_for_instruction_pop_n(n: usize) {
-        let stack_element: OpStackElement = n.try_into().unwrap();
+        let arg = n.try_into().unwrap();
 
         let mut instructions = vec![Push(BFIELD_ZERO); n];
-        instructions.push(Pop(stack_element));
+        instructions.push(Pop(arg));
         instructions.push(Halt);
 
         let instructions = instructions
@@ -3501,7 +3487,7 @@ pub(crate) mod tests {
         let test_rows = [test_row_from_program(program, n)];
 
         let debug_info = TestRowsDebugInfo {
-            instruction: Pop(stack_element),
+            instruction: Pop(arg),
             debug_cols_curr_row: vec![ST0, ST1, ST2],
             debug_cols_next_row: vec![ST0, ST1, ST2],
         };
@@ -3521,7 +3507,7 @@ pub(crate) mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "at least 1, at most 5")]
+    #[should_panic(expected = "out of range for `NumberOfWords`")]
     fn transition_constraints_for_instruction_divine_0() {
         transition_constraints_for_instruction_divine_n(0);
     }
@@ -3532,7 +3518,7 @@ pub(crate) mod tests {
     }
 
     #[proptest(cases = 20)]
-    #[should_panic(expected = "at least 1, at most 5")]
+    #[should_panic(expected = "out of range for `NumberOfWords`")]
     fn transition_constraints_for_instruction_divine_n_too_large(
         #[strategy(6..OpStackElement::COUNT)] n: usize,
     ) {
@@ -3999,7 +3985,7 @@ pub(crate) mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "at least 1, at most 5")]
+    #[should_panic(expected = "out of range for `NumberOfWords`")]
     fn transition_constraints_for_instruction_read_io_0() {
         transition_constraints_for_instruction_read_io_n(0);
     }
@@ -4012,7 +3998,7 @@ pub(crate) mod tests {
     }
 
     #[proptest(cases = 20)]
-    #[should_panic(expected = "at least 1, at most 5")]
+    #[should_panic(expected = "out of range for `NumberOfWords`")]
     fn transition_constraints_for_instruction_read_io_n_too_large(
         #[strategy(6..OpStackElement::COUNT)] n: usize,
     ) {
@@ -4040,7 +4026,7 @@ pub(crate) mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "at least 1, at most 5")]
+    #[should_panic(expected = "out of range for `NumberOfWords`")]
     fn transition_constraints_for_instruction_write_io_0() {
         transition_constraints_for_instruction_write_io_n(0);
     }
@@ -4053,7 +4039,7 @@ pub(crate) mod tests {
     }
 
     #[proptest(cases = 20)]
-    #[should_panic(expected = "at least 1, at most 5")]
+    #[should_panic(expected = "out of range for `NumberOfWords`")]
     fn transition_constraints_for_instruction_write_io_n_too_large(
         #[strategy(6..OpStackElement::COUNT)] n: usize,
     ) {
@@ -4063,7 +4049,7 @@ pub(crate) mod tests {
     fn transition_constraints_for_instruction_write_io_n(n: usize) {
         let stack_element = n.try_into().unwrap();
 
-        let instructions = [Divine(OpStackElement::ST5), WriteIo(stack_element), Halt];
+        let instructions = [Divine(N5), WriteIo(stack_element), Halt];
         let instructions = instructions.map(LabelledInstruction::Instruction).to_vec();
 
         let program_and_input = ProgramAndInput {

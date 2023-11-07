@@ -13,6 +13,7 @@ use serde_derive::Deserialize;
 use serde_derive::Serialize;
 use strum::EnumCount;
 use strum::EnumIter;
+use strum::IntoEnumIterator;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::digest::Digest;
 use twenty_first::shared_math::tip5::DIGEST_LENGTH;
@@ -396,6 +397,179 @@ impl From<&OpStackElement> for BFieldElement {
     }
 }
 
+/// Represents the argument, _i.e._, the `n`, for instructions like `pop n` or `read_io n`.
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Default,
+    GetSize,
+    Serialize,
+    Deserialize,
+    EnumCount,
+    EnumIter,
+)]
+pub enum NumberOfWords {
+    #[default]
+    N1,
+    N2,
+    N3,
+    N4,
+    N5,
+}
+
+impl NumberOfWords {
+    pub const fn num_words(self) -> usize {
+        match self {
+            Self::N1 => 1,
+            Self::N2 => 2,
+            Self::N3 => 3,
+            Self::N4 => 4,
+            Self::N5 => 5,
+        }
+    }
+
+    pub(crate) fn legal_values() -> [usize; Self::COUNT] {
+        let legal_indices = Self::iter().map(|n| n.num_words()).collect_vec();
+        legal_indices.try_into().unwrap()
+    }
+
+    pub(crate) fn illegal_values() -> [usize; OpStackElement::COUNT - Self::COUNT] {
+        let all_values = OpStackElement::iter().map(|st| st.index() as usize);
+        let illegal_values = all_values
+            .filter(|i| !Self::legal_values().contains(i))
+            .collect_vec();
+        illegal_values.try_into().unwrap()
+    }
+}
+
+impl Display for NumberOfWords {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        let index = self.num_words();
+        write!(f, "{index}")
+    }
+}
+
+impl From<NumberOfWords> for usize {
+    fn from(num_words: NumberOfWords) -> Self {
+        num_words.num_words()
+    }
+}
+
+impl From<&NumberOfWords> for usize {
+    fn from(&num_words: &NumberOfWords) -> Self {
+        num_words.into()
+    }
+}
+
+impl From<NumberOfWords> for u32 {
+    fn from(num_words: NumberOfWords) -> Self {
+        num_words.num_words() as u32
+    }
+}
+
+impl From<&NumberOfWords> for u32 {
+    fn from(&num_words: &NumberOfWords) -> Self {
+        num_words.into()
+    }
+}
+
+impl From<NumberOfWords> for u64 {
+    fn from(num_words: NumberOfWords) -> Self {
+        u32::from(num_words).into()
+    }
+}
+
+impl From<&NumberOfWords> for u64 {
+    fn from(&num_words: &NumberOfWords) -> Self {
+        num_words.into()
+    }
+}
+
+impl From<NumberOfWords> for OpStackElement {
+    fn from(num_words: NumberOfWords) -> Self {
+        OpStackElement::try_from(num_words.num_words()).unwrap()
+    }
+}
+
+impl From<&NumberOfWords> for OpStackElement {
+    fn from(&num_words: &NumberOfWords) -> Self {
+        num_words.into()
+    }
+}
+
+impl From<NumberOfWords> for BFieldElement {
+    fn from(num_words: NumberOfWords) -> Self {
+        u32::from(num_words).into()
+    }
+}
+
+impl From<&NumberOfWords> for BFieldElement {
+    fn from(&num_words: &NumberOfWords) -> Self {
+        num_words.into()
+    }
+}
+
+impl TryFrom<usize> for NumberOfWords {
+    type Error = anyhow::Error;
+
+    fn try_from(index: usize) -> Result<Self> {
+        match index {
+            1 => Ok(Self::N1),
+            2 => Ok(Self::N2),
+            3 => Ok(Self::N3),
+            4 => Ok(Self::N4),
+            5 => Ok(Self::N5),
+            _ => bail!("Index {index} is out of range for `NumberOfWords`."),
+        }
+    }
+}
+
+impl TryFrom<u32> for NumberOfWords {
+    type Error = anyhow::Error;
+
+    fn try_from(index: u32) -> Result<Self> {
+        usize::try_from(index)?.try_into()
+    }
+}
+
+impl TryFrom<OpStackElement> for NumberOfWords {
+    type Error = anyhow::Error;
+
+    fn try_from(index: OpStackElement) -> Result<Self> {
+        usize::try_from(index)?.try_into()
+    }
+}
+
+impl TryFrom<u64> for NumberOfWords {
+    type Error = anyhow::Error;
+
+    fn try_from(index: u64) -> Result<Self> {
+        usize::try_from(index)?.try_into()
+    }
+}
+
+impl TryFrom<BFieldElement> for NumberOfWords {
+    type Error = anyhow::Error;
+
+    fn try_from(index: BFieldElement) -> Result<Self> {
+        u32::try_from(index)?.try_into()
+    }
+}
+
+impl TryFrom<&BFieldElement> for NumberOfWords {
+    type Error = anyhow::Error;
+
+    fn try_from(&index: &BFieldElement) -> Result<Self> {
+        index.try_into()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use proptest::collection::vec;
@@ -559,5 +733,55 @@ mod tests {
             prop_assert!(!is_reading_sequence);
             prop_assert!(!is_writing_sequence);
         }
+    }
+
+    #[test]
+    fn conversion_from_number_of_words_to_usize_and_back_is_identity() {
+        for num_words in NumberOfWords::iter() {
+            let stack_index = usize::from(&num_words);
+            let num_words_again = NumberOfWords::try_from(stack_index).unwrap();
+            assert_eq!(num_words, num_words_again);
+        }
+    }
+
+    #[test]
+    fn conversion_from_number_of_words_to_u64_and_back_is_identity() {
+        for num_words in NumberOfWords::iter() {
+            let stack_index = u64::from(&num_words);
+            let num_words_again = NumberOfWords::try_from(stack_index).unwrap();
+            assert_eq!(num_words, num_words_again);
+        }
+    }
+
+    #[test]
+    fn conversion_from_number_of_words_to_op_stack_element_and_back_is_identity() {
+        for num_words in NumberOfWords::iter() {
+            let stack_element = OpStackElement::from(&num_words);
+            let num_words_again = NumberOfWords::try_from(stack_element).unwrap();
+            assert_eq!(num_words, num_words_again);
+        }
+    }
+
+    #[test]
+    fn out_of_range_number_of_words_gives_error() {
+        let num_words = NumberOfWords::iter().last().unwrap();
+        let mut stack_index = BFieldElement::from(&num_words);
+        stack_index.increment();
+        let maybe_num_words = NumberOfWords::try_from(&stack_index);
+        assert!(maybe_num_words.is_err());
+    }
+
+    #[test]
+    fn number_of_words_to_b_field_element_gives_expected_range() {
+        let computed_range = NumberOfWords::iter()
+            .map(|num_words| BFieldElement::from(&num_words).value())
+            .collect_vec();
+        let expected_range = (1..=5).collect_vec();
+        assert_eq!(computed_range, expected_range);
+    }
+
+    #[test]
+    fn compute_illegal_values_of_number_of_words() {
+        let _ = NumberOfWords::illegal_values();
     }
 }

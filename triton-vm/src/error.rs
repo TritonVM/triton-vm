@@ -17,10 +17,6 @@ pub enum InstructionError {
     JumpStackIsEmpty,
     AssertionFailed(usize, u32, BFieldElement),
     VectorAssertionFailed(usize, u32, OpStackElement, BFieldElement, BFieldElement),
-    IllegalPop(usize),
-    IllegalDivine(usize),
-    IllegalReadIo(usize),
-    IllegalWriteIo(usize),
     SwapST0,
     InverseOfZero,
     DivisionByZero,
@@ -47,12 +43,6 @@ impl Display for InstructionError {
                 write!(f, "op_stack[{failing_index_lhs}] == {lhs} != ")?;
                 write!(f, "{rhs} == op_stack[{failing_index_rhs}]. ")?;
                 write!(f, "ip: {ip}, clk: {clk}")
-            }
-            IllegalPop(st) => write!(f, "must pop at least 1, at most 5 elements, not {st}"),
-            IllegalDivine(st) => write!(f, "must divine at least 1, at most 5 elements, not {st}"),
-            IllegalReadIo(st) => write!(f, "must read_io at least 1, at most 5 elements, not {st}"),
-            IllegalWriteIo(st) => {
-                write!(f, "must write_io at least 1, at most 5 elements, not {st}")
             }
             SwapST0 => write!(f, "Cannot swap stack element 0 with itself"),
             InverseOfZero => write!(f, "0 does not have a multiplicative inverse"),
