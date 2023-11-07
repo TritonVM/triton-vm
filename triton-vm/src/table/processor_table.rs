@@ -1780,7 +1780,7 @@ impl ExtProcessorTable {
         [
             specific_constraints,
             Self::instruction_group_step_1(circuit_builder),
-            Self::instruction_group_keep_op_stack(circuit_builder),
+            Self::constraints_for_shrinking_stack_by(circuit_builder, 5),
             Self::instruction_group_keep_ram(circuit_builder),
             Self::instruction_group_no_io(circuit_builder),
         ]

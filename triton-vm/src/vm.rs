@@ -480,6 +480,7 @@ impl<'pgm> VMState<'pgm> {
                 bail!(self.new_vector_assertion_failure(index));
             }
         }
+        let _: [_; DIGEST_LENGTH] = self.op_stack.pop_multiple()?;
         self.instruction_pointer += 1;
         Ok(vec![])
     }
@@ -1099,10 +1100,10 @@ pub(crate) mod tests {
             divine_sibling
 
             push 4 push 3 push 2 push 1 push 0
-            assert_vector pop 5 pop 5
+            assert_vector pop 5
 
             push 4 push 2 push 2 push 2 push 1
-            assert_vector pop 5 pop 5
+            assert_vector pop 5
 
             assert halt
         );
@@ -1124,10 +1125,10 @@ pub(crate) mod tests {
             divine_sibling
 
             push 4 push 2 push 2 push 2 push 1
-            assert_vector pop 5 pop 5
+            assert_vector pop 5
 
             push 4 push 3 push 2 push 1 push 0
-            assert_vector pop 5 pop 5
+            assert_vector pop 5
 
             assert halt
         );

@@ -168,7 +168,6 @@ fn merkle_tree_authentication_path_verify() -> Program {
         assert                                      // ensure the entire path was traversed
                                                     // stack: [* r4 r3 r2 r1 r0 d4 d3 d2 d1 d0]
         assert_vector                               // actually compare to root of tree
-        pop 5                                       // clean up stack, leave only one root
         return
     )
 }
