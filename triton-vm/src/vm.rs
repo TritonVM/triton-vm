@@ -143,7 +143,7 @@ impl<'pgm> VMState<'pgm> {
         };
 
         match current_instruction {
-            Pop(arg) | Divine(arg) | Dup(arg) | Swap(arg) => {
+            Pop(arg) | Divine(arg) | Dup(arg) | Swap(arg) | ReadIo(arg) => {
                 let arg_val: u64 = arg.into();
                 hvs[0] = BFieldElement::new(arg_val % 2);
                 hvs[1] = BFieldElement::new((arg_val >> 1) % 2);
@@ -238,7 +238,7 @@ impl<'pgm> VMState<'pgm> {
             XInvert => self.x_invert()?,
             XbMul => self.xb_mul()?,
             WriteIo => self.write_io()?,
-            ReadIo => self.read_io()?,
+            ReadIo(n) => self.read_io(n)?,
         };
         let op_stack_calls = self.stop_recording_op_stack_calls();
         co_processor_calls.extend(op_stack_calls);
@@ -706,13 +706,19 @@ impl<'pgm> VMState<'pgm> {
         Ok(vec![])
     }
 
-    fn read_io(&mut self) -> Result<Vec<CoProcessorCall>> {
-        let read_element = self.public_input.pop_front().ok_or(anyhow!(
-            "Instruction `read_io`: public input buffer is empty."
-        ))?;
-        self.op_stack.push(read_element);
+    fn read_io(&mut self, n: OpStackElement) -> Result<Vec<CoProcessorCall>> {
+        if Instruction::ReadIo(n).has_illegal_argument() {
+            bail!(IllegalReadIo(n.into()));
+        }
 
-        self.instruction_pointer += 1;
+        for i in 0..n.into() {
+            let read_element = self.public_input.pop_front().ok_or(anyhow!(
+                "Instruction `read_io {n}`: public input buffer is empty after {i}."
+            ))?;
+            self.op_stack.push(read_element);
+        }
+
+        self.instruction_pointer += 2;
         Ok(vec![])
     }
 
@@ -1083,7 +1089,7 @@ pub(crate) mod tests {
             push 0 // filler to keep the OpStack large enough throughout the program
             push 0 push 0 push 1 push 2 push 3
             hash
-            read_io eq assert halt
+            read_io 1 eq assert halt
         );
         let hash_input = [3, 2, 1, 0, 0, 0, 0, 0, 0, 0].map(BFieldElement::new);
         let digest = Tip5::hash_10(&hash_input).map(|e| e.value());
@@ -1214,7 +1220,7 @@ pub(crate) mod tests {
 
         let program = triton_program!(
             push {st4} push {st3} push {st2} push {st1} push {st0}
-            read_io read_io read_io read_io read_io assert_vector halt
+            read_io 5 assert_vector halt
         );
 
         ProgramAndInput {
@@ -1288,7 +1294,7 @@ pub(crate) mod tests {
         }
 
         let output_equality_assertions = (0..RATE)
-            .flat_map(|_| triton_asm![read_io eq assert])
+            .flat_map(|_| triton_asm![read_io 1 eq assert])
             .collect_vec();
 
         let [st0, st1, st2, st3, st4, st5, st6, st7, st8, st9] = sponge_input;
@@ -1323,7 +1329,8 @@ pub(crate) mod tests {
         let hi = st0 >> 32;
         let lo = st0 & 0xffff_ffff;
 
-        let program = triton_program!(push {st0} split read_io eq assert read_io eq assert halt);
+        let program =
+            triton_program!(push {st0} split read_io 1 eq assert read_io 1 eq assert halt);
         ProgramAndInput {
             program,
             public_input: vec![lo, hi],
@@ -1333,7 +1340,7 @@ pub(crate) mod tests {
 
     pub(crate) fn test_program_for_eq() -> ProgramAndInput {
         ProgramAndInput {
-            program: triton_program!(read_io divine 1 eq assert halt),
+            program: triton_program!(read_io 1 divine 1 eq assert halt),
             public_input: vec![42],
             non_determinism: vec![42].into(),
         }
@@ -1344,7 +1351,7 @@ pub(crate) mod tests {
         let st0 = rng.next_u64() % BFieldElement::P;
 
         let program =
-            triton_program!(push {st0} dup 0 read_io eq assert dup 0 divine 1 eq assert halt);
+            triton_program!(push {st0} dup 0 read_io 1 eq assert dup 0 divine 1 eq assert halt);
         ProgramAndInput {
             program,
             public_input: vec![st0],
@@ -1367,7 +1374,7 @@ pub(crate) mod tests {
         let st0_shift_right = st0 >> 1;
 
         let program = triton_program!(
-            push {st0} call lsb read_io eq assert read_io eq assert halt
+            push {st0} call lsb read_io 1 eq assert read_io 1 eq assert halt
             lsb:
                 push 2 swap 1 div_mod return
         );
@@ -1406,8 +1413,8 @@ pub(crate) mod tests {
         };
 
         let program = triton_program!(
-            push {st1_0} push {st0_0} lt read_io eq assert
-            push {st1_1} push {st0_1} lt read_io eq assert halt
+            push {st1_0} push {st0_0} lt read_io 1 eq assert
+            push {st1_1} push {st0_1} lt read_io 1 eq assert halt
         );
         ProgramAndInput {
             program,
@@ -1434,8 +1441,8 @@ pub(crate) mod tests {
         let result_1 = st0_1.bitand(st1_1);
 
         let program = triton_program!(
-            push {st1_0} push {st0_0} and read_io eq assert
-            push {st1_1} push {st0_1} and read_io eq assert halt
+            push {st1_0} push {st0_0} and read_io 1 eq assert
+            push {st1_1} push {st0_1} and read_io 1 eq assert halt
         );
         ProgramAndInput {
             program,
@@ -1462,8 +1469,8 @@ pub(crate) mod tests {
         let result_1 = st0_1.bitxor(st1_1);
 
         let program = triton_program!(
-            push {st1_0} push {st0_0} xor read_io eq assert
-            push {st1_1} push {st0_1} xor read_io eq assert halt
+            push {st1_0} push {st0_0} xor read_io 1 eq assert
+            push {st1_1} push {st0_1} xor read_io 1 eq assert halt
         );
         ProgramAndInput {
             program,
@@ -1499,8 +1506,8 @@ pub(crate) mod tests {
         let l2f_1 = st0_1.ilog2();
 
         let program = triton_program!(
-            push {st0_0} log_2_floor read_io eq assert
-            push {st0_1} log_2_floor read_io eq assert halt
+            push {st0_0} log_2_floor read_io 1 eq assert
+            push {st0_1} log_2_floor read_io 1 eq assert halt
         );
         ProgramAndInput {
             program,
@@ -1549,8 +1556,8 @@ pub(crate) mod tests {
         let result_1 = base_1.mod_pow_u32(exp_1).value();
 
         let program = triton_program!(
-            push {exp_0} push {base_0} pow read_io eq assert
-            push {exp_1} push {base_1} pow read_io eq assert halt
+            push {exp_0} push {base_0} pow read_io 1 eq assert
+            push {exp_1} push {base_1} pow read_io 1 eq assert halt
         );
         ProgramAndInput {
             program,
@@ -1572,7 +1579,7 @@ pub(crate) mod tests {
         let remainder = numerator % denominator;
 
         let program = triton_program!(
-            push {denominator} push {numerator} div_mod read_io eq assert read_io eq assert halt
+            push {denominator} push {numerator} div_mod read_io 1 eq assert read_io 1 eq assert halt
         );
         ProgramAndInput {
             program,
@@ -1593,7 +1600,7 @@ pub(crate) mod tests {
         let mut rng = ThreadRng::default();
         let st0 = rng.next_u32();
         let pop_count = st0.count_ones();
-        let program = triton_program!(push {st0} pop_count read_io eq assert halt);
+        let program = triton_program!(push {st0} pop_count read_io 1 eq assert halt);
         ProgramAndInput {
             program,
             public_input: vec![pop_count.into()],
@@ -1748,7 +1755,7 @@ pub(crate) mod tests {
 
     pub(crate) fn test_program_for_read_io_write_io() -> ProgramAndInput {
         let program = triton_program!(
-            read_io assert read_io read_io dup 1 dup 1 add write_io mul write_io halt
+            read_io 1 assert read_io 2 dup 1 dup 1 add write_io mul write_io halt
         );
         ProgramAndInput {
             program,
@@ -2072,9 +2079,7 @@ pub(crate) mod tests {
     fn run_tvm_get_colinear_y() {
         // see also: get_colinear_y in src/shared_math/polynomial.rs
         let get_colinear_y_program = triton_program!(
-            read_io                         // p2_x
-            read_io read_io                 // p1_y p1_x
-            read_io read_io                 // p0_y p0_x
+            read_io 5                       // p0 p1 p2_x
             swap 3 push -1 mul dup 1 add    // dy = p0_y - p1_y
             dup 3 push -1 mul dup 5 add mul // dy·(p2_x - p0_x)
             dup 3 dup 3 push -1 mul add     // dx = p0_x - p1_x

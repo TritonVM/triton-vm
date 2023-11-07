@@ -20,7 +20,7 @@ fn fibonacci_sequence() -> Program {
         // initialize stack: ⊥ 0 1 i
         push 0
         push 1
-        read_io
+        read_io 1
 
         // is any looping necessary?
         dup 0
@@ -51,8 +51,7 @@ fn fibonacci_sequence() -> Program {
 
 fn greatest_common_divisor() -> Program {
     triton_program!(
-        read_io      // _ a
-        read_io      // _ a b
+        read_io 2    // _ a b
         dup 1        // _ a b a
         dup 1        // _ a b a b
         lt           // _ a b b<a
@@ -113,12 +112,12 @@ fn program_with_many_u32_instructions() -> Program {
 /// - output: Result<(), VMFail>
 fn merkle_tree_authentication_path_verify() -> Program {
     triton_program!(
-        read_io                                     // number of authentication paths to test
+        read_io 1                                   // number of authentication paths to test
                                                     // stack: [num]
         mt_ap_verify:                               // proper program starts here
         push 0 swap 1 write_mem pop 1               // store number of APs at RAM address 0
                                                     // stack: []
-        read_io read_io read_io read_io read_io     // read Merkle root
+        read_io 5                                   // read Merkle root
                                                     // stack: [r4 r3 r2 r1 r0]
         call check_aps
         pop 5                                       // leave clean stack: Merkle root
@@ -148,8 +147,8 @@ fn merkle_tree_authentication_path_verify() -> Program {
         // stack before: [*]
         // stack after:  [* idx l4 l3 l2 l1 l0]
         get_idx_and_leaf:
-        read_io                                     // read node index
-        read_io read_io read_io read_io read_io     // read leaf's value
+        read_io 1                                   // read node index
+        read_io 5                                   // read leaf's value
         return
 
         // subroutine: go up tree
@@ -228,7 +227,7 @@ fn verify_sudoku() -> Program {
 
         // Applies the mapping from legal Sudoku digits to distinct primes.
         read1:                            // _
-            read_io                       // _ d
+            read_io 1                     // _ d
             read_mem                      // _ d p
             swap 1                        // _ p d
             pop 1                         // _ p

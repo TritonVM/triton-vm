@@ -1414,7 +1414,7 @@ pub(crate) mod tests {
     #[test]
     fn check_io_terminals() {
         let read_nop_program = triton_program!(
-            read_io read_io read_io nop nop write_io push 17 write_io halt
+            read_io 3 nop nop write_io push 17 write_io halt
         );
         let public_input = vec![3, 5, 7].into();
         let (_, claim, _, master_ext_table, all_challenges) =
