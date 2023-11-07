@@ -34,7 +34,7 @@
 //!     read_io 1           // n
 //!     push 1              // n 1
 //!     call factorial      // 0 n!
-//!     write_io            // 0
+//!     write_io 1          // 0
 //!     halt
 //!
 //!     factorial:          // n acc
@@ -170,7 +170,7 @@ pub mod vm;
 /// let program = triton_program!(
 ///     read_io 1 push 5 mul
 ///     call check_eq_15
-///     push 1 write_io
+///     push 17 write_io 1
 ///     halt
 ///     // assert that the top of the stack is 15
 ///     check_eq_15:
@@ -178,7 +178,7 @@ pub mod vm;
 ///         return
 /// );
 /// let output = program.run(vec![3].into(), [].into()).unwrap();
-/// assert_eq!(1, output[0].value());
+/// assert_eq!(17, output[0].value());
 /// ```
 ///
 /// Any type with an appropriate [`Display`](std::fmt::Display) implementation can be
@@ -613,7 +613,7 @@ mod tests {
             push 51 read_mem
             push 42 read_mem
             swap 1 swap 2 mul
-            write_io halt
+            write_io 1 halt
         );
 
         let initial_ram = [(42, 17), (51, 13)].into();
@@ -747,15 +747,16 @@ mod tests {
 
     #[test]
     fn nested_triton_asm_interpolation() {
-        let triple_write = triton_asm![write_io; 3];
+        let double_write = triton_asm![write_io 1; 2];
+        let quadruple_write = triton_asm!({&double_write} write_io 2);
         let snippet_0 = triton_asm!(push 7 nop call my_label);
-        let snippet_1 = triton_asm!(pop 2 halt my_label: push 8 {&triple_write});
+        let snippet_1 = triton_asm!(pop 2 halt my_label: push 8 push 9 {&quadruple_write});
         let source_code = triton_asm!(push 6 {&snippet_0} {&snippet_1} halt);
 
         let program = triton_program!({ &source_code });
         let public_output = program.run([].into(), [].into()).unwrap();
 
-        let expected_output = [8, 7, 6].map(BFieldElement::new).to_vec();
+        let expected_output = [9, 8, 7, 6].map(BFieldElement::new).to_vec();
         assert_eq!(expected_output, public_output);
     }
 

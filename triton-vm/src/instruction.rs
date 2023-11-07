@@ -861,7 +861,7 @@ mod tests {
 
     #[test]
     fn stringify_some_instructions() {
-        let instructions = triton_asm!(push 3 invert push 2 mul push 1 add write_io halt);
+        let instructions = triton_asm!(push 3 invert push 2 mul push 1 add write_io 1 halt);
         let code = stringify_instructions(&instructions);
         println!("{code}");
     }

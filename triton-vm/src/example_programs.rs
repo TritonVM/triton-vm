@@ -29,7 +29,7 @@ fn fibonacci_sequence() -> Program {
 
         // pop zero, write result
         pop 1
-        write_io
+        write_io 1
         halt
 
         // before: ⊥ 0 1 i
@@ -74,7 +74,7 @@ fn greatest_common_divisor() -> Program {
 
         terminate:
             // _ d n where d == 0
-            write_io // _ d
+            write_io 1      // _ d
             halt
     )
 }
