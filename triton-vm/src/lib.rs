@@ -342,6 +342,7 @@ macro_rules! triton_asm {
     [swap $arg:literal; $num:expr] => { vec![ $crate::triton_instr!(swap $arg); $num ] };
     [call $arg:ident; $num:expr] => { vec![ $crate::triton_instr!(call $arg); $num ] };
     [read_io $arg:literal; $num:expr] => { vec![ $crate::triton_instr!(read_io $arg); $num ] };
+    [write_io $arg:literal; $num:expr] => { vec![ $crate::triton_instr!(write_io $arg); $num ] };
     [$instr:ident; $num:expr] => { vec![ $crate::triton_instr!($instr); $num ] };
 
     // entry point
@@ -405,6 +406,12 @@ macro_rules! triton_instr {
         assert!(1_u32 <= $arg && $arg <= 5, "`read_io {}` is illegal.", $arg);
         let argument: $crate::op_stack::OpStackElement = u32::try_into($arg).unwrap();
         let instruction = $crate::instruction::AnInstruction::<String>::ReadIo(argument);
+        $crate::instruction::LabelledInstruction::Instruction(instruction)
+    }};
+    (write_io $arg:literal) => {{
+        assert!(1_u32 <= $arg && $arg <= 5, "`write_io {}` is illegal", $arg);
+        let argument: $crate::op_stack::OpStackElement = u32::try_into($arg).unwrap();
+        let instruction = $crate::instruction::AnInstruction::<String>::WriteIo(argument);
         $crate::instruction::LabelledInstruction::Instruction(instruction)
     }};
     ($instr:ident) => {{

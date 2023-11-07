@@ -143,7 +143,7 @@ impl<'pgm> VMState<'pgm> {
         };
 
         match current_instruction {
-            Pop(arg) | Divine(arg) | Dup(arg) | Swap(arg) | ReadIo(arg) => {
+            Pop(arg) | Divine(arg) | Dup(arg) | Swap(arg) | ReadIo(arg) | WriteIo(arg) => {
                 let arg_val: u64 = arg.into();
                 hvs[0] = BFieldElement::new(arg_val % 2);
                 hvs[1] = BFieldElement::new((arg_val >> 1) % 2);
@@ -237,7 +237,7 @@ impl<'pgm> VMState<'pgm> {
             XxMul => self.xx_mul()?,
             XInvert => self.x_invert()?,
             XbMul => self.xb_mul()?,
-            WriteIo => self.write_io()?,
+            WriteIo(n) => self.write_io(n)?,
             ReadIo(n) => self.read_io(n)?,
         };
         let op_stack_calls = self.stop_recording_op_stack_calls();
@@ -698,11 +698,17 @@ impl<'pgm> VMState<'pgm> {
         Ok(vec![])
     }
 
-    fn write_io(&mut self) -> Result<Vec<CoProcessorCall>> {
-        let top_of_stack = self.op_stack.pop()?;
-        self.public_output.push(top_of_stack);
+    fn write_io(&mut self, n: OpStackElement) -> Result<Vec<CoProcessorCall>> {
+        if Instruction::WriteIo(n).has_illegal_argument() {
+            bail!(IllegalWriteIo(n.into()));
+        }
 
-        self.instruction_pointer += 1;
+        for _ in 0..n.into() {
+            let top_of_stack = self.op_stack.pop()?;
+            self.public_output.push(top_of_stack);
+        }
+
+        self.instruction_pointer += 2;
         Ok(vec![])
     }
 

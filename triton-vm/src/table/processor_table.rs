@@ -136,11 +136,14 @@ impl ProcessorTable {
                             + input_symbol;
                     }
                 }
-                if Some(Instruction::WriteIo) == previous_instruction {
-                    let output_symbol = prev_row[ST0.base_table_index()];
-                    output_table_running_evaluation = output_table_running_evaluation
-                        * challenges[StandardOutputIndeterminate]
-                        + output_symbol;
+                if let Some(Instruction::WriteIo(st)) = previous_instruction {
+                    for i in 0..st.index() {
+                        let output_symbol_column = Self::op_stack_column_by_index(i as usize);
+                        let output_symbol = prev_row[output_symbol_column.base_table_index()];
+                        output_table_running_evaluation = output_table_running_evaluation
+                            * challenges[StandardOutputIndeterminate]
+                            + output_symbol;
+                    }
                 }
             }
 
@@ -2339,7 +2342,7 @@ impl ExtProcessorTable {
             XInvert => ExtProcessorTable::instruction_xinv(circuit_builder),
             XbMul => ExtProcessorTable::instruction_xbmul(circuit_builder),
             ReadIo(_) => ExtProcessorTable::instruction_read_io(circuit_builder),
-            WriteIo => ExtProcessorTable::instruction_write_io(circuit_builder),
+            WriteIo(_) => ExtProcessorTable::instruction_write_io(circuit_builder),
         }
     }
 
@@ -4000,12 +4003,12 @@ pub(crate) mod tests {
     #[test]
     fn transition_constraints_for_instruction_write_io() {
         let programs = [
-            triton_program!(push 17 write_io halt),
-            triton_program!(push 42 write_io halt),
+            triton_program!(push 17 write_io 1 halt),
+            triton_program!(push 42 write_io 1 halt),
         ];
         let test_rows = programs.map(|program| test_row_from_program(program, 1));
         let debug_info = TestRowsDebugInfo {
-            instruction: WriteIo,
+            instruction: WriteIo(OpStackElement::ST1),
             debug_cols_curr_row: vec![ST0, ST1],
             debug_cols_next_row: vec![ST0, ST1],
         };

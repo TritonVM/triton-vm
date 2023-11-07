@@ -276,7 +276,7 @@ fn an_instruction(s: &str) -> ParseResult<AnInstruction<String>> {
 
     // Read/write
     let read_io = read_io_instruction();
-    let write_io = instruction("write_io", WriteIo);
+    let write_io = write_io_instruction();
 
     let read_write = alt((read_io, write_io));
 
@@ -417,6 +417,21 @@ fn read_io_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>> 
         let instruction = ReadIo(stack_register);
         if instruction.has_illegal_argument() {
             return cut(context("illegal argument for instruction `read_io`", fail))(s);
+        }
+
+        Ok((s, instruction))
+    }
+}
+
+fn write_io_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>> {
+    move |s: &str| {
+        let (s, _) = token1("write_io")(s)?; // require space after instruction name
+        let (s, stack_register) = stack_register(s)?;
+        let (s, _) = comment_or_whitespace1(s)?;
+
+        let instruction = WriteIo(stack_register);
+        if instruction.has_illegal_argument() {
+            return cut(context("illegal argument for instruction `write_io`", fail))(s);
         }
 
         Ok((s, instruction))
@@ -655,7 +670,7 @@ pub(crate) mod tests {
         let mut rng = thread_rng();
 
         let difficult_instructions = vec![
-            "pop", "push", "divine", "dup", "swap", "skiz", "call", "read_io",
+            "pop", "push", "divine", "dup", "swap", "skiz", "call", "read_io", "write_io",
         ];
         let simple_instructions = ALL_INSTRUCTION_NAMES
             .into_iter()
@@ -664,7 +679,7 @@ pub(crate) mod tests {
 
         let generators = [vec!["simple"], difficult_instructions].concat();
         // Test difficult instructions more frequently.
-        let weights = vec![simple_instructions.len(), 2, 2, 2, 6, 6, 2, 10, 2];
+        let weights = vec![simple_instructions.len(), 2, 2, 2, 6, 6, 2, 10, 2, 2];
 
         assert_eq!(
             generators.len(),
@@ -720,6 +735,11 @@ pub(crate) mod tests {
             "read_io" => {
                 let arg: usize = rng.gen_range(1..=5);
                 vec!["read_io".to_string(), format!("{arg}")]
+            }
+
+            "write_io" => {
+                let arg: usize = rng.gen_range(1..=5);
+                vec!["write_io".to_string(), format!("{arg}")]
             }
 
             unknown => panic!("Unknown generator, {unknown}"),
@@ -1020,8 +1040,8 @@ pub(crate) mod tests {
 
     #[test]
     fn triton_asm_macro() {
-        let instructions = triton_asm!(write_io push 17 call which_label lt swap 3);
-        assert_eq!(Instruction(WriteIo), instructions[0]);
+        let instructions = triton_asm!(write_io 3 push 17 call which_label lt swap 3);
+        assert_eq!(Instruction(WriteIo(ST3)), instructions[0]);
         assert_eq!(Instruction(Push(17_u64.into())), instructions[1]);
         assert_eq!(
             Instruction(Call("which_label".to_string())),
