@@ -413,7 +413,7 @@ impl From<&OpStackElement> for BFieldElement {
     EnumCount,
     EnumIter,
 )]
-pub enum StackChangeArg {
+pub enum NumberOfWords {
     #[default]
     N1,
     N2,
@@ -422,8 +422,8 @@ pub enum StackChangeArg {
     N5,
 }
 
-impl StackChangeArg {
-    pub const fn index(self) -> usize {
+impl NumberOfWords {
+    pub const fn num_words(self) -> usize {
         match self {
             Self::N1 => 1,
             Self::N2 => 2,
@@ -434,125 +434,125 @@ impl StackChangeArg {
     }
 }
 
-impl Display for StackChangeArg {
+impl Display for NumberOfWords {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
-        let index = self.index();
+        let index = self.num_words();
         write!(f, "{index}")
     }
 }
 
-impl From<StackChangeArg> for usize {
-    fn from(stack_changing_argument: StackChangeArg) -> Self {
-        stack_changing_argument.index()
+impl From<NumberOfWords> for usize {
+    fn from(num_words: NumberOfWords) -> Self {
+        num_words.num_words()
     }
 }
 
-impl From<&StackChangeArg> for usize {
-    fn from(&stack_changing_argument: &StackChangeArg) -> Self {
-        stack_changing_argument.into()
+impl From<&NumberOfWords> for usize {
+    fn from(&num_words: &NumberOfWords) -> Self {
+        num_words.into()
     }
 }
 
-impl From<StackChangeArg> for u32 {
-    fn from(stack_changing_argument: StackChangeArg) -> Self {
-        stack_changing_argument.index() as u32
+impl From<NumberOfWords> for u32 {
+    fn from(num_words: NumberOfWords) -> Self {
+        num_words.num_words() as u32
     }
 }
 
-impl From<&StackChangeArg> for u32 {
-    fn from(&stack_changing_argument: &StackChangeArg) -> Self {
-        stack_changing_argument.into()
+impl From<&NumberOfWords> for u32 {
+    fn from(&num_words: &NumberOfWords) -> Self {
+        num_words.into()
     }
 }
 
-impl From<StackChangeArg> for u64 {
-    fn from(stack_changing_argument: StackChangeArg) -> Self {
-        u32::from(stack_changing_argument).into()
+impl From<NumberOfWords> for u64 {
+    fn from(num_words: NumberOfWords) -> Self {
+        u32::from(num_words).into()
     }
 }
 
-impl From<&StackChangeArg> for u64 {
-    fn from(&stack_changing_argument: &StackChangeArg) -> Self {
-        stack_changing_argument.into()
+impl From<&NumberOfWords> for u64 {
+    fn from(&num_words: &NumberOfWords) -> Self {
+        num_words.into()
     }
 }
 
-impl From<StackChangeArg> for OpStackElement {
-    fn from(stack_changing_argument: StackChangeArg) -> Self {
-        OpStackElement::try_from(stack_changing_argument.index()).unwrap()
+impl From<NumberOfWords> for OpStackElement {
+    fn from(num_words: NumberOfWords) -> Self {
+        OpStackElement::try_from(num_words.num_words()).unwrap()
     }
 }
 
-impl From<&StackChangeArg> for OpStackElement {
-    fn from(&stack_changing_argument: &StackChangeArg) -> Self {
-        stack_changing_argument.into()
+impl From<&NumberOfWords> for OpStackElement {
+    fn from(&num_words: &NumberOfWords) -> Self {
+        num_words.into()
     }
 }
 
-impl From<StackChangeArg> for BFieldElement {
-    fn from(stack_changing_argument: StackChangeArg) -> Self {
-        u32::from(stack_changing_argument).into()
+impl From<NumberOfWords> for BFieldElement {
+    fn from(num_words: NumberOfWords) -> Self {
+        u32::from(num_words).into()
     }
 }
 
-impl From<&StackChangeArg> for BFieldElement {
-    fn from(&stack_changing_argument: &StackChangeArg) -> Self {
-        stack_changing_argument.into()
+impl From<&NumberOfWords> for BFieldElement {
+    fn from(&num_words: &NumberOfWords) -> Self {
+        num_words.into()
     }
 }
 
-impl TryFrom<usize> for StackChangeArg {
+impl TryFrom<usize> for NumberOfWords {
     type Error = anyhow::Error;
 
-    fn try_from(stack_changing_argument: usize) -> Result<Self> {
-        match stack_changing_argument {
+    fn try_from(index: usize) -> Result<Self> {
+        match index {
             1 => Ok(Self::N1),
             2 => Ok(Self::N2),
             3 => Ok(Self::N3),
             4 => Ok(Self::N4),
             5 => Ok(Self::N5),
-            _ => bail!("Index {stack_changing_argument} is out of range for `StackChangeArg`."),
+            _ => bail!("Index {index} is out of range for `NumberOfWords`."),
         }
     }
 }
 
-impl TryFrom<u32> for StackChangeArg {
+impl TryFrom<u32> for NumberOfWords {
     type Error = anyhow::Error;
 
-    fn try_from(stack_changing_argument: u32) -> Result<Self> {
-        usize::try_from(stack_changing_argument)?.try_into()
+    fn try_from(index: u32) -> Result<Self> {
+        usize::try_from(index)?.try_into()
     }
 }
 
-impl TryFrom<OpStackElement> for StackChangeArg {
+impl TryFrom<OpStackElement> for NumberOfWords {
     type Error = anyhow::Error;
 
-    fn try_from(stack_changing_argument: OpStackElement) -> Result<Self> {
-        usize::try_from(stack_changing_argument)?.try_into()
+    fn try_from(index: OpStackElement) -> Result<Self> {
+        usize::try_from(index)?.try_into()
     }
 }
 
-impl TryFrom<u64> for StackChangeArg {
+impl TryFrom<u64> for NumberOfWords {
     type Error = anyhow::Error;
 
-    fn try_from(stack_changing_argument: u64) -> Result<Self> {
-        usize::try_from(stack_changing_argument)?.try_into()
+    fn try_from(index: u64) -> Result<Self> {
+        usize::try_from(index)?.try_into()
     }
 }
 
-impl TryFrom<BFieldElement> for StackChangeArg {
+impl TryFrom<BFieldElement> for NumberOfWords {
     type Error = anyhow::Error;
 
-    fn try_from(stack_changing_argument: BFieldElement) -> Result<Self> {
-        u32::try_from(stack_changing_argument)?.try_into()
+    fn try_from(index: BFieldElement) -> Result<Self> {
+        u32::try_from(index)?.try_into()
     }
 }
 
-impl TryFrom<&BFieldElement> for StackChangeArg {
+impl TryFrom<&BFieldElement> for NumberOfWords {
     type Error = anyhow::Error;
 
-    fn try_from(&stack_changing_argument: &BFieldElement) -> Result<Self> {
-        stack_changing_argument.try_into()
+    fn try_from(&index: &BFieldElement) -> Result<Self> {
+        index.try_into()
     }
 }
 
@@ -722,45 +722,45 @@ mod tests {
     }
 
     #[test]
-    fn conversion_from_stack_changing_argument_to_usize_and_back_is_identity() {
-        for stack_changing_argument in StackChangeArg::iter() {
-            let stack_index = usize::from(&stack_changing_argument);
-            let stack_changing_argument_again = StackChangeArg::try_from(stack_index).unwrap();
-            assert_eq!(stack_changing_argument, stack_changing_argument_again);
+    fn conversion_from_number_of_words_to_usize_and_back_is_identity() {
+        for num_words in NumberOfWords::iter() {
+            let stack_index = usize::from(&num_words);
+            let num_words_again = NumberOfWords::try_from(stack_index).unwrap();
+            assert_eq!(num_words, num_words_again);
         }
     }
 
     #[test]
-    fn conversion_from_stack_changing_argument_to_u64_and_back_is_identity() {
-        for stack_changing_argument in StackChangeArg::iter() {
-            let stack_index = u64::from(&stack_changing_argument);
-            let stack_changing_argument_again = StackChangeArg::try_from(stack_index).unwrap();
-            assert_eq!(stack_changing_argument, stack_changing_argument_again);
+    fn conversion_from_number_of_words_to_u64_and_back_is_identity() {
+        for num_words in NumberOfWords::iter() {
+            let stack_index = u64::from(&num_words);
+            let num_words_again = NumberOfWords::try_from(stack_index).unwrap();
+            assert_eq!(num_words, num_words_again);
         }
     }
 
     #[test]
-    fn conversion_from_stack_changing_argument_to_op_stack_element_and_back_is_identity() {
-        for stack_changing_argument in StackChangeArg::iter() {
-            let stack_element = OpStackElement::from(&stack_changing_argument);
-            let stack_changing_argument_again = StackChangeArg::try_from(stack_element).unwrap();
-            assert_eq!(stack_changing_argument, stack_changing_argument_again);
+    fn conversion_from_number_of_words_to_op_stack_element_and_back_is_identity() {
+        for num_words in NumberOfWords::iter() {
+            let stack_element = OpStackElement::from(&num_words);
+            let num_words_again = NumberOfWords::try_from(stack_element).unwrap();
+            assert_eq!(num_words, num_words_again);
         }
     }
 
     #[test]
-    fn out_of_range_stack_changing_argument_gives_error() {
-        let stack_changing_argument = StackChangeArg::iter().last().unwrap();
-        let mut stack_index = BFieldElement::from(&stack_changing_argument);
+    fn out_of_range_number_of_words_gives_error() {
+        let num_words = NumberOfWords::iter().last().unwrap();
+        let mut stack_index = BFieldElement::from(&num_words);
         stack_index.increment();
-        let maybe_stack_changing_argument = StackChangeArg::try_from(&stack_index);
-        assert!(maybe_stack_changing_argument.is_err());
+        let maybe_num_words = NumberOfWords::try_from(&stack_index);
+        assert!(maybe_num_words.is_err());
     }
 
     #[test]
-    fn stack_change_arg_to_b_field_element_gives_expected_range() {
-        let computed_range = StackChangeArg::iter()
-            .map(|stack_change_arg| BFieldElement::from(&stack_change_arg).value())
+    fn number_of_words_to_b_field_element_gives_expected_range() {
+        let computed_range = NumberOfWords::iter()
+            .map(|num_words| BFieldElement::from(&num_words).value())
             .collect_vec();
         let expected_range = (1..=5).collect_vec();
         assert_eq!(computed_range, expected_range);

@@ -18,10 +18,10 @@ use crate::instruction::AnInstruction;
 use crate::instruction::AnInstruction::*;
 use crate::instruction::LabelledInstruction;
 use crate::instruction::ALL_INSTRUCTION_NAMES;
+use crate::op_stack::NumberOfWords;
+use crate::op_stack::NumberOfWords::*;
 use crate::op_stack::OpStackElement;
 use crate::op_stack::OpStackElement::*;
-use crate::op_stack::StackChangeArg;
-use crate::op_stack::StackChangeArg::*;
 use crate::BFieldElement;
 
 #[derive(Debug, PartialEq)]
@@ -317,7 +317,7 @@ fn instruction<'a>(
 fn pop_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>> {
     move |s: &str| {
         let (s, _) = token1("pop")(s)?; // require space after instruction name
-        let (s, arg) = stack_change_arg(s)?;
+        let (s, arg) = number_of_words(s)?;
         let (s, _) = comment_or_whitespace1(s)?; // require space after field element
 
         Ok((s, Pop(arg)))
@@ -337,7 +337,7 @@ fn push_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>> {
 fn divine_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>> {
     move |s: &str| {
         let (s, _) = token1("divine")(s)?; // require space after instruction name
-        let (s, arg) = stack_change_arg(s)?;
+        let (s, arg) = number_of_words(s)?;
         let (s, _) = comment_or_whitespace1(s)?;
 
         Ok((s, Divine(arg)))
@@ -403,7 +403,7 @@ fn call_instruction<'a>() -> impl Fn(&'a str) -> ParseResult<AnInstruction<Strin
 fn read_io_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>> {
     move |s: &str| {
         let (s, _) = token1("read_io")(s)?; // require space after instruction name
-        let (s, arg) = stack_change_arg(s)?;
+        let (s, arg) = number_of_words(s)?;
         let (s, _) = comment_or_whitespace1(s)?;
 
         Ok((s, ReadIo(arg)))
@@ -413,7 +413,7 @@ fn read_io_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>> 
 fn write_io_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>> {
     move |s: &str| {
         let (s, _) = token1("write_io")(s)?; // require space after instruction name
-        let (s, arg) = stack_change_arg(s)?;
+        let (s, arg) = number_of_words(s)?;
         let (s, _) = comment_or_whitespace1(s)?;
 
         Ok((s, WriteIo(arg)))
@@ -469,7 +469,7 @@ fn stack_register(s: &str) -> ParseResult<OpStackElement> {
     Ok((s, stack_register))
 }
 
-fn stack_change_arg(s: &str) -> ParseResult<StackChangeArg> {
+fn number_of_words(s: &str) -> ParseResult<NumberOfWords> {
     let (s, n) = digit1(s)?;
     let arg = match n {
         "1" => N1,

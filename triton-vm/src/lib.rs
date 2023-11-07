@@ -274,7 +274,7 @@ macro_rules! triton_program {
 /// # use triton_vm::instruction::LabelledInstruction;
 /// # use triton_vm::instruction::AnInstruction::Push;
 /// # use triton_vm::instruction::AnInstruction::Pop;
-/// # use triton_vm::op_stack::StackChangeArg::N1;
+/// # use triton_vm::op_stack::NumberOfWords::N1;
 /// let insert_me = triton_asm!(
 ///     pop 1
 ///     nop
@@ -370,7 +370,7 @@ macro_rules! triton_asm {
 #[macro_export]
 macro_rules! triton_instr {
     (pop $arg:literal) => {{
-        let argument: $crate::op_stack::StackChangeArg = u32::try_into($arg).unwrap();
+        let argument: $crate::op_stack::NumberOfWords = u32::try_into($arg).unwrap();
         let instruction = $crate::instruction::AnInstruction::<String>::Pop(argument);
         $crate::instruction::LabelledInstruction::Instruction(instruction)
     }};
@@ -380,7 +380,7 @@ macro_rules! triton_instr {
         $crate::instruction::LabelledInstruction::Instruction(instruction)
     }};
     (divine $arg:literal) => {{
-        let argument: $crate::op_stack::StackChangeArg = u32::try_into($arg).unwrap();
+        let argument: $crate::op_stack::NumberOfWords = u32::try_into($arg).unwrap();
         let instruction = $crate::instruction::AnInstruction::<String>::Divine(argument);
         $crate::instruction::LabelledInstruction::Instruction(instruction)
     }};
@@ -401,12 +401,12 @@ macro_rules! triton_instr {
         $crate::instruction::LabelledInstruction::Instruction(instruction)
     }};
     (read_io $arg:literal) => {{
-        let argument: $crate::op_stack::StackChangeArg = u32::try_into($arg).unwrap();
+        let argument: $crate::op_stack::NumberOfWords = u32::try_into($arg).unwrap();
         let instruction = $crate::instruction::AnInstruction::<String>::ReadIo(argument);
         $crate::instruction::LabelledInstruction::Instruction(instruction)
     }};
     (write_io $arg:literal) => {{
-        let argument: $crate::op_stack::StackChangeArg = u32::try_into($arg).unwrap();
+        let argument: $crate::op_stack::NumberOfWords = u32::try_into($arg).unwrap();
         let instruction = $crate::instruction::AnInstruction::<String>::WriteIo(argument);
         $crate::instruction::LabelledInstruction::Instruction(instruction)
     }};

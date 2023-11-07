@@ -128,7 +128,7 @@ impl ProcessorTable {
             if let Some(prev_row) = previous_row {
                 let previous_instruction = Self::instruction_from_row(prev_row);
                 if let Some(Instruction::ReadIo(st)) = previous_instruction {
-                    for i in (0..st.index()).rev() {
+                    for i in (0..st.num_words()).rev() {
                         let input_symbol_column = Self::op_stack_column_by_index(i);
                         let input_symbol = current_row[input_symbol_column.base_table_index()];
                         input_table_running_evaluation = input_table_running_evaluation
@@ -137,7 +137,7 @@ impl ProcessorTable {
                     }
                 }
                 if let Some(Instruction::WriteIo(st)) = previous_instruction {
-                    for i in 0..st.index() {
+                    for i in 0..st.num_words() {
                         let output_symbol_column = Self::op_stack_column_by_index(i);
                         let output_symbol = prev_row[output_symbol_column.base_table_index()];
                         output_table_running_evaluation = output_table_running_evaluation
@@ -3360,8 +3360,8 @@ pub(crate) mod tests {
     use crate::error::InstructionError::DivisionByZero;
     use crate::instruction::Instruction;
     use crate::instruction::LabelledInstruction;
+    use crate::op_stack::NumberOfWords::*;
     use crate::op_stack::OpStackElement;
-    use crate::op_stack::StackChangeArg::*;
     use crate::program::Program;
     use crate::shared_tests::ProgramAndInput;
     use crate::stark::tests::master_tables_for_low_security_level;

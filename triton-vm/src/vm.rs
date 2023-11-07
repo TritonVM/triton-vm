@@ -276,8 +276,8 @@ impl<'pgm> VMState<'pgm> {
             .collect()
     }
 
-    fn pop(&mut self, n: StackChangeArg) -> Result<Vec<CoProcessorCall>> {
-        for _ in 0..n.index() {
+    fn pop(&mut self, n: NumberOfWords) -> Result<Vec<CoProcessorCall>> {
+        for _ in 0..n.num_words() {
             self.op_stack.pop()?;
         }
 
@@ -292,8 +292,8 @@ impl<'pgm> VMState<'pgm> {
         vec![]
     }
 
-    fn divine(&mut self, n: StackChangeArg) -> Result<Vec<CoProcessorCall>> {
-        for i in 0..n.index() {
+    fn divine(&mut self, n: NumberOfWords) -> Result<Vec<CoProcessorCall>> {
+        for i in 0..n.num_words() {
             let element = self.secret_individual_tokens.pop_front().ok_or(anyhow!(
                 "Instruction `divine {n}`: secret input buffer is empty after {i}."
             ))?;
@@ -690,8 +690,8 @@ impl<'pgm> VMState<'pgm> {
         Ok(vec![])
     }
 
-    fn write_io(&mut self, n: StackChangeArg) -> Result<Vec<CoProcessorCall>> {
-        for _ in 0..n.index() {
+    fn write_io(&mut self, n: NumberOfWords) -> Result<Vec<CoProcessorCall>> {
+        for _ in 0..n.num_words() {
             let top_of_stack = self.op_stack.pop()?;
             self.public_output.push(top_of_stack);
         }
@@ -700,8 +700,8 @@ impl<'pgm> VMState<'pgm> {
         Ok(vec![])
     }
 
-    fn read_io(&mut self, n: StackChangeArg) -> Result<Vec<CoProcessorCall>> {
-        for i in 0..n.index() {
+    fn read_io(&mut self, n: NumberOfWords) -> Result<Vec<CoProcessorCall>> {
+        for i in 0..n.num_words() {
             let read_element = self.public_input.pop_front().ok_or(anyhow!(
                 "Instruction `read_io {n}`: public input buffer is empty after {i}."
             ))?;
@@ -971,7 +971,7 @@ pub(crate) mod tests {
 
     use crate::error::InstructionError;
     use crate::example_programs::*;
-    use crate::op_stack::StackChangeArg::*;
+    use crate::op_stack::NumberOfWords::*;
     use crate::shared_tests::prove_with_low_security_level;
     use crate::shared_tests::ProgramAndInput;
     use crate::stark::MTMaker;

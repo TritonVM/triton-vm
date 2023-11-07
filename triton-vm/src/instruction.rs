@@ -20,10 +20,10 @@ use twenty_first::shared_math::b_field_element::BFIELD_ZERO;
 use AnInstruction::*;
 
 use crate::instruction::InstructionBit::*;
+use crate::op_stack::NumberOfWords;
+use crate::op_stack::NumberOfWords::*;
 use crate::op_stack::OpStackElement;
 use crate::op_stack::OpStackElement::*;
-use crate::op_stack::StackChangeArg;
-use crate::op_stack::StackChangeArg::*;
 
 /// An `Instruction` has `call` addresses encoded as absolute integers.
 pub type Instruction = AnInstruction<BFieldElement>;
@@ -101,9 +101,9 @@ pub fn stringify_instructions(instructions: &[LabelledInstruction]) -> String {
 )]
 pub enum AnInstruction<Dest: PartialEq + Default> {
     // OpStack manipulation
-    Pop(StackChangeArg),
+    Pop(NumberOfWords),
     Push(BFieldElement),
-    Divine(StackChangeArg),
+    Divine(NumberOfWords),
     Dup(OpStackElement),
     Swap(OpStackElement),
 
@@ -151,8 +151,8 @@ pub enum AnInstruction<Dest: PartialEq + Default> {
     XbMul,
 
     // Read/write
-    ReadIo(StackChangeArg),
-    WriteIo(StackChangeArg),
+    ReadIo(NumberOfWords),
+    WriteIo(NumberOfWords),
 }
 
 impl<Dest: PartialEq + Default> AnInstruction<Dest> {
@@ -327,9 +327,9 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
 
     pub const fn op_stack_size_influence(&self) -> i32 {
         match self {
-            Pop(n) => -(n.index() as i32),
+            Pop(n) => -(n.num_words() as i32),
             Push(_) => 1,
-            Divine(n) => n.index() as i32,
+            Divine(n) => n.num_words() as i32,
             Dup(_) => 1,
             Swap(_) => 0,
             Halt => 0,
@@ -363,8 +363,8 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
             XxMul => -3,
             XInvert => 0,
             XbMul => -1,
-            ReadIo(n) => n.index() as i32,
-            WriteIo(n) => -(n.index() as i32),
+            ReadIo(n) => n.num_words() as i32,
+            WriteIo(n) => -(n.num_words() as i32),
         }
     }
 
