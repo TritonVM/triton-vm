@@ -26,6 +26,7 @@ use crate::stark::StarkHasher;
 use crate::table::hash_table::HashTable;
 use crate::table::hash_table::PermutationTrace;
 use crate::table::op_stack_table::OpStackTableEntry;
+use crate::table::ram_table::RamTableCall;
 use crate::table::table_column::HashBaseTableColumn::CI;
 use crate::table::table_column::MasterBaseTableColumn;
 use crate::table::u32_table::U32TableEntry;
@@ -54,6 +55,8 @@ pub struct AlgebraicExecutionTrace {
     pub processor_trace: Array2<BFieldElement>,
 
     pub op_stack_underflow_trace: Array2<BFieldElement>,
+
+    pub ram_trace: Array2<BFieldElement>,
 
     /// The trace of hashing the program whose execution generated this `AlgebraicExecutionTrace`.
     /// The resulting digest
@@ -90,6 +93,7 @@ impl AlgebraicExecutionTrace {
             instruction_multiplicities: vec![0_u32; program_len],
             processor_trace: Array2::default([0, processor_table::BASE_WIDTH]),
             op_stack_underflow_trace: Array2::default([0, op_stack_table::BASE_WIDTH]),
+            ram_trace: Array2::default([0, ram_table::BASE_WIDTH]),
             program_hash_trace: Array2::default([0, hash_table::BASE_WIDTH]),
             hash_trace: Array2::default([0, hash_table::BASE_WIDTH]),
             sponge_trace: Array2::default([0, hash_table::BASE_WIDTH]),
@@ -106,6 +110,7 @@ impl AlgebraicExecutionTrace {
             self.program_table_length(),
             self.processor_table_length(),
             self.op_stack_table_length(),
+            self.ram_table_length(),
             self.hash_table_length(),
             self.cascade_table_length(),
             self.lookup_table_length(),
@@ -185,6 +190,10 @@ impl AlgebraicExecutionTrace {
         self.op_stack_underflow_trace.nrows()
     }
 
+    pub fn ram_table_length(&self) -> usize {
+        self.ram_trace.nrows()
+    }
+
     pub fn hash_table_length(&self) -> usize {
         self.sponge_trace.nrows() + self.hash_trace.nrows() + self.program_hash_trace.nrows()
     }
@@ -232,6 +241,7 @@ impl AlgebraicExecutionTrace {
             Tip5Trace(instruction, trace) => self.append_sponge_trace(instruction, *trace),
             U32Call(u32_entry) => self.record_u32_table_entry(u32_entry),
             OpStackCall(op_stack_entry) => self.record_op_stack_entry(op_stack_entry),
+            RamCall(ram_call) => self.record_ram_call(ram_call),
         }
     }
 
@@ -320,6 +330,12 @@ impl AlgebraicExecutionTrace {
         let op_stack_table_row = op_stack_entry.to_base_table_row();
         self.op_stack_underflow_trace
             .push_row(op_stack_table_row.view())
+            .unwrap();
+    }
+
+    fn record_ram_call(&mut self, ram_call: RamTableCall) {
+        self.ram_trace
+            .append(Axis(0), ram_call.to_table_rows().view())
             .unwrap();
     }
 }

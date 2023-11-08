@@ -104,7 +104,6 @@ pub enum ProgramExtTableColumn {
 pub enum ProcessorBaseTableColumn {
     CLK,
     IsPadding,
-    PreviousInstruction,
     IP,
     CI,
     NIA,
@@ -141,8 +140,6 @@ pub enum ProcessorBaseTableColumn {
     HV3,
     HV4,
     HV5,
-    RAMP,
-    RAMV,
     /// The number of clock jump differences of magnitude `CLK` in all memory-like tables.
     ClockJumpDifferenceLookupMultiplicity,
 }
@@ -199,9 +196,16 @@ pub enum OpStackExtTableColumn {
 #[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCount, Hash)]
 pub enum RamBaseTableColumn {
     CLK,
-    PreviousInstruction,
-    RAMP,
-    RAMV,
+
+    /// Is [`INSTRUCTION_TYPE_READ`] for instruction `read_mem` and [`INSTRUCTION_TYPE_WRITE`]
+    /// for instruction `write_mem`. For padding rows, this is set to [`PADDING_INDICATOR`].
+    ///
+    /// [`INSTRUCTION_TYPE_READ`]: crate::table::ram_table::INSTRUCTION_TYPE_READ
+    /// [`INSTRUCTION_TYPE_WRITE`]: crate::table::ram_table::INSTRUCTION_TYPE_WRITE
+    /// [`PADDING_INDICATOR`]: crate::table::ram_table::PADDING_INDICATOR
+    InstructionType,
+    RamPointer,
+    RamValue,
     InverseOfRampDifference,
     BezoutCoefficientPolynomialCoefficient0,
     BezoutCoefficientPolynomialCoefficient1,

@@ -606,9 +606,9 @@ mod tests {
     #[test]
     fn lib_use_initial_ram() {
         let program = triton_program!(
-            push 51 read_mem
-            push 42 read_mem
-            swap 1 swap 2 mul
+            push 51 read_mem pop 1
+            push 42 read_mem pop 1
+            mul
             write_io 1 halt
         );
 

@@ -248,7 +248,7 @@ impl ExtOpStackTable {
         let log_derivative_remains_or_stack_pointer_doesnt_change =
             log_derivative_remains.clone() * (stack_pointer_next.clone() - stack_pointer.clone());
         let log_derivatve_remains_or_next_row_is_not_padding_row =
-            log_derivative_remains.clone() * next_row_is_not_padding_row;
+            log_derivative_remains * next_row_is_not_padding_row;
 
         let log_derivative_updates_correctly =
             log_derivative_accumulates_or_stack_pointer_changes_or_next_row_is_padding_row
@@ -324,18 +324,18 @@ impl OpStackTable {
 
     pub fn pad_trace(mut op_stack_table: ArrayViewMut2<BFieldElement>, op_stack_table_len: usize) {
         let last_row_index = op_stack_table_len.saturating_sub(1);
-        let mut last_row = op_stack_table.row(last_row_index).to_owned();
-        last_row[IB1ShrinkStack.base_table_index()] = PADDING_VALUE;
+        let mut padding_row = op_stack_table.row(last_row_index).to_owned();
+        padding_row[IB1ShrinkStack.base_table_index()] = PADDING_VALUE;
         if op_stack_table_len == 0 {
             let first_stack_pointer = u32::try_from(OpStackElement::COUNT).unwrap().into();
-            last_row[StackPointer.base_table_index()] = first_stack_pointer;
+            padding_row[StackPointer.base_table_index()] = first_stack_pointer;
         }
 
         let mut padding_section = op_stack_table.slice_mut(s![op_stack_table_len.., ..]);
         padding_section
             .axis_iter_mut(Axis(0))
             .into_par_iter()
-            .for_each(|mut row| row.assign(&last_row));
+            .for_each(|mut row| row.assign(&padding_row));
     }
 
     pub fn extend(

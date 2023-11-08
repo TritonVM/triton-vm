@@ -1119,7 +1119,6 @@ pub(crate) mod tests {
     use twenty_first::shared_math::other::random_elements;
 
     use crate::example_programs::*;
-    use crate::instruction::AnInstruction;
     use crate::instruction::Instruction;
     use crate::op_stack::OpStackElement;
     use crate::shared_tests::*;
@@ -1229,18 +1228,18 @@ pub(crate) mod tests {
             push  5 read_mem
             halt
         );
-        let (_, _, master_base_table) =
-            master_base_table_for_low_security_level(ProgramAndInput::without_input(program));
+        let (_, _, master_base_table, _, _) =
+            master_tables_for_low_security_level(ProgramAndInput::without_input(program));
 
         println!();
         println!("Processor Table:");
         println!(
-            "| clk        | pi         | ci         | nia        | st0        \
-             | st1        | st2        | st3        | ramp       | ramv       |"
+            "| clk        | ci         | nia        \
+             | st0        | st1        | st2        | st3        |"
         );
         println!(
-            "|-----------:|:-----------|:-----------|:-----------|-----------:\
-             |-----------:|-----------:|-----------:|-----------:|-----------:|"
+            "|-----------:|:-----------|:-----------\
+             |-----------:|-----------:|-----------:|-----------:|"
         );
         for row in master_base_table.table(ProcessorTable).rows() {
             let clk = row[ProcessorBaseTableColumn::CLK.base_table_index()].to_string();
@@ -1248,18 +1247,10 @@ pub(crate) mod tests {
             let st1 = row[ProcessorBaseTableColumn::ST1.base_table_index()].to_string();
             let st2 = row[ProcessorBaseTableColumn::ST2.base_table_index()].to_string();
             let st3 = row[ProcessorBaseTableColumn::ST3.base_table_index()].to_string();
-            let ramp = row[ProcessorBaseTableColumn::RAMP.base_table_index()].to_string();
-            let ramv = row[ProcessorBaseTableColumn::RAMV.base_table_index()].to_string();
 
-            let prev_instruction =
-                row[ProcessorBaseTableColumn::PreviousInstruction.base_table_index()].value();
-            let pi = match Instruction::try_from(prev_instruction) {
-                Ok(AnInstruction::Halt) | Err(_) => "-".to_string(),
-                Ok(instr) => instr.name().to_string(),
-            };
             let (ci, nia) = ci_and_nia_from_master_table_row(row);
 
-            let interesting_cols = [clk, pi, ci, nia, st0, st1, st2, st3, ramp, ramv];
+            let interesting_cols = [clk, ci, nia, st0, st1, st2, st3];
             let interesting_cols = interesting_cols
                 .iter()
                 .map(|ff| format!("{:>10}", format!("{ff}")))
@@ -1269,23 +1260,25 @@ pub(crate) mod tests {
         }
         println!();
         println!("RAM Table:");
-        println!("| clk        | pi         | ramp       | ramv       | iord |");
+        println!("| clk        | type       | pointer    | value      | iord |");
         println!("|-----------:|:-----------|-----------:|-----------:|-----:|");
         for row in master_base_table.table(TableId::RamTable).rows() {
             let clk = row[RamBaseTableColumn::CLK.base_table_index()].to_string();
-            let ramp = row[RamBaseTableColumn::RAMP.base_table_index()].to_string();
-            let ramv = row[RamBaseTableColumn::RAMV.base_table_index()].to_string();
+            let ramp = row[RamBaseTableColumn::RamPointer.base_table_index()].to_string();
+            let ramv = row[RamBaseTableColumn::RamValue.base_table_index()].to_string();
             let iord =
                 row[RamBaseTableColumn::InverseOfRampDifference.base_table_index()].to_string();
 
-            let prev_instruction =
-                row[RamBaseTableColumn::PreviousInstruction.base_table_index()].value();
-            let pi = match Instruction::try_from(prev_instruction) {
-                Ok(AnInstruction::Halt) | Err(_) => "-".to_string(),
-                Ok(instr) => instr.name().to_string(),
-            };
+            let instruction_type =
+                match row[RamBaseTableColumn::InstructionType.base_table_index()] {
+                    ram_table::INSTRUCTION_TYPE_READ => "read",
+                    ram_table::INSTRUCTION_TYPE_WRITE => "write",
+                    ram_table::PADDING_INDICATOR => "pad",
+                    _ => "-",
+                }
+                .to_string();
 
-            let interesting_cols = [clk, pi, ramp, ramv, iord];
+            let interesting_cols = [clk, instruction_type, ramp, ramv, iord];
             let interesting_cols = interesting_cols
                 .iter()
                 .map(|ff| format!("{:>10}", format!("{ff}")))

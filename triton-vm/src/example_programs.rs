@@ -115,7 +115,7 @@ fn merkle_tree_authentication_path_verify() -> Program {
         read_io 1                                   // number of authentication paths to test
                                                     // stack: [num]
         mt_ap_verify:                               // proper program starts here
-        push 0 swap 1 write_mem pop 1               // store number of APs at RAM address 0
+        push 0 write_mem pop 1                      // store number of APs at RAM address 0
                                                     // stack: []
         read_io 5                                   // read Merkle root
                                                     // stack: [r4 r3 r2 r1 r0]
@@ -128,12 +128,14 @@ fn merkle_tree_authentication_path_verify() -> Program {
         // stack before: [* r4 r3 r2 r1 r0]
         // stack after:  [* r4 r3 r2 r1 r0]
         check_aps:
-        push 0 read_mem dup 0           // get number of APs left to check
-                                        // stack: [* r4 r3 r2 r1 r0 0 num_left num_left]
+        push 0 read_mem pop 1 dup 0     // get number of APs left to check
+                                        // stack: [* r4 r3 r2 r1 r0 num_left num_left]
         push 0 eq                       // see if there are authentication paths left
                                         // stack: [* r4 r3 r2 r1 r0 0 num_left num_left==0]
         skiz return                     // return if no authentication paths left
-        push -1 add write_mem pop 1     // decrease number of authentication paths left to check
+        push -1 add                     // decrease number of authentication paths left to check
+                                        // stack: [* r4 r3 r2 r1 r0 num_left-1]
+        push 0 write_mem pop 1          // write decreased number to address 0
                                         // stack: [* r4 r3 r2 r1 r0]
         call get_idx_and_leaf
                                         // stack: [* r4 r3 r2 r1 r0 idx l4 l3 l2 l1 l0]
@@ -180,63 +182,51 @@ fn verify_sudoku() -> Program {
         call write_sudoku_and_check_rows
         call check_columns
         call check_squares
-        push 0
-        read_mem
-        assert
+        push 0                            // _ 0
+        read_mem                          // _ flag 0
+        pop 1                             // _ flag
+        assert                            // _
         halt
 
         // For mapping legal Sudoku digits to distinct primes. Helps with checking consistency of
         // rows, columns, and boxes.
         initialize_primes:
-            push 1 push  2 write_mem
-            push 2 push  3 write_mem
-            push 3 push  5 write_mem
-            push 4 push  7 write_mem
-            push 5 push 11 write_mem
-            push 6 push 13 write_mem
-            push 7 push 17 write_mem
-            push 8 push 19 write_mem
-            push 9 push 23 write_mem
+            push  2 push 1 write_mem
+            push  3 push 2 write_mem
+            push  5 push 3 write_mem
+            push  7 push 4 write_mem
+            push 11 push 5 write_mem
+            push 13 push 6 write_mem
+            push 17 push 7 write_mem
+            push 19 push 8 write_mem
+            push 23 push 9 write_mem
             pop 5 pop 4
             return
 
         read_sudoku:
-            call read9
-            call read9
-            call read9
-            call read9
-            call read9
-            call read9
-            call read9
-            call read9
-            call read9
+            call read9 call read9 call read9
+            call read9 call read9 call read9
+            call read9 call read9 call read9
             return
 
         read9:
-            call read1
-            call read1
-            call read1
-            call read1
-            call read1
-            call read1
-            call read1
-            call read1
-            call read1
+            call read1 call read1 call read1
+            call read1 call read1 call read1
+            call read1 call read1 call read1
             return
 
         // Applies the mapping from legal Sudoku digits to distinct primes.
         read1:                            // _
             read_io 1                     // _ d
-            read_mem                      // _ d p
-            swap 1                        // _ p d
+            read_mem                      // _ p d
             pop 1                         // _ p
             return
 
         initialize_flag:
-            push 0
-            push 1
-            write_mem
-            pop 1
+            push 1                        // _ 1
+            push 0                        // _ 1 0
+            write_mem                     // _ 0
+            pop 1                         // _
             return
 
         write_sudoku_and_check_rows:      // row0 row1 row2 row3 row4 row5 row6 row7 row8
@@ -266,8 +256,7 @@ fn verify_sudoku() -> Program {
             call multiply_and_write       // (mem_addr+9) (s8·s7·s6·s5·s4·s3·s2·s1·s0)
             push 223092870                // (mem_addr+9) (s8·s7·s6·s5·s4·s3·s2·s1·s0) 223092870
             eq                            // (mem_addr+9) (s8·s7·s6·s5·s4·s3·s2·s1·s0==223092870)
-            skiz                          // (mem_addr+9)
-            return
+            skiz return                   // (mem_addr+9)
             push 0                        // (mem_addr+9) 0
             push 0                        // (mem_addr+9) 0 0
             write_mem                     // (mem_addr+9) 0
@@ -277,131 +266,64 @@ fn verify_sudoku() -> Program {
         multiply_and_write:               // s mem_addr acc
             dup 2                         // s mem_addr acc s
             mul                           // s mem_addr (acc·s)
-            swap 1                        // s (acc·s) mem_addr
-            push 1                        // s (acc·s) mem_addr 1
-            add                           // s (acc·s) (mem_addr+1)
-            swap 1                        // s (mem_addr+1) (acc·s)
-            swap 2                        // (acc·s) (mem_addr+1) s
+            swap 2                        // (acc·s) mem_addr s
+            swap 1                        // (acc·s) s mem_addr
+            push 1                        // (acc·s) s mem_addr 1
+            add                           // (acc·s) s (mem_addr+1)
             write_mem                     // (acc·s) (mem_addr+1)
             swap 1                        // (mem_addr+1) (acc·s)
             return
 
         check_columns:
-            push 1
-            call check_one_column
-            push 2
-            call check_one_column
-            push 3
-            call check_one_column
-            push 4
-            call check_one_column
-            push 5
-            call check_one_column
-            push 6
-            call check_one_column
-            push 7
-            call check_one_column
-            push 8
-            call check_one_column
-            push 9
-            call check_one_column
+            push 1 call check_one_column
+            push 2 call check_one_column
+            push 3 call check_one_column
+            push 4 call check_one_column
+            push 5 call check_one_column
+            push 6 call check_one_column
+            push 7 call check_one_column
+            push 8 call check_one_column
+            push 9 call check_one_column
             return
 
         check_one_column:
-            call get_column_element
-            call get_column_element
-            call get_column_element
-            call get_column_element
-            call get_column_element
-            call get_column_element
-            call get_column_element
-            call get_column_element
-            call get_column_element
+            call get_column_element call get_column_element call get_column_element
+            call get_column_element call get_column_element call get_column_element
+            call get_column_element call get_column_element call get_column_element
             pop 1
             call check_9_numbers
             return
 
         get_column_element:
-            push 9
-            add
-            read_mem
-            swap 1
+            push 9 add read_mem
             return
 
         check_squares:
-            push 10
-            call check_one_square
-            push 13
-            call check_one_square
-            push 16
-            call check_one_square
-            push 37
-            call check_one_square
-            push 40
-            call check_one_square
-            push 43
-            call check_one_square
-            push 64
-            call check_one_square
-            push 67
-            call check_one_square
-            push 70
-            call check_one_square
+            push 10 call check_one_square
+            push 13 call check_one_square
+            push 16 call check_one_square
+            push 37 call check_one_square
+            push 40 call check_one_square
+            push 43 call check_one_square
+            push 64 call check_one_square
+            push 67 call check_one_square
+            push 70 call check_one_square
             return
 
         check_one_square:
-            read_mem
-            swap 1
-            push 1
-            add
-            read_mem
-            swap 1
-            push 1
-            add
-            read_mem
-            swap 1
-            push 7
-            add
-            read_mem
-            swap 1
-            push 1
-            add
-            read_mem
-            swap 1
-            push 1
-            add
-            read_mem
-            swap 1
-            push 7
-            add
-            read_mem
-            swap 1
-            push 1
-            add
-            read_mem
-            swap 1
-            push 1
-            add
-            read_mem
-            swap 1
-            pop 1
+            read_mem push 1 add read_mem push 1 add read_mem push 7 add
+            read_mem push 1 add read_mem push 1 add read_mem push 7 add
+            read_mem push 1 add read_mem push 1 add read_mem pop 1
             call check_9_numbers
             return
 
         check_9_numbers:
-            mul
-            mul
-            mul
-            mul
-            mul
-            mul
-            mul
-            mul
+            mul mul mul
+            mul mul mul
+            mul mul
             // 223092870 = 2·3·5·7·11·13·17·19·23
-            push 223092870
-            eq
-            skiz
-            return
+            push 223092870 eq
+            skiz return
             push 0
             push 0
             write_mem
@@ -421,44 +343,45 @@ pub(crate) fn calculate_new_mmr_peaks_from_append_with_safe_lists() -> Program {
         push 17834064596403781463
         push 17484910066710486708
         push 6700794775299091393
-        push 6
+
         push 02628975953172153832
+        push 6
         write_mem
-        push 10
         push 01807330184488272967
+        push 10
         write_mem
-        push 12
         push 06595477061838874830
+        push 12
         write_mem
+        push 2
         push 1
-        push 2
         write_mem
-        push 11
         push 10897391716490043893
+        push 11
         write_mem
-        push 7
         push 01838589939278841373
+        push 7
         write_mem
-        push 8
         push 05057320540678713304
+        push 8
         write_mem
-        push 4
         push 00880730500905369322
+        push 4
         write_mem
-        push 5
         push 06845409670928290394
+        push 5
         write_mem
-        push 3
         push 04594396536654736100
+        push 3
         write_mem
-        push 2
         push 64
+        push 2
         write_mem
-        push 9
         push 05415221245149797169
+        push 9
         write_mem
-        push 0
         push 323
+        push 0
         write_mem
         pop 5 pop 5 pop 3
 
@@ -569,82 +492,56 @@ pub(crate) fn calculate_new_mmr_peaks_from_append_with_safe_lists() -> Program {
                     call tasm_arithmetic_u64_incr_carry
                 return
 
-            // Before: _ *list, elem{N - 1}, elem{N - 2}, ..., elem{0}
-            // After: _
+            // Before: _ *list, elem[4], elem[3], elem[2], elem[1], elem[0]
+            // After:  _
             tasm_list_safe_u32_push_digest:
-                dup 5
-                // stack : _  *list, elem{N - 1}, elem{N - 2}, ..., elem{0}, *list
+                dup 5       // _ *list elem[4] elem[3] elem[2] elem[1] elem[0] *list
+                read_mem    // _ *list elem[4] elem[3] elem[2] elem[1] elem[0] len *list
 
-                read_mem
-                // stack : _  *list, elem{N - 1}, elem{N - 2}, ..., elem{0}, *list, length
+                // Verify that length < capacity
+                push 1      // _ *list elem[4] elem[3] elem[2] elem[1] elem[0] len *list 1
+                add         // _ *list elem[4] elem[3] elem[2] elem[1] elem[0] len *list+1
 
-                // Verify that length < capacity (before increasing length by 1)
-                    swap 1
-                    push 1
-                    add
-                    // stack : _  *list, elem{N - 1}, elem{N - 2}, ..., elem{0}, length, (*list + 1)
+                read_mem    // _ *list elem[4] elem[3] elem[2] elem[1] elem[0] len capacity *list+1
+                swap 1      // _ *list elem[4] elem[3] elem[2] elem[1] elem[0] len *list+1 capacity
+                dup 2       // _ *list elem[4] elem[3] elem[2] elem[1] elem[0] len *list+1 capacity len
+                lt          // _ *list elem[4] elem[3] elem[2] elem[1] elem[0] len *list+1 capacity>len
+                assert      // _ *list elem[4] elem[3] elem[2] elem[1] elem[0] len *list+1
 
-                    read_mem
-                    // stack : _  *list, elem{N - 1}, elem{N - 2}, ..., elem{0}, length, (*list + 1), capacity
+                // Adjust ram pointer
+                swap 1      // _ *list elem[4] elem[3] elem[2] elem[1] elem[0] *list+1 len
+                push 5      // _ *list elem[4] elem[3] elem[2] elem[1] elem[0] *list+1 len 5
+                mul         // _ *list elem[4] elem[3] elem[2] elem[1] elem[0] *list+1 5·len
+                add         // _ *list elem[4] elem[3] elem[2] elem[1] elem[0] *list+5·len+1
+                push 1      // _ *list elem[4] elem[3] elem[2] elem[1] elem[0] *list+5·len+1 1
+                add         // _ *list elem[4] elem[3] elem[2] elem[1] elem[0] *list+5·len+2
 
-                    dup 2 lt
-                    // dup 2 eq
-                    // push 0 eq
-                    // stack : _  *list, elem{N - 1}, elem{N - 2}, ..., elem{0}, length, (*list + 1), capacity > length
+                // Write all elements
+                write_mem   // _ *list elem[4] elem[3] elem[2] elem[1] *list+5·len+2
+                push 1      // _ *list elem[4] elem[3] elem[2] elem[1] *list+5·len+2 1
+                add         // _ *list elem[4] elem[3] elem[2] elem[1] *list+5·len+3
+                write_mem   // _ *list elem[4] elem[3] elem[2] *list+5·len+3
+                push 1      // _ *list elem[4] elem[3] elem[2] *list+5·len+3 1
+                add         // _ *list elem[4] elem[3] elem[2] *list+5·len+4
+                write_mem   // _ *list elem[4] elem[3] *list+5·len+4
+                push 1      // _ *list elem[4] elem[3] *list+5·len+4 1
+                add         // _ *list elem[4] elem[3] *list+5·len+5
+                write_mem   // _ *list elem[4] *list+5·len+5
+                push 1      // _ *list elem[4] *list+5·len+5 1
+                add         // _ *list elem[4] *list+5·len+6
+                write_mem   // _ *list *list+5·len+6
 
-                    assert
-                    // stack : _  *list, elem{N - 1}, elem{N - 2}, ..., elem{0}, length, (*list + 1)
-
-                    swap 1
-
-                push 5
-                mul
-
-                // stack : _  *list, elem{N - 1}, elem{N - 2}, ..., elem{0}, (*list + 1), length * elem_size
-
-                add
-                push 1
-                add
-                // stack : _  *list, elem{N - 1}, elem{N - 2}, ..., elem{0}, (*list + length * elem_size + 2) -- top of stack is where we will store elements
-
-                swap 1
-                write_mem
-                push 1
-                add
-                swap 1
-                write_mem
-                push 1
-                add
-                swap 1
-                write_mem
-                push 1
-                add
-                swap 1
-                write_mem
-                push 1
-                add
-                swap 1
-                write_mem
-
-                // stack : _  *list, address
-
-                pop 1
-                // stack : _  *list
+                // Remove ram pointer
+                pop 1       // _ *list
 
                 // Increase length indicator by one
-                read_mem
-                // stack : _  *list, length
-
-                push 1
-                add
-                // stack : _  *list, length + 1
-
-                write_mem
-                // stack : _  *list
-
-                pop 1
-                // stack : _
-
+                read_mem    // _ len *list
+                swap 1      // _ *list len
+                push 1      // _ *list len 1
+                add         // _ *list len+1
+                swap 1      // _ len+1 *list
+                write_mem   // _ *list
+                pop 1       // _
                 return
 
             tasm_list_safe_u32_new_digest:
@@ -666,6 +563,7 @@ pub(crate) fn calculate_new_mmr_peaks_from_append_with_safe_lists() -> Program {
 
                 // Write initial length = 0 to `*list`
                 push 0
+                swap 1
                 write_mem
                 // _ capacity *list
 
@@ -674,7 +572,6 @@ pub(crate) fn calculate_new_mmr_peaks_from_append_with_safe_lists() -> Program {
                 add
                 // _ capacity (*list + 1)
 
-                swap 1
                 write_mem
                 // _ (*list + 1) capacity
 
@@ -718,7 +615,6 @@ pub(crate) fn calculate_new_mmr_peaks_from_append_with_safe_lists() -> Program {
                 read_mem
                 // Stack: *list list_length list_length (*list + 1) capacity
 
-                swap 1
                 pop 1
                 // Stack: *list list_length list_length capacity
 
@@ -730,6 +626,7 @@ pub(crate) fn calculate_new_mmr_peaks_from_append_with_safe_lists() -> Program {
                 assert
                 // Stack: *list list_length
 
+                swap 1
                 write_mem
                 // Stack: *list
 
@@ -781,7 +678,7 @@ pub(crate) fn calculate_new_mmr_peaks_from_append_with_safe_lists() -> Program {
                 // stack : _  *list, length
 
                 // Assert that length is not 0
-                dup 0
+                dup 1
                 push 0
                 eq
                 push 0
@@ -790,8 +687,7 @@ pub(crate) fn calculate_new_mmr_peaks_from_append_with_safe_lists() -> Program {
                 // stack : _  *list, length
 
                 // Decrease length value by one and write back to memory
-                swap 1
-                dup 1
+                dup 0
                 push -1
                 add
                 write_mem
@@ -809,23 +705,18 @@ pub(crate) fn calculate_new_mmr_peaks_from_append_with_safe_lists() -> Program {
                 // stack : _  address_for_last_element
 
                 read_mem
-                swap 1
                 push -1
                 add
                 read_mem
-                swap 1
                 push -1
                 add
                 read_mem
-                swap 1
                 push -1
                 add
                 read_mem
-                swap 1
                 push -1
                 add
                 read_mem
-                swap 1
 
                 // Stack: _  [elements], address_for_last_unread_element
 
@@ -879,7 +770,8 @@ pub(crate) fn calculate_new_mmr_peaks_from_append_with_safe_lists() -> Program {
             // After: _ *next_addr
             tasm_memory_dyn_malloc:
                 push 0  // _ size *free_pointer
-                read_mem                   // _ size *free_pointer *next_addr'
+                read_mem                   // _ size *next_addr' *free_pointer
+                swap 1                     // _ size *free_pointer *next_addr'
 
                 // add 1 iff `next_addr` was 0, i.e. uninitialized.
                 dup 0                      // _ size *free_pointer *next_addr' *next_addr'
@@ -910,6 +802,7 @@ pub(crate) fn calculate_new_mmr_peaks_from_append_with_safe_lists() -> Program {
                 swap 1                     // _ size *free_pointer *(next_addr + size) *next_addr
                 swap 3                     // _ *next_addr *free_pointer *(next_addr + size) size
                 pop 1                      // _ *next_addr *free_pointer *(next_addr + size)
+                swap 1
                 write_mem
                 pop 1                      // _ next_addr
                 return
