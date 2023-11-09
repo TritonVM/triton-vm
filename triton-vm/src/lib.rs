@@ -341,6 +341,8 @@ macro_rules! triton_asm {
     [dup $arg:literal; $num:expr] => { vec![ $crate::triton_instr!(dup $arg); $num ] };
     [swap $arg:literal; $num:expr] => { vec![ $crate::triton_instr!(swap $arg); $num ] };
     [call $arg:ident; $num:expr] => { vec![ $crate::triton_instr!(call $arg); $num ] };
+    [read_mem $arg:literal; $num:expr] => { vec![ $crate::triton_instr!(read_mem $arg); $num ] };
+    [write_mem $arg:literal; $num:expr] => { vec![ $crate::triton_instr!(write_mem $arg); $num ] };
     [read_io $arg:literal; $num:expr] => { vec![ $crate::triton_instr!(read_io $arg); $num ] };
     [write_io $arg:literal; $num:expr] => { vec![ $crate::triton_instr!(write_io $arg); $num ] };
     [$instr:ident; $num:expr] => { vec![ $crate::triton_instr!($instr); $num ] };
@@ -398,6 +400,16 @@ macro_rules! triton_instr {
     (call $arg:ident) => {{
         let argument = stringify!($arg).to_string();
         let instruction = $crate::instruction::AnInstruction::<String>::Call(argument);
+        $crate::instruction::LabelledInstruction::Instruction(instruction)
+    }};
+    (read_mem $arg:literal) => {{
+        let argument: $crate::op_stack::NumberOfWords = u32::try_into($arg).unwrap();
+        let instruction = $crate::instruction::AnInstruction::<String>::ReadMem(argument);
+        $crate::instruction::LabelledInstruction::Instruction(instruction)
+    }};
+    (write_mem $arg:literal) => {{
+        let argument: $crate::op_stack::NumberOfWords = u32::try_into($arg).unwrap();
+        let instruction = $crate::instruction::AnInstruction::<String>::WriteMem(argument);
         $crate::instruction::LabelledInstruction::Instruction(instruction)
     }};
     (read_io $arg:literal) => {{

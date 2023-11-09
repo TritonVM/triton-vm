@@ -54,6 +54,9 @@ impl RamTableCall {
             false => INSTRUCTION_TYPE_READ,
         };
         let num_values = self.values.len();
+        let pointers = (0..num_values)
+            .map(|offset| self.ram_pointer + BFieldElement::from(offset as u32))
+            .collect::<Array1<_>>();
         let values = Array1::from(self.values);
 
         let mut rows = Array2::zeros((num_values, BASE_WIDTH));
@@ -62,7 +65,7 @@ impl RamTableCall {
         rows.column_mut(InstructionType.base_table_index())
             .fill(instruction_type);
         rows.column_mut(RamPointer.base_table_index())
-            .fill(self.ram_pointer);
+            .assign(&pointers);
         rows.column_mut(RamValue.base_table_index()).assign(&values);
         rows
     }

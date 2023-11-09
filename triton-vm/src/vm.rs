@@ -137,7 +137,8 @@ impl<'pgm> VMState<'pgm> {
         };
 
         match current_instruction {
-            Pop(_) | Divine(_) | Dup(_) | Swap(_) | ReadIo(_) | WriteIo(_) => {
+            Pop(_) | Divine(_) | Dup(_) | Swap(_) | ReadMem(_) | WriteMem(_) | ReadIo(_)
+            | WriteIo(_) => {
                 let arg_val: u64 = current_instruction.arg().unwrap().value();
                 hvs[0] = BFieldElement::new(arg_val % 2);
                 hvs[1] = BFieldElement::new((arg_val >> 1) % 2);
@@ -202,8 +203,8 @@ impl<'pgm> VMState<'pgm> {
             Return => self.return_from_call()?,
             Recurse => self.recurse()?,
             Assert => self.assert()?,
-            ReadMem => self.read_mem()?,
-            WriteMem => self.write_mem()?,
+            ReadMem(n) => self.read_mem(n)?,
+            WriteMem(n) => self.write_mem(n)?,
             Hash => self.hash()?,
             SpongeInit => self.sponge_init(),
             SpongeAbsorb => self.sponge_absorb()?,
@@ -365,11 +366,17 @@ impl<'pgm> VMState<'pgm> {
         vec![]
     }
 
-    fn read_mem(&mut self) -> Result<Vec<CoProcessorCall>> {
-        let ram_pointer = self.op_stack.pop()?;
+    fn read_mem(&mut self, n: NumberOfWords) -> Result<Vec<CoProcessorCall>> {
+        let mut ram_pointer = self.op_stack.pop()?;
 
-        let ram_value = self.memory_get(&ram_pointer);
-        self.op_stack.push(ram_value);
+        let mut ram_values = vec![];
+        for _ in 0..n.num_words() {
+            ram_pointer.decrement();
+            let ram_value = self.memory_get(&ram_pointer);
+            self.op_stack.push(ram_value);
+            ram_values.push(ram_value);
+        }
+        ram_values.reverse();
 
         self.op_stack.push(ram_pointer);
 
@@ -377,29 +384,35 @@ impl<'pgm> VMState<'pgm> {
             clk: self.cycle_count,
             ram_pointer,
             is_write: false,
-            values: vec![ram_value],
+            values: ram_values,
         };
 
-        self.instruction_pointer += 1;
+        self.instruction_pointer += 2;
         Ok(vec![RamCall(ram_table_call)])
     }
 
-    fn write_mem(&mut self) -> Result<Vec<CoProcessorCall>> {
-        let ram_pointer = self.op_stack.pop()?;
+    fn write_mem(&mut self, n: NumberOfWords) -> Result<Vec<CoProcessorCall>> {
+        let mut ram_pointer = self.op_stack.pop()?;
 
-        let ram_value = self.op_stack.pop()?;
-        self.ram.insert(ram_pointer, ram_value);
+        let mut ram_values = vec![];
+        for _ in 0..n.num_words() {
+            let ram_value = self.op_stack.pop()?;
+            self.ram.insert(ram_pointer, ram_value);
+            ram_values.push(ram_value);
+            ram_pointer.increment();
+        }
 
         self.op_stack.push(ram_pointer);
 
+        ram_pointer -= n.into();
         let ram_table_call = RamTableCall {
             clk: self.cycle_count,
             ram_pointer,
             is_write: true,
-            values: vec![ram_value],
+            values: ram_values,
         };
 
-        self.instruction_pointer += 1;
+        self.instruction_pointer += 2;
         Ok(vec![RamCall(ram_table_call)])
     }
 

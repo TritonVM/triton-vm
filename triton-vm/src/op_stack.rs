@@ -9,6 +9,10 @@ use arbitrary::Arbitrary;
 use get_size::GetSize;
 use itertools::Itertools;
 use num_traits::Zero;
+use rand::distributions::Distribution;
+use rand::distributions::Standard;
+use rand::seq::IteratorRandom;
+use rand::Rng;
 use serde_derive::Deserialize;
 use serde_derive::Serialize;
 use strum::EnumCount;
@@ -242,6 +246,7 @@ impl UnderflowIO {
     Deserialize,
     EnumCount,
     EnumIter,
+    Arbitrary,
 )]
 pub enum OpStackElement {
     #[default]
@@ -283,6 +288,12 @@ impl OpStackElement {
             ST14 => 14,
             ST15 => 15,
         }
+    }
+}
+
+impl Distribution<OpStackElement> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> OpStackElement {
+        OpStackElement::iter().choose(rng).unwrap()
     }
 }
 
@@ -413,6 +424,7 @@ impl From<&OpStackElement> for BFieldElement {
     Deserialize,
     EnumCount,
     EnumIter,
+    Arbitrary,
 )]
 pub enum NumberOfWords {
     #[default]
@@ -448,10 +460,15 @@ impl NumberOfWords {
     }
 }
 
+impl Distribution<NumberOfWords> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> NumberOfWords {
+        NumberOfWords::iter().choose(rng).unwrap()
+    }
+}
+
 impl Display for NumberOfWords {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
-        let index = self.num_words();
-        write!(f, "{index}")
+        write!(f, "{}", self.num_words())
     }
 }
 
@@ -778,6 +795,13 @@ mod tests {
             .collect_vec();
         let expected_range = (1..=5).collect_vec();
         assert_eq!(computed_range, expected_range);
+    }
+
+    #[test]
+    fn number_of_legal_number_of_words_corresponds_to_distinct_number_of_number_of_words() {
+        let legal_values = NumberOfWords::legal_values();
+        let distinct_values = NumberOfWords::COUNT;
+        assert_eq!(distinct_values, legal_values.len());
     }
 
     #[test]

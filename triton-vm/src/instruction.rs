@@ -117,8 +117,8 @@ pub enum AnInstruction<Dest: PartialEq + Default> {
     Assert,
 
     // Memory access
-    ReadMem,
-    WriteMem,
+    ReadMem(NumberOfWords),
+    WriteMem(NumberOfWords),
 
     // Hashing-related
     Hash,
@@ -171,18 +171,18 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
             Return => 16,
             Recurse => 24,
             Assert => 10,
-            ReadMem => 32,
-            WriteMem => 18,
-            Hash => 26,
-            DivineSibling => 40,
-            AssertVector => 34,
-            SpongeInit => 48,
-            SpongeAbsorb => 42,
-            SpongeSqueeze => 56,
-            Add => 50,
-            Mul => 58,
-            Invert => 64,
-            Eq => 66,
+            ReadMem(_) => 41,
+            WriteMem(_) => 11,
+            Hash => 18,
+            DivineSibling => 32,
+            AssertVector => 26,
+            SpongeInit => 40,
+            SpongeAbsorb => 34,
+            SpongeSqueeze => 48,
+            Add => 42,
+            Mul => 50,
+            Invert => 56,
+            Eq => 58,
             Split => 4,
             Lt => 6,
             And => 14,
@@ -191,12 +191,12 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
             Pow => 30,
             DivMod => 20,
             PopCount => 28,
-            XxAdd => 74,
-            XxMul => 82,
-            XInvert => 72,
-            XbMul => 90,
-            ReadIo(_) => 41,
-            WriteIo(_) => 11,
+            XxAdd => 66,
+            XxMul => 74,
+            XInvert => 64,
+            XbMul => 82,
+            ReadIo(_) => 49,
+            WriteIo(_) => 19,
         }
     }
 
@@ -214,8 +214,8 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
             Return => "return",
             Recurse => "recurse",
             Assert => "assert",
-            ReadMem => "read_mem",
-            WriteMem => "write_mem",
+            ReadMem(_) => "read_mem",
+            WriteMem(_) => "write_mem",
             Hash => "hash",
             DivineSibling => "divine_sibling",
             AssertVector => "assert_vector",
@@ -253,6 +253,7 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
             Divine(_) => 2,
             Dup(_) | Swap(_) => 2,
             Call(_) => 2,
+            ReadMem(_) | WriteMem(_) => 2,
             ReadIo(_) | WriteIo(_) => 2,
             _ => 1,
         }
@@ -284,8 +285,8 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
             Return => Return,
             Recurse => Recurse,
             Assert => Assert,
-            ReadMem => ReadMem,
-            WriteMem => WriteMem,
+            ReadMem(x) => ReadMem(*x),
+            WriteMem(x) => WriteMem(*x),
             Hash => Hash,
             DivineSibling => DivineSibling,
             AssertVector => AssertVector,
@@ -339,8 +340,8 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
             Return => 0,
             Recurse => 0,
             Assert => -1,
-            ReadMem => 1,
-            WriteMem => -1,
+            ReadMem(n) => n.num_words() as i32,
+            WriteMem(n) => -(n.num_words() as i32),
             Hash => -5,
             DivineSibling => 5,
             AssertVector => -5,
@@ -389,6 +390,7 @@ impl<Dest: Display + PartialEq + Default> Display for AnInstruction<Dest> {
             Pop(arg) | Divine(arg) => write!(f, " {arg}"),
             Dup(arg) | Swap(arg) => write!(f, " {arg}"),
             Call(arg) => write!(f, " {arg}"),
+            ReadMem(arg) | WriteMem(arg) => write!(f, " {arg}"),
             ReadIo(arg) | WriteIo(arg) => write!(f, " {arg}"),
             _ => Ok(()),
         }
@@ -402,6 +404,7 @@ impl Instruction {
             Push(arg) | Call(arg) => Some(*arg),
             Pop(arg) | Divine(arg) => Some(arg.into()),
             Dup(arg) | Swap(arg) => Some(arg.into()),
+            ReadMem(arg) | WriteMem(arg) => Some(arg.into()),
             ReadIo(arg) | WriteIo(arg) => Some(arg.into()),
             _ => None,
         }
@@ -417,20 +420,15 @@ impl Instruction {
     /// if the argument is out of range.
     #[must_use]
     pub fn change_arg(&self, new_arg: BFieldElement) -> Option<Self> {
-        let instruction_with_infallible_substitution = match self {
-            Push(_) => Some(Push(new_arg)),
-            Call(_) => Some(Call(new_arg)),
-            _ => None,
-        };
-        if instruction_with_infallible_substitution.is_some() {
-            return instruction_with_infallible_substitution;
-        }
-
         let new_instruction = match self {
             Pop(_) => Some(Pop(new_arg.try_into().ok()?)),
+            Push(_) => Some(Push(new_arg)),
             Divine(_) => Some(Divine(new_arg.try_into().ok()?)),
             Dup(_) => Some(Dup(new_arg.value().try_into().ok()?)),
             Swap(_) => Some(Swap(new_arg.value().try_into().ok()?)),
+            Call(_) => Some(Call(new_arg)),
+            ReadMem(_) => Some(ReadMem(new_arg.try_into().ok()?)),
+            WriteMem(_) => Some(WriteMem(new_arg.try_into().ok()?)),
             ReadIo(_) => Some(ReadIo(new_arg.try_into().ok()?)),
             WriteIo(_) => Some(WriteIo(new_arg.try_into().ok()?)),
             _ => None,
@@ -494,8 +492,8 @@ const fn all_instructions_without_args() -> [AnInstruction<BFieldElement>; Instr
         Return,
         Recurse,
         Assert,
-        ReadMem,
-        WriteMem,
+        ReadMem(N1),
+        WriteMem(N1),
         Hash,
         DivineSibling,
         AssertVector,

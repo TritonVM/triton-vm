@@ -233,8 +233,8 @@ fn an_instruction(s: &str) -> ParseResult<AnInstruction<String>> {
     let control_flow = alt((nop, skiz, call, return_, recurse, halt));
 
     // Memory access
-    let read_mem = instruction("read_mem", ReadMem);
-    let write_mem = instruction("write_mem", WriteMem);
+    let read_mem = read_mem_instruction();
+    let write_mem = write_mem_instruction();
 
     let memory_access = alt((read_mem, write_mem));
 
@@ -397,6 +397,26 @@ fn call_instruction<'a>() -> impl Fn(&'a str) -> ParseResult<AnInstruction<Strin
         }
 
         Ok((s, Call(addr)))
+    }
+}
+
+fn read_mem_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>> {
+    move |s: &str| {
+        let (s, _) = token1("read_mem")(s)?; // require space after instruction name
+        let (s, arg) = number_of_words(s)?;
+        let (s, _) = comment_or_whitespace1(s)?;
+
+        Ok((s, ReadMem(arg)))
+    }
+}
+
+fn write_mem_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>> {
+    move |s: &str| {
+        let (s, _) = token1("write_mem")(s)?; // require space after instruction name
+        let (s, arg) = number_of_words(s)?;
+        let (s, _) = comment_or_whitespace1(s)?;
+
+        Ok((s, WriteMem(arg)))
     }
 }
 
@@ -569,6 +589,7 @@ pub(crate) mod tests {
     use rand::distributions::WeightedIndex;
     use rand::prelude::*;
     use rand::Rng;
+    use strum::EnumCount;
     use twenty_first::shared_math::digest::DIGEST_LENGTH;
 
     use LabelledInstruction::*;
@@ -666,7 +687,17 @@ pub(crate) mod tests {
         let mut rng = thread_rng();
 
         let difficult_instructions = vec![
-            "pop", "push", "divine", "dup", "swap", "skiz", "call", "read_io", "write_io",
+            "pop",
+            "push",
+            "divine",
+            "dup",
+            "swap",
+            "skiz",
+            "call",
+            "read_mem",
+            "write_mem",
+            "read_io",
+            "write_io",
         ];
         let simple_instructions = ALL_INSTRUCTION_NAMES
             .into_iter()
@@ -675,7 +706,7 @@ pub(crate) mod tests {
 
         let generators = [vec!["simple"], difficult_instructions].concat();
         // Test difficult instructions more frequently.
-        let weights = vec![simple_instructions.len(), 2, 2, 2, 6, 6, 2, 10, 2, 2];
+        let weights = vec![simple_instructions.len(), 2, 2, 2, 6, 6, 2, 10, 2, 2, 2, 2];
 
         assert_eq!(
             generators.len(),
@@ -692,28 +723,28 @@ pub(crate) mod tests {
             }
 
             "pop" => {
-                let arg: usize = rng.gen_range(1..=5);
+                let arg: NumberOfWords = rng.gen();
                 vec!["pop".to_string(), format!("{arg}")]
             }
 
             "push" => {
-                let max: i128 = BFieldElement::MAX as i128;
-                let arg: i128 = rng.gen_range(-max..max);
+                let max = BFieldElement::MAX as i128;
+                let arg = rng.gen_range(-max..max);
                 vec!["push".to_string(), format!("{arg}")]
             }
 
             "divine" => {
-                let arg: usize = rng.gen_range(1..=5);
+                let arg: NumberOfWords = rng.gen();
                 vec!["divine".to_string(), format!("{arg}")]
             }
 
             "dup" => {
-                let arg: usize = rng.gen_range(0..16);
+                let arg: OpStackElement = rng.gen();
                 vec!["dup".to_string(), format!("{arg}")]
             }
 
             "swap" => {
-                let arg: usize = rng.gen_range(1..16);
+                let arg: usize = rng.gen_range(1..OpStackElement::COUNT);
                 vec!["swap".to_string(), format!("{arg}")]
             }
 
@@ -728,13 +759,23 @@ pub(crate) mod tests {
                 vec!["call".to_string(), some_label]
             }
 
+            "read_mem" => {
+                let arg: NumberOfWords = rng.gen();
+                vec!["read_mem".to_string(), format!("{arg}")]
+            }
+
+            "write_mem" => {
+                let arg: NumberOfWords = rng.gen();
+                vec!["write_mem".to_string(), format!("{arg}")]
+            }
+
             "read_io" => {
-                let arg: usize = rng.gen_range(1..=5);
+                let arg: NumberOfWords = rng.gen();
                 vec!["read_io".to_string(), format!("{arg}")]
             }
 
             "write_io" => {
-                let arg: usize = rng.gen_range(1..=5);
+                let arg: NumberOfWords = rng.gen();
                 vec!["write_io".to_string(), format!("{arg}")]
             }
 

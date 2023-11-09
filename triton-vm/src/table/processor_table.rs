@@ -407,15 +407,14 @@ impl ProcessorTable {
         let previous_instruction = Self::instruction_from_row(previous_row)?;
 
         let instruction_type = match previous_instruction {
-            WriteMem => ram_table::INSTRUCTION_TYPE_WRITE,
-            ReadMem => ram_table::INSTRUCTION_TYPE_READ,
+            ReadMem(_) => ram_table::INSTRUCTION_TYPE_READ,
+            WriteMem(_) => ram_table::INSTRUCTION_TYPE_WRITE,
             _ => return None,
         };
 
-        // longer stack means relevant information is on top of stack, i.e., in stack registers
-        let row_with_longer_stack = match previous_instruction {
-            WriteMem => previous_row.view(),
-            ReadMem => current_row.view(),
+        let (row_with_shorter_stack, row_with_longer_stack) = match previous_instruction {
+            ReadMem(_) => (previous_row.view(), current_row.view()),
+            WriteMem(_) => (current_row.view(), previous_row.view()),
             _ => unreachable!(),
         };
         let op_stack_delta = previous_instruction
@@ -425,11 +424,11 @@ impl ProcessorTable {
         let mut factor = XFieldElement::one();
         for ram_pointer_offset in 0..op_stack_delta {
             let num_ram_pointers = 1;
-            let ram_value_index = num_ram_pointers + ram_pointer_offset;
+            let ram_value_index = ram_pointer_offset + num_ram_pointers;
             let ram_value_column = Self::op_stack_column_by_index(ram_value_index);
             let ram_value = row_with_longer_stack[ram_value_column.base_table_index()];
 
-            let ram_pointer = row_with_longer_stack[ST0.base_table_index()];
+            let ram_pointer = row_with_shorter_stack[ST0.base_table_index()];
             let offset = BFieldElement::new(ram_pointer_offset as u64);
             let offset_ram_pointer = ram_pointer + offset;
 
@@ -2363,8 +2362,8 @@ impl ExtProcessorTable {
             Return => ExtProcessorTable::instruction_return(circuit_builder),
             Recurse => ExtProcessorTable::instruction_recurse(circuit_builder),
             Assert => ExtProcessorTable::instruction_assert(circuit_builder),
-            ReadMem => ExtProcessorTable::instruction_read_mem(circuit_builder),
-            WriteMem => ExtProcessorTable::instruction_write_mem(circuit_builder),
+            ReadMem(_) => ExtProcessorTable::instruction_read_mem(circuit_builder),
+            WriteMem(_) => ExtProcessorTable::instruction_write_mem(circuit_builder),
             Hash => ExtProcessorTable::instruction_hash(circuit_builder),
             DivineSibling => ExtProcessorTable::instruction_divine_sibling(circuit_builder),
             AssertVector => ExtProcessorTable::instruction_assert_vector(circuit_builder),
@@ -3690,10 +3689,16 @@ pub(crate) mod tests {
 
     #[test]
     fn transition_constraints_for_instruction_read_mem() {
-        let programs = [triton_program!(push 5 push 3 write_mem read_mem halt)];
-        let test_rows = programs.map(|program| test_row_from_program(program, 3));
+        let programs = [
+            triton_program!(read_mem 1 halt),
+            triton_program!(read_mem 2 halt),
+            triton_program!(read_mem 3 halt),
+            triton_program!(read_mem 4 halt),
+            triton_program!(read_mem 5 halt),
+        ];
+        let test_rows = programs.map(|program| test_row_from_program(program, 0));
         let debug_info = TestRowsDebugInfo {
-            instruction: ReadMem,
+            instruction: ReadMem(N1),
             debug_cols_curr_row: vec![ST0, ST1],
             debug_cols_next_row: vec![ST0, ST1],
         };
@@ -3702,10 +3707,17 @@ pub(crate) mod tests {
 
     #[test]
     fn transition_constraints_for_instruction_write_mem() {
-        let programs = [triton_program!(push 5 push 3 write_mem read_mem halt)];
-        let test_rows = programs.map(|program| test_row_from_program(program, 2));
+        let push_10_elements = triton_asm![push 2; 10];
+        let programs = [
+            triton_program!({&push_10_elements} write_mem 1 halt),
+            triton_program!({&push_10_elements} write_mem 2 halt),
+            triton_program!({&push_10_elements} write_mem 3 halt),
+            triton_program!({&push_10_elements} write_mem 4 halt),
+            triton_program!({&push_10_elements} write_mem 5 halt),
+        ];
+        let test_rows = programs.map(|program| test_row_from_program(program, 10));
         let debug_info = TestRowsDebugInfo {
-            instruction: WriteMem,
+            instruction: WriteMem(N1),
             debug_cols_curr_row: vec![ST0, ST1],
             debug_cols_next_row: vec![ST0, ST1],
         };
