@@ -3833,13 +3833,20 @@ pub(crate) mod tests {
     #[test]
     fn transition_constraints_for_instruction_read_mem() {
         let programs = [
-            triton_program!(read_mem 1 halt),
-            triton_program!(read_mem 2 halt),
-            triton_program!(read_mem 3 halt),
-            triton_program!(read_mem 4 halt),
-            triton_program!(read_mem 5 halt),
+            triton_program!(push 1 read_mem 1 push 0 eq assert assert halt),
+            triton_program!(push 2 read_mem 2 push 0 eq assert swap 1 push 2 eq assert halt),
+            triton_program!(push 3 read_mem 3 push 0 eq assert swap 2 push 3 eq assert halt),
+            triton_program!(push 4 read_mem 4 push 0 eq assert swap 3 push 4 eq assert halt),
+            triton_program!(push 5 read_mem 5 push 0 eq assert swap 4 push 5 eq assert halt),
         ];
-        let test_rows = programs.map(|program| test_row_from_program(program, 0));
+        let initial_ram = (0..5).map(|i| (i, i + 1)).collect();
+        let non_determinism = NonDeterminism::default().with_ram(initial_ram);
+        let programs_with_input = programs.map(|program| ProgramAndInput {
+            program,
+            public_input: vec![],
+            non_determinism: non_determinism.clone(),
+        });
+        let test_rows = programs_with_input.map(|p_w_i| test_row_from_program_with_input(p_w_i, 1));
         let debug_info = TestRowsDebugInfo {
             instruction: ReadMem(N1),
             debug_cols_curr_row: vec![ST0, ST1],

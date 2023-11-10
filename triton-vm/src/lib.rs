@@ -91,20 +91,20 @@
 //!     halt
 //!
 //!     sum_of_squares_secret_in:
-//!         divine 1 dup 0 mul            // s₁²
-//!         divine 1 dup 0 mul add        // s₁²+s₂²
-//!         divine 1 dup 0 mul add        // s₁²+s₂²+s₃²
+//!         divine 1 dup 0 mul          // s₁²
+//!         divine 1 dup 0 mul add      // s₁²+s₂²
+//!         divine 1 dup 0 mul add      // s₁²+s₂²+s₃²
 //!         return
 //!
 //!     sum_of_squares_ram:
-//!         push 17                     // 17
-//!         read_mem                    // 17 s₄
-//!         dup 0 mul                   // 17 s₄²
-//!         swap 1 pop 1                // s₄²
-//!         push 42                     // s₄² 42
-//!         read_mem                    // s₄² 42 s₅
-//!         dup 0 mul                   // s₄² 42 s₅²
-//!         swap 1 pop 1                // s₄² s₅²
+//!         push 18                     // 18
+//!         read_mem 1                  // s₄ 17
+//!         pop 1                       // s₄
+//!         dup 0 mul                   // s₄²
+//!         push 43                     // s₄² 43
+//!         read_mem 1                  // s₄² s₅ 42
+//!         pop 1                       // s₄² s₅
+//!         dup 0 mul                   // s₄² s₅²
 //!         add                         // s₄²+s₅²
 //!         return
 //! );
@@ -618,8 +618,8 @@ mod tests {
     #[test]
     fn lib_use_initial_ram() {
         let program = triton_program!(
-            push 51 read_mem pop 1
-            push 42 read_mem pop 1
+            push 52 read_mem 1 pop 1
+            push 43 read_mem 1 pop 1
             mul
             write_io 1 halt
         );

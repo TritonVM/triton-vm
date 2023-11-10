@@ -12,6 +12,7 @@ use ndarray::Array1;
 use num_traits::One;
 use num_traits::Zero;
 use twenty_first::shared_math::b_field_element::BFieldElement;
+use twenty_first::shared_math::b_field_element::BFIELD_ZERO;
 use twenty_first::shared_math::digest::Digest;
 use twenty_first::shared_math::tip5;
 use twenty_first::shared_math::tip5::*;
@@ -372,7 +373,7 @@ impl<'pgm> VMState<'pgm> {
         let mut ram_values = vec![];
         for _ in 0..n.num_words() {
             ram_pointer.decrement();
-            let ram_value = self.memory_get(&ram_pointer);
+            let ram_value = self.ram.get(&ram_pointer).copied().unwrap_or(BFIELD_ZERO);
             self.op_stack.push(ram_value);
             ram_values.push(ram_value);
         }
@@ -847,11 +848,6 @@ impl<'pgm> VMState<'pgm> {
         maybe_jump_stack_element.ok_or(anyhow!(JumpStackIsEmpty))
     }
 
-    fn memory_get(&self, memory_address: &BFieldElement) -> BFieldElement {
-        let maybe_memory_value = self.ram.get(memory_address).copied();
-        maybe_memory_value.unwrap_or_else(BFieldElement::zero)
-    }
-
     fn pop_secret_digest(&mut self) -> Result<[BFieldElement; DIGEST_LENGTH]> {
         let digest = self
             .secret_digests
@@ -1083,9 +1079,14 @@ pub(crate) mod tests {
     }
 
     pub(crate) fn test_program_for_write_mem_read_mem() -> ProgramAndInput {
-        ProgramAndInput::without_input(
-            triton_program!(push 2 push 1 write_mem push 0 pop 1 read_mem assert halt),
-        )
+        ProgramAndInput::without_input(triton_program! {
+            push 3 push 1 push 2    // _ 3 1 2
+            push 7                  // _ 3 1 2 7
+            write_mem 3             // _ 10
+            read_mem 2              // _ 3 1 8
+            pop 1                   // _ 3 1
+            assert halt             // _ 3
+        })
     }
 
     pub(crate) fn test_program_for_hash() -> ProgramAndInput {
@@ -1636,15 +1637,14 @@ pub(crate) mod tests {
         // Not all addresses are read to have different access patterns:
         // - Some addresses are read before written to.
         // - Other addresses are written to before read.
-        for memory_address in memory_addresses.iter().take(num_memory_accesses / 4) {
-            instructions.extend(triton_asm!(push {memory_address} read_mem pop 1 push 0 eq assert));
+        for address in memory_addresses.iter().take(num_memory_accesses / 4) {
+            let address = address.value() + 1;
+            instructions.extend(triton_asm!(push {address} read_mem 1 pop 1 push 0 eq assert));
         }
 
         // Write everything to RAM.
-        for (memory_address, memory_value) in memory_addresses.iter().zip_eq(memory_values.iter()) {
-            instructions.extend(triton_asm!(
-                push {memory_value} push {memory_address} write_mem pop 1
-            ));
+        for (address, value) in memory_addresses.iter().zip_eq(memory_values.iter()) {
+            instructions.extend(triton_asm!(push {value} push {address} write_mem 1 pop 1));
         }
 
         // Read back in random order and check that the values did not change.
@@ -1654,11 +1654,10 @@ pub(crate) mod tests {
             reading_permutation.swap(i, j);
         }
         for idx in reading_permutation {
-            let memory_address = memory_addresses[idx];
-            let memory_value = memory_values[idx];
-            instructions.extend(triton_asm!(
-                push {memory_address} read_mem pop 1 push {memory_value} eq assert
-            ));
+            let address = memory_addresses[idx].value() + 1;
+            let value = memory_values[idx];
+            instructions
+                .extend(triton_asm!(push {address} read_mem 1 pop 1 push {value} eq assert));
         }
 
         // Overwrite half the values with new ones.
@@ -1668,12 +1667,11 @@ pub(crate) mod tests {
             writing_permutation.swap(i, j);
         }
         for idx in 0..num_memory_accesses / 2 {
-            let memory_address = memory_addresses[writing_permutation[idx]];
+            let address = memory_addresses[writing_permutation[idx]];
             let new_memory_value = rng.gen();
             memory_values[writing_permutation[idx]] = new_memory_value;
-            instructions.extend(triton_asm!(
-                push {new_memory_value} push {memory_address} write_mem pop 1
-            ));
+            instructions
+                .extend(triton_asm!(push {new_memory_value} push {address} write_mem 1 pop 1));
         }
 
         // Read back all, i.e., unchanged and overwritten values in (different from before) random
@@ -1684,11 +1682,10 @@ pub(crate) mod tests {
             reading_permutation.swap(i, j);
         }
         for idx in reading_permutation {
-            let memory_address = memory_addresses[idx];
-            let memory_value = memory_values[idx];
-            instructions.extend(triton_asm!(
-                push {memory_address} read_mem pop 1 push {memory_value} eq assert
-            ));
+            let address = memory_addresses[idx].value() + 1;
+            let value = memory_values[idx];
+            instructions
+                .extend(triton_asm!(push {address} read_mem 1 pop 1 push {value} eq assert));
         }
 
         let program = triton_program! { { &instructions } halt };
@@ -1943,13 +1940,13 @@ pub(crate) mod tests {
     #[test]
     fn run_tvm_basic_ram_read_write() {
         let program = triton_program!(
-            push  6 push  5 write_mem pop 1
-            push 16 push 15 write_mem pop 1
-            push  5         read_mem  pop 2
-            push 15         read_mem  pop 2
-            push  7 push  5 write_mem pop 1
-            push 15         read_mem         // _ 16 15
-            push  5         read_mem         // _ 16 15 7 5
+            push  8 push  5 write_mem 1 pop 1   // write  8 to address  5
+            push 18 push 15 write_mem 1 pop 1   // write 18 to address 15
+            push  6         read_mem  1 pop 2   // read from address  5
+            push 16         read_mem  1 pop 2   // read from address 15
+            push  7 push  5 write_mem 1 pop 1   // write  7 to address  5
+            push 16         read_mem  1         // _ 18 15
+            push  6         read_mem  1         // _ 18 15 7 5
             halt
         );
 
@@ -1959,7 +1956,7 @@ pub(crate) mod tests {
         assert_eq!(BFieldElement::new(5), terminal_state.op_stack.peek_at(ST0));
         assert_eq!(BFieldElement::new(7), terminal_state.op_stack.peek_at(ST1));
         assert_eq!(BFieldElement::new(15), terminal_state.op_stack.peek_at(ST2));
-        assert_eq!(BFieldElement::new(16), terminal_state.op_stack.peek_at(ST3));
+        assert_eq!(BFieldElement::new(18), terminal_state.op_stack.peek_at(ST3));
     }
 
     #[test]
@@ -1969,18 +1966,20 @@ pub(crate) mod tests {
                         //       ↓
                         // _ 0 0 |
             push 0      // _ 0 0 | 0
-            write_mem   // _ 0 0 |
-            push 5      // _ 0 0 | 5
-            swap 1      // _ 0 5 | 0
-            push 3      // _ 0 5 | 0 3
-            swap 1      // _ 0 5 | 3 0
+            write_mem 1 // _ 0 1 |
+            push 5      // _ 0 1 | 5
+            swap 1      // _ 0 5 | 1
+            push 3      // _ 0 5 | 1 3
+            swap 1      // _ 0 5 | 3 1
             pop 1       // _ 0 5 | 3
-            write_mem   // _ 0 3 |
-            read_mem    // _ 0 5 | 3
+            write_mem 1 // _ 0 4 |
+            read_mem 1  // _ 0 5 | 3
             swap 2      // _ 3 5 | 0
             pop 1       // _ 3 5 |
             swap 1      // _ 5 3 |
-            read_mem    // _ 5 5 | 3
+            push 1      // _ 5 3 | 1
+            add         // _ 5 4 |
+            read_mem 1  // _ 5 5 | 3
             halt
         );
 
@@ -2089,14 +2088,14 @@ pub(crate) mod tests {
 
     #[test]
     fn read_mem_unitialized() {
-        let program = triton_program!(read_mem halt);
+        let program = triton_program!(read_mem 3 halt);
         let (aet, _) = program.trace_execution([].into(), [].into()).unwrap();
         assert_eq!(2, aet.processor_trace.nrows());
     }
 
     #[test]
     fn read_non_deterministically_initialized_ram_at_address_0() {
-        let program = triton_program!(read_mem swap 1 write_io 1 halt);
+        let program = triton_program!(push 1 read_mem 1 pop 1 write_io 1 halt);
 
         let mut initial_ram = HashMap::new();
         initial_ram.insert(0_u64.into(), 42_u64.into());
@@ -2118,8 +2117,8 @@ pub(crate) mod tests {
         #[strategy(arb())] value: BFieldElement,
     ) {
         let program = triton_program!(
-            read_mem swap 1 write_io 1
-            push {address} read_mem pop 1 write_io 1
+            read_mem 1 swap 1 write_io 1
+            push {address.value() + 1} read_mem 1 pop 1 write_io 1
             halt
         );
 
