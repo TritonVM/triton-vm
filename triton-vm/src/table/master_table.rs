@@ -330,6 +330,7 @@ pub struct MasterBaseTable {
     program_table_len: usize,
     main_execution_len: usize,
     op_stack_table_len: usize,
+    ram_table_len: usize,
     hash_coprocessor_execution_len: usize,
     cascade_table_len: usize,
     u32_coprocesor_execution_len: usize,
@@ -591,6 +592,7 @@ impl MasterBaseTable {
             program_table_len: aet.program_table_length(),
             main_execution_len: aet.processor_table_length(),
             op_stack_table_len: aet.op_stack_table_length(),
+            ram_table_len: aet.ram_table_length(),
             hash_coprocessor_execution_len: aet.hash_table_length(),
             cascade_table_len: aet.cascade_table_length(),
             u32_coprocesor_execution_len: aet.u32_table_length(),
@@ -725,14 +727,13 @@ impl MasterBaseTable {
 
     fn all_table_lengths(&self) -> [usize; NUM_TABLES_WITHOUT_DEGREE_LOWERING] {
         let processor_table_len = self.main_execution_len;
-        let ram_table_len = self.main_execution_len;
         let jump_stack_table_len = self.main_execution_len;
 
         [
             self.program_table_len,
             processor_table_len,
             self.op_stack_table_len,
-            ram_table_len,
+            self.ram_table_len,
             jump_stack_table_len,
             self.hash_coprocessor_execution_len,
             self.cascade_table_len,

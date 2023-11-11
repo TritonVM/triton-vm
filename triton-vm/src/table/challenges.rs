@@ -103,9 +103,9 @@ pub enum ChallengeId {
     OpStackFirstUnderflowElementWeight,
 
     RamClkWeight,
-    RamRampWeight,
-    RamRamvWeight,
-    RamPreviousInstructionWeight,
+    RamPointerWeight,
+    RamValueWeight,
+    RamInstructionTypeWeight,
 
     JumpStackClkWeight,
     JumpStackCiWeight,

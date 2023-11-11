@@ -115,7 +115,7 @@ fn merkle_tree_authentication_path_verify() -> Program {
         read_io 1                                   // number of authentication paths to test
                                                     // stack: [num]
         mt_ap_verify:                               // proper program starts here
-        push 0 swap 1 write_mem pop 1               // store number of APs at RAM address 0
+        push 0 write_mem 1 pop 1                    // store number of APs at RAM address 0
                                                     // stack: []
         read_io 5                                   // read Merkle root
                                                     // stack: [r4 r3 r2 r1 r0]
@@ -128,12 +128,14 @@ fn merkle_tree_authentication_path_verify() -> Program {
         // stack before: [* r4 r3 r2 r1 r0]
         // stack after:  [* r4 r3 r2 r1 r0]
         check_aps:
-        push 0 read_mem dup 0           // get number of APs left to check
-                                        // stack: [* r4 r3 r2 r1 r0 0 num_left num_left]
+        push 1 read_mem 1 pop 1 dup 0   // get number of APs left to check
+                                        // stack: [* r4 r3 r2 r1 r0 num_left num_left]
         push 0 eq                       // see if there are authentication paths left
                                         // stack: [* r4 r3 r2 r1 r0 0 num_left num_left==0]
         skiz return                     // return if no authentication paths left
-        push -1 add write_mem pop 1     // decrease number of authentication paths left to check
+        push -1 add                     // decrease number of authentication paths left to check
+                                        // stack: [* r4 r3 r2 r1 r0 num_left-1]
+        push 0 write_mem 1 pop 1        // write decreased number to address 0
                                         // stack: [* r4 r3 r2 r1 r0]
         call get_idx_and_leaf
                                         // stack: [* r4 r3 r2 r1 r0 idx l4 l3 l2 l1 l0]
@@ -173,75 +175,87 @@ fn merkle_tree_authentication_path_verify() -> Program {
 }
 
 fn verify_sudoku() -> Program {
+    // RAM layout:
+    // 0..=8: primes for mapping digits 1..=9
+    // 9: flag for whether the Sudoku is valid
+    // 10..=90: the Sudoku grid
+    //
+    // 10 11 12  13 14 15  16 17 18
+    // 19 20 21  22 23 24  25 26 27
+    // 28 29 30  31 32 33  34 35 36
+    //
+    // 37 38 39  40 41 42  43 44 45
+    // 46 47 48  49 50 51  52 53 54
+    // 55 56 57  58 59 60  61 62 63
+    //
+    // 64 65 66  67 68 69  70 71 72
+    // 73 74 75  76 77 78  79 80 81
+    // 82 83 84  85 86 87  88 89 90
+
     triton_program!(
+        call initialize_flag
         call initialize_primes
         call read_sudoku
-        call initialize_flag
         call write_sudoku_and_check_rows
         call check_columns
         call check_squares
-        push 0
-        read_mem
-        assert
-        halt
+        call assert_flag
+
+        // For checking whether the Sudoku is valid. Initially `true`, set to `false` if any
+        // inconsistency is found.
+        initialize_flag:
+            push 1                        // _ 1
+            push 9                        // _ 1 9
+            write_mem 1                   // _ 10
+            pop 1                         // _
+            return
+
+        invalidate_flag:
+            push 0                        // _ 0
+            push 9                        // _ 0 9
+            write_mem 1                   // _ 10
+            pop 1                         // _
+            return
+
+        assert_flag:
+            push 10                       // _ 10
+            read_mem 1                    // _ flag 9
+            pop 1                         // _ flag
+            assert                        // _
+            halt
 
         // For mapping legal Sudoku digits to distinct primes. Helps with checking consistency of
         // rows, columns, and boxes.
         initialize_primes:
-            push 1 push  2 write_mem
-            push 2 push  3 write_mem
-            push 3 push  5 write_mem
-            push 4 push  7 write_mem
-            push 5 push 11 write_mem
-            push 6 push 13 write_mem
-            push 7 push 17 write_mem
-            push 8 push 19 write_mem
-            push 9 push 23 write_mem
-            pop 5 pop 4
+            push 23 push 19 push 17
+            push 13 push 11 push  7
+            push  5 push  3 push  2
+            push 0 write_mem 5 write_mem 4
+            pop 1
             return
 
         read_sudoku:
-            call read9
-            call read9
-            call read9
-            call read9
-            call read9
-            call read9
-            call read9
-            call read9
-            call read9
+            call read9 call read9 call read9
+            call read9 call read9 call read9
+            call read9 call read9 call read9
             return
 
         read9:
-            call read1
-            call read1
-            call read1
-            call read1
-            call read1
-            call read1
-            call read1
-            call read1
-            call read1
+            call read1 call read1 call read1
+            call read1 call read1 call read1
+            call read1 call read1 call read1
             return
 
         // Applies the mapping from legal Sudoku digits to distinct primes.
         read1:                            // _
             read_io 1                     // _ d
-            read_mem                      // _ d p
-            swap 1                        // _ p d
+            read_mem 1                    // _ p d-1
             pop 1                         // _ p
             return
 
-        initialize_flag:
-            push 0
-            push 1
-            write_mem
-            pop 1
-            return
-
         write_sudoku_and_check_rows:      // row0 row1 row2 row3 row4 row5 row6 row7 row8
-            push 9                        // row0 row1 row2 row3 row4 row5 row6 row7 row8 9
-            call write_and_check_one_row  // row0 row1 row2 row3 row4 row5 row6 row7 18
+            push 10                       // row0 row1 row2 row3 row4 row5 row6 row7 row8 10
+            call write_and_check_one_row  // row0 row1 row2 row3 row4 row5 row6 row7 19
             call write_and_check_one_row  // row0 row1 row2 row3 row4 row5 row6 27
             call write_and_check_one_row  // row0 row1 row2 row3 row4 row5 36
             call write_and_check_one_row  // row0 row1 row2 row3 row4 45
@@ -253,159 +267,60 @@ fn verify_sudoku() -> Program {
             pop 1                         // ⊥
             return
 
-        write_and_check_one_row:          // s0 s1 s2 s3 s4 s5 s6 s7 s8 mem_addr
-            push 1                        // s0 s1 s2 s3 s4 s5 s6 s7 s8 mem_addr 1
-            call multiply_and_write       // s0 s1 s2 s3 s4 s5 s6 s7 (mem_addr+1) s8
-            call multiply_and_write       // s0 s1 s2 s3 s4 s5 s6 (mem_addr+2) (s8·s7)
-            call multiply_and_write       // s0 s1 s2 s3 s4 s5 (mem_addr+3) (s8·s7·s6)
-            call multiply_and_write       // s0 s1 s2 s3 s4 (mem_addr+4) (s8·s7·s6·s5)
-            call multiply_and_write       // s0 s1 s2 s3 (mem_addr+5) (s8·s7·s6·s5·s4)
-            call multiply_and_write       // s0 s1 s2 (mem_addr+6) (s8·s7·s6·s5·s4·s3)
-            call multiply_and_write       // s0 s1 (mem_addr+7) (s8·s7·s6·s5·s4·s3·s2)
-            call multiply_and_write       // s0 (mem_addr+8) (s8·s7·s6·s5·s4·s3·s2·s1)
-            call multiply_and_write       // (mem_addr+9) (s8·s7·s6·s5·s4·s3·s2·s1·s0)
-            push 223092870                // (mem_addr+9) (s8·s7·s6·s5·s4·s3·s2·s1·s0) 223092870
-            eq                            // (mem_addr+9) (s8·s7·s6·s5·s4·s3·s2·s1·s0==223092870)
-            skiz                          // (mem_addr+9)
-            return
-            push 0                        // (mem_addr+9) 0
-            push 0                        // (mem_addr+9) 0 0
-            write_mem                     // (mem_addr+9) 0
-            pop 1                         // (mem_addr+9)
-            return
-
-        multiply_and_write:               // s mem_addr acc
-            dup 2                         // s mem_addr acc s
-            mul                           // s mem_addr (acc·s)
-            swap 1                        // s (acc·s) mem_addr
-            push 1                        // s (acc·s) mem_addr 1
-            add                           // s (acc·s) (mem_addr+1)
-            swap 1                        // s (mem_addr+1) (acc·s)
-            swap 2                        // (acc·s) (mem_addr+1) s
-            write_mem                     // (acc·s) (mem_addr+1)
-            swap 1                        // (mem_addr+1) (acc·s)
+        write_and_check_one_row:          // row addr
+            dup 9 dup 9 dup 9
+            dup 9 dup 9 dup 9
+            dup 9 dup 9 dup 9             // row addr row
+            call check_9_numbers          // row addr
+            write_mem 5 write_mem 4       // addr+9
             return
 
         check_columns:
-            push 1
-            call check_one_column
-            push 2
-            call check_one_column
-            push 3
-            call check_one_column
-            push 4
-            call check_one_column
-            push 5
-            call check_one_column
-            push 6
-            call check_one_column
-            push 7
-            call check_one_column
-            push 8
-            call check_one_column
-            push 9
-            call check_one_column
+            push 83 call check_one_column
+            push 84 call check_one_column
+            push 85 call check_one_column
+            push 86 call check_one_column
+            push 87 call check_one_column
+            push 88 call check_one_column
+            push 89 call check_one_column
+            push 90 call check_one_column
+            push 91 call check_one_column
             return
 
         check_one_column:
-            call get_column_element
-            call get_column_element
-            call get_column_element
-            call get_column_element
-            call get_column_element
-            call get_column_element
-            call get_column_element
-            call get_column_element
-            call get_column_element
-            pop 1
+            read_mem 1 push -8 add read_mem 1 push -8 add read_mem 1 push -8 add
+            read_mem 1 push -8 add read_mem 1 push -8 add read_mem 1 push -8 add
+            read_mem 1 push -8 add read_mem 1 push -8 add read_mem 1 pop 1
             call check_9_numbers
             return
 
-        get_column_element:
-            push 9
-            add
-            read_mem
-            swap 1
-            return
-
         check_squares:
-            push 10
-            call check_one_square
-            push 13
-            call check_one_square
-            push 16
-            call check_one_square
-            push 37
-            call check_one_square
-            push 40
-            call check_one_square
-            push 43
-            call check_one_square
-            push 64
-            call check_one_square
-            push 67
-            call check_one_square
-            push 70
-            call check_one_square
+            push 31 call check_one_square
+            push 34 call check_one_square
+            push 37 call check_one_square
+            push 58 call check_one_square
+            push 61 call check_one_square
+            push 64 call check_one_square
+            push 85 call check_one_square
+            push 88 call check_one_square
+            push 91 call check_one_square
             return
 
         check_one_square:
-            read_mem
-            swap 1
-            push 1
-            add
-            read_mem
-            swap 1
-            push 1
-            add
-            read_mem
-            swap 1
-            push 7
-            add
-            read_mem
-            swap 1
-            push 1
-            add
-            read_mem
-            swap 1
-            push 1
-            add
-            read_mem
-            swap 1
-            push 7
-            add
-            read_mem
-            swap 1
-            push 1
-            add
-            read_mem
-            swap 1
-            push 1
-            add
-            read_mem
-            swap 1
-            pop 1
+            read_mem 3 push -6 add
+            read_mem 3 push -6 add
+            read_mem 3 pop 1
             call check_9_numbers
             return
 
         check_9_numbers:
-            mul
-            mul
-            mul
-            mul
-            mul
-            mul
-            mul
-            mul
+            mul mul mul
+            mul mul mul
+            mul mul
             // 223092870 = 2·3·5·7·11·13·17·19·23
-            push 223092870
-            eq
-            skiz
-            return
-            push 0
-            push 0
-            write_mem
-            pop 1
+            push 223092870 eq
+            skiz return
+            call invalidate_flag
             return
     )
 }
@@ -413,518 +328,390 @@ fn verify_sudoku() -> Program {
 pub(crate) fn calculate_new_mmr_peaks_from_append_with_safe_lists() -> Program {
     triton_program!(
         // Stack and memory setup
-        push 0
-        push 3
-        push 1
-        push 457470286889025784
-        push 4071246825597671119
+        push 0                          // _ 0
+        push 3                          // _ 0 3
+        push 1                          // _ 0 3 1
+
+        push 00457470286889025784
+        push 04071246825597671119
         push 17834064596403781463
         push 17484910066710486708
-        push 6700794775299091393
-        push 6
-        push 02628975953172153832
-        write_mem
-        push 10
-        push 01807330184488272967
-        write_mem
-        push 12
+        push 06700794775299091393       // _ 0 3 1 [digest]
+
         push 06595477061838874830
-        write_mem
-        push 1
-        push 2
-        write_mem
-        push 11
         push 10897391716490043893
-        write_mem
-        push 7
-        push 01838589939278841373
-        write_mem
-        push 8
-        push 05057320540678713304
-        write_mem
-        push 4
-        push 00880730500905369322
-        write_mem
-        push 5
-        push 06845409670928290394
-        write_mem
-        push 3
-        push 04594396536654736100
-        write_mem
-        push 2
-        push 64
-        write_mem
-        push 9
+        push 01807330184488272967
         push 05415221245149797169
-        write_mem
-        push 0
-        push 323
-        write_mem
-        pop 5 pop 5 pop 3
+        push 05057320540678713304       // _ 0 3 1 [digest] [digest]
 
-        // Call the main function, followed by `halt`
-            call tasm_mmr_calculate_new_peaks_from_append_safe
-            halt
+        push 01838589939278841373
+        push 02628975953172153832
+        push 06845409670928290394
+        push 00880730500905369322
+        push 04594396536654736100       // _ 0 3 1 [digest] [digest] [digest]
 
-        // Main function declaration
-            // BEFORE: _ old_leaf_count_hi old_leaf_count_lo *peaks [digests (new_leaf)]
-            // AFTER: _ *new_peaks *auth_path
-            tasm_mmr_calculate_new_peaks_from_append_safe:
-                dup 5 dup 5 dup 5 dup 5 dup 5 dup 5
-                call tasm_list_safe_u32_push_digest
-                pop 5
-                // stack: _ old_leaf_count_hi old_leaf_count_lo *peaks
+        push 64                         // _ 0 3 1 [digest] [digest] [digest] 64
+        push 2                          // _ 0 3 1 [digest] [digest] [digest] 64 2
+        push 323                        // _ 0 3 1 [digest] [digest] [digest] 64 2 323
 
-                // Create auth_path return value (vector living in RAM)
-                push 64 // All MMR auth paths have capacity for 64 digests
-                call tasm_list_safe_u32_new_digest
+        push 0                          // _ 0 3 1 [digest] [digest] [digest] 64 2 323 0
+        write_mem 3                     // _ 0 3 1 [digest] [digest] [digest] 3
+        write_mem 5                     // _ 0 3 1 [digest] [digest] 8
+        write_mem 5                     // _ 0 3 1 [digest] 13
+        pop 1                           // _ 0 3 1 [digest]
 
-                swap 1
-                // stack: _ old_leaf_count_hi old_leaf_count_lo *auth_path *peaks
+        call tasm_mmr_calculate_new_peaks_from_append_safe
+        halt
 
-                dup 3 dup 3
-                // stack: _ old_leaf_count_hi old_leaf_count_lo *auth_path *peaks old_leaf_count_hi old_leaf_count_lo
+        // Main function
+        // BEFORE: _ old_leaf_count_hi old_leaf_count_lo *peaks [digest]
+        // AFTER:  _ *new_peaks *auth_path
+        tasm_mmr_calculate_new_peaks_from_append_safe:
+            dup 5 dup 5 dup 5 dup 5 dup 5 dup 5
+            call tasm_list_safe_u32_push_digest
+            pop 5                       // _ old_leaf_count_hi old_leaf_count_lo *peaks
 
-                call tasm_arithmetic_u64_incr
-                call tasm_arithmetic_u64_index_of_last_nonzero_bit
+            // Create auth_path return value (vector living in RAM)
+            // All MMR auth paths have capacity for 64 digests
+            push 64                     // _ old_leaf_count_hi old_leaf_count_lo *peaks 64
+            call tasm_list_safe_u32_new_digest
 
-                call tasm_mmr_calculate_new_peaks_from_append_safe_while
-                // stack: _ old_leaf_count_hi old_leaf_count_lo *auth_path *peaks (rll = 0)
+            swap 1
+            // stack: _ old_leaf_count_hi old_leaf_count_lo *auth_path *peaks
 
-                pop 1
-                swap 3 pop 1 swap 1 pop 1
-                // stack: _ *peaks *auth_path
+            dup 3 dup 3
+            // stack: _ old_leaf_count_hi old_leaf_count_lo *auth_path *peaks old_leaf_count_hi old_leaf_count_lo
 
+            call tasm_arithmetic_u64_incr
+            call tasm_arithmetic_u64_index_of_last_nonzero_bit
+
+            call tasm_mmr_calculate_new_peaks_from_append_safe_while
+            // stack: _ old_leaf_count_hi old_leaf_count_lo *auth_path *peaks (rll = 0)
+
+            pop 1
+            swap 3 pop 1 swap 1 pop 1
+            // stack: _ *peaks *auth_path
+
+            return
+
+        // Stack start and end: _ old_leaf_count_hi old_leaf_count_lo *auth_path *peaks rll
+        tasm_mmr_calculate_new_peaks_from_append_safe_while:
+            dup 0
+            push 0
+            eq
+            skiz
                 return
-
-            // Stack start and end: _ old_leaf_count_hi old_leaf_count_lo *auth_path *peaks rll
-            tasm_mmr_calculate_new_peaks_from_append_safe_while:
-                dup 0
-                push 0
-                eq
-                skiz
-                    return
-                // Stack: _ old_leaf_count_hi old_leaf_count_lo *auth_path *peaks rll
-
-                swap 2 swap 1
-                // Stack: _ old_leaf_count_hi old_leaf_count_lo rll *auth_path *peaks
-
-                dup 0
-                dup 0
-                call tasm_list_safe_u32_pop_digest
-                // Stack: _ old_leaf_count_hi old_leaf_count_lo rll *auth_path *peaks *peaks [digest (new_hash)]
-
-                dup 5
-                // Stack: _ old_leaf_count_hi old_leaf_count_lo rll *auth_path *peaks *peaks [digest (new_hash)] *peaks
-
-                call tasm_list_safe_u32_pop_digest
-                // Stack: _ old_leaf_count_hi old_leaf_count_lo rll *auth_path *peaks *peaks [digest (new_hash)] [digests (previous_peak)]
-
-                // Update authentication path with latest previous_peak
-                dup 12
-                dup 5 dup 5 dup 5 dup 5 dup 5
-                // Stack: _ old_leaf_count_hi old_leaf_count_lo rll *auth_path *peaks *peaks [digest (new_hash)] [digests (previous_peak)] *auth_path [digests (previous_peak)]
-
-                call tasm_list_safe_u32_push_digest
-                // Stack: _ old_leaf_count_hi old_leaf_count_lo rll *auth_path *peaks *peaks [digest (new_hash)] [digests (previous_peak)]
-
-                hash
-                // Stack: _ old_leaf_count_hi old_leaf_count_lo rll *auth_path *peaks *peaks [digests (new_peak)]
-
-                call tasm_list_safe_u32_push_digest
-                // Stack: _ old_leaf_count_hi old_leaf_count_lo rll *auth_path *peaks
-
-                swap 1 swap 2
-                // Stack: _ old_leaf_count_hi old_leaf_count_lo *auth_path *peaks rll
-
-                push -1
-                add
-                // Stack: _ old_leaf_count_hi old_leaf_count_lo *auth_path *peaks (rll - 1)
-
-                recurse
-
-
-            // Before: _ value_hi value_lo
-            // After: _ (value + 1)_hi (value + 1)_lo
-            tasm_arithmetic_u64_incr_carry:
-                pop 1
-                push 1
-                add
-                dup 0
-                push 4294967296
-                eq
-                push 0
-                eq
-                assert
-                push 0
-                return
-
-            tasm_arithmetic_u64_incr:
-                push 1
-                add
-                dup 0
-                push 4294967296
-                eq
-                skiz
-                    call tasm_arithmetic_u64_incr_carry
-                return
-
-            // Before: _ *list, elem{N - 1}, elem{N - 2}, ..., elem{0}
-            // After: _
-            tasm_list_safe_u32_push_digest:
-                dup 5
-                // stack : _  *list, elem{N - 1}, elem{N - 2}, ..., elem{0}, *list
-
-                read_mem
-                // stack : _  *list, elem{N - 1}, elem{N - 2}, ..., elem{0}, *list, length
-
-                // Verify that length < capacity (before increasing length by 1)
-                    swap 1
-                    push 1
-                    add
-                    // stack : _  *list, elem{N - 1}, elem{N - 2}, ..., elem{0}, length, (*list + 1)
-
-                    read_mem
-                    // stack : _  *list, elem{N - 1}, elem{N - 2}, ..., elem{0}, length, (*list + 1), capacity
-
-                    dup 2 lt
-                    // dup 2 eq
-                    // push 0 eq
-                    // stack : _  *list, elem{N - 1}, elem{N - 2}, ..., elem{0}, length, (*list + 1), capacity > length
-
-                    assert
-                    // stack : _  *list, elem{N - 1}, elem{N - 2}, ..., elem{0}, length, (*list + 1)
-
-                    swap 1
-
-                push 5
-                mul
-
-                // stack : _  *list, elem{N - 1}, elem{N - 2}, ..., elem{0}, (*list + 1), length * elem_size
-
-                add
-                push 1
-                add
-                // stack : _  *list, elem{N - 1}, elem{N - 2}, ..., elem{0}, (*list + length * elem_size + 2) -- top of stack is where we will store elements
-
-                swap 1
-                write_mem
-                push 1
-                add
-                swap 1
-                write_mem
-                push 1
-                add
-                swap 1
-                write_mem
-                push 1
-                add
-                swap 1
-                write_mem
-                push 1
-                add
-                swap 1
-                write_mem
-
-                // stack : _  *list, address
-
-                pop 1
-                // stack : _  *list
-
-                // Increase length indicator by one
-                read_mem
-                // stack : _  *list, length
-
-                push 1
-                add
-                // stack : _  *list, length + 1
-
-                write_mem
-                // stack : _  *list
-
-                pop 1
-                // stack : _
-
-                return
-
-            tasm_list_safe_u32_new_digest:
-                // _ capacity
-
-                // Convert capacity in number of elements to number of VM words required for that list
-                dup 0
-                push 5
-                mul
-
-                // _ capacity (capacity_in_bfes)
-
-                push 2
-                add
-                // _ capacity (words to allocate)
-
-                call tasm_memory_dyn_malloc
-                // _ capacity *list
-
-                // Write initial length = 0 to `*list`
-                push 0
-                write_mem
-                // _ capacity *list
-
-                // Write capactiy to memory location `*list + 1`
-                push 1
-                add
-                // _ capacity (*list + 1)
-
-                swap 1
-                write_mem
-                // _ (*list + 1) capacity
-
-                push -1
-                add
-                // _ *list
-
-                return
-
-            tasm_arithmetic_u64_decr:
-                push -1
-                add
-                dup 0
-                push -1
-                eq
-                skiz
-                    call tasm_arithmetic_u64_decr_carry
-                return
-
-            tasm_arithmetic_u64_decr_carry:
-                pop 1
-                push -1
-                add
-                dup 0
-                push -1
-                eq
-                push 0
-                eq
-                assert
-                push 4294967295
-                return
-
-            // BEFORE: _ *list list_length
-            // AFTER: _ *list
-            tasm_list_safe_u32_set_length_digest:
-                // Verify that new length does not exceed capacity
-                dup 0
-                dup 2
-                push 1
-                add
-                read_mem
-                // Stack: *list list_length list_length (*list + 1) capacity
-
-                swap 1
-                pop 1
-                // Stack: *list list_length list_length capacity
-
-                lt
-                push 0
-                eq
-                // Stack: *list list_length list_length <= capacity
-
-                assert
-                // Stack: *list list_length
-
-                write_mem
-                // Stack: *list
-
-                return
-
-            // BEFORE: _ value_hi value_lo
-            // AFTER: _ log2_floor(value)
-            tasm_arithmetic_u64_log_2_floor:
-                swap 1
-                push 1
-                dup 1
-                // stack: _ value_lo value_hi 1 value_hi
-
-                skiz call tasm_arithmetic_u64_log_2_floor_then
-                skiz call tasm_arithmetic_u64_log_2_floor_else
-                // stack: _ log2_floor(value)
-
-                return
-
-            tasm_arithmetic_u64_log_2_floor_then:
-                // value_hi != 0
-                // stack: _ value_lo value_hi 1
-                swap 1
-                swap 2
-                pop 2
-                // stack: _ value_hi
-
-                log_2_floor
-                push 32
-                add
-                // stack: _ (log2_floor(value_hi) + 32)
-
-                push 0
-                // stack: _ (log2_floor(value_hi) + 32) 0
-
-                return
-
-            tasm_arithmetic_u64_log_2_floor_else:
-                // value_hi == 0
-                // stack: _ value_lo value_hi
-                pop 1
-                log_2_floor
-                return
-
-            // Before: _ *list
-            // After: _ elem{N - 1}, elem{N - 2}, ..., elem{0}
-            tasm_list_safe_u32_pop_digest:
-                read_mem
-                // stack : _  *list, length
-
-                // Assert that length is not 0
-                dup 0
-                push 0
-                eq
-                push 0
-                eq
-                assert
-                // stack : _  *list, length
-
-                // Decrease length value by one and write back to memory
-                swap 1
-                dup 1
-                push -1
-                add
-                write_mem
-                swap 1
-                // stack : _ *list initial_length
-
-                push 5
-                mul
-
-                // stack : _  *list, (offset_for_last_element = (N * initial_length))
-
-                add
-                push 1
-                add
-                // stack : _  address_for_last_element
-
-                read_mem
-                swap 1
-                push -1
-                add
-                read_mem
-                swap 1
-                push -1
-                add
-                read_mem
-                swap 1
-                push -1
-                add
-                read_mem
-                swap 1
-                push -1
-                add
-                read_mem
-                swap 1
-
-                // Stack: _  [elements], address_for_last_unread_element
-
-                pop 1
-                // Stack: _  [elements]
-
-                return
-
-            // BEFORE: rhs_hi rhs_lo lhs_hi lhs_lo
-            // AFTER: (rhs & lhs)_hi (rhs & lhs)_lo
-            tasm_arithmetic_u64_and:
-                swap 3
-                and
-                // stack: _ lhs_lo rhs_lo (lhs_hi & rhs_hi)
-
-                swap 2
-                and
-                // stack: _ (lhs_hi & rhs_hi) (rhs_lo & lhs_lo)
-
-                return
-
-            // BEFORE: _ value_hi value_lo
-            // AFTER: _ index_of_last_non-zero_bit
-            tasm_arithmetic_u64_index_of_last_nonzero_bit:
-                dup 1
-                dup 1
-                // _ value_hi value_lo value_hi value_lo
-
-                call tasm_arithmetic_u64_decr
-                // _ value_hi value_lo (value - 1)_hi (value - 1)_lo
-
-                push 4294967295
-                push 4294967295
-                // _ value_hi value_lo (value - 1)_hi (value - 1)_lo 0xFFFFFFFF 0xFFFFFFFF
-
-                call tasm_arithmetic_u64_xor
-                // _ value_hi value_lo ~(value - 1)_hi ~(value - 1)_lo
-
-                call tasm_arithmetic_u64_and
-                // _ (value & ~(value - 1))_hi (value & ~(value - 1))_lo
-
-                // The above value is now a power of two in u64. Calling log2_floor on this
-                // value gives us the index we are looking for.
-                call tasm_arithmetic_u64_log_2_floor
-
-                return
-
-
-            // Return a pointer to a free address and allocate `size` words for this pointer
-            // Before: _ size
-            // After: _ *next_addr
-            tasm_memory_dyn_malloc:
-                push 0  // _ size *free_pointer
-                read_mem                   // _ size *free_pointer *next_addr'
-
-                // add 1 iff `next_addr` was 0, i.e. uninitialized.
-                dup 0                      // _ size *free_pointer *next_addr' *next_addr'
-                push 0                     // _ size *free_pointer *next_addr' *next_addr' 0
-                eq                         // _ size *free_pointer *next_addr' (*next_addr' == 0)
-                add                        // _ size *free_pointer *next_addr
-
-                dup 0                      // _ size *free_pointer *next_addr *next_addr
-                dup 3                      // _ size *free_pointer *next_addr *next_addr size
-
-                // Ensure that `size` does not exceed 2^32
-                split
-                swap 1
-                push 0
-                eq
-                assert
-
-                add                        // _ size *free_pointer *next_addr *(next_addr + size)
-
-                // Ensure that no more than 2^32 words are allocated, because I don't want a wrap-around
-                // in the address space
-                split
-                swap 1
-                push 0
-                eq
-                assert
-
-                swap 1                     // _ size *free_pointer *(next_addr + size) *next_addr
-                swap 3                     // _ *next_addr *free_pointer *(next_addr + size) size
-                pop 1                      // _ *next_addr *free_pointer *(next_addr + size)
-                write_mem
-                pop 1                      // _ next_addr
-                return
-
-            // BEFORE: rhs_hi rhs_lo lhs_hi lhs_lo
-            // AFTER: (rhs ^ lhs)_hi (rhs ^ lhs)_lo
-            tasm_arithmetic_u64_xor:
-                swap 3
-                xor
-                // stack: _ lhs_lo rhs_lo (lhs_hi ^ rhs_hi)
-
-                swap 2
-                xor
-                // stack: _ (lhs_hi ^ rhs_hi) (rhs_lo ^ lhs_lo)
-
-                return
+            // Stack: _ old_leaf_count_hi old_leaf_count_lo *auth_path *peaks rll
+
+            swap 2 swap 1
+            // Stack: _ old_leaf_count_hi old_leaf_count_lo rll *auth_path *peaks
+
+            dup 0
+            dup 0
+            call tasm_list_safe_u32_pop_digest
+            // Stack: _ old_leaf_count_hi old_leaf_count_lo rll *auth_path *peaks *peaks [digest (new_hash)]
+
+            dup 5
+            // Stack: _ old_leaf_count_hi old_leaf_count_lo rll *auth_path *peaks *peaks [digest (new_hash)] *peaks
+
+            call tasm_list_safe_u32_pop_digest
+            // Stack: _ old_leaf_count_hi old_leaf_count_lo rll *auth_path *peaks *peaks [digest (new_hash)] [digests (previous_peak)]
+
+            // Update authentication path with latest previous_peak
+            dup 12
+            dup 5 dup 5 dup 5 dup 5 dup 5
+            // Stack: _ old_leaf_count_hi old_leaf_count_lo rll *auth_path *peaks *peaks [digest (new_hash)] [digests (previous_peak)] *auth_path [digests (previous_peak)]
+
+            call tasm_list_safe_u32_push_digest
+            // Stack: _ old_leaf_count_hi old_leaf_count_lo rll *auth_path *peaks *peaks [digest (new_hash)] [digests (previous_peak)]
+
+            hash
+            // Stack: _ old_leaf_count_hi old_leaf_count_lo rll *auth_path *peaks *peaks [digests (new_peak)]
+
+            call tasm_list_safe_u32_push_digest
+            // Stack: _ old_leaf_count_hi old_leaf_count_lo rll *auth_path *peaks
+
+            swap 1 swap 2
+            // Stack: _ old_leaf_count_hi old_leaf_count_lo *auth_path *peaks rll
+
+            push -1
+            add
+            // Stack: _ old_leaf_count_hi old_leaf_count_lo *auth_path *peaks (rll - 1)
+
+            recurse
+
+
+        // Before: _ value_hi value_lo
+        // After: _ (value + 1)_hi (value + 1)_lo
+        tasm_arithmetic_u64_incr_carry:
+            pop 1
+            push 1
+            add
+            dup 0
+            push 4294967296
+            eq
+            push 0
+            eq
+            assert
+            push 0
+            return
+
+        tasm_arithmetic_u64_incr:
+            push 1
+            add
+            dup 0
+            push 4294967296
+            eq
+            skiz
+                call tasm_arithmetic_u64_incr_carry
+            return
+
+        // Before: _ *list, elem[4], elem[3], elem[2], elem[1], elem[0]
+        // After:  _
+        tasm_list_safe_u32_push_digest:
+            dup 5       // _ *list elem[4] elem[3] elem[2] elem[1] elem[0] *list
+            push 2 add  // _ *list elem[4] elem[3] elem[2] elem[1] elem[0] *list+2
+            read_mem 2  // _ *list elem[4] elem[3] elem[2] elem[1] elem[0] capacity len *list
+
+            // Verify that length < capacity
+            swap 2      // _ *list elem[4] elem[3] elem[2] elem[1] elem[0] *list len capacity
+            dup 1       // _ *list elem[4] elem[3] elem[2] elem[1] elem[0] *list len capacity len
+            lt          // _ *list elem[4] elem[3] elem[2] elem[1] elem[0] *list len capacity>len
+            assert      // _ *list elem[4] elem[3] elem[2] elem[1] elem[0] *list len
+
+            // Adjust ram pointer
+            push 5      // _ *list elem[4] elem[3] elem[2] elem[1] elem[0] *list len 5
+            mul         // _ *list elem[4] elem[3] elem[2] elem[1] elem[0] *list 5·len
+            add         // _ *list elem[4] elem[3] elem[2] elem[1] elem[0] *list+5·len
+            push 2      // _ *list elem[4] elem[3] elem[2] elem[1] elem[0] *list+5·len 2
+            add         // _ *list elem[4] elem[3] elem[2] elem[1] elem[0] *list+5·len+2
+
+            // Write all elements
+            write_mem 5 // _ *list *list+5·len+7
+
+            // Remove ram pointer
+            pop 1       // _ *list
+
+            // Increase length indicator by one
+            push 1 add  // _ *list+1
+            read_mem 1  // _ len *list
+            swap 1      // _ *list len
+            push 1      // _ *list len 1
+            add         // _ *list len+1
+            swap 1      // _ len+1 *list
+            write_mem 1 // _ *list+1
+            pop 1       // _
+            return
+
+        // BEFORE: _ capacity
+        // AFTER:
+        tasm_list_safe_u32_new_digest:
+            // Convert capacity in number of elements to number of VM words required for that list
+            dup 0       // _ capacity capacity
+            push 5      // _ capacity capacity 5
+            mul         // _ capacity 5·capacity
+                        // _ capacity capacity_in_bfes
+            push 2      // _ capacity capacity_in_bfes 2
+            add         // _ capacity capacity_in_bfes+2
+                        // _ capacity words_to_allocate
+
+            call tasm_memory_dyn_malloc     // _ capacity *list
+
+            // Write initial length = 0 to `*list`, and capacity to `*list + 1`
+            push 0                          // _ capacity *list 0
+            swap 1                          // _ capacity 0 *list
+            write_mem 2                     // _ (*list+2)
+            push -2                         // _ (*list+2) -2
+            add                             // _ *list
+            return
+
+        tasm_arithmetic_u64_decr:
+            push -1
+            add
+            dup 0
+            push -1
+            eq
+            skiz
+                call tasm_arithmetic_u64_decr_carry
+            return
+
+        tasm_arithmetic_u64_decr_carry:
+            pop 1
+            push -1
+            add
+            dup 0
+            push -1
+            eq
+            push 0
+            eq
+            assert
+            push 4294967295
+            return
+
+        // BEFORE: _ value_hi value_lo
+        // AFTER: _ log2_floor(value)
+        tasm_arithmetic_u64_log_2_floor:
+            swap 1
+            push 1
+            dup 1
+            // stack: _ value_lo value_hi 1 value_hi
+
+            skiz call tasm_arithmetic_u64_log_2_floor_then
+            skiz call tasm_arithmetic_u64_log_2_floor_else
+            // stack: _ log2_floor(value)
+
+            return
+
+        tasm_arithmetic_u64_log_2_floor_then:
+            // value_hi != 0
+            // stack: _ value_lo value_hi 1
+            swap 1
+            swap 2
+            pop 2
+            // stack: _ value_hi
+
+            log_2_floor
+            push 32
+            add
+            // stack: _ (log2_floor(value_hi) + 32)
+
+            push 0
+            // stack: _ (log2_floor(value_hi) + 32) 0
+
+            return
+
+        tasm_arithmetic_u64_log_2_floor_else:
+            // value_hi == 0
+            // stack: _ value_lo value_hi
+            pop 1
+            log_2_floor
+            return
+
+        // Before: _ *list
+        // After:  _ elem{N - 1}, elem{N - 2}, ..., elem{0}
+        tasm_list_safe_u32_pop_digest:
+            push 1 add      // _ *list+1
+            read_mem 1      // _ len *list
+
+            // Assert that length is not 0
+            dup 1           // _ len *list len
+            push 0          // _ len *list len 0
+            eq              // _ len *list len==0
+            push 0          // _ len *list len==0 0
+            eq              // _ len *list len!=0
+            assert          // _ len *list
+
+            // Decrease length value by one and write back to memory
+            dup 1           // _ len *list len
+            push -1         // _ len *list len -1
+            add             // _ len *list len-1
+            swap 1          // _ len len-1 *list
+            write_mem 1     // _ len *list+1
+
+            // Read elements
+            swap 1          // _ *list+1 len
+            push 5          // _ *list+1 len 5
+            mul             // _ *list+1 5·len
+                            // _ *list+1 offset_for_last_element
+            add             // _ *list+offset_for_last_element+1
+                            // _ address_for_last_element
+            read_mem 5      // _ [elements] address_for_last_element-5
+            pop 1           // _ [elements]
+            return
+
+        // BEFORE: rhs_hi rhs_lo lhs_hi lhs_lo
+        // AFTER:  (rhs & lhs)_hi (rhs & lhs)_lo
+        tasm_arithmetic_u64_and:
+            swap 3
+            and
+            // stack: _ lhs_lo rhs_lo (lhs_hi & rhs_hi)
+
+            swap 2
+            and
+            // stack: _ (lhs_hi & rhs_hi) (rhs_lo & lhs_lo)
+
+            return
+
+        // BEFORE: _ value_hi value_lo
+        // AFTER: _ index_of_last_non-zero_bit
+        tasm_arithmetic_u64_index_of_last_nonzero_bit:
+            dup 1
+            dup 1
+            // _ value_hi value_lo value_hi value_lo
+
+            call tasm_arithmetic_u64_decr
+            // _ value_hi value_lo (value - 1)_hi (value - 1)_lo
+
+            push 4294967295
+            push 4294967295
+            // _ value_hi value_lo (value - 1)_hi (value - 1)_lo 0xFFFFFFFF 0xFFFFFFFF
+
+            call tasm_arithmetic_u64_xor
+            // _ value_hi value_lo ~(value - 1)_hi ~(value - 1)_lo
+
+            call tasm_arithmetic_u64_and
+            // _ (value & ~(value - 1))_hi (value & ~(value - 1))_lo
+
+            // The above value is now a power of two in u64. Calling log2_floor on this
+            // value gives us the index we are looking for.
+            call tasm_arithmetic_u64_log_2_floor
+
+            return
+
+
+        // Return a pointer to a free address and allocate `size` words for this pointer
+        // Before: _ size
+        // After: _ *next_addr
+        tasm_memory_dyn_malloc:
+            push 1                     // _ size *free_pointer+1
+            read_mem 1                 // _ size *next_addr' *free_pointer
+            swap 1                     // _ size *free_pointer *next_addr'
+
+            // add 1 iff `next_addr` was 0, i.e. uninitialized.
+            dup 0                      // _ size *free_pointer *next_addr' *next_addr'
+            push 0                     // _ size *free_pointer *next_addr' *next_addr' 0
+            eq                         // _ size *free_pointer *next_addr' (*next_addr' == 0)
+            add                        // _ size *free_pointer *next_addr
+
+            dup 0                      // _ size *free_pointer *next_addr *next_addr
+            dup 3                      // _ size *free_pointer *next_addr *next_addr size
+
+            // Ensure that `size` does not exceed 2^32
+            split
+            swap 1
+            push 0
+            eq
+            assert
+
+            add                        // _ size *free_pointer *next_addr *(next_addr + size)
+
+            // Ensure that no more than 2^32 words are allocated, because I don't want a wrap-around
+            // in the address space
+            split
+            swap 1
+            push 0
+            eq
+            assert
+
+            swap 1                     // _ size *free_pointer *(next_addr + size) *next_addr
+            swap 3                     // _ *next_addr *free_pointer *(next_addr + size) size
+            pop 1                      // _ *next_addr *free_pointer *(next_addr + size)
+            swap 1                     // _ *next_addr *(next_addr + size) *free_pointer
+            write_mem 1                // _ *next_addr *free_pointer+1
+            pop 1                      // _ *next_addr
+            return
+
+        // BEFORE: rhs_hi rhs_lo lhs_hi lhs_lo
+        // AFTER: (rhs ^ lhs)_hi (rhs ^ lhs)_lo
+        tasm_arithmetic_u64_xor:
+            swap 3
+            xor
+            // stack: _ lhs_lo rhs_lo (lhs_hi ^ rhs_hi)
+
+            swap 2
+            xor
+            // stack: _ (lhs_hi ^ rhs_hi) (rhs_lo ^ lhs_lo)
+
+            return
     )
 }

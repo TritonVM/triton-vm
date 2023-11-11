@@ -32,6 +32,7 @@ use crate::table::hash_table::PermutationTrace;
 use crate::table::op_stack_table::OpStackTableEntry;
 use crate::table::processor_table;
 use crate::table::processor_table::ProcessorTraceRow;
+use crate::table::ram_table::RamTableCall;
 use crate::table::table_column::*;
 use crate::table::u32_table::U32TableEntry;
 use crate::vm::CoProcessorCall::*;
@@ -72,12 +73,6 @@ pub struct VMState<'pgm> {
     /// Current instruction's address in program memory
     pub instruction_pointer: usize,
 
-    /// The instruction that was executed last
-    pub previous_instruction: Option<Instruction>,
-
-    /// RAM pointer
-    pub ram_pointer: u64,
-
     /// The current state of the one, global Sponge that can be manipulated using instructions
     /// `SpongeInit`, `SpongeAbsorb`, and `SpongeSqueeze`. Instruction `SpongeInit` resets the
     /// Sponge state.
@@ -103,6 +98,8 @@ pub enum CoProcessorCall {
     U32Call(U32TableEntry),
 
     OpStackCall(OpStackTableEntry),
+
+    RamCall(RamTableCall),
 }
 
 impl<'pgm> VMState<'pgm> {
@@ -129,8 +126,6 @@ impl<'pgm> VMState<'pgm> {
             jump_stack: vec![],
             cycle_count: 0,
             instruction_pointer: 0,
-            previous_instruction: Default::default(),
-            ram_pointer: 0,
             sponge_state: Default::default(),
             halting: false,
         }
@@ -143,7 +138,8 @@ impl<'pgm> VMState<'pgm> {
         };
 
         match current_instruction {
-            Pop(_) | Divine(_) | Dup(_) | Swap(_) | ReadIo(_) | WriteIo(_) => {
+            Pop(_) | Divine(_) | Dup(_) | Swap(_) | ReadMem(_) | WriteMem(_) | ReadIo(_)
+            | WriteIo(_) => {
                 let arg_val: u64 = current_instruction.arg().unwrap().value();
                 hvs[0] = BFieldElement::new(arg_val % 2);
                 hvs[1] = BFieldElement::new((arg_val >> 1) % 2);
@@ -194,11 +190,6 @@ impl<'pgm> VMState<'pgm> {
 
     /// Perform the state transition as a mutable operation on `self`.
     pub fn step(&mut self) -> Result<Vec<CoProcessorCall>> {
-        // trying to read past the end of the program doesn't change the previous instruction
-        if let Ok(instruction) = self.current_instruction() {
-            self.previous_instruction = Some(instruction);
-        }
-
         self.start_recording_op_stack_calls();
         let mut co_processor_calls = match self.current_instruction()? {
             Pop(n) => self.pop(n)?,
@@ -213,8 +204,8 @@ impl<'pgm> VMState<'pgm> {
             Return => self.return_from_call()?,
             Recurse => self.recurse()?,
             Assert => self.assert()?,
-            ReadMem => self.read_mem(),
-            WriteMem => self.write_mem()?,
+            ReadMem(n) => self.read_mem(n)?,
+            WriteMem(n) => self.write_mem(n)?,
             Hash => self.hash()?,
             SpongeInit => self.sponge_init(),
             SpongeAbsorb => self.sponge_absorb()?,
@@ -376,25 +367,54 @@ impl<'pgm> VMState<'pgm> {
         vec![]
     }
 
-    fn read_mem(&mut self) -> Vec<CoProcessorCall> {
-        let ram_pointer = self.op_stack.peek_at(ST0);
-        self.ram_pointer = ram_pointer.value();
+    fn read_mem(&mut self, n: NumberOfWords) -> Result<Vec<CoProcessorCall>> {
+        let mut ram_pointer = self.op_stack.pop()?;
 
-        let ram_value = self.memory_get(&ram_pointer);
-        self.op_stack.push(ram_value);
+        let mut ram_values = vec![];
+        for _ in 0..n.num_words() {
+            ram_pointer.decrement();
+            let ram_value = self.ram.get(&ram_pointer).copied().unwrap_or(BFIELD_ZERO);
+            self.op_stack.push(ram_value);
+            ram_values.push(ram_value);
+        }
+        ram_values.reverse();
 
-        self.instruction_pointer += 1;
-        vec![]
+        self.op_stack.push(ram_pointer);
+
+        let ram_table_call = RamTableCall {
+            clk: self.cycle_count,
+            ram_pointer,
+            is_write: false,
+            values: ram_values,
+        };
+
+        self.instruction_pointer += 2;
+        Ok(vec![RamCall(ram_table_call)])
     }
 
-    fn write_mem(&mut self) -> Result<Vec<CoProcessorCall>> {
-        let ram_pointer = self.op_stack.peek_at(ST1);
-        let ram_value = self.op_stack.pop()?;
-        self.ram_pointer = ram_pointer.value();
-        self.ram.insert(ram_pointer, ram_value);
+    fn write_mem(&mut self, n: NumberOfWords) -> Result<Vec<CoProcessorCall>> {
+        let mut ram_pointer = self.op_stack.pop()?;
 
-        self.instruction_pointer += 1;
-        Ok(vec![])
+        let mut ram_values = vec![];
+        for _ in 0..n.num_words() {
+            let ram_value = self.op_stack.pop()?;
+            self.ram.insert(ram_pointer, ram_value);
+            ram_values.push(ram_value);
+            ram_pointer.increment();
+        }
+
+        self.op_stack.push(ram_pointer);
+
+        ram_pointer -= n.into();
+        let ram_table_call = RamTableCall {
+            clk: self.cycle_count,
+            ram_pointer,
+            is_write: true,
+            values: ram_values,
+        };
+
+        self.instruction_pointer += 2;
+        Ok(vec![RamCall(ram_table_call)])
     }
 
     fn hash(&mut self) -> Result<Vec<CoProcessorCall>> {
@@ -718,16 +738,10 @@ impl<'pgm> VMState<'pgm> {
         use ProcessorBaseTableColumn::*;
         let mut processor_row = Array1::zeros(processor_table::BASE_WIDTH);
 
-        let previous_instruction = match self.previous_instruction {
-            Some(instruction) => instruction.opcode_b(),
-            None => BFIELD_ZERO,
-        };
         let current_instruction = self.current_instruction().unwrap_or(Nop);
         let helper_variables = self.derive_helper_variables();
-        let ram_pointer = self.ram_pointer.into();
 
         processor_row[CLK.base_table_index()] = (self.cycle_count as u64).into();
-        processor_row[PreviousInstruction.base_table_index()] = previous_instruction;
         processor_row[IP.base_table_index()] = (self.instruction_pointer as u32).into();
         processor_row[CI.base_table_index()] = current_instruction.opcode_b();
         processor_row[NIA.base_table_index()] = self.next_instruction_or_argument();
@@ -764,8 +778,6 @@ impl<'pgm> VMState<'pgm> {
         processor_row[HV3.base_table_index()] = helper_variables[3];
         processor_row[HV4.base_table_index()] = helper_variables[4];
         processor_row[HV5.base_table_index()] = helper_variables[5];
-        processor_row[RAMP.base_table_index()] = ram_pointer;
-        processor_row[RAMV.base_table_index()] = self.memory_get(&ram_pointer);
 
         processor_row
     }
@@ -834,11 +846,6 @@ impl<'pgm> VMState<'pgm> {
     fn jump_stack_peek(&mut self) -> Result<(BFieldElement, BFieldElement)> {
         let maybe_jump_stack_element = self.jump_stack.last().copied();
         maybe_jump_stack_element.ok_or(anyhow!(JumpStackIsEmpty))
-    }
-
-    fn memory_get(&self, memory_address: &BFieldElement) -> BFieldElement {
-        let maybe_memory_value = self.ram.get(memory_address).copied();
-        maybe_memory_value.unwrap_or_else(BFieldElement::zero)
     }
 
     fn pop_secret_digest(&mut self) -> Result<[BFieldElement; DIGEST_LENGTH]> {
@@ -1072,9 +1079,14 @@ pub(crate) mod tests {
     }
 
     pub(crate) fn test_program_for_write_mem_read_mem() -> ProgramAndInput {
-        ProgramAndInput::without_input(
-            triton_program!(push 2 push 1 write_mem push 0 pop 1 read_mem assert halt),
-        )
+        ProgramAndInput::without_input(triton_program! {
+            push 3 push 1 push 2    // _ 3 1 2
+            push 7                  // _ 3 1 2 7
+            write_mem 3             // _ 10
+            read_mem 2              // _ 3 1 8
+            pop 1                   // _ 3 1
+            assert halt             // _ 3
+        })
     }
 
     pub(crate) fn test_program_for_hash() -> ProgramAndInput {
@@ -1625,15 +1637,14 @@ pub(crate) mod tests {
         // Not all addresses are read to have different access patterns:
         // - Some addresses are read before written to.
         // - Other addresses are written to before read.
-        for memory_address in memory_addresses.iter().take(num_memory_accesses / 4) {
-            instructions.extend(triton_asm!(push {memory_address} read_mem push 0 eq assert pop 1));
+        for address in memory_addresses.iter().take(num_memory_accesses / 4) {
+            let address = address.value() + 1;
+            instructions.extend(triton_asm!(push {address} read_mem 1 pop 1 push 0 eq assert));
         }
 
         // Write everything to RAM.
-        for (memory_address, memory_value) in memory_addresses.iter().zip_eq(memory_values.iter()) {
-            instructions.extend(triton_asm!(
-                push {memory_address} push {memory_value} write_mem pop 1
-            ));
+        for (address, value) in memory_addresses.iter().zip_eq(memory_values.iter()) {
+            instructions.extend(triton_asm!(push {value} push {address} write_mem 1 pop 1));
         }
 
         // Read back in random order and check that the values did not change.
@@ -1643,11 +1654,10 @@ pub(crate) mod tests {
             reading_permutation.swap(i, j);
         }
         for idx in reading_permutation {
-            let memory_address = memory_addresses[idx];
-            let memory_value = memory_values[idx];
-            instructions.extend(triton_asm!(
-                push {memory_address} read_mem push {memory_value} eq assert pop 1
-            ));
+            let address = memory_addresses[idx].value() + 1;
+            let value = memory_values[idx];
+            instructions
+                .extend(triton_asm!(push {address} read_mem 1 pop 1 push {value} eq assert));
         }
 
         // Overwrite half the values with new ones.
@@ -1657,12 +1667,11 @@ pub(crate) mod tests {
             writing_permutation.swap(i, j);
         }
         for idx in 0..num_memory_accesses / 2 {
-            let memory_address = memory_addresses[writing_permutation[idx]];
+            let address = memory_addresses[writing_permutation[idx]];
             let new_memory_value = rng.gen();
             memory_values[writing_permutation[idx]] = new_memory_value;
-            instructions.extend(triton_asm!(
-                push {memory_address} push {new_memory_value} write_mem pop 1
-            ));
+            instructions
+                .extend(triton_asm!(push {new_memory_value} push {address} write_mem 1 pop 1));
         }
 
         // Read back all, i.e., unchanged and overwritten values in (different from before) random
@@ -1673,11 +1682,10 @@ pub(crate) mod tests {
             reading_permutation.swap(i, j);
         }
         for idx in reading_permutation {
-            let memory_address = memory_addresses[idx];
-            let memory_value = memory_values[idx];
-            instructions.extend(triton_asm!(
-                push {memory_address} read_mem push {memory_value} eq assert pop 1
-            ));
+            let address = memory_addresses[idx].value() + 1;
+            let value = memory_values[idx];
+            instructions
+                .extend(triton_asm!(push {address} read_mem 1 pop 1 push {value} eq assert));
         }
 
         let program = triton_program! { { &instructions } halt };
@@ -1932,23 +1940,23 @@ pub(crate) mod tests {
     #[test]
     fn run_tvm_basic_ram_read_write() {
         let program = triton_program!(
-            push  5 push  6 write_mem pop 1
-            push 15 push 16 write_mem pop 1
-            push  5         read_mem  pop 2
-            push 15         read_mem  pop 2
-            push  5 push  7 write_mem pop 1
-            push 15         read_mem
-            push  5         read_mem
+            push  8 push  5 write_mem 1 pop 1   // write  8 to address  5
+            push 18 push 15 write_mem 1 pop 1   // write 18 to address 15
+            push  6         read_mem  1 pop 2   // read from address  5
+            push 16         read_mem  1 pop 2   // read from address 15
+            push  7 push  5 write_mem 1 pop 1   // write  7 to address  5
+            push 16         read_mem  1         // _ 18 15
+            push  6         read_mem  1         // _ 18 15 7 5
             halt
         );
 
         let terminal_state = program
             .debug_terminal_state([].into(), [].into(), None, None)
             .unwrap();
-        assert_eq!(BFieldElement::new(7), terminal_state.op_stack.peek_at(ST0));
-        assert_eq!(BFieldElement::new(5), terminal_state.op_stack.peek_at(ST1));
-        assert_eq!(BFieldElement::new(16), terminal_state.op_stack.peek_at(ST2));
-        assert_eq!(BFieldElement::new(15), terminal_state.op_stack.peek_at(ST3));
+        assert_eq!(BFieldElement::new(5), terminal_state.op_stack.peek_at(ST0));
+        assert_eq!(BFieldElement::new(7), terminal_state.op_stack.peek_at(ST1));
+        assert_eq!(BFieldElement::new(15), terminal_state.op_stack.peek_at(ST2));
+        assert_eq!(BFieldElement::new(18), terminal_state.op_stack.peek_at(ST3));
     }
 
     #[test]
@@ -1958,17 +1966,20 @@ pub(crate) mod tests {
                         //       ↓
                         // _ 0 0 |
             push 0      // _ 0 0 | 0
-            write_mem   // _ 0 0 |
-            push 5      // _ 0 0 | 5
-            swap 1      // _ 0 5 | 0
-            push 3      // _ 0 5 | 0 3
-            swap 1      // _ 0 5 | 3 0
+            write_mem 1 // _ 0 1 |
+            push 5      // _ 0 1 | 5
+            swap 1      // _ 0 5 | 1
+            push 3      // _ 0 5 | 1 3
+            swap 1      // _ 0 5 | 3 1
             pop 1       // _ 0 5 | 3
-            write_mem   // _ 0 5 |
-            read_mem    // _ 0 5 | 3
+            write_mem 1 // _ 0 4 |
+            read_mem 1  // _ 0 5 | 3
             swap 2      // _ 3 5 | 0
             pop 1       // _ 3 5 |
-            read_mem    // _ 3 5 | 3
+            swap 1      // _ 5 3 |
+            push 1      // _ 5 3 | 1
+            add         // _ 5 4 |
+            read_mem 1  // _ 5 5 | 3
             halt
         );
 
@@ -1977,7 +1988,7 @@ pub(crate) mod tests {
             .unwrap();
         assert_eq!(BFieldElement::new(3), terminal_state.op_stack.peek_at(ST0));
         assert_eq!(BFieldElement::new(5), terminal_state.op_stack.peek_at(ST1));
-        assert_eq!(BFieldElement::new(3), terminal_state.op_stack.peek_at(ST2));
+        assert_eq!(BFieldElement::new(5), terminal_state.op_stack.peek_at(ST2));
     }
 
     #[test]
@@ -2077,14 +2088,14 @@ pub(crate) mod tests {
 
     #[test]
     fn read_mem_unitialized() {
-        let program = triton_program!(read_mem halt);
+        let program = triton_program!(read_mem 3 halt);
         let (aet, _) = program.trace_execution([].into(), [].into()).unwrap();
         assert_eq!(2, aet.processor_trace.nrows());
     }
 
     #[test]
     fn read_non_deterministically_initialized_ram_at_address_0() {
-        let program = triton_program!(read_mem write_io 1 halt);
+        let program = triton_program!(push 1 read_mem 1 pop 1 write_io 1 halt);
 
         let mut initial_ram = HashMap::new();
         initial_ram.insert(0_u64.into(), 42_u64.into());
@@ -2100,17 +2111,19 @@ pub(crate) mod tests {
         prove_with_low_security_level(&program, public_input, secret_input, &mut None);
     }
 
-    #[test]
-    fn read_non_deterministically_initialized_ram_at_random_address() {
-        let random_address = thread_rng().gen_range(1..2_u64.pow(16));
+    #[proptest(cases = 10)]
+    fn read_non_deterministically_initialized_ram_at_random_address(
+        #[strategy(arb())] address: BFieldElement,
+        #[strategy(arb())] value: BFieldElement,
+    ) {
         let program = triton_program!(
-            read_mem write_io 1
-            push {random_address} read_mem write_io 1
+            read_mem 1 swap 1 write_io 1
+            push {address.value() + 1} read_mem 1 pop 1 write_io 1
             halt
         );
 
         let mut initial_ram = HashMap::new();
-        initial_ram.insert(random_address.into(), 1337_u64.into());
+        initial_ram.insert(address, value);
 
         let public_input = PublicInput::new(vec![]);
         let secret_input = NonDeterminism::new(vec![]).with_ram(initial_ram);
@@ -2119,7 +2132,7 @@ pub(crate) mod tests {
             .run(public_input.clone(), secret_input.clone())
             .unwrap();
         assert_eq!(0, public_output[0].value());
-        assert_eq!(1337, public_output[1].value());
+        assert_eq!(value, public_output[1]);
 
         prove_with_low_security_level(&program, public_input, secret_input, &mut None);
     }
@@ -2184,12 +2197,8 @@ pub(crate) mod tests {
         let Ok(err) = err.downcast::<InstructionError>() else {
             panic!("Sudoku verifier must fail with InstructionError on bad Sudoku.");
         };
-        let AssertionFailed(ip, _, _) = err else {
+        let AssertionFailed(_, _, _) = err else {
             panic!("Sudoku verifier must fail with AssertionFailed on bad Sudoku.");
         };
-        assert_eq!(
-            15, ip,
-            "Sudoku verifier must fail on line 15 on bad Sudoku."
-        );
     }
 }

@@ -29,6 +29,7 @@ use crate::table::constraint_circuit::DualRowIndicator::*;
 use crate::table::constraint_circuit::SingleRowIndicator::*;
 use crate::table::constraint_circuit::*;
 use crate::table::cross_table_argument::*;
+use crate::table::ram_table;
 use crate::table::table_column::ProcessorBaseTableColumn::*;
 use crate::table::table_column::ProcessorExtTableColumn::*;
 use crate::table::table_column::*;
@@ -90,15 +91,14 @@ impl ProcessorTable {
             processor_table.slice_mut(s![processor_table_len.., CLK.base_table_index()]),
         );
 
-        // The memory-like tables “RAM” and “Jump Stack” do not have a padding indicator. Hence,
-        // clock jump differences are being looked up in their padding sections. The clock jump
-        // differences in that section are always 1. The lookup multiplicities of clock value 1 must
-        // be increased accordingly: one per padding row, times the number of memory-like tables
-        // without padding indicator, which is 2.
-        let num_padding_rows = 2 * (processor_table.nrows() - processor_table_len);
-        let num_pad_rows = BFieldElement::new(num_padding_rows as u64);
+        // The Jump Stack Table does not have a padding indicator. Hence, clock jump differences are
+        // being looked up in its padding sections. The clock jump differences in that section are
+        // always 1. The lookup multiplicities of clock value 1 must be increased accordingly: one
+        // per padding row.
+        let num_padding_rows = processor_table.nrows() - processor_table_len;
+        let num_padding_rows = BFieldElement::new(num_padding_rows as u64);
         let mut row_1 = processor_table.row_mut(1);
-        row_1[ClockJumpDifferenceLookupMultiplicity.base_table_index()] += num_pad_rows;
+        row_1[ClockJumpDifferenceLookupMultiplicity.base_table_index()] += num_padding_rows;
     }
 
     pub fn extend(
@@ -167,19 +167,14 @@ impl ProcessorTable {
                 challenges,
             );
 
-            // RAM Table
-            let clk = current_row[CLK.base_table_index()];
-            let ramv = current_row[RAMV.base_table_index()];
-            let ramp = current_row[RAMP.base_table_index()];
-            let previous_instruction = current_row[PreviousInstruction.base_table_index()];
-            let compressed_row_for_ram_table_permutation_argument = clk * challenges[RamClkWeight]
-                + ramp * challenges[RamRampWeight]
-                + ramv * challenges[RamRamvWeight]
-                + previous_instruction * challenges[RamPreviousInstructionWeight];
-            ram_table_running_product *=
-                challenges[RamIndeterminate] - compressed_row_for_ram_table_permutation_argument;
+            if let Some(factor) =
+                Self::factor_for_ram_table_running_product(previous_row, current_row, challenges)
+            {
+                ram_table_running_product *= factor;
+            };
 
             // JumpStack Table
+            let clk = current_row[CLK.base_table_index()];
             let ci = current_row[CI.base_table_index()];
             let jsp = current_row[JSP.base_table_index()];
             let jso = current_row[JSO.base_table_index()];
@@ -398,6 +393,56 @@ impl ProcessorTable {
         factor
     }
 
+    fn factor_for_ram_table_running_product(
+        maybe_previous_row: Option<ArrayView1<BFieldElement>>,
+        current_row: ArrayView1<BFieldElement>,
+        challenges: &Challenges,
+    ) -> Option<XFieldElement> {
+        let is_padding_row = current_row[IsPadding.base_table_index()].is_one();
+        if is_padding_row {
+            return None;
+        }
+
+        let previous_row = maybe_previous_row?;
+        let previous_instruction = Self::instruction_from_row(previous_row)?;
+
+        let instruction_type = match previous_instruction {
+            ReadMem(_) => ram_table::INSTRUCTION_TYPE_READ,
+            WriteMem(_) => ram_table::INSTRUCTION_TYPE_WRITE,
+            _ => return None,
+        };
+
+        // longer stack means relevant information is on top of stack, i.e., in stack registers
+        let row_with_longer_stack = match previous_instruction {
+            ReadMem(_) => current_row.view(),
+            WriteMem(_) => previous_row.view(),
+            _ => unreachable!(),
+        };
+        let op_stack_delta = previous_instruction
+            .op_stack_size_influence()
+            .unsigned_abs() as usize;
+
+        let mut factor = XFieldElement::one();
+        for ram_pointer_offset in 0..op_stack_delta {
+            let num_ram_pointers = 1;
+            let ram_value_index = ram_pointer_offset + num_ram_pointers;
+            let ram_value_column = Self::op_stack_column_by_index(ram_value_index);
+            let ram_value = row_with_longer_stack[ram_value_column.base_table_index()];
+
+            let ram_pointer = row_with_longer_stack[ST0.base_table_index()];
+            let offset = BFieldElement::new(ram_pointer_offset as u64);
+            let offset_ram_pointer = ram_pointer + offset;
+
+            let clk = previous_row[CLK.base_table_index()];
+            let compressed_row = clk * challenges[RamClkWeight]
+                + instruction_type * challenges[RamInstructionTypeWeight]
+                + offset_ram_pointer * challenges[RamPointerWeight]
+                + ram_value * challenges[RamValueWeight];
+            factor *= challenges[RamIndeterminate] - compressed_row;
+        }
+        Some(factor)
+    }
+
     fn instruction_from_row(row: ArrayView1<BFieldElement>) -> Option<Instruction> {
         let opcode = row[CI.base_table_index()];
         let instruction: Instruction = opcode.try_into().ok()?;
@@ -467,8 +512,6 @@ impl ExtProcessorTable {
         let st9_is_0 = base_row(ST9);
         let st10_is_0 = base_row(ST10);
         let op_stack_pointer_is_16 = base_row(OpStackPointer) - constant(16);
-        let ramp_is_0 = base_row(RAMP);
-        let previous_instruction_is_0 = base_row(PreviousInstruction);
 
         // Compress the program digest using an Evaluation Argument.
         // Lowest index in the digest corresponds to lowest index on the stack.
@@ -514,13 +557,8 @@ impl ExtProcessorTable {
             ext_row(OpStackTablePermArg) - x_constant(PermArg::default_initial());
 
         // ram table
-        let ram_indeterminate = challenge(RamIndeterminate);
-        let ram_ramv_weight = challenge(RamRamvWeight);
-        // note: `clk`, and `ramp` are already constrained to be 0.
-        let compressed_row_for_ram_table = ram_ramv_weight * base_row(RAMV);
-        let running_product_for_ram_table_is_initialized_correctly = ext_row(RamTablePermArg)
-            - x_constant(PermArg::default_initial())
-                * (ram_indeterminate - compressed_row_for_ram_table);
+        let running_product_for_ram_table_is_initialized_correctly =
+            ext_row(RamTablePermArg) - x_constant(PermArg::default_initial());
 
         // jump-stack table
         let jump_stack_indeterminate = challenge(JumpStackIndeterminate);
@@ -585,8 +623,6 @@ impl ExtProcessorTable {
             st10_is_0,
             compressed_program_digest_is_expected_program_digest,
             op_stack_pointer_is_16,
-            ramp_is_0,
-            previous_instruction_is_0,
             running_evaluation_for_standard_input_is_initialized_correctly,
             instruction_lookup_log_derivative_is_initialized_correctly,
             running_evaluation_for_standard_output_is_initialized_correctly,
@@ -831,17 +867,14 @@ impl ExtProcessorTable {
     fn instruction_group_keep_ram(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        let curr_base_row = |col: ProcessorBaseTableColumn| {
-            circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
+        let curr_ext_row = |col: ProcessorExtTableColumn| {
+            circuit_builder.input(CurrentExtRow(col.master_ext_table_index()))
         };
-        let next_base_row = |col: ProcessorBaseTableColumn| {
-            circuit_builder.input(NextBaseRow(col.master_base_table_index()))
+        let next_ext_row = |col: ProcessorExtTableColumn| {
+            circuit_builder.input(NextExtRow(col.master_ext_table_index()))
         };
 
-        vec![
-            next_base_row(RAMV) - curr_base_row(RAMV),
-            next_base_row(RAMP) - curr_base_row(RAMP),
-        ]
+        vec![next_ext_row(RamTablePermArg) - curr_ext_row(RamTablePermArg)]
     }
 
     fn instruction_group_no_io(
@@ -1616,24 +1649,11 @@ impl ExtProcessorTable {
     fn instruction_read_mem(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        let curr_base_row = |col: ProcessorBaseTableColumn| {
-            circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
-        };
-        let next_base_row = |col: ProcessorBaseTableColumn| {
-            circuit_builder.input(NextBaseRow(col.master_base_table_index()))
-        };
-
-        // the RAM pointer is overwritten with st0
-        let update_ramp = next_base_row(RAMP) - curr_base_row(ST0);
-
-        // The top of the stack is overwritten with the RAM value.
-        let st0_becomes_ramv = next_base_row(ST0) - next_base_row(RAMV);
-
-        let specific_constraints = vec![update_ramp, st0_becomes_ramv];
         [
-            specific_constraints,
-            Self::instruction_group_step_1(circuit_builder),
-            Self::instruction_group_grow_op_stack(circuit_builder),
+            Self::instruction_group_step_2(circuit_builder),
+            Self::instruction_group_decompose_arg(circuit_builder),
+            Self::read_from_ram_any_of(circuit_builder, &NumberOfWords::legal_values()),
+            Self::prohibit_any_illegal_number_of_words(circuit_builder),
             Self::instruction_group_no_io(circuit_builder),
         ]
         .concat()
@@ -1642,24 +1662,11 @@ impl ExtProcessorTable {
     fn instruction_write_mem(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        let curr_base_row = |col: ProcessorBaseTableColumn| {
-            circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
-        };
-        let next_base_row = |col: ProcessorBaseTableColumn| {
-            circuit_builder.input(NextBaseRow(col.master_base_table_index()))
-        };
-
-        // the RAM pointer is overwritten with st1
-        let update_ramp = next_base_row(RAMP) - curr_base_row(ST1);
-
-        // The RAM value is overwritten with the top of the stack.
-        let ramv_becomes_st0 = next_base_row(RAMV) - curr_base_row(ST0);
-
-        let specific_constraints = vec![update_ramp, ramv_becomes_st0];
         [
-            specific_constraints,
-            Self::instruction_group_step_1(circuit_builder),
-            Self::instruction_group_shrink_op_stack(circuit_builder),
+            Self::instruction_group_step_2(circuit_builder),
+            Self::instruction_group_decompose_arg(circuit_builder),
+            Self::write_to_ram_any_of(circuit_builder, &NumberOfWords::legal_values()),
+            Self::prohibit_any_illegal_number_of_words(circuit_builder),
             Self::instruction_group_no_io(circuit_builder),
         ]
         .concat()
@@ -2294,8 +2301,8 @@ impl ExtProcessorTable {
             Return => ExtProcessorTable::instruction_return(circuit_builder),
             Recurse => ExtProcessorTable::instruction_recurse(circuit_builder),
             Assert => ExtProcessorTable::instruction_assert(circuit_builder),
-            ReadMem => ExtProcessorTable::instruction_read_mem(circuit_builder),
-            WriteMem => ExtProcessorTable::instruction_write_mem(circuit_builder),
+            ReadMem(_) => ExtProcessorTable::instruction_read_mem(circuit_builder),
+            WriteMem(_) => ExtProcessorTable::instruction_write_mem(circuit_builder),
             Hash => ExtProcessorTable::instruction_hash(circuit_builder),
             DivineSibling => ExtProcessorTable::instruction_divine_sibling(circuit_builder),
             AssertVector => ExtProcessorTable::instruction_assert_vector(circuit_builder),
@@ -2765,27 +2772,208 @@ impl ExtProcessorTable {
         challenge(OpStackIndeterminate) - compressed_row
     }
 
-    fn running_product_for_ram_table_updates_correctly(
+    fn write_to_ram_any_of(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
-    ) -> ConstraintCircuitMonad<DualRowIndicator> {
-        let challenge = |c: ChallengeId| circuit_builder.challenge(c);
+        number_of_words: &[usize],
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
+        let all_constraint_groups = number_of_words
+            .iter()
+            .map(|&n| {
+                Self::conditional_constraints_for_writing_n_elements_to_ram(circuit_builder, n)
+            })
+            .collect_vec();
+        Self::combine_mutually_exclusive_constraint_groups(circuit_builder, all_constraint_groups)
+    }
+
+    fn read_from_ram_any_of(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+        number_of_words: &[usize],
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
+        let all_constraint_groups = number_of_words
+            .iter()
+            .map(|&n| {
+                Self::conditional_constraints_for_reading_n_elements_from_ram(circuit_builder, n)
+            })
+            .collect_vec();
+        Self::combine_mutually_exclusive_constraint_groups(circuit_builder, all_constraint_groups)
+    }
+
+    fn conditional_constraints_for_writing_n_elements_to_ram(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+        n: usize,
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
+        Self::shrink_stack_by_n_and_write_n_elements_to_ram(circuit_builder, n)
+            .into_iter()
+            .map(|constraint| Self::indicator_polynomial(circuit_builder, n) * constraint)
+            .collect()
+    }
+
+    fn conditional_constraints_for_reading_n_elements_from_ram(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+        n: usize,
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
+        Self::grow_stack_by_n_and_read_n_elements_from_ram(circuit_builder, n)
+            .into_iter()
+            .map(|constraint| Self::indicator_polynomial(circuit_builder, n) * constraint)
+            .collect()
+    }
+
+    fn shrink_stack_by_n_and_write_n_elements_to_ram(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+        n: usize,
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
+        let constant = |c: usize| circuit_builder.b_constant(u32::try_from(c).unwrap().into());
+        let curr_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
+        };
         let next_base_row = |col: ProcessorBaseTableColumn| {
             circuit_builder.input(NextBaseRow(col.master_base_table_index()))
         };
+
+        let op_stack_pointer_shrinks_by_n =
+            next_base_row(OpStackPointer) - curr_base_row(OpStackPointer) + constant(n);
+        let ram_pointer_grows_by_n = next_base_row(ST0) - curr_base_row(ST0) - constant(n);
+
+        let mut constraints = vec![
+            op_stack_pointer_shrinks_by_n,
+            ram_pointer_grows_by_n,
+            Self::running_product_op_stack_accounts_for_shrinking_stack_by(circuit_builder, n),
+            Self::running_product_ram_accounts_for_writing_n_elements(circuit_builder, n),
+        ];
+
+        let num_ram_pointers = 1;
+        for i in n + num_ram_pointers..OpStackElement::COUNT {
+            let curr_stack_element = ProcessorTable::op_stack_column_by_index(i);
+            let next_stack_element = ProcessorTable::op_stack_column_by_index(i - n);
+            let element_i_is_shifted_by_n =
+                next_base_row(next_stack_element) - curr_base_row(curr_stack_element);
+            constraints.push(element_i_is_shifted_by_n);
+        }
+        constraints
+    }
+
+    fn grow_stack_by_n_and_read_n_elements_from_ram(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+        n: usize,
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
+        let constant = |c: usize| circuit_builder.b_constant(u32::try_from(c).unwrap().into());
+        let curr_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
+        };
+        let next_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(NextBaseRow(col.master_base_table_index()))
+        };
+
+        let op_stack_pointer_grows_by_n =
+            next_base_row(OpStackPointer) - curr_base_row(OpStackPointer) - constant(n);
+        let ram_pointer_shrinks_by_n = next_base_row(ST0) - curr_base_row(ST0) + constant(n);
+
+        let mut constraints = vec![
+            op_stack_pointer_grows_by_n,
+            ram_pointer_shrinks_by_n,
+            Self::running_product_op_stack_accounts_for_growing_stack_by(circuit_builder, n),
+            Self::running_product_ram_accounts_for_reading_n_elements(circuit_builder, n),
+        ];
+
+        let num_ram_pointers = 1;
+        for i in num_ram_pointers..OpStackElement::COUNT - n {
+            let curr_stack_element = ProcessorTable::op_stack_column_by_index(i);
+            let next_stack_element = ProcessorTable::op_stack_column_by_index(i + n);
+            let element_i_is_shifted_by_n =
+                next_base_row(next_stack_element) - curr_base_row(curr_stack_element);
+            constraints.push(element_i_is_shifted_by_n);
+        }
+        constraints
+    }
+
+    fn running_product_ram_accounts_for_writing_n_elements(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+        n: usize,
+    ) -> ConstraintCircuitMonad<DualRowIndicator> {
+        let constant = |c: u32| circuit_builder.b_constant(c.into());
         let curr_ext_row = |col: ProcessorExtTableColumn| {
             circuit_builder.input(CurrentExtRow(col.master_ext_table_index()))
         };
         let next_ext_row = |col: ProcessorExtTableColumn| {
             circuit_builder.input(NextExtRow(col.master_ext_table_index()))
         };
+        let single_write_factor = |ram_pointer_offset| {
+            Self::single_factor_for_permutation_argument_with_ram_table(
+                circuit_builder,
+                CurrentBaseRow,
+                ram_table::INSTRUCTION_TYPE_WRITE,
+                ram_pointer_offset,
+            )
+        };
 
-        let compressed_row = challenge(RamClkWeight) * next_base_row(CLK)
-            + challenge(RamRampWeight) * next_base_row(RAMP)
-            + challenge(RamRamvWeight) * next_base_row(RAMV)
-            + challenge(RamPreviousInstructionWeight) * next_base_row(PreviousInstruction);
+        let mut factor = constant(1);
+        for ram_pointer_offset in 0..n {
+            factor = factor * single_write_factor(ram_pointer_offset);
+        }
 
-        next_ext_row(RamTablePermArg)
-            - curr_ext_row(RamTablePermArg) * (challenge(RamIndeterminate) - compressed_row)
+        next_ext_row(RamTablePermArg) - curr_ext_row(RamTablePermArg) * factor
+    }
+
+    fn running_product_ram_accounts_for_reading_n_elements(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+        n: usize,
+    ) -> ConstraintCircuitMonad<DualRowIndicator> {
+        let constant = |c: u32| circuit_builder.b_constant(c.into());
+        let curr_ext_row = |col: ProcessorExtTableColumn| {
+            circuit_builder.input(CurrentExtRow(col.master_ext_table_index()))
+        };
+        let next_ext_row = |col: ProcessorExtTableColumn| {
+            circuit_builder.input(NextExtRow(col.master_ext_table_index()))
+        };
+        let single_read_factor = |ram_pointer_offset| {
+            Self::single_factor_for_permutation_argument_with_ram_table(
+                circuit_builder,
+                NextBaseRow,
+                ram_table::INSTRUCTION_TYPE_READ,
+                ram_pointer_offset,
+            )
+        };
+
+        let mut factor = constant(1);
+        for ram_pointer_offset in 0..n {
+            factor = factor * single_read_factor(ram_pointer_offset);
+        }
+
+        next_ext_row(RamTablePermArg) - curr_ext_row(RamTablePermArg) * factor
+    }
+
+    fn single_factor_for_permutation_argument_with_ram_table(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+        row_with_longer_stack_indicator: fn(usize) -> DualRowIndicator,
+        instruction_type: BFieldElement,
+        ram_pointer_offset: usize,
+    ) -> ConstraintCircuitMonad<DualRowIndicator> {
+        let constant = |c: u32| circuit_builder.b_constant(c.into());
+        let b_constant = |c| circuit_builder.b_constant(c);
+        let challenge = |c: ChallengeId| circuit_builder.challenge(c);
+        let curr_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
+        };
+        let row_with_longer_stack = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(row_with_longer_stack_indicator(
+                col.master_base_table_index(),
+            ))
+        };
+
+        let num_ram_pointers = 1;
+        let ram_value_index = ram_pointer_offset + num_ram_pointers;
+        let ram_value_column = ProcessorTable::op_stack_column_by_index(ram_value_index);
+        let ram_value = row_with_longer_stack(ram_value_column);
+
+        let ram_pointer = row_with_longer_stack(ST0);
+        let offset = constant(ram_pointer_offset as u32);
+        let offset_ram_pointer = ram_pointer + offset;
+
+        let compressed_row = curr_base_row(CLK) * challenge(RamClkWeight)
+            + b_constant(instruction_type) * challenge(RamInstructionTypeWeight)
+            + offset_ram_pointer * challenge(RamPointerWeight)
+            + ram_value * challenge(RamValueWeight);
+        challenge(RamIndeterminate) - compressed_row
     }
 
     fn running_product_for_jump_stack_table_updates_correctly(
@@ -3100,15 +3288,9 @@ impl ExtProcessorTable {
         let clk_increases_by_1 = next_base_row(CLK) - curr_base_row(CLK) - constant(1);
         let is_padding_is_0_or_does_not_change =
             curr_base_row(IsPadding) * (next_base_row(IsPadding) - curr_base_row(IsPadding));
-        let previous_instruction_is_copied_correctly = (next_base_row(PreviousInstruction)
-            - curr_base_row(CI))
-            * (constant(1) - next_base_row(IsPadding));
 
-        let instruction_independent_constraints = vec![
-            clk_increases_by_1,
-            is_padding_is_0_or_does_not_change,
-            previous_instruction_is_copied_correctly,
-        ];
+        let instruction_independent_constraints =
+            vec![clk_increases_by_1, is_padding_is_0_or_does_not_change];
 
         // instruction-specific constraints
         let all_transition_constraints_by_instruction = ALL_INSTRUCTIONS.map(|instruction| {
@@ -3137,7 +3319,6 @@ impl ExtProcessorTable {
         let table_linking_constraints = vec![
             Self::log_derivative_accumulates_clk_next(circuit_builder),
             Self::log_derivative_for_instruction_lookup_updates_correctly(circuit_builder),
-            Self::running_product_for_ram_table_updates_correctly(circuit_builder),
             Self::running_product_for_jump_stack_table_updates_correctly(circuit_builder),
             Self::running_evaluation_hash_input_updates_correctly(circuit_builder),
             Self::running_evaluation_hash_digest_updates_correctly(circuit_builder),
@@ -3226,14 +3407,6 @@ impl<'a> Display for ProcessorTraceRow<'a> {
             self.row[JSP.base_table_index()].value(),
             self.row[JSO.base_table_index()].value(),
             self.row[JSD.base_table_index()].value(),
-        )?;
-        row(
-            f,
-            format!(
-                "ramp: {:>width$} │ ramv: {:>width$} ╵",
-                self.row[RAMP.base_table_index()].value(),
-                self.row[RAMV.base_table_index()].value(),
-            ),
         )?;
         row(
             f,
@@ -3659,24 +3832,44 @@ pub(crate) mod tests {
 
     #[test]
     fn transition_constraints_for_instruction_read_mem() {
-        let programs = [triton_program!(push 5 push 3 write_mem read_mem halt)];
-        let test_rows = programs.map(|program| test_row_from_program(program, 3));
+        let programs = [
+            triton_program!(push 1 read_mem 1 push 0 eq assert assert halt),
+            triton_program!(push 2 read_mem 2 push 0 eq assert swap 1 push 2 eq assert halt),
+            triton_program!(push 3 read_mem 3 push 0 eq assert swap 2 push 3 eq assert halt),
+            triton_program!(push 4 read_mem 4 push 0 eq assert swap 3 push 4 eq assert halt),
+            triton_program!(push 5 read_mem 5 push 0 eq assert swap 4 push 5 eq assert halt),
+        ];
+        let initial_ram = (0..5).map(|i| (i, i + 1)).collect();
+        let non_determinism = NonDeterminism::default().with_ram(initial_ram);
+        let programs_with_input = programs.map(|program| ProgramAndInput {
+            program,
+            public_input: vec![],
+            non_determinism: non_determinism.clone(),
+        });
+        let test_rows = programs_with_input.map(|p_w_i| test_row_from_program_with_input(p_w_i, 1));
         let debug_info = TestRowsDebugInfo {
-            instruction: ReadMem,
-            debug_cols_curr_row: vec![ST0, ST1, RAMP, RAMV],
-            debug_cols_next_row: vec![ST0, ST1, RAMP, RAMV],
+            instruction: ReadMem(N1),
+            debug_cols_curr_row: vec![ST0, ST1],
+            debug_cols_next_row: vec![ST0, ST1],
         };
         assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
 
     #[test]
     fn transition_constraints_for_instruction_write_mem() {
-        let programs = [triton_program!(push 5 push 3 write_mem read_mem halt)];
-        let test_rows = programs.map(|program| test_row_from_program(program, 2));
+        let push_10_elements = triton_asm![push 2; 10];
+        let programs = [
+            triton_program!({&push_10_elements} write_mem 1 halt),
+            triton_program!({&push_10_elements} write_mem 2 halt),
+            triton_program!({&push_10_elements} write_mem 3 halt),
+            triton_program!({&push_10_elements} write_mem 4 halt),
+            triton_program!({&push_10_elements} write_mem 5 halt),
+        ];
+        let test_rows = programs.map(|program| test_row_from_program(program, 10));
         let debug_info = TestRowsDebugInfo {
-            instruction: WriteMem,
-            debug_cols_curr_row: vec![ST0, ST1, RAMP, RAMV],
-            debug_cols_next_row: vec![ST0, ST1, RAMP, RAMV],
+            instruction: WriteMem(N1),
+            debug_cols_curr_row: vec![ST0, ST1],
+            debug_cols_next_row: vec![ST0, ST1],
         };
         assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
@@ -4337,6 +4530,26 @@ pub(crate) mod tests {
             false => None,
         };
         let _ = ProcessorTable::factor_for_op_stack_table_running_product(
+            maybe_previous_row,
+            current_row.view(),
+            &challenges,
+        );
+    }
+
+    #[proptest]
+    fn constructing_factor_for_ram_table_running_product_never_panics(
+        has_previous_row: bool,
+        #[strategy(vec(arb(), BASE_WIDTH))] previous_row: Vec<BFieldElement>,
+        #[strategy(vec(arb(), BASE_WIDTH))] current_row: Vec<BFieldElement>,
+        #[strategy(arb())] challenges: Challenges,
+    ) {
+        let previous_row = Array1::from(previous_row);
+        let current_row = Array1::from(current_row);
+        let maybe_previous_row = match has_previous_row {
+            true => Some(previous_row.view()),
+            false => None,
+        };
+        let _ = ProcessorTable::factor_for_ram_table_running_product(
             maybe_previous_row,
             current_row.view(),
             &challenges,

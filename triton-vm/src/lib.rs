@@ -91,20 +91,20 @@
 //!     halt
 //!
 //!     sum_of_squares_secret_in:
-//!         divine 1 dup 0 mul            // s₁²
-//!         divine 1 dup 0 mul add        // s₁²+s₂²
-//!         divine 1 dup 0 mul add        // s₁²+s₂²+s₃²
+//!         divine 1 dup 0 mul          // s₁²
+//!         divine 1 dup 0 mul add      // s₁²+s₂²
+//!         divine 1 dup 0 mul add      // s₁²+s₂²+s₃²
 //!         return
 //!
 //!     sum_of_squares_ram:
-//!         push 17                     // 17
-//!         read_mem                    // 17 s₄
-//!         dup 0 mul                   // 17 s₄²
-//!         swap 1 pop 1                // s₄²
-//!         push 42                     // s₄² 42
-//!         read_mem                    // s₄² 42 s₅
-//!         dup 0 mul                   // s₄² 42 s₅²
-//!         swap 1 pop 1                // s₄² s₅²
+//!         push 18                     // 18
+//!         read_mem 1                  // s₄ 17
+//!         pop 1                       // s₄
+//!         dup 0 mul                   // s₄²
+//!         push 43                     // s₄² 43
+//!         read_mem 1                  // s₄² s₅ 42
+//!         pop 1                       // s₄² s₅
+//!         dup 0 mul                   // s₄² s₅²
 //!         add                         // s₄²+s₅²
 //!         return
 //! );
@@ -341,6 +341,8 @@ macro_rules! triton_asm {
     [dup $arg:literal; $num:expr] => { vec![ $crate::triton_instr!(dup $arg); $num ] };
     [swap $arg:literal; $num:expr] => { vec![ $crate::triton_instr!(swap $arg); $num ] };
     [call $arg:ident; $num:expr] => { vec![ $crate::triton_instr!(call $arg); $num ] };
+    [read_mem $arg:literal; $num:expr] => { vec![ $crate::triton_instr!(read_mem $arg); $num ] };
+    [write_mem $arg:literal; $num:expr] => { vec![ $crate::triton_instr!(write_mem $arg); $num ] };
     [read_io $arg:literal; $num:expr] => { vec![ $crate::triton_instr!(read_io $arg); $num ] };
     [write_io $arg:literal; $num:expr] => { vec![ $crate::triton_instr!(write_io $arg); $num ] };
     [$instr:ident; $num:expr] => { vec![ $crate::triton_instr!($instr); $num ] };
@@ -398,6 +400,16 @@ macro_rules! triton_instr {
     (call $arg:ident) => {{
         let argument = stringify!($arg).to_string();
         let instruction = $crate::instruction::AnInstruction::<String>::Call(argument);
+        $crate::instruction::LabelledInstruction::Instruction(instruction)
+    }};
+    (read_mem $arg:literal) => {{
+        let argument: $crate::op_stack::NumberOfWords = u32::try_into($arg).unwrap();
+        let instruction = $crate::instruction::AnInstruction::<String>::ReadMem(argument);
+        $crate::instruction::LabelledInstruction::Instruction(instruction)
+    }};
+    (write_mem $arg:literal) => {{
+        let argument: $crate::op_stack::NumberOfWords = u32::try_into($arg).unwrap();
+        let instruction = $crate::instruction::AnInstruction::<String>::WriteMem(argument);
         $crate::instruction::LabelledInstruction::Instruction(instruction)
     }};
     (read_io $arg:literal) => {{
@@ -606,9 +618,9 @@ mod tests {
     #[test]
     fn lib_use_initial_ram() {
         let program = triton_program!(
-            push 51 read_mem
-            push 42 read_mem
-            swap 1 swap 2 mul
+            push 52 read_mem 1 pop 1
+            push 43 read_mem 1 pop 1
+            mul
             write_io 1 halt
         );
 

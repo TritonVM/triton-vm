@@ -1,8 +1,11 @@
-use std::collections::HashMap;
+use std::cmp::Ordering;
 
+use arbitrary::Arbitrary;
+use itertools::Itertools;
 use ndarray::parallel::prelude::*;
 use ndarray::s;
 use ndarray::Array1;
+use ndarray::Array2;
 use ndarray::ArrayView1;
 use ndarray::ArrayView2;
 use ndarray::ArrayViewMut2;
@@ -11,12 +14,13 @@ use num_traits::One;
 use num_traits::Zero;
 use strum::EnumCount;
 use twenty_first::shared_math::b_field_element::BFieldElement;
+use twenty_first::shared_math::b_field_element::BFIELD_ONE;
+use twenty_first::shared_math::b_field_element::BFIELD_ZERO;
 use twenty_first::shared_math::polynomial::Polynomial;
 use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use crate::aet::AlgebraicExecutionTrace;
-use crate::instruction::Instruction;
 use crate::table::challenges::ChallengeId::*;
 use crate::table::challenges::Challenges;
 use crate::table::constraint_circuit::DualRowIndicator::*;
@@ -31,6 +35,42 @@ pub const BASE_WIDTH: usize = RamBaseTableColumn::COUNT;
 pub const EXT_WIDTH: usize = RamExtTableColumn::COUNT;
 pub const FULL_WIDTH: usize = BASE_WIDTH + EXT_WIDTH;
 
+pub(crate) const INSTRUCTION_TYPE_WRITE: BFieldElement = BFIELD_ZERO;
+pub(crate) const INSTRUCTION_TYPE_READ: BFieldElement = BFIELD_ONE;
+pub(crate) const PADDING_INDICATOR: BFieldElement = BFieldElement::new(2);
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Arbitrary)]
+pub struct RamTableCall {
+    pub clk: u32,
+    pub ram_pointer: BFieldElement,
+    pub is_write: bool,
+    pub values: Vec<BFieldElement>,
+}
+
+impl RamTableCall {
+    pub fn to_table_rows(self) -> Array2<BFieldElement> {
+        let instruction_type = match self.is_write {
+            true => INSTRUCTION_TYPE_WRITE,
+            false => INSTRUCTION_TYPE_READ,
+        };
+        let num_values = self.values.len();
+        let pointers = (0..num_values)
+            .map(|offset| self.ram_pointer + BFieldElement::from(offset as u32))
+            .collect::<Array1<_>>();
+        let values = Array1::from(self.values);
+
+        let mut rows = Array2::zeros((num_values, BASE_WIDTH));
+        rows.column_mut(CLK.base_table_index())
+            .fill(self.clk.into());
+        rows.column_mut(InstructionType.base_table_index())
+            .fill(instruction_type);
+        rows.column_mut(RamPointer.base_table_index())
+            .assign(&pointers);
+        rows.column_mut(RamValue.base_table_index()).assign(&values);
+        rows
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct RamTable {}
 
@@ -43,177 +83,130 @@ impl RamTable {
         ram_table: &mut ArrayViewMut2<BFieldElement>,
         aet: &AlgebraicExecutionTrace,
     ) -> Vec<BFieldElement> {
-        // Store the registers relevant for the Ram Table, i.e., CLK, RAMP, RAMV, and
-        // PreviousInstruction, with RAMP as the key. Preserves, thus allows reusing, the order
-        // of the processor's rows, which are sorted by CLK. Note that the Ram Table does not
-        // have to be sorted by RAMP, but must form contiguous regions of RAMP values.
-        let mut pre_processed_ram_table: HashMap<_, Vec<_>> = HashMap::new();
-        for processor_row in aet.processor_trace.rows() {
-            let clk = processor_row[ProcessorBaseTableColumn::CLK.base_table_index()];
-            let ramp = processor_row[ProcessorBaseTableColumn::RAMP.base_table_index()];
-            let ramv = processor_row[ProcessorBaseTableColumn::RAMV.base_table_index()];
-            let previous_instruction =
-                processor_row[ProcessorBaseTableColumn::PreviousInstruction.base_table_index()];
-            let ram_row = (clk, previous_instruction, ramv);
-            pre_processed_ram_table
-                .entry(ramp)
-                .and_modify(|v| v.push(ram_row))
-                .or_insert_with(|| vec![ram_row]);
+        let mut ram_table = ram_table.slice_mut(s![0..aet.ram_table_length(), ..]);
+        let trace_iter = aet.ram_trace.rows().into_iter();
+
+        let sorted_rows =
+            trace_iter.sorted_by(|row_0, row_1| Self::compare_rows(row_0.view(), row_1.view()));
+        for (row_index, row) in sorted_rows.enumerate() {
+            ram_table.row_mut(row_index).assign(&row);
         }
 
-        // Compute Bézout coefficient polynomials.
-        let num_of_ramps = pre_processed_ram_table.keys().len();
-        let polynomial_with_ramps_as_roots = pre_processed_ram_table.keys().fold(
-            Polynomial::from_constant(BFieldElement::one()),
-            |acc, &ramp| acc * Polynomial::new(vec![-ramp, BFieldElement::one()]), // acc·(x - ramp)
-        );
-        let formal_derivative = polynomial_with_ramps_as_roots.formal_derivative();
-        let (gcd, bezout_0, bezout_1) =
-            Polynomial::xgcd(polynomial_with_ramps_as_roots, formal_derivative);
-        assert!(gcd.is_one(), "Each RAMP value must occur at most once.");
-        assert!(
-            bezout_0.degree() < num_of_ramps as isize,
-            "The Bézout coefficient 0 must be of degree at most {}.",
-            num_of_ramps - 1
-        );
-        assert!(
-            bezout_1.degree() <= num_of_ramps as isize,
-            "The Bézout coefficient 1 must be of degree at most {num_of_ramps}."
-        );
-        let mut bezout_coefficient_polynomial_coefficients_0 = bezout_0.coefficients;
-        let mut bezout_coefficient_polynomial_coefficients_1 = bezout_1.coefficients;
-        bezout_coefficient_polynomial_coefficients_0.resize(num_of_ramps, BFieldElement::zero());
-        bezout_coefficient_polynomial_coefficients_1.resize(num_of_ramps, BFieldElement::zero());
+        let (bezout_0, bezout_1) =
+            Self::bezout_coefficient_polynomials_coefficients(ram_table.view());
+
+        Self::make_ram_table_consistent(&mut ram_table, bezout_0, bezout_1)
+    }
+
+    fn compare_rows(
+        row_0: ArrayView1<BFieldElement>,
+        row_1: ArrayView1<BFieldElement>,
+    ) -> Ordering {
+        let ram_pointer_0 = row_0[RamPointer.base_table_index()].value();
+        let ram_pointer_1 = row_1[RamPointer.base_table_index()].value();
+        let compare_ram_pointers = ram_pointer_0.cmp(&ram_pointer_1);
+
+        let clk_0 = row_0[CLK.base_table_index()].value();
+        let clk_1 = row_1[CLK.base_table_index()].value();
+        let compare_clocks = clk_0.cmp(&clk_1);
+
+        compare_ram_pointers.then(compare_clocks)
+    }
+
+    fn bezout_coefficient_polynomials_coefficients(
+        ram_table: ArrayView2<BFieldElement>,
+    ) -> (Vec<BFieldElement>, Vec<BFieldElement>) {
+        if ram_table.nrows() == 0 {
+            return (vec![], vec![]);
+        }
+
+        let linear_poly_with_root = |&r: &BFieldElement| Polynomial::new(vec![-r, BFIELD_ONE]);
+
+        let all_ram_pointers = ram_table.column(RamPointer.base_table_index());
+        let unique_ram_pointers = all_ram_pointers.iter().unique();
+        let num_unique_ram_pointers = unique_ram_pointers.clone().count();
+
+        let polynomial_with_ram_pointers_as_roots = unique_ram_pointers
+            .map(linear_poly_with_root)
+            .reduce(|accumulator, linear_poly| accumulator * linear_poly)
+            .unwrap_or_else(Polynomial::zero);
+        let formal_derivative = polynomial_with_ram_pointers_as_roots.formal_derivative();
+
+        let (gcd, bezout_poly_0, bezout_poly_1) =
+            Polynomial::xgcd(polynomial_with_ram_pointers_as_roots, formal_derivative);
+
+        assert!(gcd.is_one());
+        assert!(bezout_poly_0.degree() < num_unique_ram_pointers as isize);
+        assert!(bezout_poly_1.degree() <= num_unique_ram_pointers as isize);
+
+        let mut coefficients_0 = bezout_poly_0.coefficients;
+        let mut coefficients_1 = bezout_poly_1.coefficients;
+        coefficients_0.resize(num_unique_ram_pointers, BFIELD_ZERO);
+        coefficients_1.resize(num_unique_ram_pointers, BFIELD_ZERO);
+        (coefficients_0, coefficients_1)
+    }
+
+    /// - Set inverse of RAM pointer difference
+    /// - Fill in the Bézout coefficients if the RAM pointer changes between two consecutive rows
+    /// - Collect and return all clock jump differences
+    fn make_ram_table_consistent(
+        ram_table: &mut ArrayViewMut2<BFieldElement>,
+        mut bezout_coefficient_polynomial_coefficients_0: Vec<BFieldElement>,
+        mut bezout_coefficient_polynomial_coefficients_1: Vec<BFieldElement>,
+    ) -> Vec<BFieldElement> {
+        if ram_table.nrows() == 0 {
+            assert_eq!(0, bezout_coefficient_polynomial_coefficients_0.len());
+            assert_eq!(0, bezout_coefficient_polynomial_coefficients_1.len());
+            return vec![];
+        }
+
         let mut current_bcpc_0 = bezout_coefficient_polynomial_coefficients_0.pop().unwrap();
         let mut current_bcpc_1 = bezout_coefficient_polynomial_coefficients_1.pop().unwrap();
-        ram_table[[
-            0,
-            BezoutCoefficientPolynomialCoefficient0.base_table_index(),
-        ]] = current_bcpc_0;
-        ram_table[[
-            0,
-            BezoutCoefficientPolynomialCoefficient1.base_table_index(),
-        ]] = current_bcpc_1;
+        ram_table.row_mut(0)[BezoutCoefficientPolynomialCoefficient0.base_table_index()] =
+            current_bcpc_0;
+        ram_table.row_mut(0)[BezoutCoefficientPolynomialCoefficient1.base_table_index()] =
+            current_bcpc_1;
 
-        // Move the rows into the Ram Table as contiguous regions of RAMP values. Each such
-        // contiguous region is sorted by CLK by virtue of the order of the processor's rows.
-        let mut ram_table_row_idx = 0;
-        for (ramp, ram_table_rows) in pre_processed_ram_table {
-            for (clk, previous_instruction, ramv) in ram_table_rows {
-                let mut ram_table_row = ram_table.row_mut(ram_table_row_idx);
-                ram_table_row[CLK.base_table_index()] = clk;
-                ram_table_row[RAMP.base_table_index()] = ramp;
-                ram_table_row[RAMV.base_table_index()] = ramv;
-                ram_table_row[PreviousInstruction.base_table_index()] = previous_instruction;
-                ram_table_row_idx += 1;
-            }
-        }
-        assert_eq!(aet.processor_trace.nrows(), ram_table_row_idx);
-
-        // - Set inverse of RAMP difference.
-        // - Fill in the Bézout coefficients if the RAMP has changed.
-        // - Collect all clock jump differences.
-        // The Ram Table and the Processor Table have the same length.
         let mut clock_jump_differences = vec![];
-        for row_idx in 0..aet.processor_trace.nrows() - 1 {
+        for row_idx in 0..ram_table.nrows() - 1 {
             let (mut curr_row, mut next_row) =
                 ram_table.multi_slice_mut((s![row_idx, ..], s![row_idx + 1, ..]));
 
-            let ramp_diff = next_row[RAMP.base_table_index()] - curr_row[RAMP.base_table_index()];
-            let ramp_diff_inverse = ramp_diff.inverse_or_zero();
-            curr_row[InverseOfRampDifference.base_table_index()] = ramp_diff_inverse;
+            let ramp_diff =
+                next_row[RamPointer.base_table_index()] - curr_row[RamPointer.base_table_index()];
+            let clk_diff = next_row[CLK.base_table_index()] - curr_row[CLK.base_table_index()];
 
-            if !ramp_diff.is_zero() {
+            if ramp_diff.is_zero() {
+                assert!(!clk_diff.is_zero(), "row_idx = {row_idx}");
+                clock_jump_differences.push(clk_diff);
+            } else {
                 current_bcpc_0 = bezout_coefficient_polynomial_coefficients_0.pop().unwrap();
                 current_bcpc_1 = bezout_coefficient_polynomial_coefficients_1.pop().unwrap();
             }
+
+            curr_row[InverseOfRampDifference.base_table_index()] = ramp_diff.inverse_or_zero();
             next_row[BezoutCoefficientPolynomialCoefficient0.base_table_index()] = current_bcpc_0;
             next_row[BezoutCoefficientPolynomialCoefficient1.base_table_index()] = current_bcpc_1;
-
-            let clk_diff = next_row[CLK.base_table_index()] - curr_row[CLK.base_table_index()];
-            if ramp_diff.is_zero() {
-                assert!(
-                    !clk_diff.is_zero(),
-                    "All rows must have distinct CLK values, but don't on row with index {row_idx}."
-                );
-                clock_jump_differences.push(clk_diff);
-            }
         }
 
         assert_eq!(0, bezout_coefficient_polynomial_coefficients_0.len());
         assert_eq!(0, bezout_coefficient_polynomial_coefficients_1.len());
-
         clock_jump_differences
     }
 
-    pub fn pad_trace(mut ram_table: ArrayViewMut2<BFieldElement>, processor_table_len: usize) {
-        assert!(
-            processor_table_len > 0,
-            "Processor Table must have at least 1 row."
-        );
-
-        // Set up indices for relevant sections of the table.
-        let padded_height = ram_table.nrows();
-        let num_padding_rows = padded_height - processor_table_len;
-        let max_clk_before_padding = processor_table_len - 1;
-        let max_clk_before_padding_row_idx = ram_table
-            .rows()
-            .into_iter()
-            .enumerate()
-            .find(|(_, row)| row[CLK.base_table_index()].value() as usize == max_clk_before_padding)
-            .map(|(idx, _)| idx)
-            .expect("Ram Table must contain row with clock cycle equal to max cycle.");
-        let rows_to_move_source_section_start = max_clk_before_padding_row_idx + 1;
-        let rows_to_move_source_section_end = processor_table_len;
-        let num_rows_to_move = rows_to_move_source_section_end - rows_to_move_source_section_start;
-        let rows_to_move_dest_section_start = rows_to_move_source_section_start + num_padding_rows;
-        let rows_to_move_dest_section_end = rows_to_move_dest_section_start + num_rows_to_move;
-        let padding_section_start = rows_to_move_source_section_start;
-        let padding_section_end = padding_section_start + num_padding_rows;
-        assert_eq!(padded_height, rows_to_move_dest_section_end);
-
-        // Move all rows below the row with highest CLK to the end of the table – if they exist.
-        if num_rows_to_move > 0 {
-            let rows_to_move_source_range =
-                rows_to_move_source_section_start..rows_to_move_source_section_end;
-            let rows_to_move_dest_range =
-                rows_to_move_dest_section_start..rows_to_move_dest_section_end;
-            let rows_to_move = ram_table
-                .slice(s![rows_to_move_source_range, ..])
-                .to_owned();
-            rows_to_move.move_into(&mut ram_table.slice_mut(s![rows_to_move_dest_range, ..]));
+    pub fn pad_trace(mut ram_table: ArrayViewMut2<BFieldElement>, ram_table_len: usize) {
+        let last_row_index = ram_table_len.saturating_sub(1);
+        let mut padding_row = ram_table.row(last_row_index).to_owned();
+        padding_row[InstructionType.base_table_index()] = PADDING_INDICATOR;
+        if ram_table_len == 0 {
+            padding_row[BezoutCoefficientPolynomialCoefficient1.base_table_index()] = BFIELD_ONE;
         }
 
-        // Fill the created gap with padding rows, i.e., with (adjusted) copies of the last row
-        // before the gap. This is the padding section.
-        let mut padding_row_template = ram_table.row(max_clk_before_padding_row_idx).to_owned();
-        let ramp_difference_inverse =
-            padding_row_template[InverseOfRampDifference.base_table_index()];
-        padding_row_template[InverseOfRampDifference.base_table_index()] = BFieldElement::zero();
-        let mut padding_section =
-            ram_table.slice_mut(s![padding_section_start..padding_section_end, ..]);
+        let mut padding_section = ram_table.slice_mut(s![ram_table_len.., ..]);
         padding_section
             .axis_iter_mut(Axis(0))
             .into_par_iter()
-            .for_each(|padding_row| padding_row_template.clone().move_into(padding_row));
-
-        // CLK keeps increasing by 1 also in the padding section.
-        let clk_range = processor_table_len..padded_height;
-        let clk_col = Array1::from_iter(clk_range.map(|clk| BFieldElement::new(clk as u64)));
-        clk_col.move_into(padding_section.slice_mut(s![.., CLK.base_table_index()]));
-
-        // InverseOfRampDifference must be consistent at the padding section's boundaries.
-        ram_table[[
-            max_clk_before_padding_row_idx,
-            InverseOfRampDifference.base_table_index(),
-        ]] = BFieldElement::zero();
-        if num_rows_to_move > 0 && rows_to_move_dest_section_start > 0 {
-            let last_row_in_padding_section_idx = rows_to_move_dest_section_start - 1;
-            ram_table[[
-                last_row_in_padding_section_idx,
-                InverseOfRampDifference.base_table_index(),
-            ]] = ramp_difference_inverse;
-        }
+            .for_each(|mut row| row.assign(&padding_row));
     }
 
     pub fn extend(
@@ -225,21 +218,15 @@ impl RamTable {
         assert_eq!(EXT_WIDTH, ext_table.ncols());
         assert_eq!(base_table.nrows(), ext_table.nrows());
 
-        let clk_weight = challenges[RamClkWeight];
-        let ramp_weight = challenges[RamRampWeight];
-        let ramv_weight = challenges[RamRamvWeight];
-        let previous_instruction_weight = challenges[RamPreviousInstructionWeight];
-        let processor_perm_indeterminate = challenges[RamIndeterminate];
-        let bezout_relation_indeterminate = challenges[RamTableBezoutRelationIndeterminate];
-        let clock_jump_difference_lookup_indeterminate =
-            challenges[ClockJumpDifferenceLookupIndeterminate];
-
         let mut running_product_for_perm_arg = PermArg::default_initial();
         let mut clock_jump_diff_lookup_log_derivative = LookupArg::default_initial();
 
         // initialize columns establishing Bézout relation
-        let mut running_product_of_ramp =
-            bezout_relation_indeterminate - base_table.row(0)[RAMP.base_table_index()];
+        let bezout_indeterminate = challenges[RamTableBezoutRelationIndeterminate];
+        let clock_jump_difference_lookup_indeterminate =
+            challenges[ClockJumpDifferenceLookupIndeterminate];
+        let mut running_product_ram_pointer =
+            bezout_indeterminate - base_table.row(0)[RamPointer.base_table_index()];
         let mut formal_derivative = XFieldElement::one();
         let mut bezout_coefficient_0 =
             base_table.row(0)[BezoutCoefficientPolynomialCoefficient0.base_table_index()].lift();
@@ -250,46 +237,49 @@ impl RamTable {
         for row_idx in 0..base_table.nrows() {
             let current_row = base_table.row(row_idx);
             let clk = current_row[CLK.base_table_index()];
-            let ramp = current_row[RAMP.base_table_index()];
-            let ramv = current_row[RAMV.base_table_index()];
-            let previous_instruction = current_row[PreviousInstruction.base_table_index()];
+            let instruction_type = current_row[InstructionType.base_table_index()];
+            let current_ram_pointer = current_row[RamPointer.base_table_index()];
+            let ram_value = current_row[RamValue.base_table_index()];
 
-            if let Some(prev_row) = previous_row {
-                if prev_row[RAMP.base_table_index()] != current_row[RAMP.base_table_index()] {
-                    // accumulate coefficient for Bézout relation, proving new RAMP is unique
-                    let bcpc0 =
-                        current_row[BezoutCoefficientPolynomialCoefficient0.base_table_index()];
-                    let bcpc1 =
-                        current_row[BezoutCoefficientPolynomialCoefficient1.base_table_index()];
+            let is_no_padding_row = instruction_type != PADDING_INDICATOR;
 
-                    formal_derivative = (bezout_relation_indeterminate - ramp) * formal_derivative
-                        + running_product_of_ramp;
-                    running_product_of_ramp *= bezout_relation_indeterminate - ramp;
-                    bezout_coefficient_0 =
-                        bezout_coefficient_0 * bezout_relation_indeterminate + bcpc0;
-                    bezout_coefficient_1 =
-                        bezout_coefficient_1 * bezout_relation_indeterminate + bcpc1;
-                } else {
-                    // prove that clock jump is directed forward
-                    let clock_jump_difference =
-                        current_row[CLK.base_table_index()] - prev_row[CLK.base_table_index()];
-                    clock_jump_diff_lookup_log_derivative +=
-                        (clock_jump_difference_lookup_indeterminate - clock_jump_difference)
-                            .inverse();
+            if is_no_padding_row {
+                if let Some(previous_row) = previous_row {
+                    let previous_ram_pointer = previous_row[RamPointer.base_table_index()];
+                    if previous_ram_pointer != current_ram_pointer {
+                        // accumulate coefficient for Bézout relation, proving new RAMP is unique
+                        let bcpc0 =
+                            current_row[BezoutCoefficientPolynomialCoefficient0.base_table_index()];
+                        let bcpc1 =
+                            current_row[BezoutCoefficientPolynomialCoefficient1.base_table_index()];
+
+                        formal_derivative = (bezout_indeterminate - current_ram_pointer)
+                            * formal_derivative
+                            + running_product_ram_pointer;
+                        running_product_ram_pointer *= bezout_indeterminate - current_ram_pointer;
+                        bezout_coefficient_0 = bezout_coefficient_0 * bezout_indeterminate + bcpc0;
+                        bezout_coefficient_1 = bezout_coefficient_1 * bezout_indeterminate + bcpc1;
+                    } else {
+                        let previous_clock = previous_row[CLK.base_table_index()];
+                        let current_clock = current_row[CLK.base_table_index()];
+                        let clock_jump_difference = current_clock - previous_clock;
+                        let log_derivative_summand =
+                            clock_jump_difference_lookup_indeterminate - clock_jump_difference;
+                        clock_jump_diff_lookup_log_derivative += log_derivative_summand.inverse();
+                    }
                 }
-            }
 
-            // permutation argument to Processor Table
-            let compressed_row_for_permutation_argument = clk * clk_weight
-                + ramp * ramp_weight
-                + ramv * ramv_weight
-                + previous_instruction * previous_instruction_weight;
-            running_product_for_perm_arg *=
-                processor_perm_indeterminate - compressed_row_for_permutation_argument;
+                // permutation argument to Processor Table
+                let compressed_row = clk * challenges[RamClkWeight]
+                    + instruction_type * challenges[RamInstructionTypeWeight]
+                    + current_ram_pointer * challenges[RamPointerWeight]
+                    + ram_value * challenges[RamValueWeight];
+                running_product_for_perm_arg *= challenges[RamIndeterminate] - compressed_row;
+            }
 
             let mut extension_row = ext_table.row_mut(row_idx);
             extension_row[RunningProductPermArg.ext_table_index()] = running_product_for_perm_arg;
-            extension_row[RunningProductOfRAMP.ext_table_index()] = running_product_of_ramp;
+            extension_row[RunningProductOfRAMP.ext_table_index()] = running_product_ram_pointer;
             extension_row[FormalDerivative.ext_table_index()] = formal_derivative;
             extension_row[BezoutCoefficient0.ext_table_index()] = bezout_coefficient_0;
             extension_row[BezoutCoefficient1.ext_table_index()] = bezout_coefficient_1;
@@ -304,51 +294,50 @@ impl ExtRamTable {
     pub fn initial_constraints(
         circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
-        let one = circuit_builder.b_constant(1_u32.into());
+        let challenge = |c| circuit_builder.challenge(c);
+        let constant = |c| circuit_builder.b_constant(c);
+        let x_constant = |c| circuit_builder.x_constant(c);
+        let base_row = |column: RamBaseTableColumn| {
+            circuit_builder.input(BaseRow(column.master_base_table_index()))
+        };
+        let ext_row = |column: RamExtTableColumn| {
+            circuit_builder.input(ExtRow(column.master_ext_table_index()))
+        };
 
-        let bezout_challenge = circuit_builder.challenge(RamTableBezoutRelationIndeterminate);
-        let rppa_challenge = circuit_builder.challenge(RamIndeterminate);
+        let first_row_is_padding_row = base_row(InstructionType) - constant(PADDING_INDICATOR);
+        let first_row_is_not_padding_row = (base_row(InstructionType)
+            - constant(INSTRUCTION_TYPE_READ))
+            * (base_row(InstructionType) - constant(INSTRUCTION_TYPE_WRITE));
 
-        let clk = circuit_builder.input(BaseRow(CLK.master_base_table_index()));
-        let ramp = circuit_builder.input(BaseRow(RAMP.master_base_table_index()));
-        let ramv = circuit_builder.input(BaseRow(RAMV.master_base_table_index()));
-        let previous_instruction =
-            circuit_builder.input(BaseRow(PreviousInstruction.master_base_table_index()));
-        let bcpc0 = circuit_builder.input(BaseRow(
-            BezoutCoefficientPolynomialCoefficient0.master_base_table_index(),
-        ));
-        let bcpc1 = circuit_builder.input(BaseRow(
-            BezoutCoefficientPolynomialCoefficient1.master_base_table_index(),
-        ));
-        let rp = circuit_builder.input(ExtRow(RunningProductOfRAMP.master_ext_table_index()));
-        let fd = circuit_builder.input(ExtRow(FormalDerivative.master_ext_table_index()));
-        let bc0 = circuit_builder.input(ExtRow(BezoutCoefficient0.master_ext_table_index()));
-        let bc1 = circuit_builder.input(ExtRow(BezoutCoefficient1.master_ext_table_index()));
-        let rppa = circuit_builder.input(ExtRow(RunningProductPermArg.master_ext_table_index()));
-        let clock_jump_diff_log_derivative = circuit_builder.input(ExtRow(
-            ClockJumpDifferenceLookupClientLogDerivative.master_ext_table_index(),
-        ));
+        let bezout_coefficient_polynomial_coefficient_0_is_0 =
+            base_row(BezoutCoefficientPolynomialCoefficient0);
+        let bezout_coefficient_0_is_0 = ext_row(BezoutCoefficient0);
+        let bezout_coefficient_1_is_bezout_coefficient_polynomial_coefficient_1 =
+            ext_row(BezoutCoefficient1) - base_row(BezoutCoefficientPolynomialCoefficient1);
+        let formal_derivative_is_1 = ext_row(FormalDerivative) - constant(1_u32.into());
+        let running_product_polynomial_is_initialized_correctly = ext_row(RunningProductOfRAMP)
+            - challenge(RamTableBezoutRelationIndeterminate)
+            + base_row(RamPointer);
 
-        let bezout_coefficient_polynomial_coefficient_0_is_0 = bcpc0;
-        let bezout_coefficient_0_is_0 = bc0;
-        let bezout_coefficient_1_is_bezout_coefficient_polynomial_coefficient_1 = bc1 - bcpc1;
-        let formal_derivative_is_1 = fd - one;
-        let running_product_polynomial_is_initialized_correctly =
-            rp - (bezout_challenge - ramp.clone());
+        let clock_jump_diff_log_derivative_is_default_initial =
+            ext_row(ClockJumpDifferenceLookupClientLogDerivative)
+                - x_constant(LookupArg::default_initial());
 
-        let clock_jump_diff_log_derivative_is_initialized_correctly = clock_jump_diff_log_derivative
-            - circuit_builder.x_constant(LookupArg::default_initial());
+        let compressed_row_for_permutation_argument = base_row(CLK) * challenge(RamClkWeight)
+            + base_row(InstructionType) * challenge(RamInstructionTypeWeight)
+            + base_row(RamPointer) * challenge(RamPointerWeight)
+            + base_row(RamValue) * challenge(RamValueWeight);
+        let running_product_permutation_argument_has_accumulated_first_row =
+            ext_row(RunningProductPermArg) - challenge(RamIndeterminate)
+                + compressed_row_for_permutation_argument;
+        let running_product_permutation_argument_is_default_initial =
+            ext_row(RunningProductPermArg) - x_constant(PermArg::default_initial());
 
-        let clk_weight = circuit_builder.challenge(RamClkWeight);
-        let ramp_weight = circuit_builder.challenge(RamRampWeight);
-        let ramv_weight = circuit_builder.challenge(RamRamvWeight);
-        let previous_instruction_weight = circuit_builder.challenge(RamPreviousInstructionWeight);
-        let compressed_row_for_permutation_argument = clk * clk_weight
-            + ramp * ramp_weight
-            + ramv * ramv_weight
-            + previous_instruction * previous_instruction_weight;
-        let running_product_permutation_argument_is_initialized_correctly =
-            rppa - (rppa_challenge - compressed_row_for_permutation_argument);
+        let running_product_permutation_argument_starts_correctly =
+            running_product_permutation_argument_has_accumulated_first_row
+                * first_row_is_padding_row
+                + running_product_permutation_argument_is_default_initial
+                    * first_row_is_not_padding_row;
 
         vec![
             bezout_coefficient_polynomial_coefficient_0_is_0,
@@ -356,8 +345,8 @@ impl ExtRamTable {
             bezout_coefficient_1_is_bezout_coefficient_polynomial_coefficient_1,
             running_product_polynomial_is_initialized_correctly,
             formal_derivative_is_1,
-            running_product_permutation_argument_is_initialized_correctly,
-            clock_jump_diff_log_derivative_is_initialized_correctly,
+            running_product_permutation_argument_starts_correctly,
+            clock_jump_diff_log_derivative_is_default_initial,
         ]
     }
 
@@ -371,131 +360,147 @@ impl ExtRamTable {
     pub fn transition_constraints(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        let one = circuit_builder.b_constant(1u32.into());
+        let constant = |c| circuit_builder.b_constant(c);
+        let challenge = |c| circuit_builder.challenge(c);
+        let curr_base_row = |column: RamBaseTableColumn| {
+            circuit_builder.input(CurrentBaseRow(column.master_base_table_index()))
+        };
+        let curr_ext_row = |column: RamExtTableColumn| {
+            circuit_builder.input(CurrentExtRow(column.master_ext_table_index()))
+        };
+        let next_base_row = |column: RamBaseTableColumn| {
+            circuit_builder.input(NextBaseRow(column.master_base_table_index()))
+        };
+        let next_ext_row = |column: RamExtTableColumn| {
+            circuit_builder.input(NextExtRow(column.master_ext_table_index()))
+        };
 
-        let bezout_challenge = circuit_builder.challenge(RamTableBezoutRelationIndeterminate);
-        let rppa_challenge = circuit_builder.challenge(RamIndeterminate);
-        let clk_weight = circuit_builder.challenge(RamClkWeight);
-        let ramp_weight = circuit_builder.challenge(RamRampWeight);
-        let ramv_weight = circuit_builder.challenge(RamRamvWeight);
-        let previous_instruction_weight = circuit_builder.challenge(RamPreviousInstructionWeight);
+        let one = constant(1_u32.into());
 
-        let clk = circuit_builder.input(CurrentBaseRow(CLK.master_base_table_index()));
-        let ramp = circuit_builder.input(CurrentBaseRow(RAMP.master_base_table_index()));
-        let ramv = circuit_builder.input(CurrentBaseRow(RAMV.master_base_table_index()));
-        let iord = circuit_builder.input(CurrentBaseRow(
-            InverseOfRampDifference.master_base_table_index(),
-        ));
-        let bcpc0 = circuit_builder.input(CurrentBaseRow(
-            BezoutCoefficientPolynomialCoefficient0.master_base_table_index(),
-        ));
-        let bcpc1 = circuit_builder.input(CurrentBaseRow(
-            BezoutCoefficientPolynomialCoefficient1.master_base_table_index(),
-        ));
-        let rp =
-            circuit_builder.input(CurrentExtRow(RunningProductOfRAMP.master_ext_table_index()));
-        let fd = circuit_builder.input(CurrentExtRow(FormalDerivative.master_ext_table_index()));
-        let bc0 = circuit_builder.input(CurrentExtRow(BezoutCoefficient0.master_ext_table_index()));
-        let bc1 = circuit_builder.input(CurrentExtRow(BezoutCoefficient1.master_ext_table_index()));
-        let rppa = circuit_builder.input(CurrentExtRow(
-            RunningProductPermArg.master_ext_table_index(),
-        ));
-        let clock_jump_diff_log_derivative = circuit_builder.input(CurrentExtRow(
-            ClockJumpDifferenceLookupClientLogDerivative.master_ext_table_index(),
-        ));
+        let bezout_challenge = challenge(RamTableBezoutRelationIndeterminate);
 
-        let clk_next = circuit_builder.input(NextBaseRow(CLK.master_base_table_index()));
-        let ramp_next = circuit_builder.input(NextBaseRow(RAMP.master_base_table_index()));
-        let ramv_next = circuit_builder.input(NextBaseRow(RAMV.master_base_table_index()));
-        let previous_instruction_next =
-            circuit_builder.input(NextBaseRow(PreviousInstruction.master_base_table_index()));
-        let bcpc0_next = circuit_builder.input(NextBaseRow(
-            BezoutCoefficientPolynomialCoefficient0.master_base_table_index(),
-        ));
-        let bcpc1_next = circuit_builder.input(NextBaseRow(
-            BezoutCoefficientPolynomialCoefficient1.master_base_table_index(),
-        ));
-        let rp_next =
-            circuit_builder.input(NextExtRow(RunningProductOfRAMP.master_ext_table_index()));
-        let fd_next = circuit_builder.input(NextExtRow(FormalDerivative.master_ext_table_index()));
-        let bc0_next =
-            circuit_builder.input(NextExtRow(BezoutCoefficient0.master_ext_table_index()));
-        let bc1_next =
-            circuit_builder.input(NextExtRow(BezoutCoefficient1.master_ext_table_index()));
-        let rppa_next =
-            circuit_builder.input(NextExtRow(RunningProductPermArg.master_ext_table_index()));
-        let clock_jump_diff_log_derivative_next = circuit_builder.input(NextExtRow(
-            ClockJumpDifferenceLookupClientLogDerivative.master_ext_table_index(),
-        ));
+        let clock = curr_base_row(CLK);
+        let ram_pointer = curr_base_row(RamPointer);
+        let ram_value = curr_base_row(RamValue);
+        let instruction_type = curr_base_row(InstructionType);
+        let inverse_of_ram_pointer_difference = curr_base_row(InverseOfRampDifference);
+        let bcpc0 = curr_base_row(BezoutCoefficientPolynomialCoefficient0);
+        let bcpc1 = curr_base_row(BezoutCoefficientPolynomialCoefficient1);
 
-        let ramp_diff = ramp_next.clone() - ramp;
-        let ramp_changes = ramp_diff.clone() * iord.clone();
+        let running_product_ram_pointer = curr_ext_row(RunningProductOfRAMP);
+        let fd = curr_ext_row(FormalDerivative);
+        let bc0 = curr_ext_row(BezoutCoefficient0);
+        let bc1 = curr_ext_row(BezoutCoefficient1);
+        let rppa = curr_ext_row(RunningProductPermArg);
+        let clock_jump_diff_log_derivative =
+            curr_ext_row(ClockJumpDifferenceLookupClientLogDerivative);
 
-        // iord is 0 or iord is the inverse of (ramp' - ramp)
-        let iord_is_0_or_iord_is_inverse_of_ramp_diff = iord * (ramp_changes.clone() - one.clone());
+        let clock_next = next_base_row(CLK);
+        let ram_pointer_next = next_base_row(RamPointer);
+        let ram_value_next = next_base_row(RamValue);
+        let instruction_type_next = next_base_row(InstructionType);
+        let bcpc0_next = next_base_row(BezoutCoefficientPolynomialCoefficient0);
+        let bcpc1_next = next_base_row(BezoutCoefficientPolynomialCoefficient1);
 
-        // (ramp' - ramp) is zero or iord is the inverse of (ramp' - ramp)
-        let ramp_diff_is_0_or_iord_is_inverse_of_ramp_diff =
-            ramp_diff.clone() * (ramp_changes.clone() - one.clone());
+        let running_product_ram_pointer_next = next_ext_row(RunningProductOfRAMP);
+        let fd_next = next_ext_row(FormalDerivative);
+        let bc0_next = next_ext_row(BezoutCoefficient0);
+        let bc1_next = next_ext_row(BezoutCoefficient1);
+        let rppa_next = next_ext_row(RunningProductPermArg);
+        let clock_jump_diff_log_derivative_next =
+            next_ext_row(ClockJumpDifferenceLookupClientLogDerivative);
 
-        // (ramp doesn't change) and (previous instruction is not write_mem)
-        //      implies the ramv doesn't change
-        let op_code_write_mem = circuit_builder.b_constant(Instruction::WriteMem.opcode_b());
-        let ramp_changes_or_write_mem_or_ramv_stays = (one.clone() - ramp_changes.clone())
-            * (op_code_write_mem - previous_instruction_next.clone())
-            * (ramv_next.clone() - ramv);
+        let next_row_is_padding_row =
+            instruction_type_next.clone() - constant(PADDING_INDICATOR).clone();
+        let if_current_row_is_padding_row_then_next_row_is_padding_row = (instruction_type.clone()
+            - constant(INSTRUCTION_TYPE_READ))
+            * (instruction_type - constant(INSTRUCTION_TYPE_WRITE))
+            * next_row_is_padding_row.clone();
 
-        let bcbp0_only_changes_if_ramp_changes =
-            (one.clone() - ramp_changes.clone()) * (bcpc0_next.clone() - bcpc0);
+        let ram_pointer_difference = ram_pointer_next.clone() - ram_pointer;
+        let ram_pointer_changes = one.clone()
+            - ram_pointer_difference.clone() * inverse_of_ram_pointer_difference.clone();
 
-        let bcbp1_only_changes_if_ramp_changes =
-            (one.clone() - ramp_changes.clone()) * (bcpc1_next.clone() - bcpc1);
+        let iord_is_0_or_iord_is_inverse_of_ram_pointer_difference =
+            inverse_of_ram_pointer_difference * ram_pointer_changes.clone();
 
-        let running_product_ramp_updates_correctly = ramp_diff.clone()
-            * (rp_next.clone() - rp.clone() * (bezout_challenge.clone() - ramp_next.clone()))
-            + (one.clone() - ramp_changes.clone()) * (rp_next - rp.clone());
+        let ram_pointer_difference_is_0_or_iord_is_inverse_of_ram_pointer_difference =
+            ram_pointer_difference.clone() * ram_pointer_changes.clone();
 
-        let formal_derivative_updates_correctly = ramp_diff.clone()
-            * (fd_next.clone() - rp - (bezout_challenge.clone() - ramp_next.clone()) * fd.clone())
-            + (one.clone() - ramp_changes.clone()) * (fd_next - fd);
+        let ram_pointer_changes_or_write_mem_or_ram_value_stays = ram_pointer_changes.clone()
+            * (constant(INSTRUCTION_TYPE_WRITE) - instruction_type_next.clone())
+            * (ram_value_next.clone() - ram_value);
 
-        let bezout_coefficient_0_is_constructed_correctly = ramp_diff.clone()
+        let bcbp0_only_changes_if_ram_pointer_changes =
+            ram_pointer_changes.clone() * (bcpc0_next.clone() - bcpc0);
+
+        let bcbp1_only_changes_if_ram_pointer_changes =
+            ram_pointer_changes.clone() * (bcpc1_next.clone() - bcpc1);
+
+        let running_product_ram_pointer_updates_correctly = ram_pointer_difference.clone()
+            * (running_product_ram_pointer_next.clone()
+                - running_product_ram_pointer.clone()
+                    * (bezout_challenge.clone() - ram_pointer_next.clone()))
+            + ram_pointer_changes.clone()
+                * (running_product_ram_pointer_next - running_product_ram_pointer.clone());
+
+        let formal_derivative_updates_correctly = ram_pointer_difference.clone()
+            * (fd_next.clone()
+                - running_product_ram_pointer
+                - (bezout_challenge.clone() - ram_pointer_next.clone()) * fd.clone())
+            + ram_pointer_changes.clone() * (fd_next - fd);
+
+        let bezout_coefficient_0_is_constructed_correctly = ram_pointer_difference.clone()
             * (bc0_next.clone() - bezout_challenge.clone() * bc0.clone() - bcpc0_next)
-            + (one.clone() - ramp_changes.clone()) * (bc0_next - bc0);
+            + ram_pointer_changes.clone() * (bc0_next - bc0);
 
-        let bezout_coefficient_1_is_constructed_correctly = ramp_diff.clone()
+        let bezout_coefficient_1_is_constructed_correctly = ram_pointer_difference.clone()
             * (bc1_next.clone() - bezout_challenge * bc1.clone() - bcpc1_next)
-            + (one.clone() - ramp_changes.clone()) * (bc1_next - bc1);
+            + ram_pointer_changes.clone() * (bc1_next - bc1);
 
-        let compressed_row_for_permutation_argument = clk_next.clone() * clk_weight
-            + ramp_next * ramp_weight
-            + ramv_next * ramv_weight
-            + previous_instruction_next * previous_instruction_weight;
-        let rppa_updates_correctly =
-            rppa_next - rppa * (rppa_challenge - compressed_row_for_permutation_argument);
+        let compressed_row = clock_next.clone() * challenge(RamClkWeight)
+            + ram_pointer_next * challenge(RamPointerWeight)
+            + ram_value_next * challenge(RamValueWeight)
+            + instruction_type_next.clone() * challenge(RamInstructionTypeWeight);
+        let rppa_accumulates_next_row =
+            rppa_next.clone() - rppa.clone() * (challenge(RamIndeterminate) - compressed_row);
 
-        // The running sum of the logarithmic derivative for the clock jump difference Lookup
-        // Argument accumulates a summand of `clk_diff` if and only if the `ramp` does not change.
-        // Expressed differently:
-        // - the `ramp` changes or the log derivative accumulates a summand, and
-        // - the `ramp` does not change or the log derivative does not change.
-        let log_derivative_remains =
-            clock_jump_diff_log_derivative_next.clone() - clock_jump_diff_log_derivative.clone();
-        let clk_diff = clk_next - clk;
-        let log_derivative_accumulates = (clock_jump_diff_log_derivative_next
-            - clock_jump_diff_log_derivative)
-            * (circuit_builder.challenge(ClockJumpDifferenceLookupIndeterminate) - clk_diff)
+        let next_row_is_not_padding_row = (instruction_type_next.clone()
+            - constant(INSTRUCTION_TYPE_READ))
+            * (instruction_type_next - constant(INSTRUCTION_TYPE_WRITE));
+        let rppa_remains_unchanged = rppa_next - rppa;
+
+        let rppa_updates_correctly = rppa_accumulates_next_row * next_row_is_padding_row.clone()
+            + rppa_remains_unchanged * next_row_is_not_padding_row.clone();
+
+        let clock_difference = clock_next - clock;
+        let log_derivative_accumulates = (clock_jump_diff_log_derivative_next.clone()
+            - clock_jump_diff_log_derivative.clone())
+            * (challenge(ClockJumpDifferenceLookupIndeterminate) - clock_difference)
             - one.clone();
+        let log_derivative_remains =
+            clock_jump_diff_log_derivative_next - clock_jump_diff_log_derivative.clone();
+
+        let log_derivative_accumulates_or_ram_pointer_changes_or_next_row_is_padding_row =
+            log_derivative_accumulates * ram_pointer_changes.clone() * next_row_is_padding_row;
+        let log_derivative_remains_or_ram_pointer_doesnt_change =
+            log_derivative_remains.clone() * ram_pointer_difference.clone();
+        let log_derivative_remains_or_next_row_is_not_padding_row =
+            log_derivative_remains * next_row_is_not_padding_row;
+
         let log_derivative_updates_correctly =
-            (one - ramp_changes) * log_derivative_accumulates + ramp_diff * log_derivative_remains;
+            log_derivative_accumulates_or_ram_pointer_changes_or_next_row_is_padding_row
+                + log_derivative_remains_or_ram_pointer_doesnt_change
+                + log_derivative_remains_or_next_row_is_not_padding_row;
 
         vec![
-            iord_is_0_or_iord_is_inverse_of_ramp_diff,
-            ramp_diff_is_0_or_iord_is_inverse_of_ramp_diff,
-            ramp_changes_or_write_mem_or_ramv_stays,
-            bcbp0_only_changes_if_ramp_changes,
-            bcbp1_only_changes_if_ramp_changes,
-            running_product_ramp_updates_correctly,
+            if_current_row_is_padding_row_then_next_row_is_padding_row,
+            iord_is_0_or_iord_is_inverse_of_ram_pointer_difference,
+            ram_pointer_difference_is_0_or_iord_is_inverse_of_ram_pointer_difference,
+            ram_pointer_changes_or_write_mem_or_ram_value_stays,
+            bcbp0_only_changes_if_ram_pointer_changes,
+            bcbp1_only_changes_if_ram_pointer_changes,
+            running_product_ram_pointer_updates_correctly,
             formal_derivative_updates_correctly,
             bezout_coefficient_0_is_constructed_correctly,
             bezout_coefficient_1_is_constructed_correctly,
@@ -507,14 +512,14 @@ impl ExtRamTable {
     pub fn terminal_constraints(
         circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
-        let one = circuit_builder.b_constant(1_u32.into());
+        let constant = |c: u32| circuit_builder.b_constant(c.into());
+        let ext_row = |column: RamExtTableColumn| {
+            circuit_builder.input(ExtRow(column.master_ext_table_index()))
+        };
 
-        let rp = circuit_builder.input(ExtRow(RunningProductOfRAMP.master_ext_table_index()));
-        let fd = circuit_builder.input(ExtRow(FormalDerivative.master_ext_table_index()));
-        let bc0 = circuit_builder.input(ExtRow(BezoutCoefficient0.master_ext_table_index()));
-        let bc1 = circuit_builder.input(ExtRow(BezoutCoefficient1.master_ext_table_index()));
-
-        let bezout_relation_holds = bc0 * rp + bc1 * fd - one;
+        let bezout_relation_holds = ext_row(BezoutCoefficient0) * ext_row(RunningProductOfRAMP)
+            + ext_row(BezoutCoefficient1) * ext_row(FormalDerivative)
+            - constant(1);
 
         vec![bezout_relation_holds]
     }
@@ -522,7 +527,17 @@ impl ExtRamTable {
 
 #[cfg(test)]
 pub(crate) mod tests {
+    use proptest_arbitrary_interop::arb;
+    use test_strategy::proptest;
+
     use super::*;
+
+    #[proptest]
+    fn ram_table_call_can_be_converted_to_table_rows(
+        #[strategy(arb())] ram_table_call: RamTableCall,
+    ) {
+        let _ = ram_table_call.to_table_rows();
+    }
 
     pub fn constraints_evaluate_to_zero(
         master_base_trace_table: ArrayView2<BFieldElement>,
