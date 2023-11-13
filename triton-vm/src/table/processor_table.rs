@@ -3839,7 +3839,7 @@ pub(crate) mod tests {
             triton_program!(push 4 read_mem 4 push 0 eq assert swap 3 push 4 eq assert halt),
             triton_program!(push 5 read_mem 5 push 0 eq assert swap 4 push 5 eq assert halt),
         ];
-        let initial_ram = (0..5).map(|i| (i, i + 1)).collect();
+        let initial_ram = (1..=5).map(|i| (i, i)).collect();
         let non_determinism = NonDeterminism::default().with_ram(initial_ram);
         let programs_with_input = programs.map(|program| ProgramAndInput {
             program,

@@ -1221,11 +1221,11 @@ pub(crate) mod tests {
         let program = triton_program!(
             push 9 push 8 push 5 write_mem 2 pop 1      // write 8 to address 5, 9 to address 6
             push 18 push 15 write_mem 1 pop 1           // write 18 to address 15
-            push  6         read_mem  1 pop 2           // read from address 5
-            push 16         read_mem  1 pop 2           // read from address 15
+            push  5         read_mem  1 pop 2           // read from address 5
+            push 15         read_mem  1 pop 2           // read from address 15
             push  7 push  5 write_mem 1 pop 1           // write 7 to address 5
-            push 16         read_mem  1                 // _ 18 15
-            push  6         read_mem  1                 // _ 18 15 7 5
+            push 15         read_mem  1                 // _ 18 14
+            push  5         read_mem  1                 // _ 18 14 7 4
             halt
         );
         let (_, _, master_base_table, _, _) =

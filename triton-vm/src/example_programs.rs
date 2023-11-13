@@ -128,7 +128,7 @@ fn merkle_tree_authentication_path_verify() -> Program {
         // stack before: [* r4 r3 r2 r1 r0]
         // stack after:  [* r4 r3 r2 r1 r0]
         check_aps:
-        push 1 read_mem 1 pop 1 dup 0   // get number of APs left to check
+        push 0 read_mem 1 pop 1 dup 0   // get number of APs left to check
                                         // stack: [* r4 r3 r2 r1 r0 num_left num_left]
         push 0 eq                       // see if there are authentication paths left
                                         // stack: [* r4 r3 r2 r1 r0 0 num_left num_left==0]
@@ -205,21 +205,21 @@ fn verify_sudoku() -> Program {
         // inconsistency is found.
         initialize_flag:
             push 1                        // _ 1
-            push 9                        // _ 1 9
-            write_mem 1                   // _ 10
+            push 0                        // _ 1 0
+            write_mem 1                   // _ 1
             pop 1                         // _
             return
 
         invalidate_flag:
             push 0                        // _ 0
-            push 9                        // _ 0 9
-            write_mem 1                   // _ 10
+            push 0                        // _ 0 0
+            write_mem 1                   // _ 1
             pop 1                         // _
             return
 
         assert_flag:
-            push 10                       // _ 10
-            read_mem 1                    // _ flag 9
+            push 0                        // _ 0
+            read_mem 1                    // _ flag -1
             pop 1                         // _ flag
             assert                        // _
             halt
@@ -230,7 +230,7 @@ fn verify_sudoku() -> Program {
             push 23 push 19 push 17
             push 13 push 11 push  7
             push  5 push  3 push  2
-            push 0 write_mem 5 write_mem 4
+            push 1 write_mem 5 write_mem 4
             pop 1
             return
 
@@ -276,6 +276,7 @@ fn verify_sudoku() -> Program {
             return
 
         check_columns:
+            push 82 call check_one_column
             push 83 call check_one_column
             push 84 call check_one_column
             push 85 call check_one_column
@@ -284,7 +285,6 @@ fn verify_sudoku() -> Program {
             push 88 call check_one_column
             push 89 call check_one_column
             push 90 call check_one_column
-            push 91 call check_one_column
             return
 
         check_one_column:
@@ -295,15 +295,15 @@ fn verify_sudoku() -> Program {
             return
 
         check_squares:
-            push 31 call check_one_square
-            push 34 call check_one_square
-            push 37 call check_one_square
-            push 58 call check_one_square
-            push 61 call check_one_square
-            push 64 call check_one_square
-            push 85 call check_one_square
-            push 88 call check_one_square
-            push 91 call check_one_square
+            push 30 call check_one_square
+            push 33 call check_one_square
+            push 36 call check_one_square
+            push 57 call check_one_square
+            push 60 call check_one_square
+            push 63 call check_one_square
+            push 84 call check_one_square
+            push 87 call check_one_square
+            push 90 call check_one_square
             return
 
         check_one_square:
@@ -470,20 +470,20 @@ pub(crate) fn calculate_new_mmr_peaks_from_append_with_safe_lists() -> Program {
         // After:  _
         tasm_list_safe_u32_push_digest:
             dup 5       // _ *list elem[4] elem[3] elem[2] elem[1] elem[0] *list
-            push 2 add  // _ *list elem[4] elem[3] elem[2] elem[1] elem[0] *list+2
-            read_mem 2  // _ *list elem[4] elem[3] elem[2] elem[1] elem[0] capacity len *list
+            push 1 add  // _ *list elem[4] elem[3] elem[2] elem[1] elem[0] *list+1
+            read_mem 2  // _ *list elem[4] elem[3] elem[2] elem[1] elem[0] capacity len *list-1
 
             // Verify that length < capacity
-            swap 2      // _ *list elem[4] elem[3] elem[2] elem[1] elem[0] *list len capacity
-            dup 1       // _ *list elem[4] elem[3] elem[2] elem[1] elem[0] *list len capacity len
-            lt          // _ *list elem[4] elem[3] elem[2] elem[1] elem[0] *list len capacity>len
-            assert      // _ *list elem[4] elem[3] elem[2] elem[1] elem[0] *list len
+            swap 2      // _ *list elem[4] elem[3] elem[2] elem[1] elem[0] *list-1 len capacity
+            dup 1       // _ *list elem[4] elem[3] elem[2] elem[1] elem[0] *list-1 len capacity len
+            lt          // _ *list elem[4] elem[3] elem[2] elem[1] elem[0] *list-1 len capacity>len
+            assert      // _ *list elem[4] elem[3] elem[2] elem[1] elem[0] *list-1 len
 
             // Adjust ram pointer
-            push 5      // _ *list elem[4] elem[3] elem[2] elem[1] elem[0] *list len 5
-            mul         // _ *list elem[4] elem[3] elem[2] elem[1] elem[0] *list 5·len
-            add         // _ *list elem[4] elem[3] elem[2] elem[1] elem[0] *list+5·len
-            push 2      // _ *list elem[4] elem[3] elem[2] elem[1] elem[0] *list+5·len 2
+            push 5      // _ *list elem[4] elem[3] elem[2] elem[1] elem[0] *list-1 len 5
+            mul         // _ *list elem[4] elem[3] elem[2] elem[1] elem[0] *list-1 5·len
+            add         // _ *list elem[4] elem[3] elem[2] elem[1] elem[0] *list+5·len-1
+            push 3      // _ *list elem[4] elem[3] elem[2] elem[1] elem[0] *list+5·len 3
             add         // _ *list elem[4] elem[3] elem[2] elem[1] elem[0] *list+5·len+2
 
             // Write all elements
@@ -493,8 +493,8 @@ pub(crate) fn calculate_new_mmr_peaks_from_append_with_safe_lists() -> Program {
             pop 1       // _ *list
 
             // Increase length indicator by one
-            push 1 add  // _ *list+1
-            read_mem 1  // _ len *list
+            read_mem 1  // _ len *list-1
+            push 1 add  // _ len *list
             swap 1      // _ *list len
             push 1      // _ *list len 1
             add         // _ *list len+1
@@ -590,8 +590,8 @@ pub(crate) fn calculate_new_mmr_peaks_from_append_with_safe_lists() -> Program {
         // Before: _ *list
         // After:  _ elem{N - 1}, elem{N - 2}, ..., elem{0}
         tasm_list_safe_u32_pop_digest:
-            push 1 add      // _ *list+1
-            read_mem 1      // _ len *list
+            read_mem 1      // _ len *list-1
+            push 1 add      // _ len *list
 
             // Assert that length is not 0
             dup 1           // _ len *list len
@@ -607,13 +607,14 @@ pub(crate) fn calculate_new_mmr_peaks_from_append_with_safe_lists() -> Program {
             add             // _ len *list len-1
             swap 1          // _ len len-1 *list
             write_mem 1     // _ len *list+1
+            push -1 add     // _ len *list
 
             // Read elements
-            swap 1          // _ *list+1 len
-            push 5          // _ *list+1 len 5
-            mul             // _ *list+1 5·len
-                            // _ *list+1 offset_for_last_element
-            add             // _ *list+offset_for_last_element+1
+            swap 1          // _ *list len
+            push 5          // _ *list len 5
+            mul             // _ *list 5·len
+                            // _ *list offset_for_last_element
+            add             // _ *list+offset_for_last_element
                             // _ address_for_last_element
             read_mem 5      // _ [elements] address_for_last_element-5
             pop 1           // _ [elements]
@@ -663,18 +664,18 @@ pub(crate) fn calculate_new_mmr_peaks_from_append_with_safe_lists() -> Program {
         // Before: _ size
         // After: _ *next_addr
         tasm_memory_dyn_malloc:
-            push 1                     // _ size *free_pointer+1
-            read_mem 1                 // _ size *next_addr' *free_pointer
-            swap 1                     // _ size *free_pointer *next_addr'
+            push 0                     // _ size *free_pointer
+            read_mem 1                 // _ size *next_addr' *free_pointer-1
+            pop 1                      // _ size *next_addr'
 
             // add 1 iff `next_addr` was 0, i.e. uninitialized.
-            dup 0                      // _ size *free_pointer *next_addr' *next_addr'
-            push 0                     // _ size *free_pointer *next_addr' *next_addr' 0
-            eq                         // _ size *free_pointer *next_addr' (*next_addr' == 0)
-            add                        // _ size *free_pointer *next_addr
+            dup 0                      // _ size *next_addr' *next_addr'
+            push 0                     // _ size *next_addr' *next_addr' 0
+            eq                         // _ size *next_addr' (*next_addr' == 0)
+            add                        // _ size *next_addr
 
-            dup 0                      // _ size *free_pointer *next_addr *next_addr
-            dup 3                      // _ size *free_pointer *next_addr *next_addr size
+            dup 0                      // _ size *next_addr *next_addr
+            dup 2                      // _ size *next_addr *next_addr size
 
             // Ensure that `size` does not exceed 2^32
             split
@@ -693,10 +694,10 @@ pub(crate) fn calculate_new_mmr_peaks_from_append_with_safe_lists() -> Program {
             eq
             assert
 
-            swap 1                     // _ size *free_pointer *(next_addr + size) *next_addr
-            swap 3                     // _ *next_addr *free_pointer *(next_addr + size) size
-            pop 1                      // _ *next_addr *free_pointer *(next_addr + size)
-            swap 1                     // _ *next_addr *(next_addr + size) *free_pointer
+            swap 1                     // _ size *(next_addr + size) *next_addr
+            swap 2                     // _ *next_addr *(next_addr + size) size
+            pop 1                      // _ *next_addr *(next_addr + size)
+            push 0                     // _ *next_addr *(next_addr + size) *free_pointer
             write_mem 1                // _ *next_addr *free_pointer+1
             pop 1                      // _ *next_addr
             return
