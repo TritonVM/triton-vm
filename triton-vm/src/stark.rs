@@ -2126,6 +2126,13 @@ pub(crate) mod tests {
         )
     }
 
+    #[test]
+    fn claim_in_ram_corresponds_to_currently_running_program() {
+        triton_table_constraints_evaluate_to_zero(
+            test_program_claim_in_ram_corresponds_to_currently_running_program(),
+        );
+    }
+
     fn triton_table_constraints_evaluate_to_zero(program_and_input: ProgramAndInput) {
         let (_, _, master_base_table, master_ext_table, challenges) =
             master_tables_for_low_security_level(program_and_input);

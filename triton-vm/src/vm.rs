@@ -983,6 +983,7 @@ pub(crate) mod tests {
     use strum::IntoEnumIterator;
     use test_strategy::proptest;
     use twenty_first::shared_math::b_field_element::BFIELD_ZERO;
+    use twenty_first::shared_math::bfield_codec::BFieldCodec;
     use twenty_first::shared_math::other::random_elements;
     use twenty_first::shared_math::other::random_elements_array;
     use twenty_first::shared_math::polynomial::Polynomial;
@@ -1003,6 +1004,7 @@ pub(crate) mod tests {
     use crate::table::processor_table::ProcessorTraceRow;
     use crate::triton_asm;
     use crate::triton_program;
+    use crate::Claim;
 
     use super::*;
 
@@ -1779,6 +1781,35 @@ pub(crate) mod tests {
             program,
             public_input: vec![1, 3, 14],
             non_determinism: [].into(),
+        }
+    }
+
+    pub(crate) fn test_program_claim_in_ram_corresponds_to_currently_running_program(
+    ) -> ProgramAndInput {
+        let program = triton_program! {
+            dup 15 dup 15 dup 15 dup 15 dup 15  // _ [own_digest]
+            push 4 read_mem 5 pop 1             // _ [own_digest] [claim_digest]
+            assert_vector                       // _ [own_digest]
+            halt
+        };
+        let claim = Claim {
+            program_digest: program.hash::<StarkHasher>(),
+            input: vec![],
+            output: vec![],
+        };
+
+        let initial_ram = claim
+            .encode()
+            .into_iter()
+            .enumerate()
+            .map(|(address, value)| (address as u64, value.value()))
+            .collect();
+        let non_determinism = NonDeterminism::default().with_ram(initial_ram);
+
+        ProgramAndInput {
+            program,
+            public_input: vec![],
+            non_determinism,
         }
     }
 
