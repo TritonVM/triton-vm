@@ -5,7 +5,6 @@ use itertools::Itertools;
 use ndarray::parallel::prelude::*;
 use ndarray::s;
 use ndarray::Array1;
-use ndarray::Array2;
 use ndarray::ArrayView1;
 use ndarray::ArrayView2;
 use ndarray::ArrayViewMut2;
@@ -43,31 +42,23 @@ pub(crate) const PADDING_INDICATOR: BFieldElement = BFieldElement::new(2);
 pub struct RamTableCall {
     pub clk: u32,
     pub ram_pointer: BFieldElement,
+    pub ram_value: BFieldElement,
     pub is_write: bool,
-    pub values: Vec<BFieldElement>,
 }
 
 impl RamTableCall {
-    pub fn to_table_rows(self) -> Array2<BFieldElement> {
+    pub fn to_table_row(self) -> Array1<BFieldElement> {
         let instruction_type = match self.is_write {
             true => INSTRUCTION_TYPE_WRITE,
             false => INSTRUCTION_TYPE_READ,
         };
-        let num_values = self.values.len();
-        let pointers = (0..num_values)
-            .map(|offset| self.ram_pointer + BFieldElement::from(offset as u32))
-            .collect::<Array1<_>>();
-        let values = Array1::from(self.values);
 
-        let mut rows = Array2::zeros((num_values, BASE_WIDTH));
-        rows.column_mut(CLK.base_table_index())
-            .fill(self.clk.into());
-        rows.column_mut(InstructionType.base_table_index())
-            .fill(instruction_type);
-        rows.column_mut(RamPointer.base_table_index())
-            .assign(&pointers);
-        rows.column_mut(RamValue.base_table_index()).assign(&values);
-        rows
+        let mut row = Array1::zeros(BASE_WIDTH);
+        row[CLK.base_table_index()] = self.clk.into();
+        row[InstructionType.base_table_index()] = instruction_type;
+        row[RamPointer.base_table_index()] = self.ram_pointer;
+        row[RamValue.base_table_index()] = self.ram_value;
+        row
     }
 }
 
@@ -533,10 +524,10 @@ pub(crate) mod tests {
     use super::*;
 
     #[proptest]
-    fn ram_table_call_can_be_converted_to_table_rows(
+    fn ram_table_call_can_be_converted_to_table_row(
         #[strategy(arb())] ram_table_call: RamTableCall,
     ) {
-        let _ = ram_table_call.to_table_rows();
+        let _ = ram_table_call.to_table_row();
     }
 
     pub fn constraints_evaluate_to_zero(

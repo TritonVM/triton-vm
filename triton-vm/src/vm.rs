@@ -61,6 +61,8 @@ pub struct VMState<'pgm> {
     /// The read-write **random-access memory** allows Triton VM to store arbitrary data.
     pub ram: HashMap<BFieldElement, BFieldElement>,
 
+    ram_calls: Vec<RamTableCall>,
+
     /// The **Op-stack memory** stores Triton VM's entire operational stack.
     pub op_stack: OpStack,
 
@@ -122,6 +124,7 @@ impl<'pgm> VMState<'pgm> {
             secret_individual_tokens: non_determinism.individual_tokens.into(),
             secret_digests: non_determinism.digests.into(),
             ram: non_determinism.ram,
+            ram_calls: vec![],
             op_stack: OpStack::new(program_digest),
             jump_stack: vec![],
             cycle_count: 0,
@@ -267,6 +270,14 @@ impl<'pgm> VMState<'pgm> {
             .collect()
     }
 
+    fn start_recording_ram_calls(&mut self) {
+        self.ram_calls.clear();
+    }
+
+    fn stop_recording_ram_calls(&mut self) -> Vec<CoProcessorCall> {
+        self.ram_calls.drain(..).map(RamCall).collect()
+    }
+
     fn pop(&mut self, n: NumberOfWords) -> Result<Vec<CoProcessorCall>> {
         for _ in 0..n.num_words() {
             self.op_stack.pop()?;
@@ -368,53 +379,59 @@ impl<'pgm> VMState<'pgm> {
     }
 
     fn read_mem(&mut self, n: NumberOfWords) -> Result<Vec<CoProcessorCall>> {
+        self.start_recording_ram_calls();
         let mut ram_pointer = self.op_stack.pop()?;
-
-        let mut ram_values = vec![];
         for _ in 0..n.num_words() {
-            let ram_value = self.ram.get(&ram_pointer).copied().unwrap_or(BFIELD_ZERO);
+            let ram_value = self.ram_read(ram_pointer)?;
             self.op_stack.push(ram_value);
-            ram_values.push(ram_value);
             ram_pointer.decrement();
         }
-        ram_values.reverse();
-
         self.op_stack.push(ram_pointer);
-
-        let ram_table_call = RamTableCall {
-            clk: self.cycle_count,
-            ram_pointer,
-            is_write: false,
-            values: ram_values,
-        };
+        let ram_calls = self.stop_recording_ram_calls();
 
         self.instruction_pointer += 2;
-        Ok(vec![RamCall(ram_table_call)])
+        Ok(ram_calls)
     }
 
     fn write_mem(&mut self, n: NumberOfWords) -> Result<Vec<CoProcessorCall>> {
+        self.start_recording_ram_calls();
         let mut ram_pointer = self.op_stack.pop()?;
-
-        let mut ram_values = vec![];
         for _ in 0..n.num_words() {
             let ram_value = self.op_stack.pop()?;
-            self.ram.insert(ram_pointer, ram_value);
-            ram_values.push(ram_value);
+            self.ram_write(ram_pointer, ram_value);
             ram_pointer.increment();
         }
-
         self.op_stack.push(ram_pointer);
+        let ram_calls = self.stop_recording_ram_calls();
 
-        ram_pointer -= n.into();
+        self.instruction_pointer += 2;
+        Ok(ram_calls)
+    }
+
+    fn ram_read(&mut self, ram_pointer: BFieldElement) -> Result<BFieldElement> {
+        let ram_value = self.ram.get(&ram_pointer).copied().unwrap_or(BFIELD_ZERO);
+
         let ram_table_call = RamTableCall {
             clk: self.cycle_count,
             ram_pointer,
-            is_write: true,
-            values: ram_values,
+            ram_value,
+            is_write: false,
         };
+        self.ram_calls.push(ram_table_call);
 
-        self.instruction_pointer += 2;
-        Ok(vec![RamCall(ram_table_call)])
+        Ok(ram_value)
+    }
+
+    fn ram_write(&mut self, ram_pointer: BFieldElement, ram_value: BFieldElement) {
+        let ram_table_call = RamTableCall {
+            clk: self.cycle_count,
+            ram_pointer,
+            ram_value,
+            is_write: true,
+        };
+        self.ram_calls.push(ram_table_call);
+
+        self.ram.insert(ram_pointer, ram_value);
     }
 
     fn hash(&mut self) -> Result<Vec<CoProcessorCall>> {
