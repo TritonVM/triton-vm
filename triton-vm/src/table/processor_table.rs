@@ -404,23 +404,21 @@ impl ProcessorTable {
         }
 
         let previous_row = maybe_previous_row?;
-        let previous_instruction = Self::instruction_from_row(previous_row)?;
+        let instruction = Self::instruction_from_row(previous_row)?;
 
-        let instruction_type = match previous_instruction {
+        let instruction_type = match instruction {
             ReadMem(_) => ram_table::INSTRUCTION_TYPE_READ,
             WriteMem(_) => ram_table::INSTRUCTION_TYPE_WRITE,
             _ => return None,
         };
 
         // longer stack means relevant information is on top of stack, i.e., in stack registers
-        let row_with_longer_stack = match previous_instruction {
+        let row_with_longer_stack = match instruction {
             ReadMem(_) => current_row.view(),
             WriteMem(_) => previous_row.view(),
             _ => unreachable!(),
         };
-        let op_stack_delta = previous_instruction
-            .op_stack_size_influence()
-            .unsigned_abs() as usize;
+        let op_stack_delta = instruction.op_stack_size_influence().unsigned_abs() as usize;
 
         let mut factor = XFieldElement::one();
         for ram_pointer_offset in 0..op_stack_delta {
@@ -428,10 +426,8 @@ impl ProcessorTable {
             let ram_value_index = ram_pointer_offset + num_ram_pointers;
             let ram_value_column = Self::op_stack_column_by_index(ram_value_index);
             let ram_value = row_with_longer_stack[ram_value_column.base_table_index()];
-
-            let ram_pointer = row_with_longer_stack[ST0.base_table_index()];
-            let offset = BFieldElement::new(ram_pointer_offset as u64);
-            let offset_ram_pointer = ram_pointer + offset;
+            let offset_ram_pointer =
+                Self::offset_ram_pointer(instruction, row_with_longer_stack, ram_pointer_offset);
 
             let clk = previous_row[CLK.base_table_index()];
             let compressed_row = clk * challenges[RamClkWeight]
@@ -441,6 +437,23 @@ impl ProcessorTable {
             factor *= challenges[RamIndeterminate] - compressed_row;
         }
         Some(factor)
+    }
+
+    fn offset_ram_pointer(
+        instruction: Instruction,
+        row_with_longer_stack: ArrayView1<BFieldElement>,
+        ram_pointer_offset: usize,
+    ) -> BFieldElement {
+        let ram_pointer = row_with_longer_stack[ST0.base_table_index()];
+        let offset = BFieldElement::new(ram_pointer_offset as u64);
+
+        match instruction {
+            // adjust for ram_pointer pointing in front of last-read address:
+            // `push 0 read_mem 1` leaves stack as `_ a -1` where `a` was read from address 0.
+            ReadMem(_) => ram_pointer + offset + BFIELD_ONE,
+            WriteMem(_) => ram_pointer + offset,
+            _ => unreachable!(),
+        }
     }
 
     fn instruction_from_row(row: ArrayView1<BFieldElement>) -> Option<Instruction> {
@@ -2965,8 +2978,14 @@ impl ExtProcessorTable {
         let ram_value_column = ProcessorTable::op_stack_column_by_index(ram_value_index);
         let ram_value = row_with_longer_stack(ram_value_column);
 
+        let additional_offset = match instruction_type {
+            ram_table::INSTRUCTION_TYPE_READ => 1,
+            ram_table::INSTRUCTION_TYPE_WRITE => 0,
+            _ => panic!("Invalid instruction type"),
+        };
+
         let ram_pointer = row_with_longer_stack(ST0);
-        let offset = constant(ram_pointer_offset as u32);
+        let offset = constant(additional_offset + ram_pointer_offset as u32);
         let offset_ram_pointer = ram_pointer + offset;
 
         let compressed_row = curr_base_row(CLK) * challenge(RamClkWeight)
