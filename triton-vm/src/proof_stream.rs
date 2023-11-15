@@ -1,5 +1,3 @@
-use anyhow::bail;
-use anyhow::Result;
 use arbitrary::Arbitrary;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::b_field_element::BFIELD_ONE;
@@ -9,6 +7,7 @@ use twenty_first::shared_math::other::is_power_of_two;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
 
+use crate::error::ProofStreamError;
 use crate::proof::Proof;
 use crate::proof_item::ProofItem;
 
@@ -87,9 +86,9 @@ where
 
     /// Receive a proof item from prover as verifier.
     /// See [`ProofStream::enqueue`] for more details.
-    pub fn dequeue(&mut self) -> Result<ProofItem> {
+    pub fn dequeue(&mut self) -> Result<ProofItem, ProofStreamError> {
         let Some(item) = self.items.get(self.items_index) else {
-            bail!("Queue must be non-empty in order to dequeue.");
+            return Err(ProofStreamError::EmptyQueue);
         };
         let item = item.to_owned();
         if item.include_in_fiat_shamir_heuristic() {
@@ -123,7 +122,7 @@ impl<H> BFieldCodec for ProofStream<H>
 where
     H: AlgebraicHasher,
 {
-    fn decode(sequence: &[BFieldElement]) -> Result<Box<Self>> {
+    fn decode(sequence: &[BFieldElement]) -> Result<Box<Self>, ProofStreamError> {
         let items = *Vec::decode(sequence)?;
         let proof_stream = Self {
             items,
@@ -145,9 +144,9 @@ impl<H> TryFrom<&Proof> for ProofStream<H>
 where
     H: AlgebraicHasher,
 {
-    type Error = anyhow::Error;
+    type Error = ProofStreamError;
 
-    fn try_from(proof: &Proof) -> Result<Self> {
+    fn try_from(proof: &Proof) -> Result<Self, ProofStreamError> {
         let proof_stream = *ProofStream::decode(&proof.0)?;
         Ok(proof_stream)
     }
@@ -173,6 +172,8 @@ where
 
 #[cfg(test)]
 mod tests {
+    use std::collections::VecDeque;
+
     use itertools::Itertools;
     use rand::distributions::Standard;
     use rand::prelude::Distribution;
@@ -181,7 +182,6 @@ mod tests {
     use rand::random;
     use rand::Rng;
     use rand_core::RngCore;
-    use std::collections::VecDeque;
     use twenty_first::shared_math::other::random_elements;
     use twenty_first::shared_math::tip5::Tip5;
     use twenty_first::shared_math::x_field_element::XFieldElement;

@@ -1,7 +1,5 @@
 use std::marker::PhantomData;
 
-use anyhow::bail;
-use anyhow::Result;
 use itertools::Itertools;
 use num_traits::One;
 use rayon::iter::*;
@@ -27,15 +25,6 @@ use crate::proof_stream::ProofStream;
 use crate::stark::MTMaker;
 
 pub type AuthenticationStructure = Vec<Digest>;
-
-#[derive(PartialEq, Eq, Debug, Display)]
-pub enum FriValidationError {
-    IncorrectNumberOfRevealedLeaves,
-    BadMerkleAuthenticationPath,
-    MismatchingLastCodeword,
-    LastRoundPolynomialHasTooHighDegree,
-    BadMerkleRootForLastCodeword,
-}
 
 #[derive(Debug, Clone, Copy)]
 pub struct Fri<H: AlgebraicHasher> {
@@ -655,6 +644,7 @@ mod tests {
 
     use ProofItem::*;
 
+    use crate::error::FriValidationError;
     use crate::shared_tests::*;
 
     use super::*;

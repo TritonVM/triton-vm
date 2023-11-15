@@ -1,62 +1,71 @@
-use std::error::Error;
-use std::fmt::Display;
-use std::fmt::Formatter;
-use std::fmt::Result as FmtResult;
-
+use std::backtrace::Backtrace;
+use thiserror::Error;
 use twenty_first::shared_math::digest::DIGEST_LENGTH;
 
-use InstructionError::*;
-
 use crate::op_stack::OpStackElement;
+use crate::vm::VMState;
 use crate::BFieldElement;
 
-#[derive(Debug, Clone)]
-pub enum InstructionError {
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+pub struct VMError {
+    source: InstructionError,
+    backtrace: Backtrace,
+    vm_state: VMState,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+pub(crate) enum InstructionError {
+    #[error("Instruction pointer {0} points outside of program")]
     InstructionPointerOverflow(usize),
+
+    #[error("Operational stack is too shallow")]
     OpStackTooShallow,
+
+    #[error("Jump stack is empty")]
     JumpStackIsEmpty,
+
+    #[error("Assertion failed: st0 must be 1. ip: {0}, clk: {1}, st0: {2}")]
     AssertionFailed(usize, u32, BFieldElement),
+
+    #[error(
+        "Vector assertion failed: op_stack[{2}] == {3} != {4} == op_stack[{}]. ip: {0}, clk: {1}",
+        usize::from(.2) + DIGEST_LENGTH
+    )]
     VectorAssertionFailed(usize, u32, OpStackElement, BFieldElement, BFieldElement),
+
+    #[error("Cannot swap stack element 0 with itself")]
     SwapST0,
+
+    #[error("0 does not have a multiplicative inverse")]
     InverseOfZero,
+
+    #[error("Division by 0 is impossible")]
     DivisionByZero,
+
+    #[error("The logarithm of 0 does not exist")]
     LogarithmOfZero,
+
+    #[error("Failed to convert BFieldElement {0} into u32")]
     FailedU32Conversion(BFieldElement),
 }
 
-impl Display for InstructionError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
-        match self {
-            InstructionPointerOverflow(ip) => {
-                write!(f, "Instruction pointer {ip} points outside of program")
-            }
-            OpStackTooShallow => write!(f, "Operational stack is too shallow"),
-            JumpStackIsEmpty => write!(f, "Jump stack is empty."),
-            AssertionFailed(ip, clk, st0) => {
-                write!(f, "Assertion failed: st0 must be 1. ")?;
-                write!(f, "ip: {ip}, clk: {clk}, st0: {st0}")
-            }
-            VectorAssertionFailed(ip, clk, failing_position_lhs, lhs, rhs) => {
-                let failing_index_lhs: usize = failing_position_lhs.into();
-                let failing_index_rhs = failing_index_lhs + DIGEST_LENGTH;
-                write!(f, "Vector assertion failed: ")?;
-                write!(f, "op_stack[{failing_index_lhs}] == {lhs} != ")?;
-                write!(f, "{rhs} == op_stack[{failing_index_rhs}]. ")?;
-                write!(f, "ip: {ip}, clk: {clk}")
-            }
-            SwapST0 => write!(f, "Cannot swap stack element 0 with itself"),
-            InverseOfZero => write!(f, "0 does not have a multiplicative inverse"),
-            DivisionByZero => write!(f, "Division by 0 is impossible"),
-            LogarithmOfZero => write!(f, "The logarithm of 0 does not exist"),
-            FailedU32Conversion(bfe) => {
-                let value = bfe.value();
-                write!(f, "Failed to convert BFieldElement {value} into u32")
-            }
-        }
-    }
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+pub(crate) enum ProofStreamError {
+    #[error("Queue must be non-empty in order to dequeue an item")]
+    EmptyQueue,
 }
 
-impl Error for InstructionError {}
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+pub(crate) enum FriError {}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+pub(crate) enum FriValidationError {
+    IncorrectNumberOfRevealedLeaves,
+    BadMerkleAuthenticationPath,
+    MismatchingLastCodeword,
+    LastRoundPolynomialHasTooHighDegree,
+    BadMerkleRootForLastCodeword,
+}
 
 #[cfg(test)]
 mod tests {
@@ -87,14 +96,14 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Jump stack is empty.")]
+    #[should_panic(expected = "Jump stack is empty")]
     fn return_without_call() {
         let program = triton_program!(return halt);
         program.run([].into(), [].into()).unwrap();
     }
 
     #[test]
-    #[should_panic(expected = "Jump stack is empty.")]
+    #[should_panic(expected = "Jump stack is empty")]
     fn recurse_without_call() {
         let program = triton_program!(recurse halt);
         program.run([].into(), [].into()).unwrap();
@@ -159,7 +168,7 @@ mod tests {
         let err = program.run([].into(), [].into()).unwrap_err();
 
         let err = err.downcast::<InstructionError>().unwrap();
-        let VectorAssertionFailed(_, _, index, _, _) = err else {
+        let InstructionError::VectorAssertionFailed(_, _, index, _, _) = err else {
             panic!("VM panicked with unexpected error {err}.")
         };
         let index: usize = index.into();

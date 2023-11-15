@@ -3,9 +3,7 @@ use std::collections::hash_map::Entry::Vacant;
 use std::collections::HashMap;
 use std::ops::AddAssign;
 
-use anyhow::anyhow;
-use anyhow::bail;
-use anyhow::Result;
+use crate::error::InstructionError;
 use itertools::Itertools;
 use ndarray::s;
 use ndarray::Array2;
@@ -215,23 +213,27 @@ impl AlgebraicExecutionTrace {
             .unwrap()
     }
 
-    pub fn record_state(&mut self, state: &VMState) -> Result<()> {
+    pub fn record_state(&mut self, state: &VMState) -> Result<(), InstructionError> {
         self.record_instruction_lookup(state.instruction_pointer)?;
-        self.append_state_to_processor_trace(state)
+        self.append_state_to_processor_trace(state);
+        Ok(())
     }
 
-    fn record_instruction_lookup(&mut self, instruction_pointer: usize) -> Result<()> {
+    fn record_instruction_lookup(
+        &mut self,
+        instruction_pointer: usize,
+    ) -> Result<(), InstructionError> {
         if instruction_pointer >= self.instruction_multiplicities.len() {
-            bail!(InstructionPointerOverflow(instruction_pointer));
+            return Err(InstructionPointerOverflow(instruction_pointer));
         }
         self.instruction_multiplicities[instruction_pointer] += 1;
         Ok(())
     }
 
-    fn append_state_to_processor_trace(&mut self, state: &VMState) -> Result<()> {
+    fn append_state_to_processor_trace(&mut self, state: &VMState) {
         self.processor_trace
             .push_row(state.to_processor_row().view())
-            .map_err(|e| anyhow!(e))
+            .unwrap()
     }
 
     pub fn record_co_processor_call(&mut self, co_processor_call: CoProcessorCall) {
