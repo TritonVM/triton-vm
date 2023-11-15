@@ -335,7 +335,7 @@ impl AlgebraicExecutionTrace {
 
     fn record_ram_call(&mut self, ram_call: RamTableCall) {
         self.ram_trace
-            .append(Axis(0), ram_call.to_table_rows().view())
+            .push_row(ram_call.to_table_row().view())
             .unwrap();
     }
 }

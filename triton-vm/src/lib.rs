@@ -97,11 +97,11 @@
 //!         return
 //!
 //!     sum_of_squares_ram:
-//!         push 18                     // 18
+//!         push 17                     // 18
 //!         read_mem 1                  // s₄ 17
 //!         pop 1                       // s₄
 //!         dup 0 mul                   // s₄²
-//!         push 43                     // s₄² 43
+//!         push 42                     // s₄² 43
 //!         read_mem 1                  // s₄² s₅ 42
 //!         pop 1                       // s₄² s₅
 //!         dup 0 mul                   // s₄² s₅²
@@ -618,8 +618,8 @@ mod tests {
     #[test]
     fn lib_use_initial_ram() {
         let program = triton_program!(
-            push 52 read_mem 1 pop 1
-            push 43 read_mem 1 pop 1
+            push 51 read_mem 1 pop 1
+            push 42 read_mem 1 pop 1
             mul
             write_io 1 halt
         );
