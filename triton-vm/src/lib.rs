@@ -335,17 +335,10 @@ macro_rules! triton_asm {
     };
 
     // repeated instructions
-    [pop $arg:literal; $num:expr] => { vec![ $crate::triton_instr!(pop $arg); $num ] };
-    [push $arg:literal; $num:expr] => { vec![ $crate::triton_instr!(push $arg); $num ] };
-    [divine $arg:literal; $num:expr] => { vec![ $crate::triton_instr!(divine $arg); $num ] };
-    [dup $arg:literal; $num:expr] => { vec![ $crate::triton_instr!(dup $arg); $num ] };
-    [swap $arg:literal; $num:expr] => { vec![ $crate::triton_instr!(swap $arg); $num ] };
-    [call $arg:ident; $num:expr] => { vec![ $crate::triton_instr!(call $arg); $num ] };
-    [read_mem $arg:literal; $num:expr] => { vec![ $crate::triton_instr!(read_mem $arg); $num ] };
-    [write_mem $arg:literal; $num:expr] => { vec![ $crate::triton_instr!(write_mem $arg); $num ] };
-    [read_io $arg:literal; $num:expr] => { vec![ $crate::triton_instr!(read_io $arg); $num ] };
-    [write_io $arg:literal; $num:expr] => { vec![ $crate::triton_instr!(write_io $arg); $num ] };
     [$instr:ident; $num:expr] => { vec![ $crate::triton_instr!($instr); $num ] };
+    [push $arg:expr; $num:expr] => { vec![ $crate::triton_instr!(push $arg); $num ] };
+    [call $arg:ident; $num:expr] => { vec![ $crate::triton_instr!(call $arg); $num ] };
+    [$instr:ident $arg:literal; $num:expr] => { vec![ $crate::triton_instr!($instr $arg); $num ] };
 
     // entry point
     {$($source_code:tt)*} => {{
@@ -371,30 +364,13 @@ macro_rules! triton_asm {
 /// [tasm]: https://triton-vm.org/spec/instructions.html
 #[macro_export]
 macro_rules! triton_instr {
-    (pop $arg:literal) => {{
-        let argument: $crate::op_stack::NumberOfWords = u32::try_into($arg).unwrap();
-        let instruction = $crate::instruction::AnInstruction::<String>::Pop(argument);
-        $crate::instruction::LabelledInstruction::Instruction(instruction)
+    ($instr:ident) => {{
+        let (_, instructions) = $crate::parser::tokenize(stringify!($instr)).unwrap();
+        instructions[0].to_labelled_instruction()
     }};
     (push $arg:expr) => {{
         let argument = $crate::BFieldElement::new($arg);
         let instruction = $crate::instruction::AnInstruction::<String>::Push(argument);
-        $crate::instruction::LabelledInstruction::Instruction(instruction)
-    }};
-    (divine $arg:literal) => {{
-        let argument: $crate::op_stack::NumberOfWords = u32::try_into($arg).unwrap();
-        let instruction = $crate::instruction::AnInstruction::<String>::Divine(argument);
-        $crate::instruction::LabelledInstruction::Instruction(instruction)
-    }};
-    (dup $arg:literal) => {{
-        let argument: $crate::op_stack::OpStackElement = u32::try_into($arg).unwrap();
-        let instruction = $crate::instruction::AnInstruction::<String>::Dup(argument);
-        $crate::instruction::LabelledInstruction::Instruction(instruction)
-    }};
-    (swap $arg:literal) => {{
-        assert_ne!(0_u32, $arg, "`swap 0` is illegal.");
-        let argument: $crate::op_stack::OpStackElement = u32::try_into($arg).unwrap();
-        let instruction = $crate::instruction::AnInstruction::<String>::Swap(argument);
         $crate::instruction::LabelledInstruction::Instruction(instruction)
     }};
     (call $arg:ident) => {{
@@ -402,28 +378,8 @@ macro_rules! triton_instr {
         let instruction = $crate::instruction::AnInstruction::<String>::Call(argument);
         $crate::instruction::LabelledInstruction::Instruction(instruction)
     }};
-    (read_mem $arg:literal) => {{
-        let argument: $crate::op_stack::NumberOfWords = u32::try_into($arg).unwrap();
-        let instruction = $crate::instruction::AnInstruction::<String>::ReadMem(argument);
-        $crate::instruction::LabelledInstruction::Instruction(instruction)
-    }};
-    (write_mem $arg:literal) => {{
-        let argument: $crate::op_stack::NumberOfWords = u32::try_into($arg).unwrap();
-        let instruction = $crate::instruction::AnInstruction::<String>::WriteMem(argument);
-        $crate::instruction::LabelledInstruction::Instruction(instruction)
-    }};
-    (read_io $arg:literal) => {{
-        let argument: $crate::op_stack::NumberOfWords = u32::try_into($arg).unwrap();
-        let instruction = $crate::instruction::AnInstruction::<String>::ReadIo(argument);
-        $crate::instruction::LabelledInstruction::Instruction(instruction)
-    }};
-    (write_io $arg:literal) => {{
-        let argument: $crate::op_stack::NumberOfWords = u32::try_into($arg).unwrap();
-        let instruction = $crate::instruction::AnInstruction::<String>::WriteIo(argument);
-        $crate::instruction::LabelledInstruction::Instruction(instruction)
-    }};
-    ($instr:ident) => {{
-        let (_, instructions) = $crate::parser::tokenize(stringify!($instr)).unwrap();
+    ($instr:ident $arg:literal) => {{
+        let (_, instructions) = $crate::parser::tokenize(stringify!($instr $arg)).unwrap();
         instructions[0].to_labelled_instruction()
     }};
 }
@@ -777,7 +733,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Index 0 is out of range for `NumberOfWords`")]
+    #[should_panic(expected = "expecting label, instruction or eof")]
     fn parsing_pop_with_illegal_argument_fails() {
         let _ = triton_instr!(pop 0);
     }
