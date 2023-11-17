@@ -302,14 +302,31 @@ macro_rules! triton_program {
 /// [tasm]: https://triton-vm.org/spec/instructions.html
 #[macro_export]
 macro_rules! triton_asm {
-    (@fmt $fmt:expr, $($args:expr,)*; ) => {
-        format_args!($fmt $(,$args)*).to_string()
-    };
+
     (@fmt $fmt:expr, $($args:expr,)*; $label_declaration:ident: $($tail:tt)*) => {
         $crate::triton_asm!(@fmt
             concat!($fmt, " ", stringify!($label_declaration), ": "), $($args,)*; $($tail)*
         )
     };
+    (@fmt $fmt:expr, $($args:expr,)*; {$label_declaration:expr}: $($tail:tt)*) => {
+        $crate::triton_asm!(@fmt concat!($fmt, "{}: "), $($args,)* $label_declaration,; $($tail)*)
+    };
+    (@fmt $fmt:expr, $($args:expr,)*; {$label_head:expr}$label_tail:ident: $($tail:tt)*) => {
+        $crate::triton_asm!(
+            @fmt concat!($fmt, "{}{}: "),
+            $($args,)*
+            $label_head,
+            stringify!($label_tail),;
+            $($tail)*
+        )
+    };
+
+    (@fmt $fmt:expr, $($args:expr,)*; call {$label_head:expr}$label_tail:ident $($tail:tt)*) => {
+        $crate::triton_asm!(@fmt
+            concat!($fmt, " call {}{} "), $($args,)* $label_head, stringify!($label_tail),; $($tail)*
+        )
+    };
+
     (@fmt $fmt:expr, $($args:expr,)*; $instruction:ident $($tail:tt)*) => {
         $crate::triton_asm!(@fmt
             concat!($fmt, " ", stringify!($instruction), " "), $($args,)*; $($tail)*
@@ -320,9 +337,6 @@ macro_rules! triton_asm {
             concat!($fmt, " ", stringify!($instruction_argument), " "), $($args,)*; $($tail)*
         )
     };
-    (@fmt $fmt:expr, $($args:expr,)*; {$label_declaration:expr}: $($tail:tt)*) => {
-        $crate::triton_asm!(@fmt concat!($fmt, "{}: "), $($args,)* $label_declaration,; $($tail)*)
-    };
     (@fmt $fmt:expr, $($args:expr,)*; {&$instruction_list:expr} $($tail:tt)*) => {
         $crate::triton_asm!(@fmt
             concat!($fmt, "{} "), $($args,)*
@@ -332,6 +346,9 @@ macro_rules! triton_asm {
     };
     (@fmt $fmt:expr, $($args:expr,)*; {$expression:expr} $($tail:tt)*) => {
         $crate::triton_asm!(@fmt concat!($fmt, "{} "), $($args,)* $expression,; $($tail)*)
+    };
+    (@fmt $fmt:expr, $($args:expr,)*; ) => {
+        format_args!($fmt $(,$args)*).to_string()
     };
 
     // repeated instructions
@@ -736,5 +753,16 @@ mod tests {
     #[should_panic(expected = "expecting label, instruction or eof")]
     fn parsing_pop_with_illegal_argument_fails() {
         let _ = triton_instr!(pop 0);
+    }
+
+    #[test]
+    fn concatenate_labels_in_tasm_macros() {
+        let label = "my_label";
+        let program = triton_program! {
+            call {label}_inner
+            {label}_inner: halt
+            {label}: assert // intentional crash if this path is taken
+        };
+        let _ = program.run([].into(), [].into());
     }
 }
