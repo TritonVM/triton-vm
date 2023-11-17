@@ -309,11 +309,11 @@ macro_rules! triton_asm {
         )
     };
     (@fmt $fmt:expr, $($args:expr,)*; {$label_declaration:expr}: $($tail:tt)*) => {
-        $crate::triton_asm!(@fmt concat!($fmt, "{}: "), $($args,)* $label_declaration,; $($tail)*)
+        $crate::triton_asm!(@fmt concat!($fmt, " {}: "), $($args,)* $label_declaration,; $($tail)*)
     };
     (@fmt $fmt:expr, $($args:expr,)*; {$label_head:expr}$label_tail:ident: $($tail:tt)*) => {
         $crate::triton_asm!(
-            @fmt concat!($fmt, "{}{}: "),
+            @fmt concat!($fmt, " {}{}: "),
             $($args,)*
             $label_head,
             stringify!($label_tail),;
@@ -339,13 +339,13 @@ macro_rules! triton_asm {
     };
     (@fmt $fmt:expr, $($args:expr,)*; {&$instruction_list:expr} $($tail:tt)*) => {
         $crate::triton_asm!(@fmt
-            concat!($fmt, "{} "), $($args,)*
+            concat!($fmt, " {} "), $($args,)*
             $instruction_list.iter().map(|instr| instr.to_string()).collect::<Vec<_>>().join(" "),;
             $($tail)*
         )
     };
     (@fmt $fmt:expr, $($args:expr,)*; {$expression:expr} $($tail:tt)*) => {
-        $crate::triton_asm!(@fmt concat!($fmt, "{} "), $($args,)* $expression,; $($tail)*)
+        $crate::triton_asm!(@fmt concat!($fmt, " {} "), $($args,)* $expression,; $($tail)*)
     };
     (@fmt $fmt:expr, $($args:expr,)*; ) => {
         format_args!($fmt $(,$args)*).to_string()
