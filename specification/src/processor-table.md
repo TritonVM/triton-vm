@@ -36,11 +36,14 @@ The Processor Table has the following extension columns, corresponding to [Evalu
 
 ### Permutation Argument with the Op Stack Table
 
-The [Permutation Arguments](permutation-argument.md) with the [Op Stack Table](operational-stack-table.md) `RunningProductOpStackTable` establishes consistency of the op stack underflow memory.
+The subset [Permutation Argument](permutation-argument.md) with the [Op Stack Table](operational-stack-table.md) `RunningProductOpStackTable` establishes consistency of the op stack underflow memory.
 The number of factors incorporated into the running product at any given cycle depends on the executed instruction in this cycle:
 for every element pushed to or popped from the stack, there is one factor.
 Namely, if the op stack grows, every element spilling from `st15` into op stack underflow memory will be incorporated as one factor;
 and if the op stack shrinks, every element from op stack underflow memory being transferred into `st15` will be one factor.
+
+Notably, if an instruction shrinks the op stack by more than one element in a single clock cycle, each spilled element is incorporated as one factor.
+The same holds true for instructions growing the op stack by more than one element in a single clock cycle.
 
 One key insight for this Permutation Argument is that the processor will always have access to the elements that are to be read from or written to underflow memory:
 if the instruction grows the op stack, then the elements in question currently reside in the directly accessible, top part of the stack;
@@ -56,9 +59,9 @@ A padding row is a copy of the Processor Table's last row with the following mod
 
 A notable exception:
 if the row with `clk` equal to 1 is a padding row, then the value of `cjd_mul` is not constrained in that row.
-The reason for this exception is the lack of “awareness” of padding rows in the three memory-like tables.
-In fact, all memory-like tables keep looking up clock jump differences in their padding section.
-All these clock jumps are guaranteed to have magnitude 1 due to the [Permutation Arguments](permutation-argument.md) with the respective memory-like tables.
+The reason for this exception is the lack of “awareness” of padding rows in the [Jump Stack Table](jump-stack-table.md):
+it keeps looking up clock jump differences in its padding section.
+All these clock jumps are guaranteed to have magnitude 1.
 
 # Arithmetic Intermediate Representation
 
@@ -81,7 +84,6 @@ However, in order to verify the correctness of `RunningEvaluationHashDigest`, th
 ## Initial Constraints
 
 1. The cycle counter `clk` is 0.
-1. The previous instruction `previous_instruction` is 0.
 1. The instruction pointer `ip` is 0.
 1. The jump address stack pointer `jsp` is 0.
 1. The jump address origin `jso` is 0.
@@ -100,7 +102,6 @@ However, in order to verify the correctness of `RunningEvaluationHashDigest`, th
 1. The [Evaluation Argument](evaluation-argument.md) of operational stack elements `st11` through `st15` with respect to indeterminate 🥬 equals the public part of program digest challenge, 🫑.
 See [program attestation](program-attestation.md) for more details.
 1. The `op_stack_pointer` is 16.
-1. The RAM pointer `ramp` is 0.
 1. `RunningEvaluationStandardInput` is 1.
 1. `RunningEvaluationStandardOutput` is 1.
 1. `InstructionLookupClientLogDerivative` has absorbed the first row with respect to challenges 🥝, 🥥, and 🫐 and indeterminate 🪥.
@@ -116,7 +117,6 @@ See [program attestation](program-attestation.md) for more details.
 ### Initial Constraints as Polynomials
 
 1. `clk`
-1. `previous_instruction`
 1. `ip`
 1. `jsp`
 1. `jso`
@@ -134,7 +134,6 @@ See [program attestation](program-attestation.md) for more details.
 1. `st10`
 1. `🥬^5 + st11·🥬^4 + st12·🥬^3 + st13·🥬^2 + st14·🥬 + st15 - 🫑`
 1. `op_stack_pointer - 16`
-1. `ramp`
 1. `RunningEvaluationStandardInput - 1`
 1. `RunningEvaluationStandardOutput - 1`
 1. `InstructionLookupClientLogDerivative · (🪥 - 🥝·ip - 🥥·ci - 🫐·nia) - 1`
@@ -150,7 +149,7 @@ See [program attestation](program-attestation.md) for more details.
 
 ## Consistency Constraints
 
-1. The composition of instruction bits `ib0` through `ib7` corresponds to the current instruction `ci`.
+1. The composition of instruction bits `ib0` through `ib6` corresponds to the current instruction `ci`.
 1. The instruction bit `ib0` is a bit.
 1. The instruction bit `ib1` is a bit.
 1. The instruction bit `ib2` is a bit.
@@ -158,13 +157,12 @@ See [program attestation](program-attestation.md) for more details.
 1. The instruction bit `ib4` is a bit.
 1. The instruction bit `ib5` is a bit.
 1. The instruction bit `ib6` is a bit.
-1. The instruction bit `ib7` is a bit.
 1. The padding indicator `IsPadding` is either 0 or 1.
 1. If the current padding row is a padding row and `clk` is not 1, then the clock jump difference lookup multiplicity is 0.
 
 ### Consistency Constraints as Polynomials
 
-1. `ci - (2^7·ib7 + 2^6·ib6 + 2^5·ib5 + 2^4·ib4 + 2^3·ib3 + 2^2·ib2 + 2^1·ib1 + 2^0·ib0)`
+1. `ci - (2^6·ib6 + 2^5·ib5 + 2^4·ib4 + 2^3·ib3 + 2^2·ib2 + 2^1·ib1 + 2^0·ib0)`
 1. `ib0·(ib0 - 1)`
 1. `ib1·(ib1 - 1)`
 1. `ib2·(ib2 - 1)`
@@ -172,7 +170,6 @@ See [program attestation](program-attestation.md) for more details.
 1. `ib4·(ib4 - 1)`
 1. `ib5·(ib5 - 1)`
 1. `ib6·(ib6 - 1)`
-1. `ib7·(ib7 - 1)`
 1. `IsPadding·(IsPadding - 1)`
 1. `IsPadding·(clk - 1)·ClockJumpDifferenceLookupServerLogDerivative`
 
@@ -183,17 +180,14 @@ The following additional constraints also apply to every pair of rows.
 
 1. The cycle counter `clk` increases by 1.
 1. The padding indicator `IsPadding` is 0 or remains unchanged.
-1. The current instruction `ci` in the current row is copied into `previous_instruction` in the next row or the next row is a padding row.
-1. The running evaluation for standard input absorbs `st0` of the next row with respect to 🛏 if the current instruction is `read_io`, and remains unchanged otherwise.
-1. The running evaluation for standard output absorbs `st0` of the next row with respect to 🧯 if the current instruction in the next row is `write_io`, and remains unchanged otherwise.
 1. If the next row is not a padding row, the logarithmic derivative for the Program Table absorbs the next row with respect to challenges 🥝, 🥥, and 🫐 and indeterminate 🪥. Otherwise, it remains unchanged.
-1. The running product for the RAM Table absorbs the next row with respect to challenges 🍍, 🍈, 🍎, and 🌽 and indeterminate 🛋.
+1. The running sum for the logarithmic derivative of the clock jump difference lookup argument accumulates the next row's `clk` with the appropriate multiplicity `cjd_mul` with respect to indeterminate 🪞.
 1. The running product for the Jump Stack Table absorbs the next row with respect to challenges 🍇, 🍅, 🍌, 🍏, and 🍐 and indeterminate 🧴.
 1. If the current instruction in the next row is `hash`, the running evaluation “Hash Input” absorbs the next row with respect to challenges 🧄₀ through 🧄₉ and indeterminate 🚪. Otherwise, it remains unchanged.
 1. If the current instruction is `hash`, the running evaluation “Hash Digest” absorbs the next row with respect to challenges 🧄₀ through 🧄₄ and indeterminate 🪟. Otherwise, it remains unchanged.
 1. If the current instruction is `sponge_init`, then the running evaluation “Sponge” absorbs the current instruction and the Sponge's default initial state with respect to challenges 🧅 and 🧄₀ through 🧄₉ and indeterminate 🧽.
-Else if the current instruction is `sponge_absorb` or `sponge_squeeze`, then the running evaluation “Sponge” absorbs the current instruction and the next row with respect to challenges 🧅 and 🧄₀ through 🧄₉ and indeterminate 🧽.
-Otherwise, the running evaluation remains unchanged.
+    Else if the current instruction is `sponge_absorb` or `sponge_squeeze`, then the running evaluation “Sponge” absorbs the current instruction and the next row with respect to challenges 🧅 and 🧄₀ through 🧄₉ and indeterminate 🧽.
+    Otherwise, the running evaluation remains unchanged.
 1.  1. If the current instruction is `split`, then the logarithmic derivative for the Lookup Argument with the U32 Table accumulates `st0` and `st1` in the next row and `ci` in the current row with respect to challenges 🥜, 🌰, and 🥑, and indeterminate 🧷.
     1. If the current instruction is `lt`, `and`, `xor`, or `pow`, then the logarithmic derivative for the Lookup Argument with the U32 Table accumulates `st0`, `st1`, and `ci` in the current row and `st0` in the next row with respect to challenges 🥜, 🌰, 🥑, and 🥕, and indeterminate 🧷.
     1. If the current instruction is `log_2_floor`, then the logarithmic derivative for the Lookup Argument with the U32 Table accumulates `st0` and `ci` in the current row and `st0` in the next row with respect to challenges 🥜, 🥑, and 🥕, and indeterminate 🧷.
@@ -202,20 +196,15 @@ Otherwise, the running evaluation remains unchanged.
         1. `st0` in the current row and `st1` in the next row as well as `opcode(split)` with respect to challenges 🥜, 🌰, and 🥑, and indeterminate 🧷.
     1. If the current instruction is `pop_count`, then the logarithmic derivative for the Lookup Argument with the U32 Table accumulates `st0` and `ci` in the current row and `st0` in the next row with respect to challenges 🥜, 🥑, and 🥕, and indeterminate 🧷.
     1. Else, _i.e._, if the current instruction is not a u32 instruction, the logarithmic derivative for the Lookup Argument with the U32 Table remains unchanged.
-1. The running sum for the logarithmic derivative of the clock jump difference lookup argument accumulates the next row's `clk` with the appropriate multiplicity `cjd_mul` with respect to indeterminate 🪞.
 
 ### Transition Constraints as Polynomials
 
 1. `clk' - (clk + 1)`
 1. `IsPadding·(IsPadding' - IsPadding)`
-1. `(1 - IsPadding')·(previous_instruction' - ci)`
-1. `(ci - opcode(read_io))·(RunningEvaluationStandardInput' - RunningEvaluationStandardInput)`<br />
-    `+ read_io_deselector·(RunningEvaluationStandardInput' - 🛏·RunningEvaluationStandardInput - st0')`
-1. `(ci' - opcode(write_io))·(RunningEvaluationStandardOutput' - RunningEvaluationStandardOutput)`<br />
-    `+ write_io_deselector'·(RunningEvaluationStandardOutput' - 🧯·RunningEvaluationStandardOutput - st0')`
 1. `(1 - IsPadding') · ((InstructionLookupClientLogDerivative' - InstructionLookupClientLogDerivative) · (🛁 - 🥝·ip' - 🥥·ci' - 🫐·nia') - 1)`<br />
     `+ IsPadding'·(RunningProductInstructionTable' - RunningProductInstructionTable)`
-1. `RunningProductRamTable' - RunningProductRamTable·(🛋 - 🍍·clk' - 🍈·ramp' - 🍎·ramv' - 🌽·previous_instruction')`
+1. `(ClockJumpDifferenceLookupServerLogDerivative' - ClockJumpDifferenceLookupServerLogDerivative)`<br />
+    `·(🪞 - clk') - cjd_mul'`
 1. `RunningProductJumpStackTable' - RunningProductJumpStackTable·(🧴 - 🍇·clk' - 🍅·ci' - 🍌·jsp' - 🍏·jso' - 🍐·jsd')`
 1. `(ci' - opcode(hash))·(RunningEvaluationHashInput' - RunningEvaluationHashInput)`<br />
     `+ hash_deselector'·(RunningEvaluationHashInput' - 🚪·RunningEvaluationHashInput - 🧄₀·st0' - 🧄₁·st1' - 🧄₂·st2' - 🧄₃·st3' - 🧄₄·st4' - 🧄₅·st5' - 🧄₆·st6' - 🧄₇·st7' - 🧄₈·st8' - 🧄₉·st9')`
@@ -237,8 +226,6 @@ Otherwise, the running evaluation remains unchanged.
     &emsp;`)`
     1. `+ pop_count_deselector·((U32LookupClientLogDerivative' - U32LookupClientLogDerivative)·(🧷 - 🥜·st0 - 🥑·ci - 🥕·st0') - 1)`
     1. `+ (1 - ib2)·(U32LookupClientLogDerivative' - U32LookupClientLogDerivative)`
-1. `(ClockJumpDifferenceLookupServerLogDerivative' - ClockJumpDifferenceLookupServerLogDerivative)`<br />
-    `·(🪞 - clk') - cjd_mul'`
 
 ## Terminal Constraints
 
