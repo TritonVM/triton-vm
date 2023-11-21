@@ -52,4 +52,4 @@ Furthermore, executing instruction `recurse` requires a non-empty jump stack.
 
 [^1]:
 Of course, the machine running Triton VM might have stricter limitations:
-storing or accessing $(2^{64} - 2^{32} + 1)^2$ bits $\approx 4\cdot10^{25}$ TiB of data is a non-trivial engineering feat.
+storing or accessing $(2^{64} - 2^{32} + 1)\cdot 63.99$ bits $\approx 148$ exabytes of data is a non-trivial engineering feat.
