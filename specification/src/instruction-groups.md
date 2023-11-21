@@ -115,7 +115,7 @@ Below, you can find a list of all 16 indicator polynomials.
 
 ### Description
 
-1. The helper variables are the decomposition of the instruction's argument, which is held in register `nia`.
+1. The helper variables `hv0` through `hv3` are the binary decomposition of the instruction's argument, which is held in register `nia`.
 1. The helper variable `hv0` is either 0 or 1.
 1. The helper variable `hv1` is either 0 or 1.
 1. The helper variable `hv2` is either 0 or 1.

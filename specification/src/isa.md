@@ -7,7 +7,7 @@ This means the registers and memory elements take values from $\mathbb{F}_p$, an
 
 Instructions have variable width:
 they either consist of one word, i.e., one B-field element, or of two words, i.e., two B-field elements.
-An example for a single-word instruction is `pop`, removing the top of the stack.
+An example for a single-word instruction is `add`, adding the two elements on top of the stack, leaving the result as the new top of the stack.
 An example for a double-word instruction is `push` + `arg`, pushing `arg` to the stack.
 
 Triton VM has two interfaces for data input, one for public and one for secret data, and one interface for data output, whose data is always public.

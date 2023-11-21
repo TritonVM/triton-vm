@@ -28,7 +28,7 @@ The third property allows efficient arithmetization of the running product for t
 | `dup`  + `i`    |     17 | e.g., `_ e d c b a` | e.g., `_ e d c b a d` | Duplicates the element `i` positions away from the top. 0 ⩽ `i` < 16                            |
 | `swap` + `i`    |     25 | e.g., `_ e d c b a` | e.g., `_ e a c b d`   | Swaps the `i`th stack element with the top of the stack. 0 < `i` < 16                           |
 
-Instruction `divine n` (together with [`divine_sibling`](#hashing)) make TritonVM a virtual machine that can execute non-deterministic programs.
+Instruction `divine n` (together with [`divine_sibling`](#hashing)) make Triton a virtual machine that can execute non-deterministic programs.
 As programs go, this concept is somewhat unusual and benefits from additional explanation.
 The name of the instruction is the verb (not the adjective) meaning “to discover by intuition or insight.”
 
@@ -37,41 +37,41 @@ It is not at all specified what those elements are, but generally speaking, they
 Hence, from the perspective of the program, it just non-deterministically guesses the correct values in a moment of divine clarity.
 
 Looking at the entire system, consisting of the VM, the program, and all inputs – both public and secret – execution _is_ deterministic:
-the value were supplied as secret input.
+the divined values were supplied as and are read from secret input.
 
 ## Control Flow
 
 | Instruction  | Opcode | old op stack | new op stack | old `ip` | new `ip` | old jump stack | new jump stack | Description                                                                                                              |
 |:-------------|-------:|:-------------|:-------------|:---------|:---------|:---------------|:---------------|:-------------------------------------------------------------------------------------------------------------------------|
-| `halt`       |      0 | `_`          | `_`          | `_`      | `_ + 1`  | `_`            | `_`            | Solves the halting problem (if the instruction is reached). Indicates graceful shutdown of the VM.                       |
-| `nop`        |      8 | `_`          | `_`          | `_`      | `_ + 1`  | `_`            | `_`            | Do nothing                                                                                                               |
-| `skiz`       |      2 | `_ a`        | `_`          | `_`      | `_ + s`  | `_`            | `_`            | Skip next instruction if `a` is zero. `s` ∈ {1, 2, 3} depends on `a` and whether the next instruction takes an argument. |
-| `call` + `d` |     33 | `_`          | `_`          | `o`      | `d`      | `_`            | `_ (o+2, d)`   | Push `(o+2,d)` to the jump stack, and jump to absolute address `d`                                                       |
-| `return`     |     16 | `_`          | `_`          | `_`      | `o`      | `_ (o, d)`     | `_`            | Pop one pair off the jump stack and jump to that pair's return address (which is the first element).                     |
-| `recurse`    |     24 | `_`          | `_`          | `_`      | `d`      | `_ (o, d)`     | `_ (o, d)`     | Peek at the top pair of the jump stack and jump to that pair's destination address (which is the second element).        |
-| `assert`     |     10 | `_ a`        | `_`          | `_`      | `_ + 1`  | `_`            | `_`            | Pops `a` if `a == 1`, else crashes the virtual machine.                                                                  |
+| `halt`       |      0 | `_`          | `_`          | `ip`     | `ip+1`   | `_`            | `_`            | Solves the halting problem (if the instruction is reached). Indicates graceful shutdown of the VM.                       |
+| `nop`        |      8 | `_`          | `_`          | `ip`     | `ip+1`   | `_`            | `_`            | Do nothing                                                                                                               |
+| `skiz`       |      2 | `_ a`        | `_`          | `ip`     | `ip+s`   | `_`            | `_`            | Skip next instruction if `a` is zero. `s` ∈ {1, 2, 3} depends on `a` and whether the next instruction takes an argument. |
+| `call` + `d` |     33 | `_`          | `_`          | `ip`     | `d`      | `_`            | `_ (ip+2, d)`  | Push `(ip+2,d)` to the jump stack, and jump to absolute address `d`                                                      |
+| `return`     |     16 | `_`          | `_`          | `ip`     | `o`      | `_ (o, d)`     | `_`            | Pop one pair off the jump stack and jump to that pair's return address (which is the first element).                     |
+| `recurse`    |     24 | `_`          | `_`          | `ip`     | `d`      | `_ (o, d)`     | `_ (o, d)`     | Peek at the top pair of the jump stack and jump to that pair's destination address (which is the second element).        |
+| `assert`     |     10 | `_ a`        | `_`          | `ip`     | `ip+1`   | `_`            | `_`            | Pops `a` if `a == 1`, else crashes the virtual machine.                                                                  |
 
 ## Memory Access
 
-| Instruction       | Opcode | old op stack         | new op stack         | old RAM             | new RAM             | Description                                                                                           |
-|:------------------|-------:|:---------------------|:---------------------|:--------------------|:--------------------|:------------------------------------------------------------------------------------------------------|
-| `read_mem` + `n`  |     41 | e.g., `_ p+3`        | e.g., `_ v2 v1 v0 p` | [p: v0, p+1, v1, …] | [p: v0, p+1, v1, …] | Reads values `vi` from RAM at address `p+i` and pushes `vi` onto the op stack. 1 ⩽ `n` ⩽ 5            |
-| `write_mem` + `n` |     11 | e.g., `_ v2 v1 v0 p` | e.g., `_ p+3`        | []                  | [p: v0, p+1, v1, …] | Writes op stack's `n` top-most values `vi` to RAM at the address `p+i`, popping the `vi`. 1 ⩽ `n` ⩽ 5 |
+| Instruction       | Opcode | old op stack         | new op stack           | old RAM             | new RAM             | Description                                                                                                                                  |
+|:------------------|-------:|:---------------------|:-----------------------|:--------------------|:--------------------|:---------------------------------------------------------------------------------------------------------------------------------------------|
+| `read_mem` + `n`  |     41 | e.g., `_ p+2`        | e.g., `_ v2 v1 v0 p-1` | [p: v0, p+1, v1, …] | [p: v0, p+1, v1, …] | Reads consecutive values `vi` from RAM at address `p` and puts them onto the op stack. Decrements RAM pointer (`st0`) by `n`. 1 ⩽ `n` ⩽ 5    |
+| `write_mem` + `n` |     11 | e.g., `_ v2 v1 v0 p` | e.g., `_ p+3`          | []                  | [p: v0, p+1, v1, …] | Writes op stack's `n` top-most values `vi` to RAM at the address `p+i`, popping the `vi`. Increments RAM pointer (`st0`) by `n`. 1 ⩽ `n` ⩽ 5 |
 
 For the benefit of clarity, the effect of every possible argument is given below.
 
-| instruction   | old op stack    | new op stack    | old RAM                                | new RAM                                |
-|:--------------|:----------------|:----------------|:---------------------------------------|:---------------------------------------|
-| `read_mem 1`  | `_ p+1`         | `_ a p`         | [p: a]                                 | [p: a]                                 |
-| `read_mem 2`  | `_ p+2`         | `_ b a p`       | [p: a, p+1: b]                         | [p: a, p+1: b]                         |
-| `read_mem 3`  | `_ p+3`         | `_ c b a p`     | [p: a, p+1: b, p+2: c]                 | [p: a, p+1: b, p+2: c]                 |
-| `read_mem 4`  | `_ p+4`         | `_ d c b a p`   | [p: a, p+1: b, p+2: c, p+3: d]         | [p: a, p+1: b, p+2: c, p+3: d]         |
-| `read_mem 5`  | `_ p+5`         | `_ e d c b a p` | [p: a, p+1: b, p+2: c, p+3: d, p+4: e] | [p: a, p+1: b, p+2: c, p+3: d, p+4: e] |
-| `write_mem 1` | `_ a p`         | `_ p+1`         | []                                     | [p: a]                                 |
-| `write_mem 2` | `_ b a p`       | `_ p+2`         | []                                     | [p: a, p+1: b]                         |
-| `write_mem 3` | `_ c b a p`     | `_ p+3`         | []                                     | [p: a, p+1: b, p+2: c]                 |
-| `write_mem 4` | `_ d c b a p`   | `_ p+4`         | []                                     | [p: a, p+1: b, p+2: c, p+3: d]         |
-| `write_mem 5` | `_ e d c b a p` | `_ p+5`         | []                                     | [p: a, p+1: b, p+2: c, p+3: d, p+4: e] |
+| instruction   | old op stack    | new op stack      | old RAM                                | new RAM                                |
+|:--------------|:----------------|:------------------|:---------------------------------------|:---------------------------------------|
+| `read_mem 1`  | `_ p`           | `_ a p-1`         | [p: a]                                 | [p: a]                                 |
+| `read_mem 2`  | `_ p+1`         | `_ b a p-1`       | [p: a, p+1: b]                         | [p: a, p+1: b]                         |
+| `read_mem 3`  | `_ p+2`         | `_ c b a p-1`     | [p: a, p+1: b, p+2: c]                 | [p: a, p+1: b, p+2: c]                 |
+| `read_mem 4`  | `_ p+3`         | `_ d c b a p-1`   | [p: a, p+1: b, p+2: c, p+3: d]         | [p: a, p+1: b, p+2: c, p+3: d]         |
+| `read_mem 5`  | `_ p+4`         | `_ e d c b a p-1` | [p: a, p+1: b, p+2: c, p+3: d, p+4: e] | [p: a, p+1: b, p+2: c, p+3: d, p+4: e] |
+| `write_mem 1` | `_ a p`         | `_ p+1`           | []                                     | [p: a]                                 |
+| `write_mem 2` | `_ b a p`       | `_ p+2`           | []                                     | [p: a, p+1: b]                         |
+| `write_mem 3` | `_ c b a p`     | `_ p+3`           | []                                     | [p: a, p+1: b, p+2: c]                 |
+| `write_mem 4` | `_ d c b a p`   | `_ p+4`           | []                                     | [p: a, p+1: b, p+2: c, p+3: d]         |
+| `write_mem 5` | `_ e d c b a p` | `_ p+5`           | []                                     | [p: a, p+1: b, p+2: c, p+3: d, p+4: e] |
 
 ## Hashing
 
