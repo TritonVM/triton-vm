@@ -1,57 +1,64 @@
-use std::backtrace::Backtrace;
 use thiserror::Error;
 use twenty_first::shared_math::digest::DIGEST_LENGTH;
 
+use crate::op_stack::NumberOfWords;
 use crate::op_stack::OpStackElement;
 use crate::vm::VMState;
 use crate::BFieldElement;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
-pub struct VMError {
+pub struct VMError<'pgm> {
     source: InstructionError,
-    backtrace: Backtrace,
-    vm_state: VMState,
+    vm_state: VMState<'pgm>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
 pub(crate) enum InstructionError {
-    #[error("Instruction pointer {0} points outside of program")]
-    InstructionPointerOverflow(usize),
+    #[error("instruction pointer points outside of program")]
+    InstructionPointerOverflow,
 
-    #[error("Operational stack is too shallow")]
+    #[error("operational stack is too shallow")]
     OpStackTooShallow,
 
-    #[error("Jump stack is empty")]
+    #[error("jump stack is empty")]
     JumpStackIsEmpty,
 
-    #[error("Assertion failed: st0 must be 1. ip: {0}, clk: {1}, st0: {2}")]
-    AssertionFailed(usize, u32, BFieldElement),
+    #[error("assertion failed: st0 must be 1")]
+    AssertionFailed,
 
     #[error(
-        "Vector assertion failed: op_stack[{2}] == {3} != {4} == op_stack[{}]. ip: {0}, clk: {1}",
-        usize::from(.2) + DIGEST_LENGTH
+        "vector assertion failed: op_stack[{0}] != op_stack[{}]", usize::from(.0) + DIGEST_LENGTH
     )]
-    VectorAssertionFailed(usize, u32, OpStackElement, BFieldElement, BFieldElement),
+    VectorAssertionFailed(OpStackElement),
 
-    #[error("Cannot swap stack element 0 with itself")]
+    #[error("cannot swap stack element 0 with itself")]
     SwapST0,
 
     #[error("0 does not have a multiplicative inverse")]
     InverseOfZero,
 
-    #[error("Division by 0 is impossible")]
+    #[error("division by 0 is impossible")]
     DivisionByZero,
 
-    #[error("The logarithm of 0 does not exist")]
+    #[error("the logarithm of 0 does not exist")]
     LogarithmOfZero,
 
-    #[error("Failed to convert BFieldElement {0} into u32")]
+    #[error("failed to convert BFieldElement {0} into u32")]
     FailedU32Conversion(BFieldElement),
+
+    #[error("instruction `read_io {0}`: public input buffer is empty after {1}")]
+    EmptyPublicInput(NumberOfWords, usize),
+
+    #[error("instruction `divine {0}`: secret input buffer is empty after {1}")]
+    EmptySecretInput(NumberOfWords, usize),
+
+    #[error("no more secret digests available")]
+    EmptySecretDigestInput,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
 pub(crate) enum ProofStreamError {
-    #[error("Queue must be non-empty in order to dequeue an item")]
+    #[error("queue must be non-empty in order to dequeue an item")]
     EmptyQueue,
 }
 
@@ -82,42 +89,42 @@ mod tests {
     use super::*;
 
     #[test]
-    #[should_panic(expected = "Instruction pointer 1 points outside of program")]
+    #[should_panic(expected = "instruction pointer 1 points outside of program")]
     fn vm_err() {
         let program = triton_program!(nop);
         program.run([].into(), [].into()).unwrap();
     }
 
     #[test]
-    #[should_panic(expected = "Operational stack is too shallow")]
+    #[should_panic(expected = "operational stack is too shallow")]
     fn shrink_op_stack_too_much() {
         let program = triton_program!(pop 3 halt);
         program.run([].into(), [].into()).unwrap();
     }
 
     #[test]
-    #[should_panic(expected = "Jump stack is empty")]
+    #[should_panic(expected = "jump stack is empty")]
     fn return_without_call() {
         let program = triton_program!(return halt);
         program.run([].into(), [].into()).unwrap();
     }
 
     #[test]
-    #[should_panic(expected = "Jump stack is empty")]
+    #[should_panic(expected = "jump stack is empty")]
     fn recurse_without_call() {
         let program = triton_program!(recurse halt);
         program.run([].into(), [].into()).unwrap();
     }
 
     #[test]
-    #[should_panic(expected = "Assertion failed: st0 must be 1. ip: 2, clk: 1, st0: 0")]
+    #[should_panic(expected = "assertion failed: st0 must be 1")]
     fn assert_false() {
         let program = triton_program!(push 0 assert halt);
         program.run([].into(), [].into()).unwrap();
     }
 
     #[test]
-    #[should_panic(expected = "op_stack[1] == 10 != 1 == op_stack[6]")]
+    #[should_panic(expected = "op_stack[1] != op_stack[6]")]
     fn print_unequal_vec_assert_error() {
         let program = triton_program! {
             push 4 push 3 push 2 push  1 push 0
@@ -190,21 +197,21 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Division by 0 is impossible")]
+    #[should_panic(expected = "division by 0 is impossible")]
     fn division_by_zero() {
         let program = triton_program!(push 0 push 5 div_mod halt);
         program.run([].into(), [].into()).unwrap();
     }
 
     #[test]
-    #[should_panic(expected = "The logarithm of 0 does not exist")]
+    #[should_panic(expected = "the logarithm of 0 does not exist")]
     fn log_of_zero() {
         let program = triton_program!(push 0 log_2_floor halt);
         program.run([].into(), [].into()).unwrap();
     }
 
     #[test]
-    #[should_panic(expected = "Failed to convert BFieldElement 4294967297 into u32")]
+    #[should_panic(expected = "failed to convert BFieldElement 4294967297 into u32")]
     fn failed_u32_conversion() {
         let program = triton_program!(push 4294967297 push 1 and halt);
         program.run([].into(), [].into()).unwrap();

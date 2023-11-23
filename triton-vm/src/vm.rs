@@ -5,9 +5,6 @@ use std::fmt::Display;
 use std::fmt::Formatter;
 use std::fmt::Result as FmtResult;
 
-use anyhow::anyhow;
-use anyhow::bail;
-use anyhow::Result;
 use ndarray::Array1;
 use num_traits::One;
 use num_traits::Zero;
@@ -36,6 +33,8 @@ use crate::table::ram_table::RamTableCall;
 use crate::table::table_column::*;
 use crate::table::u32_table::U32TableEntry;
 use crate::vm::CoProcessorCall::*;
+
+type Result<T> = std::result::Result<T, InstructionError>;
 
 /// The number of helper variable registers
 pub const NUM_HELPER_VARIABLE_REGISTERS: usize = 6;
@@ -238,7 +237,7 @@ impl<'pgm> VMState<'pgm> {
         co_processor_calls.extend(op_stack_calls);
 
         if self.op_stack.is_too_shallow() {
-            bail!(OpStackTooShallow);
+            return Err(OpStackTooShallow);
         }
 
         self.cycle_count += 1;
@@ -296,9 +295,10 @@ impl<'pgm> VMState<'pgm> {
 
     fn divine(&mut self, n: NumberOfWords) -> Result<Vec<CoProcessorCall>> {
         for i in 0..n.num_words() {
-            let element = self.secret_individual_tokens.pop_front().ok_or(anyhow!(
-                "Instruction `divine {n}`: secret input buffer is empty after {i}."
-            ))?;
+            let element = self
+                .secret_individual_tokens
+                .pop_front()
+                .ok_or_else(|| Err(EmptySecretInput(n, i)))?;
             self.op_stack.push(element);
         }
 
@@ -316,7 +316,7 @@ impl<'pgm> VMState<'pgm> {
 
     fn swap(&mut self, stack_register: OpStackElement) -> Result<Vec<CoProcessorCall>> {
         if stack_register == ST0 {
-            bail!(SwapST0);
+            return Err(SwapST0);
         }
         self.op_stack.swap_top_with(stack_register);
         self.instruction_pointer += 2;
@@ -363,9 +363,7 @@ impl<'pgm> VMState<'pgm> {
         let top_of_stack = self.op_stack.pop()?;
 
         if !top_of_stack.is_one() {
-            let assertion_failed =
-                AssertionFailed(self.instruction_pointer, self.cycle_count, top_of_stack);
-            bail!(assertion_failed);
+            return Err(AssertionFailed);
         }
 
         self.instruction_pointer += 1;
@@ -514,24 +512,12 @@ impl<'pgm> VMState<'pgm> {
             let lhs = index.try_into().unwrap();
             let rhs = (index + DIGEST_LENGTH).try_into().unwrap();
             if self.op_stack.peek_at(lhs) != self.op_stack.peek_at(rhs) {
-                bail!(self.new_vector_assertion_failure(index));
+                return Err(VectorAssertionFailed(lhs));
             }
         }
         let _: [_; DIGEST_LENGTH] = self.op_stack.pop_multiple()?;
         self.instruction_pointer += 1;
         Ok(vec![])
-    }
-
-    fn new_vector_assertion_failure(&self, failing_index_lhs: usize) -> InstructionError {
-        let failing_position_lhs = failing_index_lhs.try_into().unwrap();
-        let failing_position_rhs = (failing_index_lhs + DIGEST_LENGTH).try_into().unwrap();
-        VectorAssertionFailed(
-            self.instruction_pointer,
-            self.cycle_count,
-            failing_position_lhs,
-            self.op_stack.peek_at(failing_position_lhs),
-            self.op_stack.peek_at(failing_position_rhs),
-        )
     }
 
     fn add(&mut self) -> Result<Vec<CoProcessorCall>> {
@@ -555,7 +541,7 @@ impl<'pgm> VMState<'pgm> {
     fn invert(&mut self) -> Result<Vec<CoProcessorCall>> {
         let top_of_stack = self.op_stack.pop()?;
         if top_of_stack.is_zero() {
-            bail!(InverseOfZero);
+            return Err(InverseOfZero);
         }
         self.op_stack.push(top_of_stack.inverse());
         self.instruction_pointer += 1;
@@ -631,7 +617,7 @@ impl<'pgm> VMState<'pgm> {
     fn log_2_floor(&mut self) -> Result<Vec<CoProcessorCall>> {
         let top_of_stack = self.op_stack.pop_u32()?;
         if top_of_stack.is_zero() {
-            bail!(LogarithmOfZero);
+            return Err(LogarithmOfZero);
         }
         let log_2_floor = top_of_stack.ilog2();
         self.op_stack.push(log_2_floor.into());
@@ -661,7 +647,7 @@ impl<'pgm> VMState<'pgm> {
         let numerator = self.op_stack.pop_u32()?;
         let denominator = self.op_stack.pop_u32()?;
         if denominator.is_zero() {
-            bail!(DivisionByZero);
+            return Err(DivisionByZero);
         }
         let quotient = numerator / denominator;
         let remainder = numerator % denominator;
@@ -711,7 +697,7 @@ impl<'pgm> VMState<'pgm> {
     fn x_invert(&mut self) -> Result<Vec<CoProcessorCall>> {
         let top_of_stack = self.op_stack.pop_extension_field_element()?;
         if top_of_stack.is_zero() {
-            bail!(InverseOfZero);
+            return Err(InverseOfZero);
         }
         let inverse = top_of_stack.inverse();
         self.op_stack.push_extension_field_element(inverse);
@@ -740,9 +726,10 @@ impl<'pgm> VMState<'pgm> {
 
     fn read_io(&mut self, n: NumberOfWords) -> Result<Vec<CoProcessorCall>> {
         for i in 0..n.num_words() {
-            let read_element = self.public_input.pop_front().ok_or(anyhow!(
-                "Instruction `read_io {n}`: public input buffer is empty after {i}."
-            ))?;
+            let read_element = self
+                .public_input
+                .pop_front()
+                .ok_or_else(|| Err(EmptyPublicInput(n, i)))?;
             self.op_stack.push(read_element);
         }
 
@@ -836,9 +823,7 @@ impl<'pgm> VMState<'pgm> {
 
     pub fn current_instruction(&self) -> Result<Instruction> {
         let maybe_current_instruction = self.program.get(self.instruction_pointer).copied();
-        maybe_current_instruction.ok_or(anyhow!(InstructionPointerOverflow(
-            self.instruction_pointer
-        )))
+        maybe_current_instruction.ok_or(InstructionPointerOverflow)
     }
 
     /// Return the next instruction on the tape, skipping arguments.
@@ -850,26 +835,24 @@ impl<'pgm> VMState<'pgm> {
         let current_instruction = self.current_instruction()?;
         let next_instruction_pointer = self.instruction_pointer + current_instruction.size();
         let maybe_next_instruction = self.program.get(next_instruction_pointer).copied();
-        maybe_next_instruction.ok_or(anyhow!(InstructionPointerOverflow(
-            next_instruction_pointer
-        )))
+        maybe_next_instruction.ok_or(InstructionPointerOverflow)
     }
 
     fn jump_stack_pop(&mut self) -> Result<(BFieldElement, BFieldElement)> {
         let maybe_jump_stack_element = self.jump_stack.pop();
-        maybe_jump_stack_element.ok_or(anyhow!(JumpStackIsEmpty))
+        maybe_jump_stack_element.ok_or(JumpStackIsEmpty)
     }
 
     fn jump_stack_peek(&mut self) -> Result<(BFieldElement, BFieldElement)> {
         let maybe_jump_stack_element = self.jump_stack.last().copied();
-        maybe_jump_stack_element.ok_or(anyhow!(JumpStackIsEmpty))
+        maybe_jump_stack_element.ok_or(JumpStackIsEmpty)
     }
 
     fn pop_secret_digest(&mut self) -> Result<[BFieldElement; DIGEST_LENGTH]> {
         let digest = self
             .secret_digests
             .pop_front()
-            .ok_or(anyhow!("Secret digest buffer is empty."))?;
+            .ok_or(EmptySecretDigestInput)?;
         Ok(digest.values())
     }
 
@@ -1732,9 +1715,7 @@ pub(crate) mod tests {
         let err = program_and_input.run().err();
         let err = err.unwrap();
         let err = err.downcast::<InstructionError>().unwrap();
-        let AssertionFailed(_, _, _) = err else {
-            panic!("Non-u32 must not pass u32-ness test.");
-        };
+        assert_eq!(AssertionFailed, err, "non-u32 must not pass u32-ness test");
     }
 
     pub(crate) fn test_program_for_split() -> ProgramAndInput {
@@ -2196,9 +2177,10 @@ pub(crate) mod tests {
         let Ok(err) = err.downcast::<InstructionError>() else {
             panic!("Program without halt must fail with InstructionError.");
         };
-        let InstructionPointerOverflow(_) = err else {
-            panic!("Program without halt must fail with InstructionPointerOverflow.");
-        };
+        assert_eq!(
+            InstructionPointerOverflow, err,
+            "program without halt must fail with InstructionPointerOverflow"
+        );
     }
 
     #[test]
@@ -2246,8 +2228,9 @@ pub(crate) mod tests {
         let Ok(err) = err.downcast::<InstructionError>() else {
             panic!("Sudoku verifier must fail with InstructionError on bad Sudoku.");
         };
-        let AssertionFailed(_, _, _) = err else {
-            panic!("Sudoku verifier must fail with AssertionFailed on bad Sudoku.");
-        };
+        assert_eq!(
+            AssertionFailed, err,
+            "Sudoku verifier must fail with AssertionFailed on bad Sudoku"
+        );
     }
 }
