@@ -153,9 +153,10 @@ Both types of challenges are X-field elements, _i.e._, elements of $\mathbb{F}_{
 1. The first coefficient of the Bézout coefficient polynomial 0 `bcpc0` is 0.
 1. The Bézout coefficient 0 `bc0` is 0.
 1. The Bézout coefficient 1 `bc1` is equal to the first coefficient of the Bézout coefficient polynomial `bcpc1`.
-1. The running product polynomial `rpp` starts with `🧼 - ramp`.
-1. The formal derivative `fd` starts with 1.
-1. The running product for the permutation argument with the Processor Table `rppa` has absorbed the first row with respect to challenges 🍍, 🍈, 🍎, and 🌽 and indeterminate 🛋.
+1. The running product polynomial `RunningProductOfRAMP` starts with `🧼 - ram_pointer`.
+1. The formal derivative starts with 1.
+1. If the first row is not a padding row, the running product for the permutation argument with the Processor Table `RunningProductPermArg` has absorbed the first row with respect to challenges 🍍, 🍈, 🍎, and 🌽 and indeterminate 🛋.<br />
+    Else, the running product for the permutation argument with the Processor Table `RunningProductPermArg` is 1.
 1. The logarithmic derivative for the clock jump difference lookup `ClockJumpDifferenceLookupClientLogDerivative` is 0.
 
 ### Initial Constraints as Polynomials
@@ -163,9 +164,10 @@ Both types of challenges are X-field elements, _i.e._, elements of $\mathbb{F}_{
 1. `bcpc0`
 1. `bc0`
 1. `bc1 - bcpc1`
-1. `rpp - 🧼 + ramp`
-1. `fd - 1`
-1. `rppa - 🛋 - 🍍·clk - 🍈·ramp - 🍎·ramv - 🌽·previous_instruction`
+1. `RunningProductOfRAMP - 🧼 + ram_pointer`
+1. `FormalDerivative - 1`
+1. `(RunningProductPermArg - 🛋 - 🍍·clk - 🍈·ram_pointer - 🍎·ram_value - 🌽·previous_instruction)·(instruction_type - 2)`<br />
+    `(RunningProductPermArg - 1)·(instruction_type - 1)·(instruction_type - 0)`
 1. `ClockJumpDifferenceLookupClientLogDerivative`
 
 ## Consistency Constraints
@@ -174,47 +176,51 @@ None.
 
 ## Transition Constraints
 
-1. If `(ramp - ramp')` is 0, then `iord` is 0, else `iord` is the multiplicative inverse of `(ramp' - ramp)`.
-1. If the `ramp` does not change and `previous_instruction` in the next row is not `write_mem`, then the RAM value `ramv` does not change.
-1. The Bézout coefficient polynomial coefficients are allowed to change only when the `ramp` changes.
-1. The running product polynomial `rpp` accumulates a factor `(🧼 - ramp)` whenever `ramp` changes.
-1. The running product for the permutation argument with the Processor Table `rppa` absorbs the next row with respect to challenges 🍍, 🍈, 🍎, and 🌽 and indeterminate 🛋.
-1. If the RAM pointer `ramp` does not change, then the logarithmic derivative for the clock jump difference lookup `ClockJumpDifferenceLookupClientLogDerivative` accumulates a factor `(clk' - clk)` relative to indeterminate 🪞.
-  Otherwise, it remains the same.
-
-Written as Disjunctive Normal Form, the same constraints can be expressed as:
-1. `iord` is 0 or `iord` is the inverse of `(ramp' - ramp)`.
-1. `(ramp' - ramp)` is zero or `iord` is the inverse of `(ramp' - ramp)`.
-1. `(ramp' - ramp)` non-zero or `previous_instruction'` is `opcode(write_mem)` or `ramv'` is `ramv`.
-1. `bcpc0' - bcpc0` is zero or `(ramp' - ramp)` is nonzero.
-1. `bcpc1' - bcpc1` is zero or `(ramp' - ramp)` is nonzero.
-1. `(ramp' - ramp)` is zero and `rpp' = rpp`; or `(ramp' - ramp)` is nonzero and `rpp' = rpp·(ramp'-🧼))` is zero.
-1. the formal derivative `fd` applies the product rule of differentiation (as necessary).
-1. Bézout coefficient 0 is evaluated correctly.
-1. Bézout coefficient 1 is evaluated correctly.
-1. `rppa' = rppa·(🛋 - 🍍·clk' - 🍈·ramp' - 🍎·ramv' - 🌽·previous_instruction')`
-1. - the `ramp` changes or the logarithmic derivative accumulates a summand, and
-   - the `ramp` does not change or the logarithmic derivative does not change.
+1. If the current row is a padding row, then the next row is a padding row.
+1. The “inverse of `ram_pointer` difference” `iord` is 0 or `iord` is the inverse of the difference between current and next row's `ram_pointer`.
+1. The `ram_pointer` changes or `iord` is the inverse of the difference between current and next row's `ram_pointer`.
+1. The `ram_pointer` changes or `instruction_type` is “write” or the `ram_value` remains unchanged.
+1. The `bcbp0` changes if and only if the `ram_pointer` changes.
+1. The `bcbp1` changes if and only if the `ram_pointer` changes.
+1. If the `ram_pointer` changes, the `RunningProductOfRAMP` accumulates next `ram_pointer`.<br />
+    Otherwise, it remains unchanged.
+1. If the `ram_pointer` changes, the `FormalDerivative` updates under the product rule of differentiation.<br />
+    Otherwise, it remains unchanged.
+1. If the `ram_pointer` changes, Bézout coefficient 0 `bc0` updates according to the running evaluation rules with respect to `bcpc0`.<br />
+    Otherwise, it remains unchanged.
+1. If the `ram_pointer` changes, Bézout coefficient 1 `bc1` updates according to the running evaluation rules with respect to `bcpc1`.<br />
+    Otherwise, it remains unchanged.
+1. If the next row is not a padding row, the `RunningProductPermArg` accumulates the next row.<br />
+    Otherwise, it remains unchanged.
+1. If the `ram_pointer` does not change and the next row is not a padding row, the `ClockJumpDifferenceLookupClientLogDerivative` accumulates the difference of `clk`.<br />
+    Otherwise, it remains unchanged.
 
 ### Transition Constraints as Polynomials
 
-1. `iord·(iord·(ramp' - ramp) - 1)`
-1. `(ramp' - ramp)·(iord·(ramp' - ramp) - 1)`
-1. `(1 - iord·(ramp' - ramp))·(previous_instruction - opcode(write_mem))·(ramv' - ramv)`
-1. `(iord·(ramp' - ramp) - 1)·(bcpc0' - bcpc0)`
-1. `(iord·(ramp' - ramp) - 1)·(bcpc1' - bcpc1)`
-1. `(iord·(ramp' - ramp) - 1)·(rpp' - rpp) + (ramp' - ramp)·(rpp' - rpp·(ramp'-🧼))`
-1. `(iord·(ramp' - ramp) - 1)·(fd' - fd) + (ramp' - ramp)·(fd' - fd·(ramp'-🧼) - rpp)`
-1. `(iord·(ramp' - ramp) - 1)·(bc0' - bc0) + (ramp' - ramp)·(bc0' - bc0·🧼 - bcpc0')`
-1. `(iord·(ramp' - ramp) - 1)·(bc1' - bc1) + (ramp' - ramp)·(bc1' - bc1·🧼 - bcpc1')`
-1. `rppa' - rppa·(🛋 - 🍍·clk' - 🍈·ramp' - 🍎·ramv' - 🌽·previous_instruction')`
-1. `(iord·(ramp' - ramp) - 1)·((ClockJumpDifferenceLookupClientLogDerivative' - ClockJumpDifferenceLookupClientLogDerivative) · (🪞 - clk' + clk) - 1)`<br />
-   `+ (ramp' - ramp)·(ClockJumpDifferenceLookupClientLogDerivative' - ClockJumpDifferenceLookupClientLogDerivative)`
+1. `(instruction_type - 0)·(instruction_type - 1)·(instruction_type' - 2)`
+1. `(iord·(ram_pointer' - ram_pointer) - 1)·iord`
+1. `(iord·(ram_pointer' - ram_pointer) - 1)·(ram_pointer' - ram_pointer)`
+1. `(iord·(ram_pointer' - ram_pointer) - 1)·(instruction_type - 0)·(ram_value' - ram_value)`
+1. `(iord·(ram_pointer' - ram_pointer) - 1)·(bcpc0' - bcpc0)`
+1. `(iord·(ram_pointer' - ram_pointer) - 1)·(bcpc1' - bcpc1)`
+1. `(iord·(ram_pointer' - ram_pointer) - 1)·(RunningProductOfRAMP' - RunningProductOfRAMP)`<br />
+    ` + (ram_pointer' - ram_pointer)·(RunningProductOfRAMP' - RunningProductOfRAMP·(ram_pointer'-🧼))`
+1. `(iord·(ram_pointer' - ram_pointer) - 1)·(FormalDerivative' - FormalDerivative)`<br />
+    `+ (ram_pointer' - ram_pointer)·(FormalDerivative' - FormalDerivative·(ram_pointer'-🧼) - RunningProductOfRAMP)`
+1. `(iord·(ram_pointer' - ram_pointer) - 1)·(bc0' - bc0)`<br />
+     `+ (ram_pointer' - ram_pointer)·(bc0' - bc0·🧼 - bcpc0')`
+1. `(iord·(ram_pointer' - ram_pointer) - 1)·(bc1' - bc1)`<br />
+     `+ (ram_pointer' - ram_pointer)·(bc1' - bc1·🧼 - bcpc1')`
+1. `(RunningProductPermArg' - RunningProductPermArg·(🛋 - 🍍·clk' - 🍈·ram_pointer' - 🍎·ram_value' - 🌽·previous_instruction'))·(instruction_type' - 2)`<br />
+    `(RunningProductPermArg' - RunningProductPermArg)·(instruction_type - 1)·(instruction_type - 0))`
+1. `(iord·(ram_pointer' - ram_pointer) - 1)·(instruction_type' - 2)·((ClockJumpDifferenceLookupClientLogDerivative' - ClockJumpDifferenceLookupClientLogDerivative) · (🪞 - clk' + clk) - 1)`<br />
+    `+ (ram_pointer' - ram_pointer)·(ClockJumpDifferenceLookupClientLogDerivative' - ClockJumpDifferenceLookupClientLogDerivative)`<br />
+    `+ (instruction_type' - 1)·(instruction_type' - 0)·(ClockJumpDifferenceLookupClientLogDerivative' - ClockJumpDifferenceLookupClientLogDerivative)`
 
 ## Terminal Constraints
 
-1. The Bézout relation holds between `rp`, `fd`, `bc0`, and `bc1`.
+1. The Bézout relation holds between `RunningProductOfRAMP`, `FormalDerivative`, `bc0`, and `bc1`.
 
 ### Terminal Constraints as Polynomials
 
-1. `rpp·bc0 + fd·bc1 - 1`
+1. `RunningProductOfRAMP·bc0 + FormalDerivative·bc1 - 1`
