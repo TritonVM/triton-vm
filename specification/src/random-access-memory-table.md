@@ -1,57 +1,61 @@
 # Random Access Memory Table
 
-The RAM is accessible through `read_mem` and `write_mem` commands.
+The purpose of the RAM Table is to ensure that the RAM is accessed in a consistent manner.
+That is, all mutation of RAM happens explicitly through instruction `write_mem`,
+and any invocations of instruction `read_mem` return the values last written.
+
+The fundamental principle is identical to that of the [Op Stack Table](operational-stack-table.md).
+The main difference is the absence of a dedicated stack pointer.
+Instead, op stack element `st0` is used as RAM pointer `ram_pointer`. 
+
+If some RAM address is read from before it is written to, the corresponding value is not determined.
+This is one of interfaces for non-deterministic input in Triton VM.
+Consecutive reads from any such address always returns the same value (until overwritten via `write_mem`).  
 
 ## Base Columns
 
-The RAM Table has 7 columns:
+The RAM Table has 7 base columns:
 1. the cycle counter `clk`,
-1. the instruction executed in the previous clock cycle `previous_instruction`,
-1. RAM address pointer `ramp`,
-1. the value of the memory at that address `ramv`,
-1. helper variable `iord` ("inverse of `ramp` difference", but elsewhere also "difference inverse" and `di` for short),
+1. the executed `instruction_type` – 0 for “write”, 1 for “read”, 2 for padding rows,
+1. RAM pointer `ram_pointer`,
+1. RAM value `ram_value`,
+1. helper variable "inverse of `ram_pointer` difference" `iord`,
 1. Bézout coefficient polynomial coefficient 0 `bcpc0`,
 1. Bézout coefficient polynomial coefficient 1 `bcpc1`,
 
-| Clock | Previous Instruction | RAM Pointer | RAM Value | Inverse of RAM Pointer Difference | Bézout coefficient polynomial's coefficients 0 | Bézout coefficient polynomial's coefficients 1 |
-|:------|:---------------------|:------------|:----------|:----------------------------------|:-----------------------------------------------|:-----------------------------------------------|
-| -     | -                    | -           | -         | -                                 | -                                              | -                                              |
-
-Columns `clk`, `previous_instruction`, `ramp`, and `ramv` correspond to the columns of the same name in the [Processor Table](processor-table.md).
-A permutation argument with the Processor Table establishes that, selecting the columns with these labels, the two tables' sets of rows are identical.
-
-Column `iord` helps with detecting a change of `ramp` across two RAM Table rows.
+Column `iord` helps with detecting a change of `ram_pointer` across two RAM Table rows.
 The function of `iord` is best explained in the context of sorting the RAM Table's rows, which is what the next section is about.
 
 The Bézout coefficient polynomial coefficients `bcpc0` and `bcpc1` represent the coefficients of polynomials that are needed for the [contiguity argument](memory-consistency.md#contiguity-for-ram-table).
-This argument establishes that all regions of constant `ramp` are contiguous.
+This argument establishes that all regions of constant `ram_pointer` are contiguous.
 
 ## Extension Columns
 
-The RAM Table has 2 extension columns, `rppa` and `ClockJumpDifferenceLookupClientLogDerivative`.
+The RAM Table has 6 extension columns:
+1. `RunningProductOfRAMP`, accumulating next row's `ram_pointer` as a root whenever `ram_pointer` changes between two rows,
+1. `FormalDerivative`, the (evaluated) formal derivative of `RunningProductOfRAMP`,
+1. `BezoutCoefficient0`, the (evaluated) polynomial with base column `bcpc0` as coefficients,
+1. `BezoutCoefficient1`, the (evaluated) polynomial with base column `bcpc1` as coefficients,
+1. `RunningProductPermArg`, the [Permutation Argument](permutation-argument.md) with the [Processor Table](processor-table.md), and
+1. `ClockJumpDifferenceLookupClientLogDerivative`, part of [memory consistency](clock-jump-differences-and-inner-sorting.md).
 
-1. A Permutation Argument establishes that the rows in the RAM Table correspond to the rows of the [Processor Table](processor-table.md), after selecting for columns `clk`, `ramp`, `ramv` in both tables.
-    The running product for this argument is contained in the `rppa` column.
-1. In order to achieve [memory consistency](memory-consistency.md), a [Lookup Argument](lookup-argument.md) shows that all clock jump differences are contained in the `clk` column of the [Processor Table](processor-table.md).
-  The logarithmic derivative for this argument is contained in the `ClockJumpDifferenceLookupClientLogDerivative` column.
+Columns `RunningProductOfRAMP`, `FormalDerivative`, `BezoutCoefficient0`, and `BezoutCoefficient1` are part of the [Contiguity Argument](contiguity-of-memory-pointer-regions.md).
 
 ## Sorting Rows
 
-Up to order, the rows of the Hash Table in columns `clk`, `ramp`, `ramv` are identical to the rows in the [Processor Table](processor-table.md) in columns `clk`, `ramp`, and `ramv`.
 In the Hash Table, the rows are arranged such that they
 
-1. form contiguous regions of `ramp`, and
+1. form contiguous regions of `ram_pointer`, and
 1. are sorted by cycle counter `clk` within each such region.
 
-One way to achieve this is to sort by `ramp` first, `clk` second.
+One way to achieve this is to sort by `ram_pointer` first, `clk` second.
 
 Coming back to `iord`:
-if the difference between `ramp` in row $i$ and row $i+1$ is 0, then `iord` in row $i$ is 0.
-Otherwise, `iord` in row $i$ is the multiplicative inverse of the difference between `ramp` in row $i+1$ and `ramp` in row $i$.
+if the difference between `ram_pointer` in row $i$ and row $i+1$ is 0, then `iord` in row $i$ is 0.
+Otherwise, `iord` in row $i$ is the multiplicative inverse of the difference between `ram_pointer` in row $i+1$ and `ram_pointer` in row $i$.
 In the last row, there being no next row, `iord` is 0.
 
 An example of the mechanics can be found below.
-For reasons of display width, we abbreviate `previous_instruction` by `pi`.
 For illustrative purposes only, we use four stack registers `st0` through `st3` in the example.
 Triton VM has 16 stack registers, `st0` through `st15`.
 
