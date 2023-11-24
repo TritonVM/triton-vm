@@ -44,12 +44,13 @@ The other mechanism is [dedicated instructions](instructions.md#opstack-manipula
 
 ## Jump Stack
 
-Another last-in;first-out data structure that keeps track of return and destination addresses.
-This stack changes only when control follows a `call` or `return` instruction.
+Another last-in;first-out data structure, similar to the op stack.
+The jump stack keeps track of return and destination addresses.
+It changes only when control follows a `call` or `return` instruction.
 Furthermore, executing instruction `recurse` requires a non-empty jump stack.
 
 ---
 
 [^1]:
 Of course, the machine running Triton VM might have stricter limitations:
-storing or accessing $(2^{64} - 2^{32} + 1)^2$ bits $\approx 4\cdot10^{25}$ TiB of data is a non-trivial engineering feat.
+storing or accessing $(2^{64} - 2^{32} + 1)\cdot 63.99$ bits $\approx 148$ exabytes of data is a non-trivial engineering feat.
