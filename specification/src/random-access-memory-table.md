@@ -56,68 +56,74 @@ Otherwise, `iord` in row $i$ is the multiplicative inverse of the difference bet
 In the last row, there being no next row, `iord` is 0.
 
 An example of the mechanics can be found below.
-For illustrative purposes only, we use four stack registers `st0` through `st3` in the example.
+To increase visual clarity, stack registers holding value “0” are represented by an empty cell.
+For illustrative purposes only, we use six stack registers `st0` through `st5` in the example.
 Triton VM has 16 stack registers, `st0` through `st15`.
 
 Processor Table:
 
-| clk | pi        | ci        | nia  | st0 | st1 | st2 | st3 | ramp | ramv |
-|----:|:----------|:----------|:-----|----:|----:|----:|----:|-----:|-----:|
-|   0 | -         | push      | 5    |   0 |   0 |   0 |   0 |    0 |    0 |
-|   1 | push      | push      | 6    |   5 |   0 |   0 |   0 |    0 |    0 |
-|   2 | push      | write_mem | pop  |   6 |   5 |   0 |   0 |    0 |    0 |
-|   3 | write_mem | pop       | push |   5 |   0 |   0 |   0 |    5 |    6 |
-|   4 | pop       | push      | 15   |   0 |   0 |   0 |   0 |    5 |    6 |
-|   5 | push      | push      | 16   |  15 |   0 |   0 |   0 |    5 |    6 |
-|   6 | push      | write_mem | pop  |  16 |  15 |   0 |   0 |    5 |    6 |
-|   7 | write_mem | pop       | push |  15 |   0 |   0 |   0 |   15 |   16 |
-|   8 | pop       | push      | 5    |   0 |   0 |   0 |   0 |   15 |   16 |
-|   9 | push      | read_mem  | pop  |   5 |   0 |   0 |   0 |   15 |   16 |
-|  10 | read_mem  | pop       | pop  |   6 |   5 |   0 |   0 |    5 |    6 |
-|  11 | pop       | pop       | push |   5 |   0 |   0 |   0 |    5 |    6 |
-|  12 | pop       | push      | 15   |   0 |   0 |   0 |   0 |    5 |    6 |
-|  13 | push      | read_mem  | pop  |  15 |   0 |   0 |   0 |    5 |    6 |
-|  14 | read_mem  | pop       | pop  |  16 |  15 |   0 |   0 |   15 |   16 |
-|  15 | pop       | pop       | push |  15 |   0 |   0 |   0 |   15 |   16 |
-|  16 | pop       | push      | 5    |   0 |   0 |   0 |   0 |   15 |   16 |
-|  17 | push      | push      | 7    |   5 |   0 |   0 |   0 |   15 |   16 |
-|  18 | push      | write_mem | pop  |   7 |   5 |   0 |   0 |   15 |   16 |
-|  19 | write_mem | pop       | push |   5 |   0 |   0 |   0 |    5 |    7 |
-|  20 | pop       | push      | 15   |   0 |   0 |   0 |   0 |    5 |    7 |
-|  21 | push      | read_mem  | push |  15 |   0 |   0 |   0 |    5 |    7 |
-|  22 | read_mem  | push      | 5    |  16 |  15 |   0 |   0 |   15 |   16 |
-|  23 | push      | read_mem  | halt |   5 |  16 |  15 |   0 |   15 |   16 |
-|  24 | read_mem  | halt      | halt |   7 |   5 |  16 |  15 |    5 |    7 |
+| clk | ci        | nia | st0 | st1 | st2 | st3 | st4 | st5 |
+|----:|:----------|:----|----:|----:|----:|----:|----:|----:|
+|   0 | push      | 20  |     |     |     |     |     |     |
+|   1 | push      | 100 |  20 |     |     |     |     |     |
+|   2 | write_mem | 1   | 100 |  20 |     |     |     |     |
+|   3 | pop       | 1   | 101 |     |     |     |     |     |
+|   4 | push      | 5   |     |     |     |     |     |     |
+|   5 | push      | 6   |   5 |     |     |     |     |     |
+|   6 | push      | 7   |   6 |   5 |     |     |     |     |
+|   7 | push      | 8   |   7 |   6 |   5 |     |     |     |
+|   8 | push      | 9   |   8 |   7 |   6 |   5 |     |     |
+|   9 | push      | 42  |   9 |   8 |   7 |   6 |   5 |     |
+|  10 | write_mem | 5   |  42 |   9 |   8 |   7 |   6 |   5 |
+|  11 | pop       | 1   |  47 |     |     |     |     |     |
+|  12 | push      | 42  |     |     |     |     |     |     |
+|  13 | read_mem  | 1   |  42 |     |     |     |     |     |
+|  14 | pop       | 2   |  41 |   9 |     |     |     |     |
+|  15 | push      | 45  |     |     |     |     |     |     |
+|  16 | read_mem  | 3   |  45 |     |     |     |     |     |
+|  17 | pop       | 4   |  42 |   8 |   7 |   6 |     |     |
+|  18 | push      | 17  |     |     |     |     |     |     |
+|  19 | push      | 18  |  17 |     |     |     |     |     |
+|  20 | push      | 19  |  18 |  17 |     |     |     |     |
+|  21 | push      | 43  |  19 |  18 |  17 |     |     |     |
+|  22 | write_mem | 3   |  43 |  19 |  18 |  17 |     |     |
+|  23 | pop       | 1   |  46 |     |     |     |     |     |
+|  24 | push      | 46  |     |     |     |     |     |     |
+|  25 | read_mem  | 5   |  46 |     |     |     |     |     |
+|  26 | pop       | 1   |  41 |   9 |  19 |  18 |  17 |   5 |
+|  27 | pop       | 5   |   9 |  19 |  18 |  17 |   5 |     |
+|  28 | push      | 42  |     |     |     |     |     |     |
+|  29 | read_mem  | 1   |  42 |     |     |     |     |     |
+|  30 | pop       | 2   |  41 |   9 |     |     |     |     |
+|  31 | push      | 100 |     |     |     |     |     |     |
+|  32 | read_mem  | 1   | 100 |     |     |     |     |     |
+|  33 | pop       | 2   |  99 |  20 |     |     |     |     |
+|  34 | halt      |     |     |     |     |     |     |     |
 
 RAM Table:
 
-| clk | pi        | ramp | ramv |         iord |
-|----:|:----------|-----:|-----:|-------------:|
-|   7 | write_mem |   15 |   16 |            0 |
-|   8 | pop       |   15 |   16 |            0 |
-|   9 | push      |   15 |   16 |            0 |
-|  14 | read_mem  |   15 |   16 |            0 |
-|  15 | pop       |   15 |   16 |            0 |
-|  16 | pop       |   15 |   16 |            0 |
-|  17 | push      |   15 |   16 |            0 |
-|  18 | push      |   15 |   16 |            0 |
-|  22 | read_mem  |   15 |   16 |            0 |
-|  23 | push      |   15 |   16 | -10${}^{-1}$ |
-|   3 | write_mem |    5 |    6 |            0 |
-|   4 | pop       |    5 |    6 |            0 |
-|   5 | push      |    5 |    6 |            0 |
-|   6 | push      |    5 |    6 |            0 |
-|  10 | read_mem  |    5 |    6 |            0 |
-|  11 | pop       |    5 |    6 |            0 |
-|  12 | pop       |    5 |    6 |            0 |
-|  13 | push      |    5 |    6 |            0 |
-|  19 | write_mem |    5 |    7 |            0 |
-|  20 | pop       |    5 |    7 |            0 |
-|  21 | push      |    5 |    7 |            0 |
-|  24 | read_mem  |    5 |    7 |  -5${}^{-1}$ |
-|   0 | -         |    0 |    0 |            0 |
-|   1 | push      |    0 |    0 |            0 |
-|   2 | push      |    0 |    0 |            0 |
+| clk | type  | pointer | value |      iord |
+|----:|:------|--------:|------:|----------:|
+|  10 | write |      42 |     9 |         0 |
+|  13 | read  |      42 |     9 |         0 |
+|  25 | read  |      42 |     9 |         0 |
+|  29 | read  |      42 |     9 |         1 |
+|  10 | write |      43 |     8 |         0 |
+|  16 | read  |      43 |     8 |         0 |
+|  22 | write |      43 |    19 |         0 |
+|  25 | read  |      43 |    19 |         1 |
+|  10 | write |      44 |     7 |         0 |
+|  16 | read  |      44 |     7 |         0 |
+|  22 | write |      44 |    18 |         0 |
+|  25 | read  |      44 |    18 |         1 |
+|  10 | write |      45 |     6 |         0 |
+|  16 | read  |      45 |     6 |         0 |
+|  22 | write |      45 |    17 |         0 |
+|  25 | read  |      45 |    17 |         1 |
+|  10 | write |      46 |     5 |         0 |
+|  25 | read  |      46 |     5 | $54^{-1}$ |
+|   2 | write |     100 |    20 |         0 |
+|  32 | read  |     100 |    20 |         0 |
 
 ## Padding
 

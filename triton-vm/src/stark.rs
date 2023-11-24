@@ -1219,50 +1219,58 @@ pub(crate) mod tests {
     #[test]
     fn print_ram_table_example_for_specification() {
         let program = triton_program!(
-            push 9 push 8 push 5 write_mem 2 pop 1      // write 8 to address 5, 9 to address 6
-            push 18 push 15 write_mem 1 pop 1           // write 18 to address 15
-            push  5         read_mem  1 pop 2           // read from address 5
-            push 15         read_mem  1 pop 2           // read from address 15
-            push  7 push  5 write_mem 1 pop 1           // write 7 to address 5
-            push 15         read_mem  1                 // _ 18 14
-            push  5         read_mem  1                 // _ 18 14 7 4
+            push 20 push 100 write_mem 1 pop 1  // write 20 to address 100
+            push 5 push 6 push 7 push 8 push 9
+            push 42 write_mem 5 pop 1           // write 5..=9 to addresses 42..=46
+            push 42 read_mem 1 pop 2            // read from address 42
+            push 45 read_mem 3 pop 4            // read from address 42..=44
+            push 17 push 18 push 19
+            push 43 write_mem 3 pop 1           // write 17..=19 to addresses 43..=45
+            push 46 read_mem 5 pop 1 pop 5      // read from addresses 42..=46
+            push 42 read_mem 1 pop 2            // read from address 42
+            push 100 read_mem 1 pop 2           // read from address 100
             halt
         );
         let (_, _, master_base_table, _, _) =
             master_tables_for_low_security_level(ProgramAndInput::without_input(program));
 
         println!();
-        println!("Processor Table:");
-        println!(
-            "| clk        | ci         | nia        \
-             | st0        | st1        | st2        | st3        |"
-        );
-        println!(
-            "|-----------:|:-----------|:-----------\
-             |-----------:|-----------:|-----------:|-----------:|"
-        );
-        for row in master_base_table.table(ProcessorTable).rows() {
+        println!("Processor Table:\n");
+        println!("| clk | ci  | nia | st0 | st1 | st2 | st3 | st4 | st5 |");
+        println!("|----:|:----|:----|----:|----:|----:|----:|----:|----:|");
+        for row in master_base_table
+            .table(ProcessorTable)
+            .rows()
+            .into_iter()
+            .take(40)
+        {
             let clk = row[ProcessorBaseTableColumn::CLK.base_table_index()].to_string();
             let st0 = row[ProcessorBaseTableColumn::ST0.base_table_index()].to_string();
             let st1 = row[ProcessorBaseTableColumn::ST1.base_table_index()].to_string();
             let st2 = row[ProcessorBaseTableColumn::ST2.base_table_index()].to_string();
             let st3 = row[ProcessorBaseTableColumn::ST3.base_table_index()].to_string();
+            let st4 = row[ProcessorBaseTableColumn::ST4.base_table_index()].to_string();
+            let st5 = row[ProcessorBaseTableColumn::ST5.base_table_index()].to_string();
 
             let (ci, nia) = ci_and_nia_from_master_table_row(row);
 
-            let interesting_cols = [clk, ci, nia, st0, st1, st2, st3];
+            let interesting_cols = [clk, ci, nia, st0, st1, st2, st3, st4, st5];
             let interesting_cols = interesting_cols
                 .iter()
                 .map(|ff| format!("{:>10}", format!("{ff}")))
-                .collect_vec()
                 .join(" | ");
-            println!("{interesting_cols}");
+            println!("| {interesting_cols} |");
         }
         println!();
-        println!("RAM Table:");
-        println!("| clk        | type       | pointer    | value      | iord |");
-        println!("|-----------:|:-----------|-----------:|-----------:|-----:|");
-        for row in master_base_table.table(TableId::RamTable).rows() {
+        println!("RAM Table:\n");
+        println!("| clk | type | pointer | value | iord |");
+        println!("|----:|:-----|--------:|------:|-----:|");
+        for row in master_base_table
+            .table(TableId::RamTable)
+            .rows()
+            .into_iter()
+            .take(25)
+        {
             let clk = row[RamBaseTableColumn::CLK.base_table_index()].to_string();
             let ramp = row[RamBaseTableColumn::RamPointer.base_table_index()].to_string();
             let ramv = row[RamBaseTableColumn::RamValue.base_table_index()].to_string();
@@ -1282,9 +1290,8 @@ pub(crate) mod tests {
             let interesting_cols = interesting_cols
                 .iter()
                 .map(|ff| format!("{:>10}", format!("{ff}")))
-                .collect_vec()
                 .join(" | ");
-            println!("{interesting_cols}");
+            println!("| {interesting_cols} |");
         }
     }
 
@@ -1305,14 +1312,8 @@ pub(crate) mod tests {
 
         println!();
         println!("Processor Table:");
-        println!(
-            "| clk        | ci         | nia        | st0        | st1        \
-             | st2        | st3        | underflow  | pointer    |"
-        );
-        println!(
-            "|-----------:|:-----------|-----------:|-----------:|-----------:\
-             |-----------:|-----------:|:-----------|-----------:|"
-        );
+        println!("| clk | ci  | nia | st0 | st1 | st2 | st3 | underflow | pointer |");
+        println!("|----:|:----|----:|----:|----:|----:|----:|:----------|--------:|");
         for row in master_base_table
             .table(ProcessorTable)
             .rows()
@@ -1350,13 +1351,13 @@ pub(crate) mod tests {
             let interesting_cols = interesting_cols
                 .map(|ff| format!("{:>10}", format!("{ff}")))
                 .join(" | ");
-            println!("{interesting_cols}");
+            println!("| {interesting_cols} |");
         }
 
         println!();
         println!("Op Stack Table:");
-        println!("|        clk |        ib1 |    pointer |      value |");
-        println!("|-----------:|-----------:|-----------:|-----------:|");
+        println!("| clk | ib1 | pointer | value |");
+        println!("|----:|----:|--------:|------:|");
         for row in master_base_table
             .table(TableId::OpStackTable)
             .rows()
@@ -1378,7 +1379,7 @@ pub(crate) mod tests {
             let interesting_cols = interesting_cols
                 .map(|ff| format!("{:>10}", format!("{ff}")))
                 .join(" | ");
-            println!("{interesting_cols}");
+            println!("| {interesting_cols} |");
         }
     }
 
