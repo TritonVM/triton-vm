@@ -1,14 +1,12 @@
 # Instruction-Specific Transition Constraints
 
-## Instruction `pop`
+## Instruction `pop` + `n`
 
-This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `step_1`, `shrink_stack`, and `keep_ram`.
-It has no additional transition constraints.
+This instruction is fully constrained by its [instruction groups](instruction-groups.md)
 
 ## Instruction `push` + `a`
 
-This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `step_2`, `grow_stack`, and `keep_ram`.
-Additionally, it defines the following transition constraints.
+In addition to its [instruction groups](instruction-groups.md), this instruction has the following constraints.
 
 ### Description
 
@@ -18,18 +16,14 @@ Additionally, it defines the following transition constraints.
 
 1. `st0' - nia`
 
-## Instruction `divine`
+## Instruction `divine` + `n`
 
-This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `step_2`, `grow_stack`, and `keep_ram`.
-It has no additional transition constraints.
+This instruction is fully constrained by its [instruction groups](instruction-groups.md)
 
 ## Instruction `dup` + `i`
 
 This instruction makes use of [indicator polynomials](instruction-groups.md#indicator-polynomials-ind_ihv3-hv2-hv1-hv0).
-For their definition, please refer to the corresponding section.
-
-This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `decompose_arg`, `step_2`, `grow_stack`, and `keep_ram`.
-Additionally, it defines the following transition constraints.
+In addition to its [instruction groups](instruction-groups.md), this instruction has the following constraints.
 
 ### Description
 
@@ -69,22 +63,10 @@ Additionally, it defines the following transition constraints.
 1. `ind_14(hv3, hv2, hv1, hv0)·(st0' - st14)`
 1. `ind_15(hv3, hv2, hv1, hv0)·(st0' - st15)`
 
-### Helper variable definitions for `dup` + `i`
-
-For `dup` + `i`, helper variables contain the binary decomposition of `i`:
-
-1. `hv0 = i % 2`
-1. `hv1 = (i >> 1) % 2`
-1. `hv2 = (i >> 2) % 2`
-1. `hv3 = (i >> 3) % 2`
-
 ## Instruction `swap` + `i`
 
 This instruction makes use of [indicator polynomials](instruction-groups.md#indicator-polynomials-ind_ihv3-hv2-hv1-hv0).
-For their definition, please refer to the corresponding section.
-
-This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `decompose_arg`, `step_2`, and `keep_ram`.
-Additionally, it defines the following transition constraints.
+In addition to its [instruction groups](instruction-groups.md), this instruction has the following constraints.
 
 ### Description
 
@@ -188,26 +170,16 @@ Additionally, it defines the following transition constraints.
 1. `op_stack_pointer' - op_stack_pointer`
 1. `RunningProductOpStackTable' - RunningProductOpStackTable`
 
-### Helper variable definitions for `swap` + `i`
-
-For `swap` + `i`, helper variables contain the binary decomposition of `i`:
-
-1. `hv0 = i % 2`
-1. `hv1 = (i >> 1) % 2`
-1. `hv2 = (i >> 2) % 2`
-1. `hv3 = (i >> 3) % 2`
-
 ## Instruction `nop`
 
-This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `step_1`, `keep_stack`, and `keep_ram`.
-It has no additional transition constraints.
+This instruction is fully constrained by its [instruction groups](instruction-groups.md)
 
 ## Instruction `skiz`
 
 For the correct behavior of instruction `skiz`, the instruction pointer `ip` needs to increment by either 1, or 2, or 3.
 The concrete value depends on the top of the stack `st0` and the next instruction, held in `nia`.
 
-Helper variable `hv1` helps with identifying whether `st0` is 0.
+Helper variable `hv0` helps with identifying whether `st0` is 0.
 To this end, it holds the inverse-or-zero of `st0`, _i.e._, is 0 if and only if `st0` is 0, and is the inverse of `st0` otherwise.
 
 Efficient arithmetization of instruction `skiz` makes use of one of the properties of [opcodes](instructions.md#regarding-opcodes).
@@ -216,8 +188,7 @@ The arithmetization of `skiz` can incorporate this simple flag by decomposing `n
 similarly to how `ci` is (always) deconstructed into instruction bit registers `ib`.
 Correct decomposition is guaranteed by employing a [range check](https://en.wikipedia.org/wiki/Bounds_checking).
 
-This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `keep_jump_stack`, `shrink_stack`, and `keep_ram`.
-Additionally, it defines the following transition constraints.
+In addition to its [instruction groups](instruction-groups.md), this instruction has the following constraints.
 
 ### Description
 
@@ -267,8 +238,7 @@ Since the three cases are mutually exclusive, the three respective polynomials c
 
 ## Instruction `call` + `d`
 
-This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `keep_stack` and `keep_ram`.
-Additionally, it defines the following transition constraints.
+In addition to its [instruction groups](instruction-groups.md), this instruction has the following constraints.
 
 ### Description
 
@@ -286,8 +256,7 @@ Additionally, it defines the following transition constraints.
 
 ## Instruction `return`
 
-This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `keep_stack` and `keep_ram`.
-Additionally, it defines the following transition constraints.
+In addition to its [instruction groups](instruction-groups.md), this instruction has the following constraints.
 
 ### Description
 
@@ -301,8 +270,7 @@ Additionally, it defines the following transition constraints.
 
 ## Instruction `recurse`
 
-This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `keep_jump_stack`, `keep_stack`, and `keep_ram`.
-Additionally, it defines the following transition constraints.
+In addition to its [instruction groups](instruction-groups.md), this instruction has the following constraints.
 
 ### Description
 
@@ -320,8 +288,7 @@ Additionally, it defines the following transition constraints.
 
 ## Instruction `assert`
 
-This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `step_1`, `shrink_stack`, and `keep_ram`.
-Additionally, it defines the following transition constraints.
+In addition to its [instruction groups](instruction-groups.md), this instruction has the following constraints.
 
 ### Description
 
@@ -333,8 +300,7 @@ Additionally, it defines the following transition constraints.
 
 ## Instruction `halt`
 
-This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `step_1`, `keep_stack`, and `keep_ram`.
-Additionally, it defines the following transition constraints.
+In addition to its [instruction groups](instruction-groups.md), this instruction has the following constraints.
 
 ### Description
 
@@ -344,41 +310,201 @@ Additionally, it defines the following transition constraints.
 
 1. `ci' - ci`
 
-## Instruction `read_mem`
+## Instruction `read_mem` + `n`
 
-This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `step_1` and `grow_stack`.
-Additionally, it defines the following transition constraints.
-
-### Description
-
-1. The RAM pointer is overwritten with stack element `st0`.
-1. The top of the stack is overwritten with the RAM value.
-
-### Polynomials
-
-1. `ramp' - st0`
-1. `st0' - ramv`
-
-## Instruction `write_mem`
-
-This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `step_1` and `shrink_stack`.
-Additionally, it defines the following transition constraints.
+In addition to its [instruction groups](instruction-groups.md), this instruction has the following constraints.
 
 ### Description
 
-1. The RAM pointer is overwritten with stack element `st1`.
-1. The RAM value is overwritten with the top of the stack.
+1. The RAM pointer `st0` is decremented by `n`.
+1. If `n` is 1, then `st1` is moved into `st2`<br />
+    else if `n` is 2, then `st1` is moved into `st3`<br />
+    else if `n` is 3, then `st1` is moved into `st4`<br />
+    else if `n` is 4, then `st1` is moved into `st5`<br />
+    else if `n` is 5, then `st1` is moved into `st6`.
+1. If `n` is 1, then `st2` is moved into `st3`<br />
+    else if `n` is 2, then `st2` is moved into `st4`<br />
+    else if `n` is 3, then `st2` is moved into `st5`<br />
+    else if `n` is 4, then `st2` is moved into `st6`<br />
+    else if `n` is 5, then `st2` is moved into `st7`.
+1. If `n` is 1, then `st3` is moved into `st4`<br />
+    else if `n` is 2, then `st3` is moved into `st5`<br />
+    else if `n` is 3, then `st3` is moved into `st6`<br />
+    else if `n` is 4, then `st3` is moved into `st7`<br />
+    else if `n` is 5, then `st3` is moved into `st8`.
+1. If `n` is 1, then `st4` is moved into `st5`<br />
+    else if `n` is 2, then `st4` is moved into `st6`<br />
+    else if `n` is 3, then `st4` is moved into `st7`<br />
+    else if `n` is 4, then `st4` is moved into `st8`<br />
+    else if `n` is 5, then `st4` is moved into `st9`.
+1. If `n` is 1, then `st5` is moved into `st6`<br />
+    else if `n` is 2, then `st5` is moved into `st7`<br />
+    else if `n` is 3, then `st5` is moved into `st8`<br />
+    else if `n` is 4, then `st5` is moved into `st9`<br />
+    else if `n` is 5, then `st5` is moved into `st10`.
+1. If `n` is 1, then `st6` is moved into `st7`<br />
+    else if `n` is 2, then `st6` is moved into `st8`<br />
+    else if `n` is 3, then `st6` is moved into `st9`<br />
+    else if `n` is 4, then `st6` is moved into `st10`<br />
+    else if `n` is 5, then `st6` is moved into `st11`.
+1. If `n` is 1, then `st7` is moved into `st8`<br />
+    else if `n` is 2, then `st7` is moved into `st9`<br />
+    else if `n` is 3, then `st7` is moved into `st10`<br />
+    else if `n` is 4, then `st7` is moved into `st11`<br />
+    else if `n` is 5, then `st7` is moved into `st12`.
+1. If `n` is 1, then `st8` is moved into `st9`<br />
+    else if `n` is 2, then `st8` is moved into `st10`<br />
+    else if `n` is 3, then `st8` is moved into `st11`<br />
+    else if `n` is 4, then `st8` is moved into `st12`<br />
+    else if `n` is 5, then `st8` is moved into `st13`.
+1. If `n` is 1, then `st9` is moved into `st10`<br />
+    else if `n` is 2, then `st9` is moved into `st11`<br />
+    else if `n` is 3, then `st9` is moved into `st12`<br />
+    else if `n` is 4, then `st9` is moved into `st13`<br />
+    else if `n` is 5, then `st9` is moved into `st14`.
+1. If `n` is 1, then `st10` is moved into `st11`<br />
+    else if `n` is 2, then `st10` is moved into `st12`<br />
+    else if `n` is 3, then `st10` is moved into `st13`<br />
+    else if `n` is 4, then `st10` is moved into `st14`<br />
+    else if `n` is 5, then `st10` is moved into `st15`.
+1. If `n` is 1, then `st11` is moved into `st12`<br />
+    else if `n` is 2, then `st11` is moved into `st13`<br />
+    else if `n` is 3, then `st11` is moved into `st14`<br />
+    else if `n` is 4, then `st11` is moved into `st15`<br />
+    else if `n` is 5, then the op stack pointer grows by 5.
+1. If `n` is 1, then `st12` is moved into `st13`<br />
+    else if `n` is 2, then `st12` is moved into `st14`<br />
+    else if `n` is 3, then `st12` is moved into `st15`<br />
+    else if `n` is 4, then the op stack pointer grows by 4<br />
+    else if `n` is 5, then with the Op Stack Table accumulates `st11` through `st15`.
+1. If `n` is 1, then `st13` is moved into `st14`<br />
+    else if `n` is 2, then `st13` is moved into `st15`<br />
+    else if `n` is 3, then the op stack pointer grows by 3<br />
+    else if `n` is 4, then the running product with the Op Stack Table accumulates `st12` through `st15`<br />
+    else if `n` is 5, then the running product with the RAM Table accumulates next row's `st1` through `st5`.
+1. If `n` is 1, then `st14` is moved into `st15`<br />
+    else if `n` is 2, then the op stack pointer grows by 2<br />
+    else if `n` is 3, then the running product with the Op Stack Table accumulates `st13` through `st15`<br />
+    else if `n` is 4, then the running product with the RAM Table accumulates next row's `st1` through `st4`<br />
+1. If `n` is 1, then the op stack pointer grows by 1<br />
+    else if `n` is 2, then the running product with the Op Stack Table accumulates `st14` and `st15`<br />
+    else if `n` is 3, then the running product with the RAM Table accumulates next row's `st1` through `st3`.
+1. If `n` is 1, then the running product with the Op Stack Table accumulates `st15`<br />
+    else if `n` is 2, then the running product with the RAM Table accumulates next row's `st1` and `st2`.
+1. If `n` is 1, then the running product with the RAM Table accumulates next row's `st1`.
 
-### Polynomials
+## Instruction `write_mem` + `n`
 
-1. `ramp' - st1`
-1. `ramv' - st0`
+In addition to its [instruction groups](instruction-groups.md), this instruction has the following constraints.
+
+### Description
+
+1. The RAM pointer `st0` is incremented by `n`.
+1. If `n` is 1, then `st2` is moved into `st1`<br />
+    else if `n` is 2, then `st3` is moved into `st1`<br />
+    else if `n` is 3, then `st4` is moved into `st1`<br />
+    else if `n` is 4, then `st5` is moved into `st1`<br />
+    else if `n` is 5, then `st6` is moved into `st1`.
+1. If `n` is 1, then `st3` is moved into `st2`<br />
+    else if `n` is 2, then `st4` is moved into `st2`<br />
+    else if `n` is 3, then `st5` is moved into `st2`<br />
+    else if `n` is 4, then `st6` is moved into `st2`<br />
+    else if `n` is 5, then `st7` is moved into `st2`.
+1. If `n` is 1, then `st4` is moved into `st3`<br />
+    else if `n` is 2, then `st5` is moved into `st3`<br />
+    else if `n` is 3, then `st6` is moved into `st3`<br />
+    else if `n` is 4, then `st7` is moved into `st3`<br />
+    else if `n` is 5, then `st8` is moved into `st3`.
+1. If `n` is 1, then `st5` is moved into `st4`<br />
+    else if `n` is 2, then `st6` is moved into `st4`<br />
+    else if `n` is 3, then `st7` is moved into `st4`<br />
+    else if `n` is 4, then `st8` is moved into `st4`<br />
+    else if `n` is 5, then `st9` is moved into `st4`.
+1. If `n` is 1, then `st6` is moved into `st5`<br />
+    else if `n` is 2, then `st7` is moved into `st5`<br />
+    else if `n` is 3, then `st8` is moved into `st5`<br />
+    else if `n` is 4, then `st9` is moved into `st5`<br />
+    else if `n` is 5, then `st10` is moved into `st5`.
+1. If `n` is 1, then `st7` is moved into `st6`<br />
+    else if `n` is 2, then `st8` is moved into `st6`<br />
+    else if `n` is 3, then `st9` is moved into `st6`<br />
+    else if `n` is 4, then `st10` is moved into `st6`<br />
+    else if `n` is 5, then `st11` is moved into `st6`.
+1. If `n` is 1, then `st8` is moved into `st7`<br />
+    else if `n` is 2, then `st9` is moved into `st7`<br />
+    else if `n` is 3, then `st10` is moved into `st7`<br />
+    else if `n` is 4, then `st11` is moved into `st7`<br />
+    else if `n` is 5, then `st12` is moved into `st7`.
+1. If `n` is 1, then `st9` is moved into `st8`<br />
+    else if `n` is 2, then `st10` is moved into `st8`<br />
+    else if `n` is 3, then `st11` is moved into `st8`<br />
+    else if `n` is 4, then `st12` is moved into `st8`<br />
+    else if `n` is 5, then `st13` is moved into `st8`.
+1. If `n` is 1, then `st10` is moved into `st9`<br />
+    else if `n` is 2, then `st11` is moved into `st9`<br />
+    else if `n` is 3, then `st12` is moved into `st9`<br />
+    else if `n` is 4, then `st13` is moved into `st9`<br />
+    else if `n` is 5, then `st14` is moved into `st9`.
+1. If `n` is 1, then `st11` is moved into `st10`<br />
+    else if `n` is 2, then `st12` is moved into `st10`<br />
+    else if `n` is 3, then `st13` is moved into `st10`<br />
+    else if `n` is 4, then `st14` is moved into `st10`<br />
+    else if `n` is 5, then `st15` is moved into `st10`.
+1. If `n` is 1, then `st12` is moved into `st11`<br />
+    else if `n` is 2, then `st13` is moved into `st11`<br />
+    else if `n` is 3, then `st14` is moved into `st11`<br />
+    else if `n` is 4, then `st15` is moved into `st11`<br />
+    else if `n` is 5, then the op stack pointer shrinks by 5.
+1. If `n` is 1, then `st13` is moved into `st12`<br />
+    else if `n` is 2, then `st14` is moved into `st12`<br />
+    else if `n` is 3, then `st15` is moved into `st12`<br />
+    else if `n` is 4, then the op stack pointer shrinks by 4<br />
+    else if `n` is 5, then the running product with the Op Stack Table accumulates next row's `st11` through `st15`.
+1. If `n` is 1, then `st14` is moved into `st13`<br />
+    else if `n` is 2, then `st15` is moved into `st13`<br />
+    else if `n` is 3, then the op stack pointer shrinks by 3<br />
+    else if `n` is 4, then the running product with the Op Stack Table accumulates next row's `st12` through `st15`<br />
+    else if `n` is 5, then the running product with the RAM Table accumulates `st1` through `st5`.
+1. If `n` is 1, then `st15` is moved into `st14`<br />
+    else if `n` is 2, then the op stack pointer shrinks by 2<br />
+    else if `n` is 3, then the running product with the Op Stack Table accumulates next row's `st13` through `st15`<br />
+    else if `n` is 4, then the running product with the RAM Table accumulates `st1` through `st4`.
+1. If `n` is 1, then the op stack pointer shrinks by 1<br />
+    else if `n` is 2, then the running product with the Op Stack Table accumulates next row's `st14` and `st15`<br />
+    else if `n` is 3, then the running product with the RAM Table accumulates `st1` through `st2`.
+1. If `n` is 1, then the running product with the Op Stack Table accumulates next row's `st15`<br />
+    else if `n` is 2, then the running product with the RAM Table accumulates `st1` and `st1`.
+1. If `n` is 1, then the running product with the RAM Table accumulates `st1`.
 
 ## Instruction `hash`
 
-This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `step_1`, `stack_remains_and_top_10_unconstrained`, and `keep_ram`.
-It has no additional transition constraints.
-Two Evaluation Arguments with the [Hash Table](hash-table.md) guarantee correct transition.
+In addition to its [instruction groups](instruction-groups.md), this instruction has the following constraints.
+
+### Description
+
+1. `st10` is moved into `st5`.
+1. `st11` is moved into `st6`.
+1. `st12` is moved into `st7`.
+1. `st13` is moved into `st8`.
+1. `st14` is moved into `st9`.
+1. `st15` is moved into `st10`.
+1. The op stack pointer shrinks by 5.
+1. The running product with the Op Stack Table accumulates next row's `st11` through `st15`.
+
+### Polynomials
+
+1. `st5' - st10`
+1. `st6' - st11`
+1. `st7' - st12`
+1. `st8' - st13`
+1. `st9' - st14`
+1. `st10' - st15`
+1. `op_stack_pointer' - op_stack_pointer + 5`
+1. `RunningProductOpStackTable' - RunningProductOpStackTable·(🪤 - 🍋·clk - 🍊 - 🍉·op_stack_pointer' - 🫒·st15')`<br />
+    `·(🪤 - 🍋·clk - 🍊 - 🍉·(op_stack_pointer' + 1) - 🫒·st14')`<br/>
+    `·(🪤 - 🍋·clk - 🍊 - 🍉·(op_stack_pointer' + 2) - 🫒·st13')`<br/>
+    `·(🪤 - 🍋·clk - 🍊 - 🍉·(op_stack_pointer' + 3) - 🫒·st12')`<br/>
+    `·(🪤 - 🍋·clk - 🍊 - 🍉·(op_stack_pointer' + 4) - 🫒·st11')`
 
 ## Instruction `divine_sibling`
 
@@ -386,33 +512,50 @@ Recall that in a Merkle tree, the indices of left (respectively right) leafs hav
 The first two polynomials achieve that helper variable `hv0` holds the result of `st10 mod 2`.
 The third polynomial sets the new value of `st10` to `st10 div 2`.
 
-This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `step_1`, `stack_remains_and_top_11_unconstrained`, and `keep_ram`.
-Additionally, it defines the following transition constraints.
+In addition to its [instruction groups](instruction-groups.md), this instruction has the following constraints.
 
 ### Description
 
 1. Helper variable `hv0` is either 0 or 1.
-1. The 11th stack register is shifted by 1 bit to the right.
 1. If `hv0` is 0, then `st0` does not change.
 1. If `hv0` is 0, then `st1` does not change.
 1. If `hv0` is 0, then `st2` does not change.
 1. If `hv0` is 0, then `st3` does not change.
 1. If `hv0` is 0, then `st4` does not change.
-1. If `hv0` is 1, then `st0` is copied to `st5`.
-1. If `hv0` is 1, then `st1` is copied to `st6`.
-1. If `hv0` is 1, then `st2` is copied to `st7`.
-1. If `hv0` is 1, then `st3` is copied to `st8`.
-1. If `hv0` is 1, then `st4` is copied to `st9`.
+1. If `hv0` is 1, then `st0` is moved to `st5`.
+1. If `hv0` is 1, then `st1` is moved to `st6`.
+1. If `hv0` is 1, then `st2` is moved to `st7`.
+1. If `hv0` is 1, then `st3` is moved to `st8`.
+1. If `hv0` is 1, then `st4` is moved to `st9`.
+1. `st5` is shifted by 1 bit to the right and moved into `st10`.
+1. `st6` is moved into `st11`
+1. `st7` is moved into `st12`
+1. `st8` is moved into `st13`
+1. `st9` is moved into `st14`
+1. `st10` is moved into `st15`
+1. The op stack pointer grows by 5.
+1. The running product with the Op Stack Table accumulates `st11` through `st15`.
 
 ### Polynomials
 
 1. `hv0·(hv0 - 1)`
-1. `st10'·2 + hv0 - st10`
 1. `(1 - hv0)·(st0' - st0) + hv0·(st5' - st0)`
 1. `(1 - hv0)·(st1' - st1) + hv0·(st6' - st1)`
 1. `(1 - hv0)·(st2' - st2) + hv0·(st7' - st2)`
 1. `(1 - hv0)·(st3' - st3) + hv0·(st8' - st3)`
 1. `(1 - hv0)·(st4' - st4) + hv0·(st9' - st4)`
+1. `st10'·2 + hv0 - st5`
+1. `st11' - st6`
+1. `st12' - st7`
+1. `st13' - st8`
+1. `st14' - st9`
+1. `st15' - st10`
+1. `op_stack_pointer' - op_stack_pointer - 5`
+1. `RunningProductOpStackTable' - RunningProductOpStackTable·(🪤 - 🍋·clk - 🍉·op_stack_pointer - 🫒·st15)`<br />
+    `·(🪤 - 🍋·clk - 🍉·(op_stack_pointer + 1) - 🫒·st14)`<br/>
+    `·(🪤 - 🍋·clk - 🍉·(op_stack_pointer + 2) - 🫒·st13)`<br/>
+    `·(🪤 - 🍋·clk - 🍉·(op_stack_pointer + 3) - 🫒·st12)`<br/>
+    `·(🪤 - 🍋·clk - 🍉·(op_stack_pointer + 4) - 🫒·st11)`
 
 ### Helper variable definitions for `divine_sibling`
 
@@ -422,16 +565,23 @@ Since `st10` contains the Merkle tree node index,
 
 ## Instruction `assert_vector`
 
-This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `step_1`, `keep_stack`, and `keep_ram`.
-Additionally, it defines the following transition constraints.
+In addition to its [instruction groups](instruction-groups.md), this instruction has the following constraints.
 
 ### Description
 
-1. Register `st0` is equal to `st5`.
-1. Register `st1` is equal to `st6`.
-1. Register `st2` is equal to `st7`.
-1. Register `st3` is equal to `st8`.
-1. Register `st4` is equal to `st9`.
+1. `st0` is equal to `st5`.
+1. `st1` is equal to `st6`.
+1. `st2` is equal to `st7`.
+1. `st3` is equal to `st8`.
+1. `st4` is equal to `st9`.
+1. `st10` is moved into `st5`.
+1. `st11` is moved into `st6`.
+1. `st12` is moved into `st7`.
+1. `st13` is moved into `st8`.
+1. `st14` is moved into `st9`.
+1. `st15` is moved into `st10`.
+1. The op stack pointer shrinks by 5.
+1. The running product with the Op Stack Table accumulates next row's `st11` through `st15`.
 
 ### Polynomials
 
@@ -440,29 +590,99 @@ Additionally, it defines the following transition constraints.
 1. `st7 - st2`
 1. `st8 - st3`
 1. `st9 - st4`
+1. `st5' - st10`
+1. `st6' - st11`
+1. `st7' - st12`
+1. `st8' - st13`
+1. `st9' - st14`
+1. `st10' - st15`
+1. `op_stack_pointer' - op_stack_pointer + 5`
+1. `RunningProductOpStackTable' - RunningProductOpStackTable·(🪤 - 🍋·clk - 🍊 - 🍉·op_stack_pointer' - 🫒·st15')`<br />
+    `·(🪤 - 🍋·clk - 🍊 - 🍉·(op_stack_pointer' + 1) - 🫒·st14')`<br/>
+    `·(🪤 - 🍋·clk - 🍊 - 🍉·(op_stack_pointer' + 2) - 🫒·st13')`<br/>
+    `·(🪤 - 🍋·clk - 🍊 - 🍉·(op_stack_pointer' + 3) - 🫒·st12')`<br/>
+    `·(🪤 - 🍋·clk - 🍊 - 🍉·(op_stack_pointer' + 4) - 🫒·st11')`
 
 ## Instruction `sponge_init`
 
-This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `step_1`, `keep_stack`, and `keep_ram`.
-Beyond that, this instruction has no transition constraints.
-Instead, correct transition is guaranteed by the [Hash Table](hash-table.md).
+This instruction is fully constrained by its [instruction groups](instruction-groups.md)
+Beyond that, correct transition is guaranteed by the [Hash Table](hash-table.md).
 
 ## Instruction `sponge_absorb`
 
-This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `step_1`, `keep_stack`, and `keep_ram`.
-Beyond that, this instruction has no transition constraints.
-Instead, correct transition is guaranteed by the [Hash Table](hash-table.md).
+In addition to its [instruction groups](instruction-groups.md), this instruction has the following constraints.
+Beyond that, correct transition is guaranteed by the [Hash Table](hash-table.md).
+
+### Description
+
+1. `st10` is moved into `st0`.
+1. `st11` is moved into `st1`.
+1. `st12` is moved into `st2`.
+1. `st13` is moved into `st3`.
+1. `st14` is moved into `st4`.
+1. `st15` is moved into `st5`.
+1. The op stack pointer shrinks by 10.
+1. The running product with the Op Stack Table accumulates next row's `st6` through `st15`.
+
+### Polynomials
+
+1. `st0' - st10`
+1. `st1' - st11`
+1. `st2' - st12`
+1. `st3' - st13`
+1. `st4' - st14`
+1. `st5' - st15`
+1. `op_stack_pointer' - op_stack_pointer + 10`
+1. `RunningProductOpStackTable' - RunningProductOpStackTable·(🪤 - 🍋·clk - 🍊 - 🍉·op_stack_pointer' - 🫒·st15')`<br />
+    `·(🪤 - 🍋·clk - 🍊 - 🍉·(op_stack_pointer' + 1) - 🫒·st14')`<br/>
+    `·(🪤 - 🍋·clk - 🍊 - 🍉·(op_stack_pointer' + 2) - 🫒·st13')`<br/>
+    `·(🪤 - 🍋·clk - 🍊 - 🍉·(op_stack_pointer' + 3) - 🫒·st12')`<br/>
+    `·(🪤 - 🍋·clk - 🍊 - 🍉·(op_stack_pointer' + 4) - 🫒·st11')`<br/>
+    `·(🪤 - 🍋·clk - 🍊 - 🍉·(op_stack_pointer' + 5) - 🫒·st10')`<br/>
+    `·(🪤 - 🍋·clk - 🍊 - 🍉·(op_stack_pointer' + 6) - 🫒·st9')`<br/>
+    `·(🪤 - 🍋·clk - 🍊 - 🍉·(op_stack_pointer' + 7) - 🫒·st8')`<br/>
+    `·(🪤 - 🍋·clk - 🍊 - 🍉·(op_stack_pointer' + 8) - 🫒·st7')`<br/>
+    `·(🪤 - 🍋·clk - 🍊 - 🍉·(op_stack_pointer' + 9) - 🫒·st6')`
 
 ## Instruction `sponge_squeeze`
 
-This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `step_1`, `stack_remains_and_top_10_unconstrained`, and `keep_ram`.
-Beyond that, this instruction has no transition constraints.
-Instead, correct transition is guaranteed by the [Hash Table](hash-table.md).
+In addition to its [instruction groups](instruction-groups.md), this instruction has the following constraints.
+Beyond that, correct transition is guaranteed by the [Hash Table](hash-table.md).
+
+### Description
+
+1. `st0` is moved into `st10`.
+1. `st1` is moved into `st11`.
+1. `st2` is moved into `st12`.
+1. `st3` is moved into `st13`.
+1. `st4` is moved into `st14`.
+1. `st5` is moved into `st15`.
+1. The op stack pointer grows by 10.
+1. The running product with the Op Stack Table accumulates `st6` through `st15`.
+
+### Polynomials
+
+1. `st10' - st0`
+1. `st11' - st1`
+1. `st12' - st2`
+1. `st13' - st3`
+1. `st14' - st4`
+1. `st15' - st5`
+1. `op_stack_pointer' - op_stack_pointer - 10`
+1. `RunningProductOpStackTable' - RunningProductOpStackTable·(🪤 - 🍋·clk - 🍉·op_stack_pointer - 🫒·st15)`<br />
+    `·(🪤 - 🍋·clk - 🍉·(op_stack_pointer + 1) - 🫒·st14)`<br/>
+    `·(🪤 - 🍋·clk - 🍉·(op_stack_pointer + 2) - 🫒·st13)`<br/>
+    `·(🪤 - 🍋·clk - 🍉·(op_stack_pointer + 3) - 🫒·st12)`<br/>
+    `·(🪤 - 🍋·clk - 🍉·(op_stack_pointer + 4) - 🫒·st11)`<br/>
+    `·(🪤 - 🍋·clk - 🍉·(op_stack_pointer + 5) - 🫒·st10)`<br/>
+    `·(🪤 - 🍋·clk - 🍉·(op_stack_pointer + 6) - 🫒·st9)`<br/>
+    `·(🪤 - 🍋·clk - 🍉·(op_stack_pointer + 7) - 🫒·st8)`<br/>
+    `·(🪤 - 🍋·clk - 🍉·(op_stack_pointer + 8) - 🫒·st7)`<br/>
+    `·(🪤 - 🍋·clk - 🍉·(op_stack_pointer + 9) - 🫒·st6)`
 
 ## Instruction `add`
 
-This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `step_1`, `binary_operation`, and `keep_ram`.
-Additionally, it defines the following transition constraints.
+In addition to its [instruction groups](instruction-groups.md), this instruction has the following constraints.
 
 ### Description
 
@@ -474,8 +694,7 @@ Additionally, it defines the following transition constraints.
 
 ## Instruction `mul`
 
-This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `step_1`, `binary_operation`, and `keep_ram`.
-Additionally, it defines the following transition constraints.
+In addition to its [instruction groups](instruction-groups.md), this instruction has the following constraints.
 
 ### Description
 
@@ -487,8 +706,7 @@ Additionally, it defines the following transition constraints.
 
 ## Instruction `invert`
 
-This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `step_1`, `unary_operation`, and `keep_ram`.
-Additionally, it defines the following transition constraints.
+In addition to its [instruction groups](instruction-groups.md), this instruction has the following constraints.
 
 ### Description
 
@@ -500,8 +718,7 @@ Additionally, it defines the following transition constraints.
 
 ## Instruction `eq`
 
-This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `step_1`, `binary_operation`, and `keep_ram`.
-Additionally, it defines the following transition constraints.
+In addition to its [instruction groups](instruction-groups.md), this instruction has the following constraints.
 
 ### Description
 
@@ -522,8 +739,7 @@ Additionally, it defines the following transition constraints.
 
 ## Instruction `split`
 
-This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `step_1`, `stack_grows_and_top_2_unconstrained`, and `keep_ram`.
-Additionally, it defines the following transition constraints.
+In addition to its [instruction groups](instruction-groups.md), this instruction has the following constraints.
 Part of the correct transition, namely the range check on the instruction's result, is guaranteed by the [U32 Table](u32-table.md).
 
 ### Description
@@ -545,43 +761,37 @@ Given the high 32 bits of `st0` as `hi = st0 >> 32` and the low 32 bits of `st0`
 
 ## Instruction `lt`
 
-This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `step_1`, `binary_operation`, and `keep_ram`.
-Beyond that, this instruction has no transition constraints.
-Instead, correct transition is guaranteed by the [U32 Table](u32-table.md).
+This instruction is fully constrained by its [instruction groups](instruction-groups.md)
+Beyond that, correct transition is guaranteed by the [U32 Table](u32-table.md).
 
 ## Instruction `and`
 
-This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `step_1`, `binary_operation`, and `keep_ram`.
-Beyond that, this instruction has no transition constraints.
-Instead, correct transition is guaranteed by the [U32 Table](u32-table.md).
+This instruction is fully constrained by its [instruction groups](instruction-groups.md)
+Beyond that, correct transition is guaranteed by the [U32 Table](u32-table.md).
 
 ## Instruction `xor`
 
-This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `step_1`, `binary_operation`, and `keep_ram`.
-Beyond that, this instruction has no transition constraints.
-Instead, correct transition is guaranteed by the [U32 Table](u32-table.md).
+This instruction is fully constrained by its [instruction groups](instruction-groups.md)
+Beyond that, correct transition is guaranteed by the [U32 Table](u32-table.md).
 
 ## Instruction `log2floor`
 
-This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `step_1`, `unary_operation`, and `keep_ram`.
-Beyond that, this instruction has no transition constraints.
-Instead, correct transition is guaranteed by the [U32 Table](u32-table.md).
+This instruction is fully constrained by its [instruction groups](instruction-groups.md)
+Beyond that, correct transition is guaranteed by the [U32 Table](u32-table.md).
 
 ## Instruction `pow`
 
-This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `step_1`, `binary_operation`, and `keep_ram`.
-Beyond that, this instruction has no transition constraints.
-Instead, correct transition is guaranteed by the [U32 Table](u32-table.md).
+This instruction is fully constrained by its [instruction groups](instruction-groups.md)
+Beyond that, correct transition is guaranteed by the [U32 Table](u32-table.md).
 
 ## Instruction `div_mod`
-
-This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `step_1`, `stack_remains_and_top_3_unconstrained`, and `keep_ram`.
-Additionally, it defines the following transition constraints.
 
 Recall that instruction `div_mod` takes stack `_ d n` and computes `_ q r` where `n` is the numerator, `d` is the denominator, `r` is the remainder, and `q` is the quotient.
 The following two properties are guaranteed by the [U32 Table](u32-table.md):
 1. The remainder `r` is smaller than the denominator `d`, and
 1. all four of `n`, `d`, `q`, and `r` are u32s.
+
+In addition to its [instruction groups](instruction-groups.md), this instruction has the following constraints.
 
 ### Description
 
@@ -595,48 +805,96 @@ The following two properties are guaranteed by the [U32 Table](u32-table.md):
 
 ## Instruction `pop_count`
 
-This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `step_1`, `unary_operation`, and `keep_ram`.
-Beyond that, this instruction has no transition constraints.
-Instead, correct transition is guaranteed by the [U32 Table](u32-table.md).
+This instruction is fully constrained by its [instruction groups](instruction-groups.md)
+Beyond that, correct transition is guaranteed by the [U32 Table](u32-table.md).
 
 ## Instruction `xxadd`
 
-This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `step_1`, `stack_remains_and_top_3_unconstrained`, and `keep_ram`.
-Additionally, it defines the following transition constraints.
+In addition to its [instruction groups](instruction-groups.md), this instruction has the following constraints.
 
 ### Description
 
 1. The result of adding `st0` to `st3` is moved into `st0`.
 1. The result of adding `st1` to `st4` is moved into `st1`.
 1. The result of adding `st2` to `st5` is moved into `st2`.
+1. `st6` is moved into `st3`.
+1. `st7` is moved into `st4`.
+1. `st8` is moved into `st5`.
+1. `st9` is moved into `st6`.
+1. `st10` is moved into `st7`.
+1. `st11` is moved into `st8`.
+1. `st12` is moved into `st9`.
+1. `st13` is moved into `st10`.
+1. `st14` is moved into `st11`.
+1. `st15` is moved into `st12`.
+1. The op stack pointer shrinks by 3.
+1. The running product with the Op Stack Table accumulates next row's `st13` through `st15`.
 
 ### Polynomials
 
 1. `st0' - (st0 + st3)`
 1. `st1' - (st1 + st4)`
 1. `st2' - (st2 + st5)`
+1. `st3' - st6`
+1. `st4' - st7`
+1. `st5' - st8`
+1. `st6' - st9`
+1. `st7' - st10`
+1. `st8' - st11`
+1. `st9' - st12`
+1. `st10' - st13`
+1. `st11' - st14`
+1. `st12' - st15`
+1. `op_stack_pointer' - op_stack_pointer + 3`
+1. `RunningProductOpStackTable' - RunningProductOpStackTable·(🪤 - 🍋·clk - 🍊 - 🍉·op_stack_pointer' - 🫒·st15')`<br />
+    `·(🪤 - 🍋·clk - 🍊 - 🍉·(op_stack_pointer' + 1) - 🫒·st14')`<br/>
+    `·(🪤 - 🍋·clk - 🍊 - 🍉·(op_stack_pointer' + 2) - 🫒·st13')`
 
 ## Instruction `xxmul`
 
-This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `step_1`, `stack_remains_and_top_3_unconstrained`, and `keep_ram`.
-Additionally, it defines the following transition constraints.
+In addition to its [instruction groups](instruction-groups.md), this instruction has the following constraints.
 
 ### Description
 
 1. The coefficient of x^0 of multiplying the two X-Field elements on the stack is moved into `st0`.
 1. The coefficient of x^1 of multiplying the two X-Field elements on the stack is moved into `st1`.
 1. The coefficient of x^2 of multiplying the two X-Field elements on the stack is moved into `st2`.
+1. `st6` is moved into `st3`.
+1. `st7` is moved into `st4`.
+1. `st8` is moved into `st5`.
+1. `st9` is moved into `st6`.
+1. `st10` is moved into `st7`.
+1. `st11` is moved into `st8`.
+1. `st12` is moved into `st9`.
+1. `st13` is moved into `st10`.
+1. `st14` is moved into `st11`.
+1. `st15` is moved into `st12`.
+1. The op stack pointer shrinks by 3.
+1. The running product with the Op Stack Table accumulates next row's `st13` through `st15`.
 
 ### Polynomials
 
 1. `st0' - (st0·st3 - st2·st4 - st1·st5)`
 1. `st1' - (st1·st3 + st0·st4 - st2·st5 + st2·st4 + st1·st5)`
 1. `st2' - (st2·st3 + st1·st4 + st0·st5 + st2·st5)`
+1. `st3' - st6`
+1. `st4' - st7`
+1. `st5' - st8`
+1. `st6' - st9`
+1. `st7' - st10`
+1. `st8' - st11`
+1. `st9' - st12`
+1. `st10' - st13`
+1. `st11' - st14`
+1. `st12' - st15`
+1. `op_stack_pointer' - op_stack_pointer + 3`
+1. `RunningProductOpStackTable' - RunningProductOpStackTable·(🪤 - 🍋·clk - 🍊 - 🍉·op_stack_pointer' - 🫒·st15')`<br />
+   `·(🪤 - 🍋·clk - 🍊 - 🍉·(op_stack_pointer' + 1) - 🫒·st14')`<br/>
+   `·(🪤 - 🍋·clk - 🍊 - 🍉·(op_stack_pointer' + 2) - 🫒·st13')`
 
 ## Instruction `xinvert`
 
-This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `step_1`, `stack_remains_and_top_3_unconstrained`, and `keep_ram`.
-Additionally, it defines the following transition constraints.
+In addition to its [instruction groups](instruction-groups.md), this instruction has the following constraints.
 
 ### Description
 
@@ -652,29 +910,84 @@ Additionally, it defines the following transition constraints.
 
 ## Instruction `xbmul`
 
-This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `step_1`, `stack_shrinks_and_top_3_unconstrained`, and `keep_ram`.
-Additionally, it defines the following transition constraints.
+In addition to its [instruction groups](instruction-groups.md), this instruction has the following constraints.
 
 ### Description
 
 1. The result of multiplying the top of the stack with the X-Field element's coefficient for x^0 is moved into `st0`.
 1. The result of multiplying the top of the stack with the X-Field element's coefficient for x^1 is moved into `st1`.
 1. The result of multiplying the top of the stack with the X-Field element's coefficient for x^2 is moved into `st2`.
+1. `st4` is moved into `st3`.
+1. `st5` is moved into `st4`.
+1. `st6` is moved into `st5`.
+1. `st7` is moved into `st6`.
+1. `st8` is moved into `st7`.
+1. `st9` is moved into `st8`.
+1. `st10` is moved into `st9`.
+1. `st11` is moved into `st10`.
+1. `st12` is moved into `st11`.
+1. `st13` is moved into `st12`.
+1. `st14` is moved into `st13`.
+1. `st15` is moved into `st14`.
+1. The op stack pointer shrinks by 3.
+1. The running product with the Op Stack Table accumulates next row's `st15`.
 
 ### Polynomials
 
 1. `st0' - st0·st1`
 1. `st1' - st0·st2`
 1. `st2' - st0·st3`
+1. `st3' - st4`
+1. `st4' - st5`
+1. `st5' - stt`
+1. `st6' - st7`
+1. `st7' - st8`
+1. `st8' - st9`
+1. `st9' - st10`
+1. `st10' - st11`
+1. `st11' - st12`
+1. `st12' - st13`
+1. `st13' - st14`
+1. `st14' - st15`
+1. `op_stack_pointer' - op_stack_pointer + 1`
+1. `RunningProductOpStackTable' - RunningProductOpStackTable·(🪤 - 🍋·clk - 🍊 - 🍉·op_stack_pointer' - 🫒·st15')`
 
-## Instruction `read_io`
+## Instruction `read_io` + `n`
 
-This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `step_1`, `grow_stack`, and `keep_ram`.
-It has no additional transition constraints.
-An Evaluation Argument with the list of input symbols guarantees correct transition.
+In addition to its [instruction groups](instruction-groups.md), this instruction has the following constraints.
 
-## Instruction `write_io`
+### Description
 
-This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `step_1`, `shrink_stack`, and `keep_ram`.
-It has no additional transition constraints.
-An Evaluation Argument with the list of output symbols guarantees correct transition.
+1. If `n` is 1, the running evaluation for standard input accumulates next row's `st0`<br />
+    else if `n` is 2, the running evaluation for standard input accumulates next row's `st0` and `st1`<br />
+    else if `n` is 3, the running evaluation for standard input accumulates next row's `st0` through `st2`<br />
+    else if `n` is 4, the running evaluation for standard input accumulates next row's `st0` through `st3`<br />
+    else if `n` is 5, the running evaluation for standard input accumulates next row's `st0` through `st4`.
+
+### Polynomials
+
+1. `ind_1(hv3, hv2, hv1, hv0)·(RunningEvaluationStandardInput' - 🛏·RunningEvaluationStandardInput - st0')`<br />
+    `+ ind_2(hv3, hv2, hv1, hv0)·(RunningEvaluationStandardInput' - 🛏·(🛏·RunningEvaluationStandardInput - st0') - st1')`<br />
+    `+ ind_3(hv3, hv2, hv1, hv0)·(RunningEvaluationStandardInput' - 🛏·(🛏·(🛏·RunningEvaluationStandardInput - st0') - st1') - st2')`<br />
+    `+ ind_4(hv3, hv2, hv1, hv0)·(RunningEvaluationStandardInput' - 🛏·(🛏·(🛏·(🛏·RunningEvaluationStandardInput - st0') - st1') - st2') - st3')`<br />
+    `+ ind_5(hv3, hv2, hv1, hv0)·(RunningEvaluationStandardInput' - 🛏·(🛏·(🛏·(🛏·(🛏·RunningEvaluationStandardInput - st0') - st1') - st2') - st3') - st4')`
+
+## Instruction `write_io` + `n`
+
+In addition to its [instruction groups](instruction-groups.md), this instruction has the following constraints.
+
+### Description
+
+1. If `n` is 1, the running evaluation for standard output accumulates `st0`<br />
+    else if `n` is 2, the running evaluation for standard output accumulates `st0` and `st1`<br />
+    else if `n` is 3, the running evaluation for standard output accumulates `st0` through `st2`<br />
+    else if `n` is 4, the running evaluation for standard output accumulates `st0` through `st3`<br />
+    else if `n` is 5, the running evaluation for standard output accumulates `st0` through `st4`.
+
+### Polynomials
+
+1. `ind_1(hv3, hv2, hv1, hv0)·(RunningEvaluationStandardOutput' - 🧯·RunningEvaluationStandardOutput - st0)`<br />
+    `+ ind_2(hv3, hv2, hv1, hv0)·(RunningEvaluationStandardOutput' - 🧯·(🧯·RunningEvaluationStandardOutput - st0) - st1)`<br />
+    `+ ind_3(hv3, hv2, hv1, hv0)·(RunningEvaluationStandardOutput' - 🧯·(🧯·(🧯·RunningEvaluationStandardOutput - st0) - st1) - st2)`<br />
+    `+ ind_4(hv3, hv2, hv1, hv0)·(RunningEvaluationStandardOutput' - 🧯·(🧯·(🧯·(🧯·RunningEvaluationStandardOutput - st0) - st1) - st2) - st3)`<br />
+    `+ ind_5(hv3, hv2, hv1, hv0)·(RunningEvaluationStandardOutput' - 🧯·(🧯·(🧯·(🧯·(🧯·RunningEvaluationStandardOutput - st0) - st1) - st2) - st3) - st4)`
