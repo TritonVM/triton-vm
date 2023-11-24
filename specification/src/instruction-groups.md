@@ -47,8 +47,8 @@ A summary of all instructions and which groups they are part of is given in the 
 | `recurse`         |                 |                              |    x    |     x      |         x         |          |          |                 |                           |                   |        x        |                    |                   |                             |
 | `assert`          |                 |                              |    x    |     x      |                   |    x     |          |                 |                           |                   |                 |                    |         x         |                             |
 | `halt`            |                 |                              |    x    |     x      |                   |    x     |          |                 |                           |                   |        x        |                    |                   |                             |
-| `read_mem` + `n`  |        x        |              x               |    x    |            |                   |          |    x     |                 |             x             |                   |                 |                    |                   |                             |
-| `write_mem` + `n` |        x        |              x               |    x    |            |                   |          |    x     |                 |                           |                   |                 |                    |                   |              x              |
+| `read_mem` + `n`  |        x        |              x               |    x    |            |                   |          |    x     |                 |                           |                   |                 |                    |                   |                             |
+| `write_mem` + `n` |        x        |              x               |    x    |            |                   |          |    x     |                 |                           |                   |                 |                    |                   |                             |
 | `hash`            |                 |                              |    x    |     x      |                   |    x     |          |                 |                           |                   |                 |                    |                   |                             |
 | `divine_sibling`  |                 |                              |    x    |     x      |                   |    x     |          |                 |                           |                   |                 |                    |                   |                             |
 | `assert_vector`   |                 |                              |    x    |     x      |                   |    x     |          |                 |                           |                   |                 |                    |                   |                             |
@@ -128,6 +128,51 @@ The list of all 16 indicator polynomials is:
 1. `hv1·(hv1 - 1)`
 1. `hv2·(hv2 - 1)`
 1. `hv3·(hv3 - 1)`
+
+## Group `prohibit_illegal_num_words`
+
+Is only ever used in combination with instruction group `decompose_arg`.
+Therefore, the instruction argument's correct binary decomposition is known to be in helper variables `hv0` through `hv3`.
+
+### Description
+
+1. The argument is not 0.
+1. The argument is not 6.
+1. The argument is not 7.
+1. The argument is not 8.
+1. The argument is not 9.
+1. The argument is not 10.
+1. The argument is not 11.
+1. The argument is not 12.
+1. The argument is not 13.
+1. The argument is not 14.
+1. The argument is not 15.
+
+### Polynomials
+
+1.  `ind_0(hv3, hv2, hv1, hv0)`
+1.  `ind_6(hv3, hv2, hv1, hv0)`
+1.  `ind_7(hv3, hv2, hv1, hv0)`
+1.  `ind_8(hv3, hv2, hv1, hv0)`
+1.  `ind_9(hv3, hv2, hv1, hv0)`
+1. `ind_10(hv3, hv2, hv1, hv0)`
+1. `ind_11(hv3, hv2, hv1, hv0)`
+1. `ind_12(hv3, hv2, hv1, hv0)`
+1. `ind_13(hv3, hv2, hv1, hv0)`
+1. `ind_14(hv3, hv2, hv1, hv0)`
+1. `ind_15(hv3, hv2, hv1, hv0)`
+
+## Group `no_io`
+
+### Description
+
+1. The running evaluation for standard input remains unchanged.
+2. The running evaluation for standard output remains unchanged.
+
+### Polynomials
+
+1. `RunningEvaluationStandardInput' - RunningEvaluationStandardInput`
+2. `RunningEvaluationStandardOutput' - RunningEvaluationStandardOutput`
 
 ## Group `keep_ram`
 
@@ -218,6 +263,89 @@ Contains all constraints from instruction group `keep_jump_stack`, and additiona
 1. `st15' - st14`
 1. `op_stack_pointer' - (op_stack_pointer + 1)`
 1. `RunningProductOpStackTable' - RunningProductOpStackTable·(🪤 - 🍋·clk - 🍊·ib1 - 🍉·op_stack_pointer - 🫒·st15)`
+
+## Group `grow_op_stack_by_any_of`
+
+Is only ever used in combination with instruction group `decompose_arg`.
+Therefore, the instruction's argument `n` correct binary decomposition is known to be in helper variables `hv0` through `hv3`.
+
+### Description
+
+1. If `n` is 1, then `st0` is moved into `st1`<br />
+    else if `n` is 2, then `st0` is moved into `st2`<br />
+    else if `n` is 3, then `st0` is moved into `st3`<br />
+    else if `n` is 4, then `st0` is moved into `st4`<br />
+    else if `n` is 5, then `st0` is moved into `st5`.
+1. If `n` is 1, then `st1` is moved into `st2`<br />
+    else if `n` is 2, then `st1` is moved into `st3`<br />
+    else if `n` is 3, then `st1` is moved into `st4`<br />
+    else if `n` is 4, then `st1` is moved into `st5`<br />
+    else if `n` is 5, then `st1` is moved into `st6`.
+1. If `n` is 1, then `st2` is moved into `st3`<br />
+    else if `n` is 2, then `st2` is moved into `st4`<br />
+    else if `n` is 3, then `st2` is moved into `st5`<br />
+    else if `n` is 4, then `st2` is moved into `st6`<br />
+    else if `n` is 5, then `st2` is moved into `st7`.
+1. If `n` is 1, then `st3` is moved into `st4`<br />
+    else if `n` is 2, then `st3` is moved into `st5`<br />
+    else if `n` is 3, then `st3` is moved into `st6`<br />
+    else if `n` is 4, then `st3` is moved into `st7`<br />
+    else if `n` is 5, then `st3` is moved into `st8`.
+1. If `n` is 1, then `st4` is moved into `st5`<br />
+    else if `n` is 2, then `st4` is moved into `st6`<br />
+    else if `n` is 3, then `st4` is moved into `st7`<br />
+    else if `n` is 4, then `st4` is moved into `st8`<br />
+    else if `n` is 5, then `st4` is moved into `st9`.
+1. If `n` is 1, then `st5` is moved into `st6`<br />
+    else if `n` is 2, then `st5` is moved into `st7`<br />
+    else if `n` is 3, then `st5` is moved into `st8`<br />
+    else if `n` is 4, then `st5` is moved into `st9`<br />
+    else if `n` is 5, then `st5` is moved into `st10`.
+1. If `n` is 1, then `st6` is moved into `st7`<br />
+    else if `n` is 2, then `st6` is moved into `st8`<br />
+    else if `n` is 3, then `st6` is moved into `st9`<br />
+    else if `n` is 4, then `st6` is moved into `st10`<br />
+    else if `n` is 5, then `st6` is moved into `st11`.
+1. If `n` is 1, then `st7` is moved into `st8`<br />
+    else if `n` is 2, then `st7` is moved into `st9`<br />
+    else if `n` is 3, then `st7` is moved into `st10`<br />
+    else if `n` is 4, then `st7` is moved into `st11`<br />
+    else if `n` is 5, then `st7` is moved into `st12`.
+1. If `n` is 1, then `st8` is moved into `st9`<br />
+    else if `n` is 2, then `st8` is moved into `st10`<br />
+    else if `n` is 3, then `st8` is moved into `st11`<br />
+    else if `n` is 4, then `st8` is moved into `st12`<br />
+    else if `n` is 5, then `st8` is moved into `st13`.
+1. If `n` is 1, then `st9` is moved into `st10`<br />
+    else if `n` is 2, then `st9` is moved into `st11`<br />
+    else if `n` is 3, then `st9` is moved into `st12`<br />
+    else if `n` is 4, then `st9` is moved into `st13`<br />
+    else if `n` is 5, then `st9` is moved into `st14`.
+1. If `n` is 1, then `st10` is moved into `st11`<br />
+    else if `n` is 2, then `st10` is moved into `st12`<br />
+    else if `n` is 3, then `st10` is moved into `st13`<br />
+    else if `n` is 4, then `st10` is moved into `st14`<br />
+    else if `n` is 5, then `st10` is moved into `st15`.
+1. If `n` is 1, then `st11` is moved into `st12`<br />
+    else if `n` is 2, then `st11` is moved into `st13`<br />
+    else if `n` is 3, then `st11` is moved into `st14`<br />
+    else if `n` is 4, then `st11` is moved into `st15`<br />
+    else if `n` is 5, then the op stack pointer grows by 5.
+1. If `n` is 1, then `st12` is moved into `st13`<br />
+    else if `n` is 2, then `st12` is moved into `st14`<br />
+    else if `n` is 3, then `st12` is moved into `st15`<br />
+    else if `n` is 4, then the op stack pointer grows by 4<br />
+    else if `n` is 5, then the running product with the Op Stack Table accumulates `st11` through `st15`.
+1. If `n` is 1, then `st13` is moved into `st14`<br />
+    else if `n` is 2, then `st13` is moved into `st15`<br />
+    else if `n` is 3, then the op stack pointer grows by 3<br />
+    else if `n` is 4, then the running product with the Op Stack Table accumulates `st12` through `st15`.
+1. If `n` is 1, then `st14` is moved into `st15`<br />
+    else if `n` is 2, then the op stack pointer grows by 2<br />
+    else if `n` is 3, then the running product with the Op Stack Table accumulates `st13` through `st15`.
+1. If `n` is 1, then the op stack pointer grows by 1<br />
+    else if `n` is 2, then the running product with the Op Stack Table accumulates `st14` and `st15`.
+1. If `n` is 1, then the running product with the Op Stack Table accumulates `st15`.
 
 ## Group `unary_operation`
 
@@ -324,3 +452,86 @@ Contains all constraints from instruction group `binary_operation`, and addition
 ### Polynomials
 
 1. `st0' - st1`
+
+## Group `shrink_op_stack_by_any_of`
+
+Is only ever used in combination with instruction group `decompose_arg`.
+Therefore, the instruction's argument `n` correct binary decomposition is known to be in helper variables `hv0` through `hv3`.
+
+### Description
+
+1. If `n` is 1, then `st1` is moved into `st0`<br />
+    else if `n` is 2, then `st2` is moved into `st0`<br />
+    else if `n` is 3, then `st3` is moved into `st0`<br />
+    else if `n` is 4, then `st4` is moved into `st0`<br />
+    else if `n` is 5, then `st5` is moved into `st0`.
+1. If `n` is 1, then `st2` is moved into `st1`<br />
+    else if `n` is 2, then `st3` is moved into `st1`<br />
+    else if `n` is 3, then `st4` is moved into `st1`<br />
+    else if `n` is 4, then `st5` is moved into `st1`<br />
+    else if `n` is 5, then `st6` is moved into `st1`.
+1. If `n` is 1, then `st3` is moved into `st2`<br />
+    else if `n` is 2, then `st4` is moved into `st2`<br />
+    else if `n` is 3, then `st5` is moved into `st2`<br />
+    else if `n` is 4, then `st6` is moved into `st2`<br />
+    else if `n` is 5, then `st7` is moved into `st2`.
+1. If `n` is 1, then `st4` is moved into `st3`<br />
+    else if `n` is 2, then `st5` is moved into `st3`<br />
+    else if `n` is 3, then `st6` is moved into `st3`<br />
+    else if `n` is 4, then `st7` is moved into `st3`<br />
+    else if `n` is 5, then `st8` is moved into `st3`.
+1. If `n` is 1, then `st5` is moved into `st4`<br />
+    else if `n` is 2, then `st6` is moved into `st4`<br />
+    else if `n` is 3, then `st7` is moved into `st4`<br />
+    else if `n` is 4, then `st8` is moved into `st4`<br />
+    else if `n` is 5, then `st9` is moved into `st4`.
+1. If `n` is 1, then `st6` is moved into `st5`<br />
+    else if `n` is 2, then `st7` is moved into `st5`<br />
+    else if `n` is 3, then `st8` is moved into `st5`<br />
+    else if `n` is 4, then `st9` is moved into `st5`<br />
+    else if `n` is 5, then `st10` is moved into `st5`.
+1. If `n` is 1, then `st7` is moved into `st6`<br />
+    else if `n` is 2, then `st8` is moved into `st6`<br />
+    else if `n` is 3, then `st9` is moved into `st6`<br />
+    else if `n` is 4, then `st10` is moved into `st6`<br />
+    else if `n` is 5, then `st11` is moved into `st6`.
+1. If `n` is 1, then `st8` is moved into `st7`<br />
+    else if `n` is 2, then `st9` is moved into `st7`<br />
+    else if `n` is 3, then `st10` is moved into `st7`<br />
+    else if `n` is 4, then `st11` is moved into `st7`<br />
+    else if `n` is 5, then `st12` is moved into `st7`.
+1. If `n` is 1, then `st9` is moved into `st8`<br />
+    else if `n` is 2, then `st10` is moved into `st8`<br />
+    else if `n` is 3, then `st11` is moved into `st8`<br />
+    else if `n` is 4, then `st12` is moved into `st8`<br />
+    else if `n` is 5, then `st13` is moved into `st8`.
+1. If `n` is 1, then `st10` is moved into `st9`<br />
+    else if `n` is 2, then `st11` is moved into `st9`<br />
+    else if `n` is 3, then `st12` is moved into `st9`<br />
+    else if `n` is 4, then `st13` is moved into `st9`<br />
+    else if `n` is 5, then `st14` is moved into `st9`.
+1. If `n` is 1, then `st11` is moved into `st10`<br />
+    else if `n` is 2, then `st12` is moved into `st10`<br />
+    else if `n` is 3, then `st13` is moved into `st10`<br />
+    else if `n` is 4, then `st14` is moved into `st10`<br />
+    else if `n` is 5, then `st15` is moved into `st10`.
+1. If `n` is 1, then `st12` is moved into `st11`<br />
+    else if `n` is 2, then `st13` is moved into `st11`<br />
+    else if `n` is 3, then `st14` is moved into `st11`<br />
+    else if `n` is 4, then `st15` is moved into `st11`<br />
+    else if `n` is 5, then the op stack pointer shrinks by 5.
+1. If `n` is 1, then `st13` is moved into `st12`<br />
+    else if `n` is 2, then `st14` is moved into `st12`<br />
+    else if `n` is 3, then `st15` is moved into `st12`<br />
+    else if `n` is 4, then the op stack pointer shrinks by 4<br />
+    else if `n` is 5, then the running product with the Op Stack Table accumulates next row's `st11` through `st15`.
+1. If `n` is 1, then `st14` is moved into `st13`<br />
+    else if `n` is 2, then `st15` is moved into `st13`<br />
+    else if `n` is 3, then the op stack pointer shrinks by 3<br />
+    else if `n` is 4, then the running product with the Op Stack Table accumulates next row's `st12` through `st15`.
+1. If `n` is 1, then `st15` is moved into `st14`<br />
+    else if `n` is 2, then the op stack pointer shrinks by 2<br />
+    else if `n` is 3, then the running product with the Op Stack Table accumulates next row's `st13` through `st15`.
+1. If `n` is 1, then the op stack pointer shrinks by 1<br />
+    else if `n` is 2, then the running product with the Op Stack Table accumulates next row's `st14` and `st15`.
+1. If `n` is 1, then the running product with the Op Stack Table accumulates next row's `st15`.
