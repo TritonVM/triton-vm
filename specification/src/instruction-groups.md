@@ -80,21 +80,21 @@ In this and the following sections, a register marked with a `'` refers to the n
 For example, `st0' = st0 + 2` means that stack register `st0` is incremented by 2.
 An alternative view for the same concept is that registers marked with `'` are those of the next row in the table.
 
-For instructions [`dup`](instruction-specific-transition-constraints.md#instruction-dup--i) and [`swap`](instruction-specific-transition-constraints.md#instruction-swap--i), it is beneficial to have polynomials that evaluate to 1 if the instruction's argument `i` is a specific value, and to 0 otherwise.
-This allows indicating which registers are constraint, and in which way they are, depending on `i`.
+For instructions like `dup i`, `swap i`, `pop n`, _et cetera_, it is beneficial to have polynomials that evaluate to 1 if the instruction's argument is a specific value, and to 0 otherwise.
+This allows indicating which registers are constraint, and in which way they are, depending on the argument.
 This is the purpose of the _indicator polynomials_ `ind_i`.
 Evaluated on the binary decomposition of `i`, they show the behavior described above.
 
 For example, take `i = 13`.
 The corresponding binary decomposition is `(hv3, hv2, hv1, hv0) = (1, 1, 0, 1)`.
-Indicator polynomial `ind_13(hv3, hv2, hv1, hv0)` is `hv3·hv2·(1 - hv1)·hv0`.
+Indicator polynomial `ind_13(hv3, hv2, hv1, hv0)` is defined as `hv3·hv2·(1 - hv1)·hv0`.
 It evaluates to 1 on `(1, 1, 0, 1)`, i.e., `ind_13(1, 1, 0, 1) = 1`.
 Any other indicator polynomial, like `ind_7`, evaluates to 0 on `(1, 1, 0, 1)`.
 Likewise, the indicator polynomial for 13 evaluates to 0 for any other argument.
 
-Below, you can find a list of all 16 indicator polynomials.
+The list of all 16 indicator polynomials is:
 
-1.  `ind_0(hv3, hv2, hv1, hv0) = (1 - hv3)·(1 - hv2)·(1 - hv1)·(1 - hv0)`
+0.  `ind_0(hv3, hv2, hv1, hv0) = (1 - hv3)·(1 - hv2)·(1 - hv1)·(1 - hv0)`
 1.  `ind_1(hv3, hv2, hv1, hv0) = (1 - hv3)·(1 - hv2)·(1 - hv1)·hv0`
 1.  `ind_2(hv3, hv2, hv1, hv0) = (1 - hv3)·(1 - hv2)·hv1·(1 - hv0)`
 1.  `ind_3(hv3, hv2, hv1, hv0) = (1 - hv3)·(1 - hv2)·hv1·hv0`
@@ -133,13 +133,11 @@ Below, you can find a list of all 16 indicator polynomials.
 
 ### Description
 
-1. The RAM pointer `ramp` does not change.
-1. The RAM value `ramv` does not change.
+1. The running product for the Permutation Argument with the RAM table does not change.
 
 ### Polynomials
 
-1. `ramp' - ramp`
-1. `ramv' - ramv`
+1. `RunningProductRamTable' - RunningProductRamTable`
 
 ## Group `keep_jump_stack`
 
@@ -179,10 +177,11 @@ Contains all constraints from instruction group `keep_jump_stack`, and additiona
 
 1. `ip' - (ip + 2)`
 
-## Group `stack_grows_and_top_2_unconstrained`
+## Group `grow_op_stack`
 
 ### Description
 
+1. The stack element in `st0` is moved into `st1`.
 1. The stack element in `st1` is moved into `st2`.
 1. The stack element in `st2` is moved into `st3`.
 1. The stack element in `st3` is moved into `st4`.
@@ -202,6 +201,7 @@ Contains all constraints from instruction group `keep_jump_stack`, and additiona
 
 ### Polynomials
 
+1. `st1' - st0`
 1. `st2' - st1`
 1. `st3' - st2`
 1. `st4' - st3`
@@ -219,22 +219,20 @@ Contains all constraints from instruction group `keep_jump_stack`, and additiona
 1. `op_stack_pointer' - (op_stack_pointer + 1)`
 1. `RunningProductOpStackTable' - RunningProductOpStackTable·(🪤 - 🍋·clk - 🍊·ib1 - 🍉·op_stack_pointer - 🫒·st15)`
 
-## Group `grow_stack`
-
-Contains all constraints from instruction group `stack_grows_and_top_2_unconstrained`, and additionally:
+## Group `unary_operation`
 
 ### Description
 
-1. The stack element in `st0` is moved into `st1`.
-
-### Polynomials
-
-1. `st1' - st0`
-
-## Group `stack_remains_and_top_11_unconstrained`
-
-### Description
-
+1. The stack element in `st1` does not change.
+1. The stack element in `st2` does not change.
+1. The stack element in `st3` does not change.
+1. The stack element in `st4` does not change.
+1. The stack element in `st5` does not change.
+1. The stack element in `st6` does not change.
+1. The stack element in `st7` does not change.
+1. The stack element in `st8` does not change.
+1. The stack element in `st9` does not change.
+1. The stack element in `st10` does not change.
 1. The stack element in `st11` does not change.
 1. The stack element in `st12` does not change.
 1. The stack element in `st13` does not change.
@@ -245,6 +243,16 @@ Contains all constraints from instruction group `stack_grows_and_top_2_unconstra
 
 ### Polynomials
 
+1. `st1' - st1`
+1. `st2' - st2`
+1. `st3' - st3`
+1. `st4' - st4`
+1. `st5' - st5`
+1. `st6' - st6`
+1. `st7' - st7`
+1. `st8' - st8`
+1. `st9' - st9`
+1. `st10' - st10`
 1. `st11' - st11`
 1. `st12' - st12`
 1. `st13' - st13`
@@ -253,57 +261,7 @@ Contains all constraints from instruction group `stack_grows_and_top_2_unconstra
 1. `op_stack_pointer' - op_stack_pointer`
 1. `RunningProductOpStackTable' - RunningProductOpStackTable`
 
-## Group `stack_remains_and_top_10_unconstrained`
-
-Contains all constraints from instruction group `stack_remains_and_top_11_unconstrained`, and additionally:
-
-### Description
-
-1. The stack element in `st10` does not change.
-
-### Polynomials
-
-1. `st10' - st10`
-
-## Group `stack_remains_and_top_3_unconstrained`
-
-Contains all constraints from instruction group `stack_remains_and_top_10_unconstrained`, and additionally:
-
-### Description
-
-1. The stack element in `st3` does not change.
-1. The stack element in `st4` does not change.
-1. The stack element in `st5` does not change.
-1. The stack element in `st6` does not change.
-1. The stack element in `st7` does not change.
-1. The stack element in `st8` does not change.
-1. The stack element in `st9` does not change.
-
-### Polynomials
-
-1. `st3' - st3`
-1. `st4' - st4`
-1. `st5' - st5`
-1. `st6' - st6`
-1. `st7' - st7`
-1. `st8' - st8`
-1. `st9' - st9`
-
-## Group `unary_operation`
-
-Contains all constraints from instruction group `stack_remains_and_top_3_unconstrained`, and additionally:
-
-### Description
-
-1. The stack element in `st1` does not change.
-1. The stack element in `st2` does not change.
-
-### Polynomials
-
-1. `st1' - st1`
-1. `st2' - st2`
-
-## Group `keep_stack`
+## Group `keep_op_stack`
 
 Contains all constraints from instruction group `unary_operation`, and additionally:
 
@@ -315,10 +273,12 @@ Contains all constraints from instruction group `unary_operation`, and additiona
 
 1. `st0' - st0`
 
-## Group `stack_shrinks_and_top_3_unconstrained`
+## Group `binary_operation`
 
 ### Description
 
+1. The stack element in `st2` is moved into `st1`.
+1. The stack element in `st3` is moved into `st2`.
 1. The stack element in `st4` is moved into `st3`.
 1. The stack element in `st5` is moved into `st4`.
 1. The stack element in `st6` is moved into `st5`.
@@ -336,6 +296,8 @@ Contains all constraints from instruction group `unary_operation`, and additiona
 
 ### Polynomials
 
+1. `st1' - st2`
+1. `st2' - st3`
 1. `st3' - st4`
 1. `st4' - st5`
 1. `st5' - st6`
@@ -351,21 +313,7 @@ Contains all constraints from instruction group `unary_operation`, and additiona
 1. `op_stack_pointer' - (op_stack_pointer - 1)`
 1. `RunningProductOpStackTable' - RunningProductOpStackTable·(🪤 - 🍋·clk - 🍊·ib1 - 🍉·op_stack_pointer' - 🫒·st15')`
 
-## Group `binary_operation`
-
-Contains all constraints from instruction group `stack_shrinks_and_top_3_unconstrained`, and additionally:
-
-### Description
-
-1. The stack element in `st2` is moved into `st1`.
-1. The stack element in `st3` is moved into `st2`.
-
-### Polynomials
-
-1. `st1' - st2`
-1. `st2' - st3`
-
-## Group `shrink_stack`
+## Group `shrink_op_stack`
 
 Contains all constraints from instruction group `binary_operation`, and additionally:
 
