@@ -1,6 +1,7 @@
 use thiserror::Error;
 use twenty_first::shared_math::digest::DIGEST_LENGTH;
 
+use crate::instruction::Instruction;
 use crate::op_stack::NumberOfWords;
 use crate::op_stack::OpStackElement;
 use crate::vm::VMState;
@@ -12,8 +13,20 @@ pub struct VMError<'pgm> {
     vm_state: VMState<'pgm>,
 }
 
+impl<'pgm> VMError<'pgm> {
+    pub fn new(source: InstructionError, vm_state: VMState<'pgm>) -> Self {
+        Self { source, vm_state }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
 pub(crate) enum InstructionError {
+    #[error("opcode {0} is invalid")]
+    InvalidOpcode(u32),
+
+    #[error("invalid argument {1} for instruction `{0}`")]
+    IllegalArgument(Instruction, BFieldElement),
+
     #[error("instruction pointer points outside of program")]
     InstructionPointerOverflow,
 
@@ -63,15 +76,22 @@ pub(crate) enum ProofStreamError {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
-pub(crate) enum FriError {}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
 pub(crate) enum FriValidationError {
     IncorrectNumberOfRevealedLeaves,
     BadMerkleAuthenticationPath,
     MismatchingLastCodeword,
     LastRoundPolynomialHasTooHighDegree,
     BadMerkleRootForLastCodeword,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+pub enum ProgramDecodingError {
+    EmptySequence,
+    SequenceTooShort,
+    SequenceTooLong,
+    LengthMismatch,
+    InvalidInstruction(usize, InstructionError),
+    MissingArgument(usize, Instruction),
 }
 
 #[cfg(test)]

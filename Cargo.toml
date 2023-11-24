@@ -47,7 +47,7 @@ strum = { version = "0.25", features = ["derive"] }
 syn = "2.0"
 test-strategy = "0.3.1"
 thiserror = "1.0"
-twenty-first = "0.34"
+twenty-first = { git = "https://github.com/Neptune-Crypto/twenty-first.git", branch = "bfield_codec_derive_no_anyhow" }
 unicode-width = "0.1"
 
 [workspace.dependencies.cargo-husky]

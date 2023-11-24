@@ -462,7 +462,7 @@ impl ProcessorTable {
 
         if instruction.has_arg() {
             let arg = row[NIA.base_table_index()];
-            return instruction.change_arg(arg);
+            return instruction.change_arg(arg).ok();
         }
 
         Some(instruction)

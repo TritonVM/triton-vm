@@ -7,10 +7,6 @@ use std::fmt::Result as FmtResult;
 use std::hash::Hash;
 use std::io::Cursor;
 
-use anyhow::anyhow;
-use anyhow::bail;
-use anyhow::Error;
-use anyhow::Result;
 use arbitrary::Arbitrary;
 use get_size::GetSize;
 use itertools::Itertools;
@@ -22,13 +18,17 @@ use twenty_first::shared_math::digest::Digest;
 use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
 
 use crate::aet::AlgebraicExecutionTrace;
-use crate::ensure_eq;
+use crate::error::ProgramDecodingError;
+use crate::error::VMError;
 use crate::instruction::AnInstruction;
 use crate::instruction::Instruction;
 use crate::instruction::LabelledInstruction;
 use crate::parser::parse;
 use crate::parser::to_labelled_instructions;
+use crate::parser::ParseError;
 use crate::vm::VMState;
+
+type Result<'pgm, T> = std::result::Result<T, VMError<'pgm>>;
 
 /// A program for Triton VM.
 /// It can be
@@ -73,37 +73,49 @@ impl PartialEq for Program {
 }
 
 impl BFieldCodec for Program {
-    fn decode(sequence: &[BFieldElement]) -> Result<Box<Self>> {
+    type Error = ProgramDecodingError;
+
+    fn decode(sequence: &[BFieldElement]) -> std::result::Result<Box<Self>, Self::Error> {
         if sequence.is_empty() {
-            bail!("Sequence to decode must not be empty.");
+            return Err(Self::Error::EmptySequence);
         }
         let program_length = sequence[0].value() as usize;
         let sequence = &sequence[1..];
-        ensure_eq!(program_length, sequence.len());
+        if sequence.len() < program_length {
+            return Err(Self::Error::SequenceTooShort);
+        }
+        if sequence.len() > program_length {
+            return Err(Self::Error::SequenceTooLong);
+        }
 
+        // instantiating with claimed capacity is a potential DOS vector
+        let mut instructions = vec![];
         let mut read_idx = 0;
-        let mut instructions = Vec::with_capacity(program_length);
         while read_idx < program_length {
             let opcode = sequence[read_idx];
-            let mut instruction: Instruction = opcode
+            let mut instruction = opcode
                 .try_into()
-                .expect("Invalid opcode {opcode} at index {idx}.");
+                .map_err(|err| Self::Error::InvalidInstruction(read_idx, err))?;
             if instruction.has_arg() && instructions.len() + instruction.size() > program_length {
-                bail!("Missing argument for instruction {instruction} at index {read_idx}.");
+                return Err(Self::Error::MissingArgument(read_idx, instruction));
             }
             if instruction.has_arg() {
                 let arg = sequence[read_idx + 1];
-                instruction = instruction.change_arg(arg).ok_or(anyhow!(
-                    "Invalid argument {arg} for instruction {instruction} at index {read_idx}."
-                ))?;
+                instruction = instruction
+                    .change_arg(arg)
+                    .map_err(|err| Self::Error::InvalidInstruction(read_idx, err))?;
             }
 
             instructions.extend(vec![instruction; instruction.size()]);
             read_idx += instruction.size();
         }
 
-        ensure_eq!(read_idx, program_length);
-        ensure_eq!(instructions.len(), program_length);
+        if read_idx != program_length {
+            return Err(Self::Error::LengthMismatch);
+        }
+        if instructions.len() != program_length {
+            return Err(Self::Error::LengthMismatch);
+        }
 
         Ok(Box::new(Program {
             instructions,
@@ -288,11 +300,10 @@ impl Program {
     }
 
     /// Create a `Program` by parsing source code.
-    pub fn from_code(code: &str) -> Result<Self> {
+    pub fn from_code(code: &str) -> std::result::Result<Self, ParseError> {
         parse(code)
             .map(|tokens| to_labelled_instructions(&tokens))
             .map(|instructions| Program::new(&instructions))
-            .map_err(|err| anyhow!("{err}"))
     }
 
     pub fn labelled_instructions(&self) -> Vec<LabelledInstruction> {
@@ -449,7 +460,7 @@ impl Program {
         non_determinism: NonDeterminism<BFieldElement>,
         initial_state: Option<VMState<'pgm>>,
         num_cycles_to_execute: Option<u32>,
-    ) -> (Vec<VMState<'pgm>>, Option<Error>) {
+    ) -> (Vec<VMState<'pgm>>, Option<VMError>) {
         let mut states = vec![];
         let mut state = match initial_state {
             Some(initial_state) => initial_state,
@@ -460,7 +471,9 @@ impl Program {
         while !state.halting && state.cycle_count < max_cycles {
             states.push(state.clone());
             if let Err(err) = state.step() {
-                return (states, Some(err));
+                let last_state = states.last().unwrap().clone();
+                let vm_error = VMError::new(err, last_state);
+                return (states, Some(vm_error));
             }
         }
 
@@ -486,7 +499,7 @@ impl Program {
         non_determinism: NonDeterminism<BFieldElement>,
         initial_state: Option<VMState<'pgm>>,
         num_cycles_to_execute: Option<u32>,
-    ) -> Result<VMState<'pgm>, (Error, VMState<'pgm>)> {
+    ) -> Result<VMState<'pgm>> {
         let mut state = match initial_state {
             Some(initial_state) => initial_state,
             None => VMState::new(self, public_input, non_determinism),
@@ -497,7 +510,8 @@ impl Program {
             // [`VMState::step`] is not atomic – avoid returning an inconsistent state
             let consistent_state = state.clone();
             if let Err(err) = state.step() {
-                return Err((err, consistent_state));
+                let vm_error = VMError::new(err, consistent_state);
+                return Err(vm_error);
             }
         }
         Ok(state)

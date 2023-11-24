@@ -124,8 +124,6 @@
 
 #![recursion_limit = "4096"]
 
-use anyhow::bail;
-use anyhow::Result;
 pub use twenty_first::shared_math::b_field_element::BFieldElement;
 pub use twenty_first::shared_math::tip5::Digest;
 
@@ -443,6 +441,7 @@ macro_rules! ensure_eq {
         )
     }};
 }
+use crate::error::VMError;
 pub(crate) use ensure_eq;
 
 /// Prove correct execution of a program written in Triton assembly.
@@ -459,11 +458,11 @@ pub(crate) use ensure_eq;
 /// `assert` instruction, proof generation will fail.
 ///
 /// The default STARK parameters used by Triton VM give a (conjectured) security level of 160 bits.
-pub fn prove_program(
-    program: &Program,
+pub fn prove_program<'pgm>(
+    program: &'pgm Program,
     public_input: &[u64],
     non_determinism: &NonDeterminism<u64>,
-) -> Result<(StarkParameters, Claim, Proof)> {
+) -> Result<(StarkParameters, Claim, Proof), VMError<'pgm>> {
     input_elements_have_unique_representation(public_input, non_determinism)?;
 
     // Convert public and secret inputs to BFieldElements.

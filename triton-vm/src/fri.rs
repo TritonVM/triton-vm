@@ -3,7 +3,6 @@ use std::marker::PhantomData;
 use itertools::Itertools;
 use num_traits::One;
 use rayon::iter::*;
-use strum::Display;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::other::log_2_ceil;
 use twenty_first::shared_math::polynomial::Polynomial;
@@ -16,6 +15,8 @@ use twenty_first::util_types::merkle_tree::MerkleTree;
 use twenty_first::util_types::merkle_tree_maker::MerkleTreeMaker;
 
 use crate::arithmetic_domain::ArithmeticDomain;
+use crate::error::FriValidationError;
+use crate::error::FriValidationError::*;
 use crate::profiler::prof_start;
 use crate::profiler::prof_stop;
 use crate::profiler::TritonProfiler;
@@ -24,6 +25,7 @@ use crate::proof_item::ProofItem;
 use crate::proof_stream::ProofStream;
 use crate::stark::MTMaker;
 
+type Result<T> = core::result::Result<T, FriValidationError>;
 pub type AuthenticationStructure = Vec<Digest>;
 
 #[derive(Debug, Clone, Copy)]
@@ -335,7 +337,7 @@ impl<'stream, H: AlgebraicHasher> FriVerifier<'stream, H> {
     fn assert_enough_leaves_were_received(&self, leaves: &[XFieldElement]) -> Result<()> {
         match self.num_colinearity_checks == leaves.len() {
             true => Ok(()),
-            false => bail!(FriValidationError::IncorrectNumberOfRevealedLeaves),
+            false => Err(IncorrectNumberOfRevealedLeaves),
         }
     }
 
@@ -359,7 +361,7 @@ impl<'stream, H: AlgebraicHasher> FriVerifier<'stream, H> {
             auth_structure,
         ) {
             true => Ok(()),
-            false => bail!(FriValidationError::BadMerkleAuthenticationPath),
+            false => Err(BadMerkleAuthenticationPath),
         }
     }
 
@@ -384,7 +386,7 @@ impl<'stream, H: AlgebraicHasher> FriVerifier<'stream, H> {
             auth_structure,
         ) {
             true => Ok(()),
-            false => bail!(FriValidationError::BadMerkleAuthenticationPath),
+            false => Err(BadMerkleAuthenticationPath),
         }
     }
 
@@ -448,10 +450,10 @@ impl<'stream, H: AlgebraicHasher> FriVerifier<'stream, H> {
     }
 
     fn assert_last_round_codeword_matches_last_round_commitment(&self) -> Result<()> {
-        if self.last_round_merkle_root() != self.last_round_codeword_merkle_root() {
-            bail!(FriValidationError::BadMerkleRootForLastCodeword);
+        match self.last_round_merkle_root() == self.last_round_codeword_merkle_root() {
+            true => Ok(()),
+            false => Err(BadMerkleRootForLastCodeword),
         }
-        Ok(())
     }
 
     fn last_round_codeword_merkle_root(&self) -> Digest {
@@ -469,7 +471,7 @@ impl<'stream, H: AlgebraicHasher> FriVerifier<'stream, H> {
         let partial_received_codeword = self.received_last_round_codeword_at_indices_a();
         match partial_received_codeword == partial_folded_codeword {
             true => Ok(()),
-            false => bail!(FriValidationError::MismatchingLastCodeword),
+            false => Err(MismatchingLastCodeword),
         }
     }
 
@@ -488,7 +490,7 @@ impl<'stream, H: AlgebraicHasher> FriVerifier<'stream, H> {
 
     fn assert_last_round_codeword_corresponds_to_low_degree_polynomial(&self) -> Result<()> {
         if self.last_round_polynomial().degree() > self.last_round_max_degree as isize {
-            bail!(FriValidationError::LastRoundPolynomialHasTooHighDegree);
+            return Err(LastRoundPolynomialHasTooHighDegree);
         }
         Ok(())
     }
@@ -926,7 +928,7 @@ mod tests {
         let revealed_leaves = &mut fri_response.revealed_leaves;
         let modification_index = rng.gen_range(0..revealed_leaves.len());
         match rng.gen() {
-            true => drop(revealed_leaves.remove(modification_index)),
+            true => revealed_leaves.remove(modification_index),
             false => revealed_leaves.insert(modification_index, rng.gen()),
         };
 
@@ -978,7 +980,7 @@ mod tests {
         let auth_structure = auth_structures.choose(&mut rng).unwrap();
         let modification_index = rng.gen_range(0..auth_structure.len());
         match rng.gen_range(0..3) {
-            0 => drop(auth_structure.remove(modification_index)),
+            0 => auth_structure.remove(modification_index),
             1 => auth_structure.insert(modification_index, rng.gen()),
             2 => auth_structure[modification_index] = rng.gen(),
             _ => unreachable!(),

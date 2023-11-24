@@ -4,8 +4,6 @@ use std::fmt::Formatter;
 use std::fmt::Result as FmtResult;
 use std::result;
 
-use anyhow::anyhow;
-use anyhow::Result;
 use arbitrary::Arbitrary;
 use arbitrary::Unstructured;
 use get_size::GetSize;
@@ -21,11 +19,14 @@ use twenty_first::shared_math::b_field_element::BFIELD_ZERO;
 
 use AnInstruction::*;
 
+use crate::error::InstructionError;
 use crate::instruction::InstructionBit::*;
 use crate::op_stack::NumberOfWords;
 use crate::op_stack::NumberOfWords::*;
 use crate::op_stack::OpStackElement;
 use crate::op_stack::OpStackElement::*;
+
+type Result<T> = result::Result<T, InstructionError>;
 
 /// An `Instruction` has `call` addresses encoded as absolute integers.
 pub type Instruction = AnInstruction<BFieldElement>;
@@ -431,8 +432,7 @@ impl Instruction {
     /// Change the argument of the instruction, if it has one.
     /// Returns `None` if the instruction does not have an argument or
     /// if the argument is out of range.
-    #[must_use]
-    pub fn change_arg(&self, new_arg: BFieldElement) -> Option<Self> {
+    pub fn change_arg(self, new_arg: BFieldElement) -> Result<Self> {
         let new_instruction = match self {
             Pop(_) => Some(Pop(new_arg.try_into().ok()?)),
             Push(_) => Some(Push(new_arg)),
@@ -447,25 +447,28 @@ impl Instruction {
             _ => None,
         };
         if new_instruction?.has_illegal_argument() {
-            return None;
+            return Err(InstructionError::IllegalArgument(self, new_arg));
         };
-        new_instruction
+        match new_instruction {
+            None => Err(InstructionError::IllegalArgument(self, new_arg)),
+            Some(instruction) => Ok(instruction),
+        }
     }
 }
 
 impl TryFrom<u32> for Instruction {
-    type Error = anyhow::Error;
+    type Error = InstructionError;
 
     fn try_from(opcode: u32) -> Result<Self> {
         OPCODE_TO_INSTRUCTION_MAP
             .get(&opcode)
             .copied()
-            .ok_or(anyhow!("No instruction with opcode {opcode} exists."))
+            .ok_or_else(|| InstructionError::InvalidOpcode(opcode))
     }
 }
 
 impl TryFrom<u64> for Instruction {
-    type Error = anyhow::Error;
+    type Error = InstructionError;
 
     fn try_from(opcode: u64) -> Result<Self> {
         let opcode = u32::try_from(opcode)?;
@@ -474,7 +477,7 @@ impl TryFrom<u64> for Instruction {
 }
 
 impl TryFrom<usize> for Instruction {
-    type Error = anyhow::Error;
+    type Error = InstructionError;
 
     fn try_from(opcode: usize) -> Result<Self> {
         let opcode = u32::try_from(opcode)?;
@@ -483,7 +486,7 @@ impl TryFrom<usize> for Instruction {
 }
 
 impl TryFrom<BFieldElement> for Instruction {
-    type Error = anyhow::Error;
+    type Error = InstructionError;
 
     fn try_from(opcode: BFieldElement) -> Result<Self> {
         let opcode = u32::try_from(opcode)?;
