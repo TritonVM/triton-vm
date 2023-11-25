@@ -11,7 +11,9 @@ use anyhow::anyhow;
 use anyhow::bail;
 use anyhow::Error;
 use anyhow::Result;
+use arbitrary::Arbitrary;
 use get_size::GetSize;
+use itertools::Itertools;
 use serde_derive::Deserialize;
 use serde_derive::Serialize;
 use twenty_first::shared_math::b_field_element::BFieldElement;
@@ -21,6 +23,7 @@ use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
 
 use crate::aet::AlgebraicExecutionTrace;
 use crate::ensure_eq;
+use crate::instruction::AnInstruction;
 use crate::instruction::Instruction;
 use crate::instruction::LabelledInstruction;
 use crate::parser::parse;
@@ -118,6 +121,52 @@ impl BFieldCodec for Program {
 
     fn static_length() -> Option<usize> {
         None
+    }
+}
+
+impl<'a> Arbitrary<'a> for Program {
+    fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
+        let contains_label = |labelled_instructions: &[_], maybe_label: &_| {
+            let LabelledInstruction::Label(label) = maybe_label else {
+                return false;
+            };
+            labelled_instructions
+                .iter()
+                .any(|labelled_instruction| match labelled_instruction {
+                    LabelledInstruction::Label(l) => l == label,
+                    _ => false,
+                })
+        };
+
+        let mut labelled_instructions = vec![];
+        for _ in 0..u.arbitrary_len::<LabelledInstruction>()? {
+            let labelled_instruction = u.arbitrary()?;
+            if contains_label(&labelled_instructions, &labelled_instruction) {
+                continue;
+            }
+            labelled_instructions.push(labelled_instruction);
+        }
+
+        let call_targets = labelled_instructions
+            .iter()
+            .filter_map(|instruction| match instruction {
+                LabelledInstruction::Instruction(AnInstruction::Call(target)) => Some(target),
+                _ => None,
+            })
+            .unique();
+        let additional_labels = call_targets
+            .map(|target| LabelledInstruction::Label(target.clone()))
+            .collect_vec();
+
+        for additional_label in additional_labels {
+            if contains_label(&labelled_instructions, &additional_label) {
+                continue;
+            }
+            let insertion_index = u.choose_index(labelled_instructions.len() + 1)?;
+            labelled_instructions.insert(insertion_index, additional_label);
+        }
+
+        Ok(Program::new(&labelled_instructions))
     }
 }
 
@@ -272,6 +321,16 @@ impl Program {
             }
             address += instruction_size;
         }
+
+        let leftover_labels = self
+            .address_to_label
+            .iter()
+            .filter(|(&labels_address, _)| labels_address >= address)
+            .sorted();
+        for (_, label) in leftover_labels {
+            labelled_instructions.push(LabelledInstruction::Label(label.clone()));
+        }
+
         labelled_instructions
     }
 
@@ -762,29 +821,23 @@ where
 #[cfg(test)]
 mod tests {
     use itertools::Itertools;
+    use proptest::prelude::*;
+    use proptest_arbitrary_interop::arb;
     use rand::thread_rng;
     use rand::Rng;
+    use test_strategy::proptest;
     use twenty_first::shared_math::tip5::Tip5;
 
     use crate::example_programs::CALCULATE_NEW_MMR_PEAKS_FROM_APPEND_WITH_SAFE_LISTS;
-    use crate::parser::tests::program_gen;
     use crate::triton_program;
 
     use super::*;
 
-    #[test]
-    fn random_program_encode_decode_equivalence() {
-        let mut rng = thread_rng();
-        for _ in 0..50 {
-            let program_len = rng.gen_range(20..420);
-            let source_code = program_gen(program_len);
-            let program = triton_program!({ source_code });
-
-            let encoded = program.encode();
-            let decoded = *Program::decode(&encoded).unwrap();
-
-            assert_eq!(program, decoded);
-        }
+    #[proptest]
+    fn random_program_encode_decode_equivalence(#[strategy(arb())] program: Program) {
+        let encoding = program.encode();
+        let decoding = *Program::decode(&encoding).unwrap();
+        prop_assert_eq!(program, decoding);
     }
 
     #[test]

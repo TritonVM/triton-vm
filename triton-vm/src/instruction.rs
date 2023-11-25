@@ -6,6 +6,8 @@ use std::result;
 
 use anyhow::anyhow;
 use anyhow::Result;
+use arbitrary::Arbitrary;
+use arbitrary::Unstructured;
 use get_size::GetSize;
 use itertools::Itertools;
 use lazy_static::lazy_static;
@@ -42,11 +44,11 @@ lazy_static! {
 }
 
 /// A `LabelledInstruction` has `call` addresses encoded as label names.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, EnumCount)]
 pub enum LabelledInstruction {
-    /// Instructions belong to the ISA:
+    /// An instructions from the [instruction set architecture][isa].
     ///
-    /// <https://triton-vm.org/spec/isa.html>
+    /// [isa]: https://triton-vm.org/spec/isa.html
     Instruction(AnInstruction<String>),
 
     /// Labels look like "`<name>:`" and are translated into absolute addresses.
@@ -97,7 +99,18 @@ pub fn stringify_instructions(instructions: &[LabelledInstruction]) -> String {
 ///
 /// The type parameter `Dest` describes the type of addresses (absolute or labels).
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Hash, EnumCount, EnumIter, GetSize, Serialize, Deserialize,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Hash,
+    EnumCount,
+    EnumIter,
+    GetSize,
+    Serialize,
+    Deserialize,
+    Arbitrary,
 )]
 pub enum AnInstruction<Dest: PartialEq + Default> {
     // OpStack manipulation
@@ -581,6 +594,54 @@ impl TryFrom<usize> for InstructionBit {
                 "Index {bit_index} is out of range for `InstructionBit`."
             )),
         }
+    }
+}
+
+impl<'a> Arbitrary<'a> for LabelledInstruction {
+    fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
+        let instruction = match u.choose_index(LabelledInstruction::COUNT)? {
+            0 => u.arbitrary::<AnInstruction<String>>()?,
+            1 => return Ok(Self::Label(u.arbitrary::<InstructionLabel>()?.into())),
+            2 => return Ok(Self::Breakpoint),
+            _ => unreachable!(),
+        };
+        let legal_label = String::from(u.arbitrary::<InstructionLabel>()?);
+        let instruction = instruction.map_call_address(|_| legal_label.clone());
+
+        if let Swap(ST0) = instruction {
+            return Ok(Self::Instruction(Swap(ST1)));
+        }
+
+        Ok(Self::Instruction(instruction))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct InstructionLabel(String);
+
+impl From<InstructionLabel> for String {
+    fn from(label: InstructionLabel) -> Self {
+        label.0
+    }
+}
+
+impl<'a> Arbitrary<'a> for InstructionLabel {
+    fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
+        let legal_start_characters = ('a'..='z').chain('A'..='Z').chain('_'..='_');
+        let legal_characters = legal_start_characters
+            .clone()
+            .chain('0'..='9')
+            .chain('-'..='-')
+            .collect_vec();
+
+        let mut label = u.choose(&legal_start_characters.collect_vec())?.to_string();
+        for _ in 0..u.arbitrary_len::<char>()? {
+            label.push(*u.choose(&legal_characters)?);
+        }
+        while ALL_INSTRUCTION_NAMES.contains(&label.as_str()) {
+            label.push(*u.choose(&legal_characters)?);
+        }
+        Ok(Self(label))
     }
 }
 

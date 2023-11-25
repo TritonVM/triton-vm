@@ -583,13 +583,14 @@ fn token1<'a>(token: &'a str) -> impl Fn(&'a str) -> ParseResult<()> {
 
 #[cfg(test)]
 pub(crate) mod tests {
-    use std::cmp::max;
 
     use itertools::Itertools;
-    use rand::distributions::WeightedIndex;
+    use proptest_arbitrary_interop::arb;
     use rand::prelude::*;
     use rand::Rng;
     use strum::EnumCount;
+    use test_strategy::proptest;
+    use test_strategy::Arbitrary;
     use twenty_first::shared_math::digest::DIGEST_LENGTH;
 
     use LabelledInstruction::*;
@@ -650,161 +651,6 @@ pub(crate) mod tests {
         }
     }
 
-    fn whitespace_gen(max_size: usize) -> String {
-        let mut rng = thread_rng();
-        let spaces = [" ", "\t", "\r", "\r\n", "\n", " // comment\n"];
-        let weights = [5, 1, 1, 1, 2, 1];
-        assert_eq!(spaces.len(), weights.len(), "all generators have weights");
-        let dist = WeightedIndex::new(weights).expect("a weighted distribution of generators");
-        let size = rng.gen_range(1..=max(1, max_size));
-        (0..size).map(|_| spaces[dist.sample(&mut rng)]).collect()
-    }
-
-    fn label_gen(size: usize) -> String {
-        let mut rng = thread_rng();
-        let mut new_label = || -> String { (0..size).map(|_| rng.gen_range('a'..='z')).collect() };
-        let mut label = new_label();
-        while is_instruction_name(&label) {
-            label = new_label();
-        }
-        label
-    }
-
-    fn new_label_gen(labels: &mut Vec<String>) -> String {
-        let mut rng = thread_rng();
-        let count = labels.len() * 3 / 2;
-        let index = rng.gen_range(0..=count);
-
-        labels.get(index).cloned().unwrap_or_else(|| {
-            let label_size = 4;
-            let new_label = label_gen(label_size);
-            labels.push(new_label.clone());
-            new_label
-        })
-    }
-
-    fn instruction_gen(labels: &mut Vec<String>) -> Vec<String> {
-        let mut rng = thread_rng();
-
-        let difficult_instructions = vec![
-            "pop",
-            "push",
-            "divine",
-            "dup",
-            "swap",
-            "skiz",
-            "call",
-            "read_mem",
-            "write_mem",
-            "read_io",
-            "write_io",
-        ];
-        let simple_instructions = ALL_INSTRUCTION_NAMES
-            .into_iter()
-            .filter(|name| !difficult_instructions.contains(name))
-            .collect_vec();
-
-        let generators = [vec!["simple"], difficult_instructions].concat();
-        // Test difficult instructions more frequently.
-        let weights = vec![simple_instructions.len(), 2, 2, 2, 6, 6, 2, 10, 2, 2, 2, 2];
-
-        assert_eq!(
-            generators.len(),
-            weights.len(),
-            "all generators must have weights"
-        );
-        let dist = WeightedIndex::new(&weights).expect("a weighted distribution of generators");
-
-        match generators[dist.sample(&mut rng)] {
-            "simple" => {
-                let index: usize = rng.gen_range(0..simple_instructions.len());
-                let instruction = simple_instructions[index];
-                vec![instruction.to_string()]
-            }
-
-            "pop" => {
-                let arg: NumberOfWords = rng.gen();
-                vec!["pop".to_string(), format!("{arg}")]
-            }
-
-            "push" => {
-                let max = BFieldElement::MAX as i128;
-                let arg = rng.gen_range(-max..max);
-                vec!["push".to_string(), format!("{arg}")]
-            }
-
-            "divine" => {
-                let arg: NumberOfWords = rng.gen();
-                vec!["divine".to_string(), format!("{arg}")]
-            }
-
-            "dup" => {
-                let arg: OpStackElement = rng.gen();
-                vec!["dup".to_string(), format!("{arg}")]
-            }
-
-            "swap" => {
-                let arg: usize = rng.gen_range(1..OpStackElement::COUNT);
-                vec!["swap".to_string(), format!("{arg}")]
-            }
-
-            "skiz" => {
-                let mut target: Vec<String> = instruction_gen(labels);
-                target.insert(0, "skiz".to_string());
-                target
-            }
-
-            "call" => {
-                let some_label: String = new_label_gen(labels);
-                vec!["call".to_string(), some_label]
-            }
-
-            "read_mem" => {
-                let arg: NumberOfWords = rng.gen();
-                vec!["read_mem".to_string(), format!("{arg}")]
-            }
-
-            "write_mem" => {
-                let arg: NumberOfWords = rng.gen();
-                vec!["write_mem".to_string(), format!("{arg}")]
-            }
-
-            "read_io" => {
-                let arg: NumberOfWords = rng.gen();
-                vec!["read_io".to_string(), format!("{arg}")]
-            }
-
-            "write_io" => {
-                let arg: NumberOfWords = rng.gen();
-                vec!["write_io".to_string(), format!("{arg}")]
-            }
-
-            unknown => panic!("Unknown generator, {unknown}"),
-        }
-    }
-
-    // FIXME: Apply shrinking.
-    #[allow(unstable_name_collisions)]
-    // reason = "Switch to standard library intersperse_with() when it's ported"
-    pub fn program_gen(size: usize) -> String {
-        // Generate random program
-        let mut labels = vec![];
-        let mut program: Vec<Vec<String>> =
-            (0..size).map(|_| instruction_gen(&mut labels)).collect();
-
-        // Embed all used labels randomly
-        for label in labels.into_iter().sorted().dedup() {
-            program.push(vec![format!("{label}:")]);
-        }
-        program.shuffle(&mut thread_rng());
-
-        program
-            .into_iter()
-            .flatten()
-            .intersperse_with(|| whitespace_gen(5))
-            .collect()
-    }
-
     #[test]
     fn parse_program_empty() {
         parse_program_prop(TestCase {
@@ -860,14 +706,38 @@ pub(crate) mod tests {
             expected: Program::new(&[]),
             message: "multiple comments with trailing whitespace should parse as empty program",
         });
+    }
 
-        for size in 0..10 {
-            let input = whitespace_gen(size);
-            parse_program_prop(TestCase {
-                input: &input,
-                expected: Program::new(&[]),
-                message: "arbitrary whitespace should parse as empty program",
-            });
+    #[proptest]
+    fn arbitrary_whitespace_and_comment_sequence_is_empty_program(whitespace: Vec<Whitespace>) {
+        let whitespace = whitespace.into_iter().join("");
+        parse_program_prop(TestCase {
+            input: &whitespace,
+            expected: Program::new(&[]),
+            message: "arbitrary whitespace should parse as empty program",
+        });
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, EnumCount, Arbitrary)]
+    enum Whitespace {
+        Space,
+        Tab,
+        CarriageReturn,
+        LineFeed,
+        CarriageReturnLineFeed,
+        Comment,
+    }
+
+    impl Display for Whitespace {
+        fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+            match self {
+                Self::Space => write!(f, " "),
+                Self::Tab => write!(f, "\t"),
+                Self::CarriageReturn => write!(f, "\r"),
+                Self::LineFeed => writeln!(f),
+                Self::CarriageReturnLineFeed => writeln!(f, "\r"),
+                Self::Comment => writeln!(f, " // comment"),
+            }
         }
     }
 
@@ -1035,18 +905,9 @@ pub(crate) mod tests {
         })
     }
 
-    #[test]
-    fn parse_program() {
-        for size in 0..100 {
-            let code = program_gen(size * 10);
-
-            let new_actual = parse(&code).map_err(|err| err.to_string());
-
-            if new_actual.is_err() {
-                println!("The code:\n{code}\n\n");
-                panic!("{}", new_actual.unwrap_err());
-            }
-        }
+    #[proptest]
+    fn parse_program(#[strategy(arb())] program: Program) {
+        let _ = parse(&program.to_string()).unwrap();
     }
 
     #[test]
