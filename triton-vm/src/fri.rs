@@ -471,7 +471,7 @@ impl<'stream, H: AlgebraicHasher> FriVerifier<'stream, H> {
         let partial_received_codeword = self.received_last_round_codeword_at_indices_a();
         match partial_received_codeword == partial_folded_codeword {
             true => Ok(()),
-            false => Err(MismatchingLastCodeword),
+            false => Err(LastCodewordMismatch),
         }
     }
 

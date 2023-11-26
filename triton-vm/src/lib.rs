@@ -127,6 +127,9 @@
 pub use twenty_first::shared_math::b_field_element::BFieldElement;
 pub use twenty_first::shared_math::tip5::Digest;
 
+use crate::error::CanonicalRepresentationError;
+use crate::error::ProvingError;
+use crate::error::VMError;
 pub use crate::program::NonDeterminism;
 pub use crate::program::Program;
 pub use crate::program::PublicInput;
@@ -426,24 +429,6 @@ macro_rules! triton_instr {
     }};
 }
 
-/// Like [`assert_eq!`], but returns a [`Result`] instead of panicking.
-/// Can only be used in functions that return a [`Result`].
-/// Thin wrapper around [`anyhow::ensure!`].
-macro_rules! ensure_eq {
-    ($left:expr, $right:expr) => {{
-        anyhow::ensure!(
-            $left == $right,
-            "Expected `{}` to equal `{}`.\nleft: {:?}\nright: {:?}\n",
-            stringify!($left),
-            stringify!($right),
-            $left,
-            $right,
-        )
-    }};
-}
-use crate::error::VMError;
-pub(crate) use ensure_eq;
-
 /// Prove correct execution of a program written in Triton assembly.
 /// This is a convenience function, abstracting away the details of the STARK construction.
 /// If you want to have more control over the STARK construction, this method can serve as a
@@ -505,22 +490,19 @@ pub fn prove_program<'pgm>(
 fn input_elements_have_unique_representation(
     public_input: &[u64],
     non_determinism: &NonDeterminism<u64>,
-) -> Result<()> {
+) -> Result<(), CanonicalRepresentationError> {
     let max = BFieldElement::MAX;
-    let canonical_representation_error =
-        "must contain only elements in canonical representation, i.e., \
-        elements smaller than the prime field's modulus 2^64 - 2^32 + 1.";
     if public_input.iter().any(|&e| e > max) {
-        bail!("Public input {canonical_representation_error})");
+        return Err(CanonicalRepresentationError::PublicInput);
     }
     if non_determinism.individual_tokens.iter().any(|&e| e > max) {
-        bail!("Secret input {canonical_representation_error}");
+        return Err(CanonicalRepresentationError::NonDeterminismIndividualTokens);
     }
     if non_determinism.ram.keys().any(|&e| e > max) {
-        bail!("RAM addresses {canonical_representation_error}");
+        return Err(CanonicalRepresentationError::NonDeterminismRamKeys);
     }
     if non_determinism.ram.values().any(|&e| e > max) {
-        bail!("RAM values {canonical_representation_error}");
+        return Err(CanonicalRepresentationError::NonDeterminismRamValues);
     }
     Ok(())
 }
@@ -532,11 +514,15 @@ pub fn prove(
     claim: &Claim,
     program: &Program,
     non_determinism: NonDeterminism<BFieldElement>,
-) -> Result<Proof> {
+) -> Result<Proof, ProvingError> {
     let program_digest = program.hash::<StarkHasher>();
-    ensure_eq!(program_digest, claim.program_digest);
+    if program_digest != claim.program_digest {
+        return Err(ProvingError::ProgramDigestMismatch);
+    }
     let (aet, public_output) = program.trace_execution((&claim.input).into(), non_determinism)?;
-    ensure_eq!(public_output, claim.output);
+    if public_output != claim.output {
+        return Err(ProvingError::PublicOutputMismatch);
+    }
     let proof = Stark::prove(parameters, claim, &aet, &mut None);
     Ok(proof)
 }
@@ -723,33 +709,6 @@ mod tests {
         )
         .unwrap_err();
         assert!(initial_ram_val_error.to_string().contains("RAM values"));
-    }
-
-    #[test]
-    fn succeeding_ensure_eq_macro() {
-        method_with_succeeding_ensure_eq_macro().unwrap()
-    }
-
-    fn method_with_succeeding_ensure_eq_macro() -> Result<()> {
-        ensure_eq!(1, 1);
-        Ok(())
-    }
-
-    #[test]
-    #[should_panic(expected = "Expected `left_hand_side` to equal `right_hand_side`.")]
-    fn failing_ensure_eq_macro() {
-        method_with_failing_ensure_eq_macro().unwrap()
-    }
-
-    /// Invocations of the `ensure_eq!` macro for testing purposes must be wrapped in their own
-    /// function due to the return type requirements, which _must_ be
-    /// - `Result<_>` for any method invoking the `ensure_eq!` macro, and
-    /// - `()` for any method annotated with `#[test]`.
-    fn method_with_failing_ensure_eq_macro() -> Result<()> {
-        let left_hand_side = 2;
-        let right_hand_side = 1;
-        ensure_eq!(left_hand_side, right_hand_side);
-        Ok(())
     }
 
     #[test]

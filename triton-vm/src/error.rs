@@ -19,6 +19,7 @@ impl<'pgm> VMError<'pgm> {
     }
 }
 
+#[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
 pub(crate) enum InstructionError {
     #[error("opcode {0} is invalid")]
@@ -39,9 +40,7 @@ pub(crate) enum InstructionError {
     #[error("assertion failed: st0 must be 1")]
     AssertionFailed,
 
-    #[error(
-        "vector assertion failed: op_stack[{0}] != op_stack[{}]", usize::from(.0) + DIGEST_LENGTH
-    )]
+    #[error("vector assertion failed: stack[{0}] != stack[{}]", usize::from(.0) + DIGEST_LENGTH)]
     VectorAssertionFailed(OpStackElement),
 
     #[error("cannot swap stack element 0 with itself")]
@@ -69,29 +68,80 @@ pub(crate) enum InstructionError {
     EmptySecretDigestInput,
 }
 
+#[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
 pub(crate) enum ProofStreamError {
     #[error("queue must be non-empty in order to dequeue an item")]
     EmptyQueue,
 }
 
+#[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
 pub(crate) enum FriValidationError {
+    #[error("the number of revealed leaves does not match the number of colinearity checks")]
     IncorrectNumberOfRevealedLeaves,
+
+    #[error("Merkle tree authentication failed")]
     BadMerkleAuthenticationPath,
-    MismatchingLastCodeword,
+
+    #[error("computed and received codeword of last round do not match")]
+    LastCodewordMismatch,
+
+    #[error("last round's polynomial has too high degree")]
     LastRoundPolynomialHasTooHighDegree,
+
+    #[error("received codeword of last round does not correspond to its commitment")]
     BadMerkleRootForLastCodeword,
 }
 
+#[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
 pub enum ProgramDecodingError {
+    #[error("sequence to decode is empty")]
     EmptySequence,
+
+    #[error("sequence to decode is too short")]
     SequenceTooShort,
+
+    #[error("sequence to decode is too long")]
     SequenceTooLong,
+
+    #[error("length of decoded program is unexpected")]
     LengthMismatch,
+
+    #[error("sequence to decode contains invalid instruction at index {0}: {1}")]
     InvalidInstruction(usize, InstructionError),
+
+    #[error("missing argument for instuction {1} at index {0}")]
     MissingArgument(usize, Instruction),
+}
+
+const CANONICAL_REPRESENTATION_ERROR_MESSAGE: &str =
+    "must contain only elements in canonical representation, i.e., \
+    elements smaller than the prime field's modulus 2^64 - 2^32 + 1";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+pub enum CanonicalRepresentationError {
+    #[error("public input {CANONICAL_REPRESENTATION_ERROR_MESSAGE}")]
+    PublicInput,
+
+    #[error("secret input {CANONICAL_REPRESENTATION_ERROR_MESSAGE}")]
+    NonDeterminismIndividualTokens,
+
+    #[error("RAM addresses {CANONICAL_REPRESENTATION_ERROR_MESSAGE}")]
+    NonDeterminismRamKeys,
+
+    #[error("RAM values {CANONICAL_REPRESENTATION_ERROR_MESSAGE}")]
+    NonDeterminismRamValues,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+pub enum ProvingError {
+    #[error("claimed program digest does not match actual program digest")]
+    ProgramDigestMismatch,
+
+    #[error("claimed public output does not match actual public output")]
+    PublicOutputMismatch,
 }
 
 #[cfg(test)]
@@ -144,7 +194,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "op_stack[1] != op_stack[6]")]
+    #[should_panic(expected = "stack[1] != stack[6]")]
     fn print_unequal_vec_assert_error() {
         let program = triton_program! {
             push 4 push 3 push 2 push  1 push 0
