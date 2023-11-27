@@ -72,6 +72,7 @@ impl Claim {
 
 #[cfg(test)]
 mod tests {
+    use assert2::assert;
     use proptest::collection::vec;
     use proptest_arbitrary_interop::arb;
     use rand::random;
@@ -93,7 +94,7 @@ mod tests {
         let encoded = proof.encode();
         let decoded = *Proof::decode(&encoded).unwrap();
 
-        assert_eq!(proof, decoded);
+        assert!(proof == decoded);
     }
 
     #[test]
@@ -107,9 +108,9 @@ mod tests {
         let encoded = claim.encode();
         let decoded = *Claim::decode(&encoded).unwrap();
 
-        assert_eq!(claim.program_digest, decoded.program_digest);
-        assert_eq!(claim.input, decoded.input);
-        assert_eq!(claim.output, decoded.output);
+        assert!(claim.program_digest == decoded.program_digest);
+        assert!(claim.input == decoded.input);
+        assert!(claim.output == decoded.output);
     }
 
     #[test]

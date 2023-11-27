@@ -344,6 +344,7 @@ impl AlgebraicExecutionTrace {
 
 #[cfg(test)]
 mod tests {
+    use assert2::assert;
     use twenty_first::shared_math::b_field_element::BFIELD_ONE;
 
     use crate::triton_asm;
@@ -358,6 +359,6 @@ mod tests {
         let padded_program = AlgebraicExecutionTrace::hash_input_pad_program(&program);
 
         let expected = [program.to_bwords(), vec![BFIELD_ONE]].concat();
-        assert_eq!(expected, padded_program);
+        assert!(expected == padded_program);
     }
 }
