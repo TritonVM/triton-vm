@@ -777,6 +777,7 @@ mod tests {
     use test_strategy::proptest;
     use twenty_first::shared_math::tip5::Tip5;
 
+    use crate::error::InstructionError;
     use crate::example_programs::CALCULATE_NEW_MMR_PEAKS_FROM_APPEND_WITH_SAFE_LISTS;
     use crate::triton_program;
 
@@ -956,13 +957,13 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Jump stack is empty")]
     fn program_with_too_many_returns_crashes_vm_but_not_profiler() {
         let program = triton_program! {
             call foo return halt
             foo: return
         };
-        let _ = program.profile([].into(), [].into()).unwrap();
+        let_assert!(Err(err) = program.profile([].into(), [].into()));
+        let_assert!(InstructionError::JumpStackIsEmpty = err.source);
     }
 
     #[test]

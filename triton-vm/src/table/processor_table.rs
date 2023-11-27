@@ -723,7 +723,7 @@ impl ExtProcessorTable {
             13 => hv(3) * hv(2) * (one() - hv(1)) * hv(0),
             14 => hv(3) * hv(2) * hv(1) * (one() - hv(0)),
             15 => hv(3) * hv(2) * hv(1) * hv(0),
-            i => unimplemented!("Indicator polynomial index {i} out of bounds."),
+            i => panic!("indicator polynomial index {i} out of bounds"),
         }
     }
 
@@ -3443,6 +3443,8 @@ impl<'a> Display for ProcessorTraceRow<'a> {
 
 #[cfg(test)]
 pub(crate) mod tests {
+    use assert2::assert;
+    use assert2::check;
     use ndarray::Array2;
     use proptest::collection::vec;
     use proptest_arbitrary_interop::arb;
@@ -3538,9 +3540,8 @@ pub(crate) mod tests {
             }
             println!();
 
-            assert_eq!(
-                instruction.opcode_b(),
-                curr_row[CI.master_base_table_index()],
+            assert!(
+                instruction.opcode_b() == curr_row[CI.master_base_table_index()],
                 "The test is trying to check the wrong transition constraint polynomials."
             );
 
@@ -4277,18 +4278,16 @@ pub(crate) mod tests {
         }
     }
 
-    pub fn constraints_evaluate_to_zero(
+    pub fn check_constraints(
         master_base_trace_table: ArrayView2<BFieldElement>,
         master_ext_trace_table: ArrayView2<XFieldElement>,
         challenges: &Challenges,
-    ) -> bool {
-        let zero = XFieldElement::zero();
-        assert_eq!(
-            master_base_trace_table.nrows(),
-            master_ext_trace_table.nrows()
-        );
+    ) {
+        assert!(master_base_trace_table.nrows() == master_ext_trace_table.nrows());
 
+        let zero = XFieldElement::zero();
         let circuit_builder = ConstraintCircuitBuilder::new();
+
         for (constraint_idx, constraint) in ExtProcessorTable::initial_constraints(&circuit_builder)
             .into_iter()
             .map(|constraint_monad| constraint_monad.consume())
@@ -4299,8 +4298,8 @@ pub(crate) mod tests {
                 master_ext_trace_table.slice(s![..1, ..]),
                 challenges,
             );
-            assert_eq!(
-                zero, evaluated_constraint,
+            check!(
+                zero == evaluated_constraint,
                 "Initial constraint {constraint_idx} failed."
             );
         }
@@ -4318,8 +4317,8 @@ pub(crate) mod tests {
                     master_ext_trace_table.slice(s![row_idx..row_idx + 1, ..]),
                     challenges,
                 );
-                assert_eq!(
-                    zero, evaluated_constraint,
+                check!(
+                    zero == evaluated_constraint,
                     "Consistency constraint {constraint_idx} failed on row {row_idx}."
                 );
             }
@@ -4338,8 +4337,8 @@ pub(crate) mod tests {
                     master_ext_trace_table.slice(s![row_idx..row_idx + 2, ..]),
                     challenges,
                 );
-                assert_eq!(
-                    zero, evaluated_constraint,
+                check!(
+                    zero == evaluated_constraint,
                     "Transition constraint {constraint_idx} failed on row {row_idx}."
                 );
             }
@@ -4357,13 +4356,11 @@ pub(crate) mod tests {
                 master_ext_trace_table.slice(s![-1.., ..]),
                 challenges,
             );
-            assert_eq!(
-                zero, evaluated_constraint,
+            check!(
+                zero == evaluated_constraint,
                 "Terminal constraint {constraint_idx} failed."
             );
         }
-
-        true
     }
 
     #[test]

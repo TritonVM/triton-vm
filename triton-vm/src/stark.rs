@@ -1117,13 +1117,15 @@ impl Stark {
 
 #[cfg(test)]
 pub(crate) mod tests {
+    use crate::error::InstructionError;
+    use assert2::assert;
+    use assert2::check;
+    use assert2::let_assert;
     use itertools::izip;
     use num_traits::Zero;
     use proptest_arbitrary_interop::arb;
-    use rand::prelude::ThreadRng;
     use rand::thread_rng;
     use rand::Rng;
-    use rand_core::RngCore;
     use strum::EnumCount;
     use test_strategy::proptest;
     use twenty_first::shared_math::other::random_elements;
@@ -1435,7 +1437,7 @@ pub(crate) mod tests {
             EvalArg::default_initial(),
             all_challenges[StandardInputIndeterminate],
         );
-        assert_eq!(ptie, ine, "The input evaluation arguments do not match.");
+        check!(ptie == ine);
 
         let ptoe = processor_table_last_row[OutputTableEvalArg.ext_table_index()];
         let oute = EvalArg::compute_terminal(
@@ -1443,7 +1445,7 @@ pub(crate) mod tests {
             EvalArg::default_initial(),
             all_challenges[StandardOutputIndeterminate],
         );
-        assert_eq!(ptoe, oute, "The output evaluation arguments do not match.");
+        check!(ptoe == oute);
     }
 
     #[test]
@@ -1690,20 +1692,20 @@ pub(crate) mod tests {
 
         let processor_table = master_ext_table.table(ProcessorTable);
         let processor_table_last_row = processor_table.slice(s![-1, ..]);
-        assert_eq!(
-            challenges[StandardInputTerminal],
-            processor_table_last_row[InputTableEvalArg.ext_table_index()],
+        check!(
+            challenges[StandardInputTerminal]
+                == processor_table_last_row[InputTableEvalArg.ext_table_index()],
         );
-        assert_eq!(
-            challenges[StandardOutputTerminal],
-            processor_table_last_row[OutputTableEvalArg.ext_table_index()],
+        check!(
+            challenges[StandardOutputTerminal]
+                == processor_table_last_row[OutputTableEvalArg.ext_table_index()],
         );
 
         let lookup_table = master_ext_table.table(LookupTable);
         let lookup_table_last_row = lookup_table.slice(s![-1, ..]);
-        assert_eq!(
-            challenges[LookupTablePublicTerminal],
-            lookup_table_last_row[PublicEvaluationArgument.ext_table_index()],
+        check!(
+            challenges[LookupTablePublicTerminal]
+                == lookup_table_last_row[PublicEvaluationArgument.ext_table_index()],
         );
 
         let master_base_trace_table = master_base_table.trace_table();
@@ -1712,16 +1714,15 @@ pub(crate) mod tests {
         let last_master_ext_row = master_ext_trace_table.slice(s![-1.., ..]);
 
         for (i, constraint) in terminal_constraints.iter().enumerate() {
-            assert_eq!(
-                zero,
-                constraint.evaluate(last_master_base_row, last_master_ext_row, &challenges),
+            check!(
+                zero == constraint.evaluate(last_master_base_row, last_master_ext_row, &challenges),
                 "Terminal constraint {i} must evaluate to 0."
             );
         }
     }
 
     #[test]
-    fn constraint_polynomials_use_right_variable_count() {
+    fn constraint_polynomials_use_right_number_of_variables() {
         let challenges = Challenges::placeholder(None);
         let base_row = Array1::<BFieldElement>::zeros(NUM_BASE_COLUMNS);
         let ext_row = Array1::zeros(NUM_EXT_COLUMNS);
@@ -1835,7 +1836,7 @@ pub(crate) mod tests {
     fn number_of_quotient_degree_bounds_match_number_of_constraints() {
         let base_row = Array1::<BFieldElement>::zeros(NUM_BASE_COLUMNS);
         let ext_row = Array1::zeros(NUM_EXT_COLUMNS);
-        let challenges = Challenges::placeholder(None);
+        let ch = Challenges::placeholder(None);
         let padded_height = 2;
         let num_trace_randomizers = 2;
         let interpolant_degree = interpolant_degree(padded_height, num_trace_randomizers);
@@ -1846,43 +1847,30 @@ pub(crate) mod tests {
         let br = base_row.view();
         let er = ext_row.view();
 
-        assert_eq!(
-            MasterExtTable::num_initial_quotients(),
-            MasterExtTable::evaluate_initial_constraints(br, er, &challenges).len(),
-        );
-        assert_eq!(
-            MasterExtTable::num_initial_quotients(),
-            MasterExtTable::initial_quotient_degree_bounds(id).len()
-        );
-        assert_eq!(
-            MasterExtTable::num_consistency_quotients(),
-            MasterExtTable::evaluate_consistency_constraints(br, er, &challenges).len(),
-        );
-        assert_eq!(
-            MasterExtTable::num_consistency_quotients(),
-            MasterExtTable::consistency_quotient_degree_bounds(id, ph).len()
-        );
-        assert_eq!(
-            MasterExtTable::num_transition_quotients(),
-            MasterExtTable::evaluate_transition_constraints(br, er, br, er, &challenges).len(),
-        );
-        assert_eq!(
-            MasterExtTable::num_transition_quotients(),
-            MasterExtTable::transition_quotient_degree_bounds(id, ph).len()
-        );
-        assert_eq!(
-            MasterExtTable::num_terminal_quotients(),
-            MasterExtTable::evaluate_terminal_constraints(br, er, &challenges).len(),
-        );
-        assert_eq!(
-            MasterExtTable::num_terminal_quotients(),
-            MasterExtTable::terminal_quotient_degree_bounds(id).len()
-        );
+        let num_init_quots = MasterExtTable::num_initial_quotients();
+        let num_cons_quots = MasterExtTable::num_consistency_quotients();
+        let num_tran_quots = MasterExtTable::num_transition_quotients();
+        let num_term_quots = MasterExtTable::num_terminal_quotients();
+
+        let eval_init_consts = MasterExtTable::evaluate_initial_constraints(br, er, &ch);
+        let eval_cons_consts = MasterExtTable::evaluate_consistency_constraints(br, er, &ch);
+        let eval_tran_consts = MasterExtTable::evaluate_transition_constraints(br, er, br, er, &ch);
+        let eval_term_consts = MasterExtTable::evaluate_terminal_constraints(br, er, &ch);
+
+        assert!(num_init_quots == eval_init_consts.len());
+        assert!(num_cons_quots == eval_cons_consts.len());
+        assert!(num_tran_quots == eval_tran_consts.len());
+        assert!(num_term_quots == eval_term_consts.len());
+
+        assert!(num_init_quots == MasterExtTable::initial_quotient_degree_bounds(id).len());
+        assert!(num_cons_quots == MasterExtTable::consistency_quotient_degree_bounds(id, ph).len());
+        assert!(num_tran_quots == MasterExtTable::transition_quotient_degree_bounds(id, ph).len());
+        assert!(num_term_quots == MasterExtTable::terminal_quotient_degree_bounds(id).len());
     }
 
     #[test]
     fn triton_table_constraints_evaluate_to_zero_on_halt() {
-        triton_table_constraints_evaluate_to_zero(test_program_for_halt());
+        triton_constraints_evaluate_to_zero(test_program_for_halt());
     }
 
     #[test]
@@ -1892,7 +1880,7 @@ pub(crate) mod tests {
             public_input: vec![100],
             non_determinism: [].into(),
         };
-        triton_table_constraints_evaluate_to_zero(source_code_and_input);
+        triton_constraints_evaluate_to_zero(source_code_and_input);
     }
 
     #[test]
@@ -1900,310 +1888,267 @@ pub(crate) mod tests {
         let source_code_and_input = ProgramAndInput::without_input(
             CALCULATE_NEW_MMR_PEAKS_FROM_APPEND_WITH_SAFE_LISTS.clone(),
         );
-        triton_table_constraints_evaluate_to_zero(source_code_and_input);
+        triton_constraints_evaluate_to_zero(source_code_and_input);
     }
 
     #[test]
     fn constraints_evaluate_to_zero_on_program_for_halt() {
-        triton_table_constraints_evaluate_to_zero(test_program_for_halt())
+        triton_constraints_evaluate_to_zero(test_program_for_halt())
     }
 
     #[test]
     fn constraints_evaluate_to_zero_on_program_hash_nop_nop_lt() {
-        triton_table_constraints_evaluate_to_zero(test_program_hash_nop_nop_lt())
+        triton_constraints_evaluate_to_zero(test_program_hash_nop_nop_lt())
     }
 
     #[test]
     fn constraints_evaluate_to_zero_on_program_for_push_pop_dup_swap_nop() {
-        triton_table_constraints_evaluate_to_zero(test_program_for_push_pop_dup_swap_nop())
+        triton_constraints_evaluate_to_zero(test_program_for_push_pop_dup_swap_nop())
     }
 
     #[test]
     fn constraints_evaluate_to_zero_on_program_for_divine() {
-        triton_table_constraints_evaluate_to_zero(test_program_for_divine())
+        triton_constraints_evaluate_to_zero(test_program_for_divine())
     }
 
     #[test]
     fn constraints_evaluate_to_zero_on_program_for_skiz() {
-        triton_table_constraints_evaluate_to_zero(test_program_for_skiz())
+        triton_constraints_evaluate_to_zero(test_program_for_skiz())
     }
 
     #[test]
     fn constraints_evaluate_to_zero_on_program_for_call_recurse_return() {
-        triton_table_constraints_evaluate_to_zero(test_program_for_call_recurse_return())
+        triton_constraints_evaluate_to_zero(test_program_for_call_recurse_return())
     }
 
     #[test]
     fn constraints_evaluate_to_zero_on_program_for_write_mem_read_mem() {
-        triton_table_constraints_evaluate_to_zero(test_program_for_write_mem_read_mem())
+        triton_constraints_evaluate_to_zero(test_program_for_write_mem_read_mem())
     }
 
     #[test]
     fn constraints_evaluate_to_zero_on_program_for_hash() {
-        triton_table_constraints_evaluate_to_zero(test_program_for_hash())
+        triton_constraints_evaluate_to_zero(test_program_for_hash())
     }
 
     #[test]
     fn constraints_evaluate_to_zero_on_program_for_divine_sibling_no_switch() {
-        triton_table_constraints_evaluate_to_zero(test_program_for_divine_sibling_no_switch())
+        triton_constraints_evaluate_to_zero(test_program_for_divine_sibling_no_switch())
     }
 
     #[test]
     fn constraints_evaluate_to_zero_on_program_for_divine_sibling_switch() {
-        triton_table_constraints_evaluate_to_zero(test_program_for_divine_sibling_switch())
+        triton_constraints_evaluate_to_zero(test_program_for_divine_sibling_switch())
     }
 
     #[test]
     fn constraints_evaluate_to_zero_on_program_for_assert_vector() {
-        triton_table_constraints_evaluate_to_zero(test_program_for_assert_vector())
+        triton_constraints_evaluate_to_zero(test_program_for_assert_vector())
     }
 
     #[test]
     fn constraints_evaluate_to_zero_on_program_for_sponge_instructions() {
-        triton_table_constraints_evaluate_to_zero(test_program_for_sponge_instructions())
+        triton_constraints_evaluate_to_zero(test_program_for_sponge_instructions())
     }
 
     #[test]
     fn constraints_evaluate_to_zero_on_program_for_sponge_instructions_2() {
-        triton_table_constraints_evaluate_to_zero(test_program_for_sponge_instructions_2())
+        triton_constraints_evaluate_to_zero(test_program_for_sponge_instructions_2())
     }
 
     #[test]
     fn constraints_evaluate_to_zero_on_program_for_many_sponge_instructions() {
-        triton_table_constraints_evaluate_to_zero(test_program_for_many_sponge_instructions())
+        triton_constraints_evaluate_to_zero(test_program_for_many_sponge_instructions())
     }
 
     #[test]
     fn constraints_evaluate_to_zero_on_program_for_add_mul_invert() {
-        triton_table_constraints_evaluate_to_zero(test_program_for_add_mul_invert())
+        triton_constraints_evaluate_to_zero(test_program_for_add_mul_invert())
     }
 
     #[test]
     fn constraints_evaluate_to_zero_on_program_for_eq() {
-        triton_table_constraints_evaluate_to_zero(test_program_for_eq())
+        triton_constraints_evaluate_to_zero(test_program_for_eq())
     }
 
     #[test]
     fn constraints_evaluate_to_zero_on_program_for_lsb() {
-        triton_table_constraints_evaluate_to_zero(test_program_for_lsb())
+        triton_constraints_evaluate_to_zero(test_program_for_lsb())
     }
 
     #[test]
     fn constraints_evaluate_to_zero_on_program_for_split() {
-        triton_table_constraints_evaluate_to_zero(test_program_for_split())
+        triton_constraints_evaluate_to_zero(test_program_for_split())
     }
 
     #[test]
     fn constraints_evaluate_to_zero_on_program_0_lt_0() {
-        triton_table_constraints_evaluate_to_zero(test_program_0_lt_0())
+        triton_constraints_evaluate_to_zero(test_program_0_lt_0())
     }
 
     #[test]
     fn constraints_evaluate_to_zero_on_program_for_lt() {
-        triton_table_constraints_evaluate_to_zero(test_program_for_lt())
+        triton_constraints_evaluate_to_zero(test_program_for_lt())
     }
 
     #[test]
     fn constraints_evaluate_to_zero_on_program_for_and() {
-        triton_table_constraints_evaluate_to_zero(test_program_for_and())
+        triton_constraints_evaluate_to_zero(test_program_for_and())
     }
 
     #[test]
     fn constraints_evaluate_to_zero_on_program_for_xor() {
-        triton_table_constraints_evaluate_to_zero(test_program_for_xor())
+        triton_constraints_evaluate_to_zero(test_program_for_xor())
     }
 
     #[test]
     fn constraints_evaluate_to_zero_on_program_for_log2floor() {
-        triton_table_constraints_evaluate_to_zero(test_program_for_log2floor())
+        triton_constraints_evaluate_to_zero(test_program_for_log2floor())
     }
 
     #[test]
     fn constraints_evaluate_to_zero_on_program_for_pow() {
-        triton_table_constraints_evaluate_to_zero(test_program_for_pow())
+        triton_constraints_evaluate_to_zero(test_program_for_pow())
     }
 
     #[test]
     fn constraints_evaluate_to_zero_on_program_for_div_mod() {
-        triton_table_constraints_evaluate_to_zero(test_program_for_div_mod())
+        triton_constraints_evaluate_to_zero(test_program_for_div_mod())
     }
 
     #[test]
     fn constraints_evaluate_to_zero_on_program_for_starting_with_pop_count() {
-        triton_table_constraints_evaluate_to_zero(test_program_for_starting_with_pop_count())
+        triton_constraints_evaluate_to_zero(test_program_for_starting_with_pop_count())
     }
 
     #[test]
     fn constraints_evaluate_to_zero_on_program_for_pop_count() {
-        triton_table_constraints_evaluate_to_zero(test_program_for_pop_count())
+        triton_constraints_evaluate_to_zero(test_program_for_pop_count())
     }
 
     #[test]
     fn constraints_evaluate_to_zero_on_program_for_xxadd() {
-        triton_table_constraints_evaluate_to_zero(test_program_for_xxadd())
+        triton_constraints_evaluate_to_zero(test_program_for_xxadd())
     }
 
     #[test]
     fn constraints_evaluate_to_zero_on_program_for_xxmul() {
-        triton_table_constraints_evaluate_to_zero(test_program_for_xxmul())
+        triton_constraints_evaluate_to_zero(test_program_for_xxmul())
     }
 
     #[test]
     fn constraints_evaluate_to_zero_on_program_for_xinvert() {
-        triton_table_constraints_evaluate_to_zero(test_program_for_xinvert())
+        triton_constraints_evaluate_to_zero(test_program_for_xinvert())
     }
 
     #[test]
     fn constraints_evaluate_to_zero_on_program_for_xbmul() {
-        triton_table_constraints_evaluate_to_zero(test_program_for_xbmul())
+        triton_constraints_evaluate_to_zero(test_program_for_xbmul())
     }
 
     #[test]
     fn constraints_evaluate_to_zero_on_program_for_read_io_write_io() {
-        triton_table_constraints_evaluate_to_zero(test_program_for_read_io_write_io())
+        triton_constraints_evaluate_to_zero(test_program_for_read_io_write_io())
     }
 
     #[test]
     fn constraints_evaluate_to_zero_on_property_based_test_program_for_assert_vector() {
-        triton_table_constraints_evaluate_to_zero(property_based_test_program_for_assert_vector())
+        triton_constraints_evaluate_to_zero(property_based_test_program_for_assert_vector())
     }
 
     #[test]
     fn constraints_evaluate_to_zero_on_property_based_test_program_for_sponge_instructions() {
-        triton_table_constraints_evaluate_to_zero(
-            property_based_test_program_for_sponge_instructions(),
-        )
+        triton_constraints_evaluate_to_zero(property_based_test_program_for_sponge_instructions())
     }
 
     #[test]
     fn constraints_evaluate_to_zero_on_property_based_test_program_for_split() {
-        triton_table_constraints_evaluate_to_zero(property_based_test_program_for_split())
+        triton_constraints_evaluate_to_zero(property_based_test_program_for_split())
     }
 
     #[test]
     fn constraints_evaluate_to_zero_on_property_based_test_program_for_eq() {
-        triton_table_constraints_evaluate_to_zero(property_based_test_program_for_eq())
+        triton_constraints_evaluate_to_zero(property_based_test_program_for_eq())
     }
 
     #[test]
     fn constraints_evaluate_to_zero_on_property_based_test_program_for_lsb() {
-        triton_table_constraints_evaluate_to_zero(property_based_test_program_for_lsb())
+        triton_constraints_evaluate_to_zero(property_based_test_program_for_lsb())
     }
 
     #[test]
     fn constraints_evaluate_to_zero_on_property_based_test_program_for_lt() {
-        triton_table_constraints_evaluate_to_zero(property_based_test_program_for_lt())
+        triton_constraints_evaluate_to_zero(property_based_test_program_for_lt())
     }
 
     #[test]
     fn constraints_evaluate_to_zero_on_property_based_test_program_for_and() {
-        triton_table_constraints_evaluate_to_zero(property_based_test_program_for_and())
+        triton_constraints_evaluate_to_zero(property_based_test_program_for_and())
     }
 
     #[test]
     fn constraints_evaluate_to_zero_on_property_based_test_program_for_xor() {
-        triton_table_constraints_evaluate_to_zero(property_based_test_program_for_xor())
+        triton_constraints_evaluate_to_zero(property_based_test_program_for_xor())
     }
 
     #[test]
     fn constraints_evaluate_to_zero_on_property_based_test_program_for_log2floor() {
-        triton_table_constraints_evaluate_to_zero(property_based_test_program_for_log2floor())
+        triton_constraints_evaluate_to_zero(property_based_test_program_for_log2floor())
     }
 
     #[test]
     fn constraints_evaluate_to_zero_on_property_based_test_program_for_pow() {
-        triton_table_constraints_evaluate_to_zero(property_based_test_program_for_pow())
+        triton_constraints_evaluate_to_zero(property_based_test_program_for_pow())
     }
 
     #[test]
     fn constraints_evaluate_to_zero_on_property_based_test_program_for_div_mod() {
-        triton_table_constraints_evaluate_to_zero(property_based_test_program_for_div_mod())
+        triton_constraints_evaluate_to_zero(property_based_test_program_for_div_mod())
     }
 
     #[test]
     fn constraints_evaluate_to_zero_on_property_based_test_program_for_pop_count() {
-        triton_table_constraints_evaluate_to_zero(property_based_test_program_for_pop_count())
+        triton_constraints_evaluate_to_zero(property_based_test_program_for_pop_count())
     }
 
     #[test]
     fn constraints_evaluate_to_zero_on_property_based_test_program_for_is_u32() {
-        triton_table_constraints_evaluate_to_zero(property_based_test_program_for_is_u32())
+        triton_constraints_evaluate_to_zero(property_based_test_program_for_is_u32())
     }
 
     #[test]
     fn constraints_evaluate_to_zero_on_property_based_test_program_for_random_ram_access() {
-        triton_table_constraints_evaluate_to_zero(
-            property_based_test_program_for_random_ram_access(),
-        )
+        triton_constraints_evaluate_to_zero(property_based_test_program_for_random_ram_access())
     }
 
     #[test]
     fn claim_in_ram_corresponds_to_currently_running_program() {
-        triton_table_constraints_evaluate_to_zero(
+        triton_constraints_evaluate_to_zero(
             test_program_claim_in_ram_corresponds_to_currently_running_program(),
         );
     }
 
-    fn triton_table_constraints_evaluate_to_zero(program_and_input: ProgramAndInput) {
+    fn triton_constraints_evaluate_to_zero(program_and_input: ProgramAndInput) {
         let (_, _, master_base_table, master_ext_table, challenges) =
             master_tables_for_low_security_level(program_and_input);
 
-        assert_eq!(
-            master_base_table.randomized_trace_table().nrows(),
-            master_ext_table.randomized_trace_table().nrows()
-        );
-        let master_base_trace_table = master_base_table.trace_table();
-        let master_ext_trace_table = master_ext_table.trace_table();
-        assert_eq!(
-            master_base_trace_table.nrows(),
-            master_ext_trace_table.nrows()
-        );
+        let num_base_rows = master_base_table.randomized_trace_table().nrows();
+        let num_ext_rows = master_ext_table.randomized_trace_table().nrows();
+        assert!(num_base_rows == num_ext_rows);
 
-        assert!(program_table::tests::constraints_evaluate_to_zero(
-            master_base_trace_table,
-            master_ext_trace_table,
-            &challenges,
-        ));
-        assert!(processor_table::tests::constraints_evaluate_to_zero(
-            master_base_trace_table,
-            master_ext_trace_table,
-            &challenges,
-        ));
-        assert!(op_stack_table::tests::constraints_evaluate_to_zero(
-            master_base_trace_table,
-            master_ext_trace_table,
-            &challenges,
-        ));
-        assert!(ram_table::tests::constraints_evaluate_to_zero(
-            master_base_trace_table,
-            master_ext_trace_table,
-            &challenges,
-        ));
-        assert!(jump_stack_table::tests::constraints_evaluate_to_zero(
-            master_base_trace_table,
-            master_ext_trace_table,
-            &challenges,
-        ));
-        assert!(hash_table::tests::constraints_evaluate_to_zero(
-            master_base_trace_table,
-            master_ext_trace_table,
-            &challenges,
-        ));
-        assert!(cascade_table::tests::constraints_evaluate_to_zero(
-            master_base_trace_table,
-            master_ext_trace_table,
-            &challenges,
-        ));
-        assert!(lookup_table::tests::constraints_evaluate_to_zero(
-            master_base_trace_table,
-            master_ext_trace_table,
-            &challenges,
-        ));
-        assert!(u32_table::tests::constraints_evaluate_to_zero(
-            master_base_trace_table,
-            master_ext_trace_table,
-            &challenges,
-        ));
+        let mbt = master_base_table.trace_table();
+        let met = master_ext_table.trace_table();
+        assert!(mbt.nrows() == met.nrows());
+
+        program_table::tests::check_constraints(mbt, met, &challenges);
+        processor_table::tests::check_constraints(mbt, met, &challenges);
+        op_stack_table::tests::check_constraints(mbt, met, &challenges);
+        ram_table::tests::check_constraints(mbt, met, &challenges);
+        jump_stack_table::tests::check_constraints(mbt, met, &challenges);
+        hash_table::tests::check_constraints(mbt, met, &challenges);
+        cascade_table::tests::check_constraints(mbt, met, &challenges);
+        lookup_table::tests::check_constraints(mbt, met, &challenges);
+        u32_table::tests::check_constraints(mbt, met, &challenges);
     }
 
     #[test]
@@ -2227,8 +2172,8 @@ pub(crate) mod tests {
         for (constraint_idx, evaluated_constraint) in
             evaluated_initial_constraints.into_iter().enumerate()
         {
-            assert_eq!(
-                zero, evaluated_constraint,
+            assert!(
+                zero == evaluated_constraint,
                 "Initial constraint {constraint_idx} failed.",
             );
         }
@@ -2243,8 +2188,8 @@ pub(crate) mod tests {
             for (constraint_idx, evaluated_constraint) in
                 evaluated_consistency_constraints.into_iter().enumerate()
             {
-                assert_eq!(
-                    zero, evaluated_constraint,
+                assert!(
+                    zero == evaluated_constraint,
                     "Consistency constraint {constraint_idx} failed in row {row_idx}.",
                 );
             }
@@ -2262,8 +2207,8 @@ pub(crate) mod tests {
             for (constraint_idx, evaluated_constraint) in
                 evaluated_transition_constraints.into_iter().enumerate()
             {
-                assert_eq!(
-                    zero, evaluated_constraint,
+                assert!(
+                    zero == evaluated_constraint,
                     "Transition constraint {constraint_idx} failed in row {curr_row_idx}.",
                 );
             }
@@ -2277,8 +2222,8 @@ pub(crate) mod tests {
         for (constraint_idx, evaluated_constraint) in
             evaluated_terminal_constraints.into_iter().enumerate()
         {
-            assert_eq!(
-                zero, evaluated_constraint,
+            assert!(
+                zero == evaluated_constraint,
                 "Terminal constraint {constraint_idx} failed.",
             );
         }
@@ -2294,7 +2239,7 @@ pub(crate) mod tests {
             &mut None,
         );
 
-        let verdict = Stark::verify(parameters, &claim, &proof, &mut None).unwrap();
+        let_assert!(Ok(verdict) = Stark::verify(parameters, &claim, &proof, &mut None));
         assert!(verdict);
     }
 
@@ -2311,13 +2256,10 @@ pub(crate) mod tests {
         let mut profiler = profiler.unwrap();
         profiler.finish();
 
-        let result = Stark::verify(parameters, &claim, &proof, &mut None);
-        if let Err(e) = result {
-            panic!("The Verifier is unhappy! {e}");
-        }
-        assert!(result.unwrap());
+        let_assert!(Ok(verdict) = Stark::verify(parameters, &claim, &proof, &mut None));
+        assert!(verdict);
 
-        let padded_height = proof.padded_height().unwrap();
+        let_assert!(Ok(padded_height) = proof.padded_height());
         let fri = Stark::derive_fri(parameters, padded_height);
         let report = profiler
             .report()
@@ -2326,27 +2268,28 @@ pub(crate) mod tests {
         println!("{report}");
     }
 
-    #[test]
+    #[proptest]
     #[ignore = "used for tracking&debugging deserialization errors"]
     fn triton_prove_halt_save_error() {
         let code_with_input = test_program_for_halt();
 
-        for _ in 0..100 {
-            let (parameters, claim, proof) = prove_with_low_security_level(
-                &code_with_input.program,
-                code_with_input.public_input(),
-                code_with_input.non_determinism(),
-                &mut None,
-            );
+        let (parameters, claim, proof) = prove_with_low_security_level(
+            &code_with_input.program,
+            code_with_input.public_input(),
+            code_with_input.non_determinism(),
+            &mut None,
+        );
 
-            let verdict = Stark::verify(parameters, &claim, &proof, &mut None);
-            if verdict.is_err() {
+        let verdict = Stark::verify(parameters, &claim, &proof, &mut None);
+        match verdict {
+            Ok(v) => assert!(v),
+            Err(e) => {
                 let filename = "halt_error.tsp";
                 save_proof(filename, proof).unwrap();
                 eprintln!("Saved proof to {filename}.");
-            };
-            assert!(verdict.unwrap());
-        }
+                panic!("verification failed: {e}");
+            }
+        };
     }
 
     #[test]
@@ -2361,8 +2304,8 @@ pub(crate) mod tests {
         );
 
         let filename = "halt_error.tsp";
-        let proof = load_proof(filename).unwrap();
-        let verdict = Stark::verify(parameters, &claim, &proof, &mut None).unwrap();
+        let_assert!(Ok(proof) = load_proof(filename));
+        let_assert!(Ok(verdict) = Stark::verify(parameters, &claim, &proof, &mut None));
         assert!(verdict);
     }
 
@@ -2379,13 +2322,10 @@ pub(crate) mod tests {
 
         println!("between prove and verify");
 
-        let result = Stark::verify(parameters, &claim, &proof, &mut None);
-        if let Err(e) = result {
-            panic!("The Verifier is unhappy! {e}");
-        }
-        assert!(result.unwrap());
+        let_assert!(Ok(verdict) = Stark::verify(parameters, &claim, &proof, &mut None));
+        assert!(verdict);
 
-        let padded_height = proof.padded_height().unwrap();
+        let_assert!(Ok(padded_height) = proof.padded_height());
         let fri = Stark::derive_fri(parameters, padded_height);
         let report = profiler
             .report()
@@ -2401,12 +2341,10 @@ pub(crate) mod tests {
             let secret_in = [].into();
             let (parameters, claim, proof) =
                 prove_with_low_security_level(&FIBONACCI_SEQUENCE, stdin, secret_in, &mut None);
-            match Stark::verify(parameters, &claim, &proof, &mut None) {
-                Ok(result) => assert!(result, "The Verifier disagrees!"),
-                Err(err) => panic!("The Verifier is unhappy! {err}"),
-            }
+            let_assert!(Ok(verdict) = Stark::verify(parameters, &claim, &proof, &mut None));
+            assert!(verdict);
 
-            assert_eq!(vec![fib_seq_val], claim.public_output());
+            assert!(vec![fib_seq_val] == claim.public_output());
         }
     }
 
@@ -2414,7 +2352,7 @@ pub(crate) mod tests {
     fn constraints_evaluate_to_zero_on_many_u32_operations() {
         let many_u32_instructions =
             ProgramAndInput::without_input(PROGRAM_WITH_MANY_U32_INSTRUCTIONS.clone());
-        triton_table_constraints_evaluate_to_zero(many_u32_instructions);
+        triton_constraints_evaluate_to_zero(many_u32_instructions);
     }
 
     #[test]
@@ -2428,14 +2366,10 @@ pub(crate) mod tests {
         );
         let mut profiler = profiler.unwrap();
         profiler.finish();
+        let_assert!(Ok(result) = Stark::verify(parameters, &claim, &proof, &mut None));
+        assert!(result);
 
-        let result = Stark::verify(parameters, &claim, &proof, &mut None);
-        if let Err(e) = result {
-            panic!("The Verifier is unhappy! {e}");
-        }
-        assert!(result.unwrap());
-
-        let padded_height = proof.padded_height().unwrap();
+        let_assert!(Ok(padded_height) = proof.padded_height());
         let fri = Stark::derive_fri(parameters, padded_height);
         let report = profiler
             .report()
@@ -2462,10 +2396,10 @@ pub(crate) mod tests {
             let mut profiler = Some(TritonProfiler::new(&fib_test_name));
             let (parameters, _, proof) =
                 prove_with_low_security_level(&FIBONACCI_SEQUENCE, stdin, [].into(), &mut profiler);
-            let mut profiler = profiler.unwrap();
+            let_assert!(Some(mut profiler) = profiler);
             profiler.finish();
 
-            let padded_height = proof.padded_height().unwrap();
+            let_assert!(Ok(padded_height) = proof.padded_height());
             let fri = Stark::derive_fri(parameters, padded_height);
             let report = profiler
                 .report()
@@ -2475,29 +2409,23 @@ pub(crate) mod tests {
         }
     }
 
-    #[test]
-    #[should_panic(expected = "Failed to convert BFieldElement")]
-    pub fn negative_log_2_floor() {
-        let mut rng = ThreadRng::default();
-        let st0 = (rng.next_u32() as u64) << 32;
-
+    #[proptest]
+    fn negative_log_2_floor(
+        #[strategy(arb())]
+        #[filter(#st0.value() > u32::MAX as u64)]
+        st0: BFieldElement,
+    ) {
         let program = triton_program!(push {st0} log_2_floor halt);
-        let (parameters, claim, proof) =
-            prove_with_low_security_level(&program, [].into(), [].into(), &mut None);
-        let result = Stark::verify(parameters, &claim, &proof, &mut None);
-        assert!(result.is_ok());
-        assert!(result.unwrap());
+        let_assert!(Err(err) = program.run([].into(), [].into()));
+        let_assert!(InstructionError::FailedU32Conversion(element) = err.source);
+        assert!(st0 == element);
     }
 
     #[test]
-    #[should_panic(expected = "The logarithm of 0 does not exist")]
-    pub fn negative_log_2_floor_of_0() {
+    fn negative_log_2_floor_of_0() {
         let program = triton_program!(push 0 log_2_floor halt);
-        let (parameters, claim, proof) =
-            prove_with_low_security_level(&program, [].into(), [].into(), &mut None);
-        let result = Stark::verify(parameters, &claim, &proof, &mut None);
-        assert!(result.is_ok());
-        assert!(result.unwrap());
+        let_assert!(Err(err) = program.run([].into(), [].into()));
+        let_assert!(InstructionError::LogarithmOfZero = err.source);
     }
 
     #[test]
@@ -2520,7 +2448,7 @@ pub(crate) mod tests {
             out_of_domain_value,
         );
         let poly_of_maybe_low_degree = domain.interpolate(&deep_poly);
-        assert_eq!(poly_degree as isize - 2, poly_of_maybe_low_degree.degree());
+        assert!(poly_degree as isize - 2 == poly_of_maybe_low_degree.degree());
 
         let bogus_out_of_domain_value = thread_rng().gen();
         let bogus_deep_poly = Stark::deep_codeword(
@@ -2530,10 +2458,7 @@ pub(crate) mod tests {
             bogus_out_of_domain_value,
         );
         let poly_of_hopefully_high_degree = domain.interpolate(&bogus_deep_poly);
-        assert_eq!(
-            domain_length as isize - 1,
-            poly_of_hopefully_high_degree.degree()
-        );
+        assert!(domain_length as isize - 1 == poly_of_hopefully_high_degree.degree());
     }
 
     /// Re-compose the segments of a polynomial and assert that the result is equal to the
@@ -2549,7 +2474,7 @@ pub(crate) mod tests {
         };
         let evaluated_segments = segments.iter().enumerate().map(evaluate_segment);
         let sum_of_evaluated_segments = evaluated_segments.fold(FF::zero(), |acc, x| acc + x);
-        assert_eq!(f.evaluate(&x), sum_of_evaluated_segments);
+        assert!(f.evaluate(&x) == sum_of_evaluated_segments);
     }
 
     fn assert_segments_degrees_are_small_enough<const N: usize, FF: FiniteField>(

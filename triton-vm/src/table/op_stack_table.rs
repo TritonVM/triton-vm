@@ -401,6 +401,8 @@ impl OpStackTable {
 
 #[cfg(test)]
 pub(crate) mod tests {
+    use assert2::assert;
+    use assert2::check;
     use itertools::Itertools;
     use num_traits::Zero;
     use proptest::collection::vec;
@@ -412,18 +414,16 @@ pub(crate) mod tests {
 
     use super::*;
 
-    pub fn constraints_evaluate_to_zero(
+    pub fn check_constraints(
         master_base_trace_table: ArrayView2<BFieldElement>,
         master_ext_trace_table: ArrayView2<XFieldElement>,
         challenges: &Challenges,
-    ) -> bool {
-        let zero = XFieldElement::zero();
-        assert_eq!(
-            master_base_trace_table.nrows(),
-            master_ext_trace_table.nrows()
-        );
+    ) {
+        assert!(master_base_trace_table.nrows() == master_ext_trace_table.nrows());
 
+        let zero = XFieldElement::zero();
         let circuit_builder = ConstraintCircuitBuilder::new();
+
         for (constraint_idx, constraint) in ExtOpStackTable::initial_constraints(&circuit_builder)
             .into_iter()
             .map(|constraint_monad| constraint_monad.consume())
@@ -434,8 +434,8 @@ pub(crate) mod tests {
                 master_ext_trace_table.slice(s![..1, ..]),
                 challenges,
             );
-            assert_eq!(
-                zero, evaluated_constraint,
+            check!(
+                zero == evaluated_constraint,
                 "Initial constraint {constraint_idx} failed."
             );
         }
@@ -453,8 +453,8 @@ pub(crate) mod tests {
                     master_ext_trace_table.slice(s![row_idx..row_idx + 1, ..]),
                     challenges,
                 );
-                assert_eq!(
-                    zero, evaluated_constraint,
+                check!(
+                    zero == evaluated_constraint,
                     "Consistency constraint {constraint_idx} failed on row {row_idx}."
                 );
             }
@@ -473,8 +473,8 @@ pub(crate) mod tests {
                     master_ext_trace_table.slice(s![row_idx..row_idx + 2, ..]),
                     challenges,
                 );
-                assert_eq!(
-                    zero, evaluated_constraint,
+                check!(
+                    zero == evaluated_constraint,
                     "Transition constraint {constraint_idx} failed on row {row_idx}."
                 );
             }
@@ -491,13 +491,11 @@ pub(crate) mod tests {
                 master_ext_trace_table.slice(s![-1.., ..]),
                 challenges,
             );
-            assert_eq!(
-                zero, evaluated_constraint,
+            check!(
+                zero == evaluated_constraint,
                 "Terminal constraint {constraint_idx} failed."
             );
         }
-
-        true
     }
 
     #[proptest]
@@ -586,7 +584,7 @@ pub(crate) mod tests {
         let stack_pointer_comparison = stack_pointer_0.cmp(&stack_pointer_1);
         let row_comparison = OpStackTable::compare_rows(row_0.view(), row_1.view());
 
-        assert_eq!(stack_pointer_comparison, row_comparison);
+        prop_assert_eq!(stack_pointer_comparison, row_comparison);
     }
 
     #[proptest]
@@ -606,6 +604,6 @@ pub(crate) mod tests {
         let clk_comparison = clk_0.cmp(&clk_1);
         let row_comparison = OpStackTable::compare_rows(row_0.view(), row_1.view());
 
-        assert_eq!(clk_comparison, row_comparison);
+        prop_assert_eq!(clk_comparison, row_comparison);
     }
 }

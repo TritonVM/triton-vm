@@ -98,7 +98,7 @@ impl ArithmeticDomain {
     }
 
     #[must_use]
-    pub fn halve(&self) -> Self {
+    pub(crate) fn halve(&self) -> Self {
         assert!(self.length >= 2);
         Self {
             offset: self.offset.square(),

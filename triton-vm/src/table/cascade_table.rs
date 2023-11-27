@@ -314,21 +314,22 @@ impl ExtCascadeTable {
 
 #[cfg(test)]
 pub(crate) mod tests {
-    use super::*;
+    use assert2::assert;
+    use assert2::check;
     use num_traits::Zero;
 
-    pub fn constraints_evaluate_to_zero(
+    use super::*;
+
+    pub fn check_constraints(
         master_base_trace_table: ArrayView2<BFieldElement>,
         master_ext_trace_table: ArrayView2<XFieldElement>,
         challenges: &Challenges,
-    ) -> bool {
-        let zero = XFieldElement::zero();
-        assert_eq!(
-            master_base_trace_table.nrows(),
-            master_ext_trace_table.nrows()
-        );
+    ) {
+        assert!(master_base_trace_table.nrows() == master_ext_trace_table.nrows());
 
+        let zero = XFieldElement::zero();
         let circuit_builder = ConstraintCircuitBuilder::new();
+
         for (constraint_idx, constraint) in ExtCascadeTable::initial_constraints(&circuit_builder)
             .into_iter()
             .map(|constraint_monad| constraint_monad.consume())
@@ -339,8 +340,8 @@ pub(crate) mod tests {
                 master_ext_trace_table.slice(s![..1, ..]),
                 challenges,
             );
-            assert_eq!(
-                zero, evaluated_constraint,
+            check!(
+                zero == evaluated_constraint,
                 "Initial constraint {constraint_idx} failed."
             );
         }
@@ -358,8 +359,8 @@ pub(crate) mod tests {
                     master_ext_trace_table.slice(s![row_idx..row_idx + 1, ..]),
                     challenges,
                 );
-                assert_eq!(
-                    zero, evaluated_constraint,
+                check!(
+                    zero == evaluated_constraint,
                     "Consistency constraint {constraint_idx} failed on row {row_idx}."
                 );
             }
@@ -378,8 +379,8 @@ pub(crate) mod tests {
                     master_ext_trace_table.slice(s![row_idx..row_idx + 2, ..]),
                     challenges,
                 );
-                assert_eq!(
-                    zero, evaluated_constraint,
+                check!(
+                    zero == evaluated_constraint,
                     "Transition constraint {constraint_idx} failed on row {row_idx}."
                 );
             }
@@ -396,12 +397,10 @@ pub(crate) mod tests {
                 master_ext_trace_table.slice(s![-1.., ..]),
                 challenges,
             );
-            assert_eq!(
-                zero, evaluated_constraint,
+            check!(
+                zero == evaluated_constraint,
                 "Terminal constraint {constraint_idx} failed."
             );
         }
-
-        true
     }
 }
