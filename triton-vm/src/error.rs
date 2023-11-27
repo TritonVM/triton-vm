@@ -18,11 +18,12 @@ use crate::BFieldElement;
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub struct VMError {
     pub source: InstructionError,
-    pub vm_state: VMState,
+    pub vm_state: Box<VMState>,
 }
 
 impl VMError {
     pub fn new(source: InstructionError, vm_state: VMState) -> Self {
+        let vm_state = Box::new(vm_state);
         Self { source, vm_state }
     }
 }

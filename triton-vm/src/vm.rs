@@ -298,7 +298,7 @@ impl VMState {
             let element = self
                 .secret_individual_tokens
                 .pop_front()
-                .ok_or_else(|| EmptySecretInput(i))?;
+                .ok_or(EmptySecretInput(i))?;
             self.op_stack.push(element);
         }
 
@@ -726,10 +726,7 @@ impl VMState {
 
     fn read_io(&mut self, n: NumberOfWords) -> Result<Vec<CoProcessorCall>> {
         for i in 0..n.num_words() {
-            let read_element = self
-                .public_input
-                .pop_front()
-                .ok_or_else(|| EmptyPublicInput(i))?;
+            let read_element = self.public_input.pop_front().ok_or(EmptyPublicInput(i))?;
             self.op_stack.push(read_element);
         }
 
@@ -912,7 +909,6 @@ impl Display for VMState {
 
 #[cfg(test)]
 pub(crate) mod tests {
-    use std::error::Error;
     use std::ops::BitAnd;
     use std::ops::BitXor;
 
@@ -946,7 +942,6 @@ pub(crate) mod tests {
     use twenty_first::util_types::merkle_tree::MerkleTree;
     use twenty_first::util_types::merkle_tree_maker::MerkleTreeMaker;
 
-    use crate::error::InstructionError;
     use crate::example_programs::*;
     use crate::op_stack::NumberOfWords::*;
     use crate::shared_tests::prove_with_low_security_level;

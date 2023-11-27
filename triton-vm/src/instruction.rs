@@ -464,7 +464,7 @@ impl TryFrom<u32> for Instruction {
         OPCODE_TO_INSTRUCTION_MAP
             .get(&opcode)
             .copied()
-            .ok_or_else(|| InstructionError::InvalidOpcode(opcode))
+            .ok_or(InstructionError::InvalidOpcode(opcode))
     }
 }
 
