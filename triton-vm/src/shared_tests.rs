@@ -1,13 +1,9 @@
-#![cfg(test)]
-
 use std::fs::create_dir_all;
 use std::fs::File;
 use std::io::Read;
 use std::io::Write;
 use std::path::Path;
 
-use anyhow::anyhow;
-use anyhow::Result;
 use num_traits::Zero;
 use proptest::collection::vec;
 use proptest::prelude::*;
@@ -18,6 +14,7 @@ use twenty_first::shared_math::polynomial::Polynomial;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use crate::aet::AlgebraicExecutionTrace;
+use crate::error::VMError;
 use crate::profiler::prof_start;
 use crate::profiler::prof_stop;
 use crate::profiler::TritonProfiler;
@@ -145,7 +142,7 @@ impl ProgramAndInput {
     }
 
     /// A thin wrapper around [`Program::run`].
-    pub fn run(&self) -> Result<Vec<BFieldElement>> {
+    pub fn run<'pgm>(&self) -> Result<Vec<BFieldElement>, VMError<'pgm>> {
         self.program
             .run(self.public_input(), self.non_determinism())
     }
@@ -155,8 +152,8 @@ pub fn proofs_directory() -> String {
     "proofs/".to_string()
 }
 
-pub fn create_proofs_directory() -> Result<()> {
-    create_dir_all(proofs_directory()).map_err(|e| anyhow!(e))
+pub fn create_proofs_directory() -> std::io::Result<()> {
+    create_dir_all(proofs_directory())
 }
 
 pub fn proofs_directory_exists() -> bool {
@@ -171,7 +168,7 @@ pub fn proof_file_exists(filename: &str) -> bool {
     File::open(full_filename).is_ok()
 }
 
-pub fn load_proof(filename: &str) -> Result<Proof> {
+pub fn load_proof(filename: &str) -> std::io::Result<Proof> {
     let full_filename = format!("{}{filename}", proofs_directory());
     let mut file_content = vec![];
     let mut file_handle = File::open(full_filename)?;
@@ -181,7 +178,7 @@ pub fn load_proof(filename: &str) -> Result<Proof> {
     Ok(proof)
 }
 
-pub fn save_proof(filename: &str, proof: Proof) -> Result<()> {
+pub fn save_proof(filename: &str, proof: Proof) -> std::io::Result<()> {
     if !proofs_directory_exists() {
         create_proofs_directory()?;
     }

@@ -152,10 +152,12 @@ pub mod program;
 pub mod proof;
 pub mod proof_item;
 pub mod proof_stream;
-mod shared_tests;
 pub mod stark;
 pub mod table;
 pub mod vm;
+
+#[cfg(test)]
+mod shared_tests;
 
 /// Compile an entire program written in [Triton assembly][tasm].
 /// The resulting [`Program`](crate::program::Program) can be
