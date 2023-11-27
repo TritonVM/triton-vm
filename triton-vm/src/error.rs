@@ -1,6 +1,7 @@
 use std::fmt;
 use std::fmt::Display;
 use std::fmt::Formatter;
+use std::num::TryFromIntError;
 
 use thiserror::Error;
 use twenty_first::shared_math::digest::DIGEST_LENGTH;
@@ -14,8 +15,8 @@ use crate::BFieldElement;
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub struct VMError<'pgm> {
-    source: InstructionError,
-    vm_state: VMState<'pgm>,
+    pub source: InstructionError,
+    pub vm_state: VMState<'pgm>,
 }
 
 impl<'pgm> VMError<'pgm> {
@@ -34,9 +35,12 @@ impl<'pgm> Display for VMError<'pgm> {
 
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
-pub(crate) enum InstructionError {
+pub enum InstructionError {
     #[error("opcode {0} is invalid")]
     InvalidOpcode(u32),
+
+    #[error("opcode is out of legal range: {0}")]
+    OutOfRangeOpcode(#[from] TryFromIntError),
 
     #[error("invalid argument {1} for instruction `{0}`")]
     IllegalArgument(Instruction, BFieldElement),
@@ -83,7 +87,7 @@ pub(crate) enum InstructionError {
 
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
-pub(crate) enum ProofStreamError {
+pub enum ProofStreamError {
     #[error("queue must be non-empty in order to dequeue an item")]
     EmptyQueue,
 
@@ -98,8 +102,8 @@ pub(crate) enum ProofStreamError {
 }
 
 #[non_exhaustive]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
-pub(crate) enum FriValidationError {
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum FriValidationError {
     #[error("the number of revealed leaves does not match the number of colinearity checks")]
     IncorrectNumberOfRevealedLeaves,
 
@@ -114,6 +118,9 @@ pub(crate) enum FriValidationError {
 
     #[error("received codeword of last round does not correspond to its commitment")]
     BadMerkleRootForLastCodeword,
+
+    #[error("proof stream error: {0}")]
+    ProofStreamError(#[from] ProofStreamError),
 }
 
 #[non_exhaustive]
@@ -134,7 +141,7 @@ pub enum ProgramDecodingError {
     #[error("sequence to decode contains invalid instruction at index {0}: {1}")]
     InvalidInstruction(usize, InstructionError),
 
-    #[error("missing argument for instuction {1} at index {0}")]
+    #[error("missing argument for instruction {1} at index {0}")]
     MissingArgument(usize, Instruction),
 }
 
@@ -206,6 +213,9 @@ pub enum VerificationError {
 pub enum OpStackElementError {
     #[error("index {0} is out of range for `OpStackElement`")]
     IndexOutOfBounds(u32),
+
+    #[error("index is out of legal range: {0}")]
+    FailedIntegerConversion(#[from] TryFromIntError),
 }
 
 #[non_exhaustive]
@@ -213,6 +223,9 @@ pub enum OpStackElementError {
 pub enum NumberOfWordsError {
     #[error("index {0} is out of range for `NumberOfWords`")]
     IndexOutOfBounds(usize),
+
+    #[error("index is out of legal range: {0}")]
+    FailedIntegerConversion(#[from] TryFromIntError),
 }
 
 #[cfg(test)]
@@ -315,8 +328,7 @@ mod tests {
 
         let err = program.run([].into(), [].into()).unwrap_err();
 
-        let err = err.downcast::<InstructionError>().unwrap();
-        let InstructionError::VectorAssertionFailed(_, _, index, _, _) = err else {
+        let InstructionError::VectorAssertionFailed(index) = err.source else {
             panic!("VM panicked with unexpected error {err}.")
         };
         let index: usize = index.into();

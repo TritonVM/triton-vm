@@ -412,6 +412,14 @@ impl From<&OpStackElement> for BFieldElement {
     }
 }
 
+impl TryFrom<BFieldElement> for OpStackElement {
+    type Error = OpStackElementError;
+
+    fn try_from(stack_index: BFieldElement) -> OpStackElementResult<Self> {
+        u32::try_from(stack_index)?.try_into()
+    }
+}
+
 /// Represents the argument, _i.e._, the `n`, for instructions like `pop n` or `read_io n`.
 #[derive(
     Debug,
@@ -563,7 +571,7 @@ impl TryFrom<OpStackElement> for NumberOfWords {
     type Error = NumberOfWordsError;
 
     fn try_from(index: OpStackElement) -> NumWordsResult<Self> {
-        usize::try_from(index)?.try_into()
+        usize::from(index).try_into()
     }
 }
 

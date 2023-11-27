@@ -3,7 +3,6 @@ use std::collections::hash_map::Entry::Vacant;
 use std::collections::HashMap;
 use std::ops::AddAssign;
 
-use crate::error::InstructionError;
 use itertools::Itertools;
 use ndarray::s;
 use ndarray::Array2;
@@ -17,6 +16,7 @@ use twenty_first::shared_math::tip5;
 use twenty_first::shared_math::tip5::Tip5;
 use twenty_first::util_types::algebraic_hasher::SpongeHasher;
 
+use crate::error::InstructionError;
 use crate::error::InstructionError::InstructionPointerOverflow;
 use crate::instruction::Instruction;
 use crate::program::Program;
@@ -224,7 +224,7 @@ impl AlgebraicExecutionTrace {
         instruction_pointer: usize,
     ) -> Result<(), InstructionError> {
         if instruction_pointer >= self.instruction_multiplicities.len() {
-            return Err(InstructionPointerOverflow(instruction_pointer));
+            return Err(InstructionPointerOverflow);
         }
         self.instruction_multiplicities[instruction_pointer] += 1;
         Ok(())
@@ -344,9 +344,10 @@ impl AlgebraicExecutionTrace {
 
 #[cfg(test)]
 mod tests {
+    use twenty_first::shared_math::b_field_element::BFIELD_ONE;
+
     use crate::triton_asm;
     use crate::triton_program;
-    use twenty_first::shared_math::b_field_element::BFIELD_ONE;
 
     use super::*;
 

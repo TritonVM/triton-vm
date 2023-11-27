@@ -298,7 +298,7 @@ impl<'pgm> VMState<'pgm> {
             let element = self
                 .secret_individual_tokens
                 .pop_front()
-                .ok_or_else(|| Err(EmptySecretInput(n, i)))?;
+                .ok_or_else(|| EmptySecretInput(n, i))?;
             self.op_stack.push(element);
         }
 
@@ -729,7 +729,7 @@ impl<'pgm> VMState<'pgm> {
             let read_element = self
                 .public_input
                 .pop_front()
-                .ok_or_else(|| Err(EmptyPublicInput(n, i)))?;
+                .ok_or_else(|| EmptyPublicInput(n, i))?;
             self.op_stack.push(read_element);
         }
 
@@ -886,7 +886,7 @@ impl<'pgm> Display for VMState<'pgm> {
         let register_width = 20;
         let print_row = |f: &mut Formatter<'_>, s: String| writeln!(f, "│ {s: <total_width$} │");
 
-        let sponge_state_register = |i| self.sponge_state[i].value();
+        let sponge_state_register = |i: usize| self.sponge_state[i].value();
         let sponge_state_slice = |idxs: [usize; 4]| {
             idxs.map(sponge_state_register)
                 .map(|ss| format!("{ss:>register_width$}"))
@@ -912,6 +912,7 @@ impl<'pgm> Display for VMState<'pgm> {
 
 #[cfg(test)]
 pub(crate) mod tests {
+    use std::error::Error;
     use std::ops::BitAnd;
     use std::ops::BitXor;
 
@@ -1668,21 +1669,20 @@ pub(crate) mod tests {
         source_code_and_input.run().unwrap();
     }
 
-    #[test]
-    fn negative_property_is_u32() {
-        let mut rng = ThreadRng::default();
-        let st0 = (rng.next_u32() as u64) << 32;
-
+    #[proptest]
+    fn negative_property_is_u32(
+        #[strategy(arb())]
+        #[filter(#st0.value() > u32::MAX as u64)]
+        st0: BFieldElement,
+    ) {
         let program = triton_program!(
             push {st0} call is_u32 assert halt
             is_u32:
                 split pop 1 push 0 eq return
         );
         let program_and_input = ProgramAndInput::without_input(program);
-        let err = program_and_input.run().err();
-        let err = err.unwrap();
-        let err = err.downcast::<InstructionError>().unwrap();
-        assert_eq!(AssertionFailed, err, "non-u32 must not pass u32-ness test");
+        let err = program_and_input.run().unwrap_err();
+        assert_eq!(AssertionFailed, err.source);
     }
 
     pub(crate) fn test_program_for_split() -> ProgramAndInput {
@@ -2141,11 +2141,8 @@ pub(crate) mod tests {
         let Some(err) = err else {
             panic!("Program without halt must fail.");
         };
-        let Ok(err) = err.downcast::<InstructionError>() else {
-            panic!("Program without halt must fail with InstructionError.");
-        };
         assert_eq!(
-            InstructionPointerOverflow, err,
+            InstructionPointerOverflow, err.source,
             "program without halt must fail with InstructionPointerOverflow"
         );
     }
@@ -2188,15 +2185,9 @@ pub(crate) mod tests {
         ]
         .into();
         let secret_in = [].into();
-        let err = program.trace_execution(bad_stdin, secret_in).err();
-        let Some(err) = err else {
-            panic!("Sudoku verifier must fail on bad Sudoku.");
-        };
-        let Ok(err) = err.downcast::<InstructionError>() else {
-            panic!("Sudoku verifier must fail with InstructionError on bad Sudoku.");
-        };
+        let err = program.trace_execution(bad_stdin, secret_in).unwrap_err();
         assert_eq!(
-            AssertionFailed, err,
+            AssertionFailed, err.source,
             "Sudoku verifier must fail with AssertionFailed on bad Sudoku"
         );
     }

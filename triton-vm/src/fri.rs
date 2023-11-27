@@ -859,7 +859,6 @@ mod tests {
 
         let verdict = fri.verify(&mut proof_stream, &mut None);
         let err = verdict.unwrap_err();
-        let err = err.downcast::<FriValidationError>().unwrap();
         prop_assert_eq!(FriValidationError::BadMerkleRootForLastCodeword, err);
     }
 
@@ -911,7 +910,6 @@ mod tests {
 
         let verdict = fri.verify(&mut proof_stream, &mut None);
         let err = verdict.unwrap_err();
-        let err = err.downcast::<FriValidationError>().unwrap();
         prop_assert_eq!(FriValidationError::IncorrectNumberOfRevealedLeaves, err);
     }
 
@@ -928,7 +926,7 @@ mod tests {
         let revealed_leaves = &mut fri_response.revealed_leaves;
         let modification_index = rng.gen_range(0..revealed_leaves.len());
         match rng.gen() {
-            true => revealed_leaves.remove(modification_index),
+            true => _ = revealed_leaves.remove(modification_index),
             false => revealed_leaves.insert(modification_index, rng.gen()),
         };
 
@@ -964,7 +962,6 @@ mod tests {
 
         let verdict = fri.verify(&mut proof_stream, &mut None);
         let err = verdict.unwrap_err();
-        let err = err.downcast::<FriValidationError>().unwrap();
         prop_assert_eq!(FriValidationError::BadMerkleAuthenticationPath, err);
     }
 
@@ -980,7 +977,7 @@ mod tests {
         let auth_structure = auth_structures.choose(&mut rng).unwrap();
         let modification_index = rng.gen_range(0..auth_structure.len());
         match rng.gen_range(0..3) {
-            0 => auth_structure.remove(modification_index),
+            0 => _ = auth_structure.remove(modification_index),
             1 => auth_structure.insert(modification_index, rng.gen()),
             2 => auth_structure[modification_index] = rng.gen(),
             _ => unreachable!(),
