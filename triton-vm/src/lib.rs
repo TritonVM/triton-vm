@@ -124,12 +124,12 @@
 
 #![recursion_limit = "4096"]
 
+use std::error::Error;
 pub use twenty_first::shared_math::b_field_element::BFieldElement;
 pub use twenty_first::shared_math::tip5::Digest;
 
 use crate::error::CanonicalRepresentationError;
 use crate::error::ProvingError;
-use crate::error::VMError;
 pub use crate::program::NonDeterminism;
 pub use crate::program::Program;
 pub use crate::program::PublicInput;
@@ -449,7 +449,7 @@ pub fn prove_program<'pgm>(
     program: &'pgm Program,
     public_input: &[u64],
     non_determinism: &NonDeterminism<u64>,
-) -> Result<(StarkParameters, Claim, Proof), VMError<'pgm>> {
+) -> Result<(StarkParameters, Claim, Proof), Box<dyn Error + 'pgm>> {
     input_elements_have_unique_representation(public_input, non_determinism)?;
 
     // Convert public and secret inputs to BFieldElements.
