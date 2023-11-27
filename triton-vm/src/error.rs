@@ -7,7 +7,6 @@ use thiserror::Error;
 use twenty_first::shared_math::digest::DIGEST_LENGTH;
 
 use crate::instruction::Instruction;
-use crate::op_stack::NumberOfWords;
 use crate::op_stack::OpStackElement;
 use crate::proof_item::ProofItem;
 use crate::vm::VMState;
@@ -39,7 +38,7 @@ pub enum InstructionError {
     #[error("opcode {0} is invalid")]
     InvalidOpcode(u32),
 
-    #[error("opcode is out of legal range: {0}")]
+    #[error("opcode is out of range: {0}")]
     OutOfRangeOpcode(#[from] TryFromIntError),
 
     #[error("invalid argument {1} for instruction `{0}`")]
@@ -75,11 +74,11 @@ pub enum InstructionError {
     #[error("failed to convert BFieldElement {0} into u32")]
     FailedU32Conversion(BFieldElement),
 
-    #[error("instruction `read_io {0}`: public input buffer is empty after {1}")]
-    EmptyPublicInput(NumberOfWords, usize),
+    #[error("public input buffer is empty after {0} reads")]
+    EmptyPublicInput(usize),
 
-    #[error("instruction `divine {0}`: secret input buffer is empty after {1}")]
-    EmptySecretInput(NumberOfWords, usize),
+    #[error("secret input buffer is empty after {0} reads")]
+    EmptySecretInput(usize),
 
     #[error("no more secret digests available")]
     EmptySecretDigestInput,

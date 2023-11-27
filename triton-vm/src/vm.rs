@@ -298,7 +298,7 @@ impl<'pgm> VMState<'pgm> {
             let element = self
                 .secret_individual_tokens
                 .pop_front()
-                .ok_or_else(|| EmptySecretInput(n, i))?;
+                .ok_or_else(|| EmptySecretInput(i))?;
             self.op_stack.push(element);
         }
 
@@ -729,7 +729,7 @@ impl<'pgm> VMState<'pgm> {
             let read_element = self
                 .public_input
                 .pop_front()
-                .ok_or_else(|| EmptyPublicInput(n, i))?;
+                .ok_or_else(|| EmptyPublicInput(i))?;
             self.op_stack.push(read_element);
         }
 
