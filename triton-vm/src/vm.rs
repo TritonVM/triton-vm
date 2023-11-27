@@ -932,7 +932,6 @@ pub(crate) mod tests {
     use strum::IntoEnumIterator;
     use test_strategy::proptest;
     use twenty_first::shared_math::b_field_element::BFIELD_ZERO;
-    use twenty_first::shared_math::bfield_codec::BFieldCodec;
     use twenty_first::shared_math::other::random_elements;
     use twenty_first::shared_math::other::random_elements_array;
     use twenty_first::shared_math::polynomial::Polynomial;
@@ -952,7 +951,6 @@ pub(crate) mod tests {
     use crate::table::processor_table::ProcessorTraceRow;
     use crate::triton_asm;
     use crate::triton_program;
-    use crate::Claim;
 
     use super::*;
 
@@ -1737,17 +1735,11 @@ pub(crate) mod tests {
             assert_vector                       // _ [own_digest]
             halt
         };
-        let claim = Claim {
-            program_digest: program.hash::<StarkHasher>(),
-            input: vec![],
-            output: vec![],
-        };
 
-        let initial_ram = claim
-            .encode()
-            .into_iter()
-            .enumerate()
-            .map(|(address, value)| (address as u64, value.value()))
+        let program_digest = program.hash::<StarkHasher>();
+        let enumerated_digest_elements = program_digest.values().into_iter().enumerate();
+        let initial_ram = enumerated_digest_elements
+            .map(|(address, digest_element)| (address as u64, digest_element.value()))
             .collect();
         let non_determinism = NonDeterminism::default().with_ram(initial_ram);
 
