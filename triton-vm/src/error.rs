@@ -135,6 +135,7 @@ pub enum CanonicalRepresentationError {
     NonDeterminismRamValues,
 }
 
+#[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
 pub enum ProvingError {
     #[error("claimed program digest does not match actual program digest")]
@@ -142,6 +143,20 @@ pub enum ProvingError {
 
     #[error("claimed public output does not match actual public output")]
     PublicOutputMismatch,
+}
+
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+pub enum OpStackElementError {
+    #[error("index {0} is out of range for `OpStackElement`")]
+    IndexOutOfBounds(u32),
+}
+
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+pub enum NumberOfWordsError {
+    #[error("index {0} is out of range for `NumberOfWords`")]
+    IndexOutOfBounds(usize),
 }
 
 #[cfg(test)]

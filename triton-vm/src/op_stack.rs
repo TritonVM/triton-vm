@@ -2,9 +2,6 @@ use std::fmt::Display;
 use std::fmt::Formatter;
 use std::fmt::Result as FmtResult;
 
-use anyhow::anyhow;
-use anyhow::bail;
-use anyhow::Result;
 use arbitrary::Arbitrary;
 use get_size::GetSize;
 use itertools::Itertools;
@@ -23,8 +20,15 @@ use twenty_first::shared_math::digest::Digest;
 use twenty_first::shared_math::tip5::DIGEST_LENGTH;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
+use crate::error::InstructionError;
 use crate::error::InstructionError::*;
+use crate::error::NumberOfWordsError;
+use crate::error::OpStackElementError;
 use crate::op_stack::OpStackElement::*;
+
+type Result<T> = std::result::Result<T, InstructionError>;
+type OpStackElementResult<T> = std::result::Result<T, OpStackElementError>;
+type NumWordsResult<T> = std::result::Result<T, NumberOfWordsError>;
 
 /// The number of registers dedicated to the top of the operational stack.
 pub const NUM_OP_STACK_REGISTERS: usize = OpStackElement::COUNT;
@@ -65,7 +69,7 @@ impl OpStack {
 
     pub(crate) fn pop(&mut self) -> Result<BFieldElement> {
         self.record_underflow_io(UnderflowIO::Read);
-        let element = self.stack.pop().ok_or_else(|| anyhow!(OpStackTooShallow))?;
+        let element = self.stack.pop().ok_or(OpStackTooShallow)?;
         Ok(element)
     }
 
@@ -98,7 +102,7 @@ impl OpStack {
         let element = self.pop()?;
         let element = element
             .try_into()
-            .map_err(|_| anyhow!(FailedU32Conversion(element)))?;
+            .map_err(|_| FailedU32Conversion(element))?;
         Ok(element)
     }
 
@@ -317,9 +321,9 @@ impl From<&OpStackElement> for u32 {
 }
 
 impl TryFrom<u32> for OpStackElement {
-    type Error = anyhow::Error;
+    type Error = OpStackElementError;
 
-    fn try_from(stack_index: u32) -> Result<Self> {
+    fn try_from(stack_index: u32) -> OpStackElementResult<Self> {
         match stack_index {
             0 => Ok(ST0),
             1 => Ok(ST1),
@@ -337,7 +341,7 @@ impl TryFrom<u32> for OpStackElement {
             13 => Ok(ST13),
             14 => Ok(ST14),
             15 => Ok(ST15),
-            _ => bail!("Index {stack_index} is out of range for `OpStackElement`."),
+            _ => Err(Self::Error::IndexOutOfBounds(stack_index)),
         }
     }
 }
@@ -349,9 +353,9 @@ impl From<OpStackElement> for u64 {
 }
 
 impl TryFrom<u64> for OpStackElement {
-    type Error = anyhow::Error;
+    type Error = OpStackElementError;
 
-    fn try_from(stack_index: u64) -> Result<Self> {
+    fn try_from(stack_index: u64) -> OpStackElementResult<Self> {
         u32::try_from(stack_index)?.try_into()
     }
 }
@@ -381,17 +385,17 @@ impl From<&OpStackElement> for i32 {
 }
 
 impl TryFrom<i32> for OpStackElement {
-    type Error = anyhow::Error;
+    type Error = OpStackElementError;
 
-    fn try_from(stack_index: i32) -> Result<Self> {
+    fn try_from(stack_index: i32) -> OpStackElementResult<Self> {
         u32::try_from(stack_index)?.try_into()
     }
 }
 
 impl TryFrom<usize> for OpStackElement {
-    type Error = anyhow::Error;
+    type Error = OpStackElementError;
 
-    fn try_from(stack_index: usize) -> Result<Self> {
+    fn try_from(stack_index: usize) -> OpStackElementResult<Self> {
         u32::try_from(stack_index)?.try_into()
     }
 }
@@ -533,56 +537,56 @@ impl From<&NumberOfWords> for BFieldElement {
 }
 
 impl TryFrom<usize> for NumberOfWords {
-    type Error = anyhow::Error;
+    type Error = NumberOfWordsError;
 
-    fn try_from(index: usize) -> Result<Self> {
+    fn try_from(index: usize) -> NumWordsResult<Self> {
         match index {
             1 => Ok(Self::N1),
             2 => Ok(Self::N2),
             3 => Ok(Self::N3),
             4 => Ok(Self::N4),
             5 => Ok(Self::N5),
-            _ => bail!("Index {index} is out of range for `NumberOfWords`."),
+            _ => Err(Self::Error::IndexOutOfBounds(index)),
         }
     }
 }
 
 impl TryFrom<u32> for NumberOfWords {
-    type Error = anyhow::Error;
+    type Error = NumberOfWordsError;
 
-    fn try_from(index: u32) -> Result<Self> {
+    fn try_from(index: u32) -> NumWordsResult<Self> {
         usize::try_from(index)?.try_into()
     }
 }
 
 impl TryFrom<OpStackElement> for NumberOfWords {
-    type Error = anyhow::Error;
+    type Error = NumberOfWordsError;
 
-    fn try_from(index: OpStackElement) -> Result<Self> {
+    fn try_from(index: OpStackElement) -> NumWordsResult<Self> {
         usize::try_from(index)?.try_into()
     }
 }
 
 impl TryFrom<u64> for NumberOfWords {
-    type Error = anyhow::Error;
+    type Error = NumberOfWordsError;
 
-    fn try_from(index: u64) -> Result<Self> {
+    fn try_from(index: u64) -> NumWordsResult<Self> {
         usize::try_from(index)?.try_into()
     }
 }
 
 impl TryFrom<BFieldElement> for NumberOfWords {
-    type Error = anyhow::Error;
+    type Error = NumberOfWordsError;
 
-    fn try_from(index: BFieldElement) -> Result<Self> {
+    fn try_from(index: BFieldElement) -> NumWordsResult<Self> {
         u32::try_from(index)?.try_into()
     }
 }
 
 impl TryFrom<&BFieldElement> for NumberOfWords {
-    type Error = anyhow::Error;
+    type Error = NumberOfWordsError;
 
-    fn try_from(&index: &BFieldElement) -> Result<Self> {
+    fn try_from(&index: &BFieldElement) -> NumWordsResult<Self> {
         index.try_into()
     }
 }
