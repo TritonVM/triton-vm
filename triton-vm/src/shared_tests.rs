@@ -1,3 +1,4 @@
+use std::error::Error;
 use std::fs::create_dir_all;
 use std::fs::File;
 use std::io::Read;
@@ -178,7 +179,7 @@ pub fn load_proof(filename: &str) -> std::io::Result<Proof> {
     Ok(proof)
 }
 
-pub fn save_proof(filename: &str, proof: Proof) -> std::io::Result<()> {
+pub fn save_proof(filename: &str, proof: Proof) -> Result<(), Box<dyn Error>> {
     if !proofs_directory_exists() {
         create_proofs_directory()?;
     }

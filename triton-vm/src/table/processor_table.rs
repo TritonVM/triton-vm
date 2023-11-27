@@ -3387,7 +3387,7 @@ impl<'a> Display for ProcessorTraceRow<'a> {
         let print_row = |s: String| writeln!(f, "│ {s: <total_width$} │");
         let print_blank_row = || print_row("".into());
 
-        let instruction = ProcessorTable::instruction_from_row(self.row)?;
+        let instruction = ProcessorTable::instruction_from_row(self.row).ok_or(std::fmt::Error)?;
 
         writeln!(f, " ╭─{:─<tab_width$}─╮", "")?;
         writeln!(f, " │ {: <tab_width$} │", format!("{instruction}"))?;
@@ -3456,7 +3456,6 @@ pub(crate) mod tests {
     use test_strategy::proptest;
     use twenty_first::shared_math::digest::Digest;
 
-    use crate::error::InstructionError;
     use crate::error::InstructionError::DivisionByZero;
     use crate::instruction::Instruction;
     use crate::instruction::LabelledInstruction;
@@ -4045,18 +4044,9 @@ pub(crate) mod tests {
 
     #[test]
     fn division_by_zero_is_impossible() {
-        let err = ProgramAndInput::without_input(triton_program!(div_mod))
-            .run()
-            .err();
-        let Some(err) = err else {
-            panic!("Dividing by 0 must fail.");
-        };
-        let Ok(err) = err.downcast::<InstructionError>() else {
-            panic!("Dividing by 0 must fail with InstructionError.");
-        };
-        let DivisionByZero = err else {
-            panic!("Dividing by 0 must fail with DivisionByZero.");
-        };
+        let program = ProgramAndInput::without_input(triton_program! { div_mod });
+        let err = program.run().unwrap_err();
+        assert_eq!(DivisionByZero, err.source);
     }
 
     #[test]

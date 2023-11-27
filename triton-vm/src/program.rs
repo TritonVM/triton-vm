@@ -93,8 +93,7 @@ impl BFieldCodec for Program {
         let mut read_idx = 0;
         while read_idx < program_length {
             let opcode = sequence[read_idx];
-            let mut instruction = opcode
-                .try_into()
+            let mut instruction = Instruction::try_from(opcode)
                 .map_err(|err| Self::Error::InvalidInstruction(read_idx, err))?;
             if instruction.has_arg() && instructions.len() + instruction.size() > program_length {
                 return Err(Self::Error::MissingArgument(read_idx, instruction));
@@ -404,7 +403,8 @@ impl Program {
     ) -> Result<Vec<BFieldElement>> {
         let mut state = VMState::new(self, public_input, non_determinism);
         while !state.halting {
-            state.step()?;
+            let vm_error = |err| VMError::new(err, state.clone());
+            state.step().map_err(vm_error)?;
         }
         Ok(state.public_output)
     }
@@ -428,8 +428,10 @@ impl Program {
         assert_eq!(self.len_bwords(), aet.instruction_multiplicities.len());
 
         while !state.halting {
-            aet.record_state(&state)?;
-            let co_processor_calls = state.step()?;
+            let consistent_state = state.clone();
+            let vm_error = |err| VMError::new(err, consistent_state);
+            aet.record_state(&state).map_err(vm_error)?;
+            let co_processor_calls = state.step().map_err(vm_error)?;
             for call in co_processor_calls {
                 aet.record_co_processor_call(call);
             }
@@ -538,15 +540,17 @@ impl Program {
         let mut profiler = VMProfiler::new();
         let mut state = VMState::new(self, public_input, non_determinism);
         while !state.halting {
-            if let Instruction::Call(address) = state.current_instruction()? {
+            let consistent_state = state.clone();
+            let vm_error = |err| VMError::new(err, consistent_state);
+            if let Instruction::Call(address) = state.current_instruction().map_err(vm_error)? {
                 let label = self.label_for_address(address.value());
                 profiler.enter_span_with_label_at_cycle(label, state.cycle_count);
             }
-            if let Instruction::Return = state.current_instruction()? {
+            if let Instruction::Return = state.current_instruction().map_err(vm_error)? {
                 profiler.exit_span_at_cycle(state.cycle_count);
             }
 
-            state.step()?;
+            state.step().map_err(vm_error)?;
         }
 
         let report = profiler.report_at_cycle(state.cycle_count);

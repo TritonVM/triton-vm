@@ -4,11 +4,14 @@ use std::fmt::Formatter;
 use std::num::TryFromIntError;
 
 use thiserror::Error;
+use twenty_first::shared_math::bfield_codec::BFieldCodec;
 use twenty_first::shared_math::digest::DIGEST_LENGTH;
 
 use crate::instruction::Instruction;
 use crate::op_stack::OpStackElement;
 use crate::proof_item::ProofItem;
+use crate::proof_stream::ProofStream;
+use crate::stark::StarkHasher;
 use crate::vm::VMState;
 use crate::BFieldElement;
 
@@ -85,12 +88,12 @@ pub enum InstructionError {
 }
 
 #[non_exhaustive]
-#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[derive(Debug, Error)]
 pub enum ProofStreamError {
     #[error("queue must be non-empty in order to dequeue an item")]
     EmptyQueue,
 
-    #[error("expected {0}, but got {1:?}")]
+    #[error("expected {0}, but got {1}")]
     UnexpectedItem(&'static str, ProofItem),
 
     #[error("the proof stream must contain a log2_padded_height item")]
@@ -98,10 +101,13 @@ pub enum ProofStreamError {
 
     #[error("the proof stream must contain exactly one log2_padded_height item")]
     TooManyLog2PaddedHeights,
+
+    #[error("decoding error: {0}")]
+    DecodingError(#[from] <ProofStream<StarkHasher> as BFieldCodec>::Error),
 }
 
 #[non_exhaustive]
-#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[derive(Debug, Error)]
 pub enum FriValidationError {
     #[error("the number of revealed leaves does not match the number of colinearity checks")]
     IncorrectNumberOfRevealedLeaves,
@@ -164,17 +170,20 @@ pub enum CanonicalRepresentationError {
 }
 
 #[non_exhaustive]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum ProvingError {
     #[error("claimed program digest does not match actual program digest")]
     ProgramDigestMismatch,
 
     #[error("claimed public output does not match actual public output")]
     PublicOutputMismatch,
+
+    #[error("error while running Triton VM: {0}")]
+    VMError(#[from] VMError<'static>),
 }
 
 #[non_exhaustive]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+#[derive(Debug, Error)]
 pub enum VerificationError {
     #[error("received and computed out-of-domain quotient values don't match")]
     OutOfDomainQuotientValueMismatch,
@@ -205,6 +214,12 @@ pub enum VerificationError {
 
     #[error("the number of received extension table rows does not match the parameters")]
     IncorrectNumberOfExtTableRows,
+
+    #[error("proof stream error: {0}")]
+    ProofStreamError(#[from] ProofStreamError),
+
+    #[error("FRI validation error: {0}")]
+    FriValidationError(#[from] FriValidationError),
 }
 
 #[non_exhaustive]

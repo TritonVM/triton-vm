@@ -859,7 +859,9 @@ mod tests {
 
         let verdict = fri.verify(&mut proof_stream, &mut None);
         let err = verdict.unwrap_err();
-        prop_assert_eq!(FriValidationError::BadMerkleRootForLastCodeword, err);
+        let FriValidationError::BadMerkleRootForLastCodeword = err else {
+            return Err(TestCaseError::Fail("validation must fail".into()));
+        };
     }
 
     #[must_use]
@@ -910,7 +912,9 @@ mod tests {
 
         let verdict = fri.verify(&mut proof_stream, &mut None);
         let err = verdict.unwrap_err();
-        prop_assert_eq!(FriValidationError::IncorrectNumberOfRevealedLeaves, err);
+        let FriValidationError::IncorrectNumberOfRevealedLeaves = err else {
+            return Err(TestCaseError::Fail("validation must fail".into()));
+        };
     }
 
     #[must_use]
@@ -962,7 +966,9 @@ mod tests {
 
         let verdict = fri.verify(&mut proof_stream, &mut None);
         let err = verdict.unwrap_err();
-        prop_assert_eq!(FriValidationError::BadMerkleAuthenticationPath, err);
+        let FriValidationError::BadMerkleAuthenticationPath = err else {
+            return Err(TestCaseError::Fail("validation must fail".into()));
+        };
     }
 
     #[must_use]
