@@ -20,7 +20,7 @@ pub struct FriResponse {
     pub revealed_leaves: Vec<XFieldElement>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Display, EnumCount, Arbitrary)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Display, EnumCount, BFieldCodec, Arbitrary)]
 pub enum ProofItem {
     AuthenticationStructure(AuthenticationStructure),
     MasterBaseTableRows(Vec<Vec<BFieldElement>>),
@@ -36,25 +36,6 @@ pub enum ProofItem {
 }
 
 impl ProofItem {
-    /// The unique identifier for this item type.
-    pub const fn discriminant(&self) -> BFieldElement {
-        use ProofItem::*;
-        let discriminant: u64 = match self {
-            AuthenticationStructure(_) => 0,
-            MasterBaseTableRows(_) => 1,
-            MasterExtTableRows(_) => 2,
-            OutOfDomainBaseRow(_) => 3,
-            OutOfDomainExtRow(_) => 4,
-            OutOfDomainQuotientSegments(_) => 10,
-            MerkleRoot(_) => 5,
-            Log2PaddedHeight(_) => 6,
-            QuotientSegmentsElements(_) => 7,
-            FriCodeword(_) => 8,
-            FriResponse(_) => 9,
-        };
-        BFieldElement::new(discriminant)
-    }
-
     /// Whether a given proof item should be considered in the Fiat-Shamir heuristic.
     /// The Fiat-Shamir heuristic is sound only if all elements in the (current) transcript are
     /// considered. However, certain elements indirectly appear more than once. For example, a
@@ -160,64 +141,6 @@ impl ProofItem {
             Self::FriResponse(fri_proof) => Ok(fri_proof.to_owned()),
             other => bail!("expected FRI proof, but got {other:?}"),
         }
-    }
-}
-
-impl BFieldCodec for ProofItem {
-    /// Turn the given string of BFieldElements into a ProofItem. The first element indicates the
-    /// field type, and the rest of the elements are the data for the item.
-    fn decode(str: &[BFieldElement]) -> Result<Box<Self>> {
-        if str.is_empty() {
-            bail!("empty buffer");
-        }
-
-        let discriminant = str[0].value();
-        let str = &str[1..];
-        let item = match discriminant {
-            0 => Self::AuthenticationStructure(*AuthenticationStructure::decode(str)?),
-            1 => Self::MasterBaseTableRows(*Vec::<Vec<BFieldElement>>::decode(str)?),
-            2 => Self::MasterExtTableRows(*Vec::<Vec<XFieldElement>>::decode(str)?),
-            3 => Self::OutOfDomainBaseRow(*Vec::<XFieldElement>::decode(str)?),
-            4 => Self::OutOfDomainExtRow(*Vec::<XFieldElement>::decode(str)?),
-            5 => Self::MerkleRoot(*Digest::decode(str)?),
-            6 => Self::Log2PaddedHeight(*u32::decode(str)?),
-            7 => Self::QuotientSegmentsElements(
-                *Vec::<[XFieldElement; NUM_QUOTIENT_SEGMENTS]>::decode(str)?,
-            ),
-            8 => Self::FriCodeword(*Vec::<XFieldElement>::decode(str)?),
-            9 => Self::FriResponse(*FriResponse::decode(str)?),
-            10 => Self::OutOfDomainQuotientSegments(
-                *<[XFieldElement; NUM_QUOTIENT_SEGMENTS]>::decode(str)?,
-            ),
-            i => bail!("Unknown discriminant {i} for ProofItem."),
-        };
-        Ok(Box::new(item))
-    }
-
-    /// Encode the ProofItem as a string of BFieldElements, with the first element denoting the
-    /// length of the rest.
-    fn encode(&self) -> Vec<BFieldElement> {
-        use ProofItem::*;
-
-        let discriminant = vec![self.discriminant()];
-        let encoding = match self {
-            AuthenticationStructure(something) => something.encode(),
-            MasterBaseTableRows(something) => something.encode(),
-            MasterExtTableRows(something) => something.encode(),
-            OutOfDomainBaseRow(row) => row.encode(),
-            OutOfDomainExtRow(row) => row.encode(),
-            OutOfDomainQuotientSegments(segments) => segments.encode(),
-            MerkleRoot(something) => something.encode(),
-            Log2PaddedHeight(height) => height.encode(),
-            QuotientSegmentsElements(something) => something.encode(),
-            FriCodeword(something) => something.encode(),
-            FriResponse(something) => something.encode(),
-        };
-        [discriminant, encoding].concat()
-    }
-
-    fn static_length() -> Option<usize> {
-        None
     }
 }
 

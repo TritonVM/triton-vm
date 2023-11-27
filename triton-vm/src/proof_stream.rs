@@ -11,13 +11,17 @@ use crate::error::ProofStreamError;
 use crate::proof::Proof;
 use crate::proof_item::ProofItem;
 
-#[derive(Default, Debug, Clone, PartialEq, Eq, Arbitrary)]
+#[derive(Default, Debug, Clone, PartialEq, Eq, Arbitrary, BFieldCodec)]
 pub struct ProofStream<H>
 where
     H: AlgebraicHasher,
 {
     pub items: Vec<ProofItem>,
+
+    #[bfield_codec(ignore)]
     pub items_index: usize,
+
+    #[bfield_codec(ignore)]
     pub sponge_state: H::SpongeState,
 }
 
@@ -115,28 +119,6 @@ where
     /// A thin wrapper around [`H::sample_scalars`](AlgebraicHasher::sample_scalars).
     pub fn sample_scalars(&mut self, num_scalars: usize) -> Vec<XFieldElement> {
         H::sample_scalars(&mut self.sponge_state, num_scalars)
-    }
-}
-
-impl<H> BFieldCodec for ProofStream<H>
-where
-    H: AlgebraicHasher,
-{
-    fn decode(sequence: &[BFieldElement]) -> Result<Box<Self>, ProofStreamError> {
-        let items = *Vec::decode(sequence)?;
-        let proof_stream = Self {
-            items,
-            ..Self::new()
-        };
-        Ok(Box::new(proof_stream))
-    }
-
-    fn encode(&self) -> Vec<BFieldElement> {
-        self.items.encode()
-    }
-
-    fn static_length() -> Option<usize> {
-        None
     }
 }
 
