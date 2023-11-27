@@ -912,6 +912,8 @@ pub(crate) mod tests {
     use std::ops::BitAnd;
     use std::ops::BitXor;
 
+    use assert2::assert;
+    use assert2::let_assert;
     use itertools::Itertools;
     use ndarray::Array1;
     use ndarray::ArrayView1;
@@ -981,12 +983,12 @@ pub(crate) mod tests {
     fn run_tvm_gcd() {
         let program = GREATEST_COMMON_DIVISOR.clone();
         let stdin = vec![42, 56].into();
-        let stdout = program.run(stdin, [].into()).unwrap();
+        let_assert!(Ok(stdout) = program.run(stdin, [].into()));
 
         let stdout = Array1::from(stdout);
         println!("VM output: [{}]", pretty_print_array_view(stdout.view()));
 
-        assert_eq!(BFieldElement::new(14), stdout[0]);
+        assert!(BFieldElement::new(14) == stdout[0]);
     }
 
     pub(crate) fn test_program_hash_nop_nop_lt() -> ProgramAndInput {
@@ -1676,8 +1678,8 @@ pub(crate) mod tests {
                 split pop 1 push 0 eq return
         );
         let program_and_input = ProgramAndInput::without_input(program);
-        let err = program_and_input.run().unwrap_err();
-        assert_eq!(AssertionFailed, err.source);
+        let_assert!(Err(err) = program_and_input.run());
+        let_assert!(AssertionFailed = err.source);
     }
 
     pub(crate) fn test_program_for_split() -> ProgramAndInput {
@@ -1772,15 +1774,8 @@ pub(crate) mod tests {
             write_io 3
             halt
         );
-        let program = ProgramAndInput {
-            program,
-            public_input: [].into(),
-            non_determinism: [].into(),
-        };
-
-        let actual_stdout = program.run().unwrap();
+        let actual_stdout = program.run([].into(), [].into())?;
         let expected_stdout = (left_operand + right_operand).coefficients.to_vec();
-
         prop_assert_eq!(expected_stdout, actual_stdout);
     }
 
@@ -1800,15 +1795,8 @@ pub(crate) mod tests {
             write_io 3
             halt
         );
-        let program = ProgramAndInput {
-            program,
-            public_input: [].into(),
-            non_determinism: [].into(),
-        };
-
-        let actual_stdout = program.run().unwrap();
+        let actual_stdout = program.run([].into(), [].into())?;
         let expected_stdout = (left_operand * right_operand).coefficients.to_vec();
-
         prop_assert_eq!(expected_stdout, actual_stdout);
     }
 
@@ -1826,15 +1814,8 @@ pub(crate) mod tests {
             write_io 3
             halt
         );
-        let program = ProgramAndInput {
-            program,
-            public_input: [].into(),
-            non_determinism: [].into(),
-        };
-
-        let actual_stdout = program.run().unwrap();
+        let actual_stdout = program.run([].into(), [].into())?;
         let expected_stdout = operand.inverse().coefficients.to_vec();
-
         prop_assert_eq!(expected_stdout, actual_stdout);
     }
 
@@ -1849,15 +1830,8 @@ pub(crate) mod tests {
             write_io 3
             halt
         );
-        let program = ProgramAndInput {
-            program,
-            public_input: [].into(),
-            non_determinism: [].into(),
-        };
-
-        let actual_stdout = program.run().unwrap();
+        let actual_stdout = program.run([].into(), [].into())?;
         let expected_stdout = (scalar * operand).coefficients.to_vec();
-
         prop_assert_eq!(expected_stdout, actual_stdout);
     }
 
@@ -1871,7 +1845,7 @@ pub(crate) mod tests {
             sub:
                 swap 1 push -1 mul add return
         );
-        let actual_stdout = ProgramAndInput::without_input(program).run().unwrap();
+        let actual_stdout = ProgramAndInput::without_input(program).run()?;
         let expected_stdout = vec![minuend - subtrahend];
 
         prop_assert_eq!(expected_stdout, actual_stdout);
@@ -1880,10 +1854,7 @@ pub(crate) mod tests {
     #[test]
     #[allow(clippy::assertions_on_constants)]
     const fn op_stack_is_big_enough() {
-        assert!(
-            2 * DIGEST_LENGTH <= OpStackElement::COUNT,
-            "The OpStack must be large enough to hold two digests."
-        );
+        std::assert!(2 * DIGEST_LENGTH <= OpStackElement::COUNT);
     }
     const _COMPILE_TIME_ASSERTION: () = op_stack_is_big_enough();
 
@@ -1907,21 +1878,21 @@ pub(crate) mod tests {
             write_io 5 write_io 5 write_io 4
             halt
         );
-        let terminal_state = program.terminal_state([].into(), [].into()).unwrap();
-        assert_eq!(BFIELD_ZERO, terminal_state.op_stack.peek_at(ST0));
+        let_assert!(Ok(terminal_state) = program.terminal_state([].into(), [].into()));
+        assert!(BFIELD_ZERO == terminal_state.op_stack.peek_at(ST0));
     }
 
     #[test]
     fn run_tvm_halt_then_do_stuff() {
         let program = triton_program!(halt push 1 push 2 add invert write_io 5);
-        let (aet, _) = program.trace_execution([].into(), [].into()).unwrap();
+        let_assert!(Ok((aet, _)) = program.trace_execution([].into(), [].into()));
 
-        let last_processor_row = aet.processor_trace.rows().into_iter().last().unwrap();
+        let_assert!(Some(last_processor_row) = aet.processor_trace.rows().into_iter().last());
         let clk_count = last_processor_row[ProcessorBaseTableColumn::CLK.base_table_index()];
-        assert_eq!(BFIELD_ZERO, clk_count);
+        assert!(BFIELD_ZERO == clk_count);
 
         let last_instruction = last_processor_row[ProcessorBaseTableColumn::CI.base_table_index()];
-        assert_eq!(Instruction::Halt.opcode_b(), last_instruction);
+        assert!(Instruction::Halt.opcode_b() == last_instruction);
 
         println!("{last_processor_row}");
     }
@@ -1939,11 +1910,11 @@ pub(crate) mod tests {
             halt
         );
 
-        let terminal_state = program.terminal_state([].into(), [].into()).unwrap();
-        assert_eq!(BFieldElement::new(4), terminal_state.op_stack.peek_at(ST0));
-        assert_eq!(BFieldElement::new(7), terminal_state.op_stack.peek_at(ST1));
-        assert_eq!(BFieldElement::new(14), terminal_state.op_stack.peek_at(ST2));
-        assert_eq!(BFieldElement::new(18), terminal_state.op_stack.peek_at(ST3));
+        let_assert!(Ok(terminal_state) = program.terminal_state([].into(), [].into()));
+        assert!(BFieldElement::new(4) == terminal_state.op_stack.peek_at(ST0));
+        assert!(BFieldElement::new(7) == terminal_state.op_stack.peek_at(ST1));
+        assert!(BFieldElement::new(14) == terminal_state.op_stack.peek_at(ST2));
+        assert!(BFieldElement::new(18) == terminal_state.op_stack.peek_at(ST3));
     }
 
     #[test]
@@ -1971,10 +1942,10 @@ pub(crate) mod tests {
             halt
         );
 
-        let terminal_state = program.terminal_state([].into(), [].into()).unwrap();
-        assert_eq!(BFieldElement::new(2), terminal_state.op_stack.peek_at(ST0));
-        assert_eq!(BFieldElement::new(5), terminal_state.op_stack.peek_at(ST1));
-        assert_eq!(BFieldElement::new(5), terminal_state.op_stack.peek_at(ST2));
+        let_assert!(Ok(terminal_state) = program.terminal_state([].into(), [].into()));
+        assert!(BFieldElement::new(2) == terminal_state.op_stack.peek_at(ST0));
+        assert!(BFieldElement::new(5) == terminal_state.op_stack.peek_at(ST1));
+        assert!(BFieldElement::new(5) == terminal_state.op_stack.peek_at(ST2));
     }
 
     #[test]
@@ -2007,7 +1978,7 @@ pub(crate) mod tests {
         }
 
         let program = MERKLE_TREE_AUTHENTICATION_PATH_VERIFY.clone();
-        program.run(public_input.into(), non_determinism).unwrap();
+        assert!(let Ok(_) = program.run(public_input.into(), non_determinism));
     }
 
     #[proptest]
@@ -2053,30 +2024,30 @@ pub(crate) mod tests {
                 halt
         );
 
-        let standard_out = countdown_program.run([].into(), [].into()).unwrap();
+        let_assert!(Ok(standard_out) = countdown_program.run([].into(), [].into()));
         let expected = (0..=10).map(BFieldElement::new).rev().collect_vec();
-        assert_eq!(expected, standard_out);
+        assert!(expected == standard_out);
     }
 
     #[test]
     fn run_tvm_fibonacci_tvm() {
         let program = FIBONACCI_SEQUENCE.clone();
-        let standard_out = program.run(vec![7].into(), [].into()).unwrap();
-        assert_eq!(BFieldElement::new(21), standard_out[0]);
+        let_assert!(Ok(standard_out) = program.run(vec![7].into(), [].into()));
+        assert!(BFieldElement::new(21) == standard_out[0]);
     }
 
     #[test]
     fn run_tvm_swap() {
         let program = triton_program!(push 1 push 2 swap 1 assert write_io 1 halt);
-        let standard_out = program.run([].into(), [].into()).unwrap();
-        assert_eq!(BFieldElement::new(2), standard_out[0]);
+        let_assert!(Ok(standard_out) = program.run([].into(), [].into()));
+        assert!(BFieldElement::new(2) == standard_out[0]);
     }
 
     #[test]
     fn read_mem_unitialized() {
         let program = triton_program!(read_mem 3 halt);
-        let (aet, _) = program.trace_execution([].into(), [].into()).unwrap();
-        assert_eq!(2, aet.processor_trace.nrows());
+        let_assert!(Ok((aet, _)) = program.trace_execution([].into(), [].into()));
+        assert!(2 == aet.processor_trace.nrows());
     }
 
     #[test]
@@ -2089,10 +2060,8 @@ pub(crate) mod tests {
         let public_input = PublicInput::new(vec![]);
         let secret_input = NonDeterminism::new(vec![]).with_ram(initial_ram);
 
-        let public_output = program
-            .run(public_input.clone(), secret_input.clone())
-            .unwrap();
-        assert_eq!(42, public_output[0].value());
+        let_assert!(Ok(public_output) = program.run(public_input.clone(), secret_input.clone()));
+        assert!(42 == public_output[0].value());
 
         prove_with_low_security_level(&program, public_input, secret_input, &mut None);
     }
@@ -2114,11 +2083,9 @@ pub(crate) mod tests {
         let public_input = PublicInput::new(vec![]);
         let secret_input = NonDeterminism::new(vec![]).with_ram(initial_ram);
 
-        let public_output = program
-            .run(public_input.clone(), secret_input.clone())
-            .unwrap();
-        assert_eq!(0, public_output[0].value());
-        assert_eq!(value, public_output[1]);
+        let_assert!(Ok(public_output) = program.run(public_input.clone(), secret_input.clone()));
+        assert!(0 == public_output[0].value());
+        assert!(value == public_output[1]);
 
         prove_with_low_security_level(&program, public_input, secret_input, &mut None);
     }
@@ -2126,14 +2093,8 @@ pub(crate) mod tests {
     #[test]
     fn program_without_halt() {
         let program = triton_program!(nop);
-        let err = program.trace_execution([].into(), [].into()).err();
-        let Some(err) = err else {
-            panic!("Program without halt must fail.");
-        };
-        assert_eq!(
-            InstructionPointerOverflow, err.source,
-            "program without halt must fail with InstructionPointerOverflow"
-        );
+        let_assert!(Err(err) = program.trace_execution([].into(), [].into()));
+        let_assert!(InstructionPointerOverflow = err.source);
     }
 
     #[test]
@@ -2154,9 +2115,7 @@ pub(crate) mod tests {
         ]
         .into();
         let secret_in = [].into();
-        if let Err(e) = program.trace_execution(stdin, secret_in) {
-            panic!("The VM encountered an error: {e}");
-        }
+        assert!(let Ok(_) = program.trace_execution(stdin, secret_in));
 
         // rows and columns adhere to Sudoku rules, boxes do not
         let bad_stdin = vec![
@@ -2174,10 +2133,7 @@ pub(crate) mod tests {
         ]
         .into();
         let secret_in = [].into();
-        let err = program.trace_execution(bad_stdin, secret_in).unwrap_err();
-        assert_eq!(
-            AssertionFailed, err.source,
-            "Sudoku verifier must fail with AssertionFailed on bad Sudoku"
-        );
+        let_assert!(Err(err) = program.trace_execution(bad_stdin, secret_in));
+        let_assert!(AssertionFailed = err.source);
     }
 }

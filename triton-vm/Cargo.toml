@@ -41,7 +41,9 @@ twenty-first.workspace = true
 unicode-width.workspace = true
 
 [dev-dependencies]
+assert2.workspace = true
 cargo-husky.workspace = true
+pretty_assertions.workspace = true
 proptest.workspace = true
 proptest-arbitrary-interop.workspace = true
 test-strategy.workspace = true

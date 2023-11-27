@@ -768,6 +768,7 @@ where
 
 #[cfg(test)]
 mod tests {
+    use assert2::let_assert;
     use itertools::Itertools;
     use proptest::prelude::*;
     use proptest_arbitrary_interop::arb;
@@ -797,27 +798,33 @@ mod tests {
         let mut encoded = encoded[0..encoded.len() - 1].to_vec();
         encoded[0] = BFieldElement::new(program_length - 1);
 
-        let err = Program::decode(&encoded).err().unwrap();
-        assert_eq!(
-            "Missing argument for instruction push 0 at index 6.",
-            err.to_string(),
-        );
+        let_assert!(Err(err) = Program::decode(&encoded));
+        let_assert!(ProgramDecodingError::MissingArgument(6, _) = err);
     }
 
     #[test]
-    #[should_panic(expected = "Expected `program_length` to equal `sequence.len()`.")]
-    fn decode_program_with_length_mismatch() {
+    fn decode_program_with_shorter_than_indicated_sequence() {
         let program = triton_program!(nop nop hash push 0 skiz end: halt call end);
         let mut encoded = program.encode();
         encoded[0] += 1_u64.into();
-        Program::decode(&encoded).unwrap();
+        let_assert!(Err(err) = Program::decode(&encoded));
+        let_assert!(ProgramDecodingError::SequenceTooShort = err);
+    }
+
+    #[test]
+    fn decode_program_with_longer_than_indicated_sequence() {
+        let program = triton_program!(nop nop hash push 0 skiz end: halt call end);
+        let mut encoded = program.encode();
+        encoded[0] -= 1_u64.into();
+        let_assert!(Err(err) = Program::decode(&encoded));
+        let_assert!(ProgramDecodingError::SequenceTooLong = err);
     }
 
     #[test]
     fn decode_program_from_empty_sequence() {
         let encoded = vec![];
-        let err = Program::decode(&encoded).err().unwrap();
-        assert_eq!("Sequence to decode must not be empty.", err.to_string(),);
+        let_assert!(Err(err) = Program::decode(&encoded));
+        let_assert!(ProgramDecodingError::EmptySequence = err);
     }
 
     #[test]

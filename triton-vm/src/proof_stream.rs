@@ -156,6 +156,8 @@ where
 mod tests {
     use std::collections::VecDeque;
 
+    use assert2::assert;
+    use assert2::let_assert;
     use itertools::Itertools;
     use rand::distributions::Standard;
     use rand::prelude::Distribution;
@@ -253,99 +255,48 @@ mod tests {
         sponge_states.push_back(proof_stream.sponge_state.state);
 
         let proof = proof_stream.into();
-        let mut proof_stream: ProofStream<H> =
-            ProofStream::try_from(&proof).expect("invalid parsing of proof");
+        let mut proof_stream: ProofStream<H> = ProofStream::try_from(&proof).unwrap();
 
-        assert_eq!(
-            sponge_states.pop_front(),
-            Some(proof_stream.sponge_state.state)
-        );
-        match proof_stream.dequeue().unwrap() {
-            ProofItem::AuthenticationStructure(auth_structure_) => {
-                assert_eq!(auth_structure, auth_structure_)
-            }
-            _ => panic!(),
-        };
+        assert!(sponge_states.pop_front() == Some(proof_stream.sponge_state.state));
+        let_assert!(Ok(proof_item) = proof_stream.dequeue());
+        let_assert!(ProofItem::AuthenticationStructure(auth_structure_) = proof_item);
+        assert!(auth_structure == auth_structure_);
 
-        assert_eq!(
-            sponge_states.pop_front(),
-            Some(proof_stream.sponge_state.state)
-        );
-        match proof_stream.dequeue().unwrap() {
-            ProofItem::MasterBaseTableRows(base_rows_) => assert_eq!(base_rows, base_rows_),
-            _ => panic!(),
-        };
+        assert!(sponge_states.pop_front() == Some(proof_stream.sponge_state.state));
+        let_assert!(Ok(ProofItem::MasterBaseTableRows(base_rows_)) = proof_stream.dequeue());
+        assert!(base_rows == base_rows_);
 
-        assert_eq!(
-            sponge_states.pop_front(),
-            Some(proof_stream.sponge_state.state)
-        );
-        match proof_stream.dequeue().unwrap() {
-            ProofItem::MasterExtTableRows(ext_rows_) => assert_eq!(ext_rows, ext_rows_),
-            _ => panic!(),
-        };
+        assert!(sponge_states.pop_front() == Some(proof_stream.sponge_state.state));
+        let_assert!(Ok(ProofItem::MasterExtTableRows(ext_rows_)) = proof_stream.dequeue());
+        assert!(ext_rows == ext_rows_);
 
-        assert_eq!(
-            sponge_states.pop_front(),
-            Some(proof_stream.sponge_state.state)
-        );
-        match proof_stream.dequeue().unwrap() {
-            ProofItem::OutOfDomainBaseRow(ood_base_row_) => assert_eq!(ood_base_row, ood_base_row_),
-            _ => panic!(),
-        };
+        assert!(sponge_states.pop_front() == Some(proof_stream.sponge_state.state));
+        let_assert!(Ok(ProofItem::OutOfDomainBaseRow(ood_base_row_)) = proof_stream.dequeue());
+        assert!(ood_base_row == ood_base_row_);
 
-        assert_eq!(
-            sponge_states.pop_front(),
-            Some(proof_stream.sponge_state.state)
-        );
-        match proof_stream.dequeue().unwrap() {
-            ProofItem::OutOfDomainExtRow(ood_ext_row_) => assert_eq!(ood_ext_row, ood_ext_row_),
-            _ => panic!(),
-        };
+        assert!(sponge_states.pop_front() == Some(proof_stream.sponge_state.state));
+        let_assert!(Ok(ProofItem::OutOfDomainExtRow(ood_ext_row_)) = proof_stream.dequeue());
+        assert!(ood_ext_row == ood_ext_row_);
 
-        assert_eq!(
-            sponge_states.pop_front(),
-            Some(proof_stream.sponge_state.state)
-        );
-        match proof_stream.dequeue().unwrap() {
-            ProofItem::MerkleRoot(root_) => assert_eq!(root, root_),
-            _ => panic!(),
-        };
+        assert!(sponge_states.pop_front() == Some(proof_stream.sponge_state.state));
+        let_assert!(Ok(ProofItem::MerkleRoot(root_)) = proof_stream.dequeue());
+        assert!(root == root_);
 
-        assert_eq!(
-            sponge_states.pop_front(),
-            Some(proof_stream.sponge_state.state)
-        );
-        match proof_stream.dequeue().unwrap() {
-            ProofItem::QuotientSegmentsElements(quot_elements_) => {
-                assert_eq!(quot_elements, quot_elements_)
-            }
-            _ => panic!(),
-        };
+        assert!(sponge_states.pop_front() == Some(proof_stream.sponge_state.state));
+        let_assert!(Ok(proof_item) = proof_stream.dequeue());
+        let_assert!(ProofItem::QuotientSegmentsElements(quot_elements_) = proof_item);
+        assert!(quot_elements == quot_elements_);
 
-        assert_eq!(
-            sponge_states.pop_front(),
-            Some(proof_stream.sponge_state.state)
-        );
-        match proof_stream.dequeue().unwrap() {
-            ProofItem::FriCodeword(fri_codeword_) => assert_eq!(fri_codeword, fri_codeword_),
-            _ => panic!(),
-        };
+        assert!(sponge_states.pop_front() == Some(proof_stream.sponge_state.state));
+        let_assert!(Ok(ProofItem::FriCodeword(fri_codeword_)) = proof_stream.dequeue());
+        assert!(fri_codeword == fri_codeword_);
 
-        assert_eq!(
-            sponge_states.pop_front(),
-            Some(proof_stream.sponge_state.state)
-        );
-        match proof_stream.dequeue().unwrap() {
-            ProofItem::FriResponse(fri_response_) => assert_eq!(fri_response, fri_response_),
-            _ => panic!(),
-        };
+        assert!(sponge_states.pop_front() == Some(proof_stream.sponge_state.state));
+        let_assert!(Ok(ProofItem::FriResponse(fri_response_)) = proof_stream.dequeue());
+        assert!(fri_response == fri_response_);
 
-        assert_eq!(
-            sponge_states.pop_front(),
-            Some(proof_stream.sponge_state.state)
-        );
-        assert_eq!(sponge_states.len(), 0);
+        assert!(sponge_states.pop_front() == Some(proof_stream.sponge_state.state));
+        assert!(0 == sponge_states.len());
     }
 
     #[test]
@@ -390,21 +341,20 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Queue must be non-empty")]
     fn dequeuing_from_empty_stream_fails() {
         let mut proof_stream = ProofStream::<Tip5>::new();
-        proof_stream.dequeue().unwrap();
+        let_assert!(Err(ProofStreamError::EmptyQueue) = proof_stream.dequeue());
     }
 
     #[test]
-    #[should_panic(expected = "Queue must be non-empty")]
     fn dequeuing_more_items_than_have_been_enqueued_fails() {
         let mut proof_stream = ProofStream::<Tip5>::new();
         proof_stream.enqueue(ProofItem::FriCodeword(vec![]));
         proof_stream.enqueue(ProofItem::Log2PaddedHeight(7));
-        proof_stream.dequeue().unwrap();
-        proof_stream.dequeue().unwrap();
-        proof_stream.dequeue().unwrap();
+
+        let_assert!(Ok(_) = proof_stream.dequeue());
+        let_assert!(Ok(_) = proof_stream.dequeue());
+        let_assert!(Err(ProofStreamError::EmptyQueue) = proof_stream.dequeue());
     }
 
     #[test]
