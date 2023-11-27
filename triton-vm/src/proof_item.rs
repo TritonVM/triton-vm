@@ -6,8 +6,12 @@ use twenty_first::shared_math::bfield_codec::BFieldCodec;
 use twenty_first::shared_math::tip5::Digest;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
+use crate::error::ProofStreamError;
+use crate::error::ProofStreamError::UnexpectedItem;
 use crate::fri::AuthenticationStructure;
 use crate::stark::NUM_QUOTIENT_SEGMENTS;
+
+type Result<T> = std::result::Result<T, ProofStreamError>;
 
 /// A `FriResponse` is an `AuthenticationStructure` together with the values of the
 /// revealed leaves of the Merkle tree. Together, they correspond to the
@@ -65,35 +69,35 @@ impl ProofItem {
     pub fn as_authentication_structure(&self) -> Result<AuthenticationStructure> {
         match self {
             Self::AuthenticationStructure(caps) => Ok(caps.to_owned()),
-            other => bail!("expected authentication structure, but got {other:?}",),
+            other => Err(UnexpectedItem("authentication structure", other.to_owned())),
         }
     }
 
     pub fn as_master_base_table_rows(&self) -> Result<Vec<Vec<BFieldElement>>> {
         match self {
             Self::MasterBaseTableRows(bss) => Ok(bss.to_owned()),
-            other => bail!("expected master base table rows, but got something {other:?}",),
+            other => Err(UnexpectedItem("master base table rows", other.to_owned())),
         }
     }
 
     pub fn as_master_ext_table_rows(&self) -> Result<Vec<Vec<XFieldElement>>> {
         match self {
             Self::MasterExtTableRows(xss) => Ok(xss.to_owned()),
-            other => bail!("expected master extension table rows, but got {other:?}",),
+            o => Err(UnexpectedItem("master extension table rows", o.to_owned())),
         }
     }
 
     pub fn as_out_of_domain_base_row(&self) -> Result<Vec<XFieldElement>> {
         match self {
             Self::OutOfDomainBaseRow(xs) => Ok(xs.to_owned()),
-            other => bail!("expected out of domain base row, but got {other:?}",),
+            other => Err(UnexpectedItem("out of domain base row", other.to_owned())),
         }
     }
 
     pub fn as_out_of_domain_ext_row(&self) -> Result<Vec<XFieldElement>> {
         match self {
             Self::OutOfDomainExtRow(xs) => Ok(xs.to_owned()),
-            other => bail!("expected out of domain extension row, but got {other:?}",),
+            o => Err(UnexpectedItem("out of domain extension row", o.to_owned())),
         }
     }
 
@@ -102,21 +106,24 @@ impl ProofItem {
     ) -> Result<[XFieldElement; NUM_QUOTIENT_SEGMENTS]> {
         match self {
             Self::OutOfDomainQuotientSegments(xs) => Ok(*xs),
-            other => bail!("expected out of domain quotient segments, but got {other:?}",),
+            other => Err(UnexpectedItem(
+                "out of domain quotient segments",
+                other.to_owned(),
+            )),
         }
     }
 
     pub fn as_merkle_root(&self) -> Result<Digest> {
         match self {
             Self::MerkleRoot(bs) => Ok(*bs),
-            other => bail!("expected merkle root, but got {other:?}",),
+            other => Err(UnexpectedItem("merkle root", other.to_owned())),
         }
     }
 
     pub fn as_log2_padded_height(&self) -> Result<u32> {
         match self {
             Self::Log2PaddedHeight(log2_padded_height) => Ok(*log2_padded_height),
-            other => bail!("expected log2 padded height, but got {other:?}",),
+            other => Err(UnexpectedItem("log2 padded height", other.to_owned())),
         }
     }
 
@@ -125,21 +132,21 @@ impl ProofItem {
     ) -> Result<Vec<[XFieldElement; NUM_QUOTIENT_SEGMENTS]>> {
         match self {
             Self::QuotientSegmentsElements(xs) => Ok(xs.to_owned()),
-            other => bail!("expected quotient segments' elements, but got {other:?}",),
+            o => Err(UnexpectedItem("quotient segments' elements", o.to_owned())),
         }
     }
 
     pub fn as_fri_codeword(&self) -> Result<Vec<XFieldElement>> {
         match self {
             Self::FriCodeword(xs) => Ok(xs.to_owned()),
-            other => bail!("expected FRI codeword, but got {other:?}",),
+            other => Err(UnexpectedItem("FRI codeword", other.to_owned())),
         }
     }
 
     pub fn as_fri_response(&self) -> Result<FriResponse> {
         match self {
             Self::FriResponse(fri_proof) => Ok(fri_proof.to_owned()),
-            other => bail!("expected FRI proof, but got {other:?}"),
+            other => Err(UnexpectedItem("FRI proof", other.to_owned())),
         }
     }
 }

@@ -4,10 +4,11 @@ use twenty_first::shared_math::digest::DIGEST_LENGTH;
 use crate::instruction::Instruction;
 use crate::op_stack::NumberOfWords;
 use crate::op_stack::OpStackElement;
+use crate::proof_item::ProofItem;
 use crate::vm::VMState;
 use crate::BFieldElement;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub struct VMError<'pgm> {
     source: InstructionError,
     vm_state: VMState<'pgm>,
@@ -69,10 +70,13 @@ pub(crate) enum InstructionError {
 }
 
 #[non_exhaustive]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub(crate) enum ProofStreamError {
     #[error("queue must be non-empty in order to dequeue an item")]
     EmptyQueue,
+
+    #[error("expected {0}, but got {1:?}")]
+    UnexpectedItem(&'static str, ProofItem),
 
     #[error("the proof stream must contain a log2_padded_height item")]
     NoLog2PaddedHeight,
