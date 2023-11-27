@@ -3384,8 +3384,8 @@ impl<'a> Display for ProcessorTraceRow<'a> {
         };
         let multi_register = |regs: [_; 4]| regs.map(register).join(" | ");
 
-        let print_row = |s: String| writeln!(f, "│ {s: <total_width$} │");
-        let print_blank_row = || print_row("".into());
+        let print_row = |f: &mut Formatter, s: String| writeln!(f, "│ {s: <total_width$} │");
+        let print_blank_row = |f: &mut Formatter| print_row(f, "".into());
 
         let instruction = ProcessorTable::instruction_from_row(self.row).ok_or(std::fmt::Error)?;
 
@@ -3404,43 +3404,39 @@ impl<'a> Display for ProcessorTraceRow<'a> {
         let jso = register(JSO);
         let jsd = register(JSD);
         let osp = register(OpStackPointer);
+        let clk = self.row[CLK.base_table_index()];
 
-        print_row(format!(
-            "ip:   {ip} ╷ ci:   {ci} ╷ nia: {nia} │ {: >clk_width$}",
-            self.row[CLK.base_table_index()],
-        ))?;
+        let first_line = format!("ip:   {ip} ╷ ci:   {ci} ╷ nia: {nia} │ {clk: >clk_width$}");
+        print_row(f, first_line)?;
         writeln!(
             f,
             "│ jsp:  {jsp} │ jso:  {jso} │ jsd: {jsd} ╰─{:─>clk_width$}─┤",
             "",
         )?;
-        print_row(format!("osp:  {osp} ╵"))?;
-        print_blank_row()?;
+        print_row(f, format!("osp:  {osp} ╵"))?;
+        print_blank_row(f)?;
 
         let st_00_03 = multi_register([ST0, ST1, ST2, ST3]);
         let st_04_07 = multi_register([ST4, ST5, ST6, ST7]);
         let st_08_11 = multi_register([ST8, ST9, ST10, ST11]);
         let st_12_15 = multi_register([ST12, ST13, ST14, ST15]);
 
-        print_row(format!("st0-3:    [ {st_00_03} ]"))?;
-        print_row(format!("st4-7:    [ {st_04_07} ]"))?;
-        print_row(format!("st8-11:   [ {st_08_11} ]"))?;
-        print_row(format!("st12-15:  [ {st_12_15} ]"))?;
-        print_blank_row()?;
+        print_row(f, format!("st0-3:    [ {st_00_03} ]"))?;
+        print_row(f, format!("st4-7:    [ {st_04_07} ]"))?;
+        print_row(f, format!("st8-11:   [ {st_08_11} ]"))?;
+        print_row(f, format!("st12-15:  [ {st_12_15} ]"))?;
+        print_blank_row(f)?;
 
-        let hv_00_03 = multi_register([HV0, HV1, HV2, HV3]);
-        print_row(format!("hv0-3:    [ {hv_00_03} ]"))?;
-        print_row(format!(
-            "hv4-5:    [ {} | {} ]",
-            register(HV4),
-            register(HV5),
-        ))?;
+        let hv_00_03_line = format!("hv0-3:    [ {} ]", multi_register([HV0, HV1, HV2, HV3]));
+        let hv_04_05_line = format!("hv4-5:    [ {} | {} ]", register(HV4), register(HV5),);
+        print_row(f, hv_00_03_line)?;
+        print_row(f, hv_04_05_line)?;
 
         let ib_registers = [IB0, IB1, IB2, IB3, IB4, IB5, IB6]
             .map(|reg| self.row[reg.base_table_index()])
             .map(|bfe| format!("{bfe:>2}"))
             .join(" | ");
-        print_row(format!("ib0-7:    [ {ib_registers} ]",))?;
+        print_row(f, format!("ib0-7:    [ {ib_registers} ]",))?;
         writeln!(f, "╰─{:─<total_width$}─╯", "")
     }
 }
