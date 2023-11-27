@@ -73,6 +73,12 @@ pub(crate) enum InstructionError {
 pub(crate) enum ProofStreamError {
     #[error("queue must be non-empty in order to dequeue an item")]
     EmptyQueue,
+
+    #[error("the proof stream must contain a log2_padded_height item")]
+    NoLog2PaddedHeight,
+
+    #[error("the proof stream must contain exactly one log2_padded_height item")]
+    TooManyLog2PaddedHeights,
 }
 
 #[non_exhaustive]
