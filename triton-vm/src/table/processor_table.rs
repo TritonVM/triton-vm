@@ -3374,151 +3374,72 @@ pub struct ProcessorTraceRow<'a> {
 
 impl<'a> Display for ProcessorTraceRow<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
-        fn row(f: &mut Formatter<'_>, s: String) -> FmtResult {
-            writeln!(f, "│ {s: <103} │")
-        }
+        let total_width = 103;
+        let tab_width = 54;
+        let clk_width = 17;
+        let register_width = 20;
 
-        fn row_blank(f: &mut Formatter<'_>) -> FmtResult {
-            row(f, "".into())
-        }
+        let register = |reg| format!("{:>register_width$}", self.row[reg.base_table_index()]);
+        let multi_register = |regs: [_; 4]| regs.map(register).join(" | ");
 
-        let instruction = self.row[CI.base_table_index()].value().try_into().unwrap();
-        let instruction_with_arg = match instruction {
-            Push(_) => Push(self.row[NIA.base_table_index()]),
-            Call(_) => Call(self.row[NIA.base_table_index()]),
-            Dup(_) => Dup((self.row[NIA.base_table_index()].value() as u32)
-                .try_into()
-                .unwrap()),
-            Swap(_) => Swap(
-                (self.row[NIA.base_table_index()].value() as u32)
-                    .try_into()
-                    .unwrap(),
-            ),
-            _ => instruction,
-        };
+        let print_row = |s: String| writeln!(f, "│ {s: <total_width$} │");
+        let print_blank_row = || print_row("".into());
 
+        let instruction = ProcessorTable::instruction_from_row(self.row)?;
+
+        writeln!(f, " ╭─{:─<tab_width$}─╮", "")?;
+        writeln!(f, " │ {: <tab_width$} │", format!("{instruction}"))?;
         writeln!(
             f,
-            " ╭────────────────────────────────────────────────────────╮"
+            "╭┴─{:─<tab_width$}─┴─{:─<25}─┬─{:─>clk_width$}─╮",
+            "", "", ""
         )?;
-        writeln!(f, " │ {: <54} │", format!("{instruction_with_arg}"))?;
+
+        let ip = register(IP);
+        let ci = register(CI);
+        let nia = register(NIA);
+        let jsp = register(JSP);
+        let jso = register(JSO);
+        let jsd = register(JSD);
+        let osp = register(OpStackPointer);
+
+        print_row(format!(
+            "ip:   {ip} ╷ ci:   {ci} ╷ nia: {nia} │ {: >clk_width$}",
+            self.row[CLK.base_table_index()],
+        ))?;
         writeln!(
             f,
-            "╭┴────────────────────────────────────────────────────────┴───────\
-            ────────────────────┬───────────────────╮"
+            "│ jsp:  {jsp} │ jso:  {jso} │ jsd: {jsd} ╰─{:─>clk_width$}─┤",
+            "",
         )?;
+        print_row(format!("osp:  {osp} ╵"))?;
+        print_blank_row()?;
 
-        let width = 20;
-        row(
-            f,
-            format!(
-                "ip:   {:>width$} ╷ ci:   {:>width$} ╷ nia: {:>width$} │ {:>17}",
-                self.row[IP.base_table_index()].value(),
-                self.row[CI.base_table_index()].value(),
-                self.row[NIA.base_table_index()].value(),
-                self.row[CLK.base_table_index()].value(),
-            ),
-        )?;
+        let st_00_03 = multi_register([ST0, ST1, ST2, ST3]);
+        let st_04_07 = multi_register([ST4, ST5, ST6, ST7]);
+        let st_08_11 = multi_register([ST8, ST9, ST10, ST11]);
+        let st_12_15 = multi_register([ST12, ST13, ST14, ST15]);
 
-        writeln!(
-            f,
-            "│ jsp:  {:>width$} │ jso:  {:>width$} │ jsd: {:>width$} ╰───────────────────┤",
-            self.row[JSP.base_table_index()].value(),
-            self.row[JSO.base_table_index()].value(),
-            self.row[JSD.base_table_index()].value(),
-        )?;
-        row(
-            f,
-            format!(
-                "osp:  {:>width$} ╵",
-                self.row[OpStackPointer.base_table_index()].value(),
-            ),
-        )?;
+        print_row(format!("st0-3:    [ {st_00_03} ]"))?;
+        print_row(format!("st4-7:    [ {st_04_07} ]"))?;
+        print_row(format!("st8-11:   [ {st_08_11} ]"))?;
+        print_row(format!("st12-15:  [ {st_12_15} ]"))?;
+        print_blank_row()?;
 
-        row_blank(f)?;
+        let hv_00_03 = multi_register([HV0, HV1, HV2, HV3]);
+        print_row(format!("hv0-3:    [ {hv_00_03} ]"))?;
+        print_row(format!(
+            "hv4-5:    [ {} | {} ]",
+            register(HV4),
+            register(HV5),
+        ))?;
 
-        row(
-            f,
-            format!(
-                "st0-3:    [ {:>width$} | {:>width$} | {:>width$} | {:>width$} ]",
-                self.row[ST0.base_table_index()].value(),
-                self.row[ST1.base_table_index()].value(),
-                self.row[ST2.base_table_index()].value(),
-                self.row[ST3.base_table_index()].value(),
-            ),
-        )?;
-        row(
-            f,
-            format!(
-                "st4-7:    [ {:>width$} | {:>width$} | {:>width$} | {:>width$} ]",
-                self.row[ST4.base_table_index()].value(),
-                self.row[ST5.base_table_index()].value(),
-                self.row[ST6.base_table_index()].value(),
-                self.row[ST7.base_table_index()].value(),
-            ),
-        )?;
-        row(
-            f,
-            format!(
-                "st8-11:   [ {:>width$} | {:>width$} | {:>width$} | {:>width$} ]",
-                self.row[ST8.base_table_index()].value(),
-                self.row[ST9.base_table_index()].value(),
-                self.row[ST10.base_table_index()].value(),
-                self.row[ST11.base_table_index()].value(),
-            ),
-        )?;
-        row(
-            f,
-            format!(
-                "st12-15:  [ {:>width$} | {:>width$} | {:>width$} | {:>width$} ]",
-                self.row[ST12.base_table_index()].value(),
-                self.row[ST13.base_table_index()].value(),
-                self.row[ST14.base_table_index()].value(),
-                self.row[ST15.base_table_index()].value(),
-            ),
-        )?;
-
-        row_blank(f)?;
-
-        row(
-            f,
-            format!(
-                "hv0-3:    [ {:>width$} | {:>width$} | {:>width$} | {:>width$} ]",
-                self.row[HV0.base_table_index()].value(),
-                self.row[HV1.base_table_index()].value(),
-                self.row[HV2.base_table_index()].value(),
-                self.row[HV3.base_table_index()].value(),
-            ),
-        )?;
-        row(
-            f,
-            format!(
-                "hv4-5:    [ {:>width$} | {:>width$} ]",
-                self.row[HV4.base_table_index()].value(),
-                self.row[HV5.base_table_index()].value(),
-            ),
-        )?;
-
-        let w = 2;
-        row(
-            f,
-            format!(
-                "ib0-7:    \
-                [ {:>w$} | {:>w$} | {:>w$} | {:>w$} | {:>w$} | {:>w$} | {:>w$} ]",
-                self.row[IB0.base_table_index()].value(),
-                self.row[IB1.base_table_index()].value(),
-                self.row[IB2.base_table_index()].value(),
-                self.row[IB3.base_table_index()].value(),
-                self.row[IB4.base_table_index()].value(),
-                self.row[IB5.base_table_index()].value(),
-                self.row[IB6.base_table_index()].value(),
-            ),
-        )?;
-        write!(
-            f,
-            "╰─────────────────────────────────────────────────────────────────\
-            ────────────────────────────────────────╯"
-        )
+        let ib_registers = [IB0, IB1, IB2, IB3, IB4, IB5, IB6]
+            .map(|reg| self.row[reg.base_table_index()])
+            .map(|bfe| format!("{bfe:>2}"))
+            .join(" | ");
+        print_row(format!("ib0-7:    [ {ib_registers} ]",))?;
+        writeln!(f, "╰─{:─<total_width$}─╯", "")
     }
 }
 

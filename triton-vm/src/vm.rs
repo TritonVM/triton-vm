@@ -878,68 +878,35 @@ impl<'pgm> VMState<'pgm> {
 
 impl<'pgm> Display for VMState<'pgm> {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
-        fn print_row(f: &mut Formatter<'_>, s: String) -> FmtResult {
-            writeln!(f, "│ {s: <103} │")
+        if self.current_instruction().is_err() {
+            return write!(f, "END-OF-FILE");
         }
-        match self.current_instruction() {
-            Ok(_) => {
-                let row = self.to_processor_row();
-                write!(f, "{}", ProcessorTraceRow { row: row.view() })?;
-                writeln!(f)?;
-                writeln!(
-                    f,
-                    "╭─────────────────────────────────────────────────────────────────\
-                    ────────────────────────────────────────╮"
-                )?;
-                let width = 20;
-                print_row(
-                    f,
-                    format!(
-                        "sp0-3:    [ {:>width$} | {:>width$} | {:>width$} | {:>width$} ]",
-                        self.sponge_state[0].value(),
-                        self.sponge_state[1].value(),
-                        self.sponge_state[2].value(),
-                        self.sponge_state[3].value(),
-                    ),
-                )?;
-                print_row(
-                    f,
-                    format!(
-                        "sp4-7:    [ {:>width$} | {:>width$} | {:>width$} | {:>width$} ]",
-                        self.sponge_state[4].value(),
-                        self.sponge_state[5].value(),
-                        self.sponge_state[6].value(),
-                        self.sponge_state[7].value(),
-                    ),
-                )?;
-                print_row(
-                    f,
-                    format!(
-                        "sp8-11:   [ {:>width$} | {:>width$} | {:>width$} | {:>width$} ]",
-                        self.sponge_state[8].value(),
-                        self.sponge_state[9].value(),
-                        self.sponge_state[10].value(),
-                        self.sponge_state[11].value(),
-                    ),
-                )?;
-                print_row(
-                    f,
-                    format!(
-                        "sp12-15:  [ {:>width$} | {:>width$} | {:>width$} | {:>width$} ]",
-                        self.sponge_state[12].value(),
-                        self.sponge_state[13].value(),
-                        self.sponge_state[14].value(),
-                        self.sponge_state[15].value(),
-                    ),
-                )?;
-                write!(
-                    f,
-                    "╰─────────────────────────────────────────────────────────────────\
-                    ────────────────────────────────────────╯"
-                )
-            }
-            Err(_) => write!(f, "END-OF-FILE"),
-        }
+
+        let total_width = 103;
+        let register_width = 20;
+        let print_row = |f: &mut Formatter<'_>, s: String| writeln!(f, "│ {s: <total_width$} │");
+
+        let sponge_state_register = |i| self.sponge_state[i].value();
+        let sponge_state_slice = |idxs: [usize; 4]| {
+            idxs.map(sponge_state_register)
+                .map(|ss| format!("{ss:>register_width$}"))
+                .join(" | ")
+        };
+
+        let sponge_state_00_03 = sponge_state_slice([0, 1, 2, 3]);
+        let sponge_state_04_07 = sponge_state_slice([4, 5, 6, 7]);
+        let sponge_state_08_11 = sponge_state_slice([8, 9, 10, 11]);
+        let sponge_state_12_15 = sponge_state_slice([12, 13, 14, 15]);
+
+        let row = self.to_processor_row();
+        write!(f, "{}", ProcessorTraceRow { row: row.view() })?;
+        writeln!(f)?;
+        writeln!(f, "╭─{:─<total_width$}─╮", "")?;
+        print_row(f, format!("sp0-3:    [ {sponge_state_00_03} ]"))?;
+        print_row(f, format!("sp4-7:    [ {sponge_state_04_07} ]"))?;
+        print_row(f, format!("sp8-11:   [ {sponge_state_08_11} ]"))?;
+        print_row(f, format!("sp12-15:  [ {sponge_state_12_15} ]"))?;
+        writeln!(f, "╰─{:─<total_width$}─╯", "")
     }
 }
 
