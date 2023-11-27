@@ -43,7 +43,7 @@ pub const NUM_OP_STACK_REGISTERS: usize = OpStackElement::COUNT;
 /// and the op-stack underflow memory. The op-stack registers are the first
 /// [`OpStackElement::COUNT`] elements of the op-stack, and the op-stack underflow memory is the
 /// remaining elements.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OpStack {
     pub stack: Vec<BFieldElement>,
     underflow_io_sequence: Vec<UnderflowIO>,

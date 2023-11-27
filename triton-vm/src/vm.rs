@@ -39,7 +39,7 @@ type Result<T> = std::result::Result<T, InstructionError>;
 /// The number of helper variable registers
 pub const NUM_HELPER_VARIABLE_REGISTERS: usize = 6;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VMState<'pgm> {
     /// The **program memory** stores the instructions (and their arguments) of the program
     /// currently being executed by Triton VM. It is read-only.

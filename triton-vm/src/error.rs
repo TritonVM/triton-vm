@@ -1,3 +1,7 @@
+use std::fmt;
+use std::fmt::Display;
+use std::fmt::Formatter;
+
 use thiserror::Error;
 use twenty_first::shared_math::digest::DIGEST_LENGTH;
 
@@ -17,6 +21,14 @@ pub struct VMError<'pgm> {
 impl<'pgm> VMError<'pgm> {
     pub fn new(source: InstructionError, vm_state: VMState<'pgm>) -> Self {
         Self { source, vm_state }
+    }
+}
+
+impl<'pgm> Display for VMError<'pgm> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        writeln!(f, "VM error: {}", self.source)?;
+        writeln!(f, "VM state:")?;
+        writeln!(f, "{}", self.vm_state)
     }
 }
 
