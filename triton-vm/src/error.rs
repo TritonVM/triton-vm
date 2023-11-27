@@ -157,6 +157,40 @@ pub enum ProvingError {
 
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+pub enum VerificationError {
+    #[error("received and computed out-of-domain quotient values don't match")]
+    OutOfDomainQuotientValueMismatch,
+
+    #[error("failed to verify authentication path for base codeword")]
+    BaseCodewordAuthenticationFailure,
+
+    #[error("failed to verify authentication path for extension codeword")]
+    ExtensionCodewordAuthenticationFailure,
+
+    #[error("failed to verify authentication path for combined quotient codeword")]
+    QuotientCodewordAuthenticationFailure,
+
+    #[error("received and computed combination codewords don't match")]
+    CombinationCodewordMismatch,
+
+    #[error("the number of received combination codeword indices does not match the parameters")]
+    IncorrectNumberOfRowIndices,
+
+    #[error("the number of received FRI codeword values does not match the parameters")]
+    IncorrectNumberOfFRIValues,
+
+    #[error("the number of received quotient segment elements does not match the parameters")]
+    IncorrectNumberOfQuotientSegmentElements,
+
+    #[error("the number of received base table rows does not match the parameters")]
+    IncorrectNumberOfBaseTableRows,
+
+    #[error("the number of received extension table rows does not match the parameters")]
+    IncorrectNumberOfExtTableRows,
+}
+
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
 pub enum OpStackElementError {
     #[error("index {0} is out of range for `OpStackElement`")]
     IndexOutOfBounds(u32),

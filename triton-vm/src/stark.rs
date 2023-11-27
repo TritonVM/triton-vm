@@ -1,8 +1,6 @@
 use std::ops::Add;
 use std::ops::Mul;
 
-use anyhow::bail;
-use anyhow::Result;
 use arbitrary::Arbitrary;
 use arbitrary::Unstructured;
 use itertools::izip;
@@ -30,7 +28,8 @@ use twenty_first::util_types::merkle_tree_maker::MerkleTreeMaker;
 
 use crate::aet::AlgebraicExecutionTrace;
 use crate::arithmetic_domain::ArithmeticDomain;
-use crate::ensure_eq;
+use crate::error::VerificationError;
+use crate::error::VerificationError::*;
 use crate::fri::Fri;
 use crate::profiler::prof_itr0;
 use crate::profiler::prof_start;
@@ -761,7 +760,7 @@ impl Stark {
         claim: &Claim,
         proof: &Proof,
         maybe_profiler: &mut Option<TritonProfiler>,
-    ) -> Result<bool> {
+    ) -> Result<bool, VerificationError> {
         prof_start!(maybe_profiler, "deserialize");
         let mut proof_stream = StarkProofStream::try_from(proof)?;
         prof_stop!(maybe_profiler, "deserialize");
@@ -877,10 +876,9 @@ impl Stark {
             .collect::<Array1<_>>();
         let sum_of_evaluated_out_of_domain_quotient_segments =
             powers_of_out_of_domain_point_curr_row.dot(&out_of_domain_curr_row_quot_segments);
-        ensure_eq!(
-            out_of_domain_quotient_value,
-            sum_of_evaluated_out_of_domain_quotient_segments
-        );
+        if out_of_domain_quotient_value != sum_of_evaluated_out_of_domain_quotient_segments {
+            return Err(OutOfDomainQuotientValueMismatch);
+        };
         prof_stop!(maybe_profiler, "verify quotient's segments");
 
         prof_start!(maybe_profiler, "Fiat-Shamir 2", "hash");
@@ -944,7 +942,7 @@ impl Stark {
             &leaf_digests_base,
             &base_authentication_structure,
         ) {
-            bail!("Failed to verify authentication path for base codeword");
+            return Err(BaseCodewordAuthenticationFailure);
         }
         prof_stop!(maybe_profiler, "Merkle verify (base tree)");
 
@@ -971,7 +969,7 @@ impl Stark {
             &leaf_digests_ext,
             &ext_authentication_structure,
         ) {
-            bail!("Failed to verify authentication path for extension codeword");
+            return Err(ExtensionCodewordAuthenticationFailure);
         }
         prof_stop!(maybe_profiler, "Merkle verify (extension tree)");
 
@@ -992,18 +990,28 @@ impl Stark {
             &revealed_quotient_segments_digests,
             &revealed_quotient_authentication_structure,
         ) {
-            bail!("Failed to verify authentication path for combined quotient codeword");
+            return Err(QuotientCodewordAuthenticationFailure);
         }
         prof_stop!(maybe_profiler, "Merkle verify (combined quotient)");
         prof_stop!(maybe_profiler, "check leafs");
 
         prof_start!(maybe_profiler, "linear combination");
-        let num_checks = parameters.num_combination_codeword_checks;
-        ensure_eq!(num_checks, revealed_current_row_indices.len());
-        ensure_eq!(num_checks, revealed_fri_values.len());
-        ensure_eq!(num_checks, revealed_quotient_segments_elements.len());
-        ensure_eq!(num_checks, base_table_rows.len());
-        ensure_eq!(num_checks, ext_table_rows.len());
+        if parameters.num_combination_codeword_checks != revealed_current_row_indices.len() {
+            return Err(IncorrectNumberOfRowIndices);
+        };
+        if parameters.num_combination_codeword_checks != revealed_fri_values.len() {
+            return Err(IncorrectNumberOfFRIValues);
+        };
+        if parameters.num_combination_codeword_checks != revealed_quotient_segments_elements.len() {
+            return Err(IncorrectNumberOfQuotientSegmentElements);
+        };
+        if parameters.num_combination_codeword_checks != base_table_rows.len() {
+            return Err(IncorrectNumberOfBaseTableRows);
+        };
+        if parameters.num_combination_codeword_checks != ext_table_rows.len() {
+            return Err(IncorrectNumberOfExtTableRows);
+        };
+
         prof_start!(maybe_profiler, "main loop");
         for (row_idx, base_row, ext_row, quotient_segments_elements, fri_value) in izip!(
             revealed_current_row_indices,
@@ -1059,7 +1067,9 @@ impl Stark {
             ]);
             let deep_value = deep_codeword_weights.dot(&deep_value_components);
             let randomizer_codewords_contribution = randomizer_row.sum();
-            ensure_eq!(fri_value, deep_value + randomizer_codewords_contribution);
+            if fri_value != deep_value + randomizer_codewords_contribution {
+                return Err(CombinationCodewordMismatch);
+            };
             prof_stop!(maybe_profiler, "combination codeword equality");
         }
         prof_stop!(maybe_profiler, "main loop");
