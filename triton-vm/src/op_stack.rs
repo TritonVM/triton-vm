@@ -601,6 +601,7 @@ impl TryFrom<&BFieldElement> for NumberOfWords {
 
 #[cfg(test)]
 mod tests {
+    use assert2::assert;
     use proptest::collection::vec;
     use proptest::prelude::*;
     use proptest_arbitrary_interop::arb;
@@ -616,8 +617,8 @@ mod tests {
         let mut op_stack = OpStack::new(digest);
 
         // verify height
-        assert_eq!(op_stack.stack.len(), 16);
-        assert_eq!(op_stack.pointer().value() as usize, op_stack.stack.len());
+        assert!(op_stack.stack.len() == 16);
+        assert!(op_stack.pointer().value() as usize == op_stack.stack.len());
 
         // push elements 1 thru 17
         for i in 1..=17 {
@@ -625,8 +626,8 @@ mod tests {
         }
 
         // verify height
-        assert_eq!(op_stack.stack.len(), 33);
-        assert_eq!(op_stack.pointer().value() as usize, op_stack.stack.len());
+        assert!(op_stack.stack.len() == 33);
+        assert!(op_stack.pointer().value() as usize == op_stack.stack.len());
 
         // verify that all accessible items are different
         let mut container = vec![
@@ -652,7 +653,7 @@ mod tests {
         container.sort_by_key(|a| a.value());
         container.dedup();
         let len_after = container.len();
-        assert_eq!(len_before, len_after);
+        assert!(len_before == len_after);
 
         // pop 11 elements
         for _ in 0..11 {
@@ -660,16 +661,16 @@ mod tests {
         }
 
         // verify height
-        assert_eq!(op_stack.stack.len(), 22);
-        assert_eq!(op_stack.pointer().value() as usize, op_stack.stack.len());
+        assert!(op_stack.stack.len() == 22);
+        assert!(op_stack.pointer().value() as usize == op_stack.stack.len());
 
         // pop 2 XFieldElements
         let _ = op_stack.pop_extension_field_element().expect("can't pop");
         let _ = op_stack.pop_extension_field_element().expect("can't pop");
 
         // verify height
-        assert_eq!(op_stack.stack.len(), 16);
-        assert_eq!(op_stack.pointer().value() as usize, op_stack.stack.len());
+        assert!(op_stack.stack.len() == 16);
+        assert!(op_stack.pointer().value() as usize == op_stack.stack.len());
 
         // verify underflow
         let _ = op_stack.pop().expect("can't pop");
@@ -691,7 +692,7 @@ mod tests {
         for stack_element in OpStackElement::iter() {
             let stack_index = u32::from(&stack_element);
             let stack_element_again = OpStackElement::try_from(stack_index).unwrap();
-            assert_eq!(stack_element, stack_element_again);
+            assert!(stack_element == stack_element_again);
         }
     }
 
@@ -700,7 +701,7 @@ mod tests {
         for stack_element in OpStackElement::iter() {
             let stack_index = i32::from(&stack_element);
             let stack_element_again = OpStackElement::try_from(stack_index).unwrap();
-            assert_eq!(stack_element, stack_element_again);
+            assert!(stack_element == stack_element_again);
         }
     }
 
@@ -710,7 +711,7 @@ mod tests {
         UnderflowIO::canonicalize_sequence(&mut sequence);
 
         let expected_sequence = Vec::<UnderflowIO>::new();
-        assert_eq!(expected_sequence, sequence);
+        assert!(expected_sequence == sequence);
     }
 
     #[test]
@@ -723,7 +724,7 @@ mod tests {
         UnderflowIO::canonicalize_sequence(&mut sequence);
 
         let expected_sequence = vec![UnderflowIO::Read(7_u64.into())];
-        assert_eq!(expected_sequence, sequence);
+        assert!(expected_sequence == sequence);
     }
 
     #[test]
@@ -738,7 +739,7 @@ mod tests {
         UnderflowIO::canonicalize_sequence(&mut sequence);
 
         let expected_sequence = vec![UnderflowIO::Write(7_u64.into())];
-        assert_eq!(expected_sequence, sequence);
+        assert!(expected_sequence == sequence);
     }
 
     #[proptest]
@@ -769,7 +770,7 @@ mod tests {
         for num_words in NumberOfWords::iter() {
             let stack_index = usize::from(&num_words);
             let num_words_again = NumberOfWords::try_from(stack_index).unwrap();
-            assert_eq!(num_words, num_words_again);
+            assert!(num_words == num_words_again);
         }
     }
 
@@ -778,7 +779,7 @@ mod tests {
         for num_words in NumberOfWords::iter() {
             let stack_index = u64::from(&num_words);
             let num_words_again = NumberOfWords::try_from(stack_index).unwrap();
-            assert_eq!(num_words, num_words_again);
+            assert!(num_words == num_words_again);
         }
     }
 
@@ -787,17 +788,26 @@ mod tests {
         for num_words in NumberOfWords::iter() {
             let stack_element = OpStackElement::from(&num_words);
             let num_words_again = NumberOfWords::try_from(stack_element).unwrap();
-            assert_eq!(num_words, num_words_again);
+            assert!(num_words == num_words_again);
         }
     }
 
-    #[test]
-    fn out_of_range_number_of_words_gives_error() {
-        let num_words = NumberOfWords::iter().last().unwrap();
-        let mut stack_index = BFieldElement::from(&num_words);
-        stack_index.increment();
-        let maybe_num_words = NumberOfWords::try_from(&stack_index);
-        assert!(maybe_num_words.is_err());
+    #[proptest]
+    fn out_of_range_op_stack_element_gives_error(
+        #[strategy(arb())]
+        #[filter(!OpStackElement::iter().map(|o| o.index()).contains(&(#index.value() as u32)))]
+        index: BFieldElement,
+    ) {
+        assert!(let Err(_) = OpStackElement::try_from(index));
+    }
+
+    #[proptest]
+    fn out_of_range_number_of_words_gives_error(
+        #[strategy(arb())]
+        #[filter(!NumberOfWords::legal_values().contains(&(#index.value() as usize)))]
+        index: BFieldElement,
+    ) {
+        assert!(let Err(_) = NumberOfWords::try_from(&index));
     }
 
     #[test]
@@ -806,14 +816,14 @@ mod tests {
             .map(|num_words| BFieldElement::from(&num_words).value())
             .collect_vec();
         let expected_range = (1..=5).collect_vec();
-        assert_eq!(computed_range, expected_range);
+        assert!(computed_range == expected_range);
     }
 
     #[test]
     fn number_of_legal_number_of_words_corresponds_to_distinct_number_of_number_of_words() {
         let legal_values = NumberOfWords::legal_values();
-        let distinct_values = NumberOfWords::COUNT;
-        assert_eq!(distinct_values, legal_values.len());
+        let num_distinct_values = NumberOfWords::COUNT;
+        assert!(num_distinct_values == legal_values.len());
     }
 
     #[test]

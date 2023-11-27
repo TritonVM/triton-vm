@@ -3456,7 +3456,6 @@ pub(crate) mod tests {
 
     use crate::error::InstructionError::DivisionByZero;
     use crate::instruction::Instruction;
-    use crate::instruction::LabelledInstruction;
     use crate::op_stack::NumberOfWords::*;
     use crate::op_stack::OpStackElement;
     use crate::program::Program;
@@ -3560,41 +3559,13 @@ pub(crate) mod tests {
         }
     }
 
-    #[test]
-    #[should_panic(expected = "out of range for `NumberOfWords`")]
-    fn transition_constraints_for_instruction_pop_0() {
-        transition_constraints_for_instruction_pop_n(0);
-    }
-
     #[proptest(cases = 20)]
-    fn transition_constraints_for_instruction_pop_n_in_range(#[strategy(1..=5_usize)] n: usize) {
-        transition_constraints_for_instruction_pop_n(n);
-    }
+    fn transition_constraints_for_instruction_pop_n(#[strategy(arb())] n: NumberOfWords) {
+        let program = triton_program!(push 1 push 2 push 3 push 4 push 5 pop {n} halt);
 
-    #[proptest(cases = 20)]
-    #[should_panic(expected = "out of range for `NumberOfWords`")]
-    fn transition_constraints_for_instruction_pop_n_too_large(
-        #[strategy(6..OpStackElement::COUNT)] n: usize,
-    ) {
-        transition_constraints_for_instruction_pop_n(n);
-    }
-
-    fn transition_constraints_for_instruction_pop_n(n: usize) {
-        let arg = n.try_into().unwrap();
-
-        let mut instructions = vec![Push(BFIELD_ZERO); n];
-        instructions.push(Pop(arg));
-        instructions.push(Halt);
-
-        let instructions = instructions
-            .into_iter()
-            .map(LabelledInstruction::Instruction)
-            .collect_vec();
-        let program = Program::new(&instructions);
-        let test_rows = [test_row_from_program(program, n)];
-
+        let test_rows = [test_row_from_program(program, 5)];
         let debug_info = TestRowsDebugInfo {
-            instruction: Pop(arg),
+            instruction: Pop(n),
             debug_cols_curr_row: vec![ST0, ST1, ST2],
             debug_cols_next_row: vec![ST0, ST1, ST2],
         };
@@ -3613,40 +3584,18 @@ pub(crate) mod tests {
         assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
 
-    #[test]
-    #[should_panic(expected = "out of range for `NumberOfWords`")]
-    fn transition_constraints_for_instruction_divine_0() {
-        transition_constraints_for_instruction_divine_n(0);
-    }
-
     #[proptest(cases = 20)]
-    fn transition_constraints_for_instruction_divine_n_in_range(#[strategy(1..=5_usize)] n: usize) {
-        transition_constraints_for_instruction_divine_n(n);
-    }
-
-    #[proptest(cases = 20)]
-    #[should_panic(expected = "out of range for `NumberOfWords`")]
-    fn transition_constraints_for_instruction_divine_n_too_large(
-        #[strategy(6..OpStackElement::COUNT)] n: usize,
-    ) {
-        transition_constraints_for_instruction_divine_n(n);
-    }
-
-    fn transition_constraints_for_instruction_divine_n(n: usize) {
-        let stack_element = n.try_into().unwrap();
-
-        let instructions = [Divine(stack_element), Halt];
-        let instructions = instructions.map(LabelledInstruction::Instruction).to_vec();
+    fn transition_constraints_for_instruction_divine_n(#[strategy(arb())] n: NumberOfWords) {
+        let program = triton_program! { divine {n} halt };
 
         let program_and_input = ProgramAndInput {
-            program: Program::new(&instructions),
+            program,
             public_input: vec![],
             non_determinism: (1..=16).collect_vec().into(),
         };
         let test_rows = [test_row_from_program_with_input(program_and_input, 0)];
-
         let debug_info = TestRowsDebugInfo {
-            instruction: Divine(stack_element),
+            instruction: Divine(n),
             debug_cols_curr_row: vec![ST0, ST1, ST2],
             debug_cols_next_row: vec![ST0, ST1, ST2],
         };
@@ -4102,82 +4051,36 @@ pub(crate) mod tests {
         assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
 
-    #[test]
-    #[should_panic(expected = "out of range for `NumberOfWords`")]
-    fn transition_constraints_for_instruction_read_io_0() {
-        transition_constraints_for_instruction_read_io_n(0);
-    }
-
     #[proptest(cases = 20)]
-    fn transition_constraints_for_instruction_read_io_n_in_range(
-        #[strategy(1..=5_usize)] n: usize,
-    ) {
-        transition_constraints_for_instruction_read_io_n(n);
-    }
-
-    #[proptest(cases = 20)]
-    #[should_panic(expected = "out of range for `NumberOfWords`")]
-    fn transition_constraints_for_instruction_read_io_n_too_large(
-        #[strategy(6..OpStackElement::COUNT)] n: usize,
-    ) {
-        transition_constraints_for_instruction_read_io_n(n);
-    }
-
-    fn transition_constraints_for_instruction_read_io_n(n: usize) {
-        let stack_element = n.try_into().unwrap();
-
-        let instructions = [ReadIo(stack_element), Halt];
-        let instructions = instructions.map(LabelledInstruction::Instruction).to_vec();
+    fn transition_constraints_for_instruction_read_io_n(#[strategy(arb())] n: NumberOfWords) {
+        let program = triton_program! {read_io {n} halt};
 
         let program_and_input = ProgramAndInput {
-            program: Program::new(&instructions),
+            program,
             public_input: (1..=16).collect_vec(),
             non_determinism: [].into(),
         };
         let test_rows = [test_row_from_program_with_input(program_and_input, 0)];
         let debug_info = TestRowsDebugInfo {
-            instruction: ReadIo(stack_element),
+            instruction: ReadIo(n),
             debug_cols_curr_row: vec![ST0, ST1, ST2],
             debug_cols_next_row: vec![ST0, ST1, ST2],
         };
         assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
 
-    #[test]
-    #[should_panic(expected = "out of range for `NumberOfWords`")]
-    fn transition_constraints_for_instruction_write_io_0() {
-        transition_constraints_for_instruction_write_io_n(0);
-    }
-
     #[proptest(cases = 20)]
-    fn transition_constraints_for_instruction_write_io_n_in_range(
-        #[strategy(1..=5_usize)] n: usize,
-    ) {
-        transition_constraints_for_instruction_write_io_n(n);
-    }
-
-    #[proptest(cases = 20)]
-    #[should_panic(expected = "out of range for `NumberOfWords`")]
-    fn transition_constraints_for_instruction_write_io_n_too_large(
-        #[strategy(6..OpStackElement::COUNT)] n: usize,
-    ) {
-        transition_constraints_for_instruction_write_io_n(n);
-    }
-
-    fn transition_constraints_for_instruction_write_io_n(n: usize) {
-        let stack_element = n.try_into().unwrap();
-
-        let instructions = [Divine(N5), WriteIo(stack_element), Halt];
-        let instructions = instructions.map(LabelledInstruction::Instruction).to_vec();
+    fn transition_constraints_for_instruction_write_io_n(#[strategy(arb())] n: NumberOfWords) {
+        let program = triton_program! {divine 5 write_io {n} halt};
 
         let program_and_input = ProgramAndInput {
-            program: Program::new(&instructions),
+            program,
             public_input: [].into(),
             non_determinism: (1..=16).collect_vec().into(),
         };
         let test_rows = [test_row_from_program_with_input(program_and_input, 1)];
         let debug_info = TestRowsDebugInfo {
-            instruction: WriteIo(stack_element),
+            instruction: WriteIo(n),
             debug_cols_curr_row: vec![ST0, ST1, ST2, ST3, ST4, ST5],
             debug_cols_next_row: vec![ST0, ST1, ST2, ST3, ST4, ST5],
         };
