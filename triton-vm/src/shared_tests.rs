@@ -143,7 +143,7 @@ impl ProgramAndInput {
     }
 
     /// A thin wrapper around [`Program::run`].
-    pub fn run<'pgm>(&self) -> Result<Vec<BFieldElement>, VMError<'pgm>> {
+    pub fn run(&self) -> Result<Vec<BFieldElement>, VMError> {
         self.program
             .run(self.public_input(), self.non_determinism())
     }

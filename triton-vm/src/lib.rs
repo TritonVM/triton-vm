@@ -445,11 +445,11 @@ macro_rules! triton_instr {
 /// `assert` instruction, proof generation will fail.
 ///
 /// The default STARK parameters used by Triton VM give a (conjectured) security level of 160 bits.
-pub fn prove_program<'pgm>(
-    program: &'pgm Program,
+pub fn prove_program(
+    program: &Program,
     public_input: &[u64],
     non_determinism: &NonDeterminism<u64>,
-) -> Result<(StarkParameters, Claim, Proof), Box<dyn Error + 'pgm>> {
+) -> Result<(StarkParameters, Claim, Proof), Box<dyn Error>> {
     input_elements_have_unique_representation(public_input, non_determinism)?;
 
     // Convert public and secret inputs to BFieldElements.

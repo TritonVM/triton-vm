@@ -28,13 +28,11 @@ use crate::parser::to_labelled_instructions;
 use crate::parser::ParseError;
 use crate::vm::VMState;
 
-type Result<'pgm, T> = std::result::Result<T, VMError<'pgm>>;
+type Result<T> = std::result::Result<T, VMError>;
 
 /// A program for Triton VM.
 /// It can be
 /// [`run`](Program::run),
-/// [`debugged`](Program::debug)
-/// (also the RAM-friendlier [`debug_terminal_state`](Program::debug_terminal_state)),
 /// [`profiled`](Program::profile),
 /// and its execution can be [`traced`](Program::trace_execution).
 ///
@@ -393,20 +391,37 @@ impl Program {
         H::hash_varlen(&self.to_bwords())
     }
 
-    /// Run Triton VM on the given [`Program`] with the given public and secret input.
+    /// Run Triton VM on the [`Program`] with the given public input and non-determinism.
+    /// If an error is encountered, the returned [`VMError`] contains the [`VMState`] at the point
+    /// of execution failure.
     ///
-    /// See also [`trace_execution`](Self::trace_execution) and [`debug`](Self::debug).
+    /// See also [`trace_execution`](Self::trace_execution) and
+    /// [`terminal_state`](Self::terminal_state).
     pub fn run(
         &self,
         public_input: PublicInput,
         non_determinism: NonDeterminism<BFieldElement>,
     ) -> Result<Vec<BFieldElement>> {
+        let terminal_state = self.terminal_state(public_input, non_determinism)?;
+        Ok(terminal_state.public_output)
+    }
+
+    /// Similar to [`run`](Self::run), but returns the entire [`VMState`] instead of just
+    /// the public output.
+    ///
+    /// See also [`trace_execution`](Self::trace_execution) and [`profile`](Self::profile).
+    pub fn terminal_state(
+        &self,
+        public_input: PublicInput,
+        non_determinism: NonDeterminism<BFieldElement>,
+    ) -> Result<VMState> {
         let mut state = VMState::new(self, public_input, non_determinism);
         while !state.halting {
-            let vm_error = |err| VMError::new(err, state.clone());
+            let consistent_state = state.clone();
+            let vm_error = |err| VMError::new(err, consistent_state);
             state.step().map_err(vm_error)?;
         }
-        Ok(state.public_output)
+        Ok(state)
     }
 
     /// Trace the execution of a [`Program`]. That is, [`run`][run] the [`Program`] and additionally
@@ -415,9 +430,8 @@ impl Program {
     /// 1. an [`AlgebraicExecutionTrace`], and
     /// 1. the output of the program.
     ///
-    /// See also [`debug`](Self::debug) and [`run`][run].
-    ///
-    /// [run]: Self::run
+    /// See also [`run`][Self::run], [`terminal_state`](Self::terminal_state), and
+    /// [`profile`](Self::profile).
     pub fn trace_execution(
         &self,
         public_input: PublicInput,
@@ -430,7 +444,7 @@ impl Program {
         while !state.halting {
             let consistent_state = state.clone();
             let vm_error = |err| VMError::new(err, consistent_state);
-            aet.record_state(&state).map_err(vm_error)?;
+            aet.record_state(&state).map_err(vm_error.clone())?;
             let co_processor_calls = state.step().map_err(vm_error)?;
             for call in co_processor_calls {
                 aet.record_co_processor_call(call);
@@ -440,98 +454,12 @@ impl Program {
         Ok((aet, state.public_output))
     }
 
-    /// Similar to [`run`](Self::run), but also returns a [`Vec`] of [`VMState`]s, one for each
-    /// step of the VM. On premature termination of the VM, returns all [`VMState`]s up to the
-    /// point of failure.
-    ///
-    /// The VM's initial state is either the provided `initial_state`, or a new [`VMState`] if
-    /// `initial_state` is `None`. The initial state is included in the returned [`Vec`] of
-    /// [`VMState`]s. If an initial state is provided, the `program`, `public_input` and
-    /// `private_input` provided to this method are ignored and the initial state's program and
-    /// inputs are used instead.
-    ///
-    /// If `num_cycles_to_execute` is `Some(number_of_cycles)`, the VM will execute at most
-    /// `number_of_cycles` cycles. If `num_cycles_to_execute` is `None`, the VM will execute until
-    /// it halts or the maximum number of cycles (2^{32}) is reached.
-    ///
-    /// See also [`debug_terminal_state`](Self::debug_terminal_state) and
-    /// [`trace_execution`](Self::trace_execution).
-    pub fn debug<'pgm>(
-        &'pgm self,
-        public_input: PublicInput,
-        non_determinism: NonDeterminism<BFieldElement>,
-        initial_state: Option<VMState<'pgm>>,
-        num_cycles_to_execute: Option<u32>,
-    ) -> (Vec<VMState<'pgm>>, Option<VMError>) {
-        let mut states = vec![];
-        let mut state = match initial_state {
-            Some(initial_state) => initial_state,
-            None => VMState::new(self, public_input, non_determinism),
-        };
-        let max_cycles = Self::max_cycle_to_reach(&state, num_cycles_to_execute);
-
-        while !state.halting && state.cycle_count < max_cycles {
-            states.push(state.clone());
-            if let Err(err) = state.step() {
-                let last_state = states.last().unwrap().clone();
-                let vm_error = VMError::new(err, last_state);
-                return (states, Some(vm_error));
-            }
-        }
-
-        states.push(state);
-        (states, None)
-    }
-
-    /// Run Triton VM on the given [`Program`] with the given public and secret input, and return
-    /// the final [`VMState`]. Requires substantially less RAM than [`debug`][debug] since no
-    /// intermediate states are recorded.
-    ///
-    /// Parameters `initial_state` and `num_cycles_to_execute` are handled like in [`debug`][debug];
-    /// see there for more details.
-    ///
-    /// If an error is encountered, returns the error and the [`VMState`] at the point of failure.
-    ///
-    /// See also [`trace_execution`](Self::trace_execution) and [`run`](Self::run).
-    ///
-    /// [debug]: Self::debug
-    pub fn debug_terminal_state<'pgm>(
-        &'pgm self,
-        public_input: PublicInput,
-        non_determinism: NonDeterminism<BFieldElement>,
-        initial_state: Option<VMState<'pgm>>,
-        num_cycles_to_execute: Option<u32>,
-    ) -> Result<VMState<'pgm>> {
-        let mut state = match initial_state {
-            Some(initial_state) => initial_state,
-            None => VMState::new(self, public_input, non_determinism),
-        };
-        let max_cycles = Self::max_cycle_to_reach(&state, num_cycles_to_execute);
-
-        while !state.halting && state.cycle_count < max_cycles {
-            // [`VMState::step`] is not atomic – avoid returning an inconsistent state
-            let consistent_state = state.clone();
-            if let Err(err) = state.step() {
-                let vm_error = VMError::new(err, consistent_state);
-                return Err(vm_error);
-            }
-        }
-        Ok(state)
-    }
-
-    fn max_cycle_to_reach(state: &VMState, num_cycles_to_execute: Option<u32>) -> u32 {
-        match num_cycles_to_execute {
-            Some(number_of_cycles) => state.cycle_count + number_of_cycles,
-            None => u32::MAX,
-        }
-    }
-
     /// Run Triton VM with the given public and secret input, but record the number of cycles spent
     /// in each callable block of instructions. This function returns a Result wrapping a program
     /// profiler report, which is a Vec of [`ProfileLine`]s.
     ///
-    /// See also [`run`](Self::run), [`trace_execution`](Self::trace_execution) and
-    /// [`debug`](Self::debug).
+    /// See also [`run`](Self::run), [`trace_execution`](Self::trace_execution), and
+    /// [`terminal_state`](Self::terminal_state).
     pub fn profile(
         &self,
         public_input: PublicInput,
@@ -542,11 +470,13 @@ impl Program {
         while !state.halting {
             let consistent_state = state.clone();
             let vm_error = |err| VMError::new(err, consistent_state);
-            if let Instruction::Call(address) = state.current_instruction().map_err(vm_error)? {
+            if let Instruction::Call(address) =
+                state.current_instruction().map_err(vm_error.clone())?
+            {
                 let label = self.label_for_address(address.value());
                 profiler.enter_span_with_label_at_cycle(label, state.cycle_count);
             }
-            if let Instruction::Return = state.current_instruction().map_err(vm_error)? {
+            if let Instruction::Return = state.current_instruction().map_err(vm_error.clone())? {
                 profiler.exit_span_at_cycle(state.cycle_count);
             }
 
@@ -984,13 +914,11 @@ mod tests {
     fn test_profile() {
         let program = CALCULATE_NEW_MMR_PEAKS_FROM_APPEND_WITH_SAFE_LISTS.clone();
         let (profile_output, profile) = program.profile([].into(), [].into()).unwrap();
-        let debug_terminal_state = program
-            .debug_terminal_state([].into(), [].into(), None, None)
-            .unwrap();
-        assert_eq!(profile_output, debug_terminal_state.public_output);
+        let terminal_state = program.terminal_state([].into(), [].into()).unwrap();
+        assert_eq!(profile_output, terminal_state.public_output);
         assert_eq!(
             profile.last().unwrap().cycle_count(),
-            debug_terminal_state.cycle_count
+            terminal_state.cycle_count
         );
 
         println!("Profile of Tasm Program:");

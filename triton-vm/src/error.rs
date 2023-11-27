@@ -16,18 +16,18 @@ use crate::vm::VMState;
 use crate::BFieldElement;
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
-pub struct VMError<'pgm> {
+pub struct VMError {
     pub source: InstructionError,
-    pub vm_state: VMState<'pgm>,
+    pub vm_state: VMState,
 }
 
-impl<'pgm> VMError<'pgm> {
-    pub fn new(source: InstructionError, vm_state: VMState<'pgm>) -> Self {
+impl VMError {
+    pub fn new(source: InstructionError, vm_state: VMState) -> Self {
         Self { source, vm_state }
     }
 }
 
-impl<'pgm> Display for VMError<'pgm> {
+impl Display for VMError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         writeln!(f, "VM error: {}", self.source)?;
         writeln!(f, "VM state:")?;
@@ -179,7 +179,7 @@ pub enum ProvingError {
     PublicOutputMismatch,
 
     #[error("error while running Triton VM: {0}")]
-    VMError(#[from] VMError<'static>),
+    VMError(#[from] VMError),
 }
 
 #[non_exhaustive]

@@ -40,10 +40,10 @@ type Result<T> = std::result::Result<T, InstructionError>;
 pub const NUM_HELPER_VARIABLE_REGISTERS: usize = 6;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct VMState<'pgm> {
+pub struct VMState {
     /// The **program memory** stores the instructions (and their arguments) of the program
     /// currently being executed by Triton VM. It is read-only.
-    pub program: &'pgm [Instruction],
+    pub program: Vec<Instruction>,
 
     /// A list of [`BFieldElement`]s the program can read from using instruction `read_io`.
     pub public_input: VecDeque<BFieldElement>,
@@ -103,21 +103,21 @@ pub enum CoProcessorCall {
     RamCall(RamTableCall),
 }
 
-impl<'pgm> VMState<'pgm> {
+impl VMState {
     /// Create initial `VMState` for a given `program`
     ///
     /// Since `program` is read-only across individual states, and multiple
     /// inner helper functions refer to it, a read-only reference is kept in
     /// the struct.
     pub fn new(
-        program: &'pgm Program,
+        program: &Program,
         public_input: PublicInput,
         non_determinism: NonDeterminism<BFieldElement>,
     ) -> Self {
         let program_digest = program.hash::<StarkHasher>();
 
         Self {
-            program: &program.instructions,
+            program: program.instructions.clone(),
             public_input: public_input.individual_tokens.into(),
             public_output: vec![],
             secret_individual_tokens: non_determinism.individual_tokens.into(),
@@ -876,7 +876,7 @@ impl<'pgm> VMState<'pgm> {
     }
 }
 
-impl<'pgm> Display for VMState<'pgm> {
+impl Display for VMState {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         if self.current_instruction().is_err() {
             return write!(f, "END-OF-FILE");
@@ -1912,9 +1912,7 @@ pub(crate) mod tests {
             write_io 5 write_io 5 write_io 4
             halt
         );
-        let terminal_state = program
-            .debug_terminal_state([].into(), [].into(), None, None)
-            .unwrap();
+        let terminal_state = program.terminal_state([].into(), [].into()).unwrap();
         assert_eq!(BFIELD_ZERO, terminal_state.op_stack.peek_at(ST0));
     }
 
@@ -1946,9 +1944,7 @@ pub(crate) mod tests {
             halt
         );
 
-        let terminal_state = program
-            .debug_terminal_state([].into(), [].into(), None, None)
-            .unwrap();
+        let terminal_state = program.terminal_state([].into(), [].into()).unwrap();
         assert_eq!(BFieldElement::new(4), terminal_state.op_stack.peek_at(ST0));
         assert_eq!(BFieldElement::new(7), terminal_state.op_stack.peek_at(ST1));
         assert_eq!(BFieldElement::new(14), terminal_state.op_stack.peek_at(ST2));
@@ -1980,9 +1976,7 @@ pub(crate) mod tests {
             halt
         );
 
-        let terminal_state = program
-            .debug_terminal_state([].into(), [].into(), None, None)
-            .unwrap();
+        let terminal_state = program.terminal_state([].into(), [].into()).unwrap();
         assert_eq!(BFieldElement::new(2), terminal_state.op_stack.peek_at(ST0));
         assert_eq!(BFieldElement::new(5), terminal_state.op_stack.peek_at(ST1));
         assert_eq!(BFieldElement::new(5), terminal_state.op_stack.peek_at(ST2));

@@ -978,7 +978,7 @@ mod tests {
         let non_determinism = non_determinism.with_digests(mock_digests);
 
         let terminal_state = program
-            .debug_terminal_state(public_input, non_determinism, None, None)
+            .terminal_state(public_input, non_determinism)
             .unwrap();
         terminal_state.op_stack.stack.len()
     }
