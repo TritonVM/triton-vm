@@ -153,13 +153,12 @@ impl ProofItem {
 
 #[cfg(test)]
 mod tests {
-    use itertools::Itertools;
-    use rand::distributions::Standard;
-    use rand::prelude::StdRng;
-    use rand::random;
-    use rand::Rng;
-    use rand_core::RngCore;
-    use rand_core::SeedableRng;
+    use assert2::assert;
+    use assert2::let_assert;
+    use proptest::collection::vec;
+    use proptest::prelude::*;
+    use proptest_arbitrary_interop::arb;
+    use test_strategy::proptest;
     use twenty_first::shared_math::tip5::Tip5;
     use twenty_first::shared_math::x_field_element::XFieldElement;
     use twenty_first::util_types::merkle_tree::CpuParallel;
@@ -171,89 +170,98 @@ mod tests {
 
     use super::*;
 
-    /// Pseudo-randomly generates an indicated number of leaves,
-    /// the corresponding Merkle tree, and returns both.
-    fn random_merkle_tree(seed: u64, num_leaves: usize) -> (MerkleTree<Tip5>, Vec<XFieldElement>) {
-        let rng = StdRng::seed_from_u64(seed);
-        let leaves: Vec<XFieldElement> = rng.sample_iter(Standard).take(num_leaves).collect();
-        let leaves_as_digests: Vec<Digest> = leaves.iter().map(|&x| x.into()).collect();
-        (CpuParallel::from_digests(&leaves_as_digests), leaves)
+    #[derive(Debug, Clone, test_strategy::Arbitrary)]
+    struct LeavedMerkleTreeTestData {
+        #[strategy(1..=10_usize)]
+        _tree_height: usize,
+
+        #[strategy(vec(arb(), 1 << #_tree_height))]
+        _leaves: Vec<XFieldElement>,
+
+        #[strategy(vec(0..#_leaves.len(), 1..=#_leaves.len()))]
+        _revealed_indices: Vec<usize>,
+
+        #[strategy(Just(#_leaves.iter().map(|&x| x.into()).collect()))]
+        _leaves_as_digests: Vec<Digest>,
+
+        #[strategy(Just(CpuParallel::from_digests(&#_leaves_as_digests)))]
+        _merkle_tree: MerkleTree<Tip5>,
+
+        #[strategy(Just(#_revealed_indices.iter().map(|&i| #_leaves[i]).collect()))]
+        revealed_leaves: Vec<XFieldElement>,
+
+        #[strategy(Just(#_merkle_tree.get_authentication_structure(&#_revealed_indices)))]
+        auth_structure: AuthenticationStructure,
     }
 
-    /// Given a Merkle tree and a set of leaves,
-    /// return a FRI response for the given revealed indices.
-    fn fri_response(
-        merkle_tree: &MerkleTree<Tip5>,
-        leaves: &[XFieldElement],
-        revealed_indices: &[usize],
-    ) -> FriResponse {
-        let revealed_leaves = revealed_indices.iter().map(|&i| leaves[i]).collect_vec();
-        let auth_structure = merkle_tree.get_authentication_structure(revealed_indices);
-        FriResponse {
-            auth_structure,
-            revealed_leaves,
-        }
-    }
+    #[proptest]
+    fn serialize_fri_response_in_isolation(leaved_merkle_tree: LeavedMerkleTreeTestData) {
+        let fri_response = FriResponse {
+            auth_structure: leaved_merkle_tree.auth_structure,
+            revealed_leaves: leaved_merkle_tree.revealed_leaves,
+        };
 
-    #[test]
-    fn serialize_fri_response() {
-        type H = Tip5;
-
-        let seed = random();
-        let mut rng = StdRng::seed_from_u64(seed);
-        println!("seed: {seed}");
-
-        let codeword_len = 64;
-        let (merkle_tree, leaves) = random_merkle_tree(rng.next_u64(), codeword_len);
-        let num_indices = rng.gen_range(1..=codeword_len);
-        let revealed_indices = (0..num_indices)
-            .map(|_| rng.gen_range(0..codeword_len))
-            .collect_vec();
-        let fri_response = fri_response(&merkle_tree, &leaves, &revealed_indices);
-
-        // test encoding and decoding in isolation
         let encoding = fri_response.encode();
-        let fri_response_ = *FriResponse::decode(&encoding).unwrap();
-        assert_eq!(fri_response, fri_response_);
+        let_assert!(Ok(decoding) = FriResponse::decode(&encoding));
+        assert!(fri_response == *decoding);
+    }
 
-        // test encoding and decoding in a stream
-        let mut proof_stream = ProofStream::<H>::new();
+    #[proptest]
+    fn serialize_fri_response_in_proof_stream(leaved_merkle_tree: LeavedMerkleTreeTestData) {
+        let fri_response = FriResponse {
+            auth_structure: leaved_merkle_tree.auth_structure,
+            revealed_leaves: leaved_merkle_tree.revealed_leaves,
+        };
+
+        let mut proof_stream = ProofStream::<Tip5>::new();
         proof_stream.enqueue(ProofItem::FriResponse(fri_response.clone()));
         let proof: Proof = proof_stream.into();
-        let mut proof_stream = ProofStream::<H>::try_from(&proof).unwrap();
-        let fri_response_ = proof_stream.dequeue().unwrap();
-        let fri_response_ = fri_response_.as_fri_response().unwrap();
-        assert_eq!(fri_response, fri_response_);
+
+        let_assert!(Ok(mut proof_stream) = ProofStream::<Tip5>::try_from(&proof));
+        let_assert!(Ok(proof_item) = proof_stream.dequeue());
+        let_assert!(Ok(fri_response_) = proof_item.as_fri_response());
+        assert!(fri_response == fri_response_);
+    }
+
+    #[proptest]
+    fn serialize_authentication_structure_in_isolation(
+        leaved_merkle_tree: LeavedMerkleTreeTestData,
+    ) {
+        let auth_structure = leaved_merkle_tree.auth_structure;
+        let encoding = auth_structure.encode();
+        let_assert!(Ok(decoding) = AuthenticationStructure::decode(&encoding));
+        assert!(auth_structure == *decoding);
+    }
+
+    #[proptest]
+    fn serialize_authentication_structure_in_proof_stream(
+        leaved_merkle_tree: LeavedMerkleTreeTestData,
+    ) {
+        let auth_structure = leaved_merkle_tree.auth_structure;
+        let mut proof_stream = ProofStream::<Tip5>::new();
+        proof_stream.enqueue(ProofItem::AuthenticationStructure(auth_structure.clone()));
+        let proof: Proof = proof_stream.into();
+
+        let_assert!(Ok(mut proof_stream) = ProofStream::<Tip5>::try_from(&proof));
+        let_assert!(Ok(proof_item) = proof_stream.dequeue());
+        let_assert!(Ok(auth_structure_) = proof_item.as_authentication_structure());
+        assert!(auth_structure == auth_structure_);
     }
 
     #[test]
-    fn serialize_authentication_structure() {
-        type H = Tip5;
-
-        let seed = random();
-        let mut rng = StdRng::seed_from_u64(seed);
-        println!("seed: {seed}");
-
-        let codeword_len = 64;
-        let (merkle_tree, _) = random_merkle_tree(rng.next_u64(), codeword_len);
-        let num_indices = rng.gen_range(1..=codeword_len);
-        let revealed_indices = (0..num_indices)
-            .map(|_| rng.gen_range(0..codeword_len))
-            .collect_vec();
-        let auth_structure = merkle_tree.get_authentication_structure(&revealed_indices);
-
-        // test encoding and decoding in isolation
-        let encoding = auth_structure.encode();
-        let auth_structure_ = *AuthenticationStructure::decode(&encoding).unwrap();
-        assert_eq!(auth_structure, auth_structure_);
-
-        // test encoding and decoding in a stream
-        let mut proof_stream = ProofStream::<H>::new();
-        proof_stream.enqueue(ProofItem::AuthenticationStructure(auth_structure.clone()));
-        let proof: Proof = proof_stream.into();
-        let mut proof_stream = ProofStream::<H>::try_from(&proof).unwrap();
-        let auth_structure_ = proof_stream.dequeue().unwrap();
-        let auth_structure_ = auth_structure_.as_authentication_structure().unwrap();
-        assert_eq!(auth_structure, auth_structure_);
+    fn interpreting_a_merkle_root_as_anything_else_gives_appropriate_error() {
+        let fake_root = Digest::default();
+        let proof_item = ProofItem::MerkleRoot(fake_root);
+        assert!(let Err(UnexpectedItem(_, _)) = proof_item.as_authentication_structure());
+        assert!(let Err(UnexpectedItem(_, _)) = proof_item.as_fri_response());
+        assert!(let Err(UnexpectedItem(_, _)) = proof_item.as_master_base_table_rows());
+        assert!(let Err(UnexpectedItem(_, _)) = proof_item.as_master_ext_table_rows());
+        assert!(let Err(UnexpectedItem(_, _)) = proof_item.as_out_of_domain_base_row());
+        assert!(let Err(UnexpectedItem(_, _)) = proof_item.as_out_of_domain_ext_row());
+        assert!(let Err(UnexpectedItem(_, _)) = proof_item.as_out_of_domain_quotient_segments());
+        assert!(let Err(UnexpectedItem(_, _)) = proof_item.as_log2_padded_height());
+        assert!(let Err(UnexpectedItem(_, _)) = proof_item.as_quotient_segments_elements());
+        assert!(let Err(UnexpectedItem(_, _)) = proof_item.as_fri_codeword());
+        assert!(let Err(UnexpectedItem(_, _)) = proof_item.as_fri_response());
     }
 }

@@ -632,6 +632,8 @@ mod tests {
     use std::cmp::max;
     use std::cmp::min;
 
+    use assert2::assert;
+    use assert2::let_assert;
     use itertools::Itertools;
     use proptest::prelude::*;
     use proptest_arbitrary_interop::arb;
@@ -965,10 +967,8 @@ mod tests {
             modify_some_auth_structure_in_proof_stream_using_seed(proof_stream, rng_seed);
 
         let verdict = fri.verify(&mut proof_stream, &mut None);
-        let err = verdict.unwrap_err();
-        let FriValidationError::BadMerkleAuthenticationPath = err else {
-            return Err(TestCaseError::Fail("validation must fail".into()));
-        };
+        let_assert!(Err(err) = verdict);
+        assert!(let BadMerkleAuthenticationPath = err);
     }
 
     #[must_use]

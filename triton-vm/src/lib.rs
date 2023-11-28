@@ -645,7 +645,6 @@ mod tests {
 
     #[test]
     fn lib_prove_verify() {
-        let parameters = StarkParameters::default();
         let program = triton_program!(push 1 assert halt);
         let claim = Claim {
             program_digest: program.hash::<StarkHasher>(),
@@ -653,9 +652,39 @@ mod tests {
             output: vec![],
         };
 
+        let parameters = StarkParameters::default();
         let proof = prove(parameters, &claim, &program, [].into()).unwrap();
         let verdict = verify(parameters, &claim, &proof);
         assert!(verdict);
+    }
+
+    #[test]
+    fn lib_prove_with_incorrect_program_digest_gives_appropriate_error() {
+        let program = triton_program!(push 1 assert halt);
+        let other_program = triton_program!(push 2 assert halt);
+        let claim = Claim {
+            program_digest: other_program.hash::<StarkHasher>(),
+            input: vec![],
+            output: vec![],
+        };
+
+        let parameters = StarkParameters::default();
+        let_assert!(Err(err) = prove(parameters, &claim, &program, [].into()));
+        assert!(let ProvingError::ProgramDigestMismatch = err);
+    }
+
+    #[test]
+    fn lib_prove_with_incorrect_public_output_gives_appropriate_error() {
+        let program = triton_program! { read_io 1 push 2 mul write_io 1 halt };
+        let claim = Claim {
+            program_digest: program.hash::<StarkHasher>(),
+            input: vec![2_u64.into()],
+            output: vec![5_u64.into()],
+        };
+
+        let parameters = StarkParameters::default();
+        let_assert!(Err(err) = prove(parameters, &claim, &program, [].into()));
+        assert!(let ProvingError::PublicOutputMismatch = err);
     }
 
     #[test]

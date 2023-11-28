@@ -1039,6 +1039,13 @@ pub(crate) mod tests {
         assert!(BFieldElement::new(14) == stdout[0]);
     }
 
+    #[test]
+    fn crash_triton_vm_and_print_vm_error() {
+        let crashing_program = triton_program!(push 2 assert halt);
+        let_assert!(Err(err) = crashing_program.run([].into(), [].into()));
+        println!("{err}");
+    }
+
     pub(crate) fn test_program_hash_nop_nop_lt() -> ProgramAndInput {
         let push_5_zeros = triton_asm![push 0; 5];
         let program = triton_program! {
