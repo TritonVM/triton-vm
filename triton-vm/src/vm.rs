@@ -28,7 +28,6 @@ use crate::stark::StarkHasher;
 use crate::table::hash_table::PermutationTrace;
 use crate::table::op_stack_table::OpStackTableEntry;
 use crate::table::processor_table;
-use crate::table::processor_table::ProcessorTraceRow;
 use crate::table::ram_table::RamTableCall;
 use crate::table::table_column::*;
 use crate::table::u32_table::U32TableEntry;
@@ -875,13 +874,76 @@ impl VMState {
 
 impl Display for VMState {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
-        if self.current_instruction().is_err() {
+        let Ok(instruction) = self.current_instruction() else {
             return write!(f, "END-OF-FILE");
-        }
+        };
 
+        use ProcessorBaseTableColumn::*;
         let total_width = 103;
+        let tab_width = 54;
+        let clk_width = 17;
         let register_width = 20;
-        let print_row = |f: &mut Formatter<'_>, s: String| writeln!(f, "│ {s: <total_width$} │");
+        let buffer_width = total_width - tab_width - clk_width - 7;
+
+        let print_row = |f: &mut Formatter, s: String| writeln!(f, "│ {s: <total_width$} │");
+        let print_blank_row = |f: &mut Formatter| print_row(f, "".into());
+
+        let row = self.to_processor_row();
+
+        let register = |reg: ProcessorBaseTableColumn| {
+            let reg_string = format!("{}", row[reg.base_table_index()]);
+            format!("{reg_string:>register_width$}")
+        };
+        let multi_register = |regs: [_; 4]| regs.map(register).join(" | ");
+
+        writeln!(f, " ╭─{:─<tab_width$}─╮", "")?;
+        writeln!(f, " │ {: <tab_width$} │", format!("{instruction}"))?;
+        writeln!(
+            f,
+            "╭┴─{:─<tab_width$}─┴─{:─<buffer_width$}─┬─{:─>clk_width$}─╮",
+            "", "", ""
+        )?;
+
+        let ip = register(IP);
+        let ci = register(CI);
+        let nia = register(NIA);
+        let jsp = register(JSP);
+        let jso = register(JSO);
+        let jsd = register(JSD);
+        let osp = register(OpStackPointer);
+        let clk = row[CLK.base_table_index()].to_string();
+
+        let first_line = format!("ip:   {ip} ╷ ci:   {ci} ╷ nia: {nia} │ {clk: >clk_width$}");
+        print_row(f, first_line)?;
+        writeln!(
+            f,
+            "│ jsp:  {jsp} │ jso:  {jso} │ jsd: {jsd} ╰─{:─>clk_width$}─┤",
+            "",
+        )?;
+        print_row(f, format!("osp:  {osp} ╵"))?;
+        print_blank_row(f)?;
+
+        let st_00_03 = multi_register([ST0, ST1, ST2, ST3]);
+        let st_04_07 = multi_register([ST4, ST5, ST6, ST7]);
+        let st_08_11 = multi_register([ST8, ST9, ST10, ST11]);
+        let st_12_15 = multi_register([ST12, ST13, ST14, ST15]);
+
+        print_row(f, format!("st0-3:    [ {st_00_03} ]"))?;
+        print_row(f, format!("st4-7:    [ {st_04_07} ]"))?;
+        print_row(f, format!("st8-11:   [ {st_08_11} ]"))?;
+        print_row(f, format!("st12-15:  [ {st_12_15} ]"))?;
+        print_blank_row(f)?;
+
+        let hv_00_03_line = format!("hv0-3:    [ {} ]", multi_register([HV0, HV1, HV2, HV3]));
+        let hv_04_05_line = format!("hv4-5:    [ {} | {} ]", register(HV4), register(HV5),);
+        print_row(f, hv_00_03_line)?;
+        print_row(f, hv_04_05_line)?;
+
+        let ib_registers = [IB6, IB5, IB4, IB3, IB2, IB1, IB0]
+            .map(|reg| row[reg.base_table_index()])
+            .map(|bfe| format!("{bfe:>2}"))
+            .join(" | ");
+        print_row(f, format!("ib6-0:    [ {ib_registers} ]",))?;
 
         let sponge_state_register = |i: usize| self.sponge_state[i].value();
         let sponge_state_slice = |idxs: [usize; 4]| {
@@ -895,10 +957,7 @@ impl Display for VMState {
         let sponge_state_08_11 = sponge_state_slice([8, 9, 10, 11]);
         let sponge_state_12_15 = sponge_state_slice([12, 13, 14, 15]);
 
-        let row = self.to_processor_row();
-        write!(f, "{}", ProcessorTraceRow { row: row.view() })?;
-        writeln!(f)?;
-        writeln!(f, "╭─{:─<total_width$}─╮", "")?;
+        writeln!(f, "├─{:─<total_width$}─┤", "")?;
         print_row(f, format!("sp0-3:    [ {sponge_state_00_03} ]"))?;
         print_row(f, format!("sp4-7:    [ {sponge_state_04_07} ]"))?;
         print_row(f, format!("sp8-11:   [ {sponge_state_08_11} ]"))?;
@@ -948,7 +1007,6 @@ pub(crate) mod tests {
     use crate::shared_tests::prove_with_low_security_level;
     use crate::shared_tests::ProgramAndInput;
     use crate::stark::MTMaker;
-    use crate::table::processor_table::ProcessorTraceRow;
     use crate::triton_asm;
     use crate::triton_program;
 
@@ -966,15 +1024,7 @@ pub(crate) mod tests {
     fn initialise_table() {
         let program = GREATEST_COMMON_DIVISOR.clone();
         let stdin = vec![42, 56].into();
-        let (aet, stdout) = program.trace_execution(stdin, [].into()).unwrap();
-
-        println!(
-            "VM output: [{}]",
-            pretty_print_array_view(Array1::from(stdout).view())
-        );
-        for row in aet.processor_trace.rows() {
-            println!("{}", ProcessorTraceRow { row });
-        }
+        let _ = program.trace_execution(stdin, [].into()).unwrap();
     }
 
     #[test]
