@@ -3380,7 +3380,8 @@ impl<'a> Display for ProcessorTraceRow<'a> {
         let register_width = 20;
 
         let register = |reg: ProcessorBaseTableColumn| {
-            format!("{:>register_width$}", self.row[reg.base_table_index()])
+            let reg_string = format!("{}", self.row[reg.base_table_index()]);
+            format!("{reg_string:>register_width$}")
         };
         let multi_register = |regs: [_; 4]| regs.map(register).join(" | ");
 

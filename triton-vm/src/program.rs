@@ -395,8 +395,12 @@ impl Program {
     /// If an error is encountered, the returned [`VMError`] contains the [`VMState`] at the point
     /// of execution failure.
     ///
-    /// See also [`trace_execution`](Self::trace_execution) and
-    /// [`terminal_state`](Self::terminal_state).
+    /// See also [`trace_execution`][trace_execution], [`terminal_state`][terminal_state], and
+    /// [`profile`][profile].
+    ///
+    /// [trace_execution]: Self::trace_execution
+    /// [terminal_state]: Self::terminal_state
+    /// [profile]: Self::profile
     pub fn run(
         &self,
         public_input: PublicInput,
@@ -406,10 +410,14 @@ impl Program {
         Ok(terminal_state.public_output)
     }
 
-    /// Similar to [`run`](Self::run), but returns the entire [`VMState`] instead of just
-    /// the public output.
+    /// Similar to [`run`][run], but returns the entire [`VMState`] instead of just the public
+    /// output.
     ///
-    /// See also [`trace_execution`](Self::trace_execution) and [`profile`](Self::profile).
+    /// See also [`trace_execution`][trace_execution] and [`profile`][profile].
+    ///
+    /// [run]: Self::run
+    /// [trace_execution]: Self::trace_execution
+    /// [profile]: Self::profile
     pub fn terminal_state(
         &self,
         public_input: PublicInput,
@@ -430,8 +438,12 @@ impl Program {
     /// 1. an [`AlgebraicExecutionTrace`], and
     /// 1. the output of the program.
     ///
-    /// See also [`run`][Self::run], [`terminal_state`](Self::terminal_state), and
-    /// [`profile`](Self::profile).
+    /// See also [`run`][run], [`terminal_state`][terminal_state], and
+    /// [`profile`][profile].
+    ///
+    /// [run]: Self::run
+    /// [terminal_state]: Self::terminal_state
+    /// [profile]: Self::profile
     pub fn trace_execution(
         &self,
         public_input: PublicInput,
@@ -458,8 +470,12 @@ impl Program {
     /// in each callable block of instructions. This function returns a Result wrapping a program
     /// profiler report, which is a Vec of [`ProfileLine`]s.
     ///
-    /// See also [`run`](Self::run), [`trace_execution`](Self::trace_execution), and
-    /// [`terminal_state`](Self::terminal_state).
+    /// See also [`run`][run], [`trace_execution`][trace_execution], and
+    /// [`terminal_state`][terminal_state].
+    ///
+    /// [run]: Self::run
+    /// [trace_execution]: Self::trace_execution
+    /// [terminal_state]: Self::terminal_state
     pub fn profile(
         &self,
         public_input: PublicInput,

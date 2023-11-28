@@ -258,18 +258,19 @@ pub enum HashBaseTableColumn {
     /// The current instruction. Only relevant for [`Mode`][mode] [`Sponge`][mode_sponge]
     /// in order to distinguish between the different Sponge instructions.
     ///
-    /// [mode]: Self::Mode
+    /// [mode]: HashBaseTableColumn::Mode
     /// [mode_sponge]: crate::table::hash_table::HashTableMode::Sponge
     CI,
 
     /// The number of the current round in the permutation. The round number evolves as
     /// - 0 → 1 → 2 → 3 → 4 → 5 (→ 0) in [`Mode`][mode]s
     /// [`ProgramHashing`][mode_prog_hash], [`Sponge`][mode_sponge] and [`Hash`][mode_hash],
-    /// - 0 → 0 in [`Mode`][mode] [`Sponge`][mode_sponge] if the current instruction [`CI`] is
+    /// - 0 → 0 in [`Mode`][mode] [`Sponge`][mode_sponge] if the current instruction [`CI`][ci] is
     /// `sponge_init`, as an exception to above rule, and
     /// - 0 → 0 in [`Mode`][mode] [`Pad`][mode_pad].
     ///
-    /// [mode]: Self::Mode
+    /// [ci]: HashBaseTableColumn::CI
+    /// [mode]: HashBaseTableColumn::Mode
     /// [mode_prog_hash]: crate::table::hash_table::HashTableMode::ProgramHashing
     /// [mode_sponge]: crate::table::hash_table::HashTableMode::Sponge
     /// [mode_hash]: crate::table::hash_table::HashTableMode::Hash

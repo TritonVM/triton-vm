@@ -548,7 +548,7 @@ const fn all_instruction_names() -> [&'static str; Instruction::COUNT] {
     names
 }
 
-/// Indicators for all the possible bits in an [`Instruction`](Instruction).
+/// Indicators for all the possible bits in an [`Instruction`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, EnumCount, EnumIter)]
 pub enum InstructionBit {
     #[default]

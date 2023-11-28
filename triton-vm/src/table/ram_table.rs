@@ -34,9 +34,9 @@ pub const BASE_WIDTH: usize = RamBaseTableColumn::COUNT;
 pub const EXT_WIDTH: usize = RamExtTableColumn::COUNT;
 pub const FULL_WIDTH: usize = BASE_WIDTH + EXT_WIDTH;
 
-pub(crate) const INSTRUCTION_TYPE_WRITE: BFieldElement = BFIELD_ZERO;
-pub(crate) const INSTRUCTION_TYPE_READ: BFieldElement = BFIELD_ONE;
-pub(crate) const PADDING_INDICATOR: BFieldElement = BFieldElement::new(2);
+pub const INSTRUCTION_TYPE_WRITE: BFieldElement = BFIELD_ZERO;
+pub const INSTRUCTION_TYPE_READ: BFieldElement = BFIELD_ONE;
+pub const PADDING_INDICATOR: BFieldElement = BFieldElement::new(2);
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Arbitrary)]
 pub struct RamTableCall {

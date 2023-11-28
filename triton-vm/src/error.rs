@@ -15,9 +15,13 @@ use crate::stark::StarkHasher;
 use crate::vm::VMState;
 use crate::BFieldElement;
 
+/// Indicates a runtime error that resulted in a crash of Triton VM.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub struct VMError {
+    /// The reason Triton VM crashed.
     pub source: InstructionError,
+
+    /// The state of Triton VM at the time of the crash.
     pub vm_state: Box<VMState>,
 }
 

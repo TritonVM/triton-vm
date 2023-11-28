@@ -121,6 +121,26 @@
 //! assert!(verdict);
 //! ```
 //!
+//! ## Crashing Triton VM
+//!
+//! Successful termination of a program is not guaranteed. For example, a program must execute
+//! `halt` as its last instruction. Certain instructions, such as `assert`, `invert`, or the u32
+//! instructions, can also cause the VM to crash. Upon crashing Triton VM, methods like
+//! [`run`](Program::run) and [`trace_execution`][trace_execution] will return a
+//! [`VMError`][vm_error]. This can be helpful for debugging.
+//!
+//! ```
+//! # use triton_vm::*;
+//! # use triton_vm::error::InstructionError;
+//! let crashing_program = triton_program!(push 2 assert halt);
+//! let vm_error = crashing_program.run([].into(), [].into()).unwrap_err();
+//! assert!(matches!(vm_error.source, InstructionError::AssertionFailed));
+//! // inspect the VM state
+//! eprintln!("{vm_error}");
+//! ```
+//!
+//! [vm_error]: error::VMError
+//! [trace_execution]: Program::trace_execution
 
 #![recursion_limit = "4096"]
 

@@ -70,7 +70,7 @@ pub struct ExtHashTable {}
 /// 1. Processing the `hash` instruction.
 /// 1. Padding mode.
 ///
-/// Changing the mode is only possible when the current [`RoundNumber`][round_no] is [`NUM_ROUNDS`].
+/// Changing the mode is only possible when the current [`RoundNumber`] is [`NUM_ROUNDS`].
 /// The mode evolves as
 /// [`ProgramHashing`][prog_hash] → [`Sponge`][sponge] → [`Hash`][hash] → [`Pad`][pad].
 /// Once mode [`Pad`][pad] is reached, it is not possible to change the mode anymore.
@@ -86,11 +86,10 @@ pub struct ExtHashTable {}
 /// instruction `halt`.
 ///
 /// [program]: crate::program::Program
-/// [round_no]: HashBaseTableColumn::RoundNumber
-/// [prog_hash]: Self::ProgramHashing
-/// [sponge]: Self::Sponge
-/// [hash]: Self::Hash
-/// [pad]: Self::Pad
+/// [prog_hash]: HashTableMode::ProgramHashing
+/// [sponge]: HashTableMode::Sponge
+/// [hash]: type@HashTableMode::Hash
+/// [pad]: HashTableMode::Pad
 #[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCount, Hash)]
 pub enum HashTableMode {
     /// The mode in which the [`Program`][program] is hashed. This is part of program attestation.
