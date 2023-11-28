@@ -6,10 +6,6 @@ use arbitrary::Arbitrary;
 use get_size::GetSize;
 use itertools::Itertools;
 use num_traits::Zero;
-use rand::distributions::Distribution;
-use rand::distributions::Standard;
-use rand::seq::IteratorRandom;
-use rand::Rng;
 use serde_derive::Deserialize;
 use serde_derive::Serialize;
 use strum::EnumCount;
@@ -295,12 +291,6 @@ impl OpStackElement {
     }
 }
 
-impl Distribution<OpStackElement> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> OpStackElement {
-        OpStackElement::iter().choose(rng).unwrap()
-    }
-}
-
 impl Display for OpStackElement {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         let index = self.index();
@@ -472,12 +462,6 @@ impl NumberOfWords {
     }
 }
 
-impl Distribution<NumberOfWords> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> NumberOfWords {
-        NumberOfWords::iter().choose(rng).unwrap()
-    }
-}
-
 impl Display for NumberOfWords {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         write!(f, "{}", self.num_words())
@@ -602,12 +586,15 @@ impl TryFrom<&BFieldElement> for NumberOfWords {
 #[cfg(test)]
 mod tests {
     use assert2::assert;
+    use assert2::let_assert;
     use proptest::collection::vec;
     use proptest::prelude::*;
     use proptest_arbitrary_interop::arb;
     use strum::IntoEnumIterator;
     use test_strategy::proptest;
     use twenty_first::shared_math::b_field_element::BFieldElement;
+
+    use crate::op_stack::NumberOfWords::N1;
 
     use super::*;
 
@@ -690,8 +677,8 @@ mod tests {
     #[test]
     fn conversion_from_stack_element_to_u32_and_back_is_identity() {
         for stack_element in OpStackElement::iter() {
-            let stack_index = u32::from(&stack_element);
-            let stack_element_again = OpStackElement::try_from(stack_index).unwrap();
+            let stack_index = u32::from(stack_element);
+            let_assert!(Ok(stack_element_again) = OpStackElement::try_from(stack_index));
             assert!(stack_element == stack_element_again);
         }
     }
@@ -699,8 +686,8 @@ mod tests {
     #[test]
     fn conversion_from_stack_element_to_i32_and_back_is_identity() {
         for stack_element in OpStackElement::iter() {
-            let stack_index = i32::from(&stack_element);
-            let stack_element_again = OpStackElement::try_from(stack_index).unwrap();
+            let stack_index = i32::from(stack_element);
+            let_assert!(Ok(stack_element_again) = OpStackElement::try_from(stack_index));
             assert!(stack_element == stack_element_again);
         }
     }
@@ -768,8 +755,8 @@ mod tests {
     #[test]
     fn conversion_from_number_of_words_to_usize_and_back_is_identity() {
         for num_words in NumberOfWords::iter() {
-            let stack_index = usize::from(&num_words);
-            let num_words_again = NumberOfWords::try_from(stack_index).unwrap();
+            let stack_index = usize::from(num_words);
+            let_assert!(Ok(num_words_again) = NumberOfWords::try_from(stack_index));
             assert!(num_words == num_words_again);
         }
     }
@@ -777,8 +764,8 @@ mod tests {
     #[test]
     fn conversion_from_number_of_words_to_u64_and_back_is_identity() {
         for num_words in NumberOfWords::iter() {
-            let stack_index = u64::from(&num_words);
-            let num_words_again = NumberOfWords::try_from(stack_index).unwrap();
+            let stack_index = u64::from(num_words);
+            let_assert!(Ok(num_words_again) = NumberOfWords::try_from(stack_index));
             assert!(num_words == num_words_again);
         }
     }
@@ -786,10 +773,57 @@ mod tests {
     #[test]
     fn conversion_from_number_of_words_to_op_stack_element_and_back_is_identity() {
         for num_words in NumberOfWords::iter() {
-            let stack_element = OpStackElement::from(&num_words);
-            let num_words_again = NumberOfWords::try_from(stack_element).unwrap();
+            let stack_element = OpStackElement::from(num_words);
+            let_assert!(Ok(num_words_again) = NumberOfWords::try_from(stack_element));
             assert!(num_words == num_words_again);
         }
+    }
+
+    #[test]
+    fn convert_from_various_primitive_types_to_op_stack_element() {
+        assert!(let Ok(_) = OpStackElement::try_from(0_u32));
+        assert!(let Ok(_) = OpStackElement::try_from(0_u64));
+        assert!(let Ok(_) = OpStackElement::try_from(0_usize));
+        assert!(let Ok(_) = OpStackElement::try_from(0_i32));
+        assert!(let Ok(_) = OpStackElement::try_from(BFieldElement::zero()));
+    }
+
+    #[test]
+    fn convert_from_various_primitive_types_to_number_of_words() {
+        assert!(let Ok(_) = NumberOfWords::try_from(1_u32));
+        assert!(let Ok(_) = NumberOfWords::try_from(1_u64));
+        assert!(let Ok(_) = NumberOfWords::try_from(1_usize));
+        assert!(let Ok(_) = NumberOfWords::try_from(BFieldElement::new(1)));
+        assert!(let Ok(_) = NumberOfWords::try_from(ST1));
+    }
+
+    #[test]
+    fn convert_from_op_stack_element_to_various_primitive_types() {
+        let _ = u32::from(ST0);
+        let _ = u64::from(ST0);
+        let _ = usize::from(ST0);
+        let _ = i32::from(ST0);
+        let _ = BFieldElement::from(ST0);
+
+        let _ = u32::from(&ST0);
+        let _ = usize::from(&ST0);
+        let _ = i32::from(&ST0);
+        let _ = BFieldElement::from(&ST0);
+    }
+
+    #[test]
+    fn convert_from_number_of_words_to_various_primitive_types() {
+        let _ = u32::from(N1);
+        let _ = u64::from(N1);
+        let _ = usize::from(N1);
+        let _ = BFieldElement::from(N1);
+        let _ = OpStackElement::from(N1);
+
+        let _ = u32::from(&N1);
+        let _ = u64::from(&N1);
+        let _ = usize::from(&N1);
+        let _ = BFieldElement::from(&N1);
+        let _ = OpStackElement::from(&N1);
     }
 
     #[proptest]
