@@ -760,7 +760,7 @@ impl Stark {
         claim: &Claim,
         proof: &Proof,
         maybe_profiler: &mut Option<TritonProfiler>,
-    ) -> Result<bool, VerificationError> {
+    ) -> Result<(), VerificationError> {
         prof_start!(maybe_profiler, "deserialize");
         let mut proof_stream = StarkProofStream::try_from(proof)?;
         prof_stop!(maybe_profiler, "deserialize");
@@ -1074,7 +1074,7 @@ impl Stark {
         }
         prof_stop!(maybe_profiler, "main loop");
         prof_stop!(maybe_profiler, "linear combination");
-        Ok(true)
+        Ok(())
     }
 
     fn hash_quotient_segment_elements(
@@ -2239,8 +2239,7 @@ pub(crate) mod tests {
             &mut None,
         );
 
-        let_assert!(Ok(verdict) = Stark::verify(parameters, &claim, &proof, &mut None));
-        assert!(verdict);
+        assert!(let Ok(()) = Stark::verify(parameters, &claim, &proof, &mut None));
     }
 
     #[test]
@@ -2256,8 +2255,7 @@ pub(crate) mod tests {
         let mut profiler = profiler.unwrap();
         profiler.finish();
 
-        let_assert!(Ok(verdict) = Stark::verify(parameters, &claim, &proof, &mut None));
-        assert!(verdict);
+        assert!(let Ok(()) = Stark::verify(parameters, &claim, &proof, &mut None));
 
         let_assert!(Ok(padded_height) = proof.padded_height());
         let fri = Stark::derive_fri(parameters, padded_height);
@@ -2281,8 +2279,7 @@ pub(crate) mod tests {
 
         println!("between prove and verify");
 
-        let_assert!(Ok(verdict) = Stark::verify(parameters, &claim, &proof, &mut None));
-        assert!(verdict);
+        assert!(let Ok(()) = Stark::verify(parameters, &claim, &proof, &mut None));
 
         let_assert!(Ok(padded_height) = proof.padded_height());
         let fri = Stark::derive_fri(parameters, padded_height);
@@ -2300,8 +2297,7 @@ pub(crate) mod tests {
             let secret_in = [].into();
             let (parameters, claim, proof) =
                 prove_with_low_security_level(&FIBONACCI_SEQUENCE, stdin, secret_in, &mut None);
-            let_assert!(Ok(verdict) = Stark::verify(parameters, &claim, &proof, &mut None));
-            assert!(verdict);
+            assert!(let Ok(()) = Stark::verify(parameters, &claim, &proof, &mut None));
 
             assert!(vec![fib_seq_val] == claim.public_output());
         }
@@ -2325,8 +2321,7 @@ pub(crate) mod tests {
         );
         let mut profiler = profiler.unwrap();
         profiler.finish();
-        let_assert!(Ok(result) = Stark::verify(parameters, &claim, &proof, &mut None));
-        assert!(result);
+        assert!(let Ok(()) = Stark::verify(parameters, &claim, &proof, &mut None));
 
         let_assert!(Ok(padded_height) = proof.padded_height());
         let fri = Stark::derive_fri(parameters, padded_height);

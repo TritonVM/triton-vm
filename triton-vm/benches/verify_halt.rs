@@ -25,8 +25,7 @@ fn verify_halt(criterion: &mut Criterion) {
     let proof = Stark::prove(parameters, &claim, &aet, &mut None);
 
     let mut profiler = Some(TritonProfiler::new("Verify Halt"));
-    let verdict = Stark::verify(parameters, &claim, &proof, &mut profiler).unwrap();
-    assert!(verdict);
+    Stark::verify(parameters, &claim, &proof, &mut profiler).unwrap();
 
     let mut profiler = profiler.unwrap();
     profiler.finish();
