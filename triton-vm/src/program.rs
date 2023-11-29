@@ -7,10 +7,6 @@ use std::fmt::Result as FmtResult;
 use std::hash::Hash;
 use std::io::Cursor;
 
-use anyhow::anyhow;
-use anyhow::bail;
-use anyhow::Error;
-use anyhow::Result;
 use arbitrary::Arbitrary;
 use get_size::GetSize;
 use itertools::Itertools;
@@ -22,19 +18,21 @@ use twenty_first::shared_math::digest::Digest;
 use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
 
 use crate::aet::AlgebraicExecutionTrace;
-use crate::ensure_eq;
+use crate::error::ProgramDecodingError;
+use crate::error::VMError;
 use crate::instruction::AnInstruction;
 use crate::instruction::Instruction;
 use crate::instruction::LabelledInstruction;
 use crate::parser::parse;
 use crate::parser::to_labelled_instructions;
+use crate::parser::ParseError;
 use crate::vm::VMState;
+
+type Result<T> = std::result::Result<T, VMError>;
 
 /// A program for Triton VM.
 /// It can be
 /// [`run`](Program::run),
-/// [`debugged`](Program::debug)
-/// (also the RAM-friendlier [`debug_terminal_state`](Program::debug_terminal_state)),
 /// [`profiled`](Program::profile),
 /// and its execution can be [`traced`](Program::trace_execution).
 ///
@@ -73,37 +71,48 @@ impl PartialEq for Program {
 }
 
 impl BFieldCodec for Program {
-    fn decode(sequence: &[BFieldElement]) -> Result<Box<Self>> {
+    type Error = ProgramDecodingError;
+
+    fn decode(sequence: &[BFieldElement]) -> std::result::Result<Box<Self>, Self::Error> {
         if sequence.is_empty() {
-            bail!("Sequence to decode must not be empty.");
+            return Err(Self::Error::EmptySequence);
         }
         let program_length = sequence[0].value() as usize;
         let sequence = &sequence[1..];
-        ensure_eq!(program_length, sequence.len());
+        if sequence.len() < program_length {
+            return Err(Self::Error::SequenceTooShort);
+        }
+        if sequence.len() > program_length {
+            return Err(Self::Error::SequenceTooLong);
+        }
 
+        // instantiating with claimed capacity is a potential DOS vector
+        let mut instructions = vec![];
         let mut read_idx = 0;
-        let mut instructions = Vec::with_capacity(program_length);
         while read_idx < program_length {
             let opcode = sequence[read_idx];
-            let mut instruction: Instruction = opcode
-                .try_into()
-                .expect("Invalid opcode {opcode} at index {idx}.");
+            let mut instruction = Instruction::try_from(opcode)
+                .map_err(|err| Self::Error::InvalidInstruction(read_idx, err))?;
             if instruction.has_arg() && instructions.len() + instruction.size() > program_length {
-                bail!("Missing argument for instruction {instruction} at index {read_idx}.");
+                return Err(Self::Error::MissingArgument(read_idx, instruction));
             }
             if instruction.has_arg() {
                 let arg = sequence[read_idx + 1];
-                instruction = instruction.change_arg(arg).ok_or(anyhow!(
-                    "Invalid argument {arg} for instruction {instruction} at index {read_idx}."
-                ))?;
+                instruction = instruction
+                    .change_arg(arg)
+                    .map_err(|err| Self::Error::InvalidInstruction(read_idx, err))?;
             }
 
             instructions.extend(vec![instruction; instruction.size()]);
             read_idx += instruction.size();
         }
 
-        ensure_eq!(read_idx, program_length);
-        ensure_eq!(instructions.len(), program_length);
+        if read_idx != program_length {
+            return Err(Self::Error::LengthMismatch);
+        }
+        if instructions.len() != program_length {
+            return Err(Self::Error::LengthMismatch);
+        }
 
         Ok(Box::new(Program {
             instructions,
@@ -288,11 +297,10 @@ impl Program {
     }
 
     /// Create a `Program` by parsing source code.
-    pub fn from_code(code: &str) -> Result<Self> {
+    pub fn from_code(code: &str) -> std::result::Result<Self, ParseError> {
         parse(code)
             .map(|tokens| to_labelled_instructions(&tokens))
             .map(|instructions| Program::new(&instructions))
-            .map_err(|err| anyhow!("{err}"))
     }
 
     pub fn labelled_instructions(&self) -> Vec<LabelledInstruction> {
@@ -383,19 +391,45 @@ impl Program {
         H::hash_varlen(&self.to_bwords())
     }
 
-    /// Run Triton VM on the given [`Program`] with the given public and secret input.
+    /// Run Triton VM on the [`Program`] with the given public input and non-determinism.
+    /// If an error is encountered, the returned [`VMError`] contains the [`VMState`] at the point
+    /// of execution failure.
     ///
-    /// See also [`trace_execution`](Self::trace_execution) and [`debug`](Self::debug).
+    /// See also [`trace_execution`][trace_execution], [`terminal_state`][terminal_state], and
+    /// [`profile`][profile].
+    ///
+    /// [trace_execution]: Self::trace_execution
+    /// [terminal_state]: Self::terminal_state
+    /// [profile]: Self::profile
     pub fn run(
         &self,
         public_input: PublicInput,
         non_determinism: NonDeterminism<BFieldElement>,
     ) -> Result<Vec<BFieldElement>> {
+        let terminal_state = self.terminal_state(public_input, non_determinism)?;
+        Ok(terminal_state.public_output)
+    }
+
+    /// Similar to [`run`][run], but returns the entire [`VMState`] instead of just the public
+    /// output.
+    ///
+    /// See also [`trace_execution`][trace_execution] and [`profile`][profile].
+    ///
+    /// [run]: Self::run
+    /// [trace_execution]: Self::trace_execution
+    /// [profile]: Self::profile
+    pub fn terminal_state(
+        &self,
+        public_input: PublicInput,
+        non_determinism: NonDeterminism<BFieldElement>,
+    ) -> Result<VMState> {
         let mut state = VMState::new(self, public_input, non_determinism);
         while !state.halting {
-            state.step()?;
+            let consistent_state = state.clone();
+            let vm_error = |err| VMError::new(err, consistent_state);
+            state.step().map_err(vm_error)?;
         }
-        Ok(state.public_output)
+        Ok(state)
     }
 
     /// Trace the execution of a [`Program`]. That is, [`run`][run] the [`Program`] and additionally
@@ -404,9 +438,12 @@ impl Program {
     /// 1. an [`AlgebraicExecutionTrace`], and
     /// 1. the output of the program.
     ///
-    /// See also [`debug`](Self::debug) and [`run`][run].
+    /// See also [`run`][run], [`terminal_state`][terminal_state], and
+    /// [`profile`][profile].
     ///
     /// [run]: Self::run
+    /// [terminal_state]: Self::terminal_state
+    /// [profile]: Self::profile
     pub fn trace_execution(
         &self,
         public_input: PublicInput,
@@ -417,8 +454,10 @@ impl Program {
         assert_eq!(self.len_bwords(), aet.instruction_multiplicities.len());
 
         while !state.halting {
-            aet.record_state(&state)?;
-            let co_processor_calls = state.step()?;
+            let consistent_state = state.clone();
+            let vm_error = |err| VMError::new(err, consistent_state);
+            aet.record_state(&state).map_err(vm_error.clone())?;
+            let co_processor_calls = state.step().map_err(vm_error)?;
             for call in co_processor_calls {
                 aet.record_co_processor_call(call);
             }
@@ -427,95 +466,16 @@ impl Program {
         Ok((aet, state.public_output))
     }
 
-    /// Similar to [`run`](Self::run), but also returns a [`Vec`] of [`VMState`]s, one for each
-    /// step of the VM. On premature termination of the VM, returns all [`VMState`]s up to the
-    /// point of failure.
-    ///
-    /// The VM's initial state is either the provided `initial_state`, or a new [`VMState`] if
-    /// `initial_state` is `None`. The initial state is included in the returned [`Vec`] of
-    /// [`VMState`]s. If an initial state is provided, the `program`, `public_input` and
-    /// `private_input` provided to this method are ignored and the initial state's program and
-    /// inputs are used instead.
-    ///
-    /// If `num_cycles_to_execute` is `Some(number_of_cycles)`, the VM will execute at most
-    /// `number_of_cycles` cycles. If `num_cycles_to_execute` is `None`, the VM will execute until
-    /// it halts or the maximum number of cycles (2^{32}) is reached.
-    ///
-    /// See also [`debug_terminal_state`](Self::debug_terminal_state) and
-    /// [`trace_execution`](Self::trace_execution).
-    pub fn debug<'pgm>(
-        &'pgm self,
-        public_input: PublicInput,
-        non_determinism: NonDeterminism<BFieldElement>,
-        initial_state: Option<VMState<'pgm>>,
-        num_cycles_to_execute: Option<u32>,
-    ) -> (Vec<VMState<'pgm>>, Option<Error>) {
-        let mut states = vec![];
-        let mut state = match initial_state {
-            Some(initial_state) => initial_state,
-            None => VMState::new(self, public_input, non_determinism),
-        };
-        let max_cycles = Self::max_cycle_to_reach(&state, num_cycles_to_execute);
-
-        while !state.halting && state.cycle_count < max_cycles {
-            states.push(state.clone());
-            if let Err(err) = state.step() {
-                return (states, Some(err));
-            }
-        }
-
-        states.push(state);
-        (states, None)
-    }
-
-    /// Run Triton VM on the given [`Program`] with the given public and secret input, and return
-    /// the final [`VMState`]. Requires substantially less RAM than [`debug`][debug] since no
-    /// intermediate states are recorded.
-    ///
-    /// Parameters `initial_state` and `num_cycles_to_execute` are handled like in [`debug`][debug];
-    /// see there for more details.
-    ///
-    /// If an error is encountered, returns the error and the [`VMState`] at the point of failure.
-    ///
-    /// See also [`trace_execution`](Self::trace_execution) and [`run`](Self::run).
-    ///
-    /// [debug]: Self::debug
-    pub fn debug_terminal_state<'pgm>(
-        &'pgm self,
-        public_input: PublicInput,
-        non_determinism: NonDeterminism<BFieldElement>,
-        initial_state: Option<VMState<'pgm>>,
-        num_cycles_to_execute: Option<u32>,
-    ) -> Result<VMState<'pgm>, (Error, VMState<'pgm>)> {
-        let mut state = match initial_state {
-            Some(initial_state) => initial_state,
-            None => VMState::new(self, public_input, non_determinism),
-        };
-        let max_cycles = Self::max_cycle_to_reach(&state, num_cycles_to_execute);
-
-        while !state.halting && state.cycle_count < max_cycles {
-            // [`VMState::step`] is not atomic – avoid returning an inconsistent state
-            let consistent_state = state.clone();
-            if let Err(err) = state.step() {
-                return Err((err, consistent_state));
-            }
-        }
-        Ok(state)
-    }
-
-    fn max_cycle_to_reach(state: &VMState, num_cycles_to_execute: Option<u32>) -> u32 {
-        match num_cycles_to_execute {
-            Some(number_of_cycles) => state.cycle_count + number_of_cycles,
-            None => u32::MAX,
-        }
-    }
-
     /// Run Triton VM with the given public and secret input, but record the number of cycles spent
     /// in each callable block of instructions. This function returns a Result wrapping a program
     /// profiler report, which is a Vec of [`ProfileLine`]s.
     ///
-    /// See also [`run`](Self::run), [`trace_execution`](Self::trace_execution) and
-    /// [`debug`](Self::debug).
+    /// See also [`run`][run], [`trace_execution`][trace_execution], and
+    /// [`terminal_state`][terminal_state].
+    ///
+    /// [run]: Self::run
+    /// [trace_execution]: Self::trace_execution
+    /// [terminal_state]: Self::terminal_state
     pub fn profile(
         &self,
         public_input: PublicInput,
@@ -524,15 +484,19 @@ impl Program {
         let mut profiler = VMProfiler::new();
         let mut state = VMState::new(self, public_input, non_determinism);
         while !state.halting {
-            if let Instruction::Call(address) = state.current_instruction()? {
+            let consistent_state = state.clone();
+            let vm_error = |err| VMError::new(err, consistent_state);
+            if let Instruction::Call(address) =
+                state.current_instruction().map_err(vm_error.clone())?
+            {
                 let label = self.label_for_address(address.value());
                 profiler.enter_span_with_label_at_cycle(label, state.cycle_count);
             }
-            if let Instruction::Return = state.current_instruction()? {
+            if let Instruction::Return = state.current_instruction().map_err(vm_error.clone())? {
                 profiler.exit_span_at_cycle(state.cycle_count);
             }
 
-            state.step()?;
+            state.step().map_err(vm_error)?;
         }
 
         let report = profiler.report_at_cycle(state.cycle_count);
@@ -653,7 +617,7 @@ impl Display for ProfileLine {
     }
 }
 
-#[derive(Clone, Default, Debug, PartialEq, Eq, BFieldCodec)]
+#[derive(Clone, Default, Debug, PartialEq, Eq, BFieldCodec, Arbitrary)]
 pub struct PublicInput {
     pub individual_tokens: Vec<BFieldElement>,
 }
@@ -705,7 +669,7 @@ impl PublicInput {
 /// All sources of non-determinism for a program. This includes elements that can be read using
 /// instruction `divine`, digests that can be read using instruction `divine_sibling`,
 /// and a initial state of random-access memory.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Arbitrary)]
 pub struct NonDeterminism<E>
 where
     E: Into<BFieldElement> + Eq + Hash,
@@ -820,6 +784,7 @@ where
 
 #[cfg(test)]
 mod tests {
+    use assert2::let_assert;
     use itertools::Itertools;
     use proptest::prelude::*;
     use proptest_arbitrary_interop::arb;
@@ -828,6 +793,7 @@ mod tests {
     use test_strategy::proptest;
     use twenty_first::shared_math::tip5::Tip5;
 
+    use crate::error::InstructionError;
     use crate::example_programs::CALCULATE_NEW_MMR_PEAKS_FROM_APPEND_WITH_SAFE_LISTS;
     use crate::triton_program;
 
@@ -849,27 +815,33 @@ mod tests {
         let mut encoded = encoded[0..encoded.len() - 1].to_vec();
         encoded[0] = BFieldElement::new(program_length - 1);
 
-        let err = Program::decode(&encoded).err().unwrap();
-        assert_eq!(
-            "Missing argument for instruction push 0 at index 6.",
-            err.to_string(),
-        );
+        let_assert!(Err(err) = Program::decode(&encoded));
+        let_assert!(ProgramDecodingError::MissingArgument(6, _) = err);
     }
 
     #[test]
-    #[should_panic(expected = "Expected `program_length` to equal `sequence.len()`.")]
-    fn decode_program_with_length_mismatch() {
+    fn decode_program_with_shorter_than_indicated_sequence() {
         let program = triton_program!(nop nop hash push 0 skiz end: halt call end);
         let mut encoded = program.encode();
         encoded[0] += 1_u64.into();
-        Program::decode(&encoded).unwrap();
+        let_assert!(Err(err) = Program::decode(&encoded));
+        let_assert!(ProgramDecodingError::SequenceTooShort = err);
+    }
+
+    #[test]
+    fn decode_program_with_longer_than_indicated_sequence() {
+        let program = triton_program!(nop nop hash push 0 skiz end: halt call end);
+        let mut encoded = program.encode();
+        encoded[0] -= 1_u64.into();
+        let_assert!(Err(err) = Program::decode(&encoded));
+        let_assert!(ProgramDecodingError::SequenceTooLong = err);
     }
 
     #[test]
     fn decode_program_from_empty_sequence() {
         let encoded = vec![];
-        let err = Program::decode(&encoded).err().unwrap();
-        assert_eq!("Sequence to decode must not be empty.", err.to_string(),);
+        let_assert!(Err(err) = Program::decode(&encoded));
+        let_assert!(ProgramDecodingError::EmptySequence = err);
     }
 
     #[test]
@@ -966,13 +938,11 @@ mod tests {
     fn test_profile() {
         let program = CALCULATE_NEW_MMR_PEAKS_FROM_APPEND_WITH_SAFE_LISTS.clone();
         let (profile_output, profile) = program.profile([].into(), [].into()).unwrap();
-        let debug_terminal_state = program
-            .debug_terminal_state([].into(), [].into(), None, None)
-            .unwrap();
-        assert_eq!(profile_output, debug_terminal_state.public_output);
+        let terminal_state = program.terminal_state([].into(), [].into()).unwrap();
+        assert_eq!(profile_output, terminal_state.public_output);
         assert_eq!(
             profile.last().unwrap().cycle_count(),
-            debug_terminal_state.cycle_count
+            terminal_state.cycle_count
         );
 
         println!("Profile of Tasm Program:");
@@ -1003,13 +973,13 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Jump stack is empty")]
     fn program_with_too_many_returns_crashes_vm_but_not_profiler() {
         let program = triton_program! {
             call foo return halt
             foo: return
         };
-        let _ = program.profile([].into(), [].into()).unwrap();
+        let_assert!(Err(err) = program.profile([].into(), [].into()));
+        let_assert!(InstructionError::JumpStackIsEmpty = err.source);
     }
 
     #[test]

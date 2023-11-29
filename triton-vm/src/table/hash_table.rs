@@ -70,7 +70,7 @@ pub struct ExtHashTable {}
 /// 1. Processing the `hash` instruction.
 /// 1. Padding mode.
 ///
-/// Changing the mode is only possible when the current [`RoundNumber`][round_no] is [`NUM_ROUNDS`].
+/// Changing the mode is only possible when the current [`RoundNumber`] is [`NUM_ROUNDS`].
 /// The mode evolves as
 /// [`ProgramHashing`][prog_hash] → [`Sponge`][sponge] → [`Hash`][hash] → [`Pad`][pad].
 /// Once mode [`Pad`][pad] is reached, it is not possible to change the mode anymore.
@@ -86,11 +86,10 @@ pub struct ExtHashTable {}
 /// instruction `halt`.
 ///
 /// [program]: crate::program::Program
-/// [round_no]: HashBaseTableColumn::RoundNumber
-/// [prog_hash]: Self::ProgramHashing
-/// [sponge]: Self::Sponge
-/// [hash]: Self::Hash
-/// [pad]: Self::Pad
+/// [prog_hash]: HashTableMode::ProgramHashing
+/// [sponge]: HashTableMode::Sponge
+/// [hash]: type@HashTableMode::Hash
+/// [pad]: HashTableMode::Pad
 #[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCount, Hash)]
 pub enum HashTableMode {
     /// The mode in which the [`Program`][program] is hashed. This is part of program attestation.
@@ -1867,22 +1866,22 @@ pub(crate) mod tests {
     use crate::table::master_table::MasterTable;
     use crate::triton_asm;
     use crate::triton_program;
+    use assert2::assert;
+    use assert2::check;
     use std::collections::HashMap;
 
     use super::*;
 
-    pub fn constraints_evaluate_to_zero(
+    pub fn check_constraints(
         master_base_trace_table: ArrayView2<BFieldElement>,
         master_ext_trace_table: ArrayView2<XFieldElement>,
         challenges: &Challenges,
-    ) -> bool {
-        let zero = XFieldElement::zero();
-        assert_eq!(
-            master_base_trace_table.nrows(),
-            master_ext_trace_table.nrows()
-        );
+    ) {
+        assert!(master_base_trace_table.nrows() == master_ext_trace_table.nrows());
 
+        let zero = XFieldElement::zero();
         let circuit_builder = ConstraintCircuitBuilder::new();
+
         for (constraint_idx, constraint) in ExtHashTable::initial_constraints(&circuit_builder)
             .into_iter()
             .map(|constraint_monad| constraint_monad.consume())
@@ -1893,8 +1892,8 @@ pub(crate) mod tests {
                 master_ext_trace_table.slice(s![..1, ..]),
                 challenges,
             );
-            assert_eq!(
-                zero, evaluated_constraint,
+            check!(
+                zero == evaluated_constraint,
                 "Initial constraint {constraint_idx} failed."
             );
         }
@@ -1911,8 +1910,8 @@ pub(crate) mod tests {
                     master_ext_trace_table.slice(s![row_idx..row_idx + 1, ..]),
                     challenges,
                 );
-                assert_eq!(
-                    zero, evaluated_constraint,
+                check!(
+                    zero == evaluated_constraint,
                     "Consistency constraint {constraint_idx} failed on row {row_idx}."
                 );
             }
@@ -1930,8 +1929,8 @@ pub(crate) mod tests {
                     master_ext_trace_table.slice(s![row_idx..row_idx + 2, ..]),
                     challenges,
                 );
-                assert_eq!(
-                    zero, evaluated_constraint,
+                check!(
+                    zero == evaluated_constraint,
                     "Transition constraint {constraint_idx} failed on row {row_idx}."
                 );
             }
@@ -1948,13 +1947,11 @@ pub(crate) mod tests {
                 master_ext_trace_table.slice(s![-1.., ..]),
                 challenges,
             );
-            assert_eq!(
-                zero, evaluated_constraint,
+            check!(
+                zero == evaluated_constraint,
                 "Terminal constraint {constraint_idx} failed."
             );
         }
-
-        true
     }
 
     #[test]

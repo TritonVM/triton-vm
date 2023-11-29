@@ -4,8 +4,6 @@ use std::fmt::Formatter;
 use std::fmt::Result as FmtResult;
 use std::result;
 
-use anyhow::anyhow;
-use anyhow::Result;
 use arbitrary::Arbitrary;
 use arbitrary::Unstructured;
 use get_size::GetSize;
@@ -21,11 +19,14 @@ use twenty_first::shared_math::b_field_element::BFIELD_ZERO;
 
 use AnInstruction::*;
 
+use crate::error::InstructionError;
 use crate::instruction::InstructionBit::*;
 use crate::op_stack::NumberOfWords;
 use crate::op_stack::NumberOfWords::*;
 use crate::op_stack::OpStackElement;
 use crate::op_stack::OpStackElement::*;
+
+type Result<T> = result::Result<T, InstructionError>;
 
 /// An `Instruction` has `call` addresses encoded as absolute integers.
 pub type Instruction = AnInstruction<BFieldElement>;
@@ -428,44 +429,47 @@ impl Instruction {
         self.arg().is_some()
     }
 
-    /// Change the argument of the instruction, if it has one.
-    /// Returns `None` if the instruction does not have an argument or
-    /// if the argument is out of range.
-    #[must_use]
-    pub fn change_arg(&self, new_arg: BFieldElement) -> Option<Self> {
+    /// Change the argument of the instruction, if it has one. Returns an `Err` if the instruction
+    /// does not have an argument or if the argument is out of range.
+    pub fn change_arg(self, new_arg: BFieldElement) -> Result<Self> {
+        let illegal_argument_error = InstructionError::IllegalArgument(self, new_arg);
+        let num_words = new_arg.try_into().map_err(|_| illegal_argument_error);
+        let op_stack_element = new_arg.try_into().map_err(|_| illegal_argument_error);
+
         let new_instruction = match self {
-            Pop(_) => Some(Pop(new_arg.try_into().ok()?)),
-            Push(_) => Some(Push(new_arg)),
-            Divine(_) => Some(Divine(new_arg.try_into().ok()?)),
-            Dup(_) => Some(Dup(new_arg.value().try_into().ok()?)),
-            Swap(_) => Some(Swap(new_arg.value().try_into().ok()?)),
-            Call(_) => Some(Call(new_arg)),
-            ReadMem(_) => Some(ReadMem(new_arg.try_into().ok()?)),
-            WriteMem(_) => Some(WriteMem(new_arg.try_into().ok()?)),
-            ReadIo(_) => Some(ReadIo(new_arg.try_into().ok()?)),
-            WriteIo(_) => Some(WriteIo(new_arg.try_into().ok()?)),
-            _ => None,
+            Pop(_) => Pop(num_words?),
+            Push(_) => Push(new_arg),
+            Divine(_) => Divine(num_words?),
+            Dup(_) => Dup(op_stack_element?),
+            Swap(_) => Swap(op_stack_element?),
+            Call(_) => Call(new_arg),
+            ReadMem(_) => ReadMem(num_words?),
+            WriteMem(_) => WriteMem(num_words?),
+            ReadIo(_) => ReadIo(num_words?),
+            WriteIo(_) => WriteIo(num_words?),
+            _ => return Err(illegal_argument_error),
         };
-        if new_instruction?.has_illegal_argument() {
-            return None;
-        };
-        new_instruction
+
+        match new_instruction.has_illegal_argument() {
+            true => Err(illegal_argument_error),
+            false => Ok(new_instruction),
+        }
     }
 }
 
 impl TryFrom<u32> for Instruction {
-    type Error = anyhow::Error;
+    type Error = InstructionError;
 
     fn try_from(opcode: u32) -> Result<Self> {
         OPCODE_TO_INSTRUCTION_MAP
             .get(&opcode)
             .copied()
-            .ok_or(anyhow!("No instruction with opcode {opcode} exists."))
+            .ok_or(InstructionError::InvalidOpcode(opcode))
     }
 }
 
 impl TryFrom<u64> for Instruction {
-    type Error = anyhow::Error;
+    type Error = InstructionError;
 
     fn try_from(opcode: u64) -> Result<Self> {
         let opcode = u32::try_from(opcode)?;
@@ -474,7 +478,7 @@ impl TryFrom<u64> for Instruction {
 }
 
 impl TryFrom<usize> for Instruction {
-    type Error = anyhow::Error;
+    type Error = InstructionError;
 
     fn try_from(opcode: usize) -> Result<Self> {
         let opcode = u32::try_from(opcode)?;
@@ -483,7 +487,7 @@ impl TryFrom<usize> for Instruction {
 }
 
 impl TryFrom<BFieldElement> for Instruction {
-    type Error = anyhow::Error;
+    type Error = InstructionError;
 
     fn try_from(opcode: BFieldElement) -> Result<Self> {
         let opcode = u32::try_from(opcode)?;
@@ -544,7 +548,7 @@ const fn all_instruction_names() -> [&'static str; Instruction::COUNT] {
     names
 }
 
-/// Indicators for all the possible bits in an [`Instruction`](Instruction).
+/// Indicators for all the possible bits in an [`Instruction`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, EnumCount, EnumIter)]
 pub enum InstructionBit {
     #[default]
@@ -826,14 +830,14 @@ mod tests {
         let pop_2 = Pop(N1).change_arg(2_u64.into());
         let nop = Nop.change_arg(7_u64.into());
 
-        assert!(push.is_some());
-        assert!(dup.is_none());
-        assert!(swap.is_none());
-        assert!(swap_0.is_none());
-        assert!(swap_1.is_some());
-        assert!(pop_0.is_none());
-        assert!(pop_2.is_some());
-        assert!(nop.is_none());
+        assert!(push.is_ok());
+        assert!(dup.is_err());
+        assert!(swap.is_err());
+        assert!(swap_0.is_err());
+        assert!(swap_1.is_ok());
+        assert!(pop_0.is_err());
+        assert!(pop_2.is_ok());
+        assert!(nop.is_err());
     }
 
     #[test]
@@ -974,7 +978,7 @@ mod tests {
         let non_determinism = non_determinism.with_digests(mock_digests);
 
         let terminal_state = program
-            .debug_terminal_state(public_input, non_determinism, None, None)
+            .terminal_state(public_input, non_determinism)
             .unwrap();
         terminal_state.op_stack.stack.len()
     }

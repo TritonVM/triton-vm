@@ -5,9 +5,6 @@ use std::fmt::Display;
 use std::fmt::Formatter;
 use std::fmt::Result as FmtResult;
 
-use anyhow::anyhow;
-use anyhow::bail;
-use anyhow::Result;
 use ndarray::Array1;
 use num_traits::One;
 use num_traits::Zero;
@@ -31,20 +28,21 @@ use crate::stark::StarkHasher;
 use crate::table::hash_table::PermutationTrace;
 use crate::table::op_stack_table::OpStackTableEntry;
 use crate::table::processor_table;
-use crate::table::processor_table::ProcessorTraceRow;
 use crate::table::ram_table::RamTableCall;
 use crate::table::table_column::*;
 use crate::table::u32_table::U32TableEntry;
 use crate::vm::CoProcessorCall::*;
 
+type Result<T> = std::result::Result<T, InstructionError>;
+
 /// The number of helper variable registers
 pub const NUM_HELPER_VARIABLE_REGISTERS: usize = 6;
 
-#[derive(Debug, Clone)]
-pub struct VMState<'pgm> {
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VMState {
     /// The **program memory** stores the instructions (and their arguments) of the program
     /// currently being executed by Triton VM. It is read-only.
-    pub program: &'pgm [Instruction],
+    pub program: Vec<Instruction>,
 
     /// A list of [`BFieldElement`]s the program can read from using instruction `read_io`.
     pub public_input: VecDeque<BFieldElement>,
@@ -104,21 +102,21 @@ pub enum CoProcessorCall {
     RamCall(RamTableCall),
 }
 
-impl<'pgm> VMState<'pgm> {
+impl VMState {
     /// Create initial `VMState` for a given `program`
     ///
     /// Since `program` is read-only across individual states, and multiple
     /// inner helper functions refer to it, a read-only reference is kept in
     /// the struct.
     pub fn new(
-        program: &'pgm Program,
+        program: &Program,
         public_input: PublicInput,
         non_determinism: NonDeterminism<BFieldElement>,
     ) -> Self {
         let program_digest = program.hash::<StarkHasher>();
 
         Self {
-            program: &program.instructions,
+            program: program.instructions.clone(),
             public_input: public_input.individual_tokens.into(),
             public_output: vec![],
             secret_individual_tokens: non_determinism.individual_tokens.into(),
@@ -238,7 +236,7 @@ impl<'pgm> VMState<'pgm> {
         co_processor_calls.extend(op_stack_calls);
 
         if self.op_stack.is_too_shallow() {
-            bail!(OpStackTooShallow);
+            return Err(OpStackTooShallow);
         }
 
         self.cycle_count += 1;
@@ -296,9 +294,10 @@ impl<'pgm> VMState<'pgm> {
 
     fn divine(&mut self, n: NumberOfWords) -> Result<Vec<CoProcessorCall>> {
         for i in 0..n.num_words() {
-            let element = self.secret_individual_tokens.pop_front().ok_or(anyhow!(
-                "Instruction `divine {n}`: secret input buffer is empty after {i}."
-            ))?;
+            let element = self
+                .secret_individual_tokens
+                .pop_front()
+                .ok_or(EmptySecretInput(i))?;
             self.op_stack.push(element);
         }
 
@@ -316,7 +315,7 @@ impl<'pgm> VMState<'pgm> {
 
     fn swap(&mut self, stack_register: OpStackElement) -> Result<Vec<CoProcessorCall>> {
         if stack_register == ST0 {
-            bail!(SwapST0);
+            return Err(SwapST0);
         }
         self.op_stack.swap_top_with(stack_register);
         self.instruction_pointer += 2;
@@ -363,9 +362,7 @@ impl<'pgm> VMState<'pgm> {
         let top_of_stack = self.op_stack.pop()?;
 
         if !top_of_stack.is_one() {
-            let assertion_failed =
-                AssertionFailed(self.instruction_pointer, self.cycle_count, top_of_stack);
-            bail!(assertion_failed);
+            return Err(AssertionFailed);
         }
 
         self.instruction_pointer += 1;
@@ -514,24 +511,12 @@ impl<'pgm> VMState<'pgm> {
             let lhs = index.try_into().unwrap();
             let rhs = (index + DIGEST_LENGTH).try_into().unwrap();
             if self.op_stack.peek_at(lhs) != self.op_stack.peek_at(rhs) {
-                bail!(self.new_vector_assertion_failure(index));
+                return Err(VectorAssertionFailed(lhs));
             }
         }
         let _: [_; DIGEST_LENGTH] = self.op_stack.pop_multiple()?;
         self.instruction_pointer += 1;
         Ok(vec![])
-    }
-
-    fn new_vector_assertion_failure(&self, failing_index_lhs: usize) -> InstructionError {
-        let failing_position_lhs = failing_index_lhs.try_into().unwrap();
-        let failing_position_rhs = (failing_index_lhs + DIGEST_LENGTH).try_into().unwrap();
-        VectorAssertionFailed(
-            self.instruction_pointer,
-            self.cycle_count,
-            failing_position_lhs,
-            self.op_stack.peek_at(failing_position_lhs),
-            self.op_stack.peek_at(failing_position_rhs),
-        )
     }
 
     fn add(&mut self) -> Result<Vec<CoProcessorCall>> {
@@ -555,7 +540,7 @@ impl<'pgm> VMState<'pgm> {
     fn invert(&mut self) -> Result<Vec<CoProcessorCall>> {
         let top_of_stack = self.op_stack.pop()?;
         if top_of_stack.is_zero() {
-            bail!(InverseOfZero);
+            return Err(InverseOfZero);
         }
         self.op_stack.push(top_of_stack.inverse());
         self.instruction_pointer += 1;
@@ -631,7 +616,7 @@ impl<'pgm> VMState<'pgm> {
     fn log_2_floor(&mut self) -> Result<Vec<CoProcessorCall>> {
         let top_of_stack = self.op_stack.pop_u32()?;
         if top_of_stack.is_zero() {
-            bail!(LogarithmOfZero);
+            return Err(LogarithmOfZero);
         }
         let log_2_floor = top_of_stack.ilog2();
         self.op_stack.push(log_2_floor.into());
@@ -661,7 +646,7 @@ impl<'pgm> VMState<'pgm> {
         let numerator = self.op_stack.pop_u32()?;
         let denominator = self.op_stack.pop_u32()?;
         if denominator.is_zero() {
-            bail!(DivisionByZero);
+            return Err(DivisionByZero);
         }
         let quotient = numerator / denominator;
         let remainder = numerator % denominator;
@@ -711,7 +696,7 @@ impl<'pgm> VMState<'pgm> {
     fn x_invert(&mut self) -> Result<Vec<CoProcessorCall>> {
         let top_of_stack = self.op_stack.pop_extension_field_element()?;
         if top_of_stack.is_zero() {
-            bail!(InverseOfZero);
+            return Err(InverseOfZero);
         }
         let inverse = top_of_stack.inverse();
         self.op_stack.push_extension_field_element(inverse);
@@ -740,9 +725,7 @@ impl<'pgm> VMState<'pgm> {
 
     fn read_io(&mut self, n: NumberOfWords) -> Result<Vec<CoProcessorCall>> {
         for i in 0..n.num_words() {
-            let read_element = self.public_input.pop_front().ok_or(anyhow!(
-                "Instruction `read_io {n}`: public input buffer is empty after {i}."
-            ))?;
+            let read_element = self.public_input.pop_front().ok_or(EmptyPublicInput(i))?;
             self.op_stack.push(read_element);
         }
 
@@ -836,9 +819,7 @@ impl<'pgm> VMState<'pgm> {
 
     pub fn current_instruction(&self) -> Result<Instruction> {
         let maybe_current_instruction = self.program.get(self.instruction_pointer).copied();
-        maybe_current_instruction.ok_or(anyhow!(InstructionPointerOverflow(
-            self.instruction_pointer
-        )))
+        maybe_current_instruction.ok_or(InstructionPointerOverflow)
     }
 
     /// Return the next instruction on the tape, skipping arguments.
@@ -850,26 +831,24 @@ impl<'pgm> VMState<'pgm> {
         let current_instruction = self.current_instruction()?;
         let next_instruction_pointer = self.instruction_pointer + current_instruction.size();
         let maybe_next_instruction = self.program.get(next_instruction_pointer).copied();
-        maybe_next_instruction.ok_or(anyhow!(InstructionPointerOverflow(
-            next_instruction_pointer
-        )))
+        maybe_next_instruction.ok_or(InstructionPointerOverflow)
     }
 
     fn jump_stack_pop(&mut self) -> Result<(BFieldElement, BFieldElement)> {
         let maybe_jump_stack_element = self.jump_stack.pop();
-        maybe_jump_stack_element.ok_or(anyhow!(JumpStackIsEmpty))
+        maybe_jump_stack_element.ok_or(JumpStackIsEmpty)
     }
 
     fn jump_stack_peek(&mut self) -> Result<(BFieldElement, BFieldElement)> {
         let maybe_jump_stack_element = self.jump_stack.last().copied();
-        maybe_jump_stack_element.ok_or(anyhow!(JumpStackIsEmpty))
+        maybe_jump_stack_element.ok_or(JumpStackIsEmpty)
     }
 
     fn pop_secret_digest(&mut self) -> Result<[BFieldElement; DIGEST_LENGTH]> {
         let digest = self
             .secret_digests
             .pop_front()
-            .ok_or(anyhow!("Secret digest buffer is empty."))?;
+            .ok_or(EmptySecretDigestInput)?;
         Ok(digest.values())
     }
 
@@ -893,70 +872,97 @@ impl<'pgm> VMState<'pgm> {
     }
 }
 
-impl<'pgm> Display for VMState<'pgm> {
+impl Display for VMState {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
-        fn print_row(f: &mut Formatter<'_>, s: String) -> FmtResult {
-            writeln!(f, "│ {s: <103} │")
-        }
-        match self.current_instruction() {
-            Ok(_) => {
-                let row = self.to_processor_row();
-                write!(f, "{}", ProcessorTraceRow { row: row.view() })?;
-                writeln!(f)?;
-                writeln!(
-                    f,
-                    "╭─────────────────────────────────────────────────────────────────\
-                    ────────────────────────────────────────╮"
-                )?;
-                let width = 20;
-                print_row(
-                    f,
-                    format!(
-                        "sp0-3:    [ {:>width$} | {:>width$} | {:>width$} | {:>width$} ]",
-                        self.sponge_state[0].value(),
-                        self.sponge_state[1].value(),
-                        self.sponge_state[2].value(),
-                        self.sponge_state[3].value(),
-                    ),
-                )?;
-                print_row(
-                    f,
-                    format!(
-                        "sp4-7:    [ {:>width$} | {:>width$} | {:>width$} | {:>width$} ]",
-                        self.sponge_state[4].value(),
-                        self.sponge_state[5].value(),
-                        self.sponge_state[6].value(),
-                        self.sponge_state[7].value(),
-                    ),
-                )?;
-                print_row(
-                    f,
-                    format!(
-                        "sp8-11:   [ {:>width$} | {:>width$} | {:>width$} | {:>width$} ]",
-                        self.sponge_state[8].value(),
-                        self.sponge_state[9].value(),
-                        self.sponge_state[10].value(),
-                        self.sponge_state[11].value(),
-                    ),
-                )?;
-                print_row(
-                    f,
-                    format!(
-                        "sp12-15:  [ {:>width$} | {:>width$} | {:>width$} | {:>width$} ]",
-                        self.sponge_state[12].value(),
-                        self.sponge_state[13].value(),
-                        self.sponge_state[14].value(),
-                        self.sponge_state[15].value(),
-                    ),
-                )?;
-                write!(
-                    f,
-                    "╰─────────────────────────────────────────────────────────────────\
-                    ────────────────────────────────────────╯"
-                )
-            }
-            Err(_) => write!(f, "END-OF-FILE"),
-        }
+        let Ok(instruction) = self.current_instruction() else {
+            return write!(f, "END-OF-FILE");
+        };
+
+        use ProcessorBaseTableColumn::*;
+        let total_width = 103;
+        let tab_width = 54;
+        let clk_width = 17;
+        let register_width = 20;
+        let buffer_width = total_width - tab_width - clk_width - 7;
+
+        let print_row = |f: &mut Formatter, s: String| writeln!(f, "│ {s: <total_width$} │");
+        let print_blank_row = |f: &mut Formatter| print_row(f, "".into());
+
+        let row = self.to_processor_row();
+
+        let register = |reg: ProcessorBaseTableColumn| {
+            let reg_string = format!("{}", row[reg.base_table_index()]);
+            format!("{reg_string:>register_width$}")
+        };
+        let multi_register = |regs: [_; 4]| regs.map(register).join(" | ");
+
+        writeln!(f, " ╭─{:─<tab_width$}─╮", "")?;
+        writeln!(f, " │ {: <tab_width$} │", format!("{instruction}"))?;
+        writeln!(
+            f,
+            "╭┴─{:─<tab_width$}─┴─{:─<buffer_width$}─┬─{:─>clk_width$}─╮",
+            "", "", ""
+        )?;
+
+        let ip = register(IP);
+        let ci = register(CI);
+        let nia = register(NIA);
+        let jsp = register(JSP);
+        let jso = register(JSO);
+        let jsd = register(JSD);
+        let osp = register(OpStackPointer);
+        let clk = row[CLK.base_table_index()].to_string();
+
+        let first_line = format!("ip:   {ip} ╷ ci:   {ci} ╷ nia: {nia} │ {clk: >clk_width$}");
+        print_row(f, first_line)?;
+        writeln!(
+            f,
+            "│ jsp:  {jsp} │ jso:  {jso} │ jsd: {jsd} ╰─{:─>clk_width$}─┤",
+            "",
+        )?;
+        print_row(f, format!("osp:  {osp} ╵"))?;
+        print_blank_row(f)?;
+
+        let st_00_03 = multi_register([ST0, ST1, ST2, ST3]);
+        let st_04_07 = multi_register([ST4, ST5, ST6, ST7]);
+        let st_08_11 = multi_register([ST8, ST9, ST10, ST11]);
+        let st_12_15 = multi_register([ST12, ST13, ST14, ST15]);
+
+        print_row(f, format!("st0-3:    [ {st_00_03} ]"))?;
+        print_row(f, format!("st4-7:    [ {st_04_07} ]"))?;
+        print_row(f, format!("st8-11:   [ {st_08_11} ]"))?;
+        print_row(f, format!("st12-15:  [ {st_12_15} ]"))?;
+        print_blank_row(f)?;
+
+        let hv_00_03_line = format!("hv0-3:    [ {} ]", multi_register([HV0, HV1, HV2, HV3]));
+        let hv_04_05_line = format!("hv4-5:    [ {} | {} ]", register(HV4), register(HV5),);
+        print_row(f, hv_00_03_line)?;
+        print_row(f, hv_04_05_line)?;
+
+        let ib_registers = [IB6, IB5, IB4, IB3, IB2, IB1, IB0]
+            .map(|reg| row[reg.base_table_index()])
+            .map(|bfe| format!("{bfe:>2}"))
+            .join(" | ");
+        print_row(f, format!("ib6-0:    [ {ib_registers} ]",))?;
+
+        let sponge_state_register = |i: usize| self.sponge_state[i].value();
+        let sponge_state_slice = |idxs: [usize; 4]| {
+            idxs.map(sponge_state_register)
+                .map(|ss| format!("{ss:>register_width$}"))
+                .join(" | ")
+        };
+
+        let sponge_state_00_03 = sponge_state_slice([0, 1, 2, 3]);
+        let sponge_state_04_07 = sponge_state_slice([4, 5, 6, 7]);
+        let sponge_state_08_11 = sponge_state_slice([8, 9, 10, 11]);
+        let sponge_state_12_15 = sponge_state_slice([12, 13, 14, 15]);
+
+        writeln!(f, "├─{:─<total_width$}─┤", "")?;
+        print_row(f, format!("sp0-3:    [ {sponge_state_00_03} ]"))?;
+        print_row(f, format!("sp4-7:    [ {sponge_state_04_07} ]"))?;
+        print_row(f, format!("sp8-11:   [ {sponge_state_08_11} ]"))?;
+        print_row(f, format!("sp12-15:  [ {sponge_state_12_15} ]"))?;
+        writeln!(f, "╰─{:─<total_width$}─╯", "")
     }
 }
 
@@ -965,6 +971,8 @@ pub(crate) mod tests {
     use std::ops::BitAnd;
     use std::ops::BitXor;
 
+    use assert2::assert;
+    use assert2::let_assert;
     use itertools::Itertools;
     use ndarray::Array1;
     use ndarray::ArrayView1;
@@ -983,7 +991,6 @@ pub(crate) mod tests {
     use strum::IntoEnumIterator;
     use test_strategy::proptest;
     use twenty_first::shared_math::b_field_element::BFIELD_ZERO;
-    use twenty_first::shared_math::bfield_codec::BFieldCodec;
     use twenty_first::shared_math::other::random_elements;
     use twenty_first::shared_math::other::random_elements_array;
     use twenty_first::shared_math::polynomial::Polynomial;
@@ -995,16 +1002,13 @@ pub(crate) mod tests {
     use twenty_first::util_types::merkle_tree::MerkleTree;
     use twenty_first::util_types::merkle_tree_maker::MerkleTreeMaker;
 
-    use crate::error::InstructionError;
     use crate::example_programs::*;
     use crate::op_stack::NumberOfWords::*;
     use crate::shared_tests::prove_with_low_security_level;
     use crate::shared_tests::ProgramAndInput;
     use crate::stark::MTMaker;
-    use crate::table::processor_table::ProcessorTraceRow;
     use crate::triton_asm;
     use crate::triton_program;
-    use crate::Claim;
 
     use super::*;
 
@@ -1020,27 +1024,26 @@ pub(crate) mod tests {
     fn initialise_table() {
         let program = GREATEST_COMMON_DIVISOR.clone();
         let stdin = vec![42, 56].into();
-        let (aet, stdout) = program.trace_execution(stdin, [].into()).unwrap();
-
-        println!(
-            "VM output: [{}]",
-            pretty_print_array_view(Array1::from(stdout).view())
-        );
-        for row in aet.processor_trace.rows() {
-            println!("{}", ProcessorTraceRow { row });
-        }
+        let _ = program.trace_execution(stdin, [].into()).unwrap();
     }
 
     #[test]
     fn run_tvm_gcd() {
         let program = GREATEST_COMMON_DIVISOR.clone();
         let stdin = vec![42, 56].into();
-        let stdout = program.run(stdin, [].into()).unwrap();
+        let_assert!(Ok(stdout) = program.run(stdin, [].into()));
 
         let stdout = Array1::from(stdout);
         println!("VM output: [{}]", pretty_print_array_view(stdout.view()));
 
-        assert_eq!(BFieldElement::new(14), stdout[0]);
+        assert!(BFieldElement::new(14) == stdout[0]);
+    }
+
+    #[test]
+    fn crash_triton_vm_and_print_vm_error() {
+        let crashing_program = triton_program!(push 2 assert halt);
+        let_assert!(Err(err) = crashing_program.run([].into(), [].into()));
+        println!("{err}");
     }
 
     pub(crate) fn test_program_hash_nop_nop_lt() -> ProgramAndInput {
@@ -1718,23 +1721,20 @@ pub(crate) mod tests {
         source_code_and_input.run().unwrap();
     }
 
-    #[test]
-    fn negative_property_is_u32() {
-        let mut rng = ThreadRng::default();
-        let st0 = (rng.next_u32() as u64) << 32;
-
+    #[proptest]
+    fn negative_property_is_u32(
+        #[strategy(arb())]
+        #[filter(#st0.value() > u32::MAX as u64)]
+        st0: BFieldElement,
+    ) {
         let program = triton_program!(
             push {st0} call is_u32 assert halt
             is_u32:
                 split pop 1 push 0 eq return
         );
         let program_and_input = ProgramAndInput::without_input(program);
-        let err = program_and_input.run().err();
-        let err = err.unwrap();
-        let err = err.downcast::<InstructionError>().unwrap();
-        let AssertionFailed(_, _, _) = err else {
-            panic!("Non-u32 must not pass u32-ness test.");
-        };
+        let_assert!(Err(err) = program_and_input.run());
+        let_assert!(AssertionFailed = err.source);
     }
 
     pub(crate) fn test_program_for_split() -> ProgramAndInput {
@@ -1792,17 +1792,11 @@ pub(crate) mod tests {
             assert_vector                       // _ [own_digest]
             halt
         };
-        let claim = Claim {
-            program_digest: program.hash::<StarkHasher>(),
-            input: vec![],
-            output: vec![],
-        };
 
-        let initial_ram = claim
-            .encode()
-            .into_iter()
-            .enumerate()
-            .map(|(address, value)| (address as u64, value.value()))
+        let program_digest = program.hash::<StarkHasher>();
+        let enumerated_digest_elements = program_digest.values().into_iter().enumerate();
+        let initial_ram = enumerated_digest_elements
+            .map(|(address, digest_element)| (address as u64, digest_element.value()))
             .collect();
         let non_determinism = NonDeterminism::default().with_ram(initial_ram);
 
@@ -1829,15 +1823,8 @@ pub(crate) mod tests {
             write_io 3
             halt
         );
-        let program = ProgramAndInput {
-            program,
-            public_input: [].into(),
-            non_determinism: [].into(),
-        };
-
-        let actual_stdout = program.run().unwrap();
+        let actual_stdout = program.run([].into(), [].into())?;
         let expected_stdout = (left_operand + right_operand).coefficients.to_vec();
-
         prop_assert_eq!(expected_stdout, actual_stdout);
     }
 
@@ -1857,15 +1844,8 @@ pub(crate) mod tests {
             write_io 3
             halt
         );
-        let program = ProgramAndInput {
-            program,
-            public_input: [].into(),
-            non_determinism: [].into(),
-        };
-
-        let actual_stdout = program.run().unwrap();
+        let actual_stdout = program.run([].into(), [].into())?;
         let expected_stdout = (left_operand * right_operand).coefficients.to_vec();
-
         prop_assert_eq!(expected_stdout, actual_stdout);
     }
 
@@ -1883,15 +1863,8 @@ pub(crate) mod tests {
             write_io 3
             halt
         );
-        let program = ProgramAndInput {
-            program,
-            public_input: [].into(),
-            non_determinism: [].into(),
-        };
-
-        let actual_stdout = program.run().unwrap();
+        let actual_stdout = program.run([].into(), [].into())?;
         let expected_stdout = operand.inverse().coefficients.to_vec();
-
         prop_assert_eq!(expected_stdout, actual_stdout);
     }
 
@@ -1906,15 +1879,8 @@ pub(crate) mod tests {
             write_io 3
             halt
         );
-        let program = ProgramAndInput {
-            program,
-            public_input: [].into(),
-            non_determinism: [].into(),
-        };
-
-        let actual_stdout = program.run().unwrap();
+        let actual_stdout = program.run([].into(), [].into())?;
         let expected_stdout = (scalar * operand).coefficients.to_vec();
-
         prop_assert_eq!(expected_stdout, actual_stdout);
     }
 
@@ -1928,7 +1894,7 @@ pub(crate) mod tests {
             sub:
                 swap 1 push -1 mul add return
         );
-        let actual_stdout = ProgramAndInput::without_input(program).run().unwrap();
+        let actual_stdout = ProgramAndInput::without_input(program).run()?;
         let expected_stdout = vec![minuend - subtrahend];
 
         prop_assert_eq!(expected_stdout, actual_stdout);
@@ -1937,10 +1903,7 @@ pub(crate) mod tests {
     #[test]
     #[allow(clippy::assertions_on_constants)]
     const fn op_stack_is_big_enough() {
-        assert!(
-            2 * DIGEST_LENGTH <= OpStackElement::COUNT,
-            "The OpStack must be large enough to hold two digests."
-        );
+        std::assert!(2 * DIGEST_LENGTH <= OpStackElement::COUNT);
     }
     const _COMPILE_TIME_ASSERTION: () = op_stack_is_big_enough();
 
@@ -1964,23 +1927,21 @@ pub(crate) mod tests {
             write_io 5 write_io 5 write_io 4
             halt
         );
-        let terminal_state = program
-            .debug_terminal_state([].into(), [].into(), None, None)
-            .unwrap();
-        assert_eq!(BFIELD_ZERO, terminal_state.op_stack.peek_at(ST0));
+        let_assert!(Ok(terminal_state) = program.terminal_state([].into(), [].into()));
+        assert!(BFIELD_ZERO == terminal_state.op_stack.peek_at(ST0));
     }
 
     #[test]
     fn run_tvm_halt_then_do_stuff() {
         let program = triton_program!(halt push 1 push 2 add invert write_io 5);
-        let (aet, _) = program.trace_execution([].into(), [].into()).unwrap();
+        let_assert!(Ok((aet, _)) = program.trace_execution([].into(), [].into()));
 
-        let last_processor_row = aet.processor_trace.rows().into_iter().last().unwrap();
+        let_assert!(Some(last_processor_row) = aet.processor_trace.rows().into_iter().last());
         let clk_count = last_processor_row[ProcessorBaseTableColumn::CLK.base_table_index()];
-        assert_eq!(BFIELD_ZERO, clk_count);
+        assert!(BFIELD_ZERO == clk_count);
 
         let last_instruction = last_processor_row[ProcessorBaseTableColumn::CI.base_table_index()];
-        assert_eq!(Instruction::Halt.opcode_b(), last_instruction);
+        assert!(Instruction::Halt.opcode_b() == last_instruction);
 
         println!("{last_processor_row}");
     }
@@ -1998,13 +1959,11 @@ pub(crate) mod tests {
             halt
         );
 
-        let terminal_state = program
-            .debug_terminal_state([].into(), [].into(), None, None)
-            .unwrap();
-        assert_eq!(BFieldElement::new(4), terminal_state.op_stack.peek_at(ST0));
-        assert_eq!(BFieldElement::new(7), terminal_state.op_stack.peek_at(ST1));
-        assert_eq!(BFieldElement::new(14), terminal_state.op_stack.peek_at(ST2));
-        assert_eq!(BFieldElement::new(18), terminal_state.op_stack.peek_at(ST3));
+        let_assert!(Ok(terminal_state) = program.terminal_state([].into(), [].into()));
+        assert!(BFieldElement::new(4) == terminal_state.op_stack.peek_at(ST0));
+        assert!(BFieldElement::new(7) == terminal_state.op_stack.peek_at(ST1));
+        assert!(BFieldElement::new(14) == terminal_state.op_stack.peek_at(ST2));
+        assert!(BFieldElement::new(18) == terminal_state.op_stack.peek_at(ST3));
     }
 
     #[test]
@@ -2032,12 +1991,10 @@ pub(crate) mod tests {
             halt
         );
 
-        let terminal_state = program
-            .debug_terminal_state([].into(), [].into(), None, None)
-            .unwrap();
-        assert_eq!(BFieldElement::new(2), terminal_state.op_stack.peek_at(ST0));
-        assert_eq!(BFieldElement::new(5), terminal_state.op_stack.peek_at(ST1));
-        assert_eq!(BFieldElement::new(5), terminal_state.op_stack.peek_at(ST2));
+        let_assert!(Ok(terminal_state) = program.terminal_state([].into(), [].into()));
+        assert!(BFieldElement::new(2) == terminal_state.op_stack.peek_at(ST0));
+        assert!(BFieldElement::new(5) == terminal_state.op_stack.peek_at(ST1));
+        assert!(BFieldElement::new(5) == terminal_state.op_stack.peek_at(ST2));
     }
 
     #[test]
@@ -2070,7 +2027,7 @@ pub(crate) mod tests {
         }
 
         let program = MERKLE_TREE_AUTHENTICATION_PATH_VERIFY.clone();
-        program.run(public_input.into(), non_determinism).unwrap();
+        assert!(let Ok(_) = program.run(public_input.into(), non_determinism));
     }
 
     #[proptest]
@@ -2116,30 +2073,30 @@ pub(crate) mod tests {
                 halt
         );
 
-        let standard_out = countdown_program.run([].into(), [].into()).unwrap();
+        let_assert!(Ok(standard_out) = countdown_program.run([].into(), [].into()));
         let expected = (0..=10).map(BFieldElement::new).rev().collect_vec();
-        assert_eq!(expected, standard_out);
+        assert!(expected == standard_out);
     }
 
     #[test]
     fn run_tvm_fibonacci_tvm() {
         let program = FIBONACCI_SEQUENCE.clone();
-        let standard_out = program.run(vec![7].into(), [].into()).unwrap();
-        assert_eq!(BFieldElement::new(21), standard_out[0]);
+        let_assert!(Ok(standard_out) = program.run(vec![7].into(), [].into()));
+        assert!(BFieldElement::new(21) == standard_out[0]);
     }
 
     #[test]
     fn run_tvm_swap() {
         let program = triton_program!(push 1 push 2 swap 1 assert write_io 1 halt);
-        let standard_out = program.run([].into(), [].into()).unwrap();
-        assert_eq!(BFieldElement::new(2), standard_out[0]);
+        let_assert!(Ok(standard_out) = program.run([].into(), [].into()));
+        assert!(BFieldElement::new(2) == standard_out[0]);
     }
 
     #[test]
     fn read_mem_unitialized() {
         let program = triton_program!(read_mem 3 halt);
-        let (aet, _) = program.trace_execution([].into(), [].into()).unwrap();
-        assert_eq!(2, aet.processor_trace.nrows());
+        let_assert!(Ok((aet, _)) = program.trace_execution([].into(), [].into()));
+        assert!(2 == aet.processor_trace.nrows());
     }
 
     #[test]
@@ -2152,10 +2109,8 @@ pub(crate) mod tests {
         let public_input = PublicInput::new(vec![]);
         let secret_input = NonDeterminism::new(vec![]).with_ram(initial_ram);
 
-        let public_output = program
-            .run(public_input.clone(), secret_input.clone())
-            .unwrap();
-        assert_eq!(42, public_output[0].value());
+        let_assert!(Ok(public_output) = program.run(public_input.clone(), secret_input.clone()));
+        assert!(42 == public_output[0].value());
 
         prove_with_low_security_level(&program, public_input, secret_input, &mut None);
     }
@@ -2177,11 +2132,9 @@ pub(crate) mod tests {
         let public_input = PublicInput::new(vec![]);
         let secret_input = NonDeterminism::new(vec![]).with_ram(initial_ram);
 
-        let public_output = program
-            .run(public_input.clone(), secret_input.clone())
-            .unwrap();
-        assert_eq!(0, public_output[0].value());
-        assert_eq!(value, public_output[1]);
+        let_assert!(Ok(public_output) = program.run(public_input.clone(), secret_input.clone()));
+        assert!(0 == public_output[0].value());
+        assert!(value == public_output[1]);
 
         prove_with_low_security_level(&program, public_input, secret_input, &mut None);
     }
@@ -2189,16 +2142,8 @@ pub(crate) mod tests {
     #[test]
     fn program_without_halt() {
         let program = triton_program!(nop);
-        let err = program.trace_execution([].into(), [].into()).err();
-        let Some(err) = err else {
-            panic!("Program without halt must fail.");
-        };
-        let Ok(err) = err.downcast::<InstructionError>() else {
-            panic!("Program without halt must fail with InstructionError.");
-        };
-        let InstructionPointerOverflow(_) = err else {
-            panic!("Program without halt must fail with InstructionPointerOverflow.");
-        };
+        let_assert!(Err(err) = program.trace_execution([].into(), [].into()));
+        let_assert!(InstructionPointerOverflow = err.source);
     }
 
     #[test]
@@ -2219,9 +2164,7 @@ pub(crate) mod tests {
         ]
         .into();
         let secret_in = [].into();
-        if let Err(e) = program.trace_execution(stdin, secret_in) {
-            panic!("The VM encountered an error: {e}");
-        }
+        assert!(let Ok(_) = program.trace_execution(stdin, secret_in));
 
         // rows and columns adhere to Sudoku rules, boxes do not
         let bad_stdin = vec![
@@ -2239,15 +2182,7 @@ pub(crate) mod tests {
         ]
         .into();
         let secret_in = [].into();
-        let err = program.trace_execution(bad_stdin, secret_in).err();
-        let Some(err) = err else {
-            panic!("Sudoku verifier must fail on bad Sudoku.");
-        };
-        let Ok(err) = err.downcast::<InstructionError>() else {
-            panic!("Sudoku verifier must fail with InstructionError on bad Sudoku.");
-        };
-        let AssertionFailed(_, _, _) = err else {
-            panic!("Sudoku verifier must fail with AssertionFailed on bad Sudoku.");
-        };
+        let_assert!(Err(err) = program.trace_execution(bad_stdin, secret_in));
+        let_assert!(AssertionFailed = err.source);
     }
 }

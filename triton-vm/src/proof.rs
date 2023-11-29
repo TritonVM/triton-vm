@@ -1,4 +1,3 @@
-use anyhow::Result;
 use arbitrary::Arbitrary;
 use get_size::GetSize;
 use itertools::Itertools;
@@ -8,7 +7,7 @@ use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::bfield_codec::BFieldCodec;
 use twenty_first::shared_math::tip5::Digest;
 
-use crate::ensure_eq;
+use crate::error::ProofStreamError;
 use crate::proof_stream::ProofStream;
 use crate::stark;
 
@@ -21,14 +20,19 @@ impl Proof {
     /// Get the height of the trace used during proof generation.
     /// This is an upper bound on the length of the computation this proof is for.
     /// It it one of the main contributing factors to the length of the FRI domain.
-    pub fn padded_height(&self) -> Result<usize> {
+    pub fn padded_height(&self) -> Result<usize, ProofStreamError> {
         let proof_stream = ProofStream::<stark::StarkHasher>::try_from(self)?;
         let proof_items = proof_stream.items.iter();
         let log_2_padded_heights = proof_items
             .filter_map(|item| item.as_log2_padded_height().ok())
             .collect_vec();
 
-        ensure_eq!(1, log_2_padded_heights.len());
+        if log_2_padded_heights.is_empty() {
+            return Err(ProofStreamError::NoLog2PaddedHeight);
+        }
+        if log_2_padded_heights.len() > 1 {
+            return Err(ProofStreamError::TooManyLog2PaddedHeights);
+        }
         Ok(1 << log_2_padded_heights[0])
     }
 }
@@ -68,6 +72,7 @@ impl Claim {
 
 #[cfg(test)]
 mod tests {
+    use assert2::assert;
     use proptest::collection::vec;
     use proptest_arbitrary_interop::arb;
     use rand::random;
@@ -89,7 +94,7 @@ mod tests {
         let encoded = proof.encode();
         let decoded = *Proof::decode(&encoded).unwrap();
 
-        assert_eq!(proof, decoded);
+        assert!(proof == decoded);
     }
 
     #[test]
@@ -103,9 +108,9 @@ mod tests {
         let encoded = claim.encode();
         let decoded = *Claim::decode(&encoded).unwrap();
 
-        assert_eq!(claim.program_digest, decoded.program_digest);
-        assert_eq!(claim.input, decoded.input);
-        assert_eq!(claim.output, decoded.output);
+        assert!(claim.program_digest == decoded.program_digest);
+        assert!(claim.input == decoded.input);
+        assert!(claim.output == decoded.output);
     }
 
     #[test]

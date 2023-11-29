@@ -2,17 +2,10 @@ use std::fmt::Display;
 use std::fmt::Formatter;
 use std::fmt::Result as FmtResult;
 
-use anyhow::anyhow;
-use anyhow::bail;
-use anyhow::Result;
 use arbitrary::Arbitrary;
 use get_size::GetSize;
 use itertools::Itertools;
 use num_traits::Zero;
-use rand::distributions::Distribution;
-use rand::distributions::Standard;
-use rand::seq::IteratorRandom;
-use rand::Rng;
 use serde_derive::Deserialize;
 use serde_derive::Serialize;
 use strum::EnumCount;
@@ -23,8 +16,15 @@ use twenty_first::shared_math::digest::Digest;
 use twenty_first::shared_math::tip5::DIGEST_LENGTH;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
+use crate::error::InstructionError;
 use crate::error::InstructionError::*;
+use crate::error::NumberOfWordsError;
+use crate::error::OpStackElementError;
 use crate::op_stack::OpStackElement::*;
+
+type Result<T> = std::result::Result<T, InstructionError>;
+type OpStackElementResult<T> = std::result::Result<T, OpStackElementError>;
+type NumWordsResult<T> = std::result::Result<T, NumberOfWordsError>;
 
 /// The number of registers dedicated to the top of the operational stack.
 pub const NUM_OP_STACK_REGISTERS: usize = OpStackElement::COUNT;
@@ -39,7 +39,7 @@ pub const NUM_OP_STACK_REGISTERS: usize = OpStackElement::COUNT;
 /// and the op-stack underflow memory. The op-stack registers are the first
 /// [`OpStackElement::COUNT`] elements of the op-stack, and the op-stack underflow memory is the
 /// remaining elements.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OpStack {
     pub stack: Vec<BFieldElement>,
     underflow_io_sequence: Vec<UnderflowIO>,
@@ -65,7 +65,7 @@ impl OpStack {
 
     pub(crate) fn pop(&mut self) -> Result<BFieldElement> {
         self.record_underflow_io(UnderflowIO::Read);
-        let element = self.stack.pop().ok_or_else(|| anyhow!(OpStackTooShallow))?;
+        let element = self.stack.pop().ok_or(OpStackTooShallow)?;
         Ok(element)
     }
 
@@ -98,7 +98,7 @@ impl OpStack {
         let element = self.pop()?;
         let element = element
             .try_into()
-            .map_err(|_| anyhow!(FailedU32Conversion(element)))?;
+            .map_err(|_| FailedU32Conversion(element))?;
         Ok(element)
     }
 
@@ -291,12 +291,6 @@ impl OpStackElement {
     }
 }
 
-impl Distribution<OpStackElement> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> OpStackElement {
-        OpStackElement::iter().choose(rng).unwrap()
-    }
-}
-
 impl Display for OpStackElement {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         let index = self.index();
@@ -317,9 +311,9 @@ impl From<&OpStackElement> for u32 {
 }
 
 impl TryFrom<u32> for OpStackElement {
-    type Error = anyhow::Error;
+    type Error = OpStackElementError;
 
-    fn try_from(stack_index: u32) -> Result<Self> {
+    fn try_from(stack_index: u32) -> OpStackElementResult<Self> {
         match stack_index {
             0 => Ok(ST0),
             1 => Ok(ST1),
@@ -337,7 +331,7 @@ impl TryFrom<u32> for OpStackElement {
             13 => Ok(ST13),
             14 => Ok(ST14),
             15 => Ok(ST15),
-            _ => bail!("Index {stack_index} is out of range for `OpStackElement`."),
+            _ => Err(Self::Error::IndexOutOfBounds(stack_index)),
         }
     }
 }
@@ -349,9 +343,9 @@ impl From<OpStackElement> for u64 {
 }
 
 impl TryFrom<u64> for OpStackElement {
-    type Error = anyhow::Error;
+    type Error = OpStackElementError;
 
-    fn try_from(stack_index: u64) -> Result<Self> {
+    fn try_from(stack_index: u64) -> OpStackElementResult<Self> {
         u32::try_from(stack_index)?.try_into()
     }
 }
@@ -381,17 +375,17 @@ impl From<&OpStackElement> for i32 {
 }
 
 impl TryFrom<i32> for OpStackElement {
-    type Error = anyhow::Error;
+    type Error = OpStackElementError;
 
-    fn try_from(stack_index: i32) -> Result<Self> {
+    fn try_from(stack_index: i32) -> OpStackElementResult<Self> {
         u32::try_from(stack_index)?.try_into()
     }
 }
 
 impl TryFrom<usize> for OpStackElement {
-    type Error = anyhow::Error;
+    type Error = OpStackElementError;
 
-    fn try_from(stack_index: usize) -> Result<Self> {
+    fn try_from(stack_index: usize) -> OpStackElementResult<Self> {
         u32::try_from(stack_index)?.try_into()
     }
 }
@@ -405,6 +399,14 @@ impl From<OpStackElement> for BFieldElement {
 impl From<&OpStackElement> for BFieldElement {
     fn from(&stack_element: &OpStackElement) -> Self {
         stack_element.into()
+    }
+}
+
+impl TryFrom<BFieldElement> for OpStackElement {
+    type Error = OpStackElementError;
+
+    fn try_from(stack_index: BFieldElement) -> OpStackElementResult<Self> {
+        u32::try_from(stack_index)?.try_into()
     }
 }
 
@@ -457,12 +459,6 @@ impl NumberOfWords {
             .filter(|i| !Self::legal_values().contains(i))
             .collect_vec();
         illegal_values.try_into().unwrap()
-    }
-}
-
-impl Distribution<NumberOfWords> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> NumberOfWords {
-        NumberOfWords::iter().choose(rng).unwrap()
     }
 }
 
@@ -533,68 +529,72 @@ impl From<&NumberOfWords> for BFieldElement {
 }
 
 impl TryFrom<usize> for NumberOfWords {
-    type Error = anyhow::Error;
+    type Error = NumberOfWordsError;
 
-    fn try_from(index: usize) -> Result<Self> {
+    fn try_from(index: usize) -> NumWordsResult<Self> {
         match index {
             1 => Ok(Self::N1),
             2 => Ok(Self::N2),
             3 => Ok(Self::N3),
             4 => Ok(Self::N4),
             5 => Ok(Self::N5),
-            _ => bail!("Index {index} is out of range for `NumberOfWords`."),
+            _ => Err(Self::Error::IndexOutOfBounds(index)),
         }
     }
 }
 
 impl TryFrom<u32> for NumberOfWords {
-    type Error = anyhow::Error;
+    type Error = NumberOfWordsError;
 
-    fn try_from(index: u32) -> Result<Self> {
+    fn try_from(index: u32) -> NumWordsResult<Self> {
         usize::try_from(index)?.try_into()
     }
 }
 
 impl TryFrom<OpStackElement> for NumberOfWords {
-    type Error = anyhow::Error;
+    type Error = NumberOfWordsError;
 
-    fn try_from(index: OpStackElement) -> Result<Self> {
-        usize::try_from(index)?.try_into()
+    fn try_from(index: OpStackElement) -> NumWordsResult<Self> {
+        usize::from(index).try_into()
     }
 }
 
 impl TryFrom<u64> for NumberOfWords {
-    type Error = anyhow::Error;
+    type Error = NumberOfWordsError;
 
-    fn try_from(index: u64) -> Result<Self> {
+    fn try_from(index: u64) -> NumWordsResult<Self> {
         usize::try_from(index)?.try_into()
     }
 }
 
 impl TryFrom<BFieldElement> for NumberOfWords {
-    type Error = anyhow::Error;
+    type Error = NumberOfWordsError;
 
-    fn try_from(index: BFieldElement) -> Result<Self> {
+    fn try_from(index: BFieldElement) -> NumWordsResult<Self> {
         u32::try_from(index)?.try_into()
     }
 }
 
 impl TryFrom<&BFieldElement> for NumberOfWords {
-    type Error = anyhow::Error;
+    type Error = NumberOfWordsError;
 
-    fn try_from(&index: &BFieldElement) -> Result<Self> {
+    fn try_from(&index: &BFieldElement) -> NumWordsResult<Self> {
         index.try_into()
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use assert2::assert;
+    use assert2::let_assert;
     use proptest::collection::vec;
     use proptest::prelude::*;
     use proptest_arbitrary_interop::arb;
     use strum::IntoEnumIterator;
     use test_strategy::proptest;
     use twenty_first::shared_math::b_field_element::BFieldElement;
+
+    use crate::op_stack::NumberOfWords::N1;
 
     use super::*;
 
@@ -604,8 +604,8 @@ mod tests {
         let mut op_stack = OpStack::new(digest);
 
         // verify height
-        assert_eq!(op_stack.stack.len(), 16);
-        assert_eq!(op_stack.pointer().value() as usize, op_stack.stack.len());
+        assert!(op_stack.stack.len() == 16);
+        assert!(op_stack.pointer().value() as usize == op_stack.stack.len());
 
         // push elements 1 thru 17
         for i in 1..=17 {
@@ -613,8 +613,8 @@ mod tests {
         }
 
         // verify height
-        assert_eq!(op_stack.stack.len(), 33);
-        assert_eq!(op_stack.pointer().value() as usize, op_stack.stack.len());
+        assert!(op_stack.stack.len() == 33);
+        assert!(op_stack.pointer().value() as usize == op_stack.stack.len());
 
         // verify that all accessible items are different
         let mut container = vec![
@@ -640,7 +640,7 @@ mod tests {
         container.sort_by_key(|a| a.value());
         container.dedup();
         let len_after = container.len();
-        assert_eq!(len_before, len_after);
+        assert!(len_before == len_after);
 
         // pop 11 elements
         for _ in 0..11 {
@@ -648,16 +648,16 @@ mod tests {
         }
 
         // verify height
-        assert_eq!(op_stack.stack.len(), 22);
-        assert_eq!(op_stack.pointer().value() as usize, op_stack.stack.len());
+        assert!(op_stack.stack.len() == 22);
+        assert!(op_stack.pointer().value() as usize == op_stack.stack.len());
 
         // pop 2 XFieldElements
         let _ = op_stack.pop_extension_field_element().expect("can't pop");
         let _ = op_stack.pop_extension_field_element().expect("can't pop");
 
         // verify height
-        assert_eq!(op_stack.stack.len(), 16);
-        assert_eq!(op_stack.pointer().value() as usize, op_stack.stack.len());
+        assert!(op_stack.stack.len() == 16);
+        assert!(op_stack.pointer().value() as usize == op_stack.stack.len());
 
         // verify underflow
         let _ = op_stack.pop().expect("can't pop");
@@ -677,18 +677,18 @@ mod tests {
     #[test]
     fn conversion_from_stack_element_to_u32_and_back_is_identity() {
         for stack_element in OpStackElement::iter() {
-            let stack_index = u32::from(&stack_element);
-            let stack_element_again = OpStackElement::try_from(stack_index).unwrap();
-            assert_eq!(stack_element, stack_element_again);
+            let stack_index = u32::from(stack_element);
+            let_assert!(Ok(stack_element_again) = OpStackElement::try_from(stack_index));
+            assert!(stack_element == stack_element_again);
         }
     }
 
     #[test]
     fn conversion_from_stack_element_to_i32_and_back_is_identity() {
         for stack_element in OpStackElement::iter() {
-            let stack_index = i32::from(&stack_element);
-            let stack_element_again = OpStackElement::try_from(stack_index).unwrap();
-            assert_eq!(stack_element, stack_element_again);
+            let stack_index = i32::from(stack_element);
+            let_assert!(Ok(stack_element_again) = OpStackElement::try_from(stack_index));
+            assert!(stack_element == stack_element_again);
         }
     }
 
@@ -698,7 +698,7 @@ mod tests {
         UnderflowIO::canonicalize_sequence(&mut sequence);
 
         let expected_sequence = Vec::<UnderflowIO>::new();
-        assert_eq!(expected_sequence, sequence);
+        assert!(expected_sequence == sequence);
     }
 
     #[test]
@@ -711,7 +711,7 @@ mod tests {
         UnderflowIO::canonicalize_sequence(&mut sequence);
 
         let expected_sequence = vec![UnderflowIO::Read(7_u64.into())];
-        assert_eq!(expected_sequence, sequence);
+        assert!(expected_sequence == sequence);
     }
 
     #[test]
@@ -726,7 +726,7 @@ mod tests {
         UnderflowIO::canonicalize_sequence(&mut sequence);
 
         let expected_sequence = vec![UnderflowIO::Write(7_u64.into())];
-        assert_eq!(expected_sequence, sequence);
+        assert!(expected_sequence == sequence);
     }
 
     #[proptest]
@@ -755,37 +755,93 @@ mod tests {
     #[test]
     fn conversion_from_number_of_words_to_usize_and_back_is_identity() {
         for num_words in NumberOfWords::iter() {
-            let stack_index = usize::from(&num_words);
-            let num_words_again = NumberOfWords::try_from(stack_index).unwrap();
-            assert_eq!(num_words, num_words_again);
+            let stack_index = usize::from(num_words);
+            let_assert!(Ok(num_words_again) = NumberOfWords::try_from(stack_index));
+            assert!(num_words == num_words_again);
         }
     }
 
     #[test]
     fn conversion_from_number_of_words_to_u64_and_back_is_identity() {
         for num_words in NumberOfWords::iter() {
-            let stack_index = u64::from(&num_words);
-            let num_words_again = NumberOfWords::try_from(stack_index).unwrap();
-            assert_eq!(num_words, num_words_again);
+            let stack_index = u64::from(num_words);
+            let_assert!(Ok(num_words_again) = NumberOfWords::try_from(stack_index));
+            assert!(num_words == num_words_again);
         }
     }
 
     #[test]
     fn conversion_from_number_of_words_to_op_stack_element_and_back_is_identity() {
         for num_words in NumberOfWords::iter() {
-            let stack_element = OpStackElement::from(&num_words);
-            let num_words_again = NumberOfWords::try_from(stack_element).unwrap();
-            assert_eq!(num_words, num_words_again);
+            let stack_element = OpStackElement::from(num_words);
+            let_assert!(Ok(num_words_again) = NumberOfWords::try_from(stack_element));
+            assert!(num_words == num_words_again);
         }
     }
 
     #[test]
-    fn out_of_range_number_of_words_gives_error() {
-        let num_words = NumberOfWords::iter().last().unwrap();
-        let mut stack_index = BFieldElement::from(&num_words);
-        stack_index.increment();
-        let maybe_num_words = NumberOfWords::try_from(&stack_index);
-        assert!(maybe_num_words.is_err());
+    fn convert_from_various_primitive_types_to_op_stack_element() {
+        assert!(let Ok(_) = OpStackElement::try_from(0_u32));
+        assert!(let Ok(_) = OpStackElement::try_from(0_u64));
+        assert!(let Ok(_) = OpStackElement::try_from(0_usize));
+        assert!(let Ok(_) = OpStackElement::try_from(0_i32));
+        assert!(let Ok(_) = OpStackElement::try_from(BFieldElement::zero()));
+    }
+
+    #[test]
+    fn convert_from_various_primitive_types_to_number_of_words() {
+        assert!(let Ok(_) = NumberOfWords::try_from(1_u32));
+        assert!(let Ok(_) = NumberOfWords::try_from(1_u64));
+        assert!(let Ok(_) = NumberOfWords::try_from(1_usize));
+        assert!(let Ok(_) = NumberOfWords::try_from(BFieldElement::new(1)));
+        assert!(let Ok(_) = NumberOfWords::try_from(ST1));
+    }
+
+    #[test]
+    fn convert_from_op_stack_element_to_various_primitive_types() {
+        let _ = u32::from(ST0);
+        let _ = u64::from(ST0);
+        let _ = usize::from(ST0);
+        let _ = i32::from(ST0);
+        let _ = BFieldElement::from(ST0);
+
+        let _ = u32::from(&ST0);
+        let _ = usize::from(&ST0);
+        let _ = i32::from(&ST0);
+        let _ = BFieldElement::from(&ST0);
+    }
+
+    #[test]
+    fn convert_from_number_of_words_to_various_primitive_types() {
+        let _ = u32::from(N1);
+        let _ = u64::from(N1);
+        let _ = usize::from(N1);
+        let _ = BFieldElement::from(N1);
+        let _ = OpStackElement::from(N1);
+
+        let _ = u32::from(&N1);
+        let _ = u64::from(&N1);
+        let _ = usize::from(&N1);
+        let _ = BFieldElement::from(&N1);
+        let _ = OpStackElement::from(&N1);
+    }
+
+    #[proptest]
+    fn out_of_range_op_stack_element_gives_error(
+        #[strategy(arb())]
+        #[filter(!OpStackElement::iter().map(|o| o.index()).contains(&(#index.value() as u32)))]
+        index: BFieldElement,
+    ) {
+        assert!(let Err(_) = OpStackElement::try_from(index));
+    }
+
+    #[proptest]
+    fn out_of_range_number_of_words_gives_error(
+        #[strategy(arb())]
+        #[filter(!NumberOfWords::legal_values().contains(&(#index.value() as usize)))]
+        index: BFieldElement,
+    ) {
+        assert!(let Err(_) = NumberOfWords::try_from(&index));
     }
 
     #[test]
@@ -794,14 +850,14 @@ mod tests {
             .map(|num_words| BFieldElement::from(&num_words).value())
             .collect_vec();
         let expected_range = (1..=5).collect_vec();
-        assert_eq!(computed_range, expected_range);
+        assert!(computed_range == expected_range);
     }
 
     #[test]
     fn number_of_legal_number_of_words_corresponds_to_distinct_number_of_number_of_words() {
         let legal_values = NumberOfWords::legal_values();
-        let distinct_values = NumberOfWords::COUNT;
-        assert_eq!(distinct_values, legal_values.len());
+        let num_distinct_values = NumberOfWords::COUNT;
+        assert!(num_distinct_values == legal_values.len());
     }
 
     #[test]

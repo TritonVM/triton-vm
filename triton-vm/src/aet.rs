@@ -3,9 +3,6 @@ use std::collections::hash_map::Entry::Vacant;
 use std::collections::HashMap;
 use std::ops::AddAssign;
 
-use anyhow::anyhow;
-use anyhow::bail;
-use anyhow::Result;
 use itertools::Itertools;
 use ndarray::s;
 use ndarray::Array2;
@@ -19,6 +16,7 @@ use twenty_first::shared_math::tip5;
 use twenty_first::shared_math::tip5::Tip5;
 use twenty_first::util_types::algebraic_hasher::SpongeHasher;
 
+use crate::error::InstructionError;
 use crate::error::InstructionError::InstructionPointerOverflow;
 use crate::instruction::Instruction;
 use crate::program::Program;
@@ -215,23 +213,27 @@ impl AlgebraicExecutionTrace {
             .unwrap()
     }
 
-    pub fn record_state(&mut self, state: &VMState) -> Result<()> {
+    pub fn record_state(&mut self, state: &VMState) -> Result<(), InstructionError> {
         self.record_instruction_lookup(state.instruction_pointer)?;
-        self.append_state_to_processor_trace(state)
+        self.append_state_to_processor_trace(state);
+        Ok(())
     }
 
-    fn record_instruction_lookup(&mut self, instruction_pointer: usize) -> Result<()> {
+    fn record_instruction_lookup(
+        &mut self,
+        instruction_pointer: usize,
+    ) -> Result<(), InstructionError> {
         if instruction_pointer >= self.instruction_multiplicities.len() {
-            bail!(InstructionPointerOverflow(instruction_pointer));
+            return Err(InstructionPointerOverflow);
         }
         self.instruction_multiplicities[instruction_pointer] += 1;
         Ok(())
     }
 
-    fn append_state_to_processor_trace(&mut self, state: &VMState) -> Result<()> {
+    fn append_state_to_processor_trace(&mut self, state: &VMState) {
         self.processor_trace
             .push_row(state.to_processor_row().view())
-            .map_err(|e| anyhow!(e))
+            .unwrap()
     }
 
     pub fn record_co_processor_call(&mut self, co_processor_call: CoProcessorCall) {
@@ -342,9 +344,11 @@ impl AlgebraicExecutionTrace {
 
 #[cfg(test)]
 mod tests {
+    use assert2::assert;
+    use twenty_first::shared_math::b_field_element::BFIELD_ONE;
+
     use crate::triton_asm;
     use crate::triton_program;
-    use twenty_first::shared_math::b_field_element::BFIELD_ONE;
 
     use super::*;
 
@@ -355,6 +359,6 @@ mod tests {
         let padded_program = AlgebraicExecutionTrace::hash_input_pad_program(&program);
 
         let expected = [program.to_bwords(), vec![BFIELD_ONE]].concat();
-        assert_eq!(expected, padded_program);
+        assert!(expected == padded_program);
     }
 }

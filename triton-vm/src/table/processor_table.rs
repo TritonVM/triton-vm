@@ -1,7 +1,4 @@
 use std::cmp::max;
-use std::fmt::Display;
-use std::fmt::Formatter;
-use std::fmt::Result as FmtResult;
 use std::ops::Mul;
 
 use itertools::Itertools;
@@ -462,7 +459,7 @@ impl ProcessorTable {
 
         if instruction.has_arg() {
             let arg = row[NIA.base_table_index()];
-            return instruction.change_arg(arg);
+            return instruction.change_arg(arg).ok();
         }
 
         Some(instruction)
@@ -723,7 +720,7 @@ impl ExtProcessorTable {
             13 => hv(3) * hv(2) * (one() - hv(1)) * hv(0),
             14 => hv(3) * hv(2) * hv(1) * (one() - hv(0)),
             15 => hv(3) * hv(2) * hv(1) * hv(0),
-            i => unimplemented!("Indicator polynomial index {i} out of bounds."),
+            i => panic!("indicator polynomial index {i} out of bounds"),
         }
     }
 
@@ -3368,162 +3365,10 @@ impl ExtProcessorTable {
     }
 }
 
-pub struct ProcessorTraceRow<'a> {
-    pub row: ArrayView1<'a, BFieldElement>,
-}
-
-impl<'a> Display for ProcessorTraceRow<'a> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
-        fn row(f: &mut Formatter<'_>, s: String) -> FmtResult {
-            writeln!(f, "│ {s: <103} │")
-        }
-
-        fn row_blank(f: &mut Formatter<'_>) -> FmtResult {
-            row(f, "".into())
-        }
-
-        let instruction = self.row[CI.base_table_index()].value().try_into().unwrap();
-        let instruction_with_arg = match instruction {
-            Push(_) => Push(self.row[NIA.base_table_index()]),
-            Call(_) => Call(self.row[NIA.base_table_index()]),
-            Dup(_) => Dup((self.row[NIA.base_table_index()].value() as u32)
-                .try_into()
-                .unwrap()),
-            Swap(_) => Swap(
-                (self.row[NIA.base_table_index()].value() as u32)
-                    .try_into()
-                    .unwrap(),
-            ),
-            _ => instruction,
-        };
-
-        writeln!(
-            f,
-            " ╭────────────────────────────────────────────────────────╮"
-        )?;
-        writeln!(f, " │ {: <54} │", format!("{instruction_with_arg}"))?;
-        writeln!(
-            f,
-            "╭┴────────────────────────────────────────────────────────┴───────\
-            ────────────────────┬───────────────────╮"
-        )?;
-
-        let width = 20;
-        row(
-            f,
-            format!(
-                "ip:   {:>width$} ╷ ci:   {:>width$} ╷ nia: {:>width$} │ {:>17}",
-                self.row[IP.base_table_index()].value(),
-                self.row[CI.base_table_index()].value(),
-                self.row[NIA.base_table_index()].value(),
-                self.row[CLK.base_table_index()].value(),
-            ),
-        )?;
-
-        writeln!(
-            f,
-            "│ jsp:  {:>width$} │ jso:  {:>width$} │ jsd: {:>width$} ╰───────────────────┤",
-            self.row[JSP.base_table_index()].value(),
-            self.row[JSO.base_table_index()].value(),
-            self.row[JSD.base_table_index()].value(),
-        )?;
-        row(
-            f,
-            format!(
-                "osp:  {:>width$} ╵",
-                self.row[OpStackPointer.base_table_index()].value(),
-            ),
-        )?;
-
-        row_blank(f)?;
-
-        row(
-            f,
-            format!(
-                "st0-3:    [ {:>width$} | {:>width$} | {:>width$} | {:>width$} ]",
-                self.row[ST0.base_table_index()].value(),
-                self.row[ST1.base_table_index()].value(),
-                self.row[ST2.base_table_index()].value(),
-                self.row[ST3.base_table_index()].value(),
-            ),
-        )?;
-        row(
-            f,
-            format!(
-                "st4-7:    [ {:>width$} | {:>width$} | {:>width$} | {:>width$} ]",
-                self.row[ST4.base_table_index()].value(),
-                self.row[ST5.base_table_index()].value(),
-                self.row[ST6.base_table_index()].value(),
-                self.row[ST7.base_table_index()].value(),
-            ),
-        )?;
-        row(
-            f,
-            format!(
-                "st8-11:   [ {:>width$} | {:>width$} | {:>width$} | {:>width$} ]",
-                self.row[ST8.base_table_index()].value(),
-                self.row[ST9.base_table_index()].value(),
-                self.row[ST10.base_table_index()].value(),
-                self.row[ST11.base_table_index()].value(),
-            ),
-        )?;
-        row(
-            f,
-            format!(
-                "st12-15:  [ {:>width$} | {:>width$} | {:>width$} | {:>width$} ]",
-                self.row[ST12.base_table_index()].value(),
-                self.row[ST13.base_table_index()].value(),
-                self.row[ST14.base_table_index()].value(),
-                self.row[ST15.base_table_index()].value(),
-            ),
-        )?;
-
-        row_blank(f)?;
-
-        row(
-            f,
-            format!(
-                "hv0-3:    [ {:>width$} | {:>width$} | {:>width$} | {:>width$} ]",
-                self.row[HV0.base_table_index()].value(),
-                self.row[HV1.base_table_index()].value(),
-                self.row[HV2.base_table_index()].value(),
-                self.row[HV3.base_table_index()].value(),
-            ),
-        )?;
-        row(
-            f,
-            format!(
-                "hv4-5:    [ {:>width$} | {:>width$} ]",
-                self.row[HV4.base_table_index()].value(),
-                self.row[HV5.base_table_index()].value(),
-            ),
-        )?;
-
-        let w = 2;
-        row(
-            f,
-            format!(
-                "ib0-7:    \
-                [ {:>w$} | {:>w$} | {:>w$} | {:>w$} | {:>w$} | {:>w$} | {:>w$} ]",
-                self.row[IB0.base_table_index()].value(),
-                self.row[IB1.base_table_index()].value(),
-                self.row[IB2.base_table_index()].value(),
-                self.row[IB3.base_table_index()].value(),
-                self.row[IB4.base_table_index()].value(),
-                self.row[IB5.base_table_index()].value(),
-                self.row[IB6.base_table_index()].value(),
-            ),
-        )?;
-        write!(
-            f,
-            "╰─────────────────────────────────────────────────────────────────\
-            ────────────────────────────────────────╯"
-        )
-    }
-}
-
 #[cfg(test)]
 pub(crate) mod tests {
+    use assert2::assert;
+    use assert2::check;
     use ndarray::Array2;
     use proptest::collection::vec;
     use proptest_arbitrary_interop::arb;
@@ -3533,10 +3378,8 @@ pub(crate) mod tests {
     use test_strategy::proptest;
     use twenty_first::shared_math::digest::Digest;
 
-    use crate::error::InstructionError;
     use crate::error::InstructionError::DivisionByZero;
     use crate::instruction::Instruction;
-    use crate::instruction::LabelledInstruction;
     use crate::op_stack::NumberOfWords::*;
     use crate::op_stack::OpStackElement;
     use crate::program::Program;
@@ -3553,13 +3396,9 @@ pub(crate) mod tests {
     #[test]
     /// helps identifying whether the printing causes an infinite loop
     fn print_simple_processor_table_row() {
-        let program = triton_program!(push 2 push -1 add assert halt);
-        let (states, _) = program.debug([].into(), [].into(), None, None);
-
-        println!();
-        for state in states {
-            println!("{state}");
-        }
+        let program = triton_program!(push 2 assert halt);
+        let err = program.run([].into(), [].into()).unwrap_err();
+        println!("\n{}", err.vm_state);
     }
 
     #[derive(Debug, Clone)]
@@ -3624,9 +3463,8 @@ pub(crate) mod tests {
             }
             println!();
 
-            assert_eq!(
-                instruction.opcode_b(),
-                curr_row[CI.master_base_table_index()],
+            assert!(
+                instruction.opcode_b() == curr_row[CI.master_base_table_index()],
                 "The test is trying to check the wrong transition constraint polynomials."
             );
 
@@ -3645,41 +3483,13 @@ pub(crate) mod tests {
         }
     }
 
-    #[test]
-    #[should_panic(expected = "out of range for `NumberOfWords`")]
-    fn transition_constraints_for_instruction_pop_0() {
-        transition_constraints_for_instruction_pop_n(0);
-    }
-
     #[proptest(cases = 20)]
-    fn transition_constraints_for_instruction_pop_n_in_range(#[strategy(1..=5_usize)] n: usize) {
-        transition_constraints_for_instruction_pop_n(n);
-    }
+    fn transition_constraints_for_instruction_pop_n(#[strategy(arb())] n: NumberOfWords) {
+        let program = triton_program!(push 1 push 2 push 3 push 4 push 5 pop {n} halt);
 
-    #[proptest(cases = 20)]
-    #[should_panic(expected = "out of range for `NumberOfWords`")]
-    fn transition_constraints_for_instruction_pop_n_too_large(
-        #[strategy(6..OpStackElement::COUNT)] n: usize,
-    ) {
-        transition_constraints_for_instruction_pop_n(n);
-    }
-
-    fn transition_constraints_for_instruction_pop_n(n: usize) {
-        let arg = n.try_into().unwrap();
-
-        let mut instructions = vec![Push(BFIELD_ZERO); n];
-        instructions.push(Pop(arg));
-        instructions.push(Halt);
-
-        let instructions = instructions
-            .into_iter()
-            .map(LabelledInstruction::Instruction)
-            .collect_vec();
-        let program = Program::new(&instructions);
-        let test_rows = [test_row_from_program(program, n)];
-
+        let test_rows = [test_row_from_program(program, 5)];
         let debug_info = TestRowsDebugInfo {
-            instruction: Pop(arg),
+            instruction: Pop(n),
             debug_cols_curr_row: vec![ST0, ST1, ST2],
             debug_cols_next_row: vec![ST0, ST1, ST2],
         };
@@ -3698,40 +3508,18 @@ pub(crate) mod tests {
         assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
 
-    #[test]
-    #[should_panic(expected = "out of range for `NumberOfWords`")]
-    fn transition_constraints_for_instruction_divine_0() {
-        transition_constraints_for_instruction_divine_n(0);
-    }
-
     #[proptest(cases = 20)]
-    fn transition_constraints_for_instruction_divine_n_in_range(#[strategy(1..=5_usize)] n: usize) {
-        transition_constraints_for_instruction_divine_n(n);
-    }
-
-    #[proptest(cases = 20)]
-    #[should_panic(expected = "out of range for `NumberOfWords`")]
-    fn transition_constraints_for_instruction_divine_n_too_large(
-        #[strategy(6..OpStackElement::COUNT)] n: usize,
-    ) {
-        transition_constraints_for_instruction_divine_n(n);
-    }
-
-    fn transition_constraints_for_instruction_divine_n(n: usize) {
-        let stack_element = n.try_into().unwrap();
-
-        let instructions = [Divine(stack_element), Halt];
-        let instructions = instructions.map(LabelledInstruction::Instruction).to_vec();
+    fn transition_constraints_for_instruction_divine_n(#[strategy(arb())] n: NumberOfWords) {
+        let program = triton_program! { divine {n} halt };
 
         let program_and_input = ProgramAndInput {
-            program: Program::new(&instructions),
+            program,
             public_input: vec![],
             non_determinism: (1..=16).collect_vec().into(),
         };
         let test_rows = [test_row_from_program_with_input(program_and_input, 0)];
-
         let debug_info = TestRowsDebugInfo {
-            instruction: Divine(stack_element),
+            instruction: Divine(n),
             debug_cols_curr_row: vec![ST0, ST1, ST2],
             debug_cols_next_row: vec![ST0, ST1, ST2],
         };
@@ -4122,18 +3910,9 @@ pub(crate) mod tests {
 
     #[test]
     fn division_by_zero_is_impossible() {
-        let err = ProgramAndInput::without_input(triton_program!(div_mod))
-            .run()
-            .err();
-        let Some(err) = err else {
-            panic!("Dividing by 0 must fail.");
-        };
-        let Ok(err) = err.downcast::<InstructionError>() else {
-            panic!("Dividing by 0 must fail with InstructionError.");
-        };
-        let DivisionByZero = err else {
-            panic!("Dividing by 0 must fail with DivisionByZero.");
-        };
+        let program = ProgramAndInput::without_input(triton_program! { div_mod });
+        let err = program.run().unwrap_err();
+        assert_eq!(DivisionByZero, err.source);
     }
 
     #[test]
@@ -4196,82 +3975,36 @@ pub(crate) mod tests {
         assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
 
-    #[test]
-    #[should_panic(expected = "out of range for `NumberOfWords`")]
-    fn transition_constraints_for_instruction_read_io_0() {
-        transition_constraints_for_instruction_read_io_n(0);
-    }
-
     #[proptest(cases = 20)]
-    fn transition_constraints_for_instruction_read_io_n_in_range(
-        #[strategy(1..=5_usize)] n: usize,
-    ) {
-        transition_constraints_for_instruction_read_io_n(n);
-    }
-
-    #[proptest(cases = 20)]
-    #[should_panic(expected = "out of range for `NumberOfWords`")]
-    fn transition_constraints_for_instruction_read_io_n_too_large(
-        #[strategy(6..OpStackElement::COUNT)] n: usize,
-    ) {
-        transition_constraints_for_instruction_read_io_n(n);
-    }
-
-    fn transition_constraints_for_instruction_read_io_n(n: usize) {
-        let stack_element = n.try_into().unwrap();
-
-        let instructions = [ReadIo(stack_element), Halt];
-        let instructions = instructions.map(LabelledInstruction::Instruction).to_vec();
+    fn transition_constraints_for_instruction_read_io_n(#[strategy(arb())] n: NumberOfWords) {
+        let program = triton_program! {read_io {n} halt};
 
         let program_and_input = ProgramAndInput {
-            program: Program::new(&instructions),
+            program,
             public_input: (1..=16).collect_vec(),
             non_determinism: [].into(),
         };
         let test_rows = [test_row_from_program_with_input(program_and_input, 0)];
         let debug_info = TestRowsDebugInfo {
-            instruction: ReadIo(stack_element),
+            instruction: ReadIo(n),
             debug_cols_curr_row: vec![ST0, ST1, ST2],
             debug_cols_next_row: vec![ST0, ST1, ST2],
         };
         assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
 
-    #[test]
-    #[should_panic(expected = "out of range for `NumberOfWords`")]
-    fn transition_constraints_for_instruction_write_io_0() {
-        transition_constraints_for_instruction_write_io_n(0);
-    }
-
     #[proptest(cases = 20)]
-    fn transition_constraints_for_instruction_write_io_n_in_range(
-        #[strategy(1..=5_usize)] n: usize,
-    ) {
-        transition_constraints_for_instruction_write_io_n(n);
-    }
-
-    #[proptest(cases = 20)]
-    #[should_panic(expected = "out of range for `NumberOfWords`")]
-    fn transition_constraints_for_instruction_write_io_n_too_large(
-        #[strategy(6..OpStackElement::COUNT)] n: usize,
-    ) {
-        transition_constraints_for_instruction_write_io_n(n);
-    }
-
-    fn transition_constraints_for_instruction_write_io_n(n: usize) {
-        let stack_element = n.try_into().unwrap();
-
-        let instructions = [Divine(N5), WriteIo(stack_element), Halt];
-        let instructions = instructions.map(LabelledInstruction::Instruction).to_vec();
+    fn transition_constraints_for_instruction_write_io_n(#[strategy(arb())] n: NumberOfWords) {
+        let program = triton_program! {divine 5 write_io {n} halt};
 
         let program_and_input = ProgramAndInput {
-            program: Program::new(&instructions),
+            program,
             public_input: [].into(),
             non_determinism: (1..=16).collect_vec().into(),
         };
         let test_rows = [test_row_from_program_with_input(program_and_input, 1)];
         let debug_info = TestRowsDebugInfo {
-            instruction: WriteIo(stack_element),
+            instruction: WriteIo(n),
             debug_cols_curr_row: vec![ST0, ST1, ST2, ST3, ST4, ST5],
             debug_cols_next_row: vec![ST0, ST1, ST2, ST3, ST4, ST5],
         };
@@ -4372,18 +4105,16 @@ pub(crate) mod tests {
         }
     }
 
-    pub fn constraints_evaluate_to_zero(
+    pub fn check_constraints(
         master_base_trace_table: ArrayView2<BFieldElement>,
         master_ext_trace_table: ArrayView2<XFieldElement>,
         challenges: &Challenges,
-    ) -> bool {
-        let zero = XFieldElement::zero();
-        assert_eq!(
-            master_base_trace_table.nrows(),
-            master_ext_trace_table.nrows()
-        );
+    ) {
+        assert!(master_base_trace_table.nrows() == master_ext_trace_table.nrows());
 
+        let zero = XFieldElement::zero();
         let circuit_builder = ConstraintCircuitBuilder::new();
+
         for (constraint_idx, constraint) in ExtProcessorTable::initial_constraints(&circuit_builder)
             .into_iter()
             .map(|constraint_monad| constraint_monad.consume())
@@ -4394,8 +4125,8 @@ pub(crate) mod tests {
                 master_ext_trace_table.slice(s![..1, ..]),
                 challenges,
             );
-            assert_eq!(
-                zero, evaluated_constraint,
+            check!(
+                zero == evaluated_constraint,
                 "Initial constraint {constraint_idx} failed."
             );
         }
@@ -4413,8 +4144,8 @@ pub(crate) mod tests {
                     master_ext_trace_table.slice(s![row_idx..row_idx + 1, ..]),
                     challenges,
                 );
-                assert_eq!(
-                    zero, evaluated_constraint,
+                check!(
+                    zero == evaluated_constraint,
                     "Consistency constraint {constraint_idx} failed on row {row_idx}."
                 );
             }
@@ -4433,8 +4164,8 @@ pub(crate) mod tests {
                     master_ext_trace_table.slice(s![row_idx..row_idx + 2, ..]),
                     challenges,
                 );
-                assert_eq!(
-                    zero, evaluated_constraint,
+                check!(
+                    zero == evaluated_constraint,
                     "Transition constraint {constraint_idx} failed on row {row_idx}."
                 );
             }
@@ -4452,13 +4183,11 @@ pub(crate) mod tests {
                 master_ext_trace_table.slice(s![-1.., ..]),
                 challenges,
             );
-            assert_eq!(
-                zero, evaluated_constraint,
+            check!(
+                zero == evaluated_constraint,
                 "Terminal constraint {constraint_idx} failed."
             );
         }
-
-        true
     }
 
     #[test]
