@@ -31,7 +31,7 @@ pub type AuthenticationStructure = Vec<Digest>;
 #[derive(Debug, Clone, Copy)]
 pub struct Fri<H: AlgebraicHasher> {
     pub expansion_factor: usize,
-    pub num_colinearity_checks: usize,
+    pub num_collinearity_checks: usize,
     pub domain: ArithmeticDomain,
     _hasher: PhantomData<H>,
 }
@@ -41,8 +41,8 @@ struct FriProver<'stream, H: AlgebraicHasher> {
     rounds: Vec<ProverRound<H>>,
     first_round_domain: ArithmeticDomain,
     num_rounds: usize,
-    num_colinearity_checks: usize,
-    first_round_colinearity_check_indices: Vec<usize>,
+    num_collinearity_checks: usize,
+    first_round_collinearity_check_indices: Vec<usize>,
 }
 
 struct ProverRound<H: AlgebraicHasher> {
@@ -97,34 +97,34 @@ impl<'stream, H: AlgebraicHasher> FriProver<'stream, H> {
     }
 
     fn query(&mut self) {
-        self.sample_first_round_colinearity_check_indices();
+        self.sample_first_round_collinearity_check_indices();
 
-        let initial_a_indices = self.first_round_colinearity_check_indices.clone();
+        let initial_a_indices = self.first_round_collinearity_check_indices.clone();
         self.authentically_reveal_codeword_of_round_at_indices(0, &initial_a_indices);
 
         let num_rounds_that_have_a_next_round = self.rounds.len() - 1;
         for round_number in 0..num_rounds_that_have_a_next_round {
-            let b_indices = self.colinearity_check_b_indices_for_round(round_number);
+            let b_indices = self.collinearity_check_b_indices_for_round(round_number);
             self.authentically_reveal_codeword_of_round_at_indices(round_number, &b_indices);
         }
     }
 
-    fn sample_first_round_colinearity_check_indices(&mut self) {
+    fn sample_first_round_collinearity_check_indices(&mut self) {
         let indices_upper_bound = self.first_round_domain.length;
-        self.first_round_colinearity_check_indices = self
+        self.first_round_collinearity_check_indices = self
             .proof_stream
-            .sample_indices(indices_upper_bound, self.num_colinearity_checks);
+            .sample_indices(indices_upper_bound, self.num_collinearity_checks);
     }
 
-    fn all_top_level_colinearity_check_indices(&self) -> Vec<usize> {
-        let a_indices = self.first_round_colinearity_check_indices.clone();
-        let b_indices = self.colinearity_check_b_indices_for_round(0);
+    fn all_top_level_collinearity_check_indices(&self) -> Vec<usize> {
+        let a_indices = self.first_round_collinearity_check_indices.clone();
+        let b_indices = self.collinearity_check_b_indices_for_round(0);
         a_indices.into_iter().chain(b_indices).collect()
     }
 
-    fn colinearity_check_b_indices_for_round(&self, round_number: usize) -> Vec<usize> {
+    fn collinearity_check_b_indices_for_round(&self, round_number: usize) -> Vec<usize> {
         let domain_length = self.rounds[round_number].domain.length;
-        self.first_round_colinearity_check_indices
+        self.first_round_collinearity_check_indices
             .iter()
             .map(|&a_index| (a_index + domain_length / 2) % domain_length)
             .collect()
@@ -192,8 +192,8 @@ struct FriVerifier<'stream, H: AlgebraicHasher> {
     last_round_codeword: Vec<XFieldElement>,
     last_round_max_degree: usize,
     num_rounds: usize,
-    num_colinearity_checks: usize,
-    first_round_colinearity_check_indices: Vec<usize>,
+    num_collinearity_checks: usize,
+    first_round_collinearity_check_indices: Vec<usize>,
 }
 
 struct VerifierRound {
@@ -282,17 +282,17 @@ impl<'stream, H: AlgebraicHasher> FriVerifier<'stream, H> {
     }
 
     fn compute_last_round_folded_partial_codeword(&mut self) -> Result<()> {
-        self.sample_first_round_colinearity_check_indices();
+        self.sample_first_round_collinearity_check_indices();
         self.receive_authentic_partially_revealed_codewords()?;
         self.successively_fold_partial_codeword_of_each_round();
         Ok(())
     }
 
-    fn sample_first_round_colinearity_check_indices(&mut self) {
+    fn sample_first_round_collinearity_check_indices(&mut self) {
         let upper_bound = self.first_round_domain.length;
-        self.first_round_colinearity_check_indices = self
+        self.first_round_collinearity_check_indices = self
             .proof_stream
-            .sample_indices(upper_bound, self.num_colinearity_checks);
+            .sample_indices(upper_bound, self.num_collinearity_checks);
     }
 
     fn receive_authentic_partially_revealed_codewords(&mut self) -> Result<()> {
@@ -335,7 +335,7 @@ impl<'stream, H: AlgebraicHasher> FriVerifier<'stream, H> {
     }
 
     fn assert_enough_leaves_were_received(&self, leaves: &[XFieldElement]) -> Result<()> {
-        match self.num_colinearity_checks == leaves.len() {
+        match self.num_collinearity_checks == leaves.len() {
             true => Ok(()),
             false => Err(IncorrectNumberOfRevealedLeaves),
         }
@@ -351,7 +351,7 @@ impl<'stream, H: AlgebraicHasher> FriVerifier<'stream, H> {
         let revealed_digests = codeword_as_digests(revealed_leaves);
 
         let merkle_tree_height = round.domain.length.ilog2() as usize;
-        let indices = &self.colinearity_check_a_indices_for_round(0);
+        let indices = &self.collinearity_check_a_indices_for_round(0);
 
         match MerkleTree::<H>::verify_authentication_structure(
             round.merkle_root,
@@ -376,7 +376,7 @@ impl<'stream, H: AlgebraicHasher> FriVerifier<'stream, H> {
         let revealed_digests = codeword_as_digests(revealed_leaves);
 
         let merkle_tree_height = round.domain.length.ilog2() as usize;
-        let indices = &self.colinearity_check_b_indices_for_round(round_number);
+        let indices = &self.collinearity_check_b_indices_for_round(round_number);
 
         match MerkleTree::<H>::verify_authentication_structure(
             round.merkle_root,
@@ -401,14 +401,14 @@ impl<'stream, H: AlgebraicHasher> FriVerifier<'stream, H> {
 
     fn fold_partial_codeword_of_round(&self, round_number: usize) -> Vec<XFieldElement> {
         let round = &self.rounds[round_number];
-        let a_indices = self.colinearity_check_a_indices_for_round(round_number);
-        let b_indices = self.colinearity_check_b_indices_for_round(round_number);
+        let a_indices = self.collinearity_check_a_indices_for_round(round_number);
+        let b_indices = self.collinearity_check_b_indices_for_round(round_number);
         let partial_codeword_a = &round.partial_codeword_a;
         let partial_codeword_b = &round.partial_codeword_b;
         let domain = round.domain;
         let folding_challenge = round.folding_challenge.unwrap();
 
-        (0..self.num_colinearity_checks)
+        (0..self.num_collinearity_checks)
             .into_par_iter()
             .map(|i| {
                 let point_a_x = domain.domain_value(a_indices[i] as u32).lift();
@@ -420,24 +420,24 @@ impl<'stream, H: AlgebraicHasher> FriVerifier<'stream, H> {
             .collect()
     }
 
-    fn colinearity_check_a_indices_for_round(&self, round_number: usize) -> Vec<usize> {
+    fn collinearity_check_a_indices_for_round(&self, round_number: usize) -> Vec<usize> {
         let domain_length = self.rounds[round_number].domain.length;
         let a_offset = 0;
-        self.colinearity_check_indices_with_offset_and_modulus(a_offset, domain_length)
+        self.collinearity_check_indices_with_offset_and_modulus(a_offset, domain_length)
     }
 
-    fn colinearity_check_b_indices_for_round(&self, round_number: usize) -> Vec<usize> {
+    fn collinearity_check_b_indices_for_round(&self, round_number: usize) -> Vec<usize> {
         let domain_length = self.rounds[round_number].domain.length;
         let b_offset = domain_length / 2;
-        self.colinearity_check_indices_with_offset_and_modulus(b_offset, domain_length)
+        self.collinearity_check_indices_with_offset_and_modulus(b_offset, domain_length)
     }
 
-    fn colinearity_check_indices_with_offset_and_modulus(
+    fn collinearity_check_indices_with_offset_and_modulus(
         &self,
         offset: usize,
         modulus: usize,
     ) -> Vec<usize> {
-        self.first_round_colinearity_check_indices
+        self.first_round_collinearity_check_indices
             .iter()
             .map(|&i| (i + offset) % modulus)
             .collect()
@@ -481,7 +481,7 @@ impl<'stream, H: AlgebraicHasher> FriVerifier<'stream, H> {
 
     fn received_last_round_codeword_at_indices_a(&self) -> Vec<XFieldElement> {
         let last_round_number = self.rounds.len() - 1;
-        let last_round_indices_a = self.colinearity_check_a_indices_for_round(last_round_number);
+        let last_round_indices_a = self.collinearity_check_a_indices_for_round(last_round_number);
         last_round_indices_a
             .iter()
             .map(|&last_round_index_a| self.last_round_codeword[last_round_index_a])
@@ -504,11 +504,11 @@ impl<'stream, H: AlgebraicHasher> FriVerifier<'stream, H> {
         let partial_codeword_a = self.rounds[0].partial_codeword_a.clone();
         let partial_codeword_b = self.rounds[0].partial_codeword_b.clone();
 
-        let indices_a = self.colinearity_check_a_indices_for_round(0).into_iter();
+        let indices_a = self.collinearity_check_a_indices_for_round(0).into_iter();
 
         let first_round_codeword_b_has_been_revealed = self.num_rounds > 0;
         let indices_b = match first_round_codeword_b_has_been_revealed {
-            true => self.colinearity_check_b_indices_for_round(0).into_iter(),
+            true => self.collinearity_check_b_indices_for_round(0).into_iter(),
             false => vec![].into_iter(),
         };
 
@@ -523,7 +523,7 @@ impl<H: AlgebraicHasher> Fri<H> {
     pub fn new(
         domain: ArithmeticDomain,
         expansion_factor: usize,
-        num_colinearity_checks: usize,
+        num_collinearity_checks: usize,
     ) -> Self {
         assert!(expansion_factor > 1);
         assert!(expansion_factor.is_power_of_two());
@@ -532,7 +532,7 @@ impl<H: AlgebraicHasher> Fri<H> {
         Self {
             domain,
             expansion_factor,
-            num_colinearity_checks,
+            num_collinearity_checks,
             _hasher: PhantomData,
         }
     }
@@ -548,7 +548,7 @@ impl<H: AlgebraicHasher> Fri<H> {
         prover.commit(codeword);
         prover.query();
 
-        prover.all_top_level_colinearity_check_indices()
+        prover.all_top_level_collinearity_check_indices()
     }
 
     fn prover<'stream>(&'stream self, proof_stream: &'stream mut ProofStream<H>) -> FriProver<H> {
@@ -557,8 +557,8 @@ impl<H: AlgebraicHasher> Fri<H> {
             rounds: vec![],
             first_round_domain: self.domain,
             num_rounds: self.num_rounds(),
-            num_colinearity_checks: self.num_colinearity_checks,
-            first_round_colinearity_check_indices: vec![],
+            num_collinearity_checks: self.num_collinearity_checks,
+            first_round_collinearity_check_indices: vec![],
         }
     }
 
@@ -596,8 +596,8 @@ impl<H: AlgebraicHasher> Fri<H> {
             last_round_codeword: vec![],
             last_round_max_degree: self.last_round_max_degree(),
             num_rounds: self.num_rounds(),
-            num_colinearity_checks: self.num_colinearity_checks,
-            first_round_colinearity_check_indices: vec![],
+            num_collinearity_checks: self.num_collinearity_checks,
+            first_round_collinearity_check_indices: vec![],
         }
     }
 
@@ -607,7 +607,7 @@ impl<H: AlgebraicHasher> Fri<H> {
 
         // Skip rounds for which Merkle tree verification cost exceeds arithmetic cost,
         // because more than half the codeword's locations are queried.
-        let num_rounds_checking_all_locations = self.num_colinearity_checks.ilog2() as u64;
+        let num_rounds_checking_all_locations = self.num_collinearity_checks.ilog2() as u64;
         let num_rounds_checking_most_locations = num_rounds_checking_all_locations + 1;
 
         max_num_rounds.saturating_sub(num_rounds_checking_most_locations) as usize
@@ -667,7 +667,7 @@ mod tests {
         )(
             log_2_expansion_factor in Just(log_2_expansion_factor),
             log_2_domain_length in log_2_expansion_factor..=18,
-            num_colinearity_checks in 1_usize..=320,
+            num_collinearity_checks in 1_usize..=320,
             offset in arb(),
         ) -> Fri<Tip5> {
             let expansion_factor = (1 << log_2_expansion_factor) as usize;
@@ -681,7 +681,7 @@ mod tests {
             let domain_length = max(sampled_domain_length, min_expanded_domain_length);
 
             let fri_domain = ArithmeticDomain::of_length(domain_length).with_offset(offset);
-            Fri::new(fri_domain, expansion_factor, num_colinearity_checks)
+            Fri::new(fri_domain, expansion_factor, num_collinearity_checks)
         }
     }
 
@@ -695,7 +695,7 @@ mod tests {
 
         // todo: Figure out by how much to oversample for the given parameters.
         let oversampling_summand = 1 << 13;
-        let num_indices_to_sample = fri.num_colinearity_checks + oversampling_summand;
+        let num_indices_to_sample = fri.num_collinearity_checks + oversampling_summand;
         let indices = Tip5::sample_indices(
             &mut sponge_state,
             fri.domain.length as u32,
@@ -703,7 +703,7 @@ mod tests {
         );
         let num_unique_indices = indices.iter().unique().count();
 
-        let required_unique_indices = min(fri.domain.length, fri.num_colinearity_checks);
+        let required_unique_indices = min(fri.domain.length, fri.num_collinearity_checks);
         prop_assert!(num_unique_indices >= required_unique_indices);
     }
 
@@ -712,8 +712,8 @@ mod tests {
         let expected_last_round_max_degree = fri.first_round_max_degree() >> fri.num_rounds();
         prop_assert_eq!(expected_last_round_max_degree, fri.last_round_max_degree());
         if fri.num_rounds() > 0 {
-            prop_assert!(fri.num_colinearity_checks <= expected_last_round_max_degree);
-            prop_assert!(expected_last_round_max_degree < 2 * fri.num_colinearity_checks);
+            prop_assert!(fri.num_collinearity_checks <= expected_last_round_max_degree);
+            prop_assert!(expected_last_round_max_degree < 2 * fri.num_collinearity_checks);
         }
     }
 
@@ -779,8 +779,8 @@ mod tests {
     fn smallest_fri() -> Fri<Tip5> {
         let domain = ArithmeticDomain::of_length(2);
         let expansion_factor = 2;
-        let num_colinearity_checks = 1;
-        Fri::new(domain, expansion_factor, num_colinearity_checks)
+        let num_collinearity_checks = 1;
+        Fri::new(domain, expansion_factor, num_collinearity_checks)
     }
 
     #[test]
@@ -788,8 +788,8 @@ mod tests {
     fn too_small_expansion_factor_is_rejected() {
         let domain = ArithmeticDomain::of_length(2);
         let expansion_factor = 1;
-        let num_colinearity_checks = 1;
-        Fri::<Tip5>::new(domain, expansion_factor, num_colinearity_checks);
+        let num_collinearity_checks = 1;
+        Fri::<Tip5>::new(domain, expansion_factor, num_collinearity_checks);
     }
 
     #[proptest]
@@ -802,8 +802,8 @@ mod tests {
             return Ok(());
         }
         let domain = ArithmeticDomain::of_length(2 * expansion_factor).with_offset(offset);
-        let num_colinearity_checks = 1;
-        Fri::<Tip5>::new(domain, expansion_factor, num_colinearity_checks);
+        let num_collinearity_checks = 1;
+        Fri::<Tip5>::new(domain, expansion_factor, num_collinearity_checks);
     }
 
     #[proptest]
@@ -814,8 +814,8 @@ mod tests {
     ) {
         let expansion_factor = (1 << log_2_expansion_factor) as usize;
         let domain = ArithmeticDomain::of_length(expansion_factor - 1).with_offset(offset);
-        let num_colinearity_checks = 1;
-        Fri::<Tip5>::new(domain, expansion_factor, num_colinearity_checks);
+        let num_collinearity_checks = 1;
+        Fri::<Tip5>::new(domain, expansion_factor, num_collinearity_checks);
     }
 
     // todo: add test fuzzing proof_stream
@@ -953,7 +953,7 @@ mod tests {
         rng_seed: u64,
     ) {
         let all_authentication_structures_are_trivial =
-            fri.num_colinearity_checks >= fri.domain.length;
+            fri.num_collinearity_checks >= fri.domain.length;
         if all_authentication_structures_are_trivial {
             return Ok(());
         }

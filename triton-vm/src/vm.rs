@@ -2031,7 +2031,7 @@ pub(crate) mod tests {
     }
 
     #[proptest]
-    fn run_tvm_get_colinear_y(
+    fn run_tvm_get_collinear_y(
         #[strategy(arb())] p0: (BFieldElement, BFieldElement),
         #[strategy(arb())]
         #[filter(#p0.0 != #p1.0)]
@@ -2040,7 +2040,7 @@ pub(crate) mod tests {
     ) {
         let p2_y = Polynomial::get_colinear_y(p0, p1, p2_x);
 
-        let get_colinear_y_program = triton_program!(
+        let get_collinear_y_program = triton_program!(
             read_io 5                       // p0 p1 p2_x
             swap 3 push -1 mul dup 1 add    // dy = p0_y - p1_y
             dup 3 push -1 mul dup 5 add mul // dy·(p2_x - p0_x)
@@ -2050,8 +2050,8 @@ pub(crate) mod tests {
             write_io 1 halt
         );
 
-        let public_input = vec![p2_x, p1.1, p1.0, p0.1, p0.0].into();
-        let output = get_colinear_y_program.run(public_input, [].into()).unwrap();
+        let public_input = vec![p2_x, p1.1, p1.0, p0.1, p0.0];
+        let_assert!(Ok(output) = get_collinear_y_program.run(public_input.into(), [].into()));
         prop_assert_eq!(p2_y, output[0]);
     }
 
@@ -2093,7 +2093,7 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn read_mem_unitialized() {
+    fn read_mem_uninitialized() {
         let program = triton_program!(read_mem 3 halt);
         let_assert!(Ok((aet, _)) = program.trace_execution([].into(), [].into()));
         assert!(2 == aet.processor_trace.nrows());

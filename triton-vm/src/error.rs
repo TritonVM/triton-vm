@@ -114,7 +114,7 @@ pub enum ProofStreamError {
 #[non_exhaustive]
 #[derive(Debug, Error)]
 pub enum FriValidationError {
-    #[error("the number of revealed leaves does not match the number of colinearity checks")]
+    #[error("the number of revealed leaves does not match the number of collinearity checks")]
     IncorrectNumberOfRevealedLeaves,
 
     #[error("Merkle tree authentication failed")]

@@ -77,12 +77,12 @@ pub struct StarkParameters {
     /// in all cases. It is integral for achieving zero-knowledge for the FRI part of the zk-STARK.
     pub num_randomizer_polynomials: usize,
 
-    /// The number of colinearity checks to perform in FRI.
-    pub num_colinearity_checks: usize,
+    /// The number of collinearity checks to perform in FRI.
+    pub num_collinearity_checks: usize,
 
     /// The number of combination codeword checks. These checks link the (DEEP) ALI part and the
     /// FRI part of the zk-STARK. The number of combination codeword checks directly depends on the
-    /// number of colinearity checks and the FRI folding factor.
+    /// number of collinearity checks and the FRI folding factor.
     pub num_combination_codeword_checks: usize,
 }
 
@@ -95,11 +95,11 @@ impl StarkParameters {
 
         let num_randomizer_polynomials = 1; // over the XField
         let fri_expansion_factor = 1 << log2_of_fri_expansion_factor;
-        let num_colinearity_checks = security_level / log2_of_fri_expansion_factor;
+        let num_collinearity_checks = security_level / log2_of_fri_expansion_factor;
 
         // For now, the FRI folding factor is hardcoded in our zk-STARK.
         let fri_folding_factor = 2;
-        let num_combination_codeword_checks = num_colinearity_checks * fri_folding_factor;
+        let num_combination_codeword_checks = num_collinearity_checks * fri_folding_factor;
 
         let num_out_of_domain_rows = 2;
         let num_trace_randomizers = num_combination_codeword_checks
@@ -110,7 +110,7 @@ impl StarkParameters {
             fri_expansion_factor,
             num_trace_randomizers,
             num_randomizer_polynomials,
-            num_colinearity_checks,
+            num_collinearity_checks,
             num_combination_codeword_checks,
         }
     }
@@ -645,7 +645,7 @@ impl Stark {
         Fri::new(
             domain,
             parameters.fri_expansion_factor,
-            parameters.num_colinearity_checks,
+            parameters.num_collinearity_checks,
         )
     }
 
