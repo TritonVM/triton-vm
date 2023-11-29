@@ -2268,47 +2268,6 @@ pub(crate) mod tests {
         println!("{report}");
     }
 
-    #[proptest]
-    #[ignore = "used for tracking&debugging deserialization errors"]
-    fn triton_prove_halt_save_error() {
-        let code_with_input = test_program_for_halt();
-
-        let (parameters, claim, proof) = prove_with_low_security_level(
-            &code_with_input.program,
-            code_with_input.public_input(),
-            code_with_input.non_determinism(),
-            &mut None,
-        );
-
-        let verdict = Stark::verify(parameters, &claim, &proof, &mut None);
-        match verdict {
-            Ok(v) => assert!(v),
-            Err(e) => {
-                let filename = "halt_error.tsp";
-                save_proof(filename, proof).unwrap();
-                eprintln!("Saved proof to {filename}.");
-                panic!("verification failed: {e}");
-            }
-        };
-    }
-
-    #[test]
-    #[ignore = "used for tracking&debugging deserialization errors"]
-    fn triton_load_verify_halt() {
-        let code_with_input = test_program_for_halt();
-        let (parameters, claim, _) = prove_with_low_security_level(
-            &code_with_input.program,
-            code_with_input.public_input(),
-            code_with_input.non_determinism(),
-            &mut None,
-        );
-
-        let filename = "halt_error.tsp";
-        let_assert!(Ok(proof) = load_proof(filename));
-        let_assert!(Ok(verdict) = Stark::verify(parameters, &claim, &proof, &mut None));
-        assert!(verdict);
-    }
-
     #[test]
     fn prove_verify_fibonacci_100() {
         let stdin = vec![100].into();
@@ -2385,28 +2344,6 @@ pub(crate) mod tests {
         #[strategy(arb())] proof: Proof,
     ) {
         let _ = Stark::verify(parameters, &claim, &proof, &mut None);
-    }
-
-    #[test]
-    #[ignore = "stress test"]
-    fn prove_fib_successively_larger() {
-        for fibonacci_number in [100, 200, 400, 800, 1600, 3200, 6400, 12800, 25600, 51200] {
-            let stdin = vec![fibonacci_number].into();
-            let fib_test_name = format!("element #{fibonacci_number:>4} from Fibonacci sequence");
-            let mut profiler = Some(TritonProfiler::new(&fib_test_name));
-            let (parameters, _, proof) =
-                prove_with_low_security_level(&FIBONACCI_SEQUENCE, stdin, [].into(), &mut profiler);
-            let_assert!(Some(mut profiler) = profiler);
-            profiler.finish();
-
-            let_assert!(Ok(padded_height) = proof.padded_height());
-            let fri = Stark::derive_fri(parameters, padded_height);
-            let report = profiler
-                .report()
-                .with_padded_height(padded_height)
-                .with_fri_domain_len(fri.domain.length);
-            println!("{report}");
-        }
     }
 
     #[proptest]
