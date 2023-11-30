@@ -7,6 +7,7 @@ use tokio::sync::mpsc::UnboundedSender;
 use tracing::info;
 
 use triton_vm::error::InstructionError;
+use triton_vm::instruction::Instruction;
 use triton_vm::instruction::LabelledInstruction;
 use triton_vm::op_stack::OpStackElement;
 
@@ -58,15 +59,43 @@ impl Home {
         }
     }
 
-    fn program_step(&mut self) -> Result<()> {
-        if !self.vm_state.halting && self.error.is_none() {
-            let maybe_error = self.vm_state.step();
-            if let Err(err) = maybe_error {
-                info!("Error stepping VM: {err}");
-                self.error = Some(err);
-            }
+    fn vm_has_stopped(&self) -> bool {
+        self.vm_state.halting || self.error.is_some()
+    }
+
+    fn vm_is_running(&self) -> bool {
+        !self.vm_has_stopped()
+    }
+
+    /// Handle [`Action::ProgramStep`].
+    fn program_step(&mut self) {
+        if self.vm_has_stopped() {
+            return;
         }
-        Ok(())
+        let maybe_error = self.vm_state.step();
+        if let Err(err) = maybe_error {
+            info!("Error stepping VM: {err}");
+            self.error = Some(err);
+        }
+    }
+
+    /// Handle [`Action::ProgramNext`].
+    fn program_next(&mut self) {
+        if self.vm_has_stopped() {
+            return;
+        }
+        let Ok(instruction) = self.vm_state.current_instruction() else {
+            return;
+        };
+        let Instruction::Call(_) = instruction else {
+            self.program_step();
+            return;
+        };
+        let current_jump_stack_depth = self.vm_state.jump_stack.len();
+        self.program_step();
+        while self.vm_is_running() && self.vm_state.jump_stack.len() > current_jump_stack_depth {
+            self.program_step();
+        }
     }
 
     fn address_render_width(&self) -> usize {
@@ -265,8 +294,8 @@ impl Component for Home {
 
     fn update(&mut self, action: Action) -> Result<Option<Action>> {
         match action {
-            Action::ProgramStep => self.program_step()?,
-            Action::Tick => info!("tick"),
+            Action::ProgramStep => self.program_step(),
+            Action::ProgramNext => self.program_next(),
             _ => {}
         }
         Ok(None)
