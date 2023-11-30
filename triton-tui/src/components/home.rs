@@ -1,5 +1,4 @@
 use color_eyre::eyre::Result;
-use crossterm::event::*;
 use ratatui::prelude::*;
 use ratatui::widgets::block::*;
 use ratatui::widgets::*;
@@ -251,14 +250,6 @@ impl Component for Home {
     fn register_config_handler(&mut self, config: Config) -> Result<()> {
         self.config = config;
         Ok(())
-    }
-
-    fn handle_mouse_event(&mut self, event: MouseEvent) -> Result<Option<Action>> {
-        let MouseEvent { kind, .. } = event;
-        match kind {
-            MouseEventKind::Down(MouseButton::Left) => Ok(Some(Action::RunProgram)),
-            _ => Ok(None),
-        }
     }
 
     fn update(&mut self, action: Action) -> Result<Option<Action>> {
