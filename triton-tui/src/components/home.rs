@@ -23,12 +23,14 @@ pub(crate) struct Home {
     config: Config,
     program: triton_vm::Program,
     vm_state: triton_vm::vm::VMState,
+    max_address: u64,
     error: Option<InstructionError>,
 }
 
 impl Home {
     pub fn new() -> Self {
         let program = triton_vm::example_programs::FIBONACCI_SEQUENCE.clone();
+        let max_address = program.len_bwords() as u64;
 
         let public_input = vec![4].into();
         let non_determinism = [].into();
@@ -39,6 +41,7 @@ impl Home {
             config: Config::default(),
             program,
             vm_state,
+            max_address,
             error: None,
         }
     }
@@ -52,6 +55,10 @@ impl Home {
             }
         }
         Ok(())
+    }
+
+    fn address_render_width(&self) -> usize {
+        format!("{}", self.max_address).len()
     }
 
     fn distribute_area_for_widgets(area: Rect) -> WidgetAreas {
@@ -128,6 +135,7 @@ impl Home {
         let cycle_count = self.vm_state.cycle_count;
         let program_title = format!(" Program (cycle: {cycle_count:>5}) ");
         let program_title = Title::from(program_title).alignment(Alignment::Left);
+        let address_width = self.address_render_width();
         let mut address = 0;
         let mut program_text = vec![];
         for labelled_instruction in self.program.labelled_instructions() {
@@ -137,9 +145,10 @@ impl Home {
                 _ => Span::from(" "),
             };
             let address_text = match labelled_instruction {
-                LabelledInstruction::Instruction(_) => Span::from(format!("{address:>4}")),
-                _ => Span::from("    "),
+                LabelledInstruction::Instruction(_) => format!(" {address:>address_width$}"),
+                _ => format!(" {:>address_width$}", ""),
             };
+            let address_text = Span::from(address_text);
             let separator = Span::from("  ");
             let instruction = Span::from(format!("{labelled_instruction}"));
             let line = Line::from(vec![
