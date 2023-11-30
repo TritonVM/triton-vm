@@ -96,68 +96,59 @@ impl Home {
         }
     }
 
-    fn render_op_stack_widget(&self, f: &mut Frame, op_stack_widget_area: Rect) {
+    fn render_op_stack_widget(&self, f: &mut Frame, area: Rect) {
         let stack_size = self.vm_state.op_stack.stack.len();
-        let op_stack_title = format!(" Stack (size: {stack_size:>4}) ");
-        let op_stack_title = Title::from(op_stack_title).alignment(Alignment::Left);
-        let num_padding_lines =
-            (op_stack_widget_area.height as usize).saturating_sub(stack_size + 3);
-        let mut op_stack_text = vec![Line::from(""); num_padding_lines];
+        let title = format!(" Stack (size: {stack_size:>4}) ");
+        let title = Title::from(title).alignment(Alignment::Left);
+        let num_padding_lines = (area.height as usize).saturating_sub(stack_size + 3);
+        let mut text = vec![Line::from(""); num_padding_lines];
         for (i, st) in self.vm_state.op_stack.stack.iter().rev().enumerate() {
             let stack_index_style = match i {
                 i if i < OpStackElement::COUNT => Style::new().bold(),
-                _ => Style::new().gray(),
+                _ => Style::new().dim(),
             };
             let stack_index = Span::from(format!("{i:>3}")).set_style(stack_index_style);
             let separator = Span::from("  ");
             let stack_element = Span::from(format!("{st}"));
             let line = Line::from(vec![stack_index, separator, stack_element]);
-            op_stack_text.push(line);
+            text.push(line);
         }
 
         let border_set = symbols::border::Set {
             bottom_left: symbols::line::ROUNDED.vertical_right,
             ..symbols::border::ROUNDED
         };
-        let op_stack_block = Block::default()
+        let block = Block::default()
             .padding(Padding::new(1, 1, 1, 0))
             .borders(Borders::TOP | Borders::LEFT | Borders::BOTTOM)
             .border_set(border_set)
-            .title(op_stack_title);
-        let op_stack_paragraph = Paragraph::new(op_stack_text)
-            .block(op_stack_block)
-            .alignment(Alignment::Left);
-
-        f.render_widget(op_stack_paragraph, op_stack_widget_area);
+            .title(title);
+        let paragraph = Paragraph::new(text).block(block).alignment(Alignment::Left);
+        f.render_widget(paragraph, area);
     }
 
-    fn render_program_widget(&self, f: &mut Frame, program_widget_area: Rect) {
+    fn render_program_widget(&self, f: &mut Frame, area: Rect) {
         let cycle_count = self.vm_state.cycle_count;
-        let program_title = format!(" Program (cycle: {cycle_count:>5}) ");
-        let program_title = Title::from(program_title).alignment(Alignment::Left);
+        let title = format!(" Program (cycle: {cycle_count:>5}) ");
+        let title = Title::from(title).alignment(Alignment::Left);
         let address_width = self.address_render_width();
         let mut address = 0;
-        let mut program_text = vec![];
+        let mut text = vec![];
         for labelled_instruction in self.program.labelled_instructions() {
             let ip_is_address = self.vm_state.instruction_pointer == address;
-            let instruction_pointer = match labelled_instruction {
+            let ip = match labelled_instruction {
                 LabelledInstruction::Instruction(_) if ip_is_address => Span::from("→").bold(),
                 _ => Span::from(" "),
             };
-            let address_text = match labelled_instruction {
+            let line_number = match labelled_instruction {
                 LabelledInstruction::Instruction(_) => format!(" {address:>address_width$}"),
                 _ => format!(" {:>address_width$}", ""),
             };
-            let address_text = Span::from(address_text);
+            let line_number = Span::from(line_number).dim();
             let separator = Span::from("  ");
             let instruction = Span::from(format!("{labelled_instruction}"));
-            let line = Line::from(vec![
-                instruction_pointer,
-                address_text,
-                separator,
-                instruction,
-            ]);
-            program_text.push(line);
+            let line = Line::from(vec![ip, line_number, separator, instruction]);
+            text.push(line);
             if let LabelledInstruction::Instruction(instruction) = labelled_instruction {
                 address += instruction.size();
             }
@@ -168,26 +159,22 @@ impl Home {
             bottom_left: symbols::line::ROUNDED.horizontal_up,
             ..symbols::border::ROUNDED
         };
-        let program_block = Block::default()
+        let block = Block::default()
             .padding(Padding::new(1, 1, 1, 0))
-            .title(program_title)
+            .title(title)
             .borders(Borders::TOP | Borders::LEFT | Borders::BOTTOM)
             .border_set(border_set);
-        let program_paragraph = Paragraph::new(program_text)
-            .block(program_block)
-            .alignment(Alignment::Left);
-
-        f.render_widget(program_paragraph, program_widget_area);
+        let paragraph = Paragraph::new(text).block(block).alignment(Alignment::Left);
+        f.render_widget(paragraph, area);
     }
 
-    fn render_call_stack_widget(&self, f: &mut Frame, call_stack_widget_area: Rect) {
+    fn render_call_stack_widget(&self, f: &mut Frame, area: Rect) {
         let jump_stack_depth = self.vm_state.jump_stack.len();
-        let call_stack_title = format!(" Calls (depth: {jump_stack_depth:>3}) ");
-        let call_stack_title = Title::from(call_stack_title).alignment(Alignment::Left);
+        let title = format!(" Calls (depth: {jump_stack_depth:>3}) ");
+        let title = Title::from(title).alignment(Alignment::Left);
 
-        let num_padding_lines =
-            (call_stack_widget_area.height as usize).saturating_sub(jump_stack_depth + 3);
-        let mut call_stack_text = vec![Line::from(""); num_padding_lines];
+        let num_padding_lines = (area.height as usize).saturating_sub(jump_stack_depth + 3);
+        let mut text = vec![Line::from(""); num_padding_lines];
         let address_width = self.address_render_width();
         for (return_address, call_address) in self.vm_state.jump_stack.iter().rev() {
             let return_address = return_address.value();
@@ -198,7 +185,7 @@ impl Home {
             let separator = Span::from("  ");
             let label = Span::from(self.program.label_for_address(call_address));
             let line = Line::from(vec![addresses, separator, label]);
-            call_stack_text.push(line);
+            text.push(line);
         }
 
         let border_set = symbols::border::Set {
@@ -207,35 +194,30 @@ impl Home {
             bottom_right: symbols::line::ROUNDED.vertical_left,
             ..symbols::border::ROUNDED
         };
-        let call_stack_block = Block::default()
+        let block = Block::default()
             .padding(Padding::new(1, 1, 1, 0))
-            .title(call_stack_title)
+            .title(title)
             .borders(Borders::ALL)
             .border_set(border_set);
-        let call_stack_paragraph = Paragraph::new(call_stack_text)
-            .block(call_stack_block)
-            .alignment(Alignment::Left);
-
-        f.render_widget(call_stack_paragraph, call_stack_widget_area);
+        let paragraph = Paragraph::new(text).block(block).alignment(Alignment::Left);
+        f.render_widget(paragraph, area);
     }
 
-    fn render_message_widget(&self, f: &mut Frame, message_box_area: Rect) {
-        let mut message_block_text = match self.error {
+    fn render_message_widget(&self, f: &mut Frame, area: Rect) {
+        let mut text = match self.error {
             Some(ref err) => format!("{err}"),
             None => String::new(),
         };
         if self.vm_state.halting {
-            message_block_text = "Triton VM halted gracefully".to_string();
+            text = "Triton VM halted gracefully".to_string();
         }
 
-        let message_block = Block::default()
+        let block = Block::default()
             .borders(Borders::LEFT | Borders::RIGHT | Borders::BOTTOM)
             .border_type(BorderType::Rounded)
             .padding(Padding::horizontal(1));
-        let message_paragraph = Paragraph::new(message_block_text)
-            .block(message_block)
-            .alignment(Alignment::Left);
-        f.render_widget(message_paragraph, message_box_area);
+        let paragraph = Paragraph::new(text).block(block).alignment(Alignment::Left);
+        f.render_widget(paragraph, area);
     }
 }
 
