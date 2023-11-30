@@ -9,7 +9,6 @@ use tracing::info;
 
 use crate::action::Action;
 use crate::args::Args;
-use crate::components::fps::FpsCounter;
 use crate::components::help::Help;
 use crate::components::home::Home;
 use crate::components::Component;
@@ -38,7 +37,6 @@ impl TritonTUI {
 
         let mut components: [Vec<Box<dyn Component>>; Mode::COUNT] = Default::default();
         components[Mode::Home.id()].push(Box::new(Home::new()));
-        components[Mode::Home.id()].push(Box::<FpsCounter>::default());
         components[Mode::Help.id()].push(Box::<Help>::default());
 
         Ok(Self {
