@@ -61,13 +61,7 @@ impl TritonTUI {
 
         for component in self.components.iter_mut().flatten() {
             component.register_action_handler(action_tx.clone())?;
-        }
-
-        for component in self.components.iter_mut().flatten() {
             component.register_config_handler(self.config.clone())?;
-        }
-
-        for component in self.components.iter_mut().flatten() {
             component.init(self.tui.size()?)?;
         }
 
