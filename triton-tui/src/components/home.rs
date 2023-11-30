@@ -29,10 +29,12 @@ pub(crate) struct Home {
 
 impl Home {
     pub fn new() -> Self {
-        let program = triton_vm::example_programs::FIBONACCI_SEQUENCE.clone();
+        let program =
+            triton_vm::example_programs::CALCULATE_NEW_MMR_PEAKS_FROM_APPEND_WITH_SAFE_LISTS
+                .clone();
         let max_address = program.len_bwords() as u64;
 
-        let public_input = vec![4].into();
+        let public_input = [].into();
         let non_determinism = [].into();
         let vm_state = triton_vm::vm::VMState::new(&program, public_input, non_determinism);
 
@@ -134,11 +136,19 @@ impl Home {
         let address_width = self.address_render_width();
         let mut address = 0;
         let mut text = vec![];
-        for labelled_instruction in self.program.labelled_instructions() {
-            let ip_is_address = self.vm_state.instruction_pointer == address;
-            let ip = match labelled_instruction {
-                LabelledInstruction::Instruction(_) if ip_is_address => Span::from("→").bold(),
-                _ => Span::from(" "),
+        let instruction_pointer = self.vm_state.instruction_pointer;
+        let mut line_number_of_ip = 0;
+        for (line_number, labelled_instruction) in
+            self.program.labelled_instructions().into_iter().enumerate()
+        {
+            let mut ip_points_here = instruction_pointer == address;
+            ip_points_here &= matches!(labelled_instruction, LabelledInstruction::Instruction(_));
+            if ip_points_here {
+                line_number_of_ip = line_number;
+            }
+            let ip = match ip_points_here {
+                true => Span::from("→").bold(),
+                false => Span::from(" "),
             };
             let line_number = match labelled_instruction {
                 LabelledInstruction::Instruction(_) => format!(" {address:>address_width$}"),
@@ -164,7 +174,18 @@ impl Home {
             .title(title)
             .borders(Borders::TOP | Borders::LEFT | Borders::BOTTOM)
             .border_set(border_set);
-        let paragraph = Paragraph::new(text).block(block).alignment(Alignment::Left);
+        let render_area_for_lines = area.height.saturating_sub(3);
+        let num_total_lines = text.len() as u16;
+        let num_lines_to_show_at_top = render_area_for_lines / 2;
+        let maximum_scroll_amount = num_total_lines.saturating_sub(render_area_for_lines);
+        let num_lines_to_scroll = (line_number_of_ip as u16)
+            .saturating_sub(num_lines_to_show_at_top)
+            .min(maximum_scroll_amount);
+
+        let paragraph = Paragraph::new(text)
+            .block(block)
+            .alignment(Alignment::Left)
+            .scroll((num_lines_to_scroll, 0));
         f.render_widget(paragraph, area);
     }
 
