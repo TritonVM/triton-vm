@@ -17,7 +17,18 @@ pub(crate) enum Action {
     Quit,
     Refresh,
     Error(String),
-    RunProgram,
+
+    /// Continue program execution until next breakpoint.
+    ProgramContinue,
+
+    /// Execute a single instruction.
+    ProgramStep,
+
+    /// Execute a single instruction, stepping over `call`s.
+    ProgramNext,
+
+    /// Execute instructions until the current `call` returns.
+    ProgramFinish,
     Mode(Mode),
 }
 
@@ -46,7 +57,10 @@ impl<'de> Deserialize<'de> for Action {
                     "Resume" => Ok(Action::Resume),
                     "Quit" => Ok(Action::Quit),
                     "Refresh" => Ok(Action::Refresh),
-                    "Run" => Ok(Action::RunProgram),
+                    "Continue" => Ok(Action::ProgramContinue),
+                    "Step" => Ok(Action::ProgramStep),
+                    "Next" => Ok(Action::ProgramNext),
+                    "Finish" => Ok(Action::ProgramFinish),
                     mode if mode.starts_with("Mode::") => Self::parse_mode(mode),
                     data if data.starts_with("Error(") => Self::parse_error(data),
                     data if data.starts_with("Resize(") => Self::parse_resize(data),

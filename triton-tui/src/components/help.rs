@@ -16,11 +16,10 @@ impl Component for Help {
     fn draw(&mut self, f: &mut Frame<'_>, area: Rect) -> color_eyre::Result<()> {
         let title = Title::from(" Triton TUI — Help").alignment(Alignment::Left);
         let text = [
-            Help::help_line("l", "load program"),
-            Help::help_line("r", "run program"),
-            Help::help_line("b", "run program to breakpoint"),
-            Help::help_line("i", "step into call"),
-            Help::help_line("o", "step over call"),
+            Help::help_line("c", "continue program execution"),
+            Help::help_line("s", "step"),
+            Help::help_line("n", "next – steps over `call`s"),
+            Help::help_line("f", "finish – steps out of current `call`"),
             String::new(),
             Help::help_line("?", "show help"),
             Help::help_line("q", "quit"),

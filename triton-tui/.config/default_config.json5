@@ -6,7 +6,10 @@
             "<Ctrl-c>": "Quit",
             "<Ctrl-z>": "Suspend",
 
-            "<r>": "Run",
+            "<c>": "Continue",
+            "<s>": "Step",
+            "<n>": "Next",
+            "<f>": "Finish",
         },
         "Help": {
             "<q>": "Quit",

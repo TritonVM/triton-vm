@@ -58,7 +58,7 @@ impl Home {
         }
     }
 
-    fn run_program(&mut self) -> Result<()> {
+    fn program_step(&mut self) -> Result<()> {
         if !self.vm_state.halting && self.error.is_none() {
             let maybe_error = self.vm_state.step();
             if let Err(err) = maybe_error {
@@ -265,7 +265,7 @@ impl Component for Home {
 
     fn update(&mut self, action: Action) -> Result<Option<Action>> {
         match action {
-            Action::RunProgram => self.run_program()?,
+            Action::ProgramStep => self.program_step()?,
             Action::Tick => info!("tick"),
             _ => {}
         }
