@@ -181,8 +181,25 @@ impl Home {
     }
 
     fn render_call_stack_widget(&self, f: &mut Frame, call_stack_widget_area: Rect) {
-        let call_stack_title = Title::from(" Calls ").alignment(Alignment::Left);
-        let call_stack_text = "todo";
+        let jump_stack_depth = self.vm_state.jump_stack.len();
+        let call_stack_title = format!(" Calls (depth: {jump_stack_depth:>3}) ");
+        let call_stack_title = Title::from(call_stack_title).alignment(Alignment::Left);
+
+        let num_padding_lines =
+            (call_stack_widget_area.height as usize).saturating_sub(jump_stack_depth + 3);
+        let mut call_stack_text = vec![Line::from(""); num_padding_lines];
+        let address_width = self.address_render_width();
+        for (return_address, call_address) in self.vm_state.jump_stack.iter().rev() {
+            let return_address = return_address.value();
+            let call_address = call_address.value();
+            let addresses = Span::from(format!(
+                "({return_address:>address_width$}, {call_address:>address_width$})"
+            ));
+            let separator = Span::from("  ");
+            let label = Span::from(self.program.label_for_address(call_address));
+            let line = Line::from(vec![addresses, separator, label]);
+            call_stack_text.push(line);
+        }
 
         let border_set = symbols::border::Set {
             top_left: symbols::line::ROUNDED.horizontal_down,
@@ -190,9 +207,8 @@ impl Home {
             bottom_right: symbols::line::ROUNDED.vertical_left,
             ..symbols::border::ROUNDED
         };
-
         let call_stack_block = Block::default()
-            .padding(Padding::uniform(1))
+            .padding(Padding::new(1, 1, 1, 0))
             .title(call_stack_title)
             .borders(Borders::ALL)
             .border_set(border_set);
