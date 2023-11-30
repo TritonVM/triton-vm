@@ -3,13 +3,14 @@ use crossterm::event::*;
 use ratatui::prelude::*;
 use ratatui::widgets::block::*;
 use ratatui::widgets::*;
+use strum::EnumCount;
 use tokio::sync::mpsc::UnboundedSender;
 use tracing::info;
 
 use triton_vm::error::InstructionError;
+use triton_vm::op_stack::OpStackElement;
 
 use crate::action::Action;
-use crate::components::centered_rect;
 use crate::config::Config;
 
 use super::Component;
@@ -51,6 +52,139 @@ impl Home {
         }
         Ok(())
     }
+
+    fn distribute_area_for_widgets(area: Rect) -> WidgetAreas {
+        let message_box_height = Constraint::Min(2);
+        let constraints = [Constraint::Percentage(100), message_box_height];
+        let layout = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints(constraints)
+            .split(area);
+        let state_area = layout[0];
+        let message_box_area = layout[1];
+
+        let op_stack_widget_width = Constraint::Min(32);
+        let remaining_width = Constraint::Percentage(100);
+        let state_layout = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([op_stack_widget_width, remaining_width])
+            .split(state_area);
+        let op_stack_area = state_layout[0];
+        let program_and_call_stack_area = state_layout[1];
+
+        let program_widget_width = Constraint::Percentage(50);
+        let call_stack_widget_width = Constraint::Percentage(50);
+        let constraints = [program_widget_width, call_stack_widget_width];
+        let program_and_call_stack_layout = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints(constraints)
+            .split(program_and_call_stack_area);
+
+        WidgetAreas {
+            op_stack: op_stack_area,
+            program: program_and_call_stack_layout[0],
+            call_stack: program_and_call_stack_layout[1],
+            message_box: message_box_area,
+        }
+    }
+
+    fn render_op_stack_widget(&self, f: &mut Frame, op_stack_widget_area: Rect) {
+        let stack_size = self.vm_state.op_stack.stack.len();
+        let op_stack_title = format!(" Stack (size: {stack_size:>4}) ");
+        let op_stack_title = Title::from(op_stack_title).alignment(Alignment::Left);
+        let num_padding_lines =
+            (op_stack_widget_area.height as usize).saturating_sub(stack_size + 3);
+        let mut op_stack_text = vec![Line::from(""); num_padding_lines];
+        for (i, st) in self.vm_state.op_stack.stack.iter().rev().enumerate() {
+            let stack_index_style = match i {
+                i if i < OpStackElement::COUNT => Style::new().bold(),
+                _ => Style::new().gray(),
+            };
+            let stack_index = Span::from(format!("{i:>3}")).set_style(stack_index_style);
+            let separator = Span::from("  ");
+            let stack_element = Span::from(format!("{st}"));
+            let line = Line::from(vec![stack_index, separator, stack_element]);
+            op_stack_text.push(line);
+        }
+
+        let border_set = symbols::border::Set {
+            bottom_left: symbols::line::ROUNDED.vertical_right,
+            ..symbols::border::ROUNDED
+        };
+        let op_stack_block = Block::default()
+            .padding(Padding::new(1, 1, 1, 0))
+            .borders(Borders::TOP | Borders::LEFT | Borders::BOTTOM)
+            .border_set(border_set)
+            .title(op_stack_title);
+        let op_stack_paragraph = Paragraph::new(op_stack_text)
+            .block(op_stack_block)
+            .alignment(Alignment::Left);
+
+        f.render_widget(op_stack_paragraph, op_stack_widget_area);
+    }
+
+    fn render_program_widget(&self, f: &mut Frame, program_widget_area: Rect) {
+        let program_title = Title::from(" Program ").alignment(Alignment::Left);
+        let program_text = "todo";
+
+        let border_set = symbols::border::Set {
+            top_left: symbols::line::ROUNDED.horizontal_down,
+            bottom_left: symbols::line::ROUNDED.horizontal_up,
+            ..symbols::border::ROUNDED
+        };
+        let program_block = Block::default()
+            .padding(Padding::uniform(1))
+            .title(program_title)
+            .borders(Borders::TOP | Borders::LEFT | Borders::BOTTOM)
+            .border_set(border_set);
+        let program_paragraph = Paragraph::new(program_text)
+            .block(program_block)
+            .alignment(Alignment::Left);
+
+        f.render_widget(program_paragraph, program_widget_area);
+    }
+
+    fn render_call_stack_widget(&self, f: &mut Frame, call_stack_widget_area: Rect) {
+        let call_stack_title = Title::from(" Calls ").alignment(Alignment::Left);
+        let call_stack_text = "todo";
+
+        let border_set = symbols::border::Set {
+            top_left: symbols::line::ROUNDED.horizontal_down,
+            bottom_left: symbols::line::ROUNDED.horizontal_up,
+            bottom_right: symbols::line::ROUNDED.vertical_left,
+            ..symbols::border::ROUNDED
+        };
+
+        let call_stack_block = Block::default()
+            .padding(Padding::uniform(1))
+            .title(call_stack_title)
+            .borders(Borders::ALL)
+            .border_set(border_set);
+        let call_stack_paragraph = Paragraph::new(call_stack_text)
+            .block(call_stack_block)
+            .alignment(Alignment::Left);
+
+        f.render_widget(call_stack_paragraph, call_stack_widget_area);
+    }
+
+    fn render_message_widget(&self, f: &mut Frame, message_box_area: Rect) {
+        let mut message_block_text = match self.error {
+            Some(ref err) => format!("{err}"),
+            None => String::new(),
+        };
+        if self.vm_state.halting {
+            message_block_text = "Triton VM halted gracefully".to_string();
+        }
+
+        let message_block = Block::default()
+            .borders(Borders::LEFT | Borders::RIGHT | Borders::BOTTOM)
+            .border_type(BorderType::Rounded)
+            .padding(Padding::horizontal(1));
+        let message_paragraph = Paragraph::new(message_block_text)
+            .block(message_block)
+            .alignment(Alignment::Left);
+        f.render_widget(message_paragraph, message_box_area);
+    }
 }
 
 impl Component for Home {
@@ -82,23 +216,19 @@ impl Component for Home {
     }
 
     fn draw(&mut self, f: &mut Frame<'_>, area: Rect) -> Result<()> {
-        let title = Title::from(" Triton TUI ").alignment(Alignment::Left);
-        let mut text = self.vm_state.to_string();
-        if let Some(err) = &self.error {
-            text.push_str(&format!("\n\n{err}"));
-        } else if self.vm_state.halting {
-            text.push_str("\n\nTriton VM has halted.");
-        }
-
-        let block = Block::default().title(title).padding(Padding::uniform(1));
-
-        let paragraph = Paragraph::new(text)
-            .block(block)
-            .alignment(Alignment::Left)
-            .wrap(Wrap { trim: true });
-
-        let area = centered_rect(area, 90, 90);
-        f.render_widget(paragraph, area);
+        let widget_areas = Self::distribute_area_for_widgets(area);
+        self.render_op_stack_widget(f, widget_areas.op_stack);
+        self.render_program_widget(f, widget_areas.program);
+        self.render_call_stack_widget(f, widget_areas.call_stack);
+        self.render_message_widget(f, widget_areas.message_box);
         Ok(())
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct WidgetAreas {
+    op_stack: Rect,
+    program: Rect,
+    call_stack: Rect,
+    message_box: Rect,
 }
