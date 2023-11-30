@@ -28,12 +28,23 @@ pub(crate) struct Home {
 
 impl Home {
     pub fn new() -> Self {
-        let program =
-            triton_vm::example_programs::CALCULATE_NEW_MMR_PEAKS_FROM_APPEND_WITH_SAFE_LISTS
-                .clone();
+        let program = triton_vm::example_programs::VERIFY_SUDOKU.clone();
         let max_address = program.len_bwords() as u64;
 
-        let public_input = [].into();
+        let public_input = vec![
+            1, 2, 3, /**/ 4, 5, 6, /**/ 7, 8, 9, //
+            4, 5, 6, /**/ 7, 8, 9, /**/ 1, 2, 3, //
+            7, 8, 9, /**/ 1, 2, 3, /**/ 4, 5, 6, //
+            /*************************************/
+            2, 3, 4, /**/ 5, 6, 7, /**/ 8, 9, 1, //
+            5, 6, 7, /**/ 8, 9, 1, /**/ 2, 3, 4, //
+            8, 9, 1, /**/ 2, 3, 4, /**/ 5, 6, 7, //
+            /*************************************/
+            3, 4, 5, /**/ 6, 7, 8, /**/ 9, 1, 2, //
+            6, 7, 8, /**/ 9, 1, 2, /**/ 3, 4, 5, //
+            9, 1, 2, /**/ 3, 4, 5, /**/ 6, 7, 8, //
+        ]
+        .into();
         let non_determinism = [].into();
         let vm_state = triton_vm::vm::VMState::new(&program, public_input, non_determinism);
 
