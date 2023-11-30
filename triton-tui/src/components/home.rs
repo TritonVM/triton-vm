@@ -8,6 +8,7 @@ use tokio::sync::mpsc::UnboundedSender;
 use tracing::info;
 
 use triton_vm::error::InstructionError;
+use triton_vm::instruction::LabelledInstruction;
 use triton_vm::op_stack::OpStackElement;
 
 use crate::action::Action;
@@ -20,7 +21,7 @@ use super::Frame;
 pub(crate) struct Home {
     command_tx: Option<UnboundedSender<Action>>,
     config: Config,
-    _program: triton_vm::Program,
+    program: triton_vm::Program,
     vm_state: triton_vm::vm::VMState,
     error: Option<InstructionError>,
 }
@@ -36,7 +37,7 @@ impl Home {
         Self {
             command_tx: None,
             config: Config::default(),
-            _program: program,
+            program,
             vm_state,
             error: None,
         }
@@ -124,8 +125,34 @@ impl Home {
     }
 
     fn render_program_widget(&self, f: &mut Frame, program_widget_area: Rect) {
-        let program_title = Title::from(" Program ").alignment(Alignment::Left);
-        let program_text = "todo";
+        let cycle_count = self.vm_state.cycle_count;
+        let program_title = format!(" Program (cycle: {cycle_count:>5}) ");
+        let program_title = Title::from(program_title).alignment(Alignment::Left);
+        let mut address = 0;
+        let mut program_text = vec![];
+        for labelled_instruction in self.program.labelled_instructions() {
+            let ip_is_address = self.vm_state.instruction_pointer == address;
+            let instruction_pointer = match labelled_instruction {
+                LabelledInstruction::Instruction(_) if ip_is_address => Span::from("→").bold(),
+                _ => Span::from(" "),
+            };
+            let address_text = match labelled_instruction {
+                LabelledInstruction::Instruction(_) => Span::from(format!("{address:>4}")),
+                _ => Span::from("    "),
+            };
+            let separator = Span::from("  ");
+            let instruction = Span::from(format!("{labelled_instruction}"));
+            let line = Line::from(vec![
+                instruction_pointer,
+                address_text,
+                separator,
+                instruction,
+            ]);
+            program_text.push(line);
+            if let LabelledInstruction::Instruction(instruction) = labelled_instruction {
+                address += instruction.size();
+            }
+        }
 
         let border_set = symbols::border::Set {
             top_left: symbols::line::ROUNDED.horizontal_down,
@@ -133,7 +160,7 @@ impl Home {
             ..symbols::border::ROUNDED
         };
         let program_block = Block::default()
-            .padding(Padding::uniform(1))
+            .padding(Padding::new(1, 1, 1, 0))
             .title(program_title)
             .borders(Borders::TOP | Borders::LEFT | Borders::BOTTOM)
             .border_set(border_set);
