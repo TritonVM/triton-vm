@@ -28,7 +28,7 @@ impl Home {
     pub fn new() -> Self {
         let program = triton_vm::example_programs::FIBONACCI_SEQUENCE.clone();
 
-        let public_input = [].into();
+        let public_input = vec![4].into();
         let non_determinism = [].into();
         let vm_state = triton_vm::vm::VMState::new(&program, public_input, non_determinism);
 
@@ -86,6 +86,8 @@ impl Component for Home {
         let mut text = self.vm_state.to_string();
         if let Some(err) = &self.error {
             text.push_str(&format!("\n\n{err}"));
+        } else if self.vm_state.halting {
+            text.push_str("\n\nTriton VM has halted.");
         }
 
         let block = Block::default().title(title).padding(Padding::uniform(1));
