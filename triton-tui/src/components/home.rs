@@ -5,7 +5,8 @@ use ratatui::widgets::block::*;
 use ratatui::widgets::*;
 use tokio::sync::mpsc::UnboundedSender;
 use tracing::info;
-use triton_vm::triton_program;
+
+use triton_vm::error::InstructionError;
 
 use crate::action::Action;
 use crate::components::centered_rect;
@@ -20,11 +21,12 @@ pub(crate) struct Home {
     config: Config,
     _program: triton_vm::Program,
     vm_state: triton_vm::vm::VMState,
+    error: Option<InstructionError>,
 }
 
 impl Home {
     pub fn new() -> Self {
-        let program = triton_program! { push 5 push 7 break add halt };
+        let program = triton_vm::example_programs::FIBONACCI_SEQUENCE.clone();
 
         let public_input = [].into();
         let non_determinism = [].into();
@@ -35,12 +37,17 @@ impl Home {
             config: Config::default(),
             _program: program,
             vm_state,
+            error: None,
         }
     }
 
     fn run_program(&mut self) -> Result<()> {
-        if !self.vm_state.halting {
-            self.vm_state.step()?;
+        if !self.vm_state.halting && self.error.is_none() {
+            let maybe_error = self.vm_state.step();
+            if let Err(err) = maybe_error {
+                info!("Error stepping VM: {err}");
+                self.error = Some(err);
+            }
         }
         Ok(())
     }
@@ -76,11 +83,14 @@ impl Component for Home {
 
     fn draw(&mut self, f: &mut Frame<'_>, area: Rect) -> Result<()> {
         let title = Title::from(" Triton TUI ").alignment(Alignment::Left);
-        let state = self.vm_state.to_string();
+        let mut text = self.vm_state.to_string();
+        if let Some(err) = &self.error {
+            text.push_str(&format!("\n\n{err}"));
+        }
 
         let block = Block::default().title(title).padding(Padding::uniform(1));
 
-        let paragraph = Paragraph::new(state)
+        let paragraph = Paragraph::new(text)
             .block(block)
             .alignment(Alignment::Left)
             .wrap(Wrap { trim: true });
