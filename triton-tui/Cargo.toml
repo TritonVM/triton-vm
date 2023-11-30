@@ -20,7 +20,7 @@ derive_deref = "1"
 directories = "5"
 futures = "0.3"
 human-panic = "1"
-itertools = "0.11"
+itertools = "0.12"
 json5 = "0.4"
 lazy_static = "1"
 libc = "0.2"
@@ -35,3 +35,4 @@ tokio-util = "0.7"
 tracing = "0.1"
 tracing-error = "0.2"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "serde"] }
+triton-vm = { path = "../triton-vm" }

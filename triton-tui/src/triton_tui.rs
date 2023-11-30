@@ -34,10 +34,10 @@ impl TritonTUI {
     pub fn new(args: Args) -> Result<Self> {
         let config = Config::new()?;
         let tui = Self::tui(args)?;
-        let mode = Mode::Home;
+        let mode = Mode::default();
 
         let mut components: [Vec<Box<dyn Component>>; Mode::COUNT] = Default::default();
-        components[Mode::Home.id()].push(Box::<Home>::default());
+        components[Mode::Home.id()].push(Box::new(Home::new()));
         components[Mode::Home.id()].push(Box::<FpsCounter>::default());
         components[Mode::Help.id()].push(Box::<Help>::default());
 

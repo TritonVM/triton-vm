@@ -17,8 +17,7 @@ pub(crate) enum Action {
     Quit,
     Refresh,
     Error(String),
-    IncrementCounter,
-    DecrementCounter,
+    RunProgram,
     Mode(Mode),
 }
 
@@ -47,8 +46,7 @@ impl<'de> Deserialize<'de> for Action {
                     "Resume" => Ok(Action::Resume),
                     "Quit" => Ok(Action::Quit),
                     "Refresh" => Ok(Action::Refresh),
-                    "Increment" => Ok(Action::IncrementCounter),
-                    "Decrement" => Ok(Action::DecrementCounter),
+                    "Run" => Ok(Action::RunProgram),
                     mode if mode.starts_with("Mode::") => Self::parse_mode(mode),
                     data if data.starts_with("Error(") => Self::parse_error(data),
                     data if data.starts_with("Resize(") => Self::parse_resize(data),
