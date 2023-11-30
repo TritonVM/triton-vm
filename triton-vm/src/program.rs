@@ -48,7 +48,7 @@ type Result<T> = std::result::Result<T, VMError>;
 /// [tip5]: twenty_first::shared_math::tip5::Tip5
 /// [label_for_address]: Program::label_for_address
 /// [is_breakpoint]: Program::is_breakpoint
-#[derive(Debug, Clone, Default, Eq, GetSize, Serialize, Deserialize)]
+#[derive(Debug, Clone, Eq, GetSize, Serialize, Deserialize)]
 pub struct Program {
     pub instructions: Vec<Instruction>,
     address_to_label: HashMap<u64, String>,
