@@ -1,4 +1,6 @@
+use color_eyre::eyre::anyhow;
 use color_eyre::eyre::Result;
+use fs_err as fs;
 use ratatui::prelude::*;
 use ratatui::widgets::block::*;
 use ratatui::widgets::*;
@@ -12,14 +14,14 @@ use triton_vm::vm::VMState;
 use triton_vm::*;
 
 use crate::action::Action;
-use crate::config::Config;
+use crate::args::Args;
 
 use super::Component;
 use super::Frame;
 
 #[derive(Debug)]
 pub(crate) struct Home {
-    config: Config,
+    args: Args,
     program: Program,
     public_input: PublicInput,
     non_determinism: NonDeterminism<BFieldElement>,
@@ -28,32 +30,29 @@ pub(crate) struct Home {
 }
 
 impl Home {
-    pub fn new() -> Self {
-        let program = triton_program! {
-            push 5 // loop counter
-            break
-            call my_loop
-            assert
-            halt
-
-            my_loop:
-                dup 0 push 0 eq skiz return
-                break
-                push -1 add recurse
-        };
+    pub fn new(args: Args) -> Result<Self> {
+        let program = Self::program_from_args(&args)?;
 
         let public_input = PublicInput::default();
         let non_determinism = NonDeterminism::default();
         let vm_state = VMState::new(&program, public_input.clone(), non_determinism.clone());
 
-        Self {
-            config: Config::default(),
+        let home = Self {
+            args,
             program,
             public_input,
             non_determinism,
             vm_state,
             error: None,
-        }
+        };
+        Ok(home)
+    }
+
+    fn program_from_args(args: &Args) -> Result<Program> {
+        let source_code = fs::read_to_string(&args.program_path)?;
+        let program = Program::from_code(&source_code)
+            .map_err(|err| anyhow!("program parsing error: {err}"))?;
+        Ok(program)
     }
 
     fn vm_has_stopped(&self) -> bool {
@@ -107,13 +106,15 @@ impl Home {
         }
     }
 
-    fn program_reset(&mut self) {
+    fn program_reset(&mut self) -> Result<()> {
+        self.program = Self::program_from_args(&self.args)?;
         self.vm_state = VMState::new(
             &self.program,
             self.public_input.clone(),
             self.non_determinism.clone(),
         );
         self.error = None;
+        Ok(())
     }
 
     fn address_render_width(&self) -> usize {
@@ -301,18 +302,13 @@ impl Home {
 }
 
 impl Component for Home {
-    fn register_config_handler(&mut self, config: Config) -> Result<()> {
-        self.config = config;
-        Ok(())
-    }
-
     fn update(&mut self, action: Action) -> Result<Option<Action>> {
         match action {
             Action::ProgramContinue => self.program_continue(),
             Action::ProgramStep => self.program_step(),
             Action::ProgramNext => self.program_next(),
             Action::ProgramFinish => self.program_finish(),
-            Action::ProgramReset => self.program_reset(),
+            Action::ProgramReset => self.program_reset()?,
             _ => {}
         }
         Ok(None)

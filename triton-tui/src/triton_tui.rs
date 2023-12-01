@@ -35,8 +35,9 @@ impl TritonTUI {
         let tui = Self::tui(&args)?;
         let mode = Mode::default();
 
+        let home = Home::new(args.clone())?;
         let mut components: [Vec<Box<dyn Component>>; Mode::COUNT] = Default::default();
-        components[Mode::Home.id()].push(Box::new(Home::new()));
+        components[Mode::Home.id()].push(Box::new(home));
         components[Mode::Help.id()].push(Box::<Help>::default());
 
         Ok(Self {
