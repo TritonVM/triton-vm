@@ -425,9 +425,10 @@ impl Program {
     ) -> Result<VMState> {
         let mut state = VMState::new(self, public_input, non_determinism);
         while !state.halting {
-            let consistent_state = state.clone();
-            let vm_error = |err| VMError::new(err, consistent_state);
-            state.step().map_err(vm_error)?;
+            let maybe_error = state.step();
+            if let Err(err) = maybe_error {
+                return Err(VMError::new(err, state));
+            }
         }
         Ok(state)
     }
@@ -454,10 +455,13 @@ impl Program {
         assert_eq!(self.len_bwords(), aet.instruction_multiplicities.len());
 
         while !state.halting {
-            let consistent_state = state.clone();
-            let vm_error = |err| VMError::new(err, consistent_state);
-            aet.record_state(&state).map_err(vm_error.clone())?;
-            let co_processor_calls = state.step().map_err(vm_error)?;
+            if let Err(err) = aet.record_state(&state) {
+                return Err(VMError::new(err, state));
+            };
+            let co_processor_calls = match state.step() {
+                Ok(calls) => calls,
+                Err(err) => return Err(VMError::new(err, state)),
+            };
             for call in co_processor_calls {
                 aet.record_co_processor_call(call);
             }
@@ -484,19 +488,17 @@ impl Program {
         let mut profiler = VMProfiler::new();
         let mut state = VMState::new(self, public_input, non_determinism);
         while !state.halting {
-            let consistent_state = state.clone();
-            let vm_error = |err| VMError::new(err, consistent_state);
-            if let Instruction::Call(address) =
-                state.current_instruction().map_err(vm_error.clone())?
-            {
+            if let Ok(Instruction::Call(address)) = state.current_instruction() {
                 let label = self.label_for_address(address.value());
                 profiler.enter_span_with_label_at_cycle(label, state.cycle_count);
             }
-            if let Instruction::Return = state.current_instruction().map_err(vm_error.clone())? {
+            if let Ok(Instruction::Return) = state.current_instruction() {
                 profiler.exit_span_at_cycle(state.cycle_count);
             }
 
-            state.step().map_err(vm_error)?;
+            if let Err(err) = state.step() {
+                return Err(VMError::new(err, state));
+            };
         }
 
         let report = profiler.report_at_cycle(state.cycle_count);
