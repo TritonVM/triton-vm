@@ -10,6 +10,7 @@ use triton_vm::error::InstructionError;
 use triton_vm::instruction::Instruction;
 use triton_vm::instruction::LabelledInstruction;
 use triton_vm::op_stack::OpStackElement;
+use triton_vm::triton_program;
 
 use crate::action::Action;
 use crate::config::Config;
@@ -29,25 +30,23 @@ pub(crate) struct Home {
 
 impl Home {
     pub fn new() -> Self {
-        let program = triton_vm::example_programs::VERIFY_SUDOKU.clone();
-        let max_address = program.len_bwords() as u64;
+        let program = triton_program! {
+            push 5 // loop counter
+            break
+            call my_loop
+            assert
+            halt
 
-        let public_input = vec![
-            1, 2, 3, /**/ 4, 5, 6, /**/ 7, 8, 9, //
-            4, 5, 6, /**/ 7, 8, 9, /**/ 1, 2, 3, //
-            7, 8, 9, /**/ 1, 2, 3, /**/ 4, 5, 6, //
-            /*************************************/
-            2, 3, 4, /**/ 5, 6, 7, /**/ 8, 9, 1, //
-            5, 6, 7, /**/ 8, 9, 1, /**/ 2, 3, 4, //
-            8, 9, 1, /**/ 2, 3, 4, /**/ 5, 6, 7, //
-            /*************************************/
-            3, 4, 5, /**/ 6, 7, 8, /**/ 9, 1, 2, //
-            6, 7, 8, /**/ 9, 1, 2, /**/ 3, 4, 5, //
-            9, 1, 2, /**/ 3, 4, 5, /**/ 6, 7, 8, //
-        ]
-        .into();
+            my_loop:
+                dup 0 push 0 eq skiz return
+                break
+                push -1 add recurse
+        };
+
+        let public_input = [].into();
         let non_determinism = [].into();
         let vm_state = triton_vm::vm::VMState::new(&program, public_input, non_determinism);
+        let max_address = program.len_bwords() as u64;
 
         Self {
             command_tx: None,
@@ -65,6 +64,19 @@ impl Home {
 
     fn vm_is_running(&self) -> bool {
         !self.vm_has_stopped()
+    }
+
+    fn at_breakpoint(&self) -> bool {
+        let ip = self.vm_state.instruction_pointer as u64;
+        self.program.is_breakpoint(ip)
+    }
+
+    /// Handle [`Action::ProgramContinue`].
+    fn program_continue(&mut self) {
+        self.program_step();
+        while self.vm_is_running() && !self.at_breakpoint() {
+            self.program_step();
+        }
     }
 
     /// Handle [`Action::ProgramStep`].
@@ -293,6 +305,7 @@ impl Component for Home {
 
     fn update(&mut self, action: Action) -> Result<Option<Action>> {
         match action {
+            Action::ProgramContinue => self.program_continue(),
             Action::ProgramStep => self.program_step(),
             Action::ProgramNext => self.program_next(),
             Action::ProgramFinish => self.program_finish(),
