@@ -964,7 +964,7 @@ mod tests {
     ) -> (Program, usize) {
         let num_push_instructions = 10;
         let push_instructions = triton_asm![push 1; num_push_instructions];
-        let program = triton_program!({&push_instructions} {test_instruction} nop halt);
+        let program = triton_program!(sponge_init {&push_instructions} {test_instruction} nop halt);
 
         let stack_size_when_reaching_test_instruction =
             NUM_OP_STACK_REGISTERS + num_push_instructions;

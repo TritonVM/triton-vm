@@ -78,7 +78,7 @@ pub struct VMState {
     /// Sponge state.
     /// Note that this is the _full_ state, including capacity. The capacity should never be
     /// exposed outside of the VM.
-    pub sponge_state: [BFieldElement; tip5::STATE_SIZE],
+    pub sponge_state: Option<[BFieldElement; tip5::STATE_SIZE]>,
 
     /// Indicates whether the terminating instruction `halt` has been executed.
     pub halting: bool,
@@ -453,18 +453,19 @@ impl VMState {
     }
 
     fn sponge_init(&mut self) -> Vec<CoProcessorCall> {
-        self.sponge_state = Tip5::init().state;
+        self.sponge_state = Some(Tip5::init().state);
         self.instruction_pointer += 1;
         vec![SpongeStateReset]
     }
 
     fn sponge_absorb(&mut self) -> Result<Vec<CoProcessorCall>> {
+        let Some(mut state) = self.sponge_state else {
+            return Err(SpongeNotInitialized);
+        };
         let to_absorb = self.op_stack.pop_multiple::<{ tip5::RATE }>()?;
-        self.sponge_state[..tip5::RATE].copy_from_slice(&to_absorb);
-        let tip5_trace = Tip5::trace(&mut Tip5State {
-            state: self.sponge_state,
-        });
-        self.sponge_state = tip5_trace.last().unwrap().to_owned();
+        state[..tip5::RATE].copy_from_slice(&to_absorb);
+        let tip5_trace = Tip5::trace(&mut Tip5State { state });
+        self.sponge_state = Some(tip5_trace.last().unwrap().to_owned());
 
         let co_processor_calls = vec![Tip5Trace(SpongeAbsorb, Box::new(tip5_trace))];
 
@@ -473,13 +474,14 @@ impl VMState {
     }
 
     fn sponge_squeeze(&mut self) -> Result<Vec<CoProcessorCall>> {
+        let Some(state) = self.sponge_state else {
+            return Err(SpongeNotInitialized);
+        };
         for i in (0..tip5::RATE).rev() {
-            self.op_stack.push(self.sponge_state[i]);
+            self.op_stack.push(state[i]);
         }
-        let tip5_trace = Tip5::trace(&mut Tip5State {
-            state: self.sponge_state,
-        });
-        self.sponge_state = tip5_trace.last().unwrap().to_owned();
+        let tip5_trace = Tip5::trace(&mut Tip5State { state });
+        self.sponge_state = Some(tip5_trace.last().unwrap().to_owned());
 
         let co_processor_calls = vec![Tip5Trace(SpongeSqueeze, Box::new(tip5_trace))];
 
@@ -973,7 +975,11 @@ impl Display for VMState {
             .join(" | ");
         print_row(f, format!("ib6-0:    [ {ib_registers} ]",))?;
 
-        let sponge_state_register = |i: usize| self.sponge_state[i].value();
+        let Some(sponge_state) = self.sponge_state else {
+            return writeln!(f, "╰─{:─<total_width$}─╯", "");
+        };
+
+        let sponge_state_register = |i: usize| sponge_state[i].value();
         let sponge_state_slice = |idxs: [usize; 4]| {
             idxs.map(sponge_state_register)
                 .map(|ss| format!("{ss:>register_width$}"))

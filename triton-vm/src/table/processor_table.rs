@@ -3396,7 +3396,7 @@ pub(crate) mod tests {
     #[test]
     /// helps identifying whether the printing causes an infinite loop
     fn print_simple_processor_table_row() {
-        let program = triton_program!(push 2 assert halt);
+        let program = triton_program!(push 2 sponge_init assert halt);
         let err = program.run([].into(), [].into()).unwrap_err();
         println!("\n{}", err.vm_state);
     }

@@ -76,6 +76,9 @@ pub enum InstructionError {
     #[error("division by 0 is impossible")]
     DivisionByZero,
 
+    #[error("the Sponge state must be initialized before it can be used")]
+    SpongeNotInitialized,
+
     #[error("the logarithm of 0 does not exist")]
     LogarithmOfZero,
 
