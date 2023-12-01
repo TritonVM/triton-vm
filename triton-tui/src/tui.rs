@@ -76,6 +76,14 @@ impl Tui {
         })
     }
 
+    pub fn apply_args(&mut self, args: &Args) -> &mut Self {
+        self.tick_rate(args.tick_rate);
+        self.frame_rate(args.frame_rate);
+        self.mouse(true);
+        self.paste(true);
+        self
+    }
+
     pub fn tick_rate(&mut self, tick_rate: f64) -> &mut Self {
         self.tick_rate = tick_rate;
         self

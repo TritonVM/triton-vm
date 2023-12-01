@@ -32,7 +32,7 @@ pub(crate) struct TritonTUI {
 impl TritonTUI {
     pub fn new(args: Args) -> Result<Self> {
         let config = Config::new()?;
-        let tui = Self::tui(args)?;
+        let tui = Self::tui(&args)?;
         let mode = Mode::default();
 
         let mut components: [Vec<Box<dyn Component>>; Mode::COUNT] = Default::default();
@@ -109,7 +109,7 @@ impl TritonTUI {
             if self.should_suspend {
                 self.tui.suspend()?;
                 action_tx.send(Action::Resume)?;
-                self.tui = Self::tui(self.args)?;
+                self.tui = Self::tui(&self.args)?;
                 self.tui.resume()?;
             }
         }
@@ -117,12 +117,9 @@ impl TritonTUI {
         self.tui.exit()
     }
 
-    fn tui(args: Args) -> Result<Tui> {
+    fn tui(args: &Args) -> Result<Tui> {
         let mut tui = Tui::new()?;
-        tui.tick_rate(args.tick_rate);
-        tui.frame_rate(args.frame_rate);
-        tui.mouse(true);
-        tui.paste(true);
+        tui.apply_args(args);
         Ok(tui)
     }
 
