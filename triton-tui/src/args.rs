@@ -49,14 +49,16 @@ impl Default for Args {
 
 #[cfg(test)]
 mod tests {
+    use assert2::assert;
+
     use super::*;
 
     #[test]
     fn default_cli_and_clap_default_parsing_produce_same_values() {
         let cli_args: Vec<String> = vec![];
         let args = Args::parse_from(cli_args);
-        assert_eq!(DEFAULT_PROGRAM_PATH, args.program_path);
-        assert_eq!(DEFAULT_TICK_RATE, args.tick_rate);
-        assert_eq!(DEFAULT_FRAME_RATE, args.frame_rate);
+        assert!(DEFAULT_PROGRAM_PATH == args.program_path);
+        assert!(DEFAULT_TICK_RATE == args.tick_rate);
+        assert!(DEFAULT_FRAME_RATE == args.frame_rate);
     }
 }

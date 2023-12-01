@@ -400,28 +400,28 @@ fn parse_color_as_color_index(s: &str) -> u8 {
 
 #[cfg(test)]
 mod tests {
-    use pretty_assertions::assert_eq;
+    use assert2::assert;
 
     use super::*;
 
     #[test]
     fn parse_default_style() {
         let style = parse_style("");
-        assert_eq!(Style::default(), style);
+        assert!(Style::default() == style);
     }
 
     #[test]
     fn parse_foreground_style() {
         let style = parse_style("red");
         let red = Some(Color::Indexed(1));
-        assert_eq!(red, style.fg);
+        assert!(red == style.fg);
     }
 
     #[test]
     fn parse_background_style() {
         let style = parse_style("on blue");
         let blue = Some(Color::Indexed(4));
-        assert_eq!(blue, style.bg);
+        assert!(blue == style.bg);
     }
 
     #[test]
@@ -429,22 +429,22 @@ mod tests {
         let style = parse_style("underline red on blue");
         let red = Some(Color::Indexed(1));
         let blue = Some(Color::Indexed(4));
-        assert_eq!(red, style.fg);
-        assert_eq!(blue, style.bg);
+        assert!(red == style.fg);
+        assert!(blue == style.bg);
     }
 
     #[test]
     fn parse_style_modifiers_with_multiple_backgrounds() {
         let style = parse_style("bold green on blue on underline red");
         let green = Some(Color::Indexed(2));
-        assert_eq!(green, style.fg);
-        assert_eq!(None, style.bg);
+        assert!(green == style.fg);
+        assert!(None == style.bg);
     }
 
     #[test]
     fn parse_color_string() {
         let (color, modifiers) = process_color_string("underline bold inverse gray");
-        assert_eq!("gray", color);
+        assert!("gray" == color);
         assert!(modifiers.contains(Modifier::UNDERLINED));
         assert!(modifiers.contains(Modifier::BOLD));
         assert!(modifiers.contains(Modifier::REVERSED));
@@ -464,13 +464,13 @@ mod tests {
             .map(|(index, digit)| digit * ansi_color_resolution.pow(index as u32))
             .sum::<u8>()
             + num_well_known_ansi_colors;
-        assert_eq!(color, Some(Color::Indexed(expected)));
+        assert!(color == Some(Color::Indexed(expected)));
     }
 
     #[test]
     fn parse_unknown_color() {
         let no_color = parse_color("unknown");
-        assert_eq!(None, no_color);
+        assert!(None == no_color);
     }
 
     #[test]
@@ -481,7 +481,7 @@ mod tests {
         let quitting_action = mode_home_key_to_event_map
             .get(&quitting_key_sequence)
             .unwrap();
-        assert_eq!(&Action::Quit, quitting_action);
+        assert!(&Action::Quit == quitting_action);
         Ok(())
     }
 
@@ -490,32 +490,32 @@ mod tests {
         let empty_modifiers = KeyModifiers::empty();
         let key_code_a = KeyCode::Char('a');
         let key_event_a = KeyEvent::new(key_code_a, empty_modifiers);
-        assert_eq!(key_event_a, parse_key_event("a").unwrap());
+        assert!(key_event_a == parse_key_event("a").unwrap());
 
         let key_event_enter = KeyEvent::new(KeyCode::Enter, empty_modifiers);
-        assert_eq!(key_event_enter, parse_key_event("enter").unwrap());
+        assert!(key_event_enter == parse_key_event("enter").unwrap());
 
         let key_event_esc = KeyEvent::new(KeyCode::Esc, empty_modifiers);
-        assert_eq!(key_event_esc, parse_key_event("esc").unwrap());
+        assert!(key_event_esc == parse_key_event("esc").unwrap());
     }
 
     #[test]
     fn parse_keys_with_modifiers() {
         let ctrl_a = KeyEvent::new(KeyCode::Char('a'), KeyModifiers::CONTROL);
-        assert_eq!(ctrl_a, parse_key_event("ctrl-a").unwrap());
+        assert!(ctrl_a == parse_key_event("ctrl-a").unwrap());
 
         let alt_enter = KeyEvent::new(KeyCode::Enter, KeyModifiers::ALT);
-        assert_eq!(alt_enter, parse_key_event("alt-enter").unwrap());
+        assert!(alt_enter == parse_key_event("alt-enter").unwrap());
 
         let shift_esc = KeyEvent::new(KeyCode::Esc, KeyModifiers::SHIFT);
-        assert_eq!(shift_esc, parse_key_event("shift-esc").unwrap());
+        assert!(shift_esc == parse_key_event("shift-esc").unwrap());
     }
 
     #[test]
     fn parse_keys_with_multiple_modifiers() {
         let ctrl_alt = KeyModifiers::CONTROL | KeyModifiers::ALT;
         let ctr_alt_a = KeyEvent::new(KeyCode::Char('a'), ctrl_alt);
-        assert_eq!(ctr_alt_a, parse_key_event("ctrl-alt-a").unwrap());
+        assert!(ctr_alt_a == parse_key_event("ctrl-alt-a").unwrap());
 
         let ctrl_shift = KeyModifiers::CONTROL | KeyModifiers::SHIFT;
         let ctr_shift_enter = KeyEvent::new(KeyCode::Enter, ctrl_shift);
@@ -532,21 +532,21 @@ mod tests {
         let generated_string = _key_event_to_string(&ctrl_alt_a);
 
         let expected = "ctrl-alt-a".to_string();
-        assert_eq!(expected, generated_string);
+        assert!(expected == generated_string);
     }
 
     #[test]
     fn parsing_invalid_keys_gives_error() {
-        assert!(parse_key_event("invalid-key").is_err());
-        assert!(parse_key_event("ctrl-invalid-key").is_err());
+        assert!(let Err(_) = parse_key_event("invalid-key"));
+        assert!(let Err(_) = parse_key_event("ctrl-invalid-key"));
     }
 
     #[test]
     fn key_parsing_is_case_insensitive() {
         let ctrl_a = KeyEvent::new(KeyCode::Char('a'), KeyModifiers::CONTROL);
-        assert_eq!(ctrl_a, parse_key_event("CTRL-a").unwrap());
+        assert!(ctrl_a == parse_key_event("CTRL-a").unwrap());
 
         let alt_enter = KeyEvent::new(KeyCode::Enter, KeyModifiers::ALT);
-        assert_eq!(alt_enter, parse_key_event("AlT-eNtEr").unwrap());
+        assert!(alt_enter == parse_key_event("AlT-eNtEr").unwrap());
     }
 }

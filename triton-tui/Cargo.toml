@@ -25,7 +25,6 @@ itertools = "0.12"
 json5 = "0.4"
 lazy_static = "1"
 libc = "0.2"
-pretty_assertions = "1"
 ratatui = { version = "0.24", features = ["serde", "macros"] }
 serde = { version = "1", features = ["derive"] }
 signal-hook = "0.3"
@@ -37,3 +36,6 @@ tracing = "0.1"
 tracing-error = "0.2"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "serde"] }
 triton-vm = { path = "../triton-vm" }
+
+[dev-dependencies]
+assert2 = "0.3"
