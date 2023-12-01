@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::path::PathBuf;
 
 use color_eyre::eyre::Result;
 use config::ConfigError;
@@ -24,18 +23,8 @@ use crate::utils::*;
 
 const DEFAULT_CONFIG: &str = include_str!("../.config/default_config.json5");
 
-#[derive(Clone, Debug, Deserialize, Default)]
-pub(crate) struct AppConfig {
-    #[serde(default)]
-    pub _data_dir: PathBuf,
-    #[serde(default)]
-    pub _config_dir: PathBuf,
-}
-
 #[derive(Clone, Debug, Default, Deserialize)]
 pub(crate) struct Config {
-    #[serde(default, flatten)]
-    pub _config: AppConfig,
     #[serde(default)]
     pub keybindings: KeyBindings,
     #[serde(default)]
