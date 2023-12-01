@@ -3,7 +3,6 @@ use ratatui::prelude::*;
 use ratatui::widgets::block::*;
 use ratatui::widgets::*;
 use strum::EnumCount;
-use tokio::sync::mpsc::UnboundedSender;
 use tracing::info;
 
 use triton_vm::error::InstructionError;
@@ -20,7 +19,6 @@ use super::Frame;
 
 #[derive(Debug)]
 pub(crate) struct Home {
-    command_tx: Option<UnboundedSender<Action>>,
     config: Config,
     program: Program,
     public_input: PublicInput,
@@ -51,7 +49,6 @@ impl Home {
         let max_address = program.len_bwords() as u64;
 
         Self {
-            command_tx: None,
             config: Config::default(),
             program,
             public_input,
@@ -306,11 +303,6 @@ impl Home {
 }
 
 impl Component for Home {
-    fn register_action_handler(&mut self, tx: UnboundedSender<Action>) -> Result<()> {
-        self.command_tx = Some(tx);
-        Ok(())
-    }
-
     fn register_config_handler(&mut self, config: Config) -> Result<()> {
         self.config = config;
         Ok(())
