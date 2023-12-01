@@ -22,7 +22,7 @@ impl Component for Help {
             Help::help_line("f", "finish – steps out of current `call`"),
             Help::help_line("r", "reset program state"),
             String::new(),
-            Help::help_line("?", "show help"),
+            Help::help_line("h", "toggle help"),
             Help::help_line("q", "quit"),
         ]
         .map(Line::from)
