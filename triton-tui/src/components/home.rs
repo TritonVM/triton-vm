@@ -24,7 +24,6 @@ pub(crate) struct Home {
     public_input: PublicInput,
     non_determinism: NonDeterminism<BFieldElement>,
     vm_state: VMState,
-    max_address: u64,
     error: Option<InstructionError>,
 }
 
@@ -46,7 +45,6 @@ impl Home {
         let public_input = PublicInput::default();
         let non_determinism = NonDeterminism::default();
         let vm_state = VMState::new(&program, public_input.clone(), non_determinism.clone());
-        let max_address = program.len_bwords() as u64;
 
         Self {
             config: Config::default(),
@@ -54,7 +52,6 @@ impl Home {
             public_input,
             non_determinism,
             vm_state,
-            max_address,
             error: None,
         }
     }
@@ -120,7 +117,8 @@ impl Home {
     }
 
     fn address_render_width(&self) -> usize {
-        format!("{}", self.max_address).len()
+        let max_address = self.program.len_bwords();
+        max_address.to_string().len()
     }
 
     fn distribute_area_for_widgets(area: Rect) -> WidgetAreas {
