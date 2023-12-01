@@ -98,6 +98,17 @@ impl Home {
         }
     }
 
+    /// Handle [`Action::ProgramFinish`].
+    fn program_finish(&mut self) {
+        if self.vm_has_stopped() {
+            return;
+        }
+        let current_jump_stack_depth = self.vm_state.jump_stack.len();
+        while self.vm_is_running() && self.vm_state.jump_stack.len() >= current_jump_stack_depth {
+            self.program_step();
+        }
+    }
+
     fn address_render_width(&self) -> usize {
         format!("{}", self.max_address).len()
     }
@@ -296,6 +307,7 @@ impl Component for Home {
         match action {
             Action::ProgramStep => self.program_step(),
             Action::ProgramNext => self.program_next(),
+            Action::ProgramFinish => self.program_finish(),
             _ => {}
         }
         Ok(None)
