@@ -94,6 +94,14 @@ impl OpStack {
         Ok(element)
     }
 
+    pub(crate) fn assert_is_u32(&self, stack_element: OpStackElement) -> Result<()> {
+        let element = self.peek_at(stack_element);
+        match element.value() <= u32::MAX as u64 {
+            true => Ok(()),
+            false => Err(FailedU32Conversion(element)),
+        }
+    }
+
     pub(crate) fn pop_u32(&mut self) -> Result<u32> {
         let element = self.pop()?;
         let element = element
@@ -118,6 +126,14 @@ impl OpStack {
         self.stack[top_of_stack_index - stack_element_index]
     }
 
+    pub(crate) fn peek_at_top_extension_field_element(&self) -> XFieldElement {
+        let coefficient_0 = self.peek_at(ST0);
+        let coefficient_1 = self.peek_at(ST1);
+        let coefficient_2 = self.peek_at(ST2);
+        let coefficients = [coefficient_0, coefficient_1, coefficient_2];
+        XFieldElement::new(coefficients)
+    }
+
     pub(crate) fn swap_top_with(&mut self, stack_element: OpStackElement) {
         let stack_element_index = usize::from(stack_element);
         let top_of_stack_index = self.stack.len() - 1;
@@ -125,8 +141,8 @@ impl OpStack {
             .swap(top_of_stack_index, top_of_stack_index - stack_element_index);
     }
 
-    pub(crate) fn is_too_shallow(&self) -> bool {
-        self.stack.len() < OpStackElement::COUNT
+    pub(crate) fn would_be_too_shallow(&self, stack_delta: i32) -> bool {
+        self.stack.len() as i32 + stack_delta < OpStackElement::COUNT as i32
     }
 
     /// The address of the next free address of the op-stack. Equivalent to the current length of
@@ -660,8 +676,7 @@ mod tests {
         assert!(op_stack.pointer().value() as usize == op_stack.stack.len());
 
         // verify underflow
-        let _ = op_stack.pop().expect("can't pop");
-        assert!(op_stack.is_too_shallow());
+        assert!(op_stack.would_be_too_shallow(-1));
     }
 
     #[test]
