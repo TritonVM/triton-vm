@@ -2219,4 +2219,140 @@ pub(crate) mod tests {
         let_assert!(Err(err) = program.trace_execution(bad_stdin, secret_in));
         let_assert!(AssertionFailed = err.source);
     }
+
+    fn instruction_does_not_change_vm_state_when_crashing_vm(
+        program: Program,
+        num_preparatory_steps: usize,
+    ) {
+        let mut vm_state = VMState::new(&program, [].into(), [].into());
+        for i in 0..num_preparatory_steps {
+            assert!(let Ok(_) = vm_state.step(), "failed during step {i}");
+        }
+        let pre_crash_state = vm_state.clone();
+        assert!(let Err(_) = vm_state.step());
+        assert!(pre_crash_state == vm_state);
+    }
+
+    #[test]
+    fn instruction_pop_does_not_change_vm_state_when_crashing_vm() {
+        let program = triton_program! { push 0 pop 2 halt };
+        instruction_does_not_change_vm_state_when_crashing_vm(program, 1);
+    }
+
+    #[test]
+    fn instruction_divine_does_not_change_vm_state_when_crashing_vm() {
+        let program = triton_program! { divine 1 halt };
+        instruction_does_not_change_vm_state_when_crashing_vm(program, 0);
+    }
+
+    #[test]
+    fn instruction_assert_does_not_change_vm_state_when_crashing_vm() {
+        let program = triton_program! { push 0 assert halt };
+        instruction_does_not_change_vm_state_when_crashing_vm(program, 1);
+    }
+
+    #[test]
+    fn instruction_divine_sibling_does_not_change_vm_state_when_crashing_vm() {
+        let non_u32 = (u32::MAX as u64) + 1;
+        let program = triton_program! { push {non_u32} swap 5 divine_sibling halt };
+        instruction_does_not_change_vm_state_when_crashing_vm(program, 2);
+    }
+
+    #[test]
+    fn instruction_assert_vector_does_not_change_vm_state_when_crashing_vm() {
+        let program = triton_program! { push 0 push 1 push 0 push 0 push 0 assert_vector halt };
+        instruction_does_not_change_vm_state_when_crashing_vm(program, 5);
+    }
+
+    #[test]
+    fn instruction_sponge_absorb_does_not_change_vm_state_when_crashing_vm() {
+        let ten_pushes = triton_asm![push 0; 10];
+        let program = triton_program! { {&ten_pushes} sponge_absorb halt };
+        instruction_does_not_change_vm_state_when_crashing_vm(program, 10);
+    }
+
+    #[test]
+    fn instruction_sponge_squeeze_does_not_change_vm_state_when_crashing_vm() {
+        let program = triton_program! { sponge_squeeze halt };
+        instruction_does_not_change_vm_state_when_crashing_vm(program, 0);
+    }
+
+    #[test]
+    fn instruction_invert_does_not_change_vm_state_when_crashing_vm() {
+        let program = triton_program! { push 0 invert halt };
+        instruction_does_not_change_vm_state_when_crashing_vm(program, 1);
+    }
+
+    #[test]
+    fn instruction_lt_does_not_change_vm_state_when_crashing_vm() {
+        let non_u32 = (u32::MAX as u64) + 1;
+        let program = triton_program! { push {non_u32} lt halt };
+        instruction_does_not_change_vm_state_when_crashing_vm(program, 1);
+    }
+
+    #[test]
+    fn instruction_and_does_not_change_vm_state_when_crashing_vm() {
+        let non_u32 = (u32::MAX as u64) + 1;
+        let program = triton_program! { push {non_u32} and halt };
+        instruction_does_not_change_vm_state_when_crashing_vm(program, 1);
+    }
+
+    #[test]
+    fn instruction_xor_does_not_change_vm_state_when_crashing_vm() {
+        let non_u32 = (u32::MAX as u64) + 1;
+        let program = triton_program! { push {non_u32} xor halt };
+        instruction_does_not_change_vm_state_when_crashing_vm(program, 1);
+    }
+
+    #[test]
+    fn instruction_log_2_floor_on_non_u32_operand_does_not_change_vm_state_when_crashing_vm() {
+        let non_u32 = (u32::MAX as u64) + 1;
+        let program = triton_program! { push {non_u32} log_2_floor halt };
+        instruction_does_not_change_vm_state_when_crashing_vm(program, 1);
+    }
+
+    #[test]
+    fn instruction_log_2_floor_on_operand_0_does_not_change_vm_state_when_crashing_vm() {
+        let program = triton_program! { push 0 log_2_floor halt };
+        instruction_does_not_change_vm_state_when_crashing_vm(program, 1);
+    }
+
+    #[test]
+    fn instruction_pow_does_not_change_vm_state_when_crashing_vm() {
+        let non_u32 = (u32::MAX as u64) + 1;
+        let program = triton_program! { push {non_u32} push 0 pow halt };
+        instruction_does_not_change_vm_state_when_crashing_vm(program, 2);
+    }
+
+    #[test]
+    fn instruction_div_mod_on_non_u32_operand_does_not_change_vm_state_when_crashing_vm() {
+        let non_u32 = (u32::MAX as u64) + 1;
+        let program = triton_program! { push {non_u32} push 0 div_mod halt };
+        instruction_does_not_change_vm_state_when_crashing_vm(program, 2);
+    }
+
+    #[test]
+    fn instruction_div_mod_on_denominator_0_does_not_change_vm_state_when_crashing_vm() {
+        let program = triton_program! { push 0 push 1 div_mod halt };
+        instruction_does_not_change_vm_state_when_crashing_vm(program, 2);
+    }
+
+    #[test]
+    fn instruction_pop_count_does_not_change_vm_state_when_crashing_vm() {
+        let non_u32 = (u32::MAX as u64) + 1;
+        let program = triton_program! { push {non_u32} pop_count halt };
+        instruction_does_not_change_vm_state_when_crashing_vm(program, 1);
+    }
+
+    #[test]
+    fn instruction_xinvert_does_not_change_vm_state_when_crashing_vm() {
+        let program = triton_program! { xinvert halt };
+        instruction_does_not_change_vm_state_when_crashing_vm(program, 0);
+    }
+
+    #[test]
+    fn instruction_read_io_does_not_change_vm_state_when_crashing_vm() {
+        let program = triton_program! { read_io 1 halt };
+        instruction_does_not_change_vm_state_when_crashing_vm(program, 0);
+    }
 }
