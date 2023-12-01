@@ -29,6 +29,10 @@ pub(crate) enum Action {
 
     /// Execute instructions until the current `call` returns.
     ProgramFinish,
+
+    /// Reset the program state.
+    ProgramReset,
+
     Mode(Mode),
 }
 
@@ -60,6 +64,7 @@ impl<'de> Deserialize<'de> for Action {
                     "Continue" => Ok(Action::ProgramContinue),
                     "Step" => Ok(Action::ProgramStep),
                     "Next" => Ok(Action::ProgramNext),
+                    "Reset" => Ok(Action::ProgramReset),
                     "Finish" => Ok(Action::ProgramFinish),
                     mode if mode.starts_with("Mode::") => Self::parse_mode(mode),
                     data if data.starts_with("Error(") => Self::parse_error(data),

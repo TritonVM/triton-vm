@@ -7,10 +7,10 @@ use tokio::sync::mpsc::UnboundedSender;
 use tracing::info;
 
 use triton_vm::error::InstructionError;
-use triton_vm::instruction::Instruction;
-use triton_vm::instruction::LabelledInstruction;
+use triton_vm::instruction::*;
 use triton_vm::op_stack::OpStackElement;
-use triton_vm::triton_program;
+use triton_vm::vm::VMState;
+use triton_vm::*;
 
 use crate::action::Action;
 use crate::config::Config;
@@ -22,8 +22,10 @@ use super::Frame;
 pub(crate) struct Home {
     command_tx: Option<UnboundedSender<Action>>,
     config: Config,
-    program: triton_vm::Program,
-    vm_state: triton_vm::vm::VMState,
+    program: Program,
+    public_input: PublicInput,
+    non_determinism: NonDeterminism<BFieldElement>,
+    vm_state: VMState,
     max_address: u64,
     error: Option<InstructionError>,
 }
@@ -43,15 +45,17 @@ impl Home {
                 push -1 add recurse
         };
 
-        let public_input = [].into();
-        let non_determinism = [].into();
-        let vm_state = triton_vm::vm::VMState::new(&program, public_input, non_determinism);
+        let public_input = PublicInput::default();
+        let non_determinism = NonDeterminism::default();
+        let vm_state = VMState::new(&program, public_input.clone(), non_determinism.clone());
         let max_address = program.len_bwords() as u64;
 
         Self {
             command_tx: None,
             config: Config::default(),
             program,
+            public_input,
+            non_determinism,
             vm_state,
             max_address,
             error: None,
@@ -107,6 +111,15 @@ impl Home {
         while self.vm_is_running() && self.vm_state.jump_stack.len() >= current_jump_stack_depth {
             self.program_step();
         }
+    }
+
+    fn program_reset(&mut self) {
+        self.vm_state = VMState::new(
+            &self.program,
+            self.public_input.clone(),
+            self.non_determinism.clone(),
+        );
+        self.error = None;
     }
 
     fn address_render_width(&self) -> usize {
@@ -309,6 +322,7 @@ impl Component for Home {
             Action::ProgramStep => self.program_step(),
             Action::ProgramNext => self.program_next(),
             Action::ProgramFinish => self.program_finish(),
+            Action::ProgramReset => self.program_reset(),
             _ => {}
         }
         Ok(None)
