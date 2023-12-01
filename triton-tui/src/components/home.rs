@@ -81,28 +81,16 @@ impl Home {
 
     /// Handle [`Action::ProgramNext`].
     fn program_next(&mut self) {
-        if self.vm_has_stopped() {
-            return;
-        }
-        let Ok(instruction) = self.vm_state.current_instruction() else {
-            return;
-        };
-        let Instruction::Call(_) = instruction else {
-            self.program_step();
-            return;
-        };
-        let current_jump_stack_depth = self.vm_state.jump_stack.len();
+        let instruction = self.vm_state.current_instruction();
+        let instruction_is_call = matches!(instruction, Ok(Instruction::Call(_)));
         self.program_step();
-        while self.vm_is_running() && self.vm_state.jump_stack.len() > current_jump_stack_depth {
-            self.program_step();
+        if instruction_is_call {
+            self.program_finish();
         }
     }
 
     /// Handle [`Action::ProgramFinish`].
     fn program_finish(&mut self) {
-        if self.vm_has_stopped() {
-            return;
-        }
         let current_jump_stack_depth = self.vm_state.jump_stack.len();
         while self.vm_is_running() && self.vm_state.jump_stack.len() >= current_jump_stack_depth {
             self.program_step();
