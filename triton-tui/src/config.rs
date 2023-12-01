@@ -364,66 +364,49 @@ fn process_color_string(color_str: &str) -> (String, Modifier) {
 fn parse_color(s: &str) -> Option<Color> {
     let s = s.trim_start();
     let s = s.trim_end();
-    if s.contains("bright color") {
-        let s = s.trim_start_matches("bright ");
-        let c = s
-            .trim_start_matches("color")
-            .parse::<u8>()
-            .unwrap_or_default();
-        Some(Color::Indexed(c.wrapping_shl(8)))
-    } else if s.contains("color") {
-        let c = s
-            .trim_start_matches("color")
-            .parse::<u8>()
-            .unwrap_or_default();
-        Some(Color::Indexed(c))
-    } else if s.contains("gray") {
-        let c = 232
-            + s.trim_start_matches("gray")
-                .parse::<u8>()
-                .unwrap_or_default();
-        Some(Color::Indexed(c))
-    } else if s.contains("rgb") {
-        let red = (s.as_bytes()[3] as char).to_digit(10).unwrap_or_default() as u8;
-        let green = (s.as_bytes()[4] as char).to_digit(10).unwrap_or_default() as u8;
-        let blue = (s.as_bytes()[5] as char).to_digit(10).unwrap_or_default() as u8;
-        let c = 16 + red * 36 + green * 6 + blue;
-        Some(Color::Indexed(c))
-    } else if s == "bold black" {
-        Some(Color::Indexed(8))
-    } else if s == "bold red" {
-        Some(Color::Indexed(9))
-    } else if s == "bold green" {
-        Some(Color::Indexed(10))
-    } else if s == "bold yellow" {
-        Some(Color::Indexed(11))
-    } else if s == "bold blue" {
-        Some(Color::Indexed(12))
-    } else if s == "bold magenta" {
-        Some(Color::Indexed(13))
-    } else if s == "bold cyan" {
-        Some(Color::Indexed(14))
-    } else if s == "bold white" {
-        Some(Color::Indexed(15))
-    } else if s == "black" {
-        Some(Color::Indexed(0))
-    } else if s == "red" {
-        Some(Color::Indexed(1))
-    } else if s == "green" {
-        Some(Color::Indexed(2))
-    } else if s == "yellow" {
-        Some(Color::Indexed(3))
-    } else if s == "blue" {
-        Some(Color::Indexed(4))
-    } else if s == "magenta" {
-        Some(Color::Indexed(5))
-    } else if s == "cyan" {
-        Some(Color::Indexed(6))
-    } else if s == "white" {
-        Some(Color::Indexed(7))
-    } else {
-        None
+    match s {
+        s if s.contains("bright color") => {
+            let s = s.trim_start_matches("bright ");
+            let c = parse_color_as_color_index(s);
+            Some(Color::Indexed(c.wrapping_shl(8)))
+        }
+        s if s.contains("color") => Some(Color::Indexed(parse_color_as_color_index(s))),
+        s if s.contains("gray") => {
+            let s = s.trim_start_matches("gray");
+            let c = s.parse::<u8>().unwrap_or_default();
+            Some(Color::Indexed(232 + c))
+        }
+        s if s.contains("rgb") => {
+            let s = s.trim_start_matches("rgb");
+            let red = (s.as_bytes()[0] as char).to_digit(10).unwrap_or_default() as u8;
+            let green = (s.as_bytes()[1] as char).to_digit(10).unwrap_or_default() as u8;
+            let blue = (s.as_bytes()[2] as char).to_digit(10).unwrap_or_default() as u8;
+            let c = 16 + red * 36 + green * 6 + blue;
+            Some(Color::Indexed(c))
+        }
+        "black" => Some(Color::Indexed(0)),
+        "red" => Some(Color::Indexed(1)),
+        "green" => Some(Color::Indexed(2)),
+        "yellow" => Some(Color::Indexed(3)),
+        "blue" => Some(Color::Indexed(4)),
+        "magenta" => Some(Color::Indexed(5)),
+        "cyan" => Some(Color::Indexed(6)),
+        "white" => Some(Color::Indexed(7)),
+        "bold black" => Some(Color::Indexed(8)),
+        "bold red" => Some(Color::Indexed(9)),
+        "bold green" => Some(Color::Indexed(10)),
+        "bold yellow" => Some(Color::Indexed(11)),
+        "bold blue" => Some(Color::Indexed(12)),
+        "bold magenta" => Some(Color::Indexed(13)),
+        "bold cyan" => Some(Color::Indexed(14)),
+        "bold white" => Some(Color::Indexed(15)),
+        _ => None,
     }
+}
+
+fn parse_color_as_color_index(s: &str) -> u8 {
+    let maybe_color_index = s.trim_start_matches("color").parse();
+    maybe_color_index.unwrap_or_default()
 }
 
 #[cfg(test)]
