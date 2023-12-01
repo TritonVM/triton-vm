@@ -3,7 +3,7 @@ use clap::Parser;
 use crate::utils::version;
 
 const DEFAULT_TICK_RATE: f64 = 1.0;
-const DEFAULT_FRAME_RATE: f64 = 16.0;
+const DEFAULT_FRAME_RATE: f64 = 32.0;
 
 #[derive(Parser, Debug, Clone, Copy)]
 #[command(author, version = version(), about)]
