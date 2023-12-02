@@ -1,6 +1,7 @@
 use color_eyre::eyre::anyhow;
 use color_eyre::eyre::Result;
 use fs_err as fs;
+use itertools::Itertools;
 use ratatui::prelude::*;
 use ratatui::widgets::block::*;
 use ratatui::widgets::*;
@@ -293,20 +294,48 @@ impl Home {
     }
 
     fn render_message_widget(&self, f: &mut Frame, area: Rect) {
-        let mut text = match self.error {
-            Some(ref err) => format!("{err}"),
-            None => String::new(),
-        };
-        if self.vm_state.halting {
-            text = "Triton VM halted gracefully".to_string();
+        let mut line = Line::from("");
+        if let Some(message) = self.maybe_render_public_output() {
+            line = message;
+        }
+        if let Some(message) = self.maybe_render_error_message() {
+            line = message;
+        }
+        if let Some(message) = self.maybe_render_halting_message() {
+            line = message;
         }
 
         let block = Block::default()
             .borders(Borders::LEFT | Borders::RIGHT | Borders::BOTTOM)
             .border_type(BorderType::Rounded)
             .padding(Padding::horizontal(1));
-        let paragraph = Paragraph::new(text).block(block).alignment(Alignment::Left);
+        let paragraph = Paragraph::new(line).block(block).alignment(Alignment::Left);
         f.render_widget(paragraph, area);
+    }
+
+    fn maybe_render_error_message(&self) -> Option<Line> {
+        let header = Span::from("ERROR: ").red().bold();
+        let err = Span::from(self.error?.to_string());
+        Some(Line::from(vec![header, err]))
+    }
+
+    fn maybe_render_halting_message(&self) -> Option<Line> {
+        if self.vm_state.halting {
+            Some(Line::from("Triton VM halted gracefully"))
+        } else {
+            None
+        }
+    }
+
+    fn maybe_render_public_output(&self) -> Option<Line> {
+        if self.vm_state.public_output.is_empty() {
+            return None;
+        }
+        let header = Span::from("Public output: [").bold();
+        let output = self.vm_state.public_output.iter().join(", ");
+        let output = Span::from(output);
+        let footer = Span::from("]");
+        Some(Line::from(vec![header, output, footer]))
     }
 }
 
