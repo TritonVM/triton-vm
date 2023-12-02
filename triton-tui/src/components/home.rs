@@ -132,7 +132,7 @@ impl Home {
         max_address.to_string().len()
     }
 
-    fn distribute_area_for_widgets(area: Rect) -> WidgetAreas {
+    fn distribute_area_for_widgets(&self, area: Rect) -> WidgetAreas {
         let message_box_height = Constraint::Min(2);
         let constraints = [Constraint::Percentage(100), message_box_height];
         let layout = Layout::default()
@@ -144,12 +144,17 @@ impl Home {
 
         let op_stack_widget_width = Constraint::Min(32);
         let remaining_width = Constraint::Percentage(100);
+        let sponge_state_width = match self.vm_state.sponge_state.is_some() {
+            true => Constraint::Min(32),
+            false => Constraint::Min(1),
+        };
         let state_layout = Layout::default()
             .direction(Direction::Horizontal)
-            .constraints([op_stack_widget_width, remaining_width])
+            .constraints([op_stack_widget_width, remaining_width, sponge_state_width])
             .split(state_area);
         let op_stack_area = state_layout[0];
         let program_and_call_stack_area = state_layout[1];
+        let sponge_state_area = state_layout[2];
 
         let program_widget_width = Constraint::Percentage(50);
         let call_stack_widget_width = Constraint::Percentage(50);
@@ -163,6 +168,7 @@ impl Home {
             op_stack: op_stack_area,
             program: program_and_call_stack_layout[0],
             call_stack: program_and_call_stack_layout[1],
+            sponge: sponge_state_area,
             message_box: message_box_area,
         }
     }
@@ -290,14 +296,47 @@ impl Home {
         let border_set = symbols::border::Set {
             top_left: symbols::line::ROUNDED.horizontal_down,
             bottom_left: symbols::line::ROUNDED.horizontal_up,
-            bottom_right: symbols::line::ROUNDED.vertical_left,
             ..symbols::border::ROUNDED
         };
         let block = Block::default()
             .padding(Padding::new(1, 1, 1, 0))
             .title(title)
-            .borders(Borders::ALL)
+            .borders(Borders::TOP | Borders::LEFT | Borders::BOTTOM)
             .border_set(border_set);
+        let paragraph = Paragraph::new(text).block(block).alignment(Alignment::Left);
+        f.render_widget(paragraph, area);
+    }
+    fn render_sponge_widget(&self, f: &mut Frame, area: Rect) {
+        let border_set = symbols::border::Set {
+            top_left: symbols::line::ROUNDED.horizontal_down,
+            bottom_left: symbols::line::ROUNDED.horizontal_up,
+            bottom_right: symbols::line::ROUNDED.vertical_left,
+            ..symbols::border::ROUNDED
+        };
+        let right_border = Block::default()
+            .borders(Borders::TOP | Borders::RIGHT | Borders::BOTTOM)
+            .border_set(border_set);
+        let Some(state) = self.vm_state.sponge_state else {
+            let paragraph = Paragraph::new("").block(right_border);
+            f.render_widget(paragraph, area);
+            return;
+        };
+
+        let title = Title::from(" Sponge ").alignment(Alignment::Left);
+        let num_padding_lines = (area.height as usize).saturating_sub(state.len() + 3);
+        let mut text = vec![Line::from(""); num_padding_lines];
+        for (i, sp) in state.iter().enumerate() {
+            let sponge_index = Span::from(format!("{i:>3}")).dim();
+            let separator = Span::from("  ");
+            let sponge_element = Span::from(format!("{sp}"));
+            let line = Line::from(vec![sponge_index, separator, sponge_element]);
+            text.push(line);
+        }
+
+        let block = right_border
+            .padding(Padding::new(1, 1, 1, 0))
+            .title(title)
+            .borders(Borders::ALL);
         let paragraph = Paragraph::new(text).block(block).alignment(Alignment::Left);
         f.render_widget(paragraph, area);
     }
@@ -352,10 +391,11 @@ impl Component for Home {
     }
 
     fn draw(&mut self, f: &mut Frame<'_>, area: Rect) -> Result<()> {
-        let widget_areas = Self::distribute_area_for_widgets(area);
+        let widget_areas = self.distribute_area_for_widgets(area);
         self.render_op_stack_widget(f, widget_areas.op_stack);
         self.render_program_widget(f, widget_areas.program);
         self.render_call_stack_widget(f, widget_areas.call_stack);
+        self.render_sponge_widget(f, widget_areas.sponge);
         self.render_message_widget(f, widget_areas.message_box);
         Ok(())
     }
@@ -366,5 +406,6 @@ struct WidgetAreas {
     op_stack: Rect,
     program: Rect,
     call_stack: Rect,
+    sponge: Rect,
     message_box: Rect,
 }

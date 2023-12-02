@@ -7,6 +7,7 @@
 push 3                              // loop counter
 call my_loop
 call check_result
+call sponge_instructions
 halt
 
 my_loop:
@@ -20,3 +21,8 @@ check_result:                       // Try enabling
     // pop 1                        // <- this line for
     assert                          // <- this assertion to work.
     return                          // Hot reload & reset of the VM is `r`.
+
+sponge_instructions:
+    sponge_init
+    sponge_squeeze
+    return
