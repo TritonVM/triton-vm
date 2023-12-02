@@ -208,9 +208,13 @@ impl Home {
         let cycle_count = self.vm_state.cycle_count;
         let title = format!(" Program (cycle: {cycle_count:>5}) ");
         let title = Title::from(title).alignment(Alignment::Left);
-        let halting = match self.vm_state.halting {
-            true => Title::from(" HALT ".bold().green()).alignment(Alignment::Center),
+        let exec_state = match self.vm_state.halting {
+            true => Title::from(" HALT ".bold().green()),
             false => Title::from(""),
+        };
+        let exec_state = match self.error.is_some() {
+            true => Title::from(" ERROR ".bold().red()),
+            false => exec_state,
         };
 
         let address_width = self.address_render_width();
@@ -250,7 +254,7 @@ impl Home {
             ..symbols::border::ROUNDED
         };
 
-        let halting = halting.position(Position::Bottom);
+        let halting = exec_state.position(Position::Bottom);
         let halting = halting.alignment(Alignment::Center);
         let block = Block::default()
             .padding(Padding::new(1, 1, 1, 0))
@@ -371,9 +375,7 @@ impl Home {
     }
 
     fn maybe_render_error_message(&self) -> Option<Line> {
-        let header = Span::from("ERROR ").red().bold();
-        let err = Span::from(self.error?.to_string());
-        Some(Line::from(vec![header, err]))
+        Some(Line::from(self.error?.to_string()))
     }
 }
 
