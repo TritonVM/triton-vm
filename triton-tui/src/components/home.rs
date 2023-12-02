@@ -202,6 +202,11 @@ impl Home {
         let cycle_count = self.vm_state.cycle_count;
         let title = format!(" Program (cycle: {cycle_count:>5}) ");
         let title = Title::from(title).alignment(Alignment::Left);
+        let halting = match self.vm_state.halting {
+            true => Title::from(" HALT ".bold().green()).alignment(Alignment::Center),
+            false => Title::from(""),
+        };
+
         let address_width = self.address_render_width();
         let mut address = 0;
         let mut text = vec![];
@@ -238,9 +243,13 @@ impl Home {
             bottom_left: symbols::line::ROUNDED.horizontal_up,
             ..symbols::border::ROUNDED
         };
+
+        let halting = halting.position(Position::Bottom);
+        let halting = halting.alignment(Alignment::Center);
         let block = Block::default()
             .padding(Padding::new(1, 1, 1, 0))
             .title(title)
+            .title(halting)
             .borders(Borders::TOP | Borders::LEFT | Borders::BOTTOM)
             .border_set(border_set);
         let render_area_for_lines = area.height.saturating_sub(3);
@@ -301,9 +310,6 @@ impl Home {
         if let Some(message) = self.maybe_render_error_message() {
             line = message;
         }
-        if let Some(message) = self.maybe_render_halting_message() {
-            line = message;
-        }
 
         let block = Block::default()
             .borders(Borders::LEFT | Borders::RIGHT | Borders::BOTTOM)
@@ -313,29 +319,22 @@ impl Home {
         f.render_widget(paragraph, area);
     }
 
-    fn maybe_render_error_message(&self) -> Option<Line> {
-        let header = Span::from("ERROR: ").red().bold();
-        let err = Span::from(self.error?.to_string());
-        Some(Line::from(vec![header, err]))
-    }
-
-    fn maybe_render_halting_message(&self) -> Option<Line> {
-        if self.vm_state.halting {
-            Some(Line::from("Triton VM halted gracefully"))
-        } else {
-            None
-        }
-    }
-
     fn maybe_render_public_output(&self) -> Option<Line> {
         if self.vm_state.public_output.is_empty() {
             return None;
         }
-        let header = Span::from("Public output: [").bold();
+        let header = Span::from("Public output").bold();
+        let colon = Span::from(": [");
         let output = self.vm_state.public_output.iter().join(", ");
         let output = Span::from(output);
         let footer = Span::from("]");
-        Some(Line::from(vec![header, output, footer]))
+        Some(Line::from(vec![header, colon, output, footer]))
+    }
+
+    fn maybe_render_error_message(&self) -> Option<Line> {
+        let header = Span::from("ERROR ").red().bold();
+        let err = Span::from(self.error?.to_string());
+        Some(Line::from(vec![header, err]))
     }
 }
 
