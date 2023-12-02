@@ -16,11 +16,11 @@ pub(crate) struct Args {
         default_value_t = String::from(DEFAULT_PROGRAM_PATH),
     )]
     /// path to program to run
-    pub program_path: String,
+    pub program: String,
 
     #[arg(short, long, value_name = "PATH")]
     /// path to public input file
-    pub input_path: Option<String>,
+    pub input: Option<String>,
 
     #[arg(
         short,
@@ -44,8 +44,8 @@ pub(crate) struct Args {
 impl Default for Args {
     fn default() -> Self {
         Self {
-            program_path: DEFAULT_PROGRAM_PATH.into(),
-            input_path: None,
+            program: DEFAULT_PROGRAM_PATH.into(),
+            input: None,
             tick_rate: DEFAULT_TICK_RATE,
             frame_rate: DEFAULT_FRAME_RATE,
         }
@@ -62,7 +62,7 @@ mod tests {
     fn default_cli_and_clap_default_parsing_produce_same_values() {
         let cli_args: Vec<String> = vec![];
         let args = Args::parse_from(cli_args);
-        assert!(DEFAULT_PROGRAM_PATH == args.program_path);
+        assert!(DEFAULT_PROGRAM_PATH == args.program);
         assert!(DEFAULT_TICK_RATE == args.tick_rate);
         assert!(DEFAULT_FRAME_RATE == args.frame_rate);
     }

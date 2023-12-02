@@ -47,14 +47,14 @@ impl Home {
     }
 
     fn program_from_args(args: &Args) -> Result<Program> {
-        let source_code = fs::read_to_string(&args.program_path)?;
+        let source_code = fs::read_to_string(&args.program)?;
         let program = Program::from_code(&source_code)
             .map_err(|err| anyhow!("program parsing error: {err}"))?;
         Ok(program)
     }
 
     fn public_input_from_args(args: &Args) -> Result<PublicInput> {
-        let Some(input_path) = args.input_path.clone() else {
+        let Some(input_path) = args.input.clone() else {
             return Ok(PublicInput::default());
         };
         let file_content = fs::read_to_string(input_path)?;
