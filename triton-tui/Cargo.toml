@@ -39,3 +39,7 @@ triton-vm = { path = "../triton-vm" }
 
 [dev-dependencies]
 assert2 = "0.3"
+
+[[bin]]
+name = "triton-tui"
+path = "src/main.rs"
