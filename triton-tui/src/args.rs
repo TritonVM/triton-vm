@@ -18,6 +18,10 @@ pub(crate) struct Args {
     /// path to program to run
     pub program_path: String,
 
+    #[arg(short, long, value_name = "PATH")]
+    /// path to public input file
+    pub input_path: Option<String>,
+
     #[arg(
         short,
         long,

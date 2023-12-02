@@ -23,7 +23,6 @@ use super::Frame;
 pub(crate) struct Home {
     args: Args,
     program: Program,
-    public_input: PublicInput,
     non_determinism: NonDeterminism<BFieldElement>,
     vm_state: VMState,
     error: Option<InstructionError>,
@@ -32,15 +31,14 @@ pub(crate) struct Home {
 impl Home {
     pub fn new(args: Args) -> Result<Self> {
         let program = Self::program_from_args(&args)?;
+        let public_input = Self::public_input_from_args(&args)?;
 
-        let public_input = PublicInput::default();
         let non_determinism = NonDeterminism::default();
         let vm_state = VMState::new(&program, public_input.clone(), non_determinism.clone());
 
         let home = Self {
             args,
             program,
-            public_input,
             non_determinism,
             vm_state,
             error: None,
@@ -53,6 +51,20 @@ impl Home {
         let program = Program::from_code(&source_code)
             .map_err(|err| anyhow!("program parsing error: {err}"))?;
         Ok(program)
+    }
+
+    fn public_input_from_args(args: &Args) -> Result<PublicInput> {
+        let Some(input_path) = args.input_path.clone() else {
+            return Ok(PublicInput::default());
+        };
+        let file_content = fs::read_to_string(input_path)?;
+        let string_tokens = file_content.split_whitespace();
+        let mut elements = vec![];
+        for string_token in string_tokens {
+            let element = string_token.parse::<u64>()?;
+            elements.push(element.into());
+        }
+        Ok(PublicInput::new(elements))
     }
 
     fn vm_has_stopped(&self) -> bool {
@@ -108,11 +120,8 @@ impl Home {
 
     fn program_reset(&mut self) -> Result<()> {
         self.program = Self::program_from_args(&self.args)?;
-        self.vm_state = VMState::new(
-            &self.program,
-            self.public_input.clone(),
-            self.non_determinism.clone(),
-        );
+        let public_input = Self::public_input_from_args(&self.args)?;
+        self.vm_state = VMState::new(&self.program, public_input, self.non_determinism.clone());
         self.error = None;
         Ok(())
     }
