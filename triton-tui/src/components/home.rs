@@ -217,7 +217,7 @@ impl Home {
             false => exec_state,
         };
 
-        let address_width = self.address_render_width();
+        let address_width = self.address_render_width().max(2);
         let mut address = 0;
         let mut text = vec![];
         let instruction_pointer = self.vm_state.instruction_pointer;
@@ -225,8 +225,8 @@ impl Home {
         for (line_number, labelled_instruction) in
             self.program.labelled_instructions().into_iter().enumerate()
         {
-            let mut ip_points_here = instruction_pointer == address;
-            ip_points_here &= matches!(labelled_instruction, LabelledInstruction::Instruction(_));
+            let ip_points_here = instruction_pointer == address
+                && matches!(labelled_instruction, LabelledInstruction::Instruction(_));
             if ip_points_here {
                 line_number_of_ip = line_number;
             }
@@ -235,13 +235,13 @@ impl Home {
                 false => Span::from(" "),
             };
             let line_number = match labelled_instruction {
-                LabelledInstruction::Instruction(_) => format!(" {address:>address_width$}"),
-                _ => format!(" {:>address_width$}", ""),
+                LabelledInstruction::Instruction(_) => format!(" {address:>address_width$}  "),
+                LabelledInstruction::Breakpoint => format!("{:>address_width$}  ", "🔴"),
+                _ => " ".into(),
             };
             let line_number = Span::from(line_number).dim();
-            let separator = Span::from("  ");
             let instruction = Span::from(format!("{labelled_instruction}"));
-            let line = Line::from(vec![ip, line_number, separator, instruction]);
+            let line = Line::from(vec![ip, line_number, instruction]);
             text.push(line);
             if let LabelledInstruction::Instruction(instruction) = labelled_instruction {
                 address += instruction.size();
