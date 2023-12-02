@@ -13,27 +13,27 @@ pub(crate) struct Args {
         short,
         long,
         value_name = "PATH",
-        help = "path to program to run",
-        default_value_t = String::from("./program.tasm"),
+        default_value_t = String::from(DEFAULT_PROGRAM_PATH),
     )]
+    /// path to program to run
     pub program_path: String,
 
     #[arg(
         short,
         long,
         value_name = "FLOAT",
-        help = "tick rate, i.e. number of ticks per second",
         default_value_t = DEFAULT_TICK_RATE
     )]
+    /// tick rate, i.e. number of ticks per second
     pub tick_rate: f64,
 
     #[arg(
         short,
         long,
         value_name = "FLOAT",
-        help = "frame rate, i.e. number of frames per second",
         default_value_t = DEFAULT_FRAME_RATE
     )]
+    /// frame rate, i.e. number of frames per second
     pub frame_rate: f64,
 }
 
@@ -41,6 +41,7 @@ impl Default for Args {
     fn default() -> Self {
         Self {
             program_path: DEFAULT_PROGRAM_PATH.into(),
+            input_path: None,
             tick_rate: DEFAULT_TICK_RATE,
             frame_rate: DEFAULT_FRAME_RATE,
         }
