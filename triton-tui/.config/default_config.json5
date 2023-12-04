@@ -10,6 +10,7 @@
             "<s>": "Step",
             "<n>": "Next",
             "<f>": "Finish",
+            "<u>": "Undo",
             "<r>": "Reset",
         },
         "Help": {

@@ -27,6 +27,7 @@ pub(crate) struct Home {
     vm_state: VMState,
     warning: Option<Report>,
     error: Option<InstructionError>,
+    previous_states: Vec<VMState>,
 }
 
 impl Home {
@@ -44,6 +45,7 @@ impl Home {
             vm_state,
             warning: None,
             error: None,
+            previous_states: vec![],
         };
         Ok(home)
     }
@@ -95,6 +97,7 @@ impl Home {
         if self.vm_has_stopped() {
             return;
         }
+        self.warning = None;
         let maybe_error = self.vm_state.step();
         if let Err(err) = maybe_error {
             info!("Error stepping VM: {err}");
@@ -139,7 +142,22 @@ impl Home {
         self.program = maybe_program?;
         let public_input = maybe_public_input?;
         self.vm_state = VMState::new(&self.program, public_input, self.non_determinism.clone());
+        self.previous_states = vec![];
         Ok(())
+    }
+
+    fn record_undo_information(&mut self) {
+        self.previous_states.push(self.vm_state.clone())
+    }
+
+    fn program_undo(&mut self) {
+        let Some(previous_state) = self.previous_states.pop() else {
+            self.warning = Some(anyhow!("no more undo information available"));
+            return;
+        };
+        self.warning = None;
+        self.error = None;
+        self.vm_state = previous_state;
     }
 
     fn address_render_width(&self) -> usize {
@@ -417,10 +435,23 @@ impl Home {
 impl Component for Home {
     fn update(&mut self, action: Action) -> Result<Option<Action>> {
         match action {
-            Action::ProgramContinue => self.program_continue(),
-            Action::ProgramStep => self.program_step(),
-            Action::ProgramNext => self.program_next(),
-            Action::ProgramFinish => self.program_finish(),
+            Action::ProgramContinue => {
+                self.record_undo_information();
+                self.program_continue();
+            }
+            Action::ProgramStep => {
+                self.record_undo_information();
+                self.program_step();
+            }
+            Action::ProgramNext => {
+                self.record_undo_information();
+                self.program_next();
+            }
+            Action::ProgramFinish => {
+                self.record_undo_information();
+                self.program_finish();
+            }
+            Action::ProgramUndo => self.program_undo(),
             Action::ProgramReset => self.program_reset()?,
             _ => {}
         }

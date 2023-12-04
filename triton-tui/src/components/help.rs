@@ -20,6 +20,7 @@ impl Component for Help {
             Help::help_line("s", "step"),
             Help::help_line("n", "next – steps over `call`s"),
             Help::help_line("f", "finish – steps out of current `call`"),
+            Help::help_line("u", "undo last command that advanced execution"),
             Help::help_line("r", "reload files, restart Triton VM"),
             String::new(),
             Help::help_line("h", "toggle help"),
