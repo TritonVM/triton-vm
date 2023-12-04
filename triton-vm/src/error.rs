@@ -93,6 +93,9 @@ pub enum InstructionError {
 
     #[error("no more secret digests available")]
     EmptySecretDigestInput,
+
+    #[error("Triton VM has halted an cannot execute any further instructions")]
+    MachineHalted,
 }
 
 #[non_exhaustive]

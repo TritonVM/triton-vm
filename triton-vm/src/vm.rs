@@ -191,6 +191,10 @@ impl VMState {
 
     /// Perform the state transition as a mutable operation on `self`.
     pub fn step(&mut self) -> Result<Vec<CoProcessorCall>> {
+        if self.halting {
+            return Err(MachineHalted);
+        }
+
         let current_instruction = self.current_instruction()?;
         let op_stack_delta = current_instruction.op_stack_size_influence();
         if self.op_stack.would_be_too_shallow(op_stack_delta) {
