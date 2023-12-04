@@ -651,6 +651,8 @@ impl<'a> Arbitrary<'a> for InstructionLabel {
 
 #[cfg(test)]
 mod tests {
+    use assert2::assert;
+    use assert2::let_assert;
     use std::collections::HashMap;
 
     use itertools::Itertools;
@@ -669,6 +671,7 @@ mod tests {
     use crate::triton_asm;
     use crate::triton_program;
     use crate::vm::tests::test_program_for_call_recurse_return;
+    use crate::vm::VMState;
     use crate::NonDeterminism;
     use crate::Program;
 
@@ -733,7 +736,7 @@ mod tests {
         for instruction in Instruction::iter() {
             let expected_opcode = instruction.computed_opcode();
             let opcode = instruction.opcode();
-            assert_eq!(expected_opcode, opcode, "{instruction}");
+            assert!(expected_opcode == opcode, "{instruction}");
         }
     }
 
@@ -754,10 +757,7 @@ mod tests {
         let all_opcodes = Instruction::iter().map(|instruction| instruction.opcode());
         let highest_opcode = all_opcodes.max().unwrap();
         let num_required_bits_for_highest_opcode = highest_opcode.ilog2() + 1;
-        assert_eq!(
-            InstructionBit::COUNT,
-            num_required_bits_for_highest_opcode as usize
-        );
+        assert!(InstructionBit::COUNT == num_required_bits_for_highest_opcode as usize);
     }
 
     #[test]
@@ -771,7 +771,7 @@ mod tests {
             Pop(N2),
         ];
 
-        assert_eq!(expected, instructions);
+        assert!(expected == instructions);
     }
 
     #[test]
@@ -800,7 +800,7 @@ mod tests {
     #[test]
     fn instruction_to_opcode_to_instruction_is_consistent() {
         for instr in ALL_INSTRUCTIONS {
-            assert_eq!(instr, instr.opcode().try_into().unwrap());
+            assert!(instr == instr.opcode().try_into().unwrap());
         }
     }
 
@@ -852,8 +852,8 @@ mod tests {
     fn instruction_size_is_consistent_with_having_arguments() {
         for instruction in Instruction::iter() {
             match instruction.has_arg() {
-                true => assert_eq!(2, instruction.size()),
-                false => assert_eq!(1, instruction.size()),
+                true => assert!(2 == instruction.size()),
+                false => assert!(1 == instruction.size()),
             }
         }
     }
@@ -864,10 +864,7 @@ mod tests {
         for instruction in Instruction::iter() {
             let opcode = instruction.opcode();
             println!("Testing instruction {instruction} with opcode {opcode}.");
-            assert_eq!(
-                instruction.has_arg(),
-                opcode & argument_indicator_bit_mask != 0
-            );
+            assert!(instruction.has_arg() == (opcode & argument_indicator_bit_mask != 0));
         }
     }
 
@@ -878,9 +875,8 @@ mod tests {
             let instruction = instruction.replace_default_argument_if_illegal();
             let opcode = instruction.opcode();
             println!("Testing instruction {instruction} with opcode {opcode}.");
-            assert_eq!(
-                instruction.shrinks_op_stack(),
-                opcode & shrink_stack_indicator_bit_mask != 0
+            assert!(
+                instruction.shrinks_op_stack() == (opcode & shrink_stack_indicator_bit_mask != 0)
             );
         }
     }
@@ -891,10 +887,7 @@ mod tests {
         for instruction in Instruction::iter() {
             let opcode = instruction.opcode();
             println!("Testing instruction {instruction} with opcode {opcode}.");
-            assert_eq!(
-                instruction.is_u32_instruction(),
-                opcode & u32_indicator_bit_mask != 0
-            );
+            assert!(instruction.is_u32_instruction() == (opcode & u32_indicator_bit_mask != 0));
         }
     }
 
@@ -904,7 +897,7 @@ mod tests {
             println!("Testing instruction bit {instruction_bit}.");
             let bit_index = usize::from(instruction_bit);
             let recovered_instruction_bit = InstructionBit::try_from(bit_index).unwrap();
-            assert_eq!(instruction_bit, recovered_instruction_bit);
+            assert!(instruction_bit == recovered_instruction_bit);
         }
     }
 
@@ -932,9 +925,8 @@ mod tests {
 
             let stack_size_difference = (stack_size_after_test_instruction as i32)
                 - (stack_size_before_test_instruction as i32);
-            assert_eq!(
-                test_instruction.op_stack_size_influence(),
-                stack_size_difference,
+            assert!(
+                test_instruction.op_stack_size_influence() == stack_size_difference,
                 "{test_instruction}"
             );
         }
@@ -977,42 +969,33 @@ mod tests {
         let non_determinism: NonDeterminism<_> = vec![BFIELD_ZERO].into();
         let non_determinism = non_determinism.with_digests(mock_digests);
 
-        let terminal_state = program
-            .terminal_state(public_input, non_determinism)
-            .unwrap();
-        terminal_state.op_stack.stack.len()
+        let mut vm_state = VMState::new(&program, public_input, non_determinism);
+        let_assert!(Ok(()) = vm_state.run());
+        vm_state.op_stack.stack.len()
     }
 
     #[test]
     fn labelled_instructions_act_on_op_stack_as_indicated() {
-        for test_instruction in all_instructions_without_args() {
-            let labelled_instruction =
-                test_instruction.map_call_address(|_| "dummy_label".to_string());
+        for instruction in all_instructions_without_args() {
+            let labelled_instruction = instruction.map_call_address(|_| "dummy_label".to_string());
             let labelled_instruction = LabelledInstruction::Instruction(labelled_instruction);
 
-            assert_eq!(
-                test_instruction.op_stack_size_influence(),
-                labelled_instruction.op_stack_size_influence()
+            assert!(
+                instruction.op_stack_size_influence()
+                    == labelled_instruction.op_stack_size_influence()
             );
-            assert_eq!(
-                test_instruction.grows_op_stack(),
-                labelled_instruction.grows_op_stack()
+            assert!(instruction.grows_op_stack() == labelled_instruction.grows_op_stack());
+            assert!(
+                instruction.changes_op_stack_size() == labelled_instruction.changes_op_stack_size()
             );
-            assert_eq!(
-                test_instruction.changes_op_stack_size(),
-                labelled_instruction.changes_op_stack_size()
-            );
-            assert_eq!(
-                test_instruction.shrinks_op_stack(),
-                labelled_instruction.shrinks_op_stack()
-            );
+            assert!(instruction.shrinks_op_stack() == labelled_instruction.shrinks_op_stack());
         }
     }
 
     #[test]
     fn labels_indicate_no_change_to_op_stack() {
         let labelled_instruction = LabelledInstruction::Label("dummy_label".to_string());
-        assert_eq!(0, labelled_instruction.op_stack_size_influence());
+        assert!(0 == labelled_instruction.op_stack_size_influence());
         assert!(!labelled_instruction.grows_op_stack());
         assert!(!labelled_instruction.changes_op_stack_size());
         assert!(!labelled_instruction.shrinks_op_stack());

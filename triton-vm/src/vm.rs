@@ -900,6 +900,14 @@ impl VMState {
             (sibling_digest, known_digest)
         }
     }
+
+    /// Run Triton VM on this state to completion, or until an error occurs.
+    pub fn run(&mut self) -> Result<()> {
+        while !self.halting {
+            self.step()?;
+        }
+        Ok(())
+    }
 }
 
 impl Display for VMState {
@@ -1961,8 +1969,9 @@ pub(crate) mod tests {
             write_io 5 write_io 5 write_io 4
             halt
         );
-        let_assert!(Ok(terminal_state) = program.terminal_state([].into(), [].into()));
-        assert!(BFIELD_ZERO == terminal_state.op_stack.peek_at(ST0));
+        let mut vm_state = VMState::new(&program, [].into(), [].into());
+        let_assert!(Ok(()) = vm_state.run());
+        assert!(BFIELD_ZERO == vm_state.op_stack.peek_at(ST0));
     }
 
     #[test]
@@ -1993,11 +2002,12 @@ pub(crate) mod tests {
             halt
         );
 
-        let_assert!(Ok(terminal_state) = program.terminal_state([].into(), [].into()));
-        assert!(BFieldElement::new(4) == terminal_state.op_stack.peek_at(ST0));
-        assert!(BFieldElement::new(7) == terminal_state.op_stack.peek_at(ST1));
-        assert!(BFieldElement::new(14) == terminal_state.op_stack.peek_at(ST2));
-        assert!(BFieldElement::new(18) == terminal_state.op_stack.peek_at(ST3));
+        let mut vm_state = VMState::new(&program, [].into(), [].into());
+        let_assert!(Ok(()) = vm_state.run());
+        assert!(BFieldElement::new(4) == vm_state.op_stack.peek_at(ST0));
+        assert!(BFieldElement::new(7) == vm_state.op_stack.peek_at(ST1));
+        assert!(BFieldElement::new(14) == vm_state.op_stack.peek_at(ST2));
+        assert!(BFieldElement::new(18) == vm_state.op_stack.peek_at(ST3));
     }
 
     #[test]
@@ -2025,10 +2035,11 @@ pub(crate) mod tests {
             halt
         );
 
-        let_assert!(Ok(terminal_state) = program.terminal_state([].into(), [].into()));
-        assert!(BFieldElement::new(2) == terminal_state.op_stack.peek_at(ST0));
-        assert!(BFieldElement::new(5) == terminal_state.op_stack.peek_at(ST1));
-        assert!(BFieldElement::new(5) == terminal_state.op_stack.peek_at(ST2));
+        let mut vm_state = VMState::new(&program, [].into(), [].into());
+        let_assert!(Ok(()) = vm_state.run());
+        assert!(BFieldElement::new(2) == vm_state.op_stack.peek_at(ST0));
+        assert!(BFieldElement::new(5) == vm_state.op_stack.peek_at(ST1));
+        assert!(BFieldElement::new(5) == vm_state.op_stack.peek_at(ST2));
     }
 
     #[test]

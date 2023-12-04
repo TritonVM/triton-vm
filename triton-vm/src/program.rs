@@ -395,42 +395,20 @@ impl Program {
     /// If an error is encountered, the returned [`VMError`] contains the [`VMState`] at the point
     /// of execution failure.
     ///
-    /// See also [`trace_execution`][trace_execution], [`terminal_state`][terminal_state], and
-    /// [`profile`][profile].
+    /// See also [`trace_execution`][trace_execution] and [`profile`][profile].
     ///
     /// [trace_execution]: Self::trace_execution
-    /// [terminal_state]: Self::terminal_state
     /// [profile]: Self::profile
     pub fn run(
         &self,
         public_input: PublicInput,
         non_determinism: NonDeterminism<BFieldElement>,
     ) -> Result<Vec<BFieldElement>> {
-        let terminal_state = self.terminal_state(public_input, non_determinism)?;
-        Ok(terminal_state.public_output)
-    }
-
-    /// Similar to [`run`][run], but returns the entire [`VMState`] instead of just the public
-    /// output.
-    ///
-    /// See also [`trace_execution`][trace_execution] and [`profile`][profile].
-    ///
-    /// [run]: Self::run
-    /// [trace_execution]: Self::trace_execution
-    /// [profile]: Self::profile
-    pub fn terminal_state(
-        &self,
-        public_input: PublicInput,
-        non_determinism: NonDeterminism<BFieldElement>,
-    ) -> Result<VMState> {
         let mut state = VMState::new(self, public_input, non_determinism);
-        while !state.halting {
-            let maybe_error = state.step();
-            if let Err(err) = maybe_error {
-                return Err(VMError::new(err, state));
-            }
+        if let Err(err) = state.run() {
+            return Err(VMError::new(err, state));
         }
-        Ok(state)
+        Ok(state.public_output)
     }
 
     /// Trace the execution of a [`Program`]. That is, [`run`][run] the [`Program`] and additionally
@@ -439,11 +417,9 @@ impl Program {
     /// 1. an [`AlgebraicExecutionTrace`], and
     /// 1. the output of the program.
     ///
-    /// See also [`run`][run], [`terminal_state`][terminal_state], and
-    /// [`profile`][profile].
+    /// See also [`run`][run] and [`profile`][profile].
     ///
     /// [run]: Self::run
-    /// [terminal_state]: Self::terminal_state
     /// [profile]: Self::profile
     pub fn trace_execution(
         &self,
@@ -474,12 +450,10 @@ impl Program {
     /// in each callable block of instructions. This function returns a Result wrapping a program
     /// profiler report, which is a Vec of [`ProfileLine`]s.
     ///
-    /// See also [`run`][run], [`trace_execution`][trace_execution], and
-    /// [`terminal_state`][terminal_state].
+    /// See also [`run`][run] and [`trace_execution`][trace_execution].
     ///
     /// [run]: Self::run
     /// [trace_execution]: Self::trace_execution
-    /// [terminal_state]: Self::terminal_state
     pub fn profile(
         &self,
         public_input: PublicInput,
@@ -786,6 +760,7 @@ where
 
 #[cfg(test)]
 mod tests {
+    use assert2::assert;
     use assert2::let_assert;
     use itertools::Itertools;
     use proptest::prelude::*;
@@ -861,7 +836,7 @@ mod tests {
         .map(BFieldElement::new);
         let expected_digest = Digest::new(expected_digest);
 
-        assert_eq!(expected_digest, digest);
+        assert!(expected_digest == digest);
     }
 
     #[test]
@@ -875,15 +850,15 @@ mod tests {
         let tokens = thread_rng().gen::<[BFieldElement; 12]>().to_vec();
         let public_input = PublicInput::new(tokens.clone());
 
-        assert_eq!(public_input, tokens.clone().into());
-        assert_eq!(public_input, (&tokens).into());
-        assert_eq!(public_input, tokens[..].into());
-        assert_eq!(public_input, (&tokens[..]).into());
+        assert!(public_input == tokens.clone().into());
+        assert!(public_input == (&tokens).into());
+        assert!(public_input == tokens[..].into());
+        assert!(public_input == (&tokens[..]).into());
 
         let tokens = tokens.into_iter().map(|e| e.value()).collect_vec();
-        assert_eq!(public_input, tokens.into());
+        assert!(public_input == tokens.into());
 
-        assert_eq!(PublicInput::new(vec![]), [].into());
+        assert!(PublicInput::new(vec![]) == [].into());
     }
 
     #[test]
@@ -891,15 +866,15 @@ mod tests {
         let tokens = thread_rng().gen::<[BFieldElement; 12]>().to_vec();
         let non_determinism = NonDeterminism::new(tokens.clone());
 
-        assert_eq!(non_determinism, tokens.clone().into());
-        assert_eq!(non_determinism, tokens[..].into());
-        assert_eq!(non_determinism, (&tokens[..]).into());
+        assert!(non_determinism == tokens.clone().into());
+        assert!(non_determinism == tokens[..].into());
+        assert!(non_determinism == (&tokens[..]).into());
 
         let tokens = tokens.into_iter().map(|e| e.value()).collect_vec();
-        assert_eq!(non_determinism, tokens.into());
+        assert!(non_determinism == tokens.into());
 
-        assert_eq!(NonDeterminism::<u64>::new(vec![]), [].into());
-        assert_eq!(NonDeterminism::<BFieldElement>::new(vec![]), [].into());
+        assert!(NonDeterminism::<u64>::new(vec![]) == [].into());
+        assert!(NonDeterminism::<BFieldElement>::new(vec![]) == [].into());
     }
 
     #[test]
@@ -924,7 +899,7 @@ mod tests {
         );
         let program_from_code = Program::from_code(&source_code).unwrap();
         let program_from_macro = triton_program!({ source_code });
-        assert_eq!(program_from_code, program_from_macro);
+        assert!(program_from_code == program_from_macro);
     }
 
     #[test]
@@ -940,12 +915,10 @@ mod tests {
     fn test_profile() {
         let program = CALCULATE_NEW_MMR_PEAKS_FROM_APPEND_WITH_SAFE_LISTS.clone();
         let (profile_output, profile) = program.profile([].into(), [].into()).unwrap();
-        let terminal_state = program.terminal_state([].into(), [].into()).unwrap();
-        assert_eq!(profile_output, terminal_state.public_output);
-        assert_eq!(
-            profile.last().unwrap().cycle_count(),
-            terminal_state.cycle_count
-        );
+        let mut vm_state = VMState::new(&program, [].into(), [].into());
+        let_assert!(Ok(()) = vm_state.run());
+        assert!(profile_output == vm_state.public_output);
+        assert!(profile.last().unwrap().cycle_count() == vm_state.cycle_count);
 
         println!("Profile of Tasm Program:");
         for line in profile {
