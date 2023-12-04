@@ -222,9 +222,14 @@ impl Home {
         let mut text = vec![];
         let instruction_pointer = self.vm_state.instruction_pointer;
         let mut line_number_of_ip = 0;
+        let mut is_breakpoint = false;
         for (line_number, labelled_instruction) in
             self.program.labelled_instructions().into_iter().enumerate()
         {
+            if labelled_instruction == LabelledInstruction::Breakpoint {
+                is_breakpoint = true;
+                continue;
+            }
             let ip_points_here = instruction_pointer == address
                 && matches!(labelled_instruction, LabelledInstruction::Instruction(_));
             if ip_points_here {
@@ -234,18 +239,20 @@ impl Home {
                 true => Span::from("→").bold(),
                 false => Span::from(" "),
             };
-            let line_number = match labelled_instruction {
-                LabelledInstruction::Instruction(_) => format!(" {address:>address_width$}  "),
-                LabelledInstruction::Breakpoint => format!("{:>address_width$}  ", "🔴"),
-                _ => " ".into(),
+            let mut gutter_item = match is_breakpoint {
+                true => format!("{:>address_width$}  ", "🔴").into(),
+                false => format!(" {address:>address_width$}  ").dim(),
             };
-            let line_number = Span::from(line_number).dim();
+            if let LabelledInstruction::Label(_) = labelled_instruction {
+                gutter_item = " ".into();
+            }
             let instruction = Span::from(format!("{labelled_instruction}"));
-            let line = Line::from(vec![ip, line_number, instruction]);
+            let line = Line::from(vec![ip, gutter_item, instruction]);
             text.push(line);
             if let LabelledInstruction::Instruction(instruction) = labelled_instruction {
                 address += instruction.size();
             }
+            is_breakpoint = false;
         }
 
         let border_set = symbols::border::Set {
