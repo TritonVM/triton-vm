@@ -5,7 +5,7 @@ use crate::utils::version;
 const DEFAULT_PROGRAM_PATH: &str = "./program.tasm";
 const DEFAULT_FRAME_RATE: f64 = 32.0;
 
-#[derive(Parser, Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Parser)]
 #[command(author, version = version(), about)]
 pub(crate) struct Args {
     #[arg(
@@ -48,10 +48,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn default_cli_and_clap_default_parsing_produce_same_values() {
+    fn default_cli_args_and_clap_parsing_with_no_args_are_identical() {
         let cli_args: Vec<String> = vec![];
         let args = Args::parse_from(cli_args);
-        assert!(DEFAULT_PROGRAM_PATH == args.program);
-        assert!(DEFAULT_FRAME_RATE == args.frame_rate);
+        assert!(Args::default() == args);
     }
 }
