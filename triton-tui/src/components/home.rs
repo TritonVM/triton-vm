@@ -1,5 +1,4 @@
-use color_eyre::eyre::anyhow;
-use color_eyre::eyre::Result;
+use color_eyre::eyre::*;
 use fs_err as fs;
 use itertools::Itertools;
 use ratatui::prelude::*;
@@ -26,6 +25,7 @@ pub(crate) struct Home {
     program: Program,
     non_determinism: NonDeterminism<BFieldElement>,
     vm_state: VMState,
+    warning: Option<Report>,
     error: Option<InstructionError>,
 }
 
@@ -42,6 +42,7 @@ impl Home {
             program,
             non_determinism,
             vm_state,
+            warning: None,
             error: None,
         };
         Ok(home)
@@ -120,10 +121,24 @@ impl Home {
     }
 
     fn program_reset(&mut self) -> Result<()> {
-        self.program = Self::program_from_args(&self.args)?;
-        let public_input = Self::public_input_from_args(&self.args)?;
-        self.vm_state = VMState::new(&self.program, public_input, self.non_determinism.clone());
+        self.warning = None;
         self.error = None;
+
+        let maybe_program = Self::program_from_args(&self.args);
+        if let Err(report) = maybe_program {
+            self.warning = Some(report);
+            return Ok(());
+        }
+
+        let maybe_public_input = Self::public_input_from_args(&self.args);
+        if let Err(report) = maybe_public_input {
+            self.warning = Some(report);
+            return Ok(());
+        }
+
+        self.program = maybe_program?;
+        let public_input = maybe_public_input?;
+        self.vm_state = VMState::new(&self.program, public_input, self.non_determinism.clone());
         Ok(())
     }
 
@@ -208,14 +223,17 @@ impl Home {
         let cycle_count = self.vm_state.cycle_count;
         let title = format!(" Program (cycle: {cycle_count:>5}) ");
         let title = Title::from(title).alignment(Alignment::Left);
-        let exec_state = match self.vm_state.halting {
-            true => Title::from(" HALT ".bold().green()),
-            false => Title::from(""),
-        };
-        let exec_state = match self.error.is_some() {
-            true => Title::from(" ERROR ".bold().red()),
-            false => exec_state,
-        };
+
+        let mut exec_state = Title::default();
+        if self.vm_state.halting {
+            exec_state = Title::from(" HALT ".bold().green());
+        }
+        if self.warning.is_some() {
+            exec_state = Title::from(" WARNING ".bold().yellow());
+        }
+        if self.error.is_some() {
+            exec_state = Title::from(" ERROR ".bold().red());
+        }
 
         let address_width = self.address_render_width().max(2);
         let mut address = 0;
@@ -357,6 +375,9 @@ impl Home {
         if let Some(message) = self.maybe_render_public_output() {
             line = message;
         }
+        if let Some(message) = self.maybe_render_warning_message() {
+            line = message;
+        }
         if let Some(message) = self.maybe_render_error_message() {
             line = message;
         }
@@ -379,6 +400,13 @@ impl Home {
         let output = Span::from(output);
         let footer = Span::from("]");
         Some(Line::from(vec![header, colon, output, footer]))
+    }
+
+    fn maybe_render_warning_message(&self) -> Option<Line> {
+        let Some(ref warning) = self.warning else {
+            return None;
+        };
+        Some(Line::from(warning.to_string()))
     }
 
     fn maybe_render_error_message(&self) -> Option<Line> {
