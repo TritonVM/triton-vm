@@ -26,6 +26,8 @@ pub(crate) fn io() -> IO {
     std::io::stdout()
 }
 
+const DEFAULT_TICK_RATE: f64 = 1.0;
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub(crate) enum Event {
     Init,
@@ -57,7 +59,7 @@ pub(crate) struct Tui {
 
 impl Tui {
     pub fn new() -> Result<Self> {
-        let tick_rate = Args::default().tick_rate;
+        let tick_rate = DEFAULT_TICK_RATE;
         let frame_rate = Args::default().frame_rate;
         let terminal = Terminal::new(Backend::new(io()))?;
         let (event_tx, event_rx) = unbounded_channel();
@@ -77,15 +79,9 @@ impl Tui {
     }
 
     pub fn apply_args(&mut self, args: &Args) -> &mut Self {
-        self.tick_rate(args.tick_rate);
         self.frame_rate(args.frame_rate);
         self.mouse(true);
         self.paste(true);
-        self
-    }
-
-    pub fn tick_rate(&mut self, tick_rate: f64) -> &mut Self {
-        self.tick_rate = tick_rate;
         self
     }
 

@@ -3,7 +3,6 @@ use clap::Parser;
 use crate::utils::version;
 
 const DEFAULT_PROGRAM_PATH: &str = "./program.tasm";
-const DEFAULT_TICK_RATE: f64 = 1.0;
 const DEFAULT_FRAME_RATE: f64 = 32.0;
 
 #[derive(Parser, Debug, Clone)]
@@ -26,15 +25,6 @@ pub(crate) struct Args {
         short,
         long,
         value_name = "FLOAT",
-        default_value_t = DEFAULT_TICK_RATE
-    )]
-    /// tick rate, i.e. number of ticks per second
-    pub tick_rate: f64,
-
-    #[arg(
-        short,
-        long,
-        value_name = "FLOAT",
         default_value_t = DEFAULT_FRAME_RATE
     )]
     /// frame rate, i.e. number of frames per second
@@ -46,7 +36,6 @@ impl Default for Args {
         Self {
             program: DEFAULT_PROGRAM_PATH.into(),
             input: None,
-            tick_rate: DEFAULT_TICK_RATE,
             frame_rate: DEFAULT_FRAME_RATE,
         }
     }
@@ -63,7 +52,6 @@ mod tests {
         let cli_args: Vec<String> = vec![];
         let args = Args::parse_from(cli_args);
         assert!(DEFAULT_PROGRAM_PATH == args.program);
-        assert!(DEFAULT_TICK_RATE == args.tick_rate);
         assert!(DEFAULT_FRAME_RATE == args.frame_rate);
     }
 }
