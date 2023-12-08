@@ -14,10 +14,10 @@ use nom::multi::*;
 use nom::Finish;
 use nom::IResult;
 
-use crate::instruction::AnInstruction;
 use crate::instruction::AnInstruction::*;
 use crate::instruction::LabelledInstruction;
 use crate::instruction::ALL_INSTRUCTION_NAMES;
+use crate::instruction::*;
 use crate::op_stack::NumberOfWords;
 use crate::op_stack::NumberOfWords::*;
 use crate::op_stack::OpStackElement;
@@ -37,6 +37,7 @@ pub enum InstructionToken<'a> {
     Instruction(AnInstruction<String>, &'a str),
     Label(String, &'a str),
     Breakpoint(&'a str),
+    TypeHint(TypeHint, &'a str),
 }
 
 impl<'a> Display for ParseError<'a> {
@@ -53,6 +54,7 @@ impl<'a> InstructionToken<'a> {
             InstructionToken::Instruction(_, token_str) => token_str,
             InstructionToken::Label(_, token_str) => token_str,
             InstructionToken::Breakpoint(token_str) => token_str,
+            InstructionToken::TypeHint(_, token_str) => token_str,
         }
     }
 
@@ -62,6 +64,7 @@ impl<'a> InstructionToken<'a> {
             Instruction(instr, _) => LabelledInstruction::Instruction(instr.to_owned()),
             Label(label, _) => LabelledInstruction::Label(label.to_owned()),
             Breakpoint(_) => LabelledInstruction::Breakpoint,
+            TypeHint(type_hint, _) => LabelledInstruction::TypeHint(type_hint.to_owned()),
         }
     }
 }
@@ -180,7 +183,7 @@ type ParseResult<'input, Out> = IResult<&'input str, Out, VerboseError<&'input s
 
 pub fn tokenize(s: &str) -> ParseResult<Vec<InstructionToken>> {
     let (s, _) = comment_or_whitespace0(s)?;
-    let (s, instructions) = many0(alt((label, labelled_instruction, breakpoint)))(s)?;
+    let (s, instructions) = many0(alt((label, labelled_instruction, breakpoint, type_hint)))(s)?;
     let (s, _) = context("expecting label, instruction or eof", eof)(s)?;
 
     Ok((s, instructions))
@@ -193,7 +196,7 @@ fn labelled_instruction(s_instr: &str) -> ParseResult<InstructionToken> {
 
 fn label(label_s: &str) -> ParseResult<InstructionToken> {
     let (s, addr) = label_addr(label_s)?;
-    let (s, _) = token0("")(s)?; // whitespace between label and ':' is allowed
+    let (s, _) = whitespace0(s)?; // whitespace between label and ':' is allowed
     let (s, _) = token0(":")(s)?; // don't require space after ':'
 
     // Checking if `<label>:` is an instruction must happen after parsing `:`, since otherwise
@@ -523,7 +526,7 @@ fn is_label_start_char(c: char) -> bool {
 }
 
 fn is_label_char(c: char) -> bool {
-    c.is_alphanumeric() || c == '_' || c == '-'
+    is_label_start_char(c) || c.is_numeric() || c == '-'
 }
 
 /// Parse 0 or more comments and/or whitespace.
@@ -549,6 +552,12 @@ fn comment_or_whitespace1<'a>(s: &'a str) -> ParseResult<&'a str> {
 fn comment1(s: &str) -> ParseResult<()> {
     let (s, _) = tag("//")(s)?;
     let (s, _) = take_while(|c| !is_linebreak(c))(s)?;
+    Ok((s, ()))
+}
+
+/// Parse whitespace characters (can be none)
+fn whitespace0(s: &str) -> ParseResult<()> {
+    let (s, _) = take_while(|c: char| c.is_whitespace())(s)?;
     Ok((s, ()))
 }
 
@@ -578,6 +587,81 @@ fn token1<'a>(token: &'a str) -> impl Fn(&'a str) -> ParseResult<()> {
         let (s, _) = tag(token)(s)?;
         let (s, _) = comment_or_whitespace1(s)?;
         Ok((s, ()))
+    }
+}
+
+/// Parse one type hint.
+///
+/// Type hints look like this:
+/// `hint <variable_name>: <type_name> = stack\[<range_start>[..<range_end>]\]`
+fn type_hint(s_type_hint: &str) -> ParseResult<InstructionToken> {
+    let (s, _) = token1("hint")(s_type_hint)?;
+    let (s, variable_name_start) = take_while1(is_type_hint_variable_name_start_character)(s)?;
+    let (s, variable_name_end) = take_while(is_type_hint_variable_name_character)(s)?;
+    let (s, _) = whitespace0(s)?;
+    let (s, _) = token0(":")(s)?;
+    let (s, type_name_start) = take_while1(is_type_hint_type_name_start_character)(s)?;
+    let (s, type_name_end) = take_while(is_type_hint_type_name_character)(s)?;
+    let (s, _) = whitespace0(s)?;
+    let (s, _) = token0("=")(s)?;
+    let (s, _) = token0("stack[")(s)?;
+    let (s, range_start) = take_while(|c: char| c.is_numeric())(s)?;
+    let (_, range_start) = parse_str_to_usize(range_start)?;
+
+    let (s, _) = whitespace0(s)?;
+    let (s, maybe_range_end) = match token0("..")(s) {
+        Ok((s, _)) => {
+            let (s, range_end) = take_while(|c: char| c.is_numeric())(s)?;
+            let (_, range_end) = parse_str_to_usize(range_end)?;
+            (s, Some(range_end))
+        }
+        Err(_) => (s, None),
+    };
+    let (s, _) = whitespace0(s)?;
+    let (s, _) = token0("]")(s)?;
+    let (s, _) = token0(";")(s)?;
+
+    let variable_name = format!("{}{}", variable_name_start, variable_name_end);
+    let type_name = format!("{}{}", type_name_start, type_name_end);
+
+    let length = match maybe_range_end {
+        Some(range_end) if range_end <= range_start => {
+            return cut(context("range end must be greater than range start", fail))(s)
+        }
+        Some(range_end) => range_end - range_start,
+        None => 1,
+    };
+
+    let type_hint = TypeHint {
+        starting_index: range_start,
+        length,
+        type_name,
+        variable_name,
+    };
+
+    Ok((s, InstructionToken::TypeHint(type_hint, s_type_hint)))
+}
+
+fn is_type_hint_variable_name_start_character(c: char) -> bool {
+    (c.is_alphabetic() && c.is_lowercase()) || c == '_'
+}
+
+fn is_type_hint_variable_name_character(c: char) -> bool {
+    is_type_hint_variable_name_start_character(c) || c.is_numeric()
+}
+
+fn is_type_hint_type_name_start_character(c: char) -> bool {
+    c.is_alphabetic()
+}
+
+fn is_type_hint_type_name_character(c: char) -> bool {
+    is_type_hint_type_name_start_character(c) || c.is_numeric() || c == '_'
+}
+
+fn parse_str_to_usize(s: &str) -> ParseResult<usize> {
+    match s.parse::<usize>() {
+        Ok(u) => Ok((s, u)),
+        Err(_) => cut(context("integer conversion failure", fail))(s),
     }
 }
 
