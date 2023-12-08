@@ -65,7 +65,7 @@ pub enum LabelledInstruction {
 /// Usually constructed by parsing special annotations in the assembly code, for example:
 /// ```tasm
 /// hint variable_name: the_type = stack[0];
-/// hint my_list: list = stack[1..4];
+/// hint my_list = stack[1..4];
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq, Hash, GetSize, Serialize, Deserialize)]
 pub struct TypeHint {
@@ -73,7 +73,7 @@ pub struct TypeHint {
     pub length: usize,
 
     /// The name of the type, _e.g._, `u32`, `list`, `Digest`, et cetera.
-    pub type_name: String,
+    pub type_name: Option<String>,
 
     /// The name of the variable.
     pub variable_name: String,
@@ -82,7 +82,10 @@ pub struct TypeHint {
 impl Display for TypeHint {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         let variable = &self.variable_name;
-        let type_name = &self.type_name;
+        let type_name = match self.type_name {
+            Some(ref type_name) => format!(": {type_name}"),
+            None => "".to_string(),
+        };
 
         let start = self.starting_index;
         let range = match self.length {
@@ -90,7 +93,7 @@ impl Display for TypeHint {
             _ => format!("{start}..{end}", end = start + self.length),
         };
 
-        write!(f, "hint {variable}: {type_name} = stack[{range}];")
+        write!(f, "hint {variable}{type_name} = stack[{range}];")
     }
 }
 
@@ -98,14 +101,17 @@ impl<'a> Arbitrary<'a> for TypeHint {
     fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
         let starting_index = u.arbitrary()?;
         let length = u.int_in_range(1..=500)?;
-        let type_name = u.arbitrary::<TypeHintTypeName>()?;
-        let variable_name = u.arbitrary::<TypeHintVariableName>()?;
+        let type_name = match u.arbitrary()? {
+            true => Some(u.arbitrary::<TypeHintTypeName>()?.into()),
+            false => None,
+        };
+        let variable_name = u.arbitrary::<TypeHintVariableName>()?.into();
 
         let type_hint = Self {
             starting_index,
             length,
-            type_name: type_name.into(),
-            variable_name: variable_name.into(),
+            type_name,
+            variable_name,
         };
         Ok(type_hint)
     }

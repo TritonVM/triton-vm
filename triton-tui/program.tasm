@@ -7,7 +7,7 @@
 push 3
 
 // current stack can be annotated to help debugging
-hint loop_counter: bfe = stack[0];
+hint loop_counter = stack[0];
 
 call my_loop
 

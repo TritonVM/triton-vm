@@ -593,16 +593,28 @@ fn token1<'a>(token: &'a str) -> impl Fn(&'a str) -> ParseResult<()> {
 /// Parse one type hint.
 ///
 /// Type hints look like this:
-/// `hint <variable_name>: <type_name> = stack\[<range_start>[..<range_end>]\]`
+///
+/// ```text
+/// hint <variable_name>[: <type_name>] = stack\[<range_start>[..<range_end>]\]
+/// ```
 fn type_hint(s_type_hint: &str) -> ParseResult<InstructionToken> {
     let (s, _) = token1("hint")(s_type_hint)?;
     let (s, variable_name_start) = take_while1(is_type_hint_variable_name_start_character)(s)?;
     let (s, variable_name_end) = take_while(is_type_hint_variable_name_character)(s)?;
     let (s, _) = whitespace0(s)?;
-    let (s, _) = token0(":")(s)?;
-    let (s, type_name_start) = take_while1(is_type_hint_type_name_start_character)(s)?;
-    let (s, type_name_end) = take_while(is_type_hint_type_name_character)(s)?;
-    let (s, _) = whitespace0(s)?;
+    let variable_name = format!("{}{}", variable_name_start, variable_name_end);
+
+    let (s, type_name) = match token0(":")(s) {
+        Ok((s, _)) => {
+            let (s, type_name_start) = take_while1(is_type_hint_type_name_start_character)(s)?;
+            let (s, type_name_end) = take_while(is_type_hint_type_name_character)(s)?;
+            let (s, _) = whitespace0(s)?;
+            let type_name = format!("{}{}", type_name_start, type_name_end);
+            (s, Some(type_name))
+        }
+        Err(_) => (s, None),
+    };
+
     let (s, _) = token0("=")(s)?;
     let (s, _) = token0("stack[")(s)?;
     let (s, range_start) = take_while(|c: char| c.is_numeric())(s)?;
@@ -620,9 +632,6 @@ fn type_hint(s_type_hint: &str) -> ParseResult<InstructionToken> {
     let (s, _) = whitespace0(s)?;
     let (s, _) = token0("]")(s)?;
     let (s, _) = token0(";")(s)?;
-
-    let variable_name = format!("{}{}", variable_name_start, variable_name_end);
-    let type_name = format!("{}{}", type_name_start, type_name_end);
 
     let length = match maybe_range_end {
         Some(range_end) if range_end <= range_start => {
@@ -1026,7 +1035,7 @@ pub(crate) mod tests {
         let expected_type_hint = TypeHint {
             starting_index: 0,
             length: 1,
-            type_name: "Type".to_string(),
+            type_name: Some("Type".to_string()),
             variable_name: "foo".to_string(),
         };
 
@@ -1042,7 +1051,7 @@ pub(crate) mod tests {
         let expected_type_hint = TypeHint {
             starting_index: 0,
             length: 5,
-            type_name: "Digest".to_string(),
+            type_name: Some("Digest".to_string()),
             variable_name: "foo".to_string(),
         };
 
@@ -1058,7 +1067,7 @@ pub(crate) mod tests {
         let expected_type_hint = TypeHint {
             starting_index: 7,
             length: 3,
-            type_name: "XFieldElement".to_string(),
+            type_name: Some("XFieldElement".to_string()),
             variable_name: "bar".to_string(),
         };
 
@@ -1074,7 +1083,7 @@ pub(crate) mod tests {
         let expected_type_hint = TypeHint {
             starting_index: 2,
             length: 12,
-            type_name: "BigType".to_string(),
+            type_name: Some("BigType".to_string()),
             variable_name: "bar".to_string(),
         };
 
@@ -1082,6 +1091,38 @@ pub(crate) mod tests {
             input: " hint \t \t foo  :BigType=stack[ 2..14 ]\t;\n",
             expected: Program::new(&[LabelledInstruction::TypeHint(expected_type_hint)]),
             message: "parse type hint with range and offset and weird whitespace",
+        });
+    }
+
+    #[test]
+    fn parse_type_hint_with_no_type_only_variable_name() {
+        let expected_type_hint = TypeHint {
+            starting_index: 0,
+            length: 1,
+            type_name: None,
+            variable_name: "foo".to_string(),
+        };
+
+        parse_program_prop(TestCase {
+            input: "hint foo = stack[0];",
+            expected: Program::new(&[LabelledInstruction::TypeHint(expected_type_hint)]),
+            message: "parse type hint with no type, only variable name",
+        });
+    }
+
+    #[test]
+    fn parse_type_hint_with_no_type_only_variable_name_with_range() {
+        let expected_type_hint = TypeHint {
+            starting_index: 2,
+            length: 5,
+            type_name: None,
+            variable_name: "foo".to_string(),
+        };
+
+        parse_program_prop(TestCase {
+            input: "hint foo = stack[2..7];",
+            expected: Program::new(&[LabelledInstruction::TypeHint(expected_type_hint)]),
+            message: "parse type hint with no type, only variable name, with range",
         });
     }
 
@@ -1327,7 +1368,7 @@ pub(crate) mod tests {
             baz:\n\
             hash\n\
             hint my_digest: Digest = stack[0..5];\n\
-            hint random_stuff: Whatever = stack[17];\n\
+            hint random_stuff = stack[17];\n\
             return\n\
             nop\n\
             pop 1\n\
