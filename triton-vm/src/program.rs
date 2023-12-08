@@ -23,6 +23,7 @@ use crate::error::VMError;
 use crate::instruction::AnInstruction;
 use crate::instruction::Instruction;
 use crate::instruction::LabelledInstruction;
+use crate::instruction::TypeHint;
 use crate::parser::parse;
 use crate::parser::to_labelled_instructions;
 use crate::parser::ParseError;
@@ -53,6 +54,7 @@ pub struct Program {
     pub instructions: Vec<Instruction>,
     address_to_label: HashMap<u64, String>,
     breakpoints: Vec<bool>,
+    type_hints: HashMap<u64, Vec<TypeHint>>,
 }
 
 impl Display for Program {
@@ -116,8 +118,9 @@ impl BFieldCodec for Program {
 
         Ok(Box::new(Program {
             instructions,
-            address_to_label: HashMap::new(),
+            address_to_label: Default::default(),
             breakpoints: vec![],
+            type_hints: Default::default(),
         }))
     }
 
@@ -215,13 +218,14 @@ impl Program {
         let instructions =
             Self::turn_labels_into_addresses(labelled_instructions, &label_to_address);
         let address_to_label = Self::flip_map(label_to_address);
-        let breakpoints = Self::extract_breakpoints(labelled_instructions);
+        let (breakpoints, type_hints) = Self::extract_debug_information(labelled_instructions);
 
         assert_eq!(instructions.len(), breakpoints.len());
         Program {
             instructions,
             address_to_label,
             breakpoints,
+            type_hints,
         }
     }
 
@@ -276,22 +280,31 @@ impl Program {
         map.into_iter().map(|(key, value)| (value, key)).collect()
     }
 
-    fn extract_breakpoints(labelled_instructions: &[LabelledInstruction]) -> Vec<bool> {
+    fn extract_debug_information(
+        labelled_instructions: &[LabelledInstruction],
+    ) -> (Vec<bool>, HashMap<u64, Vec<TypeHint>>) {
         let mut breakpoints = vec![];
+        let mut type_hints = HashMap::<_, Vec<_>>::new();
         let mut break_before_next_instruction = false;
 
+        let mut address = 0;
         for instruction in labelled_instructions {
             match instruction {
-                LabelledInstruction::Breakpoint => break_before_next_instruction = true,
                 LabelledInstruction::Instruction(instruction) => {
                     breakpoints.extend(vec![break_before_next_instruction; instruction.size()]);
                     break_before_next_instruction = false;
+                    address += instruction.size() as u64;
                 }
+                LabelledInstruction::Breakpoint => break_before_next_instruction = true,
+                LabelledInstruction::TypeHint(type_hint) => match type_hints.entry(address) {
+                    Entry::Occupied(mut entry) => entry.get_mut().push(type_hint.clone()),
+                    Entry::Vacant(entry) => _ = entry.insert(vec![type_hint.clone()]),
+                },
                 _ => (),
             }
         }
 
-        breakpoints
+        (breakpoints, type_hints)
     }
 
     /// Create a `Program` by parsing source code.
@@ -316,6 +329,13 @@ impl Program {
                 let label = self.label_for_address(address);
                 let label = LabelledInstruction::Label(label);
                 labelled_instructions.push(label);
+            }
+            if let Some(type_hints) = self.type_hints_at(address) {
+                let type_hints = type_hints
+                    .into_iter()
+                    .map(LabelledInstruction::TypeHint)
+                    .collect_vec();
+                labelled_instructions.extend(type_hints);
             }
             if self.is_breakpoint(address) {
                 labelled_instructions.push(LabelledInstruction::Breakpoint);
@@ -353,6 +373,10 @@ impl Program {
     pub fn is_breakpoint(&self, address: u64) -> bool {
         let address: usize = address.try_into().unwrap();
         self.breakpoints.get(address).unwrap_or(&false).to_owned()
+    }
+
+    pub fn type_hints_at(&self, address: u64) -> Option<Vec<TypeHint>> {
+        self.type_hints.get(&address).cloned()
     }
 
     /// Turn the program into a sequence of `BFieldElement`s. Each instruction is encoded as its

@@ -1327,11 +1327,13 @@ pub(crate) mod tests {
             baz:\n\
             hash\n\
             hint my_digest: Digest = stack[0..5];\n\
+            hint random_stuff: Whatever = stack[17];\n\
             return\n\
             nop\n\
             pop 1\n\
             bar:\n\
             divine 1\n\
+            hint got_insight: Magic = stack[0];\n\
             skiz\n\
             split\n\
             break\n\
@@ -1340,6 +1342,5 @@ pub(crate) mod tests {
         let program = Program::from_code(source_code).unwrap();
         let printed_program = format!("{program}");
         assert_eq!(source_code, &printed_program);
-        println!("{program}");
     }
 }

@@ -67,7 +67,7 @@ pub enum LabelledInstruction {
 /// hint variable_name: the_type = stack[0];
 /// hint my_list: list = stack[1..4];
 /// ```
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, GetSize, Serialize, Deserialize)]
 pub struct TypeHint {
     pub starting_index: usize,
     pub length: usize,
