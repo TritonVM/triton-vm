@@ -21,10 +21,9 @@ use AnInstruction::*;
 
 use crate::error::InstructionError;
 use crate::instruction::InstructionBit::*;
-use crate::op_stack::NumberOfWords;
 use crate::op_stack::NumberOfWords::*;
-use crate::op_stack::OpStackElement;
 use crate::op_stack::OpStackElement::*;
+use crate::op_stack::*;
 
 type Result<T> = result::Result<T, InstructionError>;
 
@@ -56,6 +55,43 @@ pub enum LabelledInstruction {
     Label(String),
 
     Breakpoint,
+
+    TypeHint(TypeHint),
+}
+
+/// A hint about a range of stack elements. Helps debugging programs written for Triton VM.
+/// **Does not enforce types.**
+///
+/// Usually constructed by parsing special annotations in the assembly code, for example:
+/// ```tasm
+/// hint variable_name: the_type = stack[0];
+/// hint my_list: list = stack[1..4];
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Arbitrary)]
+pub struct TypeHint {
+    pub starting_index: usize,
+    pub length: usize,
+
+    /// The name of the type, _e.g._, `u32`, `list`, `Digest`, et cetera.
+    pub type_name: String,
+
+    /// The name of the variable.
+    pub variable_name: String,
+}
+
+impl Display for TypeHint {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        let variable = &self.variable_name;
+        let type_name = &self.type_name;
+
+        let start = self.starting_index;
+        let range = match self.length {
+            1 => format!("{start}"),
+            _ => format!("{start}..{end}", end = start + self.length),
+        };
+
+        write!(f, "hint {variable}: {type_name} = stack[{range}];")
+    }
 }
 
 impl LabelledInstruction {
@@ -82,9 +118,10 @@ impl LabelledInstruction {
 impl Display for LabelledInstruction {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         match self {
-            LabelledInstruction::Instruction(instr) => write!(f, "{instr}"),
-            LabelledInstruction::Label(label_name) => write!(f, "{label_name}:"),
+            LabelledInstruction::Instruction(instruction) => write!(f, "{instruction}"),
+            LabelledInstruction::Label(label) => write!(f, "{label}:"),
             LabelledInstruction::Breakpoint => write!(f, "break"),
+            LabelledInstruction::TypeHint(type_hint) => write!(f, "{type_hint}"),
         }
     }
 }
@@ -607,6 +644,7 @@ impl<'a> Arbitrary<'a> for LabelledInstruction {
             0 => u.arbitrary::<AnInstruction<String>>()?,
             1 => return Ok(Self::Label(u.arbitrary::<InstructionLabel>()?.into())),
             2 => return Ok(Self::Breakpoint),
+            3 => return Ok(Self::TypeHint(u.arbitrary()?)),
             _ => unreachable!(),
         };
         let legal_label = String::from(u.arbitrary::<InstructionLabel>()?);

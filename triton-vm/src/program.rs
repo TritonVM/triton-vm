@@ -235,12 +235,10 @@ impl Program {
             match labelled_instruction {
                 Label(label) => match label_map.entry(label.clone()) {
                     Entry::Occupied(_) => panic!("Duplicate label: {label}"),
-                    Entry::Vacant(entry) => {
-                        entry.insert(instruction_pointer);
-                    }
+                    Entry::Vacant(entry) => _ = entry.insert(instruction_pointer),
                 },
                 Instruction(instruction) => instruction_pointer += instruction.size() as u64,
-                Breakpoint => (),
+                _ => (),
             }
         }
         label_map

@@ -42,6 +42,11 @@ pub const NUM_OP_STACK_REGISTERS: usize = OpStackElement::COUNT;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OpStack {
     pub stack: Vec<BFieldElement>,
+
+    /// A helper “shadow stack” mimicking the behavior of the actual stack to help debugging
+    /// programs written for Triton VM. Usually `None`, unless the program is being debugged.
+    pub debug_type_hints: Option<Vec<Option<ElementTypeHint>>>,
+
     underflow_io_sequence: Vec<UnderflowIO>,
 }
 
@@ -54,8 +59,31 @@ impl OpStack {
 
         Self {
             stack,
+            debug_type_hints: None,
             underflow_io_sequence: vec![],
         }
+    }
+
+    pub fn new_for_debugging(program_digest: Digest) -> Self {
+        let mut op_stack = Self::new(program_digest);
+        op_stack.debug_type_hints = Some(Self::debug_type_hints_for_initial_stack());
+        op_stack
+    }
+
+    fn debug_type_hints_for_initial_stack() -> Vec<Option<ElementTypeHint>> {
+        let element_type_hint_template = ElementTypeHint {
+            type_name: "Digest".to_string(),
+            variable_name: "program_digest".to_string(),
+            index: None,
+        };
+
+        let mut type_hints = vec![None; NUM_OP_STACK_REGISTERS];
+        for (index, type_hint) in type_hints[0..DIGEST_LENGTH].iter_mut().rev().enumerate() {
+            let mut element_type_hint = element_type_hint_template.clone();
+            element_type_hint.index = Some(index);
+            *type_hint = Some(element_type_hint);
+        }
+        type_hints
     }
 
     pub(crate) fn push(&mut self, element: BFieldElement) {
@@ -597,6 +625,28 @@ impl TryFrom<&BFieldElement> for NumberOfWords {
     fn try_from(&index: &BFieldElement) -> NumWordsResult<Self> {
         index.try_into()
     }
+}
+
+/// A hint about the type of a single stack element. Helps debugging programs written for Triton VM.
+/// **Does not enforce types.**
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Arbitrary)]
+pub struct ElementTypeHint {
+    /// The name of the type. See [`TypeHint`][type_hint] for details.
+    ///
+    /// [type_hint]: crate::instruction::TypeHint
+    pub type_name: String,
+
+    /// The name of the variable. See [`TypeHint`][type_hint] for details.
+    ///
+    /// [type_hint]: crate::instruction::TypeHint
+    pub variable_name: String,
+
+    /// The index of the element within the type. For example, if the type is `Digest`, then this
+    /// could be `0` for the first element, `1` for the second element, and so on.
+    ///
+    /// Does not apply to types that are not composed of multiple [`BFieldElement`]s, like `u32` or
+    /// [`BFieldElement`] itself.
+    pub index: Option<usize>,
 }
 
 #[cfg(test)]
