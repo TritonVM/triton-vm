@@ -64,8 +64,8 @@ pub enum LabelledInstruction {
 ///
 /// Usually constructed by parsing special annotations in the assembly code, for example:
 /// ```tasm
-/// hint variable_name: the_type = stack[0];
-/// hint my_list = stack[1..4];
+/// hint variable_name: the_type = stack[0]
+/// hint my_list = stack[1..4]
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq, Hash, GetSize, Serialize, Deserialize)]
 pub struct TypeHint {
@@ -93,7 +93,7 @@ impl Display for TypeHint {
             _ => format!("{start}..{end}", end = start + self.length),
         };
 
-        write!(f, "hint {variable}{type_name} = stack[{range}];")
+        write!(f, "hint {variable}{type_name} = stack[{range}]")
     }
 }
 

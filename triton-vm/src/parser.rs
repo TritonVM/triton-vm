@@ -599,39 +599,12 @@ fn token1<'a>(token: &'a str) -> impl Fn(&'a str) -> ParseResult<()> {
 /// ```
 fn type_hint(s_type_hint: &str) -> ParseResult<InstructionToken> {
     let (s, _) = token1("hint")(s_type_hint)?;
-    let (s, variable_name_start) = take_while1(is_type_hint_variable_name_start_character)(s)?;
-    let (s, variable_name_end) = take_while(is_type_hint_variable_name_character)(s)?;
-    let (s, _) = whitespace0(s)?;
-    let variable_name = format!("{}{}", variable_name_start, variable_name_end);
-
-    let (s, type_name) = match token0(":")(s) {
-        Ok((s, _)) => {
-            let (s, type_name_start) = take_while1(is_type_hint_type_name_start_character)(s)?;
-            let (s, type_name_end) = take_while(is_type_hint_type_name_character)(s)?;
-            let (s, _) = whitespace0(s)?;
-            let type_name = format!("{}{}", type_name_start, type_name_end);
-            (s, Some(type_name))
-        }
-        Err(_) => (s, None),
-    };
-
-    let (s, _) = token0("=")(s)?;
-    let (s, _) = token0("stack[")(s)?;
-    let (s, range_start) = take_while(|c: char| c.is_numeric())(s)?;
-    let (_, range_start) = parse_str_to_usize(range_start)?;
-
-    let (s, _) = whitespace0(s)?;
-    let (s, maybe_range_end) = match token0("..")(s) {
-        Ok((s, _)) => {
-            let (s, range_end) = take_while(|c: char| c.is_numeric())(s)?;
-            let (_, range_end) = parse_str_to_usize(range_end)?;
-            (s, Some(range_end))
-        }
-        Err(_) => (s, None),
-    };
+    let (s, variable_name) = type_hint_variable_name(s)?;
+    let (s, type_name) = type_hint_type_name(s)?;
+    let (s, range_start) = type_hint_starting_index(s)?;
+    let (s, maybe_range_end) = type_hint_ending_index(s)?;
     let (s, _) = whitespace0(s)?;
     let (s, _) = token0("]")(s)?;
-    let (s, _) = token0(";")(s)?;
 
     let length = match maybe_range_end {
         Some(range_end) if range_end <= range_start => {
@@ -649,6 +622,47 @@ fn type_hint(s_type_hint: &str) -> ParseResult<InstructionToken> {
     };
 
     Ok((s, InstructionToken::TypeHint(type_hint, s_type_hint)))
+}
+
+fn type_hint_variable_name(s: &str) -> ParseResult<String> {
+    let (s, variable_name_start) = take_while1(is_type_hint_variable_name_start_character)(s)?;
+    let (s, variable_name_end) = take_while(is_type_hint_variable_name_character)(s)?;
+    let (s, _) = whitespace0(s)?;
+    let variable_name = format!("{}{}", variable_name_start, variable_name_end);
+    Ok((s, variable_name))
+}
+
+fn type_hint_type_name(s: &str) -> ParseResult<Option<String>> {
+    let Ok((s, _)) = token0(":")(s) else {
+        return Ok((s, None));
+    };
+
+    let (s, type_name_start) = take_while1(is_type_hint_type_name_start_character)(s)?;
+    let (s, type_name_end) = take_while(is_type_hint_type_name_character)(s)?;
+    let (s, _) = whitespace0(s)?;
+    let type_name = format!("{}{}", type_name_start, type_name_end);
+
+    Ok((s, Some(type_name)))
+}
+
+fn type_hint_ending_index(s: &str) -> ParseResult<Option<usize>> {
+    let Ok((s, _)) = token0("..")(s) else {
+        return Ok((s, None));
+    };
+
+    let (s, range_end) = take_while(|c: char| c.is_numeric())(s)?;
+    let (_, range_end) = parse_str_to_usize(range_end)?;
+
+    Ok((s, Some(range_end)))
+}
+
+fn type_hint_starting_index(s: &str) -> ParseResult<usize> {
+    let (s, _) = token0("=")(s)?;
+    let (s, _) = token0("stack[")(s)?;
+    let (s, range_start) = take_while(|c: char| c.is_numeric())(s)?;
+    let (_, range_start) = parse_str_to_usize(range_start)?;
+    let (s, _) = whitespace0(s)?;
+    Ok((s, range_start))
 }
 
 fn is_type_hint_variable_name_start_character(c: char) -> bool {
@@ -1040,7 +1054,7 @@ pub(crate) mod tests {
         };
 
         parse_program_prop(TestCase {
-            input: "hint foo: Type = stack[0];",
+            input: "hint foo: Type = stack[0]",
             expected: Program::new(&[LabelledInstruction::TypeHint(expected_type_hint)]),
             message: "parse type hint",
         });
@@ -1056,7 +1070,7 @@ pub(crate) mod tests {
         };
 
         parse_program_prop(TestCase {
-            input: "hint foo: Digest = stack[0..5];",
+            input: "hint foo: Digest = stack[0..5]",
             expected: Program::new(&[LabelledInstruction::TypeHint(expected_type_hint)]),
             message: "parse type hint with range",
         });
@@ -1072,7 +1086,7 @@ pub(crate) mod tests {
         };
 
         parse_program_prop(TestCase {
-            input: "hint bar: XFieldElement = stack[7..10];",
+            input: "hint bar: XFieldElement = stack[7..10]",
             expected: Program::new(&[LabelledInstruction::TypeHint(expected_type_hint)]),
             message: "parse type hint with range and offset",
         });
@@ -1088,7 +1102,7 @@ pub(crate) mod tests {
         };
 
         parse_program_prop(TestCase {
-            input: " hint \t \t foo  :BigType=stack[ 2..14 ]\t;\n",
+            input: " hint \t \t foo  :BigType=stack[ 2\t.. 14 ]\t \n",
             expected: Program::new(&[LabelledInstruction::TypeHint(expected_type_hint)]),
             message: "parse type hint with range and offset and weird whitespace",
         });
@@ -1104,7 +1118,7 @@ pub(crate) mod tests {
         };
 
         parse_program_prop(TestCase {
-            input: "hint foo = stack[0];",
+            input: "hint foo = stack[0]",
             expected: Program::new(&[LabelledInstruction::TypeHint(expected_type_hint)]),
             message: "parse type hint with no type, only variable name",
         });
@@ -1120,7 +1134,7 @@ pub(crate) mod tests {
         };
 
         parse_program_prop(TestCase {
-            input: "hint foo = stack[2..7];",
+            input: "hint foo = stack[2..7]",
             expected: Program::new(&[LabelledInstruction::TypeHint(expected_type_hint)]),
             message: "parse type hint with no type, only variable name, with range",
         });
@@ -1129,7 +1143,7 @@ pub(crate) mod tests {
     #[test]
     fn parse_type_hint_with_zero_length_range() {
         parse_program_neg_prop(NegativeTestCase {
-            input: "hint foo: Type = stack[0..0];",
+            input: "hint foo: Type = stack[0..0]",
             expected_error: "range end must be greater than range start",
             expected_error_count: 1,
             message: "parse type hint with zero-length range",
@@ -1137,19 +1151,9 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn parse_type_hint_with_range_and_offset_and_missing_semicolon() {
-        parse_program_neg_prop(NegativeTestCase {
-            input: "hint foo: Type = stack[3..5]",
-            expected_error: "expecting label, instruction or eof",
-            expected_error_count: 1,
-            message: "parse type hint with range and offset and missing semicolon",
-        });
-    }
-
-    #[test]
     fn parse_type_hint_with_range_and_offset_and_missing_closing_bracket() {
         parse_program_neg_prop(NegativeTestCase {
-            input: "hint foo: Type = stack[2..5;",
+            input: "hint foo: Type = stack[2..5",
             expected_error: "expecting label, instruction or eof",
             expected_error_count: 1,
             message: "parse type hint with range and offset and missing closing bracket",
@@ -1159,7 +1163,7 @@ pub(crate) mod tests {
     #[test]
     fn parse_type_hint_with_range_and_offset_and_missing_opening_bracket() {
         parse_program_neg_prop(NegativeTestCase {
-            input: "hint foo: Type = stack2..5];",
+            input: "hint foo: Type = stack2..5]",
             expected_error: "expecting label, instruction or eof",
             expected_error_count: 1,
             message: "parse type hint with range and offset and missing opening bracket",
@@ -1179,7 +1183,7 @@ pub(crate) mod tests {
     #[test]
     fn parse_type_hint_with_range_and_offset_and_missing_type_name() {
         parse_program_neg_prop(NegativeTestCase {
-            input: "hint foo: = stack[2..5];",
+            input: "hint foo: = stack[2..5]",
             expected_error: "expecting label, instruction or eof",
             expected_error_count: 1,
             message: "parse type hint with range and offset and missing type name",
@@ -1189,7 +1193,7 @@ pub(crate) mod tests {
     #[test]
     fn parse_type_hint_with_range_and_offset_and_missing_variable_name() {
         parse_program_neg_prop(NegativeTestCase {
-            input: "hint : Type = stack[2..5];",
+            input: "hint : Type = stack[2..5]",
             expected_error: "expecting label, instruction or eof",
             expected_error_count: 1,
             message: "parse type hint with range and offset and missing variable name",
@@ -1199,7 +1203,7 @@ pub(crate) mod tests {
     #[test]
     fn parse_type_hint_with_range_and_offset_and_missing_colon() {
         parse_program_neg_prop(NegativeTestCase {
-            input: "hint foo Type = stack[2..5];",
+            input: "hint foo Type = stack[2..5]",
             expected_error: "expecting label, instruction or eof",
             expected_error_count: 1,
             message: "parse type hint with range and offset and missing colon",
@@ -1367,14 +1371,14 @@ pub(crate) mod tests {
             return\n\
             baz:\n\
             hash\n\
-            hint my_digest: Digest = stack[0..5];\n\
-            hint random_stuff = stack[17];\n\
+            hint my_digest: Digest = stack[0..5]\n\
+            hint random_stuff = stack[17]\n\
             return\n\
             nop\n\
             pop 1\n\
             bar:\n\
             divine 1\n\
-            hint got_insight: Magic = stack[0];\n\
+            hint got_insight: Magic = stack[0]\n\
             skiz\n\
             split\n\
             break\n\

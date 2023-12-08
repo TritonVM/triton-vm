@@ -7,12 +7,12 @@
 push 3
 
 // current stack can be annotated to help debugging
-hint loop_counter = stack[0];
+hint loop_counter = stack[0]
 
 call my_loop
 
 // annotations also works with ranges:
-hint my_numbers: array = stack[1..4];
+hint my_numbers: array = stack[1..4]
 
 call check_result
 call sponge_instructions
