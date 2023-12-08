@@ -67,7 +67,7 @@ pub enum LabelledInstruction {
 /// hint variable_name: the_type = stack[0];
 /// hint my_list: list = stack[1..4];
 /// ```
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Arbitrary)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct TypeHint {
     pub starting_index: usize,
     pub length: usize,
@@ -91,6 +91,23 @@ impl Display for TypeHint {
         };
 
         write!(f, "hint {variable}: {type_name} = stack[{range}];")
+    }
+}
+
+impl<'a> Arbitrary<'a> for TypeHint {
+    fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
+        let starting_index = u.arbitrary()?;
+        let length = u.int_in_range(1..=500)?;
+        let type_name = u.arbitrary::<TypeHintTypeName>()?;
+        let variable_name = u.arbitrary::<TypeHintVariableName>()?;
+
+        let type_hint = Self {
+            starting_index,
+            length,
+            type_name: type_name.into(),
+            variable_name: variable_name.into(),
+        };
+        Ok(type_hint)
     }
 }
 
@@ -684,6 +701,57 @@ impl<'a> Arbitrary<'a> for InstructionLabel {
             label.push(*u.choose(&legal_characters)?);
         }
         Ok(Self(label))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct TypeHintVariableName(String);
+
+impl From<TypeHintVariableName> for String {
+    fn from(label: TypeHintVariableName) -> Self {
+        label.0
+    }
+}
+
+impl<'a> Arbitrary<'a> for TypeHintVariableName {
+    fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
+        let legal_start_characters = 'a'..='z';
+        let legal_characters = legal_start_characters
+            .clone()
+            .chain('0'..='9')
+            .chain('_'..='_')
+            .collect_vec();
+
+        let mut variable_name = u.choose(&legal_start_characters.collect_vec())?.to_string();
+        for _ in 0..u.arbitrary_len::<char>()? {
+            variable_name.push(*u.choose(&legal_characters)?);
+        }
+        Ok(Self(variable_name))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct TypeHintTypeName(String);
+
+impl From<TypeHintTypeName> for String {
+    fn from(label: TypeHintTypeName) -> Self {
+        label.0
+    }
+}
+
+impl<'a> Arbitrary<'a> for TypeHintTypeName {
+    fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
+        let legal_start_characters = ('a'..='z').chain('A'..='Z');
+        let legal_characters = legal_start_characters
+            .clone()
+            .chain('0'..='9')
+            .collect_vec();
+
+        let mut type_name = u.choose(&legal_start_characters.collect_vec())?.to_string();
+        for _ in 0..u.arbitrary_len::<char>()? {
+            type_name.push(*u.choose(&legal_characters)?);
+        }
+        Ok(Self(type_name))
     }
 }
 
