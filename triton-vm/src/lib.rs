@@ -329,6 +329,38 @@ macro_rules! triton_asm {
     (@fmt $fmt:expr, $($args:expr,)*; ) => {
         format_args!($fmt $(,$args)*).to_string()
     };
+    (@fmt $fmt:expr, $($args:expr,)*;
+        hint $var:ident: $ty:ident = stack[$start:literal..$end:literal] $($tail:tt)*) => {
+        $crate::triton_asm!(@fmt
+            concat!($fmt, " hint {}: {} = stack[{}..{}] "),
+            $($args,)* stringify!($var), stringify!($ty), $start, $end,;
+            $($tail)*
+        )
+    };
+    (@fmt $fmt:expr, $($args:expr,)*;
+        hint $var:ident = stack[$start:literal..$end:literal] $($tail:tt)*) => {
+        $crate::triton_asm!(@fmt
+            concat!($fmt, " hint {} = stack[{}..{}] "),
+            $($args,)* stringify!($var), $start, $end,;
+            $($tail)*
+        )
+    };
+    (@fmt $fmt:expr, $($args:expr,)*;
+        hint $var:ident: $ty:ident = stack[$index:literal] $($tail:tt)*) => {
+        $crate::triton_asm!(@fmt
+            concat!($fmt, " hint {}: {} = stack[{}] "),
+            $($args,)* stringify!($var), stringify!($ty), $index,;
+            $($tail)*
+        )
+    };
+    (@fmt $fmt:expr, $($args:expr,)*;
+        hint $var:ident = stack[$index:literal] $($tail:tt)*) => {
+        $crate::triton_asm!(@fmt
+            concat!($fmt, " hint {} = stack[{}] "),
+            $($args,)* stringify!($var), $index,;
+            $($tail)*
+        )
+    };
     (@fmt $fmt:expr, $($args:expr,)*; $label_declaration:ident: $($tail:tt)*) => {
         $crate::triton_asm!(@fmt
             concat!($fmt, " ", stringify!($label_declaration), ": "), $($args,)*; $($tail)*
@@ -565,6 +597,8 @@ mod tests {
     use proptest_arbitrary_interop::arb;
     use test_strategy::proptest;
 
+    use crate::instruction::LabelledInstruction;
+    use crate::instruction::TypeHint;
     use crate::shared_tests::*;
     use crate::stark::StarkHasher;
 
@@ -809,5 +843,109 @@ mod tests {
     #[should_panic(expected = "IndexOutOfBounds(0)")]
     fn parsing_pop_with_illegal_argument_fails() {
         let _ = triton_instr!(pop 0);
+    }
+
+    #[test]
+    fn triton_asm_macro_can_parse_type_hints() {
+        let instructions = triton_asm!(
+            hint name_0: Type0  = stack[0..8]
+            hint name_1         = stack[1..9]
+            hint name_2: Type2  = stack[2]
+            hint name_3         = stack[3]
+        );
+
+        assert!(4 == instructions.len());
+        let_assert!(LabelledInstruction::TypeHint(type_hint_0) = instructions[0].clone());
+        let_assert!(LabelledInstruction::TypeHint(type_hint_1) = instructions[1].clone());
+        let_assert!(LabelledInstruction::TypeHint(type_hint_2) = instructions[2].clone());
+        let_assert!(LabelledInstruction::TypeHint(type_hint_3) = instructions[3].clone());
+
+        let expected_type_hint_0 = TypeHint {
+            starting_index: 0,
+            length: 8,
+            type_name: Some("Type0".to_string()),
+            variable_name: "name_0".to_string(),
+        };
+        let expected_type_hint_1 = TypeHint {
+            starting_index: 1,
+            length: 8,
+            type_name: None,
+            variable_name: "name_1".to_string(),
+        };
+        let expected_type_hint_2 = TypeHint {
+            starting_index: 2,
+            length: 1,
+            type_name: Some("Type2".to_string()),
+            variable_name: "name_2".to_string(),
+        };
+        let expected_type_hint_3 = TypeHint {
+            starting_index: 3,
+            length: 1,
+            type_name: None,
+            variable_name: "name_3".to_string(),
+        };
+
+        assert!(expected_type_hint_0 == type_hint_0);
+        assert!(expected_type_hint_1 == type_hint_1);
+        assert!(expected_type_hint_2 == type_hint_2);
+        assert!(expected_type_hint_3 == type_hint_3);
+    }
+
+    #[test]
+    fn triton_program_macro_can_parse_type_hints() {
+        let program = triton_program! {
+            push 3 hint loop_counter = stack[0]
+            call my_loop
+            pop 1
+            halt
+
+            my_loop:
+                dup 0 push 0 eq
+                hint return_condition: bool = stack[0]
+                skiz return
+                divine 3
+                swap 3
+                hint magic_number: XFE = stack[1..4]
+                hint fizzled_magic = stack[5..8]
+                recurse
+        };
+
+        let expected_type_hint_address_02 = TypeHint {
+            starting_index: 0,
+            length: 1,
+            type_name: None,
+            variable_name: "loop_counter".to_string(),
+        };
+        let expected_type_hint_address_12 = TypeHint {
+            starting_index: 0,
+            length: 1,
+            type_name: Some("bool".to_string()),
+            variable_name: "return_condition".to_string(),
+        };
+        let expected_type_hint_address_18_0 = TypeHint {
+            starting_index: 1,
+            length: 3,
+            type_name: Some("XFE".to_string()),
+            variable_name: "magic_number".to_string(),
+        };
+        let expected_type_hint_address_18_1 = TypeHint {
+            starting_index: 5,
+            length: 3,
+            type_name: None,
+            variable_name: "fizzled_magic".to_string(),
+        };
+
+        let_assert!(Some(type_hints_at_address_02) = program.type_hints_at(2));
+        assert!(vec![expected_type_hint_address_02] == type_hints_at_address_02);
+
+        let_assert!(Some(type_hints_at_address_12) = program.type_hints_at(12));
+        assert!(vec![expected_type_hint_address_12] == type_hints_at_address_12);
+
+        let_assert!(Some(type_hints_at_address_18) = program.type_hints_at(18));
+        let expected_type_hints_address_18 = vec![
+            expected_type_hint_address_18_0,
+            expected_type_hint_address_18_1,
+        ];
+        assert!(expected_type_hints_address_18 == type_hints_at_address_18);
     }
 }
