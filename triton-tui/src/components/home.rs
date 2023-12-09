@@ -295,6 +295,9 @@ impl Home {
                 is_breakpoint = true;
                 continue;
             }
+            if let LabelledInstruction::TypeHint(_) = labelled_instruction {
+                continue;
+            }
             let ip_points_here = instruction_pointer == address
                 && matches!(labelled_instruction, LabelledInstruction::Instruction(_));
             if ip_points_here {
