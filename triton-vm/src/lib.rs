@@ -935,17 +935,14 @@ mod tests {
             variable_name: "fizzled_magic".to_string(),
         };
 
-        let_assert!(Some(type_hints_at_address_02) = program.type_hints_at(2));
-        assert!(vec![expected_type_hint_address_02] == type_hints_at_address_02);
+        assert!(vec![expected_type_hint_address_02] == program.type_hints_at(2));
 
-        let_assert!(Some(type_hints_at_address_12) = program.type_hints_at(12));
-        assert!(vec![expected_type_hint_address_12] == type_hints_at_address_12);
+        assert!(vec![expected_type_hint_address_12] == program.type_hints_at(12));
 
-        let_assert!(Some(type_hints_at_address_18) = program.type_hints_at(18));
         let expected_type_hints_address_18 = vec![
             expected_type_hint_address_18_0,
             expected_type_hint_address_18_1,
         ];
-        assert!(expected_type_hints_address_18 == type_hints_at_address_18);
+        assert!(expected_type_hints_address_18 == program.type_hints_at(18));
     }
 }

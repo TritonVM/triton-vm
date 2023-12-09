@@ -95,10 +95,7 @@ impl Home {
 
     fn apply_type_hints(&mut self) {
         let ip = self.vm_state.instruction_pointer as u64;
-        let Some(type_hints) = self.program.type_hints_at(ip) else {
-            return;
-        };
-        for type_hint in type_hints {
+        for type_hint in self.program.type_hints_at(ip) {
             let maybe_error = self.vm_state.op_stack.apply_debug_type_hint(&type_hint);
             if let Err(report) = maybe_error {
                 info!("Error applying type hint: {report}");

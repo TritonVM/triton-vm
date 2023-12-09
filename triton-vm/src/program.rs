@@ -330,12 +330,8 @@ impl Program {
                 let label = LabelledInstruction::Label(label);
                 labelled_instructions.push(label);
             }
-            if let Some(type_hints) = self.type_hints_at(address) {
-                let type_hints = type_hints
-                    .into_iter()
-                    .map(LabelledInstruction::TypeHint)
-                    .collect_vec();
-                labelled_instructions.extend(type_hints);
+            for type_hint in self.type_hints_at(address) {
+                labelled_instructions.push(LabelledInstruction::TypeHint(type_hint));
             }
             if self.is_breakpoint(address) {
                 labelled_instructions.push(LabelledInstruction::Breakpoint);
@@ -375,8 +371,8 @@ impl Program {
         self.breakpoints.get(address).unwrap_or(&false).to_owned()
     }
 
-    pub fn type_hints_at(&self, address: u64) -> Option<Vec<TypeHint>> {
-        self.type_hints.get(&address).cloned()
+    pub fn type_hints_at(&self, address: u64) -> Vec<TypeHint> {
+        self.type_hints.get(&address).cloned().unwrap_or_default()
     }
 
     /// Turn the program into a sequence of `BFieldElement`s. Each instruction is encoded as its
