@@ -535,6 +535,7 @@ impl Component for Home {
             }
             Action::ProgramUndo => self.program_undo(),
             Action::ProgramReset => self.program_reset()?,
+            Action::ToggleTypeHintDisplay => self.show_type_hints = !self.show_type_hints,
             _ => {}
         }
         Ok(None)

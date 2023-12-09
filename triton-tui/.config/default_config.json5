@@ -12,6 +12,8 @@
             "<f>": "Finish",
             "<u>": "Undo",
             "<r>": "Reset",
+
+            "<t>": "ToggleTypeHintDisplay",
         },
         "Help": {
             "<h>": "Mode::Home",
