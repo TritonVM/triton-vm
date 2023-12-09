@@ -100,7 +100,8 @@ impl OpStack {
             return Err(DebugError::TypeHintOutOfBounds);
         }
 
-        if type_hints.len() != self.stack.len() {
+        let stack_len = self.stack.len();
+        if type_hints.len() != stack_len {
             panic!("the debug op stack is out of sync with the actual op stack");
         }
 
@@ -111,15 +112,17 @@ impl OpStack {
         };
 
         if type_hint.length <= 1 {
-            type_hints[type_hint.starting_index] = Some(element_type_hint_template);
+            let insertion_index = stack_len - type_hint.starting_index - 1;
+            type_hints[insertion_index] = Some(element_type_hint_template);
             return Ok(());
         }
 
         let stack_indices = type_hint.starting_index..type_hint_range_end;
-        for (index_in_variable, stack_index) in stack_indices.rev().enumerate() {
+        for (index_in_variable, stack_index) in stack_indices.enumerate() {
             let mut element_type_hint = element_type_hint_template.clone();
             element_type_hint.index = Some(index_in_variable);
-            type_hints[stack_index] = Some(element_type_hint);
+            let insertion_index = stack_len - stack_index - 1;
+            type_hints[insertion_index] = Some(element_type_hint);
         }
         Ok(())
     }
