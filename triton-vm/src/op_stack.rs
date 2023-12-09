@@ -127,12 +127,26 @@ impl OpStack {
     pub(crate) fn push(&mut self, element: BFieldElement) {
         self.stack.push(element);
         self.record_underflow_io(UnderflowIO::Write);
+        self.maybe_push_debug_element_type_hint();
     }
 
     pub(crate) fn pop(&mut self) -> Result<BFieldElement> {
+        self.maybe_pop_debug_element_type_hint();
         self.record_underflow_io(UnderflowIO::Read);
         let element = self.stack.pop().ok_or(OpStackTooShallow)?;
         Ok(element)
+    }
+
+    pub(crate) fn maybe_push_debug_element_type_hint(&mut self) {
+        if let Some(ref mut type_hints) = self.debug_type_hints {
+            type_hints.push(None);
+        }
+    }
+
+    pub(crate) fn maybe_pop_debug_element_type_hint(&mut self) {
+        if let Some(ref mut type_hints) = self.debug_type_hints {
+            let _ = type_hints.pop();
+        }
     }
 
     fn record_underflow_io(&mut self, io_type: fn(BFieldElement) -> UnderflowIO) {
