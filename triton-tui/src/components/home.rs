@@ -9,6 +9,7 @@ use tracing::info;
 
 use triton_vm::error::InstructionError;
 use triton_vm::instruction::*;
+use triton_vm::op_stack::ElementTypeHint;
 use triton_vm::op_stack::OpStackElement;
 use triton_vm::vm::VMState;
 use triton_vm::*;
@@ -28,6 +29,7 @@ pub(crate) struct Home {
     warning: Option<Report>,
     error: Option<InstructionError>,
     previous_states: Vec<VMState>,
+    show_type_hints: bool,
 }
 
 impl Home {
@@ -46,6 +48,7 @@ impl Home {
             warning: None,
             error: None,
             previous_states: vec![],
+            show_type_hints: true,
         };
 
         home.enable_vm_state_debugging();
@@ -201,19 +204,30 @@ impl Home {
         let state_area = layout[0];
         let message_box_area = layout[1];
 
-        let op_stack_widget_width = Constraint::Min(32);
+        let op_stack_widget_width = Constraint::Min(30);
+        let type_hint_widget = match self.show_type_hints {
+            true => Constraint::Min(30),
+            false => Constraint::Max(0),
+        };
         let remaining_width = Constraint::Percentage(100);
         let sponge_state_width = match self.vm_state.sponge_state.is_some() {
             true => Constraint::Min(32),
             false => Constraint::Min(1),
         };
+        let state_layout_constraints = [
+            op_stack_widget_width,
+            type_hint_widget,
+            remaining_width,
+            sponge_state_width,
+        ];
         let state_layout = Layout::default()
             .direction(Direction::Horizontal)
-            .constraints([op_stack_widget_width, remaining_width, sponge_state_width])
+            .constraints(state_layout_constraints)
             .split(state_area);
         let op_stack_area = state_layout[0];
-        let program_and_call_stack_area = state_layout[1];
-        let sponge_state_area = state_layout[2];
+        let type_hint_area = state_layout[1];
+        let program_and_call_stack_area = state_layout[2];
+        let sponge_state_area = state_layout[3];
 
         let program_widget_width = Constraint::Percentage(50);
         let call_stack_widget_width = Constraint::Percentage(50);
@@ -225,6 +239,7 @@ impl Home {
 
         WidgetAreas {
             op_stack: op_stack_area,
+            type_hint: type_hint_area,
             program: program_and_call_stack_layout[0],
             call_stack: program_and_call_stack_layout[1],
             sponge: sponge_state_area,
@@ -261,6 +276,44 @@ impl Home {
             .title(title);
         let paragraph = Paragraph::new(text).block(block).alignment(Alignment::Left);
         f.render_widget(paragraph, area);
+    }
+
+    fn render_type_hint_widget(&self, f: &mut Frame, area: Rect) {
+        if !self.show_type_hints {
+            return;
+        }
+        let Some(ref type_hints) = self.vm_state.op_stack.debug_type_hints else {
+            return;
+        };
+
+        let num_padding_lines = (area.height as usize).saturating_sub(type_hints.len() + 3);
+        let mut text = vec![Line::from(""); num_padding_lines];
+        for type_hint in type_hints.iter().rev() {
+            let type_hint = Self::render_element_type_hint(type_hint);
+            text.push(type_hint.dim().into());
+        }
+
+        let block = Block::default()
+            .padding(Padding::new(0, 1, 1, 0))
+            .borders(Borders::TOP | Borders::BOTTOM);
+        let paragraph = Paragraph::new(text).block(block).alignment(Alignment::Left);
+        f.render_widget(paragraph, area);
+    }
+
+    fn render_element_type_hint(element_type_hint: &Option<ElementTypeHint>) -> String {
+        let Some(element_type_hint) = element_type_hint else {
+            return "".into();
+        };
+
+        let mut text = element_type_hint.variable_name.clone();
+        if let Some(ref type_name) = element_type_hint.type_name {
+            text.push_str(": ");
+            text.push_str(type_name);
+        }
+        if let Some(index) = element_type_hint.index {
+            text.push_str(&format!(" ({index})"));
+        }
+        text
     }
 
     fn render_program_widget(&self, f: &mut Frame, area: Rect) {
@@ -490,6 +543,7 @@ impl Component for Home {
     fn draw(&mut self, f: &mut Frame<'_>, area: Rect) -> Result<()> {
         let widget_areas = self.distribute_area_for_widgets(area);
         self.render_op_stack_widget(f, widget_areas.op_stack);
+        self.render_type_hint_widget(f, widget_areas.type_hint);
         self.render_program_widget(f, widget_areas.program);
         self.render_call_stack_widget(f, widget_areas.call_stack);
         self.render_sponge_widget(f, widget_areas.sponge);
@@ -501,6 +555,7 @@ impl Component for Home {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct WidgetAreas {
     op_stack: Rect,
+    type_hint: Rect,
     program: Rect,
     call_stack: Rect,
     sponge: Rect,
