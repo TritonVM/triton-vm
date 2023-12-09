@@ -16,15 +16,15 @@ use twenty_first::shared_math::digest::Digest;
 use twenty_first::shared_math::tip5::DIGEST_LENGTH;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
-use crate::error::InstructionError;
 use crate::error::InstructionError::*;
-use crate::error::NumberOfWordsError;
-use crate::error::OpStackElementError;
+use crate::error::*;
+use crate::instruction::TypeHint;
 use crate::op_stack::OpStackElement::*;
 
 type Result<T> = std::result::Result<T, InstructionError>;
 type OpStackElementResult<T> = std::result::Result<T, OpStackElementError>;
 type NumWordsResult<T> = std::result::Result<T, NumberOfWordsError>;
+type DebugResult<T> = std::result::Result<T, DebugError>;
 
 /// The number of registers dedicated to the top of the operational stack.
 pub const NUM_OP_STACK_REGISTERS: usize = OpStackElement::COUNT;
@@ -64,26 +64,64 @@ impl OpStack {
         }
     }
 
-    pub fn new_for_debugging(program_digest: Digest) -> Self {
-        let mut op_stack = Self::new(program_digest);
-        op_stack.debug_type_hints = Some(Self::debug_type_hints_for_initial_stack());
-        op_stack
+    /// Enable tracking debug information for the op-stack. Must be called on a newly created
+    /// [`OpStack`].
+    pub fn enable_debugging(&mut self) -> DebugResult<()> {
+        if self.debug_type_hints.is_some() {
+            return Err(DebugError::DebuggingAlreadyEnabled);
+        }
+        if self.stack.len() != NUM_OP_STACK_REGISTERS {
+            return Err(DebugError::OpStackAlreadyInUse);
+        }
+        if self.stack[DIGEST_LENGTH..].iter().any(|st| !st.is_zero()) {
+            return Err(DebugError::OpStackAlreadyInUse);
+        }
+
+        self.debug_type_hints = Some(vec![None; NUM_OP_STACK_REGISTERS]);
+
+        let program_hash_type_hint = TypeHint {
+            type_name: Some("Digest".to_string()),
+            variable_name: "program_digest".to_string(),
+            starting_index: 11,
+            length: DIGEST_LENGTH,
+        };
+        self.apply_debug_type_hint(&program_hash_type_hint)?;
+
+        Ok(())
     }
 
-    fn debug_type_hints_for_initial_stack() -> Vec<Option<ElementTypeHint>> {
+    pub fn apply_debug_type_hint(&mut self, type_hint: &TypeHint) -> DebugResult<()> {
+        let Some(ref mut type_hints) = self.debug_type_hints else {
+            return Err(DebugError::DebuggingNotEnabled);
+        };
+
+        let type_hint_range_end = type_hint.starting_index + type_hint.length;
+        if type_hint_range_end > type_hints.len() {
+            return Err(DebugError::TypeHintOutOfBounds);
+        }
+
+        if type_hints.len() != self.stack.len() {
+            panic!("the debug op stack is out of sync with the actual op stack");
+        }
+
         let element_type_hint_template = ElementTypeHint {
-            type_name: "Digest".to_string(),
-            variable_name: "program_digest".to_string(),
+            type_name: type_hint.type_name.clone(),
+            variable_name: type_hint.variable_name.clone(),
             index: None,
         };
 
-        let mut type_hints = vec![None; NUM_OP_STACK_REGISTERS];
-        for (index, type_hint) in type_hints[0..DIGEST_LENGTH].iter_mut().rev().enumerate() {
-            let mut element_type_hint = element_type_hint_template.clone();
-            element_type_hint.index = Some(index);
-            *type_hint = Some(element_type_hint);
+        if type_hint.length <= 1 {
+            type_hints[type_hint.starting_index] = Some(element_type_hint_template);
+            return Ok(());
         }
-        type_hints
+
+        let stack_indices = type_hint.starting_index..type_hint_range_end;
+        for (index_in_variable, stack_index) in stack_indices.rev().enumerate() {
+            let mut element_type_hint = element_type_hint_template.clone();
+            element_type_hint.index = Some(index_in_variable);
+            type_hints[stack_index] = Some(element_type_hint);
+        }
+        Ok(())
     }
 
     pub(crate) fn push(&mut self, element: BFieldElement) {
@@ -633,12 +671,12 @@ impl TryFrom<&BFieldElement> for NumberOfWords {
 pub struct ElementTypeHint {
     /// The name of the type. See [`TypeHint`][type_hint] for details.
     ///
-    /// [type_hint]: crate::instruction::TypeHint
-    pub type_name: String,
+    /// [type_hint]: TypeHint
+    pub type_name: Option<String>,
 
     /// The name of the variable. See [`TypeHint`][type_hint] for details.
     ///
-    /// [type_hint]: crate::instruction::TypeHint
+    /// [type_hint]: TypeHint
     pub variable_name: String,
 
     /// The index of the element within the type. For example, if the type is `Digest`, then this

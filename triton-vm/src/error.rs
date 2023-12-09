@@ -253,6 +253,23 @@ pub enum NumberOfWordsError {
     FailedIntegerConversion(#[from] TryFromIntError),
 }
 
+/// Errors that can occur when debugging programs written for Triton VM.
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+pub enum DebugError {
+    #[error("debugging is already enabled")]
+    DebuggingAlreadyEnabled,
+
+    #[error("debugging is not enabled")]
+    DebuggingNotEnabled,
+
+    #[error("the op stack must be newly created to enable debugging")]
+    OpStackAlreadyInUse,
+
+    #[error("the op stack is not large enough to apply the given type hint")]
+    TypeHintOutOfBounds,
+}
+
 #[cfg(test)]
 mod tests {
     use assert2::assert;
