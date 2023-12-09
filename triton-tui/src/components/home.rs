@@ -38,7 +38,7 @@ impl Home {
         let non_determinism = NonDeterminism::default();
         let vm_state = VMState::new(&program, public_input.clone(), non_determinism.clone());
 
-        let home = Self {
+        let mut home = Self {
             args,
             program,
             non_determinism,
@@ -47,6 +47,8 @@ impl Home {
             error: None,
             previous_states: vec![],
         };
+
+        home.enable_vm_state_debugging();
         Ok(home)
     }
 
@@ -69,6 +71,13 @@ impl Home {
             elements.push(element.into());
         }
         Ok(PublicInput::new(elements))
+    }
+
+    fn enable_vm_state_debugging(&mut self) {
+        if let Err(report) = self.vm_state.enable_debugging() {
+            info!("Error enabling VM debugging: {report}");
+            self.warning = Some(eyre!(report));
+        }
     }
 
     fn vm_has_stopped(&self) -> bool {
@@ -127,22 +136,27 @@ impl Home {
         self.warning = None;
         self.error = None;
 
-        let maybe_program = Self::program_from_args(&self.args);
-        if let Err(report) = maybe_program {
-            self.warning = Some(report);
-            return Ok(());
-        }
+        let program = match Self::program_from_args(&self.args) {
+            Ok(program) => program,
+            Err(report) => {
+                self.warning = Some(report);
+                return Ok(());
+            }
+        };
 
-        let maybe_public_input = Self::public_input_from_args(&self.args);
-        if let Err(report) = maybe_public_input {
-            self.warning = Some(report);
-            return Ok(());
-        }
+        let public_input = match Self::public_input_from_args(&self.args) {
+            Ok(public_input) => public_input,
+            Err(report) => {
+                self.warning = Some(report);
+                return Ok(());
+            }
+        };
 
-        self.program = maybe_program?;
-        let public_input = maybe_public_input?;
+        self.program = program;
         self.vm_state = VMState::new(&self.program, public_input, self.non_determinism.clone());
         self.previous_states = vec![];
+
+        self.enable_vm_state_debugging();
         Ok(())
     }
 
