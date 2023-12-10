@@ -275,12 +275,21 @@ impl Home {
             return;
         }
         let type_hints = &self.type_hint_stack.type_hints;
+        let highest_hint = type_hints.last().cloned().flatten();
+        let lowest_hint = type_hints.first().cloned().flatten();
+
         let num_padding_lines = (area.height as usize).saturating_sub(type_hints.len() + 3);
         let mut text = vec![Line::from(""); num_padding_lines];
-        for type_hint in type_hints.iter().rev() {
-            let type_hint = Self::render_element_type_hint(type_hint);
-            text.push(type_hint.dim().into());
+
+        text.push(Self::render_element_type_hint(&highest_hint));
+        for (hint_0, hint_1, hint_2) in type_hints.iter().rev().tuple_windows() {
+            if ElementTypeHint::is_continuous_sequence(&[hint_0, hint_1, hint_2]) {
+                text.push("⋅".dim().into());
+            } else {
+                text.push(Self::render_element_type_hint(hint_1));
+            }
         }
+        text.push(Self::render_element_type_hint(&lowest_hint));
 
         let block = Block::default()
             .padding(Padding::new(0, 1, 1, 0))
@@ -289,20 +298,21 @@ impl Home {
         f.render_widget(paragraph, area);
     }
 
-    fn render_element_type_hint(element_type_hint: &Option<ElementTypeHint>) -> String {
+    fn render_element_type_hint(element_type_hint: &Option<ElementTypeHint>) -> Line {
         let Some(element_type_hint) = element_type_hint else {
-            return "".into();
+            return Line::default();
         };
 
-        let mut text = element_type_hint.variable_name.clone();
+        let mut line = vec![];
+        line.push(element_type_hint.variable_name.clone().into());
         if let Some(ref type_name) = element_type_hint.type_name {
-            text.push_str(": ");
-            text.push_str(type_name);
+            line.push(": ".dim());
+            line.push(type_name.into());
         }
         if let Some(index) = element_type_hint.index {
-            text.push_str(&format!(" ({index})"));
+            line.push(format!(" ({index})").dim());
         }
-        text
+        line.into()
     }
 
     fn render_program_widget(&self, f: &mut Frame, area: Rect) {
