@@ -29,8 +29,14 @@ pub(crate) struct Home {
     type_hint_stack: TypeHintStack,
     warning: Option<Report>,
     error: Option<InstructionError>,
-    previous_states: Vec<VMState>,
+    undo_stack: Vec<UndoInformation>,
     show_type_hints: bool,
+}
+
+#[derive(Debug, Clone)]
+struct UndoInformation {
+    vm_state: VMState,
+    type_hint_stack: TypeHintStack,
 }
 
 impl Home {
@@ -49,7 +55,7 @@ impl Home {
             type_hint_stack: TypeHintStack::default(),
             warning: None,
             error: None,
-            previous_states: vec![],
+            undo_stack: vec![],
             show_type_hints: true,
         };
         Ok(home)
@@ -163,22 +169,27 @@ impl Home {
         self.program = program;
         self.vm_state = VMState::new(&self.program, public_input, self.non_determinism.clone());
         self.type_hint_stack = TypeHintStack::new();
-        self.previous_states = vec![];
+        self.undo_stack = vec![];
         Ok(())
     }
 
     fn record_undo_information(&mut self) {
-        self.previous_states.push(self.vm_state.clone())
+        let undo_information = UndoInformation {
+            vm_state: self.vm_state.clone(),
+            type_hint_stack: self.type_hint_stack.clone(),
+        };
+        self.undo_stack.push(undo_information);
     }
 
     fn program_undo(&mut self) {
-        let Some(previous_state) = self.previous_states.pop() else {
+        let Some(undo_information) = self.undo_stack.pop() else {
             self.warning = Some(anyhow!("no more undo information available"));
             return;
         };
         self.warning = None;
         self.error = None;
-        self.vm_state = previous_state;
+        self.vm_state = undo_information.vm_state;
+        self.type_hint_stack = undo_information.type_hint_stack;
     }
 
     fn address_render_width(&self) -> usize {
