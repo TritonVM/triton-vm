@@ -1,6 +1,7 @@
 use std::ops::Index;
 use std::ops::IndexMut;
 
+use arbitrary::Arbitrary;
 use color_eyre::eyre::bail;
 use color_eyre::eyre::Result;
 
@@ -17,7 +18,7 @@ pub(crate) struct TypeHintStack {
 
 /// A hint about the type of a single stack element. Helps debugging programs written for Triton VM.
 /// **Does not enforce types.**
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Arbitrary)]
 pub struct ElementTypeHint {
     /// The name of the type. See [`TypeHint`][type_hint] for details.
     ///
@@ -242,9 +243,23 @@ impl IndexMut<usize> for TypeHintStack {
 #[cfg(test)]
 mod tests {
     use assert2::assert;
-    use strum::IntoEnumIterator;
+    use proptest::collection::vec;
+    use proptest::prelude::*;
+    use proptest_arbitrary_interop::arb;
+    use test_strategy::proptest;
 
     use super::*;
+
+    impl proptest::arbitrary::Arbitrary for TypeHintStack {
+        type Parameters = ();
+        fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
+            vec(arb(), NUM_OP_STACK_REGISTERS..=100)
+                .prop_map(|type_hints| Self { type_hints })
+                .boxed()
+        }
+
+        type Strategy = BoxedStrategy<Self>;
+    }
 
     #[test]
     fn default_type_hint_stack_is_as_long_as_default_actual_stack() {
@@ -253,21 +268,15 @@ mod tests {
         assert!(expected_stack_length == actual_stack_length);
     }
 
-    #[test]
-    fn type_hint_stack_grows_and_shrinks_like_actual_stack() {
-        let initial_length = TypeHintStack::default().len() as i32;
-        for instruction in ALL_INSTRUCTIONS {
-            'arg: for argument in OpStackElement::iter() {
-                let Ok(instruction) = instruction.change_arg(argument.into()) else {
-                    continue 'arg;
-                };
-                let mut type_hint_stack = TypeHintStack::default();
-                type_hint_stack.mimic_instruction(Some(instruction));
-
-                let expected_stack_delta = instruction.op_stack_size_influence();
-                let actual_stack_delta = type_hint_stack.len() as i32 - initial_length;
-                assert!(expected_stack_delta == actual_stack_delta, "{instruction}");
-            }
-        }
+    #[proptest]
+    fn type_hint_stack_grows_and_shrinks_like_actual_stack(
+        mut type_hint_stack: TypeHintStack,
+        #[strategy(arb())] instruction: Instruction,
+    ) {
+        let initial_length = type_hint_stack.len();
+        type_hint_stack.mimic_instruction(Some(instruction));
+        let actual_stack_delta = type_hint_stack.len() as i32 - initial_length as i32;
+        let expected_stack_delta = instruction.op_stack_size_influence();
+        assert!(expected_stack_delta == actual_stack_delta);
     }
 }
