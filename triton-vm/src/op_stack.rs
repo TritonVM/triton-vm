@@ -18,13 +18,11 @@ use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use crate::error::InstructionError::*;
 use crate::error::*;
-use crate::instruction::TypeHint;
 use crate::op_stack::OpStackElement::*;
 
 type Result<T> = std::result::Result<T, InstructionError>;
 type OpStackElementResult<T> = std::result::Result<T, OpStackElementError>;
 type NumWordsResult<T> = std::result::Result<T, NumberOfWordsError>;
-type DebugResult<T> = std::result::Result<T, DebugError>;
 
 /// The number of registers dedicated to the top of the operational stack.
 pub const NUM_OP_STACK_REGISTERS: usize = OpStackElement::COUNT;
@@ -42,11 +40,6 @@ pub const NUM_OP_STACK_REGISTERS: usize = OpStackElement::COUNT;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OpStack {
     pub stack: Vec<BFieldElement>,
-
-    /// A helper “shadow stack” mimicking the behavior of the actual stack to help debugging
-    /// programs written for Triton VM. Usually `None`, unless the program is being debugged.
-    pub debug_type_hints: Option<Vec<Option<ElementTypeHint>>>,
-
     underflow_io_sequence: Vec<UnderflowIO>,
 }
 
@@ -59,97 +52,19 @@ impl OpStack {
 
         Self {
             stack,
-            debug_type_hints: None,
             underflow_io_sequence: vec![],
         }
-    }
-
-    /// Enable tracking debug information for the op-stack. Must be called on a newly created
-    /// [`OpStack`].
-    pub fn enable_debugging(&mut self) -> DebugResult<()> {
-        if self.debug_type_hints.is_some() {
-            return Err(DebugError::DebuggingAlreadyEnabled);
-        }
-        if self.stack.len() != NUM_OP_STACK_REGISTERS {
-            return Err(DebugError::OpStackAlreadyInUse);
-        }
-        if self.stack[DIGEST_LENGTH..].iter().any(|st| !st.is_zero()) {
-            return Err(DebugError::OpStackAlreadyInUse);
-        }
-
-        self.debug_type_hints = Some(vec![None; NUM_OP_STACK_REGISTERS]);
-
-        let program_hash_type_hint = TypeHint {
-            type_name: Some("Digest".to_string()),
-            variable_name: "program_digest".to_string(),
-            starting_index: 11,
-            length: DIGEST_LENGTH,
-        };
-        self.apply_debug_type_hint(&program_hash_type_hint)?;
-
-        Ok(())
-    }
-
-    pub fn apply_debug_type_hint(&mut self, type_hint: &TypeHint) -> DebugResult<()> {
-        let Some(ref mut type_hints) = self.debug_type_hints else {
-            return Err(DebugError::DebuggingNotEnabled);
-        };
-
-        let type_hint_range_end = type_hint.starting_index + type_hint.length;
-        if type_hint_range_end > type_hints.len() {
-            return Err(DebugError::TypeHintOutOfBounds);
-        }
-
-        let stack_len = self.stack.len();
-        if type_hints.len() != stack_len {
-            panic!("the debug op stack is out of sync with the actual op stack");
-        }
-
-        let element_type_hint_template = ElementTypeHint {
-            type_name: type_hint.type_name.clone(),
-            variable_name: type_hint.variable_name.clone(),
-            index: None,
-        };
-
-        if type_hint.length <= 1 {
-            let insertion_index = stack_len - type_hint.starting_index - 1;
-            type_hints[insertion_index] = Some(element_type_hint_template);
-            return Ok(());
-        }
-
-        let stack_indices = type_hint.starting_index..type_hint_range_end;
-        for (index_in_variable, stack_index) in stack_indices.enumerate() {
-            let mut element_type_hint = element_type_hint_template.clone();
-            element_type_hint.index = Some(index_in_variable);
-            let insertion_index = stack_len - stack_index - 1;
-            type_hints[insertion_index] = Some(element_type_hint);
-        }
-        Ok(())
     }
 
     pub(crate) fn push(&mut self, element: BFieldElement) {
         self.stack.push(element);
         self.record_underflow_io(UnderflowIO::Write);
-        self.maybe_push_debug_element_type_hint();
     }
 
     pub(crate) fn pop(&mut self) -> Result<BFieldElement> {
-        self.maybe_pop_debug_element_type_hint();
         self.record_underflow_io(UnderflowIO::Read);
         let element = self.stack.pop().ok_or(OpStackTooShallow)?;
         Ok(element)
-    }
-
-    pub(crate) fn maybe_push_debug_element_type_hint(&mut self) {
-        if let Some(ref mut type_hints) = self.debug_type_hints {
-            type_hints.push(None);
-        }
-    }
-
-    pub(crate) fn maybe_pop_debug_element_type_hint(&mut self) {
-        if let Some(ref mut type_hints) = self.debug_type_hints {
-            let _ = type_hints.pop();
-        }
     }
 
     fn record_underflow_io(&mut self, io_type: fn(BFieldElement) -> UnderflowIO) {
@@ -680,28 +595,6 @@ impl TryFrom<&BFieldElement> for NumberOfWords {
     fn try_from(&index: &BFieldElement) -> NumWordsResult<Self> {
         index.try_into()
     }
-}
-
-/// A hint about the type of a single stack element. Helps debugging programs written for Triton VM.
-/// **Does not enforce types.**
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Arbitrary)]
-pub struct ElementTypeHint {
-    /// The name of the type. See [`TypeHint`][type_hint] for details.
-    ///
-    /// [type_hint]: TypeHint
-    pub type_name: Option<String>,
-
-    /// The name of the variable. See [`TypeHint`][type_hint] for details.
-    ///
-    /// [type_hint]: TypeHint
-    pub variable_name: String,
-
-    /// The index of the element within the type. For example, if the type is `Digest`, then this
-    /// could be `0` for the first element, `1` for the second element, and so on.
-    ///
-    /// Does not apply to types that are not composed of multiple [`BFieldElement`]s, like `u32` or
-    /// [`BFieldElement`] itself.
-    pub index: Option<usize>,
 }
 
 #[cfg(test)]

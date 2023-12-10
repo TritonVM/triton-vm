@@ -17,7 +17,6 @@ use twenty_first::shared_math::traits::Inverse;
 use twenty_first::util_types::algebraic_hasher::Domain;
 use twenty_first::util_types::algebraic_hasher::SpongeHasher;
 
-use crate::error::DebugError;
 use crate::error::InstructionError;
 use crate::error::InstructionError::*;
 use crate::instruction::AnInstruction::*;
@@ -35,7 +34,6 @@ use crate::table::u32_table::U32TableEntry;
 use crate::vm::CoProcessorCall::*;
 
 type Result<T> = std::result::Result<T, InstructionError>;
-type DebugResult<T> = std::result::Result<T, DebugError>;
 
 /// The number of helper variable registers
 pub const NUM_HELPER_VARIABLE_REGISTERS: usize = 6;
@@ -132,11 +130,6 @@ impl VMState {
             sponge_state: Default::default(),
             halting: false,
         }
-    }
-
-    pub fn enable_debugging(&mut self) -> DebugResult<()> {
-        self.op_stack.enable_debugging()?;
-        Ok(())
     }
 
     pub fn derive_helper_variables(&self) -> [BFieldElement; NUM_HELPER_VARIABLE_REGISTERS] {

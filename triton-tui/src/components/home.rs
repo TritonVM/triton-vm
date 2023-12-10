@@ -9,13 +9,13 @@ use tracing::info;
 
 use triton_vm::error::InstructionError;
 use triton_vm::instruction::*;
-use triton_vm::op_stack::ElementTypeHint;
 use triton_vm::op_stack::OpStackElement;
 use triton_vm::vm::VMState;
 use triton_vm::*;
 
 use crate::action::Action;
 use crate::args::Args;
+use crate::components::type_hint_stack::*;
 
 use super::Component;
 use super::Frame;
@@ -26,6 +26,7 @@ pub(crate) struct Home {
     program: Program,
     non_determinism: NonDeterminism<BFieldElement>,
     vm_state: VMState,
+    type_hint_stack: TypeHintStack,
     warning: Option<Report>,
     error: Option<InstructionError>,
     previous_states: Vec<VMState>,
@@ -40,18 +41,17 @@ impl Home {
         let non_determinism = NonDeterminism::default();
         let vm_state = VMState::new(&program, public_input.clone(), non_determinism.clone());
 
-        let mut home = Self {
+        let home = Self {
             args,
             program,
             non_determinism,
             vm_state,
+            type_hint_stack: TypeHintStack::default(),
             warning: None,
             error: None,
             previous_states: vec![],
             show_type_hints: true,
         };
-
-        home.enable_vm_state_debugging();
         Ok(home)
     }
 
@@ -76,13 +76,6 @@ impl Home {
         Ok(PublicInput::new(elements))
     }
 
-    fn enable_vm_state_debugging(&mut self) {
-        if let Err(report) = self.vm_state.enable_debugging() {
-            info!("Error enabling VM debugging: {report}");
-            self.warning = Some(eyre!(report));
-        }
-    }
-
     fn vm_has_stopped(&self) -> bool {
         self.vm_state.halting || self.error.is_some()
     }
@@ -99,10 +92,10 @@ impl Home {
     fn apply_type_hints(&mut self) {
         let ip = self.vm_state.instruction_pointer as u64;
         for type_hint in self.program.type_hints_at(ip) {
-            let maybe_error = self.vm_state.op_stack.apply_debug_type_hint(&type_hint);
+            let maybe_error = self.type_hint_stack.apply_type_hint(&type_hint);
             if let Err(report) = maybe_error {
                 info!("Error applying type hint: {report}");
-                self.warning = Some(eyre!(report));
+                self.warning = Some(report);
             };
         }
     }
@@ -169,9 +162,8 @@ impl Home {
 
         self.program = program;
         self.vm_state = VMState::new(&self.program, public_input, self.non_determinism.clone());
+        self.type_hint_stack = TypeHintStack::new();
         self.previous_states = vec![];
-
-        self.enable_vm_state_debugging();
         Ok(())
     }
 
@@ -282,10 +274,7 @@ impl Home {
         if !self.show_type_hints {
             return;
         }
-        let Some(ref type_hints) = self.vm_state.op_stack.debug_type_hints else {
-            return;
-        };
-
+        let type_hints = &self.type_hint_stack.type_hints;
         let num_padding_lines = (area.height as usize).saturating_sub(type_hints.len() + 3);
         let mut text = vec![Line::from(""); num_padding_lines];
         for type_hint in type_hints.iter().rev() {
