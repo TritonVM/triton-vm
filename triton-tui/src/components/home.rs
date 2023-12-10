@@ -114,10 +114,10 @@ impl Home {
             return;
         }
         self.warning = None;
-        let maybe_error = self.vm_state.step();
-        if let Err(err) = maybe_error {
-            info!("Error stepping VM: {err}");
-            self.error = Some(err);
+        let current_instruction = self.vm_state.current_instruction().ok();
+        match self.vm_state.step() {
+            Ok(_) => self.type_hint_stack.mimic_instruction(current_instruction),
+            Err(err) => self.error = Some(err),
         }
         self.apply_type_hints();
     }
