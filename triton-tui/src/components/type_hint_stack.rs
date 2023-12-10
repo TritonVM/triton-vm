@@ -115,9 +115,9 @@ impl TypeHintStack {
             Instruction::Add => self.binop(),
             Instruction::Mul => self.binop(),
             Instruction::Invert => self.unop(),
-            Instruction::Eq => self.binop(),
+            Instruction::Eq => self.eq(),
             Instruction::Split => self.split(),
-            Instruction::Lt => self.binop(),
+            Instruction::Lt => self.lt(),
             Instruction::And => self.binop(),
             Instruction::Xor => self.binop(),
             Instruction::Log2Floor => self.unop(),
@@ -199,9 +199,55 @@ impl TypeHintStack {
         self.push(None);
     }
 
+    fn eq(&mut self) {
+        let lhs = self.pop();
+        let rhs = self.pop();
+        let (Some(lhs), Some(rhs)) = (lhs, rhs) else {
+            self.push(None);
+            return;
+        };
+
+        let type_hint = ElementTypeHint {
+            type_name: Some("bool".to_string()),
+            variable_name: format!("{} == {}", lhs.variable_name, rhs.variable_name),
+            index: None,
+        };
+        self.push(Some(type_hint));
+    }
+
     fn split(&mut self) {
-        self.pop();
+        let maybe_type_hint = self.pop();
         self.extend_by(N2);
+
+        let Some(type_hint) = maybe_type_hint else {
+            return;
+        };
+        let lo_index = self.len() - 1;
+        let hi_index = self.len() - 2;
+
+        let mut lo = type_hint.clone();
+        lo.variable_name.push_str("_lo");
+        self[lo_index] = Some(lo);
+
+        let mut hi = type_hint;
+        hi.variable_name.push_str("_hi");
+        self[hi_index] = Some(hi);
+    }
+
+    fn lt(&mut self) {
+        let smaller = self.pop();
+        let bigger = self.pop();
+        let (Some(smaller), Some(bigger)) = (smaller, bigger) else {
+            self.push(None);
+            return;
+        };
+
+        let type_hint = ElementTypeHint {
+            type_name: Some("bool".to_string()),
+            variable_name: format!("{} < {}", smaller.variable_name, bigger.variable_name),
+            index: None,
+        };
+        self.push(Some(type_hint));
     }
 
     fn div_mod(&mut self) {
