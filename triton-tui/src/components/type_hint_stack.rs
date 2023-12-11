@@ -1,4 +1,5 @@
 use std::cmp::Ordering;
+use std::iter::once;
 use std::ops::Index;
 use std::ops::IndexMut;
 
@@ -108,14 +109,14 @@ impl TypeHintStack {
             Instruction::Assert => _ = self.pop(),
             Instruction::ReadMem(n) => self.read_mem(n),
             Instruction::WriteMem(n) => self.write_mem(n),
-            Instruction::Hash => _ = self.pop_n(N5),
+            Instruction::Hash => self.hash(),
             Instruction::DivineSibling => self.divine_sibling(),
             Instruction::AssertVector => _ = self.pop_n(N5),
             Instruction::SpongeInit => (),
             Instruction::SpongeAbsorb => self.sponge_absorb(),
             Instruction::SpongeSqueeze => self.sponge_squeeze(),
-            Instruction::Add => self.binop(),
-            Instruction::Mul => self.binop(),
+            Instruction::Add => self.binop_maybe_keep_hint(),
+            Instruction::Mul => self.binop_maybe_keep_hint(),
             Instruction::Invert => self.unop(),
             Instruction::Eq => self.eq(),
             Instruction::Split => self.split(),
@@ -155,7 +156,7 @@ impl TypeHintStack {
 
     fn pop_n(&mut self, n: NumberOfWords) -> Vec<Option<ElementTypeHint>> {
         let start_index = self.len() - usize::from(n);
-        self.type_hints.drain(start_index..).collect()
+        self.type_hints.drain(start_index..).rev().collect()
     }
 
     fn dup(&mut self, st: OpStackElement) {
@@ -175,6 +176,39 @@ impl TypeHintStack {
         self.push(ram_pointer);
     }
 
+    fn hash(&mut self) {
+        let mut popped = self.pop_n(N5);
+        popped.extend(self.pop_n(N5));
+        self.extend_by(N5);
+
+        let all_hashed_elements = popped.iter().collect_vec();
+
+        let index_of_first_non_hashed_element = self.len() - N5.num_words() - 1;
+        let first_non_hashed_element = &self[index_of_first_non_hashed_element];
+        let all_hashed_and_first_non_hashed_elements = popped
+            .iter()
+            .chain(once(first_non_hashed_element))
+            .collect_vec();
+
+        let hashed_a_sequence = ElementTypeHint::is_continuous_sequence(&all_hashed_elements);
+        let did_not_interrupt_sequence =
+            !ElementTypeHint::is_continuous_sequence(&all_hashed_and_first_non_hashed_elements);
+        let hashed_exactly_one_object = hashed_a_sequence && did_not_interrupt_sequence;
+
+        if hashed_exactly_one_object {
+            let Some(hash_type_hint) = popped[0].clone() else {
+                return;
+            };
+            let type_hint = TypeHint {
+                type_name: Some("Digest".to_string()),
+                variable_name: format!("{}_hash", hash_type_hint.variable_name),
+                starting_index: 0,
+                length: triton_vm::Digest::default().0.len(),
+            };
+            self.apply_type_hint(&type_hint).unwrap();
+        }
+    }
+
     fn divine_sibling(&mut self) {
         self.pop_n(N5);
         self.extend_by(N5);
@@ -189,6 +223,12 @@ impl TypeHintStack {
     fn sponge_squeeze(&mut self) {
         self.extend_by(N5);
         self.extend_by(N5);
+    }
+
+    fn binop_maybe_keep_hint(&mut self) {
+        let lhs = self.pop();
+        let rhs = self.pop();
+        self.push(lhs.xor(rhs));
     }
 
     fn unop(&mut self) {
