@@ -54,7 +54,7 @@ impl TypeHintStack {
             starting_index: 11,
             length: triton_vm::Digest::default().0.len(),
         };
-        stack.apply_type_hint(&program_hash_type_hint).unwrap();
+        stack.apply_type_hint(program_hash_type_hint).unwrap();
         stack
     }
 
@@ -62,15 +62,15 @@ impl TypeHintStack {
         self.type_hints.len()
     }
 
-    pub fn apply_type_hint(&mut self, type_hint: &TypeHint) -> Result<()> {
+    pub fn apply_type_hint(&mut self, type_hint: TypeHint) -> Result<()> {
         let type_hint_range_end = type_hint.starting_index + type_hint.length;
-        if type_hint_range_end > self.type_hints.len() {
-            bail!("the op stack is not large enough to apply the given type hint");
+        if type_hint_range_end > self.len() {
+            bail!("stack is not large enough to apply type hint \"{type_hint}\"");
         }
 
         let element_type_hint_template = ElementTypeHint {
-            type_name: type_hint.type_name.clone(),
-            variable_name: type_hint.variable_name.clone(),
+            type_name: type_hint.type_name,
+            variable_name: type_hint.variable_name,
             index: None,
         };
 
@@ -205,7 +205,7 @@ impl TypeHintStack {
                 starting_index: 0,
                 length: triton_vm::Digest::default().0.len(),
             };
-            self.apply_type_hint(&type_hint).unwrap();
+            self.apply_type_hint(type_hint).unwrap();
         }
     }
 

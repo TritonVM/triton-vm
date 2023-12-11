@@ -47,7 +47,7 @@ impl Home {
         let non_determinism = NonDeterminism::default();
         let vm_state = VMState::new(&program, public_input.clone(), non_determinism.clone());
 
-        let home = Self {
+        let mut home = Self {
             args,
             program,
             non_determinism,
@@ -58,6 +58,7 @@ impl Home {
             undo_stack: vec![],
             show_type_hints: true,
         };
+        home.apply_type_hints();
         Ok(home)
     }
 
@@ -98,7 +99,7 @@ impl Home {
     fn apply_type_hints(&mut self) {
         let ip = self.vm_state.instruction_pointer as u64;
         for type_hint in self.program.type_hints_at(ip) {
-            let maybe_error = self.type_hint_stack.apply_type_hint(&type_hint);
+            let maybe_error = self.type_hint_stack.apply_type_hint(type_hint);
             if let Err(report) = maybe_error {
                 info!("Error applying type hint: {report}");
                 self.warning = Some(report);
@@ -170,6 +171,8 @@ impl Home {
         self.vm_state = VMState::new(&self.program, public_input, self.non_determinism.clone());
         self.type_hint_stack = TypeHintStack::new();
         self.undo_stack = vec![];
+
+        self.apply_type_hints();
         Ok(())
     }
 
