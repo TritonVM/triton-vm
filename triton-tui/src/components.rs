@@ -11,7 +11,6 @@ use crate::config::Config;
 use crate::triton_vm_state::TritonVMState;
 use crate::tui::Event;
 
-pub(crate) mod fps;
 pub(crate) mod help;
 pub(crate) mod home;
 
