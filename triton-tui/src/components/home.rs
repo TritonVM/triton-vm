@@ -1,4 +1,6 @@
-use color_eyre::eyre::*;
+use color_eyre::eyre::anyhow;
+use color_eyre::eyre::Report;
+use color_eyre::eyre::Result;
 use fs_err as fs;
 use itertools::Itertools;
 use ratatui::prelude::*;
