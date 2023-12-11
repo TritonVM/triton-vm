@@ -11,6 +11,7 @@ use crate::tui::Event;
 pub(crate) mod fps;
 pub(crate) mod help;
 pub(crate) mod home;
+pub(crate) mod type_hint_stack;
 
 /// `Component` is a trait that represents a visual and interactive element of the user interface.
 /// Implementors of this trait can be registered with the main application loop and will be able to

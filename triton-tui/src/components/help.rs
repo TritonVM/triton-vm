@@ -23,6 +23,7 @@ impl Component for Help {
             Help::help_line("u", "undo last command that advanced execution"),
             Help::help_line("r", "reload files, restart Triton VM"),
             String::new(),
+            Help::help_line("t", "toggle type hints next to stack"),
             Help::help_line("h", "toggle help"),
             Help::help_line("q", "quit"),
         ]

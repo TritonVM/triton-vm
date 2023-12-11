@@ -16,10 +16,8 @@ use twenty_first::shared_math::digest::Digest;
 use twenty_first::shared_math::tip5::DIGEST_LENGTH;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
-use crate::error::InstructionError;
 use crate::error::InstructionError::*;
-use crate::error::NumberOfWordsError;
-use crate::error::OpStackElementError;
+use crate::error::*;
 use crate::op_stack::OpStackElement::*;
 
 type Result<T> = std::result::Result<T, InstructionError>;

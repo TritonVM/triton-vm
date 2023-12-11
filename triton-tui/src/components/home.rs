@@ -15,6 +15,7 @@ use triton_vm::*;
 
 use crate::action::Action;
 use crate::args::Args;
+use crate::components::type_hint_stack::*;
 
 use super::Component;
 use super::Frame;
@@ -25,9 +26,17 @@ pub(crate) struct Home {
     program: Program,
     non_determinism: NonDeterminism<BFieldElement>,
     vm_state: VMState,
+    type_hint_stack: TypeHintStack,
     warning: Option<Report>,
     error: Option<InstructionError>,
-    previous_states: Vec<VMState>,
+    undo_stack: Vec<UndoInformation>,
+    show_type_hints: bool,
+}
+
+#[derive(Debug, Clone)]
+struct UndoInformation {
+    vm_state: VMState,
+    type_hint_stack: TypeHintStack,
 }
 
 impl Home {
@@ -38,15 +47,18 @@ impl Home {
         let non_determinism = NonDeterminism::default();
         let vm_state = VMState::new(&program, public_input.clone(), non_determinism.clone());
 
-        let home = Self {
+        let mut home = Self {
             args,
             program,
             non_determinism,
             vm_state,
+            type_hint_stack: TypeHintStack::default(),
             warning: None,
             error: None,
-            previous_states: vec![],
+            undo_stack: vec![],
+            show_type_hints: true,
         };
+        home.apply_type_hints();
         Ok(home)
     }
 
@@ -84,6 +96,17 @@ impl Home {
         self.program.is_breakpoint(ip)
     }
 
+    fn apply_type_hints(&mut self) {
+        let ip = self.vm_state.instruction_pointer as u64;
+        for type_hint in self.program.type_hints_at(ip) {
+            let maybe_error = self.type_hint_stack.apply_type_hint(type_hint);
+            if let Err(report) = maybe_error {
+                info!("Error applying type hint: {report}");
+                self.warning = Some(report);
+            };
+        }
+    }
+
     /// Handle [`Action::ProgramContinue`].
     fn program_continue(&mut self) {
         self.program_step();
@@ -98,11 +121,12 @@ impl Home {
             return;
         }
         self.warning = None;
-        let maybe_error = self.vm_state.step();
-        if let Err(err) = maybe_error {
-            info!("Error stepping VM: {err}");
-            self.error = Some(err);
+        let current_instruction = self.vm_state.current_instruction().ok();
+        match self.vm_state.step() {
+            Ok(_) => self.type_hint_stack.mimic_instruction(current_instruction),
+            Err(err) => self.error = Some(err),
         }
+        self.apply_type_hints();
     }
 
     /// Handle [`Action::ProgramNext`].
@@ -127,37 +151,48 @@ impl Home {
         self.warning = None;
         self.error = None;
 
-        let maybe_program = Self::program_from_args(&self.args);
-        if let Err(report) = maybe_program {
-            self.warning = Some(report);
-            return Ok(());
-        }
+        let program = match Self::program_from_args(&self.args) {
+            Ok(program) => program,
+            Err(report) => {
+                self.warning = Some(report);
+                return Ok(());
+            }
+        };
 
-        let maybe_public_input = Self::public_input_from_args(&self.args);
-        if let Err(report) = maybe_public_input {
-            self.warning = Some(report);
-            return Ok(());
-        }
+        let public_input = match Self::public_input_from_args(&self.args) {
+            Ok(public_input) => public_input,
+            Err(report) => {
+                self.warning = Some(report);
+                return Ok(());
+            }
+        };
 
-        self.program = maybe_program?;
-        let public_input = maybe_public_input?;
+        self.program = program;
         self.vm_state = VMState::new(&self.program, public_input, self.non_determinism.clone());
-        self.previous_states = vec![];
+        self.type_hint_stack = TypeHintStack::new();
+        self.undo_stack = vec![];
+
+        self.apply_type_hints();
         Ok(())
     }
 
     fn record_undo_information(&mut self) {
-        self.previous_states.push(self.vm_state.clone())
+        let undo_information = UndoInformation {
+            vm_state: self.vm_state.clone(),
+            type_hint_stack: self.type_hint_stack.clone(),
+        };
+        self.undo_stack.push(undo_information);
     }
 
     fn program_undo(&mut self) {
-        let Some(previous_state) = self.previous_states.pop() else {
+        let Some(undo_information) = self.undo_stack.pop() else {
             self.warning = Some(anyhow!("no more undo information available"));
             return;
         };
         self.warning = None;
         self.error = None;
-        self.vm_state = previous_state;
+        self.vm_state = undo_information.vm_state;
+        self.type_hint_stack = undo_information.type_hint_stack;
     }
 
     fn address_render_width(&self) -> usize {
@@ -175,19 +210,30 @@ impl Home {
         let state_area = layout[0];
         let message_box_area = layout[1];
 
-        let op_stack_widget_width = Constraint::Min(32);
+        let op_stack_widget_width = Constraint::Min(30);
+        let type_hint_widget = match self.show_type_hints {
+            true => Constraint::Min(30),
+            false => Constraint::Max(0),
+        };
         let remaining_width = Constraint::Percentage(100);
         let sponge_state_width = match self.vm_state.sponge_state.is_some() {
             true => Constraint::Min(32),
             false => Constraint::Min(1),
         };
+        let state_layout_constraints = [
+            op_stack_widget_width,
+            type_hint_widget,
+            remaining_width,
+            sponge_state_width,
+        ];
         let state_layout = Layout::default()
             .direction(Direction::Horizontal)
-            .constraints([op_stack_widget_width, remaining_width, sponge_state_width])
+            .constraints(state_layout_constraints)
             .split(state_area);
         let op_stack_area = state_layout[0];
-        let program_and_call_stack_area = state_layout[1];
-        let sponge_state_area = state_layout[2];
+        let type_hint_area = state_layout[1];
+        let program_and_call_stack_area = state_layout[2];
+        let sponge_state_area = state_layout[3];
 
         let program_widget_width = Constraint::Percentage(50);
         let call_stack_widget_width = Constraint::Percentage(50);
@@ -199,6 +245,7 @@ impl Home {
 
         WidgetAreas {
             op_stack: op_stack_area,
+            type_hint: type_hint_area,
             program: program_and_call_stack_layout[0],
             call_stack: program_and_call_stack_layout[1],
             sponge: sponge_state_area,
@@ -237,6 +284,51 @@ impl Home {
         f.render_widget(paragraph, area);
     }
 
+    fn render_type_hint_widget(&self, f: &mut Frame, area: Rect) {
+        if !self.show_type_hints {
+            return;
+        }
+        let type_hints = &self.type_hint_stack.type_hints;
+        let highest_hint = type_hints.last().cloned().flatten();
+        let lowest_hint = type_hints.first().cloned().flatten();
+
+        let num_padding_lines = (area.height as usize).saturating_sub(type_hints.len() + 3);
+        let mut text = vec![Line::from(""); num_padding_lines];
+
+        text.push(Self::render_element_type_hint(&highest_hint));
+        for (hint_0, hint_1, hint_2) in type_hints.iter().rev().tuple_windows() {
+            if ElementTypeHint::is_continuous_sequence(&[hint_0, hint_1, hint_2]) {
+                text.push("⋅".dim().into());
+            } else {
+                text.push(Self::render_element_type_hint(hint_1));
+            }
+        }
+        text.push(Self::render_element_type_hint(&lowest_hint));
+
+        let block = Block::default()
+            .padding(Padding::new(0, 1, 1, 0))
+            .borders(Borders::TOP | Borders::BOTTOM);
+        let paragraph = Paragraph::new(text).block(block).alignment(Alignment::Left);
+        f.render_widget(paragraph, area);
+    }
+
+    fn render_element_type_hint(element_type_hint: &Option<ElementTypeHint>) -> Line {
+        let Some(element_type_hint) = element_type_hint else {
+            return Line::default();
+        };
+
+        let mut line = vec![];
+        line.push(element_type_hint.variable_name.clone().into());
+        if let Some(ref type_name) = element_type_hint.type_name {
+            line.push(": ".dim());
+            line.push(type_name.into());
+        }
+        if let Some(index) = element_type_hint.index {
+            line.push(format!(" ({index})").dim());
+        }
+        line.into()
+    }
+
     fn render_program_widget(&self, f: &mut Frame, area: Rect) {
         let cycle_count = self.vm_state.cycle_count;
         let title = format!(" Program (cycle: {cycle_count:>5}) ");
@@ -264,6 +356,9 @@ impl Home {
         {
             if labelled_instruction == LabelledInstruction::Breakpoint {
                 is_breakpoint = true;
+                continue;
+            }
+            if let LabelledInstruction::TypeHint(_) = labelled_instruction {
                 continue;
             }
             let ip_points_here = instruction_pointer == address
@@ -453,6 +548,7 @@ impl Component for Home {
             }
             Action::ProgramUndo => self.program_undo(),
             Action::ProgramReset => self.program_reset()?,
+            Action::ToggleTypeHintDisplay => self.show_type_hints = !self.show_type_hints,
             _ => {}
         }
         Ok(None)
@@ -461,6 +557,7 @@ impl Component for Home {
     fn draw(&mut self, f: &mut Frame<'_>, area: Rect) -> Result<()> {
         let widget_areas = self.distribute_area_for_widgets(area);
         self.render_op_stack_widget(f, widget_areas.op_stack);
+        self.render_type_hint_widget(f, widget_areas.type_hint);
         self.render_program_widget(f, widget_areas.program);
         self.render_call_stack_widget(f, widget_areas.call_stack);
         self.render_sponge_widget(f, widget_areas.sponge);
@@ -472,6 +569,7 @@ impl Component for Home {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct WidgetAreas {
     op_stack: Rect,
+    type_hint: Rect,
     program: Rect,
     call_stack: Rect,
     sponge: Rect,

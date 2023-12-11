@@ -14,10 +14,10 @@ use nom::multi::*;
 use nom::Finish;
 use nom::IResult;
 
-use crate::instruction::AnInstruction;
 use crate::instruction::AnInstruction::*;
 use crate::instruction::LabelledInstruction;
 use crate::instruction::ALL_INSTRUCTION_NAMES;
+use crate::instruction::*;
 use crate::op_stack::NumberOfWords;
 use crate::op_stack::NumberOfWords::*;
 use crate::op_stack::OpStackElement;
@@ -37,6 +37,7 @@ pub enum InstructionToken<'a> {
     Instruction(AnInstruction<String>, &'a str),
     Label(String, &'a str),
     Breakpoint(&'a str),
+    TypeHint(TypeHint, &'a str),
 }
 
 impl<'a> Display for ParseError<'a> {
@@ -53,6 +54,7 @@ impl<'a> InstructionToken<'a> {
             InstructionToken::Instruction(_, token_str) => token_str,
             InstructionToken::Label(_, token_str) => token_str,
             InstructionToken::Breakpoint(token_str) => token_str,
+            InstructionToken::TypeHint(_, token_str) => token_str,
         }
     }
 
@@ -62,6 +64,7 @@ impl<'a> InstructionToken<'a> {
             Instruction(instr, _) => LabelledInstruction::Instruction(instr.to_owned()),
             Label(label, _) => LabelledInstruction::Label(label.to_owned()),
             Breakpoint(_) => LabelledInstruction::Breakpoint,
+            TypeHint(type_hint, _) => LabelledInstruction::TypeHint(type_hint.to_owned()),
         }
     }
 }
@@ -180,7 +183,7 @@ type ParseResult<'input, Out> = IResult<&'input str, Out, VerboseError<&'input s
 
 pub fn tokenize(s: &str) -> ParseResult<Vec<InstructionToken>> {
     let (s, _) = comment_or_whitespace0(s)?;
-    let (s, instructions) = many0(alt((label, labelled_instruction, breakpoint)))(s)?;
+    let (s, instructions) = many0(alt((label, labelled_instruction, breakpoint, type_hint)))(s)?;
     let (s, _) = context("expecting label, instruction or eof", eof)(s)?;
 
     Ok((s, instructions))
@@ -193,7 +196,7 @@ fn labelled_instruction(s_instr: &str) -> ParseResult<InstructionToken> {
 
 fn label(label_s: &str) -> ParseResult<InstructionToken> {
     let (s, addr) = label_addr(label_s)?;
-    let (s, _) = token0("")(s)?; // whitespace between label and ':' is allowed
+    let (s, _) = whitespace0(s)?; // whitespace between label and ':' is allowed
     let (s, _) = token0(":")(s)?; // don't require space after ':'
 
     // Checking if `<label>:` is an instruction must happen after parsing `:`, since otherwise
@@ -523,7 +526,7 @@ fn is_label_start_char(c: char) -> bool {
 }
 
 fn is_label_char(c: char) -> bool {
-    c.is_alphanumeric() || c == '_' || c == '-'
+    is_label_start_char(c) || c.is_numeric() || c == '-'
 }
 
 /// Parse 0 or more comments and/or whitespace.
@@ -549,6 +552,12 @@ fn comment_or_whitespace1<'a>(s: &'a str) -> ParseResult<&'a str> {
 fn comment1(s: &str) -> ParseResult<()> {
     let (s, _) = tag("//")(s)?;
     let (s, _) = take_while(|c| !is_linebreak(c))(s)?;
+    Ok((s, ()))
+}
+
+/// Parse whitespace characters (can be none)
+fn whitespace0(s: &str) -> ParseResult<()> {
+    let (s, _) = take_while(|c: char| c.is_whitespace())(s)?;
     Ok((s, ()))
 }
 
@@ -581,10 +590,110 @@ fn token1<'a>(token: &'a str) -> impl Fn(&'a str) -> ParseResult<()> {
     }
 }
 
+/// Parse one type hint.
+///
+/// Type hints look like this:
+///
+/// ```text
+/// hint <variable_name>[: <type_name>] = stack\[<range_start>[..<range_end>]\]
+/// ```
+fn type_hint(s_type_hint: &str) -> ParseResult<InstructionToken> {
+    let (s, _) = token1("hint")(s_type_hint)?;
+    let (s, variable_name) = type_hint_variable_name(s)?;
+    let (s, type_name) = type_hint_type_name(s)?;
+    let (s, range_start) = type_hint_starting_index(s)?;
+    let (s, maybe_range_end) = type_hint_ending_index(s)?;
+    let (s, _) = whitespace0(s)?;
+    let (s, _) = token0("]")(s)?;
+
+    let length = match maybe_range_end {
+        Some(range_end) if range_end <= range_start => {
+            return cut(context("range end must be greater than range start", fail))(s)
+        }
+        Some(range_end) => range_end - range_start,
+        None => 1,
+    };
+
+    let type_hint = TypeHint {
+        starting_index: range_start,
+        length,
+        type_name,
+        variable_name,
+    };
+
+    Ok((s, InstructionToken::TypeHint(type_hint, s_type_hint)))
+}
+
+fn type_hint_variable_name(s: &str) -> ParseResult<String> {
+    let (s, variable_name_start) = take_while1(is_type_hint_variable_name_start_character)(s)?;
+    let (s, variable_name_end) = take_while(is_type_hint_variable_name_character)(s)?;
+    let (s, _) = whitespace0(s)?;
+    let variable_name = format!("{}{}", variable_name_start, variable_name_end);
+    Ok((s, variable_name))
+}
+
+fn type_hint_type_name(s: &str) -> ParseResult<Option<String>> {
+    let Ok((s, _)) = token0(":")(s) else {
+        return Ok((s, None));
+    };
+
+    let (s, type_name_start) = take_while1(is_type_hint_type_name_start_character)(s)?;
+    let (s, type_name_end) = take_while(is_type_hint_type_name_character)(s)?;
+    let (s, _) = whitespace0(s)?;
+    let type_name = format!("{}{}", type_name_start, type_name_end);
+
+    Ok((s, Some(type_name)))
+}
+
+fn type_hint_ending_index(s: &str) -> ParseResult<Option<usize>> {
+    let Ok((s, _)) = token0("..")(s) else {
+        return Ok((s, None));
+    };
+
+    let (s, range_end) = take_while(|c: char| c.is_numeric())(s)?;
+    let (_, range_end) = parse_str_to_usize(range_end)?;
+
+    Ok((s, Some(range_end)))
+}
+
+fn type_hint_starting_index(s: &str) -> ParseResult<usize> {
+    let (s, _) = token0("=")(s)?;
+    let (s, _) = token0("stack[")(s)?;
+    let (s, range_start) = take_while(|c: char| c.is_numeric())(s)?;
+    let (_, range_start) = parse_str_to_usize(range_start)?;
+    let (s, _) = whitespace0(s)?;
+    Ok((s, range_start))
+}
+
+fn is_type_hint_variable_name_start_character(c: char) -> bool {
+    (c.is_alphabetic() && c.is_lowercase()) || c == '_'
+}
+
+fn is_type_hint_variable_name_character(c: char) -> bool {
+    is_type_hint_variable_name_start_character(c) || c.is_numeric()
+}
+
+fn is_type_hint_type_name_start_character(c: char) -> bool {
+    c.is_alphabetic()
+}
+
+fn is_type_hint_type_name_character(c: char) -> bool {
+    is_type_hint_type_name_start_character(c) || c.is_numeric() || c == '_'
+}
+
+fn parse_str_to_usize(s: &str) -> ParseResult<usize> {
+    match s.parse::<usize>() {
+        Ok(u) => Ok((s, u)),
+        Err(_) => cut(context("integer conversion failure", fail))(s),
+    }
+}
+
 #[cfg(test)]
 pub(crate) mod tests {
-
+    use assert2::assert;
+    use assert2::let_assert;
     use itertools::Itertools;
+    use proptest::prelude::*;
     use proptest_arbitrary_interop::arb;
     use rand::prelude::*;
     use rand::Rng;
@@ -593,7 +702,9 @@ pub(crate) mod tests {
     use test_strategy::Arbitrary;
     use twenty_first::shared_math::digest::DIGEST_LENGTH;
 
-    use LabelledInstruction::*;
+    use LabelledInstruction::Breakpoint;
+    use LabelledInstruction::Instruction;
+    use LabelledInstruction::Label;
 
     use crate::program::Program;
     use crate::triton_asm;
@@ -616,15 +727,12 @@ pub(crate) mod tests {
     }
 
     fn parse_program_prop(test_case: TestCase) {
-        match parse(test_case.input) {
-            Ok(actual) => assert_eq!(
-                test_case.expected,
-                Program::new(&to_labelled_instructions(&actual)),
-                "{}",
-                test_case.message
-            ),
-            Err(parse_err) => panic!("{}:\n{parse_err}", test_case.message),
-        }
+        let message = test_case.message;
+        let parse_result = parse(test_case.input).map_err(|err| format!("{message}:\n{err}"));
+        let_assert!(Ok(actual) = parse_result);
+
+        let actual_program = Program::new(&to_labelled_instructions(&actual));
+        assert!(test_case.expected == actual_program, "{message}",);
     }
 
     fn parse_program_neg_prop(test_case: NegativeTestCase) {
@@ -937,6 +1045,194 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn parse_simple_type_hint() {
+        let expected_type_hint = TypeHint {
+            starting_index: 0,
+            length: 1,
+            type_name: Some("Type".to_string()),
+            variable_name: "foo".to_string(),
+        };
+
+        parse_program_prop(TestCase {
+            input: "hint foo: Type = stack[0]",
+            expected: Program::new(&[LabelledInstruction::TypeHint(expected_type_hint)]),
+            message: "parse type hint",
+        });
+    }
+
+    #[test]
+    fn parse_type_hint_with_range() {
+        let expected_type_hint = TypeHint {
+            starting_index: 0,
+            length: 5,
+            type_name: Some("Digest".to_string()),
+            variable_name: "foo".to_string(),
+        };
+
+        parse_program_prop(TestCase {
+            input: "hint foo: Digest = stack[0..5]",
+            expected: Program::new(&[LabelledInstruction::TypeHint(expected_type_hint)]),
+            message: "parse type hint with range",
+        });
+    }
+
+    #[test]
+    fn parse_type_hint_with_range_and_offset() {
+        let expected_type_hint = TypeHint {
+            starting_index: 7,
+            length: 3,
+            type_name: Some("XFieldElement".to_string()),
+            variable_name: "bar".to_string(),
+        };
+
+        parse_program_prop(TestCase {
+            input: "hint bar: XFieldElement = stack[7..10]",
+            expected: Program::new(&[LabelledInstruction::TypeHint(expected_type_hint)]),
+            message: "parse type hint with range and offset",
+        });
+    }
+
+    #[test]
+    fn parse_type_hint_with_range_and_offset_and_weird_whitespace() {
+        let expected_type_hint = TypeHint {
+            starting_index: 2,
+            length: 12,
+            type_name: Some("BigType".to_string()),
+            variable_name: "bar".to_string(),
+        };
+
+        parse_program_prop(TestCase {
+            input: " hint \t \t foo  :BigType=stack[ 2\t.. 14 ]\t \n",
+            expected: Program::new(&[LabelledInstruction::TypeHint(expected_type_hint)]),
+            message: "parse type hint with range and offset and weird whitespace",
+        });
+    }
+
+    #[test]
+    fn parse_type_hint_with_no_type_only_variable_name() {
+        let expected_type_hint = TypeHint {
+            starting_index: 0,
+            length: 1,
+            type_name: None,
+            variable_name: "foo".to_string(),
+        };
+
+        parse_program_prop(TestCase {
+            input: "hint foo = stack[0]",
+            expected: Program::new(&[LabelledInstruction::TypeHint(expected_type_hint)]),
+            message: "parse type hint with no type, only variable name",
+        });
+    }
+
+    #[test]
+    fn parse_type_hint_with_no_type_only_variable_name_with_range() {
+        let expected_type_hint = TypeHint {
+            starting_index: 2,
+            length: 5,
+            type_name: None,
+            variable_name: "foo".to_string(),
+        };
+
+        parse_program_prop(TestCase {
+            input: "hint foo = stack[2..7]",
+            expected: Program::new(&[LabelledInstruction::TypeHint(expected_type_hint)]),
+            message: "parse type hint with no type, only variable name, with range",
+        });
+    }
+
+    #[test]
+    fn parse_type_hint_with_zero_length_range() {
+        parse_program_neg_prop(NegativeTestCase {
+            input: "hint foo: Type = stack[0..0]",
+            expected_error: "range end must be greater than range start",
+            expected_error_count: 1,
+            message: "parse type hint with zero-length range",
+        });
+    }
+
+    #[test]
+    fn parse_type_hint_with_range_and_offset_and_missing_closing_bracket() {
+        parse_program_neg_prop(NegativeTestCase {
+            input: "hint foo: Type = stack[2..5",
+            expected_error: "expecting label, instruction or eof",
+            expected_error_count: 1,
+            message: "parse type hint with range and offset and missing closing bracket",
+        });
+    }
+
+    #[test]
+    fn parse_type_hint_with_range_and_offset_and_missing_opening_bracket() {
+        parse_program_neg_prop(NegativeTestCase {
+            input: "hint foo: Type = stack2..5]",
+            expected_error: "expecting label, instruction or eof",
+            expected_error_count: 1,
+            message: "parse type hint with range and offset and missing opening bracket",
+        });
+    }
+
+    #[test]
+    fn parse_type_hint_with_range_and_offset_and_missing_equals_sign() {
+        parse_program_neg_prop(NegativeTestCase {
+            input: "hint foo: Type stack[2..5];",
+            expected_error: "expecting label, instruction or eof",
+            expected_error_count: 1,
+            message: "parse type hint with range and offset and missing equals sign",
+        });
+    }
+
+    #[test]
+    fn parse_type_hint_with_range_and_offset_and_missing_type_name() {
+        parse_program_neg_prop(NegativeTestCase {
+            input: "hint foo: = stack[2..5]",
+            expected_error: "expecting label, instruction or eof",
+            expected_error_count: 1,
+            message: "parse type hint with range and offset and missing type name",
+        });
+    }
+
+    #[test]
+    fn parse_type_hint_with_range_and_offset_and_missing_variable_name() {
+        parse_program_neg_prop(NegativeTestCase {
+            input: "hint : Type = stack[2..5]",
+            expected_error: "expecting label, instruction or eof",
+            expected_error_count: 1,
+            message: "parse type hint with range and offset and missing variable name",
+        });
+    }
+
+    #[test]
+    fn parse_type_hint_with_range_and_offset_and_missing_colon() {
+        parse_program_neg_prop(NegativeTestCase {
+            input: "hint foo Type = stack[2..5]",
+            expected_error: "expecting label, instruction or eof",
+            expected_error_count: 1,
+            message: "parse type hint with range and offset and missing colon",
+        });
+    }
+
+    #[test]
+    fn parse_type_hint_with_range_and_offset_and_missing_hint() {
+        parse_program_neg_prop(NegativeTestCase {
+            input: "foo: Type = stack[2..5];",
+            expected_error: "expecting label, instruction or eof",
+            expected_error_count: 1,
+            message: "parse type hint with range and offset and missing hint",
+        });
+    }
+
+    #[proptest]
+    fn type_hint_to_string_to_type_hint_is_identity(#[strategy(arb())] type_hint: TypeHint) {
+        let type_hint_string = type_hint.to_string();
+        let instruction_tokens =
+            parse(&type_hint_string).map_err(|err| TestCaseError::Fail(format!("{err}").into()))?;
+        let labelled_instructions = to_labelled_instructions(&instruction_tokens);
+        prop_assert_eq!(1, labelled_instructions.len());
+        let first_labelled_instruction = labelled_instructions[0].clone();
+        let_assert!(LabelledInstruction::TypeHint(parsed_type_hint) = first_labelled_instruction);
+        prop_assert_eq!(type_hint, parsed_type_hint);
+    }
+
+    #[test]
     fn triton_asm_macro() {
         let instructions = triton_asm!(write_io 3 push 17 call which_label lt swap 3);
         assert_eq!(Instruction(WriteIo(N3)), instructions[0]);
@@ -1075,11 +1371,14 @@ pub(crate) mod tests {
             return\n\
             baz:\n\
             hash\n\
+            hint my_digest: Digest = stack[0..5]\n\
+            hint random_stuff = stack[17]\n\
             return\n\
             nop\n\
             pop 1\n\
             bar:\n\
             divine 1\n\
+            hint got_insight: Magic = stack[0]\n\
             skiz\n\
             split\n\
             break\n\
@@ -1088,6 +1387,5 @@ pub(crate) mod tests {
         let program = Program::from_code(source_code).unwrap();
         let printed_program = format!("{program}");
         assert_eq!(source_code, &printed_program);
-        println!("{program}");
     }
 }

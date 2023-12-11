@@ -36,6 +36,8 @@ pub(crate) enum Action {
     /// Reset the program state.
     ProgramReset,
 
+    ToggleTypeHintDisplay,
+
     Mode(Mode),
 }
 
@@ -70,6 +72,9 @@ impl<'de> Deserialize<'de> for Action {
                     "Undo" => Ok(Action::ProgramUndo),
                     "Reset" => Ok(Action::ProgramReset),
                     "Finish" => Ok(Action::ProgramFinish),
+
+                    "ToggleTypeHintDisplay" => Ok(Action::ToggleTypeHintDisplay),
+
                     mode if mode.starts_with("Mode::") => Self::parse_mode(mode),
                     data if data.starts_with("Error(") => Self::parse_error(data),
                     data if data.starts_with("Resize(") => Self::parse_resize(data),
