@@ -1,3 +1,5 @@
+use std::fmt::Debug;
+
 use color_eyre::eyre::Result;
 use crossterm::event::KeyEvent;
 use crossterm::event::MouseEvent;
@@ -6,17 +8,17 @@ use tokio::sync::mpsc::UnboundedSender;
 
 use crate::action::Action;
 use crate::config::Config;
+use crate::triton_vm_state::TritonVMState;
 use crate::tui::Event;
 
 pub(crate) mod fps;
 pub(crate) mod help;
 pub(crate) mod home;
-pub(crate) mod type_hint_stack;
 
 /// `Component` is a trait that represents a visual and interactive element of the user interface.
 /// Implementors of this trait can be registered with the main application loop and will be able to
 /// receive events, update state, and be rendered on the screen.
-pub(crate) trait Component {
+pub(crate) trait Component: Debug {
     fn register_action_handler(&mut self, _tx: UnboundedSender<Action>) -> Result<()> {
         Ok(())
     }
@@ -52,7 +54,7 @@ pub(crate) trait Component {
     }
 
     /// Render the component on the screen.
-    fn draw(&mut self, f: &mut Frame<'_>, area: Rect) -> Result<()>;
+    fn draw(&mut self, frame: &mut Frame<'_>, state: &TritonVMState) -> Result<()>;
 }
 
 /// helper function to create a centered rect using up certain percentage of the available rect `r`

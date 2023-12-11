@@ -4,7 +4,6 @@ use ratatui::prelude::Rect;
 use strum::EnumCount;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::UnboundedSender;
-use tracing::debug;
 use tracing::info;
 
 use crate::action::Action;
@@ -15,18 +14,23 @@ use crate::components::Component;
 use crate::config::Config;
 use crate::config::KeyEvents;
 use crate::mode::Mode;
+use crate::triton_vm_state::TritonVMState;
 use crate::tui::*;
 use crate::utils::trace_dbg;
 
 pub(crate) struct TritonTUI {
     pub args: Args,
     pub config: Config,
+
     pub tui: Tui,
-    pub components: [Vec<Box<dyn Component>>; Mode::COUNT],
+    pub mode: Mode,
+    pub components: [Box<dyn Component>; Mode::COUNT],
+
     pub should_quit: bool,
     pub should_suspend: bool,
-    pub mode: Mode,
     pub recent_key_events: KeyEvents,
+
+    pub vm_state: TritonVMState,
 }
 
 impl TritonTUI {
@@ -35,20 +39,21 @@ impl TritonTUI {
         let tui = Self::tui(&args)?;
         let mode = Mode::default();
 
-        let home = Home::new(args.clone())?;
-        let mut components: [Vec<Box<dyn Component>>; Mode::COUNT] = Default::default();
-        components[Mode::Home.id()].push(Box::new(home));
-        components[Mode::Help.id()].push(Box::<Help>::default());
+        let components: [Box<dyn Component>; Mode::COUNT] =
+            [Box::<Home>::default(), Box::<Help>::default()];
+
+        let vm_state = TritonVMState::new(&args)?;
 
         Ok(Self {
             args,
             config,
             tui,
+            mode,
             components,
             should_quit: false,
             should_suspend: false,
-            mode,
             recent_key_events: vec![],
+            vm_state,
         })
     }
 
@@ -58,7 +63,7 @@ impl TritonTUI {
 
         trace_dbg!("Tui entered");
 
-        for component in self.components.iter_mut().flatten() {
+        for component in self.components.iter_mut() {
             component.register_action_handler(action_tx.clone())?;
             component.register_config_handler(self.config.clone())?;
             component.init(self.tui.size()?)?;
@@ -74,7 +79,7 @@ impl TritonTUI {
                     Event::Resize(x, y) => action_tx.send(Action::Resize(x, y))?,
                     _ => {}
                 }
-                for component in self.components.iter_mut().flatten() {
+                for component in self.components.iter_mut() {
                     if let Some(action) = component.handle_event(Some(e.clone()))? {
                         action_tx.send(action)?;
                     }
@@ -82,9 +87,6 @@ impl TritonTUI {
             }
 
             while let Ok(action) = action_rx.try_recv() {
-                if action != Action::Tick && action != Action::Render {
-                    debug!("{action:?}");
-                }
                 match action {
                     Action::Tick => self.recent_key_events.clear(),
                     Action::Render => self.render()?,
@@ -96,12 +98,17 @@ impl TritonTUI {
                         self.mode = mode;
                         self.render()?;
                     }
+                    Action::ProgramReset => {
+                        self.vm_state = TritonVMState::new(&self.args)?;
+                        self.render()?;
+                    }
                     Action::Suspend => self.should_suspend = true,
                     Action::Resume => self.should_suspend = false,
                     Action::Quit => self.should_quit = true,
                     _ => {}
                 }
-                for component in self.components.iter_mut().flatten() {
+                self.vm_state.update(action.clone())?;
+                for component in self.components.iter_mut() {
                     if let Some(action) = component.update(action.clone())? {
                         action_tx.send(action)?
                     };
@@ -126,13 +133,12 @@ impl TritonTUI {
 
     fn render(&mut self) -> Result<()> {
         let mode_id = self.mode.id();
+        let vm_state = &self.vm_state;
         let mut draw_result = Ok(());
-        self.tui.draw(|f| {
-            for component in self.components[mode_id].iter_mut() {
-                let maybe_err = component.draw(f, f.size());
-                if maybe_err.is_err() {
-                    draw_result = maybe_err;
-                }
+        self.tui.draw(|frame| {
+            let maybe_err = self.components[mode_id].draw(frame, vm_state);
+            if maybe_err.is_err() {
+                draw_result = maybe_err;
             }
         })?;
         draw_result

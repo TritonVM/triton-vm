@@ -6,6 +6,7 @@ use ratatui::widgets::*;
 use ratatui::Frame;
 
 use crate::action::Action;
+use crate::triton_vm_state::TritonVMState;
 
 use super::Component;
 
@@ -73,7 +74,7 @@ impl Component for FpsCounter {
         Ok(None)
     }
 
-    fn draw(&mut self, f: &mut Frame<'_>, rect: Rect) -> Result<()> {
+    fn draw(&mut self, frame: &mut Frame<'_>, _: &TritonVMState) -> Result<()> {
         let constraints = vec![
             Constraint::Length(1), // first row
             Constraint::Min(0),
@@ -81,7 +82,7 @@ impl Component for FpsCounter {
         let rects = Layout::default()
             .direction(Direction::Vertical)
             .constraints(constraints)
-            .split(rect);
+            .split(frame.size());
 
         let rect = rects[0];
 
@@ -90,7 +91,7 @@ impl Component for FpsCounter {
             self.app_ticks_per_s, self.render_frames_per_s
         );
         let block = Block::default().title(block::Title::from(s.dim()).alignment(Alignment::Right));
-        f.render_widget(block, rect);
+        frame.render_widget(block, rect);
         Ok(())
     }
 }

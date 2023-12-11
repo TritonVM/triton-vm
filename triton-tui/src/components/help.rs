@@ -1,19 +1,21 @@
-use ratatui::layout::Rect;
+use std::fmt::Display;
+
+use color_eyre::eyre::Result;
 use ratatui::prelude::*;
 use ratatui::widgets::block::*;
 use ratatui::widgets::Paragraph;
 use ratatui::widgets::Wrap;
 use ratatui::Frame;
-use std::fmt::Display;
 
 use crate::components::centered_rect;
 use crate::components::Component;
+use crate::triton_vm_state::TritonVMState;
 
-#[derive(Default)]
+#[derive(Default, Debug, Clone, Copy)]
 pub(crate) struct Help;
 
 impl Component for Help {
-    fn draw(&mut self, f: &mut Frame<'_>, area: Rect) -> color_eyre::Result<()> {
+    fn draw(&mut self, frame: &mut Frame<'_>, _: &TritonVMState) -> Result<()> {
         let title = Title::from(" Triton TUI — Help").alignment(Alignment::Left);
         let text = [
             Help::help_line("c", "continue program execution"),
@@ -35,9 +37,9 @@ impl Component for Help {
             .block(block)
             .alignment(Alignment::Left)
             .wrap(Wrap { trim: true });
-        let area = centered_rect(area, 50, 50);
+        let area = centered_rect(frame.size(), 50, 50);
 
-        f.render_widget(paragraph, area);
+        frame.render_widget(paragraph, area);
         Ok(())
     }
 }
