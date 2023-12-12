@@ -16,7 +16,6 @@ use crate::config::KeyEvents;
 use crate::mode::Mode;
 use crate::triton_vm_state::TritonVMState;
 use crate::tui::*;
-use crate::utils::trace_dbg;
 
 pub(crate) struct TritonTUI {
     pub args: Args,
@@ -60,8 +59,6 @@ impl TritonTUI {
     pub async fn run(&mut self) -> Result<()> {
         let (action_tx, mut action_rx) = mpsc::unbounded_channel();
         self.tui.enter()?;
-
-        trace_dbg!("Tui entered");
 
         for component in self.components.iter_mut() {
             component.register_action_handler(action_tx.clone())?;
