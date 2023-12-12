@@ -224,3 +224,25 @@ impl Component for TritonVMState {
         Ok(None)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use assert2::assert;
+    use proptest::collection::vec;
+    use proptest_arbitrary_interop::arb;
+    use test_strategy::proptest;
+
+    use super::*;
+
+    #[proptest]
+    fn presumed_top_of_stack_is_actually_top_of_stack(
+        #[strategy(vec(arb(), NUM_OP_STACK_REGISTERS..100))] stack: Vec<BFieldElement>,
+    ) {
+        let mut triton_vm_state = TritonVMState::new(&Default::default()).unwrap();
+        triton_vm_state.vm_state.op_stack.stack = stack.clone();
+        let top_of_stack = triton_vm_state.top_of_stack();
+        assert!(top_of_stack[0] == stack[stack.len() - 1]);
+        assert!(top_of_stack[1] == stack[stack.len() - 2]);
+        assert!(top_of_stack[2] == stack[stack.len() - 3]);
+    }
+}
