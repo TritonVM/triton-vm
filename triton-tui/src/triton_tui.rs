@@ -60,6 +60,7 @@ impl TritonTUI {
         let (action_tx, mut action_rx) = mpsc::unbounded_channel();
         self.tui.enter()?;
 
+        self.vm_state.register_action_handler(action_tx.clone())?;
         for component in self.components.iter_mut() {
             component.register_action_handler(action_tx.clone())?;
         }

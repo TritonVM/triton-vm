@@ -1,9 +1,13 @@
 use std::fmt;
 
+use arbitrary::Arbitrary;
 use itertools::Itertools;
-use serde::de;
 use serde::de::*;
 use serde::*;
+
+use triton_vm::instruction::Instruction;
+use triton_vm::op_stack::NUM_OP_STACK_REGISTERS;
+use triton_vm::BFieldElement;
 
 use crate::mode::Mode;
 
@@ -39,6 +43,15 @@ pub(crate) enum Action {
     ToggleTypeHintDisplay,
 
     Mode(Mode),
+
+    ExecutedInstruction(Box<ExecutedInstruction>),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Arbitrary)]
+pub(crate) struct ExecutedInstruction {
+    pub instruction: Instruction,
+    pub old_top_of_stack: [BFieldElement; NUM_OP_STACK_REGISTERS],
+    pub new_top_of_stack: [BFieldElement; NUM_OP_STACK_REGISTERS],
 }
 
 impl<'de> Deserialize<'de> for Action {
@@ -57,7 +70,7 @@ impl<'de> Deserialize<'de> for Action {
 
             fn visit_str<E>(self, value: &str) -> Result<Action, E>
             where
-                E: de::Error,
+                E: Error,
             {
                 match value {
                     "Tick" => Ok(Action::Tick),
@@ -86,7 +99,7 @@ impl<'de> Deserialize<'de> for Action {
         impl ActionVisitor {
             fn parse_mode<E>(mode: &str) -> Result<Action, E>
             where
-                E: de::Error,
+                E: Error,
             {
                 let maybe_mode_and_variant = mode.split("::").collect_vec();
                 let maybe_variant = maybe_mode_and_variant.get(1).copied();
@@ -98,7 +111,7 @@ impl<'de> Deserialize<'de> for Action {
 
             fn parse_error<E>(data: &str) -> Result<Action, E>
             where
-                E: de::Error,
+                E: Error,
             {
                 let error_msg = data.trim_start_matches("Error(").trim_end_matches(')');
                 Ok(Action::Error(error_msg.to_string()))
@@ -106,7 +119,7 @@ impl<'de> Deserialize<'de> for Action {
 
             fn parse_resize<E>(data: &str) -> Result<Action, E>
             where
-                E: de::Error,
+                E: Error,
             {
                 let parts: Vec<&str> = data
                     .trim_start_matches("Resize(")
@@ -124,5 +137,19 @@ impl<'de> Deserialize<'de> for Action {
         }
 
         deserializer.deserialize_str(ActionVisitor)
+    }
+}
+
+impl ExecutedInstruction {
+    pub fn new(
+        instruction: Instruction,
+        old_top_of_stack: [BFieldElement; NUM_OP_STACK_REGISTERS],
+        new_top_of_stack: [BFieldElement; NUM_OP_STACK_REGISTERS],
+    ) -> Self {
+        Self {
+            instruction,
+            old_top_of_stack,
+            new_top_of_stack,
+        }
     }
 }

@@ -2,20 +2,27 @@ use color_eyre::eyre::anyhow;
 use color_eyre::eyre::Result;
 use color_eyre::Report;
 use fs_err as fs;
+use itertools::Itertools;
+use tokio::sync::mpsc::UnboundedSender;
+use tracing::error;
 use tracing::info;
 
 use triton_vm::error::InstructionError;
 use triton_vm::instruction::*;
+use triton_vm::op_stack::NUM_OP_STACK_REGISTERS;
 use triton_vm::vm::VMState;
 use triton_vm::*;
 
 use crate::action::Action;
+use crate::action::ExecutedInstruction;
 use crate::args::Args;
 use crate::components::Component;
 use crate::type_hint_stack::TypeHintStack;
 
 #[derive(Debug)]
 pub(crate) struct TritonVMState {
+    pub action_tx: Option<UnboundedSender<Action>>,
+
     pub program: Program,
     pub vm_state: VMState,
 
@@ -41,6 +48,7 @@ impl TritonVMState {
         let vm_state = VMState::new(&program, public_input.clone(), non_determinism);
 
         let mut state = Self {
+            action_tx: None,
             program,
             vm_state,
             type_hint_stack: TypeHintStack::default(),
@@ -75,6 +83,14 @@ impl TritonVMState {
 
     fn non_determinism_from_args(_args: &Args) -> Result<NonDeterminism<BFieldElement>> {
         Ok(NonDeterminism::default())
+    }
+
+    fn top_of_stack(&self) -> [BFieldElement; NUM_OP_STACK_REGISTERS] {
+        let stack_len = self.vm_state.op_stack.stack.len();
+        let index_of_lowest_accessible_element = stack_len - NUM_OP_STACK_REGISTERS;
+        let top_of_stack = &self.vm_state.op_stack.stack[index_of_lowest_accessible_element..];
+        let top_of_stack = top_of_stack.iter().copied();
+        top_of_stack.rev().collect_vec().try_into().unwrap()
     }
 
     fn vm_has_stopped(&self) -> bool {
@@ -114,13 +130,31 @@ impl TritonVMState {
         if self.vm_has_stopped() {
             return;
         }
-        self.warning = None;
-        let current_instruction = self.vm_state.current_instruction().ok();
-        match self.vm_state.step() {
-            Ok(_) => self.type_hint_stack.mimic_instruction(current_instruction),
-            Err(err) => self.error = Some(err),
+
+        let instruction = self.vm_state.current_instruction().ok();
+        let old_top_of_stack = self.top_of_stack();
+        if let Err(err) = self.vm_state.step() {
+            self.error = Some(err);
+            return;
         }
+        self.warning = None;
+
+        let instruction = instruction.expect("instruction should exist after successful `step`");
+        let new_top_of_stack = self.top_of_stack();
+        let executed_instruction =
+            ExecutedInstruction::new(instruction, old_top_of_stack, new_top_of_stack);
+
+        self.send_executed_transaction(executed_instruction);
+        self.type_hint_stack.mimic_instruction(executed_instruction);
         self.apply_type_hints();
+    }
+
+    fn send_executed_transaction(&mut self, executed_instruction: ExecutedInstruction) {
+        let Some(ref action_tx) = self.action_tx else {
+            error!("action_tx should exist");
+            return;
+        };
+        let _ = action_tx.send(Action::ExecutedInstruction(Box::new(executed_instruction)));
     }
 
     /// Handle [`Action::ProgramNext`].
@@ -161,6 +195,11 @@ impl TritonVMState {
     }
 }
 impl Component for TritonVMState {
+    fn register_action_handler(&mut self, tx: UnboundedSender<Action>) -> Result<()> {
+        self.action_tx = Some(tx);
+        Ok(())
+    }
+
     fn update(&mut self, action: Action) -> Result<Option<Action>> {
         match action {
             Action::ProgramContinue => {
