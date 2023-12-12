@@ -11,6 +11,7 @@ use triton_vm::*;
 
 use crate::action::Action;
 use crate::args::Args;
+use crate::components::Component;
 use crate::type_hint_stack::TypeHintStack;
 
 #[derive(Debug)]
@@ -158,8 +159,9 @@ impl TritonVMState {
         self.vm_state = undo_information.vm_state;
         self.type_hint_stack = undo_information.type_hint_stack;
     }
-
-    pub fn update(&mut self, action: Action) -> Result<Option<Action>> {
+}
+impl Component for TritonVMState {
+    fn update(&mut self, action: Action) -> Result<Option<Action>> {
         match action {
             Action::ProgramContinue => {
                 self.record_undo_information();

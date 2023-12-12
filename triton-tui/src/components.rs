@@ -7,7 +7,6 @@ use ratatui::prelude::*;
 use tokio::sync::mpsc::UnboundedSender;
 
 use crate::action::Action;
-use crate::config::Config;
 use crate::triton_vm_state::TritonVMState;
 use crate::tui::Event;
 
@@ -19,14 +18,6 @@ pub(crate) mod home;
 /// receive events, update state, and be rendered on the screen.
 pub(crate) trait Component: Debug {
     fn register_action_handler(&mut self, _tx: UnboundedSender<Action>) -> Result<()> {
-        Ok(())
-    }
-
-    fn register_config_handler(&mut self, _: Config) -> Result<()> {
-        Ok(())
-    }
-
-    fn init(&mut self, _: Rect) -> Result<()> {
         Ok(())
     }
 
@@ -53,7 +44,9 @@ pub(crate) trait Component: Debug {
     }
 
     /// Render the component on the screen.
-    fn draw(&mut self, frame: &mut Frame<'_>, state: &TritonVMState) -> Result<()>;
+    fn draw(&mut self, _frame: &mut Frame<'_>, _state: &TritonVMState) -> Result<()> {
+        Ok(())
+    }
 }
 
 /// helper function to create a centered rect using up certain percentage of the available rect `r`
