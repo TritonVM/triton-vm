@@ -176,6 +176,9 @@ impl TritonVMState {
     }
 
     fn record_undo_information(&mut self) {
+        if self.vm_has_stopped() {
+            return;
+        }
         let undo_information = UndoInformation {
             vm_state: self.vm_state.clone(),
             type_hint_stack: self.type_hint_stack.clone(),
