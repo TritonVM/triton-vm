@@ -8,7 +8,6 @@ use twenty_first::shared_math::bfield_codec::BFieldCodec;
 use twenty_first::shared_math::digest::DIGEST_LENGTH;
 
 use crate::instruction::Instruction;
-use crate::op_stack::OpStackElement;
 use crate::proof_item::ProofItem;
 use crate::proof_stream::ProofStream;
 use crate::stark::StarkHasher;
@@ -64,8 +63,8 @@ pub enum InstructionError {
     #[error("assertion failed: st0 must be 1")]
     AssertionFailed,
 
-    #[error("vector assertion failed: stack[{0}] != stack[{}]", usize::from(.0) + DIGEST_LENGTH)]
-    VectorAssertionFailed(OpStackElement),
+    #[error("vector assertion failed: stack[{0}] != stack[{}]", .0 + DIGEST_LENGTH)]
+    VectorAssertionFailed(usize),
 
     #[error("cannot swap stack element 0 with itself")]
     SwapST0,
@@ -313,7 +312,7 @@ mod tests {
         };
         let_assert!(Err(err) = program.run([].into(), [].into()));
         let_assert!(InstructionError::VectorAssertionFailed(index) = err.source);
-        assert!(1 == usize::from(index));
+        assert!(1 == index);
     }
 
     #[test]
@@ -356,7 +355,7 @@ mod tests {
 
         let_assert!(Err(err) = program.run([].into(), [].into()));
         let_assert!(InstructionError::VectorAssertionFailed(index) = err.source);
-        prop_assert_eq!(disturbance_index, usize::from(index));
+        prop_assert_eq!(disturbance_index, index);
     }
 
     #[test]

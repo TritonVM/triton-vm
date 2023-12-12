@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::collections::VecDeque;
-use std::convert::TryInto;
 use std::fmt::Display;
 use std::fmt::Formatter;
 use std::fmt::Result as FmtResult;
@@ -148,7 +147,7 @@ impl VMState {
                 hvs[3] = BFieldElement::new((arg_val >> 3) % 2);
             }
             Skiz => {
-                let st0 = self.op_stack.peek_at(ST0);
+                let st0 = self.op_stack[ST0];
                 hvs[0] = st0.inverse_or_zero();
                 let next_opcode = self.next_instruction_or_argument().value();
                 let decomposition = Self::decompose_opcode_for_instruction_skiz(next_opcode);
@@ -156,11 +155,11 @@ impl VMState {
                 hvs[1..6].copy_from_slice(&decomposition);
             }
             DivineSibling => {
-                let node_index = self.op_stack.peek_at(ST5).value();
+                let node_index = self.op_stack[ST5].value();
                 hvs[0] = BFieldElement::new(node_index % 2);
             }
             Split => {
-                let top_of_stack: u64 = self.op_stack.peek_at(ST0).value();
+                let top_of_stack = self.op_stack[ST0].value();
                 let lo = BFieldElement::new(top_of_stack & 0xffff_ffff);
                 let hi = BFieldElement::new(top_of_stack >> 32);
                 if !lo.is_zero() {
@@ -168,11 +167,7 @@ impl VMState {
                     hvs[0] = (hi - max_val_of_hi).inverse_or_zero();
                 }
             }
-            Eq => {
-                let lhs = self.op_stack.peek_at(ST0);
-                let rhs = self.op_stack.peek_at(ST1);
-                hvs[0] = (rhs - lhs).inverse_or_zero();
-            }
+            Eq => hvs[0] = (self.op_stack[ST1] - self.op_stack[ST0]).inverse_or_zero(),
             _ => (),
         }
 
@@ -313,7 +308,7 @@ impl VMState {
     }
 
     fn dup(&mut self, stack_register: OpStackElement) -> Vec<CoProcessorCall> {
-        let element = self.op_stack.peek_at(stack_register);
+        let element = self.op_stack[stack_register];
         self.op_stack.push(element);
 
         self.instruction_pointer += 2;
@@ -366,8 +361,7 @@ impl VMState {
     }
 
     fn assert(&mut self) -> Result<Vec<CoProcessorCall>> {
-        let top_of_stack = self.op_stack.peek_at(ST0);
-        if !top_of_stack.is_one() {
+        if !self.op_stack[ST0].is_one() {
             return Err(AssertionFailed);
         }
         let _ = self.op_stack.pop()?;
@@ -521,11 +515,9 @@ impl VMState {
     }
 
     fn assert_vector(&mut self) -> Result<Vec<CoProcessorCall>> {
-        for index in 0..DIGEST_LENGTH {
-            let lhs = index.try_into().unwrap();
-            let rhs = (index + DIGEST_LENGTH).try_into().unwrap();
-            if self.op_stack.peek_at(lhs) != self.op_stack.peek_at(rhs) {
-                return Err(VectorAssertionFailed(lhs));
+        for i in 0..DIGEST_LENGTH {
+            if self.op_stack[i] != self.op_stack[i + DIGEST_LENGTH] {
+                return Err(VectorAssertionFailed(i));
             }
         }
         let _: [_; DIGEST_LENGTH] = self.op_stack.pop_multiple()?;
@@ -552,7 +544,7 @@ impl VMState {
     }
 
     fn invert(&mut self) -> Result<Vec<CoProcessorCall>> {
-        let top_of_stack = self.op_stack.peek_at(ST0);
+        let top_of_stack = self.op_stack[ST0];
         if top_of_stack.is_zero() {
             return Err(InverseOfZero);
         }
@@ -636,7 +628,7 @@ impl VMState {
 
     fn log_2_floor(&mut self) -> Result<Vec<CoProcessorCall>> {
         self.op_stack.assert_is_u32(ST0)?;
-        let top_of_stack = self.op_stack.peek_at(ST0);
+        let top_of_stack = self.op_stack[ST0];
         if top_of_stack.is_zero() {
             return Err(LogarithmOfZero);
         }
@@ -669,7 +661,7 @@ impl VMState {
     fn div_mod(&mut self) -> Result<Vec<CoProcessorCall>> {
         self.op_stack.assert_is_u32(ST0)?;
         self.op_stack.assert_is_u32(ST1)?;
-        let denominator = self.op_stack.peek_at(ST1);
+        let denominator = self.op_stack[ST1];
         if denominator.is_zero() {
             return Err(DivisionByZero);
         }
@@ -789,22 +781,22 @@ impl VMState {
         processor_row[JSP.base_table_index()] = self.jump_stack_pointer();
         processor_row[JSO.base_table_index()] = self.jump_stack_origin();
         processor_row[JSD.base_table_index()] = self.jump_stack_destination();
-        processor_row[ST0.base_table_index()] = self.op_stack.peek_at(OpStackElement::ST0);
-        processor_row[ST1.base_table_index()] = self.op_stack.peek_at(OpStackElement::ST1);
-        processor_row[ST2.base_table_index()] = self.op_stack.peek_at(OpStackElement::ST2);
-        processor_row[ST3.base_table_index()] = self.op_stack.peek_at(OpStackElement::ST3);
-        processor_row[ST4.base_table_index()] = self.op_stack.peek_at(OpStackElement::ST4);
-        processor_row[ST5.base_table_index()] = self.op_stack.peek_at(OpStackElement::ST5);
-        processor_row[ST6.base_table_index()] = self.op_stack.peek_at(OpStackElement::ST6);
-        processor_row[ST7.base_table_index()] = self.op_stack.peek_at(OpStackElement::ST7);
-        processor_row[ST8.base_table_index()] = self.op_stack.peek_at(OpStackElement::ST8);
-        processor_row[ST9.base_table_index()] = self.op_stack.peek_at(OpStackElement::ST9);
-        processor_row[ST10.base_table_index()] = self.op_stack.peek_at(OpStackElement::ST10);
-        processor_row[ST11.base_table_index()] = self.op_stack.peek_at(OpStackElement::ST11);
-        processor_row[ST12.base_table_index()] = self.op_stack.peek_at(OpStackElement::ST12);
-        processor_row[ST13.base_table_index()] = self.op_stack.peek_at(OpStackElement::ST13);
-        processor_row[ST14.base_table_index()] = self.op_stack.peek_at(OpStackElement::ST14);
-        processor_row[ST15.base_table_index()] = self.op_stack.peek_at(OpStackElement::ST15);
+        processor_row[ST0.base_table_index()] = self.op_stack[OpStackElement::ST0];
+        processor_row[ST1.base_table_index()] = self.op_stack[OpStackElement::ST1];
+        processor_row[ST2.base_table_index()] = self.op_stack[OpStackElement::ST2];
+        processor_row[ST3.base_table_index()] = self.op_stack[OpStackElement::ST3];
+        processor_row[ST4.base_table_index()] = self.op_stack[OpStackElement::ST4];
+        processor_row[ST5.base_table_index()] = self.op_stack[OpStackElement::ST5];
+        processor_row[ST6.base_table_index()] = self.op_stack[OpStackElement::ST6];
+        processor_row[ST7.base_table_index()] = self.op_stack[OpStackElement::ST7];
+        processor_row[ST8.base_table_index()] = self.op_stack[OpStackElement::ST8];
+        processor_row[ST9.base_table_index()] = self.op_stack[OpStackElement::ST9];
+        processor_row[ST10.base_table_index()] = self.op_stack[OpStackElement::ST10];
+        processor_row[ST11.base_table_index()] = self.op_stack[OpStackElement::ST11];
+        processor_row[ST12.base_table_index()] = self.op_stack[OpStackElement::ST12];
+        processor_row[ST13.base_table_index()] = self.op_stack[OpStackElement::ST13];
+        processor_row[ST14.base_table_index()] = self.op_stack[OpStackElement::ST14];
+        processor_row[ST15.base_table_index()] = self.op_stack[OpStackElement::ST15];
         processor_row[OpStackPointer.base_table_index()] = self.op_stack.pointer();
         processor_row[HV0.base_table_index()] = helper_variables[0];
         processor_row[HV1.base_table_index()] = helper_variables[1];
@@ -1975,7 +1967,7 @@ pub(crate) mod tests {
         );
         let mut vm_state = VMState::new(&program, [].into(), [].into());
         let_assert!(Ok(()) = vm_state.run());
-        assert!(BFIELD_ZERO == vm_state.op_stack.peek_at(ST0));
+        assert!(BFIELD_ZERO == vm_state.op_stack[ST0]);
     }
 
     #[test]
@@ -2008,10 +2000,10 @@ pub(crate) mod tests {
 
         let mut vm_state = VMState::new(&program, [].into(), [].into());
         let_assert!(Ok(()) = vm_state.run());
-        assert!(BFieldElement::new(4) == vm_state.op_stack.peek_at(ST0));
-        assert!(BFieldElement::new(7) == vm_state.op_stack.peek_at(ST1));
-        assert!(BFieldElement::new(14) == vm_state.op_stack.peek_at(ST2));
-        assert!(BFieldElement::new(18) == vm_state.op_stack.peek_at(ST3));
+        assert!(4 == vm_state.op_stack[ST0].value());
+        assert!(7 == vm_state.op_stack[ST1].value());
+        assert!(14 == vm_state.op_stack[ST2].value());
+        assert!(18 == vm_state.op_stack[ST3].value());
     }
 
     #[test]
@@ -2041,9 +2033,9 @@ pub(crate) mod tests {
 
         let mut vm_state = VMState::new(&program, [].into(), [].into());
         let_assert!(Ok(()) = vm_state.run());
-        assert!(BFieldElement::new(2) == vm_state.op_stack.peek_at(ST0));
-        assert!(BFieldElement::new(5) == vm_state.op_stack.peek_at(ST1));
-        assert!(BFieldElement::new(5) == vm_state.op_stack.peek_at(ST2));
+        assert!(2_u64 == vm_state.op_stack[ST0].value());
+        assert!(5_u64 == vm_state.op_stack[ST1].value());
+        assert!(5_u64 == vm_state.op_stack[ST2].value());
     }
 
     #[test]

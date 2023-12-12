@@ -1,6 +1,8 @@
 use std::fmt::Display;
 use std::fmt::Formatter;
 use std::fmt::Result as FmtResult;
+use std::ops::Index;
+use std::ops::IndexMut;
 
 use arbitrary::Arbitrary;
 use get_size::GetSize;
@@ -40,8 +42,15 @@ pub const NUM_OP_STACK_REGISTERS: usize = OpStackElement::COUNT;
 /// [`OpStackElement::COUNT`] elements of the op-stack, and the op-stack underflow memory is the
 /// remaining elements.
 #[derive(Debug, Clone, PartialEq, Eq)]
+// If the op stack is empty, things have gone horribly wrong. Suppressing this lint is preferred
+// to implementing a basically useless `is_empty()` method.
+#[allow(clippy::len_without_is_empty)]
 pub struct OpStack {
+    /// The underlying, actual stack. When manually accessing, be aware of reversed indexing:
+    /// while `op_stack[0]` is the top of the stack, `op_stack.stack[0]` is the lowest element in
+    /// the stack.
     pub stack: Vec<BFieldElement>,
+
     underflow_io_sequence: Vec<UnderflowIO>,
 }
 
@@ -56,6 +65,10 @@ impl OpStack {
             stack,
             underflow_io_sequence: vec![],
         }
+    }
+
+    pub fn len(&self) -> usize {
+        self.stack.len()
     }
 
     pub(crate) fn push(&mut self, element: BFieldElement) {
@@ -95,7 +108,7 @@ impl OpStack {
     }
 
     pub(crate) fn assert_is_u32(&self, stack_element: OpStackElement) -> Result<()> {
-        let element = self.peek_at(stack_element);
+        let element = self[stack_element];
         match element.value() <= u32::MAX as u64 {
             true => Ok(()),
             false => Err(FailedU32Conversion(element)),
@@ -120,48 +133,76 @@ impl OpStack {
         Ok(elements)
     }
 
-    pub(crate) fn peek_at(&self, stack_element: OpStackElement) -> BFieldElement {
-        let stack_element_index = usize::from(stack_element);
-        let top_of_stack_index = self.stack.len() - 1;
-        self.stack[top_of_stack_index - stack_element_index]
-    }
-
     pub(crate) fn peek_at_top_extension_field_element(&self) -> XFieldElement {
-        let coefficient_0 = self.peek_at(ST0);
-        let coefficient_1 = self.peek_at(ST1);
-        let coefficient_2 = self.peek_at(ST2);
-        let coefficients = [coefficient_0, coefficient_1, coefficient_2];
-        XFieldElement::new(coefficients)
+        XFieldElement::new([self[0], self[1], self[2]])
     }
 
-    pub(crate) fn swap_top_with(&mut self, stack_element: OpStackElement) {
-        let stack_element_index = usize::from(stack_element);
-        let top_of_stack_index = self.stack.len() - 1;
-        self.stack
-            .swap(top_of_stack_index, top_of_stack_index - stack_element_index);
+    pub(crate) fn swap_top_with(&mut self, st: OpStackElement) {
+        (self[0], self[st]) = (self[st], self[0]);
     }
 
     pub(crate) fn would_be_too_shallow(&self, stack_delta: i32) -> bool {
-        self.stack.len() as i32 + stack_delta < OpStackElement::COUNT as i32
+        self.len() as i32 + stack_delta < OpStackElement::COUNT as i32
     }
 
     /// The address of the next free address of the op-stack. Equivalent to the current length of
     /// the op-stack.
     pub(crate) fn pointer(&self) -> BFieldElement {
-        (self.stack.len() as u64).into()
+        (self.len() as u64).into()
     }
 
     /// The first element of the op-stack underflow memory, or 0 if the op-stack underflow memory
     /// is empty.
     pub(crate) fn first_underflow_element(&self) -> BFieldElement {
         let default = BFieldElement::zero();
-        let Some(top_of_stack_index) = self.stack.len().checked_sub(1) else {
+        let Some(top_of_stack_index) = self.len().checked_sub(1) else {
             return default;
         };
         let Some(underflow_start) = top_of_stack_index.checked_sub(OpStackElement::COUNT) else {
             return default;
         };
         self.stack.get(underflow_start).copied().unwrap_or(default)
+    }
+}
+
+impl Index<usize> for OpStack {
+    type Output = BFieldElement;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        let top_of_stack = self.len() - 1;
+        &self.stack[top_of_stack - index]
+    }
+}
+
+impl IndexMut<usize> for OpStack {
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        let top_of_stack = self.len() - 1;
+        &mut self.stack[top_of_stack - index]
+    }
+}
+
+impl Index<OpStackElement> for OpStack {
+    type Output = BFieldElement;
+
+    fn index(&self, stack_element: OpStackElement) -> &Self::Output {
+        &self[usize::from(stack_element)]
+    }
+}
+
+impl IndexMut<OpStackElement> for OpStack {
+    fn index_mut(&mut self, stack_element: OpStackElement) -> &mut Self::Output {
+        &mut self[usize::from(stack_element)]
+    }
+}
+
+impl IntoIterator for OpStack {
+    type Item = BFieldElement;
+    type IntoIter = std::vec::IntoIter<Self::Item>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        let mut stack = self.stack;
+        stack.reverse();
+        stack.into_iter()
     }
 }
 
@@ -620,8 +661,8 @@ mod tests {
         let mut op_stack = OpStack::new(digest);
 
         // verify height
-        assert!(op_stack.stack.len() == 16);
-        assert!(op_stack.pointer().value() as usize == op_stack.stack.len());
+        assert!(op_stack.len() == 16);
+        assert!(op_stack.pointer().value() as usize == op_stack.len());
 
         // push elements 1 thru 17
         for i in 1..=17 {
@@ -629,27 +670,27 @@ mod tests {
         }
 
         // verify height
-        assert!(op_stack.stack.len() == 33);
-        assert!(op_stack.pointer().value() as usize == op_stack.stack.len());
+        assert!(op_stack.len() == 33);
+        assert!(op_stack.pointer().value() as usize == op_stack.len());
 
         // verify that all accessible items are different
         let mut container = vec![
-            op_stack.peek_at(ST0),
-            op_stack.peek_at(ST1),
-            op_stack.peek_at(ST2),
-            op_stack.peek_at(ST3),
-            op_stack.peek_at(ST4),
-            op_stack.peek_at(ST5),
-            op_stack.peek_at(ST6),
-            op_stack.peek_at(ST7),
-            op_stack.peek_at(ST8),
-            op_stack.peek_at(ST9),
-            op_stack.peek_at(ST10),
-            op_stack.peek_at(ST11),
-            op_stack.peek_at(ST12),
-            op_stack.peek_at(ST13),
-            op_stack.peek_at(ST14),
-            op_stack.peek_at(ST15),
+            op_stack[ST0],
+            op_stack[ST1],
+            op_stack[ST2],
+            op_stack[ST3],
+            op_stack[ST4],
+            op_stack[ST5],
+            op_stack[ST6],
+            op_stack[ST7],
+            op_stack[ST8],
+            op_stack[ST9],
+            op_stack[ST10],
+            op_stack[ST11],
+            op_stack[ST12],
+            op_stack[ST13],
+            op_stack[ST14],
+            op_stack[ST15],
             op_stack.first_underflow_element(),
         ];
         let len_before = container.len();
@@ -664,16 +705,16 @@ mod tests {
         }
 
         // verify height
-        assert!(op_stack.stack.len() == 22);
-        assert!(op_stack.pointer().value() as usize == op_stack.stack.len());
+        assert!(op_stack.len() == 22);
+        assert!(op_stack.pointer().value() as usize == op_stack.len());
 
         // pop 2 XFieldElements
         let _ = op_stack.pop_extension_field_element().expect("can't pop");
         let _ = op_stack.pop_extension_field_element().expect("can't pop");
 
         // verify height
-        assert!(op_stack.stack.len() == 16);
-        assert!(op_stack.pointer().value() as usize == op_stack.stack.len());
+        assert!(op_stack.len() == 16);
+        assert!(op_stack.pointer().value() as usize == op_stack.len());
 
         // verify underflow
         assert!(op_stack.would_be_too_shallow(-1));
@@ -682,7 +723,7 @@ mod tests {
     #[test]
     fn trying_to_access_first_underflow_element_never_panics() {
         let mut op_stack = OpStack::new(Default::default());
-        let way_too_long = 2 * op_stack.stack.len();
+        let way_too_long = 2 * op_stack.len();
         for _ in 0..way_too_long {
             let _ = op_stack.pop();
             let _ = op_stack.first_underflow_element();
