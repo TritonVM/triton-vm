@@ -99,7 +99,7 @@ impl TritonTUI {
                         self.render()?;
                     }
                     Action::ProgramReset => {
-                        self.vm_state = TritonVMState::new(&self.args)?;
+                        self.reset_state();
                         self.vm_state.register_action_handler(action_tx.clone())?;
                         self.render()?;
                     }
@@ -124,6 +124,13 @@ impl TritonTUI {
         }
 
         self.tui.exit()
+    }
+
+    fn reset_state(&mut self) {
+        match TritonVMState::new(&self.args) {
+            Ok(vm_state) => self.vm_state = vm_state,
+            Err(report) => self.vm_state.warning = Some(report),
+        }
     }
 
     fn tui(args: &Args) -> Result<Tui> {
