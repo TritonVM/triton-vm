@@ -9,6 +9,7 @@ use triton_vm::instruction::*;
 use triton_vm::op_stack::OpStackElement;
 
 use crate::action::Action;
+use crate::mode::Mode;
 use crate::triton_vm_state::TritonVMState;
 use crate::type_hint_stack::*;
 
@@ -18,12 +19,15 @@ use super::Frame;
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Home {
     show_type_hints: bool,
+    show_help_hint: bool,
 }
 
 impl Default for Home {
     fn default() -> Self {
-        let show_type_hints = true;
-        Self { show_type_hints }
+        Self {
+            show_type_hints: true,
+            show_help_hint: true,
+        }
     }
 }
 
@@ -31,6 +35,10 @@ impl Home {
     fn address_render_width(&self, state: &TritonVMState) -> usize {
         let max_address = state.program.len_bwords();
         max_address.to_string().len()
+    }
+
+    fn stop_showing_help_hint(&mut self) {
+        self.show_help_hint = false;
     }
 
     fn distribute_area_for_widgets(&self, state: &TritonVMState, area: Rect) -> WidgetAreas {
@@ -323,10 +331,13 @@ impl Home {
 
     fn render_message_widget(&self, frame: &mut Frame<'_>, render_info: RenderInfo) {
         let title = Title::from(" Triton VM ");
-        let halting = match render_info.state.vm_state.halting {
-            true => Title::from(" HALT ".bold().green()),
-            false => Title::default(),
-        };
+        let mut status = Title::default();
+        if self.show_help_hint {
+            status = Title::from(" press `h` for help ".dim());
+        }
+        if render_info.state.vm_state.halting {
+            status = Title::from(" HALT ".bold().green());
+        }
 
         let state = &render_info.state;
         let mut line = Line::from("");
@@ -343,7 +354,7 @@ impl Home {
         let block = Block::default()
             .padding(Padding::horizontal(1))
             .title(title)
-            .title(halting)
+            .title(status)
             .title_position(Position::Bottom)
             .borders(Borders::LEFT | Borders::RIGHT | Borders::BOTTOM)
             .border_type(BorderType::Rounded);
@@ -383,9 +394,11 @@ impl Home {
 
 impl Component for Home {
     fn update(&mut self, action: Action) -> Result<Option<Action>> {
-        if matches!(action, Action::ToggleTypeHintDisplay) {
-            self.show_type_hints = !self.show_type_hints;
-        }
+        match action {
+            Action::ToggleTypeHintDisplay => self.show_type_hints = !self.show_type_hints,
+            Action::Mode(Mode::Help) => self.stop_showing_help_hint(),
+            _ => (),
+        };
         Ok(None)
     }
 
