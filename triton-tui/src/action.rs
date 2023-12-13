@@ -27,6 +27,8 @@ pub(crate) enum Action {
     /// Undo the last [`Execute`] action.
     Undo,
 
+    RecordUndoInfo,
+
     /// Reset the program state.
     Reset,
 

@@ -41,6 +41,14 @@ impl Memory {
         self.user_address = undo_information.user_address;
     }
 
+    pub fn record_undo_information(&mut self) {
+        let undo_information = UndoInformation {
+            most_recent_address: self.most_recent_address,
+            user_address: self.user_address,
+        };
+        self.undo_stack.push(undo_information);
+    }
+
     pub fn reset(&mut self) {
         self.most_recent_address = 0;
         self.user_address = None;
@@ -63,6 +71,7 @@ impl Component for Memory {
     fn update(&mut self, action: Action) -> Result<Option<Action>> {
         match action {
             Action::Undo => self.undo(),
+            Action::RecordUndoInfo => self.record_undo_information(),
             Action::Reset => self.reset(),
             Action::ExecutedInstruction(instruction) => self.handle_instruction(*instruction),
             _ => (),

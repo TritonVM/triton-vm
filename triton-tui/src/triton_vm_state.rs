@@ -193,6 +193,12 @@ impl TritonVMState {
             type_hint_stack: self.type_hint_stack.clone(),
         };
         self.undo_stack.push(undo_information);
+
+        let Some(ref action_tx) = self.action_tx else {
+            error!("action_tx must exist");
+            return;
+        };
+        let _ = action_tx.send(Action::RecordUndoInfo);
     }
 
     fn program_undo(&mut self) {
