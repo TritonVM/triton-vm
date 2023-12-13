@@ -98,7 +98,7 @@ impl TritonTUI {
                         self.mode = mode;
                         self.render()?;
                     }
-                    Action::ProgramReset => {
+                    Action::Reset => {
                         self.reset_state();
                         self.vm_state.register_action_handler(action_tx.clone())?;
                         self.render()?;

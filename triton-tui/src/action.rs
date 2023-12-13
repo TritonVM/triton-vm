@@ -22,23 +22,13 @@ pub(crate) enum Action {
     Refresh,
     Error(String),
 
-    /// Continue program execution until next breakpoint.
-    ProgramContinue,
+    Execute(Execute),
 
-    /// Execute a single instruction.
-    ProgramStep,
-
-    /// Execute a single instruction, stepping over `call`s.
-    ProgramNext,
-
-    /// Execute instructions until the current `call` returns.
-    ProgramFinish,
-
-    /// Undo the last action.
-    ProgramUndo,
+    /// Undo the last [`Execute`] action.
+    Undo,
 
     /// Reset the program state.
-    ProgramReset,
+    Reset,
 
     ToggleTypeHintDisplay,
 
@@ -47,6 +37,22 @@ pub(crate) enum Action {
     Mode(Mode),
 
     ExecutedInstruction(Box<ExecutedInstruction>),
+}
+
+/// Various ways to advance the program state.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub(crate) enum Execute {
+    /// Continue program execution until next breakpoint.
+    Continue,
+
+    /// Execute a single instruction.
+    Step,
+
+    /// Execute a single instruction, stepping over `call`s.
+    Next,
+
+    /// Execute instructions until the current `call` returns.
+    Finish,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Arbitrary)]
@@ -81,12 +87,14 @@ impl<'de> Deserialize<'de> for Action {
                     "Resume" => Ok(Action::Resume),
                     "Quit" => Ok(Action::Quit),
                     "Refresh" => Ok(Action::Refresh),
-                    "Continue" => Ok(Action::ProgramContinue),
-                    "Step" => Ok(Action::ProgramStep),
-                    "Next" => Ok(Action::ProgramNext),
-                    "Undo" => Ok(Action::ProgramUndo),
-                    "Reset" => Ok(Action::ProgramReset),
-                    "Finish" => Ok(Action::ProgramFinish),
+
+                    "Continue" => Ok(Action::Execute(Execute::Continue)),
+                    "Step" => Ok(Action::Execute(Execute::Step)),
+                    "Next" => Ok(Action::Execute(Execute::Next)),
+                    "Finish" => Ok(Action::Execute(Execute::Finish)),
+
+                    "Undo" => Ok(Action::Undo),
+                    "Reset" => Ok(Action::Reset),
 
                     "ToggleTypeHintDisplay" => Ok(Action::ToggleTypeHintDisplay),
                     "HideHelpScreen" => Ok(Action::HideHelpScreen),

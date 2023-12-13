@@ -13,8 +13,7 @@ use triton_vm::op_stack::NUM_OP_STACK_REGISTERS;
 use triton_vm::vm::VMState;
 use triton_vm::*;
 
-use crate::action::Action;
-use crate::action::ExecutedInstruction;
+use crate::action::*;
 use crate::args::Args;
 use crate::components::Component;
 use crate::type_hint_stack::TypeHintStack;
@@ -117,7 +116,17 @@ impl TritonVMState {
         }
     }
 
-    /// Handle [`Action::ProgramContinue`].
+    fn execute(&mut self, execute: Execute) {
+        self.record_undo_information();
+        match execute {
+            Execute::Continue => self.continue_execution(),
+            Execute::Step => self.step(),
+            Execute::Next => self.next(),
+            Execute::Finish => self.finish(),
+        }
+    }
+
+    /// Handle [`Execute::Continue`].
     fn continue_execution(&mut self) {
         self.step();
         while self.vm_is_running() && !self.at_breakpoint() {
@@ -125,7 +134,7 @@ impl TritonVMState {
         }
     }
 
-    /// Handle [`Action::ProgramStep`].
+    /// Handle [`Execute::Step`].
     fn step(&mut self) {
         if self.vm_has_stopped() {
             return;
@@ -157,7 +166,7 @@ impl TritonVMState {
         let _ = action_tx.send(Action::ExecutedInstruction(Box::new(executed_instruction)));
     }
 
-    /// Handle [`Action::ProgramNext`].
+    /// Handle [`Execute::Next`].
     fn next(&mut self) {
         let instruction = self.vm_state.current_instruction();
         let instruction_is_call = matches!(instruction, Ok(Instruction::Call(_)));
@@ -167,7 +176,7 @@ impl TritonVMState {
         }
     }
 
-    /// Handle [`Action::ProgramFinish`].
+    /// Handle [`Execute::Finish`].
     fn finish(&mut self) {
         let current_jump_stack_depth = self.vm_state.jump_stack.len();
         while self.vm_is_running() && self.vm_state.jump_stack.len() >= current_jump_stack_depth {
@@ -197,6 +206,7 @@ impl TritonVMState {
         self.type_hint_stack = undo_information.type_hint_stack;
     }
 }
+
 impl Component for TritonVMState {
     fn register_action_handler(&mut self, tx: UnboundedSender<Action>) -> Result<()> {
         self.action_tx = Some(tx);
@@ -205,24 +215,9 @@ impl Component for TritonVMState {
 
     fn update(&mut self, action: Action) -> Result<Option<Action>> {
         match action {
-            Action::ProgramContinue => {
-                self.record_undo_information();
-                self.continue_execution();
-            }
-            Action::ProgramStep => {
-                self.record_undo_information();
-                self.step();
-            }
-            Action::ProgramNext => {
-                self.record_undo_information();
-                self.next();
-            }
-            Action::ProgramFinish => {
-                self.record_undo_information();
-                self.finish();
-            }
-            Action::ProgramUndo => self.program_undo(),
-            _ => {}
+            Action::Execute(execute) => self.execute(execute),
+            Action::Undo => self.program_undo(),
+            _ => (),
         }
         Ok(None)
     }

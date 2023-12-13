@@ -62,8 +62,8 @@ impl Memory {
 impl Component for Memory {
     fn update(&mut self, action: Action) -> Result<Option<Action>> {
         match action {
-            Action::ProgramUndo => self.undo(),
-            Action::ProgramReset => self.reset(),
+            Action::Undo => self.undo(),
+            Action::Reset => self.reset(),
             Action::ExecutedInstruction(instruction) => self.handle_instruction(*instruction),
             _ => (),
         }
