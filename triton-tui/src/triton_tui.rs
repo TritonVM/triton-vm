@@ -10,6 +10,7 @@ use crate::action::Action;
 use crate::args::Args;
 use crate::components::help::Help;
 use crate::components::home::Home;
+use crate::components::memory::Memory;
 use crate::components::Component;
 use crate::config::Config;
 use crate::config::KeyEvents;
@@ -38,8 +39,11 @@ impl TritonTUI {
         let tui = Self::tui(&args)?;
         let mode = Mode::default();
 
-        let components: [Box<dyn Component>; Mode::COUNT] =
-            [Box::<Home>::default(), Box::<Help>::default()];
+        let components: [Box<dyn Component>; Mode::COUNT] = [
+            Box::<Home>::default(),
+            Box::<Memory>::default(),
+            Box::<Help>::default(),
+        ];
 
         let vm_state = TritonVMState::new(&args)?;
 
