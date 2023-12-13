@@ -1,9 +1,16 @@
+use num_traits::One;
+
 use color_eyre::eyre::Result;
 use ratatui::prelude::*;
 use ratatui::widgets::block::Title;
 use ratatui::widgets::*;
 use ratatui::Frame;
 
+use triton_vm::instruction::Instruction;
+use triton_vm::BFieldElement;
+
+use crate::action::Action;
+use crate::action::ExecutedInstruction;
 use crate::components::Component;
 use crate::triton_vm_state::TritonVMState;
 
@@ -24,7 +31,38 @@ pub(crate) struct UndoInformation {
     pub user_address: Option<u64>,
 }
 
+impl Memory {
+    pub fn undo(&mut self) {
+        let Some(undo_information) = self.undo_stack.pop() else {
+            return;
+        };
+
+        self.most_recent_address = undo_information.most_recent_address;
+        self.user_address = undo_information.user_address;
+    }
+
+    pub fn handle_instruction(&mut self, executed_instruction: ExecutedInstruction) {
+        let presumed_ram_pointer = executed_instruction.new_top_of_stack[0];
+        let overshoot_adjustment = match executed_instruction.instruction {
+            Instruction::ReadMem(_) => BFieldElement::one(),
+            Instruction::WriteMem(_) => -BFieldElement::one(),
+            _ => return,
+        };
+        let last_ram_pointer = presumed_ram_pointer + overshoot_adjustment;
+        self.most_recent_address = last_ram_pointer.value();
+    }
+}
+
 impl Component for Memory {
+    fn update(&mut self, action: Action) -> Result<Option<Action>> {
+        match action {
+            Action::ProgramUndo => self.undo(),
+            Action::ExecutedInstruction(instruction) => self.handle_instruction(*instruction),
+            _ => (),
+        }
+        Ok(None)
+    }
+
     fn draw(&mut self, frame: &mut Frame<'_>, state: &TritonVMState) -> Result<()> {
         let title = Title::from(" Random Access Memory ").alignment(Alignment::Left);
         let block = Block::default()

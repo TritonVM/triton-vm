@@ -100,6 +100,7 @@ impl TritonTUI {
                     }
                     Action::ProgramReset => {
                         self.vm_state = TritonVMState::new(&self.args)?;
+                        self.components[Mode::Memory.id()] = Box::<Memory>::default();
                         self.render()?;
                     }
                     Action::Suspend => self.should_suspend = true,
