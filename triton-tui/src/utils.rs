@@ -91,25 +91,23 @@ pub(crate) fn initialize_panic_handler() -> Result<()> {
 }
 
 pub(crate) fn get_data_dir() -> PathBuf {
-    let directory = if let Some(s) = DATA_FOLDER.clone() {
+    if let Some(s) = DATA_FOLDER.clone() {
         s
     } else if let Some(proj_dirs) = project_directory() {
         proj_dirs.data_local_dir().to_path_buf()
     } else {
         PathBuf::from(".").join(".data")
-    };
-    directory
+    }
 }
 
 pub(crate) fn get_config_dir() -> PathBuf {
-    let directory = if let Some(s) = CONFIG_FOLDER.clone() {
+    if let Some(s) = CONFIG_FOLDER.clone() {
         s
     } else if let Some(proj_dirs) = project_directory() {
         proj_dirs.config_local_dir().to_path_buf()
     } else {
         PathBuf::from(".").join(".config")
-    };
-    directory
+    }
 }
 
 pub(crate) fn initialize_logging() -> Result<()> {
@@ -142,7 +140,6 @@ pub(crate) fn version() -> String {
 
     let commit_hash = GIT_COMMIT_HASH.clone();
 
-    // let current_exe_path = PathBuf::from(clap::crate_name!()).display().to_string();
     let config_dir_path = get_config_dir().display().to_string();
     let data_dir_path = get_data_dir().display().to_string();
 

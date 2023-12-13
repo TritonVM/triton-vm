@@ -68,7 +68,7 @@ impl TritonVMState {
     }
 
     fn public_input_from_args(args: &Args) -> Result<PublicInput> {
-        let Some(input_path) = args.input.clone() else {
+        let Some(ref input_path) = args.input else {
             return Ok(PublicInput::default());
         };
         let file_content = fs::read_to_string(input_path)?;

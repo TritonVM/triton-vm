@@ -195,7 +195,7 @@ impl TypeHintStack {
         let hashed_exactly_one_object = hashed_a_sequence && did_not_interrupt_sequence;
 
         if hashed_exactly_one_object {
-            let Some(hash_type_hint) = popped[0].clone() else {
+            let Some(ref hash_type_hint) = popped[0] else {
                 return;
             };
             let type_hint = TypeHint {
