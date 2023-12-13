@@ -175,17 +175,6 @@ impl Home {
         let title = format!(" Program (cycle: {cycle_count:>5}) ");
         let title = Title::from(title).alignment(Alignment::Left);
 
-        let mut exec_state = Title::default();
-        if state.vm_state.halting {
-            exec_state = Title::from(" HALT ".bold().green());
-        }
-        if state.warning.is_some() {
-            exec_state = Title::from(" WARNING ".bold().yellow());
-        }
-        if state.error.is_some() {
-            exec_state = Title::from(" ERROR ".bold().red());
-        }
-
         let address_width = self.address_render_width(state).max(2);
         let mut address = 0;
         let mut text = vec![];
@@ -236,12 +225,9 @@ impl Home {
             ..symbols::border::ROUNDED
         };
 
-        let halting = exec_state.position(Position::Bottom);
-        let halting = halting.alignment(Alignment::Center);
         let block = Block::default()
             .padding(Padding::new(1, 1, 1, 0))
             .title(title)
-            .title(halting)
             .borders(Borders::TOP | Borders::LEFT | Borders::BOTTOM)
             .border_set(border_set);
         let render_area_for_lines = render_area.height.saturating_sub(3);
@@ -336,6 +322,12 @@ impl Home {
     }
 
     fn render_message_widget(&self, frame: &mut Frame<'_>, render_info: RenderInfo) {
+        let title = Title::from(" Triton VM ");
+        let halting = match render_info.state.vm_state.halting {
+            true => Title::from(" HALT ".bold().green()),
+            false => Title::default(),
+        };
+
         let state = &render_info.state;
         let mut line = Line::from("");
         if let Some(message) = self.maybe_render_public_output(state) {
@@ -349,9 +341,12 @@ impl Home {
         }
 
         let block = Block::default()
+            .padding(Padding::horizontal(1))
+            .title(title)
+            .title(halting)
+            .title_position(Position::Bottom)
             .borders(Borders::LEFT | Borders::RIGHT | Borders::BOTTOM)
-            .border_type(BorderType::Rounded)
-            .padding(Padding::horizontal(1));
+            .border_type(BorderType::Rounded);
         let paragraph = Paragraph::new(line).block(block).alignment(Alignment::Left);
         frame.render_widget(paragraph, render_info.areas.message_box);
     }
@@ -369,14 +364,20 @@ impl Home {
     }
 
     fn maybe_render_warning_message(&self, state: &TritonVMState) -> Option<Line> {
-        let Some(ref warning) = state.warning else {
+        let Some(ref message) = state.warning else {
             return None;
         };
-        Some(Line::from(warning.to_string()))
+        let warning = "WARNING".bold().yellow();
+        let colon = ": ".into();
+        let message = message.to_string().into();
+        Some(Line::from(vec![warning, colon, message]))
     }
 
     fn maybe_render_error_message(&self, state: &TritonVMState) -> Option<Line> {
-        Some(Line::from(state.error?.to_string()))
+        let error = "ERROR".bold().red();
+        let colon = ": ".into();
+        let message = state.error?.to_string().into();
+        Some(Line::from(vec![error, colon, message]))
     }
 }
 
