@@ -4,7 +4,6 @@ use color_eyre::eyre::Result;
 use ratatui::prelude::*;
 use ratatui::widgets::block::*;
 use ratatui::widgets::Paragraph;
-use ratatui::widgets::Wrap;
 use ratatui::Frame;
 
 use crate::components::centered_rect;
@@ -18,34 +17,43 @@ impl Component for Help {
     fn draw(&mut self, frame: &mut Frame<'_>, _: &TritonVMState) -> Result<()> {
         let title = Title::from(" Triton TUI — Help").alignment(Alignment::Left);
         let text = [
-            Help::help_line("c", "continue program execution"),
-            Help::help_line("s", "step"),
-            Help::help_line("n", "next – steps over `call`s"),
-            Help::help_line("f", "finish – steps out of current `call`"),
+            Help::mode_line("Home"),
+            Help::help_line("c", "continue – execute to next breakpoint"),
+            Help::help_line("s", "step     – execute one instruction"),
+            Help::help_line("n", "next     – like “step” but steps over “call”"),
+            Help::help_line("f", "finish   – step out of current “call”"),
             Help::help_line("u", "undo last command that advanced execution"),
-            Help::help_line("r", "reload files, restart Triton VM"),
+            Help::help_line("r", "reload files and restart Triton VM"),
             String::new(),
-            Help::help_line("t", "toggle type hints next to stack"),
-            Help::help_line("h", "toggle help"),
+            Help::help_line("t", "toggle type annotations"),
+            String::new(),
+            Help::mode_line("Memory"),
+            String::new(),
+            "General:".to_string(),
+            Help::help_line("esc", "show Home screen"),
+            Help::help_line("m", "show Memory screen"),
+            Help::help_line("h", "show Help"),
+            String::new(),
             Help::help_line("q", "quit"),
         ]
         .map(Line::from)
         .to_vec();
 
         let block = Block::default().title(title).padding(Padding::uniform(1));
-        let paragraph = Paragraph::new(text)
-            .block(block)
-            .alignment(Alignment::Left)
-            .wrap(Wrap { trim: true });
-        let area = centered_rect(frame.size(), 50, 50);
+        let paragraph = Paragraph::new(text).block(block);
 
+        let area = centered_rect(frame.size(), 50, 80);
         frame.render_widget(paragraph, area);
         Ok(())
     }
 }
 
 impl Help {
+    fn mode_line(mode: impl Display) -> String {
+        format!("{mode}:")
+    }
+
     fn help_line(keys: impl Display, help: impl Display) -> String {
-        format!("{keys: <10} {help}")
+        format!("  {keys: <4} {help}")
     }
 }

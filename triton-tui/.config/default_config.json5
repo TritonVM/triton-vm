@@ -2,9 +2,11 @@
     "keybindings": {
         "Home": {
             "<q>": "Quit",
-            "<h>": "Mode::Help",
             "<Ctrl-c>": "Quit",
             "<Ctrl-z>": "Suspend",
+
+            "<h>": "Mode::Help",
+            "<m>": "Mode::Memory",
 
             "<c>": "Continue",
             "<s>": "Step",
@@ -16,11 +18,22 @@
             "<t>": "ToggleTypeHintDisplay",
         },
         "Help": {
-            "<h>": "Mode::Home",
             "<q>": "Quit",
-            "<esc>": "Mode::Home",
             "<Ctrl-c>": "Quit",
             "<Ctrl-z>": "Suspend",
+
+            "<h>": "Mode::Home",
+            "<m>": "Mode::Memory",
+            "<esc>": "Mode::Home",
+        },
+        "Memory": {
+            "<q>": "Quit",
+            "<Ctrl-c>": "Quit",
+            "<Ctrl-z>": "Suspend",
+
+            "<h>": "Mode::Help",
+            "<m>": "Mode::Home",
+            "<esc>": "Mode::Home",
         }
     }
 }
