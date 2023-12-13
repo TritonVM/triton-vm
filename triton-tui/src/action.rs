@@ -42,6 +42,8 @@ pub(crate) enum Action {
 
     ToggleTypeHintDisplay,
 
+    HideHelpScreen,
+
     Mode(Mode),
 
     ExecutedInstruction(Box<ExecutedInstruction>),
@@ -87,6 +89,7 @@ impl<'de> Deserialize<'de> for Action {
                     "Finish" => Ok(Action::ProgramFinish),
 
                     "ToggleTypeHintDisplay" => Ok(Action::ToggleTypeHintDisplay),
+                    "HideHelpScreen" => Ok(Action::HideHelpScreen),
 
                     mode if mode.starts_with("Mode::") => Self::parse_mode(mode),
                     data if data.starts_with("Error(") => Self::parse_error(data),

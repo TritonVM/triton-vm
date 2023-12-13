@@ -6,14 +6,29 @@ use ratatui::widgets::block::*;
 use ratatui::widgets::Paragraph;
 use ratatui::Frame;
 
+use crate::action::Action;
 use crate::components::centered_rect;
 use crate::components::Component;
+use crate::mode::Mode;
 use crate::triton_vm_state::TritonVMState;
 
 #[derive(Default, Debug, Clone, Copy)]
-pub(crate) struct Help;
+pub(crate) struct Help {
+    pub previous_mode: Mode,
+}
 
 impl Component for Help {
+    fn update(&mut self, action: Action) -> Result<Option<Action>> {
+        match action {
+            Action::HideHelpScreen => Ok(Some(Action::Mode(self.previous_mode))),
+            Action::Mode(mode) if mode != Mode::Help => {
+                self.previous_mode = mode;
+                Ok(None)
+            }
+            _ => Ok(None),
+        }
+    }
+
     fn draw(&mut self, frame: &mut Frame<'_>, _: &TritonVMState) -> Result<()> {
         let title = Title::from(" Triton TUI — Help").alignment(Alignment::Left);
         let text = [
@@ -32,7 +47,7 @@ impl Component for Help {
             "General:".to_string(),
             Help::help_line("esc", "show Home screen"),
             Help::help_line("m", "show Memory screen"),
-            Help::help_line("h", "show Help"),
+            Help::help_line("h", "toggle Help"),
             String::new(),
             Help::help_line("q", "quit"),
         ]

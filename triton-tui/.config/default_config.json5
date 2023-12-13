@@ -22,7 +22,7 @@
             "<Ctrl-c>": "Quit",
             "<Ctrl-z>": "Suspend",
 
-            "<h>": "Mode::Home",
+            "<h>": "HideHelpScreen",
             "<m>": "Mode::Memory",
             "<esc>": "Mode::Home",
         },
