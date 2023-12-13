@@ -41,6 +41,12 @@ impl Memory {
         self.user_address = undo_information.user_address;
     }
 
+    pub fn reset(&mut self) {
+        self.most_recent_address = 0;
+        self.user_address = None;
+        self.undo_stack.clear();
+    }
+
     pub fn handle_instruction(&mut self, executed_instruction: ExecutedInstruction) {
         let presumed_ram_pointer = executed_instruction.new_top_of_stack[0];
         let overshoot_adjustment = match executed_instruction.instruction {
@@ -57,6 +63,7 @@ impl Component for Memory {
     fn update(&mut self, action: Action) -> Result<Option<Action>> {
         match action {
             Action::ProgramUndo => self.undo(),
+            Action::ProgramReset => self.reset(),
             Action::ExecutedInstruction(instruction) => self.handle_instruction(*instruction),
             _ => (),
         }
