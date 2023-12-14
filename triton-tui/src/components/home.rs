@@ -188,12 +188,7 @@ impl Home {
         let instruction_pointer = state.vm_state.instruction_pointer;
         let mut line_number_of_ip = 0;
         let mut is_breakpoint = false;
-        for (line_number, labelled_instruction) in state
-            .program
-            .labelled_instructions()
-            .into_iter()
-            .enumerate()
-        {
+        for labelled_instruction in state.program.labelled_instructions() {
             if labelled_instruction == LabelledInstruction::Breakpoint {
                 is_breakpoint = true;
                 continue;
@@ -204,7 +199,7 @@ impl Home {
             let ip_points_here = instruction_pointer == address
                 && matches!(labelled_instruction, LabelledInstruction::Instruction(_));
             if ip_points_here {
-                line_number_of_ip = line_number;
+                line_number_of_ip = text.len();
             }
             let ip = match ip_points_here {
                 true => Span::from("→").bold(),
@@ -237,7 +232,7 @@ impl Home {
             .title(title)
             .borders(Borders::TOP | Borders::LEFT | Borders::BOTTOM)
             .border_set(border_set);
-        let render_area_for_lines = render_area.height.saturating_sub(3);
+        let render_area_for_lines = block.inner(render_area).height;
         let num_total_lines = text.len() as u16;
         let num_lines_to_show_at_top = render_area_for_lines / 2;
         let maximum_scroll_amount = num_total_lines.saturating_sub(render_area_for_lines);
@@ -247,7 +242,6 @@ impl Home {
 
         let paragraph = Paragraph::new(text)
             .block(block)
-            .alignment(Alignment::Left)
             .scroll((num_lines_to_scroll, 0));
         frame.render_widget(paragraph, render_area);
     }
