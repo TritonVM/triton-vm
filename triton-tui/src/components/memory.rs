@@ -28,7 +28,6 @@ pub(crate) struct Memory {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) struct UndoInformation {
     pub most_recent_address: u64,
-    pub user_address: Option<u64>,
 }
 
 impl Memory {
@@ -38,13 +37,11 @@ impl Memory {
         };
 
         self.most_recent_address = undo_information.most_recent_address;
-        self.user_address = undo_information.user_address;
     }
 
     pub fn record_undo_information(&mut self) {
         let undo_information = UndoInformation {
             most_recent_address: self.most_recent_address,
-            user_address: self.user_address,
         };
         self.undo_stack.push(undo_information);
     }
