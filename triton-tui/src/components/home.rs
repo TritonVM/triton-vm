@@ -9,7 +9,6 @@ use triton_vm::instruction::*;
 use triton_vm::op_stack::OpStackElement;
 
 use crate::action::Action;
-use crate::mode::Mode;
 use crate::triton_vm_state::TritonVMState;
 use crate::type_hint_stack::*;
 
@@ -19,14 +18,14 @@ use super::Frame;
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Home {
     show_type_hints: bool,
-    show_help_hint: bool,
+    show_welcome_message: bool,
 }
 
 impl Default for Home {
     fn default() -> Self {
         Self {
             show_type_hints: true,
-            show_help_hint: true,
+            show_welcome_message: true,
         }
     }
 }
@@ -37,8 +36,8 @@ impl Home {
         max_address.to_string().len()
     }
 
-    fn stop_showing_help_hint(&mut self) {
-        self.show_help_hint = false;
+    fn stop_showing_welcome_message(&mut self) {
+        self.show_welcome_message = false;
     }
 
     fn distribute_area_for_widgets(&self, state: &TritonVMState, area: Rect) -> WidgetAreas {
@@ -330,17 +329,15 @@ impl Home {
     }
 
     fn render_message_widget(&self, frame: &mut Frame<'_>, render_info: RenderInfo) {
-        let title = Title::from(" Triton VM ");
-        let mut status = Title::default();
-        if self.show_help_hint {
-            status = Title::from(" press `h` for help ".dim());
-        }
-        if render_info.state.vm_state.halting {
-            status = Title::from(" HALT ".bold().green());
+        let mut line = Line::default();
+        if self.show_welcome_message {
+            line = Line::from(vec![
+                "Welcome to the Triton VM TUI! ".into(),
+                "Press `h` for help.".dim(),
+            ]);
         }
 
-        let state = &render_info.state;
-        let mut line = Line::from("");
+        let state = render_info.state;
         if let Some(message) = self.maybe_render_public_output(state) {
             line = message;
         }
@@ -351,14 +348,18 @@ impl Home {
             line = message;
         }
 
+        let status = match state.vm_state.halting {
+            true => Title::from(" HALT ".bold().green()),
+            false => Title::default(),
+        };
+
         let block = Block::default()
             .padding(Padding::horizontal(1))
-            .title(title)
             .title(status)
             .title_position(Position::Bottom)
             .borders(Borders::LEFT | Borders::RIGHT | Borders::BOTTOM)
             .border_type(BorderType::Rounded);
-        let paragraph = Paragraph::new(line).block(block).alignment(Alignment::Left);
+        let paragraph = Paragraph::new(line).block(block);
         frame.render_widget(paragraph, render_info.areas.message_box);
     }
 
@@ -396,7 +397,8 @@ impl Component for Home {
     fn update(&mut self, action: Action) -> Result<Option<Action>> {
         match action {
             Action::ToggleTypeHintDisplay => self.show_type_hints = !self.show_type_hints,
-            Action::Mode(Mode::Help) => self.stop_showing_help_hint(),
+            Action::Execute(_) => self.stop_showing_welcome_message(),
+            Action::Mode(_) => self.stop_showing_welcome_message(),
             _ => (),
         };
         Ok(None)
