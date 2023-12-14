@@ -1,10 +1,9 @@
-use num_traits::One;
-
 use color_eyre::eyre::Result;
+use num_traits::One;
 use ratatui::prelude::*;
-use ratatui::widgets::block::Title;
 use ratatui::widgets::*;
 use ratatui::Frame;
+use tui_textarea::TextArea;
 
 use triton_vm::instruction::Instruction;
 use triton_vm::BFieldElement;
@@ -14,13 +13,15 @@ use crate::action::ExecutedInstruction;
 use crate::components::Component;
 use crate::triton_vm_state::TritonVMState;
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub(crate) struct Memory {
+#[derive(Debug, Clone)]
+pub(crate) struct Memory<'a> {
     /// The address touched last by any `read_mem` or `write_mem` instruction.
     pub most_recent_address: u64,
 
     /// The address to show. Can be manually set (and unset) by the user.
     pub user_address: Option<u64>,
+
+    pub text_area: TextArea<'a>,
 
     pub undo_stack: Vec<UndoInformation>,
 }
@@ -30,7 +31,36 @@ pub(crate) struct UndoInformation {
     pub most_recent_address: u64,
 }
 
-impl Memory {
+#[derive(Debug, Clone, Copy)]
+struct RenderInfo<'s> {
+    state: &'s TritonVMState,
+    areas: WidgetAreas,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct WidgetAreas {
+    memory: Rect,
+    text_input: Rect,
+}
+
+impl<'a> Default for Memory<'a> {
+    fn default() -> Self {
+        Self {
+            most_recent_address: 0,
+            user_address: None,
+            text_area: Self::initial_text_area(),
+            undo_stack: vec![],
+        }
+    }
+}
+
+impl<'a> Memory<'a> {
+    fn initial_text_area() -> TextArea<'a> {
+        let mut text_area = TextArea::default();
+        text_area.set_placeholder_text("Go to address. Empty for most recent read / write.");
+        text_area
+    }
+
     pub fn undo(&mut self) {
         let Some(undo_information) = self.undo_stack.pop() else {
             return;
@@ -62,28 +92,24 @@ impl Memory {
         let last_ram_pointer = presumed_ram_pointer + overshoot_adjustment;
         self.most_recent_address = last_ram_pointer.value();
     }
-}
 
-impl Component for Memory {
-    fn update(&mut self, action: Action) -> Result<Option<Action>> {
-        match action {
-            Action::Undo => self.undo(),
-            Action::RecordUndoInfo => self.record_undo_information(),
-            Action::Reset => self.reset(),
-            Action::ExecutedInstruction(instruction) => self.handle_instruction(*instruction),
-            _ => (),
+    fn distribute_area_for_widgets(&self, area: Rect) -> WidgetAreas {
+        let text_area_height = Constraint::Min(2);
+        let constraints = [Constraint::Percentage(100), text_area_height];
+        let layout = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints(constraints)
+            .split(area);
+
+        WidgetAreas {
+            memory: layout[0],
+            text_input: layout[1],
         }
-        Ok(None)
     }
 
-    fn draw(&mut self, frame: &mut Frame<'_>, state: &TritonVMState) -> Result<()> {
-        let title = Title::from(" Random Access Memory ").alignment(Alignment::Left);
-        let block = Block::default()
-            .padding(Padding::new(1, 1, 1, 0))
-            .borders(Borders::ALL)
-            .border_type(BorderType::Rounded)
-            .title(title);
-        let draw_area = frame.size();
+    fn render_memory_widget(&self, frame: &mut Frame<'_>, render_info: RenderInfo) {
+        let block = Self::memory_widget_block();
+        let draw_area = render_info.areas.memory;
 
         let num_lines = block.inner(draw_area).height;
         let requested_address = self.user_address.unwrap_or(self.most_recent_address);
@@ -98,7 +124,7 @@ impl Component for Memory {
             };
 
             let address = address.into();
-            let maybe_value = state.vm_state.ram.get(&address);
+            let maybe_value = render_info.state.vm_state.ram.get(&address);
             let value = maybe_value.copied().unwrap_or(0_u64.into());
 
             // additional `.to_string()` to circumvent padding bug (?) in `format`
@@ -111,6 +137,57 @@ impl Component for Memory {
 
         let paragraph = Paragraph::new(text).block(block);
         frame.render_widget(paragraph, draw_area);
+    }
+
+    fn render_text_input_widget(&mut self, frame: &mut Frame<'_>, render_info: RenderInfo) {
+        let block = Self::text_input_block();
+
+        self.text_area.set_block(block);
+        frame.render_widget(self.text_area.widget(), render_info.areas.text_input);
+    }
+
+    fn memory_widget_block() -> Block<'a> {
+        let border_set = symbols::border::Set {
+            bottom_left: symbols::line::ROUNDED.vertical_right,
+            bottom_right: symbols::line::ROUNDED.vertical_left,
+            ..symbols::border::ROUNDED
+        };
+        Block::default()
+            .padding(Padding::new(1, 1, 1, 0))
+            .borders(Borders::ALL)
+            .border_set(border_set)
+            .title(" Random Access Memory ")
+    }
+
+    fn text_input_block() -> Block<'a> {
+        Block::default()
+            .padding(Padding::horizontal(1))
+            .borders(Borders::LEFT | Borders::RIGHT | Borders::BOTTOM)
+            .border_type(BorderType::Rounded)
+    }
+}
+
+impl<'a> Component for Memory<'a> {
+    fn update(&mut self, action: Action) -> Result<Option<Action>> {
+        match action {
+            Action::Undo => self.undo(),
+            Action::RecordUndoInfo => self.record_undo_information(),
+            Action::Reset => self.reset(),
+            Action::ExecutedInstruction(instruction) => self.handle_instruction(*instruction),
+            _ => (),
+        }
+        Ok(None)
+    }
+
+    fn draw(&mut self, frame: &mut Frame<'_>, state: &TritonVMState) -> Result<()> {
+        let widget_areas = self.distribute_area_for_widgets(frame.size());
+        let render_info = RenderInfo {
+            state,
+            areas: widget_areas,
+        };
+
+        self.render_memory_widget(frame, render_info);
+        self.render_text_input_widget(frame, render_info);
         Ok(())
     }
 }

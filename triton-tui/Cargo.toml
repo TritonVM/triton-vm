@@ -27,7 +27,7 @@ json5 = "0.4"
 lazy_static.workspace = true
 libc = "0.2"
 num-traits = "0.2.17"
-ratatui = { version = "0.24.1-alpha.6", features = ["serde", "macros"] }
+ratatui = { version = "0.24", features = ["serde", "macros"] }
 serde = { version = "1", features = ["derive"] }
 signal-hook = "0.3"
 strip-ansi-escapes = "0.2"
@@ -38,6 +38,7 @@ tracing = "0.1"
 tracing-error = "0.2"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "serde"] }
 triton-vm = { path = "../triton-vm" }
+tui-textarea = "0.4"
 
 [dev-dependencies]
 assert2.workspace = true
