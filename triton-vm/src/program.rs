@@ -427,15 +427,18 @@ impl Program {
         non_determinism: NonDeterminism<BFieldElement>,
     ) -> Result<(AlgebraicExecutionTrace, Vec<BFieldElement>)> {
         let state = VMState::new(self, public_input, non_determinism);
-        self.trace_execution_of_state(state)
+        let (aet, terminal_state) = self.trace_execution_of_state(state)?;
+        Ok((aet, terminal_state.public_output))
     }
 
     /// Trace the execution of a [`Program`] from a given [`VMState`]. Consider using
     /// [`trace_execution`][Self::trace_execution], unless you know this is what you want.
+    ///
+    /// Returns the [`AlgebraicExecutionTrace`] and the terminal [`VMState`] if execution succeeds.
     pub fn trace_execution_of_state(
         &self,
         mut state: VMState,
-    ) -> Result<(AlgebraicExecutionTrace, Vec<BFieldElement>)> {
+    ) -> Result<(AlgebraicExecutionTrace, VMState)> {
         let mut aet = AlgebraicExecutionTrace::new(self.clone());
         assert_eq!(self.instructions, state.program);
         assert_eq!(self.len_bwords(), aet.instruction_multiplicities.len());
@@ -453,7 +456,7 @@ impl Program {
             }
         }
 
-        Ok((aet, state.public_output))
+        Ok((aet, state))
     }
 
     /// Run Triton VM with the given public and secret input, but record the number of cycles spent
