@@ -426,8 +426,18 @@ impl Program {
         public_input: PublicInput,
         non_determinism: NonDeterminism<BFieldElement>,
     ) -> Result<(AlgebraicExecutionTrace, Vec<BFieldElement>)> {
+        let state = VMState::new(self, public_input, non_determinism);
+        self.trace_execution_of_state(state)
+    }
+
+    /// Trace the execution of a [`Program`] from a given [`VMState`]. Consider using
+    /// [`trace_execution`][Self::trace_execution], unless you know this is what you want.
+    pub fn trace_execution_of_state(
+        &self,
+        mut state: VMState,
+    ) -> Result<(AlgebraicExecutionTrace, Vec<BFieldElement>)> {
         let mut aet = AlgebraicExecutionTrace::new(self.clone());
-        let mut state = VMState::new(self, public_input, non_determinism);
+        assert_eq!(self.instructions, state.program);
         assert_eq!(self.len_bwords(), aet.instruction_multiplicities.len());
 
         while !state.halting {
