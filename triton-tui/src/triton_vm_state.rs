@@ -6,6 +6,7 @@ use itertools::Itertools;
 use tokio::sync::mpsc::UnboundedSender;
 use tracing::error;
 use tracing::info;
+use tracing::warn;
 
 use triton_vm::error::InstructionError;
 use triton_vm::instruction::*;
@@ -148,6 +149,7 @@ impl TritonVMState {
         let instruction = self.vm_state.current_instruction().ok();
         let old_top_of_stack = self.top_of_stack();
         if let Err(err) = self.vm_state.step() {
+            warn!("Error stepping: {err}");
             self.error = Some(err);
             return;
         }

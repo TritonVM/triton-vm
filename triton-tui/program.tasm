@@ -1,23 +1,20 @@
 //! Demonstrates use and functionality of the Triton VM TUI.
 //!
 //! Serves as the tutorial: execution intentionally fails at first, hopefully
-//! encouraging you to play around. :) The inline comments should make matters
-//! trivial.
+//! encouraging you to play around. :) The inline comments should make matters trivial.
 //!
 //! Press `h` in Triton VM TUI to show the help screen.
 
+// Let's start!
 push 3
-
-// current stack can be annotated to help debugging
-hint loop_counter = stack[0]
+hint loop_counter = stack[0]        // Current stack can be annotated to help debugging.
 
 call my_loop
-
-// annotations also works with ranges:
-hint my_numbers: array = stack[1..4]
+hint numbers: array = stack[1..4]   // Annotations also work with ranges.
 
 call check_result
 call write_to_memory
+call read_from_secret_input
 call sponge_instructions
 halt
 
@@ -37,9 +34,18 @@ check_result:                       // Try enabling
 write_to_memory:
     push 42
     write_mem 2                     // You can inspect memory with `m`.
+    pop 1
+    return
+
+read_from_secret_input:
+    divine 3                        // flag `--non-determinism ./non_determinism.json`
+    mul mul
+    swap 5
+    divine_sibling pop 5
+    divine_sibling hash
     return
 
 sponge_instructions:
-    sponge_init                     // Sponge state will now be shown.
+    sponge_init                     // Sponge state will shown once initialized.
     sponge_squeeze
     return
