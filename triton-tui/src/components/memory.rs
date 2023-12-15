@@ -53,8 +53,8 @@ impl<'a> Default for Memory<'a> {
             most_recent_address: 0,
             user_address: None,
             text_area: Self::initial_text_area(),
-            text_area_in_focus: false,
             undo_stack: vec![],
+            text_area_in_focus: false,
         }
     }
 }
@@ -99,6 +99,12 @@ impl<'a> Memory<'a> {
         self.most_recent_address = last_ram_pointer.value();
     }
 
+    fn submit_address(&mut self) {
+        let user_input = self.text_area.lines()[0].trim();
+        let maybe_address = user_input.parse::<u64>().ok();
+        self.user_address = maybe_address;
+    }
+
     fn distribute_area_for_widgets(&self, area: Rect) -> WidgetAreas {
         let text_area_height = Constraint::Min(2);
         let constraints = [Constraint::Percentage(100), text_area_height];
@@ -120,7 +126,7 @@ impl<'a> Memory<'a> {
         let num_lines = block.inner(draw_area).height;
         let requested_address = self.user_address.unwrap_or(self.most_recent_address);
         let address_range_start = requested_address.saturating_sub(num_lines as u64 / 2);
-        let address_range_end = address_range_start + num_lines as u64;
+        let address_range_end = address_range_start.saturating_add(num_lines as u64);
 
         let mut text = vec![];
         for address in address_range_start..address_range_end {
@@ -197,6 +203,13 @@ impl<'a> Component for Memory<'a> {
             self.text_area_in_focus = false;
             return Ok(None);
         }
+        if key_event.code == KeyCode::Enter {
+            if self.text_area_in_focus {
+                self.submit_address();
+            }
+            self.text_area_in_focus = !self.text_area_in_focus;
+            return Ok(None);
+        }
         if self.text_area_in_focus {
             self.text_area.input(key_event);
         }
@@ -206,6 +219,7 @@ impl<'a> Component for Memory<'a> {
     fn update(&mut self, action: Action) -> Result<Option<Action>> {
         match action {
             Action::Mode(Mode::Memory) => self.text_area_in_focus = true,
+            Action::Mode(_) => self.text_area_in_focus = false,
             Action::Undo => self.undo(),
             Action::RecordUndoInfo => self.record_undo_information(),
             Action::Reset => self.reset(),
