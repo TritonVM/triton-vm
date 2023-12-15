@@ -21,7 +21,7 @@ use crate::action::Action;
 use crate::mode::Mode;
 use crate::utils::*;
 
-const DEFAULT_CONFIG: &str = include_str!("../.config/default_config.json5");
+const DEFAULT_CONFIG: &str = include_str!("../.config/default_config.json");
 
 #[derive(Clone, Debug, Default, Deserialize)]
 pub(crate) struct Config {
@@ -33,7 +33,7 @@ pub(crate) struct Config {
 
 impl Config {
     pub fn new() -> Result<Self, ConfigError> {
-        let default_config = json5::from_str(DEFAULT_CONFIG).map_err(|e| {
+        let default_config = serde_json::from_str(DEFAULT_CONFIG).map_err(|e| {
             let error = format!("Unable to parse default config: {e}");
             error!(error);
             ConfigError::custom(error)
@@ -54,7 +54,6 @@ impl Config {
             .set_default("_config_dir", config_dir.to_str().unwrap())?;
 
         let config_files = [
-            ("config.json5", config::FileFormat::Json5),
             ("config.json", config::FileFormat::Json),
             ("config.yaml", config::FileFormat::Yaml),
             ("config.toml", config::FileFormat::Toml),

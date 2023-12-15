@@ -663,7 +663,7 @@ impl PublicInput {
 /// All sources of non-determinism for a program. This includes elements that can be read using
 /// instruction `divine`, digests that can be read using instruction `divine_sibling`,
 /// and a initial state of random-access memory.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Arbitrary)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, Arbitrary)]
 pub struct NonDeterminism<E>
 where
     E: Into<BFieldElement> + Eq + Hash,

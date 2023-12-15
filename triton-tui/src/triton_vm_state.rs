@@ -80,8 +80,13 @@ impl TritonVMState {
         Ok(PublicInput::new(elements))
     }
 
-    fn non_determinism_from_args(_args: &Args) -> Result<NonDeterminism<BFieldElement>> {
-        Ok(NonDeterminism::default())
+    fn non_determinism_from_args(args: &Args) -> Result<NonDeterminism<BFieldElement>> {
+        let Some(ref non_determinism_path) = args.non_determinism else {
+            return Ok(NonDeterminism::default());
+        };
+        let file_content = fs::read_to_string(non_determinism_path)?;
+        let non_determinism: NonDeterminism<u64> = serde_json::from_str(&file_content)?;
+        Ok(NonDeterminism::from(&non_determinism))
     }
 
     fn top_of_stack(&self) -> [BFieldElement; NUM_OP_STACK_REGISTERS] {
@@ -231,8 +236,8 @@ impl Component for TritonVMState {
 
 #[cfg(test)]
 mod tests {
-    use assert2::assert;
     use proptest::collection::vec;
+    use proptest::prelude::*;
     use proptest_arbitrary_interop::arb;
     use test_strategy::proptest;
 
@@ -245,8 +250,17 @@ mod tests {
         let mut triton_vm_state = TritonVMState::new(&Default::default()).unwrap();
         triton_vm_state.vm_state.op_stack.stack = stack.clone();
         let top_of_stack = triton_vm_state.top_of_stack();
-        assert!(top_of_stack[0] == stack[stack.len() - 1]);
-        assert!(top_of_stack[1] == stack[stack.len() - 2]);
-        assert!(top_of_stack[2] == stack[stack.len() - 3]);
+        prop_assert_eq!(top_of_stack[0], stack[stack.len() - 1]);
+        prop_assert_eq!(top_of_stack[1], stack[stack.len() - 2]);
+        prop_assert_eq!(top_of_stack[2], stack[stack.len() - 3]);
+    }
+
+    #[proptest]
+    fn serialize_and_deserialize_non_determinism_to_and_from_json(
+        #[strategy(arb())] non_determinism: NonDeterminism<u64>,
+    ) {
+        let serialized = serde_json::to_string(&non_determinism).unwrap();
+        let deserialized: NonDeterminism<u64> = serde_json::from_str(&serialized).unwrap();
+        prop_assert_eq!(non_determinism, deserialized);
     }
 }

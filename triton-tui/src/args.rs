@@ -14,12 +14,16 @@ pub(crate) struct Args {
         value_name = "PATH",
         default_value_t = String::from(DEFAULT_PROGRAM_PATH),
     )]
-    /// path to program to run
+    /// Path to program to run
     pub program: String,
 
     #[arg(short, long, value_name = "PATH")]
-    /// path to public input file
+    /// Path to file containing public input
     pub input: Option<String>,
+
+    #[arg(short, long, value_name = "PATH")]
+    /// Path to JSON file containing all non-determinism
+    pub non_determinism: Option<String>,
 
     #[arg(
         short,
@@ -27,7 +31,7 @@ pub(crate) struct Args {
         value_name = "FLOAT",
         default_value_t = DEFAULT_FRAME_RATE
     )]
-    /// frame rate, i.e. number of frames per second
+    /// Frame rate, i.e. number of frames per second
     pub frame_rate: f64,
 }
 
@@ -36,6 +40,7 @@ impl Default for Args {
         Self {
             program: DEFAULT_PROGRAM_PATH.into(),
             input: None,
+            non_determinism: None,
             frame_rate: DEFAULT_FRAME_RATE,
         }
     }

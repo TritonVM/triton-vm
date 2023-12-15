@@ -15,7 +15,7 @@
             "<u>": "Undo",
             "<r>": "Reset",
 
-            "<t>": "ToggleTypeHintDisplay",
+            "<t>": "ToggleTypeHintDisplay"
         },
         "Help": {
             "<q>": "Quit",
@@ -24,7 +24,7 @@
 
             "<h>": "HideHelpScreen",
             "<m>": "Mode::Memory",
-            "<esc>": "Mode::Home",
+            "<esc>": "Mode::Home"
         },
         "Memory": {
             "<q>": "Quit",
@@ -33,7 +33,7 @@
 
             "<h>": "Mode::Help",
             "<m>": "Mode::Home",
-            "<esc>": "Mode::Home",
+            "<esc>": "Mode::Home"
         }
     }
 }
