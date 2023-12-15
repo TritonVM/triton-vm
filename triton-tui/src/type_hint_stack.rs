@@ -12,6 +12,8 @@ use triton_vm::instruction::*;
 use triton_vm::op_stack::NumberOfWords::*;
 use triton_vm::op_stack::*;
 
+use crate::action::ExecutedInstruction;
+
 /// A helper “shadow stack” mimicking the behavior of the actual stack. Helps debugging programs
 /// written for Triton VM by (manually set) type hints next to stack elements.
 #[derive(Debug, Clone)]
@@ -90,11 +92,8 @@ impl TypeHintStack {
         Ok(())
     }
 
-    pub fn mimic_instruction(&mut self, instruction: Option<Instruction>) {
-        let Some(instruction) = instruction else {
-            return;
-        };
-        match instruction {
+    pub fn mimic_instruction(&mut self, executed_instruction: ExecutedInstruction) {
+        match executed_instruction.instruction {
             Instruction::Pop(n) => _ = self.pop_n(n),
             Instruction::Push(_) => self.push(None),
             Instruction::Divine(n) => self.extend_by(n),
@@ -196,7 +195,7 @@ impl TypeHintStack {
         let hashed_exactly_one_object = hashed_a_sequence && did_not_interrupt_sequence;
 
         if hashed_exactly_one_object {
-            let Some(hash_type_hint) = popped[0].clone() else {
+            let Some(ref hash_type_hint) = popped[0] else {
                 return;
             };
             let type_hint = TypeHint {
@@ -394,12 +393,12 @@ mod tests {
     #[proptest]
     fn type_hint_stack_grows_and_shrinks_like_actual_stack(
         mut type_hint_stack: TypeHintStack,
-        #[strategy(arb())] instruction: Instruction,
+        #[strategy(arb())] executed_instruction: ExecutedInstruction,
     ) {
         let initial_length = type_hint_stack.len();
-        type_hint_stack.mimic_instruction(Some(instruction));
+        type_hint_stack.mimic_instruction(executed_instruction);
         let actual_stack_delta = type_hint_stack.len() as i32 - initial_length as i32;
-        let expected_stack_delta = instruction.op_stack_size_influence();
+        let expected_stack_delta = executed_instruction.instruction.op_stack_size_influence();
         assert!(expected_stack_delta == actual_stack_delta);
     }
 }

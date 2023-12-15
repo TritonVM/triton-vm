@@ -91,25 +91,23 @@ pub(crate) fn initialize_panic_handler() -> Result<()> {
 }
 
 pub(crate) fn get_data_dir() -> PathBuf {
-    let directory = if let Some(s) = DATA_FOLDER.clone() {
+    if let Some(s) = DATA_FOLDER.clone() {
         s
     } else if let Some(proj_dirs) = project_directory() {
         proj_dirs.data_local_dir().to_path_buf()
     } else {
         PathBuf::from(".").join(".data")
-    };
-    directory
+    }
 }
 
 pub(crate) fn get_config_dir() -> PathBuf {
-    let directory = if let Some(s) = CONFIG_FOLDER.clone() {
+    if let Some(s) = CONFIG_FOLDER.clone() {
         s
     } else if let Some(proj_dirs) = project_directory() {
         proj_dirs.config_local_dir().to_path_buf()
     } else {
         PathBuf::from(".").join(".config")
-    };
-    directory
+    }
 }
 
 pub(crate) fn initialize_logging() -> Result<()> {
@@ -137,36 +135,11 @@ pub(crate) fn initialize_logging() -> Result<()> {
     Ok(())
 }
 
-/// Similar to the `std::dbg!` macro, but generates `tracing` events rather than printing to stdout.
-///
-/// By default, the verbosity level for the generated events is `DEBUG`, but this can be customized.
-macro_rules! trace_dbg {
-    (target: $target:expr, level: $level:expr, $ex:expr) => {{
-        match $ex {
-            value => {
-                tracing::event!(target: $target, $level, ?value, stringify!($ex));
-                value
-            }
-        }
-    }};
-    (level: $level:expr, $ex:expr) => {
-        trace_dbg!(target: module_path!(), level: $level, $ex)
-    };
-    (target: $target:expr, $ex:expr) => {
-        trace_dbg!(target: $target, level: tracing::Level::DEBUG, $ex)
-    };
-    ($ex:expr) => {
-        trace_dbg!(level: tracing::Level::DEBUG, $ex)
-    };
-}
-pub(crate) use trace_dbg;
-
 pub(crate) fn version() -> String {
     let author = clap::crate_authors!();
 
     let commit_hash = GIT_COMMIT_HASH.clone();
 
-    // let current_exe_path = PathBuf::from(clap::crate_name!()).display().to_string();
     let config_dir_path = get_config_dir().display().to_string();
     let data_dir_path = get_data_dir().display().to_string();
 

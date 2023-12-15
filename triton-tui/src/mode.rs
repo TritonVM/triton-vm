@@ -6,6 +6,7 @@ use strum::EnumCount;
 pub(crate) enum Mode {
     #[default]
     Home,
+    Memory,
     Help,
 }
 

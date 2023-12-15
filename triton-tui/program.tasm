@@ -3,6 +3,8 @@
 //! Serves as the tutorial: execution intentionally fails at first, hopefully
 //! encouraging you to play around. :) The inline comments should make matters
 //! trivial.
+//!
+//! Press `h` in Triton VM TUI to show the help screen.
 
 push 3
 
@@ -15,6 +17,7 @@ call my_loop
 hint my_numbers: array = stack[1..4]
 
 call check_result
+call write_to_memory
 call sponge_instructions
 halt
 
@@ -31,7 +34,12 @@ check_result:                       // Try enabling
     assert                          // <- this assertion to work.
     return                          // Hot reload & reset of the VM is `r`.
 
+write_to_memory:
+    push 42
+    write_mem 2                     // You can inspect memory with `m`.
+    return
+
 sponge_instructions:
-    sponge_init
+    sponge_init                     // Sponge state will now be shown.
     sponge_squeeze
     return

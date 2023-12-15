@@ -1,208 +1,46 @@
-use color_eyre::eyre::anyhow;
-use color_eyre::eyre::Report;
 use color_eyre::eyre::Result;
-use fs_err as fs;
 use itertools::Itertools;
 use ratatui::prelude::*;
 use ratatui::widgets::block::*;
 use ratatui::widgets::*;
 use strum::EnumCount;
-use tracing::info;
 
-use triton_vm::error::InstructionError;
 use triton_vm::instruction::*;
 use triton_vm::op_stack::OpStackElement;
-use triton_vm::vm::VMState;
-use triton_vm::*;
 
 use crate::action::Action;
-use crate::args::Args;
-use crate::components::type_hint_stack::*;
+use crate::triton_vm_state::TritonVMState;
+use crate::type_hint_stack::*;
 
 use super::Component;
 use super::Frame;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub(crate) struct Home {
-    args: Args,
-    program: Program,
-    non_determinism: NonDeterminism<BFieldElement>,
-    vm_state: VMState,
-    type_hint_stack: TypeHintStack,
-    warning: Option<Report>,
-    error: Option<InstructionError>,
-    undo_stack: Vec<UndoInformation>,
     show_type_hints: bool,
+    show_welcome_message: bool,
 }
 
-#[derive(Debug, Clone)]
-struct UndoInformation {
-    vm_state: VMState,
-    type_hint_stack: TypeHintStack,
+impl Default for Home {
+    fn default() -> Self {
+        Self {
+            show_type_hints: true,
+            show_welcome_message: true,
+        }
+    }
 }
 
 impl Home {
-    pub fn new(args: Args) -> Result<Self> {
-        let program = Self::program_from_args(&args)?;
-        let public_input = Self::public_input_from_args(&args)?;
-
-        let non_determinism = NonDeterminism::default();
-        let vm_state = VMState::new(&program, public_input.clone(), non_determinism.clone());
-
-        let mut home = Self {
-            args,
-            program,
-            non_determinism,
-            vm_state,
-            type_hint_stack: TypeHintStack::default(),
-            warning: None,
-            error: None,
-            undo_stack: vec![],
-            show_type_hints: true,
-        };
-        home.apply_type_hints();
-        Ok(home)
-    }
-
-    fn program_from_args(args: &Args) -> Result<Program> {
-        let source_code = fs::read_to_string(&args.program)?;
-        let program = Program::from_code(&source_code)
-            .map_err(|err| anyhow!("program parsing error: {err}"))?;
-        Ok(program)
-    }
-
-    fn public_input_from_args(args: &Args) -> Result<PublicInput> {
-        let Some(input_path) = args.input.clone() else {
-            return Ok(PublicInput::default());
-        };
-        let file_content = fs::read_to_string(input_path)?;
-        let string_tokens = file_content.split_whitespace();
-        let mut elements = vec![];
-        for string_token in string_tokens {
-            let element = string_token.parse::<u64>()?;
-            elements.push(element.into());
-        }
-        Ok(PublicInput::new(elements))
-    }
-
-    fn vm_has_stopped(&self) -> bool {
-        self.vm_state.halting || self.error.is_some()
-    }
-
-    fn vm_is_running(&self) -> bool {
-        !self.vm_has_stopped()
-    }
-
-    fn at_breakpoint(&self) -> bool {
-        let ip = self.vm_state.instruction_pointer as u64;
-        self.program.is_breakpoint(ip)
-    }
-
-    fn apply_type_hints(&mut self) {
-        let ip = self.vm_state.instruction_pointer as u64;
-        for type_hint in self.program.type_hints_at(ip) {
-            let maybe_error = self.type_hint_stack.apply_type_hint(type_hint);
-            if let Err(report) = maybe_error {
-                info!("Error applying type hint: {report}");
-                self.warning = Some(report);
-            };
-        }
-    }
-
-    /// Handle [`Action::ProgramContinue`].
-    fn program_continue(&mut self) {
-        self.program_step();
-        while self.vm_is_running() && !self.at_breakpoint() {
-            self.program_step();
-        }
-    }
-
-    /// Handle [`Action::ProgramStep`].
-    fn program_step(&mut self) {
-        if self.vm_has_stopped() {
-            return;
-        }
-        self.warning = None;
-        let current_instruction = self.vm_state.current_instruction().ok();
-        match self.vm_state.step() {
-            Ok(_) => self.type_hint_stack.mimic_instruction(current_instruction),
-            Err(err) => self.error = Some(err),
-        }
-        self.apply_type_hints();
-    }
-
-    /// Handle [`Action::ProgramNext`].
-    fn program_next(&mut self) {
-        let instruction = self.vm_state.current_instruction();
-        let instruction_is_call = matches!(instruction, Ok(Instruction::Call(_)));
-        self.program_step();
-        if instruction_is_call {
-            self.program_finish();
-        }
-    }
-
-    /// Handle [`Action::ProgramFinish`].
-    fn program_finish(&mut self) {
-        let current_jump_stack_depth = self.vm_state.jump_stack.len();
-        while self.vm_is_running() && self.vm_state.jump_stack.len() >= current_jump_stack_depth {
-            self.program_step();
-        }
-    }
-
-    fn program_reset(&mut self) -> Result<()> {
-        self.warning = None;
-        self.error = None;
-
-        let program = match Self::program_from_args(&self.args) {
-            Ok(program) => program,
-            Err(report) => {
-                self.warning = Some(report);
-                return Ok(());
-            }
-        };
-
-        let public_input = match Self::public_input_from_args(&self.args) {
-            Ok(public_input) => public_input,
-            Err(report) => {
-                self.warning = Some(report);
-                return Ok(());
-            }
-        };
-
-        self.program = program;
-        self.vm_state = VMState::new(&self.program, public_input, self.non_determinism.clone());
-        self.type_hint_stack = TypeHintStack::new();
-        self.undo_stack = vec![];
-
-        self.apply_type_hints();
-        Ok(())
-    }
-
-    fn record_undo_information(&mut self) {
-        let undo_information = UndoInformation {
-            vm_state: self.vm_state.clone(),
-            type_hint_stack: self.type_hint_stack.clone(),
-        };
-        self.undo_stack.push(undo_information);
-    }
-
-    fn program_undo(&mut self) {
-        let Some(undo_information) = self.undo_stack.pop() else {
-            self.warning = Some(anyhow!("no more undo information available"));
-            return;
-        };
-        self.warning = None;
-        self.error = None;
-        self.vm_state = undo_information.vm_state;
-        self.type_hint_stack = undo_information.type_hint_stack;
-    }
-
-    fn address_render_width(&self) -> usize {
-        let max_address = self.program.len_bwords();
+    fn address_render_width(&self, state: &TritonVMState) -> usize {
+        let max_address = state.program.len_bwords();
         max_address.to_string().len()
     }
 
-    fn distribute_area_for_widgets(&self, area: Rect) -> WidgetAreas {
+    fn stop_showing_welcome_message(&mut self) {
+        self.show_welcome_message = false;
+    }
+
+    fn distribute_area_for_widgets(&self, state: &TritonVMState, area: Rect) -> WidgetAreas {
         let message_box_height = Constraint::Min(2);
         let constraints = [Constraint::Percentage(100), message_box_height];
         let layout = Layout::default()
@@ -218,7 +56,7 @@ impl Home {
             false => Constraint::Max(0),
         };
         let remaining_width = Constraint::Percentage(100);
-        let sponge_state_width = match self.vm_state.sponge_state.is_some() {
+        let sponge_state_width = match state.vm_state.sponge_state.is_some() {
             true => Constraint::Min(32),
             false => Constraint::Min(1),
         };
@@ -255,13 +93,16 @@ impl Home {
         }
     }
 
-    fn render_op_stack_widget(&self, f: &mut Frame, area: Rect) {
-        let stack_size = self.vm_state.op_stack.stack.len();
+    fn render_op_stack_widget(&self, frame: &mut Frame<'_>, render_info: RenderInfo) {
+        let op_stack = &render_info.state.vm_state.op_stack.stack;
+        let render_area = render_info.areas.op_stack;
+
+        let stack_size = op_stack.len();
         let title = format!(" Stack (size: {stack_size:>4}) ");
         let title = Title::from(title).alignment(Alignment::Left);
-        let num_padding_lines = (area.height as usize).saturating_sub(stack_size + 3);
+        let num_padding_lines = (render_area.height as usize).saturating_sub(stack_size + 3);
         let mut text = vec![Line::from(""); num_padding_lines];
-        for (i, st) in self.vm_state.op_stack.stack.iter().rev().enumerate() {
+        for (i, st) in op_stack.iter().rev().enumerate() {
             let stack_index_style = match i {
                 i if i < OpStackElement::COUNT => Style::new().bold(),
                 _ => Style::new().dim(),
@@ -283,18 +124,20 @@ impl Home {
             .border_set(border_set)
             .title(title);
         let paragraph = Paragraph::new(text).block(block).alignment(Alignment::Left);
-        f.render_widget(paragraph, area);
+        frame.render_widget(paragraph, render_area);
     }
 
-    fn render_type_hint_widget(&self, f: &mut Frame, area: Rect) {
+    fn render_type_hint_widget(&self, frame: &mut Frame<'_>, render_info: RenderInfo) {
         if !self.show_type_hints {
             return;
         }
-        let type_hints = &self.type_hint_stack.type_hints;
+        let render_area = render_info.areas.type_hint;
+        let type_hints = &render_info.state.type_hint_stack.type_hints;
+
         let highest_hint = type_hints.last().cloned().flatten();
         let lowest_hint = type_hints.first().cloned().flatten();
 
-        let num_padding_lines = (area.height as usize).saturating_sub(type_hints.len() + 3);
+        let num_padding_lines = (render_area.height as usize).saturating_sub(type_hints.len() + 3);
         let mut text = vec![Line::from(""); num_padding_lines];
 
         text.push(Self::render_element_type_hint(&highest_hint));
@@ -311,7 +154,7 @@ impl Home {
             .padding(Padding::new(0, 1, 1, 0))
             .borders(Borders::TOP | Borders::BOTTOM);
         let paragraph = Paragraph::new(text).block(block).alignment(Alignment::Left);
-        f.render_widget(paragraph, area);
+        frame.render_widget(paragraph, render_area);
     }
 
     fn render_element_type_hint(element_type_hint: &Option<ElementTypeHint>) -> Line {
@@ -331,31 +174,21 @@ impl Home {
         line.into()
     }
 
-    fn render_program_widget(&self, f: &mut Frame, area: Rect) {
-        let cycle_count = self.vm_state.cycle_count;
+    fn render_program_widget(&self, frame: &mut Frame<'_>, render_info: RenderInfo) {
+        let state = &render_info.state;
+        let render_area = render_info.areas.program;
+
+        let cycle_count = state.vm_state.cycle_count;
         let title = format!(" Program (cycle: {cycle_count:>5}) ");
         let title = Title::from(title).alignment(Alignment::Left);
 
-        let mut exec_state = Title::default();
-        if self.vm_state.halting {
-            exec_state = Title::from(" HALT ".bold().green());
-        }
-        if self.warning.is_some() {
-            exec_state = Title::from(" WARNING ".bold().yellow());
-        }
-        if self.error.is_some() {
-            exec_state = Title::from(" ERROR ".bold().red());
-        }
-
-        let address_width = self.address_render_width().max(2);
+        let address_width = self.address_render_width(state).max(2);
         let mut address = 0;
         let mut text = vec![];
-        let instruction_pointer = self.vm_state.instruction_pointer;
+        let instruction_pointer = state.vm_state.instruction_pointer;
         let mut line_number_of_ip = 0;
         let mut is_breakpoint = false;
-        for (line_number, labelled_instruction) in
-            self.program.labelled_instructions().into_iter().enumerate()
-        {
+        for labelled_instruction in state.program.labelled_instructions() {
             if labelled_instruction == LabelledInstruction::Breakpoint {
                 is_breakpoint = true;
                 continue;
@@ -366,7 +199,7 @@ impl Home {
             let ip_points_here = instruction_pointer == address
                 && matches!(labelled_instruction, LabelledInstruction::Instruction(_));
             if ip_points_here {
-                line_number_of_ip = line_number;
+                line_number_of_ip = text.len();
             }
             let ip = match ip_points_here {
                 true => Span::from("→").bold(),
@@ -394,15 +227,12 @@ impl Home {
             ..symbols::border::ROUNDED
         };
 
-        let halting = exec_state.position(Position::Bottom);
-        let halting = halting.alignment(Alignment::Center);
         let block = Block::default()
             .padding(Padding::new(1, 1, 1, 0))
             .title(title)
-            .title(halting)
             .borders(Borders::TOP | Borders::LEFT | Borders::BOTTOM)
             .border_set(border_set);
-        let render_area_for_lines = area.height.saturating_sub(3);
+        let render_area_for_lines = block.inner(render_area).height;
         let num_total_lines = text.len() as u16;
         let num_lines_to_show_at_top = render_area_for_lines / 2;
         let maximum_scroll_amount = num_total_lines.saturating_sub(render_area_for_lines);
@@ -412,27 +242,30 @@ impl Home {
 
         let paragraph = Paragraph::new(text)
             .block(block)
-            .alignment(Alignment::Left)
             .scroll((num_lines_to_scroll, 0));
-        f.render_widget(paragraph, area);
+        frame.render_widget(paragraph, render_area);
     }
 
-    fn render_call_stack_widget(&self, f: &mut Frame, area: Rect) {
-        let jump_stack_depth = self.vm_state.jump_stack.len();
+    fn render_call_stack_widget(&self, frame: &mut Frame<'_>, render_info: RenderInfo) {
+        let state = &render_info.state;
+        let jump_stack = &state.vm_state.jump_stack;
+        let render_area = render_info.areas.call_stack;
+
+        let jump_stack_depth = jump_stack.len();
         let title = format!(" Calls (depth: {jump_stack_depth:>3}) ");
         let title = Title::from(title).alignment(Alignment::Left);
 
-        let num_padding_lines = (area.height as usize).saturating_sub(jump_stack_depth + 3);
+        let num_padding_lines = (render_area.height as usize).saturating_sub(jump_stack_depth + 3);
         let mut text = vec![Line::from(""); num_padding_lines];
-        let address_width = self.address_render_width();
-        for (return_address, call_address) in self.vm_state.jump_stack.iter().rev() {
+        let address_width = self.address_render_width(state);
+        for (return_address, call_address) in jump_stack.iter().rev() {
             let return_address = return_address.value();
             let call_address = call_address.value();
             let addresses = Span::from(format!(
                 "({return_address:>address_width$}, {call_address:>address_width$})"
             ));
             let separator = Span::from("  ");
-            let label = Span::from(self.program.label_for_address(call_address));
+            let label = Span::from(state.program.label_for_address(call_address));
             let line = Line::from(vec![addresses, separator, label]);
             text.push(line);
         }
@@ -448,9 +281,13 @@ impl Home {
             .borders(Borders::TOP | Borders::LEFT | Borders::BOTTOM)
             .border_set(border_set);
         let paragraph = Paragraph::new(text).block(block).alignment(Alignment::Left);
-        f.render_widget(paragraph, area);
+        frame.render_widget(paragraph, render_area);
     }
-    fn render_sponge_widget(&self, f: &mut Frame, area: Rect) {
+
+    fn render_sponge_widget(&self, frame: &mut Frame<'_>, render_info: RenderInfo) {
+        let sponge_state = &render_info.state.vm_state.sponge_state;
+        let render_area = render_info.areas.sponge;
+
         let border_set = symbols::border::Set {
             top_left: symbols::line::ROUNDED.horizontal_down,
             bottom_left: symbols::line::ROUNDED.horizontal_up,
@@ -460,14 +297,14 @@ impl Home {
         let right_border = Block::default()
             .borders(Borders::TOP | Borders::RIGHT | Borders::BOTTOM)
             .border_set(border_set);
-        let Some(state) = self.vm_state.sponge_state else {
+        let Some(state) = sponge_state else {
             let paragraph = Paragraph::new("").block(right_border);
-            f.render_widget(paragraph, area);
+            frame.render_widget(paragraph, render_area);
             return;
         };
 
         let title = Title::from(" Sponge ").alignment(Alignment::Left);
-        let num_padding_lines = (area.height as usize).saturating_sub(state.len() + 3);
+        let num_padding_lines = (render_area.height as usize).saturating_sub(state.len() + 3);
         let mut text = vec![Line::from(""); num_padding_lines];
         for (i, sp) in state.iter().enumerate() {
             let sponge_index = Span::from(format!("{i:>3}")).dim();
@@ -482,90 +319,106 @@ impl Home {
             .title(title)
             .borders(Borders::ALL);
         let paragraph = Paragraph::new(text).block(block).alignment(Alignment::Left);
-        f.render_widget(paragraph, area);
+        frame.render_widget(paragraph, render_area);
     }
 
-    fn render_message_widget(&self, f: &mut Frame, area: Rect) {
-        let mut line = Line::from("");
-        if let Some(message) = self.maybe_render_public_output() {
+    fn render_message_widget(&self, frame: &mut Frame<'_>, render_info: RenderInfo) {
+        let mut line = Line::default();
+        if self.show_welcome_message {
+            line = Line::from(vec![
+                "Welcome to the Triton VM TUI! ".into(),
+                "Press `h` for help.".dim(),
+            ]);
+        }
+
+        let state = render_info.state;
+        if let Some(message) = self.maybe_render_public_output(state) {
             line = message;
         }
-        if let Some(message) = self.maybe_render_warning_message() {
+        if let Some(message) = self.maybe_render_warning_message(state) {
             line = message;
         }
-        if let Some(message) = self.maybe_render_error_message() {
+        if let Some(message) = self.maybe_render_error_message(state) {
             line = message;
         }
+
+        let status = match state.vm_state.halting {
+            true => Title::from(" HALT ".bold().green()),
+            false => Title::default(),
+        };
 
         let block = Block::default()
+            .padding(Padding::horizontal(1))
+            .title(status)
+            .title_position(Position::Bottom)
             .borders(Borders::LEFT | Borders::RIGHT | Borders::BOTTOM)
-            .border_type(BorderType::Rounded)
-            .padding(Padding::horizontal(1));
-        let paragraph = Paragraph::new(line).block(block).alignment(Alignment::Left);
-        f.render_widget(paragraph, area);
+            .border_type(BorderType::Rounded);
+        let paragraph = Paragraph::new(line).block(block);
+        frame.render_widget(paragraph, render_info.areas.message_box);
     }
 
-    fn maybe_render_public_output(&self) -> Option<Line> {
-        if self.vm_state.public_output.is_empty() {
+    fn maybe_render_public_output(&self, state: &TritonVMState) -> Option<Line> {
+        if state.vm_state.public_output.is_empty() {
             return None;
         }
         let header = Span::from("Public output").bold();
         let colon = Span::from(": [");
-        let output = self.vm_state.public_output.iter().join(", ");
+        let output = state.vm_state.public_output.iter().join(", ");
         let output = Span::from(output);
         let footer = Span::from("]");
         Some(Line::from(vec![header, colon, output, footer]))
     }
 
-    fn maybe_render_warning_message(&self) -> Option<Line> {
-        let Some(ref warning) = self.warning else {
+    fn maybe_render_warning_message(&self, state: &TritonVMState) -> Option<Line> {
+        let Some(ref message) = state.warning else {
             return None;
         };
-        Some(Line::from(warning.to_string()))
+        let warning = "WARNING".bold().yellow();
+        let colon = ": ".into();
+        let message = message.to_string().into();
+        Some(Line::from(vec![warning, colon, message]))
     }
 
-    fn maybe_render_error_message(&self) -> Option<Line> {
-        Some(Line::from(self.error?.to_string()))
+    fn maybe_render_error_message(&self, state: &TritonVMState) -> Option<Line> {
+        let error = "ERROR".bold().red();
+        let colon = ": ".into();
+        let message = state.error?.to_string().into();
+        Some(Line::from(vec![error, colon, message]))
     }
 }
 
 impl Component for Home {
     fn update(&mut self, action: Action) -> Result<Option<Action>> {
         match action {
-            Action::ProgramContinue => {
-                self.record_undo_information();
-                self.program_continue();
-            }
-            Action::ProgramStep => {
-                self.record_undo_information();
-                self.program_step();
-            }
-            Action::ProgramNext => {
-                self.record_undo_information();
-                self.program_next();
-            }
-            Action::ProgramFinish => {
-                self.record_undo_information();
-                self.program_finish();
-            }
-            Action::ProgramUndo => self.program_undo(),
-            Action::ProgramReset => self.program_reset()?,
             Action::ToggleTypeHintDisplay => self.show_type_hints = !self.show_type_hints,
-            _ => {}
-        }
+            Action::Execute(_) => self.stop_showing_welcome_message(),
+            Action::Mode(_) => self.stop_showing_welcome_message(),
+            _ => (),
+        };
         Ok(None)
     }
 
-    fn draw(&mut self, f: &mut Frame<'_>, area: Rect) -> Result<()> {
-        let widget_areas = self.distribute_area_for_widgets(area);
-        self.render_op_stack_widget(f, widget_areas.op_stack);
-        self.render_type_hint_widget(f, widget_areas.type_hint);
-        self.render_program_widget(f, widget_areas.program);
-        self.render_call_stack_widget(f, widget_areas.call_stack);
-        self.render_sponge_widget(f, widget_areas.sponge);
-        self.render_message_widget(f, widget_areas.message_box);
+    fn draw(&mut self, frame: &mut Frame<'_>, state: &TritonVMState) -> Result<()> {
+        let widget_areas = self.distribute_area_for_widgets(state, frame.size());
+        let render_info = RenderInfo {
+            state,
+            areas: widget_areas,
+        };
+
+        self.render_op_stack_widget(frame, render_info);
+        self.render_type_hint_widget(frame, render_info);
+        self.render_program_widget(frame, render_info);
+        self.render_call_stack_widget(frame, render_info);
+        self.render_sponge_widget(frame, render_info);
+        self.render_message_widget(frame, render_info);
         Ok(())
     }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct RenderInfo<'s> {
+    state: &'s TritonVMState,
+    areas: WidgetAreas,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
