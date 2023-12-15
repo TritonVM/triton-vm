@@ -1,4 +1,6 @@
 use color_eyre::eyre::Result;
+use crossterm::event::KeyEvent;
+use crossterm::event::KeyEventKind::Release;
 use num_traits::One;
 use ratatui::prelude::*;
 use ratatui::widgets::*;
@@ -57,6 +59,7 @@ impl<'a> Default for Memory<'a> {
 impl<'a> Memory<'a> {
     fn initial_text_area() -> TextArea<'a> {
         let mut text_area = TextArea::default();
+        text_area.set_cursor_line_style(Style::default());
         text_area.set_placeholder_text("Go to address. Empty for most recent read / write.");
         text_area
     }
@@ -168,6 +171,14 @@ impl<'a> Memory<'a> {
 }
 
 impl<'a> Component for Memory<'a> {
+    fn handle_key_event(&mut self, key_event: KeyEvent) -> Result<Option<Action>> {
+        if key_event.kind == Release {
+            return Ok(None);
+        }
+        self.text_area.input(key_event);
+        Ok(None)
+    }
+
     fn update(&mut self, action: Action) -> Result<Option<Action>> {
         match action {
             Action::Undo => self.undo(),
