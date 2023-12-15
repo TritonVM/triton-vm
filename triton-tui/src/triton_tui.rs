@@ -4,7 +4,6 @@ use ratatui::prelude::Rect;
 use strum::EnumCount;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::UnboundedSender;
-use tracing::info;
 
 use crate::action::Action;
 use crate::args::Args;
@@ -157,12 +156,15 @@ impl TritonTUI {
         action_tx: &UnboundedSender<Action>,
         key: KeyEvent,
     ) -> Result<()> {
+        let mut component_iter = self.components.iter();
+        if component_iter.any(|component| component.request_exclusive_event_handling()) {
+            return Ok(());
+        }
         let Some(keymap) = self.config.keybindings.get(&self.mode) else {
             return Ok(());
         };
         self.recent_key_events.push(key);
         if let Some(action) = keymap.get(&self.recent_key_events) {
-            info!("In mode {mode:?}, got action: {action:?}", mode = self.mode);
             action_tx.send(action.clone())?;
             self.recent_key_events.clear();
         }

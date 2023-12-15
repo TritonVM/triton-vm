@@ -1,6 +1,6 @@
 use color_eyre::eyre::Result;
-use crossterm::event::KeyEvent;
 use crossterm::event::KeyEventKind::Release;
+use crossterm::event::*;
 use num_traits::One;
 use ratatui::prelude::*;
 use ratatui::widgets::*;
@@ -13,6 +13,7 @@ use triton_vm::BFieldElement;
 use crate::action::Action;
 use crate::action::ExecutedInstruction;
 use crate::components::Component;
+use crate::mode::Mode;
 use crate::triton_vm_state::TritonVMState;
 
 #[derive(Debug, Clone)]
@@ -24,6 +25,7 @@ pub(crate) struct Memory<'a> {
     pub user_address: Option<u64>,
 
     pub text_area: TextArea<'a>,
+    pub text_area_in_focus: bool,
 
     pub undo_stack: Vec<UndoInformation>,
 }
@@ -51,6 +53,7 @@ impl<'a> Default for Memory<'a> {
             most_recent_address: 0,
             user_address: None,
             text_area: Self::initial_text_area(),
+            text_area_in_focus: false,
             undo_stack: vec![],
         }
     }
@@ -143,8 +146,19 @@ impl<'a> Memory<'a> {
     }
 
     fn render_text_input_widget(&mut self, frame: &mut Frame<'_>, render_info: RenderInfo) {
-        let block = Self::text_input_block();
+        let cursor_style = match self.text_area_in_focus {
+            true => Style::default().add_modifier(Modifier::REVERSED),
+            false => Style::default(),
+        };
+        self.text_area.set_cursor_style(cursor_style);
 
+        let text_style = match self.text_area_in_focus {
+            true => Style::default(),
+            false => Style::default().dim(),
+        };
+        self.text_area.set_style(text_style);
+
+        let block = Self::text_input_block();
         self.text_area.set_block(block);
         frame.render_widget(self.text_area.widget(), render_info.areas.text_input);
     }
@@ -171,16 +185,27 @@ impl<'a> Memory<'a> {
 }
 
 impl<'a> Component for Memory<'a> {
+    fn request_exclusive_event_handling(&self) -> bool {
+        self.text_area_in_focus
+    }
+
     fn handle_key_event(&mut self, key_event: KeyEvent) -> Result<Option<Action>> {
         if key_event.kind == Release {
             return Ok(None);
         }
-        self.text_area.input(key_event);
+        if key_event.code == KeyCode::Esc {
+            self.text_area_in_focus = false;
+            return Ok(None);
+        }
+        if self.text_area_in_focus {
+            self.text_area.input(key_event);
+        }
         Ok(None)
     }
 
     fn update(&mut self, action: Action) -> Result<Option<Action>> {
         match action {
+            Action::Mode(Mode::Memory) => self.text_area_in_focus = true,
             Action::Undo => self.undo(),
             Action::RecordUndoInfo => self.record_undo_information(),
             Action::Reset => self.reset(),

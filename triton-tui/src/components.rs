@@ -22,6 +22,10 @@ pub(crate) trait Component: Debug {
         Ok(())
     }
 
+    fn request_exclusive_event_handling(&self) -> bool {
+        false
+    }
+
     fn handle_event(&mut self, event: Option<Event>) -> Result<Option<Action>> {
         let r = match event {
             Some(Event::Key(key_event)) => self.handle_key_event(key_event)?,
