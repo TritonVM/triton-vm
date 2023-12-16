@@ -15,7 +15,8 @@
             "<u>": "Undo",
             "<r>": "Reset",
 
-            "<t>": "ToggleTypeHintDisplay"
+            "<t>": "ToggleTypeHintDisplay",
+            "<i>": "ToggleInputDisplay"
         },
         "Help": {
             "<q>": "Quit",

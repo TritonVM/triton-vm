@@ -18,6 +18,7 @@ use super::Frame;
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Home {
     show_type_hints: bool,
+    show_inputs: bool,
     show_welcome_message: bool,
 }
 
@@ -25,6 +26,7 @@ impl Default for Home {
     fn default() -> Self {
         Self {
             show_type_hints: true,
+            show_inputs: true,
             show_welcome_message: true,
         }
     }
@@ -351,7 +353,7 @@ impl Home {
     }
 
     fn maybe_render_public_input(&self, state: &TritonVMState) -> Option<Line> {
-        if state.vm_state.public_input.is_empty() {
+        if state.vm_state.public_input.is_empty() || !self.show_inputs {
             return None;
         }
         let header = Span::from("Public input").bold();
@@ -436,6 +438,7 @@ impl Component for Home {
     fn update(&mut self, action: Action) -> Result<Option<Action>> {
         match action {
             Action::ToggleTypeHintDisplay => self.show_type_hints = !self.show_type_hints,
+            Action::ToggleInputDisplay => self.show_inputs = !self.show_inputs,
             Action::Execute(_) => self.stop_showing_welcome_message(),
             Action::Mode(_) => self.stop_showing_welcome_message(),
             _ => (),

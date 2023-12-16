@@ -41,6 +41,7 @@ impl Component for Help {
             Help::help_line("r", "reload files and restart Triton VM"),
             String::new(),
             Help::help_line("t", "toggle type annotations"),
+            Help::help_line("i", "toggle displaying input (if any)"),
             String::new(),
             Help::mode_line("Memory"),
             String::new(),
