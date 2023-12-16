@@ -15,7 +15,6 @@ use serde::de::Error;
 use serde::Deserialize;
 use tracing::error;
 use tracing::info;
-use tracing::warn;
 
 use crate::action::Action;
 use crate::mode::Mode;
@@ -27,6 +26,7 @@ const DEFAULT_CONFIG: &str = include_str!("../.config/default_config.json");
 pub(crate) struct Config {
     #[serde(default)]
     pub keybindings: KeyBindings,
+
     #[serde(default)]
     pub styles: Styles,
 }
@@ -59,7 +59,6 @@ impl Config {
             ("config.toml", config::FileFormat::Toml),
             ("config.ini", config::FileFormat::Ini),
         ];
-        let mut config_is_missing = true;
         for (file, format) in config_files {
             let config_path = config_dir.join(file);
             if config_path.exists() {
@@ -68,13 +67,9 @@ impl Config {
                     .format(format)
                     .required(false);
                 config_builder = config_builder.add_source(config_file);
-                config_is_missing = false
             } else {
                 info!("Configuration file not found: {}", config_path.display());
             }
-        }
-        if config_is_missing {
-            warn!("No configuration file found. Application may not behave as expected.");
         }
 
         config_builder.build()?.try_deserialize()
