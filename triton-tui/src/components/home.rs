@@ -9,8 +9,8 @@ use triton_vm::instruction::*;
 use triton_vm::op_stack::OpStackElement;
 
 use crate::action::Action;
+use crate::element_type_hint::ElementTypeHint;
 use crate::triton_vm_state::TritonVMState;
-use crate::type_hint_stack::*;
 
 use super::Component;
 use super::Frame;

@@ -12,6 +12,7 @@ pub(crate) mod action;
 pub(crate) mod args;
 pub(crate) mod components;
 pub(crate) mod config;
+pub(crate) mod element_type_hint;
 pub(crate) mod mode;
 pub(crate) mod triton_tui;
 pub(crate) mod triton_vm_state;
