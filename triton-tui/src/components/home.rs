@@ -323,26 +323,8 @@ impl Home {
     }
 
     fn render_message_widget(&self, frame: &mut Frame<'_>, render_info: RenderInfo) {
-        let mut line = Line::default();
-        if self.show_welcome_message {
-            line = Line::from(vec![
-                "Welcome to the Triton VM TUI! ".into(),
-                "Press `h` for help.".dim(),
-            ]);
-        }
-
-        let state = render_info.state;
-        if let Some(message) = self.maybe_render_public_output(state) {
-            line = message;
-        }
-        if let Some(message) = self.maybe_render_warning_message(state) {
-            line = message;
-        }
-        if let Some(message) = self.maybe_render_error_message(state) {
-            line = message;
-        }
-
-        let status = match state.vm_state.halting {
+        let message = self.message(render_info.state).unwrap_or_default();
+        let status = match render_info.state.vm_state.halting {
             true => Title::from(" HALT ".bold().green()),
             false => Title::default(),
         };
@@ -353,8 +335,38 @@ impl Home {
             .title_position(Position::Bottom)
             .borders(Borders::LEFT | Borders::RIGHT | Borders::BOTTOM)
             .border_type(BorderType::Rounded);
-        let paragraph = Paragraph::new(line).block(block);
+        let paragraph = Paragraph::new(message).block(block);
         frame.render_widget(paragraph, render_info.areas.message_box);
+    }
+
+    fn message(&self, state: &TritonVMState) -> Option<Line> {
+        if let Some(error_message) = self.maybe_render_error_message(state) {
+            return Some(error_message);
+        }
+        if let Some(warning_message) = self.maybe_render_warning_message(state) {
+            return Some(warning_message);
+        }
+        if let Some(public_output) = self.maybe_render_public_output(state) {
+            return Some(public_output);
+        }
+        self.maybe_render_welcome_message()
+    }
+
+    fn maybe_render_error_message(&self, state: &TritonVMState) -> Option<Line> {
+        let error = "ERROR".bold().red();
+        let colon = ": ".into();
+        let message = state.error?.to_string().into();
+        Some(Line::from(vec![error, colon, message]))
+    }
+
+    fn maybe_render_warning_message(&self, state: &TritonVMState) -> Option<Line> {
+        let Some(ref message) = state.warning else {
+            return None;
+        };
+        let warning = "WARNING".bold().yellow();
+        let colon = ": ".into();
+        let message = message.to_string().into();
+        Some(Line::from(vec![warning, colon, message]))
     }
 
     fn maybe_render_public_output(&self, state: &TritonVMState) -> Option<Line> {
@@ -369,21 +381,14 @@ impl Home {
         Some(Line::from(vec![header, colon, output, footer]))
     }
 
-    fn maybe_render_warning_message(&self, state: &TritonVMState) -> Option<Line> {
-        let Some(ref message) = state.warning else {
-            return None;
-        };
-        let warning = "WARNING".bold().yellow();
-        let colon = ": ".into();
-        let message = message.to_string().into();
-        Some(Line::from(vec![warning, colon, message]))
-    }
-
-    fn maybe_render_error_message(&self, state: &TritonVMState) -> Option<Line> {
-        let error = "ERROR".bold().red();
-        let colon = ": ".into();
-        let message = state.error?.to_string().into();
-        Some(Line::from(vec![error, colon, message]))
+    fn maybe_render_welcome_message(&self) -> Option<Line> {
+        if self.show_welcome_message {
+            let welcome = "Welcome to the Triton VM TUI! ".into();
+            let help_hint = "Press `h` for help.".dim();
+            Some(Line::from(vec![welcome, help_hint]))
+        } else {
+            None
+        }
     }
 }
 
