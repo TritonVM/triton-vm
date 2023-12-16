@@ -47,10 +47,15 @@ impl Home {
             true => Constraint::Min(2),
             false => Constraint::Max(0),
         };
+        let secret_input_height = match self.maybe_render_secret_input(state).is_some() {
+            true => Constraint::Min(2),
+            false => Constraint::Max(0),
+        };
         let message_box_height = Constraint::Min(2);
         let constraints = [
             Constraint::Percentage(100),
             public_input_height,
+            secret_input_height,
             message_box_height,
         ];
         let layout = Layout::default()
@@ -59,7 +64,8 @@ impl Home {
             .split(area);
         let state_area = layout[0];
         let public_input_area = layout[1];
-        let message_box_area = layout[2];
+        let secret_input_area = layout[2];
+        let message_box_area = layout[3];
 
         let op_stack_widget_width = Constraint::Min(30);
         let type_hint_widget = match self.show_type_hints {
@@ -101,6 +107,7 @@ impl Home {
             call_stack: program_and_call_stack_layout[1],
             sponge: sponge_state_area,
             public_input: public_input_area,
+            secret_input: secret_input_area,
             message_box: message_box_area,
         }
     }
@@ -364,6 +371,36 @@ impl Home {
         Some(Line::from(vec![header, colon, input, footer]))
     }
 
+    fn render_secret_input_widget(&self, frame: &mut Frame<'_>, render_info: RenderInfo) {
+        let secret_input = self
+            .maybe_render_secret_input(render_info.state)
+            .unwrap_or_default();
+
+        let border_set = symbols::border::Set {
+            bottom_left: symbols::line::ROUNDED.vertical_right,
+            bottom_right: symbols::line::ROUNDED.vertical_left,
+            ..symbols::border::ROUNDED
+        };
+        let block = Block::default()
+            .padding(Padding::horizontal(1))
+            .borders(Borders::LEFT | Borders::RIGHT | Borders::BOTTOM)
+            .border_set(border_set);
+        let paragraph = Paragraph::new(secret_input).block(block);
+        frame.render_widget(paragraph, render_info.areas.secret_input);
+    }
+
+    fn maybe_render_secret_input(&self, state: &TritonVMState) -> Option<Line> {
+        if state.vm_state.secret_individual_tokens.is_empty() || !self.show_inputs {
+            return None;
+        }
+        let header = Span::from("Secret input").bold();
+        let colon = Span::from(": [");
+        let input = state.vm_state.secret_individual_tokens.iter().join(", ");
+        let input = Span::from(input);
+        let footer = Span::from("]");
+        Some(Line::from(vec![header, colon, input, footer]))
+    }
+
     fn render_message_widget(&self, frame: &mut Frame<'_>, render_info: RenderInfo) {
         let message = self.message(render_info.state).unwrap_or_default();
         let status = match render_info.state.vm_state.halting {
@@ -459,6 +496,7 @@ impl Component for Home {
         self.render_call_stack_widget(frame, render_info);
         self.render_sponge_widget(frame, render_info);
         self.render_public_input_widget(frame, render_info);
+        self.render_secret_input_widget(frame, render_info);
         self.render_message_widget(frame, render_info);
         Ok(())
     }
@@ -478,5 +516,6 @@ struct WidgetAreas {
     call_stack: Rect,
     sponge: Rect,
     public_input: Rect,
+    secret_input: Rect,
     message_box: Rect,
 }
