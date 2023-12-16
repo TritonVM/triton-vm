@@ -191,7 +191,7 @@ impl<'a> Memory<'a> {
 }
 
 impl<'a> Component for Memory<'a> {
-    fn request_exclusive_event_handling(&self) -> bool {
+    fn request_exclusive_key_event_handling(&self) -> bool {
         self.text_area_in_focus
     }
 

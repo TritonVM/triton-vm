@@ -22,7 +22,7 @@ pub(crate) trait Component: Debug {
         Ok(())
     }
 
-    fn request_exclusive_event_handling(&self) -> bool {
+    fn request_exclusive_key_event_handling(&self) -> bool {
         false
     }
 

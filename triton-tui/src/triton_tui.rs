@@ -156,8 +156,7 @@ impl TritonTUI {
         action_tx: &UnboundedSender<Action>,
         key: KeyEvent,
     ) -> Result<()> {
-        let mut component_iter = self.components.iter();
-        if component_iter.any(|component| component.request_exclusive_event_handling()) {
+        if self.components[self.mode.id()].request_exclusive_key_event_handling() {
             return Ok(());
         }
         let Some(keymap) = self.config.keybindings.get(&self.mode) else {
