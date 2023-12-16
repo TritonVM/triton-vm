@@ -41,14 +41,23 @@ impl Home {
     }
 
     fn distribute_area_for_widgets(&self, state: &TritonVMState, area: Rect) -> WidgetAreas {
+        let public_input_height = match self.maybe_render_public_input(state).is_some() {
+            true => Constraint::Min(2),
+            false => Constraint::Max(0),
+        };
         let message_box_height = Constraint::Min(2);
-        let constraints = [Constraint::Percentage(100), message_box_height];
+        let constraints = [
+            Constraint::Percentage(100),
+            public_input_height,
+            message_box_height,
+        ];
         let layout = Layout::default()
             .direction(Direction::Vertical)
             .constraints(constraints)
             .split(area);
         let state_area = layout[0];
-        let message_box_area = layout[1];
+        let public_input_area = layout[1];
+        let message_box_area = layout[2];
 
         let op_stack_widget_width = Constraint::Min(30);
         let type_hint_widget = match self.show_type_hints {
@@ -89,6 +98,7 @@ impl Home {
             program: program_and_call_stack_layout[0],
             call_stack: program_and_call_stack_layout[1],
             sponge: sponge_state_area,
+            public_input: public_input_area,
             message_box: message_box_area,
         }
     }
@@ -322,6 +332,36 @@ impl Home {
         frame.render_widget(paragraph, render_area);
     }
 
+    fn render_public_input_widget(&self, frame: &mut Frame<'_>, render_info: RenderInfo) {
+        let public_input = self
+            .maybe_render_public_input(render_info.state)
+            .unwrap_or_default();
+
+        let border_set = symbols::border::Set {
+            bottom_left: symbols::line::ROUNDED.vertical_right,
+            bottom_right: symbols::line::ROUNDED.vertical_left,
+            ..symbols::border::ROUNDED
+        };
+        let block = Block::default()
+            .padding(Padding::horizontal(1))
+            .borders(Borders::LEFT | Borders::RIGHT | Borders::BOTTOM)
+            .border_set(border_set);
+        let paragraph = Paragraph::new(public_input).block(block);
+        frame.render_widget(paragraph, render_info.areas.public_input);
+    }
+
+    fn maybe_render_public_input(&self, state: &TritonVMState) -> Option<Line> {
+        if state.vm_state.public_input.is_empty() {
+            return None;
+        }
+        let header = Span::from("Public input").bold();
+        let colon = Span::from(": [");
+        let input = state.vm_state.public_input.iter().join(", ");
+        let input = Span::from(input);
+        let footer = Span::from("]");
+        Some(Line::from(vec![header, colon, input, footer]))
+    }
+
     fn render_message_widget(&self, frame: &mut Frame<'_>, render_info: RenderInfo) {
         let message = self.message(render_info.state).unwrap_or_default();
         let status = match render_info.state.vm_state.halting {
@@ -415,6 +455,7 @@ impl Component for Home {
         self.render_program_widget(frame, render_info);
         self.render_call_stack_widget(frame, render_info);
         self.render_sponge_widget(frame, render_info);
+        self.render_public_input_widget(frame, render_info);
         self.render_message_widget(frame, render_info);
         Ok(())
     }
@@ -433,5 +474,6 @@ struct WidgetAreas {
     program: Rect,
     call_stack: Rect,
     sponge: Rect,
+    public_input: Rect,
     message_box: Rect,
 }
