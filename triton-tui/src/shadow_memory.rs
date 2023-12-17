@@ -13,10 +13,10 @@ use triton_vm::BFieldElement;
 use crate::action::ExecutedInstruction;
 use crate::element_type_hint::ElementTypeHint;
 
-/// Helper “shadow memory” mimicking the behavior of the actual memory. Helps debugging programs
-/// written for Triton VM by (manually set) type hints next to stack or RAM elements.
+/// Mimics the behavior of the actual memory. Helps debugging programs written for Triton VM by
+/// tracking (manually set) type hints next to stack or RAM elements.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct TypeHints {
+pub(crate) struct ShadowMemory {
     /// Shadow stack mimicking the actual stack.
     pub stack: Vec<Option<ElementTypeHint>>,
 
@@ -24,7 +24,7 @@ pub(crate) struct TypeHints {
     pub ram: HashMap<BFieldElement, Option<ElementTypeHint>>,
 }
 
-impl TypeHints {
+impl ShadowMemory {
     pub fn new() -> Self {
         let stack = vec![None; NUM_OP_STACK_REGISTERS];
         let ram = HashMap::new();
@@ -45,13 +45,9 @@ impl TypeHints {
         }
     }
 
-    pub fn len(&self) -> usize {
-        self.stack.len()
-    }
-
     pub fn apply_type_hint(&mut self, type_hint: TypeHint) -> Result<()> {
         let type_hint_range_end = type_hint.starting_index + type_hint.length;
-        if type_hint_range_end > self.len() {
+        if type_hint_range_end > self.stack.len() {
             bail!("stack is not large enough to apply type hint \"{type_hint}\"");
         }
 
@@ -62,7 +58,7 @@ impl TypeHints {
         };
 
         if type_hint.length <= 1 {
-            let insertion_index = self.len() - type_hint.starting_index - 1;
+            let insertion_index = self.stack.len() - type_hint.starting_index - 1;
             self.stack[insertion_index] = Some(element_type_hint_template);
             return Ok(());
         }
@@ -71,7 +67,7 @@ impl TypeHints {
         for (index_in_variable, stack_index) in stack_indices.enumerate() {
             let mut element_type_hint = element_type_hint_template.clone();
             element_type_hint.index = Some(index_in_variable);
-            let insertion_index = self.len() - stack_index - 1;
+            let insertion_index = self.stack.len() - stack_index - 1;
             self.stack[insertion_index] = Some(element_type_hint);
         }
         Ok(())
@@ -130,8 +126,8 @@ impl TypeHints {
     }
 
     fn swap_top_with(&mut self, index: OpStackElement) {
-        let top_index = self.len() - 1;
-        let other_index = self.len() - usize::from(index) - 1;
+        let top_index = self.stack.len() - 1;
+        let other_index = self.stack.len() - usize::from(index) - 1;
         self.stack.swap(top_index, other_index);
     }
 
@@ -140,12 +136,12 @@ impl TypeHints {
     }
 
     fn pop_n(&mut self, n: NumberOfWords) -> Vec<Option<ElementTypeHint>> {
-        let start_index = self.len() - usize::from(n);
+        let start_index = self.stack.len() - usize::from(n);
         self.stack.drain(start_index..).rev().collect()
     }
 
     fn dup(&mut self, st: OpStackElement) {
-        let dup_index = self.len() - usize::from(st) - 1;
+        let dup_index = self.stack.len() - usize::from(st) - 1;
         self.push(self.stack[dup_index].clone());
     }
 
@@ -186,7 +182,7 @@ impl TypeHints {
 
         let all_hashed_elements = popped.iter().collect_vec();
 
-        let index_of_first_non_hashed_element = self.len() - N5.num_words() - 1;
+        let index_of_first_non_hashed_element = self.stack.len() - N5.num_words() - 1;
         let first_non_hashed_element = &self.stack[index_of_first_non_hashed_element];
         let all_hashed_and_first_non_hashed_elements = popped
             .iter()
@@ -267,8 +263,8 @@ impl TypeHints {
         let Some(type_hint) = maybe_type_hint else {
             return;
         };
-        let lo_index = self.len() - 1;
-        let hi_index = self.len() - 2;
+        let lo_index = self.stack.len() - 1;
+        let hi_index = self.stack.len() - 2;
 
         let mut lo = type_hint.clone();
         lo.variable_name.push_str("_lo");
@@ -311,7 +307,7 @@ impl TypeHints {
     }
 }
 
-impl Default for TypeHints {
+impl Default for ShadowMemory {
     fn default() -> Self {
         Self::new()
     }
@@ -329,7 +325,7 @@ mod tests {
 
     use super::*;
 
-    impl Arbitrary for TypeHints {
+    impl Arbitrary for ShadowMemory {
         type Parameters = ();
         fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
             let stack_strategy = vec(arb(), NUM_OP_STACK_REGISTERS..=100);
@@ -344,26 +340,26 @@ mod tests {
 
     #[test]
     fn default_type_hint_stack_is_as_long_as_default_actual_stack() {
-        let actual_stack_length = TypeHints::default().len();
+        let actual_stack_length = ShadowMemory::default().stack.len();
         let expected_stack_length = OpStack::new(Default::default()).stack.len();
         assert!(expected_stack_length == actual_stack_length);
     }
 
     #[proptest]
     fn type_hint_stack_grows_and_shrinks_like_actual_stack(
-        mut type_hint_stack: TypeHints,
+        mut type_hints: ShadowMemory,
         #[strategy(arb())] executed_instruction: ExecutedInstruction,
     ) {
-        let initial_length = type_hint_stack.len();
-        type_hint_stack.mimic_instruction(executed_instruction);
-        let actual_stack_delta = type_hint_stack.len() as i32 - initial_length as i32;
+        let initial_length = type_hints.stack.len();
+        type_hints.mimic_instruction(executed_instruction);
+        let actual_stack_delta = type_hints.stack.len() as i32 - initial_length as i32;
         let expected_stack_delta = executed_instruction.instruction.op_stack_size_influence();
         assert!(expected_stack_delta == actual_stack_delta);
     }
 
     #[proptest]
     fn write_mem_then_read_mem_preserves_type_hints_on_stack(
-        mut type_hints: TypeHints,
+        mut type_hints: ShadowMemory,
         #[strategy(arb())] num_words: NumberOfWords,
         #[strategy(arb())] ram_pointer: BFieldElement,
     ) {

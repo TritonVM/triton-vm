@@ -17,7 +17,7 @@ use triton_vm::*;
 use crate::action::*;
 use crate::args::Args;
 use crate::components::Component;
-use crate::type_hint_stack::TypeHints;
+use crate::shadow_memory::ShadowMemory;
 
 #[derive(Debug)]
 pub(crate) struct TritonVMState {
@@ -26,7 +26,7 @@ pub(crate) struct TritonVMState {
     pub program: Program,
     pub vm_state: VMState,
 
-    pub type_hints: TypeHints,
+    pub type_hints: ShadowMemory,
     pub undo_stack: Vec<UndoInformation>,
 
     pub warning: Option<Report>,
@@ -36,7 +36,7 @@ pub(crate) struct TritonVMState {
 #[derive(Debug, Clone)]
 pub(crate) struct UndoInformation {
     vm_state: VMState,
-    type_hints: TypeHints,
+    type_hints: ShadowMemory,
 }
 
 impl TritonVMState {
@@ -51,7 +51,7 @@ impl TritonVMState {
             action_tx: None,
             program,
             vm_state,
-            type_hints: TypeHints::default(),
+            type_hints: ShadowMemory::default(),
             undo_stack: vec![],
             warning: None,
             error: None,
