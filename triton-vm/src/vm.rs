@@ -4,9 +4,11 @@ use std::fmt::Display;
 use std::fmt::Formatter;
 use std::fmt::Result as FmtResult;
 
+use arbitrary::Arbitrary;
 use ndarray::Array1;
 use num_traits::One;
 use num_traits::Zero;
+use serde_derive::*;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::b_field_element::BFIELD_ZERO;
 use twenty_first::shared_math::digest::Digest;
@@ -37,7 +39,7 @@ type Result<T> = std::result::Result<T, InstructionError>;
 /// The number of helper variable registers
 pub const NUM_HELPER_VARIABLE_REGISTERS: usize = 6;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Arbitrary)]
 pub struct VMState {
     /// The **program memory** stores the instructions (and their arguments) of the program
     /// currently being executed by Triton VM. It is read-only.
@@ -2361,5 +2363,14 @@ pub(crate) mod tests {
     fn instruction_read_io_does_not_change_vm_state_when_crashing_vm() {
         let program = triton_program! { read_io 1 halt };
         instruction_does_not_change_vm_state_when_crashing_vm(program, 0);
+    }
+
+    #[proptest]
+    fn serialize_deserialize_vm_state_to_and_from_json_is_identity(
+        #[strategy(arb())] vm_state: VMState,
+    ) {
+        let serialized = serde_json::to_string(&vm_state).unwrap();
+        let deserialized = serde_json::from_str(&serialized).unwrap();
+        prop_assert_eq!(vm_state, deserialized);
     }
 }

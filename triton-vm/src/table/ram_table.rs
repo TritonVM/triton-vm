@@ -11,6 +11,7 @@ use ndarray::ArrayViewMut2;
 use ndarray::Axis;
 use num_traits::One;
 use num_traits::Zero;
+use serde_derive::*;
 use strum::EnumCount;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::b_field_element::BFIELD_ONE;
@@ -38,7 +39,7 @@ pub const INSTRUCTION_TYPE_WRITE: BFieldElement = BFIELD_ZERO;
 pub const INSTRUCTION_TYPE_READ: BFieldElement = BFIELD_ONE;
 pub const PADDING_INDICATOR: BFieldElement = BFieldElement::new(2);
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Arbitrary)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Arbitrary)]
 pub struct RamTableCall {
     pub clk: u32,
     pub ram_pointer: BFieldElement,
