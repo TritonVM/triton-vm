@@ -1,6 +1,5 @@
+use std::collections::HashMap;
 use std::iter::once;
-use std::ops::Index;
-use std::ops::IndexMut;
 
 use color_eyre::eyre::bail;
 use color_eyre::eyre::Result;
@@ -9,34 +8,45 @@ use itertools::Itertools;
 use triton_vm::instruction::*;
 use triton_vm::op_stack::NumberOfWords::*;
 use triton_vm::op_stack::*;
+use triton_vm::BFieldElement;
 
 use crate::action::ExecutedInstruction;
 use crate::element_type_hint::ElementTypeHint;
 
-/// A helper “shadow stack” mimicking the behavior of the actual stack. Helps debugging programs
-/// written for Triton VM by (manually set) type hints next to stack elements.
+/// Helper “shadow memory” mimicking the behavior of the actual memory. Helps debugging programs
+/// written for Triton VM by (manually set) type hints next to stack or RAM elements.
 #[derive(Debug, Clone)]
-pub(crate) struct TypeHintStack {
-    pub type_hints: Vec<Option<ElementTypeHint>>,
+pub(crate) struct TypeHints {
+    /// Shadow stack mimicking the actual stack.
+    pub stack: Vec<Option<ElementTypeHint>>,
+
+    /// Shadow RAM mimicking the actual RAM.
+    pub ram: HashMap<BFieldElement, Option<ElementTypeHint>>,
 }
 
-impl TypeHintStack {
+impl TypeHints {
     pub fn new() -> Self {
-        let type_hints = vec![None; NUM_OP_STACK_REGISTERS];
-        let mut stack = Self { type_hints };
+        let stack = vec![None; NUM_OP_STACK_REGISTERS];
+        let ram = HashMap::new();
+        let initial_hint = Self::initial_program_digest_type_hint();
 
-        let program_hash_type_hint = TypeHint {
+        let mut hints = Self { stack, ram };
+        hints.apply_type_hint(initial_hint).unwrap();
+        hints
+    }
+
+    fn initial_program_digest_type_hint() -> TypeHint {
+        let digest_length = triton_vm::Digest::default().0.len();
+        TypeHint {
             type_name: Some("Digest".to_string()),
             variable_name: "program_digest".to_string(),
-            starting_index: 11,
-            length: triton_vm::Digest::default().0.len(),
-        };
-        stack.apply_type_hint(program_hash_type_hint).unwrap();
-        stack
+            starting_index: NUM_OP_STACK_REGISTERS - digest_length,
+            length: digest_length,
+        }
     }
 
     pub fn len(&self) -> usize {
-        self.type_hints.len()
+        self.stack.len()
     }
 
     pub fn apply_type_hint(&mut self, type_hint: TypeHint) -> Result<()> {
@@ -53,7 +63,7 @@ impl TypeHintStack {
 
         if type_hint.length <= 1 {
             let insertion_index = self.len() - type_hint.starting_index - 1;
-            self[insertion_index] = Some(element_type_hint_template);
+            self.stack[insertion_index] = Some(element_type_hint_template);
             return Ok(());
         }
 
@@ -62,7 +72,7 @@ impl TypeHintStack {
             let mut element_type_hint = element_type_hint_template.clone();
             element_type_hint.index = Some(index_in_variable);
             let insertion_index = self.len() - stack_index - 1;
-            self[insertion_index] = Some(element_type_hint);
+            self.stack[insertion_index] = Some(element_type_hint);
         }
         Ok(())
     }
@@ -111,31 +121,31 @@ impl TypeHintStack {
     }
 
     fn push(&mut self, element_type_hint: Option<ElementTypeHint>) {
-        self.type_hints.push(element_type_hint);
+        self.stack.push(element_type_hint);
     }
 
     fn extend_by(&mut self, n: NumberOfWords) {
-        self.type_hints.extend(vec![None; n.into()]);
+        self.stack.extend(vec![None; n.into()]);
     }
 
     fn swap_top_with(&mut self, index: OpStackElement) {
         let top_index = self.len() - 1;
         let other_index = self.len() - usize::from(index) - 1;
-        self.type_hints.swap(top_index, other_index);
+        self.stack.swap(top_index, other_index);
     }
 
     fn pop(&mut self) -> Option<ElementTypeHint> {
-        self.type_hints.pop().flatten()
+        self.stack.pop().flatten()
     }
 
     fn pop_n(&mut self, n: NumberOfWords) -> Vec<Option<ElementTypeHint>> {
         let start_index = self.len() - usize::from(n);
-        self.type_hints.drain(start_index..).rev().collect()
+        self.stack.drain(start_index..).rev().collect()
     }
 
     fn dup(&mut self, st: OpStackElement) {
         let dup_index = self.len() - usize::from(st) - 1;
-        self.push(self[dup_index].clone());
+        self.push(self.stack[dup_index].clone());
     }
 
     fn read_mem(&mut self, n: NumberOfWords) {
@@ -158,7 +168,7 @@ impl TypeHintStack {
         let all_hashed_elements = popped.iter().collect_vec();
 
         let index_of_first_non_hashed_element = self.len() - N5.num_words() - 1;
-        let first_non_hashed_element = &self[index_of_first_non_hashed_element];
+        let first_non_hashed_element = &self.stack[index_of_first_non_hashed_element];
         let all_hashed_and_first_non_hashed_elements = popped
             .iter()
             .chain(once(first_non_hashed_element))
@@ -243,11 +253,11 @@ impl TypeHintStack {
 
         let mut lo = type_hint.clone();
         lo.variable_name.push_str("_lo");
-        self[lo_index] = Some(lo);
+        self.stack[lo_index] = Some(lo);
 
         let mut hi = type_hint;
         hi.variable_name.push_str("_hi");
-        self[hi_index] = Some(hi);
+        self.stack[hi_index] = Some(hi);
     }
 
     fn lt(&mut self) {
@@ -282,23 +292,9 @@ impl TypeHintStack {
     }
 }
 
-impl Default for TypeHintStack {
+impl Default for TypeHints {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-impl Index<usize> for TypeHintStack {
-    type Output = Option<ElementTypeHint>;
-
-    fn index(&self, index: usize) -> &Self::Output {
-        &self.type_hints[index]
-    }
-}
-
-impl IndexMut<usize> for TypeHintStack {
-    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
-        &mut self.type_hints[index]
     }
 }
 
@@ -312,11 +308,13 @@ mod tests {
 
     use super::*;
 
-    impl proptest::arbitrary::Arbitrary for TypeHintStack {
+    impl Arbitrary for TypeHints {
         type Parameters = ();
         fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
-            vec(arb(), NUM_OP_STACK_REGISTERS..=100)
-                .prop_map(|type_hints| Self { type_hints })
+            let stack_strategy = vec(arb(), NUM_OP_STACK_REGISTERS..=100);
+            let ram_strategy = arb();
+            (stack_strategy, ram_strategy)
+                .prop_map(|(stack, ram)| Self { stack, ram })
                 .boxed()
         }
 
@@ -325,14 +323,14 @@ mod tests {
 
     #[test]
     fn default_type_hint_stack_is_as_long_as_default_actual_stack() {
-        let actual_stack_length = TypeHintStack::default().len();
+        let actual_stack_length = TypeHints::default().len();
         let expected_stack_length = OpStack::new(Default::default()).stack.len();
         assert!(expected_stack_length == actual_stack_length);
     }
 
     #[proptest]
     fn type_hint_stack_grows_and_shrinks_like_actual_stack(
-        mut type_hint_stack: TypeHintStack,
+        mut type_hint_stack: TypeHints,
         #[strategy(arb())] executed_instruction: ExecutedInstruction,
     ) {
         let initial_length = type_hint_stack.len();

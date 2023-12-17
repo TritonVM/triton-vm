@@ -151,7 +151,7 @@ impl Home {
             return;
         }
         let render_area = render_info.areas.type_hint;
-        let type_hints = &render_info.state.type_hint_stack.type_hints;
+        let type_hints = &render_info.state.type_hints.stack;
 
         let highest_hint = type_hints.last().cloned().flatten();
         let lowest_hint = type_hints.first().cloned().flatten();

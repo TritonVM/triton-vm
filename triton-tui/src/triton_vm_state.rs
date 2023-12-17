@@ -17,7 +17,7 @@ use triton_vm::*;
 use crate::action::*;
 use crate::args::Args;
 use crate::components::Component;
-use crate::type_hint_stack::TypeHintStack;
+use crate::type_hint_stack::TypeHints;
 
 #[derive(Debug)]
 pub(crate) struct TritonVMState {
@@ -26,7 +26,7 @@ pub(crate) struct TritonVMState {
     pub program: Program,
     pub vm_state: VMState,
 
-    pub type_hint_stack: TypeHintStack,
+    pub type_hints: TypeHints,
     pub undo_stack: Vec<UndoInformation>,
 
     pub warning: Option<Report>,
@@ -36,7 +36,7 @@ pub(crate) struct TritonVMState {
 #[derive(Debug, Clone)]
 pub(crate) struct UndoInformation {
     vm_state: VMState,
-    type_hint_stack: TypeHintStack,
+    type_hints: TypeHints,
 }
 
 impl TritonVMState {
@@ -51,7 +51,7 @@ impl TritonVMState {
             action_tx: None,
             program,
             vm_state,
-            type_hint_stack: TypeHintStack::default(),
+            type_hints: TypeHints::default(),
             undo_stack: vec![],
             warning: None,
             error: None,
@@ -114,7 +114,7 @@ impl TritonVMState {
     fn apply_type_hints(&mut self) {
         let ip = self.vm_state.instruction_pointer as u64;
         for type_hint in self.program.type_hints_at(ip) {
-            let maybe_error = self.type_hint_stack.apply_type_hint(type_hint);
+            let maybe_error = self.type_hints.apply_type_hint(type_hint);
             if let Err(report) = maybe_error {
                 info!("Error applying type hint: {report}");
                 self.warning = Some(report);
@@ -161,7 +161,7 @@ impl TritonVMState {
             ExecutedInstruction::new(instruction, old_top_of_stack, new_top_of_stack);
 
         self.send_executed_transaction(executed_instruction);
-        self.type_hint_stack.mimic_instruction(executed_instruction);
+        self.type_hints.mimic_instruction(executed_instruction);
         self.apply_type_hints();
     }
 
@@ -197,7 +197,7 @@ impl TritonVMState {
         }
         let undo_information = UndoInformation {
             vm_state: self.vm_state.clone(),
-            type_hint_stack: self.type_hint_stack.clone(),
+            type_hints: self.type_hints.clone(),
         };
         self.undo_stack.push(undo_information);
 
@@ -216,7 +216,7 @@ impl TritonVMState {
         self.warning = None;
         self.error = None;
         self.vm_state = undo_information.vm_state;
-        self.type_hint_stack = undo_information.type_hint_stack;
+        self.type_hints = undo_information.type_hints;
     }
 }
 
