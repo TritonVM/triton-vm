@@ -63,7 +63,6 @@ impl<'a> Memory<'a> {
     fn initial_text_area() -> TextArea<'a> {
         let mut text_area = TextArea::default();
         text_area.set_cursor_line_style(Style::default());
-        text_area.set_placeholder_text("Go to address. Empty for most recent read / write.");
         text_area
     }
 
@@ -152,6 +151,12 @@ impl<'a> Memory<'a> {
     }
 
     fn render_text_input_widget(&mut self, frame: &mut Frame<'_>, render_info: RenderInfo) {
+        let placeholder_text = match self.text_area_in_focus {
+            true => "",
+            false => "Go to address. Empty for most recent read / write.",
+        };
+        self.text_area.set_placeholder_text(placeholder_text);
+
         let cursor_style = match self.text_area_in_focus {
             true => Style::default().add_modifier(Modifier::REVERSED),
             false => Style::default(),
@@ -218,7 +223,7 @@ impl<'a> Component for Memory<'a> {
 
     fn update(&mut self, action: Action) -> Result<Option<Action>> {
         match action {
-            Action::Mode(Mode::Memory) => self.text_area_in_focus = true,
+            Action::Mode(Mode::Memory) => (),
             Action::Mode(_) => self.text_area_in_focus = false,
             Action::Undo => self.undo(),
             Action::RecordUndoInfo => self.record_undo_information(),
