@@ -15,7 +15,7 @@ use crate::element_type_hint::ElementTypeHint;
 
 /// Helper “shadow memory” mimicking the behavior of the actual memory. Helps debugging programs
 /// written for Triton VM by (manually set) type hints next to stack or RAM elements.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct TypeHints {
     /// Shadow stack mimicking the actual stack.
     pub stack: Vec<Option<ElementTypeHint>>,
@@ -78,6 +78,7 @@ impl TypeHints {
     }
 
     pub fn mimic_instruction(&mut self, executed_instruction: ExecutedInstruction) {
+        let old_top_of_stack = executed_instruction.old_top_of_stack;
         match executed_instruction.instruction {
             Instruction::Pop(n) => _ = self.pop_n(n),
             Instruction::Push(_) => self.push(None),
@@ -91,8 +92,8 @@ impl TypeHints {
             Instruction::Return => (),
             Instruction::Recurse => (),
             Instruction::Assert => _ = self.pop(),
-            Instruction::ReadMem(n) => self.read_mem(n),
-            Instruction::WriteMem(n) => self.write_mem(n),
+            Instruction::ReadMem(n) => self.read_mem(n, old_top_of_stack),
+            Instruction::WriteMem(n) => self.write_mem(n, old_top_of_stack),
             Instruction::Hash => self.hash(),
             Instruction::DivineSibling => self.divine_sibling(),
             Instruction::AssertVector => _ = self.pop_n(N5),
@@ -148,16 +149,34 @@ impl TypeHints {
         self.push(self.stack[dup_index].clone());
     }
 
-    fn read_mem(&mut self, n: NumberOfWords) {
-        let ram_pointer = self.pop();
-        self.extend_by(n);
-        self.push(ram_pointer);
+    fn read_mem(
+        &mut self,
+        n: NumberOfWords,
+        old_top_of_stack: [BFieldElement; NUM_OP_STACK_REGISTERS],
+    ) {
+        let ram_pointer_hint = self.pop();
+        let mut ram_pointer = old_top_of_stack[0];
+        for _ in 0..n.num_words() {
+            let hint = self.ram.get(&ram_pointer).cloned().flatten();
+            self.push(hint);
+            ram_pointer.decrement();
+        }
+        self.push(ram_pointer_hint);
     }
 
-    fn write_mem(&mut self, n: NumberOfWords) {
-        let ram_pointer = self.pop();
-        let _ = self.pop_n(n);
-        self.push(ram_pointer);
+    fn write_mem(
+        &mut self,
+        n: NumberOfWords,
+        old_top_of_stack: [BFieldElement; NUM_OP_STACK_REGISTERS],
+    ) {
+        let ram_pointer_hint = self.pop();
+        let mut ram_pointer = old_top_of_stack[0];
+        for _ in 0..n.num_words() {
+            let hint = self.pop();
+            self.ram.insert(ram_pointer, hint);
+            ram_pointer.increment();
+        }
+        self.push(ram_pointer_hint);
     }
 
     fn hash(&mut self) {
@@ -301,6 +320,8 @@ impl Default for TypeHints {
 #[cfg(test)]
 mod tests {
     use assert2::assert;
+    use num_traits::One;
+    use num_traits::Zero;
     use proptest::collection::vec;
     use proptest::prelude::*;
     use proptest_arbitrary_interop::arb;
@@ -338,5 +359,33 @@ mod tests {
         let actual_stack_delta = type_hint_stack.len() as i32 - initial_length as i32;
         let expected_stack_delta = executed_instruction.instruction.op_stack_size_influence();
         assert!(expected_stack_delta == actual_stack_delta);
+    }
+
+    #[proptest]
+    fn write_mem_then_read_mem_preserves_type_hints_on_stack(
+        mut type_hints: TypeHints,
+        #[strategy(arb())] num_words: NumberOfWords,
+        #[strategy(arb())] ram_pointer: BFieldElement,
+    ) {
+        let mut top_of_stack_before_write = [BFieldElement::zero(); NUM_OP_STACK_REGISTERS];
+        top_of_stack_before_write[0] = ram_pointer;
+
+        let offset_of_last_written_element = BFieldElement::from(num_words) - BFieldElement::one();
+        let mut top_of_stack_before_read = [BFieldElement::zero(); NUM_OP_STACK_REGISTERS];
+        top_of_stack_before_read[0] = ram_pointer + offset_of_last_written_element;
+
+        let initial_type_hints = type_hints.clone();
+        type_hints.mimic_instruction(ExecutedInstruction::new(
+            Instruction::WriteMem(num_words),
+            top_of_stack_before_write,
+            Default::default(),
+        ));
+        prop_assert_ne!(&initial_type_hints.stack, &type_hints.stack);
+        type_hints.mimic_instruction(ExecutedInstruction::new(
+            Instruction::ReadMem(num_words),
+            top_of_stack_before_read,
+            Default::default(),
+        ));
+        prop_assert_eq!(initial_type_hints.stack, type_hints.stack);
     }
 }
