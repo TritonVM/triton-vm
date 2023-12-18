@@ -719,6 +719,17 @@ mod tests {
         assert!(op_stack.would_be_too_shallow(-1));
     }
 
+    #[proptest]
+    fn turning_op_stack_into_iterator_gives_top_element_first(
+        #[strategy(arb())]
+        #[filter(#op_stack.len() > 0)]
+        op_stack: OpStack,
+    ) {
+        let top_element = op_stack[ST0];
+        let mut iterator = op_stack.into_iter();
+        assert!(top_element == iterator.next().unwrap());
+    }
+
     #[test]
     fn trying_to_access_first_underflow_element_never_panics() {
         let mut op_stack = OpStack::new(Default::default());
