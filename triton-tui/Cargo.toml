@@ -25,9 +25,9 @@ human-panic = "1"
 itertools.workspace = true
 lazy_static.workspace = true
 libc = "0.2"
-num-traits = "0.2.17"
+num-traits.workspace = true
 ratatui = { version = "0.24", features = ["serde", "macros"] }
-serde = { version = "1", features = ["derive"] }
+serde.workspace = true
 serde_json = "1.0"
 signal-hook = "0.3"
 strip-ansi-escapes = "0.2"
