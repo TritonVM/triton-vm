@@ -105,6 +105,10 @@ impl<'a> Memory<'a> {
         self.user_address = maybe_address;
     }
 
+    fn requested_address(&self) -> u64 {
+        self.user_address.unwrap_or(self.most_recent_address)
+    }
+
     fn distribute_area_for_widgets(&self, area: Rect) -> WidgetAreas {
         let text_area_height = Constraint::Min(2);
         let constraints = [Constraint::Percentage(100), text_area_height];
@@ -124,37 +128,51 @@ impl<'a> Memory<'a> {
         let draw_area = render_info.areas.memory;
 
         let num_lines = block.inner(draw_area).height;
-        let requested_address = self.user_address.unwrap_or(self.most_recent_address);
+        let requested_address = self.requested_address();
         let address_range_start = requested_address.saturating_sub(num_lines as u64 / 2);
         let address_range_end = address_range_start.saturating_add(num_lines as u64);
 
         let mut text = vec![];
         for address in address_range_start..address_range_end {
-            let address_style = match address == requested_address {
-                true => Style::new().bold(),
-                false => Style::new().dim(),
-            };
-
             let address = address.into();
-            let maybe_value = render_info.state.vm_state.ram.get(&address);
-            let value = maybe_value.copied().unwrap_or(0_u64.into());
 
-            let maybe_type_hint = render_info.state.type_hints.ram.get(&address);
-            let type_hint = maybe_type_hint.unwrap_or(&None);
-            let type_hint = ElementTypeHint::render(type_hint);
+            let memory_cell = self.render_memory_cell_at_address(render_info, address);
+            let separator = vec![Span::from("  ")];
+            let type_hint = Self::render_type_hint_at_address(render_info, address);
 
-            // additional `.to_string()` to circumvent padding bug (?) in `format`
-            let address = Span::from(format!("{address: >20}", address = address.to_string()));
-            let address = address.set_style(address_style);
-            let separator = Span::from("  ");
-            let value = Span::from(format!("{value: <20}", value = value.to_string()));
-            let memory_cell = vec![address, separator.clone(), value, separator];
-
-            text.push(Line::from([memory_cell, type_hint].concat()));
+            text.push(Line::from([memory_cell, separator, type_hint].concat()));
         }
 
         let paragraph = Paragraph::new(text).block(block);
         frame.render_widget(paragraph, draw_area);
+    }
+
+    fn render_memory_cell_at_address(
+        &self,
+        render_info: RenderInfo,
+        address: BFieldElement,
+    ) -> Vec<Span> {
+        let address_style = match address.value() == self.requested_address() {
+            true => Style::new().bold(),
+            false => Style::new().dim(),
+        };
+
+        let maybe_value = render_info.state.vm_state.ram.get(&address);
+        let value = maybe_value.copied().unwrap_or(0_u64.into());
+
+        // additional `.to_string()` to circumvent padding bug (?) in `format`
+        let address = Span::from(format!("{address: >20}", address = address.to_string()));
+        let address = address.set_style(address_style);
+        let separator = Span::from("  ");
+        let value = Span::from(format!("{value: <20}", value = value.to_string()));
+
+        vec![address, separator, value]
+    }
+
+    fn render_type_hint_at_address(render_info: RenderInfo, address: BFieldElement) -> Vec<Span> {
+        let maybe_type_hint = render_info.state.type_hints.ram.get(&address);
+        let type_hint = maybe_type_hint.unwrap_or(&None);
+        ElementTypeHint::render(type_hint)
     }
 
     fn render_text_input_widget(&mut self, frame: &mut Frame<'_>, render_info: RenderInfo) {
