@@ -101,8 +101,18 @@ impl<'a> Memory<'a> {
 
     fn submit_address(&mut self) {
         let user_input = self.text_area.lines()[0].trim();
-        let maybe_address = user_input.parse::<u64>().ok();
-        self.user_address = maybe_address;
+        let Ok(address) = user_input.parse::<i128>() else {
+            self.user_address = None;
+            return;
+        };
+
+        let modulus = BFieldElement::P as i128;
+        if address < -modulus || modulus <= address {
+            self.user_address = None;
+            return;
+        }
+        let address = (address + modulus) % modulus;
+        self.user_address = Some(address as u64);
     }
 
     fn requested_address(&self) -> u64 {
