@@ -13,6 +13,7 @@ use triton_vm::BFieldElement;
 use crate::action::Action;
 use crate::action::ExecutedInstruction;
 use crate::components::Component;
+use crate::element_type_hint::ElementTypeHint;
 use crate::mode::Mode;
 use crate::triton_vm_state::TritonVMState;
 
@@ -138,12 +139,18 @@ impl<'a> Memory<'a> {
             let maybe_value = render_info.state.vm_state.ram.get(&address);
             let value = maybe_value.copied().unwrap_or(0_u64.into());
 
+            let maybe_type_hint = render_info.state.type_hints.ram.get(&address);
+            let type_hint = maybe_type_hint.unwrap_or(&None);
+            let type_hint = ElementTypeHint::render(type_hint);
+
             // additional `.to_string()` to circumvent padding bug (?) in `format`
             let address = Span::from(format!("{address: >20}", address = address.to_string()));
             let address = address.set_style(address_style);
             let separator = Span::from("  ");
-            let value = Span::from(value.to_string());
-            text.push(Line::from([address, separator, value].to_vec()));
+            let value = Span::from(format!("{value: <20}", value = value.to_string()));
+            let memory_cell = vec![address, separator.clone(), value, separator];
+
+            text.push(Line::from([memory_cell, type_hint].concat()));
         }
 
         let paragraph = Paragraph::new(text).block(block);

@@ -2,6 +2,7 @@ use std::cmp::Ordering;
 
 use arbitrary::Arbitrary;
 use itertools::Itertools;
+use ratatui::prelude::*;
 
 /// A hint about the type of a single stack element. Helps debugging programs written for Triton VM.
 /// **Does not enforce types.**
@@ -43,6 +44,23 @@ impl ElementTypeHint {
             }
         }
         true
+    }
+
+    pub fn render(maybe_self: &Option<Self>) -> Vec<Span> {
+        let Some(element_type_hint) = maybe_self else {
+            return vec![];
+        };
+
+        let mut line = vec![];
+        line.push(element_type_hint.variable_name.clone().into());
+        if let Some(ref type_name) = element_type_hint.type_name {
+            line.push(": ".dim());
+            line.push(type_name.into());
+        }
+        if let Some(index) = element_type_hint.index {
+            line.push(format!(" ({index})").dim());
+        }
+        line
     }
 }
 

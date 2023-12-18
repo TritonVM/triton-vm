@@ -159,38 +159,21 @@ impl Home {
         let num_padding_lines = (render_area.height as usize).saturating_sub(type_hints.len() + 3);
         let mut text = vec![Line::from(""); num_padding_lines];
 
-        text.push(Self::render_element_type_hint(&highest_hint));
+        text.push(ElementTypeHint::render(&highest_hint).into());
         for (hint_0, hint_1, hint_2) in type_hints.iter().rev().tuple_windows() {
             if ElementTypeHint::is_continuous_sequence(&[hint_0, hint_1, hint_2]) {
                 text.push("⋅".dim().into());
             } else {
-                text.push(Self::render_element_type_hint(hint_1));
+                text.push(ElementTypeHint::render(hint_1).into());
             }
         }
-        text.push(Self::render_element_type_hint(&lowest_hint));
+        text.push(ElementTypeHint::render(&lowest_hint).into());
 
         let block = Block::default()
             .padding(Padding::new(0, 1, 1, 0))
             .borders(Borders::TOP | Borders::BOTTOM);
         let paragraph = Paragraph::new(text).block(block).alignment(Alignment::Left);
         frame.render_widget(paragraph, render_area);
-    }
-
-    fn render_element_type_hint(element_type_hint: &Option<ElementTypeHint>) -> Line {
-        let Some(element_type_hint) = element_type_hint else {
-            return Line::default();
-        };
-
-        let mut line = vec![];
-        line.push(element_type_hint.variable_name.clone().into());
-        if let Some(ref type_name) = element_type_hint.type_name {
-            line.push(": ".dim());
-            line.push(type_name.into());
-        }
-        if let Some(index) = element_type_hint.index {
-            line.push(format!(" ({index})").dim());
-        }
-        line.into()
     }
 
     fn render_program_widget(&self, frame: &mut Frame<'_>, render_info: RenderInfo) {
