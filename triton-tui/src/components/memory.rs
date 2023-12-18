@@ -170,9 +170,19 @@ impl<'a> Memory<'a> {
     }
 
     fn render_type_hint_at_address(render_info: RenderInfo, address: BFieldElement) -> Vec<Span> {
-        let maybe_type_hint = render_info.state.type_hints.ram.get(&address);
-        let type_hint = maybe_type_hint.unwrap_or(&None);
-        ElementTypeHint::render(type_hint)
+        let prev_address = address - BFieldElement::one();
+        let next_address = address + BFieldElement::one();
+
+        let shadow_ram = &render_info.state.type_hints.ram;
+        let prev_hint = shadow_ram.get(&prev_address).unwrap_or(&None);
+        let curr_hint = shadow_ram.get(&address).unwrap_or(&None);
+        let next_hint = shadow_ram.get(&next_address).unwrap_or(&None);
+
+        if ElementTypeHint::is_continuous_sequence(&[prev_hint, curr_hint, next_hint]) {
+            vec!["⋅".dim()]
+        } else {
+            ElementTypeHint::render(curr_hint)
+        }
     }
 
     fn render_text_input_widget(&mut self, frame: &mut Frame<'_>, render_info: RenderInfo) {
