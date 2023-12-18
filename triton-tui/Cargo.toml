@@ -45,8 +45,13 @@ assert2.workspace = true
 pretty_assertions.workspace = true
 proptest.workspace = true
 proptest-arbitrary-interop.workspace = true
+pty-process = "0.4"
 test-strategy.workspace = true
 
 [[bin]]
 name = "triton-tui"
 path = "src/main.rs"
+
+[[test]]
+name = "integration"
+path = "tests/tests.rs"
