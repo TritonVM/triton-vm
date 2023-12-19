@@ -1,3 +1,4 @@
+use arbitrary::Arbitrary;
 use color_eyre::eyre::Result;
 use itertools::Itertools;
 use ratatui::prelude::*;
@@ -15,7 +16,7 @@ use crate::triton_vm_state::TritonVMState;
 use super::Component;
 use super::Frame;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Arbitrary)]
 pub(crate) struct Home {
     show_type_hints: bool,
     show_inputs: bool,
@@ -501,4 +502,35 @@ struct WidgetAreas {
     public_input: Rect,
     secret_input: Rect,
     message_box: Rect,
+}
+
+#[cfg(test)]
+mod tests {
+    use proptest_arbitrary_interop::arb;
+    use ratatui::backend::TestBackend;
+    use test_strategy::proptest;
+
+    use triton_vm::vm::VMState;
+    use triton_vm::BFieldElement;
+    use triton_vm::NonDeterminism;
+    use triton_vm::Program;
+    use triton_vm::PublicInput;
+
+    use super::*;
+
+    #[proptest]
+    fn render_arbitrary_vm_state(
+        #[strategy(arb())] mut home: Home,
+        #[strategy(arb())] program: Program,
+        #[strategy(arb())] public_input: PublicInput,
+        #[strategy(arb())] non_determinism: NonDeterminism<BFieldElement>,
+    ) {
+        let mut state = TritonVMState::new(&Default::default()).unwrap();
+        state.vm_state = VMState::new(&program, public_input, non_determinism);
+        state.program = program;
+
+        let backend = TestBackend::new(150, 50);
+        let mut terminal = Terminal::new(backend)?;
+        terminal.draw(|f| home.draw(f, &state).unwrap()).unwrap();
+    }
 }

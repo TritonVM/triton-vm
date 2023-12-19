@@ -1,5 +1,6 @@
 use std::fmt::Display;
 
+use arbitrary::Arbitrary;
 use color_eyre::eyre::Result;
 use ratatui::prelude::*;
 use ratatui::widgets::block::*;
@@ -12,7 +13,7 @@ use crate::components::Component;
 use crate::mode::Mode;
 use crate::triton_vm_state::TritonVMState;
 
-#[derive(Default, Debug, Clone, Copy)]
+#[derive(Default, Debug, Clone, Copy, Arbitrary)]
 pub(crate) struct Help {
     pub previous_mode: Mode,
 }
@@ -71,5 +72,22 @@ impl Help {
 
     fn help_line(keys: impl Display, help: impl Display) -> String {
         format!("  {keys: <4} {help}")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use proptest_arbitrary_interop::arb;
+    use ratatui::backend::TestBackend;
+    use test_strategy::proptest;
+
+    #[proptest]
+    fn render(#[strategy(arb())] mut help: Help) {
+        let state = TritonVMState::new(&Default::default()).unwrap();
+
+        let backend = TestBackend::new(150, 50);
+        let mut terminal = Terminal::new(backend)?;
+        terminal.draw(|f| help.draw(f, &state).unwrap()).unwrap();
     }
 }

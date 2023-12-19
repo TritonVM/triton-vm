@@ -1,7 +1,10 @@
+use arbitrary::Arbitrary;
 use serde::*;
 use strum::EnumCount;
 
-#[derive(Default, Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, EnumCount)]
+#[derive(
+    Default, Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, EnumCount, Arbitrary,
+)]
 #[repr(usize)]
 pub(crate) enum Mode {
     #[default]
