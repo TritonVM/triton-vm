@@ -29,7 +29,7 @@ jobs:
         uses: baptiste0928/cargo-install@v2
         with:
           crate: cargo-tarpaulin
-          version: "^0.26"
+          version: "^0.27"
 
       - name: Run tarpaulin
         run: cargo tarpaulin --all-features --all-targets --workspace --engine llvm --timeout 600 --out Lcov
