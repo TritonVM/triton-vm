@@ -7,7 +7,7 @@ use strum::EnumCount;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::UnboundedSender;
 
-use crate::action::Action;
+use crate::action::*;
 use crate::args::Args;
 use crate::components::help::Help;
 use crate::components::home::Home;
@@ -75,6 +75,10 @@ impl TritonTUI {
             component.register_action_handler(action_tx.clone())?;
         }
 
+        // in case of infinite loop (or similar) before first breakpoint, provide visual feedback
+        self.render()?;
+        action_tx.send(Action::Execute(Execute::Continue))?;
+
         while !self.should_quit {
             if let Some(e) = self.tui.next().await {
                 match e {
@@ -104,11 +108,7 @@ impl TritonTUI {
                         self.mode = mode;
                         self.render()?;
                     }
-                    Action::Reset => {
-                        self.reset_state();
-                        self.vm_state.register_action_handler(action_tx.clone())?;
-                        self.render()?;
-                    }
+                    Action::Reset => self.reset_state(action_tx.clone())?,
                     Action::Suspend => self.should_suspend = true,
                     Action::Resume => self.should_suspend = false,
                     Action::Quit => self.should_quit = true,
@@ -140,11 +140,19 @@ impl TritonTUI {
         }
     }
 
-    fn reset_state(&mut self) {
-        match TritonVMState::new(&self.args) {
-            Ok(vm_state) => self.vm_state = vm_state,
-            Err(report) => self.vm_state.warning = Some(report),
-        }
+    fn reset_state(&mut self, action_tx: UnboundedSender<Action>) -> Result<()> {
+        let vm_state = match TritonVMState::new(&self.args) {
+            Ok(vm_state) => vm_state,
+            Err(report) => {
+                self.vm_state.warning = Some(report);
+                return Ok(());
+            }
+        };
+        self.vm_state = vm_state;
+        self.vm_state.register_action_handler(action_tx.clone())?;
+        self.render()?;
+        action_tx.send(Action::Execute(Execute::Continue))?;
+        Ok(())
     }
 
     fn tui(args: &Args) -> Result<Tui> {

@@ -8,6 +8,7 @@
 // Let's start!
 push 3
 hint loop_counter = stack[0]        // Current stack can be annotated to help debugging.
+break
 
 call my_loop
 hint numbers: array = stack[1..4]   // Annotations also work with ranges.
