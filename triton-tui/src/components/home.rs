@@ -19,6 +19,7 @@ use super::Frame;
 #[derive(Debug, Clone, Copy, Arbitrary)]
 pub(crate) struct Home {
     show_type_hints: bool,
+    show_call_stack: bool,
     show_inputs: bool,
     show_welcome_message: bool,
 }
@@ -27,6 +28,7 @@ impl Default for Home {
     fn default() -> Self {
         Self {
             show_type_hints: true,
+            show_call_stack: true,
             show_inputs: true,
             show_welcome_message: true,
         }
@@ -69,43 +71,40 @@ impl Home {
         let message_box_area = layout[3];
 
         let op_stack_widget_width = Constraint::Min(30);
-        let type_hint_widget = match self.show_type_hints {
-            true => Constraint::Min(30),
-            false => Constraint::Max(0),
-        };
         let remaining_width = Constraint::Percentage(100);
         let sponge_state_width = match state.vm_state.sponge_state.is_some() {
             true => Constraint::Min(32),
             false => Constraint::Min(1),
         };
-        let state_layout_constraints = [
-            op_stack_widget_width,
-            type_hint_widget,
-            remaining_width,
-            sponge_state_width,
-        ];
+        let state_layout_constraints = [op_stack_widget_width, remaining_width, sponge_state_width];
         let state_layout = Layout::default()
             .direction(Direction::Horizontal)
             .constraints(state_layout_constraints)
             .split(state_area);
         let op_stack_area = state_layout[0];
-        let type_hint_area = state_layout[1];
-        let program_and_call_stack_area = state_layout[2];
-        let sponge_state_area = state_layout[3];
+        let type_hint_program_and_call_stack_area = state_layout[1];
+        let sponge_state_area = state_layout[2];
 
-        let program_widget_width = Constraint::Percentage(50);
-        let call_stack_widget_width = Constraint::Percentage(50);
-        let constraints = [program_widget_width, call_stack_widget_width];
-        let program_and_call_stack_layout = Layout::default()
+        let nothing = Constraint::Max(0);
+        let third = Constraint::Ratio(1, 3);
+        let half = Constraint::Ratio(1, 2);
+        let everything = Constraint::Ratio(1, 1);
+        let hints_program_calls_constraints = match (self.show_type_hints, self.show_call_stack) {
+            (true, true) => [third, third, third],
+            (true, false) => [half, half, nothing],
+            (false, true) => [nothing, half, half],
+            (false, false) => [nothing, everything, nothing],
+        };
+        let type_hint_program_and_call_stack_layout = Layout::default()
             .direction(Direction::Horizontal)
-            .constraints(constraints)
-            .split(program_and_call_stack_area);
+            .constraints(hints_program_calls_constraints)
+            .split(type_hint_program_and_call_stack_area);
 
         WidgetAreas {
             op_stack: op_stack_area,
-            type_hint: type_hint_area,
-            program: program_and_call_stack_layout[0],
-            call_stack: program_and_call_stack_layout[1],
+            type_hint: type_hint_program_and_call_stack_layout[0],
+            program: type_hint_program_and_call_stack_layout[1],
+            call_stack: type_hint_program_and_call_stack_layout[2],
             sponge: sponge_state_area,
             public_input: public_input_area,
             secret_input: secret_input_area,
@@ -250,6 +249,10 @@ impl Home {
     }
 
     fn render_call_stack_widget(&self, frame: &mut Frame<'_>, render_info: RenderInfo) {
+        if !self.show_call_stack {
+            return;
+        }
+
         let state = &render_info.state;
         let jump_stack = &state.vm_state.jump_stack;
         let render_area = render_info.areas.call_stack;
@@ -459,6 +462,7 @@ impl Component for Home {
     fn update(&mut self, action: Action) -> Result<Option<Action>> {
         match action {
             Action::ToggleTypeHintDisplay => self.show_type_hints = !self.show_type_hints,
+            Action::ToggleCallStackDisplay => self.show_call_stack = !self.show_call_stack,
             Action::ToggleInputDisplay => self.show_inputs = !self.show_inputs,
             Action::Execute(_) => self.stop_showing_welcome_message(),
             Action::Mode(_) => self.stop_showing_welcome_message(),

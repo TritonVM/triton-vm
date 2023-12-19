@@ -1,5 +1,7 @@
 use color_eyre::eyre::Result;
+use crossterm::event::KeyCode;
 use crossterm::event::KeyEvent;
+use crossterm::event::KeyEventKind;
 use ratatui::prelude::Rect;
 use strum::EnumCount;
 use tokio::sync::mpsc;
@@ -17,6 +19,8 @@ use crate::mode::Mode;
 use crate::triton_vm_state::TritonVMState;
 use crate::tui::*;
 
+const RECENT_KEY_EVENTS_RESET_DELAY: u32 = 1;
+
 pub(crate) struct TritonTUI {
     pub args: Args,
     pub config: Config,
@@ -27,6 +31,8 @@ pub(crate) struct TritonTUI {
 
     pub should_quit: bool,
     pub should_suspend: bool,
+
+    pub recent_key_events_reset_delay: u32,
     pub recent_key_events: KeyEvents,
 
     pub vm_state: TritonVMState,
@@ -54,6 +60,7 @@ impl TritonTUI {
             components,
             should_quit: false,
             should_suspend: false,
+            recent_key_events_reset_delay: 0,
             recent_key_events: vec![],
             vm_state,
         })
@@ -87,7 +94,7 @@ impl TritonTUI {
 
             while let Ok(action) = action_rx.try_recv() {
                 match action {
-                    Action::Tick => self.recent_key_events.clear(),
+                    Action::Tick => self.maybe_clear_recent_key_events(),
                     Action::Render => self.render()?,
                     Action::Resize(w, h) => {
                         self.tui.resize(Rect::new(0, 0, w, h))?;
@@ -123,6 +130,14 @@ impl TritonTUI {
         }
 
         self.tui.exit()
+    }
+
+    fn maybe_clear_recent_key_events(&mut self) {
+        if self.recent_key_events_reset_delay > 0 {
+            self.recent_key_events_reset_delay -= 1;
+        } else {
+            self.recent_key_events.clear();
+        }
     }
 
     fn reset_state(&mut self) {
@@ -163,8 +178,13 @@ impl TritonTUI {
             return Ok(());
         };
         self.recent_key_events.push(key);
+        self.recent_key_events_reset_delay = RECENT_KEY_EVENTS_RESET_DELAY;
         if let Some(action) = keymap.get(&self.recent_key_events) {
             action_tx.send(action.clone())?;
+            self.recent_key_events.clear();
+        }
+        if key.code == KeyCode::Esc && key.kind != KeyEventKind::Release {
+            self.recent_key_events_reset_delay = 0;
             self.recent_key_events.clear();
         }
         Ok(())

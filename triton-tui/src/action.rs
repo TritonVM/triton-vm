@@ -33,7 +33,7 @@ pub(crate) enum Action {
     Reset,
 
     ToggleTypeHintDisplay,
-
+    ToggleCallStackDisplay,
     ToggleInputDisplay,
 
     HideHelpScreen,
@@ -101,6 +101,7 @@ impl<'de> Deserialize<'de> for Action {
                     "Reset" => Ok(Action::Reset),
 
                     "ToggleTypeHintDisplay" => Ok(Action::ToggleTypeHintDisplay),
+                    "ToggleCallStackDisplay" => Ok(Action::ToggleCallStackDisplay),
                     "ToggleInputDisplay" => Ok(Action::ToggleInputDisplay),
                     "HideHelpScreen" => Ok(Action::HideHelpScreen),
 
