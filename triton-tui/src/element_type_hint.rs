@@ -79,3 +79,107 @@ impl PartialOrd for ElementTypeHint {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use proptest::prelude::*;
+    use proptest_arbitrary_interop::arb;
+    use test_strategy::proptest;
+
+    use super::*;
+
+    #[proptest]
+    fn comparison_with_different_variable_names_is_impossible(
+        #[strategy(arb())] type_hint_0: ElementTypeHint,
+        #[strategy(arb())]
+        #[filter(#type_hint_0.variable_name != #type_hint_1.variable_name)]
+        type_hint_1: ElementTypeHint,
+    ) {
+        prop_assert_eq!(type_hint_0.partial_cmp(&type_hint_1), None);
+    }
+
+    #[proptest]
+    fn comparison_with_different_type_names_is_impossible(
+        #[strategy(arb())] type_hint_0: ElementTypeHint,
+        #[strategy(arb())]
+        #[filter(#type_hint_0.type_name != #type_hint_1.type_name)]
+        type_hint_1: ElementTypeHint,
+    ) {
+        prop_assert_eq!(type_hint_0.partial_cmp(&type_hint_1), None);
+    }
+
+    #[test]
+    fn continuous_increasing_sequence() {
+        let template = ElementTypeHint {
+            type_name: None,
+            variable_name: "x".to_string(),
+            index: None,
+        };
+        let mut hint_0 = template.clone();
+        let mut hint_1 = template.clone();
+        let mut hint_2 = template.clone();
+
+        hint_0.index = Some(0);
+        hint_1.index = Some(1);
+        hint_2.index = Some(2);
+
+        let sequence = [&Some(hint_0), &Some(hint_1), &Some(hint_2)];
+        assert!(ElementTypeHint::is_continuous_sequence(&sequence));
+    }
+
+    #[test]
+    fn continuous_decreasing_sequence() {
+        let template = ElementTypeHint {
+            type_name: None,
+            variable_name: "x".to_string(),
+            index: None,
+        };
+        let mut hint_0 = template.clone();
+        let mut hint_1 = template.clone();
+        let mut hint_2 = template.clone();
+
+        hint_0.index = Some(2);
+        hint_1.index = Some(1);
+        hint_2.index = Some(0);
+
+        let sequence = [&Some(hint_0), &Some(hint_1), &Some(hint_2)];
+        assert!(ElementTypeHint::is_continuous_sequence(&sequence));
+    }
+
+    #[test]
+    fn non_continuous_sequence() {
+        let template = ElementTypeHint {
+            type_name: None,
+            variable_name: "x".to_string(),
+            index: None,
+        };
+        let mut hint_0 = template.clone();
+        let mut hint_1 = template.clone();
+        let mut hint_2 = template.clone();
+
+        hint_0.index = Some(0);
+        hint_1.index = Some(2);
+        hint_2.index = Some(1);
+
+        let sequence = [&Some(hint_0), &Some(hint_1), &Some(hint_2)];
+        assert!(!ElementTypeHint::is_continuous_sequence(&sequence));
+    }
+
+    #[test]
+    fn interrupted_sequence() {
+        let template = ElementTypeHint {
+            type_name: None,
+            variable_name: "x".to_string(),
+            index: None,
+        };
+
+        let mut hint_0 = template.clone();
+        let mut hint_2 = template.clone();
+
+        hint_0.index = Some(0);
+        hint_2.index = Some(2);
+
+        let sequence = [&Some(hint_0), &None, &Some(hint_2)];
+        assert!(!ElementTypeHint::is_continuous_sequence(&sequence));
+    }
+}

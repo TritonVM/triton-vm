@@ -316,6 +316,7 @@ impl Default for ShadowMemory {
 #[cfg(test)]
 mod tests {
     use assert2::assert;
+    use assert2::let_assert;
     use num_traits::One;
     use num_traits::Zero;
     use proptest::collection::vec;
@@ -383,5 +384,65 @@ mod tests {
             Default::default(),
         ));
         prop_assert_eq!(initial_type_hints.stack, type_hints.stack);
+    }
+
+    #[test]
+    fn apply_type_hint_of_length_one() {
+        let type_name = Some("u32".to_string());
+        let variable_name = "foo".to_string();
+        let type_hint_to_apply = TypeHint {
+            type_name: type_name.clone(),
+            variable_name: variable_name.clone(),
+            starting_index: 0,
+            length: 1,
+        };
+        let expected_hint = ElementTypeHint {
+            type_name,
+            variable_name,
+            index: None,
+        };
+
+        let mut type_hints = ShadowMemory::new();
+        let_assert!(Ok(()) = type_hints.apply_type_hint(type_hint_to_apply));
+        let_assert!(Some(maybe_hint) = type_hints.stack.last());
+        let_assert!(Some(hint) = maybe_hint.clone());
+        assert!(expected_hint == hint);
+    }
+
+    #[test]
+    fn applying_type_hint_at_illegal_index_gives_error() {
+        let type_hint_to_apply = TypeHint {
+            type_name: Some("u32".to_string()),
+            variable_name: "foo".to_string(),
+            starting_index: 100,
+            length: 1,
+        };
+
+        let mut type_hints = ShadowMemory::new();
+        let_assert!(Err(_) = type_hints.apply_type_hint(type_hint_to_apply));
+    }
+
+    #[test]
+    fn hashing_one_complete_object_gives_type_hint_for_digest() {
+        let type_hint_to_apply = TypeHint {
+            type_name: Some("array".to_string()),
+            variable_name: "foo".to_string(),
+            starting_index: 0,
+            length: 10,
+        };
+        let executed_instruction = ExecutedInstruction::new(
+            Instruction::Hash,
+            [BFieldElement::zero(); NUM_OP_STACK_REGISTERS],
+            Default::default(),
+        );
+
+        let mut type_hints = ShadowMemory::new();
+        let_assert!(Ok(()) = type_hints.apply_type_hint(type_hint_to_apply));
+        type_hints.mimic_instruction(executed_instruction);
+
+        let_assert!(Some(maybe_hint) = type_hints.stack.last());
+        let_assert!(Some(hint) = maybe_hint.clone());
+        assert!(hint.type_name == Some("Digest".to_string()));
+        assert!(hint.variable_name == "foo_hash".to_string());
     }
 }
