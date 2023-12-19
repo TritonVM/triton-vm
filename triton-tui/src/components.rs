@@ -61,12 +61,8 @@ fn centered_rect(area: Rect, percent_x: u16, percent_y: u16) -> Rect {
 }
 
 fn centered_rect_in_direction(area: Rect, percentage: u16, direction: Direction) -> Rect {
-    Layout::default()
-        .direction(direction)
-        .constraints([
-            Constraint::Percentage((100 - percentage) / 2),
-            Constraint::Percentage(percentage),
-            Constraint::Percentage((100 - percentage) / 2),
-        ])
-        .split(area)[1]
+    let requested = Constraint::Percentage(percentage);
+    let half_of_remainder = Constraint::Percentage((100 - percentage) / 2);
+    let constraints = [half_of_remainder, requested, half_of_remainder];
+    Layout::new(direction, constraints).split(area)[1]
 }

@@ -61,10 +61,7 @@ impl Home {
             secret_input_height,
             message_box_height,
         ];
-        let layout = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints(constraints)
-            .split(area);
+        let layout = Layout::new(Direction::Vertical, constraints).split(area);
         let state_area = layout[0];
         let public_input_area = layout[1];
         let secret_input_area = layout[2];
@@ -77,12 +74,10 @@ impl Home {
             false => Constraint::Min(1),
         };
         let state_layout_constraints = [op_stack_widget_width, remaining_width, sponge_state_width];
-        let state_layout = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints(state_layout_constraints)
-            .split(state_area);
+        let state_layout =
+            Layout::new(Direction::Horizontal, state_layout_constraints).split(state_area);
         let op_stack_area = state_layout[0];
-        let type_hint_program_and_call_stack_area = state_layout[1];
+        let remaining_area = state_layout[1];
         let sponge_state_area = state_layout[2];
 
         let nothing = Constraint::Max(0);
@@ -95,10 +90,9 @@ impl Home {
             (false, true) => [nothing, half, half],
             (false, false) => [nothing, everything, nothing],
         };
-        let type_hint_program_and_call_stack_layout = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints(hints_program_calls_constraints)
-            .split(type_hint_program_and_call_stack_area);
+        let type_hint_program_and_call_stack_layout =
+            Layout::new(Direction::Horizontal, hints_program_calls_constraints)
+                .split(remaining_area);
 
         WidgetAreas {
             op_stack: op_stack_area,

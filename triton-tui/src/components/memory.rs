@@ -122,10 +122,7 @@ impl<'a> Memory<'a> {
     fn distribute_area_for_widgets(&self, area: Rect) -> WidgetAreas {
         let text_area_height = Constraint::Min(2);
         let constraints = [Constraint::Percentage(100), text_area_height];
-        let layout = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints(constraints)
-            .split(area);
+        let layout = Layout::new(Direction::Vertical, constraints).split(area);
 
         WidgetAreas {
             memory: layout[0],
