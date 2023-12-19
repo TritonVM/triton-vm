@@ -13,10 +13,11 @@ fn manifest_dir() -> PathBuf {
 }
 
 #[test]
-fn execute_then_terminate_triton_tui_with_trivial_program() {
+#[ignore = "breaks code-coverage tool `cargo-tarpaulin`"]
+fn setup_and_shutdown_triton_tui_with_trivial_program() {
     let path_to_trivial_program = manifest_dir().join("tests/trivial_program.tasm");
     let_assert!(Some(path_to_trivial_program) = path_to_trivial_program.to_str());
-    println!("{path_to_trivial_program}");
+    println!("trying to load program from: {path_to_trivial_program}");
 
     let mut pty = Pty::new().unwrap();
     let_assert!(Ok(()) = pty.resize(Size::new(24, 80)));
