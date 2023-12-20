@@ -24,9 +24,7 @@ fn setup_without_shutdown_of_triton_tui_with_trivial_program_leaves_tui_open() {
 
 fn setup_and_start_triton_tui_with_trivial_program(timeout: Option<u64>) -> PtySession {
     let path_to_trivial_program = manifest_dir().join("tests/trivial_program.tasm");
-
-    // does file exist?
-    let_assert!(Ok(_) = std::fs::metadata(&path_to_trivial_program));
+    assert!(path_to_trivial_program.exists());
     let_assert!(Some(path_to_trivial_program) = path_to_trivial_program.to_str());
 
     let command = format!("cargo run --offline --bin triton-tui -- -p {path_to_trivial_program}");
