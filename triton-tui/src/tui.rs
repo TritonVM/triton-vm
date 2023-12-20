@@ -251,3 +251,15 @@ impl Drop for Tui {
         self.exit().unwrap();
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use assert2::let_assert;
+
+    #[test]
+    fn creating_tui_outside_of_tty_gives_error() {
+        let_assert!(Err(err) = Tui::new());
+        assert!(err.to_string().contains("TTY"));
+    }
+}
