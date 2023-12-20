@@ -20,10 +20,10 @@ use crate::tui::Event;
 #[derive(Debug, Clone)]
 pub(crate) struct Memory<'a> {
     /// The address touched last by any `read_mem` or `write_mem` instruction.
-    pub most_recent_address: u64,
+    pub most_recent_address: BFieldElement,
 
     /// The address to show. Can be manually set (and unset) by the user.
-    pub user_address: Option<u64>,
+    pub user_address: Option<BFieldElement>,
 
     pub text_area: TextArea<'a>,
     pub text_area_in_focus: bool,
@@ -33,7 +33,7 @@ pub(crate) struct Memory<'a> {
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) struct UndoInformation {
-    pub most_recent_address: u64,
+    pub most_recent_address: BFieldElement,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -51,7 +51,7 @@ struct WidgetAreas {
 impl<'a> Default for Memory<'a> {
     fn default() -> Self {
         Self {
-            most_recent_address: 0,
+            most_recent_address: 0_u64.into(),
             user_address: None,
             text_area: Self::initial_text_area(),
             undo_stack: vec![],
@@ -83,7 +83,7 @@ impl<'a> Memory<'a> {
     }
 
     pub fn reset(&mut self) {
-        self.most_recent_address = 0;
+        self.most_recent_address = 0_u64.into();
         self.user_address = None;
         self.undo_stack.clear();
     }
@@ -96,7 +96,7 @@ impl<'a> Memory<'a> {
             _ => return,
         };
         let last_ram_pointer = presumed_ram_pointer + overshoot_adjustment;
-        self.most_recent_address = last_ram_pointer.value();
+        self.most_recent_address = last_ram_pointer;
     }
 
     fn submit_address(&mut self) {
@@ -112,10 +112,11 @@ impl<'a> Memory<'a> {
             return;
         }
         let address = (address + modulus) % modulus;
-        self.user_address = Some(address as u64);
+        let address = BFieldElement::from(address as u64);
+        self.user_address = Some(address);
     }
 
-    fn requested_address(&self) -> u64 {
+    fn requested_address(&self) -> BFieldElement {
         self.user_address.unwrap_or(self.most_recent_address)
     }
 
@@ -140,20 +141,19 @@ impl<'a> Memory<'a> {
         let block = Self::memory_widget_block();
         let draw_area = render_info.areas.memory;
 
-        let num_lines = block.inner(draw_area).height;
-        let requested_address = self.requested_address();
-        let address_range_start = requested_address.saturating_sub(num_lines as u64 / 2);
-        let address_range_end = address_range_start.saturating_add(num_lines as u64);
+        let num_lines = block.inner(draw_area).height as u64;
+        let address_range_start = self.requested_address() - BFieldElement::from(num_lines / 2);
+        let address_range_end = address_range_start + BFieldElement::from(num_lines);
 
         let mut text = vec![];
-        for address in address_range_start..address_range_end {
-            let address = address.into();
-
+        let mut address = address_range_start;
+        while address != address_range_end {
             let memory_cell = self.render_memory_cell_at_address(render_info, address);
             let separator = vec![Span::from("  ")];
             let type_hint = Self::render_type_hint_at_address(render_info, address);
 
             text.push(Line::from([memory_cell, separator, type_hint].concat()));
+            address.increment();
         }
 
         let paragraph = Paragraph::new(text).block(block);
@@ -165,7 +165,7 @@ impl<'a> Memory<'a> {
         render_info: RenderInfo,
         address: BFieldElement,
     ) -> Vec<Span> {
-        let address_style = match address.value() == self.requested_address() {
+        let address_style = match address == self.requested_address() {
             true => Style::new().bold(),
             false => Style::new().dim(),
         };
