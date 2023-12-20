@@ -27,10 +27,10 @@ async fn main() -> Result<()> {
 
     let args = Args::parse();
     let mut triton_tui = TritonTUI::new(args)?;
-    if let Err(e) = triton_tui.run().await {
-        let error = format!("{e}");
-        error!(error);
+    let execution_result = triton_tui.run().await;
+    if let Err(ref err) = execution_result {
+        error!("{err}");
         triton_tui.terminate()?;
     };
-    Ok(())
+    execution_result
 }
