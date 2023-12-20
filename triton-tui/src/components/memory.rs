@@ -14,8 +14,8 @@ use crate::action::Action;
 use crate::action::ExecutedInstruction;
 use crate::components::Component;
 use crate::element_type_hint::ElementTypeHint;
-use crate::mode::Mode;
 use crate::triton_vm_state::TritonVMState;
+use crate::tui::Event;
 
 #[derive(Debug, Clone)]
 pub(crate) struct Memory<'a> {
@@ -117,6 +117,12 @@ impl<'a> Memory<'a> {
 
     fn requested_address(&self) -> u64 {
         self.user_address.unwrap_or(self.most_recent_address)
+    }
+
+    fn paste(&mut self, s: &str) {
+        self.text_area_in_focus = true;
+        let s = s.replace(['\r', '\n'], "");
+        self.text_area.insert_str(s);
     }
 
     fn distribute_area_for_widgets(&self, area: Rect) -> WidgetAreas {
@@ -242,6 +248,23 @@ impl<'a> Component for Memory<'a> {
         self.text_area_in_focus
     }
 
+    fn handle_event(&mut self, event: Option<Event>) -> Result<Option<Action>> {
+        let Some(event) = event else {
+            return Ok(None);
+        };
+
+        if let Event::Paste(ref s) = event {
+            self.paste(s);
+        }
+
+        let response = match event {
+            Event::Key(key_event) => self.handle_key_event(key_event)?,
+            Event::Mouse(mouse_event) => self.handle_mouse_event(mouse_event)?,
+            _ => None,
+        };
+        Ok(response)
+    }
+
     fn handle_key_event(&mut self, key_event: KeyEvent) -> Result<Option<Action>> {
         if key_event.kind == Release {
             return Ok(None);
@@ -265,7 +288,6 @@ impl<'a> Component for Memory<'a> {
 
     fn update(&mut self, action: Action) -> Result<Option<Action>> {
         match action {
-            Action::Mode(Mode::Memory) => (),
             Action::Mode(_) => self.text_area_in_focus = false,
             Action::Undo => self.undo(),
             Action::RecordUndoInfo => self.record_undo_information(),
