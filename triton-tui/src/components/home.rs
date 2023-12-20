@@ -43,10 +43,23 @@ impl Home {
 
     fn toggle_widget(&mut self, toggle: ToggleWidget) {
         match toggle {
+            ToggleWidget::All => self.toggle_all_widgets(),
             ToggleWidget::TypeHint => self.show_type_hints = !self.show_type_hints,
             ToggleWidget::CallStack => self.show_call_stack = !self.show_call_stack,
             ToggleWidget::Input => self.show_inputs = !self.show_inputs,
         };
+    }
+
+    fn toggle_all_widgets(&mut self) {
+        if self.show_type_hints || self.show_call_stack || self.show_inputs {
+            self.show_type_hints = false;
+            self.show_call_stack = false;
+            self.show_inputs = false;
+        } else {
+            self.show_type_hints = true;
+            self.show_call_stack = true;
+            self.show_inputs = true;
+        }
     }
 
     fn stop_showing_welcome_message(&mut self) {

@@ -15,6 +15,7 @@
             "<u>": "Undo",
             "<r>": "Reset",
 
+            "<t><a>": "ToggleAll",
             "<t><t>": "ToggleTypeHintDisplay",
             "<t><c>": "ToggleCallStackDisplay",
             "<t><i>": "ToggleInputDisplay"

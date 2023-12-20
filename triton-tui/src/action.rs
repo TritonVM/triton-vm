@@ -59,6 +59,7 @@ pub(crate) enum Execute {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Arbitrary)]
 pub(crate) enum ToggleWidget {
+    All,
     TypeHint,
     CallStack,
     Input,
@@ -105,6 +106,7 @@ impl<'de> Deserialize<'de> for Action {
                     "Undo" => Ok(Action::Undo),
                     "Reset" => Ok(Action::Reset),
 
+                    "ToggleAll" => Ok(Action::Toggle(ToggleWidget::All)),
                     "ToggleTypeHintDisplay" => Ok(Action::Toggle(ToggleWidget::TypeHint)),
                     "ToggleCallStackDisplay" => Ok(Action::Toggle(ToggleWidget::CallStack)),
                     "ToggleInputDisplay" => Ok(Action::Toggle(ToggleWidget::Input)),
