@@ -20,6 +20,7 @@ use super::Frame;
 pub(crate) struct Home {
     show_type_hints: bool,
     show_call_stack: bool,
+    show_sponge_state: bool,
     show_inputs: bool,
     show_welcome_message: bool,
 }
@@ -29,6 +30,7 @@ impl Default for Home {
         Self {
             show_type_hints: true,
             show_call_stack: true,
+            show_sponge_state: false,
             show_inputs: true,
             show_welcome_message: true,
         }
@@ -46,18 +48,25 @@ impl Home {
             ToggleWidget::All => self.toggle_all_widgets(),
             ToggleWidget::TypeHint => self.show_type_hints = !self.show_type_hints,
             ToggleWidget::CallStack => self.show_call_stack = !self.show_call_stack,
+            ToggleWidget::SpongeState => self.show_sponge_state = !self.show_sponge_state,
             ToggleWidget::Input => self.show_inputs = !self.show_inputs,
         };
     }
 
     fn toggle_all_widgets(&mut self) {
-        if self.show_type_hints || self.show_call_stack || self.show_inputs {
+        let any_widget_is_shown = self.show_type_hints
+            || self.show_call_stack
+            || self.show_sponge_state
+            || self.show_inputs;
+        if any_widget_is_shown {
             self.show_type_hints = false;
             self.show_call_stack = false;
+            self.show_sponge_state = false;
             self.show_inputs = false;
         } else {
             self.show_type_hints = true;
             self.show_call_stack = true;
+            self.show_sponge_state = true;
             self.show_inputs = true;
         }
     }
@@ -90,7 +99,7 @@ impl Home {
 
         let op_stack_widget_width = Constraint::Min(30);
         let remaining_width = Constraint::Percentage(100);
-        let sponge_state_width = match state.vm_state.sponge_state.is_some() {
+        let sponge_state_width = match self.show_sponge_state {
             true => Constraint::Min(32),
             false => Constraint::Min(1),
         };
@@ -306,26 +315,33 @@ impl Home {
     }
 
     fn render_sponge_widget(&self, frame: &mut Frame<'_>, render_info: RenderInfo) {
-        let sponge_state = &render_info.state.vm_state.sponge_state;
-        let render_area = render_info.areas.sponge;
-
+        let title = Title::from(" Sponge ");
         let border_set = symbols::border::Set {
             top_left: symbols::line::ROUNDED.horizontal_down,
             bottom_left: symbols::line::ROUNDED.horizontal_up,
             bottom_right: symbols::line::ROUNDED.vertical_left,
             ..symbols::border::ROUNDED
         };
-        let right_border = Block::default()
-            .borders(Borders::TOP | Borders::RIGHT | Borders::BOTTOM)
-            .border_set(border_set);
+        let borders = match self.show_sponge_state {
+            true => Borders::ALL,
+            false => Borders::TOP | Borders::RIGHT | Borders::BOTTOM,
+        };
+        let block = Block::default()
+            .borders(borders)
+            .border_set(border_set)
+            .title(title)
+            .padding(Padding::new(1, 1, 1, 0));
+
+        let render_area = render_info.areas.sponge;
+        let sponge_state = &render_info.state.vm_state.sponge_state;
         let Some(state) = sponge_state else {
-            let paragraph = Paragraph::new("").block(right_border);
+            let paragraph = Paragraph::new("").block(block);
             frame.render_widget(paragraph, render_area);
             return;
         };
 
-        let title = Title::from(" Sponge ").alignment(Alignment::Left);
-        let num_padding_lines = (render_area.height as usize).saturating_sub(state.len() + 3);
+        let num_available_lines = block.inner(render_area).height as usize;
+        let num_padding_lines = num_available_lines.saturating_sub(state.len());
         let mut text = vec![Line::from(""); num_padding_lines];
         for (i, sp) in state.iter().enumerate() {
             let sponge_index = Span::from(format!("{i:>3}")).dim();
@@ -334,11 +350,6 @@ impl Home {
             let line = Line::from(vec![sponge_index, separator, sponge_element]);
             text.push(line);
         }
-
-        let block = right_border
-            .padding(Padding::new(1, 1, 1, 0))
-            .title(title)
-            .borders(Borders::ALL);
         let paragraph = Paragraph::new(text).block(block).alignment(Alignment::Left);
         frame.render_widget(paragraph, render_area);
     }

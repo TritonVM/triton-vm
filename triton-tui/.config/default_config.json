@@ -18,6 +18,7 @@
             "<t><a>": "ToggleAll",
             "<t><t>": "ToggleTypeHintDisplay",
             "<t><c>": "ToggleCallStackDisplay",
+            "<t><s>": "ToggleSpongeStateDisplay",
             "<t><i>": "ToggleInputDisplay"
         },
         "Help": {

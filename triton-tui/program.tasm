@@ -47,6 +47,6 @@ read_from_secret_input:
     return
 
 sponge_instructions:
-    sponge_init                     // Sponge state will shown once initialized.
+    sponge_init                     // Show the Sponge state with `t,s`.
     sponge_squeeze
     return

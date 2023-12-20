@@ -62,6 +62,7 @@ pub(crate) enum ToggleWidget {
     All,
     TypeHint,
     CallStack,
+    SpongeState,
     Input,
 }
 
@@ -109,6 +110,7 @@ impl<'de> Deserialize<'de> for Action {
                     "ToggleAll" => Ok(Action::Toggle(ToggleWidget::All)),
                     "ToggleTypeHintDisplay" => Ok(Action::Toggle(ToggleWidget::TypeHint)),
                     "ToggleCallStackDisplay" => Ok(Action::Toggle(ToggleWidget::CallStack)),
+                    "ToggleSpongeStateDisplay" => Ok(Action::Toggle(ToggleWidget::SpongeState)),
                     "ToggleInputDisplay" => Ok(Action::Toggle(ToggleWidget::Input)),
 
                     "HideHelpScreen" => Ok(Action::HideHelpScreen),
