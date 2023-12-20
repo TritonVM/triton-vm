@@ -45,7 +45,7 @@ assert2.workspace = true
 pretty_assertions.workspace = true
 proptest.workspace = true
 proptest-arbitrary-interop.workspace = true
-pty-process = "0.4"
+rexpect = "0.5"
 test-strategy.workspace = true
 
 [[bin]]
