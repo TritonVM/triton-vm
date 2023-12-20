@@ -22,7 +22,6 @@ pub(crate) struct Home {
     show_call_stack: bool,
     show_sponge_state: bool,
     show_inputs: bool,
-    show_welcome_message: bool,
 }
 
 impl Default for Home {
@@ -32,7 +31,6 @@ impl Default for Home {
             show_call_stack: true,
             show_sponge_state: false,
             show_inputs: true,
-            show_welcome_message: true,
         }
     }
 }
@@ -69,10 +67,6 @@ impl Home {
             self.show_sponge_state = true;
             self.show_inputs = true;
         }
-    }
-
-    fn stop_showing_welcome_message(&mut self) {
-        self.show_welcome_message = false;
     }
 
     fn distribute_area_for_widgets(&self, state: &TritonVMState, area: Rect) -> WidgetAreas {
@@ -415,7 +409,7 @@ impl Home {
     }
 
     fn render_message_widget(&self, frame: &mut Frame<'_>, render_info: RenderInfo) {
-        let message = self.message(render_info.state).unwrap_or_default();
+        let message = self.message(render_info.state);
         let status = match render_info.state.vm_state.halting {
             true => Title::from(" HALT ".bold().green()),
             false => Title::default(),
@@ -431,17 +425,17 @@ impl Home {
         frame.render_widget(paragraph, render_info.areas.message_box);
     }
 
-    fn message(&self, state: &TritonVMState) -> Option<Line> {
+    fn message(&self, state: &TritonVMState) -> Line {
         if let Some(error_message) = self.maybe_render_error_message(state) {
-            return Some(error_message);
+            return error_message;
         }
         if let Some(warning_message) = self.maybe_render_warning_message(state) {
-            return Some(warning_message);
+            return warning_message;
         }
         if let Some(public_output) = self.maybe_render_public_output(state) {
-            return Some(public_output);
+            return public_output;
         }
-        self.maybe_render_welcome_message()
+        self.render_welcome_message()
     }
 
     fn maybe_render_error_message(&self, state: &TritonVMState) -> Option<Line> {
@@ -473,24 +467,18 @@ impl Home {
         Some(Line::from(vec![header, colon, output, footer]))
     }
 
-    fn maybe_render_welcome_message(&self) -> Option<Line> {
-        if self.show_welcome_message {
-            let welcome = "Welcome to the Triton VM TUI! ".into();
-            let help_hint = "Press `h` for help.".dim();
-            Some(Line::from(vec![welcome, help_hint]))
-        } else {
-            None
-        }
+    fn render_welcome_message(&self) -> Line {
+        let welcome = "Welcome to the Triton VM TUI! ".into();
+        let help_hint = "Press `h` for help.".dim();
+        Line::from(vec![welcome, help_hint])
     }
 }
 
 impl Component for Home {
     fn update(&mut self, action: Action) -> Result<Option<Action>> {
-        match action {
-            Action::Toggle(toggle) => self.toggle_widget(toggle),
-            Action::Execute(_) | Action::Mode(_) => self.stop_showing_welcome_message(),
-            _ => (),
-        };
+        if let Action::Toggle(toggle) = action {
+            self.toggle_widget(toggle);
+        }
         Ok(None)
     }
 
