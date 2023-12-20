@@ -9,7 +9,7 @@ use strum::EnumCount;
 use triton_vm::instruction::*;
 use triton_vm::op_stack::OpStackElement;
 
-use crate::action::Action;
+use crate::action::*;
 use crate::element_type_hint::ElementTypeHint;
 use crate::triton_vm_state::TritonVMState;
 
@@ -39,6 +39,14 @@ impl Home {
     fn address_render_width(&self, state: &TritonVMState) -> usize {
         let max_address = state.program.len_bwords();
         max_address.to_string().len()
+    }
+
+    fn toggle_widget(&mut self, toggle: ToggleWidget) {
+        match toggle {
+            ToggleWidget::TypeHint => self.show_type_hints = !self.show_type_hints,
+            ToggleWidget::CallStack => self.show_call_stack = !self.show_call_stack,
+            ToggleWidget::Input => self.show_inputs = !self.show_inputs,
+        };
     }
 
     fn stop_showing_welcome_message(&mut self) {
@@ -455,11 +463,8 @@ impl Home {
 impl Component for Home {
     fn update(&mut self, action: Action) -> Result<Option<Action>> {
         match action {
-            Action::ToggleTypeHintDisplay => self.show_type_hints = !self.show_type_hints,
-            Action::ToggleCallStackDisplay => self.show_call_stack = !self.show_call_stack,
-            Action::ToggleInputDisplay => self.show_inputs = !self.show_inputs,
-            Action::Execute(_) => self.stop_showing_welcome_message(),
-            Action::Mode(_) => self.stop_showing_welcome_message(),
+            Action::Toggle(toggle) => self.toggle_widget(toggle),
+            Action::Execute(_) | Action::Mode(_) => self.stop_showing_welcome_message(),
             _ => (),
         };
         Ok(None)

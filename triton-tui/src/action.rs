@@ -32,9 +32,7 @@ pub(crate) enum Action {
     /// Reset the program state.
     Reset,
 
-    ToggleTypeHintDisplay,
-    ToggleCallStackDisplay,
-    ToggleInputDisplay,
+    Toggle(ToggleWidget),
 
     HideHelpScreen,
 
@@ -57,6 +55,13 @@ pub(crate) enum Execute {
 
     /// Execute instructions until the current `call` returns.
     Finish,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Arbitrary)]
+pub(crate) enum ToggleWidget {
+    TypeHint,
+    CallStack,
+    Input,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Arbitrary)]
@@ -100,9 +105,10 @@ impl<'de> Deserialize<'de> for Action {
                     "Undo" => Ok(Action::Undo),
                     "Reset" => Ok(Action::Reset),
 
-                    "ToggleTypeHintDisplay" => Ok(Action::ToggleTypeHintDisplay),
-                    "ToggleCallStackDisplay" => Ok(Action::ToggleCallStackDisplay),
-                    "ToggleInputDisplay" => Ok(Action::ToggleInputDisplay),
+                    "ToggleTypeHintDisplay" => Ok(Action::Toggle(ToggleWidget::TypeHint)),
+                    "ToggleCallStackDisplay" => Ok(Action::Toggle(ToggleWidget::CallStack)),
+                    "ToggleInputDisplay" => Ok(Action::Toggle(ToggleWidget::Input)),
+
                     "HideHelpScreen" => Ok(Action::HideHelpScreen),
 
                     mode if mode.starts_with("Mode::") => Self::parse_mode(mode),
