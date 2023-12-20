@@ -2,10 +2,12 @@ use std::ops::Deref;
 use std::ops::DerefMut;
 use std::time::Duration;
 
+use color_eyre::eyre::bail;
 use color_eyre::eyre::Result;
 use crossterm::event::Event as CrosstermEvent;
 use crossterm::event::*;
 use crossterm::terminal::*;
+use crossterm::tty::IsTty;
 use crossterm::*;
 use futures::*;
 use ratatui::backend::CrosstermBackend as Backend;
@@ -59,6 +61,11 @@ pub(crate) struct Tui {
 
 impl Tui {
     pub fn new() -> Result<Self> {
+        if !io().is_tty() {
+            error!("not a TTY");
+            bail!("not a TTY");
+        }
+
         let tick_rate = DEFAULT_TICK_RATE;
         let frame_rate = Args::default().frame_rate;
         let terminal = Terminal::new(Backend::new(io()))?;

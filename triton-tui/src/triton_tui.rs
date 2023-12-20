@@ -40,10 +40,10 @@ pub(crate) struct TritonTUI {
 
 impl TritonTUI {
     pub fn new(args: Args) -> Result<Self> {
-        let config = Config::new()?;
         let tui = Self::tui(&args)?;
-        let mode = Mode::default();
+        let config = Config::new()?;
 
+        let mode = Mode::default();
         let components: [Box<dyn Component>; Mode::COUNT] = [
             Box::<Home>::default(),
             Box::<Memory>::default(),
