@@ -6,6 +6,7 @@ use rexpect::session::PtySession;
 use rexpect::spawn;
 
 #[test]
+#[ignore = "breaks code-coverage tool `cargo-tarpaulin`"]
 fn setup_and_shutdown_triton_tui_with_trivial_program() {
     let timeout = Some(180_000);
     let mut child = setup_and_start_triton_tui_with_trivial_program(timeout);
@@ -14,6 +15,7 @@ fn setup_and_shutdown_triton_tui_with_trivial_program() {
 }
 
 #[test]
+#[ignore = "breaks code-coverage tool `cargo-tarpaulin`"]
 fn setup_without_shutdown_of_triton_tui_with_trivial_program_leaves_tui_open() {
     let timeout = Some(10_000);
     let mut child = setup_and_start_triton_tui_with_trivial_program(timeout);
