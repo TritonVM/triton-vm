@@ -1,0 +1,57 @@
+[package]
+name = "triton-tui"
+description = "A TUI that helps debugging programs written for Triton VM."
+
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+repository.workspace = true
+
+[dependencies]
+arbitrary.workspace = true
+better-panic = "0.3"
+clap = { version = "4", features = ["derive", "cargo", "wrap_help", "unicode", "string", "unstable-styles"] }
+color-eyre = "0.6"
+config = "0.13"
+crossterm = { version = "0.27", features = ["serde", "event-stream"] }
+derive_deref = "1"
+directories = "5"
+fs-err = "2.0"
+futures = "0.3"
+human-panic = "1"
+itertools.workspace = true
+lazy_static.workspace = true
+libc = "0.2"
+num-traits.workspace = true
+ratatui = { version = "0.25", features = ["serde", "macros"] }
+serde.workspace = true
+serde_json = "1.0"
+signal-hook = "0.3"
+strip-ansi-escapes = "0.2"
+strum.workspace = true
+tokio = { version = "1", features = ["full"] }
+tokio-util = "0.7"
+tracing = "0.1"
+tracing-error = "0.2"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "serde"] }
+triton-vm = { path = "../triton-vm" }
+tui-textarea = "0.4"
+
+[dev-dependencies]
+assert2.workspace = true
+pretty_assertions.workspace = true
+proptest.workspace = true
+proptest-arbitrary-interop.workspace = true
+rexpect = "0.5"
+test-strategy.workspace = true
+
+[[bin]]
+name = "triton-tui"
+path = "src/main.rs"
+
+[[test]]
+name = "integration"
+path = "tests/tests.rs"

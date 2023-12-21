@@ -21,10 +21,9 @@ use AnInstruction::*;
 
 use crate::error::InstructionError;
 use crate::instruction::InstructionBit::*;
-use crate::op_stack::NumberOfWords;
 use crate::op_stack::NumberOfWords::*;
-use crate::op_stack::OpStackElement;
 use crate::op_stack::OpStackElement::*;
+use crate::op_stack::*;
 
 type Result<T> = result::Result<T, InstructionError>;
 
@@ -56,6 +55,66 @@ pub enum LabelledInstruction {
     Label(String),
 
     Breakpoint,
+
+    TypeHint(TypeHint),
+}
+
+/// A hint about a range of stack elements. Helps debugging programs written for Triton VM.
+/// **Does not enforce types.**
+///
+/// Usually constructed by parsing special annotations in the assembly code, for example:
+/// ```tasm
+/// hint variable_name: the_type = stack[0]
+/// hint my_list = stack[1..4]
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq, Hash, GetSize, Serialize, Deserialize)]
+pub struct TypeHint {
+    pub starting_index: usize,
+    pub length: usize,
+
+    /// The name of the type, _e.g._, `u32`, `list`, `Digest`, et cetera.
+    pub type_name: Option<String>,
+
+    /// The name of the variable.
+    pub variable_name: String,
+}
+
+impl Display for TypeHint {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        let variable = &self.variable_name;
+        let type_name = match self.type_name {
+            Some(ref type_name) => format!(": {type_name}"),
+            None => "".to_string(),
+        };
+
+        let start = self.starting_index;
+        let range = match self.length {
+            1 => format!("{start}"),
+            _ => format!("{start}..{end}", end = start + self.length),
+        };
+
+        write!(f, "hint {variable}{type_name} = stack[{range}]")
+    }
+}
+
+impl<'a> Arbitrary<'a> for TypeHint {
+    fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
+        let starting_index = u.arbitrary()?;
+        let length = u.int_in_range(1..=500)?;
+        let type_name = match u.arbitrary()? {
+            true => Some(u.arbitrary::<TypeHintTypeName>()?.into()),
+            false => None,
+        };
+        let variable_name = u.arbitrary::<TypeHintVariableName>()?.into();
+
+        let type_hint = Self {
+            starting_index,
+            length,
+            type_name,
+            variable_name,
+        };
+        Ok(type_hint)
+    }
 }
 
 impl LabelledInstruction {
@@ -82,9 +141,10 @@ impl LabelledInstruction {
 impl Display for LabelledInstruction {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         match self {
-            LabelledInstruction::Instruction(instr) => write!(f, "{instr}"),
-            LabelledInstruction::Label(label_name) => write!(f, "{label_name}:"),
+            LabelledInstruction::Instruction(instruction) => write!(f, "{instruction}"),
+            LabelledInstruction::Label(label) => write!(f, "{label}:"),
             LabelledInstruction::Breakpoint => write!(f, "break"),
+            LabelledInstruction::TypeHint(type_hint) => write!(f, "{type_hint}"),
         }
     }
 }
@@ -607,6 +667,7 @@ impl<'a> Arbitrary<'a> for LabelledInstruction {
             0 => u.arbitrary::<AnInstruction<String>>()?,
             1 => return Ok(Self::Label(u.arbitrary::<InstructionLabel>()?.into())),
             2 => return Ok(Self::Breakpoint),
+            3 => return Ok(Self::TypeHint(u.arbitrary()?)),
             _ => unreachable!(),
         };
         let legal_label = String::from(u.arbitrary::<InstructionLabel>()?);
@@ -646,6 +707,57 @@ impl<'a> Arbitrary<'a> for InstructionLabel {
             label.push(*u.choose(&legal_characters)?);
         }
         Ok(Self(label))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct TypeHintVariableName(String);
+
+impl From<TypeHintVariableName> for String {
+    fn from(label: TypeHintVariableName) -> Self {
+        label.0
+    }
+}
+
+impl<'a> Arbitrary<'a> for TypeHintVariableName {
+    fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
+        let legal_start_characters = 'a'..='z';
+        let legal_characters = legal_start_characters
+            .clone()
+            .chain('0'..='9')
+            .chain('_'..='_')
+            .collect_vec();
+
+        let mut variable_name = u.choose(&legal_start_characters.collect_vec())?.to_string();
+        for _ in 0..u.arbitrary_len::<char>()? {
+            variable_name.push(*u.choose(&legal_characters)?);
+        }
+        Ok(Self(variable_name))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct TypeHintTypeName(String);
+
+impl From<TypeHintTypeName> for String {
+    fn from(label: TypeHintTypeName) -> Self {
+        label.0
+    }
+}
+
+impl<'a> Arbitrary<'a> for TypeHintTypeName {
+    fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
+        let legal_start_characters = ('a'..='z').chain('A'..='Z');
+        let legal_characters = legal_start_characters
+            .clone()
+            .chain('0'..='9')
+            .collect_vec();
+
+        let mut type_name = u.choose(&legal_start_characters.collect_vec())?.to_string();
+        for _ in 0..u.arbitrary_len::<char>()? {
+            type_name.push(*u.choose(&legal_characters)?);
+        }
+        Ok(Self(type_name))
     }
 }
 
