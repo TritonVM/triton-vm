@@ -10,12 +10,12 @@ use ratatui::prelude::*;
 pub(crate) struct ElementTypeHint {
     /// The name of the type. See [`TypeHint`][type_hint] for details.
     ///
-    /// [type_hint]: TypeHint
+    /// [type_hint]: triton_vm::instruction::TypeHint
     pub type_name: Option<String>,
 
     /// The name of the variable. See [`TypeHint`][type_hint] for details.
     ///
-    /// [type_hint]: TypeHint
+    /// [type_hint]: triton_vm::instruction::TypeHint
     pub variable_name: String,
 
     /// The index of the element within the type. For example, if the type is `Digest`, then this
