@@ -29,6 +29,7 @@ pub(crate) fn io() -> IO {
 }
 
 const DEFAULT_TICK_RATE: f64 = 1.0;
+const DEFAULT_FRAME_RATE: f64 = 32.0;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub(crate) enum Event {
@@ -67,7 +68,7 @@ impl Tui {
         }
 
         let tick_rate = DEFAULT_TICK_RATE;
-        let frame_rate = Args::default().frame_rate;
+        let frame_rate = DEFAULT_FRAME_RATE;
         let terminal = Terminal::new(Backend::new(io()))?;
         let (event_tx, event_rx) = unbounded_channel();
         let cancellation_token = CancellationToken::new();
@@ -85,8 +86,8 @@ impl Tui {
         })
     }
 
-    pub fn apply_args(&mut self, args: &Args) -> &mut Self {
-        self.frame_rate(args.frame_rate);
+    pub fn apply_args(&mut self, _: &Args) -> &mut Self {
+        self.frame_rate(DEFAULT_FRAME_RATE);
         self.mouse(true);
         self.paste(true);
         self

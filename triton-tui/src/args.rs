@@ -3,7 +3,6 @@ use clap::Parser;
 use crate::utils::version;
 
 const DEFAULT_PROGRAM_PATH: &str = "./program.tasm";
-const DEFAULT_FRAME_RATE: f64 = 32.0;
 
 #[derive(Debug, Clone, PartialEq, Parser)]
 #[command(author, version = version(), about)]
@@ -24,15 +23,6 @@ pub(crate) struct Args {
     #[arg(short, long, value_name = "PATH")]
     /// Path to JSON file containing all non-determinism
     pub non_determinism: Option<String>,
-
-    #[arg(
-        short,
-        long,
-        value_name = "FLOAT",
-        default_value_t = DEFAULT_FRAME_RATE
-    )]
-    /// Frame rate, i.e. number of frames per second
-    pub frame_rate: f64,
 }
 
 impl Default for Args {
@@ -41,7 +31,6 @@ impl Default for Args {
             program: DEFAULT_PROGRAM_PATH.into(),
             input: None,
             non_determinism: None,
-            frame_rate: DEFAULT_FRAME_RATE,
         }
     }
 }
