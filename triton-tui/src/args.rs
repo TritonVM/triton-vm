@@ -2,17 +2,13 @@ use clap::Parser;
 
 use crate::utils::version;
 
-const DEFAULT_PROGRAM_PATH: &str = "./program.tasm";
+const MANIFEST_DIR: &str = env!("CARGO_MANIFEST_DIR");
+const DEFAULT_PROGRAM_PATH: &str = "examples/program.tasm";
 
 #[derive(Debug, Clone, PartialEq, Parser)]
 #[command(author, version = version(), about)]
 pub(crate) struct Args {
-    #[arg(
-        short,
-        long,
-        value_name = "PATH",
-        default_value_t = String::from(DEFAULT_PROGRAM_PATH),
-    )]
+    #[arg(short, long, value_name = "PATH")]
     /// Path to program to run
     pub program: String,
 
@@ -27,8 +23,9 @@ pub(crate) struct Args {
 
 impl Default for Args {
     fn default() -> Self {
+        let program = format!("{MANIFEST_DIR}/{DEFAULT_PROGRAM_PATH}");
         Self {
-            program: DEFAULT_PROGRAM_PATH.into(),
+            program,
             input: None,
             non_determinism: None,
         }
@@ -37,14 +34,13 @@ impl Default for Args {
 
 #[cfg(test)]
 mod tests {
-    use assert2::assert;
+    use assert2::let_assert;
 
     use super::*;
 
     #[test]
-    fn default_cli_args_and_clap_parsing_with_no_args_are_identical() {
+    fn tui_requires_some_arguments() {
         let cli_args: Vec<String> = vec![];
-        let args = Args::parse_from(cli_args);
-        assert!(Args::default() == args);
+        let_assert!(Err(_) = Args::try_parse_from(cli_args));
     }
 }
