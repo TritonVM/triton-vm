@@ -1,4 +1,5 @@
 use color_eyre::eyre::anyhow;
+use color_eyre::eyre::bail;
 use color_eyre::eyre::Result;
 use color_eyre::Report;
 use fs_err as fs;
@@ -42,10 +43,10 @@ pub(crate) struct UndoInformation {
 impl TritonVMState {
     pub fn new(args: &TuiArgs) -> Result<Self> {
         let program = Self::program_from_args(args)?;
-        let public_input = Self::public_input_from_args(args)?;
-        let non_determinism = Self::non_determinism_from_args(args)?;
-
-        let vm_state = VMState::new(&program, public_input.clone(), non_determinism);
+        let vm_state = match args.initial_state.is_some() {
+            true => Self::vm_state_from_initial_state(args, &program)?,
+            false => Self::vm_state_with_specified_input(args, &program)?,
+        };
 
         let mut state = Self {
             action_tx: None,
@@ -65,6 +66,27 @@ impl TritonVMState {
         let program = Program::from_code(&source_code)
             .map_err(|err| anyhow!("program parsing error: {err}"))?;
         Ok(program)
+    }
+
+    fn vm_state_from_initial_state(args: &TuiArgs, program: &Program) -> Result<VMState> {
+        let Some(ref initial_state_path) = args.initial_state else {
+            error!("path to initial state must exist");
+            bail!("path to initial state must exist");
+        };
+        let file = fs::File::open(initial_state_path)?;
+        let initial_state: VMState = serde_json::from_reader(file)?;
+        if program.instructions != initial_state.program {
+            error!("given program must match program of given initial state");
+            bail!("given program must match program of given initial state");
+        }
+        Ok(initial_state)
+    }
+
+    fn vm_state_with_specified_input(args: &TuiArgs, program: &Program) -> Result<VMState> {
+        let public_input = Self::public_input_from_args(args)?;
+        let non_determinism = Self::non_determinism_from_args(args)?;
+        let vm_state = VMState::new(program, public_input, non_determinism);
+        Ok(vm_state)
     }
 
     fn public_input_from_args(args: &TuiArgs) -> Result<PublicInput> {
@@ -91,8 +113,8 @@ impl TritonVMState {
         let Some(ref non_determinism_path) = input_args.non_determinism else {
             return Ok(NonDeterminism::default());
         };
-        let file_content = fs::read_to_string(non_determinism_path)?;
-        let non_determinism: NonDeterminism<u64> = serde_json::from_str(&file_content)?;
+        let file = fs::File::open(non_determinism_path)?;
+        let non_determinism: NonDeterminism<u64> = serde_json::from_reader(file)?;
         Ok(NonDeterminism::from(&non_determinism))
     }
 
