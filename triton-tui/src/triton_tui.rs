@@ -77,7 +77,6 @@ impl TritonTUI {
 
         // in case of infinite loop (or similar) before first breakpoint, provide visual feedback
         self.render()?;
-        action_tx.send(Action::Execute(Execute::Continue))?;
 
         while !self.should_quit {
             if let Some(e) = self.tui.next().await {
@@ -151,7 +150,6 @@ impl TritonTUI {
         self.vm_state = vm_state;
         self.vm_state.register_action_handler(action_tx.clone())?;
         self.render()?;
-        action_tx.send(Action::Execute(Execute::Continue))?;
         Ok(())
     }
 
