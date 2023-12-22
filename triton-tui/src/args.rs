@@ -63,6 +63,7 @@ pub(crate) mod tests {
 
     pub(crate) const EXAMPLE_INPUT_PATH: &str = "examples/public_input.txt";
     pub(crate) const EXAMPLE_NON_DETERMINISM_PATH: &str = "examples/non_determinism.json";
+    pub(crate) const EXAMPLE_INITIAL_STATE_PATH: &str = "examples/initial_state.json";
 
     fn binary_name() -> Vec<String> {
         vec!["triton-tui".into()]
@@ -98,6 +99,19 @@ pub(crate) mod tests {
             vec![program_path],
             vec!["-i".into(), input_path],
             vec!["-n".into(), non_determinism_path],
+        ]
+        .concat();
+        TuiArgs::parse_from(args)
+    }
+
+    pub(crate) fn args_for_test_program_with_initial_state() -> TuiArgs {
+        let program_path = format!("{MANIFEST_DIR}/{EXAMPLE_PROGRAM_PATH}");
+        let initial_state_path = format!("{MANIFEST_DIR}/{EXAMPLE_INITIAL_STATE_PATH}");
+
+        let args = [
+            binary_name(),
+            vec![program_path],
+            vec!["--initial-state".into(), initial_state_path],
         ]
         .concat();
         TuiArgs::parse_from(args)

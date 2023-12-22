@@ -50,12 +50,16 @@ impl TritonVMState {
             true => Self::vm_state_from_initial_state(args, &program)?,
             false => Self::vm_state_with_specified_input(args, &program)?,
         };
+        let type_hints = match args.initial_state.is_some() {
+            true => ShadowMemory::new_for_initial_state(&vm_state),
+            false => ShadowMemory::new_for_default_initial_state(),
+        };
 
         let mut state = Self {
             action_tx: None,
             program,
             vm_state,
-            type_hints: ShadowMemory::default(),
+            type_hints,
             undo_stack: vec![],
             warning: None,
             error: None,
@@ -287,11 +291,13 @@ impl Component for TritonVMState {
 
 #[cfg(test)]
 mod tests {
+    use assert2::assert;
     use proptest::collection::vec;
     use proptest::prelude::*;
     use proptest_arbitrary_interop::arb;
     use test_strategy::proptest;
 
+    use crate::args::tests::args_for_test_program_with_initial_state;
     use crate::args::tests::args_for_test_program_with_test_input;
 
     use super::*;
@@ -321,8 +327,18 @@ mod tests {
     fn serialize_example_program_and_input_to_json() {
         let args = args_for_test_program_with_test_input();
         let program = TritonVMState::program_from_args(&args).unwrap();
-        let initial_state = TritonVMState::vm_state_with_specified_input(&args, &program).unwrap();
-        let serialized = serde_json::to_string(&initial_state).unwrap();
+        let mut state = TritonVMState::vm_state_with_specified_input(&args, &program).unwrap();
+        while state.op_stack.len() <= NUM_OP_STACK_REGISTERS + 4 {
+            state.step().unwrap();
+        }
+        let serialized = serde_json::to_string(&state).unwrap();
         println!("{serialized}");
+    }
+
+    #[test]
+    fn starting_tui_with_initial_state_makes_type_hint_stack_have_correct_length() {
+        let args = args_for_test_program_with_initial_state();
+        let state = TritonVMState::new(&args).unwrap();
+        assert!(state.vm_state.op_stack.len() == state.type_hints.stack.len());
     }
 }

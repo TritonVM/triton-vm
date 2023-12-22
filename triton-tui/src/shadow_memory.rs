@@ -8,6 +8,7 @@ use itertools::Itertools;
 use triton_vm::instruction::*;
 use triton_vm::op_stack::NumberOfWords::*;
 use triton_vm::op_stack::*;
+use triton_vm::vm::VMState;
 use triton_vm::BFieldElement;
 
 use crate::action::ExecutedInstruction;
@@ -25,7 +26,7 @@ pub(crate) struct ShadowMemory {
 }
 
 impl ShadowMemory {
-    pub fn new() -> Self {
+    pub fn new_for_default_initial_state() -> Self {
         let stack = vec![None; NUM_OP_STACK_REGISTERS];
         let ram = HashMap::new();
         let initial_hint = Self::initial_program_digest_type_hint();
@@ -33,6 +34,12 @@ impl ShadowMemory {
         let mut hints = Self { stack, ram };
         hints.apply_type_hint(initial_hint).unwrap();
         hints
+    }
+
+    pub fn new_for_initial_state(initial_state: &VMState) -> Self {
+        let stack = vec![None; initial_state.op_stack.len()];
+        let ram = HashMap::new();
+        Self { stack, ram }
     }
 
     fn initial_program_digest_type_hint() -> TypeHint {
@@ -309,7 +316,7 @@ impl ShadowMemory {
 
 impl Default for ShadowMemory {
     fn default() -> Self {
-        Self::new()
+        Self::new_for_default_initial_state()
     }
 }
 
@@ -402,7 +409,7 @@ mod tests {
             index: None,
         };
 
-        let mut type_hints = ShadowMemory::new();
+        let mut type_hints = ShadowMemory::default();
         let_assert!(Ok(()) = type_hints.apply_type_hint(type_hint_to_apply));
         let_assert!(Some(maybe_hint) = type_hints.stack.last());
         let_assert!(Some(hint) = maybe_hint.clone());
@@ -418,7 +425,7 @@ mod tests {
             length: 1,
         };
 
-        let mut type_hints = ShadowMemory::new();
+        let mut type_hints = ShadowMemory::default();
         let_assert!(Err(_) = type_hints.apply_type_hint(type_hint_to_apply));
     }
 
@@ -436,7 +443,7 @@ mod tests {
             Default::default(),
         );
 
-        let mut type_hints = ShadowMemory::new();
+        let mut type_hints = ShadowMemory::default();
         let_assert!(Ok(()) = type_hints.apply_type_hint(type_hint_to_apply));
         type_hints.mimic_instruction(executed_instruction);
 
