@@ -7,6 +7,19 @@ Lines marked “(!)” indicate a breaking change.
 
 ### ✨ Features
 
+- Add benchmark for execution tracing ([11b360d6](https://github.com/TritonVM/triton-vm/commit/11b360d6))
+- Record opstack underflow read/write in AET ([a57ef7c3](https://github.com/TritonVM/triton-vm/commit/a57ef7c3))
+- Make Op Stack Table variable length ([b606dc60](https://github.com/TritonVM/triton-vm/commit/b606dc60))
+- (!) Instruction `hash` only puts digest on stack ([2e37fb2f](https://github.com/TritonVM/triton-vm/commit/2e37fb2f))
+- (!) Make instruction `pop` take an argument in range 1..=5 ([81248b90](https://github.com/TritonVM/triton-vm/commit/81248b90))
+- (!) Make instruction `divine` take an argument in range 1..=5 ([5bf3541a](https://github.com/TritonVM/triton-vm/commit/5bf3541a))
+- (!) Instruction `divine_sibling` pushes divined digest onto stack ([4602fad8](https://github.com/TritonVM/triton-vm/commit/4602fad8))
+- Sponge instructions change stack size ([0fac3fc8](https://github.com/TritonVM/triton-vm/commit/0fac3fc8))
+- Extension field instructions change stack size ([f0b3ab8f](https://github.com/TritonVM/triton-vm/commit/f0b3ab8f))
+- (!) Make instruction `read_io` take an argument in range 1..=5 ([e138f0a0](https://github.com/TritonVM/triton-vm/commit/e138f0a0))
+- (!) Make instruction `write_io` take an argument in range 1..=5 ([b8e5f978](https://github.com/TritonVM/triton-vm/commit/b8e5f978))
+- Instruction `assert_vector` shrinks stack by 5 elements ([6a0e19cc](https://github.com/TritonVM/triton-vm/commit/6a0e19cc))
+- (!) Make memory instructions take an argument in range 1..=5 ([8ef132af](https://github.com/TritonVM/triton-vm/commit/8ef132af))
 - Add benchmark just executing a Triton VM program ([8301d5db](https://github.com/TritonVM/triton-vm/commit/8301d5db))
 - (!) Improve error reporting ([48ee1099](https://github.com/TritonVM/triton-vm/commit/48ee1099))
 - Only change VM state if instruction execution will work ([d7fbb3fd](https://github.com/TritonVM/triton-vm/commit/d7fbb3fd))
@@ -16,21 +29,37 @@ Lines marked “(!)” indicate a breaking change.
 
 ### 🐛 Bug Fixes
 
+- Crash VM when executing `swap 0` ([215f2ede](https://github.com/TritonVM/triton-vm/commit/215f2ede))
+- Overflowing subtractions when accessing op stack underflow ([2aa72e77](https://github.com/TritonVM/triton-vm/commit/2aa72e77))
+- *(doc)* Correct explanations for previous designs ([4bbc2d2a](https://github.com/TritonVM/triton-vm/commit/4bbc2d2a))
+- Account for op stack table length dominating the AET ([f465f756](https://github.com/TritonVM/triton-vm/commit/f465f756))
 - Correct calculation of total available memory in Triton VM ([18af2b40](https://github.com/TritonVM/triton-vm/commit/18af2b40))
 - Fail Sponge instructions if Sponge state is uninitialized ([881b6c0d](https://github.com/TritonVM/triton-vm/commit/881b6c0d))
 
 ### ⚡️ Performance
 
+- Remove redundant constraint preventing op stack underflow ([6215c108](https://github.com/TritonVM/triton-vm/commit/6215c108))
 - Use instruction's fast-fail for error reporting, not cloning ([08bbc41f](https://github.com/TritonVM/triton-vm/commit/08bbc41f))
 
 ### 📚 Documentation
 
+- Add TIP-0008 “Continuations” ([4b38d01b](https://github.com/TritonVM/triton-vm/commit/4b38d01b))
+- Consistently use a space in “op stack” and “jump stack” ([eb8dc840](https://github.com/TritonVM/triton-vm/commit/eb8dc840))
+- Delete out-of-date cheat sheet ([69aac2dc](https://github.com/TritonVM/triton-vm/commit/69aac2dc))
+- Prose and example for Op Stack Table behavior ([db01232f](https://github.com/TritonVM/triton-vm/commit/db01232f))
+- Update AET relations diagram ([f177d658](https://github.com/TritonVM/triton-vm/commit/f177d658))
+- Op Stack Table padding ([ad09b8d2](https://github.com/TritonVM/triton-vm/commit/ad09b8d2))
+- Update Op Stack Table's AIR ([3fb003b6](https://github.com/TritonVM/triton-vm/commit/3fb003b6))
+- Update Processor Table's AET and AIR ([e59eedeb](https://github.com/TritonVM/triton-vm/commit/e59eedeb))
 - Reflect changes to instructions, constraints, and mechanics ([ccf123b8](https://github.com/TritonVM/triton-vm/commit/ccf123b8))
 - Exemplify error handling ([90151d6c](https://github.com/TritonVM/triton-vm/commit/90151d6c))
 - Add changelog ([4d1fc2c0](https://github.com/TritonVM/triton-vm/commit/4d1fc2c0))
 
 ### ⚙️ Miscellaneous
 
+- Simplify `use`s ([51878fae](https://github.com/TritonVM/triton-vm/commit/51878fae))
+- *(test)* Remove unnecessary paths ([4323b202](https://github.com/TritonVM/triton-vm/commit/4323b202))
+- `read_mem` starts reading at current address ([7faad183](https://github.com/TritonVM/triton-vm/commit/7faad183))
 - (!) Rename & change debugging methods of `Program` ([abd17904](https://github.com/TritonVM/triton-vm/commit/abd17904))
 - Fix spelling of `collinear` (not `colinear`) ([2e9ebd7c](https://github.com/TritonVM/triton-vm/commit/2e9ebd7c))
 - Improve changelog generation configuration ([9e3432f3](https://github.com/TritonVM/triton-vm/commit/9e3432f3))
@@ -40,12 +69,28 @@ Lines marked “(!)” indicate a breaking change.
 
 ### ♻️ Refactor
 
+- *(examples)* Return program, not instructions ([55c731ed](https://github.com/TritonVM/triton-vm/commit/55c731ed))
+- Improve API of `VMProfiler` ([202cb74b](https://github.com/TritonVM/triton-vm/commit/202cb74b))
+- *(vm)* Rename `ramp` to `ram_pointer` ([612714d0](https://github.com/TritonVM/triton-vm/commit/612714d0))
+- *(processor_table)* Remove never-triggered panics ([6ced006a](https://github.com/TritonVM/triton-vm/commit/6ced006a))
+- *(processor_table)* Remove unused struct `ExtProcessorTraceRow` ([d39230f2](https://github.com/TritonVM/triton-vm/commit/d39230f2))
+- *(test)* Use crate `test-strategy` ([01e5e229](https://github.com/TritonVM/triton-vm/commit/01e5e229))
+- *(test)* Improve testing instruction's transition constraints ([77948e1a](https://github.com/TritonVM/triton-vm/commit/77948e1a))
+- *(op_stack)* Simplify recording of op stack underflow I/O calls ([f3803676](https://github.com/TritonVM/triton-vm/commit/f3803676))
+- Turn python script for computing opcodes into a rust test ([ddb220f2](https://github.com/TritonVM/triton-vm/commit/ddb220f2))
+- *(test)* Also test transition constraints on extension table ([4bd9cf16](https://github.com/TritonVM/triton-vm/commit/4bd9cf16))
+- *(test)* Split test program enumeration into individual tests ([cc79cfad](https://github.com/TritonVM/triton-vm/commit/cc79cfad))
+- Abstract over legal argument range for various instructions ([a76097e9](https://github.com/TritonVM/triton-vm/commit/a76097e9))
 - (!) On success, `Stark::verify` returns `Ok(())`, not `Ok(true)` ([9d3a7065](https://github.com/TritonVM/triton-vm/commit/9d3a7065))
 - (!) Remove `terminal_state`, allow running a VM state instead ([fbd58f1c](https://github.com/TritonVM/triton-vm/commit/fbd58f1c))
 - Simplify indexing into `OpStack` ([4b31b2fe](https://github.com/TritonVM/triton-vm/commit/4b31b2fe))
 
 ### ✅ Testing
 
+- Op stack table row sorting ([7418502b](https://github.com/TritonVM/triton-vm/commit/7418502b))
+- Factor for running product with Op Stack Table never panics ([224e7923](https://github.com/TritonVM/triton-vm/commit/224e7923))
+- Turn extension field instruction tests into property tests ([067d0053](https://github.com/TritonVM/triton-vm/commit/067d0053))
+- Turn `get_colinear_y` into a property test ([39bd4668](https://github.com/TritonVM/triton-vm/commit/39bd4668))
 - Use `proptest`, not ad-hoc prop tests, for program parsing tests ([d2acbbf8](https://github.com/TritonVM/triton-vm/commit/d2acbbf8))
 - Delete some ignored, obsolete tests ([8deb268a](https://github.com/TritonVM/triton-vm/commit/8deb268a))
 - Instructions fail before they modify the state ([c680fab2](https://github.com/TritonVM/triton-vm/commit/c680fab2))
