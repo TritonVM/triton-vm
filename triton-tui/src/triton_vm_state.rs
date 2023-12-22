@@ -1,4 +1,5 @@
 use color_eyre::eyre::anyhow;
+use color_eyre::eyre::bail;
 use color_eyre::eyre::Result;
 use color_eyre::Report;
 use fs_err as fs;
@@ -15,7 +16,7 @@ use triton_vm::vm::VMState;
 use triton_vm::*;
 
 use crate::action::*;
-use crate::args::Args;
+use crate::args::TuiArgs;
 use crate::components::Component;
 use crate::shadow_memory::ShadowMemory;
 
@@ -31,6 +32,9 @@ pub(crate) struct TritonVMState {
 
     pub warning: Option<Report>,
     pub error: Option<InstructionError>,
+
+    pub num_cycles_since_user_action: u32,
+    pub interrupt_cycle: u32,
 }
 
 #[derive(Debug, Clone)]
@@ -40,35 +44,65 @@ pub(crate) struct UndoInformation {
 }
 
 impl TritonVMState {
-    pub fn new(args: &Args) -> Result<Self> {
+    pub fn new(args: &TuiArgs) -> Result<Self> {
         let program = Self::program_from_args(args)?;
-        let public_input = Self::public_input_from_args(args)?;
-        let non_determinism = Self::non_determinism_from_args(args)?;
-
-        let vm_state = VMState::new(&program, public_input.clone(), non_determinism);
+        let vm_state = match args.initial_state.is_some() {
+            true => Self::vm_state_from_initial_state(args, &program)?,
+            false => Self::vm_state_with_specified_input(args, &program)?,
+        };
+        let type_hints = match args.initial_state.is_some() {
+            true => ShadowMemory::new_for_initial_state(&vm_state),
+            false => ShadowMemory::new_for_default_initial_state(),
+        };
 
         let mut state = Self {
             action_tx: None,
             program,
             vm_state,
-            type_hints: ShadowMemory::default(),
+            type_hints,
             undo_stack: vec![],
             warning: None,
             error: None,
+            num_cycles_since_user_action: 0,
+            interrupt_cycle: args.interrupt_cycle,
         };
         state.apply_type_hints();
         Ok(state)
     }
 
-    fn program_from_args(args: &Args) -> Result<Program> {
+    fn program_from_args(args: &TuiArgs) -> Result<Program> {
         let source_code = fs::read_to_string(&args.program)?;
         let program = Program::from_code(&source_code)
             .map_err(|err| anyhow!("program parsing error: {err}"))?;
         Ok(program)
     }
 
-    fn public_input_from_args(args: &Args) -> Result<PublicInput> {
-        let Some(ref input_path) = args.input else {
+    fn vm_state_from_initial_state(args: &TuiArgs, program: &Program) -> Result<VMState> {
+        let Some(ref initial_state_path) = args.initial_state else {
+            error!("path to initial state must exist");
+            bail!("path to initial state must exist");
+        };
+        let file = fs::File::open(initial_state_path)?;
+        let initial_state: VMState = serde_json::from_reader(file)?;
+        if program.instructions != initial_state.program {
+            error!("given program must match program of given initial state");
+            bail!("given program must match program of given initial state");
+        }
+        Ok(initial_state)
+    }
+
+    fn vm_state_with_specified_input(args: &TuiArgs, program: &Program) -> Result<VMState> {
+        let public_input = Self::public_input_from_args(args)?;
+        let non_determinism = Self::non_determinism_from_args(args)?;
+        let vm_state = VMState::new(program, public_input, non_determinism);
+        Ok(vm_state)
+    }
+
+    fn public_input_from_args(args: &TuiArgs) -> Result<PublicInput> {
+        let Some(ref input_args) = args.input_args else {
+            return Ok(PublicInput::default());
+        };
+        let Some(ref input_path) = input_args.input else {
             return Ok(PublicInput::default());
         };
         let file_content = fs::read_to_string(input_path)?;
@@ -81,12 +115,15 @@ impl TritonVMState {
         Ok(PublicInput::new(elements))
     }
 
-    fn non_determinism_from_args(args: &Args) -> Result<NonDeterminism<BFieldElement>> {
-        let Some(ref non_determinism_path) = args.non_determinism else {
+    fn non_determinism_from_args(args: &TuiArgs) -> Result<NonDeterminism<BFieldElement>> {
+        let Some(ref input_args) = args.input_args else {
             return Ok(NonDeterminism::default());
         };
-        let file_content = fs::read_to_string(non_determinism_path)?;
-        let non_determinism: NonDeterminism<u64> = serde_json::from_str(&file_content)?;
+        let Some(ref non_determinism_path) = input_args.non_determinism else {
+            return Ok(NonDeterminism::default());
+        };
+        let file = fs::File::open(non_determinism_path)?;
+        let non_determinism: NonDeterminism<u64> = serde_json::from_reader(file)?;
         Ok(NonDeterminism::from(&non_determinism))
     }
 
@@ -98,12 +135,12 @@ impl TritonVMState {
         top_of_stack.rev().collect_vec().try_into().unwrap()
     }
 
-    fn vm_has_stopped(&self) -> bool {
-        self.vm_state.halting || self.error.is_some()
+    fn vm_is_stopped(&self) -> bool {
+        self.vm_state.halting || self.error.is_some() || self.interrupted()
     }
 
     fn vm_is_running(&self) -> bool {
-        !self.vm_has_stopped()
+        !self.vm_is_stopped()
     }
 
     fn at_breakpoint(&self) -> bool {
@@ -123,6 +160,7 @@ impl TritonVMState {
     }
 
     fn execute(&mut self, execute: Execute) {
+        self.num_cycles_since_user_action = 0;
         self.record_undo_information();
         match execute {
             Execute::Continue => self.continue_execution(),
@@ -142,7 +180,7 @@ impl TritonVMState {
 
     /// Handle [`Execute::Step`].
     fn step(&mut self) {
-        if self.vm_has_stopped() {
+        if self.vm_is_stopped() {
             return;
         }
 
@@ -154,6 +192,8 @@ impl TritonVMState {
             return;
         }
         self.warning = None;
+        self.num_cycles_since_user_action += 1;
+        self.maybe_inform_about_interrupt();
 
         let instruction = instruction.expect("instruction should exist after successful `step`");
         let new_top_of_stack = self.top_of_stack();
@@ -163,6 +203,19 @@ impl TritonVMState {
         self.send_executed_transaction(executed_instruction);
         self.type_hints.mimic_instruction(executed_instruction);
         self.apply_type_hints();
+    }
+
+    fn maybe_inform_about_interrupt(&mut self) {
+        if self.interrupted() {
+            let num_cycles = self.num_cycles_since_user_action;
+            self.warning = Some(anyhow!(
+                "Infinite loop? VM interrupted after {num_cycles} cycles since last interaction…"
+            ));
+        }
+    }
+
+    fn interrupted(&self) -> bool {
+        self.num_cycles_since_user_action >= self.interrupt_cycle
     }
 
     fn send_executed_transaction(&mut self, executed_instruction: ExecutedInstruction) {
@@ -192,7 +245,7 @@ impl TritonVMState {
     }
 
     fn record_undo_information(&mut self) {
-        if self.vm_has_stopped() {
+        if self.vm_is_stopped() {
             return;
         }
         let undo_information = UndoInformation {
@@ -238,10 +291,14 @@ impl Component for TritonVMState {
 
 #[cfg(test)]
 mod tests {
+    use assert2::assert;
     use proptest::collection::vec;
     use proptest::prelude::*;
     use proptest_arbitrary_interop::arb;
     use test_strategy::proptest;
+
+    use crate::args_tests::args_for_test_program_with_initial_state;
+    use crate::args_tests::args_for_test_program_with_test_input;
 
     use super::*;
 
@@ -264,5 +321,24 @@ mod tests {
         let serialized = serde_json::to_string(&non_determinism).unwrap();
         let deserialized: NonDeterminism<u64> = serde_json::from_str(&serialized).unwrap();
         prop_assert_eq!(non_determinism, deserialized);
+    }
+
+    #[test]
+    fn serialize_example_program_and_input_to_json() {
+        let args = args_for_test_program_with_test_input();
+        let program = TritonVMState::program_from_args(&args).unwrap();
+        let mut state = TritonVMState::vm_state_with_specified_input(&args, &program).unwrap();
+        while state.op_stack.len() <= NUM_OP_STACK_REGISTERS + 4 {
+            state.step().unwrap();
+        }
+        let serialized = serde_json::to_string(&state).unwrap();
+        println!("{serialized}");
+    }
+
+    #[test]
+    fn starting_tui_with_initial_state_makes_type_hint_stack_have_correct_length() {
+        let args = args_for_test_program_with_initial_state();
+        let state = TritonVMState::new(&args).unwrap();
+        assert!(state.vm_state.op_stack.len() == state.type_hints.stack.len());
     }
 }

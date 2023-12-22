@@ -1,8 +1,10 @@
 [package]
 name = "triton-tui"
-description = "A TUI that helps debugging programs written for Triton VM."
 
-version.workspace = true
+version = "0.1.0"
+description = "Terminal User Interface to help debugging programs written for Triton VM."
+readme = "README.md"
+
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
@@ -13,12 +15,12 @@ repository.workspace = true
 [dependencies]
 arbitrary.workspace = true
 better-panic = "0.3"
-clap = { version = "4", features = ["derive", "cargo", "wrap_help", "unicode", "string", "unstable-styles"] }
+clap.workspace = true
 color-eyre = "0.6"
 config = "0.13"
 crossterm = { version = "0.27", features = ["serde", "event-stream"] }
 derive_deref = "1"
-directories = "5"
+directories.workspace = true
 fs-err = "2.0"
 futures = "0.3"
 human-panic = "1"
@@ -47,6 +49,12 @@ proptest.workspace = true
 proptest-arbitrary-interop.workspace = true
 rexpect = "0.5"
 test-strategy.workspace = true
+
+[build-dependencies]
+clap.workspace = true
+clap_complete = "4.4"
+directories.workspace = true
+lazy_static.workspace = true
 
 [[bin]]
 name = "triton-tui"
