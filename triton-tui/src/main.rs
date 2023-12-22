@@ -2,7 +2,7 @@ use clap::Parser;
 use color_eyre::eyre::Result;
 use tracing::error;
 
-use args::Args;
+use args::TuiArgs;
 
 use crate::triton_tui::TritonTUI;
 use crate::utils::initialize_logging;
@@ -25,7 +25,7 @@ async fn main() -> Result<()> {
     initialize_logging()?;
     initialize_panic_handler()?;
 
-    let args = Args::parse();
+    let args = TuiArgs::parse();
     let mut triton_tui = TritonTUI::new(args)?;
     let execution_result = triton_tui.run().await;
     if let Err(ref err) = execution_result {

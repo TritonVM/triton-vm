@@ -15,7 +15,7 @@ use triton_vm::vm::VMState;
 use triton_vm::*;
 
 use crate::action::*;
-use crate::args::Args;
+use crate::args::TuiArgs;
 use crate::components::Component;
 use crate::shadow_memory::ShadowMemory;
 
@@ -40,7 +40,7 @@ pub(crate) struct UndoInformation {
 }
 
 impl TritonVMState {
-    pub fn new(args: &Args) -> Result<Self> {
+    pub fn new(args: &TuiArgs) -> Result<Self> {
         let program = Self::program_from_args(args)?;
         let public_input = Self::public_input_from_args(args)?;
         let non_determinism = Self::non_determinism_from_args(args)?;
@@ -60,15 +60,18 @@ impl TritonVMState {
         Ok(state)
     }
 
-    fn program_from_args(args: &Args) -> Result<Program> {
+    fn program_from_args(args: &TuiArgs) -> Result<Program> {
         let source_code = fs::read_to_string(&args.program)?;
         let program = Program::from_code(&source_code)
             .map_err(|err| anyhow!("program parsing error: {err}"))?;
         Ok(program)
     }
 
-    fn public_input_from_args(args: &Args) -> Result<PublicInput> {
-        let Some(ref input_path) = args.input else {
+    fn public_input_from_args(args: &TuiArgs) -> Result<PublicInput> {
+        let Some(ref input_args) = args.input_args else {
+            return Ok(PublicInput::default());
+        };
+        let Some(ref input_path) = input_args.input else {
             return Ok(PublicInput::default());
         };
         let file_content = fs::read_to_string(input_path)?;
@@ -81,8 +84,11 @@ impl TritonVMState {
         Ok(PublicInput::new(elements))
     }
 
-    fn non_determinism_from_args(args: &Args) -> Result<NonDeterminism<BFieldElement>> {
-        let Some(ref non_determinism_path) = args.non_determinism else {
+    fn non_determinism_from_args(args: &TuiArgs) -> Result<NonDeterminism<BFieldElement>> {
+        let Some(ref input_args) = args.input_args else {
+            return Ok(NonDeterminism::default());
+        };
+        let Some(ref non_determinism_path) = input_args.non_determinism else {
             return Ok(NonDeterminism::default());
         };
         let file_content = fs::read_to_string(non_determinism_path)?;

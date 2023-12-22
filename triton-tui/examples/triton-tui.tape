@@ -6,7 +6,7 @@ Set Height 1000
 
 Sleep 1s
 Hide
-Type "triton-tui -p ./program.tasm -i public_input.txt -n non_determinism.json"
+Type "triton-tui ./program.tasm -i public_input.txt -n non_determinism.json"
 Show
 Sleep 1s
 Enter

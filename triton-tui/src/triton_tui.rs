@@ -8,7 +8,7 @@ use tokio::sync::mpsc;
 use tokio::sync::mpsc::UnboundedSender;
 
 use crate::action::*;
-use crate::args::Args;
+use crate::args::TuiArgs;
 use crate::components::help::Help;
 use crate::components::home::Home;
 use crate::components::memory::Memory;
@@ -22,7 +22,7 @@ use crate::tui::*;
 const RECENT_KEY_EVENTS_RESET_DELAY: u32 = 1;
 
 pub(crate) struct TritonTUI {
-    pub args: Args,
+    pub args: TuiArgs,
     pub config: Config,
 
     pub tui: Tui,
@@ -39,7 +39,7 @@ pub(crate) struct TritonTUI {
 }
 
 impl TritonTUI {
-    pub fn new(args: Args) -> Result<Self> {
+    pub fn new(args: TuiArgs) -> Result<Self> {
         let tui = Self::tui(&args)?;
         let config = Config::new()?;
 
@@ -155,7 +155,7 @@ impl TritonTUI {
         Ok(())
     }
 
-    fn tui(args: &Args) -> Result<Tui> {
+    fn tui(args: &TuiArgs) -> Result<Tui> {
         let mut tui = Tui::new()?;
         tui.apply_args(args);
         Ok(tui)

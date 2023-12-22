@@ -20,7 +20,7 @@ use tokio::time::interval;
 use tokio_util::sync::CancellationToken;
 use tracing::error;
 
-use crate::args::Args;
+use crate::args::TuiArgs;
 
 pub(crate) type IO = std::io::Stdout;
 
@@ -86,7 +86,7 @@ impl Tui {
         })
     }
 
-    pub fn apply_args(&mut self, _: &Args) -> &mut Self {
+    pub fn apply_args(&mut self, _: &TuiArgs) -> &mut Self {
         self.frame_rate(DEFAULT_FRAME_RATE);
         self.mouse(true);
         self.paste(true);
