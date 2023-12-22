@@ -39,7 +39,7 @@ tokio-util = "0.7"
 tracing = "0.1"
 tracing-error = "0.2"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "serde"] }
-triton-vm = { path = "../triton-vm" }
+triton-vm = "0.36"
 tui-textarea = "0.4"
 
 [dev-dependencies]
