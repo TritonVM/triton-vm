@@ -1,5 +1,7 @@
-use std::env::var_os;
+use std::env;
+use std::fs::copy;
 use std::io::Error;
+use std::path::Path;
 
 use clap::CommandFactory;
 use clap::ValueEnum;
@@ -76,13 +78,17 @@ fn set_git_info() {
 }
 
 fn generate_auto_completion_files() -> Result<(), Error> {
-    let Some(outdir) = var_os("SHELL_COMPLETIONS_DIR").or_else(|| var_os("OUT_DIR")) else {
+    let Ok(out_dir) = env::var("OUT_DIR") else {
         return Ok(());
     };
+    let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
+    let completions_dir = Path::new(&manifest_dir).join("completions");
 
     let mut command = TuiArgs::command();
     for &shell in Shell::value_variants() {
-        generate_to(shell, &mut command, "triton-tui", &outdir)?;
+        let generated_file = generate_to(shell, &mut command, "triton-tui", &out_dir)?;
+        let target_file = completions_dir.join(format!("triton-tui.{shell}"));
+        copy(generated_file, target_file)?;
     }
     Ok(())
 }

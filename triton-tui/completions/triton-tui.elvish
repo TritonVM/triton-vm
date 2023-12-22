@@ -1,0 +1,34 @@
+
+use builtin;
+use str;
+
+set edit:completion:arg-completer[triton-tui] = {|@words|
+    fn spaces {|n|
+        builtin:repeat $n ' ' | str:join ''
+    }
+    fn cand {|text desc|
+        edit:complex-candidate $text &display=$text' '(spaces (- 14 (wcswidth $text)))$desc
+    }
+    var command = 'triton-tui'
+    for word $words[1..-1] {
+        if (str:has-prefix $word '-') {
+            break
+        }
+        set command = $command';'$word
+    }
+    var completions = [
+        &'triton-tui'= {
+            cand -i 'File containing public input'
+            cand --input 'File containing public input'
+            cand -n 'JSON file containing all non-determinism'
+            cand --non-determinism 'JSON file containing all non-determinism'
+            cand --initial-state 'JSON file containing entire initial state'
+            cand --interrupt-cycle 'The maximum number of cycles to run after any interaction, preventing a frozen TUI in infinite loops'
+            cand -h 'Print help'
+            cand --help 'Print help'
+            cand -V 'Print version'
+            cand --version 'Print version'
+        }
+    ]
+    $completions[$command]
+}
