@@ -1,8 +1,28 @@
+use std::path::PathBuf;
+
 use clap::value_parser;
 use clap::Args;
 use clap::Parser;
+use directories::ProjectDirs;
+use lazy_static::lazy_static;
 
-use crate::utils::version;
+lazy_static! {
+    pub(crate) static ref PROJECT_NAME: String =
+        env!("CARGO_CRATE_NAME").to_uppercase().to_string();
+    pub(crate) static ref DATA_FOLDER: Option<PathBuf> =
+        std::env::var(format!("{}_DATA", PROJECT_NAME.clone()))
+            .ok()
+            .map(PathBuf::from);
+    pub(crate) static ref CONFIG_FOLDER: Option<PathBuf> =
+        std::env::var(format!("{}_CONFIG", PROJECT_NAME.clone()))
+            .ok()
+            .map(PathBuf::from);
+    pub(crate) static ref GIT_COMMIT_HASH: String =
+        std::env::var(format!("{}_GIT_INFO", PROJECT_NAME.clone()))
+            .unwrap_or_else(|_| String::from("UNKNOWN"));
+    pub(crate) static ref LOG_ENV: String = format!("{}_LOGLEVEL", PROJECT_NAME.clone());
+    pub(crate) static ref LOG_FILE: String = format!("{}.log", env!("CARGO_PKG_NAME"));
+}
 
 pub(crate) const DEFAULT_INTERRUPT_CYCLE: u32 = 100_000;
 pub(crate) const MANIFEST_DIR: &str = env!("CARGO_MANIFEST_DIR");
@@ -55,137 +75,47 @@ impl Default for TuiArgs {
     }
 }
 
-#[cfg(test)]
-pub(crate) mod tests {
-    use assert2::let_assert;
+fn project_directory() -> Option<ProjectDirs> {
+    ProjectDirs::from(
+        "org.triton-vm.triton-tui",
+        "Triton VM",
+        env!("CARGO_PKG_NAME"),
+    )
+}
 
-    use super::*;
-
-    pub(crate) const EXAMPLE_INPUT_PATH: &str = "examples/public_input.txt";
-    pub(crate) const EXAMPLE_NON_DETERMINISM_PATH: &str = "examples/non_determinism.json";
-    pub(crate) const EXAMPLE_INITIAL_STATE_PATH: &str = "examples/initial_state.json";
-
-    fn binary_name() -> Vec<String> {
-        vec!["triton-tui".into()]
+pub(crate) fn get_data_dir() -> PathBuf {
+    if let Some(s) = DATA_FOLDER.clone() {
+        s
+    } else if let Some(proj_dirs) = project_directory() {
+        proj_dirs.data_local_dir().to_path_buf()
+    } else {
+        PathBuf::from(".").join(".data")
     }
+}
 
-    fn tui_arg_help() -> Vec<String> {
-        vec!["--help".into()]
+pub(crate) fn get_config_dir() -> PathBuf {
+    if let Some(s) = CONFIG_FOLDER.clone() {
+        s
+    } else if let Some(proj_dirs) = project_directory() {
+        proj_dirs.config_local_dir().to_path_buf()
+    } else {
+        PathBuf::from(".").join(".config")
     }
+}
 
-    fn tui_arg_program() -> Vec<String> {
-        vec!["program.tasm".into()]
-    }
+pub(crate) fn version() -> String {
+    let author = clap::crate_authors!();
 
-    fn tui_arg_public_input() -> Vec<String> {
-        vec!["--input".into(), "my_input.txt".into()]
-    }
+    let commit_hash = GIT_COMMIT_HASH.clone();
 
-    fn tui_arg_non_determinism() -> Vec<String> {
-        vec!["--non-determinism".into(), "my_non_determinism.json".into()]
-    }
+    let config_dir_path = get_config_dir().display().to_string();
+    let data_dir_path = get_data_dir().display().to_string();
 
-    fn tui_arg_initial_state() -> Vec<String> {
-        vec!["--initial-state".into(), "my_state.json".into()]
-    }
-
-    pub(crate) fn args_for_test_program_with_test_input() -> TuiArgs {
-        let program_path = format!("{MANIFEST_DIR}/{EXAMPLE_PROGRAM_PATH}");
-        let input_path = format!("{MANIFEST_DIR}/{EXAMPLE_INPUT_PATH}");
-        let non_determinism_path = format!("{MANIFEST_DIR}/{EXAMPLE_NON_DETERMINISM_PATH}");
-
-        let args = [
-            binary_name(),
-            vec![program_path],
-            vec!["-i".into(), input_path],
-            vec!["-n".into(), non_determinism_path],
-        ]
-        .concat();
-        TuiArgs::parse_from(args)
-    }
-
-    pub(crate) fn args_for_test_program_with_initial_state() -> TuiArgs {
-        let program_path = format!("{MANIFEST_DIR}/{EXAMPLE_PROGRAM_PATH}");
-        let initial_state_path = format!("{MANIFEST_DIR}/{EXAMPLE_INITIAL_STATE_PATH}");
-
-        let args = [
-            binary_name(),
-            vec![program_path],
-            vec!["--initial-state".into(), initial_state_path],
-        ]
-        .concat();
-        TuiArgs::parse_from(args)
-    }
-
-    #[test]
-    fn tui_requires_some_arguments() {
-        let args = binary_name();
-        let_assert!(Err(_) = TuiArgs::try_parse_from(args));
-    }
-
-    #[test]
-    fn argument_help_is_valid() {
-        let args = [binary_name(), tui_arg_help()].concat();
-        TuiArgs::parse_from(args);
-    }
-
-    #[test]
-    fn argument_just_program_is_valid() {
-        let args = [binary_name(), tui_arg_program()].concat();
-        TuiArgs::parse_from(args);
-    }
-
-    #[test]
-    fn argument_program_and_public_input_is_valid() {
-        let args = [binary_name(), tui_arg_program(), tui_arg_public_input()].concat();
-        TuiArgs::parse_from(args);
-    }
-
-    #[test]
-    fn argument_program_and_secret_input_is_valid() {
-        let args = [binary_name(), tui_arg_program(), tui_arg_non_determinism()].concat();
-        TuiArgs::parse_from(args);
-    }
-
-    #[test]
-    fn argument_program_and_public_input_and_secret_input_is_valid() {
-        let args = [
-            binary_name(),
-            tui_arg_program(),
-            tui_arg_public_input(),
-            tui_arg_non_determinism(),
-        ]
-        .concat();
-        TuiArgs::parse_from(args);
-    }
-
-    #[test]
-    fn argument_program_and_initial_state_is_valid() {
-        let args = [binary_name(), tui_arg_program(), tui_arg_initial_state()].concat();
-        TuiArgs::parse_from(args);
-    }
-
-    #[test]
-    fn argument_initial_state_conflicts_with_public_input() {
-        let args = [
-            binary_name(),
-            tui_arg_program(),
-            tui_arg_public_input(),
-            tui_arg_initial_state(),
-        ]
-        .concat();
-        let_assert!(Err(_) = TuiArgs::try_parse_from(args));
-    }
-
-    #[test]
-    fn argument_initial_state_conflicts_with_non_determinism() {
-        let args = [
-            binary_name(),
-            tui_arg_program(),
-            tui_arg_public_input(),
-            tui_arg_initial_state(),
-        ]
-        .concat();
-        let_assert!(Err(_) = TuiArgs::try_parse_from(args));
-    }
+    format!(
+        "{commit_hash}\n\n\
+        Authors: {author}\n\n\
+        Config directory: {config_dir_path}\n\
+        Data directory:   {data_dir_path}\
+        ",
+    )
 }

@@ -297,8 +297,8 @@ mod tests {
     use proptest_arbitrary_interop::arb;
     use test_strategy::proptest;
 
-    use crate::args::tests::args_for_test_program_with_initial_state;
-    use crate::args::tests::args_for_test_program_with_test_input;
+    use crate::args_tests::args_for_test_program_with_initial_state;
+    use crate::args_tests::args_for_test_program_with_test_input;
 
     use super::*;
 
