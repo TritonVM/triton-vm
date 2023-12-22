@@ -5,7 +5,6 @@ use ratatui::prelude::*;
 use ratatui::widgets::block::*;
 use ratatui::widgets::*;
 use strum::EnumCount;
-
 use triton_vm::instruction::*;
 use triton_vm::op_stack::OpStackElement;
 
@@ -524,12 +523,8 @@ mod tests {
     use proptest_arbitrary_interop::arb;
     use ratatui::backend::TestBackend;
     use test_strategy::proptest;
-
     use triton_vm::vm::VMState;
-    use triton_vm::BFieldElement;
-    use triton_vm::NonDeterminism;
     use triton_vm::Program;
-    use triton_vm::PublicInput;
 
     use super::*;
 
@@ -537,15 +532,18 @@ mod tests {
     fn render_arbitrary_vm_state(
         #[strategy(arb())] mut home: Home,
         #[strategy(arb())] program: Program,
-        #[strategy(arb())] public_input: PublicInput,
-        #[strategy(arb())] non_determinism: NonDeterminism<BFieldElement>,
+        #[strategy(arb())] mut vm_state: VMState,
     ) {
-        let mut state = TritonVMState::new(&Default::default()).unwrap();
-        state.vm_state = VMState::new(&program, public_input, non_determinism);
-        state.program = program;
+        vm_state.program = program.instructions.clone();
+
+        let mut complete_state = TritonVMState::new(&Default::default()).unwrap();
+        complete_state.vm_state = vm_state;
+        complete_state.program = program;
 
         let backend = TestBackend::new(150, 50);
         let mut terminal = Terminal::new(backend)?;
-        terminal.draw(|f| home.draw(f, &state).unwrap()).unwrap();
+        terminal
+            .draw(|f| home.draw(f, &complete_state).unwrap())
+            .unwrap();
     }
 }

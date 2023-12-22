@@ -1,3 +1,4 @@
+use arbitrary::Arbitrary;
 use color_eyre::eyre::Result;
 use crossterm::event::KeyEventKind::Release;
 use crossterm::event::*;
@@ -5,10 +6,9 @@ use num_traits::One;
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 use ratatui::Frame;
-use tui_textarea::TextArea;
-
 use triton_vm::instruction::Instruction;
 use triton_vm::BFieldElement;
+use tui_textarea::TextArea;
 
 use crate::action::Action;
 use crate::action::ExecutedInstruction;
@@ -31,7 +31,7 @@ pub(crate) struct Memory<'a> {
     pub undo_stack: Vec<UndoInformation>,
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Arbitrary)]
 pub(crate) struct UndoInformation {
     pub most_recent_address: BFieldElement,
 }
@@ -316,28 +316,51 @@ mod tests {
     use proptest_arbitrary_interop::arb;
     use ratatui::backend::TestBackend;
     use test_strategy::proptest;
-
     use triton_vm::vm::VMState;
     use triton_vm::BFieldElement;
-    use triton_vm::NonDeterminism;
     use triton_vm::Program;
-    use triton_vm::PublicInput;
 
     use super::*;
 
+    /// Since `TextArea` is not `Arbitrary`, we need to implement `Arbitrary` for `Memory` manually.
+    #[derive(Debug, Clone, test_strategy::Arbitrary)]
+    struct ArbitraryMemory {
+        #[strategy(arb())]
+        most_recent_address: BFieldElement,
+
+        #[strategy(arb())]
+        user_address: Option<BFieldElement>,
+
+        text_area_input: String,
+        text_area_in_focus: bool,
+
+        #[strategy(arb())]
+        undo_stack: Vec<UndoInformation>,
+    }
+
     #[proptest]
     fn render_arbitrary_vm_state(
+        arb_memory: ArbitraryMemory,
         #[strategy(arb())] program: Program,
-        #[strategy(arb())] public_input: PublicInput,
-        #[strategy(arb())] non_determinism: NonDeterminism<BFieldElement>,
+        #[strategy(arb())] mut vm_state: VMState,
     ) {
-        let mut memory = Memory::default();
-        let mut state = TritonVMState::new(&Default::default()).unwrap();
-        state.vm_state = VMState::new(&program, public_input, non_determinism);
-        state.program = program;
+        let mut memory = Memory {
+            most_recent_address: arb_memory.most_recent_address,
+            user_address: arb_memory.user_address,
+            text_area_in_focus: arb_memory.text_area_in_focus,
+            text_area: TextArea::new(vec![arb_memory.text_area_input]),
+            undo_stack: arb_memory.undo_stack,
+        };
+
+        vm_state.program = program.instructions.clone();
+        let mut complete_state = TritonVMState::new(&Default::default()).unwrap();
+        complete_state.vm_state = vm_state;
+        complete_state.program = program;
 
         let backend = TestBackend::new(150, 50);
         let mut terminal = Terminal::new(backend)?;
-        terminal.draw(|f| memory.draw(f, &state).unwrap()).unwrap();
+        terminal
+            .draw(|f| memory.draw(f, &complete_state).unwrap())
+            .unwrap();
     }
 }
