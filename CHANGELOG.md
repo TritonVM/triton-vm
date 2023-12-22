@@ -3,7 +3,54 @@
 All notable changes are documented in this file.
 Lines marked “(!)” indicate a breaking change.
 
-## [v0.35.0](https://github.com/TritonVM/triton-vm/compare/v0.34.1..v0.35.0) – 2023-10-17
+## [0.36.0](https://github.com/TritonVM/triton-vm/compare/v0.35.0..v0.36.0) - 2023-12-22
+
+### ✨ Features
+
+- Add benchmark just executing a Triton VM program ([8301d5db](https://github.com/TritonVM/triton-vm/commit/8301d5db))
+- (!) Improve error reporting ([48ee1099](https://github.com/TritonVM/triton-vm/commit/48ee1099))
+- Only change VM state if instruction execution will work ([d7fbb3fd](https://github.com/TritonVM/triton-vm/commit/d7fbb3fd))
+- Add `triton-tui`, a TUI for debugging programs in Triton assembly ([d0d79bce](https://github.com/TritonVM/triton-vm/commit/d0d79bce))
+- Allow installing triton-tui as a binary ([047bed9b](https://github.com/TritonVM/triton-vm/commit/047bed9b))
+- (de)serialize `VMState` ([8df0723c](https://github.com/TritonVM/triton-vm/commit/8df0723c))
+
+### 🐛 Bug Fixes
+
+- Correct calculation of total available memory in Triton VM ([18af2b40](https://github.com/TritonVM/triton-vm/commit/18af2b40))
+- Fail Sponge instructions if Sponge state is uninitialized ([881b6c0d](https://github.com/TritonVM/triton-vm/commit/881b6c0d))
+
+### ⚡️ Performance
+
+- Use instruction's fast-fail for error reporting, not cloning ([08bbc41f](https://github.com/TritonVM/triton-vm/commit/08bbc41f))
+
+### 📚 Documentation
+
+- Reflect changes to instructions, constraints, and mechanics ([ccf123b8](https://github.com/TritonVM/triton-vm/commit/ccf123b8))
+- Exemplify error handling ([90151d6c](https://github.com/TritonVM/triton-vm/commit/90151d6c))
+- Add changelog ([4d1fc2c0](https://github.com/TritonVM/triton-vm/commit/4d1fc2c0))
+
+### ⚙️ Miscellaneous
+
+- (!) Rename & change debugging methods of `Program` ([abd17904](https://github.com/TritonVM/triton-vm/commit/abd17904))
+- Fix spelling of `collinear` (not `colinear`) ([2e9ebd7c](https://github.com/TritonVM/triton-vm/commit/2e9ebd7c))
+- Improve changelog generation configuration ([9e3432f3](https://github.com/TritonVM/triton-vm/commit/9e3432f3))
+- (!) Remove `Default` derivation from `Program` ([868f49d9](https://github.com/TritonVM/triton-vm/commit/868f49d9))
+- Allow tracing program execution from a given starting state ([5f702d47](https://github.com/TritonVM/triton-vm/commit/5f702d47))
+- Upgrade dependency `cargo-tarpaulin` ([560f2555](https://github.com/TritonVM/triton-vm/commit/560f2555))
+
+### ♻️ Refactor
+
+- (!) On success, `Stark::verify` returns `Ok(())`, not `Ok(true)` ([9d3a7065](https://github.com/TritonVM/triton-vm/commit/9d3a7065))
+- (!) Remove `terminal_state`, allow running a VM state instead ([fbd58f1c](https://github.com/TritonVM/triton-vm/commit/fbd58f1c))
+- Simplify indexing into `OpStack` ([4b31b2fe](https://github.com/TritonVM/triton-vm/commit/4b31b2fe))
+
+### ✅ Testing
+
+- Use `proptest`, not ad-hoc prop tests, for program parsing tests ([d2acbbf8](https://github.com/TritonVM/triton-vm/commit/d2acbbf8))
+- Delete some ignored, obsolete tests ([8deb268a](https://github.com/TritonVM/triton-vm/commit/8deb268a))
+- Instructions fail before they modify the state ([c680fab2](https://github.com/TritonVM/triton-vm/commit/c680fab2))
+
+## [0.35.0](https://github.com/TritonVM/triton-vm/compare/v0.34.1..v0.35.0) – 2023-10-17
 
 ### ✨ Features
 
