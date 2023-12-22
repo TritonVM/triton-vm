@@ -21,7 +21,7 @@ config = "0.13"
 crossterm = { version = "0.27", features = ["serde", "event-stream"] }
 derive_deref = "1"
 directories.workspace = true
-fs-err = "2.0"
+fs-err = "2.11"
 futures = "0.3"
 human-panic = "1"
 itertools.workspace = true
