@@ -3,8 +3,8 @@ use clap::Parser;
 
 use crate::utils::version;
 
-const MANIFEST_DIR: &str = env!("CARGO_MANIFEST_DIR");
-const DEFAULT_PROGRAM_PATH: &str = "examples/program.tasm";
+pub(crate) const MANIFEST_DIR: &str = env!("CARGO_MANIFEST_DIR");
+pub(crate) const EXAMPLE_PROGRAM_PATH: &str = "examples/program.tasm";
 
 #[derive(Debug, Clone, PartialEq, Parser)]
 #[command(author, version = version(), about)]
@@ -34,7 +34,7 @@ pub(crate) struct InputArgs {
 
 impl Default for TuiArgs {
     fn default() -> Self {
-        let program = format!("{MANIFEST_DIR}/{DEFAULT_PROGRAM_PATH}");
+        let program = format!("{MANIFEST_DIR}/{EXAMPLE_PROGRAM_PATH}");
         Self {
             program,
             input_args: None,
@@ -44,10 +44,13 @@ impl Default for TuiArgs {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use assert2::let_assert;
 
     use super::*;
+
+    pub(crate) const EXAMPLE_INPUT_PATH: &str = "examples/public_input.txt";
+    pub(crate) const EXAMPLE_NON_DETERMINISM_PATH: &str = "examples/non_determinism.json";
 
     fn binary_name() -> Vec<String> {
         vec!["triton-tui".into()]
@@ -71,6 +74,21 @@ mod tests {
 
     fn tui_arg_initial_state() -> Vec<String> {
         vec!["--initial-state".into(), "my_state.json".into()]
+    }
+
+    pub(crate) fn args_for_test_program_with_test_input() -> TuiArgs {
+        let program_path = format!("{MANIFEST_DIR}/{EXAMPLE_PROGRAM_PATH}");
+        let input_path = format!("{MANIFEST_DIR}/{EXAMPLE_INPUT_PATH}");
+        let non_determinism_path = format!("{MANIFEST_DIR}/{EXAMPLE_NON_DETERMINISM_PATH}");
+
+        let args = [
+            binary_name(),
+            vec![program_path],
+            vec!["-i".into(), input_path],
+            vec!["-n".into(), non_determinism_path],
+        ]
+        .concat();
+        TuiArgs::parse_from(args)
     }
 
     #[test]

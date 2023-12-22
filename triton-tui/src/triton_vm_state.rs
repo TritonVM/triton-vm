@@ -271,6 +271,8 @@ mod tests {
     use proptest_arbitrary_interop::arb;
     use test_strategy::proptest;
 
+    use crate::args::tests::args_for_test_program_with_test_input;
+
     use super::*;
 
     #[proptest]
@@ -292,5 +294,14 @@ mod tests {
         let serialized = serde_json::to_string(&non_determinism).unwrap();
         let deserialized: NonDeterminism<u64> = serde_json::from_str(&serialized).unwrap();
         prop_assert_eq!(non_determinism, deserialized);
+    }
+
+    #[test]
+    fn serialize_example_program_and_input_to_json() {
+        let args = args_for_test_program_with_test_input();
+        let program = TritonVMState::program_from_args(&args).unwrap();
+        let initial_state = TritonVMState::vm_state_with_specified_input(&args, &program).unwrap();
+        let serialized = serde_json::to_string(&initial_state).unwrap();
+        println!("{serialized}");
     }
 }
