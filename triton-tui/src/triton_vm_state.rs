@@ -32,6 +32,9 @@ pub(crate) struct TritonVMState {
 
     pub warning: Option<Report>,
     pub error: Option<InstructionError>,
+
+    pub num_cycles_since_user_action: u32,
+    pub interrupt_cycle: u32,
 }
 
 #[derive(Debug, Clone)]
@@ -56,6 +59,8 @@ impl TritonVMState {
             undo_stack: vec![],
             warning: None,
             error: None,
+            num_cycles_since_user_action: 0,
+            interrupt_cycle: args.interrupt_cycle,
         };
         state.apply_type_hints();
         Ok(state)
@@ -126,12 +131,12 @@ impl TritonVMState {
         top_of_stack.rev().collect_vec().try_into().unwrap()
     }
 
-    fn vm_has_stopped(&self) -> bool {
-        self.vm_state.halting || self.error.is_some()
+    fn vm_is_stopped(&self) -> bool {
+        self.vm_state.halting || self.error.is_some() || self.interrupted()
     }
 
     fn vm_is_running(&self) -> bool {
-        !self.vm_has_stopped()
+        !self.vm_is_stopped()
     }
 
     fn at_breakpoint(&self) -> bool {
@@ -151,6 +156,7 @@ impl TritonVMState {
     }
 
     fn execute(&mut self, execute: Execute) {
+        self.num_cycles_since_user_action = 0;
         self.record_undo_information();
         match execute {
             Execute::Continue => self.continue_execution(),
@@ -170,7 +176,7 @@ impl TritonVMState {
 
     /// Handle [`Execute::Step`].
     fn step(&mut self) {
-        if self.vm_has_stopped() {
+        if self.vm_is_stopped() {
             return;
         }
 
@@ -182,6 +188,8 @@ impl TritonVMState {
             return;
         }
         self.warning = None;
+        self.num_cycles_since_user_action += 1;
+        self.maybe_inform_about_interrupt();
 
         let instruction = instruction.expect("instruction should exist after successful `step`");
         let new_top_of_stack = self.top_of_stack();
@@ -191,6 +199,19 @@ impl TritonVMState {
         self.send_executed_transaction(executed_instruction);
         self.type_hints.mimic_instruction(executed_instruction);
         self.apply_type_hints();
+    }
+
+    fn maybe_inform_about_interrupt(&mut self) {
+        if self.interrupted() {
+            let num_cycles = self.num_cycles_since_user_action;
+            self.warning = Some(anyhow!(
+                "Infinite loop? VM interrupted after {num_cycles} cycles since last interaction…"
+            ));
+        }
+    }
+
+    fn interrupted(&self) -> bool {
+        self.num_cycles_since_user_action >= self.interrupt_cycle
     }
 
     fn send_executed_transaction(&mut self, executed_instruction: ExecutedInstruction) {
@@ -220,7 +241,7 @@ impl TritonVMState {
     }
 
     fn record_undo_information(&mut self) {
-        if self.vm_has_stopped() {
+        if self.vm_is_stopped() {
             return;
         }
         let undo_information = UndoInformation {

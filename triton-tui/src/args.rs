@@ -1,8 +1,10 @@
+use clap::value_parser;
 use clap::Args;
 use clap::Parser;
 
 use crate::utils::version;
 
+pub(crate) const DEFAULT_INTERRUPT_CYCLE: u32 = 100_000;
 pub(crate) const MANIFEST_DIR: &str = env!("CARGO_MANIFEST_DIR");
 pub(crate) const EXAMPLE_PROGRAM_PATH: &str = "examples/program.tasm";
 
@@ -18,6 +20,15 @@ pub(crate) struct TuiArgs {
     /// JSON file containing entire initial state
     #[arg(long, value_name = "PATH", group = "state")]
     pub initial_state: Option<String>,
+
+    /// The maximum number of cycles to run after any interaction, preventing a frozen TUI in infinite loops
+    #[arg(
+        long,
+        value_name = "u32",
+        default_value = DEFAULT_INTERRUPT_CYCLE.to_string(),
+        value_parser = value_parser!(u32).range(1..)
+    )]
+    pub interrupt_cycle: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Args)]
@@ -39,6 +50,7 @@ impl Default for TuiArgs {
             program,
             input_args: None,
             initial_state: None,
+            interrupt_cycle: DEFAULT_INTERRUPT_CYCLE,
         }
     }
 }
