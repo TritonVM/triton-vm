@@ -1,8 +1,10 @@
 [package]
 name = "triton-tui"
-description = "A TUI that helps debugging programs written for Triton VM."
 
-version.workspace = true
+version = "0.1.0"
+description = "Terminal User Interface to help debugging programs written for Triton VM."
+readme = "README.md"
+
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
