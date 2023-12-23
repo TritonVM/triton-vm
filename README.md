@@ -10,6 +10,11 @@ Triton is a virtual machine that comes with Algebraic Execution Tables (AET) and
 It defines a Turing complete [Instruction Set Architecture](https://triton-vm.org/spec/isa.html), as well as the corresponding [arithmetization](https://triton-vm.org/spec/arithmetization.html) of the VM.
 The really cool thing about Triton VM is its efficient _recursive_ verification of the STARKs produced when running Triton VM.
 
+## Getting Started
+
+If you want to start writing programs for Triton VM, check out [Triton TUI](triton-tui/).
+If you want to generate or verify proofs of correct execution, take a look at the [scaffolding repository](https://github.com/TritonVM/triton-vm-scaffold).
+
 ## Recursive STARKs of Computational Integrity
 
 Normally, when executing a machine – virtual or not – the flow of information can be regarded as follows.
