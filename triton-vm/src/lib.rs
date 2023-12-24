@@ -747,72 +747,62 @@ mod tests {
         let_assert!(Ok(()) = input_elements_have_unique_representation(&public_input, &[].into()));
     }
 
-    #[proptest]
-    fn uncanonical_public_input_cannot_be_converted(
+    /// Test-helper object for generating uncanonical inputs.
+    #[derive(Debug, Clone, Eq, PartialEq, test_strategy::Arbitrary)]
+    struct DisturbVec {
         #[strategy(vec(arb(), 1..1024))]
-        #[map(|v: Vec<BFieldElement>| v.iter().map(|&e| e.value()).collect_vec())]
-        mut public_input: Vec<u64>,
-        #[strategy(0..#public_input.len())] disturbance_index: usize,
+        #[map(|v: Vec<BFieldElement>| v.into_iter().map(|e| e.value()).collect_vec())]
+        pub vector: Vec<u64>,
+
+        #[strategy(0..#vector.len())]
+        pub disturbance_index: usize,
+
         #[strategy(BFieldElement::MAX..=u64::MAX)]
-        #[filter(#public_input[#disturbance_index] != #random_element)]
-        random_element: u64,
-    ) {
-        public_input[disturbance_index] = random_element;
+        #[filter(#vector[#disturbance_index] != #random_element)]
+        pub random_element: u64,
+    }
+
+    impl DisturbVec {
+        fn disturbed(mut self) -> Vec<u64> {
+            self.vector[self.disturbance_index] = self.random_element;
+            self.vector
+        }
+    }
+
+    #[proptest]
+    fn uncanonical_public_input_cannot_be_converted(public_input: DisturbVec) {
+        let public_input = public_input.disturbed();
         let_assert!(Err(e) = input_elements_have_unique_representation(&public_input, &[].into()));
         let_assert!(CanonicalRepresentationError::PublicInput = e);
     }
 
     #[proptest]
-    fn uncanonical_secret_input_cannot_be_converted(
-        #[strategy(vec(arb(), 1..1024))]
-        #[map(|v: Vec<BFieldElement>| v.iter().map(|&e| e.value()).collect_vec())]
-        mut secret_input: Vec<u64>,
-        #[strategy(0..#secret_input.len())] disturbance_index: usize,
-        #[strategy(BFieldElement::MAX..=u64::MAX)]
-        #[filter(#secret_input[#disturbance_index] != #random_element)]
-        random_element: u64,
-    ) {
-        secret_input[disturbance_index] = random_element;
-        let non_determinism = NonDeterminism::new(secret_input);
+    fn uncanonical_secret_input_cannot_be_converted(individual_tokens: DisturbVec) {
+        let individual_tokens = individual_tokens.disturbed();
+        let non_determinism = NonDeterminism::new(individual_tokens);
         let_assert!(Err(e) = input_elements_have_unique_representation(&[], &non_determinism));
         let_assert!(CanonicalRepresentationError::NonDeterminismIndividualTokens = e);
     }
 
     #[proptest]
-    fn uncanonical_ram_keys_cannot_be_converted(
-        #[strategy(vec(arb(), 1..1024))]
-        #[map(|v: Vec<BFieldElement>| v.iter().map(|&e| e.value()).collect_vec())]
-        mut ram_keys: Vec<u64>,
-        #[strategy(0..#ram_keys.len())] disturbance_index: usize,
-        #[strategy(BFieldElement::MAX..=u64::MAX)]
-        #[filter(#ram_keys[#disturbance_index] != #random_element)]
-        random_element: u64,
-    ) {
-        ram_keys[disturbance_index] = random_element;
-        let initial_ram = ram_keys.into_iter().map(|key| (key, 0)).collect();
-        let non_determinism = NonDeterminism::new([].into()).with_ram(initial_ram);
+    fn uncanonical_ram_keys_cannot_be_converted(ram_keys: DisturbVec) {
+        let ram_keys = ram_keys.disturbed();
+        let ram = ram_keys.into_iter().map(|key| (key, 0)).collect();
+        let non_determinism = NonDeterminism::default().with_ram(ram);
         let_assert!(Err(e) = input_elements_have_unique_representation(&[], &non_determinism));
         let_assert!(CanonicalRepresentationError::NonDeterminismRamKeys = e);
     }
 
     #[proptest]
     fn uncanonical_ram_values_cannot_be_converted(
-        #[strategy(vec(arb(), 1..1024))] ram_keys: Vec<u64>,
-        #[strategy(vec(arb(), #ram_keys.len()))]
-        #[map(|v: Vec<BFieldElement>| v.iter().map(|&e| e.value()).collect_vec())]
-        mut ram_values: Vec<u64>,
-        #[strategy(0..#ram_values.len())] disturbance_index: usize,
-        #[strategy(BFieldElement::MAX..=u64::MAX)]
-        #[filter(#ram_values[#disturbance_index] != #random_element)]
-        random_element: u64,
+        ram_values: DisturbVec,
+        #[strategy(vec(arb(), #ram_values.vector.len()))]
+        #[map(|v: Vec<BFieldElement>| v.into_iter().map(|e| e.value()).collect_vec())]
+        ram_keys: Vec<u64>,
     ) {
-        ram_values[disturbance_index] = random_element;
-        let initial_ram = ram_keys
-            .into_iter()
-            .zip(ram_values)
-            .map(|(k, v)| (k, v))
-            .collect();
-        let non_determinism = NonDeterminism::new([].into()).with_ram(initial_ram);
+        let ram_values = ram_values.disturbed();
+        let ram = ram_keys.into_iter().zip(ram_values).collect();
+        let non_determinism = NonDeterminism::default().with_ram(ram);
         let_assert!(Err(e) = input_elements_have_unique_representation(&[], &non_determinism));
         let_assert!(CanonicalRepresentationError::NonDeterminismRamValues = e);
     }
