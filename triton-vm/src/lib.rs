@@ -146,8 +146,10 @@
 
 use std::error::Error;
 
+pub use twenty_first;
 pub use twenty_first::shared_math::b_field_element::BFieldElement;
 pub use twenty_first::shared_math::tip5::Digest;
+pub use twenty_first::shared_math::tip5::DIGEST_LENGTH;
 
 use crate::error::CanonicalRepresentationError;
 use crate::error::ProvingError;
@@ -156,7 +158,7 @@ pub use crate::program::Program;
 pub use crate::program::PublicInput;
 pub use crate::proof::Claim;
 pub use crate::proof::Proof;
-use crate::stark::Stark;
+pub use crate::stark::Stark;
 use crate::stark::StarkHasher;
 pub use crate::stark::StarkParameters;
 
@@ -181,8 +183,7 @@ pub mod vm;
 mod shared_tests;
 
 /// Compile an entire program written in [Triton assembly][tasm].
-/// The resulting [`Program`](crate::program::Program) can be
-/// [run](crate::program::Program::run).
+/// The resulting [`Program`](Program) can be [run](Program::run).
 ///
 /// It is possible to use string-like interpolation to insert instructions, arguments, labels,
 /// or other substrings into the program.
@@ -207,9 +208,9 @@ mod shared_tests;
 ///
 /// Any type with an appropriate [`Display`](std::fmt::Display) implementation can be
 /// interpolated. This includes, for example, primitive types like `u64` and `&str`, but also
-/// [`Instruction`](crate::instruction::Instruction)s,
-/// [`BFieldElement`](crate::BFieldElement)s, and
-/// [`Label`](crate::instruction::LabelledInstruction)s, among others.
+/// [`Instruction`](instruction::Instruction)s,
+/// [`BFieldElement`](BFieldElement)s, and
+/// [`Label`](instruction::LabelledInstruction)s, among others.
 ///
 /// ```
 /// # use triton_vm::triton_program;
@@ -241,7 +242,7 @@ mod shared_tests;
 /// For a version that returns a `Result`, see [`Program::from_code()`][from_code].
 ///
 /// [tasm]: https://triton-vm.org/spec/instructions.html
-/// [from_code]: crate::program::Program::from_code
+/// [from_code]: Program::from_code
 #[macro_export]
 macro_rules! triton_program {
     {$($source_code:tt)*} => {{
@@ -251,13 +252,13 @@ macro_rules! triton_program {
 }
 
 /// Compile [Triton assembly][tasm] into a list of labelled
-/// [`Instruction`](crate::instruction::LabelledInstruction)s.
-/// Similar to [`triton_program!`](crate::triton_program), it is possible to use string-like
+/// [`Instruction`](instruction::LabelledInstruction)s.
+/// Similar to [`triton_program!`](triton_program), it is possible to use string-like
 /// interpolation to insert instructions, arguments, labels, or other expressions.
 ///
 /// Similar to [`vec!`], a single instruction can be repeated a specified number of times.
 ///
-/// Furthermore, a list of [`LabelledInstruction`](crate::instruction::LabelledInstruction)s
+/// Furthermore, a list of [`LabelledInstruction`](instruction::LabelledInstruction)s
 /// can be inserted like so: `{&list}`.
 ///
 /// The labels for instruction `call`, if any, are also parsed. Instruction `call` can refer to
@@ -320,7 +321,7 @@ macro_rules! triton_program {
 /// # Panics
 ///
 /// **Panics** if the instructions cannot be parsed.
-/// For examples, see [`triton_program!`](crate::triton_program), with the exception that
+/// For examples, see [`triton_program!`](triton_program), with the exception that
 /// labels are not checked for existence or uniqueness.
 ///
 /// [tasm]: https://triton-vm.org/spec/instructions.html
