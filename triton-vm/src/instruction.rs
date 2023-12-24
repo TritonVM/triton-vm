@@ -343,7 +343,7 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
 
     pub(crate) fn map_call_address<F, NewDest>(&self, f: F) -> AnInstruction<NewDest>
     where
-        F: Fn(&Dest) -> NewDest,
+        F: FnOnce(&Dest) -> NewDest,
         NewDest: PartialEq + Default,
     {
         match self {
