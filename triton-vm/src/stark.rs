@@ -227,18 +227,6 @@ impl Stark {
         );
         prof_stop!(maybe_profiler, "quotient codewords");
 
-        #[cfg(debug_assertions)]
-        {
-            prof_start!(maybe_profiler, "debug degree check", "debug");
-            println!(" -- checking degree of base columns --");
-            Self::debug_check_degree(base_quotient_domain_codewords, quotient_domain, max_degree);
-            println!(" -- checking degree of extension columns --");
-            Self::debug_check_degree(ext_quotient_domain_codewords, quotient_domain, max_degree);
-            println!(" -- checking degree of quotient columns --");
-            Self::debug_check_degree(master_quotient_table.view(), quotient_domain, max_degree);
-            prof_stop!(maybe_profiler, "debug degree check");
-        }
-
         prof_start!(maybe_profiler, "linearly combine quotient codewords", "CC");
         // Create quotient codeword. This is a part of the combination codeword. To reduce the
         // amount of hashing necessary, the quotient codeword is linearly summed instead of
@@ -497,9 +485,6 @@ impl Stark {
         ));
         prof_stop!(maybe_profiler, "open trace leafs");
 
-        #[cfg(debug_assertions)]
-        Self::debug_print_proof_size(&proof_stream);
-
         proof_stream.into()
     }
 
@@ -723,36 +708,6 @@ impl Stark {
             segments.push(segment);
         }
         segments.try_into().unwrap()
-    }
-
-    #[cfg(debug_assertions)]
-    #[allow(clippy::absolute_paths)]
-    fn debug_check_degree<FF>(
-        table: ArrayView2<FF>,
-        quotient_domain: ArithmeticDomain,
-        max_degree: Degree,
-    ) where
-        FF: FiniteField + std::ops::MulAssign<BFieldElement>,
-    {
-        let max_degree = max_degree as isize;
-        for (col_idx, codeword) in table.columns().into_iter().enumerate() {
-            let degree = quotient_domain.interpolate(&codeword.to_vec()).degree();
-            let maybe_excl_mark = match degree > max_degree {
-                true => "!",
-                false => " ",
-            };
-            println!(
-                "{maybe_excl_mark} Codeword {col_idx:>3} has degree {degree:>5}. \
-                Must be of maximal degree {max_degree:>5}."
-            );
-        }
-    }
-
-    #[cfg(debug_assertions)]
-    fn debug_print_proof_size(proof_stream: &ProofStream<StarkHasher>) {
-        let transcript_length = proof_stream.transcript_length();
-        let kib = (transcript_length * 8 / 1024) + 1;
-        println!("Created proof containing {transcript_length} B-field elements ({kib} kiB).");
     }
 
     pub fn verify(
