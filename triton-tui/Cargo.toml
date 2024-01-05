@@ -29,6 +29,7 @@ lazy_static.workspace = true
 libc = "0.2"
 num-traits.workspace = true
 ratatui = { version = "0.25", features = ["serde", "macros"] }
+rexpect = { version = "0.5", optional = true }
 serde.workspace = true
 serde_json = "1.0"
 signal-hook = "0.3"
@@ -47,7 +48,6 @@ assert2.workspace = true
 pretty_assertions.workspace = true
 proptest.workspace = true
 proptest-arbitrary-interop.workspace = true
-rexpect = "0.5"
 test-strategy.workspace = true
 
 [build-dependencies]
@@ -55,6 +55,10 @@ clap.workspace = true
 clap_complete = "4.4"
 directories.workspace = true
 lazy_static.workspace = true
+
+[features]
+default = []
+integration-tests = ["rexpect"]
 
 [[bin]]
 name = "triton-tui"
