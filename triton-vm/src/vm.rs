@@ -932,6 +932,7 @@ impl Display for VMState {
         };
         let multi_register = |regs: [_; 4]| regs.map(register).join(" | ");
 
+        writeln!(f)?;
         writeln!(f, " ╭─{:─<tab_width$}─╮", "")?;
         writeln!(f, " │ {: <tab_width$} │", format!("{instruction}"))?;
         writeln!(
@@ -948,6 +949,7 @@ impl Display for VMState {
         let jsd = register(JSD);
         let osp = register(OpStackPointer);
         let clk = row[CLK.base_table_index()].to_string();
+        let clk = clk.trim_start_matches('0');
 
         let first_line = format!("ip:   {ip} ╷ ci:   {ci} ╷ nia: {nia} │ {clk: >clk_width$}");
         print_row(f, first_line)?;
