@@ -12,7 +12,7 @@ lto = "thin"
 lto = "thin"
 
 [workspace.package]
-version = "0.36.0"
+version = "0.36.1"
 edition = "2021"
 authors = ["Triton Software AG"]
 license = "Apache-2.0"
