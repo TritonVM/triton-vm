@@ -5,13 +5,10 @@ use criterion::Criterion;
 
 use triton_vm::aet::AlgebraicExecutionTrace;
 use triton_vm::example_programs::FIBONACCI_SEQUENCE;
+use triton_vm::prelude::*;
 use triton_vm::profiler::Report;
 use triton_vm::profiler::TritonProfiler;
-use triton_vm::proof::Claim;
-use triton_vm::stark::Stark;
 use triton_vm::stark::StarkHasher;
-use triton_vm::PublicInput;
-use triton_vm::StarkParameters;
 
 const FIBONACCI_INDEX: u64 = 100;
 

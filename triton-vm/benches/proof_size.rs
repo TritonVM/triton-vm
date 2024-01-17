@@ -17,15 +17,10 @@ use twenty_first::shared_math::bfield_codec::BFieldCodec;
 
 use triton_vm::example_programs::FIBONACCI_SEQUENCE;
 use triton_vm::example_programs::VERIFY_SUDOKU;
-use triton_vm::program::Program;
+use triton_vm::prelude::*;
 use triton_vm::proof_stream::ProofStream;
 use triton_vm::prove_program;
-use triton_vm::stark::Stark;
 use triton_vm::stark::StarkHasher;
-use triton_vm::triton_program;
-use triton_vm::NonDeterminism;
-use triton_vm::Proof;
-use triton_vm::StarkParameters;
 
 /// Ties together a program and its inputs.
 struct ProgramAndInput {

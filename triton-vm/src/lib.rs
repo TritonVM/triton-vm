@@ -30,6 +30,7 @@
 //!
 //! ```
 //! # use triton_vm::*;
+//! # use triton_vm::prelude::*;
 //! let factorial_program = triton_program!(
 //!     read_io 1           // n
 //!     push 1              // n 1
@@ -52,7 +53,7 @@
 //!         recurse
 //! );
 //! let public_input = [10];
-//! let non_determinism = [].into();
+//! let non_determinism = NonDeterminism::default();
 //!
 //! let (parameters, claim, proof) =
 //!     prove_program(&factorial_program, &public_input, &non_determinism).unwrap();
@@ -81,6 +82,7 @@
 //!
 //! ```
 //! # use triton_vm::*;
+//! # use triton_vm::prelude::*;
 //! let sum_of_squares_program = triton_program!(
 //!     read_io 1                       // n
 //!     call sum_of_squares_secret_in   // n sum_1
@@ -131,7 +133,7 @@
 //!
 //! ```
 //! # use triton_vm::*;
-//! # use triton_vm::error::InstructionError;
+//! # use triton_vm::prelude::*;
 //! let crashing_program = triton_program!(push 2 assert halt);
 //! let vm_error = crashing_program.run([].into(), [].into()).unwrap_err();
 //! assert!(matches!(vm_error.source, InstructionError::AssertionFailed));
@@ -144,21 +146,10 @@
 
 #![recursion_limit = "4096"]
 
-pub use twenty_first;
-pub use twenty_first::shared_math::b_field_element::BFieldElement;
-pub use twenty_first::shared_math::tip5::Digest;
-pub use twenty_first::shared_math::tip5::DIGEST_LENGTH;
-
 use crate::error::CanonicalRepresentationError;
 use crate::error::ProvingError;
-pub use crate::program::NonDeterminism;
-pub use crate::program::Program;
-pub use crate::program::PublicInput;
-pub use crate::proof::Claim;
-pub use crate::proof::Proof;
-pub use crate::stark::Stark;
+use crate::prelude::*;
 use crate::stark::StarkHasher;
-pub use crate::stark::StarkParameters;
 
 pub mod aet;
 pub mod arithmetic_domain;
@@ -168,6 +159,7 @@ pub mod fri;
 pub mod instruction;
 pub mod op_stack;
 pub mod parser;
+pub mod prelude;
 pub mod profiler;
 pub mod program;
 pub mod proof;
@@ -211,8 +203,7 @@ mod shared_tests;
 /// [`Label`](instruction::LabelledInstruction)s, among others.
 ///
 /// ```
-/// # use triton_vm::triton_program;
-/// # use triton_vm::BFieldElement;
+/// # use triton_vm::prelude::*;
 /// # use triton_vm::instruction::Instruction;
 /// let element_0 = BFieldElement::new(0);
 /// let label = "my_label";
@@ -292,9 +283,7 @@ macro_rules! triton_program {
 /// Inserting substring of labelled instructions:
 ///
 /// ```
-/// # use triton_vm::BFieldElement;
-/// # use triton_vm::triton_asm;
-/// # use triton_vm::instruction::LabelledInstruction;
+/// # use triton_vm::prelude::*;
 /// # use triton_vm::instruction::AnInstruction::Push;
 /// # use triton_vm::instruction::AnInstruction::Pop;
 /// # use triton_vm::op_stack::NumberOfWords::N1;
@@ -432,7 +421,7 @@ macro_rules! triton_instr {
         $crate::instruction::LabelledInstruction::Instruction(instruction)
     }};
     (push $arg:expr) => {{
-        let argument = $crate::BFieldElement::new($arg);
+        let argument = $crate::prelude::BFieldElement::new($arg);
         let instruction = $crate::instruction::AnInstruction::<String>::Push(argument);
         $crate::instruction::LabelledInstruction::Instruction(instruction)
     }};
