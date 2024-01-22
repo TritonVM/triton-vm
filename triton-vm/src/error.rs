@@ -6,6 +6,7 @@ use std::num::TryFromIntError;
 use thiserror::Error;
 use twenty_first::shared_math::bfield_codec::BFieldCodec;
 use twenty_first::shared_math::digest::DIGEST_LENGTH;
+use twenty_first::util_types::merkle_tree::MerkleTreeError;
 
 use crate::instruction::Instruction;
 use crate::proof_item::ProofItem;
@@ -118,6 +119,13 @@ pub enum ProofStreamError {
 
 #[non_exhaustive]
 #[derive(Debug, Error)]
+pub enum FriProvingError {
+    #[error("Merkle tree error: {0}")]
+    MerkleTreeError(#[from] MerkleTreeError),
+}
+
+#[non_exhaustive]
+#[derive(Debug, Error)]
 pub enum FriValidationError {
     #[error("the number of revealed leaves does not match the number of collinearity checks")]
     IncorrectNumberOfRevealedLeaves,
@@ -136,6 +144,9 @@ pub enum FriValidationError {
 
     #[error("proof stream error: {0}")]
     ProofStreamError(#[from] ProofStreamError),
+
+    #[error("Merkle tree error: {0}")]
+    MerkleTreeError(#[from] MerkleTreeError),
 }
 
 #[non_exhaustive]

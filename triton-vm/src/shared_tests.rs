@@ -11,17 +11,24 @@ use proptest::prelude::*;
 use proptest_arbitrary_interop::arb;
 use test_strategy::Arbitrary;
 use twenty_first::shared_math::b_field_element::BFieldElement;
+use twenty_first::shared_math::digest::Digest;
 use twenty_first::shared_math::polynomial::Polynomial;
+use twenty_first::shared_math::tip5::Tip5;
 use twenty_first::shared_math::x_field_element::XFieldElement;
+use twenty_first::util_types::merkle_tree::CpuParallel;
+use twenty_first::util_types::merkle_tree::MerkleTree;
+use twenty_first::util_types::merkle_tree_maker::MerkleTreeMaker;
 
 use crate::aet::AlgebraicExecutionTrace;
 use crate::error::VMError;
+use crate::fri::AuthenticationStructure;
 use crate::profiler::prof_start;
 use crate::profiler::prof_stop;
 use crate::profiler::TritonProfiler;
 use crate::program::Program;
 use crate::proof::Claim;
 use crate::proof::Proof;
+use crate::proof_item::FriResponse;
 use crate::stark::Stark;
 use crate::stark::StarkHasher;
 use crate::stark::StarkParameters;
@@ -56,6 +63,51 @@ prop_compose! {
         let polynomial = Polynomial::new(coefficients);
         assert_eq!(degree, polynomial.degree() as i64);
         polynomial
+    }
+}
+
+#[derive(Debug, Clone, test_strategy::Arbitrary)]
+pub(crate) struct LeavedMerkleTreeTestData {
+    #[strategy(1..=10_usize)]
+    pub _tree_height: usize,
+
+    #[strategy(vec(arb(), 1 << #_tree_height))]
+    pub leaves: Vec<XFieldElement>,
+
+    #[strategy(vec(0..#leaves.len(), 1..=#leaves.len()))]
+    pub revealed_indices: Vec<usize>,
+
+    #[strategy(Just(#leaves.iter().map(|&x| x.into()).collect()))]
+    pub leaves_as_digests: Vec<Digest>,
+
+    #[strategy(Just(CpuParallel::from_digests(&#leaves_as_digests).unwrap()))]
+    pub merkle_tree: MerkleTree<Tip5>,
+
+    #[strategy(Just(#revealed_indices.iter().map(|&i| #leaves[i]).collect()))]
+    pub revealed_leaves: Vec<XFieldElement>,
+
+    #[strategy(Just(#merkle_tree.authentication_structure(&#revealed_indices).unwrap()))]
+    pub auth_structure: AuthenticationStructure,
+}
+
+impl LeavedMerkleTreeTestData {
+    pub fn root(&self) -> Digest {
+        self.merkle_tree.root()
+    }
+
+    pub fn leaves(&self) -> &[XFieldElement] {
+        &self.leaves
+    }
+
+    pub fn num_leaves(&self) -> usize {
+        self.leaves.len()
+    }
+
+    pub fn into_fri_response(self) -> FriResponse {
+        FriResponse {
+            auth_structure: self.auth_structure,
+            revealed_leaves: self.revealed_leaves,
+        }
     }
 }
 

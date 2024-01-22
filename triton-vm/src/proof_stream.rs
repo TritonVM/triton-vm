@@ -159,80 +159,42 @@ mod tests {
     use assert2::assert;
     use assert2::let_assert;
     use itertools::Itertools;
-    use rand::distributions::Standard;
-    use rand::prelude::Distribution;
-    use rand::prelude::SeedableRng;
-    use rand::prelude::StdRng;
-    use rand::random;
-    use rand::Rng;
-    use rand_core::RngCore;
+    use proptest::collection::vec;
+    use proptest_arbitrary_interop::arb;
+    use test_strategy::proptest;
     use twenty_first::shared_math::other::random_elements;
     use twenty_first::shared_math::tip5::Tip5;
     use twenty_first::shared_math::x_field_element::XFieldElement;
     use twenty_first::util_types::merkle_tree::MerkleTree;
+    use twenty_first::util_types::merkle_tree::MerkleTreeInclusionProof;
     use twenty_first::util_types::merkle_tree_maker::MerkleTreeMaker;
 
     use crate::proof_item::FriResponse;
     use crate::proof_item::ProofItem;
+    use crate::shared_tests::LeavedMerkleTreeTestData;
     use crate::stark::MTMaker;
+    use crate::stark::NUM_QUOTIENT_SEGMENTS;
     use crate::table::master_table::NUM_BASE_COLUMNS;
     use crate::table::master_table::NUM_EXT_COLUMNS;
 
     use super::*;
 
-    #[test]
-    fn test_serialize_proof_with_fiat_shamir() {
-        type H = Tip5;
-
-        fn random_elements<T>(seed: u64, n: usize) -> Vec<T>
-        where
-            Standard: Distribution<T>,
-        {
-            let rng = StdRng::seed_from_u64(seed);
-            rng.sample_iter(Standard).take(n).collect()
-        }
-
-        let seed = random();
-        let mut rng = StdRng::seed_from_u64(seed);
-        println!("seed: {seed}");
-
-        let base_rows = vec![
-            random_elements(rng.next_u64(), NUM_BASE_COLUMNS),
-            random_elements(rng.next_u64(), NUM_BASE_COLUMNS),
-        ];
-        let ext_rows = vec![
-            random_elements(rng.next_u64(), NUM_EXT_COLUMNS),
-            random_elements(rng.next_u64(), NUM_EXT_COLUMNS),
-        ];
-
-        let codeword_len = 32;
-        let fri_codeword: Vec<XFieldElement> = random_elements(rng.next_u64(), codeword_len);
-        let fri_codeword_digests = fri_codeword.iter().map(|&x| x.into()).collect_vec();
-        let merkle_tree: MerkleTree<H> = MTMaker::from_digests(&fri_codeword_digests);
-        let root = merkle_tree.get_root();
-
-        let num_revealed_indices = rng.gen_range(1..=codeword_len);
-        let revealed_indices = random_elements(rng.next_u64(), num_revealed_indices)
-            .into_iter()
-            .map(|idx: usize| idx % codeword_len)
-            .collect_vec();
-        let auth_structure = merkle_tree.get_authentication_structure(&revealed_indices);
-
-        let ood_base_row = random_elements(rng.next_u64(), NUM_BASE_COLUMNS);
-        let ood_ext_row = random_elements(rng.next_u64(), NUM_EXT_COLUMNS);
-        let quot_elements = random_elements(rng.next_u64(), 5);
-
-        let revealed_leaves = revealed_indices
-            .iter()
-            .map(|&idx| fri_codeword[idx])
-            .collect_vec();
-        let fri_response = FriResponse {
-            auth_structure: auth_structure.clone(),
-            revealed_leaves,
-        };
+    #[proptest]
+    fn serialize_proof_with_fiat_shamir(
+        #[strategy(vec(vec(arb(), NUM_BASE_COLUMNS), 2..100))] base_rows: Vec<Vec<BFieldElement>>,
+        #[strategy(vec(vec(arb(), NUM_EXT_COLUMNS), 2..100))] ext_rows: Vec<Vec<XFieldElement>>,
+        #[strategy(vec(arb(), NUM_BASE_COLUMNS))] ood_base_row: Vec<XFieldElement>,
+        #[strategy(vec(arb(), NUM_EXT_COLUMNS))] ood_ext_row: Vec<XFieldElement>,
+        #[strategy(arb())] quot_elements: Vec<[XFieldElement; NUM_QUOTIENT_SEGMENTS]>,
+        leaved_merkle_tree: LeavedMerkleTreeTestData,
+    ) {
+        let auth_structure = leaved_merkle_tree.auth_structure.clone();
+        let root = leaved_merkle_tree.root();
+        let fri_codeword = leaved_merkle_tree.leaves().to_owned();
+        let fri_response = leaved_merkle_tree.into_fri_response();
 
         let mut sponge_states = VecDeque::new();
-        let mut proof_stream = ProofStream::<H>::new();
+        let mut proof_stream = ProofStream::<Tip5>::new();
 
         sponge_states.push_back(proof_stream.sponge_state.state);
         proof_stream.enqueue(ProofItem::AuthenticationStructure(auth_structure.clone()));
@@ -249,13 +211,13 @@ mod tests {
         sponge_states.push_back(proof_stream.sponge_state.state);
         proof_stream.enqueue(ProofItem::QuotientSegmentsElements(quot_elements.clone()));
         sponge_states.push_back(proof_stream.sponge_state.state);
-        proof_stream.enqueue(ProofItem::FriCodeword(fri_codeword.clone()));
+        proof_stream.enqueue(ProofItem::FriCodeword(fri_codeword.to_vec()));
         sponge_states.push_back(proof_stream.sponge_state.state);
         proof_stream.enqueue(ProofItem::FriResponse(fri_response.clone()));
         sponge_states.push_back(proof_stream.sponge_state.state);
 
         let proof = proof_stream.into();
-        let mut proof_stream: ProofStream<H> = ProofStream::try_from(&proof).unwrap();
+        let mut proof_stream: ProofStream<Tip5> = ProofStream::try_from(&proof).unwrap();
 
         assert!(sponge_states.pop_front() == Some(proof_stream.sponge_state.state));
         let_assert!(Ok(proof_item) = proof_stream.dequeue());
@@ -301,15 +263,15 @@ mod tests {
 
     #[test]
     fn enqueue_dequeue_verify_partial_authentication_structure() {
-        type H = Tip5;
-
         let tree_height = 8;
         let num_leaves = 1 << tree_height;
         let leaf_values: Vec<XFieldElement> = random_elements(num_leaves);
         let leaf_digests = leaf_values.iter().map(|&xfe| xfe.into()).collect_vec();
-        let merkle_tree: MerkleTree<H> = MTMaker::from_digests(&leaf_digests);
+        let merkle_tree: MerkleTree<Tip5> = MTMaker::from_digests(&leaf_digests).unwrap();
         let indices_to_check = vec![5, 173, 175, 167, 228, 140, 252, 149, 232, 182, 5, 5, 182];
-        let auth_structure = merkle_tree.get_authentication_structure(&indices_to_check);
+        let auth_structure = merkle_tree
+            .authentication_structure(&indices_to_check)
+            .unwrap();
         let revealed_leaves = indices_to_check
             .iter()
             .map(|&idx| leaf_values[idx])
@@ -319,7 +281,7 @@ mod tests {
             revealed_leaves,
         };
 
-        let mut proof_stream = ProofStream::<H>::new();
+        let mut proof_stream = ProofStream::<Tip5>::new();
         proof_stream.enqueue(ProofItem::FriResponse(fri_response));
 
         // TODO: Also check that deserializing from Proof works here.
@@ -330,14 +292,18 @@ mod tests {
             revealed_leaves,
         } = maybe_same_fri_response;
         let maybe_same_leaf_digests = revealed_leaves.iter().map(|&xfe| xfe.into()).collect_vec();
-        let verdict = MerkleTree::<H>::verify_authentication_structure(
-            merkle_tree.get_root(),
+        let indexed_leaves = indices_to_check
+            .into_iter()
+            .zip_eq(maybe_same_leaf_digests)
+            .collect();
+
+        let inclusion_proof = MerkleTreeInclusionProof::<Tip5> {
             tree_height,
-            &indices_to_check,
-            &maybe_same_leaf_digests,
-            &auth_structure,
-        );
-        assert!(verdict);
+            indexed_leaves,
+            authentication_structure: auth_structure,
+            ..Default::default()
+        };
+        assert!(inclusion_proof.verify(merkle_tree.root()));
     }
 
     #[test]

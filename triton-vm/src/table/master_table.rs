@@ -308,7 +308,7 @@ where
         prof_stop!(maybe_profiler, "leafs");
 
         prof_start!(maybe_profiler, "Merkle tree");
-        let merkle_tree = MTMaker::from_digests(&hashed_rows);
+        let merkle_tree = MTMaker::from_digests(&hashed_rows).unwrap();
         prof_stop!(maybe_profiler, "Merkle tree");
 
         merkle_tree

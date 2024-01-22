@@ -1024,7 +1024,6 @@ pub(crate) mod tests {
     use rand::prelude::StdRng;
     use rand::random;
     use rand::rngs::ThreadRng;
-    use rand::thread_rng;
     use rand::Rng;
     use rand::RngCore;
     use rand_core::SeedableRng;
@@ -1034,21 +1033,18 @@ pub(crate) mod tests {
     use test_strategy::proptest;
     use twenty_first::shared_math::b_field_element::BFIELD_ZERO;
     use twenty_first::shared_math::other::random_elements;
-    use twenty_first::shared_math::other::random_elements_array;
     use twenty_first::shared_math::polynomial::Polynomial;
     use twenty_first::shared_math::tip5::Tip5;
     use twenty_first::shared_math::traits::FiniteField;
     use twenty_first::shared_math::traits::ModPowU32;
     use twenty_first::shared_math::x_field_element::XFieldElement;
     use twenty_first::util_types::algebraic_hasher::SpongeHasher;
-    use twenty_first::util_types::merkle_tree::MerkleTree;
-    use twenty_first::util_types::merkle_tree_maker::MerkleTreeMaker;
 
     use crate::example_programs::*;
     use crate::op_stack::NumberOfWords::*;
     use crate::shared_tests::prove_with_low_security_level;
+    use crate::shared_tests::LeavedMerkleTreeTestData;
     use crate::shared_tests::ProgramAndInput;
-    use crate::stark::MTMaker;
     use crate::triton_asm;
     use crate::triton_program;
 
@@ -2042,33 +2038,26 @@ pub(crate) mod tests {
         assert!(5_u64 == vm_state.op_stack[ST2].value());
     }
 
-    #[test]
-    fn triton_assembly_merkle_tree_authentication_path_verification() {
-        type H = Tip5;
+    #[proptest]
+    fn triton_assembly_merkle_tree_authentication_path_verification(
+        leaved_merkle_tree: LeavedMerkleTreeTestData,
+    ) {
+        let merkle_tree = &leaved_merkle_tree.merkle_tree;
+        let auth_path = |&i| merkle_tree.authentication_structure(&[i]).unwrap();
 
-        const TREE_HEIGHT: usize = 6;
-        const NUM_LEAVES: usize = 1 << TREE_HEIGHT;
-        let leaves: [_; NUM_LEAVES] = random_elements_array();
-        let merkle_tree: MerkleTree<H> = MTMaker::from_digests(&leaves);
-        let root = merkle_tree.get_root();
+        let revealed_indices = &leaved_merkle_tree.revealed_indices;
+        let num_authentication_paths = revealed_indices.len();
 
-        let num_authentication_paths = 3;
-        let selected_leaf_indices = (0..num_authentication_paths)
-            .map(|_| thread_rng().gen_range(0..NUM_LEAVES))
-            .collect_vec();
-
-        let auth_path_digests = selected_leaf_indices
-            .iter()
-            .flat_map(|&leaf_index| merkle_tree.get_authentication_structure(&[leaf_index]))
-            .collect();
-        let non_determinism = NonDeterminism::new(vec![]).with_digests(auth_path_digests);
+        let auth_paths = revealed_indices.iter().flat_map(auth_path).collect();
+        let non_determinism = NonDeterminism::default().with_digests(auth_paths);
 
         let mut public_input = vec![(num_authentication_paths as u64).into()];
-        public_input.extend(root.reversed().values().to_vec());
-        for &leaf_index in &selected_leaf_indices {
-            let node_index = (leaf_index + NUM_LEAVES) as u64;
+        public_input.extend(leaved_merkle_tree.root().reversed().values());
+        for &leaf_index in revealed_indices {
+            let node_index = (leaf_index + leaved_merkle_tree.num_leaves()) as u64;
             public_input.push(node_index.into());
-            public_input.extend(leaves[leaf_index].reversed().values().to_vec());
+            let revealed_leaf = leaved_merkle_tree.leaves_as_digests[leaf_index];
+            public_input.extend(revealed_leaf.reversed().values());
         }
 
         let program = MERKLE_TREE_AUTHENTICATION_PATH_VERIFY.clone();

@@ -24,6 +24,7 @@ use twenty_first::shared_math::x_field_element::XFieldElement;
 use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
 use twenty_first::util_types::merkle_tree::CpuParallel;
 use twenty_first::util_types::merkle_tree::MerkleTree;
+use twenty_first::util_types::merkle_tree::MerkleTreeInclusionProof;
 use twenty_first::util_types::merkle_tree_maker::MerkleTreeMaker;
 
 use crate::aet::AlgebraicExecutionTrace;
@@ -182,7 +183,7 @@ impl Stark {
         prof_stop!(maybe_profiler, "Merkle tree");
 
         prof_start!(maybe_profiler, "Fiat-Shamir", "hash");
-        proof_stream.enqueue(ProofItem::MerkleRoot(base_merkle_tree.get_root()));
+        proof_stream.enqueue(ProofItem::MerkleRoot(base_merkle_tree.root()));
         let challenges = proof_stream.sample_scalars(Challenges::num_challenges_to_sample());
         let challenges = Challenges::new(challenges, claim);
         prof_stop!(maybe_profiler, "Fiat-Shamir");
@@ -207,7 +208,7 @@ impl Stark {
         prof_stop!(maybe_profiler, "Merkle tree");
 
         prof_start!(maybe_profiler, "Fiat-Shamir", "hash");
-        proof_stream.enqueue(ProofItem::MerkleRoot(ext_merkle_tree.get_root()));
+        proof_stream.enqueue(ProofItem::MerkleRoot(ext_merkle_tree.root()));
         prof_stop!(maybe_profiler, "Fiat-Shamir");
         prof_stop!(maybe_profiler, "ext tables");
 
@@ -264,12 +265,12 @@ impl Stark {
         prof_stop!(maybe_profiler, "hash rows of quotient segments");
         prof_start!(maybe_profiler, "Merkle tree", "hash");
         let quot_merkle_tree: MerkleTree<StarkHasher> =
-            MTMaker::from_digests(&fri_domain_quotient_segment_codewords_digests);
-        let quot_merkle_tree_root = quot_merkle_tree.get_root();
+            MTMaker::from_digests(&fri_domain_quotient_segment_codewords_digests).unwrap();
+        let quot_merkle_tree_root = quot_merkle_tree.root();
         proof_stream.enqueue(ProofItem::MerkleRoot(quot_merkle_tree_root));
         prof_stop!(maybe_profiler, "Merkle tree");
         prof_stop!(maybe_profiler, "commit to quotient codeword segments");
-        debug_assert_eq!(fri.domain.length, quot_merkle_tree.get_leaf_count());
+        debug_assert_eq!(fri.domain.length, quot_merkle_tree.num_leafs());
 
         prof_start!(maybe_profiler, "out-of-domain rows");
         let trace_domain_generator = master_base_table.trace_domain().generator;
@@ -436,7 +437,9 @@ impl Stark {
         prof_stop!(maybe_profiler, "combined DEEP polynomial");
 
         prof_start!(maybe_profiler, "FRI");
-        let revealed_current_row_indices = fri.prove(&fri_combination_codeword, &mut proof_stream);
+        let revealed_current_row_indices = fri
+            .prove(&fri_combination_codeword, &mut proof_stream)
+            .unwrap();
         assert_eq!(
             parameters.num_combination_codeword_checks,
             revealed_current_row_indices.len()
@@ -449,8 +452,9 @@ impl Stark {
             master_base_table.fri_domain_table(),
             &revealed_current_row_indices,
         );
-        let base_authentication_structure =
-            base_merkle_tree.get_authentication_structure(&revealed_current_row_indices);
+        let base_authentication_structure = base_merkle_tree
+            .authentication_structure(&revealed_current_row_indices)
+            .unwrap();
         proof_stream.enqueue(ProofItem::MasterBaseTableRows(revealed_base_elems));
         proof_stream.enqueue(ProofItem::AuthenticationStructure(
             base_authentication_structure,
@@ -460,8 +464,9 @@ impl Stark {
             master_ext_table.fri_domain_table(),
             &revealed_current_row_indices,
         );
-        let ext_authentication_structure =
-            ext_merkle_tree.get_authentication_structure(&revealed_current_row_indices);
+        let ext_authentication_structure = ext_merkle_tree
+            .authentication_structure(&revealed_current_row_indices)
+            .unwrap();
         proof_stream.enqueue(ProofItem::MasterExtTableRows(revealed_ext_elems));
         proof_stream.enqueue(ProofItem::AuthenticationStructure(
             ext_authentication_structure,
@@ -475,8 +480,9 @@ impl Stark {
             .map(|&i| fri_domain_quotient_segment_codewords.row(i))
             .map(into_fixed_width_row)
             .collect_vec();
-        let revealed_quotient_authentication_structure =
-            quot_merkle_tree.get_authentication_structure(&revealed_current_row_indices);
+        let revealed_quotient_authentication_structure = quot_merkle_tree
+            .authentication_structure(&revealed_current_row_indices)
+            .unwrap();
         proof_stream.enqueue(ProofItem::QuotientSegmentsElements(
             revealed_quotient_segments_rows,
         ));
@@ -889,14 +895,18 @@ impl Stark {
             .collect();
         prof_stop!(maybe_profiler, "dequeue base elements");
 
+        let index_leaves = |leaves| {
+            let index_iter = revealed_current_row_indices.iter().copied();
+            index_iter.zip_eq(leaves).collect()
+        };
         prof_start!(maybe_profiler, "Merkle verify (base tree)", "hash");
-        if !MerkleTree::<StarkHasher>::verify_authentication_structure(
-            base_merkle_tree_root,
-            merkle_tree_height,
-            &revealed_current_row_indices,
-            &leaf_digests_base,
-            &base_authentication_structure,
-        ) {
+        let base_merkle_tree_inclusion_proof = MerkleTreeInclusionProof::<Tip5> {
+            tree_height: merkle_tree_height,
+            indexed_leaves: index_leaves(leaf_digests_base),
+            authentication_structure: base_authentication_structure,
+            ..Default::default()
+        };
+        if !base_merkle_tree_inclusion_proof.verify(base_merkle_tree_root) {
             return Err(BaseCodewordAuthenticationFailure);
         }
         prof_stop!(maybe_profiler, "Merkle verify (base tree)");
@@ -907,23 +917,20 @@ impl Stark {
         let leaf_digests_ext = ext_table_rows
             .par_iter()
             .map(|xvalues| {
-                let bvalues = xvalues
-                    .iter()
-                    .flat_map(|xfe| xfe.coefficients.to_vec())
-                    .collect_vec();
-                StarkHasher::hash_varlen(&bvalues)
+                let b_values = xvalues.iter().flat_map(|xfe| xfe.coefficients.to_vec());
+                StarkHasher::hash_varlen(&b_values.collect_vec())
             })
             .collect::<Vec<_>>();
         prof_stop!(maybe_profiler, "dequeue extension elements");
 
         prof_start!(maybe_profiler, "Merkle verify (extension tree)", "hash");
-        if !MerkleTree::<StarkHasher>::verify_authentication_structure(
-            extension_tree_merkle_root,
-            merkle_tree_height,
-            &revealed_current_row_indices,
-            &leaf_digests_ext,
-            &ext_authentication_structure,
-        ) {
+        let ext_merkle_tree_inclusion_proof = MerkleTreeInclusionProof::<Tip5> {
+            tree_height: merkle_tree_height,
+            indexed_leaves: index_leaves(leaf_digests_ext),
+            authentication_structure: ext_authentication_structure,
+            ..Default::default()
+        };
+        if !ext_merkle_tree_inclusion_proof.verify(extension_tree_merkle_root) {
             return Err(ExtensionCodewordAuthenticationFailure);
         }
         prof_stop!(maybe_profiler, "Merkle verify (extension tree)");
@@ -938,13 +945,13 @@ impl Stark {
         prof_stop!(maybe_profiler, "dequeue quotient segments' elements");
 
         prof_start!(maybe_profiler, "Merkle verify (combined quotient)", "hash");
-        if !MerkleTree::<StarkHasher>::verify_authentication_structure(
-            quotient_codeword_merkle_root,
-            merkle_tree_height,
-            &revealed_current_row_indices,
-            &revealed_quotient_segments_digests,
-            &revealed_quotient_authentication_structure,
-        ) {
+        let quot_merkle_tree_inclusion_proof = MerkleTreeInclusionProof::<Tip5> {
+            tree_height: merkle_tree_height,
+            indexed_leaves: index_leaves(revealed_quotient_segments_digests),
+            authentication_structure: revealed_quotient_authentication_structure,
+            ..Default::default()
+        };
+        if !quot_merkle_tree_inclusion_proof.verify(quotient_codeword_merkle_root) {
             return Err(QuotientCodewordAuthenticationFailure);
         }
         prof_stop!(maybe_profiler, "Merkle verify (combined quotient)");

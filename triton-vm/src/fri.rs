@@ -12,9 +12,11 @@ use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
 use twenty_first::util_types::merkle_tree::MerkleTree;
+use twenty_first::util_types::merkle_tree::MerkleTreeInclusionProof;
 use twenty_first::util_types::merkle_tree_maker::MerkleTreeMaker;
 
 use crate::arithmetic_domain::ArithmeticDomain;
+use crate::error::FriProvingError;
 use crate::error::FriValidationError;
 use crate::error::FriValidationError::*;
 use crate::profiler::prof_start;
@@ -25,7 +27,8 @@ use crate::proof_item::ProofItem;
 use crate::proof_stream::ProofStream;
 use crate::stark::MTMaker;
 
-type Result<T> = core::result::Result<T, FriValidationError>;
+type VerifierResult<T> = Result<T, FriValidationError>;
+type ProverResult<T> = Result<T, FriProvingError>;
 pub type AuthenticationStructure = Vec<Digest>;
 
 #[derive(Debug, Clone, Copy)]
@@ -52,28 +55,31 @@ struct ProverRound<H: AlgebraicHasher> {
 }
 
 impl<'stream, H: AlgebraicHasher> FriProver<'stream, H> {
-    fn commit(&mut self, codeword: &[XFieldElement]) {
-        self.commit_to_first_round(codeword);
+    fn commit(&mut self, codeword: &[XFieldElement]) -> ProverResult<()> {
+        self.commit_to_first_round(codeword)?;
         for _ in 0..self.num_rounds {
-            self.commit_to_next_round();
+            self.commit_to_next_round()?;
         }
         self.send_last_codeword();
+        Ok(())
     }
 
-    fn commit_to_first_round(&mut self, codeword: &[XFieldElement]) {
-        let first_round = ProverRound::new(self.first_round_domain, codeword);
+    fn commit_to_first_round(&mut self, codeword: &[XFieldElement]) -> ProverResult<()> {
+        let first_round = ProverRound::new(self.first_round_domain, codeword)?;
         self.commit_to_round(&first_round);
         self.store_round(first_round);
+        Ok(())
     }
 
-    fn commit_to_next_round(&mut self) {
-        let next_round = self.construct_next_round();
+    fn commit_to_next_round(&mut self) -> ProverResult<()> {
+        let next_round = self.construct_next_round()?;
         self.commit_to_round(&next_round);
         self.store_round(next_round);
+        Ok(())
     }
 
     fn commit_to_round(&mut self, round: &ProverRound<H>) {
-        let merkle_root = round.merkle_tree.get_root();
+        let merkle_root = round.merkle_tree.root();
         let proof_item = ProofItem::MerkleRoot(merkle_root);
         self.proof_stream.enqueue(proof_item);
     }
@@ -82,7 +88,7 @@ impl<'stream, H: AlgebraicHasher> FriProver<'stream, H> {
         self.rounds.push(round);
     }
 
-    fn construct_next_round(&mut self) -> ProverRound<H> {
+    fn construct_next_round(&mut self) -> ProverResult<ProverRound<H>> {
         let previous_round = self.rounds.last().unwrap();
         let folding_challenge = self.proof_stream.sample_scalars(1)[0];
         let codeword = previous_round.split_and_fold(folding_challenge);
@@ -96,17 +102,19 @@ impl<'stream, H: AlgebraicHasher> FriProver<'stream, H> {
         self.proof_stream.enqueue(proof_item);
     }
 
-    fn query(&mut self) {
+    fn query(&mut self) -> ProverResult<()> {
         self.sample_first_round_collinearity_check_indices();
 
         let initial_a_indices = self.first_round_collinearity_check_indices.clone();
-        self.authentically_reveal_codeword_of_round_at_indices(0, &initial_a_indices);
+        self.authentically_reveal_codeword_of_round_at_indices(0, &initial_a_indices)?;
 
         let num_rounds_that_have_a_next_round = self.rounds.len() - 1;
         for round_number in 0..num_rounds_that_have_a_next_round {
             let b_indices = self.collinearity_check_b_indices_for_round(round_number);
-            self.authentically_reveal_codeword_of_round_at_indices(round_number, &b_indices);
+            self.authentically_reveal_codeword_of_round_at_indices(round_number, &b_indices)?;
         }
+
+        Ok(())
     }
 
     fn sample_first_round_collinearity_check_indices(&mut self) {
@@ -134,35 +142,38 @@ impl<'stream, H: AlgebraicHasher> FriProver<'stream, H> {
         &mut self,
         round_number: usize,
         indices: &[usize],
-    ) {
+    ) -> ProverResult<()> {
         let codeword = &self.rounds[round_number].codeword;
         let revealed_leaves = indices.iter().map(|&i| codeword[i]).collect_vec();
 
         let merkle_tree = &self.rounds[round_number].merkle_tree;
-        let auth_structure = merkle_tree.get_authentication_structure(indices);
+        let auth_structure = merkle_tree.authentication_structure(indices)?;
 
         let fri_response = FriResponse {
             auth_structure,
             revealed_leaves,
         };
         let proof_item = ProofItem::FriResponse(fri_response);
-        self.proof_stream.enqueue(proof_item)
+        self.proof_stream.enqueue(proof_item);
+        Ok(())
     }
 }
 
 impl<H: AlgebraicHasher> ProverRound<H> {
-    fn new(domain: ArithmeticDomain, codeword: &[XFieldElement]) -> Self {
+    fn new(domain: ArithmeticDomain, codeword: &[XFieldElement]) -> ProverResult<Self> {
         debug_assert_eq!(domain.length, codeword.len());
-        Self {
+        let merkle_tree = Self::merkle_tree_from_codeword(codeword)?;
+        let round = Self {
             domain,
             codeword: codeword.to_vec(),
-            merkle_tree: Self::merkle_tree_from_codeword(codeword),
-        }
+            merkle_tree,
+        };
+        Ok(round)
     }
 
-    fn merkle_tree_from_codeword(codeword: &[XFieldElement]) -> MerkleTree<H> {
+    fn merkle_tree_from_codeword(codeword: &[XFieldElement]) -> ProverResult<MerkleTree<H>> {
         let digests = codeword_as_digests(codeword);
-        MTMaker::from_digests(&digests)
+        MTMaker::from_digests(&digests).map_err(FriProvingError::MerkleTreeError)
     }
 
     fn split_and_fold(&self, folding_challenge: XFieldElement) -> Vec<XFieldElement> {
@@ -205,12 +216,12 @@ struct VerifierRound {
 }
 
 impl<'stream, H: AlgebraicHasher> FriVerifier<'stream, H> {
-    fn initialize(&mut self) -> Result<()> {
+    fn initialize(&mut self) -> VerifierResult<()> {
         self.initialize_verification_rounds()?;
         self.receive_last_round_codeword()
     }
 
-    fn initialize_verification_rounds(&mut self) -> Result<()> {
+    fn initialize_verification_rounds(&mut self) -> VerifierResult<()> {
         self.initialize_first_round()?;
         for _ in 0..self.num_rounds {
             self.initialize_next_round()?;
@@ -218,30 +229,33 @@ impl<'stream, H: AlgebraicHasher> FriVerifier<'stream, H> {
         Ok(())
     }
 
-    fn initialize_first_round(&mut self) -> Result<()> {
+    fn initialize_first_round(&mut self) -> VerifierResult<()> {
         let first_round = self.construct_first_round()?;
         self.store_round(first_round);
         Ok(())
     }
 
-    fn initialize_next_round(&mut self) -> Result<()> {
+    fn initialize_next_round(&mut self) -> VerifierResult<()> {
         let next_round = self.construct_next_round()?;
         self.store_round(next_round);
         Ok(())
     }
 
-    fn construct_first_round(&mut self) -> Result<VerifierRound> {
+    fn construct_first_round(&mut self) -> VerifierResult<VerifierRound> {
         let domain = self.first_round_domain;
         self.construct_round_with_domain(domain)
     }
 
-    fn construct_next_round(&mut self) -> Result<VerifierRound> {
+    fn construct_next_round(&mut self) -> VerifierResult<VerifierRound> {
         let previous_round = self.rounds.last().unwrap();
         let domain = previous_round.domain.halve();
         self.construct_round_with_domain(domain)
     }
 
-    fn construct_round_with_domain(&mut self, domain: ArithmeticDomain) -> Result<VerifierRound> {
+    fn construct_round_with_domain(
+        &mut self,
+        domain: ArithmeticDomain,
+    ) -> VerifierResult<VerifierRound> {
         let merkle_root = self.proof_stream.dequeue()?.as_merkle_root()?;
         let folding_challenge = self.maybe_sample_folding_challenge();
 
@@ -276,12 +290,12 @@ impl<'stream, H: AlgebraicHasher> FriVerifier<'stream, H> {
         self.rounds.push(round);
     }
 
-    fn receive_last_round_codeword(&mut self) -> Result<()> {
+    fn receive_last_round_codeword(&mut self) -> VerifierResult<()> {
         self.last_round_codeword = self.proof_stream.dequeue()?.as_fri_codeword()?;
         Ok(())
     }
 
-    fn compute_last_round_folded_partial_codeword(&mut self) -> Result<()> {
+    fn compute_last_round_folded_partial_codeword(&mut self) -> VerifierResult<()> {
         self.sample_first_round_collinearity_check_indices();
         self.receive_authentic_partially_revealed_codewords()?;
         self.successively_fold_partial_codeword_of_each_round();
@@ -295,19 +309,21 @@ impl<'stream, H: AlgebraicHasher> FriVerifier<'stream, H> {
             .sample_indices(upper_bound, self.num_collinearity_checks);
     }
 
-    fn receive_authentic_partially_revealed_codewords(&mut self) -> Result<()> {
+    fn receive_authentic_partially_revealed_codewords(&mut self) -> VerifierResult<()> {
         let auth_structure = self.receive_partial_codeword_a_for_first_round()?;
-        self.authenticate_partial_codeword_a_for_first_round(&auth_structure)?;
+        self.authenticate_partial_codeword_a_for_first_round(auth_structure)?;
 
         let num_rounds_that_have_a_next_round = self.rounds.len() - 1;
         for round_number in 0..num_rounds_that_have_a_next_round {
             let auth_structure = self.receive_partial_codeword_b_for_round(round_number)?;
-            self.authenticate_partial_codeword_b_for_round(round_number, &auth_structure)?;
+            self.authenticate_partial_codeword_b_for_round(round_number, auth_structure)?;
         }
         Ok(())
     }
 
-    fn receive_partial_codeword_a_for_first_round(&mut self) -> Result<AuthenticationStructure> {
+    fn receive_partial_codeword_a_for_first_round(
+        &mut self,
+    ) -> VerifierResult<AuthenticationStructure> {
         let fri_response = self.proof_stream.dequeue()?.as_fri_response()?;
         let FriResponse {
             auth_structure,
@@ -322,7 +338,7 @@ impl<'stream, H: AlgebraicHasher> FriVerifier<'stream, H> {
     fn receive_partial_codeword_b_for_round(
         &mut self,
         round_number: usize,
-    ) -> Result<AuthenticationStructure> {
+    ) -> VerifierResult<AuthenticationStructure> {
         let fri_response = self.proof_stream.dequeue()?.as_fri_response()?;
         let FriResponse {
             auth_structure,
@@ -334,7 +350,7 @@ impl<'stream, H: AlgebraicHasher> FriVerifier<'stream, H> {
         Ok(auth_structure)
     }
 
-    fn assert_enough_leaves_were_received(&self, leaves: &[XFieldElement]) -> Result<()> {
+    fn assert_enough_leaves_were_received(&self, leaves: &[XFieldElement]) -> VerifierResult<()> {
         match self.num_collinearity_checks == leaves.len() {
             true => Ok(()),
             false => Err(IncorrectNumberOfRevealedLeaves),
@@ -343,23 +359,22 @@ impl<'stream, H: AlgebraicHasher> FriVerifier<'stream, H> {
 
     fn authenticate_partial_codeword_a_for_first_round(
         &self,
-        auth_structure: &AuthenticationStructure,
-    ) -> Result<()> {
+        authentication_structure: AuthenticationStructure,
+    ) -> VerifierResult<()> {
         let round = &self.rounds[0];
-
         let revealed_leaves = &round.partial_codeword_a;
         let revealed_digests = codeword_as_digests(revealed_leaves);
 
-        let merkle_tree_height = round.domain.length.ilog2() as usize;
-        let indices = &self.collinearity_check_a_indices_for_round(0);
+        let leaf_indices = self.collinearity_check_a_indices_for_round(0);
+        let indexed_leaves = leaf_indices.into_iter().zip_eq(revealed_digests).collect();
 
-        match MerkleTree::<H>::verify_authentication_structure(
-            round.merkle_root,
-            merkle_tree_height,
-            indices,
-            &revealed_digests,
-            auth_structure,
-        ) {
+        let inclusion_proof = MerkleTreeInclusionProof::<H> {
+            tree_height: round.merkle_tree_height(),
+            indexed_leaves,
+            authentication_structure,
+            ..Default::default()
+        };
+        match inclusion_proof.verify(round.merkle_root) {
             true => Ok(()),
             false => Err(BadMerkleAuthenticationPath),
         }
@@ -368,23 +383,22 @@ impl<'stream, H: AlgebraicHasher> FriVerifier<'stream, H> {
     fn authenticate_partial_codeword_b_for_round(
         &self,
         round_number: usize,
-        auth_structure: &AuthenticationStructure,
-    ) -> Result<()> {
+        authentication_structure: AuthenticationStructure,
+    ) -> VerifierResult<()> {
         let round = &self.rounds[round_number];
-
         let revealed_leaves = &round.partial_codeword_b;
         let revealed_digests = codeword_as_digests(revealed_leaves);
 
-        let merkle_tree_height = round.domain.length.ilog2() as usize;
-        let indices = &self.collinearity_check_b_indices_for_round(round_number);
+        let leaf_indices = self.collinearity_check_b_indices_for_round(round_number);
+        let indexed_leaves = leaf_indices.into_iter().zip_eq(revealed_digests).collect();
 
-        match MerkleTree::<H>::verify_authentication_structure(
-            round.merkle_root,
-            merkle_tree_height,
-            indices,
-            &revealed_digests,
-            auth_structure,
-        ) {
+        let inclusion_proof = MerkleTreeInclusionProof::<H> {
+            tree_height: round.merkle_tree_height(),
+            indexed_leaves,
+            authentication_structure,
+            ..Default::default()
+        };
+        match inclusion_proof.verify(round.merkle_root) {
             true => Ok(()),
             false => Err(BadMerkleAuthenticationPath),
         }
@@ -443,30 +457,34 @@ impl<'stream, H: AlgebraicHasher> FriVerifier<'stream, H> {
             .collect()
     }
 
-    fn authenticate_last_round_codeword(&self) -> Result<()> {
+    fn authenticate_last_round_codeword(&self) -> VerifierResult<()> {
         self.assert_last_round_codeword_matches_last_round_commitment()?;
         self.assert_last_round_codeword_agrees_with_last_round_folded_codeword()?;
         self.assert_last_round_codeword_corresponds_to_low_degree_polynomial()
     }
 
-    fn assert_last_round_codeword_matches_last_round_commitment(&self) -> Result<()> {
-        match self.last_round_merkle_root() == self.last_round_codeword_merkle_root() {
+    fn assert_last_round_codeword_matches_last_round_commitment(&self) -> VerifierResult<()> {
+        match self.last_round_merkle_root() == self.last_round_codeword_merkle_root()? {
             true => Ok(()),
             false => Err(BadMerkleRootForLastCodeword),
         }
     }
 
-    fn last_round_codeword_merkle_root(&self) -> Digest {
+    fn last_round_codeword_merkle_root(&self) -> VerifierResult<Digest> {
         let codeword_digests = codeword_as_digests(&self.last_round_codeword);
-        let merkle_tree: MerkleTree<H> = MTMaker::from_digests(&codeword_digests);
-        merkle_tree.get_root()
+        let merkle_tree: MerkleTree<H> = MTMaker::from_digests(&codeword_digests)
+            .map_err(FriValidationError::MerkleTreeError)?;
+
+        Ok(merkle_tree.root())
     }
 
     fn last_round_merkle_root(&self) -> Digest {
         self.rounds.last().unwrap().merkle_root
     }
 
-    fn assert_last_round_codeword_agrees_with_last_round_folded_codeword(&self) -> Result<()> {
+    fn assert_last_round_codeword_agrees_with_last_round_folded_codeword(
+        &self,
+    ) -> VerifierResult<()> {
         let partial_folded_codeword = self.folded_last_round_codeword_at_indices_a();
         let partial_received_codeword = self.received_last_round_codeword_at_indices_a();
         match partial_received_codeword == partial_folded_codeword {
@@ -488,7 +506,9 @@ impl<'stream, H: AlgebraicHasher> FriVerifier<'stream, H> {
             .collect()
     }
 
-    fn assert_last_round_codeword_corresponds_to_low_degree_polynomial(&self) -> Result<()> {
+    fn assert_last_round_codeword_corresponds_to_low_degree_polynomial(
+        &self,
+    ) -> VerifierResult<()> {
         if self.last_round_polynomial().degree() > self.last_round_max_degree as isize {
             return Err(LastRoundPolynomialHasTooHighDegree);
         }
@@ -519,6 +539,12 @@ impl<'stream, H: AlgebraicHasher> FriVerifier<'stream, H> {
     }
 }
 
+impl VerifierRound {
+    fn merkle_tree_height(&self) -> usize {
+        self.domain.length.ilog2() as usize
+    }
+}
+
 impl<H: AlgebraicHasher> Fri<H> {
     pub fn new(
         domain: ArithmeticDomain,
@@ -542,13 +568,14 @@ impl<H: AlgebraicHasher> Fri<H> {
         &self,
         codeword: &[XFieldElement],
         proof_stream: &mut ProofStream<H>,
-    ) -> Vec<usize> {
+    ) -> ProverResult<Vec<usize>> {
         let mut prover = self.prover(proof_stream);
 
-        prover.commit(codeword);
-        prover.query();
+        prover.commit(codeword)?;
+        prover.query()?;
 
-        prover.all_top_level_collinearity_check_indices()
+        let indices = prover.all_top_level_collinearity_check_indices();
+        Ok(indices)
     }
 
     fn prover<'stream>(&'stream self, proof_stream: &'stream mut ProofStream<H>) -> FriProver<H> {
@@ -568,7 +595,7 @@ impl<H: AlgebraicHasher> Fri<H> {
         &self,
         proof_stream: &mut ProofStream<H>,
         maybe_profiler: &mut Option<TritonProfiler>,
-    ) -> Result<Vec<(usize, XFieldElement)>> {
+    ) -> VerifierResult<Vec<(usize, XFieldElement)>> {
         prof_start!(maybe_profiler, "init");
         let mut verifier = self.verifier(proof_stream);
         verifier.initialize()?;
@@ -726,7 +753,7 @@ mod tests {
         let codeword = fri.domain.evaluate(&polynomial);
 
         let mut proof_stream = ProofStream::new();
-        fri.prove(&codeword, &mut proof_stream);
+        fri.prove(&codeword, &mut proof_stream).unwrap();
 
         let mut proof_stream = prepare_proof_stream_for_verification(proof_stream);
         let verdict = fri.verify(&mut proof_stream, &mut None);
@@ -742,7 +769,7 @@ mod tests {
         debug_assert!(polynomial.degree() <= fri.first_round_max_degree() as isize);
         let codeword = fri.domain.evaluate(&polynomial);
         let mut proof_stream = ProofStream::new();
-        fri.prove(&codeword, &mut proof_stream);
+        fri.prove(&codeword, &mut proof_stream).unwrap();
 
         let mut proof_stream = prepare_proof_stream_for_verification(proof_stream);
         let verdict = fri.verify(&mut proof_stream, &mut None);
@@ -759,7 +786,7 @@ mod tests {
         debug_assert!(polynomial.degree() > fri.first_round_max_degree() as isize);
         let codeword = fri.domain.evaluate(&polynomial);
         let mut proof_stream = ProofStream::new();
-        fri.prove(&codeword, &mut proof_stream);
+        fri.prove(&codeword, &mut proof_stream).unwrap();
 
         let mut proof_stream = prepare_proof_stream_for_verification(proof_stream);
         let verdict = fri.verify(&mut proof_stream, &mut None);
@@ -828,7 +855,7 @@ mod tests {
     ) {
         let codeword = fri.domain.evaluate(&polynomial);
         let mut prover_proof_stream = ProofStream::new();
-        fri.prove(&codeword, &mut prover_proof_stream);
+        fri.prove(&codeword, &mut prover_proof_stream).unwrap();
 
         let proof = (&prover_proof_stream).into();
         let verifier_proof_stream = ProofStream::<Tip5>::try_from(&proof).unwrap();
@@ -853,7 +880,7 @@ mod tests {
     ) {
         let codeword = fri.domain.evaluate(&polynomial);
         let mut proof_stream = ProofStream::new();
-        fri.prove(&codeword, &mut proof_stream);
+        fri.prove(&codeword, &mut proof_stream).unwrap();
 
         let proof_stream = prepare_proof_stream_for_verification(proof_stream);
         let mut proof_stream =
@@ -906,7 +933,7 @@ mod tests {
     ) {
         let codeword = fri.domain.evaluate(&polynomial);
         let mut proof_stream = ProofStream::new();
-        fri.prove(&codeword, &mut proof_stream);
+        fri.prove(&codeword, &mut proof_stream).unwrap();
 
         let proof_stream = prepare_proof_stream_for_verification(proof_stream);
         let mut proof_stream =
@@ -960,7 +987,7 @@ mod tests {
 
         let codeword = fri.domain.evaluate(&polynomial);
         let mut proof_stream = ProofStream::new();
-        fri.prove(&codeword, &mut proof_stream);
+        fri.prove(&codeword, &mut proof_stream).unwrap();
 
         let proof_stream = prepare_proof_stream_for_verification(proof_stream);
         let mut proof_stream =

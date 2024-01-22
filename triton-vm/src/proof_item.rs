@@ -152,67 +152,30 @@ impl ProofItem {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use assert2::assert;
     use assert2::let_assert;
-    use proptest::collection::vec;
     use proptest::prelude::*;
-    use proptest_arbitrary_interop::arb;
     use test_strategy::proptest;
     use twenty_first::shared_math::tip5::Tip5;
-    use twenty_first::shared_math::x_field_element::XFieldElement;
-    use twenty_first::util_types::merkle_tree::CpuParallel;
-    use twenty_first::util_types::merkle_tree::MerkleTree;
-    use twenty_first::util_types::merkle_tree_maker::MerkleTreeMaker;
 
     use crate::proof::Proof;
     use crate::proof_stream::ProofStream;
+    use crate::shared_tests::LeavedMerkleTreeTestData;
 
     use super::*;
 
-    #[derive(Debug, Clone, test_strategy::Arbitrary)]
-    struct LeavedMerkleTreeTestData {
-        #[strategy(1..=10_usize)]
-        _tree_height: usize,
-
-        #[strategy(vec(arb(), 1 << #_tree_height))]
-        _leaves: Vec<XFieldElement>,
-
-        #[strategy(vec(0..#_leaves.len(), 1..=#_leaves.len()))]
-        _revealed_indices: Vec<usize>,
-
-        #[strategy(Just(#_leaves.iter().map(|&x| x.into()).collect()))]
-        _leaves_as_digests: Vec<Digest>,
-
-        #[strategy(Just(CpuParallel::from_digests(&#_leaves_as_digests)))]
-        _merkle_tree: MerkleTree<Tip5>,
-
-        #[strategy(Just(#_revealed_indices.iter().map(|&i| #_leaves[i]).collect()))]
-        revealed_leaves: Vec<XFieldElement>,
-
-        #[strategy(Just(#_merkle_tree.get_authentication_structure(&#_revealed_indices)))]
-        auth_structure: AuthenticationStructure,
-    }
-
     #[proptest]
     fn serialize_fri_response_in_isolation(leaved_merkle_tree: LeavedMerkleTreeTestData) {
-        let fri_response = FriResponse {
-            auth_structure: leaved_merkle_tree.auth_structure,
-            revealed_leaves: leaved_merkle_tree.revealed_leaves,
-        };
-
+        let fri_response = leaved_merkle_tree.into_fri_response();
         let encoding = fri_response.encode();
         let_assert!(Ok(decoding) = FriResponse::decode(&encoding));
-        assert!(fri_response == *decoding);
+        prop_assert_eq!(fri_response, *decoding);
     }
 
     #[proptest]
     fn serialize_fri_response_in_proof_stream(leaved_merkle_tree: LeavedMerkleTreeTestData) {
-        let fri_response = FriResponse {
-            auth_structure: leaved_merkle_tree.auth_structure,
-            revealed_leaves: leaved_merkle_tree.revealed_leaves,
-        };
-
+        let fri_response = leaved_merkle_tree.into_fri_response();
         let mut proof_stream = ProofStream::<Tip5>::new();
         proof_stream.enqueue(ProofItem::FriResponse(fri_response.clone()));
         let proof: Proof = proof_stream.into();
@@ -220,7 +183,7 @@ mod tests {
         let_assert!(Ok(mut proof_stream) = ProofStream::<Tip5>::try_from(&proof));
         let_assert!(Ok(proof_item) = proof_stream.dequeue());
         let_assert!(Ok(fri_response_) = proof_item.as_fri_response());
-        assert!(fri_response == fri_response_);
+        prop_assert_eq!(fri_response, fri_response_);
     }
 
     #[proptest]
@@ -230,7 +193,7 @@ mod tests {
         let auth_structure = leaved_merkle_tree.auth_structure;
         let encoding = auth_structure.encode();
         let_assert!(Ok(decoding) = AuthenticationStructure::decode(&encoding));
-        assert!(auth_structure == *decoding);
+        prop_assert_eq!(auth_structure, *decoding);
     }
 
     #[proptest]
@@ -245,7 +208,7 @@ mod tests {
         let_assert!(Ok(mut proof_stream) = ProofStream::<Tip5>::try_from(&proof));
         let_assert!(Ok(proof_item) = proof_stream.dequeue());
         let_assert!(Ok(auth_structure_) = proof_item.as_authentication_structure());
-        assert!(auth_structure == auth_structure_);
+        prop_assert_eq!(auth_structure, auth_structure_);
     }
 
     #[test]
