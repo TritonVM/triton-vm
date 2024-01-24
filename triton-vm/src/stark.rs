@@ -31,6 +31,7 @@ use crate::aet::AlgebraicExecutionTrace;
 use crate::arithmetic_domain::ArithmeticDomain;
 use crate::error::VerificationError;
 use crate::error::VerificationError::*;
+use crate::fri;
 use crate::fri::Fri;
 use crate::profiler::prof_itr0;
 use crate::profiler::prof_start;
@@ -151,7 +152,7 @@ impl Stark {
         prof_start!(maybe_profiler, "derive additional parameters");
         let padded_height = aet.padded_height();
         let max_degree = Self::derive_max_degree(padded_height, parameters.num_trace_randomizers);
-        let fri = Self::derive_fri(parameters, padded_height);
+        let fri = Self::derive_fri(parameters, padded_height).unwrap();
         let quotient_domain = Self::quotient_domain(fri.domain, max_degree);
         proof_stream.enqueue(ProofItem::Log2PaddedHeight(padded_height.ilog2()));
         prof_stop!(maybe_profiler, "derive additional parameters");
@@ -626,13 +627,17 @@ impl Stark {
     /// In principle, the FRI domain is also influenced by the AIR's degree
     /// (see [`AIR_TARGET_DEGREE`]). However, by segmenting the quotient polynomial into
     /// [`AIR_TARGET_DEGREE`]-many parts, that influence is mitigated.
-    pub fn derive_fri(parameters: StarkParameters, padded_height: usize) -> Fri<StarkHasher> {
+    pub fn derive_fri(
+        parameters: StarkParameters,
+        padded_height: usize,
+    ) -> fri::SetupResult<Fri<StarkHasher>> {
         let interpolant_degree =
             interpolant_degree(padded_height, parameters.num_trace_randomizers);
         let interpolant_codeword_length = interpolant_degree as usize + 1;
         let fri_domain_length = parameters.fri_expansion_factor * interpolant_codeword_length;
         let coset_offset = BFieldElement::generator();
         let domain = ArithmeticDomain::of_length(fri_domain_length).with_offset(coset_offset);
+
         Fri::new(
             domain,
             parameters.fri_expansion_factor,
@@ -733,7 +738,7 @@ impl Stark {
         prof_start!(maybe_profiler, "derive additional parameters");
         let log_2_padded_height = proof_stream.dequeue()?.as_log2_padded_height()?;
         let padded_height = 1 << log_2_padded_height;
-        let fri = Self::derive_fri(parameters, padded_height);
+        let fri = Self::derive_fri(parameters, padded_height)?;
         let merkle_tree_height = fri.domain.length.ilog2() as usize;
         prof_stop!(maybe_profiler, "derive additional parameters");
 
@@ -2220,7 +2225,7 @@ pub(crate) mod tests {
         assert!(let Ok(()) = Stark::verify(parameters, &claim, &proof, &mut None));
 
         let_assert!(Ok(padded_height) = proof.padded_height());
-        let fri = Stark::derive_fri(parameters, padded_height);
+        let fri = Stark::derive_fri(parameters, padded_height).unwrap();
         let report = profiler
             .report()
             .with_padded_height(padded_height)
@@ -2244,7 +2249,7 @@ pub(crate) mod tests {
         assert!(let Ok(()) = Stark::verify(parameters, &claim, &proof, &mut None));
 
         let_assert!(Ok(padded_height) = proof.padded_height());
-        let fri = Stark::derive_fri(parameters, padded_height);
+        let fri = Stark::derive_fri(parameters, padded_height).unwrap();
         let report = profiler
             .report()
             .with_padded_height(padded_height)
@@ -2286,7 +2291,7 @@ pub(crate) mod tests {
         assert!(let Ok(()) = Stark::verify(parameters, &claim, &proof, &mut None));
 
         let_assert!(Ok(padded_height) = proof.padded_height());
-        let fri = Stark::derive_fri(parameters, padded_height);
+        let fri = Stark::derive_fri(parameters, padded_height).unwrap();
         let report = profiler
             .report()
             .with_padded_height(padded_height)

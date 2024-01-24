@@ -17,6 +17,7 @@ use twenty_first::util_types::merkle_tree_maker::MerkleTreeMaker;
 
 use crate::arithmetic_domain::ArithmeticDomain;
 use crate::error::FriProvingError;
+use crate::error::FriSetupError;
 use crate::error::FriValidationError;
 use crate::error::FriValidationError::*;
 use crate::profiler::prof_start;
@@ -27,8 +28,10 @@ use crate::proof_item::ProofItem;
 use crate::proof_stream::ProofStream;
 use crate::stark::MTMaker;
 
-type VerifierResult<T> = Result<T, FriValidationError>;
-type ProverResult<T> = Result<T, FriProvingError>;
+pub(crate) type SetupResult<T> = Result<T, FriSetupError>;
+pub(crate) type ProverResult<T> = Result<T, FriProvingError>;
+pub(crate) type VerifierResult<T> = Result<T, FriValidationError>;
+
 pub type AuthenticationStructure = Vec<Digest>;
 
 #[derive(Debug, Clone, Copy)]
@@ -550,17 +553,21 @@ impl<H: AlgebraicHasher> Fri<H> {
         domain: ArithmeticDomain,
         expansion_factor: usize,
         num_collinearity_checks: usize,
-    ) -> Self {
-        assert!(expansion_factor > 1);
-        assert!(expansion_factor.is_power_of_two());
-        assert!(domain.length >= expansion_factor);
+    ) -> SetupResult<Self> {
+        match expansion_factor {
+            ef if ef <= 1 => return Err(FriSetupError::ExpansionFactorTooSmall),
+            ef if !ef.is_power_of_two() => return Err(FriSetupError::ExpansionFactorUnsupported),
+            ef if ef > domain.length => return Err(FriSetupError::ExpansionFactorMismatch),
+            _ => (),
+        };
 
-        Self {
+        let fri = Self {
             domain,
             expansion_factor,
             num_collinearity_checks,
             _hasher: PhantomData,
-        }
+        };
+        Ok(fri)
     }
 
     /// Create a FRI proof and return indices of revealed elements of round 0.
@@ -708,7 +715,7 @@ mod tests {
             let domain_length = max(sampled_domain_length, min_expanded_domain_length);
 
             let fri_domain = ArithmeticDomain::of_length(domain_length).with_offset(offset);
-            Fri::new(fri_domain, expansion_factor, num_collinearity_checks)
+            Fri::new(fri_domain, expansion_factor, num_collinearity_checks).unwrap()
         }
     }
 
@@ -807,42 +814,42 @@ mod tests {
         let domain = ArithmeticDomain::of_length(2);
         let expansion_factor = 2;
         let num_collinearity_checks = 1;
-        Fri::new(domain, expansion_factor, num_collinearity_checks)
+        Fri::new(domain, expansion_factor, num_collinearity_checks).unwrap()
     }
 
     #[test]
-    #[should_panic]
     fn too_small_expansion_factor_is_rejected() {
         let domain = ArithmeticDomain::of_length(2);
         let expansion_factor = 1;
         let num_collinearity_checks = 1;
-        Fri::<Tip5>::new(domain, expansion_factor, num_collinearity_checks);
+        let err = Fri::<Tip5>::new(domain, expansion_factor, num_collinearity_checks).unwrap_err();
+        assert_eq!(FriSetupError::ExpansionFactorTooSmall, err);
     }
 
     #[proptest]
-    #[should_panic]
     fn expansion_factor_not_a_power_of_two_is_rejected(
-        #[strategy(2_usize..)] expansion_factor: usize,
-        #[strategy(arb())] offset: BFieldElement,
+        #[strategy(2_usize..(1 << 32))]
+        #[filter(!#expansion_factor.is_power_of_two())]
+        expansion_factor: usize,
     ) {
-        if expansion_factor.is_power_of_two() {
-            return Ok(());
-        }
-        let domain = ArithmeticDomain::of_length(2 * expansion_factor).with_offset(offset);
+        let largest_supported_domain_size = 1 << 32;
+        let domain = ArithmeticDomain::of_length(largest_supported_domain_size);
         let num_collinearity_checks = 1;
-        Fri::<Tip5>::new(domain, expansion_factor, num_collinearity_checks);
+        let err = Fri::<Tip5>::new(domain, expansion_factor, num_collinearity_checks).unwrap_err();
+        prop_assert_eq!(FriSetupError::ExpansionFactorUnsupported, err);
     }
 
     #[proptest]
-    #[should_panic]
     fn domain_size_smaller_than_expansion_factor_is_rejected(
-        #[strategy(1_usize..=8)] log_2_expansion_factor: usize,
-        #[strategy(arb())] offset: BFieldElement,
+        #[strategy(1_usize..32)] log_2_expansion_factor: usize,
+        #[strategy(..#log_2_expansion_factor)] log_2_domain_length: usize,
     ) {
         let expansion_factor = (1 << log_2_expansion_factor) as usize;
-        let domain = ArithmeticDomain::of_length(expansion_factor - 1).with_offset(offset);
+        let domain_length = (1 << log_2_domain_length) as usize;
+        let domain = ArithmeticDomain::of_length(domain_length);
         let num_collinearity_checks = 1;
-        Fri::<Tip5>::new(domain, expansion_factor, num_collinearity_checks);
+        let err = Fri::<Tip5>::new(domain, expansion_factor, num_collinearity_checks).unwrap_err();
+        prop_assert_eq!(FriSetupError::ExpansionFactorMismatch, err);
     }
 
     // todo: add test fuzzing proof_stream

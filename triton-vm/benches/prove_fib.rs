@@ -47,7 +47,7 @@ fn prover_timing_report(claim: &Claim, aet: &AlgebraicExecutionTrace) -> Report 
     profiler.finish();
 
     let padded_height = proof.padded_height().unwrap();
-    let fri = Stark::derive_fri(parameters, padded_height);
+    let fri = Stark::derive_fri(parameters, padded_height).unwrap();
     profiler
         .report()
         .with_cycle_count(aet.processor_trace.nrows())

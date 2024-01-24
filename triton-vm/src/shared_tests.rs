@@ -159,7 +159,7 @@ pub(crate) fn construct_master_base_table(
     aet: &AlgebraicExecutionTrace,
 ) -> MasterBaseTable {
     let padded_height = aet.padded_height();
-    let fri = Stark::derive_fri(parameters, padded_height);
+    let fri = Stark::derive_fri(parameters, padded_height).unwrap();
     let max_degree = Stark::derive_max_degree(padded_height, parameters.num_trace_randomizers);
     let quotient_domain = Stark::quotient_domain(fri.domain, max_degree);
     MasterBaseTable::new(

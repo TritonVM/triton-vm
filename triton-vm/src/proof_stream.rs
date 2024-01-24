@@ -3,7 +3,6 @@ use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::b_field_element::BFIELD_ONE;
 use twenty_first::shared_math::b_field_element::BFIELD_ZERO;
 use twenty_first::shared_math::bfield_codec::BFieldCodec;
-use twenty_first::shared_math::other::is_power_of_two;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
 
@@ -108,7 +107,7 @@ where
     /// - `upper_bound`: The (non-inclusive) upper bound. Must be a power of two.
     /// - `num_indices`: The number of indices to sample
     pub fn sample_indices(&mut self, upper_bound: usize, num_indices: usize) -> Vec<usize> {
-        assert!(is_power_of_two(upper_bound));
+        assert!(upper_bound.is_power_of_two());
         assert!(upper_bound <= BFieldElement::MAX as usize);
         H::sample_indices(&mut self.sponge_state, upper_bound as u32, num_indices)
             .into_iter()

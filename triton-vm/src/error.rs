@@ -118,6 +118,19 @@ pub enum ProofStreamError {
 }
 
 #[non_exhaustive]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+pub enum FriSetupError {
+    #[error("the expansion factor must be greater than 1")]
+    ExpansionFactorTooSmall,
+
+    #[error("the expansion factor must be a power of 2")]
+    ExpansionFactorUnsupported,
+
+    #[error("the expansion factor must be smaller than the domain length")]
+    ExpansionFactorMismatch,
+}
+
+#[non_exhaustive]
 #[derive(Debug, Error)]
 pub enum FriProvingError {
     #[error(transparent)]
@@ -238,6 +251,9 @@ pub enum VerificationError {
 
     #[error(transparent)]
     ProofStreamError(#[from] ProofStreamError),
+
+    #[error(transparent)]
+    FriSetupError(#[from] FriSetupError),
 
     #[error(transparent)]
     FriValidationError(#[from] FriValidationError),

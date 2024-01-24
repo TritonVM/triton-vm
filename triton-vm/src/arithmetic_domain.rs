@@ -2,7 +2,6 @@ use std::ops::MulAssign;
 
 use num_traits::One;
 use twenty_first::shared_math::b_field_element::BFieldElement;
-use twenty_first::shared_math::other::is_power_of_two;
 use twenty_first::shared_math::polynomial::Polynomial;
 use twenty_first::shared_math::traits::FiniteField;
 use twenty_first::shared_math::traits::ModPowU32;
@@ -36,7 +35,7 @@ impl ArithmeticDomain {
     /// The domain length must be a power of 2.
     pub fn generator_for_length(domain_length: u64) -> BFieldElement {
         assert!(
-            0 == domain_length || is_power_of_two(domain_length),
+            0 == domain_length || domain_length.is_power_of_two(),
             "The domain length must be a power of 2 but was {domain_length}.",
         );
         BFieldElement::primitive_root_of_unity(domain_length).unwrap()

@@ -30,7 +30,7 @@ fn verify_halt(criterion: &mut Criterion) {
     let mut profiler = profiler.unwrap();
     profiler.finish();
     let padded_height = proof.padded_height().unwrap();
-    let fri = Stark::derive_fri(parameters, padded_height);
+    let fri = Stark::derive_fri(parameters, padded_height).unwrap();
     let report = profiler
         .report()
         .with_cycle_count(aet.processor_trace.nrows())

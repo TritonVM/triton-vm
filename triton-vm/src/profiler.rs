@@ -14,7 +14,6 @@ use colored::Color;
 use colored::ColoredString;
 use colored::Colorize;
 use criterion::profiler::Profiler;
-use twenty_first::shared_math::other::log_2_floor;
 use unicode_width::UnicodeWidthStr;
 
 const GET_PROFILE_OUTPUT_AS_YOU_GO_ENV_VAR_NAME: &str = "PROFILE_AS_YOU_GO";
@@ -594,7 +593,7 @@ impl Display for Report {
 
         if let Some(fri_domain_length) = self.fri_domain_len {
             if fri_domain_length != 0 {
-                let log_2_fri_domain_length = log_2_floor(fri_domain_length as u128);
+                let log_2_fri_domain_length = fri_domain_length.ilog2();
                 writeln!(f, "FRI domain length is 2^{log_2_fri_domain_length}")?;
             }
         }
