@@ -94,7 +94,7 @@ pub enum InstructionError {
     #[error("no more secret digests available")]
     EmptySecretDigestInput,
 
-    #[error("Triton VM has halted an cannot execute any further instructions")]
+    #[error("Triton VM has halted and cannot execute any further instructions")]
     MachineHalted,
 }
 
@@ -113,14 +113,14 @@ pub enum ProofStreamError {
     #[error("the proof stream must contain exactly one log2_padded_height item")]
     TooManyLog2PaddedHeights,
 
-    #[error("decoding error: {0}")]
+    #[error(transparent)]
     DecodingError(#[from] <ProofStream<StarkHasher> as BFieldCodec>::Error),
 }
 
 #[non_exhaustive]
 #[derive(Debug, Error)]
 pub enum FriProvingError {
-    #[error("Merkle tree error: {0}")]
+    #[error(transparent)]
     MerkleTreeError(#[from] MerkleTreeError),
 }
 
@@ -142,10 +142,10 @@ pub enum FriValidationError {
     #[error("received codeword of last round does not correspond to its commitment")]
     BadMerkleRootForLastCodeword,
 
-    #[error("proof stream error: {0}")]
+    #[error(transparent)]
     ProofStreamError(#[from] ProofStreamError),
 
-    #[error("Merkle tree error: {0}")]
+    #[error(transparent)]
     MerkleTreeError(#[from] MerkleTreeError),
 }
 
@@ -199,7 +199,7 @@ pub enum ProvingError {
     #[error("claimed public output does not match actual public output")]
     PublicOutputMismatch,
 
-    #[error("error while running Triton VM: {0}")]
+    #[error(transparent)]
     VMError(#[from] VMError),
 }
 
@@ -236,10 +236,10 @@ pub enum VerificationError {
     #[error("the number of received extension table rows does not match the parameters")]
     IncorrectNumberOfExtTableRows,
 
-    #[error("proof stream error: {0}")]
+    #[error(transparent)]
     ProofStreamError(#[from] ProofStreamError),
 
-    #[error("FRI validation error: {0}")]
+    #[error(transparent)]
     FriValidationError(#[from] FriValidationError),
 }
 
@@ -249,7 +249,7 @@ pub enum OpStackElementError {
     #[error("index {0} is out of range for `OpStackElement`")]
     IndexOutOfBounds(u32),
 
-    #[error("index is out of legal range: {0}")]
+    #[error(transparent)]
     FailedIntegerConversion(#[from] TryFromIntError),
 }
 
@@ -259,7 +259,7 @@ pub enum NumberOfWordsError {
     #[error("index {0} is out of range for `NumberOfWords`")]
     IndexOutOfBounds(usize),
 
-    #[error("index is out of legal range: {0}")]
+    #[error(transparent)]
     FailedIntegerConversion(#[from] TryFromIntError),
 }
 
