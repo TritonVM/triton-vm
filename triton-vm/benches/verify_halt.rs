@@ -22,7 +22,7 @@ fn verify_halt(criterion: &mut Criterion) {
     };
 
     let (aet, _) = program.trace_execution([].into(), [].into()).unwrap();
-    let proof = Stark::prove(parameters, &claim, &aet, &mut None);
+    let proof = Stark::prove(parameters, &claim, &aet, &mut None).unwrap();
 
     let mut profiler = Some(TritonProfiler::new("Verify Halt"));
     Stark::verify(parameters, &claim, &proof, &mut profiler).unwrap();

@@ -129,7 +129,7 @@ pub(crate) fn prove_with_low_security_level(
     let claim = construct_claim(&aet, public_input.individual_tokens, public_output);
 
     prof_start!(maybe_profiler, "prove");
-    let proof = Stark::prove(parameters, &claim, &aet, maybe_profiler);
+    let proof = Stark::prove(parameters, &claim, &aet, maybe_profiler).unwrap();
     prof_stop!(maybe_profiler, "prove");
 
     (parameters, claim, proof)

@@ -22,7 +22,7 @@ fn prove_halt(criterion: &mut Criterion) {
         output,
     };
     let mut profiler = Some(TritonProfiler::new("Prove Halt"));
-    let proof = Stark::prove(parameters, &claim, &aet, &mut profiler);
+    let proof = Stark::prove(parameters, &claim, &aet, &mut profiler).unwrap();
     let mut profiler = profiler.unwrap();
     profiler.finish();
 

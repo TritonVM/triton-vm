@@ -42,7 +42,7 @@ fn prover_timing_report(claim: &Claim, aet: &AlgebraicExecutionTrace) -> Report 
     let profile_name = format!("Prove Fibonacci {FIBONACCI_INDEX}");
     let parameters = StarkParameters::default();
     let mut profiler = Some(TritonProfiler::new(&profile_name));
-    let proof = Stark::prove(parameters, claim, aet, &mut profiler);
+    let proof = Stark::prove(parameters, claim, aet, &mut profiler).unwrap();
     let mut profiler = profiler.unwrap();
     profiler.finish();
 

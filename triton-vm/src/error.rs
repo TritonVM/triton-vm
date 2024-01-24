@@ -131,7 +131,7 @@ pub enum FriSetupError {
 }
 
 #[non_exhaustive]
-#[derive(Debug, Error)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
 pub enum FriProvingError {
     #[error(transparent)]
     MerkleTreeError(#[from] MerkleTreeError),
@@ -211,6 +211,18 @@ pub enum ProvingError {
 
     #[error("claimed public output does not match actual public output")]
     PublicOutputMismatch,
+
+    #[error(transparent)]
+    CanonicalRepresentationError(#[from] CanonicalRepresentationError),
+
+    #[error(transparent)]
+    MerkleTreeError(#[from] MerkleTreeError),
+
+    #[error(transparent)]
+    FriSetupError(#[from] FriSetupError),
+
+    #[error(transparent)]
+    FriProvingError(#[from] FriProvingError),
 
     #[error(transparent)]
     VMError(#[from] VMError),

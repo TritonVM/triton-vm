@@ -29,6 +29,7 @@ use twenty_first::util_types::merkle_tree_maker::MerkleTreeMaker;
 
 use crate::aet::AlgebraicExecutionTrace;
 use crate::arithmetic_domain::ArithmeticDomain;
+use crate::error::ProvingError;
 use crate::error::VerificationError;
 use crate::error::VerificationError::*;
 use crate::fri;
@@ -143,7 +144,7 @@ impl Stark {
         claim: &Claim,
         aet: &AlgebraicExecutionTrace,
         maybe_profiler: &mut Option<TritonProfiler>,
-    ) -> Proof {
+    ) -> Result<Proof, ProvingError> {
         prof_start!(maybe_profiler, "Fiat-Shamir: claim", "hash");
         let mut proof_stream = StarkProofStream::new();
         proof_stream.alter_fiat_shamir_state_with(claim);
@@ -152,7 +153,7 @@ impl Stark {
         prof_start!(maybe_profiler, "derive additional parameters");
         let padded_height = aet.padded_height();
         let max_degree = Self::derive_max_degree(padded_height, parameters.num_trace_randomizers);
-        let fri = Self::derive_fri(parameters, padded_height).unwrap();
+        let fri = Self::derive_fri(parameters, padded_height)?;
         let quotient_domain = Self::quotient_domain(fri.domain, max_degree);
         proof_stream.enqueue(ProofItem::Log2PaddedHeight(padded_height.ilog2()));
         prof_stop!(maybe_profiler, "derive additional parameters");
@@ -266,7 +267,7 @@ impl Stark {
         prof_stop!(maybe_profiler, "hash rows of quotient segments");
         prof_start!(maybe_profiler, "Merkle tree", "hash");
         let quot_merkle_tree: MerkleTree<StarkHasher> =
-            MTMaker::from_digests(&fri_domain_quotient_segment_codewords_digests).unwrap();
+            MTMaker::from_digests(&fri_domain_quotient_segment_codewords_digests)?;
         let quot_merkle_tree_root = quot_merkle_tree.root();
         proof_stream.enqueue(ProofItem::MerkleRoot(quot_merkle_tree_root));
         prof_stop!(maybe_profiler, "Merkle tree");
@@ -438,9 +439,8 @@ impl Stark {
         prof_stop!(maybe_profiler, "combined DEEP polynomial");
 
         prof_start!(maybe_profiler, "FRI");
-        let revealed_current_row_indices = fri
-            .prove(&fri_combination_codeword, &mut proof_stream)
-            .unwrap();
+        let revealed_current_row_indices =
+            fri.prove(&fri_combination_codeword, &mut proof_stream)?;
         assert_eq!(
             parameters.num_combination_codeword_checks,
             revealed_current_row_indices.len()
@@ -453,9 +453,8 @@ impl Stark {
             master_base_table.fri_domain_table(),
             &revealed_current_row_indices,
         );
-        let base_authentication_structure = base_merkle_tree
-            .authentication_structure(&revealed_current_row_indices)
-            .unwrap();
+        let base_authentication_structure =
+            base_merkle_tree.authentication_structure(&revealed_current_row_indices)?;
         proof_stream.enqueue(ProofItem::MasterBaseTableRows(revealed_base_elems));
         proof_stream.enqueue(ProofItem::AuthenticationStructure(
             base_authentication_structure,
@@ -465,9 +464,8 @@ impl Stark {
             master_ext_table.fri_domain_table(),
             &revealed_current_row_indices,
         );
-        let ext_authentication_structure = ext_merkle_tree
-            .authentication_structure(&revealed_current_row_indices)
-            .unwrap();
+        let ext_authentication_structure =
+            ext_merkle_tree.authentication_structure(&revealed_current_row_indices)?;
         proof_stream.enqueue(ProofItem::MasterExtTableRows(revealed_ext_elems));
         proof_stream.enqueue(ProofItem::AuthenticationStructure(
             ext_authentication_structure,
@@ -481,9 +479,8 @@ impl Stark {
             .map(|&i| fri_domain_quotient_segment_codewords.row(i))
             .map(into_fixed_width_row)
             .collect_vec();
-        let revealed_quotient_authentication_structure = quot_merkle_tree
-            .authentication_structure(&revealed_current_row_indices)
-            .unwrap();
+        let revealed_quotient_authentication_structure =
+            quot_merkle_tree.authentication_structure(&revealed_current_row_indices)?;
         proof_stream.enqueue(ProofItem::QuotientSegmentsElements(
             revealed_quotient_segments_rows,
         ));
@@ -492,7 +489,7 @@ impl Stark {
         ));
         prof_stop!(maybe_profiler, "open trace leafs");
 
-        proof_stream.into()
+        Ok(proof_stream.into())
     }
 
     fn random_linear_sum_base_field(
