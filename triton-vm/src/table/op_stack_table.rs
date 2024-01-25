@@ -1,6 +1,6 @@
-use arbitrary::Arbitrary;
 use std::cmp::Ordering;
 
+use arbitrary::Arbitrary;
 use itertools::Itertools;
 use ndarray::parallel::prelude::*;
 use ndarray::s;
@@ -12,9 +12,7 @@ use ndarray::Axis;
 use num_traits::One;
 use num_traits::Zero;
 use strum::EnumCount;
-use twenty_first::shared_math::b_field_element::BFieldElement;
-use twenty_first::shared_math::traits::Inverse;
-use twenty_first::shared_math::x_field_element::XFieldElement;
+use twenty_first::prelude::*;
 
 use crate::aet::AlgebraicExecutionTrace;
 use crate::op_stack::OpStackElement;

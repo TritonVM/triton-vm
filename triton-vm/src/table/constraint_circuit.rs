@@ -23,9 +23,8 @@ use num_traits::One;
 use num_traits::Zero;
 use quote::quote;
 use quote::ToTokens;
-use twenty_first::shared_math::b_field_element::BFieldElement;
+use twenty_first::prelude::*;
 use twenty_first::shared_math::mpolynomial::Degree;
-use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use CircuitExpression::*;
 

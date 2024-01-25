@@ -7,10 +7,7 @@ use ndarray::*;
 use num_traits::One;
 use num_traits::Zero;
 use strum::EnumCount;
-use twenty_first::shared_math::b_field_element::*;
-use twenty_first::shared_math::digest::DIGEST_LENGTH;
-use twenty_first::shared_math::traits::Inverse;
-use twenty_first::shared_math::x_field_element::XFieldElement;
+use twenty_first::prelude::*;
 
 use crate::aet::AlgebraicExecutionTrace;
 use crate::instruction::AnInstruction::*;
@@ -54,7 +51,7 @@ impl ProcessorTable {
             .chain(clk_jump_diffs_jump_stack)
         {
             let clk = clk_jump_diff.value() as usize;
-            clk_jump_diff_multiplicities[clk] += BFIELD_ONE;
+            clk_jump_diff_multiplicities[clk] += b_field_element::BFIELD_ONE;
         }
 
         let mut processor_table = processor_table.slice_mut(s![0..num_rows, ..]);
@@ -194,7 +191,8 @@ impl ProcessorTable {
                 .map(|(st, &weight)| weight * st)
                 .sum();
             let hash_digest_weights = &challenges[HashStateWeight0..HashStateWeight5];
-            let compressed_row_for_hash_digest: XFieldElement = st_0_through_9[0..DIGEST_LENGTH]
+            let compressed_row_for_hash_digest: XFieldElement = st_0_through_9
+                [0..tip5::DIGEST_LENGTH]
                 .iter()
                 .map(|st| current_row[st.base_table_index()])
                 .zip_eq(hash_digest_weights.iter())
@@ -447,7 +445,7 @@ impl ProcessorTable {
         match instruction {
             // adjust for ram_pointer pointing in front of last-read address:
             // `push 0 read_mem 1` leaves stack as `_ a -1` where `a` was read from address 0.
-            ReadMem(_) => ram_pointer + offset + BFIELD_ONE,
+            ReadMem(_) => ram_pointer + offset + b_field_element::BFIELD_ONE,
             WriteMem(_) => ram_pointer + offset,
             _ => unreachable!(),
         }
@@ -525,7 +523,7 @@ impl ExtProcessorTable {
 
         // Compress the program digest using an Evaluation Argument.
         // Lowest index in the digest corresponds to lowest index on the stack.
-        let program_digest: [_; DIGEST_LENGTH] = [
+        let program_digest: [_; tip5::DIGEST_LENGTH] = [
             base_row(ST11),
             base_row(ST12),
             base_row(ST13),
@@ -3376,7 +3374,6 @@ pub(crate) mod tests {
     use rand::Rng;
     use strum::IntoEnumIterator;
     use test_strategy::proptest;
-    use twenty_first::shared_math::digest::Digest;
 
     use crate::error::InstructionError::DivisionByZero;
     use crate::instruction::Instruction;

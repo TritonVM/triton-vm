@@ -1,10 +1,5 @@
 use arbitrary::Arbitrary;
-use twenty_first::shared_math::b_field_element::BFieldElement;
-use twenty_first::shared_math::b_field_element::BFIELD_ONE;
-use twenty_first::shared_math::b_field_element::BFIELD_ZERO;
-use twenty_first::shared_math::bfield_codec::BFieldCodec;
-use twenty_first::shared_math::x_field_element::XFieldElement;
-use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
+use twenty_first::prelude::*;
 
 use crate::error::ProofStreamError;
 use crate::proof::Proof;
@@ -51,8 +46,8 @@ where
         };
         [
             encoding,
-            vec![BFIELD_ONE],
-            vec![BFIELD_ZERO; num_padding_zeros],
+            vec![b_field_element::BFIELD_ONE],
+            vec![b_field_element::BFIELD_ZERO; num_padding_zeros],
         ]
         .concat()
     }
@@ -162,11 +157,6 @@ mod tests {
     use proptest_arbitrary_interop::arb;
     use test_strategy::proptest;
     use twenty_first::shared_math::other::random_elements;
-    use twenty_first::shared_math::tip5::Tip5;
-    use twenty_first::shared_math::x_field_element::XFieldElement;
-    use twenty_first::util_types::merkle_tree::MerkleTree;
-    use twenty_first::util_types::merkle_tree::MerkleTreeInclusionProof;
-    use twenty_first::util_types::merkle_tree_maker::MerkleTreeMaker;
 
     use crate::proof_item::FriResponse;
     use crate::proof_item::ProofItem;

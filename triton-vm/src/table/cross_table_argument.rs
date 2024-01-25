@@ -3,9 +3,7 @@ use std::ops::Mul;
 
 use num_traits::One;
 use num_traits::Zero;
-use twenty_first::shared_math::b_field_element::BFieldElement;
-use twenty_first::shared_math::traits::Inverse;
-use twenty_first::shared_math::x_field_element::XFieldElement;
+use twenty_first::prelude::*;
 
 use crate::table::challenges::ChallengeId::*;
 use crate::table::constraint_circuit::ConstraintCircuitBuilder;

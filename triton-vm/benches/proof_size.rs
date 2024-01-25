@@ -13,7 +13,7 @@ use itertools::Itertools;
 use strum::Display;
 use strum::EnumCount;
 use strum::EnumIter;
-use twenty_first::shared_math::bfield_codec::BFieldCodec;
+use twenty_first::prelude::BFieldCodec;
 
 use triton_vm::example_programs::FIBONACCI_SEQUENCE;
 use triton_vm::example_programs::VERIFY_SUDOKU;

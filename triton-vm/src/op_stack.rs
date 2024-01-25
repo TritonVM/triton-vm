@@ -12,10 +12,7 @@ use serde_derive::*;
 use strum::EnumCount;
 use strum::EnumIter;
 use strum::IntoEnumIterator;
-use twenty_first::shared_math::b_field_element::BFieldElement;
-use twenty_first::shared_math::digest::Digest;
-use twenty_first::shared_math::tip5::DIGEST_LENGTH;
-use twenty_first::shared_math::x_field_element::XFieldElement;
+use twenty_first::prelude::*;
 
 use crate::error::InstructionError::*;
 use crate::error::*;
@@ -30,7 +27,7 @@ pub const NUM_OP_STACK_REGISTERS: usize = OpStackElement::COUNT;
 
 /// The operational stack of Triton VM.
 /// It always contains at least [`OpStackElement::COUNT`] elements. Initially, the bottom-most
-/// [`DIGEST_LENGTH`] elements equal the digest of the program being executed.
+/// [`DIGEST_LENGTH`](tip5::DIGEST_LENGTH) elements equal the digest of the program being executed.
 /// The remaining elements are initially 0.
 ///
 /// The OpStack is represented as one contiguous piece of memory, and Triton VM uses it as such.
@@ -56,7 +53,7 @@ impl OpStack {
         let mut stack = vec![BFieldElement::zero(); OpStackElement::COUNT];
 
         let reverse_digest = program_digest.reversed().values();
-        stack[..DIGEST_LENGTH].copy_from_slice(&reverse_digest);
+        stack[..tip5::DIGEST_LENGTH].copy_from_slice(&reverse_digest);
 
         Self {
             stack,
@@ -646,7 +643,6 @@ mod tests {
     use proptest_arbitrary_interop::arb;
     use strum::IntoEnumIterator;
     use test_strategy::proptest;
-    use twenty_first::shared_math::b_field_element::BFieldElement;
 
     use crate::op_stack::NumberOfWords::N1;
 

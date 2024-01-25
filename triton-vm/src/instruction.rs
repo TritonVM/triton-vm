@@ -14,8 +14,7 @@ use serde_derive::Serialize;
 use strum::EnumCount;
 use strum::EnumIter;
 use strum::IntoEnumIterator;
-use twenty_first::shared_math::b_field_element::BFieldElement;
-use twenty_first::shared_math::b_field_element::BFIELD_ZERO;
+use twenty_first::prelude::*;
 
 use AnInstruction::*;
 
@@ -558,14 +557,14 @@ impl TryFrom<BFieldElement> for Instruction {
 const fn all_instructions_without_args() -> [AnInstruction<BFieldElement>; Instruction::COUNT] {
     [
         Pop(N1),
-        Push(BFIELD_ZERO),
+        Push(b_field_element::BFIELD_ZERO),
         Divine(N1),
         Dup(ST0),
         Swap(ST0),
         Halt,
         Nop,
         Skiz,
-        Call(BFIELD_ZERO),
+        Call(b_field_element::BFIELD_ZERO),
         Return,
         Recurse,
         Assert,
@@ -763,10 +762,10 @@ impl<'a> Arbitrary<'a> for TypeHintTypeName {
 
 #[cfg(test)]
 mod tests {
-    use assert2::assert;
-    use assert2::let_assert;
     use std::collections::HashMap;
 
+    use assert2::assert;
+    use assert2::let_assert;
     use itertools::Itertools;
     use num_traits::One;
     use num_traits::Zero;
@@ -774,9 +773,7 @@ mod tests {
     use rand::Rng;
     use strum::EnumCount;
     use strum::IntoEnumIterator;
-    use twenty_first::shared_math::b_field_element::BFieldElement;
-    use twenty_first::shared_math::b_field_element::BFIELD_ZERO;
-    use twenty_first::shared_math::digest::Digest;
+    use twenty_first::prelude::*;
 
     use crate::instruction::*;
     use crate::op_stack::NUM_OP_STACK_REGISTERS;
@@ -1076,9 +1073,9 @@ mod tests {
     }
 
     fn terminal_op_stack_size_for_program(program: Program) -> usize {
-        let public_input = vec![BFIELD_ZERO].into();
+        let public_input = vec![BFieldElement::zero()].into();
         let mock_digests = vec![Digest::default()];
-        let non_determinism: NonDeterminism<_> = vec![BFIELD_ZERO].into();
+        let non_determinism: NonDeterminism<_> = vec![BFieldElement::zero()].into();
         let non_determinism = non_determinism.with_digests(mock_digests);
 
         let mut vm_state = VMState::new(&program, public_input, non_determinism);

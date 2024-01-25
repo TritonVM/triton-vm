@@ -10,10 +10,9 @@ use ndarray::ArrayView1;
 use ndarray::ArrayView2;
 use ndarray::ArrayViewMut2;
 use ndarray::Axis;
-use twenty_first::shared_math::b_field_element::BFieldElement;
+use twenty_first::prelude::*;
 use twenty_first::shared_math::mpolynomial::Degree;
 use twenty_first::shared_math::traits::FiniteField;
-use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use crate::arithmetic_domain::ArithmeticDomain;
 use crate::table::challenges::Challenges;

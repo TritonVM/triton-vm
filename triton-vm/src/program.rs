@@ -12,10 +12,7 @@ use get_size::GetSize;
 use itertools::Itertools;
 use serde_derive::Deserialize;
 use serde_derive::Serialize;
-use twenty_first::shared_math::b_field_element::BFieldElement;
-use twenty_first::shared_math::bfield_codec::BFieldCodec;
-use twenty_first::shared_math::digest::Digest;
-use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
+use twenty_first::prelude::*;
 
 use crate::aet::AlgebraicExecutionTrace;
 use crate::error::ProgramDecodingError;
@@ -799,7 +796,7 @@ mod tests {
     use rand::thread_rng;
     use rand::Rng;
     use test_strategy::proptest;
-    use twenty_first::shared_math::tip5::Tip5;
+    use twenty_first::prelude::Tip5;
 
     use crate::error::InstructionError;
     use crate::example_programs::CALCULATE_NEW_MMR_PEAKS_FROM_APPEND_WITH_SAFE_LISTS;

@@ -13,6 +13,7 @@ use nom::error::*;
 use nom::multi::*;
 use nom::Finish;
 use nom::IResult;
+use twenty_first::prelude::BFieldElement;
 
 use crate::instruction::AnInstruction::*;
 use crate::instruction::LabelledInstruction;
@@ -22,7 +23,6 @@ use crate::op_stack::NumberOfWords;
 use crate::op_stack::NumberOfWords::*;
 use crate::op_stack::OpStackElement;
 use crate::op_stack::OpStackElement::*;
-use crate::BFieldElement;
 
 #[derive(Debug, PartialEq)]
 pub struct ParseError<'a> {
@@ -700,7 +700,7 @@ pub(crate) mod tests {
     use strum::EnumCount;
     use test_strategy::proptest;
     use test_strategy::Arbitrary;
-    use twenty_first::shared_math::digest::DIGEST_LENGTH;
+    use twenty_first::prelude::tip5;
 
     use LabelledInstruction::Breakpoint;
     use LabelledInstruction::Instruction;
@@ -1338,8 +1338,8 @@ pub(crate) mod tests {
         let expected_instructions = vec![Instruction(ReadIo(N2)); 15];
         assert_eq!(expected_instructions, instructions);
 
-        let instructions = triton_asm![divine 3; DIGEST_LENGTH];
-        let expected_instructions = vec![Instruction(Divine(N3)); DIGEST_LENGTH];
+        let instructions = triton_asm![divine 3; tip5::DIGEST_LENGTH];
+        let expected_instructions = vec![Instruction(Divine(N3)); tip5::DIGEST_LENGTH];
         assert_eq!(expected_instructions, instructions);
     }
 

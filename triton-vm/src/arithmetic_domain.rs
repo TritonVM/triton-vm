@@ -1,10 +1,8 @@
 use std::ops::MulAssign;
 
 use num_traits::One;
-use twenty_first::shared_math::b_field_element::BFieldElement;
-use twenty_first::shared_math::polynomial::Polynomial;
+use twenty_first::prelude::*;
 use twenty_first::shared_math::traits::FiniteField;
-use twenty_first::shared_math::traits::ModPowU32;
 use twenty_first::shared_math::traits::PrimitiveRootOfUnity;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -113,9 +111,6 @@ mod tests {
     use proptest::prelude::*;
     use proptest_arbitrary_interop::arb;
     use test_strategy::proptest;
-    use twenty_first::shared_math::b_field_element::BFieldElement;
-    use twenty_first::shared_math::traits::PrimitiveRootOfUnity;
-    use twenty_first::shared_math::x_field_element::XFieldElement;
 
     use crate::shared_tests::*;
 

@@ -1,10 +1,7 @@
 use arbitrary::Arbitrary;
 use strum::Display;
 use strum::EnumCount;
-use twenty_first::shared_math::b_field_element::BFieldElement;
-use twenty_first::shared_math::bfield_codec::BFieldCodec;
-use twenty_first::shared_math::tip5::Digest;
-use twenty_first::shared_math::x_field_element::XFieldElement;
+use twenty_first::prelude::*;
 
 use crate::error::ProofStreamError;
 use crate::error::ProofStreamError::UnexpectedItem;
@@ -157,7 +154,7 @@ pub(crate) mod tests {
     use assert2::let_assert;
     use proptest::prelude::*;
     use test_strategy::proptest;
-    use twenty_first::shared_math::tip5::Tip5;
+    use twenty_first::prelude::Tip5;
 
     use crate::proof::Proof;
     use crate::proof_stream::ProofStream;

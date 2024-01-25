@@ -4,9 +4,8 @@ use std::fmt::Formatter;
 use std::num::TryFromIntError;
 
 use thiserror::Error;
-use twenty_first::shared_math::bfield_codec::BFieldCodec;
-use twenty_first::shared_math::digest::DIGEST_LENGTH;
-use twenty_first::util_types::merkle_tree::MerkleTreeError;
+use twenty_first::error::MerkleTreeError;
+use twenty_first::prelude::*;
 
 use crate::instruction::Instruction;
 use crate::proof_item::ProofItem;
@@ -64,7 +63,7 @@ pub enum InstructionError {
     #[error("assertion failed: st0 must be 1")]
     AssertionFailed,
 
-    #[error("vector assertion failed: stack[{0}] != stack[{}]", .0 + DIGEST_LENGTH)]
+    #[error("vector assertion failed: stack[{0}] != stack[{}]", .0 + tip5::DIGEST_LENGTH)]
     VectorAssertionFailed(usize),
 
     #[error("cannot swap stack element 0 with itself")]
@@ -366,8 +365,8 @@ mod tests {
 
     #[proptest]
     fn assert_unequal_vec(
-        #[strategy(arb())] test_vector: [BFieldElement; DIGEST_LENGTH],
-        #[strategy(0..DIGEST_LENGTH)] disturbance_index: usize,
+        #[strategy(arb())] test_vector: [BFieldElement; tip5::DIGEST_LENGTH],
+        #[strategy(0..tip5::DIGEST_LENGTH)] disturbance_index: usize,
         #[strategy(arb())]
         #[filter(#test_vector[#disturbance_index] != #random_element)]
         random_element: BFieldElement,

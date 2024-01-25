@@ -10,14 +10,7 @@ use proptest::collection::vec;
 use proptest::prelude::*;
 use proptest_arbitrary_interop::arb;
 use test_strategy::Arbitrary;
-use twenty_first::shared_math::b_field_element::BFieldElement;
-use twenty_first::shared_math::digest::Digest;
-use twenty_first::shared_math::polynomial::Polynomial;
-use twenty_first::shared_math::tip5::Tip5;
-use twenty_first::shared_math::x_field_element::XFieldElement;
-use twenty_first::util_types::merkle_tree::CpuParallel;
-use twenty_first::util_types::merkle_tree::MerkleTree;
-use twenty_first::util_types::merkle_tree_maker::MerkleTreeMaker;
+use twenty_first::prelude::*;
 
 use crate::aet::AlgebraicExecutionTrace;
 use crate::error::VMError;

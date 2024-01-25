@@ -13,12 +13,7 @@ use num_traits::One;
 use num_traits::Zero;
 use serde_derive::*;
 use strum::EnumCount;
-use twenty_first::shared_math::b_field_element::BFieldElement;
-use twenty_first::shared_math::b_field_element::BFIELD_ONE;
-use twenty_first::shared_math::b_field_element::BFIELD_ZERO;
-use twenty_first::shared_math::polynomial::Polynomial;
-use twenty_first::shared_math::traits::Inverse;
-use twenty_first::shared_math::x_field_element::XFieldElement;
+use twenty_first::prelude::*;
 
 use crate::aet::AlgebraicExecutionTrace;
 use crate::table::challenges::ChallengeId::*;
@@ -35,8 +30,8 @@ pub const BASE_WIDTH: usize = RamBaseTableColumn::COUNT;
 pub const EXT_WIDTH: usize = RamExtTableColumn::COUNT;
 pub const FULL_WIDTH: usize = BASE_WIDTH + EXT_WIDTH;
 
-pub const INSTRUCTION_TYPE_WRITE: BFieldElement = BFIELD_ZERO;
-pub const INSTRUCTION_TYPE_READ: BFieldElement = BFIELD_ONE;
+pub const INSTRUCTION_TYPE_WRITE: BFieldElement = b_field_element::BFIELD_ZERO;
+pub const INSTRUCTION_TYPE_READ: BFieldElement = b_field_element::BFIELD_ONE;
 pub const PADDING_INDICATOR: BFieldElement = BFieldElement::new(2);
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Arbitrary)]
@@ -112,7 +107,8 @@ impl RamTable {
             return (vec![], vec![]);
         }
 
-        let linear_poly_with_root = |&r: &BFieldElement| Polynomial::new(vec![-r, BFIELD_ONE]);
+        let linear_poly_with_root =
+            |&r: &BFieldElement| Polynomial::new(vec![-r, b_field_element::BFIELD_ONE]);
 
         let all_ram_pointers = ram_table.column(RamPointer.base_table_index());
         let unique_ram_pointers = all_ram_pointers.iter().unique();
@@ -133,8 +129,8 @@ impl RamTable {
 
         let mut coefficients_0 = bezout_poly_0.coefficients;
         let mut coefficients_1 = bezout_poly_1.coefficients;
-        coefficients_0.resize(num_unique_ram_pointers, BFIELD_ZERO);
-        coefficients_1.resize(num_unique_ram_pointers, BFIELD_ZERO);
+        coefficients_0.resize(num_unique_ram_pointers, b_field_element::BFIELD_ZERO);
+        coefficients_1.resize(num_unique_ram_pointers, b_field_element::BFIELD_ZERO);
         (coefficients_0, coefficients_1)
     }
 
@@ -191,7 +187,8 @@ impl RamTable {
         let mut padding_row = ram_table.row(last_row_index).to_owned();
         padding_row[InstructionType.base_table_index()] = PADDING_INDICATOR;
         if ram_table_len == 0 {
-            padding_row[BezoutCoefficientPolynomialCoefficient1.base_table_index()] = BFIELD_ONE;
+            padding_row[BezoutCoefficientPolynomialCoefficient1.base_table_index()] =
+                b_field_element::BFIELD_ONE;
         }
 
         let mut padding_section = ram_table.slice_mut(s![ram_table_len.., ..]);

@@ -3,17 +3,9 @@ use std::marker::PhantomData;
 use itertools::Itertools;
 use num_traits::One;
 use rayon::iter::*;
-use twenty_first::shared_math::b_field_element::BFieldElement;
+use twenty_first::prelude::*;
 use twenty_first::shared_math::other::log_2_ceil;
-use twenty_first::shared_math::polynomial::Polynomial;
-use twenty_first::shared_math::tip5::Digest;
 use twenty_first::shared_math::traits::FiniteField;
-use twenty_first::shared_math::traits::Inverse;
-use twenty_first::shared_math::x_field_element::XFieldElement;
-use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
-use twenty_first::util_types::merkle_tree::MerkleTree;
-use twenty_first::util_types::merkle_tree::MerkleTreeInclusionProof;
-use twenty_first::util_types::merkle_tree_maker::MerkleTreeMaker;
 
 use crate::arithmetic_domain::ArithmeticDomain;
 use crate::error::FriProvingError;
@@ -674,11 +666,6 @@ mod tests {
     use rand::prelude::*;
     use rand_core::SeedableRng;
     use test_strategy::proptest;
-    use twenty_first::shared_math::b_field_element::BFieldElement;
-    use twenty_first::shared_math::polynomial::Polynomial;
-    use twenty_first::shared_math::tip5::Tip5;
-    use twenty_first::shared_math::tip5::RATE;
-    use twenty_first::util_types::algebraic_hasher::SpongeHasher;
 
     use ProofItem::*;
 
@@ -722,7 +709,7 @@ mod tests {
     #[proptest]
     fn sample_indices(
         #[strategy(arbitrary_fri())] fri: Fri<Tip5>,
-        #[strategy(arb())] initial_absorb: [BFieldElement; RATE],
+        #[strategy(arb())] initial_absorb: [BFieldElement; tip5::RATE],
     ) {
         let mut sponge_state = Tip5::init();
         Tip5::absorb(&mut sponge_state, &initial_absorb);

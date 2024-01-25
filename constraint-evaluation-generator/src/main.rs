@@ -5,8 +5,7 @@ use itertools::Itertools;
 use proc_macro2::TokenStream;
 use quote::format_ident;
 use quote::quote;
-use twenty_first::shared_math::b_field_element::BFieldElement;
-use twenty_first::shared_math::x_field_element::XFieldElement;
+use twenty_first::prelude::*;
 
 use triton_vm::table::cascade_table::ExtCascadeTable;
 use triton_vm::table::constraint_circuit::BinOp;
@@ -265,9 +264,9 @@ fn generate_constraint_code(constraints: Constraints) -> TokenStream {
 
     quote!(
     use ndarray::ArrayView1;
-    use twenty_first::shared_math::b_field_element::BFieldElement;
+    use twenty_first::prelude::BFieldElement;
+    use twenty_first::prelude::XFieldElement;
     use twenty_first::shared_math::mpolynomial::Degree;
-    use twenty_first::shared_math::x_field_element::XFieldElement;
 
     use crate::table::challenges::Challenges;
     use crate::table::challenges::ChallengeId::*;
@@ -703,8 +702,8 @@ fn generate_degree_lowering_table_code(substitutions: &AllSubstitutions) -> Toke
         use strum::Display;
         use strum::EnumCount;
         use strum::EnumIter;
-        use twenty_first::shared_math::b_field_element::BFieldElement;
-        use twenty_first::shared_math::x_field_element::XFieldElement;
+        use twenty_first::prelude::BFieldElement;
+        use twenty_first::prelude::XFieldElement;
 
         #use_challenge_ids
         use crate::table::challenges::Challenges;

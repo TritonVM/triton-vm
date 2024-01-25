@@ -3,8 +3,8 @@ use ndarray::ArrayViewMut2;
 use strum::Display;
 use strum::EnumCount;
 use strum::EnumIter;
-use twenty_first::shared_math::b_field_element::BFieldElement;
-use twenty_first::shared_math::x_field_element::XFieldElement;
+use twenty_first::prelude::BFieldElement;
+use twenty_first::prelude::XFieldElement;
 
 use crate::table::challenges::Challenges;
 

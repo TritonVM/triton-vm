@@ -1,5 +1,5 @@
-use twenty_first::shared_math::b_field_element::BFieldElement;
-use twenty_first::shared_math::x_field_element::XFieldElement;
+use twenty_first::prelude::BFieldElement;
+use twenty_first::prelude::XFieldElement;
 
 use crate::table::extension_table::Evaluable;
 use crate::table::extension_table::Quotientable;

@@ -8,10 +8,7 @@ use ndarray::ArrayViewMut2;
 use num_traits::One;
 use num_traits::Zero;
 use strum::EnumCount;
-use twenty_first::shared_math::b_field_element::BFieldElement;
-use twenty_first::shared_math::traits::Inverse;
-use twenty_first::shared_math::x_field_element::XFieldElement;
-use twenty_first::util_types::algebraic_hasher::SpongeHasher;
+use twenty_first::prelude::*;
 
 use crate::aet::AlgebraicExecutionTrace;
 use crate::stark::StarkHasher;

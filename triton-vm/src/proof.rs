@@ -3,9 +3,7 @@ use get_size::GetSize;
 use itertools::Itertools;
 use serde::Deserialize;
 use serde::Serialize;
-use twenty_first::shared_math::b_field_element::BFieldElement;
-use twenty_first::shared_math::bfield_codec::BFieldCodec;
-use twenty_first::shared_math::tip5::Digest;
+use twenty_first::prelude::*;
 
 use crate::error::ProofStreamError;
 use crate::proof_stream::ProofStream;
@@ -77,8 +75,6 @@ mod tests {
     use proptest::prelude::*;
     use proptest_arbitrary_interop::arb;
     use test_strategy::proptest;
-    use twenty_first::shared_math::b_field_element::BFieldElement;
-    use twenty_first::shared_math::bfield_codec::BFieldCodec;
 
     use crate::proof_item::ProofItem;
     use crate::stark::StarkHasher;

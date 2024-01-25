@@ -11,10 +11,7 @@ use num_traits::One;
 use num_traits::Zero;
 use std::cmp::max;
 use strum::EnumCount;
-use twenty_first::shared_math::b_field_element::BFieldElement;
-use twenty_first::shared_math::b_field_element::BFIELD_ONE;
-use twenty_first::shared_math::traits::Inverse;
-use twenty_first::shared_math::x_field_element::XFieldElement;
+use twenty_first::prelude::*;
 
 use crate::aet::AlgebraicExecutionTrace;
 use crate::instruction::Instruction;
@@ -109,7 +106,7 @@ impl ExtU32Table {
             current_instruction.clone() - circuit_builder.b_constant(instruction.opcode_b())
         })
         .fold(
-            circuit_builder.b_constant(BFIELD_ONE),
+            circuit_builder.b_constant(b_field_element::BFIELD_ONE),
             ConstraintCircuitMonad::mul,
         )
     }

@@ -146,6 +146,8 @@
 
 #![recursion_limit = "4096"]
 
+pub use twenty_first;
+
 use crate::error::CanonicalRepresentationError;
 use crate::error::ProvingError;
 use crate::prelude::*;

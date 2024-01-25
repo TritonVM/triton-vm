@@ -6,9 +6,7 @@ use std::fmt::Result as FmtResult;
 use ndarray::parallel::prelude::*;
 use ndarray::*;
 use strum::EnumCount;
-use twenty_first::shared_math::b_field_element::BFieldElement;
-use twenty_first::shared_math::traits::Inverse;
-use twenty_first::shared_math::x_field_element::XFieldElement;
+use twenty_first::prelude::*;
 
 use crate::aet::AlgebraicExecutionTrace;
 use crate::instruction::Instruction;

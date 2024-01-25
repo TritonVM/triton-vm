@@ -9,12 +9,7 @@ use ndarray::Array2;
 use ndarray::Axis;
 use num_traits::One;
 use num_traits::Zero;
-use twenty_first::shared_math::b_field_element::BFieldElement;
-use twenty_first::shared_math::digest::Digest;
-use twenty_first::shared_math::digest::DIGEST_LENGTH;
-use twenty_first::shared_math::tip5;
-use twenty_first::shared_math::tip5::Tip5;
-use twenty_first::util_types::algebraic_hasher::SpongeHasher;
+use twenty_first::prelude::*;
 
 use crate::error::InstructionError;
 use crate::error::InstructionError::InstructionPointerOverflow;
@@ -141,7 +136,9 @@ impl AlgebraicExecutionTrace {
         instruction_column.fill(Instruction::Hash.opcode_b());
 
         // consistency check
-        let program_digest = program_sponge.state[..DIGEST_LENGTH].try_into().unwrap();
+        let program_digest = program_sponge.state[..tip5::DIGEST_LENGTH]
+            .try_into()
+            .unwrap();
         let program_digest = Digest::new(program_digest);
         let expected_digest = self.program.hash::<StarkHasher>();
         assert_eq!(expected_digest, program_digest);
@@ -345,7 +342,6 @@ impl AlgebraicExecutionTrace {
 #[cfg(test)]
 mod tests {
     use assert2::assert;
-    use twenty_first::shared_math::b_field_element::BFIELD_ONE;
 
     use crate::triton_asm;
     use crate::triton_program;
@@ -358,7 +354,7 @@ mod tests {
         let program = triton_program!({&eight_nops} halt);
         let padded_program = AlgebraicExecutionTrace::hash_input_pad_program(&program);
 
-        let expected = [program.to_bwords(), vec![BFIELD_ONE]].concat();
+        let expected = [program.to_bwords(), vec![1_u64.into()]].concat();
         assert!(expected == padded_program);
     }
 }

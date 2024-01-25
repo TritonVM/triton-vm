@@ -3,11 +3,7 @@ use ndarray::ArrayView2;
 use ndarray::ArrayViewMut2;
 use num_traits::One;
 use strum::EnumCount;
-use twenty_first::shared_math::b_field_element::BFieldElement;
-use twenty_first::shared_math::b_field_element::BFIELD_ONE;
-use twenty_first::shared_math::tip5;
-use twenty_first::shared_math::traits::Inverse;
-use twenty_first::shared_math::x_field_element::XFieldElement;
+use twenty_first::prelude::*;
 
 use crate::aet::AlgebraicExecutionTrace;
 use crate::table::challenges::ChallengeId;
@@ -59,7 +55,7 @@ impl CascadeTable {
     pub fn pad_trace(mut cascade_table: ArrayViewMut2<BFieldElement>, cascade_table_length: usize) {
         cascade_table
             .slice_mut(s![cascade_table_length.., IsPadding.base_table_index()])
-            .fill(BFIELD_ONE);
+            .fill(b_field_element::BFIELD_ONE);
     }
 
     pub fn extend(
@@ -142,7 +138,7 @@ impl ExtCascadeTable {
         };
         let challenge = |challenge_id: ChallengeId| circuit_builder.challenge(challenge_id);
 
-        let one = circuit_builder.b_constant(BFIELD_ONE);
+        let one = circuit_builder.b_constant(b_field_element::BFIELD_ONE);
         let two = circuit_builder.b_constant(BFieldElement::new(2));
         let two_pow_8 = circuit_builder.b_constant(BFieldElement::new(1 << 8));
         let lookup_arg_default_initial = circuit_builder.x_constant(LookupArg::default_initial());
@@ -209,7 +205,7 @@ impl ExtCascadeTable {
             circuit_builder.input(BaseRow(col_id.master_base_table_index()))
         };
 
-        let one = circuit_builder.b_constant(BFIELD_ONE);
+        let one = circuit_builder.b_constant(b_field_element::BFIELD_ONE);
         let is_padding = base_row(IsPadding);
         let is_padding_is_0_or_1 = is_padding.clone() * (one - is_padding);
 

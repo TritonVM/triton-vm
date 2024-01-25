@@ -16,17 +16,9 @@ use rand::random;
 use strum::Display;
 use strum::EnumCount;
 use strum::EnumIter;
-use twenty_first::shared_math::b_field_element::BFieldElement;
-use twenty_first::shared_math::digest::Digest;
+use twenty_first::prelude::*;
 use twenty_first::shared_math::mpolynomial::Degree;
-use twenty_first::shared_math::polynomial::Polynomial;
 use twenty_first::shared_math::traits::FiniteField;
-use twenty_first::shared_math::traits::Inverse;
-use twenty_first::shared_math::traits::ModPowU32;
-use twenty_first::shared_math::x_field_element::XFieldElement;
-use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
-use twenty_first::util_types::merkle_tree::MerkleTree;
-use twenty_first::util_types::merkle_tree_maker::MerkleTreeMaker;
 
 use crate::aet::AlgebraicExecutionTrace;
 use crate::arithmetic_domain::ArithmeticDomain;

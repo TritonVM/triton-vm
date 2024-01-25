@@ -28,9 +28,7 @@ use arbitrary::Arbitrary;
 use strum::Display;
 use strum::EnumCount;
 use strum::EnumIter;
-use twenty_first::shared_math::b_field_element::BFieldElement;
-use twenty_first::shared_math::tip5::LOOKUP_TABLE;
-use twenty_first::shared_math::x_field_element::XFieldElement;
+use twenty_first::prelude::*;
 
 use crate::table::challenges::ChallengeId::*;
 use crate::table::cross_table_argument::CrossTableArg;
@@ -266,7 +264,7 @@ impl Challenges {
             challenges[StandardOutputIndeterminate.index()],
         );
         let lookup_terminal = EvalArg::compute_terminal(
-            &LOOKUP_TABLE.map(|i| BFieldElement::new(i as u64)),
+            &tip5::LOOKUP_TABLE.map(|i| BFieldElement::new(i as u64)),
             EvalArg::default_initial(),
             challenges[LookupTablePublicIndeterminate.index()],
         );
@@ -308,8 +306,6 @@ impl Index<RangeInclusive<ChallengeId>> for Challenges {
 
 #[cfg(test)]
 pub(crate) mod tests {
-    use itertools::Itertools;
-    use twenty_first::shared_math::b_field_element::BFIELD_ZERO;
     use twenty_first::shared_math::other::random_elements;
 
     use super::*;
@@ -338,9 +334,10 @@ pub(crate) mod tests {
             };
             let claim = claim.unwrap_or(&dummy_claim);
             let stand_in_challenges = (1..=Self::num_challenges_to_sample())
-                .map(|i| BFieldElement::new(i as u64))
-                .map(|bfe| XFieldElement::new([BFIELD_ZERO, bfe, BFIELD_ZERO]))
-                .collect_vec();
+                .map(|i| [0, i as u64, 0])
+                .map(XFieldElement::new_u64)
+                .collect();
+
             Self::new(stand_in_challenges, claim)
         }
     }

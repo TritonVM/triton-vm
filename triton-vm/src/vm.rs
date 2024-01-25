@@ -9,14 +9,9 @@ use ndarray::Array1;
 use num_traits::One;
 use num_traits::Zero;
 use serde_derive::*;
-use twenty_first::shared_math::b_field_element::BFieldElement;
-use twenty_first::shared_math::b_field_element::BFIELD_ZERO;
-use twenty_first::shared_math::digest::Digest;
-use twenty_first::shared_math::tip5;
-use twenty_first::shared_math::tip5::*;
-use twenty_first::shared_math::traits::Inverse;
+use twenty_first::prelude::tip5::Tip5State;
+use twenty_first::prelude::*;
 use twenty_first::util_types::algebraic_hasher::Domain;
-use twenty_first::util_types::algebraic_hasher::SpongeHasher;
 
 use crate::error::InstructionError;
 use crate::error::InstructionError::*;
@@ -409,7 +404,11 @@ impl VMState {
     }
 
     fn ram_read(&mut self, ram_pointer: BFieldElement) -> BFieldElement {
-        let ram_value = self.ram.get(&ram_pointer).copied().unwrap_or(BFIELD_ZERO);
+        let ram_value = self
+            .ram
+            .get(&ram_pointer)
+            .copied()
+            .unwrap_or(b_field_element::BFIELD_ZERO);
 
         let ram_table_call = RamTableCall {
             clk: self.cycle_count,
@@ -440,9 +439,9 @@ impl VMState {
         let mut hash_input = Tip5State::new(Domain::FixedLength);
         hash_input.state[..tip5::RATE].copy_from_slice(&to_hash);
         let tip5_trace = Tip5::trace(&mut hash_input);
-        let hash_output = &tip5_trace[tip5_trace.len() - 1][0..DIGEST_LENGTH];
+        let hash_output = &tip5_trace[tip5_trace.len() - 1][0..tip5::DIGEST_LENGTH];
 
-        for i in (0..DIGEST_LENGTH).rev() {
+        for i in (0..tip5::DIGEST_LENGTH).rev() {
             self.op_stack.push(hash_output[i]);
         }
 
@@ -517,12 +516,12 @@ impl VMState {
     }
 
     fn assert_vector(&mut self) -> Result<Vec<CoProcessorCall>> {
-        for i in 0..DIGEST_LENGTH {
-            if self.op_stack[i] != self.op_stack[i + DIGEST_LENGTH] {
+        for i in 0..tip5::DIGEST_LENGTH {
+            if self.op_stack[i] != self.op_stack[i + tip5::DIGEST_LENGTH] {
                 return Err(VectorAssertionFailed(i));
             }
         }
-        let _: [_; DIGEST_LENGTH] = self.op_stack.pop_multiple()?;
+        let _: [_; tip5::DIGEST_LENGTH] = self.op_stack.pop_multiple()?;
         self.instruction_pointer += 1;
         Ok(vec![])
     }
@@ -872,7 +871,7 @@ impl VMState {
         maybe_jump_stack_element.ok_or(JumpStackIsEmpty)
     }
 
-    fn pop_secret_digest(&mut self) -> Result<[BFieldElement; DIGEST_LENGTH]> {
+    fn pop_secret_digest(&mut self) -> Result<[BFieldElement; tip5::DIGEST_LENGTH]> {
         let digest = self
             .secret_digests
             .pop_front()
@@ -885,11 +884,11 @@ impl VMState {
     /// Returns the left and right digests in that order.
     fn put_known_digest_on_correct_side(
         node_index: u32,
-        known_digest: [BFieldElement; DIGEST_LENGTH],
-        sibling_digest: [BFieldElement; DIGEST_LENGTH],
+        known_digest: [BFieldElement; tip5::DIGEST_LENGTH],
+        sibling_digest: [BFieldElement; tip5::DIGEST_LENGTH],
     ) -> (
-        [BFieldElement; DIGEST_LENGTH],
-        [BFieldElement; DIGEST_LENGTH],
+        [BFieldElement; tip5::DIGEST_LENGTH],
+        [BFieldElement; tip5::DIGEST_LENGTH],
     ) {
         let is_left_node = node_index % 2 == 0;
         if is_left_node {
@@ -1031,14 +1030,8 @@ pub(crate) mod tests {
     use strum::EnumIter;
     use strum::IntoEnumIterator;
     use test_strategy::proptest;
-    use twenty_first::shared_math::b_field_element::BFIELD_ZERO;
     use twenty_first::shared_math::other::random_elements;
-    use twenty_first::shared_math::polynomial::Polynomial;
-    use twenty_first::shared_math::tip5::Tip5;
     use twenty_first::shared_math::traits::FiniteField;
-    use twenty_first::shared_math::traits::ModPowU32;
-    use twenty_first::shared_math::x_field_element::XFieldElement;
-    use twenty_first::util_types::algebraic_hasher::SpongeHasher;
 
     use crate::example_programs::*;
     use crate::op_stack::NumberOfWords::*;
@@ -1322,14 +1315,14 @@ pub(crate) mod tests {
         fn execute(
             self,
             mut sponge_state: Tip5State,
-            mut sponge_io: [BFieldElement; RATE],
-        ) -> (Tip5State, [BFieldElement; RATE]) {
-            let zero_digest = [BFIELD_ZERO; DIGEST_LENGTH];
+            mut sponge_io: [BFieldElement; tip5::RATE],
+        ) -> (Tip5State, [BFieldElement; tip5::RATE]) {
+            let zero_digest = [b_field_element::BFIELD_ZERO; tip5::DIGEST_LENGTH];
             match self {
                 Self::SpongeInit => sponge_state = Tip5::init(),
                 Self::SpongeAbsorb => {
                     Tip5::absorb(&mut sponge_state, &sponge_io);
-                    sponge_io = [BFIELD_ZERO; RATE];
+                    sponge_io = [b_field_element::BFIELD_ZERO; tip5::RATE];
                 }
                 Self::SpongeSqueeze => sponge_io = Tip5::squeeze(&mut sponge_state),
                 Self::Hash => {
@@ -1359,7 +1352,7 @@ pub(crate) mod tests {
             (sponge_state, sponge_io) = instruction.execute(sponge_state, sponge_io);
         }
 
-        let output_equality_assertions = (0..RATE)
+        let output_equality_assertions = (0..tip5::RATE)
             .flat_map(|_| triton_asm![read_io 1 eq assert])
             .collect_vec();
 
@@ -1941,7 +1934,7 @@ pub(crate) mod tests {
     #[test]
     #[allow(clippy::assertions_on_constants)]
     const fn op_stack_is_big_enough() {
-        std::assert!(2 * DIGEST_LENGTH <= OpStackElement::COUNT);
+        std::assert!(2 * tip5::DIGEST_LENGTH <= OpStackElement::COUNT);
     }
     const _COMPILE_TIME_ASSERTION: () = op_stack_is_big_enough();
 
@@ -1967,7 +1960,7 @@ pub(crate) mod tests {
         );
         let mut vm_state = VMState::new(&program, [].into(), [].into());
         let_assert!(Ok(()) = vm_state.run());
-        assert!(BFIELD_ZERO == vm_state.op_stack[ST0]);
+        assert!(b_field_element::BFIELD_ZERO == vm_state.op_stack[ST0]);
     }
 
     #[test]
@@ -1977,7 +1970,7 @@ pub(crate) mod tests {
 
         let_assert!(Some(last_processor_row) = aet.processor_trace.rows().into_iter().last());
         let clk_count = last_processor_row[ProcessorBaseTableColumn::CLK.base_table_index()];
-        assert!(BFIELD_ZERO == clk_count);
+        assert!(b_field_element::BFIELD_ZERO == clk_count);
 
         let last_instruction = last_processor_row[ProcessorBaseTableColumn::CI.base_table_index()];
         assert!(Instruction::Halt.opcode_b() == last_instruction);

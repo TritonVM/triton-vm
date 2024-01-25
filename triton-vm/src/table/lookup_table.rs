@@ -4,11 +4,8 @@ use ndarray::ArrayView2;
 use ndarray::ArrayViewMut2;
 use num_traits::One;
 use strum::EnumCount;
-use twenty_first::shared_math::b_field_element::BFieldElement;
-use twenty_first::shared_math::b_field_element::BFIELD_ONE;
-use twenty_first::shared_math::tip5;
-use twenty_first::shared_math::traits::Inverse;
-use twenty_first::shared_math::x_field_element::XFieldElement;
+use twenty_first::prelude::tip5;
+use twenty_first::prelude::*;
 
 use crate::aet::AlgebraicExecutionTrace;
 use crate::table::challenges::ChallengeId;
@@ -72,7 +69,7 @@ impl LookupTable {
     pub fn pad_trace(mut lookup_table: ArrayViewMut2<BFieldElement>, lookup_table_length: usize) {
         lookup_table
             .slice_mut(s![lookup_table_length.., IsPadding.base_table_index()])
-            .fill(BFIELD_ONE);
+            .fill(b_field_element::BFIELD_ONE);
     }
 
     pub fn extend(
@@ -179,7 +176,7 @@ impl ExtLookupTable {
     pub fn transition_constraints(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        let one = circuit_builder.b_constant(BFIELD_ONE);
+        let one = circuit_builder.b_constant(b_field_element::BFIELD_ONE);
 
         let current_base_row = |col_id: LookupBaseTableColumn| {
             circuit_builder.input(CurrentBaseRow(col_id.master_base_table_index()))
