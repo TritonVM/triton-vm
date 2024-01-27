@@ -251,7 +251,7 @@ impl<'stream, H: AlgebraicHasher> FriVerifier<'stream, H> {
         &mut self,
         domain: ArithmeticDomain,
     ) -> VerifierResult<VerifierRound> {
-        let merkle_root = self.proof_stream.dequeue()?.as_merkle_root()?;
+        let merkle_root = self.proof_stream.dequeue()?.try_into_merkle_root()?;
         let folding_challenge = self.maybe_sample_folding_challenge();
 
         let verifier_round = VerifierRound {
@@ -286,7 +286,7 @@ impl<'stream, H: AlgebraicHasher> FriVerifier<'stream, H> {
     }
 
     fn receive_last_round_codeword(&mut self) -> VerifierResult<()> {
-        self.last_round_codeword = self.proof_stream.dequeue()?.as_fri_codeword()?;
+        self.last_round_codeword = self.proof_stream.dequeue()?.try_into_fri_codeword()?;
         Ok(())
     }
 
@@ -319,7 +319,7 @@ impl<'stream, H: AlgebraicHasher> FriVerifier<'stream, H> {
     fn receive_partial_codeword_a_for_first_round(
         &mut self,
     ) -> VerifierResult<AuthenticationStructure> {
-        let fri_response = self.proof_stream.dequeue()?.as_fri_response()?;
+        let fri_response = self.proof_stream.dequeue()?.try_into_fri_response()?;
         let FriResponse {
             auth_structure,
             revealed_leaves,
@@ -334,7 +334,7 @@ impl<'stream, H: AlgebraicHasher> FriVerifier<'stream, H> {
         &mut self,
         round_number: usize,
     ) -> VerifierResult<AuthenticationStructure> {
-        let fri_response = self.proof_stream.dequeue()?.as_fri_response()?;
+        let fri_response = self.proof_stream.dequeue()?.try_into_fri_response()?;
         let FriResponse {
             auth_structure,
             revealed_leaves,

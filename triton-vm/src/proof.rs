@@ -17,12 +17,12 @@ pub struct Proof(pub Vec<BFieldElement>);
 impl Proof {
     /// Get the height of the trace used during proof generation.
     /// This is an upper bound on the length of the computation this proof is for.
-    /// It it one of the main contributing factors to the length of the FRI domain.
+    /// It is one of the main contributing factors to the length of the FRI domain.
     pub fn padded_height(&self) -> Result<usize, ProofStreamError> {
         let proof_stream = ProofStream::<stark::StarkHasher>::try_from(self)?;
-        let proof_items = proof_stream.items.iter();
+        let proof_items = proof_stream.items.into_iter();
         let log_2_padded_heights = proof_items
-            .filter_map(|item| item.as_log2_padded_height().ok())
+            .filter_map(|item| item.try_into_log2_padded_height().ok())
             .collect_vec();
 
         if log_2_padded_heights.is_empty() {

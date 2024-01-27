@@ -9,6 +9,7 @@ use twenty_first::prelude::*;
 
 use crate::instruction::Instruction;
 use crate::proof_item::ProofItem;
+use crate::proof_item::ProofItemVariant;
 use crate::proof_stream::ProofStream;
 use crate::stark::StarkHasher;
 use crate::vm::VMState;
@@ -103,8 +104,11 @@ pub enum ProofStreamError {
     #[error("queue must be non-empty in order to dequeue an item")]
     EmptyQueue,
 
-    #[error("expected {0}, but got {1}")]
-    UnexpectedItem(&'static str, ProofItem),
+    #[error("expected {expected}, got {got}")]
+    UnexpectedItem {
+        expected: ProofItemVariant,
+        got: ProofItem,
+    },
 
     #[error("the proof stream must contain a log2_padded_height item")]
     NoLog2PaddedHeight,

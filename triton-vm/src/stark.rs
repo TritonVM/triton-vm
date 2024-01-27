@@ -721,23 +721,23 @@ impl Stark {
         prof_stop!(maybe_profiler, "Fiat-Shamir: Claim");
 
         prof_start!(maybe_profiler, "derive additional parameters");
-        let log_2_padded_height = proof_stream.dequeue()?.as_log2_padded_height()?;
+        let log_2_padded_height = proof_stream.dequeue()?.try_into_log2_padded_height()?;
         let padded_height = 1 << log_2_padded_height;
         let fri = Self::derive_fri(parameters, padded_height)?;
         let merkle_tree_height = fri.domain.length.ilog2() as usize;
         prof_stop!(maybe_profiler, "derive additional parameters");
 
         prof_start!(maybe_profiler, "Fiat-Shamir 1", "hash");
-        let base_merkle_tree_root = proof_stream.dequeue()?.as_merkle_root()?;
+        let base_merkle_tree_root = proof_stream.dequeue()?.try_into_merkle_root()?;
         let extension_challenge_weights =
             proof_stream.sample_scalars(Challenges::num_challenges_to_sample());
         let challenges = Challenges::new(extension_challenge_weights, claim);
-        let extension_tree_merkle_root = proof_stream.dequeue()?.as_merkle_root()?;
+        let extension_tree_merkle_root = proof_stream.dequeue()?.try_into_merkle_root()?;
         // Sample weights for quotient codeword, which is a part of the combination codeword.
         // See corresponding part in the prover for a more detailed explanation.
         let quot_codeword_weights = proof_stream.sample_scalars(num_quotients());
         let quot_codeword_weights = Array1::from(quot_codeword_weights);
-        let quotient_codeword_merkle_root = proof_stream.dequeue()?.as_merkle_root()?;
+        let quotient_codeword_merkle_root = proof_stream.dequeue()?.try_into_merkle_root()?;
         prof_stop!(maybe_profiler, "Fiat-Shamir 1");
 
         prof_start!(maybe_profiler, "dequeue ood point and rows", "hash");
@@ -747,13 +747,17 @@ impl Stark {
         let out_of_domain_point_curr_row_pow_num_segments =
             out_of_domain_point_curr_row.mod_pow_u32(NUM_QUOTIENT_SEGMENTS as u32);
 
-        let out_of_domain_curr_base_row = proof_stream.dequeue()?.as_out_of_domain_base_row()?;
-        let out_of_domain_curr_ext_row = proof_stream.dequeue()?.as_out_of_domain_ext_row()?;
-        let out_of_domain_next_base_row = proof_stream.dequeue()?.as_out_of_domain_base_row()?;
-        let out_of_domain_next_ext_row = proof_stream.dequeue()?.as_out_of_domain_ext_row()?;
+        let out_of_domain_curr_base_row =
+            proof_stream.dequeue()?.try_into_out_of_domain_base_row()?;
+        let out_of_domain_curr_ext_row =
+            proof_stream.dequeue()?.try_into_out_of_domain_ext_row()?;
+        let out_of_domain_next_base_row =
+            proof_stream.dequeue()?.try_into_out_of_domain_base_row()?;
+        let out_of_domain_next_ext_row =
+            proof_stream.dequeue()?.try_into_out_of_domain_ext_row()?;
         let out_of_domain_curr_row_quot_segments = proof_stream
             .dequeue()?
-            .as_out_of_domain_quotient_segments()?;
+            .try_into_out_of_domain_quot_segments()?;
 
         let out_of_domain_curr_base_row = Array1::from(out_of_domain_curr_base_row);
         let out_of_domain_curr_ext_row = Array1::from(out_of_domain_curr_ext_row);
@@ -876,9 +880,10 @@ impl Stark {
 
         prof_start!(maybe_profiler, "check leafs");
         prof_start!(maybe_profiler, "dequeue base elements");
-        let base_table_rows = proof_stream.dequeue()?.as_master_base_table_rows()?;
-        let base_authentication_structure =
-            proof_stream.dequeue()?.as_authentication_structure()?;
+        let base_table_rows = proof_stream.dequeue()?.try_into_master_base_table_rows()?;
+        let base_authentication_structure = proof_stream
+            .dequeue()?
+            .try_into_authentication_structure()?;
         let leaf_digests_base: Vec<_> = base_table_rows
             .par_iter()
             .map(|revealed_base_elem| StarkHasher::hash_varlen(revealed_base_elem))
@@ -902,8 +907,10 @@ impl Stark {
         prof_stop!(maybe_profiler, "Merkle verify (base tree)");
 
         prof_start!(maybe_profiler, "dequeue extension elements");
-        let ext_table_rows = proof_stream.dequeue()?.as_master_ext_table_rows()?;
-        let ext_authentication_structure = proof_stream.dequeue()?.as_authentication_structure()?;
+        let ext_table_rows = proof_stream.dequeue()?.try_into_master_ext_table_rows()?;
+        let ext_authentication_structure = proof_stream
+            .dequeue()?
+            .try_into_authentication_structure()?;
         let leaf_digests_ext = ext_table_rows
             .par_iter()
             .map(|xvalues| {
@@ -927,11 +934,12 @@ impl Stark {
 
         prof_start!(maybe_profiler, "dequeue quotient segments' elements");
         let revealed_quotient_segments_elements =
-            proof_stream.dequeue()?.as_quotient_segments_elements()?;
+            proof_stream.dequeue()?.try_into_quot_segments_elements()?;
         let revealed_quotient_segments_digests =
             Self::hash_quotient_segment_elements(&revealed_quotient_segments_elements);
-        let revealed_quotient_authentication_structure =
-            proof_stream.dequeue()?.as_authentication_structure()?;
+        let revealed_quotient_authentication_structure = proof_stream
+            .dequeue()?
+            .try_into_authentication_structure()?;
         prof_stop!(maybe_profiler, "dequeue quotient segments' elements");
 
         prof_start!(maybe_profiler, "Merkle verify (combined quotient)", "hash");

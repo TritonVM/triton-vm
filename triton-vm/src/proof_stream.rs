@@ -275,7 +275,8 @@ mod tests {
 
         // TODO: Also check that deserializing from Proof works here.
 
-        let maybe_same_fri_response = proof_stream.dequeue().unwrap().as_fri_response().unwrap();
+        let proof_item = proof_stream.dequeue().unwrap();
+        let maybe_same_fri_response = proof_item.try_into_fri_response().unwrap();
         let FriResponse {
             auth_structure,
             revealed_leaves,
