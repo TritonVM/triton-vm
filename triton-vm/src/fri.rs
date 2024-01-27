@@ -831,8 +831,8 @@ mod tests {
         #[strategy(1_usize..32)] log_2_expansion_factor: usize,
         #[strategy(..#log_2_expansion_factor)] log_2_domain_length: usize,
     ) {
-        let expansion_factor = (1 << log_2_expansion_factor) as usize;
-        let domain_length = (1 << log_2_domain_length) as usize;
+        let expansion_factor = 1 << log_2_expansion_factor;
+        let domain_length = 1 << log_2_domain_length;
         let domain = ArithmeticDomain::of_length(domain_length);
         let num_collinearity_checks = 1;
         let err = Fri::<Tip5>::new(domain, expansion_factor, num_collinearity_checks).unwrap_err();
