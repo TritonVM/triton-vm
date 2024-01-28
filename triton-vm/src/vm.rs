@@ -1321,7 +1321,7 @@ pub(crate) mod tests {
             match self {
                 Self::SpongeInit => sponge_state = Tip5::init(),
                 Self::SpongeAbsorb => {
-                    Tip5::absorb(&mut sponge_state, &sponge_io);
+                    Tip5::absorb(&mut sponge_state, sponge_io);
                     sponge_io = [b_field_element::BFIELD_ZERO; tip5::RATE];
                 }
                 Self::SpongeSqueeze => sponge_io = Tip5::squeeze(&mut sponge_state),

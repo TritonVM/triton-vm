@@ -712,7 +712,7 @@ mod tests {
         #[strategy(arb())] initial_absorb: [BFieldElement; tip5::RATE],
     ) {
         let mut sponge_state = Tip5::init();
-        Tip5::absorb(&mut sponge_state, &initial_absorb);
+        Tip5::absorb(&mut sponge_state, initial_absorb);
 
         // todo: Figure out by how much to oversample for the given parameters.
         let oversampling_summand = 1 << 13;

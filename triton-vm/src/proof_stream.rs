@@ -37,21 +37,6 @@ where
         b_field_elements.len()
     }
 
-    fn encode_and_pad_item(item: &impl BFieldCodec) -> Vec<BFieldElement> {
-        let encoding = item.encode();
-        let last_chunk_len = (encoding.len() + 1) % H::RATE;
-        let num_padding_zeros = match last_chunk_len {
-            0 => 0,
-            _ => H::RATE - last_chunk_len,
-        };
-        [
-            encoding,
-            vec![b_field_element::BFIELD_ONE],
-            vec![b_field_element::BFIELD_ZERO; num_padding_zeros],
-        ]
-        .concat()
-    }
-
     /// Alters the Fiat-Shamir's sponge state with the encoding of the given item.
     /// Does _not_ record the given item in the proof stream.
     /// This is useful for items that are not sent to the verifier, _e.g._, the
@@ -59,10 +44,7 @@ where
     ///
     /// See also [`Self::enqueue()`] and [`Self::dequeue()`].
     pub fn alter_fiat_shamir_state_with(&mut self, item: &impl BFieldCodec) {
-        H::absorb_repeatedly(
-            &mut self.sponge_state,
-            Self::encode_and_pad_item(item).iter(),
-        )
+        H::pad_and_absorb_all(&mut self.sponge_state, &item.encode())
     }
 
     /// Send a proof item as prover to verifier.
