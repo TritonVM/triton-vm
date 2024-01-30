@@ -8,12 +8,10 @@ use tokio::sync::mpsc::UnboundedSender;
 use tracing::error;
 use tracing::info;
 use tracing::warn;
-
 use triton_vm::error::InstructionError;
 use triton_vm::instruction::*;
 use triton_vm::op_stack::NUM_OP_STACK_REGISTERS;
-use triton_vm::vm::VMState;
-use triton_vm::*;
+use triton_vm::prelude::*;
 
 use crate::action::*;
 use crate::args::TuiArgs;

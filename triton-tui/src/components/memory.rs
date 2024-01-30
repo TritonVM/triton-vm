@@ -7,7 +7,7 @@ use ratatui::prelude::*;
 use ratatui::widgets::*;
 use ratatui::Frame;
 use triton_vm::instruction::Instruction;
-use triton_vm::BFieldElement;
+use triton_vm::prelude::*;
 use tui_textarea::TextArea;
 
 use crate::action::Action;
@@ -316,13 +316,11 @@ mod tests {
     use proptest_arbitrary_interop::arb;
     use ratatui::backend::TestBackend;
     use test_strategy::proptest;
-    use triton_vm::vm::VMState;
-    use triton_vm::BFieldElement;
-    use triton_vm::Program;
+    use triton_vm::prelude::*;
 
     use super::*;
 
-    /// Since `TextArea` is not `Arbitrary`, we need to implement `Arbitrary` for `Memory` manually.
+    /// Since `TextArea` is not `Arbitrary`, implement `Arbitrary` for `Memory` manually.
     #[derive(Debug, Clone, test_strategy::Arbitrary)]
     struct ArbitraryMemory {
         #[strategy(arb())]

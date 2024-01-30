@@ -4,10 +4,9 @@ use arbitrary::Arbitrary;
 use itertools::Itertools;
 use serde::de::*;
 use serde::*;
-
 use triton_vm::instruction::Instruction;
 use triton_vm::op_stack::NUM_OP_STACK_REGISTERS;
-use triton_vm::BFieldElement;
+use triton_vm::prelude::*;
 
 use crate::mode::Mode;
 

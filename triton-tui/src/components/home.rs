@@ -4,9 +4,8 @@ use itertools::Itertools;
 use ratatui::prelude::*;
 use ratatui::widgets::block::*;
 use ratatui::widgets::*;
-use strum::EnumCount;
 use triton_vm::instruction::*;
-use triton_vm::op_stack::OpStackElement;
+use triton_vm::op_stack::NUM_OP_STACK_REGISTERS;
 
 use crate::action::*;
 use crate::element_type_hint::ElementTypeHint;
@@ -136,19 +135,6 @@ impl Home {
         let stack_size = op_stack.len();
         let title = format!(" Stack (size: {stack_size:>4}) ");
         let title = Title::from(title).alignment(Alignment::Left);
-        let num_padding_lines = (render_area.height as usize).saturating_sub(stack_size + 3);
-        let mut text = vec![Line::from(""); num_padding_lines];
-        for (i, st) in op_stack.iter().rev().enumerate() {
-            let stack_index_style = match i {
-                i if i < OpStackElement::COUNT => Style::new().bold(),
-                _ => Style::new().dim(),
-            };
-            let stack_index = Span::from(format!("{i:>3}")).set_style(stack_index_style);
-            let separator = Span::from("  ");
-            let stack_element = Span::from(format!("{st}"));
-            let line = Line::from(vec![stack_index, separator, stack_element]);
-            text.push(line);
-        }
 
         let border_set = symbols::border::Set {
             bottom_left: symbols::line::ROUNDED.vertical_right,
@@ -159,6 +145,21 @@ impl Home {
             .borders(Borders::TOP | Borders::LEFT | Borders::BOTTOM)
             .border_set(border_set)
             .title(title);
+
+        let num_available_lines = block.inner(render_area).height as usize;
+        let num_padding_lines = num_available_lines.saturating_sub(stack_size);
+        let mut text = vec![Line::from(""); num_padding_lines];
+        for (i, st) in op_stack.iter().rev().enumerate() {
+            let stack_index_style = match i {
+                i if i < NUM_OP_STACK_REGISTERS => Style::new().bold(),
+                _ => Style::new().dim(),
+            };
+            let stack_index = Span::from(format!("{i:>3}")).set_style(stack_index_style);
+            let separator = Span::from("  ");
+            let stack_element = Span::from(format!("{st}"));
+            let line = Line::from(vec![stack_index, separator, stack_element]);
+            text.push(line);
+        }
         let paragraph = Paragraph::new(text).block(block).alignment(Alignment::Left);
         frame.render_widget(paragraph, render_area);
     }
@@ -167,14 +168,18 @@ impl Home {
         if !self.show_type_hints {
             return;
         }
+        let block = Block::default()
+            .padding(Padding::new(0, 1, 1, 0))
+            .borders(Borders::TOP | Borders::BOTTOM);
         let render_area = render_info.areas.type_hint;
         let type_hints = &render_info.state.type_hints.stack;
 
+        let num_available_lines = block.inner(render_area).height as usize;
+        let num_padding_lines = num_available_lines.saturating_sub(type_hints.len());
+        let mut text = vec![Line::from(""); num_padding_lines];
+
         let highest_hint = type_hints.last().cloned().flatten();
         let lowest_hint = type_hints.first().cloned().flatten();
-
-        let num_padding_lines = (render_area.height as usize).saturating_sub(type_hints.len() + 3);
-        let mut text = vec![Line::from(""); num_padding_lines];
 
         text.push(ElementTypeHint::render(&highest_hint).into());
         for (hint_0, hint_1, hint_2) in type_hints.iter().rev().tuple_windows() {
@@ -186,9 +191,6 @@ impl Home {
         }
         text.push(ElementTypeHint::render(&lowest_hint).into());
 
-        let block = Block::default()
-            .padding(Padding::new(0, 1, 1, 0))
-            .borders(Borders::TOP | Borders::BOTTOM);
         let paragraph = Paragraph::new(text).block(block).alignment(Alignment::Left);
         frame.render_widget(paragraph, render_area);
     }
@@ -272,14 +274,27 @@ impl Home {
 
         let state = &render_info.state;
         let jump_stack = &state.vm_state.jump_stack;
-        let render_area = render_info.areas.call_stack;
 
         let jump_stack_depth = jump_stack.len();
         let title = format!(" Calls (depth: {jump_stack_depth:>3}) ");
         let title = Title::from(title).alignment(Alignment::Left);
 
-        let num_padding_lines = (render_area.height as usize).saturating_sub(jump_stack_depth + 3);
+        let border_set = symbols::border::Set {
+            top_left: symbols::line::ROUNDED.horizontal_down,
+            bottom_left: symbols::line::ROUNDED.horizontal_up,
+            ..symbols::border::ROUNDED
+        };
+        let block = Block::default()
+            .padding(Padding::new(1, 1, 1, 0))
+            .title(title)
+            .borders(Borders::TOP | Borders::LEFT | Borders::BOTTOM)
+            .border_set(border_set);
+        let render_area = render_info.areas.call_stack;
+
+        let num_available_lines = block.inner(render_area).height as usize;
+        let num_padding_lines = num_available_lines.saturating_sub(jump_stack_depth);
         let mut text = vec![Line::from(""); num_padding_lines];
+
         let address_width = self.address_render_width(state);
         for (return_address, call_address) in jump_stack.iter().rev() {
             let return_address = return_address.value();
@@ -292,17 +307,6 @@ impl Home {
             let line = Line::from(vec![addresses, separator, label]);
             text.push(line);
         }
-
-        let border_set = symbols::border::Set {
-            top_left: symbols::line::ROUNDED.horizontal_down,
-            bottom_left: symbols::line::ROUNDED.horizontal_up,
-            ..symbols::border::ROUNDED
-        };
-        let block = Block::default()
-            .padding(Padding::new(1, 1, 1, 0))
-            .title(title)
-            .borders(Borders::TOP | Borders::LEFT | Borders::BOTTOM)
-            .border_set(border_set);
         let paragraph = Paragraph::new(text).block(block).alignment(Alignment::Left);
         frame.render_widget(paragraph, render_area);
     }
@@ -523,8 +527,7 @@ mod tests {
     use proptest_arbitrary_interop::arb;
     use ratatui::backend::TestBackend;
     use test_strategy::proptest;
-    use triton_vm::vm::VMState;
-    use triton_vm::Program;
+    use triton_vm::prelude::*;
 
     use super::*;
 

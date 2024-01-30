@@ -4,12 +4,10 @@ use std::iter::once;
 use color_eyre::eyre::bail;
 use color_eyre::eyre::Result;
 use itertools::Itertools;
-
 use triton_vm::instruction::*;
 use triton_vm::op_stack::NumberOfWords::*;
 use triton_vm::op_stack::*;
-use triton_vm::vm::VMState;
-use triton_vm::BFieldElement;
+use triton_vm::prelude::*;
 
 use crate::action::ExecutedInstruction;
 use crate::element_type_hint::ElementTypeHint;
@@ -43,7 +41,7 @@ impl ShadowMemory {
     }
 
     fn initial_program_digest_type_hint() -> TypeHint {
-        let digest_length = triton_vm::Digest::default().0.len();
+        let digest_length = tip5::DIGEST_LENGTH;
         TypeHint {
             type_name: Some("Digest".to_string()),
             variable_name: "program_digest".to_string(),
@@ -209,7 +207,7 @@ impl ShadowMemory {
                 type_name: Some("Digest".to_string()),
                 variable_name: format!("{}_hash", hash_type_hint.variable_name),
                 starting_index: 0,
-                length: triton_vm::Digest::default().0.len(),
+                length: Digest::default().0.len(),
             };
             self.apply_type_hint(type_hint).unwrap();
         }
