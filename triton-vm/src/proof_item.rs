@@ -22,21 +22,32 @@ pub struct FriResponse {
 
 macro_rules! proof_items {
     ($($variant:ident($payload:ty) => $in_fiat_shamir_heuristic:literal, $try_into_fn:ident,)+) => {
-        #[derive(Debug, Clone, PartialEq, Eq, Hash, Display, EnumCount, EnumDiscriminants, BFieldCodec, Arbitrary)]
+        #[derive(
+            Debug,
+            Clone,
+            PartialEq,
+            Eq,
+            Hash,
+            Display,
+            EnumCount,
+            EnumDiscriminants,
+            BFieldCodec,
+            Arbitrary
+        )]
         #[strum_discriminants(name(ProofItemVariant))]
-        #[strum_discriminants(derive(Display))]
+        #[strum_discriminants(derive(Display, BFieldCodec))]
         pub enum ProofItem {
             $( $variant($payload), )+
         }
 
         impl ProofItem {
             /// Whether a given proof item should be considered in the Fiat-Shamir heuristic.
-            /// The Fiat-Shamir heuristic is sound only if all elements in the (current) transcript are
-            /// considered. However, certain elements indirectly appear more than once. For example, a
-            /// Merkle root is a commitment to any number of elements. If the Merkle root is part of the
-            /// transcript, has been considered in the Fiat-Shamir heuristic, and assuming collision
-            /// resistance of the hash function in use, none of the committed-to elements have to be
-            /// considered in the Fiat-Shamir heuristic again.
+            /// The Fiat-Shamir heuristic is sound only if all elements in the (current) transcript
+            /// are considered. However, certain elements indirectly appear more than once. For
+            /// example, a Merkle root is a commitment to any number of elements. If the Merkle root
+            /// is part of the transcript, has been considered in the Fiat-Shamir heuristic, and
+            /// assuming collision resistance of the hash function in use, none of the committed-to
+            /// elements have to be considered in the Fiat-Shamir heuristic again.
             /// This also extends to the authentication structure of these elements, et cetera.
             pub const fn include_in_fiat_shamir_heuristic(&self) -> bool {
                 match self {
@@ -56,6 +67,14 @@ macro_rules! proof_items {
             }
             )+
         }
+
+        impl ProofItemVariant {
+            pub fn payload_static_length(self) -> Option<usize> {
+                match self {
+                    $( Self::$variant => <$payload>::static_length(), )+
+                }
+            }
+        }
     };
 }
 
@@ -63,14 +82,16 @@ proof_items!(
     MerkleRoot(Digest) => true, try_into_merkle_root,
     OutOfDomainBaseRow(Vec<XFieldElement>) => true, try_into_out_of_domain_base_row,
     OutOfDomainExtRow(Vec<XFieldElement>) => true, try_into_out_of_domain_ext_row,
-    OutOfDomainQuotientSegments([XFieldElement; NUM_QUOTIENT_SEGMENTS]) => true, try_into_out_of_domain_quot_segments,
+    OutOfDomainQuotientSegments([XFieldElement; NUM_QUOTIENT_SEGMENTS]) => true,
+        try_into_out_of_domain_quot_segments,
 
-    // all the following are implied by some Merkle root and thus not included in the Fiat-Shamir heuristic
+    // the following are implied by some Merkle root, thus not included in the Fiat-Shamir heuristic
     AuthenticationStructure(AuthenticationStructure) => false, try_into_authentication_structure,
     MasterBaseTableRows(Vec<Vec<BFieldElement>>) => false, try_into_master_base_table_rows,
     MasterExtTableRows(Vec<Vec<XFieldElement>>) => false, try_into_master_ext_table_rows,
     Log2PaddedHeight(u32) => false, try_into_log2_padded_height,
-    QuotientSegmentsElements(Vec<[XFieldElement; NUM_QUOTIENT_SEGMENTS]>) => false, try_into_quot_segments_elements,
+    QuotientSegmentsElements(Vec<[XFieldElement; NUM_QUOTIENT_SEGMENTS]>) => false,
+        try_into_quot_segments_elements,
     FriCodeword(Vec<XFieldElement>) => false, try_into_fri_codeword,
     FriResponse(FriResponse) => false, try_into_fri_response,
 );
@@ -138,17 +159,41 @@ pub(crate) mod tests {
     #[test]
     fn interpreting_a_merkle_root_as_anything_else_gives_appropriate_error() {
         let fake_root = Digest::default();
-        let proof_item = ProofItem::MerkleRoot(fake_root);
-        assert!(let Err(UnexpectedItem{..}) = proof_item.clone().try_into_authentication_structure());
-        assert!(let Err(UnexpectedItem{..}) = proof_item.clone().try_into_fri_response());
-        assert!(let Err(UnexpectedItem{..}) = proof_item.clone().try_into_master_base_table_rows());
-        assert!(let Err(UnexpectedItem{..}) = proof_item.clone().try_into_master_ext_table_rows());
-        assert!(let Err(UnexpectedItem{..}) = proof_item.clone().try_into_out_of_domain_base_row());
-        assert!(let Err(UnexpectedItem{..}) = proof_item.clone().try_into_out_of_domain_ext_row());
-        assert!(let Err(UnexpectedItem{..}) = proof_item.clone().try_into_out_of_domain_quot_segments());
-        assert!(let Err(UnexpectedItem{..}) = proof_item.clone().try_into_log2_padded_height());
-        assert!(let Err(UnexpectedItem{..}) = proof_item.clone().try_into_quot_segments_elements());
-        assert!(let Err(UnexpectedItem{..}) = proof_item.clone().try_into_fri_codeword());
-        assert!(let Err(UnexpectedItem{..}) = proof_item.try_into_fri_response());
+        let item = ProofItem::MerkleRoot(fake_root);
+        assert!(let Err(UnexpectedItem{..}) = item.clone().try_into_authentication_structure());
+        assert!(let Err(UnexpectedItem{..}) = item.clone().try_into_fri_response());
+        assert!(let Err(UnexpectedItem{..}) = item.clone().try_into_master_base_table_rows());
+        assert!(let Err(UnexpectedItem{..}) = item.clone().try_into_master_ext_table_rows());
+        assert!(let Err(UnexpectedItem{..}) = item.clone().try_into_out_of_domain_base_row());
+        assert!(let Err(UnexpectedItem{..}) = item.clone().try_into_out_of_domain_ext_row());
+        assert!(let Err(UnexpectedItem{..}) = item.clone().try_into_out_of_domain_quot_segments());
+        assert!(let Err(UnexpectedItem{..}) = item.clone().try_into_log2_padded_height());
+        assert!(let Err(UnexpectedItem{..}) = item.clone().try_into_quot_segments_elements());
+        assert!(let Err(UnexpectedItem{..}) = item.clone().try_into_fri_codeword());
+        assert!(let Err(UnexpectedItem{..}) = item.try_into_fri_response());
+    }
+
+    #[test]
+    fn proof_item_payload_static_length_is_as_expected() {
+        assert!(let Some(_) =  ProofItemVariant::MerkleRoot.payload_static_length());
+        assert!(let Some(_) =  ProofItemVariant::Log2PaddedHeight.payload_static_length());
+        assert_eq!(None, ProofItemVariant::FriCodeword.payload_static_length());
+        assert_eq!(None, ProofItemVariant::FriResponse.payload_static_length());
+    }
+
+    #[test]
+    fn proof_item_and_its_variant_have_same_bfield_codec_discriminant() {
+        assert_eq!(
+            ProofItem::MerkleRoot(Digest::default()).bfield_codec_discriminant(),
+            ProofItemVariant::MerkleRoot.bfield_codec_discriminant()
+        );
+        assert_eq!(
+            ProofItem::Log2PaddedHeight(0).bfield_codec_discriminant(),
+            ProofItemVariant::Log2PaddedHeight.bfield_codec_discriminant()
+        );
+        assert_eq!(
+            ProofItem::FriCodeword(vec![]).bfield_codec_discriminant(),
+            ProofItemVariant::FriCodeword.bfield_codec_discriminant()
+        );
     }
 }
