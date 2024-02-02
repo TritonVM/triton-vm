@@ -127,44 +127,38 @@ impl Tui {
                 let render_delay = render_interval.tick();
                 let crossterm_event = reader.next().fuse();
                 tokio::select! {
-                    maybe_event = crossterm_event => {
-                        match maybe_event {
-                            Some(Ok(evt)) => {
-                                match evt {
-                                    CrosstermEvent::Key(key) => {
-                                        if key.kind == KeyEventKind::Press {
-                                            event_tx.send(Event::Key(key)).unwrap()
-                                        }
-                                    },
-                                    CrosstermEvent::Mouse(mouse) => {
-                                        event_tx.send(Event::Mouse(mouse)).unwrap();
-                                    },
-                                    CrosstermEvent::Resize(x, y) => {
-                                        event_tx.send(Event::Resize(x, y)).unwrap();
-                                    },
-                                    CrosstermEvent::FocusLost => {
-                                        event_tx.send(Event::FocusLost).unwrap();
-                                    },
-                                    CrosstermEvent::FocusGained => {
-                                        event_tx.send(Event::FocusGained).unwrap();
-                                    },
-                                    CrosstermEvent::Paste(s) => {
-                                        event_tx.send(Event::Paste(s)).unwrap();
-                                    },
-                                }
-                            }
-                            Some(Err(_)) => {
-                                event_tx.send(Event::Error).unwrap();
-                            }
-                            None => {},
-                        }
-                    },
+                    event = crossterm_event => Self::handle_crossterm_event(&event_tx, event),
                     _ = cancellation_token.cancelled() => return,
                     _ = tick_delay => event_tx.send(Event::Tick).unwrap(),
                     _ = render_delay => event_tx.send(Event::Render).unwrap(),
                 }
             }
         });
+    }
+
+    fn handle_crossterm_event(
+        event_tx: &UnboundedSender<Event>,
+        maybe_event: Option<io::Result<CrosstermEvent>>,
+    ) {
+        let Some(event_result) = maybe_event else {
+            return;
+        };
+        let Ok(event) = event_result else {
+            return event_tx.send(Event::Error).unwrap();
+        };
+
+        match event {
+            CrosstermEvent::Key(key) => {
+                if key.kind == KeyEventKind::Press {
+                    event_tx.send(Event::Key(key)).unwrap()
+                }
+            }
+            CrosstermEvent::Mouse(mouse) => event_tx.send(Event::Mouse(mouse)).unwrap(),
+            CrosstermEvent::Resize(x, y) => event_tx.send(Event::Resize(x, y)).unwrap(),
+            CrosstermEvent::FocusLost => event_tx.send(Event::FocusLost).unwrap(),
+            CrosstermEvent::FocusGained => event_tx.send(Event::FocusGained).unwrap(),
+            CrosstermEvent::Paste(s) => event_tx.send(Event::Paste(s)).unwrap(),
+        }
     }
 
     pub fn enter(&mut self) -> Result<()> {
