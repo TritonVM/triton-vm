@@ -28,7 +28,7 @@ itertools.workspace = true
 lazy_static.workspace = true
 libc = "0.2"
 num-traits.workspace = true
-ratatui = { version = "0.25", features = ["serde", "macros"] }
+ratatui = { version = "0.26", features = ["serde", "macros"] }
 rexpect = { version = "0.5", optional = true }
 serde.workspace = true
 serde_json = "1.0"
