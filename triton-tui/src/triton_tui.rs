@@ -5,6 +5,7 @@ use crossterm::event::KeyEventKind;
 use ratatui::prelude::Rect;
 use strum::EnumCount;
 use tokio::sync::mpsc;
+use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::sync::mpsc::UnboundedSender;
 
 use crate::action::*;
@@ -75,60 +76,104 @@ impl TritonTUI {
             component.register_action_handler(action_tx.clone())?;
         }
 
-        // in case of infinite loop (or similar) before first breakpoint, provide visual feedback
-        self.render()?;
-
         while !self.should_quit {
-            if let Some(e) = self.tui.next().await {
-                match e {
-                    Event::Quit => action_tx.send(Action::Quit)?,
-                    Event::Tick => action_tx.send(Action::Tick)?,
-                    Event::Render => action_tx.send(Action::Render)?,
-                    Event::Key(key) => self.handle_key_sequence(&action_tx, key)?,
-                    Event::Resize(x, y) => action_tx.send(Action::Resize(x, y))?,
-                    _ => {}
-                }
-                for component in self.components.iter_mut() {
-                    if let Some(action) = component.handle_event(Some(e.clone()))? {
-                        action_tx.send(action)?;
-                    }
-                }
-            }
-
-            while let Ok(action) = action_rx.try_recv() {
-                match action {
-                    Action::Tick => self.maybe_clear_recent_key_events(),
-                    Action::Render => self.render()?,
-                    Action::Resize(w, h) => {
-                        self.tui.resize(Rect::new(0, 0, w, h))?;
-                        self.render()?;
-                    }
-                    Action::Mode(mode) => {
-                        self.mode = mode;
-                        self.render()?;
-                    }
-                    Action::Reset => self.reset_state(action_tx.clone())?,
-                    Action::Suspend => self.should_suspend = true,
-                    Action::Resume => self.should_suspend = false,
-                    Action::Quit => self.should_quit = true,
-                    _ => {}
-                }
-                self.vm_state.update(action.clone())?;
-                for component in self.components.iter_mut() {
-                    if let Some(action) = component.update(action.clone())? {
-                        action_tx.send(action)?
-                    };
-                }
-            }
-            if self.should_suspend {
-                self.tui.suspend()?;
-                action_tx.send(Action::Resume)?;
-                self.tui = Self::tui(&self.args)?;
-                self.tui.resume()?;
-            }
+            self.handle_events_and_actions(&action_tx, &mut action_rx)
+                .await?;
         }
 
         self.tui.exit()
+    }
+
+    async fn handle_events_and_actions(
+        &mut self,
+        action_tx: &UnboundedSender<Action>,
+        action_rx: &mut UnboundedReceiver<Action>,
+    ) -> Result<()> {
+        self.handle_next_event(action_tx).await?;
+        self.handle_actions(action_tx, action_rx)?;
+        self.maybe_suspend(action_tx)?;
+        Ok(())
+    }
+
+    async fn handle_next_event(&mut self, action_tx: &UnboundedSender<Action>) -> Result<()> {
+        let Some(event) = self.tui.next().await else {
+            return Ok(());
+        };
+
+        match event {
+            Event::Quit => action_tx.send(Action::Quit)?,
+            Event::Tick => action_tx.send(Action::Tick)?,
+            Event::Render => action_tx.send(Action::Render)?,
+            Event::Key(key) => self.handle_key_sequence(action_tx, key)?,
+            Event::Resize(x, y) => action_tx.send(Action::Resize(x, y))?,
+            _ => {}
+        }
+
+        match event {
+            Event::Key(_) | Event::Mouse(_) | Event::Paste(_) => {
+                self.dispatch_event_to_active_component(event, action_tx)
+            }
+            _ => self.dispatch_event_to_all_components(event, action_tx),
+        }
+    }
+
+    fn dispatch_event_to_active_component(
+        &mut self,
+        event: Event,
+        action_tx: &UnboundedSender<Action>,
+    ) -> Result<()> {
+        let active_component = &mut self.components[self.mode.id()];
+        if let Some(action) = active_component.handle_event(Some(event.clone()))? {
+            action_tx.send(action)?;
+        }
+        Ok(())
+    }
+
+    fn dispatch_event_to_all_components(
+        &mut self,
+        event: Event,
+        action_tx: &UnboundedSender<Action>,
+    ) -> Result<()> {
+        for component in self.components.iter_mut() {
+            if let Some(action) = component.handle_event(Some(event.clone()))? {
+                action_tx.send(action)?;
+            }
+        }
+        Ok(())
+    }
+
+    fn handle_actions(
+        &mut self,
+        action_tx: &UnboundedSender<Action>,
+        action_rx: &mut UnboundedReceiver<Action>,
+    ) -> Result<()> {
+        while let Ok(action) = action_rx.try_recv() {
+            match action {
+                Action::Tick => self.maybe_clear_recent_key_events(),
+                Action::Render => self.render()?,
+                Action::Resize(w, h) => {
+                    self.tui.resize(Rect::new(0, 0, w, h))?;
+                    self.render()?;
+                }
+                Action::Mode(mode) => {
+                    self.mode = mode;
+                    self.render()?;
+                }
+                Action::Reset => self.reset_state(action_tx.clone())?,
+                Action::Suspend => self.should_suspend = true,
+                Action::Resume => self.should_suspend = false,
+                Action::Quit => self.should_quit = true,
+                _ => {}
+            }
+
+            self.vm_state.update(action.clone())?;
+            for component in self.components.iter_mut() {
+                if let Some(action) = component.update(action.clone())? {
+                    action_tx.send(action)?
+                };
+            }
+        }
+        Ok(())
     }
 
     fn maybe_clear_recent_key_events(&mut self) {
@@ -150,6 +195,17 @@ impl TritonTUI {
         self.vm_state = vm_state;
         self.vm_state.register_action_handler(action_tx.clone())?;
         self.render()?;
+        Ok(())
+    }
+
+    fn maybe_suspend(&mut self, action_tx: &UnboundedSender<Action>) -> Result<()> {
+        if self.should_suspend {
+            self.tui.suspend()?;
+            action_tx.send(Action::Resume)?;
+            self.tui = Self::tui(&self.args)?;
+            self.tui.resume()?;
+        }
+
         Ok(())
     }
 
