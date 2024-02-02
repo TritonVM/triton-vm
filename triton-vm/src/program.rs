@@ -34,7 +34,7 @@ type Result<T> = std::result::Result<T, VMError>;
 /// [`profiled`](Program::profile),
 /// and its execution can be [`traced`](Program::trace_execution).
 ///
-/// [`Hashing`](Program::hash) a program under [`Tip5`][tip5] yields a [`Digest`] that can be used
+/// [`Hashing`](Program::hash) a program under [`Tip5`] yields a [`Digest`] that can be used
 /// in a [`Claim`](crate::Claim), _i.e._, is consistent with Triton VM's [program attestation].
 ///
 /// A program may contain debug information, such as label names and breakpoints.
@@ -43,7 +43,6 @@ type Result<T> = std::result::Result<T, VMError>;
 /// [BField-encoding](BFieldCodec::encode), discard this debug information.
 ///
 /// [program attestation]: https://triton-vm.org/spec/program-attestation.html
-/// [tip5]: twenty_first::shared_math::tip5::Tip5
 /// [label_for_address]: Program::label_for_address
 /// [is_breakpoint]: Program::is_breakpoint
 #[derive(Debug, Clone, Eq, GetSize, Serialize, Deserialize)]

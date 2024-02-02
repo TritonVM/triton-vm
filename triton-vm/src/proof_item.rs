@@ -35,7 +35,7 @@ macro_rules! proof_items {
             Arbitrary
         )]
         #[strum_discriminants(name(ProofItemVariant))]
-        #[strum_discriminants(derive(Display, BFieldCodec))]
+        #[strum_discriminants(derive(Display, Arbitrary, BFieldCodec))]
         pub enum ProofItem {
             $( $variant($payload), )+
         }
@@ -72,6 +72,13 @@ macro_rules! proof_items {
             pub fn payload_static_length(self) -> Option<usize> {
                 match self {
                     $( Self::$variant => <$payload>::static_length(), )+
+                }
+            }
+
+            /// See [`ProofItem::include_in_fiat_shamir_heuristic`].
+            pub const fn include_in_fiat_shamir_heuristic(&self) -> bool {
+                match self {
+                    $( Self::$variant => $in_fiat_shamir_heuristic, )+
                 }
             }
         }

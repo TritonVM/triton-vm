@@ -24,7 +24,7 @@ pub(crate) struct ElementTypeHint {
     /// Does not apply to types that are not composed of multiple [`BFieldElement`][bfe]s, like `u32` or
     /// [`BFieldElement`][bfe] itself.
     ///
-    /// [bfe]: triton_vm::BFieldElement
+    /// [bfe]: triton_vm::prelude::BFieldElement
     pub index: Option<usize>,
 }
 
