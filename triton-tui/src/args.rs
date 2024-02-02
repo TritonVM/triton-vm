@@ -41,7 +41,8 @@ pub(crate) struct TuiArgs {
     #[arg(long, value_name = "PATH", group = "state")]
     pub initial_state: Option<String>,
 
-    /// The maximum number of cycles to run after any interaction, preventing a frozen TUI in infinite loops
+    /// The maximum number of cycles to run after any interaction,
+    /// preventing a frozen TUI in infinite loops
     #[arg(
         long,
         value_name = "u32",
@@ -84,30 +85,22 @@ fn project_directory() -> Option<ProjectDirs> {
 }
 
 pub(crate) fn get_data_dir() -> PathBuf {
-    if let Some(s) = DATA_FOLDER.clone() {
-        s
-    } else if let Some(proj_dirs) = project_directory() {
-        proj_dirs.data_local_dir().to_path_buf()
-    } else {
-        PathBuf::from(".").join(".data")
-    }
+    DATA_FOLDER
+        .clone()
+        .or_else(|| project_directory().map(|dirs| dirs.data_local_dir().to_path_buf()))
+        .unwrap_or_else(|| PathBuf::from(".").join(".data"))
 }
 
 pub(crate) fn get_config_dir() -> PathBuf {
-    if let Some(s) = CONFIG_FOLDER.clone() {
-        s
-    } else if let Some(proj_dirs) = project_directory() {
-        proj_dirs.config_local_dir().to_path_buf()
-    } else {
-        PathBuf::from(".").join(".config")
-    }
+    CONFIG_FOLDER
+        .clone()
+        .or_else(|| project_directory().map(|dirs| dirs.config_local_dir().to_path_buf()))
+        .unwrap_or_else(|| PathBuf::from(".").join(".config"))
 }
 
 pub(crate) fn version() -> String {
-    let author = clap::crate_authors!();
-
     let commit_hash = GIT_COMMIT_HASH.clone();
-
+    let author = clap::crate_authors!();
     let config_dir_path = get_config_dir().display().to_string();
     let data_dir_path = get_data_dir().display().to_string();
 
@@ -115,7 +108,6 @@ pub(crate) fn version() -> String {
         "{commit_hash}\n\n\
         Authors: {author}\n\n\
         Config directory: {config_dir_path}\n\
-        Data directory:   {data_dir_path}\
-        ",
+        Data directory:   {data_dir_path}"
     )
 }
