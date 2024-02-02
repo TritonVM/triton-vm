@@ -31,7 +31,7 @@ pub(crate) enum Action {
     /// Reset the program state.
     Reset,
 
-    Toggle(ToggleWidget),
+    Toggle(Toggle),
 
     HideHelpScreen,
 
@@ -57,12 +57,13 @@ pub(crate) enum Execute {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Arbitrary)]
-pub(crate) enum ToggleWidget {
+pub(crate) enum Toggle {
     All,
     TypeHint,
     CallStack,
     SpongeState,
     Input,
+    BlockAddress,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Arbitrary)]
@@ -106,11 +107,12 @@ impl<'de> Deserialize<'de> for Action {
                     "Undo" => Ok(Action::Undo),
                     "Reset" => Ok(Action::Reset),
 
-                    "ToggleAll" => Ok(Action::Toggle(ToggleWidget::All)),
-                    "ToggleTypeHintDisplay" => Ok(Action::Toggle(ToggleWidget::TypeHint)),
-                    "ToggleCallStackDisplay" => Ok(Action::Toggle(ToggleWidget::CallStack)),
-                    "ToggleSpongeStateDisplay" => Ok(Action::Toggle(ToggleWidget::SpongeState)),
-                    "ToggleInputDisplay" => Ok(Action::Toggle(ToggleWidget::Input)),
+                    "ToggleAll" => Ok(Action::Toggle(Toggle::All)),
+                    "ToggleTypeHintDisplay" => Ok(Action::Toggle(Toggle::TypeHint)),
+                    "ToggleCallStackDisplay" => Ok(Action::Toggle(Toggle::CallStack)),
+                    "ToggleSpongeStateDisplay" => Ok(Action::Toggle(Toggle::SpongeState)),
+                    "ToggleInputDisplay" => Ok(Action::Toggle(Toggle::Input)),
+                    "ToggleBlockAddressDisplay" => Ok(Action::Toggle(Toggle::BlockAddress)),
 
                     "HideHelpScreen" => Ok(Action::HideHelpScreen),
 

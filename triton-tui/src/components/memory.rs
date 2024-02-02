@@ -3,6 +3,7 @@ use color_eyre::eyre::Result;
 use crossterm::event::KeyEventKind::Release;
 use crossterm::event::*;
 use num_traits::One;
+use num_traits::Zero;
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 use ratatui::Frame;
@@ -12,6 +13,7 @@ use tui_textarea::TextArea;
 
 use crate::action::Action;
 use crate::action::ExecutedInstruction;
+use crate::action::Toggle;
 use crate::components::Component;
 use crate::element_type_hint::ElementTypeHint;
 use crate::triton_vm_state::TritonVMState;
@@ -27,6 +29,7 @@ pub(crate) struct Memory<'a> {
 
     pub text_area: TextArea<'a>,
     pub text_area_in_focus: bool,
+    pub show_block_addresses: bool,
 
     pub undo_stack: Vec<UndoInformation>,
 }
@@ -54,8 +57,9 @@ impl<'a> Default for Memory<'a> {
             most_recent_address: 0_u64.into(),
             user_address: None,
             text_area: Self::initial_text_area(),
-            undo_stack: vec![],
             text_area_in_focus: false,
+            show_block_addresses: false,
+            undo_stack: vec![],
         }
     }
 }
@@ -99,6 +103,10 @@ impl<'a> Memory<'a> {
         self.most_recent_address = last_ram_pointer;
     }
 
+    pub fn toggle_address_display(&mut self) {
+        self.show_block_addresses = !self.show_block_addresses;
+    }
+
     fn submit_address(&mut self) {
         let user_input = self.text_area.lines()[0].trim();
         let Ok(address) = user_input.parse::<i128>() else {
@@ -124,6 +132,45 @@ impl<'a> Memory<'a> {
         self.text_area_in_focus = true;
         let s = s.replace(['\r', '\n'], "");
         self.text_area.insert_str(s);
+    }
+
+    fn scroll_content(&mut self, key: KeyEvent) {
+        let page_size = BFieldElement::new(20);
+        let new_address = match (key.modifiers, key.code) {
+            (KeyModifiers::NONE, KeyCode::Up) => self.requested_address() - BFieldElement::one(),
+            (KeyModifiers::NONE, KeyCode::Down) => self.requested_address() + BFieldElement::one(),
+            (KeyModifiers::NONE, KeyCode::Home) => BFieldElement::zero(),
+            (KeyModifiers::NONE, KeyCode::PageUp) => self.requested_address() - page_size,
+            (KeyModifiers::NONE, KeyCode::PageDown) => self.requested_address() + page_size,
+            (KeyModifiers::SHIFT, KeyCode::PageUp) => self.previous_memory_block(),
+            (KeyModifiers::SHIFT, KeyCode::PageDown) => self.next_memory_block(),
+            _ => return,
+        };
+        self.user_address = Some(new_address);
+    }
+
+    fn previous_memory_block(&self) -> BFieldElement {
+        let current_block = Self::block_of_address(self.requested_address());
+        let (previous_block, _) = current_block.overflowing_sub(1);
+        Self::first_address_in_block(previous_block)
+    }
+
+    fn next_memory_block(&self) -> BFieldElement {
+        let current_block = Self::block_of_address(self.requested_address());
+        let (next_block, _) = current_block.overflowing_add(1);
+        Self::first_address_in_block(next_block)
+    }
+
+    fn block_of_address(address: BFieldElement) -> u32 {
+        (address.value() >> 32) as u32
+    }
+
+    fn address_in_block(address: BFieldElement) -> u32 {
+        (address.value() & 0xFFFF_FFFF) as u32
+    }
+
+    fn first_address_in_block(block: u32) -> BFieldElement {
+        ((block as u64) << 32).into()
     }
 
     fn distribute_area_for_widgets(&self, area: Rect) -> WidgetAreas {
@@ -173,13 +220,25 @@ impl<'a> Memory<'a> {
         let maybe_value = render_info.state.vm_state.ram.get(&address);
         let value = maybe_value.copied().unwrap_or(0_u64.into());
 
-        // additional `.to_string()` to circumvent padding bug (?) in `format`
-        let address = Span::from(format!("{address: >20}", address = address.to_string()));
+        let address = Span::from(format!("{addr: >21}", addr = self.render_address(address)));
         let address = address.set_style(address_style);
         let separator = Span::from("  ");
         let value = Span::from(format!("{value: <20}", value = value.to_string()));
 
         vec![address, separator, value]
+    }
+
+    fn render_address(&self, address: BFieldElement) -> String {
+        match self.show_block_addresses {
+            true => Self::render_block_address(address),
+            false => address.to_string(),
+        }
+    }
+
+    fn render_block_address(address: BFieldElement) -> String {
+        let block = Self::block_of_address(address);
+        let address = Self::address_in_block(address);
+        format!("{block: >10}╎{address: >10}")
     }
 
     fn render_type_hint_at_address(render_info: RenderInfo, address: BFieldElement) -> Vec<Span> {
@@ -280,8 +339,9 @@ impl<'a> Component for Memory<'a> {
             self.text_area_in_focus = !self.text_area_in_focus;
             return Ok(None);
         }
-        if self.text_area_in_focus {
-            self.text_area.input(key_event);
+        match self.text_area_in_focus {
+            true => _ = self.text_area.input(key_event),
+            false => self.scroll_content(key_event),
         }
         Ok(None)
     }
@@ -293,6 +353,7 @@ impl<'a> Component for Memory<'a> {
             Action::RecordUndoInfo => self.record_undo_information(),
             Action::Reset => self.reset(),
             Action::ExecutedInstruction(instruction) => self.handle_instruction(*instruction),
+            Action::Toggle(Toggle::BlockAddress) => self.toggle_address_display(),
             _ => (),
         }
         Ok(None)
@@ -331,6 +392,7 @@ mod tests {
 
         text_area_input: String,
         text_area_in_focus: bool,
+        show_block_addresses: bool,
 
         #[strategy(arb())]
         undo_stack: Vec<UndoInformation>,
@@ -345,8 +407,9 @@ mod tests {
         let mut memory = Memory {
             most_recent_address: arb_memory.most_recent_address,
             user_address: arb_memory.user_address,
-            text_area_in_focus: arb_memory.text_area_in_focus,
             text_area: TextArea::new(vec![arb_memory.text_area_input]),
+            text_area_in_focus: arb_memory.text_area_in_focus,
+            show_block_addresses: arb_memory.show_block_addresses,
             undo_stack: arb_memory.undo_stack,
         };
 

@@ -46,11 +46,17 @@ impl Component for Help {
             Help::help_line("t,c", "toggle call stack"),
             Help::help_line("t,i", "toggle displaying input (if any)"),
             String::new(),
-            "General:".to_string(),
-            Help::help_line("esc", "show Home screen"),
+            Help::mode_line("Memory"),
+            Help::help_line("Enter", "focus text area"),
+            Help::help_line("Shift+PgUp", "go to previous block"),
+            Help::help_line("Shift+PgDn", "go to next block"),
+            String::new(),
+            Help::help_line("t,b", "toggle block address display"),
+            String::new(),
+            Help::mode_line("General"),
+            Help::help_line("Esc", "show Home screen"),
             Help::help_line("m", "toggle Memory screen"),
             Help::help_line("h", "toggle Help"),
-            String::new(),
             Help::help_line("q", "quit"),
         ]
         .map(Line::from)
@@ -71,16 +77,17 @@ impl Help {
     }
 
     fn help_line(keys: impl Display, help: impl Display) -> String {
-        format!("  {keys: <4} {help}")
+        format!("  {keys: <10}  {help}")
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use proptest_arbitrary_interop::arb;
     use ratatui::backend::TestBackend;
     use test_strategy::proptest;
+
+    use super::*;
 
     #[proptest]
     fn render(#[strategy(arb())] mut help: Help) {

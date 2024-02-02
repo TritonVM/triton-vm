@@ -39,13 +39,14 @@ impl Home {
         max_address.to_string().len()
     }
 
-    fn toggle_widget(&mut self, toggle: ToggleWidget) {
+    fn toggle_widget(&mut self, toggle: Toggle) {
         match toggle {
-            ToggleWidget::All => self.toggle_all_widgets(),
-            ToggleWidget::TypeHint => self.show_type_hints = !self.show_type_hints,
-            ToggleWidget::CallStack => self.show_call_stack = !self.show_call_stack,
-            ToggleWidget::SpongeState => self.show_sponge_state = !self.show_sponge_state,
-            ToggleWidget::Input => self.show_inputs = !self.show_inputs,
+            Toggle::All => self.toggle_all_widgets(),
+            Toggle::TypeHint => self.show_type_hints = !self.show_type_hints,
+            Toggle::CallStack => self.show_call_stack = !self.show_call_stack,
+            Toggle::SpongeState => self.show_sponge_state = !self.show_sponge_state,
+            Toggle::Input => self.show_inputs = !self.show_inputs,
+            Toggle::BlockAddress => (),
         };
     }
 

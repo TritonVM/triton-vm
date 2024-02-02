@@ -37,7 +37,9 @@
 
             "<h>": "Mode::Help",
             "<m>": "Mode::Home",
-            "<esc>": "Mode::Home"
+            "<esc>": "Mode::Home",
+
+            "<t><b>": "ToggleBlockAddressDisplay"
         }
     }
 }
