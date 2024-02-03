@@ -51,77 +51,71 @@ impl Home {
     }
 
     fn toggle_all_widgets(&mut self) {
-        let any_widget_is_shown = self.show_type_hints
-            || self.show_call_stack
-            || self.show_sponge_state
-            || self.show_inputs;
-        if any_widget_is_shown {
-            self.show_type_hints = false;
-            self.show_call_stack = false;
-            self.show_sponge_state = false;
-            self.show_inputs = false;
-        } else {
-            self.show_type_hints = true;
-            self.show_call_stack = true;
-            self.show_sponge_state = true;
-            self.show_inputs = true;
-        }
+        let any_widget_is_shown = self.all_widget_visibilities().into_iter().any(|v| v);
+        self.set_all_widgets_visibility_to(!any_widget_is_shown);
+    }
+
+    fn all_widget_visibilities(&self) -> [bool; 4] {
+        [
+            self.show_type_hints,
+            self.show_call_stack,
+            self.show_sponge_state,
+            self.show_inputs,
+        ]
+    }
+
+    fn set_all_widgets_visibility_to(&mut self, visibility: bool) {
+        self.show_type_hints = visibility;
+        self.show_call_stack = visibility;
+        self.show_sponge_state = visibility;
+        self.show_inputs = visibility;
     }
 
     fn distribute_area_for_widgets(&self, state: &TritonVMState, area: Rect) -> WidgetAreas {
         let public_input_height = match self.maybe_render_public_input(state).is_some() {
-            true => Constraint::Min(2),
-            false => Constraint::Max(0),
+            true => Constraint::Length(2),
+            false => Constraint::Length(0),
         };
         let secret_input_height = match self.maybe_render_secret_input(state).is_some() {
-            true => Constraint::Min(2),
-            false => Constraint::Max(0),
+            true => Constraint::Length(2),
+            false => Constraint::Length(0),
         };
-        let message_box_height = Constraint::Min(2);
+        let message_box_height = Constraint::Length(2);
         let constraints = [
-            Constraint::Percentage(100),
+            Constraint::Fill(1),
             public_input_height,
             secret_input_height,
             message_box_height,
         ];
-        let layout = Layout::new(Direction::Vertical, constraints).split(area);
-        let state_area = layout[0];
-        let public_input_area = layout[1];
-        let secret_input_area = layout[2];
-        let message_box_area = layout[3];
+        let [state_area, public_input_area, secret_input_area, message_box_area] =
+            Layout::vertical(constraints).areas(area);
 
-        let op_stack_widget_width = Constraint::Min(30);
-        let remaining_width = Constraint::Percentage(100);
+        let op_stack_widget_width = Constraint::Length(30);
+        let remaining_width = Constraint::Fill(1);
         let sponge_state_width = match self.show_sponge_state {
-            true => Constraint::Min(32),
-            false => Constraint::Min(1),
+            true => Constraint::Length(32),
+            false => Constraint::Length(1),
         };
-        let state_layout_constraints = [op_stack_widget_width, remaining_width, sponge_state_width];
-        let state_layout =
-            Layout::new(Direction::Horizontal, state_layout_constraints).split(state_area);
-        let op_stack_area = state_layout[0];
-        let remaining_area = state_layout[1];
-        let sponge_state_area = state_layout[2];
+        let [op_stack_area, remaining_area, sponge_state_area] =
+            Layout::horizontal([op_stack_widget_width, remaining_width, sponge_state_width])
+                .areas(state_area);
 
-        let nothing = Constraint::Max(0);
-        let third = Constraint::Ratio(1, 3);
-        let half = Constraint::Ratio(1, 2);
-        let everything = Constraint::Ratio(1, 1);
+        let show = Constraint::Fill(1);
+        let hide = Constraint::Length(0);
         let hints_program_calls_constraints = match (self.show_type_hints, self.show_call_stack) {
-            (true, true) => [third, third, third],
-            (true, false) => [half, half, nothing],
-            (false, true) => [nothing, half, half],
-            (false, false) => [nothing, everything, nothing],
+            (true, true) => [show, show, show],
+            (true, false) => [show, show, hide],
+            (false, true) => [hide, show, show],
+            (false, false) => [hide, show, hide],
         };
-        let type_hint_program_and_call_stack_layout =
-            Layout::new(Direction::Horizontal, hints_program_calls_constraints)
-                .split(remaining_area);
+        let [type_hint_area, program_area, call_stack_area] =
+            Layout::horizontal(hints_program_calls_constraints).areas(remaining_area);
 
         WidgetAreas {
             op_stack: op_stack_area,
-            type_hint: type_hint_program_and_call_stack_layout[0],
-            program: type_hint_program_and_call_stack_layout[1],
-            call_stack: type_hint_program_and_call_stack_layout[2],
+            type_hint: type_hint_area,
+            program: program_area,
+            call_stack: call_stack_area,
             sponge: sponge_state_area,
             public_input: public_input_area,
             secret_input: secret_input_area,
@@ -430,32 +424,23 @@ impl Home {
     }
 
     fn message(&self, state: &TritonVMState) -> Line {
-        if let Some(error_message) = self.maybe_render_error_message(state) {
-            return error_message;
-        }
-        if let Some(warning_message) = self.maybe_render_warning_message(state) {
-            return warning_message;
-        }
-        if let Some(public_output) = self.maybe_render_public_output(state) {
-            return public_output;
-        }
-        self.render_welcome_message()
+        self.maybe_render_error_message(state)
+            .or_else(|| self.maybe_render_warning_message(state))
+            .or_else(|| self.maybe_render_public_output(state))
+            .unwrap_or_else(|| self.render_welcome_message())
     }
 
     fn maybe_render_error_message(&self, state: &TritonVMState) -> Option<Line> {
+        let message = state.error?.to_string().into();
         let error = "ERROR".bold().red();
         let colon = ": ".into();
-        let message = state.error?.to_string().into();
         Some(Line::from(vec![error, colon, message]))
     }
 
     fn maybe_render_warning_message(&self, state: &TritonVMState) -> Option<Line> {
-        let Some(ref message) = state.warning else {
-            return None;
-        };
+        let message = state.warning.as_ref()?.to_string().into();
         let warning = "WARNING".bold().yellow();
         let colon = ": ".into();
-        let message = message.to_string().into();
         Some(Line::from(vec![warning, colon, message]))
     }
 

@@ -2,13 +2,13 @@ use std::fmt::Display;
 
 use arbitrary::Arbitrary;
 use color_eyre::eyre::Result;
+use ratatui::layout::Flex;
 use ratatui::prelude::*;
 use ratatui::widgets::block::*;
 use ratatui::widgets::Paragraph;
 use ratatui::Frame;
 
 use crate::action::Action;
-use crate::components::centered_rect;
 use crate::components::Component;
 use crate::mode::Mode;
 use crate::triton_vm_state::TritonVMState;
@@ -31,7 +31,7 @@ impl Component for Help {
     }
 
     fn draw(&mut self, frame: &mut Frame<'_>, _: &TritonVMState) -> Result<()> {
-        let title = Title::from(" Triton TUI — Help").alignment(Alignment::Left);
+        let title = Title::from("Triton TUI — Help");
         let text = [
             Help::mode_line("Home"),
             Help::help_line("c", "continue – execute to next breakpoint"),
@@ -58,15 +58,13 @@ impl Component for Help {
             Help::help_line("m", "toggle Memory screen"),
             Help::help_line("h", "toggle Help"),
             Help::help_line("q", "quit"),
-        ]
-        .map(Line::from)
-        .to_vec();
+        ];
 
-        let block = Block::default().title(title).padding(Padding::uniform(1));
-        let paragraph = Paragraph::new(text).block(block);
+        let centered_rect = Self::centered_rect(frame.size(), &text);
+        let block = Block::default().title(title).padding(Padding::top(1));
+        let paragraph = Paragraph::new(text.map(Line::from).to_vec()).block(block);
 
-        let area = centered_rect(frame.size(), 50, 80);
-        frame.render_widget(paragraph, area);
+        frame.render_widget(paragraph, centered_rect);
         Ok(())
     }
 }
@@ -78,6 +76,18 @@ impl Help {
 
     fn help_line(keys: impl Display, help: impl Display) -> String {
         format!("  {keys: <10}  {help}")
+    }
+
+    fn centered_rect<const N: usize>(area: Rect, text: &[String; N]) -> Rect {
+        let max_line_length = text.iter().map(|line| line.len()).max().unwrap_or(0) as u16;
+        let layout = Layout::horizontal([Constraint::Length(max_line_length)]);
+        let [horizontally_centered] = layout.flex(Flex::Center).areas(area);
+
+        let padded_title_height = 2;
+        let layout = Layout::vertical([Constraint::Length(N as u16 + padded_title_height)]);
+        let [centered] = layout.flex(Flex::Center).areas(horizontally_centered);
+
+        centered
     }
 }
 

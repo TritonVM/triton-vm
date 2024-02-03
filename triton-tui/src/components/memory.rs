@@ -174,14 +174,12 @@ impl<'a> Memory<'a> {
     }
 
     fn distribute_area_for_widgets(&self, area: Rect) -> WidgetAreas {
-        let text_area_height = Constraint::Min(2);
-        let constraints = [Constraint::Percentage(100), text_area_height];
-        let layout = Layout::new(Direction::Vertical, constraints).split(area);
+        let memory_area_height = Constraint::Fill(1);
+        let text_area_height = Constraint::Length(2);
+        let [memory, text_input] =
+            Layout::vertical([memory_area_height, text_area_height]).areas(area);
 
-        WidgetAreas {
-            memory: layout[0],
-            text_input: layout[1],
-        }
+        WidgetAreas { memory, text_input }
     }
 
     fn render_memory_widget(&self, frame: &mut Frame<'_>, render_info: RenderInfo) {
@@ -287,9 +285,8 @@ impl<'a> Memory<'a> {
             bottom_right: symbols::line::ROUNDED.vertical_left,
             ..symbols::border::ROUNDED
         };
-        Block::default()
+        Block::bordered()
             .padding(Padding::new(1, 1, 1, 0))
-            .borders(Borders::ALL)
             .border_set(border_set)
             .title(" Random Access Memory ")
     }

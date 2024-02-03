@@ -53,16 +53,3 @@ pub(crate) trait Component: Debug {
         Ok(())
     }
 }
-
-/// helper function to create a centered rect using up certain percentage of the available rect `r`
-fn centered_rect(area: Rect, percent_x: u16, percent_y: u16) -> Rect {
-    let area = centered_rect_in_direction(area, percent_y, Direction::Vertical);
-    centered_rect_in_direction(area, percent_x, Direction::Horizontal)
-}
-
-fn centered_rect_in_direction(area: Rect, percentage: u16, direction: Direction) -> Rect {
-    let requested = Constraint::Percentage(percentage);
-    let half_of_remainder = Constraint::Percentage((100 - percentage) / 2);
-    let constraints = [half_of_remainder, requested, half_of_remainder];
-    Layout::new(direction, constraints).split(area)[1]
-}
