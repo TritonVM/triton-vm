@@ -2,6 +2,7 @@ use arbitrary::Arbitrary;
 use strum::Display;
 use strum::EnumCount;
 use strum::EnumDiscriminants;
+use strum::EnumIter;
 use twenty_first::prelude::*;
 
 use crate::error::ProofStreamError;
@@ -35,7 +36,7 @@ macro_rules! proof_items {
             Arbitrary
         )]
         #[strum_discriminants(name(ProofItemVariant))]
-        #[strum_discriminants(derive(Display, Arbitrary, BFieldCodec))]
+        #[strum_discriminants(derive(Display, Arbitrary, BFieldCodec, EnumIter))]
         pub enum ProofItem {
             $( $variant($payload), )+
         }
@@ -105,9 +106,12 @@ proof_items!(
 
 #[cfg(test)]
 pub(crate) mod tests {
+    use std::collections::HashSet;
+
     use assert2::assert;
     use assert2::let_assert;
     use proptest::prelude::*;
+    use strum::IntoEnumIterator;
     use test_strategy::proptest;
     use twenty_first::prelude::Tip5;
 
@@ -186,6 +190,16 @@ pub(crate) mod tests {
         assert!(let Some(_) =  ProofItemVariant::Log2PaddedHeight.payload_static_length());
         assert_eq!(None, ProofItemVariant::FriCodeword.payload_static_length());
         assert_eq!(None, ProofItemVariant::FriResponse.payload_static_length());
+    }
+
+    #[test]
+    fn can_loop_over_proof_item_variants() {
+        let mut all_discriminants = HashSet::new();
+        for variant in ProofItemVariant::iter() {
+            all_discriminants.insert(variant.bfield_codec_discriminant());
+        }
+
+        assert_eq!(ProofItem::COUNT, all_discriminants.len());
     }
 
     #[test]
