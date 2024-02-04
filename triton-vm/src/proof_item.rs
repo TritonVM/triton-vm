@@ -194,11 +194,9 @@ pub(crate) mod tests {
 
     #[test]
     fn can_loop_over_proof_item_variants() {
-        let mut all_discriminants = HashSet::new();
-        for variant in ProofItemVariant::iter() {
-            all_discriminants.insert(variant.bfield_codec_discriminant());
-        }
-
+        let all_discriminants: HashSet<_> = ProofItemVariant::iter()
+            .map(|variant| variant.bfield_codec_discriminant())
+            .collect();
         assert_eq!(ProofItem::COUNT, all_discriminants.len());
     }
 
