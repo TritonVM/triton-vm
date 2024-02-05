@@ -79,9 +79,16 @@ macro_rules! proof_items {
             }
 
             /// See [`ProofItem::include_in_fiat_shamir_heuristic`].
-            pub const fn include_in_fiat_shamir_heuristic(&self) -> bool {
+            pub const fn include_in_fiat_shamir_heuristic(self) -> bool {
                 match self {
                     $( Self::$variant => $in_fiat_shamir_heuristic, )+
+                }
+            }
+
+            /// Can be used as “reflection”, for example through `syn`.
+            pub const fn payload_type(self) -> &'static str {
+                match self {
+                    $( Self::$variant => stringify!($payload), )+
                 }
             }
         }
@@ -216,5 +223,10 @@ pub(crate) mod tests {
             ProofItem::FriCodeword(vec![]).bfield_codec_discriminant(),
             ProofItemVariant::FriCodeword.bfield_codec_discriminant()
         );
+    }
+
+    #[test]
+    fn proof_item_variants_payload_type_has_expected_format() {
+        assert_eq!("Digest", ProofItemVariant::MerkleRoot.payload_type());
     }
 }
