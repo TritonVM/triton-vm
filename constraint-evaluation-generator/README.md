@@ -1,9 +1,9 @@
 # constraint-evaluation-generator
 
-Generate constraint evaluation functions for Triton VM tables
+Generate constraint evaluation functions for Triton VM.
 
 ## How to run
 
-```
-OUTPUT_RUST_SOURCE_CODE=1 cargo run constraint-evaluation-generator
+```sh
+cargo run --bin constraint-evaluation-generator
 ```
