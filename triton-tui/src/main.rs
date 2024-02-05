@@ -1,3 +1,7 @@
+//! Triton TUI is a terminal user interface for Triton VM. It allows executing and debugging
+//! programs in Triton assembly. It is intended to be used as a standalone application;
+//! see the [README](https://crates.io/crates/triton-tui) for more information.
+
 use clap::Parser;
 use color_eyre::eyre::Result;
 use tracing::error;

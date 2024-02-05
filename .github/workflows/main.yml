@@ -31,6 +31,11 @@ jobs:
       - name: Run fmt
         run: cargo fmt --all -- --check
 
+      - name: Build documentation
+        run: cargo doc --no-deps --workspace
+        env:
+          RUSTDOCFLAGS: -D warnings
+
       - name: Run clippy
         run: cargo clippy --all-targets -- -D warnings
 

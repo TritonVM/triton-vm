@@ -419,7 +419,7 @@ fn generate_constraint_code(constraints: Constraints) -> TokenStream {
     )
 }
 
-/// Consumes every `ConstraintCircuitMonad`, returning their corresponding `ConstraintCircuit`s.
+/// Consumes every [`ConstraintCircuitMonad`], returning their corresponding [`ConstraintCircuit`]s.
 fn consume<II: InputIndicator>(
     constraints: Vec<ConstraintCircuitMonad<II>>,
 ) -> Vec<ConstraintCircuit<II>> {
