@@ -80,11 +80,11 @@ impl Help {
 
     fn centered_rect<const N: usize>(area: Rect, text: &[String; N]) -> Rect {
         let max_line_length = text.iter().map(|line| line.len()).max().unwrap_or(0) as u16;
-        let layout = Layout::horizontal([Constraint::Length(max_line_length)]);
+        let layout = Layout::horizontal([max_line_length]);
         let [horizontally_centered] = layout.flex(Flex::Center).areas(area);
 
         let padded_title_height = 2;
-        let layout = Layout::vertical([Constraint::Length(N as u16 + padded_title_height)]);
+        let layout = Layout::vertical([N as u16 + padded_title_height]);
         let [centered] = layout.flex(Flex::Center).areas(horizontally_centered);
 
         centered

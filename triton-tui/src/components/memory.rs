@@ -174,11 +174,7 @@ impl<'a> Memory<'a> {
     }
 
     fn distribute_area_for_widgets(&self, area: Rect) -> WidgetAreas {
-        let memory_area_height = Constraint::Fill(1);
-        let text_area_height = Constraint::Length(2);
-        let [memory, text_input] =
-            Layout::vertical([memory_area_height, text_area_height]).areas(area);
-
+        let [memory, text_input] = Layout::vertical([Constraint::Fill(1), 2.into()]).areas(area);
         WidgetAreas { memory, text_input }
     }
 
