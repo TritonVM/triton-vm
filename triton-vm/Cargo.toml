@@ -68,3 +68,6 @@ harness = false
 [[bench]]
 name = "trace_mmr_new_peak_calculation"
 harness = false
+
+[[example]]
+name = "factorial"
