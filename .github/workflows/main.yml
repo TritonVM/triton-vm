@@ -40,7 +40,11 @@ jobs:
         run: cargo clippy --all-targets -- -D warnings
 
       - name: Run tests
-        run: cargo test
+        # `--benches` is purposefully omitted here
+        run: cargo test --lib --bins --tests --examples
+
+      - name: Run documentation tests
+        run: cargo test --doc
 
       - name: Build benchmarks
         run: cargo bench --all-targets --no-run
