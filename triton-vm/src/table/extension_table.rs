@@ -299,10 +299,10 @@ pub(crate) trait Quotientable: Evaluable<BFieldElement> {
     }
 }
 
-/// The type of a constraint. Can be used to determine the degree bounds for the quotient
+/// The type of constraint. Can be used to determine the degree bounds for the quotient
 /// polynomials. Concretely, the degree of the zerofier polynomials differs between the
 /// constraint types.
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub(crate) enum ConstraintType {
     Initial,
     Consistency,
@@ -323,7 +323,7 @@ impl Display for ConstraintType {
 
 /// Helps debugging and benchmarking. The maximal degree achieved in any table dictates the length
 /// of the FRI domain, which in turn is responsible for the main performance bottleneck.
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub(crate) struct DegreeWithOrigin {
     pub degree: Degree,
     pub interpolant_degree: Degree,

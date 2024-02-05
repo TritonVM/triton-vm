@@ -715,19 +715,19 @@ fn generate_degree_lowering_table_code(substitutions: &AllSubstitutions) -> Toke
         pub const FULL_WIDTH: usize = BASE_WIDTH + EXT_WIDTH;
 
         #base_repr_usize
-        #[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCount, Hash)]
+        #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, EnumCount, EnumIter)]
         pub enum DegreeLoweringBaseTableColumn {
             #(#base_columns),*
         }
 
         #ext_repr_usize
-        #[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCount, Hash)]
+        #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, EnumCount, EnumIter)]
         pub enum DegreeLoweringExtTableColumn {
             #(#ext_columns),*
         }
 
-        #[derive(Debug, Clone)]
-        pub struct DegreeLoweringTable {}
+        #[derive(Debug, Copy, Clone, Eq, PartialEq)]
+        pub struct DegreeLoweringTable;
 
         impl DegreeLoweringTable {
             #fill_base_columns_code

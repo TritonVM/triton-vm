@@ -5,7 +5,7 @@ use twenty_first::prelude::*;
 use twenty_first::shared_math::traits::FiniteField;
 use twenty_first::shared_math::traits::PrimitiveRootOfUnity;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct ArithmeticDomain {
     pub offset: BFieldElement,
     pub generator: BFieldElement,

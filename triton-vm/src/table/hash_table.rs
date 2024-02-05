@@ -54,11 +54,11 @@ pub const NUM_ROUND_CONSTANTS: usize = STATE_SIZE;
 const PERMUTATION_TRACE_LENGTH: usize = NUM_ROUNDS + 1;
 pub type PermutationTrace = [[BFieldElement; STATE_SIZE]; PERMUTATION_TRACE_LENGTH];
 
-#[derive(Debug, Clone)]
-pub struct HashTable {}
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub struct HashTable;
 
-#[derive(Debug, Clone)]
-pub struct ExtHashTable {}
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub struct ExtHashTable;
 
 /// The current “mode” of the Hash Table. The Hash Table can be in one of four distinct modes:
 ///
@@ -88,7 +88,7 @@ pub struct ExtHashTable {}
 /// [sponge]: HashTableMode::Sponge
 /// [hash]: type@HashTableMode::Hash
 /// [pad]: HashTableMode::Pad
-#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCount, Hash)]
+#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, EnumCount, EnumIter)]
 pub enum HashTableMode {
     /// The mode in which the [`Program`][program] is hashed. This is part of program attestation.
     ///

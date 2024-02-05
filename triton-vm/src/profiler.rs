@@ -10,6 +10,7 @@ use std::time::Duration;
 use std::time::Instant;
 use std::vec;
 
+use arbitrary::Arbitrary;
 use colored::Color;
 use colored::ColoredString;
 use colored::Colorize;
@@ -18,7 +19,7 @@ use unicode_width::UnicodeWidthStr;
 
 const GET_PROFILE_OUTPUT_AS_YOU_GO_ENV_VAR_NAME: &str = "PROFILE_AS_YOU_GO";
 
-#[derive(Clone, Debug)]
+#[derive(Debug, Clone)]
 struct Task {
     name: String,
     parent_index: Option<usize>,
@@ -26,13 +27,14 @@ struct Task {
     time: Duration,
     task_type: TaskType,
 
-    /// The type of work the task is doing. Helps tracking time across specific tasks. For
+    /// The type of work the task is doing. Helps to track time across specific tasks. For
     /// example, if the task is building a Merkle tree, then the category could be "hash".
     category: Option<String>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Hash, Arbitrary)]
 enum TaskType {
+    #[default]
     Generic,
     IterationZero,
     AnyOtherIteration,
@@ -230,7 +232,7 @@ impl TritonProfiler {
         );
 
         let top_index = self.stack[self.stack.len() - 1].0;
-        let top_type = self.profile[top_index].task_type.clone();
+        let top_type = self.profile[top_index].task_type;
 
         if top_type != TaskType::IterationZero && top_type != TaskType::AnyOtherIteration {
             // start
@@ -328,7 +330,7 @@ impl Profiler for TritonProfiler {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
 enum Weight {
     LikeNothing,
     VeryLittle,

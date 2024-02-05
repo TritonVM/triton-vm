@@ -32,8 +32,8 @@ pub const BASE_WIDTH: usize = ProcessorBaseTableColumn::COUNT;
 pub const EXT_WIDTH: usize = ProcessorExtTableColumn::COUNT;
 pub const FULL_WIDTH: usize = BASE_WIDTH + EXT_WIDTH;
 
-#[derive(Debug, Clone)]
-pub struct ProcessorTable {}
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub struct ProcessorTable;
 
 impl ProcessorTable {
     pub fn fill_trace(
@@ -486,8 +486,8 @@ impl ProcessorTable {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct ExtProcessorTable {}
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub struct ExtProcessorTable;
 
 impl ExtProcessorTable {
     pub fn initial_constraints(

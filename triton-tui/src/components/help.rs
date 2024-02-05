@@ -13,7 +13,7 @@ use crate::components::Component;
 use crate::mode::Mode;
 use crate::triton_vm_state::TritonVMState;
 
-#[derive(Default, Debug, Clone, Copy, Arbitrary)]
+#[derive(Debug, Default, Copy, Clone, Arbitrary)]
 pub(crate) struct Help {
     pub previous_mode: Mode,
 }

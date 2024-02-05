@@ -3,7 +3,7 @@ use serde::*;
 use strum::EnumCount;
 
 #[derive(
-    Default, Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, EnumCount, Arbitrary,
+    Debug, Default, Copy, Clone, Eq, PartialEq, Hash, Serialize, Deserialize, EnumCount, Arbitrary,
 )]
 #[repr(usize)]
 pub(crate) enum Mode {

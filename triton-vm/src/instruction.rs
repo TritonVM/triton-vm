@@ -43,7 +43,7 @@ lazy_static! {
 }
 
 /// A `LabelledInstruction` has `call` addresses encoded as label names.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, EnumCount)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash, EnumCount)]
 pub enum LabelledInstruction {
     /// An instructions from the [instruction set architecture][isa].
     ///
@@ -66,7 +66,7 @@ pub enum LabelledInstruction {
 /// hint variable_name: the_type = stack[0]
 /// hint my_list = stack[1..4]
 /// ```
-#[derive(Debug, Clone, PartialEq, Eq, Hash, GetSize, Serialize, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize, GetSize)]
 pub struct TypeHint {
     pub starting_index: usize,
     pub length: usize,
@@ -160,16 +160,16 @@ pub fn stringify_instructions(instructions: &[LabelledInstruction]) -> String {
 /// The type parameter `Dest` describes the type of addresses (absolute or labels).
 #[derive(
     Debug,
-    Clone,
     Copy,
-    PartialEq,
+    Clone,
     Eq,
+    PartialEq,
     Hash,
     EnumCount,
     EnumIter,
-    GetSize,
     Serialize,
     Deserialize,
+    GetSize,
     Arbitrary,
 )]
 pub enum AnInstruction<Dest: PartialEq + Default> {
@@ -608,7 +608,7 @@ const fn all_instruction_names() -> [&'static str; Instruction::COUNT] {
 }
 
 /// Indicators for all the possible bits in an [`Instruction`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, EnumCount, EnumIter)]
+#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, EnumCount, EnumIter)]
 pub enum InstructionBit {
     #[default]
     IB0,
@@ -680,7 +680,7 @@ impl<'a> Arbitrary<'a> for LabelledInstruction {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
 struct InstructionLabel(String);
 
 impl From<InstructionLabel> for String {
@@ -709,7 +709,7 @@ impl<'a> Arbitrary<'a> for InstructionLabel {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
 struct TypeHintVariableName(String);
 
 impl From<TypeHintVariableName> for String {
@@ -735,7 +735,7 @@ impl<'a> Arbitrary<'a> for TypeHintVariableName {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
 struct TypeHintTypeName(String);
 
 impl From<TypeHintTypeName> for String {
@@ -784,7 +784,7 @@ mod tests {
     use crate::NonDeterminism;
     use crate::Program;
 
-    #[derive(Debug, Clone, Copy, EnumCount, EnumIter)]
+    #[derive(Debug, Copy, Clone, EnumCount, EnumIter)]
     enum InstructionBucket {
         HasArg,
         ShrinksStack,

@@ -42,7 +42,7 @@ use crate::Claim;
 /// Since almost all challenges relate to the Processor Table in some form, the words “Processor
 /// Table” are usually omitted from the `ChallengeId`'s name.
 #[repr(usize)]
-#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCount, Hash)]
+#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, EnumCount, EnumIter)]
 pub enum ChallengeId {
     /// The indeterminate for the [Evaluation Argument](EvalArg) compressing the program digest
     /// into a single extension field element, _i.e._, [`CompressedProgramDigest`].

@@ -30,7 +30,7 @@ struct ProgramAndInput {
 }
 
 /// The measurement unit for Criterion.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Copy, Clone)]
 struct ProofSize(f64);
 
 impl Measurement for ProofSize {
@@ -61,7 +61,7 @@ impl Measurement for ProofSize {
 }
 
 /// Several orders of magnitude data can come in.
-#[derive(Clone, Copy, Debug, Display, EnumCount, EnumIter)]
+#[derive(Debug, Display, Copy, Clone, EnumCount, EnumIter)]
 enum DataSizeOrderOfMagnitude {
     Bytes,
     KiloBytes,
@@ -104,7 +104,7 @@ impl DataSizeOrderOfMagnitude {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
 struct ProofSizeFormatter;
 
 impl ValueFormatter for ProofSizeFormatter {

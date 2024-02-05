@@ -24,11 +24,11 @@ pub const BASE_WIDTH: usize = JumpStackBaseTableColumn::COUNT;
 pub const EXT_WIDTH: usize = JumpStackExtTableColumn::COUNT;
 pub const FULL_WIDTH: usize = BASE_WIDTH + EXT_WIDTH;
 
-#[derive(Debug, Clone)]
-pub struct JumpStackTable {}
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub struct JumpStackTable;
 
-#[derive(Debug, Clone)]
-pub struct ExtJumpStackTable {}
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub struct ExtJumpStackTable;
 
 impl ExtJumpStackTable {
     pub fn initial_constraints(

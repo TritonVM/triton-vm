@@ -6,7 +6,7 @@ use ratatui::prelude::*;
 
 /// A hint about the type of a single stack element. Helps debugging programs written for Triton VM.
 /// **Does not enforce types.**
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Arbitrary)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Arbitrary)]
 pub(crate) struct ElementTypeHint {
     /// The name of the type. See [`TypeHint`][type_hint] for details.
     ///

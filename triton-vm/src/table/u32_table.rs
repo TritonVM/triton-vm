@@ -1,3 +1,4 @@
+use std::cmp::max;
 use std::ops::Mul;
 
 use ndarray::parallel::prelude::*;
@@ -9,7 +10,6 @@ use ndarray::ArrayViewMut2;
 use ndarray::Axis;
 use num_traits::One;
 use num_traits::Zero;
-use std::cmp::max;
 use strum::EnumCount;
 use twenty_first::prelude::*;
 
@@ -38,7 +38,7 @@ pub const EXT_WIDTH: usize = U32ExtTableColumn::COUNT;
 pub const FULL_WIDTH: usize = BASE_WIDTH + EXT_WIDTH;
 
 /// An executed u32 instruction as well as its operands.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub struct U32TableEntry {
     pub instruction: Instruction,
     pub left_operand: BFieldElement,
@@ -82,9 +82,11 @@ impl U32TableEntry {
     }
 }
 
-pub struct U32Table {}
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub struct U32Table;
 
-pub struct ExtU32Table {}
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub struct ExtU32Table;
 
 impl ExtU32Table {
     fn instruction_deselector<II: InputIndicator>(

@@ -31,9 +31,11 @@ pub const BASE_WIDTH: usize = LookupBaseTableColumn::COUNT;
 pub const EXT_WIDTH: usize = LookupExtTableColumn::COUNT;
 pub const FULL_WIDTH: usize = BASE_WIDTH + EXT_WIDTH;
 
-pub struct LookupTable {}
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub struct LookupTable;
 
-pub struct ExtLookupTable {}
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub struct ExtLookupTable;
 
 impl LookupTable {
     pub fn fill_trace(

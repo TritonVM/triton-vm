@@ -26,7 +26,7 @@ pub(crate) type VerifierResult<T> = Result<T, FriValidationError>;
 
 pub type AuthenticationStructure = Vec<Digest>;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Copy, Clone)]
 pub struct Fri<H: AlgebraicHasher> {
     pub expansion_factor: usize,
     pub num_collinearity_checks: usize,

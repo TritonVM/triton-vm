@@ -41,8 +41,8 @@ pub trait CrossTableArg {
         Self: Sized;
 }
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
-pub struct PermArg {}
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub struct PermArg;
 
 impl CrossTableArg for PermArg {
     fn default_initial() -> XFieldElement {
@@ -65,8 +65,8 @@ impl CrossTableArg for PermArg {
     }
 }
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
-pub struct EvalArg {}
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub struct EvalArg;
 
 impl CrossTableArg for EvalArg {
     fn default_initial() -> XFieldElement {
@@ -88,8 +88,8 @@ impl CrossTableArg for EvalArg {
     }
 }
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
-pub struct LookupArg {}
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub struct LookupArg;
 
 impl CrossTableArg for LookupArg {
     fn default_initial() -> XFieldElement {
@@ -108,8 +108,8 @@ impl CrossTableArg for LookupArg {
     }
 }
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
-pub struct GrandCrossTableArg {}
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub struct GrandCrossTableArg;
 
 impl GrandCrossTableArg {
     pub fn initial_constraints(

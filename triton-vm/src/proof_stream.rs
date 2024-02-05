@@ -5,7 +5,7 @@ use crate::error::ProofStreamError;
 use crate::proof::Proof;
 use crate::proof_item::ProofItem;
 
-#[derive(Default, Debug, Clone, PartialEq, Eq, Arbitrary, BFieldCodec)]
+#[derive(Debug, Default, Clone, Eq, PartialEq, BFieldCodec, Arbitrary)]
 pub struct ProofStream<H>
 where
     H: AlgebraicHasher,

@@ -11,7 +11,7 @@ use crate::stark;
 
 /// Contains the necessary cryptographic information to verify a computation.
 /// Should be used together with a [`Claim`].
-#[derive(Debug, Clone, GetSize, Serialize, Deserialize, PartialEq, Eq, BFieldCodec, Arbitrary)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize, GetSize, BFieldCodec, Arbitrary)]
 pub struct Proof(pub Vec<BFieldElement>);
 
 impl Proof {
@@ -41,7 +41,7 @@ impl Proof {
 /// `padded_height`, an upper bound on the length of the computation.
 /// It is derivable from a [`Proof`] by calling [`Proof::padded_height()`].
 #[derive(
-    Debug, Clone, Serialize, Deserialize, PartialEq, Eq, GetSize, BFieldCodec, Hash, Arbitrary,
+    Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize, GetSize, BFieldCodec, Arbitrary,
 )]
 pub struct Claim {
     /// The hash digest of the program that was executed. The hash function in use is Tip5.

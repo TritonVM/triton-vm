@@ -45,7 +45,7 @@ type Result<T> = std::result::Result<T, VMError>;
 /// [program attestation]: https://triton-vm.org/spec/program-attestation.html
 /// [label_for_address]: Program::label_for_address
 /// [is_breakpoint]: Program::is_breakpoint
-#[derive(Debug, Clone, Eq, GetSize, Serialize, Deserialize)]
+#[derive(Debug, Clone, Eq, Serialize, Deserialize, GetSize)]
 pub struct Program {
     pub instructions: Vec<Instruction>,
     address_to_label: HashMap<u64, String>,
@@ -517,7 +517,7 @@ impl Program {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Default, Clone)]
 struct VMProfiler {
     call_stack: Vec<usize>,
     profile: Vec<ProfileLine>,
@@ -568,7 +568,7 @@ impl VMProfiler {
 }
 
 /// A single line in a profile report for profiling Triton Assembly programs.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Eq, PartialEq)]
 pub struct ProfileLine {
     pub label: String,
     pub call_depth: usize,
@@ -620,7 +620,7 @@ impl Display for ProfileLine {
     }
 }
 
-#[derive(Clone, Default, Debug, PartialEq, Eq, BFieldCodec, Arbitrary)]
+#[derive(Debug, Default, Clone, Eq, PartialEq, BFieldCodec, Arbitrary)]
 pub struct PublicInput {
     pub individual_tokens: Vec<BFieldElement>,
 }
@@ -671,8 +671,8 @@ impl PublicInput {
 
 /// All sources of non-determinism for a program. This includes elements that can be read using
 /// instruction `divine`, digests that can be read using instruction `divine_sibling`,
-/// and a initial state of random-access memory.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, Arbitrary)]
+/// and an initial state of random-access memory.
+#[derive(Debug, Default, Clone, Eq, PartialEq, Serialize, Deserialize, Arbitrary)]
 pub struct NonDeterminism<E>
 where
     E: Into<BFieldElement> + Eq + Hash,

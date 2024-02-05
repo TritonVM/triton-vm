@@ -22,7 +22,7 @@ use crate::mode::Mode;
 
 const DEFAULT_CONFIG: &str = include_str!("../.config/default_config.json");
 
-#[derive(Clone, Debug, Default, Deserialize)]
+#[derive(Debug, Default, Clone, Deserialize)]
 pub(crate) struct Config {
     #[serde(default)]
     pub keybindings: KeyBindings,
@@ -100,7 +100,7 @@ impl Config {
 
 pub(crate) type KeyEvents = Vec<KeyEvent>;
 
-#[derive(Clone, Debug, Default, Deref, DerefMut)]
+#[derive(Debug, Default, Clone, Deref, DerefMut)]
 pub(crate) struct KeyBindings(pub HashMap<Mode, HashMap<KeyEvents, Action>>);
 
 impl<'de> Deserialize<'de> for KeyBindings {
@@ -280,7 +280,7 @@ fn parse_key_sequence(raw: &str) -> Result<KeyEvents, String> {
     sequences.map(parse_key_event).collect()
 }
 
-#[derive(Clone, Debug, Default, Deref, DerefMut)]
+#[derive(Debug, Default, Clone, Deref, DerefMut)]
 pub(crate) struct Styles(pub HashMap<Mode, HashMap<String, Style>>);
 
 impl<'de> Deserialize<'de> for Styles {

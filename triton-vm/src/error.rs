@@ -16,7 +16,7 @@ use crate::vm::VMState;
 use crate::BFieldElement;
 
 /// Indicates a runtime error that resulted in a crash of Triton VM.
-#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[derive(Debug, Clone, Eq, PartialEq, Error)]
 pub struct VMError {
     /// The reason Triton VM crashed.
     pub source: InstructionError,
@@ -41,7 +41,7 @@ impl Display for VMError {
 }
 
 #[non_exhaustive]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Error)]
 pub enum InstructionError {
     #[error("opcode {0} is invalid")]
     InvalidOpcode(u32),
@@ -121,7 +121,7 @@ pub enum ProofStreamError {
 }
 
 #[non_exhaustive]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Error)]
 pub enum FriSetupError {
     #[error("the expansion factor must be greater than 1")]
     ExpansionFactorTooSmall,
@@ -134,7 +134,7 @@ pub enum FriSetupError {
 }
 
 #[non_exhaustive]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Error)]
 pub enum FriProvingError {
     #[error(transparent)]
     MerkleTreeError(#[from] MerkleTreeError),
@@ -166,7 +166,7 @@ pub enum FriValidationError {
 }
 
 #[non_exhaustive]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Error)]
 pub enum ProgramDecodingError {
     #[error("sequence to decode is empty")]
     EmptySequence,
@@ -191,7 +191,7 @@ const CANONICAL_REPRESENTATION_ERROR_MESSAGE: &str =
     "must contain only elements in canonical representation, i.e., \
     elements smaller than the prime field's modulus 2^64 - 2^32 + 1";
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Error)]
 pub enum CanonicalRepresentationError {
     #[error("public input {CANONICAL_REPRESENTATION_ERROR_MESSAGE}")]
     PublicInput,
@@ -207,7 +207,7 @@ pub enum CanonicalRepresentationError {
 }
 
 #[non_exhaustive]
-#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[derive(Debug, Clone, Eq, PartialEq, Error)]
 pub enum ProvingError {
     #[error("claimed program digest does not match actual program digest")]
     ProgramDigestMismatch,
@@ -275,7 +275,7 @@ pub enum VerificationError {
 }
 
 #[non_exhaustive]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Error)]
 pub enum OpStackElementError {
     #[error("index {0} is out of range for `OpStackElement`")]
     IndexOutOfBounds(u32),
@@ -285,7 +285,7 @@ pub enum OpStackElementError {
 }
 
 #[non_exhaustive]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Error)]
 pub enum NumberOfWordsError {
     #[error("index {0} is out of range for `NumberOfWords`")]
     IndexOutOfBounds(usize),

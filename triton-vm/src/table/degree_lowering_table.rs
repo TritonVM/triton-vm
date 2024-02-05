@@ -15,14 +15,14 @@ pub const FULL_WIDTH: usize = BASE_WIDTH + EXT_WIDTH;
 // This file is a placeholder for auto-generated code.
 // Run `cargo run --bin constraint-evaluation-generator` to generate the actual code.
 
-#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCount, Hash)]
+#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, EnumCount, EnumIter)]
 pub enum DegreeLoweringBaseTableColumn {}
 
-#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCount, Hash)]
+#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, EnumCount, EnumIter)]
 pub enum DegreeLoweringExtTableColumn {}
 
-#[derive(Debug, Clone)]
-pub struct DegreeLoweringTable {}
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub struct DegreeLoweringTable;
 
 impl DegreeLoweringTable {
     pub fn fill_derived_base_columns(mut _master_base_table: ArrayViewMut2<BFieldElement>) {

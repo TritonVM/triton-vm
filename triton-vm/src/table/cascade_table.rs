@@ -28,9 +28,11 @@ pub const BASE_WIDTH: usize = CascadeBaseTableColumn::COUNT;
 pub const EXT_WIDTH: usize = CascadeExtTableColumn::COUNT;
 pub const FULL_WIDTH: usize = BASE_WIDTH + EXT_WIDTH;
 
-pub struct CascadeTable {}
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub struct CascadeTable;
 
-pub struct ExtCascadeTable {}
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub struct ExtCascadeTable;
 
 impl CascadeTable {
     pub fn fill_trace(

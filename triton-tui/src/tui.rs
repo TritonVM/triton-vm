@@ -31,7 +31,7 @@ pub(crate) fn io() -> IO {
 const DEFAULT_TICK_RATE: f64 = 1.0;
 const DEFAULT_FRAME_RATE: f64 = 32.0;
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) enum Event {
     Init,
     Quit,

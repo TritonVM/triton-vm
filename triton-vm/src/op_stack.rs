@@ -35,7 +35,7 @@ pub const NUM_OP_STACK_REGISTERS: usize = OpStackElement::COUNT;
 /// and the op-stack underflow memory. The op-stack registers are the first
 /// [`OpStackElement::COUNT`] elements of the op-stack, and the op-stack underflow memory is the
 /// remaining elements.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Arbitrary)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize, Arbitrary)]
 // If the op stack is empty, things have gone horribly wrong. Suppressing this lint is preferred
 // to implementing a basically useless `is_empty()` method.
 #[allow(clippy::len_without_is_empty)]
@@ -201,7 +201,7 @@ impl IntoIterator for OpStack {
 }
 
 /// Indicates changes to the op-stack underflow memory.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, GetSize, Serialize, Deserialize, Arbitrary)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Serialize, Deserialize, GetSize, Arbitrary)]
 #[must_use = "The change to underflow memory should be handled."]
 pub enum UnderflowIO {
     Read(BFieldElement),
@@ -284,19 +284,19 @@ impl UnderflowIO {
 /// Represents the [`OpStack`] registers directly accessible by Triton VM.
 #[derive(
     Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
     Default,
-    GetSize,
+    Copy,
+    Clone,
+    Eq,
+    PartialEq,
+    Ord,
+    PartialOrd,
+    Hash,
     Serialize,
     Deserialize,
     EnumCount,
     EnumIter,
+    GetSize,
     Arbitrary,
 )]
 pub enum OpStackElement {
@@ -464,19 +464,19 @@ impl TryFrom<BFieldElement> for OpStackElement {
 /// Represents the argument, _i.e._, the `n`, for instructions like `pop n` or `read_io n`.
 #[derive(
     Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
     Default,
-    GetSize,
+    Copy,
+    Clone,
+    Eq,
+    PartialEq,
+    Ord,
+    PartialOrd,
+    Hash,
     Serialize,
     Deserialize,
     EnumCount,
     EnumIter,
+    GetSize,
     Arbitrary,
 )]
 pub enum NumberOfWords {

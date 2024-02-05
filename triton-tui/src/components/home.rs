@@ -14,7 +14,7 @@ use crate::triton_vm_state::TritonVMState;
 use super::Component;
 use super::Frame;
 
-#[derive(Debug, Clone, Copy, Arbitrary)]
+#[derive(Debug, Copy, Clone, Arbitrary)]
 pub(crate) struct Home {
     show_type_hints: bool,
     show_call_stack: bool,
@@ -490,13 +490,13 @@ impl Component for Home {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Copy, Clone)]
 struct RenderInfo<'s> {
     state: &'s TritonVMState,
     areas: WidgetAreas,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
 struct WidgetAreas {
     op_stack: Rect,
     type_hint: Rect,

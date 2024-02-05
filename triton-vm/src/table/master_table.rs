@@ -141,7 +141,7 @@ pub const EXT_DEGREE_LOWERING_TABLE_END: usize =
 const NUM_TABLES_WITHOUT_DEGREE_LOWERING: usize = TableId::COUNT - 1;
 
 /// A `TableId` uniquely determines one of Triton VM's tables.
-#[derive(Debug, Copy, Clone, Display, EnumCount, EnumIter, PartialEq, Eq, Hash)]
+#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, EnumCount, EnumIter)]
 pub enum TableId {
     ProgramTable,
     ProcessorTable,
@@ -315,7 +315,7 @@ where
     fn hash_one_row(row: ArrayView1<FF>) -> Digest;
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct MasterBaseTable {
     pub num_trace_randomizers: usize,
 
@@ -1126,7 +1126,6 @@ mod tests {
     use crate::stark::tests::*;
     use crate::table::degree_lowering_table::DegreeLoweringBaseTableColumn;
     use crate::table::degree_lowering_table::DegreeLoweringExtTableColumn;
-    use crate::table::master_table::TableId::*;
     use crate::table::table_column::*;
     use crate::table::*;
     use crate::triton_program;
@@ -1140,43 +1139,45 @@ mod tests {
 
         assert_eq!(
             program_table::BASE_WIDTH,
-            master_base_table.table(ProgramTable).ncols()
+            master_base_table.table(TableId::ProgramTable).ncols()
         );
         assert_eq!(
             processor_table::BASE_WIDTH,
-            master_base_table.table(ProcessorTable).ncols()
+            master_base_table.table(TableId::ProcessorTable).ncols()
         );
         assert_eq!(
             op_stack_table::BASE_WIDTH,
-            master_base_table.table(OpStackTable).ncols()
+            master_base_table.table(TableId::OpStackTable).ncols()
         );
         assert_eq!(
             ram_table::BASE_WIDTH,
-            master_base_table.table(RamTable).ncols()
+            master_base_table.table(TableId::RamTable).ncols()
         );
         assert_eq!(
             jump_stack_table::BASE_WIDTH,
-            master_base_table.table(JumpStackTable).ncols()
+            master_base_table.table(TableId::JumpStackTable).ncols()
         );
         assert_eq!(
             hash_table::BASE_WIDTH,
-            master_base_table.table(HashTable).ncols()
+            master_base_table.table(TableId::HashTable).ncols()
         );
         assert_eq!(
             cascade_table::BASE_WIDTH,
-            master_base_table.table(CascadeTable).ncols()
+            master_base_table.table(TableId::CascadeTable).ncols()
         );
         assert_eq!(
             lookup_table::BASE_WIDTH,
-            master_base_table.table(LookupTable).ncols()
+            master_base_table.table(TableId::LookupTable).ncols()
         );
         assert_eq!(
             u32_table::BASE_WIDTH,
-            master_base_table.table(U32Table).ncols()
+            master_base_table.table(TableId::U32Table).ncols()
         );
         assert_eq!(
             degree_lowering_table::BASE_WIDTH,
-            master_base_table.table(DegreeLoweringTable).ncols()
+            master_base_table
+                .table(TableId::DegreeLoweringTable)
+                .ncols()
         );
     }
 
@@ -1187,43 +1188,43 @@ mod tests {
 
         assert_eq!(
             program_table::EXT_WIDTH,
-            master_ext_table.table(ProgramTable).ncols()
+            master_ext_table.table(TableId::ProgramTable).ncols()
         );
         assert_eq!(
             processor_table::EXT_WIDTH,
-            master_ext_table.table(ProcessorTable).ncols()
+            master_ext_table.table(TableId::ProcessorTable).ncols()
         );
         assert_eq!(
             op_stack_table::EXT_WIDTH,
-            master_ext_table.table(OpStackTable).ncols()
+            master_ext_table.table(TableId::OpStackTable).ncols()
         );
         assert_eq!(
             ram_table::EXT_WIDTH,
-            master_ext_table.table(RamTable).ncols()
+            master_ext_table.table(TableId::RamTable).ncols()
         );
         assert_eq!(
             jump_stack_table::EXT_WIDTH,
-            master_ext_table.table(JumpStackTable).ncols()
+            master_ext_table.table(TableId::JumpStackTable).ncols()
         );
         assert_eq!(
             hash_table::EXT_WIDTH,
-            master_ext_table.table(HashTable).ncols()
+            master_ext_table.table(TableId::HashTable).ncols()
         );
         assert_eq!(
             cascade_table::EXT_WIDTH,
-            master_ext_table.table(CascadeTable).ncols()
+            master_ext_table.table(TableId::CascadeTable).ncols()
         );
         assert_eq!(
             lookup_table::EXT_WIDTH,
-            master_ext_table.table(LookupTable).ncols()
+            master_ext_table.table(TableId::LookupTable).ncols()
         );
         assert_eq!(
             u32_table::EXT_WIDTH,
-            master_ext_table.table(U32Table).ncols()
+            master_ext_table.table(TableId::U32Table).ncols()
         );
         assert_eq!(
             degree_lowering_table::EXT_WIDTH,
-            master_ext_table.table(DegreeLoweringTable).ncols()
+            master_ext_table.table(TableId::DegreeLoweringTable).ncols()
         );
         // use some domain-specific knowledge to also check for the randomizer columns
         assert_eq!(
@@ -1530,23 +1531,23 @@ mod tests {
 
         let num_rows = trace_domain.length;
         Array2::from_elem((num_rows, ProgramExtTableColumn::COUNT), 1.into())
-            .move_into(&mut master_table.table_mut(ProgramTable));
+            .move_into(&mut master_table.table_mut(TableId::ProgramTable));
         Array2::from_elem((num_rows, ProcessorExtTableColumn::COUNT), 2.into())
-            .move_into(&mut master_table.table_mut(ProcessorTable));
+            .move_into(&mut master_table.table_mut(TableId::ProcessorTable));
         Array2::from_elem((num_rows, OpStackExtTableColumn::COUNT), 3.into())
-            .move_into(&mut master_table.table_mut(OpStackTable));
+            .move_into(&mut master_table.table_mut(TableId::OpStackTable));
         Array2::from_elem((num_rows, RamExtTableColumn::COUNT), 4.into())
-            .move_into(&mut master_table.table_mut(RamTable));
+            .move_into(&mut master_table.table_mut(TableId::RamTable));
         Array2::from_elem((num_rows, JumpStackExtTableColumn::COUNT), 5.into())
-            .move_into(&mut master_table.table_mut(JumpStackTable));
+            .move_into(&mut master_table.table_mut(TableId::JumpStackTable));
         Array2::from_elem((num_rows, HashExtTableColumn::COUNT), 6.into())
-            .move_into(&mut master_table.table_mut(HashTable));
+            .move_into(&mut master_table.table_mut(TableId::HashTable));
         Array2::from_elem((num_rows, CascadeExtTableColumn::COUNT), 7.into())
-            .move_into(&mut master_table.table_mut(CascadeTable));
+            .move_into(&mut master_table.table_mut(TableId::CascadeTable));
         Array2::from_elem((num_rows, LookupExtTableColumn::COUNT), 8.into())
-            .move_into(&mut master_table.table_mut(LookupTable));
+            .move_into(&mut master_table.table_mut(TableId::LookupTable));
         Array2::from_elem((num_rows, U32ExtTableColumn::COUNT), 9.into())
-            .move_into(&mut master_table.table_mut(U32Table));
+            .move_into(&mut master_table.table_mut(TableId::U32Table));
 
         let trace_domain_element = |column| {
             let maybe_element = master_table.randomized_trace_table.get((0, column));

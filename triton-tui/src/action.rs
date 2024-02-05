@@ -10,7 +10,7 @@ use triton_vm::prelude::*;
 
 use crate::mode::Mode;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize)]
 pub(crate) enum Action {
     Tick,
     Render,
@@ -41,7 +41,7 @@ pub(crate) enum Action {
 }
 
 /// Various ways to advance the program state.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize)]
 pub(crate) enum Execute {
     /// Continue program execution until next breakpoint.
     Continue,
@@ -56,7 +56,7 @@ pub(crate) enum Execute {
     Finish,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Arbitrary)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize, Arbitrary)]
 pub(crate) enum Toggle {
     All,
     TypeHint,
@@ -66,7 +66,7 @@ pub(crate) enum Toggle {
     BlockAddress,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Arbitrary)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize, Arbitrary)]
 pub(crate) struct ExecutedInstruction {
     pub instruction: Instruction,
     pub old_top_of_stack: [BFieldElement; NUM_OP_STACK_REGISTERS],
@@ -78,6 +78,7 @@ impl<'de> Deserialize<'de> for Action {
     where
         D: Deserializer<'de>,
     {
+        #[derive(Debug, Copy, Clone, Eq, PartialEq)]
         struct ActionVisitor;
 
         impl<'de> Visitor<'de> for ActionVisitor {

@@ -35,13 +35,13 @@ pub const FULL_WIDTH: usize = BASE_WIDTH + EXT_WIDTH;
 /// column.
 pub(crate) const PADDING_VALUE: BFieldElement = BFieldElement::new(2);
 
-#[derive(Debug, Clone)]
-pub struct OpStackTable {}
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub struct OpStackTable;
 
-#[derive(Debug, Clone)]
-pub struct ExtOpStackTable {}
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub struct ExtOpStackTable;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Arbitrary)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Arbitrary)]
 pub struct OpStackTableEntry {
     pub clk: u32,
     pub op_stack_pointer: BFieldElement,

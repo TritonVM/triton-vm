@@ -34,18 +34,18 @@ pub(crate) struct Memory<'a> {
     pub undo_stack: Vec<UndoInformation>,
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Arbitrary)]
+#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Arbitrary)]
 pub(crate) struct UndoInformation {
     pub most_recent_address: BFieldElement,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Copy, Clone)]
 struct RenderInfo<'s> {
     state: &'s TritonVMState,
     areas: WidgetAreas,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
 struct WidgetAreas {
     memory: Rect,
     text_input: Rect,

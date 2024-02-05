@@ -48,7 +48,7 @@ pub(crate) const NUM_QUOTIENT_SEGMENTS: usize = AIR_TARGET_DEGREE as usize;
 const NUM_DEEP_CODEWORD_COMPONENTS: usize = 3;
 
 /// All the security-related parameters for the zk-STARK.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct StarkParameters {
     /// The conjectured security level in bits. Concretely, the system
     /// - is perfectly complete, and
@@ -124,7 +124,8 @@ impl<'a> Arbitrary<'a> for StarkParameters {
     }
 }
 
-pub struct Stark {}
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub struct Stark;
 
 impl Stark {
     pub fn prove(

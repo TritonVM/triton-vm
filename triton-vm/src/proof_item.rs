@@ -13,10 +13,11 @@ use crate::stark::NUM_QUOTIENT_SEGMENTS;
 /// A `FriResponse` is an `AuthenticationStructure` together with the values of the
 /// revealed leaves of the Merkle tree. Together, they correspond to the
 /// queried indices of the FRI codeword (of that round).
-#[derive(Debug, Clone, PartialEq, Eq, Hash, BFieldCodec, Arbitrary)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash, BFieldCodec, Arbitrary)]
 pub struct FriResponse {
     /// The authentication structure of the Merkle tree.
     pub auth_structure: AuthenticationStructure,
+
     /// The values of the opened leaves of the Merkle tree.
     pub revealed_leaves: Vec<XFieldElement>,
 }
@@ -25,18 +26,19 @@ macro_rules! proof_items {
     ($($variant:ident($payload:ty) => $in_fiat_shamir_heuristic:literal, $try_into_fn:ident,)+) => {
         #[derive(
             Debug,
-            Clone,
-            PartialEq,
-            Eq,
-            Hash,
             Display,
+            Clone,
+            Eq,
+            PartialEq,
+            Hash,
             EnumCount,
             EnumDiscriminants,
             BFieldCodec,
-            Arbitrary
+            Arbitrary,
         )]
         #[strum_discriminants(name(ProofItemVariant))]
-        #[strum_discriminants(derive(Display, Arbitrary, BFieldCodec, EnumIter))]
+        // discriminants' default derives: Debug, Copy, Clone, Eq, PartialEq
+        #[strum_discriminants(derive(Display, EnumIter, BFieldCodec, Arbitrary))]
         pub enum ProofItem {
             $( $variant($payload), )+
         }

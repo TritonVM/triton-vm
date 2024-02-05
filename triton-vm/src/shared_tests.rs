@@ -29,7 +29,7 @@ use crate::table::master_table::MasterBaseTable;
 use crate::NonDeterminism;
 use crate::PublicInput;
 
-#[derive(Debug, Arbitrary, Clone, Copy)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Arbitrary)]
 #[filter(!#self.0.is_zero())]
 struct NonZeroXFieldElement(#[strategy(arb())] XFieldElement);
 

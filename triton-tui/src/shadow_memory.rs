@@ -14,7 +14,7 @@ use crate::element_type_hint::ElementTypeHint;
 
 /// Mimics the behavior of the actual memory. Helps debugging programs written for Triton VM by
 /// tracking (manually set) type hints next to stack or RAM elements.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub(crate) struct ShadowMemory {
     /// Shadow stack mimicking the actual stack.
     pub stack: Vec<Option<ElementTypeHint>>,

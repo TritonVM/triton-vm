@@ -34,7 +34,7 @@ pub const INSTRUCTION_TYPE_WRITE: BFieldElement = b_field_element::BFIELD_ZERO;
 pub const INSTRUCTION_TYPE_READ: BFieldElement = b_field_element::BFIELD_ONE;
 pub const PADDING_INDICATOR: BFieldElement = BFieldElement::new(2);
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Arbitrary)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Serialize, Deserialize, Arbitrary)]
 pub struct RamTableCall {
     pub clk: u32,
     pub ram_pointer: BFieldElement,
@@ -58,11 +58,11 @@ impl RamTableCall {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct RamTable {}
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub struct RamTable;
 
-#[derive(Debug, Clone)]
-pub struct ExtRamTable {}
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub struct ExtRamTable;
 
 impl RamTable {
     /// Fills the trace table in-place and returns all clock jump differences.

@@ -31,7 +31,7 @@ use CircuitExpression::*;
 use crate::table::challenges::ChallengeId;
 use crate::table::challenges::Challenges;
 
-#[derive(Debug, Clone, Copy, PartialEq, Hash, Eq)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub enum BinOp {
     Add,
     Sub,
@@ -81,10 +81,8 @@ impl BinOp {
 /// a column in the extension table. This trait abstracts over these possibilities, and provides
 /// a uniform interface for accessing the index.
 ///
-/// Having `Clone + Copy + Hash + PartialEq + Eq` helps putting `InputIndicator`s into containers.
-pub trait InputIndicator:
-    Debug + Clone + Copy + Hash + PartialEq + Eq + Display + ToTokens
-{
+/// Having `Copy + Hash + Eq` helps to put `InputIndicator`s into containers.
+pub trait InputIndicator: Debug + Display + Copy + Hash + Eq + ToTokens {
     /// `true` iff `self` refers to a column in the base table.
     fn is_base_table_column(&self) -> bool;
 
@@ -103,7 +101,7 @@ pub trait InputIndicator:
 
 /// The position of a variable in a constraint polynomial that operates on a single row of the
 /// execution trace.
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub enum SingleRowIndicator {
     BaseRow(usize),
     ExtRow(usize),
@@ -176,7 +174,7 @@ impl InputIndicator for SingleRowIndicator {
 
 /// The position of a variable in a constraint polynomial that operates on two rows (current and
 /// next) of the execution trace.
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub enum DualRowIndicator {
     CurrentBaseRow(usize),
     CurrentExtRow(usize),
@@ -344,7 +342,7 @@ impl<II: InputIndicator> Hash for ConstraintCircuitMonad<II> {
 }
 
 /// A wrapper around a [`CircuitExpression`] that manages additional bookkeeping information.
-#[derive(Clone, Debug)]
+#[derive(Debug, Clone)]
 pub struct ConstraintCircuit<II: InputIndicator> {
     pub id: usize,
     pub visited_counter: usize,
@@ -571,8 +569,8 @@ pub struct ConstraintCircuitMonad<II: InputIndicator> {
 }
 
 impl<II: InputIndicator> Debug for ConstraintCircuitMonad<II> {
-    // We cannot derive `Debug` as `all_nodes` contains itself which a derived `Debug` will
-    // attempt to print as well, thus leading to infinite recursion.
+    // `all_nodes` contains itself, leading to infinite recursion during `Debug` printing.
+    // Hence, this manual implementation.
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         f.debug_struct("ConstraintCircuitMonad")
             .field("id", &self.circuit)

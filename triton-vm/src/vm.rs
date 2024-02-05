@@ -34,7 +34,7 @@ type Result<T> = std::result::Result<T, InstructionError>;
 /// The number of helper variable registers
 pub const NUM_HELPER_VARIABLE_REGISTERS: usize = 6;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Arbitrary)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize, Arbitrary)]
 pub struct VMState {
     /// The **program memory** stores the instructions (and their arguments) of the program
     /// currently being executed by Triton VM. It is read-only.
@@ -82,7 +82,7 @@ pub struct VMState {
 
 /// A call from the main processor to one of the co-processors, including the trace for that
 /// co-processor or enough information to deduce the trace.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub enum CoProcessorCall {
     SpongeStateReset,
 
@@ -1290,7 +1290,7 @@ pub(crate) mod tests {
     }
 
     /// Test helper for `property_based_test_program_for_sponge_instructions`.
-    #[derive(Debug, Clone, Copy, PartialEq, Eq, EnumCount, EnumIter)]
+    #[derive(Debug, Copy, Clone, Eq, PartialEq, EnumCount, EnumIter)]
     enum SpongeAndHashInstructions {
         SpongeInit,
         SpongeAbsorb,

@@ -32,7 +32,7 @@ pub struct ParseError<'a> {
 
 /// An intermediate object for the parsing / compilation pipeline. You probably want
 /// [`LabelledInstruction`].
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum InstructionToken<'a> {
     Instruction(AnInstruction<String>, &'a str),
     Label(String, &'a str),
@@ -826,7 +826,7 @@ pub(crate) mod tests {
         });
     }
 
-    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, EnumCount, Arbitrary)]
+    #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, EnumCount, Arbitrary)]
     enum Whitespace {
         Space,
         Tab,
