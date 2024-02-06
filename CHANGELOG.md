@@ -3,6 +3,27 @@
 All notable changes are documented in this file.
 Lines marked “(!)” indicate a breaking change.
 
+## [0.36.1](https://github.com/TritonVM/triton-vm/compare/v0.36.0..v0.36.1) - 2024-01-15
+
+### 🐛 Bug Fixes
+
+- *(test)* Don't compile Triton TUI integration tests ([bf46f5ac](https://github.com/TritonVM/triton-vm/commit/bf46f5ac))
+- *(visual)* Drop leading 0's from `clk` when printing VM state ([d1a61b16](https://github.com/TritonVM/triton-vm/commit/d1a61b16))
+
+### 📚 Documentation
+
+- Add “Getting Started” section to README.md ([80c10dd3](https://github.com/TritonVM/triton-vm/commit/80c10dd3))
+
+### ⚙️ Miscellaneous
+
+- Run CI on the three biggest platforms ([42ff0618](https://github.com/TritonVM/triton-vm/commit/42ff0618))
+- Run code-coverage tool `tarpaulin` only on default features ([e95c7e4f](https://github.com/TritonVM/triton-vm/commit/e95c7e4f))
+
+### ♻️ Refactor
+
+- *(test)* De-duplicate test code for canonical input check ([e180d78e](https://github.com/TritonVM/triton-vm/commit/e180d78e))
+- Generalize generic for changing call address of `instruction` ([63a5d1c1](https://github.com/TritonVM/triton-vm/commit/63a5d1c1))
+
 ## [0.36.0](https://github.com/TritonVM/triton-vm/compare/v0.35.0..v0.36.0) - 2023-12-22
 
 ### ✨ Features
