@@ -11,6 +11,7 @@ pub use twenty_first::prelude::BFieldElement;
 pub use twenty_first::prelude::Digest;
 pub use twenty_first::prelude::Tip5;
 pub use twenty_first::prelude::XFieldElement;
+pub use twenty_first::shared_math::traits::FiniteField;
 
 pub use crate::error::InstructionError;
 pub use crate::instruction::LabelledInstruction;

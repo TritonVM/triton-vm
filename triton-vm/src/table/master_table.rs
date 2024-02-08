@@ -22,6 +22,7 @@ use twenty_first::shared_math::traits::FiniteField;
 
 use crate::aet::AlgebraicExecutionTrace;
 use crate::arithmetic_domain::ArithmeticDomain;
+use crate::error::ProvingError;
 use crate::profiler::prof_start;
 use crate::profiler::prof_stop;
 use crate::profiler::TritonProfiler;
@@ -157,7 +158,7 @@ pub enum TableId {
 
 /// A Master Table is, in some sense, a top-level table of Triton VM. It contains all the data
 /// but little logic beyond bookkeeping and presenting the data in useful ways. Conversely, the
-/// individual tables contain no data but all of the respective logic. Master Tables are
+/// individual tables contain no data but all the respective logic. Master Tables are
 /// responsible for managing the individual tables and for presenting the right data to the right
 /// tables, serving as a clean interface between the VM and the individual tables.
 ///
@@ -165,33 +166,34 @@ pub enum TableId {
 /// completely separate from each other. Only the [cross-table arguments][cross_arg] link all tables
 /// together.
 ///
-/// Conceptually, there are three Master Tables: the Master Base Table, the Master Extension
-/// Table, and the Master Quotient Table. The lifecycle of the Master Tables is as follows:
-/// 1. The Master Base Table is instantiated and filled using the Algebraic Execution Trace.
-/// 2. The Master Base Table is padded using logic from the individual tables.
-/// 3. The still-empty entries in the Master Base Table are filled with random elements. This
+/// Conceptually, there are three Master Tables: the [`MasterBaseTable`], the Master Extension
+/// Table, and the [Master Quotient Table][master_quot_table]. The lifecycle of the Master Tables is
+/// as follows:
+/// 1. The [`MasterBaseTable`] is instantiated and filled using the Algebraic Execution Trace.
+/// 2. The [`MasterBaseTable`] is padded using logic from the individual tables.
+/// 3. The still-empty entries in the [`MasterBaseTable`] are filled with random elements. This
 ///     step is also known as “trace randomization.”
-/// 4. Each column of the Master Base Table is [low-degree extended][lde]. The results are stored in
-///     the Master Base Table. Methods [`quotient_domain_table`][quot_table],
+/// 4. Each column of the [`MasterBaseTable`] is [low-degree extended][lde]. The results are stored
+///     in the [`MasterBaseTable`]. Methods [`quotient_domain_table`][quot_table],
 ///     [`fri_domain_table`][fri_table], [`interpolation_polynomials`][inter_poly], and [`row`][row]
 ///     can now be used without causing panic.
-/// 5. The Master Base Table is used to derive the Master Extension Table using logic from the
-///     individual tables.
-/// 6. The Master Extension Table is trace-randomized.
-/// 7. Each column of the Master Extension Table is [low-degree extended][lde]. The effects are
-///    the same as for the Master Base Table.
-/// 8. Using the Master Base Table and the Master Extension Table, the Quotient Master Table is
-///     derived using the AIR. Each individual table defines that part of the AIR that is relevant
-///     to it.
+/// 5. The [`MasterBaseTable`] is used to derive the [`MasterExtensionTable`][master_ext_table]
+///     using logic from the individual tables.
+/// 6. The [`MasterExtensionTable`][master_ext_table] is trace-randomized.
+/// 7. Each column of the [`MasterExtensionTable`][master_ext_table] is [low-degree extended][lde].
+///     The effects are the same as for the [`MasterBaseTable`].
+/// 8. Using the [`MasterBaseTable`] and the [`MasterExtensionTable`][master_ext_table], the
+///     [Master Quotient Table][master_quot_table] is derived using the AIR. Each individual table
+///     defines that part of the AIR that is relevant to it.
 ///
 /// The following points are of note:
-/// - The Master Extension Table's rightmost columns are the randomizer codewords. These are
-///     necessary for zero-knowledge.
+/// - The [`MasterExtensionTable`][master_ext_table]'s rightmost columns are the randomizer
+///     codewords. These are necessary for zero-knowledge.
 /// - The terminal quotient of the cross-table argument, which links the individual tables together,
-///     is also stored in the Master Quotient Table. Even though the cross-table argument is not
-///     a table, it does define part of the AIR. Hence, the cross-table argument does not contribute
-///     to padding or extending the Master Tables, but is incorporated when deriving the Master
-///     Quotient Table.
+///     is also stored in the [Master Quotient Table][master_quot_table]. Even though the
+///     cross-table argument is not a table, it does define part of the AIR. Hence, the cross-table
+///     argument does not contribute to padding or extending the Master Tables, but is incorporated
+///     when deriving the [Master Quotient Table][master_quot_table].
 ///
 /// [cross_arg]: cross_table_argument::GrandCrossTableArg
 /// [lde]: Self::low_degree_extend_all_columns
@@ -199,6 +201,8 @@ pub enum TableId {
 /// [fri_table]: Self::fri_domain_table
 /// [inter_poly]: Self::interpolation_polynomials
 /// [row]: Self::row
+/// [master_ext_table]: MasterExtTable
+/// [master_quot_table]: all_quotients
 pub trait MasterTable<FF>: Sync
 where
     FF: FiniteField + MulAssign<BFieldElement> + From<BFieldElement>,
@@ -315,6 +319,7 @@ where
     fn hash_one_row(row: ArrayView1<FF>) -> Digest;
 }
 
+/// See [`MasterTable`].
 #[derive(Debug, Clone)]
 pub struct MasterBaseTable {
     pub num_trace_randomizers: usize,
@@ -337,6 +342,7 @@ pub struct MasterBaseTable {
     interpolation_polynomials: Option<Array1<Polynomial<XFieldElement>>>,
 }
 
+/// See [`MasterTable`].
 pub struct MasterExtTable {
     pub num_trace_randomizers: usize,
     pub num_randomizer_polynomials: usize,
@@ -892,6 +898,16 @@ impl MasterBaseTable {
         self.randomized_trace_table
             .slice_mut(s![..; unit_distance, column_indices])
     }
+
+    pub(crate) fn try_to_base_row<T: FiniteField>(
+        row: Array1<T>,
+    ) -> Result<BaseRow<T>, ProvingError> {
+        let err = || ProvingError::TableRowConversionError {
+            expected_len: NUM_BASE_COLUMNS,
+            actual_len: row.len(),
+        };
+        row.to_vec().try_into().map_err(|_| err())
+    }
 }
 
 impl MasterExtTable {
@@ -934,6 +950,14 @@ impl MasterExtTable {
         let unit_distance = self.randomized_trace_domain().length / self.trace_domain().length;
         self.randomized_trace_table
             .slice_mut(s![..; unit_distance, column_indices])
+    }
+
+    pub(crate) fn try_to_ext_row(row: Array1<XFieldElement>) -> Result<ExtensionRow, ProvingError> {
+        let err = || ProvingError::TableRowConversionError {
+            expected_len: NUM_EXT_COLUMNS,
+            actual_len: row.len(),
+        };
+        row.to_vec().try_into().map_err(|_| err())
     }
 }
 
@@ -1021,9 +1045,12 @@ pub fn terminal_quotient_zerofier_inverse(
 /// of the tables. The last column holds the terminal quotient of the cross-table argument, which
 /// is strictly speaking not a table.
 /// The order of the quotients is not actually important. However, it must be consistent between
-/// prover and verifier.
+/// [prover] and [verifier].
 ///
 /// The returned array is in row-major order.
+///
+/// [prover]: crate::stark::Stark::prove
+/// [verifier]: crate::stark::Stark::verify
 pub fn all_quotients(
     quotient_domain_master_base_table: ArrayView2<BFieldElement>,
     quotient_domain_master_ext_table: ArrayView2<XFieldElement>,

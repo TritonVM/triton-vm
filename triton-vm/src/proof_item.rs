@@ -8,7 +8,9 @@ use twenty_first::prelude::*;
 use crate::error::ProofStreamError;
 use crate::error::ProofStreamError::UnexpectedItem;
 use crate::fri::AuthenticationStructure;
-use crate::stark::NUM_QUOTIENT_SEGMENTS;
+use crate::table::BaseRow;
+use crate::table::ExtensionRow;
+use crate::table::QuotientSegments;
 
 /// A `FriResponse` is an `AuthenticationStructure` together with the values of the
 /// revealed leaves of the Merkle tree. Together, they correspond to the
@@ -97,18 +99,16 @@ macro_rules! proof_items {
 
 proof_items!(
     MerkleRoot(Digest) => true, try_into_merkle_root,
-    OutOfDomainBaseRow(Vec<XFieldElement>) => true, try_into_out_of_domain_base_row,
-    OutOfDomainExtRow(Vec<XFieldElement>) => true, try_into_out_of_domain_ext_row,
-    OutOfDomainQuotientSegments([XFieldElement; NUM_QUOTIENT_SEGMENTS]) => true,
-        try_into_out_of_domain_quot_segments,
+    OutOfDomainBaseRow(Box<BaseRow<XFieldElement>>) => true, try_into_out_of_domain_base_row,
+    OutOfDomainExtRow(Box<ExtensionRow>) => true, try_into_out_of_domain_ext_row,
+    OutOfDomainQuotientSegments(QuotientSegments) => true, try_into_out_of_domain_quot_segments,
 
     // the following are implied by some Merkle root, thus not included in the Fiat-Shamir heuristic
     AuthenticationStructure(AuthenticationStructure) => false, try_into_authentication_structure,
-    MasterBaseTableRows(Vec<Vec<BFieldElement>>) => false, try_into_master_base_table_rows,
-    MasterExtTableRows(Vec<Vec<XFieldElement>>) => false, try_into_master_ext_table_rows,
+    MasterBaseTableRows(Vec<BaseRow<BFieldElement>>) => false, try_into_master_base_table_rows,
+    MasterExtTableRows(Vec<ExtensionRow>) => false, try_into_master_ext_table_rows,
     Log2PaddedHeight(u32) => false, try_into_log2_padded_height,
-    QuotientSegmentsElements(Vec<[XFieldElement; NUM_QUOTIENT_SEGMENTS]>) => false,
-        try_into_quot_segments_elements,
+    QuotientSegmentsElements(Vec<QuotientSegments>) => false, try_into_quot_segments_elements,
     FriCodeword(Vec<XFieldElement>) => false, try_into_fri_codeword,
     FriResponse(FriResponse) => false, try_into_fri_response,
 );

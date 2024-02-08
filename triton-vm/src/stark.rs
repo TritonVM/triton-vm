@@ -33,6 +33,7 @@ use crate::proof_stream::ProofStream;
 use crate::table::challenges::Challenges;
 use crate::table::extension_table::Evaluable;
 use crate::table::master_table::*;
+use crate::table::QuotientSegments;
 
 pub type StarkHasher = Tip5;
 pub type StarkProofStream = ProofStream<StarkHasher>;
@@ -43,7 +44,7 @@ pub type MTMaker = CpuParallel;
 
 /// The number of segments the quotient polynomial is split into.
 /// Helps keeping the FRI domain small.
-pub(crate) const NUM_QUOTIENT_SEGMENTS: usize = AIR_TARGET_DEGREE as usize;
+pub const NUM_QUOTIENT_SEGMENTS: usize = AIR_TARGET_DEGREE as usize;
 
 const NUM_DEEP_CODEWORD_COMPONENTS: usize = 3;
 
@@ -268,18 +269,21 @@ impl Stark {
         let out_of_domain_point_curr_row = proof_stream.sample_scalars(1)[0];
         let out_of_domain_point_next_row = trace_domain_generator * out_of_domain_point_curr_row;
 
-        proof_stream.enqueue(ProofItem::OutOfDomainBaseRow(
-            master_base_table.row(out_of_domain_point_curr_row).to_vec(),
-        ));
-        proof_stream.enqueue(ProofItem::OutOfDomainExtRow(
-            master_ext_table.row(out_of_domain_point_curr_row).to_vec(),
-        ));
-        proof_stream.enqueue(ProofItem::OutOfDomainBaseRow(
-            master_base_table.row(out_of_domain_point_next_row).to_vec(),
-        ));
-        proof_stream.enqueue(ProofItem::OutOfDomainExtRow(
-            master_ext_table.row(out_of_domain_point_next_row).to_vec(),
-        ));
+        let ood_base_row = master_base_table.row(out_of_domain_point_curr_row);
+        let ood_base_row = MasterBaseTable::try_to_base_row(ood_base_row)?;
+        proof_stream.enqueue(ProofItem::OutOfDomainBaseRow(Box::new(ood_base_row)));
+
+        let ood_ext_row = master_ext_table.row(out_of_domain_point_curr_row);
+        let ood_ext_row = MasterExtTable::try_to_ext_row(ood_ext_row)?;
+        proof_stream.enqueue(ProofItem::OutOfDomainExtRow(Box::new(ood_ext_row)));
+
+        let ood_next_base_row = master_base_table.row(out_of_domain_point_next_row);
+        let ood_next_base_row = MasterBaseTable::try_to_base_row(ood_next_base_row)?;
+        proof_stream.enqueue(ProofItem::OutOfDomainBaseRow(Box::new(ood_next_base_row)));
+
+        let ood_next_ext_row = master_ext_table.row(out_of_domain_point_next_row);
+        let ood_next_ext_row = MasterExtTable::try_to_ext_row(ood_next_ext_row)?;
+        proof_stream.enqueue(ProofItem::OutOfDomainExtRow(Box::new(ood_next_ext_row)));
 
         let out_of_domain_point_curr_row_pow_num_segments =
             out_of_domain_point_curr_row.mod_pow_u32(NUM_QUOTIENT_SEGMENTS as u32);
@@ -441,7 +445,7 @@ impl Stark {
         let revealed_base_elems = Self::get_revealed_elements(
             master_base_table.fri_domain_table(),
             &revealed_current_row_indices,
-        );
+        )?;
         let base_authentication_structure =
             base_merkle_tree.authentication_structure(&revealed_current_row_indices)?;
         proof_stream.enqueue(ProofItem::MasterBaseTableRows(revealed_base_elems));
@@ -452,7 +456,7 @@ impl Stark {
         let revealed_ext_elems = Self::get_revealed_elements(
             master_ext_table.fri_domain_table(),
             &revealed_current_row_indices,
-        );
+        )?;
         let ext_authentication_structure =
             ext_merkle_tree.authentication_structure(&revealed_current_row_indices)?;
         proof_stream.enqueue(ProofItem::MasterExtTableRows(revealed_ext_elems));
@@ -462,7 +466,7 @@ impl Stark {
 
         // Open quotient & combination codewords at the same positions as base & ext codewords.
         let into_fixed_width_row =
-            |row: ArrayView1<_>| -> [_; NUM_QUOTIENT_SEGMENTS] { row.to_vec().try_into().unwrap() };
+            |row: ArrayView1<_>| -> QuotientSegments { row.to_vec().try_into().unwrap() };
         let revealed_quotient_segments_rows = revealed_current_row_indices
             .iter()
             .map(|&i| fri_domain_quotient_segment_codewords.row(i))
@@ -631,14 +635,20 @@ impl Stark {
         )
     }
 
-    fn get_revealed_elements<FF: FiniteField>(
+    fn get_revealed_elements<const N: usize, FF: FiniteField>(
         fri_domain_table: ArrayView2<FF>,
         revealed_indices: &[usize],
-    ) -> Vec<Vec<FF>> {
-        revealed_indices
-            .iter()
-            .map(|&idx| fri_domain_table.row(idx).to_vec())
-            .collect_vec()
+    ) -> Result<Vec<[FF; N]>, ProvingError> {
+        let err = || ProvingError::TableRowConversionError {
+            expected_len: N,
+            actual_len: fri_domain_table.ncols(),
+        };
+        let row = |&row_idx| {
+            let row = fri_domain_table.row(row_idx).to_vec();
+            row.try_into().map_err(|_| err())
+        };
+
+        revealed_indices.iter().map(row).collect()
     }
 
     /// Apply the [DEEP update](Self::deep_update) to a polynomial in value form, _i.e._, to a
@@ -760,10 +770,10 @@ impl Stark {
             .dequeue()?
             .try_into_out_of_domain_quot_segments()?;
 
-        let out_of_domain_curr_base_row = Array1::from(out_of_domain_curr_base_row);
-        let out_of_domain_curr_ext_row = Array1::from(out_of_domain_curr_ext_row);
-        let out_of_domain_next_base_row = Array1::from(out_of_domain_next_base_row);
-        let out_of_domain_next_ext_row = Array1::from(out_of_domain_next_ext_row);
+        let out_of_domain_curr_base_row = Array1::from(out_of_domain_curr_base_row.to_vec());
+        let out_of_domain_curr_ext_row = Array1::from(out_of_domain_curr_ext_row.to_vec());
+        let out_of_domain_next_base_row = Array1::from(out_of_domain_next_base_row.to_vec());
+        let out_of_domain_next_ext_row = Array1::from(out_of_domain_next_ext_row.to_vec());
         let out_of_domain_curr_row_quot_segments =
             Array1::from(out_of_domain_curr_row_quot_segments.to_vec());
         prof_stop!(maybe_profiler, "dequeue ood point and rows");
@@ -983,7 +993,7 @@ impl Stark {
         ) {
             prof_itr0!(maybe_profiler, "main loop");
             let (current_ext_row, randomizer_row) = ext_row.split_at(NUM_EXT_COLUMNS);
-            let base_row = Array1::from(base_row);
+            let base_row = Array1::from(base_row.to_vec());
             let ext_row = Array1::from(current_ext_row.to_vec());
             let randomizer_row = Array1::from(randomizer_row.to_vec());
             let current_fri_domain_value = fri.domain.domain_value(row_idx as u32);
@@ -1038,12 +1048,9 @@ impl Stark {
         Ok(())
     }
 
-    fn hash_quotient_segment_elements(
-        quotient_segment_rows: &[[XFieldElement; NUM_QUOTIENT_SEGMENTS]],
-    ) -> Vec<Digest> {
+    fn hash_quotient_segment_elements(quotient_segment_rows: &[QuotientSegments]) -> Vec<Digest> {
         let interpret_xfe_as_bfes = |xfe: XFieldElement| xfe.coefficients.to_vec();
-        let collect_row_as_bfes =
-            |row: &[_; NUM_QUOTIENT_SEGMENTS]| row.map(interpret_xfe_as_bfes).concat();
+        let collect_row_as_bfes = |row: &QuotientSegments| row.map(interpret_xfe_as_bfes).concat();
         quotient_segment_rows
             .par_iter()
             .map(collect_row_as_bfes)
@@ -1078,7 +1085,6 @@ impl Stark {
 
 #[cfg(test)]
 pub(crate) mod tests {
-    use crate::error::InstructionError;
     use assert2::assert;
     use assert2::check;
     use assert2::let_assert;
@@ -1091,6 +1097,7 @@ pub(crate) mod tests {
     use test_strategy::proptest;
     use twenty_first::shared_math::other::random_elements;
 
+    use crate::error::InstructionError;
     use crate::example_programs::*;
     use crate::instruction::Instruction;
     use crate::op_stack::OpStackElement;

@@ -218,6 +218,12 @@ pub enum ProvingError {
     #[error(transparent)]
     CanonicalRepresentationError(#[from] CanonicalRepresentationError),
 
+    #[error("expected row of length {expected_len} but got {actual_len}")]
+    TableRowConversionError {
+        expected_len: usize,
+        actual_len: usize,
+    },
+
     #[error(transparent)]
     MerkleTreeError(#[from] MerkleTreeError),
 

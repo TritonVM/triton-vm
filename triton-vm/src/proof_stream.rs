@@ -144,19 +144,19 @@ mod tests {
     use crate::proof_item::ProofItem;
     use crate::shared_tests::LeavedMerkleTreeTestData;
     use crate::stark::MTMaker;
-    use crate::stark::NUM_QUOTIENT_SEGMENTS;
-    use crate::table::master_table::NUM_BASE_COLUMNS;
-    use crate::table::master_table::NUM_EXT_COLUMNS;
+    use crate::table::BaseRow;
+    use crate::table::ExtensionRow;
+    use crate::table::QuotientSegments;
 
     use super::*;
 
     #[proptest]
     fn serialize_proof_with_fiat_shamir(
-        #[strategy(vec(vec(arb(), NUM_BASE_COLUMNS), 2..100))] base_rows: Vec<Vec<BFieldElement>>,
-        #[strategy(vec(vec(arb(), NUM_EXT_COLUMNS), 2..100))] ext_rows: Vec<Vec<XFieldElement>>,
-        #[strategy(vec(arb(), NUM_BASE_COLUMNS))] ood_base_row: Vec<XFieldElement>,
-        #[strategy(vec(arb(), NUM_EXT_COLUMNS))] ood_ext_row: Vec<XFieldElement>,
-        #[strategy(arb())] quot_elements: Vec<[XFieldElement; NUM_QUOTIENT_SEGMENTS]>,
+        #[strategy(vec(arb(), 2..100))] base_rows: Vec<BaseRow<BFieldElement>>,
+        #[strategy(vec(arb(), 2..100))] ext_rows: Vec<ExtensionRow>,
+        #[strategy(arb())] ood_base_row: Box<BaseRow<XFieldElement>>,
+        #[strategy(arb())] ood_ext_row: Box<ExtensionRow>,
+        #[strategy(arb())] quot_elements: Vec<QuotientSegments>,
         leaved_merkle_tree: LeavedMerkleTreeTestData,
     ) {
         let auth_structure = leaved_merkle_tree.auth_structure.clone();
