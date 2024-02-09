@@ -60,6 +60,9 @@ lazy_static.workspace = true
 default = []
 integration-tests = ["rexpect"]
 
+[lints]
+workspace = true
+
 [[bin]]
 name = "triton-tui"
 path = "src/main.rs"

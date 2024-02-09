@@ -24,3 +24,6 @@ twenty-first.workspace = true
 proptest.workspace = true
 criterion.workspace = true
 cargo-husky.workspace = true
+
+[lints]
+workspace = true

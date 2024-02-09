@@ -55,6 +55,9 @@ thiserror = "1.0"
 twenty-first = { git = "https://github.com/Neptune-Crypto/twenty-first", rev = "8bee834e" }
 unicode-width = "0.1"
 
+[workspace.lints.clippy]
+used_underscore_binding = "warn"
+
 [workspace.dependencies.cargo-husky]
 version = "1.5"
 default-features = false
