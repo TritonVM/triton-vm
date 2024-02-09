@@ -21,7 +21,6 @@ pub use crate::program::PublicInput;
 pub use crate::proof::Claim;
 pub use crate::proof::Proof;
 pub use crate::stark::Stark;
-pub use crate::stark::StarkParameters;
 pub use crate::triton_asm;
 pub use crate::triton_instr;
 pub use crate::triton_program;

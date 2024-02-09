@@ -24,7 +24,6 @@ use crate::proof::Proof;
 use crate::proof_item::FriResponse;
 use crate::stark::Stark;
 use crate::stark::StarkHasher;
-use crate::stark::StarkParameters;
 use crate::table::master_table::MasterBaseTable;
 use crate::NonDeterminism;
 use crate::PublicInput;
@@ -104,28 +103,27 @@ impl LeavedMerkleTreeTestData {
     }
 }
 
-/// Prove correct execution of the given program.
-/// Return the used parameters and the generated claim & proof.
+/// Convenience function to prove correct execution of the given program.
 pub(crate) fn prove_with_low_security_level(
     program: &Program,
     public_input: PublicInput,
     non_determinism: NonDeterminism<BFieldElement>,
     maybe_profiler: &mut Option<TritonProfiler>,
-) -> (StarkParameters, Claim, Proof) {
+) -> (Stark, Claim, Proof) {
     prof_start!(maybe_profiler, "trace program");
     let (aet, public_output) = program
         .trace_execution(public_input.clone(), non_determinism)
         .unwrap();
     prof_stop!(maybe_profiler, "trace program");
 
-    let parameters = stark_parameters_with_low_security_level();
     let claim = construct_claim(&aet, public_input.individual_tokens, public_output);
 
     prof_start!(maybe_profiler, "prove");
-    let proof = Stark::prove(parameters, &claim, &aet, maybe_profiler).unwrap();
+    let stark = low_security_stark();
+    let proof = stark.prove(&claim, &aet, maybe_profiler).unwrap();
     prof_stop!(maybe_profiler, "prove");
 
-    (parameters, claim, proof)
+    (stark, claim, proof)
 }
 
 pub(crate) fn construct_claim(
@@ -140,24 +138,23 @@ pub(crate) fn construct_claim(
     }
 }
 
-/// Generate STARK parameters with a low security level.
-pub(crate) fn stark_parameters_with_low_security_level() -> StarkParameters {
+pub(crate) fn low_security_stark() -> Stark {
     let security_level = 32;
     let log_expansion_factor = 2;
-    StarkParameters::new(security_level, log_expansion_factor)
+    Stark::new(security_level, log_expansion_factor)
 }
 
 pub(crate) fn construct_master_base_table(
-    parameters: StarkParameters,
+    stark: Stark,
     aet: &AlgebraicExecutionTrace,
 ) -> MasterBaseTable {
     let padded_height = aet.padded_height();
-    let fri = Stark::derive_fri(parameters, padded_height).unwrap();
-    let max_degree = Stark::derive_max_degree(padded_height, parameters.num_trace_randomizers);
+    let fri = stark.derive_fri(padded_height).unwrap();
+    let max_degree = stark.derive_max_degree(padded_height);
     let quotient_domain = Stark::quotient_domain(fri.domain, max_degree);
     MasterBaseTable::new(
         aet,
-        parameters.num_trace_randomizers,
+        stark.num_trace_randomizers,
         quotient_domain,
         fri.domain,
     )

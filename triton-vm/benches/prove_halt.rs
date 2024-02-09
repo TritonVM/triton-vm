@@ -7,7 +7,6 @@ use triton_vm::profiler::TritonProfiler;
 use triton_vm::proof::Claim;
 use triton_vm::stark::Stark;
 use triton_vm::stark::StarkHasher;
-use triton_vm::stark::StarkParameters;
 use triton_vm::triton_program;
 
 /// cargo criterion --bench prove_halt
@@ -15,14 +14,14 @@ fn prove_halt(criterion: &mut Criterion) {
     let program = triton_program!(halt);
     let (aet, output) = program.trace_execution([].into(), [].into()).unwrap();
 
-    let parameters = StarkParameters::default();
+    let stark = Stark::default();
     let claim = Claim {
         input: vec![],
         program_digest: program.hash::<StarkHasher>(),
         output,
     };
     let mut profiler = Some(TritonProfiler::new("Prove Halt"));
-    let proof = Stark::prove(parameters, &claim, &aet, &mut profiler).unwrap();
+    let proof = stark.prove(&claim, &aet, &mut profiler).unwrap();
     let mut profiler = profiler.unwrap();
     profiler.finish();
 
@@ -31,14 +30,14 @@ fn prove_halt(criterion: &mut Criterion) {
     group.sample_size(10);
     group.bench_function(bench_id, |bencher| {
         bencher.iter(|| {
-            let _proof = Stark::prove(parameters, &claim, &aet, &mut None);
+            let _proof = stark.prove(&claim, &aet, &mut None);
         });
     });
     group.finish();
 
     println!("Writing report ...");
     let padded_height = proof.padded_height().unwrap();
-    let fri = Stark::derive_fri(parameters, padded_height).unwrap();
+    let fri = stark.derive_fri(padded_height).unwrap();
     let report = profiler
         .report()
         .with_cycle_count(aet.processor_trace.nrows())

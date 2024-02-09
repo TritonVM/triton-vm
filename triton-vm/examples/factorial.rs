@@ -57,16 +57,16 @@ fn main() {
     // the program was running for.
     //
     // Triton VM's default parameters give a (conjectured) security level of 160 bits.
-    let (parameters, claim, proof) =
+    let (stark, claim, proof) =
         triton_vm::prove_program(&factorial_program, &public_input, &non_determinism).unwrap();
 
-    let verdict = triton_vm::verify(parameters, &claim, &proof);
+    let verdict = triton_vm::verify(stark, &claim, &proof);
     assert!(verdict);
 
     println!("Successfully verified proof.");
     println!("Verifiably correct output:  {:?}", claim.public_output());
 
-    let conjectured_security_level = parameters.security_level;
+    let conjectured_security_level = stark.security_level;
     println!("Conjectured security level is {conjectured_security_level} bits.");
 
     let upper_bound_of_execution_steps = proof.padded_height().unwrap();

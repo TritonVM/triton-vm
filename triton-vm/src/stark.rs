@@ -48,9 +48,11 @@ pub const NUM_QUOTIENT_SEGMENTS: usize = AIR_TARGET_DEGREE as usize;
 
 const NUM_DEEP_CODEWORD_COMPONENTS: usize = 3;
 
-/// All the security-related parameters for the zk-STARK.
+/// The Zero-Knowledge [Scalable Transparent ARgument of Knowledge (STARK)][stark] for Triton VM.
+///
+/// [stark]: https://www.iacr.org/archive/crypto2019/116940201/116940201.pdf
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
-pub struct StarkParameters {
+pub struct Stark {
     /// The conjectured security level in bits. Concretely, the system
     /// - is perfectly complete, and
     /// - has soundness error 2^(-security_level).
@@ -78,7 +80,7 @@ pub struct StarkParameters {
     pub num_combination_codeword_checks: usize,
 }
 
-impl StarkParameters {
+impl Stark {
     pub fn new(security_level: usize, log2_of_fri_expansion_factor: usize) -> Self {
         assert_ne!(
             0, log2_of_fri_expansion_factor,
@@ -97,7 +99,7 @@ impl StarkParameters {
         let num_trace_randomizers = num_combination_codeword_checks
             + num_out_of_domain_rows * x_field_element::EXTENSION_DEGREE;
 
-        StarkParameters {
+        Stark {
             security_level,
             fri_expansion_factor,
             num_trace_randomizers,
@@ -106,31 +108,9 @@ impl StarkParameters {
             num_combination_codeword_checks,
         }
     }
-}
 
-impl Default for StarkParameters {
-    fn default() -> Self {
-        let log_2_of_fri_expansion_factor = 2;
-        let security_level = 160;
-
-        Self::new(security_level, log_2_of_fri_expansion_factor)
-    }
-}
-
-impl<'a> Arbitrary<'a> for StarkParameters {
-    fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
-        let security_level = u.int_in_range(1..=640)?;
-        let log_2_of_fri_expansion_factor = u.int_in_range(1..=8)?;
-        Ok(Self::new(security_level, log_2_of_fri_expansion_factor))
-    }
-}
-
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
-pub struct Stark;
-
-impl Stark {
     pub fn prove(
-        parameters: StarkParameters,
+        &self,
         claim: &Claim,
         aet: &AlgebraicExecutionTrace,
         maybe_profiler: &mut Option<TritonProfiler>,
@@ -142,20 +122,16 @@ impl Stark {
 
         prof_start!(maybe_profiler, "derive additional parameters");
         let padded_height = aet.padded_height();
-        let max_degree = Self::derive_max_degree(padded_height, parameters.num_trace_randomizers);
-        let fri = Self::derive_fri(parameters, padded_height)?;
+        let max_degree = self.derive_max_degree(padded_height);
+        let fri = self.derive_fri(padded_height)?;
         let quotient_domain = Self::quotient_domain(fri.domain, max_degree);
         proof_stream.enqueue(ProofItem::Log2PaddedHeight(padded_height.ilog2()));
         prof_stop!(maybe_profiler, "derive additional parameters");
 
         prof_start!(maybe_profiler, "base tables");
         prof_start!(maybe_profiler, "create", "gen");
-        let mut master_base_table = MasterBaseTable::new(
-            aet,
-            parameters.num_trace_randomizers,
-            quotient_domain,
-            fri.domain,
-        );
+        let mut master_base_table =
+            MasterBaseTable::new(aet, self.num_trace_randomizers, quotient_domain, fri.domain);
         prof_stop!(maybe_profiler, "create");
 
         prof_start!(maybe_profiler, "pad", "gen");
@@ -182,7 +158,7 @@ impl Stark {
 
         prof_start!(maybe_profiler, "extend", "gen");
         let mut master_ext_table =
-            master_base_table.extend(&challenges, parameters.num_randomizer_polynomials);
+            master_base_table.extend(&challenges, self.num_randomizer_polynomials);
         prof_stop!(maybe_profiler, "extend");
 
         prof_start!(maybe_profiler, "randomize trace", "gen");
@@ -435,7 +411,7 @@ impl Stark {
         let revealed_current_row_indices =
             fri.prove(&fri_combination_codeword, &mut proof_stream)?;
         assert_eq!(
-            parameters.num_combination_codeword_checks,
+            self.num_combination_codeword_checks,
             revealed_current_row_indices.len()
         );
         prof_stop!(maybe_profiler, "FRI");
@@ -597,8 +573,8 @@ impl Stark {
     /// Compute the upper bound to use for the maximum degree the quotients given the length of the
     /// trace and the number of trace randomizers.
     /// The degree of the quotients depends on the constraints, _i.e._, the AIR.
-    pub fn derive_max_degree(padded_height: usize, num_trace_randomizers: usize) -> Degree {
-        let interpolant_degree = interpolant_degree(padded_height, num_trace_randomizers);
+    pub fn derive_max_degree(&self, padded_height: usize) -> Degree {
+        let interpolant_degree = interpolant_degree(padded_height, self.num_trace_randomizers);
         let max_constraint_degree_with_origin =
             max_degree_with_origin(interpolant_degree, padded_height);
         let max_constraint_degree = max_constraint_degree_with_origin.degree as u64;
@@ -617,21 +593,17 @@ impl Stark {
     /// In principle, the FRI domain is also influenced by the AIR's degree
     /// (see [`AIR_TARGET_DEGREE`]). However, by segmenting the quotient polynomial into
     /// [`AIR_TARGET_DEGREE`]-many parts, that influence is mitigated.
-    pub fn derive_fri(
-        parameters: StarkParameters,
-        padded_height: usize,
-    ) -> fri::SetupResult<Fri<StarkHasher>> {
-        let interpolant_degree =
-            interpolant_degree(padded_height, parameters.num_trace_randomizers);
+    pub fn derive_fri(&self, padded_height: usize) -> fri::SetupResult<Fri<StarkHasher>> {
+        let interpolant_degree = interpolant_degree(padded_height, self.num_trace_randomizers);
         let interpolant_codeword_length = interpolant_degree as usize + 1;
-        let fri_domain_length = parameters.fri_expansion_factor * interpolant_codeword_length;
+        let fri_domain_length = self.fri_expansion_factor * interpolant_codeword_length;
         let coset_offset = BFieldElement::generator();
         let domain = ArithmeticDomain::of_length(fri_domain_length).with_offset(coset_offset);
 
         Fri::new(
             domain,
-            parameters.fri_expansion_factor,
-            parameters.num_collinearity_checks,
+            self.fri_expansion_factor,
+            self.num_collinearity_checks,
         )
     }
 
@@ -718,7 +690,7 @@ impl Stark {
     }
 
     pub fn verify(
-        parameters: StarkParameters,
+        &self,
         claim: &Claim,
         proof: &Proof,
         maybe_profiler: &mut Option<TritonProfiler>,
@@ -734,7 +706,7 @@ impl Stark {
         prof_start!(maybe_profiler, "derive additional parameters");
         let log_2_padded_height = proof_stream.dequeue()?.try_into_log2_padded_height()?;
         let padded_height = 1 << log_2_padded_height;
-        let fri = Self::derive_fri(parameters, padded_height)?;
+        let fri = self.derive_fri(padded_height)?;
         let merkle_tree_height = fri.domain.length.ilog2() as usize;
         prof_stop!(maybe_profiler, "derive additional parameters");
 
@@ -967,19 +939,19 @@ impl Stark {
         prof_stop!(maybe_profiler, "check leafs");
 
         prof_start!(maybe_profiler, "linear combination");
-        if parameters.num_combination_codeword_checks != revealed_current_row_indices.len() {
+        if self.num_combination_codeword_checks != revealed_current_row_indices.len() {
             return Err(IncorrectNumberOfRowIndices);
         };
-        if parameters.num_combination_codeword_checks != revealed_fri_values.len() {
+        if self.num_combination_codeword_checks != revealed_fri_values.len() {
             return Err(IncorrectNumberOfFRIValues);
         };
-        if parameters.num_combination_codeword_checks != revealed_quotient_segments_elements.len() {
+        if self.num_combination_codeword_checks != revealed_quotient_segments_elements.len() {
             return Err(IncorrectNumberOfQuotientSegmentElements);
         };
-        if parameters.num_combination_codeword_checks != base_table_rows.len() {
+        if self.num_combination_codeword_checks != base_table_rows.len() {
             return Err(IncorrectNumberOfBaseTableRows);
         };
-        if parameters.num_combination_codeword_checks != ext_table_rows.len() {
+        if self.num_combination_codeword_checks != ext_table_rows.len() {
             return Err(IncorrectNumberOfExtTableRows);
         };
 
@@ -1083,6 +1055,23 @@ impl Stark {
     }
 }
 
+impl Default for Stark {
+    fn default() -> Self {
+        let log_2_of_fri_expansion_factor = 2;
+        let security_level = 160;
+
+        Self::new(security_level, log_2_of_fri_expansion_factor)
+    }
+}
+
+impl<'a> Arbitrary<'a> for Stark {
+    fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
+        let security_level = u.int_in_range(1..=640)?;
+        let log_2_of_fri_expansion_factor = u.int_in_range(1..=8)?;
+        Ok(Self::new(security_level, log_2_of_fri_expansion_factor))
+    }
+}
+
 #[cfg(test)]
 pub(crate) mod tests {
     use assert2::assert;
@@ -1151,7 +1140,7 @@ pub(crate) mod tests {
 
     pub(crate) fn master_base_table_for_low_security_level(
         program_and_input: ProgramAndInput,
-    ) -> (StarkParameters, Claim, MasterBaseTable) {
+    ) -> (Stark, Claim, MasterBaseTable) {
         let ProgramAndInput {
             program,
             public_input,
@@ -1163,32 +1152,26 @@ pub(crate) mod tests {
         let (aet, stdout) = program
             .trace_execution(public_input.clone(), non_determinism)
             .unwrap();
-        let parameters = stark_parameters_with_low_security_level();
+        let stark = low_security_stark();
         let claim = construct_claim(&aet, public_input.individual_tokens, stdout);
-        let master_base_table = construct_master_base_table(parameters, &aet);
+        let master_base_table = construct_master_base_table(stark, &aet);
 
-        (parameters, claim, master_base_table)
+        (stark, claim, master_base_table)
     }
 
     pub(crate) fn master_tables_for_low_security_level(
         program_and_input: ProgramAndInput,
-    ) -> (
-        StarkParameters,
-        Claim,
-        MasterBaseTable,
-        MasterExtTable,
-        Challenges,
-    ) {
-        let (parameters, claim, mut master_base_table) =
+    ) -> (Stark, Claim, MasterBaseTable, MasterExtTable, Challenges) {
+        let (stark, claim, mut master_base_table) =
             master_base_table_for_low_security_level(program_and_input);
 
         let challenges = Challenges::deterministic_placeholder(Some(&claim));
         master_base_table.pad();
         let master_ext_table =
-            master_base_table.extend(&challenges, parameters.num_randomizer_polynomials);
+            master_base_table.extend(&challenges, stark.num_randomizer_polynomials);
 
         (
-            parameters,
+            stark,
             claim,
             master_base_table,
             master_ext_table,
@@ -2200,21 +2183,21 @@ pub(crate) mod tests {
     #[test]
     fn triton_prove_verify_simple_program() {
         let program_with_input = test_program_hash_nop_nop_lt();
-        let (parameters, claim, proof) = prove_with_low_security_level(
+        let (stark, claim, proof) = prove_with_low_security_level(
             &program_with_input.program,
             program_with_input.public_input(),
             program_with_input.non_determinism(),
             &mut None,
         );
 
-        assert!(let Ok(()) = Stark::verify(parameters, &claim, &proof, &mut None));
+        assert!(let Ok(()) = stark.verify(&claim, &proof, &mut None));
     }
 
     #[test]
     fn triton_prove_verify_halt() {
         let code_with_input = test_program_for_halt();
         let mut profiler = Some(TritonProfiler::new("Prove Halt"));
-        let (parameters, claim, proof) = prove_with_low_security_level(
+        let (stark, claim, proof) = prove_with_low_security_level(
             &code_with_input.program,
             code_with_input.public_input(),
             code_with_input.non_determinism(),
@@ -2223,10 +2206,10 @@ pub(crate) mod tests {
         let mut profiler = profiler.unwrap();
         profiler.finish();
 
-        assert!(let Ok(()) = Stark::verify(parameters, &claim, &proof, &mut None));
+        assert!(let Ok(()) = stark.verify(&claim, &proof, &mut None));
 
         let_assert!(Ok(padded_height) = proof.padded_height());
-        let fri = Stark::derive_fri(parameters, padded_height).unwrap();
+        let fri = stark.derive_fri(padded_height).unwrap();
         let report = profiler
             .report()
             .with_padded_height(padded_height)
@@ -2240,17 +2223,17 @@ pub(crate) mod tests {
         let secret_in = [].into();
 
         let mut profiler = Some(TritonProfiler::new("Prove Fib 100"));
-        let (parameters, claim, proof) =
+        let (stark, claim, proof) =
             prove_with_low_security_level(&FIBONACCI_SEQUENCE, stdin, secret_in, &mut profiler);
         let mut profiler = profiler.unwrap();
         profiler.finish();
 
         println!("between prove and verify");
 
-        assert!(let Ok(()) = Stark::verify(parameters, &claim, &proof, &mut None));
+        assert!(let Ok(()) = stark.verify(&claim, &proof, &mut None));
 
         let_assert!(Ok(padded_height) = proof.padded_height());
-        let fri = Stark::derive_fri(parameters, padded_height).unwrap();
+        let fri = stark.derive_fri(padded_height).unwrap();
         let report = profiler
             .report()
             .with_padded_height(padded_height)
@@ -2263,9 +2246,9 @@ pub(crate) mod tests {
         for (fib_seq_idx, fib_seq_val) in [(0, 1), (7, 21), (11, 144)] {
             let stdin = vec![fib_seq_idx].into();
             let secret_in = [].into();
-            let (parameters, claim, proof) =
+            let (stark, claim, proof) =
                 prove_with_low_security_level(&FIBONACCI_SEQUENCE, stdin, secret_in, &mut None);
-            assert!(let Ok(()) = Stark::verify(parameters, &claim, &proof, &mut None));
+            assert!(let Ok(()) = stark.verify(&claim, &proof, &mut None));
 
             assert!(vec![fib_seq_val] == claim.public_output());
         }
@@ -2281,7 +2264,7 @@ pub(crate) mod tests {
     #[test]
     fn triton_prove_verify_many_u32_operations() {
         let mut profiler = Some(TritonProfiler::new("Prove Many U32 Ops"));
-        let (parameters, claim, proof) = prove_with_low_security_level(
+        let (stark, claim, proof) = prove_with_low_security_level(
             &PROGRAM_WITH_MANY_U32_INSTRUCTIONS,
             [].into(),
             [].into(),
@@ -2289,10 +2272,10 @@ pub(crate) mod tests {
         );
         let mut profiler = profiler.unwrap();
         profiler.finish();
-        assert!(let Ok(()) = Stark::verify(parameters, &claim, &proof, &mut None));
+        assert!(let Ok(()) = stark.verify(&claim, &proof, &mut None));
 
         let_assert!(Ok(padded_height) = proof.padded_height());
-        let fri = Stark::derive_fri(parameters, padded_height).unwrap();
+        let fri = stark.derive_fri(padded_height).unwrap();
         let report = profiler
             .report()
             .with_padded_height(padded_height)
@@ -2302,11 +2285,11 @@ pub(crate) mod tests {
 
     #[proptest]
     fn verifying_arbitrary_proof_does_not_panic(
-        #[strategy(arb())] parameters: StarkParameters,
+        #[strategy(arb())] stark: Stark,
         #[strategy(arb())] claim: Claim,
         #[strategy(arb())] proof: Proof,
     ) {
-        let _ = Stark::verify(parameters, &claim, &proof, &mut None);
+        let _ = stark.verify(&claim, &proof, &mut None);
     }
 
     #[proptest]

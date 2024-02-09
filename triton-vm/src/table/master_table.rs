@@ -1211,7 +1211,7 @@ mod tests {
     #[test]
     fn ext_table_width_is_correct() {
         let program = ProgramAndInput::without_input(triton_program!(halt));
-        let (parameters, _, _, master_ext_table, _) = master_tables_for_low_security_level(program);
+        let (stark, _, _, master_ext_table, _) = master_tables_for_low_security_level(program);
 
         assert_eq!(
             program_table::EXT_WIDTH,
@@ -1255,7 +1255,7 @@ mod tests {
         );
         // use some domain-specific knowledge to also check for the randomizer columns
         assert_eq!(
-            parameters.num_randomizer_polynomials,
+            stark.num_randomizer_polynomials,
             master_ext_table
                 .randomized_trace_table()
                 .slice(s![.., EXT_DEGREE_LOWERING_TABLE_END..])
