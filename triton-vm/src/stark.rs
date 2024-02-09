@@ -1816,12 +1816,12 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn triton_table_constraints_evaluate_to_zero_on_halt() {
+    fn constraints_evaluate_to_zero_on_halt() {
         triton_constraints_evaluate_to_zero(test_program_for_halt());
     }
 
     #[test]
-    fn triton_table_constraints_evaluate_to_zero_on_fibonacci() {
+    fn constraints_evaluate_to_zero_on_fibonacci() {
         let source_code_and_input = ProgramAndInput {
             program: FIBONACCI_SEQUENCE.clone(),
             public_input: vec![100],
@@ -1831,7 +1831,7 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn triton_table_constraints_evaluate_to_zero_on_big_mmr_snippet() {
+    fn constraints_evaluate_to_zero_on_big_mmr_snippet() {
         let source_code_and_input = ProgramAndInput::without_input(
             CALCULATE_NEW_MMR_PEAKS_FROM_APPEND_WITH_SAFE_LISTS.clone(),
         );
@@ -2177,7 +2177,7 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn triton_prove_verify_simple_program() {
+    fn prove_verify_simple_program() {
         let program_with_input = test_program_hash_nop_nop_lt();
         let (stark, claim, proof) = prove_with_low_security_level(
             &program_with_input.program,
@@ -2190,7 +2190,7 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn triton_prove_verify_halt() {
+    fn prove_verify_halt() {
         let code_with_input = test_program_for_halt();
         let mut profiler = Some(TritonProfiler::new("Prove Halt"));
         let (stark, claim, proof) = prove_with_low_security_level(
@@ -2258,7 +2258,7 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn triton_prove_verify_many_u32_operations() {
+    fn prove_verify_many_u32_operations() {
         let mut profiler = Some(TritonProfiler::new("Prove Many U32 Ops"));
         let (stark, claim, proof) = prove_with_low_security_level(
             &PROGRAM_WITH_MANY_U32_INSTRUCTIONS,

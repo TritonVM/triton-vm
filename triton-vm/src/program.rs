@@ -905,7 +905,7 @@ mod tests {
     }
 
     #[test]
-    fn test_creating_program_from_code() {
+    fn create_program_from_code() {
         let element_3 = thread_rng().gen_range(0_u64..BFieldElement::P);
         let element_2 = 1337_usize;
         let element_1 = "17";
@@ -939,7 +939,7 @@ mod tests {
     }
 
     #[test]
-    fn test_profile() {
+    fn profile_can_be_created_and_agrees_with_regular_vm_run() {
         let program = CALCULATE_NEW_MMR_PEAKS_FROM_APPEND_WITH_SAFE_LISTS.clone();
         let (profile_output, profile) = program.profile([].into(), [].into()).unwrap();
         let mut vm_state = VMState::new(&program, [].into(), [].into());
@@ -954,7 +954,7 @@ mod tests {
     }
 
     #[test]
-    fn test_profile_with_open_calls() {
+    fn open_call_instructions_are_marked_in_its_profile() {
         let program = triton_program! {
             push 2 call outer_fn
             outer_fn:

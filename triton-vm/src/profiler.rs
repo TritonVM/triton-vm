@@ -681,7 +681,7 @@ mod tests {
     }
 
     #[test]
-    fn test_sanity() {
+    fn sanity() {
         let mut rng = rand::thread_rng();
         let mut stack = vec![];
         let steps = 100;

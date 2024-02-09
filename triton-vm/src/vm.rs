@@ -1745,7 +1745,7 @@ pub(crate) mod tests {
         ProgramAndInput::without_input(program)
     }
 
-    // Sanity check for the relatively complex property-based test for random RAM access.
+    /// Sanity check for the relatively complex property-based test for random RAM access.
     #[test]
     fn run_dont_prove_property_based_test_for_random_ram_access() {
         let source_code_and_input = property_based_test_program_for_random_ram_access();
