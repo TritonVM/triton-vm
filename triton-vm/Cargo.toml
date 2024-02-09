@@ -1,9 +1,9 @@
 [package]
 name = "triton-vm"
 description = """
-A virtual machine that comes with Algebraic Execution Tables (AET) and Arithmetic Intermediate Representations (AIR)
-for use in combination with a STARK proof system to allow proving correct execution of arbitrary programs
-in zero-knowledge.
+A virtual machine that comes with Algebraic Execution Tables (AET) and Arithmetic Intermediate
+Representations (AIR) for use in combination with a STARK proof system to allow proving correct
+execution of arbitrary programs in zero-knowledge.
 """
 keywords = ["zero-knowledge", "STARK", "virtual-machine", "recursive"]
 categories = ["cryptography", "mathematics"]
