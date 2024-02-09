@@ -28,6 +28,7 @@ use crate::profiler::prof_stop;
 use crate::profiler::TritonProfiler;
 use crate::stark::MTMaker;
 use crate::stark::StarkHasher;
+use crate::stark::NUM_RANDOMIZER_POLYNOMIALS;
 use crate::table::cascade_table::CascadeTable;
 use crate::table::challenges::Challenges;
 use crate::table::degree_lowering_table::DegreeLoweringTable;
@@ -79,8 +80,7 @@ pub const NUM_BASE_COLUMNS: usize = program_table::BASE_WIDTH
     + u32_table::BASE_WIDTH
     + degree_lowering_table::BASE_WIDTH;
 
-/// The total number of extension columns across all tables.
-pub const NUM_EXT_COLUMNS: usize = program_table::EXT_WIDTH
+const NUM_EXT_COLUMNS_WITHOUT_RANDOMIZER_POLYS: usize = program_table::EXT_WIDTH
     + processor_table::EXT_WIDTH
     + op_stack_table::EXT_WIDTH
     + ram_table::EXT_WIDTH
@@ -90,6 +90,11 @@ pub const NUM_EXT_COLUMNS: usize = program_table::EXT_WIDTH
     + lookup_table::EXT_WIDTH
     + u32_table::EXT_WIDTH
     + degree_lowering_table::EXT_WIDTH;
+
+/// The total number of extension columns across all tables.
+/// Includes the columns required for [randomizer polynomials](NUM_RANDOMIZER_POLYNOMIALS).
+pub const NUM_EXT_COLUMNS: usize =
+    NUM_EXT_COLUMNS_WITHOUT_RANDOMIZER_POLYS + NUM_RANDOMIZER_POLYNOMIALS;
 
 /// The total number of columns across all tables.
 pub const NUM_COLUMNS: usize = NUM_BASE_COLUMNS + NUM_EXT_COLUMNS;
@@ -345,7 +350,6 @@ pub struct MasterBaseTable {
 /// See [`MasterTable`].
 pub struct MasterExtTable {
     pub num_trace_randomizers: usize,
-    pub num_randomizer_polynomials: usize,
 
     trace_domain: ArithmeticDomain,
     randomized_trace_domain: ArithmeticDomain,
@@ -743,22 +747,16 @@ impl MasterBaseTable {
     /// Create a `MasterExtTable` from a `MasterBaseTable` by `.extend()`ing each individual base
     /// table. The `.extend()` for each table is specific to that table, but always involves
     /// adding some number of columns.
-    pub fn extend(
-        &self,
-        challenges: &Challenges,
-        num_randomizer_polynomials: usize,
-    ) -> MasterExtTable {
+    pub fn extend(&self, challenges: &Challenges) -> MasterExtTable {
         // randomizer polynomials
         let num_rows = self.randomized_trace_table().nrows();
-        let num_columns = NUM_EXT_COLUMNS + num_randomizer_polynomials;
-        let mut randomized_trace_extension_table = Array2::zeros([num_rows, num_columns].f());
+        let mut randomized_trace_extension_table = Array2::zeros([num_rows, NUM_EXT_COLUMNS].f());
         randomized_trace_extension_table
-            .slice_mut(s![.., NUM_EXT_COLUMNS..])
+            .slice_mut(s![.., NUM_EXT_COLUMNS_WITHOUT_RANDOMIZER_POLYS..])
             .par_mapv_inplace(|_| random::<XFieldElement>());
 
         let mut master_ext_table = MasterExtTable {
             num_trace_randomizers: self.num_trace_randomizers,
-            num_randomizer_polynomials,
             trace_domain: self.trace_domain(),
             randomized_trace_domain: self.randomized_trace_domain(),
             quotient_domain: self.quotient_domain(),
@@ -1211,7 +1209,7 @@ mod tests {
     #[test]
     fn ext_table_width_is_correct() {
         let program = ProgramAndInput::without_input(triton_program!(halt));
-        let (stark, _, _, master_ext_table, _) = master_tables_for_low_security_level(program);
+        let (_, _, _, master_ext_table, _) = master_tables_for_low_security_level(program);
 
         assert_eq!(
             program_table::EXT_WIDTH,
@@ -1255,7 +1253,7 @@ mod tests {
         );
         // use some domain-specific knowledge to also check for the randomizer columns
         assert_eq!(
-            stark.num_randomizer_polynomials,
+            NUM_RANDOMIZER_POLYNOMIALS,
             master_ext_table
                 .randomized_trace_table()
                 .slice(s![.., EXT_DEGREE_LOWERING_TABLE_END..])
@@ -1532,21 +1530,16 @@ mod tests {
 
     #[test]
     fn master_ext_table_mut() {
-        let num_randomizer_polynomials = 3;
-
         let trace_domain = ArithmeticDomain::of_length(1 << 8);
         let randomized_trace_domain = ArithmeticDomain::of_length(1 << 9);
         let quotient_domain = ArithmeticDomain::of_length(1 << 10);
         let fri_domain = ArithmeticDomain::of_length(1 << 11);
 
-        let randomized_trace_table = Array2::zeros((
-            randomized_trace_domain.length,
-            NUM_EXT_COLUMNS + num_randomizer_polynomials,
-        ));
+        let randomized_trace_table =
+            Array2::zeros((randomized_trace_domain.length, NUM_EXT_COLUMNS));
 
         let mut master_table = MasterExtTable {
             num_trace_randomizers: 16,
-            num_randomizer_polynomials,
             trace_domain,
             randomized_trace_domain,
             quotient_domain,

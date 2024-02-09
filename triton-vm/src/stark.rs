@@ -46,6 +46,10 @@ pub type MTMaker = CpuParallel;
 /// Helps keeping the FRI domain small.
 pub const NUM_QUOTIENT_SEGMENTS: usize = AIR_TARGET_DEGREE as usize;
 
+/// The number of randomizer polynomials over the [extension field](XFieldElement) used in the
+/// [`STARK`](Stark). Integral for achieving zero-knowledge in [FRI](Fri).
+pub const NUM_RANDOMIZER_POLYNOMIALS: usize = 1;
+
 const NUM_DEEP_CODEWORD_COMPONENTS: usize = 3;
 
 /// The Zero-Knowledge [Scalable Transparent ARgument of Knowledge (STARK)][stark] for Triton VM.
@@ -67,10 +71,6 @@ pub struct Stark {
     /// zk-STARK.
     pub num_trace_randomizers: usize,
 
-    /// The number of randomizer polynomials. A single randomizer polynomial should be sufficient
-    /// in all cases. It is integral for achieving zero-knowledge for the FRI part of the zk-STARK.
-    pub num_randomizer_polynomials: usize,
-
     /// The number of collinearity checks to perform in FRI.
     pub num_collinearity_checks: usize,
 
@@ -87,7 +87,6 @@ impl Stark {
             "FRI expansion factor must be greater than one."
         );
 
-        let num_randomizer_polynomials = 1; // over the XField
         let fri_expansion_factor = 1 << log2_of_fri_expansion_factor;
         let num_collinearity_checks = security_level / log2_of_fri_expansion_factor;
 
@@ -103,7 +102,6 @@ impl Stark {
             security_level,
             fri_expansion_factor,
             num_trace_randomizers,
-            num_randomizer_polynomials,
             num_collinearity_checks,
             num_combination_codeword_checks,
         }
@@ -157,8 +155,7 @@ impl Stark {
         prof_stop!(maybe_profiler, "Fiat-Shamir");
 
         prof_start!(maybe_profiler, "extend", "gen");
-        let mut master_ext_table =
-            master_base_table.extend(&challenges, self.num_randomizer_polynomials);
+        let mut master_ext_table = master_base_table.extend(&challenges);
         prof_stop!(maybe_profiler, "extend");
 
         prof_start!(maybe_profiler, "randomize trace", "gen");
@@ -1167,8 +1164,7 @@ pub(crate) mod tests {
 
         let challenges = Challenges::deterministic_placeholder(Some(&claim));
         master_base_table.pad();
-        let master_ext_table =
-            master_base_table.extend(&challenges, stark.num_randomizer_polynomials);
+        let master_ext_table = master_base_table.extend(&challenges);
 
         (
             stark,
