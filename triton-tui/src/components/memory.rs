@@ -372,6 +372,8 @@ mod tests {
     use test_strategy::proptest;
     use triton_vm::prelude::*;
 
+    use crate::args::TuiArgs;
+
     use super::*;
 
     /// Since `TextArea` is not `Arbitrary`, implement `Arbitrary` for `Memory` manually.
@@ -407,7 +409,7 @@ mod tests {
         };
 
         vm_state.program = program.instructions.clone();
-        let mut complete_state = TritonVMState::new(&Default::default()).unwrap();
+        let mut complete_state = TritonVMState::new(&TuiArgs::default()).unwrap();
         complete_state.vm_state = vm_state;
         complete_state.program = program;
 

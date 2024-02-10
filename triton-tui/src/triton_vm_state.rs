@@ -157,7 +157,7 @@ impl TritonVMState {
         }
     }
 
-    fn execute(&mut self, execute: Execute) {
+    fn execute(&mut self, execute: &Execute) {
         self.num_cycles_since_user_action = 0;
         self.record_undo_information();
         match execute {
@@ -279,7 +279,7 @@ impl Component for TritonVMState {
 
     fn update(&mut self, action: Action) -> Result<Option<Action>> {
         match action {
-            Action::Execute(execute) => self.execute(execute),
+            Action::Execute(ref execute) => self.execute(execute),
             Action::Undo => self.program_undo(),
             _ => (),
         }
@@ -304,7 +304,7 @@ mod tests {
     fn presumed_top_of_stack_is_actually_top_of_stack(
         #[strategy(vec(arb(), NUM_OP_STACK_REGISTERS..100))] stack: Vec<BFieldElement>,
     ) {
-        let mut triton_vm_state = TritonVMState::new(&Default::default()).unwrap();
+        let mut triton_vm_state = TritonVMState::new(&TuiArgs::default()).unwrap();
         triton_vm_state.vm_state.op_stack.stack = stack.clone();
         let top_of_stack = triton_vm_state.top_of_stack();
         prop_assert_eq!(top_of_stack[0], stack[stack.len() - 1]);

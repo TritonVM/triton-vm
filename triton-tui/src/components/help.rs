@@ -79,7 +79,7 @@ impl Help {
     }
 
     fn centered_rect<const N: usize>(area: Rect, text: &[String; N]) -> Rect {
-        let max_line_length = text.iter().map(|line| line.len()).max().unwrap_or(0) as u16;
+        let max_line_length = text.iter().map(String::len).max().unwrap_or(0) as u16;
         let layout = Layout::horizontal([max_line_length]);
         let [horizontally_centered] = layout.flex(Flex::Center).areas(area);
 
@@ -97,11 +97,13 @@ mod tests {
     use ratatui::backend::TestBackend;
     use test_strategy::proptest;
 
+    use crate::args::TuiArgs;
+
     use super::*;
 
     #[proptest]
     fn render(#[strategy(arb())] mut help: Help) {
-        let state = TritonVMState::new(&Default::default()).unwrap();
+        let state = TritonVMState::new(&TuiArgs::default()).unwrap();
 
         let backend = TestBackend::new(150, 50);
         let mut terminal = Terminal::new(backend)?;

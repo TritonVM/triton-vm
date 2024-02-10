@@ -110,7 +110,7 @@ impl AlgebraicExecutionTrace {
             self.lookup_table_length(),
             self.u32_table_length(),
         ];
-        let max_height = relevant_table_heights.into_iter().max().unwrap();
+        let max_height = relevant_table_heights.into_iter().max().unwrap_or(0);
         max_height.next_power_of_two()
     }
 
@@ -202,16 +202,16 @@ impl AlgebraicExecutionTrace {
         1 << 8
     }
 
+    /// # Panics
+    ///
+    /// Panics if the table length exceeds [`u32::MAX`].
     pub fn u32_table_length(&self) -> usize {
-        self.u32_entries
-            .keys()
-            .map(|entry| entry.table_length_contribution())
-            .sum::<u32>()
-            .try_into()
-            .unwrap()
+        let entry_len = U32TableEntry::table_length_contribution;
+        let len = self.u32_entries.keys().map(entry_len).sum::<u32>();
+        len.try_into().unwrap()
     }
 
-    pub fn record_state(&mut self, state: &VMState) -> Result<(), InstructionError> {
+    pub(crate) fn record_state(&mut self, state: &VMState) -> Result<(), InstructionError> {
         self.record_instruction_lookup(state.instruction_pointer)?;
         self.append_state_to_processor_trace(state);
         Ok(())
@@ -234,7 +234,7 @@ impl AlgebraicExecutionTrace {
             .unwrap()
     }
 
-    pub fn record_co_processor_call(&mut self, co_processor_call: CoProcessorCall) {
+    pub(crate) fn record_co_processor_call(&mut self, co_processor_call: CoProcessorCall) {
         match co_processor_call {
             Tip5Trace(Instruction::Hash, trace) => self.append_hash_trace(*trace),
             SpongeStateReset => self.append_initial_sponge_state(),
@@ -245,7 +245,7 @@ impl AlgebraicExecutionTrace {
         }
     }
 
-    pub fn append_hash_trace(&mut self, trace: PermutationTrace) {
+    fn append_hash_trace(&mut self, trace: PermutationTrace) {
         self.increase_lookup_multiplicities(trace);
         let mut hash_trace_addendum = HashTable::trace_to_table_rows(trace);
         hash_trace_addendum
@@ -294,7 +294,7 @@ impl AlgebraicExecutionTrace {
     /// Given one row of the hash function's permutation trace, increase the multiplicities of the
     /// relevant entries in the cascade table and/or the lookup table.
     fn increase_lookup_multiplicities_for_row(&mut self, row: &[BFieldElement; tip5::STATE_SIZE]) {
-        for &state_element in row[0..tip5::NUM_SPLIT_AND_LOOKUP].iter() {
+        for &state_element in &row[0..tip5::NUM_SPLIT_AND_LOOKUP] {
             self.increase_lookup_multiplicities_for_state_element(state_element);
         }
     }

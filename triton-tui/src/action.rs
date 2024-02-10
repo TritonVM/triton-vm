@@ -118,7 +118,7 @@ impl<'de> Deserialize<'de> for Action {
                     "HideHelpScreen" => Ok(Action::HideHelpScreen),
 
                     mode if mode.starts_with("Mode::") => Self::parse_mode(mode),
-                    data if data.starts_with("Error(") => Self::parse_error(data),
+                    data if data.starts_with("Error(") => Ok(Self::parse_error(data)),
                     data if data.starts_with("Resize(") => Self::parse_resize(data),
                     _ => Err(E::custom(format!("Unknown Action variant: {value}"))),
                 }
@@ -138,12 +138,9 @@ impl<'de> Deserialize<'de> for Action {
                 Ok(Action::Mode(mode))
             }
 
-            fn parse_error<E>(data: &str) -> Result<Action, E>
-            where
-                E: Error,
-            {
+            fn parse_error(data: &str) -> Action {
                 let error_msg = data.trim_start_matches("Error(").trim_end_matches(')');
-                Ok(Action::Error(error_msg.to_string()))
+                Action::Error(error_msg.to_string())
             }
 
             fn parse_resize<E>(data: &str) -> Result<Action, E>
@@ -155,13 +152,13 @@ impl<'de> Deserialize<'de> for Action {
                     .trim_end_matches(')')
                     .split(',')
                     .collect();
-                if parts.len() == 2 {
-                    let width: u16 = parts[0].trim().parse().map_err(E::custom)?;
-                    let height: u16 = parts[1].trim().parse().map_err(E::custom)?;
-                    Ok(Action::Resize(width, height))
-                } else {
-                    Err(E::custom(format!("Invalid Resize format: {data}")))
-                }
+                let [width, height] = parts[..] else {
+                    return Err(E::custom(format!("Invalid Resize format: {data}")));
+                };
+
+                let width: u16 = width.trim().parse().map_err(E::custom)?;
+                let height: u16 = height.trim().parse().map_err(E::custom)?;
+                Ok(Action::Resize(width, height))
             }
         }
 

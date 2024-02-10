@@ -262,130 +262,31 @@ fn generate_constraint_code(constraints: Constraints) -> TokenStream {
     let (term_constraint_degrees, term_constraints_bfe, term_constraints_xfe) =
         tokenize_circuits(&mut term_constraint_circuits);
 
-    quote!(
-    use ndarray::ArrayView1;
-    use twenty_first::prelude::BFieldElement;
-    use twenty_first::prelude::XFieldElement;
-    use twenty_first::shared_math::mpolynomial::Degree;
+    let imports = generate_imports();
+    let evaluable_over_base_field = generate_evaluable_implementation_over_field(
+        &init_constraints_bfe,
+        &cons_constraints_bfe,
+        &tran_constraints_bfe,
+        &term_constraints_bfe,
+        "BFieldElement",
+    );
+    let evaluable_over_ext_field = generate_evaluable_implementation_over_field(
+        &init_constraints_xfe,
+        &cons_constraints_xfe,
+        &tran_constraints_xfe,
+        &term_constraints_xfe,
+        "XFieldElement",
+    );
 
-    use crate::table::challenges::Challenges;
-    use crate::table::challenges::ChallengeId::*;
-    use crate::table::extension_table::Evaluable;
-    use crate::table::extension_table::Quotientable;
-    use crate::table::master_table::MasterExtTable;
-
-    // This file has been auto-generated. Any modifications _will_ be lost.
-    // To re-generate, execute:
-    // `cargo run --bin constraint-evaluation-generator`
-    impl Evaluable<BFieldElement> for MasterExtTable {
-        #[inline]
-        #[allow(unused_variables)]
-        fn evaluate_initial_constraints(
-            base_row: ArrayView1<BFieldElement>,
-            ext_row: ArrayView1<XFieldElement>,
-            challenges: &Challenges,
-        ) -> Vec<XFieldElement> {
-            #init_constraints_bfe
-        }
-
-        #[inline]
-        #[allow(unused_variables)]
-        fn evaluate_consistency_constraints(
-            base_row: ArrayView1<BFieldElement>,
-            ext_row: ArrayView1<XFieldElement>,
-            challenges: &Challenges,
-        ) -> Vec<XFieldElement> {
-            #cons_constraints_bfe
-        }
-
-        #[inline]
-        #[allow(unused_variables)]
-        fn evaluate_transition_constraints(
-            current_base_row: ArrayView1<BFieldElement>,
-            current_ext_row: ArrayView1<XFieldElement>,
-            next_base_row: ArrayView1<BFieldElement>,
-            next_ext_row: ArrayView1<XFieldElement>,
-            challenges: &Challenges,
-        ) -> Vec<XFieldElement> {
-            #tran_constraints_bfe
-        }
-
-        #[inline]
-        #[allow(unused_variables)]
-        fn evaluate_terminal_constraints(
-            base_row: ArrayView1<BFieldElement>,
-            ext_row: ArrayView1<XFieldElement>,
-            challenges: &Challenges,
-        ) -> Vec<XFieldElement> {
-            #term_constraints_bfe
-        }
-    }
-
-    impl Evaluable<XFieldElement> for MasterExtTable {
-        #[inline]
-        #[allow(unused_variables)]
-        fn evaluate_initial_constraints(
-            base_row: ArrayView1<XFieldElement>,
-            ext_row: ArrayView1<XFieldElement>,
-            challenges: &Challenges,
-        ) -> Vec<XFieldElement> {
-            #init_constraints_xfe
-        }
-
-        #[inline]
-        #[allow(unused_variables)]
-        fn evaluate_consistency_constraints(
-            base_row: ArrayView1<XFieldElement>,
-            ext_row: ArrayView1<XFieldElement>,
-            challenges: &Challenges,
-        ) -> Vec<XFieldElement> {
-            #cons_constraints_xfe
-        }
-
-        #[inline]
-        #[allow(unused_variables)]
-        fn evaluate_transition_constraints(
-            current_base_row: ArrayView1<XFieldElement>,
-            current_ext_row: ArrayView1<XFieldElement>,
-            next_base_row: ArrayView1<XFieldElement>,
-            next_ext_row: ArrayView1<XFieldElement>,
-            challenges: &Challenges,
-        ) -> Vec<XFieldElement> {
-            #tran_constraints_xfe
-        }
-
-        #[inline]
-        #[allow(unused_variables)]
-        fn evaluate_terminal_constraints(
-            base_row: ArrayView1<XFieldElement>,
-            ext_row: ArrayView1<XFieldElement>,
-            challenges: &Challenges,
-        ) -> Vec<XFieldElement> {
-            #term_constraints_xfe
-        }
-    }
-
+    let quotientable = quote!(
     impl Quotientable for MasterExtTable {
-        fn num_initial_quotients() -> usize {
-            #num_init_constraints
-        }
-
-        fn num_consistency_quotients() -> usize {
-            #num_cons_constraints
-        }
-
-        fn num_transition_quotients() -> usize {
-            #num_tran_constraints
-        }
-
-        fn num_terminal_quotients() -> usize {
-            #num_term_constraints
-        }
+        fn num_initial_quotients() -> usize { #num_init_constraints }
+        fn num_consistency_quotients() -> usize { #num_cons_constraints }
+        fn num_transition_quotients() -> usize { #num_tran_constraints }
+        fn num_terminal_quotients() -> usize { #num_term_constraints }
 
         #[allow(unused_variables)]
-        fn initial_quotient_degree_bounds(
-            interpolant_degree: Degree,
-        ) -> Vec<Degree> {
+        fn initial_quotient_degree_bounds(interpolant_degree: Degree) -> Vec<Degree> {
             let zerofier_degree = 1;
             [#init_constraint_degrees].to_vec()
         }
@@ -409,11 +310,88 @@ fn generate_constraint_code(constraints: Constraints) -> TokenStream {
         }
 
         #[allow(unused_variables)]
-        fn terminal_quotient_degree_bounds(
-            interpolant_degree: Degree,
-        ) -> Vec<Degree> {
+        fn terminal_quotient_degree_bounds(interpolant_degree: Degree) -> Vec<Degree> {
             let zerofier_degree = 1;
             [#term_constraint_degrees].to_vec()
+        }
+    }
+    );
+
+    quote!(
+        // This file has been auto-generated. Any modifications _will_ be lost.
+        // To re-generate, execute:
+        // `cargo run --bin constraint-evaluation-generator`
+        #imports
+        #evaluable_over_base_field
+        #evaluable_over_ext_field
+        #quotientable
+    )
+}
+
+fn generate_imports() -> TokenStream {
+    quote!(
+        use ndarray::ArrayView1;
+        use twenty_first::prelude::BFieldElement;
+        use twenty_first::prelude::XFieldElement;
+        use twenty_first::shared_math::mpolynomial::Degree;
+
+        use crate::table::challenges::Challenges;
+        use crate::table::challenges::ChallengeId::*;
+        use crate::table::extension_table::Evaluable;
+        use crate::table::extension_table::Quotientable;
+        use crate::table::master_table::MasterExtTable;
+    )
+}
+
+fn generate_evaluable_implementation_over_field(
+    init_constraints: &TokenStream,
+    cons_constraints: &TokenStream,
+    tran_constraints: &TokenStream,
+    term_constraints: &TokenStream,
+    field: &str,
+) -> TokenStream {
+    quote!(
+    impl Evaluable<#field> for MasterExtTable {
+        #[inline]
+        #[allow(unused_variables)]
+        fn evaluate_initial_constraints(
+            base_row: ArrayView1<#field>,
+            ext_row: ArrayView1<XFieldElement>,
+            challenges: &Challenges,
+        ) -> Vec<XFieldElement> {
+            #init_constraints
+        }
+
+        #[inline]
+        #[allow(unused_variables)]
+        fn evaluate_consistency_constraints(
+            base_row: ArrayView1<#field>,
+            ext_row: ArrayView1<XFieldElement>,
+            challenges: &Challenges,
+        ) -> Vec<XFieldElement> {
+            #cons_constraints
+        }
+
+        #[inline]
+        #[allow(unused_variables)]
+        fn evaluate_transition_constraints(
+            current_base_row: ArrayView1<#field>,
+            current_ext_row: ArrayView1<XFieldElement>,
+            next_base_row: ArrayView1<#field>,
+            next_ext_row: ArrayView1<XFieldElement>,
+            challenges: &Challenges,
+        ) -> Vec<XFieldElement> {
+            #tran_constraints
+        }
+
+        #[inline]
+        #[allow(unused_variables)]
+        fn evaluate_terminal_constraints(
+            base_row: ArrayView1<#field>,
+            ext_row: ArrayView1<XFieldElement>,
+            challenges: &Challenges,
+        ) -> Vec<XFieldElement> {
+            #term_constraints
         }
     }
     )
@@ -423,7 +401,10 @@ fn generate_constraint_code(constraints: Constraints) -> TokenStream {
 fn consume<II: InputIndicator>(
     constraints: Vec<ConstraintCircuitMonad<II>>,
 ) -> Vec<ConstraintCircuit<II>> {
-    constraints.into_iter().map(|c| c.consume()).collect()
+    constraints
+        .into_iter()
+        .map(ConstraintCircuitMonad::consume)
+        .collect()
 }
 
 /// Given a slice of constraint circuits, return a tuple of [`TokenStream`]s corresponding to code
@@ -447,7 +428,7 @@ fn tokenize_circuits<II: InputIndicator>(
     // Get all unique reference counts.
     let mut visited_counters = constraint_circuits
         .iter()
-        .flat_map(|constraint| constraint.all_visited_counters())
+        .flat_map(ConstraintCircuit::all_visited_counters)
         .collect_vec();
     visited_counters.sort_unstable();
     visited_counters.dedup();
@@ -596,8 +577,8 @@ fn declare_single_node_with_visit_count<II: InputIndicator>(
 /// a value from the codewords. Otherwise returns the ID of the circuit.
 fn get_binding_name<II: InputIndicator>(circuit: &ConstraintCircuit<II>) -> TokenStream {
     match &circuit.expression {
-        CircuitExpression::BConstant(bfe) => tokenize_bfe(bfe),
-        CircuitExpression::XConstant(xfe) => tokenize_xfe(xfe),
+        CircuitExpression::BConstant(bfe) => tokenize_bfe(*bfe),
+        CircuitExpression::XConstant(xfe) => tokenize_xfe(*xfe),
         CircuitExpression::Input(idx) => quote!(#idx),
         CircuitExpression::Challenge(challenge) => {
             let challenge_ident = format_ident!("{challenge}");
@@ -610,15 +591,15 @@ fn get_binding_name<II: InputIndicator>(circuit: &ConstraintCircuit<II>) -> Toke
     }
 }
 
-fn tokenize_bfe(bfe: &BFieldElement) -> TokenStream {
+fn tokenize_bfe(bfe: BFieldElement) -> TokenStream {
     let raw_u64 = bfe.raw_u64();
     quote!(BFieldElement::from_raw_u64(#raw_u64))
 }
 
-fn tokenize_xfe(xfe: &XFieldElement) -> TokenStream {
-    let coeff_0 = tokenize_bfe(&xfe.coefficients[0]);
-    let coeff_1 = tokenize_bfe(&xfe.coefficients[1]);
-    let coeff_2 = tokenize_bfe(&xfe.coefficients[2]);
+fn tokenize_xfe(xfe: XFieldElement) -> TokenStream {
+    let coeff_0 = tokenize_bfe(xfe.coefficients[0]);
+    let coeff_1 = tokenize_bfe(xfe.coefficients[1]);
+    let coeff_2 = tokenize_bfe(xfe.coefficients[2]);
     quote!(XFieldElement::new([#coeff_0, #coeff_1, #coeff_2]))
 }
 
@@ -745,26 +726,26 @@ fn generate_fill_base_columns_code(substitutions: &Substitutions) -> TokenStream
 
     let init_col_indices = (0..substitutions.init.len())
         .map(|i| i + derived_section_init_start)
-        .collect();
+        .collect_vec();
     let cons_col_indices = (0..substitutions.cons.len())
         .map(|i| i + derived_section_cons_start)
-        .collect();
+        .collect_vec();
     let tran_col_indices = (0..substitutions.tran.len())
         .map(|i| i + derived_section_tran_start)
-        .collect();
+        .collect_vec();
     let term_col_indices = (0..substitutions.term.len())
         .map(|i| i + derived_section_term_start)
-        .collect();
+        .collect_vec();
 
     let init_substitutions = several_substitution_rules_to_code(&substitutions.init);
     let cons_substitutions = several_substitution_rules_to_code(&substitutions.cons);
     let tran_substitutions = several_substitution_rules_to_code(&substitutions.tran);
     let term_substitutions = several_substitution_rules_to_code(&substitutions.term);
 
-    let init_substitutions = base_single_row_substitutions(init_col_indices, init_substitutions);
-    let cons_substitutions = base_single_row_substitutions(cons_col_indices, cons_substitutions);
-    let tran_substitutions = base_dual_row_substitutions(tran_col_indices, tran_substitutions);
-    let term_substitutions = base_single_row_substitutions(term_col_indices, term_substitutions);
+    let init_substitutions = base_single_row_substitutions(&init_col_indices, &init_substitutions);
+    let cons_substitutions = base_single_row_substitutions(&cons_col_indices, &cons_substitutions);
+    let tran_substitutions = base_dual_row_substitutions(&tran_col_indices, &tran_substitutions);
+    let term_substitutions = base_single_row_substitutions(&term_col_indices, &term_substitutions);
 
     quote!(
     #[allow(unused_variables)]
@@ -803,10 +784,10 @@ fn generate_fill_ext_columns_code(substitutions: &Substitutions) -> TokenStream 
     let tran_substitutions = several_substitution_rules_to_code(&substitutions.tran);
     let term_substitutions = several_substitution_rules_to_code(&substitutions.term);
 
-    let init_substitutions = ext_single_row_substitutions(init_col_indices, init_substitutions);
-    let cons_substitutions = ext_single_row_substitutions(cons_col_indices, cons_substitutions);
-    let tran_substitutions = ext_dual_row_substitutions(tran_col_indices, tran_substitutions);
-    let term_substitutions = ext_single_row_substitutions(term_col_indices, term_substitutions);
+    let init_substitutions = ext_single_row_substitutions(&init_col_indices, &init_substitutions);
+    let cons_substitutions = ext_single_row_substitutions(&cons_col_indices, &cons_substitutions);
+    let tran_substitutions = ext_dual_row_substitutions(&tran_col_indices, &tran_substitutions);
+    let term_substitutions = ext_single_row_substitutions(&term_col_indices, &term_substitutions);
 
     quote!(
         #[allow(unused_variables)]
@@ -850,10 +831,7 @@ fn substitution_rule_to_code<II: InputIndicator>(circuit: ConstraintCircuit<II>)
     evaluate_single_node(usize::MAX, &expr, &HashSet::new())
 }
 
-fn base_single_row_substitutions(
-    indices: Vec<usize>,
-    substitutions: Vec<TokenStream>,
-) -> TokenStream {
+fn base_single_row_substitutions(indices: &[usize], substitutions: &[TokenStream]) -> TokenStream {
     assert_eq!(indices.len(), substitutions.len());
     if indices.is_empty() {
         return quote!();
@@ -869,10 +847,7 @@ fn base_single_row_substitutions(
     )
 }
 
-fn base_dual_row_substitutions(
-    indices: Vec<usize>,
-    substitutions: Vec<TokenStream>,
-) -> TokenStream {
+fn base_dual_row_substitutions(indices: &[usize], substitutions: &[TokenStream]) -> TokenStream {
     assert_eq!(indices.len(), substitutions.len());
     if indices.is_empty() {
         return quote!();
@@ -895,10 +870,7 @@ fn base_dual_row_substitutions(
     )
 }
 
-fn ext_single_row_substitutions(
-    indices: Vec<usize>,
-    substitutions: Vec<TokenStream>,
-) -> TokenStream {
+fn ext_single_row_substitutions(indices: &[usize], substitutions: &[TokenStream]) -> TokenStream {
     assert_eq!(indices.len(), substitutions.len());
     if indices.is_empty() {
         return quote!();
@@ -916,7 +888,7 @@ fn ext_single_row_substitutions(
     )
 }
 
-fn ext_dual_row_substitutions(indices: Vec<usize>, substitutions: Vec<TokenStream>) -> TokenStream {
+fn ext_dual_row_substitutions(indices: &[usize], substitutions: &[TokenStream]) -> TokenStream {
     assert_eq!(indices.len(), substitutions.len());
     if indices.is_empty() {
         return quote!();

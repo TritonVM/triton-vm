@@ -175,7 +175,7 @@ impl Tui {
     }
 
     pub fn exit(&mut self) -> Result<()> {
-        self.stop()?;
+        self.stop();
         if is_raw_mode_enabled()? {
             self.flush()?;
             if self.paste {
@@ -190,7 +190,7 @@ impl Tui {
         Ok(())
     }
 
-    pub fn stop(&self) -> Result<()> {
+    pub fn stop(&self) {
         self.cancel();
         let mut counter = 0;
         while !self.task.is_finished() {
@@ -204,7 +204,6 @@ impl Tui {
                 break;
             }
         }
-        Ok(())
     }
 
     pub fn cancel(&self) {

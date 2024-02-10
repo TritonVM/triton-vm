@@ -82,7 +82,7 @@ impl DataSizeOrderOfMagnitude {
     }
 
     /// The minimal number of bytes to be considered some order of magnitude.
-    fn min_bytes_in_order_of_magnitude(&self) -> f64 {
+    fn min_bytes_in_order_of_magnitude(self) -> f64 {
         use DataSizeOrderOfMagnitude::*;
         match self {
             Bytes => 1.0,
@@ -93,7 +93,7 @@ impl DataSizeOrderOfMagnitude {
     }
 
     /// The typical abbreviation for this order of magnitude.
-    fn abbreviation(&self) -> &'static str {
+    fn abbreviation(self) -> &'static str {
         use DataSizeOrderOfMagnitude::*;
         match self {
             Bytes => "bytes",
@@ -187,7 +187,7 @@ fn log_2_fri_domain_length(stark: Stark, proof: &Proof) -> u32 {
 fn break_down_proof_size(proof: &Proof) -> HashMap<String, usize> {
     let mut proof_size_breakdown = HashMap::new();
     let proof_stream: ProofStream<StarkHasher> = proof.try_into().unwrap();
-    for proof_item in proof_stream.items.iter() {
+    for proof_item in &proof_stream.items {
         let item_name = proof_item.to_string();
         let item_len = proof_item.encode().len();
         proof_size_breakdown

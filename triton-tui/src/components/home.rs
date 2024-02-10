@@ -16,25 +16,25 @@ use super::Frame;
 
 #[derive(Debug, Copy, Clone, Arbitrary)]
 pub(crate) struct Home {
-    show_type_hints: bool,
-    show_call_stack: bool,
-    show_sponge_state: bool,
-    show_inputs: bool,
+    type_hints: bool,
+    call_stack: bool,
+    sponge_state: bool,
+    inputs: bool,
 }
 
 impl Default for Home {
     fn default() -> Self {
         Self {
-            show_type_hints: true,
-            show_call_stack: true,
-            show_sponge_state: false,
-            show_inputs: true,
+            type_hints: true,
+            call_stack: true,
+            sponge_state: false,
+            inputs: true,
         }
     }
 }
 
 impl Home {
-    fn address_render_width(&self, state: &TritonVMState) -> usize {
+    fn address_render_width(state: &TritonVMState) -> usize {
         let max_address = state.program.len_bwords();
         max_address.to_string().len()
     }
@@ -42,10 +42,10 @@ impl Home {
     fn toggle_widget(&mut self, toggle: Toggle) {
         match toggle {
             Toggle::All => self.toggle_all_widgets(),
-            Toggle::TypeHint => self.show_type_hints = !self.show_type_hints,
-            Toggle::CallStack => self.show_call_stack = !self.show_call_stack,
-            Toggle::SpongeState => self.show_sponge_state = !self.show_sponge_state,
-            Toggle::Input => self.show_inputs = !self.show_inputs,
+            Toggle::TypeHint => self.type_hints = !self.type_hints,
+            Toggle::CallStack => self.call_stack = !self.call_stack,
+            Toggle::SpongeState => self.sponge_state = !self.sponge_state,
+            Toggle::Input => self.inputs = !self.inputs,
             Toggle::BlockAddress => (),
         };
     }
@@ -55,23 +55,23 @@ impl Home {
         self.set_all_widgets_visibility_to(!any_widget_is_shown);
     }
 
-    fn all_widget_visibilities(&self) -> [bool; 4] {
+    fn all_widget_visibilities(self) -> [bool; 4] {
         [
-            self.show_type_hints,
-            self.show_call_stack,
-            self.show_sponge_state,
-            self.show_inputs,
+            self.type_hints,
+            self.call_stack,
+            self.sponge_state,
+            self.inputs,
         ]
     }
 
     fn set_all_widgets_visibility_to(&mut self, visibility: bool) {
-        self.show_type_hints = visibility;
-        self.show_call_stack = visibility;
-        self.show_sponge_state = visibility;
-        self.show_inputs = visibility;
+        self.type_hints = visibility;
+        self.call_stack = visibility;
+        self.sponge_state = visibility;
+        self.inputs = visibility;
     }
 
-    fn distribute_area_for_widgets(&self, state: &TritonVMState, area: Rect) -> WidgetAreas {
+    fn distribute_area_for_widgets(self, state: &TritonVMState, area: Rect) -> WidgetAreas {
         let public_input_height = match self.maybe_render_public_input(state).is_some() {
             true => Constraint::Length(2),
             false => Constraint::Length(0),
@@ -92,7 +92,7 @@ impl Home {
 
         let op_stack_widget_width = Constraint::Length(30);
         let remaining_width = Constraint::Fill(1);
-        let sponge_state_width = match self.show_sponge_state {
+        let sponge_state_width = match self.sponge_state {
             true => Constraint::Length(32),
             false => Constraint::Length(1),
         };
@@ -102,7 +102,7 @@ impl Home {
 
         let show = Constraint::Fill(1);
         let hide = Constraint::Length(0);
-        let hints_program_calls_constraints = match (self.show_type_hints, self.show_call_stack) {
+        let hints_program_calls_constraints = match (self.type_hints, self.call_stack) {
             (true, true) => [show, show, show],
             (true, false) => [show, show, hide],
             (false, true) => [hide, show, show],
@@ -123,7 +123,7 @@ impl Home {
         }
     }
 
-    fn render_op_stack_widget(&self, frame: &mut Frame<'_>, render_info: RenderInfo) {
+    fn render_op_stack_widget(self, frame: &mut Frame<'_>, render_info: RenderInfo) {
         let op_stack = &render_info.state.vm_state.op_stack.stack;
         let render_area = render_info.areas.op_stack;
 
@@ -159,8 +159,8 @@ impl Home {
         frame.render_widget(paragraph, render_area);
     }
 
-    fn render_type_hint_widget(&self, frame: &mut Frame<'_>, render_info: RenderInfo) {
-        if !self.show_type_hints {
+    fn render_type_hint_widget(self, frame: &mut Frame<'_>, render_info: RenderInfo) {
+        if !self.type_hints {
             return;
         }
         let block = Block::default()
@@ -190,7 +190,7 @@ impl Home {
         frame.render_widget(paragraph, render_area);
     }
 
-    fn render_program_widget(&self, frame: &mut Frame<'_>, render_info: RenderInfo) {
+    fn render_program_widget(self, frame: &mut Frame<'_>, render_info: RenderInfo) {
         let state = &render_info.state;
         let render_area = render_info.areas.program;
 
@@ -198,7 +198,7 @@ impl Home {
         let title = format!(" Program (cycle: {cycle_count:>5}) ");
         let title = Title::from(title).alignment(Alignment::Left);
 
-        let address_width = self.address_render_width(state).max(2);
+        let address_width = Self::address_render_width(state).max(2);
         let mut address = 0;
         let mut text = vec![];
         let instruction_pointer = state.vm_state.instruction_pointer;
@@ -262,8 +262,8 @@ impl Home {
         frame.render_widget(paragraph, render_area);
     }
 
-    fn render_call_stack_widget(&self, frame: &mut Frame<'_>, render_info: RenderInfo) {
-        if !self.show_call_stack {
+    fn render_call_stack_widget(self, frame: &mut Frame<'_>, render_info: RenderInfo) {
+        if !self.call_stack {
             return;
         }
 
@@ -290,7 +290,7 @@ impl Home {
         let num_padding_lines = num_available_lines.saturating_sub(jump_stack_depth);
         let mut text = vec![Line::from(""); num_padding_lines];
 
-        let address_width = self.address_render_width(state);
+        let address_width = Self::address_render_width(state);
         for (return_address, call_address) in jump_stack.iter().rev() {
             let return_address = return_address.value();
             let call_address = call_address.value();
@@ -306,7 +306,7 @@ impl Home {
         frame.render_widget(paragraph, render_area);
     }
 
-    fn render_sponge_widget(&self, frame: &mut Frame<'_>, render_info: RenderInfo) {
+    fn render_sponge_widget(self, frame: &mut Frame<'_>, render_info: RenderInfo) {
         let title = Title::from(" Sponge ");
         let border_set = symbols::border::Set {
             top_left: symbols::line::ROUNDED.horizontal_down,
@@ -314,7 +314,7 @@ impl Home {
             bottom_right: symbols::line::ROUNDED.vertical_left,
             ..symbols::border::ROUNDED
         };
-        let borders = match self.show_sponge_state {
+        let borders = match self.sponge_state {
             true => Borders::ALL,
             false => Borders::TOP | Borders::RIGHT | Borders::BOTTOM,
         };
@@ -346,7 +346,7 @@ impl Home {
         frame.render_widget(paragraph, render_area);
     }
 
-    fn render_public_input_widget(&self, frame: &mut Frame<'_>, render_info: RenderInfo) {
+    fn render_public_input_widget(self, frame: &mut Frame<'_>, render_info: RenderInfo) {
         let public_input = self
             .maybe_render_public_input(render_info.state)
             .unwrap_or_default();
@@ -364,8 +364,8 @@ impl Home {
         frame.render_widget(paragraph, render_info.areas.public_input);
     }
 
-    fn maybe_render_public_input(&self, state: &TritonVMState) -> Option<Line> {
-        if state.vm_state.public_input.is_empty() || !self.show_inputs {
+    fn maybe_render_public_input(self, state: &TritonVMState) -> Option<Line> {
+        if state.vm_state.public_input.is_empty() || !self.inputs {
             return None;
         }
         let header = Span::from("Public input").bold();
@@ -376,7 +376,7 @@ impl Home {
         Some(Line::from(vec![header, colon, input, footer]))
     }
 
-    fn render_secret_input_widget(&self, frame: &mut Frame<'_>, render_info: RenderInfo) {
+    fn render_secret_input_widget(self, frame: &mut Frame<'_>, render_info: RenderInfo) {
         let secret_input = self
             .maybe_render_secret_input(render_info.state)
             .unwrap_or_default();
@@ -394,8 +394,8 @@ impl Home {
         frame.render_widget(paragraph, render_info.areas.secret_input);
     }
 
-    fn maybe_render_secret_input(&self, state: &TritonVMState) -> Option<Line> {
-        if state.vm_state.secret_individual_tokens.is_empty() || !self.show_inputs {
+    fn maybe_render_secret_input(self, state: &TritonVMState) -> Option<Line> {
+        if state.vm_state.secret_individual_tokens.is_empty() || !self.inputs {
             return None;
         }
         let header = Span::from("Secret input").bold();
@@ -406,7 +406,7 @@ impl Home {
         Some(Line::from(vec![header, colon, input, footer]))
     }
 
-    fn render_message_widget(&self, frame: &mut Frame<'_>, render_info: RenderInfo) {
+    fn render_message_widget(self, frame: &mut Frame<'_>, render_info: RenderInfo) {
         let message = self.message(render_info.state);
         let status = match render_info.state.vm_state.halting {
             true => Title::from(" HALT ".bold().green()),
@@ -515,6 +515,8 @@ mod tests {
     use test_strategy::proptest;
     use triton_vm::prelude::*;
 
+    use crate::args::TuiArgs;
+
     use super::*;
 
     #[proptest]
@@ -525,7 +527,7 @@ mod tests {
     ) {
         vm_state.program = program.instructions.clone();
 
-        let mut complete_state = TritonVMState::new(&Default::default()).unwrap();
+        let mut complete_state = TritonVMState::new(&TuiArgs::default()).unwrap();
         complete_state.vm_state = vm_state;
         complete_state.program = program;
 

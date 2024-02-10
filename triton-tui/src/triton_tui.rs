@@ -72,7 +72,7 @@ impl TritonTUI {
         self.tui.enter()?;
 
         self.vm_state.register_action_handler(action_tx.clone())?;
-        for component in self.components.iter_mut() {
+        for component in &mut self.components {
             component.register_action_handler(action_tx.clone())?;
         }
 
@@ -111,15 +111,15 @@ impl TritonTUI {
 
         match event {
             Event::Key(_) | Event::Mouse(_) | Event::Paste(_) => {
-                self.dispatch_event_to_active_component(event, action_tx)
+                self.dispatch_event_to_active_component(&event, action_tx)
             }
-            _ => self.dispatch_event_to_all_components(event, action_tx),
+            _ => self.dispatch_event_to_all_components(&event, action_tx),
         }
     }
 
     fn dispatch_event_to_active_component(
         &mut self,
-        event: Event,
+        event: &Event,
         action_tx: &UnboundedSender<Action>,
     ) -> Result<()> {
         let active_component = &mut self.components[self.mode.id()];
@@ -131,10 +131,10 @@ impl TritonTUI {
 
     fn dispatch_event_to_all_components(
         &mut self,
-        event: Event,
+        event: &Event,
         action_tx: &UnboundedSender<Action>,
     ) -> Result<()> {
-        for component in self.components.iter_mut() {
+        for component in &mut self.components {
             if let Some(action) = component.handle_event(Some(event.clone()))? {
                 action_tx.send(action)?;
             }
@@ -159,7 +159,7 @@ impl TritonTUI {
                     self.mode = mode;
                     self.render()?;
                 }
-                Action::Reset => self.reset_state(action_tx.clone())?,
+                Action::Reset => self.reset_state(action_tx)?,
                 Action::Suspend => self.should_suspend = true,
                 Action::Resume => self.should_suspend = false,
                 Action::Quit => self.should_quit = true,
@@ -167,7 +167,7 @@ impl TritonTUI {
             }
 
             self.vm_state.update(action.clone())?;
-            for component in self.components.iter_mut() {
+            for component in &mut self.components {
                 if let Some(action) = component.update(action.clone())? {
                     action_tx.send(action)?
                 };
@@ -184,7 +184,7 @@ impl TritonTUI {
         }
     }
 
-    fn reset_state(&mut self, action_tx: UnboundedSender<Action>) -> Result<()> {
+    fn reset_state(&mut self, action_tx: &UnboundedSender<Action>) -> Result<()> {
         let vm_state = match TritonVMState::new(&self.args) {
             Ok(vm_state) => vm_state,
             Err(report) => {

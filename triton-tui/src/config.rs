@@ -78,7 +78,7 @@ impl Config {
     fn add_missing_keybindings_using_defaults(&mut self, default_config: &Self) {
         for (&mode, default_bindings) in default_config.keybindings.iter() {
             let user_bindings = self.keybindings.entry(mode).or_default();
-            for (key, cmd) in default_bindings.iter() {
+            for (key, cmd) in default_bindings {
                 user_bindings
                     .entry(key.clone())
                     .or_insert_with(|| cmd.clone());
@@ -89,7 +89,7 @@ impl Config {
     fn add_missing_styles_using_defaults(&mut self, default_config: &Self) {
         for (&mode, default_styles) in default_config.styles.iter() {
             let user_styles = self.styles.entry(mode).or_default();
-            for (style_key, &style) in default_styles.iter() {
+            for (style_key, &style) in default_styles {
                 user_styles
                     .entry(style_key.clone())
                     .or_insert_with(|| style);
@@ -190,8 +190,7 @@ fn parse_key_code_with_modifiers(
         "f11" => KeyCode::F(11),
         "f12" => KeyCode::F(12),
         "space" => KeyCode::Char(' '),
-        "hyphen" => KeyCode::Char('-'),
-        "minus" => KeyCode::Char('-'),
+        "hyphen" | "minus" => KeyCode::Char('-'),
         "tab" => KeyCode::Tab,
         c if c.len() == 1 => {
             let mut c = c.chars().next().unwrap();
@@ -205,7 +204,7 @@ fn parse_key_code_with_modifiers(
     Ok(KeyEvent::new(c, modifiers))
 }
 
-pub fn _key_event_to_string(key_event: &KeyEvent) -> String {
+fn _key_event_to_string(key_event: &KeyEvent) -> String {
     let char;
     let key_code = match key_event.code {
         KeyCode::Backspace => "backspace",
@@ -232,40 +231,21 @@ pub fn _key_event_to_string(key_event: &KeyEvent) -> String {
             &char
         }
         KeyCode::Esc => "esc",
-        KeyCode::Null => "",
-        KeyCode::CapsLock => "",
-        KeyCode::Menu => "",
-        KeyCode::ScrollLock => "",
-        KeyCode::Media(_) => "",
-        KeyCode::NumLock => "",
-        KeyCode::PrintScreen => "",
-        KeyCode::Pause => "",
-        KeyCode::KeypadBegin => "",
-        KeyCode::Modifier(_) => "",
+        _ => "",
     };
 
-    let mut modifiers = Vec::with_capacity(3);
-
+    let mut key_string = Vec::with_capacity(4);
     if key_event.modifiers.intersects(KeyModifiers::CONTROL) {
-        modifiers.push("ctrl");
+        key_string.push("ctrl");
     }
-
     if key_event.modifiers.intersects(KeyModifiers::SHIFT) {
-        modifiers.push("shift");
+        key_string.push("shift");
     }
-
     if key_event.modifiers.intersects(KeyModifiers::ALT) {
-        modifiers.push("alt");
+        key_string.push("alt");
     }
-
-    let mut key = modifiers.join("-");
-
-    if !key.is_empty() {
-        key.push('-');
-    }
-    key.push_str(key_code);
-
-    key
+    key_string.push(key_code);
+    key_string.join("-")
 }
 
 fn parse_key_sequence(raw: &str) -> Result<KeyEvents, String> {

@@ -347,7 +347,7 @@ mod tests {
     #[test]
     fn default_type_hint_stack_is_as_long_as_default_actual_stack() {
         let actual_stack_length = ShadowMemory::default().stack.len();
-        let expected_stack_length = OpStack::new(Default::default()).stack.len();
+        let expected_stack_length = OpStack::new(Digest::default()).stack.len();
         assert!(expected_stack_length == actual_stack_length);
     }
 
