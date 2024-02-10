@@ -447,14 +447,11 @@ fn field_element(s_orig: &str) -> ParseResult<BFieldElement> {
     let (s, negative) = opt(token0("-"))(s_orig)?;
     let (s, n) = digit1(s)?;
 
-    let mut n: i128 = match n.parse() {
-        Ok(n) => n,
-        Err(_err) => {
-            return context("out-of-bounds constant", fail)(s);
-        }
+    let Ok(mut n): Result<i128, _> = n.parse() else {
+        return context("out-of-bounds constant", fail)(s);
     };
 
-    let quotient = BFieldElement::P as i128;
+    let quotient = i128::from(BFieldElement::P);
     if n >= quotient {
         return context("out-of-bounds constant", fail)(s_orig);
     }

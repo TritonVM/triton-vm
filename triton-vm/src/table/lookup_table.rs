@@ -42,20 +42,21 @@ impl LookupTable {
         lookup_table: &mut ArrayViewMut2<BFieldElement>,
         aet: &AlgebraicExecutionTrace,
     ) {
-        assert!(lookup_table.nrows() >= 1 << 8);
+        const LOOKUP_TABLE_LEN: usize = tip5::LOOKUP_TABLE.len();
+        assert!(lookup_table.nrows() >= LOOKUP_TABLE_LEN);
 
         // Lookup Table input
-        let lookup_input = Array1::from_iter((0_u64..1 << 8).map(BFieldElement::new));
+        let lookup_input =
+            Array1::from_iter((0..LOOKUP_TABLE_LEN).map(|i| BFieldElement::new(i as u64)));
         let lookup_input_column =
-            lookup_table.slice_mut(s![..1_usize << 8, LookIn.base_table_index()]);
+            lookup_table.slice_mut(s![..LOOKUP_TABLE_LEN, LookIn.base_table_index()]);
         lookup_input.move_into(lookup_input_column);
 
         // Lookup Table output
-        let lookup_output = Array1::from_iter(
-            (0..1 << 8).map(|i| BFieldElement::new(tip5::LOOKUP_TABLE[i] as u64)),
-        );
+        let lookup_output =
+            Array1::from_iter(tip5::LOOKUP_TABLE.map(u64::from).map(BFieldElement::new));
         let lookup_output_column =
-            lookup_table.slice_mut(s![..1_usize << 8, LookOut.base_table_index()]);
+            lookup_table.slice_mut(s![..LOOKUP_TABLE_LEN, LookOut.base_table_index()]);
         lookup_output.move_into(lookup_output_column);
 
         // Lookup Table multiplicities
@@ -63,8 +64,10 @@ impl LookupTable {
             aet.lookup_table_lookup_multiplicities
                 .map(BFieldElement::new),
         );
-        let lookup_multiplicities_column =
-            lookup_table.slice_mut(s![..1_usize << 8, LookupMultiplicity.base_table_index()]);
+        let lookup_multiplicities_column = lookup_table.slice_mut(s![
+            ..LOOKUP_TABLE_LEN,
+            LookupMultiplicity.base_table_index()
+        ]);
         lookup_multiplicities.move_into(lookup_multiplicities_column);
     }
 

@@ -114,13 +114,13 @@ impl<'a> Memory<'a> {
             return;
         };
 
-        let modulus = BFieldElement::P as i128;
+        let modulus = i128::from(BFieldElement::P);
         if address < -modulus || modulus <= address {
             self.user_address = None;
             return;
         }
-        let address = (address + modulus) % modulus;
-        let address = BFieldElement::from(address as u64);
+        let address = ((address + modulus) % modulus) as u64;
+        let address = BFieldElement::from(address);
         self.user_address = Some(address);
     }
 
@@ -170,7 +170,7 @@ impl<'a> Memory<'a> {
     }
 
     fn first_address_in_block(block: u32) -> BFieldElement {
-        ((block as u64) << 32).into()
+        (u64::from(block) << 32).into()
     }
 
     fn distribute_area_for_widgets(&self, area: Rect) -> WidgetAreas {
@@ -182,7 +182,7 @@ impl<'a> Memory<'a> {
         let block = Self::memory_widget_block();
         let draw_area = render_info.areas.memory;
 
-        let num_lines = block.inner(draw_area).height as u64;
+        let num_lines = u64::from(block.inner(draw_area).height);
         let address_range_start = self.requested_address() - BFieldElement::from(num_lines / 2);
         let address_range_end = address_range_start + BFieldElement::from(num_lines);
 

@@ -633,7 +633,7 @@ impl<H: AlgebraicHasher> Fri<H> {
 
         // Skip rounds for which Merkle tree verification cost exceeds arithmetic cost,
         // because more than half the codeword's locations are queried.
-        let num_rounds_checking_all_locations = self.num_collinearity_checks.ilog2() as u64;
+        let num_rounds_checking_all_locations = u64::from(self.num_collinearity_checks.ilog2());
         let num_rounds_checking_most_locations = num_rounds_checking_all_locations + 1;
 
         max_num_rounds.saturating_sub(num_rounds_checking_most_locations) as usize

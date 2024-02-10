@@ -56,6 +56,7 @@ twenty-first = { git = "https://github.com/Neptune-Crypto/twenty-first", rev = "
 unicode-width = "0.1"
 
 [workspace.lints.clippy]
+cast_lossless = "warn"
 used_underscore_binding = "warn"
 
 [workspace.dependencies.cargo-husky]

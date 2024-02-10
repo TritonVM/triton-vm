@@ -101,11 +101,11 @@ impl OpStack {
         Ok(element)
     }
 
-    pub(crate) fn assert_is_u32(&self, stack_element: OpStackElement) -> Result<()> {
+    pub(crate) fn is_u32(&self, stack_element: OpStackElement) -> Result<()> {
         let element = self[stack_element];
-        match element.value() <= u32::MAX as u64 {
-            true => Ok(()),
-            false => Err(FailedU32Conversion(element)),
+        match u32::try_from(element.value()) {
+            Ok(_) => Ok(()),
+            Err(_) => Err(FailedU32Conversion(element)),
         }
     }
 

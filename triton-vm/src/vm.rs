@@ -492,7 +492,7 @@ impl VMState {
         if self.secret_digests.is_empty() {
             return Err(EmptySecretDigestInput);
         }
-        self.op_stack.assert_is_u32(ST5)?;
+        self.op_stack.is_u32(ST5)?;
 
         let known_digest = self.op_stack.pop_multiple()?;
         let node_index = self.op_stack.pop_u32()?;
@@ -580,8 +580,8 @@ impl VMState {
     }
 
     fn lt(&mut self) -> Result<Vec<CoProcessorCall>> {
-        self.op_stack.assert_is_u32(ST0)?;
-        self.op_stack.assert_is_u32(ST1)?;
+        self.op_stack.is_u32(ST0)?;
+        self.op_stack.is_u32(ST1)?;
         let lhs = self.op_stack.pop_u32()?;
         let rhs = self.op_stack.pop_u32()?;
         let lt: u32 = (lhs < rhs).into();
@@ -595,8 +595,8 @@ impl VMState {
     }
 
     fn and(&mut self) -> Result<Vec<CoProcessorCall>> {
-        self.op_stack.assert_is_u32(ST0)?;
-        self.op_stack.assert_is_u32(ST1)?;
+        self.op_stack.is_u32(ST0)?;
+        self.op_stack.is_u32(ST1)?;
         let lhs = self.op_stack.pop_u32()?;
         let rhs = self.op_stack.pop_u32()?;
         let and = lhs & rhs;
@@ -610,8 +610,8 @@ impl VMState {
     }
 
     fn xor(&mut self) -> Result<Vec<CoProcessorCall>> {
-        self.op_stack.assert_is_u32(ST0)?;
-        self.op_stack.assert_is_u32(ST1)?;
+        self.op_stack.is_u32(ST0)?;
+        self.op_stack.is_u32(ST1)?;
         let lhs = self.op_stack.pop_u32()?;
         let rhs = self.op_stack.pop_u32()?;
         let xor = lhs ^ rhs;
@@ -628,7 +628,7 @@ impl VMState {
     }
 
     fn log_2_floor(&mut self) -> Result<Vec<CoProcessorCall>> {
-        self.op_stack.assert_is_u32(ST0)?;
+        self.op_stack.is_u32(ST0)?;
         let top_of_stack = self.op_stack[ST0];
         if top_of_stack.is_zero() {
             return Err(LogarithmOfZero);
@@ -645,7 +645,7 @@ impl VMState {
     }
 
     fn pow(&mut self) -> Result<Vec<CoProcessorCall>> {
-        self.op_stack.assert_is_u32(ST1)?;
+        self.op_stack.is_u32(ST1)?;
         let base = self.op_stack.pop()?;
         let exponent = self.op_stack.pop_u32()?;
         let base_pow_exponent = base.mod_pow(exponent.into());
@@ -660,8 +660,8 @@ impl VMState {
     }
 
     fn div_mod(&mut self) -> Result<Vec<CoProcessorCall>> {
-        self.op_stack.assert_is_u32(ST0)?;
-        self.op_stack.assert_is_u32(ST1)?;
+        self.op_stack.is_u32(ST0)?;
+        self.op_stack.is_u32(ST1)?;
         let denominator = self.op_stack[ST1];
         if denominator.is_zero() {
             return Err(DivisionByZero);
@@ -687,7 +687,7 @@ impl VMState {
     }
 
     fn pop_count(&mut self) -> Result<Vec<CoProcessorCall>> {
-        self.op_stack.assert_is_u32(ST0)?;
+        self.op_stack.is_u32(ST0)?;
         let top_of_stack = self.op_stack.pop_u32()?;
         let pop_count = top_of_stack.count_ones();
         self.op_stack.push(pop_count.into());
@@ -768,7 +768,7 @@ impl VMState {
         let current_instruction = self.current_instruction().unwrap_or(Nop);
         let helper_variables = self.derive_helper_variables();
 
-        processor_row[CLK.base_table_index()] = (self.cycle_count as u64).into();
+        processor_row[CLK.base_table_index()] = u64::from(self.cycle_count).into();
         processor_row[IP.base_table_index()] = (self.instruction_pointer as u32).into();
         processor_row[CI.base_table_index()] = current_instruction.opcode_b();
         processor_row[NIA.base_table_index()] = self.next_instruction_or_argument();
@@ -1670,7 +1670,7 @@ pub(crate) mod tests {
     pub(crate) fn property_based_test_program_for_is_u32() -> ProgramAndInput {
         let mut rng = ThreadRng::default();
         let st0_u32 = rng.next_u32();
-        let st0_not_u32 = ((rng.next_u32() as u64) << 32) + (rng.next_u32() as u64);
+        let st0_not_u32 = (u64::from(rng.next_u32()) << 32) + u64::from(rng.next_u32());
         let program = triton_program!(
             push {st0_u32} call is_u32 assert
             push {st0_not_u32} call is_u32 push 0 eq assert halt
@@ -1755,7 +1755,7 @@ pub(crate) mod tests {
     #[proptest]
     fn negative_property_is_u32(
         #[strategy(arb())]
-        #[filter(#st0.value() > u32::MAX as u64)]
+        #[filter(#st0.value() > u64::from(u32::MAX))]
         st0: BFieldElement,
     ) {
         let program = triton_program!(
@@ -2246,7 +2246,7 @@ pub(crate) mod tests {
 
     #[test]
     fn instruction_divine_sibling_does_not_change_vm_state_when_crashing_vm() {
-        let non_u32 = (u32::MAX as u64) + 1;
+        let non_u32 = u64::from(u32::MAX) + 1;
         let program = triton_program! { push {non_u32} swap 5 divine_sibling halt };
         instruction_does_not_change_vm_state_when_crashing_vm(program, 2);
     }
@@ -2278,28 +2278,28 @@ pub(crate) mod tests {
 
     #[test]
     fn instruction_lt_does_not_change_vm_state_when_crashing_vm() {
-        let non_u32 = (u32::MAX as u64) + 1;
+        let non_u32 = u64::from(u32::MAX) + 1;
         let program = triton_program! { push {non_u32} lt halt };
         instruction_does_not_change_vm_state_when_crashing_vm(program, 1);
     }
 
     #[test]
     fn instruction_and_does_not_change_vm_state_when_crashing_vm() {
-        let non_u32 = (u32::MAX as u64) + 1;
+        let non_u32 = u64::from(u32::MAX) + 1;
         let program = triton_program! { push {non_u32} and halt };
         instruction_does_not_change_vm_state_when_crashing_vm(program, 1);
     }
 
     #[test]
     fn instruction_xor_does_not_change_vm_state_when_crashing_vm() {
-        let non_u32 = (u32::MAX as u64) + 1;
+        let non_u32 = u64::from(u32::MAX) + 1;
         let program = triton_program! { push {non_u32} xor halt };
         instruction_does_not_change_vm_state_when_crashing_vm(program, 1);
     }
 
     #[test]
     fn instruction_log_2_floor_on_non_u32_operand_does_not_change_vm_state_when_crashing_vm() {
-        let non_u32 = (u32::MAX as u64) + 1;
+        let non_u32 = u64::from(u32::MAX) + 1;
         let program = triton_program! { push {non_u32} log_2_floor halt };
         instruction_does_not_change_vm_state_when_crashing_vm(program, 1);
     }
@@ -2312,14 +2312,14 @@ pub(crate) mod tests {
 
     #[test]
     fn instruction_pow_does_not_change_vm_state_when_crashing_vm() {
-        let non_u32 = (u32::MAX as u64) + 1;
+        let non_u32 = u64::from(u32::MAX) + 1;
         let program = triton_program! { push {non_u32} push 0 pow halt };
         instruction_does_not_change_vm_state_when_crashing_vm(program, 2);
     }
 
     #[test]
     fn instruction_div_mod_on_non_u32_operand_does_not_change_vm_state_when_crashing_vm() {
-        let non_u32 = (u32::MAX as u64) + 1;
+        let non_u32 = u64::from(u32::MAX) + 1;
         let program = triton_program! { push {non_u32} push 0 div_mod halt };
         instruction_does_not_change_vm_state_when_crashing_vm(program, 2);
     }
@@ -2332,7 +2332,7 @@ pub(crate) mod tests {
 
     #[test]
     fn instruction_pop_count_does_not_change_vm_state_when_crashing_vm() {
-        let non_u32 = (u32::MAX as u64) + 1;
+        let non_u32 = u64::from(u32::MAX) + 1;
         let program = triton_program! { push {non_u32} pop_count halt };
         instruction_does_not_change_vm_state_when_crashing_vm(program, 1);
     }

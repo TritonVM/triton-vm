@@ -264,7 +264,7 @@ impl Challenges {
             challenges[StandardOutputIndeterminate.index()],
         );
         let lookup_terminal = EvalArg::compute_terminal(
-            &tip5::LOOKUP_TABLE.map(|i| BFieldElement::new(i as u64)),
+            &tip5::LOOKUP_TABLE.map(u64::from).map(BFieldElement::new),
             EvalArg::default_initial(),
             challenges[LookupTablePublicIndeterminate.index()],
         );

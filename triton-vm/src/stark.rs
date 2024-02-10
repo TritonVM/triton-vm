@@ -2291,7 +2291,7 @@ pub(crate) mod tests {
     #[proptest]
     fn negative_log_2_floor(
         #[strategy(arb())]
-        #[filter(#st0.value() > u32::MAX as u64)]
+        #[filter(#st0.value() > u64::from(u32::MAX))]
         st0: BFieldElement,
     ) {
         let program = triton_program!(push {st0} log_2_floor halt);

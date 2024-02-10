@@ -813,7 +813,7 @@ mod tests {
         fn flag_set(self) -> u32 {
             let instruction = self.replace_default_argument_if_illegal();
             InstructionBucket::iter()
-                .map(|bucket| bucket.contains(instruction) as u32)
+                .map(|bucket| u32::from(bucket.contains(instruction)))
                 .enumerate()
                 .map(|(bucket_index, contains_self)| contains_self << bucket_index)
                 .fold(0, |acc, bit_flag| acc | bit_flag)
