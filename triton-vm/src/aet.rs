@@ -98,6 +98,7 @@ impl AlgebraicExecutionTrace {
         aet
     }
 
+    /// Guaranteed to be a power of two.
     pub fn padded_height(&self) -> usize {
         let relevant_table_heights = [
             self.program_table_length(),

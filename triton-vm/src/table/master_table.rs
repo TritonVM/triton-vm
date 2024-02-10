@@ -579,11 +579,12 @@ impl MasterBaseTable {
         fri_domain: ArithmeticDomain,
     ) -> Self {
         let padded_height = aet.padded_height();
-        let trace_domain = ArithmeticDomain::of_length(padded_height);
+        let trace_domain = ArithmeticDomain::of_length(padded_height).unwrap();
 
         let randomized_padded_trace_len =
             randomized_padded_trace_len(padded_height, num_trace_randomizers);
-        let randomized_trace_domain = ArithmeticDomain::of_length(randomized_padded_trace_len);
+        let randomized_trace_domain =
+            ArithmeticDomain::of_length(randomized_padded_trace_len).unwrap();
 
         let num_rows = randomized_padded_trace_len;
         let num_columns = NUM_BASE_COLUMNS;
@@ -1127,6 +1128,7 @@ pub fn num_quotients() -> usize {
         + MasterExtTable::num_terminal_quotients()
 }
 
+/// Guaranteed to be a power of two.
 pub fn randomized_padded_trace_len(padded_height: usize, num_trace_randomizers: usize) -> usize {
     let total_table_length = padded_height + num_trace_randomizers;
     total_table_length.next_power_of_two()
@@ -1265,10 +1267,12 @@ mod tests {
     fn zerofiers_are_correct() {
         let big_order = 16;
         let big_offset = BFieldElement::generator();
-        let big_domain = ArithmeticDomain::of_length(big_order as usize).with_offset(big_offset);
+        let big_domain = ArithmeticDomain::of_length(big_order as usize)
+            .unwrap()
+            .with_offset(big_offset);
 
         let small_order = 8;
-        let small_domain = ArithmeticDomain::of_length(small_order as usize);
+        let small_domain = ArithmeticDomain::of_length(small_order as usize).unwrap();
 
         let initial_zerofier_inv = initial_quotient_zerofier_inverse(big_domain);
         let initial_zerofier = BFieldElement::batch_inversion(initial_zerofier_inv.to_vec());
@@ -1530,10 +1534,10 @@ mod tests {
 
     #[test]
     fn master_ext_table_mut() {
-        let trace_domain = ArithmeticDomain::of_length(1 << 8);
-        let randomized_trace_domain = ArithmeticDomain::of_length(1 << 9);
-        let quotient_domain = ArithmeticDomain::of_length(1 << 10);
-        let fri_domain = ArithmeticDomain::of_length(1 << 11);
+        let trace_domain = ArithmeticDomain::of_length(1 << 8).unwrap();
+        let randomized_trace_domain = ArithmeticDomain::of_length(1 << 9).unwrap();
+        let quotient_domain = ArithmeticDomain::of_length(1 << 10).unwrap();
+        let fri_domain = ArithmeticDomain::of_length(1 << 11).unwrap();
 
         let randomized_trace_table =
             Array2::zeros((randomized_trace_domain.length, NUM_EXT_COLUMNS));

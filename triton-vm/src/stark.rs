@@ -122,7 +122,7 @@ impl Stark {
         let padded_height = aet.padded_height();
         let max_degree = self.derive_max_degree(padded_height);
         let fri = self.derive_fri(padded_height)?;
-        let quotient_domain = Self::quotient_domain(fri.domain, max_degree);
+        let quotient_domain = Self::quotient_domain(fri.domain, max_degree)?;
         proof_stream.enqueue(ProofItem::Log2PaddedHeight(padded_height.ilog2()));
         prof_stop!(maybe_profiler, "derive additional parameters");
 
@@ -557,14 +557,14 @@ impl Stark {
     pub(crate) fn quotient_domain(
         fri_domain: ArithmeticDomain,
         max_degree: Degree,
-    ) -> ArithmeticDomain {
+    ) -> Result<ArithmeticDomain, ProvingError> {
         let maybe_blowup_factor = match cfg!(debug_assertions) {
             true => 2,
             false => 1,
         };
         let domain_length = (max_degree as u64).next_power_of_two() as usize;
         let domain_length = maybe_blowup_factor * domain_length;
-        ArithmeticDomain::of_length(domain_length).with_offset(fri_domain.offset)
+        Ok(ArithmeticDomain::of_length(domain_length)?.with_offset(fri_domain.offset))
     }
 
     /// Compute the upper bound to use for the maximum degree the quotients given the length of the
@@ -595,7 +595,7 @@ impl Stark {
         let interpolant_codeword_length = interpolant_degree as usize + 1;
         let fri_domain_length = self.fri_expansion_factor * interpolant_codeword_length;
         let coset_offset = BFieldElement::generator();
-        let domain = ArithmeticDomain::of_length(fri_domain_length).with_offset(coset_offset);
+        let domain = ArithmeticDomain::of_length(fri_domain_length)?.with_offset(coset_offset);
 
         Fri::new(
             domain,
@@ -721,7 +721,7 @@ impl Stark {
         prof_stop!(maybe_profiler, "Fiat-Shamir 1");
 
         prof_start!(maybe_profiler, "dequeue ood point and rows", "hash");
-        let trace_domain_generator = ArithmeticDomain::generator_for_length(padded_height as u64);
+        let trace_domain_generator = ArithmeticDomain::generator_for_length(padded_height as u64)?;
         let out_of_domain_point_curr_row = proof_stream.sample_scalars(1)[0];
         let out_of_domain_point_next_row = trace_domain_generator * out_of_domain_point_curr_row;
         let out_of_domain_point_curr_row_pow_num_segments =
@@ -2310,7 +2310,7 @@ pub(crate) mod tests {
     #[test]
     fn deep_update() {
         let domain_length = 1 << 10;
-        let domain = ArithmeticDomain::of_length(domain_length);
+        let domain = ArithmeticDomain::of_length(domain_length).unwrap();
 
         let poly_degree = thread_rng().gen_range(2..20);
         let low_deg_poly_coeffs: Vec<XFieldElement> = random_elements(poly_degree);

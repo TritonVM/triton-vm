@@ -5,6 +5,10 @@ use twenty_first::prelude::*;
 use twenty_first::shared_math::traits::FiniteField;
 use twenty_first::shared_math::traits::PrimitiveRootOfUnity;
 
+use crate::error::ArithmeticDomainError;
+
+type Result<T> = std::result::Result<T, ArithmeticDomainError>;
+
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct ArithmeticDomain {
     pub offset: BFieldElement,
@@ -14,29 +18,35 @@ pub struct ArithmeticDomain {
 
 impl ArithmeticDomain {
     /// Create a new domain with the given length.
-    /// No offset is applied, but can added through [`with_offset()`](Self::with_offset).
-    pub fn of_length(length: usize) -> Self {
-        Self {
+    /// No offset is applied, but can be added through [`with_offset()`](Self::with_offset).
+    ///
+    /// # Errors
+    ///
+    /// Errors if the domain length is not a power of 2.
+    pub fn of_length(length: usize) -> Result<Self> {
+        let domain = Self {
             offset: BFieldElement::one(),
-            generator: Self::generator_for_length(length as u64),
+            generator: Self::generator_for_length(length as u64)?,
             length,
-        }
+        };
+        Ok(domain)
     }
 
     /// Set the offset of the domain.
+    #[must_use]
     pub fn with_offset(mut self, offset: BFieldElement) -> Self {
         self.offset = offset;
         self
     }
 
     /// Derive a generator for a domain of the given length.
-    /// The domain length must be a power of 2.
-    pub fn generator_for_length(domain_length: u64) -> BFieldElement {
-        assert!(
-            0 == domain_length || domain_length.is_power_of_two(),
-            "The domain length must be a power of 2 but was {domain_length}.",
-        );
-        BFieldElement::primitive_root_of_unity(domain_length).unwrap()
+    ///
+    /// # Errors
+    ///
+    /// Errors if the domain length is not a power of 2.
+    pub fn generator_for_length(domain_length: u64) -> Result<BFieldElement> {
+        let error = ArithmeticDomainError::PrimitiveRootNotSupported(domain_length);
+        BFieldElement::primitive_root_of_unity(domain_length).ok_or(error)
     }
 
     pub fn evaluate<FF>(&self, polynomial: &Polynomial<FF>) -> Vec<FF>
@@ -94,19 +104,22 @@ impl ArithmeticDomain {
         domain_values
     }
 
-    #[must_use]
-    pub(crate) fn halve(&self) -> Self {
-        assert!(self.length >= 2);
-        Self {
+    pub(crate) fn halve(&self) -> Result<Self> {
+        if self.length < 2 {
+            return Err(ArithmeticDomainError::TooSmallForHalving(self.length));
+        }
+        let domain = Self {
             offset: self.offset.square(),
             generator: self.generator.square(),
             length: self.length / 2,
-        }
+        };
+        Ok(domain)
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use assert2::let_assert;
     use itertools::Itertools;
     use proptest::prelude::*;
     use proptest_arbitrary_interop::arb;
@@ -140,7 +153,7 @@ mod tests {
         fn arbitrary_domain_of_length(length: usize)(
             offset in arb(),
         ) -> ArithmeticDomain {
-            ArithmeticDomain::of_length(length).with_offset(offset)
+            ArithmeticDomain::of_length(length).unwrap().with_offset(offset)
         }
     }
 
@@ -184,7 +197,9 @@ mod tests {
         for order in [4, 8, 32] {
             let generator = BFieldElement::primitive_root_of_unity(order).unwrap();
             let offset = BFieldElement::generator();
-            let b_domain = ArithmeticDomain::of_length(order as usize).with_offset(offset);
+            let b_domain = ArithmeticDomain::of_length(order as usize)
+                .unwrap()
+                .with_offset(offset);
 
             let expected_b_values = (0..order)
                 .map(|i| offset * generator.mod_pow(i))
@@ -224,8 +239,8 @@ mod tests {
         let long_domain_len = 128;
         let unit_distance = long_domain_len / short_domain_len;
 
-        let short_domain = ArithmeticDomain::of_length(short_domain_len);
-        let long_domain = ArithmeticDomain::of_length(long_domain_len);
+        let short_domain = ArithmeticDomain::of_length(short_domain_len).unwrap();
+        let long_domain = ArithmeticDomain::of_length(long_domain_len).unwrap();
 
         let polynomial = Polynomial::new([1, 2, 3, 4].map(BFieldElement::new).to_vec());
         let short_codeword = short_domain.evaluate(&polynomial);
@@ -244,7 +259,7 @@ mod tests {
     fn halving_domain_squares_all_points(
         #[strategy(arbitrary_halveable_domain())] domain: ArithmeticDomain,
     ) {
-        let half_domain = domain.halve();
+        let half_domain = domain.halve()?;
         prop_assert_eq!(domain.length / 2, half_domain.length);
 
         let domain_points = domain.domain_values();
@@ -259,16 +274,11 @@ mod tests {
     }
 
     #[test]
-    #[should_panic]
-    fn domain_of_length_one_cannot_be_halved() {
-        let domain = ArithmeticDomain::of_length(1);
-        let _ = domain.halve();
-    }
-
-    #[test]
-    #[should_panic]
-    fn domain_of_length_zero_cannot_be_halved() {
-        let domain = ArithmeticDomain::of_length(0);
-        let _ = domain.halve();
+    fn too_small_domains_cannot_be_halved() {
+        for i in [0, 1] {
+            let domain = ArithmeticDomain::of_length(i).unwrap();
+            let_assert!(Err(err) = domain.halve());
+            assert!(ArithmeticDomainError::TooSmallForHalving(i) == err);
+        }
     }
 }

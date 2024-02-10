@@ -99,6 +99,16 @@ pub enum InstructionError {
 }
 
 #[non_exhaustive]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Error)]
+pub enum ArithmeticDomainError {
+    #[error("the domain's length must be a power of 2 but was {0}")]
+    PrimitiveRootNotSupported(u64),
+
+    #[error("the domain's length must be at least 2 to be halved, but it was {0}")]
+    TooSmallForHalving(usize),
+}
+
+#[non_exhaustive]
 #[derive(Debug, Error)]
 pub enum ProofStreamError {
     #[error("queue must be non-empty in order to dequeue an item")]
@@ -131,6 +141,9 @@ pub enum FriSetupError {
 
     #[error("the expansion factor must be smaller than the domain length")]
     ExpansionFactorMismatch,
+
+    #[error(transparent)]
+    ArithmeticDomainError(#[from] ArithmeticDomainError),
 }
 
 #[non_exhaustive]
@@ -138,6 +151,9 @@ pub enum FriSetupError {
 pub enum FriProvingError {
     #[error(transparent)]
     MerkleTreeError(#[from] MerkleTreeError),
+
+    #[error(transparent)]
+    ArithmeticDomainError(#[from] ArithmeticDomainError),
 }
 
 #[non_exhaustive]
@@ -163,6 +179,9 @@ pub enum FriValidationError {
 
     #[error(transparent)]
     MerkleTreeError(#[from] MerkleTreeError),
+
+    #[error(transparent)]
+    ArithmeticDomainError(#[from] ArithmeticDomainError),
 }
 
 #[non_exhaustive]
@@ -228,6 +247,9 @@ pub enum ProvingError {
     MerkleTreeError(#[from] MerkleTreeError),
 
     #[error(transparent)]
+    ArithmeticDomainError(#[from] ArithmeticDomainError),
+
+    #[error(transparent)]
     FriSetupError(#[from] FriSetupError),
 
     #[error(transparent)]
@@ -272,6 +294,9 @@ pub enum VerificationError {
 
     #[error(transparent)]
     ProofStreamError(#[from] ProofStreamError),
+
+    #[error(transparent)]
+    ArithmeticDomainError(#[from] ArithmeticDomainError),
 
     #[error(transparent)]
     FriSetupError(#[from] FriSetupError),

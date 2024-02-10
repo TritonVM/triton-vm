@@ -87,7 +87,7 @@ impl<'stream, H: AlgebraicHasher> FriProver<'stream, H> {
         let previous_round = self.rounds.last().unwrap();
         let folding_challenge = self.proof_stream.sample_scalars(1)[0];
         let codeword = previous_round.split_and_fold(folding_challenge);
-        let domain = previous_round.domain.halve();
+        let domain = previous_round.domain.halve()?;
         ProverRound::new(domain, &codeword)
     }
 
@@ -243,7 +243,7 @@ impl<'stream, H: AlgebraicHasher> FriVerifier<'stream, H> {
 
     fn construct_next_round(&mut self) -> VerifierResult<VerifierRound> {
         let previous_round = self.rounds.last().unwrap();
-        let domain = previous_round.domain.halve();
+        let domain = previous_round.domain.halve()?;
         self.construct_round_with_domain(domain)
     }
 
@@ -701,7 +701,9 @@ mod tests {
             let min_expanded_domain_length = min_domain_length * expansion_factor;
             let domain_length = max(sampled_domain_length, min_expanded_domain_length);
 
-            let fri_domain = ArithmeticDomain::of_length(domain_length).with_offset(offset);
+            let maybe_domain = ArithmeticDomain::of_length(domain_length);
+            let fri_domain = maybe_domain.unwrap().with_offset(offset);
+
             Fri::new(fri_domain, expansion_factor, num_collinearity_checks).unwrap()
         }
     }
@@ -798,7 +800,7 @@ mod tests {
     }
 
     fn smallest_fri() -> Fri<Tip5> {
-        let domain = ArithmeticDomain::of_length(2);
+        let domain = ArithmeticDomain::of_length(2).unwrap();
         let expansion_factor = 2;
         let num_collinearity_checks = 1;
         Fri::new(domain, expansion_factor, num_collinearity_checks).unwrap()
@@ -806,7 +808,7 @@ mod tests {
 
     #[test]
     fn too_small_expansion_factor_is_rejected() {
-        let domain = ArithmeticDomain::of_length(2);
+        let domain = ArithmeticDomain::of_length(2).unwrap();
         let expansion_factor = 1;
         let num_collinearity_checks = 1;
         let err = Fri::<Tip5>::new(domain, expansion_factor, num_collinearity_checks).unwrap_err();
@@ -820,7 +822,7 @@ mod tests {
         expansion_factor: usize,
     ) {
         let largest_supported_domain_size = 1 << 32;
-        let domain = ArithmeticDomain::of_length(largest_supported_domain_size);
+        let domain = ArithmeticDomain::of_length(largest_supported_domain_size).unwrap();
         let num_collinearity_checks = 1;
         let err = Fri::<Tip5>::new(domain, expansion_factor, num_collinearity_checks).unwrap_err();
         prop_assert_eq!(FriSetupError::ExpansionFactorUnsupported, err);
@@ -833,7 +835,7 @@ mod tests {
     ) {
         let expansion_factor = 1 << log_2_expansion_factor;
         let domain_length = 1 << log_2_domain_length;
-        let domain = ArithmeticDomain::of_length(domain_length);
+        let domain = ArithmeticDomain::of_length(domain_length).unwrap();
         let num_collinearity_checks = 1;
         let err = Fri::<Tip5>::new(domain, expansion_factor, num_collinearity_checks).unwrap_err();
         prop_assert_eq!(FriSetupError::ExpansionFactorMismatch, err);

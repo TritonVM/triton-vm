@@ -151,7 +151,7 @@ pub(crate) fn construct_master_base_table(
     let padded_height = aet.padded_height();
     let fri = stark.derive_fri(padded_height).unwrap();
     let max_degree = stark.derive_max_degree(padded_height);
-    let quotient_domain = Stark::quotient_domain(fri.domain, max_degree);
+    let quotient_domain = Stark::quotient_domain(fri.domain, max_degree).unwrap();
     MasterBaseTable::new(
         aet,
         stark.num_trace_randomizers,
