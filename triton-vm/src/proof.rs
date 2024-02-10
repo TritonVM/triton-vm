@@ -6,6 +6,7 @@ use serde::Serialize;
 use twenty_first::prelude::*;
 
 use crate::error::ProofStreamError;
+use crate::program::Program;
 use crate::proof_stream::ProofStream;
 use crate::stark;
 
@@ -55,6 +56,31 @@ pub struct Claim {
 }
 
 impl Claim {
+    pub fn new(program_digest: Digest) -> Self {
+        Self {
+            program_digest,
+            input: vec![],
+            output: vec![],
+        }
+    }
+
+    #[must_use]
+    pub fn about_program(program: &Program) -> Self {
+        Self::new(program.hash::<Tip5>())
+    }
+
+    #[must_use]
+    pub fn with_input(mut self, input: Vec<BFieldElement>) -> Self {
+        self.input = input;
+        self
+    }
+
+    #[must_use]
+    pub fn with_output(mut self, output: Vec<BFieldElement>) -> Self {
+        self.output = output;
+        self
+    }
+
     /// The public input as `u64`s.
     /// If `BFieldElement`s are needed, use field `input`.
     pub fn public_input(&self) -> Vec<u64> {
@@ -80,6 +106,13 @@ mod tests {
     use crate::stark::StarkHasher;
 
     use super::*;
+
+    // For testing purposes only.
+    impl Default for Claim {
+        fn default() -> Self {
+            Self::new(Digest::default())
+        }
+    }
 
     #[proptest]
     fn decode_proof(#[strategy(arb())] proof: Proof) {

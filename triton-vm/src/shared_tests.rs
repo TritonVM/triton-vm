@@ -23,7 +23,6 @@ use crate::proof::Claim;
 use crate::proof::Proof;
 use crate::proof_item::FriResponse;
 use crate::stark::Stark;
-use crate::stark::StarkHasher;
 use crate::table::master_table::MasterBaseTable;
 use crate::NonDeterminism;
 use crate::PublicInput;
@@ -116,7 +115,9 @@ pub(crate) fn prove_with_low_security_level(
         .unwrap();
     prof_stop!(maybe_profiler, "trace program");
 
-    let claim = construct_claim(&aet, public_input.individual_tokens, public_output);
+    let claim = Claim::about_program(&aet.program)
+        .with_input(public_input.individual_tokens)
+        .with_output(public_output);
 
     prof_start!(maybe_profiler, "prove");
     let stark = low_security_stark();
@@ -124,18 +125,6 @@ pub(crate) fn prove_with_low_security_level(
     prof_stop!(maybe_profiler, "prove");
 
     (stark, claim, proof)
-}
-
-pub(crate) fn construct_claim(
-    aet: &AlgebraicExecutionTrace,
-    public_input: Vec<BFieldElement>,
-    public_output: Vec<BFieldElement>,
-) -> Claim {
-    Claim {
-        program_digest: aet.program.hash::<StarkHasher>(),
-        input: public_input,
-        output: public_output,
-    }
 }
 
 pub(crate) fn low_security_stark() -> Stark {

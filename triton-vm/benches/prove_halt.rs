@@ -6,7 +6,6 @@ use criterion::Criterion;
 use triton_vm::profiler::TritonProfiler;
 use triton_vm::proof::Claim;
 use triton_vm::stark::Stark;
-use triton_vm::stark::StarkHasher;
 use triton_vm::triton_program;
 
 /// cargo criterion --bench prove_halt
@@ -15,11 +14,7 @@ fn prove_halt(criterion: &mut Criterion) {
     let (aet, output) = program.trace_execution([].into(), [].into()).unwrap();
 
     let stark = Stark::default();
-    let claim = Claim {
-        input: vec![],
-        program_digest: program.hash::<StarkHasher>(),
-        output,
-    };
+    let claim = Claim::about_program(&program).with_output(output);
     let mut profiler = Some(TritonProfiler::new("Prove Halt"));
     let proof = stark.prove(&claim, &aet, &mut profiler).unwrap();
     let mut profiler = profiler.unwrap();

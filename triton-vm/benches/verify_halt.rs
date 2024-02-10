@@ -6,7 +6,6 @@ use criterion::Criterion;
 use triton_vm::profiler::TritonProfiler;
 use triton_vm::proof::Claim;
 use triton_vm::stark::Stark;
-use triton_vm::stark::StarkHasher;
 use triton_vm::triton_program;
 
 /// cargo criterion --bench verify_halt
@@ -14,11 +13,7 @@ fn verify_halt(criterion: &mut Criterion) {
     let program = triton_program!(halt);
 
     let stark = Stark::default();
-    let claim = Claim {
-        input: vec![],
-        program_digest: program.hash::<StarkHasher>(),
-        output: vec![],
-    };
+    let claim = Claim::about_program(&program);
 
     let (aet, _) = program.trace_execution([].into(), [].into()).unwrap();
     let proof = stark.prove(&claim, &aet, &mut None).unwrap();

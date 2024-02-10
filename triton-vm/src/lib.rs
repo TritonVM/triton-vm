@@ -512,19 +512,20 @@ pub fn prove_program(
     // If the VM crashes, proof generation will fail.
     let (aet, public_output) = program.trace_execution(public_input.clone(), non_determinism)?;
 
-    // Hash the program to obtain its digest.
-    let program_digest = program.hash::<StarkHasher>();
-
-    // The default parameters give a (conjectured) security level of 160 bits.
-    let stark = Stark::default();
-
     // Set up the claim that is to be proven. The claim contains all public information. The
     // proof is zero-knowledge with respect to everything else.
+    //
+    // While it is more convenient to construct a `Claim::about_program(&program)`, this API is
+    // purposefully not used here to highlight that only a program's hash digest, not the full
+    // program, is part of the claim.
     let claim = Claim {
-        program_digest,
+        program_digest: program.hash::<Tip5>(),
         input: public_input.individual_tokens,
         output: public_output,
     };
+
+    // The default parameters give a (conjectured) security level of 160 bits.
+    let stark = Stark::default();
 
     // Generate the proof.
     let proof = stark.prove(&claim, &aet, &mut None)?;
@@ -660,11 +661,7 @@ mod tests {
     #[test]
     fn lib_prove_verify() {
         let program = triton_program!(push 1 assert halt);
-        let claim = Claim {
-            program_digest: program.hash::<StarkHasher>(),
-            input: vec![],
-            output: vec![],
-        };
+        let claim = Claim::about_program(&program);
 
         let stark = Stark::default();
         let proof = prove(stark, &claim, &program, [].into()).unwrap();
@@ -676,11 +673,7 @@ mod tests {
     fn lib_prove_with_incorrect_program_digest_gives_appropriate_error() {
         let program = triton_program!(push 1 assert halt);
         let other_program = triton_program!(push 2 assert halt);
-        let claim = Claim {
-            program_digest: other_program.hash::<StarkHasher>(),
-            input: vec![],
-            output: vec![],
-        };
+        let claim = Claim::about_program(&other_program);
 
         let stark = Stark::default();
         let_assert!(Err(err) = prove(stark, &claim, &program, [].into()));
@@ -690,11 +683,9 @@ mod tests {
     #[test]
     fn lib_prove_with_incorrect_public_output_gives_appropriate_error() {
         let program = triton_program! { read_io 1 push 2 mul write_io 1 halt };
-        let claim = Claim {
-            program_digest: program.hash::<StarkHasher>(),
-            input: vec![2_u64.into()],
-            output: vec![5_u64.into()],
-        };
+        let claim = Claim::about_program(&program)
+            .with_input(vec![2_u64.into()])
+            .with_output(vec![5_u64.into()]);
 
         let stark = Stark::default();
         let_assert!(Err(err) = prove(stark, &claim, &program, [].into()));

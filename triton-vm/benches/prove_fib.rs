@@ -8,7 +8,6 @@ use triton_vm::example_programs::FIBONACCI_SEQUENCE;
 use triton_vm::prelude::*;
 use triton_vm::profiler::Report;
 use triton_vm::profiler::TritonProfiler;
-use triton_vm::stark::StarkHasher;
 
 const FIBONACCI_INDEX: u64 = 100;
 
@@ -59,11 +58,9 @@ fn trace_execution() -> (Claim, AlgebraicExecutionTrace) {
         .trace_execution(public_input.clone(), [].into())
         .unwrap();
 
-    let claim = Claim {
-        input: public_input.individual_tokens,
-        program_digest: program.hash::<StarkHasher>(),
-        output,
-    };
+    let claim = Claim::about_program(&program)
+        .with_input(public_input.individual_tokens)
+        .with_output(output);
     (claim, aet)
 }
 

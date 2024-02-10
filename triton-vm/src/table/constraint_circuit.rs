@@ -1463,11 +1463,7 @@ mod tests {
         let mut rng = StdRng::seed_from_u64(seed);
         println!("seed: {seed}");
 
-        let dummy_claim = Claim {
-            program_digest: Digest::default(),
-            input: vec![],
-            output: vec![],
-        };
+        let dummy_claim = Claim::default();
         let challenges: [XFieldElement; Challenges::num_challenges_to_sample()] = rng.gen();
         let challenges = challenges.to_vec();
         let challenges = Challenges::new(challenges, &dummy_claim);
@@ -2114,11 +2110,7 @@ mod tests {
         }
 
         // Use the Schwartz-Zippel lemma to check no two substitution rules are equal.
-        let dummy_claim = Claim {
-            program_digest: Digest::default(),
-            input: vec![],
-            output: vec![],
-        };
+        let dummy_claim = Claim::default();
         let challenges: [XFieldElement; Challenges::num_challenges_to_sample()] = rng.gen();
         let challenges = challenges.to_vec();
         let challenges = Challenges::new(challenges, &dummy_claim);

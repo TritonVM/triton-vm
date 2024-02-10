@@ -400,7 +400,7 @@ impl Program {
         self.instructions.is_empty()
     }
 
-    /// Hash the program using the given `AlgebraicHasher`.
+    /// Produces the program's canonical hash digest for the given `AlgebraicHasher`.
     pub fn hash<H: AlgebraicHasher>(&self) -> Digest {
         H::hash_varlen(&self.to_bwords())
     }

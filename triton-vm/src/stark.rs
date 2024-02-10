@@ -1150,7 +1150,9 @@ pub(crate) mod tests {
             .trace_execution(public_input.clone(), non_determinism)
             .unwrap();
         let stark = low_security_stark();
-        let claim = construct_claim(&aet, public_input.individual_tokens, stdout);
+        let claim = Claim::about_program(&aet.program)
+            .with_input(public_input.individual_tokens)
+            .with_output(stdout);
         let master_base_table = construct_master_base_table(stark, &aet);
 
         (stark, claim, master_base_table)
