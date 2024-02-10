@@ -123,7 +123,7 @@ impl VMState {
             jump_stack: vec![],
             cycle_count: 0,
             instruction_pointer: 0,
-            sponge_state: Default::default(),
+            sponge_state: None,
             halting: false,
         }
     }

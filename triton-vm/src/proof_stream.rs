@@ -273,7 +273,7 @@ mod tests {
             tree_height,
             indexed_leaves,
             authentication_structure: auth_structure,
-            ..Default::default()
+            ..MerkleTreeInclusionProof::default()
         };
         assert!(inclusion_proof.verify(merkle_tree.root()));
     }

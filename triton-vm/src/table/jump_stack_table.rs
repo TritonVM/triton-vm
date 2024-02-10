@@ -75,7 +75,7 @@ impl ExtJumpStackTable {
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
         let one = circuit_builder.b_constant(1u32.into());
         let call_opcode =
-            circuit_builder.b_constant(Instruction::Call(Default::default()).opcode_b());
+            circuit_builder.b_constant(Instruction::Call(BFieldElement::default()).opcode_b());
         let return_opcode = circuit_builder.b_constant(Instruction::Return.opcode_b());
 
         let clk = circuit_builder.input(CurrentBaseRow(CLK.master_base_table_index()));

@@ -1464,7 +1464,7 @@ mod tests {
         println!("seed: {seed}");
 
         let dummy_claim = Claim {
-            program_digest: Default::default(),
+            program_digest: Digest::default(),
             input: vec![],
             output: vec![],
         };
@@ -2115,7 +2115,7 @@ mod tests {
 
         // Use the Schwartz-Zippel lemma to check no two substitution rules are equal.
         let dummy_claim = Claim {
-            program_digest: Default::default(),
+            program_digest: Digest::default(),
             input: vec![],
             output: vec![],
         };

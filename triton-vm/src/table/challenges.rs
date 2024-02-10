@@ -317,7 +317,7 @@ pub(crate) mod tests {
         /// If no [`Claim`] is provided, a dummy claim is used.
         pub fn placeholder(claim: Option<&Claim>) -> Self {
             let dummy_claim = Claim {
-                program_digest: Default::default(),
+                program_digest: Digest::default(),
                 input: vec![],
                 output: vec![],
             };
@@ -328,7 +328,7 @@ pub(crate) mod tests {
 
         pub fn deterministic_placeholder(claim: Option<&Claim>) -> Self {
             let dummy_claim = Claim {
-                program_digest: Default::default(),
+                program_digest: Digest::default(),
                 input: vec![],
                 output: vec![],
             };

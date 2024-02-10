@@ -114,9 +114,9 @@ impl BFieldCodec for Program {
 
         Ok(Box::new(Program {
             instructions,
-            address_to_label: Default::default(),
+            address_to_label: HashMap::default(),
             breakpoints: vec![],
-            type_hints: Default::default(),
+            type_hints: HashMap::default(),
         }))
     }
 

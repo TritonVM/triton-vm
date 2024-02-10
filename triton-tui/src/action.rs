@@ -5,10 +5,9 @@ use itertools::Itertools;
 use serde::de::*;
 use serde::*;
 use triton_vm::instruction::Instruction;
-use triton_vm::op_stack::NUM_OP_STACK_REGISTERS;
-use triton_vm::prelude::*;
 
 use crate::mode::Mode;
+use crate::shadow_memory::TopOfStack;
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize)]
 pub(crate) enum Action {
@@ -69,8 +68,8 @@ pub(crate) enum Toggle {
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize, Arbitrary)]
 pub(crate) struct ExecutedInstruction {
     pub instruction: Instruction,
-    pub old_top_of_stack: [BFieldElement; NUM_OP_STACK_REGISTERS],
-    pub new_top_of_stack: [BFieldElement; NUM_OP_STACK_REGISTERS],
+    pub old_top_of_stack: TopOfStack,
+    pub new_top_of_stack: TopOfStack,
 }
 
 impl<'de> Deserialize<'de> for Action {
@@ -169,8 +168,8 @@ impl<'de> Deserialize<'de> for Action {
 impl ExecutedInstruction {
     pub fn new(
         instruction: Instruction,
-        old_top_of_stack: [BFieldElement; NUM_OP_STACK_REGISTERS],
-        new_top_of_stack: [BFieldElement; NUM_OP_STACK_REGISTERS],
+        old_top_of_stack: TopOfStack,
+        new_top_of_stack: TopOfStack,
     ) -> Self {
         Self {
             instruction,

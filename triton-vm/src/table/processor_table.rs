@@ -3602,7 +3602,7 @@ pub(crate) mod tests {
         let programs = [triton_program!(call label label: halt)];
         let test_rows = programs.map(|program| test_row_from_program(program, 0));
         let debug_info = TestRowsDebugInfo {
-            instruction: Call(Default::default()),
+            instruction: Call(BFieldElement::default()),
             debug_cols_curr_row: vec![IP, CI, NIA, JSP, JSO, JSD],
             debug_cols_next_row: vec![IP, CI, NIA, JSP, JSO, JSD],
         };

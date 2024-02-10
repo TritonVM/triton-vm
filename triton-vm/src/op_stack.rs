@@ -648,10 +648,16 @@ mod tests {
 
     use super::*;
 
+    // For testing purposes only.
+    impl Default for OpStack {
+        fn default() -> Self {
+            OpStack::new(Digest::default())
+        }
+    }
+
     #[test]
     fn sanity() {
-        let digest = Default::default();
-        let mut op_stack = OpStack::new(digest);
+        let mut op_stack = OpStack::default();
 
         // verify height
         assert!(op_stack.len() == 16);
@@ -726,7 +732,7 @@ mod tests {
 
     #[test]
     fn trying_to_access_first_underflow_element_never_panics() {
-        let mut op_stack = OpStack::new(Default::default());
+        let mut op_stack = OpStack::default();
         let way_too_long = 2 * op_stack.len();
         for _ in 0..way_too_long {
             let _ = op_stack.pop();

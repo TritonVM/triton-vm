@@ -879,7 +879,7 @@ impl Stark {
             tree_height: merkle_tree_height,
             indexed_leaves: index_leaves(leaf_digests_base),
             authentication_structure: base_authentication_structure,
-            ..Default::default()
+            ..MerkleTreeInclusionProof::default()
         };
         if !base_merkle_tree_inclusion_proof.verify(base_merkle_tree_root) {
             return Err(BaseCodewordAuthenticationFailure);
@@ -905,7 +905,7 @@ impl Stark {
             tree_height: merkle_tree_height,
             indexed_leaves: index_leaves(leaf_digests_ext),
             authentication_structure: ext_authentication_structure,
-            ..Default::default()
+            ..MerkleTreeInclusionProof::default()
         };
         if !ext_merkle_tree_inclusion_proof.verify(extension_tree_merkle_root) {
             return Err(ExtensionCodewordAuthenticationFailure);
@@ -927,7 +927,7 @@ impl Stark {
             tree_height: merkle_tree_height,
             indexed_leaves: index_leaves(revealed_quotient_segments_digests),
             authentication_structure: revealed_quotient_authentication_structure,
-            ..Default::default()
+            ..MerkleTreeInclusionProof::default()
         };
         if !quot_merkle_tree_inclusion_proof.verify(quotient_codeword_merkle_root) {
             return Err(QuotientCodewordAuthenticationFailure);

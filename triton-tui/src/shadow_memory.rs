@@ -12,6 +12,8 @@ use triton_vm::prelude::*;
 use crate::action::ExecutedInstruction;
 use crate::element_type_hint::ElementTypeHint;
 
+pub(crate) type TopOfStack = [BFieldElement; NUM_OP_STACK_REGISTERS];
+
 /// Mimics the behavior of the actual memory. Helps debugging programs written for Triton VM by
 /// tracking (manually set) type hints next to stack or RAM elements.
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -150,11 +152,7 @@ impl ShadowMemory {
         self.push(self.stack[dup_index].clone());
     }
 
-    fn read_mem(
-        &mut self,
-        n: NumberOfWords,
-        old_top_of_stack: [BFieldElement; NUM_OP_STACK_REGISTERS],
-    ) {
+    fn read_mem(&mut self, n: NumberOfWords, old_top_of_stack: TopOfStack) {
         let ram_pointer_hint = self.pop();
         let mut ram_pointer = old_top_of_stack[0];
         for _ in 0..n.num_words() {
@@ -165,11 +163,7 @@ impl ShadowMemory {
         self.push(ram_pointer_hint);
     }
 
-    fn write_mem(
-        &mut self,
-        n: NumberOfWords,
-        old_top_of_stack: [BFieldElement; NUM_OP_STACK_REGISTERS],
-    ) {
+    fn write_mem(&mut self, n: NumberOfWords, old_top_of_stack: TopOfStack) {
         let ram_pointer_hint = self.pop();
         let mut ram_pointer = old_top_of_stack[0];
         for _ in 0..n.num_words() {
@@ -380,13 +374,13 @@ mod tests {
         type_hints.mimic_instruction(ExecutedInstruction::new(
             Instruction::WriteMem(num_words),
             top_of_stack_before_write,
-            Default::default(),
+            TopOfStack::default(),
         ));
         prop_assert_ne!(&initial_type_hints.stack, &type_hints.stack);
         type_hints.mimic_instruction(ExecutedInstruction::new(
             Instruction::ReadMem(num_words),
             top_of_stack_before_read,
-            Default::default(),
+            TopOfStack::default(),
         ));
         prop_assert_eq!(initial_type_hints.stack, type_hints.stack);
     }
@@ -438,7 +432,7 @@ mod tests {
         let executed_instruction = ExecutedInstruction::new(
             Instruction::Hash,
             [BFieldElement::zero(); NUM_OP_STACK_REGISTERS],
-            Default::default(),
+            TopOfStack::default(),
         );
 
         let mut type_hints = ShadowMemory::default();

@@ -367,7 +367,7 @@ impl<'stream, H: AlgebraicHasher> FriVerifier<'stream, H> {
             tree_height: round.merkle_tree_height(),
             indexed_leaves,
             authentication_structure,
-            ..Default::default()
+            ..MerkleTreeInclusionProof::default()
         };
         match inclusion_proof.verify(round.merkle_root) {
             true => Ok(()),
@@ -391,7 +391,7 @@ impl<'stream, H: AlgebraicHasher> FriVerifier<'stream, H> {
             tree_height: round.merkle_tree_height(),
             indexed_leaves,
             authentication_structure,
-            ..Default::default()
+            ..MerkleTreeInclusionProof::default()
         };
         match inclusion_proof.verify(round.merkle_root) {
             true => Ok(()),

@@ -17,6 +17,7 @@ use crate::action::*;
 use crate::args::TuiArgs;
 use crate::components::Component;
 use crate::shadow_memory::ShadowMemory;
+use crate::shadow_memory::TopOfStack;
 
 #[derive(Debug)]
 pub(crate) struct TritonVMState {
@@ -125,7 +126,7 @@ impl TritonVMState {
         Ok(NonDeterminism::from(&non_determinism))
     }
 
-    fn top_of_stack(&self) -> [BFieldElement; NUM_OP_STACK_REGISTERS] {
+    fn top_of_stack(&self) -> TopOfStack {
         let stack_len = self.vm_state.op_stack.stack.len();
         let index_of_lowest_accessible_element = stack_len - NUM_OP_STACK_REGISTERS;
         let top_of_stack = &self.vm_state.op_stack.stack[index_of_lowest_accessible_element..];
