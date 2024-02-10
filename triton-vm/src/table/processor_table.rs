@@ -3451,11 +3451,11 @@ pub(crate) mod tests {
             let next_row = rows.consecutive_master_base_table_rows.slice(s![1, ..]);
 
             println!("Testing all constraints of {instruction} for test case {case_idx}…");
-            for &c in debug_info.debug_cols_curr_row.iter() {
+            for &c in &debug_info.debug_cols_curr_row {
                 print!("{c}  = {}, ", curr_row[c.master_base_table_index()]);
             }
             println!();
-            for &c in debug_info.debug_cols_next_row.iter() {
+            for &c in &debug_info.debug_cols_next_row {
                 print!("{c}' = {}, ", next_row[c.master_base_table_index()]);
             }
             println!();

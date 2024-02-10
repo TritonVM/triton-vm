@@ -231,7 +231,7 @@ impl Program {
         let mut label_map = HashMap::new();
         let mut instruction_pointer = 0;
 
-        for labelled_instruction in program.iter() {
+        for labelled_instruction in program {
             match labelled_instruction {
                 Label(label) => match label_map.entry(label.clone()) {
                     Entry::Occupied(_) => panic!("Duplicate label: {label}"),
@@ -555,7 +555,7 @@ impl VMProfiler {
     }
 
     fn stop_all_at_cycle(&mut self, cycle: u32) {
-        for &line_number in self.call_stack.iter() {
+        for &line_number in &self.call_stack {
             self.profile[line_number].stop_at_cycle(cycle);
         }
     }
@@ -966,7 +966,7 @@ mod tests {
         let (_, profile) = program.profile([].into(), [].into()).unwrap();
 
         println!();
-        for line in profile.iter() {
+        for line in &profile {
             println!("{line}");
         }
 

@@ -119,8 +119,8 @@ impl TritonProfiler {
         // collect all categories and their total times
         // todo: this can count the same category multiple times if it's nested
         let mut category_times = HashMap::new();
-        for task in self.profile.iter() {
-            if let Some(category) = &task.category {
+        for task in &self.profile {
+            if let Some(ref category) = task.category {
                 category_times
                     .entry(category.to_string())
                     .or_insert(Duration::ZERO)
@@ -177,8 +177,8 @@ impl TritonProfiler {
                 }
             }
             let mut younger_max_weight: Weight = Weight::LikeNothing;
-            for sibling in younger_siblings.iter() {
-                younger_max_weight = max(younger_max_weight, report[*sibling].weight);
+            for &sibling in &younger_siblings {
+                younger_max_weight = max(younger_max_weight, report[sibling].weight);
             }
 
             report[task_index].younger_max_weight = younger_max_weight;
@@ -473,14 +473,14 @@ impl Display for Report {
             "{title}{separation}   {total_time_string}   {share_string}  {category_string}"
         )?;
 
-        for task in self.tasks.iter() {
-            for ancestor_index in task.ancestors.iter() {
-                let mut spacer: ColoredString = if self.tasks[*ancestor_index].is_last_sibling {
+        for task in &self.tasks {
+            for &ancestor_index in &task.ancestors {
+                let mut spacer: ColoredString = if self.tasks[ancestor_index].is_last_sibling {
                     "  ".normal()
                 } else {
                     "│ ".normal()
                 };
-                let uncle_weight = &self.tasks[*ancestor_index].younger_max_weight;
+                let uncle_weight = &self.tasks[ancestor_index].younger_max_weight;
                 spacer = spacer.color(uncle_weight.color());
 
                 write!(f, "{spacer}")?;
@@ -490,11 +490,7 @@ impl Display for Report {
             } else {
                 "├".normal()
             }
-            .color(
-                max(&task.weight, &task.younger_max_weight)
-                    .to_owned()
-                    .color(),
-            );
+            .color(max(task.weight, task.younger_max_weight).color());
             let dash = "─".color(task.weight.color());
             write!(f, "{tracer}{dash}")?;
 
@@ -543,7 +539,7 @@ impl Display for Report {
                 .collect::<Vec<_>>();
             category_times_and_names_sorted_by_time.sort_by_key(|&(_, time)| time);
             category_times_and_names_sorted_by_time.reverse();
-            for (category, category_time) in category_times_and_names_sorted_by_time.into_iter() {
+            for (category, category_time) in category_times_and_names_sorted_by_time {
                 let category_relative_time =
                     category_time.as_secs_f64() / self.total_time.as_secs_f64();
                 let category_color = Weight::weigh(category_relative_time).color();

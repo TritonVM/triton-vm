@@ -115,7 +115,7 @@ fn ensure_no_missing_or_duplicate_labels<'a>(
     // identify all and duplicate labels
     let mut seen_labels: HashMap<&str, InstructionToken> = HashMap::default();
     let mut duplicate_labels = HashSet::default();
-    for instruction in instructions.iter() {
+    for instruction in instructions {
         if let InstructionToken::Label(label, _) = instruction {
             if let Some(first_occurrence) = seen_labels.get(label.as_str()) {
                 duplicate_labels.insert(first_occurrence.to_owned());
@@ -141,7 +141,7 @@ fn identify_missing_labels<'a>(
     seen_labels: HashMap<&str, InstructionToken>,
 ) -> HashSet<InstructionToken<'a>> {
     let mut missing_labels = HashSet::default();
-    for instruction in instructions.iter() {
+    for instruction in instructions {
         if let InstructionToken::Instruction(Call(label), _) = instruction {
             if !seen_labels.contains_key(label.as_str()) {
                 missing_labels.insert(instruction.to_owned());

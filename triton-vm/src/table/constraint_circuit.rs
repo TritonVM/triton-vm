@@ -923,7 +923,7 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
 
         // Of the remaining nodes, keep the ones occurring the most often.
         let mut nodes_and_occurrences = HashMap::new();
-        for node in low_degree_nodes.iter() {
+        for node in &low_degree_nodes {
             *nodes_and_occurrences.entry(node).or_insert(0) += 1;
         }
         let max_occurrences = nodes_and_occurrences
@@ -955,7 +955,7 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
         multicircuit: &[ConstraintCircuit<II>],
     ) -> Vec<ConstraintCircuit<II>> {
         let mut all_nodes = vec![];
-        for circuit in multicircuit.iter() {
+        for circuit in multicircuit {
             let nodes_in_circuit = Self::all_nodes_in_circuit(circuit);
             all_nodes.extend(nodes_in_circuit);
         }
@@ -1072,7 +1072,7 @@ impl<II: InputIndicator> ConstraintCircuitBuilder<II> {
 
     /// Substitute all nodes with ID `old_id` with the given `new` node.
     pub fn substitute(&self, old_id: usize, new: Rc<RefCell<ConstraintCircuit<II>>>) {
-        for node in self.all_nodes.borrow().clone().into_iter() {
+        for node in self.all_nodes.borrow().clone() {
             if node.circuit.borrow().id == old_id {
                 continue;
             }
@@ -1477,7 +1477,7 @@ mod tests {
         let ext_rows = ext_rows.view();
 
         let mut values = HashMap::new();
-        for c in constraints.iter() {
+        for c in constraints {
             evaluate_assert_unique(c, &challenges, base_rows, ext_rows, &mut values);
         }
 
@@ -2146,11 +2146,11 @@ mod tests {
             println!("  {circuit}");
         }
         println!("new base constraints:");
-        for constraint in new_base_constraints.iter() {
+        for constraint in &new_base_constraints {
             println!("  {constraint}");
         }
         println!("new ext constraints:");
-        for constraint in new_ext_constraints.iter() {
+        for constraint in &new_ext_constraints {
             println!("  {constraint}");
         }
 

@@ -447,7 +447,7 @@ impl ExtU32Table {
 impl U32Table {
     pub fn fill_trace(u32_table: &mut ArrayViewMut2<BFieldElement>, aet: &AlgebraicExecutionTrace) {
         let mut next_section_start = 0;
-        for (&u32_table_entry, &multiplicity) in aet.u32_entries.iter() {
+        for (&u32_table_entry, &multiplicity) in &aet.u32_entries {
             let mut first_row = Array2::zeros([1, BASE_WIDTH]);
             first_row[[0, CopyFlag.base_table_index()]] = BFieldElement::one();
             first_row[[0, Bits.base_table_index()]] = BFieldElement::zero();

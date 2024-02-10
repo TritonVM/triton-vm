@@ -305,7 +305,7 @@ impl OpStackTable {
 
     fn clock_jump_differences(op_stack_table: ArrayView2<BFieldElement>) -> Vec<BFieldElement> {
         let mut clock_jump_differences = vec![];
-        for consecutive_rows in op_stack_table.axis_windows(Axis(0), 2).into_iter() {
+        for consecutive_rows in op_stack_table.axis_windows(Axis(0), 2) {
             let current_row = consecutive_rows.row(0);
             let next_row = consecutive_rows.row(1);
             let current_stack_pointer = current_row[StackPointer.base_table_index()];
