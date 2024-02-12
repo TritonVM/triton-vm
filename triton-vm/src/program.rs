@@ -294,12 +294,12 @@ impl Program {
                     break_before_next_instruction = false;
                     address += instruction.size() as u64;
                 }
+                LabelledInstruction::Label(_) => (),
                 LabelledInstruction::Breakpoint => break_before_next_instruction = true,
                 LabelledInstruction::TypeHint(type_hint) => match type_hints.entry(address) {
                     Entry::Occupied(mut entry) => entry.get_mut().push(type_hint.clone()),
                     Entry::Vacant(entry) => _ = entry.insert(vec![type_hint.clone()]),
                 },
-                _ => (),
             }
         }
 
