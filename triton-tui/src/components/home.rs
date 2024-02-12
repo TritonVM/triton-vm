@@ -18,7 +18,7 @@ use super::Frame;
 pub(crate) struct Home {
     type_hints: bool,
     call_stack: bool,
-    sponge_state: bool,
+    sponge: bool,
     inputs: bool,
 }
 
@@ -27,7 +27,7 @@ impl Default for Home {
         Self {
             type_hints: true,
             call_stack: true,
-            sponge_state: false,
+            sponge: false,
             inputs: true,
         }
     }
@@ -44,7 +44,7 @@ impl Home {
             Toggle::All => self.toggle_all_widgets(),
             Toggle::TypeHint => self.type_hints = !self.type_hints,
             Toggle::CallStack => self.call_stack = !self.call_stack,
-            Toggle::SpongeState => self.sponge_state = !self.sponge_state,
+            Toggle::SpongeState => self.sponge = !self.sponge,
             Toggle::Input => self.inputs = !self.inputs,
             Toggle::BlockAddress => (),
         };
@@ -56,18 +56,13 @@ impl Home {
     }
 
     fn all_widget_visibilities(self) -> [bool; 4] {
-        [
-            self.type_hints,
-            self.call_stack,
-            self.sponge_state,
-            self.inputs,
-        ]
+        [self.type_hints, self.call_stack, self.sponge, self.inputs]
     }
 
     fn set_all_widgets_visibility_to(&mut self, visibility: bool) {
         self.type_hints = visibility;
         self.call_stack = visibility;
-        self.sponge_state = visibility;
+        self.sponge = visibility;
         self.inputs = visibility;
     }
 
@@ -92,7 +87,7 @@ impl Home {
 
         let op_stack_widget_width = Constraint::Length(30);
         let remaining_width = Constraint::Fill(1);
-        let sponge_state_width = match self.sponge_state {
+        let sponge_state_width = match self.sponge {
             true => Constraint::Length(32),
             false => Constraint::Length(1),
         };
@@ -314,7 +309,7 @@ impl Home {
             bottom_right: symbols::line::ROUNDED.vertical_left,
             ..symbols::border::ROUNDED
         };
-        let borders = match self.sponge_state {
+        let borders = match self.sponge {
             true => Borders::ALL,
             false => Borders::TOP | Borders::RIGHT | Borders::BOTTOM,
         };
