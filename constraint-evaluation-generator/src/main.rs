@@ -268,14 +268,14 @@ fn generate_constraint_code(constraints: Constraints) -> TokenStream {
         &cons_constraints_bfe,
         &tran_constraints_bfe,
         &term_constraints_bfe,
-        "BFieldElement",
+        quote!(BFieldElement),
     );
     let evaluable_over_ext_field = generate_evaluable_implementation_over_field(
         &init_constraints_xfe,
         &cons_constraints_xfe,
         &tran_constraints_xfe,
         &term_constraints_xfe,
-        "XFieldElement",
+        quote!(XFieldElement),
     );
 
     let quotientable = quote!(
@@ -348,7 +348,7 @@ fn generate_evaluable_implementation_over_field(
     cons_constraints: &TokenStream,
     tran_constraints: &TokenStream,
     term_constraints: &TokenStream,
-    field: &str,
+    field: TokenStream,
 ) -> TokenStream {
     quote!(
     impl Evaluable<#field> for MasterExtTable {
