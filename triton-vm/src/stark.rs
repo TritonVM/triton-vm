@@ -2316,7 +2316,7 @@ pub(crate) mod tests {
 
         let poly_degree = thread_rng().gen_range(2..20);
         let low_deg_poly_coeffs: Vec<XFieldElement> = random_elements(poly_degree);
-        let low_deg_poly = Polynomial::new(low_deg_poly_coeffs.to_vec());
+        let low_deg_poly = Polynomial::new(low_deg_poly_coeffs.clone());
         let low_deg_codeword = domain.evaluate(&low_deg_poly);
 
         let out_of_domain_point: XFieldElement = thread_rng().gen();

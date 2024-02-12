@@ -182,7 +182,7 @@ mod tests {
         sponge_states.push_back(proof_stream.sponge_state.state);
         proof_stream.enqueue(ProofItem::QuotientSegmentsElements(quot_elements.clone()));
         sponge_states.push_back(proof_stream.sponge_state.state);
-        proof_stream.enqueue(ProofItem::FriCodeword(fri_codeword.to_vec()));
+        proof_stream.enqueue(ProofItem::FriCodeword(fri_codeword.clone()));
         sponge_states.push_back(proof_stream.sponge_state.state);
         proof_stream.enqueue(ProofItem::FriResponse(fri_response.clone()));
         sponge_states.push_back(proof_stream.sponge_state.state);
