@@ -208,7 +208,6 @@ impl IntoIterator for Program {
 }
 
 impl Program {
-    /// Create a `Program` from a slice of `LabelledInstruction`s.
     pub fn new(labelled_instructions: &[LabelledInstruction]) -> Self {
         let label_to_address = Self::build_label_to_address_map(labelled_instructions);
         let instructions =
@@ -226,21 +225,24 @@ impl Program {
     }
 
     fn build_label_to_address_map(program: &[LabelledInstruction]) -> HashMap<String, u64> {
-        use LabelledInstruction::*;
-
         let mut label_map = HashMap::new();
         let mut instruction_pointer = 0;
 
         for labelled_instruction in program {
-            match labelled_instruction {
-                Label(label) => match label_map.entry(label.clone()) {
-                    Entry::Occupied(_) => panic!("Duplicate label: {label}"),
-                    Entry::Vacant(entry) => _ = entry.insert(instruction_pointer),
-                },
-                Instruction(instruction) => instruction_pointer += instruction.size() as u64,
-                _ => (),
+            if let LabelledInstruction::Instruction(instruction) = labelled_instruction {
+                instruction_pointer += instruction.size() as u64;
+                continue;
             }
+
+            let LabelledInstruction::Label(label) = labelled_instruction else {
+                continue;
+            };
+            let Entry::Vacant(new_label_map_entry) = label_map.entry(label.clone()) else {
+                panic!("Duplicate label: {label}");
+            };
+            new_label_map_entry.insert(instruction_pointer);
         }
+
         label_map
     }
 
@@ -250,8 +252,8 @@ impl Program {
     ) -> Vec<Instruction> {
         labelled_instructions
             .iter()
-            .flat_map(|instr| Self::turn_label_to_address_for_instruction(instr, label_to_address))
-            .flat_map(|instr| vec![instr; instr.size()])
+            .filter_map(|inst| Self::turn_label_to_address_for_instruction(inst, label_to_address))
+            .flat_map(|inst| vec![inst; inst.size()])
             .collect()
     }
 
@@ -263,13 +265,14 @@ impl Program {
             return None;
         };
 
-        let instruction_with_absolute_address = instruction.map_call_address(|label| {
-            label_map
-                .get(label)
-                .map(|&address| BFieldElement::new(address))
-                .unwrap_or_else(|| panic!("Label not found: {label}"))
-        });
+        let instruction_with_absolute_address =
+            instruction.map_call_address(|label| Self::address_for_label(label, label_map));
         Some(instruction_with_absolute_address)
+    }
+
+    fn address_for_label(label: &str, label_map: &HashMap<String, u64>) -> BFieldElement {
+        let maybe_address = label_map.get(label).map(|&a| BFieldElement::new(a));
+        maybe_address.unwrap_or_else(|| panic!("Label not found: {label}"))
     }
 
     fn flip_map<Key, Value: Eq + Hash>(map: HashMap<Key, Value>) -> HashMap<Value, Key> {
