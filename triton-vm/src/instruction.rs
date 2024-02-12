@@ -81,10 +81,10 @@ pub struct TypeHint {
 impl Display for TypeHint {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         let variable = &self.variable_name;
-        let type_name = match self.type_name {
-            Some(ref type_name) => format!(": {type_name}"),
-            None => "".to_string(),
-        };
+
+        let format_type = |t| format!(": {t}");
+        let maybe_type = self.type_name.as_ref();
+        let type_name = maybe_type.map(format_type).unwrap_or_default();
 
         let start = self.starting_index;
         let range = match self.length {

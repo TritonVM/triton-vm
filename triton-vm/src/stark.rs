@@ -1352,7 +1352,7 @@ pub(crate) mod tests {
         let nia = if curr_instruction.has_arg() {
             next_instruction_or_arg.to_string()
         } else {
-            "".to_string()
+            String::new()
         };
         (curr_instruction.name().to_string(), nia)
     }

@@ -15,6 +15,7 @@ use colored::Color;
 use colored::ColoredString;
 use colored::Colorize;
 use criterion::profiler::Profiler;
+use itertools::Itertools;
 use unicode_width::UnicodeWidthStr;
 
 const GET_PROFILE_OUTPUT_AS_YOU_GO_ENV_VAR_NAME: &str = "PROFILE_AS_YOU_GO";
@@ -355,38 +356,18 @@ impl Weight {
         }
     }
 
-    fn color(&self) -> Color {
-        use Color::*;
-        use Weight::*;
-        match self {
-            LikeNothing => TrueColor {
-                r: 120,
-                g: 120,
-                b: 120,
-            },
-            VeryLittle => TrueColor {
-                r: 200,
-                g: 200,
-                b: 200,
-            },
-            Light => White,
-            Noticeable => TrueColor {
-                r: 255,
-                g: 255,
-                b: 120,
-            },
-            Heavy => TrueColor {
-                r: 255,
-                g: 150,
-                b: 0,
-            },
-            Massive => TrueColor {
-                r: 255,
-                g: 75,
-                b: 0,
-            },
-            SuperMassive => Red,
-        }
+    fn color(self) -> Color {
+        let [r, g, b] = match self {
+            Self::LikeNothing => [120; 3],
+            Self::VeryLittle => [200; 3],
+            Self::Light => [255; 3],
+            Self::Noticeable => [255, 255, 120],
+            Self::Heavy => [255, 150, 0],
+            Self::Massive => [255, 75, 0],
+            Self::SuperMassive => [255, 0, 0],
+        };
+
+        Color::TrueColor { r, g, b }
     }
 }
 
@@ -451,7 +432,7 @@ impl Display for Report {
             .map(|t| t.name.width() + 2 * t.depth)
             .max()
             .expect("No tasks to generate report from.");
-        let max_category_name_width = self
+        let max_category_width = self
             .category_times
             .keys()
             .map(|k| k.width())
@@ -460,86 +441,74 @@ impl Display for Report {
 
         let title = format!("### {}", self.name).bold();
         let max_width = max(max_name_width, title.width());
+        let title = format!("{title:<max_width$}");
+
         let total_time_string = Report::display_time_aligned(self.total_time).bold();
-        let separation = String::from_utf8(vec![b' '; max_width - title.width()]).unwrap();
         let share_string = "Share".to_string().bold();
         let category_string = match self.category_times.is_empty() {
-            true => "".to_string(),
-            false => "Category".to_string(),
-        }
-        .bold();
+            true => ColoredString::default(),
+            false => "Category".bold(),
+        };
         writeln!(
             f,
-            "{title}{separation}   {total_time_string}   {share_string}  {category_string}"
+            "{title}   {total_time_string}   {share_string}  {category_string}"
         )?;
 
         for task in &self.tasks {
             for &ancestor_index in &task.ancestors {
-                let mut spacer: ColoredString = if self.tasks[ancestor_index].is_last_sibling {
-                    "  ".normal()
-                } else {
-                    "│ ".normal()
-                };
-                let uncle_weight = &self.tasks[ancestor_index].younger_max_weight;
-                spacer = spacer.color(uncle_weight.color());
-
+                let ancestor = &self.tasks[ancestor_index];
+                let spacer_color = ancestor.younger_max_weight.color();
+                let is_last_sibling = ancestor.is_last_sibling;
+                let spacer = if is_last_sibling { "  " } else { "│ " }.color(spacer_color);
                 write!(f, "{spacer}")?;
             }
-            let tracer = if task.is_last_sibling {
-                "└".normal()
-            } else {
-                "├".normal()
-            }
-            .color(max(task.weight, task.younger_max_weight).color());
+            let is_last_sibling = task.is_last_sibling;
+            let tracer = if is_last_sibling { "└" } else { "├" }
+                .color(max(task.weight, task.younger_max_weight).color());
             let dash = "─".color(task.weight.color());
             write!(f, "{tracer}{dash}")?;
 
-            let padding_length = max_width - task.name.len() - 2 * task.depth;
-            assert!(
-                padding_length < (1 << 60),
-                "max width: {max_name_width}, width: {}",
-                task.name.len(),
-            );
+            let task_name_area = max_width - 2 * task.depth;
             let task_name_colored = task.name.color(task.weight.color());
-            let mut task_time = Report::display_time_aligned(task.time);
-            while task_time.width() < 10 {
-                task_time.push(b' '.into());
-            }
+            let task_name_colored = format!("{task_name_colored:<task_name_area$}");
+            let task_time = format!("{:<10}", Report::display_time_aligned(task.time));
             let task_time_colored = task_time.color(task.weight.color());
-            let padding = String::from_utf8(vec![b' '; padding_length]).unwrap();
             let relative_time_string =
                 format!("{:>6}", format!("{:2.2}%", 100.0 * task.relative_time));
             let relative_time_string_colored = relative_time_string.color(task.weight.color());
-            let category_name = task.category.as_deref().unwrap_or("");
             let relative_category_time = task
                 .relative_category_time
                 .map(|t| format!("{:>6}", format!("{:2.2}%", 100.0 * t)))
-                .unwrap_or("".to_string());
-            let category_and_relative_time = match task.category.is_some() {
-                true => format!(
-                    "({category_name:<max_category_name_width$} – {relative_category_time})"
-                ),
-                false => "".to_string(),
-            };
+                .unwrap_or_default();
+            let maybe_category = task.category.as_ref();
+            let category_and_relative_time = maybe_category
+                .map(|cat| format!("({cat:<max_category_width$} – {relative_category_time})"))
+                .unwrap_or_default();
+
+            let relative_category_color = task
+                .relative_category_time
+                .map(|t| Weight::weigh(t).color())
+                .unwrap_or(Color::White);
+            let category_and_relative_time_colored =
+                category_and_relative_time.color(relative_category_color);
+
             f.write_fmt(format_args!(
-                "{task_name_colored}{padding}   \
-                {task_time_colored}{relative_time_string_colored} \
-                {category_and_relative_time}\n"
+                "{task_name_colored}   \
+                 {task_time_colored}{relative_time_string_colored} \
+                 {category_and_relative_time_colored}\n"
             ))?;
         }
 
         if !self.category_times.is_empty() {
             writeln!(f)?;
-            let category_title = ("### Categories").to_string().bold();
+            let category_title = "### Categories".bold();
             writeln!(f, "{category_title}")?;
-            let mut category_times_and_names_sorted_by_time = self
+            let category_times_and_names_sorted_by_time = self
                 .category_times
                 .iter()
-                .map(|(category, &time)| (category, time))
-                .collect::<Vec<_>>();
-            category_times_and_names_sorted_by_time.sort_by_key(|&(_, time)| time);
-            category_times_and_names_sorted_by_time.reverse();
-            for (category, category_time) in category_times_and_names_sorted_by_time {
+                .sorted_by_key(|(_, &time)| time)
+                .rev();
+            for (category, &category_time) in category_times_and_names_sorted_by_time {
                 let category_relative_time =
                     category_time.as_secs_f64() / self.total_time.as_secs_f64();
                 let category_color = Weight::weigh(category_relative_time).color();
@@ -547,16 +516,10 @@ impl Display for Report {
                     format!("{:>6}", format!("{:2.2}%", 100.0 * category_relative_time));
                 let category_time = Report::display_time_aligned(category_time);
 
-                let padding_length = max_category_name_width - category.width();
-                let padding = String::from_utf8(vec![b' '; padding_length]).unwrap();
-
-                let category = category.color(category_color);
+                let category = format!("{category:<max_category_width$}").color(category_color);
                 let category_time = category_time.color(category_color);
                 let category_relative_time = category_relative_time.color(category_color);
-                writeln!(
-                    f,
-                    "{category}{padding}   {category_time} {category_relative_time}"
-                )?;
+                writeln!(f, "{category}   {category_time} {category_relative_time}")?;
             }
         }
 
@@ -660,7 +623,7 @@ mod tests {
 
     fn random_task_name(rng: &mut ThreadRng) -> String {
         let alphabet = "abcdefghijklmnopqrstuvwxyz_";
-        let length = (rng.next_u32() as usize % 10) + 2;
+        let length = rng.gen_range(2..12);
 
         (0..length)
             .map(|_| (rng.next_u32() as usize) % alphabet.len())

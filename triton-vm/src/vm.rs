@@ -924,7 +924,7 @@ impl Display for VMState {
         let buffer_width = total_width - tab_width - clk_width - 7;
 
         let print_row = |f: &mut Formatter, s: String| writeln!(f, "│ {s: <total_width$} │");
-        let print_blank_row = |f: &mut Formatter| print_row(f, "".into());
+        let print_blank_row = |f: &mut Formatter| print_row(f, String::new());
 
         let row = self.to_processor_row();
 
