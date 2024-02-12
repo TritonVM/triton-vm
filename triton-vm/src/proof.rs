@@ -8,7 +8,6 @@ use twenty_first::prelude::*;
 use crate::error::ProofStreamError;
 use crate::program::Program;
 use crate::proof_stream::ProofStream;
-use crate::stark;
 
 /// Contains the necessary cryptographic information to verify a computation.
 /// Should be used together with a [`Claim`].
@@ -20,7 +19,7 @@ impl Proof {
     /// This is an upper bound on the length of the computation this proof is for.
     /// It is one of the main contributing factors to the length of the FRI domain.
     pub fn padded_height(&self) -> Result<usize, ProofStreamError> {
-        let proof_stream = ProofStream::<stark::StarkHasher>::try_from(self)?;
+        let proof_stream = ProofStream::<Tip5>::try_from(self)?;
         let proof_items = proof_stream.items.into_iter();
         let log_2_padded_heights = proof_items
             .filter_map(|item| item.try_into_log2_padded_height().ok())
@@ -103,7 +102,6 @@ mod tests {
     use test_strategy::proptest;
 
     use crate::proof_item::ProofItem;
-    use crate::stark::StarkHasher;
 
     use super::*;
 
@@ -130,7 +128,7 @@ mod tests {
 
     #[proptest(cases = 10)]
     fn proof_with_no_log_2_padded_height_gives_err(#[strategy(arb())] root: Digest) {
-        let mut proof_stream = ProofStream::<StarkHasher>::new();
+        let mut proof_stream = ProofStream::<Tip5>::new();
         proof_stream.enqueue(ProofItem::MerkleRoot(root));
         let proof: Proof = proof_stream.into();
         let maybe_padded_height = proof.padded_height();
@@ -139,7 +137,7 @@ mod tests {
 
     #[proptest(cases = 10)]
     fn proof_with_multiple_log_2_padded_height_gives_err(#[strategy(arb())] root: Digest) {
-        let mut proof_stream = ProofStream::<StarkHasher>::new();
+        let mut proof_stream = ProofStream::<Tip5>::new();
         proof_stream.enqueue(ProofItem::Log2PaddedHeight(8));
         proof_stream.enqueue(ProofItem::MerkleRoot(root));
         proof_stream.enqueue(ProofItem::Log2PaddedHeight(7));

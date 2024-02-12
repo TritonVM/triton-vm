@@ -15,7 +15,6 @@ use crate::error::InstructionError;
 use crate::error::InstructionError::InstructionPointerOverflow;
 use crate::instruction::Instruction;
 use crate::program::Program;
-use crate::stark::StarkHasher;
 use crate::table::hash_table::HashTable;
 use crate::table::hash_table::PermutationTrace;
 use crate::table::op_stack_table::OpStackTableEntry;
@@ -117,13 +116,13 @@ impl AlgebraicExecutionTrace {
     /// Hash the program and record the entire Sponge's trace for program attestation.
     fn fill_program_hash_trace(&mut self) {
         let padded_program = Self::hash_input_pad_program(&self.program);
-        let mut program_sponge = StarkHasher::init();
-        for chunk in padded_program.chunks(StarkHasher::RATE) {
-            program_sponge.state[..StarkHasher::RATE]
+        let mut program_sponge = Tip5::init();
+        for chunk in padded_program.chunks(Tip5::RATE) {
+            program_sponge.state[..Tip5::RATE]
                 .iter_mut()
                 .zip_eq(chunk)
                 .for_each(|(sponge_state_elem, &absorb_elem)| *sponge_state_elem = absorb_elem);
-            let hash_trace = StarkHasher::trace(&mut program_sponge);
+            let hash_trace = program_sponge.trace();
             let trace_addendum = HashTable::trace_to_table_rows(hash_trace);
 
             self.increase_lookup_multiplicities(hash_trace);
@@ -141,7 +140,7 @@ impl AlgebraicExecutionTrace {
             .try_into()
             .unwrap();
         let program_digest = Digest::new(program_digest);
-        let expected_digest = self.program.hash::<StarkHasher>();
+        let expected_digest = self.program.hash::<Tip5>();
         assert_eq!(expected_digest, program_digest);
     }
 
@@ -170,10 +169,10 @@ impl AlgebraicExecutionTrace {
         // least one padding row to account for the processor's “next instruction or argument.”
         // Both of these are captured by the “+ 1” in the following line.
         let min_padded_len = program.len_bwords() + 1;
-        let remainder_len = min_padded_len % StarkHasher::RATE;
+        let remainder_len = min_padded_len % Tip5::RATE;
         let num_zeros_to_add = match remainder_len {
             0 => 0,
-            _ => StarkHasher::RATE - remainder_len,
+            _ => Tip5::RATE - remainder_len,
         };
         min_padded_len + num_zeros_to_add
     }

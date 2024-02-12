@@ -11,7 +11,6 @@ use ndarray::Array1;
 use num_traits::One;
 use num_traits::Zero;
 use serde_derive::*;
-use twenty_first::prelude::tip5::Tip5State;
 use twenty_first::prelude::*;
 use twenty_first::util_types::algebraic_hasher::Domain;
 
@@ -22,7 +21,6 @@ use crate::instruction::Instruction;
 use crate::op_stack::OpStackElement::*;
 use crate::op_stack::*;
 use crate::program::*;
-use crate::stark::StarkHasher;
 use crate::table::hash_table::PermutationTrace;
 use crate::table::op_stack_table::OpStackTableEntry;
 use crate::table::processor_table;
@@ -111,7 +109,7 @@ impl VMState {
         public_input: PublicInput,
         non_determinism: NonDeterminism<BFieldElement>,
     ) -> Self {
-        let program_digest = program.hash::<StarkHasher>();
+        let program_digest = program.hash::<Tip5>();
 
         Self {
             program: program.instructions.clone(),
@@ -438,9 +436,9 @@ impl VMState {
     fn hash(&mut self) -> Result<Vec<CoProcessorCall>> {
         let to_hash = self.op_stack.pop_multiple::<{ tip5::RATE }>()?;
 
-        let mut hash_input = Tip5State::new(Domain::FixedLength);
+        let mut hash_input = Tip5::new(Domain::FixedLength);
         hash_input.state[..tip5::RATE].copy_from_slice(&to_hash);
-        let tip5_trace = Tip5::trace(&mut hash_input);
+        let tip5_trace = hash_input.trace();
         let hash_output = &tip5_trace[tip5_trace.len() - 1][0..tip5::DIGEST_LENGTH];
 
         for i in (0..tip5::DIGEST_LENGTH).rev() {
@@ -465,7 +463,7 @@ impl VMState {
         };
         let to_absorb = self.op_stack.pop_multiple::<{ tip5::RATE }>()?;
         state[..tip5::RATE].copy_from_slice(&to_absorb);
-        let tip5_trace = Tip5::trace(&mut Tip5State { state });
+        let tip5_trace = Tip5 { state }.trace();
         self.sponge_state = Some(tip5_trace.last().unwrap().to_owned());
 
         let co_processor_calls = vec![Tip5Trace(SpongeAbsorb, Box::new(tip5_trace))];
@@ -481,7 +479,7 @@ impl VMState {
         for i in (0..tip5::RATE).rev() {
             self.op_stack.push(state[i]);
         }
-        let tip5_trace = Tip5::trace(&mut Tip5State { state });
+        let tip5_trace = Tip5 { state }.trace();
         self.sponge_state = Some(tip5_trace.last().unwrap().to_owned());
 
         let co_processor_calls = vec![Tip5Trace(SpongeSqueeze, Box::new(tip5_trace))];
@@ -1331,23 +1329,23 @@ pub(crate) mod tests {
 
         fn execute(
             self,
-            mut sponge_state: Tip5State,
+            mut sponge: Tip5,
             mut sponge_io: [BFieldElement; tip5::RATE],
-        ) -> (Tip5State, [BFieldElement; tip5::RATE]) {
+        ) -> (Tip5, [BFieldElement; tip5::RATE]) {
             let zero_digest = [b_field_element::BFIELD_ZERO; tip5::DIGEST_LENGTH];
             match self {
-                Self::SpongeInit => sponge_state = Tip5::init(),
+                Self::SpongeInit => sponge = Tip5::init(),
                 Self::SpongeAbsorb => {
-                    Tip5::absorb(&mut sponge_state, sponge_io);
+                    sponge.absorb(sponge_io);
                     sponge_io = [b_field_element::BFIELD_ZERO; tip5::RATE];
                 }
-                Self::SpongeSqueeze => sponge_io = Tip5::squeeze(&mut sponge_state),
+                Self::SpongeSqueeze => sponge_io = sponge.squeeze(),
                 Self::Hash => {
                     let digest = Tip5::hash_10(&sponge_io);
                     sponge_io = [zero_digest, digest].concat().try_into().unwrap();
                 }
             }
-            (sponge_state, sponge_io)
+            (sponge, sponge_io)
         }
     }
 
@@ -1841,7 +1839,7 @@ pub(crate) mod tests {
             halt
         };
 
-        let program_digest = program.hash::<StarkHasher>();
+        let program_digest = program.hash::<Tip5>();
         let enumerated_digest_elements = program_digest.values().into_iter().enumerate();
         let initial_ram = enumerated_digest_elements
             .map(|(address, digest_element)| (address as u64, digest_element.value()))

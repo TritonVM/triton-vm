@@ -36,7 +36,7 @@ use crate::table::master_table::*;
 use crate::table::QuotientSegments;
 
 pub type StarkHasher = Tip5;
-pub type StarkProofStream = ProofStream<StarkHasher>;
+pub type StarkProofStream = ProofStream<Tip5>;
 
 /// The Merkle tree maker in use. Keeping this as a type alias should make it easier to switch
 /// between different Merkle tree makers.
@@ -220,7 +220,7 @@ impl Stark {
         let interpret_xfe_as_bfes = |xfe: &XFieldElement| xfe.coefficients.to_vec();
         let hash_row = |row: ArrayView1<_>| {
             let row_as_bfes = row.iter().map(interpret_xfe_as_bfes).concat();
-            StarkHasher::hash_varlen(&row_as_bfes)
+            Tip5::hash_varlen(&row_as_bfes)
         };
         let quotient_segments_rows = fri_domain_quotient_segment_codewords
             .axis_iter(Axis(0))
@@ -229,7 +229,7 @@ impl Stark {
             quotient_segments_rows.map(hash_row).collect::<Vec<_>>();
         prof_stop!(maybe_profiler, "hash rows of quotient segments");
         prof_start!(maybe_profiler, "Merkle tree", "hash");
-        let quot_merkle_tree: MerkleTree<StarkHasher> =
+        let quot_merkle_tree: MerkleTree<Tip5> =
             MTMaker::from_digests(&fri_domain_quotient_segment_codewords_digests)?;
         let quot_merkle_tree_root = quot_merkle_tree.root();
         proof_stream.enqueue(ProofItem::MerkleRoot(quot_merkle_tree_root));
@@ -498,7 +498,7 @@ impl Stark {
     }
 
     fn sample_linear_combination_weights(
-        proof_stream: &mut ProofStream<StarkHasher>,
+        proof_stream: &mut ProofStream<Tip5>,
     ) -> (
         Array1<XFieldElement>,
         Array1<XFieldElement>,
@@ -590,7 +590,7 @@ impl Stark {
     /// In principle, the FRI domain is also influenced by the AIR's degree
     /// (see [`AIR_TARGET_DEGREE`]). However, by segmenting the quotient polynomial into
     /// [`AIR_TARGET_DEGREE`]-many parts, that influence is mitigated.
-    pub fn derive_fri(&self, padded_height: usize) -> fri::SetupResult<Fri<StarkHasher>> {
+    pub fn derive_fri(&self, padded_height: usize) -> fri::SetupResult<Fri<Tip5>> {
         let interpolant_degree = interpolant_degree(padded_height, self.num_trace_randomizers);
         let interpolant_codeword_length = interpolant_degree as usize + 1;
         let fri_domain_length = self.fri_expansion_factor * interpolant_codeword_length;
@@ -866,7 +866,7 @@ impl Stark {
             .try_into_authentication_structure()?;
         let leaf_digests_base: Vec<_> = base_table_rows
             .par_iter()
-            .map(|revealed_base_elem| StarkHasher::hash_varlen(revealed_base_elem))
+            .map(|revealed_base_elem| Tip5::hash_varlen(revealed_base_elem))
             .collect();
         prof_stop!(maybe_profiler, "dequeue base elements");
 
@@ -895,7 +895,7 @@ impl Stark {
             .par_iter()
             .map(|xvalues| {
                 let b_values = xvalues.iter().flat_map(|xfe| xfe.coefficients.to_vec());
-                StarkHasher::hash_varlen(&b_values.collect_vec())
+                Tip5::hash_varlen(&b_values.collect_vec())
             })
             .collect::<Vec<_>>();
         prof_stop!(maybe_profiler, "dequeue extension elements");
@@ -1023,7 +1023,7 @@ impl Stark {
         quotient_segment_rows
             .par_iter()
             .map(collect_row_as_bfes)
-            .map(|row| StarkHasher::hash_varlen(&row))
+            .map(|row| Tip5::hash_varlen(&row))
             .collect()
     }
 

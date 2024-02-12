@@ -11,7 +11,6 @@ use strum::EnumCount;
 use twenty_first::prelude::*;
 
 use crate::aet::AlgebraicExecutionTrace;
-use crate::stark::StarkHasher;
 use crate::table::challenges::ChallengeId::*;
 use crate::table::challenges::Challenges;
 use crate::table::constraint_circuit::DualRowIndicator::*;
@@ -95,7 +94,7 @@ impl ExtProgramTable {
         };
 
         let one = constant(1);
-        let max_index_in_chunk = constant((StarkHasher::RATE - 1).try_into().unwrap());
+        let max_index_in_chunk = constant((Tip5::RATE - 1).try_into().unwrap());
 
         let index_in_chunk = base_row(IndexInChunk);
         let max_minus_index_in_chunk_inv = base_row(MaxMinusIndexInChunkInv);
@@ -142,7 +141,7 @@ impl ExtProgramTable {
         };
 
         let one = constant(1);
-        let rate_minus_one = constant(u64::try_from(StarkHasher::RATE).unwrap() - 1);
+        let rate_minus_one = constant(u64::try_from(Tip5::RATE).unwrap() - 1);
 
         let prepare_chunk_indeterminate = challenge(ProgramAttestationPrepareChunkIndeterminate);
         let send_chunk_indeterminate = challenge(ProgramAttestationSendChunkIndeterminate);
@@ -271,7 +270,7 @@ impl ExtProgramTable {
 
         let hash_input_padding_is_one = is_hash_input_padding - constant(1);
 
-        let max_index_in_chunk = StarkHasher::RATE as u64 - 1;
+        let max_index_in_chunk = Tip5::RATE as u64 - 1;
         let index_in_chunk_is_max_or_row_is_padding_row =
             (index_in_chunk - constant(max_index_in_chunk)) * (is_table_padding - constant(1));
 
@@ -287,7 +286,7 @@ impl ProgramTable {
         program_table: &mut ArrayViewMut2<BFieldElement>,
         aet: &AlgebraicExecutionTrace,
     ) {
-        let max_index_in_chunk = BFieldElement::new(StarkHasher::RATE as u64 - 1);
+        let max_index_in_chunk = BFieldElement::new(Tip5::RATE as u64 - 1);
 
         let instructions = aet.program.to_bwords();
         let program_len = instructions.len();
@@ -308,7 +307,7 @@ impl ProgramTable {
                 _ => 0,
             };
             let lookup_multiplicity = BFieldElement::new(lookup_multiplicity.into());
-            let index_in_chunk = BFieldElement::new((row_idx % StarkHasher::RATE) as u64);
+            let index_in_chunk = BFieldElement::new((row_idx % Tip5::RATE) as u64);
 
             let max_minus_index_in_chunk_inv =
                 (max_index_in_chunk - index_in_chunk).inverse_or_zero();
@@ -336,7 +335,7 @@ impl ProgramTable {
         addresses.move_into(address_column);
 
         let indices_in_chunks = (program_len..program_table.nrows())
-            .map(|idx| idx % StarkHasher::RATE)
+            .map(|idx| idx % Tip5::RATE)
             .map(|ac| BFieldElement::new(ac.try_into().unwrap()));
         let indices_in_chunks = Array1::from_iter(indices_in_chunks);
         let index_in_chunk_column =
@@ -344,7 +343,7 @@ impl ProgramTable {
         indices_in_chunks.move_into(index_in_chunk_column);
 
         let max_minus_indices_in_chunks_inverses = (program_len..program_table.nrows())
-            .map(|idx| StarkHasher::RATE - 1 - (idx % StarkHasher::RATE))
+            .map(|idx| Tip5::RATE - 1 - (idx % Tip5::RATE))
             .map(|ac| BFieldElement::new(ac.try_into().unwrap()))
             .map(|bfe| bfe.inverse_or_zero());
         let max_minus_indices_in_chunks_inverses =
@@ -492,7 +491,7 @@ impl ProgramTable {
     ) -> XFieldElement {
         let index_in_chunk = row[IndexInChunk.base_table_index()];
         let is_table_padding_row = row[IsTablePadding.base_table_index()].is_one();
-        let max_index_in_chunk = StarkHasher::RATE as u64 - 1;
+        let max_index_in_chunk = Tip5::RATE as u64 - 1;
         let running_evaluation_needs_update =
             !is_table_padding_row && index_in_chunk.value() == max_index_in_chunk;
 

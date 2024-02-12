@@ -16,7 +16,7 @@ where
     pub items_index: usize,
 
     #[bfield_codec(ignore)]
-    pub sponge_state: H::SpongeState,
+    pub sponge: H,
 }
 
 impl<H> ProofStream<H>
@@ -27,7 +27,7 @@ where
         ProofStream {
             items: vec![],
             items_index: 0,
-            sponge_state: H::init(),
+            sponge: H::init(),
         }
     }
 
@@ -44,7 +44,7 @@ where
     ///
     /// See also [`Self::enqueue()`] and [`Self::dequeue()`].
     pub fn alter_fiat_shamir_state_with(&mut self, item: &impl BFieldCodec) {
-        H::pad_and_absorb_all(&mut self.sponge_state, &item.encode())
+        self.sponge.pad_and_absorb_all(&item.encode())
     }
 
     /// Send a proof item as prover to verifier.
@@ -86,7 +86,8 @@ where
     pub fn sample_indices(&mut self, upper_bound: usize, num_indices: usize) -> Vec<usize> {
         assert!(upper_bound.is_power_of_two());
         assert!(upper_bound <= BFieldElement::MAX as usize);
-        H::sample_indices(&mut self.sponge_state, upper_bound as u32, num_indices)
+        self.sponge
+            .sample_indices(upper_bound as u32, num_indices)
             .into_iter()
             .map(|i| i as usize)
             .collect()
@@ -94,7 +95,7 @@ where
 
     /// A thin wrapper around [`H::sample_scalars`](AlgebraicHasher::sample_scalars).
     pub fn sample_scalars(&mut self, num_scalars: usize) -> Vec<XFieldElement> {
-        H::sample_scalars(&mut self.sponge_state, num_scalars)
+        self.sponge.sample_scalars(num_scalars)
     }
 }
 
@@ -167,68 +168,68 @@ mod tests {
         let mut sponge_states = VecDeque::new();
         let mut proof_stream = ProofStream::<Tip5>::new();
 
-        sponge_states.push_back(proof_stream.sponge_state.state);
+        sponge_states.push_back(proof_stream.sponge.state);
         proof_stream.enqueue(ProofItem::AuthenticationStructure(auth_structure.clone()));
-        sponge_states.push_back(proof_stream.sponge_state.state);
+        sponge_states.push_back(proof_stream.sponge.state);
         proof_stream.enqueue(ProofItem::MasterBaseTableRows(base_rows.clone()));
-        sponge_states.push_back(proof_stream.sponge_state.state);
+        sponge_states.push_back(proof_stream.sponge.state);
         proof_stream.enqueue(ProofItem::MasterExtTableRows(ext_rows.clone()));
-        sponge_states.push_back(proof_stream.sponge_state.state);
+        sponge_states.push_back(proof_stream.sponge.state);
         proof_stream.enqueue(ProofItem::OutOfDomainBaseRow(ood_base_row.clone()));
-        sponge_states.push_back(proof_stream.sponge_state.state);
+        sponge_states.push_back(proof_stream.sponge.state);
         proof_stream.enqueue(ProofItem::OutOfDomainExtRow(ood_ext_row.clone()));
-        sponge_states.push_back(proof_stream.sponge_state.state);
+        sponge_states.push_back(proof_stream.sponge.state);
         proof_stream.enqueue(ProofItem::MerkleRoot(root));
-        sponge_states.push_back(proof_stream.sponge_state.state);
+        sponge_states.push_back(proof_stream.sponge.state);
         proof_stream.enqueue(ProofItem::QuotientSegmentsElements(quot_elements.clone()));
-        sponge_states.push_back(proof_stream.sponge_state.state);
+        sponge_states.push_back(proof_stream.sponge.state);
         proof_stream.enqueue(ProofItem::FriCodeword(fri_codeword.clone()));
-        sponge_states.push_back(proof_stream.sponge_state.state);
+        sponge_states.push_back(proof_stream.sponge.state);
         proof_stream.enqueue(ProofItem::FriResponse(fri_response.clone()));
-        sponge_states.push_back(proof_stream.sponge_state.state);
+        sponge_states.push_back(proof_stream.sponge.state);
 
         let proof = proof_stream.into();
         let mut proof_stream: ProofStream<Tip5> = ProofStream::try_from(&proof).unwrap();
 
-        assert!(sponge_states.pop_front() == Some(proof_stream.sponge_state.state));
+        assert!(sponge_states.pop_front() == Some(proof_stream.sponge.state));
         let_assert!(Ok(proof_item) = proof_stream.dequeue());
         let_assert!(ProofItem::AuthenticationStructure(auth_structure_) = proof_item);
         assert!(auth_structure == auth_structure_);
 
-        assert!(sponge_states.pop_front() == Some(proof_stream.sponge_state.state));
+        assert!(sponge_states.pop_front() == Some(proof_stream.sponge.state));
         let_assert!(Ok(ProofItem::MasterBaseTableRows(base_rows_)) = proof_stream.dequeue());
         assert!(base_rows == base_rows_);
 
-        assert!(sponge_states.pop_front() == Some(proof_stream.sponge_state.state));
+        assert!(sponge_states.pop_front() == Some(proof_stream.sponge.state));
         let_assert!(Ok(ProofItem::MasterExtTableRows(ext_rows_)) = proof_stream.dequeue());
         assert!(ext_rows == ext_rows_);
 
-        assert!(sponge_states.pop_front() == Some(proof_stream.sponge_state.state));
+        assert!(sponge_states.pop_front() == Some(proof_stream.sponge.state));
         let_assert!(Ok(ProofItem::OutOfDomainBaseRow(ood_base_row_)) = proof_stream.dequeue());
         assert!(ood_base_row == ood_base_row_);
 
-        assert!(sponge_states.pop_front() == Some(proof_stream.sponge_state.state));
+        assert!(sponge_states.pop_front() == Some(proof_stream.sponge.state));
         let_assert!(Ok(ProofItem::OutOfDomainExtRow(ood_ext_row_)) = proof_stream.dequeue());
         assert!(ood_ext_row == ood_ext_row_);
 
-        assert!(sponge_states.pop_front() == Some(proof_stream.sponge_state.state));
+        assert!(sponge_states.pop_front() == Some(proof_stream.sponge.state));
         let_assert!(Ok(ProofItem::MerkleRoot(root_)) = proof_stream.dequeue());
         assert!(root == root_);
 
-        assert!(sponge_states.pop_front() == Some(proof_stream.sponge_state.state));
+        assert!(sponge_states.pop_front() == Some(proof_stream.sponge.state));
         let_assert!(Ok(proof_item) = proof_stream.dequeue());
         let_assert!(ProofItem::QuotientSegmentsElements(quot_elements_) = proof_item);
         assert!(quot_elements == quot_elements_);
 
-        assert!(sponge_states.pop_front() == Some(proof_stream.sponge_state.state));
+        assert!(sponge_states.pop_front() == Some(proof_stream.sponge.state));
         let_assert!(Ok(ProofItem::FriCodeword(fri_codeword_)) = proof_stream.dequeue());
         assert!(fri_codeword == fri_codeword_);
 
-        assert!(sponge_states.pop_front() == Some(proof_stream.sponge_state.state));
+        assert!(sponge_states.pop_front() == Some(proof_stream.sponge.state));
         let_assert!(Ok(ProofItem::FriResponse(fri_response_)) = proof_stream.dequeue());
         assert!(fri_response == fri_response_);
 
-        assert!(sponge_states.pop_front() == Some(proof_stream.sponge_state.state));
+        assert!(sponge_states.pop_front() == Some(proof_stream.sponge.state));
         assert!(0 == sponge_states.len());
     }
 

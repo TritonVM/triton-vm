@@ -27,7 +27,6 @@ use crate::profiler::prof_start;
 use crate::profiler::prof_stop;
 use crate::profiler::TritonProfiler;
 use crate::stark::MTMaker;
-use crate::stark::StarkHasher;
 use crate::stark::NUM_RANDOMIZER_POLYNOMIALS;
 use crate::table::cascade_table::CascadeTable;
 use crate::table::challenges::Challenges;
@@ -303,7 +302,7 @@ where
 
     /// Compute a Merkle tree of the FRI domain table. Every row gives one leaf in the tree.
     /// The function [`hash_row`](Self::hash_one_row) is used to hash each row.
-    fn merkle_tree(&self, maybe_profiler: &mut Option<TritonProfiler>) -> MerkleTree<StarkHasher> {
+    fn merkle_tree(&self, maybe_profiler: &mut Option<TritonProfiler>) -> MerkleTree<Tip5> {
         prof_start!(maybe_profiler, "leafs");
         let hashed_rows = self.hash_all_fri_domain_rows();
         prof_stop!(maybe_profiler, "leafs");
@@ -461,7 +460,7 @@ impl MasterTable<BFieldElement> for MasterBaseTable {
     }
 
     fn hash_one_row(row: ArrayView1<BFieldElement>) -> Digest {
-        StarkHasher::hash_varlen(row.as_slice().unwrap())
+        Tip5::hash_varlen(row.as_slice().unwrap())
     }
 }
 
@@ -564,7 +563,7 @@ impl MasterTable<XFieldElement> for MasterExtTable {
     fn hash_one_row(row: ArrayView1<XFieldElement>) -> Digest {
         let interpret_xfe_as_bfes = |xfe: &XFieldElement| xfe.coefficients.to_vec();
         let row_as_bfes = row.iter().map(interpret_xfe_as_bfes).concat();
-        StarkHasher::hash_varlen(&row_as_bfes)
+        Tip5::hash_varlen(&row_as_bfes)
     }
 }
 

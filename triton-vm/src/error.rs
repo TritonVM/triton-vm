@@ -11,7 +11,6 @@ use crate::instruction::Instruction;
 use crate::proof_item::ProofItem;
 use crate::proof_item::ProofItemVariant;
 use crate::proof_stream::ProofStream;
-use crate::stark::StarkHasher;
 use crate::vm::VMState;
 use crate::BFieldElement;
 
@@ -127,7 +126,7 @@ pub enum ProofStreamError {
     TooManyLog2PaddedHeights,
 
     #[error(transparent)]
-    DecodingError(#[from] <ProofStream<StarkHasher> as BFieldCodec>::Error),
+    DecodingError(#[from] <ProofStream<Tip5> as BFieldCodec>::Error),
 }
 
 #[non_exhaustive]

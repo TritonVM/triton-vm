@@ -713,17 +713,13 @@ mod tests {
         #[strategy(arbitrary_fri())] fri: Fri<Tip5>,
         #[strategy(arb())] initial_absorb: [BFieldElement; tip5::RATE],
     ) {
-        let mut sponge_state = Tip5::init();
-        Tip5::absorb(&mut sponge_state, initial_absorb);
+        let mut sponge = Tip5::init();
+        sponge.absorb(initial_absorb);
 
         // todo: Figure out by how much to oversample for the given parameters.
         let oversampling_summand = 1 << 13;
         let num_indices_to_sample = fri.num_collinearity_checks + oversampling_summand;
-        let indices = Tip5::sample_indices(
-            &mut sponge_state,
-            fri.domain.length as u32,
-            num_indices_to_sample,
-        );
+        let indices = sponge.sample_indices(fri.domain.length as u32, num_indices_to_sample);
         let num_unique_indices = indices.iter().unique().count();
 
         let required_unique_indices = min(fri.domain.length, fri.num_collinearity_checks);
@@ -894,7 +890,7 @@ mod tests {
         mut proof_stream: ProofStream<H>,
     ) -> ProofStream<H> {
         proof_stream.items_index = 0;
-        proof_stream.sponge_state = H::init();
+        proof_stream.sponge = H::init();
         proof_stream
     }
 

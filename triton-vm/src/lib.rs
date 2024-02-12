@@ -151,7 +151,6 @@ pub use twenty_first;
 use crate::error::CanonicalRepresentationError;
 use crate::error::ProvingError;
 use crate::prelude::*;
-use crate::stark::StarkHasher;
 
 pub mod aet;
 pub mod arithmetic_domain;
@@ -561,7 +560,7 @@ pub fn prove(
     program: &Program,
     non_determinism: NonDeterminism<BFieldElement>,
 ) -> Result<Proof, ProvingError> {
-    let program_digest = program.hash::<StarkHasher>();
+    let program_digest = program.hash::<Tip5>();
     if program_digest != claim.program_digest {
         return Err(ProvingError::ProgramDigestMismatch);
     }
@@ -591,7 +590,6 @@ mod tests {
     use crate::instruction::LabelledInstruction;
     use crate::instruction::TypeHint;
     use crate::shared_tests::*;
-    use crate::stark::StarkHasher;
 
     use super::*;
 
@@ -631,7 +629,7 @@ mod tests {
             prove_program(&program, &public_input, &non_determinism).unwrap();
         assert!(Stark::default() == stark);
 
-        let expected_program_digest = program.hash::<StarkHasher>();
+        let expected_program_digest = program.hash::<Tip5>();
         assert!(expected_program_digest == claim.program_digest);
         assert!(public_input == claim.public_input());
         assert!(claim.output.is_empty());

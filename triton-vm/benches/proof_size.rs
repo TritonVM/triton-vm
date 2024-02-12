@@ -20,7 +20,6 @@ use triton_vm::example_programs::VERIFY_SUDOKU;
 use triton_vm::prelude::*;
 use triton_vm::proof_stream::ProofStream;
 use triton_vm::prove_program;
-use triton_vm::stark::StarkHasher;
 
 /// Ties together a program and its inputs.
 struct ProgramAndInput {
@@ -186,7 +185,7 @@ fn log_2_fri_domain_length(stark: Stark, proof: &Proof) -> u32 {
 /// sizes for that type are accumulated.
 fn break_down_proof_size(proof: &Proof) -> HashMap<String, usize> {
     let mut proof_size_breakdown = HashMap::new();
-    let proof_stream: ProofStream<StarkHasher> = proof.try_into().unwrap();
+    let proof_stream: ProofStream<Tip5> = proof.try_into().unwrap();
     for proof_item in &proof_stream.items {
         let item_name = proof_item.to_string();
         let item_len = proof_item.encode().len();
