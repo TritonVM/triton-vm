@@ -3,8 +3,10 @@ use std::collections::VecDeque;
 use std::fmt::Display;
 use std::fmt::Formatter;
 use std::fmt::Result as FmtResult;
+use std::ops::Range;
 
 use arbitrary::Arbitrary;
+use itertools::Itertools;
 use ndarray::Array1;
 use num_traits::One;
 use num_traits::Zero;
@@ -909,11 +911,12 @@ impl VMState {
 
 impl Display for VMState {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        use ProcessorBaseTableColumn as ProcCol;
+
         let Ok(instruction) = self.current_instruction() else {
             return write!(f, "END-OF-FILE");
         };
 
-        use ProcessorBaseTableColumn::*;
         let total_width = 103;
         let tab_width = 54;
         let clk_width = 17;
@@ -940,14 +943,14 @@ impl Display for VMState {
             "", "", ""
         )?;
 
-        let ip = register(IP);
-        let ci = register(CI);
-        let nia = register(NIA);
-        let jsp = register(JSP);
-        let jso = register(JSO);
-        let jsd = register(JSD);
-        let osp = register(OpStackPointer);
-        let clk = row[CLK.base_table_index()].to_string();
+        let ip = register(ProcCol::IP);
+        let ci = register(ProcCol::CI);
+        let nia = register(ProcCol::NIA);
+        let jsp = register(ProcCol::JSP);
+        let jso = register(ProcCol::JSO);
+        let jsd = register(ProcCol::JSD);
+        let osp = register(ProcCol::OpStackPointer);
+        let clk = row[ProcCol::CLK.base_table_index()].to_string();
         let clk = clk.trim_start_matches('0');
 
         let first_line = format!("ip:   {ip} ╷ ci:   {ci} ╷ nia: {nia} │ {clk: >clk_width$}");
@@ -960,10 +963,10 @@ impl Display for VMState {
         print_row(f, format!("osp:  {osp} ╵"))?;
         print_blank_row(f)?;
 
-        let st_00_03 = multi_register([ST0, ST1, ST2, ST3]);
-        let st_04_07 = multi_register([ST4, ST5, ST6, ST7]);
-        let st_08_11 = multi_register([ST8, ST9, ST10, ST11]);
-        let st_12_15 = multi_register([ST12, ST13, ST14, ST15]);
+        let st_00_03 = multi_register([ProcCol::ST0, ProcCol::ST1, ProcCol::ST2, ProcCol::ST3]);
+        let st_04_07 = multi_register([ProcCol::ST4, ProcCol::ST5, ProcCol::ST6, ProcCol::ST7]);
+        let st_08_11 = multi_register([ProcCol::ST8, ProcCol::ST9, ProcCol::ST10, ProcCol::ST11]);
+        let st_12_15 = multi_register([ProcCol::ST12, ProcCol::ST13, ProcCol::ST14, ProcCol::ST15]);
 
         print_row(f, format!("st0-3:    [ {st_00_03} ]"))?;
         print_row(f, format!("st4-7:    [ {st_04_07} ]"))?;
@@ -971,15 +974,30 @@ impl Display for VMState {
         print_row(f, format!("st12-15:  [ {st_12_15} ]"))?;
         print_blank_row(f)?;
 
-        let hv_00_03_line = format!("hv0-3:    [ {} ]", multi_register([HV0, HV1, HV2, HV3]));
-        let hv_04_05_line = format!("hv4-5:    [ {} | {} ]", register(HV4), register(HV5),);
+        let hv_00_03_line = format!(
+            "hv0-3:    [ {} ]",
+            multi_register([ProcCol::HV0, ProcCol::HV1, ProcCol::HV2, ProcCol::HV3])
+        );
+        let hv_04_05_line = format!(
+            "hv4-5:    [ {} | {} ]",
+            register(ProcCol::HV4),
+            register(ProcCol::HV5),
+        );
         print_row(f, hv_00_03_line)?;
         print_row(f, hv_04_05_line)?;
 
-        let ib_registers = [IB6, IB5, IB4, IB3, IB2, IB1, IB0]
-            .map(|reg| row[reg.base_table_index()])
-            .map(|bfe| format!("{bfe:>2}"))
-            .join(" | ");
+        let ib_registers = [
+            ProcCol::IB6,
+            ProcCol::IB5,
+            ProcCol::IB4,
+            ProcCol::IB3,
+            ProcCol::IB2,
+            ProcCol::IB1,
+            ProcCol::IB0,
+        ]
+        .map(|reg| row[reg.base_table_index()])
+        .map(|bfe| format!("{bfe:>2}"))
+        .join(" | ");
         print_row(f, format!("ib6-0:    [ {ib_registers} ]",))?;
 
         let Some(sponge_state) = self.sponge_state else {
@@ -987,16 +1005,16 @@ impl Display for VMState {
         };
 
         let sponge_state_register = |i: usize| sponge_state[i].value();
-        let sponge_state_slice = |idxs: [usize; 4]| {
+        let sponge_state_slice = |idxs: Range<usize>| {
             idxs.map(sponge_state_register)
                 .map(|ss| format!("{ss:>register_width$}"))
                 .join(" | ")
         };
 
-        let sponge_state_00_03 = sponge_state_slice([0, 1, 2, 3]);
-        let sponge_state_04_07 = sponge_state_slice([4, 5, 6, 7]);
-        let sponge_state_08_11 = sponge_state_slice([8, 9, 10, 11]);
-        let sponge_state_12_15 = sponge_state_slice([12, 13, 14, 15]);
+        let sponge_state_00_03 = sponge_state_slice(0..4);
+        let sponge_state_04_07 = sponge_state_slice(4..8);
+        let sponge_state_08_11 = sponge_state_slice(8..12);
+        let sponge_state_12_15 = sponge_state_slice(12..16);
 
         writeln!(f, "├─{:─<total_width$}─┤", "")?;
         print_row(f, format!("sp0-3:    [ {sponge_state_00_03} ]"))?;
@@ -1014,7 +1032,6 @@ pub(crate) mod tests {
 
     use assert2::assert;
     use assert2::let_assert;
-    use itertools::Itertools;
     use ndarray::Array1;
     use ndarray::ArrayView1;
     use proptest::prelude::*;
