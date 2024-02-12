@@ -487,8 +487,7 @@ impl Display for Report {
 
             let relative_category_color = task
                 .relative_category_time
-                .map(|t| Weight::weigh(t).color())
-                .unwrap_or(Color::White);
+                .map_or(Color::White, |t| Weight::weigh(t).color());
             let category_and_relative_time_colored =
                 category_and_relative_time.color(relative_category_color);
 
