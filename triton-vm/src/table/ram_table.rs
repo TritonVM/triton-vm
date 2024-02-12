@@ -235,7 +235,14 @@ impl RamTable {
             if is_no_padding_row {
                 if let Some(previous_row) = previous_row {
                     let previous_ram_pointer = previous_row[RamPointer.base_table_index()];
-                    if previous_ram_pointer != current_ram_pointer {
+                    if previous_ram_pointer == current_ram_pointer {
+                        let previous_clock = previous_row[CLK.base_table_index()];
+                        let current_clock = current_row[CLK.base_table_index()];
+                        let clock_jump_difference = current_clock - previous_clock;
+                        let log_derivative_summand =
+                            clock_jump_difference_lookup_indeterminate - clock_jump_difference;
+                        clock_jump_diff_lookup_log_derivative += log_derivative_summand.inverse();
+                    } else {
                         // accumulate coefficient for Bézout relation, proving new RAMP is unique
                         let bcpc0 =
                             current_row[BezoutCoefficientPolynomialCoefficient0.base_table_index()];
@@ -248,13 +255,6 @@ impl RamTable {
                         running_product_ram_pointer *= bezout_indeterminate - current_ram_pointer;
                         bezout_coefficient_0 = bezout_coefficient_0 * bezout_indeterminate + bcpc0;
                         bezout_coefficient_1 = bezout_coefficient_1 * bezout_indeterminate + bcpc1;
-                    } else {
-                        let previous_clock = previous_row[CLK.base_table_index()];
-                        let current_clock = current_row[CLK.base_table_index()];
-                        let clock_jump_difference = current_clock - previous_clock;
-                        let log_derivative_summand =
-                            clock_jump_difference_lookup_indeterminate - clock_jump_difference;
-                        clock_jump_diff_lookup_log_derivative += log_derivative_summand.inverse();
                     }
                 }
 
