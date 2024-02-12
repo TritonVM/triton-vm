@@ -18,7 +18,6 @@ use crate::profiler::TritonProfiler;
 use crate::proof_item::FriResponse;
 use crate::proof_item::ProofItem;
 use crate::proof_stream::ProofStream;
-use crate::stark::MTMaker;
 
 pub(crate) type SetupResult<T> = Result<T, FriSetupError>;
 pub(crate) type ProverResult<T> = Result<T, FriProvingError>;
@@ -168,7 +167,7 @@ impl<H: AlgebraicHasher> ProverRound<H> {
 
     fn merkle_tree_from_codeword(codeword: &[XFieldElement]) -> ProverResult<MerkleTree<H>> {
         let digests = codeword_as_digests(codeword);
-        MTMaker::from_digests(&digests).map_err(FriProvingError::MerkleTreeError)
+        CpuParallel::from_digests(&digests).map_err(FriProvingError::MerkleTreeError)
     }
 
     fn split_and_fold(&self, folding_challenge: XFieldElement) -> Vec<XFieldElement> {
@@ -467,7 +466,7 @@ impl<'stream, H: AlgebraicHasher> FriVerifier<'stream, H> {
 
     fn last_round_codeword_merkle_root(&self) -> VerifierResult<Digest> {
         let codeword_digests = codeword_as_digests(&self.last_round_codeword);
-        let merkle_tree: MerkleTree<H> = MTMaker::from_digests(&codeword_digests)
+        let merkle_tree: MerkleTree<H> = CpuParallel::from_digests(&codeword_digests)
             .map_err(FriValidationError::MerkleTreeError)?;
 
         Ok(merkle_tree.root())

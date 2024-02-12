@@ -26,7 +26,6 @@ use crate::error::ProvingError;
 use crate::profiler::prof_start;
 use crate::profiler::prof_stop;
 use crate::profiler::TritonProfiler;
-use crate::stark::MTMaker;
 use crate::stark::NUM_RANDOMIZER_POLYNOMIALS;
 use crate::table::cascade_table::CascadeTable;
 use crate::table::challenges::Challenges;
@@ -308,7 +307,7 @@ where
         prof_stop!(maybe_profiler, "leafs");
 
         prof_start!(maybe_profiler, "Merkle tree");
-        let merkle_tree = MTMaker::from_digests(&hashed_rows).unwrap();
+        let merkle_tree = CpuParallel::from_digests(&hashed_rows).unwrap();
         prof_stop!(maybe_profiler, "Merkle tree");
 
         merkle_tree

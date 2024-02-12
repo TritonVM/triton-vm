@@ -144,7 +144,6 @@ mod tests {
     use crate::proof_item::FriResponse;
     use crate::proof_item::ProofItem;
     use crate::shared_tests::LeavedMerkleTreeTestData;
-    use crate::stark::MTMaker;
     use crate::table::BaseRow;
     use crate::table::ExtensionRow;
     use crate::table::QuotientSegments;
@@ -239,7 +238,7 @@ mod tests {
         let num_leaves = 1 << tree_height;
         let leaf_values: Vec<XFieldElement> = random_elements(num_leaves);
         let leaf_digests = leaf_values.iter().map(|&xfe| xfe.into()).collect_vec();
-        let merkle_tree: MerkleTree<Tip5> = MTMaker::from_digests(&leaf_digests).unwrap();
+        let merkle_tree: MerkleTree<Tip5> = CpuParallel::from_digests(&leaf_digests).unwrap();
         let indices_to_check = vec![5, 173, 175, 167, 228, 140, 252, 149, 232, 182, 5, 5, 182];
         let auth_structure = merkle_tree
             .authentication_structure(&indices_to_check)

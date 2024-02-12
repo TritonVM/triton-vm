@@ -35,11 +35,14 @@ use crate::table::extension_table::Evaluable;
 use crate::table::master_table::*;
 use crate::table::QuotientSegments;
 
+#[deprecated(since = "0.37.0", note = "Use `Tip5` directly instead.")]
 pub type StarkHasher = Tip5;
+
 pub type StarkProofStream = ProofStream<Tip5>;
 
 /// The Merkle tree maker in use. Keeping this as a type alias should make it easier to switch
 /// between different Merkle tree makers.
+#[deprecated(since = "0.37.0", note = "Use `CpuParallel` directly instead.")]
 pub type MTMaker = CpuParallel;
 
 /// The number of segments the quotient polynomial is split into.
@@ -230,7 +233,7 @@ impl Stark {
         prof_stop!(maybe_profiler, "hash rows of quotient segments");
         prof_start!(maybe_profiler, "Merkle tree", "hash");
         let quot_merkle_tree: MerkleTree<Tip5> =
-            MTMaker::from_digests(&fri_domain_quotient_segment_codewords_digests)?;
+            CpuParallel::from_digests(&fri_domain_quotient_segment_codewords_digests)?;
         let quot_merkle_tree_root = quot_merkle_tree.root();
         proof_stream.enqueue(ProofItem::MerkleRoot(quot_merkle_tree_root));
         prof_stop!(maybe_profiler, "Merkle tree");
