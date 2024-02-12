@@ -889,9 +889,7 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
         multicircuit: &[ConstraintCircuitMonad<II>],
         target_degree: Degree,
     ) -> usize {
-        if multicircuit.is_empty() {
-            panic!("Multicircuit must be non-empty in order to pick a node from it.");
-        }
+        assert!(!multicircuit.is_empty());
 
         let multicircuit = multicircuit
             .iter()
