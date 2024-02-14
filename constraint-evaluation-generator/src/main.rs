@@ -61,7 +61,7 @@ fn main() {
 
     let constraints =
         combine_existing_and_substitution_induced_constraints(constraints, substitutions);
-    let constraint_code = generate_constraint_code(constraints);
+    let constraint_code = generate_constraint_code(&constraints);
 
     write_code_to_file(degree_lowering_table_code, "degree_lowering_table");
     write_code_to_file(constraint_code, "constraints");
@@ -242,16 +242,16 @@ fn combine_existing_and_substitution_induced_constraints(
     }
 }
 
-fn generate_constraint_code(constraints: Constraints) -> TokenStream {
+fn generate_constraint_code(constraints: &Constraints) -> TokenStream {
     let num_init_constraints = constraints.init.len();
     let num_cons_constraints = constraints.cons.len();
     let num_tran_constraints = constraints.tran.len();
     let num_term_constraints = constraints.term.len();
 
-    let mut init_constraint_circuits = consume(constraints.init);
-    let mut cons_constraint_circuits = consume(constraints.cons);
-    let mut tran_constraint_circuits = consume(constraints.tran);
-    let mut term_constraint_circuits = consume(constraints.term);
+    let mut init_constraint_circuits = consume(&constraints.init);
+    let mut cons_constraint_circuits = consume(&constraints.cons);
+    let mut tran_constraint_circuits = consume(&constraints.tran);
+    let mut term_constraint_circuits = consume(&constraints.term);
 
     let (init_constraint_degrees, init_constraints_bfe, init_constraints_xfe) =
         tokenize_circuits(&mut init_constraint_circuits);
@@ -399,12 +399,9 @@ fn generate_evaluable_implementation_over_field(
 
 /// Consumes every [`ConstraintCircuitMonad`], returning their corresponding [`ConstraintCircuit`]s.
 fn consume<II: InputIndicator>(
-    constraints: Vec<ConstraintCircuitMonad<II>>,
+    constraints: &[ConstraintCircuitMonad<II>],
 ) -> Vec<ConstraintCircuit<II>> {
-    constraints
-        .into_iter()
-        .map(ConstraintCircuitMonad::consume)
-        .collect()
+    constraints.iter().map(|c| c.consume()).collect()
 }
 
 /// Given a slice of constraint circuits, return a tuple of [`TokenStream`]s corresponding to code

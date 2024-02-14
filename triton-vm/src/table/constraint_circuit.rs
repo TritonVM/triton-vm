@@ -612,10 +612,7 @@ fn binop<II: InputIndicator>(
         expression,
     };
     let circuit = Rc::new(RefCell::new(circuit));
-    let new_node = ConstraintCircuitMonad {
-        circuit,
-        builder: lhs.builder.clone(),
-    };
+    let new_node = lhs.new_monad_same_context(circuit);
 
     let mut all_nodes = lhs.builder.all_nodes.borrow_mut();
     if let Some(same_node) = all_nodes.get(&new_node) {
@@ -681,73 +678,57 @@ impl<II: InputIndicator> Sum for ConstraintCircuitMonad<II> {
 }
 
 impl<II: InputIndicator> ConstraintCircuitMonad<II> {
+    pub(crate) fn new_monad_same_context(
+        &self,
+        circuit: Rc<RefCell<ConstraintCircuit<II>>>,
+    ) -> Self {
+        Self {
+            circuit,
+            builder: self.builder.clone(),
+        }
+    }
+
     /// Unwrap a ConstraintCircuitMonad to reveal its inner ConstraintCircuit
-    pub fn consume(self) -> ConstraintCircuit<II> {
-        self.circuit.try_borrow().unwrap().to_owned()
+    pub fn consume(&self) -> ConstraintCircuit<II> {
+        self.circuit.borrow().to_owned()
     }
 
     pub fn max_id(&self) -> usize {
-        let max_from_hash_map = self
-            .builder
-            .all_nodes
-            .borrow()
-            .iter()
-            .map(|x| x.circuit.borrow().id)
-            .max()
-            .unwrap();
+        let all_nodes = self.builder.all_nodes.borrow();
+        let all_ids = all_nodes.iter().map(|x| x.circuit.borrow().id);
+        let max_id = all_ids.max().unwrap();
 
         let id_ref_value = *self.builder.id_counter.borrow();
-        assert_eq!(id_ref_value - 1, max_from_hash_map);
-        max_from_hash_map
+        assert_eq!(id_ref_value - 1, max_id);
+        max_id
     }
 
     fn find_equivalent_expression(&self) -> Option<Rc<RefCell<ConstraintCircuit<II>>>> {
-        if let BinaryOperation(op, lhs, rhs) = &self.circuit.borrow().expression {
-            // a + 0 = a ∧ a - 0 = a
-            if matches!(op, BinOp::Add | BinOp::Sub) && rhs.borrow().is_zero() {
-                return Some(lhs.clone());
-            }
+        let BinaryOperation(op, lhs, rhs) = &self.circuit.borrow().expression else {
+            return None;
+        };
 
-            // 0 + a = a
-            if op == &BinOp::Add && lhs.borrow().is_zero() {
-                return Some(rhs.clone());
-            }
+        match (op, lhs, rhs) {
+            (BinOp::Add | BinOp::Sub, l, r) if r.borrow().is_zero() => return Some(l.clone()),
+            (BinOp::Add, l, r) if l.borrow().is_zero() => return Some(r.clone()),
+            (BinOp::Mul, l, r) if r.borrow().is_one() => return Some(l.clone()),
+            (BinOp::Mul, l, r) if l.borrow().is_one() => return Some(r.clone()),
+            (BinOp::Mul, _, r) if r.borrow().is_zero() => return Some(r.clone()),
+            (BinOp::Mul, l, _) if l.borrow().is_zero() => return Some(l.clone()),
+            _ => (),
+        };
 
-            if op == &BinOp::Mul {
-                // a * 1 = a
-                if rhs.borrow().is_one() {
-                    return Some(lhs.clone());
-                }
-                // 1 * a = a
-                if lhs.borrow().is_one() {
-                    return Some(rhs.clone());
-                }
-                // 0 * a = 0
-                if lhs.borrow().is_zero() {
-                    return Some(lhs.clone());
-                }
-                // a * 0 = 0
-                if rhs.borrow().is_zero() {
-                    return Some(rhs.clone());
-                }
-            }
+        let new_const = match (&lhs.borrow().expression, &rhs.borrow().expression) {
+            (&BConstant(l), &BConstant(r)) => BConstant(op.operation(l, r)),
+            (&BConstant(l), &XConstant(r)) => XConstant(op.operation(l, r)),
+            (&XConstant(l), &BConstant(r)) => XConstant(op.operation(l, r)),
+            (&XConstant(l), &XConstant(r)) => XConstant(op.operation(l, r)),
+            _ => return None,
+        };
 
-            // if both left and right hand sides are constants, simplify
-            let maybe_new_const = match (&lhs.borrow().expression, &rhs.borrow().expression) {
-                (&BConstant(l), &BConstant(r)) => Some(BConstant(op.operation(l, r))),
-                (&BConstant(l), &XConstant(r)) => Some(XConstant(op.operation(l, r))),
-                (&XConstant(l), &BConstant(r)) => Some(XConstant(op.operation(l, r))),
-                (&XConstant(l), &XConstant(r)) => Some(XConstant(op.operation(l, r))),
-                _ => None,
-            };
-
-            if let Some(new_const) = maybe_new_const {
-                let new_const = self.builder.make_leaf(new_const).consume();
-                let new_const = Rc::new(RefCell::new(new_const));
-                return Some(new_const);
-            }
-        }
-        None
+        let new_const = self.builder.make_leaf(new_const).consume();
+        let new_const = Rc::new(RefCell::new(new_const));
+        Some(new_const)
     }
 
     /// Apply constant folding to simplify the (sub)tree.
@@ -759,30 +740,24 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
     ///
     /// This operation mutates self and returns true if a change was applied anywhere in the tree.
     fn constant_fold_inner(&mut self) -> (bool, Option<Rc<RefCell<ConstraintCircuit<II>>>>) {
+        let BinaryOperation(_, lhs, rhs) = &self.circuit.borrow().expression.clone() else {
+            return (false, None);
+        };
+
         let mut change_tracker = false;
-        let self_expr = self.circuit.borrow().expression.clone();
-        if let BinaryOperation(_, lhs, rhs) = &self_expr {
-            let mut lhs_as_monadic_value = ConstraintCircuitMonad {
-                circuit: lhs.clone(),
-                builder: self.builder.clone(),
-            };
-            let (change_in_lhs, _) = lhs_as_monadic_value.constant_fold_inner();
-            change_tracker |= change_in_lhs;
-            let mut rhs_as_monadic_value = ConstraintCircuitMonad {
-                circuit: rhs.clone(),
-                builder: self.builder.clone(),
-            };
-            let (change_in_rhs, _) = rhs_as_monadic_value.constant_fold_inner();
-            change_tracker |= change_in_rhs;
-        }
+        let mut lhs_as_monadic_value = self.new_monad_same_context(lhs.clone());
+        let (change_in_lhs, _) = lhs_as_monadic_value.constant_fold_inner();
+        change_tracker |= change_in_lhs;
+
+        let mut rhs_as_monadic_value = self.new_monad_same_context(rhs.clone());
+        let (change_in_rhs, _) = rhs_as_monadic_value.constant_fold_inner();
+        change_tracker |= change_in_rhs;
 
         let equivalent_circuit = self.find_equivalent_expression();
-        change_tracker |= equivalent_circuit.is_some();
-
-        if equivalent_circuit.is_some() {
-            let equivalent_circuit = equivalent_circuit.as_ref().unwrap().clone();
+        if let Some(ref circuit) = equivalent_circuit {
+            change_tracker = true;
             let id_to_remove = self.circuit.borrow().id;
-            self.builder.substitute(id_to_remove, equivalent_circuit);
+            self.builder.substitute(id_to_remove, circuit);
             self.builder.all_nodes.borrow_mut().remove(self);
         }
 
@@ -797,10 +772,7 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
                 let (mutated_inner, maybe_new_root) = circuit.constant_fold_inner();
                 mutated = mutated_inner;
                 if let Some(new_root) = maybe_new_root {
-                    *circuit = ConstraintCircuitMonad {
-                        circuit: new_root,
-                        builder: circuit.builder.clone(),
-                    };
+                    *circuit = circuit.new_monad_same_context(new_root);
                 }
             }
         }
@@ -863,7 +835,7 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
             let new_circuit = new_variable.circuit.clone();
 
             // Substitute the chosen circuit with the new variable.
-            builder.substitute(chosen_node_id, new_circuit.clone());
+            builder.substitute(chosen_node_id, &new_circuit);
 
             // Create new constraint and put it into the appropriate return vector.
             let new_constraint = new_variable - chosen_node;
@@ -1069,21 +1041,22 @@ impl<II: InputIndicator> ConstraintCircuitBuilder<II> {
     }
 
     /// Substitute all nodes with ID `old_id` with the given `new` node.
-    pub fn substitute(&self, old_id: usize, new: Rc<RefCell<ConstraintCircuit<II>>>) {
+    pub fn substitute(&self, old_id: usize, new: &Rc<RefCell<ConstraintCircuit<II>>>) {
         for node in self.all_nodes.borrow().clone() {
             if node.circuit.borrow().id == old_id {
                 continue;
             }
 
-            if let BinaryOperation(_, ref mut lhs, ref mut rhs) =
-                node.circuit.borrow_mut().expression
-            {
-                if lhs.borrow().id == old_id {
-                    *lhs = new.clone();
-                }
-                if rhs.borrow().id == old_id {
-                    *rhs = new.clone();
-                }
+            let BinaryOperation(_, ref mut lhs, ref mut rhs) = node.circuit.borrow_mut().expression
+            else {
+                continue;
+            };
+
+            if lhs.borrow().id == old_id {
+                *lhs = new.clone();
+            }
+            if rhs.borrow().id == old_id {
+                *rhs = new.clone();
             }
         }
     }
