@@ -840,7 +840,7 @@ fn base_single_row_substitutions(indices: &[usize], substitutions: &[TokenStream
         master_base_table.rows_mut().into_iter().for_each(|mut row| {
         #(
         let (base_row, mut det_col) =
-            row.multi_slice_mut((s![..#indices],s![#indices..#indices + 1]));
+            row.multi_slice_mut((s![..#indices],s![#indices..=#indices]));
         det_col[0] = #substitutions;
         )*
         });
@@ -856,14 +856,14 @@ fn base_dual_row_substitutions(indices: &[usize], substitutions: &[TokenStream])
         for curr_row_idx in 0..master_base_table.nrows() - 1 {
             let next_row_idx = curr_row_idx + 1;
             let (mut curr_base_row, next_base_row) = master_base_table.multi_slice_mut((
-                s![curr_row_idx..curr_row_idx + 1, ..],
-                s![next_row_idx..next_row_idx + 1, ..],
+                s![curr_row_idx..=curr_row_idx, ..],
+                s![next_row_idx..=next_row_idx, ..],
             ));
             let mut curr_base_row = curr_base_row.row_mut(0);
             let next_base_row = next_base_row.row(0);
             #(
             let (current_base_row, mut det_col) =
-                curr_base_row.multi_slice_mut((s![..#indices], s![#indices..#indices + 1]));
+                curr_base_row.multi_slice_mut((s![..#indices], s![#indices..=#indices]));
             det_col[0] = #substitutions;
             )*
         }
@@ -881,7 +881,7 @@ fn ext_single_row_substitutions(indices: &[usize], substitutions: &[TokenStream]
             let mut extension_row = master_ext_table.row_mut(row_idx);
             #(
             let (ext_row, mut det_col) =
-                extension_row.multi_slice_mut((s![..#indices],s![#indices..#indices + 1]));
+                extension_row.multi_slice_mut((s![..#indices],s![#indices..=#indices]));
             det_col[0] = #substitutions;
             )*
         }
@@ -899,14 +899,14 @@ fn ext_dual_row_substitutions(indices: &[usize], substitutions: &[TokenStream]) 
             let current_base_row = master_base_table.row(curr_row_idx);
             let next_base_row = master_base_table.row(next_row_idx);
             let (mut curr_ext_row, next_ext_row) = master_ext_table.multi_slice_mut((
-                s![curr_row_idx..curr_row_idx + 1, ..],
-                s![next_row_idx..next_row_idx + 1, ..],
+                s![curr_row_idx..=curr_row_idx, ..],
+                s![next_row_idx..=next_row_idx, ..],
             ));
             let mut curr_ext_row = curr_ext_row.row_mut(0);
             let next_ext_row = next_ext_row.row(0);
             #(
             let (current_ext_row, mut det_col) =
-                curr_ext_row.multi_slice_mut((s![..#indices], s![#indices..#indices + 1]));
+                curr_ext_row.multi_slice_mut((s![..#indices], s![#indices..=#indices]));
             det_col[0] = #substitutions;
             )*
         }

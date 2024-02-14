@@ -1904,8 +1904,8 @@ pub(crate) mod tests {
         {
             for row_idx in 0..master_base_trace_table.nrows() {
                 let evaluated_constraint = constraint.evaluate(
-                    master_base_trace_table.slice(s![row_idx..row_idx + 1, ..]),
-                    master_ext_trace_table.slice(s![row_idx..row_idx + 1, ..]),
+                    master_base_trace_table.slice(s![row_idx..=row_idx, ..]),
+                    master_ext_trace_table.slice(s![row_idx..=row_idx, ..]),
                     challenges,
                 );
                 check!(
@@ -1923,8 +1923,8 @@ pub(crate) mod tests {
         {
             for row_idx in 0..master_base_trace_table.nrows() - 1 {
                 let evaluated_constraint = constraint.evaluate(
-                    master_base_trace_table.slice(s![row_idx..row_idx + 2, ..]),
-                    master_ext_trace_table.slice(s![row_idx..row_idx + 2, ..]),
+                    master_base_trace_table.slice(s![row_idx..=row_idx + 1, ..]),
+                    master_ext_trace_table.slice(s![row_idx..=row_idx + 1, ..]),
                     challenges,
                 );
                 check!(
