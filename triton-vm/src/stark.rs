@@ -1167,7 +1167,7 @@ pub(crate) mod tests {
         let (stark, claim, mut master_base_table) =
             master_base_table_for_low_security_level(program_and_input);
 
-        let challenges = Challenges::deterministic_placeholder(Some(&claim));
+        let challenges = Challenges::placeholder(&claim);
         master_base_table.pad();
         let master_ext_table = master_base_table.extend(&challenges);
 
@@ -1675,7 +1675,7 @@ pub(crate) mod tests {
 
     #[test]
     fn constraint_polynomials_use_right_number_of_variables() {
-        let challenges = Challenges::placeholder(None);
+        let challenges = Challenges::default();
         let base_row = Array1::<BFieldElement>::zeros(NUM_BASE_COLUMNS);
         let ext_row = Array1::zeros(NUM_EXT_COLUMNS);
 
@@ -1788,7 +1788,7 @@ pub(crate) mod tests {
     fn number_of_quotient_degree_bounds_match_number_of_constraints() {
         let base_row = Array1::<BFieldElement>::zeros(NUM_BASE_COLUMNS);
         let ext_row = Array1::zeros(NUM_EXT_COLUMNS);
-        let ch = Challenges::placeholder(None);
+        let ch = Challenges::default();
         let padded_height = 2;
         let num_trace_randomizers = 2;
         let interpolant_degree = interpolant_degree(padded_height, num_trace_randomizers);

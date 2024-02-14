@@ -2256,7 +2256,7 @@ mod tests {
     #[test]
     #[ignore = "(probably) requires normalization of circuit expressions"]
     fn substitution_rules_are_unique() {
-        let challenges = Challenges::placeholder(None);
+        let challenges = Challenges::default();
         let mut base_table_rows = Array2::from_shape_fn((2, NUM_BASE_COLUMNS), |_| random());
         let mut ext_table_rows = Array2::from_shape_fn((2, NUM_EXT_COLUMNS), |_| random());
 

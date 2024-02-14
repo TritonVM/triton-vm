@@ -4016,7 +4016,7 @@ pub(crate) mod tests {
         let master_ext_table = Array2::zeros([2, NUM_EXT_COLUMNS]);
 
         // For this test, dummy challenges suffice to evaluate the constraints.
-        let dummy_challenges = Challenges::placeholder(None);
+        let dummy_challenges = Challenges::default();
         for instruction in ALL_INSTRUCTIONS {
             use ProcessorBaseTableColumn::*;
             let deselector = ExtProcessorTable::instruction_deselector_current_row(

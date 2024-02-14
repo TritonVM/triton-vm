@@ -42,7 +42,7 @@ use crate::Claim;
 /// Since almost all challenges relate to the Processor Table in some form, the words “Processor
 /// Table” are usually omitted from the `ChallengeId`'s name.
 #[repr(usize)]
-#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, EnumCount, EnumIter)]
+#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, EnumCount, EnumIter, Arbitrary)]
 pub enum ChallengeId {
     /// The indeterminate for the [Evaluation Argument](EvalArg) compressing the program digest
     /// into a single extension field element, _i.e._, [`CompressedProgramDigest`].
@@ -306,30 +306,22 @@ impl Index<RangeInclusive<ChallengeId>> for Challenges {
 
 #[cfg(test)]
 pub(crate) mod tests {
-    use twenty_first::shared_math::other::random_elements;
-
     use super::*;
 
-    impl Challenges {
-        /// Stand-in challenges. Can be used in tests. For non-interactive STARKs, use the
-        /// Fiat-Shamir heuristic to derive the actual challenges.
-        ///
-        /// If no [`Claim`] is provided, a dummy claim is used.
-        pub fn placeholder(claim: Option<&Claim>) -> Self {
-            let dummy_claim = Claim::default();
-            let claim = claim.unwrap_or(&dummy_claim);
-            let stand_in_challenges = random_elements(Self::num_challenges_to_sample());
-            Self::new(stand_in_challenges, claim)
+    // For testing purposes only.
+    impl Default for Challenges {
+        fn default() -> Self {
+            Self::placeholder(&Claim::default())
         }
+    }
 
-        pub fn deterministic_placeholder(claim: Option<&Claim>) -> Self {
-            let dummy_claim = Claim::default();
-            let claim = claim.unwrap_or(&dummy_claim);
+    impl Challenges {
+        /// Stand-in challenges for use in tests. For non-interactive STARKs, use the
+        /// Fiat-Shamir heuristic to derive the actual challenges.
+        pub fn placeholder(claim: &Claim) -> Self {
             let stand_in_challenges = (1..=Self::num_challenges_to_sample())
-                .map(|i| [0, i as u64, 0])
-                .map(XFieldElement::new_u64)
+                .map(|i| XFieldElement::new_u64([42, i as u64, 24]))
                 .collect();
-
             Self::new(stand_in_challenges, claim)
         }
     }
