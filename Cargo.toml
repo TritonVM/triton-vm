@@ -52,7 +52,7 @@ strum = { version = "0.26", features = ["derive"] }
 syn = "2.0"
 test-strategy = "0.3.1"
 thiserror = "1.0"
-twenty-first = { git = "https://github.com/Neptune-Crypto/twenty-first", rev = "0a17777d" }
+twenty-first = "0.37.0"
 unicode-width = "0.1"
 
 [workspace.lints.clippy]
