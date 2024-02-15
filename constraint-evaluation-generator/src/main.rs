@@ -10,7 +10,6 @@ use twenty_first::prelude::*;
 use triton_vm::table::cascade_table::ExtCascadeTable;
 use triton_vm::table::constraint_circuit::BinOp;
 use triton_vm::table::constraint_circuit::CircuitExpression;
-use triton_vm::table::constraint_circuit::CircuitExpression::*;
 use triton_vm::table::constraint_circuit::ConstraintCircuit;
 use triton_vm::table::constraint_circuit::ConstraintCircuitBuilder;
 use triton_vm::table::constraint_circuit::ConstraintCircuitMonad;
@@ -813,10 +812,10 @@ fn several_substitution_rules_to_code<II: InputIndicator>(
 /// Given a substitution rule, i.e., a `ConstraintCircuit` of the form `x - expr`, generate code
 /// that evaluates `expr`.
 fn substitution_rule_to_code<II: InputIndicator>(circuit: ConstraintCircuit<II>) -> TokenStream {
-    let BinaryOperation(BinOp::Sub, new_var, expr) = circuit.expression else {
+    let CircuitExpression::BinaryOperation(BinOp::Sub, new_var, expr) = circuit.expression else {
         panic!("Substitution rule must be a subtraction.");
     };
-    let Input(_) = new_var.as_ref().borrow().expression else {
+    let CircuitExpression::Input(_) = new_var.as_ref().borrow().expression else {
         panic!("Substitution rule must be a simple substitution.");
     };
 
