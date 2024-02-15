@@ -277,7 +277,7 @@ fn generate_constraint_code(constraints: &Constraints) -> TokenStream {
         quote!(XFieldElement),
     );
 
-    let quotientable = quote!(
+    let quotient_trait_impl = quote!(
     impl Quotientable for MasterExtTable {
         fn num_initial_quotients() -> usize { #num_init_constraints }
         fn num_consistency_quotients() -> usize { #num_cons_constraints }
@@ -323,7 +323,7 @@ fn generate_constraint_code(constraints: &Constraints) -> TokenStream {
         #imports
         #evaluable_over_base_field
         #evaluable_over_ext_field
-        #quotientable
+        #quotient_trait_impl
     )
 }
 
@@ -566,7 +566,7 @@ fn declare_single_node_with_visit_count<II: InputIndicator>(
 }
 
 /// Return a variable name for the node. Returns `point[n]` if node is just
-/// a value from the codewords. Otherwise returns the ID of the circuit.
+/// a value from the codewords. Otherwise, returns the ID of the circuit.
 fn get_binding_name<II: InputIndicator>(circuit: &ConstraintCircuit<II>) -> TokenStream {
     match &circuit.expression {
         CircuitExpression::BConstant(bfe) => tokenize_bfe(*bfe),
@@ -589,10 +589,8 @@ fn tokenize_bfe(bfe: BFieldElement) -> TokenStream {
 }
 
 fn tokenize_xfe(xfe: XFieldElement) -> TokenStream {
-    let coeff_0 = tokenize_bfe(xfe.coefficients[0]);
-    let coeff_1 = tokenize_bfe(xfe.coefficients[1]);
-    let coeff_2 = tokenize_bfe(xfe.coefficients[2]);
-    quote!(XFieldElement::new([#coeff_0, #coeff_1, #coeff_2]))
+    let [c_0, c_1, c_2] = xfe.coefficients.map(tokenize_bfe);
+    quote!(XFieldElement::new([#c_0, #c_1, #c_2]))
 }
 
 /// Recursively construct the code for evaluating a single node.
