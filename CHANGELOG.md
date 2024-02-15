@@ -3,6 +3,59 @@
 All notable changes are documented in this file.
 Lines marked “(!)” indicate a breaking change.
 
+## [0.37.0](https://github.com/TritonVM/triton-vm/compare/v0.36.1..v0.37.0) - 2024-02-15
+
+### ✨ Features
+
+- Provide more `BFieldCodec`-related info for `ProofItem`s ([483d9c0d](https://github.com/TritonVM/triton-vm/commit/483d9c0d))
+- *(tui)* Enable scrolling in memory widget ([96e2eaca](https://github.com/TritonVM/triton-vm/commit/96e2eaca))
+- Provide Fiat-Shamir heuristic related info `ProofItemVariant`s ([02de19ff](https://github.com/TritonVM/triton-vm/commit/02de19ff))
+- Simplify parsing of proof item's payload type ([5baeeaeb](https://github.com/TritonVM/triton-vm/commit/5baeeaeb))
+- *(lint)* Warn if underscore bindings are being used ([8ab457a6](https://github.com/TritonVM/triton-vm/commit/8ab457a6))
+- (!) Return `Err(_)`, don't `panic!`, on unsupported root of unity ([60289eb5](https://github.com/TritonVM/triton-vm/commit/60289eb5))
+- Simplify constructing `Claim`s ([31694222](https://github.com/TritonVM/triton-vm/commit/31694222))
+
+### 🐛 Bug Fixes
+
+- *(test)* Remove failure-triggering & superfluous `as` cast ([d8b34e01](https://github.com/TritonVM/triton-vm/commit/d8b34e01))
+- *(tui)* Send key, mouse, and paste events only to active component ([74e42d35](https://github.com/TritonVM/triton-vm/commit/74e42d35))
+
+### 📚 Documentation
+
+- Exemplify usage of Triton VM in `examples` directory ([6e4f8f0e](https://github.com/TritonVM/triton-vm/commit/6e4f8f0e))
+- Update readme to point at examples folder ([2c989b3a](https://github.com/TritonVM/triton-vm/commit/2c989b3a))
+- Update readme of constraint evaluation generator ([fa987f38](https://github.com/TritonVM/triton-vm/commit/fa987f38))
+
+### ⚙️ Miscellaneous
+
+- *(test)* Use iterator transform instead of explicit loop ([fc8b9d20](https://github.com/TritonVM/triton-vm/commit/fc8b9d20))
+- In CI, check documentation builds free of warnings ([bf540685](https://github.com/TritonVM/triton-vm/commit/bf540685))
+- Run _all_ tests in CI ([d6e99ccc](https://github.com/TritonVM/triton-vm/commit/d6e99ccc))
+- Use `From` (not `as`) for lossless conversion ([4e8b28b7](https://github.com/TritonVM/triton-vm/commit/4e8b28b7))
+- Enable additional lints ([c309d759](https://github.com/TritonVM/triton-vm/commit/c309d759))
+- Don't call `Default::default()` ([cb73d220](https://github.com/TritonVM/triton-vm/commit/cb73d220))
+- Avoid explicit `.(into_)iter` for loops ([02018af5](https://github.com/TritonVM/triton-vm/commit/02018af5))
+- Name all `clone()`s  explicitly ([cd2e503e](https://github.com/TritonVM/triton-vm/commit/cd2e503e))
+- Favor `String::new()` over `"".into()` ([4650087b](https://github.com/TritonVM/triton-vm/commit/4650087b))
+- Deprecate aliases `StarkHasher`, `MTMaker` ([f9f0e288](https://github.com/TritonVM/triton-vm/commit/f9f0e288))
+- Avoid manually set inclusive range bounds ([d7b5f2c6](https://github.com/TritonVM/triton-vm/commit/d7b5f2c6))
+- Simplify construction of some circuits ([56d1bf0e](https://github.com/TritonVM/triton-vm/commit/56d1bf0e))
+- Update dependency `twenty-first` ([49b23419](https://github.com/TritonVM/triton-vm/commit/49b23419))
+
+### ♻️ Refactor
+
+- *(test)* More rigorously use `proptest` framework ([a27ca6d4](https://github.com/TritonVM/triton-vm/commit/a27ca6d4))
+- (!) Communicate possible FRI setup failures with `Result` ([3fe35ad1](https://github.com/TritonVM/triton-vm/commit/3fe35ad1))
+- (!) Communicate possible STARK proving failures with `Result` ([5613f194](https://github.com/TritonVM/triton-vm/commit/5613f194))
+- (!) Expose public (re-)exports via `triton_vm::prelude::*` ([0bb30d84](https://github.com/TritonVM/triton-vm/commit/0bb30d84))
+- Simplify `use`s through prelude of dependency `twenty-first` ([75da9a17](https://github.com/TritonVM/triton-vm/commit/75da9a17))
+- De-duplicate code for `ProofItem` ([a227131c](https://github.com/TritonVM/triton-vm/commit/a227131c))
+- Simplify TUI layout construction with new `ratatui` features ([0054597d](https://github.com/TritonVM/triton-vm/commit/0054597d))
+- (!) Make lengths of master tables' rows compile-time known ([e52f4cf0](https://github.com/TritonVM/triton-vm/commit/e52f4cf0))
+- (!) Integrate `StarkParameters` into `Stark` ([0c5edc73](https://github.com/TritonVM/triton-vm/commit/0c5edc73))
+- *(test)* Improve test names ([6caa0e1a](https://github.com/TritonVM/triton-vm/commit/6caa0e1a))
+- (!) Make `VMState`'s `sponge` a `Tip5` ([d7b8a3f7](https://github.com/TritonVM/triton-vm/commit/d7b8a3f7))
+
 ## [0.36.1](https://github.com/TritonVM/triton-vm/compare/v0.36.0..v0.36.1) - 2024-01-15
 
 ### 🐛 Bug Fixes
