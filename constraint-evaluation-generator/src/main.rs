@@ -28,6 +28,8 @@ use triton_vm::table::program_table::ExtProgramTable;
 use triton_vm::table::ram_table::ExtRamTable;
 use triton_vm::table::u32_table::ExtU32Table;
 
+mod asm;
+
 struct AllSubstitutions {
     base: Substitutions,
     ext: Substitutions,
@@ -61,9 +63,11 @@ fn main() {
     let constraints =
         combine_existing_and_substitution_induced_constraints(constraints, substitutions);
     let constraint_code = generate_constraint_code(&constraints);
+    let triton_asm_constraint_code = asm::generate_constraint_code(&constraints);
 
     write_code_to_file(degree_lowering_table_code, "degree_lowering_table");
     write_code_to_file(constraint_code, "constraints");
+    write_code_to_file(triton_asm_constraint_code, "asm_air_constraints");
 }
 
 fn all_constraints() -> Constraints {
