@@ -352,7 +352,6 @@ fn generate_evaluable_implementation_over_field(
 ) -> TokenStream {
     quote!(
     impl Evaluable<#field> for MasterExtTable {
-        #[inline]
         #[allow(unused_variables)]
         fn evaluate_initial_constraints(
             base_row: ArrayView1<#field>,
@@ -362,7 +361,6 @@ fn generate_evaluable_implementation_over_field(
             #init_constraints
         }
 
-        #[inline]
         #[allow(unused_variables)]
         fn evaluate_consistency_constraints(
             base_row: ArrayView1<#field>,
@@ -372,7 +370,6 @@ fn generate_evaluable_implementation_over_field(
             #cons_constraints
         }
 
-        #[inline]
         #[allow(unused_variables)]
         fn evaluate_transition_constraints(
             current_base_row: ArrayView1<#field>,
@@ -384,7 +381,6 @@ fn generate_evaluable_implementation_over_field(
             #tran_constraints
         }
 
-        #[inline]
         #[allow(unused_variables)]
         fn evaluate_terminal_constraints(
             base_row: ArrayView1<#field>,
