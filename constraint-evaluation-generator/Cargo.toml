@@ -1,6 +1,6 @@
 [package]
 name = "constraint-evaluation-generator"
-description = "Generate constraint evaluation functions for Triton VM tables"
+description = "Generate constraint evaluation functions for Triton VM."
 
 version.workspace = true
 edition.workspace = true

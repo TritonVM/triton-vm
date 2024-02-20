@@ -3,39 +3,39 @@ use quote::quote;
 
 use crate::Constraints;
 
-/// Emits a function that emits [Triton assembly][tasm] that evaluates Triton VM's AIR constraints
-/// over the [extension field][XFieldElement].
-///
-/// [tasm]: triton_vm::prelude::triton_asm
-pub fn generate_constraint_code(constraints: &Constraints) -> TokenStream {
-    let uses = generate_uses();
-    let doc_comment = generate_doc_comment(constraints);
+impl Constraints {
+    /// Emits a function that emits [Triton assembly][tasm] that evaluates Triton VM's AIR
+    /// constraints over the [extension field][XFieldElement].
+    ///
+    /// [tasm]: triton_vm::prelude::triton_asm
+    pub fn generate_triton_assembly(&self) -> TokenStream {
+        let uses = Self::generate_asm_uses();
+        let doc_comment = self.generate_doc_comment();
 
-    quote!(
-        #uses
-        #[doc = #doc_comment]
-        pub fn air_constraint_evaluation_tasm() -> Box<[LabelledInstruction]> {
-            todo!()
-        }
-    )
-}
+        quote!(
+            #uses
+            #[doc = #doc_comment]
+            pub fn air_constraint_evaluation_tasm() -> Box<[LabelledInstruction]> {
+                todo!()
+            }
+        )
+    }
 
-fn generate_uses() -> TokenStream {
-    quote!(
-        use crate::instruction::LabelledInstruction;
-    )
-}
+    fn generate_asm_uses() -> TokenStream {
+        quote!(
+            use crate::instruction::LabelledInstruction;
+        )
+    }
 
-fn generate_doc_comment(constraints: &Constraints) -> String {
-    let num_init_constraints = constraints.init.len();
-    let num_cons_constraints = constraints.cons.len();
-    let num_tran_constraints = constraints.tran.len();
-    let num_term_constraints = constraints.term.len();
-    let num_total_constraints =
-        num_init_constraints + num_cons_constraints + num_tran_constraints + num_term_constraints;
+    fn generate_doc_comment(&self) -> String {
+        let num_init_constraints = self.init.len();
+        let num_cons_constraints = self.cons.len();
+        let num_tran_constraints = self.tran.len();
+        let num_term_constraints = self.term.len();
+        let num_total_constraints = self.len();
 
-    format!(
-        "
+        format!(
+            "
         The emitted Triton assembly has the following signature:
 
         # Signature
@@ -72,8 +72,8 @@ fn generate_doc_comment(constraints: &Constraints) -> String {
 
             Above constants can be accessed programmatically through the methods
             [`num_quotients()`][num_quotients], as well as `num_initial_quotients()`,
-            `num_consistency_quotients()`, `num_transition_quotients`, and `num_terminal_quotients`
-            on the [`MasterExtTable`][master_ext_table].
+            `num_consistency_quotients()`, `num_transition_quotients()`, and
+            `num_terminal_quotients()` on the [`MasterExtTable`][master_ext_table].
 
         [bfe]: crate::prelude::BFieldElement
         [xfe]: crate::prelude::XFieldElement
@@ -82,6 +82,7 @@ fn generate_doc_comment(constraints: &Constraints) -> String {
         [num_challenges]: crate::table::challenges::Challenges::count()
         [num_quotients]: crate::table::master_table::num_quotients
         [master_ext_table]: crate::table::master_table::MasterExtTable
-        "
-    )
+            "
+        )
+    }
 }
