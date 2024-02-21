@@ -15,7 +15,7 @@ use triton_vm::table::constraint_circuit::InputIndicator;
 use triton_vm::table::constraint_circuit::SingleRowIndicator;
 use triton_vm::table::degree_lowering_table;
 
-use crate::constraints::Constraints;
+use crate::codegen::RustBackend;
 
 pub(crate) struct AllSubstitutions {
     pub base: Substitutions,
@@ -241,7 +241,7 @@ impl Substitutions {
         };
 
         let expr = expr.as_ref().borrow().to_owned();
-        Constraints::evaluate_single_node(usize::MAX, &expr, &HashSet::new())
+        RustBackend::evaluate_single_node(usize::MAX, &expr, &HashSet::new())
     }
 
     fn base_single_row_substitutions(

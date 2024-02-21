@@ -1,16 +1,18 @@
 use proc_macro2::TokenStream;
 use quote::quote;
 
-use crate::Constraints;
+use crate::codegen::Codegen;
+use crate::codegen::TasmBackend;
+use crate::constraints::Constraints;
 
-impl Constraints {
+impl Codegen for TasmBackend {
     /// Emits a function that emits [Triton assembly][tasm] that evaluates Triton VM's AIR
     /// constraints over the [extension field][XFieldElement].
     ///
     /// [tasm]: triton_vm::prelude::triton_asm
-    pub fn generate_triton_assembly(&self) -> TokenStream {
-        let uses = Self::generate_asm_uses();
-        let doc_comment = self.generate_doc_comment();
+    fn constraint_evaluation_code(constraints: &Constraints) -> TokenStream {
+        let uses = Self::uses();
+        let doc_comment = Self::doc_comment(constraints);
 
         quote!(
             #uses
@@ -20,19 +22,21 @@ impl Constraints {
             }
         )
     }
+}
 
-    fn generate_asm_uses() -> TokenStream {
+impl TasmBackend {
+    fn uses() -> TokenStream {
         quote!(
             use crate::instruction::LabelledInstruction;
         )
     }
 
-    fn generate_doc_comment(&self) -> String {
-        let num_init_constraints = self.init.len();
-        let num_cons_constraints = self.cons.len();
-        let num_tran_constraints = self.tran.len();
-        let num_term_constraints = self.term.len();
-        let num_total_constraints = self.len();
+    fn doc_comment(constraints: &Constraints) -> String {
+        let num_init_constraints = constraints.init.len();
+        let num_cons_constraints = constraints.cons.len();
+        let num_tran_constraints = constraints.tran.len();
+        let num_term_constraints = constraints.term.len();
+        let num_total_constraints = constraints.len();
 
         format!(
             "

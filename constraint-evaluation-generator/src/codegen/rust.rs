@@ -11,25 +11,27 @@ use triton_vm::table::constraint_circuit::ConstraintCircuit;
 use triton_vm::table::constraint_circuit::ConstraintCircuitMonad;
 use triton_vm::table::constraint_circuit::InputIndicator;
 
+use crate::codegen::Codegen;
+use crate::codegen::RustBackend;
 use crate::Constraints;
 
-impl Constraints {
-    pub fn generate_rust_code(&self) -> TokenStream {
-        let num_init_constraints = self.init.len();
-        let num_cons_constraints = self.cons.len();
-        let num_tran_constraints = self.tran.len();
-        let num_term_constraints = self.term.len();
+impl Codegen for RustBackend {
+    fn constraint_evaluation_code(constraints: &Constraints) -> TokenStream {
+        let num_init_constraints = constraints.init.len();
+        let num_cons_constraints = constraints.cons.len();
+        let num_tran_constraints = constraints.tran.len();
+        let num_term_constraints = constraints.term.len();
 
         let (init_constraint_degrees, init_constraints_bfe, init_constraints_xfe) =
-            Self::tokenize_circuits(&self.init);
+            Self::tokenize_circuits(&constraints.init);
         let (cons_constraint_degrees, cons_constraints_bfe, cons_constraints_xfe) =
-            Self::tokenize_circuits(&self.cons);
+            Self::tokenize_circuits(&constraints.cons);
         let (tran_constraint_degrees, tran_constraints_bfe, tran_constraints_xfe) =
-            Self::tokenize_circuits(&self.tran);
+            Self::tokenize_circuits(&constraints.tran);
         let (term_constraint_degrees, term_constraints_bfe, term_constraints_xfe) =
-            Self::tokenize_circuits(&self.term);
+            Self::tokenize_circuits(&constraints.term);
 
-        let uses = Self::generate_rust_uses();
+        let uses = Self::uses();
         let evaluable_over_base_field = Self::generate_evaluable_implementation_over_field(
             &init_constraints_bfe,
             &cons_constraints_bfe,
@@ -91,7 +93,9 @@ impl Constraints {
             #quotient_trait_impl
         )
     }
+}
 
+impl RustBackend {
     /// Consumes every [`ConstraintCircuitMonad`], returning their corresponding
     /// [`ConstraintCircuit`]s.
     fn consume<II: InputIndicator>(
@@ -100,7 +104,7 @@ impl Constraints {
         constraints.iter().map(|c| c.consume()).collect()
     }
 
-    fn generate_rust_uses() -> TokenStream {
+    fn uses() -> TokenStream {
         quote!(
             use ndarray::ArrayView1;
             use twenty_first::prelude::BFieldElement;

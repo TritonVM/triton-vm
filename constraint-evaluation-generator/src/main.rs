@@ -2,11 +2,13 @@ use std::fs::write;
 
 use proc_macro2::TokenStream;
 
+use crate::codegen::Codegen;
+use crate::codegen::RustBackend;
+use crate::codegen::TasmBackend;
 use crate::constraints::Constraints;
 
-mod asm;
+mod codegen;
 mod constraints;
-mod rust;
 mod substitution;
 
 fn main() {
@@ -16,12 +18,12 @@ fn main() {
     let degree_lowering_table_code = substitutions.generate_degree_lowering_table_code();
 
     let constraints = constraints.combine_with_substitution_induced_constraints(substitutions);
-    let rust_code = constraints.generate_rust_code();
-    let asm_code = constraints.generate_triton_assembly();
+    let rust = RustBackend::constraint_evaluation_code(&constraints);
+    let tasm = TasmBackend::constraint_evaluation_code(&constraints);
 
     write_code_to_file(degree_lowering_table_code, "degree_lowering_table");
-    write_code_to_file(rust_code, "constraints");
-    write_code_to_file(asm_code, "asm_air_constraints");
+    write_code_to_file(rust, "constraints");
+    write_code_to_file(tasm, "tasm_air_constraints");
 }
 
 fn write_code_to_file(code: TokenStream, file_name: &str) {
