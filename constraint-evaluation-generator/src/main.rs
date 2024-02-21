@@ -32,3 +32,34 @@ fn write_code_to_file(code: TokenStream, file_name: &str) {
     let path = format!("triton-vm/src/table/{file_name}.rs");
     write(path, code).unwrap();
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_constraints_can_be_fetched() {
+        let _ = Constraints::test_constraints();
+    }
+
+    #[test]
+    fn degree_lowering_tables_code_can_be_generated_for_test_constraints() {
+        let mut constraints = Constraints::test_constraints();
+        constraints.fold_constants();
+        let substitutions = constraints.lower_to_target_degree_through_substitutions();
+        let _ = substitutions.generate_degree_lowering_table_code();
+    }
+
+    #[test]
+    fn all_constraints_can_be_fetched() {
+        let _ = Constraints::all();
+    }
+
+    #[test]
+    fn degree_lowering_tables_code_can_be_generated_from_all_constraints() {
+        let mut constraints = Constraints::all();
+        constraints.fold_constants();
+        let substitutions = constraints.lower_to_target_degree_through_substitutions();
+        let _ = substitutions.generate_degree_lowering_table_code();
+    }
+}

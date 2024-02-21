@@ -187,3 +187,63 @@ impl Constraints {
         }
     }
 }
+
+#[cfg(test)]
+pub(crate) mod tests {
+    use triton_vm::prelude::BFieldElement;
+    use triton_vm::prelude::XFieldElement;
+    use triton_vm::table::challenges::ChallengeId;
+    use triton_vm::table::constraint_circuit::DualRowIndicator;
+
+    use super::*;
+
+    impl Constraints {
+        /// For testing purposes only. There is no meaning behind any of the constraints.
+        pub(crate) fn test_constraints() -> Self {
+            Self {
+                init: Self::small_init_constraints(),
+                cons: vec![],
+                tran: Self::small_transition_constraints(),
+                term: vec![],
+            }
+        }
+
+        fn small_init_constraints() -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
+            let circuit_builder = ConstraintCircuitBuilder::new();
+            let challenge = |c| circuit_builder.challenge(c);
+            let constant = |c: u32| circuit_builder.b_constant(BFieldElement::from(c));
+            let input = |i| circuit_builder.input(SingleRowIndicator::BaseRow(i));
+
+            let [x, y, z] = [0, 1, 2].map(input);
+
+            let x_square = x.clone() * x.clone();
+            let x_to_the_4th = x_square.clone() * x_square.clone();
+            let y_square = y.clone() * y.clone();
+            let y_to_the_4th = y_square.clone() * y_square.clone();
+
+            let a = x.clone() * y.clone() - z.clone();
+            let b = x_to_the_4th.clone() - challenge(ChallengeId::HashStateWeight3) - constant(16);
+            let c = z - x_to_the_4th * y_to_the_4th;
+
+            vec![a, b, c]
+        }
+
+        fn small_transition_constraints() -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
+            let circuit_builder = ConstraintCircuitBuilder::new();
+            let challenge = |c| circuit_builder.challenge(c);
+            let constant = |c: u32| circuit_builder.x_constant(XFieldElement::from(c));
+
+            let curr_base_row = |col| circuit_builder.input(DualRowIndicator::CurrentBaseRow(col));
+            let next_base_row = |col| circuit_builder.input(DualRowIndicator::NextBaseRow(col));
+            let curr_ext_row = |col| circuit_builder.input(DualRowIndicator::CurrentExtRow(col));
+            let next_ext_row = |col| circuit_builder.input(DualRowIndicator::NextExtRow(col));
+
+            let a = curr_base_row(0) * next_ext_row(1) - next_base_row(1) * curr_ext_row(0);
+            let b = curr_base_row(1) * next_ext_row(2) - next_base_row(2) * curr_ext_row(1);
+            let c = a.clone() * b.clone() - curr_base_row(2) * next_ext_row(3) + constant(42);
+            let d = a.clone() * c.clone() - challenge(ChallengeId::HashStateWeight12);
+
+            vec![a, b, c, d]
+        }
+    }
+}
