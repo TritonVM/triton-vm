@@ -86,6 +86,9 @@ pub trait InputIndicator: Debug + Display + Copy + Hash + Eq + ToTokens {
     /// `true` iff `self` refers to a column in the base table.
     fn is_base_table_column(&self) -> bool;
 
+    /// `true` iff `self` refers to the current row.
+    fn is_curr_row(&self) -> bool;
+
     fn base_col_index(&self) -> usize;
     fn ext_col_index(&self) -> usize;
 
@@ -109,10 +112,9 @@ pub enum SingleRowIndicator {
 
 impl Display for SingleRowIndicator {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
-        use SingleRowIndicator::*;
         let input_indicator: String = match self {
-            BaseRow(i) => format!("base_row[{i}]"),
-            ExtRow(i) => format!("ext_row[{i}]"),
+            Self::BaseRow(i) => format!("base_row[{i}]"),
+            Self::ExtRow(i) => format!("ext_row[{i}]"),
         };
 
         write!(f, "{input_indicator}")
@@ -121,34 +123,34 @@ impl Display for SingleRowIndicator {
 
 impl ToTokens for SingleRowIndicator {
     fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
-        use SingleRowIndicator::*;
         match self {
-            BaseRow(i) => tokens.extend(quote!(base_row[#i])),
-            ExtRow(i) => tokens.extend(quote!(ext_row[#i])),
+            Self::BaseRow(i) => tokens.extend(quote!(base_row[#i])),
+            Self::ExtRow(i) => tokens.extend(quote!(ext_row[#i])),
         }
     }
 }
 
 impl InputIndicator for SingleRowIndicator {
     fn is_base_table_column(&self) -> bool {
-        use SingleRowIndicator::*;
-        matches!(self, BaseRow(_))
+        matches!(self, Self::BaseRow(_))
+    }
+
+    fn is_curr_row(&self) -> bool {
+        true
     }
 
     fn base_col_index(&self) -> usize {
-        use SingleRowIndicator::*;
-        match self {
-            BaseRow(i) => *i,
-            ExtRow(_) => panic!("not a base row"),
-        }
+        let Self::BaseRow(i) = self else {
+            panic!("not a base row");
+        };
+        *i
     }
 
     fn ext_col_index(&self) -> usize {
-        use SingleRowIndicator::*;
-        match self {
-            BaseRow(_) => panic!("not an ext row"),
-            ExtRow(i) => *i,
-        }
+        let Self::ExtRow(i) = self else {
+            panic!("not an ext row");
+        };
+        *i
     }
 
     fn base_table_input(index: usize) -> Self {
@@ -164,10 +166,9 @@ impl InputIndicator for SingleRowIndicator {
         base_table: ArrayView2<BFieldElement>,
         ext_table: ArrayView2<XFieldElement>,
     ) -> XFieldElement {
-        use SingleRowIndicator::*;
         match self {
-            BaseRow(i) => base_table[[0, *i]].lift(),
-            ExtRow(i) => ext_table[[0, *i]],
+            Self::BaseRow(i) => base_table[[0, *i]].lift(),
+            Self::ExtRow(i) => ext_table[[0, *i]],
         }
     }
 }
@@ -184,12 +185,11 @@ pub enum DualRowIndicator {
 
 impl Display for DualRowIndicator {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
-        use DualRowIndicator::*;
         let input_indicator: String = match self {
-            CurrentBaseRow(i) => format!("current_base_row[{i}]"),
-            CurrentExtRow(i) => format!("current_ext_row[{i}]"),
-            NextBaseRow(i) => format!("next_base_row[{i}]"),
-            NextExtRow(i) => format!("next_ext_row[{i}]"),
+            Self::CurrentBaseRow(i) => format!("current_base_row[{i}]"),
+            Self::CurrentExtRow(i) => format!("current_ext_row[{i}]"),
+            Self::NextBaseRow(i) => format!("next_base_row[{i}]"),
+            Self::NextExtRow(i) => format!("next_ext_row[{i}]"),
         };
 
         write!(f, "{input_indicator}")
@@ -198,35 +198,35 @@ impl Display for DualRowIndicator {
 
 impl ToTokens for DualRowIndicator {
     fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
-        use DualRowIndicator::*;
         match self {
-            CurrentBaseRow(i) => tokens.extend(quote!(current_base_row[#i])),
-            CurrentExtRow(i) => tokens.extend(quote!(current_ext_row[#i])),
-            NextBaseRow(i) => tokens.extend(quote!(next_base_row[#i])),
-            NextExtRow(i) => tokens.extend(quote!(next_ext_row[#i])),
+            Self::CurrentBaseRow(i) => tokens.extend(quote!(current_base_row[#i])),
+            Self::CurrentExtRow(i) => tokens.extend(quote!(current_ext_row[#i])),
+            Self::NextBaseRow(i) => tokens.extend(quote!(next_base_row[#i])),
+            Self::NextExtRow(i) => tokens.extend(quote!(next_ext_row[#i])),
         }
     }
 }
 
 impl InputIndicator for DualRowIndicator {
     fn is_base_table_column(&self) -> bool {
-        use DualRowIndicator::*;
-        matches!(self, CurrentBaseRow(_) | NextBaseRow(_))
+        matches!(self, Self::CurrentBaseRow(_) | Self::NextBaseRow(_))
+    }
+
+    fn is_curr_row(&self) -> bool {
+        matches!(self, Self::CurrentBaseRow(_) | Self::CurrentExtRow(_))
     }
 
     fn base_col_index(&self) -> usize {
-        use DualRowIndicator::*;
         match self {
-            CurrentBaseRow(i) | NextBaseRow(i) => *i,
-            CurrentExtRow(_) | NextExtRow(_) => panic!("not a base row"),
+            Self::CurrentBaseRow(i) | Self::NextBaseRow(i) => *i,
+            Self::CurrentExtRow(_) | Self::NextExtRow(_) => panic!("not a base row"),
         }
     }
 
     fn ext_col_index(&self) -> usize {
-        use DualRowIndicator::*;
         match self {
-            CurrentBaseRow(_) | NextBaseRow(_) => panic!("not an ext row"),
-            CurrentExtRow(i) | NextExtRow(i) => *i,
+            Self::CurrentBaseRow(_) | Self::NextBaseRow(_) => panic!("not an ext row"),
+            Self::CurrentExtRow(i) | Self::NextExtRow(i) => *i,
         }
     }
 
@@ -246,12 +246,11 @@ impl InputIndicator for DualRowIndicator {
         base_table: ArrayView2<BFieldElement>,
         ext_table: ArrayView2<XFieldElement>,
     ) -> XFieldElement {
-        use DualRowIndicator::*;
         match self {
-            CurrentBaseRow(i) => base_table[[0, *i]].lift(),
-            CurrentExtRow(i) => ext_table[[0, *i]],
-            NextBaseRow(i) => base_table[[1, *i]].lift(),
-            NextExtRow(i) => ext_table[[1, *i]],
+            Self::CurrentBaseRow(i) => base_table[[0, *i]].lift(),
+            Self::CurrentExtRow(i) => ext_table[[0, *i]],
+            Self::NextBaseRow(i) => base_table[[1, *i]].lift(),
+            Self::NextExtRow(i) => ext_table[[1, *i]],
         }
     }
 }

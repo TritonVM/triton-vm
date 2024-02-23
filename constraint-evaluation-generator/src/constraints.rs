@@ -1,8 +1,12 @@
+use itertools::Itertools;
+
 use triton_vm::table;
 use triton_vm::table::cascade_table::ExtCascadeTable;
+use triton_vm::table::constraint_circuit::ConstraintCircuit;
 use triton_vm::table::constraint_circuit::ConstraintCircuitBuilder;
 use triton_vm::table::constraint_circuit::ConstraintCircuitMonad;
 use triton_vm::table::constraint_circuit::DualRowIndicator;
+use triton_vm::table::constraint_circuit::InputIndicator;
 use triton_vm::table::constraint_circuit::SingleRowIndicator;
 use triton_vm::table::cross_table_argument::GrandCrossTableArg;
 use triton_vm::table::degree_lowering_table;
@@ -186,6 +190,30 @@ impl Constraints {
             term: [self.term, base.term, ext.term].concat(),
         }
     }
+
+    pub fn init(&self) -> Vec<ConstraintCircuit<SingleRowIndicator>> {
+        Self::consume(&self.init)
+    }
+
+    pub fn cons(&self) -> Vec<ConstraintCircuit<SingleRowIndicator>> {
+        Self::consume(&self.cons)
+    }
+
+    pub fn tran(&self) -> Vec<ConstraintCircuit<DualRowIndicator>> {
+        Self::consume(&self.tran)
+    }
+
+    pub fn term(&self) -> Vec<ConstraintCircuit<SingleRowIndicator>> {
+        Self::consume(&self.term)
+    }
+
+    fn consume<II: InputIndicator>(
+        constraints: &[ConstraintCircuitMonad<II>],
+    ) -> Vec<ConstraintCircuit<II>> {
+        let mut constraints = constraints.iter().map(|c| c.consume()).collect_vec();
+        ConstraintCircuit::assert_has_unique_ids(&mut constraints);
+        constraints
+    }
 }
 
 #[cfg(test)]
@@ -198,6 +226,24 @@ pub(crate) mod tests {
     use super::*;
 
     impl Constraints {
+        pub(crate) fn mini_constraints() -> Self {
+            let circuit_builder = ConstraintCircuitBuilder::new();
+            let challenge = |c| circuit_builder.challenge(c);
+            let constant = |c: u32| circuit_builder.b_constant(BFieldElement::from(c));
+            let base_row = |i| circuit_builder.input(SingleRowIndicator::BaseRow(i));
+            let ext_row = |i| circuit_builder.input(SingleRowIndicator::ExtRow(i));
+
+            let constraint =
+                base_row(0) * challenge(ChallengeId::HashStateWeight5) - ext_row(1) * constant(42);
+
+            Self {
+                init: vec![constraint],
+                cons: vec![],
+                tran: vec![],
+                term: vec![],
+            }
+        }
+
         /// For testing purposes only. There is no meaning behind any of the constraints.
         pub(crate) fn test_constraints() -> Self {
             Self {
@@ -208,22 +254,17 @@ pub(crate) mod tests {
             }
         }
 
+        #[allow(clippy::many_single_char_names)]
         fn small_init_constraints() -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
             let circuit_builder = ConstraintCircuitBuilder::new();
             let challenge = |c| circuit_builder.challenge(c);
             let constant = |c: u32| circuit_builder.b_constant(BFieldElement::from(c));
             let input = |i| circuit_builder.input(SingleRowIndicator::BaseRow(i));
+            let input_to_the_4th = |i| input(i) * input(i) * input(i) * input(i);
 
-            let [x, y, z] = [0, 1, 2].map(input);
-
-            let x_square = x.clone() * x.clone();
-            let x_to_the_4th = x_square.clone() * x_square.clone();
-            let y_square = y.clone() * y.clone();
-            let y_to_the_4th = y_square.clone() * y_square.clone();
-
-            let a = x.clone() * y.clone() - z.clone();
-            let b = x_to_the_4th.clone() - challenge(ChallengeId::HashStateWeight3) - constant(16);
-            let c = z - x_to_the_4th * y_to_the_4th;
+            let a = input(0) * input(1) - input(2);
+            let b = input_to_the_4th(0) - challenge(ChallengeId::HashStateWeight3) - constant(16);
+            let c = input(2) * input_to_the_4th(0) - input_to_the_4th(1);
 
             vec![a, b, c]
         }
