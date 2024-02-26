@@ -1,8 +1,5 @@
-use std::collections::HashSet;
-
 use itertools::Itertools;
 use proc_macro2::TokenStream;
-use quote::format_ident;
 use quote::quote;
 use twenty_first::prelude::x_field_element::EXTENSION_DEGREE;
 use twenty_first::prelude::BFieldElement;
@@ -15,7 +12,6 @@ use triton_vm::table::constraint_circuit::CircuitExpression;
 use triton_vm::table::constraint_circuit::ConstraintCircuit;
 use triton_vm::table::constraint_circuit::InputIndicator;
 
-use crate::codegen;
 use crate::codegen::Codegen;
 use crate::codegen::TasmBackend;
 use crate::constraints::Constraints;
@@ -28,6 +24,15 @@ const ARG_POS_NEXT_BASE_ROW: OpStackElement = OpStackElement::ST3;
 const ARG_POS_NEXT_EXT_ROW: OpStackElement = OpStackElement::ST4;
 const ARG_POS_CHALLENGES: OpStackElement = OpStackElement::ST5;
 
+/// An offset from [`ARG_POS_FREE_MEM_PAGE`]'s value. Indicates the start of the to-be-returned
+/// array.
+///
+/// The value is a bit magical; as per the contract declared in [`TasmBackend::doc_comment`], the
+/// region of free memory must be at least (1 << 32) words big. The number of constraints is assumed
+/// to stay smaller than (1 << 16). It is also assumed that the number of nodes in any of the
+/// multicircuits does not grow beyond [`OUT_ARRAY_OFFSET`].
+const OUT_ARRAY_OFFSET: usize = (1 << 32) - (1 << 16);
+
 impl Codegen for TasmBackend {
     /// Emits a function that emits [Triton assembly][tasm] that evaluates Triton VM's AIR
     /// constraints over the [extension field][XFieldElement].
@@ -37,10 +42,13 @@ impl Codegen for TasmBackend {
         let uses = Self::uses();
         let doc_comment = Self::doc_comment(constraints);
 
-        let init_constraints = Self::tokenize_circuits(&constraints.init());
-        let cons_constraints = Self::tokenize_circuits(&constraints.cons());
-        let tran_constraints = Self::tokenize_circuits(&constraints.tran());
-        let term_constraints = Self::tokenize_circuits(&constraints.term());
+        let mut backend = Self::new();
+        let init_constraints = backend.tokenize_circuits(&constraints.init());
+        let cons_constraints = backend.tokenize_circuits(&constraints.cons());
+        let tran_constraints = backend.tokenize_circuits(&constraints.tran());
+        let term_constraints = backend.tokenize_circuits(&constraints.term());
+
+        let from_input_to_output_args = Self::from_input_args_to_output_args();
 
         quote!(
             #uses
@@ -51,47 +59,29 @@ impl Codegen for TasmBackend {
                     #cons_constraints
                     #tran_constraints
                     #term_constraints
+                    #from_input_to_output_args
                 ])
             }
         )
     }
-
-    fn declare_new_binding<II: InputIndicator>(
-        circuit: &ConstraintCircuit<II>,
-        requested_visited_count: usize,
-        scope: &mut HashSet<usize>,
-    ) -> TokenStream {
-        assert_eq!(circuit.visited_counter, requested_visited_count);
-        let evaluate_node_instructions =
-            Self::evaluate_single_node(requested_visited_count, circuit, scope);
-        let storage_instructions =
-            Self::store_ext_field_element_in_list(circuit.id, ARG_POS_FREE_MEM_PAGE);
-        quote!(#evaluate_node_instructions #storage_instructions)
-    }
-
-    fn load_node<II: InputIndicator>(circuit: &ConstraintCircuit<II>) -> TokenStream {
-        match circuit.expression {
-            CircuitExpression::BConstant(bfe) => Self::load_base_field_constant(bfe),
-            CircuitExpression::XConstant(xfe) => Self::load_ext_field_constant(xfe),
-            CircuitExpression::Input(input) => Self::load_input(input),
-            CircuitExpression::Challenge(challenge) => Self::load_challenge(challenge),
-            CircuitExpression::BinaryOperation(_, _, _) => Self::load_pre_declared_node(circuit.id),
-        }
-    }
-
-    fn perform_bin_op(binop: BinOp, lhs: TokenStream, rhs: TokenStream) -> TokenStream {
-        let binop = Self::tokenize_bin_op(binop);
-        quote!(#lhs #rhs #binop)
-    }
 }
 
 impl TasmBackend {
+    fn new() -> Self {
+        Self {
+            additional_stack_size: 0,
+            elements_written: 0,
+        }
+    }
+
     fn uses() -> TokenStream {
         quote!(
             use num_traits::Zero;
-            use num_traits::One;
+            use twenty_first::prelude::BFieldElement;
             use crate::instruction::AnInstruction;
             use crate::instruction::LabelledInstruction;
+            use crate::op_stack::NumberOfWords;
+            use crate::op_stack::OpStackElement;
         )
     }
 
@@ -154,39 +144,81 @@ impl TasmBackend {
         )
     }
 
-    fn tokenize_circuits<II: InputIndicator>(constraints: &[ConstraintCircuit<II>]) -> TokenStream {
+    fn tokenize_circuits<II: InputIndicator>(
+        &mut self,
+        constraints: &[ConstraintCircuit<II>],
+    ) -> TokenStream {
         if constraints.is_empty() {
             return quote!();
         }
 
-        let all_visited_counters = constraints
-            .iter()
-            .flat_map(ConstraintCircuit::all_visited_counters);
-        let all_visited_counters = all_visited_counters.sorted().unique().collect_vec();
-        let relevant_visited_counters = all_visited_counters.into_iter().filter(|&x| x > 1);
-        let shared_declarations = relevant_visited_counters
-            .rev()
-            .map(|count| Self::declare_nodes_with_visit_count(count, constraints))
-            .collect_vec();
+        let constraint_evaluator = self.evaluate_all_bin_ops(constraints);
 
         // to match the `RustBackend`, base constraints must be emitted first
         let (base_constraints, ext_constraints): (Vec<_>, Vec<_>) = constraints
             .iter()
             .partition(|constraint| constraint.evaluates_to_base_element());
-        let constraints = base_constraints
+        let output_list_writer = base_constraints
             .into_iter()
             .chain(ext_constraints)
-            .collect_vec();
-        let constraint_evaluator = constraints
-            .iter()
-            .flat_map(|constraint| Self::evaluate_single_node(1, constraint, &HashSet::default()))
-            .collect_vec();
+            .map(|constraint| self.write_evaluated_constraint_into_output_list(constraint));
 
-        quote!(#(#shared_declarations)* #(#constraint_evaluator)*)
+        let tokenized_circuits = quote!(#(#constraint_evaluator)* #(#output_list_writer)*);
+        debug_assert_eq!(0, self.additional_stack_size);
+
+        tokenized_circuits
     }
 
-    fn load_base_field_constant(bfe: BFieldElement) -> TokenStream {
-        let bfe = codegen::tokenize_bfe(bfe);
+    fn evaluate_all_bin_ops<II: InputIndicator>(
+        &mut self,
+        constraints: &[ConstraintCircuit<II>],
+    ) -> Vec<TokenStream> {
+        let ref_counters = constraints
+            .iter()
+            .flat_map(ConstraintCircuit::all_ref_counters);
+
+        let mut bin_op_evaluation_code = vec![];
+        for ref_count in ref_counters.sorted().unique().rev() {
+            for circuit in constraints.iter().filter(|c| c.ref_count == ref_count) {
+                let CircuitExpression::BinaryOperation(op, ref lhs, ref rhs) = circuit.expression
+                else {
+                    continue;
+                };
+                let lhs = self.load_node(&lhs.borrow());
+                let rhs = self.load_node(&rhs.borrow());
+                let binop = self.tokenize_bin_op(op);
+                let store = self.store_ext_field_element_in_list(circuit.id, ARG_POS_FREE_MEM_PAGE);
+                bin_op_evaluation_code.push(quote!(#lhs #rhs #binop #store));
+            }
+        }
+
+        bin_op_evaluation_code
+    }
+
+    fn write_evaluated_constraint_into_output_list<II: InputIndicator>(
+        &mut self,
+        constraint: &ConstraintCircuit<II>,
+    ) -> TokenStream {
+        let evaluated_constraint = self.load_node(constraint);
+        let element_index = OUT_ARRAY_OFFSET + self.elements_written;
+        let store_element =
+            self.store_ext_field_element_in_list(element_index, ARG_POS_FREE_MEM_PAGE);
+        quote!(#evaluated_constraint #store_element)
+    }
+
+    fn load_node<II: InputIndicator>(&mut self, circuit: &ConstraintCircuit<II>) -> TokenStream {
+        match circuit.expression {
+            CircuitExpression::BConstant(bfe) => self.load_base_field_constant(bfe),
+            CircuitExpression::XConstant(xfe) => self.load_ext_field_constant(xfe),
+            CircuitExpression::Input(input) => self.load_input(input),
+            CircuitExpression::Challenge(challenge) => self.load_challenge(challenge),
+            CircuitExpression::BinaryOperation(_, _, _) => self.load_evaluated_bin_op(circuit.id),
+        }
+    }
+
+    fn load_base_field_constant(&mut self, bfe: BFieldElement) -> TokenStream {
+        self.additional_stack_size += EXTENSION_DEGREE;
+        let bfe = Self::tokenize_bfe(bfe);
         quote!(
             LabelledInstruction::Instruction(AnInstruction::Push(BFieldElement::zero())),
             LabelledInstruction::Instruction(AnInstruction::Push(BFieldElement::zero())),
@@ -194,8 +226,9 @@ impl TasmBackend {
         )
     }
 
-    fn load_ext_field_constant(xfe: XFieldElement) -> TokenStream {
-        let [c0, c1, c2] = xfe.coefficients.map(codegen::tokenize_bfe);
+    fn load_ext_field_constant(&mut self, xfe: XFieldElement) -> TokenStream {
+        self.additional_stack_size += EXTENSION_DEGREE;
+        let [c0, c1, c2] = xfe.coefficients.map(Self::tokenize_bfe);
         quote!(
             LabelledInstruction::Instruction(AnInstruction::Push(#c2)),
             LabelledInstruction::Instruction(AnInstruction::Push(#c1)),
@@ -203,43 +236,43 @@ impl TasmBackend {
         )
     }
 
-    fn load_input<II: InputIndicator>(input: II) -> TokenStream {
-        let arg_pos = match (input.is_curr_row(), input.is_base_table_column()) {
+    fn load_input<II: InputIndicator>(&mut self, input: II) -> TokenStream {
+        let arg_pos = match (input.is_current_row(), input.is_base_table_column()) {
             (true, true) => ARG_POS_CURR_BASE_ROW,
             (true, false) => ARG_POS_CURR_EXT_ROW,
             (false, true) => ARG_POS_NEXT_BASE_ROW,
             (false, false) => ARG_POS_NEXT_EXT_ROW,
         };
-        let input_index = match input.is_base_table_column() {
-            true => input.base_col_index(),
-            false => input.ext_col_index(),
-        };
 
-        Self::load_ext_field_element_from_list(input_index, arg_pos)
+        self.load_ext_field_element_from_list(input.column(), arg_pos)
     }
 
-    fn load_challenge(challenge: ChallengeId) -> TokenStream {
-        Self::load_ext_field_element_from_list(challenge.index(), ARG_POS_CHALLENGES)
+    fn load_challenge(&mut self, challenge: ChallengeId) -> TokenStream {
+        self.load_ext_field_element_from_list(challenge.index(), ARG_POS_CHALLENGES)
     }
 
-    fn load_pre_declared_node(node_id: usize) -> TokenStream {
-        Self::load_ext_field_element_from_list(node_id, ARG_POS_FREE_MEM_PAGE)
+    fn load_evaluated_bin_op(&mut self, node_id: usize) -> TokenStream {
+        self.load_ext_field_element_from_list(node_id, ARG_POS_FREE_MEM_PAGE)
     }
 
     fn load_ext_field_element_from_list(
+        &mut self,
         element_index: usize,
-        arg_pos: OpStackElement,
+        list_pointer: OpStackElement,
     ) -> TokenStream {
         let word_offset = element_index * EXTENSION_DEGREE;
         let start_to_read_offset = EXTENSION_DEGREE - 1;
         let word_index = word_offset + start_to_read_offset;
         let word_index = BFieldElement::from(word_index as u64);
 
-        let arg_pos = Self::tokenize_op_stack_element(arg_pos);
-        let word_index = codegen::tokenize_bfe(word_index);
+        let actual_list_pointer = usize::from(list_pointer) + self.additional_stack_size;
+        let actual_list_pointer = OpStackElement::try_from(actual_list_pointer).unwrap();
+        let actual_list_pointer = Self::tokenize_op_stack_element(actual_list_pointer);
+        let word_index = Self::tokenize_bfe(word_index);
 
+        self.additional_stack_size += EXTENSION_DEGREE;
         quote!(
-            LabelledInstruction::Instruction(AnInstruction::Dup(#arg_pos)),
+            LabelledInstruction::Instruction(AnInstruction::Dup(#actual_list_pointer)),
             LabelledInstruction::Instruction(AnInstruction::Push(#word_index)),
             LabelledInstruction::Instruction(AnInstruction::Add),
             LabelledInstruction::Instruction(AnInstruction::ReadMem(NumberOfWords::N3)),
@@ -248,17 +281,21 @@ impl TasmBackend {
     }
 
     fn store_ext_field_element_in_list(
+        &mut self,
         element_index: usize,
-        arg_pos: OpStackElement,
+        list_pointer: OpStackElement,
     ) -> TokenStream {
         let word_offset = element_index * EXTENSION_DEGREE;
         let word_index = BFieldElement::from(word_offset as u64);
 
-        let arg_pos = Self::tokenize_op_stack_element(arg_pos);
-        let word_index = codegen::tokenize_bfe(word_index);
+        let actual_list_pointer = usize::from(list_pointer) + self.additional_stack_size;
+        let actual_list_pointer = OpStackElement::try_from(actual_list_pointer).unwrap();
+        let actual_list_pointer = Self::tokenize_op_stack_element(actual_list_pointer);
+        let word_index = Self::tokenize_bfe(word_index);
 
+        self.additional_stack_size -= EXTENSION_DEGREE;
         quote!(
-            LabelledInstruction::Instruction(AnInstruction::Dup(#arg_pos)),
+            LabelledInstruction::Instruction(AnInstruction::Dup(#actual_list_pointer)),
             LabelledInstruction::Instruction(AnInstruction::Push(#word_index)),
             LabelledInstruction::Instruction(AnInstruction::Add),
             LabelledInstruction::Instruction(AnInstruction::WriteMem(NumberOfWords::N3)),
@@ -266,15 +303,10 @@ impl TasmBackend {
         )
     }
 
-    fn tokenize_op_stack_element(st: OpStackElement) -> TokenStream {
-        let idx = st.index();
-        let st = format_ident!("ST{idx}");
-        quote!(OpStackElement::#st)
-    }
-
-    fn tokenize_bin_op(binop: BinOp) -> TokenStream {
+    fn tokenize_bin_op(&mut self, binop: BinOp) -> TokenStream {
         if binop == BinOp::Sub {
-            let minus_one = Self::load_base_field_constant(-BFieldElement::new(1));
+            let minus_one = self.load_base_field_constant(-BFieldElement::new(1));
+            self.additional_stack_size -= 2 * EXTENSION_DEGREE;
             return quote!(
                 #minus_one
                 LabelledInstruction::Instruction(AnInstruction::XxMul),
@@ -287,7 +319,24 @@ impl TasmBackend {
             BinOp::Sub => unreachable!(),
             BinOp::Mul => quote!(XxMul),
         };
+        self.additional_stack_size -= EXTENSION_DEGREE;
         quote!(LabelledInstruction::Instruction(AnInstruction::#op),)
+    }
+
+    fn from_input_args_to_output_args() -> TokenStream {
+        let out_array_offset = OUT_ARRAY_OFFSET as u64;
+        let out_array_offset = quote!(BFieldElement::new(#out_array_offset));
+        let out_array_offset = quote!(AnInstruction::Push(#out_array_offset));
+        let out_array_offset = quote!(LabelledInstruction::Instruction(#out_array_offset),);
+
+        let add = quote!(LabelledInstruction::Instruction(AnInstruction::Add),);
+        let swap_5 = quote!(AnInstruction::Swap(OpStackElement::ST5));
+        let swap_5 = quote!(LabelledInstruction::Instruction(#swap_5),);
+
+        let pop_5 = quote!(AnInstruction::Pop(NumberOfWords::N5));
+        let pop_5 = quote!(LabelledInstruction::Instruction(#pop_5));
+        let from_input_to_output_args = quote!(#out_array_offset #add #swap_5 #pop_5);
+        from_input_to_output_args
     }
 }
 

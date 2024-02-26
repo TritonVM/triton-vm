@@ -87,10 +87,10 @@ pub trait InputIndicator: Debug + Display + Copy + Hash + Eq + ToTokens {
     fn is_base_table_column(&self) -> bool;
 
     /// `true` iff `self` refers to the current row.
-    fn is_curr_row(&self) -> bool;
+    fn is_current_row(&self) -> bool;
 
-    fn base_col_index(&self) -> usize;
-    fn ext_col_index(&self) -> usize;
+    /// The index of the indicated (base or extension) column.
+    fn column(&self) -> usize;
 
     fn base_table_input(index: usize) -> Self;
     fn ext_table_input(index: usize) -> Self;
@@ -135,22 +135,14 @@ impl InputIndicator for SingleRowIndicator {
         matches!(self, Self::BaseRow(_))
     }
 
-    fn is_curr_row(&self) -> bool {
+    fn is_current_row(&self) -> bool {
         true
     }
 
-    fn base_col_index(&self) -> usize {
-        let Self::BaseRow(i) = self else {
-            panic!("not a base row");
-        };
-        *i
-    }
-
-    fn ext_col_index(&self) -> usize {
-        let Self::ExtRow(i) = self else {
-            panic!("not an ext row");
-        };
-        *i
+    fn column(&self) -> usize {
+        match self {
+            Self::BaseRow(i) | Self::ExtRow(i) => *i,
+        }
     }
 
     fn base_table_input(index: usize) -> Self {
@@ -212,21 +204,16 @@ impl InputIndicator for DualRowIndicator {
         matches!(self, Self::CurrentBaseRow(_) | Self::NextBaseRow(_))
     }
 
-    fn is_curr_row(&self) -> bool {
+    fn is_current_row(&self) -> bool {
         matches!(self, Self::CurrentBaseRow(_) | Self::CurrentExtRow(_))
     }
 
-    fn base_col_index(&self) -> usize {
+    fn column(&self) -> usize {
         match self {
-            Self::CurrentBaseRow(i) | Self::NextBaseRow(i) => *i,
-            Self::CurrentExtRow(_) | Self::NextExtRow(_) => panic!("not a base row"),
-        }
-    }
-
-    fn ext_col_index(&self) -> usize {
-        match self {
-            Self::CurrentBaseRow(_) | Self::NextBaseRow(_) => panic!("not an ext row"),
-            Self::CurrentExtRow(i) | Self::NextExtRow(i) => *i,
+            Self::CurrentBaseRow(i)
+            | Self::NextBaseRow(i)
+            | Self::CurrentExtRow(i)
+            | Self::NextExtRow(i) => *i,
         }
     }
 
@@ -273,8 +260,8 @@ impl InputIndicator for DualRowIndicator {
 /// bookkeeping information.
 #[derive(Debug, Clone)]
 pub enum CircuitExpression<II: InputIndicator> {
-    XConstant(XFieldElement),
     BConstant(BFieldElement),
+    XConstant(XFieldElement),
     Input(II),
     Challenge(ChallengeId),
     BinaryOperation(
@@ -344,7 +331,7 @@ impl<II: InputIndicator> Hash for ConstraintCircuitMonad<II> {
 #[derive(Debug, Clone)]
 pub struct ConstraintCircuit<II: InputIndicator> {
     pub id: usize,
-    pub visited_counter: usize,
+    pub ref_count: usize,
     pub expression: CircuitExpression<II>,
 }
 
@@ -380,13 +367,13 @@ impl<II: InputIndicator> Display for ConstraintCircuit<II> {
 }
 
 impl<II: InputIndicator> ConstraintCircuit<II> {
-    /// Reset the visited counters for the entire subtree
-    fn reset_visit_count_for_tree(&mut self) {
-        self.visited_counter = 0;
+    /// Reset the reference counters for the entire subtree
+    fn reset_ref_count_for_tree(&mut self) {
+        self.ref_count = 0;
 
         if let BinaryOperation(_, lhs, rhs) = &self.expression {
-            lhs.borrow_mut().reset_visit_count_for_tree();
-            rhs.borrow_mut().reset_visit_count_for_tree();
+            lhs.borrow_mut().reset_ref_count_for_tree();
+            rhs.borrow_mut().reset_ref_count_for_tree();
         }
     }
 
@@ -395,7 +382,7 @@ impl<II: InputIndicator> ConstraintCircuit<II> {
         let self_id = self.id;
 
         // Try to detect duplicate IDs only once for this node.
-        let maybe_other_node = if self.visited_counter == 0 {
+        let maybe_other_node = if self.ref_count == 0 {
             ids.insert(self_id, self.clone())
         } else {
             None
@@ -404,7 +391,7 @@ impl<II: InputIndicator> ConstraintCircuit<II> {
             panic!("ID {self_id} was repeated. Self: {self:?}. Other: {other:?}.");
         }
 
-        self.visited_counter += 1;
+        self.ref_count += 1;
         if let BinaryOperation(_, lhs, rhs) = &self.expression {
             lhs.borrow_mut().inner_has_unique_ids(ids);
             rhs.borrow_mut().inner_has_unique_ids(ids);
@@ -413,13 +400,13 @@ impl<II: InputIndicator> ConstraintCircuit<II> {
 
     /// Verify that a multicircuit has unique IDs. Panics otherwise.
     /// Also determines how often each node is referenced and stores the result in the
-    /// `visited_counter` field of each node.
+    /// `ref_count` field of each node.
     pub fn assert_has_unique_ids(constraints: &mut [ConstraintCircuit<II>]) {
         let mut ids: HashMap<usize, ConstraintCircuit<II>> = HashMap::new();
-        // The inner uniqueness checks relies on visit counters being 0 for unseen nodes.
+        // The inner uniqueness checks relies on reference counters being 0 for unseen nodes.
         // Hence, they are reset here.
         for circuit in constraints.iter_mut() {
-            circuit.reset_visit_count_for_tree();
+            circuit.reset_ref_count_for_tree();
         }
         for circuit in constraints.iter_mut() {
             circuit.inner_has_unique_ids(&mut ids);
@@ -451,16 +438,16 @@ impl<II: InputIndicator> ConstraintCircuit<II> {
         }
     }
 
-    /// All unique visited counters in the subtree, sorted.
-    pub fn all_visited_counters(&self) -> Vec<usize> {
-        let mut visited_counters = vec![self.visited_counter];
+    /// All unique reference counters in the subtree, sorted.
+    pub fn all_ref_counters(&self) -> Vec<usize> {
+        let mut ref_counters = vec![self.ref_count];
         if let BinaryOperation(_, lhs, rhs) = &self.expression {
-            visited_counters.extend(lhs.borrow().all_visited_counters());
-            visited_counters.extend(rhs.borrow().all_visited_counters());
+            ref_counters.extend(lhs.borrow().all_ref_counters());
+            ref_counters.extend(rhs.borrow().all_ref_counters());
         };
-        visited_counters.sort_unstable();
-        visited_counters.dedup();
-        visited_counters
+        ref_counters.sort_unstable();
+        ref_counters.dedup();
+        ref_counters
     }
 
     /// Return true if the contained multivariate polynomial consists of only a single term. This
@@ -483,8 +470,8 @@ impl<II: InputIndicator> ConstraintCircuit<II> {
     /// expressions that will always evaluate to one.
     pub fn is_one(&self) -> bool {
         match self.expression {
-            XConstant(xfe) => xfe.is_one(),
             BConstant(bfe) => bfe.is_one(),
+            XConstant(xfe) => xfe.is_one(),
             _ => false,
         }
     }
@@ -512,8 +499,8 @@ impl<II: InputIndicator> ConstraintCircuit<II> {
         challenges: &Challenges,
     ) -> XFieldElement {
         match self.clone().expression {
-            XConstant(xfe) => xfe,
             BConstant(bfe) => bfe.lift(),
+            XConstant(xfe) => xfe,
             Input(input) => input.evaluate(base_table, ext_table),
             Challenge(challenge_id) => challenges[challenge_id],
             BinaryOperation(binop, lhs, rhs) => {
@@ -524,38 +511,35 @@ impl<II: InputIndicator> ConstraintCircuit<II> {
         }
     }
 
-    /// Returns the number of unvisited nodes in the subtree of the given node, which includes
-    /// the node itself. Increments the visit counter of each visited node.
-    fn count_nodes_inner(constraint: &mut ConstraintCircuit<II>) -> usize {
-        let num_unvisited_self = match constraint.visited_counter {
+    /// Returns the number of unreferenced nodes in the subtree of the given node, which includes
+    /// the node itself. Increments the ref counter of each visited node.
+    fn count_nodes_inner(&mut self) -> usize {
+        let num_unreferenced_self = match self.ref_count {
             0 => 1,
             _ => 0,
         };
-        constraint.visited_counter += 1;
-        let num_unvisited_children = match &constraint.expression {
+        self.ref_count += 1;
+        let num_unreferenced_children = match &self.expression {
             BinaryOperation(_, lhs, rhs) => {
-                let num_left = Self::count_nodes_inner(&mut lhs.borrow_mut());
-                let num_right = Self::count_nodes_inner(&mut rhs.borrow_mut());
+                let num_left = lhs.borrow_mut().count_nodes_inner();
+                let num_right = rhs.borrow_mut().count_nodes_inner();
                 num_left + num_right
             }
             _ => 0,
         };
 
-        num_unvisited_self + num_unvisited_children
+        num_unreferenced_self + num_unreferenced_children
     }
 
     /// Count the total number of unique nodes in the given multicircuit.
-    /// Also refreshes the visit counter for each node.
+    /// Also refreshes the reference counter for each node.
     pub fn count_nodes(constraints: &mut [ConstraintCircuit<II>]) -> usize {
-        // The uniqueness of nodes is determined by their visit count.
-        // To ensure a correct node count, the visit count must be reset before counting nodes.
+        // The uniqueness of nodes is determined by their reference count.
+        // To ensure a correct node count, the reference count must be reset before counting nodes.
         for constraint in constraints.iter_mut() {
-            ConstraintCircuit::reset_visit_count_for_tree(constraint);
+            constraint.reset_ref_count_for_tree();
         }
-        constraints
-            .iter_mut()
-            .map(|c| Self::count_nodes_inner(c))
-            .sum()
+        constraints.iter_mut().map(Self::count_nodes_inner).sum()
     }
 }
 
@@ -607,7 +591,7 @@ fn binop<II: InputIndicator>(
     let expression = BinaryOperation(binop, lhs.circuit.clone(), rhs.circuit.clone());
     let circuit = ConstraintCircuit {
         id,
-        visited_counter: 0,
+        ref_count: 0,
         expression,
     };
     let circuit = Rc::new(RefCell::new(circuit));
@@ -624,7 +608,7 @@ fn binop<II: InputIndicator>(
         let expression_switched = BinaryOperation(binop, rhs.circuit, lhs.circuit);
         let circuit_switched = ConstraintCircuit {
             id,
-            visited_counter: 0,
+            ref_count: 0,
             expression: expression_switched,
         };
         let circuit_switched = Rc::new(RefCell::new(circuit_switched));
@@ -977,36 +961,31 @@ impl<II: InputIndicator> ConstraintCircuitBuilder<II> {
     }
 
     pub fn get_node_by_id(&self, id: usize) -> Option<ConstraintCircuitMonad<II>> {
-        for node in self.all_nodes.borrow().iter() {
-            if node.circuit.borrow().id == id {
-                return Some(node.clone());
-            }
-        }
-        None
+        self.all_nodes
+            .borrow()
+            .iter()
+            .find(|node| node.circuit.borrow().id == id)
+            .cloned()
     }
 
     /// Create constant leaf node.
     pub fn x_constant(&self, xfe: XFieldElement) -> ConstraintCircuitMonad<II> {
-        let expression = XConstant(xfe);
-        self.make_leaf(expression)
+        self.make_leaf(XConstant(xfe))
     }
 
     /// Create constant leaf node.
     pub fn b_constant(&self, bfe: BFieldElement) -> ConstraintCircuitMonad<II> {
-        let expression = BConstant(bfe);
-        self.make_leaf(expression)
+        self.make_leaf(BConstant(bfe))
     }
 
     /// Create deterministic input leaf node.
     pub fn input(&self, input: II) -> ConstraintCircuitMonad<II> {
-        let expression = Input(input);
-        self.make_leaf(expression)
+        self.make_leaf(Input(input))
     }
 
     /// Create challenge leaf node.
     pub fn challenge(&self, challenge_id: ChallengeId) -> ConstraintCircuitMonad<II> {
-        let expression = Challenge(challenge_id);
-        self.make_leaf(expression)
+        self.make_leaf(Challenge(challenge_id))
     }
 
     fn make_leaf(&self, mut expression: CircuitExpression<II>) -> ConstraintCircuitMonad<II> {
@@ -1020,7 +999,7 @@ impl<II: InputIndicator> ConstraintCircuitBuilder<II> {
         let id = self.id_counter.borrow().to_owned();
         let circuit = ConstraintCircuit {
             id,
-            visited_counter: 0,
+            ref_count: 0,
             expression,
         };
         let circuit = Rc::new(RefCell::new(circuit));
@@ -1201,7 +1180,7 @@ mod tests {
         // specified, but will be encapsulated to the HashSet that observed the logic error and not
         // result in undefined behavior. This could include panics, incorrect results, aborts,
         // memory leaks, and non-termination."
-        // This means that the hash of a node may not depend on: `visited_counter`, `counter`,
+        // This means that the hash of a node may not depend on: `ref_count`, `counter`,
         // `id_counter_ref`, or `all_nodes`. The reason for this constraint is that `all_nodes`
         // contains the digest of all nodes in the multi tree.
         let circuit = random_circuit();
@@ -1209,8 +1188,8 @@ mod tests {
         circuit.hash(&mut hasher0);
         let digest_prior = hasher0.finish();
 
-        // Increase visited counter and verify digest is unchanged
-        circuit.circuit.borrow_mut().visited_counter += 1;
+        // Increase ref counter and verify digest is unchanged
+        circuit.circuit.borrow_mut().ref_count += 1;
         let mut hasher1 = DefaultHasher::new();
         circuit.hash(&mut hasher1);
         let digest_after = hasher1.finish();
@@ -2151,10 +2130,9 @@ mod tests {
                 let new_var_is_base = new_var.is_base_table_column();
                 let old_var_is_base = old_var.is_base_table_column();
                 let legal_substitute = match (new_var_is_base, old_var_is_base) {
-                    (true, true) => old_var.base_col_index() < new_var.base_col_index(),
                     (true, false) => false,
                     (false, true) => true,
-                    (false, false) => old_var.ext_col_index() < new_var.ext_col_index(),
+                    _ => old_var.column() < new_var.column(),
                 };
                 assert!(legal_substitute, "Cannot replace {old_var} with {new_var}.");
             }

@@ -5,12 +5,10 @@ use proc_macro2::TokenStream;
 use quote::format_ident;
 use quote::quote;
 
-use triton_vm::table::constraint_circuit::BinOp;
 use triton_vm::table::constraint_circuit::CircuitExpression;
 use triton_vm::table::constraint_circuit::ConstraintCircuit;
 use triton_vm::table::constraint_circuit::InputIndicator;
 
-use crate::codegen;
 use crate::codegen::Codegen;
 use crate::codegen::RustBackend;
 use crate::Constraints;
@@ -92,41 +90,6 @@ impl Codegen for RustBackend {
             #evaluable_over_ext_field
             #quotient_trait_impl
         )
-    }
-
-    fn declare_new_binding<II: InputIndicator>(
-        circuit: &ConstraintCircuit<II>,
-        requested_visited_count: usize,
-        scope: &mut HashSet<usize>,
-    ) -> TokenStream {
-        assert_eq!(circuit.visited_counter, requested_visited_count);
-        let binding_name = Self::load_node(circuit);
-        let evaluation = Self::evaluate_single_node(requested_visited_count, circuit, scope);
-
-        let is_new_insertion = scope.insert(circuit.id);
-        assert!(is_new_insertion);
-
-        quote!(let #binding_name = #evaluation;)
-    }
-
-    fn load_node<II: InputIndicator>(circuit: &ConstraintCircuit<II>) -> TokenStream {
-        match &circuit.expression {
-            CircuitExpression::BConstant(bfe) => codegen::tokenize_bfe(*bfe),
-            CircuitExpression::XConstant(xfe) => codegen::tokenize_xfe(*xfe),
-            CircuitExpression::Input(idx) => quote!(#idx),
-            CircuitExpression::Challenge(challenge) => {
-                let challenge_ident = format_ident!("{challenge}");
-                quote!(challenges[#challenge_ident])
-            }
-            CircuitExpression::BinaryOperation(_, _, _) => {
-                let node_ident = format_ident!("node_{}", circuit.id);
-                quote!(#node_ident)
-            }
-        }
-    }
-
-    fn perform_bin_op(binop: BinOp, lhs: TokenStream, rhs: TokenStream) -> TokenStream {
-        quote!((#lhs) #binop (#rhs))
     }
 }
 
@@ -210,22 +173,19 @@ impl RustBackend {
             return (quote!(), quote!(vec![]), quote!(vec![]));
         }
 
-        // Get all unique reference counts.
-        let visited_counters = constraints
+        let ref_counters = constraints
             .iter()
-            .flat_map(ConstraintCircuit::all_visited_counters)
+            .flat_map(ConstraintCircuit::all_ref_counters)
             .sorted()
-            .unique()
-            .collect_vec();
+            .unique();
 
-        // Declare all shared variables, i.e., those with a visit count greater than 1.
-        // These declarations must be made starting from the highest visit count.
+        // Declare all shared variables, i.e., those with a ref count greater than 1.
+        // These declarations must be made starting from the highest ref count.
         // Otherwise, the resulting code will refer to bindings that have not yet been made.
-        let shared_declarations = visited_counters
-            .into_iter()
+        let shared_declarations = ref_counters
             .filter(|&x| x > 1)
             .rev()
-            .map(|count| Self::declare_nodes_with_visit_count(count, constraints))
+            .map(|count| Self::declare_nodes_with_ref_count(count, constraints))
             .collect_vec();
 
         let (base_constraints, ext_constraints): (Vec<_>, Vec<_>) = constraints
@@ -286,5 +246,109 @@ impl RustBackend {
             tokenized_bfe_constraints,
             tokenized_xfe_constraints,
         )
+    }
+
+    /// Produce the code to evaluate code for all nodes that share a ref count. A value for all
+    /// nodes with a higher count (i.e., deeper in the tree) than the provided are assumed to be in
+    /// scope.
+    fn declare_nodes_with_ref_count<II: InputIndicator>(
+        ref_count: usize,
+        circuits: &[ConstraintCircuit<II>],
+    ) -> TokenStream {
+        let mut scope: HashSet<usize> = HashSet::new();
+        let all_nodes_in_circuit =
+            |circuit| Self::declare_single_node_with_ref_count(circuit, ref_count, &mut scope);
+        let tokenized_circuits = circuits.iter().filter_map(all_nodes_in_circuit);
+        quote!(#(#tokenized_circuits)*)
+    }
+
+    fn declare_single_node_with_ref_count<II: InputIndicator>(
+        circuit: &ConstraintCircuit<II>,
+        ref_count: usize,
+        scope: &mut HashSet<usize>,
+    ) -> Option<TokenStream> {
+        // Don't declare a node twice.
+        if scope.contains(&circuit.id) {
+            return None;
+        }
+
+        // A higher-than-requested ref count means the node is already in global scope, albeit not
+        // necessarily in the passed-in scope.
+        if circuit.ref_count > ref_count {
+            return None;
+        }
+
+        // Constants are already (or can be) trivially declared.
+        let CircuitExpression::BinaryOperation(_, lhs, rhs) = &circuit.expression else {
+            return None;
+        };
+
+        // If the ref count is not exact, recurse on the BinaryOperation's children.
+        if circuit.ref_count < ref_count {
+            let out_left =
+                Self::declare_single_node_with_ref_count(&lhs.as_ref().borrow(), ref_count, scope);
+            let out_right =
+                Self::declare_single_node_with_ref_count(&rhs.as_ref().borrow(), ref_count, scope);
+            return match (out_left, out_right) {
+                (None, None) => None,
+                (Some(l), None) => Some(l),
+                (None, Some(r)) => Some(r),
+                (Some(l), Some(r)) => Some(quote!(#l #r)),
+            };
+        }
+
+        assert_eq!(circuit.ref_count, ref_count);
+        let binding_name = Self::binding_name(circuit);
+        let evaluation = Self::evaluate_single_node(ref_count, circuit, scope);
+        let new_binding = quote!(let #binding_name = #evaluation;);
+
+        let is_new_insertion = scope.insert(circuit.id);
+        assert!(is_new_insertion);
+
+        Some(new_binding)
+    }
+
+    /// Recursively construct the code for evaluating a single node.
+    pub fn evaluate_single_node<II: InputIndicator>(
+        ref_count: usize,
+        circuit: &ConstraintCircuit<II>,
+        scope: &HashSet<usize>,
+    ) -> TokenStream {
+        // Don't declare a node twice.
+        if scope.contains(&circuit.id) {
+            return Self::binding_name(circuit);
+        }
+
+        // The binding must already be known.
+        if circuit.ref_count > ref_count {
+            return Self::binding_name(circuit);
+        }
+
+        // Constants have trivial bindings.
+        let CircuitExpression::BinaryOperation(binop, lhs, rhs) = &circuit.expression else {
+            return Self::binding_name(circuit);
+        };
+
+        let lhs = lhs.as_ref().borrow();
+        let rhs = rhs.as_ref().borrow();
+        let lhs = Self::evaluate_single_node(ref_count, &lhs, scope);
+        let rhs = Self::evaluate_single_node(ref_count, &rhs, scope);
+        quote!((#lhs) #binop (#rhs))
+    }
+
+    fn binding_name<II: InputIndicator>(circuit: &ConstraintCircuit<II>) -> TokenStream {
+        match &circuit.expression {
+            CircuitExpression::BConstant(bfe) => Self::tokenize_bfe(*bfe),
+            CircuitExpression::XConstant(xfe) => Self::tokenize_xfe(*xfe),
+            CircuitExpression::Input(idx) => quote!(#idx),
+            CircuitExpression::Challenge(challenge) => {
+                let challenge_ident = format_ident!("{challenge}");
+                quote!(challenges[#challenge_ident])
+            }
+            CircuitExpression::BinaryOperation(_, _, _) => {
+                let node_ident = format_ident!("node_{}", circuit.id);
+                quote!(#node_ident)
+            }
+        }
     }
 }
