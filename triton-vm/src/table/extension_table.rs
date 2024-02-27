@@ -17,7 +17,7 @@ use twenty_first::shared_math::traits::FiniteField;
 use crate::arithmetic_domain::ArithmeticDomain;
 use crate::table::challenges::Challenges;
 
-const ERROR_MESSAGE_GENERATE_CONSTRAINTS: &str =
+pub(crate) const ERROR_MESSAGE_GENERATE_CONSTRAINTS: &str =
     "Constraints must be in place. Run: `cargo run --bin constraint-evaluation-generator`";
 const ERROR_MESSAGE_GENERATE_DEGREE_BOUNDS: &str =
     "Degree bounds must be in place. Run: `cargo run --bin constraint-evaluation-generator`";
