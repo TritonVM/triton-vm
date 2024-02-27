@@ -1074,22 +1074,29 @@ impl<'a> Arbitrary<'a> for Stark {
 
 #[cfg(test)]
 pub(crate) mod tests {
+    use std::collections::HashMap;
+
     use assert2::assert;
     use assert2::check;
     use assert2::let_assert;
     use itertools::izip;
     use num_traits::Zero;
+    use proptest::collection::vec;
+    use proptest::prelude::*;
     use proptest_arbitrary_interop::arb;
     use rand::thread_rng;
     use rand::Rng;
     use strum::EnumCount;
     use test_strategy::proptest;
+    use twenty_first::prelude::x_field_element::EXTENSION_DEGREE;
     use twenty_first::shared_math::other::random_elements;
 
     use crate::error::InstructionError;
     use crate::example_programs::*;
     use crate::instruction::Instruction;
     use crate::op_stack::OpStackElement;
+    use crate::prelude::Program;
+    use crate::program::NonDeterminism;
     use crate::shared_tests::*;
     use crate::table::cascade_table;
     use crate::table::cascade_table::ExtCascadeTable;
@@ -1130,10 +1137,13 @@ pub(crate) mod tests {
     use crate::table::table_column::ProcessorExtTableColumn::InputTableEvalArg;
     use crate::table::table_column::ProcessorExtTableColumn::OutputTableEvalArg;
     use crate::table::table_column::RamBaseTableColumn;
+    use crate::table::tasm_air_constraints::air_constraint_evaluation_tasm;
     use crate::table::u32_table;
     use crate::table::u32_table::ExtU32Table;
+    use crate::triton_asm;
     use crate::triton_program;
     use crate::vm::tests::*;
+    use crate::vm::VMState;
     use crate::PublicInput;
 
     use super::*;
@@ -2413,5 +2423,128 @@ pub(crate) mod tests {
         assert_polynomial_equals_recomposed_segments(&f, &segments_3, x);
         assert_polynomial_equals_recomposed_segments(&f, &segments_4, x);
         assert_polynomial_equals_recomposed_segments(&f, &segments_7, x);
+    }
+
+    #[derive(Debug, Clone, test_strategy::Arbitrary)]
+    struct ConstraintEvaluationPoint {
+        #[strategy(vec(arb(), NUM_BASE_COLUMNS))]
+        #[map(Array1::from)]
+        curr_base_row: Array1<XFieldElement>,
+
+        #[strategy(vec(arb(), NUM_EXT_COLUMNS))]
+        #[map(Array1::from)]
+        curr_ext_row: Array1<XFieldElement>,
+
+        #[strategy(vec(arb(), NUM_BASE_COLUMNS))]
+        #[map(Array1::from)]
+        next_base_row: Array1<XFieldElement>,
+
+        #[strategy(vec(arb(), NUM_EXT_COLUMNS))]
+        #[map(Array1::from)]
+        next_ext_row: Array1<XFieldElement>,
+
+        #[strategy(arb())]
+        challenges: Challenges,
+    }
+
+    impl ConstraintEvaluationPoint {
+        fn evaluate_all_constraints_rust(&self) -> Vec<XFieldElement> {
+            let init = MasterExtTable::evaluate_initial_constraints(
+                self.curr_base_row.view(),
+                self.curr_ext_row.view(),
+                &self.challenges,
+            );
+            let cons = MasterExtTable::evaluate_consistency_constraints(
+                self.curr_base_row.view(),
+                self.curr_ext_row.view(),
+                &self.challenges,
+            );
+            let tran = MasterExtTable::evaluate_transition_constraints(
+                self.curr_base_row.view(),
+                self.curr_ext_row.view(),
+                self.next_base_row.view(),
+                self.next_ext_row.view(),
+                &self.challenges,
+            );
+            let term = MasterExtTable::evaluate_terminal_constraints(
+                self.curr_base_row.view(),
+                self.curr_ext_row.view(),
+                &self.challenges,
+            );
+
+            [init, cons, tran, term].concat()
+        }
+
+        fn evaluate_all_constraints_tasm(&self) -> Vec<XFieldElement> {
+            let constraint_evaluator = air_constraint_evaluation_tasm().to_vec();
+            let program_appendix = triton_asm!(halt);
+            let source_code = [constraint_evaluator, program_appendix].concat();
+            let program = Program::new(&source_code);
+
+            let mut vm_state = self.set_up_triton_vm_to_evaluate_constraints_in_tasm(&program);
+            vm_state.run().unwrap();
+
+            let output_list_ptr = vm_state.op_stack.pop().unwrap().value();
+            Self::read_xfe_list_at_address(vm_state.ram, output_list_ptr, num_quotients())
+        }
+
+        fn set_up_triton_vm_to_evaluate_constraints_in_tasm(&self, program: &Program) -> VMState {
+            let mem_page = |i: u64| i * (1 << 32);
+            let challenges_ptr = mem_page(0);
+            let next_ext_row_ptr = mem_page(1);
+            let next_base_row_ptr = mem_page(2);
+            let curr_ext_row_ptr = mem_page(3);
+            let curr_base_row_ptr = mem_page(4);
+
+            let mut ram = HashMap::default();
+            Self::extend_ram_at_address(&mut ram, self.challenges.challenges, challenges_ptr);
+            Self::extend_ram_at_address(&mut ram, self.next_ext_row.to_vec(), next_ext_row_ptr);
+            Self::extend_ram_at_address(&mut ram, self.next_base_row.to_vec(), next_base_row_ptr);
+            Self::extend_ram_at_address(&mut ram, self.curr_base_row.to_vec(), curr_ext_row_ptr);
+            Self::extend_ram_at_address(&mut ram, self.curr_base_row.to_vec(), curr_base_row_ptr);
+            let non_determinism = NonDeterminism::default().with_ram(ram);
+
+            let mut vm_state = VMState::new(program, PublicInput::default(), non_determinism);
+            vm_state.op_stack.push(challenges_ptr.into());
+            vm_state.op_stack.push(next_ext_row_ptr.into());
+            vm_state.op_stack.push(next_base_row_ptr.into());
+            vm_state.op_stack.push(curr_ext_row_ptr.into());
+            vm_state.op_stack.push(curr_base_row_ptr.into());
+
+            vm_state
+        }
+
+        fn extend_ram_at_address(
+            ram: &mut HashMap<BFieldElement, BFieldElement>,
+            list: impl IntoIterator<Item = impl Into<XFieldElement>>,
+            address: u64,
+        ) {
+            let list = list.into_iter().flat_map(|xfe| xfe.into().coefficients);
+            let indexed_list = list.enumerate();
+            let ram_extension = indexed_list.map(|(i, bfe)| ((i as u64 + address).into(), bfe));
+            ram.extend(ram_extension);
+        }
+
+        fn read_xfe_list_at_address(
+            ram: HashMap<BFieldElement, BFieldElement>,
+            address: u64,
+            len: usize,
+        ) -> Vec<XFieldElement> {
+            let mem_region_end = address + (len * EXTENSION_DEGREE) as u64;
+            (address..mem_region_end)
+                .map(BFieldElement::new)
+                .map(|i| ram[&i])
+                .chunks(EXTENSION_DEGREE)
+                .into_iter()
+                .map(|c| XFieldElement::try_from(c.collect_vec()).unwrap())
+                .collect()
+        }
+    }
+
+    #[proptest]
+    fn triton_constraints_and_assembly_constraints_agree(point: ConstraintEvaluationPoint) {
+        let all_constraints_rust = point.evaluate_all_constraints_rust();
+        let all_constraints_tasm = point.evaluate_all_constraints_tasm();
+        prop_assert_eq!(all_constraints_rust, all_constraints_tasm);
     }
 }
