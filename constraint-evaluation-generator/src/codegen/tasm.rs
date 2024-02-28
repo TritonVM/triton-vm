@@ -53,7 +53,9 @@ impl Codegen for TasmBackend {
         quote!(
             #uses
             #[doc = #doc_comment]
-            pub fn air_constraint_evaluation_tasm() -> Box<[LabelledInstruction]> {
+            pub fn air_constraint_evaluation_tasm(
+                layout: TasmConstraintEvaluationMemoryLayout,
+            ) -> Box<[LabelledInstruction]> {
                 Box::new([
                     #init_constraints
                     #cons_constraints

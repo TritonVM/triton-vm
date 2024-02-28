@@ -4,7 +4,10 @@
 
 use crate::instruction::LabelledInstruction;
 use crate::table::extension_table::ERROR_MESSAGE_GENERATE_CONSTRAINTS;
+use crate::table::TasmConstraintEvaluationMemoryLayout;
 
-pub fn air_constraint_evaluation_tasm() -> Box<[LabelledInstruction]> {
+pub fn air_constraint_evaluation_tasm(
+    _: TasmConstraintEvaluationMemoryLayout,
+) -> Box<[LabelledInstruction]> {
     panic!("{ERROR_MESSAGE_GENERATE_CONSTRAINTS}");
 }

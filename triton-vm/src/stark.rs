@@ -1140,6 +1140,7 @@ pub(crate) mod tests {
     use crate::table::tasm_air_constraints::air_constraint_evaluation_tasm;
     use crate::table::u32_table;
     use crate::table::u32_table::ExtU32Table;
+    use crate::table::TasmConstraintEvaluationMemoryLayout;
     use crate::triton_asm;
     use crate::triton_program;
     use crate::vm::tests::*;
@@ -2445,6 +2446,10 @@ pub(crate) mod tests {
 
         #[strategy(arb())]
         challenges: Challenges,
+
+        #[strategy(arb())]
+        #[filter(#memory_layout.is_integral())]
+        memory_layout: TasmConstraintEvaluationMemoryLayout,
     }
 
     impl ConstraintEvaluationPoint {
@@ -2476,7 +2481,7 @@ pub(crate) mod tests {
         }
 
         fn evaluate_all_constraints_tasm(&self) -> Vec<XFieldElement> {
-            let constraint_evaluator = air_constraint_evaluation_tasm().to_vec();
+            let constraint_evaluator = air_constraint_evaluation_tasm(self.memory_layout).to_vec();
             let program_appendix = triton_asm!(halt);
             let source_code = [constraint_evaluator, program_appendix].concat();
             let program = Program::new(&source_code);
@@ -2489,39 +2494,32 @@ pub(crate) mod tests {
         }
 
         fn set_up_triton_vm_to_evaluate_constraints_in_tasm(&self, program: &Program) -> VMState {
-            let mem_page = |i: u64| i * (1 << 32);
-            let challenges_ptr = mem_page(0);
-            let next_ext_row_ptr = mem_page(1);
-            let next_base_row_ptr = mem_page(2);
-            let curr_ext_row_ptr = mem_page(3);
-            let curr_base_row_ptr = mem_page(4);
+            let curr_base_row_ptr = self.memory_layout.curr_base_row_ptr;
+            let curr_ext_row_ptr = self.memory_layout.curr_ext_row_ptr;
+            let next_base_row_ptr = self.memory_layout.next_base_row_ptr;
+            let next_ext_row_ptr = self.memory_layout.next_ext_row_ptr;
+            let challenges_ptr = self.memory_layout.challenges_ptr;
 
             let mut ram = HashMap::default();
-            Self::extend_ram_at_address(&mut ram, self.challenges.challenges, challenges_ptr);
-            Self::extend_ram_at_address(&mut ram, self.next_ext_row.to_vec(), next_ext_row_ptr);
-            Self::extend_ram_at_address(&mut ram, self.next_base_row.to_vec(), next_base_row_ptr);
-            Self::extend_ram_at_address(&mut ram, self.curr_base_row.to_vec(), curr_ext_row_ptr);
             Self::extend_ram_at_address(&mut ram, self.curr_base_row.to_vec(), curr_base_row_ptr);
+            Self::extend_ram_at_address(&mut ram, self.curr_ext_row.to_vec(), curr_ext_row_ptr);
+            Self::extend_ram_at_address(&mut ram, self.next_base_row.to_vec(), next_base_row_ptr);
+            Self::extend_ram_at_address(&mut ram, self.next_ext_row.to_vec(), next_ext_row_ptr);
+            Self::extend_ram_at_address(&mut ram, self.challenges.challenges, challenges_ptr);
             let non_determinism = NonDeterminism::default().with_ram(ram);
 
-            let mut vm_state = VMState::new(program, PublicInput::default(), non_determinism);
-            vm_state.op_stack.push(challenges_ptr.into());
-            vm_state.op_stack.push(next_ext_row_ptr.into());
-            vm_state.op_stack.push(next_base_row_ptr.into());
-            vm_state.op_stack.push(curr_ext_row_ptr.into());
-            vm_state.op_stack.push(curr_base_row_ptr.into());
-
-            vm_state
+            VMState::new(program, PublicInput::default(), non_determinism)
         }
 
         fn extend_ram_at_address(
             ram: &mut HashMap<BFieldElement, BFieldElement>,
             list: impl IntoIterator<Item = impl Into<XFieldElement>>,
-            address: u64,
+            address: BFieldElement,
         ) {
             let list = list.into_iter().flat_map(|xfe| xfe.into().coefficients);
             let indexed_list = list.enumerate();
-            let ram_extension = indexed_list.map(|(i, bfe)| ((i as u64 + address).into(), bfe));
+            let offset_address = |i| BFieldElement::new(i as u64) + address;
+            let ram_extension = indexed_list.map(|(i, bfe)| (offset_address(i), bfe));
             ram.extend(ram_extension);
         }
 
