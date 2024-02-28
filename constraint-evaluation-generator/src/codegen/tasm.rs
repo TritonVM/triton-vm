@@ -1,11 +1,13 @@
+use std::collections::HashSet;
+
 use itertools::Itertools;
 use proc_macro2::TokenStream;
 use quote::quote;
+use quote::ToTokens;
 use twenty_first::prelude::x_field_element::EXTENSION_DEGREE;
 use twenty_first::prelude::BFieldElement;
 use twenty_first::prelude::XFieldElement;
 
-use triton_vm::op_stack::OpStackElement;
 use triton_vm::table::challenges::ChallengeId;
 use triton_vm::table::constraint_circuit::BinOp;
 use triton_vm::table::constraint_circuit::CircuitExpression;
@@ -16,22 +18,19 @@ use crate::codegen::Codegen;
 use crate::codegen::TasmBackend;
 use crate::constraints::Constraints;
 
-// See content of [`TasmBackend::doc_comment`]
-const ARG_POS_FREE_MEM_PAGE: OpStackElement = OpStackElement::ST0;
-const ARG_POS_CURR_BASE_ROW: OpStackElement = OpStackElement::ST1;
-const ARG_POS_CURR_EXT_ROW: OpStackElement = OpStackElement::ST2;
-const ARG_POS_NEXT_BASE_ROW: OpStackElement = OpStackElement::ST3;
-const ARG_POS_NEXT_EXT_ROW: OpStackElement = OpStackElement::ST4;
-const ARG_POS_CHALLENGES: OpStackElement = OpStackElement::ST5;
-
-/// An offset from [`ARG_POS_FREE_MEM_PAGE`]'s value. Indicates the start of the to-be-returned
-/// array.
+/// An offset from the [memory layout][layout]'s `free_mem_page_ptr`, in number of
+/// [`XFieldElement`]s. Indicates the start of the to-be-returned array.
 ///
-/// The value is a bit magical; as per the contract declared in [`TasmBackend::doc_comment`], the
-/// region of free memory must be at least (1 << 32) words big. The number of constraints is assumed
-/// to stay smaller than (1 << 16). It is also assumed that the number of nodes in any of the
-/// multicircuits does not grow beyond [`OUT_ARRAY_OFFSET`].
-const OUT_ARRAY_OFFSET: usize = (1 << 32) - (1 << 16);
+/// The value is a bit magical; as per the contract declared in [`TasmBackend::doc_comment`] (more
+/// specifically, in the [memory layout][layout]), the region of free memory must be at least
+/// (1 << 32) words big. The number of constraints is assumed to stay smaller than
+/// 2_000, which is smaller than (1 << 16) / [`EXTENSION_DEGREE`]. It is also assumed that the
+/// number of nodes in any of the multicircuits does not grow beyond [`OUT_ARRAY_OFFSET`].
+///
+/// Note that `(1 << 32) - (1 << 16)` is divisible by [`EXTENSION_DEGREE`].
+///
+/// [layout]: triton_vm::table::TasmConstraintEvaluationMemoryLayout
+const OUT_ARRAY_OFFSET: usize = ((1 << 32) - (1 << 16)) / EXTENSION_DEGREE;
 
 impl Codegen for TasmBackend {
     /// Emits a function that emits [Triton assembly][tasm] that evaluates Triton VM's AIR
@@ -48,21 +47,22 @@ impl Codegen for TasmBackend {
         let tran_constraints = backend.tokenize_circuits(&constraints.tran());
         let term_constraints = backend.tokenize_circuits(&constraints.term());
 
-        let from_input_to_output_args = Self::from_input_args_to_output_args();
+        let prepare_return_values = Self::prepare_return_values();
 
         quote!(
             #uses
             #[doc = #doc_comment]
             pub fn air_constraint_evaluation_tasm(
-                layout: TasmConstraintEvaluationMemoryLayout,
+                mem_layout: TasmConstraintEvaluationMemoryLayout,
             ) -> Box<[LabelledInstruction]> {
-                Box::new([
+                let instructions = [
                     #init_constraints
                     #cons_constraints
                     #tran_constraints
                     #term_constraints
-                    #from_input_to_output_args
-                ])
+                    #prepare_return_values
+                ];
+                Box::new(instructions.map(LabelledInstruction::Instruction))
             }
         )
     }
@@ -71,19 +71,18 @@ impl Codegen for TasmBackend {
 impl TasmBackend {
     fn new() -> Self {
         Self {
-            additional_stack_size: 0,
+            scope: HashSet::new(),
             elements_written: 0,
         }
     }
 
     fn uses() -> TokenStream {
         quote!(
-            use num_traits::Zero;
             use twenty_first::prelude::BFieldElement;
             use crate::instruction::AnInstruction;
             use crate::instruction::LabelledInstruction;
             use crate::op_stack::NumberOfWords;
-            use crate::op_stack::OpStackElement;
+            use crate::table::TasmConstraintEvaluationMemoryLayout;
         )
     }
 
@@ -101,26 +100,21 @@ impl TasmBackend {
         # Signature
 
         ```text
-        BEFORE: _ *challenges *next_ext_row *next_base_row \
-                        *curr_ext_row *curr_base_row *free_memory_page
+        BEFORE: _
         AFTER:  _ *evaluated_constraints
         ```
         # Requirements
 
-        - both `*curr_base_row` and `*next_base_row` are pointers to an array of
-            [`XFieldElement`][xfe]s of length [`NUM_BASE_COLUMNS`][num_base_cols].
-        - both `*curr_ext_row` and `*next_ext_row` are pointers to an array of
-            [`XFieldElement`][xfe]s of length [`NUM_EXT_COLUMNS`][num_ext_cols].
-        - `*challenges` is a pointer to an array of [`XFieldElement`][xfe]s of length
-            [`NUM_CHALLENGES`][num_challenges].
-        - `*free_memory_page` points to a region of memory that is reserved for the emitted
-            code. The size of the that region is at least 2^32 [`BFieldElement`][bfe]s.
+        In order for this method to emit Triton assembly, various memory regions need to be
+        declared. This is done through [`TasmConstraintEvaluationMemoryLayout`][layout]. The memory
+        layout must be [integral].
 
         # Guarantees
 
         - The emitted code does not declare any labels.
-        - The emitted code does not contain any of the instructions `call`, `return`, `recurse`,
-            or `halt`.
+        - The emitted code is “straight-line”, _i.e._, does not contain any of the instructions
+            `call`, `return`, `recurse`, or `skiz`.
+        - The emitted code does not contain instruction `halt`.
         - All memory write access of the emitted code is within the bounds of the memory region
             pointed to by `*free_memory_page`.
         - `*evaluated_constraints` points to an array of [`XFieldElement`][xfe]s of length \
@@ -135,6 +129,8 @@ impl TasmBackend {
             `num_consistency_quotients()`, `num_transition_quotients()`, and
             `num_terminal_quotients()` on the [`MasterExtTable`][master_ext_table].
 
+        [layout]: crate::table::TasmConstraintEvaluationMemoryLayout
+        [integral]: crate::table::TasmConstraintEvaluationMemoryLayout::is_integral
         [bfe]: crate::prelude::BFieldElement
         [xfe]: crate::prelude::XFieldElement
         [num_base_cols]: crate::table::NUM_BASE_COLUMNS
@@ -154,191 +150,213 @@ impl TasmBackend {
             return quote!();
         }
 
-        let constraint_evaluator = self.evaluate_all_bin_ops(constraints);
+        self.reset_scope();
+        let store_shared_nodes = self.store_all_shared_nodes(constraints);
 
         // to match the `RustBackend`, base constraints must be emitted first
         let (base_constraints, ext_constraints): (Vec<_>, Vec<_>) = constraints
             .iter()
             .partition(|constraint| constraint.evaluates_to_base_element());
-        let output_list_writer = base_constraints
-            .into_iter()
-            .chain(ext_constraints)
-            .map(|constraint| self.write_evaluated_constraint_into_output_list(constraint));
+        let sorted_constraints = base_constraints.into_iter().chain(ext_constraints);
+        let write_to_output =
+            sorted_constraints.map(|c| self.write_evaluated_constraint_into_output_list(c));
 
-        let tokenized_circuits = quote!(#(#constraint_evaluator)* #(#output_list_writer)*);
-        debug_assert_eq!(0, self.additional_stack_size);
-
-        tokenized_circuits
+        quote!(#(#store_shared_nodes)* #(#write_to_output)*)
     }
 
-    fn evaluate_all_bin_ops<II: InputIndicator>(
+    fn reset_scope(&mut self) {
+        self.scope = HashSet::new();
+    }
+
+    fn store_all_shared_nodes<II: InputIndicator>(
         &mut self,
         constraints: &[ConstraintCircuit<II>],
     ) -> Vec<TokenStream> {
-        let ref_counters = constraints
-            .iter()
-            .flat_map(ConstraintCircuit::all_ref_counters);
+        let ref_counts = constraints.iter().flat_map(|c| c.all_ref_counters());
+        let relevant_ref_counts = ref_counts.sorted().unique().filter(|&c| c > 1).rev();
+        relevant_ref_counts
+            .map(|count| self.store_all_shared_nodes_of_ref_count(constraints, count))
+            .concat()
+    }
 
-        let mut bin_op_evaluation_code = vec![];
-        for ref_count in ref_counters.sorted().unique().rev() {
-            for circuit in constraints.iter().filter(|c| c.ref_count == ref_count) {
-                let CircuitExpression::BinaryOperation(op, ref lhs, ref rhs) = circuit.expression
-                else {
-                    continue;
-                };
-                let lhs = self.load_node(&lhs.borrow());
-                let rhs = self.load_node(&rhs.borrow());
-                let binop = self.tokenize_bin_op(op);
-                let store = self.store_ext_field_element_in_list(circuit.id, ARG_POS_FREE_MEM_PAGE);
-                bin_op_evaluation_code.push(quote!(#lhs #rhs #binop #store));
-            }
+    fn store_all_shared_nodes_of_ref_count<II: InputIndicator>(
+        &mut self,
+        constraints: &[ConstraintCircuit<II>],
+        count: usize,
+    ) -> Vec<TokenStream> {
+        constraints
+            .iter()
+            .map(|c| self.store_single_shared_node_of_ref_count(c, count))
+            .collect()
+    }
+
+    fn store_single_shared_node_of_ref_count<II: InputIndicator>(
+        &mut self,
+        constraint: &ConstraintCircuit<II>,
+        ref_count: usize,
+    ) -> TokenStream {
+        if self.scope.contains(&constraint.id) {
+            return quote!();
         }
 
-        bin_op_evaluation_code
+        let CircuitExpression::BinaryOperation(_, lhs, rhs) = &constraint.expression else {
+            return quote!();
+        };
+
+        assert!(
+            constraint.ref_count <= ref_count,
+            "Constraints with ref count greater than {ref_count} must be in scope."
+        );
+
+        if constraint.ref_count < ref_count {
+            let out_left = self.store_single_shared_node_of_ref_count(&lhs.borrow(), ref_count);
+            let out_right = self.store_single_shared_node_of_ref_count(&rhs.borrow(), ref_count);
+            return quote!(#out_left #out_right);
+        }
+
+        let evaluate = self.evaluate_single_node(constraint);
+        let store = Self::store_ext_field_element(constraint.id);
+        let is_new_insertion = self.scope.insert(constraint.id);
+        assert!(is_new_insertion);
+
+        quote!(#evaluate #store)
+    }
+
+    fn evaluate_single_node<II: InputIndicator>(
+        &self,
+        constraint: &ConstraintCircuit<II>,
+    ) -> TokenStream {
+        if self.scope.contains(&constraint.id) {
+            return Self::load_node(constraint);
+        }
+
+        let CircuitExpression::BinaryOperation(binop, lhs, rhs) = &constraint.expression else {
+            return Self::load_node(constraint);
+        };
+
+        let lhs = self.evaluate_single_node(&lhs.borrow());
+        let rhs = self.evaluate_single_node(&rhs.borrow());
+        let binop = Self::tokenize_bin_op(*binop);
+        quote!(#lhs #rhs #binop)
     }
 
     fn write_evaluated_constraint_into_output_list<II: InputIndicator>(
         &mut self,
         constraint: &ConstraintCircuit<II>,
     ) -> TokenStream {
-        let evaluated_constraint = self.load_node(constraint);
+        let evaluated_constraint = self.evaluate_single_node(constraint);
         let element_index = OUT_ARRAY_OFFSET + self.elements_written;
-        let store_element =
-            self.store_ext_field_element_in_list(element_index, ARG_POS_FREE_MEM_PAGE);
+        let store_element = Self::store_ext_field_element(element_index);
+        self.elements_written += 1;
         quote!(#evaluated_constraint #store_element)
     }
 
-    fn load_node<II: InputIndicator>(&mut self, circuit: &ConstraintCircuit<II>) -> TokenStream {
+    fn load_node<II: InputIndicator>(circuit: &ConstraintCircuit<II>) -> TokenStream {
         match circuit.expression {
-            CircuitExpression::BConstant(bfe) => self.load_base_field_constant(bfe),
-            CircuitExpression::XConstant(xfe) => self.load_ext_field_constant(xfe),
-            CircuitExpression::Input(input) => self.load_input(input),
-            CircuitExpression::Challenge(challenge) => self.load_challenge(challenge),
-            CircuitExpression::BinaryOperation(_, _, _) => self.load_evaluated_bin_op(circuit.id),
+            CircuitExpression::BConstant(bfe) => Self::load_base_field_constant(bfe),
+            CircuitExpression::XConstant(xfe) => Self::load_ext_field_constant(xfe),
+            CircuitExpression::Input(input) => Self::load_input(input),
+            CircuitExpression::Challenge(challenge) => Self::load_challenge(challenge),
+            CircuitExpression::BinaryOperation(_, _, _) => Self::load_evaluated_bin_op(circuit.id),
         }
     }
 
-    fn load_base_field_constant(&mut self, bfe: BFieldElement) -> TokenStream {
-        self.additional_stack_size += EXTENSION_DEGREE;
+    fn load_base_field_constant(bfe: BFieldElement) -> TokenStream {
+        let zero = Self::tokenize_bfe(BFieldElement::new(0));
         let bfe = Self::tokenize_bfe(bfe);
-        quote!(
-            LabelledInstruction::Instruction(AnInstruction::Push(BFieldElement::zero())),
-            LabelledInstruction::Instruction(AnInstruction::Push(BFieldElement::zero())),
-            LabelledInstruction::Instruction(AnInstruction::Push(#bfe)),
-        )
+        quote!(AnInstruction::Push(#zero), AnInstruction::Push(#zero), AnInstruction::Push(#bfe),)
     }
 
-    fn load_ext_field_constant(&mut self, xfe: XFieldElement) -> TokenStream {
-        self.additional_stack_size += EXTENSION_DEGREE;
+    fn load_ext_field_constant(xfe: XFieldElement) -> TokenStream {
         let [c0, c1, c2] = xfe.coefficients.map(Self::tokenize_bfe);
-        quote!(
-            LabelledInstruction::Instruction(AnInstruction::Push(#c2)),
-            LabelledInstruction::Instruction(AnInstruction::Push(#c1)),
-            LabelledInstruction::Instruction(AnInstruction::Push(#c0)),
-        )
+        quote!(AnInstruction::Push(#c2), AnInstruction::Push(#c1), AnInstruction::Push(#c0),)
     }
 
-    fn load_input<II: InputIndicator>(&mut self, input: II) -> TokenStream {
-        let arg_pos = match (input.is_current_row(), input.is_base_table_column()) {
-            (true, true) => ARG_POS_CURR_BASE_ROW,
-            (true, false) => ARG_POS_CURR_EXT_ROW,
-            (false, true) => ARG_POS_NEXT_BASE_ROW,
-            (false, false) => ARG_POS_NEXT_EXT_ROW,
+    fn load_input<II: InputIndicator>(input: II) -> TokenStream {
+        let list = match (input.is_current_row(), input.is_base_table_column()) {
+            (true, true) => IOList::CurrBaseRow,
+            (true, false) => IOList::CurrExtRow,
+            (false, true) => IOList::NextBaseRow,
+            (false, false) => IOList::NextExtRow,
         };
-
-        self.load_ext_field_element_from_list(input.column(), arg_pos)
+        Self::load_ext_field_element_from_list(list, input.column())
     }
 
-    fn load_challenge(&mut self, challenge: ChallengeId) -> TokenStream {
-        self.load_ext_field_element_from_list(challenge.index(), ARG_POS_CHALLENGES)
+    fn load_challenge(challenge: ChallengeId) -> TokenStream {
+        Self::load_ext_field_element_from_list(IOList::Challenges, challenge.index())
     }
 
-    fn load_evaluated_bin_op(&mut self, node_id: usize) -> TokenStream {
-        self.load_ext_field_element_from_list(node_id, ARG_POS_FREE_MEM_PAGE)
+    fn load_evaluated_bin_op(node_id: usize) -> TokenStream {
+        Self::load_ext_field_element_from_list(IOList::FreeMemPage, node_id)
     }
 
-    fn load_ext_field_element_from_list(
-        &mut self,
-        element_index: usize,
-        list_pointer: OpStackElement,
-    ) -> TokenStream {
+    fn load_ext_field_element_from_list(list: IOList, element_index: usize) -> TokenStream {
         let word_offset = element_index * EXTENSION_DEGREE;
         let start_to_read_offset = EXTENSION_DEGREE - 1;
         let word_index = word_offset + start_to_read_offset;
         let word_index = BFieldElement::from(word_index as u64);
-
-        let actual_list_pointer = usize::from(list_pointer) + self.additional_stack_size;
-        let actual_list_pointer = OpStackElement::try_from(actual_list_pointer).unwrap();
-        let actual_list_pointer = Self::tokenize_op_stack_element(actual_list_pointer);
         let word_index = Self::tokenize_bfe(word_index);
 
-        self.additional_stack_size += EXTENSION_DEGREE;
         quote!(
-            LabelledInstruction::Instruction(AnInstruction::Dup(#actual_list_pointer)),
-            LabelledInstruction::Instruction(AnInstruction::Push(#word_index)),
-            LabelledInstruction::Instruction(AnInstruction::Add),
-            LabelledInstruction::Instruction(AnInstruction::ReadMem(NumberOfWords::N3)),
-            LabelledInstruction::Instruction(AnInstruction::Pop(NumberOfWords::N1)),
+            AnInstruction::Push(#list + #word_index),
+            AnInstruction::ReadMem(NumberOfWords::N3),
+            AnInstruction::Pop(NumberOfWords::N1),
         )
     }
 
-    fn store_ext_field_element_in_list(
-        &mut self,
-        element_index: usize,
-        list_pointer: OpStackElement,
-    ) -> TokenStream {
+    fn store_ext_field_element(element_index: usize) -> TokenStream {
+        let free_mem_page = IOList::FreeMemPage;
+
         let word_offset = element_index * EXTENSION_DEGREE;
         let word_index = BFieldElement::from(word_offset as u64);
-
-        let actual_list_pointer = usize::from(list_pointer) + self.additional_stack_size;
-        let actual_list_pointer = OpStackElement::try_from(actual_list_pointer).unwrap();
-        let actual_list_pointer = Self::tokenize_op_stack_element(actual_list_pointer);
         let word_index = Self::tokenize_bfe(word_index);
 
-        self.additional_stack_size -= EXTENSION_DEGREE;
         quote!(
-            LabelledInstruction::Instruction(AnInstruction::Dup(#actual_list_pointer)),
-            LabelledInstruction::Instruction(AnInstruction::Push(#word_index)),
-            LabelledInstruction::Instruction(AnInstruction::Add),
-            LabelledInstruction::Instruction(AnInstruction::WriteMem(NumberOfWords::N3)),
-            LabelledInstruction::Instruction(AnInstruction::Pop(NumberOfWords::N1)),
+            AnInstruction::Push(#free_mem_page + #word_index),
+            AnInstruction::WriteMem(NumberOfWords::N3),
+            AnInstruction::Pop(NumberOfWords::N1),
         )
     }
 
-    fn tokenize_bin_op(&mut self, binop: BinOp) -> TokenStream {
-        if binop == BinOp::Sub {
-            let minus_one = self.load_base_field_constant(-BFieldElement::new(1));
-            self.additional_stack_size -= 2 * EXTENSION_DEGREE;
-            return quote!(
-                #minus_one
-                LabelledInstruction::Instruction(AnInstruction::XxMul),
-                LabelledInstruction::Instruction(AnInstruction::XxAdd),
-            );
+    fn tokenize_bin_op(binop: BinOp) -> TokenStream {
+        let minus_one = Self::load_base_field_constant(-BFieldElement::new(1));
+        match binop {
+            BinOp::Add => quote!(AnInstruction::XxAdd,),
+            BinOp::Sub => quote!(#minus_one AnInstruction::XxMul, AnInstruction::XxAdd,),
+            BinOp::Mul => quote!(AnInstruction::XxMul,),
         }
-
-        let op = match binop {
-            BinOp::Add => quote!(XxAdd),
-            BinOp::Sub => unreachable!(),
-            BinOp::Mul => quote!(XxMul),
-        };
-        self.additional_stack_size -= EXTENSION_DEGREE;
-        quote!(LabelledInstruction::Instruction(AnInstruction::#op),)
     }
 
-    fn from_input_args_to_output_args() -> TokenStream {
-        let out_array_offset = OUT_ARRAY_OFFSET as u64;
-        let out_array_offset = quote!(BFieldElement::new(#out_array_offset));
-        let out_array_offset = quote!(AnInstruction::Push(#out_array_offset));
-        let out_array_offset = quote!(LabelledInstruction::Instruction(#out_array_offset),);
+    fn prepare_return_values() -> TokenStream {
+        let free_mem_page = IOList::FreeMemPage;
+        let out_array_offset_in_num_bfes = OUT_ARRAY_OFFSET * EXTENSION_DEGREE;
+        let out_array_offset = BFieldElement::new(out_array_offset_in_num_bfes as u64);
+        let out_array_offset = Self::tokenize_bfe(out_array_offset);
+        quote!(AnInstruction::Push(#free_mem_page + #out_array_offset),)
+    }
+}
 
-        let add = quote!(LabelledInstruction::Instruction(AnInstruction::Add),);
-        let swap_5 = quote!(AnInstruction::Swap(OpStackElement::ST5));
-        let swap_5 = quote!(LabelledInstruction::Instruction(#swap_5),);
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+enum IOList {
+    FreeMemPage,
+    CurrBaseRow,
+    CurrExtRow,
+    NextBaseRow,
+    NextExtRow,
+    Challenges,
+}
 
-        let pop_5 = quote!(AnInstruction::Pop(NumberOfWords::N5));
-        let pop_5 = quote!(LabelledInstruction::Instruction(#pop_5));
-        let from_input_to_output_args = quote!(#out_array_offset #add #swap_5 #pop_5);
-        from_input_to_output_args
+impl ToTokens for IOList {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        tokens.extend(quote!(mem_layout.));
+        match self {
+            IOList::FreeMemPage => tokens.extend(quote!(free_mem_page_ptr)),
+            IOList::CurrBaseRow => tokens.extend(quote!(curr_base_row_ptr)),
+            IOList::CurrExtRow => tokens.extend(quote!(curr_ext_row_ptr)),
+            IOList::NextBaseRow => tokens.extend(quote!(next_base_row_ptr)),
+            IOList::NextExtRow => tokens.extend(quote!(next_ext_row_ptr)),
+            IOList::Challenges => tokens.extend(quote!(challenges_ptr)),
+        }
     }
 }
 
@@ -346,12 +364,20 @@ impl TasmBackend {
 mod tests {
     use super::*;
 
-    #[test]
-    fn print_test_constraints_as_tasm() {
-        let constraints = Constraints::mini_constraints();
-        let tasm = TasmBackend::constraint_evaluation_code(&constraints);
+    fn print_constraints_as_tasm(constraints: &Constraints) {
+        let tasm = TasmBackend::constraint_evaluation_code(constraints);
         let syntax_tree = syn::parse2(tasm).unwrap();
         let code = prettyplease::unparse(&syntax_tree);
         println!("{code}");
+    }
+
+    #[test]
+    fn print_mini_constraints_as_tasm() {
+        print_constraints_as_tasm(&Constraints::mini_constraints());
+    }
+
+    #[test]
+    fn print_test_constraints_as_tasm() {
+        print_constraints_as_tasm(&Constraints::test_constraints());
     }
 }

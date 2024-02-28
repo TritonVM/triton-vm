@@ -31,12 +31,11 @@ pub mod u32_table;
 
 /// A single row of a [`MasterBaseTable`][table].
 ///
-/// Usually, the elements in the table are [`BFieldElement`][bfe]s. For out-of-domain rows, which is
+/// Usually, the elements in the table are [`BFieldElement`]s. For out-of-domain rows, which is
 /// relevant for “Domain Extension to Eliminate Pretenders” (DEEP), the elements are
 /// [`XFieldElement`]s.
 ///
 /// [table]: master_table::MasterBaseTable
-/// [bfe]: crate::prelude::BFieldElement
 pub type BaseRow<T> = [T; NUM_BASE_COLUMNS];
 
 /// A single row of a [`MasterExtensionTable`][table].
@@ -55,7 +54,7 @@ pub type QuotientSegments = [XFieldElement; NUM_QUOTIENT_SEGMENTS];
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Arbitrary)]
 pub struct TasmConstraintEvaluationMemoryLayout {
     /// Pointer to a region of memory that is reserved for constraint evaluation. The size of the
-    /// region must be at least 2^32 [`BFieldElement`][bfe]s.
+    /// region must be at least 2^32 [`BFieldElement`]s.
     pub free_mem_page_ptr: BFieldElement,
 
     /// Pointer to an array of [`XFieldElement`]s of length [`NUM_BASE_COLUMNS`].
