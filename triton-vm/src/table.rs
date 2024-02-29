@@ -54,7 +54,9 @@ pub type QuotientSegments = [XFieldElement; NUM_QUOTIENT_SEGMENTS];
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Arbitrary)]
 pub struct TasmConstraintEvaluationMemoryLayout {
     /// Pointer to a region of memory that is reserved for constraint evaluation. The size of the
-    /// region must be at least 2^32 [`BFieldElement`]s.
+    /// region must be at least [`MEM_PAGE_SIZE`][mem_page_size] [`BFieldElement`]s.
+    ///
+    /// [mem_page_size]: TasmConstraintEvaluationMemoryLayout::MEM_PAGE_SIZE
     pub free_mem_page_ptr: BFieldElement,
 
     /// Pointer to an array of [`XFieldElement`]s of length [`NUM_BASE_COLUMNS`].
@@ -76,6 +78,9 @@ pub struct TasmConstraintEvaluationMemoryLayout {
 }
 
 impl TasmConstraintEvaluationMemoryLayout {
+    /// The minimal required size of a memory page in [`BFieldElement`]s.
+    pub const MEM_PAGE_SIZE: usize = 1 << 32;
+
     /// Determine if the memory layout's constraints are met, _i.e._, whether the various pointers
     /// point to large enough regions of memory.
     pub fn is_integral(self) -> bool {
@@ -93,12 +98,12 @@ impl TasmConstraintEvaluationMemoryLayout {
 
     fn into_memory_regions(self) -> Box<[MemoryRegion]> {
         let all_regions = [
-            MemoryRegion::new(self.free_mem_page_ptr, 1 << 32),
-            MemoryRegion::new(self.curr_base_row_ptr, NUM_BASE_COLUMNS as u64),
-            MemoryRegion::new(self.curr_ext_row_ptr, NUM_EXT_COLUMNS as u64),
-            MemoryRegion::new(self.next_base_row_ptr, NUM_BASE_COLUMNS as u64),
-            MemoryRegion::new(self.next_ext_row_ptr, NUM_EXT_COLUMNS as u64),
-            MemoryRegion::new(self.challenges_ptr, challenges::Challenges::count() as u64),
+            MemoryRegion::new(self.free_mem_page_ptr, Self::MEM_PAGE_SIZE),
+            MemoryRegion::new(self.curr_base_row_ptr, NUM_BASE_COLUMNS),
+            MemoryRegion::new(self.curr_ext_row_ptr, NUM_EXT_COLUMNS),
+            MemoryRegion::new(self.next_base_row_ptr, NUM_BASE_COLUMNS),
+            MemoryRegion::new(self.next_ext_row_ptr, NUM_EXT_COLUMNS),
+            MemoryRegion::new(self.challenges_ptr, challenges::Challenges::count()),
         ];
         Box::new(all_regions)
     }
@@ -111,8 +116,9 @@ pub(crate) struct MemoryRegion {
 }
 
 impl MemoryRegion {
-    pub fn new(pointer: BFieldElement, size: u64) -> Self {
+    pub fn new(pointer: BFieldElement, size: usize) -> Self {
         let start = pointer.value();
+        let size = u64::try_from(size).unwrap();
         Self { start, size }
     }
 
@@ -159,7 +165,8 @@ mod tests {
 
     #[test]
     fn definitely_integral_memory_layout_is_detected_as_integral() {
-        let mem_page = |i: u64| BFieldElement::new(i * (1 << 32));
+        let mem_page_size = TasmConstraintEvaluationMemoryLayout::MEM_PAGE_SIZE as u64;
+        let mem_page = |i: u64| BFieldElement::new(i * mem_page_size);
         let layout = TasmConstraintEvaluationMemoryLayout {
             free_mem_page_ptr: mem_page(0),
             curr_base_row_ptr: mem_page(1),

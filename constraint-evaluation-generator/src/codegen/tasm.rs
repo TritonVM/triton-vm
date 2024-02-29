@@ -13,6 +13,7 @@ use triton_vm::table::constraint_circuit::BinOp;
 use triton_vm::table::constraint_circuit::CircuitExpression;
 use triton_vm::table::constraint_circuit::ConstraintCircuit;
 use triton_vm::table::constraint_circuit::InputIndicator;
+use triton_vm::table::TasmConstraintEvaluationMemoryLayout;
 
 use crate::codegen::Codegen;
 use crate::codegen::TasmBackend;
@@ -21,16 +22,14 @@ use crate::constraints::Constraints;
 /// An offset from the [memory layout][layout]'s `free_mem_page_ptr`, in number of
 /// [`XFieldElement`]s. Indicates the start of the to-be-returned array.
 ///
-/// The value is a bit magical; as per the contract declared in [`TasmBackend::doc_comment`] (more
-/// specifically, in the [memory layout][layout]), the region of free memory must be at least
-/// (1 << 32) words big. The number of constraints is assumed to stay smaller than
-/// 2_000, which is smaller than (1 << 16) / [`EXTENSION_DEGREE`]. It is also assumed that the
-/// number of nodes in any of the multicircuits does not grow beyond [`OUT_ARRAY_OFFSET`].
-///
-/// Note that `(1 << 32) - (1 << 16)` is divisible by [`EXTENSION_DEGREE`].
-///
-/// [layout]: triton_vm::table::TasmConstraintEvaluationMemoryLayout
-const OUT_ARRAY_OFFSET: usize = ((1 << 32) - (1 << 16)) / EXTENSION_DEGREE;
+/// [layout]: TasmConstraintEvaluationMemoryLayout
+const OUT_ARRAY_OFFSET: usize = {
+    let mem_page_size = TasmConstraintEvaluationMemoryLayout::MEM_PAGE_SIZE;
+    let max_num_words_for_evaluated_constraints = 1 << 16; // magic!
+    let out_array_offset_in_words = mem_page_size - max_num_words_for_evaluated_constraints;
+    assert!(out_array_offset_in_words % EXTENSION_DEGREE == 0);
+    out_array_offset_in_words / EXTENSION_DEGREE
+};
 
 impl Codegen for TasmBackend {
     /// Emits a function that emits [Triton assembly][tasm] that evaluates Triton VM's AIR
