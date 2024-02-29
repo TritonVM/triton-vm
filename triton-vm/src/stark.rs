@@ -1093,7 +1093,9 @@ pub(crate) mod tests {
 
     use crate::error::InstructionError;
     use crate::example_programs::*;
+    use crate::instruction::AnInstruction;
     use crate::instruction::Instruction;
+    use crate::instruction::LabelledInstruction;
     use crate::op_stack::OpStackElement;
     use crate::prelude::Program;
     use crate::program::NonDeterminism;
@@ -1140,6 +1142,7 @@ pub(crate) mod tests {
     use crate::table::tasm_air_constraints::air_constraint_evaluation_tasm;
     use crate::table::u32_table;
     use crate::table::u32_table::ExtU32Table;
+    use crate::table::MemoryRegion;
     use crate::table::TasmConstraintEvaluationMemoryLayout;
     use crate::triton_asm;
     use crate::triton_program;
@@ -2481,16 +2484,19 @@ pub(crate) mod tests {
         }
 
         fn evaluate_all_constraints_tasm(&self) -> Vec<XFieldElement> {
-            let constraint_evaluator = air_constraint_evaluation_tasm(self.memory_layout).to_vec();
-            let program_appendix = triton_asm!(halt);
-            let source_code = [constraint_evaluator, program_appendix].concat();
-            let program = Program::new(&source_code);
-
+            let program = self.tasm_constraint_evaluation_code();
             let mut vm_state = self.set_up_triton_vm_to_evaluate_constraints_in_tasm(&program);
+
             vm_state.run().unwrap();
 
             let output_list_ptr = vm_state.op_stack.pop().unwrap().value();
             Self::read_xfe_list_at_address(vm_state.ram, output_list_ptr, num_quotients())
+        }
+
+        fn tasm_constraint_evaluation_code(&self) -> Program {
+            let constraint_evaluator = air_constraint_evaluation_tasm(self.memory_layout).to_vec();
+            let source_code = [constraint_evaluator, triton_asm!(halt)].concat();
+            Program::new(&source_code)
         }
 
         fn set_up_triton_vm_to_evaluate_constraints_in_tasm(&self, program: &Program) -> VMState {
@@ -2539,10 +2545,61 @@ pub(crate) mod tests {
         }
     }
 
-    #[proptest]
+    #[proptest(cases = 1)]
     fn triton_constraints_and_assembly_constraints_agree(point: ConstraintEvaluationPoint) {
         let all_constraints_rust = point.evaluate_all_constraints_rust();
         let all_constraints_tasm = point.evaluate_all_constraints_tasm();
         prop_assert_eq!(all_constraints_rust, all_constraints_tasm);
+    }
+
+    #[proptest(cases = 1)]
+    fn triton_assembly_constraint_evaluator_does_not_write_outside_of_dedicated_memory_region(
+        point: ConstraintEvaluationPoint,
+    ) {
+        let program = point.tasm_constraint_evaluation_code();
+        let mut initial_state = point.set_up_triton_vm_to_evaluate_constraints_in_tasm(&program);
+        let mut terminal_state = initial_state.clone();
+        terminal_state.run().unwrap();
+
+        let free_mem_page_ptr = point.memory_layout.free_mem_page_ptr;
+        let mem_page = MemoryRegion::new(free_mem_page_ptr, 1 << 32);
+        let not_in_mem_page = |ptr: &BFieldElement| !mem_page.contains_pointer(ptr.value());
+
+        initial_state.ram.retain(|k, _| not_in_mem_page(k));
+        terminal_state.ram.retain(|k, _| not_in_mem_page(k));
+        prop_assert_eq!(initial_state.ram, terminal_state.ram);
+    }
+
+    #[proptest(cases = 1)]
+    fn triton_assembly_constraint_evaluator_declares_no_labels(
+        #[strategy(arb())] memory_layout: TasmConstraintEvaluationMemoryLayout,
+    ) {
+        let instructions = air_constraint_evaluation_tasm(memory_layout);
+        for instruction in instructions.iter() {
+            if let LabelledInstruction::Label(label) = instruction {
+                let reason = format!("Found label: {label}").into();
+                return Err(TestCaseError::Fail(reason));
+            }
+        }
+    }
+
+    #[proptest(cases = 1)]
+    fn triton_assembly_constraint_evaluator_is_straight_line_and_does_not_halt(
+        #[strategy(arb())] memory_layout: TasmConstraintEvaluationMemoryLayout,
+    ) {
+        type Instr = AnInstruction<String>;
+        let is_legal = |instruction: &_| {
+            !matches!(
+                instruction,
+                Instr::Call(_) | Instr::Return | Instr::Recurse | Instr::Skiz | Instr::Halt
+            )
+        };
+
+        let instructions = air_constraint_evaluation_tasm(memory_layout);
+        for instruction in instructions.iter() {
+            if let LabelledInstruction::Instruction(instruction) = instruction {
+                prop_assert!(is_legal(instruction));
+            }
+        }
     }
 }

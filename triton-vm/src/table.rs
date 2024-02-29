@@ -105,26 +105,26 @@ impl TasmConstraintEvaluationMemoryLayout {
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
-struct MemoryRegion {
+pub(crate) struct MemoryRegion {
     start: u64,
     size: u64,
 }
 
 impl MemoryRegion {
-    fn new(pointer: BFieldElement, size: u64) -> Self {
+    pub fn new(pointer: BFieldElement, size: u64) -> Self {
         let start = pointer.value();
         Self { start, size }
     }
 
-    fn disjoint_from(self, other: &Self) -> bool {
+    pub fn disjoint_from(self, other: &Self) -> bool {
         !self.overlaps(other)
     }
 
-    fn overlaps(self, other: &Self) -> bool {
+    pub fn overlaps(self, other: &Self) -> bool {
         self.contains_pointer(other.start) || other.contains_pointer(self.start)
     }
 
-    fn contains_pointer(self, ptr: u64) -> bool {
+    pub fn contains_pointer(self, ptr: u64) -> bool {
         (self.start..self.start + self.size).contains(&ptr)
     }
 }
