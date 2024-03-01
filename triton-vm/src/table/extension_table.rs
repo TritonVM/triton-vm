@@ -67,6 +67,17 @@ pub trait Evaluable<FF: FiniteField> {
 }
 
 pub(crate) trait Quotientable: Evaluable<BFieldElement> {
+    const NUM_INITIAL_CONSTRAINTS: usize;
+    const NUM_CONSISTENCY_CONSTRAINTS: usize;
+    const NUM_TRANSITION_CONSTRAINTS: usize;
+    const NUM_TERMINAL_CONSTRAINTS: usize;
+
+    /// The total number of constraints. The number of quotients is identical.
+    const NUM_CONSTRAINTS: usize = Self::NUM_INITIAL_CONSTRAINTS
+        + Self::NUM_CONSISTENCY_CONSTRAINTS
+        + Self::NUM_TRANSITION_CONSTRAINTS
+        + Self::NUM_TERMINAL_CONSTRAINTS;
+
     /// Compute the degrees of the quotients from all AIR constraints that apply to the table.
     fn all_degrees_with_origin(
         table_name: &str,
@@ -258,22 +269,6 @@ pub(crate) trait Quotientable: Evaluable<BFieldElement> {
                     .collect::<Array1<_>>()
                     .move_into(quotient_table_row);
             });
-    }
-
-    fn num_initial_quotients() -> usize {
-        panic!("{ERROR_MESSAGE_GENERATE_CONSTRAINTS}")
-    }
-
-    fn num_consistency_quotients() -> usize {
-        panic!("{ERROR_MESSAGE_GENERATE_CONSTRAINTS}")
-    }
-
-    fn num_transition_quotients() -> usize {
-        panic!("{ERROR_MESSAGE_GENERATE_CONSTRAINTS}")
-    }
-
-    fn num_terminal_quotients() -> usize {
-        panic!("{ERROR_MESSAGE_GENERATE_CONSTRAINTS}")
     }
 
     fn initial_quotient_degree_bounds(_interpolant_degree: Degree) -> Vec<Degree> {

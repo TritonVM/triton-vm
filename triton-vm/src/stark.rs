@@ -1813,10 +1813,10 @@ pub(crate) mod tests {
         let br = base_row.view();
         let er = ext_row.view();
 
-        let num_init_quots = MasterExtTable::num_initial_quotients();
-        let num_cons_quots = MasterExtTable::num_consistency_quotients();
-        let num_tran_quots = MasterExtTable::num_transition_quotients();
-        let num_term_quots = MasterExtTable::num_terminal_quotients();
+        let num_init_quots = MasterExtTable::NUM_INITIAL_CONSTRAINTS;
+        let num_cons_quots = MasterExtTable::NUM_CONSISTENCY_CONSTRAINTS;
+        let num_tran_quots = MasterExtTable::NUM_TRANSITION_CONSTRAINTS;
+        let num_term_quots = MasterExtTable::NUM_TERMINAL_CONSTRAINTS;
 
         let eval_init_consts = MasterExtTable::evaluate_initial_constraints(br, er, &ch);
         let eval_cons_consts = MasterExtTable::evaluate_consistency_constraints(br, er, &ch);

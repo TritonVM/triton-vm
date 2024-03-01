@@ -1069,10 +1069,10 @@ pub fn all_quotients(
     let mut quotient_table = Array2::uninit([quotient_domain.length, num_quotients()]);
     prof_stop!(maybe_profiler, "malloc");
 
-    let init_section_end = MasterExtTable::num_initial_quotients();
-    let cons_section_end = init_section_end + MasterExtTable::num_consistency_quotients();
-    let tran_section_end = cons_section_end + MasterExtTable::num_transition_quotients();
-    let term_section_end = tran_section_end + MasterExtTable::num_terminal_quotients();
+    let init_section_end = MasterExtTable::NUM_INITIAL_CONSTRAINTS;
+    let cons_section_end = init_section_end + MasterExtTable::NUM_CONSISTENCY_CONSTRAINTS;
+    let tran_section_end = cons_section_end + MasterExtTable::NUM_TRANSITION_CONSTRAINTS;
+    let term_section_end = tran_section_end + MasterExtTable::NUM_TERMINAL_CONSTRAINTS;
 
     prof_start!(maybe_profiler, "initial", "AIR");
     MasterExtTable::fill_initial_quotients(
@@ -1119,11 +1119,8 @@ pub fn all_quotients(
     unsafe { quotient_table.assume_init() }
 }
 
-pub fn num_quotients() -> usize {
-    MasterExtTable::num_initial_quotients()
-        + MasterExtTable::num_consistency_quotients()
-        + MasterExtTable::num_transition_quotients()
-        + MasterExtTable::num_terminal_quotients()
+pub const fn num_quotients() -> usize {
+    MasterExtTable::NUM_CONSTRAINTS
 }
 
 /// Guaranteed to be a power of two.

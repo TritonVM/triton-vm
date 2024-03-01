@@ -13,4 +13,9 @@ impl Evaluable<BFieldElement> for MasterExtTable {}
 
 impl Evaluable<XFieldElement> for MasterExtTable {}
 
-impl Quotientable for MasterExtTable {}
+impl Quotientable for MasterExtTable {
+    const NUM_INITIAL_CONSTRAINTS: usize = 0;
+    const NUM_CONSISTENCY_CONSTRAINTS: usize = 0;
+    const NUM_TRANSITION_CONSTRAINTS: usize = 0;
+    const NUM_TERMINAL_CONSTRAINTS: usize = 0;
+}

@@ -47,10 +47,10 @@ impl Codegen for RustBackend {
 
         let quotient_trait_impl = quote!(
         impl Quotientable for MasterExtTable {
-            fn num_initial_quotients() -> usize { #num_init_constraints }
-            fn num_consistency_quotients() -> usize { #num_cons_constraints }
-            fn num_transition_quotients() -> usize { #num_tran_constraints }
-            fn num_terminal_quotients() -> usize { #num_term_constraints }
+            const NUM_INITIAL_CONSTRAINTS: usize = #num_init_constraints;
+            const NUM_CONSISTENCY_CONSTRAINTS: usize = #num_cons_constraints;
+            const NUM_TRANSITION_CONSTRAINTS: usize = #num_tran_constraints;
+            const NUM_TERMINAL_CONSTRAINTS: usize = #num_term_constraints;
 
             #[allow(unused_variables)]
             fn initial_quotient_degree_bounds(interpolant_degree: Degree) -> Vec<Degree> {
