@@ -2545,14 +2545,14 @@ pub(crate) mod tests {
         }
     }
 
-    #[proptest(cases = 1)]
+    #[proptest]
     fn triton_constraints_and_assembly_constraints_agree(point: ConstraintEvaluationPoint) {
         let all_constraints_rust = point.evaluate_all_constraints_rust();
         let all_constraints_tasm = point.evaluate_all_constraints_tasm();
         prop_assert_eq!(all_constraints_rust, all_constraints_tasm);
     }
 
-    #[proptest(cases = 1)]
+    #[proptest]
     fn triton_assembly_constraint_evaluator_does_not_write_outside_of_dedicated_memory_region(
         point: ConstraintEvaluationPoint,
     ) {
@@ -2571,7 +2571,7 @@ pub(crate) mod tests {
         prop_assert_eq!(initial_state.ram, terminal_state.ram);
     }
 
-    #[proptest(cases = 1)]
+    #[proptest]
     fn triton_assembly_constraint_evaluator_declares_no_labels(
         #[strategy(arb())] memory_layout: TasmConstraintEvaluationMemoryLayout,
     ) {
@@ -2582,7 +2582,7 @@ pub(crate) mod tests {
         }
     }
 
-    #[proptest(cases = 1)]
+    #[proptest]
     fn triton_assembly_constraint_evaluator_is_straight_line_and_does_not_halt(
         #[strategy(arb())] memory_layout: TasmConstraintEvaluationMemoryLayout,
     ) {
