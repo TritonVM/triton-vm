@@ -1144,7 +1144,7 @@ pub(crate) mod tests {
     use crate::table::u32_table::ExtU32Table;
     use crate::table::MemoryRegion;
     use crate::table::TasmConstraintEvaluationMemoryLayout;
-    use crate::triton_asm;
+    use crate::triton_instr;
     use crate::triton_program;
     use crate::vm::tests::*;
     use crate::vm::VMState;
@@ -2494,8 +2494,8 @@ pub(crate) mod tests {
         }
 
         fn tasm_constraint_evaluation_code(&self) -> Program {
-            let constraint_evaluator = air_constraint_evaluation_tasm(self.memory_layout).to_vec();
-            let source_code = [constraint_evaluator, triton_asm!(halt)].concat();
+            let mut source_code = air_constraint_evaluation_tasm(self.memory_layout);
+            source_code.push(triton_instr!(halt));
             Program::new(&source_code)
         }
 
@@ -2575,11 +2575,9 @@ pub(crate) mod tests {
     fn triton_assembly_constraint_evaluator_declares_no_labels(
         #[strategy(arb())] memory_layout: TasmConstraintEvaluationMemoryLayout,
     ) {
-        let instructions = air_constraint_evaluation_tasm(memory_layout);
-        for instruction in instructions.iter() {
+        for instruction in air_constraint_evaluation_tasm(memory_layout) {
             if let LabelledInstruction::Label(label) = instruction {
-                let reason = format!("Found label: {label}").into();
-                return Err(TestCaseError::Fail(reason));
+                return Err(TestCaseError::Fail(format!("Found label: {label}").into()));
             }
         }
     }
@@ -2588,16 +2586,10 @@ pub(crate) mod tests {
     fn triton_assembly_constraint_evaluator_is_straight_line_and_does_not_halt(
         #[strategy(arb())] memory_layout: TasmConstraintEvaluationMemoryLayout,
     ) {
-        type Instr = AnInstruction<String>;
-        let is_legal = |instruction: &_| {
-            !matches!(
-                instruction,
-                Instr::Call(_) | Instr::Return | Instr::Recurse | Instr::Skiz | Instr::Halt
-            )
-        };
+        type I = AnInstruction<String>;
+        let is_legal = |i| !matches!(i, I::Call(_) | I::Return | I::Recurse | I::Skiz | I::Halt);
 
-        let instructions = air_constraint_evaluation_tasm(memory_layout);
-        for instruction in instructions.iter() {
+        for instruction in air_constraint_evaluation_tasm(memory_layout) {
             if let LabelledInstruction::Instruction(instruction) = instruction {
                 prop_assert!(is_legal(instruction));
             }

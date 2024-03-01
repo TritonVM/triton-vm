@@ -53,15 +53,15 @@ impl Codegen for TasmBackend {
             #[doc = #doc_comment]
             pub fn air_constraint_evaluation_tasm(
                 mem_layout: TasmConstraintEvaluationMemoryLayout,
-            ) -> Box<[LabelledInstruction]> {
-                let instructions = [
+            ) -> Vec<LabelledInstruction> {
+                let instructions = vec![
                     #init_constraints
                     #cons_constraints
                     #tran_constraints
                     #term_constraints
                     #prepare_return_values
                 ];
-                Box::new(instructions.map(LabelledInstruction::Instruction))
+                instructions.into_iter().map(LabelledInstruction::Instruction).collect()
             }
         )
     }

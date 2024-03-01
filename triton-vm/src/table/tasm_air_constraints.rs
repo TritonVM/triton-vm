@@ -8,6 +8,6 @@ use crate::table::TasmConstraintEvaluationMemoryLayout;
 
 pub fn air_constraint_evaluation_tasm(
     _: TasmConstraintEvaluationMemoryLayout,
-) -> Box<[LabelledInstruction]> {
+) -> Vec<LabelledInstruction> {
     panic!("{ERROR_MESSAGE_GENERATE_CONSTRAINTS}");
 }
