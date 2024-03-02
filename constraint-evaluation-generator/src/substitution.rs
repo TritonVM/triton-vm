@@ -1,5 +1,3 @@
-use std::collections::HashSet;
-
 use itertools::Itertools;
 use proc_macro2::TokenStream;
 use quote::format_ident;
@@ -223,7 +221,7 @@ impl Substitutions {
     ) -> Vec<TokenStream> {
         substitution_rules
             .iter()
-            .map(|c| Self::substitution_rule_to_code(c.circuit.as_ref().borrow().to_owned()))
+            .map(|c| Self::substitution_rule_to_code(c.circuit.borrow().to_owned()))
             .collect()
     }
 
@@ -236,12 +234,12 @@ impl Substitutions {
         else {
             panic!("Substitution rule must be a subtraction.");
         };
-        let CircuitExpression::Input(_) = new_var.as_ref().borrow().expression else {
+        let CircuitExpression::Input(_) = new_var.borrow().expression else {
             panic!("Substitution rule must be a simple substitution.");
         };
 
-        let expr = expr.as_ref().borrow().to_owned();
-        RustBackend::evaluate_single_node(usize::MAX, &expr, &HashSet::new())
+        let expr = expr.borrow();
+        RustBackend::default().evaluate_single_node(&expr)
     }
 
     fn base_single_row_substitutions(

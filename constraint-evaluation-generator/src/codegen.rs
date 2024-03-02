@@ -24,8 +24,13 @@ pub(crate) trait Codegen {
     }
 }
 
-#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Hash)]
-pub(crate) struct RustBackend;
+#[derive(Debug, Default, Clone, Eq, PartialEq)]
+pub(crate) struct RustBackend {
+    /// All [circuit] IDs known to be in scope.
+    ///
+    /// [circuit]: triton_vm::table::constraint_circuit::ConstraintCircuit
+    scope: HashSet<usize>,
+}
 
 #[derive(Debug, Default, Clone, Eq, PartialEq)]
 pub(crate) struct TasmBackend {
