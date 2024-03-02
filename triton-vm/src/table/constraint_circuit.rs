@@ -34,7 +34,6 @@ use crate::table::challenges::Challenges;
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub enum BinOp {
     Add,
-    Sub,
     Mul,
 }
 
@@ -42,7 +41,6 @@ impl Display for BinOp {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         match self {
             BinOp::Add => write!(f, "+"),
-            BinOp::Sub => write!(f, "-"),
             BinOp::Mul => write!(f, "*"),
         }
     }
@@ -52,7 +50,6 @@ impl ToTokens for BinOp {
     fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
         match self {
             BinOp::Add => tokens.extend(quote!(+)),
-            BinOp::Sub => tokens.extend(quote!(-)),
             BinOp::Mul => tokens.extend(quote!(*)),
         }
     }
@@ -61,11 +58,10 @@ impl ToTokens for BinOp {
 impl BinOp {
     pub fn operation<L, R, O>(&self, lhs: L, rhs: R) -> O
     where
-        L: Add<R, Output = O> + Sub<R, Output = O> + Mul<R, Output = O>,
+        L: Add<R, Output = O> + Mul<R, Output = O>,
     {
         match self {
             BinOp::Add => lhs + rhs,
-            BinOp::Sub => lhs - rhs,
             BinOp::Mul => lhs * rhs,
         }
     }
@@ -367,6 +363,14 @@ impl<II: InputIndicator> Display for ConstraintCircuit<II> {
 }
 
 impl<II: InputIndicator> ConstraintCircuit<II> {
+    fn new(id: usize, expression: CircuitExpression<II>) -> Self {
+        Self {
+            id,
+            ref_count: 0,
+            expression,
+        }
+    }
+
     /// Reset the reference counters for the entire subtree
     fn reset_ref_count_for_tree(&mut self) {
         self.ref_count = 0;
@@ -429,7 +433,7 @@ impl<II: InputIndicator> ConstraintCircuit<II> {
                     false => degree_lhs + degree_rhs,
                 };
                 match binop {
-                    BinOp::Add | BinOp::Sub => degree_additive,
+                    BinOp::Add => degree_additive,
                     BinOp::Mul => degree_multiplicative,
                 }
             }
@@ -456,8 +460,8 @@ impl<II: InputIndicator> ConstraintCircuit<II> {
         !matches!(&self.expression, BinaryOperation(_, _, _))
     }
 
-    /// Return true if this node represents a constant value of zero, does not catch composite
-    /// expressions that will always evaluate to zero.
+    /// Is the node the constant 0?
+    /// Does not catch composite expressions that will always evaluate to zero, like `0·a`.
     pub fn is_zero(&self) -> bool {
         match self.expression {
             BConstant(bfe) => bfe.is_zero(),
@@ -466,12 +470,20 @@ impl<II: InputIndicator> ConstraintCircuit<II> {
         }
     }
 
-    /// Return true if this node represents a constant value of one, does not catch composite
-    /// expressions that will always evaluate to one.
+    /// Is the node the constant 1?
+    /// Does not catch composite expressions that will always evaluate to one, like `1·1`.
     pub fn is_one(&self) -> bool {
         match self.expression {
             BConstant(bfe) => bfe.is_one(),
             XConstant(xfe) => xfe.is_one(),
+            _ => false,
+        }
+    }
+
+    pub fn is_neg_one(&self) -> bool {
+        match self.expression {
+            BConstant(bfe) => (-bfe).is_one(),
+            XConstant(xfe) => (-xfe).is_one(),
             _ => false,
         }
     }
@@ -587,44 +599,32 @@ fn binop<II: InputIndicator>(
     lhs: ConstraintCircuitMonad<II>,
     rhs: ConstraintCircuitMonad<II>,
 ) -> ConstraintCircuitMonad<II> {
-    let id = lhs.builder.id_counter.borrow().to_owned();
-    let expression = BinaryOperation(binop, lhs.circuit.clone(), rhs.circuit.clone());
-    let circuit = ConstraintCircuit {
-        id,
-        ref_count: 0,
-        expression,
-    };
-    let circuit = Rc::new(RefCell::new(circuit));
-    let new_node = lhs.new_monad_same_context(circuit);
-
-    let mut all_nodes = lhs.builder.all_nodes.borrow_mut();
-    if let Some(same_node) = all_nodes.get(&new_node) {
-        return same_node.to_owned();
+    // all `BinOp`s are commutative – try both orders of the operands
+    let new_node = binop_new_node(binop, &rhs, &lhs);
+    if let Some(node) = lhs.builder.all_nodes.borrow().get(&new_node) {
+        return node.to_owned();
     }
 
-    // If the operator commutes, check if the switched node has already been constructed.
-    // If it has, return it instead. Do not allow a new one to be built.
-    if matches!(binop, BinOp::Add | BinOp::Mul) {
-        let expression_switched = BinaryOperation(binop, rhs.circuit, lhs.circuit);
-        let circuit_switched = ConstraintCircuit {
-            id,
-            ref_count: 0,
-            expression: expression_switched,
-        };
-        let circuit_switched = Rc::new(RefCell::new(circuit_switched));
-        let new_node_switched = ConstraintCircuitMonad {
-            circuit: circuit_switched,
-            builder: lhs.builder.clone(),
-        };
-        if let Some(same_node) = all_nodes.get(&new_node_switched) {
-            return same_node.to_owned();
-        }
+    let new_node = binop_new_node(binop, &lhs, &rhs);
+    if let Some(node) = lhs.builder.all_nodes.borrow().get(&new_node) {
+        return node.to_owned();
     }
 
     *lhs.builder.id_counter.borrow_mut() += 1;
-    let was_inserted = all_nodes.insert(new_node.clone());
+    let was_inserted = lhs.builder.all_nodes.borrow_mut().insert(new_node.clone());
     assert!(was_inserted, "Binop-created value must be new");
     new_node
+}
+
+fn binop_new_node<II: InputIndicator>(
+    binop: BinOp,
+    lhs: &ConstraintCircuitMonad<II>,
+    rhs: &ConstraintCircuitMonad<II>,
+) -> ConstraintCircuitMonad<II> {
+    let id = lhs.builder.id_counter.borrow().to_owned();
+    let expression = BinaryOperation(binop, lhs.circuit.clone(), rhs.circuit.clone());
+    let circuit = ConstraintCircuit::new(id, expression);
+    lhs.builder.new_monad(circuit)
 }
 
 impl<II: InputIndicator> Add for ConstraintCircuitMonad<II> {
@@ -639,7 +639,7 @@ impl<II: InputIndicator> Sub for ConstraintCircuitMonad<II> {
     type Output = ConstraintCircuitMonad<II>;
 
     fn sub(self, rhs: Self) -> Self::Output {
-        binop(BinOp::Sub, self, rhs)
+        binop(BinOp::Add, self, -rhs)
     }
 }
 
@@ -648,6 +648,14 @@ impl<II: InputIndicator> Mul for ConstraintCircuitMonad<II> {
 
     fn mul(self, rhs: Self) -> Self::Output {
         binop(BinOp::Mul, self, rhs)
+    }
+}
+
+impl<II: InputIndicator> Neg for ConstraintCircuitMonad<II> {
+    type Output = ConstraintCircuitMonad<II>;
+
+    fn neg(self) -> Self::Output {
+        binop(BinOp::Mul, self.builder.minus_one(), self)
     }
 }
 
@@ -692,7 +700,7 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
         };
 
         match (op, lhs, rhs) {
-            (BinOp::Add | BinOp::Sub, l, r) if r.borrow().is_zero() => return Some(l.clone()),
+            (BinOp::Add, l, r) if r.borrow().is_zero() => return Some(l.clone()),
             (BinOp::Add, l, r) if l.borrow().is_zero() => return Some(r.clone()),
             (BinOp::Mul, l, r) if r.borrow().is_one() => return Some(l.clone()),
             (BinOp::Mul, l, r) if l.borrow().is_one() => return Some(r.clone()),
@@ -960,12 +968,35 @@ impl<II: InputIndicator> ConstraintCircuitBuilder<II> {
         }
     }
 
+    fn new_monad(&self, circuit: ConstraintCircuit<II>) -> ConstraintCircuitMonad<II> {
+        let circuit = Rc::new(RefCell::new(circuit));
+        ConstraintCircuitMonad {
+            circuit,
+            builder: self.clone(),
+        }
+    }
+
     pub fn get_node_by_id(&self, id: usize) -> Option<ConstraintCircuitMonad<II>> {
         self.all_nodes
             .borrow()
             .iter()
             .find(|node| node.circuit.borrow().id == id)
             .cloned()
+    }
+
+    /// The unique monad representing the constant value 0.
+    pub fn zero(&self) -> ConstraintCircuitMonad<II> {
+        self.b_constant(BFieldElement::zero())
+    }
+
+    /// The unique monad representing the constant value 1.
+    pub fn one(&self) -> ConstraintCircuitMonad<II> {
+        self.b_constant(BFieldElement::one())
+    }
+
+    /// The unique monad representing the constant value -1.
+    pub fn minus_one(&self) -> ConstraintCircuitMonad<II> {
+        self.b_constant(BFieldElement::one().neg())
     }
 
     /// Create constant leaf node.
@@ -997,25 +1028,16 @@ impl<II: InputIndicator> ConstraintCircuitBuilder<II> {
         }
 
         let id = self.id_counter.borrow().to_owned();
-        let circuit = ConstraintCircuit {
-            id,
-            ref_count: 0,
-            expression,
-        };
-        let circuit = Rc::new(RefCell::new(circuit));
-        let new_node = ConstraintCircuitMonad {
-            circuit,
-            builder: self.clone(),
-        };
+        let circuit = ConstraintCircuit::new(id, expression);
+        let new_node = self.new_monad(circuit);
 
-        let mut all_nodes = self.all_nodes.borrow_mut();
-        if let Some(same_node) = all_nodes.get(&new_node) {
-            same_node.to_owned()
-        } else {
-            *self.id_counter.borrow_mut() += 1;
-            all_nodes.insert(new_node.clone());
-            new_node
+        if let Some(same_node) = self.all_nodes.borrow().get(&new_node) {
+            return same_node.to_owned();
         }
+
+        *self.id_counter.borrow_mut() += 1;
+        self.all_nodes.borrow_mut().insert(new_node.clone());
+        new_node
     }
 
     /// Substitute all nodes with ID `old_id` with the given `new` node.
@@ -1062,7 +1084,6 @@ mod tests {
     use crate::table::hash_table::ExtHashTable;
     use crate::table::jump_stack_table::ExtJumpStackTable;
     use crate::table::lookup_table::ExtLookupTable;
-    use crate::table::master_table;
     use crate::table::master_table::*;
     use crate::table::op_stack_table::ExtOpStackTable;
     use crate::table::processor_table::ExtProcessorTable;
@@ -1418,8 +1439,8 @@ mod tests {
         let challenges = Challenges::new(challenges, &dummy_claim);
 
         let num_rows = 2;
-        let base_shape = [num_rows, master_table::NUM_BASE_COLUMNS];
-        let ext_shape = [num_rows, master_table::NUM_EXT_COLUMNS];
+        let base_shape = [num_rows, NUM_BASE_COLUMNS];
+        let ext_shape = [num_rows, NUM_EXT_COLUMNS];
         let base_rows = Array2::from_shape_simple_fn(base_shape, || rng.gen::<BFieldElement>());
         let ext_rows = Array2::from_shape_simple_fn(ext_shape, || rng.gen::<XFieldElement>());
         let base_rows = base_rows.view();
@@ -2046,7 +2067,7 @@ mod tests {
         ] {
             for (i, constraint) in constraints.iter().enumerate() {
                 let expression = constraint.circuit.borrow().expression.clone();
-                let BinaryOperation(BinOp::Sub, lhs, rhs) = expression else {
+                let BinaryOperation(BinOp::Add, lhs, rhs) = expression else {
                     panic!("New {constraint_type} constraint {i} must be a subtraction.");
                 };
                 let Input(input_indicator) = lhs.borrow().expression.clone() else {
@@ -2067,8 +2088,8 @@ mod tests {
         let num_rows = 2;
         let num_new_base_constraints = new_base_constraints.len();
         let num_new_ext_constraints = new_ext_constraints.len();
-        let num_base_cols = master_table::NUM_BASE_COLUMNS + num_new_base_constraints;
-        let num_ext_cols = master_table::NUM_EXT_COLUMNS + num_new_ext_constraints;
+        let num_base_cols = NUM_BASE_COLUMNS + num_new_base_constraints;
+        let num_ext_cols = NUM_EXT_COLUMNS + num_new_ext_constraints;
         let base_shape = [num_rows, num_base_cols];
         let ext_shape = [num_rows, num_ext_cols];
         let base_rows = Array2::from_shape_simple_fn(base_shape, || rng.gen::<BFieldElement>());

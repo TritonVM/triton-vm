@@ -318,10 +318,8 @@ impl TasmBackend {
     }
 
     fn tokenize_bin_op(binop: BinOp) -> TokenStream {
-        let minus_one = Self::load_base_field_constant(-BFieldElement::new(1));
         match binop {
             BinOp::Add => quote!(AnInstruction::XxAdd,),
-            BinOp::Sub => quote!(#minus_one AnInstruction::XxMul, AnInstruction::XxAdd,),
             BinOp::Mul => quote!(AnInstruction::XxMul,),
         }
     }
