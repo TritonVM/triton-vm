@@ -147,7 +147,7 @@ impl ExtHashTable {
         mid_low: ConstraintCircuitMonad<II>,
         lowest: ConstraintCircuitMonad<II>,
     ) -> ConstraintCircuitMonad<II> {
-        let constant = |c: u64| circuit_builder.b_constant(c.into());
+        let constant = |c: u64| circuit_builder.b_constant(c);
         let montgomery_modulus_inv = circuit_builder.b_constant(MONTGOMERY_MODULUS.inverse());
 
         let sum_of_shifted_limbs = highest * constant(1 << 48)
@@ -161,7 +161,7 @@ impl ExtHashTable {
         circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
         let challenge = |c| circuit_builder.challenge(c);
-        let constant = |c: u64| circuit_builder.b_constant(c.into());
+        let constant = |c: u64| circuit_builder.b_constant(c);
 
         let base_row = |column: HashBaseTableColumn| {
             circuit_builder.input(BaseRow(column.master_base_table_index()))
@@ -338,7 +338,7 @@ impl ExtHashTable {
             round_number_to_deselect <= NUM_ROUNDS,
             "Round number must be in [0, {NUM_ROUNDS}] but got {round_number_to_deselect}."
         );
-        let constant = |c: u64| circuit_builder.b_constant(c.into());
+        let constant = |c: u64| circuit_builder.b_constant(c);
 
         // To not subtract zero from the first factor: some special casing.
         let first_factor = match round_number_to_deselect {
@@ -358,7 +358,7 @@ impl ExtHashTable {
         mode_circuit_node: &ConstraintCircuitMonad<II>,
         mode_to_select: HashTableMode,
     ) -> ConstraintCircuitMonad<II> {
-        mode_circuit_node.clone() - circuit_builder.b_constant(mode_to_select.into())
+        mode_circuit_node.clone() - circuit_builder.b_constant(mode_to_select)
     }
 
     /// A constraint circuit evaluating to zero if and only if the given `mode_circuit_node` is
@@ -368,7 +368,7 @@ impl ExtHashTable {
         mode_circuit_node: &ConstraintCircuitMonad<II>,
         mode_to_deselect: HashTableMode,
     ) -> ConstraintCircuitMonad<II> {
-        let constant = |c: u64| circuit_builder.b_constant(c.into());
+        let constant = |c: u64| circuit_builder.b_constant(c);
         HashTableMode::iter()
             .filter(|&mode| mode != mode_to_deselect)
             .map(|mode| mode_circuit_node.clone() - constant(mode.into()))
@@ -380,7 +380,7 @@ impl ExtHashTable {
         current_instruction_node: &ConstraintCircuitMonad<II>,
         instruction_to_deselect: Instruction,
     ) -> ConstraintCircuitMonad<II> {
-        let constant = |c: u64| circuit_builder.b_constant(c.into());
+        let constant = |c: u64| circuit_builder.b_constant(c);
         let opcode = |instruction: Instruction| circuit_builder.b_constant(instruction.opcode_b());
         let relevant_instructions = [Hash, SpongeInit, SpongeAbsorb, SpongeSqueeze];
         assert!(relevant_instructions.contains(&instruction_to_deselect));
@@ -396,7 +396,7 @@ impl ExtHashTable {
         circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
         let opcode = |instruction: Instruction| circuit_builder.b_constant(instruction.opcode_b());
-        let constant = |c: u64| circuit_builder.b_constant(c.into());
+        let constant = |c: u64| circuit_builder.b_constant(c);
         let base_row = |column_id: HashBaseTableColumn| {
             circuit_builder.input(BaseRow(column_id.master_base_table_index()))
         };
@@ -617,7 +617,7 @@ impl ExtHashTable {
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
         let challenge = |c| circuit_builder.challenge(c);
         let opcode = |instruction: Instruction| circuit_builder.b_constant(instruction.opcode_b());
-        let constant = |c: u64| circuit_builder.b_constant(c.into());
+        let constant = |c: u64| circuit_builder.b_constant(c);
 
         let opcode_hash = opcode(Hash);
         let opcode_sponge_init = opcode(SpongeInit);
@@ -1070,7 +1070,7 @@ impl ExtHashTable {
         [ConstraintCircuitMonad<DualRowIndicator>; STATE_SIZE],
         [ConstraintCircuitMonad<DualRowIndicator>; STATE_SIZE],
     ) {
-        let constant = |c: u64| circuit_builder.b_constant(c.into());
+        let constant = |c: u64| circuit_builder.b_constant(c);
         let b_constant = |c| circuit_builder.b_constant(c);
         let current_base_row = |column_idx: HashBaseTableColumn| {
             circuit_builder.input(CurrentBaseRow(column_idx.master_base_table_index()))
@@ -1221,7 +1221,7 @@ impl ExtHashTable {
     ) -> ConstraintCircuitMonad<DualRowIndicator> {
         let challenge = |c| circuit_builder.challenge(c);
         let opcode = |instruction: Instruction| circuit_builder.b_constant(instruction.opcode_b());
-        let constant = |c: u32| circuit_builder.b_constant(c.into());
+        let constant = |c: u32| circuit_builder.b_constant(c);
         let next_base_row = |column_idx: HashBaseTableColumn| {
             circuit_builder.input(NextBaseRow(column_idx.master_base_table_index()))
         };
@@ -1271,7 +1271,7 @@ impl ExtHashTable {
     ) -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
         let challenge = |c| circuit_builder.challenge(c);
         let opcode = |instruction: Instruction| circuit_builder.b_constant(instruction.opcode_b());
-        let constant = |c: u64| circuit_builder.b_constant(c.into());
+        let constant = |c: u64| circuit_builder.b_constant(c);
         let base_row = |column_idx: HashBaseTableColumn| {
             circuit_builder.input(BaseRow(column_idx.master_base_table_index()))
         };

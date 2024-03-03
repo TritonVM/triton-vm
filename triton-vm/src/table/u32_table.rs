@@ -117,7 +117,7 @@ impl ExtU32Table {
         circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
         let challenge = |c| circuit_builder.challenge(c);
-        let one = circuit_builder.b_constant(1_u32.into());
+        let one = circuit_builder.b_constant(1);
 
         let copy_flag = circuit_builder.input(BaseRow(CopyFlag.master_base_table_index()));
         let lhs = circuit_builder.input(BaseRow(LHS.master_base_table_index()));
@@ -152,8 +152,8 @@ impl ExtU32Table {
     pub fn consistency_constraints(
         circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
-        let one = circuit_builder.b_constant(1_u32.into());
-        let two = circuit_builder.b_constant(2_u32.into());
+        let one = || circuit_builder.b_constant(1);
+        let two = || circuit_builder.b_constant(2);
 
         let copy_flag = circuit_builder.input(BaseRow(CopyFlag.master_base_table_index()));
         let bits = circuit_builder.input(BaseRow(Bits.master_base_table_index()));
@@ -172,51 +172,51 @@ impl ExtU32Table {
             Self::instruction_deselector(instruction_to_select, circuit_builder, &ci)
         };
 
-        let copy_flag_is_bit = copy_flag.clone() * (one.clone() - copy_flag.clone());
+        let copy_flag_is_bit = copy_flag.clone() * (one() - copy_flag.clone());
         let copy_flag_is_0_or_bits_is_0 = copy_flag.clone() * bits.clone();
         let bits_minus_33_inv_is_inverse_of_bits_minus_33 =
-            one.clone() - bits_minus_33_inv * (bits - circuit_builder.b_constant(bfe!(33)));
+            one() - bits_minus_33_inv * (bits - circuit_builder.b_constant(33));
         let lhs_inv_is_0_or_the_inverse_of_lhs =
-            lhs_inv.clone() * (one.clone() - lhs.clone() * lhs_inv.clone());
+            lhs_inv.clone() * (one() - lhs.clone() * lhs_inv.clone());
         let lhs_is_0_or_lhs_inverse_is_the_inverse_of_lhs =
-            lhs.clone() * (one.clone() - lhs.clone() * lhs_inv.clone());
+            lhs.clone() * (one() - lhs.clone() * lhs_inv.clone());
         let rhs_inv_is_0_or_the_inverse_of_rhs =
-            rhs_inv.clone() * (one.clone() - rhs.clone() * rhs_inv.clone());
+            rhs_inv.clone() * (one() - rhs.clone() * rhs_inv.clone());
         let rhs_is_0_or_rhs_inverse_is_the_inverse_of_rhs =
-            rhs.clone() * (one.clone() - rhs.clone() * rhs_inv.clone());
+            rhs.clone() * (one() - rhs.clone() * rhs_inv.clone());
         let result_is_initialized_correctly_for_lt_with_copy_flag_0 =
             instruction_deselector(Instruction::Lt)
-                * (copy_flag.clone() - one.clone())
-                * (one.clone() - lhs.clone() * lhs_inv.clone())
-                * (one.clone() - rhs.clone() * rhs_inv.clone())
-                * (result.clone() - two);
+                * (copy_flag.clone() - one())
+                * (one() - lhs.clone() * lhs_inv.clone())
+                * (one() - rhs.clone() * rhs_inv.clone())
+                * (result.clone() - two());
         let result_is_initialized_correctly_for_lt_with_copy_flag_1 =
             instruction_deselector(Instruction::Lt)
                 * copy_flag.clone()
-                * (one.clone() - lhs.clone() * lhs_inv.clone())
-                * (one.clone() - rhs.clone() * rhs_inv.clone())
+                * (one() - lhs.clone() * lhs_inv.clone())
+                * (one() - rhs.clone() * rhs_inv.clone())
                 * result.clone();
         let result_is_initialized_correctly_for_and = instruction_deselector(Instruction::And)
-            * (one.clone() - lhs.clone() * lhs_inv.clone())
-            * (one.clone() - rhs.clone() * rhs_inv.clone())
+            * (one() - lhs.clone() * lhs_inv.clone())
+            * (one() - rhs.clone() * rhs_inv.clone())
             * result.clone();
         let result_is_initialized_correctly_for_pow = instruction_deselector(Instruction::Pow)
-            * (one.clone() - rhs * rhs_inv)
-            * (result.clone() - one.clone());
+            * (one() - rhs * rhs_inv)
+            * (result.clone() - one());
         let result_is_initialized_correctly_for_log_2_floor =
             instruction_deselector(Instruction::Log2Floor)
-                * (copy_flag.clone() - one.clone())
-                * (one.clone() - lhs.clone() * lhs_inv.clone())
-                * (result.clone() + one.clone());
+                * (copy_flag.clone() - one())
+                * (one() - lhs.clone() * lhs_inv.clone())
+                * (result.clone() + one());
         let result_is_initialized_correctly_for_pop_count =
             instruction_deselector(Instruction::PopCount)
-                * (one.clone() - lhs.clone() * lhs_inv.clone())
+                * (one() - lhs.clone() * lhs_inv.clone())
                 * result;
         let if_log_2_floor_on_0_then_vm_crashes = instruction_deselector(Instruction::Log2Floor)
             * copy_flag.clone()
-            * (one.clone() - lhs * lhs_inv);
+            * (one() - lhs * lhs_inv);
         let if_copy_flag_is_0_then_lookup_multiplicity_is_0 =
-            (copy_flag - one) * lookup_multiplicity;
+            (copy_flag - one()) * lookup_multiplicity;
 
         vec![
             copy_flag_is_bit,
@@ -241,8 +241,8 @@ impl ExtU32Table {
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
         let challenge = |c| circuit_builder.challenge(c);
-        let one = circuit_builder.b_constant(1_u32.into());
-        let two = circuit_builder.b_constant(2_u32.into());
+        let one = || circuit_builder.b_constant(1);
+        let two = || circuit_builder.b_constant(2);
 
         let copy_flag = circuit_builder.input(CurrentBaseRow(CopyFlag.master_base_table_index()));
         let bits = circuit_builder.input(CurrentBaseRow(Bits.master_base_table_index()));
@@ -273,124 +273,124 @@ impl ExtU32Table {
 
         // helpful aliases
         let ci_is_pow = ci.clone() - circuit_builder.b_constant(Instruction::Pow.opcode_b());
-        let lhs_lsb = lhs.clone() - two.clone() * lhs_next.clone();
-        let rhs_lsb = rhs.clone() - two.clone() * rhs_next.clone();
+        let lhs_lsb = lhs.clone() - two() * lhs_next.clone();
+        let rhs_lsb = rhs.clone() - two() * rhs_next.clone();
 
         // general constraints
         let if_copy_flag_next_is_1_then_lhs_is_0_or_ci_is_pow =
             copy_flag_next.clone() * lhs.clone() * ci_is_pow.clone();
         let if_copy_flag_next_is_1_then_rhs_is_0 = copy_flag_next.clone() * rhs.clone();
         let if_copy_flag_next_is_0_then_ci_stays =
-            (copy_flag_next.clone() - one.clone()) * (ci_next.clone() - ci);
+            (copy_flag_next.clone() - one()) * (ci_next.clone() - ci);
         let if_copy_flag_next_is_0_and_lhs_next_is_nonzero_and_ci_not_pow_then_bits_increases_by_1 =
-            (copy_flag_next.clone() - one.clone())
+            (copy_flag_next.clone() - one())
                 * lhs.clone()
                 * ci_is_pow.clone()
-                * (bits_next.clone() - bits.clone() - one.clone());
+                * (bits_next.clone() - bits.clone() - one());
         let if_copy_flag_next_is_0_and_rhs_next_is_nonzero_then_bits_increases_by_1 =
-            (copy_flag_next.clone() - one.clone()) * rhs * (bits_next - bits.clone() - one.clone());
+            (copy_flag_next.clone() - one()) * rhs * (bits_next - bits.clone() - one());
         let if_copy_flag_next_is_0_and_ci_not_pow_then_lhs_lsb_is_a_bit = (copy_flag_next.clone()
-            - one.clone())
+            - one())
             * ci_is_pow
             * lhs_lsb.clone()
-            * (lhs_lsb.clone() - one.clone());
-        let if_copy_flag_next_is_0_then_rhs_lsb_is_a_bit = (copy_flag_next.clone() - one.clone())
-            * rhs_lsb.clone()
-            * (rhs_lsb.clone() - one.clone());
+            * (lhs_lsb.clone() - one());
+        let if_copy_flag_next_is_0_then_rhs_lsb_is_a_bit =
+            (copy_flag_next.clone() - one()) * rhs_lsb.clone() * (rhs_lsb.clone() - one());
 
         // instruction lt
         let if_copy_flag_next_is_0_and_ci_is_lt_and_result_next_is_0_then_result_is_0 =
-            (copy_flag_next.clone() - one.clone())
+            (copy_flag_next.clone() - one())
                 * instruction_deselector(Instruction::Lt)
-                * (result_next.clone() - one.clone())
-                * (result_next.clone() - two.clone())
+                * (result_next.clone() - one())
+                * (result_next.clone() - two())
                 * result.clone();
         let if_copy_flag_next_is_0_and_ci_is_lt_and_result_next_is_1_then_result_is_1 =
-            (copy_flag_next.clone() - one.clone())
+            (copy_flag_next.clone() - one())
                 * instruction_deselector(Instruction::Lt)
                 * result_next.clone()
-                * (result_next.clone() - two.clone())
-                * (result.clone() - one.clone());
+                * (result_next.clone() - two())
+                * (result.clone() - one());
         let if_copy_flag_next_is_0_and_ci_is_lt_and_result_next_is_2_and_lt_is_0_then_result_is_0 =
-            (copy_flag_next.clone() - one.clone())
+            (copy_flag_next.clone() - one())
                 * instruction_deselector(Instruction::Lt)
                 * result_next.clone()
-                * (result_next.clone() - one.clone())
-                * (lhs_lsb.clone() - one.clone())
+                * (result_next.clone() - one())
+                * (lhs_lsb.clone() - one())
                 * rhs_lsb.clone()
-                * (result.clone() - one.clone());
+                * (result.clone() - one());
         let if_copy_flag_next_is_0_and_ci_is_lt_and_result_next_is_2_and_lt_is_1_then_result_is_1 =
-            (copy_flag_next.clone() - one.clone())
+            (copy_flag_next.clone() - one())
                 * instruction_deselector(Instruction::Lt)
                 * result_next.clone()
-                * (result_next.clone() - one.clone())
+                * (result_next.clone() - one())
                 * lhs_lsb.clone()
-                * (rhs_lsb.clone() - one.clone())
+                * (rhs_lsb.clone() - one())
                 * result.clone();
         let if_copy_flag_next_is_0_and_ci_is_lt_and_result_still_not_known_then_result_is_2 =
-            (copy_flag_next.clone() - one.clone())
+            (copy_flag_next.clone() - one())
                 * instruction_deselector(Instruction::Lt)
                 * result_next.clone()
-                * (result_next.clone() - one.clone())
-                * (one.clone() - lhs_lsb.clone() - rhs_lsb.clone()
-                    + two.clone() * lhs_lsb.clone() * rhs_lsb.clone())
-                * (copy_flag.clone() - one.clone())
-                * (result.clone() - two.clone());
+                * (result_next.clone() - one())
+                * (one() - lhs_lsb.clone() - rhs_lsb.clone()
+                    + two() * lhs_lsb.clone() * rhs_lsb.clone())
+                * (copy_flag.clone() - one())
+                * (result.clone() - two());
         let if_copy_flag_next_is_0_and_ci_is_lt_and_copy_flag_dictates_result_then_result_is_0 =
-            (copy_flag_next.clone() - one.clone())
+            (copy_flag_next.clone() - one())
                 * instruction_deselector(Instruction::Lt)
                 * result_next.clone()
-                * (result_next.clone() - one.clone())
-                * (one.clone() - lhs_lsb.clone() - rhs_lsb.clone()
-                    + two.clone() * lhs_lsb.clone() * rhs_lsb.clone())
+                * (result_next.clone() - one())
+                * (one() - lhs_lsb.clone() - rhs_lsb.clone()
+                    + two() * lhs_lsb.clone() * rhs_lsb.clone())
                 * copy_flag
                 * result.clone();
 
         // instruction and
-        let if_copy_flag_next_is_0_and_ci_is_and_then_results_updates_correctly =
-            (copy_flag_next.clone() - one.clone())
-                * instruction_deselector(Instruction::And)
-                * (result.clone() - two * result_next.clone() - lhs_lsb.clone() * rhs_lsb.clone());
+        let if_copy_flag_next_is_0_and_ci_is_and_then_results_updates_correctly = (copy_flag_next
+            .clone()
+            - one())
+            * instruction_deselector(Instruction::And)
+            * (result.clone() - two() * result_next.clone() - lhs_lsb.clone() * rhs_lsb.clone());
 
         // instruction log_2_floor
         let if_copy_flag_next_is_0_and_ci_is_log_2_floor_lhs_next_0_for_first_time_then_set_result =
-            (copy_flag_next.clone() - one.clone())
+            (copy_flag_next.clone() - one())
                 * instruction_deselector(Instruction::Log2Floor)
-                * (one.clone() - lhs_next.clone() * lhs_inv_next)
+                * (one() - lhs_next.clone() * lhs_inv_next)
                 * lhs.clone()
                 * (result.clone() - bits);
         let if_copy_flag_next_is_0_and_ci_is_log_2_floor_and_lhs_next_not_0_then_copy_result =
-            (copy_flag_next.clone() - one.clone())
+            (copy_flag_next.clone() - one())
                 * instruction_deselector(Instruction::Log2Floor)
                 * lhs_next.clone()
                 * (result_next.clone() - result.clone());
 
         // instruction pow
         let if_copy_flag_next_is_0_and_ci_is_pow_then_lhs_remains_unchanged =
-            (copy_flag_next.clone() - one.clone())
+            (copy_flag_next.clone() - one())
                 * instruction_deselector(Instruction::Pow)
                 * (lhs_next.clone() - lhs.clone());
 
         let if_copy_flag_next_is_0_and_ci_is_pow_and_rhs_lsb_is_0_then_result_squares =
-            (copy_flag_next.clone() - one.clone())
+            (copy_flag_next.clone() - one())
                 * instruction_deselector(Instruction::Pow)
-                * (rhs_lsb.clone() - one.clone())
+                * (rhs_lsb.clone() - one())
                 * (result.clone() - result_next.clone() * result_next.clone());
 
         let if_copy_flag_next_is_0_and_ci_is_pow_and_rhs_lsb_is_1_then_result_squares_and_mults =
-            (copy_flag_next.clone() - one.clone())
+            (copy_flag_next.clone() - one())
                 * instruction_deselector(Instruction::Pow)
                 * rhs_lsb
                 * (result.clone() - result_next.clone() * result_next.clone() * lhs);
 
         let if_copy_flag_next_is_0_and_ci_is_pop_count_then_result_increases_by_lhs_lsb =
-            (copy_flag_next.clone() - one.clone())
+            (copy_flag_next.clone() - one())
                 * instruction_deselector(Instruction::PopCount)
                 * (result - result_next.clone() - lhs_lsb);
 
         // running sum for Lookup Argument with Processor Table
         let if_copy_flag_next_is_0_then_running_sum_log_derivative_stays = (copy_flag_next.clone()
-            - one)
+            - one())
             * (running_sum_log_derivative_next.clone() - running_sum_log_derivative.clone());
 
         let compressed_row_next = challenge(U32CiWeight) * ci_next

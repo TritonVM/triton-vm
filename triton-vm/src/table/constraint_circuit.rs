@@ -954,27 +954,33 @@ impl<II: InputIndicator> ConstraintCircuitBuilder<II> {
 
     /// The unique monad representing the constant value 0.
     pub fn zero(&self) -> ConstraintCircuitMonad<II> {
-        self.b_constant(bfe!(0))
+        self.b_constant(0)
     }
 
     /// The unique monad representing the constant value 1.
     pub fn one(&self) -> ConstraintCircuitMonad<II> {
-        self.b_constant(bfe!(1))
+        self.b_constant(1)
     }
 
     /// The unique monad representing the constant value -1.
     pub fn minus_one(&self) -> ConstraintCircuitMonad<II> {
-        self.b_constant(bfe!(-1))
+        self.b_constant(-1)
     }
 
-    /// Create constant leaf node.
-    pub fn x_constant(&self, xfe: XFieldElement) -> ConstraintCircuitMonad<II> {
-        self.make_leaf(XConstant(xfe))
+    /// Leaf node with constant over the [base field][BFieldElement].
+    pub fn b_constant<B>(&self, bfe: B) -> ConstraintCircuitMonad<II>
+    where
+        B: Into<BFieldElement>,
+    {
+        self.make_leaf(BConstant(bfe.into()))
     }
 
-    /// Create constant leaf node.
-    pub fn b_constant(&self, bfe: BFieldElement) -> ConstraintCircuitMonad<II> {
-        self.make_leaf(BConstant(bfe))
+    /// Leaf node with constant over the [extension field][XFieldElement].
+    pub fn x_constant<X>(&self, xfe: X) -> ConstraintCircuitMonad<II>
+    where
+        X: Into<XFieldElement>,
+    {
+        self.make_leaf(XConstant(xfe.into()))
     }
 
     /// Create deterministic input leaf node.
@@ -1096,13 +1102,13 @@ mod tests {
             5..=9 => circuit_builder.input(DualRowIndicator::NextBaseRow(base_col_index)),
             10..=14 => circuit_builder.input(DualRowIndicator::CurrentExtRow(ext_col_index)),
             15..=19 => circuit_builder.input(DualRowIndicator::NextExtRow(ext_col_index)),
-            20..=24 => circuit_builder.b_constant(rng.gen()),
-            25..=29 => circuit_builder.x_constant(rng.gen()),
+            20..=24 => circuit_builder.b_constant(rng.gen::<BFieldElement>()),
+            25..=29 => circuit_builder.x_constant(rng.gen::<XFieldElement>()),
             30..=34 => circuit_builder.challenge(random_challenge_id()),
-            35 => circuit_builder.b_constant(bfe!(0)),
-            36 => circuit_builder.x_constant(xfe!(0)),
-            37 => circuit_builder.b_constant(bfe!(1)),
-            38 => circuit_builder.x_constant(xfe!(1)),
+            35 => circuit_builder.b_constant(0),
+            36 => circuit_builder.x_constant(0),
+            37 => circuit_builder.b_constant(1),
+            38 => circuit_builder.x_constant(1),
             _ => unreachable!(),
         }
     }
@@ -1147,7 +1153,7 @@ mod tests {
             let hash0 = hasher0.finish();
             assert_eq!(circuit, circuit);
 
-            let zero = circuit.builder.x_constant(0.into());
+            let zero = circuit.builder.x_constant(0);
             let same_circuit = circuit.clone() + zero;
             let mut hasher1 = DefaultHasher::new();
             same_circuit.hash(&mut hasher1);
@@ -1204,9 +1210,9 @@ mod tests {
             ConstraintCircuitBuilder::new();
         let var_0 = circuit_builder.input(DualRowIndicator::CurrentBaseRow(0));
         let var_4 = circuit_builder.input(DualRowIndicator::NextBaseRow(4));
-        let four = circuit_builder.x_constant(4.into());
-        let one = circuit_builder.x_constant(1.into());
-        let zero = circuit_builder.x_constant(0.into());
+        let four = circuit_builder.x_constant(4);
+        let one = circuit_builder.x_constant(1);
+        let zero = circuit_builder.x_constant(0);
 
         assert_ne!(var_0, var_4);
         assert_ne!(var_0, four);
@@ -1267,8 +1273,8 @@ mod tests {
     fn constant_folding_pbt() {
         for _ in 0..200 {
             let circuit = random_circuit();
-            let one = circuit.builder.x_constant(1.into());
-            let zero = circuit.builder.x_constant(0.into());
+            let one = circuit.builder.x_constant(1);
+            let zero = circuit.builder.x_constant(0);
 
             // Verify that constant folding can handle a = a * 1
             let copy_0 = deep_copy(&circuit.circuit.borrow());
@@ -1580,7 +1586,7 @@ mod tests {
         let builder = ConstraintCircuitBuilder::new();
         let x = |i| builder.input(BaseRow(i));
         let y = |i| builder.input(ExtRow(i));
-        let b_con = |i: u64| builder.b_constant(i.into());
+        let b_con = |i: u64| builder.b_constant(i);
 
         let constraint_0 = x(0) * x(0) * (x(1) - x(2)) - x(0) * x(2) - b_con(42);
         let constraint_1 = x(1) * (x(1) - b_con(5)) * x(2) * (x(2) - b_con(1));
@@ -2134,7 +2140,7 @@ mod tests {
         let builder = ConstraintCircuitBuilder::new();
 
         let x = |i| builder.input(BaseRow(i));
-        let b_con = |i: u64| builder.b_constant(i.into());
+        let b_con = |i: u64| builder.b_constant(i);
 
         let sub_tree_0 = x(0) * x(1) * (x(2) - b_con(1)) * x(3) * x(4);
         let sub_tree_1 = x(0) * x(1) * (x(2) - b_con(1)) * x(3) * x(5);

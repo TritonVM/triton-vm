@@ -501,7 +501,7 @@ impl ExtRamTable {
     pub fn terminal_constraints(
         circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
-        let constant = |c: u32| circuit_builder.b_constant(c.into());
+        let constant = |c: u32| circuit_builder.b_constant(c);
         let ext_row = |column: RamExtTableColumn| {
             circuit_builder.input(ExtRow(column.master_ext_table_index()))
         };

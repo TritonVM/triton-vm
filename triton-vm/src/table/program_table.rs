@@ -88,7 +88,7 @@ impl ExtProgramTable {
     pub fn consistency_constraints(
         circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
-        let constant = |c: u32| circuit_builder.b_constant(c.into());
+        let constant = |c: u32| circuit_builder.b_constant(c);
         let base_row = |col: ProgramBaseTableColumn| {
             circuit_builder.input(BaseRow(col.master_base_table_index()))
         };
@@ -125,7 +125,7 @@ impl ExtProgramTable {
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
         let challenge = |c| circuit_builder.challenge(c);
-        let constant = |c: u64| circuit_builder.b_constant(c.into());
+        let constant = |c: u64| circuit_builder.b_constant(c);
 
         let current_base_row = |col: ProgramBaseTableColumn| {
             circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
@@ -259,7 +259,7 @@ impl ExtProgramTable {
     pub fn terminal_constraints(
         circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
-        let constant = |c: u64| circuit_builder.b_constant(c.into());
+        let constant = |c: u64| circuit_builder.b_constant(c);
         let base_row = |col: ProgramBaseTableColumn| {
             circuit_builder.input(BaseRow(col.master_base_table_index()))
         };

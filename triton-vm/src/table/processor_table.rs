@@ -492,7 +492,7 @@ impl ExtProcessorTable {
     pub fn initial_constraints(
         circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
-        let constant = |c: u32| circuit_builder.b_constant(c.into());
+        let constant = |c: u32| circuit_builder.b_constant(c);
         let x_constant = |x| circuit_builder.x_constant(x);
         let challenge = |c| circuit_builder.challenge(c);
         let base_row = |col: ProcessorBaseTableColumn| {
@@ -647,7 +647,7 @@ impl ExtProcessorTable {
     pub fn consistency_constraints(
         circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
-        let constant = |c: u32| circuit_builder.b_constant(c.into());
+        let constant = |c: u32| circuit_builder.b_constant(c);
         let base_row = |col: ProcessorBaseTableColumn| {
             circuit_builder.input(BaseRow(col.master_base_table_index()))
         };
@@ -697,7 +697,7 @@ impl ExtProcessorTable {
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
         index: usize,
     ) -> ConstraintCircuitMonad<DualRowIndicator> {
-        let one = || circuit_builder.b_constant(1_u32.into());
+        let one = || circuit_builder.b_constant(1);
         let hv = |idx| Self::helper_variable(circuit_builder, idx);
 
         match index {
@@ -770,7 +770,7 @@ impl ExtProcessorTable {
             .max()
             .unwrap();
 
-        let zero_poly = circuit_builder.b_constant(0_u32.into());
+        let zero_poly = circuit_builder.b_constant(0);
         let all_tc_polys_for_all_instructions_transposed = (0..max_number_of_constraints)
             .map(|idx| {
                 all_tc_polys_for_all_instructions
@@ -797,7 +797,7 @@ impl ExtProcessorTable {
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
         instruction_transition_constraints: Vec<ConstraintCircuitMonad<DualRowIndicator>>,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        let constant = |c: u64| circuit_builder.b_constant(c.into());
+        let constant = |c: u64| circuit_builder.b_constant(c);
         let curr_base_row = |col: ProcessorBaseTableColumn| {
             circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
         };
@@ -846,7 +846,7 @@ impl ExtProcessorTable {
     fn instruction_group_decompose_arg(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        let constant = |c: u32| circuit_builder.b_constant(c.into());
+        let constant = |c: u32| circuit_builder.b_constant(c);
         let curr_base_row = |col: ProcessorBaseTableColumn| {
             circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
         };
@@ -970,7 +970,7 @@ impl ExtProcessorTable {
     fn instruction_group_grow_op_stack_and_top_two_elements_unconstrained(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        let constant = |c: u32| circuit_builder.b_constant(c.into());
+        let constant = |c: u32| circuit_builder.b_constant(c);
         let curr_base_row = |col: ProcessorBaseTableColumn| {
             circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
         };
@@ -1020,7 +1020,7 @@ impl ExtProcessorTable {
     fn instruction_group_op_stack_shrinks_and_top_three_elements_unconstrained(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        let constant = |c: u32| circuit_builder.b_constant(c.into());
+        let constant = |c: u32| circuit_builder.b_constant(c);
         let curr_base_row = |col: ProcessorBaseTableColumn| {
             circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
         };
@@ -1108,7 +1108,7 @@ impl ExtProcessorTable {
     fn instruction_group_step_1(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        let constant = |c: u32| circuit_builder.b_constant(c.into());
+        let constant = |c: u32| circuit_builder.b_constant(c);
         let curr_base_row = |col: ProcessorBaseTableColumn| {
             circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
         };
@@ -1128,7 +1128,7 @@ impl ExtProcessorTable {
     fn instruction_group_step_2(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        let constant = |c: u32| circuit_builder.b_constant(c.into());
+        let constant = |c: u32| circuit_builder.b_constant(c);
         let curr_base_row = |col: ProcessorBaseTableColumn| {
             circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
         };
@@ -1152,7 +1152,7 @@ impl ExtProcessorTable {
         instruction: Instruction,
         instruction_bit_polynomials: [ConstraintCircuitMonad<II>; InstructionBit::COUNT],
     ) -> ConstraintCircuitMonad<II> {
-        let one = circuit_builder.b_constant(1_u32.into());
+        let one = || circuit_builder.b_constant(1);
 
         let selector_bits: [_; InstructionBit::COUNT] = [
             instruction.ib(InstructionBit::IB0),
@@ -1163,14 +1163,13 @@ impl ExtProcessorTable {
             instruction.ib(InstructionBit::IB5),
             instruction.ib(InstructionBit::IB6),
         ];
-        let deselector_polynomials =
-            selector_bits.map(|b| one.clone() - circuit_builder.b_constant(b));
+        let deselector_polynomials = selector_bits.map(|b| one() - circuit_builder.b_constant(b));
 
         instruction_bit_polynomials
             .into_iter()
             .zip_eq(deselector_polynomials)
             .map(|(instruction_bit_poly, deselector_poly)| instruction_bit_poly - deselector_poly)
-            .fold(one, ConstraintCircuitMonad::mul)
+            .fold(one(), ConstraintCircuitMonad::mul)
     }
 
     /// A polynomial that has no solutions when `ci` is `instruction`.
@@ -1346,7 +1345,7 @@ impl ExtProcessorTable {
     fn instruction_swap(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        let one = || circuit_builder.b_constant(1_u32.into());
+        let one = || circuit_builder.b_constant(1);
         let indicator_poly = |idx| Self::indicator_polynomial(circuit_builder, idx);
         let curr_base_row = |col: ProcessorBaseTableColumn| {
             circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
@@ -1436,7 +1435,7 @@ impl ExtProcessorTable {
     fn instruction_skiz(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        let constant = |c: u32| circuit_builder.b_constant(c.into());
+        let constant = |c: u32| circuit_builder.b_constant(c);
         let one = || constant(1);
         let curr_base_row = |col: ProcessorBaseTableColumn| {
             circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
@@ -1496,7 +1495,7 @@ impl ExtProcessorTable {
     fn next_instruction_range_check_constraints_for_instruction_skiz(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        let constant = |c: u32| circuit_builder.b_constant(c.into());
+        let constant = |c: u32| circuit_builder.b_constant(c);
         let curr_base_row = |col: ProcessorBaseTableColumn| {
             circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
         };
@@ -1522,7 +1521,7 @@ impl ExtProcessorTable {
     fn instruction_call(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        let constant = |c: u32| circuit_builder.b_constant(c.into());
+        let constant = |c: u32| circuit_builder.b_constant(c);
         let curr_base_row = |col: ProcessorBaseTableColumn| {
             circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
         };
@@ -1560,7 +1559,7 @@ impl ExtProcessorTable {
     fn instruction_return(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        let constant = |c: u32| circuit_builder.b_constant(c.into());
+        let constant = |c: u32| circuit_builder.b_constant(c);
         let curr_base_row = |col: ProcessorBaseTableColumn| {
             circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
         };
@@ -1610,7 +1609,7 @@ impl ExtProcessorTable {
     fn instruction_assert(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        let constant = |c: u32| circuit_builder.b_constant(c.into());
+        let constant = |c: u32| circuit_builder.b_constant(c);
         let curr_base_row = |col: ProcessorBaseTableColumn| {
             circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
         };
@@ -1683,7 +1682,7 @@ impl ExtProcessorTable {
     fn instruction_hash(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        let constant = |c: u32| circuit_builder.b_constant(c.into());
+        let constant = |c: u32| circuit_builder.b_constant(c);
         let curr_base_row = |col: ProcessorBaseTableColumn| {
             circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
         };
@@ -1718,7 +1717,7 @@ impl ExtProcessorTable {
     fn instruction_divine_sibling(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        let constant = |c: u32| circuit_builder.b_constant(c.into());
+        let constant = |c: u32| circuit_builder.b_constant(c);
         let one = || constant(1);
         let curr_base_row = |col: ProcessorBaseTableColumn| {
             circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
@@ -1884,7 +1883,7 @@ impl ExtProcessorTable {
     fn instruction_invert(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        let constant = |c: u32| circuit_builder.b_constant(c.into());
+        let constant = |c: u32| circuit_builder.b_constant(c);
         let one = || constant(1);
         let curr_base_row = |col: ProcessorBaseTableColumn| {
             circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
@@ -1907,7 +1906,7 @@ impl ExtProcessorTable {
     fn instruction_eq(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        let constant = |c: u32| circuit_builder.b_constant(c.into());
+        let constant = |c: u32| circuit_builder.b_constant(c);
         let one = || constant(1);
         let curr_base_row = |col: ProcessorBaseTableColumn| {
             circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
@@ -1949,7 +1948,7 @@ impl ExtProcessorTable {
     fn instruction_split(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        let constant = |c: u64| circuit_builder.b_constant(c.into());
+        let constant = |c: u64| circuit_builder.b_constant(c);
         let one = || constant(1);
         let curr_base_row = |col: ProcessorBaseTableColumn| {
             circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
@@ -2170,7 +2169,7 @@ impl ExtProcessorTable {
     fn instruction_xinv(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        let constant = |c: u64| circuit_builder.b_constant(c.into());
+        let constant = |c: u64| circuit_builder.b_constant(c);
         let curr_base_row = |col: ProcessorBaseTableColumn| {
             circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
         };
@@ -2472,7 +2471,7 @@ impl ExtProcessorTable {
     fn log_derivative_for_instruction_lookup_updates_correctly(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> ConstraintCircuitMonad<DualRowIndicator> {
-        let one = || circuit_builder.b_constant(1_u32.into());
+        let one = || circuit_builder.b_constant(1);
         let challenge = |c: ChallengeId| circuit_builder.challenge(c);
         let next_base_row = |col: ProcessorBaseTableColumn| {
             circuit_builder.input(NextBaseRow(col.master_base_table_index()))
@@ -2501,7 +2500,7 @@ impl ExtProcessorTable {
     fn constraints_for_shrinking_stack_by_3_and_top_3_unconstrained(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        let constant = |c: u64| circuit_builder.b_constant(c.into());
+        let constant = |c: u64| circuit_builder.b_constant(c);
         let curr_base_row = |col: ProcessorBaseTableColumn| {
             circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
         };
@@ -2601,7 +2600,7 @@ impl ExtProcessorTable {
         let constraint_group_lengths = all_constraint_groups.iter().map(|x| x.len());
         let num_constraints = constraint_group_lengths.max().unwrap_or(0);
 
-        let zero_constraint = || circuit_builder.b_constant(0_u32.into());
+        let zero_constraint = || circuit_builder.b_constant(0);
         let mut combined_constraints = vec![];
         for i in 0..num_constraints {
             let combined_constraint = all_constraint_groups
@@ -2617,7 +2616,7 @@ impl ExtProcessorTable {
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
         n: usize,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        let constant = |c: usize| circuit_builder.b_constant(u32::try_from(c).unwrap().into());
+        let constant = |c: usize| circuit_builder.b_constant(u64::try_from(c).unwrap());
         let curr_base_row = |col: ProcessorBaseTableColumn| {
             circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
         };
@@ -2647,7 +2646,7 @@ impl ExtProcessorTable {
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
         n: usize,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        let constant = |c: usize| circuit_builder.b_constant(u32::try_from(c).unwrap().into());
+        let constant = |c: usize| circuit_builder.b_constant(u32::try_from(c).unwrap());
         let curr_base_row = |col: ProcessorBaseTableColumn| {
             circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
         };
@@ -2697,7 +2696,7 @@ impl ExtProcessorTable {
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
         n: usize,
     ) -> ConstraintCircuitMonad<DualRowIndicator> {
-        let constant = |c: u32| circuit_builder.b_constant(c.into());
+        let constant = |c: u32| circuit_builder.b_constant(c);
         let curr_ext_row = |col: ProcessorExtTableColumn| {
             circuit_builder.input(CurrentExtRow(col.master_ext_table_index()))
         };
@@ -2724,7 +2723,7 @@ impl ExtProcessorTable {
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
         n: usize,
     ) -> ConstraintCircuitMonad<DualRowIndicator> {
-        let constant = |c: u32| circuit_builder.b_constant(c.into());
+        let constant = |c: u32| circuit_builder.b_constant(c);
         let curr_ext_row = |col: ProcessorExtTableColumn| {
             circuit_builder.input(CurrentExtRow(col.master_ext_table_index()))
         };
@@ -2752,7 +2751,7 @@ impl ExtProcessorTable {
         row_with_shorter_stack_indicator: fn(usize) -> DualRowIndicator,
         op_stack_pointer_offset: usize,
     ) -> ConstraintCircuitMonad<DualRowIndicator> {
-        let constant = |c: u32| circuit_builder.b_constant(c.into());
+        let constant = |c: u32| circuit_builder.b_constant(c);
         let challenge = |c: ChallengeId| circuit_builder.challenge(c);
         let curr_base_row = |col: ProcessorBaseTableColumn| {
             circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
@@ -2829,7 +2828,7 @@ impl ExtProcessorTable {
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
         n: usize,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        let constant = |c: usize| circuit_builder.b_constant(u32::try_from(c).unwrap().into());
+        let constant = |c: usize| circuit_builder.b_constant(u32::try_from(c).unwrap());
         let curr_base_row = |col: ProcessorBaseTableColumn| {
             circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
         };
@@ -2863,7 +2862,7 @@ impl ExtProcessorTable {
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
         n: usize,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        let constant = |c: usize| circuit_builder.b_constant(u32::try_from(c).unwrap().into());
+        let constant = |c: usize| circuit_builder.b_constant(u64::try_from(c).unwrap());
         let curr_base_row = |col: ProcessorBaseTableColumn| {
             circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
         };
@@ -2897,7 +2896,7 @@ impl ExtProcessorTable {
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
         n: usize,
     ) -> ConstraintCircuitMonad<DualRowIndicator> {
-        let constant = |c: u32| circuit_builder.b_constant(c.into());
+        let constant = |c: u32| circuit_builder.b_constant(c);
         let curr_ext_row = |col: ProcessorExtTableColumn| {
             circuit_builder.input(CurrentExtRow(col.master_ext_table_index()))
         };
@@ -2925,7 +2924,7 @@ impl ExtProcessorTable {
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
         n: usize,
     ) -> ConstraintCircuitMonad<DualRowIndicator> {
-        let constant = |c: u32| circuit_builder.b_constant(c.into());
+        let constant = |c: u32| circuit_builder.b_constant(c);
         let curr_ext_row = |col: ProcessorExtTableColumn| {
             circuit_builder.input(CurrentExtRow(col.master_ext_table_index()))
         };
@@ -2955,7 +2954,7 @@ impl ExtProcessorTable {
         instruction_type: BFieldElement,
         ram_pointer_offset: usize,
     ) -> ConstraintCircuitMonad<DualRowIndicator> {
-        let constant = |c: u32| circuit_builder.b_constant(c.into());
+        let constant = |c: u32| circuit_builder.b_constant(c);
         let b_constant = |c| circuit_builder.b_constant(c);
         let challenge = |c: ChallengeId| circuit_builder.challenge(c);
         let curr_base_row = |col: ProcessorBaseTableColumn| {
@@ -3017,7 +3016,7 @@ impl ExtProcessorTable {
     fn running_evaluation_hash_input_updates_correctly(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> ConstraintCircuitMonad<DualRowIndicator> {
-        let constant = |c: u32| circuit_builder.b_constant(c.into());
+        let constant = |c: u32| circuit_builder.b_constant(c);
         let challenge = |c: ChallengeId| circuit_builder.challenge(c);
         let next_base_row = |col: ProcessorBaseTableColumn| {
             circuit_builder.input(NextBaseRow(col.master_base_table_index()))
@@ -3065,7 +3064,7 @@ impl ExtProcessorTable {
     fn running_evaluation_hash_digest_updates_correctly(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> ConstraintCircuitMonad<DualRowIndicator> {
-        let constant = |c: u32| circuit_builder.b_constant(c.into());
+        let constant = |c: u32| circuit_builder.b_constant(c);
         let challenge = |c: ChallengeId| circuit_builder.challenge(c);
         let curr_base_row = |col: ProcessorBaseTableColumn| {
             circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
@@ -3111,7 +3110,7 @@ impl ExtProcessorTable {
     fn running_evaluation_sponge_updates_correctly(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> ConstraintCircuitMonad<DualRowIndicator> {
-        let constant = |c: u32| circuit_builder.b_constant(c.into());
+        let constant = |c: u32| circuit_builder.b_constant(c);
         let challenge = |c: ChallengeId| circuit_builder.challenge(c);
         let curr_base_row = |col: ProcessorBaseTableColumn| {
             circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
@@ -3184,7 +3183,7 @@ impl ExtProcessorTable {
     fn log_derivative_with_u32_table_updates_correctly(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> ConstraintCircuitMonad<DualRowIndicator> {
-        let constant = |c: u32| circuit_builder.b_constant(c.into());
+        let constant = |c: u32| circuit_builder.b_constant(c);
         let one = || constant(1);
         let two_inverse = circuit_builder.b_constant(bfe!(2).inverse());
         let challenge = |c: ChallengeId| circuit_builder.challenge(c);
@@ -3289,7 +3288,7 @@ impl ExtProcessorTable {
     pub fn transition_constraints(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        let constant = |c: u64| circuit_builder.b_constant(c.into());
+        let constant = |c: u64| circuit_builder.b_constant(c);
         let curr_base_row = |col: ProcessorBaseTableColumn| {
             circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
         };

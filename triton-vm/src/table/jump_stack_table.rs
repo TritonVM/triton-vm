@@ -73,7 +73,7 @@ impl ExtJumpStackTable {
     pub fn transition_constraints(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        let one = circuit_builder.b_constant(1u32.into());
+        let one = || circuit_builder.b_constant(1);
         let call_opcode =
             circuit_builder.b_constant(Instruction::Call(BFieldElement::default()).opcode_b());
         let return_opcode = circuit_builder.b_constant(Instruction::Return.opcode_b());
@@ -104,13 +104,13 @@ impl ExtJumpStackTable {
         // 1. The jump stack pointer jsp increases by 1
         //      or the jump stack pointer jsp does not change
         let jsp_inc_or_stays =
-            (jsp_next.clone() - jsp.clone() - one.clone()) * (jsp_next.clone() - jsp.clone());
+            (jsp_next.clone() - jsp.clone() - one()) * (jsp_next.clone() - jsp.clone());
 
         // 2. The jump stack pointer jsp increases by 1
         //      or current instruction ci is return
         //      or the jump stack origin jso does not change
         let jsp_inc_by_one_or_ci_is_return =
-            (jsp_next.clone() - jsp.clone() - one.clone()) * (ci.clone() - return_opcode.clone());
+            (jsp_next.clone() - jsp.clone() - one()) * (ci.clone() - return_opcode.clone());
         let jsp_inc_or_jso_stays_or_ci_is_ret =
             jsp_inc_by_one_or_ci_is_return.clone() * (jso_next.clone() - jso);
 
@@ -124,11 +124,10 @@ impl ExtJumpStackTable {
         //      or the cycle count clk increases by 1
         //      or current instruction ci is call
         //      or current instruction ci is return
-        let jsp_inc_or_clk_inc_or_ci_call_or_ci_ret =
-            (jsp_next.clone() - jsp.clone() - one.clone())
-                * (clk_next.clone() - clk.clone() - one.clone())
-                * (ci.clone() - call_opcode)
-                * (ci - return_opcode);
+        let jsp_inc_or_clk_inc_or_ci_call_or_ci_ret = (jsp_next.clone() - jsp.clone() - one())
+            * (clk_next.clone() - clk.clone() - one())
+            * (ci.clone() - call_opcode)
+            * (ci - return_opcode);
 
         // The running product for the permutation argument `rppa` accumulates one row in each
         // row, relative to weights `a`, `b`, `c`, `d`, `e`, and indeterminate `α`.
@@ -152,8 +151,8 @@ impl ExtJumpStackTable {
         let log_derivative_accumulates = (clock_jump_diff_log_derivative_next
             - clock_jump_diff_log_derivative)
             * (circuit_builder.challenge(ClockJumpDifferenceLookupIndeterminate) - clk_diff)
-            - one.clone();
-        let log_derivative_updates_correctly = (jsp_next.clone() - jsp.clone() - one)
+            - one();
+        let log_derivative_updates_correctly = (jsp_next.clone() - jsp.clone() - one())
             * log_derivative_accumulates
             + (jsp_next - jsp) * log_derivative_remains;
 

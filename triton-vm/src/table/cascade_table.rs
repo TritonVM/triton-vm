@@ -138,9 +138,9 @@ impl ExtCascadeTable {
         };
         let challenge = |challenge_id: ChallengeId| circuit_builder.challenge(challenge_id);
 
-        let one = circuit_builder.b_constant(b_field_element::BFIELD_ONE);
-        let two = circuit_builder.b_constant(bfe!(2));
-        let two_pow_8 = circuit_builder.b_constant(bfe!(1 << 8));
+        let one = || circuit_builder.b_constant(1);
+        let two = || circuit_builder.b_constant(2);
+        let two_pow_8 = circuit_builder.b_constant(1 << 8);
         let lookup_arg_default_initial = circuit_builder.x_constant(LookupArg::default_initial());
 
         let is_padding = base_row(IsPadding);
@@ -170,7 +170,7 @@ impl ExtCascadeTable {
             - lookup_arg_default_initial.clone())
             * (hash_indeterminate - compressed_row_hash)
             - lookup_multiplicity;
-        let hash_table_log_derivative_is_initialized_correctly = (one.clone() - is_padding.clone())
+        let hash_table_log_derivative_is_initialized_correctly = (one() - is_padding.clone())
             * hash_table_log_derivative_has_accumulated_first_row
             + is_padding.clone() * hash_table_log_derivative_is_default_initial;
 
@@ -185,10 +185,10 @@ impl ExtCascadeTable {
             (lookup_table_client_log_derivative - lookup_arg_default_initial)
                 * (lookup_indeterminate.clone() - compressed_row_lo.clone())
                 * (lookup_indeterminate.clone() - compressed_row_hi.clone())
-                - two * lookup_indeterminate
+                - two() * lookup_indeterminate
                 + compressed_row_lo
                 + compressed_row_hi;
-        let lookup_table_log_derivative_is_initialized_correctly = (one - is_padding.clone())
+        let lookup_table_log_derivative_is_initialized_correctly = (one() - is_padding.clone())
             * lookup_table_log_derivative_has_accumulated_first_row
             + is_padding * lookup_table_log_derivative_is_default_initial;
 
@@ -205,7 +205,7 @@ impl ExtCascadeTable {
             circuit_builder.input(BaseRow(col_id.master_base_table_index()))
         };
 
-        let one = circuit_builder.b_constant(b_field_element::BFIELD_ONE);
+        let one = circuit_builder.b_constant(1);
         let is_padding = base_row(IsPadding);
         let is_padding_is_0_or_1 = is_padding.clone() * (one - is_padding);
 
@@ -216,7 +216,7 @@ impl ExtCascadeTable {
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
         let challenge = |c| circuit_builder.challenge(c);
-        let constant = |c: u64| circuit_builder.b_constant(c.into());
+        let constant = |c: u64| circuit_builder.b_constant(c);
 
         let current_base_row = |column_idx: CascadeBaseTableColumn| {
             circuit_builder.input(CurrentBaseRow(column_idx.master_base_table_index()))

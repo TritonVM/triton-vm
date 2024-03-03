@@ -219,10 +219,8 @@ impl Constraints {
 #[cfg(test)]
 pub(crate) mod tests {
     use twenty_first::bfe;
-    use twenty_first::xfe;
 
     use triton_vm::prelude::BFieldElement;
-    use triton_vm::prelude::XFieldElement;
     use triton_vm::table::challenges::ChallengeId;
     use triton_vm::table::constraint_circuit::DualRowIndicator;
 
@@ -232,7 +230,7 @@ pub(crate) mod tests {
         pub(crate) fn mini_constraints() -> Self {
             let circuit_builder = ConstraintCircuitBuilder::new();
             let challenge = |c| circuit_builder.challenge(c);
-            let constant = |c: u32| circuit_builder.b_constant(bfe!(c));
+            let constant = |c: u32| circuit_builder.b_constant(c);
             let base_row = |i| circuit_builder.input(SingleRowIndicator::BaseRow(i));
             let ext_row = |i| circuit_builder.input(SingleRowIndicator::ExtRow(i));
 
@@ -275,7 +273,7 @@ pub(crate) mod tests {
         fn small_transition_constraints() -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
             let circuit_builder = ConstraintCircuitBuilder::new();
             let challenge = |c| circuit_builder.challenge(c);
-            let constant = |c: u32| circuit_builder.x_constant(xfe!(c));
+            let constant = |c: u32| circuit_builder.x_constant(c);
 
             let curr_base_row = |col| circuit_builder.input(DualRowIndicator::CurrentBaseRow(col));
             let next_base_row = |col| circuit_builder.input(DualRowIndicator::NextBaseRow(col));

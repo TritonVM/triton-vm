@@ -166,7 +166,7 @@ impl ExtLookupTable {
     pub fn consistency_constraints(
         circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
-        let constant = |c: u64| circuit_builder.b_constant(c.into());
+        let constant = |c: u64| circuit_builder.b_constant(c);
         let base_row = |col_id: LookupBaseTableColumn| {
             circuit_builder.input(BaseRow(col_id.master_base_table_index()))
         };
@@ -179,7 +179,7 @@ impl ExtLookupTable {
     pub fn transition_constraints(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        let one = circuit_builder.b_constant(b_field_element::BFIELD_ONE);
+        let one = || circuit_builder.b_constant(1);
 
         let current_base_row = |col_id: LookupBaseTableColumn| {
             circuit_builder.input(CurrentBaseRow(col_id.master_base_table_index()))
@@ -211,14 +211,13 @@ impl ExtLookupTable {
         // Padding section is contiguous: if the current row is a padding row, then the next row
         // is also a padding row.
         let if_current_row_is_padding_row_then_next_row_is_padding_row =
-            is_padding * (one.clone() - is_padding_next.clone());
+            is_padding * (one() - is_padding_next.clone());
 
         // Lookup Table's input increments by 1 if and only if the next row is not a padding row
         let if_next_row_is_padding_row_then_lookup_input_next_is_0 =
             is_padding_next.clone() * lookup_input_next.clone();
-        let if_next_row_is_not_padding_row_then_lookup_input_next_increments_by_1 = (one.clone()
-            - is_padding_next.clone())
-            * (lookup_input_next.clone() - lookup_input - one.clone());
+        let if_next_row_is_not_padding_row_then_lookup_input_next_increments_by_1 =
+            (one() - is_padding_next.clone()) * (lookup_input_next.clone() - lookup_input - one());
         let lookup_input_increments_if_and_only_if_next_row_is_not_padding_row =
             if_next_row_is_padding_row_then_lookup_input_next_is_0
                 + if_next_row_is_not_padding_row_then_lookup_input_next_increments_by_1;
@@ -234,7 +233,7 @@ impl ExtLookupTable {
             * (cascade_table_indeterminate - compressed_row)
             - lookup_multiplicity_next;
         let cascade_table_log_derivative_updates_if_and_only_if_next_row_is_not_padding_row =
-            (one.clone() - is_padding_next.clone()) * cascade_table_log_derivative_updates
+            (one() - is_padding_next.clone()) * cascade_table_log_derivative_updates
                 + is_padding_next.clone() * cascade_table_log_derivative_remains;
 
         // public Evaluation Argument
@@ -245,7 +244,7 @@ impl ExtLookupTable {
             - public_evaluation_argument * public_indeterminate
             - lookup_output_next;
         let public_evaluation_argument_updates_if_and_only_if_next_row_is_not_padding_row =
-            (one - is_padding_next.clone()) * public_evaluation_argument_updates
+            (one() - is_padding_next.clone()) * public_evaluation_argument_updates
                 + is_padding_next * public_evaluation_argument_remains;
 
         vec![
