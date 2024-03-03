@@ -873,12 +873,7 @@ mod tests {
     fn parse_push_pop() {
         let program = triton_program!(push 1 push 1 add pop 2);
         let instructions = program.into_iter().collect_vec();
-        let expected = vec![
-            Push(BFieldElement::one()),
-            Push(BFieldElement::one()),
-            Add,
-            Pop(N2),
-        ];
+        let expected = vec![Push(bfe!(1)), Push(bfe!(1)), Add, Pop(N2)];
 
         assert!(expected == instructions);
     }
@@ -930,28 +925,19 @@ mod tests {
 
     #[test]
     fn change_arguments_of_various_instructions() {
-        let push = Push(0_u64.into()).change_arg(7_u64.into());
-        let dup = Dup(ST0).change_arg(1024_u64.into());
-        let swap = Swap(ST0).change_arg(1337_u64.into());
-        let swap_0 = Swap(ST0).change_arg(0_u64.into());
-        let swap_1 = Swap(ST0).change_arg(1_u64.into());
-        let pop_0 = Pop(N4).change_arg(0_u64.into());
-        let pop_2 = Pop(N1).change_arg(2_u64.into());
-        let nop = Nop.change_arg(7_u64.into());
-
-        assert!(push.is_ok());
-        assert!(dup.is_err());
-        assert!(swap.is_err());
-        assert!(swap_0.is_err());
-        assert!(swap_1.is_ok());
-        assert!(pop_0.is_err());
-        assert!(pop_2.is_ok());
-        assert!(nop.is_err());
+        assert!(Push(bfe!(0)).change_arg(bfe!(7)).is_ok());
+        assert!(Dup(ST0).change_arg(bfe!(1024)).is_err());
+        assert!(Swap(ST0).change_arg(bfe!(1337)).is_err());
+        assert!(Swap(ST0).change_arg(bfe!(0)).is_err());
+        assert!(Swap(ST0).change_arg(bfe!(1)).is_ok());
+        assert!(Pop(N4).change_arg(bfe!(0)).is_err());
+        assert!(Pop(N1).change_arg(bfe!(2)).is_ok());
+        assert!(Nop.change_arg(bfe!(7)).is_err());
     }
 
     #[test]
     fn print_various_instructions() {
-        println!("instruction_push: {:?}", Instruction::Push(7_u64.into()));
+        println!("instruction_push: {:?}", Instruction::Push(bfe!(7)));
         println!("instruction_assert: {}", Instruction::Assert);
         println!("instruction_invert: {:?}", Instruction::Invert);
         println!("instruction_dup: {}", Instruction::Dup(ST14));
@@ -1073,9 +1059,9 @@ mod tests {
     }
 
     fn terminal_op_stack_size_for_program(program: Program) -> usize {
-        let public_input = vec![BFieldElement::zero()].into();
+        let public_input = vec![bfe!(0)].into();
         let mock_digests = vec![Digest::default()];
-        let non_determinism: NonDeterminism<_> = vec![BFieldElement::zero()].into();
+        let non_determinism: NonDeterminism<_> = vec![bfe!(0)].into();
         let non_determinism = non_determinism.with_digests(mock_digests);
 
         let mut vm_state = VMState::new(&program, public_input, non_determinism);

@@ -954,17 +954,17 @@ impl<II: InputIndicator> ConstraintCircuitBuilder<II> {
 
     /// The unique monad representing the constant value 0.
     pub fn zero(&self) -> ConstraintCircuitMonad<II> {
-        self.b_constant(BFieldElement::zero())
+        self.b_constant(bfe!(0))
     }
 
     /// The unique monad representing the constant value 1.
     pub fn one(&self) -> ConstraintCircuitMonad<II> {
-        self.b_constant(BFieldElement::one())
+        self.b_constant(bfe!(1))
     }
 
     /// The unique monad representing the constant value -1.
     pub fn minus_one(&self) -> ConstraintCircuitMonad<II> {
-        self.b_constant(BFieldElement::one().neg())
+        self.b_constant(bfe!(-1))
     }
 
     /// Create constant leaf node.
@@ -1099,10 +1099,10 @@ mod tests {
             20..=24 => circuit_builder.b_constant(rng.gen()),
             25..=29 => circuit_builder.x_constant(rng.gen()),
             30..=34 => circuit_builder.challenge(random_challenge_id()),
-            35 => circuit_builder.b_constant(0_u64.into()),
-            36 => circuit_builder.x_constant(0.into()),
-            37 => circuit_builder.b_constant(1_u64.into()),
-            38 => circuit_builder.x_constant(1.into()),
+            35 => circuit_builder.b_constant(bfe!(0)),
+            36 => circuit_builder.x_constant(xfe!(0)),
+            37 => circuit_builder.b_constant(bfe!(1)),
+            38 => circuit_builder.x_constant(xfe!(1)),
             _ => unreachable!(),
         }
     }

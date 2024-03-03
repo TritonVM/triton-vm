@@ -46,15 +46,13 @@ impl LookupTable {
         assert!(lookup_table.nrows() >= LOOKUP_TABLE_LEN);
 
         // Lookup Table input
-        let lookup_input =
-            Array1::from_iter((0..LOOKUP_TABLE_LEN).map(|i| BFieldElement::new(i as u64)));
+        let lookup_input = Array1::from_iter((0..LOOKUP_TABLE_LEN).map(|i| bfe!(i as u64)));
         let lookup_input_column =
             lookup_table.slice_mut(s![..LOOKUP_TABLE_LEN, LookIn.base_table_index()]);
         lookup_input.move_into(lookup_input_column);
 
         // Lookup Table output
-        let lookup_output =
-            Array1::from_iter(tip5::LOOKUP_TABLE.map(u64::from).map(BFieldElement::new));
+        let lookup_output = Array1::from_iter(tip5::LOOKUP_TABLE.map(BFieldElement::from));
         let lookup_output_column =
             lookup_table.slice_mut(s![..LOOKUP_TABLE_LEN, LookOut.base_table_index()]);
         lookup_output.move_into(lookup_output_column);
@@ -277,7 +275,6 @@ impl ExtLookupTable {
 pub(crate) mod tests {
     use assert2::assert;
     use assert2::check;
-    use num_traits::Zero;
 
     use super::*;
 
@@ -287,8 +284,6 @@ pub(crate) mod tests {
         challenges: &Challenges,
     ) {
         assert!(master_base_trace_table.nrows() == master_ext_trace_table.nrows());
-
-        let zero = XFieldElement::zero();
         let circuit_builder = ConstraintCircuitBuilder::new();
 
         for (constraint_idx, constraint) in ExtLookupTable::initial_constraints(&circuit_builder)
@@ -302,7 +297,7 @@ pub(crate) mod tests {
                 challenges,
             );
             check!(
-                zero == evaluated_constraint,
+                xfe!(0) == evaluated_constraint,
                 "Initial constraint {constraint_idx} failed."
             );
         }
@@ -321,7 +316,7 @@ pub(crate) mod tests {
                     challenges,
                 );
                 check!(
-                    zero == evaluated_constraint,
+                    xfe!(0) == evaluated_constraint,
                     "Consistency constraint {constraint_idx} failed on row {row_idx}."
                 );
             }
@@ -340,7 +335,7 @@ pub(crate) mod tests {
                     challenges,
                 );
                 check!(
-                    zero == evaluated_constraint,
+                    xfe!(0) == evaluated_constraint,
                     "Transition constraint {constraint_idx} failed on row {row_idx}."
                 );
             }
@@ -358,7 +353,7 @@ pub(crate) mod tests {
                 challenges,
             );
             check!(
-                zero == evaluated_constraint,
+                xfe!(0) == evaluated_constraint,
                 "Terminal constraint {constraint_idx} failed."
             );
         }

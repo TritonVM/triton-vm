@@ -208,7 +208,7 @@ mod shared_tests;
 /// # use triton_vm::instruction::Instruction;
 /// let element_0 = BFieldElement::new(0);
 /// let label = "my_label";
-/// let instruction_push = Instruction::Push(42_u64.into());
+/// let instruction_push = Instruction::Push(bfe!(42));
 /// let dup_arg = 1;
 /// let program = triton_program!(
 ///     push {element_0}
@@ -298,11 +298,11 @@ macro_rules! triton_program {
 ///     {&insert_me}
 ///     push 1
 /// );
-/// # let zero = BFieldElement::new(0);
+/// # let zero = bfe!(0);
 /// # assert_eq!(LabelledInstruction::Instruction(Push(zero)), surrounding_code[0]);
 /// assert_eq!(LabelledInstruction::Instruction(Pop(N1)), surrounding_code[1]);
 /// assert_eq!(LabelledInstruction::Instruction(Pop(N1)), surrounding_code[3]);
-/// # let one = BFieldElement::new(1);
+/// # let one = bfe!(1);
 /// # assert_eq!(LabelledInstruction::Instruction(Push(one)), surrounding_code[4]);
 ///```
 ///
@@ -682,8 +682,8 @@ mod tests {
     fn lib_prove_with_incorrect_public_output_gives_appropriate_error() {
         let program = triton_program! { read_io 1 push 2 mul write_io 1 halt };
         let claim = Claim::about_program(&program)
-            .with_input(vec![2_u64.into()])
-            .with_output(vec![5_u64.into()]);
+            .with_input(vec![bfe!(2)])
+            .with_output(vec![bfe!(5)]);
 
         let stark = Stark::default();
         let_assert!(Err(err) = prove(stark, &claim, &program, [].into()));

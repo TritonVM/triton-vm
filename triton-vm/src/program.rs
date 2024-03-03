@@ -122,7 +122,7 @@ impl BFieldCodec for Program {
 
     fn encode(&self) -> Vec<BFieldElement> {
         let mut sequence = Vec::with_capacity(self.len_bwords() + 1);
-        sequence.push(BFieldElement::new(self.len_bwords() as u64));
+        sequence.push(bfe!(self.len_bwords() as u64));
         sequence.extend(self.to_bwords());
         sequence
     }
@@ -271,7 +271,7 @@ impl Program {
     }
 
     fn address_for_label(label: &str, label_map: &HashMap<String, u64>) -> BFieldElement {
-        let maybe_address = label_map.get(label).map(|&a| BFieldElement::new(a));
+        let maybe_address = label_map.get(label).map(|&a| bfe!(a));
         maybe_address.unwrap_or_else(|| panic!("Label not found: {label}"))
     }
 
@@ -820,7 +820,7 @@ mod tests {
         let encoded = program.encode();
 
         let mut encoded = encoded[0..encoded.len() - 1].to_vec();
-        encoded[0] = BFieldElement::new(program_length - 1);
+        encoded[0] = bfe!(program_length - 1);
 
         let_assert!(Err(err) = Program::decode(&encoded));
         let_assert!(ProgramDecodingError::MissingArgument(6, _) = err);
@@ -830,7 +830,7 @@ mod tests {
     fn decode_program_with_shorter_than_indicated_sequence() {
         let program = triton_program!(nop nop hash push 0 skiz end: halt call end);
         let mut encoded = program.encode();
-        encoded[0] += 1_u64.into();
+        encoded[0] += bfe!(1);
         let_assert!(Err(err) = Program::decode(&encoded));
         let_assert!(ProgramDecodingError::SequenceTooShort = err);
     }
@@ -839,7 +839,7 @@ mod tests {
     fn decode_program_with_longer_than_indicated_sequence() {
         let program = triton_program!(nop nop hash push 0 skiz end: halt call end);
         let mut encoded = program.encode();
-        encoded[0] -= 1_u64.into();
+        encoded[0] -= bfe!(1);
         let_assert!(Err(err) = Program::decode(&encoded));
         let_assert!(ProgramDecodingError::SequenceTooLong = err);
     }
@@ -912,8 +912,8 @@ mod tests {
         let element_3 = thread_rng().gen_range(0_u64..BFieldElement::P);
         let element_2 = 1337_usize;
         let element_1 = "17";
-        let element_0 = BFieldElement::new(0);
-        let instruction_push = Instruction::Push(42_u64.into());
+        let element_0 = bfe!(0);
+        let instruction_push = Instruction::Push(bfe!(42));
         let dup_arg = 1;
         let label = "my_label".to_string();
 

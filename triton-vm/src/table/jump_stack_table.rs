@@ -206,7 +206,7 @@ impl JumpStackTable {
         let mut jump_stack_table_row = 0;
         for (jsp_val, rows_with_this_jsp) in pre_processed_jump_stack_table.into_iter().enumerate()
         {
-            let jsp = BFieldElement::new(jsp_val as u64);
+            let jsp = bfe!(jsp_val as u64);
             for (clk, ci, jso, jsd) in rows_with_this_jsp {
                 jump_stack_table[(jump_stack_table_row, CLK.base_table_index())] = clk;
                 jump_stack_table[(jump_stack_table_row, CI.base_table_index())] = ci;
@@ -287,9 +287,8 @@ impl JumpStackTable {
             .for_each(|padding_row| padding_row_template.clone().move_into(padding_row));
 
         // CLK keeps increasing by 1 also in the padding section.
-        let new_clk_values = Array1::from_iter(
-            (processor_table_len..padded_height).map(|clk| BFieldElement::new(clk as u64)),
-        );
+        let new_clk_values =
+            Array1::from_iter((processor_table_len..padded_height).map(|clk| bfe!(clk as u64)));
         new_clk_values.move_into(padding_section.slice_mut(s![.., CLK.base_table_index()]));
     }
 
@@ -374,7 +373,6 @@ impl Display for JumpStackTraceRow {
 pub(crate) mod tests {
     use assert2::assert;
     use assert2::check;
-    use num_traits::Zero;
 
     use super::*;
 
@@ -383,7 +381,6 @@ pub(crate) mod tests {
         master_ext_trace_table: ArrayView2<XFieldElement>,
         challenges: &Challenges,
     ) {
-        let zero = XFieldElement::zero();
         assert!(master_base_trace_table.nrows() == master_ext_trace_table.nrows());
 
         let circuit_builder = ConstraintCircuitBuilder::new();
@@ -398,7 +395,7 @@ pub(crate) mod tests {
                 challenges,
             );
             check!(
-                zero == evaluated_constraint,
+                xfe!(0) == evaluated_constraint,
                 "Initial constraint {constraint_idx} failed."
             );
         }
@@ -417,7 +414,7 @@ pub(crate) mod tests {
                     challenges,
                 );
                 check!(
-                    zero == evaluated_constraint,
+                    xfe!(0) == evaluated_constraint,
                     "Consistency constraint {constraint_idx} failed on row {row_idx}."
                 );
             }
@@ -437,7 +434,7 @@ pub(crate) mod tests {
                     challenges,
                 );
                 check!(
-                    zero == evaluated_constraint,
+                    xfe!(0) == evaluated_constraint,
                     "Transition constraint {constraint_idx} failed on row {row_idx}."
                 );
             }
@@ -456,7 +453,7 @@ pub(crate) mod tests {
                 challenges,
             );
             check!(
-                zero == evaluated_constraint,
+                xfe!(0) == evaluated_constraint,
                 "Terminal constraint {constraint_idx} failed."
             );
         }

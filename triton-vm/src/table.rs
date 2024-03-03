@@ -140,12 +140,13 @@ mod tests {
     use proptest::prelude::*;
     use proptest_arbitrary_interop::arb;
     use test_strategy::proptest;
+    use twenty_first::bfe;
 
     use super::*;
 
     #[proptest]
     fn size_0_memory_region_contains_no_addresses(#[strategy(arb())] pointer: BFieldElement) {
-        let one = BFieldElement::new(1);
+        let one = bfe!(1);
         let region = MemoryRegion::new(pointer, 0);
 
         prop_assert!(!region.contains_pointer((pointer - one).value()));
@@ -155,7 +156,7 @@ mod tests {
 
     #[proptest]
     fn size_1_memory_region_contains_only_start_address(#[strategy(arb())] pointer: BFieldElement) {
-        let one = BFieldElement::new(1);
+        let one = bfe!(1);
         let region = MemoryRegion::new(pointer, 1);
 
         prop_assert!(!region.contains_pointer((pointer - one).value()));
@@ -166,7 +167,7 @@ mod tests {
     #[test]
     fn definitely_integral_memory_layout_is_detected_as_integral() {
         let mem_page_size = TasmConstraintEvaluationMemoryLayout::MEM_PAGE_SIZE as u64;
-        let mem_page = |i: u64| BFieldElement::new(i * mem_page_size);
+        let mem_page = |i| bfe!(i * mem_page_size);
         let layout = TasmConstraintEvaluationMemoryLayout {
             free_mem_page_ptr: mem_page(0),
             curr_base_row_ptr: mem_page(1),
@@ -180,14 +181,13 @@ mod tests {
 
     #[test]
     fn definitely_non_integral_memory_layout_is_detected_as_non_integral() {
-        let bfe = BFieldElement::new;
         let layout = TasmConstraintEvaluationMemoryLayout {
-            free_mem_page_ptr: bfe(0),
-            curr_base_row_ptr: bfe(1),
-            curr_ext_row_ptr: bfe(2),
-            next_base_row_ptr: bfe(3),
-            next_ext_row_ptr: bfe(4),
-            challenges_ptr: bfe(5),
+            free_mem_page_ptr: bfe!(0),
+            curr_base_row_ptr: bfe!(1),
+            curr_ext_row_ptr: bfe!(2),
+            next_base_row_ptr: bfe!(3),
+            next_ext_row_ptr: bfe!(4),
+            challenges_ptr: bfe!(5),
         };
         assert!(!layout.is_integral());
     }

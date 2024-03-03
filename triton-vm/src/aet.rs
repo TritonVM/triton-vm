@@ -7,8 +7,6 @@ use itertools::Itertools;
 use ndarray::s;
 use ndarray::Array2;
 use ndarray::Axis;
-use num_traits::One;
-use num_traits::Zero;
 use twenty_first::prelude::*;
 
 use crate::error::InstructionError;
@@ -149,11 +147,11 @@ impl AlgebraicExecutionTrace {
 
         // padding is one 1, then as many zeros as necessary: [1, 0, 0, …]
         let program_iter = program.to_bwords().into_iter();
-        let one_iter = [BFieldElement::one()].into_iter();
-        let zeros_iter = [BFieldElement::zero()].into_iter().cycle();
+        let one = [bfe!(1)];
+        let zeros = [bfe!(0); tip5::RATE];
         program_iter
-            .chain(one_iter)
-            .chain(zeros_iter)
+            .chain(one)
+            .chain(zeros)
             .take(padded_program_length)
             .collect()
     }
@@ -354,7 +352,7 @@ mod tests {
         let program = triton_program!({&eight_nops} halt);
         let padded_program = AlgebraicExecutionTrace::hash_input_pad_program(&program);
 
-        let expected = [program.to_bwords(), vec![1_u64.into()]].concat();
+        let expected = [program.to_bwords(), vec![bfe!(1)]].concat();
         assert!(expected == padded_program);
     }
 }

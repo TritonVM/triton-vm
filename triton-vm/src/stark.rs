@@ -7,7 +7,6 @@ use itertools::izip;
 use itertools::Itertools;
 use ndarray::prelude::*;
 use ndarray::Zip;
-use num_traits::One;
 use rayon::prelude::*;
 use serde::Deserialize;
 use serde::Serialize;
@@ -479,7 +478,7 @@ impl Stark {
                     codeword.dot(&weight_coefficients_1),
                     codeword.dot(&weight_coefficients_2),
                 ];
-                let random_linear_element = XFieldElement::new(random_linear_element_coefficients);
+                let random_linear_element = xfe!(random_linear_element_coefficients);
                 Array0::from_elem((), random_linear_element).move_into(target_element);
             });
         random_linear_sum
@@ -752,10 +751,9 @@ impl Stark {
 
         prof_start!(maybe_profiler, "out-of-domain quotient element");
         prof_start!(maybe_profiler, "zerofiers");
-        let one = BFieldElement::one();
-        let initial_zerofier_inv = (out_of_domain_point_curr_row - one).inverse();
+        let initial_zerofier_inv = (out_of_domain_point_curr_row - bfe!(1)).inverse();
         let consistency_zerofier_inv =
-            (out_of_domain_point_curr_row.mod_pow_u32(padded_height as u32) - one).inverse();
+            (out_of_domain_point_curr_row.mod_pow_u32(padded_height as u32) - bfe!(1)).inverse();
         let except_last_row = out_of_domain_point_curr_row - trace_domain_generator.inverse();
         let transition_zerofier_inv = except_last_row * consistency_zerofier_inv;
         let terminal_zerofier_inv = except_last_row.inverse(); // i.e., only last row
@@ -1080,7 +1078,6 @@ pub(crate) mod tests {
     use assert2::check;
     use assert2::let_assert;
     use itertools::izip;
-    use num_traits::Zero;
     use proptest::collection::vec;
     use proptest::prelude::*;
     use proptest_arbitrary_interop::arb;
@@ -1645,7 +1642,6 @@ pub(crate) mod tests {
     }
 
     fn check_grand_cross_table_argument(program_and_input: ProgramAndInput) {
-        let zero = XFieldElement::zero();
         let circuit_builder = ConstraintCircuitBuilder::new();
         let terminal_constraints = GrandCrossTableArg::terminal_constraints(&circuit_builder);
         let terminal_constraints = terminal_constraints
@@ -1680,8 +1676,10 @@ pub(crate) mod tests {
         let last_master_ext_row = master_ext_trace_table.slice(s![-1.., ..]);
 
         for (i, constraint) in terminal_constraints.iter().enumerate() {
+            let evaluation =
+                constraint.evaluate(last_master_base_row, last_master_ext_row, &challenges);
             check!(
-                zero == constraint.evaluate(last_master_base_row, last_master_ext_row, &challenges),
+                xfe!(0) == evaluation,
                 "Terminal constraint {i} must evaluate to 0."
             );
         }
@@ -2126,7 +2124,6 @@ pub(crate) mod tests {
         let (_, _, master_base_table, master_ext_table, challenges) =
             master_tables_for_low_security_level(program_and_input);
 
-        let zero = XFieldElement::zero();
         let master_base_trace_table = master_base_table.trace_table();
         let master_ext_trace_table = master_ext_table.trace_table();
 
@@ -2139,7 +2136,7 @@ pub(crate) mod tests {
             evaluated_initial_constraints.into_iter().enumerate()
         {
             assert!(
-                zero == evaluated_constraint,
+                xfe!(0) == evaluated_constraint,
                 "Initial constraint {constraint_idx} failed.",
             );
         }
@@ -2155,7 +2152,7 @@ pub(crate) mod tests {
                 evaluated_consistency_constraints.into_iter().enumerate()
             {
                 assert!(
-                    zero == evaluated_constraint,
+                    xfe!(0) == evaluated_constraint,
                     "Consistency constraint {constraint_idx} failed in row {row_idx}.",
                 );
             }
@@ -2174,7 +2171,7 @@ pub(crate) mod tests {
                 evaluated_transition_constraints.into_iter().enumerate()
             {
                 assert!(
-                    zero == evaluated_constraint,
+                    xfe!(0) == evaluated_constraint,
                     "Transition constraint {constraint_idx} failed in row {curr_row_idx}.",
                 );
             }
@@ -2189,7 +2186,7 @@ pub(crate) mod tests {
             evaluated_terminal_constraints.into_iter().enumerate()
         {
             assert!(
-                zero == evaluated_constraint,
+                xfe!(0) == evaluated_constraint,
                 "Terminal constraint {constraint_idx} failed.",
             );
         }
@@ -2524,7 +2521,7 @@ pub(crate) mod tests {
         ) {
             let list = list.into_iter().flat_map(|xfe| xfe.into().coefficients);
             let indexed_list = list.enumerate();
-            let offset_address = |i| BFieldElement::new(i as u64) + address;
+            let offset_address = |i| bfe!(i as u64) + address;
             let ram_extension = indexed_list.map(|(i, bfe)| (offset_address(i), bfe));
             ram.extend(ram_extension);
         }

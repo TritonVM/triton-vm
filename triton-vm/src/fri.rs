@@ -1,7 +1,6 @@
 use std::marker::PhantomData;
 
 use itertools::Itertools;
-use num_traits::One;
 use rayon::iter::*;
 use twenty_first::prelude::*;
 use twenty_first::shared_math::other::log_2_ceil;
@@ -171,8 +170,8 @@ impl<H: AlgebraicHasher> ProverRound<H> {
     }
 
     fn split_and_fold(&self, folding_challenge: XFieldElement) -> Vec<XFieldElement> {
-        let one = XFieldElement::one();
-        let two_inverse = XFieldElement::from(2).inverse();
+        let one = xfe!(1);
+        let two_inverse = xfe!(2).inverse();
 
         let domain_points = self.domain.domain_values();
         let domain_point_inverses = BFieldElement::batch_inversion(domain_points);

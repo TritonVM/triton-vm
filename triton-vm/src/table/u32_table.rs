@@ -174,8 +174,8 @@ impl ExtU32Table {
 
         let copy_flag_is_bit = copy_flag.clone() * (one.clone() - copy_flag.clone());
         let copy_flag_is_0_or_bits_is_0 = copy_flag.clone() * bits.clone();
-        let bits_minus_33_inv_is_inverse_of_bits_minus_33 = one.clone()
-            - bits_minus_33_inv * (bits - circuit_builder.b_constant(BFieldElement::new(33)));
+        let bits_minus_33_inv_is_inverse_of_bits_minus_33 =
+            one.clone() - bits_minus_33_inv * (bits - circuit_builder.b_constant(bfe!(33)));
         let lhs_inv_is_0_or_the_inverse_of_lhs =
             lhs_inv.clone() * (one.clone() - lhs.clone() * lhs_inv.clone());
         let lhs_is_0_or_lhs_inverse_is_the_inverse_of_lhs =
@@ -449,9 +449,9 @@ impl U32Table {
         let mut next_section_start = 0;
         for (&u32_table_entry, &multiplicity) in &aet.u32_entries {
             let mut first_row = Array2::zeros([1, BASE_WIDTH]);
-            first_row[[0, CopyFlag.base_table_index()]] = BFieldElement::one();
-            first_row[[0, Bits.base_table_index()]] = BFieldElement::zero();
-            first_row[[0, BitsMinus33Inv.base_table_index()]] = (-BFieldElement::new(33)).inverse();
+            first_row[[0, CopyFlag.base_table_index()]] = bfe!(1);
+            first_row[[0, Bits.base_table_index()]] = bfe!(0);
+            first_row[[0, BitsMinus33Inv.base_table_index()]] = bfe!(-33).inverse();
             first_row[[0, CI.base_table_index()]] = u32_table_entry.instruction.opcode_b();
             first_row[[0, LHS.base_table_index()]] = u32_table_entry.left_operand;
             first_row[[0, RHS.base_table_index()]] = u32_table_entry.right_operand;
@@ -467,13 +467,7 @@ impl U32Table {
     }
 
     fn u32_section_next_row(mut section: Array2<BFieldElement>) -> Array2<BFieldElement> {
-        let zero = BFieldElement::zero();
-        let one = BFieldElement::one();
-        let two = BFieldElement::new(2);
-        let thirty_three = BFieldElement::new(33);
-
         let row_idx = section.nrows() - 1;
-
         let current_instruction: Instruction = section[[row_idx, CI.base_table_index()]]
             .value()
             .try_into()
@@ -485,12 +479,12 @@ impl U32Table {
             && section[[row_idx, RHS.base_table_index()]].is_zero()
         {
             section[[row_idx, Result.base_table_index()]] = match current_instruction {
-                Instruction::Split => zero,
-                Instruction::Lt => two,
-                Instruction::And => zero,
-                Instruction::Log2Floor => -one,
-                Instruction::Pow => one,
-                Instruction::PopCount => zero,
+                Instruction::Split => bfe!(0),
+                Instruction::Lt => bfe!(2),
+                Instruction::And => bfe!(0),
+                Instruction::Log2Floor => bfe!(-1),
+                Instruction::Pow => bfe!(1),
+                Instruction::PopCount => bfe!(0),
                 _ => panic!("Must be u32 instruction, not {current_instruction}."),
             };
 
@@ -498,7 +492,7 @@ impl U32Table {
             // The edge case can be reliably detected by checking whether column `Bits` is 0.
             let both_operands_are_0 = section[[row_idx, Bits.base_table_index()]].is_zero();
             if current_instruction == Instruction::Lt && both_operands_are_0 {
-                section[[row_idx, Result.base_table_index()]] = zero;
+                section[[row_idx, Result.base_table_index()]] = bfe!(0);
             }
 
             // The right hand side is guaranteed to be 0. However, if the current instruction is
@@ -509,20 +503,20 @@ impl U32Table {
             return section;
         }
 
-        let lhs_lsb = BFieldElement::new(section[[row_idx, LHS.base_table_index()]].value() % 2);
-        let rhs_lsb = BFieldElement::new(section[[row_idx, RHS.base_table_index()]].value() % 2);
+        let lhs_lsb = bfe!(section[[row_idx, LHS.base_table_index()]].value() % 2);
+        let rhs_lsb = bfe!(section[[row_idx, RHS.base_table_index()]].value() % 2);
         let mut next_row = section.row(row_idx).to_owned();
-        next_row[CopyFlag.base_table_index()] = zero;
-        next_row[Bits.base_table_index()] += one;
+        next_row[CopyFlag.base_table_index()] = bfe!(0);
+        next_row[Bits.base_table_index()] += bfe!(1);
         next_row[BitsMinus33Inv.base_table_index()] =
-            (next_row[Bits.base_table_index()] - thirty_three).inverse();
+            (next_row[Bits.base_table_index()] - bfe!(33)).inverse();
         next_row[LHS.base_table_index()] = match current_instruction == Instruction::Pow {
             true => section[[row_idx, LHS.base_table_index()]],
-            false => (section[[row_idx, LHS.base_table_index()]] - lhs_lsb) / two,
+            false => (section[[row_idx, LHS.base_table_index()]] - lhs_lsb) / bfe!(2),
         };
         next_row[RHS.base_table_index()] =
-            (section[[row_idx, RHS.base_table_index()]] - rhs_lsb) / two;
-        next_row[LookupMultiplicity.base_table_index()] = zero;
+            (section[[row_idx, RHS.base_table_index()]] - rhs_lsb) / bfe!(2);
+        next_row[LookupMultiplicity.base_table_index()] = bfe!(0);
 
         section.push_row(next_row.view()).unwrap();
         section = Self::u32_section_next_row(section);
@@ -535,31 +529,24 @@ impl U32Table {
         row[Result.base_table_index()] = match current_instruction {
             Instruction::Split => next_row_result,
             Instruction::Lt => {
-                if next_row_result.is_zero() || next_row_result.is_one() {
-                    // if result is known, keep it
-                    next_row_result
-                } else {
-                    // Result == 2, i.e., result unknown so far
-                    if lhs_lsb.is_zero() && rhs_lsb.is_one() {
-                        one
-                    } else if lhs_lsb.is_one() && rhs_lsb.is_zero() {
-                        zero
-                    } else {
-                        // lhs_lsb == rhs_lsb
-                        if row[CopyFlag.base_table_index()].is_one() {
-                            // LHS == RHS, i.e., LHS is not less than RHS
-                            zero
-                        } else {
-                            // result still unknown
-                            two
-                        }
-                    }
+                match (
+                    next_row_result.value(),
+                    lhs_lsb.value(),
+                    rhs_lsb.value(),
+                    row[CopyFlag.base_table_index()].value(),
+                ) {
+                    (0 | 1, _, _, _) => next_row_result, // result already known
+                    (2, 0, 1, _) => bfe!(1),             // LHS < RHS
+                    (2, 1, 0, _) => bfe!(0),             // LHS > RHS
+                    (2, _, _, 1) => bfe!(0),             // LHS == RHS
+                    (2, _, _, 0) => bfe!(2),             // result still unknown
+                    _ => panic!("Invalid state"),
                 }
             }
-            Instruction::And => two * next_row_result + lhs_lsb * rhs_lsb,
+            Instruction::And => bfe!(2) * next_row_result + lhs_lsb * rhs_lsb,
             Instruction::Log2Floor => {
                 if row[LHS.base_table_index()].is_zero() {
-                    -one
+                    bfe!(-1)
                 } else if !next_row[LHS.base_table_index()].is_zero() {
                     next_row_result
                 } else {
@@ -581,7 +568,7 @@ impl U32Table {
     pub fn pad_trace(mut u32_table: ArrayViewMut2<BFieldElement>, u32_table_len: usize) {
         let mut padding_row = Array1::zeros([BASE_WIDTH]);
         padding_row[[CI.base_table_index()]] = Instruction::Split.opcode_b();
-        padding_row[[BitsMinus33Inv.base_table_index()]] = (-BFieldElement::new(33)).inverse();
+        padding_row[[BitsMinus33Inv.base_table_index()]] = bfe!(-33).inverse();
 
         if u32_table_len > 0 {
             let last_row = u32_table.row(u32_table_len - 1);
@@ -594,7 +581,7 @@ impl U32Table {
             // `lt` on operands 0 and 0, the `Result` column is 0. For the padding section,
             // where the `CopyFlag` is always 0, the `Result` needs to be set to 2 instead.
             if padding_row[[CI.base_table_index()]] == Instruction::Lt.opcode_b() {
-                padding_row[[Result.base_table_index()]] = BFieldElement::new(2);
+                padding_row[[Result.base_table_index()]] = bfe!(2);
             }
         }
 
@@ -652,8 +639,6 @@ pub(crate) mod tests {
         challenges: &Challenges,
     ) {
         assert!(master_base_trace_table.nrows() == master_ext_trace_table.nrows());
-
-        let zero = XFieldElement::zero();
         let circuit_builder = ConstraintCircuitBuilder::new();
 
         for (constraint_idx, constraint) in ExtU32Table::initial_constraints(&circuit_builder)
@@ -667,7 +652,7 @@ pub(crate) mod tests {
                 challenges,
             );
             check!(
-                zero == evaluated_constraint,
+                xfe!(0) == evaluated_constraint,
                 "Initial constraint {constraint_idx} failed."
             );
         }
@@ -685,7 +670,7 @@ pub(crate) mod tests {
                     challenges,
                 );
                 check!(
-                    zero == evaluated_constraint,
+                    xfe!(0) == evaluated_constraint,
                     "Consistency constraint {constraint_idx} failed on row {row_idx}."
                 );
             }
@@ -704,7 +689,7 @@ pub(crate) mod tests {
                     challenges,
                 );
                 check!(
-                    zero == evaluated_constraint,
+                    xfe!(0) == evaluated_constraint,
                     "Transition constraint {constraint_idx} failed on row {row_idx}."
                 );
             }
@@ -722,7 +707,7 @@ pub(crate) mod tests {
                 challenges,
             );
             check!(
-                zero == evaluated_constraint,
+                xfe!(0) == evaluated_constraint,
                 "Terminal constraint {constraint_idx} failed."
             );
         }

@@ -7,7 +7,6 @@ use std::ops::IndexMut;
 use arbitrary::Arbitrary;
 use get_size::GetSize;
 use itertools::Itertools;
-use num_traits::Zero;
 use serde_derive::*;
 use strum::EnumCount;
 use strum::EnumIter;
@@ -50,7 +49,7 @@ pub struct OpStack {
 
 impl OpStack {
     pub fn new(program_digest: Digest) -> Self {
-        let mut stack = vec![BFieldElement::zero(); OpStackElement::COUNT];
+        let mut stack = vec![bfe!(0); OpStackElement::COUNT];
 
         let reverse_digest = program_digest.reversed().values();
         stack[..tip5::DIGEST_LENGTH].copy_from_slice(&reverse_digest);
@@ -97,7 +96,7 @@ impl OpStack {
 
     pub(crate) fn pop_extension_field_element(&mut self) -> Result<XFieldElement> {
         let coefficients = self.pop_multiple()?;
-        let element = XFieldElement::new(coefficients);
+        let element = xfe!(coefficients);
         Ok(element)
     }
 
@@ -128,7 +127,7 @@ impl OpStack {
     }
 
     pub(crate) fn peek_at_top_extension_field_element(&self) -> XFieldElement {
-        XFieldElement::new([self[0], self[1], self[2]])
+        xfe!([self[0], self[1], self[2]])
     }
 
     pub(crate) fn swap_top_with(&mut self, st: OpStackElement) {
@@ -148,7 +147,7 @@ impl OpStack {
     /// The first element of the op-stack underflow memory, or 0 if the op-stack underflow memory
     /// is empty.
     pub(crate) fn first_underflow_element(&self) -> BFieldElement {
-        let default = BFieldElement::zero();
+        let default = bfe!(0);
         let Some(top_of_stack_index) = self.len().checked_sub(1) else {
             return default;
         };
@@ -665,7 +664,7 @@ mod tests {
 
         // push elements 1 thru 17
         for i in 1..=17 {
-            op_stack.push(BFieldElement::new(i as u64));
+            op_stack.push(bfe!(i));
         }
 
         // verify height
@@ -770,28 +769,28 @@ mod tests {
     #[test]
     fn canonicalize_simple_underflow_io_sequence() {
         let mut sequence = vec![
-            UnderflowIO::Read(5_u64.into()),
-            UnderflowIO::Write(5_u64.into()),
-            UnderflowIO::Read(7_u64.into()),
+            UnderflowIO::Read(bfe!(5)),
+            UnderflowIO::Write(bfe!(5)),
+            UnderflowIO::Read(bfe!(7)),
         ];
         UnderflowIO::canonicalize_sequence(&mut sequence);
 
-        let expected_sequence = vec![UnderflowIO::Read(7_u64.into())];
+        let expected_sequence = vec![UnderflowIO::Read(bfe!(7))];
         assert!(expected_sequence == sequence);
     }
 
     #[test]
     fn canonicalize_medium_complex_underflow_io_sequence() {
         let mut sequence = vec![
-            UnderflowIO::Write(5_u64.into()),
-            UnderflowIO::Write(3_u64.into()),
-            UnderflowIO::Read(3_u64.into()),
-            UnderflowIO::Read(5_u64.into()),
-            UnderflowIO::Write(7_u64.into()),
+            UnderflowIO::Write(bfe!(5)),
+            UnderflowIO::Write(bfe!(3)),
+            UnderflowIO::Read(bfe!(3)),
+            UnderflowIO::Read(bfe!(5)),
+            UnderflowIO::Write(bfe!(7)),
         ];
         UnderflowIO::canonicalize_sequence(&mut sequence);
 
-        let expected_sequence = vec![UnderflowIO::Write(7_u64.into())];
+        let expected_sequence = vec![UnderflowIO::Write(bfe!(7))];
         assert!(expected_sequence == sequence);
     }
 
@@ -851,7 +850,7 @@ mod tests {
         assert!(let Ok(_) = OpStackElement::try_from(0_u64));
         assert!(let Ok(_) = OpStackElement::try_from(0_usize));
         assert!(let Ok(_) = OpStackElement::try_from(0_i32));
-        assert!(let Ok(_) = OpStackElement::try_from(BFieldElement::zero()));
+        assert!(let Ok(_) = OpStackElement::try_from(bfe!(0)));
     }
 
     #[test]
@@ -859,7 +858,7 @@ mod tests {
         assert!(let Ok(_) = NumberOfWords::try_from(1_u32));
         assert!(let Ok(_) = NumberOfWords::try_from(1_u64));
         assert!(let Ok(_) = NumberOfWords::try_from(1_usize));
-        assert!(let Ok(_) = NumberOfWords::try_from(BFieldElement::new(1)));
+        assert!(let Ok(_) = NumberOfWords::try_from(bfe!(1)));
         assert!(let Ok(_) = NumberOfWords::try_from(ST1));
     }
 
@@ -870,11 +869,13 @@ mod tests {
         let _ = usize::from(ST0);
         let _ = i32::from(ST0);
         let _ = BFieldElement::from(ST0);
+        let _ = bfe!(ST0);
 
         let _ = u32::from(&ST0);
         let _ = usize::from(&ST0);
         let _ = i32::from(&ST0);
         let _ = BFieldElement::from(&ST0);
+        let _ = bfe!(&ST0);
     }
 
     #[test]
@@ -884,12 +885,14 @@ mod tests {
         let _ = usize::from(N1);
         let _ = BFieldElement::from(N1);
         let _ = OpStackElement::from(N1);
+        let _ = bfe!(N1);
 
         let _ = u32::from(&N1);
         let _ = u64::from(&N1);
         let _ = usize::from(&N1);
         let _ = BFieldElement::from(&N1);
         let _ = OpStackElement::from(&N1);
+        let _ = bfe!(&N1);
     }
 
     #[proptest]
@@ -913,7 +916,7 @@ mod tests {
     #[test]
     fn number_of_words_to_b_field_element_gives_expected_range() {
         let computed_range = NumberOfWords::iter()
-            .map(|num_words| BFieldElement::from(&num_words).value())
+            .map(|num_words| bfe!(num_words).value())
             .collect_vec();
         let expected_range = (1..=5).collect_vec();
         assert!(computed_range == expected_range);

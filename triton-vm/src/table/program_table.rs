@@ -286,35 +286,35 @@ impl ProgramTable {
         program_table: &mut ArrayViewMut2<BFieldElement>,
         aet: &AlgebraicExecutionTrace,
     ) {
-        let max_index_in_chunk = BFieldElement::new(Tip5::RATE as u64 - 1);
+        let max_index_in_chunk = bfe!(Tip5::RATE as u64 - 1);
 
         let instructions = aet.program.to_bwords();
         let program_len = instructions.len();
         let padded_program_len = aet.program_table_length();
 
-        let one_iter = [BFieldElement::one()].into_iter();
-        let zero_iter = [BFieldElement::zero()].into_iter();
+        let one_iter = [bfe!(1)].into_iter();
+        let zero_iter = [bfe!(0)].into_iter();
         let padding_iter = one_iter.chain(zero_iter.cycle());
         let padded_instructions = instructions.into_iter().chain(padding_iter);
         let padded_instructions = padded_instructions.take(padded_program_len);
 
         for (row_idx, instruction) in padded_instructions.enumerate() {
-            let address = row_idx.try_into().unwrap();
-            let address = BFieldElement::new(address);
+            let address = u64::try_from(row_idx).unwrap();
+            let address = bfe!(address);
 
             let lookup_multiplicity = match row_idx.cmp(&program_len) {
                 Ordering::Less => aet.instruction_multiplicities[row_idx],
                 _ => 0,
             };
-            let lookup_multiplicity = BFieldElement::new(lookup_multiplicity.into());
-            let index_in_chunk = BFieldElement::new((row_idx % Tip5::RATE) as u64);
+            let lookup_multiplicity = bfe!(lookup_multiplicity);
+            let index_in_chunk = bfe!((row_idx % Tip5::RATE) as u64);
 
             let max_minus_index_in_chunk_inv =
                 (max_index_in_chunk - index_in_chunk).inverse_or_zero();
 
             let is_hash_input_padding = match row_idx.cmp(&program_len) {
-                Ordering::Less => BFieldElement::zero(),
-                _ => BFieldElement::one(),
+                Ordering::Less => bfe!(0),
+                _ => bfe!(1),
             };
 
             let mut current_row = program_table.row_mut(row_idx);
@@ -329,14 +329,14 @@ impl ProgramTable {
 
     pub fn pad_trace(mut program_table: ArrayViewMut2<BFieldElement>, program_len: usize) {
         let addresses =
-            (program_len..program_table.nrows()).map(|a| BFieldElement::new(a.try_into().unwrap()));
+            (program_len..program_table.nrows()).map(|a| bfe!(u64::try_from(a).unwrap()));
         let addresses = Array1::from_iter(addresses);
         let address_column = program_table.slice_mut(s![program_len.., Address.base_table_index()]);
         addresses.move_into(address_column);
 
         let indices_in_chunks = (program_len..program_table.nrows())
             .map(|idx| idx % Tip5::RATE)
-            .map(|ac| BFieldElement::new(ac.try_into().unwrap()));
+            .map(|ac| bfe!(u64::try_from(ac).unwrap()));
         let indices_in_chunks = Array1::from_iter(indices_in_chunks);
         let index_in_chunk_column =
             program_table.slice_mut(s![program_len.., IndexInChunk.base_table_index()]);

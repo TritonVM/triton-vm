@@ -130,7 +130,7 @@ impl VMState {
     }
 
     pub fn derive_helper_variables(&self) -> [BFieldElement; NUM_HELPER_VARIABLE_REGISTERS] {
-        let mut hvs = [BFieldElement::zero(); NUM_HELPER_VARIABLE_REGISTERS];
+        let mut hvs = [bfe!(0); NUM_HELPER_VARIABLE_REGISTERS];
         let Ok(current_instruction) = self.current_instruction() else {
             return hvs;
         };
@@ -139,10 +139,10 @@ impl VMState {
             Pop(_) | Divine(_) | Dup(_) | Swap(_) | ReadMem(_) | WriteMem(_) | ReadIo(_)
             | WriteIo(_) => {
                 let arg_val: u64 = current_instruction.arg().unwrap().value();
-                hvs[0] = BFieldElement::new(arg_val % 2);
-                hvs[1] = BFieldElement::new((arg_val >> 1) % 2);
-                hvs[2] = BFieldElement::new((arg_val >> 2) % 2);
-                hvs[3] = BFieldElement::new((arg_val >> 3) % 2);
+                hvs[0] = bfe!(arg_val % 2);
+                hvs[1] = bfe!((arg_val >> 1) % 2);
+                hvs[2] = bfe!((arg_val >> 2) % 2);
+                hvs[3] = bfe!((arg_val >> 3) % 2);
             }
             Skiz => {
                 let st0 = self.op_stack[ST0];
@@ -154,14 +154,14 @@ impl VMState {
             }
             DivineSibling => {
                 let node_index = self.op_stack[ST5].value();
-                hvs[0] = BFieldElement::new(node_index % 2);
+                hvs[0] = bfe!(node_index % 2);
             }
             Split => {
                 let top_of_stack = self.op_stack[ST0].value();
-                let lo = BFieldElement::new(top_of_stack & 0xffff_ffff);
-                let hi = BFieldElement::new(top_of_stack >> 32);
+                let lo = bfe!(top_of_stack & 0xffff_ffff);
+                let hi = bfe!(top_of_stack >> 32);
                 if !lo.is_zero() {
-                    let max_val_of_hi = BFieldElement::new(2_u64.pow(32) - 1);
+                    let max_val_of_hi = bfe!(2_u64.pow(32) - 1);
                     hvs[0] = (hi - max_val_of_hi).inverse_or_zero();
                 }
             }
@@ -566,8 +566,8 @@ impl VMState {
 
     fn split(&mut self) -> Result<Vec<CoProcessorCall>> {
         let top_of_stack = self.op_stack.pop()?;
-        let lo = BFieldElement::new(top_of_stack.value() & 0xffff_ffff);
-        let hi = BFieldElement::new(top_of_stack.value() >> 32);
+        let lo = bfe!(top_of_stack.value() & 0xffff_ffff);
+        let hi = bfe!(top_of_stack.value() >> 32);
         self.op_stack.push(hi);
         self.op_stack.push(lo);
 
@@ -818,14 +818,14 @@ impl VMState {
     /// If the instruction pointer is out of bounds, the returned NIA is 0.
     fn next_instruction_or_argument(&self) -> BFieldElement {
         let Ok(current_instruction) = self.current_instruction() else {
-            return BFieldElement::zero();
+            return bfe!(0);
         };
         if let Some(argument) = current_instruction.arg() {
             return argument;
         }
         match self.next_instruction() {
             Ok(next_instruction) => next_instruction.opcode_b(),
-            Err(_) => BFieldElement::one(),
+            Err(_) => bfe!(1),
         }
     }
 
@@ -1081,7 +1081,7 @@ pub(crate) mod tests {
         let stdout = Array1::from(stdout);
         println!("VM output: [{}]", pretty_print_array_view(stdout.view()));
 
-        assert!(BFieldElement::new(14) == stdout[0]);
+        assert!(bfe!(14) == stdout[0]);
     }
 
     #[test]
@@ -1315,8 +1315,8 @@ pub(crate) mod tests {
     impl SpongeAndHashInstructions {
         /// Fill the stack with enough elements that any chain of instructions will not underflow.
         fn to_vm_instruction_sequence(self) -> Vec<Instruction> {
-            let push_5_zeros = vec![Push(0_u64.into()); 5];
-            let push_10_zeros = vec![Push(0_u64.into()); 10];
+            let push_5_zeros = vec![Push(bfe!(0)); 5];
+            let push_10_zeros = vec![Push(bfe!(0)); 10];
 
             match self {
                 Self::SpongeInit => vec![SpongeInit],
@@ -2123,14 +2123,14 @@ pub(crate) mod tests {
     fn run_tvm_fibonacci_tvm() {
         let program = FIBONACCI_SEQUENCE.clone();
         let_assert!(Ok(standard_out) = program.run(vec![7].into(), [].into()));
-        assert!(BFieldElement::new(21) == standard_out[0]);
+        assert!(bfe!(21) == standard_out[0]);
     }
 
     #[test]
     fn run_tvm_swap() {
         let program = triton_program!(push 1 push 2 swap 1 assert write_io 1 halt);
         let_assert!(Ok(standard_out) = program.run([].into(), [].into()));
-        assert!(BFieldElement::new(2) == standard_out[0]);
+        assert!(bfe!(2) == standard_out[0]);
     }
 
     #[test]
@@ -2145,10 +2145,10 @@ pub(crate) mod tests {
         let program = triton_program!(push 0 read_mem 1 pop 1 write_io 1 halt);
 
         let mut initial_ram = HashMap::new();
-        initial_ram.insert(0_u64.into(), 42_u64.into());
+        initial_ram.insert(bfe!(0), bfe!(42));
 
-        let public_input = PublicInput::new(vec![]);
-        let secret_input = NonDeterminism::new(vec![]).with_ram(initial_ram);
+        let public_input = PublicInput::default();
+        let secret_input = NonDeterminism::default().with_ram(initial_ram);
 
         let_assert!(Ok(public_output) = program.run(public_input.clone(), secret_input.clone()));
         assert!(42 == public_output[0].value());
@@ -2170,8 +2170,8 @@ pub(crate) mod tests {
         let mut initial_ram = HashMap::new();
         initial_ram.insert(address, value);
 
-        let public_input = PublicInput::new(vec![]);
-        let secret_input = NonDeterminism::new(vec![]).with_ram(initial_ram);
+        let public_input = PublicInput::default();
+        let secret_input = NonDeterminism::default().with_ram(initial_ram);
 
         let_assert!(Ok(public_output) = program.run(public_input.clone(), secret_input.clone()));
         assert!(0 == public_output[0].value());

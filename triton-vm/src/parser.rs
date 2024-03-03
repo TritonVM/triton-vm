@@ -697,6 +697,7 @@ pub(crate) mod tests {
     use strum::EnumCount;
     use test_strategy::proptest;
     use test_strategy::Arbitrary;
+    use twenty_first::bfe;
     use twenty_first::prelude::tip5;
 
     use LabelledInstruction::Breakpoint;
@@ -1231,13 +1232,10 @@ pub(crate) mod tests {
 
     #[test]
     fn triton_asm_macro() {
-        let instructions = triton_asm!(write_io 3 push 17 call which_label lt swap 3);
+        let instructions = triton_asm!(write_io 3 push 17 call huh lt swap 3);
         assert_eq!(Instruction(WriteIo(N3)), instructions[0]);
-        assert_eq!(Instruction(Push(17_u64.into())), instructions[1]);
-        assert_eq!(
-            Instruction(Call("which_label".to_string())),
-            instructions[2]
-        );
+        assert_eq!(Instruction(Push(bfe!(17))), instructions[1]);
+        assert_eq!(Instruction(Call("huh".to_string())), instructions[2]);
         assert_eq!(Instruction(Lt), instructions[3]);
         assert_eq!(Instruction(Swap(ST3)), instructions[4]);
     }
@@ -1316,7 +1314,7 @@ pub(crate) mod tests {
 
     #[test]
     fn triton_instruction_macro_parses_instructions_with_argument() {
-        assert_eq!(Instruction(Push(7_u64.into())), triton_instr!(push 7));
+        assert_eq!(Instruction(Push(bfe!(7))), triton_instr!(push 7));
         assert_eq!(Instruction(Dup(ST3)), triton_instr!(dup 3));
         assert_eq!(Instruction(Swap(ST5)), triton_instr!(swap 5));
         assert_eq!(
@@ -1328,7 +1326,7 @@ pub(crate) mod tests {
     #[test]
     fn triton_asm_macro_can_repeat_instructions() {
         let instructions = triton_asm![push 42; 3];
-        let expected_instructions = vec![Instruction(Push(42_u64.into())); 3];
+        let expected_instructions = vec![Instruction(Push(bfe!(42))); 3];
         assert_eq!(expected_instructions, instructions);
 
         let instructions = triton_asm![read_io 2; 15];

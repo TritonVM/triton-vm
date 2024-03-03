@@ -46,11 +46,11 @@ impl CascadeTable {
             let to_look_up_hi = ((to_look_up >> 8) & 0xff) as u8;
 
             let mut row = cascade_table.row_mut(row_idx);
-            row[LookInLo.base_table_index()] = BFieldElement::new(u64::from(to_look_up_lo));
-            row[LookInHi.base_table_index()] = BFieldElement::new(u64::from(to_look_up_hi));
+            row[LookInLo.base_table_index()] = bfe!(to_look_up_lo);
+            row[LookInHi.base_table_index()] = bfe!(to_look_up_hi);
             row[LookOutLo.base_table_index()] = Self::lookup_8_bit_limb(to_look_up_lo);
             row[LookOutHi.base_table_index()] = Self::lookup_8_bit_limb(to_look_up_hi);
-            row[LookupMultiplicity.base_table_index()] = BFieldElement::new(multiplicity);
+            row[LookupMultiplicity.base_table_index()] = bfe!(multiplicity);
         }
     }
 
@@ -72,7 +72,7 @@ impl CascadeTable {
         let mut hash_table_log_derivative = LookupArg::default_initial();
         let mut lookup_table_log_derivative = LookupArg::default_initial();
 
-        let two_pow_8 = BFieldElement::new(1 << 8);
+        let two_pow_8 = bfe!(1 << 8);
 
         let hash_indeterminate = challenges[HashCascadeLookupIndeterminate];
         let hash_input_weight = challenges[HashCascadeLookInWeight];
@@ -114,8 +114,7 @@ impl CascadeTable {
     }
 
     fn lookup_8_bit_limb(to_look_up: u8) -> BFieldElement {
-        let looked_up = tip5::LOOKUP_TABLE[to_look_up as usize];
-        BFieldElement::new(u64::from(looked_up))
+        tip5::LOOKUP_TABLE[to_look_up as usize].into()
     }
 
     pub fn lookup_16_bit_limb(to_look_up: u16) -> BFieldElement {
@@ -123,8 +122,7 @@ impl CascadeTable {
         let to_look_up_hi = ((to_look_up >> 8) & 0xff) as u8;
         let looked_up_lo = Self::lookup_8_bit_limb(to_look_up_lo);
         let looked_up_hi = Self::lookup_8_bit_limb(to_look_up_hi);
-        let two_pow_8 = BFieldElement::new(1 << 8);
-        two_pow_8 * looked_up_hi + looked_up_lo
+        bfe!(1 << 8) * looked_up_hi + looked_up_lo
     }
 }
 
@@ -141,8 +139,8 @@ impl ExtCascadeTable {
         let challenge = |challenge_id: ChallengeId| circuit_builder.challenge(challenge_id);
 
         let one = circuit_builder.b_constant(b_field_element::BFIELD_ONE);
-        let two = circuit_builder.b_constant(BFieldElement::new(2));
-        let two_pow_8 = circuit_builder.b_constant(BFieldElement::new(1 << 8));
+        let two = circuit_builder.b_constant(bfe!(2));
+        let two_pow_8 = circuit_builder.b_constant(bfe!(1 << 8));
         let lookup_arg_default_initial = circuit_builder.x_constant(LookupArg::default_initial());
 
         let is_padding = base_row(IsPadding);
@@ -314,7 +312,6 @@ impl ExtCascadeTable {
 pub(crate) mod tests {
     use assert2::assert;
     use assert2::check;
-    use num_traits::Zero;
 
     use super::*;
 
@@ -325,7 +322,6 @@ pub(crate) mod tests {
     ) {
         assert!(master_base_trace_table.nrows() == master_ext_trace_table.nrows());
 
-        let zero = XFieldElement::zero();
         let circuit_builder = ConstraintCircuitBuilder::new();
 
         for (constraint_idx, constraint) in ExtCascadeTable::initial_constraints(&circuit_builder)
@@ -339,7 +335,7 @@ pub(crate) mod tests {
                 challenges,
             );
             check!(
-                zero == evaluated_constraint,
+                xfe!(0) == evaluated_constraint,
                 "Initial constraint {constraint_idx} failed."
             );
         }
@@ -358,7 +354,7 @@ pub(crate) mod tests {
                     challenges,
                 );
                 check!(
-                    zero == evaluated_constraint,
+                    xfe!(0) == evaluated_constraint,
                     "Consistency constraint {constraint_idx} failed on row {row_idx}."
                 );
             }
@@ -378,7 +374,7 @@ pub(crate) mod tests {
                     challenges,
                 );
                 check!(
-                    zero == evaluated_constraint,
+                    xfe!(0) == evaluated_constraint,
                     "Transition constraint {constraint_idx} failed on row {row_idx}."
                 );
             }
@@ -396,7 +392,7 @@ pub(crate) mod tests {
                 challenges,
             );
             check!(
-                zero == evaluated_constraint,
+                xfe!(0) == evaluated_constraint,
                 "Terminal constraint {constraint_idx} failed."
             );
         }

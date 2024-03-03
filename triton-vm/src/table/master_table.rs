@@ -9,7 +9,6 @@ use ndarray::Array2;
 use ndarray::ArrayView2;
 use ndarray::ArrayViewMut2;
 use ndarray::Zip;
-use num_traits::One;
 use rand::distributions::Standard;
 use rand::prelude::Distribution;
 use rand::random;
@@ -981,7 +980,7 @@ pub fn initial_quotient_zerofier_inverse(
     let zerofier_codeword = quotient_domain
         .domain_values()
         .into_iter()
-        .map(|x| x - BFieldElement::one())
+        .map(|x| x - bfe!(1))
         .collect();
     BFieldElement::batch_inversion(zerofier_codeword).into()
 }
@@ -993,7 +992,7 @@ pub fn consistency_quotient_zerofier_inverse(
     let zerofier_codeword = quotient_domain
         .domain_values()
         .iter()
-        .map(|x| x.mod_pow_u32(trace_domain.length as u32) - BFieldElement::one())
+        .map(|x| x.mod_pow_u32(trace_domain.length as u32) - bfe!(1))
         .collect();
     BFieldElement::batch_inversion(zerofier_codeword).into()
 }
@@ -1002,13 +1001,12 @@ pub fn transition_quotient_zerofier_inverse(
     trace_domain: ArithmeticDomain,
     quotient_domain: ArithmeticDomain,
 ) -> Array1<BFieldElement> {
-    let one = BFieldElement::one();
     let trace_domain_generator_inverse = trace_domain.generator.inverse();
     let quotient_domain_values = quotient_domain.domain_values();
 
     let subgroup_zerofier: Vec<_> = quotient_domain_values
         .par_iter()
-        .map(|domain_value| domain_value.mod_pow_u32(trace_domain.length as u32) - one)
+        .map(|domain_value| domain_value.mod_pow_u32(trace_domain.length as u32) - bfe!(1))
         .collect();
     let subgroup_zerofier_inverse = BFieldElement::batch_inversion(subgroup_zerofier);
     let zerofier_inverse: Vec<_> = quotient_domain_values

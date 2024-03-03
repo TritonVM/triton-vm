@@ -25,7 +25,7 @@ impl ArithmeticDomain {
     /// Errors if the domain length is not a power of 2.
     pub fn of_length(length: usize) -> Result<Self> {
         let domain = Self {
-            offset: BFieldElement::one(),
+            offset: bfe!(1),
             generator: Self::generator_for_length(length as u64)?,
             length,
         };
@@ -90,7 +90,7 @@ impl ArithmeticDomain {
     }
 
     pub fn domain_values(&self) -> Vec<BFieldElement> {
-        let mut accumulator = BFieldElement::one();
+        let mut accumulator = bfe!(1);
         let mut domain_values = Vec::with_capacity(self.length);
 
         for _ in 0..self.length {

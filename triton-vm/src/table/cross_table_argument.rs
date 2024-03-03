@@ -1,8 +1,6 @@
 use std::ops::Add;
 use std::ops::Mul;
 
-use num_traits::One;
-use num_traits::Zero;
 use twenty_first::prelude::*;
 
 use crate::table::challenges::ChallengeId::*;
@@ -46,7 +44,7 @@ pub struct PermArg;
 
 impl CrossTableArg for PermArg {
     fn default_initial() -> XFieldElement {
-        XFieldElement::one()
+        1.into()
     }
 
     /// Compute the product for a permutation argument as specified by `initial`, `challenge`,
@@ -70,7 +68,7 @@ pub struct EvalArg;
 
 impl CrossTableArg for EvalArg {
     fn default_initial() -> XFieldElement {
-        XFieldElement::one()
+        1.into()
     }
 
     /// Compute the evaluation for an evaluation argument as specified by `initial`, `challenge`,
@@ -93,7 +91,7 @@ pub struct LookupArg;
 
 impl CrossTableArg for LookupArg {
     fn default_initial() -> XFieldElement {
-        XFieldElement::zero()
+        0.into()
     }
 
     fn compute_terminal(

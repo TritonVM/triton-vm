@@ -9,8 +9,6 @@ use ndarray::ArrayView1;
 use ndarray::ArrayView2;
 use ndarray::ArrayViewMut2;
 use ndarray::Axis;
-use num_traits::One;
-use num_traits::Zero;
 use strum::EnumCount;
 use twenty_first::prelude::*;
 
@@ -95,8 +93,8 @@ impl OpStackTableEntry {
 
     pub fn to_base_table_row(self) -> Array1<BFieldElement> {
         let shrink_stack_indicator = match self.shrinks_stack() {
-            true => BFieldElement::one(),
-            false => BFieldElement::zero(),
+            true => bfe!(1),
+            false => bfe!(0),
         };
 
         let mut row = Array1::zeros(BASE_WIDTH);
@@ -140,7 +138,7 @@ impl ExtOpStackTable {
 
         let first_row_is_padding_row = base_row(IB1ShrinkStack) - padding_indicator;
         let first_row_is_not_padding_row =
-            base_row(IB1ShrinkStack) * (base_row(IB1ShrinkStack) - constant(1_u64.into()));
+            base_row(IB1ShrinkStack) * (base_row(IB1ShrinkStack) - constant(bfe!(1)));
 
         let rppa_starts_correctly = rppa_has_accumulated_first_row * first_row_is_padding_row
             + rppa_is_default_initial * first_row_is_not_padding_row;
@@ -402,7 +400,6 @@ pub(crate) mod tests {
     use assert2::assert;
     use assert2::check;
     use itertools::Itertools;
-    use num_traits::Zero;
     use proptest::collection::vec;
     use proptest::prelude::*;
     use proptest_arbitrary_interop::arb;
@@ -418,8 +415,6 @@ pub(crate) mod tests {
         challenges: &Challenges,
     ) {
         assert!(master_base_trace_table.nrows() == master_ext_trace_table.nrows());
-
-        let zero = XFieldElement::zero();
         let circuit_builder = ConstraintCircuitBuilder::new();
 
         for (constraint_idx, constraint) in ExtOpStackTable::initial_constraints(&circuit_builder)
@@ -433,7 +428,7 @@ pub(crate) mod tests {
                 challenges,
             );
             check!(
-                zero == evaluated_constraint,
+                xfe!(0) == evaluated_constraint,
                 "Initial constraint {constraint_idx} failed."
             );
         }
@@ -452,7 +447,7 @@ pub(crate) mod tests {
                     challenges,
                 );
                 check!(
-                    zero == evaluated_constraint,
+                    xfe!(0) == evaluated_constraint,
                     "Consistency constraint {constraint_idx} failed on row {row_idx}."
                 );
             }
@@ -472,7 +467,7 @@ pub(crate) mod tests {
                     challenges,
                 );
                 check!(
-                    zero == evaluated_constraint,
+                    xfe!(0) == evaluated_constraint,
                     "Transition constraint {constraint_idx} failed on row {row_idx}."
                 );
             }
@@ -490,7 +485,7 @@ pub(crate) mod tests {
                 challenges,
             );
             check!(
-                zero == evaluated_constraint,
+                xfe!(0) == evaluated_constraint,
                 "Terminal constraint {constraint_idx} failed."
             );
         }

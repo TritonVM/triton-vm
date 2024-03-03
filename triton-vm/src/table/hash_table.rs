@@ -52,6 +52,7 @@ pub const POWER_MAP_EXPONENT: u64 = 7;
 pub const NUM_ROUND_CONSTANTS: usize = STATE_SIZE;
 
 const PERMUTATION_TRACE_LENGTH: usize = NUM_ROUNDS + 1;
+
 pub type PermutationTrace = [[BFieldElement; STATE_SIZE]; PERMUTATION_TRACE_LENGTH];
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
@@ -1322,18 +1323,16 @@ impl HashTable {
         BFieldElement::new(mds_matrix_entry as u64)
     }
 
-    /// The round constants for round `round_number` if it is a valid round number in the Tip5
-    /// permutation, and the zero vector otherwise.
-    pub fn tip5_round_constants_by_round_number(
-        round_number: usize,
-    ) -> [BFieldElement; NUM_ROUND_CONSTANTS] {
-        match round_number {
-            i if i < NUM_ROUNDS => ROUND_CONSTANTS
-                [NUM_ROUND_CONSTANTS * i..NUM_ROUND_CONSTANTS * (i + 1)]
-                .try_into()
-                .unwrap(),
-            _ => [BFieldElement::zero(); NUM_ROUND_CONSTANTS],
+    /// The round constants for round `r` if it is a valid round number in the Tip5 permutation,
+    /// and the zero vector otherwise.
+    pub fn tip5_round_constants_by_round_number(r: usize) -> [BFieldElement; NUM_ROUND_CONSTANTS] {
+        if r >= NUM_ROUNDS {
+            return [bfe!(0); NUM_ROUND_CONSTANTS];
         }
+
+        let range_start = NUM_ROUND_CONSTANTS * r;
+        let range_end = NUM_ROUND_CONSTANTS * (r + 1);
+        ROUND_CONSTANTS[range_start..range_end].try_into().unwrap()
     }
 
     /// Return the 16-bit chunks of the “un-Montgomery'd” representation, in little-endian chunk
@@ -1380,7 +1379,7 @@ impl HashTable {
         mut row: Array1<BFieldElement>,
         round_number: usize,
     ) -> Array1<BFieldElement> {
-        row[RoundNumber.base_table_index()] = BFieldElement::from(round_number as u64);
+        row[RoundNumber.base_table_index()] = bfe!(round_number as u64);
         row
     }
 
@@ -1399,7 +1398,7 @@ impl HashTable {
         trace_row: [BFieldElement; STATE_SIZE],
     ) -> Array1<BFieldElement> {
         let limbs = Self::base_field_element_into_16_bit_limbs(trace_row[0]);
-        let look_in_split = limbs.map(|limb| BFieldElement::new(limb.into()));
+        let look_in_split = limbs.map(|limb| bfe!(limb));
         row[State0LowestLkIn.base_table_index()] = look_in_split[0];
         row[State0MidLowLkIn.base_table_index()] = look_in_split[1];
         row[State0MidHighLkIn.base_table_index()] = look_in_split[2];
@@ -1419,7 +1418,7 @@ impl HashTable {
         trace_row: [BFieldElement; STATE_SIZE],
     ) -> Array1<BFieldElement> {
         let limbs = Self::base_field_element_into_16_bit_limbs(trace_row[1]);
-        let look_in_split = limbs.map(|limb| BFieldElement::new(limb.into()));
+        let look_in_split = limbs.map(|limb| bfe!(limb));
         row[State1LowestLkIn.base_table_index()] = look_in_split[0];
         row[State1MidLowLkIn.base_table_index()] = look_in_split[1];
         row[State1MidHighLkIn.base_table_index()] = look_in_split[2];
@@ -1439,7 +1438,7 @@ impl HashTable {
         trace_row: [BFieldElement; STATE_SIZE],
     ) -> Array1<BFieldElement> {
         let limbs = Self::base_field_element_into_16_bit_limbs(trace_row[2]);
-        let look_in_split = limbs.map(|limb| BFieldElement::new(limb.into()));
+        let look_in_split = limbs.map(|limb| bfe!(limb));
         row[State2LowestLkIn.base_table_index()] = look_in_split[0];
         row[State2MidLowLkIn.base_table_index()] = look_in_split[1];
         row[State2MidHighLkIn.base_table_index()] = look_in_split[2];
@@ -1459,7 +1458,7 @@ impl HashTable {
         trace_row: [BFieldElement; STATE_SIZE],
     ) -> Array1<BFieldElement> {
         let limbs = Self::base_field_element_into_16_bit_limbs(trace_row[3]);
-        let look_in_split = limbs.map(|limb| BFieldElement::new(limb.into()));
+        let look_in_split = limbs.map(|limb| bfe!(limb));
         row[State3LowestLkIn.base_table_index()] = look_in_split[0];
         row[State3MidLowLkIn.base_table_index()] = look_in_split[1];
         row[State3MidHighLkIn.base_table_index()] = look_in_split[2];
@@ -1511,8 +1510,8 @@ impl HashTable {
         let limbs = Self::base_field_element_into_16_bit_limbs(state_element);
         let highest: u64 = limbs[3].into();
         let mid_high: u64 = limbs[2].into();
-        let high_limbs = BFieldElement::new((highest << 16) + mid_high);
-        let two_pow_32_minus_1 = BFieldElement::new((1 << 32) - 1);
+        let high_limbs = bfe!((highest << 16) + mid_high);
+        let two_pow_32_minus_1 = bfe!((1_u64 << 32) - 1);
         let to_invert = two_pow_32_minus_1 - high_limbs;
         to_invert.inverse_or_zero()
     }
@@ -1573,7 +1572,7 @@ impl HashTable {
     }
 
     pub fn pad_trace(mut hash_table: ArrayViewMut2<BFieldElement>, hash_table_length: usize) {
-        let inverse_of_high_limbs = Self::inverse_or_zero_of_highest_2_limbs(BFieldElement::zero());
+        let inverse_of_high_limbs = Self::inverse_or_zero_of_highest_2_limbs(bfe!(0));
         for column_id in [State0Inv, State1Inv, State2Inv, State3Inv] {
             let column_index = column_id.base_table_index();
             let slice_info = s![hash_table_length.., column_index];
@@ -1639,9 +1638,9 @@ impl HashTable {
         let mut cascade_state_3_lowest_log_derivative = LookupArg::default_initial();
         let mut receive_chunk_running_evaluation = EvalArg::default_initial();
 
-        let two_pow_16 = BFieldElement::from(1_u64 << 16);
-        let two_pow_32 = BFieldElement::from(1_u64 << 32);
-        let two_pow_48 = BFieldElement::from(1_u64 << 48);
+        let two_pow_16 = bfe!(1_u64 << 16);
+        let two_pow_32 = bfe!(1_u64 << 32);
+        let two_pow_48 = bfe!(1_u64 << 48);
 
         let montgomery_modulus_inverse = MONTGOMERY_MODULUS.inverse();
         let re_compose_state_element =
@@ -1876,8 +1875,6 @@ pub(crate) mod tests {
         challenges: &Challenges,
     ) {
         assert!(master_base_trace_table.nrows() == master_ext_trace_table.nrows());
-
-        let zero = XFieldElement::zero();
         let circuit_builder = ConstraintCircuitBuilder::new();
 
         for (constraint_idx, constraint) in ExtHashTable::initial_constraints(&circuit_builder)
@@ -1891,7 +1888,7 @@ pub(crate) mod tests {
                 challenges,
             );
             check!(
-                zero == evaluated_constraint,
+                xfe!(0) == evaluated_constraint,
                 "Initial constraint {constraint_idx} failed."
             );
         }
@@ -1909,7 +1906,7 @@ pub(crate) mod tests {
                     challenges,
                 );
                 check!(
-                    zero == evaluated_constraint,
+                    xfe!(0) == evaluated_constraint,
                     "Consistency constraint {constraint_idx} failed on row {row_idx}."
                 );
             }
@@ -1928,7 +1925,7 @@ pub(crate) mod tests {
                     challenges,
                 );
                 check!(
-                    zero == evaluated_constraint,
+                    xfe!(0) == evaluated_constraint,
                     "Transition constraint {constraint_idx} failed on row {row_idx}."
                 );
             }
@@ -1946,7 +1943,7 @@ pub(crate) mod tests {
                 challenges,
             );
             check!(
-                zero == evaluated_constraint,
+                xfe!(0) == evaluated_constraint,
                 "Terminal constraint {constraint_idx} failed."
             );
         }
@@ -2006,7 +2003,7 @@ pub(crate) mod tests {
                 &challenges,
             );
             assert_eq!(
-                XFieldElement::zero(),
+                xfe!(0),
                 evaluated_constraint,
                 "Terminal constraint {constraint_idx} failed."
             );

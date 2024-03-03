@@ -264,7 +264,7 @@ impl Challenges {
             challenges[StandardOutputIndeterminate.index()],
         );
         let lookup_terminal = EvalArg::compute_terminal(
-            &tip5::LOOKUP_TABLE.map(u64::from).map(BFieldElement::new),
+            &tip5::LOOKUP_TABLE.map(BFieldElement::from),
             EvalArg::default_initial(),
             challenges[LookupTablePublicIndeterminate.index()],
         );
@@ -320,7 +320,7 @@ pub(crate) mod tests {
         /// Fiat-Shamir heuristic to derive the actual challenges.
         pub fn placeholder(claim: &Claim) -> Self {
             let stand_in_challenges = (1..=Self::num_challenges_to_sample())
-                .map(|i| XFieldElement::new_u64([42, i as u64, 24]))
+                .map(|i| xfe!([42, i as u64, 24]))
                 .collect();
             Self::new(stand_in_challenges, claim)
         }
@@ -352,6 +352,7 @@ pub(crate) mod tests {
         assert!(LookupTablePublicIndeterminate.index() < LookupTablePublicTerminal.index());
         assert!(LookupTablePublicIndeterminate.index() < CompressedProgramDigest.index());
     }
+
     // Ensure the compile-time assertions are actually executed by the compiler.
     const _: () = compile_time_index_assertions();
 }

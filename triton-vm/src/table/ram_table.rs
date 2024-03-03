@@ -216,7 +216,7 @@ impl RamTable {
             challenges[ClockJumpDifferenceLookupIndeterminate];
         let mut running_product_ram_pointer =
             bezout_indeterminate - base_table.row(0)[RamPointer.base_table_index()];
-        let mut formal_derivative = XFieldElement::one();
+        let mut formal_derivative = xfe!(1);
         let mut bezout_coefficient_0 =
             base_table.row(0)[BezoutCoefficientPolynomialCoefficient0.base_table_index()].lift();
         let mut bezout_coefficient_1 =
@@ -536,8 +536,6 @@ pub(crate) mod tests {
         challenges: &Challenges,
     ) {
         assert!(master_base_trace_table.nrows() == master_ext_trace_table.nrows());
-
-        let zero = XFieldElement::zero();
         let circuit_builder = ConstraintCircuitBuilder::new();
 
         for (constraint_idx, constraint) in ExtRamTable::initial_constraints(&circuit_builder)
@@ -551,7 +549,7 @@ pub(crate) mod tests {
                 challenges,
             );
             check!(
-                zero == evaluated_constraint,
+                xfe!(0) == evaluated_constraint,
                 "Initial constraint {constraint_idx} failed."
             );
         }
@@ -569,7 +567,7 @@ pub(crate) mod tests {
                     challenges,
                 );
                 check!(
-                    zero == evaluated_constraint,
+                    xfe!(0) == evaluated_constraint,
                     "Consistency constraint {constraint_idx} failed on row {row_idx}."
                 );
             }
@@ -588,7 +586,7 @@ pub(crate) mod tests {
                     challenges,
                 );
                 check!(
-                    zero == evaluated_constraint,
+                    xfe!(0) == evaluated_constraint,
                     "Transition constraint {constraint_idx} failed on row {row_idx}."
                 );
             }
@@ -606,7 +604,7 @@ pub(crate) mod tests {
                 challenges,
             );
             check!(
-                zero == evaluated_constraint,
+                xfe!(0) == evaluated_constraint,
                 "Terminal constraint {constraint_idx} failed."
             );
         }

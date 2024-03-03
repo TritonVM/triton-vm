@@ -70,9 +70,8 @@ impl ProcessorTable {
             "Processor Table must have at least one row."
         );
         let mut padding_template = processor_table.row(processor_table_len - 1).to_owned();
-        padding_template[IsPadding.base_table_index()] = BFieldElement::one();
-        padding_template[ClockJumpDifferenceLookupMultiplicity.base_table_index()] =
-            BFieldElement::zero();
+        padding_template[IsPadding.base_table_index()] = bfe!(1);
+        padding_template[ClockJumpDifferenceLookupMultiplicity.base_table_index()] = bfe!(0);
         processor_table
             .slice_mut(s![processor_table_len.., ..])
             .axis_iter_mut(Axis(0))
@@ -80,7 +79,7 @@ impl ProcessorTable {
             .for_each(|mut row| row.assign(&padding_template));
 
         let clk_range = processor_table_len..processor_table.nrows();
-        let clk_col = Array1::from_iter(clk_range.map(|a| BFieldElement::new(a as u64)));
+        let clk_col = Array1::from_iter(clk_range.map(|a| bfe!(a as u64)));
         clk_col.move_into(
             processor_table.slice_mut(s![processor_table_len.., CLK.base_table_index()]),
         );
@@ -90,7 +89,7 @@ impl ProcessorTable {
         // always 1. The lookup multiplicities of clock value 1 must be increased accordingly: one
         // per padding row.
         let num_padding_rows = processor_table.nrows() - processor_table_len;
-        let num_padding_rows = BFieldElement::new(num_padding_rows as u64);
+        let num_padding_rows = bfe!(num_padding_rows as u64);
         let mut row_1 = processor_table.row_mut(1);
         row_1[ClockJumpDifferenceLookupMultiplicity.base_table_index()] += num_padding_rows;
     }
@@ -275,7 +274,7 @@ impl ProcessorTable {
                     let st1_prev = prev_row[ST1.base_table_index()];
                     let st0 = current_row[ST0.base_table_index()];
                     let from_xor_in_processor_to_and_in_u32_coprocessor =
-                        (st0_prev + st1_prev - st0) / BFieldElement::new(2);
+                        (st0_prev + st1_prev - st0) / bfe!(2);
                     let compressed_row = st0_prev * challenges[U32LhsWeight]
                         + st1_prev * challenges[U32RhsWeight]
                         + Instruction::And.opcode_b() * challenges[U32CiWeight]
@@ -299,7 +298,7 @@ impl ProcessorTable {
                         * challenges[U32LhsWeight]
                         + prev_row[ST1.base_table_index()] * challenges[U32RhsWeight]
                         + Instruction::Lt.opcode_b() * challenges[U32CiWeight]
-                        + BFieldElement::one() * challenges[U32ResultWeight];
+                        + bfe!(1) * challenges[U32ResultWeight];
                     let compressed_row_for_range_check = prev_row[ST0.base_table_index()]
                         * challenges[U32LhsWeight]
                         + current_row[ST1.base_table_index()] * challenges[U32RhsWeight]
@@ -342,7 +341,7 @@ impl ProcessorTable {
         current_row: ArrayView1<BFieldElement>,
         challenges: &Challenges,
     ) -> XFieldElement {
-        let default_factor = XFieldElement::one();
+        let default_factor = xfe!(1);
 
         let is_padding_row = current_row[IsPadding.base_table_index()].is_one();
         if is_padding_row {
@@ -374,7 +373,7 @@ impl ProcessorTable {
             let underflow_element = row_with_shorter_stack[stack_element_column.base_table_index()];
 
             let op_stack_pointer = row_with_shorter_stack[OpStackPointer.base_table_index()];
-            let offset = BFieldElement::new(op_stack_pointer_offset as u64);
+            let offset = bfe!(op_stack_pointer_offset as u64);
             let offset_op_stack_pointer = op_stack_pointer + offset;
 
             let clk = previous_row[CLK.base_table_index()];
@@ -415,7 +414,7 @@ impl ProcessorTable {
         };
         let op_stack_delta = instruction.op_stack_size_influence().unsigned_abs() as usize;
 
-        let mut factor = XFieldElement::one();
+        let mut factor = xfe!(1);
         for ram_pointer_offset in 0..op_stack_delta {
             let num_ram_pointers = 1;
             let ram_value_index = ram_pointer_offset + num_ram_pointers;
@@ -440,12 +439,12 @@ impl ProcessorTable {
         ram_pointer_offset: usize,
     ) -> BFieldElement {
         let ram_pointer = row_with_longer_stack[ST0.base_table_index()];
-        let offset = BFieldElement::new(ram_pointer_offset as u64);
+        let offset = bfe!(ram_pointer_offset as u64);
 
         match instruction {
             // adjust for ram_pointer pointing in front of last-read address:
             // `push 0 read_mem 1` leaves stack as `_ a -1` where `a` was read from address 0.
-            ReadMem(_) => ram_pointer + offset + b_field_element::BFIELD_ONE,
+            ReadMem(_) => ram_pointer + offset + bfe!(1),
             WriteMem(_) => ram_pointer + offset,
             _ => unreachable!(),
         }
@@ -3187,7 +3186,7 @@ impl ExtProcessorTable {
     ) -> ConstraintCircuitMonad<DualRowIndicator> {
         let constant = |c: u32| circuit_builder.b_constant(c.into());
         let one = || constant(1);
-        let two_inverse = circuit_builder.b_constant(BFieldElement::new(2).inverse());
+        let two_inverse = circuit_builder.b_constant(bfe!(2).inverse());
         let challenge = |c: ChallengeId| circuit_builder.challenge(c);
         let curr_base_row = |col: ProcessorBaseTableColumn| {
             circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
@@ -3498,7 +3497,7 @@ pub(crate) mod tests {
         let test_rows = [test_row_from_program(triton_program!(push 1 halt), 0)];
 
         let debug_info = TestRowsDebugInfo {
-            instruction: Push(BFieldElement::one()),
+            instruction: Push(bfe!(1)),
             debug_cols_curr_row: vec![ST0, ST1, ST2],
             debug_cols_next_row: vec![ST0, ST1, ST2],
         };
@@ -4108,8 +4107,6 @@ pub(crate) mod tests {
         challenges: &Challenges,
     ) {
         assert!(master_base_trace_table.nrows() == master_ext_trace_table.nrows());
-
-        let zero = XFieldElement::zero();
         let circuit_builder = ConstraintCircuitBuilder::new();
 
         for (constraint_idx, constraint) in ExtProcessorTable::initial_constraints(&circuit_builder)
@@ -4123,7 +4120,7 @@ pub(crate) mod tests {
                 challenges,
             );
             check!(
-                zero == evaluated_constraint,
+                xfe!(0) == evaluated_constraint,
                 "Initial constraint {constraint_idx} failed."
             );
         }
@@ -4142,7 +4139,7 @@ pub(crate) mod tests {
                     challenges,
                 );
                 check!(
-                    zero == evaluated_constraint,
+                    xfe!(0) == evaluated_constraint,
                     "Consistency constraint {constraint_idx} failed on row {row_idx}."
                 );
             }
@@ -4162,7 +4159,7 @@ pub(crate) mod tests {
                     challenges,
                 );
                 check!(
-                    zero == evaluated_constraint,
+                    xfe!(0) == evaluated_constraint,
                     "Transition constraint {constraint_idx} failed on row {row_idx}."
                 );
             }
@@ -4181,7 +4178,7 @@ pub(crate) mod tests {
                 challenges,
             );
             check!(
-                zero == evaluated_constraint,
+                xfe!(0) == evaluated_constraint,
                 "Terminal constraint {constraint_idx} failed."
             );
         }

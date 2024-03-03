@@ -4,6 +4,7 @@ use itertools::Itertools;
 use proc_macro2::TokenStream;
 use quote::quote;
 use quote::ToTokens;
+use twenty_first::bfe;
 use twenty_first::prelude::x_field_element::EXTENSION_DEGREE;
 use twenty_first::prelude::BFieldElement;
 use twenty_first::prelude::XFieldElement;
@@ -260,7 +261,7 @@ impl TasmBackend {
     }
 
     fn load_base_field_constant(bfe: BFieldElement) -> TokenStream {
-        let zero = Self::tokenize_bfe(BFieldElement::new(0));
+        let zero = Self::tokenize_bfe(bfe!(0));
         let bfe = Self::tokenize_bfe(bfe);
         quote!(AnInstruction::Push(#zero), AnInstruction::Push(#zero), AnInstruction::Push(#bfe),)
     }
@@ -292,7 +293,7 @@ impl TasmBackend {
         let word_offset = element_index * EXTENSION_DEGREE;
         let start_to_read_offset = EXTENSION_DEGREE - 1;
         let word_index = word_offset + start_to_read_offset;
-        let word_index = BFieldElement::from(word_index as u64);
+        let word_index = bfe!(word_index as u64);
         let word_index = Self::tokenize_bfe(word_index);
 
         quote!(
@@ -306,7 +307,7 @@ impl TasmBackend {
         let free_mem_page = IOList::FreeMemPage;
 
         let word_offset = element_index * EXTENSION_DEGREE;
-        let word_index = BFieldElement::from(word_offset as u64);
+        let word_index = bfe!(word_offset as u64);
         let word_index = Self::tokenize_bfe(word_index);
 
         quote!(
@@ -326,7 +327,7 @@ impl TasmBackend {
     fn prepare_return_values() -> TokenStream {
         let free_mem_page = IOList::FreeMemPage;
         let out_array_offset_in_num_bfes = OUT_ARRAY_OFFSET * EXTENSION_DEGREE;
-        let out_array_offset = BFieldElement::new(out_array_offset_in_num_bfes as u64);
+        let out_array_offset = bfe!(out_array_offset_in_num_bfes as u64);
         let out_array_offset = Self::tokenize_bfe(out_array_offset);
         quote!(AnInstruction::Push(#free_mem_page + #out_array_offset),)
     }
