@@ -1,3 +1,6 @@
+//! This file is a placeholder for auto-generated code.
+//! Run `cargo run --bin constraint-evaluation-generator` to generate the actual code.
+
 use ndarray::ArrayView2;
 use ndarray::ArrayViewMut2;
 use strum::Display;
@@ -11,9 +14,6 @@ use crate::table::challenges::Challenges;
 pub const BASE_WIDTH: usize = DegreeLoweringBaseTableColumn::COUNT;
 pub const EXT_WIDTH: usize = DegreeLoweringExtTableColumn::COUNT;
 pub const FULL_WIDTH: usize = BASE_WIDTH + EXT_WIDTH;
-
-// This file is a placeholder for auto-generated code.
-// Run `cargo run --bin constraint-evaluation-generator` to generate the actual code.
 
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, EnumCount, EnumIter)]
 pub enum DegreeLoweringBaseTableColumn {}
