@@ -211,7 +211,7 @@ impl Constraints {
         constraints: &[ConstraintCircuitMonad<II>],
     ) -> Vec<ConstraintCircuit<II>> {
         let mut constraints = constraints.iter().map(|c| c.consume()).collect_vec();
-        ConstraintCircuit::assert_has_unique_ids(&mut constraints);
+        ConstraintCircuit::assert_unique_ids(&mut constraints);
         constraints
     }
 }

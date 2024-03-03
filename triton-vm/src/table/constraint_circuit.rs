@@ -381,39 +381,44 @@ impl<II: InputIndicator> ConstraintCircuit<II> {
         }
     }
 
-    /// Verify that all IDs in the subtree are unique. Panics otherwise.
-    fn inner_has_unique_ids(&mut self, ids: &mut HashMap<usize, ConstraintCircuit<II>>) {
-        let self_id = self.id;
+    /// Assert that all IDs in the subtree are unique.
+    ///
+    /// # Panics
+    ///
+    /// Panics if a duplicate ID is found.
+    fn assert_unique_ids_inner(&mut self, ids: &mut HashMap<usize, ConstraintCircuit<II>>) {
+        self.ref_count += 1;
 
         // Try to detect duplicate IDs only once for this node.
-        let maybe_other_node = if self.ref_count == 0 {
-            ids.insert(self_id, self.clone())
-        } else {
-            None
-        };
-        if let Some(other) = maybe_other_node {
-            panic!("ID {self_id} was repeated. Self: {self:?}. Other: {other:?}.");
+        if self.ref_count > 1 {
+            return;
         }
 
-        self.ref_count += 1;
+        let self_id = self.id;
+        if let Some(other) = ids.insert(self_id, self.clone()) {
+            panic!("Repeated ID: {self_id}\nSelf:\n{self}\n{self:?}\nOther:\n{other}\n{other:?}");
+        }
+
         if let BinaryOperation(_, lhs, rhs) = &self.expression {
-            lhs.borrow_mut().inner_has_unique_ids(ids);
-            rhs.borrow_mut().inner_has_unique_ids(ids);
+            lhs.borrow_mut().assert_unique_ids_inner(ids);
+            rhs.borrow_mut().assert_unique_ids_inner(ids);
         }
     }
 
-    /// Verify that a multicircuit has unique IDs. Panics otherwise.
-    /// Also determines how often each node is referenced and stores the result in the
-    /// `ref_count` field of each node.
-    pub fn assert_has_unique_ids(constraints: &mut [ConstraintCircuit<II>]) {
-        let mut ids: HashMap<usize, ConstraintCircuit<II>> = HashMap::new();
-        // The inner uniqueness checks relies on reference counters being 0 for unseen nodes.
-        // Hence, they are reset here.
+    /// Assert that a multicircuit has unique IDs.
+    /// Also determines how often each node is referenced, updating the respective `ref_count`s.
+    ///
+    /// # Panics
+    ///
+    /// Panics if a duplicate ID is found.
+    pub fn assert_unique_ids(constraints: &mut [ConstraintCircuit<II>]) {
+        // inner uniqueness checks relies on reference counters being 0 for unseen nodes
         for circuit in constraints.iter_mut() {
             circuit.reset_ref_count_for_tree();
         }
+        let mut ids: HashMap<usize, ConstraintCircuit<II>> = HashMap::new();
         for circuit in constraints.iter_mut() {
-            circuit.inner_has_unique_ids(&mut ids);
+            circuit.assert_unique_ids_inner(&mut ids);
         }
     }
 
@@ -452,12 +457,6 @@ impl<II: InputIndicator> ConstraintCircuit<II> {
         ref_counters.sort_unstable();
         ref_counters.dedup();
         ref_counters
-    }
-
-    /// Return true if the contained multivariate polynomial consists of only a single term. This
-    /// means that it can be pretty-printed without parentheses.
-    pub fn print_without_parentheses(&self) -> bool {
-        !matches!(&self.expression, BinaryOperation(_, _, _))
     }
 
     /// Is the node the constant 0?
@@ -510,48 +509,17 @@ impl<II: InputIndicator> ConstraintCircuit<II> {
         ext_table: ArrayView2<XFieldElement>,
         challenges: &Challenges,
     ) -> XFieldElement {
-        match self.clone().expression {
+        match &self.expression {
             BConstant(bfe) => bfe.lift(),
-            XConstant(xfe) => xfe,
+            XConstant(xfe) => *xfe,
             Input(input) => input.evaluate(base_table, ext_table),
-            Challenge(challenge_id) => challenges[challenge_id],
+            Challenge(challenge_id) => challenges[*challenge_id],
             BinaryOperation(binop, lhs, rhs) => {
                 let lhs_value = lhs.borrow().evaluate(base_table, ext_table, challenges);
                 let rhs_value = rhs.borrow().evaluate(base_table, ext_table, challenges);
                 binop.operation(lhs_value, rhs_value)
             }
         }
-    }
-
-    /// Returns the number of unreferenced nodes in the subtree of the given node, which includes
-    /// the node itself. Increments the ref counter of each visited node.
-    fn count_nodes_inner(&mut self) -> usize {
-        let num_unreferenced_self = match self.ref_count {
-            0 => 1,
-            _ => 0,
-        };
-        self.ref_count += 1;
-        let num_unreferenced_children = match &self.expression {
-            BinaryOperation(_, lhs, rhs) => {
-                let num_left = lhs.borrow_mut().count_nodes_inner();
-                let num_right = rhs.borrow_mut().count_nodes_inner();
-                num_left + num_right
-            }
-            _ => 0,
-        };
-
-        num_unreferenced_self + num_unreferenced_children
-    }
-
-    /// Count the total number of unique nodes in the given multicircuit.
-    /// Also refreshes the reference counter for each node.
-    pub fn count_nodes(constraints: &mut [ConstraintCircuit<II>]) -> usize {
-        // The uniqueness of nodes is determined by their reference count.
-        // To ensure a correct node count, the reference count must be reset before counting nodes.
-        for constraint in constraints.iter_mut() {
-            constraint.reset_ref_count_for_tree();
-        }
-        constraints.iter_mut().map(Self::count_nodes_inner).sum()
     }
 }
 
@@ -1462,7 +1430,7 @@ mod tests {
     ) -> Vec<ConstraintCircuit<II>> {
         let multicircuit = build_multicircuit(multicircuit_builder);
         let mut constraints = multicircuit.into_iter().map(|c| c.consume()).collect_vec();
-        ConstraintCircuit::assert_has_unique_ids(&mut constraints);
+        ConstraintCircuit::assert_unique_ids(&mut constraints);
         constraints
     }
 
