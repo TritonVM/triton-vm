@@ -1917,20 +1917,20 @@ impl ExtProcessorTable {
             circuit_builder.input(NextBaseRow(col.master_base_table_index()))
         };
 
+        let st0_eq_st1 = || one() - curr_base_row(HV0) * (curr_base_row(ST1) - curr_base_row(ST0));
+
         // Helper variable hv0 is the inverse-or-zero of the difference of the stack's two top-most
-        // elements: `hv0·(hv0·(st1 - st0) - 1)`
-        let hv0_is_inverse_of_diff_or_hv0_is_0 = curr_base_row(HV0)
-            * (curr_base_row(HV0) * (curr_base_row(ST1) - curr_base_row(ST0)) - one());
+        // elements: `hv0·(1 - hv0·(st1 - st0))`
+        let hv0_is_inverse_of_diff_or_hv0_is_0 = curr_base_row(HV0) * st0_eq_st1();
 
         // Helper variable hv0 is the inverse-or-zero of the difference of the stack's two
-        // top-most elements: `(st1 - st0)·(hv0·(st1 - st0) - 1)`
-        let hv0_is_inverse_of_diff_or_diff_is_0 = (curr_base_row(ST1) - curr_base_row(ST0))
-            * (curr_base_row(HV0) * (curr_base_row(ST1) - curr_base_row(ST0)) - one());
+        // top-most elements: `(st1 - st0)·(1 - hv0·(st1 - st0))`
+        let hv0_is_inverse_of_diff_or_diff_is_0 =
+            (curr_base_row(ST1) - curr_base_row(ST0)) * st0_eq_st1();
 
         // The new top of the stack is 1 if the difference between the stack's two top-most
         // elements is not invertible, 0 otherwise: `st0' - (1 - hv0·(st1 - st0))`
-        let st0_becomes_1_if_diff_is_not_invertible = next_base_row(ST0)
-            - (one() - curr_base_row(HV0) * (curr_base_row(ST1) - curr_base_row(ST0)));
+        let st0_becomes_1_if_diff_is_not_invertible = next_base_row(ST0) - st0_eq_st1();
 
         let specific_constraints = vec![
             hv0_is_inverse_of_diff_or_hv0_is_0,
