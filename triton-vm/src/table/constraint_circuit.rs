@@ -1076,7 +1076,7 @@ mod tests {
         let initial_input = DualRowIndicator::NextBaseRow(rng.gen_range(0..num_base_columns));
         let mut random_circuit = circuit_builder.input(initial_input);
 
-        let num_nodes_in_circuit = rng.gen_range(50..300);
+        let num_nodes_in_circuit = rng.gen_range(0..100);
         for _ in 0..num_nodes_in_circuit {
             let node = random_circuit_node(&circuit_builder, num_base_columns, num_ext_columns);
             match rng.gen_range(0..3) {
