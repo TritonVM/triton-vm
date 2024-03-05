@@ -23,6 +23,8 @@ use num_traits::One;
 use num_traits::Zero;
 use quote::quote;
 use quote::ToTokens;
+use rand::thread_rng;
+use rand::RngCore;
 use twenty_first::prelude::*;
 use twenty_first::shared_math::mpolynomial::Degree;
 
@@ -567,6 +569,11 @@ fn binop<II: InputIndicator>(
     lhs: ConstraintCircuitMonad<II>,
     rhs: ConstraintCircuitMonad<II>,
 ) -> ConstraintCircuitMonad<II> {
+    assert_eq!(
+        lhs.builder.builder_id, rhs.builder.builder_id,
+        "builder_id must agree when constructing binary expression"
+    );
+
     // all `BinOp`s are commutative – try both orders of the operands
     let new_node = binop_new_node(binop, &rhs, &lhs);
     if let Some(node) = lhs.builder.all_nodes.borrow().get(&new_node) {
@@ -920,6 +927,7 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
 pub struct ConstraintCircuitBuilder<II: InputIndicator> {
     id_counter: Rc<RefCell<usize>>,
     all_nodes: Rc<RefCell<HashSet<ConstraintCircuitMonad<II>>>>,
+    builder_id: u64,
 }
 
 impl<II: InputIndicator> Default for ConstraintCircuitBuilder<II> {
@@ -933,6 +941,7 @@ impl<II: InputIndicator> ConstraintCircuitBuilder<II> {
         Self {
             id_counter: Rc::new(RefCell::new(0)),
             all_nodes: Rc::new(RefCell::new(HashSet::default())),
+            builder_id: thread_rng().next_u64(),
         }
     }
 
@@ -1204,69 +1213,98 @@ mod tests {
         );
     }
 
+    #[should_panic(expected = "builder_id must agree when constructing binary expression")]
+    #[test]
+    fn disallow_construction_of_binary_expressions_with_different_circuit_builders() {
+        let circuit = random_circuit();
+        let one = circuit.builder.one();
+        let copy = deep_copy(&circuit.circuit.borrow());
+        let _ = one + copy;
+    }
+
     #[test]
     fn circuit_equality_check_and_constant_folding() {
         let circuit_builder: ConstraintCircuitBuilder<DualRowIndicator> =
             ConstraintCircuitBuilder::new();
         let var_0 = circuit_builder.input(DualRowIndicator::CurrentBaseRow(0));
-        let var_4 = circuit_builder.input(DualRowIndicator::NextBaseRow(4));
-        let four = circuit_builder.x_constant(4);
-        let one = circuit_builder.x_constant(1);
-        let zero = circuit_builder.x_constant(0);
+        {
+            let var_4 = circuit_builder.input(DualRowIndicator::NextBaseRow(4));
+            let four = circuit_builder.x_constant(4);
+            let one = circuit_builder.one();
+            let zero = circuit_builder.zero();
 
-        assert_ne!(var_0, var_4);
-        assert_ne!(var_0, four);
-        assert_ne!(one, four);
-        assert_ne!(one, zero);
-        assert_ne!(zero, one);
+            assert_ne!(var_0, var_4);
+            assert_ne!(var_0, four);
+            assert_ne!(one, four);
+            assert_ne!(one, zero);
+            assert_ne!(zero, one);
+        }
 
         // Verify that constant folding can handle a = a * 1
-        let var_0_copy_0 = deep_copy(&var_0.circuit.borrow());
-        let var_0_mul_one_0 = var_0_copy_0.clone() * one.clone();
-        assert_ne!(var_0_copy_0, var_0_mul_one_0);
-        let mut circuits = [var_0_copy_0, var_0_mul_one_0];
-        ConstraintCircuitMonad::constant_folding(&mut circuits);
-        assert_eq!(circuits[0], circuits[1]);
+        {
+            let var_0_copy_0 = deep_copy(&var_0.circuit.borrow());
+            let one = var_0_copy_0.builder.one();
+            let var_0_mul_one_0 = var_0_copy_0.clone() * one.clone();
+            assert_ne!(var_0_copy_0, var_0_mul_one_0);
+            let mut circuits = [var_0_copy_0, var_0_mul_one_0];
+            ConstraintCircuitMonad::constant_folding(&mut circuits);
+            assert_eq!(circuits[0], circuits[1]);
+        }
 
         // Verify that constant folding can handle a = 1 * a
-        let var_0_copy_1 = deep_copy(&var_0.circuit.borrow());
-        let var_0_one_mul_1 = one.clone() * var_0_copy_1.clone();
-        assert_ne!(var_0_copy_1, var_0_one_mul_1);
-        let mut circuits = [var_0_copy_1, var_0_one_mul_1];
-        ConstraintCircuitMonad::constant_folding(&mut circuits);
-        assert_eq!(circuits[0], circuits[1]);
+        {
+            let var_0_copy_1 = deep_copy(&var_0.circuit.borrow());
+            let one = var_0_copy_1.builder.one();
+            let var_0_one_mul_1 = one.clone() * var_0_copy_1.clone();
+            assert_ne!(var_0_copy_1, var_0_one_mul_1);
+            let mut circuits = [var_0_copy_1, var_0_one_mul_1];
+            ConstraintCircuitMonad::constant_folding(&mut circuits);
+            assert_eq!(circuits[0], circuits[1]);
+        }
 
         // Verify that constant folding can handle a = 1 * a * 1
-        let var_0_copy_2 = deep_copy(&var_0.circuit.borrow());
-        let var_0_one_mul_2 = one.clone() * var_0_copy_2.clone() * one;
-        assert_ne!(var_0_copy_2, var_0_one_mul_2);
-        let mut circuits = [var_0_copy_2, var_0_one_mul_2];
-        ConstraintCircuitMonad::constant_folding(&mut circuits);
-        assert_eq!(circuits[0], circuits[1]);
+        {
+            let var_0_copy_2 = deep_copy(&var_0.circuit.borrow());
+            let one = var_0_copy_2.builder.one();
+            let var_0_one_mul_2 = one.clone() * var_0_copy_2.clone() * one;
+            assert_ne!(var_0_copy_2, var_0_one_mul_2);
+            let mut circuits = [var_0_copy_2, var_0_one_mul_2];
+            ConstraintCircuitMonad::constant_folding(&mut circuits);
+            assert_eq!(circuits[0], circuits[1]);
+        }
 
         // Verify that constant folding handles a + 0 = a
-        let var_0_copy_3 = deep_copy(&var_0.circuit.borrow());
-        let var_0_plus_zero_3 = var_0_copy_3.clone() + zero.clone();
-        assert_ne!(var_0_copy_3, var_0_plus_zero_3);
-        let mut circuits = [var_0_copy_3, var_0_plus_zero_3];
-        ConstraintCircuitMonad::constant_folding(&mut circuits);
-        assert_eq!(circuits[0], circuits[1]);
+        {
+            let var_0_copy_3 = deep_copy(&var_0.circuit.borrow());
+            let zero = var_0_copy_3.builder.zero();
+            let var_0_plus_zero_3 = var_0_copy_3.clone() + zero.clone();
+            assert_ne!(var_0_copy_3, var_0_plus_zero_3);
+            let mut circuits = [var_0_copy_3, var_0_plus_zero_3];
+            ConstraintCircuitMonad::constant_folding(&mut circuits);
+            assert_eq!(circuits[0], circuits[1]);
+        }
 
         // Verify that constant folding handles a + (a * 0) = a
-        let var_0_copy_4 = deep_copy(&var_0.circuit.borrow());
-        let var_0_plus_zero_4 = var_0_copy_4.clone() + var_0_copy_4.clone() * zero.clone();
-        assert_ne!(var_0_copy_4, var_0_plus_zero_4);
-        let mut circuits = [var_0_copy_4, var_0_plus_zero_4];
-        ConstraintCircuitMonad::constant_folding(&mut circuits);
-        assert_eq!(circuits[0], circuits[1]);
+        {
+            let var_0_copy_4 = deep_copy(&var_0.circuit.borrow());
+            let zero = var_0_copy_4.builder.zero();
+            let var_0_plus_zero_4 = var_0_copy_4.clone() + var_0_copy_4.clone() * zero.clone();
+            assert_ne!(var_0_copy_4, var_0_plus_zero_4);
+            let mut circuits = [var_0_copy_4, var_0_plus_zero_4];
+            ConstraintCircuitMonad::constant_folding(&mut circuits);
+            assert_eq!(circuits[0], circuits[1]);
+        }
 
         // Verify that constant folding does not equate `0 - a` with `a`
-        let var_0_copy_5 = deep_copy(&var_0.circuit.borrow());
-        let zero_minus_var_0 = zero - var_0_copy_5.clone();
-        assert_ne!(var_0_copy_5, zero_minus_var_0);
-        let mut circuits = [var_0_copy_5, zero_minus_var_0];
-        ConstraintCircuitMonad::constant_folding(&mut circuits);
-        assert_ne!(circuits[0], circuits[1]);
+        {
+            let var_0_copy_5 = deep_copy(&var_0.circuit.borrow());
+            let zero = var_0_copy_5.builder.zero();
+            let zero_minus_var_0 = zero - var_0_copy_5.clone();
+            assert_ne!(var_0_copy_5, zero_minus_var_0);
+            let mut circuits = [var_0_copy_5, zero_minus_var_0];
+            ConstraintCircuitMonad::constant_folding(&mut circuits);
+            assert_ne!(circuits[0], circuits[1]);
+        }
     }
 
     #[test]
