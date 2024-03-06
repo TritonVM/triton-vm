@@ -32,6 +32,27 @@ const OUT_ARRAY_OFFSET: usize = {
     out_array_offset_in_words / EXTENSION_DEGREE
 };
 
+/// Convenience macro to wrap any [`AnInstruction`][instr] variant into a
+/// [`LabelledInstruction::Instruction`][labelled]. Also prepends `AnInstruction::` to the input.
+///
+/// [instr]: triton_vm::instruction::AnInstruction
+/// [labelled]: triton_vm::instruction::LabelledInstruction::Instruction
+macro_rules! instr {
+    ($($instr:tt)*) => {{
+        let instr = quote!($($instr)*);
+        quote!(LabelledInstruction::Instruction(AnInstruction::#instr),)
+    }};
+}
+
+/// Convenience macro to construct a [`Push`][push] instruction.
+///
+/// [push]: triton_vm::instruction::AnInstruction::Push
+macro_rules! push {
+    ($($arg:tt)*) => {
+        instr!(Push($($arg)*))
+    };
+}
+
 impl Codegen for TasmBackend {
     /// Emits a function that emits [Triton assembly][tasm] that evaluates Triton VM's AIR
     /// constraints over the [extension field][XFieldElement].
@@ -46,7 +67,6 @@ impl Codegen for TasmBackend {
         let cons_constraints = backend.tokenize_circuits(&constraints.cons());
         let tran_constraints = backend.tokenize_circuits(&constraints.tran());
         let term_constraints = backend.tokenize_circuits(&constraints.term());
-
         let prepare_return_values = Self::prepare_return_values();
 
         quote!(
@@ -55,14 +75,13 @@ impl Codegen for TasmBackend {
             pub fn air_constraint_evaluation_tasm(
                 mem_layout: TasmConstraintEvaluationMemoryLayout,
             ) -> Vec<LabelledInstruction> {
-                let instructions = vec![
+                vec![
                     #init_constraints
                     #cons_constraints
                     #tran_constraints
                     #term_constraints
                     #prepare_return_values
-                ];
-                instructions.into_iter().map(LabelledInstruction::Instruction).collect()
+                ]
             }
         )
     }
@@ -202,17 +221,13 @@ impl TasmBackend {
             return quote!();
         };
 
-        assert!(
-            constraint.ref_count <= ref_count,
-            "Constraints with ref count greater than {ref_count} must be in scope."
-        );
-
         if constraint.ref_count < ref_count {
             let out_left = self.store_single_shared_node_of_ref_count(&lhs.borrow(), ref_count);
             let out_right = self.store_single_shared_node_of_ref_count(&rhs.borrow(), ref_count);
             return quote!(#out_left #out_right);
         }
 
+        assert_eq!(constraint.ref_count, ref_count);
         let evaluate = self.evaluate_single_node(constraint);
         let store = Self::store_ext_field_element(constraint.id);
         let is_new_insertion = self.scope.insert(constraint.id);
@@ -252,7 +267,7 @@ impl TasmBackend {
 
     fn load_node<II: InputIndicator>(circuit: &ConstraintCircuit<II>) -> TokenStream {
         match circuit.expression {
-            CircuitExpression::BConstant(bfe) => Self::load_base_field_constant(bfe),
+            CircuitExpression::BConstant(bfe) => Self::load_ext_field_constant(bfe.into()),
             CircuitExpression::XConstant(xfe) => Self::load_ext_field_constant(xfe),
             CircuitExpression::Input(input) => Self::load_input(input),
             CircuitExpression::Challenge(challenge) => Self::load_challenge(challenge),
@@ -260,15 +275,9 @@ impl TasmBackend {
         }
     }
 
-    fn load_base_field_constant(bfe: BFieldElement) -> TokenStream {
-        let zero = Self::tokenize_bfe(bfe!(0));
-        let bfe = Self::tokenize_bfe(bfe);
-        quote!(AnInstruction::Push(#zero), AnInstruction::Push(#zero), AnInstruction::Push(#bfe),)
-    }
-
     fn load_ext_field_constant(xfe: XFieldElement) -> TokenStream {
-        let [c0, c1, c2] = xfe.coefficients.map(Self::tokenize_bfe);
-        quote!(AnInstruction::Push(#c2), AnInstruction::Push(#c1), AnInstruction::Push(#c0),)
+        let [c0, c1, c2] = xfe.coefficients.map(Self::tokenize_bfe).map(|c| push!(#c));
+        quote!(#c2 #c1 #c0)
     }
 
     fn load_input<II: InputIndicator>(input: II) -> TokenStream {
@@ -296,11 +305,11 @@ impl TasmBackend {
         let word_index = bfe!(word_index as u64);
         let word_index = Self::tokenize_bfe(word_index);
 
-        quote!(
-            AnInstruction::Push(#list + #word_index),
-            AnInstruction::ReadMem(NumberOfWords::N3),
-            AnInstruction::Pop(NumberOfWords::N1),
-        )
+        let push_address = push!(#list + #word_index);
+        let read_mem = instr!(ReadMem(NumberOfWords::N3));
+        let pop = instr!(Pop(NumberOfWords::N1));
+
+        quote!(#push_address #read_mem #pop)
     }
 
     fn store_ext_field_element(element_index: usize) -> TokenStream {
@@ -310,26 +319,26 @@ impl TasmBackend {
         let word_index = bfe!(word_offset as u64);
         let word_index = Self::tokenize_bfe(word_index);
 
-        quote!(
-            AnInstruction::Push(#free_mem_page + #word_index),
-            AnInstruction::WriteMem(NumberOfWords::N3),
-            AnInstruction::Pop(NumberOfWords::N1),
-        )
+        let push_address = push!(#free_mem_page + #word_index);
+        let write_mem = instr!(WriteMem(NumberOfWords::N3));
+        let pop = instr!(Pop(NumberOfWords::N1));
+
+        quote!(#push_address #write_mem #pop)
     }
 
     fn tokenize_bin_op(binop: BinOp) -> TokenStream {
         match binop {
-            BinOp::Add => quote!(AnInstruction::XxAdd,),
-            BinOp::Mul => quote!(AnInstruction::XxMul,),
+            BinOp::Add => instr!(XxAdd),
+            BinOp::Mul => instr!(XxMul),
         }
     }
 
     fn prepare_return_values() -> TokenStream {
         let free_mem_page = IOList::FreeMemPage;
         let out_array_offset_in_num_bfes = OUT_ARRAY_OFFSET * EXTENSION_DEGREE;
-        let out_array_offset = bfe!(out_array_offset_in_num_bfes as u64);
+        let out_array_offset = bfe!(u64::try_from(out_array_offset_in_num_bfes).unwrap());
         let out_array_offset = Self::tokenize_bfe(out_array_offset);
-        quote!(AnInstruction::Push(#free_mem_page + #out_array_offset),)
+        push!(#free_mem_page + #out_array_offset)
     }
 }
 
