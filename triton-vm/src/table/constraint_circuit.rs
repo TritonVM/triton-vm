@@ -576,7 +576,7 @@ fn binop<II: InputIndicator>(
     lhs: ConstraintCircuitMonad<II>,
     rhs: ConstraintCircuitMonad<II>,
 ) -> ConstraintCircuitMonad<II> {
-    assert_eq!(lhs.builder, rhs.builder);
+    assert!(lhs.builder.is_same_as(&rhs.builder));
 
     // all `BinOp`s are commutative – try both orders of the operands
     let new_node = binop_new_node(binop, &rhs, &lhs);
@@ -945,6 +945,15 @@ impl<II: InputIndicator> ConstraintCircuitBuilder<II> {
             id_counter: Rc::new(RefCell::new(0)),
             all_nodes: Rc::new(RefCell::new(HashSet::default())),
         }
+    }
+
+    /// Check whether two builders are the same.
+    ///
+    /// Notably, this is distinct from checking equality: two builders are equal if they are in the
+    /// same state. Two builders are the same if they are the same instance.
+    pub fn is_same_as(&self, other: &Self) -> bool {
+        Rc::ptr_eq(&self.id_counter, &other.id_counter)
+            && Rc::ptr_eq(&self.all_nodes, &other.all_nodes)
     }
 
     fn new_monad(&self, circuit: ConstraintCircuit<II>) -> ConstraintCircuitMonad<II> {
