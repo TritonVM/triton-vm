@@ -19,7 +19,6 @@ readme.workspace = true
 
 [dependencies]
 arbitrary.workspace = true
-bincode.workspace = true
 colored.workspace = true
 criterion.workspace = true
 get-size.workspace = true

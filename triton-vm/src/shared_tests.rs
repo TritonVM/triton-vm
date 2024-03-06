@@ -1,10 +1,3 @@
-use std::error::Error;
-use std::fs::create_dir_all;
-use std::fs::File;
-use std::io::Read;
-use std::io::Write;
-use std::path::Path;
-
 use num_traits::Zero;
 use proptest::collection::vec;
 use proptest::prelude::*;
@@ -178,46 +171,4 @@ impl ProgramAndInput {
         self.program
             .run(self.public_input(), self.non_determinism())
     }
-}
-
-pub fn proofs_directory() -> String {
-    "proofs/".to_string()
-}
-
-pub fn create_proofs_directory() -> std::io::Result<()> {
-    create_dir_all(proofs_directory())
-}
-
-pub fn proofs_directory_exists() -> bool {
-    Path::new(&proofs_directory()).is_dir()
-}
-
-pub fn proof_file_exists(filename: &str) -> bool {
-    if !proofs_directory_exists() {
-        return false;
-    }
-    let full_filename = format!("{}{filename}", proofs_directory());
-    File::open(full_filename).is_ok()
-}
-
-pub fn load_proof(filename: &str) -> std::io::Result<Proof> {
-    let full_filename = format!("{}{filename}", proofs_directory());
-    let mut file_content = vec![];
-    let mut file_handle = File::open(full_filename)?;
-    let num_bytes_read = file_handle.read_to_end(&mut file_content)?;
-    println!("Read {num_bytes_read} bytes of proof data from disk.");
-    let proof: Proof = bincode::deserialize(&file_content).expect("Cannot deserialize proof.");
-    Ok(proof)
-}
-
-pub fn save_proof(filename: &str, proof: Proof) -> Result<(), Box<dyn Error>> {
-    if !proofs_directory_exists() {
-        create_proofs_directory()?;
-    }
-    let full_filename = format!("{}{filename}", proofs_directory());
-    let mut file_handle = File::create(full_filename)?;
-    let binary = bincode::serialize(&proof)?;
-    let amount = file_handle.write(&binary)?;
-    println!("Wrote {amount} bytes of proof data to disk.");
-    Ok(())
 }

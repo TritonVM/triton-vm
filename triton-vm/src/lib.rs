@@ -589,7 +589,6 @@ mod tests {
 
     use crate::instruction::LabelledInstruction;
     use crate::instruction::TypeHint;
-    use crate::shared_tests::*;
 
     use super::*;
 
@@ -688,22 +687,6 @@ mod tests {
         let stark = Stark::default();
         let_assert!(Err(err) = prove(stark, &claim, &program, [].into()));
         assert!(let ProvingError::PublicOutputMismatch = err);
-    }
-
-    #[test]
-    fn save_proof_to_and_load_from_disk() {
-        let filename = "nop_halt.tsp";
-        if !proof_file_exists(filename) {
-            create_proofs_directory().unwrap();
-        }
-
-        let program = triton_program!(nop halt);
-        let (_, _, proof) = prove_program(&program, &[], &[].into()).unwrap();
-
-        save_proof(filename, proof.clone()).unwrap();
-        let loaded_proof = load_proof(filename).unwrap();
-
-        assert!(proof == loaded_proof);
     }
 
     #[proptest]
