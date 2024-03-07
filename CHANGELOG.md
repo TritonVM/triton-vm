@@ -3,6 +3,31 @@
 All notable changes are documented in this file.
 Lines marked “(!)” indicate a breaking change.
 
+## [0.38.0](https://github.com/TritonVM/triton-vm/compare/v0.37.0..v0.38.0) - 2024-03-07
+
+### ✨ Features
+
+- Evaluate AIR constraints in Triton assembly ([b740c605](https://github.com/TritonVM/triton-vm/commit/b740c605))
+
+### ⚙️ Miscellaneous
+
+- Generalize constraint circuit methods ([aecd75f5](https://github.com/TritonVM/triton-vm/commit/aecd75f5))
+- Use `nextest` as the test runner ([651934e7](https://github.com/TritonVM/triton-vm/commit/651934e7))
+- Use `cargo-llvm-cov` for code coverage ([d7b8e341](https://github.com/TritonVM/triton-vm/commit/d7b8e341))
+- Report coverage of TUI's integration tests ([718b211d](https://github.com/TritonVM/triton-vm/commit/718b211d))
+- Also run benchmarks as tests ([05c139f8](https://github.com/TritonVM/triton-vm/commit/05c139f8))
+
+### ♻️ Refactor
+
+- (!) Use `const`s for number of constraints ([eb31e6d8](https://github.com/TritonVM/triton-vm/commit/eb31e6d8))
+- (!) Remove `BinOp::Sub` ([675acc69](https://github.com/TritonVM/triton-vm/commit/675acc69))
+- (!) Remove unused functions ([105d9435](https://github.com/TritonVM/triton-vm/commit/105d9435))
+- (!) Drop methods for storing `Proof`s ([c2974e1e](https://github.com/TritonVM/triton-vm/commit/c2974e1e))
+
+### ✅ Testing
+
+- Use fewer resources in constant folding test ([449426aa](https://github.com/TritonVM/triton-vm/commit/449426aa))
+
 ## [0.37.0](https://github.com/TritonVM/triton-vm/compare/v0.36.1..v0.37.0) - 2024-02-15
 
 ### ✨ Features
