@@ -17,8 +17,7 @@ fn prove_fib(criterion: &mut Criterion) {
     fib_benchmark_group(criterion, &claim, &aet);
 
     let report = prover_timing_report(&claim, &aet);
-    println!("Writing report ...");
-    println!("{report}");
+    eprintln!("{report}");
 }
 
 fn fib_benchmark_group(criterion: &mut Criterion, claim: &Claim, aet: &AlgebraicExecutionTrace) {

@@ -30,7 +30,6 @@ fn prove_halt(criterion: &mut Criterion) {
     });
     group.finish();
 
-    println!("Writing report ...");
     let padded_height = proof.padded_height().unwrap();
     let fri = stark.derive_fri(padded_height).unwrap();
     let report = profiler
@@ -38,7 +37,7 @@ fn prove_halt(criterion: &mut Criterion) {
         .with_cycle_count(aet.processor_trace.nrows())
         .with_padded_height(padded_height)
         .with_fri_domain_len(fri.domain.length);
-    println!("{report}");
+    eprintln!("{report}");
 }
 
 criterion_group! {

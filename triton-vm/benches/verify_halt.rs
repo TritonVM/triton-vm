@@ -41,7 +41,7 @@ fn verify_halt(criterion: &mut Criterion) {
     });
     group.finish();
 
-    println!("{report}");
+    eprintln!("{report}");
 }
 
 criterion_group! {

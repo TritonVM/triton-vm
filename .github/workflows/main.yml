@@ -25,6 +25,9 @@ jobs:
         with:
           components: rustfmt, clippy
 
+      - name: Install nextest
+        uses: taiki-e/install-action@nextest
+
       - name: Build constraints
         run: cargo run --bin constraint-evaluation-generator
 
@@ -40,11 +43,11 @@ jobs:
         run: cargo clippy --all-targets -- -D warnings
 
       - name: Run tests
-        # `--benches` is purposefully omitted here
-        run: cargo test --lib --bins --tests --examples
+        run: cargo nextest run --no-fail-fast --all-targets
 
+        # doctests are special [^1] but this step does not incur a performance penalty [^2]
+        #
+        # [^1]: https://nexte.st/book/usage.html#limitations
+        # [^2]: https://github.com/nextest-rs/nextest/issues/16
       - name: Run documentation tests
         run: cargo test --doc
-
-      - name: Build benchmarks
-        run: cargo bench --all-targets --no-run
