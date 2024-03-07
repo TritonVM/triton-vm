@@ -16,23 +16,22 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      - name: Install stable toolchain
-        uses: actions-rs/toolchain@v1
+      - name: Install toolchain
+        uses: dtolnay/rust-toolchain@stable
         with:
-          profile: minimal
-          toolchain: stable
+          components: llvm-tools-preview
+
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
+
+      - name: Install nextest
+        uses: taiki-e/install-action@nextest
 
       - name: Build AIR constraints
         run: cargo run --bin constraint-evaluation-generator
 
-      - name: Install tarpaulin
-        uses: baptiste0928/cargo-install@v2
-        with:
-          crate: cargo-tarpaulin
-          version: "^0.27"
-
-      - name: Run tarpaulin
-        run: cargo tarpaulin --all-targets --workspace --engine llvm --timeout 600 --out Lcov
+      - name: Collect coverage data
+        run: cargo llvm-cov nextest --lcov --output-path lcov.info
 
       - name: Upload coverage to coveralls.io
         uses: coverallsapp/github-action@v2
