@@ -31,7 +31,7 @@ jobs:
         run: cargo run --bin constraint-evaluation-generator
 
       - name: Collect coverage data
-        run: cargo llvm-cov nextest --lcov --output-path lcov.info
+        run: cargo llvm-cov nextest --lcov --output-path lcov.info --features integration-tests
 
       - name: Upload coverage to coveralls.io
         uses: coverallsapp/github-action@v2

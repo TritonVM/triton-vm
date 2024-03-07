@@ -1,6 +1,5 @@
-//! Integration tests for the triton-tui binary. Currently ignored for two reasons:
-//! 1. They break code-coverage tool `cargo-tarpaulin`.
-//! 2. The crate `rexpect` does not compile on Windows.
+//! Integration tests for the triton-tui binary. Feature-gated because the crate `rexpect` does not
+//! compile on Windows.
 
 #[cfg(test)]
 #[cfg(feature = "integration-tests")]
