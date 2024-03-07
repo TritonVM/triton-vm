@@ -43,10 +43,7 @@ jobs:
         run: cargo clippy --all-targets -- -D warnings
 
       - name: Run tests
-        run: cargo nextest run --no-fail-fast --tests
-
-      - name: Run examples
-        run: cargo nextest run --no-fail-fast --examples
+        run: cargo nextest run --no-fail-fast --all-targets
 
         # doctests are special [^1] but this step does not incur a performance penalty [^2]
         #

@@ -103,19 +103,6 @@ impl TritonProfiler {
         );
 
         let mut report: Vec<TaskReport> = vec![];
-        let total_tracked_time = (self.total_time.as_nanos()
-            - self
-                .profile
-                .iter()
-                .filter(|t| t.task_type == TaskType::AnyOtherIteration)
-                .map(|t| t.time.as_nanos())
-                .sum::<u128>()) as f64
-            / 1_000_000_000f64;
-        println!(
-            "total time: {}s and tracked: {}s",
-            self.total_time.as_secs_f64(),
-            total_tracked_time,
-        );
 
         // collect all categories and their total times
         // todo: this can count the same category multiple times if it's nested
@@ -189,6 +176,7 @@ impl TritonProfiler {
             tasks: report,
             name: self.name.clone(),
             total_time: self.total_time,
+            tracked_time: self.tracked_time(),
             category_times,
             cycle_count: None,
             padded_height: None,
@@ -310,6 +298,14 @@ impl TritonProfiler {
             self.plain_stop();
         }
     }
+
+    pub fn tracked_time(&self) -> Duration {
+        let is_other_iteration = |t: &&Task| t.task_type == TaskType::AnyOtherIteration;
+        let all_tasks = self.profile.iter();
+        let other_iterations = all_tasks.filter(is_other_iteration);
+        let untracked_time = other_iterations.map(|t| t.time).sum();
+        self.total_time.saturating_sub(untracked_time)
+    }
 }
 
 impl Profiler for TritonProfiler {
@@ -391,6 +387,7 @@ pub struct Report {
     name: String,
     tasks: Vec<TaskReport>,
     total_time: Duration,
+    tracked_time: Duration,
     category_times: HashMap<String, Duration>,
     cycle_count: Option<usize>,
     padded_height: Option<usize>,
@@ -444,6 +441,9 @@ impl Display for Report {
         let title = format!("{title:<max_width$}");
 
         let total_time_string = Report::display_time_aligned(self.total_time).bold();
+        let tracked_time = Report::display_time_aligned(self.tracked_time);
+        writeln!(f, "tracked time: {tracked_time}s")?;
+
         let share_string = "Share".to_string().bold();
         let category_string = match self.category_times.is_empty() {
             true => ColoredString::default(),

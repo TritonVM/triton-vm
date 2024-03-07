@@ -214,18 +214,18 @@ fn print_proof_size_breakdown(program_name: &str, proof: &Proof) {
     let proof_size_breakdown = break_down_proof_size(proof);
     let proof_size_breakdown = sort_hash_map_by_value_descending(proof_size_breakdown);
 
-    println!();
-    println!("Proof size breakdown for {program_name}:");
-    println!(
+    eprintln!();
+    eprintln!("Proof size breakdown for {program_name}:");
+    eprintln!(
         "| {:<30} | {:>10} | {:>6} |",
         "Category", "Size [bfe]", "[%]"
     );
-    println!("|:{:-<30}-|-{:->10}:|-{:->6}:|", "", "", "");
+    eprintln!("|:{:-<30}-|-{:->10}:|-{:->6}:|", "", "", "");
     for (category, size) in proof_size_breakdown {
         let relative_size = (size as f64) / (total_proof_size as f64) * 100.0;
-        println!("| {category:<30} | {size:>10} | {relative_size:>6.2} |");
+        eprintln!("| {category:<30} | {size:>10} | {relative_size:>6.2} |");
     }
-    println!();
+    eprintln!();
 }
 
 /// Create `num_iterations` many proofs for the program with the supplied source code and
