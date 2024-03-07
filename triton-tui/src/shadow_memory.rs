@@ -316,8 +316,6 @@ impl Default for ShadowMemory {
 mod tests {
     use assert2::assert;
     use assert2::let_assert;
-    use num_traits::One;
-    use num_traits::Zero;
     use proptest::collection::vec;
     use proptest::prelude::*;
     use proptest_arbitrary_interop::arb;
@@ -363,11 +361,11 @@ mod tests {
         #[strategy(arb())] num_words: NumberOfWords,
         #[strategy(arb())] ram_pointer: BFieldElement,
     ) {
-        let mut top_of_stack_before_write = [BFieldElement::zero(); NUM_OP_STACK_REGISTERS];
+        let mut top_of_stack_before_write = [bfe!(0); NUM_OP_STACK_REGISTERS];
         top_of_stack_before_write[0] = ram_pointer;
 
-        let offset_of_last_written_element = BFieldElement::from(num_words) - BFieldElement::one();
-        let mut top_of_stack_before_read = [BFieldElement::zero(); NUM_OP_STACK_REGISTERS];
+        let offset_of_last_written_element = bfe!(num_words) - bfe!(1);
+        let mut top_of_stack_before_read = [bfe!(0); NUM_OP_STACK_REGISTERS];
         top_of_stack_before_read[0] = ram_pointer + offset_of_last_written_element;
 
         let initial_type_hints = type_hints.clone();
@@ -431,7 +429,7 @@ mod tests {
         };
         let executed_instruction = ExecutedInstruction::new(
             Instruction::Hash,
-            [BFieldElement::zero(); NUM_OP_STACK_REGISTERS],
+            [bfe!(0); NUM_OP_STACK_REGISTERS],
             TopOfStack::default(),
         );
 

@@ -6,6 +6,7 @@ use ratatui::widgets::block::*;
 use ratatui::widgets::*;
 use triton_vm::instruction::*;
 use triton_vm::op_stack::NUM_OP_STACK_REGISTERS;
+use triton_vm::prelude::Tip5;
 
 use crate::action::*;
 use crate::element_type_hint::ElementTypeHint;
@@ -320,17 +321,16 @@ impl Home {
             .padding(Padding::new(1, 1, 1, 0));
 
         let render_area = render_info.areas.sponge;
-        let sponge_state = &render_info.state.vm_state.sponge_state;
-        let Some(state) = sponge_state else {
+        let Some(Tip5 { state: sponge }) = &render_info.state.vm_state.sponge else {
             let paragraph = Paragraph::new("").block(block);
             frame.render_widget(paragraph, render_area);
             return;
         };
 
         let num_available_lines = block.inner(render_area).height as usize;
-        let num_padding_lines = num_available_lines.saturating_sub(state.len());
+        let num_padding_lines = num_available_lines.saturating_sub(sponge.len());
         let mut text = vec![Line::from(""); num_padding_lines];
-        for (i, sp) in state.iter().enumerate() {
+        for (i, sp) in sponge.iter().enumerate() {
             let sponge_index = Span::from(format!("{i:>3}")).dim();
             let separator = Span::from("  ");
             let sponge_element = Span::from(format!("{sp}"));

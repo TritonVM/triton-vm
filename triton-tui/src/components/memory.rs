@@ -2,8 +2,6 @@ use arbitrary::Arbitrary;
 use color_eyre::eyre::Result;
 use crossterm::event::KeyEventKind::Release;
 use crossterm::event::*;
-use num_traits::One;
-use num_traits::Zero;
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 use ratatui::Frame;
@@ -95,8 +93,8 @@ impl<'a> Memory<'a> {
     pub fn handle_instruction(&mut self, executed_instruction: ExecutedInstruction) {
         let presumed_ram_pointer = executed_instruction.new_top_of_stack[0];
         let overshoot_adjustment = match executed_instruction.instruction {
-            Instruction::ReadMem(_) => BFieldElement::one(),
-            Instruction::WriteMem(_) => -BFieldElement::one(),
+            Instruction::ReadMem(_) => bfe!(1),
+            Instruction::WriteMem(_) => bfe!(-1),
             _ => return,
         };
         let last_ram_pointer = presumed_ram_pointer + overshoot_adjustment;
@@ -120,8 +118,7 @@ impl<'a> Memory<'a> {
             return;
         }
         let address = ((address + modulus) % modulus) as u64;
-        let address = BFieldElement::from(address);
-        self.user_address = Some(address);
+        self.user_address = Some(bfe!(address));
     }
 
     fn requested_address(&self) -> BFieldElement {
@@ -135,11 +132,11 @@ impl<'a> Memory<'a> {
     }
 
     fn scroll_content(&mut self, key: KeyEvent) {
-        let page_size = BFieldElement::new(20);
+        let page_size = bfe!(20);
         let new_address = match (key.modifiers, key.code) {
-            (KeyModifiers::NONE, KeyCode::Up) => self.requested_address() - BFieldElement::one(),
-            (KeyModifiers::NONE, KeyCode::Down) => self.requested_address() + BFieldElement::one(),
-            (KeyModifiers::NONE, KeyCode::Home) => BFieldElement::zero(),
+            (KeyModifiers::NONE, KeyCode::Up) => self.requested_address() - bfe!(1),
+            (KeyModifiers::NONE, KeyCode::Down) => self.requested_address() + bfe!(1),
+            (KeyModifiers::NONE, KeyCode::Home) => bfe!(0),
             (KeyModifiers::NONE, KeyCode::PageUp) => self.requested_address() - page_size,
             (KeyModifiers::NONE, KeyCode::PageDown) => self.requested_address() + page_size,
             (KeyModifiers::SHIFT, KeyCode::PageUp) => self.previous_memory_block(),
@@ -182,9 +179,9 @@ impl<'a> Memory<'a> {
         let block = Self::memory_widget_block();
         let draw_area = render_info.areas.memory;
 
-        let num_lines = u64::from(block.inner(draw_area).height);
-        let address_range_start = self.requested_address() - BFieldElement::from(num_lines / 2);
-        let address_range_end = address_range_start + BFieldElement::from(num_lines);
+        let num_lines = block.inner(draw_area).height;
+        let address_range_start = self.requested_address() - bfe!(num_lines / 2);
+        let address_range_end = address_range_start + bfe!(num_lines);
 
         let mut text = vec![];
         let mut address = address_range_start;
@@ -236,8 +233,8 @@ impl<'a> Memory<'a> {
     }
 
     fn render_type_hint_at_address(render_info: RenderInfo, address: BFieldElement) -> Vec<Span> {
-        let prev_address = address - BFieldElement::one();
-        let next_address = address + BFieldElement::one();
+        let prev_address = address - bfe!(1);
+        let next_address = address + bfe!(1);
 
         let shadow_ram = &render_info.state.type_hints.ram;
         let prev_hint = shadow_ram.get(&prev_address).unwrap_or(&None);

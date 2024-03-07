@@ -27,7 +27,6 @@ human-panic = "1"
 itertools.workspace = true
 lazy_static.workspace = true
 libc = "0.2"
-num-traits.workspace = true
 ratatui = { version = "0.26", features = ["serde", "macros"] }
 rexpect = { version = "0.5", optional = true }
 serde.workspace = true
@@ -40,7 +39,7 @@ tokio-util = "0.7"
 tracing = "0.1"
 tracing-error = "0.2"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "serde"] }
-triton-vm = { git = "https://github.com/TritonVM/triton-vm.git", rev = "ce8a6d3e" }
+triton-vm = "0.38"
 tui-textarea = "0.4"
 
 [dev-dependencies]
@@ -52,7 +51,7 @@ test-strategy.workspace = true
 
 [build-dependencies]
 clap.workspace = true
-clap_complete = "4.4"
+clap_complete = "4.5"
 directories.workspace = true
 lazy_static.workspace = true
 
