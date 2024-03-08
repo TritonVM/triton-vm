@@ -679,12 +679,12 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
         };
 
         match (op, lhs, rhs) {
-            (BinOp::Add, l, r) if r.borrow().is_zero() => return Some(l.clone()),
-            (BinOp::Add, l, r) if l.borrow().is_zero() => return Some(r.clone()),
-            (BinOp::Mul, l, r) if r.borrow().is_one() => return Some(l.clone()),
-            (BinOp::Mul, l, r) if l.borrow().is_one() => return Some(r.clone()),
-            (BinOp::Mul, _, r) if r.borrow().is_zero() => return Some(r.clone()),
-            (BinOp::Mul, l, _) if l.borrow().is_zero() => return Some(l.clone()),
+            (BinOp::Add, c, zero) if zero.borrow().is_zero() => return Some(c.clone()),
+            (BinOp::Add, zero, c) if zero.borrow().is_zero() => return Some(c.clone()),
+            (BinOp::Mul, c, one) if one.borrow().is_one() => return Some(c.clone()),
+            (BinOp::Mul, one, c) if one.borrow().is_one() => return Some(c.clone()),
+            (BinOp::Mul, _, zero) if zero.borrow().is_zero() => return Some(zero.clone()),
+            (BinOp::Mul, zero, _) if zero.borrow().is_zero() => return Some(zero.clone()),
             _ => (),
         };
 
@@ -851,38 +851,27 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
         // Substituting a node of degree 1 is both pointless and can lead to infinite iteration.
         let low_degree_nodes = Self::all_nodes_in_multicircuit(&high_degree_nodes)
             .into_iter()
-            .filter(|node| node.degree() <= target_degree)
-            .filter(|node| node.degree() > 1)
+            .filter(|node| 1 < node.degree() && node.degree() <= target_degree)
             .collect_vec();
 
         // If the resulting list is empty, there is no way forward. Stop – panic time!
-        assert!(
-            !low_degree_nodes.is_empty(),
-            "Could not lower degree of circuit to target degree. This is a bug."
-        );
+        assert!(!low_degree_nodes.is_empty(), "Cannot lower degree.");
 
         // Of the remaining nodes, keep the ones occurring the most often.
         let mut nodes_and_occurrences = HashMap::new();
         for node in &low_degree_nodes {
             *nodes_and_occurrences.entry(node).or_insert(0) += 1;
         }
-        let max_occurrences = nodes_and_occurrences
-            .iter()
-            .map(|(_, &count)| count)
-            .max()
-            .unwrap();
+        let max_occurrences = nodes_and_occurrences.iter().map(|(_, &c)| c).max().unwrap();
         nodes_and_occurrences.retain(|_, &mut count| count == max_occurrences);
         let mut candidate_nodes = nodes_and_occurrences.keys().copied().collect_vec();
 
         // If there are still multiple nodes, pick the one with the highest degree.
-        let max_degree = candidate_nodes
-            .iter()
-            .map(|node| node.degree())
-            .max()
-            .unwrap();
+        let max_degree = candidate_nodes.iter().map(|n| n.degree()).max().unwrap();
         candidate_nodes.retain(|node| node.degree() == max_degree);
 
-        // If there are still multiple nodes, pick any.
+        // If there are still multiple nodes, pick any one – but deterministically so.
+        candidate_nodes.sort_by_key(|node| node.id);
         candidate_nodes[0].id
     }
 
@@ -894,12 +883,10 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
     pub fn all_nodes_in_multicircuit(
         multicircuit: &[ConstraintCircuit<II>],
     ) -> Vec<ConstraintCircuit<II>> {
-        let mut all_nodes = vec![];
-        for circuit in multicircuit {
-            let nodes_in_circuit = Self::all_nodes_in_circuit(circuit);
-            all_nodes.extend(nodes_in_circuit);
-        }
-        all_nodes
+        multicircuit
+            .iter()
+            .flat_map(Self::all_nodes_in_circuit)
+            .collect()
     }
 
     /// Internal helper function to recursively find all nodes in a circuit.
