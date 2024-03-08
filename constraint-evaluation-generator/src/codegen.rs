@@ -38,9 +38,4 @@ pub(crate) struct TasmBackend {
     ///
     /// [circuit]: triton_vm::table::constraint_circuit::ConstraintCircuit
     scope: HashSet<usize>,
-
-    /// The number of elements written to the output list.
-    ///
-    /// See [`TasmBackend::doc_comment`] for details.
-    elements_written: usize,
 }

@@ -1,8 +1,11 @@
 use arbitrary::Arbitrary;
 use itertools::Itertools;
-use twenty_first::prelude::BFieldElement;
-use twenty_first::prelude::XFieldElement;
+use twenty_first::prelude::x_field_element::EXTENSION_DEGREE;
+use twenty_first::prelude::*;
 
+use crate::instruction::AnInstruction;
+use crate::instruction::LabelledInstruction;
+use crate::op_stack::NumberOfWords;
 pub use crate::stark::NUM_QUOTIENT_SEGMENTS;
 pub use crate::table::master_table::NUM_BASE_COLUMNS;
 pub use crate::table::master_table::NUM_EXT_COLUMNS;
@@ -26,7 +29,7 @@ pub mod program_table;
 pub mod ram_table;
 pub mod table_column;
 #[rustfmt::skip]
-pub mod tasm_air_constraints;
+mod tasm_air_constraints;
 pub mod u32_table;
 
 /// A single row of a [`MasterBaseTable`][table].
@@ -75,6 +78,47 @@ pub struct TasmConstraintEvaluationMemoryLayout {
     ///
     /// [num_challenges]: challenges::Challenges::count()
     pub challenges_ptr: BFieldElement,
+}
+
+/// The emitted Triton assembly has the following signature:
+///
+/// # Signature
+///
+/// ```text
+/// BEFORE: _
+/// AFTER:  _ *evaluated_constraints
+/// ```
+/// # Requirements
+///
+/// In order for this method to emit Triton assembly, various memory regions need to be
+/// declared. This is done through [`TasmConstraintEvaluationMemoryLayout`]. The memory
+/// layout must be [integral].
+///
+/// # Guarantees
+///
+/// - The emitted code does not declare any labels.
+/// - The emitted code is “straight-line”, _i.e._, does not contain any of the instructions
+/// `call`, `return`, `recurse`, or `skiz`.
+/// - The emitted code does not contain instruction `halt`.
+/// - All memory write access of the emitted code is within the bounds of the memory region
+/// pointed to by `*free_memory_page`.
+/// - `*evaluated_constraints` points to an array of [`XFieldElement`]s of length
+///   [`NUM_CONSTRAINTS`][total]. Of these,
+/// - the first [`NUM_INITIAL_CONSTRAINTS`][init] elements are the evaluated initial constraints,
+/// - the next [`NUM_CONSISTENCY_CONSTRAINTS`][cons] elements are the evaluated consistency constraints,
+/// - the next [`NUM_TRANSITION_CONSTRAINTS`][tran] elements are the evaluated transition constraints,
+/// - the last [`NUM_TERMINAL_CONSTRAINTS`][term] elements are the evaluated terminal constraints.
+///
+/// [integral]: TasmConstraintEvaluationMemoryLayout::is_integral
+/// [total]: master_table::MasterExtTable::NUM_CONSTRAINTS
+/// [init]: master_table::MasterExtTable::NUM_INITIAL_CONSTRAINTS
+/// [cons]: master_table::MasterExtTable::NUM_CONSISTENCY_CONSTRAINTS
+/// [tran]: master_table::MasterExtTable::NUM_TRANSITION_CONSTRAINTS
+/// [term]: master_table::MasterExtTable::NUM_TERMINAL_CONSTRAINTS
+pub fn air_constraint_evaluation_tasm(
+    mem_layout: TasmConstraintEvaluationMemoryLayout,
+) -> Vec<LabelledInstruction> {
+    TasmConstraintInstantiator::new(mem_layout).instantiate_constraints()
 }
 
 impl TasmConstraintEvaluationMemoryLayout {
@@ -134,6 +178,134 @@ impl MemoryRegion {
         (self.start..self.start + self.size).contains(&addr.into())
     }
 }
+
+struct TasmConstraintInstantiator {
+    mem_layout: TasmConstraintEvaluationMemoryLayout,
+
+    /// The number of elements written to the output list.
+    elements_written: usize,
+}
+
+impl TasmConstraintInstantiator {
+    /// An offset from the [memory layout][layout]'s `free_mem_page_ptr`, in number of
+    /// [`XFieldElement`]s. Indicates the start of the to-be-returned array.
+    ///
+    /// [layout]: TasmConstraintEvaluationMemoryLayout
+    const OUT_ARRAY_OFFSET: usize = {
+        let mem_page_size = TasmConstraintEvaluationMemoryLayout::MEM_PAGE_SIZE;
+        let max_num_words_for_evaluated_constraints = 1 << 16; // magic!
+        let out_array_offset_in_words = mem_page_size - max_num_words_for_evaluated_constraints;
+        assert!(out_array_offset_in_words % EXTENSION_DEGREE == 0);
+        out_array_offset_in_words / EXTENSION_DEGREE
+    };
+
+    fn new(mem_layout: TasmConstraintEvaluationMemoryLayout) -> Self {
+        let elements_written = 0;
+        Self {
+            mem_layout,
+            elements_written,
+        }
+    }
+
+    fn instantiate_constraints(&mut self) -> Vec<LabelledInstruction> {
+        [
+            self.instantiate_initial_constraints(),
+            self.instantiate_consistency_constraints(),
+            self.instantiate_transition_constraints(),
+            self.instantiate_terminal_constraints(),
+            self.prepare_return_values(),
+        ]
+        .concat()
+    }
+
+    fn load_ext_field_constant(xfe: XFieldElement) -> Vec<LabelledInstruction> {
+        let [c0, c1, c2] = xfe
+            .coefficients
+            .map(AnInstruction::Push)
+            .map(LabelledInstruction::Instruction);
+        vec![c2, c1, c0]
+    }
+
+    fn load_ext_field_element_from_list(
+        &self,
+        list: IOList,
+        element_index: usize,
+    ) -> Vec<LabelledInstruction> {
+        let list_offset = self.list_offset(list);
+
+        let word_offset = element_index * EXTENSION_DEGREE;
+        let start_to_read_offset = EXTENSION_DEGREE - 1;
+        let word_index = word_offset + start_to_read_offset;
+        let word_index = bfe!(word_index as u64);
+
+        let push_address = AnInstruction::Push(list_offset + word_index);
+        let read_mem = AnInstruction::ReadMem(NumberOfWords::N3);
+        let pop = AnInstruction::Pop(NumberOfWords::N1);
+
+        [push_address, read_mem, pop]
+            .map(LabelledInstruction::Instruction)
+            .to_vec()
+    }
+
+    fn store_ext_field_element(&self, element_index: usize) -> Vec<LabelledInstruction> {
+        let list_offset = self.list_offset(IOList::FreeMemPage);
+
+        let word_offset = element_index * EXTENSION_DEGREE;
+        let word_index = bfe!(word_offset as u64);
+
+        let push_address = AnInstruction::Push(list_offset + word_index);
+        let write_mem = AnInstruction::WriteMem(NumberOfWords::N3);
+        let pop = AnInstruction::Pop(NumberOfWords::N1);
+
+        [push_address, write_mem, pop]
+            .map(LabelledInstruction::Instruction)
+            .to_vec()
+    }
+
+    fn write_into_output_list(&mut self) -> Vec<LabelledInstruction> {
+        let element_index = Self::OUT_ARRAY_OFFSET + self.elements_written;
+        self.elements_written += 1;
+        self.store_ext_field_element(element_index)
+    }
+
+    fn prepare_return_values(&mut self) -> Vec<LabelledInstruction> {
+        let list_offset = self.list_offset(IOList::FreeMemPage);
+
+        let out_array_offset_in_num_bfes = Self::OUT_ARRAY_OFFSET * EXTENSION_DEGREE;
+        let out_array_offset = bfe!(u64::try_from(out_array_offset_in_num_bfes).unwrap());
+
+        [list_offset + out_array_offset]
+            .map(AnInstruction::Push)
+            .map(LabelledInstruction::Instruction)
+            .to_vec()
+    }
+}
+
+macro_rules! io_list {
+    ($($list:ident => $ptr:ident,)*) => {
+        #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+        enum IOList {
+            $($list,)*
+        }
+
+        impl TasmConstraintInstantiator {
+            fn list_offset(&self, list: IOList) -> BFieldElement {
+                match list {
+                    $(IOList::$list => self.mem_layout.$ptr,)*
+                }
+            }
+        }
+    };
+}
+
+io_list!(
+    FreeMemPage => free_mem_page_ptr,
+    CurrBaseRow => curr_base_row_ptr,
+    CurrExtRow => curr_ext_row_ptr,
+    NextBaseRow => next_base_row_ptr,
+    NextExtRow => next_ext_row_ptr,
+    Challenges => challenges_ptr,
+);
 
 #[cfg(test)]
 mod tests {

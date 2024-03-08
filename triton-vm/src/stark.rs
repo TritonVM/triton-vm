@@ -1097,6 +1097,7 @@ pub(crate) mod tests {
     use crate::prelude::Program;
     use crate::program::NonDeterminism;
     use crate::shared_tests::*;
+    use crate::table::air_constraint_evaluation_tasm;
     use crate::table::cascade_table;
     use crate::table::cascade_table::ExtCascadeTable;
     use crate::table::challenges::ChallengeId::LookupTablePublicTerminal;
@@ -1136,7 +1137,6 @@ pub(crate) mod tests {
     use crate::table::table_column::ProcessorExtTableColumn::InputTableEvalArg;
     use crate::table::table_column::ProcessorExtTableColumn::OutputTableEvalArg;
     use crate::table::table_column::RamBaseTableColumn;
-    use crate::table::tasm_air_constraints::air_constraint_evaluation_tasm;
     use crate::table::u32_table;
     use crate::table::u32_table::ExtU32Table;
     use crate::table::MemoryRegion;
