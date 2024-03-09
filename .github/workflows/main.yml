@@ -1,3 +1,5 @@
+name: Rust
+
 on:
   push:
     branches:
@@ -6,18 +8,20 @@ on:
     branches:
       - master
 
-name: Rust
-
 jobs:
-  runner-matrix:
+  rust:
     name: Build, lint, test
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
+        include:
+          - features: default
+          - os: ubuntu-latest
+            features: integration-tests
     runs-on: ${{ matrix.os }}
     steps:
-      - name: Checkout sources
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Install stable toolchain
@@ -28,7 +32,7 @@ jobs:
       - name: Install nextest
         uses: taiki-e/install-action@nextest
 
-      - name: Build constraints
+      - name: Build AIR constraints
         run: cargo run --bin constraint-evaluation-generator
 
       - name: Run fmt
@@ -43,7 +47,7 @@ jobs:
         run: cargo clippy --all-targets -- -D warnings
 
       - name: Run tests
-        run: cargo nextest run --no-fail-fast --all-targets
+        run: cargo nextest run --no-fail-fast --all-targets --features ${{ matrix.features }}
 
         # doctests are special [^1] but this step does not incur a performance penalty [^2]
         #

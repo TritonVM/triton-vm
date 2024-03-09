@@ -14,9 +14,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
-      - name: Install toolchain
+      - name: Install stable toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
           components: llvm-tools-preview
@@ -41,7 +41,7 @@ jobs:
         uses: coverallsapp/github-action@v2
 
       - name: Archive coverage results
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: coverage-report
           path: lcov.info
