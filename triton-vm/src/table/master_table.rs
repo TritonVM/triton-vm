@@ -29,6 +29,7 @@ use crate::stark::NUM_RANDOMIZER_POLYNOMIALS;
 use crate::table::cascade_table::CascadeTable;
 use crate::table::challenges::Challenges;
 use crate::table::degree_lowering_table::DegreeLoweringTable;
+use crate::table::extension_table::all_degrees_with_origin;
 use crate::table::extension_table::DegreeWithOrigin;
 use crate::table::extension_table::Quotientable;
 use crate::table::hash_table::HashTable;
@@ -955,13 +956,6 @@ impl MasterExtTable {
         };
         row.to_vec().try_into().map_err(|_| err())
     }
-}
-
-pub(crate) fn all_degrees_with_origin(
-    interpolant_degree: Degree,
-    padded_height: usize,
-) -> Vec<DegreeWithOrigin> {
-    MasterExtTable::all_degrees_with_origin("master table", interpolant_degree, padded_height)
 }
 
 pub(crate) fn max_degree_with_origin(

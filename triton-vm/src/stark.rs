@@ -1108,6 +1108,7 @@ pub(crate) mod tests {
     use crate::table::cross_table_argument::CrossTableArg;
     use crate::table::cross_table_argument::EvalArg;
     use crate::table::cross_table_argument::GrandCrossTableArg;
+    use crate::table::extension_table;
     use crate::table::extension_table::Evaluable;
     use crate::table::extension_table::Quotientable;
     use crate::table::hash_table;
@@ -1116,7 +1117,6 @@ pub(crate) mod tests {
     use crate::table::jump_stack_table::ExtJumpStackTable;
     use crate::table::lookup_table;
     use crate::table::lookup_table::ExtLookupTable;
-    use crate::table::master_table::all_degrees_with_origin;
     use crate::table::master_table::MasterExtTable;
     use crate::table::master_table::TableId::LookupTable;
     use crate::table::master_table::TableId::ProcessorTable;
@@ -1377,7 +1377,7 @@ pub(crate) mod tests {
         let padded_height = 2;
         let num_trace_randomizers = 2;
         let interpolant_degree = interpolant_degree(padded_height, num_trace_randomizers);
-        for deg in all_degrees_with_origin(interpolant_degree, padded_height) {
+        for deg in extension_table::all_degrees_with_origin(interpolant_degree, padded_height) {
             println!("{deg}");
         }
     }
