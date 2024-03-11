@@ -9,6 +9,10 @@ pub use crate::table::master_table::NUM_BASE_COLUMNS;
 pub use crate::table::master_table::NUM_EXT_COLUMNS;
 use crate::triton_asm;
 
+// for rustdoc – https://github.com/rust-lang/rust/issues/74563
+#[allow(unused_imports)]
+use crate::table::extension_table::Quotientable;
+
 pub mod cascade_table;
 pub mod challenges;
 pub mod constraint_circuit;
@@ -52,7 +56,7 @@ pub type QuotientSegments = [XFieldElement; NUM_QUOTIENT_SEGMENTS];
 
 /// Memory layout guarantees for the [Triton assembly AIR constraint evaluator][tasm_air].
 ///
-/// [tasm_air]: tasm_air_constraints::air_constraint_evaluation_tasm
+/// [tasm_air]: air_constraint_evaluation_tasm
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Arbitrary)]
 pub struct TasmConstraintEvaluationMemoryLayout {
     /// Pointer to a region of memory that is reserved for constraint evaluation. The size of the
