@@ -1097,7 +1097,6 @@ pub(crate) mod tests {
     use crate::program::NonDeterminism;
     use crate::shared_tests::*;
     use crate::table::air_constraint_evaluation_tasm;
-    use crate::table::cascade_table;
     use crate::table::cascade_table::ExtCascadeTable;
     use crate::table::challenges::ChallengeId::LookupTablePublicTerminal;
     use crate::table::challenges::ChallengeId::StandardInputIndeterminate;
@@ -1111,20 +1110,14 @@ pub(crate) mod tests {
     use crate::table::extension_table;
     use crate::table::extension_table::Evaluable;
     use crate::table::extension_table::Quotientable;
-    use crate::table::hash_table;
     use crate::table::hash_table::ExtHashTable;
-    use crate::table::jump_stack_table;
     use crate::table::jump_stack_table::ExtJumpStackTable;
-    use crate::table::lookup_table;
     use crate::table::lookup_table::ExtLookupTable;
     use crate::table::master_table::MasterExtTable;
     use crate::table::master_table::TableId::LookupTable;
     use crate::table::master_table::TableId::ProcessorTable;
-    use crate::table::op_stack_table;
     use crate::table::op_stack_table::ExtOpStackTable;
-    use crate::table::processor_table;
     use crate::table::processor_table::ExtProcessorTable;
-    use crate::table::program_table;
     use crate::table::program_table::ExtProgramTable;
     use crate::table::ram_table;
     use crate::table::ram_table::ExtRamTable;
@@ -1136,7 +1129,6 @@ pub(crate) mod tests {
     use crate::table::table_column::ProcessorExtTableColumn::InputTableEvalArg;
     use crate::table::table_column::ProcessorExtTableColumn::OutputTableEvalArg;
     use crate::table::table_column::RamBaseTableColumn;
-    use crate::table::u32_table;
     use crate::table::u32_table::ExtU32Table;
     use crate::table::MemoryRegion;
     use crate::table::TasmConstraintEvaluationMemoryLayout;
@@ -1673,6 +1665,7 @@ pub(crate) mod tests {
         let master_ext_trace_table = master_ext_table.trace_table();
         let last_master_base_row = master_base_trace_table.slice(s![-1.., ..]);
         let last_master_ext_row = master_ext_trace_table.slice(s![-1.., ..]);
+        let challenges = challenges.challenges;
 
         for (i, constraint) in terminal_constraints.iter().enumerate() {
             let evaluation =
@@ -2091,6 +2084,105 @@ pub(crate) mod tests {
         );
     }
 
+    macro_rules! check_constraints_fn {
+        (fn $fn_name:ident for $table:ident) => {
+            fn $fn_name(
+                master_base_trace_table: ArrayView2<BFieldElement>,
+                master_ext_trace_table: ArrayView2<XFieldElement>,
+                challenges: &Challenges,
+            ) {
+                assert!(master_base_trace_table.nrows() == master_ext_trace_table.nrows());
+                let challenges = &challenges.challenges;
+
+                let builder = ConstraintCircuitBuilder::new();
+                for (constraint_idx, constraint) in $table::initial_constraints(&builder)
+                    .into_iter()
+                    .map(|constraint_monad| constraint_monad.consume())
+                    .enumerate()
+                {
+                    let evaluated_constraint = constraint.evaluate(
+                        master_base_trace_table.slice(s![..1, ..]),
+                        master_ext_trace_table.slice(s![..1, ..]),
+                        challenges,
+                    );
+                    check!(
+                        xfe!(0) == evaluated_constraint,
+                        "{}: Initial constraint {constraint_idx} failed.",
+                        stringify!($table),
+                    );
+                }
+
+                let builder = ConstraintCircuitBuilder::new();
+                for (constraint_idx, constraint) in $table::consistency_constraints(&builder)
+                    .into_iter()
+                    .map(|constraint_monad| constraint_monad.consume())
+                    .enumerate()
+                {
+                    for row_idx in 0..master_base_trace_table.nrows() {
+                        let evaluated_constraint = constraint.evaluate(
+                            master_base_trace_table.slice(s![row_idx..=row_idx, ..]),
+                            master_ext_trace_table.slice(s![row_idx..=row_idx, ..]),
+                            challenges,
+                        );
+                        check!(
+                            xfe!(0) == evaluated_constraint,
+                            "{}: Consistency constraint {constraint_idx} failed on row {row_idx}.",
+                            stringify!($table),
+                        );
+                    }
+                }
+
+                let builder = ConstraintCircuitBuilder::new();
+                for (constraint_idx, constraint) in $table::transition_constraints(&builder)
+                    .into_iter()
+                    .map(|constraint_monad| constraint_monad.consume())
+                    .enumerate()
+                {
+                    for row_idx in 0..master_base_trace_table.nrows() - 1 {
+                        let evaluated_constraint = constraint.evaluate(
+                            master_base_trace_table.slice(s![row_idx..=row_idx + 1, ..]),
+                            master_ext_trace_table.slice(s![row_idx..=row_idx + 1, ..]),
+                            challenges,
+                        );
+                        check!(
+                            xfe!(0) == evaluated_constraint,
+                            "{}: Transition constraint {constraint_idx} failed on row {row_idx}.",
+                            stringify!($table),
+                        );
+                    }
+                }
+
+                let builder = ConstraintCircuitBuilder::new();
+                for (constraint_idx, constraint) in $table::terminal_constraints(&builder)
+                    .into_iter()
+                    .map(|constraint_monad| constraint_monad.consume())
+                    .enumerate()
+                {
+                    let evaluated_constraint = constraint.evaluate(
+                        master_base_trace_table.slice(s![-1.., ..]),
+                        master_ext_trace_table.slice(s![-1.., ..]),
+                        challenges,
+                    );
+                    check!(
+                        xfe!(0) == evaluated_constraint,
+                        "{}: Terminal constraint {constraint_idx} failed.",
+                        stringify!($table),
+                    );
+                }
+            }
+        };
+    }
+
+    check_constraints_fn!(fn check_program_table_constraints for ExtProgramTable);
+    check_constraints_fn!(fn check_processor_table_constraints for ExtProcessorTable);
+    check_constraints_fn!(fn check_op_stack_table_constraints for ExtOpStackTable);
+    check_constraints_fn!(fn check_ram_table_constraints for ExtRamTable);
+    check_constraints_fn!(fn check_jump_stack_table_constraints for ExtJumpStackTable);
+    check_constraints_fn!(fn check_hash_table_constraints for ExtHashTable);
+    check_constraints_fn!(fn check_cascade_table_constraints for ExtCascadeTable);
+    check_constraints_fn!(fn check_lookup_table_constraints for ExtLookupTable);
+    check_constraints_fn!(fn check_u32_table_constraints for ExtU32Table);
+
     fn triton_constraints_evaluate_to_zero(program_and_input: ProgramAndInput) {
         let (_, _, master_base_table, master_ext_table, challenges) =
             master_tables_for_low_security_level(program_and_input);
@@ -2103,15 +2195,15 @@ pub(crate) mod tests {
         let met = master_ext_table.trace_table();
         assert!(mbt.nrows() == met.nrows());
 
-        program_table::tests::check_constraints(mbt, met, &challenges);
-        processor_table::tests::check_constraints(mbt, met, &challenges);
-        op_stack_table::tests::check_constraints(mbt, met, &challenges);
-        ram_table::tests::check_constraints(mbt, met, &challenges);
-        jump_stack_table::tests::check_constraints(mbt, met, &challenges);
-        hash_table::tests::check_constraints(mbt, met, &challenges);
-        cascade_table::tests::check_constraints(mbt, met, &challenges);
-        lookup_table::tests::check_constraints(mbt, met, &challenges);
-        u32_table::tests::check_constraints(mbt, met, &challenges);
+        check_program_table_constraints(mbt, met, &challenges);
+        check_processor_table_constraints(mbt, met, &challenges);
+        check_op_stack_table_constraints(mbt, met, &challenges);
+        check_ram_table_constraints(mbt, met, &challenges);
+        check_jump_stack_table_constraints(mbt, met, &challenges);
+        check_hash_table_constraints(mbt, met, &challenges);
+        check_cascade_table_constraints(mbt, met, &challenges);
+        check_lookup_table_constraints(mbt, met, &challenges);
+        check_u32_table_constraints(mbt, met, &challenges);
     }
 
     #[test]
