@@ -36,8 +36,6 @@ use twenty_first::shared_math::mpolynomial::Degree;
 
 use CircuitExpression::*;
 
-use crate::table::challenges::Challenges;
-
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub enum BinOp {
     Add,
@@ -514,13 +512,13 @@ impl<II: InputIndicator> ConstraintCircuit<II> {
         &self,
         base_table: ArrayView2<BFieldElement>,
         ext_table: ArrayView2<XFieldElement>,
-        challenges: &Challenges,
+        challenges: &[XFieldElement],
     ) -> XFieldElement {
         match &self.expression {
             BConstant(bfe) => bfe.lift(),
             XConstant(xfe) => *xfe,
             Input(input) => input.evaluate(base_table, ext_table),
-            Challenge(challenge_id) => challenges.challenges[*challenge_id],
+            Challenge(challenge_id) => challenges[*challenge_id],
             BinaryOperation(binop, lhs, rhs) => {
                 let lhs_value = lhs.borrow().evaluate(base_table, ext_table, challenges);
                 let rhs_value = rhs.borrow().evaluate(base_table, ext_table, challenges);
@@ -1125,6 +1123,7 @@ mod tests {
     use test_strategy::proptest;
 
     use crate::table::cascade_table::ExtCascadeTable;
+    use crate::table::challenges::Challenges;
     use crate::table::constraint_circuit::SingleRowIndicator::*;
     use crate::table::degree_lowering_table::DegreeLoweringTable;
     use crate::table::hash_table::ExtHashTable;
@@ -1276,7 +1275,7 @@ mod tests {
     /// The employed method is the Schwartz-Zippel lemma.
     fn evaluate_assert_unique<II: InputIndicator>(
         constraint: &ConstraintCircuit<II>,
-        challenges: &Challenges,
+        challenges: &[XFieldElement],
         base_rows: ArrayView2<BFieldElement>,
         ext_rows: ArrayView2<XFieldElement>,
         values: &mut HashMap<XFieldElement, (usize, ConstraintCircuit<II>)>,
@@ -1322,6 +1321,7 @@ mod tests {
         let challenges: [XFieldElement; Challenges::SAMPLE_COUNT] = rng.gen();
         let challenges = challenges.to_vec();
         let challenges = Challenges::new(challenges, &dummy_claim);
+        let challenges = &challenges.challenges;
 
         let num_rows = 2;
         let base_shape = [num_rows, NUM_BASE_COLUMNS];
@@ -1333,7 +1333,7 @@ mod tests {
 
         let mut values = HashMap::new();
         for c in constraints {
-            evaluate_assert_unique(c, &challenges, base_rows, ext_rows, &mut values);
+            evaluate_assert_unique(c, challenges, base_rows, ext_rows, &mut values);
         }
 
         let circuit_degree = constraints.iter().map(|c| c.degree()).max().unwrap_or(-1);
@@ -1969,6 +1969,7 @@ mod tests {
         let challenges: [XFieldElement; Challenges::SAMPLE_COUNT] = rng.gen();
         let challenges = challenges.to_vec();
         let challenges = Challenges::new(challenges, &dummy_claim);
+        let challenges = &challenges.challenges;
 
         let num_rows = 2;
         let num_new_base_constraints = new_base_constraints.len();
@@ -1984,7 +1985,7 @@ mod tests {
 
         let evaluated_substitution_rules = substitution_rules
             .iter()
-            .map(|c| c.evaluate(base_rows, ext_rows, &challenges));
+            .map(|c| c.evaluate(base_rows, ext_rows, challenges));
 
         let mut values_to_index = HashMap::new();
         for (idx, value) in evaluated_substitution_rules.enumerate() {

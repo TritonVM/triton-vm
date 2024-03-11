@@ -398,7 +398,6 @@ impl OpStackTable {
 #[cfg(test)]
 pub(crate) mod tests {
     use assert2::assert;
-    use assert2::check;
     use itertools::Itertools;
     use proptest::collection::vec;
     use proptest::prelude::*;
@@ -408,88 +407,6 @@ pub(crate) mod tests {
     use crate::op_stack::OpStackElement;
 
     use super::*;
-
-    pub fn check_constraints(
-        master_base_trace_table: ArrayView2<BFieldElement>,
-        master_ext_trace_table: ArrayView2<XFieldElement>,
-        challenges: &Challenges,
-    ) {
-        assert!(master_base_trace_table.nrows() == master_ext_trace_table.nrows());
-        let circuit_builder = ConstraintCircuitBuilder::new();
-
-        for (constraint_idx, constraint) in ExtOpStackTable::initial_constraints(&circuit_builder)
-            .into_iter()
-            .map(|constraint_monad| constraint_monad.consume())
-            .enumerate()
-        {
-            let evaluated_constraint = constraint.evaluate(
-                master_base_trace_table.slice(s![..1, ..]),
-                master_ext_trace_table.slice(s![..1, ..]),
-                challenges,
-            );
-            check!(
-                xfe!(0) == evaluated_constraint,
-                "Initial constraint {constraint_idx} failed."
-            );
-        }
-
-        let circuit_builder = ConstraintCircuitBuilder::new();
-        for (constraint_idx, constraint) in
-            ExtOpStackTable::consistency_constraints(&circuit_builder)
-                .into_iter()
-                .map(|constraint_monad| constraint_monad.consume())
-                .enumerate()
-        {
-            for row_idx in 0..master_base_trace_table.nrows() {
-                let evaluated_constraint = constraint.evaluate(
-                    master_base_trace_table.slice(s![row_idx..=row_idx, ..]),
-                    master_ext_trace_table.slice(s![row_idx..=row_idx, ..]),
-                    challenges,
-                );
-                check!(
-                    xfe!(0) == evaluated_constraint,
-                    "Consistency constraint {constraint_idx} failed on row {row_idx}."
-                );
-            }
-        }
-
-        let circuit_builder = ConstraintCircuitBuilder::new();
-        for (constraint_idx, constraint) in
-            ExtOpStackTable::transition_constraints(&circuit_builder)
-                .into_iter()
-                .map(|constraint_monad| constraint_monad.consume())
-                .enumerate()
-        {
-            for row_idx in 0..master_base_trace_table.nrows() - 1 {
-                let evaluated_constraint = constraint.evaluate(
-                    master_base_trace_table.slice(s![row_idx..=row_idx + 1, ..]),
-                    master_ext_trace_table.slice(s![row_idx..=row_idx + 1, ..]),
-                    challenges,
-                );
-                check!(
-                    xfe!(0) == evaluated_constraint,
-                    "Transition constraint {constraint_idx} failed on row {row_idx}."
-                );
-            }
-        }
-
-        let circuit_builder = ConstraintCircuitBuilder::new();
-        for (constraint_idx, constraint) in ExtOpStackTable::terminal_constraints(&circuit_builder)
-            .into_iter()
-            .map(|constraint_monad| constraint_monad.consume())
-            .enumerate()
-        {
-            let evaluated_constraint = constraint.evaluate(
-                master_base_trace_table.slice(s![-1.., ..]),
-                master_ext_trace_table.slice(s![-1.., ..]),
-                challenges,
-            );
-            check!(
-                xfe!(0) == evaluated_constraint,
-                "Terminal constraint {constraint_idx} failed."
-            );
-        }
-    }
 
     #[proptest]
     fn op_stack_table_entry_either_shrinks_stack_or_grows_stack(

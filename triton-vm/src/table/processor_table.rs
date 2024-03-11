@@ -3365,7 +3365,6 @@ impl ExtProcessorTable {
 #[cfg(test)]
 pub(crate) mod tests {
     use assert2::assert;
-    use assert2::check;
     use ndarray::Array2;
     use proptest::collection::vec;
     use proptest_arbitrary_interop::arb;
@@ -3468,7 +3467,7 @@ pub(crate) mod tests {
                 let evaluation_result = constraint.clone().consume().evaluate(
                     rows.consecutive_master_base_table_rows.view(),
                     rows.consecutive_ext_base_table_rows.view(),
-                    &rows.challenges,
+                    &rows.challenges.challenges,
                 );
                 assert!(
                     evaluation_result.is_zero(),
@@ -4015,7 +4014,7 @@ pub(crate) mod tests {
         let master_ext_table = Array2::zeros([2, NUM_EXT_COLUMNS]);
 
         // For this test, dummy challenges suffice to evaluate the constraints.
-        let dummy_challenges = Challenges::default();
+        let dummy_challenges = Challenges::default().challenges;
         for instruction in ALL_INSTRUCTIONS {
             use ProcessorBaseTableColumn::*;
             let deselector = ExtProcessorTable::instruction_deselector_current_row(
@@ -4097,89 +4096,6 @@ pub(crate) mod tests {
                 constraints.len(),
                 max_degree,
                 degrees_str,
-            );
-        }
-    }
-
-    pub fn check_constraints(
-        master_base_trace_table: ArrayView2<BFieldElement>,
-        master_ext_trace_table: ArrayView2<XFieldElement>,
-        challenges: &Challenges,
-    ) {
-        assert!(master_base_trace_table.nrows() == master_ext_trace_table.nrows());
-        let circuit_builder = ConstraintCircuitBuilder::new();
-
-        for (constraint_idx, constraint) in ExtProcessorTable::initial_constraints(&circuit_builder)
-            .into_iter()
-            .map(|constraint_monad| constraint_monad.consume())
-            .enumerate()
-        {
-            let evaluated_constraint = constraint.evaluate(
-                master_base_trace_table.slice(s![..1, ..]),
-                master_ext_trace_table.slice(s![..1, ..]),
-                challenges,
-            );
-            check!(
-                xfe!(0) == evaluated_constraint,
-                "Initial constraint {constraint_idx} failed."
-            );
-        }
-
-        let circuit_builder = ConstraintCircuitBuilder::new();
-        for (constraint_idx, constraint) in
-            ExtProcessorTable::consistency_constraints(&circuit_builder)
-                .into_iter()
-                .map(|constraint_monad| constraint_monad.consume())
-                .enumerate()
-        {
-            for row_idx in 0..master_base_trace_table.nrows() {
-                let evaluated_constraint = constraint.evaluate(
-                    master_base_trace_table.slice(s![row_idx..=row_idx, ..]),
-                    master_ext_trace_table.slice(s![row_idx..=row_idx, ..]),
-                    challenges,
-                );
-                check!(
-                    xfe!(0) == evaluated_constraint,
-                    "Consistency constraint {constraint_idx} failed on row {row_idx}."
-                );
-            }
-        }
-
-        let circuit_builder = ConstraintCircuitBuilder::new();
-        for (constraint_idx, constraint) in
-            ExtProcessorTable::transition_constraints(&circuit_builder)
-                .into_iter()
-                .map(|constraint_monad| constraint_monad.consume())
-                .enumerate()
-        {
-            for row_idx in 0..master_base_trace_table.nrows() - 1 {
-                let evaluated_constraint = constraint.evaluate(
-                    master_base_trace_table.slice(s![row_idx..=row_idx + 1, ..]),
-                    master_ext_trace_table.slice(s![row_idx..=row_idx + 1, ..]),
-                    challenges,
-                );
-                check!(
-                    xfe!(0) == evaluated_constraint,
-                    "Transition constraint {constraint_idx} failed on row {row_idx}."
-                );
-            }
-        }
-
-        let circuit_builder = ConstraintCircuitBuilder::new();
-        for (constraint_idx, constraint) in
-            ExtProcessorTable::terminal_constraints(&circuit_builder)
-                .into_iter()
-                .map(|constraint_monad| constraint_monad.consume())
-                .enumerate()
-        {
-            let evaluated_constraint = constraint.evaluate(
-                master_base_trace_table.slice(s![-1.., ..]),
-                master_ext_trace_table.slice(s![-1.., ..]),
-                challenges,
-            );
-            check!(
-                xfe!(0) == evaluated_constraint,
-                "Terminal constraint {constraint_idx} failed."
             );
         }
     }
