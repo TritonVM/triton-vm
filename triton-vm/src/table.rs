@@ -116,8 +116,8 @@ pub(crate) struct MemoryRegion {
 }
 
 impl MemoryRegion {
-    pub fn new(pointer: BFieldElement, size: usize) -> Self {
-        let start = pointer.value();
+    pub fn new<A: Into<u64>>(address: A, size: usize) -> Self {
+        let start = address.into();
         let size = u64::try_from(size).unwrap();
         Self { start, size }
     }
@@ -127,11 +127,11 @@ impl MemoryRegion {
     }
 
     pub fn overlaps(self, other: &Self) -> bool {
-        self.contains_pointer(other.start) || other.contains_pointer(self.start)
+        self.contains_address(other.start) || other.contains_address(self.start)
     }
 
-    pub fn contains_pointer(self, ptr: u64) -> bool {
-        (self.start..self.start + self.size).contains(&ptr)
+    pub fn contains_address<A: Into<u64>>(self, addr: A) -> bool {
+        (self.start..self.start + self.size).contains(&addr.into())
     }
 }
 
@@ -145,23 +145,25 @@ mod tests {
     use super::*;
 
     #[proptest]
-    fn size_0_memory_region_contains_no_addresses(#[strategy(arb())] pointer: BFieldElement) {
-        let one = bfe!(1);
-        let region = MemoryRegion::new(pointer, 0);
-
-        prop_assert!(!region.contains_pointer((pointer - one).value()));
-        prop_assert!(!region.contains_pointer(pointer.value()));
-        prop_assert!(!region.contains_pointer((pointer + one).value()));
+    fn size_0_memory_region_contains_no_addresses(
+        #[strategy(arb())] region_start: BFieldElement,
+        #[strategy(arb())] address: BFieldElement,
+    ) {
+        let region = MemoryRegion::new(region_start, 0);
+        prop_assert!(!region.contains_address(region_start));
+        prop_assert!(!region.contains_address(address));
     }
 
     #[proptest]
-    fn size_1_memory_region_contains_only_start_address(#[strategy(arb())] pointer: BFieldElement) {
-        let one = bfe!(1);
-        let region = MemoryRegion::new(pointer, 1);
-
-        prop_assert!(!region.contains_pointer((pointer - one).value()));
-        prop_assert!(region.contains_pointer(pointer.value()));
-        prop_assert!(!region.contains_pointer((pointer + one).value()));
+    fn size_1_memory_region_contains_only_start_address(
+        #[strategy(arb())] region_start: BFieldElement,
+        #[strategy(arb())]
+        #[filter(#region_start != #address)]
+        address: BFieldElement,
+    ) {
+        let region = MemoryRegion::new(region_start, 1);
+        prop_assert!(region.contains_address(region_start));
+        prop_assert!(!region.contains_address(address));
     }
 
     #[test]

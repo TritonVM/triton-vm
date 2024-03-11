@@ -2561,7 +2561,7 @@ pub(crate) mod tests {
         let free_mem_page_ptr = point.memory_layout.free_mem_page_ptr;
         let mem_page_size = TasmConstraintEvaluationMemoryLayout::MEM_PAGE_SIZE;
         let mem_page = MemoryRegion::new(free_mem_page_ptr, mem_page_size);
-        let not_in_mem_page = |ptr: &BFieldElement| !mem_page.contains_pointer(ptr.value());
+        let not_in_mem_page = |addr: &_| !mem_page.contains_address(addr);
 
         initial_state.ram.retain(|k, _| not_in_mem_page(k));
         terminal_state.ram.retain(|k, _| not_in_mem_page(k));
