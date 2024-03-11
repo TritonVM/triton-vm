@@ -222,14 +222,12 @@ impl From<ChallengeId> for usize {
 /// convenience methods.
 #[derive(Debug, Clone, Arbitrary)]
 pub struct Challenges {
-    pub challenges: [XFieldElement; Self::count()],
+    pub challenges: [XFieldElement; Self::COUNT],
 }
 
 impl Challenges {
     /// The total number of challenges used in Triton VM.
-    pub const fn count() -> usize {
-        ChallengeId::COUNT
-    }
+    pub const COUNT: usize = ChallengeId::COUNT;
 
     /// The number of weights to sample using the Fiat-Shamir heuristic. This number is lower
     /// than the number of challenges because several challenges are not sampled, but computed
@@ -244,15 +242,23 @@ impl Challenges {
     /// lookup table and the sampled indeterminate [`LookupTablePublicIndeterminate`].
     /// - The [`CompressedProgramDigest`] is computed from the program to be executed and the
     /// sampled indeterminate [`CompressProgramDigestIndeterminate`].
+    // When modifying this, be sure to add to the compile-time assertions in the
+    // `#[test] const fn compile_time_index_assertions() { … }`
+    // at the end of this file.
+    pub const SAMPLE_COUNT: usize = Self::COUNT - 4;
+
+    #[deprecated(since = "0.39.0", note = "Use `Self::COUNT` instead")]
+    pub const fn count() -> usize {
+        Self::COUNT
+    }
+
+    #[deprecated(since = "0.39.0", note = "Use `Self::SAMPLE_COUNT` instead")]
     pub const fn num_challenges_to_sample() -> usize {
-        // When modifying this, be sure to add to the compile-time assertions in the
-        // `#[test] const fn compile_time_index_assertions() { … }`
-        // at the end of this file.
-        Self::count() - 4
+        Self::SAMPLE_COUNT
     }
 
     pub fn new(mut challenges: Vec<XFieldElement>, claim: &Claim) -> Self {
-        assert_eq!(Self::num_challenges_to_sample(), challenges.len());
+        assert_eq!(Self::SAMPLE_COUNT, challenges.len());
 
         let compressed_digest = EvalArg::compute_terminal(
             &claim.program_digest.values(),
@@ -279,7 +285,7 @@ impl Challenges {
         challenges.insert(StandardOutputTerminal.index(), output_terminal);
         challenges.insert(LookupTablePublicTerminal.index(), lookup_terminal);
         challenges.insert(CompressedProgramDigest.index(), compressed_digest);
-        assert_eq!(Self::count(), challenges.len());
+        assert_eq!(Self::COUNT, challenges.len());
         let challenges = challenges.try_into().unwrap();
 
         Self { challenges }
@@ -349,7 +355,7 @@ pub(crate) mod tests {
         /// Stand-in challenges for use in tests. For non-interactive STARKs, use the
         /// Fiat-Shamir heuristic to derive the actual challenges.
         pub fn placeholder(claim: &Claim) -> Self {
-            let stand_in_challenges = (1..=Self::num_challenges_to_sample())
+            let stand_in_challenges = (1..=Self::SAMPLE_COUNT)
                 .map(|i| xfe!([42, i as u64, 24]))
                 .collect();
             Self::new(stand_in_challenges, claim)

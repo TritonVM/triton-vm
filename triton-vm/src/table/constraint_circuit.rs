@@ -1319,7 +1319,7 @@ mod tests {
         println!("seed: {seed}");
 
         let dummy_claim = Claim::default();
-        let challenges: [XFieldElement; Challenges::num_challenges_to_sample()] = rng.gen();
+        let challenges: [XFieldElement; Challenges::SAMPLE_COUNT] = rng.gen();
         let challenges = challenges.to_vec();
         let challenges = Challenges::new(challenges, &dummy_claim);
 
@@ -1966,7 +1966,7 @@ mod tests {
 
         // Use the Schwartz-Zippel lemma to check no two substitution rules are equal.
         let dummy_claim = Claim::default();
-        let challenges: [XFieldElement; Challenges::num_challenges_to_sample()] = rng.gen();
+        let challenges: [XFieldElement; Challenges::SAMPLE_COUNT] = rng.gen();
         let challenges = challenges.to_vec();
         let challenges = Challenges::new(challenges, &dummy_claim);
 
