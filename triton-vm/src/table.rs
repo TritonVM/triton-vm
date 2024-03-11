@@ -3,12 +3,11 @@ use itertools::Itertools;
 use twenty_first::prelude::x_field_element::EXTENSION_DEGREE;
 use twenty_first::prelude::*;
 
-use crate::instruction::AnInstruction;
 use crate::instruction::LabelledInstruction;
-use crate::op_stack::NumberOfWords;
 pub use crate::stark::NUM_QUOTIENT_SEGMENTS;
 pub use crate::table::master_table::NUM_BASE_COLUMNS;
 pub use crate::table::master_table::NUM_EXT_COLUMNS;
+use crate::triton_asm;
 
 pub mod cascade_table;
 pub mod challenges;
@@ -219,11 +218,8 @@ impl TasmConstraintInstantiator {
     }
 
     fn load_ext_field_constant(xfe: XFieldElement) -> Vec<LabelledInstruction> {
-        let [c0, c1, c2] = xfe
-            .coefficients
-            .map(AnInstruction::Push)
-            .map(LabelledInstruction::Instruction);
-        vec![c2, c1, c0]
+        let [c0, c1, c2] = xfe.coefficients;
+        triton_asm!(push {c2} push {c1} push {c0})
     }
 
     fn load_ext_field_element_from_list(
@@ -238,13 +234,11 @@ impl TasmConstraintInstantiator {
         let word_index = word_offset + start_to_read_offset;
         let word_index = bfe!(word_index as u64);
 
-        let push_address = AnInstruction::Push(list_offset + word_index);
-        let read_mem = AnInstruction::ReadMem(NumberOfWords::N3);
-        let pop = AnInstruction::Pop(NumberOfWords::N1);
-
-        [push_address, read_mem, pop]
-            .map(LabelledInstruction::Instruction)
-            .to_vec()
+        triton_asm! {
+            push {list_offset + word_index}
+            read_mem 3
+            pop 1
+        }
     }
 
     fn store_ext_field_element(&self, element_index: usize) -> Vec<LabelledInstruction> {
@@ -253,13 +247,11 @@ impl TasmConstraintInstantiator {
         let word_offset = element_index * EXTENSION_DEGREE;
         let word_index = bfe!(word_offset as u64);
 
-        let push_address = AnInstruction::Push(list_offset + word_index);
-        let write_mem = AnInstruction::WriteMem(NumberOfWords::N3);
-        let pop = AnInstruction::Pop(NumberOfWords::N1);
-
-        [push_address, write_mem, pop]
-            .map(LabelledInstruction::Instruction)
-            .to_vec()
+        triton_asm! {
+            push {list_offset + word_index}
+            write_mem 3
+            pop 1
+        }
     }
 
     fn write_into_output_list(&mut self) -> Vec<LabelledInstruction> {
@@ -274,10 +266,7 @@ impl TasmConstraintInstantiator {
         let out_array_offset_in_num_bfes = Self::OUT_ARRAY_OFFSET * EXTENSION_DEGREE;
         let out_array_offset = bfe!(u64::try_from(out_array_offset_in_num_bfes).unwrap());
 
-        [list_offset + out_array_offset]
-            .map(AnInstruction::Push)
-            .map(LabelledInstruction::Instruction)
-            .to_vec()
+        triton_asm!(push {list_offset + out_array_offset})
     }
 }
 
