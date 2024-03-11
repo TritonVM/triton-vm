@@ -601,6 +601,14 @@ impl TryFrom<u32> for NumberOfWords {
     }
 }
 
+impl TryFrom<i32> for NumberOfWords {
+    type Error = NumberOfWordsError;
+
+    fn try_from(index: i32) -> NumWordsResult<Self> {
+        usize::try_from(index)?.try_into()
+    }
+}
+
 impl TryFrom<OpStackElement> for NumberOfWords {
     type Error = NumberOfWordsError;
 
