@@ -3,6 +3,21 @@
 All notable changes are documented in this file.
 Lines marked “(!)” indicate a breaking change.
 
+## [0.38.1](https://github.com/TritonVM/triton-vm/compare/v0.38.0..v0.38.1) - 2024-03-11
+
+### 🐛 Bug Fixes
+
+- Make degree lowering deterministic ([f230ba70](https://github.com/TritonVM/triton-vm/commit/f230ba70))
+
+### ⚙️ Miscellaneous
+
+- Correctly name clippy warning ([568c4836](https://github.com/TritonVM/triton-vm/commit/568c4836))
+- Update CI dependencies ([a06c8fa0](https://github.com/TritonVM/triton-vm/commit/a06c8fa0))
+
+### ♻️ Refactor
+
+- Public `NUM_*_CONSTRAINTS` constants ([abd15be8](https://github.com/TritonVM/triton-vm/commit/abd15be8))
+
 ## [0.38.0](https://github.com/TritonVM/triton-vm/compare/v0.37.0..v0.38.0) - 2024-03-07
 
 ### ✨ Features
