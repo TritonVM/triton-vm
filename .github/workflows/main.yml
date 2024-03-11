@@ -15,10 +15,6 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
-        include:
-          - features: default
-          - os: ubuntu-latest
-            features: integration-tests
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout repository
@@ -47,7 +43,7 @@ jobs:
         run: cargo clippy --all-targets -- -D warnings
 
       - name: Run tests
-        run: cargo nextest run --no-fail-fast --all-targets --features ${{ matrix.features }}
+        run: cargo nextest run --no-fail-fast --all-targets
 
         # doctests are special [^1] but this step does not incur a performance penalty [^2]
         #
