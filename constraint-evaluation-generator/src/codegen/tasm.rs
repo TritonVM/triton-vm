@@ -295,7 +295,7 @@ impl TasmBackend {
             CircuitExpression::BConstant(bfe) => Self::load_ext_field_constant(bfe.into()),
             CircuitExpression::XConstant(xfe) => Self::load_ext_field_constant(xfe),
             CircuitExpression::Input(input) => Self::load_input(input),
-            CircuitExpression::Challenge(challenge) => Self::load_challenge(challenge.index()),
+            CircuitExpression::Challenge(challenge_idx) => Self::load_challenge(challenge_idx),
             CircuitExpression::BinaryOperation(_, _, _) => Self::load_evaluated_bin_op(circuit.id),
         }
     }

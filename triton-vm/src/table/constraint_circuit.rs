@@ -31,13 +31,11 @@ use num_traits::One;
 use num_traits::Zero;
 use quote::quote;
 use quote::ToTokens;
-use strum::IntoEnumIterator;
 use twenty_first::prelude::*;
 use twenty_first::shared_math::mpolynomial::Degree;
 
 use CircuitExpression::*;
 
-use crate::table::challenges::ChallengeId;
 use crate::table::challenges::Challenges;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
@@ -268,7 +266,7 @@ pub enum CircuitExpression<II: InputIndicator> {
     BConstant(BFieldElement),
     XConstant(XFieldElement),
     Input(II),
-    Challenge(ChallengeId),
+    Challenge(usize),
     BinaryOperation(
         BinOp,
         Rc<RefCell<ConstraintCircuit<II>>>,
@@ -361,8 +359,8 @@ impl<II: InputIndicator> Display for ConstraintCircuit<II> {
                 write!(f, "{bfe}")
             }
             Input(input) => write!(f, "{input} "),
-            Challenge(self_challenge_id) => {
-                write!(f, "#{self_challenge_id}")
+            Challenge(self_challenge_idx) => {
+                write!(f, "{self_challenge_idx}")
             }
             BinaryOperation(operation, lhs, rhs) => {
                 write!(f, "({}) {operation} ({})", lhs.borrow(), rhs.borrow())
@@ -522,7 +520,7 @@ impl<II: InputIndicator> ConstraintCircuit<II> {
             BConstant(bfe) => bfe.lift(),
             XConstant(xfe) => *xfe,
             Input(input) => input.evaluate(base_table, ext_table),
-            Challenge(challenge_id) => challenges[*challenge_id],
+            Challenge(challenge_id) => challenges.challenges[*challenge_id],
             BinaryOperation(binop, lhs, rhs) => {
                 let lhs_value = lhs.borrow().evaluate(base_table, ext_table, challenges);
                 let rhs_value = rhs.borrow().evaluate(base_table, ext_table, challenges);
@@ -996,8 +994,11 @@ impl<II: InputIndicator> ConstraintCircuitBuilder<II> {
     }
 
     /// Create challenge leaf node.
-    pub fn challenge(&self, challenge_id: ChallengeId) -> ConstraintCircuitMonad<II> {
-        self.make_leaf(Challenge(challenge_id))
+    pub fn challenge<C>(&self, challenge: C) -> ConstraintCircuitMonad<II>
+    where
+        C: Into<usize>,
+    {
+        self.make_leaf(Challenge(challenge.into()))
     }
 
     fn make_leaf(&self, mut expression: CircuitExpression<II>) -> ConstraintCircuitMonad<II> {
@@ -1071,10 +1072,9 @@ fn random_circuit_leaf<'a, II: InputIndicator + Arbitrary<'a>>(
     builder: &ConstraintCircuitBuilder<II>,
     u: &mut Unstructured<'a>,
 ) -> arbitrary::Result<ConstraintCircuitMonad<II>> {
-    let challenge_ids = ChallengeId::iter().collect_vec();
     let leaf = match u.int_in_range(0..=5)? {
         0 => builder.input(u.arbitrary()?),
-        1 => builder.challenge(*u.choose(&challenge_ids)?),
+        1 => builder.challenge(u.arbitrary::<usize>()?),
         2 => builder.b_constant(u.arbitrary::<BFieldElement>()?),
         3 => builder.x_constant(u.arbitrary::<XFieldElement>()?),
         4 => builder.one(),
@@ -1125,7 +1125,6 @@ mod tests {
     use test_strategy::proptest;
 
     use crate::table::cascade_table::ExtCascadeTable;
-    use crate::table::challenges::Challenges;
     use crate::table::constraint_circuit::SingleRowIndicator::*;
     use crate::table::degree_lowering_table::DegreeLoweringTable;
     use crate::table::hash_table::ExtHashTable;

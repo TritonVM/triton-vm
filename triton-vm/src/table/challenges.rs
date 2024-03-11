@@ -210,6 +210,12 @@ impl ChallengeId {
     }
 }
 
+impl From<ChallengeId> for usize {
+    fn from(id: ChallengeId) -> Self {
+        id.index()
+    }
+}
+
 /// The `Challenges` struct holds the challenges used in Triton VM. The concrete challenges are
 /// known only at runtime. The challenges are indexed using enum [`ChallengeId`]. The `Challenges`
 /// struct is essentially a thin wrapper around an array of [`XFieldElement`]s, providing
@@ -286,11 +292,35 @@ impl Challenges {
     }
 }
 
+impl Index<usize> for Challenges {
+    type Output = XFieldElement;
+
+    fn index(&self, id: usize) -> &Self::Output {
+        &self.challenges[id]
+    }
+}
+
+impl Index<Range<usize>> for Challenges {
+    type Output = [XFieldElement];
+
+    fn index(&self, indices: Range<usize>) -> &Self::Output {
+        &self.challenges[indices.start..indices.end]
+    }
+}
+
+impl Index<RangeInclusive<usize>> for Challenges {
+    type Output = [XFieldElement];
+
+    fn index(&self, indices: RangeInclusive<usize>) -> &Self::Output {
+        &self.challenges[*indices.start()..=*indices.end()]
+    }
+}
+
 impl Index<ChallengeId> for Challenges {
     type Output = XFieldElement;
 
     fn index(&self, id: ChallengeId) -> &Self::Output {
-        &self.challenges[id.index()]
+        &self[id.index()]
     }
 }
 
@@ -298,7 +328,7 @@ impl Index<Range<ChallengeId>> for Challenges {
     type Output = [XFieldElement];
 
     fn index(&self, indices: Range<ChallengeId>) -> &Self::Output {
-        &self.challenges[indices.start.index()..indices.end.index()]
+        &self[indices.start.index()..indices.end.index()]
     }
 }
 
@@ -306,7 +336,7 @@ impl Index<RangeInclusive<ChallengeId>> for Challenges {
     type Output = [XFieldElement];
 
     fn index(&self, indices: RangeInclusive<ChallengeId>) -> &Self::Output {
-        &self.challenges[indices.start().index()..=indices.end().index()]
+        &self[indices.start().index()..=indices.end().index()]
     }
 }
 
@@ -361,4 +391,15 @@ pub(crate) mod tests {
 
     // Ensure the compile-time assertions are actually executed by the compiler.
     const _: () = compile_time_index_assertions();
+
+    #[test]
+    fn various_challenge_indexing_operations_are_possible() {
+        let challenges = Challenges::placeholder(&Claim::default());
+        let _ = challenges[HashStateWeight0];
+        let _ = challenges[HashStateWeight0..HashStateWeight8];
+        let _ = challenges[HashStateWeight0..=HashStateWeight8];
+        let _ = challenges[0];
+        let _ = challenges[0..8];
+        let _ = challenges[0..=8];
+    }
 }

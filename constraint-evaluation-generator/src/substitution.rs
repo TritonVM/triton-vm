@@ -35,19 +35,13 @@ impl AllSubstitutions {
         let num_new_ext_cols = self.ext.len();
 
         // A zero-variant enum cannot be annotated with `repr(usize)`.
-        let base_repr_usize = match num_new_base_cols == 0 {
-            true => quote!(),
-            false => quote!(#[repr(usize)]),
+        let base_repr_usize = match num_new_base_cols {
+            0 => quote!(),
+            _ => quote!(#[repr(usize)]),
         };
-        let ext_repr_usize = match num_new_ext_cols == 0 {
-            true => quote!(),
-            false => quote!(#[repr(usize)]),
-        };
-        let use_challenge_ids = match num_new_ext_cols == 0 {
-            true => quote!(),
-            false => quote!(
-                use crate::table::challenges::ChallengeId::*;
-            ),
+        let ext_repr_usize = match num_new_ext_cols {
+            0 => quote!(),
+            _ => quote!(#[repr(usize)]),
         };
 
         let base_columns = (0..num_new_base_cols)
@@ -81,7 +75,6 @@ impl AllSubstitutions {
             use twenty_first::prelude::BFieldElement;
             use twenty_first::prelude::XFieldElement;
 
-            #use_challenge_ids
             use crate::table::challenges::Challenges;
             use crate::table::master_table::NUM_BASE_COLUMNS;
             use crate::table::master_table::NUM_EXT_COLUMNS;
