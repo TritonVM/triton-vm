@@ -17,7 +17,8 @@ produced when running Triton VM.
 
 ## Getting Started
 
-If you want to start writing programs for Triton VM, check out [Triton TUI](triton-tui).
+If you want to start writing programs for Triton VM, check
+out [Triton TUI](https://github.com/TritonVM/triton-tui).
 If you want to generate or verify proofs of correct execution, take a look at
 the [examples](triton-vm/examples).
 
