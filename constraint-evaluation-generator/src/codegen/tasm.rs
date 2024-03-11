@@ -6,7 +6,6 @@ use quote::quote;
 use quote::ToTokens;
 use twenty_first::prelude::XFieldElement;
 
-use triton_vm::table::challenges::ChallengeId;
 use triton_vm::table::constraint_circuit::BinOp;
 use triton_vm::table::constraint_circuit::CircuitExpression;
 use triton_vm::table::constraint_circuit::ConstraintCircuit;
@@ -190,7 +189,7 @@ impl TasmBackend {
             CircuitExpression::BConstant(bfe) => Self::load_ext_field_constant(bfe.into()),
             CircuitExpression::XConstant(xfe) => Self::load_ext_field_constant(xfe),
             CircuitExpression::Input(input) => Self::load_input(input),
-            CircuitExpression::Challenge(challenge) => Self::load_challenge(challenge),
+            CircuitExpression::Challenge(challenge_idx) => Self::load_challenge(challenge_idx),
             CircuitExpression::BinaryOperation(_, _, _) => Self::load_evaluated_bin_op(circuit.id),
         }
     }
@@ -210,8 +209,8 @@ impl TasmBackend {
         Self::load_ext_field_element_from_list(list, input.column())
     }
 
-    fn load_challenge(challenge: ChallengeId) -> Vec<TokenStream> {
-        Self::load_ext_field_element_from_list(IOList::Challenges, challenge.index())
+    fn load_challenge(challenge_idx: usize) -> Vec<TokenStream> {
+        Self::load_ext_field_element_from_list(IOList::Challenges, challenge_idx)
     }
 
     fn load_evaluated_bin_op(node_id: usize) -> Vec<TokenStream> {

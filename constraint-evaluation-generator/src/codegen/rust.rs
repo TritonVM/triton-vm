@@ -100,7 +100,6 @@ impl RustBackend {
             use twenty_first::shared_math::mpolynomial::Degree;
 
             use crate::table::challenges::Challenges;
-            use crate::table::challenges::ChallengeId::*;
             use crate::table::extension_table::Evaluable;
             use crate::table::extension_table::Quotientable;
             use crate::table::master_table::MasterExtTable;
@@ -321,10 +320,7 @@ impl RustBackend {
             CircuitExpression::BConstant(bfe) => Self::tokenize_bfe(*bfe),
             CircuitExpression::XConstant(xfe) => Self::tokenize_xfe(*xfe),
             CircuitExpression::Input(idx) => quote!(#idx),
-            CircuitExpression::Challenge(challenge) => {
-                let challenge_ident = format_ident!("{challenge}");
-                quote!(challenges[#challenge_ident])
-            }
+            CircuitExpression::Challenge(challenge) => quote!(challenges[#challenge]),
             CircuitExpression::BinaryOperation(_, _, _) => {
                 let node_ident = format_ident!("node_{}", circuit.id);
                 quote!(#node_ident)
