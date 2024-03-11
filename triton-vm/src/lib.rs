@@ -417,28 +417,28 @@ macro_rules! triton_asm {
 #[macro_export]
 macro_rules! triton_instr {
     (pop $arg:literal) => {{
-        let argument: $crate::op_stack::NumberOfWords = u32::try_into($arg).unwrap();
+        let argument = $crate::op_stack::NumberOfWords::try_from($arg).unwrap();
         let instruction = $crate::instruction::AnInstruction::<String>::Pop(argument);
         $crate::instruction::LabelledInstruction::Instruction(instruction)
     }};
     (push $arg:expr) => {{
-        let argument = $crate::prelude::BFieldElement::new($arg);
+        let argument = $crate::prelude::BFieldElement::from($arg);
         let instruction = $crate::instruction::AnInstruction::<String>::Push(argument);
         $crate::instruction::LabelledInstruction::Instruction(instruction)
     }};
     (divine $arg:literal) => {{
-        let argument: $crate::op_stack::NumberOfWords = u32::try_into($arg).unwrap();
+        let argument = $crate::op_stack::NumberOfWords::try_from($arg).unwrap();
         let instruction = $crate::instruction::AnInstruction::<String>::Divine(argument);
         $crate::instruction::LabelledInstruction::Instruction(instruction)
     }};
     (dup $arg:literal) => {{
-        let argument: $crate::op_stack::OpStackElement = u32::try_into($arg).unwrap();
+        let argument = $crate::op_stack::OpStackElement::try_from($arg).unwrap();
         let instruction = $crate::instruction::AnInstruction::<String>::Dup(argument);
         $crate::instruction::LabelledInstruction::Instruction(instruction)
     }};
     (swap $arg:literal) => {{
         assert_ne!(0_u32, $arg, "`swap 0` is illegal.");
-        let argument: $crate::op_stack::OpStackElement = u32::try_into($arg).unwrap();
+        let argument = $crate::op_stack::OpStackElement::try_from($arg).unwrap();
         let instruction = $crate::instruction::AnInstruction::<String>::Swap(argument);
         $crate::instruction::LabelledInstruction::Instruction(instruction)
     }};
@@ -448,22 +448,22 @@ macro_rules! triton_instr {
         $crate::instruction::LabelledInstruction::Instruction(instruction)
     }};
     (read_mem $arg:literal) => {{
-        let argument: $crate::op_stack::NumberOfWords = u32::try_into($arg).unwrap();
+        let argument = $crate::op_stack::NumberOfWords::try_from($arg).unwrap();
         let instruction = $crate::instruction::AnInstruction::<String>::ReadMem(argument);
         $crate::instruction::LabelledInstruction::Instruction(instruction)
     }};
     (write_mem $arg:literal) => {{
-        let argument: $crate::op_stack::NumberOfWords = u32::try_into($arg).unwrap();
+        let argument = $crate::op_stack::NumberOfWords::try_from($arg).unwrap();
         let instruction = $crate::instruction::AnInstruction::<String>::WriteMem(argument);
         $crate::instruction::LabelledInstruction::Instruction(instruction)
     }};
     (read_io $arg:literal) => {{
-        let argument: $crate::op_stack::NumberOfWords = u32::try_into($arg).unwrap();
+        let argument = $crate::op_stack::NumberOfWords::try_from($arg).unwrap();
         let instruction = $crate::instruction::AnInstruction::<String>::ReadIo(argument);
         $crate::instruction::LabelledInstruction::Instruction(instruction)
     }};
     (write_io $arg:literal) => {{
-        let argument: $crate::op_stack::NumberOfWords = u32::try_into($arg).unwrap();
+        let argument = $crate::op_stack::NumberOfWords::try_from($arg).unwrap();
         let instruction = $crate::instruction::AnInstruction::<String>::WriteIo(argument);
         $crate::instruction::LabelledInstruction::Instruction(instruction)
     }};
