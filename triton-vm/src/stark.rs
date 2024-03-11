@@ -152,7 +152,7 @@ impl Stark {
 
         prof_start!(maybe_profiler, "Fiat-Shamir", "hash");
         proof_stream.enqueue(ProofItem::MerkleRoot(base_merkle_tree.root()));
-        let challenges = proof_stream.sample_scalars(Challenges::num_challenges_to_sample());
+        let challenges = proof_stream.sample_scalars(Challenges::SAMPLE_COUNT);
         let challenges = Challenges::new(challenges, claim);
         prof_stop!(maybe_profiler, "Fiat-Shamir");
 
@@ -711,8 +711,7 @@ impl Stark {
 
         prof_start!(maybe_profiler, "Fiat-Shamir 1", "hash");
         let base_merkle_tree_root = proof_stream.dequeue()?.try_into_merkle_root()?;
-        let extension_challenge_weights =
-            proof_stream.sample_scalars(Challenges::num_challenges_to_sample());
+        let extension_challenge_weights = proof_stream.sample_scalars(Challenges::SAMPLE_COUNT);
         let challenges = Challenges::new(extension_challenge_weights, claim);
         let extension_tree_merkle_root = proof_stream.dequeue()?.try_into_merkle_root()?;
         // Sample weights for quotient codeword, which is a part of the combination codeword.

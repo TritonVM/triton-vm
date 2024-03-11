@@ -103,7 +103,7 @@ impl TasmConstraintEvaluationMemoryLayout {
             MemoryRegion::new(self.curr_ext_row_ptr, NUM_EXT_COLUMNS),
             MemoryRegion::new(self.next_base_row_ptr, NUM_BASE_COLUMNS),
             MemoryRegion::new(self.next_ext_row_ptr, NUM_EXT_COLUMNS),
-            MemoryRegion::new(self.challenges_ptr, challenges::Challenges::count()),
+            MemoryRegion::new(self.challenges_ptr, challenges::Challenges::COUNT),
         ];
         Box::new(all_regions)
     }
