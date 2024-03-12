@@ -149,6 +149,10 @@ impl Display for LabelledInstruction {
 }
 
 /// Helps printing instructions with their labels.
+#[deprecated(
+    since = "0.39.0",
+    note = "use `.iter().join(\"\\n\")` directly instead"
+)]
 pub fn stringify_instructions(instructions: &[LabelledInstruction]) -> String {
     instructions.iter().join("\n")
 }
@@ -1006,7 +1010,7 @@ mod tests {
     #[test]
     fn stringify_some_instructions() {
         let instructions = triton_asm!(push 3 invert push 2 mul push 1 add write_io 1 halt);
-        let code = stringify_instructions(&instructions);
+        let code = instructions.iter().join("\n");
         println!("{code}");
     }
 
