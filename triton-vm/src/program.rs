@@ -91,10 +91,11 @@ impl BFieldCodec for Program {
             let opcode = sequence[read_idx];
             let mut instruction = Instruction::try_from(opcode)
                 .map_err(|err| Self::Error::InvalidInstruction(read_idx, err))?;
-            if instruction.has_arg() && instructions.len() + instruction.size() > program_length {
+            let instruction_has_arg = instruction.arg().is_some();
+            if instruction_has_arg && instructions.len() + instruction.size() > program_length {
                 return Err(Self::Error::MissingArgument(read_idx, instruction));
             }
-            if instruction.has_arg() {
+            if instruction_has_arg {
                 let arg = sequence[read_idx + 1];
                 instruction = instruction
                     .change_arg(arg)

@@ -117,14 +117,20 @@ impl<'a> Arbitrary<'a> for TypeHint {
 }
 
 impl LabelledInstruction {
+    #[deprecated(since = "0.39.0", note = "use `op_stack_size_influence() > 0` instead")]
     pub const fn grows_op_stack(&self) -> bool {
         self.op_stack_size_influence() > 0
     }
 
+    #[deprecated(
+        since = "0.39.0",
+        note = "use `op_stack_size_influence() != 0` instead"
+    )]
     pub const fn changes_op_stack_size(&self) -> bool {
         self.op_stack_size_influence() != 0
     }
 
+    #[deprecated(since = "0.39.0", note = "use `op_stack_size_influence() < 0` instead")]
     pub const fn shrinks_op_stack(&self) -> bool {
         self.op_stack_size_influence() < 0
     }
@@ -391,14 +397,20 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
         }
     }
 
+    #[deprecated(since = "0.39.0", note = "use `op_stack_size_influence() > 0` instead")]
     pub const fn grows_op_stack(&self) -> bool {
         self.op_stack_size_influence() > 0
     }
 
+    #[deprecated(
+        since = "0.39.0",
+        note = "use `op_stack_size_influence() != 0` instead"
+    )]
     pub const fn changes_op_stack_size(&self) -> bool {
         self.op_stack_size_influence() != 0
     }
 
+    #[deprecated(since = "0.39.0", note = "use `op_stack_size_influence() < 0` instead")]
     pub const fn shrinks_op_stack(&self) -> bool {
         self.op_stack_size_influence() < 0
     }
@@ -488,6 +500,7 @@ impl Instruction {
     }
 
     /// `true` iff the instruction has an argument.
+    #[deprecated(since = "0.39.0", note = "use `arg().is_some()` instead")]
     pub fn has_arg(&self) -> bool {
         self.arg().is_some()
     }
@@ -798,8 +811,8 @@ mod tests {
     impl InstructionBucket {
         fn contains(self, instruction: Instruction) -> bool {
             match self {
-                InstructionBucket::HasArg => instruction.has_arg(),
-                InstructionBucket::ShrinksStack => instruction.shrinks_op_stack(),
+                InstructionBucket::HasArg => instruction.arg().is_some(),
+                InstructionBucket::ShrinksStack => instruction.op_stack_size_influence() < 0,
                 InstructionBucket::IsU32 => instruction.is_u32_instruction(),
             }
         }
@@ -950,9 +963,9 @@ mod tests {
     #[test]
     fn instruction_size_is_consistent_with_having_arguments() {
         for instruction in Instruction::iter() {
-            match instruction.has_arg() {
-                true => assert!(2 == instruction.size()),
-                false => assert!(1 == instruction.size()),
+            match instruction.arg() {
+                Some(_) => assert!(2 == instruction.size()),
+                None => assert!(1 == instruction.size()),
             }
         }
     }
@@ -963,7 +976,8 @@ mod tests {
         for instruction in Instruction::iter() {
             let opcode = instruction.opcode();
             println!("Testing instruction {instruction} with opcode {opcode}.");
-            assert!(instruction.has_arg() == (opcode & argument_indicator_bit_mask != 0));
+            let has_arg = instruction.arg().is_some();
+            assert!(has_arg == (opcode & argument_indicator_bit_mask != 0));
         }
     }
 
@@ -974,9 +988,8 @@ mod tests {
             let instruction = instruction.replace_default_argument_if_illegal();
             let opcode = instruction.opcode();
             println!("Testing instruction {instruction} with opcode {opcode}.");
-            assert!(
-                instruction.shrinks_op_stack() == (opcode & shrink_stack_indicator_bit_mask != 0)
-            );
+            let shrinks_stack = instruction.op_stack_size_influence() < 0;
+            assert!(shrinks_stack == (opcode & shrink_stack_indicator_bit_mask != 0));
         }
     }
 
@@ -1083,11 +1096,6 @@ mod tests {
                 instruction.op_stack_size_influence()
                     == labelled_instruction.op_stack_size_influence()
             );
-            assert!(instruction.grows_op_stack() == labelled_instruction.grows_op_stack());
-            assert!(
-                instruction.changes_op_stack_size() == labelled_instruction.changes_op_stack_size()
-            );
-            assert!(instruction.shrinks_op_stack() == labelled_instruction.shrinks_op_stack());
         }
     }
 
@@ -1095,8 +1103,5 @@ mod tests {
     fn labels_indicate_no_change_to_op_stack() {
         let labelled_instruction = LabelledInstruction::Label("dummy_label".to_string());
         assert!(0 == labelled_instruction.op_stack_size_influence());
-        assert!(!labelled_instruction.grows_op_stack());
-        assert!(!labelled_instruction.changes_op_stack_size());
-        assert!(!labelled_instruction.shrinks_op_stack());
     }
 }

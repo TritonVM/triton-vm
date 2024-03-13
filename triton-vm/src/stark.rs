@@ -1362,11 +1362,10 @@ pub(crate) mod tests {
         let next_instruction_or_arg = row[ProcessorBaseTableColumn::NIA.base_table_index()].value();
 
         let curr_instruction = Instruction::try_from(curr_instruction).unwrap();
-        let nia = if curr_instruction.has_arg() {
-            next_instruction_or_arg.to_string()
-        } else {
-            String::new()
-        };
+        let nia = curr_instruction
+            .arg()
+            .map(|_| next_instruction_or_arg.to_string())
+            .unwrap_or_default();
         (curr_instruction.name().to_string(), nia)
     }
 

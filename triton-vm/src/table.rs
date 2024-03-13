@@ -73,7 +73,7 @@ pub struct TasmConstraintEvaluationMemoryLayout {
 
     /// Pointer to an array of [`XFieldElement`]s of length [`NUM_CHALLENGES`][num_challenges].
     ///
-    /// [num_challenges]: challenges::Challenges::count()
+    /// [num_challenges]: challenges::Challenges::COUNT
     pub challenges_ptr: BFieldElement,
 }
 

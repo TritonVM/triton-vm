@@ -357,9 +357,10 @@ impl ProcessorTable {
         };
 
         // shorter stack means relevant information is on top of stack, i.e., in stack registers
-        let row_with_shorter_stack = match previous_instruction.grows_op_stack() {
-            true => previous_row.view(),
-            false => current_row.view(),
+        let row_with_shorter_stack = if previous_instruction.op_stack_size_influence() > 0 {
+            previous_row.view()
+        } else {
+            current_row.view()
         };
         let op_stack_delta = previous_instruction
             .op_stack_size_influence()
@@ -452,9 +453,9 @@ impl ProcessorTable {
 
     fn instruction_from_row(row: ArrayView1<BFieldElement>) -> Option<Instruction> {
         let opcode = row[CI.base_table_index()];
-        let instruction: Instruction = opcode.try_into().ok()?;
+        let instruction = Instruction::try_from(opcode).ok()?;
 
-        if instruction.has_arg() {
+        if instruction.arg().is_some() {
             let arg = row[NIA.base_table_index()];
             return instruction.change_arg(arg).ok();
         }
