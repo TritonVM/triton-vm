@@ -108,10 +108,6 @@ impl Constraints {
         .concat()
     }
 
-    pub fn len(&self) -> usize {
-        self.init.len() + self.cons.len() + self.tran.len() + self.term.len()
-    }
-
     pub fn fold_constants(&mut self) {
         ConstraintCircuitMonad::constant_folding(&mut self.init);
         ConstraintCircuitMonad::constant_folding(&mut self.cons);
