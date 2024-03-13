@@ -1,3 +1,4 @@
+use std::env::var as env_var;
 use std::ops::Add;
 use std::ops::Mul;
 
@@ -688,6 +689,7 @@ impl Stark {
         segments.try_into().unwrap()
     }
 
+    const DEBUG_OUTPUT_VERIFY: &'static str = "TVM_DEBUG_VERIFY";
     pub fn verify(
         &self,
         claim: &Claim,
@@ -704,6 +706,7 @@ impl Stark {
 
         prof_start!(maybe_profiler, "derive additional parameters");
         let log_2_padded_height = proof_stream.dequeue()?.try_into_log2_padded_height()?;
+
         let padded_height = 1 << log_2_padded_height;
         let fri = self.derive_fri(padded_height)?;
         let merkle_tree_height = fri.domain.length.ilog2() as usize;
@@ -711,22 +714,45 @@ impl Stark {
 
         prof_start!(maybe_profiler, "Fiat-Shamir 1", "hash");
         let base_merkle_tree_root = proof_stream.dequeue()?.try_into_merkle_root()?;
+
         let extension_challenge_weights = proof_stream.sample_scalars(Challenges::SAMPLE_COUNT);
         let challenges = Challenges::new(extension_challenge_weights, claim);
+
         let extension_tree_merkle_root = proof_stream.dequeue()?.try_into_merkle_root()?;
+        if env_var(Self::DEBUG_OUTPUT_VERIFY).is_ok() {
+            println!("claim:\n{claim:?}\n\n");
+            println!("log_2_padded_height:\n{log_2_padded_height:?}\n\n");
+            println!("base_merkle_tree_root:\n{base_merkle_tree_root:?}\n\n");
+            println!("challenges:\n{challenges:?}\n\n");
+            println!("extension_tree_merkle_root:\n{extension_tree_merkle_root:?}\n\n");
+        }
+
         // Sample weights for quotient codeword, which is a part of the combination codeword.
         // See corresponding part in the prover for a more detailed explanation.
         let quot_codeword_weights = proof_stream.sample_scalars(num_quotients());
+
         let quot_codeword_weights = Array1::from(quot_codeword_weights);
         let quotient_codeword_merkle_root = proof_stream.dequeue()?.try_into_merkle_root()?;
+
         prof_stop!(maybe_profiler, "Fiat-Shamir 1");
 
         prof_start!(maybe_profiler, "dequeue ood point and rows", "hash");
         let trace_domain_generator = ArithmeticDomain::generator_for_length(padded_height as u64)?;
+
         let out_of_domain_point_curr_row = proof_stream.sample_scalars(1)[0];
+
         let out_of_domain_point_next_row = trace_domain_generator * out_of_domain_point_curr_row;
+
         let out_of_domain_point_curr_row_pow_num_segments =
             out_of_domain_point_curr_row.mod_pow_u32(NUM_QUOTIENT_SEGMENTS as u32);
+        if env_var(Self::DEBUG_OUTPUT_VERIFY).is_ok() {
+            println!("quot_codeword_weights:\n{quot_codeword_weights:?}\n\n");
+            println!("quotient_codeword_merkle_root:\n{quotient_codeword_merkle_root:?}\n\n");
+            println!("trace_domain_generator:\n{trace_domain_generator:?}\n\n");
+            println!("out_of_domain_point_curr_row:\n{out_of_domain_point_curr_row:?}\n\n");
+            println!("out_of_domain_point_next_row:\n{out_of_domain_point_next_row:?}\n\n");
+            println!("out_of_domain_point_curr_row_pow_num_segments:\n{out_of_domain_point_curr_row_pow_num_segments:?}\n\n");
+        }
 
         let out_of_domain_curr_base_row =
             proof_stream.dequeue()?.try_into_out_of_domain_base_row()?;
@@ -739,6 +765,13 @@ impl Stark {
         let out_of_domain_curr_row_quot_segments = proof_stream
             .dequeue()?
             .try_into_out_of_domain_quot_segments()?;
+        if env_var(Self::DEBUG_OUTPUT_VERIFY).is_ok() {
+            println!("out_of_domain_curr_base_row:\n{out_of_domain_curr_base_row:?}\n\n");
+            println!("out_of_domain_curr_ext_row:\n{out_of_domain_curr_ext_row:?}\n\n");
+            println!("out_of_domain_next_base_row:\n{out_of_domain_next_base_row:?}\n\n");
+            println!("out_of_domain_next_ext_row:\n{out_of_domain_next_ext_row:?}\n\n");
+            println!("out_of_domain_curr_row_quot_segments:\n{out_of_domain_curr_row_quot_segments:?}\n\n");
+        }
 
         let out_of_domain_curr_base_row = Array1::from(out_of_domain_curr_base_row.to_vec());
         let out_of_domain_curr_ext_row = Array1::from(out_of_domain_curr_ext_row.to_vec());
@@ -757,6 +790,13 @@ impl Stark {
         let transition_zerofier_inv = except_last_row * consistency_zerofier_inv;
         let terminal_zerofier_inv = except_last_row.inverse(); // i.e., only last row
         prof_stop!(maybe_profiler, "zerofiers");
+        if env_var(Self::DEBUG_OUTPUT_VERIFY).is_ok() {
+            println!("initial_zerofier_inv:\n{initial_zerofier_inv:?}\n\n");
+            println!("consistency_zerofier_inv:\n{consistency_zerofier_inv:?}\n\n");
+            println!("except_last_row:\n{except_last_row:?}\n\n");
+            println!("transition_zerofier_inv:\n{transition_zerofier_inv:?}\n\n");
+            println!("terminal_zerofier_inv:\n{terminal_zerofier_inv:?}\n\n");
+        }
 
         prof_start!(maybe_profiler, "evaluate AIR", "AIR");
         let evaluated_initial_constraints = MasterExtTable::evaluate_initial_constraints(
@@ -782,6 +822,14 @@ impl Stark {
             &challenges,
         );
         prof_stop!(maybe_profiler, "evaluate AIR");
+        if env_var(Self::DEBUG_OUTPUT_VERIFY).is_ok() {
+            println!("evaluated_initial_constraints:\n{evaluated_initial_constraints:?}\n\n");
+            println!(
+                "evaluated_consistency_constraints:\n{evaluated_consistency_constraints:?}\n\n"
+            );
+            println!("evaluated_transition_constraints:\n{evaluated_transition_constraints:?}\n\n");
+            println!("evaluated_terminal_constraints:\n{evaluated_terminal_constraints:?}\n\n");
+        }
 
         prof_start!(maybe_profiler, "divide");
         let mut quotient_summands = Vec::with_capacity(num_quotients());
@@ -800,8 +848,16 @@ impl Stark {
         prof_stop!(maybe_profiler, "divide");
 
         prof_start!(maybe_profiler, "inner product", "CC");
+        if env_var(Self::DEBUG_OUTPUT_VERIFY).is_ok() {
+            println!("quotient_summands:\n{quotient_summands:?}\n\n");
+            println!("quot_codeword_weights:\n{quot_codeword_weights:?}\n\n");
+        }
         let out_of_domain_quotient_value =
             quot_codeword_weights.dot(&Array1::from(quotient_summands));
+        if env_var(Self::DEBUG_OUTPUT_VERIFY).is_ok() {
+            println!("out_of_domain_quotient_value:\n{out_of_domain_quotient_value:?}\n\n");
+        }
+
         prof_stop!(maybe_profiler, "inner product");
         prof_stop!(maybe_profiler, "out-of-domain quotient element");
 
@@ -811,6 +867,10 @@ impl Stark {
             .collect::<Array1<_>>();
         let sum_of_evaluated_out_of_domain_quotient_segments =
             powers_of_out_of_domain_point_curr_row.dot(&out_of_domain_curr_row_quot_segments);
+        if env_var(Self::DEBUG_OUTPUT_VERIFY).is_ok() {
+            println!("powers_of_out_of_domain_point_curr_row:\n{powers_of_out_of_domain_point_curr_row:?}\n\n");
+            println!("sum_of_evaluated_out_of_domain_quotient_segments:\n{sum_of_evaluated_out_of_domain_quotient_segments:?}\n\n");
+        }
         if out_of_domain_quotient_value != sum_of_evaluated_out_of_domain_quotient_segments {
             return Err(OutOfDomainQuotientValueMismatch);
         };
