@@ -31,6 +31,7 @@ use crate::proof_item::ProofItem;
 use crate::proof_stream::ProofStream;
 use crate::table::challenges::Challenges;
 use crate::table::extension_table::Evaluable;
+use crate::table::extension_table::Quotientable;
 use crate::table::master_table::*;
 use crate::table::QuotientSegments;
 
@@ -199,7 +200,8 @@ impl Stark {
         // Create quotient codeword. This is a part of the combination codeword. To reduce the
         // amount of hashing necessary, the quotient codeword is linearly summed instead of
         // hashed prior to committing to it.
-        let quotient_combination_weights = proof_stream.sample_scalars(num_quotients());
+        let quotient_combination_weights =
+            proof_stream.sample_scalars(MasterExtTable::NUM_CONSTRAINTS);
         let quotient_combination_weights = Array1::from(quotient_combination_weights);
         assert_eq!(
             quotient_combination_weights.len(),
@@ -716,7 +718,7 @@ impl Stark {
         let extension_tree_merkle_root = proof_stream.dequeue()?.try_into_merkle_root()?;
         // Sample weights for quotient codeword, which is a part of the combination codeword.
         // See corresponding part in the prover for a more detailed explanation.
-        let quot_codeword_weights = proof_stream.sample_scalars(num_quotients());
+        let quot_codeword_weights = proof_stream.sample_scalars(MasterExtTable::NUM_CONSTRAINTS);
         let quot_codeword_weights = Array1::from(quot_codeword_weights);
         let quotient_codeword_merkle_root = proof_stream.dequeue()?.try_into_merkle_root()?;
         prof_stop!(maybe_profiler, "Fiat-Shamir 1");
@@ -784,7 +786,7 @@ impl Stark {
         prof_stop!(maybe_profiler, "evaluate AIR");
 
         prof_start!(maybe_profiler, "divide");
-        let mut quotient_summands = Vec::with_capacity(num_quotients());
+        let mut quotient_summands = Vec::with_capacity(MasterExtTable::NUM_CONSTRAINTS);
         for (evaluated_constraints_category, zerofier_inverse) in [
             (evaluated_initial_constraints, initial_zerofier_inv),
             (evaluated_consistency_constraints, consistency_zerofier_inv),
@@ -2485,7 +2487,8 @@ pub(crate) mod tests {
             vm_state.run().unwrap();
 
             let output_list_ptr = vm_state.op_stack.pop().unwrap().value();
-            Self::read_xfe_list_at_address(vm_state.ram, output_list_ptr, num_quotients())
+            let num_quotients = MasterExtTable::NUM_CONSTRAINTS;
+            Self::read_xfe_list_at_address(vm_state.ram, output_list_ptr, num_quotients)
         }
 
         fn tasm_constraint_evaluation_code(&self) -> Program {

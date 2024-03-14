@@ -1058,7 +1058,8 @@ pub fn all_quotients(
     );
 
     prof_start!(maybe_profiler, "malloc");
-    let mut quotient_table = Array2::uninit([quotient_domain.length, num_quotients()]);
+    let mut quotient_table =
+        Array2::uninit([quotient_domain.length, MasterExtTable::NUM_CONSTRAINTS]);
     prof_stop!(maybe_profiler, "malloc");
 
     let init_section_end = MasterExtTable::NUM_INITIAL_CONSTRAINTS;
@@ -1111,6 +1112,10 @@ pub fn all_quotients(
     unsafe { quotient_table.assume_init() }
 }
 
+#[deprecated(
+    since = "0.39.0",
+    note = "use `MasterExtTable::NUM_CONSTRAINTS` directly instead"
+)]
 pub const fn num_quotients() -> usize {
     MasterExtTable::NUM_CONSTRAINTS
 }
