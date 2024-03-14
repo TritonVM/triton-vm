@@ -3,6 +3,23 @@
 All notable changes are documented in this file.
 Lines marked “(!)” indicate a breaking change.
 
+## [0.38.2](https://github.com/TritonVM/triton-vm/compare/v0.38.1..v0.38.2) - 2024-03-14
+
+### ✨ Features
+
+- Convert from `i32` to `NumberOfWords` ([b1fe8e0e](https://github.com/TritonVM/triton-vm/commit/b1fe8e0e))
+- More powerful `triton_instr!` macro ([0d1d35ec](https://github.com/TritonVM/triton-vm/commit/0d1d35ec))
+
+### ⚡️ Performance
+
+- Emit instruction's opcodes, not instructions ([7c3de15b](https://github.com/TritonVM/triton-vm/commit/7c3de15b))
+
+### ♻️ Refactor
+
+- Deprecate `Challenges::count()` ([df783a04](https://github.com/TritonVM/triton-vm/commit/df783a04))
+- Deprecate too-simple helper method ([bf8adf2d](https://github.com/TritonVM/triton-vm/commit/bf8adf2d))
+- Deprecate some shallow methods ([df0715e7](https://github.com/TritonVM/triton-vm/commit/df0715e7))
+
 ## [0.38.1](https://github.com/TritonVM/triton-vm/compare/v0.38.0..v0.38.1) - 2024-03-11
 
 ### 🐛 Bug Fixes
