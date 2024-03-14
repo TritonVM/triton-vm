@@ -751,15 +751,6 @@ impl Stark {
         prof_stop!(maybe_profiler, "dequeue ood point and rows");
 
         prof_start!(maybe_profiler, "out-of-domain quotient element");
-        prof_start!(maybe_profiler, "zerofiers");
-        let initial_zerofier_inv = (out_of_domain_point_curr_row - bfe!(1)).inverse();
-        let consistency_zerofier_inv =
-            (out_of_domain_point_curr_row.mod_pow_u32(padded_height as u32) - bfe!(1)).inverse();
-        let except_last_row = out_of_domain_point_curr_row - trace_domain_generator.inverse();
-        let transition_zerofier_inv = except_last_row * consistency_zerofier_inv;
-        let terminal_zerofier_inv = except_last_row.inverse(); // i.e., only last row
-        prof_stop!(maybe_profiler, "zerofiers");
-
         prof_start!(maybe_profiler, "evaluate AIR", "AIR");
         let evaluated_initial_constraints = MasterExtTable::evaluate_initial_constraints(
             out_of_domain_curr_base_row.view(),
@@ -785,20 +776,29 @@ impl Stark {
         );
         prof_stop!(maybe_profiler, "evaluate AIR");
 
+        prof_start!(maybe_profiler, "zerofiers");
+        let initial_zerofier_inv = (out_of_domain_point_curr_row - bfe!(1)).inverse();
+        let consistency_zerofier_inv =
+            (out_of_domain_point_curr_row.mod_pow_u32(padded_height as u32) - bfe!(1)).inverse();
+        let except_last_row = out_of_domain_point_curr_row - trace_domain_generator.inverse();
+        let transition_zerofier_inv = except_last_row * consistency_zerofier_inv;
+        let terminal_zerofier_inv = except_last_row.inverse(); // i.e., only last row
+        prof_stop!(maybe_profiler, "zerofiers");
+
         prof_start!(maybe_profiler, "divide");
-        let mut quotient_summands = Vec::with_capacity(MasterExtTable::NUM_CONSTRAINTS);
-        for (evaluated_constraints_category, zerofier_inverse) in [
-            (evaluated_initial_constraints, initial_zerofier_inv),
-            (evaluated_consistency_constraints, consistency_zerofier_inv),
-            (evaluated_transition_constraints, transition_zerofier_inv),
-            (evaluated_terminal_constraints, terminal_zerofier_inv),
-        ] {
-            let category_quotients = evaluated_constraints_category
-                .into_iter()
-                .map(|evaluated_constraint| evaluated_constraint * zerofier_inverse)
-                .collect_vec();
-            quotient_summands.extend(category_quotients);
-        }
+        let divide = |constraints: Vec<_>, z_inv| constraints.into_iter().map(move |c| c * z_inv);
+        let initial_quotients = divide(evaluated_initial_constraints, initial_zerofier_inv);
+        let consistency_quotients =
+            divide(evaluated_consistency_constraints, consistency_zerofier_inv);
+        let transition_quotients =
+            divide(evaluated_transition_constraints, transition_zerofier_inv);
+        let terminal_quotients = divide(evaluated_terminal_constraints, terminal_zerofier_inv);
+
+        let quotient_summands = initial_quotients
+            .chain(consistency_quotients)
+            .chain(transition_quotients)
+            .chain(terminal_quotients)
+            .collect_vec();
         prof_stop!(maybe_profiler, "divide");
 
         prof_start!(maybe_profiler, "inner product", "CC");
