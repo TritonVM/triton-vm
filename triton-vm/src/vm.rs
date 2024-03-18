@@ -108,7 +108,7 @@ impl VMState {
     pub fn new(
         program: &Program,
         public_input: PublicInput,
-        non_determinism: NonDeterminism<BFieldElement>,
+        non_determinism: NonDeterminism,
     ) -> Self {
         let program_digest = program.hash::<Tip5>();
 
@@ -1029,8 +1029,6 @@ pub(crate) mod tests {
 
     use assert2::assert;
     use assert2::let_assert;
-    use ndarray::Array1;
-    use ndarray::ArrayView1;
     use proptest::prelude::*;
     use proptest_arbitrary_interop::arb;
     use rand::prelude::IteratorRandom;
@@ -1045,7 +1043,6 @@ pub(crate) mod tests {
     use strum::IntoEnumIterator;
     use test_strategy::proptest;
     use twenty_first::shared_math::other::random_elements;
-    use twenty_first::shared_math::traits::FiniteField;
 
     use crate::example_programs::*;
     use crate::op_stack::NumberOfWords::*;
@@ -1057,29 +1054,23 @@ pub(crate) mod tests {
 
     use super::*;
 
-    fn pretty_print_array_view<FF: FiniteField>(array: ArrayView1<FF>) -> String {
-        array
-            .iter()
-            .map(|ff| format!("{ff}"))
-            .collect_vec()
-            .join(", ")
-    }
-
     #[test]
     fn initialise_table() {
         let program = GREATEST_COMMON_DIVISOR.clone();
-        let stdin = vec![42, 56].into();
-        let _ = program.trace_execution(stdin, [].into()).unwrap();
+        let stdin = PublicInput::from([42, 56].map(|b| bfe!(b)));
+        let secret_in = NonDeterminism::default();
+        let _ = program.trace_execution(stdin, secret_in).unwrap();
     }
 
     #[test]
     fn run_tvm_gcd() {
         let program = GREATEST_COMMON_DIVISOR.clone();
-        let stdin = vec![42, 56].into();
-        let_assert!(Ok(stdout) = program.run(stdin, [].into()));
+        let stdin = PublicInput::from([42, 56].map(|b| bfe!(b)));
+        let secret_in = NonDeterminism::default();
+        let_assert!(Ok(stdout) = program.run(stdin, secret_in));
 
-        let stdout = Array1::from(stdout);
-        println!("VM output: [{}]", pretty_print_array_view(stdout.view()));
+        let output = stdout.iter().map(|o| format!("{o}")).join(", ");
+        println!("VM output: [{output}]");
 
         assert!(bfe!(14) == stdout[0]);
     }
@@ -1102,15 +1093,15 @@ pub(crate) mod tests {
             push 3 push 2 lt assert
             halt
         };
-        ProgramAndInput::without_input(program)
+        ProgramAndInput::new(program)
     }
 
     pub(crate) fn test_program_for_halt() -> ProgramAndInput {
-        ProgramAndInput::without_input(triton_program!(halt))
+        ProgramAndInput::new(triton_program!(halt))
     }
 
     pub(crate) fn test_program_for_push_pop_dup_swap_nop() -> ProgramAndInput {
-        ProgramAndInput::without_input(triton_program!(
+        ProgramAndInput::new(triton_program!(
             push 1 push 2 pop 1 assert
             push 1 dup  0 assert assert
             push 1 push 2 swap 1 assert pop 1
@@ -1119,21 +1110,15 @@ pub(crate) mod tests {
     }
 
     pub(crate) fn test_program_for_divine() -> ProgramAndInput {
-        ProgramAndInput {
-            program: triton_program!(divine 1 assert halt),
-            public_input: vec![],
-            non_determinism: vec![1].into(),
-        }
+        ProgramAndInput::new(triton_program!(divine 1 assert halt)).with_non_determinism([bfe!(1)])
     }
 
     pub(crate) fn test_program_for_skiz() -> ProgramAndInput {
-        ProgramAndInput::without_input(
-            triton_program!(push 1 skiz push 0 skiz assert push 1 skiz halt),
-        )
+        ProgramAndInput::new(triton_program!(push 1 skiz push 0 skiz assert push 1 skiz halt))
     }
 
     pub(crate) fn test_program_for_call_recurse_return() -> ProgramAndInput {
-        ProgramAndInput::without_input(triton_program!(
+        ProgramAndInput::new(triton_program!(
             push 2
             call label
             pop 1 halt
@@ -1146,7 +1131,7 @@ pub(crate) mod tests {
     }
 
     pub(crate) fn test_program_for_write_mem_read_mem() -> ProgramAndInput {
-        ProgramAndInput::without_input(triton_program! {
+        ProgramAndInput::new(triton_program! {
             push 3 push 1 push 2    // _ 3 1 2
             push 7                  // _ 3 1 2 7
             write_mem 3             // _ 10
@@ -1165,12 +1150,8 @@ pub(crate) mod tests {
             read_io 1 eq assert halt
         );
         let hash_input = [3, 2, 1, 0, 0, 0, 0, 0, 0, 0].map(BFieldElement::new);
-        let digest = Tip5::hash_10(&hash_input).map(|e| e.value());
-        ProgramAndInput {
-            program,
-            public_input: vec![digest.to_vec()[0]],
-            non_determinism: [].into(),
-        }
+        let digest = Tip5::hash_10(&hash_input);
+        ProgramAndInput::new(program).with_input(&digest[..=0])
     }
 
     pub(crate) fn test_program_for_divine_sibling_no_switch() -> ProgramAndInput {
@@ -1189,13 +1170,9 @@ pub(crate) mod tests {
         );
 
         let dummy_digest = Digest([0, 1, 2, 3, 4].map(BFieldElement::new));
-        let non_determinism = NonDeterminism::new(vec![]).with_digests(vec![dummy_digest]);
+        let non_determinism = NonDeterminism::default().with_digests(vec![dummy_digest]);
 
-        ProgramAndInput {
-            program,
-            public_input: vec![],
-            non_determinism,
-        }
+        ProgramAndInput::new(program).with_non_determinism(non_determinism)
     }
 
     pub(crate) fn test_program_for_divine_sibling_switch() -> ProgramAndInput {
@@ -1214,17 +1191,13 @@ pub(crate) mod tests {
         );
 
         let dummy_digest = Digest([0, 1, 2, 3, 4].map(BFieldElement::new));
-        let non_determinism = NonDeterminism::new(vec![]).with_digests(vec![dummy_digest]);
+        let non_determinism = NonDeterminism::default().with_digests(vec![dummy_digest]);
 
-        ProgramAndInput {
-            program,
-            public_input: vec![],
-            non_determinism,
-        }
+        ProgramAndInput::new(program).with_non_determinism(non_determinism)
     }
 
     pub(crate) fn test_program_for_assert_vector() -> ProgramAndInput {
-        ProgramAndInput::without_input(triton_program!(
+        ProgramAndInput::new(triton_program!(
             push 1 push 2 push 3 push 4 push 5
             push 1 push 2 push 3 push 4 push 5
             assert_vector halt
@@ -1233,7 +1206,7 @@ pub(crate) mod tests {
 
     pub(crate) fn test_program_for_sponge_instructions() -> ProgramAndInput {
         let push_10_zeros = triton_asm![push 0; 10];
-        ProgramAndInput::without_input(triton_program!(
+        ProgramAndInput::new(triton_program!(
             sponge_init
             {&push_10_zeros} sponge_absorb
             {&push_10_zeros} sponge_absorb
@@ -1250,7 +1223,7 @@ pub(crate) mod tests {
             sponge_squeeze sponge_absorb
             halt
         };
-        ProgramAndInput::without_input(program)
+        ProgramAndInput::new(program)
     }
 
     pub(crate) fn test_program_for_many_sponge_instructions() -> ProgramAndInput {
@@ -1280,27 +1253,19 @@ pub(crate) mod tests {
             {&push_10_zeros} sponge_absorb      //  0
             halt
         };
-        ProgramAndInput::without_input(program)
+        ProgramAndInput::new(program)
     }
 
     pub(crate) fn property_based_test_program_for_assert_vector() -> ProgramAndInput {
         let mut rng = ThreadRng::default();
-        let st0 = rng.gen_range(0..BFieldElement::P);
-        let st1 = rng.gen_range(0..BFieldElement::P);
-        let st2 = rng.gen_range(0..BFieldElement::P);
-        let st3 = rng.gen_range(0..BFieldElement::P);
-        let st4 = rng.gen_range(0..BFieldElement::P);
+        let st: [BFieldElement; 5] = rng.gen();
 
         let program = triton_program!(
-            push {st4} push {st3} push {st2} push {st1} push {st0}
+            push {st[0]} push {st[1]} push {st[2]} push {st[3]} push {st[4]}
             read_io 5 assert_vector halt
         );
 
-        ProgramAndInput {
-            program,
-            public_input: vec![st4, st3, st2, st1, st0],
-            non_determinism: [].into(),
-        }
+        ProgramAndInput::new(program).with_input(st)
     }
 
     /// Test helper for `property_based_test_program_for_sponge_instructions`.
@@ -1380,15 +1345,11 @@ pub(crate) mod tests {
             halt
         );
 
-        ProgramAndInput {
-            program,
-            public_input: sponge_io.map(|e| e.value()).to_vec(),
-            non_determinism: [].into(),
-        }
+        ProgramAndInput::new(program).with_input(sponge_io)
     }
 
     pub(crate) fn test_program_for_add_mul_invert() -> ProgramAndInput {
-        ProgramAndInput::without_input(triton_program!(
+        ProgramAndInput::new(triton_program!(
             push  2 push -1 add assert
             push -1 push -1 mul assert
             push  3 dup 0 invert mul assert
@@ -1404,36 +1365,30 @@ pub(crate) mod tests {
 
         let program =
             triton_program!(push {st0} split read_io 1 eq assert read_io 1 eq assert halt);
-        ProgramAndInput {
-            program,
-            public_input: vec![lo, hi],
-            non_determinism: [].into(),
-        }
+        ProgramAndInput::new(program).with_input([lo, hi].map(BFieldElement::new))
     }
 
     pub(crate) fn test_program_for_eq() -> ProgramAndInput {
-        ProgramAndInput {
-            program: triton_program!(read_io 1 divine 1 eq assert halt),
-            public_input: vec![42],
-            non_determinism: vec![42].into(),
-        }
+        let input = [bfe!(42)];
+        ProgramAndInput::new(triton_program!(read_io 1 divine 1 eq assert halt))
+            .with_input(input)
+            .with_non_determinism(input)
     }
 
     pub(crate) fn property_based_test_program_for_eq() -> ProgramAndInput {
         let mut rng = ThreadRng::default();
         let st0 = rng.next_u64() % BFieldElement::P;
+        let input = [bfe!(st0)];
 
         let program =
             triton_program!(push {st0} dup 0 read_io 1 eq assert dup 0 divine 1 eq assert halt);
-        ProgramAndInput {
-            program,
-            public_input: vec![st0],
-            non_determinism: vec![st0].into(),
-        }
+        ProgramAndInput::new(program)
+            .with_input(input)
+            .with_non_determinism(input)
     }
 
     pub(crate) fn test_program_for_lsb() -> ProgramAndInput {
-        ProgramAndInput::without_input(triton_program!(
+        ProgramAndInput::new(triton_program!(
             push 3 call lsb assert assert halt
             lsb:
                 push 2 swap 1 div_mod return
@@ -1451,19 +1406,15 @@ pub(crate) mod tests {
             lsb:
                 push 2 swap 1 div_mod return
         );
-        ProgramAndInput {
-            program,
-            public_input: vec![lsb.into(), st0_shift_right.into()],
-            non_determinism: [].into(),
-        }
+        ProgramAndInput::new(program).with_input([lsb, st0_shift_right].map(|b| bfe!(b)))
     }
 
     pub(crate) fn test_program_0_lt_0() -> ProgramAndInput {
-        ProgramAndInput::without_input(triton_program!(push 0 push 0 lt halt))
+        ProgramAndInput::new(triton_program!(push 0 push 0 lt halt))
     }
 
     pub(crate) fn test_program_for_lt() -> ProgramAndInput {
-        ProgramAndInput::without_input(triton_program!(
+        ProgramAndInput::new(triton_program!(
             push 5 push 2 lt assert push 2 push 5 lt push 0 eq assert halt
         ))
     }
@@ -1489,15 +1440,11 @@ pub(crate) mod tests {
             push {st1_0} push {st0_0} lt read_io 1 eq assert
             push {st1_1} push {st0_1} lt read_io 1 eq assert halt
         );
-        ProgramAndInput {
-            program,
-            public_input: vec![result_0, result_1],
-            non_determinism: [].into(),
-        }
+        ProgramAndInput::new(program).with_input([result_0, result_1].map(|b| bfe!(b)))
     }
 
     pub(crate) fn test_program_for_and() -> ProgramAndInput {
-        ProgramAndInput::without_input(triton_program!(
+        ProgramAndInput::new(triton_program!(
             push 5 push 3 and assert push 12 push 5 and push 4 eq assert halt
         ))
     }
@@ -1517,15 +1464,11 @@ pub(crate) mod tests {
             push {st1_0} push {st0_0} and read_io 1 eq assert
             push {st1_1} push {st0_1} and read_io 1 eq assert halt
         );
-        ProgramAndInput {
-            program,
-            public_input: vec![result_0.into(), result_1.into()],
-            non_determinism: [].into(),
-        }
+        ProgramAndInput::new(program).with_input([result_0, result_1].map(|b| bfe!(b)))
     }
 
     pub(crate) fn test_program_for_xor() -> ProgramAndInput {
-        ProgramAndInput::without_input(triton_program!(
+        ProgramAndInput::new(triton_program!(
             push 7 push 6 xor assert push 5 push 12 xor push 9 eq assert halt
         ))
     }
@@ -1545,15 +1488,11 @@ pub(crate) mod tests {
             push {st1_0} push {st0_0} xor read_io 1 eq assert
             push {st1_1} push {st0_1} xor read_io 1 eq assert halt
         );
-        ProgramAndInput {
-            program,
-            public_input: vec![result_0.into(), result_1.into()],
-            non_determinism: [].into(),
-        }
+        ProgramAndInput::new(program).with_input([result_0, result_1].map(|b| bfe!(b)))
     }
 
     pub(crate) fn test_program_for_log2floor() -> ProgramAndInput {
-        ProgramAndInput::without_input(triton_program!(
+        ProgramAndInput::new(triton_program!(
             push  1 log_2_floor push  0 eq assert
             push  2 log_2_floor push  1 eq assert
             push  3 log_2_floor push  1 eq assert
@@ -1582,15 +1521,11 @@ pub(crate) mod tests {
             push {st0_0} log_2_floor read_io 1 eq assert
             push {st0_1} log_2_floor read_io 1 eq assert halt
         );
-        ProgramAndInput {
-            program,
-            public_input: vec![l2f_0.into(), l2f_1.into()],
-            non_determinism: [].into(),
-        }
+        ProgramAndInput::new(program).with_input([l2f_0, l2f_1].map(|b| bfe!(b)))
     }
 
     pub(crate) fn test_program_for_pow() -> ProgramAndInput {
-        ProgramAndInput::without_input(triton_program!(
+        ProgramAndInput::new(triton_program!(
             // push <exponent: u32> push <base: BFE> pow push <result: BFE> eq assert
             push  0 push 0 pow push    1 eq assert
             push  0 push 1 pow push    1 eq assert
@@ -1622,25 +1557,21 @@ pub(crate) mod tests {
 
         let base_0: BFieldElement = rng.gen();
         let exp_0 = rng.next_u32();
-        let result_0 = base_0.mod_pow_u32(exp_0).value();
+        let result_0 = base_0.mod_pow_u32(exp_0);
 
         let base_1: BFieldElement = rng.gen();
         let exp_1 = rng.next_u32();
-        let result_1 = base_1.mod_pow_u32(exp_1).value();
+        let result_1 = base_1.mod_pow_u32(exp_1);
 
         let program = triton_program!(
             push {exp_0} push {base_0} pow read_io 1 eq assert
             push {exp_1} push {base_1} pow read_io 1 eq assert halt
         );
-        ProgramAndInput {
-            program,
-            public_input: vec![result_0, result_1],
-            non_determinism: [].into(),
-        }
+        ProgramAndInput::new(program).with_input([result_0, result_1])
     }
 
     pub(crate) fn test_program_for_div_mod() -> ProgramAndInput {
-        ProgramAndInput::without_input(triton_program!(push 2 push 3 div_mod assert assert halt))
+        ProgramAndInput::new(triton_program!(push 2 push 3 div_mod assert assert halt))
     }
 
     pub(crate) fn property_based_test_program_for_div_mod() -> ProgramAndInput {
@@ -1654,19 +1585,15 @@ pub(crate) mod tests {
         let program = triton_program!(
             push {denominator} push {numerator} div_mod read_io 1 eq assert read_io 1 eq assert halt
         );
-        ProgramAndInput {
-            program,
-            public_input: vec![remainder.into(), quotient.into()],
-            non_determinism: [].into(),
-        }
+        ProgramAndInput::new(program).with_input([remainder, quotient].map(|b| bfe!(b)))
     }
 
     pub(crate) fn test_program_for_starting_with_pop_count() -> ProgramAndInput {
-        ProgramAndInput::without_input(triton_program!(pop_count dup 0 push 0 eq assert halt))
+        ProgramAndInput::new(triton_program!(pop_count dup 0 push 0 eq assert halt))
     }
 
     pub(crate) fn test_program_for_pop_count() -> ProgramAndInput {
-        ProgramAndInput::without_input(triton_program!(push 10 pop_count push 2 eq assert halt))
+        ProgramAndInput::new(triton_program!(push 10 pop_count push 2 eq assert halt))
     }
 
     pub(crate) fn property_based_test_program_for_pop_count() -> ProgramAndInput {
@@ -1674,11 +1601,7 @@ pub(crate) mod tests {
         let st0 = rng.next_u32();
         let pop_count = st0.count_ones();
         let program = triton_program!(push {st0} pop_count read_io 1 eq assert halt);
-        ProgramAndInput {
-            program,
-            public_input: vec![pop_count.into()],
-            non_determinism: [].into(),
-        }
+        ProgramAndInput::new(program).with_input([bfe!(pop_count)])
     }
 
     pub(crate) fn property_based_test_program_for_is_u32() -> ProgramAndInput {
@@ -1691,7 +1614,7 @@ pub(crate) mod tests {
             is_u32:
                  split pop 1 push 0 eq return
         );
-        ProgramAndInput::without_input(program)
+        ProgramAndInput::new(program)
     }
 
     pub(crate) fn property_based_test_program_for_random_ram_access() -> ProgramAndInput {
@@ -1756,7 +1679,7 @@ pub(crate) mod tests {
         }
 
         let program = triton_program! { { &instructions } halt };
-        ProgramAndInput::without_input(program)
+        ProgramAndInput::new(program)
     }
 
     /// Sanity check for the relatively complex property-based test for random RAM access.
@@ -1777,13 +1700,13 @@ pub(crate) mod tests {
             is_u32:
                 split pop 1 push 0 eq return
         );
-        let program_and_input = ProgramAndInput::without_input(program);
+        let program_and_input = ProgramAndInput::new(program);
         let_assert!(Err(err) = program_and_input.run());
         let_assert!(AssertionFailed = err.source);
     }
 
     pub(crate) fn test_program_for_split() -> ProgramAndInput {
-        ProgramAndInput::without_input(triton_program!(
+        ProgramAndInput::new(triton_program!(
             push -2 split push 4294967295 eq assert push 4294967294 eq assert
             push -1 split push 0 eq assert push 4294967295 eq assert
             push  0 split push 0 eq assert push 0 eq assert
@@ -1795,25 +1718,25 @@ pub(crate) mod tests {
     }
 
     pub(crate) fn test_program_for_xxadd() -> ProgramAndInput {
-        ProgramAndInput::without_input(triton_program!(
+        ProgramAndInput::new(triton_program!(
             push 5 push 6 push 7 push 8 push 9 push 10 xxadd halt
         ))
     }
 
     pub(crate) fn test_program_for_xxmul() -> ProgramAndInput {
-        ProgramAndInput::without_input(triton_program!(
+        ProgramAndInput::new(triton_program!(
             push 5 push 6 push 7 push 8 push 9 push 10 xxmul halt
         ))
     }
 
     pub(crate) fn test_program_for_xinvert() -> ProgramAndInput {
-        ProgramAndInput::without_input(triton_program!(
+        ProgramAndInput::new(triton_program!(
             push 5 push 6 push 7 xinvert halt
         ))
     }
 
     pub(crate) fn test_program_for_xbmul() -> ProgramAndInput {
-        ProgramAndInput::without_input(triton_program!(
+        ProgramAndInput::new(triton_program!(
             push 5 push 6 push 7 push 8 xbmul halt
         ))
     }
@@ -1822,11 +1745,7 @@ pub(crate) mod tests {
         let program = triton_program!(
             read_io 1 assert read_io 2 dup 1 dup 1 add write_io 1 mul push 5 write_io 2 halt
         );
-        ProgramAndInput {
-            program,
-            public_input: vec![1, 3, 14],
-            non_determinism: [].into(),
-        }
+        ProgramAndInput::new(program).with_input([1, 3, 14].map(|b| bfe!(b)))
     }
 
     pub(crate) fn test_program_claim_in_ram_corresponds_to_currently_running_program(
@@ -1841,15 +1760,11 @@ pub(crate) mod tests {
         let program_digest = program.hash::<Tip5>();
         let enumerated_digest_elements = program_digest.values().into_iter().enumerate();
         let initial_ram = enumerated_digest_elements
-            .map(|(address, digest_element)| (address as u64, digest_element.value()))
-            .collect();
+            .map(|(address, d)| (bfe!(u64::try_from(address).unwrap()), d))
+            .collect::<HashMap<_, _>>();
         let non_determinism = NonDeterminism::default().with_ram(initial_ram);
 
-        ProgramAndInput {
-            program,
-            public_input: vec![],
-            non_determinism,
-        }
+        ProgramAndInput::new(program).with_non_determinism(non_determinism)
     }
 
     #[proptest]
@@ -1939,7 +1854,7 @@ pub(crate) mod tests {
             sub:
                 swap 1 push -1 mul add return
         );
-        let actual_stdout = ProgramAndInput::without_input(program).run()?;
+        let actual_stdout = ProgramAndInput::new(program).run()?;
         let expected_stdout = vec![minuend - subtrahend];
 
         prop_assert_eq!(expected_stdout, actual_stdout);
@@ -2055,7 +1970,7 @@ pub(crate) mod tests {
         let revealed_indices = &leaved_merkle_tree.revealed_indices;
         let num_authentication_paths = revealed_indices.len();
 
-        let auth_paths = revealed_indices.iter().flat_map(auth_path).collect();
+        let auth_paths = revealed_indices.iter().flat_map(auth_path).collect_vec();
         let non_determinism = NonDeterminism::default().with_digests(auth_paths);
 
         let mut public_input = vec![(num_authentication_paths as u64).into()];
@@ -2122,7 +2037,7 @@ pub(crate) mod tests {
     #[test]
     fn run_tvm_fibonacci_tvm() {
         let program = FIBONACCI_SEQUENCE.clone();
-        let_assert!(Ok(standard_out) = program.run(vec![7].into(), [].into()));
+        let_assert!(Ok(standard_out) = program.run([bfe!(7)].into(), [].into()));
         assert!(bfe!(21) == standard_out[0]);
     }
 
@@ -2190,7 +2105,7 @@ pub(crate) mod tests {
     #[test]
     fn verify_sudoku() {
         let program = VERIFY_SUDOKU.clone();
-        let stdin = vec![
+        let sudoku = [
             8, 5, 9, /**/ 7, 6, 1, /**/ 4, 2, 3, //
             4, 2, 6, /**/ 8, 5, 3, /**/ 7, 9, 1, //
             7, 1, 3, /**/ 9, 2, 4, /**/ 8, 5, 6, //
@@ -2202,13 +2117,14 @@ pub(crate) mod tests {
             5, 3, 4, /**/ 6, 7, 8, /**/ 9, 1, 2, //
             6, 7, 2, /**/ 1, 9, 5, /**/ 3, 4, 8, //
             1, 9, 8, /**/ 3, 4, 2, /**/ 5, 6, 7, //
-        ]
-        .into();
-        let secret_in = [].into();
-        assert!(let Ok(_) = program.trace_execution(stdin, secret_in));
+        ];
+
+        let std_in = PublicInput::from(sudoku.map(|b| bfe!(b)));
+        let secret_in = NonDeterminism::default();
+        assert!(let Ok(_) = program.trace_execution(std_in, secret_in));
 
         // rows and columns adhere to Sudoku rules, boxes do not
-        let bad_stdin = vec![
+        let bad_sudoku = [
             1, 2, 3, /**/ 4, 5, 7, /**/ 8, 9, 6, //
             4, 3, 1, /**/ 5, 2, 9, /**/ 6, 7, 8, //
             2, 7, 9, /**/ 6, 1, 3, /**/ 5, 8, 4, //
@@ -2220,10 +2136,10 @@ pub(crate) mod tests {
             3, 5, 6, /**/ 8, 7, 2, /**/ 4, 1, 9, //
             9, 4, 8, /**/ 1, 3, 5, /**/ 2, 6, 7, //
             8, 9, 7, /**/ 2, 6, 1, /**/ 3, 4, 5, //
-        ]
-        .into();
-        let secret_in = [].into();
-        let_assert!(Err(err) = program.trace_execution(bad_stdin, secret_in));
+        ];
+        let bad_std_in = PublicInput::from(bad_sudoku.map(|b| bfe!(b)));
+        let secret_in = NonDeterminism::default();
+        let_assert!(Err(err) = program.trace_execution(bad_std_in, secret_in));
         let_assert!(AssertionFailed = err.source);
     }
 

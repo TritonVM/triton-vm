@@ -79,18 +79,6 @@ impl Claim {
         self.output = output;
         self
     }
-
-    /// The public input as `u64`s.
-    /// If `BFieldElement`s are needed, use field `input`.
-    pub fn public_input(&self) -> Vec<u64> {
-        self.input.iter().map(|x| x.value()).collect()
-    }
-
-    /// The public output as `u64`.
-    /// If `BFieldElements`s are needed, use field `output`.
-    pub fn public_output(&self) -> Vec<u64> {
-        self.output.iter().map(|x| x.value()).collect()
-    }
 }
 
 #[cfg(test)]

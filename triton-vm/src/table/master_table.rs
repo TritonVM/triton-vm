@@ -1144,7 +1144,7 @@ mod tests {
 
     #[test]
     fn base_table_width_is_correct() {
-        let program = ProgramAndInput::without_input(triton_program!(halt));
+        let program = ProgramAndInput::new(triton_program!(halt));
         let (_, _, master_base_table) = master_base_table_for_low_security_level(program);
 
         assert_eq!(
@@ -1193,7 +1193,7 @@ mod tests {
 
     #[test]
     fn ext_table_width_is_correct() {
-        let program = ProgramAndInput::without_input(triton_program!(halt));
+        let program = ProgramAndInput::new(triton_program!(halt));
         let (_, _, _, master_ext_table, _) = master_tables_for_low_security_level(program);
 
         assert_eq!(

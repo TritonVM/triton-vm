@@ -24,8 +24,24 @@ use triton_vm::prove_program;
 /// Ties together a program and its inputs.
 struct ProgramAndInput {
     program: Program,
-    public_input: Vec<u64>,
-    non_determinism: NonDeterminism<u64>,
+    public_input: PublicInput,
+    non_determinism: NonDeterminism,
+}
+
+impl ProgramAndInput {
+    fn new(program: Program) -> Self {
+        Self {
+            program,
+            public_input: PublicInput::default(),
+            non_determinism: NonDeterminism::default(),
+        }
+    }
+
+    #[must_use]
+    fn with_input<I: Into<PublicInput>>(mut self, public_input: I) -> Self {
+        self.public_input = public_input.into();
+        self
+    }
 }
 
 /// The measurement unit for Criterion.
@@ -149,29 +165,17 @@ fn program_verify_sudoku() -> ProgramAndInput {
         6, 7, 8, /**/ 9, 1, 2, /**/ 3, 4, 5, //
         9, 1, 2, /**/ 3, 4, 5, /**/ 6, 7, 8, //
     ];
-    ProgramAndInput {
-        program: VERIFY_SUDOKU.clone(),
-        public_input: sudoku.to_vec(),
-        non_determinism: [].into(),
-    }
+    ProgramAndInput::new(VERIFY_SUDOKU.clone()).with_input(sudoku.map(|b| bfe!(b)))
 }
 
 /// The program for computing some Fibonacci number, accepting as input which number of the
 /// sequence to compute.
 fn program_fib(nth_element: u64) -> ProgramAndInput {
-    ProgramAndInput {
-        program: FIBONACCI_SEQUENCE.clone(),
-        public_input: vec![nth_element],
-        non_determinism: [].into(),
-    }
+    ProgramAndInput::new(FIBONACCI_SEQUENCE.clone()).with_input([bfe!(nth_element)])
 }
 
 fn program_halt() -> ProgramAndInput {
-    ProgramAndInput {
-        program: triton_program!(halt),
-        public_input: vec![],
-        non_determinism: [].into(),
-    }
+    ProgramAndInput::new(triton_program!(halt))
 }
 
 /// The base 2, integer logarithm of the FRI domain length.
@@ -238,8 +242,8 @@ fn sum_of_proof_lengths_for_source_code(
     for _ in 0..num_iterations {
         let (_, _, proof) = prove_program(
             &program_and_input.program,
-            &program_and_input.public_input,
-            &program_and_input.non_determinism,
+            program_and_input.public_input.clone(),
+            program_and_input.non_determinism.clone(),
         )
         .unwrap();
         sum_of_proof_lengths += proof.encode().len();
@@ -255,8 +259,8 @@ fn generate_proof_and_benchmark_id(
 ) -> (Proof, BenchmarkId) {
     let (stark, _, proof) = prove_program(
         &program_and_input.program,
-        &program_and_input.public_input,
-        &program_and_input.non_determinism,
+        program_and_input.public_input.clone(),
+        program_and_input.non_determinism.clone(),
     )
     .unwrap();
     let log_2_fri_domain_length = log_2_fri_domain_length(stark, &proof);

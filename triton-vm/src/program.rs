@@ -406,6 +406,7 @@ impl Program {
 
     /// Produces the program's canonical hash digest for the given `AlgebraicHasher`.
     pub fn hash<H: AlgebraicHasher>(&self) -> Digest {
+        // not encoded using `BFieldCodec` because that would prepend the length
         H::hash_varlen(&self.to_bwords())
     }
 
@@ -420,7 +421,7 @@ impl Program {
     pub fn run(
         &self,
         public_input: PublicInput,
-        non_determinism: NonDeterminism<BFieldElement>,
+        non_determinism: NonDeterminism,
     ) -> Result<Vec<BFieldElement>> {
         let mut state = VMState::new(self, public_input, non_determinism);
         if let Err(err) = state.run() {
@@ -442,7 +443,7 @@ impl Program {
     pub fn trace_execution(
         &self,
         public_input: PublicInput,
-        non_determinism: NonDeterminism<BFieldElement>,
+        non_determinism: NonDeterminism,
     ) -> Result<(AlgebraicExecutionTrace, Vec<BFieldElement>)> {
         let state = VMState::new(self, public_input, non_determinism);
         let (aet, terminal_state) = self.trace_execution_of_state(state)?;
@@ -488,7 +489,7 @@ impl Program {
     pub fn profile(
         &self,
         public_input: PublicInput,
-        non_determinism: NonDeterminism<BFieldElement>,
+        non_determinism: NonDeterminism,
     ) -> Result<(Vec<BFieldElement>, Vec<ProfileLine>)> {
         let mut profiler = VMProfiler::new();
         let mut state = VMState::new(self, public_input, non_determinism);
@@ -631,45 +632,31 @@ pub struct PublicInput {
 
 impl From<Vec<BFieldElement>> for PublicInput {
     fn from(individual_tokens: Vec<BFieldElement>) -> Self {
-        PublicInput { individual_tokens }
+        Self::new(individual_tokens)
     }
 }
 
 impl From<&Vec<BFieldElement>> for PublicInput {
     fn from(tokens: &Vec<BFieldElement>) -> Self {
-        PublicInput {
-            individual_tokens: tokens.to_owned(),
-        }
+        Self::new(tokens.to_owned())
+    }
+}
+
+impl<const N: usize> From<[BFieldElement; N]> for PublicInput {
+    fn from(tokens: [BFieldElement; N]) -> Self {
+        Self::new(tokens.to_vec())
     }
 }
 
 impl From<&[BFieldElement]> for PublicInput {
     fn from(tokens: &[BFieldElement]) -> Self {
-        PublicInput {
-            individual_tokens: tokens.to_vec(),
-        }
-    }
-}
-
-impl From<Vec<u64>> for PublicInput {
-    fn from(tokens: Vec<u64>) -> Self {
-        PublicInput {
-            individual_tokens: tokens.iter().map(|&element| element.into()).collect(),
-        }
-    }
-}
-
-impl From<[u64; 0]> for PublicInput {
-    fn from(_tokens: [u64; 0]) -> Self {
-        PublicInput {
-            individual_tokens: vec![],
-        }
+        Self::new(tokens.to_vec())
     }
 }
 
 impl PublicInput {
     pub fn new(individual_tokens: Vec<BFieldElement>) -> Self {
-        PublicInput { individual_tokens }
+        Self { individual_tokens }
     }
 }
 
@@ -677,114 +664,54 @@ impl PublicInput {
 /// instruction `divine`, digests that can be read using instruction `divine_sibling`,
 /// and an initial state of random-access memory.
 #[derive(Debug, Default, Clone, Eq, PartialEq, Serialize, Deserialize, Arbitrary)]
-pub struct NonDeterminism<E>
-where
-    E: Into<BFieldElement> + Eq + Hash,
-{
-    pub individual_tokens: Vec<E>,
+pub struct NonDeterminism {
+    pub individual_tokens: Vec<BFieldElement>,
     pub digests: Vec<Digest>,
-    pub ram: HashMap<E, E>,
+    pub ram: HashMap<BFieldElement, BFieldElement>,
 }
 
-impl From<Vec<BFieldElement>> for NonDeterminism<BFieldElement> {
+impl From<Vec<BFieldElement>> for NonDeterminism {
     fn from(tokens: Vec<BFieldElement>) -> Self {
-        NonDeterminism {
-            individual_tokens: tokens,
-            digests: vec![],
-            ram: HashMap::new(),
-        }
+        Self::new(tokens)
     }
 }
 
-impl From<&[BFieldElement]> for NonDeterminism<BFieldElement> {
+impl From<&Vec<BFieldElement>> for NonDeterminism {
+    fn from(tokens: &Vec<BFieldElement>) -> Self {
+        Self::new(tokens.to_owned())
+    }
+}
+
+impl<const N: usize> From<[BFieldElement; N]> for NonDeterminism {
+    fn from(tokens: [BFieldElement; N]) -> Self {
+        Self::new(tokens.to_vec())
+    }
+}
+
+impl From<&[BFieldElement]> for NonDeterminism {
     fn from(tokens: &[BFieldElement]) -> Self {
-        NonDeterminism {
-            individual_tokens: tokens.to_vec(),
-            digests: vec![],
-            ram: HashMap::new(),
-        }
+        Self::new(tokens.to_vec())
     }
 }
 
-impl From<Vec<u64>> for NonDeterminism<BFieldElement> {
-    fn from(tokens: Vec<u64>) -> Self {
-        NonDeterminism {
-            individual_tokens: tokens.iter().map(|&element| element.into()).collect(),
-            digests: vec![],
-            ram: HashMap::new(),
-        }
-    }
-}
-
-impl From<Vec<u64>> for NonDeterminism<u64> {
-    fn from(individual_tokens: Vec<u64>) -> Self {
-        NonDeterminism {
-            individual_tokens,
-            digests: vec![],
-            ram: HashMap::new(),
-        }
-    }
-}
-
-impl From<[u64; 0]> for NonDeterminism<BFieldElement> {
-    fn from(_: [u64; 0]) -> Self {
-        NonDeterminism {
-            individual_tokens: vec![],
-            digests: vec![],
-            ram: HashMap::new(),
-        }
-    }
-}
-
-impl From<[u64; 0]> for NonDeterminism<u64> {
-    fn from(_: [u64; 0]) -> Self {
-        NonDeterminism {
-            individual_tokens: vec![],
-            digests: vec![],
-            ram: HashMap::new(),
-        }
-    }
-}
-
-impl From<&NonDeterminism<u64>> for NonDeterminism<BFieldElement> {
-    fn from(other: &NonDeterminism<u64>) -> Self {
-        let individual_tokens = other
-            .individual_tokens
-            .iter()
-            .map(|&element| element.into())
-            .collect();
-        let ram = other
-            .ram
-            .iter()
-            .map(|(&key, &value)| (key.into(), value.into()))
-            .collect();
-        NonDeterminism {
-            individual_tokens,
-            digests: other.digests.clone(),
-            ram,
-        }
-    }
-}
-
-impl<E> NonDeterminism<E>
-where
-    E: Into<BFieldElement> + Eq + Hash,
-{
-    pub fn new(individual_tokens: Vec<E>) -> Self {
-        NonDeterminism {
-            individual_tokens,
+impl NonDeterminism {
+    pub fn new<V: Into<Vec<BFieldElement>>>(individual_tokens: V) -> Self {
+        Self {
+            individual_tokens: individual_tokens.into(),
             digests: vec![],
             ram: HashMap::new(),
         }
     }
 
-    pub fn with_digests(mut self, digests: Vec<Digest>) -> Self {
-        self.digests = digests;
+    #[must_use]
+    pub fn with_digests<V: Into<Vec<Digest>>>(mut self, digests: V) -> Self {
+        self.digests = digests.into();
         self
     }
 
-    pub fn with_ram(mut self, ram: HashMap<E, E>) -> Self {
-        self.ram = ram;
+    #[must_use]
+    pub fn with_ram<H: Into<HashMap<BFieldElement, BFieldElement>>>(mut self, ram: H) -> Self {
+        self.ram = ram.into();
         self
     }
 }
@@ -793,7 +720,6 @@ where
 mod tests {
     use assert2::assert;
     use assert2::let_assert;
-    use itertools::Itertools;
     use proptest::prelude::*;
     use proptest_arbitrary_interop::arb;
     use rand::thread_rng;
@@ -876,9 +802,8 @@ mod tests {
         assert!(program.is_empty());
     }
 
-    #[test]
-    fn from_various_types_to_public_input() {
-        let tokens = thread_rng().gen::<[BFieldElement; 12]>().to_vec();
+    #[proptest]
+    fn from_various_types_to_public_input(#[strategy(arb())] tokens: Vec<BFieldElement>) {
         let public_input = PublicInput::new(tokens.clone());
 
         assert!(public_input == tokens.clone().into());
@@ -886,26 +811,18 @@ mod tests {
         assert!(public_input == tokens[..].into());
         assert!(public_input == (&tokens[..]).into());
 
-        let tokens = tokens.into_iter().map(|e| e.value()).collect_vec();
-        assert!(public_input == tokens.into());
-
         assert!(PublicInput::new(vec![]) == [].into());
     }
 
-    #[test]
-    fn from_various_types_to_non_determinism() {
-        let tokens = thread_rng().gen::<[BFieldElement; 12]>().to_vec();
+    #[proptest]
+    fn from_various_types_to_non_determinism(#[strategy(arb())] tokens: Vec<BFieldElement>) {
         let non_determinism = NonDeterminism::new(tokens.clone());
 
         assert!(non_determinism == tokens.clone().into());
         assert!(non_determinism == tokens[..].into());
         assert!(non_determinism == (&tokens[..]).into());
 
-        let tokens = tokens.into_iter().map(|e| e.value()).collect_vec();
-        assert!(non_determinism == tokens.into());
-
-        assert!(NonDeterminism::<u64>::new(vec![]) == [].into());
-        assert!(NonDeterminism::<BFieldElement>::new(vec![]) == [].into());
+        assert!(NonDeterminism::new(vec![]) == [].into());
     }
 
     #[test]

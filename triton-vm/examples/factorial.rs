@@ -4,13 +4,11 @@
 //!
 //! [Triton VM]: https://triton-vm.org/
 
-use triton_vm::prelude::triton_program;
-use triton_vm::prelude::NonDeterminism;
+use triton_vm::prelude::*;
 
 fn main() {
     // The program that is to be run in Triton VM. Written in Triton assembly.
     // The given example program computes the factorial of the public input.
-    // Note that all arithmetic is in the prime field with 2^64 - 2^32 + 1 elements.
     let factorial_program = triton_program!(
                             // op stack:
         read_io 1           // n
@@ -34,10 +32,9 @@ fn main() {
             recurse
     );
 
-    // Note: since arithmetic is in the prime field, all input must be in canonical representation,
-    // i.e., smaller than the prime field's modulus 2^64 - 2^32 + 1.
-    // Otherwise, proof generation will be aborted.
-    let public_input = [1_000];
+    // Note that all arithmetic is in the prime field with 2^64 - 2^32 + 1 elements.
+    // The `bfe!` macro is used to create elements of this field.
+    let public_input = PublicInput::from([bfe!(1_000)]);
 
     // The execution of the factorial program is already fully determined by the public input.
     // Hence, in this case, there is no need for specifying non-determinism.
@@ -58,13 +55,14 @@ fn main() {
     //
     // Triton VM's default parameters give a (conjectured) security level of 160 bits.
     let (stark, claim, proof) =
-        triton_vm::prove_program(&factorial_program, &public_input, &non_determinism).unwrap();
+        triton_vm::prove_program(&factorial_program, public_input, non_determinism).unwrap();
 
     let verdict = triton_vm::verify(stark, &claim, &proof);
     assert!(verdict);
 
     println!("Successfully verified proof.");
-    println!("Verifiably correct output:  {:?}", claim.public_output());
+    let claimed_output = claim.output.iter().map(|o| o.value());
+    println!("Verifiably correct output:  {claimed_output:?}");
 
     let conjectured_security_level = stark.security_level;
     println!("Conjectured security level is {conjectured_security_level} bits.");

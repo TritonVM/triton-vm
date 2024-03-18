@@ -10,12 +10,9 @@
 //!
 //! # Examples
 //!
-//! When using convenience function [`prove_program()`], all input must be in canonical
-//! representation, _i.e._, smaller than the prime field's modulus 2^64 - 2^32 + 1.
-//! Otherwise, proof generation will be aborted.
-//!
-//! Functions [`prove()`] and [`verify()`] natively operate on [`BFieldElement`]s, _i.e_, elements
-//! of the prime field.
+//! Convenience function [`prove_program()`] as well as the [`prove()`] and [`verify()`] methods
+//! natively operate on [`BFieldElement`]s, _i.e_, elements of the prime field with 2^64 - 2^32 + 1
+//! elements.
 //!
 //! ## Factorial
 //!
@@ -52,18 +49,17 @@
 //!         swap 1          // n-1 acc·n
 //!         recurse
 //! );
-//! let public_input = [10];
+//! let public_input = PublicInput::from([bfe!(10)]);
 //! let non_determinism = NonDeterminism::default();
 //!
 //! let (stark, claim, proof) =
-//!     prove_program(&factorial_program, &public_input, &non_determinism).unwrap();
+//!     prove_program(&factorial_program, public_input, non_determinism).unwrap();
 //!
 //! let verdict = verify(stark, &claim, &proof);
 //! assert!(verdict);
 //!
-//! let public_output = claim.public_output();
-//! assert_eq!(1, public_output.len());
-//! assert_eq!(3628800, public_output[0]);
+//! assert_eq!(1, claim.output.len());
+//! assert_eq!(3_628_800, claim.output[0].value());
 //! ```
 //!
 //! ## Non-Determinism
@@ -110,14 +106,13 @@
 //!         add                         // s₄²+s₅²
 //!         return
 //! );
-//! let public_input = [597];
-//! let secret_input = [5, 9, 11];
-//! let initial_ram = [(17, 3), (42, 19)];
-//! let non_determinism = NonDeterminism::new(secret_input.into());
-//! let non_determinism = non_determinism.with_ram(initial_ram.into());
+//! let public_input = PublicInput::from([bfe!(597)]);
+//! let secret_input = [5, 9, 11].map(|v| bfe!(v));
+//! let initial_ram = [(17, 3), (42, 19)].map(|(address, v)| (bfe!(address), bfe!(v)));
+//! let non_determinism = NonDeterminism::from(secret_input).with_ram(initial_ram);
 //!
 //! let (stark, claim, proof) =
-//!    prove_program(&sum_of_squares_program, &public_input, &non_determinism).unwrap();
+//!    prove_program(&sum_of_squares_program, public_input, non_determinism).unwrap();
 //!
 //! let verdict = verify(stark, &claim, &proof);
 //! assert!(verdict);
@@ -148,7 +143,6 @@
 
 pub use twenty_first;
 
-use crate::error::CanonicalRepresentationError;
 use crate::error::ProvingError;
 use crate::prelude::*;
 
@@ -182,7 +176,7 @@ mod shared_tests;
 /// # Examples
 ///
 /// ```
-/// # use triton_vm::triton_program;
+/// # use triton_vm::prelude::*;
 /// let program = triton_program!(
 ///     read_io 1 push 5 mul
 ///     call check_eq_15
@@ -193,7 +187,9 @@ mod shared_tests;
 ///         push 15 eq assert
 ///         return
 /// );
-/// let output = program.run(vec![3].into(), [].into()).unwrap();
+/// let public_input = PublicInput::from([bfe!(3)]);
+/// let secret_input = NonDeterminism::default();
+/// let output = program.run(public_input, secret_input).unwrap();
 /// assert_eq!(17, output[0].value());
 /// ```
 ///
@@ -489,15 +485,9 @@ macro_rules! triton_instr {
 /// The default STARK parameters used by Triton VM give a (conjectured) security level of 160 bits.
 pub fn prove_program(
     program: &Program,
-    public_input: &[u64],
-    non_determinism: &NonDeterminism<u64>,
+    public_input: PublicInput,
+    non_determinism: NonDeterminism,
 ) -> Result<(Stark, Claim, Proof), ProvingError> {
-    input_elements_have_unique_representation(public_input, non_determinism)?;
-
-    // Convert public and secret inputs to BFieldElements.
-    let public_input: PublicInput = public_input.to_owned().into();
-    let non_determinism = non_determinism.into();
-
     // Generate
     // - the witness required for proof generation, i.e., the Algebraic Execution Trace (AET), and
     // - the (public) output of the program.
@@ -532,33 +522,13 @@ pub fn prove_program(
     Ok((stark, claim, proof))
 }
 
-fn input_elements_have_unique_representation(
-    public_input: &[u64],
-    non_determinism: &NonDeterminism<u64>,
-) -> Result<(), CanonicalRepresentationError> {
-    let max = BFieldElement::MAX;
-    if public_input.iter().any(|&e| e > max) {
-        return Err(CanonicalRepresentationError::PublicInput);
-    }
-    if non_determinism.individual_tokens.iter().any(|&e| e > max) {
-        return Err(CanonicalRepresentationError::NonDeterminismIndividualTokens);
-    }
-    if non_determinism.ram.keys().any(|&e| e > max) {
-        return Err(CanonicalRepresentationError::NonDeterminismRamKeys);
-    }
-    if non_determinism.ram.values().any(|&e| e > max) {
-        return Err(CanonicalRepresentationError::NonDeterminismRamValues);
-    }
-    Ok(())
-}
-
 /// A convenience function for proving a [`Claim`] and the program that claim corresponds to.
 /// Method [`prove_program`] gives a simpler interface with less control.
 pub fn prove(
     stark: Stark,
     claim: &Claim,
     program: &Program,
-    non_determinism: NonDeterminism<BFieldElement>,
+    non_determinism: NonDeterminism,
 ) -> Result<Proof, ProvingError> {
     let program_digest = program.hash::<Tip5>();
     if program_digest != claim.program_digest {
@@ -573,6 +543,8 @@ pub fn prove(
 }
 
 /// Verify a proof generated by [`prove`] or [`prove_program`].
+///
+/// Use [`Stark::verify`] for more verbose verification failures.
 #[must_use]
 pub fn verify(stark: Stark, claim: &Claim, proof: &Proof) -> bool {
     stark.verify(claim, proof, &mut None).is_ok()
@@ -582,8 +554,7 @@ pub fn verify(stark: Stark, claim: &Claim, proof: &Proof) -> bool {
 mod tests {
     use assert2::assert;
     use assert2::let_assert;
-    use itertools::Itertools;
-    use proptest::collection::vec;
+    use proptest::prelude::*;
     use proptest_arbitrary_interop::arb;
     use test_strategy::proptest;
 
@@ -592,49 +563,40 @@ mod tests {
 
     use super::*;
 
-    #[test]
-    fn lockscript() {
-        // Program proves the knowledge of a hash preimage
-        let program = triton_program!(
+    #[proptest]
+    fn prove_verify_knowledge_of_hash_preimage(
+        #[strategy(arb())] hash_preimage: Digest,
+        #[strategy(arb())] some_tie_to_an_outer_context: Digest,
+    ) {
+        let hash_digest = hash_preimage.hash::<Tip5>().values();
+
+        let program = triton_program! {
             divine 5
             hash
-            push 09456474867485907852
-            push 12765666850723567758
-            push 08551752384389703074
-            push 03612858832443241113
-            push 12064501419749299924
+            push {hash_digest[4]}
+            push {hash_digest[3]}
+            push {hash_digest[2]}
+            push {hash_digest[1]}
+            push {hash_digest[0]}
             assert_vector
             read_io 5
             halt
-        );
+        };
 
-        let secret_input = vec![
-            7534225252725590272,
-            10242377928140984092,
-            4934077665495234419,
-            1344204945079929819,
-            2308095244057597075,
-        ];
-        let public_input = vec![
-            4541691341642414223,
-            488727826369776966,
-            18398227966153280881,
-            6431838875748878863,
-            17174585125955027015,
-        ];
-
-        let non_determinism = NonDeterminism::new(secret_input);
+        let public_input = PublicInput::from(some_tie_to_an_outer_context.reversed().values());
+        let non_determinism = NonDeterminism::new(hash_preimage.reversed().values());
+        let maybe_proof = prove_program(&program, public_input.clone(), non_determinism);
         let (stark, claim, proof) =
-            prove_program(&program, &public_input, &non_determinism).unwrap();
-        assert!(Stark::default() == stark);
-
-        let expected_program_digest = program.hash::<Tip5>();
-        assert!(expected_program_digest == claim.program_digest);
-        assert!(public_input == claim.public_input());
-        assert!(claim.output.is_empty());
+            maybe_proof.map_err(|err| TestCaseError::Fail(err.to_string().into()))?;
+        prop_assert_eq!(Stark::default(), stark);
 
         let verdict = verify(stark, &claim, &proof);
-        assert!(verdict);
+        prop_assert!(verdict);
+
+        prop_assert!(claim.output.is_empty());
+        let expected_program_digest = program.hash::<Tip5>();
+        prop_assert_eq!(expected_program_digest, claim.program_digest);
+        prop_assert_eq!(public_input.individual_tokens, claim.input);
     }
 
     #[test]
@@ -646,9 +608,10 @@ mod tests {
             write_io 1 halt
         );
 
-        let initial_ram = [(42, 17), (51, 13)].into();
-        let non_determinism = NonDeterminism::new(vec![]).with_ram(initial_ram);
-        let (stark, claim, proof) = prove_program(&program, &[], &non_determinism).unwrap();
+        let public_input = PublicInput::default();
+        let initial_ram = [(42, 17), (51, 13)].map(|(address, v)| (bfe!(address), bfe!(v)));
+        let non_determinism = NonDeterminism::default().with_ram(initial_ram);
+        let (stark, claim, proof) = prove_program(&program, public_input, non_determinism).unwrap();
         assert!(13 * 17 == claim.output[0].value());
 
         let verdict = verify(stark, &claim, &proof);
@@ -687,75 +650,6 @@ mod tests {
         let stark = Stark::default();
         let_assert!(Err(err) = prove(stark, &claim, &program, [].into()));
         assert!(let ProvingError::PublicOutputMismatch = err);
-    }
-
-    #[proptest]
-    fn canonical_public_input_can_be_converted(
-        #[strategy(vec(arb(), 0..1024))]
-        #[map(|v: Vec<BFieldElement>| v.iter().map(|&e| e.value()).collect_vec())]
-        public_input: Vec<u64>,
-    ) {
-        let_assert!(Ok(()) = input_elements_have_unique_representation(&public_input, &[].into()));
-    }
-
-    /// Test-helper object for generating uncanonical inputs.
-    #[derive(Debug, Clone, Eq, PartialEq, test_strategy::Arbitrary)]
-    struct DisturbVec {
-        #[strategy(vec(arb(), 1..1024))]
-        #[map(|v: Vec<BFieldElement>| v.into_iter().map(|e| e.value()).collect_vec())]
-        pub vector: Vec<u64>,
-
-        #[strategy(0..#vector.len())]
-        pub disturbance_index: usize,
-
-        #[strategy(BFieldElement::MAX..=u64::MAX)]
-        #[filter(#vector[#disturbance_index] != #random_element)]
-        pub random_element: u64,
-    }
-
-    impl DisturbVec {
-        fn disturbed(mut self) -> Vec<u64> {
-            self.vector[self.disturbance_index] = self.random_element;
-            self.vector
-        }
-    }
-
-    #[proptest]
-    fn uncanonical_public_input_cannot_be_converted(public_input: DisturbVec) {
-        let public_input = public_input.disturbed();
-        let_assert!(Err(e) = input_elements_have_unique_representation(&public_input, &[].into()));
-        let_assert!(CanonicalRepresentationError::PublicInput = e);
-    }
-
-    #[proptest]
-    fn uncanonical_secret_input_cannot_be_converted(individual_tokens: DisturbVec) {
-        let individual_tokens = individual_tokens.disturbed();
-        let non_determinism = NonDeterminism::new(individual_tokens);
-        let_assert!(Err(e) = input_elements_have_unique_representation(&[], &non_determinism));
-        let_assert!(CanonicalRepresentationError::NonDeterminismIndividualTokens = e);
-    }
-
-    #[proptest]
-    fn uncanonical_ram_keys_cannot_be_converted(ram_keys: DisturbVec) {
-        let ram_keys = ram_keys.disturbed();
-        let ram = ram_keys.into_iter().map(|key| (key, 0)).collect();
-        let non_determinism = NonDeterminism::default().with_ram(ram);
-        let_assert!(Err(e) = input_elements_have_unique_representation(&[], &non_determinism));
-        let_assert!(CanonicalRepresentationError::NonDeterminismRamKeys = e);
-    }
-
-    #[proptest]
-    fn uncanonical_ram_values_cannot_be_converted(
-        ram_values: DisturbVec,
-        #[strategy(vec(arb(), #ram_values.vector.len()))]
-        #[map(|v: Vec<BFieldElement>| v.into_iter().map(|e| e.value()).collect_vec())]
-        ram_keys: Vec<u64>,
-    ) {
-        let ram_values = ram_values.disturbed();
-        let ram = ram_keys.into_iter().zip(ram_values).collect();
-        let non_determinism = NonDeterminism::default().with_ram(ram);
-        let_assert!(Err(e) = input_elements_have_unique_representation(&[], &non_determinism));
-        let_assert!(CanonicalRepresentationError::NonDeterminismRamValues = e);
     }
 
     #[test]

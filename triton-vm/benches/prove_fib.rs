@@ -9,7 +9,7 @@ use triton_vm::prelude::*;
 use triton_vm::profiler::Report;
 use triton_vm::profiler::TritonProfiler;
 
-const FIBONACCI_INDEX: u64 = 100;
+const FIBONACCI_INDEX: BFieldElement = BFieldElement::new(100);
 
 /// cargo criterion --bench prove_fib
 fn prove_fib(criterion: &mut Criterion) {
@@ -52,7 +52,7 @@ fn prover_timing_report(claim: &Claim, aet: &AlgebraicExecutionTrace) -> Report 
 
 fn trace_execution() -> (Claim, AlgebraicExecutionTrace) {
     let program = FIBONACCI_SEQUENCE.clone();
-    let public_input: PublicInput = vec![FIBONACCI_INDEX].into();
+    let public_input = PublicInput::from([FIBONACCI_INDEX]);
     let (aet, output) = program
         .trace_execution(public_input.clone(), [].into())
         .unwrap();

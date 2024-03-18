@@ -1138,8 +1138,6 @@ pub(crate) mod tests {
             public_input,
             non_determinism,
         } = program_and_input;
-        let public_input: PublicInput = public_input.into();
-        let non_determinism = (&non_determinism).into();
 
         let (aet, stdout) = program
             .trace_execution(public_input.clone(), non_determinism)
@@ -1188,7 +1186,7 @@ pub(crate) mod tests {
             halt
         );
         let (_, _, master_base_table, _, _) =
-            master_tables_for_low_security_level(ProgramAndInput::without_input(program));
+            master_tables_for_low_security_level(ProgramAndInput::new(program));
 
         println!();
         println!("Processor Table:\n");
@@ -1264,7 +1262,7 @@ pub(crate) mod tests {
             halt
         };
         let (_, _, master_base_table) =
-            master_base_table_for_low_security_level(ProgramAndInput::without_input(program));
+            master_base_table_for_low_security_level(ProgramAndInput::new(program));
 
         println!();
         println!("Processor Table:");
@@ -1367,8 +1365,8 @@ pub(crate) mod tests {
         let read_nop_program = triton_program!(
             read_io 3 nop nop write_io 2 push 17 write_io 1 halt
         );
-        let mut program_and_input = ProgramAndInput::without_input(read_nop_program);
-        program_and_input.public_input = vec![3, 5, 7];
+        let mut program_and_input = ProgramAndInput::new(read_nop_program);
+        program_and_input.public_input = PublicInput::from([3, 5, 7].map(|b| bfe!(b)));
         let (_, claim, _, master_ext_table, all_challenges) =
             master_tables_for_low_security_level(program_and_input);
 
@@ -1820,19 +1818,15 @@ pub(crate) mod tests {
 
     #[test]
     fn constraints_evaluate_to_zero_on_fibonacci() {
-        let source_code_and_input = ProgramAndInput {
-            program: FIBONACCI_SEQUENCE.clone(),
-            public_input: vec![100],
-            non_determinism: [].into(),
-        };
+        let source_code_and_input =
+            ProgramAndInput::new(FIBONACCI_SEQUENCE.clone()).with_input([bfe!(100)]);
         triton_constraints_evaluate_to_zero(source_code_and_input);
     }
 
     #[test]
     fn constraints_evaluate_to_zero_on_big_mmr_snippet() {
-        let source_code_and_input = ProgramAndInput::without_input(
-            CALCULATE_NEW_MMR_PEAKS_FROM_APPEND_WITH_SAFE_LISTS.clone(),
-        );
+        let source_code_and_input =
+            ProgramAndInput::new(CALCULATE_NEW_MMR_PEAKS_FROM_APPEND_WITH_SAFE_LISTS.clone());
         triton_constraints_evaluate_to_zero(source_code_and_input);
     }
 
@@ -2311,8 +2305,8 @@ pub(crate) mod tests {
 
     #[test]
     fn prove_verify_fibonacci_100() {
-        let stdin = vec![100].into();
-        let secret_in = [].into();
+        let stdin = PublicInput::from([bfe!(100)]);
+        let secret_in = NonDeterminism::default();
 
         let mut profiler = Some(TritonProfiler::new("Prove Fib 100"));
         let (stark, claim, proof) =
@@ -2336,20 +2330,20 @@ pub(crate) mod tests {
     #[test]
     fn prove_verify_fib_shootout() {
         for (fib_seq_idx, fib_seq_val) in [(0, 1), (7, 21), (11, 144)] {
-            let stdin = vec![fib_seq_idx].into();
-            let secret_in = [].into();
+            let stdin = PublicInput::from([bfe!(fib_seq_idx)]);
+            let secret_in = NonDeterminism::default();
             let (stark, claim, proof) =
                 prove_with_low_security_level(&FIBONACCI_SEQUENCE, stdin, secret_in, &mut None);
             assert!(let Ok(()) = stark.verify(&claim, &proof, &mut None));
 
-            assert!(vec![fib_seq_val] == claim.public_output());
+            assert!(vec![bfe!(fib_seq_val)] == claim.output);
         }
     }
 
     #[test]
     fn constraints_evaluate_to_zero_on_many_u32_operations() {
         let many_u32_instructions =
-            ProgramAndInput::without_input(PROGRAM_WITH_MANY_U32_INSTRUCTIONS.clone());
+            ProgramAndInput::new(PROGRAM_WITH_MANY_U32_INSTRUCTIONS.clone());
         triton_constraints_evaluate_to_zero(many_u32_instructions);
     }
 

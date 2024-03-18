@@ -1900,7 +1900,7 @@ pub(crate) mod tests {
         dbg!(aet.cascade_table_length());
 
         let (_, _, master_base_table, master_ext_table, challenges) =
-            master_tables_for_low_security_level(ProgramAndInput::without_input(program));
+            master_tables_for_low_security_level(ProgramAndInput::new(program));
         let challenges = &challenges.challenges;
 
         let master_base_trace_table = master_base_table.trace_table();

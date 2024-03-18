@@ -794,6 +794,7 @@ mod tests {
 
     use crate::instruction::*;
     use crate::op_stack::NUM_OP_STACK_REGISTERS;
+    use crate::program::PublicInput;
     use crate::triton_asm;
     use crate::triton_program;
     use crate::vm::tests::test_program_for_call_recurse_return;
@@ -1076,10 +1077,9 @@ mod tests {
     }
 
     fn terminal_op_stack_size_for_program(program: Program) -> usize {
-        let public_input = vec![bfe!(0)].into();
-        let mock_digests = vec![Digest::default()];
-        let non_determinism: NonDeterminism<_> = vec![bfe!(0)].into();
-        let non_determinism = non_determinism.with_digests(mock_digests);
+        let public_input = PublicInput::from([bfe!(0)]);
+        let mock_digests = [Digest::default()];
+        let non_determinism = NonDeterminism::from([bfe!(0)]).with_digests(mock_digests);
 
         let mut vm_state = VMState::new(&program, public_input, non_determinism);
         let_assert!(Ok(()) = vm_state.run());

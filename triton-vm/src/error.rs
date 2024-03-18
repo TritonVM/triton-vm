@@ -205,25 +205,6 @@ pub enum ProgramDecodingError {
     MissingArgument(usize, Instruction),
 }
 
-const CANONICAL_REPRESENTATION_ERROR_MESSAGE: &str =
-    "must contain only elements in canonical representation, i.e., \
-    elements smaller than the prime field's modulus 2^64 - 2^32 + 1";
-
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Error)]
-pub enum CanonicalRepresentationError {
-    #[error("public input {CANONICAL_REPRESENTATION_ERROR_MESSAGE}")]
-    PublicInput,
-
-    #[error("secret input {CANONICAL_REPRESENTATION_ERROR_MESSAGE}")]
-    NonDeterminismIndividualTokens,
-
-    #[error("RAM addresses {CANONICAL_REPRESENTATION_ERROR_MESSAGE}")]
-    NonDeterminismRamKeys,
-
-    #[error("RAM values {CANONICAL_REPRESENTATION_ERROR_MESSAGE}")]
-    NonDeterminismRamValues,
-}
-
 #[non_exhaustive]
 #[derive(Debug, Clone, Eq, PartialEq, Error)]
 pub enum ProvingError {
@@ -232,9 +213,6 @@ pub enum ProvingError {
 
     #[error("claimed public output does not match actual public output")]
     PublicOutputMismatch,
-
-    #[error(transparent)]
-    CanonicalRepresentationError(#[from] CanonicalRepresentationError),
 
     #[error("expected row of length {expected_len} but got {actual_len}")]
     TableRowConversionError {

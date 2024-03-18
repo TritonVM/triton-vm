@@ -99,7 +99,7 @@ impl LeavedMerkleTreeTestData {
 pub(crate) fn prove_with_low_security_level(
     program: &Program,
     public_input: PublicInput,
-    non_determinism: NonDeterminism<BFieldElement>,
+    non_determinism: NonDeterminism,
     maybe_profiler: &mut Option<TritonProfiler>,
 ) -> (Stark, Claim, Proof) {
     prof_start!(maybe_profiler, "trace program");
@@ -145,25 +145,37 @@ pub(crate) fn construct_master_base_table(
 /// Program and associated inputs.
 pub(crate) struct ProgramAndInput {
     pub program: Program,
-    pub public_input: Vec<u64>,
-    pub non_determinism: NonDeterminism<u64>,
+    pub public_input: PublicInput,
+    pub non_determinism: NonDeterminism,
 }
 
 impl ProgramAndInput {
-    pub fn without_input(program: Program) -> Self {
+    pub fn new(program: Program) -> Self {
         Self {
             program,
-            public_input: vec![],
-            non_determinism: [].into(),
+            public_input: PublicInput::default(),
+            non_determinism: NonDeterminism::default(),
         }
     }
 
-    pub fn public_input(&self) -> PublicInput {
-        self.public_input.clone().into()
+    #[must_use]
+    pub fn with_input<PI: Into<PublicInput>>(mut self, public_input: PI) -> Self {
+        self.public_input = public_input.into();
+        self
     }
 
-    pub fn non_determinism(&self) -> NonDeterminism<BFieldElement> {
-        (&self.non_determinism).into()
+    #[must_use]
+    pub fn with_non_determinism<ND: Into<NonDeterminism>>(mut self, non_determinism: ND) -> Self {
+        self.non_determinism = non_determinism.into();
+        self
+    }
+
+    pub fn public_input(&self) -> PublicInput {
+        self.public_input.clone()
+    }
+
+    pub fn non_determinism(&self) -> NonDeterminism {
+        self.non_determinism.clone()
     }
 
     /// A thin wrapper around [`Program::run`].

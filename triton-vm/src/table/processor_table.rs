@@ -3364,6 +3364,8 @@ impl ExtProcessorTable {
 
 #[cfg(test)]
 pub(crate) mod tests {
+    use std::collections::HashMap;
+
     use assert2::assert;
     use ndarray::Array2;
     use proptest::collection::vec;
@@ -3388,8 +3390,8 @@ pub(crate) mod tests {
 
     use super::*;
 
+    /// Does printing recurse infinitely?
     #[test]
-    /// helps identifying whether the printing causes an infinite loop
     fn print_simple_processor_table_row() {
         let program = triton_program!(push 2 sponge_init assert halt);
         let err = program.run([].into(), [].into()).unwrap_err();
@@ -3411,7 +3413,7 @@ pub(crate) mod tests {
     }
 
     fn test_row_from_program(program: Program, row_num: usize) -> TestRows {
-        test_row_from_program_with_input(ProgramAndInput::without_input(program), row_num)
+        test_row_from_program_with_input(ProgramAndInput::new(program), row_num)
     }
 
     fn test_row_from_program_with_input(
@@ -3507,11 +3509,8 @@ pub(crate) mod tests {
     fn transition_constraints_for_instruction_divine_n(#[strategy(arb())] n: NumberOfWords) {
         let program = triton_program! { divine {n} halt };
 
-        let program_and_input = ProgramAndInput {
-            program,
-            public_input: vec![],
-            non_determinism: (1..=16).collect_vec().into(),
-        };
+        let non_determinism = (1..=16).map(|b| bfe!(b)).collect_vec();
+        let program_and_input = ProgramAndInput::new(program).with_non_determinism(non_determinism);
         let test_rows = [test_row_from_program_with_input(program_and_input, 0)];
         let debug_info = TestRowsDebugInfo {
             instruction: Divine(n),
@@ -3641,12 +3640,12 @@ pub(crate) mod tests {
             triton_program!(push 4 read_mem 4 push 0 eq assert swap 3 push 4 eq assert halt),
             triton_program!(push 5 read_mem 5 push 0 eq assert swap 4 push 5 eq assert halt),
         ];
-        let initial_ram = (1..=5).map(|i| (i, i)).collect();
+        let initial_ram = (1..=5)
+            .map(|i| (bfe!(i), bfe!(i)))
+            .collect::<HashMap<_, _>>();
         let non_determinism = NonDeterminism::default().with_ram(initial_ram);
-        let programs_with_input = programs.map(|program| ProgramAndInput {
-            program,
-            public_input: vec![],
-            non_determinism: non_determinism.clone(),
+        let programs_with_input = programs.map(|program| {
+            ProgramAndInput::new(program).with_non_determinism(non_determinism.clone())
         });
         let test_rows = programs_with_input.map(|p_w_i| test_row_from_program_with_input(p_w_i, 1));
         let debug_info = TestRowsDebugInfo {
@@ -3684,10 +3683,8 @@ pub(crate) mod tests {
         ];
         let dummy_digest = Digest::new([1, 2, 3, 4, 5].map(BFieldElement::new));
         let non_determinism = NonDeterminism::new(vec![]).with_digests(vec![dummy_digest]);
-        let programs_with_input = programs.map(|program| ProgramAndInput {
-            program,
-            public_input: vec![],
-            non_determinism: non_determinism.clone(),
+        let programs_with_input = programs.map(|program| {
+            ProgramAndInput::new(program).with_non_determinism(non_determinism.clone())
         });
         let test_rows = programs_with_input.map(|p_w_i| test_row_from_program_with_input(p_w_i, 2));
 
@@ -3905,7 +3902,7 @@ pub(crate) mod tests {
 
     #[test]
     fn division_by_zero_is_impossible() {
-        let program = ProgramAndInput::without_input(triton_program! { div_mod });
+        let program = ProgramAndInput::new(triton_program! { div_mod });
         let err = program.run().unwrap_err();
         assert_eq!(DivisionByZero, err.source);
     }
@@ -3974,11 +3971,8 @@ pub(crate) mod tests {
     fn transition_constraints_for_instruction_read_io_n(#[strategy(arb())] n: NumberOfWords) {
         let program = triton_program! {read_io {n} halt};
 
-        let program_and_input = ProgramAndInput {
-            program,
-            public_input: (1..=16).collect_vec(),
-            non_determinism: [].into(),
-        };
+        let public_input = (1..=16).map(|i| bfe!(i)).collect_vec();
+        let program_and_input = ProgramAndInput::new(program).with_input(public_input);
         let test_rows = [test_row_from_program_with_input(program_and_input, 0)];
         let debug_info = TestRowsDebugInfo {
             instruction: ReadIo(n),
@@ -3992,11 +3986,8 @@ pub(crate) mod tests {
     fn transition_constraints_for_instruction_write_io_n(#[strategy(arb())] n: NumberOfWords) {
         let program = triton_program! {divine 5 write_io {n} halt};
 
-        let program_and_input = ProgramAndInput {
-            program,
-            public_input: [].into(),
-            non_determinism: (1..=16).collect_vec().into(),
-        };
+        let non_determinism = (1..=16).map(|b| bfe!(b)).collect_vec();
+        let program_and_input = ProgramAndInput::new(program).with_non_determinism(non_determinism);
         let test_rows = [test_row_from_program_with_input(program_and_input, 1)];
         let debug_info = TestRowsDebugInfo {
             instruction: WriteIo(n),
