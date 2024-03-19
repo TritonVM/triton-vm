@@ -908,15 +908,6 @@ impl MasterBaseTable {
 }
 
 impl MasterExtTable {
-    pub fn fri_domain_randomizer_polynomials(&self) -> Vec<Array1<XFieldElement>> {
-        let fri_domain_table = self.fri_domain_table();
-        let randomizer_polynomials = fri_domain_table.slice(s![.., NUM_EXT_COLUMNS..]);
-        randomizer_polynomials
-            .axis_iter(Axis(1))
-            .map(|column| column.to_owned())
-            .collect()
-    }
-
     fn column_indices_for_table(id: TableId) -> Range<usize> {
         use TableId::*;
         match id {

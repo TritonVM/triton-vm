@@ -1,4 +1,3 @@
-use std::ops::Add;
 use std::ops::Mul;
 
 use arbitrary::Arbitrary;
@@ -394,24 +393,15 @@ impl Stark {
         let weighted_deep_codeword_components = &deep_codeword_components * &deep_codeword_weights;
         let deep_codeword = weighted_deep_codeword_components.sum_axis(Axis(1));
         prof_stop!(maybe_profiler, "sum");
-        let fri_deep_codeword = match fri_domain_is_short_domain {
-            true => deep_codeword,
-            false => {
-                prof_start!(maybe_profiler, "LDE", "LDE");
-                let deep_codeword =
-                    quotient_domain.low_degree_extension(&deep_codeword.to_vec(), fri.domain);
-                prof_stop!(maybe_profiler, "LDE");
-                Array1::from(deep_codeword)
-            }
+        let fri_combination_codeword = if fri_domain_is_short_domain {
+            deep_codeword.to_vec()
+        } else {
+            prof_start!(maybe_profiler, "LDE", "LDE");
+            let deep_codeword =
+                quotient_domain.low_degree_extension(&deep_codeword.to_vec(), fri.domain);
+            prof_stop!(maybe_profiler, "LDE");
+            deep_codeword
         };
-        assert_eq!(fri.domain.length, fri_deep_codeword.len());
-        prof_start!(maybe_profiler, "add randomizer codeword", "CC");
-        let fri_combination_codeword = master_ext_table
-            .fri_domain_randomizer_polynomials()
-            .into_iter()
-            .fold(fri_deep_codeword, ArrayBase::add)
-            .to_vec();
-        prof_stop!(maybe_profiler, "add randomizer codeword");
         assert_eq!(fri.domain.length, fri_combination_codeword.len());
         prof_stop!(maybe_profiler, "combined DEEP polynomial");
 
@@ -515,18 +505,14 @@ impl Stark {
         Array1<XFieldElement>,
         Array1<XFieldElement>,
     ) {
-        let num_weights = NUM_BASE_COLUMNS + NUM_EXT_COLUMNS + NUM_QUOTIENT_SEGMENTS;
-        let all_weights = proof_stream.sample_scalars(num_weights);
+        const NUM_WEIGHTS: usize = NUM_BASE_COLUMNS + NUM_EXT_COLUMNS + NUM_QUOTIENT_SEGMENTS;
+        const BASE_END: usize = NUM_BASE_COLUMNS;
+        const EXT_END: usize = BASE_END + NUM_EXT_COLUMNS;
 
-        let base_weights = all_weights[..NUM_BASE_COLUMNS].iter().copied().collect();
-        let ext_weights = all_weights[NUM_BASE_COLUMNS..NUM_BASE_COLUMNS + NUM_EXT_COLUMNS]
-            .iter()
-            .copied()
-            .collect();
-        let quotient_segment_weights = all_weights[NUM_BASE_COLUMNS + NUM_EXT_COLUMNS..]
-            .iter()
-            .copied()
-            .collect();
+        let weights = proof_stream.sample_scalars(NUM_WEIGHTS);
+        let base_weights = weights[..BASE_END].to_vec().into();
+        let ext_weights = weights[BASE_END..EXT_END].to_vec().into();
+        let quotient_segment_weights = weights[EXT_END..].to_vec().into();
 
         (base_weights, ext_weights, quotient_segment_weights)
     }
@@ -970,10 +956,8 @@ impl Stark {
             revealed_fri_values,
         ) {
             prof_itr0!(maybe_profiler, "main loop");
-            let (current_ext_row, randomizer_row) = ext_row.split_at(NUM_EXT_COLUMNS);
             let base_row = Array1::from(base_row.to_vec());
-            let ext_row = Array1::from(current_ext_row.to_vec());
-            let randomizer_row = Array1::from(randomizer_row.to_vec());
+            let ext_row = Array1::from(ext_row.to_vec());
             let current_fri_domain_value = fri.domain.domain_value(row_idx as u32);
 
             prof_start!(maybe_profiler, "base & ext elements", "CC");
@@ -1014,9 +998,7 @@ impl Stark {
                 base_and_ext_next_row_deep_value,
                 quot_curr_row_deep_value,
             ]);
-            let deep_value = deep_codeword_weights.dot(&deep_value_components);
-            let randomizer_codewords_contribution = randomizer_row.sum();
-            if fri_value != deep_value + randomizer_codewords_contribution {
+            if fri_value != deep_codeword_weights.dot(&deep_value_components) {
                 return Err(VerificationError::CombinationCodewordMismatch);
             };
             prof_stop!(maybe_profiler, "combination codeword equality");
