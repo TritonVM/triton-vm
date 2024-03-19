@@ -18,7 +18,6 @@ use crate::aet::AlgebraicExecutionTrace;
 use crate::arithmetic_domain::ArithmeticDomain;
 use crate::error::ProvingError;
 use crate::error::VerificationError;
-use crate::error::VerificationError::*;
 use crate::fri;
 use crate::fri::Fri;
 use crate::profiler::prof_itr0;
@@ -32,8 +31,16 @@ use crate::proof_stream::ProofStream;
 use crate::table::challenges::Challenges;
 use crate::table::extension_table::Evaluable;
 use crate::table::extension_table::Quotientable;
-use crate::table::master_table::*;
+use crate::table::master_table::all_quotients;
+use crate::table::master_table::interpolant_degree;
+use crate::table::master_table::max_degree_with_origin;
+use crate::table::master_table::MasterBaseTable;
+use crate::table::master_table::MasterExtTable;
+use crate::table::master_table::MasterTable;
+use crate::table::master_table::AIR_TARGET_DEGREE;
 use crate::table::QuotientSegments;
+use crate::table::NUM_BASE_COLUMNS;
+use crate::table::NUM_EXT_COLUMNS;
 
 #[deprecated(since = "0.37.0", note = "Use `Tip5` directly instead.")]
 pub type StarkHasher = Tip5;
@@ -814,7 +821,7 @@ impl Stark {
         let sum_of_evaluated_out_of_domain_quotient_segments =
             powers_of_out_of_domain_point_curr_row.dot(&out_of_domain_curr_row_quot_segments);
         if out_of_domain_quotient_value != sum_of_evaluated_out_of_domain_quotient_segments {
-            return Err(OutOfDomainQuotientValueMismatch);
+            return Err(VerificationError::OutOfDomainQuotientValueMismatch);
         };
         prof_stop!(maybe_profiler, "verify quotient's segments");
 
@@ -884,7 +891,7 @@ impl Stark {
             ..MerkleTreeInclusionProof::default()
         };
         if !base_merkle_tree_inclusion_proof.verify(base_merkle_tree_root) {
-            return Err(BaseCodewordAuthenticationFailure);
+            return Err(VerificationError::BaseCodewordAuthenticationFailure);
         }
         prof_stop!(maybe_profiler, "Merkle verify (base tree)");
 
@@ -910,7 +917,7 @@ impl Stark {
             ..MerkleTreeInclusionProof::default()
         };
         if !ext_merkle_tree_inclusion_proof.verify(extension_tree_merkle_root) {
-            return Err(ExtensionCodewordAuthenticationFailure);
+            return Err(VerificationError::ExtensionCodewordAuthenticationFailure);
         }
         prof_stop!(maybe_profiler, "Merkle verify (extension tree)");
 
@@ -932,26 +939,26 @@ impl Stark {
             ..MerkleTreeInclusionProof::default()
         };
         if !quot_merkle_tree_inclusion_proof.verify(quotient_codeword_merkle_root) {
-            return Err(QuotientCodewordAuthenticationFailure);
+            return Err(VerificationError::QuotientCodewordAuthenticationFailure);
         }
         prof_stop!(maybe_profiler, "Merkle verify (combined quotient)");
         prof_stop!(maybe_profiler, "check leafs");
 
         prof_start!(maybe_profiler, "linear combination");
         if self.num_combination_codeword_checks != revealed_current_row_indices.len() {
-            return Err(IncorrectNumberOfRowIndices);
+            return Err(VerificationError::IncorrectNumberOfRowIndices);
         };
         if self.num_combination_codeword_checks != revealed_fri_values.len() {
-            return Err(IncorrectNumberOfFRIValues);
+            return Err(VerificationError::IncorrectNumberOfFRIValues);
         };
         if self.num_combination_codeword_checks != revealed_quotient_segments_elements.len() {
-            return Err(IncorrectNumberOfQuotientSegmentElements);
+            return Err(VerificationError::IncorrectNumberOfQuotientSegmentElements);
         };
         if self.num_combination_codeword_checks != base_table_rows.len() {
-            return Err(IncorrectNumberOfBaseTableRows);
+            return Err(VerificationError::IncorrectNumberOfBaseTableRows);
         };
         if self.num_combination_codeword_checks != ext_table_rows.len() {
-            return Err(IncorrectNumberOfExtTableRows);
+            return Err(VerificationError::IncorrectNumberOfExtTableRows);
         };
 
         prof_start!(maybe_profiler, "main loop");
@@ -1010,7 +1017,7 @@ impl Stark {
             let deep_value = deep_codeword_weights.dot(&deep_value_components);
             let randomizer_codewords_contribution = randomizer_row.sum();
             if fri_value != deep_value + randomizer_codewords_contribution {
-                return Err(CombinationCodewordMismatch);
+                return Err(VerificationError::CombinationCodewordMismatch);
             };
             prof_stop!(maybe_profiler, "combination codeword equality");
         }
@@ -1119,8 +1126,7 @@ pub(crate) mod tests {
     use crate::table::lookup_table;
     use crate::table::lookup_table::ExtLookupTable;
     use crate::table::master_table::MasterExtTable;
-    use crate::table::master_table::TableId::LookupTable;
-    use crate::table::master_table::TableId::ProcessorTable;
+    use crate::table::master_table::TableId;
     use crate::table::op_stack_table;
     use crate::table::op_stack_table::ExtOpStackTable;
     use crate::table::processor_table;
@@ -1215,7 +1221,7 @@ pub(crate) mod tests {
         println!("| clk | ci  | nia | st0 | st1 | st2 | st3 | st4 | st5 |");
         println!("|----:|:----|:----|----:|----:|----:|----:|----:|----:|");
         for row in master_base_table
-            .table(ProcessorTable)
+            .table(TableId::ProcessorTable)
             .rows()
             .into_iter()
             .take(40)
@@ -1291,7 +1297,7 @@ pub(crate) mod tests {
         println!("| clk | ci  | nia | st0 | st1 | st2 | st3 | underflow | pointer |");
         println!("|----:|:----|----:|----:|----:|----:|----:|:----------|--------:|");
         for row in master_base_table
-            .table(ProcessorTable)
+            .table(TableId::ProcessorTable)
             .rows()
             .into_iter()
             .take(num_interesting_rows)
@@ -1392,7 +1398,7 @@ pub(crate) mod tests {
         let (_, claim, _, master_ext_table, all_challenges) =
             master_tables_for_low_security_level(program_and_input);
 
-        let processor_table = master_ext_table.table(ProcessorTable);
+        let processor_table = master_ext_table.table(TableId::ProcessorTable);
         let processor_table_last_row = processor_table.slice(s![-1, ..]);
         let ptie = processor_table_last_row[InputTableEvalArg.ext_table_index()];
         let ine = EvalArg::compute_terminal(
@@ -1652,7 +1658,7 @@ pub(crate) mod tests {
         let (_, _, master_base_table, master_ext_table, challenges) =
             master_tables_for_low_security_level(program_and_input);
 
-        let processor_table = master_ext_table.table(ProcessorTable);
+        let processor_table = master_ext_table.table(TableId::ProcessorTable);
         let processor_table_last_row = processor_table.slice(s![-1, ..]);
         check!(
             challenges[StandardInputTerminal]
@@ -1663,7 +1669,7 @@ pub(crate) mod tests {
                 == processor_table_last_row[OutputTableEvalArg.ext_table_index()],
         );
 
-        let lookup_table = master_ext_table.table(LookupTable);
+        let lookup_table = master_ext_table.table(TableId::LookupTable);
         let lookup_table_last_row = lookup_table.slice(s![-1, ..]);
         check!(
             challenges[LookupTablePublicTerminal]
