@@ -33,7 +33,7 @@ pub struct Fri<H: AlgebraicHasher> {
 }
 
 struct FriProver<'stream, H: AlgebraicHasher> {
-    proof_stream: &'stream mut ProofStream<H>,
+    proof_stream: &'stream mut ProofStream,
     rounds: Vec<ProverRound<H>>,
     first_round_domain: ArithmeticDomain,
     num_rounds: usize,
@@ -190,7 +190,7 @@ impl<H: AlgebraicHasher> ProverRound<H> {
 }
 
 struct FriVerifier<'stream, H: AlgebraicHasher> {
-    proof_stream: &'stream mut ProofStream<H>,
+    proof_stream: &'stream mut ProofStream,
     rounds: Vec<VerifierRound>,
     first_round_domain: ArithmeticDomain,
     last_round_codeword: Vec<XFieldElement>,
@@ -198,6 +198,7 @@ struct FriVerifier<'stream, H: AlgebraicHasher> {
     num_rounds: usize,
     num_collinearity_checks: usize,
     first_round_collinearity_check_indices: Vec<usize>,
+    _hasher: PhantomData<H>,
 }
 
 struct VerifierRound {
@@ -564,7 +565,7 @@ impl<H: AlgebraicHasher> Fri<H> {
     pub fn prove(
         &self,
         codeword: &[XFieldElement],
-        proof_stream: &mut ProofStream<H>,
+        proof_stream: &mut ProofStream,
     ) -> ProverResult<Vec<usize>> {
         let mut prover = self.prover(proof_stream);
 
@@ -575,7 +576,7 @@ impl<H: AlgebraicHasher> Fri<H> {
         Ok(indices)
     }
 
-    fn prover<'stream>(&'stream self, proof_stream: &'stream mut ProofStream<H>) -> FriProver<H> {
+    fn prover<'stream>(&'stream self, proof_stream: &'stream mut ProofStream) -> FriProver<H> {
         FriProver {
             proof_stream,
             rounds: vec![],
@@ -590,7 +591,7 @@ impl<H: AlgebraicHasher> Fri<H> {
     /// Returns the indices and revealed elements of the codeword at the top level of the FRI proof.
     pub fn verify(
         &self,
-        proof_stream: &mut ProofStream<H>,
+        proof_stream: &mut ProofStream,
         maybe_profiler: &mut Option<TritonProfiler>,
     ) -> VerifierResult<Vec<(usize, XFieldElement)>> {
         prof_start!(maybe_profiler, "init");
@@ -609,10 +610,7 @@ impl<H: AlgebraicHasher> Fri<H> {
         Ok(verifier.first_round_partially_revealed_codeword())
     }
 
-    fn verifier<'stream>(
-        &'stream self,
-        proof_stream: &'stream mut ProofStream<H>,
-    ) -> FriVerifier<H> {
+    fn verifier<'stream>(&'stream self, proof_stream: &'stream mut ProofStream) -> FriVerifier<H> {
         FriVerifier {
             proof_stream,
             rounds: vec![],
@@ -622,6 +620,7 @@ impl<H: AlgebraicHasher> Fri<H> {
             num_rounds: self.num_rounds(),
             num_collinearity_checks: self.num_collinearity_checks,
             first_round_collinearity_check_indices: vec![],
+            _hasher: PhantomData,
         }
     }
 
@@ -848,7 +847,7 @@ mod tests {
         fri.prove(&codeword, &mut prover_proof_stream).unwrap();
 
         let proof = (&prover_proof_stream).into();
-        let verifier_proof_stream = ProofStream::<Tip5>::try_from(&proof).unwrap();
+        let verifier_proof_stream = ProofStream::try_from(&proof).unwrap();
 
         let prover_items = prover_proof_stream.items.iter();
         let verifier_items = verifier_proof_stream.items.iter();
@@ -884,19 +883,17 @@ mod tests {
     }
 
     #[must_use]
-    fn prepare_proof_stream_for_verification<H: AlgebraicHasher>(
-        mut proof_stream: ProofStream<H>,
-    ) -> ProofStream<H> {
+    fn prepare_proof_stream_for_verification(mut proof_stream: ProofStream) -> ProofStream {
         proof_stream.items_index = 0;
-        proof_stream.sponge = H::init();
+        proof_stream.sponge = Tip5::init();
         proof_stream
     }
 
     #[must_use]
-    fn modify_last_round_codeword_in_proof_stream_using_seed<H: AlgebraicHasher>(
-        mut proof_stream: ProofStream<H>,
+    fn modify_last_round_codeword_in_proof_stream_using_seed(
+        mut proof_stream: ProofStream,
         seed: u64,
-    ) -> ProofStream<H> {
+    ) -> ProofStream {
         let mut proof_items = proof_stream.items.iter_mut();
         let last_round_codeword = proof_items.find_map(fri_codeword_filter()).unwrap();
 
@@ -937,10 +934,10 @@ mod tests {
     }
 
     #[must_use]
-    fn change_size_of_some_fri_response_in_proof_stream_using_seed<H: AlgebraicHasher>(
-        mut proof_stream: ProofStream<H>,
+    fn change_size_of_some_fri_response_in_proof_stream_using_seed(
+        mut proof_stream: ProofStream,
         seed: u64,
-    ) -> ProofStream<H> {
+    ) -> ProofStream {
         let proof_items = proof_stream.items.iter_mut();
         let fri_responses = proof_items.filter_map(fri_response_filter());
 
@@ -989,10 +986,10 @@ mod tests {
     }
 
     #[must_use]
-    fn modify_some_auth_structure_in_proof_stream_using_seed<H: AlgebraicHasher>(
-        mut proof_stream: ProofStream<H>,
+    fn modify_some_auth_structure_in_proof_stream_using_seed(
+        mut proof_stream: ProofStream,
         seed: u64,
-    ) -> ProofStream<H> {
+    ) -> ProofStream {
         let proof_items = proof_stream.items.iter_mut();
         let auth_structures = proof_items.filter_map(non_trivial_auth_structure_filter());
 
@@ -1021,7 +1018,7 @@ mod tests {
     #[proptest]
     fn verifying_arbitrary_proof_does_not_panic(
         #[strategy(arbitrary_fri())] fri: Fri<Tip5>,
-        #[strategy(arb())] mut proof_stream: ProofStream<Tip5>,
+        #[strategy(arb())] mut proof_stream: ProofStream,
     ) {
         let _ = fri.verify(&mut proof_stream, &mut None);
     }

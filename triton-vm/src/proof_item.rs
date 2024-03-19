@@ -122,7 +122,6 @@ pub(crate) mod tests {
     use proptest::prelude::*;
     use strum::IntoEnumIterator;
     use test_strategy::proptest;
-    use twenty_first::prelude::Tip5;
 
     use crate::proof::Proof;
     use crate::proof_stream::ProofStream;
@@ -141,11 +140,11 @@ pub(crate) mod tests {
     #[proptest]
     fn serialize_fri_response_in_proof_stream(leaved_merkle_tree: LeavedMerkleTreeTestData) {
         let fri_response = leaved_merkle_tree.into_fri_response();
-        let mut proof_stream = ProofStream::<Tip5>::new();
+        let mut proof_stream = ProofStream::new();
         proof_stream.enqueue(ProofItem::FriResponse(fri_response.clone()));
         let proof: Proof = proof_stream.into();
 
-        let_assert!(Ok(mut proof_stream) = ProofStream::<Tip5>::try_from(&proof));
+        let_assert!(Ok(mut proof_stream) = ProofStream::try_from(&proof));
         let_assert!(Ok(proof_item) = proof_stream.dequeue());
         let_assert!(Ok(fri_response_) = proof_item.try_into_fri_response());
         prop_assert_eq!(fri_response, fri_response_);
@@ -166,11 +165,11 @@ pub(crate) mod tests {
         leaved_merkle_tree: LeavedMerkleTreeTestData,
     ) {
         let auth_structure = leaved_merkle_tree.auth_structure;
-        let mut proof_stream = ProofStream::<Tip5>::new();
+        let mut proof_stream = ProofStream::new();
         proof_stream.enqueue(ProofItem::AuthenticationStructure(auth_structure.clone()));
         let proof: Proof = proof_stream.into();
 
-        let_assert!(Ok(mut proof_stream) = ProofStream::<Tip5>::try_from(&proof));
+        let_assert!(Ok(mut proof_stream) = ProofStream::try_from(&proof));
         let_assert!(Ok(proof_item) = proof_stream.dequeue());
         let_assert!(Ok(auth_structure_) = proof_item.try_into_authentication_structure());
         prop_assert_eq!(auth_structure, auth_structure_);

@@ -19,7 +19,7 @@ impl Proof {
     /// This is an upper bound on the length of the computation this proof is for.
     /// It is one of the main contributing factors to the length of the FRI domain.
     pub fn padded_height(&self) -> Result<usize, ProofStreamError> {
-        let proof_stream = ProofStream::<Tip5>::try_from(self)?;
+        let proof_stream = ProofStream::try_from(self)?;
         let proof_items = proof_stream.items.into_iter();
         let log_2_padded_heights = proof_items
             .filter_map(|item| item.try_into_log2_padded_height().ok())
@@ -116,7 +116,7 @@ mod tests {
 
     #[proptest(cases = 10)]
     fn proof_with_no_log_2_padded_height_gives_err(#[strategy(arb())] root: Digest) {
-        let mut proof_stream = ProofStream::<Tip5>::new();
+        let mut proof_stream = ProofStream::new();
         proof_stream.enqueue(ProofItem::MerkleRoot(root));
         let proof: Proof = proof_stream.into();
         let maybe_padded_height = proof.padded_height();
@@ -125,7 +125,7 @@ mod tests {
 
     #[proptest(cases = 10)]
     fn proof_with_multiple_log_2_padded_height_gives_err(#[strategy(arb())] root: Digest) {
-        let mut proof_stream = ProofStream::<Tip5>::new();
+        let mut proof_stream = ProofStream::new();
         proof_stream.enqueue(ProofItem::Log2PaddedHeight(8));
         proof_stream.enqueue(ProofItem::MerkleRoot(root));
         proof_stream.enqueue(ProofItem::Log2PaddedHeight(7));

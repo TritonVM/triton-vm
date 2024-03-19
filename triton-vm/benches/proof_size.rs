@@ -189,7 +189,7 @@ fn log_2_fri_domain_length(stark: Stark, proof: &Proof) -> u32 {
 /// sizes for that type are accumulated.
 fn break_down_proof_size(proof: &Proof) -> HashMap<String, usize> {
     let mut proof_size_breakdown = HashMap::new();
-    let proof_stream: ProofStream<Tip5> = proof.try_into().unwrap();
+    let proof_stream = ProofStream::try_from(proof).unwrap();
     for proof_item in &proof_stream.items {
         let item_name = proof_item.to_string();
         let item_len = proof_item.encode().len();

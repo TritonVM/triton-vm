@@ -126,7 +126,7 @@ pub enum ProofStreamError {
     TooManyLog2PaddedHeights,
 
     #[error(transparent)]
-    DecodingError(#[from] <ProofStream<Tip5> as BFieldCodec>::Error),
+    DecodingError(#[from] <ProofStream as BFieldCodec>::Error),
 }
 
 #[non_exhaustive]

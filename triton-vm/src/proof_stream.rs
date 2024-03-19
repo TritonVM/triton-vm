@@ -6,28 +6,22 @@ use crate::proof::Proof;
 use crate::proof_item::ProofItem;
 
 #[derive(Debug, Default, Clone, Eq, PartialEq, BFieldCodec, Arbitrary)]
-pub struct ProofStream<H>
-where
-    H: AlgebraicHasher,
-{
+pub struct ProofStream {
     pub items: Vec<ProofItem>,
 
     #[bfield_codec(ignore)]
     pub items_index: usize,
 
     #[bfield_codec(ignore)]
-    pub sponge: H,
+    pub sponge: Tip5,
 }
 
-impl<H> ProofStream<H>
-where
-    H: AlgebraicHasher,
-{
+impl ProofStream {
     pub fn new() -> Self {
         ProofStream {
             items: vec![],
             items_index: 0,
-            sponge: H::init(),
+            sponge: Tip5::init(),
         }
     }
 
@@ -99,10 +93,7 @@ where
     }
 }
 
-impl<H> TryFrom<&Proof> for ProofStream<H>
-where
-    H: AlgebraicHasher,
-{
+impl TryFrom<&Proof> for ProofStream {
     type Error = ProofStreamError;
 
     fn try_from(proof: &Proof) -> Result<Self, ProofStreamError> {
@@ -111,20 +102,14 @@ where
     }
 }
 
-impl<H> From<&ProofStream<H>> for Proof
-where
-    H: AlgebraicHasher,
-{
-    fn from(proof_stream: &ProofStream<H>) -> Self {
+impl From<&ProofStream> for Proof {
+    fn from(proof_stream: &ProofStream) -> Self {
         Proof(proof_stream.encode())
     }
 }
 
-impl<H> From<ProofStream<H>> for Proof
-where
-    H: AlgebraicHasher,
-{
-    fn from(proof_stream: ProofStream<H>) -> Self {
+impl From<ProofStream> for Proof {
+    fn from(proof_stream: ProofStream) -> Self {
         (&proof_stream).into()
     }
 }
@@ -165,7 +150,7 @@ mod tests {
         let fri_response = leaved_merkle_tree.into_fri_response();
 
         let mut sponge_states = VecDeque::new();
-        let mut proof_stream = ProofStream::<Tip5>::new();
+        let mut proof_stream = ProofStream::new();
 
         sponge_states.push_back(proof_stream.sponge.state);
         proof_stream.enqueue(ProofItem::AuthenticationStructure(auth_structure.clone()));
@@ -188,7 +173,7 @@ mod tests {
         sponge_states.push_back(proof_stream.sponge.state);
 
         let proof = proof_stream.into();
-        let mut proof_stream: ProofStream<Tip5> = ProofStream::try_from(&proof).unwrap();
+        let mut proof_stream = ProofStream::try_from(&proof).unwrap();
 
         assert!(sponge_states.pop_front() == Some(proof_stream.sponge.state));
         let_assert!(Ok(proof_item) = proof_stream.dequeue());
@@ -252,7 +237,7 @@ mod tests {
             revealed_leaves,
         };
 
-        let mut proof_stream = ProofStream::<Tip5>::new();
+        let mut proof_stream = ProofStream::new();
         proof_stream.enqueue(ProofItem::FriResponse(fri_response));
 
         // TODO: Also check that deserializing from Proof works here.
@@ -280,13 +265,13 @@ mod tests {
 
     #[test]
     fn dequeuing_from_empty_stream_fails() {
-        let mut proof_stream = ProofStream::<Tip5>::new();
+        let mut proof_stream = ProofStream::new();
         let_assert!(Err(ProofStreamError::EmptyQueue) = proof_stream.dequeue());
     }
 
     #[test]
     fn dequeuing_more_items_than_have_been_enqueued_fails() {
-        let mut proof_stream = ProofStream::<Tip5>::new();
+        let mut proof_stream = ProofStream::new();
         proof_stream.enqueue(ProofItem::FriCodeword(vec![]));
         proof_stream.enqueue(ProofItem::Log2PaddedHeight(7));
 
@@ -297,6 +282,6 @@ mod tests {
 
     #[test]
     fn encoded_length_of_prove_stream_is_not_known_at_compile_time() {
-        assert!(ProofStream::<Tip5>::static_length().is_none());
+        assert!(ProofStream::static_length().is_none());
     }
 }

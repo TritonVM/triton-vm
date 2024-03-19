@@ -44,7 +44,8 @@ use crate::table::NUM_EXT_COLUMNS;
 #[deprecated(since = "0.37.0", note = "Use `Tip5` directly instead.")]
 pub type StarkHasher = Tip5;
 
-pub type StarkProofStream = ProofStream<Tip5>;
+#[deprecated(since = "0.39.0", note = "Use `ProofStream` directly instead.")]
+pub type StarkProofStream = ProofStream;
 
 /// The Merkle tree maker in use. Keeping this as a type alias should make it easier to switch
 /// between different Merkle tree makers.
@@ -123,7 +124,7 @@ impl Stark {
         maybe_profiler: &mut Option<TritonProfiler>,
     ) -> Result<Proof, ProvingError> {
         prof_start!(maybe_profiler, "Fiat-Shamir: claim", "hash");
-        let mut proof_stream = StarkProofStream::new();
+        let mut proof_stream = ProofStream::new();
         proof_stream.alter_fiat_shamir_state_with(claim);
         prof_stop!(maybe_profiler, "Fiat-Shamir: claim");
 
@@ -499,7 +500,7 @@ impl Stark {
     }
 
     fn sample_linear_combination_weights(
-        proof_stream: &mut ProofStream<Tip5>,
+        proof_stream: &mut ProofStream,
     ) -> (
         Array1<XFieldElement>,
         Array1<XFieldElement>,
@@ -690,7 +691,7 @@ impl Stark {
         maybe_profiler: &mut Option<TritonProfiler>,
     ) -> Result<(), VerificationError> {
         prof_start!(maybe_profiler, "deserialize");
-        let mut proof_stream = StarkProofStream::try_from(proof)?;
+        let mut proof_stream = ProofStream::try_from(proof)?;
         prof_stop!(maybe_profiler, "deserialize");
 
         prof_start!(maybe_profiler, "Fiat-Shamir: Claim", "hash");
