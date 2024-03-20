@@ -41,16 +41,8 @@ use crate::table::QuotientSegments;
 use crate::table::NUM_BASE_COLUMNS;
 use crate::table::NUM_EXT_COLUMNS;
 
-#[deprecated(since = "0.37.0", note = "Use `Tip5` directly instead.")]
-pub type StarkHasher = Tip5;
-
 #[deprecated(since = "0.39.0", note = "Use `ProofStream` directly instead.")]
 pub type StarkProofStream = ProofStream;
-
-/// The Merkle tree maker in use. Keeping this as a type alias should make it easier to switch
-/// between different Merkle tree makers.
-#[deprecated(since = "0.37.0", note = "Use `CpuParallel` directly instead.")]
-pub type MTMaker = CpuParallel;
 
 /// The number of segments the quotient polynomial is split into.
 /// Helps keeping the FRI domain small.
