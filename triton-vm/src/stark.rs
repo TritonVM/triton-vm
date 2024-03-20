@@ -322,6 +322,22 @@ impl Stark {
         prof_stop!(maybe_profiler, "linear combination");
 
         prof_start!(maybe_profiler, "DEEP");
+        // There are (at least) two possible ways to perform the DEEP update.
+        // 1. The one used here, where base & ext codewords are DEEP'd twice: once with the out-of-
+        //    domain point for the current row (i.e., α) and once using the out-of-domain point for
+        //    the next row (i.e., ω·α). The DEEP update's denominator is a degree-1 polynomial in
+        //    both cases, namely (ω^i - α) and (ω^i - ω·α) respectively.
+        // 2. One where the base & ext codewords are DEEP'd only once, using the degree-2 polynomial
+        //    (ω^i - α)·(ω^i - ω·α) as the denominator. This requires a linear interpolation in the
+        //    numerator: b(ω^i) - i((b(α), α) + (b(ω·α), ω·α))(w^i).
+        //
+        // In either case, the DEEP'd quotient polynomial is an additional summand for the
+        // combination codeword: (q(ω^i) - q(α)) / (ω^i - α).
+        // All (three or two) summands are weighted and summed to form the combination codeword.
+        // The weights are sampled through the Fiat-Shamir heuristic.
+        //
+        // Both approaches are sound. The first approach is more efficient, as it requires fewer
+        // operations.
         prof_start!(maybe_profiler, "interpolate");
         let base_and_ext_interpolation_poly =
             short_domain.interpolate(&base_and_ext_codeword.to_vec());
