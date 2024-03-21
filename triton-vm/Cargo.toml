@@ -52,15 +52,7 @@ test-strategy.workspace = true
 workspace = true
 
 [[bench]]
-name = "prove_halt"
-harness = false
-
-[[bench]]
-name = "prove_fib"
-harness = false
-
-[[bench]]
-name = "verify_halt"
+name = "mem_io"
 harness = false
 
 [[bench]]
@@ -68,7 +60,19 @@ name = "proof_size"
 harness = false
 
 [[bench]]
+name = "prove_fib"
+harness = false
+
+[[bench]]
+name = "prove_halt"
+harness = false
+
+[[bench]]
 name = "trace_mmr_new_peak_calculation"
+harness = false
+
+[[bench]]
+name = "verify_halt"
 harness = false
 
 [[example]]
