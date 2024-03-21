@@ -39,7 +39,6 @@ fn prover_timing_report(claim: &Claim, aet: &AlgebraicExecutionTrace) -> Report 
     let mut profiler = Some(TritonProfiler::new(&profile_name));
     let proof = stark.prove(claim, aet, &mut profiler).unwrap();
     let mut profiler = profiler.unwrap();
-    profiler.finish();
 
     let padded_height = proof.padded_height().unwrap();
     let fri = stark.derive_fri(padded_height).unwrap();

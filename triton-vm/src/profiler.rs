@@ -20,7 +20,7 @@ use unicode_width::UnicodeWidthStr;
 
 const GET_PROFILE_OUTPUT_AS_YOU_GO_ENV_VAR_NAME: &str = "PROFILE_AS_YOU_GO";
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
 struct Task {
     name: String,
     parent_index: Option<usize>,
@@ -41,12 +41,13 @@ enum TaskType {
     AnyOtherIteration,
 }
 
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct TritonProfiler {
     name: String,
     timer: Instant,
     stack: Vec<(usize, String)>,
     profile: Vec<Task>,
-    total_time: Duration,
+    total_time: Option<Duration>,
 }
 
 impl TritonProfiler {
@@ -57,7 +58,7 @@ impl TritonProfiler {
             timer: Instant::now(),
             stack: vec![],
             profile: vec![],
-            total_time: Duration::ZERO,
+            total_time: None,
         }
     }
 
@@ -81,26 +82,28 @@ impl TritonProfiler {
         }
         false
     }
+
     pub fn finish(&mut self) {
-        assert!(!self.profile.is_empty(), "Nothing to finish.");
-        assert!(
-            self.stack.is_empty(),
-            "Cannot finish before stack is empty."
-        );
-        self.total_time = self.timer.elapsed();
+        let open_task_positions = self.stack.iter().map(|&(i, _)| i);
+        for open_task_position in open_task_positions {
+            let task_name = &mut self.profile[open_task_position].name;
+            task_name.push_str(" (unfinished)");
+        }
+
+        let num_open_tasks = self.stack.len();
+        for _ in 0..num_open_tasks {
+            self.plain_stop();
+        }
+
+        self.total_time = Some(self.timer.elapsed());
     }
 
+    /// [Finishes](TritonProfiler::finish) the profiling and generates a profiling report.
     pub fn report(&mut self) -> Report {
-        assert!(!self.profile.is_empty(), "Nothing to report on.");
-        assert!(
-            self.stack.is_empty(),
-            "Cannot generate report before stack is empty."
-        );
-        assert_ne!(
-            Duration::ZERO,
-            self.total_time,
-            "Cannot generate report before profiler has finished. Call `.finish()` first."
-        );
+        if self.total_time.is_none() {
+            self.finish();
+        }
+        let total_time = self.total_time.expect("finishing should set a total time");
 
         let mut report: Vec<TaskReport> = vec![];
 
@@ -118,10 +121,10 @@ impl TritonProfiler {
 
         for (task_index, task) in self.profile.iter().enumerate() {
             // compute this task's time relative to total duration
-            let relative_time = task.time.as_secs_f64() / self.total_time.as_secs_f64();
+            let relative_time = task.time.as_secs_f64() / total_time.as_secs_f64();
             let weight = match task.task_type {
                 TaskType::AnyOtherIteration => Weight::LikeNothing,
-                _ => Weight::weigh(task.time.as_secs_f64() / self.total_time.as_secs_f64()),
+                _ => Weight::weigh(task.time.as_secs_f64() / total_time.as_secs_f64()),
             };
 
             let is_last_sibling = !self.has_younger_sibling(task_index);
@@ -172,11 +175,17 @@ impl TritonProfiler {
             report[task_index].younger_max_weight = younger_max_weight;
         }
 
+        // “Other iterations” are not currently tracked
+        let is_other_iteration = |t: &&Task| t.task_type == TaskType::AnyOtherIteration;
+        let all_tasks = self.profile.iter();
+        let other_iterations = all_tasks.filter(is_other_iteration);
+        let untracked_time = other_iterations.map(|t| t.time).sum();
+
         Report {
             tasks: report,
             name: self.name.clone(),
-            total_time: self.total_time,
-            tracked_time: self.tracked_time(),
+            total_time,
+            untracked_time,
             category_times,
             cycle_count: None,
             padded_height: None,
@@ -260,7 +269,9 @@ impl TritonProfiler {
     }
 
     fn plain_stop(&mut self) {
-        let (index, name) = self.stack.pop().unwrap();
+        let Some((index, name)) = self.stack.pop() else {
+            return;
+        };
         let now = self.timer.elapsed();
         let duration = now - self.profile[index].time;
         self.profile[index].time = duration;
@@ -297,14 +308,6 @@ impl TritonProfiler {
 
             self.plain_stop();
         }
-    }
-
-    pub fn tracked_time(&self) -> Duration {
-        let is_other_iteration = |t: &&Task| t.task_type == TaskType::AnyOtherIteration;
-        let all_tasks = self.profile.iter();
-        let other_iterations = all_tasks.filter(is_other_iteration);
-        let untracked_time = other_iterations.map(|t| t.time).sum();
-        self.total_time.saturating_sub(untracked_time)
     }
 }
 
@@ -387,7 +390,7 @@ pub struct Report {
     name: String,
     tasks: Vec<TaskReport>,
     total_time: Duration,
-    tracked_time: Duration,
+    untracked_time: Duration,
     category_times: HashMap<String, Duration>,
     cycle_count: Option<usize>,
     padded_height: Option<usize>,
@@ -428,7 +431,7 @@ impl Display for Report {
             .iter()
             .map(|t| t.name.width() + 2 * t.depth)
             .max()
-            .expect("No tasks to generate report from.");
+            .unwrap_or_default();
         let max_category_width = self
             .category_times
             .keys()
@@ -440,18 +443,21 @@ impl Display for Report {
         let max_width = max(max_name_width, title.width());
         let title = format!("{title:<max_width$}");
 
-        let total_time_string = Report::display_time_aligned(self.total_time).bold();
-        let tracked_time = Report::display_time_aligned(self.tracked_time);
-        writeln!(f, "tracked time: {tracked_time}s")?;
+        let tracked_time = self.total_time.saturating_sub(self.untracked_time);
+        let tracked = Self::display_time_aligned(tracked_time);
+        let untracked = Self::display_time_aligned(self.untracked_time);
+        writeln!(f, "tracked {tracked}, leaving {untracked} untracked")?;
 
-        let share_string = "Share".to_string().bold();
-        let category_string = match self.category_times.is_empty() {
-            true => ColoredString::default(),
-            false => "Category".bold(),
+        let total_time = Self::display_time_aligned(self.total_time).bold();
+        let share_title = "Share".to_string().bold();
+        let category_title = if self.category_times.is_empty() {
+            ColoredString::default()
+        } else {
+            "Category".bold()
         };
         writeln!(
             f,
-            "{title}   {total_time_string}   {share_string}  {category_string}"
+            "{title}   {total_time}   {share_title}  {category_title}"
         )?;
 
         for task in &self.tasks {
@@ -471,7 +477,7 @@ impl Display for Report {
             let task_name_area = max_width - 2 * task.depth;
             let task_name_colored = task.name.color(task.weight.color());
             let task_name_colored = format!("{task_name_colored:<task_name_area$}");
-            let task_time = format!("{:<10}", Report::display_time_aligned(task.time));
+            let task_time = format!("{:<10}", Self::display_time_aligned(task.time));
             let task_time_colored = task_time.color(task.weight.color());
             let relative_time_string =
                 format!("{:>6}", format!("{:2.2}%", 100.0 * task.relative_time));
@@ -513,7 +519,7 @@ impl Display for Report {
                 let category_color = Weight::weigh(category_relative_time).color();
                 let category_relative_time =
                     format!("{:>6}", format!("{:2.2}%", 100.0 * category_relative_time));
-                let category_time = Report::display_time_aligned(category_time);
+                let category_time = Self::display_time_aligned(category_time);
 
                 let category = format!("{category:<max_category_width$}").color(category_color);
                 let category_time = category_time.color(category_color);
@@ -681,7 +687,6 @@ mod tests {
             }
         }
 
-        profiler.finish();
         println!("{}", profiler.report());
     }
 
@@ -692,7 +697,6 @@ mod tests {
         sleep(Duration::from_millis(3));
         prof_stop!(profiler, "clk_freq_test");
         let mut profiler = profiler.unwrap();
-        profiler.finish();
 
         let report_with_no_optionals = profiler.report();
         println!("{report_with_no_optionals}");
@@ -747,7 +751,42 @@ mod tests {
             }
         }
 
-        profiler.finish();
         println!("{}", profiler.report());
+    }
+
+    #[test]
+    fn profiler_without_any_tasks_can_generate_a_report() {
+        let mut profiler = TritonProfiler::new("Empty Test");
+        let report = profiler.report();
+        println!("{report}");
+    }
+
+    #[test]
+    fn profiler_can_be_finished_before_generating_a_report() {
+        let mut profiler = TritonProfiler::new("Finish Before Report Test");
+        profiler.start("some task", None);
+        profiler.finish();
+        let report = profiler.report();
+        println!("{report}");
+    }
+
+    #[test]
+    fn profiler_with_unfinished_tasks_can_generate_report() {
+        let mut profiler = TritonProfiler::new("Unfinished Tasks Test");
+        profiler.start("unfinished task", None);
+        let report = profiler.report();
+        println!("{report}");
+    }
+
+    #[test]
+    fn profiler_can_generate_multiple_reports() {
+        let mut profiler = TritonProfiler::new("Multiple Reports Test");
+        profiler.start("task 1", None);
+        let report = profiler.report();
+        println!("{report}");
+
+        profiler.start("task 2", None);
+        let report = profiler.report();
+        println!("{report}");
     }
 }
