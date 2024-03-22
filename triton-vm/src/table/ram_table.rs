@@ -12,7 +12,6 @@ use ndarray::Axis;
 use num_traits::Zero;
 use serde_derive::*;
 use strum::EnumCount;
-use twenty_first::prelude::b_field_element::BFIELD_ONE;
 use twenty_first::prelude::*;
 
 use crate::aet::AlgebraicExecutionTrace;
@@ -108,13 +107,7 @@ impl RamTable {
     pub fn bezout_coefficient_polynomials_coefficients(
         unique_roots: &[BFieldElement],
     ) -> (Vec<BFieldElement>, Vec<BFieldElement>) {
-        let linear_poly_with_root = |&r: &BFieldElement| Polynomial::new(vec![-r, BFIELD_ONE]);
-
-        let polynomial_with_ram_pointers_as_roots = unique_roots
-            .iter()
-            .map(linear_poly_with_root)
-            .reduce(|accumulator, linear_poly| accumulator * linear_poly)
-            .unwrap_or_else(Polynomial::zero);
+        let polynomial_with_ram_pointers_as_roots = Polynomial::zerofier(unique_roots);
         let formal_derivative = polynomial_with_ram_pointers_as_roots.formal_derivative();
 
         let (_, bezout_poly_0, bezout_poly_1) =
