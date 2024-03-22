@@ -12,6 +12,7 @@ use ndarray::Axis;
 use num_traits::Zero;
 use serde_derive::*;
 use strum::EnumCount;
+use twenty_first::prelude::b_field_element::BFIELD_ONE;
 use twenty_first::prelude::*;
 
 use crate::aet::AlgebraicExecutionTrace;
@@ -29,8 +30,8 @@ pub const BASE_WIDTH: usize = RamBaseTableColumn::COUNT;
 pub const EXT_WIDTH: usize = RamExtTableColumn::COUNT;
 pub const FULL_WIDTH: usize = BASE_WIDTH + EXT_WIDTH;
 
-pub const INSTRUCTION_TYPE_WRITE: BFieldElement = b_field_element::BFIELD_ZERO;
-pub const INSTRUCTION_TYPE_READ: BFieldElement = b_field_element::BFIELD_ONE;
+pub const INSTRUCTION_TYPE_WRITE: BFieldElement = BFieldElement::new(0);
+pub const INSTRUCTION_TYPE_READ: BFieldElement = BFieldElement::new(1);
 pub const PADDING_INDICATOR: BFieldElement = BFieldElement::new(2);
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Serialize, Deserialize, Arbitrary)]
@@ -77,9 +78,10 @@ impl RamTable {
         for (row_index, row) in sorted_rows.enumerate() {
             ram_table.row_mut(row_index).assign(&row);
         }
-
+        let all_ram_pointers = ram_table.column(RamPointer.base_table_index());
+        let unique_ram_pointers = all_ram_pointers.iter().unique().copied().collect_vec();
         let (bezout_0, bezout_1) =
-            Self::bezout_coefficient_polynomials_coefficients(ram_table.view());
+            Self::bezout_coefficient_polynomials_coefficients(&unique_ram_pointers);
 
         Self::make_ram_table_consistent(&mut ram_table, bezout_0, bezout_1)
     }
@@ -100,16 +102,12 @@ impl RamTable {
     }
 
     fn bezout_coefficient_polynomials_coefficients(
-        ram_table: ArrayView2<BFieldElement>,
+        unique_ram_pointers: &[BFieldElement],
     ) -> (Vec<BFieldElement>, Vec<BFieldElement>) {
-        let linear_poly_with_root =
-            |&r: &BFieldElement| Polynomial::new(vec![-r, b_field_element::BFIELD_ONE]);
-
-        let all_ram_pointers = ram_table.column(RamPointer.base_table_index());
-        let unique_ram_pointers = all_ram_pointers.iter().unique();
-        let num_unique_ram_pointers = unique_ram_pointers.clone().count();
+        let linear_poly_with_root = |&r: &BFieldElement| Polynomial::new(vec![-r, BFIELD_ONE]);
 
         let polynomial_with_ram_pointers_as_roots = unique_ram_pointers
+            .iter()
             .map(linear_poly_with_root)
             .reduce(|accumulator, linear_poly| accumulator * linear_poly)
             .unwrap_or_else(Polynomial::zero);
@@ -120,8 +118,8 @@ impl RamTable {
 
         let mut coefficients_0 = bezout_poly_0.coefficients;
         let mut coefficients_1 = bezout_poly_1.coefficients;
-        coefficients_0.resize(num_unique_ram_pointers, b_field_element::BFIELD_ZERO);
-        coefficients_1.resize(num_unique_ram_pointers, b_field_element::BFIELD_ZERO);
+        coefficients_0.resize(unique_ram_pointers.len(), bfe!(0));
+        coefficients_1.resize(unique_ram_pointers.len(), bfe!(0));
         (coefficients_0, coefficients_1)
     }
 
@@ -507,7 +505,6 @@ impl ExtRamTable {
 
 #[cfg(test)]
 pub(crate) mod tests {
-    use ndarray::Array2;
     use proptest_arbitrary_interop::arb;
     use test_strategy::proptest;
 
@@ -522,8 +519,7 @@ pub(crate) mod tests {
 
     #[test]
     fn bezout_coefficient_polynomials_of_empty_ram_table_are_default() {
-        let empty = Array2::zeros((0, BASE_WIDTH));
-        let (a, b) = RamTable::bezout_coefficient_polynomials_coefficients(empty.view());
+        let (a, b) = RamTable::bezout_coefficient_polynomials_coefficients(&[]);
         assert_eq!(a, vec![]);
         assert_eq!(b, vec![]);
     }
