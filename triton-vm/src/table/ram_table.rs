@@ -101,12 +101,16 @@ impl RamTable {
         compare_ram_pointers.then(compare_clocks)
     }
 
-    fn bezout_coefficient_polynomials_coefficients(
-        unique_ram_pointers: &[BFieldElement],
+    /// Compute the [Bézout coefficients](https://en.wikipedia.org/wiki/B%C3%A9zout%27s_identity)
+    /// of the polynomial with the given roots and its formal derivative.
+    ///
+    /// All roots _must_ be unique. That is, the corresponding polynomial must be square free.
+    pub fn bezout_coefficient_polynomials_coefficients(
+        unique_roots: &[BFieldElement],
     ) -> (Vec<BFieldElement>, Vec<BFieldElement>) {
         let linear_poly_with_root = |&r: &BFieldElement| Polynomial::new(vec![-r, BFIELD_ONE]);
 
-        let polynomial_with_ram_pointers_as_roots = unique_ram_pointers
+        let polynomial_with_ram_pointers_as_roots = unique_roots
             .iter()
             .map(linear_poly_with_root)
             .reduce(|accumulator, linear_poly| accumulator * linear_poly)
@@ -118,8 +122,8 @@ impl RamTable {
 
         let mut coefficients_0 = bezout_poly_0.coefficients;
         let mut coefficients_1 = bezout_poly_1.coefficients;
-        coefficients_0.resize(unique_ram_pointers.len(), bfe!(0));
-        coefficients_1.resize(unique_ram_pointers.len(), bfe!(0));
+        coefficients_0.resize(unique_roots.len(), bfe!(0));
+        coefficients_1.resize(unique_roots.len(), bfe!(0));
         (coefficients_0, coefficients_1)
     }
 

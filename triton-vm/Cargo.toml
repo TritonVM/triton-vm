@@ -52,6 +52,10 @@ test-strategy.workspace = true
 workspace = true
 
 [[bench]]
+name = "bezout_coeffs"
+harness = false
+
+[[bench]]
 name = "mem_io"
 harness = false
 
