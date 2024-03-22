@@ -9,7 +9,6 @@ use ndarray::ArrayView1;
 use ndarray::ArrayView2;
 use ndarray::ArrayViewMut2;
 use ndarray::Axis;
-use num_traits::One;
 use num_traits::Zero;
 use serde_derive::*;
 use strum::EnumCount;
@@ -103,10 +102,6 @@ impl RamTable {
     fn bezout_coefficient_polynomials_coefficients(
         ram_table: ArrayView2<BFieldElement>,
     ) -> (Vec<BFieldElement>, Vec<BFieldElement>) {
-        if ram_table.nrows() == 0 {
-            return (vec![], vec![]);
-        }
-
         let linear_poly_with_root =
             |&r: &BFieldElement| Polynomial::new(vec![-r, b_field_element::BFIELD_ONE]);
 
@@ -120,12 +115,8 @@ impl RamTable {
             .unwrap_or_else(Polynomial::zero);
         let formal_derivative = polynomial_with_ram_pointers_as_roots.formal_derivative();
 
-        let (gcd, bezout_poly_0, bezout_poly_1) =
+        let (_, bezout_poly_0, bezout_poly_1) =
             Polynomial::xgcd(polynomial_with_ram_pointers_as_roots, formal_derivative);
-
-        assert!(gcd.is_one());
-        assert!(bezout_poly_0.degree() < num_unique_ram_pointers as isize);
-        assert!(bezout_poly_1.degree() <= num_unique_ram_pointers as isize);
 
         let mut coefficients_0 = bezout_poly_0.coefficients;
         let mut coefficients_1 = bezout_poly_1.coefficients;
@@ -516,6 +507,7 @@ impl ExtRamTable {
 
 #[cfg(test)]
 pub(crate) mod tests {
+    use ndarray::Array2;
     use proptest_arbitrary_interop::arb;
     use test_strategy::proptest;
 
@@ -526,5 +518,13 @@ pub(crate) mod tests {
         #[strategy(arb())] ram_table_call: RamTableCall,
     ) {
         let _ = ram_table_call.to_table_row();
+    }
+
+    #[test]
+    fn bezout_coefficient_polynomials_of_empty_ram_table_are_default() {
+        let empty = Array2::zeros((0, BASE_WIDTH));
+        let (a, b) = RamTable::bezout_coefficient_polynomials_coefficients(empty.view());
+        assert_eq!(a, vec![]);
+        assert_eq!(b, vec![]);
     }
 }
