@@ -111,3 +111,6 @@ verbose_bit_mask = "warn"
 version = "1.5"
 default-features = false
 features = ["precommit-hook", "run-cargo-clippy", "run-cargo-fmt"]
+
+[patch.crates-io]
+twenty-first = { git = "https://github.com/Neptune-Crypto/twenty-first.git", rev = "db86606f" }
