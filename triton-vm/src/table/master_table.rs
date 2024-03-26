@@ -147,16 +147,16 @@ const NUM_TABLES_WITHOUT_DEGREE_LOWERING: usize = TableId::COUNT - 1;
 /// A `TableId` uniquely determines one of Triton VM's tables.
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, EnumCount, EnumIter)]
 pub enum TableId {
-    ProgramTable,
-    ProcessorTable,
-    OpStackTable,
-    RamTable,
-    JumpStackTable,
-    HashTable,
-    CascadeTable,
-    LookupTable,
-    U32Table,
-    DegreeLoweringTable,
+    Program,
+    Processor,
+    OpStack,
+    Ram,
+    JumpStack,
+    Hash,
+    Cascade,
+    Lookup,
+    U32,
+    DegreeLowering,
 }
 
 /// A Master Table is, in some sense, a top-level table of Triton VM. It contains all the data
@@ -609,15 +609,13 @@ impl MasterBaseTable {
         // memory-like tables must be filled in before clock jump differences are known, hence
         // the break from the usual order
         let clk_jump_diffs_op_stack =
-            OpStackTable::fill_trace(&mut master_base_table.table_mut(TableId::OpStackTable), aet);
+            OpStackTable::fill_trace(&mut master_base_table.table_mut(TableId::OpStack), aet);
         let clk_jump_diffs_ram =
-            RamTable::fill_trace(&mut master_base_table.table_mut(TableId::RamTable), aet);
-        let clk_jump_diffs_jump_stack = JumpStackTable::fill_trace(
-            &mut master_base_table.table_mut(TableId::JumpStackTable),
-            aet,
-        );
+            RamTable::fill_trace(&mut master_base_table.table_mut(TableId::Ram), aet);
+        let clk_jump_diffs_jump_stack =
+            JumpStackTable::fill_trace(&mut master_base_table.table_mut(TableId::JumpStack), aet);
 
-        let processor_table = &mut master_base_table.table_mut(TableId::ProcessorTable);
+        let processor_table = &mut master_base_table.table_mut(TableId::Processor);
         ProcessorTable::fill_trace(
             processor_table,
             aet,
@@ -626,11 +624,11 @@ impl MasterBaseTable {
             &clk_jump_diffs_jump_stack,
         );
 
-        ProgramTable::fill_trace(&mut master_base_table.table_mut(TableId::ProgramTable), aet);
-        HashTable::fill_trace(&mut master_base_table.table_mut(TableId::HashTable), aet);
-        CascadeTable::fill_trace(&mut master_base_table.table_mut(TableId::CascadeTable), aet);
-        LookupTable::fill_trace(&mut master_base_table.table_mut(TableId::LookupTable), aet);
-        U32Table::fill_trace(&mut master_base_table.table_mut(TableId::U32Table), aet);
+        ProgramTable::fill_trace(&mut master_base_table.table_mut(TableId::Program), aet);
+        HashTable::fill_trace(&mut master_base_table.table_mut(TableId::Hash), aet);
+        CascadeTable::fill_trace(&mut master_base_table.table_mut(TableId::Cascade), aet);
+        LookupTable::fill_trace(&mut master_base_table.table_mut(TableId::Lookup), aet);
+        U32Table::fill_trace(&mut master_base_table.table_mut(TableId::U32), aet);
 
         // Filling the degree-lowering table only makes sense after padding has happened.
         // Hence, this table is omitted here.
@@ -852,31 +850,31 @@ impl MasterBaseTable {
         &self,
     ) -> [ArrayView2<BFieldElement>; NUM_TABLES_WITHOUT_DEGREE_LOWERING] {
         [
-            self.table(TableId::ProgramTable),
-            self.table(TableId::ProcessorTable),
-            self.table(TableId::OpStackTable),
-            self.table(TableId::RamTable),
-            self.table(TableId::JumpStackTable),
-            self.table(TableId::HashTable),
-            self.table(TableId::CascadeTable),
-            self.table(TableId::LookupTable),
-            self.table(TableId::U32Table),
+            self.table(TableId::Program),
+            self.table(TableId::Processor),
+            self.table(TableId::OpStack),
+            self.table(TableId::Ram),
+            self.table(TableId::JumpStack),
+            self.table(TableId::Hash),
+            self.table(TableId::Cascade),
+            self.table(TableId::Lookup),
+            self.table(TableId::U32),
         ]
     }
 
     fn column_indices_for_table(id: TableId) -> Range<usize> {
         use TableId::*;
         match id {
-            ProgramTable => PROGRAM_TABLE_START..PROGRAM_TABLE_END,
-            ProcessorTable => PROCESSOR_TABLE_START..PROCESSOR_TABLE_END,
-            OpStackTable => OP_STACK_TABLE_START..OP_STACK_TABLE_END,
-            RamTable => RAM_TABLE_START..RAM_TABLE_END,
-            JumpStackTable => JUMP_STACK_TABLE_START..JUMP_STACK_TABLE_END,
-            HashTable => HASH_TABLE_START..HASH_TABLE_END,
-            CascadeTable => CASCADE_TABLE_START..CASCADE_TABLE_END,
-            LookupTable => LOOKUP_TABLE_START..LOOKUP_TABLE_END,
-            U32Table => U32_TABLE_START..U32_TABLE_END,
-            DegreeLoweringTable => DEGREE_LOWERING_TABLE_START..DEGREE_LOWERING_TABLE_END,
+            Program => PROGRAM_TABLE_START..PROGRAM_TABLE_END,
+            Processor => PROCESSOR_TABLE_START..PROCESSOR_TABLE_END,
+            OpStack => OP_STACK_TABLE_START..OP_STACK_TABLE_END,
+            Ram => RAM_TABLE_START..RAM_TABLE_END,
+            JumpStack => JUMP_STACK_TABLE_START..JUMP_STACK_TABLE_END,
+            Hash => HASH_TABLE_START..HASH_TABLE_END,
+            Cascade => CASCADE_TABLE_START..CASCADE_TABLE_END,
+            Lookup => LOOKUP_TABLE_START..LOOKUP_TABLE_END,
+            U32 => U32_TABLE_START..U32_TABLE_END,
+            DegreeLowering => DEGREE_LOWERING_TABLE_START..DEGREE_LOWERING_TABLE_END,
         }
     }
 
@@ -911,16 +909,16 @@ impl MasterExtTable {
     fn column_indices_for_table(id: TableId) -> Range<usize> {
         use TableId::*;
         match id {
-            ProgramTable => EXT_PROGRAM_TABLE_START..EXT_PROGRAM_TABLE_END,
-            ProcessorTable => EXT_PROCESSOR_TABLE_START..EXT_PROCESSOR_TABLE_END,
-            OpStackTable => EXT_OP_STACK_TABLE_START..EXT_OP_STACK_TABLE_END,
-            RamTable => EXT_RAM_TABLE_START..EXT_RAM_TABLE_END,
-            JumpStackTable => EXT_JUMP_STACK_TABLE_START..EXT_JUMP_STACK_TABLE_END,
-            HashTable => EXT_HASH_TABLE_START..EXT_HASH_TABLE_END,
-            CascadeTable => EXT_CASCADE_TABLE_START..EXT_CASCADE_TABLE_END,
-            LookupTable => EXT_LOOKUP_TABLE_START..EXT_LOOKUP_TABLE_END,
-            U32Table => EXT_U32_TABLE_START..EXT_U32_TABLE_END,
-            DegreeLoweringTable => EXT_DEGREE_LOWERING_TABLE_START..EXT_DEGREE_LOWERING_TABLE_END,
+            Program => EXT_PROGRAM_TABLE_START..EXT_PROGRAM_TABLE_END,
+            Processor => EXT_PROCESSOR_TABLE_START..EXT_PROCESSOR_TABLE_END,
+            OpStack => EXT_OP_STACK_TABLE_START..EXT_OP_STACK_TABLE_END,
+            Ram => EXT_RAM_TABLE_START..EXT_RAM_TABLE_END,
+            JumpStack => EXT_JUMP_STACK_TABLE_START..EXT_JUMP_STACK_TABLE_END,
+            Hash => EXT_HASH_TABLE_START..EXT_HASH_TABLE_END,
+            Cascade => EXT_CASCADE_TABLE_START..EXT_CASCADE_TABLE_END,
+            Lookup => EXT_LOOKUP_TABLE_START..EXT_LOOKUP_TABLE_END,
+            U32 => EXT_U32_TABLE_START..EXT_U32_TABLE_END,
+            DegreeLowering => EXT_DEGREE_LOWERING_TABLE_START..EXT_DEGREE_LOWERING_TABLE_END,
         }
     }
 
@@ -1149,45 +1147,43 @@ mod tests {
 
         assert_eq!(
             program_table::BASE_WIDTH,
-            master_base_table.table(TableId::ProgramTable).ncols()
+            master_base_table.table(TableId::Program).ncols()
         );
         assert_eq!(
             processor_table::BASE_WIDTH,
-            master_base_table.table(TableId::ProcessorTable).ncols()
+            master_base_table.table(TableId::Processor).ncols()
         );
         assert_eq!(
             op_stack_table::BASE_WIDTH,
-            master_base_table.table(TableId::OpStackTable).ncols()
+            master_base_table.table(TableId::OpStack).ncols()
         );
         assert_eq!(
             ram_table::BASE_WIDTH,
-            master_base_table.table(TableId::RamTable).ncols()
+            master_base_table.table(TableId::Ram).ncols()
         );
         assert_eq!(
             jump_stack_table::BASE_WIDTH,
-            master_base_table.table(TableId::JumpStackTable).ncols()
+            master_base_table.table(TableId::JumpStack).ncols()
         );
         assert_eq!(
             hash_table::BASE_WIDTH,
-            master_base_table.table(TableId::HashTable).ncols()
+            master_base_table.table(TableId::Hash).ncols()
         );
         assert_eq!(
             cascade_table::BASE_WIDTH,
-            master_base_table.table(TableId::CascadeTable).ncols()
+            master_base_table.table(TableId::Cascade).ncols()
         );
         assert_eq!(
             lookup_table::BASE_WIDTH,
-            master_base_table.table(TableId::LookupTable).ncols()
+            master_base_table.table(TableId::Lookup).ncols()
         );
         assert_eq!(
             u32_table::BASE_WIDTH,
-            master_base_table.table(TableId::U32Table).ncols()
+            master_base_table.table(TableId::U32).ncols()
         );
         assert_eq!(
             degree_lowering_table::BASE_WIDTH,
-            master_base_table
-                .table(TableId::DegreeLoweringTable)
-                .ncols()
+            master_base_table.table(TableId::DegreeLowering).ncols()
         );
     }
 
@@ -1198,43 +1194,43 @@ mod tests {
 
         assert_eq!(
             program_table::EXT_WIDTH,
-            master_ext_table.table(TableId::ProgramTable).ncols()
+            master_ext_table.table(TableId::Program).ncols()
         );
         assert_eq!(
             processor_table::EXT_WIDTH,
-            master_ext_table.table(TableId::ProcessorTable).ncols()
+            master_ext_table.table(TableId::Processor).ncols()
         );
         assert_eq!(
             op_stack_table::EXT_WIDTH,
-            master_ext_table.table(TableId::OpStackTable).ncols()
+            master_ext_table.table(TableId::OpStack).ncols()
         );
         assert_eq!(
             ram_table::EXT_WIDTH,
-            master_ext_table.table(TableId::RamTable).ncols()
+            master_ext_table.table(TableId::Ram).ncols()
         );
         assert_eq!(
             jump_stack_table::EXT_WIDTH,
-            master_ext_table.table(TableId::JumpStackTable).ncols()
+            master_ext_table.table(TableId::JumpStack).ncols()
         );
         assert_eq!(
             hash_table::EXT_WIDTH,
-            master_ext_table.table(TableId::HashTable).ncols()
+            master_ext_table.table(TableId::Hash).ncols()
         );
         assert_eq!(
             cascade_table::EXT_WIDTH,
-            master_ext_table.table(TableId::CascadeTable).ncols()
+            master_ext_table.table(TableId::Cascade).ncols()
         );
         assert_eq!(
             lookup_table::EXT_WIDTH,
-            master_ext_table.table(TableId::LookupTable).ncols()
+            master_ext_table.table(TableId::Lookup).ncols()
         );
         assert_eq!(
             u32_table::EXT_WIDTH,
-            master_ext_table.table(TableId::U32Table).ncols()
+            master_ext_table.table(TableId::U32).ncols()
         );
         assert_eq!(
             degree_lowering_table::EXT_WIDTH,
-            master_ext_table.table(TableId::DegreeLoweringTable).ncols()
+            master_ext_table.table(TableId::DegreeLowering).ncols()
         );
         // use some domain-specific knowledge to also check for the randomizer columns
         assert_eq!(
@@ -1538,23 +1534,23 @@ mod tests {
 
         let num_rows = trace_domain.length;
         Array2::from_elem((num_rows, ProgramExtTableColumn::COUNT), 1.into())
-            .move_into(&mut master_table.table_mut(TableId::ProgramTable));
+            .move_into(&mut master_table.table_mut(TableId::Program));
         Array2::from_elem((num_rows, ProcessorExtTableColumn::COUNT), 2.into())
-            .move_into(&mut master_table.table_mut(TableId::ProcessorTable));
+            .move_into(&mut master_table.table_mut(TableId::Processor));
         Array2::from_elem((num_rows, OpStackExtTableColumn::COUNT), 3.into())
-            .move_into(&mut master_table.table_mut(TableId::OpStackTable));
+            .move_into(&mut master_table.table_mut(TableId::OpStack));
         Array2::from_elem((num_rows, RamExtTableColumn::COUNT), 4.into())
-            .move_into(&mut master_table.table_mut(TableId::RamTable));
+            .move_into(&mut master_table.table_mut(TableId::Ram));
         Array2::from_elem((num_rows, JumpStackExtTableColumn::COUNT), 5.into())
-            .move_into(&mut master_table.table_mut(TableId::JumpStackTable));
+            .move_into(&mut master_table.table_mut(TableId::JumpStack));
         Array2::from_elem((num_rows, HashExtTableColumn::COUNT), 6.into())
-            .move_into(&mut master_table.table_mut(TableId::HashTable));
+            .move_into(&mut master_table.table_mut(TableId::Hash));
         Array2::from_elem((num_rows, CascadeExtTableColumn::COUNT), 7.into())
-            .move_into(&mut master_table.table_mut(TableId::CascadeTable));
+            .move_into(&mut master_table.table_mut(TableId::Cascade));
         Array2::from_elem((num_rows, LookupExtTableColumn::COUNT), 8.into())
-            .move_into(&mut master_table.table_mut(TableId::LookupTable));
+            .move_into(&mut master_table.table_mut(TableId::Lookup));
         Array2::from_elem((num_rows, U32ExtTableColumn::COUNT), 9.into())
-            .move_into(&mut master_table.table_mut(TableId::U32Table));
+            .move_into(&mut master_table.table_mut(TableId::U32));
 
         let trace_domain_element = |column| {
             let maybe_element = master_table.randomized_trace_table.get((0, column));

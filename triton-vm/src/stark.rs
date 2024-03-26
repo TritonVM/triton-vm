@@ -1204,7 +1204,7 @@ pub(crate) mod tests {
         println!("| clk | ci  | nia | st0 | st1 | st2 | st3 | st4 | st5 |");
         println!("|----:|:----|:----|----:|----:|----:|----:|----:|----:|");
         for row in master_base_table
-            .table(TableId::ProcessorTable)
+            .table(TableId::Processor)
             .rows()
             .into_iter()
             .take(40)
@@ -1231,7 +1231,7 @@ pub(crate) mod tests {
         println!("| clk | type | pointer | value | iord |");
         println!("|----:|:-----|--------:|------:|-----:|");
         for row in master_base_table
-            .table(TableId::RamTable)
+            .table(TableId::Ram)
             .rows()
             .into_iter()
             .take(25)
@@ -1280,7 +1280,7 @@ pub(crate) mod tests {
         println!("| clk | ci  | nia | st0 | st1 | st2 | st3 | underflow | pointer |");
         println!("|----:|:----|----:|----:|----:|----:|----:|:----------|--------:|");
         for row in master_base_table
-            .table(TableId::ProcessorTable)
+            .table(TableId::Processor)
             .rows()
             .into_iter()
             .take(num_interesting_rows)
@@ -1324,7 +1324,7 @@ pub(crate) mod tests {
         println!("| clk | ib1 | pointer | value |");
         println!("|----:|----:|--------:|------:|");
         for row in master_base_table
-            .table(TableId::OpStackTable)
+            .table(TableId::OpStack)
             .rows()
             .into_iter()
             .take(num_interesting_rows)
@@ -1381,7 +1381,7 @@ pub(crate) mod tests {
         let (_, claim, _, master_ext_table, all_challenges) =
             master_tables_for_low_security_level(program_and_input);
 
-        let processor_table = master_ext_table.table(TableId::ProcessorTable);
+        let processor_table = master_ext_table.table(TableId::Processor);
         let processor_table_last_row = processor_table.slice(s![-1, ..]);
         let ptie = processor_table_last_row[InputTableEvalArg.ext_table_index()];
         let ine = EvalArg::compute_terminal(
@@ -1641,7 +1641,7 @@ pub(crate) mod tests {
         let (_, _, master_base_table, master_ext_table, challenges) =
             master_tables_for_low_security_level(program_and_input);
 
-        let processor_table = master_ext_table.table(TableId::ProcessorTable);
+        let processor_table = master_ext_table.table(TableId::Processor);
         let processor_table_last_row = processor_table.slice(s![-1, ..]);
         check!(
             challenges[StandardInputTerminal]
@@ -1652,7 +1652,7 @@ pub(crate) mod tests {
                 == processor_table_last_row[OutputTableEvalArg.ext_table_index()],
         );
 
-        let lookup_table = master_ext_table.table(TableId::LookupTable);
+        let lookup_table = master_ext_table.table(TableId::Lookup);
         let lookup_table_last_row = lookup_table.slice(s![-1, ..]);
         check!(
             challenges[LookupTablePublicTerminal]
