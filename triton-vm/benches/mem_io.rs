@@ -7,6 +7,7 @@ use criterion::Criterion;
 use triton_vm::prelude::*;
 use triton_vm::profiler::Report;
 use triton_vm::profiler::TritonProfiler;
+use triton_vm::table::master_table::TableId;
 
 criterion_main!(benches);
 criterion_group!(
@@ -82,7 +83,7 @@ impl MemIOBench {
         let proof = stark.prove(&claim, &aet, &mut profiler).unwrap();
         let mut profiler = profiler.unwrap();
 
-        let trace_len = aet.op_stack_table_length();
+        let trace_len = aet.height_of_table(TableId::OpStack);
         let padded_height = proof.padded_height().unwrap();
         let fri = stark.derive_fri(padded_height).unwrap();
 

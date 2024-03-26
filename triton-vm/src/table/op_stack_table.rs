@@ -21,6 +21,7 @@ use crate::table::constraint_circuit::DualRowIndicator::*;
 use crate::table::constraint_circuit::SingleRowIndicator::*;
 use crate::table::constraint_circuit::*;
 use crate::table::cross_table_argument::*;
+use crate::table::master_table::TableId;
 use crate::table::table_column::OpStackBaseTableColumn::*;
 use crate::table::table_column::OpStackExtTableColumn::*;
 use crate::table::table_column::*;
@@ -274,7 +275,8 @@ impl OpStackTable {
         op_stack_table: &mut ArrayViewMut2<BFieldElement>,
         aet: &AlgebraicExecutionTrace,
     ) -> Vec<BFieldElement> {
-        let mut op_stack_table = op_stack_table.slice_mut(s![0..aet.op_stack_table_length(), ..]);
+        let mut op_stack_table =
+            op_stack_table.slice_mut(s![0..aet.height_of_table(TableId::OpStack), ..]);
         let trace_iter = aet.op_stack_underflow_trace.rows().into_iter();
 
         let sorted_rows =

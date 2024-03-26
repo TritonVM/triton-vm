@@ -19,6 +19,7 @@ use crate::table::constraint_circuit::*;
 use crate::table::cross_table_argument::CrossTableArg;
 use crate::table::cross_table_argument::EvalArg;
 use crate::table::cross_table_argument::LookupArg;
+use crate::table::master_table::TableId;
 use crate::table::table_column::ProgramBaseTableColumn::*;
 use crate::table::table_column::ProgramExtTableColumn::*;
 use crate::table::table_column::*;
@@ -290,7 +291,7 @@ impl ProgramTable {
 
         let instructions = aet.program.to_bwords();
         let program_len = instructions.len();
-        let padded_program_len = aet.program_table_length();
+        let padded_program_len = aet.height_of_table(TableId::Program);
 
         let one_iter = [bfe!(1)].into_iter();
         let zero_iter = [bfe!(0)].into_iter();

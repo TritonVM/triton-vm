@@ -46,9 +46,11 @@ pub struct U32TableEntry {
 }
 
 impl U32TableEntry {
-    pub fn new(instruction: Instruction, left_operand: u32, right_operand: u32) -> Self {
-        let left_operand: u64 = left_operand.into();
-        let right_operand: u64 = right_operand.into();
+    pub fn new<L, R>(instruction: Instruction, left_operand: L, right_operand: R) -> Self
+    where
+        L: Into<BFieldElement>,
+        R: Into<BFieldElement>,
+    {
         Self {
             instruction,
             left_operand: left_operand.into(),
@@ -56,28 +58,17 @@ impl U32TableEntry {
         }
     }
 
-    pub fn new_from_base_field_element(
-        instruction: Instruction,
-        left_operand: BFieldElement,
-        right_operand: BFieldElement,
-    ) -> Self {
-        Self {
-            instruction,
-            left_operand,
-            right_operand,
-        }
-    }
-
     /// The number of rows this entry contributes to the U32 Table.
-    pub fn table_length_contribution(&self) -> u32 {
+    pub(crate) fn table_height_contribution(&self) -> u32 {
+        let lhs = self.left_operand.value();
+        let rhs = self.right_operand.value();
         let dominant_operand = match self.instruction {
-            // for instruction `pow`, the left-hand side doesn't change between rows
-            Instruction::Pow => self.right_operand.value(),
-            _ => max(self.left_operand.value(), self.right_operand.value()),
+            Instruction::Pow => rhs, // left-hand side doesn't change between rows
+            _ => max(lhs, rhs),
         };
-        match dominant_operand == 0 {
-            true => 2 - 1,
-            false => 2 + dominant_operand.ilog2(),
+        match dominant_operand {
+            0 => 2 - 1,
+            _ => 2 + dominant_operand.ilog2(),
         }
     }
 }

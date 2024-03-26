@@ -145,7 +145,7 @@ pub const EXT_DEGREE_LOWERING_TABLE_END: usize =
 const NUM_TABLES_WITHOUT_DEGREE_LOWERING: usize = TableId::COUNT - 1;
 
 /// A `TableId` uniquely determines one of Triton VM's tables.
-#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, EnumCount, EnumIter)]
+#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, EnumCount, EnumIter, Arbitrary)]
 pub enum TableId {
     Program,
     Processor,
@@ -590,13 +590,13 @@ impl MasterBaseTable {
 
         let mut master_base_table = Self {
             num_trace_randomizers,
-            program_table_len: aet.program_table_length(),
-            main_execution_len: aet.processor_table_length(),
-            op_stack_table_len: aet.op_stack_table_length(),
-            ram_table_len: aet.ram_table_length(),
-            hash_coprocessor_execution_len: aet.hash_table_length(),
-            cascade_table_len: aet.cascade_table_length(),
-            u32_coprocesor_execution_len: aet.u32_table_length(),
+            program_table_len: aet.height_of_table(TableId::Program),
+            main_execution_len: aet.height_of_table(TableId::Processor),
+            op_stack_table_len: aet.height_of_table(TableId::OpStack),
+            ram_table_len: aet.height_of_table(TableId::Ram),
+            hash_coprocessor_execution_len: aet.height_of_table(TableId::Hash),
+            cascade_table_len: aet.height_of_table(TableId::Cascade),
+            u32_coprocesor_execution_len: aet.height_of_table(TableId::U32),
             trace_domain,
             randomized_trace_domain,
             quotient_domain,

@@ -3,10 +3,12 @@ use std::collections::hash_map::Entry::Vacant;
 use std::collections::HashMap;
 use std::ops::AddAssign;
 
+use arbitrary::Arbitrary;
 use itertools::Itertools;
 use ndarray::s;
 use ndarray::Array2;
 use ndarray::Axis;
+use strum::IntoEnumIterator;
 use twenty_first::prelude::*;
 
 use crate::error::InstructionError;
@@ -15,6 +17,7 @@ use crate::instruction::Instruction;
 use crate::program::Program;
 use crate::table::hash_table::HashTable;
 use crate::table::hash_table::PermutationTrace;
+use crate::table::master_table::TableId;
 use crate::table::op_stack_table::OpStackTableEntry;
 use crate::table::ram_table::RamTableCall;
 use crate::table::table_column::HashBaseTableColumn::CI;
@@ -74,7 +77,15 @@ pub struct AlgebraicExecutionTrace {
     pub lookup_table_lookup_multiplicities: [u64; 1 << 8],
 }
 
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Arbitrary)]
+pub struct TableHeight {
+    pub table: TableId,
+    pub height: usize,
+}
+
 impl AlgebraicExecutionTrace {
+    const LOOKUP_TABLE_HEIGHT: usize = 1 << 8;
+
     pub fn new(program: Program) -> Self {
         let program_len = program.len_bwords();
 
@@ -89,26 +100,66 @@ impl AlgebraicExecutionTrace {
             sponge_trace: Array2::default([0, hash_table::BASE_WIDTH]),
             u32_entries: HashMap::new(),
             cascade_table_lookup_multiplicities: HashMap::new(),
-            lookup_table_lookup_multiplicities: [0; 1 << 8],
+            lookup_table_lookup_multiplicities: [0; Self::LOOKUP_TABLE_HEIGHT],
         };
         aet.fill_program_hash_trace();
         aet
     }
 
+    /// The height of the [AET](AlgebraicExecutionTrace) after [padding][pad].
+    ///
     /// Guaranteed to be a power of two.
+    ///
+    /// [pad]: master_table::MasterBaseTable::pad
     pub fn padded_height(&self) -> usize {
-        let relevant_table_heights = [
-            self.program_table_length(),
-            self.processor_table_length(),
-            self.op_stack_table_length(),
-            self.ram_table_length(),
-            self.hash_table_length(),
-            self.cascade_table_length(),
-            self.lookup_table_length(),
-            self.u32_table_length(),
-        ];
-        let max_height = relevant_table_heights.into_iter().max().unwrap_or(0);
-        max_height.next_power_of_two()
+        self.height().height.next_power_of_two()
+    }
+
+    /// The height of the [AET](AlgebraicExecutionTrace) before [padding][pad].
+    /// Corresponds to the height of the longest table.
+    ///
+    /// [pad]: master_table::MasterBaseTable::pad
+    pub fn height(&self) -> TableHeight {
+        let relevant_tables = TableId::iter().filter(|&t| t != TableId::DegreeLowering);
+        let heights = relevant_tables.map(|t| TableHeight::new(t, self.height_of_table(t)));
+        heights.max().unwrap()
+    }
+
+    pub fn height_of_table(&self, table: TableId) -> usize {
+        let hash_table_height = || {
+            self.sponge_trace.nrows() + self.hash_trace.nrows() + self.program_hash_trace.nrows()
+        };
+
+        match table {
+            TableId::Program => Self::padded_program_length(&self.program),
+            TableId::Processor => self.processor_trace.nrows(),
+            TableId::OpStack => self.op_stack_underflow_trace.nrows(),
+            TableId::Ram => self.ram_trace.nrows(),
+            TableId::JumpStack => self.processor_trace.nrows(),
+            TableId::Hash => hash_table_height(),
+            TableId::Cascade => self.cascade_table_lookup_multiplicities.len(),
+            TableId::Lookup => Self::LOOKUP_TABLE_HEIGHT,
+            TableId::U32 => self.u32_table_height(),
+            TableId::DegreeLowering => self.height().height,
+        }
+    }
+
+    /// # Panics
+    ///
+    /// - if the table height exceeds [`u32::MAX`]
+    /// - if the table height exceeds [`usize::MAX`]
+    fn u32_table_height(&self) -> usize {
+        let entry_len = U32TableEntry::table_height_contribution;
+        let height = self.u32_entries.keys().map(entry_len).sum::<u32>();
+        height.try_into().unwrap()
+    }
+
+    fn padded_program_length(program: &Program) -> usize {
+        // Padding is at least one 1.
+        // Also note that the Program Table's side of the instruction lookup argument requires at
+        // least one padding row to account for the processor's “next instruction or argument.”
+        // Both of these are captured by the “+ 1” in the following line.
+        (program.len_bwords() + 1).next_multiple_of(Tip5::RATE)
     }
 
     /// Hash the program and record the entire Sponge's trace for program attestation.
@@ -154,58 +205,6 @@ impl AlgebraicExecutionTrace {
             .chain(zeros)
             .take(padded_program_length)
             .collect()
-    }
-
-    pub fn program_table_length(&self) -> usize {
-        Self::padded_program_length(&self.program)
-    }
-
-    fn padded_program_length(program: &Program) -> usize {
-        // After adding one 1, the program table is padded to the next smallest multiple of the
-        // sponge's rate with 0s.
-        // Also note that the Program Table's side of the instruction lookup argument requires at
-        // least one padding row to account for the processor's “next instruction or argument.”
-        // Both of these are captured by the “+ 1” in the following line.
-        let min_padded_len = program.len_bwords() + 1;
-        let remainder_len = min_padded_len % Tip5::RATE;
-        let num_zeros_to_add = match remainder_len {
-            0 => 0,
-            _ => Tip5::RATE - remainder_len,
-        };
-        min_padded_len + num_zeros_to_add
-    }
-
-    pub fn processor_table_length(&self) -> usize {
-        self.processor_trace.nrows()
-    }
-
-    pub fn op_stack_table_length(&self) -> usize {
-        self.op_stack_underflow_trace.nrows()
-    }
-
-    pub fn ram_table_length(&self) -> usize {
-        self.ram_trace.nrows()
-    }
-
-    pub fn hash_table_length(&self) -> usize {
-        self.sponge_trace.nrows() + self.hash_trace.nrows() + self.program_hash_trace.nrows()
-    }
-
-    pub fn cascade_table_length(&self) -> usize {
-        self.cascade_table_lookup_multiplicities.len()
-    }
-
-    pub fn lookup_table_length(&self) -> usize {
-        1 << 8
-    }
-
-    /// # Panics
-    ///
-    /// Panics if the table length exceeds [`u32::MAX`].
-    pub fn u32_table_length(&self) -> usize {
-        let entry_len = U32TableEntry::table_length_contribution;
-        let len = self.u32_entries.keys().map(entry_len).sum::<u32>();
-        len.try_into().unwrap()
     }
 
     pub(crate) fn record_state(&mut self, state: &VMState) -> Result<(), InstructionError> {
@@ -337,12 +336,29 @@ impl AlgebraicExecutionTrace {
     }
 }
 
+impl TableHeight {
+    fn new(table: TableId, height: usize) -> Self {
+        Self { table, height }
+    }
+}
+
+impl PartialOrd for TableHeight {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for TableHeight {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.height.cmp(&other.height)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use assert2::assert;
 
-    use crate::triton_asm;
-    use crate::triton_program;
+    use crate::prelude::*;
 
     use super::*;
 
@@ -354,5 +370,18 @@ mod tests {
 
         let expected = [program.to_bwords(), vec![bfe!(1)]].concat();
         assert!(expected == padded_program);
+    }
+
+    #[test]
+    fn height_of_any_table_can_be_computed() {
+        let program = triton_program!(halt);
+        let (aet, _) = program
+            .trace_execution(PublicInput::default(), NonDeterminism::default())
+            .unwrap();
+
+        let _ = aet.height();
+        for table in TableId::iter() {
+            let _ = aet.height_of_table(table);
+        }
     }
 }

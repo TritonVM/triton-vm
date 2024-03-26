@@ -571,7 +571,7 @@ impl VMState {
         self.op_stack.push(hi);
         self.op_stack.push(lo);
 
-        let u32_table_entry = U32TableEntry::new_from_base_field_element(Split, lo, hi);
+        let u32_table_entry = U32TableEntry::new(Split, lo, hi);
         let co_processor_calls = vec![U32Call(u32_table_entry)];
 
         self.instruction_pointer += 1;
@@ -650,8 +650,7 @@ impl VMState {
         let base_pow_exponent = base.mod_pow(exponent.into());
         self.op_stack.push(base_pow_exponent);
 
-        let u32_table_entry =
-            U32TableEntry::new_from_base_field_element(Pow, base, exponent.into());
+        let u32_table_entry = U32TableEntry::new(Pow, base, exponent);
         let co_processor_calls = vec![U32Call(u32_table_entry)];
 
         self.instruction_pointer += 1;

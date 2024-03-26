@@ -22,6 +22,7 @@ use crate::table::constraint_circuit::DualRowIndicator::*;
 use crate::table::constraint_circuit::SingleRowIndicator::*;
 use crate::table::constraint_circuit::*;
 use crate::table::cross_table_argument::*;
+use crate::table::master_table::TableId;
 use crate::table::table_column::RamBaseTableColumn::*;
 use crate::table::table_column::RamExtTableColumn::*;
 use crate::table::table_column::*;
@@ -70,7 +71,7 @@ impl RamTable {
         ram_table: &mut ArrayViewMut2<BFieldElement>,
         aet: &AlgebraicExecutionTrace,
     ) -> Vec<BFieldElement> {
-        let mut ram_table = ram_table.slice_mut(s![0..aet.ram_table_length(), ..]);
+        let mut ram_table = ram_table.slice_mut(s![0..aet.height_of_table(TableId::Ram), ..]);
         let trace_iter = aet.ram_trace.rows().into_iter();
 
         let sorted_rows =

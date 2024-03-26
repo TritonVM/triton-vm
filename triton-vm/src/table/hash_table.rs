@@ -1863,6 +1863,7 @@ pub(crate) mod tests {
     use crate::shared_tests::ProgramAndInput;
     use crate::stark::tests::master_tables_for_low_security_level;
     use crate::table::master_table::MasterTable;
+    use crate::table::master_table::TableId;
     use crate::triton_asm;
     use crate::triton_program;
 
@@ -1894,10 +1895,11 @@ pub(crate) mod tests {
         };
 
         let (aet, _) = program.trace_execution([].into(), [].into()).unwrap();
+        dbg!(aet.height());
         dbg!(aet.padded_height());
-        dbg!(aet.hash_table_length());
-        dbg!(aet.op_stack_table_length());
-        dbg!(aet.cascade_table_length());
+        dbg!(aet.height_of_table(TableId::Hash));
+        dbg!(aet.height_of_table(TableId::OpStack));
+        dbg!(aet.height_of_table(TableId::Cascade));
 
         let (_, _, master_base_table, master_ext_table, challenges) =
             master_tables_for_low_security_level(ProgramAndInput::new(program));
