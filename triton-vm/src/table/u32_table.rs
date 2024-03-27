@@ -1,6 +1,7 @@
 use std::cmp::max;
 use std::ops::Mul;
 
+use arbitrary::Arbitrary;
 use ndarray::parallel::prelude::*;
 use ndarray::s;
 use ndarray::Array1;
@@ -38,7 +39,7 @@ pub const EXT_WIDTH: usize = U32ExtTableColumn::COUNT;
 pub const FULL_WIDTH: usize = BASE_WIDTH + EXT_WIDTH;
 
 /// An executed u32 instruction as well as its operands.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Arbitrary)]
 pub struct U32TableEntry {
     pub instruction: Instruction,
     pub left_operand: BFieldElement,

@@ -6,6 +6,9 @@ use std::fmt::Formatter;
 use std::fmt::Result as FmtResult;
 use std::hash::Hash;
 use std::io::Cursor;
+use std::ops::Add;
+use std::ops::AddAssign;
+use std::ops::Sub;
 
 use arbitrary::Arbitrary;
 use get_size::GetSize;
@@ -24,6 +27,9 @@ use crate::instruction::TypeHint;
 use crate::parser::parse;
 use crate::parser::to_labelled_instructions;
 use crate::parser::ParseError;
+use crate::table::hash_table::PERMUTATION_TRACE_LENGTH;
+use crate::table::u32_table::U32TableEntry;
+use crate::vm::CoProcessorCall;
 use crate::vm::VMState;
 
 type Result<T> = std::result::Result<T, VMError>;
@@ -490,125 +496,191 @@ impl Program {
         &self,
         public_input: PublicInput,
         non_determinism: NonDeterminism,
-    ) -> Result<(Vec<BFieldElement>, Vec<ProfileLine>)> {
-        let mut profiler = VMProfiler::new();
+    ) -> Result<(Vec<BFieldElement>, VMProfilingReport)> {
+        let mut profiler = VMProfiler::new(self.instructions.len());
         let mut state = VMState::new(self, public_input, non_determinism);
         while !state.halting {
             if let Ok(Instruction::Call(address)) = state.current_instruction() {
                 let label = self.label_for_address(address.value());
-                profiler.enter_span_with_label_at_cycle(label, state.cycle_count);
+                profiler.enter_span(label);
             }
             if let Ok(Instruction::Return) = state.current_instruction() {
-                profiler.exit_span_at_cycle(state.cycle_count);
+                profiler.exit_span();
             }
-
-            if let Err(err) = state.step() {
-                return Err(VMError::new(err, state));
+            match state.step() {
+                Ok(calls) => profiler.handle_co_processor_calls(calls),
+                Err(err) => return Err(VMError::new(err, state)),
             };
         }
 
-        let report = profiler.report_at_cycle(state.cycle_count);
-        Ok((state.public_output, report))
+        Ok((state.public_output, profiler.report()))
     }
 
     /// The label for the given address, or a deterministic, unique substitute if no label is found.
-    /// Uniqueness is relevant for printing and subsequent parsing, avoiding duplicate labels.
     pub fn label_for_address(&self, address: u64) -> String {
-        let substitute_for_unknown_label = format!("address_{address}");
+        // Uniqueness of the label is relevant for printing and subsequent parsing:
+        // Parsing fails on duplicate labels.
         self.address_to_label
             .get(&address)
-            .unwrap_or(&substitute_for_unknown_label)
-            .to_owned()
+            .cloned()
+            .unwrap_or_else(|| format!("address_{address}"))
     }
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, Eq, PartialEq, Arbitrary)]
 struct VMProfiler {
     call_stack: Vec<usize>,
     profile: Vec<ProfileLine>,
+    table_heights: VMTableHeights,
+    u32_table_entries: HashSet<U32TableEntry>,
+}
+
+/// A single line in a [profile report](VMProfilingReport) for profiling [Triton](crate) programs.
+#[derive(Debug, Default, Clone, Eq, PartialEq, Hash, Arbitrary)]
+pub struct ProfileLine {
+    pub label: String,
+    pub call_depth: usize,
+
+    /// Table heights at the start of this span, _i.e._, right before the corresponding
+    /// [`call`](Instruction::Call) instruction was executed.
+    pub table_heights_start: VMTableHeights,
+
+    table_heights_stop: VMTableHeights,
+}
+
+/// A report for the completed execution of a [Triton](crate) program.
+///
+/// Offers a human-readable [`Display`] implementation and can be processed programmatically.
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Arbitrary)]
+pub struct VMProfilingReport {
+    pub total: VMTableHeights,
+    pub profile: Vec<ProfileLine>,
+}
+
+/// The heights of various [tables](AlgebraicExecutionTrace) relevant for proving the correct
+/// execution in [Triton VM](crate).
+#[non_exhaustive]
+#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Hash, Arbitrary)]
+pub struct VMTableHeights {
+    pub processor: u32,
+    pub op_stack: u32,
+    pub ram: u32,
+    pub hash: u32,
+    pub u32: u32,
 }
 
 impl VMProfiler {
-    fn new() -> Self {
-        VMProfiler {
+    fn new(num_instructions: usize) -> Self {
+        Self {
             call_stack: vec![],
             profile: vec![],
+            table_heights: VMTableHeights::new(num_instructions),
+            u32_table_entries: HashSet::default(),
         }
     }
 
-    fn enter_span_with_label_at_cycle(&mut self, label: impl Into<String>, cycle: u32) {
+    fn enter_span(&mut self, label: impl Into<String>) {
         let call_stack_len = self.call_stack.len();
         let line_number = self.profile.len();
 
-        let profile_line = ProfileLine::new(label, cycle).at_call_depth(call_stack_len);
+        let profile_line = ProfileLine {
+            label: label.into(),
+            call_depth: call_stack_len,
+            table_heights_start: self.table_heights,
+            table_heights_stop: VMTableHeights::default(),
+        };
 
         self.profile.push(profile_line);
         self.call_stack.push(line_number);
     }
 
-    fn exit_span_at_cycle(&mut self, cycle: u32) {
-        let maybe_top_of_call_stack = self.call_stack.pop();
-        if let Some(line_number) = maybe_top_of_call_stack {
-            self.profile[line_number].return_at_cycle(cycle);
+    fn exit_span(&mut self) {
+        if let Some(line_number) = self.call_stack.pop() {
+            self.profile[line_number].table_heights_stop = self.table_heights;
         };
     }
 
-    fn report_at_cycle(mut self, cycle: u32) -> Vec<ProfileLine> {
-        self.stop_all_at_cycle(cycle);
-        self.add_total(cycle);
-        self.profile
-    }
-
-    fn stop_all_at_cycle(&mut self, cycle: u32) {
-        for &line_number in &self.call_stack {
-            self.profile[line_number].stop_at_cycle(cycle);
+    fn handle_co_processor_calls(&mut self, calls: Vec<CoProcessorCall>) {
+        self.table_heights.processor += 1;
+        for call in calls {
+            match call {
+                CoProcessorCall::SpongeStateReset => self.table_heights.hash += 1,
+                CoProcessorCall::Tip5Trace(_, trace) => {
+                    self.table_heights.hash += u32::try_from(trace.len()).unwrap();
+                }
+                CoProcessorCall::U32Call(c) => {
+                    self.u32_table_entries.insert(c);
+                    let contribution = U32TableEntry::table_height_contribution;
+                    self.table_heights.u32 = self.u32_table_entries.iter().map(contribution).sum();
+                }
+                CoProcessorCall::OpStackCall(_) => self.table_heights.op_stack += 1,
+                CoProcessorCall::RamCall(_) => self.table_heights.ram += 1,
+            }
         }
     }
 
-    fn add_total(&mut self, cycle: u32) {
-        let mut line = ProfileLine::new("total", 0);
-        line.return_at_cycle(cycle);
-        self.profile.push(line);
+    fn report(mut self) -> VMProfilingReport {
+        for &line_number in &self.call_stack {
+            self.profile[line_number].table_heights_stop = self.table_heights;
+        }
+
+        VMProfilingReport {
+            total: self.table_heights,
+            profile: self.profile,
+        }
     }
 }
 
-/// A single line in a profile report for profiling Triton Assembly programs.
-#[derive(Debug, Default, Clone, Eq, PartialEq)]
-pub struct ProfileLine {
-    pub label: String,
-    pub call_depth: usize,
-    pub start_cycle: u32,
-    pub stop_cycle: u32,
-    pub call_has_returned: bool,
+impl VMTableHeights {
+    fn new(num_instructions: usize) -> Self {
+        let padded_program_len = (num_instructions + 1).next_multiple_of(Tip5::RATE);
+        let num_absorbs = padded_program_len / Tip5::RATE;
+        let initial_hash_table_len = num_absorbs * PERMUTATION_TRACE_LENGTH;
+
+        Self {
+            hash: initial_hash_table_len.try_into().unwrap(),
+            ..Default::default()
+        }
+    }
+}
+
+impl Sub<Self> for VMTableHeights {
+    type Output = Self;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        Self {
+            processor: self.processor.saturating_sub(rhs.processor),
+            op_stack: self.op_stack.saturating_sub(rhs.op_stack),
+            ram: self.ram.saturating_sub(rhs.ram),
+            hash: self.hash.saturating_sub(rhs.hash),
+            u32: self.u32.saturating_sub(rhs.u32),
+        }
+    }
+}
+
+impl Add<Self> for VMTableHeights {
+    type Output = Self;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        Self {
+            processor: self.processor + rhs.processor,
+            op_stack: self.op_stack + rhs.op_stack,
+            ram: self.ram + rhs.ram,
+            hash: self.hash + rhs.hash,
+            u32: self.u32 + rhs.u32,
+        }
+    }
+}
+
+impl AddAssign<Self> for VMTableHeights {
+    fn add_assign(&mut self, rhs: Self) {
+        *self = *self + rhs;
+    }
 }
 
 impl ProfileLine {
-    pub fn new(label: impl Into<String>, start_cycle: u32) -> Self {
-        Self {
-            label: label.into(),
-            call_depth: 0,
-            start_cycle,
-            stop_cycle: 0,
-            call_has_returned: false,
-        }
-    }
-
-    pub fn at_call_depth(mut self, call_stack_depth: usize) -> Self {
-        self.call_depth = call_stack_depth;
-        self
-    }
-
-    pub fn return_at_cycle(&mut self, cycle: u32) {
-        self.stop_at_cycle(cycle);
-        self.call_has_returned = true;
-    }
-
-    pub fn stop_at_cycle(&mut self, cycle: u32) {
-        self.stop_cycle = cycle;
-    }
-
-    pub fn cycle_count(&self) -> u32 {
-        self.stop_cycle.saturating_sub(self.start_cycle)
+    fn table_height_contributions(&self) -> VMTableHeights {
+        self.table_heights_stop - self.table_heights_start
     }
 }
 
@@ -616,12 +688,100 @@ impl Display for ProfileLine {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         let indentation = "  ".repeat(self.call_depth);
         let label = &self.label;
-        let cycle_count = self.cycle_count();
-        let open_indicator = match self.call_has_returned {
-            true => "",
-            false => " (open)",
-        };
-        write!(f, "{indentation}{label}{open_indicator}: {cycle_count}",)
+        let cycle_count = self.table_height_contributions().processor;
+        write!(f, "{indentation}{label}: {cycle_count}")
+    }
+}
+
+impl Display for VMProfilingReport {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        struct AggregateLine {
+            label: String,
+            call_depth: usize,
+            table_heights: VMTableHeights,
+        }
+
+        const COL_WIDTH: usize = 20;
+
+        let mut aggregated: Vec<AggregateLine> = vec![];
+        for line in &self.profile {
+            if let Some(agg) = aggregated
+                .iter_mut()
+                .find(|agg| agg.label == line.label && agg.call_depth == line.call_depth)
+            {
+                agg.table_heights += line.table_height_contributions();
+            } else {
+                aggregated.push(AggregateLine {
+                    label: line.label.clone(),
+                    call_depth: line.call_depth,
+                    table_heights: line.table_height_contributions(),
+                });
+            }
+        }
+        aggregated.push(AggregateLine {
+            label: "Total".to_string(),
+            call_depth: 0,
+            table_heights: self.total,
+        });
+
+        let label = |line: &AggregateLine| "··".repeat(line.call_depth) + &line.label;
+        let label_len = |line| label(line).len();
+
+        let max_label_len = aggregated.iter().map(label_len).max();
+        let max_label_len = max_label_len.unwrap_or_default().max(COL_WIDTH);
+
+        let [soubroutine, processor, op_stack, ram, hash, u32_title] =
+            ["Subroutine", "Processor", "Op Stack", "RAM", "Hash", "U32"];
+
+        write!(f, "| {soubroutine:<max_label_len$} ")?;
+        write!(f, "| {processor:>COL_WIDTH$} ")?;
+        write!(f, "| {op_stack:>COL_WIDTH$} ")?;
+        write!(f, "| {ram:>COL_WIDTH$} ")?;
+        write!(f, "| {hash:>COL_WIDTH$} ")?;
+        write!(f, "| {u32_title:>COL_WIDTH$} ")?;
+        writeln!(f, "|")?;
+
+        let dash = "-";
+        write!(f, "|:{dash:-<max_label_len$}-")?;
+        write!(f, "|-{dash:->COL_WIDTH$}:")?;
+        write!(f, "|-{dash:->COL_WIDTH$}:")?;
+        write!(f, "|-{dash:->COL_WIDTH$}:")?;
+        write!(f, "|-{dash:->COL_WIDTH$}:")?;
+        write!(f, "|-{dash:->COL_WIDTH$}:")?;
+        writeln!(f, "|")?;
+
+        for line in &aggregated {
+            let rel_precision = 1;
+            let rel_width = 3 + 1 + rel_precision; // eg '100.0'
+            let abs_width = COL_WIDTH - rel_width - 4; // ' (' and '%)'
+
+            let label = label(line);
+            let proc_abs = line.table_heights.processor;
+            let proc_rel = 100.0 * f64::from(proc_abs) / f64::from(self.total.processor);
+            let proc_rel = format!("{proc_rel:.rel_precision$}");
+            let stack_abs = line.table_heights.op_stack;
+            let stack_rel = 100.0 * f64::from(stack_abs) / f64::from(self.total.op_stack);
+            let stack_rel = format!("{stack_rel:.rel_precision$}");
+            let ram_abs = line.table_heights.ram;
+            let ram_rel = 100.0 * f64::from(ram_abs) / f64::from(self.total.ram);
+            let ram_rel = format!("{ram_rel:.rel_precision$}");
+            let hash_abs = line.table_heights.hash;
+            let hash_rel = 100.0 * f64::from(hash_abs) / f64::from(self.total.hash);
+            let hash_rel = format!("{hash_rel:.rel_precision$}");
+            let u32_abs = line.table_heights.u32;
+            let u32_rel = 100.0 * f64::from(u32_abs) / f64::from(self.total.u32);
+            let u32_rel = format!("{u32_rel:.rel_precision$}");
+
+            write!(f, "| {label:<max_label_len$} ")?;
+            write!(f, "| {proc_abs:>abs_width$} ({proc_rel:>rel_width$}%) ")?;
+            write!(f, "| {stack_abs:>abs_width$} ({stack_rel:>rel_width$}%) ")?;
+            write!(f, "| {ram_abs:>abs_width$} ({ram_rel:>rel_width$}%) ")?;
+            write!(f, "| {hash_abs:>abs_width$} ({hash_rel:>rel_width$}%) ")?;
+            write!(f, "| {u32_abs:>abs_width$} ({u32_rel:>rel_width$}%) ")?;
+            writeln!(f, "|")?;
+        }
+
+        Ok(())
     }
 }
 
@@ -729,6 +889,7 @@ mod tests {
 
     use crate::error::InstructionError;
     use crate::example_programs::CALCULATE_NEW_MMR_PEAKS_FROM_APPEND_WITH_SAFE_LISTS;
+    use crate::table::master_table::TableId;
     use crate::triton_program;
 
     use super::*;
@@ -866,33 +1027,26 @@ mod tests {
         let mut vm_state = VMState::new(&program, [].into(), [].into());
         let_assert!(Ok(()) = vm_state.run());
         assert!(profile_output == vm_state.public_output);
-        assert!(profile.last().unwrap().cycle_count() == vm_state.cycle_count);
+        assert!(profile.total.processor == vm_state.cycle_count);
 
-        println!("Profile of Tasm Program:");
-        for line in profile {
-            println!("{line}");
-        }
-    }
+        let_assert!(Ok((aet, trace_output)) = program.trace_execution([].into(), [].into()));
+        assert!(profile_output == trace_output);
+        let proc_height = u32::try_from(aet.height_of_table(TableId::Processor)).unwrap();
+        assert!(proc_height == profile.total.processor);
 
-    #[test]
-    fn open_call_instructions_are_marked_in_its_profile() {
-        let program = triton_program! {
-            push 2 call outer_fn
-            outer_fn:
-                call inner_fn
-                dup 0 skiz recurse halt
-            inner_fn:
-                push -1 add return
-        };
-        let (_, profile) = program.profile([].into(), [].into()).unwrap();
+        let op_stack_height = u32::try_from(aet.height_of_table(TableId::OpStack)).unwrap();
+        assert!(op_stack_height == profile.total.op_stack);
 
-        println!();
-        for line in &profile {
-            println!("{line}");
-        }
+        let ram_height = u32::try_from(aet.height_of_table(TableId::Ram)).unwrap();
+        assert!(ram_height == profile.total.ram);
 
-        let maybe_open_call = profile.iter().find(|line| !line.call_has_returned);
-        assert!(maybe_open_call.is_some());
+        let hash_height = u32::try_from(aet.height_of_table(TableId::Hash)).unwrap();
+        assert!(hash_height == profile.total.hash);
+
+        let u32_height = u32::try_from(aet.height_of_table(TableId::U32)).unwrap();
+        assert!(u32_height == profile.total.u32);
+
+        println!("{profile}");
     }
 
     #[test]

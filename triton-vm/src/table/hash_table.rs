@@ -51,7 +51,7 @@ const MONTGOMERY_MODULUS: BFieldElement =
 pub const POWER_MAP_EXPONENT: u64 = 7;
 pub const NUM_ROUND_CONSTANTS: usize = STATE_SIZE;
 
-const PERMUTATION_TRACE_LENGTH: usize = NUM_ROUNDS + 1;
+pub(crate) const PERMUTATION_TRACE_LENGTH: usize = NUM_ROUNDS + 1;
 
 pub type PermutationTrace = [[BFieldElement; STATE_SIZE]; PERMUTATION_TRACE_LENGTH];
 
