@@ -2,6 +2,7 @@ use std::ops::MulAssign;
 use std::ops::Range;
 
 use itertools::Itertools;
+use master_table::extension_table::Evaluable;
 use ndarray::parallel::prelude::*;
 use ndarray::prelude::*;
 use ndarray::s;
@@ -1017,26 +1018,27 @@ pub fn terminal_quotient_zerofier_inverse(
     BFieldElement::batch_inversion(zerofier_codeword).into()
 }
 
-/// Computes an array containing all quotients – the Master Quotient Table. Each column corresponds
-/// to a different quotient. The quotients are ordered by category – initial, consistency,
+/// Computes the quotient codeword, which the randomized linear combination of all individual
+/// quotients.
+///
+/// About assigning weights to quotients: the quotients are ordered by category – initial, consistency,
 /// transition, and then terminal. Within each category, the quotients follow the canonical order
 /// of the tables. The last column holds the terminal quotient of the cross-table argument, which
 /// is strictly speaking not a table.
 /// The order of the quotients is not actually important. However, it must be consistent between
 /// [prover] and [verifier].
 ///
-/// The returned array is in row-major order.
-///
 /// [prover]: crate::stark::Stark::prove
 /// [verifier]: crate::stark::Stark::verify
-pub fn all_quotients(
+pub fn all_quotients_combined(
     quotient_domain_master_base_table: ArrayView2<BFieldElement>,
     quotient_domain_master_ext_table: ArrayView2<XFieldElement>,
     trace_domain: ArithmeticDomain,
     quotient_domain: ArithmeticDomain,
     challenges: &Challenges,
+    quotient_weights: &[XFieldElement],
     maybe_profiler: &mut Option<TritonProfiler>,
-) -> Array2<XFieldElement> {
+) -> Vec<XFieldElement> {
     assert_eq!(
         quotient_domain.length,
         quotient_domain_master_base_table.nrows(),
@@ -1046,59 +1048,117 @@ pub fn all_quotients(
         quotient_domain_master_ext_table.nrows()
     );
 
-    prof_start!(maybe_profiler, "malloc");
-    let mut quotient_table =
-        Array2::uninit([quotient_domain.length, MasterExtTable::NUM_CONSTRAINTS]);
-    prof_stop!(maybe_profiler, "malloc");
-
     let init_section_end = MasterExtTable::NUM_INITIAL_CONSTRAINTS;
     let cons_section_end = init_section_end + MasterExtTable::NUM_CONSISTENCY_CONSTRAINTS;
     let tran_section_end = cons_section_end + MasterExtTable::NUM_TRANSITION_CONSTRAINTS;
-    let term_section_end = tran_section_end + MasterExtTable::NUM_TERMINAL_CONSTRAINTS;
 
-    prof_start!(maybe_profiler, "initial", "AIR");
-    MasterExtTable::fill_initial_quotients(
-        quotient_domain_master_base_table,
-        quotient_domain_master_ext_table,
-        &mut quotient_table.slice_mut(s![.., ..init_section_end]),
-        initial_quotient_zerofier_inverse(quotient_domain).view(),
-        challenges,
+    prof_start!(maybe_profiler, "zerofier inverse");
+    let initial_zerofier_inverse = initial_quotient_zerofier_inverse(quotient_domain);
+    let consistency_zerofier_inverse =
+        consistency_quotient_zerofier_inverse(trace_domain, quotient_domain);
+    let transition_zerofier_inverse =
+        transition_quotient_zerofier_inverse(trace_domain, quotient_domain);
+    let terminal_zerofier_inverse =
+        terminal_quotient_zerofier_inverse(trace_domain, quotient_domain);
+    prof_stop!(maybe_profiler, "zerofier inverse");
+
+    prof_start!(
+        maybe_profiler,
+        "evaluate AIR / divide zerofiers / combine quotients"
     );
-    prof_stop!(maybe_profiler, "initial");
+    let quotient_codeword = (0..quotient_domain.length)
+        .into_par_iter()
+        .map(|row| {
+            // get views of relevant rows
+            let unit_distance = quotient_domain.length / trace_domain.length;
+            let domain_length_bit_mask = quotient_domain.length - 1;
+            let next_row_index = (row + unit_distance) & domain_length_bit_mask;
+            let current_row_main = quotient_domain_master_base_table.slice(s![row, ..]);
+            let current_row_aux = quotient_domain_master_ext_table.slice(s![row, ..]);
+            let next_row_main = quotient_domain_master_base_table.slice(s![next_row_index, ..]);
+            let next_row_aux = quotient_domain_master_ext_table.slice(s![next_row_index, ..]);
 
-    prof_start!(maybe_profiler, "consistency", "AIR");
-    MasterExtTable::fill_consistency_quotients(
-        quotient_domain_master_base_table,
-        quotient_domain_master_ext_table,
-        &mut quotient_table.slice_mut(s![.., init_section_end..cons_section_end]),
-        consistency_quotient_zerofier_inverse(trace_domain, quotient_domain).view(),
-        challenges,
+            // initial constraints
+            let initial_constraint_values = MasterExtTable::evaluate_initial_constraints(
+                current_row_main,
+                current_row_aux,
+                challenges,
+            );
+            let initial_inner_product = initial_constraint_values
+                .into_iter()
+                .zip_eq(
+                    quotient_weights
+                        .iter()
+                        .take(MasterExtTable::NUM_INITIAL_CONSTRAINTS),
+                )
+                .map(|(v, &c)| v * c)
+                .sum::<XFieldElement>();
+            let mut quotient_value = initial_inner_product * initial_zerofier_inverse[row];
+
+            // consistency constraints
+            let consistency_constraint_values = MasterExtTable::evaluate_consistency_constraints(
+                current_row_main,
+                current_row_aux,
+                challenges,
+            );
+            let consistency_inner_product = consistency_constraint_values
+                .into_iter()
+                .zip_eq(
+                    quotient_weights
+                        .iter()
+                        .skip(init_section_end)
+                        .take(MasterExtTable::NUM_CONSISTENCY_CONSTRAINTS),
+                )
+                .map(|(v, &c)| v * c)
+                .sum::<XFieldElement>();
+            quotient_value += consistency_inner_product * consistency_zerofier_inverse[row];
+
+            // transition constraints
+            let transition_constraint_values = MasterExtTable::evaluate_transition_constraints(
+                current_row_main,
+                current_row_aux,
+                next_row_main,
+                next_row_aux,
+                challenges,
+            );
+            let transition_inner_product = transition_constraint_values
+                .into_iter()
+                .zip_eq(
+                    quotient_weights
+                        .iter()
+                        .skip(cons_section_end)
+                        .take(MasterExtTable::NUM_TRANSITION_CONSTRAINTS),
+                )
+                .map(|(v, &c)| v * c)
+                .sum::<XFieldElement>();
+            quotient_value += transition_inner_product * transition_zerofier_inverse[row];
+
+            // terminal constraints
+            let terminal_constraint_values = MasterExtTable::evaluate_terminal_constraints(
+                current_row_main,
+                current_row_aux,
+                challenges,
+            );
+            let terminal_inner_product = terminal_constraint_values
+                .into_iter()
+                .zip_eq(
+                    quotient_weights
+                        .iter()
+                        .skip(tran_section_end)
+                        .take(MasterExtTable::NUM_TERMINAL_CONSTRAINTS),
+                )
+                .map(|(v, &c)| v * c)
+                .sum::<XFieldElement>();
+            quotient_value += terminal_inner_product * terminal_zerofier_inverse[row];
+            quotient_value
+        })
+        .collect();
+    prof_stop!(
+        maybe_profiler,
+        "evaluate AIR / divide zerofiers / combine quotients"
     );
-    prof_stop!(maybe_profiler, "consistency");
 
-    prof_start!(maybe_profiler, "transition", "AIR");
-    MasterExtTable::fill_transition_quotients(
-        quotient_domain_master_base_table,
-        quotient_domain_master_ext_table,
-        &mut quotient_table.slice_mut(s![.., cons_section_end..tran_section_end]),
-        transition_quotient_zerofier_inverse(trace_domain, quotient_domain).view(),
-        challenges,
-        trace_domain,
-        quotient_domain,
-    );
-    prof_stop!(maybe_profiler, "transition");
-
-    prof_start!(maybe_profiler, "terminal", "AIR");
-    MasterExtTable::fill_terminal_quotients(
-        quotient_domain_master_base_table,
-        quotient_domain_master_ext_table,
-        &mut quotient_table.slice_mut(s![.., tran_section_end..term_section_end]),
-        terminal_quotient_zerofier_inverse(trace_domain, quotient_domain).view(),
-        challenges,
-    );
-    prof_stop!(maybe_profiler, "terminal");
-
-    unsafe { quotient_table.assume_init() }
+    quotient_codeword
 }
 
 #[deprecated(

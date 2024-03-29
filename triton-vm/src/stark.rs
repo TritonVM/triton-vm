@@ -30,7 +30,7 @@ use crate::proof_stream::ProofStream;
 use crate::table::challenges::Challenges;
 use crate::table::extension_table::Evaluable;
 use crate::table::extension_table::Quotientable;
-use crate::table::master_table::all_quotients;
+use crate::table::master_table::all_quotients_combined;
 use crate::table::master_table::interpolant_degree;
 use crate::table::master_table::max_degree_with_origin;
 use crate::table::master_table::MasterBaseTable;
@@ -180,7 +180,6 @@ impl Stark {
         // Get the weights with which to compress the many quotients into one.
         let quotient_combination_weights =
             proof_stream.sample_scalars(MasterExtTable::NUM_CONSTRAINTS);
-        let quotient_combination_weights = Array1::from(quotient_combination_weights);
         prof_stop!(maybe_profiler, "Fiat-Shamir");
         prof_stop!(maybe_profiler, "ext tables");
 
@@ -196,20 +195,16 @@ impl Stark {
             "compute and combine quotient codewords",
             "CC"
         );
-        let master_quotient_table = all_quotients(
+        let quotient_codeword = all_quotients_combined(
             base_quotient_domain_codewords,
             ext_quotient_domain_codewords,
             master_base_table.trace_domain(),
             quotient_domain,
             &challenges,
+            &quotient_combination_weights,
             maybe_profiler,
         );
-        assert_eq!(
-            quotient_combination_weights.len(),
-            master_quotient_table.ncols()
-        );
-        let quotient_codeword =
-            Self::random_linear_sum(master_quotient_table.view(), quotient_combination_weights);
+        let quotient_codeword = Array1::from(quotient_codeword);
         assert_eq!(quotient_domain.length, quotient_codeword.len());
         prof_stop!(maybe_profiler, "compute and combine quotient codewords");
 
