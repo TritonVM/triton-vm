@@ -170,8 +170,8 @@ pub enum TableId {
 /// completely separate from each other. Only the [cross-table arguments][cross_arg] link all tables
 /// together.
 ///
-/// Conceptually, there are three Master Tables: the [`MasterBaseTable`], the Master Extension
-/// Table, and the [Master Quotient Table][master_quot_table]. The lifecycle of the Master Tables is
+/// Conceptually, there are two Master Tables: the [`MasterBaseTable`] ("main"), the Master
+/// Extension Table ("auxiliary"). The lifecycle of the Master Tables is
 /// as follows:
 /// 1. The [`MasterBaseTable`] is instantiated and filled using the Algebraic Execution Trace.
 /// 2. The [`MasterBaseTable`] is padded using logic from the individual tables.
@@ -187,17 +187,15 @@ pub enum TableId {
 /// 7. Each column of the [`MasterExtensionTable`][master_ext_table] is [low-degree extended][lde].
 ///     The effects are the same as for the [`MasterBaseTable`].
 /// 8. Using the [`MasterBaseTable`] and the [`MasterExtensionTable`][master_ext_table], the
-///     [Master Quotient Table][master_quot_table] is derived using the AIR. Each individual table
+///     [quotient codeword][master_quot_table] is derived using the AIR. Each individual table
 ///     defines that part of the AIR that is relevant to it.
 ///
 /// The following points are of note:
 /// - The [`MasterExtensionTable`][master_ext_table]'s rightmost columns are the randomizer
 ///     codewords. These are necessary for zero-knowledge.
-/// - The terminal quotient of the cross-table argument, which links the individual tables together,
-///     is also stored in the [Master Quotient Table][master_quot_table]. Even though the
-///     cross-table argument is not a table, it does define part of the AIR. Hence, the cross-table
-///     argument does not contribute to padding or extending the Master Tables, but is incorporated
-///     when deriving the [Master Quotient Table][master_quot_table].
+/// - The cross-table argument has zero width for the [`MasterBaseTable`] and
+///   [`MasterExtensionTable`][master_ext_table] but does induce a nonzero number of constraints
+///   and thus terms in the [quotient combination][all_quotients_combined].
 ///
 /// [cross_arg]: cross_table_argument::GrandCrossTableArg
 /// [lde]: Self::low_degree_extend_all_columns
@@ -206,7 +204,7 @@ pub enum TableId {
 /// [inter_poly]: Self::interpolation_polynomials
 /// [row]: Self::row
 /// [master_ext_table]: MasterExtTable
-/// [master_quot_table]: all_quotients
+/// [master_quot_table]: all_quotients_combined
 pub trait MasterTable<FF>: Sync
 where
     FF: FiniteField + MulAssign<BFieldElement> + From<BFieldElement>,
