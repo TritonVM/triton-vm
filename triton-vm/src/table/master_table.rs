@@ -1069,8 +1069,7 @@ pub fn all_quotients_combined(
         .map(|row| {
             // get views of relevant rows
             let unit_distance = quotient_domain.length / trace_domain.length;
-            let domain_length_bit_mask = quotient_domain.length - 1;
-            let next_row_index = (row + unit_distance) & domain_length_bit_mask;
+            let next_row_index = (row + unit_distance) % quotient_domain.length;
             let current_row_main = quotient_domain_master_base_table.slice(s![row, ..]);
             let current_row_aux = quotient_domain_master_ext_table.slice(s![row, ..]);
             let next_row_main = quotient_domain_master_base_table.slice(s![next_row_index, ..]);
