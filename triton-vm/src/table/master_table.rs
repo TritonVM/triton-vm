@@ -1016,13 +1016,13 @@ pub fn terminal_quotient_zerofier_inverse(
     BFieldElement::batch_inversion(zerofier_codeword).into()
 }
 
-/// Computes the quotient codeword, which the randomized linear combination of all individual
+/// Computes the quotient codeword, which is the randomized linear combination of all individual
 /// quotients.
 ///
-/// About assigning weights to quotients: the quotients are ordered by category – initial, consistency,
-/// transition, and then terminal. Within each category, the quotients follow the canonical order
-/// of the tables. The last column holds the terminal quotient of the cross-table argument, which
-/// is strictly speaking not a table.
+/// About assigning weights to quotients: the quotients are ordered by category – initial,
+/// consistency, transition, and then terminal. Within each category, the quotients follow the
+/// canonical order of the tables. The last column holds the terminal quotient of the cross-table
+/// argument, which is strictly speaking not a table.
 /// The order of the quotients is not actually important. However, it must be consistent between
 /// [prover] and [verifier].
 ///
@@ -1064,16 +1064,22 @@ pub fn all_quotients_combined(
         maybe_profiler,
         "evaluate AIR / divide zerofiers / combine quotients"
     );
+    let dot_product =
+        |partial_row: Vec<XFieldElement>, weights: &[XFieldElement]| -> XFieldElement {
+            let pairs = partial_row.into_iter().zip_eq(weights.iter());
+            pairs.map(|(v, &w)| v * w).sum()
+        };
     let quotient_codeword = (0..quotient_domain.length)
         .into_par_iter()
         .map(|row| {
             // get views of relevant rows
             let unit_distance = quotient_domain.length / trace_domain.length;
-            let next_row_index = (row + unit_distance) % quotient_domain.length;
-            let current_row_main = quotient_domain_master_base_table.slice(s![row, ..]);
-            let current_row_aux = quotient_domain_master_ext_table.slice(s![row, ..]);
-            let next_row_main = quotient_domain_master_base_table.slice(s![next_row_index, ..]);
-            let next_row_aux = quotient_domain_master_ext_table.slice(s![next_row_index, ..]);
+            let domain_length_bit_mask = quotient_domain.length - 1;
+            let next_row_index = (row + unit_distance) & domain_length_bit_mask;
+            let current_row_main = quotient_domain_master_base_table.row(row);
+            let current_row_aux = quotient_domain_master_ext_table.row(row);
+            let next_row_main = quotient_domain_master_base_table.row(next_row_index);
+            let next_row_aux = quotient_domain_master_ext_table.row(next_row_index);
 
             // initial constraints
             let initial_constraint_values = MasterExtTable::evaluate_initial_constraints(
@@ -1081,15 +1087,10 @@ pub fn all_quotients_combined(
                 current_row_aux,
                 challenges,
             );
-            let initial_inner_product = initial_constraint_values
-                .into_iter()
-                .zip_eq(
-                    quotient_weights
-                        .iter()
-                        .take(MasterExtTable::NUM_INITIAL_CONSTRAINTS),
-                )
-                .map(|(v, &c)| v * c)
-                .sum::<XFieldElement>();
+            let initial_inner_product = dot_product(
+                initial_constraint_values,
+                &quotient_weights[..init_section_end],
+            );
             let mut quotient_value = initial_inner_product * initial_zerofier_inverse[row];
 
             // consistency constraints
@@ -1098,16 +1099,10 @@ pub fn all_quotients_combined(
                 current_row_aux,
                 challenges,
             );
-            let consistency_inner_product = consistency_constraint_values
-                .into_iter()
-                .zip_eq(
-                    quotient_weights
-                        .iter()
-                        .skip(init_section_end)
-                        .take(MasterExtTable::NUM_CONSISTENCY_CONSTRAINTS),
-                )
-                .map(|(v, &c)| v * c)
-                .sum::<XFieldElement>();
+            let consistency_inner_product = dot_product(
+                consistency_constraint_values,
+                &quotient_weights[init_section_end..cons_section_end],
+            );
             quotient_value += consistency_inner_product * consistency_zerofier_inverse[row];
 
             // transition constraints
@@ -1118,16 +1113,10 @@ pub fn all_quotients_combined(
                 next_row_aux,
                 challenges,
             );
-            let transition_inner_product = transition_constraint_values
-                .into_iter()
-                .zip_eq(
-                    quotient_weights
-                        .iter()
-                        .skip(cons_section_end)
-                        .take(MasterExtTable::NUM_TRANSITION_CONSTRAINTS),
-                )
-                .map(|(v, &c)| v * c)
-                .sum::<XFieldElement>();
+            let transition_inner_product = dot_product(
+                transition_constraint_values,
+                &quotient_weights[cons_section_end..tran_section_end],
+            );
             quotient_value += transition_inner_product * transition_zerofier_inverse[row];
 
             // terminal constraints
@@ -1136,16 +1125,10 @@ pub fn all_quotients_combined(
                 current_row_aux,
                 challenges,
             );
-            let terminal_inner_product = terminal_constraint_values
-                .into_iter()
-                .zip_eq(
-                    quotient_weights
-                        .iter()
-                        .skip(tran_section_end)
-                        .take(MasterExtTable::NUM_TERMINAL_CONSTRAINTS),
-                )
-                .map(|(v, &c)| v * c)
-                .sum::<XFieldElement>();
+            let terminal_inner_product = dot_product(
+                terminal_constraint_values,
+                &quotient_weights[tran_section_end..],
+            );
             quotient_value += terminal_inner_product * terminal_zerofier_inverse[row];
             quotient_value
         })

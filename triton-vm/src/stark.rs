@@ -183,8 +183,8 @@ impl Stark {
         prof_stop!(maybe_profiler, "Fiat-Shamir");
         prof_stop!(maybe_profiler, "ext tables");
 
-        // low-degree extend the trace codewords so that the all quotient codewords
-        // obtained by element-wise evaluation of the AIR constraints
+        // low-degree extend the trace codewords so that all the quotient codewords
+        // can be obtained by element-wise evaluation of the AIR constraints
         prof_start!(maybe_profiler, "quotient-domain codewords");
         let base_quotient_domain_codewords = master_base_table.quotient_domain_table();
         let ext_quotient_domain_codewords = master_ext_table.quotient_domain_table();
