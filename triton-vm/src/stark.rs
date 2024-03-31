@@ -30,7 +30,7 @@ use crate::proof_stream::ProofStream;
 use crate::table::challenges::Challenges;
 use crate::table::extension_table::Evaluable;
 use crate::table::extension_table::Quotientable;
-use crate::table::master_table::all_quotients;
+use crate::table::master_table::all_quotients_combined;
 use crate::table::master_table::interpolant_degree;
 use crate::table::master_table::max_degree_with_origin;
 use crate::table::master_table::MasterBaseTable;
@@ -176,41 +176,37 @@ impl Stark {
 
         prof_start!(maybe_profiler, "Fiat-Shamir", "hash");
         proof_stream.enqueue(ProofItem::MerkleRoot(ext_merkle_tree.root()));
+
+        // Get the weights with which to compress the many quotients into one.
+        let quotient_combination_weights =
+            proof_stream.sample_scalars(MasterExtTable::NUM_CONSTRAINTS);
         prof_stop!(maybe_profiler, "Fiat-Shamir");
         prof_stop!(maybe_profiler, "ext tables");
 
+        // low-degree extend the trace codewords so that all the quotient codewords
+        // can be obtained by element-wise evaluation of the AIR constraints
         prof_start!(maybe_profiler, "quotient-domain codewords");
         let base_quotient_domain_codewords = master_base_table.quotient_domain_table();
         let ext_quotient_domain_codewords = master_ext_table.quotient_domain_table();
         prof_stop!(maybe_profiler, "quotient-domain codewords");
 
-        prof_start!(maybe_profiler, "quotient codewords");
-        let master_quotient_table = all_quotients(
+        prof_start!(
+            maybe_profiler,
+            "compute and combine quotient codewords",
+            "CC"
+        );
+        let quotient_codeword = all_quotients_combined(
             base_quotient_domain_codewords,
             ext_quotient_domain_codewords,
             master_base_table.trace_domain(),
             quotient_domain,
             &challenges,
+            &quotient_combination_weights,
             maybe_profiler,
         );
-        prof_stop!(maybe_profiler, "quotient codewords");
-
-        prof_start!(maybe_profiler, "linearly combine quotient codewords", "CC");
-        // Create quotient codeword. This is a part of the combination codeword. To reduce the
-        // amount of hashing necessary, the quotient codeword is linearly summed instead of
-        // hashed prior to committing to it.
-        let quotient_combination_weights =
-            proof_stream.sample_scalars(MasterExtTable::NUM_CONSTRAINTS);
-        let quotient_combination_weights = Array1::from(quotient_combination_weights);
-        assert_eq!(
-            quotient_combination_weights.len(),
-            master_quotient_table.ncols()
-        );
-
-        let quotient_codeword =
-            Self::random_linear_sum(master_quotient_table.view(), quotient_combination_weights);
+        let quotient_codeword = Array1::from(quotient_codeword);
         assert_eq!(quotient_domain.length, quotient_codeword.len());
-        prof_stop!(maybe_profiler, "linearly combine quotient codewords");
+        prof_stop!(maybe_profiler, "compute and combine quotient codewords");
 
         prof_start!(maybe_profiler, "commit to quotient codeword segments");
         prof_start!(maybe_profiler, "LDE", "LDE");
