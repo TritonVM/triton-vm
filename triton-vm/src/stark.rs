@@ -1,4 +1,5 @@
 use std::ops::Mul;
+use std::ops::MulAssign;
 
 use arbitrary::Arbitrary;
 use arbitrary::Unstructured;
@@ -411,10 +412,24 @@ impl Stark {
 
         prof_start!(maybe_profiler, "open trace leafs");
         // Open leafs of zipped codewords at indicated positions
-        let revealed_base_elems = Self::get_revealed_elements(
-            master_base_table.fri_domain_table(),
+        let press = |poly: &Polynomial<XFieldElement>| {
+            Polynomial::new(
+                poly.coefficients
+                    .iter()
+                    .map(|x| x.coefficients[0])
+                    .collect_vec(),
+            )
+        };
+        let revealed_base_elems = Self::get_revealed_rows::<NUM_BASE_COLUMNS, BFieldElement>(
+            &master_base_table
+                .interpolation_polynomials()
+                .into_iter()
+                .map(press)
+                .collect_vec(),
             &revealed_current_row_indices,
-        )?;
+            master_base_table.trace_domain(),
+            fri.domain,
+        );
         let base_authentication_structure =
             base_merkle_tree.authentication_structure(&revealed_current_row_indices)?;
         proof_stream.enqueue(ProofItem::MasterBaseTableRows(revealed_base_elems));
@@ -422,10 +437,16 @@ impl Stark {
             base_authentication_structure,
         ));
 
-        let revealed_ext_elems = Self::get_revealed_elements(
-            master_ext_table.fri_domain_table(),
+        let revealed_ext_elems = Self::get_revealed_rows(
+            &master_ext_table
+                .interpolation_polynomials()
+                .into_iter()
+                .cloned()
+                .collect_vec(),
             &revealed_current_row_indices,
-        )?;
+            master_base_table.trace_domain(),
+            fri.domain,
+        );
         let ext_authentication_structure =
             ext_merkle_tree.authentication_structure(&revealed_current_row_indices)?;
         proof_stream.enqueue(ProofItem::MasterExtTableRows(revealed_ext_elems));
@@ -567,20 +588,63 @@ impl Stark {
         )
     }
 
-    fn get_revealed_elements<const N: usize, FF: FiniteField>(
-        fri_domain_table: ArrayView2<FF>,
+    /// Compute and return the rows indicated by FRI.
+    ///
+    /// This function performs fast multi-point evaluation in parallel over the
+    /// columns.
+    ///
+    /// Parameters:
+    ///  - `W : const usize` -- the width of the table, in number of field elements
+    ///  - `FF : {BFieldElement, XFieldElement}`
+    ///  - `table_as_interpolation_polynomials : &[Polynomial<FF>]` -- the table as
+    ///    a slice of X- or B-FieldElements polynomials, one for each column
+    ///  - `revealed_indices: &[usize]` -- the indices coming from FRI
+    ///  - `trace_domain : ArithmeticDomain` -- the domain over which the trace is
+    ///    interpolated; the trace domain informs this function how the coefficients
+    ///    in the table are to be interpreted
+    ///  - `fri_domain : ArithmeticDomain` -- the domain over which FRI is done; the
+    ///    FRI domain is used to determine which indeterminates the given indices
+    ///    correspond to.
+    ///
+    /// Returns:
+    ///  - `rows : Vec<[FF; W]>` -- a `Vec`` of arrays of `W` field elements each;
+    ///    one array per queried index.
+    fn get_revealed_rows<
+        const W: usize,
+        FF: FiniteField + From<BFieldElement> + MulAssign<BFieldElement>,
+    >(
+        table_as_interpolation_polynomials: &[Polynomial<FF>],
         revealed_indices: &[usize],
-    ) -> Result<Vec<[FF; N]>, ProvingError> {
-        let err = || ProvingError::TableRowConversionError {
-            expected_len: N,
-            actual_len: fri_domain_table.ncols(),
-        };
-        let row = |&row_idx| {
-            let row = fri_domain_table.row(row_idx).to_vec();
-            row.try_into().map_err(|_| err())
-        };
+        trace_domain: ArithmeticDomain,
+        fri_domain: ArithmeticDomain,
+    ) -> Vec<[FF; W]> {
+        // obtain the evaluation points from the FRI domain
+        let indeterminates = revealed_indices
+            .iter()
+            .map(|i| fri_domain.domain_value(*i as u32))
+            .map(FF::from)
+            .collect_vec();
 
-        revealed_indices.iter().map(row).collect()
+        // for every column (in parallel), fast multi-point evaluate
+        let columns = table_as_interpolation_polynomials
+            .into_par_iter()
+            .flat_map(|poly| {
+                poly.fast_evaluate(&indeterminates, trace_domain.generator, trace_domain.length)
+            })
+            .collect::<Vec<_>>();
+
+        // transpose the resulting matrix out-of-place
+        let n = revealed_indices.len();
+        let mut rows = vec![FF::zero(); W * n];
+        for i in 0..W {
+            for j in 0..n {
+                rows[j * W + i] = columns[i * n + j];
+            }
+        }
+
+        rows.chunks(W)
+            .map(|ch| ch.try_into().unwrap())
+            .collect_vec()
     }
 
     /// Apply the [DEEP update](Self::deep_update) to a polynomial in value form, _i.e._, to a

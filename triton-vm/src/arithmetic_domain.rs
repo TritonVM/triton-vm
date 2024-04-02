@@ -88,6 +88,7 @@ impl ArithmeticDomain {
         target_domain.evaluate(&self.interpolate(codeword))
     }
 
+    /// Compute the nth element of the domain.
     pub fn domain_value(&self, index: u32) -> BFieldElement {
         self.generator.mod_pow_u32(index) * self.offset
     }
