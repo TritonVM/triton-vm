@@ -6,7 +6,6 @@ use arbitrary::Unstructured;
 use itertools::izip;
 use itertools::Itertools;
 use ndarray::prelude::*;
-use ndarray::Zip;
 use rayon::prelude::*;
 use serde::Deserialize;
 use serde::Serialize;
@@ -278,39 +277,29 @@ impl Stark {
             true => fri.domain,
             false => quotient_domain,
         };
-        let short_domain_base_codewords = match fri_domain_is_short_domain {
-            true => master_base_table.fri_domain_table(),
-            false => master_base_table.quotient_domain_table(),
-        };
-        let short_domain_ext_codewords = match fri_domain_is_short_domain {
-            true => master_ext_table.fri_domain_table(),
-            false => master_ext_table.quotient_domain_table(),
-        };
-        let short_domain_ext_codewords =
-            short_domain_ext_codewords.slice(s![.., ..NUM_EXT_COLUMNS]);
-
-        let fri_to_quotient_domain_unit_distance = match fri_domain_is_short_domain {
-            true => 1,
-            false => fri.domain.length / quotient_domain.length,
-        };
-        let short_domain_quot_segment_codewords = fri_domain_quotient_segment_codewords
-            .slice(s![..; fri_to_quotient_domain_unit_distance, ..]);
 
         prof_start!(maybe_profiler, "linear combination");
         prof_start!(maybe_profiler, "base", "CC");
-        let base_codeword =
-            Self::random_linear_sum_base_field(short_domain_base_codewords, weights.base);
+        let base_combination_polynomial = Self::random_linear_sum_base_field(
+            master_base_table.interpolation_polynomials(),
+            weights.base,
+        );
+
         prof_stop!(maybe_profiler, "base");
         prof_start!(maybe_profiler, "ext", "CC");
-        let ext_codeword = Self::random_linear_sum(short_domain_ext_codewords, weights.ext);
+        let ext_combination_polynomial =
+            Self::random_linear_sum(master_ext_table.interpolation_polynomials(), weights.ext);
         prof_stop!(maybe_profiler, "ext");
-        let base_and_ext_codeword = base_codeword + ext_codeword;
+        let base_and_ext_combination_polynomial =
+            base_combination_polynomial + ext_combination_polynomial;
+        let base_and_ext_codeword = fri.domain.evaluate(&base_and_ext_combination_polynomial);
 
         prof_start!(maybe_profiler, "quotient", "CC");
-        let quotient_segments_codeword = Self::random_linear_sum(
-            short_domain_quot_segment_codewords.view(),
-            weights.quot_segments,
-        );
+        let quotient_segments_combination_polynomial =
+            Self::random_linear_sum(quotient_segment_polynomials.view(), weights.quot_segments);
+        let quotient_segments_codeword = fri
+            .domain
+            .evaluate(&quotient_segments_combination_polynomial);
         prof_stop!(maybe_profiler, "quotient");
 
         assert_eq!(short_domain.length, base_and_ext_codeword.len());
@@ -336,15 +325,15 @@ impl Stark {
         // operations.
         prof_start!(maybe_profiler, "interpolate");
         let base_and_ext_interpolation_poly =
-            short_domain.interpolate(&base_and_ext_codeword.to_vec());
+            short_domain.interpolate(&base_and_ext_codeword.clone());
         let quotient_segments_interpolation_poly =
-            short_domain.interpolate(&quotient_segments_codeword.to_vec());
+            short_domain.interpolate(&quotient_segments_codeword.clone());
         prof_stop!(maybe_profiler, "interpolate");
         prof_start!(maybe_profiler, "base&ext curr row");
         let out_of_domain_curr_row_base_and_ext_value =
             base_and_ext_interpolation_poly.evaluate(out_of_domain_point_curr_row);
         let base_and_ext_curr_row_deep_codeword = Self::deep_codeword(
-            &base_and_ext_codeword.to_vec(),
+            &base_and_ext_codeword.clone(),
             short_domain,
             out_of_domain_point_curr_row,
             out_of_domain_curr_row_base_and_ext_value,
@@ -355,7 +344,7 @@ impl Stark {
         let out_of_domain_next_row_base_and_ext_value =
             base_and_ext_interpolation_poly.evaluate(out_of_domain_point_next_row);
         let base_and_ext_next_row_deep_codeword = Self::deep_codeword(
-            &base_and_ext_codeword.to_vec(),
+            &base_and_ext_codeword.clone(),
             short_domain,
             out_of_domain_point_next_row,
             out_of_domain_next_row_base_and_ext_value,
@@ -366,7 +355,7 @@ impl Stark {
         let out_of_domain_curr_row_quot_segments_value = quotient_segments_interpolation_poly
             .evaluate(out_of_domain_point_curr_row_pow_num_segments);
         let quotient_segments_curr_row_deep_codeword = Self::deep_codeword(
-            &quotient_segments_codeword.to_vec(),
+            &quotient_segments_codeword.clone(),
             short_domain,
             out_of_domain_point_curr_row_pow_num_segments,
             out_of_domain_curr_row_quot_segments_value,
@@ -460,42 +449,43 @@ impl Stark {
     }
 
     fn random_linear_sum_base_field(
-        codewords: ArrayView2<BFieldElement>,
+        polynomials: ArrayView1<Polynomial<BFieldElement>>,
         weights: Array1<XFieldElement>,
-    ) -> Array1<XFieldElement> {
-        assert_eq!(codewords.ncols(), weights.len());
-        let weight_coefficients_0: Array1<_> = weights.iter().map(|&w| w.coefficients[0]).collect();
-        let weight_coefficients_1: Array1<_> = weights.iter().map(|&w| w.coefficients[1]).collect();
-        let weight_coefficients_2: Array1<_> = weights.iter().map(|&w| w.coefficients[2]).collect();
+    ) -> Polynomial<XFieldElement> {
+        assert_eq!(polynomials.len(), weights.len());
 
-        let mut random_linear_sum = Array1::zeros(codewords.nrows());
-        Zip::from(codewords.axis_iter(Axis(0)))
-            .and(random_linear_sum.axis_iter_mut(Axis(0)))
-            .par_for_each(|codeword, target_element| {
-                let random_linear_element_coefficients = [
-                    codeword.dot(&weight_coefficients_0),
-                    codeword.dot(&weight_coefficients_1),
-                    codeword.dot(&weight_coefficients_2),
-                ];
-                let random_linear_element = xfe!(random_linear_element_coefficients);
-                Array0::from_elem((), random_linear_element).move_into(target_element);
-            });
-        random_linear_sum
+        let n = polynomials[0].coefficients.len();
+        let random_linear_sum = (0..n)
+            .into_par_iter()
+            .map(|i| {
+                polynomials
+                    .axis_iter(Axis(0))
+                    .zip(weights.iter())
+                    .map(|(p, w)| p.get([]).unwrap().coefficients[i].lift() * *w)
+                    .sum::<XFieldElement>()
+            })
+            .collect();
+        Polynomial::new(random_linear_sum)
     }
 
     fn random_linear_sum(
-        codewords: ArrayView2<XFieldElement>,
+        polynomials: ArrayView1<Polynomial<XFieldElement>>,
         weights: Array1<XFieldElement>,
-    ) -> Array1<XFieldElement> {
-        assert_eq!(codewords.ncols(), weights.len());
-        let mut random_linear_sum = Array1::zeros(codewords.nrows());
-        Zip::from(codewords.axis_iter(Axis(0)))
-            .and(random_linear_sum.axis_iter_mut(Axis(0)))
-            .par_for_each(|codeword, target_element| {
-                let random_linear_element = codeword.dot(&weights);
-                Array0::from_elem((), random_linear_element).move_into(target_element);
-            });
-        random_linear_sum
+    ) -> Polynomial<XFieldElement> {
+        assert_eq!(polynomials.len(), weights.len());
+
+        let n = polynomials[0].coefficients.len();
+        let random_linear_sum = (0..n)
+            .into_par_iter()
+            .map(|i| {
+                polynomials
+                    .axis_iter(Axis(0))
+                    .zip(weights.iter())
+                    .map(|(p, w)| p.get([]).unwrap().coefficients[i] * *w)
+                    .sum::<XFieldElement>()
+            })
+            .collect();
+        Polynomial::new(random_linear_sum)
     }
 
     fn fri_domain_segment_polynomials(
