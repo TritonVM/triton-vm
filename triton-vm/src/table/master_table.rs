@@ -11,6 +11,7 @@ use ndarray::Array2;
 use ndarray::ArrayView2;
 use ndarray::ArrayViewMut2;
 use ndarray::Zip;
+use num_traits::One;
 use num_traits::Zero;
 use rand::distributions::Standard;
 use rand::prelude::Distribution;
@@ -18,8 +19,11 @@ use rand::random;
 use strum::Display;
 use strum::EnumCount;
 use strum::EnumIter;
+use twenty_first::math::tip5::DIGEST_LENGTH;
+use twenty_first::math::tip5::RATE;
 use twenty_first::math::traits::FiniteField;
 use twenty_first::prelude::*;
+use twenty_first::util_types::algebraic_hasher;
 
 use crate::aet::AlgebraicExecutionTrace;
 use crate::arithmetic_domain::ArithmeticDomain;
@@ -210,8 +214,9 @@ pub trait MasterTable<FF>: Sync
 where
     FF: FiniteField
         + MulAssign<BFieldElement>
-        + Mul<BFieldElement, Output = FF>
-        + From<BFieldElement>,
+        + From<BFieldElement>
+        + BFieldCodec
+        + Mul<BFieldElement, Output = FF>,
     Standard: Distribution<FF>,
 {
     fn trace_domain(&self) -> ArithmeticDomain;
@@ -317,12 +322,89 @@ where
     }
 
     fn hash_all_fri_domain_rows(&self) -> Vec<Digest> {
-        let fri_domain_table = self.fri_domain_table();
-        let all_rows = fri_domain_table.axis_iter(Axis(0)).into_par_iter();
-        all_rows.map(Self::hash_one_row).collect::<Vec<_>>()
+        let num_threads = match std::env::var("RAYON_NUM_THREADS") {
+            Ok(str) => str.parse::<usize>().unwrap_or(1),
+            Err(_) => 1,
+        };
+        let fri_domain = self.fri_domain();
+        let mut sponge_states = (0..fri_domain.length)
+            .map(|_| SpongeWithPendingAbsorb::new())
+            .collect_vec();
+        let interpolants = self.interpolation_polynomials();
+        for columns in interpolants.axis_chunks_iter(Axis(0), num_threads) {
+            let codewords: Vec<FF> = columns
+                .axis_iter(Axis(0))
+                .into_par_iter()
+                .flat_map(|poly| fri_domain.evaluate(poly.get([]).unwrap()))
+                .collect();
+            sponge_states = sponge_states
+                .into_par_iter()
+                .enumerate()
+                .map(|(i, sponge)| {
+                    sponge.absorb_some(
+                        (0..num_threads)
+                            .flat_map(|j| codewords[j * fri_domain.length + i].encode()),
+                    )
+                })
+                .collect();
+        }
+        sponge_states
+            .into_par_iter()
+            .map(|sponge| sponge.apply_padding())
+            .map(|sponge| sponge.squeeze_digest())
+            .collect()
+    }
+}
+
+/// Helper struct and function to absorb however many elements are available; used in
+/// the context of hashing rows in a streaming fashion.
+#[derive(Clone)]
+struct SpongeWithPendingAbsorb {
+    sponge: Tip5,
+    pending_input: [BFieldElement; RATE],
+    num_symbols_pending: usize,
+}
+impl SpongeWithPendingAbsorb {
+    pub fn new() -> Self {
+        Self {
+            sponge: Tip5::new(algebraic_hasher::Domain::VariableLength),
+            pending_input: [BFieldElement::new(0); RATE],
+            num_symbols_pending: 0,
+        }
     }
 
-    fn hash_one_row(row: ArrayView1<FF>) -> Digest;
+    pub fn absorb_some<I: Iterator<Item = BFieldElement>>(mut self, mut some_input: I) -> Self {
+        let mut symbol = some_input.next();
+        while symbol.is_some() {
+            if self.num_symbols_pending == RATE - 1 {
+                self.pending_input[RATE - 1] = symbol.unwrap();
+                self.sponge.absorb(self.pending_input);
+                self.num_symbols_pending = 0;
+            } else {
+                self.pending_input[self.num_symbols_pending] = symbol.unwrap();
+                self.num_symbols_pending += 1;
+            }
+            symbol = some_input.next()
+        }
+        self
+    }
+
+    pub fn apply_padding(mut self) -> Self {
+        self.pending_input[self.num_symbols_pending] = BFieldElement::one();
+        for i in self.num_symbols_pending + 1..RATE {
+            self.pending_input[i] = BFieldElement::zero();
+        }
+        self.sponge.absorb(self.pending_input);
+        self.num_symbols_pending = 0;
+        self
+    }
+
+    pub fn squeeze_digest(mut self) -> Digest {
+        self.sponge.squeeze()[0..DIGEST_LENGTH]
+            .to_vec()
+            .try_into()
+            .unwrap()
+    }
 }
 
 /// See [`MasterTable`].
@@ -464,10 +546,6 @@ impl MasterTable<BFieldElement> for MasterBaseTable {
             .collect::<Vec<_>>()
             .into()
     }
-
-    fn hash_one_row(row: ArrayView1<BFieldElement>) -> Digest {
-        Tip5::hash_varlen(row.as_slice().unwrap())
-    }
 }
 
 impl MasterTable<XFieldElement> for MasterExtTable {
@@ -564,12 +642,6 @@ impl MasterTable<XFieldElement> for MasterExtTable {
             .map(|polynomial| polynomial.evaluate(row_index))
             .collect::<Vec<_>>()
             .into()
-    }
-
-    fn hash_one_row(row: ArrayView1<XFieldElement>) -> Digest {
-        let interpret_xfe_as_bfes = |xfe: &XFieldElement| xfe.coefficients.to_vec();
-        let row_as_bfes = row.iter().map(interpret_xfe_as_bfes).concat();
-        Tip5::hash_varlen(&row_as_bfes)
     }
 }
 
@@ -1619,5 +1691,20 @@ mod tests {
         assert_eq!(0, not_trace_domain_element(EXT_CASCADE_TABLE_START));
         assert_eq!(0, not_trace_domain_element(EXT_LOOKUP_TABLE_START));
         assert_eq!(0, not_trace_domain_element(EXT_U32_TABLE_START));
+    }
+
+    #[test]
+    fn test_sponge_with_pending_absorb() {
+        let elements: [BFieldElement; 155] = random();
+        for i in 0..elements.len() {
+            let substring = elements[0..i].to_vec();
+            let sponge = SpongeWithPendingAbsorb::new();
+            let digest0 = sponge
+                .absorb_some(substring.iter().cloned())
+                .apply_padding()
+                .squeeze_digest();
+            let digest1 = Tip5::hash_varlen(&substring);
+            assert_eq!(digest0, digest1);
+        }
     }
 }
