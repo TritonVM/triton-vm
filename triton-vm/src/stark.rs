@@ -241,19 +241,19 @@ impl Stark {
         let out_of_domain_point_curr_row = proof_stream.sample_scalars(1)[0];
         let out_of_domain_point_next_row = trace_domain_generator * out_of_domain_point_curr_row;
 
-        let ood_base_row = master_base_table.row(out_of_domain_point_curr_row);
+        let ood_base_row = master_base_table.out_of_domain_row(out_of_domain_point_curr_row);
         let ood_base_row = MasterBaseTable::try_to_base_row(ood_base_row)?;
         proof_stream.enqueue(ProofItem::OutOfDomainBaseRow(Box::new(ood_base_row)));
 
-        let ood_ext_row = master_ext_table.row(out_of_domain_point_curr_row);
+        let ood_ext_row = master_ext_table.out_of_domain_row(out_of_domain_point_curr_row);
         let ood_ext_row = MasterExtTable::try_to_ext_row(ood_ext_row)?;
         proof_stream.enqueue(ProofItem::OutOfDomainExtRow(Box::new(ood_ext_row)));
 
-        let ood_next_base_row = master_base_table.row(out_of_domain_point_next_row);
+        let ood_next_base_row = master_base_table.out_of_domain_row(out_of_domain_point_next_row);
         let ood_next_base_row = MasterBaseTable::try_to_base_row(ood_next_base_row)?;
         proof_stream.enqueue(ProofItem::OutOfDomainBaseRow(Box::new(ood_next_base_row)));
 
-        let ood_next_ext_row = master_ext_table.row(out_of_domain_point_next_row);
+        let ood_next_ext_row = master_ext_table.out_of_domain_row(out_of_domain_point_next_row);
         let ood_next_ext_row = MasterExtTable::try_to_ext_row(ood_next_ext_row)?;
         proof_stream.enqueue(ProofItem::OutOfDomainExtRow(Box::new(ood_next_ext_row)));
 
@@ -412,20 +412,8 @@ impl Stark {
 
         prof_start!(maybe_profiler, "open trace leafs");
         // Open leafs of zipped codewords at indicated positions
-        let press = |poly: &Polynomial<XFieldElement>| {
-            Polynomial::new(
-                poly.coefficients
-                    .iter()
-                    .map(|x| x.coefficients[0])
-                    .collect_vec(),
-            )
-        };
         let revealed_base_elems = Self::get_revealed_rows::<NUM_BASE_COLUMNS, BFieldElement>(
-            &master_base_table
-                .interpolation_polynomials()
-                .into_iter()
-                .map(press)
-                .collect_vec(),
+            &master_base_table.interpolation_polynomials(),
             &revealed_current_row_indices,
             master_base_table.trace_domain(),
             fri.domain,
@@ -438,11 +426,7 @@ impl Stark {
         ));
 
         let revealed_ext_elems = Self::get_revealed_rows(
-            &master_ext_table
-                .interpolation_polynomials()
-                .into_iter()
-                .cloned()
-                .collect_vec(),
+            &master_ext_table.interpolation_polynomials(),
             &revealed_current_row_indices,
             master_base_table.trace_domain(),
             fri.domain,
@@ -613,7 +597,7 @@ impl Stark {
         const W: usize,
         FF: FiniteField + From<BFieldElement> + MulAssign<BFieldElement>,
     >(
-        table_as_interpolation_polynomials: &[Polynomial<FF>],
+        table_as_interpolation_polynomials: &ArrayView1<Polynomial<FF>>,
         revealed_indices: &[usize],
         trace_domain: ArithmeticDomain,
         fri_domain: ArithmeticDomain,

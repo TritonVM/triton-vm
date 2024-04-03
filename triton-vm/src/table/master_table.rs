@@ -11,6 +11,7 @@ use ndarray::Array2;
 use ndarray::ArrayView2;
 use ndarray::ArrayViewMut2;
 use ndarray::Zip;
+use num_traits::Zero;
 use rand::distributions::Standard;
 use rand::prelude::Distribution;
 use rand::random;
@@ -293,13 +294,13 @@ where
 
     /// Requires having called
     /// [`low_degree_extend_all_columns`](Self::low_degree_extend_all_columns) first.    
-    fn interpolation_polynomials(&self) -> ArrayView1<Polynomial<XFieldElement>>;
+    fn interpolation_polynomials(&self) -> ArrayView1<Polynomial<FF>>;
 
     /// Get one row of the table at an arbitrary index. Notably, the index does not have to be in
     /// any of the domains. In other words, can be used to compute out-of-domain rows. Requires
     /// having called [`low_degree_extend_all_columns`](Self::low_degree_extend_all_columns) first.
     /// Does not include randomizer polynomials.
-    fn row(&self, row_index: XFieldElement) -> Array1<XFieldElement>;
+    fn out_of_domain_row(&self, indeterminate: XFieldElement) -> Array1<XFieldElement>;
 
     /// Compute a Merkle tree of the FRI domain table. Every row gives one leaf in the tree.
     /// The function [`hash_row`](Self::hash_one_row) is used to hash each row.
@@ -344,7 +345,7 @@ pub struct MasterBaseTable {
 
     randomized_trace_table: Array2<BFieldElement>,
     low_degree_extended_table: Option<Array2<BFieldElement>>,
-    interpolation_polynomials: Option<Array1<Polynomial<XFieldElement>>>,
+    interpolation_polynomials: Option<Array1<Polynomial<BFieldElement>>>,
 }
 
 /// See [`MasterTable`].
@@ -437,25 +438,29 @@ impl MasterTable<BFieldElement> for MasterBaseTable {
         &mut self,
         interpolation_polynomials: Array1<Polynomial<BFieldElement>>,
     ) {
-        let interpolation_polynomials = interpolation_polynomials.map(|polynomial| {
-            let coefficients = polynomial.coefficients.iter();
-            let lifted_coefficients = coefficients.map(|b| b.lift()).collect_vec();
-            Polynomial::new(lifted_coefficients)
-        });
         self.interpolation_polynomials = Some(interpolation_polynomials);
     }
 
-    fn interpolation_polynomials(&self) -> ArrayView1<Polynomial<XFieldElement>> {
+    fn interpolation_polynomials(&self) -> ArrayView1<Polynomial<BFieldElement>> {
         let Some(interpolation_polynomials) = &self.interpolation_polynomials else {
             panic!("Interpolation polynomials must be computed first.");
         };
         interpolation_polynomials.view()
     }
 
-    fn row(&self, row_index: XFieldElement) -> Array1<XFieldElement> {
+    fn out_of_domain_row(&self, indeterminate: XFieldElement) -> Array1<XFieldElement> {
+        // closure to evaluate a BField polynomial in an XField point
+        let eval = |bfp: &Polynomial<BFieldElement>, x: XFieldElement| {
+            let mut acc = XFieldElement::zero();
+            for coefficient in bfp.coefficients.iter().rev() {
+                acc *= x;
+                acc += coefficient.lift()
+            }
+            acc
+        };
         self.interpolation_polynomials()
             .into_par_iter()
-            .map(|polynomial| polynomial.evaluate(row_index))
+            .map(|polynomial| eval(polynomial, indeterminate))
             .collect::<Vec<_>>()
             .into()
     }
@@ -552,7 +557,7 @@ impl MasterTable<XFieldElement> for MasterExtTable {
         interpolation_polynomials.view()
     }
 
-    fn row(&self, row_index: XFieldElement) -> Array1<XFieldElement> {
+    fn out_of_domain_row(&self, row_index: XFieldElement) -> Array1<XFieldElement> {
         self.interpolation_polynomials()
             .slice(s![..NUM_EXT_COLUMNS])
             .into_par_iter()
