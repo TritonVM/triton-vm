@@ -311,8 +311,8 @@ where
     }
 
     fn hash_all_fri_domain_rows(&self) -> Vec<Digest> {
-        let num_threads = match std::env::var("RAYON_NUM_THREADS") {
-            Ok(str) => str.parse::<usize>().unwrap_or(1),
+        let num_threads = match std::thread::available_parallelism() {
+            Ok(num) => num.into(),
             Err(_) => 1,
         };
         let fri_domain = self.fri_domain();
@@ -331,7 +331,7 @@ where
                 .enumerate()
                 .map(|(i, sponge)| {
                     sponge.absorb_some(
-                        (0..num_threads)
+                        (0..columns.len())
                             .flat_map(|j| codewords[j * fri_domain.length + i].encode()),
                     )
                 })
