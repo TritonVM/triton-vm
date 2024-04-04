@@ -320,20 +320,19 @@ where
             .map(|_| SpongeWithPendingAbsorb::new())
             .collect_vec();
         let interpolants = self.interpolation_polynomials();
-        for columns in interpolants.axis_chunks_iter(Axis(0), num_threads) {
-            let codewords: Vec<FF> = columns
-                .axis_iter(Axis(0))
-                .into_par_iter()
-                .flat_map(|poly| fri_domain.evaluate(poly.get([]).unwrap()))
-                .collect();
+        for columns in interpolants.axis_chunks_iter(Axis(0), 2 * num_threads) {
+            let mut codewords = Array2::zeros([fri_domain.length, columns.len()]);
+            Zip::from(codewords.axis_iter_mut(Axis(1)))
+                .and(columns.axis_iter(Axis(0)))
+                .par_for_each(|codeword, polynomial| {
+                    let lde_codeword = fri_domain.evaluate(polynomial.get([]).unwrap());
+                    Array1::from(lde_codeword).move_into(codeword);
+                });
             sponge_states = sponge_states
                 .into_par_iter()
-                .enumerate()
-                .map(|(i, sponge)| {
-                    sponge.absorb_some(
-                        (0..columns.len())
-                            .flat_map(|j| codewords[j * fri_domain.length + i].encode()),
-                    )
+                .zip(codewords.axis_iter(Axis(0)).into_par_iter())
+                .map(|(sponge, row)| {
+                    sponge.absorb_some(row.to_slice().unwrap().iter().flat_map(|e| e.encode()))
                 })
                 .collect();
         }
