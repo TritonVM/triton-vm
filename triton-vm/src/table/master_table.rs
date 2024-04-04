@@ -183,9 +183,8 @@ pub enum TableId {
 /// 3. The still-empty entries in the [`MasterBaseTable`] are filled with random elements. This
 ///     step is also known as “trace randomization.”
 /// 4. Each column of the [`MasterBaseTable`] is [low-degree extended][lde]. The results are stored
-///     in the [`MasterBaseTable`]. Methods [`quotient_domain_table`][quot_table],
-///     [`fri_domain_table`][fri_table], [`interpolation_polynomials`][inter_poly], and [`row`][row]
-///     can now be used without causing panic.
+///     in the [`MasterBaseTable`]. Methods [`quotient_domain_table`][quot_table] and
+///     [`out_of_domain_row`][row] can now be used without causing panic.
 /// 5. The [`MasterBaseTable`] is used to derive the [`MasterExtensionTable`][master_ext_table]
 ///     using logic from the individual tables.
 /// 6. The [`MasterExtensionTable`][master_ext_table] is trace-randomized.
@@ -205,7 +204,6 @@ pub enum TableId {
 /// [cross_arg]: cross_table_argument::GrandCrossTableArg
 /// [lde]: Self::low_degree_extend_all_columns
 /// [quot_table]: Self::quotient_domain_table
-/// [fri_table]: Self::fri_domain_table
 /// [inter_poly]: Self::interpolation_polynomials
 /// [row]: Self::row
 /// [master_ext_table]: MasterExtTable
@@ -240,11 +238,6 @@ where
     /// [`low_degree_extend_all_columns`](Self::low_degree_extend_all_columns) first.
     fn quotient_domain_table(&self) -> ArrayView2<FF>;
 
-    /// The low-degree extended randomized trace data over the FRI domain. Includes randomizer
-    /// polynomials. Requires having called
-    /// [`low_degree_extend_all_columns`](Self::low_degree_extend_all_columns) first.
-    fn fri_domain_table(&self) -> ArrayView2<FF>;
-
     /// Set all rows _not_ part of the actual (padded) trace to random values.
     fn randomize_trace(&mut self) {
         let unit_distance = self.randomized_trace_domain().length / self.trace_domain().length;
@@ -257,13 +250,9 @@ where
 
     /// Low-degree extend all columns of the randomized trace domain table. The resulting
     /// low-degree extended columns can be accessed using
-    /// [`quotient_domain_table`](Self::quotient_domain_table) and
-    /// [`fri_domain_table`](Self::fri_domain_table).
+    /// [`quotient_domain_table`](Self::quotient_domain_table).
     fn low_degree_extend_all_columns(&mut self) {
-        let evaluation_domain = match self.fri_domain().length > self.quotient_domain().length {
-            true => self.fri_domain(),
-            false => self.quotient_domain(),
-        };
+        let evaluation_domain = self.quotient_domain();
         let randomized_trace_domain = self.randomized_trace_domain();
         let num_rows = evaluation_domain.length;
         let num_columns = self.randomized_trace_table().ncols();
@@ -484,22 +473,7 @@ impl MasterTable<BFieldElement> for MasterBaseTable {
         let Some(low_degree_extended_table) = &self.low_degree_extended_table else {
             panic!("Low-degree extended columns must be computed first.");
         };
-        if self.quotient_domain().length >= self.fri_domain().length {
-            return low_degree_extended_table.view();
-        }
-        let unit_distance = self.fri_domain().length / self.quotient_domain().length;
-        low_degree_extended_table.slice(s![..; unit_distance, ..])
-    }
-
-    fn fri_domain_table(&self) -> ArrayView2<BFieldElement> {
-        let Some(low_degree_extended_table) = &self.low_degree_extended_table else {
-            panic!("Low-degree extended columns must be computed first.");
-        };
-        if self.fri_domain().length >= self.quotient_domain().length {
-            return low_degree_extended_table.view();
-        }
-        let unit_distance = self.quotient_domain().length / self.fri_domain().length;
-        low_degree_extended_table.slice(s![..; unit_distance, ..])
+        low_degree_extended_table.view()
     }
 
     fn memoize_low_degree_extended_table(
@@ -589,22 +563,7 @@ impl MasterTable<XFieldElement> for MasterExtTable {
         let Some(low_degree_extended_table) = &self.low_degree_extended_table else {
             panic!("Low-degree extended columns must be computed first.");
         };
-        if self.quotient_domain().length >= self.fri_domain().length {
-            return low_degree_extended_table.view();
-        }
-        let unit_distance = self.fri_domain().length / self.quotient_domain().length;
-        low_degree_extended_table.slice(s![..; unit_distance, ..])
-    }
-
-    fn fri_domain_table(&self) -> ArrayView2<XFieldElement> {
-        let Some(low_degree_extended_table) = &self.low_degree_extended_table else {
-            panic!("Low-degree extended columns must be computed first.");
-        };
-        if self.fri_domain().length >= self.quotient_domain().length {
-            return low_degree_extended_table.view();
-        }
-        let unit_distance = self.quotient_domain().length / self.fri_domain().length;
-        low_degree_extended_table.slice(s![..; unit_distance, ..])
+        low_degree_extended_table.view()
     }
 
     fn memoize_low_degree_extended_table(
