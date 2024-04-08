@@ -1045,6 +1045,7 @@ pub fn all_quotients_combined(
         quotient_domain.length,
         quotient_domain_master_ext_table.nrows()
     );
+    assert_eq!(MasterExtTable::NUM_CONSTRAINTS, quotient_weights.len());
 
     let init_section_end = MasterExtTable::NUM_INITIAL_CONSTRAINTS;
     let cons_section_end = init_section_end + MasterExtTable::NUM_CONSISTENCY_CONSTRAINTS;
@@ -1060,28 +1061,22 @@ pub fn all_quotients_combined(
         terminal_quotient_zerofier_inverse(trace_domain, quotient_domain);
     prof_stop!(maybe_profiler, "zerofier inverse");
 
-    prof_start!(
-        maybe_profiler,
-        "evaluate AIR / divide zerofiers / combine quotients"
-    );
-    let dot_product =
-        |partial_row: Vec<XFieldElement>, weights: &[XFieldElement]| -> XFieldElement {
-            let pairs = partial_row.into_iter().zip_eq(weights.iter());
-            pairs.map(|(v, &w)| v * w).sum()
-        };
+    prof_start!(maybe_profiler, "evaluate AIR, compute quotient codeword");
+    let dot_product = |partial_row: Vec<_>, weights: &[_]| -> XFieldElement {
+        let pairs = partial_row.into_iter().zip_eq(weights.iter());
+        pairs.map(|(v, &w)| v * w).sum()
+    };
+
     let quotient_codeword = (0..quotient_domain.length)
         .into_par_iter()
-        .map(|row| {
-            // get views of relevant rows
+        .map(|row_index| {
             let unit_distance = quotient_domain.length / trace_domain.length;
-            let domain_length_bit_mask = quotient_domain.length - 1;
-            let next_row_index = (row + unit_distance) & domain_length_bit_mask;
-            let current_row_main = quotient_domain_master_base_table.row(row);
-            let current_row_aux = quotient_domain_master_ext_table.row(row);
+            let next_row_index = (row_index + unit_distance) % quotient_domain.length;
+            let current_row_main = quotient_domain_master_base_table.row(row_index);
+            let current_row_aux = quotient_domain_master_ext_table.row(row_index);
             let next_row_main = quotient_domain_master_base_table.row(next_row_index);
             let next_row_aux = quotient_domain_master_ext_table.row(next_row_index);
 
-            // initial constraints
             let initial_constraint_values = MasterExtTable::evaluate_initial_constraints(
                 current_row_main,
                 current_row_aux,
@@ -1091,9 +1086,8 @@ pub fn all_quotients_combined(
                 initial_constraint_values,
                 &quotient_weights[..init_section_end],
             );
-            let mut quotient_value = initial_inner_product * initial_zerofier_inverse[row];
+            let mut quotient_value = initial_inner_product * initial_zerofier_inverse[row_index];
 
-            // consistency constraints
             let consistency_constraint_values = MasterExtTable::evaluate_consistency_constraints(
                 current_row_main,
                 current_row_aux,
@@ -1103,9 +1097,8 @@ pub fn all_quotients_combined(
                 consistency_constraint_values,
                 &quotient_weights[init_section_end..cons_section_end],
             );
-            quotient_value += consistency_inner_product * consistency_zerofier_inverse[row];
+            quotient_value += consistency_inner_product * consistency_zerofier_inverse[row_index];
 
-            // transition constraints
             let transition_constraint_values = MasterExtTable::evaluate_transition_constraints(
                 current_row_main,
                 current_row_aux,
@@ -1117,9 +1110,8 @@ pub fn all_quotients_combined(
                 transition_constraint_values,
                 &quotient_weights[cons_section_end..tran_section_end],
             );
-            quotient_value += transition_inner_product * transition_zerofier_inverse[row];
+            quotient_value += transition_inner_product * transition_zerofier_inverse[row_index];
 
-            // terminal constraints
             let terminal_constraint_values = MasterExtTable::evaluate_terminal_constraints(
                 current_row_main,
                 current_row_aux,
@@ -1129,14 +1121,11 @@ pub fn all_quotients_combined(
                 terminal_constraint_values,
                 &quotient_weights[tran_section_end..],
             );
-            quotient_value += terminal_inner_product * terminal_zerofier_inverse[row];
+            quotient_value += terminal_inner_product * terminal_zerofier_inverse[row_index];
             quotient_value
         })
         .collect();
-    prof_stop!(
-        maybe_profiler,
-        "evaluate AIR / divide zerofiers / combine quotients"
-    );
+    prof_stop!(maybe_profiler, "evaluate AIR, compute quotient codeword");
 
     quotient_codeword
 }
