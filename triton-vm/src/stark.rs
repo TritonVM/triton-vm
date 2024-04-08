@@ -522,22 +522,12 @@ impl Stark {
     /// polynomials. Concretely, the maximal degree of a polynomial over the quotient domain is at
     /// most only slightly larger than the maximal degree allowed in the STARK proof, and could be
     /// equal. This makes computation for the prover much faster.
-    ///
-    /// When debugging, it is useful to check the degree of some intermediate polynomials.
-    /// However, the quotient domain's minimal length can make it impossible to check if some
-    /// operation (e.g., dividing out the zerofier) has (erroneously) increased the polynomial's
-    /// degree beyond the allowed maximum. Hence, a larger quotient domain is chosen when debugging
-    /// and testing.
     pub(crate) fn quotient_domain(
         fri_domain: ArithmeticDomain,
         max_degree: Degree,
     ) -> Result<ArithmeticDomain, ProvingError> {
-        let maybe_blowup_factor = match cfg!(debug_assertions) {
-            true => 2,
-            false => 1,
-        };
-        let domain_length = (max_degree as u64).next_power_of_two() as usize;
-        let domain_length = maybe_blowup_factor * domain_length;
+        let max_degree = usize::try_from(max_degree).expect("AIR should constrain the VM");
+        let domain_length = max_degree.next_power_of_two();
         Ok(ArithmeticDomain::of_length(domain_length)?.with_offset(fri_domain.offset))
     }
 

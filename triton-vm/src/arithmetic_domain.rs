@@ -1,6 +1,7 @@
 use std::ops::MulAssign;
 
 use num_traits::One;
+use rayon::prelude::*;
 use twenty_first::prelude::*;
 use twenty_first::shared_math::traits::FiniteField;
 use twenty_first::shared_math::traits::PrimitiveRootOfUnity;
@@ -66,7 +67,7 @@ impl ArithmeticDomain {
         FF: FiniteField + MulAssign<BFieldElement> + From<BFieldElement>,
     {
         self.domain_values()
-            .iter()
+            .par_iter()
             .map(|&v| polynomial.evaluate(&v.into()))
             .collect()
     }
