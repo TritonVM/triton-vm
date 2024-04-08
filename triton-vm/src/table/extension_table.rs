@@ -4,9 +4,8 @@ use std::fmt::Result as FmtResult;
 
 use itertools::Itertools;
 use ndarray::ArrayView1;
+use twenty_first::math::traits::FiniteField;
 use twenty_first::prelude::*;
-use twenty_first::shared_math::mpolynomial::Degree;
-use twenty_first::shared_math::traits::FiniteField;
 
 use crate::table::challenges::Challenges;
 use crate::table::master_table::MasterExtTable;
@@ -62,19 +61,19 @@ pub trait Quotientable: Evaluable<BFieldElement> {
         + Self::NUM_TRANSITION_CONSTRAINTS
         + Self::NUM_TERMINAL_CONSTRAINTS;
 
-    fn initial_quotient_degree_bounds(interpolant_degree: Degree) -> Vec<Degree>;
+    fn initial_quotient_degree_bounds(interpolant_degree: isize) -> Vec<isize>;
 
     fn consistency_quotient_degree_bounds(
-        interpolant_degree: Degree,
+        interpolant_degree: isize,
         padded_height: usize,
-    ) -> Vec<Degree>;
+    ) -> Vec<isize>;
 
     fn transition_quotient_degree_bounds(
-        interpolant_degree: Degree,
+        interpolant_degree: isize,
         padded_height: usize,
-    ) -> Vec<Degree>;
+    ) -> Vec<isize>;
 
-    fn terminal_quotient_degree_bounds(interpolant_degree: Degree) -> Vec<Degree>;
+    fn terminal_quotient_degree_bounds(interpolant_degree: isize) -> Vec<isize>;
 }
 
 /// The type of constraint. Can be used to determine the degree bounds for the quotient
@@ -103,9 +102,9 @@ impl Display for ConstraintType {
 /// of the FRI domain, which in turn is responsible for the main performance bottleneck.
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub(crate) struct DegreeWithOrigin {
-    pub degree: Degree,
-    pub interpolant_degree: Degree,
-    pub zerofier_degree: Degree,
+    pub degree: isize,
+    pub interpolant_degree: isize,
+    pub zerofier_degree: isize,
     pub origin_index: usize,
     pub origin_table_height: usize,
     pub origin_constraint_type: ConstraintType,
@@ -127,7 +126,7 @@ impl Display for DegreeWithOrigin {
 
 /// Compute the degrees of the quotients from all AIR constraints that apply to the table.
 pub(crate) fn all_degrees_with_origin(
-    interpolant_degree: Degree,
+    interpolant_degree: isize,
     padded_height: usize,
 ) -> Vec<DegreeWithOrigin> {
     let initial_degrees_with_origin =
@@ -151,7 +150,7 @@ pub(crate) fn all_degrees_with_origin(
             .map(|(origin_index, degree)| DegreeWithOrigin {
                 degree,
                 interpolant_degree,
-                zerofier_degree: padded_height as Degree,
+                zerofier_degree: padded_height as isize,
                 origin_index,
                 origin_table_height: padded_height,
                 origin_constraint_type: ConstraintType::Consistency,
@@ -165,7 +164,7 @@ pub(crate) fn all_degrees_with_origin(
             .map(|(origin_index, degree)| DegreeWithOrigin {
                 degree,
                 interpolant_degree,
-                zerofier_degree: padded_height as Degree - 1,
+                zerofier_degree: padded_height as isize - 1,
                 origin_index,
                 origin_table_height: padded_height,
                 origin_constraint_type: ConstraintType::Transition,

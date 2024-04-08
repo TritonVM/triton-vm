@@ -1041,7 +1041,7 @@ pub(crate) mod tests {
     use strum::EnumIter;
     use strum::IntoEnumIterator;
     use test_strategy::proptest;
-    use twenty_first::shared_math::other::random_elements;
+    use twenty_first::math::other::random_elements;
 
     use crate::example_programs::*;
     use crate::op_stack::NumberOfWords::*;

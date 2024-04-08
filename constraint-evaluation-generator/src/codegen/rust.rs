@@ -51,31 +51,31 @@ impl Codegen for RustBackend {
             const NUM_TERMINAL_CONSTRAINTS: usize = #num_term_constraints;
 
             #[allow(unused_variables)]
-            fn initial_quotient_degree_bounds(interpolant_degree: Degree) -> Vec<Degree> {
+            fn initial_quotient_degree_bounds(interpolant_degree: isize) -> Vec<isize> {
                 let zerofier_degree = 1;
                 [#init_constraint_degrees].to_vec()
             }
 
             #[allow(unused_variables)]
             fn consistency_quotient_degree_bounds(
-                interpolant_degree: Degree,
+                interpolant_degree: isize,
                 padded_height: usize,
-            ) -> Vec<Degree> {
-                let zerofier_degree = padded_height as Degree;
+            ) -> Vec<isize> {
+                let zerofier_degree = padded_height as isize;
                 [#cons_constraint_degrees].to_vec()
             }
 
             #[allow(unused_variables)]
             fn transition_quotient_degree_bounds(
-                interpolant_degree: Degree,
+                interpolant_degree: isize,
                 padded_height: usize,
-            ) -> Vec<Degree> {
-                let zerofier_degree = padded_height as Degree - 1;
+            ) -> Vec<isize> {
+                let zerofier_degree = padded_height as isize - 1;
                 [#tran_constraint_degrees].to_vec()
             }
 
             #[allow(unused_variables)]
-            fn terminal_quotient_degree_bounds(interpolant_degree: Degree) -> Vec<Degree> {
+            fn terminal_quotient_degree_bounds(interpolant_degree: isize) -> Vec<isize> {
                 let zerofier_degree = 1;
                 [#term_constraint_degrees].to_vec()
             }
@@ -97,7 +97,6 @@ impl RustBackend {
             use ndarray::ArrayView1;
             use twenty_first::prelude::BFieldElement;
             use twenty_first::prelude::XFieldElement;
-            use twenty_first::shared_math::mpolynomial::Degree;
 
             use crate::table::challenges::Challenges;
             use crate::table::extension_table::Evaluable;

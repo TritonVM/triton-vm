@@ -9,9 +9,8 @@ use ndarray::Zip;
 use rayon::prelude::*;
 use serde::Deserialize;
 use serde::Serialize;
+use twenty_first::math::traits::FiniteField;
 use twenty_first::prelude::*;
-use twenty_first::shared_math::mpolynomial::Degree;
-use twenty_first::shared_math::traits::FiniteField;
 
 use crate::aet::AlgebraicExecutionTrace;
 use crate::arithmetic_domain::ArithmeticDomain;
@@ -524,7 +523,7 @@ impl Stark {
     /// equal. This makes computation for the prover much faster.
     pub(crate) fn quotient_domain(
         fri_domain: ArithmeticDomain,
-        max_degree: Degree,
+        max_degree: isize,
     ) -> Result<ArithmeticDomain, ProvingError> {
         let max_degree = usize::try_from(max_degree).expect("AIR should constrain the VM");
         let domain_length = max_degree.next_power_of_two();
@@ -534,7 +533,7 @@ impl Stark {
     /// Compute the upper bound to use for the maximum degree the quotients given the length of the
     /// trace and the number of trace randomizers.
     /// The degree of the quotients depends on the constraints, _i.e._, the AIR.
-    pub fn derive_max_degree(&self, padded_height: usize) -> Degree {
+    pub fn derive_max_degree(&self, padded_height: usize) -> isize {
         let interpolant_degree = interpolant_degree(padded_height, self.num_trace_randomizers);
         let max_constraint_degree_with_origin =
             max_degree_with_origin(interpolant_degree, padded_height);
@@ -544,7 +543,7 @@ impl Stark {
         let max_degree_supported_by_that_smallest_arithmetic_domain =
             min_arithmetic_domain_length_supporting_max_constraint_degree - 1;
 
-        max_degree_supported_by_that_smallest_arithmetic_domain as Degree
+        max_degree_supported_by_that_smallest_arithmetic_domain as isize
     }
 
     /// Compute the parameters for FRI. The length of the FRI domain, _i.e._, the number of
@@ -1072,8 +1071,8 @@ pub(crate) mod tests {
     use rand::Rng;
     use strum::EnumCount;
     use test_strategy::proptest;
+    use twenty_first::math::other::random_elements;
     use twenty_first::prelude::x_field_element::EXTENSION_DEGREE;
-    use twenty_first::shared_math::other::random_elements;
 
     use crate::error::InstructionError;
     use crate::example_programs::*;

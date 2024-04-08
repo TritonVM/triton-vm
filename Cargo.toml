@@ -43,7 +43,7 @@ proptest-arbitrary-interop = "0.1"
 quote = "1.0"
 rand = "0.8.5"
 rand_core = "0.6.4"
-rayon = "1.8"
+rayon = "1.10"
 serde = { version = "1", features = ["derive"] }
 serde_derive = "1"
 serde_json = "1.0"
@@ -51,7 +51,7 @@ strum = { version = "0.26", features = ["derive"] }
 syn = "2.0"
 test-strategy = "0.3.1"
 thiserror = "1.0"
-twenty-first = "0.38"
+twenty-first = "0.39"
 unicode-width = "0.1"
 
 [workspace.lints.clippy]
