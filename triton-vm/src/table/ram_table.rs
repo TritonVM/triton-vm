@@ -1,5 +1,4 @@
 use std::cmp::Ordering;
-use std::ops::Mul;
 
 use arbitrary::Arbitrary;
 use itertools::Itertools;
@@ -14,8 +13,8 @@ use num_traits::One;
 use num_traits::Zero;
 use serde_derive::*;
 use strum::EnumCount;
+use twenty_first::math::traits::FiniteField;
 use twenty_first::prelude::*;
-use twenty_first::shared_math::traits::FiniteField;
 
 use crate::aet::AlgebraicExecutionTrace;
 use crate::table::challenges::ChallengeId::*;
@@ -136,67 +135,17 @@ impl RamTable {
         debug_assert!(unique_roots.iter().all_unique());
         let rp = Polynomial::zerofier(unique_roots);
         let fd = rp.formal_derivative();
-        let fd_in_roots = fd.fast_evaluate(unique_roots);
+        let fd_in_roots = fd.batch_evaluate(unique_roots);
         let b_in_roots = BFieldElement::batch_inversion(fd_in_roots);
-        let b = Polynomial::fast_interpolate(unique_roots, &b_in_roots);
+        let b = Polynomial::interpolate(unique_roots, &b_in_roots);
         let one_minus_fd_b = Polynomial::one() - fd.fast_multiply(&b);
-        let a = Self::poly_fast_divide(one_minus_fd_b, rp);
+        let a = one_minus_fd_b.clean_divide(rp);
 
         let mut coefficients_0 = a.coefficients;
         let mut coefficients_1 = b.coefficients;
         coefficients_0.resize(unique_roots.len(), bfe!(0));
         coefficients_1.resize(unique_roots.len(), bfe!(0));
         (coefficients_0, coefficients_1)
-    }
-
-    /// Like [`Polynomial::fast_divide`] but circumventing some of its incompleteness problems.
-    ///
-    /// Has its own problems and is only properly tested for inputs specific to the domain of the
-    /// RAM table. For example: Division **must** be clean, _i.e._, the remainder must be zero.
-    /// Other problems might exist; use this code in other domains at your own peril.
-    #[must_use]
-    fn poly_fast_divide(
-        mut dividend: Polynomial<BFieldElement>,
-        mut divisor: Polynomial<BFieldElement>,
-    ) -> Polynomial<BFieldElement> {
-        // Incompleteness workaround: Manually check whether 0 is a root of the divisor.
-        // f(0) == 0 <=> f's constant term is 0
-        let constant_term = divisor.coefficients.first();
-        if constant_term.is_some_and(BFieldElement::is_zero) {
-            // Division has to be clean, i.e., the dividend also has to have 0 as a root.
-            assert_eq!(0, dividend.coefficients[0].value());
-            dividend.coefficients.remove(0);
-            divisor.coefficients.remove(0);
-        }
-
-        // Incompleteness workaround: Move both dividend and divisor to an extension field.
-        let offset = xfe!([0, 1, 0]);
-        let dividend = Self::poly_scale(dividend, offset);
-        let divisor = Self::poly_scale(divisor, offset);
-
-        let quotient = dividend.fast_divide(&divisor);
-
-        // If the division was clean, “unscaling” brings all coefficients back to the base field.
-        let quotient = Self::poly_scale(quotient, offset.inverse());
-        let coeffs = quotient.coefficients.into_iter();
-        coeffs.map(|c| c.unlift().unwrap()).collect_vec().into()
-    }
-
-    /// See [`Polynomial::scale`]. Somewhat generalizes over the method as available in v0.38;
-    /// This method should be removed once `twenty-first` v0.39 is available.
-    #[must_use]
-    pub fn poly_scale<BF, XF>(poly: Polynomial<BF>, alpha: XF) -> Polynomial<XF>
-    where
-        BF: FiniteField + Mul<XF, Output = XF>,
-        XF: FiniteField,
-    {
-        let mut power_of_alpha = XF::one();
-        let mut return_coefficients = Vec::with_capacity(poly.coefficients.len());
-        for coefficient in poly.coefficients {
-            return_coefficients.push(coefficient * power_of_alpha);
-            power_of_alpha *= alpha;
-        }
-        Polynomial::new(return_coefficients)
     }
 
     /// - Set inverse of RAM pointer difference
@@ -581,72 +530,11 @@ impl ExtRamTable {
 
 #[cfg(test)]
 pub(crate) mod tests {
-    use proptest::collection::vec;
     use proptest::prelude::*;
     use proptest_arbitrary_interop::arb;
     use test_strategy::proptest;
 
     use super::*;
-
-    #[proptest]
-    fn poly_fast_divide_agrees_with_divide_on_clean_division(
-        #[strategy(arb())] a: Polynomial<BFieldElement>,
-        #[strategy(arb())]
-        #[filter(!#b.is_zero())]
-        b: Polynomial<BFieldElement>,
-    ) {
-        let product = a.clone() * b.clone();
-        let quotient = RamTable::poly_fast_divide(product.clone(), b.clone());
-        prop_assert_eq!(product / b, quotient);
-    }
-
-    #[proptest]
-    fn poly_fast_divide_agrees_with_division_if_divisor_has_only_0_as_root(
-        #[strategy(arb())] mut dividend_roots: Vec<BFieldElement>,
-    ) {
-        dividend_roots.push(bfe!(0));
-        let dividend = Polynomial::zerofier(&dividend_roots);
-        let divisor = Polynomial::zerofier(&[bfe!(0)]);
-        let quotient = RamTable::poly_fast_divide(dividend.clone(), divisor.clone());
-        prop_assert_eq!(dividend / divisor, quotient);
-    }
-
-    #[proptest]
-    fn poly_fast_divide_agrees_with_division_if_divisor_has_0_as_root(
-        #[strategy(arb())] mut dividend_roots: Vec<BFieldElement>,
-        #[strategy(vec(0..#dividend_roots.len(), 0..=#dividend_roots.len()))]
-        divisor_root_indices: Vec<usize>,
-    ) {
-        // ensure clean division: make divisor's roots a subset of dividend's roots
-        let mut divisor_roots = divisor_root_indices
-            .into_iter()
-            .unique()
-            .map(|i| dividend_roots[i])
-            .collect_vec();
-
-        // ensure clean division: make 0 a root of both dividend and divisor
-        dividend_roots.push(bfe!(0));
-        divisor_roots.push(bfe!(0));
-
-        let dividend = Polynomial::zerofier(&dividend_roots);
-        let divisor = Polynomial::zerofier(&divisor_roots);
-        let quotient = RamTable::poly_fast_divide(dividend.clone(), divisor.clone());
-        prop_assert_eq!(dividend / divisor, quotient);
-    }
-
-    #[proptest]
-    fn poly_fast_divide_agrees_with_division_if_divisor_has_0_through_9_as_roots(
-        #[strategy(arb())] additional_dividend_roots: Vec<BFieldElement>,
-    ) {
-        let divisor_roots = (0..10).map(BFieldElement::new).collect_vec();
-        let divisor = Polynomial::zerofier(&divisor_roots);
-        let dividend_roots = [additional_dividend_roots, divisor_roots].concat();
-        let dividend = Polynomial::zerofier(&dividend_roots);
-        dbg!(dividend.to_string());
-        dbg!(divisor.to_string());
-        let quotient = RamTable::poly_fast_divide(dividend.clone(), divisor.clone());
-        prop_assert_eq!(dividend / divisor, quotient);
-    }
 
     #[proptest]
     fn ram_table_call_can_be_converted_to_table_row(

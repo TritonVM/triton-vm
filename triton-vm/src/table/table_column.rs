@@ -50,14 +50,14 @@ pub enum ProgramBaseTableColumn {
     /// [`Address`] modulo [`Rate`].
     ///
     /// [`Address`]: ProgramBaseTableColumn::Address
-    /// [`Rate`]: twenty_first::shared_math::tip5::RATE
+    /// [`Rate`]: twenty_first::math::tip5::RATE
     IndexInChunk,
 
     /// The inverse-or-zero of [`Rate`] - 1 - [`IndexInChunk`].
     /// Helper variable to guarantee [`IndexInChunk`]'s correct transition.
     ///
     /// [`IndexInChunk`]: ProgramBaseTableColumn::IndexInChunk
-    /// [`Rate`]: twenty_first::shared_math::tip5::RATE
+    /// [`Rate`]: twenty_first::math::tip5::RATE
     MaxMinusIndexInChunkInv,
 
     /// Padding indicator for absorbing the program into the Sponge.
@@ -82,7 +82,7 @@ pub enum ProgramExtTableColumn {
     /// Resets to zero after each chunk.
     /// Relevant for program attestation.
     ///
-    /// [rate]: twenty_first::shared_math::tip5::RATE
+    /// [rate]: twenty_first::math::tip5::RATE
     PrepareChunkRunningEvaluation,
 
     /// An evaluation argument over all [`RATE`][rate]-sized chunks of instructions,
@@ -92,7 +92,7 @@ pub enum ProgramExtTableColumn {
     ///
     /// The counterpart to [`RcvChunkEvalArg`](HashExtTableColumn::ReceiveChunkRunningEvaluation).
     ///
-    /// [rate]: twenty_first::shared_math::tip5::RATE
+    /// [rate]: twenty_first::math::tip5::RATE
     /// [prep]: ProgramExtTableColumn::PrepareChunkRunningEvaluation
     SendChunkRunningEvaluation,
 }
@@ -354,7 +354,7 @@ pub enum HashExtTableColumn {
     ///
     /// The counterpart to [`SendChunkEvalArg`](ProgramExtTableColumn::SendChunkRunningEvaluation).
     ///
-    /// [rate]: twenty_first::shared_math::tip5::RATE
+    /// [rate]: twenty_first::math::tip5::RATE
     ReceiveChunkRunningEvaluation,
 
     HashInputRunningEvaluation,

@@ -5,6 +5,7 @@
 //! `use triton_vm::twenty_first::prelude::*;`.
 
 pub use twenty_first;
+pub use twenty_first::math::traits::FiniteField;
 pub use twenty_first::prelude::bfe;
 pub use twenty_first::prelude::tip5;
 pub use twenty_first::prelude::xfe;
@@ -13,7 +14,6 @@ pub use twenty_first::prelude::BFieldElement;
 pub use twenty_first::prelude::Digest;
 pub use twenty_first::prelude::Tip5;
 pub use twenty_first::prelude::XFieldElement;
-pub use twenty_first::shared_math::traits::FiniteField;
 
 pub use crate::error::InstructionError;
 pub use crate::instruction::LabelledInstruction;

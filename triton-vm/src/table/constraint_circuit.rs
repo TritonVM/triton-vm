@@ -32,7 +32,6 @@ use num_traits::Zero;
 use quote::quote;
 use quote::ToTokens;
 use twenty_first::prelude::*;
-use twenty_first::shared_math::mpolynomial::Degree;
 
 use CircuitExpression::*;
 
@@ -428,7 +427,7 @@ impl<II: InputIndicator> ConstraintCircuit<II> {
     }
 
     /// Return degree of the multivariate polynomial represented by this circuit
-    pub fn degree(&self) -> Degree {
+    pub fn degree(&self) -> isize {
         if self.is_zero() {
             return -1;
         }
@@ -766,7 +765,7 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
     /// when a tables' constraints are built using the master table's column indices.
     pub fn lower_to_degree(
         multicircuit: &mut [Self],
-        target_degree: Degree,
+        target_degree: isize,
         num_base_cols: usize,
         num_ext_cols: usize,
     ) -> (Vec<Self>, Vec<Self>) {
@@ -825,7 +824,7 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
     /// variable. The ID of the chosen node is returned.
     fn pick_node_to_substitute(
         multicircuit: &[ConstraintCircuitMonad<II>],
-        target_degree: Degree,
+        target_degree: isize,
     ) -> usize {
         assert!(!multicircuit.is_empty());
 
@@ -899,7 +898,7 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
     }
 
     /// Returns the maximum degree of all circuits in the multicircuit.
-    fn multicircuit_degree(multicircuit: &[ConstraintCircuitMonad<II>]) -> Degree {
+    fn multicircuit_degree(multicircuit: &[ConstraintCircuitMonad<II>]) -> isize {
         multicircuit
             .iter()
             .map(|circuit| circuit.circuit.borrow().degree())
@@ -1915,7 +1914,7 @@ mod tests {
     /// - the numbers of original and new constraints
     fn lower_degree_and_assert_properties<II: InputIndicator>(
         multicircuit: &mut [ConstraintCircuitMonad<II>],
-        target_deg: Degree,
+        target_deg: isize,
         num_base_cols: usize,
         num_ext_cols: usize,
     ) -> (

@@ -15,9 +15,8 @@ use rand::random;
 use strum::Display;
 use strum::EnumCount;
 use strum::EnumIter;
+use twenty_first::math::traits::FiniteField;
 use twenty_first::prelude::*;
-use twenty_first::shared_math::mpolynomial::Degree;
-use twenty_first::shared_math::traits::FiniteField;
 
 use crate::aet::AlgebraicExecutionTrace;
 use crate::arithmetic_domain::ArithmeticDomain;
@@ -64,7 +63,7 @@ use crate::table::*;
 /// The new variables introduced by the degree lowering step are called “derived columns.”
 /// They are added to the [`DegreeLoweringTable`], whose sole purpose is to store the values
 /// of these derived columns.
-pub const AIR_TARGET_DEGREE: Degree = 4;
+pub const AIR_TARGET_DEGREE: isize = 4;
 
 /// The total number of base columns across all tables.
 pub const NUM_BASE_COLUMNS: usize = program_table::BASE_WIDTH
@@ -950,7 +949,7 @@ impl MasterExtTable {
 }
 
 pub(crate) fn max_degree_with_origin(
-    interpolant_degree: Degree,
+    interpolant_degree: isize,
     padded_height: usize,
 ) -> DegreeWithOrigin {
     all_degrees_with_origin(interpolant_degree, padded_height)
@@ -1117,8 +1116,8 @@ pub fn randomized_padded_trace_len(padded_height: usize, num_trace_randomizers: 
     total_table_length.next_power_of_two()
 }
 
-pub fn interpolant_degree(padded_height: usize, num_trace_randomizers: usize) -> Degree {
-    (randomized_padded_trace_len(padded_height, num_trace_randomizers) - 1) as Degree
+pub fn interpolant_degree(padded_height: usize, num_trace_randomizers: usize) -> isize {
+    (randomized_padded_trace_len(padded_height, num_trace_randomizers) - 1) as isize
 }
 
 #[cfg(test)]
@@ -1128,8 +1127,8 @@ mod tests {
     use num_traits::Zero;
     use strum::EnumCount;
     use strum::IntoEnumIterator;
-    use twenty_first::shared_math::b_field_element::BFieldElement;
-    use twenty_first::shared_math::traits::FiniteField;
+    use twenty_first::math::b_field_element::BFieldElement;
+    use twenty_first::math::traits::FiniteField;
 
     use crate::arithmetic_domain::ArithmeticDomain;
     use crate::shared_tests::ProgramAndInput;

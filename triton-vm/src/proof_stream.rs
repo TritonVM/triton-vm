@@ -124,7 +124,7 @@ mod tests {
     use proptest::collection::vec;
     use proptest_arbitrary_interop::arb;
     use test_strategy::proptest;
-    use twenty_first::shared_math::other::random_elements;
+    use twenty_first::math::other::random_elements;
 
     use crate::proof_item::FriResponse;
     use crate::proof_item::ProofItem;

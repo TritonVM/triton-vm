@@ -2,9 +2,8 @@ use std::marker::PhantomData;
 
 use itertools::Itertools;
 use rayon::iter::*;
+use twenty_first::math::traits::FiniteField;
 use twenty_first::prelude::*;
-use twenty_first::shared_math::other::log_2_ceil;
-use twenty_first::shared_math::traits::FiniteField;
 
 use crate::arithmetic_domain::ArithmeticDomain;
 use crate::error::FriProvingError;
@@ -626,14 +625,15 @@ impl<H: AlgebraicHasher> Fri<H> {
 
     pub fn num_rounds(&self) -> usize {
         let first_round_code_dimension = self.first_round_max_degree() + 1;
-        let max_num_rounds = log_2_ceil(first_round_code_dimension as u128);
+        let max_num_rounds = first_round_code_dimension.next_power_of_two().ilog2();
 
         // Skip rounds for which Merkle tree verification cost exceeds arithmetic cost,
         // because more than half the codeword's locations are queried.
-        let num_rounds_checking_all_locations = u64::from(self.num_collinearity_checks.ilog2());
+        let num_rounds_checking_all_locations = self.num_collinearity_checks.ilog2();
         let num_rounds_checking_most_locations = num_rounds_checking_all_locations + 1;
 
-        max_num_rounds.saturating_sub(num_rounds_checking_most_locations) as usize
+        let num_rounds = max_num_rounds.saturating_sub(num_rounds_checking_most_locations);
+        num_rounds.try_into().unwrap()
     }
 
     pub fn last_round_max_degree(&self) -> usize {

@@ -1,9 +1,9 @@
 use std::ops::MulAssign;
 
 use num_traits::One;
+use twenty_first::math::traits::FiniteField;
+use twenty_first::math::traits::PrimitiveRootOfUnity;
 use twenty_first::prelude::*;
-use twenty_first::shared_math::traits::FiniteField;
-use twenty_first::shared_math::traits::PrimitiveRootOfUnity;
 
 use crate::error::ArithmeticDomainError;
 
@@ -55,9 +55,10 @@ impl ArithmeticDomain {
     {
         // The limitation arises in `Polynomial::fast_coset_evaluate` in dependency `twenty-first`.
         let batch_evaluation_is_possible = self.length >= polynomial.coefficients.len();
-        match batch_evaluation_is_possible {
-            true => polynomial.fast_coset_evaluate(self.offset, self.generator, self.length),
-            false => self.evaluate_in_every_point_individually(polynomial),
+        if batch_evaluation_is_possible {
+            polynomial.fast_coset_evaluate(self.offset.into(), self.generator, self.length)
+        } else {
+            self.evaluate_in_every_point_individually(polynomial)
         }
     }
 
@@ -73,9 +74,9 @@ impl ArithmeticDomain {
 
     pub fn interpolate<FF>(&self, values: &[FF]) -> Polynomial<FF>
     where
-        FF: FiniteField + MulAssign<BFieldElement>,
+        FF: FiniteField + MulAssign<BFieldElement> + From<BFieldElement>,
     {
-        Polynomial::fast_coset_interpolate(self.offset, self.generator, values)
+        Polynomial::fast_coset_interpolate(self.offset.into(), self.generator, values)
     }
 
     pub fn low_degree_extension<FF>(&self, codeword: &[FF], target_domain: Self) -> Vec<FF>
