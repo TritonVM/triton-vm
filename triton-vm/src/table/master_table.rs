@@ -1,3 +1,4 @@
+use std::ops::Mul;
 use std::ops::MulAssign;
 use std::ops::Range;
 
@@ -207,7 +208,10 @@ pub enum TableId {
 /// [master_quot_table]: all_quotients
 pub trait MasterTable<FF>: Sync
 where
-    FF: FiniteField + MulAssign<BFieldElement> + From<BFieldElement>,
+    FF: FiniteField
+        + MulAssign<BFieldElement>
+        + Mul<BFieldElement, Output = FF>
+        + From<BFieldElement>,
     Standard: Distribution<FF>,
 {
     fn trace_domain(&self) -> ArithmeticDomain;

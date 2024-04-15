@@ -1,3 +1,4 @@
+use std::ops::Mul;
 use std::ops::MulAssign;
 
 use num_traits::One;
@@ -74,14 +75,21 @@ impl ArithmeticDomain {
 
     pub fn interpolate<FF>(&self, values: &[FF]) -> Polynomial<FF>
     where
-        FF: FiniteField + MulAssign<BFieldElement> + From<BFieldElement>,
+        FF: FiniteField
+            + MulAssign<BFieldElement>
+            + Mul<BFieldElement, Output = FF>
+            + From<BFieldElement>,
     {
-        Polynomial::fast_coset_interpolate(self.offset.into(), self.generator, values)
+        // generic type made explicit to avoid performance regressions due to auto-conversion
+        Polynomial::fast_coset_interpolate::<BFieldElement>(self.offset, self.generator, values)
     }
 
     pub fn low_degree_extension<FF>(&self, codeword: &[FF], target_domain: Self) -> Vec<FF>
     where
-        FF: FiniteField + MulAssign<BFieldElement> + From<BFieldElement>,
+        FF: FiniteField
+            + MulAssign<BFieldElement>
+            + Mul<BFieldElement, Output = FF>
+            + From<BFieldElement>,
     {
         target_domain.evaluate(&self.interpolate(codeword))
     }
