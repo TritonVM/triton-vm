@@ -1,7 +1,8 @@
+use itertools::Itertools;
+use std::ops::Mul;
 use std::ops::MulAssign;
 
 use num_traits::One;
-use rayon::prelude::*;
 use twenty_first::math::traits::FiniteField;
 use twenty_first::math::traits::PrimitiveRootOfUnity;
 use twenty_first::prelude::*;
@@ -52,37 +53,37 @@ impl ArithmeticDomain {
 
     pub fn evaluate<FF>(&self, polynomial: &Polynomial<FF>) -> Vec<FF>
     where
-        FF: FiniteField + MulAssign<BFieldElement> + From<BFieldElement>,
+        FF: FiniteField
+            + MulAssign<BFieldElement>
+            + Mul<BFieldElement, Output = FF>
+            + From<BFieldElement>,
     {
         // The limitation arises in `Polynomial::fast_coset_evaluate` in dependency `twenty-first`.
         let batch_evaluation_is_possible = self.length >= polynomial.coefficients.len();
         if batch_evaluation_is_possible {
-            polynomial.fast_coset_evaluate(self.offset.into(), self.generator, self.length)
+            let (offset, generator, length) = (self.offset, self.generator, self.length);
+            polynomial.fast_coset_evaluate::<BFieldElement>(offset, generator, length)
         } else {
-            self.evaluate_in_every_point_individually(polynomial)
+            let domain_values = self.domain_values().into_iter();
+            let domain_values = domain_values.map(FF::from).collect_vec();
+            polynomial.batch_evaluate(&domain_values)
         }
-    }
-
-    fn evaluate_in_every_point_individually<FF>(&self, polynomial: &Polynomial<FF>) -> Vec<FF>
-    where
-        FF: FiniteField + MulAssign<BFieldElement> + From<BFieldElement>,
-    {
-        self.domain_values()
-            .par_iter()
-            .map(|&v| polynomial.evaluate(&v.into()))
-            .collect()
     }
 
     pub fn interpolate<FF>(&self, values: &[FF]) -> Polynomial<FF>
     where
-        FF: FiniteField + MulAssign<BFieldElement> + From<BFieldElement>,
+        FF: FiniteField + MulAssign<BFieldElement> + Mul<BFieldElement, Output = FF>,
     {
-        Polynomial::fast_coset_interpolate(self.offset.into(), self.generator, values)
+        // generic type made explicit to avoid performance regressions due to auto-conversion
+        Polynomial::fast_coset_interpolate::<BFieldElement>(self.offset, self.generator, values)
     }
 
     pub fn low_degree_extension<FF>(&self, codeword: &[FF], target_domain: Self) -> Vec<FF>
     where
-        FF: FiniteField + MulAssign<BFieldElement> + From<BFieldElement>,
+        FF: FiniteField
+            + MulAssign<BFieldElement>
+            + Mul<BFieldElement, Output = FF>
+            + From<BFieldElement>,
     {
         target_domain.evaluate(&self.interpolate(codeword))
     }
@@ -228,7 +229,7 @@ mod tests {
             // Verify that batch-evaluated values match a manual evaluation
             for i in 0..order {
                 assert_eq!(
-                    poly.evaluate(&b_domain.domain_value(i as u32)),
+                    poly.evaluate(b_domain.domain_value(i as u32)),
                     values[i as usize]
                 );
             }

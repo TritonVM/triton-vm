@@ -1,3 +1,4 @@
+use std::ops::Mul;
 use std::ops::MulAssign;
 use std::ops::Range;
 
@@ -206,7 +207,10 @@ pub enum TableId {
 /// [master_quot_table]: all_quotients_combined
 pub trait MasterTable<FF>: Sync
 where
-    FF: FiniteField + MulAssign<BFieldElement> + From<BFieldElement>,
+    FF: FiniteField
+        + MulAssign<BFieldElement>
+        + Mul<BFieldElement, Output = FF>
+        + From<BFieldElement>,
     Standard: Distribution<FF>,
 {
     fn trace_domain(&self) -> ArithmeticDomain;
@@ -451,7 +455,7 @@ impl MasterTable<BFieldElement> for MasterBaseTable {
     fn row(&self, row_index: XFieldElement) -> Array1<XFieldElement> {
         self.interpolation_polynomials()
             .into_par_iter()
-            .map(|polynomial| polynomial.evaluate(&row_index))
+            .map(|polynomial| polynomial.evaluate(row_index))
             .collect::<Vec<_>>()
             .into()
     }
@@ -552,7 +556,7 @@ impl MasterTable<XFieldElement> for MasterExtTable {
         self.interpolation_polynomials()
             .slice(s![..NUM_EXT_COLUMNS])
             .into_par_iter()
-            .map(|polynomial| polynomial.evaluate(&row_index))
+            .map(|polynomial| polynomial.evaluate(row_index))
             .collect::<Vec<_>>()
             .into()
     }
@@ -1287,7 +1291,7 @@ mod tests {
         assert_eq!(big_order as usize, initial_zerofier_inv.len());
         assert_eq!(1, initial_zerofier_poly.degree());
         assert!(initial_zerofier_poly
-            .evaluate(&small_domain.domain_value(0))
+            .evaluate(small_domain.domain_value(0))
             .is_zero());
 
         let consistency_zerofier_inv =
@@ -1298,7 +1302,7 @@ mod tests {
         assert_eq!(big_order as usize, consistency_zerofier_inv.len());
         assert_eq!(small_order as isize, consistency_zerofier_poly.degree());
         for val in small_domain.domain_values() {
-            assert!(consistency_zerofier_poly.evaluate(&val).is_zero());
+            assert!(consistency_zerofier_poly.evaluate(val).is_zero());
         }
 
         let transition_zerofier_inv =
@@ -1307,7 +1311,7 @@ mod tests {
         let transition_zerofier_poly = big_domain.interpolate(&transition_zerofier);
         assert_eq!(big_order as usize, transition_zerofier_inv.len());
         assert_eq!(small_order as isize - 1, transition_zerofier_poly.degree());
-        for val in small_domain
+        for &val in small_domain
             .domain_values()
             .iter()
             .take(small_order as usize - 1)
@@ -1321,7 +1325,7 @@ mod tests {
         assert_eq!(big_order as usize, terminal_zerofier_inv.len());
         assert_eq!(1, terminal_zerofier_poly.degree());
         assert!(terminal_zerofier_poly
-            .evaluate(&small_domain.domain_value(small_order as u32 - 1))
+            .evaluate(small_domain.domain_value(small_order as u32 - 1))
             .is_zero());
     }
 

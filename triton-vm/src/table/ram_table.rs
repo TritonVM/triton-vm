@@ -13,6 +13,7 @@ use num_traits::One;
 use num_traits::Zero;
 use serde_derive::*;
 use strum::EnumCount;
+use twenty_first::math::traits::FiniteField;
 use twenty_first::prelude::*;
 
 use crate::aet::AlgebraicExecutionTrace;
@@ -31,8 +32,8 @@ pub const BASE_WIDTH: usize = RamBaseTableColumn::COUNT;
 pub const EXT_WIDTH: usize = RamExtTableColumn::COUNT;
 pub const FULL_WIDTH: usize = BASE_WIDTH + EXT_WIDTH;
 
-pub const INSTRUCTION_TYPE_WRITE: BFieldElement = b_field_element::BFIELD_ZERO;
-pub const INSTRUCTION_TYPE_READ: BFieldElement = b_field_element::BFIELD_ONE;
+pub const INSTRUCTION_TYPE_WRITE: BFieldElement = BFieldElement::new(0);
+pub const INSTRUCTION_TYPE_READ: BFieldElement = BFieldElement::new(1);
 pub const PADDING_INDICATOR: BFieldElement = BFieldElement::new(2);
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Serialize, Deserialize, Arbitrary)]
@@ -79,9 +80,10 @@ impl RamTable {
         for (row_index, row) in sorted_rows.enumerate() {
             ram_table.row_mut(row_index).assign(&row);
         }
-
+        let all_ram_pointers = ram_table.column(RamPointer.base_table_index());
+        let unique_ram_pointers = all_ram_pointers.iter().unique().copied().collect_vec();
         let (bezout_0, bezout_1) =
-            Self::bezout_coefficient_polynomials_coefficients(ram_table.view());
+            Self::bezout_coefficient_polynomials_coefficients(&unique_ram_pointers);
 
         Self::make_ram_table_consistent(&mut ram_table, bezout_0, bezout_1)
     }
@@ -101,37 +103,49 @@ impl RamTable {
         compare_ram_pointers.then(compare_clocks)
     }
 
-    fn bezout_coefficient_polynomials_coefficients(
-        ram_table: ArrayView2<BFieldElement>,
+    /// Compute the [Bézout coefficients](https://en.wikipedia.org/wiki/B%C3%A9zout%27s_identity)
+    /// of the polynomial with the given roots and its formal derivative.
+    ///
+    /// All roots _must_ be unique. That is, the corresponding polynomial must be square free.
+    pub fn bezout_coefficient_polynomials_coefficients(
+        unique_roots: &[BFieldElement],
     ) -> (Vec<BFieldElement>, Vec<BFieldElement>) {
-        if ram_table.nrows() == 0 {
+        if unique_roots.is_empty() {
             return (vec![], vec![]);
         }
 
-        let linear_poly_with_root =
-            |&r: &BFieldElement| Polynomial::new(vec![-r, b_field_element::BFIELD_ONE]);
+        // The structure of the problem is exploited heavily to compute the Bézout coefficients
+        // as fast as possible. In the following paragraphs, let `rp` denote the polynomial with the
+        // given `unique_roots` as its roots, and `fd` the formal derivative of `rp`.
+        //
+        // The naïve approach is to perform the extended Euclidean algorithm (xgcd) on `rp` and
+        // `fd`. This has a time complexity in O(n^2) where `n` is the number of roots: for the
+        // given problem shape, the degrees `rp` and `fd` are `n` and `n-1`, respectively. Each step
+        // of the (x)gcd takes O(n) time and reduces the degree of the polynomials by one.
+        // For programs with a large number of different RAM accesses, `n` is large.
+        //
+        // The approach taken here is to exploit the structure of the problem. Concretely, since all
+        // roots of `rp` are unique, _i.e._, `rp` is square free, the gcd of `rp` and `fd` is 1.
+        // This implies `∀ r ∈ unique_roots: fd(r)·b(r) = 1`, where `b` is one of the Bézout
+        // coefficients. In other words, the evaluation of `fd` in `unique_roots` is the inverse of
+        // the evaluation of `b` in `unique_roots`. Furthermore, `b` is a polynomial of degree `n`,
+        // and therefore fully determined by the evaluations in `unique_roots`. Finally, the other
+        // Bézout coefficient `a` is determined by `a = (1 - fd·b) / rp`.
+        // In total, this allows computing the Bézout coefficients in O(n·(log n)^2) time.
 
-        let all_ram_pointers = ram_table.column(RamPointer.base_table_index());
-        let unique_ram_pointers = all_ram_pointers.iter().unique();
-        let num_unique_ram_pointers = unique_ram_pointers.clone().count();
+        debug_assert!(unique_roots.iter().all_unique());
+        let rp = Polynomial::zerofier(unique_roots);
+        let fd = rp.formal_derivative();
+        let fd_in_roots = fd.batch_evaluate(unique_roots);
+        let b_in_roots = BFieldElement::batch_inversion(fd_in_roots);
+        let b = Polynomial::interpolate(unique_roots, &b_in_roots);
+        let one_minus_fd_b = Polynomial::one() - fd.fast_multiply(&b);
+        let a = one_minus_fd_b.clean_divide(rp);
 
-        let polynomial_with_ram_pointers_as_roots = unique_ram_pointers
-            .map(linear_poly_with_root)
-            .reduce(|accumulator, linear_poly| accumulator * linear_poly)
-            .unwrap_or_else(Polynomial::zero);
-        let formal_derivative = polynomial_with_ram_pointers_as_roots.formal_derivative();
-
-        let (gcd, bezout_poly_0, bezout_poly_1) =
-            Polynomial::xgcd(polynomial_with_ram_pointers_as_roots, formal_derivative);
-
-        assert!(gcd.is_one());
-        assert!(bezout_poly_0.degree() < num_unique_ram_pointers as isize);
-        assert!(bezout_poly_1.degree() <= num_unique_ram_pointers as isize);
-
-        let mut coefficients_0 = bezout_poly_0.coefficients;
-        let mut coefficients_1 = bezout_poly_1.coefficients;
-        coefficients_0.resize(num_unique_ram_pointers, b_field_element::BFIELD_ZERO);
-        coefficients_1.resize(num_unique_ram_pointers, b_field_element::BFIELD_ZERO);
+        let mut coefficients_0 = a.coefficients;
+        let mut coefficients_1 = b.coefficients;
+        coefficients_0.resize(unique_roots.len(), bfe!(0));
+        coefficients_1.resize(unique_roots.len(), bfe!(0));
         (coefficients_0, coefficients_1)
     }
 
@@ -517,6 +531,7 @@ impl ExtRamTable {
 
 #[cfg(test)]
 pub(crate) mod tests {
+    use proptest::prelude::*;
     use proptest_arbitrary_interop::arb;
     use test_strategy::proptest;
 
@@ -527,5 +542,63 @@ pub(crate) mod tests {
         #[strategy(arb())] ram_table_call: RamTableCall,
     ) {
         let _ = ram_table_call.to_table_row();
+    }
+
+    #[test]
+    fn bezout_coefficient_polynomials_of_empty_ram_table_are_default() {
+        let (a, b) = RamTable::bezout_coefficient_polynomials_coefficients(&[]);
+        assert_eq!(a, vec![]);
+        assert_eq!(b, vec![]);
+    }
+
+    #[test]
+    fn bezout_coefficient_polynomials_are_as_expected() {
+        let rp = [1, 2, 3].map(BFieldElement::new);
+        let (a, b) = RamTable::bezout_coefficient_polynomials_coefficients(&rp);
+
+        let expected_a = [0x9, 0x7fffffff7ffffffc, 0x0].map(BFieldElement::new);
+        let expected_b = [0x5, 0xfffffffefffffffb, 0x7fffffff80000002].map(BFieldElement::new);
+
+        assert_eq!(expected_a, *a);
+        assert_eq!(expected_b, *b);
+    }
+
+    #[proptest]
+    fn bezout_coefficient_polynomials_agree_with_xgcd(
+        #[strategy(arb())]
+        #[filter(#ram_pointers.iter().all_unique())]
+        ram_pointers: Vec<BFieldElement>,
+    ) {
+        let (a, b) = RamTable::bezout_coefficient_polynomials_coefficients(&ram_pointers);
+
+        let rp = Polynomial::zerofier(&ram_pointers);
+        let fd = rp.formal_derivative();
+        let (_, a_xgcd, b_xgcd) = Polynomial::xgcd(rp, fd);
+
+        let mut a_xgcd = a_xgcd.coefficients;
+        let mut b_xgcd = b_xgcd.coefficients;
+
+        a_xgcd.resize(ram_pointers.len(), bfe!(0));
+        b_xgcd.resize(ram_pointers.len(), bfe!(0));
+
+        prop_assert_eq!(a, a_xgcd);
+        prop_assert_eq!(b, b_xgcd);
+    }
+
+    #[proptest]
+    fn bezout_coefficients_are_actually_bezout_coefficients(
+        #[strategy(arb())]
+        #[filter(!#ram_pointers.is_empty())]
+        #[filter(#ram_pointers.iter().all_unique())]
+        ram_pointers: Vec<BFieldElement>,
+    ) {
+        let (a, b) = RamTable::bezout_coefficient_polynomials_coefficients(&ram_pointers);
+
+        let rp = Polynomial::zerofier(&ram_pointers);
+        let fd = rp.formal_derivative();
+
+        let [a, b] = [a, b].map(Polynomial::new);
+        let gcd = rp * a + fd * b;
+        prop_assert_eq!(Polynomial::one(), gcd);
     }
 }
