@@ -263,7 +263,7 @@ impl Stark {
         let out_of_domain_point_curr_row_pow_num_segments =
             out_of_domain_point_curr_row.mod_pow_u32(NUM_QUOTIENT_SEGMENTS as u32);
         let out_of_domain_curr_row_quot_segments = quotient_segment_polynomials
-            .map(|poly| poly.evaluate(&out_of_domain_point_curr_row_pow_num_segments))
+            .map(|poly| poly.evaluate(out_of_domain_point_curr_row_pow_num_segments))
             .to_vec()
             .try_into()
             .unwrap();
@@ -345,7 +345,7 @@ impl Stark {
         prof_stop!(maybe_profiler, "interpolate");
         prof_start!(maybe_profiler, "base&ext curr row");
         let out_of_domain_curr_row_base_and_ext_value =
-            base_and_ext_interpolation_poly.evaluate(&out_of_domain_point_curr_row);
+            base_and_ext_interpolation_poly.evaluate(out_of_domain_point_curr_row);
         let base_and_ext_curr_row_deep_codeword = Self::deep_codeword(
             &base_and_ext_codeword.to_vec(),
             short_domain,
@@ -356,7 +356,7 @@ impl Stark {
 
         prof_start!(maybe_profiler, "base&ext next row");
         let out_of_domain_next_row_base_and_ext_value =
-            base_and_ext_interpolation_poly.evaluate(&out_of_domain_point_next_row);
+            base_and_ext_interpolation_poly.evaluate(out_of_domain_point_next_row);
         let base_and_ext_next_row_deep_codeword = Self::deep_codeword(
             &base_and_ext_codeword.to_vec(),
             short_domain,
@@ -367,7 +367,7 @@ impl Stark {
 
         prof_start!(maybe_profiler, "segmented quotient");
         let out_of_domain_curr_row_quot_segments_value = quotient_segments_interpolation_poly
-            .evaluate(&out_of_domain_point_curr_row_pow_num_segments);
+            .evaluate(out_of_domain_point_curr_row_pow_num_segments);
         let quotient_segments_curr_row_deep_codeword = Self::deep_codeword(
             &quotient_segments_codeword.to_vec(),
             short_domain,
@@ -2418,7 +2418,7 @@ pub(crate) mod tests {
         let low_deg_codeword = domain.evaluate(&low_deg_poly);
 
         let out_of_domain_point: XFieldElement = thread_rng().gen();
-        let out_of_domain_value = low_deg_poly.evaluate(&out_of_domain_point);
+        let out_of_domain_value = low_deg_poly.evaluate(out_of_domain_point);
 
         let deep_poly = Stark::deep_codeword(
             &low_deg_codeword,
@@ -2449,11 +2449,11 @@ pub(crate) mod tests {
     ) {
         let x_pow_n = x.mod_pow_u32(N as u32);
         let evaluate_segment = |(segment_idx, segment): (_, &Polynomial<_>)| {
-            segment.evaluate(&x_pow_n) * x.mod_pow_u32(segment_idx as u32)
+            segment.evaluate(x_pow_n) * x.mod_pow_u32(segment_idx as u32)
         };
         let evaluated_segments = segments.iter().enumerate().map(evaluate_segment);
         let sum_of_evaluated_segments = evaluated_segments.fold(FF::zero(), |acc, x| acc + x);
-        assert!(f.evaluate(&x) == sum_of_evaluated_segments);
+        assert!(f.evaluate(x) == sum_of_evaluated_segments);
     }
 
     fn assert_segments_degrees_are_small_enough<const N: usize, FF: FiniteField>(

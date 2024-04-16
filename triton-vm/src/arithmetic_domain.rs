@@ -69,7 +69,7 @@ impl ArithmeticDomain {
     {
         self.domain_values()
             .iter()
-            .map(|&v| polynomial.evaluate(&v.into()))
+            .map(|&v| polynomial.evaluate(v.into()))
             .collect()
     }
 
@@ -235,7 +235,7 @@ mod tests {
             // Verify that batch-evaluated values match a manual evaluation
             for i in 0..order {
                 assert_eq!(
-                    poly.evaluate(&b_domain.domain_value(i as u32)),
+                    poly.evaluate(b_domain.domain_value(i as u32)),
                     values[i as usize]
                 );
             }
