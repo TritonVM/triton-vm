@@ -3,6 +3,57 @@
 All notable changes are documented in this file.
 Lines marked “(!)” indicate a breaking change.
 
+## [0.40.0](https://github.com/TritonVM/triton-vm/compare/v0.38.2..v0.40.0) - 2024-04-16
+
+### ✨ Features
+
+- (!) Generate profiles despite unfinished tasks ([f7ebd2cb](https://github.com/TritonVM/triton-vm/commit/f7ebd2cb))
+- (!) Streamline accessing AET's heights ([3f3a9fd1](https://github.com/TritonVM/triton-vm/commit/3f3a9fd1))
+- (!) Track all relevant tables in VM profiler ([fa38fa8b](https://github.com/TritonVM/triton-vm/commit/fa38fa8b))
+
+### 🐛 Bug Fixes
+
+- (!) Don't treat randomizer polynomial special ([9bbe963b](https://github.com/TritonVM/triton-vm/commit/9bbe963b))
+
+### ⚡️ Performance
+
+- Minimize squeezes for combination weights ([50b803c7](https://github.com/TritonVM/triton-vm/commit/50b803c7))
+- Re-organize prover steps ([86a7799f](https://github.com/TritonVM/triton-vm/commit/86a7799f))
+- *(test)* Use minimal size for quotient domain ([727ff8ec](https://github.com/TritonVM/triton-vm/commit/727ff8ec))
+- Use faster polynomial coset evaluation ([29849abe](https://github.com/TritonVM/triton-vm/commit/29849abe))
+- Compute Bézout coefficients faster ([652b7e9c](https://github.com/TritonVM/triton-vm/commit/652b7e9c))
+
+### 📚 Documentation
+
+- Add rationale for performed DEEP updates ([74814884](https://github.com/TritonVM/triton-vm/commit/74814884))
+- Update documentation of `MasterTable` ([d5c2049c](https://github.com/TritonVM/triton-vm/commit/d5c2049c))
+- Describe computation of Bézout coefficients ([06123843](https://github.com/TritonVM/triton-vm/commit/06123843))
+
+### ⚙️ Miscellaneous
+
+- Use fewer glob `use`s ([9ca39513](https://github.com/TritonVM/triton-vm/commit/9ca39513))
+- (!) *(circuit)* Use challenge's index ([e05e3ff3](https://github.com/TritonVM/triton-vm/commit/e05e3ff3))
+- (!) *(circuit)* No `Challenges` in `evaluate` ([15a8cd7f](https://github.com/TritonVM/triton-vm/commit/15a8cd7f))
+- Use constant “lookup table height” more ([22834b03](https://github.com/TritonVM/triton-vm/commit/22834b03))
+- Benchmark Bézout coefficient computation ([ab135be4](https://github.com/TritonVM/triton-vm/commit/ab135be4))
+
+### ♻️ Refactor
+
+- Deprecate method `num_quotients()` ([363ae773](https://github.com/TritonVM/triton-vm/commit/363ae773))
+- (!) Use `BFieldElement`s everywhere ([05bd271a](https://github.com/TritonVM/triton-vm/commit/05bd271a))
+- (!) Make `ProofStream` non-generic ([bde928d4](https://github.com/TritonVM/triton-vm/commit/bde928d4))
+- (!) Remove deprecated type aliases ([14d08ef8](https://github.com/TritonVM/triton-vm/commit/14d08ef8))
+- (!) Rename `TableId` variants ([c265cf4d](https://github.com/TritonVM/triton-vm/commit/c265cf4d))
+- Bypass quotient table ([ff305459](https://github.com/TritonVM/triton-vm/commit/ff305459))
+
+### ✅ Testing
+
+- Benchmark program with lots of memory I/O ([c7613878](https://github.com/TritonVM/triton-vm/commit/c7613878))
+
+### 🎨 Styling
+
+- Improve readability of `.verify()` slightly ([e0ac1096](https://github.com/TritonVM/triton-vm/commit/e0ac1096))
+
 ## [0.38.2](https://github.com/TritonVM/triton-vm/compare/v0.38.1..v0.38.2) - 2024-03-14
 
 ### ✨ Features
