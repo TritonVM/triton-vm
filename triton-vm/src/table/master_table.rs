@@ -734,7 +734,7 @@ impl MasterBaseTable {
             jump_stack_table_len,
             self.hash_coprocessor_execution_len,
             self.cascade_table_len,
-            1 << 8,
+            AlgebraicExecutionTrace::LOOKUP_TABLE_HEIGHT,
             self.u32_coprocesor_execution_len,
         ]
     }

@@ -74,7 +74,7 @@ pub struct AlgebraicExecutionTrace {
     pub cascade_table_lookup_multiplicities: HashMap<u16, u64>,
 
     /// Records how often each entry in the lookup table was looked up.
-    pub lookup_table_lookup_multiplicities: [u64; 1 << 8],
+    pub lookup_table_lookup_multiplicities: [u64; AlgebraicExecutionTrace::LOOKUP_TABLE_HEIGHT],
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Arbitrary)]
@@ -84,7 +84,7 @@ pub struct TableHeight {
 }
 
 impl AlgebraicExecutionTrace {
-    const LOOKUP_TABLE_HEIGHT: usize = 1 << 8;
+    pub(crate) const LOOKUP_TABLE_HEIGHT: usize = 1 << 8;
 
     pub fn new(program: Program) -> Self {
         let program_len = program.len_bwords();
