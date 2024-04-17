@@ -158,13 +158,13 @@ impl Stark {
         prof_start!(maybe_profiler, "extend", "gen");
         let mut master_ext_table = master_base_table.extend(&challenges);
         prof_stop!(maybe_profiler, "extend");
-
-        prof_start!(maybe_profiler, "randomize trace", "gen");
-        master_ext_table.randomize_trace();
-        prof_stop!(maybe_profiler, "randomize trace");
         prof_stop!(maybe_profiler, "base tables");
 
         prof_start!(maybe_profiler, "ext tables");
+        prof_start!(maybe_profiler, "randomize trace", "gen");
+        master_ext_table.randomize_trace();
+        prof_stop!(maybe_profiler, "randomize trace");
+
         prof_start!(maybe_profiler, "LDE", "LDE");
         master_ext_table.low_degree_extend_all_columns();
         prof_stop!(maybe_profiler, "LDE");
