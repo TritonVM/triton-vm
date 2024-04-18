@@ -1,4 +1,3 @@
-use itertools::Itertools;
 use std::ops::Mul;
 use std::ops::MulAssign;
 
@@ -58,16 +57,28 @@ impl ArithmeticDomain {
             + Mul<BFieldElement, Output = FF>
             + From<BFieldElement>,
     {
-        // The limitation arises in `Polynomial::fast_coset_evaluate` in dependency `twenty-first`.
-        let batch_evaluation_is_possible = self.length >= polynomial.coefficients.len();
-        if batch_evaluation_is_possible {
-            let (offset, generator, length) = (self.offset, self.generator, self.length);
-            polynomial.fast_coset_evaluate::<BFieldElement>(offset, generator, length)
-        } else {
-            let domain_values = self.domain_values().into_iter();
-            let domain_values = domain_values.map(FF::from).collect_vec();
-            polynomial.batch_evaluate(&domain_values)
+        let mut indices_and_chunks = polynomial.coefficients.chunks(self.length).enumerate();
+        let mut values =
+            match indices_and_chunks.next() {
+                Some((_, first_chunk)) => Polynomial::new(first_chunk.to_vec())
+                    .fast_coset_evaluate(self.offset, self.generator, self.length),
+                None => vec![FF::zero(); self.length],
+            };
+        for (i, chunk) in indices_and_chunks {
+            let scalar = self.offset.mod_pow(i as u64 * self.length as u64);
+            let current_values = Polynomial::new(chunk.to_vec()).fast_coset_evaluate(
+                self.offset,
+                self.generator,
+                self.length,
+            );
+            values
+                .iter_mut()
+                .zip(current_values.iter())
+                .for_each(|(v, cv)| {
+                    *v += *cv * scalar;
+                });
         }
+        values
     }
 
     pub fn interpolate<FF>(&self, values: &[FF]) -> Polynomial<FF>
@@ -125,6 +136,7 @@ impl ArithmeticDomain {
 mod tests {
     use assert2::let_assert;
     use itertools::Itertools;
+    use proptest::collection::vec;
     use proptest::prelude::*;
     use proptest_arbitrary_interop::arb;
     use test_strategy::proptest;
@@ -284,5 +296,24 @@ mod tests {
             let_assert!(Err(err) = domain.halve());
             assert!(ArithmeticDomainError::TooSmallForHalving(i) == err);
         }
+    }
+
+    #[proptest]
+    fn can_evaluate_polynomial_larger_than_domain(
+        #[strategy(1usize..10)] log_domain_length: usize,
+        #[strategy(1usize..5)] _polynomial_expansion_factor: usize,
+        #[strategy(arb())] offset: BFieldElement,
+        #[strategy(vec(arb(),(1<<#log_domain_length)*#_polynomial_expansion_factor))]
+        coefficients: Vec<BFieldElement>,
+    ) {
+        let domain_length = 1 << log_domain_length;
+        let domain = ArithmeticDomain::of_length(domain_length)
+            .unwrap()
+            .with_offset(offset);
+        let polynomial = Polynomial::new(coefficients);
+
+        let values0 = domain.evaluate(&polynomial);
+        let values1 = polynomial.batch_evaluate(&domain.domain_values());
+        assert_eq!(values0, values1);
     }
 }
