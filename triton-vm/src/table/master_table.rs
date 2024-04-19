@@ -1,3 +1,4 @@
+use std::borrow::Borrow;
 use std::ops::Mul;
 use std::ops::MulAssign;
 use std::ops::Range;
@@ -375,21 +376,14 @@ where
     }
 
     fn hash_one_row(row: ArrayView1<FF>) -> Digest {
-        Tip5::hash_varlen(
-            &row.to_slice()
-                .unwrap()
-                .iter()
-                .flat_map(|e| e.encode())
-                .collect_vec(),
-        )
+        Tip5::hash_varlen(&row.iter().flat_map(|e| e.encode()).collect_vec())
     }
 
-    /// Hash all FRI domain rows of the table using just-in-time
-    /// low-degree-extension, assuming this low-degree-extended table is not stored
-    /// in cache. This method works by  iterating over the table columns in batches
-    /// of 2*num_threads. After a batch of columns is low-degree-extended and
-    /// absorbed into the sponge state, the memory is released and can be reused in
-    /// the next iteration.
+    /// Hash all FRI domain rows of the table using just-in-time low-degree-extension, assuming this
+    /// low-degree-extended table is not stored in cache. This method works by iterating over the
+    /// table columns in batches of 2*num_threads. After a batch of columns is low-degree-extended
+    /// and absorbed into the sponge state, the memory is released and can be reused in the next
+    /// iteration.
     fn hash_all_fri_domain_rows_just_in_time(&self) -> Vec<Digest> {
         let num_threads = match std::thread::available_parallelism() {
             Ok(num) => num.into(),
@@ -408,18 +402,14 @@ where
                     let lde_codeword = fri_domain.evaluate(&polynomial[()]);
                     Array1::from(lde_codeword).move_into(codeword);
                 });
-            sponge_states = sponge_states
-                .into_par_iter()
+            sponge_states
+                .par_iter_mut()
                 .zip(codewords.axis_iter(Axis(0)).into_par_iter())
-                .map(|(sponge, row)| {
-                    sponge.absorb_some(row.to_slice().unwrap().iter().flat_map(|e| e.encode()))
-                })
-                .collect();
+                .for_each(|(sponge, row)| sponge.absorb(row.iter().flat_map(|e| e.encode())));
         }
         sponge_states
             .into_par_iter()
-            .map(|sponge| sponge.apply_padding())
-            .map(|sponge| sponge.squeeze_digest())
+            .map(|sponge| sponge.finalize())
             .collect()
     }
 }
@@ -429,9 +419,13 @@ where
 #[derive(Clone)]
 struct SpongeWithPendingAbsorb {
     sponge: Tip5,
+
+    /// A re-usable buffer of pending input elements.
+    /// Only the first [`Self::num_symbols_pending`] elements are valid.
     pending_input: [BFieldElement; RATE],
     num_symbols_pending: usize,
 }
+
 impl SpongeWithPendingAbsorb {
     pub fn new() -> Self {
         Self {
@@ -441,33 +435,32 @@ impl SpongeWithPendingAbsorb {
         }
     }
 
-    pub fn absorb_some<I: Iterator<Item = BFieldElement>>(mut self, mut some_input: I) -> Self {
-        let mut symbol = some_input.next();
-        while symbol.is_some() {
-            if self.num_symbols_pending == RATE - 1 {
-                self.pending_input[RATE - 1] = symbol.unwrap();
-                self.sponge.absorb(self.pending_input);
+    /// Similar to [`Tip5::absorb`] but buffers input elements until a full block is available.
+    pub fn absorb<I>(&mut self, some_input: I)
+    where
+        I: IntoIterator,
+        I::Item: Borrow<BFieldElement>,
+    {
+        for symbol in some_input {
+            let &symbol = symbol.borrow();
+            self.pending_input[self.num_symbols_pending] = symbol;
+            self.num_symbols_pending += 1;
+            if self.num_symbols_pending == RATE {
                 self.num_symbols_pending = 0;
-            } else {
-                self.pending_input[self.num_symbols_pending] = symbol.unwrap();
-                self.num_symbols_pending += 1;
+                self.sponge.absorb(self.pending_input);
             }
-            symbol = some_input.next()
         }
-        self
     }
 
-    pub fn apply_padding(mut self) -> Self {
+    pub fn finalize(mut self) -> Digest {
+        // apply padding
         self.pending_input[self.num_symbols_pending] = BFieldElement::one();
         for i in self.num_symbols_pending + 1..RATE {
             self.pending_input[i] = BFieldElement::zero();
         }
         self.sponge.absorb(self.pending_input);
         self.num_symbols_pending = 0;
-        self
-    }
 
-    pub fn squeeze_digest(mut self) -> Digest {
         self.sponge.squeeze()[0..DIGEST_LENGTH]
             .to_vec()
             .try_into()
@@ -1301,8 +1294,11 @@ mod tests {
     use ndarray::s;
     use ndarray::Array2;
     use num_traits::Zero;
+    use proptest::prelude::*;
+    use proptest_arbitrary_interop::arb;
     use strum::EnumCount;
     use strum::IntoEnumIterator;
+    use test_strategy::proptest;
     use twenty_first::math::b_field_element::BFieldElement;
     use twenty_first::math::traits::FiniteField;
 
@@ -1761,18 +1757,18 @@ mod tests {
         assert_eq!(0, not_trace_domain_element(EXT_U32_TABLE_START));
     }
 
-    #[test]
-    fn test_sponge_with_pending_absorb() {
-        let elements: [BFieldElement; 155] = random();
-        for i in 0..elements.len() {
-            let substring = elements[0..i].to_vec();
-            let sponge = SpongeWithPendingAbsorb::new();
-            let digest0 = sponge
-                .absorb_some(substring.iter().copied())
-                .apply_padding()
-                .squeeze_digest();
-            let digest1 = Tip5::hash_varlen(&substring);
-            assert_eq!(digest0, digest1);
-        }
+    #[proptest]
+    fn test_sponge_with_pending_absorb(
+        #[strategy(arb())] elements: Vec<BFieldElement>,
+        #[strategy(0_usize..=#elements.len())] substring_index: usize,
+    ) {
+        let (substring_0, substring_1) = elements.split_at(substring_index);
+        let mut sponge = SpongeWithPendingAbsorb::new();
+        sponge.absorb(substring_0);
+        sponge.absorb(substring_1);
+        let pending_absorb_digest = sponge.finalize();
+
+        let expected_digest = Tip5::hash_varlen(&elements);
+        prop_assert_eq!(expected_digest, pending_absorb_digest);
     }
 }
