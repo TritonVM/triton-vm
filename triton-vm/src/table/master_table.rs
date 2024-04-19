@@ -182,9 +182,11 @@ pub enum TableId {
 /// 2. The [`MasterBaseTable`] is padded using logic from the individual tables.
 /// 3. The still-empty entries in the [`MasterBaseTable`] are filled with random elements. This
 ///     step is also known as “trace randomization.”
-/// 4. Each column of the [`MasterBaseTable`] is [low-degree extended][lde]. The results are stored
-///     in the [`MasterBaseTable`]. Methods [`quotient_domain_table`][quot_table] and
-///     [`out_of_domain_row`][row] can now be used without causing panic.
+/// 4. If a) there is enough RAM and b) environment variable `NO_CACHE` is not set, then each
+///    column of the [`MasterBaseTable`] is low-degree extended. The results are stored
+///     on the [`MasterBaseTable`] for quick access later. If one of these conditions is not met,
+///     the low degree extensions of the trace columns will be computed and sometimes recomputed
+///     just-in-time, and the memory freed afterwards.
 /// 5. The [`MasterBaseTable`] is used to derive the [`MasterExtensionTable`][master_ext_table]
 ///     using logic from the individual tables.
 /// 6. The [`MasterExtensionTable`][master_ext_table] is trace-randomized.
@@ -205,7 +207,6 @@ pub enum TableId {
 /// [lde]: Self::low_degree_extend_all_columns
 /// [quot_table]: Self::quotient_domain_table
 /// [inter_poly]: Self::interpolation_polynomials
-/// [row]: Self::row
 /// [master_ext_table]: MasterExtTable
 /// [master_quot_table]: all_quotients_combined
 pub trait MasterTable<FF>: Sync
