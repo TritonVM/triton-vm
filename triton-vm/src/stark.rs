@@ -2854,16 +2854,14 @@ pub(crate) mod tests {
         Zip::from(base_quotient_domain_codewords.axis_iter_mut(Axis(1)))
             .and(main_polynomials.axis_iter(Axis(0)))
             .for_each(|codeword, polynomial| {
-                Array1::from_vec(quotient_domain.evaluate(&polynomial.get([]).unwrap()))
-                    .move_into(codeword);
+                Array1::from_vec(quotient_domain.evaluate(&polynomial[()])).move_into(codeword);
             });
         let mut ext_quotient_domain_codewords =
             Array2::<XFieldElement>::zeros([quotient_domain.length, aux_polynomials.len()]);
         Zip::from(ext_quotient_domain_codewords.axis_iter_mut(Axis(1)))
             .and(aux_polynomials.axis_iter(Axis(0)))
             .for_each(|codeword, polynomial| {
-                Array1::from_vec(quotient_domain.evaluate(polynomial.get([]).unwrap()))
-                    .move_into(codeword);
+                Array1::from_vec(quotient_domain.evaluate(&polynomial[()])).move_into(codeword);
             });
 
         let quotient_codeword = all_quotients_combined(
@@ -2959,7 +2957,7 @@ pub(crate) mod tests {
         Zip::from(polynomials.axis_iter(Axis(0)))
             .and(segments_codewords.axis_iter_mut(Axis(1)))
             .par_for_each(|polynomial, codeword| {
-                let lde_codeword = fri_domain.evaluate(&polynomial.get([]).unwrap());
+                let lde_codeword = fri_domain.evaluate(&polynomial[()]);
                 Array1::from(lde_codeword).move_into(codeword);
             });
         prop_assert_eq!(segments_codewords, codewords);

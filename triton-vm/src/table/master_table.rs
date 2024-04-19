@@ -381,7 +381,7 @@ where
             Zip::from(codewords.axis_iter_mut(Axis(1)))
                 .and(columns.axis_iter(Axis(0)))
                 .par_for_each(|codeword, polynomial| {
-                    let lde_codeword = fri_domain.evaluate(polynomial.get([]).unwrap());
+                    let lde_codeword = fri_domain.evaluate(&polynomial[()]);
                     Array1::from(lde_codeword).move_into(codeword);
                 });
             sponge_states = sponge_states
