@@ -304,10 +304,10 @@ where
     fn low_degree_extended_table(&self) -> Option<ArrayView2<FF>>;
 
     /// Return the FRI domain view of the cached low-degree-extended table, if any.
-    /// This method cannot be implemented generically on the trait because it returns
-    /// a pointer to an array and that array has to live somewhere; it cannot live on
-    /// stack and from the trait implementation we cannot access the implementing
-    /// object's fields.
+    ///
+    /// This method cannot be implemented generically on the trait because it returns a pointer to
+    /// an array and that array has to live somewhere; it cannot live on stack and from the trait
+    /// implementation we cannot access the implementing object's fields.
     fn fri_domain_table(&self) -> Option<ArrayView2<FF>>;
 
     /// Memoize the polynomials interpolating the columns.
@@ -525,9 +525,7 @@ impl MasterTable<BFieldElement> for MasterBaseTable {
     }
 
     fn quotient_domain_table(&self) -> Option<ArrayView2<BFieldElement>> {
-        let Some(table) = &self.low_degree_extended_table else {
-            return None;
-        };
+        let table = &self.low_degree_extended_table.as_ref()?;
         let nrows = table.nrows();
         if self.quotient_domain.length < nrows {
             let unit_distance = nrows / self.quotient_domain.length;
@@ -538,16 +536,13 @@ impl MasterTable<BFieldElement> for MasterBaseTable {
     }
 
     fn fri_domain_table(&self) -> Option<ArrayView2<BFieldElement>> {
-        if let Some(table) = &self.low_degree_extended_table {
-            let nrows = table.nrows();
-            if nrows > self.fri_domain.length {
-                let unit_step = nrows / self.fri_domain.length;
-                Some(table.slice(s![0..nrows;unit_step, ..]))
-            } else {
-                Some(table.view())
-            }
+        let table = self.low_degree_extended_table.as_ref()?;
+        let nrows = table.nrows();
+        if nrows > self.fri_domain.length {
+            let unit_step = nrows / self.fri_domain.length;
+            Some(table.slice(s![0..nrows;unit_step, ..]))
         } else {
-            None
+            Some(table.view())
         }
     }
 
@@ -559,9 +554,7 @@ impl MasterTable<BFieldElement> for MasterBaseTable {
     }
 
     fn low_degree_extended_table(&self) -> Option<ArrayView2<BFieldElement>> {
-        let Some(low_degree_extended_table) = &self.low_degree_extended_table else {
-            return None;
-        };
+        let low_degree_extended_table = self.low_degree_extended_table.as_ref()?;
         Some(low_degree_extended_table.view())
     }
 
@@ -635,9 +628,7 @@ impl MasterTable<XFieldElement> for MasterExtTable {
     }
 
     fn quotient_domain_table(&self) -> Option<ArrayView2<XFieldElement>> {
-        let Some(table) = &self.low_degree_extended_table else {
-            return None;
-        };
+        let table = self.low_degree_extended_table.as_ref()?;
         let nrows = table.nrows();
         if nrows > self.quotient_domain.length {
             let unit_distance = nrows / self.quotient_domain.length;
@@ -648,16 +639,13 @@ impl MasterTable<XFieldElement> for MasterExtTable {
     }
 
     fn fri_domain_table(&self) -> Option<ArrayView2<XFieldElement>> {
-        if let Some(table) = &self.low_degree_extended_table {
-            let nrows = table.nrows();
-            if nrows > self.fri_domain.length {
-                let unit_step = nrows / self.fri_domain.length;
-                Some(table.slice(s![0..nrows;unit_step, ..]))
-            } else {
-                Some(table.view())
-            }
+        let table = self.low_degree_extended_table.as_ref()?;
+        let nrows = table.nrows();
+        if nrows > self.fri_domain.length {
+            let unit_step = nrows / self.fri_domain.length;
+            Some(table.slice(s![0..nrows;unit_step, ..]))
         } else {
-            None
+            Some(table.view())
         }
     }
 
@@ -669,9 +657,7 @@ impl MasterTable<XFieldElement> for MasterExtTable {
     }
 
     fn low_degree_extended_table(&self) -> Option<ArrayView2<XFieldElement>> {
-        let Some(low_degree_extended_table) = &self.low_degree_extended_table else {
-            return None;
-        };
+        let low_degree_extended_table = self.low_degree_extended_table.as_ref()?;
         Some(low_degree_extended_table.view())
     }
 
@@ -1754,7 +1740,7 @@ mod tests {
             let substring = elements[0..i].to_vec();
             let sponge = SpongeWithPendingAbsorb::new();
             let digest0 = sponge
-                .absorb_some(substring.iter().cloned())
+                .absorb_some(substring.iter().copied())
                 .apply_padding()
                 .squeeze_digest();
             let digest1 = Tip5::hash_varlen(&substring);
