@@ -233,10 +233,11 @@ where
 
     fn randomized_trace_table_mut(&mut self) -> ArrayViewMut2<FF>;
 
-    /// The low-degree extended randomized trace data over the quotient domain. Includes randomizer
-    /// polynomials. Requires having called
-    /// [`low_degree_extend_all_columns`](Self::low_degree_extend_all_columns) first.
-    fn quotient_domain_table(&self) -> ArrayView2<FF>;
+    /// The the quotient-domain view of the cached low-degree-extended table. This
+    /// cannot be implemented generically on the trait because it returns a pointer
+    /// to an array that must live somewhere and cannot live on the stack. From the
+    /// trait implementation we cannot access the implementing object's fields.
+    fn quotient_domain_table(&self) -> Option<ArrayView2<FF>>;
 
     /// Set all rows _not_ part of the actual (padded) trace to random values.
     fn randomize_trace(&mut self) {
@@ -252,32 +253,61 @@ where
     /// low-degree extended columns can be accessed using
     /// [`quotient_domain_table`](Self::quotient_domain_table).
     fn low_degree_extend_all_columns(&mut self) {
-        let evaluation_domain = self.quotient_domain();
+        let evaluation_domain = if self.quotient_domain().length > self.fri_domain().length {
+            self.quotient_domain()
+        } else {
+            self.fri_domain()
+        };
         let randomized_trace_domain = self.randomized_trace_domain();
         let num_rows = evaluation_domain.length;
         let num_columns = self.randomized_trace_table().ncols();
         let mut interpolation_polynomials = Array1::zeros(num_columns);
-        let mut extended_columns = Array2::zeros([num_rows, num_columns]);
-        Zip::from(extended_columns.axis_iter_mut(Axis(1)))
-            .and(self.randomized_trace_table().axis_iter(Axis(1)))
+
+        // compute interpolants
+        Zip::from(self.randomized_trace_table().axis_iter(Axis(1)))
             .and(interpolation_polynomials.axis_iter_mut(Axis(0)))
-            .par_for_each(|lde_column, trace_column, poly| {
+            .par_for_each(|trace_column, poly| {
                 let trace_column = trace_column.as_slice().unwrap();
                 let interpolation_polynomial = randomized_trace_domain.interpolate(trace_column);
-                let lde_codeword = evaluation_domain.evaluate(&interpolation_polynomial);
-                Array1::from(lde_codeword).move_into(lde_column);
                 Array0::from_elem((), interpolation_polynomial).move_into(poly);
             });
-        self.memoize_low_degree_extended_table(extended_columns);
+
+        // compute and cache low-degree-extended table
+        // Do this only if there is enough RAM and flag NO_CACHE is not set. Later
+        // on, if the cache is not available, we compute it just-in-time.
+        let required_memory =
+            (std::mem::size_of::<FF>() as u64) * (num_rows as u64) * (num_columns as u64);
+        let free_memory = sysinfo::System::new_all().free_memory();
+        let can_cache = required_memory < free_memory;
+        let flag_no_cache_is_set = std::env::var("NO_CACHE").is_ok();
+        if can_cache && !flag_no_cache_is_set {
+            let mut extended_columns = Array2::zeros([num_rows, num_columns]);
+            Zip::from(extended_columns.axis_iter_mut(Axis(1)))
+                .and(interpolation_polynomials.axis_iter(Axis(0)))
+                .par_for_each(|lde_column, poly| {
+                    let interpolation_polynomial = poly.get([]).unwrap();
+                    let lde_codeword = evaluation_domain.evaluate(interpolation_polynomial);
+                    Array1::from(lde_codeword).move_into(lde_column);
+                });
+            self.memoize_low_degree_extended_table(extended_columns);
+        }
+
+        // cache interpolants
         self.memoize_interpolation_polynomials(interpolation_polynomials);
     }
 
     /// Not intended for direct use, but through [`Self::low_degree_extend_all_columns`].
     fn memoize_low_degree_extended_table(&mut self, low_degree_extended_columns: Array2<FF>);
 
-    /// Requires having called
-    /// [`low_degree_extend_all_columns`](Self::low_degree_extend_all_columns) first.
-    fn low_degree_extended_table(&self) -> ArrayView2<FF>;
+    /// Return the cached low-degree-extended table, if any.
+    fn low_degree_extended_table(&self) -> Option<ArrayView2<FF>>;
+
+    /// Return the FRI domain view of the cached low-degree-extended table, if any.
+    /// This method cannot be implemented generically on the trait because it returns
+    /// a pointer to an array and that array has to live somewhere; it cannot live on
+    /// stack and from the trait implementation we cannot access the implementing
+    /// object's fields.
+    fn fri_domain_table(&self) -> Option<ArrayView2<FF>>;
 
     /// Memoize the polynomials interpolating the columns.
     /// Not intended for direct use, but through [`Self::low_degree_extend_all_columns`].
@@ -311,6 +341,31 @@ where
     }
 
     fn hash_all_fri_domain_rows(&self) -> Vec<Digest> {
+        if let Some(fri_domain_table) = self.fri_domain_table() {
+            let all_rows = fri_domain_table.axis_iter(Axis(0)).into_par_iter();
+            all_rows.map(Self::hash_one_row).collect::<Vec<_>>()
+        } else {
+            self.hash_all_fri_domain_rows_just_in_time()
+        }
+    }
+
+    fn hash_one_row(row: ArrayView1<FF>) -> Digest {
+        Tip5::hash_varlen(
+            &row.to_slice()
+                .unwrap()
+                .iter()
+                .flat_map(|e| e.encode())
+                .collect_vec(),
+        )
+    }
+
+    /// Hash all FRI domain rows of the table using just-in-time
+    /// low-degree-extension, assuming this low-degree-extended table is not stored
+    /// in cache. This method works by  iterating over the table columns in batches
+    /// of 2*num_threads. After a batch of columns is low-degree-extended and
+    /// absorbed into the sponge state, the memory is released and can be reused in
+    /// the next iteration.
+    fn hash_all_fri_domain_rows_just_in_time(&self) -> Vec<Digest> {
         let num_threads = match std::thread::available_parallelism() {
             Ok(num) => num.into(),
             Err(_) => 1,
@@ -468,11 +523,31 @@ impl MasterTable<BFieldElement> for MasterBaseTable {
         self.randomized_trace_table.view_mut()
     }
 
-    fn quotient_domain_table(&self) -> ArrayView2<BFieldElement> {
-        let Some(low_degree_extended_table) = &self.low_degree_extended_table else {
-            panic!("Low-degree extended columns must be computed first.");
+    fn quotient_domain_table(&self) -> Option<ArrayView2<BFieldElement>> {
+        let Some(table) = &self.low_degree_extended_table else {
+            return None;
         };
-        low_degree_extended_table.view()
+        let nrows = table.nrows();
+        if self.quotient_domain.length < nrows {
+            let unit_distance = nrows / self.quotient_domain.length;
+            Some(table.slice(s![0..nrows;unit_distance, ..]))
+        } else {
+            Some(table.view())
+        }
+    }
+
+    fn fri_domain_table(&self) -> Option<ArrayView2<BFieldElement>> {
+        if let Some(table) = &self.low_degree_extended_table {
+            let nrows = table.nrows();
+            if nrows > self.fri_domain.length {
+                let unit_step = nrows / self.fri_domain.length;
+                Some(table.slice(s![0..nrows;unit_step, ..]))
+            } else {
+                Some(table.view())
+            }
+        } else {
+            None
+        }
     }
 
     fn memoize_low_degree_extended_table(
@@ -482,11 +557,11 @@ impl MasterTable<BFieldElement> for MasterBaseTable {
         self.low_degree_extended_table = Some(low_degree_extended_columns);
     }
 
-    fn low_degree_extended_table(&self) -> ArrayView2<BFieldElement> {
+    fn low_degree_extended_table(&self) -> Option<ArrayView2<BFieldElement>> {
         let Some(low_degree_extended_table) = &self.low_degree_extended_table else {
-            panic!("Low-degree extended columns must be computed first.");
+            return None;
         };
-        low_degree_extended_table.view()
+        Some(low_degree_extended_table.view())
     }
 
     fn memoize_interpolation_polynomials(
@@ -558,11 +633,31 @@ impl MasterTable<XFieldElement> for MasterExtTable {
         self.randomized_trace_table.view_mut()
     }
 
-    fn quotient_domain_table(&self) -> ArrayView2<XFieldElement> {
-        let Some(low_degree_extended_table) = &self.low_degree_extended_table else {
-            panic!("Low-degree extended columns must be computed first.");
+    fn quotient_domain_table(&self) -> Option<ArrayView2<XFieldElement>> {
+        let Some(table) = &self.low_degree_extended_table else {
+            return None;
         };
-        low_degree_extended_table.view()
+        let nrows = table.nrows();
+        if nrows > self.quotient_domain.length {
+            let unit_distance = nrows / self.quotient_domain.length;
+            Some(table.slice(s![0..nrows;unit_distance, ..]))
+        } else {
+            Some(table.view())
+        }
+    }
+
+    fn fri_domain_table(&self) -> Option<ArrayView2<XFieldElement>> {
+        if let Some(table) = &self.low_degree_extended_table {
+            let nrows = table.nrows();
+            if nrows > self.fri_domain.length {
+                let unit_step = nrows / self.fri_domain.length;
+                Some(table.slice(s![0..nrows;unit_step, ..]))
+            } else {
+                Some(table.view())
+            }
+        } else {
+            None
+        }
     }
 
     fn memoize_low_degree_extended_table(
@@ -572,11 +667,11 @@ impl MasterTable<XFieldElement> for MasterExtTable {
         self.low_degree_extended_table = Some(low_degree_extended_columns);
     }
 
-    fn low_degree_extended_table(&self) -> ArrayView2<XFieldElement> {
+    fn low_degree_extended_table(&self) -> Option<ArrayView2<XFieldElement>> {
         let Some(low_degree_extended_table) = &self.low_degree_extended_table else {
-            panic!("Low-degree extended columns must be computed first.");
+            return None;
         };
-        low_degree_extended_table.view()
+        Some(low_degree_extended_table.view())
     }
 
     fn memoize_interpolation_polynomials(

@@ -130,7 +130,6 @@ impl Stark {
         let max_degree = self.derive_max_degree(padded_height);
         let fri = self.derive_fri(padded_height)?;
         let quotient_domain = Self::quotient_domain(fri.domain, max_degree)?;
-        assert_eq!(quotient_domain.length, fri.domain.length);
         proof_stream.enqueue(ProofItem::Log2PaddedHeight(padded_height.ilog2()));
         prof_stop!(maybe_profiler, "derive additional parameters");
 
@@ -189,63 +188,58 @@ impl Stark {
         prof_stop!(maybe_profiler, "Fiat-Shamir");
         prof_stop!(maybe_profiler, "ext tables");
 
-        // OLD quotient calculation
-        // low-degree extend the trace codewords so that all the quotient codewords
-        // can be obtained by element-wise evaluation of the AIR constraints
-        prof_start!(maybe_profiler, "quotient-domain codewords");
         let base_quotient_domain_codewords = master_base_table.quotient_domain_table();
         let ext_quotient_domain_codewords = master_ext_table.quotient_domain_table();
-        prof_stop!(maybe_profiler, "quotient-domain codewords");
-        prof_start!(
-            maybe_profiler,
-            "compute and combine quotient codewords",
-            "CC"
-        );
-        let quotient_codeword = all_quotients_combined(
-            base_quotient_domain_codewords,
-            ext_quotient_domain_codewords,
-            master_base_table.trace_domain(), // randomized trace domain?
-            quotient_domain,
-            &challenges,
-            &quotient_combination_weights,
-            maybe_profiler,
-        );
-        let quotient_codeword = Array1::from(quotient_codeword);
-        assert_eq!(quotient_domain.length, quotient_codeword.len());
-        prof_stop!(maybe_profiler, "compute and combine quotient codewords");
+        let (fri_domain_quotient_segment_codewords, quotient_segment_polynomials) =
+            if base_quotient_domain_codewords.is_some() && ext_quotient_domain_codewords.is_some() {
+                // quotient calculation using cached low-degree-extended tables
+                prof_start!(maybe_profiler, "quotient calculation (cached)", "CC");
+                let quotient_codeword = all_quotients_combined(
+                    base_quotient_domain_codewords.unwrap(),
+                    ext_quotient_domain_codewords.unwrap(),
+                    master_base_table.trace_domain(),
+                    quotient_domain,
+                    &challenges,
+                    &quotient_combination_weights,
+                    maybe_profiler,
+                );
+                let quotient_codeword = Array1::from(quotient_codeword);
+                assert_eq!(quotient_domain.length, quotient_codeword.len());
 
-        prof_start!(maybe_profiler, "LDE", "LDE");
-        let quotient_segment_polynomials_old =
-            Self::interpolate_quotient_segments(quotient_codeword, quotient_domain);
-        let fri_domain_quotient_segment_codewords_old = Self::fri_domain_segment_polynomials(
-            quotient_segment_polynomials_old.view(),
-            fri.domain,
-        );
-        prof_stop!(maybe_profiler, "LDE");
+                prof_stop!(maybe_profiler, "quotient calculation (cached)");
+                prof_start!(maybe_profiler, "quotient LDE", "LDE");
+                let quotient_segment_polynomials_old =
+                    Self::interpolate_quotient_segments(quotient_codeword, quotient_domain);
+                let fri_domain_quotient_segment_codewords_old =
+                    Self::fri_domain_segment_polynomials(
+                        quotient_segment_polynomials_old.view(),
+                        fri.domain,
+                    );
+                prof_stop!(maybe_profiler, "quotient LDE");
 
-        // NEW quotient calculation
-        prof_start!(maybe_profiler, "quotient calculation");
-        let (fri_domain_quotient_segment_codewords_new, quotient_segment_polynomials_new) =
-            Self::compute_quotient_segments(
-                master_base_table.interpolation_polynomials(),
-                master_ext_table.interpolation_polynomials(),
-                master_base_table.trace_domain(),
-                master_base_table.randomized_trace_domain(),
-                master_base_table.fri_domain(),
-                &challenges,
-                &quotient_combination_weights,
-            );
-        prof_stop!(maybe_profiler, "quotient calculation");
-
-        // assert equivalence
-        assert_eq!(
-            fri_domain_quotient_segment_codewords_old,
-            fri_domain_quotient_segment_codewords_new
-        );
-        assert_eq!(
-            quotient_segment_polynomials_old,
-            quotient_segment_polynomials_new
-        );
+                (
+                    fri_domain_quotient_segment_codewords_old,
+                    quotient_segment_polynomials_old,
+                )
+            } else {
+                // quotient calculation with just-in-time low-degree-extension
+                prof_start!(maybe_profiler, "quotient calculation (just-in-time)");
+                let (fri_domain_quotient_segment_codewords_new, quotient_segment_polynomials_new) =
+                    Self::compute_quotient_segments(
+                        master_base_table.interpolation_polynomials(),
+                        master_ext_table.interpolation_polynomials(),
+                        master_base_table.trace_domain(),
+                        master_base_table.randomized_trace_domain(),
+                        master_base_table.fri_domain(),
+                        &challenges,
+                        &quotient_combination_weights,
+                    );
+                prof_stop!(maybe_profiler, "quotient calculation (just-in-time)");
+                (
+                    fri_domain_quotient_segment_codewords_new,
+                    quotient_segment_polynomials_new,
+                )
+            };
 
         // next step, after quotient calculation
         prof_start!(maybe_profiler, "hash rows of quotient segments", "hash");
@@ -254,7 +248,7 @@ impl Stark {
             let row_as_bfes = row.iter().map(interpret_xfe_as_bfes).concat();
             Tip5::hash_varlen(&row_as_bfes)
         };
-        let quotient_segments_rows = fri_domain_quotient_segment_codewords_old
+        let quotient_segments_rows = fri_domain_quotient_segment_codewords
             .axis_iter(Axis(0))
             .into_par_iter();
         let fri_domain_quotient_segment_codewords_digests =
@@ -292,7 +286,7 @@ impl Stark {
 
         let out_of_domain_point_curr_row_pow_num_segments =
             out_of_domain_point_curr_row.mod_pow_u32(NUM_QUOTIENT_SEGMENTS as u32);
-        let out_of_domain_curr_row_quot_segments = quotient_segment_polynomials_old
+        let out_of_domain_curr_row_quot_segments = quotient_segment_polynomials
             .map(|poly| poly.evaluate(out_of_domain_point_curr_row_pow_num_segments))
             .to_vec()
             .try_into()
@@ -329,10 +323,8 @@ impl Stark {
         let base_and_ext_codeword = fri.domain.evaluate(&base_and_ext_combination_polynomial);
 
         prof_start!(maybe_profiler, "quotient", "CC");
-        let quotient_segments_combination_polynomial = Self::random_linear_sum(
-            quotient_segment_polynomials_old.view(),
-            weights.quot_segments,
-        );
+        let quotient_segments_combination_polynomial =
+            Self::random_linear_sum(quotient_segment_polynomials.view(), weights.quot_segments);
         let quotient_segments_combination_codeword = fri
             .domain
             .evaluate(&quotient_segments_combination_polynomial);
@@ -429,11 +421,16 @@ impl Stark {
 
         prof_start!(maybe_profiler, "open trace leafs");
         // Open leafs of zipped codewords at indicated positions
-        let revealed_base_elems = Self::get_revealed_rows::<NUM_BASE_COLUMNS, BFieldElement>(
-            &master_base_table.interpolation_polynomials(),
-            &revealed_current_row_indices,
-            fri.domain,
-        );
+        let revealed_base_elems =
+            if let Some(fri_domain_table) = master_base_table.fri_domain_table() {
+                Self::read_revealed_rows(fri_domain_table, &revealed_current_row_indices)?
+            } else {
+                Self::recompute_revealed_rows::<NUM_BASE_COLUMNS, BFieldElement>(
+                    &master_base_table.interpolation_polynomials(),
+                    &revealed_current_row_indices,
+                    fri.domain,
+                )
+            };
         let base_authentication_structure =
             base_merkle_tree.authentication_structure(&revealed_current_row_indices)?;
         proof_stream.enqueue(ProofItem::MasterBaseTableRows(revealed_base_elems));
@@ -441,11 +438,16 @@ impl Stark {
             base_authentication_structure,
         ));
 
-        let revealed_ext_elems = Self::get_revealed_rows(
-            &master_ext_table.interpolation_polynomials(),
-            &revealed_current_row_indices,
-            fri.domain,
-        );
+        let revealed_ext_elems = if let Some(fri_domain_table) = master_ext_table.fri_domain_table()
+        {
+            Self::read_revealed_rows(fri_domain_table, &revealed_current_row_indices)?
+        } else {
+            Self::recompute_revealed_rows(
+                &master_ext_table.interpolation_polynomials(),
+                &revealed_current_row_indices,
+                fri.domain,
+            )
+        };
         let ext_authentication_structure =
             ext_merkle_tree.authentication_structure(&revealed_current_row_indices)?;
         proof_stream.enqueue(ProofItem::MasterExtTableRows(revealed_ext_elems));
@@ -458,7 +460,7 @@ impl Stark {
             |row: ArrayView1<_>| -> QuotientSegments { row.to_vec().try_into().unwrap() };
         let revealed_quotient_segments_rows = revealed_current_row_indices
             .iter()
-            .map(|&i| fri_domain_quotient_segment_codewords_new.row(i))
+            .map(|&i| fri_domain_quotient_segment_codewords.row(i))
             .map(into_fixed_width_row)
             .collect_vec();
         let revealed_quotient_authentication_structure =
@@ -588,7 +590,24 @@ impl Stark {
         )
     }
 
-    /// Compute and return the rows indicated by FRI.
+    /// Read the indicated rows from the cached table. The indices come from FRI.
+    fn read_revealed_rows<const N: usize, FF: FiniteField>(
+        fri_domain_table: ArrayView2<FF>,
+        revealed_indices: &[usize],
+    ) -> Result<Vec<[FF; N]>, ProvingError> {
+        let err = || ProvingError::TableRowConversionError {
+            expected_len: N,
+            actual_len: fri_domain_table.ncols(),
+        };
+        let row = |&row_idx| {
+            let row = fri_domain_table.row(row_idx).to_vec();
+            row.try_into().map_err(|_| err())
+        };
+
+        revealed_indices.iter().map(row).collect()
+    }
+
+    /// Recompute and return the rows indicated by FRI.
     ///
     /// This function performs fast multi-point evaluation in parallel over the
     /// columns.
@@ -609,7 +628,7 @@ impl Stark {
     /// Returns:
     ///  - `rows : Vec<[FF; W]>` -- a `Vec`` of arrays of `W` field elements each;
     ///    one array per queried index.
-    fn get_revealed_rows<
+    fn recompute_revealed_rows<
         const W: usize,
         FF: FiniteField + From<BFieldElement> + MulAssign<BFieldElement>,
     >(
