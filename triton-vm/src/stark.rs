@@ -88,6 +88,9 @@ pub struct Stark {
 }
 
 impl Stark {
+    /// # Panics
+    ///
+    /// Panics if `log2_of_fri_expansion_factor` is zero.
     pub fn new(security_level: usize, log2_of_fri_expansion_factor: usize) -> Self {
         assert_ne!(
             0, log2_of_fri_expansion_factor,

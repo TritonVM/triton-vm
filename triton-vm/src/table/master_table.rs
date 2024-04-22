@@ -27,6 +27,7 @@ use twenty_first::util_types::algebraic_hasher;
 
 use crate::aet::AlgebraicExecutionTrace;
 use crate::arithmetic_domain::ArithmeticDomain;
+use crate::config::CacheDecision;
 use crate::error::ProvingError;
 use crate::profiler::prof_start;
 use crate::profiler::prof_stop;
@@ -182,11 +183,11 @@ pub enum TableId {
 /// 2. The [`MasterBaseTable`] is padded using logic from the individual tables.
 /// 3. The still-empty entries in the [`MasterBaseTable`] are filled with random elements. This
 ///     step is also known as “trace randomization.”
-/// 4. If a) there is enough RAM and b) environment variable `NO_CACHE` is not set, then each
-///    column of the [`MasterBaseTable`] is low-degree extended. The results are stored
-///     on the [`MasterBaseTable`] for quick access later. If one of these conditions is not met,
-///     the low degree extensions of the trace columns will be computed and sometimes recomputed
-///     just-in-time, and the memory freed afterwards.
+/// 4. If there is enough RAM, then each column of the [`MasterBaseTable`] is low-degree extended.
+///    The results are stored on the [`MasterBaseTable`] for quick access later.
+///    If there is not enough RAM, then the low-degree extensions of the trace columns will be
+///    computed and sometimes recomputed just-in-time, and the memory freed afterward.
+///    The caching behavior [can be forced][overwrite_cache].
 /// 5. The [`MasterBaseTable`] is used to derive the [`MasterExtensionTable`][master_ext_table]
 ///     using logic from the individual tables.
 /// 6. The [`MasterExtensionTable`][master_ext_table] is trace-randomized.
@@ -204,9 +205,9 @@ pub enum TableId {
 ///   and thus terms in the [quotient combination][all_quotients_combined].
 ///
 /// [cross_arg]: cross_table_argument::GrandCrossTableArg
+/// [overwrite_cache]: crate::config::overwrite_lde_trace_caching_to
 /// [lde]: Self::low_degree_extend_all_columns
 /// [quot_table]: Self::quotient_domain_table
-/// [inter_poly]: Self::interpolation_polynomials
 /// [master_ext_table]: MasterExtTable
 /// [master_quot_table]: all_quotients_combined
 pub trait MasterTable<FF>: Sync
@@ -218,10 +219,28 @@ where
         + Mul<BFieldElement, Output = FF>,
     Standard: Distribution<FF>,
 {
+    const NUM_COLUMNS: usize;
+
     fn trace_domain(&self) -> ArithmeticDomain;
     fn randomized_trace_domain(&self) -> ArithmeticDomain;
+
+    /// The [`ArithmeticDomain`] _just_ large enough to compute
+    /// [all quotients](all_quotients_combined).
     fn quotient_domain(&self) -> ArithmeticDomain;
+
+    /// The [`ArithmeticDomain`] large enough for [`FRI`](crate::fri::Fri).
     fn fri_domain(&self) -> ArithmeticDomain;
+
+    /// The [`ArithmeticDomain`] to [low-degree extend](Self::low_degree_extend_all_columns) into.
+    /// The larger of the [`quotient_domain`](Self::quotient_domain) and the
+    /// [`fri_domain`](Self::fri_domain).
+    fn evaluation_domain(&self) -> ArithmeticDomain {
+        if self.quotient_domain().length > self.fri_domain().length {
+            self.quotient_domain()
+        } else {
+            self.fri_domain()
+        }
+    }
 
     /// Presents underlying trace data, excluding trace randomizers and randomizer polynomials.
     fn trace_table(&self) -> ArrayView2<FF>;
@@ -234,10 +253,16 @@ where
 
     fn randomized_trace_table_mut(&mut self) -> ArrayViewMut2<FF>;
 
-    /// The the quotient-domain view of the cached low-degree-extended table. This
-    /// cannot be implemented generically on the trait because it returns a pointer
-    /// to an array that must live somewhere and cannot live on the stack. From the
-    /// trait implementation we cannot access the implementing object's fields.
+    /// The quotient-domain view of the cached low-degree-extended table, if
+    /// 1. the table has been [low-degree extended][lde], and
+    /// 2. the low-degree-extended table [has been cached][cache].
+    ///
+    /// [lde]: Self::low_degree_extend_all_columns
+    /// [cache]: crate::config::overwrite_lde_trace_caching_to
+    // This cannot be implemented generically on the trait because it returns a
+    // pointer to an array that must live somewhere and cannot live on the stack.
+    // From the trait implementation we cannot access the implementing object's
+    // fields.
     fn quotient_domain_table(&self) -> Option<ArrayView2<FF>>;
 
     /// Set all rows _not_ part of the actual (padded) trace to random values.
@@ -251,18 +276,16 @@ where
     }
 
     /// Low-degree extend all columns of the randomized trace domain table. The resulting
-    /// low-degree extended columns can be accessed using
-    /// [`quotient_domain_table`](Self::quotient_domain_table).
+    /// low-degree extended columns can be accessed using [`quotient_domain_table`][table]
+    /// if it is cached; see [`overwrite_lde_trace_caching_to`][cache].
+    ///
+    /// [table]: Self::quotient_domain_table
+    /// [cache]: crate::config::overwrite_lde_trace_caching_to
     fn low_degree_extend_all_columns(&mut self) {
-        let evaluation_domain = if self.quotient_domain().length > self.fri_domain().length {
-            self.quotient_domain()
-        } else {
-            self.fri_domain()
-        };
+        let evaluation_domain = self.evaluation_domain();
         let randomized_trace_domain = self.randomized_trace_domain();
         let num_rows = evaluation_domain.length;
-        let num_columns = self.randomized_trace_table().ncols();
-        let mut interpolation_polynomials = Array1::zeros(num_columns);
+        let mut interpolation_polynomials = Array1::zeros(Self::NUM_COLUMNS);
 
         // compute interpolants
         Zip::from(self.randomized_trace_table().axis_iter(Axis(1)))
@@ -273,31 +296,31 @@ where
                 Array0::from_elem((), interpolation_polynomial).move_into(poly);
             });
 
-        // compute and cache low-degree-extended table
-        // Do this only if there is enough RAM and flag NO_CACHE is not set. Later
-        // on, if the cache is not available, we compute it just-in-time.
-        let required_memory =
-            (std::mem::size_of::<FF>() as u64) * (num_rows as u64) * (num_columns as u64);
-        let free_memory = sysinfo::System::new_all().free_memory();
-        let can_cache = required_memory < free_memory;
-        let flag_no_cache_is_set = std::env::var("NO_CACHE").is_ok();
-        if can_cache && !flag_no_cache_is_set {
-            let mut extended_columns = Array2::zeros([num_rows, num_columns]);
+        let mut extended_trace = Vec::<FF>::new();
+        let num_elements = num_rows * Self::NUM_COLUMNS;
+        let should_cache = crate::config::cache_lde_trace().map_or_else(
+            || extended_trace.try_reserve_exact(num_elements).is_ok(),
+            |cd| cd == CacheDecision::Cache,
+        );
+
+        if should_cache {
+            extended_trace.resize(num_elements, FF::zero());
+            let mut extended_columns =
+                Array2::from_shape_vec([num_rows, Self::NUM_COLUMNS], extended_trace).unwrap();
             Zip::from(extended_columns.axis_iter_mut(Axis(1)))
                 .and(interpolation_polynomials.axis_iter(Axis(0)))
-                .par_for_each(|lde_column, poly| {
-                    let interpolation_polynomial = poly.get([]).unwrap();
-                    let lde_codeword = evaluation_domain.evaluate(interpolation_polynomial);
+                .par_for_each(|lde_column, interpolant| {
+                    let lde_codeword = evaluation_domain.evaluate(&interpolant[()]);
                     Array1::from(lde_codeword).move_into(lde_column);
                 });
             self.memoize_low_degree_extended_table(extended_columns);
         }
 
-        // cache interpolants
         self.memoize_interpolation_polynomials(interpolation_polynomials);
     }
 
     /// Not intended for direct use, but through [`Self::low_degree_extend_all_columns`].
+    #[doc(hidden)]
     fn memoize_low_degree_extended_table(&mut self, low_degree_extended_columns: Array2<FF>);
 
     /// Return the cached low-degree-extended table, if any.
@@ -312,6 +335,7 @@ where
 
     /// Memoize the polynomials interpolating the columns.
     /// Not intended for direct use, but through [`Self::low_degree_extend_all_columns`].
+    #[doc(hidden)]
     fn memoize_interpolation_polynomials(
         &mut self,
         interpolation_polynomials: Array1<Polynomial<FF>>,
@@ -489,6 +513,8 @@ pub struct MasterExtTable {
 }
 
 impl MasterTable<BFieldElement> for MasterBaseTable {
+    const NUM_COLUMNS: usize = NUM_BASE_COLUMNS;
+
     fn trace_domain(&self) -> ArithmeticDomain {
         self.trace_domain
     }
@@ -535,17 +561,6 @@ impl MasterTable<BFieldElement> for MasterBaseTable {
         }
     }
 
-    fn fri_domain_table(&self) -> Option<ArrayView2<BFieldElement>> {
-        let table = self.low_degree_extended_table.as_ref()?;
-        let nrows = table.nrows();
-        if nrows > self.fri_domain.length {
-            let unit_step = nrows / self.fri_domain.length;
-            Some(table.slice(s![0..nrows;unit_step, ..]))
-        } else {
-            Some(table.view())
-        }
-    }
-
     fn memoize_low_degree_extended_table(
         &mut self,
         low_degree_extended_columns: Array2<BFieldElement>,
@@ -556,6 +571,17 @@ impl MasterTable<BFieldElement> for MasterBaseTable {
     fn low_degree_extended_table(&self) -> Option<ArrayView2<BFieldElement>> {
         let low_degree_extended_table = self.low_degree_extended_table.as_ref()?;
         Some(low_degree_extended_table.view())
+    }
+
+    fn fri_domain_table(&self) -> Option<ArrayView2<BFieldElement>> {
+        let table = self.low_degree_extended_table.as_ref()?;
+        let nrows = table.nrows();
+        if nrows > self.fri_domain.length {
+            let unit_step = nrows / self.fri_domain.length;
+            Some(table.slice(s![0..nrows;unit_step, ..]))
+        } else {
+            Some(table.view())
+        }
     }
 
     fn memoize_interpolation_polynomials(
@@ -591,6 +617,8 @@ impl MasterTable<BFieldElement> for MasterBaseTable {
 }
 
 impl MasterTable<XFieldElement> for MasterExtTable {
+    const NUM_COLUMNS: usize = NUM_EXT_COLUMNS;
+
     fn trace_domain(&self) -> ArithmeticDomain {
         self.trace_domain
     }
@@ -638,17 +666,6 @@ impl MasterTable<XFieldElement> for MasterExtTable {
         }
     }
 
-    fn fri_domain_table(&self) -> Option<ArrayView2<XFieldElement>> {
-        let table = self.low_degree_extended_table.as_ref()?;
-        let nrows = table.nrows();
-        if nrows > self.fri_domain.length {
-            let unit_step = nrows / self.fri_domain.length;
-            Some(table.slice(s![0..nrows;unit_step, ..]))
-        } else {
-            Some(table.view())
-        }
-    }
-
     fn memoize_low_degree_extended_table(
         &mut self,
         low_degree_extended_columns: Array2<XFieldElement>,
@@ -659,6 +676,17 @@ impl MasterTable<XFieldElement> for MasterExtTable {
     fn low_degree_extended_table(&self) -> Option<ArrayView2<XFieldElement>> {
         let low_degree_extended_table = self.low_degree_extended_table.as_ref()?;
         Some(low_degree_extended_table.view())
+    }
+
+    fn fri_domain_table(&self) -> Option<ArrayView2<XFieldElement>> {
+        let table = self.low_degree_extended_table.as_ref()?;
+        let nrows = table.nrows();
+        if nrows > self.fri_domain.length {
+            let unit_step = nrows / self.fri_domain.length;
+            Some(table.slice(s![0..nrows;unit_step, ..]))
+        } else {
+            Some(table.view())
+        }
     }
 
     fn memoize_interpolation_polynomials(

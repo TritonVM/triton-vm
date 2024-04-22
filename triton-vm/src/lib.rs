@@ -8,6 +8,16 @@
 //! For a full overview over all available instructions and their effects, see the
 //! [specification](https://triton-vm.org/spec/instructions.html).
 //!
+//! # Time / Memory Trade-Offs
+//!
+//! Parts of the [proof generation](Stark::prove) process can trade time for memory. The
+//! [config] module provides ways to control these trade-offs. Additionally, and with lower
+//! precedence, they can be controlled via the following environment variables:
+//!
+//! - `TVM_LDE_TRACE`: Set to `cache` to cache the low-degree extended trace. Set to `no_cache`
+//!   to not cache it. If unset (or set to anything else), Triton VM will make an automatic decision
+//!   based on free memory.
+//!
 //! # Examples
 //!
 //! Convenience function [`prove_program()`] as well as the [`prove()`] and [`verify()`] methods
@@ -148,6 +158,7 @@ use crate::prelude::*;
 
 pub mod aet;
 pub mod arithmetic_domain;
+pub mod config;
 pub mod error;
 pub mod example_programs;
 pub mod fri;
