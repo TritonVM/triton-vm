@@ -1,3 +1,4 @@
+use std::ops::IndexMut;
 use std::ops::Mul;
 use std::ops::MulAssign;
 
@@ -44,7 +45,6 @@ use crate::table::master_table::AIR_TARGET_DEGREE;
 use crate::table::QuotientSegments;
 use crate::table::NUM_BASE_COLUMNS;
 use crate::table::NUM_EXT_COLUMNS;
-use std::ops::IndexMut;
 
 #[deprecated(since = "0.39.0", note = "Use `ProofStream` directly instead.")]
 pub type StarkProofStream = ProofStream;
