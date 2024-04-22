@@ -13,4 +13,4 @@ Their respective clock jump differences – differences of clock cycles within r
 Under reasonable assumptions about the running time, this fact implies that all clock jumps are directed forwards, as opposed to backwards, which in turn implies that the rows are sorted for clock cycle.
 
 The next sections elaborate on these constructions.
-A [dedicated section](proof-of-memory-consistency.html) shows that these two properties do indeed suffice to prove memory consistency.
+A [dedicated section](proof-of-memory-consistency.md) shows that these two properties do indeed suffice to prove memory consistency.
