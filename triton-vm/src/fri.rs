@@ -1,6 +1,7 @@
 use std::marker::PhantomData;
 
 use itertools::Itertools;
+use num_traits::Zero;
 use rayon::iter::*;
 use twenty_first::math::traits::FiniteField;
 use twenty_first::math::traits::PrimitiveRootOfUnity;
@@ -54,6 +55,7 @@ impl<'stream, H: AlgebraicHasher> FriProver<'stream, H> {
             self.commit_to_next_round()?;
         }
         self.send_last_codeword();
+        self.send_last_polynomial();
         Ok(())
     }
 
@@ -92,6 +94,15 @@ impl<'stream, H: AlgebraicHasher> FriProver<'stream, H> {
     fn send_last_codeword(&mut self) {
         let last_codeword = self.rounds.last().unwrap().codeword.clone();
         let proof_item = ProofItem::FriCodeword(last_codeword);
+        self.proof_stream.enqueue(proof_item);
+    }
+
+    fn send_last_polynomial(&mut self) {
+        let last_codeword = &self.rounds.last().unwrap().codeword;
+        let last_polynomial = ArithmeticDomain::of_length(last_codeword.len())
+            .unwrap()
+            .interpolate(last_codeword);
+        let proof_item = ProofItem::FriPolynomial(last_polynomial.coefficients);
         self.proof_stream.enqueue(proof_item);
     }
 
@@ -194,6 +205,7 @@ struct FriVerifier<'stream, H: AlgebraicHasher> {
     rounds: Vec<VerifierRound>,
     first_round_domain: ArithmeticDomain,
     last_round_codeword: Vec<XFieldElement>,
+    last_round_polynomial: Polynomial<XFieldElement>,
     last_round_max_degree: usize,
     num_rounds: usize,
     num_collinearity_checks: usize,
@@ -212,7 +224,8 @@ struct VerifierRound {
 impl<'stream, H: AlgebraicHasher> FriVerifier<'stream, H> {
     fn initialize(&mut self) -> VerifierResult<()> {
         self.initialize_verification_rounds()?;
-        self.receive_last_round_codeword()
+        self.receive_last_round_codeword()?;
+        self.receive_last_round_polynomial()
     }
 
     fn initialize_verification_rounds(&mut self) -> VerifierResult<()> {
@@ -286,6 +299,12 @@ impl<'stream, H: AlgebraicHasher> FriVerifier<'stream, H> {
 
     fn receive_last_round_codeword(&mut self) -> VerifierResult<()> {
         self.last_round_codeword = self.proof_stream.dequeue()?.try_into_fri_codeword()?;
+        Ok(())
+    }
+
+    fn receive_last_round_polynomial(&mut self) -> VerifierResult<()> {
+        let coefficients = self.proof_stream.dequeue()?.try_into_fri_polynomial()?;
+        self.last_round_polynomial = Polynomial::new(coefficients);
         Ok(())
     }
 
@@ -504,23 +523,15 @@ impl<'stream, H: AlgebraicHasher> FriVerifier<'stream, H> {
         &mut self,
     ) -> VerifierResult<()> {
         let indeterminate = self.proof_stream.sample_scalars(1)[0];
-        let last_round_polynomial = self.last_round_polynomial();
-        let horner_evaluation = last_round_polynomial.evaluate(indeterminate);
+        let horner_evaluation = self.last_round_polynomial.evaluate(indeterminate);
         let barycentric_evaluation = barycentric_evaluate(&self.last_round_codeword, indeterminate);
         if horner_evaluation != barycentric_evaluation {
             return Err(LastRoundPolynomialEvaluationMismatch);
         }
-        if last_round_polynomial.degree() > self.last_round_max_degree.try_into().unwrap() {
+        if self.last_round_polynomial.degree() > self.last_round_max_degree.try_into().unwrap() {
             return Err(LastRoundPolynomialHasTooHighDegree);
         }
         Ok(())
-    }
-
-    fn last_round_polynomial(&self) -> Polynomial<XFieldElement> {
-        let domain = self.rounds.last().unwrap().domain;
-        domain
-            .with_offset(bfe!(1))
-            .interpolate(&self.last_round_codeword)
     }
 
     fn first_round_partially_revealed_codeword(&self) -> Vec<(usize, XFieldElement)> {
@@ -631,6 +642,7 @@ impl<H: AlgebraicHasher> Fri<H> {
             rounds: vec![],
             first_round_domain: self.domain,
             last_round_codeword: vec![],
+            last_round_polynomial: Polynomial::zero(),
             last_round_max_degree: self.last_round_max_degree(),
             num_rounds: self.num_rounds(),
             num_collinearity_checks: self.num_collinearity_checks,
@@ -913,6 +925,7 @@ mod tests {
                 (MerkleRoot(p), MerkleRoot(v)) => prop_assert_eq!(p, v),
                 (FriResponse(p), FriResponse(v)) => prop_assert_eq!(p, v),
                 (FriCodeword(p), FriCodeword(v)) => prop_assert_eq!(p, v),
+                (FriPolynomial(p), FriPolynomial(v)) => prop_assert_eq!(p, v),
                 _ => panic!("Unknown items.\nProver: {prover_item:?}\nVerifier: {verifier_item:?}"),
             }
         }
