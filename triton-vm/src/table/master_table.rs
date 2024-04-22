@@ -596,18 +596,20 @@ impl MasterTable<BFieldElement> for MasterBaseTable {
     }
 
     fn out_of_domain_row(&self, indeterminate: XFieldElement) -> Array1<XFieldElement> {
-        // closure to evaluate a BField polynomial in an XField point
-        let eval = |bfp: &Polynomial<BFieldElement>, x: XFieldElement| {
+        // Evaluate a base field polynomial in an extension field point. Manual re-implementation
+        // to overcome the lack of the corresponding functionality in `twenty-first`.
+        let evaluate = |bfp: &Polynomial<_>, x| {
             let mut acc = XFieldElement::zero();
-            for coefficient in bfp.coefficients.iter().rev() {
+            for &coefficient in bfp.coefficients.iter().rev() {
                 acc *= x;
-                acc += coefficient.lift()
+                acc += coefficient;
             }
             acc
         };
+
         self.interpolation_polynomials()
             .into_par_iter()
-            .map(|polynomial| eval(polynomial, indeterminate))
+            .map(|polynomial| evaluate(polynomial, indeterminate))
             .collect::<Vec<_>>()
             .into()
     }
@@ -700,11 +702,11 @@ impl MasterTable<XFieldElement> for MasterExtTable {
         interpolation_polynomials.view()
     }
 
-    fn out_of_domain_row(&self, row_index: XFieldElement) -> Array1<XFieldElement> {
+    fn out_of_domain_row(&self, indeterminate: XFieldElement) -> Array1<XFieldElement> {
         self.interpolation_polynomials()
             .slice(s![..NUM_EXT_COLUMNS])
             .into_par_iter()
-            .map(|polynomial| polynomial.evaluate(row_index))
+            .map(|polynomial| polynomial.evaluate(indeterminate))
             .collect::<Vec<_>>()
             .into()
     }
