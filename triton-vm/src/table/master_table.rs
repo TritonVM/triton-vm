@@ -369,7 +369,7 @@ where
     fn hash_all_fri_domain_rows(&self) -> Vec<Digest> {
         if let Some(fri_domain_table) = self.fri_domain_table() {
             let all_rows = fri_domain_table.axis_iter(Axis(0)).into_par_iter();
-            all_rows.map(Self::hash_one_row).collect::<Vec<_>>()
+            all_rows.map(Self::hash_one_row).collect()
         } else {
             self.hash_all_fri_domain_rows_just_in_time()
         }
@@ -380,33 +380,37 @@ where
     }
 
     /// Hash all FRI domain rows of the table using just-in-time low-degree-extension, assuming this
-    /// low-degree-extended table is not stored in cache. This method works by iterating over the
-    /// table columns in batches of 2*num_threads. After a batch of columns is low-degree-extended
-    /// and absorbed into the sponge state, the memory is released and can be reused in the next
-    /// iteration.
+    /// low-degree-extended table is not stored in cache.
+    ///
+    /// Has reduced memory footprint but increased computation time compared to a table with a
+    /// cached low-degree extended trace.
     fn hash_all_fri_domain_rows_just_in_time(&self) -> Vec<Digest> {
-        let num_threads = match std::thread::available_parallelism() {
-            Ok(num) => num.into(),
-            Err(_) => 1,
-        };
+        // Iterate over the table's columns in batches of `num_threads`. After a batch of columns is
+        // low-degree-extended and absorbed into the sponge state, the memory is released and can be
+        // reused in the next iteration.
+
+        let num_threads = std::thread::available_parallelism()
+            .map(|x| x.get())
+            .unwrap_or(1);
         let fri_domain = self.fri_domain();
-        let mut sponge_states = (0..fri_domain.length)
-            .map(|_| SpongeWithPendingAbsorb::new())
-            .collect_vec();
+        let mut sponge_states = vec![SpongeWithPendingAbsorb::new(); fri_domain.length];
         let interpolants = self.interpolation_polynomials();
-        for columns in interpolants.axis_chunks_iter(Axis(0), 2 * num_threads) {
-            let mut codewords = Array2::zeros([fri_domain.length, columns.len()]);
+
+        let mut codewords = Array2::zeros([fri_domain.length, num_threads]);
+        for interpolants_chunk in interpolants.axis_chunks_iter(Axis(0), num_threads) {
+            let mut codewords = codewords.slice_mut(s![.., 0..interpolants_chunk.len()]);
             Zip::from(codewords.axis_iter_mut(Axis(1)))
-                .and(columns.axis_iter(Axis(0)))
-                .par_for_each(|codeword, polynomial| {
-                    let lde_codeword = fri_domain.evaluate(&polynomial[()]);
+                .and(interpolants_chunk.axis_iter(Axis(0)))
+                .par_for_each(|codeword, interpolant| {
+                    let lde_codeword = fri_domain.evaluate(&interpolant[()]);
                     Array1::from(lde_codeword).move_into(codeword);
                 });
             sponge_states
                 .par_iter_mut()
-                .zip(codewords.axis_iter(Axis(0)).into_par_iter())
+                .zip(codewords.axis_iter(Axis(0)))
                 .for_each(|(sponge, row)| sponge.absorb(row.iter().flat_map(|e| e.encode())));
         }
+
         sponge_states
             .into_par_iter()
             .map(|sponge| sponge.finalize())
@@ -430,7 +434,7 @@ impl SpongeWithPendingAbsorb {
     pub fn new() -> Self {
         Self {
             sponge: Tip5::new(algebraic_hasher::Domain::VariableLength),
-            pending_input: [BFieldElement::new(0); RATE],
+            pending_input: bfe_array![0; RATE],
             num_symbols_pending: 0,
         }
     }
