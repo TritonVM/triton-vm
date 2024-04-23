@@ -1086,6 +1086,28 @@ mod tests {
     }
 
     #[proptest]
+    fn incorrect_last_round_polynomial_results_in_verification_failure(
+        #[strategy(arbitrary_fri())] fri: Fri<Tip5>,
+        #[strategy(arbitrary_polynomial())] polynomial: Polynomial<XFieldElement>,
+        #[strategy(arb())] incorrect_coefficients: Vec<XFieldElement>,
+    ) {
+        let codeword = fri.domain.evaluate(&polynomial);
+        let mut proof_stream = ProofStream::new();
+        fri.prove(&codeword, &mut proof_stream).unwrap();
+
+        let mut proof_stream = prepare_proof_stream_for_verification(proof_stream);
+        proof_stream.items.iter_mut().for_each(|item| {
+            if let ProofItem::FriPolynomial(coefficients) = item {
+                *coefficients = incorrect_coefficients.clone();
+            }
+        });
+
+        let verdict = fri.verify(&mut proof_stream, &mut None);
+        let_assert!(Err(err) = verdict);
+        assert!(let LastRoundPolynomialEvaluationMismatch = err);
+    }
+
+    #[proptest]
     fn verifying_arbitrary_proof_does_not_panic(
         #[strategy(arbitrary_fri())] fri: Fri<Tip5>,
         #[strategy(arb())] mut proof_stream: ProofStream,
@@ -1094,7 +1116,7 @@ mod tests {
     }
 
     #[proptest]
-    fn test_barycentric_evaluation(
+    fn polynomial_evaluation_and_barycentric_evaluation_are_equivalent(
         #[strategy(1usize..13)] _log_num_coefficients: usize,
         #[strategy(1usize..6)] log_expansion_factor: usize,
         #[strategy(vec(arb(), 1 << #_log_num_coefficients))] coefficients: Vec<XFieldElement>,
