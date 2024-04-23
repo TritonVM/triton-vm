@@ -167,6 +167,9 @@ pub enum FriValidationError {
     #[error("computed and received codeword of last round do not match")]
     LastCodewordMismatch,
 
+    #[error("evaluations of last round's polynomial and last round codeword do not match")]
+    LastRoundPolynomialEvaluationMismatch,
+
     #[error("last round's polynomial has too high degree")]
     LastRoundPolynomialHasTooHighDegree,
 

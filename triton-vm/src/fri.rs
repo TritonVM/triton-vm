@@ -451,7 +451,7 @@ impl<'stream, H: AlgebraicHasher> FriVerifier<'stream, H> {
             .collect()
     }
 
-    fn authenticate_last_round_codeword(&self) -> VerifierResult<()> {
+    fn authenticate_last_round_codeword(&mut self) -> VerifierResult<()> {
         self.assert_last_round_codeword_matches_last_round_commitment()?;
         self.assert_last_round_codeword_agrees_with_last_round_folded_codeword()?;
         self.assert_last_round_codeword_corresponds_to_low_degree_polynomial()
@@ -501,9 +501,16 @@ impl<'stream, H: AlgebraicHasher> FriVerifier<'stream, H> {
     }
 
     fn assert_last_round_codeword_corresponds_to_low_degree_polynomial(
-        &self,
+        &mut self,
     ) -> VerifierResult<()> {
-        if self.last_round_polynomial().degree() > self.last_round_max_degree as isize {
+        let indeterminate = self.proof_stream.sample_scalars(1)[0];
+        let last_round_polynomial = self.last_round_polynomial();
+        let horner_evaluation = last_round_polynomial.evaluate(indeterminate);
+        let barycentric_evaluation = barycentric_evaluate(&self.last_round_codeword, indeterminate);
+        if horner_evaluation != barycentric_evaluation {
+            return Err(LastRoundPolynomialEvaluationMismatch);
+        }
+        if last_round_polynomial.degree() > self.last_round_max_degree.try_into().unwrap() {
             return Err(LastRoundPolynomialHasTooHighDegree);
         }
         Ok(())
@@ -511,7 +518,9 @@ impl<'stream, H: AlgebraicHasher> FriVerifier<'stream, H> {
 
     fn last_round_polynomial(&self) -> Polynomial<XFieldElement> {
         let domain = self.rounds.last().unwrap().domain;
-        domain.interpolate(&self.last_round_codeword)
+        domain
+            .with_offset(bfe!(1))
+            .interpolate(&self.last_round_codeword)
     }
 
     fn first_round_partially_revealed_codeword(&self) -> Vec<(usize, XFieldElement)> {
@@ -571,6 +580,12 @@ impl<H: AlgebraicHasher> Fri<H> {
 
         prover.commit(codeword)?;
         prover.query()?;
+
+        // Sample one XFieldElement from Fiat-Shamir and then throw it away. This
+        // scalar is the indeterminate for the low degree test using the barycentric
+        // evaluation formula. This indeterminate is used only by the verifier, but
+        // it is important to modify the sponge state the same way.
+        prover.proof_stream.sample_scalars(1);
 
         let indices = prover.all_top_level_collinearity_check_indices();
         Ok(indices)
