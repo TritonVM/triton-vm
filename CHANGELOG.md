@@ -3,6 +3,34 @@
 All notable changes are documented in this file.
 Lines marked “(!)” indicate a breaking change.
 
+## [0.41.0](https://github.com/TritonVM/triton-vm/compare/v0.40.0..v0.41.0) - 2024-04-23
+
+### ✨ Features
+
+- Add barycentric evaluation formula ([7fe9b6de](https://github.com/TritonVM/triton-vm/commit/7fe9b6de))
+
+### 🐛 Bug Fixes
+
+- *(profile)* Correct trace randomization profile ([44abcda8](https://github.com/TritonVM/triton-vm/commit/44abcda8))
+
+### ⚡️ Performance
+
+- (!) Include last FRI polynomial into proof ([f8a59c5e](https://github.com/TritonVM/triton-vm/commit/f8a59c5e))
+- (!) Use barycentric evaluation in FRI ([991688a5](https://github.com/TritonVM/triton-vm/commit/991688a5))
+
+### 📚 Documentation
+
+- Update links to be valid ([21ab79dd](https://github.com/TritonVM/triton-vm/commit/21ab79dd))
+
+### ♻️ Refactor
+
+- Use barycentric formula in verifier ([cff63b26](https://github.com/TritonVM/triton-vm/commit/cff63b26))
+
+### ✅ Testing
+
+- Assert table-linking arguments' properties ([6b8ffd90](https://github.com/TritonVM/triton-vm/commit/6b8ffd90))
+- Test failure of incorrect last ronud poly ([0fc7b7f5](https://github.com/TritonVM/triton-vm/commit/0fc7b7f5))
+
 ## [0.40.0](https://github.com/TritonVM/triton-vm/compare/v0.38.2..v0.40.0) - 2024-04-16
 
 ### ✨ Features
