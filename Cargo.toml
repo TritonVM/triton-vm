@@ -51,7 +51,7 @@ strum = { version = "0.26", features = ["derive"] }
 syn = "2.0"
 test-strategy = "0.3.1"
 thiserror = "1.0"
-twenty-first = "0.40"
+twenty-first = "0.41.0"
 unicode-width = "0.1"
 
 [workspace.lints.clippy]
