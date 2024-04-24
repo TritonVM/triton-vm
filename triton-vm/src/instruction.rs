@@ -236,6 +236,10 @@ pub enum AnInstruction<Dest: PartialEq + Default> {
     // Read/write
     ReadIo(NumberOfWords),
     WriteIo(NumberOfWords),
+
+    // Many-in-One
+    XxDotStep,
+    XbDotStep,
 }
 
 impl<Dest: PartialEq + Default> AnInstruction<Dest> {
@@ -280,6 +284,8 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
             XbMul => 82,
             ReadIo(_) => 49,
             WriteIo(_) => 19,
+            XxDotStep => 72,
+            XbDotStep => 80,
         }
     }
 
@@ -323,6 +329,8 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
             XbMul => "xbmul",
             ReadIo(_) => "read_io",
             WriteIo(_) => "write_io",
+            XxDotStep => "xxdotstep",
+            XbDotStep => "xbdotstep",
         }
     }
 
@@ -394,6 +402,8 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
             XbMul => XbMul,
             ReadIo(x) => ReadIo(*x),
             WriteIo(x) => WriteIo(*x),
+            XxDotStep => XxDotStep,
+            XbDotStep => XbDotStep,
         }
     }
 
@@ -455,6 +465,8 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
             XbMul => -1,
             ReadIo(n) => n.num_words() as i32,
             WriteIo(n) => -(n.num_words() as i32),
+            XxDotStep => 0,
+            XbDotStep => 0,
         }
     }
 
@@ -611,6 +623,8 @@ const fn all_instructions_without_args() -> [AnInstruction<BFieldElement>; Instr
         XbMul,
         ReadIo(N1),
         WriteIo(N1),
+        XxDotStep,
+        XbDotStep,
     ]
 }
 

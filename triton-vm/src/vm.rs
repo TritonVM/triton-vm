@@ -234,6 +234,8 @@ impl VMState {
             XbMul => self.xb_mul()?,
             WriteIo(n) => self.write_io(n)?,
             ReadIo(n) => self.read_io(n)?,
+            XxDotStep => self.xxdotstep()?,
+            XbDotStep => self.xbdotstep()?,
         };
         let op_stack_calls = self.stop_recording_op_stack_calls();
         co_processor_calls.extend(op_stack_calls);
@@ -756,6 +758,14 @@ impl VMState {
 
         self.instruction_pointer += 2;
         Ok(vec![])
+    }
+
+    fn xxdotstep(&mut self) -> Result<Vec<CoProcessorCall>> {
+        todo!("Todo: define evolution for xxdotstep")
+    }
+
+    fn xbdotstep(&mut self) -> Result<Vec<CoProcessorCall>> {
+        todo!("Todo: define evolution for xbdotstep")
     }
 
     pub fn to_processor_row(&self) -> Array1<BFieldElement> {
