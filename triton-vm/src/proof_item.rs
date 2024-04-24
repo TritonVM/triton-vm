@@ -110,7 +110,7 @@ proof_items!(
     Log2PaddedHeight(u32) => false, try_into_log2_padded_height,
     QuotientSegmentsElements(Vec<QuotientSegments>) => false, try_into_quot_segments_elements,
     FriCodeword(Vec<XFieldElement>) => false, try_into_fri_codeword,
-    FriPolynomial(Vec<XFieldElement>) => false, try_into_fri_polynomial,
+    FriPolynomial(Polynomial<XFieldElement>) => false, try_into_fri_polynomial,
     FriResponse(FriResponse) => false, try_into_fri_response,
 );
 
