@@ -62,4 +62,12 @@ mod tests {
         let substitutions = constraints.lower_to_target_degree_through_substitutions();
         let _ = substitutions.generate_degree_lowering_table_code();
     }
+
+    #[test]
+    fn constraints_and_substitutions_can_be_combined() {
+        let mut constraints = Constraints::test_constraints();
+        constraints.fold_constants();
+        let substitutions = constraints.lower_to_target_degree_through_substitutions();
+        let _ = constraints.combine_with_substitution_induced_constraints(substitutions);
+    }
 }

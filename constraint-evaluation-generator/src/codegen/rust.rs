@@ -184,7 +184,7 @@ impl RustBackend {
             .map(|circuit| match circuit.degree() {
                 d if d > 1 => quote!(interpolant_degree * #d - zerofier_degree),
                 1 => quote!(interpolant_degree - zerofier_degree),
-                _ => unreachable!("Constraint degree must be positive"),
+                _ => panic!("Constraint degree must be positive"),
             })
             .collect_vec();
         let tokenized_degree_bounds = quote!(#(#tokenized_degree_bounds),*);
@@ -325,5 +325,27 @@ impl RustBackend {
                 quote!(#node_ident)
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn print_constraints_as_rust(constraints: &Constraints) {
+        let rust = RustBackend::constraint_evaluation_code(constraints);
+        let syntax_tree = syn::parse2(rust).unwrap();
+        let code = prettyplease::unparse(&syntax_tree);
+        println!("{code}");
+    }
+
+    #[test]
+    fn print_mini_constraints_as_rust() {
+        print_constraints_as_rust(&Constraints::mini_constraints());
+    }
+
+    #[test]
+    fn print_test_constraints_as_rust() {
+        print_constraints_as_rust(&Constraints::test_constraints());
     }
 }

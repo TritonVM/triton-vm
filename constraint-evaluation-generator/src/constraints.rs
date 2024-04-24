@@ -280,7 +280,7 @@ pub(crate) mod tests {
             let b = curr_base_row(1) * next_ext_row(2) - next_base_row(2) * curr_ext_row(1);
             let c = curr_base_row(2) * next_ext_row(0) * next_ext_row(1) * next_ext_row(3)
                 + constant(42);
-            let d = challenge(ChallengeId::HashStateWeight12)
+            let d = curr_base_row(0) * challenge(ChallengeId::HashStateWeight12)
                 - challenge(ChallengeId::HashStateWeight5);
 
             vec![a, b, c, d]
