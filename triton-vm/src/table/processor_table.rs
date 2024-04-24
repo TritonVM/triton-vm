@@ -2291,6 +2291,18 @@ impl ExtProcessorTable {
         .concat()
     }
 
+    fn instruction_xxdotstep(
+        _circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
+        todo!("todo: define constraints for xxdotstep")
+    }
+
+    fn instruction_xbdotstep(
+        _circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
+        todo!("todo: define constraints for xbdotstep")
+    }
+
     fn get_transition_constraints_for_instruction(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
         instruction: Instruction,
@@ -2334,6 +2346,8 @@ impl ExtProcessorTable {
             XbMul => ExtProcessorTable::instruction_xbmul(circuit_builder),
             ReadIo(_) => ExtProcessorTable::instruction_read_io(circuit_builder),
             WriteIo(_) => ExtProcessorTable::instruction_write_io(circuit_builder),
+            XxDotStep => ExtProcessorTable::instruction_xxdotstep(circuit_builder),
+            XbDotStep => ExtProcessorTable::instruction_xbdotstep(circuit_builder),
         }
     }
 
