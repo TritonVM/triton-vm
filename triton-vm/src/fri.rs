@@ -486,15 +486,17 @@ impl<'stream, H: AlgebraicHasher> FriVerifier<'stream, H> {
     fn assert_last_round_codeword_corresponds_to_low_degree_polynomial(
         &mut self,
     ) -> VerifierResult<()> {
+        if self.last_round_polynomial.degree() > self.last_round_max_degree.try_into().unwrap() {
+            return Err(LastRoundPolynomialHasTooHighDegree);
+        }
+
         let indeterminate = self.proof_stream.sample_scalars(1)[0];
         let horner_evaluation = self.last_round_polynomial.evaluate(indeterminate);
         let barycentric_evaluation = barycentric_evaluate(&self.last_round_codeword, indeterminate);
         if horner_evaluation != barycentric_evaluation {
             return Err(LastRoundPolynomialEvaluationMismatch);
         }
-        if self.last_round_polynomial.degree() > self.last_round_max_degree.try_into().unwrap() {
-            return Err(LastRoundPolynomialHasTooHighDegree);
-        }
+
         Ok(())
     }
 
@@ -1052,23 +1054,41 @@ mod tests {
     #[proptest]
     fn incorrect_last_round_polynomial_results_in_verification_failure(
         #[strategy(arbitrary_fri())] fri: Fri<Tip5>,
-        #[strategy(arbitrary_polynomial())] polynomial: Polynomial<XFieldElement>,
-        #[strategy(arb())] incorrect_coefficients: Vec<XFieldElement>,
+        #[strategy(arbitrary_polynomial())] fri_polynomial: Polynomial<XFieldElement>,
+        #[strategy(arbitrary_polynomial_of_degree(#fri.last_round_max_degree() as i64))]
+        incorrect_polynomial: Polynomial<XFieldElement>,
     ) {
-        let codeword = fri.domain.evaluate(&polynomial);
+        let codeword = fri.domain.evaluate(&fri_polynomial);
         let mut proof_stream = ProofStream::new();
         fri.prove(&codeword, &mut proof_stream).unwrap();
 
         let mut proof_stream = prepare_proof_stream_for_verification(proof_stream);
         proof_stream.items.iter_mut().for_each(|item| {
-            if let ProofItem::FriPolynomial(coefficients) = item {
-                *coefficients = incorrect_coefficients.clone();
+            if let ProofItem::FriPolynomial(polynomial) = item {
+                *polynomial = incorrect_polynomial.clone();
             }
         });
 
         let verdict = fri.verify(&mut proof_stream, &mut None);
         let_assert!(Err(err) = verdict);
         assert!(let LastRoundPolynomialEvaluationMismatch = err);
+    }
+
+    #[proptest]
+    fn codeword_corresponding_to_high_degree_polynomial_results_in_verification_failure(
+        #[strategy(arbitrary_fri())] fri: Fri<Tip5>,
+        #[strategy(Just(#fri.first_round_max_degree() as i64 + 1))] _max_degree: i64,
+        #[strategy(#_max_degree..2 * #_max_degree)] _degree: i64,
+        #[strategy(arbitrary_polynomial_of_degree(#_degree))] poly: Polynomial<XFieldElement>,
+    ) {
+        let codeword = fri.domain.evaluate(&poly);
+        let mut proof_stream = ProofStream::new();
+        fri.prove(&codeword, &mut proof_stream).unwrap();
+
+        let mut proof_stream = prepare_proof_stream_for_verification(proof_stream);
+        let verdict = fri.verify(&mut proof_stream, &mut None);
+        let_assert!(Err(err) = verdict);
+        assert!(let LastRoundPolynomialHasTooHighDegree = err);
     }
 
     #[proptest]
