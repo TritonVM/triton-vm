@@ -285,6 +285,12 @@ fn an_instruction(s: &str) -> ParseResult<AnInstruction<String>> {
 
     let read_write = alt((read_io, write_io));
 
+    // Many-in-One
+    let xxdotstep = instruction("xxdotstep", XxDotStep);
+    let xbdotstep = instruction("xbdotstep", XbDotStep);
+
+    let many_to_one = alt((xxdotstep, xbdotstep));
+
     // Because of common prefixes, the following parsers are sensitive to order:
     //
     // Successfully parsing "assert" before trying "assert_vector" can lead to
@@ -300,6 +306,7 @@ fn an_instruction(s: &str) -> ParseResult<AnInstruction<String>> {
         arithmetic_on_stack,
         read_write,
         syntax_ambiguous,
+        many_to_one,
     ))(s)
 }
 

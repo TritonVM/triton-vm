@@ -11,6 +11,7 @@ use ndarray::Array1;
 use num_traits::One;
 use num_traits::Zero;
 use serde_derive::*;
+use twenty_first::math::x_field_element::EXTENSION_DEGREE;
 use twenty_first::prelude::*;
 use twenty_first::util_types::algebraic_hasher::Domain;
 
@@ -760,12 +761,64 @@ impl VMState {
         Ok(vec![])
     }
 
+    #[allow(clippy::unnecessary_wraps)]
     fn xxdotstep(&mut self) -> Result<Vec<CoProcessorCall>> {
-        todo!("Todo: define evolution for xxdotstep")
+        let mut rhs_address = self.op_stack.pop().unwrap();
+        let mut lhs_address = self.op_stack.pop().unwrap();
+        let mut rhs_coefficients = Vec::with_capacity(EXTENSION_DEGREE);
+        let mut lhs_coefficients = Vec::with_capacity(EXTENSION_DEGREE);
+        for _ in 0..EXTENSION_DEGREE {
+            rhs_coefficients.push(self.ram_read(rhs_address));
+            rhs_address.increment();
+            lhs_coefficients.push(self.ram_read(lhs_address));
+            lhs_address.increment();
+        }
+        let rhs = XFieldElement::new(rhs_coefficients.try_into().unwrap());
+        let lhs = XFieldElement::new(lhs_coefficients.try_into().unwrap());
+        let product = rhs * lhs;
+        let mut acc = XFieldElement::new([
+            self.op_stack.pop().unwrap(),
+            self.op_stack.pop().unwrap(),
+            self.op_stack.pop().unwrap(),
+        ]);
+        acc += product;
+        let mut coefficients = acc.coefficients.to_vec();
+        self.op_stack.push(coefficients.pop().unwrap());
+        self.op_stack.push(coefficients.pop().unwrap());
+        self.op_stack.push(coefficients.pop().unwrap());
+        self.op_stack.push(lhs_address);
+        self.op_stack.push(rhs_address);
+        self.instruction_pointer += 1;
+        Ok(vec![]) // see read_mem and write_mem to see how to populate me
     }
 
+    #[allow(clippy::unnecessary_wraps)]
     fn xbdotstep(&mut self) -> Result<Vec<CoProcessorCall>> {
-        todo!("Todo: define evolution for xbdotstep")
+        let mut rhs_address = self.op_stack.pop().unwrap();
+        let rhs = self.ram_read(rhs_address);
+        rhs_address.increment();
+        let mut lhs_address = self.op_stack.pop().unwrap();
+        let mut lhs_coefficients = Vec::with_capacity(EXTENSION_DEGREE);
+        for _ in 0..EXTENSION_DEGREE {
+            lhs_coefficients.push(self.ram_read(lhs_address));
+            lhs_address.increment();
+        }
+        let lhs = XFieldElement::new(lhs_coefficients.try_into().unwrap());
+        let product = rhs * lhs;
+        let mut acc = XFieldElement::new([
+            self.op_stack.pop().unwrap(),
+            self.op_stack.pop().unwrap(),
+            self.op_stack.pop().unwrap(),
+        ]);
+        acc += product;
+        let mut coefficients = acc.coefficients.to_vec();
+        self.op_stack.push(coefficients.pop().unwrap());
+        self.op_stack.push(coefficients.pop().unwrap());
+        self.op_stack.push(coefficients.pop().unwrap());
+        self.op_stack.push(lhs_address);
+        self.op_stack.push(rhs_address);
+        self.instruction_pointer += 1;
+        Ok(vec![]) // see read_mem and write_mem to see how to populate me
     }
 
     pub fn to_processor_row(&self) -> Array1<BFieldElement> {
@@ -1038,6 +1091,7 @@ pub(crate) mod tests {
 
     use assert2::assert;
     use assert2::let_assert;
+    use proptest::collection::vec;
     use proptest::prelude::*;
     use proptest_arbitrary_interop::arb;
     use rand::prelude::IteratorRandom;
@@ -1059,6 +1113,7 @@ pub(crate) mod tests {
     use crate::shared_tests::LeavedMerkleTreeTestData;
     use crate::shared_tests::ProgramAndInput;
     use crate::triton_asm;
+    use crate::triton_instr;
     use crate::triton_program;
 
     use super::*;
@@ -2295,5 +2350,126 @@ pub(crate) mod tests {
         let serialized = serde_json::to_string(&vm_state).unwrap();
         let deserialized = serde_json::from_str(&serialized).unwrap();
         prop_assert_eq!(vm_state, deserialized);
+    }
+
+    #[proptest]
+    fn xxdotstep(
+        #[strategy(0usize..=25)] n: usize,
+        #[strategy(vec(arb(),#n))] lhs: Vec<XFieldElement>,
+        #[strategy(vec(arb(),#n))] rhs: Vec<XFieldElement>,
+        #[strategy(arb())] lhs_address: BFieldElement,
+        #[strategy(arb())] rhs_address: BFieldElement,
+    ) {
+        let lhs_encoded = lhs.encode();
+        let rhs_encoded = rhs.encode();
+        let mut ram = HashMap::<BFieldElement, BFieldElement>::new();
+        let size_indicator = 1;
+        for (i, (&l, &r)) in lhs_encoded
+            .iter()
+            .zip(rhs_encoded.iter())
+            .skip(size_indicator)
+            .enumerate()
+        {
+            ram.insert(lhs_address + BFieldElement::new(i as u64), l);
+            ram.insert(rhs_address + BFieldElement::new(i as u64), r);
+        }
+
+        let public_input = PublicInput::default();
+        let secret_input = NonDeterminism::default().with_ram(ram);
+        let many_xxdotsteps = (0..n).map(|_| triton_instr!(xxdotstep)).collect_vec();
+        let program = triton_program! {
+            push 0
+            push 0
+            push 0
+
+            push {lhs_address}
+            push {rhs_address}
+
+            {&many_xxdotsteps}
+            halt
+        };
+
+        let mut vmstate = VMState::new(&program, public_input, secret_input);
+
+        prop_assert!(vmstate.run().is_ok());
+
+        prop_assert_eq!(
+            vmstate.op_stack.pop().unwrap(),
+            rhs_address + BFieldElement::new(rhs_encoded.len() as u64 - 1)
+        );
+        prop_assert_eq!(
+            vmstate.op_stack.pop().unwrap(),
+            lhs_address + BFieldElement::new(lhs_encoded.len() as u64 - 1)
+        );
+        let observed_dot_product = XFieldElement::new([
+            vmstate.op_stack.pop().unwrap(),
+            vmstate.op_stack.pop().unwrap(),
+            vmstate.op_stack.pop().unwrap(),
+        ]);
+        let expected_dot_product = lhs
+            .into_iter()
+            .zip(rhs)
+            .map(|(l, r)| l * r)
+            .sum::<XFieldElement>();
+        prop_assert_eq!(expected_dot_product, observed_dot_product);
+    }
+
+    #[proptest]
+    fn xbdotstep(
+        #[strategy(0usize..=25)] n: usize,
+        #[strategy(vec(arb(),#n))] lhs: Vec<XFieldElement>,
+        #[strategy(vec(arb(),#n))] rhs: Vec<BFieldElement>,
+        #[strategy(arb())] lhs_address: BFieldElement,
+        #[strategy(arb())] rhs_address: BFieldElement,
+    ) {
+        let lhs_encoded = lhs.encode();
+        let rhs_encoded = rhs.encode();
+        let mut ram = HashMap::<BFieldElement, BFieldElement>::new();
+        let size_indicator = 1;
+        for (i, &l) in lhs_encoded.iter().skip(size_indicator).enumerate() {
+            ram.insert(lhs_address + BFieldElement::new(i as u64), l);
+        }
+        for (i, &r) in rhs_encoded.iter().skip(size_indicator).enumerate() {
+            ram.insert(rhs_address + BFieldElement::new(i as u64), r);
+        }
+
+        let public_input = PublicInput::default();
+        let secret_input = NonDeterminism::default().with_ram(ram);
+        let many_xbdotsteps = (0..n).map(|_| triton_instr!(xbdotstep)).collect_vec();
+        let program = triton_program! {
+            push 0
+            push 0
+            push 0
+
+            push {lhs_address}
+            push {rhs_address}
+
+            {&many_xbdotsteps}
+            halt
+        };
+
+        let mut vmstate = VMState::new(&program, public_input, secret_input);
+
+        prop_assert!(vmstate.run().is_ok());
+
+        prop_assert_eq!(
+            vmstate.op_stack.pop().unwrap(),
+            rhs_address + BFieldElement::new(rhs_encoded.len() as u64 - 1)
+        );
+        prop_assert_eq!(
+            vmstate.op_stack.pop().unwrap(),
+            lhs_address + BFieldElement::new(lhs_encoded.len() as u64 - 1)
+        );
+        let observed_dot_product = XFieldElement::new([
+            vmstate.op_stack.pop().unwrap(),
+            vmstate.op_stack.pop().unwrap(),
+            vmstate.op_stack.pop().unwrap(),
+        ]);
+        let expected_dot_product = lhs
+            .into_iter()
+            .zip(rhs)
+            .map(|(l, r)| l * r)
+            .sum::<XFieldElement>();
+        prop_assert_eq!(expected_dot_product, observed_dot_product);
     }
 }
