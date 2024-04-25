@@ -814,7 +814,7 @@ impl ExtProcessorTable {
             ],
             Self::instruction_group_keep_jump_stack(circuit_builder),
             Self::instruction_group_keep_op_stack(circuit_builder),
-            Self::instruction_group_keep_ram(circuit_builder),
+            Self::instruction_group_no_ram(circuit_builder),
             Self::instruction_group_no_io(circuit_builder),
         ]
         .concat();
@@ -872,7 +872,9 @@ impl ExtProcessorTable {
         ]
     }
 
-    fn instruction_group_keep_ram(
+    /// The permutation argument accumulator with the RAM table does
+    /// not change, because there is no RAM access.
+    fn instruction_group_no_ram(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
         let curr_ext_row = |col: ProcessorExtTableColumn| {
@@ -952,6 +954,8 @@ impl ExtProcessorTable {
         [specific_constraints, inherited_constraints].concat()
     }
 
+    /// Op stack *height* does not change, or equivalently, the running product for the
+    /// permutation argument with the Op Stack table remains unchanged.
     fn instruction_group_keep_op_stack(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
@@ -1106,6 +1110,7 @@ impl ExtProcessorTable {
         ]
     }
 
+    // Increase the instruction pointer by 1
     fn instruction_group_step_1(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
@@ -1126,6 +1131,7 @@ impl ExtProcessorTable {
         .concat()
     }
 
+    // Increase the instruction pointer by 2
     fn instruction_group_step_2(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
@@ -1262,7 +1268,7 @@ impl ExtProcessorTable {
             Self::instruction_group_decompose_arg(circuit_builder),
             Self::stack_shrinks_by_any_of(circuit_builder, &NumberOfWords::legal_values()),
             Self::prohibit_any_illegal_number_of_words(circuit_builder),
-            Self::instruction_group_keep_ram(circuit_builder),
+            Self::instruction_group_no_ram(circuit_builder),
             Self::instruction_group_no_io(circuit_builder),
         ]
         .concat()
@@ -1283,7 +1289,7 @@ impl ExtProcessorTable {
             specific_constraints,
             Self::instruction_group_grow_op_stack(circuit_builder),
             Self::instruction_group_step_2(circuit_builder),
-            Self::instruction_group_keep_ram(circuit_builder),
+            Self::instruction_group_no_ram(circuit_builder),
             Self::instruction_group_no_io(circuit_builder),
         ]
         .concat()
@@ -1297,7 +1303,7 @@ impl ExtProcessorTable {
             Self::instruction_group_decompose_arg(circuit_builder),
             Self::stack_grows_by_any_of(circuit_builder, &NumberOfWords::legal_values()),
             Self::prohibit_any_illegal_number_of_words(circuit_builder),
-            Self::instruction_group_keep_ram(circuit_builder),
+            Self::instruction_group_no_ram(circuit_builder),
             Self::instruction_group_no_io(circuit_builder),
         ]
         .concat()
@@ -1337,7 +1343,7 @@ impl ExtProcessorTable {
             Self::instruction_group_decompose_arg(circuit_builder),
             Self::instruction_group_step_2(circuit_builder),
             Self::instruction_group_grow_op_stack(circuit_builder),
-            Self::instruction_group_keep_ram(circuit_builder),
+            Self::instruction_group_no_ram(circuit_builder),
             Self::instruction_group_no_io(circuit_builder),
         ]
         .concat()
@@ -1415,7 +1421,7 @@ impl ExtProcessorTable {
             specific_constraints,
             Self::instruction_group_decompose_arg(circuit_builder),
             Self::instruction_group_step_2(circuit_builder),
-            Self::instruction_group_keep_ram(circuit_builder),
+            Self::instruction_group_no_ram(circuit_builder),
             Self::instruction_group_no_io(circuit_builder),
         ]
         .concat()
@@ -1427,7 +1433,7 @@ impl ExtProcessorTable {
         [
             Self::instruction_group_step_1(circuit_builder),
             Self::instruction_group_keep_op_stack(circuit_builder),
-            Self::instruction_group_keep_ram(circuit_builder),
+            Self::instruction_group_no_ram(circuit_builder),
             Self::instruction_group_no_io(circuit_builder),
         ]
         .concat()
@@ -1487,7 +1493,7 @@ impl ExtProcessorTable {
             Self::next_instruction_range_check_constraints_for_instruction_skiz(circuit_builder),
             Self::instruction_group_keep_jump_stack(circuit_builder),
             Self::instruction_group_shrink_op_stack(circuit_builder),
-            Self::instruction_group_keep_ram(circuit_builder),
+            Self::instruction_group_no_ram(circuit_builder),
             Self::instruction_group_no_io(circuit_builder),
         ]
         .concat()
@@ -1551,7 +1557,7 @@ impl ExtProcessorTable {
         [
             specific_constraints,
             Self::instruction_group_keep_op_stack(circuit_builder),
-            Self::instruction_group_keep_ram(circuit_builder),
+            Self::instruction_group_no_ram(circuit_builder),
             Self::instruction_group_no_io(circuit_builder),
         ]
         .concat()
@@ -1578,7 +1584,7 @@ impl ExtProcessorTable {
         [
             specific_constraints,
             Self::instruction_group_keep_op_stack(circuit_builder),
-            Self::instruction_group_keep_ram(circuit_builder),
+            Self::instruction_group_no_ram(circuit_builder),
             Self::instruction_group_no_io(circuit_builder),
         ]
         .concat()
@@ -1601,7 +1607,7 @@ impl ExtProcessorTable {
             specific_constraints,
             Self::instruction_group_keep_jump_stack(circuit_builder),
             Self::instruction_group_keep_op_stack(circuit_builder),
-            Self::instruction_group_keep_ram(circuit_builder),
+            Self::instruction_group_no_ram(circuit_builder),
             Self::instruction_group_no_io(circuit_builder),
         ]
         .concat()
@@ -1623,7 +1629,7 @@ impl ExtProcessorTable {
             specific_constraints,
             Self::instruction_group_step_1(circuit_builder),
             Self::instruction_group_shrink_op_stack(circuit_builder),
-            Self::instruction_group_keep_ram(circuit_builder),
+            Self::instruction_group_no_ram(circuit_builder),
             Self::instruction_group_no_io(circuit_builder),
         ]
         .concat()
@@ -1647,7 +1653,7 @@ impl ExtProcessorTable {
             specific_constraints,
             Self::instruction_group_step_1(circuit_builder),
             Self::instruction_group_keep_op_stack(circuit_builder),
-            Self::instruction_group_keep_ram(circuit_builder),
+            Self::instruction_group_no_ram(circuit_builder),
             Self::instruction_group_no_io(circuit_builder),
         ]
         .concat()
@@ -1705,7 +1711,7 @@ impl ExtProcessorTable {
         [
             Self::instruction_group_step_1(circuit_builder),
             op_stack_shrinks_by_5_and_top_5_unconstrained,
-            Self::instruction_group_keep_ram(circuit_builder),
+            Self::instruction_group_no_ram(circuit_builder),
             Self::instruction_group_no_io(circuit_builder),
         ]
         .concat()
@@ -1771,7 +1777,7 @@ impl ExtProcessorTable {
             maybe_shift_known_digest_down_the_stack,
             op_stack_grows_by_5_and_top_11_elements_unconstrained,
             Self::instruction_group_step_1(circuit_builder),
-            Self::instruction_group_keep_ram(circuit_builder),
+            Self::instruction_group_no_ram(circuit_builder),
             Self::instruction_group_no_io(circuit_builder),
         ]
         .concat()
@@ -1795,7 +1801,7 @@ impl ExtProcessorTable {
             specific_constraints,
             Self::instruction_group_step_1(circuit_builder),
             Self::constraints_for_shrinking_stack_by(circuit_builder, 5),
-            Self::instruction_group_keep_ram(circuit_builder),
+            Self::instruction_group_no_ram(circuit_builder),
             Self::instruction_group_no_io(circuit_builder),
         ]
         .concat()
@@ -1807,7 +1813,7 @@ impl ExtProcessorTable {
         [
             Self::instruction_group_step_1(circuit_builder),
             Self::instruction_group_keep_op_stack(circuit_builder),
-            Self::instruction_group_keep_ram(circuit_builder),
+            Self::instruction_group_no_ram(circuit_builder),
             Self::instruction_group_no_io(circuit_builder),
         ]
         .concat()
@@ -1819,7 +1825,7 @@ impl ExtProcessorTable {
         [
             Self::instruction_group_step_1(circuit_builder),
             Self::constraints_for_shrinking_stack_by(circuit_builder, 10),
-            Self::instruction_group_keep_ram(circuit_builder),
+            Self::instruction_group_no_ram(circuit_builder),
             Self::instruction_group_no_io(circuit_builder),
         ]
         .concat()
@@ -1831,7 +1837,7 @@ impl ExtProcessorTable {
         [
             Self::instruction_group_step_1(circuit_builder),
             Self::constraints_for_growing_stack_by(circuit_builder, 10),
-            Self::instruction_group_keep_ram(circuit_builder),
+            Self::instruction_group_no_ram(circuit_builder),
             Self::instruction_group_no_io(circuit_builder),
         ]
         .concat()
@@ -1853,7 +1859,7 @@ impl ExtProcessorTable {
             specific_constraints,
             Self::instruction_group_step_1(circuit_builder),
             Self::instruction_group_binop(circuit_builder),
-            Self::instruction_group_keep_ram(circuit_builder),
+            Self::instruction_group_no_ram(circuit_builder),
             Self::instruction_group_no_io(circuit_builder),
         ]
         .concat()
@@ -1875,7 +1881,7 @@ impl ExtProcessorTable {
             specific_constraints,
             Self::instruction_group_step_1(circuit_builder),
             Self::instruction_group_binop(circuit_builder),
-            Self::instruction_group_keep_ram(circuit_builder),
+            Self::instruction_group_no_ram(circuit_builder),
             Self::instruction_group_no_io(circuit_builder),
         ]
         .concat()
@@ -1898,7 +1904,7 @@ impl ExtProcessorTable {
             specific_constraints,
             Self::instruction_group_step_1(circuit_builder),
             Self::instruction_group_unop(circuit_builder),
-            Self::instruction_group_keep_ram(circuit_builder),
+            Self::instruction_group_no_ram(circuit_builder),
             Self::instruction_group_no_io(circuit_builder),
         ]
         .concat()
@@ -1940,7 +1946,7 @@ impl ExtProcessorTable {
             specific_constraints,
             Self::instruction_group_step_1(circuit_builder),
             Self::instruction_group_binop(circuit_builder),
-            Self::instruction_group_keep_ram(circuit_builder),
+            Self::instruction_group_no_ram(circuit_builder),
             Self::instruction_group_no_io(circuit_builder),
         ]
         .concat()
@@ -1988,7 +1994,7 @@ impl ExtProcessorTable {
                 circuit_builder,
             ),
             Self::instruction_group_step_1(circuit_builder),
-            Self::instruction_group_keep_ram(circuit_builder),
+            Self::instruction_group_no_ram(circuit_builder),
             Self::instruction_group_no_io(circuit_builder),
         ]
         .concat()
@@ -2000,7 +2006,7 @@ impl ExtProcessorTable {
         [
             Self::instruction_group_step_1(circuit_builder),
             Self::instruction_group_binop(circuit_builder),
-            Self::instruction_group_keep_ram(circuit_builder),
+            Self::instruction_group_no_ram(circuit_builder),
             Self::instruction_group_no_io(circuit_builder),
         ]
         .concat()
@@ -2012,7 +2018,7 @@ impl ExtProcessorTable {
         [
             Self::instruction_group_step_1(circuit_builder),
             Self::instruction_group_binop(circuit_builder),
-            Self::instruction_group_keep_ram(circuit_builder),
+            Self::instruction_group_no_ram(circuit_builder),
             Self::instruction_group_no_io(circuit_builder),
         ]
         .concat()
@@ -2024,7 +2030,7 @@ impl ExtProcessorTable {
         [
             Self::instruction_group_step_1(circuit_builder),
             Self::instruction_group_binop(circuit_builder),
-            Self::instruction_group_keep_ram(circuit_builder),
+            Self::instruction_group_no_ram(circuit_builder),
             Self::instruction_group_no_io(circuit_builder),
         ]
         .concat()
@@ -2036,7 +2042,7 @@ impl ExtProcessorTable {
         [
             Self::instruction_group_step_1(circuit_builder),
             Self::instruction_group_unop(circuit_builder),
-            Self::instruction_group_keep_ram(circuit_builder),
+            Self::instruction_group_no_ram(circuit_builder),
             Self::instruction_group_no_io(circuit_builder),
         ]
         .concat()
@@ -2048,7 +2054,7 @@ impl ExtProcessorTable {
         [
             Self::instruction_group_step_1(circuit_builder),
             Self::instruction_group_binop(circuit_builder),
-            Self::instruction_group_keep_ram(circuit_builder),
+            Self::instruction_group_no_ram(circuit_builder),
             Self::instruction_group_no_io(circuit_builder),
         ]
         .concat()
@@ -2080,7 +2086,7 @@ impl ExtProcessorTable {
             Self::instruction_group_op_stack_remains_and_top_three_elements_unconstrained(
                 circuit_builder,
             ),
-            Self::instruction_group_keep_ram(circuit_builder),
+            Self::instruction_group_no_ram(circuit_builder),
             Self::instruction_group_no_io(circuit_builder),
         ]
         .concat()
@@ -2092,7 +2098,7 @@ impl ExtProcessorTable {
         [
             Self::instruction_group_step_1(circuit_builder),
             Self::instruction_group_unop(circuit_builder),
-            Self::instruction_group_keep_ram(circuit_builder),
+            Self::instruction_group_no_ram(circuit_builder),
             Self::instruction_group_no_io(circuit_builder),
         ]
         .concat()
@@ -2121,7 +2127,7 @@ impl ExtProcessorTable {
             specific_constraints,
             Self::constraints_for_shrinking_stack_by_3_and_top_3_unconstrained(circuit_builder),
             Self::instruction_group_step_1(circuit_builder),
-            Self::instruction_group_keep_ram(circuit_builder),
+            Self::instruction_group_no_ram(circuit_builder),
             Self::instruction_group_no_io(circuit_builder),
         ]
         .concat()
@@ -2161,7 +2167,7 @@ impl ExtProcessorTable {
             specific_constraints,
             Self::constraints_for_shrinking_stack_by_3_and_top_3_unconstrained(circuit_builder),
             Self::instruction_group_step_1(circuit_builder),
-            Self::instruction_group_keep_ram(circuit_builder),
+            Self::instruction_group_no_ram(circuit_builder),
             Self::instruction_group_no_io(circuit_builder),
         ]
         .concat()
@@ -2207,7 +2213,7 @@ impl ExtProcessorTable {
                 circuit_builder,
             ),
             Self::instruction_group_step_1(circuit_builder),
-            Self::instruction_group_keep_ram(circuit_builder),
+            Self::instruction_group_no_ram(circuit_builder),
             Self::instruction_group_no_io(circuit_builder),
         ]
         .concat()
@@ -2241,7 +2247,7 @@ impl ExtProcessorTable {
                 circuit_builder,
             ),
             Self::instruction_group_step_1(circuit_builder),
-            Self::instruction_group_keep_ram(circuit_builder),
+            Self::instruction_group_no_ram(circuit_builder),
             Self::instruction_group_no_io(circuit_builder),
         ]
         .concat()
@@ -2263,7 +2269,7 @@ impl ExtProcessorTable {
             Self::instruction_group_decompose_arg(circuit_builder),
             read_any_legal_number_of_words,
             Self::prohibit_any_illegal_number_of_words(circuit_builder),
-            Self::instruction_group_keep_ram(circuit_builder),
+            Self::instruction_group_no_ram(circuit_builder),
             vec![Self::running_evaluation_for_standard_output_remains_unchanged(circuit_builder)],
         ]
         .concat()
@@ -2285,22 +2291,185 @@ impl ExtProcessorTable {
             Self::instruction_group_decompose_arg(circuit_builder),
             write_any_of_1_through_5_elements,
             Self::prohibit_any_illegal_number_of_words(circuit_builder),
-            Self::instruction_group_keep_ram(circuit_builder),
+            Self::instruction_group_no_ram(circuit_builder),
             vec![Self::running_evaluation_for_standard_input_remains_unchanged(circuit_builder)],
         ]
         .concat()
     }
 
-    fn instruction_xxdotstep(
-        _circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    /// Update the accumulator for the Permutation Argument with the
+    /// RAM table in accordance with reading a single word from the
+    /// indicated ram pointer to the indicated destination.
+    fn read_from_ram_to(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+        ram_pointer: ConstraintCircuitMonad<DualRowIndicator>,
+        destination: ConstraintCircuitMonad<DualRowIndicator>,
+    ) -> ConstraintCircuitMonad<DualRowIndicator> {
+        let curr_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
+        };
+        let challenge = |c: ChallengeId| circuit_builder.challenge(c);
+        let constant = |c: usize| circuit_builder.b_constant(u64::try_from(c).unwrap());
+
+        let instruction_type = 1; // READ
+        let clk = curr_base_row(CLK);
+        let compressed_row = clk * challenge(RamClkWeight)
+            + constant(instruction_type) * challenge(RamInstructionTypeWeight)
+            + ram_pointer * challenge(RamPointerWeight)
+            + destination * challenge(RamValueWeight);
+        let factor = challenge(RamIndeterminate) - compressed_row;
+
+        let curr_ext_row = |col: ProcessorExtTableColumn| {
+            circuit_builder.input(CurrentExtRow(col.master_ext_table_index()))
+        };
+        let next_ext_row = |col: ProcessorExtTableColumn| {
+            circuit_builder.input(NextExtRow(col.master_ext_table_index()))
+        };
+        let running_product_ram_table_curr = curr_ext_row(RamTablePermArg);
+        let running_product_ram_table_next = next_ext_row(RamTablePermArg);
+        running_product_ram_table_curr * factor - running_product_ram_table_next
+    }
+
+    fn xxproduct<Indicator: InputIndicator>(
+        x: [ConstraintCircuitMonad<Indicator>; 3],
+        y: [ConstraintCircuitMonad<Indicator>; 3],
+    ) -> [ConstraintCircuitMonad<Indicator>; 3] {
+        let z0 = x[0].clone() * y[0].clone();
+        let z1 = x[1].clone() * y[0].clone() + x[0].clone() * y[1].clone();
+        let z2 =
+            x[2].clone() * y[0].clone() + x[1].clone() * y[1].clone() + x[0].clone() * y[2].clone();
+        let z3 = x[2].clone() * y[1].clone() + x[1].clone() * y[2].clone();
+        let z4 = x[2].clone() * y[2].clone();
+        // reduce modulo x³ - x + 1
+        [z0 - z3.clone(), z1 - z4.clone() + z3, z2 + z4]
+    }
+
+    fn xbproduct<Indicator: InputIndicator>(
+        x: [ConstraintCircuitMonad<Indicator>; 3],
+        y: ConstraintCircuitMonad<Indicator>,
+    ) -> [ConstraintCircuitMonad<Indicator>; 3] {
+        let z0 = x[0].clone() * y.clone();
+        let z1 = x[1].clone() * y.clone();
+        let z2 = x[2].clone() * y;
+        [z0, z1, z2]
+    }
+
+    fn update_dotstep_accumulator(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+        accumulator_indices: [ProcessorBaseTableColumn; 3],
+        difference: [ConstraintCircuitMonad<DualRowIndicator>; 3],
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        todo!("todo: define constraints for xxdotstep")
+        let curr_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
+        };
+        let next_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(NextBaseRow(col.master_base_table_index()))
+        };
+        let curr = accumulator_indices.map(curr_base_row);
+        let next = accumulator_indices.map(next_base_row);
+        curr.into_iter()
+            .zip(next)
+            .zip(difference)
+            .map(|((c, n), d)| n - c - d)
+            .collect_vec()
+    }
+
+    fn instruction_xxdotstep(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
+        let curr_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
+        };
+        let next_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(NextBaseRow(col.master_base_table_index()))
+        };
+        let constant = |c: usize| circuit_builder.b_constant(u64::try_from(c).unwrap());
+
+        let rhs_ptr0 = curr_base_row(ST0);
+        let rhs_ptr1 = rhs_ptr0.clone() + constant(1);
+        let rhs_ptr2 = rhs_ptr1.clone() + constant(1);
+        let lhs_ptr0 = curr_base_row(ST1);
+        let lhs_ptr1 = lhs_ptr0.clone() + constant(1);
+        let lhs_ptr2 = lhs_ptr1.clone() + constant(1);
+        let hv0 = curr_base_row(HV0);
+        let hv1 = curr_base_row(HV1);
+        let hv2 = curr_base_row(HV2);
+        let hv3 = curr_base_row(HV3);
+        let hv4 = curr_base_row(HV4);
+        let hv5 = curr_base_row(HV5);
+        [
+            Self::instruction_group_step_1(circuit_builder),
+            Self::instruction_group_no_io(circuit_builder),
+            Self::instruction_group_keep_op_stack(circuit_builder),
+            Self::instruction_group_keep_jump_stack(circuit_builder),
+            // read two xfes from RAM
+            vec![
+                Self::read_from_ram_to(circuit_builder, rhs_ptr0, hv0.clone()),
+                Self::read_from_ram_to(circuit_builder, rhs_ptr1, hv1.clone()),
+                Self::read_from_ram_to(circuit_builder, rhs_ptr2, hv2.clone()),
+                Self::read_from_ram_to(circuit_builder, lhs_ptr0, hv3.clone()),
+                Self::read_from_ram_to(circuit_builder, lhs_ptr1, hv4.clone()),
+                Self::read_from_ram_to(circuit_builder, lhs_ptr2, hv5.clone()),
+            ],
+            // add product into accumulator
+            Self::update_dotstep_accumulator(
+                circuit_builder,
+                [ST2, ST3, ST4],
+                Self::xxproduct([hv0, hv1, hv2], [hv3, hv4, hv5]),
+            ),
+            // increment ram pointers, st0 and st1
+            vec![
+                next_base_row(ST0) - curr_base_row(ST0) - constant(3),
+                next_base_row(ST1) - curr_base_row(ST1) - constant(3),
+            ],
+        ]
+        .concat()
     }
 
     fn instruction_xbdotstep(
-        _circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        todo!("todo: define constraints for xbdotstep")
+        let curr_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
+        };
+        let next_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(NextBaseRow(col.master_base_table_index()))
+        };
+        let constant = |c: usize| circuit_builder.b_constant(u64::try_from(c).unwrap());
+
+        let rhs_ptr0 = curr_base_row(ST0);
+        let lhs_ptr0 = curr_base_row(ST1);
+        let lhs_ptr1 = lhs_ptr0.clone() + constant(1);
+        let lhs_ptr2 = lhs_ptr1.clone() + constant(1);
+        let hv0 = curr_base_row(HV0);
+        let hv1 = curr_base_row(HV1);
+        let hv2 = curr_base_row(HV2);
+        let hv3 = curr_base_row(HV3);
+        [
+            Self::instruction_group_step_1(circuit_builder),
+            Self::instruction_group_no_io(circuit_builder),
+            Self::instruction_group_keep_op_stack(circuit_builder),
+            Self::instruction_group_keep_jump_stack(circuit_builder),
+            // read one bfe and one xfe from RAM
+            vec![
+                Self::read_from_ram_to(circuit_builder, rhs_ptr0, hv0.clone()),
+                Self::read_from_ram_to(circuit_builder, lhs_ptr0, hv1.clone()),
+                Self::read_from_ram_to(circuit_builder, lhs_ptr1, hv2.clone()),
+                Self::read_from_ram_to(circuit_builder, lhs_ptr2, hv3.clone()),
+            ],
+            // add product into accumulator
+            Self::update_dotstep_accumulator(
+                circuit_builder,
+                [ST2, ST3, ST4],
+                Self::xbproduct([hv1, hv2, hv3], hv0),
+            ),
+            // increment ram pointers, st0 and st1
+            vec![
+                next_base_row(ST0) - curr_base_row(ST0) - constant(1),
+                next_base_row(ST1) - curr_base_row(ST1) - constant(3),
+            ],
+        ]
+        .concat()
     }
 
     fn get_transition_constraints_for_instruction(
@@ -2351,6 +2520,7 @@ impl ExtProcessorTable {
         }
     }
 
+    /// Constrains instruction argument `nia` such that 0 < nia <= 5.
     fn prohibit_any_illegal_number_of_words(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
@@ -3383,6 +3553,7 @@ pub(crate) mod tests {
     use assert2::assert;
     use ndarray::Array2;
     use proptest::collection::vec;
+    use proptest::prop_assert_eq;
     use proptest_arbitrary_interop::arb;
     use rand::thread_rng;
     use rand::Rng;
@@ -4217,5 +4388,69 @@ pub(crate) mod tests {
             current_row.view(),
             &challenges,
         );
+    }
+
+    #[proptest]
+    fn xxproduct_and_xbproduct_are_accurate(
+        #[strategy(arb())] a: XFieldElement,
+        #[strategy(arb())] b: XFieldElement,
+        #[strategy(arb())] c: BFieldElement,
+    ) {
+        let circuit_builder = ConstraintCircuitBuilder::<DualRowIndicator>::new();
+        let curr_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
+        };
+        let x0 = curr_base_row(ST0);
+        let x1 = curr_base_row(ST1);
+        let x2 = curr_base_row(ST2);
+
+        let y0 = curr_base_row(ST3);
+        let y1 = curr_base_row(ST4);
+        let y2 = curr_base_row(ST5);
+
+        let y3 = curr_base_row(ST6);
+
+        let [z0, z1, z2] =
+            ExtProcessorTable::xxproduct([x0.clone(), x1.clone(), x2.clone()], [y0, y1, y2]);
+        let [z3, z4, z5] = ExtProcessorTable::xbproduct([x0, x1, x2], y3);
+
+        let d = a * b;
+        let e = a * c;
+
+        let mut base_table = Array2::zeros([1, NUM_BASE_COLUMNS]);
+        let ext_table = Array2::zeros([1, NUM_EXT_COLUMNS]);
+        let challenges: [XFieldElement; Challenges::COUNT] = (0..Challenges::COUNT)
+            .map(|_| XFieldElement::zero())
+            .collect_vec()
+            .try_into()
+            .unwrap();
+        base_table.as_slice_mut().unwrap()[ST0.master_base_table_index()] = a.coefficients[0];
+        base_table.as_slice_mut().unwrap()[ST1.master_base_table_index()] = a.coefficients[1];
+        base_table.as_slice_mut().unwrap()[ST2.master_base_table_index()] = a.coefficients[2];
+        base_table.as_slice_mut().unwrap()[ST3.master_base_table_index()] = b.coefficients[0];
+        base_table.as_slice_mut().unwrap()[ST4.master_base_table_index()] = b.coefficients[1];
+        base_table.as_slice_mut().unwrap()[ST5.master_base_table_index()] = b.coefficients[2];
+        base_table.as_slice_mut().unwrap()[ST6.master_base_table_index()] = c;
+        let z = [
+            z0.consume(),
+            z1.consume(),
+            z2.consume(),
+            z3.consume(),
+            z4.consume(),
+            z5.consume(),
+        ];
+        let d0 = z[0].evaluate(base_table.view(), ext_table.view(), &challenges);
+        let d1 = z[1].evaluate(base_table.view(), ext_table.view(), &challenges);
+        let d2 = z[2].evaluate(base_table.view(), ext_table.view(), &challenges);
+        let e0 = z[3].evaluate(base_table.view(), ext_table.view(), &challenges);
+        let e1 = z[4].evaluate(base_table.view(), ext_table.view(), &challenges);
+        let e2 = z[5].evaluate(base_table.view(), ext_table.view(), &challenges);
+
+        prop_assert_eq!(d.coefficients[0], d0.coefficients[0]);
+        prop_assert_eq!(d.coefficients[1], d1.coefficients[0]);
+        prop_assert_eq!(d.coefficients[2], d2.coefficients[0]);
+        prop_assert_eq!(e.coefficients[0], e0.coefficients[0]);
+        prop_assert_eq!(e.coefficients[1], e1.coefficients[0]);
+        prop_assert_eq!(e.coefficients[2], e2.coefficients[0]);
     }
 }

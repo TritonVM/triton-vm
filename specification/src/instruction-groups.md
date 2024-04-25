@@ -14,7 +14,7 @@ The following table lists and briefly explains all instruction groups.
 | `decompose_arg`              | instruction's argument held in `nia` is binary decomposed into helper registers `hv0` through `hv3`                                                      |
 | `prohibit_illegal_num_words` | constrain the instruction's argument `n` to 1 ⩽ `n` ⩽ 5                                                                                                  |
 | `no_io`                      | the running evaluations for public input & output remain unchanged                                                                                       |
-| `keep_ram`                   | RAM does not change, _i.e._, the running product of the [Permutation Argument](permutation-argument.md) with the RAM Table remains unchanged             |
+| `no_ram`                     | RAM is not being accessed, _i.e._, the running product of the [Permutation Argument](permutation-argument.md) with the RAM Table remains unchanged       |
 | `keep_jump_stack`            | jump stack does not change, _i.e._, registers `jsp`, `jso`, and `jsd` do not change                                                                      |
 | `step_1`                     | jump stack does not change and instruction pointer `ip` increases by 1                                                                                   |
 | `step_2`                     | jump stack does not change and instruction pointer `ip` increases by 2                                                                                   |
@@ -25,6 +25,12 @@ The following table lists and briefly explains all instruction groups.
 | `binary_operation`           | op stack elements starting from `st2` are shifted up by one position, highest two elements of the resulting stack are unconstrained                      |
 | `shrink_op_stack`            | op stack elements starting from `st1` are shifted up by one position                                                                                     |
 | `shrink_op_stack_by_any_of`  | op stack elements starting from `stn` are shifted up by one position, where `n` is the instruction's argument                                            |
+
+The following instruction groups conceptually fit the category of 'instruction groups' but are not used or enforced through AIR constraints.
+
+| group name | description                                                                                                                                                                |
+|:-----------|:---------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `no_hash`  | The hash coprocessor is not accessed. The constraints are implied by the evaluation argument with the Hash Table which takes the current instruction into account.         |
 
 Below figure gives a comprehensive overview over the subset relation between all instruction groups.
 
