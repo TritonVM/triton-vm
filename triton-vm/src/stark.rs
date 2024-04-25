@@ -2057,6 +2057,16 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn constraints_evaluate_to_zero_on_property_based_test_program_for_xxdotstep() {
+        triton_constraints_evaluate_to_zero(property_based_test_program_for_xxdotstep());
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_property_based_test_program_for_xbdotstep() {
+        triton_constraints_evaluate_to_zero(property_based_test_program_for_xbdotstep());
+    }
+
+    #[test]
     fn claim_in_ram_corresponds_to_currently_running_program() {
         triton_constraints_evaluate_to_zero(
             test_program_claim_in_ram_corresponds_to_currently_running_program(),

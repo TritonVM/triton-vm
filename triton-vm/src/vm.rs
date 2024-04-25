@@ -167,6 +167,38 @@ impl VMState {
                 }
             }
             Eq => hvs[0] = (self.op_stack[ST1] - self.op_stack[ST0]).inverse_or_zero(),
+            XxDotStep => {
+                hvs[0] = *self.ram.get(&self.op_stack[ST0]).unwrap();
+                hvs[1] = *self
+                    .ram
+                    .get(&(self.op_stack[ST0] + BFieldElement::new(1)))
+                    .unwrap();
+                hvs[2] = *self
+                    .ram
+                    .get(&(self.op_stack[ST0] + BFieldElement::new(2)))
+                    .unwrap();
+                hvs[3] = *self.ram.get(&self.op_stack[ST1]).unwrap();
+                hvs[4] = *self
+                    .ram
+                    .get(&(self.op_stack[ST1] + BFieldElement::new(1)))
+                    .unwrap();
+                hvs[5] = *self
+                    .ram
+                    .get(&(self.op_stack[ST1] + BFieldElement::new(2)))
+                    .unwrap();
+            }
+            XbDotStep => {
+                hvs[0] = *self.ram.get(&self.op_stack[ST0]).unwrap();
+                hvs[1] = *self.ram.get(&self.op_stack[ST1]).unwrap();
+                hvs[2] = *self
+                    .ram
+                    .get(&(self.op_stack[ST1] + BFieldElement::new(1)))
+                    .unwrap();
+                hvs[3] = *self
+                    .ram
+                    .get(&(self.op_stack[ST1] + BFieldElement::new(2)))
+                    .unwrap();
+            }
             _ => (),
         }
 
@@ -763,6 +795,7 @@ impl VMState {
 
     #[allow(clippy::unnecessary_wraps)]
     fn xxdotstep(&mut self) -> Result<Vec<CoProcessorCall>> {
+        self.start_recording_ram_calls();
         let mut rhs_address = self.op_stack.pop().unwrap();
         let mut lhs_address = self.op_stack.pop().unwrap();
         let mut rhs_coefficients = Vec::with_capacity(EXTENSION_DEGREE);
@@ -789,11 +822,13 @@ impl VMState {
         self.op_stack.push(lhs_address);
         self.op_stack.push(rhs_address);
         self.instruction_pointer += 1;
-        Ok(vec![]) // see read_mem and write_mem to see how to populate me
+        let ram_calls = self.stop_recording_ram_calls();
+        Ok(ram_calls)
     }
 
     #[allow(clippy::unnecessary_wraps)]
     fn xbdotstep(&mut self) -> Result<Vec<CoProcessorCall>> {
+        self.start_recording_ram_calls();
         let mut rhs_address = self.op_stack.pop().unwrap();
         let rhs = self.ram_read(rhs_address);
         rhs_address.increment();
@@ -818,7 +853,8 @@ impl VMState {
         self.op_stack.push(lhs_address);
         self.op_stack.push(rhs_address);
         self.instruction_pointer += 1;
-        Ok(vec![]) // see read_mem and write_mem to see how to populate me
+        let ram_calls = self.stop_recording_ram_calls();
+        Ok(ram_calls)
     }
 
     pub fn to_processor_row(&self) -> Array1<BFieldElement> {
@@ -1750,6 +1786,144 @@ pub(crate) mod tests {
     #[test]
     fn run_dont_prove_property_based_test_for_random_ram_access() {
         let source_code_and_input = property_based_test_program_for_random_ram_access();
+        source_code_and_input.run().unwrap();
+    }
+
+    pub(crate) fn property_based_test_program_for_xxdotstep() -> ProgramAndInput {
+        let mut rng = ThreadRng::default();
+        let n = rng.gen_range(0..10);
+        let push_xfe = |x: XFieldElement| {
+            triton_asm! {
+                push {x.coefficients[2]}
+                push {x.coefficients[1]}
+                push {x.coefficients[0]}
+            }
+        };
+        let push_and_write_xfe = |x: XFieldElement| {
+            triton_asm! {
+                push {x.coefficients[2]}
+                push {x.coefficients[1]}
+                push {x.coefficients[0]}
+                dup 3
+                write_mem 3
+                swap 1
+                pop 1
+            }
+        };
+        let vector_one = (0..n).map(|_| rng.gen::<XFieldElement>()).collect_vec();
+        let vector_two = (0..n).map(|_| rng.gen::<XFieldElement>()).collect_vec();
+        let inner_product = vector_one
+            .iter()
+            .zip(vector_two.iter())
+            .map(|(&a, &b)| a * b)
+            .sum::<XFieldElement>();
+        let push_and_write_vector_one = (0..n)
+            .flat_map(|i| push_and_write_xfe(vector_one[i]))
+            .collect_vec();
+        let push_and_write_vector_two = (0..n)
+            .flat_map(|i| push_and_write_xfe(vector_two[i]))
+            .collect_vec();
+        let push_inner_product = push_xfe(inner_product);
+        let many_dotsteps = (0..n).map(|_| triton_instr!(xxdotstep)).collect_vec();
+        let code = triton_program! {
+            push 0
+            {&push_and_write_vector_one}
+            dup 0
+            {&push_and_write_vector_two}
+            pop 1
+            push 0
+            {&many_dotsteps}
+            pop 1
+            pop 1
+            push 0
+            push 0
+            {&push_inner_product}
+            push 0
+            push 0
+            assert_vector
+            halt
+        };
+        ProgramAndInput::new(code)
+    }
+
+    /// Sanity check
+    #[test]
+    fn run_dont_prove_property_based_test_program_for_xxdotstep() {
+        let source_code_and_input = property_based_test_program_for_xxdotstep();
+        source_code_and_input.run().unwrap();
+    }
+
+    pub(crate) fn property_based_test_program_for_xbdotstep() -> ProgramAndInput {
+        let mut rng = ThreadRng::default();
+        let n = rng.gen_range(0..10);
+        let push_xfe = |x: XFieldElement| {
+            triton_asm! {
+                push {x.coefficients[2]}
+                push {x.coefficients[1]}
+                push {x.coefficients[0]}
+            }
+        };
+        let push_and_write_xfe = |x: XFieldElement| {
+            triton_asm! {
+                push {x.coefficients[2]}
+                push {x.coefficients[1]}
+                push {x.coefficients[0]}
+                dup 3
+                write_mem 3
+                swap 1
+                pop 1
+            }
+        };
+        let push_and_write_bfe = |x: BFieldElement| {
+            triton_asm! {
+                push {x}
+                dup 1
+                write_mem 1
+                swap 1
+                pop 1
+            }
+        };
+        let vector_one = (0..n).map(|_| rng.gen::<XFieldElement>()).collect_vec();
+        let vector_two = (0..n).map(|_| rng.gen::<BFieldElement>()).collect_vec();
+        let inner_product = vector_one
+            .iter()
+            .zip(vector_two.iter())
+            .map(|(&a, &b)| a * b)
+            .sum::<XFieldElement>();
+        let push_and_write_vector_one = (0..n)
+            .flat_map(|i| push_and_write_xfe(vector_one[i]))
+            .collect_vec();
+        let push_and_write_vector_two = (0..n)
+            .flat_map(|i| push_and_write_bfe(vector_two[i]))
+            .collect_vec();
+        let push_inner_product = push_xfe(inner_product);
+        let many_dotsteps = (0..n).map(|_| triton_instr!(xbdotstep)).collect_vec();
+        let code = triton_program! {
+            push 0
+            {&push_and_write_vector_one}
+            dup 0
+            {&push_and_write_vector_two}
+            pop 1
+            push 0
+            swap 1
+            {&many_dotsteps}
+            pop 1
+            pop 1
+            push 0
+            push 0
+            {&push_inner_product}
+            push 0
+            push 0
+            assert_vector
+            halt
+        };
+        ProgramAndInput::new(code)
+    }
+
+    /// Sanity check
+    #[test]
+    fn run_dont_prove_property_based_test_program_for_xbdotstep() {
+        let source_code_and_input = property_based_test_program_for_xbdotstep();
         source_code_and_input.run().unwrap();
     }
 
