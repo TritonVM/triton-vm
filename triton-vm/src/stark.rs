@@ -2054,6 +2054,77 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn constraints_evaluate_to_zero_on_property_based_test_program_for_xxdotstep() {
+        let program_and_input = property_based_test_program_for_xxdotstep();
+        let mut vm_state = VMState::new(
+            &program_and_input.program,
+            Default::default(),
+            Default::default(),
+        );
+        // invoke master_tables_for_low_security_level(..)
+        let (stark, claim, master_base_table, master_ext_table, mut challenges) = {
+            let (stark, claim, mut master_base_table) =
+                master_base_table_for_low_security_level(program_and_input);
+
+            let challenges = Challenges::placeholder(&claim);
+            master_base_table.pad();
+            let master_ext_table = master_base_table.extend(&challenges);
+
+            (
+                stark,
+                claim,
+                master_base_table,
+                master_ext_table,
+                challenges,
+            )
+        };
+        challenges.challenges.iter_mut().for_each(|ch| {
+            *ch = thread_rng().gen::<XFieldElement>();
+        });
+
+        let mbt = master_base_table.trace_table();
+        let met = master_ext_table.trace_table();
+
+        let clk_star = mbt.slice(s![1, 7]);
+        let cjddiff_star = mbt.slice(s![1, 45]);
+        let logder = met.slice(s![0, 13]);
+        let logder_star = met.slice(s![1, 13]);
+        let chall = challenges[11];
+        let constraint = (logder_star[()] - logder[()]) * (chall - clk_star[()]) - cjddiff_star[()];
+        println!(
+            "mbt -- \nclk*: {clk_star}\ncjddiff*: {cjddiff_star}\nlog: {logder}\nlog*: {logder_star}\nchallenge: {chall}\n",
+        );
+        println!("constraint: {:?}", constraint);
+
+        let builder = ConstraintCircuitBuilder::new();
+        for (constraint_idx, constraint) in ExtProcessorTable::transition_constraints(&builder)
+            .into_iter()
+            .map(|constraint_monad| constraint_monad.consume())
+            .enumerate()
+        {
+            for row_idx in 0..mbt.nrows() - 1 {
+                let evaluated_constraint = constraint.evaluate(
+                    mbt.slice(s![row_idx..=row_idx + 1, ..]),
+                    met.slice(s![row_idx..=row_idx + 1, ..]),
+                    &challenges.challenges,
+                );
+                assert_eq!(
+                    evaluated_constraint,
+                    xfe!(0),
+                    "transition constraint {constraint_idx} failed on row {row_idx}"
+                );
+            }
+        }
+        // check_processor_table_constraints(mbt, met, &challenges);
+        // triton_constraints_evaluate_to_zero(property_based_test_program_for_xxdotstep());
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_property_based_test_program_for_xbdotstep() {
+        triton_constraints_evaluate_to_zero(property_based_test_program_for_xbdotstep());
+    }
+
+    #[test]
     fn claim_in_ram_corresponds_to_currently_running_program() {
         triton_constraints_evaluate_to_zero(
             test_program_claim_in_ram_corresponds_to_currently_running_program(),

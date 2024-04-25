@@ -26,7 +26,7 @@ The Processor Table has the following extension columns, corresponding to [Evalu
 1. `RunningEvaluationStandardOutput` for the Evaluation Argument with the output symbols.
 1. `InstructionLookupClientLogDerivative` for the Lookup Argument with the [Program Table](program-table.md)
 1. `RunningProductOpStackTable` for the Permutation Argument with the [Op Stack Table](operational-stack-table.md).
-1. `RunningProductRamTable` for the Permutation Argument with the [RAM Table](random-access-memory-table.md).
+1. `RunningProductRamTable` for the Permutation Argument with the [RAM Table](random-access-memory-table.md). Note that virtual column `instruction_type` holds value 1 for reads and 0 for writes.
 1. `RunningProductJumpStackTable` for the Permutation Argument with the [Jump Stack Table](jump-stack-table.md).
 1. `RunningEvaluationHashInput` for the Evaluation Argument with the [Hash Table](hash-table.md) for copying the input to the hash function from the processor to the hash coprocessor.
 1. `RunningEvaluationHashDigest` for the Evaluation Argument with the [Hash Table](hash-table.md) for copying the hash digest from the hash coprocessor to the processor.
@@ -138,7 +138,7 @@ See [program attestation](program-attestation.md) for more details.
 1. `RunningEvaluationStandardOutput - 1`
 1. `InstructionLookupClientLogDerivative · (🪥 - 🥝·ip - 🥥·ci - 🫐·nia) - 1`
 1. `RunningProductOpStackTable - 1`
-1. `RunningProductRamTable - (🛋 - 🍍·clk - 🍈·ramp - 🍎·ramv - 🌽·previous_instruction)`
+1. `RunningProductRamTable - (🛋 - 🍍·clk - 🍈·ramp - 🍎·ramv - 🌽·instruction_type)`
 1. `RunningProductJumpStackTable - (🧴 - 🍇·clk - 🍅·ci - 🍌·jsp - 🍏·jso - 🍐·jsd)`
 1. `(ci - opcode(hash))·(RunningEvaluationHashInput - 1)`<br />
     `+ hash_deselector·(RunningEvaluationHashInput - 🚪 - 🧄₀·st0 - 🧄₁·st1 - 🧄₂·st2 - 🧄₃·st3 - 🧄₄·st4 - 🧄₅·st5 - 🧄₆·st6 - 🧄₇·st7 - 🧄₈·st8 - 🧄₉·st9)`
