@@ -26,7 +26,13 @@ anyhow = "1.0"
 arbitrary = { version = "1", features = ["derive"] }
 assert2 = "0.3"
 colored = "2.1"
-clap = { version = "4", features = ["derive", "cargo", "wrap_help", "unicode", "string"] }
+clap = { version = "4", features = [
+    "derive",
+    "cargo",
+    "wrap_help",
+    "unicode",
+    "string",
+] }
 criterion = { version = "0.5", features = ["html_reports"] }
 directories = "5"
 get-size = "0.1.4"
@@ -51,7 +57,7 @@ strum = { version = "0.26", features = ["derive"] }
 syn = "2.0"
 test-strategy = "0.3.1"
 thiserror = "1.0"
-twenty-first = "0.41.0"
+twenty-first = "0.42.0-alpha.2"
 unicode-width = "0.1"
 
 [workspace.lints.clippy]
