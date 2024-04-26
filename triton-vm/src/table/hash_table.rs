@@ -1143,21 +1143,13 @@ impl ExtHashTable {
             state_part_after_power_map[11].clone(),
         ];
 
-        #[allow(clippy::needless_range_loop)]
-        let state_after_matrix_multiplication: [_; STATE_SIZE] = {
-            let mut result_vec = Vec::with_capacity(STATE_SIZE);
-            for row_idx in 0..STATE_SIZE {
-                let mut current_accumulator = constant(0);
-                for col_idx in 0..STATE_SIZE {
-                    let mds_matrix_entry =
-                        b_constant(HashTable::mds_matrix_entry(row_idx, col_idx));
-                    let state_entry = state_after_s_box_application[col_idx].clone();
-                    current_accumulator = current_accumulator + mds_matrix_entry * state_entry;
-                }
-                result_vec.push(current_accumulator);
+        let mut state_after_matrix_multiplication = vec![constant(0); STATE_SIZE];
+        for (row_idx, acc) in state_after_matrix_multiplication.iter_mut().enumerate() {
+            for (col_idx, state) in state_after_s_box_application.iter().enumerate() {
+                let matrix_entry = b_constant(HashTable::mds_matrix_entry(row_idx, col_idx));
+                *acc = acc.clone() + matrix_entry * state.clone();
             }
-            result_vec.try_into().unwrap()
-        };
+        }
 
         let round_constants: [_; STATE_SIZE] = [
             Constant0, Constant1, Constant2, Constant3, Constant4, Constant5, Constant6, Constant7,
@@ -1166,14 +1158,11 @@ impl ExtHashTable {
         ]
         .map(current_base_row);
 
-        let state_after_round_constant_addition: [_; STATE_SIZE] =
-            state_after_matrix_multiplication
-                .into_iter()
-                .zip_eq(round_constants)
-                .map(|(st, rndc)| st + rndc)
-                .collect_vec()
-                .try_into()
-                .unwrap();
+        let state_after_round_constant_addition = state_after_matrix_multiplication
+            .into_iter()
+            .zip_eq(round_constants)
+            .map(|(st, rndc)| st + rndc)
+            .collect_vec();
 
         let [state_0_next, state_1_next, state_2_next, state_3_next] =
             Self::re_compose_states_0_through_3_before_lookup(

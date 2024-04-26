@@ -51,7 +51,6 @@ pub struct TritonProfiler {
 }
 
 impl TritonProfiler {
-    #[allow(clippy::new_without_default)]
     pub fn new(name: &str) -> Self {
         TritonProfiler {
             name: name.to_owned(),

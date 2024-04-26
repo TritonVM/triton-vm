@@ -1859,12 +1859,9 @@ pub(crate) mod tests {
         prop_assert_eq!(expected_stdout, actual_stdout);
     }
 
-    #[test]
-    #[allow(clippy::assertions_on_constants)]
-    const fn op_stack_is_big_enough() {
+    // compile-time assertion
+    const _OP_STACK_IS_BIG_ENOUGH: () =
         std::assert!(2 * tip5::DIGEST_LENGTH <= OpStackElement::COUNT);
-    }
-    const _COMPILE_TIME_ASSERTION: () = op_stack_is_big_enough();
 
     #[test]
     fn run_tvm_hello_world() {

@@ -251,7 +251,6 @@ pub(crate) mod tests {
             }
         }
 
-        #[allow(clippy::many_single_char_names)]
         fn small_init_constraints() -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
             let circuit_builder = ConstraintCircuitBuilder::new();
             let challenge = |c| circuit_builder.challenge(c);
@@ -259,11 +258,11 @@ pub(crate) mod tests {
             let input = |i| circuit_builder.input(SingleRowIndicator::BaseRow(i));
             let input_to_the_4th = |i| input(i) * input(i) * input(i) * input(i);
 
-            let a = input(0) * input(1) - input(2);
-            let b = input_to_the_4th(0) - challenge(ChallengeId::HashStateWeight3) - constant(16);
-            let c = input(2) * input_to_the_4th(0) - input_to_the_4th(1);
-
-            vec![a, b, c]
+            vec![
+                input(0) * input(1) - input(2),
+                input_to_the_4th(0) - challenge(ChallengeId::HashStateWeight3) - constant(16),
+                input(2) * input_to_the_4th(0) - input_to_the_4th(1),
+            ]
         }
 
         fn small_transition_constraints() -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
@@ -271,19 +270,18 @@ pub(crate) mod tests {
             let challenge = |c| circuit_builder.challenge(c);
             let constant = |c: u32| circuit_builder.x_constant(c);
 
-            let curr_base_row = |col| circuit_builder.input(DualRowIndicator::CurrentBaseRow(col));
-            let next_base_row = |col| circuit_builder.input(DualRowIndicator::NextBaseRow(col));
-            let curr_ext_row = |col| circuit_builder.input(DualRowIndicator::CurrentExtRow(col));
-            let next_ext_row = |col| circuit_builder.input(DualRowIndicator::NextExtRow(col));
+            let curr_b_row = |col| circuit_builder.input(DualRowIndicator::CurrentBaseRow(col));
+            let next_b_row = |col| circuit_builder.input(DualRowIndicator::NextBaseRow(col));
+            let curr_x_row = |col| circuit_builder.input(DualRowIndicator::CurrentExtRow(col));
+            let next_x_row = |col| circuit_builder.input(DualRowIndicator::NextExtRow(col));
 
-            let a = curr_base_row(0) * next_ext_row(1) - next_base_row(1) * curr_ext_row(0);
-            let b = curr_base_row(1) * next_ext_row(2) - next_base_row(2) * curr_ext_row(1);
-            let c = curr_base_row(2) * next_ext_row(0) * next_ext_row(1) * next_ext_row(3)
-                + constant(42);
-            let d = curr_base_row(0) * challenge(ChallengeId::HashStateWeight12)
-                - challenge(ChallengeId::HashStateWeight5);
-
-            vec![a, b, c, d]
+            vec![
+                curr_b_row(0) * next_x_row(1) - next_b_row(1) * curr_x_row(0),
+                curr_b_row(1) * next_x_row(2) - next_b_row(2) * curr_x_row(1),
+                curr_b_row(2) * next_x_row(0) * next_x_row(1) * next_x_row(3) + constant(42),
+                curr_b_row(0) * challenge(ChallengeId::HashStateWeight12)
+                    - challenge(ChallengeId::HashStateWeight5),
+            ]
         }
     }
 }
