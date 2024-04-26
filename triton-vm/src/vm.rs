@@ -2563,6 +2563,15 @@ pub(crate) mod tests {
             halt
         };
 
+        println!(
+            "{}",
+            program
+                .trace_execution(public_input.clone(), secret_input.clone())
+                .unwrap()
+                .0
+                .ram_trace
+        );
+
         let mut vmstate = VMState::new(&program, public_input, secret_input);
 
         prop_assert!(vmstate.run().is_ok());

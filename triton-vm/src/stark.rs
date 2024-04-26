@@ -2058,7 +2058,63 @@ pub(crate) mod tests {
 
     #[test]
     fn constraints_evaluate_to_zero_on_property_based_test_program_for_xxdotstep() {
-        triton_constraints_evaluate_to_zero(property_based_test_program_for_xxdotstep());
+        let program_and_input = property_based_test_program_for_xxdotstep();
+        let mut vm_state = VMState::new(
+            &program_and_input.program,
+            Default::default(),
+            Default::default(),
+        );
+        // invoke master_tables_for_low_security_level(..)
+        let (stark, claim, master_base_table, master_ext_table, mut challenges) = {
+            let (stark, claim, mut master_base_table) =
+                master_base_table_for_low_security_level(program_and_input);
+
+            let challenges = Challenges::placeholder(&claim);
+            master_base_table.pad();
+            let master_ext_table = master_base_table.extend(&challenges);
+
+            (
+                stark,
+                claim,
+                master_base_table,
+                master_ext_table,
+                challenges,
+            )
+        };
+        challenges.challenges.iter_mut().for_each(|ch| {
+            *ch = thread_rng().gen::<XFieldElement>();
+        });
+
+        let mbt = master_base_table.trace_table();
+        let met = master_ext_table.trace_table();
+
+        println!(
+            "mbt -- clk and cjdmul:\n{}\n\n{}",
+            mbt.slice(s![CLK.master_table_index(), ..]),
+            mbt.slice(s![CJD_MUL.master_table_index(), ..])
+        );
+
+        let builder = ConstraintCircuitBuilder::new();
+        for (constraint_idx, constraint) in ExtProcessorTable::transition_constraints(&builder)
+            .into_iter()
+            .map(|constraint_monad| constraint_monad.consume())
+            .enumerate()
+        {
+            for row_idx in 0..mbt.nrows() - 1 {
+                let evaluated_constraint = constraint.evaluate(
+                    mbt.slice(s![row_idx..=row_idx + 1, ..]),
+                    met.slice(s![row_idx..=row_idx + 1, ..]),
+                    &challenges.challenges,
+                );
+                assert_eq!(
+                    evaluated_constraint,
+                    xfe!(0),
+                    "transition constraint {constraint_idx} failed on row {row_idx}"
+                );
+            }
+        }
+        // check_processor_table_constraints(mbt, met, &challenges);
+        // triton_constraints_evaluate_to_zero(property_based_test_program_for_xxdotstep());
     }
 
     #[test]

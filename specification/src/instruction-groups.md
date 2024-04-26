@@ -21,7 +21,7 @@ The following table lists and briefly explains all instruction groups.
 | `grow_op_stack`              | op stack elements are shifted down by one position, top element of the resulting stack is unconstrained                                                  |
 | `grow_op_stack_by_any_of`    | op stack elements are shifted down by `n` positions, top `n` elements of the resulting stack are unconstrained, where `n` is the instruction's argument  |
 | `unary_operation`            | op stack's top-most element is unconstrained, rest of stack remains unchanged                                                                            |
-| `keep_op_stack`              | op stack remains unchanged, _i.e._, the running product of the [Permutation Argument](permutation-argument.md) with the Op Stack Table remains unchanged |
+| `keep_op_stack`              | op stack remains unchanged |
 | `binary_operation`           | op stack elements starting from `st2` are shifted up by one position, highest two elements of the resulting stack are unconstrained                      |
 | `shrink_op_stack`            | op stack elements starting from `st1` are shifted up by one position                                                                                     |
 | `shrink_op_stack_by_any_of`  | op stack elements starting from `stn` are shifted up by one position, where `n` is the instruction's argument                                            |

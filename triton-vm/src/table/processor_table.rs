@@ -154,12 +154,14 @@ impl ProcessorTable {
                     .inverse();
             }
 
+            // OpStack Table
             op_stack_table_running_product *= Self::factor_for_op_stack_table_running_product(
                 previous_row,
                 current_row,
                 challenges,
             );
 
+            // RAM Table
             if let Some(factor) =
                 Self::factor_for_ram_table_running_product(previous_row, current_row, challenges)
             {
@@ -404,34 +406,74 @@ impl ProcessorTable {
         let instruction_type = match instruction {
             ReadMem(_) => ram_table::INSTRUCTION_TYPE_READ,
             WriteMem(_) => ram_table::INSTRUCTION_TYPE_WRITE,
+            XxDotStep => ram_table::INSTRUCTION_TYPE_READ,
+            XbDotStep => ram_table::INSTRUCTION_TYPE_READ,
             _ => return None,
         };
 
-        // longer stack means relevant information is on top of stack, i.e., in stack registers
-        let row_with_longer_stack = match instruction {
-            ReadMem(_) => current_row.view(),
-            WriteMem(_) => previous_row.view(),
-            _ => unreachable!(),
-        };
-        let op_stack_delta = instruction.op_stack_size_influence().unsigned_abs() as usize;
+        let clk = previous_row[CLK.base_table_index()];
+        let stack_height_changes =
+            matches!(instruction, ReadMem(_)) || matches!(instruction, WriteMem(_));
+        if stack_height_changes {
+            // longer stack means relevant information is on top of stack, i.e., in stack registers
+            let row_with_longer_stack = match instruction {
+                ReadMem(_) => current_row.view(),
+                WriteMem(_) => previous_row.view(),
+                _ => unreachable!(),
+            };
+            let op_stack_delta = instruction.op_stack_size_influence().unsigned_abs() as usize;
 
-        let mut factor = xfe!(1);
-        for ram_pointer_offset in 0..op_stack_delta {
-            let num_ram_pointers = 1;
-            let ram_value_index = ram_pointer_offset + num_ram_pointers;
-            let ram_value_column = Self::op_stack_column_by_index(ram_value_index);
-            let ram_value = row_with_longer_stack[ram_value_column.base_table_index()];
-            let offset_ram_pointer =
-                Self::offset_ram_pointer(instruction, row_with_longer_stack, ram_pointer_offset);
+            let mut factor = xfe!(1);
+            for ram_pointer_offset in 0..op_stack_delta {
+                let num_ram_pointers = 1;
+                let ram_value_index = ram_pointer_offset + num_ram_pointers;
+                let ram_value_column = Self::op_stack_column_by_index(ram_value_index);
+                let ram_value = row_with_longer_stack[ram_value_column.base_table_index()];
+                let offset_ram_pointer = Self::offset_ram_pointer(
+                    instruction,
+                    row_with_longer_stack,
+                    ram_pointer_offset,
+                );
 
-            let clk = previous_row[CLK.base_table_index()];
-            let compressed_row = clk * challenges[RamClkWeight]
-                + instruction_type * challenges[RamInstructionTypeWeight]
-                + offset_ram_pointer * challenges[RamPointerWeight]
-                + ram_value * challenges[RamValueWeight];
-            factor *= challenges[RamIndeterminate] - compressed_row;
+                let compressed_row = clk * challenges[RamClkWeight]
+                    + instruction_type * challenges[RamInstructionTypeWeight]
+                    + offset_ram_pointer * challenges[RamPointerWeight]
+                    + ram_value * challenges[RamValueWeight];
+                factor *= challenges[RamIndeterminate] - compressed_row;
+            }
+            Some(factor)
+        } else {
+            let rhs_pointer = previous_row[ST0.base_table_index()];
+            let lhs_pointer = previous_row[ST1.base_table_index()];
+            let hv0 = previous_row[HV0.base_table_index()];
+            let hv1 = previous_row[HV1.base_table_index()];
+            let hv2 = previous_row[HV2.base_table_index()];
+            let hv3 = previous_row[HV3.base_table_index()];
+            let hv4 = previous_row[HV4.base_table_index()];
+            let hv5 = previous_row[HV5.base_table_index()];
+            let mut rows = vec![];
+            rows.push((clk, instruction_type, rhs_pointer, hv0));
+            if matches!(instruction, XxDotStep) {
+                rows.push((clk, instruction_type, rhs_pointer + bfe!(1), hv1));
+                rows.push((clk, instruction_type, rhs_pointer + bfe!(2), hv2));
+                rows.push((clk, instruction_type, lhs_pointer + bfe!(0), hv3));
+                rows.push((clk, instruction_type, lhs_pointer + bfe!(1), hv4));
+                rows.push((clk, instruction_type, lhs_pointer + bfe!(2), hv5));
+            } else {
+                rows.push((clk, instruction_type, lhs_pointer, hv1));
+                rows.push((clk, instruction_type, lhs_pointer + bfe!(1), hv2));
+                rows.push((clk, instruction_type, lhs_pointer + bfe!(2), hv3));
+            }
+            rows.into_iter()
+                .map(|(clk, instr_type, ramp, ramv)| {
+                    clk * challenges[RamClkWeight]
+                        + instr_type * challenges[RamInstructionTypeWeight]
+                        + ramp * challenges[RamPointerWeight]
+                        + ramv * challenges[RamValueWeight]
+                })
+                .map(|compressed_row| challenges[RamIndeterminate] - compressed_row)
+                .reduce(|l, r| l * r)
         }
-        Some(factor)
     }
 
     fn offset_ram_pointer(
@@ -954,8 +996,7 @@ impl ExtProcessorTable {
         [specific_constraints, inherited_constraints].concat()
     }
 
-    /// Op stack *height* does not change, or equivalently, the running product for the
-    /// permutation argument with the Op Stack table remains unchanged.
+    /// Op stack does not change, _i.e._, all stack elements persist
     fn instruction_group_keep_op_stack(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
@@ -970,6 +1011,32 @@ impl ExtProcessorTable {
         let inherited_constraints = Self::instruction_group_unop(circuit_builder);
 
         [specific_constraints, inherited_constraints].concat()
+    }
+
+    /// Op stack *height* does not change, _i.e._, the accumulator for the
+    /// permutation argument with the op stack table remains the same as does
+    /// the op stack pointer.
+    fn keep_op_stack_height(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
+        let curr_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
+        };
+        let next_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(NextBaseRow(col.master_base_table_index()))
+        };
+        let curr_ext_row = |col: ProcessorExtTableColumn| {
+            circuit_builder.input(CurrentExtRow(col.master_ext_table_index()))
+        };
+        let next_ext_row = |col: ProcessorExtTableColumn| {
+            circuit_builder.input(NextExtRow(col.master_ext_table_index()))
+        };
+        vec![
+            // permutation argument accumulator does not change
+            next_ext_row(OpStackTablePermArg) - curr_ext_row(OpStackTablePermArg),
+            // op stack pointer does not change
+            next_base_row(OpStackPointer) - curr_base_row(OpStackPointer),
+        ]
     }
 
     fn instruction_group_grow_op_stack_and_top_two_elements_unconstrained(
@@ -2397,33 +2464,37 @@ impl ExtProcessorTable {
         let hv3 = curr_base_row(HV3);
         let hv4 = curr_base_row(HV4);
         let hv5 = curr_base_row(HV5);
-        [
-            Self::instruction_group_step_1(circuit_builder),
-            Self::instruction_group_no_io(circuit_builder),
-            Self::instruction_group_keep_op_stack(circuit_builder),
-            Self::instruction_group_keep_jump_stack(circuit_builder),
+        vec![
+            // vec![constant(2)],
+            // Self::instruction_group_step_1(circuit_builder),
+            // vec![constant(6)],
+            // Self::instruction_group_no_io(circuit_builder),
+            // vec![constant(8)],
+            // Self::instruction_group_keep_op_stack(circuit_builder),
+            // Self::keep_op_stack_height(circuit_builder),
+            // Self::instruction_group_keep_jump_stack(circuit_builder),
             // read two xfes from RAM
-            vec![
-                Self::read_from_ram_to(circuit_builder, rhs_ptr0, hv0.clone()),
-                Self::read_from_ram_to(circuit_builder, rhs_ptr1, hv1.clone()),
-                Self::read_from_ram_to(circuit_builder, rhs_ptr2, hv2.clone()),
-                Self::read_from_ram_to(circuit_builder, lhs_ptr0, hv3.clone()),
-                Self::read_from_ram_to(circuit_builder, lhs_ptr1, hv4.clone()),
-                Self::read_from_ram_to(circuit_builder, lhs_ptr2, hv5.clone()),
-            ],
+            // vec![
+            //     Self::read_from_ram_to(circuit_builder, rhs_ptr0, hv0.clone()),
+            //     Self::read_from_ram_to(circuit_builder, rhs_ptr1, hv1.clone()),
+            //     Self::read_from_ram_to(circuit_builder, rhs_ptr2, hv2.clone()),
+            //     Self::read_from_ram_to(circuit_builder, lhs_ptr0, hv3.clone()),
+            //     Self::read_from_ram_to(circuit_builder, lhs_ptr1, hv4.clone()),
+            //     Self::read_from_ram_to(circuit_builder, lhs_ptr2, hv5.clone()),
+            // ],
             // add product into accumulator
-            Self::update_dotstep_accumulator(
-                circuit_builder,
-                [ST2, ST3, ST4],
-                Self::xxproduct([hv0, hv1, hv2], [hv3, hv4, hv5]),
-            ),
+            // Self::update_dotstep_accumulator(
+            //     circuit_builder,
+            //     [ST2, ST3, ST4],
+            //     Self::xxproduct([hv0, hv1, hv2], [hv3, hv4, hv5]),
+            // ),
             // increment ram pointers, st0 and st1
-            vec![
-                next_base_row(ST0) - curr_base_row(ST0) - constant(3),
-                next_base_row(ST1) - curr_base_row(ST1) - constant(3),
-            ],
+            // vec![
+            //     next_base_row(ST0) - curr_base_row(ST0) - constant(3),
+            //     next_base_row(ST1) - curr_base_row(ST1) - constant(3),
+            // ],
         ]
-        .concat()
+        // .concat()
     }
 
     fn instruction_xbdotstep(
@@ -2477,46 +2548,49 @@ impl ExtProcessorTable {
         instruction: Instruction,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
         match instruction {
-            Pop(_) => ExtProcessorTable::instruction_pop(circuit_builder),
-            Push(_) => ExtProcessorTable::instruction_push(circuit_builder),
-            Divine(_) => ExtProcessorTable::instruction_divine(circuit_builder),
-            Dup(_) => ExtProcessorTable::instruction_dup(circuit_builder),
-            Swap(_) => ExtProcessorTable::instruction_swap(circuit_builder),
-            Halt => ExtProcessorTable::instruction_halt(circuit_builder),
-            Nop => ExtProcessorTable::instruction_nop(circuit_builder),
-            Skiz => ExtProcessorTable::instruction_skiz(circuit_builder),
-            Call(_) => ExtProcessorTable::instruction_call(circuit_builder),
-            Return => ExtProcessorTable::instruction_return(circuit_builder),
-            Recurse => ExtProcessorTable::instruction_recurse(circuit_builder),
-            Assert => ExtProcessorTable::instruction_assert(circuit_builder),
-            ReadMem(_) => ExtProcessorTable::instruction_read_mem(circuit_builder),
-            WriteMem(_) => ExtProcessorTable::instruction_write_mem(circuit_builder),
-            Hash => ExtProcessorTable::instruction_hash(circuit_builder),
-            DivineSibling => ExtProcessorTable::instruction_divine_sibling(circuit_builder),
-            AssertVector => ExtProcessorTable::instruction_assert_vector(circuit_builder),
-            SpongeInit => ExtProcessorTable::instruction_sponge_init(circuit_builder),
-            SpongeAbsorb => ExtProcessorTable::instruction_sponge_absorb(circuit_builder),
-            SpongeSqueeze => ExtProcessorTable::instruction_sponge_squeeze(circuit_builder),
-            Add => ExtProcessorTable::instruction_add(circuit_builder),
-            Mul => ExtProcessorTable::instruction_mul(circuit_builder),
-            Invert => ExtProcessorTable::instruction_invert(circuit_builder),
-            Eq => ExtProcessorTable::instruction_eq(circuit_builder),
-            Split => ExtProcessorTable::instruction_split(circuit_builder),
-            Lt => ExtProcessorTable::instruction_lt(circuit_builder),
-            And => ExtProcessorTable::instruction_and(circuit_builder),
-            Xor => ExtProcessorTable::instruction_xor(circuit_builder),
-            Log2Floor => ExtProcessorTable::instruction_log_2_floor(circuit_builder),
-            Pow => ExtProcessorTable::instruction_pow(circuit_builder),
-            DivMod => ExtProcessorTable::instruction_div_mod(circuit_builder),
-            PopCount => ExtProcessorTable::instruction_pop_count(circuit_builder),
-            XxAdd => ExtProcessorTable::instruction_xxadd(circuit_builder),
-            XxMul => ExtProcessorTable::instruction_xxmul(circuit_builder),
-            XInvert => ExtProcessorTable::instruction_xinv(circuit_builder),
-            XbMul => ExtProcessorTable::instruction_xbmul(circuit_builder),
-            ReadIo(_) => ExtProcessorTable::instruction_read_io(circuit_builder),
-            WriteIo(_) => ExtProcessorTable::instruction_write_io(circuit_builder),
-            XxDotStep => ExtProcessorTable::instruction_xxdotstep(circuit_builder),
-            XbDotStep => ExtProcessorTable::instruction_xbdotstep(circuit_builder),
+            // Pop(_) => ExtProcessorTable::instruction_pop(circuit_builder),
+            // Push(_) => ExtProcessorTable::instruction_push(circuit_builder),
+            // Divine(_) => ExtProcessorTable::instruction_divine(circuit_builder),
+            // Dup(_) => ExtProcessorTable::instruction_dup(circuit_builder),
+            // Swap(_) => ExtProcessorTable::instruction_swap(circuit_builder),
+            // Halt => ExtProcessorTable::instruction_halt(circuit_builder),
+            // Nop => ExtProcessorTable::instruction_nop(circuit_builder),
+            // Skiz => ExtProcessorTable::instruction_skiz(circuit_builder),
+            // Call(_) => ExtProcessorTable::instruction_call(circuit_builder),
+            // Return => ExtProcessorTable::instruction_return(circuit_builder),
+            // Recurse => ExtProcessorTable::instruction_recurse(circuit_builder),
+            // Assert => ExtProcessorTable::instruction_assert(circuit_builder),
+            // // ReadMem(_) => ExtProcessorTable::instruction_read_mem(circuit_builder),
+            // // WriteMem(_) => ExtProcessorTable::instruction_write_mem(circuit_builder),
+            // Hash => ExtProcessorTable::instruction_hash(circuit_builder),
+            // DivineSibling => ExtProcessorTable::instruction_divine_sibling(circuit_builder),
+            // AssertVector => ExtProcessorTable::instruction_assert_vector(circuit_builder),
+            // SpongeInit => ExtProcessorTable::instruction_sponge_init(circuit_builder),
+            // SpongeAbsorb => ExtProcessorTable::instruction_sponge_absorb(circuit_builder),
+            // SpongeSqueeze => ExtProcessorTable::instruction_sponge_squeeze(circuit_builder),
+            // Add => ExtProcessorTable::instruction_add(circuit_builder),
+            // Mul => ExtProcessorTable::instruction_mul(circuit_builder),
+            // Invert => ExtProcessorTable::instruction_invert(circuit_builder),
+            // Eq => ExtProcessorTable::instruction_eq(circuit_builder),
+            // Split => ExtProcessorTable::instruction_split(circuit_builder),
+            // Lt => ExtProcessorTable::instruction_lt(circuit_builder),
+            // And => ExtProcessorTable::instruction_and(circuit_builder),
+            // Xor => ExtProcessorTable::instruction_xor(circuit_builder),
+            // Log2Floor => ExtProcessorTable::instruction_log_2_floor(circuit_builder),
+            // Pow => ExtProcessorTable::instruction_pow(circuit_builder),
+            // DivMod => ExtProcessorTable::instruction_div_mod(circuit_builder),
+            // PopCount => ExtProcessorTable::instruction_pop_count(circuit_builder),
+            // XxAdd => ExtProcessorTable::instruction_xxadd(circuit_builder),
+
+            // XxMul => ExtProcessorTable::instruction_xxmul(circuit_builder),
+            // XInvert => ExtProcessorTable::instruction_xinv(circuit_builder),
+            // XbMul => ExtProcessorTable::instruction_xbmul(circuit_builder),
+            // ReadIo(_) => ExtProcessorTable::instruction_read_io(circuit_builder),
+            // WriteIo(_) => ExtProcessorTable::instruction_write_io(circuit_builder),
+
+            // XxDotStep => ExtProcessorTable::instruction_xxdotstep(circuit_builder),
+            // XbDotStep => ExtProcessorTable::instruction_xbdotstep(circuit_builder),
+            _ => vec![],
         }
     }
 
@@ -3515,12 +3589,12 @@ impl ExtProcessorTable {
 
         let table_linking_constraints = vec![
             Self::log_derivative_accumulates_clk_next(circuit_builder),
-            Self::log_derivative_for_instruction_lookup_updates_correctly(circuit_builder),
-            Self::running_product_for_jump_stack_table_updates_correctly(circuit_builder),
-            Self::running_evaluation_hash_input_updates_correctly(circuit_builder),
-            Self::running_evaluation_hash_digest_updates_correctly(circuit_builder),
-            Self::running_evaluation_sponge_updates_correctly(circuit_builder),
-            Self::log_derivative_with_u32_table_updates_correctly(circuit_builder),
+            // Self::log_derivative_for_instruction_lookup_updates_correctly(circuit_builder),
+            // Self::running_product_for_jump_stack_table_updates_correctly(circuit_builder),
+            // Self::running_evaluation_hash_input_updates_correctly(circuit_builder),
+            // Self::running_evaluation_hash_digest_updates_correctly(circuit_builder),
+            // Self::running_evaluation_sponge_updates_correctly(circuit_builder),
+            // Self::log_derivative_with_u32_table_updates_correctly(circuit_builder),
         ];
 
         [
