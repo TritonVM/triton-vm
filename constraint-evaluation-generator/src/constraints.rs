@@ -226,7 +226,7 @@ pub(crate) mod tests {
         pub(crate) fn mini_constraints() -> Self {
             let circuit_builder = ConstraintCircuitBuilder::new();
             let challenge = |c| circuit_builder.challenge(c);
-            let constant = |c: u32| circuit_builder.b_constant(c);
+            let constant = |c: u32| circuit_builder.x_constant(c);
             let base_row = |i| circuit_builder.input(SingleRowIndicator::BaseRow(i));
             let ext_row = |i| circuit_builder.input(SingleRowIndicator::ExtRow(i));
 

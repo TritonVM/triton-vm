@@ -330,7 +330,27 @@ impl RustBackend {
 
 #[cfg(test)]
 mod tests {
+    use twenty_first::prelude::*;
+
     use super::*;
+
+    #[test]
+    fn tokenizing_base_field_elements_produces_expected_result() {
+        let bfe = bfe!(42);
+        let expected = "BFieldElement :: from_raw_u64 (180388626390u64)";
+        assert_eq!(expected, RustBackend::tokenize_bfe(bfe).to_string());
+    }
+
+    #[test]
+    fn tokenizing_extension_field_elements_produces_expected_result() {
+        let xfe = xfe!([42, 43, 44,]);
+        let expected = "XFieldElement :: new ([\
+            BFieldElement :: from_raw_u64 (180388626390u64) , \
+            BFieldElement :: from_raw_u64 (184683593685u64) , \
+            BFieldElement :: from_raw_u64 (188978560980u64)\
+        ])";
+        assert_eq!(expected, RustBackend::tokenize_xfe(xfe).to_string());
+    }
 
     fn print_constraints_as_rust(constraints: &Constraints) {
         let rust = RustBackend::constraint_evaluation_code(constraints);

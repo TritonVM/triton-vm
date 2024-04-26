@@ -349,16 +349,10 @@ impl<II: InputIndicator> PartialEq for ConstraintCircuit<II> {
 impl<II: InputIndicator> Display for ConstraintCircuit<II> {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         match &self.expression {
-            XConstant(xfe) => {
-                write!(f, "{xfe}")
-            }
-            BConstant(bfe) => {
-                write!(f, "{bfe}")
-            }
+            XConstant(xfe) => write!(f, "{xfe}"),
+            BConstant(bfe) => write!(f, "{bfe}"),
             Input(input) => write!(f, "{input} "),
-            Challenge(self_challenge_idx) => {
-                write!(f, "{self_challenge_idx}")
-            }
+            Challenge(self_challenge_idx) => write!(f, "{self_challenge_idx}"),
             BinaryOperation(operation, lhs, rhs) => {
                 write!(f, "({}) {operation} ({})", lhs.borrow(), rhs.borrow())
             }
@@ -1172,6 +1166,17 @@ mod tests {
         let mut hasher = DefaultHasher::new();
         circuit.hash(&mut hasher);
         hasher.finish()
+    }
+
+    #[test]
+    fn printing_constraint_circuit_gives_expected_strings() {
+        let builder = ConstraintCircuitBuilder::new();
+        assert_eq!("1", builder.b_constant(1).to_string());
+
+        let xfe_str = builder.x_constant([2, 3, 4]).to_string();
+        assert_eq!("(4·x² + 3·x + 2)", xfe_str);
+        assert_eq!("base_row[5] ", builder.input(BaseRow(5)).to_string());
+        assert_eq!("6", builder.challenge(6_usize).to_string());
     }
 
     #[proptest]
