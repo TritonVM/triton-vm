@@ -652,16 +652,6 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
         self.circuit.borrow().to_owned()
     }
 
-    pub fn max_id(&self) -> usize {
-        let all_nodes = self.builder.all_nodes.borrow();
-        let all_ids = all_nodes.iter().map(|x| x.circuit.borrow().id);
-        let max_id = all_ids.max().unwrap();
-
-        let id_ref_value = *self.builder.id_counter.borrow();
-        assert_eq!(id_ref_value - 1, max_id);
-        max_id
-    }
-
     fn find_equivalent_expression(&self) -> Option<Rc<RefCell<ConstraintCircuit<II>>>> {
         let BinaryOperation(op, lhs, rhs) = &self.circuit.borrow().expression else {
             return None;
