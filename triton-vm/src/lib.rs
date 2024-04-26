@@ -557,6 +557,9 @@ mod tests {
     use proptest::prelude::*;
     use proptest_arbitrary_interop::arb;
     use test_strategy::proptest;
+    use twenty_first::prelude::tip5::Tip5;
+    use twenty_first::prelude::*;
+    use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
 
     use crate::instruction::LabelledInstruction;
     use crate::instruction::TypeHint;
@@ -568,7 +571,7 @@ mod tests {
         #[strategy(arb())] hash_preimage: Digest,
         #[strategy(arb())] some_tie_to_an_outer_context: Digest,
     ) {
-        let hash_digest = hash_preimage.hash::<Tip5>().values();
+        let hash_digest = Tip5::hash_pair(hash_preimage, Digest::default()).values();
 
         let program = triton_program! {
             divine 5
