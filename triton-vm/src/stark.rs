@@ -2088,11 +2088,16 @@ pub(crate) mod tests {
         let mbt = master_base_table.trace_table();
         let met = master_ext_table.trace_table();
 
+        let clk_star = mbt.slice(s![1, 7]);
+        let cjddiff_star = mbt.slice(s![1, 45]);
+        let logder = met.slice(s![0, 13]);
+        let logder_star = met.slice(s![1, 13]);
+        let chall = challenges[11];
+        let constraint = (logder_star[()] - logder[()]) * (chall - clk_star[()]) - cjddiff_star[()];
         println!(
-            "mbt -- clk and cjdmul:\n{}\n\n{}",
-            mbt.slice(s![CLK.master_table_index(), ..]),
-            mbt.slice(s![CJD_MUL.master_table_index(), ..])
+            "mbt -- \nclk*: {clk_star}\ncjddiff*: {cjddiff_star}\nlog: {logder}\nlog*: {logder_star}\nchallenge: {chall}\n",
         );
+        println!("constraint: {:?}", constraint);
 
         let builder = ConstraintCircuitBuilder::new();
         for (constraint_idx, constraint) in ExtProcessorTable::transition_constraints(&builder)

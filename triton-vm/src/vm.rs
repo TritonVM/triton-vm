@@ -1790,7 +1790,8 @@ pub(crate) mod tests {
     }
 
     pub(crate) fn property_based_test_program_for_xxdotstep() -> ProgramAndInput {
-        let mut rng = ThreadRng::default();
+        // let mut rng = ThreadRng::default();
+        let mut rng: StdRng = SeedableRng::seed_from_u64(378495893456u64);
         let n = rng.gen_range(0..10);
         let push_xfe = |x: XFieldElement| {
             triton_asm! {

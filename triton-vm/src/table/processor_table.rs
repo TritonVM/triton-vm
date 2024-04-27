@@ -54,11 +54,21 @@ impl ProcessorTable {
             clk_jump_diff_multiplicities[clk] += b_field_element::BFIELD_ONE;
         }
 
+        println!("clkdiffmul[1]: {}", clk_jump_diff_multiplicities[1]);
+
         let mut processor_table = processor_table.slice_mut(s![0..num_rows, ..]);
         processor_table.assign(&aet.processor_trace);
         processor_table
             .column_mut(ClockJumpDifferenceLookupMultiplicity.base_table_index())
             .assign(&clk_jump_diff_multiplicities);
+
+        println!(
+            "clkdiffmul[1]: {}",
+            processor_table.slice(s![
+                1,
+                ClockJumpDifferenceLookupMultiplicity.base_table_index()
+            ])
+        );
     }
 
     pub fn pad_trace(
@@ -91,7 +101,18 @@ impl ProcessorTable {
         let num_padding_rows = processor_table.nrows() - processor_table_len;
         let num_padding_rows = bfe!(num_padding_rows as u64);
         let mut row_1 = processor_table.row_mut(1);
+
+        println!(
+            "clkdiffmul[1]: {}",
+            row_1[ClockJumpDifferenceLookupMultiplicity.base_table_index()]
+        );
+
         row_1[ClockJumpDifferenceLookupMultiplicity.base_table_index()] += num_padding_rows;
+
+        println!(
+            "clkdiffmul[1]: {}",
+            row_1[ClockJumpDifferenceLookupMultiplicity.base_table_index()]
+        );
     }
 
     pub fn extend(
@@ -4526,5 +4547,18 @@ pub(crate) mod tests {
         prop_assert_eq!(e.coefficients[0], e0.coefficients[0]);
         prop_assert_eq!(e.coefficients[1], e1.coefficients[0]);
         prop_assert_eq!(e.coefficients[2], e2.coefficients[0]);
+    }
+
+    #[test]
+    fn column_indices_info() {
+        println!("CLK: {}", CLK.master_base_table_index());
+        println!(
+            "CJD_MUL: {}",
+            ClockJumpDifferenceLookupMultiplicity.master_base_table_index()
+        );
+        println!(
+            "CJD_LOG: {}",
+            ClockJumpDifferenceLookupServerLogDerivative.master_ext_table_index()
+        );
     }
 }
