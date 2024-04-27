@@ -40,9 +40,6 @@ use crate::table::QuotientSegments;
 use crate::table::NUM_BASE_COLUMNS;
 use crate::table::NUM_EXT_COLUMNS;
 
-#[deprecated(since = "0.39.0", note = "Use `ProofStream` directly instead.")]
-pub type StarkProofStream = ProofStream;
-
 /// The number of segments the quotient polynomial is split into.
 /// Helps keeping the FRI domain small.
 pub const NUM_QUOTIENT_SEGMENTS: usize = AIR_TARGET_DEGREE as usize;

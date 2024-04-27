@@ -117,24 +117,6 @@ impl<'a> Arbitrary<'a> for TypeHint {
 }
 
 impl LabelledInstruction {
-    #[deprecated(since = "0.39.0", note = "use `op_stack_size_influence() > 0` instead")]
-    pub const fn grows_op_stack(&self) -> bool {
-        self.op_stack_size_influence() > 0
-    }
-
-    #[deprecated(
-        since = "0.39.0",
-        note = "use `op_stack_size_influence() != 0` instead"
-    )]
-    pub const fn changes_op_stack_size(&self) -> bool {
-        self.op_stack_size_influence() != 0
-    }
-
-    #[deprecated(since = "0.39.0", note = "use `op_stack_size_influence() < 0` instead")]
-    pub const fn shrinks_op_stack(&self) -> bool {
-        self.op_stack_size_influence() < 0
-    }
-
     pub const fn op_stack_size_influence(&self) -> i32 {
         match self {
             LabelledInstruction::Instruction(instruction) => instruction.op_stack_size_influence(),
@@ -152,15 +134,6 @@ impl Display for LabelledInstruction {
             LabelledInstruction::TypeHint(type_hint) => write!(f, "{type_hint}"),
         }
     }
-}
-
-/// Helps printing instructions with their labels.
-#[deprecated(
-    since = "0.39.0",
-    note = "use `.iter().join(\"\\n\")` directly instead"
-)]
-pub fn stringify_instructions(instructions: &[LabelledInstruction]) -> String {
-    instructions.iter().join("\n")
 }
 
 /// A Triton VM instruction. See the
@@ -397,24 +370,6 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
         }
     }
 
-    #[deprecated(since = "0.39.0", note = "use `op_stack_size_influence() > 0` instead")]
-    pub const fn grows_op_stack(&self) -> bool {
-        self.op_stack_size_influence() > 0
-    }
-
-    #[deprecated(
-        since = "0.39.0",
-        note = "use `op_stack_size_influence() != 0` instead"
-    )]
-    pub const fn changes_op_stack_size(&self) -> bool {
-        self.op_stack_size_influence() != 0
-    }
-
-    #[deprecated(since = "0.39.0", note = "use `op_stack_size_influence() < 0` instead")]
-    pub const fn shrinks_op_stack(&self) -> bool {
-        self.op_stack_size_influence() < 0
-    }
-
     pub const fn op_stack_size_influence(&self) -> i32 {
         match self {
             Pop(n) => -(n.num_words() as i32),
@@ -497,12 +452,6 @@ impl Instruction {
             ReadIo(arg) | WriteIo(arg) => Some(arg.into()),
             _ => None,
         }
-    }
-
-    /// `true` iff the instruction has an argument.
-    #[deprecated(since = "0.39.0", note = "use `arg().is_some()` instead")]
-    pub fn has_arg(&self) -> bool {
-        self.arg().is_some()
     }
 
     /// Change the argument of the instruction, if it has one. Returns an `Err` if the instruction

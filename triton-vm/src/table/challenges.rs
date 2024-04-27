@@ -247,16 +247,6 @@ impl Challenges {
     // at the end of this file.
     pub const SAMPLE_COUNT: usize = Self::COUNT - 4;
 
-    #[deprecated(since = "0.39.0", note = "Use `Self::COUNT` instead")]
-    pub const fn count() -> usize {
-        Self::COUNT
-    }
-
-    #[deprecated(since = "0.39.0", note = "Use `Self::SAMPLE_COUNT` instead")]
-    pub const fn num_challenges_to_sample() -> usize {
-        Self::SAMPLE_COUNT
-    }
-
     pub fn new(mut challenges: Vec<XFieldElement>, claim: &Claim) -> Self {
         assert_eq!(Self::SAMPLE_COUNT, challenges.len());
 

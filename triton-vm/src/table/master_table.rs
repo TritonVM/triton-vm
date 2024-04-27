@@ -1133,14 +1133,6 @@ pub fn all_quotients_combined(
     quotient_codeword
 }
 
-#[deprecated(
-    since = "0.39.0",
-    note = "use `MasterExtTable::NUM_CONSTRAINTS` directly instead"
-)]
-pub const fn num_quotients() -> usize {
-    MasterExtTable::NUM_CONSTRAINTS
-}
-
 /// Guaranteed to be a power of two.
 pub fn randomized_padded_trace_len(padded_height: usize, num_trace_randomizers: usize) -> usize {
     let total_table_length = padded_height + num_trace_randomizers;
