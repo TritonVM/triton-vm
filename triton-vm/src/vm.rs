@@ -267,8 +267,8 @@ impl VMState {
             XbMul => self.xb_mul()?,
             WriteIo(n) => self.write_io(n)?,
             ReadIo(n) => self.read_io(n)?,
-            XxDotStep => self.xxdotstep()?,
-            XbDotStep => self.xbdotstep()?,
+            XxDotStep => self.xx_dot_step()?,
+            XbDotStep => self.xb_dot_step()?,
         };
         let op_stack_calls = self.stop_recording_op_stack_calls();
         co_processor_calls.extend(op_stack_calls);
@@ -794,32 +794,20 @@ impl VMState {
         Ok(vec![])
     }
 
-    #[allow(clippy::unnecessary_wraps)]
-    fn xxdotstep(&mut self) -> Result<Vec<CoProcessorCall>> {
+    fn xx_dot_step(&mut self) -> Result<Vec<CoProcessorCall>> {
         self.start_recording_ram_calls();
-        let mut rhs_address = self.op_stack.pop().unwrap();
-        let mut lhs_address = self.op_stack.pop().unwrap();
-        let mut rhs_coefficients = Vec::with_capacity(EXTENSION_DEGREE);
-        let mut lhs_coefficients = Vec::with_capacity(EXTENSION_DEGREE);
-        for _ in 0..EXTENSION_DEGREE {
-            rhs_coefficients.push(self.ram_read(rhs_address));
+        let mut rhs_address = self.op_stack.pop()?;
+        let mut lhs_address = self.op_stack.pop()?;
+        let mut rhs = xfe!(0);
+        let mut lhs = xfe!(0);
+        for i in 0..EXTENSION_DEGREE {
+            rhs.coefficients[i] = self.ram_read(rhs_address);
             rhs_address.increment();
-            lhs_coefficients.push(self.ram_read(lhs_address));
+            lhs.coefficients[i] = self.ram_read(lhs_address);
             lhs_address.increment();
         }
-        let rhs = XFieldElement::new(rhs_coefficients.try_into().unwrap());
-        let lhs = XFieldElement::new(lhs_coefficients.try_into().unwrap());
-        let product = rhs * lhs;
-        let mut acc = XFieldElement::new([
-            self.op_stack.pop().unwrap(),
-            self.op_stack.pop().unwrap(),
-            self.op_stack.pop().unwrap(),
-        ]);
-        acc += product;
-        let mut coefficients = acc.coefficients.to_vec();
-        self.op_stack.push(coefficients.pop().unwrap());
-        self.op_stack.push(coefficients.pop().unwrap());
-        self.op_stack.push(coefficients.pop().unwrap());
+        let accumulator = self.op_stack.pop_extension_field_element()? + rhs * lhs;
+        self.op_stack.push_extension_field_element(accumulator);
         self.op_stack.push(lhs_address);
         self.op_stack.push(rhs_address);
         self.instruction_pointer += 1;
@@ -827,30 +815,19 @@ impl VMState {
         Ok(ram_calls)
     }
 
-    #[allow(clippy::unnecessary_wraps)]
-    fn xbdotstep(&mut self) -> Result<Vec<CoProcessorCall>> {
+    fn xb_dot_step(&mut self) -> Result<Vec<CoProcessorCall>> {
         self.start_recording_ram_calls();
-        let mut rhs_address = self.op_stack.pop().unwrap();
+        let mut rhs_address = self.op_stack.pop()?;
+        let mut lhs_address = self.op_stack.pop()?;
         let rhs = self.ram_read(rhs_address);
         rhs_address.increment();
-        let mut lhs_address = self.op_stack.pop().unwrap();
-        let mut lhs_coefficients = Vec::with_capacity(EXTENSION_DEGREE);
-        for _ in 0..EXTENSION_DEGREE {
-            lhs_coefficients.push(self.ram_read(lhs_address));
+        let mut lhs = xfe!(0);
+        for i in 0..EXTENSION_DEGREE {
+            lhs.coefficients[i] = self.ram_read(lhs_address);
             lhs_address.increment();
         }
-        let lhs = XFieldElement::new(lhs_coefficients.try_into().unwrap());
-        let product = rhs * lhs;
-        let mut acc = XFieldElement::new([
-            self.op_stack.pop().unwrap(),
-            self.op_stack.pop().unwrap(),
-            self.op_stack.pop().unwrap(),
-        ]);
-        acc += product;
-        let mut coefficients = acc.coefficients.to_vec();
-        self.op_stack.push(coefficients.pop().unwrap());
-        self.op_stack.push(coefficients.pop().unwrap());
-        self.op_stack.push(coefficients.pop().unwrap());
+        let accumulator = self.op_stack.pop_extension_field_element()? + rhs * lhs;
+        self.op_stack.push_extension_field_element(accumulator);
         self.op_stack.push(lhs_address);
         self.op_stack.push(rhs_address);
         self.instruction_pointer += 1;
