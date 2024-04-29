@@ -7,8 +7,12 @@
 pub use twenty_first;
 pub use twenty_first::math::traits::FiniteField;
 pub use twenty_first::prelude::bfe;
+pub use twenty_first::prelude::bfe_array;
+pub use twenty_first::prelude::bfe_vec;
 pub use twenty_first::prelude::tip5;
 pub use twenty_first::prelude::xfe;
+pub use twenty_first::prelude::xfe_array;
+pub use twenty_first::prelude::xfe_vec;
 pub use twenty_first::prelude::BFieldCodec;
 pub use twenty_first::prelude::BFieldElement;
 pub use twenty_first::prelude::Digest;
