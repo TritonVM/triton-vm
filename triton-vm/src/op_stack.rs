@@ -49,7 +49,7 @@ pub struct OpStack {
 
 impl OpStack {
     pub fn new(program_digest: Digest) -> Self {
-        let mut stack = vec![bfe!(0); OpStackElement::COUNT];
+        let mut stack = bfe_vec![0; OpStackElement::COUNT];
 
         let reverse_digest = program_digest.reversed().values();
         stack[..tip5::DIGEST_LENGTH].copy_from_slice(&reverse_digest);

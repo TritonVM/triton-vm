@@ -293,8 +293,8 @@ impl ProgramTable {
         let program_len = instructions.len();
         let padded_program_len = aet.height_of_table(TableId::Program);
 
-        let one_iter = [bfe!(1)].into_iter();
-        let zero_iter = [bfe!(0)].into_iter();
+        let one_iter = bfe_array![1].into_iter();
+        let zero_iter = bfe_array![0].into_iter();
         let padding_iter = one_iter.chain(zero_iter.cycle());
         let padded_instructions = instructions.into_iter().chain(padding_iter);
         let padded_instructions = padded_instructions.take(padded_program_len);

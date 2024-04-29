@@ -647,8 +647,8 @@ mod tests {
     fn lib_prove_with_incorrect_public_output_gives_appropriate_error() {
         let program = triton_program! { read_io 1 push 2 mul write_io 1 halt };
         let claim = Claim::about_program(&program)
-            .with_input(vec![bfe!(2)])
-            .with_output(vec![bfe!(5)]);
+            .with_input(bfe_vec![2])
+            .with_output(bfe_vec![5]);
 
         let stark = Stark::default();
         let_assert!(Err(err) = prove(stark, &claim, &program, [].into()));

@@ -130,7 +130,7 @@ impl VMState {
     }
 
     pub fn derive_helper_variables(&self) -> [BFieldElement; NUM_HELPER_VARIABLE_REGISTERS] {
-        let mut hvs = [bfe!(0); NUM_HELPER_VARIABLE_REGISTERS];
+        let mut hvs = bfe_array![0; NUM_HELPER_VARIABLE_REGISTERS];
         let Ok(current_instruction) = self.current_instruction() else {
             return hvs;
         };
@@ -1369,7 +1369,7 @@ pub(crate) mod tests {
     }
 
     pub(crate) fn test_program_for_eq() -> ProgramAndInput {
-        let input = [bfe!(42)];
+        let input = bfe_array![42];
         ProgramAndInput::new(triton_program!(read_io 1 divine 1 eq assert halt))
             .with_input(input)
             .with_non_determinism(input)
@@ -1378,7 +1378,7 @@ pub(crate) mod tests {
     pub(crate) fn property_based_test_program_for_eq() -> ProgramAndInput {
         let mut rng = ThreadRng::default();
         let st0 = rng.next_u64() % BFieldElement::P;
-        let input = [bfe!(st0)];
+        let input = bfe_array![st0];
 
         let program =
             triton_program!(push {st0} dup 0 read_io 1 eq assert dup 0 divine 1 eq assert halt);
@@ -1601,7 +1601,7 @@ pub(crate) mod tests {
         let st0 = rng.next_u32();
         let pop_count = st0.count_ones();
         let program = triton_program!(push {st0} pop_count read_io 1 eq assert halt);
-        ProgramAndInput::new(program).with_input([bfe!(pop_count)])
+        ProgramAndInput::new(program).with_input(bfe_array![pop_count])
     }
 
     pub(crate) fn property_based_test_program_for_is_u32() -> ProgramAndInput {
@@ -2034,7 +2034,7 @@ pub(crate) mod tests {
     #[test]
     fn run_tvm_fibonacci_tvm() {
         let program = FIBONACCI_SEQUENCE.clone();
-        let_assert!(Ok(standard_out) = program.run([bfe!(7)].into(), [].into()));
+        let_assert!(Ok(standard_out) = program.run(bfe_array![7].into(), [].into()));
         assert!(bfe!(21) == standard_out[0]);
     }
 

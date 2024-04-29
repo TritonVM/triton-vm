@@ -13,7 +13,7 @@ use itertools::Itertools;
 use strum::Display;
 use strum::EnumCount;
 use strum::EnumIter;
-use twenty_first::prelude::BFieldCodec;
+use twenty_first::prelude::*;
 
 use triton_vm::example_programs::FIBONACCI_SEQUENCE;
 use triton_vm::example_programs::VERIFY_SUDOKU;
@@ -171,7 +171,7 @@ fn program_verify_sudoku() -> ProgramAndInput {
 /// The program for computing some Fibonacci number, accepting as input which number of the
 /// sequence to compute.
 fn program_fib(nth_element: u64) -> ProgramAndInput {
-    ProgramAndInput::new(FIBONACCI_SEQUENCE.clone()).with_input([bfe!(nth_element)])
+    ProgramAndInput::new(FIBONACCI_SEQUENCE.clone()).with_input(bfe_array![nth_element])
 }
 
 fn program_halt() -> ProgramAndInput {

@@ -198,8 +198,8 @@ impl AlgebraicExecutionTrace {
 
         // padding is one 1, then as many zeros as necessary: [1, 0, 0, …]
         let program_iter = program.to_bwords().into_iter();
-        let one = [bfe!(1)];
-        let zeros = [bfe!(0); tip5::RATE];
+        let one = bfe_array![1];
+        let zeros = bfe_array![0; tip5::RATE];
         program_iter
             .chain(one)
             .chain(zeros)
@@ -368,7 +368,7 @@ mod tests {
         let program = triton_program!({&eight_nops} halt);
         let padded_program = AlgebraicExecutionTrace::hash_input_pad_program(&program);
 
-        let expected = [program.to_bwords(), vec![bfe!(1)]].concat();
+        let expected = [program.to_bwords(), bfe_vec![1]].concat();
         assert!(expected == padded_program);
     }
 

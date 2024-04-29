@@ -1026,9 +1026,9 @@ mod tests {
     }
 
     fn terminal_op_stack_size_for_program(program: Program) -> usize {
-        let public_input = PublicInput::from([bfe!(0)]);
+        let public_input = PublicInput::from(bfe_array![0]);
         let mock_digests = [Digest::default()];
-        let non_determinism = NonDeterminism::from([bfe!(0)]).with_digests(mock_digests);
+        let non_determinism = NonDeterminism::from(bfe_array![0]).with_digests(mock_digests);
 
         let mut vm_state = VMState::new(&program, public_input, non_determinism);
         let_assert!(Ok(()) = vm_state.run());

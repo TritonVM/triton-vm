@@ -1812,7 +1812,7 @@ pub(crate) mod tests {
     #[test]
     fn constraints_evaluate_to_zero_on_fibonacci() {
         let source_code_and_input =
-            ProgramAndInput::new(FIBONACCI_SEQUENCE.clone()).with_input([bfe!(100)]);
+            ProgramAndInput::new(FIBONACCI_SEQUENCE.clone()).with_input(bfe_array![100]);
         triton_constraints_evaluate_to_zero(source_code_and_input);
     }
 
@@ -2298,7 +2298,7 @@ pub(crate) mod tests {
 
     #[test]
     fn prove_verify_fibonacci_100() {
-        let stdin = PublicInput::from([bfe!(100)]);
+        let stdin = PublicInput::from(bfe_array![100]);
         let secret_in = NonDeterminism::default();
 
         let mut profiler = Some(TritonProfiler::new("Prove Fib 100"));
@@ -2323,13 +2323,13 @@ pub(crate) mod tests {
     #[test]
     fn prove_verify_fib_shootout() {
         for (fib_seq_idx, fib_seq_val) in [(0, 1), (7, 21), (11, 144)] {
-            let stdin = PublicInput::from([bfe!(fib_seq_idx)]);
+            let stdin = PublicInput::from(bfe_array![fib_seq_idx]);
             let secret_in = NonDeterminism::default();
             let (stark, claim, proof) =
                 prove_with_low_security_level(&FIBONACCI_SEQUENCE, stdin, secret_in, &mut None);
             assert!(let Ok(()) = stark.verify(&claim, &proof, &mut None));
 
-            assert!(vec![bfe!(fib_seq_val)] == claim.output);
+            assert!(bfe_vec![fib_seq_val] == claim.output);
         }
     }
 

@@ -1316,7 +1316,7 @@ impl HashTable {
     /// and the zero vector otherwise.
     pub fn tip5_round_constants_by_round_number(r: usize) -> [BFieldElement; NUM_ROUND_CONSTANTS] {
         if r >= NUM_ROUNDS {
-            return [bfe!(0); NUM_ROUND_CONSTANTS];
+            return bfe_array![0; NUM_ROUND_CONSTANTS];
         }
 
         let range_start = NUM_ROUND_CONSTANTS * r;
