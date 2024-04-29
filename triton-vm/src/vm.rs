@@ -136,6 +136,7 @@ impl VMState {
             return hvs;
         };
 
+        let ram_read = |address| self.ram.get(&address).copied().unwrap_or_else(|| bfe!(0));
         match current_instruction {
             Pop(_) | Divine(_) | Dup(_) | Swap(_) | ReadMem(_) | WriteMem(_) | ReadIo(_)
             | WriteIo(_) => {
@@ -168,36 +169,18 @@ impl VMState {
             }
             Eq => hvs[0] = (self.op_stack[ST1] - self.op_stack[ST0]).inverse_or_zero(),
             XxDotStep => {
-                hvs[0] = *self.ram.get(&self.op_stack[ST0]).unwrap();
-                hvs[1] = *self
-                    .ram
-                    .get(&(self.op_stack[ST0] + BFieldElement::new(1)))
-                    .unwrap();
-                hvs[2] = *self
-                    .ram
-                    .get(&(self.op_stack[ST0] + BFieldElement::new(2)))
-                    .unwrap();
-                hvs[3] = *self.ram.get(&self.op_stack[ST1]).unwrap();
-                hvs[4] = *self
-                    .ram
-                    .get(&(self.op_stack[ST1] + BFieldElement::new(1)))
-                    .unwrap();
-                hvs[5] = *self
-                    .ram
-                    .get(&(self.op_stack[ST1] + BFieldElement::new(2)))
-                    .unwrap();
+                hvs[0] = ram_read(self.op_stack[ST0]);
+                hvs[1] = ram_read(self.op_stack[ST0] + bfe!(1));
+                hvs[2] = ram_read(self.op_stack[ST0] + bfe!(2));
+                hvs[3] = ram_read(self.op_stack[ST1]);
+                hvs[4] = ram_read(self.op_stack[ST1] + bfe!(1));
+                hvs[5] = ram_read(self.op_stack[ST1] + bfe!(2));
             }
             XbDotStep => {
-                hvs[0] = *self.ram.get(&self.op_stack[ST0]).unwrap();
-                hvs[1] = *self.ram.get(&self.op_stack[ST1]).unwrap();
-                hvs[2] = *self
-                    .ram
-                    .get(&(self.op_stack[ST1] + BFieldElement::new(1)))
-                    .unwrap();
-                hvs[3] = *self
-                    .ram
-                    .get(&(self.op_stack[ST1] + BFieldElement::new(2)))
-                    .unwrap();
+                hvs[0] = ram_read(self.op_stack[ST0]);
+                hvs[1] = ram_read(self.op_stack[ST1]);
+                hvs[2] = ram_read(self.op_stack[ST1] + bfe!(1));
+                hvs[3] = ram_read(self.op_stack[ST1] + bfe!(2));
             }
             _ => (),
         }
@@ -1765,6 +1748,14 @@ pub(crate) mod tests {
     fn run_dont_prove_property_based_test_for_random_ram_access() {
         let source_code_and_input = property_based_test_program_for_random_ram_access();
         source_code_and_input.run().unwrap();
+    }
+
+    #[test]
+    fn can_compute_dot_product_from_uninitialized_ram() {
+        let program = triton_program!(xxdotstep xbdotstep halt);
+        program
+            .run(PublicInput::default(), NonDeterminism::default())
+            .unwrap();
     }
 
     pub(crate) fn property_based_test_program_for_xxdotstep() -> ProgramAndInput {
