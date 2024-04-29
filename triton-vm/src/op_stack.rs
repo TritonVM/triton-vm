@@ -71,8 +71,7 @@ impl OpStack {
 
     pub(crate) fn pop(&mut self) -> Result<BFieldElement> {
         self.record_underflow_io(UnderflowIO::Read);
-        let element = self.stack.pop().ok_or(OpStackTooShallow)?;
-        Ok(element)
+        self.stack.pop().ok_or(OpStackTooShallow)
     }
 
     fn record_underflow_io(&mut self, io_type: fn(BFieldElement) -> UnderflowIO) {
@@ -96,42 +95,31 @@ impl OpStack {
 
     pub(crate) fn pop_extension_field_element(&mut self) -> Result<XFieldElement> {
         let coefficients = self.pop_multiple()?;
-        let element = xfe!(coefficients);
-        Ok(element)
+        Ok(xfe!(coefficients))
     }
 
     pub(crate) fn is_u32(&self, stack_element: OpStackElement) -> Result<()> {
         let element = self[stack_element];
-        match u32::try_from(element.value()) {
-            Ok(_) => Ok(()),
-            Err(_) => Err(FailedU32Conversion(element)),
-        }
+        u32::try_from(element.value())
+            .map(|_| ())
+            .map_err(|_| FailedU32Conversion(element))
     }
 
     pub(crate) fn pop_u32(&mut self) -> Result<u32> {
         let element = self.pop()?;
-        let element = element
-            .try_into()
-            .map_err(|_| FailedU32Conversion(element))?;
-        Ok(element)
+        element.try_into().map_err(|_| FailedU32Conversion(element))
     }
 
     pub(crate) fn pop_multiple<const N: usize>(&mut self) -> Result<[BFieldElement; N]> {
-        let mut elements = vec![];
-        for _ in 0..N {
-            let element = self.pop()?;
-            elements.push(element);
+        let mut elements = bfe_array![0; N];
+        for element in &mut elements {
+            *element = self.pop()?;
         }
-        let elements = elements.try_into().unwrap();
         Ok(elements)
     }
 
     pub(crate) fn peek_at_top_extension_field_element(&self) -> XFieldElement {
         xfe!([self[0], self[1], self[2]])
-    }
-
-    pub(crate) fn swap_top_with(&mut self, st: OpStackElement) {
-        (self[0], self[st]) = (self[st], self[0]);
     }
 
     pub(crate) fn would_be_too_shallow(&self, stack_delta: i32) -> bool {

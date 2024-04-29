@@ -317,7 +317,8 @@ impl VMState {
         if stack_register == ST0 {
             return Err(SwapST0);
         }
-        self.op_stack.swap_top_with(stack_register);
+        (self.op_stack[ST0], self.op_stack[stack_register]) =
+            (self.op_stack[stack_register], self.op_stack[ST0]);
         self.instruction_pointer += 2;
         Ok(vec![])
     }
