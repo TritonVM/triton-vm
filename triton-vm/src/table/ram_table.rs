@@ -81,8 +81,6 @@ impl RamTable {
             ram_table.row_mut(row_index).assign(&row);
         }
 
-        let addresses = ram_table.slice(s![.., 2]);
-
         let all_ram_pointers = ram_table.column(RamPointer.base_table_index());
         let unique_ram_pointers = all_ram_pointers.iter().unique().copied().collect_vec();
         let (bezout_0, bezout_1) =
