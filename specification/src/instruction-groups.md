@@ -12,7 +12,7 @@ The following table lists and briefly explains all instruction groups.
 | group name                   | description                                                                                                                                              |
 |:-----------------------------|:---------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `decompose_arg`              | instruction's argument held in `nia` is binary decomposed into helper registers `hv0` through `hv3`                                                      |
-| `prohibit_illegal_num_words` | constrain the instruction's argument `n` to 1 ⩽ `n` ⩽ 5                                                                                                  |
+| `prohibit_illegal_num_words` | constrain the instruction's argument `n` to 1 ⩽ `n` ⩽ 5                                                                                                 |
 | `no_io`                      | the running evaluations for public input & output remain unchanged                                                                                       |
 | `no_ram`                     | RAM is not being accessed, _i.e._, the running product of the [Permutation Argument](permutation-argument.md) with the RAM Table remains unchanged       |
 | `keep_jump_stack`            | jump stack does not change, _i.e._, registers `jsp`, `jso`, and `jsd` do not change                                                                      |
@@ -20,8 +20,9 @@ The following table lists and briefly explains all instruction groups.
 | `step_2`                     | jump stack does not change and instruction pointer `ip` increases by 2                                                                                   |
 | `grow_op_stack`              | op stack elements are shifted down by one position, top element of the resulting stack is unconstrained                                                  |
 | `grow_op_stack_by_any_of`    | op stack elements are shifted down by `n` positions, top `n` elements of the resulting stack are unconstrained, where `n` is the instruction's argument  |
-| `unary_operation`            | op stack's top-most element is unconstrained, rest of stack remains unchanged                                                                            |
-| `keep_op_stack`              | op stack remains unchanged |
+| `keep_op_stack_height`       | the op stack height remains unchanged, and so in particular the running product of the [Permutation Argument](permutation-argument.md) with the Op Stack table remains unchanged |
+| `op_stack_remains_except_top_n_elements_unconstrained` | all but the top `n` elements of the op stack remain unchanged                                                |
+| `keep_op_stack`              | op stack remains entirely unchanged                                                                                                                      |
 | `binary_operation`           | op stack elements starting from `st2` are shifted up by one position, highest two elements of the resulting stack are unconstrained                      |
 | `shrink_op_stack`            | op stack elements starting from `st1` are shifted up by one position                                                                                     |
 | `shrink_op_stack_by_any_of`  | op stack elements starting from `stn` are shifted up by one position, where `n` is the instruction's argument                                            |
@@ -32,53 +33,50 @@ The following instruction groups conceptually fit the category of 'instruction g
 |:-----------|:---------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `no_hash`  | The hash coprocessor is not accessed. The constraints are implied by the evaluation argument with the Hash Table which takes the current instruction into account.         |
 
-Below figure gives a comprehensive overview over the subset relation between all instruction groups.
-
-<!-- Created using https://flowchart.fun, not recommended anymore since they changed their subscription model which is not worth our limited use -->
-![](img/instruction_groups_small.png)
-
 A summary of all instructions and which groups they are part of is given in the following table.
 
-| instruction       | `decompose_arg` | `prohibit_illegal_num_words` | `no_io` | `keep_ram` | `keep_jump_stack` | `step_1` | `step_2` | `grow_op_stack` | `grow_op_stack_by_any_of` | `unary_operation` | `keep_op_stack` | `binary_operation` | `shrink_op_stack` | `shrink_op_stack_by_any_of` |
-|:------------------|:---------------:|:----------------------------:|:-------:|:----------:|:-----------------:|:--------:|:--------:|:---------------:|:-------------------------:|:-----------------:|:---------------:|:------------------:|:-----------------:|:---------------------------:|
-| `pop` + `n`       |        x        |              x               |    x    |     x      |                   |          |    x     |                 |                           |                   |                 |                    |                   |              x              |
-| `push` + `a`      |                 |                              |    x    |     x      |                   |          |    x     |        x        |                           |                   |                 |                    |                   |                             |
-| `divine`  + `n`   |        x        |              x               |    x    |     x      |                   |          |    x     |                 |             x             |                   |                 |                    |                   |                             |
-| `dup`  + `i`      |        x        |                              |    x    |     x      |                   |          |    x     |        x        |                           |                   |                 |                    |                   |                             |
-| `swap` + `i`      |        x        |                              |    x    |     x      |                   |          |    x     |                 |                           |                   |                 |                    |                   |                             |
-| `nop`             |                 |                              |    x    |     x      |                   |    x     |          |                 |                           |                   |        x        |                    |                   |                             |
-| `skiz`            |                 |                              |    x    |     x      |         x         |          |          |                 |                           |                   |                 |                    |         x         |                             |
-| `call` + `d`      |                 |                              |    x    |     x      |                   |          |          |                 |                           |                   |        x        |                    |                   |                             |
-| `return`          |                 |                              |    x    |     x      |                   |          |          |                 |                           |                   |        x        |                    |                   |                             |
-| `recurse`         |                 |                              |    x    |     x      |         x         |          |          |                 |                           |                   |        x        |                    |                   |                             |
-| `assert`          |                 |                              |    x    |     x      |                   |    x     |          |                 |                           |                   |                 |                    |         x         |                             |
-| `halt`            |                 |                              |    x    |     x      |                   |    x     |          |                 |                           |                   |        x        |                    |                   |                             |
-| `read_mem` + `n`  |        x        |              x               |    x    |            |                   |          |    x     |                 |                           |                   |                 |                    |                   |                             |
-| `write_mem` + `n` |        x        |              x               |    x    |            |                   |          |    x     |                 |                           |                   |                 |                    |                   |                             |
-| `hash`            |                 |                              |    x    |     x      |                   |    x     |          |                 |                           |                   |                 |                    |                   |                             |
-| `divine_sibling`  |                 |                              |    x    |     x      |                   |    x     |          |                 |                           |                   |                 |                    |                   |                             |
-| `assert_vector`   |                 |                              |    x    |     x      |                   |    x     |          |                 |                           |                   |                 |                    |                   |                             |
-| `sponge_init`     |                 |                              |    x    |     x      |                   |    x     |          |                 |                           |                   |                 |                    |                   |                             |
-| `sponge_absorb`   |                 |                              |    x    |     x      |                   |    x     |          |                 |                           |                   |                 |                    |                   |                             |
-| `sponge_squeeze`  |                 |                              |    x    |     x      |                   |    x     |          |                 |                           |                   |                 |                    |                   |                             |
-| `add`             |                 |                              |    x    |     x      |                   |    x     |          |                 |                           |                   |                 |         x          |                   |                             |
-| `mul`             |                 |                              |    x    |     x      |                   |    x     |          |                 |                           |                   |                 |         x          |                   |                             |
-| `invert`          |                 |                              |    x    |     x      |                   |    x     |          |                 |                           |         x         |                 |                    |                   |                             |
-| `eq`              |                 |                              |    x    |     x      |                   |    x     |          |                 |                           |                   |                 |         x          |                   |                             |
-| `split`           |                 |                              |    x    |     x      |                   |    x     |          |                 |                           |                   |                 |                    |                   |                             |
-| `lt`              |                 |                              |    x    |     x      |                   |    x     |          |                 |                           |                   |                 |         x          |                   |                             |
-| `and`             |                 |                              |    x    |     x      |                   |    x     |          |                 |                           |                   |                 |         x          |                   |                             |
-| `xor`             |                 |                              |    x    |     x      |                   |    x     |          |                 |                           |                   |                 |         x          |                   |                             |
-| `log_2_floor`     |                 |                              |    x    |     x      |                   |    x     |          |                 |                           |         x         |                 |                    |                   |                             |
-| `pow`             |                 |                              |    x    |     x      |                   |    x     |          |                 |                           |                   |                 |         x          |                   |                             |
-| `div_mod`         |                 |                              |    x    |     x      |                   |    x     |          |                 |                           |                   |                 |                    |                   |                             |
-| `pop_count`       |                 |                              |    x    |     x      |                   |    x     |          |                 |                           |         x         |                 |                    |                   |                             |
-| `xxadd`           |                 |                              |    x    |     x      |                   |    x     |          |                 |                           |                   |                 |                    |                   |                             |
-| `xxmul`           |                 |                              |    x    |     x      |                   |    x     |          |                 |                           |                   |                 |                    |                   |                             |
-| `xinvert`         |                 |                              |    x    |     x      |                   |    x     |          |                 |                           |                   |                 |                    |                   |                             |
-| `xbmul`           |                 |                              |    x    |     x      |                   |    x     |          |                 |                           |                   |                 |                    |                   |                             |
-| `read_io` + `n`   |        x        |              x               |         |     x      |                   |          |    x     |                 |             x             |                   |                 |                    |                   |                             |
-| `write_io` + `n`  |        x        |              x               |         |     x      |                   |          |    x     |                 |                           |                   |                 |                    |                   |              x              |
+| instruction       | `decompose_arg` | `prohibit_illegal_num_words` | `no_io` | `no_ram` | `keep_jump_stack` | `step_1` | `step_2` | `grow_op_stack` | `grow_op_stack_by_any_of` | `keep_op_stack_height` | `op_stack_remains_except_top_n_elements_unconstrained` | `keep_op_stack` | `binary_operation` | `shrink_op_stack` | `shrink_op_stack_by_any_of` |
+|:------------------|:---------------:|:----------------------------:|:-------:|:--------:|:-----------------:|:--------:|:--------:|:---------------:|:-------------------------:|:----------------------:|:------------------------------------------------------:|:---------------:|:------------------:|:-----------------:|:---------------------------:|
+| `pop` + `n`       |        x        |              x               |    x    |    x     |                   |          |    x     |                 |                           |                        |                                                        |                 |                    |                   |              x              |
+| `push` + `a`      |                 |                              |    x    |    x     |                   |          |    x     |        x        |                           |                        |                                                        |                 |                    |                   |                             |
+| `divine`  + `n`   |        x        |              x               |    x    |    x     |                   |          |    x     |                 |             x             |                        |                                                        |                 |                    |                   |                             |
+| `dup`  + `i`      |        x        |                              |    x    |    x     |                   |          |    x     |        x        |                           |                        |                                                        |                 |                    |                   |                             |
+| `swap` + `i`      |        x        |                              |    x    |    x     |                   |          |    x     |                 |                           |           x            |                                                        |                 |                    |                   |                             |
+| `nop`             |                 |                              |    x    |    x     |                   |    x     |          |                 |                           |           x            |                            0                           |        x        |                    |                   |                             |
+| `skiz`            |                 |                              |    x    |    x     |         x         |          |          |                 |                           |                        |                                                        |                 |                    |         x         |                             |
+| `call` + `d`      |                 |                              |    x    |    x     |                   |          |          |                 |                           |           x            |                            0                           |        x        |                    |                   |                             |
+| `return`          |                 |                              |    x    |    x     |                   |          |          |                 |                           |           x            |                            0                           |        x        |                    |                   |                             |
+| `recurse`         |                 |                              |    x    |    x     |         x         |          |          |                 |                           |           x            |                            0                           |        x        |                    |                   |                             |
+| `assert`          |                 |                              |    x    |    x     |                   |    x     |          |                 |                           |                        |                                                        |                 |                    |         x         |                             |
+| `halt`            |                 |                              |    x    |    x     |                   |    x     |          |                 |                           |           x            |                            0                           |        x        |                    |                   |                             |
+| `read_mem` + `n`  |        x        |              x               |    x    |          |                   |          |    x     |                 |                           |                        |                                                        |                 |                    |                   |                             |
+| `write_mem` + `n` |        x        |              x               |    x    |          |                   |          |    x     |                 |                           |                        |                                                        |                 |                    |                   |                             |
+| `hash`            |                 |                              |    x    |    x     |                   |    x     |          |                 |                           |                        |                                                        |                 |                    |                   |                             |
+| `divine_sibling`  |                 |                              |    x    |    x     |                   |    x     |          |                 |                           |                        |                                                        |                 |                    |                   |                             |
+| `assert_vector`   |                 |                              |    x    |    x     |                   |    x     |          |                 |                           |                        |                                                        |                 |                    |                   |                             |
+| `sponge_init`     |                 |                              |    x    |    x     |                   |    x     |          |                 |                           |                        |                                                        |                 |                    |                   |                             |
+| `sponge_absorb`   |                 |                              |    x    |    x     |                   |    x     |          |                 |                           |                        |                                                        |                 |                    |                   |                             |
+| `sponge_squeeze`  |                 |                              |    x    |    x     |                   |    x     |          |                 |                           |                        |                                                        |                 |                    |                   |                             |
+| `add`             |                 |                              |    x    |    x     |                   |    x     |          |                 |                           |                        |                                                        |                 |         x          |                   |                             |
+| `mul`             |                 |                              |    x    |    x     |                   |    x     |          |                 |                           |                        |                                                        |                 |         x          |                   |                             |
+| `invert`          |                 |                              |    x    |    x     |                   |    x     |          |                 |                           |           x            |                           1                            |                 |                    |                   |                             |
+| `eq`              |                 |                              |    x    |    x     |                   |    x     |          |                 |                           |                        |                                                        |                 |         x          |                   |                             |
+| `split`           |                 |                              |    x    |    x     |                   |    x     |          |                 |                           |                        |                                                        |                 |                    |                   |                             |
+| `lt`              |                 |                              |    x    |    x     |                   |    x     |          |                 |                           |                        |                                                        |                 |         x          |                   |                             |
+| `and`             |                 |                              |    x    |    x     |                   |    x     |          |                 |                           |                        |                                                        |                 |         x          |                   |                             |
+| `xor`             |                 |                              |    x    |    x     |                   |    x     |          |                 |                           |                        |                                                        |                 |         x          |                   |                             |
+| `log_2_floor`     |                 |                              |    x    |    x     |                   |    x     |          |                 |                           |           x            |                           1                            |                 |                    |                   |                             |
+| `pow`             |                 |                              |    x    |    x     |                   |    x     |          |                 |                           |                        |                                                        |                 |         x          |                   |                             |
+| `div_mod`         |                 |                              |    x    |    x     |                   |    x     |          |                 |                           |           x            |                           2                            |                 |                    |                   |                             |
+| `pop_count`       |                 |                              |    x    |    x     |                   |    x     |          |                 |                           |           x            |                           1                            |                 |                    |                   |                             |
+| `xxadd`           |                 |                              |    x    |    x     |                   |    x     |          |                 |                           |                        |                                                        |                 |                    |                   |                             |
+| `xxmul`           |                 |                              |    x    |    x     |                   |    x     |          |                 |                           |                        |                                                        |                 |                    |                   |                             |
+| `xinvert`         |                 |                              |    x    |    x     |                   |    x     |          |                 |                           |           x            |                           3                            |                 |                    |                   |                             |
+| `xbmul`           |                 |                              |    x    |    x     |                   |    x     |          |                 |                           |                        |                                                        |                 |                    |                   |                             |
+| `read_io` + `n`   |        x        |              x               |         |    x     |                   |          |    x     |                 |             x             |                        |                                                        |                 |                    |                   |                             |
+| `write_io` + `n`  |        x        |              x               |         |    x     |                   |          |    x     |                 |                           |                        |                                                        |                 |                    |                   |              x              |
+| `xxdotstep`       |                 |                              |    x    |          |                   |          |          |                 |                           |          x             |                           5                            |                 |                    |                   |                             |
+| `xbdotstep`       |                 |                              |    x    |          |                   |          |          |                 |                           |          x             |                           4                            |                 |                    |                   |              x              |
 
 ## Indicator Polynomials `ind_i(hv3, hv2, hv1, hv0)`
 
@@ -180,7 +178,7 @@ Therefore, the instruction argument's correct binary decomposition is known to b
 1. `RunningEvaluationStandardInput' - RunningEvaluationStandardInput`
 2. `RunningEvaluationStandardOutput' - RunningEvaluationStandardOutput`
 
-## Group `keep_ram`
+## Group `no_ram`
 
 ### Description
 
@@ -353,59 +351,38 @@ Therefore, the instruction's argument `n` correct binary decomposition is known 
     else if `n` is 2, then the running product with the Op Stack Table accumulates `st14` and `st15`.
 1. If `n` is 1, then the running product with the Op Stack Table accumulates `st15`.
 
-## Group `unary_operation`
+## Group `keep_op_stack_height`
+
+The op stack pointer and the running product for the [Permutation Argument](permutation-argument.md) with the [Op Stack Table](operational-stack-table.md) remain the same. In other words, there is no access (neither read nor write) from/to the Op Stack Table.
 
 ### Description
 
-1. The stack element in `st1` does not change.
-1. The stack element in `st2` does not change.
-1. The stack element in `st3` does not change.
-1. The stack element in `st4` does not change.
-1. The stack element in `st5` does not change.
-1. The stack element in `st6` does not change.
-1. The stack element in `st7` does not change.
-1. The stack element in `st8` does not change.
-1. The stack element in `st9` does not change.
-1. The stack element in `st10` does not change.
-1. The stack element in `st11` does not change.
-1. The stack element in `st12` does not change.
-1. The stack element in `st13` does not change.
-1. The stack element in `st14` does not change.
-1. The stack element in `st15` does not change.
 1. The op stack pointer does not change.
 1. The running product for the Op Stack Table remains unchanged.
 
 ### Polynomials
 
-1. `st1' - st1`
-1. `st2' - st2`
-1. `st3' - st3`
-1. `st4' - st4`
-1. `st5' - st5`
-1. `st6' - st6`
-1. `st7' - st7`
-1. `st8' - st8`
-1. `st9' - st9`
-1. `st10' - st10`
-1. `st11' - st11`
-1. `st12' - st12`
-1. `st13' - st13`
-1. `st14' - st14`
-1. `st15' - st15`
 1. `op_stack_pointer' - op_stack_pointer`
 1. `RunningProductOpStackTable' - RunningProductOpStackTable`
 
-## Group `keep_op_stack`
 
-Contains all constraints from instruction group `unary_operation`, and additionally:
+## Group `op_stack_remains_except_top_n_elements_unconstrained`
+
+Contains all constraints from group `keep_op_stack_height`, and additionally ensures that all but the top `n` op stack elements remain the same. (The top `n` elements are unconstrained.)
 
 ### Description
 
-1. The stack element in `st0` does not change.
+1. For `i` in `{n, ..., NUM_OP_STACK_REGISTERS-1}` The stack element in `sti` does not change.
 
 ### Polynomials
 
-1. `st0' - st0`
+1. `stn' - stn`
+1. ...
+1. `stN' - stN`
+
+## Group `keep_op_stack`
+
+Short-hand for `op_stack_remains_except_top_n_elements_unconstrained` with `n=0`.
 
 ## Group `binary_operation`
 

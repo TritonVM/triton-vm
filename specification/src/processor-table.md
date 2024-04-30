@@ -112,7 +112,7 @@ See [program attestation](program-attestation.md) for more details.
 1. `RunningEvaluationHashDigest` is 1.
 1. `RunningEvaluationSponge` is 1.
 1. `U32LookupClientLogDerivative` is 0.
-1. `ClockJumpDifferenceLookupServerLogDerivative` is 0.
+1. `ClockJumpDifferenceLookupServerLogDerivative` starts having accumulated the first contribution.
 
 ### Initial Constraints as Polynomials
 
@@ -145,7 +145,7 @@ See [program attestation](program-attestation.md) for more details.
 1. `RunningEvaluationHashDigest - 1`
 1. `RunningEvaluationSponge - 1`
 1. `U32LookupClientLogDerivative`
-1. `ClockJumpDifferenceLookupServerLogDerivative`
+1. `ClockJumpDifferenceLookupServerLogDerivative · 🪞 - cjd_mul` (Recall that `(🪞 - clk) = 🪞` because `clk = 0`.)
 
 ## Consistency Constraints
 
