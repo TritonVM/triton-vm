@@ -627,9 +627,12 @@ impl ExtProcessorTable {
         // clock jump difference lookup argument
         // The clock jump difference logarithmic derivative accumulator starts
         // off having accumulated the contribution from the first row.
+        // Note that (challenge(ClockJumpDifferenceLookupIndeterminate) - base_row(CLK))
+        // collapses to challenge(ClockJumpDifferenceLookupIndeterminate)
+        // because base_row(CLK) = 0 is already a constraint.
         let clock_jump_diff_lookup_log_derivative_is_initialized_correctly =
             ext_row(ClockJumpDifferenceLookupServerLogDerivative)
-                * (challenge(ClockJumpDifferenceLookupIndeterminate) - base_row(CLK))
+                * challenge(ClockJumpDifferenceLookupIndeterminate)
                 - base_row(ClockJumpDifferenceLookupMultiplicity);
 
         // from processor to hash table
