@@ -405,6 +405,7 @@ impl ProcessorTable {
         let previous_row = maybe_previous_row?;
         let instruction = Self::instruction_from_row(previous_row)?;
 
+        let clk = previous_row[CLK.base_table_index()];
         let instruction_type = match instruction {
             ReadMem(_) => ram_table::INSTRUCTION_TYPE_READ,
             WriteMem(_) => ram_table::INSTRUCTION_TYPE_WRITE,
@@ -412,72 +413,72 @@ impl ProcessorTable {
             XbDotStep => ram_table::INSTRUCTION_TYPE_READ,
             _ => return None,
         };
+        let mut accesses = vec![];
 
-        let clk = previous_row[CLK.base_table_index()];
-        let stack_height_changes =
-            matches!(instruction, ReadMem(_)) || matches!(instruction, WriteMem(_));
-        if stack_height_changes {
-            // longer stack means relevant information is on top of stack, i.e., in stack registers
-            let row_with_longer_stack = match instruction {
-                ReadMem(_) => current_row.view(),
-                WriteMem(_) => previous_row.view(),
-                _ => unreachable!(),
-            };
-            let op_stack_delta = instruction.op_stack_size_influence().unsigned_abs() as usize;
+        match instruction {
+            ReadMem(_) | WriteMem(_) => {
+                // longer stack means relevant information is on top of stack, i.e., in stack registers
+                let row_with_longer_stack = match instruction {
+                    ReadMem(_) => current_row.view(),
+                    WriteMem(_) => previous_row.view(),
+                    _ => unreachable!(),
+                };
+                let op_stack_delta = instruction.op_stack_size_influence().unsigned_abs() as usize;
 
-            let mut factor = xfe!(1);
-            for ram_pointer_offset in 0..op_stack_delta {
                 let num_ram_pointers = 1;
-                let ram_value_index = ram_pointer_offset + num_ram_pointers;
-                let ram_value_column = Self::op_stack_column_by_index(ram_value_index);
-                let ram_value = row_with_longer_stack[ram_value_column.base_table_index()];
-                let offset_ram_pointer = Self::offset_ram_pointer(
-                    instruction,
-                    row_with_longer_stack,
-                    ram_pointer_offset,
-                );
+                for ram_pointer_offset in 0..op_stack_delta {
+                    let ram_value_index = ram_pointer_offset + num_ram_pointers;
+                    let ram_value_column = Self::op_stack_column_by_index(ram_value_index);
+                    let ram_value = row_with_longer_stack[ram_value_column.base_table_index()];
+                    let offset_ram_pointer = Self::offset_ram_pointer(
+                        instruction,
+                        row_with_longer_stack,
+                        ram_pointer_offset,
+                    );
+                    accesses.push((offset_ram_pointer, ram_value));
+                }
+            }
+            XxDotStep => {
+                let rhs_pointer = previous_row[ST0.base_table_index()];
+                let lhs_pointer = previous_row[ST1.base_table_index()];
+                let hv0 = previous_row[HV0.base_table_index()];
+                let hv1 = previous_row[HV1.base_table_index()];
+                let hv2 = previous_row[HV2.base_table_index()];
+                let hv3 = previous_row[HV3.base_table_index()];
+                let hv4 = previous_row[HV4.base_table_index()];
+                let hv5 = previous_row[HV5.base_table_index()];
+                accesses.push((rhs_pointer, hv0));
+                accesses.push((rhs_pointer + bfe!(1), hv1));
+                accesses.push((rhs_pointer + bfe!(2), hv2));
+                accesses.push((lhs_pointer, hv3));
+                accesses.push((lhs_pointer + bfe!(1), hv4));
+                accesses.push((lhs_pointer + bfe!(2), hv5));
+            }
+            XbDotStep => {
+                let rhs_pointer = previous_row[ST0.base_table_index()];
+                let lhs_pointer = previous_row[ST1.base_table_index()];
+                let hv0 = previous_row[HV0.base_table_index()];
+                let hv1 = previous_row[HV1.base_table_index()];
+                let hv2 = previous_row[HV2.base_table_index()];
+                let hv3 = previous_row[HV3.base_table_index()];
+                accesses.push((rhs_pointer, hv0));
+                accesses.push((lhs_pointer, hv1));
+                accesses.push((lhs_pointer + bfe!(1), hv2));
+                accesses.push((lhs_pointer + bfe!(2), hv3));
+            }
+            _ => unreachable!(),
+        };
 
-                let compressed_row = clk * challenges[RamClkWeight]
+        accesses
+            .into_iter()
+            .map(|(ramp, ramv)| {
+                clk * challenges[RamClkWeight]
                     + instruction_type * challenges[RamInstructionTypeWeight]
-                    + offset_ram_pointer * challenges[RamPointerWeight]
-                    + ram_value * challenges[RamValueWeight];
-                factor *= challenges[RamIndeterminate] - compressed_row;
-            }
-            Some(factor)
-        } else {
-            let rhs_pointer = previous_row[ST0.base_table_index()];
-            let lhs_pointer = previous_row[ST1.base_table_index()];
-            let hv0 = previous_row[HV0.base_table_index()];
-            let hv1 = previous_row[HV1.base_table_index()];
-            let hv2 = previous_row[HV2.base_table_index()];
-            let hv3 = previous_row[HV3.base_table_index()];
-            let hv4 = previous_row[HV4.base_table_index()];
-            let hv5 = previous_row[HV5.base_table_index()];
-            let mut rows = vec![];
-
-            if matches!(instruction, XxDotStep) {
-                rows.push((clk, instruction_type, rhs_pointer, hv0));
-                rows.push((clk, instruction_type, rhs_pointer + bfe!(1), hv1));
-                rows.push((clk, instruction_type, rhs_pointer + bfe!(2), hv2));
-                rows.push((clk, instruction_type, lhs_pointer, hv3));
-                rows.push((clk, instruction_type, lhs_pointer + bfe!(1), hv4));
-                rows.push((clk, instruction_type, lhs_pointer + bfe!(2), hv5));
-            } else {
-                rows.push((clk, instruction_type, rhs_pointer, hv0));
-                rows.push((clk, instruction_type, lhs_pointer, hv1));
-                rows.push((clk, instruction_type, lhs_pointer + bfe!(1), hv2));
-                rows.push((clk, instruction_type, lhs_pointer + bfe!(2), hv3));
-            }
-            rows.into_iter()
-                .map(|(clk, instr_type, ramp, ramv)| {
-                    clk * challenges[RamClkWeight]
-                        + instr_type * challenges[RamInstructionTypeWeight]
-                        + ramp * challenges[RamPointerWeight]
-                        + ramv * challenges[RamValueWeight]
-                })
-                .map(|compressed_row| challenges[RamIndeterminate] - compressed_row)
-                .reduce(|l, r| l * r)
-        }
+                    + ramp * challenges[RamPointerWeight]
+                    + ramv * challenges[RamValueWeight]
+            })
+            .map(|compressed_row| challenges[RamIndeterminate] - compressed_row)
+            .reduce(|l, r| l * r)
     }
 
     fn offset_ram_pointer(
@@ -2360,8 +2361,8 @@ impl ExtProcessorTable {
     }
 
     /// Update the accumulator for the Permutation Argument with the
-    /// RAM table in accordance with reading a single word from the
-    /// indicated ram pointer to the indicated destination.
+    /// RAM table in accordance with reading a bunch of word from the
+    /// indicated ram pointers to the indicated destination registers.
     fn read_from_ram_to(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
         ram_pointers: &[ConstraintCircuitMonad<DualRowIndicator>],
