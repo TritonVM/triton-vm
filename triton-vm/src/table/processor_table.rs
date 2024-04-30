@@ -971,29 +971,6 @@ impl ExtProcessorTable {
         [all_but_n_top_elements_remain, ram_perm_arg_remains].concat()
     }
 
-    fn instruction_group_unop(
-        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
-    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        let curr_base_row = |col: ProcessorBaseTableColumn| {
-            circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
-        };
-        let next_base_row = |col: ProcessorBaseTableColumn| {
-            circuit_builder.input(NextBaseRow(col.master_base_table_index()))
-        };
-
-        let specific_constraints = vec![
-            next_base_row(ST1) - curr_base_row(ST1),
-            next_base_row(ST2) - curr_base_row(ST2),
-        ];
-        let inherited_constraints =
-            Self::instruction_group_op_stack_remains_except_top_n_elements_unconstrained(
-                3,
-                circuit_builder,
-            );
-
-        [specific_constraints, inherited_constraints].concat()
-    }
-
     /// Op stack does not change, _i.e._, all stack elements persist
     fn instruction_group_keep_op_stack(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
@@ -1415,14 +1392,8 @@ impl ExtProcessorTable {
         let curr_base_row = |col: ProcessorBaseTableColumn| {
             circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
         };
-        let curr_ext_row = |col: ProcessorExtTableColumn| {
-            circuit_builder.input(CurrentExtRow(col.master_ext_table_index()))
-        };
         let next_base_row = |col: ProcessorBaseTableColumn| {
             circuit_builder.input(NextBaseRow(col.master_base_table_index()))
-        };
-        let next_ext_row = |col: ProcessorExtTableColumn| {
-            circuit_builder.input(NextExtRow(col.master_ext_table_index()))
         };
 
         let specific_constraints = vec![
@@ -1472,8 +1443,6 @@ impl ExtProcessorTable {
             (one() - indicator_poly(13)) * (next_base_row(ST13) - curr_base_row(ST13)),
             (one() - indicator_poly(14)) * (next_base_row(ST14) - curr_base_row(ST14)),
             (one() - indicator_poly(15)) * (next_base_row(ST15) - curr_base_row(ST15)),
-            next_base_row(OpStackPointer) - curr_base_row(OpStackPointer),
-            next_ext_row(OpStackTablePermArg) - curr_ext_row(OpStackTablePermArg),
         ];
         [
             specific_constraints,
@@ -1481,6 +1450,7 @@ impl ExtProcessorTable {
             Self::instruction_group_step_2(circuit_builder),
             Self::instruction_group_no_ram(circuit_builder),
             Self::instruction_group_no_io(circuit_builder),
+            Self::instruction_group_keep_op_stack_height(circuit_builder),
         ]
         .concat()
     }
@@ -1961,7 +1931,10 @@ impl ExtProcessorTable {
         [
             specific_constraints,
             Self::instruction_group_step_1(circuit_builder),
-            Self::instruction_group_unop(circuit_builder),
+            Self::instruction_group_op_stack_remains_except_top_n_elements_unconstrained(
+                1,
+                circuit_builder,
+            ),
             Self::instruction_group_no_ram(circuit_builder),
             Self::instruction_group_no_io(circuit_builder),
         ]
@@ -2099,7 +2072,10 @@ impl ExtProcessorTable {
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
         [
             Self::instruction_group_step_1(circuit_builder),
-            Self::instruction_group_unop(circuit_builder),
+            Self::instruction_group_op_stack_remains_except_top_n_elements_unconstrained(
+                1,
+                circuit_builder,
+            ),
             Self::instruction_group_no_ram(circuit_builder),
             Self::instruction_group_no_io(circuit_builder),
         ]
@@ -2132,17 +2108,12 @@ impl ExtProcessorTable {
         let numerator_is_quotient_times_denominator_plus_remainder =
             curr_base_row(ST0) - curr_base_row(ST1) * next_base_row(ST1) - next_base_row(ST0);
 
-        let st2_does_not_change = next_base_row(ST2) - curr_base_row(ST2);
-
-        let specific_constraints = vec![
-            numerator_is_quotient_times_denominator_plus_remainder,
-            st2_does_not_change,
-        ];
+        let specific_constraints = vec![numerator_is_quotient_times_denominator_plus_remainder];
         [
             specific_constraints,
             Self::instruction_group_step_1(circuit_builder),
             Self::instruction_group_op_stack_remains_except_top_n_elements_unconstrained(
-                3,
+                2,
                 circuit_builder,
             ),
             Self::instruction_group_no_ram(circuit_builder),
@@ -2156,7 +2127,10 @@ impl ExtProcessorTable {
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
         [
             Self::instruction_group_step_1(circuit_builder),
-            Self::instruction_group_unop(circuit_builder),
+            Self::instruction_group_op_stack_remains_except_top_n_elements_unconstrained(
+                1,
+                circuit_builder,
+            ),
             Self::instruction_group_no_ram(circuit_builder),
             Self::instruction_group_no_io(circuit_builder),
         ]
