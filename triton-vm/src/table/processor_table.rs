@@ -16,6 +16,7 @@ use crate::instruction::InstructionBit;
 use crate::instruction::ALL_INSTRUCTIONS;
 use crate::op_stack::NumberOfWords;
 use crate::op_stack::OpStackElement;
+use crate::op_stack::NUM_OP_STACK_REGISTERS;
 use crate::table::challenges::ChallengeId;
 use crate::table::challenges::ChallengeId::*;
 use crate::table::challenges::Challenges;
@@ -961,12 +962,8 @@ impl ExtProcessorTable {
             circuit_builder.input(NextBaseRow(col.master_base_table_index()))
         };
 
-        let st = [
-            ST0, ST1, ST2, ST3, ST4, ST5, ST6, ST7, ST8, ST9, ST10, ST11, ST12, ST13, ST14, ST15,
-        ];
-        let all_but_n_top_elements_remain = st
-            .into_iter()
-            .skip(n)
+        let all_but_n_top_elements_remain = (n..NUM_OP_STACK_REGISTERS)
+            .map(ProcessorTable::op_stack_column_by_index)
             .map(|sti| next_base_row(sti) - curr_base_row(sti))
             .collect_vec();
         let ram_perm_arg_remains = Self::instruction_group_keep_op_stack_height(circuit_builder);
