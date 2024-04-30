@@ -942,7 +942,10 @@ impl ExtProcessorTable {
         ]
     }
 
-    fn instruction_group_op_stack_remains_and_top_three_elements_unconstrained(
+    /// Op Stack height does not change and except for the top n elements,
+    /// the values remain also.
+    fn instruction_group_op_stack_remains_except_top_n_elements_unconstrained(
+        n: usize,
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
         let curr_base_row = |col: ProcessorBaseTableColumn| {
@@ -952,30 +955,17 @@ impl ExtProcessorTable {
             circuit_builder.input(NextBaseRow(col.master_base_table_index()))
         };
 
-        let curr_ext_row = |col: ProcessorExtTableColumn| {
-            circuit_builder.input(CurrentExtRow(col.master_ext_table_index()))
-        };
-        let next_ext_row = |col: ProcessorExtTableColumn| {
-            circuit_builder.input(NextExtRow(col.master_ext_table_index()))
-        };
+        let st = [
+            ST0, ST1, ST2, ST3, ST4, ST5, ST6, ST7, ST8, ST9, ST10, ST11, ST12, ST13, ST14, ST15,
+        ];
+        let all_but_n_top_elements_remain = st
+            .into_iter()
+            .skip(n)
+            .map(|sti| next_base_row(sti) - curr_base_row(sti))
+            .collect_vec();
+        let ram_perm_arg_remains = Self::instruction_group_keep_op_stack_height(circuit_builder);
 
-        vec![
-            next_base_row(ST3) - curr_base_row(ST3),
-            next_base_row(ST4) - curr_base_row(ST4),
-            next_base_row(ST5) - curr_base_row(ST5),
-            next_base_row(ST6) - curr_base_row(ST6),
-            next_base_row(ST7) - curr_base_row(ST7),
-            next_base_row(ST8) - curr_base_row(ST8),
-            next_base_row(ST9) - curr_base_row(ST9),
-            next_base_row(ST10) - curr_base_row(ST10),
-            next_base_row(ST11) - curr_base_row(ST11),
-            next_base_row(ST12) - curr_base_row(ST12),
-            next_base_row(ST13) - curr_base_row(ST13),
-            next_base_row(ST14) - curr_base_row(ST14),
-            next_base_row(ST15) - curr_base_row(ST15),
-            next_base_row(OpStackPointer) - curr_base_row(OpStackPointer),
-            next_ext_row(OpStackTablePermArg) - curr_ext_row(OpStackTablePermArg),
-        ]
+        [all_but_n_top_elements_remain, ram_perm_arg_remains].concat()
     }
 
     fn instruction_group_unop(
@@ -993,7 +983,8 @@ impl ExtProcessorTable {
             next_base_row(ST2) - curr_base_row(ST2),
         ];
         let inherited_constraints =
-            Self::instruction_group_op_stack_remains_and_top_three_elements_unconstrained(
+            Self::instruction_group_op_stack_remains_except_top_n_elements_unconstrained(
+                3,
                 circuit_builder,
             );
 
@@ -1004,23 +995,16 @@ impl ExtProcessorTable {
     fn instruction_group_keep_op_stack(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        let curr_base_row = |col: ProcessorBaseTableColumn| {
-            circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
-        };
-        let next_base_row = |col: ProcessorBaseTableColumn| {
-            circuit_builder.input(NextBaseRow(col.master_base_table_index()))
-        };
-
-        let specific_constraints = vec![next_base_row(ST0) - curr_base_row(ST0)];
-        let inherited_constraints = Self::instruction_group_unop(circuit_builder);
-
-        [specific_constraints, inherited_constraints].concat()
+        Self::instruction_group_op_stack_remains_except_top_n_elements_unconstrained(
+            0,
+            circuit_builder,
+        )
     }
 
     /// Op stack *height* does not change, _i.e._, the accumulator for the
     /// permutation argument with the op stack table remains the same as does
     /// the op stack pointer.
-    fn keep_op_stack_height(
+    fn instruction_group_keep_op_stack_height(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
         let curr_base_row = |col: ProcessorBaseTableColumn| {
@@ -2154,7 +2138,8 @@ impl ExtProcessorTable {
         [
             specific_constraints,
             Self::instruction_group_step_1(circuit_builder),
-            Self::instruction_group_op_stack_remains_and_top_three_elements_unconstrained(
+            Self::instruction_group_op_stack_remains_except_top_n_elements_unconstrained(
+                3,
                 circuit_builder,
             ),
             Self::instruction_group_no_ram(circuit_builder),
@@ -2280,7 +2265,8 @@ impl ExtProcessorTable {
         ];
         [
             specific_constraints,
-            Self::instruction_group_op_stack_remains_and_top_three_elements_unconstrained(
+            Self::instruction_group_op_stack_remains_except_top_n_elements_unconstrained(
+                3,
                 circuit_builder,
             ),
             Self::instruction_group_step_1(circuit_builder),
@@ -2478,7 +2464,7 @@ impl ExtProcessorTable {
         [
             Self::instruction_group_step_1(circuit_builder),
             Self::instruction_group_no_io(circuit_builder),
-            Self::keep_op_stack_height(circuit_builder),
+            Self::instruction_group_keep_op_stack_height(circuit_builder),
             Self::instruction_group_keep_jump_stack(circuit_builder),
             // read two xfes from RAM
             vec![Self::read_from_ram_to(
@@ -2530,7 +2516,7 @@ impl ExtProcessorTable {
         [
             Self::instruction_group_step_1(circuit_builder),
             Self::instruction_group_no_io(circuit_builder),
-            Self::keep_op_stack_height(circuit_builder),
+            Self::instruction_group_keep_op_stack_height(circuit_builder),
             Self::instruction_group_keep_jump_stack(circuit_builder),
             // read one bfe and one xfe from RAM
             vec![Self::read_from_ram_to(
