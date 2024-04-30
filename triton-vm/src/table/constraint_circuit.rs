@@ -2135,4 +2135,20 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    #[ignore = "requires a proper debugging session, or maybe additional optimizations"]
+    fn constraint_circuit_builder_reuses_existing_nodes_when_folding_constants() {
+        let builder = ConstraintCircuitBuilder::new();
+        let constant = |c| builder.b_constant(c);
+        let base_row = |r| builder.input(BaseRow(r));
+
+        let c_0 = base_row(0);
+        let c_1 = base_row(0) - constant(0);
+        let mut constraints = [c_0, c_1];
+
+        ConstraintCircuitMonad::constant_folding(&mut constraints);
+        let mut constraints = constraints.iter().map(|c| c.consume()).collect_vec();
+        ConstraintCircuit::assert_unique_ids(&mut constraints);
+    }
 }
