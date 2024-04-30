@@ -181,7 +181,6 @@ impl RamTable {
             let clk_diff = next_row[CLK.base_table_index()] - curr_row[CLK.base_table_index()];
 
             if ramp_diff.is_zero() {
-                assert!(!clk_diff.is_zero(), "row_idx = {row_idx}");
                 clock_jump_differences.push(clk_diff);
             } else {
                 current_bcpc_0 = bezout_coefficient_polynomial_coefficients_0.pop().unwrap();

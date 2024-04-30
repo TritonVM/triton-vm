@@ -625,10 +625,12 @@ impl ExtProcessorTable {
                     * (jump_stack_indeterminate - compressed_row_for_jump_stack_table);
 
         // clock jump difference lookup argument
-        // A clock jump difference of 0 is illegal. Hence, the initial is recorded.
+        // The clock jump difference logarithmic derivative accumulator starts
+        // off having accumulated the contribution from the first row.
         let clock_jump_diff_lookup_log_derivative_is_initialized_correctly =
             ext_row(ClockJumpDifferenceLookupServerLogDerivative)
-                - x_constant(LookupArg::default_initial());
+                * (challenge(ClockJumpDifferenceLookupIndeterminate) - base_row(CLK))
+                - base_row(ClockJumpDifferenceLookupMultiplicity);
 
         // from processor to hash table
         let hash_selector = base_row(CI) - constant(Instruction::Hash.opcode());

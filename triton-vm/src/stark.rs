@@ -2064,6 +2064,24 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn can_read_twice_from_same_ram_address_within_one_cycle() {
+        for i in 0..=2 {
+            // This program reads from the same address twice, even if the stack
+            // is not well-initialized.
+            let program = triton_program! {
+                dup 0
+                push {i} add
+                xxdotstep
+                halt
+            };
+            let result = program.run(Default::default(), Default::default());
+            assert!(result.is_ok());
+            let program_and_input = ProgramAndInput::new(program);
+            triton_constraints_evaluate_to_zero(program_and_input);
+        }
+    }
+
+    #[test]
     fn claim_in_ram_corresponds_to_currently_running_program() {
         triton_constraints_evaluate_to_zero(
             test_program_claim_in_ram_corresponds_to_currently_running_program(),
