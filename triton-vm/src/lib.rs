@@ -566,6 +566,138 @@ mod tests {
 
     use super::*;
 
+    /// The compiler automatically adds any applicable auto trait (all of which are
+    /// marker traits) to self-defined types. This implies that these trait bounds
+    /// might vanish if the necessary pre-conditions are no longer met. That'd be a
+    /// breaking API change!
+    ///
+    /// To prevent _accidental_ removal of auto trait implementations, this method
+    /// tests for their presence. If you are re-designing any of the types below
+    /// and a test fails as a result, that might be fine. You are now definitely
+    /// aware of a consequence you might not have known about otherwise. (If you
+    /// were already aware you know how subtle this stuff can be and are hopefully
+    /// fine with reading this comment.)
+    ///
+    /// Inspired by “Rust for Rustaceans” by Jon Gjengset.
+    fn implements_auto_traits<T: Sized + Send + Sync + Unpin>() {}
+
+    #[test]
+    fn public_types_implement_usual_auto_traits() {
+        // re-exports
+        implements_auto_traits::<BFieldElement>();
+        implements_auto_traits::<Digest>();
+        implements_auto_traits::<Tip5>();
+        implements_auto_traits::<XFieldElement>();
+
+        // prelude
+        implements_auto_traits::<LabelledInstruction>();
+        implements_auto_traits::<NonDeterminism>();
+        implements_auto_traits::<Program>();
+        implements_auto_traits::<PublicInput>();
+        implements_auto_traits::<Claim>();
+        implements_auto_traits::<Proof>();
+        implements_auto_traits::<Stark>();
+        implements_auto_traits::<VMState>();
+
+        // errors
+        implements_auto_traits::<error::VMError>();
+        implements_auto_traits::<error::InstructionError>();
+        implements_auto_traits::<error::ArithmeticDomainError>();
+        implements_auto_traits::<error::ProofStreamError>();
+        implements_auto_traits::<error::FriSetupError>();
+        implements_auto_traits::<error::FriProvingError>();
+        implements_auto_traits::<error::FriValidationError>();
+        implements_auto_traits::<error::ProgramDecodingError>();
+        implements_auto_traits::<error::ProvingError>();
+        implements_auto_traits::<error::VerificationError>();
+        implements_auto_traits::<error::OpStackElementError>();
+        implements_auto_traits::<error::NumberOfWordsError>();
+
+        // table things
+        implements_auto_traits::<table::cascade_table::CascadeTable>();
+        implements_auto_traits::<table::cascade_table::ExtCascadeTable>();
+        implements_auto_traits::<table::challenges::ChallengeId>();
+        implements_auto_traits::<table::challenges::Challenges>();
+        implements_auto_traits::<table::constraint_circuit::BinOp>();
+        implements_auto_traits::<table::constraint_circuit::SingleRowIndicator>();
+        implements_auto_traits::<table::constraint_circuit::DualRowIndicator>();
+        implements_auto_traits::<table::cross_table_argument::PermArg>();
+        implements_auto_traits::<table::cross_table_argument::EvalArg>();
+        implements_auto_traits::<table::cross_table_argument::LookupArg>();
+        implements_auto_traits::<table::cross_table_argument::GrandCrossTableArg>();
+        implements_auto_traits::<table::degree_lowering_table::DegreeLoweringBaseTableColumn>();
+        implements_auto_traits::<table::degree_lowering_table::DegreeLoweringExtTableColumn>();
+        implements_auto_traits::<table::degree_lowering_table::DegreeLoweringTable>();
+        implements_auto_traits::<table::hash_table::HashTable>();
+        implements_auto_traits::<table::hash_table::ExtHashTable>();
+        implements_auto_traits::<table::hash_table::HashTableMode>();
+        implements_auto_traits::<table::jump_stack_table::JumpStackTable>();
+        implements_auto_traits::<table::jump_stack_table::ExtJumpStackTable>();
+        implements_auto_traits::<table::jump_stack_table::JumpStackTraceRow>();
+        implements_auto_traits::<table::lookup_table::LookupTable>();
+        implements_auto_traits::<table::lookup_table::ExtLookupTable>();
+        implements_auto_traits::<table::master_table::TableId>();
+        implements_auto_traits::<table::master_table::MasterBaseTable>();
+        implements_auto_traits::<table::master_table::MasterExtTable>();
+        implements_auto_traits::<table::op_stack_table::OpStackTable>();
+        implements_auto_traits::<table::op_stack_table::ExtOpStackTable>();
+        implements_auto_traits::<table::op_stack_table::OpStackTableEntry>();
+        implements_auto_traits::<table::processor_table::ProcessorTable>();
+        implements_auto_traits::<table::processor_table::ExtProcessorTable>();
+        implements_auto_traits::<table::program_table::ProgramTable>();
+        implements_auto_traits::<table::program_table::ExtProgramTable>();
+        implements_auto_traits::<table::ram_table::RamTableCall>();
+        implements_auto_traits::<table::ram_table::RamTable>();
+        implements_auto_traits::<table::ram_table::ExtRamTable>();
+        implements_auto_traits::<table::table_column::ProgramBaseTableColumn>();
+        implements_auto_traits::<table::table_column::ProgramExtTableColumn>();
+        implements_auto_traits::<table::table_column::ProcessorBaseTableColumn>();
+        implements_auto_traits::<table::table_column::ProcessorExtTableColumn>();
+        implements_auto_traits::<table::table_column::OpStackBaseTableColumn>();
+        implements_auto_traits::<table::table_column::OpStackExtTableColumn>();
+        implements_auto_traits::<table::table_column::RamBaseTableColumn>();
+        implements_auto_traits::<table::table_column::RamExtTableColumn>();
+        implements_auto_traits::<table::table_column::JumpStackBaseTableColumn>();
+        implements_auto_traits::<table::table_column::JumpStackExtTableColumn>();
+        implements_auto_traits::<table::table_column::HashBaseTableColumn>();
+        implements_auto_traits::<table::table_column::HashExtTableColumn>();
+        implements_auto_traits::<table::table_column::CascadeBaseTableColumn>();
+        implements_auto_traits::<table::table_column::CascadeExtTableColumn>();
+        implements_auto_traits::<table::table_column::LookupBaseTableColumn>();
+        implements_auto_traits::<table::table_column::LookupExtTableColumn>();
+        implements_auto_traits::<table::table_column::U32BaseTableColumn>();
+        implements_auto_traits::<table::table_column::U32ExtTableColumn>();
+        implements_auto_traits::<table::u32_table::U32TableEntry>();
+        implements_auto_traits::<table::u32_table::U32Table>();
+        implements_auto_traits::<table::u32_table::ExtU32Table>();
+        implements_auto_traits::<table::TasmConstraintEvaluationMemoryLayout>();
+
+        // other
+        implements_auto_traits::<aet::AlgebraicExecutionTrace>();
+        implements_auto_traits::<aet::TableHeight>();
+        implements_auto_traits::<arithmetic_domain::ArithmeticDomain>();
+        implements_auto_traits::<fri::Fri<Tip5>>();
+        implements_auto_traits::<TypeHint>();
+        implements_auto_traits::<instruction::AnInstruction<usize>>();
+        implements_auto_traits::<instruction::InstructionBit>();
+        implements_auto_traits::<op_stack::OpStack>();
+        implements_auto_traits::<op_stack::UnderflowIO>();
+        implements_auto_traits::<op_stack::OpStackElement>();
+        implements_auto_traits::<op_stack::NumberOfWords>();
+        implements_auto_traits::<parser::ParseError>();
+        implements_auto_traits::<parser::InstructionToken>();
+        implements_auto_traits::<profiler::TritonProfiler>();
+        implements_auto_traits::<profiler::Report>();
+        implements_auto_traits::<program::InstructionIter>();
+        implements_auto_traits::<program::ProfileLine>();
+        implements_auto_traits::<program::VMProfilingReport>();
+        implements_auto_traits::<program::VMTableHeights>();
+        implements_auto_traits::<proof_item::FriResponse>();
+        implements_auto_traits::<proof_item::ProofItem>();
+        implements_auto_traits::<proof_stream::ProofStream>();
+        implements_auto_traits::<vm::CoProcessorCall>();
+    }
+
     #[proptest]
     fn prove_verify_knowledge_of_hash_preimage(
         #[strategy(arb())] hash_preimage: Digest,
