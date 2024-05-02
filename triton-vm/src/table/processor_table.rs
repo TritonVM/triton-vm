@@ -2441,7 +2441,10 @@ impl ExtProcessorTable {
         [
             Self::instruction_group_step_1(circuit_builder),
             Self::instruction_group_no_io(circuit_builder),
-            Self::instruction_group_keep_op_stack_height(circuit_builder),
+            Self::instruction_group_op_stack_remains_except_top_n_elements_unconstrained(
+                5,
+                circuit_builder,
+            ),
             Self::instruction_group_keep_jump_stack(circuit_builder),
             // read two xfes from RAM
             vec![Self::read_from_ram_to(
@@ -2493,7 +2496,10 @@ impl ExtProcessorTable {
         [
             Self::instruction_group_step_1(circuit_builder),
             Self::instruction_group_no_io(circuit_builder),
-            Self::instruction_group_keep_op_stack_height(circuit_builder),
+            Self::instruction_group_op_stack_remains_except_top_n_elements_unconstrained(
+                5,
+                circuit_builder,
+            ),
             Self::instruction_group_keep_jump_stack(circuit_builder),
             // read one bfe and one xfe from RAM
             vec![Self::read_from_ram_to(
