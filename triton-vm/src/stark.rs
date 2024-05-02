@@ -2074,7 +2074,7 @@ pub(crate) mod tests {
                 xxdotstep
                 halt
             };
-            let result = program.run(Default::default(), Default::default());
+            let result = program.run(PublicInput::default(), NonDeterminism::default());
             assert!(result.is_ok());
             let program_and_input = ProgramAndInput::new(program);
             triton_constraints_evaluate_to_zero(program_and_input);
