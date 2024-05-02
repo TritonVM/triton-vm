@@ -18,7 +18,7 @@ use criterion::profiler::Profiler;
 use itertools::Itertools;
 use unicode_width::UnicodeWidthStr;
 
-const GET_PROFILE_OUTPUT_AS_YOU_GO_ENV_VAR_NAME: &str = "PROFILE_AS_YOU_GO";
+const ENV_VAR_PROFILER_LIVE_UPDATE: &str = "TVM_PROFILER_LIVE_UPDATE";
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 struct Task {
@@ -213,7 +213,7 @@ impl TritonProfiler {
             category,
         });
 
-        if env_var(GET_PROFILE_OUTPUT_AS_YOU_GO_ENV_VAR_NAME).is_ok() {
+        if env_var(ENV_VAR_PROFILER_LIVE_UPDATE).is_ok() {
             println!("start: {name}");
         }
     }
@@ -275,7 +275,7 @@ impl TritonProfiler {
         let duration = now - self.profile[index].time;
         self.profile[index].time = duration;
 
-        if env_var(GET_PROFILE_OUTPUT_AS_YOU_GO_ENV_VAR_NAME).is_ok() {
+        if env_var(ENV_VAR_PROFILER_LIVE_UPDATE).is_ok() {
             println!("stop:  {name} – took {duration:.2?}");
         }
     }
