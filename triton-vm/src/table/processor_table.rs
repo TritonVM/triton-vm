@@ -2356,7 +2356,7 @@ impl ExtProcessorTable {
 
         let factor = ram_pointers
             .iter()
-            .zip(destinations.iter())
+            .zip(destinations)
             .map(|(ram_pointer, destination)| {
                 clk.clone() * challenge(RamClkWeight)
                     + constant(instruction_type) * challenge(RamInstructionTypeWeight)
@@ -2365,7 +2365,7 @@ impl ExtProcessorTable {
             })
             .map(|compressed_row| challenge(RamIndeterminate) - compressed_row)
             .reduce(|l, r| l * r)
-            .unwrap_or(constant(bfe!(1)));
+            .unwrap_or_else(|| constant(bfe!(1)));
         let running_product_ram_table_curr = curr_ext_row(RamTablePermArg);
         let running_product_ram_table_next = next_ext_row(RamTablePermArg);
         running_product_ram_table_curr * factor - running_product_ram_table_next
@@ -2428,10 +2428,10 @@ impl ExtProcessorTable {
 
         let rhs_ptr0 = curr_base_row(ST0);
         let rhs_ptr1 = rhs_ptr0.clone() + constant(1);
-        let rhs_ptr2 = rhs_ptr1.clone() + constant(1);
+        let rhs_ptr2 = rhs_ptr0.clone() + constant(2);
         let lhs_ptr0 = curr_base_row(ST1);
         let lhs_ptr1 = lhs_ptr0.clone() + constant(1);
-        let lhs_ptr2 = lhs_ptr1.clone() + constant(1);
+        let lhs_ptr2 = lhs_ptr0.clone() + constant(2);
         let hv0 = curr_base_row(HV0);
         let hv1 = curr_base_row(HV1);
         let hv2 = curr_base_row(HV2);
@@ -2488,7 +2488,7 @@ impl ExtProcessorTable {
         let rhs_ptr0 = curr_base_row(ST0);
         let lhs_ptr0 = curr_base_row(ST1);
         let lhs_ptr1 = lhs_ptr0.clone() + constant(1);
-        let lhs_ptr2 = lhs_ptr1.clone() + constant(1);
+        let lhs_ptr2 = lhs_ptr0.clone() + constant(2);
         let hv0 = curr_base_row(HV0);
         let hv1 = curr_base_row(HV1);
         let hv2 = curr_base_row(HV2);
@@ -3215,7 +3215,11 @@ impl ExtProcessorTable {
 
         let ram_pointer = row_with_longer_stack(ST0);
         let offset = constant(additional_offset + ram_pointer_offset as u32);
-        let offset_ram_pointer = ram_pointer + offset;
+        let offset_ram_pointer = if offset.circuit.borrow().is_zero() {
+            ram_pointer
+        } else {
+            ram_pointer + offset
+        };
 
         let compressed_row = curr_base_row(CLK) * challenge(RamClkWeight)
             + b_constant(instruction_type) * challenge(RamInstructionTypeWeight)
