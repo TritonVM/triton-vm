@@ -51,9 +51,9 @@ pub struct TritonProfiler {
 }
 
 impl TritonProfiler {
-    pub fn new(name: &str) -> Self {
+    pub fn new(name: impl Into<String>) -> Self {
         TritonProfiler {
-            name: name.to_owned(),
+            name: name.into(),
             timer: Instant::now(),
             stack: vec![],
             profile: vec![],
@@ -62,24 +62,19 @@ impl TritonProfiler {
     }
 
     fn ignoring(&self) -> bool {
-        if let Some(top) = self.stack.last() {
-            if self.profile[top.0].task_type == TaskType::AnyOtherIteration {
-                return true;
-            }
-        }
-        false
+        self.stack
+            .last()
+            .is_some_and(|&(idx, _)| self.profile[idx].task_type == TaskType::AnyOtherIteration)
     }
 
-    fn has_younger_sibling(&self, index: usize) -> bool {
-        for (idx, task) in self.profile.iter().enumerate() {
-            if idx == index {
-                continue;
-            }
-            if task.parent_index == self.profile[index].parent_index && idx > index {
-                return true;
-            }
-        }
-        false
+    fn younger_sibling_indices(&self, index: usize) -> Vec<usize> {
+        self.profile
+            .iter()
+            .enumerate()
+            .filter(|&(idx, _)| idx > index)
+            .filter(|&(_, task)| task.parent_index == self.profile[index].parent_index)
+            .map(|(idx, _)| idx)
+            .collect()
     }
 
     pub fn finish(&mut self) {
@@ -106,7 +101,6 @@ impl TritonProfiler {
 
         let mut report: Vec<TaskReport> = vec![];
 
-        // collect all categories and their total times
         // todo: this can count the same category multiple times if it's nested
         let mut category_times = HashMap::new();
         for task in &self.profile {
@@ -119,28 +113,25 @@ impl TritonProfiler {
         }
 
         for (task_index, task) in self.profile.iter().enumerate() {
-            // compute this task's time relative to total duration
             let relative_time = task.time.as_secs_f64() / total_time.as_secs_f64();
             let weight = match task.task_type {
                 TaskType::AnyOtherIteration => Weight::LikeNothing,
                 _ => Weight::weigh(task.time.as_secs_f64() / total_time.as_secs_f64()),
             };
 
-            let is_last_sibling = !self.has_younger_sibling(task_index);
-
-            // compute this task's ancestors
-            let mut ancestors: Vec<usize> = vec![];
+            let mut ancestors = vec![];
             let mut current_ancestor_index = task.parent_index;
-            while let Some(cai) = current_ancestor_index {
-                ancestors.push(cai);
-                current_ancestor_index = report[cai].parent_index;
+            while let Some(idx) = current_ancestor_index {
+                ancestors.push(idx);
+                current_ancestor_index = report[idx].parent_index;
             }
             ancestors.reverse();
 
-            let relative_category_time = task.category.clone().map(|category| {
-                let category_time = category_times.get(&category).unwrap();
-                task.time.as_secs_f64() / category_time.as_secs_f64()
-            });
+            let relative_category_time = task
+                .category
+                .as_ref()
+                .map(|category| task.time.as_secs_f64() / category_times[category].as_secs_f64());
+            let is_last_sibling = self.younger_sibling_indices(task_index).is_empty();
 
             report.push(TaskReport {
                 name: task.name.clone(),
@@ -157,27 +148,18 @@ impl TritonProfiler {
             });
         }
 
-        // pass over report again to fix forward references
         for task_index in 0..report.len() {
-            let task = &self.profile[task_index];
-            let mut younger_siblings: Vec<usize> = vec![];
-            for (tsk_idx, tsk) in self.profile.iter().enumerate() {
-                if tsk.parent_index == task.parent_index && tsk_idx > task_index {
-                    younger_siblings.push(tsk_idx);
-                }
-            }
-            let mut younger_max_weight: Weight = Weight::LikeNothing;
-            for &sibling in &younger_siblings {
-                younger_max_weight = max(younger_max_weight, report[sibling].weight);
-            }
-
-            report[task_index].younger_max_weight = younger_max_weight;
+            report[task_index].younger_max_weight = self
+                .younger_sibling_indices(task_index)
+                .into_iter()
+                .map(|sibling_idx| report[sibling_idx].weight)
+                .max()
+                .unwrap_or(Weight::LikeNothing);
         }
 
         // “Other iterations” are not currently tracked
-        let is_other_iteration = |t: &&Task| t.task_type == TaskType::AnyOtherIteration;
         let all_tasks = self.profile.iter();
-        let other_iterations = all_tasks.filter(is_other_iteration);
+        let other_iterations = all_tasks.filter(|t| t.task_type == TaskType::AnyOtherIteration);
         let untracked_time = other_iterations.map(|t| t.time).sum();
 
         Report {
@@ -198,24 +180,28 @@ impl TritonProfiler {
         }
     }
 
-    fn plain_start(&mut self, name: &str, task_type: TaskType, category: Option<String>) {
-        let parent_index = self.stack.last().map(|(u, _)| *u);
-        let now = self.timer.elapsed();
-
-        self.stack.push((self.profile.len(), name.to_owned()));
-
-        self.profile.push(Task {
-            name: name.to_owned(),
-            parent_index,
-            depth: self.stack.len(),
-            time: now,
-            task_type,
-            category,
-        });
+    fn plain_start(
+        &mut self,
+        name: impl Into<String>,
+        task_type: TaskType,
+        category: Option<String>,
+    ) {
+        let name = name.into();
+        let parent_index = self.stack.last().map(|&(u, _)| u);
+        self.stack.push((self.profile.len(), name.clone()));
 
         if env_var(ENV_VAR_PROFILER_LIVE_UPDATE).is_ok() {
             println!("start: {name}");
         }
+
+        self.profile.push(Task {
+            name,
+            parent_index,
+            depth: self.stack.len(),
+            time: self.timer.elapsed(),
+            task_type,
+            category,
+        });
     }
 
     pub fn iteration_zero(&mut self, name: &str, category: Option<String>) {

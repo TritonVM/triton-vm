@@ -36,7 +36,7 @@ fn fib_benchmark_group(criterion: &mut Criterion, claim: &Claim, aet: &Algebraic
 fn prover_timing_report(claim: &Claim, aet: &AlgebraicExecutionTrace) -> Report {
     let profile_name = format!("Prove Fibonacci {FIBONACCI_INDEX}");
     let stark = Stark::default();
-    let mut profiler = Some(TritonProfiler::new(&profile_name));
+    let mut profiler = Some(TritonProfiler::new(profile_name));
     let proof = stark.prove(claim, aet, &mut profiler).unwrap();
     let mut profiler = profiler.unwrap();
 
