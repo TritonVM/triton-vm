@@ -9,6 +9,7 @@ use twenty_first::prelude::*;
 
 use crate::table::challenges::Challenges;
 use crate::table::master_table::MasterExtTable;
+use crate::table::ConstraintType;
 
 /// The implementations of these functions are automatically generated using the
 /// command `cargo run --bin constraint-evaluation-generator` and live in
@@ -76,28 +77,6 @@ pub trait Quotientable: Evaluable<BFieldElement> {
     fn terminal_quotient_degree_bounds(interpolant_degree: isize) -> Vec<isize>;
 }
 
-/// The type of constraint. Can be used to determine the degree bounds for the quotient
-/// polynomials. Concretely, the degree of the zerofier polynomials differs between the
-/// constraint types.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub(crate) enum ConstraintType {
-    Initial,
-    Consistency,
-    Transition,
-    Terminal,
-}
-
-impl Display for ConstraintType {
-    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
-        match self {
-            ConstraintType::Initial => write!(f, "initial"),
-            ConstraintType::Consistency => write!(f, "consistency"),
-            ConstraintType::Transition => write!(f, "transition"),
-            ConstraintType::Terminal => write!(f, "terminal"),
-        }
-    }
-}
-
 /// Helps debugging and benchmarking. The maximal degree achieved in any table dictates the length
 /// of the FRI domain, which in turn is responsible for the main performance bottleneck.
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
@@ -107,12 +86,15 @@ pub(crate) struct DegreeWithOrigin {
     pub zerofier_degree: isize,
     pub origin_index: usize,
     pub origin_table_height: usize,
+
+    /// Can be used to determine the degree bounds for the quotient polynomials: the
+    /// degree of the zerofier polynomials differ between the constraint types.
     pub origin_constraint_type: ConstraintType,
 }
 
 impl Display for DegreeWithOrigin {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
-        assert!(self.degree > 0);
+        assert!(self.degree > 0, "constant constraints make no sense");
         let zerofier_corrected_degree = self.degree + self.zerofier_degree;
         let degree = zerofier_corrected_degree / self.interpolant_degree;
         let idx = self.origin_index;

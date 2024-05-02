@@ -1,5 +1,11 @@
+use std::fmt::Display;
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
+
 use arbitrary::Arbitrary;
 use itertools::Itertools;
+use strum::EnumCount;
+use strum::EnumIter;
 use twenty_first::prelude::BFieldElement;
 use twenty_first::prelude::XFieldElement;
 
@@ -28,6 +34,32 @@ pub mod table_column;
 #[rustfmt::skip]
 pub mod tasm_air_constraints;
 pub mod u32_table;
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, EnumCount, EnumIter)]
+pub enum ConstraintType {
+    /// Pertains only to the first row of the execution trace.
+    Initial,
+
+    /// Pertains to each row of the execution trace.
+    Consistency,
+
+    /// Pertains to each pair of consecutive rows of the execution trace.
+    Transition,
+
+    /// Pertains only to the last row of the execution trace.
+    Terminal,
+}
+
+impl Display for ConstraintType {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        match self {
+            ConstraintType::Initial => write!(f, "initial"),
+            ConstraintType::Consistency => write!(f, "consistency"),
+            ConstraintType::Transition => write!(f, "transition"),
+            ConstraintType::Terminal => write!(f, "terminal"),
+        }
+    }
+}
 
 /// A single row of a [`MasterBaseTable`][table].
 ///
