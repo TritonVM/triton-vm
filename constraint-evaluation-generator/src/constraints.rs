@@ -108,13 +108,6 @@ impl Constraints {
         .concat()
     }
 
-    pub fn fold_constants(&mut self) {
-        ConstraintCircuitMonad::constant_folding(&mut self.init);
-        ConstraintCircuitMonad::constant_folding(&mut self.cons);
-        ConstraintCircuitMonad::constant_folding(&mut self.tran);
-        ConstraintCircuitMonad::constant_folding(&mut self.term);
-    }
-
     pub fn lower_to_target_degree_through_substitutions(&mut self) -> AllSubstitutions {
         // Subtract the degree lowering table's width from the total number of columns to guarantee
         // the same number of columns even for repeated runs of the constraint evaluation generator.

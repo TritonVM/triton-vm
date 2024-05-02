@@ -3215,11 +3215,7 @@ impl ExtProcessorTable {
 
         let ram_pointer = row_with_longer_stack(ST0);
         let offset = constant(additional_offset + ram_pointer_offset as u32);
-        let offset_ram_pointer = if offset.circuit.borrow().is_zero() {
-            ram_pointer
-        } else {
-            ram_pointer + offset
-        };
+        let offset_ram_pointer = ram_pointer + offset;
 
         let compressed_row = curr_base_row(CLK) * challenge(RamClkWeight)
             + b_constant(instruction_type) * challenge(RamInstructionTypeWeight)
