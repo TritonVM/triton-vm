@@ -4503,17 +4503,4 @@ pub(crate) mod tests {
         prop_assert_eq!(e.coefficients[1], e1.coefficients[0]);
         prop_assert_eq!(e.coefficients[2], e2.coefficients[0]);
     }
-
-    #[test]
-    fn column_indices_info() {
-        println!("CLK: {}", CLK.master_base_table_index());
-        println!(
-            "CJD_MUL: {}",
-            ClockJumpDifferenceLookupMultiplicity.master_base_table_index()
-        );
-        println!(
-            "CJD_LOG: {}",
-            ClockJumpDifferenceLookupServerLogDerivative.master_ext_table_index()
-        );
-    }
 }
