@@ -2172,25 +2172,18 @@ mod tests {
         let x = |i| builder.input(BaseRow(i));
         let ch = |i: usize| builder.challenge(i);
 
-        let x0 = x(0);
-        let x1 = x(1);
-        let y0 = x(2);
-        let y1 = x(3);
-        let ch0 = ch(0);
-        let ch1 = ch(1);
-
-        let u0 = x0.clone() + x1.clone();
-        let u1 = y0.clone() + y1.clone();
+        let u0 = x(0) + x(1);
+        let u1 = x(2) + x(3);
         let v = u0 * u1;
 
-        let z0 = x0.clone() * y0.clone();
-        let z2 = x1.clone() * y1.clone();
+        let z0 = x(0) * x(2);
+        let z2 = x(1) * x(3);
 
-        let z1 = x1.clone() * y0.clone() + x0.clone() * y1.clone();
+        let z1 = x(1) * x(2) + x(0) * x(3);
         let w = v - z0 - z2;
         assert!(w.find_equivalent_nodes().is_empty());
 
-        let o = ch0 * z1 - ch1 * w;
+        let o = ch(0) * z1 - ch(1) * w;
         assert!(!o.find_equivalent_nodes().is_empty());
     }
 }

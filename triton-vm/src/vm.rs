@@ -1088,6 +1088,7 @@ pub(crate) mod tests {
 
     use assert2::assert;
     use assert2::let_assert;
+    use itertools::izip;
     use proptest::collection::vec;
     use proptest::prelude::*;
     use proptest_arbitrary_interop::arb;
@@ -1759,42 +1760,43 @@ pub(crate) mod tests {
     }
 
     pub(crate) fn property_based_test_program_for_xxdotstep() -> ProgramAndInput {
-        // let mut rng = ThreadRng::default();
-        let mut rng: StdRng = SeedableRng::seed_from_u64(378495893456u64);
+        let mut rng = ThreadRng::default();
         let n = rng.gen_range(0..10);
-        let push_xfe = |x: XFieldElement| {
-            triton_asm! {
-                push {x.coefficients[2]}
-                push {x.coefficients[1]}
-                push {x.coefficients[0]}
-            }
+
+        let push_xfe = |xfe: XFieldElement| {
+            let [c_0, c_1, c_2] = xfe.coefficients;
+            triton_asm! { push {c_2} push {c_1} push {c_0} }
         };
-        let push_and_write_xfe = |x: XFieldElement| {
+        let push_and_write_xfe = |xfe| {
+            let push_xfe = push_xfe(xfe);
             triton_asm! {
-                push {x.coefficients[2]}
-                push {x.coefficients[1]}
-                push {x.coefficients[0]}
+                {&push_xfe}
                 dup 3
                 write_mem 3
                 swap 1
                 pop 1
             }
         };
-        let vector_one = (0..n).map(|_| rng.gen::<XFieldElement>()).collect_vec();
-        let vector_two = (0..n).map(|_| rng.gen::<XFieldElement>()).collect_vec();
+        let into_write_instructions = |elements: Vec<_>| {
+            elements
+                .into_iter()
+                .flat_map(push_and_write_xfe)
+                .collect_vec()
+        };
+
+        let vector_one = (0..n).map(|_| rng.gen()).collect_vec();
+        let vector_two = (0..n).map(|_| rng.gen()).collect_vec();
         let inner_product = vector_one
             .iter()
-            .zip(vector_two.iter())
+            .zip(&vector_two)
             .map(|(&a, &b)| a * b)
-            .sum::<XFieldElement>();
-        let push_and_write_vector_one = (0..n)
-            .flat_map(|i| push_and_write_xfe(vector_one[i]))
-            .collect_vec();
-        let push_and_write_vector_two = (0..n)
-            .flat_map(|i| push_and_write_xfe(vector_two[i]))
-            .collect_vec();
+            .sum();
         let push_inner_product = push_xfe(inner_product);
+
+        let push_and_write_vector_one = into_write_instructions(vector_one);
+        let push_and_write_vector_two = into_write_instructions(vector_two);
         let many_dotsteps = (0..n).map(|_| triton_instr!(xxdotstep)).collect_vec();
+
         let code = triton_program! {
             push 0
             {&push_and_write_vector_one}
@@ -1802,14 +1804,13 @@ pub(crate) mod tests {
             {&push_and_write_vector_two}
             pop 1
             push 0
+
             {&many_dotsteps}
-            pop 1
-            pop 1
-            push 0
-            push 0
+            pop 2
+            push 0 push 0
+
             {&push_inner_product}
-            push 0
-            push 0
+            push 0 push 0
             assert_vector
             halt
         };
@@ -2495,33 +2496,34 @@ pub(crate) mod tests {
 
     #[proptest]
     fn xxdotstep(
-        #[strategy(0usize..=25)] n: usize,
-        #[strategy(vec(arb(),#n))] lhs: Vec<XFieldElement>,
-        #[strategy(vec(arb(),#n))] rhs: Vec<XFieldElement>,
+        #[strategy(0_usize..=25)] n: usize,
+        #[strategy(vec(arb(), #n))] lhs: Vec<XFieldElement>,
+        #[strategy(vec(arb(), #n))] rhs: Vec<XFieldElement>,
         #[strategy(arb())] lhs_address: BFieldElement,
         #[strategy(arb())] rhs_address: BFieldElement,
     ) {
-        let lhs_encoded = lhs.encode();
-        let rhs_encoded = rhs.encode();
-        let mut ram = HashMap::<BFieldElement, BFieldElement>::new();
-        let size_indicator = 1;
-        for (i, (&l, &r)) in lhs_encoded
-            .iter()
-            .zip(rhs_encoded.iter())
-            .skip(size_indicator)
-            .enumerate()
-        {
-            ram.insert(lhs_address + BFieldElement::new(i as u64), l);
-            ram.insert(rhs_address + BFieldElement::new(i as u64), r);
+        let mem_region_size = (n * EXTENSION_DEGREE) as u64;
+        let mem_region = |addr: BFieldElement| addr.value()..addr.value() + mem_region_size;
+        let right_in_left = mem_region(lhs_address).contains(&rhs_address.value());
+        let left_in_right = mem_region(rhs_address).contains(&lhs_address.value());
+        if right_in_left || left_in_right {
+            let reason = "storing into overlapping regions would overwrite";
+            return Err(TestCaseError::Reject(reason.into()));
+        }
+
+        let lhs_flat = lhs.iter().flat_map(|&xfe| xfe.coefficients).collect_vec();
+        let rhs_flat = rhs.iter().flat_map(|&xfe| xfe.coefficients).collect_vec();
+        let mut ram = HashMap::new();
+        for (i, &l, &r) in izip!(0.., &lhs_flat, &rhs_flat) {
+            ram.insert(lhs_address + bfe!(i), l);
+            ram.insert(rhs_address + bfe!(i), r);
         }
 
         let public_input = PublicInput::default();
         let secret_input = NonDeterminism::default().with_ram(ram);
-        let many_xxdotsteps = (0..n).map(|_| triton_instr!(xxdotstep)).collect_vec();
+        let many_xxdotsteps = triton_asm![xxdotstep; n];
         let program = triton_program! {
-            push 0
-            push 0
-            push 0
+            push 0 push 0 push 0
 
             push {lhs_address}
             push {rhs_address}
@@ -2530,32 +2532,19 @@ pub(crate) mod tests {
             halt
         };
 
-        println!(
-            "{}",
-            program
-                .trace_execution(public_input.clone(), secret_input.clone())
-                .unwrap()
-                .0
-                .ram_trace
-        );
-
         let mut vmstate = VMState::new(&program, public_input, secret_input);
-
         prop_assert!(vmstate.run().is_ok());
 
         prop_assert_eq!(
             vmstate.op_stack.pop().unwrap(),
-            rhs_address + BFieldElement::new(rhs_encoded.len() as u64 - 1)
+            rhs_address + bfe!(rhs_flat.len() as u64)
         );
         prop_assert_eq!(
             vmstate.op_stack.pop().unwrap(),
-            lhs_address + BFieldElement::new(lhs_encoded.len() as u64 - 1)
+            lhs_address + bfe!(lhs_flat.len() as u64)
         );
-        let observed_dot_product = XFieldElement::new([
-            vmstate.op_stack.pop().unwrap(),
-            vmstate.op_stack.pop().unwrap(),
-            vmstate.op_stack.pop().unwrap(),
-        ]);
+
+        let observed_dot_product = vmstate.op_stack.pop_extension_field_element().unwrap();
         let expected_dot_product = lhs
             .into_iter()
             .zip(rhs)
@@ -2566,30 +2555,36 @@ pub(crate) mod tests {
 
     #[proptest]
     fn xbdotstep(
-        #[strategy(0usize..=25)] n: usize,
-        #[strategy(vec(arb(),#n))] lhs: Vec<XFieldElement>,
-        #[strategy(vec(arb(),#n))] rhs: Vec<BFieldElement>,
+        #[strategy(0_usize..=25)] n: usize,
+        #[strategy(vec(arb(), #n))] lhs: Vec<XFieldElement>,
+        #[strategy(vec(arb(), #n))] rhs: Vec<BFieldElement>,
         #[strategy(arb())] lhs_address: BFieldElement,
         #[strategy(arb())] rhs_address: BFieldElement,
     ) {
-        let lhs_encoded = lhs.encode();
-        let rhs_encoded = rhs.encode();
-        let mut ram = HashMap::<BFieldElement, BFieldElement>::new();
-        let size_indicator = 1;
-        for (i, &l) in lhs_encoded.iter().skip(size_indicator).enumerate() {
-            ram.insert(lhs_address + BFieldElement::new(i as u64), l);
+        let mem_region_size_lhs = (n * EXTENSION_DEGREE) as u64;
+        let mem_region_lhs = lhs_address.value()..lhs_address.value() + mem_region_size_lhs;
+        let mem_region_rhs = rhs_address.value()..rhs_address.value() + n as u64;
+        let right_in_left = mem_region_lhs.contains(&rhs_address.value());
+        let left_in_right = mem_region_rhs.contains(&lhs_address.value());
+        if right_in_left || left_in_right {
+            let reason = "storing into overlapping regions would overwrite";
+            return Err(TestCaseError::Reject(reason.into()));
         }
-        for (i, &r) in rhs_encoded.iter().skip(size_indicator).enumerate() {
-            ram.insert(rhs_address + BFieldElement::new(i as u64), r);
+
+        let lhs_flat = lhs.iter().flat_map(|&xfe| xfe.coefficients).collect_vec();
+        let mut ram = HashMap::new();
+        for (i, &l) in (0..).zip(&lhs_flat) {
+            ram.insert(lhs_address + bfe!(i), l);
+        }
+        for (i, &r) in (0..).zip(&rhs) {
+            ram.insert(rhs_address + bfe!(i), r);
         }
 
         let public_input = PublicInput::default();
         let secret_input = NonDeterminism::default().with_ram(ram);
-        let many_xbdotsteps = (0..n).map(|_| triton_instr!(xbdotstep)).collect_vec();
+        let many_xbdotsteps = triton_asm![xbdotstep; n];
         let program = triton_program! {
-            push 0
-            push 0
-            push 0
+            push 0 push 0 push 0
 
             push {lhs_address}
             push {rhs_address}
@@ -2599,22 +2594,17 @@ pub(crate) mod tests {
         };
 
         let mut vmstate = VMState::new(&program, public_input, secret_input);
-
         prop_assert!(vmstate.run().is_ok());
 
         prop_assert_eq!(
             vmstate.op_stack.pop().unwrap(),
-            rhs_address + BFieldElement::new(rhs_encoded.len() as u64 - 1)
+            rhs_address + bfe!(rhs.len() as u64)
         );
         prop_assert_eq!(
             vmstate.op_stack.pop().unwrap(),
-            lhs_address + BFieldElement::new(lhs_encoded.len() as u64 - 1)
+            lhs_address + bfe!(lhs_flat.len() as u64)
         );
-        let observed_dot_product = XFieldElement::new([
-            vmstate.op_stack.pop().unwrap(),
-            vmstate.op_stack.pop().unwrap(),
-            vmstate.op_stack.pop().unwrap(),
-        ]);
+        let observed_dot_product = vmstate.op_stack.pop_extension_field_element().unwrap();
         let expected_dot_product = lhs
             .into_iter()
             .zip(rhs)

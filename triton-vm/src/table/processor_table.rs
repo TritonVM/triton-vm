@@ -1,6 +1,7 @@
 use std::cmp::max;
 use std::ops::Mul;
 
+use itertools::izip;
 use itertools::Itertools;
 use ndarray::parallel::prelude::*;
 use ndarray::*;
@@ -1145,7 +1146,7 @@ impl ExtProcessorTable {
         ]
     }
 
-    // Increase the instruction pointer by 1
+    /// Increase the instruction pointer by 1.
     fn instruction_group_step_1(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
@@ -1166,7 +1167,7 @@ impl ExtProcessorTable {
         .concat()
     }
 
-    // Increase the instruction pointer by 2
+    /// Increase the instruction pointer by 2.
     fn instruction_group_step_2(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
@@ -2408,11 +2409,9 @@ impl ExtProcessorTable {
         };
         let curr = accumulator_indices.map(curr_base_row);
         let next = accumulator_indices.map(next_base_row);
-        curr.into_iter()
-            .zip(next)
-            .zip(difference)
-            .map(|((c, n), d)| n - c - d)
-            .collect_vec()
+        izip!(curr, next, difference)
+            .map(|(c, n, d)| n - c - d)
+            .collect()
     }
 
     fn instruction_xxdotstep(
