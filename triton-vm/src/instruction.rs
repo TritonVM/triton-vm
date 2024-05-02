@@ -983,7 +983,13 @@ mod tests {
             let test_instruction = test_instruction.replace_default_argument_if_illegal();
             let (program, stack_size_before_test_instruction) =
                 construct_test_program_for_instruction(test_instruction);
-            let stack_size_after_test_instruction = terminal_op_stack_size_for_program(program);
+            let public_input = PublicInput::from(bfe_array![0]);
+            let mock_digests = [Digest::default()];
+            let non_determinism = NonDeterminism::from(bfe_array![0]).with_digests(mock_digests);
+
+            let mut vm_state = VMState::new(&program, public_input, non_determinism);
+            let_assert!(Ok(()) = vm_state.run());
+            let stack_size_after_test_instruction = vm_state.op_stack.len();
 
             let stack_size_difference = (stack_size_after_test_instruction as i32)
                 - (stack_size_before_test_instruction as i32);
@@ -997,42 +1003,20 @@ mod tests {
     fn construct_test_program_for_instruction(
         instruction: AnInstruction<BFieldElement>,
     ) -> (Program, usize) {
-        match instruction_requires_jump_stack_setup(instruction) {
-            true => program_with_jump_stack_setup(),
-            false => program_without_jump_stack_setup_for_instruction(instruction),
+        if matches!(instruction, Call(_) | Return | Recurse) {
+            // need jump stack setup
+            let program = test_program_for_call_recurse_return().program;
+            let stack_size = NUM_OP_STACK_REGISTERS;
+            (program, stack_size)
+        } else {
+            let num_push_instructions = 10;
+            let push_instructions = triton_asm![push 1; num_push_instructions];
+            let program = triton_program!(sponge_init {&push_instructions} {instruction} nop halt);
+
+            let stack_size_when_reaching_test_instruction =
+                NUM_OP_STACK_REGISTERS + num_push_instructions;
+            (program, stack_size_when_reaching_test_instruction)
         }
-    }
-
-    fn instruction_requires_jump_stack_setup(instruction: Instruction) -> bool {
-        matches!(instruction, Call(_) | Return | Recurse)
-    }
-
-    fn program_with_jump_stack_setup() -> (Program, usize) {
-        let program = test_program_for_call_recurse_return().program;
-        let stack_size = NUM_OP_STACK_REGISTERS;
-        (program, stack_size)
-    }
-
-    fn program_without_jump_stack_setup_for_instruction(
-        test_instruction: AnInstruction<BFieldElement>,
-    ) -> (Program, usize) {
-        let num_push_instructions = 10;
-        let push_instructions = triton_asm![push 1; num_push_instructions];
-        let program = triton_program!(sponge_init {&push_instructions} {test_instruction} nop halt);
-
-        let stack_size_when_reaching_test_instruction =
-            NUM_OP_STACK_REGISTERS + num_push_instructions;
-        (program, stack_size_when_reaching_test_instruction)
-    }
-
-    fn terminal_op_stack_size_for_program(program: Program) -> usize {
-        let public_input = PublicInput::from(bfe_array![0]);
-        let mock_digests = [Digest::default()];
-        let non_determinism = NonDeterminism::from(bfe_array![0]).with_digests(mock_digests);
-
-        let mut vm_state = VMState::new(&program, public_input, non_determinism);
-        let_assert!(Ok(()) = vm_state.run());
-        vm_state.op_stack.stack.len()
     }
 
     #[test]
