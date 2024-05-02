@@ -8,6 +8,7 @@ use ndarray::*;
 use num_traits::One;
 use num_traits::Zero;
 use strum::EnumCount;
+use twenty_first::prelude::x_field_element::EXTENSION_DEGREE;
 use twenty_first::prelude::*;
 
 use crate::aet::AlgebraicExecutionTrace;
@@ -2373,33 +2374,33 @@ impl ExtProcessorTable {
     }
 
     fn xxproduct<Indicator: InputIndicator>(
-        x: [ConstraintCircuitMonad<Indicator>; 3],
-        y: [ConstraintCircuitMonad<Indicator>; 3],
-    ) -> [ConstraintCircuitMonad<Indicator>; 3] {
-        let z0 = x[0].clone() * y[0].clone();
-        let z1 = x[1].clone() * y[0].clone() + x[0].clone() * y[1].clone();
-        let z2 =
-            x[2].clone() * y[0].clone() + x[1].clone() * y[1].clone() + x[0].clone() * y[2].clone();
-        let z3 = x[2].clone() * y[1].clone() + x[1].clone() * y[2].clone();
-        let z4 = x[2].clone() * y[2].clone();
+        [x_0, x_1, x_2]: [ConstraintCircuitMonad<Indicator>; EXTENSION_DEGREE],
+        [y_0, y_1, y_2]: [ConstraintCircuitMonad<Indicator>; EXTENSION_DEGREE],
+    ) -> [ConstraintCircuitMonad<Indicator>; EXTENSION_DEGREE] {
+        let z0 = x_0.clone() * y_0.clone();
+        let z1 = x_1.clone() * y_0.clone() + x_0.clone() * y_1.clone();
+        let z2 = x_2.clone() * y_0 + x_1.clone() * y_1.clone() + x_0 * y_2.clone();
+        let z3 = x_2.clone() * y_1 + x_1 * y_2.clone();
+        let z4 = x_2 * y_2;
+
         // reduce modulo x³ - x + 1
         [z0 - z3.clone(), z1 - z4.clone() + z3, z2 + z4]
     }
 
     fn xbproduct<Indicator: InputIndicator>(
-        x: [ConstraintCircuitMonad<Indicator>; 3],
+        [x_0, x_1, x_2]: [ConstraintCircuitMonad<Indicator>; EXTENSION_DEGREE],
         y: ConstraintCircuitMonad<Indicator>,
-    ) -> [ConstraintCircuitMonad<Indicator>; 3] {
-        let z0 = x[0].clone() * y.clone();
-        let z1 = x[1].clone() * y.clone();
-        let z2 = x[2].clone() * y;
+    ) -> [ConstraintCircuitMonad<Indicator>; EXTENSION_DEGREE] {
+        let z0 = x_0 * y.clone();
+        let z1 = x_1 * y.clone();
+        let z2 = x_2 * y;
         [z0, z1, z2]
     }
 
     fn update_dotstep_accumulator(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
-        accumulator_indices: [ProcessorBaseTableColumn; 3],
-        difference: [ConstraintCircuitMonad<DualRowIndicator>; 3],
+        accumulator_indices: [ProcessorBaseTableColumn; EXTENSION_DEGREE],
+        difference: [ConstraintCircuitMonad<DualRowIndicator>; EXTENSION_DEGREE],
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
         let curr_base_row = |col: ProcessorBaseTableColumn| {
             circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
