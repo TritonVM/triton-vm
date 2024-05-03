@@ -1337,6 +1337,21 @@ mod tests {
             .is_zero());
     }
 
+    fn assert_spec_has(file_path: &Path, snippet: String) {
+        // read file
+        let contents = fs::read_to_string(file_path).expect(&format!(
+            "Could not read file \"{}\"; please make sure it exists and has the right permissions.",
+            file_path.display()
+        ));
+
+        // scan for snippet
+        assert!(
+            contents.find(&snippet).is_some(),
+            "Could not find correct snippet in file \"{}\".",
+            file_path.display(),
+        );
+    }
+
     #[test]
     fn spec_has_correct_table_overview() {
         let tables = [
@@ -1444,34 +1459,7 @@ mod tests {
         println!("{}", generated_code);
         println!("```");
 
-        // lookup existing table code
-        let contents = fs::read_to_string(file_path).expect(&format!(
-            "Could not read file \"{}\"; please make sure it exists and has the right permissions.",
-            file_path.display()
-        ));
-
-        // extract whatever is embedded between the comment markers
-        let start_index = contents.find(&comment_marker_start).expect(&format!(
-            "Could not find comment marker\"{comment_marker_start}\" in file \"{}\".",
-            file_path.display()
-        ));
-        assert!(
-            contents.len() > start_index + comment_marker_stop.len(),
-            "Could not find comment marker\"{comment_marker_stop}\" in file \"{}\".",
-            file_path.display()
-        );
-        let relative_stop_index =
-            contents[start_index..]
-                .find(&comment_marker_stop)
-                .expect(&format!(
-                    "Could not find comment marker\"{comment_marker_stop}\" in file \"{}\".",
-                    file_path.display()
-                ));
-        let embedding =
-            &contents[start_index..start_index + relative_stop_index + comment_marker_stop.len()];
-
-        // assert that the embedded code matches the generated code
-        assert_eq!(generated_code, embedding, "Specification does not have the right table overview. Please include the above snippet in file \"{}\".", file_path.display());
+        assert_spec_has(file_path, generated_code);
     }
 
     #[test]
@@ -1645,34 +1633,7 @@ mod tests {
         println!("{}", generated_code);
         println!("```");
 
-        // lookup existing table code
-        let contents = fs::read_to_string(file_path).expect(&format!(
-            "Could not read file \"{}\"; please make sure it exists and has the right permissions.",
-            file_path.display()
-        ));
-
-        // extract whatever is embedded between the comment markers
-        let start_index = contents.find(&comment_marker_start).expect(&format!(
-            "Could not find comment marker\"{comment_marker_start}\" in file \"{}\".",
-            file_path.display()
-        ));
-        assert!(
-            contents.len() > start_index + comment_marker_stop.len(),
-            "Could not find comment marker\"{comment_marker_stop}\" in file \"{}\".",
-            file_path.display()
-        );
-        let relative_stop_index =
-            contents[start_index..]
-                .find(&comment_marker_stop)
-                .expect(&format!(
-                    "Could not find comment marker\"{comment_marker_stop}\" in file \"{}\".",
-                    file_path.display()
-                ));
-        let embedding =
-            &contents[start_index..start_index + relative_stop_index + comment_marker_stop.len()];
-
-        // assert that the embedded code matches the generated code
-        assert_eq!(generated_code, embedding, "Specification does not have the right constraints overview. Please include the above snippet in file \"{}\".", file_path.display());
+        assert_spec_has(file_path, generated_code);
     }
 
     /// intended use: `cargo t print_all_table_widths -- --nocapture`
