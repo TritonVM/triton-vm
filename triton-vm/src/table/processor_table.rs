@@ -2390,7 +2390,10 @@ impl ExtProcessorTable {
         let next_base_row = |col: ProcessorBaseTableColumn| {
             circuit_builder.input(NextBaseRow(col.master_base_table_index()))
         };
-        let constant = |c: usize| circuit_builder.b_constant(u64::try_from(c).unwrap());
+        let constant = |c| circuit_builder.b_constant(c);
+
+        let increment_ram_pointer_st0 = next_base_row(ST0) - curr_base_row(ST0) - constant(3);
+        let increment_ram_pointer_st1 = next_base_row(ST1) - curr_base_row(ST1) - constant(3);
 
         let rhs_ptr0 = curr_base_row(ST0);
         let rhs_ptr1 = rhs_ptr0.clone() + constant(1);
@@ -2398,41 +2401,27 @@ impl ExtProcessorTable {
         let lhs_ptr0 = curr_base_row(ST1);
         let lhs_ptr1 = lhs_ptr0.clone() + constant(1);
         let lhs_ptr2 = lhs_ptr0.clone() + constant(2);
-        let hv0 = curr_base_row(HV0);
-        let hv1 = curr_base_row(HV1);
-        let hv2 = curr_base_row(HV2);
-        let hv3 = curr_base_row(HV3);
-        let hv4 = curr_base_row(HV4);
-        let hv5 = curr_base_row(HV5);
+        let ram_read_sources = [rhs_ptr0, rhs_ptr1, rhs_ptr2, lhs_ptr0, lhs_ptr1, lhs_ptr2];
+        let ram_read_destinations = [HV0, HV1, HV2, HV3, HV4, HV5].map(curr_base_row);
+        let read_two_xfes_from_ram =
+            Self::read_from_ram_to(circuit_builder, &ram_read_sources, &ram_read_destinations);
+
+        let ram_pointer_constraints = vec![
+            increment_ram_pointer_st0,
+            increment_ram_pointer_st1,
+            read_two_xfes_from_ram,
+        ];
+
+        let [hv0, hv1, hv2, hv3, hv4, hv5] = [HV0, HV1, HV2, HV3, HV4, HV5].map(curr_base_row);
+        let hv_product = Self::xx_product([hv0, hv1, hv2], [hv3, hv4, hv5]);
+
         [
+            ram_pointer_constraints,
+            Self::update_dotstep_accumulator(circuit_builder, [ST2, ST3, ST4], hv_product),
             Self::instruction_group_step_1(circuit_builder),
             Self::instruction_group_no_io(circuit_builder),
             Self::instruction_group_op_stack_remains_except_top_n(circuit_builder, 5),
             Self::instruction_group_keep_jump_stack(circuit_builder),
-            // read two xfes from RAM
-            vec![Self::read_from_ram_to(
-                circuit_builder,
-                &[rhs_ptr0, rhs_ptr1, rhs_ptr2, lhs_ptr0, lhs_ptr1, lhs_ptr2],
-                &[
-                    hv0.clone(),
-                    hv1.clone(),
-                    hv2.clone(),
-                    hv3.clone(),
-                    hv4.clone(),
-                    hv5.clone(),
-                ],
-            )],
-            // add product into accumulator
-            Self::update_dotstep_accumulator(
-                circuit_builder,
-                [ST2, ST3, ST4],
-                Self::xx_product([hv0, hv1, hv2], [hv3, hv4, hv5]),
-            ),
-            // increment ram pointers, st0 and st1
-            vec![
-                next_base_row(ST0) - curr_base_row(ST0) - constant(3),
-                next_base_row(ST1) - curr_base_row(ST1) - constant(3),
-            ],
         ]
         .concat()
     }
@@ -2446,38 +2435,36 @@ impl ExtProcessorTable {
         let next_base_row = |col: ProcessorBaseTableColumn| {
             circuit_builder.input(NextBaseRow(col.master_base_table_index()))
         };
-        let constant = |c: usize| circuit_builder.b_constant(u64::try_from(c).unwrap());
+        let constant = |c| circuit_builder.b_constant(c);
+
+        let increment_ram_pointer_st0 = next_base_row(ST0) - curr_base_row(ST0) - constant(1);
+        let increment_ram_pointer_st1 = next_base_row(ST1) - curr_base_row(ST1) - constant(3);
 
         let rhs_ptr0 = curr_base_row(ST0);
         let lhs_ptr0 = curr_base_row(ST1);
         let lhs_ptr1 = lhs_ptr0.clone() + constant(1);
         let lhs_ptr2 = lhs_ptr0.clone() + constant(2);
-        let hv0 = curr_base_row(HV0);
-        let hv1 = curr_base_row(HV1);
-        let hv2 = curr_base_row(HV2);
-        let hv3 = curr_base_row(HV3);
+        let ram_read_sources = [rhs_ptr0, lhs_ptr0, lhs_ptr1, lhs_ptr2];
+        let ram_read_destinations = [HV0, HV1, HV2, HV3].map(curr_base_row);
+        let read_bfe_and_xfe_from_ram =
+            Self::read_from_ram_to(circuit_builder, &ram_read_sources, &ram_read_destinations);
+
+        let ram_pointer_constraints = vec![
+            increment_ram_pointer_st0,
+            increment_ram_pointer_st1,
+            read_bfe_and_xfe_from_ram,
+        ];
+
+        let [hv0, hv1, hv2, hv3] = [HV0, HV1, HV2, HV3].map(curr_base_row);
+        let hv_product = Self::xb_product([hv1, hv2, hv3], hv0);
+
         [
+            ram_pointer_constraints,
+            Self::update_dotstep_accumulator(circuit_builder, [ST2, ST3, ST4], hv_product),
             Self::instruction_group_step_1(circuit_builder),
             Self::instruction_group_no_io(circuit_builder),
             Self::instruction_group_op_stack_remains_except_top_n(circuit_builder, 5),
             Self::instruction_group_keep_jump_stack(circuit_builder),
-            // read one bfe and one xfe from RAM
-            vec![Self::read_from_ram_to(
-                circuit_builder,
-                &[rhs_ptr0, lhs_ptr0, lhs_ptr1, lhs_ptr2],
-                &[hv0.clone(), hv1.clone(), hv2.clone(), hv3.clone()],
-            )],
-            // add product into accumulator
-            Self::update_dotstep_accumulator(
-                circuit_builder,
-                [ST2, ST3, ST4],
-                Self::xb_product([hv1, hv2, hv3], hv0),
-            ),
-            // increment ram pointers, st0 and st1
-            vec![
-                next_base_row(ST0) - curr_base_row(ST0) - constant(1),
-                next_base_row(ST1) - curr_base_row(ST1) - constant(3),
-            ],
         ]
         .concat()
     }
