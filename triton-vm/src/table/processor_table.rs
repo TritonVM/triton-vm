@@ -2163,25 +2163,13 @@ impl ExtProcessorTable {
             circuit_builder.input(NextBaseRow(col.master_base_table_index()))
         };
 
-        let st0_becomes_coefficient_0 = next_base_row(ST0)
-            - (curr_base_row(ST0) * curr_base_row(ST3)
-                - curr_base_row(ST2) * curr_base_row(ST4)
-                - curr_base_row(ST1) * curr_base_row(ST5));
-        let st1_becomes_coefficient_1 = next_base_row(ST1)
-            - (curr_base_row(ST1) * curr_base_row(ST3) + curr_base_row(ST0) * curr_base_row(ST4)
-                - curr_base_row(ST2) * curr_base_row(ST5)
-                + curr_base_row(ST2) * curr_base_row(ST4)
-                + curr_base_row(ST1) * curr_base_row(ST5));
-        let st2_becomes_coefficient_2 = next_base_row(ST2)
-            - (curr_base_row(ST2) * curr_base_row(ST3)
-                + curr_base_row(ST1) * curr_base_row(ST4)
-                + curr_base_row(ST0) * curr_base_row(ST5)
-                + curr_base_row(ST2) * curr_base_row(ST5));
+        let [x0, x1, x2, y0, y1, y2] = [ST0, ST1, ST2, ST3, ST4, ST5].map(curr_base_row);
+        let [c0, c1, c2] = Self::xx_product([x0, x1, x2], [y0, y1, y2]);
 
         let specific_constraints = vec![
-            st0_becomes_coefficient_0,
-            st1_becomes_coefficient_1,
-            st2_becomes_coefficient_2,
+            next_base_row(ST0) - c0,
+            next_base_row(ST1) - c1,
+            next_base_row(ST2) - c2,
         ];
         [
             specific_constraints,
@@ -2247,17 +2235,13 @@ impl ExtProcessorTable {
             circuit_builder.input(NextBaseRow(col.master_base_table_index()))
         };
 
-        let first_coeff_scalar_multiplication =
-            next_base_row(ST0) - curr_base_row(ST0) * curr_base_row(ST1);
-        let secnd_coeff_scalar_multiplication =
-            next_base_row(ST1) - curr_base_row(ST0) * curr_base_row(ST2);
-        let third_coeff_scalar_multiplication =
-            next_base_row(ST2) - curr_base_row(ST0) * curr_base_row(ST3);
+        let [x, y0, y1, y2] = [ST0, ST1, ST2, ST3].map(curr_base_row);
+        let [c0, c1, c2] = Self::xb_product([y0, y1, y2], x);
 
         let specific_constraints = vec![
-            first_coeff_scalar_multiplication,
-            secnd_coeff_scalar_multiplication,
-            third_coeff_scalar_multiplication,
+            next_base_row(ST0) - c0,
+            next_base_row(ST1) - c1,
+            next_base_row(ST2) - c2,
         ];
         [
             specific_constraints,
