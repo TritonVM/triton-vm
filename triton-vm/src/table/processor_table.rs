@@ -2299,13 +2299,18 @@ impl ExtProcessorTable {
         .concat()
     }
 
-    /// Update the accumulator for the Permutation Argument with the
-    /// RAM table in accordance with reading a bunch of word from the
-    /// indicated ram pointers to the indicated destination registers.
-    fn read_from_ram_to(
+    /// Update the accumulator for the Permutation Argument with the RAM table in
+    /// accordance with reading a bunch of words from the indicated ram pointers to
+    /// the indicated destination registers.
+    ///
+    /// Does not constrain the op stack by default.[^stack] For that, see:
+    /// [`Self::read_from_ram_any_of`].
+    ///
+    /// [^stack]: Op stack registers used in arguments will be constrained.
+    fn read_from_ram_to<const N: usize>(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
-        ram_pointers: &[ConstraintCircuitMonad<DualRowIndicator>],
-        destinations: &[ConstraintCircuitMonad<DualRowIndicator>],
+        ram_pointers: [ConstraintCircuitMonad<DualRowIndicator>; N],
+        destinations: [ConstraintCircuitMonad<DualRowIndicator>; N],
     ) -> ConstraintCircuitMonad<DualRowIndicator> {
         let curr_base_row = |col: ProcessorBaseTableColumn| {
             circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
@@ -2319,24 +2324,21 @@ impl ExtProcessorTable {
         let challenge = |c: ChallengeId| circuit_builder.challenge(c);
         let constant = |bfe| circuit_builder.b_constant(bfe);
 
-        let instruction_type = ram_table::INSTRUCTION_TYPE_READ;
-        let clk = curr_base_row(CLK);
+        let compress_row = |(ram_pointer, destination)| {
+            curr_base_row(CLK) * challenge(RamClkWeight)
+                + constant(ram_table::INSTRUCTION_TYPE_READ) * challenge(RamInstructionTypeWeight)
+                + ram_pointer * challenge(RamPointerWeight)
+                + destination * challenge(RamValueWeight)
+        };
 
         let factor = ram_pointers
-            .iter()
+            .into_iter()
             .zip(destinations)
-            .map(|(ram_pointer, destination)| {
-                clk.clone() * challenge(RamClkWeight)
-                    + constant(instruction_type) * challenge(RamInstructionTypeWeight)
-                    + ram_pointer.clone() * challenge(RamPointerWeight)
-                    + destination.clone() * challenge(RamValueWeight)
-            })
+            .map(compress_row)
             .map(|compressed_row| challenge(RamIndeterminate) - compressed_row)
             .reduce(|l, r| l * r)
             .unwrap_or_else(|| constant(bfe!(1)));
-        let running_product_ram_table_curr = curr_ext_row(RamTablePermArg);
-        let running_product_ram_table_next = next_ext_row(RamTablePermArg);
-        running_product_ram_table_curr * factor - running_product_ram_table_next
+        curr_ext_row(RamTablePermArg) * factor - next_ext_row(RamTablePermArg)
     }
 
     fn xx_product<Indicator: InputIndicator>(
@@ -2404,7 +2406,7 @@ impl ExtProcessorTable {
         let ram_read_sources = [rhs_ptr0, rhs_ptr1, rhs_ptr2, lhs_ptr0, lhs_ptr1, lhs_ptr2];
         let ram_read_destinations = [HV0, HV1, HV2, HV3, HV4, HV5].map(curr_base_row);
         let read_two_xfes_from_ram =
-            Self::read_from_ram_to(circuit_builder, &ram_read_sources, &ram_read_destinations);
+            Self::read_from_ram_to(circuit_builder, ram_read_sources, ram_read_destinations);
 
         let ram_pointer_constraints = vec![
             increment_ram_pointer_st0,
@@ -2447,7 +2449,7 @@ impl ExtProcessorTable {
         let ram_read_sources = [rhs_ptr0, lhs_ptr0, lhs_ptr1, lhs_ptr2];
         let ram_read_destinations = [HV0, HV1, HV2, HV3].map(curr_base_row);
         let read_bfe_and_xfe_from_ram =
-            Self::read_from_ram_to(circuit_builder, &ram_read_sources, &ram_read_destinations);
+            Self::read_from_ram_to(circuit_builder, ram_read_sources, ram_read_destinations);
 
         let ram_pointer_constraints = vec![
             increment_ram_pointer_st0,
@@ -2961,6 +2963,8 @@ impl ExtProcessorTable {
         challenge(OpStackIndeterminate) - compressed_row
     }
 
+    /// Build constraints for popping `n` elements from the top of the stack and
+    /// writing them to RAM. The reciprocal of [`Self::read_from_ram_any_of`].
     fn write_to_ram_any_of(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
         number_of_words: &[usize],
@@ -2974,6 +2978,11 @@ impl ExtProcessorTable {
         Self::combine_mutually_exclusive_constraint_groups(circuit_builder, all_constraint_groups)
     }
 
+    /// Build constraints for reading `n` elements from RAM and putting them on top
+    /// of the stack. The reciprocal of [`Self::write_to_ram_any_of`].
+    ///
+    /// To constrain RAM reads with more flexible target locations, see
+    /// [`Self::read_from_ram_to`].
     fn read_from_ram_any_of(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
         number_of_words: &[usize],
