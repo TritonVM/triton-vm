@@ -1145,6 +1145,9 @@ pub fn interpolant_degree(padded_height: usize, num_trace_randomizers: usize) ->
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
+    use std::path::Path;
+
     use ndarray::s;
     use ndarray::Array2;
     use num_traits::Zero;
@@ -1152,6 +1155,7 @@ mod tests {
     use strum::IntoEnumIterator;
     use twenty_first::math::b_field_element::BFieldElement;
     use twenty_first::math::traits::FiniteField;
+    use twenty_first::prelude::x_field_element::EXTENSION_DEGREE;
 
     use crate::arithmetic_domain::ArithmeticDomain;
     use crate::shared_tests::ProgramAndInput;
@@ -1319,6 +1323,143 @@ mod tests {
         assert!(terminal_zerofier_poly
             .evaluate(small_domain.domain_value(small_order as u32 - 1))
             .is_zero());
+    }
+
+    #[test]
+    fn spec_has_correct_table_overview() {
+        let tables = [
+            (
+                "[ProgramTable](program-table.md)",
+                program_table::BASE_WIDTH,
+                program_table::EXT_WIDTH,
+            ),
+            (
+                "[ProcessorTable](processor-table.md)",
+                processor_table::BASE_WIDTH,
+                processor_table::EXT_WIDTH,
+            ),
+            (
+                "[OpStack](operational-stack-table.md)",
+                op_stack_table::BASE_WIDTH,
+                op_stack_table::EXT_WIDTH,
+            ),
+            (
+                "[RamTable](random-access-memory-table.md)",
+                ram_table::BASE_WIDTH,
+                ram_table::EXT_WIDTH,
+            ),
+            (
+                "[JumpStackTable](jump-stack-table.md)",
+                jump_stack_table::BASE_WIDTH,
+                jump_stack_table::EXT_WIDTH,
+            ),
+            (
+                "[Hash](hash-table.md)",
+                hash_table::BASE_WIDTH,
+                hash_table::EXT_WIDTH,
+            ),
+            (
+                "[Cascade](cascade-table.md)",
+                cascade_table::BASE_WIDTH,
+                cascade_table::EXT_WIDTH,
+            ),
+            (
+                "[LookupTable](lookup-table.md)",
+                lookup_table::BASE_WIDTH,
+                lookup_table::EXT_WIDTH,
+            ),
+            (
+                "[U32Table](u32-table.md)",
+                u32_table::BASE_WIDTH,
+                u32_table::EXT_WIDTH,
+            ),
+            (
+                "DegreeLowering",
+                degree_lowering_table::BASE_WIDTH,
+                degree_lowering_table::EXT_WIDTH,
+            ),
+            ("Randomizers", 0, NUM_RANDOMIZER_POLYNOMIALS),
+        ];
+
+        // produce table code
+        let mut formatted_table = "".to_string();
+        formatted_table = format!(
+            "{formatted_table}| table name                                | #main cols | #aux cols | total width |\n"
+        );
+        formatted_table = format!(
+            "{formatted_table}|:------------------------------------------|-----------:|----------:|------------:|\n"
+        );
+        let mut total_main = 0;
+        let mut total_aux = 0;
+        for table in tables.into_iter() {
+            formatted_table = format!(
+                "{formatted_table}| {:<41} | {:>10} | {:9} | {:>11} |\n",
+                table.0,
+                table.1,
+                table.2,
+                table.1 + EXTENSION_DEGREE * table.2
+            );
+            total_main += table.1;
+            total_aux += table.2;
+        }
+        formatted_table = format!(
+            "{formatted_table}| {:<41} | {:>10} | {:9} | {:>11} |\n",
+            "**TOTAL**",
+            format!("**{total_main}**"),
+            format!("**{total_aux}**"),
+            format!("**{}**", total_main + EXTENSION_DEGREE * total_aux)
+        );
+
+        // print embeddable code
+        let specification_generator_name = "spec_has_correct_table_overview";
+        let comment_marker_start = format!("<!-- auto-gen info {specification_generator_name} -->");
+        let how_reproduce = format!(
+            "<!-- To reproduce this code, please run `cargo run {specification_generator_name}`. -->"
+        );
+        let comment_marker_stop = format!("<!-- auto-gen info stop -->");
+        let generated_code = format!(
+            "{}\n{}\n{}{}",
+            comment_marker_start, how_reproduce, formatted_table, comment_marker_stop
+        );
+
+        // current directory is triton-vm/triton-vm/
+        let file_path = Path::new("../specification/src/arithmetization-overview.md");
+        println!(
+            "Please include this code snippet in file \"{}\".",
+            file_path.display()
+        );
+        println!("```");
+        println!("{}", generated_code);
+        println!("```");
+
+        // lookup existing table code
+        let contents = fs::read_to_string(file_path).expect(&format!(
+            "Could not read file \"{}\"; please make sure it exists and has the right permissions.",
+            file_path.display()
+        ));
+
+        // extract whatever is embedded between the comment markers
+        let start_index = contents.find(&comment_marker_start).expect(&format!(
+            "Could not find comment marker\"{comment_marker_start}\" in file \"{}\".",
+            file_path.display()
+        ));
+        assert!(
+            contents.len() > start_index + comment_marker_stop.len(),
+            "Could not find comment marker\"{comment_marker_stop}\" in file \"{}\".",
+            file_path.display()
+        );
+        let relative_stop_index =
+            contents[start_index..]
+                .find(&comment_marker_stop)
+                .expect(&format!(
+                    "Could not find comment marker\"{comment_marker_stop}\" in file \"{}\".",
+                    file_path.display()
+                ));
+        let embedding =
+            &contents[start_index..start_index + relative_stop_index + comment_marker_stop.len()];
+
+        // assert that the embedded code matches the generated code
+        assert_eq!(generated_code, embedding, "Specification does not have the right table overview. Please include the above snippet in file \"{}\".", file_path.display());
     }
 
     /// intended use: `cargo t print_all_table_widths -- --nocapture`
