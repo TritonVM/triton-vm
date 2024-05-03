@@ -2355,7 +2355,7 @@ impl ExtProcessorTable {
         running_product_ram_table_curr * factor - running_product_ram_table_next
     }
 
-    fn xxproduct<Indicator: InputIndicator>(
+    fn xx_product<Indicator: InputIndicator>(
         [x_0, x_1, x_2]: [ConstraintCircuitMonad<Indicator>; EXTENSION_DEGREE],
         [y_0, y_1, y_2]: [ConstraintCircuitMonad<Indicator>; EXTENSION_DEGREE],
     ) -> [ConstraintCircuitMonad<Indicator>; EXTENSION_DEGREE] {
@@ -2369,7 +2369,7 @@ impl ExtProcessorTable {
         [z0 - z3.clone(), z1 - z4.clone() + z3, z2 + z4]
     }
 
-    fn xbproduct<Indicator: InputIndicator>(
+    fn xb_product<Indicator: InputIndicator>(
         [x_0, x_1, x_2]: [ConstraintCircuitMonad<Indicator>; EXTENSION_DEGREE],
         y: ConstraintCircuitMonad<Indicator>,
     ) -> [ConstraintCircuitMonad<Indicator>; EXTENSION_DEGREE] {
@@ -2442,7 +2442,7 @@ impl ExtProcessorTable {
             Self::update_dotstep_accumulator(
                 circuit_builder,
                 [ST2, ST3, ST4],
-                Self::xxproduct([hv0, hv1, hv2], [hv3, hv4, hv5]),
+                Self::xx_product([hv0, hv1, hv2], [hv3, hv4, hv5]),
             ),
             // increment ram pointers, st0 and st1
             vec![
@@ -2487,7 +2487,7 @@ impl ExtProcessorTable {
             Self::update_dotstep_accumulator(
                 circuit_builder,
                 [ST2, ST3, ST4],
-                Self::xbproduct([hv1, hv2, hv3], hv0),
+                Self::xb_product([hv1, hv2, hv3], hv0),
             ),
             // increment ram pointers, st0 and st1
             vec![
@@ -4418,66 +4418,62 @@ pub(crate) mod tests {
     }
 
     #[proptest]
-    fn xxproduct_and_xbproduct_are_accurate(
+    fn xx_product_is_accurate(
         #[strategy(arb())] a: XFieldElement,
         #[strategy(arb())] b: XFieldElement,
-        #[strategy(arb())] c: BFieldElement,
     ) {
-        let circuit_builder = ConstraintCircuitBuilder::<DualRowIndicator>::new();
-        let curr_base_row = |col: ProcessorBaseTableColumn| {
-            circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
+        let circuit_builder = ConstraintCircuitBuilder::new();
+        let base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(BaseRow(col.master_base_table_index()))
         };
-        let x0 = curr_base_row(ST0);
-        let x1 = curr_base_row(ST1);
-        let x2 = curr_base_row(ST2);
-
-        let y0 = curr_base_row(ST3);
-        let y1 = curr_base_row(ST4);
-        let y2 = curr_base_row(ST5);
-
-        let y3 = curr_base_row(ST6);
-
-        let [z0, z1, z2] =
-            ExtProcessorTable::xxproduct([x0.clone(), x1.clone(), x2.clone()], [y0, y1, y2]);
-        let [z3, z4, z5] = ExtProcessorTable::xbproduct([x0, x1, x2], y3);
-
-        let d = a * b;
-        let e = a * c;
+        let [x0, x1, x2, y0, y1, y2] = [ST0, ST1, ST2, ST3, ST4, ST5].map(base_row);
 
         let mut base_table = Array2::zeros([1, NUM_BASE_COLUMNS]);
         let ext_table = Array2::zeros([1, NUM_EXT_COLUMNS]);
-        let challenges: [XFieldElement; Challenges::COUNT] = (0..Challenges::COUNT)
-            .map(|_| XFieldElement::zero())
-            .collect_vec()
-            .try_into()
-            .unwrap();
-        base_table.as_slice_mut().unwrap()[ST0.master_base_table_index()] = a.coefficients[0];
-        base_table.as_slice_mut().unwrap()[ST1.master_base_table_index()] = a.coefficients[1];
-        base_table.as_slice_mut().unwrap()[ST2.master_base_table_index()] = a.coefficients[2];
-        base_table.as_slice_mut().unwrap()[ST3.master_base_table_index()] = b.coefficients[0];
-        base_table.as_slice_mut().unwrap()[ST4.master_base_table_index()] = b.coefficients[1];
-        base_table.as_slice_mut().unwrap()[ST5.master_base_table_index()] = b.coefficients[2];
-        base_table.as_slice_mut().unwrap()[ST6.master_base_table_index()] = c;
-        let z = [
-            z0.consume(),
-            z1.consume(),
-            z2.consume(),
-            z3.consume(),
-            z4.consume(),
-            z5.consume(),
-        ];
-        let d0 = z[0].evaluate(base_table.view(), ext_table.view(), &challenges);
-        let d1 = z[1].evaluate(base_table.view(), ext_table.view(), &challenges);
-        let d2 = z[2].evaluate(base_table.view(), ext_table.view(), &challenges);
-        let e0 = z[3].evaluate(base_table.view(), ext_table.view(), &challenges);
-        let e1 = z[4].evaluate(base_table.view(), ext_table.view(), &challenges);
-        let e2 = z[5].evaluate(base_table.view(), ext_table.view(), &challenges);
+        let challenges = Challenges::default().challenges;
+        base_table[[0, ST0.master_base_table_index()]] = a.coefficients[0];
+        base_table[[0, ST1.master_base_table_index()]] = a.coefficients[1];
+        base_table[[0, ST2.master_base_table_index()]] = a.coefficients[2];
+        base_table[[0, ST3.master_base_table_index()]] = b.coefficients[0];
+        base_table[[0, ST4.master_base_table_index()]] = b.coefficients[1];
+        base_table[[0, ST5.master_base_table_index()]] = b.coefficients[2];
 
-        prop_assert_eq!(d.coefficients[0], d0.coefficients[0]);
-        prop_assert_eq!(d.coefficients[1], d1.coefficients[0]);
-        prop_assert_eq!(d.coefficients[2], d2.coefficients[0]);
-        prop_assert_eq!(e.coefficients[0], e0.coefficients[0]);
-        prop_assert_eq!(e.coefficients[1], e1.coefficients[0]);
-        prop_assert_eq!(e.coefficients[2], e2.coefficients[0]);
+        let [c0, c1, c2] = ExtProcessorTable::xx_product([x0, x1, x2], [y0, y1, y2])
+            .map(|c| c.consume())
+            .map(|c| c.evaluate(base_table.view(), ext_table.view(), &challenges));
+
+        let c = a * b;
+        prop_assert_eq!(c.coefficients[0], c0.coefficients[0]);
+        prop_assert_eq!(c.coefficients[1], c1.coefficients[0]);
+        prop_assert_eq!(c.coefficients[2], c2.coefficients[0]);
+    }
+
+    #[proptest]
+    fn xb_product_is_accurate(
+        #[strategy(arb())] a: XFieldElement,
+        #[strategy(arb())] b: BFieldElement,
+    ) {
+        let circuit_builder = ConstraintCircuitBuilder::new();
+        let base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(BaseRow(col.master_base_table_index()))
+        };
+        let [x0, x1, x2, y] = [ST0, ST1, ST2, ST3].map(base_row);
+
+        let mut base_table = Array2::zeros([1, NUM_BASE_COLUMNS]);
+        let ext_table = Array2::zeros([1, NUM_EXT_COLUMNS]);
+        let challenges = Challenges::default().challenges;
+        base_table[[0, ST0.master_base_table_index()]] = a.coefficients[0];
+        base_table[[0, ST1.master_base_table_index()]] = a.coefficients[1];
+        base_table[[0, ST2.master_base_table_index()]] = a.coefficients[2];
+        base_table[[0, ST3.master_base_table_index()]] = b;
+
+        let [c0, c1, c2] = ExtProcessorTable::xb_product([x0, x1, x2], y)
+            .map(|c| c.consume())
+            .map(|c| c.evaluate(base_table.view(), ext_table.view(), &challenges));
+
+        let c = a * b;
+        prop_assert_eq!(c.coefficients[0], c0.coefficients[0]);
+        prop_assert_eq!(c.coefficients[1], c1.coefficients[0]);
+        prop_assert_eq!(c.coefficients[2], c2.coefficients[0]);
     }
 }
