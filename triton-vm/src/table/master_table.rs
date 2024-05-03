@@ -1148,6 +1148,7 @@ mod tests {
     use std::fs;
     use std::path::Path;
 
+    use master_table::cross_table_argument::GrandCrossTableArg;
     use ndarray::s;
     use ndarray::Array2;
     use num_traits::Zero;
@@ -1165,6 +1166,17 @@ mod tests {
     use crate::table::table_column::*;
     use crate::table::*;
     use crate::triton_program;
+
+    use self::cascade_table::ExtCascadeTable;
+    use self::constraint_circuit::ConstraintCircuitBuilder;
+    use self::hash_table::ExtHashTable;
+    use self::jump_stack_table::ExtJumpStackTable;
+    use self::lookup_table::ExtLookupTable;
+    use self::op_stack_table::ExtOpStackTable;
+    use self::processor_table::ExtProcessorTable;
+    use self::program_table::ExtProgramTable;
+    use self::ram_table::ExtRamTable;
+    use self::u32_table::ExtU32Table;
 
     use super::*;
 
@@ -1460,6 +1472,207 @@ mod tests {
 
         // assert that the embedded code matches the generated code
         assert_eq!(generated_code, embedding, "Specification does not have the right table overview. Please include the above snippet in file \"{}\".", file_path.display());
+    }
+
+    #[test]
+    fn spec_has_correct_constraints_overview() {
+        // collect data
+        let tables = [
+            (
+                "[ProgramTable](program-table.md)",
+                ExtProgramTable::initial_constraints(&ConstraintCircuitBuilder::new()),
+                ExtProgramTable::consistency_constraints(&ConstraintCircuitBuilder::new()),
+                ExtProgramTable::transition_constraints(&ConstraintCircuitBuilder::new()),
+                ExtProgramTable::terminal_constraints(&ConstraintCircuitBuilder::new()),
+            ),
+            (
+                "[ProcessorTable](processor-table.md)",
+                ExtProcessorTable::initial_constraints(&ConstraintCircuitBuilder::new()),
+                ExtProcessorTable::consistency_constraints(&ConstraintCircuitBuilder::new()),
+                ExtProcessorTable::transition_constraints(&ConstraintCircuitBuilder::new()),
+                ExtProcessorTable::terminal_constraints(&ConstraintCircuitBuilder::new()),
+            ),
+            (
+                "[OpStack](operational-stack-table.md)",
+                ExtOpStackTable::initial_constraints(&ConstraintCircuitBuilder::new()),
+                ExtOpStackTable::consistency_constraints(&ConstraintCircuitBuilder::new()),
+                ExtOpStackTable::transition_constraints(&ConstraintCircuitBuilder::new()),
+                ExtOpStackTable::terminal_constraints(&ConstraintCircuitBuilder::new()),
+            ),
+            (
+                "[RamTable](random-access-memory-table.md)",
+                ExtRamTable::initial_constraints(&ConstraintCircuitBuilder::new()),
+                ExtRamTable::consistency_constraints(&ConstraintCircuitBuilder::new()),
+                ExtRamTable::transition_constraints(&ConstraintCircuitBuilder::new()),
+                ExtRamTable::terminal_constraints(&ConstraintCircuitBuilder::new()),
+            ),
+            (
+                "[JumpStackTable](jump-stack-table.md)",
+                ExtJumpStackTable::initial_constraints(&ConstraintCircuitBuilder::new()),
+                ExtJumpStackTable::consistency_constraints(&ConstraintCircuitBuilder::new()),
+                ExtJumpStackTable::transition_constraints(&ConstraintCircuitBuilder::new()),
+                ExtJumpStackTable::terminal_constraints(&ConstraintCircuitBuilder::new()),
+            ),
+            (
+                "[Hash](hash-table.md)",
+                ExtHashTable::initial_constraints(&ConstraintCircuitBuilder::new()),
+                ExtHashTable::consistency_constraints(&ConstraintCircuitBuilder::new()),
+                ExtHashTable::transition_constraints(&ConstraintCircuitBuilder::new()),
+                ExtHashTable::terminal_constraints(&ConstraintCircuitBuilder::new()),
+            ),
+            (
+                "[Cascade](cascade-table.md)",
+                ExtCascadeTable::initial_constraints(&ConstraintCircuitBuilder::new()),
+                ExtCascadeTable::consistency_constraints(&ConstraintCircuitBuilder::new()),
+                ExtCascadeTable::transition_constraints(&ConstraintCircuitBuilder::new()),
+                ExtCascadeTable::terminal_constraints(&ConstraintCircuitBuilder::new()),
+            ),
+            (
+                "[LookupTable](lookup-table.md)",
+                ExtLookupTable::initial_constraints(&ConstraintCircuitBuilder::new()),
+                ExtLookupTable::consistency_constraints(&ConstraintCircuitBuilder::new()),
+                ExtLookupTable::transition_constraints(&ConstraintCircuitBuilder::new()),
+                ExtLookupTable::terminal_constraints(&ConstraintCircuitBuilder::new()),
+            ),
+            (
+                "[U32Table](u32-table.md)",
+                ExtU32Table::initial_constraints(&ConstraintCircuitBuilder::new()),
+                ExtU32Table::consistency_constraints(&ConstraintCircuitBuilder::new()),
+                ExtU32Table::transition_constraints(&ConstraintCircuitBuilder::new()),
+                ExtU32Table::terminal_constraints(&ConstraintCircuitBuilder::new()),
+            ),
+            (
+                "[Grand Cross-Table Argument](table-linking.md)",
+                GrandCrossTableArg::initial_constraints(&ConstraintCircuitBuilder::new()),
+                GrandCrossTableArg::consistency_constraints(&ConstraintCircuitBuilder::new()),
+                GrandCrossTableArg::transition_constraints(&ConstraintCircuitBuilder::new()),
+                GrandCrossTableArg::terminal_constraints(&ConstraintCircuitBuilder::new()),
+            ),
+        ];
+
+        // produce table code
+        let mut formatted_table = "".to_string();
+        formatted_table = format!(
+            "{formatted_table}| table name                                     | #initial | #consistency | #transition | #terminal | max degree |\n"
+        );
+        formatted_table = format!(
+            "{formatted_table}|:-----------------------------------------------|---------:|-------------:|------------:|----------:|-----------:|\n"
+        );
+        let mut total_initial = 0;
+        let mut total_consistency = 0;
+        let mut total_transition = 0;
+        let mut total_terminal = 0;
+        let mut total_max_degree = 0;
+        for table in tables.into_iter() {
+            let initial_max_degree = table
+                .1
+                .iter()
+                .map(|constraint| constraint.circuit.borrow().degree())
+                .max()
+                .unwrap_or(0);
+            let consistency_max_degree = table
+                .2
+                .iter()
+                .map(|constraint| constraint.circuit.borrow().degree())
+                .max()
+                .unwrap_or(0);
+            let transition_max_degree = table
+                .3
+                .iter()
+                .map(|constraint| constraint.circuit.borrow().degree())
+                .max()
+                .unwrap_or(0);
+            let terminal_max_degree = table
+                .4
+                .iter()
+                .map(|constraint| constraint.circuit.borrow().degree())
+                .max()
+                .unwrap_or(0);
+            let table_max_degree = [
+                initial_max_degree,
+                consistency_max_degree,
+                transition_max_degree,
+                terminal_max_degree,
+            ]
+            .into_iter()
+            .max()
+            .unwrap_or(0);
+
+            formatted_table = format!(
+                "{formatted_table}| {:<46} | {:>8} | {:12} | {:>11} | {:>9} | {:>10} |\n",
+                table.0,
+                table.1.len(),
+                table.2.len(),
+                table.3.len(),
+                table.4.len(),
+                table_max_degree,
+            );
+            total_initial += table.1.len();
+            total_consistency += table.2.len();
+            total_transition += table.3.len();
+            total_terminal += table.4.len();
+            total_max_degree = isize::max(total_max_degree, table_max_degree);
+        }
+        formatted_table = format!(
+            "{formatted_table}| {:<46} | {:>8} | {:>12} | {:>11} | {:>9} | {:>10} |\n",
+            "**TOTAL**",
+            format!("**{total_initial}**"),
+            format!("**{total_consistency}**"),
+            format!("**{total_transition}**"),
+            format!("**{total_terminal}**"),
+            format!("**{}**", total_max_degree)
+        );
+
+        // print embeddable code
+        let specification_generator_name = "spec_has_correct_constraints_overview";
+        let comment_marker_start = format!("<!-- auto-gen info {specification_generator_name} -->");
+        let how_reproduce = format!(
+            "<!-- To reproduce this code, please run `cargo run {specification_generator_name}`. -->"
+        );
+        let comment_marker_stop = format!("<!-- auto-gen info stop -->");
+        let generated_code = format!(
+            "{}\n{}\n{}{}",
+            comment_marker_start, how_reproduce, formatted_table, comment_marker_stop
+        );
+
+        // current directory is triton-vm/triton-vm/
+        let file_path = Path::new("../specification/src/arithmetization-overview.md");
+        println!(
+            "Please include this code snippet in file \"{}\".",
+            file_path.display()
+        );
+        println!("```");
+        println!("{}", generated_code);
+        println!("```");
+
+        // lookup existing table code
+        let contents = fs::read_to_string(file_path).expect(&format!(
+            "Could not read file \"{}\"; please make sure it exists and has the right permissions.",
+            file_path.display()
+        ));
+
+        // extract whatever is embedded between the comment markers
+        let start_index = contents.find(&comment_marker_start).expect(&format!(
+            "Could not find comment marker\"{comment_marker_start}\" in file \"{}\".",
+            file_path.display()
+        ));
+        assert!(
+            contents.len() > start_index + comment_marker_stop.len(),
+            "Could not find comment marker\"{comment_marker_stop}\" in file \"{}\".",
+            file_path.display()
+        );
+        let relative_stop_index =
+            contents[start_index..]
+                .find(&comment_marker_stop)
+                .expect(&format!(
+                    "Could not find comment marker\"{comment_marker_stop}\" in file \"{}\".",
+                    file_path.display()
+                ));
+        let embedding =
+            &contents[start_index..start_index + relative_stop_index + comment_marker_stop.len()];
+
+        // assert that the embedded code matches the generated code
+        assert_eq!(generated_code, embedding, "Specification does not have the right constraints overview. Please include the above snippet in file \"{}\".", file_path.display());
     }
 
     /// intended use: `cargo t print_all_table_widths -- --nocapture`
