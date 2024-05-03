@@ -31,8 +31,6 @@ use num_traits::One;
 use num_traits::Zero;
 use quote::quote;
 use quote::ToTokens;
-use rand::thread_rng;
-use rand::Rng;
 use twenty_first::prelude::*;
 
 use CircuitExpression::*;
@@ -683,22 +681,21 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
     /// certain that equivalent nodes will be found). The false negative
     /// probability is bounded by max_degree / (2^64 - 2^32 + 1)^3.
     pub fn find_equivalent_nodes(&self) -> Vec<Vec<Rc<RefCell<ConstraintCircuit<II>>>>> {
-        let mut values: HashMap<usize, XFieldElement> = HashMap::new();
-        let mut ids: HashMap<XFieldElement, Vec<usize>> = HashMap::new();
-        let mut nodes: HashMap<usize, Rc<RefCell<ConstraintCircuit<II>>>> = HashMap::new();
-        let seed: [u8; 32] = thread_rng().gen();
+        let mut id_to_eval = HashMap::new();
+        let mut eval_to_ids = HashMap::new();
+        let mut id_to_node = HashMap::new();
         Self::probe_random(
-            self.circuit.clone(),
-            &mut values,
-            &mut ids,
-            &mut nodes,
-            seed,
+            &self.circuit,
+            &mut id_to_eval,
+            &mut eval_to_ids,
+            &mut id_to_node,
+            rand::random(),
         );
 
-        ids.values()
-            .filter(|l| l.len() >= 2)
-            .cloned()
-            .map(|l| l.iter().map(|i| nodes[i].clone()).collect_vec())
+        eval_to_ids
+            .values()
+            .filter(|ids| ids.len() >= 2)
+            .map(|ids| ids.iter().map(|i| id_to_node[i].clone()).collect_vec())
             .collect_vec()
     }
 
@@ -707,81 +704,54 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
     /// random values. Equivalent nodes are detected based on evaluating to the
     /// same value using the Schwartz-Zippel lemma.
     fn probe_random(
-        circuit: Rc<RefCell<ConstraintCircuit<II>>>,
-        values: &mut HashMap<usize, XFieldElement>,
-        ids: &mut HashMap<XFieldElement, Vec<usize>>,
-        nodes: &mut HashMap<usize, Rc<RefCell<ConstraintCircuit<II>>>>,
-        master_seed: [u8; 32],
-    ) {
-        // the node was already touched; nothing to do
-        if values.contains_key(&circuit.borrow().id) {
-            return;
+        circuit: &Rc<RefCell<ConstraintCircuit<II>>>,
+        id_to_eval: &mut HashMap<usize, XFieldElement>,
+        eval_to_ids: &mut HashMap<XFieldElement, Vec<usize>>,
+        id_to_node: &mut HashMap<usize, Rc<RefCell<ConstraintCircuit<II>>>>,
+        master_seed: XFieldElement,
+    ) -> XFieldElement {
+        const DOMAIN_SEPARATOR_CURR_ROW: BFieldElement = BFieldElement::new(0);
+        const DOMAIN_SEPARATOR_NEXT_ROW: BFieldElement = BFieldElement::new(1);
+        const DOMAIN_SEPARATOR_CHALLENGE: BFieldElement = BFieldElement::new(2);
+
+        let circuit_id = circuit.borrow().id;
+        if let Some(&xfe) = id_to_eval.get(&circuit_id) {
+            return xfe;
         }
 
-        // compute the node's value; recurse if necessary
-        let value = match &circuit.borrow().expression {
+        let evaluation = match &circuit.borrow().expression {
             BConstant(bfe) => bfe.lift(),
             XConstant(xfe) => *xfe,
             Input(input) => {
-                let mut hasher = blake3::Hasher::new();
-                hasher.update(&master_seed);
-                hasher.update(b"input");
-                hasher.update(&usize::from(input.is_base_table_column()).to_ne_bytes());
-                hasher.update(&input.column().to_ne_bytes());
-                let mut output = [0u8; 24];
-                hasher.finalize_xof().fill(&mut output);
-                let x0 = BFieldElement::from_ne_bytes(&output[0..8]);
-                let x1 = BFieldElement::from_ne_bytes(&output[8..16]);
-                let x2 = BFieldElement::from_ne_bytes(&output[16..24]);
-
-                XFieldElement::new([x0, x1, x2])
+                let [s0, s1, s2] = master_seed.coefficients;
+                let dom_sep = if input.is_current_row() {
+                    DOMAIN_SEPARATOR_CURR_ROW
+                } else {
+                    DOMAIN_SEPARATOR_NEXT_ROW
+                };
+                let i = bfe!(u64::try_from(input.column()).unwrap());
+                let Digest([d0, d1, d2, _, _]) = Tip5::hash_varlen(&[s0, s1, s2, dom_sep, i]);
+                xfe!([d0, d1, d2])
             }
             Challenge(challenge) => {
-                let mut hasher = blake3::Hasher::new();
-                hasher.update(&master_seed);
-                hasher.update(b"challenge");
-                hasher.update(&challenge.to_ne_bytes());
-                let mut output = [0u8; 24];
-                hasher.finalize_xof().fill(&mut output);
-                let x0 = BFieldElement::from_ne_bytes(&output[0..8]);
-                let x1 = BFieldElement::from_ne_bytes(&output[8..16]);
-                let x2 = BFieldElement::from_ne_bytes(&output[16..24]);
-
-                XFieldElement::new([x0, x1, x2])
+                let [s0, s1, s2] = master_seed.coefficients;
+                let dom_sep = DOMAIN_SEPARATOR_CHALLENGE;
+                let ch = bfe!(u64::try_from(*challenge).unwrap());
+                let Digest([d0, d1, d2, _, _]) = Tip5::hash_varlen(&[s0, s1, s2, dom_sep, ch]);
+                xfe!([d0, d1, d2])
             }
-            BinaryOperation(operation, lhs, rhs) => {
-                // if lhs or rhs wasn't touched yet, recurse
-                if !values.contains_key(&lhs.borrow().id) {
-                    Self::probe_random(lhs.clone(), values, ids, nodes, master_seed);
-                }
-                if !values.contains_key(&rhs.borrow().id) {
-                    Self::probe_random(rhs.clone(), values, ids, nodes, master_seed);
-                }
-
-                // lookup values
-                let lhs_value = *values.get(&lhs.borrow().id).unwrap();
-                let rhs_value = *values.get(&rhs.borrow().id).unwrap();
-
-                // combine using appropriate operator
-                match operation {
-                    BinOp::Add => lhs_value + rhs_value,
-                    BinOp::Mul => lhs_value * rhs_value,
-                }
+            BinaryOperation(bin_op, lhs, rhs) => {
+                let l = Self::probe_random(lhs, id_to_eval, eval_to_ids, id_to_node, master_seed);
+                let r = Self::probe_random(rhs, id_to_eval, eval_to_ids, id_to_node, master_seed);
+                bin_op.operation(l, r)
             }
         };
 
-        // value already exists; keep books
-        if let Some(peers) = ids.get_mut(&value) {
-            values.insert(circuit.borrow().id, value);
-            peers.push(circuit.borrow().id);
-            nodes.insert(circuit.borrow().id, circuit.clone());
-        }
-        // value is new; keep books
-        else {
-            values.insert(circuit.borrow().id, value);
-            ids.insert(value, vec![circuit.borrow().id]);
-            nodes.insert(circuit.borrow().id, circuit.clone());
-        }
+        id_to_eval.insert(circuit_id, evaluation);
+        eval_to_ids.entry(evaluation).or_default().push(circuit_id);
+        id_to_node.insert(circuit_id, circuit.clone());
+
+        evaluation
     }
 
     /// Lowers the degree of a given multicircuit to the target degree.
