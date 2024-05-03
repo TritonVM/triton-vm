@@ -166,7 +166,7 @@ Both types of challenges are X-field elements, _i.e._, elements of $\mathbb{F}_{
 1. `bc1 - bcpc1`
 1. `RunningProductOfRAMP - 🧼 + ram_pointer`
 1. `FormalDerivative - 1`
-1. `(RunningProductPermArg - 🛋 - 🍍·clk - 🍈·ram_pointer - 🍎·ram_value - 🌽·previous_instruction)·(instruction_type - 2)`<br />
+1. `(RunningProductPermArg - 🛋 - 🍍·clk - 🍈·ram_pointer - 🍎·ram_value - 🌽·instruction_type)·(instruction_type - 2)`<br />
     `(RunningProductPermArg - 1)·(instruction_type - 1)·(instruction_type - 0)`
 1. `ClockJumpDifferenceLookupClientLogDerivative`
 
@@ -211,7 +211,7 @@ None.
      `+ (ram_pointer' - ram_pointer)·(bc0' - bc0·🧼 - bcpc0')`
 1. `(iord·(ram_pointer' - ram_pointer) - 1)·(bc1' - bc1)`<br />
      `+ (ram_pointer' - ram_pointer)·(bc1' - bc1·🧼 - bcpc1')`
-1. `(RunningProductPermArg' - RunningProductPermArg·(🛋 - 🍍·clk' - 🍈·ram_pointer' - 🍎·ram_value' - 🌽·previous_instruction'))·(instruction_type' - 2)`<br />
+1. `(RunningProductPermArg' - RunningProductPermArg·(🛋 - 🍍·clk' - 🍈·ram_pointer' - 🍎·ram_value' - 🌽·instruction_type'))·(instruction_type' - 2)`<br />
     `(RunningProductPermArg' - RunningProductPermArg)·(instruction_type - 1)·(instruction_type - 0))`
 1. `(iord·(ram_pointer' - ram_pointer) - 1)·(instruction_type' - 2)·((ClockJumpDifferenceLookupClientLogDerivative' - ClockJumpDifferenceLookupClientLogDerivative) · (🪞 - clk' + clk) - 1)`<br />
     `+ (ram_pointer' - ram_pointer)·(ClockJumpDifferenceLookupClientLogDerivative' - ClockJumpDifferenceLookupClientLogDerivative)`<br />

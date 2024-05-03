@@ -11,6 +11,7 @@ use ndarray::Array1;
 use num_traits::One;
 use num_traits::Zero;
 use serde_derive::*;
+use twenty_first::math::x_field_element::EXTENSION_DEGREE;
 use twenty_first::prelude::*;
 use twenty_first::util_types::algebraic_hasher::Domain;
 
@@ -135,6 +136,7 @@ impl VMState {
             return hvs;
         };
 
+        let ram_read = |address| self.ram.get(&address).copied().unwrap_or_else(|| bfe!(0));
         match current_instruction {
             Pop(_) | Divine(_) | Dup(_) | Swap(_) | ReadMem(_) | WriteMem(_) | ReadIo(_)
             | WriteIo(_) => {
@@ -166,6 +168,20 @@ impl VMState {
                 }
             }
             Eq => hvs[0] = (self.op_stack[ST1] - self.op_stack[ST0]).inverse_or_zero(),
+            XxDotStep => {
+                hvs[0] = ram_read(self.op_stack[ST0]);
+                hvs[1] = ram_read(self.op_stack[ST0] + bfe!(1));
+                hvs[2] = ram_read(self.op_stack[ST0] + bfe!(2));
+                hvs[3] = ram_read(self.op_stack[ST1]);
+                hvs[4] = ram_read(self.op_stack[ST1] + bfe!(1));
+                hvs[5] = ram_read(self.op_stack[ST1] + bfe!(2));
+            }
+            XbDotStep => {
+                hvs[0] = ram_read(self.op_stack[ST0]);
+                hvs[1] = ram_read(self.op_stack[ST1]);
+                hvs[2] = ram_read(self.op_stack[ST1] + bfe!(1));
+                hvs[3] = ram_read(self.op_stack[ST1] + bfe!(2));
+            }
             _ => (),
         }
 
@@ -234,6 +250,8 @@ impl VMState {
             XbMul => self.xb_mul()?,
             WriteIo(n) => self.write_io(n)?,
             ReadIo(n) => self.read_io(n)?,
+            XxDotStep => self.xx_dot_step()?,
+            XbDotStep => self.xb_dot_step()?,
         };
         let op_stack_calls = self.stop_recording_op_stack_calls();
         co_processor_calls.extend(op_stack_calls);
@@ -759,6 +777,47 @@ impl VMState {
         Ok(vec![])
     }
 
+    fn xx_dot_step(&mut self) -> Result<Vec<CoProcessorCall>> {
+        self.start_recording_ram_calls();
+        let mut rhs_address = self.op_stack.pop()?;
+        let mut lhs_address = self.op_stack.pop()?;
+        let mut rhs = xfe!(0);
+        let mut lhs = xfe!(0);
+        for i in 0..EXTENSION_DEGREE {
+            rhs.coefficients[i] = self.ram_read(rhs_address);
+            rhs_address.increment();
+            lhs.coefficients[i] = self.ram_read(lhs_address);
+            lhs_address.increment();
+        }
+        let accumulator = self.op_stack.pop_extension_field_element()? + rhs * lhs;
+        self.op_stack.push_extension_field_element(accumulator);
+        self.op_stack.push(lhs_address);
+        self.op_stack.push(rhs_address);
+        self.instruction_pointer += 1;
+        let ram_calls = self.stop_recording_ram_calls();
+        Ok(ram_calls)
+    }
+
+    fn xb_dot_step(&mut self) -> Result<Vec<CoProcessorCall>> {
+        self.start_recording_ram_calls();
+        let mut rhs_address = self.op_stack.pop()?;
+        let mut lhs_address = self.op_stack.pop()?;
+        let rhs = self.ram_read(rhs_address);
+        rhs_address.increment();
+        let mut lhs = xfe!(0);
+        for i in 0..EXTENSION_DEGREE {
+            lhs.coefficients[i] = self.ram_read(lhs_address);
+            lhs_address.increment();
+        }
+        let accumulator = self.op_stack.pop_extension_field_element()? + rhs * lhs;
+        self.op_stack.push_extension_field_element(accumulator);
+        self.op_stack.push(lhs_address);
+        self.op_stack.push(rhs_address);
+        self.instruction_pointer += 1;
+        let ram_calls = self.stop_recording_ram_calls();
+        Ok(ram_calls)
+    }
+
     pub fn to_processor_row(&self) -> Array1<BFieldElement> {
         use crate::instruction::InstructionBit;
         use ProcessorBaseTableColumn::*;
@@ -1029,6 +1088,8 @@ pub(crate) mod tests {
 
     use assert2::assert;
     use assert2::let_assert;
+    use itertools::izip;
+    use proptest::collection::vec;
     use proptest::prelude::*;
     use proptest_arbitrary_interop::arb;
     use rand::prelude::IteratorRandom;
@@ -1050,6 +1111,7 @@ pub(crate) mod tests {
     use crate::shared_tests::LeavedMerkleTreeTestData;
     use crate::shared_tests::ProgramAndInput;
     use crate::triton_asm;
+    use crate::triton_instr;
     use crate::triton_program;
 
     use super::*;
@@ -1689,6 +1751,153 @@ pub(crate) mod tests {
         source_code_and_input.run().unwrap();
     }
 
+    #[test]
+    fn can_compute_dot_product_from_uninitialized_ram() {
+        let program = triton_program!(xxdotstep xbdotstep halt);
+        program
+            .run(PublicInput::default(), NonDeterminism::default())
+            .unwrap();
+    }
+
+    pub(crate) fn property_based_test_program_for_xxdotstep() -> ProgramAndInput {
+        let mut rng = ThreadRng::default();
+        let n = rng.gen_range(0..10);
+
+        let push_xfe = |xfe: XFieldElement| {
+            let [c_0, c_1, c_2] = xfe.coefficients;
+            triton_asm! { push {c_2} push {c_1} push {c_0} }
+        };
+        let push_and_write_xfe = |xfe| {
+            let push_xfe = push_xfe(xfe);
+            triton_asm! {
+                {&push_xfe}
+                dup 3
+                write_mem 3
+                swap 1
+                pop 1
+            }
+        };
+        let into_write_instructions = |elements: Vec<_>| {
+            elements
+                .into_iter()
+                .flat_map(push_and_write_xfe)
+                .collect_vec()
+        };
+
+        let vector_one = (0..n).map(|_| rng.gen()).collect_vec();
+        let vector_two = (0..n).map(|_| rng.gen()).collect_vec();
+        let inner_product = vector_one
+            .iter()
+            .zip(&vector_two)
+            .map(|(&a, &b)| a * b)
+            .sum();
+        let push_inner_product = push_xfe(inner_product);
+
+        let push_and_write_vector_one = into_write_instructions(vector_one);
+        let push_and_write_vector_two = into_write_instructions(vector_two);
+        let many_dotsteps = (0..n).map(|_| triton_instr!(xxdotstep)).collect_vec();
+
+        let code = triton_program! {
+            push 0
+            {&push_and_write_vector_one}
+            dup 0
+            {&push_and_write_vector_two}
+            pop 1
+            push 0
+
+            {&many_dotsteps}
+            pop 2
+            push 0 push 0
+
+            {&push_inner_product}
+            push 0 push 0
+            assert_vector
+            halt
+        };
+        ProgramAndInput::new(code)
+    }
+
+    /// Sanity check
+    #[test]
+    fn run_dont_prove_property_based_test_program_for_xxdotstep() {
+        let source_code_and_input = property_based_test_program_for_xxdotstep();
+        source_code_and_input.run().unwrap();
+    }
+
+    pub(crate) fn property_based_test_program_for_xbdotstep() -> ProgramAndInput {
+        let mut rng = ThreadRng::default();
+        let n = rng.gen_range(0..10);
+        let push_xfe = |x: XFieldElement| {
+            triton_asm! {
+                push {x.coefficients[2]}
+                push {x.coefficients[1]}
+                push {x.coefficients[0]}
+            }
+        };
+        let push_and_write_xfe = |x: XFieldElement| {
+            triton_asm! {
+                push {x.coefficients[2]}
+                push {x.coefficients[1]}
+                push {x.coefficients[0]}
+                dup 3
+                write_mem 3
+                swap 1
+                pop 1
+            }
+        };
+        let push_and_write_bfe = |x: BFieldElement| {
+            triton_asm! {
+                push {x}
+                dup 1
+                write_mem 1
+                swap 1
+                pop 1
+            }
+        };
+        let vector_one = (0..n).map(|_| rng.gen::<XFieldElement>()).collect_vec();
+        let vector_two = (0..n).map(|_| rng.gen::<BFieldElement>()).collect_vec();
+        let inner_product = vector_one
+            .iter()
+            .zip(vector_two.iter())
+            .map(|(&a, &b)| a * b)
+            .sum::<XFieldElement>();
+        let push_and_write_vector_one = (0..n)
+            .flat_map(|i| push_and_write_xfe(vector_one[i]))
+            .collect_vec();
+        let push_and_write_vector_two = (0..n)
+            .flat_map(|i| push_and_write_bfe(vector_two[i]))
+            .collect_vec();
+        let push_inner_product = push_xfe(inner_product);
+        let many_dotsteps = (0..n).map(|_| triton_instr!(xbdotstep)).collect_vec();
+        let code = triton_program! {
+            push 0
+            {&push_and_write_vector_one}
+            dup 0
+            {&push_and_write_vector_two}
+            pop 1
+            push 0
+            swap 1
+            {&many_dotsteps}
+            pop 1
+            pop 1
+            push 0
+            push 0
+            {&push_inner_product}
+            push 0
+            push 0
+            assert_vector
+            halt
+        };
+        ProgramAndInput::new(code)
+    }
+
+    /// Sanity check
+    #[test]
+    fn run_dont_prove_property_based_test_program_for_xbdotstep() {
+        let source_code_and_input = property_based_test_program_for_xbdotstep();
+        source_code_and_input.run().unwrap();
+    }
+
     #[proptest]
     fn negative_property_is_u32(
         #[strategy(arb())]
@@ -2283,5 +2492,124 @@ pub(crate) mod tests {
         let serialized = serde_json::to_string(&vm_state).unwrap();
         let deserialized = serde_json::from_str(&serialized).unwrap();
         prop_assert_eq!(vm_state, deserialized);
+    }
+
+    #[proptest]
+    fn xxdotstep(
+        #[strategy(0_usize..=25)] n: usize,
+        #[strategy(vec(arb(), #n))] lhs: Vec<XFieldElement>,
+        #[strategy(vec(arb(), #n))] rhs: Vec<XFieldElement>,
+        #[strategy(arb())] lhs_address: BFieldElement,
+        #[strategy(arb())] rhs_address: BFieldElement,
+    ) {
+        let mem_region_size = (n * EXTENSION_DEGREE) as u64;
+        let mem_region = |addr: BFieldElement| addr.value()..addr.value() + mem_region_size;
+        let right_in_left = mem_region(lhs_address).contains(&rhs_address.value());
+        let left_in_right = mem_region(rhs_address).contains(&lhs_address.value());
+        if right_in_left || left_in_right {
+            let reason = "storing into overlapping regions would overwrite";
+            return Err(TestCaseError::Reject(reason.into()));
+        }
+
+        let lhs_flat = lhs.iter().flat_map(|&xfe| xfe.coefficients).collect_vec();
+        let rhs_flat = rhs.iter().flat_map(|&xfe| xfe.coefficients).collect_vec();
+        let mut ram = HashMap::new();
+        for (i, &l, &r) in izip!(0.., &lhs_flat, &rhs_flat) {
+            ram.insert(lhs_address + bfe!(i), l);
+            ram.insert(rhs_address + bfe!(i), r);
+        }
+
+        let public_input = PublicInput::default();
+        let secret_input = NonDeterminism::default().with_ram(ram);
+        let many_xxdotsteps = triton_asm![xxdotstep; n];
+        let program = triton_program! {
+            push 0 push 0 push 0
+
+            push {lhs_address}
+            push {rhs_address}
+
+            {&many_xxdotsteps}
+            halt
+        };
+
+        let mut vmstate = VMState::new(&program, public_input, secret_input);
+        prop_assert!(vmstate.run().is_ok());
+
+        prop_assert_eq!(
+            vmstate.op_stack.pop().unwrap(),
+            rhs_address + bfe!(rhs_flat.len() as u64)
+        );
+        prop_assert_eq!(
+            vmstate.op_stack.pop().unwrap(),
+            lhs_address + bfe!(lhs_flat.len() as u64)
+        );
+
+        let observed_dot_product = vmstate.op_stack.pop_extension_field_element().unwrap();
+        let expected_dot_product = lhs
+            .into_iter()
+            .zip(rhs)
+            .map(|(l, r)| l * r)
+            .sum::<XFieldElement>();
+        prop_assert_eq!(expected_dot_product, observed_dot_product);
+    }
+
+    #[proptest]
+    fn xbdotstep(
+        #[strategy(0_usize..=25)] n: usize,
+        #[strategy(vec(arb(), #n))] lhs: Vec<XFieldElement>,
+        #[strategy(vec(arb(), #n))] rhs: Vec<BFieldElement>,
+        #[strategy(arb())] lhs_address: BFieldElement,
+        #[strategy(arb())] rhs_address: BFieldElement,
+    ) {
+        let mem_region_size_lhs = (n * EXTENSION_DEGREE) as u64;
+        let mem_region_lhs = lhs_address.value()..lhs_address.value() + mem_region_size_lhs;
+        let mem_region_rhs = rhs_address.value()..rhs_address.value() + n as u64;
+        let right_in_left = mem_region_lhs.contains(&rhs_address.value());
+        let left_in_right = mem_region_rhs.contains(&lhs_address.value());
+        if right_in_left || left_in_right {
+            let reason = "storing into overlapping regions would overwrite";
+            return Err(TestCaseError::Reject(reason.into()));
+        }
+
+        let lhs_flat = lhs.iter().flat_map(|&xfe| xfe.coefficients).collect_vec();
+        let mut ram = HashMap::new();
+        for (i, &l) in (0..).zip(&lhs_flat) {
+            ram.insert(lhs_address + bfe!(i), l);
+        }
+        for (i, &r) in (0..).zip(&rhs) {
+            ram.insert(rhs_address + bfe!(i), r);
+        }
+
+        let public_input = PublicInput::default();
+        let secret_input = NonDeterminism::default().with_ram(ram);
+        let many_xbdotsteps = triton_asm![xbdotstep; n];
+        let program = triton_program! {
+            push 0 push 0 push 0
+
+            push {lhs_address}
+            push {rhs_address}
+
+            {&many_xbdotsteps}
+            halt
+        };
+
+        let mut vmstate = VMState::new(&program, public_input, secret_input);
+        prop_assert!(vmstate.run().is_ok());
+
+        prop_assert_eq!(
+            vmstate.op_stack.pop().unwrap(),
+            rhs_address + bfe!(rhs.len() as u64)
+        );
+        prop_assert_eq!(
+            vmstate.op_stack.pop().unwrap(),
+            lhs_address + bfe!(lhs_flat.len() as u64)
+        );
+        let observed_dot_product = vmstate.op_stack.pop_extension_field_element().unwrap();
+        let expected_dot_product = lhs
+            .into_iter()
+            .zip(rhs)
+            .map(|(l, r)| l * r)
+            .sum::<XFieldElement>();
+        prop_assert_eq!(expected_dot_product, observed_dot_product);
     }
 }

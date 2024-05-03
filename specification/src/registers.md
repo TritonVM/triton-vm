@@ -55,6 +55,8 @@ Because they are only needed for some instructions, the helper variables are not
 For instruction group [`decompose_arg`](instruction-groups.md#group-decompose_arg) and instructions
 [`skiz`](instruction-specific-transition-constraints.md#helper-variable-definitions-for-skiz),
 [`divine_sibling`](instruction-specific-transition-constraints.md#helper-variable-definitions-for-divine_sibling),
-[`split`](instruction-specific-transition-constraints.md#helper-variable-definitions-for-split), and
+[`split`](instruction-specific-transition-constraints.md#helper-variable-definitions-for-split),
 [`eq`](instruction-specific-transition-constraints.md#helper-variable-definitions-for-eq),
+[`xxdotstep`](instruction-specific-transition-constraints.md#instruction-xxdotstep), and
+[`xbdotstep`](instruction-specific-transition-constraints.md#instruction-xbdotstep),
 the behavior is defined in the respective sections.

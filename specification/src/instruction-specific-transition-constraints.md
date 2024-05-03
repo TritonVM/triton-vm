@@ -796,7 +796,6 @@ In addition to its [instruction groups](instruction-groups.md), this instruction
 ### Description
 
 1. Numerator is quotient times denominator plus remainder: `n == q·d + r`.
-1. Stack element `st2` does not change.
 
 ### Polynomials
 
@@ -991,3 +990,25 @@ In addition to its [instruction groups](instruction-groups.md), this instruction
     `+ ind_3(hv3, hv2, hv1, hv0)·(RunningEvaluationStandardOutput' - 🧯·(🧯·(🧯·RunningEvaluationStandardOutput - st0) - st1) - st2)`<br />
     `+ ind_4(hv3, hv2, hv1, hv0)·(RunningEvaluationStandardOutput' - 🧯·(🧯·(🧯·(🧯·RunningEvaluationStandardOutput - st0) - st1) - st2) - st3)`<br />
     `+ ind_5(hv3, hv2, hv1, hv0)·(RunningEvaluationStandardOutput' - 🧯·(🧯·(🧯·(🧯·(🧯·RunningEvaluationStandardOutput - st0) - st1) - st2) - st3) - st4)`
+
+## Instruction `xxdotstep`
+
+In addition to its [instruction groups](instruction-groups.md), this instruction has the following constraints.
+
+### Description
+
+1. Store `(RAM[st0], RAM[st0+1], RAM[st0+2])` in `(hv0, hv1, hv2)`.
+1. Store `(RAM[st1], RAM[st1+1], RAM[st1+2])` in `(hv3, hv4, hv5)`.
+1. Add `(hv0 + hv1·x + hv2·x²) · (hv3 + hv4·x + hv5·x²)` into `(st2, st3, st4)`
+1. Increase the pointers: `st0` and `st1` by 3 each.
+
+## Instruction `xbdotstep`
+
+In addition to its [instruction groups](instruction-groups.md), this instruction has the following constraints.
+
+### Description
+
+1. Store `RAM[st0]` in `hv0`.
+1. Store `(RAM[st1], RAM[st1+1], RAM[st1+2])` in `(hv1, hv2, hv3)`.
+1. Add `hv0 · (hv1 + hv2·x + hv3·x²)` into `(st1, st2, st3)`
+1. Increase the pointers: `st0` and `st1` by 1 and 3, respectively.

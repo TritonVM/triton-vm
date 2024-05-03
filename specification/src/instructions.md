@@ -146,3 +146,10 @@ Triton VM cannot know the number of elements that will be absorbed.
 |:-----------------|-------:|:----------------|:----------------|:-----------------------------------------------------------------------------------------|
 | `read_io` + `n`  |     49 | e.g., `_`       | e.g., `_ c b a` | Reads `n` B-Field elements from standard input and pushes them to the stack. 1 ⩽ `n` ⩽ 5 |
 | `write_io` + `n` |     19 | e.g., `_ c b a` | e.g., `_`       | Pops `n` elements from the stack and writes them to standard output. 1 ⩽ `n` ⩽ 5         |
+
+## Many-In-One
+
+| Instruction | Opcode | old op stack    | new op stack                 | Description |
+|:------------|--------|:----------------|:-----------------------------|-------------|
+| `xxdotstep` | 72     | `_ z y x *b *a` | `_ z+p2 y+p1 x+p0 *b+3 *a+3` | Reads two extension field elements from RAM located at the addresses corresponding to the two top stack elements, multiplies the extension field elements, and adds the product `(p0, p1, p2)` to an accumulator located on stack immediately below the two pointers. Also, increase the pointers by the number of words read. |
+| `xxdotstep` | 80     | `_ z y x *b *a` | `_ z+p2 y+p1 x+p0 *b+3 *a+1` | Reads one base field element from RAM located at the addresses corresponding to the top of the stack, one extension field element from RAM located at the address of the second stack element, multiplies the field elements, and adds the product `(p0, p1, p2)` to an accumulator located on stack immediately below the two pointers. Also, increase the pointers by the number of words read. |

@@ -560,12 +560,35 @@ impl<II: InputIndicator> Eq for ConstraintCircuitMonad<II> {}
 /// Helper function for binary operations that are used to generate new parent nodes in the
 /// multitree that represents the algebraic circuit. Ensures that each newly created node has a
 /// unique ID.
+///
+/// This function does not (currently) catch expressions of the form ((x+1)+1).
 fn binop<II: InputIndicator>(
     binop: BinOp,
     lhs: ConstraintCircuitMonad<II>,
     rhs: ConstraintCircuitMonad<II>,
 ) -> ConstraintCircuitMonad<II> {
     assert!(lhs.builder.is_same_as(&rhs.builder));
+
+    match (binop, &lhs, &rhs) {
+        (BinOp::Add, _, zero) if zero.circuit.borrow().is_zero() => return lhs,
+        (BinOp::Add, zero, _) if zero.circuit.borrow().is_zero() => return rhs,
+        (BinOp::Mul, _, one) if one.circuit.borrow().is_one() => return lhs,
+        (BinOp::Mul, one, _) if one.circuit.borrow().is_one() => return rhs,
+        (BinOp::Mul, _, zero) if zero.circuit.borrow().is_zero() => return rhs,
+        (BinOp::Mul, zero, _) if zero.circuit.borrow().is_zero() => return lhs,
+        _ => (),
+    };
+
+    match (
+        &lhs.circuit.borrow().expression,
+        &rhs.circuit.borrow().expression,
+    ) {
+        (&BConstant(l), &BConstant(r)) => return lhs.builder.b_constant(binop.operation(l, r)),
+        (&BConstant(l), &XConstant(r)) => return lhs.builder.x_constant(binop.operation(l, r)),
+        (&XConstant(l), &BConstant(r)) => return lhs.builder.x_constant(binop.operation(l, r)),
+        (&XConstant(l), &XConstant(r)) => return lhs.builder.x_constant(binop.operation(l, r)),
+        _ => (),
+    };
 
     // all `BinOp`s are commutative – try both orders of the operands
     let new_node = binop_new_node(binop, &rhs, &lhs);
@@ -637,94 +660,98 @@ impl<II: InputIndicator> Sum for ConstraintCircuitMonad<II> {
 }
 
 impl<II: InputIndicator> ConstraintCircuitMonad<II> {
-    pub(crate) fn new_monad_same_context(
-        &self,
-        circuit: Rc<RefCell<ConstraintCircuit<II>>>,
-    ) -> Self {
-        Self {
-            circuit,
-            builder: self.builder.clone(),
-        }
-    }
-
     /// Unwrap a ConstraintCircuitMonad to reveal its inner ConstraintCircuit
     pub fn consume(&self) -> ConstraintCircuit<II> {
         self.circuit.borrow().to_owned()
     }
 
-    fn find_equivalent_expression(&self) -> Option<Rc<RefCell<ConstraintCircuit<II>>>> {
-        let BinaryOperation(op, lhs, rhs) = &self.circuit.borrow().expression else {
-            return None;
-        };
+    /// Traverse the circuit and find all nodes that are equivalent. Note that
+    /// two nodes are equivalent if they compute the same value on all identical
+    /// inputs. Equivalence is different from identity, which is when two nodes
+    /// connect the same set of neighbors in the same way. (There may be two
+    /// different ways to compute the same result; they are equivalent but
+    /// unequal.)
+    ///
+    /// This function returns a list of lists of equivalent nodes such that
+    /// every inner list can be reduced to a single node without changing the
+    /// circuit's function.
+    ///
+    /// Equivalent nodes are detected probabilistically using the multivariate
+    /// Schwartz-Zippel lemma. The false positive probability is zero (we can be
+    /// certain that equivalent nodes will be found). The false negative
+    /// probability is bounded by max_degree / (2^64 - 2^32 + 1)^3.
+    pub fn find_equivalent_nodes(&self) -> Vec<Vec<Rc<RefCell<ConstraintCircuit<II>>>>> {
+        let mut id_to_eval = HashMap::new();
+        let mut eval_to_ids = HashMap::new();
+        let mut id_to_node = HashMap::new();
+        Self::probe_random(
+            &self.circuit,
+            &mut id_to_eval,
+            &mut eval_to_ids,
+            &mut id_to_node,
+            rand::random(),
+        );
 
-        match (op, lhs, rhs) {
-            (BinOp::Add, c, zero) if zero.borrow().is_zero() => return Some(c.clone()),
-            (BinOp::Add, zero, c) if zero.borrow().is_zero() => return Some(c.clone()),
-            (BinOp::Mul, c, one) if one.borrow().is_one() => return Some(c.clone()),
-            (BinOp::Mul, one, c) if one.borrow().is_one() => return Some(c.clone()),
-            (BinOp::Mul, _, zero) if zero.borrow().is_zero() => return Some(zero.clone()),
-            (BinOp::Mul, zero, _) if zero.borrow().is_zero() => return Some(zero.clone()),
-            _ => (),
-        };
-
-        let new_const = match (&lhs.borrow().expression, &rhs.borrow().expression) {
-            (&BConstant(l), &BConstant(r)) => BConstant(op.operation(l, r)),
-            (&BConstant(l), &XConstant(r)) => XConstant(op.operation(l, r)),
-            (&XConstant(l), &BConstant(r)) => XConstant(op.operation(l, r)),
-            (&XConstant(l), &XConstant(r)) => XConstant(op.operation(l, r)),
-            _ => return None,
-        };
-
-        let new_const = self.builder.make_leaf(new_const).consume();
-        let new_const = Rc::new(RefCell::new(new_const));
-        Some(new_const)
+        eval_to_ids
+            .values()
+            .filter(|ids| ids.len() >= 2)
+            .map(|ids| ids.iter().map(|i| id_to_node[i].clone()).collect_vec())
+            .collect_vec()
     }
 
-    /// Apply constant folding to simplify the (sub)tree.
-    /// If the subtree is a leaf: no change.
-    /// If the subtree is a binary operation on:
-    ///
-    ///  - constant x constant => fold
-    ///  - anything else       => can't fold
-    ///
-    /// This operation mutates self and returns true if a change was applied anywhere in the tree.
-    fn constant_fold_inner(&mut self) -> (bool, Option<Rc<RefCell<ConstraintCircuit<II>>>>) {
-        let BinaryOperation(_, lhs, rhs) = &self.circuit.borrow().expression.clone() else {
-            return (false, None);
-        };
+    /// Populate the dictionaries such that they associate with every node in
+    /// the circuit its evaluation in a random point. The inputs are assigned
+    /// random values. Equivalent nodes are detected based on evaluating to the
+    /// same value using the Schwartz-Zippel lemma.
+    fn probe_random(
+        circuit: &Rc<RefCell<ConstraintCircuit<II>>>,
+        id_to_eval: &mut HashMap<usize, XFieldElement>,
+        eval_to_ids: &mut HashMap<XFieldElement, Vec<usize>>,
+        id_to_node: &mut HashMap<usize, Rc<RefCell<ConstraintCircuit<II>>>>,
+        master_seed: XFieldElement,
+    ) -> XFieldElement {
+        const DOMAIN_SEPARATOR_CURR_ROW: BFieldElement = BFieldElement::new(0);
+        const DOMAIN_SEPARATOR_NEXT_ROW: BFieldElement = BFieldElement::new(1);
+        const DOMAIN_SEPARATOR_CHALLENGE: BFieldElement = BFieldElement::new(2);
 
-        let mut change_tracker = false;
-        let mut lhs_as_monadic_value = self.new_monad_same_context(lhs.clone());
-        let (change_in_lhs, _) = lhs_as_monadic_value.constant_fold_inner();
-        change_tracker |= change_in_lhs;
-
-        let mut rhs_as_monadic_value = self.new_monad_same_context(rhs.clone());
-        let (change_in_rhs, _) = rhs_as_monadic_value.constant_fold_inner();
-        change_tracker |= change_in_rhs;
-
-        let equivalent_circuit = self.find_equivalent_expression();
-        if let Some(ref circuit) = equivalent_circuit {
-            change_tracker = true;
-            let id_to_remove = self.circuit.borrow().id;
-            self.builder.substitute(id_to_remove, circuit);
-            self.builder.all_nodes.borrow_mut().remove(self);
+        let circuit_id = circuit.borrow().id;
+        if let Some(&xfe) = id_to_eval.get(&circuit_id) {
+            return xfe;
         }
 
-        (change_tracker, equivalent_circuit)
-    }
-
-    /// Reduce size of multitree by simplifying constant expressions such as `1 * MPol(_,_)`
-    pub fn constant_folding(circuits: &mut [ConstraintCircuitMonad<II>]) {
-        for circuit in circuits {
-            let mut mutated = true;
-            while mutated {
-                let (mutated_inner, maybe_new_root) = circuit.constant_fold_inner();
-                mutated = mutated_inner;
-                if let Some(new_root) = maybe_new_root {
-                    *circuit = circuit.new_monad_same_context(new_root);
-                }
+        let evaluation = match &circuit.borrow().expression {
+            BConstant(bfe) => bfe.lift(),
+            XConstant(xfe) => *xfe,
+            Input(input) => {
+                let [s0, s1, s2] = master_seed.coefficients;
+                let dom_sep = if input.is_current_row() {
+                    DOMAIN_SEPARATOR_CURR_ROW
+                } else {
+                    DOMAIN_SEPARATOR_NEXT_ROW
+                };
+                let i = bfe!(u64::try_from(input.column()).unwrap());
+                let Digest([d0, d1, d2, _, _]) = Tip5::hash_varlen(&[s0, s1, s2, dom_sep, i]);
+                xfe!([d0, d1, d2])
             }
-        }
+            Challenge(challenge) => {
+                let [s0, s1, s2] = master_seed.coefficients;
+                let dom_sep = DOMAIN_SEPARATOR_CHALLENGE;
+                let ch = bfe!(u64::try_from(*challenge).unwrap());
+                let Digest([d0, d1, d2, _, _]) = Tip5::hash_varlen(&[s0, s1, s2, dom_sep, ch]);
+                xfe!([d0, d1, d2])
+            }
+            BinaryOperation(bin_op, lhs, rhs) => {
+                let l = Self::probe_random(lhs, id_to_eval, eval_to_ids, id_to_node, master_seed);
+                let r = Self::probe_random(rhs, id_to_eval, eval_to_ids, id_to_node, master_seed);
+                bin_op.operation(l, r)
+            }
+        };
+
+        id_to_eval.insert(circuit_id, evaluation);
+        eval_to_ids.entry(evaluation).or_default().push(circuit_id);
+        id_to_node.insert(circuit_id, circuit.clone());
+
+        evaluation
     }
 
     /// Lowers the degree of a given multicircuit to the target degree.
@@ -1174,9 +1201,9 @@ mod tests {
         #[strategy(arb())] c: ConstraintCircuitMonad<DualRowIndicator>,
     ) {
         let one = || c.builder.one();
-        check_constant_folding_property(c.clone(), c.clone() * one())?;
-        check_constant_folding_property(c.clone(), one() * c.clone())?;
-        check_constant_folding_property(c.clone(), one() * c.clone() * one())?;
+        prop_assert_eq!(c.clone(), c.clone() * one());
+        prop_assert_eq!(c.clone(), one() * c.clone());
+        prop_assert_eq!(c.clone(), one() * c.clone() * one());
     }
 
     #[proptest]
@@ -1184,16 +1211,16 @@ mod tests {
         #[strategy(arb())] c: ConstraintCircuitMonad<DualRowIndicator>,
     ) {
         let zero = || c.builder.zero();
-        check_constant_folding_property(c.clone(), c.clone() + zero())?;
-        check_constant_folding_property(c.clone(), zero() + c.clone())?;
-        check_constant_folding_property(c.clone(), zero() + c.clone() + zero())?;
+        prop_assert_eq!(c.clone(), c.clone() + zero());
+        prop_assert_eq!(c.clone(), zero() + c.clone());
+        prop_assert_eq!(c.clone(), zero() + c.clone() + zero());
     }
 
     #[proptest]
     fn constant_folding_can_deal_with_subtracting_zero(
         #[strategy(arb())] c: ConstraintCircuitMonad<DualRowIndicator>,
     ) {
-        check_constant_folding_property(c.clone(), c.clone() - c.builder.zero())?;
+        prop_assert_eq!(c.clone(), c.clone() - c.builder.zero());
     }
 
     /// Terribly confusing, super rare bug that's extremely difficult to reproduce or pin down:
@@ -1219,44 +1246,18 @@ mod tests {
             _ => unreachable!(),
         };
 
-        check_constant_folding_property(c, redundant_circuit)?;
-    }
-
-    fn check_constant_folding_property<II: InputIndicator>(
-        circuit: ConstraintCircuitMonad<II>,
-        circuit_with_redundancy: ConstraintCircuitMonad<II>,
-    ) -> Result<(), TestCaseError> {
-        prop_assert_ne!(&circuit, &circuit_with_redundancy);
-        let mut circuits = [circuit, circuit_with_redundancy];
-        ConstraintCircuitMonad::constant_folding(&mut circuits);
-        let [circuit_0, circuit_1] = circuits;
-        prop_assert_eq!(circuit_0, circuit_1);
-        Ok(())
+        prop_assert_eq!(c, redundant_circuit);
     }
 
     #[proptest]
     fn constant_folding_does_not_replace_0_minus_circuit_with_the_circuit(
         #[strategy(arb())] circuit: ConstraintCircuitMonad<DualRowIndicator>,
     ) {
+        if circuit.circuit.borrow().is_zero() {
+            return Err(TestCaseError::Reject("0 - 0 actually is 0".into()));
+        }
         let zero_minus_circuit = circuit.builder.zero() - circuit.clone();
         prop_assert_ne!(&circuit, &zero_minus_circuit);
-
-        let mut circuits = [circuit, zero_minus_circuit];
-        ConstraintCircuitMonad::constant_folding(&mut circuits);
-        let circuit = circuits[0].circuit.borrow().expression.clone();
-        let zero_minus_circuit = circuits[1].circuit.borrow().expression.clone();
-
-        match (circuit, zero_minus_circuit) {
-            // Takes care of special case `circuit == 0`, where `0 - c == c`. Also gives stronger
-            // guarantees if folding reduces circuit to constant, but that's just bonus.
-            (BConstant(l), BConstant(r)) => prop_assert_eq!(l, -r),
-            (XConstant(l), XConstant(r)) => prop_assert_eq!(l, -r),
-            (BConstant(_), XConstant(_)) | (XConstant(_), BConstant(_)) => {
-                let reason = "`circuit` and `0 - circuit` must be of same type";
-                return Err(TestCaseError::fail(reason));
-            }
-            _ => prop_assert_ne!(&circuits[0], &circuits[1]),
-        }
     }
 
     /// Recursively evaluates the given constraint circuit and its sub-circuits on the given
@@ -1351,9 +1352,7 @@ mod tests {
         ) -> Vec<ConstraintCircuitMonad<II>>,
     ) -> Vec<ConstraintCircuitMonad<II>> {
         let circuit_builder = ConstraintCircuitBuilder::new();
-        let mut multicircuit = multicircuit_builder(&circuit_builder);
-        ConstraintCircuitMonad::constant_folding(&mut multicircuit);
-        multicircuit
+        multicircuit_builder(&circuit_builder)
     }
 
     #[test]
@@ -2137,18 +2136,24 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "requires a proper debugging session, or maybe additional optimizations"]
-    fn constraint_circuit_builder_reuses_existing_nodes_when_folding_constants() {
+    fn equivalent_nodes_are_detected_when_present() {
         let builder = ConstraintCircuitBuilder::new();
-        let constant = |c| builder.b_constant(c);
-        let base_row = |r| builder.input(BaseRow(r));
 
-        let c_0 = base_row(0);
-        let c_1 = base_row(0) - constant(0);
-        let mut constraints = [c_0, c_1];
+        let x = |i| builder.input(BaseRow(i));
+        let ch = |i: usize| builder.challenge(i);
 
-        ConstraintCircuitMonad::constant_folding(&mut constraints);
-        let mut constraints = constraints.iter().map(|c| c.consume()).collect_vec();
-        ConstraintCircuit::assert_unique_ids(&mut constraints);
+        let u0 = x(0) + x(1);
+        let u1 = x(2) + x(3);
+        let v = u0 * u1;
+
+        let z0 = x(0) * x(2);
+        let z2 = x(1) * x(3);
+
+        let z1 = x(1) * x(2) + x(0) * x(3);
+        let w = v - z0 - z2;
+        assert!(w.find_equivalent_nodes().is_empty());
+
+        let o = ch(0) * z1 - ch(1) * w;
+        assert!(!o.find_equivalent_nodes().is_empty());
     }
 }

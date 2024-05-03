@@ -80,6 +80,7 @@ impl RamTable {
         for (row_index, row) in sorted_rows.enumerate() {
             ram_table.row_mut(row_index).assign(&row);
         }
+
         let all_ram_pointers = ram_table.column(RamPointer.base_table_index());
         let unique_ram_pointers = all_ram_pointers.iter().unique().copied().collect_vec();
         let (bezout_0, bezout_1) =
@@ -180,7 +181,6 @@ impl RamTable {
             let clk_diff = next_row[CLK.base_table_index()] - curr_row[CLK.base_table_index()];
 
             if ramp_diff.is_zero() {
-                assert!(!clk_diff.is_zero(), "row_idx = {row_idx}");
                 clock_jump_differences.push(clk_diff);
             } else {
                 current_bcpc_0 = bezout_coefficient_polynomial_coefficients_0.pop().unwrap();
