@@ -1101,8 +1101,8 @@ mod tests {
 
     #[proptest]
     fn polynomial_evaluation_and_barycentric_evaluation_are_equivalent(
-        #[strategy(1usize..13)] _log_num_coefficients: usize,
-        #[strategy(1usize..6)] log_expansion_factor: usize,
+        #[strategy(1_usize..13)] _log_num_coefficients: usize,
+        #[strategy(1_usize..6)] log_expansion_factor: usize,
         #[strategy(vec(arb(), 1 << #_log_num_coefficients))] coefficients: Vec<XFieldElement>,
         #[strategy(arb())] indeterminate: XFieldElement,
     ) {

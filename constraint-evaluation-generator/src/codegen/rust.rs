@@ -343,7 +343,7 @@ mod tests {
 
     #[test]
     fn tokenizing_extension_field_elements_produces_expected_result() {
-        let xfe = xfe!([42, 43, 44,]);
+        let xfe = xfe!([42, 43, 44]);
         let expected = "XFieldElement :: new ([\
             BFieldElement :: from_raw_u64 (180388626390u64) , \
             BFieldElement :: from_raw_u64 (184683593685u64) , \
