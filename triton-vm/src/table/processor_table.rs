@@ -953,9 +953,9 @@ impl ExtProcessorTable {
 
     /// Op Stack height does not change and except for the top n elements,
     /// the values remain also.
-    fn instruction_group_op_stack_remains_except_top_n_elements_unconstrained(
-        n: usize,
+    fn instruction_group_op_stack_remains_except_top_n(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+        n: usize,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
         let curr_base_row = |col: ProcessorBaseTableColumn| {
             circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
@@ -977,10 +977,7 @@ impl ExtProcessorTable {
     fn instruction_group_keep_op_stack(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        Self::instruction_group_op_stack_remains_except_top_n_elements_unconstrained(
-            0,
-            circuit_builder,
-        )
+        Self::instruction_group_op_stack_remains_except_top_n(circuit_builder, 0)
     }
 
     /// Op stack *height* does not change, _i.e._, the accumulator for the
@@ -1933,10 +1930,7 @@ impl ExtProcessorTable {
         [
             specific_constraints,
             Self::instruction_group_step_1(circuit_builder),
-            Self::instruction_group_op_stack_remains_except_top_n_elements_unconstrained(
-                1,
-                circuit_builder,
-            ),
+            Self::instruction_group_op_stack_remains_except_top_n(circuit_builder, 1),
             Self::instruction_group_no_ram(circuit_builder),
             Self::instruction_group_no_io(circuit_builder),
         ]
@@ -2074,10 +2068,7 @@ impl ExtProcessorTable {
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
         [
             Self::instruction_group_step_1(circuit_builder),
-            Self::instruction_group_op_stack_remains_except_top_n_elements_unconstrained(
-                1,
-                circuit_builder,
-            ),
+            Self::instruction_group_op_stack_remains_except_top_n(circuit_builder, 1),
             Self::instruction_group_no_ram(circuit_builder),
             Self::instruction_group_no_io(circuit_builder),
         ]
@@ -2114,10 +2105,7 @@ impl ExtProcessorTable {
         [
             specific_constraints,
             Self::instruction_group_step_1(circuit_builder),
-            Self::instruction_group_op_stack_remains_except_top_n_elements_unconstrained(
-                2,
-                circuit_builder,
-            ),
+            Self::instruction_group_op_stack_remains_except_top_n(circuit_builder, 2),
             Self::instruction_group_no_ram(circuit_builder),
             Self::instruction_group_no_io(circuit_builder),
         ]
@@ -2129,10 +2117,7 @@ impl ExtProcessorTable {
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
         [
             Self::instruction_group_step_1(circuit_builder),
-            Self::instruction_group_op_stack_remains_except_top_n_elements_unconstrained(
-                1,
-                circuit_builder,
-            ),
+            Self::instruction_group_op_stack_remains_except_top_n(circuit_builder, 1),
             Self::instruction_group_no_ram(circuit_builder),
             Self::instruction_group_no_io(circuit_builder),
         ]
@@ -2244,10 +2229,7 @@ impl ExtProcessorTable {
         ];
         [
             specific_constraints,
-            Self::instruction_group_op_stack_remains_except_top_n_elements_unconstrained(
-                3,
-                circuit_builder,
-            ),
+            Self::instruction_group_op_stack_remains_except_top_n(circuit_builder, 3),
             Self::instruction_group_step_1(circuit_builder),
             Self::instruction_group_no_ram(circuit_builder),
             Self::instruction_group_no_io(circuit_builder),
@@ -2441,10 +2423,7 @@ impl ExtProcessorTable {
         [
             Self::instruction_group_step_1(circuit_builder),
             Self::instruction_group_no_io(circuit_builder),
-            Self::instruction_group_op_stack_remains_except_top_n_elements_unconstrained(
-                5,
-                circuit_builder,
-            ),
+            Self::instruction_group_op_stack_remains_except_top_n(circuit_builder, 5),
             Self::instruction_group_keep_jump_stack(circuit_builder),
             // read two xfes from RAM
             vec![Self::read_from_ram_to(
@@ -2496,10 +2475,7 @@ impl ExtProcessorTable {
         [
             Self::instruction_group_step_1(circuit_builder),
             Self::instruction_group_no_io(circuit_builder),
-            Self::instruction_group_op_stack_remains_except_top_n_elements_unconstrained(
-                5,
-                circuit_builder,
-            ),
+            Self::instruction_group_op_stack_remains_except_top_n(circuit_builder, 5),
             Self::instruction_group_keep_jump_stack(circuit_builder),
             // read one bfe and one xfe from RAM
             vec![Self::read_from_ram_to(
