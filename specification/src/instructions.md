@@ -135,10 +135,10 @@ Triton VM cannot know the number of elements that will be absorbed.
 
 | Instruction | Opcode | old op stack    | new op stack | Description                                                                                                                                        |
 |:------------|-------:|:----------------|:-------------|:---------------------------------------------------------------------------------------------------------------------------------------------------|
-| `xxadd`     |     66 | `_ z y x b c a` | `_ w v u`    | Adds the two extension field elements encoded by field elements `z y x` and `b c a`.                                                               |
-| `xxmul`     |     74 | `_ z y x b c a` | `_ w v u`    | Multiplies the two extension field elements encoded by field elements `z y x` and `b c a`.                                                         |
-| `xinvert`   |     64 | `_ z y x`       | `_ w v u`    | Inverts the extension field element encoded by field elements `z y x` in-place. Crashes the VM if the extension field element is 0.                |
-| `xbmul`     |     82 | `_ z y x a`     | `_ w v u`    | Scalar multiplication of the extension field element encoded by field elements `z y x` with field element `a`. Overwrites `z y x` with the result. |
+| `xx_add`    |     66 | `_ z y x b c a` | `_ w v u`    | Adds the two extension field elements encoded by field elements `z y x` and `b c a`.                                                               |
+| `xx_mul`    |     74 | `_ z y x b c a` | `_ w v u`    | Multiplies the two extension field elements encoded by field elements `z y x` and `b c a`.                                                         |
+| `x_invert`  |     64 | `_ z y x`       | `_ w v u`    | Inverts the extension field element encoded by field elements `z y x` in-place. Crashes the VM if the extension field element is 0.                |
+| `xb_mul`    |     82 | `_ z y x a`     | `_ w v u`    | Scalar multiplication of the extension field element encoded by field elements `z y x` with field element `a`. Overwrites `z y x` with the result. |
 
 ## Input/Output
 
@@ -149,7 +149,7 @@ Triton VM cannot know the number of elements that will be absorbed.
 
 ## Many-In-One
 
-| Instruction | Opcode | old op stack    | new op stack                 | Description |
-|:------------|--------|:----------------|:-----------------------------|-------------|
-| `xxdotstep` | 72     | `_ z y x *b *a` | `_ z+p2 y+p1 x+p0 *b+3 *a+3` | Reads two extension field elements from RAM located at the addresses corresponding to the two top stack elements, multiplies the extension field elements, and adds the product `(p0, p1, p2)` to an accumulator located on stack immediately below the two pointers. Also, increase the pointers by the number of words read. |
-| `xxdotstep` | 80     | `_ z y x *b *a` | `_ z+p2 y+p1 x+p0 *b+3 *a+1` | Reads one base field element from RAM located at the addresses corresponding to the top of the stack, one extension field element from RAM located at the address of the second stack element, multiplies the field elements, and adds the product `(p0, p1, p2)` to an accumulator located on stack immediately below the two pointers. Also, increase the pointers by the number of words read. |
+| Instruction   | Opcode | old op stack    | new op stack                 | Description                                                                                                                                                                                                                                                                                                                                                                                       |
+|:--------------|:-------|:----------------|:-----------------------------|:--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `xx_dot_step` | 72     | `_ z y x *b *a` | `_ z+p2 y+p1 x+p0 *b+3 *a+3` | Reads two extension field elements from RAM located at the addresses corresponding to the two top stack elements, multiplies the extension field elements, and adds the product `(p0, p1, p2)` to an accumulator located on stack immediately below the two pointers. Also, increase the pointers by the number of words read.                                                                    |
+| `xx_dot_step` | 80     | `_ z y x *b *a` | `_ z+p2 y+p1 x+p0 *b+3 *a+1` | Reads one base field element from RAM located at the addresses corresponding to the top of the stack, one extension field element from RAM located at the address of the second stack element, multiplies the field elements, and adds the product `(p0, p1, p2)` to an accumulator located on stack immediately below the two pointers. Also, increase the pointers by the number of words read. |

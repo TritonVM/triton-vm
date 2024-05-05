@@ -420,7 +420,7 @@ mod tests {
 
     #[test]
     fn xfe_inverse_of_zero() {
-        let program = triton_program!(push 0 push 0 push 0 xinvert halt);
+        let program = triton_program!(push 0 push 0 push 0 x_invert halt);
         let_assert!(Err(err) = program.run([].into(), [].into()));
         let_assert!(InstructionError::InverseOfZero = err.source);
     }

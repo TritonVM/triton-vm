@@ -264,15 +264,15 @@ fn an_instruction(s: &str) -> ParseResult<AnInstruction<String>> {
     let pow = instruction("pow", Pow);
     let div_mod = instruction("div_mod", DivMod);
     let pop_count = instruction("pop_count", PopCount);
-    let xxadd = instruction("xxadd", XxAdd);
-    let xxmul = instruction("xxmul", XxMul);
-    let xinvert = instruction("xinvert", XInvert);
-    let xbmul = instruction("xbmul", XbMul);
+    let xx_add = instruction("xx_add", XxAdd);
+    let xx_mul = instruction("xx_mul", XxMul);
+    let x_invert = instruction("x_invert", XInvert);
+    let xb_mul = instruction("xb_mul", XbMul);
 
     let base_field_arithmetic_on_stack = alt((add, mul, invert, eq));
     let bitwise_arithmetic_on_stack =
         alt((split, lt, and, xor, log_2_floor, pow, div_mod, pop_count));
-    let extension_field_arithmetic_on_stack = alt((xxadd, xxmul, xinvert, xbmul));
+    let extension_field_arithmetic_on_stack = alt((xx_add, xx_mul, x_invert, xb_mul));
     let arithmetic_on_stack = alt((
         base_field_arithmetic_on_stack,
         bitwise_arithmetic_on_stack,
@@ -286,10 +286,10 @@ fn an_instruction(s: &str) -> ParseResult<AnInstruction<String>> {
     let read_write = alt((read_io, write_io));
 
     // Many-in-One
-    let xxdotstep = instruction("xxdotstep", XxDotStep);
-    let xbdotstep = instruction("xbdotstep", XbDotStep);
+    let xx_dot_step = instruction("xx_dot_step", XxDotStep);
+    let xb_dot_step = instruction("xb_dot_step", XbDotStep);
 
-    let many_to_one = alt((xxdotstep, xbdotstep));
+    let many_to_one = alt((xx_dot_step, xb_dot_step));
 
     // Because of common prefixes, the following parsers are sensitive to order:
     //

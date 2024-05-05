@@ -2124,7 +2124,7 @@ impl ExtProcessorTable {
         .concat()
     }
 
-    fn instruction_xxadd(
+    fn instruction_xx_add(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
         let curr_base_row = |col: ProcessorBaseTableColumn| {
@@ -2153,7 +2153,7 @@ impl ExtProcessorTable {
         .concat()
     }
 
-    fn instruction_xxmul(
+    fn instruction_xx_mul(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
         let curr_base_row = |col: ProcessorBaseTableColumn| {
@@ -2225,7 +2225,7 @@ impl ExtProcessorTable {
         .concat()
     }
 
-    fn instruction_xbmul(
+    fn instruction_xb_mul(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
         let curr_base_row = |col: ProcessorBaseTableColumn| {
@@ -2383,7 +2383,7 @@ impl ExtProcessorTable {
             .collect()
     }
 
-    fn instruction_xxdotstep(
+    fn instruction_xx_dot_step(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
         let curr_base_row = |col: ProcessorBaseTableColumn| {
@@ -2428,7 +2428,7 @@ impl ExtProcessorTable {
         .concat()
     }
 
-    fn instruction_xbdotstep(
+    fn instruction_xb_dot_step(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
         let curr_base_row = |col: ProcessorBaseTableColumn| {
@@ -2508,15 +2508,15 @@ impl ExtProcessorTable {
             Pow => ExtProcessorTable::instruction_pow(circuit_builder),
             DivMod => ExtProcessorTable::instruction_div_mod(circuit_builder),
             PopCount => ExtProcessorTable::instruction_pop_count(circuit_builder),
-            XxAdd => ExtProcessorTable::instruction_xxadd(circuit_builder),
+            XxAdd => ExtProcessorTable::instruction_xx_add(circuit_builder),
 
-            XxMul => ExtProcessorTable::instruction_xxmul(circuit_builder),
+            XxMul => ExtProcessorTable::instruction_xx_mul(circuit_builder),
             XInvert => ExtProcessorTable::instruction_xinv(circuit_builder),
-            XbMul => ExtProcessorTable::instruction_xbmul(circuit_builder),
+            XbMul => ExtProcessorTable::instruction_xb_mul(circuit_builder),
             ReadIo(_) => ExtProcessorTable::instruction_read_io(circuit_builder),
             WriteIo(_) => ExtProcessorTable::instruction_write_io(circuit_builder),
-            XxDotStep => ExtProcessorTable::instruction_xxdotstep(circuit_builder),
-            XbDotStep => ExtProcessorTable::instruction_xbdotstep(circuit_builder),
+            XxDotStep => ExtProcessorTable::instruction_xx_dot_step(circuit_builder),
+            XbDotStep => ExtProcessorTable::instruction_xb_dot_step(circuit_builder),
         }
     }
 
@@ -4100,10 +4100,10 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn transition_constraints_for_instruction_xxadd() {
+    fn transition_constraints_for_instruction_xx_add() {
         let programs = [
-            triton_program!(push 5 push 6 push 7 push 8 push 9 push 10 xxadd halt),
-            triton_program!(push 2 push 3 push 4 push -2 push -3 push -4 xxadd halt),
+            triton_program!(push 5 push 6 push 7 push 8 push 9 push 10 xx_add halt),
+            triton_program!(push 2 push 3 push 4 push -2 push -3 push -4 xx_add halt),
         ];
         let test_rows = programs.map(|program| test_row_from_program(program, 6));
         let debug_info = TestRowsDebugInfo {
@@ -4115,10 +4115,10 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn transition_constraints_for_instruction_xxmul() {
+    fn transition_constraints_for_instruction_xx_mul() {
         let programs = [
-            triton_program!(push 5 push 6 push 7 push 8 push 9 push 10 xxmul halt),
-            triton_program!(push 2 push 3 push 4 push -2 push -3 push -4 xxmul halt),
+            triton_program!(push 5 push 6 push 7 push 8 push 9 push 10 xx_mul halt),
+            triton_program!(push 2 push 3 push 4 push -2 push -3 push -4 xx_mul halt),
         ];
         let test_rows = programs.map(|program| test_row_from_program(program, 6));
         let debug_info = TestRowsDebugInfo {
@@ -4130,10 +4130,10 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn transition_constraints_for_instruction_xinvert() {
+    fn transition_constraints_for_instruction_x_invert() {
         let programs = [
-            triton_program!(push 5 push 6 push 7 xinvert halt),
-            triton_program!(push -2 push -3 push -4 xinvert halt),
+            triton_program!(push 5 push 6 push 7 x_invert halt),
+            triton_program!(push -2 push -3 push -4 x_invert halt),
         ];
         let test_rows = programs.map(|program| test_row_from_program(program, 3));
         let debug_info = TestRowsDebugInfo {
@@ -4145,10 +4145,10 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn transition_constraints_for_instruction_xbmul() {
+    fn transition_constraints_for_instruction_xb_mul() {
         let programs = [
-            triton_program!(push 5 push 6 push 7 push 2 xbmul halt),
-            triton_program!(push 2 push 3 push 4 push -2 xbmul halt),
+            triton_program!(push 5 push 6 push 7 push 2 xb_mul halt),
+            triton_program!(push 2 push 3 push 4 push -2 xb_mul halt),
         ];
         let test_rows = programs.map(|program| test_row_from_program(program, 4));
         let debug_info = TestRowsDebugInfo {

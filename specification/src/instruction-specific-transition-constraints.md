@@ -807,7 +807,7 @@ In addition to its [instruction groups](instruction-groups.md), this instruction
 This instruction is fully constrained by its [instruction groups](instruction-groups.md)
 Beyond that, correct transition is guaranteed by the [U32 Table](u32-table.md).
 
-## Instruction `xxadd`
+## Instruction `xx_add`
 
 In addition to its [instruction groups](instruction-groups.md), this instruction has the following constraints.
 
@@ -849,7 +849,7 @@ In addition to its [instruction groups](instruction-groups.md), this instruction
     `·(🪤 - 🍋·clk - 🍊 - 🍉·(op_stack_pointer' + 1) - 🫒·st14')`<br/>
     `·(🪤 - 🍋·clk - 🍊 - 🍉·(op_stack_pointer' + 2) - 🫒·st13')`
 
-## Instruction `xxmul`
+## Instruction `xx_mul`
 
 In addition to its [instruction groups](instruction-groups.md), this instruction has the following constraints.
 
@@ -891,7 +891,7 @@ In addition to its [instruction groups](instruction-groups.md), this instruction
    `·(🪤 - 🍋·clk - 🍊 - 🍉·(op_stack_pointer' + 1) - 🫒·st14')`<br/>
    `·(🪤 - 🍋·clk - 🍊 - 🍉·(op_stack_pointer' + 2) - 🫒·st13')`
 
-## Instruction `xinvert`
+## Instruction `x_invert`
 
 In addition to its [instruction groups](instruction-groups.md), this instruction has the following constraints.
 
@@ -907,7 +907,7 @@ In addition to its [instruction groups](instruction-groups.md), this instruction
 1. `st1·st0' + st0·st1' - st2·st2' + st2·st1' + st1·st2'`
 1. `st2·st0' + st1·st1' + st0·st2' + st2·st2'`
 
-## Instruction `xbmul`
+## Instruction `xb_mul`
 
 In addition to its [instruction groups](instruction-groups.md), this instruction has the following constraints.
 
@@ -991,7 +991,7 @@ In addition to its [instruction groups](instruction-groups.md), this instruction
     `+ ind_4(hv3, hv2, hv1, hv0)·(RunningEvaluationStandardOutput' - 🧯·(🧯·(🧯·(🧯·RunningEvaluationStandardOutput - st0) - st1) - st2) - st3)`<br />
     `+ ind_5(hv3, hv2, hv1, hv0)·(RunningEvaluationStandardOutput' - 🧯·(🧯·(🧯·(🧯·(🧯·RunningEvaluationStandardOutput - st0) - st1) - st2) - st3) - st4)`
 
-## Instruction `xxdotstep`
+## Instruction `xx_dot_step`
 
 In addition to its [instruction groups](instruction-groups.md), this instruction has the following constraints.
 
@@ -1002,7 +1002,7 @@ In addition to its [instruction groups](instruction-groups.md), this instruction
 1. Add `(hv0 + hv1·x + hv2·x²) · (hv3 + hv4·x + hv5·x²)` into `(st2, st3, st4)`
 1. Increase the pointers: `st0` and `st1` by 3 each.
 
-## Instruction `xbdotstep`
+## Instruction `xb_dot_step`
 
 In addition to its [instruction groups](instruction-groups.md), this instruction has the following constraints.
 

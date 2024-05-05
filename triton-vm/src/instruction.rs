@@ -296,14 +296,14 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
             Pow => "pow",
             DivMod => "div_mod",
             PopCount => "pop_count",
-            XxAdd => "xxadd",
-            XxMul => "xxmul",
-            XInvert => "xinvert",
-            XbMul => "xbmul",
+            XxAdd => "xx_add",
+            XxMul => "xx_mul",
+            XInvert => "x_invert",
+            XbMul => "xb_mul",
             ReadIo(_) => "read_io",
             WriteIo(_) => "write_io",
-            XxDotStep => "xxdotstep",
-            XbDotStep => "xbdotstep",
+            XxDotStep => "xx_dot_step",
+            XbDotStep => "xb_dot_step",
         }
     }
 

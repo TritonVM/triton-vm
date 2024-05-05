@@ -57,6 +57,6 @@ For instruction group [`decompose_arg`](instruction-groups.md#group-decompose_ar
 [`divine_sibling`](instruction-specific-transition-constraints.md#helper-variable-definitions-for-divine_sibling),
 [`split`](instruction-specific-transition-constraints.md#helper-variable-definitions-for-split),
 [`eq`](instruction-specific-transition-constraints.md#helper-variable-definitions-for-eq),
-[`xxdotstep`](instruction-specific-transition-constraints.md#instruction-xxdotstep), and
-[`xbdotstep`](instruction-specific-transition-constraints.md#instruction-xbdotstep),
+[`xx_dot_step`](instruction-specific-transition-constraints.md#instruction-xx_dot_step), and
+[`xb_dot_step`](instruction-specific-transition-constraints.md#instruction-xb_dot_step),
 the behavior is defined in the respective sections.

@@ -1753,13 +1753,13 @@ pub(crate) mod tests {
 
     #[test]
     fn can_compute_dot_product_from_uninitialized_ram() {
-        let program = triton_program!(xxdotstep xbdotstep halt);
+        let program = triton_program!(xx_dot_step xb_dot_step halt);
         program
             .run(PublicInput::default(), NonDeterminism::default())
             .unwrap();
     }
 
-    pub(crate) fn property_based_test_program_for_xxdotstep() -> ProgramAndInput {
+    pub(crate) fn property_based_test_program_for_xx_dot_step() -> ProgramAndInput {
         let mut rng = ThreadRng::default();
         let n = rng.gen_range(0..10);
 
@@ -1795,7 +1795,7 @@ pub(crate) mod tests {
 
         let push_and_write_vector_one = into_write_instructions(vector_one);
         let push_and_write_vector_two = into_write_instructions(vector_two);
-        let many_dotsteps = (0..n).map(|_| triton_instr!(xxdotstep)).collect_vec();
+        let many_dotsteps = (0..n).map(|_| triton_instr!(xx_dot_step)).collect_vec();
 
         let code = triton_program! {
             push 0
@@ -1819,12 +1819,12 @@ pub(crate) mod tests {
 
     /// Sanity check
     #[test]
-    fn run_dont_prove_property_based_test_program_for_xxdotstep() {
-        let source_code_and_input = property_based_test_program_for_xxdotstep();
+    fn run_dont_prove_property_based_test_program_for_xx_dot_step() {
+        let source_code_and_input = property_based_test_program_for_xx_dot_step();
         source_code_and_input.run().unwrap();
     }
 
-    pub(crate) fn property_based_test_program_for_xbdotstep() -> ProgramAndInput {
+    pub(crate) fn property_based_test_program_for_xb_dot_step() -> ProgramAndInput {
         let mut rng = ThreadRng::default();
         let n = rng.gen_range(0..10);
         let push_xfe = |x: XFieldElement| {
@@ -1868,7 +1868,7 @@ pub(crate) mod tests {
             .flat_map(|i| push_and_write_bfe(vector_two[i]))
             .collect_vec();
         let push_inner_product = push_xfe(inner_product);
-        let many_dotsteps = (0..n).map(|_| triton_instr!(xbdotstep)).collect_vec();
+        let many_dotsteps = (0..n).map(|_| triton_instr!(xb_dot_step)).collect_vec();
         let code = triton_program! {
             push 0
             {&push_and_write_vector_one}
@@ -1893,8 +1893,8 @@ pub(crate) mod tests {
 
     /// Sanity check
     #[test]
-    fn run_dont_prove_property_based_test_program_for_xbdotstep() {
-        let source_code_and_input = property_based_test_program_for_xbdotstep();
+    fn run_dont_prove_property_based_test_program_for_xb_dot_step() {
+        let source_code_and_input = property_based_test_program_for_xb_dot_step();
         source_code_and_input.run().unwrap();
     }
 
@@ -1926,27 +1926,27 @@ pub(crate) mod tests {
         ))
     }
 
-    pub(crate) fn test_program_for_xxadd() -> ProgramAndInput {
+    pub(crate) fn test_program_for_xx_add() -> ProgramAndInput {
         ProgramAndInput::new(triton_program!(
-            push 5 push 6 push 7 push 8 push 9 push 10 xxadd halt
+            push 5 push 6 push 7 push 8 push 9 push 10 xx_add halt
         ))
     }
 
-    pub(crate) fn test_program_for_xxmul() -> ProgramAndInput {
+    pub(crate) fn test_program_for_xx_mul() -> ProgramAndInput {
         ProgramAndInput::new(triton_program!(
-            push 5 push 6 push 7 push 8 push 9 push 10 xxmul halt
+            push 5 push 6 push 7 push 8 push 9 push 10 xx_mul halt
         ))
     }
 
-    pub(crate) fn test_program_for_xinvert() -> ProgramAndInput {
+    pub(crate) fn test_program_for_x_invert() -> ProgramAndInput {
         ProgramAndInput::new(triton_program!(
-            push 5 push 6 push 7 xinvert halt
+            push 5 push 6 push 7 x_invert halt
         ))
     }
 
-    pub(crate) fn test_program_for_xbmul() -> ProgramAndInput {
+    pub(crate) fn test_program_for_xb_mul() -> ProgramAndInput {
         ProgramAndInput::new(triton_program!(
-            push 5 push 6 push 7 push 8 xbmul halt
+            push 5 push 6 push 7 push 8 xb_mul halt
         ))
     }
 
@@ -1977,7 +1977,7 @@ pub(crate) mod tests {
     }
 
     #[proptest]
-    fn xxadd(
+    fn xx_add(
         #[strategy(arb())] left_operand: XFieldElement,
         #[strategy(arb())] right_operand: XFieldElement,
     ) {
@@ -1988,7 +1988,7 @@ pub(crate) mod tests {
             push {left_operand.coefficients[2]}
             push {left_operand.coefficients[1]}
             push {left_operand.coefficients[0]}
-            xxadd
+            xx_add
             write_io 3
             halt
         );
@@ -1998,7 +1998,7 @@ pub(crate) mod tests {
     }
 
     #[proptest]
-    fn xxmul(
+    fn xx_mul(
         #[strategy(arb())] left_operand: XFieldElement,
         #[strategy(arb())] right_operand: XFieldElement,
     ) {
@@ -2009,7 +2009,7 @@ pub(crate) mod tests {
             push {left_operand.coefficients[2]}
             push {left_operand.coefficients[1]}
             push {left_operand.coefficients[0]}
-            xxmul
+            xx_mul
             write_io 3
             halt
         );
@@ -2028,7 +2028,7 @@ pub(crate) mod tests {
             push {operand.coefficients[2]}
             push {operand.coefficients[1]}
             push {operand.coefficients[0]}
-            xinvert
+            x_invert
             write_io 3
             halt
         );
@@ -2038,13 +2038,13 @@ pub(crate) mod tests {
     }
 
     #[proptest]
-    fn xbmul(#[strategy(arb())] scalar: BFieldElement, #[strategy(arb())] operand: XFieldElement) {
+    fn xb_mul(#[strategy(arb())] scalar: BFieldElement, #[strategy(arb())] operand: XFieldElement) {
         let program = triton_program!(
             push {operand.coefficients[2]}
             push {operand.coefficients[1]}
             push {operand.coefficients[0]}
             push {scalar}
-            xbmul
+            xb_mul
             write_io 3
             halt
         );
@@ -2474,8 +2474,8 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn instruction_xinvert_does_not_change_vm_state_when_crashing_vm() {
-        let program = triton_program! { xinvert halt };
+    fn instruction_x_invert_does_not_change_vm_state_when_crashing_vm() {
+        let program = triton_program! { x_invert halt };
         instruction_does_not_change_vm_state_when_crashing_vm(program, 0);
     }
 
@@ -2495,7 +2495,7 @@ pub(crate) mod tests {
     }
 
     #[proptest]
-    fn xxdotstep(
+    fn xx_dot_step(
         #[strategy(0_usize..=25)] n: usize,
         #[strategy(vec(arb(), #n))] lhs: Vec<XFieldElement>,
         #[strategy(vec(arb(), #n))] rhs: Vec<XFieldElement>,
@@ -2521,14 +2521,14 @@ pub(crate) mod tests {
 
         let public_input = PublicInput::default();
         let secret_input = NonDeterminism::default().with_ram(ram);
-        let many_xxdotsteps = triton_asm![xxdotstep; n];
+        let many_xx_dot_steps = triton_asm![xx_dot_step; n];
         let program = triton_program! {
             push 0 push 0 push 0
 
             push {lhs_address}
             push {rhs_address}
 
-            {&many_xxdotsteps}
+            {&many_xx_dot_steps}
             halt
         };
 
@@ -2554,7 +2554,7 @@ pub(crate) mod tests {
     }
 
     #[proptest]
-    fn xbdotstep(
+    fn xb_dot_step(
         #[strategy(0_usize..=25)] n: usize,
         #[strategy(vec(arb(), #n))] lhs: Vec<XFieldElement>,
         #[strategy(vec(arb(), #n))] rhs: Vec<BFieldElement>,
@@ -2582,14 +2582,14 @@ pub(crate) mod tests {
 
         let public_input = PublicInput::default();
         let secret_input = NonDeterminism::default().with_ram(ram);
-        let many_xbdotsteps = triton_asm![xbdotstep; n];
+        let many_xb_dot_steps = triton_asm![xb_dot_step; n];
         let program = triton_program! {
             push 0 push 0 push 0
 
             push {lhs_address}
             push {rhs_address}
 
-            {&many_xbdotsteps}
+            {&many_xb_dot_steps}
             halt
         };
 

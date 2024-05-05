@@ -1518,23 +1518,23 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn check_grand_cross_table_argument_for_test_program_for_xxadd() {
-        check_grand_cross_table_argument(test_program_for_xxadd())
+    fn check_grand_cross_table_argument_for_test_program_for_xx_add() {
+        check_grand_cross_table_argument(test_program_for_xx_add())
     }
 
     #[test]
-    fn check_grand_cross_table_argument_for_test_program_for_xxmul() {
-        check_grand_cross_table_argument(test_program_for_xxmul())
+    fn check_grand_cross_table_argument_for_test_program_for_xx_mul() {
+        check_grand_cross_table_argument(test_program_for_xx_mul())
     }
 
     #[test]
-    fn check_grand_cross_table_argument_for_test_program_for_xinvert() {
-        check_grand_cross_table_argument(test_program_for_xinvert())
+    fn check_grand_cross_table_argument_for_test_program_for_x_invert() {
+        check_grand_cross_table_argument(test_program_for_x_invert())
     }
 
     #[test]
-    fn check_grand_cross_table_argument_for_test_program_for_xbmul() {
-        check_grand_cross_table_argument(test_program_for_xbmul())
+    fn check_grand_cross_table_argument_for_test_program_for_xb_mul() {
+        check_grand_cross_table_argument(test_program_for_xb_mul())
     }
 
     #[test]
@@ -1959,23 +1959,23 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn constraints_evaluate_to_zero_on_program_for_xxadd() {
-        triton_constraints_evaluate_to_zero(test_program_for_xxadd())
+    fn constraints_evaluate_to_zero_on_program_for_xx_add() {
+        triton_constraints_evaluate_to_zero(test_program_for_xx_add())
     }
 
     #[test]
-    fn constraints_evaluate_to_zero_on_program_for_xxmul() {
-        triton_constraints_evaluate_to_zero(test_program_for_xxmul())
+    fn constraints_evaluate_to_zero_on_program_for_xx_mul() {
+        triton_constraints_evaluate_to_zero(test_program_for_xx_mul())
     }
 
     #[test]
-    fn constraints_evaluate_to_zero_on_program_for_xinvert() {
-        triton_constraints_evaluate_to_zero(test_program_for_xinvert())
+    fn constraints_evaluate_to_zero_on_program_for_x_invert() {
+        triton_constraints_evaluate_to_zero(test_program_for_x_invert())
     }
 
     #[test]
-    fn constraints_evaluate_to_zero_on_program_for_xbmul() {
-        triton_constraints_evaluate_to_zero(test_program_for_xbmul())
+    fn constraints_evaluate_to_zero_on_program_for_xb_mul() {
+        triton_constraints_evaluate_to_zero(test_program_for_xb_mul())
     }
 
     #[test]
@@ -2054,13 +2054,13 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn constraints_evaluate_to_zero_on_property_based_test_program_for_xxdotstep() {
-        triton_constraints_evaluate_to_zero(property_based_test_program_for_xxdotstep());
+    fn constraints_evaluate_to_zero_on_property_based_test_program_for_xx_dot_step() {
+        triton_constraints_evaluate_to_zero(property_based_test_program_for_xx_dot_step());
     }
 
     #[test]
-    fn constraints_evaluate_to_zero_on_property_based_test_program_for_xbdotstep() {
-        triton_constraints_evaluate_to_zero(property_based_test_program_for_xbdotstep());
+    fn constraints_evaluate_to_zero_on_property_based_test_program_for_xb_dot_step() {
+        triton_constraints_evaluate_to_zero(property_based_test_program_for_xb_dot_step());
     }
 
     #[test]
@@ -2071,7 +2071,7 @@ pub(crate) mod tests {
             let program = triton_program! {
                 dup 0
                 push {i} add
-                xxdotstep
+                xx_dot_step
                 halt
             };
             let result = program.run(PublicInput::default(), NonDeterminism::default());
