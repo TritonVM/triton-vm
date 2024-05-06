@@ -1169,6 +1169,9 @@ mod tests {
 
     use self::cascade_table::ExtCascadeTable;
     use self::constraint_circuit::ConstraintCircuitBuilder;
+    use self::constraint_circuit::ConstraintCircuitMonad;
+    use self::constraint_circuit::DualRowIndicator;
+    use self::constraint_circuit::SingleRowIndicator;
     use self::hash_table::ExtHashTable;
     use self::jump_stack_table::ExtJumpStackTable;
     use self::lookup_table::ExtLookupTable;
@@ -1462,84 +1465,117 @@ mod tests {
         assert_spec_has(file_path, generated_code);
     }
 
-    #[test]
-    fn spec_has_correct_constraints_overview() {
-        // collect data
-        let tables = [
+    fn table_constraints_info() -> Vec<(
+        String,
+        Vec<ConstraintCircuitMonad<SingleRowIndicator>>,
+        Vec<ConstraintCircuitMonad<SingleRowIndicator>>,
+        Vec<ConstraintCircuitMonad<DualRowIndicator>>,
+        Vec<ConstraintCircuitMonad<SingleRowIndicator>>,
+        usize,
+        usize,
+    )> {
+        vec![
             (
-                "[ProgramTable](program-table.md)",
+                "[ProgramTable](program-table.md)".to_string(),
                 ExtProgramTable::initial_constraints(&ConstraintCircuitBuilder::new()),
                 ExtProgramTable::consistency_constraints(&ConstraintCircuitBuilder::new()),
                 ExtProgramTable::transition_constraints(&ConstraintCircuitBuilder::new()),
                 ExtProgramTable::terminal_constraints(&ConstraintCircuitBuilder::new()),
+                PROGRAM_TABLE_END,
+                EXT_PROGRAM_TABLE_END,
             ),
             (
-                "[ProcessorTable](processor-table.md)",
+                "[ProcessorTable](processor-table.md)".to_string(),
                 ExtProcessorTable::initial_constraints(&ConstraintCircuitBuilder::new()),
                 ExtProcessorTable::consistency_constraints(&ConstraintCircuitBuilder::new()),
                 ExtProcessorTable::transition_constraints(&ConstraintCircuitBuilder::new()),
                 ExtProcessorTable::terminal_constraints(&ConstraintCircuitBuilder::new()),
+                PROCESSOR_TABLE_END,
+                EXT_PROCESSOR_TABLE_END,
             ),
             (
-                "[OpStack](operational-stack-table.md)",
+                "[OpStack](operational-stack-table.md)".to_string(),
                 ExtOpStackTable::initial_constraints(&ConstraintCircuitBuilder::new()),
                 ExtOpStackTable::consistency_constraints(&ConstraintCircuitBuilder::new()),
                 ExtOpStackTable::transition_constraints(&ConstraintCircuitBuilder::new()),
                 ExtOpStackTable::terminal_constraints(&ConstraintCircuitBuilder::new()),
+                OP_STACK_TABLE_END,
+                EXT_OP_STACK_TABLE_END,
             ),
             (
-                "[RamTable](random-access-memory-table.md)",
+                "[RamTable](random-access-memory-table.md)".to_string(),
                 ExtRamTable::initial_constraints(&ConstraintCircuitBuilder::new()),
                 ExtRamTable::consistency_constraints(&ConstraintCircuitBuilder::new()),
                 ExtRamTable::transition_constraints(&ConstraintCircuitBuilder::new()),
                 ExtRamTable::terminal_constraints(&ConstraintCircuitBuilder::new()),
+                RAM_TABLE_END,
+                EXT_RAM_TABLE_END,
             ),
             (
-                "[JumpStackTable](jump-stack-table.md)",
+                "[JumpStackTable](jump-stack-table.md)".to_string(),
                 ExtJumpStackTable::initial_constraints(&ConstraintCircuitBuilder::new()),
                 ExtJumpStackTable::consistency_constraints(&ConstraintCircuitBuilder::new()),
                 ExtJumpStackTable::transition_constraints(&ConstraintCircuitBuilder::new()),
                 ExtJumpStackTable::terminal_constraints(&ConstraintCircuitBuilder::new()),
+                JUMP_STACK_TABLE_END,
+                EXT_JUMP_STACK_TABLE_END,
             ),
             (
-                "[Hash](hash-table.md)",
+                "[Hash](hash-table.md)".to_string(),
                 ExtHashTable::initial_constraints(&ConstraintCircuitBuilder::new()),
                 ExtHashTable::consistency_constraints(&ConstraintCircuitBuilder::new()),
                 ExtHashTable::transition_constraints(&ConstraintCircuitBuilder::new()),
                 ExtHashTable::terminal_constraints(&ConstraintCircuitBuilder::new()),
+                HASH_TABLE_END,
+                EXT_HASH_TABLE_END,
             ),
             (
-                "[Cascade](cascade-table.md)",
+                "[Cascade](cascade-table.md)".to_string(),
                 ExtCascadeTable::initial_constraints(&ConstraintCircuitBuilder::new()),
                 ExtCascadeTable::consistency_constraints(&ConstraintCircuitBuilder::new()),
                 ExtCascadeTable::transition_constraints(&ConstraintCircuitBuilder::new()),
                 ExtCascadeTable::terminal_constraints(&ConstraintCircuitBuilder::new()),
+                CASCADE_TABLE_END,
+                EXT_CASCADE_TABLE_END,
             ),
             (
-                "[LookupTable](lookup-table.md)",
+                "[LookupTable](lookup-table.md)".to_string(),
                 ExtLookupTable::initial_constraints(&ConstraintCircuitBuilder::new()),
                 ExtLookupTable::consistency_constraints(&ConstraintCircuitBuilder::new()),
                 ExtLookupTable::transition_constraints(&ConstraintCircuitBuilder::new()),
                 ExtLookupTable::terminal_constraints(&ConstraintCircuitBuilder::new()),
+                LOOKUP_TABLE_END,
+                EXT_LOOKUP_TABLE_END,
             ),
             (
-                "[U32Table](u32-table.md)",
+                "[U32Table](u32-table.md)".to_string(),
                 ExtU32Table::initial_constraints(&ConstraintCircuitBuilder::new()),
                 ExtU32Table::consistency_constraints(&ConstraintCircuitBuilder::new()),
                 ExtU32Table::transition_constraints(&ConstraintCircuitBuilder::new()),
                 ExtU32Table::terminal_constraints(&ConstraintCircuitBuilder::new()),
+                U32_TABLE_END,
+                EXT_U32_TABLE_END,
             ),
             (
-                "[Grand Cross-Table Argument](table-linking.md)",
+                "[Grand Cross-Table Argument](table-linking.md)".to_string(),
                 GrandCrossTableArg::initial_constraints(&ConstraintCircuitBuilder::new()),
                 GrandCrossTableArg::consistency_constraints(&ConstraintCircuitBuilder::new()),
                 GrandCrossTableArg::transition_constraints(&ConstraintCircuitBuilder::new()),
                 GrandCrossTableArg::terminal_constraints(&ConstraintCircuitBuilder::new()),
+                0,
+                0,
             ),
-        ];
+        ]
+    }
+
+    #[test]
+    fn spec_has_correct_constraints_overview() {
+        // collect data
+        let mut tables = table_constraints_info();
 
         // produce table code
         let mut formatted_table = "".to_string();
+        formatted_table = format!("{formatted_table}\nBefore automatic degree lowering:\n\n");
         formatted_table = format!(
             "{formatted_table}| table name                                     | #initial | #consistency | #transition | #terminal | max degree |\n"
         );
@@ -1551,7 +1587,7 @@ mod tests {
         let mut total_transition = 0;
         let mut total_terminal = 0;
         let mut total_max_degree = 0;
-        for table in tables.into_iter() {
+        for table in tables.iter() {
             let initial_max_degree = table
                 .1
                 .iter()
@@ -1609,6 +1645,63 @@ mod tests {
             format!("**{total_transition}**"),
             format!("**{total_terminal}**"),
             format!("**{}**", total_max_degree)
+        );
+        formatted_table = format!(
+            "{formatted_table}\nAfter automatically lowering degree to {AIR_TARGET_DEGREE}:\n\n"
+        );
+        formatted_table = format!(
+            "{formatted_table}| table name                                     | #initial | #consistency | #transition | #terminal |\n"
+        );
+        formatted_table = format!(
+            "{formatted_table}|:-----------------------------------------------|---------:|-------------:|------------:|----------:|\n"
+        );
+
+        for table in tables.iter_mut() {
+            let (new_base_initial, new_ext_initial) = ConstraintCircuitMonad::lower_to_degree(
+                &mut table.1,
+                AIR_TARGET_DEGREE,
+                table.5,
+                table.6,
+            );
+            let (new_base_consistency, new_ext_consistency) =
+                ConstraintCircuitMonad::lower_to_degree(
+                    &mut table.2,
+                    AIR_TARGET_DEGREE,
+                    table.5,
+                    table.6,
+                );
+            let (new_base_transition, new_ext_transition) = ConstraintCircuitMonad::lower_to_degree(
+                &mut table.3,
+                AIR_TARGET_DEGREE,
+                table.5,
+                table.6,
+            );
+            let (new_base_terminal, new_ext_terminal) = ConstraintCircuitMonad::lower_to_degree(
+                &mut table.4,
+                AIR_TARGET_DEGREE,
+                table.5,
+                table.6,
+            );
+            formatted_table = format!(
+                "{formatted_table}| {:<46} | {:>8} | {:12} | {:>11} | {:>9} |\n",
+                table.0,
+                table.1.len() + new_base_initial.len() + new_ext_initial.len(),
+                table.2.len() + new_base_consistency.len() + new_ext_consistency.len(),
+                table.3.len() + new_base_transition.len() + new_ext_transition.len(),
+                table.4.len() + new_base_terminal.len() + new_ext_terminal.len(),
+            );
+            total_initial += table.1.len();
+            total_consistency += table.2.len();
+            total_transition += table.3.len();
+            total_terminal += table.4.len();
+        }
+        formatted_table = format!(
+            "{formatted_table}| {:<46} | {:>8} | {:>12} | {:>11} | {:>9} |\n",
+            "**TOTAL**",
+            format!("**{total_initial}**"),
+            format!("**{total_consistency}**"),
+            format!("**{total_transition}**"),
+            format!("**{total_terminal}**"),
         );
 
         // print embeddable code
