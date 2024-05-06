@@ -1478,178 +1478,46 @@ mod tests {
         pub last_ext_column_index: usize,
     }
 
+    macro_rules! constraint_overview_row {
+        ($table:ident aka $table_name:ident (doc: $table_doc:expr)
+         ends at $base_end:expr and $ext_end: expr) => {{
+            let name = format!("[{}]({})", stringify!($table_name), stringify!($table_doc));
+            let single_row_builder = || ConstraintCircuitBuilder::new();
+            let dual_row_builder = || ConstraintCircuitBuilder::new();
+            ConstraintsOverviewRow {
+                name,
+                initial_constraints: $table::initial_constraints(&single_row_builder()),
+                consistency_constraints: $table::consistency_constraints(&single_row_builder()),
+                transition_constraints: $table::transition_constraints(&dual_row_builder()),
+                terminal_constraints: $table::terminal_constraints(&single_row_builder()),
+                last_base_column_index: $base_end,
+                last_ext_column_index: $ext_end,
+            }
+        }};
+    }
+
     fn table_constraints_info() -> Vec<ConstraintsOverviewRow> {
         vec![
-            ConstraintsOverviewRow {
-                name: "[ProgramTable](program-table.md)".to_string(),
-                initial_constraints: ExtProgramTable::initial_constraints(
-                    &ConstraintCircuitBuilder::new(),
-                ),
-                consistency_constraints: ExtProgramTable::consistency_constraints(
-                    &ConstraintCircuitBuilder::new(),
-                ),
-                transition_constraints: ExtProgramTable::transition_constraints(
-                    &ConstraintCircuitBuilder::new(),
-                ),
-                terminal_constraints: ExtProgramTable::terminal_constraints(
-                    &ConstraintCircuitBuilder::new(),
-                ),
-                last_base_column_index: PROGRAM_TABLE_END,
-                last_ext_column_index: EXT_PROGRAM_TABLE_END,
-            },
-            ConstraintsOverviewRow {
-                name: "[ProcessorTable](processor-table.md)".to_string(),
-                initial_constraints: ExtProcessorTable::initial_constraints(
-                    &ConstraintCircuitBuilder::new(),
-                ),
-                consistency_constraints: ExtProcessorTable::consistency_constraints(
-                    &ConstraintCircuitBuilder::new(),
-                ),
-                transition_constraints: ExtProcessorTable::transition_constraints(
-                    &ConstraintCircuitBuilder::new(),
-                ),
-                terminal_constraints: ExtProcessorTable::terminal_constraints(
-                    &ConstraintCircuitBuilder::new(),
-                ),
-                last_base_column_index: PROCESSOR_TABLE_END,
-                last_ext_column_index: EXT_PROCESSOR_TABLE_END,
-            },
-            ConstraintsOverviewRow {
-                name: "[OpStack](operational-stack-table.md)".to_string(),
-                initial_constraints: ExtOpStackTable::initial_constraints(
-                    &ConstraintCircuitBuilder::new(),
-                ),
-                consistency_constraints: ExtOpStackTable::consistency_constraints(
-                    &ConstraintCircuitBuilder::new(),
-                ),
-                transition_constraints: ExtOpStackTable::transition_constraints(
-                    &ConstraintCircuitBuilder::new(),
-                ),
-                terminal_constraints: ExtOpStackTable::terminal_constraints(
-                    &ConstraintCircuitBuilder::new(),
-                ),
-                last_base_column_index: OP_STACK_TABLE_END,
-                last_ext_column_index: EXT_OP_STACK_TABLE_END,
-            },
-            ConstraintsOverviewRow {
-                name: "[RamTable](random-access-memory-table.md)".to_string(),
-                initial_constraints: ExtRamTable::initial_constraints(
-                    &ConstraintCircuitBuilder::new(),
-                ),
-                consistency_constraints: ExtRamTable::consistency_constraints(
-                    &ConstraintCircuitBuilder::new(),
-                ),
-                transition_constraints: ExtRamTable::transition_constraints(
-                    &ConstraintCircuitBuilder::new(),
-                ),
-                terminal_constraints: ExtRamTable::terminal_constraints(
-                    &ConstraintCircuitBuilder::new(),
-                ),
-                last_base_column_index: RAM_TABLE_END,
-                last_ext_column_index: EXT_RAM_TABLE_END,
-            },
-            ConstraintsOverviewRow {
-                name: "[JumpStackTable](jump-stack-table.md)".to_string(),
-                initial_constraints: ExtJumpStackTable::initial_constraints(
-                    &ConstraintCircuitBuilder::new(),
-                ),
-                consistency_constraints: ExtJumpStackTable::consistency_constraints(
-                    &ConstraintCircuitBuilder::new(),
-                ),
-                transition_constraints: ExtJumpStackTable::transition_constraints(
-                    &ConstraintCircuitBuilder::new(),
-                ),
-                terminal_constraints: ExtJumpStackTable::terminal_constraints(
-                    &ConstraintCircuitBuilder::new(),
-                ),
-                last_base_column_index: JUMP_STACK_TABLE_END,
-                last_ext_column_index: EXT_JUMP_STACK_TABLE_END,
-            },
-            ConstraintsOverviewRow {
-                name: "[Hash](hash-table.md)".to_string(),
-                initial_constraints: ExtHashTable::initial_constraints(
-                    &ConstraintCircuitBuilder::new(),
-                ),
-                consistency_constraints: ExtHashTable::consistency_constraints(
-                    &ConstraintCircuitBuilder::new(),
-                ),
-                transition_constraints: ExtHashTable::transition_constraints(
-                    &ConstraintCircuitBuilder::new(),
-                ),
-                terminal_constraints: ExtHashTable::terminal_constraints(
-                    &ConstraintCircuitBuilder::new(),
-                ),
-                last_base_column_index: HASH_TABLE_END,
-                last_ext_column_index: EXT_HASH_TABLE_END,
-            },
-            ConstraintsOverviewRow {
-                name: "[Cascade](cascade-table.md)".to_string(),
-                initial_constraints: ExtCascadeTable::initial_constraints(
-                    &ConstraintCircuitBuilder::new(),
-                ),
-                consistency_constraints: ExtCascadeTable::consistency_constraints(
-                    &ConstraintCircuitBuilder::new(),
-                ),
-                transition_constraints: ExtCascadeTable::transition_constraints(
-                    &ConstraintCircuitBuilder::new(),
-                ),
-                terminal_constraints: ExtCascadeTable::terminal_constraints(
-                    &ConstraintCircuitBuilder::new(),
-                ),
-                last_base_column_index: CASCADE_TABLE_END,
-                last_ext_column_index: EXT_CASCADE_TABLE_END,
-            },
-            ConstraintsOverviewRow {
-                name: "[LookupTable](lookup-table.md)".to_string(),
-                initial_constraints: ExtLookupTable::initial_constraints(
-                    &ConstraintCircuitBuilder::new(),
-                ),
-                consistency_constraints: ExtLookupTable::consistency_constraints(
-                    &ConstraintCircuitBuilder::new(),
-                ),
-                transition_constraints: ExtLookupTable::transition_constraints(
-                    &ConstraintCircuitBuilder::new(),
-                ),
-                terminal_constraints: ExtLookupTable::terminal_constraints(
-                    &ConstraintCircuitBuilder::new(),
-                ),
-                last_base_column_index: LOOKUP_TABLE_END,
-                last_ext_column_index: EXT_LOOKUP_TABLE_END,
-            },
-            ConstraintsOverviewRow {
-                name: "[U32Table](u32-table.md)".to_string(),
-                initial_constraints: ExtU32Table::initial_constraints(
-                    &ConstraintCircuitBuilder::new(),
-                ),
-                consistency_constraints: ExtU32Table::consistency_constraints(
-                    &ConstraintCircuitBuilder::new(),
-                ),
-                transition_constraints: ExtU32Table::transition_constraints(
-                    &ConstraintCircuitBuilder::new(),
-                ),
-                terminal_constraints: ExtU32Table::terminal_constraints(
-                    &ConstraintCircuitBuilder::new(),
-                ),
-                last_base_column_index: U32_TABLE_END,
-                last_ext_column_index: EXT_U32_TABLE_END,
-            },
-            ConstraintsOverviewRow {
-                name: "[Grand Cross-Table Argument](table-linking.md)".to_string(),
-                initial_constraints: GrandCrossTableArg::initial_constraints(
-                    &ConstraintCircuitBuilder::new(),
-                ),
-                consistency_constraints: GrandCrossTableArg::consistency_constraints(
-                    &ConstraintCircuitBuilder::new(),
-                ),
-                transition_constraints: GrandCrossTableArg::transition_constraints(
-                    &ConstraintCircuitBuilder::new(),
-                ),
-                terminal_constraints: GrandCrossTableArg::terminal_constraints(
-                    &ConstraintCircuitBuilder::new(),
-                ),
-                last_base_column_index: 0,
-                last_ext_column_index: 0,
-            },
+            constraint_overview_row!(ExtProgramTable aka ProgramTable (doc: program-table.md)
+                ends at PROGRAM_TABLE_END and EXT_PROGRAM_TABLE_END),
+            constraint_overview_row!(ExtProcessorTable aka ProcessorTable (doc: processor-table.md)
+                ends at PROCESSOR_TABLE_END and EXT_PROCESSOR_TABLE_END),
+            constraint_overview_row!(ExtOpStackTable aka OpStack (doc: operational-stack-table.md)
+                ends at OP_STACK_TABLE_END and EXT_OP_STACK_TABLE_END),
+            constraint_overview_row!(ExtRamTable aka RamTable (doc: random-access-memory-table.md)
+                ends at RAM_TABLE_END and EXT_RAM_TABLE_END),
+            constraint_overview_row!(ExtJumpStackTable aka JumpStackTable (doc: jump-stack-table.md)
+                ends at JUMP_STACK_TABLE_END and EXT_JUMP_STACK_TABLE_END),
+            constraint_overview_row!(ExtHashTable aka Hash (doc: hash-table.md)
+                ends at HASH_TABLE_END and EXT_HASH_TABLE_END),
+            constraint_overview_row!(ExtCascadeTable aka Cascade (doc: cascade-table.md)
+                ends at CASCADE_TABLE_END and EXT_CASCADE_TABLE_END),
+            constraint_overview_row!(ExtLookupTable aka LookupTable (doc: lookup-table.md)
+                ends at LOOKUP_TABLE_END and EXT_LOOKUP_TABLE_END),
+            constraint_overview_row!(ExtU32Table aka U32Table (doc: u32-table.md)
+                ends at U32_TABLE_END and EXT_U32_TABLE_END),
+            constraint_overview_row!(GrandCrossTableArg aka GrandCrossTableArgument
+                (doc: table-linking.md) ends at 0 and 0),
         ]
     }
 
