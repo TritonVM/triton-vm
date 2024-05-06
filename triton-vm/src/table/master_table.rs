@@ -1511,7 +1511,7 @@ mod tests {
                 processor_table::EXT_WIDTH,
             ),
             (
-                "[OpStack](operational-stack-table.md)",
+                "[OpStackTable](operational-stack-table.md)",
                 op_stack_table::BASE_WIDTH,
                 op_stack_table::EXT_WIDTH,
             ),
@@ -1526,12 +1526,12 @@ mod tests {
                 jump_stack_table::EXT_WIDTH,
             ),
             (
-                "[Hash](hash-table.md)",
+                "[HashTable](hash-table.md)",
                 hash_table::BASE_WIDTH,
                 hash_table::EXT_WIDTH,
             ),
             (
-                "[Cascade](cascade-table.md)",
+                "[CascadeTable](cascade-table.md)",
                 cascade_table::BASE_WIDTH,
                 cascade_table::EXT_WIDTH,
             ),
@@ -1554,28 +1554,26 @@ mod tests {
         ];
 
         // produce table code
-        let mut formatted_table = String::new();
-        formatted_table = format!(
-            "{formatted_table}| table name                                | #main cols | #aux cols | total width |\n"
-        );
-        formatted_table = format!(
-            "{formatted_table}|:------------------------------------------|-----------:|----------:|------------:|\n"
-        );
+        let mut ft = format!("| {:<42} ", "table name");
+        ft = format!("{ft}| {:<10} ", "#main cols");
+        ft = format!("{ft}| {:<9} ", "#aux cols");
+        ft = format!("{ft}| {:<11} |\n", "total width");
+
+        ft = format!("{ft}|:{:-<42}-", "-");
+        ft = format!("{ft}|-{:-<10}:", "-");
+        ft = format!("{ft}|-{:-<9}:", "-");
+        ft = format!("{ft}|-{:-<11}:|\n", "-");
+
         let mut total_main = 0;
         let mut total_aux = 0;
-        for table in tables {
-            formatted_table = format!(
-                "{formatted_table}| {:<41} | {:>10} | {:9} | {:>11} |\n",
-                table.0,
-                table.1,
-                table.2,
-                table.1 + EXTENSION_DEGREE * table.2
-            );
-            total_main += table.1;
-            total_aux += table.2;
+        for (name, num_main, num_aux) in tables {
+            let num_total = num_main + EXTENSION_DEGREE * num_aux;
+            ft = format!("{ft}| {name:<42} | {num_main:>10} | {num_aux:9} | {num_total:>11} |\n");
+            total_main += num_main;
+            total_aux += num_aux;
         }
-        formatted_table = format!(
-            "{formatted_table}| {:<41} | {:>10} | {:9} | {:>11} |\n",
+        ft = format!(
+            "{ft}| {:<42} | {:>10} | {:>9} | {:>11} |\n",
             "**TOTAL**",
             format!("**{total_main}**"),
             format!("**{total_aux}**"),
@@ -1584,14 +1582,16 @@ mod tests {
 
         // print embeddable code
         let specification_generator_name = "spec_has_correct_table_overview";
-        let comment_marker_start = format!("<!-- auto-gen info {specification_generator_name} -->");
+        let comment_marker_start =
+            format!("<!-- auto-gen info {} -->", specification_generator_name);
         let how_reproduce = format!(
-            "<!-- To reproduce this code, please run `cargo run {specification_generator_name}`. -->"
+            "<!-- To reproduce this code, please run `cargo run {}`. -->",
+            specification_generator_name
         );
         let comment_marker_stop = "<!-- auto-gen info stop -->".to_string();
         let generated_code = format!(
             "{}\n{}\n{}{}",
-            comment_marker_start, how_reproduce, formatted_table, comment_marker_stop
+            comment_marker_start, how_reproduce, ft, comment_marker_stop
         );
 
         // current directory is triton-vm/triton-vm/
@@ -1652,7 +1652,7 @@ mod tests {
             ExtProcessorTable ends at PROCESSOR_TABLE_END and EXT_PROCESSOR_TABLE_END.
                 Spec: ["ProcessorTable"]("processor-table.md"),
             ExtOpStackTable ends at OP_STACK_TABLE_END and EXT_OP_STACK_TABLE_END.
-                Spec: ["OpStack"]("operational-stack-table.md"),
+                Spec: ["OpStackTable"]("operational-stack-table.md"),
             ExtRamTable ends at RAM_TABLE_END and EXT_RAM_TABLE_END.
                 Spec: ["RamTable"]("random-access-memory-table.md"),
             ExtJumpStackTable ends at JUMP_STACK_TABLE_END and EXT_JUMP_STACK_TABLE_END.
@@ -1669,71 +1669,54 @@ mod tests {
                 Spec: ["Grand Cross-Table Argument"]("table-linking.md"),
         );
 
-        let mut formatted_table = String::new();
-        formatted_table = format!("{formatted_table}\nBefore automatic degree lowering:\n\n");
-        formatted_table = format!(
-            "{formatted_table}| table name                                     | #initial | #consistency | #transition | #terminal | max degree |\n"
-        );
-        formatted_table = format!(
-            "{formatted_table}|:-----------------------------------------------|---------:|-------------:|------------:|----------:|-----------:|\n"
-        );
+        let mut ft = String::new();
+        ft = format!("{ft}\nBefore automatic degree lowering:\n\n");
+        ft = format!("{ft}| {:<46} ", "table name");
+        ft = format!("{ft}| #initial ");
+        ft = format!("{ft}| #consistency ");
+        ft = format!("{ft}| #transition ");
+        ft = format!("{ft}| #terminal ");
+        ft = format!("{ft}| max degree |\n");
+
+        ft = format!("{ft}|:{:-<46}-", "-");
+        ft = format!("{ft}|-{:-<8}:", "-");
+        ft = format!("{ft}|-{:-<12}:", "-");
+        ft = format!("{ft}|-{:-<11}:", "-");
+        ft = format!("{ft}|-{:-<9}:", "-");
+        ft = format!("{ft}|-{:-<10}:|\n", "-");
+
         let mut total_initial = 0;
         let mut total_consistency = 0;
         let mut total_transition = 0;
         let mut total_terminal = 0;
         let mut total_max_degree = 0;
         for table in &tables {
-            let initial_max_degree = table
-                .initial_constraints
-                .iter()
-                .map(|constraint| constraint.circuit.borrow().degree())
-                .max()
-                .unwrap_or(0);
-            let consistency_max_degree = table
-                .consistency_constraints
-                .iter()
-                .map(|constraint| constraint.circuit.borrow().degree())
-                .max()
-                .unwrap_or(0);
-            let transition_max_degree = table
-                .transition_constraints
-                .iter()
-                .map(|constraint| constraint.circuit.borrow().degree())
-                .max()
-                .unwrap_or(0);
-            let terminal_max_degree = table
-                .terminal_constraints
-                .iter()
-                .map(|constraint| constraint.circuit.borrow().degree())
-                .max()
-                .unwrap_or(0);
             let table_max_degree = [
-                initial_max_degree,
-                consistency_max_degree,
-                transition_max_degree,
-                terminal_max_degree,
+                ConstraintCircuitMonad::multicircuit_degree(&table.initial_constraints),
+                ConstraintCircuitMonad::multicircuit_degree(&table.consistency_constraints),
+                ConstraintCircuitMonad::multicircuit_degree(&table.transition_constraints),
+                ConstraintCircuitMonad::multicircuit_degree(&table.terminal_constraints),
             ]
             .into_iter()
             .max()
-            .unwrap_or(0);
+            .unwrap_or(-1);
 
-            formatted_table = format!(
-                "{formatted_table}| {:<46} | {:>8} | {:12} | {:>11} | {:>9} | {:>10} |\n",
-                table.name,
-                table.initial_constraints.len(),
-                table.consistency_constraints.len(),
-                table.transition_constraints.len(),
-                table.terminal_constraints.len(),
-                table_max_degree,
+            let num_init = table.initial_constraints.len();
+            let num_cons = table.consistency_constraints.len();
+            let num_tran = table.transition_constraints.len();
+            let num_term = table.terminal_constraints.len();
+            ft = format!(
+                "{ft}| {:<46} | {:>8} | {:12} | {:>11} | {:>9} | {:>10} |\n",
+                table.name, num_init, num_cons, num_tran, num_term, table_max_degree,
             );
-            total_initial += table.initial_constraints.len();
-            total_consistency += table.consistency_constraints.len();
-            total_transition += table.transition_constraints.len();
-            total_terminal += table.terminal_constraints.len();
-            total_max_degree = isize::max(total_max_degree, table_max_degree);
+            total_initial += num_init;
+            total_consistency += num_cons;
+            total_transition += num_tran;
+            total_terminal += num_term;
+            total_max_degree = total_max_degree.max(table_max_degree);
         }
-        formatted_table = format!(
-            "{formatted_table}| {:<46} | {:>8} | {:>12} | {:>11} | {:>9} | {:>10} |\n",
+        ft = format!(
+            "{ft}| {:<46} | {:>8} | {:>12} | {:>11} | {:>9} | {:>10} |\n",
             "**TOTAL**",
             format!("**{total_initial}**"),
             format!("**{total_consistency}**"),
@@ -1741,15 +1724,18 @@ mod tests {
             format!("**{total_terminal}**"),
             format!("**{}**", total_max_degree)
         );
-        formatted_table = format!(
-            "{formatted_table}\nAfter automatically lowering degree to {AIR_TARGET_DEGREE}:\n\n"
-        );
-        formatted_table = format!(
-            "{formatted_table}| table name                                     | #initial | #consistency | #transition | #terminal |\n"
-        );
-        formatted_table = format!(
-            "{formatted_table}|:-----------------------------------------------|---------:|-------------:|------------:|----------:|\n"
-        );
+        ft = format!("{ft}\nAfter automatically lowering degree to {AIR_TARGET_DEGREE}:\n\n");
+        ft = format!("{ft}| {:<46} ", "table name");
+        ft = format!("{ft}| #initial ");
+        ft = format!("{ft}| #consistency ");
+        ft = format!("{ft}| #transition ");
+        ft = format!("{ft}| #terminal |\n");
+
+        ft = format!("{ft}|:{:-<46}-", "-");
+        ft = format!("{ft}|-{:-<8}:", "-");
+        ft = format!("{ft}|-{:-<12}:", "-");
+        ft = format!("{ft}|-{:-<11}:", "-");
+        ft = format!("{ft}|-{:-<9}:|\n", "-");
 
         for table in &mut tables {
             let (new_base_initial, new_ext_initial) = ConstraintCircuitMonad::lower_to_degree(
@@ -1777,8 +1763,8 @@ mod tests {
                 table.last_base_column_index,
                 table.last_ext_column_index,
             );
-            formatted_table = format!(
-                "{formatted_table}| {:<46} | {:>8} | {:12} | {:>11} | {:>9} |\n",
+            ft = format!(
+                "{ft}| {:<46} | {:>8} | {:12} | {:>11} | {:>9} |\n",
                 table.name,
                 table.initial_constraints.len() + new_base_initial.len() + new_ext_initial.len(),
                 table.consistency_constraints.len()
@@ -1794,8 +1780,8 @@ mod tests {
             total_transition += table.transition_constraints.len();
             total_terminal += table.terminal_constraints.len();
         }
-        formatted_table = format!(
-            "{formatted_table}| {:<46} | {:>8} | {:>12} | {:>11} | {:>9} |\n",
+        ft = format!(
+            "{ft}| {:<46} | {:>8} | {:>12} | {:>11} | {:>9} |\n",
             "**TOTAL**",
             format!("**{total_initial}**"),
             format!("**{total_consistency}**"),
@@ -1805,14 +1791,16 @@ mod tests {
 
         // print embeddable code
         let specification_generator_name = "spec_has_correct_constraints_overview";
-        let comment_marker_start = format!("<!-- auto-gen info {specification_generator_name} -->");
+        let comment_marker_start =
+            format!("<!-- auto-gen info {} -->", specification_generator_name);
         let how_reproduce = format!(
-            "<!-- To reproduce this code, please run `cargo run {specification_generator_name}`. -->"
+            "<!-- To reproduce this code, please run `cargo run {}`. -->",
+            specification_generator_name
         );
         let comment_marker_stop = "<!-- auto-gen info stop -->".to_string();
         let generated_code = format!(
             "{}\n{}\n{}{}",
-            comment_marker_start, how_reproduce, formatted_table, comment_marker_stop
+            comment_marker_start, how_reproduce, ft, comment_marker_stop
         );
 
         // current directory is triton-vm/triton-vm/

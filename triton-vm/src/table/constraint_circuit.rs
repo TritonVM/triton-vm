@@ -912,7 +912,7 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
     }
 
     /// Returns the maximum degree of all circuits in the multicircuit.
-    fn multicircuit_degree(multicircuit: &[ConstraintCircuitMonad<II>]) -> isize {
+    pub(crate) fn multicircuit_degree(multicircuit: &[ConstraintCircuitMonad<II>]) -> isize {
         multicircuit
             .iter()
             .map(|circuit| circuit.circuit.borrow().degree())
