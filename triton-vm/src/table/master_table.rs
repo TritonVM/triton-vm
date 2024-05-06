@@ -1290,7 +1290,7 @@ pub fn interpolant_degree(padded_height: usize, num_trace_randomizers: usize) ->
 
 #[cfg(test)]
 mod tests {
-    use std::fs;
+    use fs_err as fs;
     use std::path::Path;
 
     use master_table::cross_table_argument::GrandCrossTableArg;
@@ -1489,13 +1489,7 @@ mod tests {
     }
 
     fn assert_spec_has(file_path: &Path, snippet: String) {
-        // read file
-        let contents = fs::read_to_string(file_path).expect(&format!(
-            "Could not read file \"{}\"; please make sure it exists and has the right permissions.",
-            file_path.display()
-        ));
-
-        // scan for snippet
+        let contents = fs::read_to_string(file_path).unwrap();
         assert!(
             contents.find(&snippet).is_some(),
             "Could not find correct snippet in file \"{}\".",

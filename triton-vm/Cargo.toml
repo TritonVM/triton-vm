@@ -42,6 +42,7 @@ unicode-width.workspace = true
 [dev-dependencies]
 assert2.workspace = true
 cargo-husky.workspace = true
+fs-err.workspace = true
 pretty_assertions.workspace = true
 proptest.workspace = true
 proptest-arbitrary-interop.workspace = true
