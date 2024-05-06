@@ -3,7 +3,6 @@ use std::ops::MulAssign;
 use std::ops::Range;
 
 use itertools::Itertools;
-use master_table::extension_table::Evaluable;
 use ndarray::parallel::prelude::*;
 use ndarray::prelude::*;
 use ndarray::s;
@@ -19,6 +18,8 @@ use strum::EnumCount;
 use strum::EnumIter;
 use twenty_first::math::traits::FiniteField;
 use twenty_first::prelude::*;
+
+use master_table::extension_table::Evaluable;
 
 use crate::aet::AlgebraicExecutionTrace;
 use crate::arithmetic_domain::ArithmeticDomain;
@@ -1145,11 +1146,8 @@ pub fn interpolant_degree(padded_height: usize, num_trace_randomizers: usize) ->
 
 #[cfg(test)]
 mod tests {
-    // use std::fs;
-    use fs_err as fs;
     use std::path::Path;
 
-    use master_table::cross_table_argument::GrandCrossTableArg;
     use ndarray::s;
     use ndarray::Array2;
     use num_traits::Zero;
@@ -1159,6 +1157,8 @@ mod tests {
     use twenty_first::math::traits::FiniteField;
     use twenty_first::prelude::x_field_element::EXTENSION_DEGREE;
 
+    use master_table::cross_table_argument::GrandCrossTableArg;
+
     use crate::arithmetic_domain::ArithmeticDomain;
     use crate::shared_tests::ProgramAndInput;
     use crate::stark::tests::*;
@@ -1167,6 +1167,8 @@ mod tests {
     use crate::table::table_column::*;
     use crate::table::*;
     use crate::triton_program;
+
+    use super::*;
 
     use self::cascade_table::ExtCascadeTable;
     use self::constraint_circuit::ConstraintCircuitBuilder;
@@ -1182,7 +1184,7 @@ mod tests {
     use self::ram_table::ExtRamTable;
     use self::u32_table::ExtU32Table;
 
-    use super::*;
+    use fs_err as fs;
 
     #[test]
     fn base_table_width_is_correct() {
@@ -1342,20 +1344,29 @@ mod tests {
     }
 
     fn assert_spec_has(file_path: &Path, snippet: String) {
-        // read file
-        let contents = fs::read_to_string(file_path).unwrap_or_else(|_| {
-            panic!(
-            "Could not read file \"{}\"; please make sure it exists and has the right permissions.",
-            file_path.display()
-        )
-        });
-
-        // scan for snippet
+        let contents = fs::read_to_string(file_path).unwrap();
         assert!(
             contents.contains(&snippet),
             "Could not find correct snippet in file \"{}\".",
             file_path.display(),
         );
+    }
+
+    #[test]
+    fn print_raw_spec() {
+        let file_path = Path::new("../specification/src/arithmetization-overview.md");
+        let contents = fs::read_to_string(file_path).unwrap();
+        println!("{contents}");
+        println!("{contents:?}");
+        println!("{contents:#?}");
+
+        if contents.contains("\n\r") {
+            println!("File contains CRLF line endings.");
+        }
+        if contents.contains("\r\n") {
+            println!("File contains LFCR line endings. The heck?");
+        }
+        panic!("just to show output")
     }
 
     #[test]
