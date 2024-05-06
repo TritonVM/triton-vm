@@ -29,6 +29,7 @@ colored = "2.1"
 clap = { version = "4", features = ["derive", "cargo", "wrap_help", "unicode", "string"] }
 criterion = { version = "0.5", features = ["html_reports"] }
 directories = "5"
+fs-err = "2.11.0"
 get-size = "0.1.4"
 itertools = "0.12"
 lazy_static = "1.4"

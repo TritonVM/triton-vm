@@ -1145,7 +1145,8 @@ pub fn interpolant_degree(padded_height: usize, num_trace_randomizers: usize) ->
 
 #[cfg(test)]
 mod tests {
-    use std::fs;
+    // use std::fs;
+    use fs_err as fs;
     use std::path::Path;
 
     use master_table::cross_table_argument::GrandCrossTableArg;

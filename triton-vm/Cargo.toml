@@ -21,6 +21,7 @@ readme.workspace = true
 arbitrary.workspace = true
 colored.workspace = true
 criterion.workspace = true
+fs-err.workspace = true
 get-size.workspace = true
 itertools.workspace = true
 lazy_static.workspace = true
