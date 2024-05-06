@@ -26,6 +26,9 @@ The following table captures the state of affairs in terms of constraints before
 
 <!-- auto-gen info spec_has_correct_constraints_overview -->
 <!-- To reproduce this code, please run `cargo run spec_has_correct_constraints_overview`. -->
+
+Before automatic degree lowering:
+
 | table name                                     | #initial | #consistency | #transition | #terminal | max degree |
 |:-----------------------------------------------|---------:|-------------:|------------:|----------:|-----------:|
 | [ProgramTable](program-table.md)               |        6 |            4 |          10 |         2 |          4 |
@@ -39,4 +42,20 @@ The following table captures the state of affairs in terms of constraints before
 | [U32Table](u32-table.md)                       |        1 |           15 |          22 |         2 |         12 |
 | [Grand Cross-Table Argument](table-linking.md) |        0 |            0 |           0 |        14 |          1 |
 | **TOTAL**                                      |   **79** |       **76** |     **178** |    **23** |     **19** |
+
+After automatically lowering degree to 4:
+
+| table name                                     | #initial | #consistency | #transition | #terminal |
+|:-----------------------------------------------|---------:|-------------:|------------:|----------:|
+| [ProgramTable](program-table.md)               |        6 |            4 |          10 |         2 |
+| [ProcessorTable](processor-table.md)           |       31 |           10 |         229 |         1 |
+| [OpStack](operational-stack-table.md)          |        3 |            0 |           5 |         0 |
+| [RamTable](random-access-memory-table.md)      |        7 |            0 |          13 |         1 |
+| [JumpStackTable](jump-stack-table.md)          |        6 |            0 |           6 |         0 |
+| [Hash](hash-table.md)                          |       22 |           52 |          84 |         2 |
+| [Cascade](cascade-table.md)                    |        2 |            1 |           3 |         0 |
+| [LookupTable](lookup-table.md)                 |        3 |            1 |           4 |         1 |
+| [U32Table](u32-table.md)                       |        1 |           26 |          34 |         2 |
+| [Grand Cross-Table Argument](table-linking.md) |        0 |            0 |           0 |        14 |
+| **TOTAL**                                      |  **158** |      **152** |     **356** |    **46** |
 <!-- auto-gen info stop -->
