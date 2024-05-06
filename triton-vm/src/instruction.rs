@@ -178,7 +178,6 @@ pub enum AnInstruction<Dest: PartialEq + Default> {
 
     // Hashing-related
     Hash,
-    DivineSibling,
     AssertVector,
     SpongeInit,
     SpongeAbsorb,
@@ -211,6 +210,7 @@ pub enum AnInstruction<Dest: PartialEq + Default> {
     WriteIo(NumberOfWords),
 
     // Many-in-One
+    MerkleStep,
     XxDotStep,
     XbDotStep,
 }
@@ -234,14 +234,13 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
             ReadMem(_) => 41,
             WriteMem(_) => 11,
             Hash => 18,
-            DivineSibling => 32,
             AssertVector => 26,
-            SpongeInit => 40,
+            SpongeInit => 32,
             SpongeAbsorb => 34,
-            SpongeSqueeze => 48,
+            SpongeSqueeze => 40,
             Add => 42,
             Mul => 50,
-            Invert => 56,
+            Invert => 48,
             Eq => 58,
             Split => 4,
             Lt => 6,
@@ -253,10 +252,11 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
             PopCount => 28,
             XxAdd => 66,
             XxMul => 74,
-            XInvert => 64,
+            XInvert => 56,
             XbMul => 82,
             ReadIo(_) => 49,
             WriteIo(_) => 19,
+            MerkleStep => 64,
             XxDotStep => 72,
             XbDotStep => 80,
         }
@@ -279,7 +279,6 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
             ReadMem(_) => "read_mem",
             WriteMem(_) => "write_mem",
             Hash => "hash",
-            DivineSibling => "divine_sibling",
             AssertVector => "assert_vector",
             SpongeInit => "sponge_init",
             SpongeAbsorb => "sponge_absorb",
@@ -302,13 +301,14 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
             XbMul => "xb_mul",
             ReadIo(_) => "read_io",
             WriteIo(_) => "write_io",
+            MerkleStep => "merkle_step",
             XxDotStep => "xx_dot_step",
             XbDotStep => "xb_dot_step",
         }
     }
 
-    pub fn opcode_b(&self) -> BFieldElement {
-        self.opcode().into()
+    pub const fn opcode_b(&self) -> BFieldElement {
+        BFieldElement::new(self.opcode() as u64)
     }
 
     pub fn size(&self) -> usize {
@@ -352,7 +352,6 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
             ReadMem(x) => ReadMem(*x),
             WriteMem(x) => WriteMem(*x),
             Hash => Hash,
-            DivineSibling => DivineSibling,
             AssertVector => AssertVector,
             SpongeInit => SpongeInit,
             SpongeAbsorb => SpongeAbsorb,
@@ -375,6 +374,7 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
             XbMul => XbMul,
             ReadIo(x) => ReadIo(*x),
             WriteIo(x) => WriteIo(*x),
+            MerkleStep => MerkleStep,
             XxDotStep => XxDotStep,
             XbDotStep => XbDotStep,
         }
@@ -397,7 +397,6 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
             ReadMem(n) => n.num_words() as i32,
             WriteMem(n) => -(n.num_words() as i32),
             Hash => -5,
-            DivineSibling => 5,
             AssertVector => -5,
             SpongeInit => 0,
             SpongeAbsorb => -10,
@@ -420,6 +419,7 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
             XbMul => -1,
             ReadIo(n) => n.num_words() as i32,
             WriteIo(n) => -(n.num_words() as i32),
+            MerkleStep => 0,
             XxDotStep => 0,
             XbDotStep => 0,
         }
@@ -549,7 +549,6 @@ const fn all_instructions_without_args() -> [AnInstruction<BFieldElement>; Instr
         ReadMem(N1),
         WriteMem(N1),
         Hash,
-        DivineSibling,
         AssertVector,
         SpongeInit,
         SpongeAbsorb,
@@ -572,6 +571,7 @@ const fn all_instructions_without_args() -> [AnInstruction<BFieldElement>; Instr
         XbMul,
         ReadIo(N1),
         WriteIo(N1),
+        MerkleStep,
         XxDotStep,
         XbDotStep,
     ]

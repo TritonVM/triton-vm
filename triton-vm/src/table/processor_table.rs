@@ -187,36 +187,46 @@ impl ProcessorTable {
             jump_stack_running_product *=
                 challenges[JumpStackIndeterminate] - compressed_row_for_jump_stack_table;
 
-            // Hash Table – Hash's input from Processor to Hash Coprocessor
-            let st_0_through_9 = [ST0, ST1, ST2, ST3, ST4, ST5, ST6, ST7, ST8, ST9];
+            // Hash Table – `hash`'s or `merkle_step`'s input from Processor to Hash Coprocessor
+            let st0_through_st9 = [ST0, ST1, ST2, ST3, ST4, ST5, ST6, ST7, ST8, ST9];
             let hash_state_weights = &challenges[HashStateWeight0..HashStateWeight10];
-            let compressed_row_for_hash_input_and_sponge_squeeze: XFieldElement = st_0_through_9
-                .map(|st| current_row[st.base_table_index()])
-                .into_iter()
-                .zip_eq(hash_state_weights.iter())
-                .map(|(st, &weight)| weight * st)
-                .sum();
-            let hash_digest_weights = &challenges[HashStateWeight0..HashStateWeight5];
-            let compressed_row_for_hash_digest: XFieldElement = st_0_through_9
-                [0..tip5::DIGEST_LENGTH]
-                .iter()
-                .map(|st| current_row[st.base_table_index()])
-                .zip_eq(hash_digest_weights.iter())
-                .map(|(st, &weight)| weight * st)
-                .sum();
 
-            if current_row[CI.base_table_index()] == Instruction::Hash.opcode_b() {
+            if ci == Instruction::Hash.opcode_b() || ci == Instruction::MerkleStep.opcode_b() {
+                let merkle_step_left_sibling = [ST0, ST1, ST2, ST3, ST4, HV0, HV1, HV2, HV3, HV4];
+                let merkle_step_right_sibling = [HV0, HV1, HV2, HV3, HV4, ST0, ST1, ST2, ST3, ST4];
+                let is_left_sibling = current_row[HV5.base_table_index()].value() % 2 == 0;
+                let hash_input = match Self::instruction_from_row(current_row) {
+                    Some(Instruction::MerkleStep) if is_left_sibling => merkle_step_left_sibling,
+                    Some(Instruction::MerkleStep) => merkle_step_right_sibling,
+                    _ => st0_through_st9,
+                };
+                let compressed_row: XFieldElement = hash_input
+                    .map(|st| current_row[st.base_table_index()])
+                    .into_iter()
+                    .zip_eq(hash_state_weights.iter())
+                    .map(|(st, &weight)| weight * st)
+                    .sum();
                 hash_input_running_evaluation = hash_input_running_evaluation
                     * challenges[HashInputIndeterminate]
-                    + compressed_row_for_hash_input_and_sponge_squeeze;
+                    + compressed_row;
             }
 
-            // Hash Table – Hash's output from Hash Coprocessor to Processor
+            // Hash Table – `hash`'s output from Hash Coprocessor to Processor
             if let Some(prev_row) = previous_row {
-                if prev_row[CI.base_table_index()] == Instruction::Hash.opcode_b() {
+                let prev_ci = prev_row[CI.base_table_index()];
+                if prev_ci == Instruction::Hash.opcode_b()
+                    || prev_ci == Instruction::MerkleStep.opcode_b()
+                {
+                    let hash_digest_weights = &challenges[HashStateWeight0..HashStateWeight5];
+                    let compressed_row: XFieldElement = [ST0, ST1, ST2, ST3, ST4]
+                        .map(|st| current_row[st.base_table_index()])
+                        .into_iter()
+                        .zip_eq(hash_digest_weights)
+                        .map(|(st, &weight)| weight * st)
+                        .sum();
                     hash_digest_running_evaluation = hash_digest_running_evaluation
                         * challenges[HashDigestIndeterminate]
-                        + compressed_row_for_hash_digest;
+                        + compressed_row;
                 }
             }
 
@@ -229,7 +239,7 @@ impl ProcessorTable {
                 }
 
                 if prev_row[CI.base_table_index()] == Instruction::SpongeAbsorb.opcode_b() {
-                    let compressed_row: XFieldElement = st_0_through_9
+                    let compressed_row: XFieldElement = st0_through_st9
                         .map(|st| prev_row[st.base_table_index()])
                         .into_iter()
                         .zip_eq(hash_state_weights.iter())
@@ -242,10 +252,16 @@ impl ProcessorTable {
                 }
 
                 if prev_row[CI.base_table_index()] == Instruction::SpongeSqueeze.opcode_b() {
+                    let compressed_row: XFieldElement = st0_through_st9
+                        .map(|st| current_row[st.base_table_index()])
+                        .into_iter()
+                        .zip_eq(hash_state_weights.iter())
+                        .map(|(st, &weight)| weight * st)
+                        .sum();
                     sponge_running_evaluation = sponge_running_evaluation
                         * challenges[SpongeIndeterminate]
                         + challenges[HashCIWeight] * Instruction::SpongeSqueeze.opcode_b()
-                        + compressed_row_for_hash_input_and_sponge_squeeze;
+                        + compressed_row;
                 }
             }
 
@@ -1744,11 +1760,14 @@ impl ExtProcessorTable {
         .concat()
     }
 
-    /// Recall that in a Merkle tree, the indices of left (respectively right) leafs have 0
-    /// (respectively 1) as their least significant bit. The first two polynomials achieve that
-    /// helper variable hv0 holds the result of st5 mod 2. The second polynomial sets the new value
-    /// of st10 to st5 div 2.
-    fn instruction_divine_sibling(
+    /// Recall that in a Merkle tree, the indices of left (respectively right)
+    /// leaves have 0 (respectively 1) as their least significant bit. The first two
+    /// polynomials achieve that helper variable hv5 holds the result of st5 mod 2.
+    /// The second polynomial sets the new value of st5 to st5 div 2.
+    ///
+    /// Two Evaluation Arguments with the Hash Table guarantee the rest of the
+    /// correct transition.
+    fn instruction_merkle_step(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
         let constant = |c: u32| circuit_builder.b_constant(c);
@@ -1760,49 +1779,14 @@ impl ExtProcessorTable {
             circuit_builder.input(NextBaseRow(col.master_base_table_index()))
         };
 
-        let hv0_is_0_or_1 = curr_base_row(HV0) * (curr_base_row(HV0) - one());
+        let hv5_is_0_or_1 = curr_base_row(HV5) * (curr_base_row(HV5) - one());
+        let new_st5_is_previous_st5_div_2 =
+            next_base_row(ST5) * constant(2) + curr_base_row(HV5) - curr_base_row(ST5);
 
-        let new_st10_is_previous_st5_div_2 =
-            next_base_row(ST10) * constant(2) + curr_base_row(HV0) - curr_base_row(ST5);
-
-        let maybe_move_st0 = (one() - curr_base_row(HV0))
-            * (next_base_row(ST0) - curr_base_row(ST0))
-            + curr_base_row(HV0) * (next_base_row(ST5) - curr_base_row(ST0));
-        let maybe_move_st1 = (one() - curr_base_row(HV0))
-            * (next_base_row(ST1) - curr_base_row(ST1))
-            + curr_base_row(HV0) * (next_base_row(ST6) - curr_base_row(ST1));
-        let maybe_move_st2 = (one() - curr_base_row(HV0))
-            * (next_base_row(ST2) - curr_base_row(ST2))
-            + curr_base_row(HV0) * (next_base_row(ST7) - curr_base_row(ST2));
-        let maybe_move_st3 = (one() - curr_base_row(HV0))
-            * (next_base_row(ST3) - curr_base_row(ST3))
-            + curr_base_row(HV0) * (next_base_row(ST8) - curr_base_row(ST3));
-        let maybe_move_st4 = (one() - curr_base_row(HV0))
-            * (next_base_row(ST4) - curr_base_row(ST4))
-            + curr_base_row(HV0) * (next_base_row(ST9) - curr_base_row(ST4));
-
-        let maybe_shift_known_digest_down_the_stack = vec![
-            hv0_is_0_or_1,
-            new_st10_is_previous_st5_div_2,
-            maybe_move_st0,
-            maybe_move_st1,
-            maybe_move_st2,
-            maybe_move_st3,
-            maybe_move_st4,
-        ];
-
-        let op_stack_grows_by_5_and_top_11_elements_unconstrained = vec![
-            next_base_row(ST11) - curr_base_row(ST6),
-            next_base_row(ST12) - curr_base_row(ST7),
-            next_base_row(ST13) - curr_base_row(ST8),
-            next_base_row(ST14) - curr_base_row(ST9),
-            next_base_row(ST15) - curr_base_row(ST10),
-            next_base_row(OpStackPointer) - curr_base_row(OpStackPointer) - constant(5),
-            Self::running_product_op_stack_accounts_for_growing_stack_by(circuit_builder, 5),
-        ];
+        let update_merkle_tree_node_index = vec![hv5_is_0_or_1, new_st5_is_previous_st5_div_2];
         [
-            maybe_shift_known_digest_down_the_stack,
-            op_stack_grows_by_5_and_top_11_elements_unconstrained,
+            update_merkle_tree_node_index,
+            Self::instruction_group_op_stack_remains_except_top_n(circuit_builder, 6),
             Self::instruction_group_step_1(circuit_builder),
             Self::instruction_group_no_ram(circuit_builder),
             Self::instruction_group_no_io(circuit_builder),
@@ -2491,7 +2475,6 @@ impl ExtProcessorTable {
             ReadMem(_) => ExtProcessorTable::instruction_read_mem(circuit_builder),
             WriteMem(_) => ExtProcessorTable::instruction_write_mem(circuit_builder),
             Hash => ExtProcessorTable::instruction_hash(circuit_builder),
-            DivineSibling => ExtProcessorTable::instruction_divine_sibling(circuit_builder),
             AssertVector => ExtProcessorTable::instruction_assert_vector(circuit_builder),
             SpongeInit => ExtProcessorTable::instruction_sponge_init(circuit_builder),
             SpongeAbsorb => ExtProcessorTable::instruction_sponge_absorb(circuit_builder),
@@ -2509,12 +2492,12 @@ impl ExtProcessorTable {
             DivMod => ExtProcessorTable::instruction_div_mod(circuit_builder),
             PopCount => ExtProcessorTable::instruction_pop_count(circuit_builder),
             XxAdd => ExtProcessorTable::instruction_xx_add(circuit_builder),
-
             XxMul => ExtProcessorTable::instruction_xx_mul(circuit_builder),
             XInvert => ExtProcessorTable::instruction_xinv(circuit_builder),
             XbMul => ExtProcessorTable::instruction_xb_mul(circuit_builder),
             ReadIo(_) => ExtProcessorTable::instruction_read_io(circuit_builder),
             WriteIo(_) => ExtProcessorTable::instruction_write_io(circuit_builder),
+            MerkleStep => ExtProcessorTable::instruction_merkle_step(circuit_builder),
             XxDotStep => ExtProcessorTable::instruction_xx_dot_step(circuit_builder),
             XbDotStep => ExtProcessorTable::instruction_xb_dot_step(circuit_builder),
         }
@@ -3205,10 +3188,22 @@ impl ExtProcessorTable {
                 * (challenge(JumpStackIndeterminate) - compressed_row)
     }
 
+    /// Deal with instructions `hash` and `merkle_step`. The registers from which
+    /// the preimage is loaded differs between the two instructions:
+    /// 1. `hash` always loads the stack's 10 top elements,
+    /// 1. `merkle_step` loads the stack's 5 top elements and helper variables 0
+    ///    through 4. The order of those two quintuplets depends on helper variable
+    ///    hv5.
+    ///
+    /// The Hash Table does not “know” about instruction `merkle_step`.
+    ///
+    /// Note that using `next_row` might be confusing at first glance; See the
+    /// [specification](https://triton-vm.org/spec/processor-table.html).
     fn running_evaluation_hash_input_updates_correctly(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> ConstraintCircuitMonad<DualRowIndicator> {
         let constant = |c: u32| circuit_builder.b_constant(c);
+        let one = || constant(1);
         let challenge = |c: ChallengeId| circuit_builder.challenge(c);
         let next_base_row = |col: ProcessorBaseTableColumn| {
             circuit_builder.input(NextBaseRow(col.master_base_table_index()))
@@ -3222,7 +3217,11 @@ impl ExtProcessorTable {
 
         let hash_deselector =
             Self::instruction_deselector_next_row(circuit_builder, Instruction::Hash);
-        let hash_selector = next_base_row(CI) - constant(Instruction::Hash.opcode());
+        let merkle_step_deselector =
+            Self::instruction_deselector_next_row(circuit_builder, Instruction::MerkleStep);
+        let hash_and_merkle_step_selector = (next_base_row(CI)
+            - constant(Instruction::Hash.opcode()))
+            * (next_base_row(CI) - constant(Instruction::MerkleStep.opcode()));
 
         let weights = [
             HashStateWeight0,
@@ -3237,20 +3236,50 @@ impl ExtProcessorTable {
             HashStateWeight9,
         ]
         .map(challenge);
-        let state = [ST0, ST1, ST2, ST3, ST4, ST5, ST6, ST7, ST8, ST9].map(next_base_row);
-        let compressed_row = weights
+
+        // hash
+        let state_for_hash = [ST0, ST1, ST2, ST3, ST4, ST5, ST6, ST7, ST8, ST9].map(next_base_row);
+        let compressed_row_for_hash = weights
+            .iter()
+            .zip_eq(state_for_hash)
+            .map(|(weight, state)| weight.clone() * state)
+            .sum();
+
+        // merkle step
+        let is_left_sibling = || next_base_row(HV5);
+        let is_right_sibling = || one() - next_base_row(HV5);
+        let merkle_step_state_element =
+            |l, r| is_right_sibling() * next_base_row(l) + is_left_sibling() * next_base_row(r);
+        let state_for_merkle_step = [
+            merkle_step_state_element(ST0, HV0),
+            merkle_step_state_element(ST1, HV1),
+            merkle_step_state_element(ST2, HV2),
+            merkle_step_state_element(ST3, HV3),
+            merkle_step_state_element(ST4, HV4),
+            merkle_step_state_element(HV0, ST0),
+            merkle_step_state_element(HV1, ST1),
+            merkle_step_state_element(HV2, ST2),
+            merkle_step_state_element(HV3, ST3),
+            merkle_step_state_element(HV4, ST4),
+        ];
+        let compressed_row_for_merkle_step = weights
             .into_iter()
-            .zip_eq(state)
+            .zip_eq(state_for_merkle_step)
             .map(|(weight, state)| weight * state)
             .sum();
 
-        let running_evaluation_updates = next_ext_row(HashInputEvalArg)
+        let running_evaluation_updates_for_hash = next_ext_row(HashInputEvalArg)
             - challenge(HashInputIndeterminate) * curr_ext_row(HashInputEvalArg)
-            - compressed_row;
+            - compressed_row_for_hash;
+        let running_evaluation_updates_for_merkle_step = next_ext_row(HashInputEvalArg)
+            - challenge(HashInputIndeterminate) * curr_ext_row(HashInputEvalArg)
+            - compressed_row_for_merkle_step;
         let running_evaluation_remains =
             next_ext_row(HashInputEvalArg) - curr_ext_row(HashInputEvalArg);
 
-        hash_selector * running_evaluation_remains + hash_deselector * running_evaluation_updates
+        hash_and_merkle_step_selector * running_evaluation_remains
+            + hash_deselector * running_evaluation_updates_for_hash
+            + merkle_step_deselector * running_evaluation_updates_for_merkle_step
     }
 
     fn running_evaluation_hash_digest_updates_correctly(
@@ -3273,7 +3302,11 @@ impl ExtProcessorTable {
 
         let hash_deselector =
             Self::instruction_deselector_current_row(circuit_builder, Instruction::Hash);
-        let hash_selector = curr_base_row(CI) - constant(Instruction::Hash.opcode());
+        let merkle_step_deselector =
+            Self::instruction_deselector_current_row(circuit_builder, Instruction::MerkleStep);
+        let hash_and_merkle_step_selector = (curr_base_row(CI)
+            - constant(Instruction::Hash.opcode()))
+            * (curr_base_row(CI) - constant(Instruction::MerkleStep.opcode()));
 
         let weights = [
             HashStateWeight0,
@@ -3296,7 +3329,8 @@ impl ExtProcessorTable {
         let running_evaluation_remains =
             next_ext_row(HashDigestEvalArg) - curr_ext_row(HashDigestEvalArg);
 
-        hash_selector * running_evaluation_remains + hash_deselector * running_evaluation_updates
+        hash_and_merkle_step_selector * running_evaluation_remains
+            + (hash_deselector + merkle_step_deselector) * running_evaluation_updates
     }
 
     fn running_evaluation_sponge_updates_correctly(
@@ -3868,22 +3902,22 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn transition_constraints_for_instruction_divine_sibling() {
+    fn transition_constraints_for_instruction_merkle_step() {
         let programs = [
-            triton_program!(push 2 swap 5 divine_sibling halt),
-            triton_program!(push 3 swap 5 divine_sibling halt),
+            triton_program!(push 2 swap 5 merkle_step halt),
+            triton_program!(push 3 swap 5 merkle_step halt),
         ];
-        let dummy_digest = Digest::new([1, 2, 3, 4, 5].map(BFieldElement::new));
-        let non_determinism = NonDeterminism::new(vec![]).with_digests(vec![dummy_digest]);
+        let dummy_digest = Digest::new(bfe_array![1, 2, 3, 4, 5]);
+        let non_determinism = NonDeterminism::default().with_digests(vec![dummy_digest]);
         let programs_with_input = programs.map(|program| {
             ProgramAndInput::new(program).with_non_determinism(non_determinism.clone())
         });
         let test_rows = programs_with_input.map(|p_w_i| test_row_from_program_with_input(p_w_i, 2));
 
         let debug_info = TestRowsDebugInfo {
-            instruction: DivineSibling,
-            debug_cols_curr_row: vec![ST0, ST1, ST2, ST3, ST4, ST5],
-            debug_cols_next_row: vec![ST0, ST1, ST2, ST3, ST4, ST5, ST6, ST7, ST8, ST9, ST10],
+            instruction: MerkleStep,
+            debug_cols_curr_row: vec![ST0, ST1, ST2, ST3, ST4, ST5, HV0, HV1, HV2, HV3, HV4, HV5],
+            debug_cols_next_row: vec![ST0, ST1, ST2, ST3, ST4, ST5],
         };
         assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }

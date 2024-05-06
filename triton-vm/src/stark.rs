@@ -1423,13 +1423,13 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn check_grand_cross_table_argument_for_test_program_for_divine_sibling_no_switch() {
-        check_grand_cross_table_argument(test_program_for_divine_sibling_no_switch())
+    fn check_grand_cross_table_argument_for_test_program_for_merkle_step_no_switch() {
+        check_grand_cross_table_argument(test_program_for_merkle_step_right_sibling())
     }
 
     #[test]
-    fn check_grand_cross_table_argument_for_test_program_for_divine_sibling_switch() {
-        check_grand_cross_table_argument(test_program_for_divine_sibling_switch())
+    fn check_grand_cross_table_argument_for_test_program_for_merkle_step_switch() {
+        check_grand_cross_table_argument(test_program_for_merkle_step_left_sibling())
     }
 
     #[test]
@@ -1864,13 +1864,13 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn constraints_evaluate_to_zero_on_program_for_divine_sibling_no_switch() {
-        triton_constraints_evaluate_to_zero(test_program_for_divine_sibling_no_switch())
+    fn constraints_evaluate_to_zero_on_program_for_merkle_step_no_switch() {
+        triton_constraints_evaluate_to_zero(test_program_for_merkle_step_right_sibling())
     }
 
     #[test]
-    fn constraints_evaluate_to_zero_on_program_for_divine_sibling_switch() {
-        triton_constraints_evaluate_to_zero(test_program_for_divine_sibling_switch())
+    fn constraints_evaluate_to_zero_on_program_for_merkle_step_switch() {
+        triton_constraints_evaluate_to_zero(test_program_for_merkle_step_left_sibling())
     }
 
     #[test]

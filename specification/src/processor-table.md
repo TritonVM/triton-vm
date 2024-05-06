@@ -114,39 +114,6 @@ See [program attestation](program-attestation.md) for more details.
 1. `U32LookupClientLogDerivative` is 0.
 1. `ClockJumpDifferenceLookupServerLogDerivative` starts having accumulated the first contribution.
 
-### Initial Constraints as Polynomials
-
-1. `clk`
-1. `ip`
-1. `jsp`
-1. `jso`
-1. `jsd`
-1. `st0`
-1. `st1`
-1. `st2`
-1. `st3`
-1. `st4`
-1. `st5`
-1. `st6`
-1. `st7`
-1. `st8`
-1. `st9`
-1. `st10`
-1. `🥬^5 + st11·🥬^4 + st12·🥬^3 + st13·🥬^2 + st14·🥬 + st15 - 🫑`
-1. `op_stack_pointer - 16`
-1. `RunningEvaluationStandardInput - 1`
-1. `RunningEvaluationStandardOutput - 1`
-1. `InstructionLookupClientLogDerivative · (🪥 - 🥝·ip - 🥥·ci - 🫐·nia) - 1`
-1. `RunningProductOpStackTable - 1`
-1. `RunningProductRamTable - (🛋 - 🍍·clk - 🍈·ramp - 🍎·ramv - 🌽·instruction_type)`
-1. `RunningProductJumpStackTable - (🧴 - 🍇·clk - 🍅·ci - 🍌·jsp - 🍏·jso - 🍐·jsd)`
-1. `(ci - opcode(hash))·(RunningEvaluationHashInput - 1)`<br />
-    `+ hash_deselector·(RunningEvaluationHashInput - 🚪 - 🧄₀·st0 - 🧄₁·st1 - 🧄₂·st2 - 🧄₃·st3 - 🧄₄·st4 - 🧄₅·st5 - 🧄₆·st6 - 🧄₇·st7 - 🧄₈·st8 - 🧄₉·st9)`
-1. `RunningEvaluationHashDigest - 1`
-1. `RunningEvaluationSponge - 1`
-1. `U32LookupClientLogDerivative`
-1. `ClockJumpDifferenceLookupServerLogDerivative · 🪞 - cjd_mul` (Recall that `(🪞 - clk) = 🪞` because `clk = 0`.)
-
 ## Consistency Constraints
 
 1. The composition of instruction bits `ib0` through `ib6` corresponds to the current instruction `ci`.
@@ -160,19 +127,6 @@ See [program attestation](program-attestation.md) for more details.
 1. The padding indicator `IsPadding` is either 0 or 1.
 1. If the current padding row is a padding row and `clk` is not 1, then the clock jump difference lookup multiplicity is 0.
 
-### Consistency Constraints as Polynomials
-
-1. `ci - (2^6·ib6 + 2^5·ib5 + 2^4·ib4 + 2^3·ib3 + 2^2·ib2 + 2^1·ib1 + 2^0·ib0)`
-1. `ib0·(ib0 - 1)`
-1. `ib1·(ib1 - 1)`
-1. `ib2·(ib2 - 1)`
-1. `ib3·(ib3 - 1)`
-1. `ib4·(ib4 - 1)`
-1. `ib5·(ib5 - 1)`
-1. `ib6·(ib6 - 1)`
-1. `IsPadding·(IsPadding - 1)`
-1. `IsPadding·(clk - 1)·ClockJumpDifferenceLookupServerLogDerivative`
-
 ## Transition Constraints
 
 Due to their complexity, instruction-specific constraints are defined [in their own section](instruction-specific-transition-constraints.md).
@@ -183,8 +137,13 @@ The following additional constraints also apply to every pair of rows.
 1. If the next row is not a padding row, the logarithmic derivative for the Program Table absorbs the next row with respect to challenges 🥝, 🥥, and 🫐 and indeterminate 🪥. Otherwise, it remains unchanged.
 1. The running sum for the logarithmic derivative of the clock jump difference lookup argument accumulates the next row's `clk` with the appropriate multiplicity `cjd_mul` with respect to indeterminate 🪞.
 1. The running product for the Jump Stack Table absorbs the next row with respect to challenges 🍇, 🍅, 🍌, 🍏, and 🍐 and indeterminate 🧴.
-1. If the current instruction in the next row is `hash`, the running evaluation “Hash Input” absorbs the next row with respect to challenges 🧄₀ through 🧄₉ and indeterminate 🚪. Otherwise, it remains unchanged.
-1. If the current instruction is `hash`, the running evaluation “Hash Digest” absorbs the next row with respect to challenges 🧄₀ through 🧄₄ and indeterminate 🪟. Otherwise, it remains unchanged.
+1.  1. If the current instruction in the next row is `hash`, the running evaluation “Hash Input” absorbs the next row with respect to challenges 🧄₀ through 🧄₉ and indeterminate 🚪.
+    1. If the current instruction in the next row is `merkle_step` and helper variable `hv5`…
+        1. …is 0, the running evaluation “Hash Input” absorbs next row's `st0` through `st4` and `hv0` through `hv4`…
+        1. …is 1, the running evaluation “Hash Input” absorbs next row's `hv0` through `hv4` and `st0` through `st4`…<br>
+    …with respect to challenges 🧄₀ through 🧄₉ and indeterminate 🚪.
+    1. Otherwise, it remains unchanged.
+1. If the current instruction is `hash` or `merkle_step`, the running evaluation “Hash Digest” absorbs the next row with respect to challenges 🧄₀ through 🧄₄ and indeterminate 🪟. Otherwise, it remains unchanged.
 1. If the current instruction is `sponge_init`, then the running evaluation “Sponge” absorbs the current instruction and the Sponge's default initial state with respect to challenges 🧅 and 🧄₀ through 🧄₉ and indeterminate 🧽.
     Else if the current instruction is `sponge_absorb` or `sponge_squeeze`, then the running evaluation “Sponge” absorbs the current instruction and the next row with respect to challenges 🧅 and 🧄₀ through 🧄₉ and indeterminate 🧽.
     Otherwise, the running evaluation remains unchanged.
@@ -197,40 +156,6 @@ The following additional constraints also apply to every pair of rows.
     1. If the current instruction is `pop_count`, then the logarithmic derivative for the Lookup Argument with the U32 Table accumulates `st0` and `ci` in the current row and `st0` in the next row with respect to challenges 🥜, 🥑, and 🥕, and indeterminate 🧷.
     1. Else, _i.e._, if the current instruction is not a u32 instruction, the logarithmic derivative for the Lookup Argument with the U32 Table remains unchanged.
 
-### Transition Constraints as Polynomials
-
-1. `clk' - (clk + 1)`
-1. `IsPadding·(IsPadding' - IsPadding)`
-1. `(1 - IsPadding') · ((InstructionLookupClientLogDerivative' - InstructionLookupClientLogDerivative) · (🛁 - 🥝·ip' - 🥥·ci' - 🫐·nia') - 1)`<br />
-    `+ IsPadding'·(RunningProductInstructionTable' - RunningProductInstructionTable)`
-1. `(ClockJumpDifferenceLookupServerLogDerivative' - ClockJumpDifferenceLookupServerLogDerivative)`<br />
-    `·(🪞 - clk') - cjd_mul'`
-1. `RunningProductJumpStackTable' - RunningProductJumpStackTable·(🧴 - 🍇·clk' - 🍅·ci' - 🍌·jsp' - 🍏·jso' - 🍐·jsd')`
-1. `(ci' - opcode(hash))·(RunningEvaluationHashInput' - RunningEvaluationHashInput)`<br />
-    `+ hash_deselector'·(RunningEvaluationHashInput' - 🚪·RunningEvaluationHashInput - 🧄₀·st0' - 🧄₁·st1' - 🧄₂·st2' - 🧄₃·st3' - 🧄₄·st4' - 🧄₅·st5' - 🧄₆·st6' - 🧄₇·st7' - 🧄₈·st8' - 🧄₉·st9')`
-1. `(ci - opcode(hash))·(RunningEvaluationHashDigest' - RunningEvaluationHashDigest)`<br />
-    `+ hash_deselector·(RunningEvaluationHashDigest' - 🪟·RunningEvaluationHashDigest - 🧄₀·st5' - 🧄₁·st6' - 🧄₂·st7' - 🧄₃·st8' - 🧄₄·st9')`
-1. `(ci - opcode(sponge_init))·(ci - opcode(sponge_absorb)·(ci - opcode(sponge_squeeze))·(RunningEvaluationHashDigest' - RunningEvaluationHashDigest)`<br />
-    `+ (sponge_init_deselector + sponge_absorb_deselector + sponge_squeeze_deselector)`<br />
-    `·(RunningEvaluationSponge' - 🧽·RunningEvaluationSponge - 🧅·ci - 🧄₀·st0' - 🧄₁·st1' - 🧄₂·st2' - 🧄₃·st3' - 🧄₄·st4' - 🧄₅·st5' - 🧄₆·st6' - 🧄₇·st7' - 🧄₈·st8' - 🧄₉·st9')`
-1.  1. `split_deselector·((U32LookupClientLogDerivative' - U32LookupClientLogDerivative)·(🧷 - 🥜·st0' - 🌰·st1' - 🥑·ci) - 1)`
-    1. `+ lt_deselector·((U32LookupClientLogDerivative' - U32LookupClientLogDerivative)·(🧷 - 🥜·st0 - 🌰·st1 - 🥑·ci - 🥕·st0') - 1)`
-    1. `+ and_deselector·((U32LookupClientLogDerivative' - U32LookupClientLogDerivative)·(🧷 - 🥜·st0 - 🌰·st1 - 🥑·ci - 🥕·st0') - 1)`
-    1. `+ xor_deselector·((U32LookupClientLogDerivative' - U32LookupClientLogDerivative)·(🧷 - 🥜·st0 - 🌰·st1 - 🥑·ci - 🥕·st0') - 1)`
-    1. `+ pow_deselector·((U32LookupClientLogDerivative' - U32LookupClientLogDerivative)·(🧷 - 🥜·st0 - 🌰·st1 - 🥑·ci - 🥕·st0') - 1)`
-    1. `+ log_2_floor_deselector·((U32LookupClientLogDerivative' - U32LookupClientLogDerivative)·(🧷 - 🥜·st0 - 🥑·ci - 🥕·st0') - 1)`
-    1. `+ div_mod_deselector·(`<br />
-    &emsp;&emsp;`(U32LookupClientLogDerivative' - U32LookupClientLogDerivative)·(🧷 - 🥜·st0' - 🌰·st1 - 🥑·opcode(lt) - 🥕·1)·(🧷 - 🥜·st0 - 🌰·st1' - 🥑·opcode(split))`<br />
-    &emsp;&emsp;`- (🧷 - 🥜·st0' - 🌰·st1 - 🥑·opcode(lt) - 🥕·1)`<br />
-    &emsp;&emsp;`- (🧷 - 🥜·st0 - 🌰·st1' - 🥑·opcode(split))`<br />
-    &emsp;`)`
-    1. `+ pop_count_deselector·((U32LookupClientLogDerivative' - U32LookupClientLogDerivative)·(🧷 - 🥜·st0 - 🥑·ci - 🥕·st0') - 1)`
-    1. `+ (1 - ib2)·(U32LookupClientLogDerivative' - U32LookupClientLogDerivative)`
-
 ## Terminal Constraints
 
 1. In the last row, register “current instruction” `ci` is 0, corresponding to instruction `halt`.
-
-### Terminal Constraints as Polynomials
-
-1. `ci`

@@ -222,7 +222,7 @@ fn an_instruction(s: &str) -> ParseResult<AnInstruction<String>> {
     let dup = dup_instruction();
     let swap = swap_instruction();
 
-    let opstack_manipulation = alt((pop, push, dup, swap));
+    let opstack_manipulation = alt((pop, push, divine, dup, swap));
 
     // Control flow
     let halt = instruction("halt", Halt);
@@ -243,7 +243,6 @@ fn an_instruction(s: &str) -> ParseResult<AnInstruction<String>> {
 
     // Hashing-related instructions
     let hash = instruction("hash", Hash);
-    let divine_sibling = instruction("divine_sibling", DivineSibling);
     let assert_vector = instruction("assert_vector", AssertVector);
     let sponge_init = instruction("sponge_init", SpongeInit);
     let sponge_absorb = instruction("sponge_absorb", SpongeAbsorb);
@@ -286,17 +285,18 @@ fn an_instruction(s: &str) -> ParseResult<AnInstruction<String>> {
     let read_write = alt((read_io, write_io));
 
     // Many-in-One
+    let merkle_step = instruction("merkle_step", MerkleStep);
     let xx_dot_step = instruction("xx_dot_step", XxDotStep);
     let xb_dot_step = instruction("xb_dot_step", XbDotStep);
 
-    let many_to_one = alt((xx_dot_step, xb_dot_step));
+    let many_to_one = alt((merkle_step, xx_dot_step, xb_dot_step));
 
     // Because of common prefixes, the following parsers are sensitive to order:
     //
     // Successfully parsing "assert" before trying "assert_vector" can lead to
     // picking the wrong one. By trying them in the order of longest first, less
     // backtracking is necessary.
-    let syntax_ambiguous = alt((assert_vector, assert_, divine_sibling, divine));
+    let syntax_ambiguous = alt((assert_vector, assert_));
 
     alt((
         opstack_manipulation,

@@ -28,7 +28,7 @@ The third property allows efficient arithmetization of the running product for t
 | `dup`  + `i`    |     17 | e.g., `_ e d c b a` | e.g., `_ e d c b a d` | Duplicates the element `i` positions away from the top. 0 ⩽ `i` < 16                            |
 | `swap` + `i`    |     25 | e.g., `_ e d c b a` | e.g., `_ e a c b d`   | Swaps the `i`th stack element with the top of the stack. 0 < `i` < 16                           |
 
-Instruction `divine n` (together with [`divine_sibling`](#hashing)) make Triton a virtual machine that can execute non-deterministic programs.
+Instruction `divine n` (together with [`merkle_step`](#many-in-one)) make Triton a virtual machine that can execute non-deterministic programs.
 As programs go, this concept is somewhat unusual and benefits from additional explanation.
 The name of the instruction is the verb (not the adjective) meaning “to discover by intuition or insight.”
 
@@ -75,31 +75,19 @@ For the benefit of clarity, the effect of every possible argument is given below
 
 ## Hashing
 
-| Instruction      | Opcode | old op stack    | new op stack                    | Description                                                                                                                    |
-|:-----------------|-------:|:----------------|:--------------------------------|:-------------------------------------------------------------------------------------------------------------------------------|
-| `hash`           |     18 | `_ jihgfedcba`  | `_ yxwvu`                       | Hashes the stack's 10 top-most elements and puts their digest onto the stack, shrinking the stack by 5.                        |
-| `divine_sibling` |     32 | `_ i edcba`     | e.g., `_ (i div 2) edcba zyxwv` | Helps traversing a Merkle tree during authentication path verification. See extended description below.                        |
-| `assert_vector`  |     26 | `_ edcba edcba` | `_ edcba`                       | Assert equality of `st(i)` to `st(i+5)` for `0 <= i < 4`. Crashes the VM if any pair is unequal. Pops the 5 top-most elements. |
-| `sponge_init`    |     40 | `_`             | `_`                             | Initializes (resets) the Sponge's state. Must be the first Sponge instruction executed.                                        |
-| `sponge_absorb`  |     34 | `_ _jihgfedcba` | `_`                             | Absorbs the stack's ten top-most elements into the Sponge state.                                                               |
-| `sponge_squeeze` |     48 | `_`             | `_ zyxwvutsrq`                  | Squeezes the Sponge and pushes the 10 squeezed elements onto the stack.                                                        |
+| Instruction      | Opcode | old op stack    | new op stack   | Description                                                                                                                    |
+|:-----------------|-------:|:----------------|:---------------|:-------------------------------------------------------------------------------------------------------------------------------|
+| `hash`           |     18 | `_ jihgfedcba`  | `_ yxwvu`      | Hashes the stack's 10 top-most elements and puts their digest onto the stack, shrinking the stack by 5.                        |
+| `assert_vector`  |     26 | `_ edcba edcba` | `_ edcba`      | Assert equality of `st(i)` to `st(i+5)` for `0 <= i < 4`. Crashes the VM if any pair is unequal. Pops the 5 top-most elements. |
+| `sponge_init`    |     32 | `_`             | `_`            | Initializes (resets) the Sponge's state. Must be the first Sponge instruction executed.                                        |
+| `sponge_absorb`  |     34 | `_ _jihgfedcba` | `_`            | Absorbs the stack's ten top-most elements into the Sponge state.                                                               |
+| `sponge_squeeze` |     40 | `_`             | `_ zyxwvutsrq` | Squeezes the Sponge and pushes the 10 squeezed elements onto the stack.                                                        |
 
 The instruction `hash` works as follows.
 The stack's 10 top-most elements (`jihgfedcba`) are popped from the stack, reversed, and concatenated with six zeros, resulting in `abcdefghij000000`.
 The Tip5 permutation is applied to `abcdefghij000000`, resulting in `αβγδεζηθικuvwxyz`.
 The first five elements of this result, i.e., `αβγδε`, are reversed and pushed to the stack.
 For example, the old stack was `_ jihgfedcba` and the new stack is `_ εδγβα`.
-
-The instruction `divine_sibling` works as follows.
-The 6th element of the stack `i` is taken as the node index for a Merkle tree that is claimed to include data whose digest is the content of stack registers `st4` through `st0`, i.e., `edcba`.
-The sibling digest of `edcba` is `zyxwv` and is read from the input interface of secret data.
-The least-significant bit of `i` indicates whether `edcba` is the digest of a left leaf or a right leaf of the Merkle tree's base level.
-Depending on this least significant bit of `i`, `divine_sibling` either
-1. (`i` = 0 mod 2, _i.e._, current node is left sibling) lets `edcba` remain in registers `st0` through `st4` and puts `zyxwv` into registers `st5` through `st9`, or
-2. (`i` = 1 mod 2, _i.e._, current node is right sibling) moves `edcba` into registers `st5` through `st9` and puts `zyxwv` into registers `st0` through `st4`.
-
-In either case, 6th register `i` is shifted by 1 bit to the right, _i.e._, the least-significant bit is dropped, and moved into the 11th register.
-In conjunction with instruction `hash` and `assert_vector`, the instruction `divine_sibling` allows to efficiently verify a Merkle authentication path.
 
 The instructions `sponge_init`, `sponge_absorb`, and `sponge_squeeze` are the interface for using the Tip5 permutation in a [Sponge](https://keccak.team/sponge_duplex.html) construction.
 The capacity is never accessible to the program that's being executed by Triton VM.
@@ -115,7 +103,7 @@ Triton VM cannot know the number of elements that will be absorbed.
 |:------------|-------:|:-------------|:-------------|:---------------------------------------------------------------------------------------------------------------------------|
 | `add`       |     42 | `_ b a`      | `_ c`        | Computes the sum (`c`) of the top two elements of the stack (`b` and `a`) over the field.                                  |
 | `mul`       |     50 | `_ b a`      | `_ c`        | Computes the product (`c`) of the top two elements of the stack (`b` and `a`) over the field.                              |
-| `invert`    |     56 | `_ a`        | `_ b`        | Computes the multiplicative inverse (over the field) of the top of the stack. Crashes the VM if the top of the stack is 0. |
+| `invert`    |     48 | `_ a`        | `_ b`        | Computes the multiplicative inverse (over the field) of the top of the stack. Crashes the VM if the top of the stack is 0. |
 | `eq`        |     58 | `_ b a`      | `_ (a == b)` | Tests the top two stack elements for equality.                                                                             |
 
 ## Bitwise Arithmetic on Stack
@@ -151,5 +139,20 @@ Triton VM cannot know the number of elements that will be absorbed.
 
 | Instruction   | Opcode | old op stack    | new op stack                 | Description                                                                                                                                                                                                                                                                                                                                                                                       |
 |:--------------|:-------|:----------------|:-----------------------------|:--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `merkle_step` | 64     | `_ i edcba`     | `_ (i div 2) zyxwv`          | Helps traversing a Merkle tree during authentication path verification. See extended description below.                                                                                                                                                                                                                                                                                           |
 | `xx_dot_step` | 72     | `_ z y x *b *a` | `_ z+p2 y+p1 x+p0 *b+3 *a+3` | Reads two extension field elements from RAM located at the addresses corresponding to the two top stack elements, multiplies the extension field elements, and adds the product `(p0, p1, p2)` to an accumulator located on stack immediately below the two pointers. Also, increase the pointers by the number of words read.                                                                    |
 | `xx_dot_step` | 80     | `_ z y x *b *a` | `_ z+p2 y+p1 x+p0 *b+3 *a+1` | Reads one base field element from RAM located at the addresses corresponding to the top of the stack, one extension field element from RAM located at the address of the second stack element, multiplies the field elements, and adds the product `(p0, p1, p2)` to an accumulator located on stack immediately below the two pointers. Also, increase the pointers by the number of words read. |
+
+The instruction `merkle_step` works as follows.
+The 6th element of the stack `i` is taken as the node index for a Merkle tree that is claimed to include data whose digest is the content of stack registers `st4` through `st0`, i.e., `edcba`.
+The sibling digest of `edcba` is `εδγβα` and is read from the input interface of secret data.
+The least-significant bit of `i` indicates whether `edcba` is the digest of a left leaf or a right leaf of the Merkle tree's current level.
+Depending on this least significant bit of `i`, `merkle_step` either
+1. (`i` = 0 mod 2) interprets `edcba` as the left digest, `εδγβα` as the right digest, or
+2. (`i` = 1 mod 2) interprets `εδγβα` as the left digest, `edcba` as the right digest.
+
+In either case,
+1. the left and right digests are hashed, and the resulting digest `zyxwv` replaces the top of the stack, and
+1. 6th register `i` is shifted by 1 bit to the right, _i.e._, the least-significant bit is dropped.
+
+In conjunction with instruction `assert_vector`, the instruction `merkle_step` allows to efficiently verify a Merkle authentication path.

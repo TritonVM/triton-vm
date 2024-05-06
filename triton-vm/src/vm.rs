@@ -50,7 +50,7 @@ pub struct VMState {
     /// A list of [`BFieldElement`]s the program can read from using instruction `divine`.
     pub secret_individual_tokens: VecDeque<BFieldElement>,
 
-    /// A list of [`Digest`]s the program can read from using instruction `divine_sibling`.
+    /// A list of [`Digest`]s the program can use for instruction `merkle_step`.
     pub secret_digests: VecDeque<Digest>,
 
     /// The read-write **random-access memory** allows Triton VM to store arbitrary data.
@@ -154,9 +154,11 @@ impl VMState {
                 let decomposition = decomposition.map(BFieldElement::new);
                 hvs[1..6].copy_from_slice(&decomposition);
             }
-            DivineSibling => {
+            MerkleStep => {
+                let divined_digest = self.secret_digests.front().copied().unwrap_or_default();
                 let node_index = self.op_stack[ST5].value();
-                hvs[0] = bfe!(node_index % 2);
+                hvs[..5].copy_from_slice(&divined_digest.values());
+                hvs[5] = bfe!(node_index % 2);
             }
             Split => {
                 let top_of_stack = self.op_stack[ST0].value();
@@ -230,7 +232,6 @@ impl VMState {
             SpongeInit => self.sponge_init(),
             SpongeAbsorb => self.sponge_absorb()?,
             SpongeSqueeze => self.sponge_squeeze()?,
-            DivineSibling => self.divine_sibling()?,
             AssertVector => self.assert_vector()?,
             Add => self.add()?,
             Mul => self.mul()?,
@@ -250,6 +251,7 @@ impl VMState {
             XbMul => self.xb_mul()?,
             WriteIo(n) => self.write_io(n)?,
             ReadIo(n) => self.read_io(n)?,
+            MerkleStep => self.merkle_step()?,
             XxDotStep => self.xx_dot_step()?,
             XbDotStep => self.xb_dot_step()?,
         };
@@ -506,33 +508,6 @@ impl VMState {
         Ok(co_processor_calls)
     }
 
-    fn divine_sibling(&mut self) -> Result<Vec<CoProcessorCall>> {
-        if self.secret_digests.is_empty() {
-            return Err(EmptySecretDigestInput);
-        }
-        self.op_stack.is_u32(ST5)?;
-
-        let known_digest = self.op_stack.pop_multiple()?;
-        let node_index = self.op_stack.pop_u32()?;
-
-        let parent_node_index = node_index / 2;
-        self.op_stack.push(parent_node_index.into());
-
-        let sibling_digest = self.pop_secret_digest()?;
-        let (left_digest, right_digest) =
-            Self::put_known_digest_on_correct_side(node_index, known_digest, sibling_digest);
-
-        for &digest_element in right_digest.iter().rev() {
-            self.op_stack.push(digest_element);
-        }
-        for &digest_element in left_digest.iter().rev() {
-            self.op_stack.push(digest_element);
-        }
-
-        self.instruction_pointer += 1;
-        Ok(vec![])
-    }
-
     fn assert_vector(&mut self) -> Result<Vec<CoProcessorCall>> {
         for i in 0..tip5::DIGEST_LENGTH {
             if self.op_stack[i] != self.op_stack[i + tip5::DIGEST_LENGTH] {
@@ -777,6 +752,43 @@ impl VMState {
         Ok(vec![])
     }
 
+    fn merkle_step(&mut self) -> Result<Vec<CoProcessorCall>> {
+        if self.secret_digests.is_empty() {
+            return Err(EmptySecretDigestInput);
+        }
+        self.op_stack.is_u32(ST5)?;
+
+        let accumulator_digest = self.op_stack.pop_multiple::<{ tip5::DIGEST_LENGTH }>()?;
+        let node_index = self.op_stack.pop_u32()?;
+
+        let parent_node_index = node_index / 2;
+        self.op_stack.push(parent_node_index.into());
+
+        let stack_contains_left_node = node_index % 2 == 0;
+        let sibling_digest = self.pop_secret_digest()?;
+        let mut hash_input = Tip5::new(Domain::FixedLength);
+        if stack_contains_left_node {
+            hash_input.state[..tip5::DIGEST_LENGTH].copy_from_slice(&accumulator_digest);
+            hash_input.state[tip5::DIGEST_LENGTH..2 * tip5::DIGEST_LENGTH]
+                .copy_from_slice(&sibling_digest);
+        } else {
+            hash_input.state[..tip5::DIGEST_LENGTH].copy_from_slice(&sibling_digest);
+            hash_input.state[tip5::DIGEST_LENGTH..2 * tip5::DIGEST_LENGTH]
+                .copy_from_slice(&accumulator_digest);
+        }
+        let tip5_trace = hash_input.trace();
+        let accumulator_digest = &tip5_trace[tip5_trace.len() - 1][0..tip5::DIGEST_LENGTH];
+
+        for i in (0..tip5::DIGEST_LENGTH).rev() {
+            self.op_stack.push(accumulator_digest[i]);
+        }
+
+        let co_processor_calls = vec![Tip5Trace(Hash, Box::new(tip5_trace))];
+
+        self.instruction_pointer += 1;
+        Ok(co_processor_calls)
+    }
+
     fn xx_dot_step(&mut self) -> Result<Vec<CoProcessorCall>> {
         self.start_recording_ram_calls();
         let mut rhs_address = self.op_stack.pop()?;
@@ -937,25 +949,6 @@ impl VMState {
         Ok(digest.values())
     }
 
-    /// If the given node index indicates a left node, puts the known digest to the left.
-    /// Otherwise, puts the known digest to the right.
-    /// Returns the left and right digests in that order.
-    fn put_known_digest_on_correct_side(
-        node_index: u32,
-        known_digest: [BFieldElement; tip5::DIGEST_LENGTH],
-        sibling_digest: [BFieldElement; tip5::DIGEST_LENGTH],
-    ) -> (
-        [BFieldElement; tip5::DIGEST_LENGTH],
-        [BFieldElement; tip5::DIGEST_LENGTH],
-    ) {
-        let is_left_node = node_index % 2 == 0;
-        if is_left_node {
-            (known_digest, sibling_digest)
-        } else {
-            (sibling_digest, known_digest)
-        }
-    }
-
     /// Run Triton VM on this state to completion, or until an error occurs.
     pub fn run(&mut self) -> Result<()> {
         while !self.halting {
@@ -1113,6 +1106,7 @@ pub(crate) mod tests {
     use crate::triton_asm;
     use crate::triton_instr;
     use crate::triton_program;
+    use crate::LabelledInstruction;
 
     use super::*;
 
@@ -1211,50 +1205,51 @@ pub(crate) mod tests {
             hash
             read_io 1 eq assert halt
         );
-        let hash_input = [3, 2, 1, 0, 0, 0, 0, 0, 0, 0].map(BFieldElement::new);
+        let hash_input = bfe_array![3, 2, 1, 0, 0, 0, 0, 0, 0, 0];
         let digest = Tip5::hash_10(&hash_input);
         ProgramAndInput::new(program).with_input(&digest[..=0])
     }
 
-    pub(crate) fn test_program_for_divine_sibling_no_switch() -> ProgramAndInput {
+    /// Helper function that returns code to push a digest to the top of the stack
+    fn push_digest_to_stack_tasm(Digest([d0, d1, d2, d3, d4]): Digest) -> Vec<LabelledInstruction> {
+        triton_asm!(push {d4} push {d3} push {d2} push {d1} push {d0})
+    }
+
+    pub(crate) fn test_program_for_merkle_step_right_sibling() -> ProgramAndInput {
+        let accumulator_digest = Digest::new(bfe_array![2, 12, 22, 32, 42]);
+        let divined_digest = Digest::new(bfe_array![10, 11, 12, 13, 14]);
+        let expected_digest = Tip5::hash_pair(divined_digest, accumulator_digest);
+        let merkle_tree_node_index = 3;
         let program = triton_program!(
-            push 3
-            push 4 push 2 push 2 push 2 push 1
-            divine_sibling
+            push {merkle_tree_node_index}
+            {&push_digest_to_stack_tasm(accumulator_digest)}
+            merkle_step
 
-            push 4 push 3 push 2 push 1 push 0
+            {&push_digest_to_stack_tasm(expected_digest)}
             assert_vector pop 5
-
-            push 4 push 2 push 2 push 2 push 1
-            assert_vector pop 5
-
             assert halt
         );
 
-        let dummy_digest = Digest([0, 1, 2, 3, 4].map(BFieldElement::new));
-        let non_determinism = NonDeterminism::default().with_digests(vec![dummy_digest]);
-
+        let non_determinism = NonDeterminism::default().with_digests(vec![divined_digest]);
         ProgramAndInput::new(program).with_non_determinism(non_determinism)
     }
 
-    pub(crate) fn test_program_for_divine_sibling_switch() -> ProgramAndInput {
+    pub(crate) fn test_program_for_merkle_step_left_sibling() -> ProgramAndInput {
+        let accumulator_digest = Digest::new(bfe_array![2, 12, 22, 32, 42]);
+        let divined_digest = Digest::new(bfe_array![10, 11, 12, 13, 14]);
+        let expected_digest = Tip5::hash_pair(accumulator_digest, divined_digest);
+        let merkle_tree_node_index = 2;
         let program = triton_program!(
-            push 2
-            push 4 push 2 push 2 push 2 push 1
-            divine_sibling
+            push {merkle_tree_node_index}
+            {&push_digest_to_stack_tasm(accumulator_digest)}
+            merkle_step
 
-            push 4 push 2 push 2 push 2 push 1
+            {&push_digest_to_stack_tasm(expected_digest)}
             assert_vector pop 5
-
-            push 4 push 3 push 2 push 1 push 0
-            assert_vector pop 5
-
             assert halt
         );
 
-        let dummy_digest = Digest([0, 1, 2, 3, 4].map(BFieldElement::new));
-        let non_determinism = NonDeterminism::default().with_digests(vec![dummy_digest]);
-
+        let non_determinism = NonDeterminism::default().with_digests(vec![divined_digest]);
         ProgramAndInput::new(program).with_non_determinism(non_determinism)
     }
 
@@ -2099,6 +2094,18 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn run_tvm_merkle_step_right_sibling() {
+        let program_and_input = test_program_for_merkle_step_right_sibling();
+        let_assert!(Ok(_) = program_and_input.run());
+    }
+
+    #[test]
+    fn run_tvm_merkle_step_left_sibling() {
+        let program_and_input = test_program_for_merkle_step_left_sibling();
+        let_assert!(Ok(_) = program_and_input.run());
+    }
+
+    #[test]
     fn run_tvm_halt_then_do_stuff() {
         let program = triton_program!(halt push 1 push 2 add invert write_io 5);
         let_assert!(Ok((aet, _)) = program.trace_execution([].into(), [].into()));
@@ -2350,10 +2357,14 @@ pub(crate) mod tests {
     }
 
     fn instruction_does_not_change_vm_state_when_crashing_vm(
-        program: Program,
+        program_and_input: ProgramAndInput,
         num_preparatory_steps: usize,
     ) {
-        let mut vm_state = VMState::new(&program, [].into(), [].into());
+        let mut vm_state = VMState::new(
+            &program_and_input.program,
+            program_and_input.public_input,
+            program_and_input.non_determinism,
+        );
         for i in 0..num_preparatory_steps {
             assert!(let Ok(_) = vm_state.step(), "failed during step {i}");
         }
@@ -2365,124 +2376,134 @@ pub(crate) mod tests {
     #[test]
     fn instruction_pop_does_not_change_vm_state_when_crashing_vm() {
         let program = triton_program! { push 0 pop 2 halt };
-        instruction_does_not_change_vm_state_when_crashing_vm(program, 1);
+        instruction_does_not_change_vm_state_when_crashing_vm(ProgramAndInput::new(program), 1);
     }
 
     #[test]
     fn instruction_divine_does_not_change_vm_state_when_crashing_vm() {
         let program = triton_program! { divine 1 halt };
-        instruction_does_not_change_vm_state_when_crashing_vm(program, 0);
+        instruction_does_not_change_vm_state_when_crashing_vm(ProgramAndInput::new(program), 0);
     }
 
     #[test]
     fn instruction_assert_does_not_change_vm_state_when_crashing_vm() {
         let program = triton_program! { push 0 assert halt };
-        instruction_does_not_change_vm_state_when_crashing_vm(program, 1);
+        instruction_does_not_change_vm_state_when_crashing_vm(ProgramAndInput::new(program), 1);
     }
 
     #[test]
-    fn instruction_divine_sibling_does_not_change_vm_state_when_crashing_vm() {
+    fn instruction_merkle_step_does_not_change_vm_state_when_crashing_vm_invalid_node_index() {
         let non_u32 = u64::from(u32::MAX) + 1;
-        let program = triton_program! { push {non_u32} swap 5 divine_sibling halt };
-        instruction_does_not_change_vm_state_when_crashing_vm(program, 2);
+        let program = triton_program! { push {non_u32} swap 5 merkle_step halt };
+        let nondeterminism = NonDeterminism::default().with_digests([Digest::default()]);
+        let program_and_input = ProgramAndInput::new(program).with_non_determinism(nondeterminism);
+        instruction_does_not_change_vm_state_when_crashing_vm(program_and_input, 2);
+    }
+
+    #[test]
+    fn instruction_merkle_step_does_not_change_vm_state_when_crashing_vm_no_nd_digests() {
+        let valid_u32 = u64::from(u32::MAX);
+        let program = triton_program! { push {valid_u32} swap 5 merkle_step halt };
+        let program_and_input = ProgramAndInput::new(program);
+        instruction_does_not_change_vm_state_when_crashing_vm(program_and_input, 2);
     }
 
     #[test]
     fn instruction_assert_vector_does_not_change_vm_state_when_crashing_vm() {
         let program = triton_program! { push 0 push 1 push 0 push 0 push 0 assert_vector halt };
-        instruction_does_not_change_vm_state_when_crashing_vm(program, 5);
+        instruction_does_not_change_vm_state_when_crashing_vm(ProgramAndInput::new(program), 5);
     }
 
     #[test]
     fn instruction_sponge_absorb_does_not_change_vm_state_when_crashing_vm() {
         let ten_pushes = triton_asm![push 0; 10];
         let program = triton_program! { {&ten_pushes} sponge_absorb halt };
-        instruction_does_not_change_vm_state_when_crashing_vm(program, 10);
+        instruction_does_not_change_vm_state_when_crashing_vm(ProgramAndInput::new(program), 10);
     }
 
     #[test]
     fn instruction_sponge_squeeze_does_not_change_vm_state_when_crashing_vm() {
         let program = triton_program! { sponge_squeeze halt };
-        instruction_does_not_change_vm_state_when_crashing_vm(program, 0);
+        instruction_does_not_change_vm_state_when_crashing_vm(ProgramAndInput::new(program), 0);
     }
 
     #[test]
     fn instruction_invert_does_not_change_vm_state_when_crashing_vm() {
         let program = triton_program! { push 0 invert halt };
-        instruction_does_not_change_vm_state_when_crashing_vm(program, 1);
+        instruction_does_not_change_vm_state_when_crashing_vm(ProgramAndInput::new(program), 1);
     }
 
     #[test]
     fn instruction_lt_does_not_change_vm_state_when_crashing_vm() {
         let non_u32 = u64::from(u32::MAX) + 1;
         let program = triton_program! { push {non_u32} lt halt };
-        instruction_does_not_change_vm_state_when_crashing_vm(program, 1);
+        instruction_does_not_change_vm_state_when_crashing_vm(ProgramAndInput::new(program), 1);
     }
 
     #[test]
     fn instruction_and_does_not_change_vm_state_when_crashing_vm() {
         let non_u32 = u64::from(u32::MAX) + 1;
         let program = triton_program! { push {non_u32} and halt };
-        instruction_does_not_change_vm_state_when_crashing_vm(program, 1);
+        instruction_does_not_change_vm_state_when_crashing_vm(ProgramAndInput::new(program), 1);
     }
 
     #[test]
     fn instruction_xor_does_not_change_vm_state_when_crashing_vm() {
         let non_u32 = u64::from(u32::MAX) + 1;
         let program = triton_program! { push {non_u32} xor halt };
-        instruction_does_not_change_vm_state_when_crashing_vm(program, 1);
+        instruction_does_not_change_vm_state_when_crashing_vm(ProgramAndInput::new(program), 1);
     }
 
     #[test]
     fn instruction_log_2_floor_on_non_u32_operand_does_not_change_vm_state_when_crashing_vm() {
         let non_u32 = u64::from(u32::MAX) + 1;
         let program = triton_program! { push {non_u32} log_2_floor halt };
-        instruction_does_not_change_vm_state_when_crashing_vm(program, 1);
+        instruction_does_not_change_vm_state_when_crashing_vm(ProgramAndInput::new(program), 1);
     }
 
     #[test]
     fn instruction_log_2_floor_on_operand_0_does_not_change_vm_state_when_crashing_vm() {
         let program = triton_program! { push 0 log_2_floor halt };
-        instruction_does_not_change_vm_state_when_crashing_vm(program, 1);
+        instruction_does_not_change_vm_state_when_crashing_vm(ProgramAndInput::new(program), 1);
     }
 
     #[test]
     fn instruction_pow_does_not_change_vm_state_when_crashing_vm() {
         let non_u32 = u64::from(u32::MAX) + 1;
         let program = triton_program! { push {non_u32} push 0 pow halt };
-        instruction_does_not_change_vm_state_when_crashing_vm(program, 2);
+        instruction_does_not_change_vm_state_when_crashing_vm(ProgramAndInput::new(program), 2);
     }
 
     #[test]
     fn instruction_div_mod_on_non_u32_operand_does_not_change_vm_state_when_crashing_vm() {
         let non_u32 = u64::from(u32::MAX) + 1;
         let program = triton_program! { push {non_u32} push 0 div_mod halt };
-        instruction_does_not_change_vm_state_when_crashing_vm(program, 2);
+        instruction_does_not_change_vm_state_when_crashing_vm(ProgramAndInput::new(program), 2);
     }
 
     #[test]
     fn instruction_div_mod_on_denominator_0_does_not_change_vm_state_when_crashing_vm() {
         let program = triton_program! { push 0 push 1 div_mod halt };
-        instruction_does_not_change_vm_state_when_crashing_vm(program, 2);
+        instruction_does_not_change_vm_state_when_crashing_vm(ProgramAndInput::new(program), 2);
     }
 
     #[test]
     fn instruction_pop_count_does_not_change_vm_state_when_crashing_vm() {
         let non_u32 = u64::from(u32::MAX) + 1;
         let program = triton_program! { push {non_u32} pop_count halt };
-        instruction_does_not_change_vm_state_when_crashing_vm(program, 1);
+        instruction_does_not_change_vm_state_when_crashing_vm(ProgramAndInput::new(program), 1);
     }
 
     #[test]
     fn instruction_x_invert_does_not_change_vm_state_when_crashing_vm() {
         let program = triton_program! { x_invert halt };
-        instruction_does_not_change_vm_state_when_crashing_vm(program, 0);
+        instruction_does_not_change_vm_state_when_crashing_vm(ProgramAndInput::new(program), 0);
     }
 
     #[test]
     fn instruction_read_io_does_not_change_vm_state_when_crashing_vm() {
         let program = triton_program! { read_io 1 halt };
-        instruction_does_not_change_vm_state_when_crashing_vm(program, 0);
+        instruction_does_not_change_vm_state_when_crashing_vm(ProgramAndInput::new(program), 0);
     }
 
     #[proptest]

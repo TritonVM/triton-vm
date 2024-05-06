@@ -820,9 +820,9 @@ impl PublicInput {
     }
 }
 
-/// All sources of non-determinism for a program. This includes elements that can be read using
-/// instruction `divine`, digests that can be read using instruction `divine_sibling`,
-/// and an initial state of random-access memory.
+/// All sources of non-determinism for a program. This includes elements that
+/// can be read using instruction `divine`, digests that can be read using
+/// instruction `merkle_step`, and an initial state of random-access memory.
 #[derive(Debug, Default, Clone, Eq, PartialEq, Serialize, Deserialize, Arbitrary)]
 pub struct NonDeterminism {
     pub individual_tokens: Vec<BFieldElement>,

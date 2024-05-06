@@ -506,63 +506,6 @@ In addition to its [instruction groups](instruction-groups.md), this instruction
     `·(🪤 - 🍋·clk - 🍊 - 🍉·(op_stack_pointer' + 3) - 🫒·st12')`<br/>
     `·(🪤 - 🍋·clk - 🍊 - 🍉·(op_stack_pointer' + 4) - 🫒·st11')`
 
-## Instruction `divine_sibling`
-
-Recall that in a Merkle tree, the indices of left (respectively right) leafs have 0 (respectively 1) as their least significant bit.
-The first two polynomials achieve that helper variable `hv0` holds the result of `st10 mod 2`.
-The third polynomial sets the new value of `st10` to `st10 div 2`.
-
-In addition to its [instruction groups](instruction-groups.md), this instruction has the following constraints.
-
-### Description
-
-1. Helper variable `hv0` is either 0 or 1.
-1. If `hv0` is 0, then `st0` does not change.
-1. If `hv0` is 0, then `st1` does not change.
-1. If `hv0` is 0, then `st2` does not change.
-1. If `hv0` is 0, then `st3` does not change.
-1. If `hv0` is 0, then `st4` does not change.
-1. If `hv0` is 1, then `st0` is moved to `st5`.
-1. If `hv0` is 1, then `st1` is moved to `st6`.
-1. If `hv0` is 1, then `st2` is moved to `st7`.
-1. If `hv0` is 1, then `st3` is moved to `st8`.
-1. If `hv0` is 1, then `st4` is moved to `st9`.
-1. `st5` is shifted by 1 bit to the right and moved into `st10`.
-1. `st6` is moved into `st11`
-1. `st7` is moved into `st12`
-1. `st8` is moved into `st13`
-1. `st9` is moved into `st14`
-1. `st10` is moved into `st15`
-1. The op stack pointer grows by 5.
-1. The running product with the Op Stack Table accumulates `st11` through `st15`.
-
-### Polynomials
-
-1. `hv0·(hv0 - 1)`
-1. `(1 - hv0)·(st0' - st0) + hv0·(st5' - st0)`
-1. `(1 - hv0)·(st1' - st1) + hv0·(st6' - st1)`
-1. `(1 - hv0)·(st2' - st2) + hv0·(st7' - st2)`
-1. `(1 - hv0)·(st3' - st3) + hv0·(st8' - st3)`
-1. `(1 - hv0)·(st4' - st4) + hv0·(st9' - st4)`
-1. `st10'·2 + hv0 - st5`
-1. `st11' - st6`
-1. `st12' - st7`
-1. `st13' - st8`
-1. `st14' - st9`
-1. `st15' - st10`
-1. `op_stack_pointer' - op_stack_pointer - 5`
-1. `RunningProductOpStackTable' - RunningProductOpStackTable·(🪤 - 🍋·clk - 🍉·op_stack_pointer - 🫒·st15)`<br />
-    `·(🪤 - 🍋·clk - 🍉·(op_stack_pointer + 1) - 🫒·st14)`<br/>
-    `·(🪤 - 🍋·clk - 🍉·(op_stack_pointer + 2) - 🫒·st13)`<br/>
-    `·(🪤 - 🍋·clk - 🍉·(op_stack_pointer + 3) - 🫒·st12)`<br/>
-    `·(🪤 - 🍋·clk - 🍉·(op_stack_pointer + 4) - 🫒·st11)`
-
-### Helper variable definitions for `divine_sibling`
-
-Since `st10` contains the Merkle tree node index,
-
-1. `hv0` holds the result of `st10 % 2` (the node index's least significant bit, indicating whether it is a left/right node).
-
 ## Instruction `assert_vector`
 
 In addition to its [instruction groups](instruction-groups.md), this instruction has the following constraints.
@@ -990,6 +933,24 @@ In addition to its [instruction groups](instruction-groups.md), this instruction
     `+ ind_3(hv3, hv2, hv1, hv0)·(RunningEvaluationStandardOutput' - 🧯·(🧯·(🧯·RunningEvaluationStandardOutput - st0) - st1) - st2)`<br />
     `+ ind_4(hv3, hv2, hv1, hv0)·(RunningEvaluationStandardOutput' - 🧯·(🧯·(🧯·(🧯·RunningEvaluationStandardOutput - st0) - st1) - st2) - st3)`<br />
     `+ ind_5(hv3, hv2, hv1, hv0)·(RunningEvaluationStandardOutput' - 🧯·(🧯·(🧯·(🧯·(🧯·RunningEvaluationStandardOutput - st0) - st1) - st2) - st3) - st4)`
+
+## Instruction `merkle_step`
+
+Recall that in a Merkle tree, the indices of left (respectively right) leaves have 0 (respectively 1) as their least significant bit.
+This motivates the use of a helper variable to hold that least significant bit.
+
+In addition to its [instruction groups](instruction-groups.md), this instruction has the following constraints.
+The two [Evaluation Arguments also used for instruction hash](processor-table.md#transition-constraints) guarantee correct transition of the top of the stack.
+
+### Description
+
+1. Helper variable `hv5` is either 0 or 1.
+1. `st5` is shifted by 1 bit to the right. In other words, twice `st5` in the next row plus `hv5` equals `st5` in the current row.
+
+### Helper variable definitions for `merkle_step`
+
+1. `hv0` through `hv4` hold the sibling digest of the node indicated by `st5`, as read from the interface for non-deterministic input.
+1. `hv5` holds the result of `st5 % 2`, the Merkle tree node index's least significant bit, indicating whether it is a left or right node.
 
 ## Instruction `xx_dot_step`
 

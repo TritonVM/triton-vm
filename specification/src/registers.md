@@ -54,9 +54,9 @@ These registers are part of the arithmetization of the architecture, but not nee
 Because they are only needed for some instructions, the helper variables are not generally defined.
 For instruction group [`decompose_arg`](instruction-groups.md#group-decompose_arg) and instructions
 [`skiz`](instruction-specific-transition-constraints.md#helper-variable-definitions-for-skiz),
-[`divine_sibling`](instruction-specific-transition-constraints.md#helper-variable-definitions-for-divine_sibling),
 [`split`](instruction-specific-transition-constraints.md#helper-variable-definitions-for-split),
 [`eq`](instruction-specific-transition-constraints.md#helper-variable-definitions-for-eq),
+[`merkle_step`](instruction-specific-transition-constraints.md#helper-variable-definitions-for-merkle-step),
 [`xx_dot_step`](instruction-specific-transition-constraints.md#instruction-xx_dot_step), and
 [`xb_dot_step`](instruction-specific-transition-constraints.md#instruction-xb_dot_step),
 the behavior is defined in the respective sections.
