@@ -56,6 +56,10 @@ name = "bezout_coeffs"
 harness = false
 
 [[bench]]
+name = "cached_vs_jit_trace"
+harness = false
+
+[[bench]]
 name = "mem_io"
 harness = false
 

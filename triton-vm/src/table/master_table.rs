@@ -1,3 +1,4 @@
+use std::borrow::Borrow;
 use std::ops::Mul;
 use std::ops::MulAssign;
 use std::ops::Range;
@@ -11,17 +12,23 @@ use ndarray::Array2;
 use ndarray::ArrayView2;
 use ndarray::ArrayViewMut2;
 use ndarray::Zip;
+use num_traits::One;
+use num_traits::Zero;
 use rand::distributions::Standard;
 use rand::prelude::Distribution;
 use rand::random;
 use strum::Display;
 use strum::EnumCount;
 use strum::EnumIter;
+use twenty_first::math::tip5::DIGEST_LENGTH;
+use twenty_first::math::tip5::RATE;
 use twenty_first::math::traits::FiniteField;
 use twenty_first::prelude::*;
+use twenty_first::util_types::algebraic_hasher;
 
 use crate::aet::AlgebraicExecutionTrace;
 use crate::arithmetic_domain::ArithmeticDomain;
+use crate::config::CacheDecision;
 use crate::error::ProvingError;
 use crate::profiler::prof_start;
 use crate::profiler::prof_stop;
@@ -177,10 +184,11 @@ pub enum TableId {
 /// 2. The [`MasterBaseTable`] is padded using logic from the individual tables.
 /// 3. The still-empty entries in the [`MasterBaseTable`] are filled with random elements. This
 ///     step is also known as “trace randomization.”
-/// 4. Each column of the [`MasterBaseTable`] is [low-degree extended][lde]. The results are stored
-///     in the [`MasterBaseTable`]. Methods [`quotient_domain_table`][quot_table],
-///     [`fri_domain_table`][fri_table], [`interpolation_polynomials`][inter_poly], and [`row`][row]
-///     can now be used without causing panic.
+/// 4. If there is enough RAM, then each column of the [`MasterBaseTable`] is low-degree extended.
+///    The results are stored on the [`MasterBaseTable`] for quick access later.
+///    If there is not enough RAM, then the low-degree extensions of the trace columns will be
+///    computed and sometimes recomputed just-in-time, and the memory freed afterward.
+///    The caching behavior [can be forced][overwrite_cache].
 /// 5. The [`MasterBaseTable`] is used to derive the [`MasterExtensionTable`][master_ext_table]
 ///     using logic from the individual tables.
 /// 6. The [`MasterExtensionTable`][master_ext_table] is trace-randomized.
@@ -198,25 +206,42 @@ pub enum TableId {
 ///   and thus terms in the [quotient combination][all_quotients_combined].
 ///
 /// [cross_arg]: cross_table_argument::GrandCrossTableArg
+/// [overwrite_cache]: crate::config::overwrite_lde_trace_caching_to
 /// [lde]: Self::low_degree_extend_all_columns
 /// [quot_table]: Self::quotient_domain_table
-/// [fri_table]: Self::fri_domain_table
-/// [inter_poly]: Self::interpolation_polynomials
-/// [row]: Self::row
 /// [master_ext_table]: MasterExtTable
 /// [master_quot_table]: all_quotients_combined
 pub trait MasterTable<FF>: Sync
 where
     FF: FiniteField
         + MulAssign<BFieldElement>
-        + Mul<BFieldElement, Output = FF>
-        + From<BFieldElement>,
+        + From<BFieldElement>
+        + BFieldCodec
+        + Mul<BFieldElement, Output = FF>,
     Standard: Distribution<FF>,
 {
+    const NUM_COLUMNS: usize;
+
     fn trace_domain(&self) -> ArithmeticDomain;
     fn randomized_trace_domain(&self) -> ArithmeticDomain;
+
+    /// The [`ArithmeticDomain`] _just_ large enough to compute
+    /// [all quotients](all_quotients_combined).
     fn quotient_domain(&self) -> ArithmeticDomain;
+
+    /// The [`ArithmeticDomain`] large enough for [`FRI`](crate::fri::Fri).
     fn fri_domain(&self) -> ArithmeticDomain;
+
+    /// The [`ArithmeticDomain`] to [low-degree extend](Self::low_degree_extend_all_columns) into.
+    /// The larger of the [`quotient_domain`](Self::quotient_domain) and the
+    /// [`fri_domain`](Self::fri_domain).
+    fn evaluation_domain(&self) -> ArithmeticDomain {
+        if self.quotient_domain().length > self.fri_domain().length {
+            self.quotient_domain()
+        } else {
+            self.fri_domain()
+        }
+    }
 
     /// Presents underlying trace data, excluding trace randomizers and randomizer polynomials.
     fn trace_table(&self) -> ArrayView2<FF>;
@@ -229,15 +254,17 @@ where
 
     fn randomized_trace_table_mut(&mut self) -> ArrayViewMut2<FF>;
 
-    /// The low-degree extended randomized trace data over the quotient domain. Includes randomizer
-    /// polynomials. Requires having called
-    /// [`low_degree_extend_all_columns`](Self::low_degree_extend_all_columns) first.
-    fn quotient_domain_table(&self) -> ArrayView2<FF>;
-
-    /// The low-degree extended randomized trace data over the FRI domain. Includes randomizer
-    /// polynomials. Requires having called
-    /// [`low_degree_extend_all_columns`](Self::low_degree_extend_all_columns) first.
-    fn fri_domain_table(&self) -> ArrayView2<FF>;
+    /// The quotient-domain view of the cached low-degree-extended table, if
+    /// 1. the table has been [low-degree extended][lde], and
+    /// 2. the low-degree-extended table [has been cached][cache].
+    ///
+    /// [lde]: Self::low_degree_extend_all_columns
+    /// [cache]: crate::config::overwrite_lde_trace_caching_to
+    // This cannot be implemented generically on the trait because it returns a
+    // pointer to an array that must live somewhere and cannot live on the stack.
+    // From the trait implementation we cannot access the implementing object's
+    // fields.
+    fn quotient_domain_table(&self) -> Option<ArrayView2<FF>>;
 
     /// Set all rows _not_ part of the actual (padded) trace to random values.
     fn randomize_trace(&mut self) {
@@ -250,42 +277,66 @@ where
     }
 
     /// Low-degree extend all columns of the randomized trace domain table. The resulting
-    /// low-degree extended columns can be accessed using
-    /// [`quotient_domain_table`](Self::quotient_domain_table) and
-    /// [`fri_domain_table`](Self::fri_domain_table).
+    /// low-degree extended columns can be accessed using [`quotient_domain_table`][table]
+    /// if it is cached; see [`overwrite_lde_trace_caching_to`][cache].
+    ///
+    /// [table]: Self::quotient_domain_table
+    /// [cache]: crate::config::overwrite_lde_trace_caching_to
     fn low_degree_extend_all_columns(&mut self) {
-        let evaluation_domain = match self.fri_domain().length > self.quotient_domain().length {
-            true => self.fri_domain(),
-            false => self.quotient_domain(),
-        };
+        let evaluation_domain = self.evaluation_domain();
         let randomized_trace_domain = self.randomized_trace_domain();
         let num_rows = evaluation_domain.length;
-        let num_columns = self.randomized_trace_table().ncols();
-        let mut interpolation_polynomials = Array1::zeros(num_columns);
-        let mut extended_columns = Array2::zeros([num_rows, num_columns]);
-        Zip::from(extended_columns.axis_iter_mut(Axis(1)))
-            .and(self.randomized_trace_table().axis_iter(Axis(1)))
+        let mut interpolation_polynomials = Array1::zeros(Self::NUM_COLUMNS);
+
+        // compute interpolants
+        Zip::from(self.randomized_trace_table().axis_iter(Axis(1)))
             .and(interpolation_polynomials.axis_iter_mut(Axis(0)))
-            .par_for_each(|lde_column, trace_column, poly| {
+            .par_for_each(|trace_column, poly| {
                 let trace_column = trace_column.as_slice().unwrap();
                 let interpolation_polynomial = randomized_trace_domain.interpolate(trace_column);
-                let lde_codeword = evaluation_domain.evaluate(&interpolation_polynomial);
-                Array1::from(lde_codeword).move_into(lde_column);
                 Array0::from_elem((), interpolation_polynomial).move_into(poly);
             });
-        self.memoize_low_degree_extended_table(extended_columns);
+
+        let mut extended_trace = Vec::<FF>::new();
+        let num_elements = num_rows * Self::NUM_COLUMNS;
+        let should_cache = crate::config::cache_lde_trace().map_or_else(
+            || extended_trace.try_reserve_exact(num_elements).is_ok(),
+            |cd| cd == CacheDecision::Cache,
+        );
+
+        if should_cache {
+            extended_trace.resize(num_elements, FF::zero());
+            let mut extended_columns =
+                Array2::from_shape_vec([num_rows, Self::NUM_COLUMNS], extended_trace).unwrap();
+            Zip::from(extended_columns.axis_iter_mut(Axis(1)))
+                .and(interpolation_polynomials.axis_iter(Axis(0)))
+                .par_for_each(|lde_column, interpolant| {
+                    let lde_codeword = evaluation_domain.evaluate(&interpolant[()]);
+                    Array1::from(lde_codeword).move_into(lde_column);
+                });
+            self.memoize_low_degree_extended_table(extended_columns);
+        }
+
         self.memoize_interpolation_polynomials(interpolation_polynomials);
     }
 
     /// Not intended for direct use, but through [`Self::low_degree_extend_all_columns`].
+    #[doc(hidden)]
     fn memoize_low_degree_extended_table(&mut self, low_degree_extended_columns: Array2<FF>);
 
-    /// Requires having called
-    /// [`low_degree_extend_all_columns`](Self::low_degree_extend_all_columns) first.
-    fn low_degree_extended_table(&self) -> ArrayView2<FF>;
+    /// Return the cached low-degree-extended table, if any.
+    fn low_degree_extended_table(&self) -> Option<ArrayView2<FF>>;
+
+    /// Return the FRI domain view of the cached low-degree-extended table, if any.
+    ///
+    /// This method cannot be implemented generically on the trait because it returns a pointer to
+    /// an array and that array has to live somewhere; it cannot live on stack and from the trait
+    /// implementation we cannot access the implementing object's fields.
+    fn fri_domain_table(&self) -> Option<ArrayView2<FF>>;
 
     /// Memoize the polynomials interpolating the columns.
     /// Not intended for direct use, but through [`Self::low_degree_extend_all_columns`].
+    #[doc(hidden)]
     fn memoize_interpolation_polynomials(
         &mut self,
         interpolation_polynomials: Array1<Polynomial<FF>>,
@@ -293,13 +344,13 @@ where
 
     /// Requires having called
     /// [`low_degree_extend_all_columns`](Self::low_degree_extend_all_columns) first.    
-    fn interpolation_polynomials(&self) -> ArrayView1<Polynomial<XFieldElement>>;
+    fn interpolation_polynomials(&self) -> ArrayView1<Polynomial<FF>>;
 
     /// Get one row of the table at an arbitrary index. Notably, the index does not have to be in
     /// any of the domains. In other words, can be used to compute out-of-domain rows. Requires
     /// having called [`low_degree_extend_all_columns`](Self::low_degree_extend_all_columns) first.
     /// Does not include randomizer polynomials.
-    fn row(&self, row_index: XFieldElement) -> Array1<XFieldElement>;
+    fn out_of_domain_row(&self, indeterminate: XFieldElement) -> Array1<XFieldElement>;
 
     /// Compute a Merkle tree of the FRI domain table. Every row gives one leaf in the tree.
     /// The function [`hash_row`](Self::hash_one_row) is used to hash each row.
@@ -316,12 +367,109 @@ where
     }
 
     fn hash_all_fri_domain_rows(&self) -> Vec<Digest> {
-        let fri_domain_table = self.fri_domain_table();
-        let all_rows = fri_domain_table.axis_iter(Axis(0)).into_par_iter();
-        all_rows.map(Self::hash_one_row).collect::<Vec<_>>()
+        if let Some(fri_domain_table) = self.fri_domain_table() {
+            let all_rows = fri_domain_table.axis_iter(Axis(0)).into_par_iter();
+            all_rows.map(Self::hash_one_row).collect()
+        } else {
+            self.hash_all_fri_domain_rows_just_in_time()
+        }
     }
 
-    fn hash_one_row(row: ArrayView1<FF>) -> Digest;
+    fn hash_one_row(row: ArrayView1<FF>) -> Digest {
+        Tip5::hash_varlen(&row.iter().flat_map(|e| e.encode()).collect_vec())
+    }
+
+    /// Hash all FRI domain rows of the table using just-in-time low-degree-extension, assuming this
+    /// low-degree-extended table is not stored in cache.
+    ///
+    /// Has reduced memory footprint but increased computation time compared to a table with a
+    /// cached low-degree extended trace.
+    fn hash_all_fri_domain_rows_just_in_time(&self) -> Vec<Digest> {
+        // Iterate over the table's columns in batches of `num_threads`. After a batch of columns is
+        // low-degree-extended and absorbed into the sponge state, the memory is released and can be
+        // reused in the next iteration.
+
+        let num_threads = std::thread::available_parallelism()
+            .map(|x| x.get())
+            .unwrap_or(1);
+        let fri_domain = self.fri_domain();
+        let mut sponge_states = vec![SpongeWithPendingAbsorb::new(); fri_domain.length];
+        let interpolants = self.interpolation_polynomials();
+
+        let mut codewords = Array2::zeros([fri_domain.length, num_threads]);
+        for interpolants_chunk in interpolants.axis_chunks_iter(Axis(0), num_threads) {
+            let mut codewords = codewords.slice_mut(s![.., 0..interpolants_chunk.len()]);
+            Zip::from(codewords.axis_iter_mut(Axis(1)))
+                .and(interpolants_chunk.axis_iter(Axis(0)))
+                .par_for_each(|codeword, interpolant| {
+                    let lde_codeword = fri_domain.evaluate(&interpolant[()]);
+                    Array1::from(lde_codeword).move_into(codeword);
+                });
+            sponge_states
+                .par_iter_mut()
+                .zip(codewords.axis_iter(Axis(0)))
+                .for_each(|(sponge, row)| sponge.absorb(row.iter().flat_map(|e| e.encode())));
+        }
+
+        sponge_states
+            .into_par_iter()
+            .map(|sponge| sponge.finalize())
+            .collect()
+    }
+}
+
+/// Helper struct and function to absorb however many elements are available; used in
+/// the context of hashing rows in a streaming fashion.
+#[derive(Clone)]
+struct SpongeWithPendingAbsorb {
+    sponge: Tip5,
+
+    /// A re-usable buffer of pending input elements.
+    /// Only the first [`Self::num_symbols_pending`] elements are valid.
+    pending_input: [BFieldElement; RATE],
+    num_symbols_pending: usize,
+}
+
+impl SpongeWithPendingAbsorb {
+    pub fn new() -> Self {
+        Self {
+            sponge: Tip5::new(algebraic_hasher::Domain::VariableLength),
+            pending_input: bfe_array![0; RATE],
+            num_symbols_pending: 0,
+        }
+    }
+
+    /// Similar to [`Tip5::absorb`] but buffers input elements until a full block is available.
+    pub fn absorb<I>(&mut self, some_input: I)
+    where
+        I: IntoIterator,
+        I::Item: Borrow<BFieldElement>,
+    {
+        for symbol in some_input {
+            let &symbol = symbol.borrow();
+            self.pending_input[self.num_symbols_pending] = symbol;
+            self.num_symbols_pending += 1;
+            if self.num_symbols_pending == RATE {
+                self.num_symbols_pending = 0;
+                self.sponge.absorb(self.pending_input);
+            }
+        }
+    }
+
+    pub fn finalize(mut self) -> Digest {
+        // apply padding
+        self.pending_input[self.num_symbols_pending] = BFieldElement::one();
+        for i in self.num_symbols_pending + 1..RATE {
+            self.pending_input[i] = BFieldElement::zero();
+        }
+        self.sponge.absorb(self.pending_input);
+        self.num_symbols_pending = 0;
+
+        self.sponge.squeeze()[0..DIGEST_LENGTH]
+            .to_vec()
+            .try_into()
+            .unwrap()
+    }
 }
 
 /// See [`MasterTable`].
@@ -344,7 +492,7 @@ pub struct MasterBaseTable {
 
     randomized_trace_table: Array2<BFieldElement>,
     low_degree_extended_table: Option<Array2<BFieldElement>>,
-    interpolation_polynomials: Option<Array1<Polynomial<XFieldElement>>>,
+    interpolation_polynomials: Option<Array1<Polynomial<BFieldElement>>>,
 }
 
 /// See [`MasterTable`].
@@ -362,6 +510,8 @@ pub struct MasterExtTable {
 }
 
 impl MasterTable<BFieldElement> for MasterBaseTable {
+    const NUM_COLUMNS: usize = NUM_BASE_COLUMNS;
+
     fn trace_domain(&self) -> ArithmeticDomain {
         self.trace_domain
     }
@@ -397,26 +547,15 @@ impl MasterTable<BFieldElement> for MasterBaseTable {
         self.randomized_trace_table.view_mut()
     }
 
-    fn quotient_domain_table(&self) -> ArrayView2<BFieldElement> {
-        let Some(low_degree_extended_table) = &self.low_degree_extended_table else {
-            panic!("Low-degree extended columns must be computed first.");
-        };
-        if self.quotient_domain().length >= self.fri_domain().length {
-            return low_degree_extended_table.view();
+    fn quotient_domain_table(&self) -> Option<ArrayView2<BFieldElement>> {
+        let table = &self.low_degree_extended_table.as_ref()?;
+        let nrows = table.nrows();
+        if self.quotient_domain.length < nrows {
+            let unit_distance = nrows / self.quotient_domain.length;
+            Some(table.slice(s![0..nrows;unit_distance, ..]))
+        } else {
+            Some(table.view())
         }
-        let unit_distance = self.fri_domain().length / self.quotient_domain().length;
-        low_degree_extended_table.slice(s![..; unit_distance, ..])
-    }
-
-    fn fri_domain_table(&self) -> ArrayView2<BFieldElement> {
-        let Some(low_degree_extended_table) = &self.low_degree_extended_table else {
-            panic!("Low-degree extended columns must be computed first.");
-        };
-        if self.fri_domain().length >= self.quotient_domain().length {
-            return low_degree_extended_table.view();
-        }
-        let unit_distance = self.quotient_domain().length / self.fri_domain().length;
-        low_degree_extended_table.slice(s![..; unit_distance, ..])
     }
 
     fn memoize_low_degree_extended_table(
@@ -426,46 +565,59 @@ impl MasterTable<BFieldElement> for MasterBaseTable {
         self.low_degree_extended_table = Some(low_degree_extended_columns);
     }
 
-    fn low_degree_extended_table(&self) -> ArrayView2<BFieldElement> {
-        let Some(low_degree_extended_table) = &self.low_degree_extended_table else {
-            panic!("Low-degree extended columns must be computed first.");
-        };
-        low_degree_extended_table.view()
+    fn low_degree_extended_table(&self) -> Option<ArrayView2<BFieldElement>> {
+        let low_degree_extended_table = self.low_degree_extended_table.as_ref()?;
+        Some(low_degree_extended_table.view())
+    }
+
+    fn fri_domain_table(&self) -> Option<ArrayView2<BFieldElement>> {
+        let table = self.low_degree_extended_table.as_ref()?;
+        let nrows = table.nrows();
+        if nrows > self.fri_domain.length {
+            let unit_step = nrows / self.fri_domain.length;
+            Some(table.slice(s![0..nrows;unit_step, ..]))
+        } else {
+            Some(table.view())
+        }
     }
 
     fn memoize_interpolation_polynomials(
         &mut self,
         interpolation_polynomials: Array1<Polynomial<BFieldElement>>,
     ) {
-        let interpolation_polynomials = interpolation_polynomials.map(|polynomial| {
-            let coefficients = polynomial.coefficients.iter();
-            let lifted_coefficients = coefficients.map(|b| b.lift()).collect_vec();
-            Polynomial::new(lifted_coefficients)
-        });
         self.interpolation_polynomials = Some(interpolation_polynomials);
     }
 
-    fn interpolation_polynomials(&self) -> ArrayView1<Polynomial<XFieldElement>> {
+    fn interpolation_polynomials(&self) -> ArrayView1<Polynomial<BFieldElement>> {
         let Some(interpolation_polynomials) = &self.interpolation_polynomials else {
             panic!("Interpolation polynomials must be computed first.");
         };
         interpolation_polynomials.view()
     }
 
-    fn row(&self, row_index: XFieldElement) -> Array1<XFieldElement> {
+    fn out_of_domain_row(&self, indeterminate: XFieldElement) -> Array1<XFieldElement> {
+        // Evaluate a base field polynomial in an extension field point. Manual re-implementation
+        // to overcome the lack of the corresponding functionality in `twenty-first`.
+        let evaluate = |bfp: &Polynomial<_>, x| {
+            let mut acc = XFieldElement::zero();
+            for &coefficient in bfp.coefficients.iter().rev() {
+                acc *= x;
+                acc += coefficient;
+            }
+            acc
+        };
+
         self.interpolation_polynomials()
             .into_par_iter()
-            .map(|polynomial| polynomial.evaluate(row_index))
+            .map(|polynomial| evaluate(polynomial, indeterminate))
             .collect::<Vec<_>>()
             .into()
-    }
-
-    fn hash_one_row(row: ArrayView1<BFieldElement>) -> Digest {
-        Tip5::hash_varlen(row.as_slice().unwrap())
     }
 }
 
 impl MasterTable<XFieldElement> for MasterExtTable {
+    const NUM_COLUMNS: usize = NUM_EXT_COLUMNS;
+
     fn trace_domain(&self) -> ArithmeticDomain {
         self.trace_domain
     }
@@ -502,26 +654,15 @@ impl MasterTable<XFieldElement> for MasterExtTable {
         self.randomized_trace_table.view_mut()
     }
 
-    fn quotient_domain_table(&self) -> ArrayView2<XFieldElement> {
-        let Some(low_degree_extended_table) = &self.low_degree_extended_table else {
-            panic!("Low-degree extended columns must be computed first.");
-        };
-        if self.quotient_domain().length >= self.fri_domain().length {
-            return low_degree_extended_table.view();
+    fn quotient_domain_table(&self) -> Option<ArrayView2<XFieldElement>> {
+        let table = self.low_degree_extended_table.as_ref()?;
+        let nrows = table.nrows();
+        if nrows > self.quotient_domain.length {
+            let unit_distance = nrows / self.quotient_domain.length;
+            Some(table.slice(s![0..nrows;unit_distance, ..]))
+        } else {
+            Some(table.view())
         }
-        let unit_distance = self.fri_domain().length / self.quotient_domain().length;
-        low_degree_extended_table.slice(s![..; unit_distance, ..])
-    }
-
-    fn fri_domain_table(&self) -> ArrayView2<XFieldElement> {
-        let Some(low_degree_extended_table) = &self.low_degree_extended_table else {
-            panic!("Low-degree extended columns must be computed first.");
-        };
-        if self.fri_domain().length >= self.quotient_domain().length {
-            return low_degree_extended_table.view();
-        }
-        let unit_distance = self.quotient_domain().length / self.fri_domain().length;
-        low_degree_extended_table.slice(s![..; unit_distance, ..])
     }
 
     fn memoize_low_degree_extended_table(
@@ -531,11 +672,20 @@ impl MasterTable<XFieldElement> for MasterExtTable {
         self.low_degree_extended_table = Some(low_degree_extended_columns);
     }
 
-    fn low_degree_extended_table(&self) -> ArrayView2<XFieldElement> {
-        let Some(low_degree_extended_table) = &self.low_degree_extended_table else {
-            panic!("Low-degree extended columns must be computed first.");
-        };
-        low_degree_extended_table.view()
+    fn low_degree_extended_table(&self) -> Option<ArrayView2<XFieldElement>> {
+        let low_degree_extended_table = self.low_degree_extended_table.as_ref()?;
+        Some(low_degree_extended_table.view())
+    }
+
+    fn fri_domain_table(&self) -> Option<ArrayView2<XFieldElement>> {
+        let table = self.low_degree_extended_table.as_ref()?;
+        let nrows = table.nrows();
+        if nrows > self.fri_domain.length {
+            let unit_step = nrows / self.fri_domain.length;
+            Some(table.slice(s![0..nrows;unit_step, ..]))
+        } else {
+            Some(table.view())
+        }
     }
 
     fn memoize_interpolation_polynomials(
@@ -552,19 +702,13 @@ impl MasterTable<XFieldElement> for MasterExtTable {
         interpolation_polynomials.view()
     }
 
-    fn row(&self, row_index: XFieldElement) -> Array1<XFieldElement> {
+    fn out_of_domain_row(&self, indeterminate: XFieldElement) -> Array1<XFieldElement> {
         self.interpolation_polynomials()
             .slice(s![..NUM_EXT_COLUMNS])
             .into_par_iter()
-            .map(|polynomial| polynomial.evaluate(row_index))
+            .map(|polynomial| polynomial.evaluate(indeterminate))
             .collect::<Vec<_>>()
             .into()
-    }
-
-    fn hash_one_row(row: ArrayView1<XFieldElement>) -> Digest {
-        let interpret_xfe_as_bfes = |xfe: &XFieldElement| xfe.coefficients.to_vec();
-        let row_as_bfes = row.iter().map(interpret_xfe_as_bfes).concat();
-        Tip5::hash_varlen(&row_as_bfes)
     }
 }
 
@@ -1148,8 +1292,11 @@ mod tests {
     use ndarray::s;
     use ndarray::Array2;
     use num_traits::Zero;
+    use proptest::prelude::*;
+    use proptest_arbitrary_interop::arb;
     use strum::EnumCount;
     use strum::IntoEnumIterator;
+    use test_strategy::proptest;
     use twenty_first::math::b_field_element::BFieldElement;
     use twenty_first::math::traits::FiniteField;
 
@@ -1606,5 +1753,20 @@ mod tests {
         assert_eq!(0, not_trace_domain_element(EXT_CASCADE_TABLE_START));
         assert_eq!(0, not_trace_domain_element(EXT_LOOKUP_TABLE_START));
         assert_eq!(0, not_trace_domain_element(EXT_U32_TABLE_START));
+    }
+
+    #[proptest]
+    fn test_sponge_with_pending_absorb(
+        #[strategy(arb())] elements: Vec<BFieldElement>,
+        #[strategy(0_usize..=#elements.len())] substring_index: usize,
+    ) {
+        let (substring_0, substring_1) = elements.split_at(substring_index);
+        let mut sponge = SpongeWithPendingAbsorb::new();
+        sponge.absorb(substring_0);
+        sponge.absorb(substring_1);
+        let pending_absorb_digest = sponge.finalize();
+
+        let expected_digest = Tip5::hash_varlen(&elements);
+        prop_assert_eq!(expected_digest, pending_absorb_digest);
     }
 }

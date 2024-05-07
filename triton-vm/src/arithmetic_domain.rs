@@ -1,8 +1,8 @@
-use itertools::Itertools;
 use std::ops::Mul;
 use std::ops::MulAssign;
 
 use num_traits::One;
+use rayon::prelude::*;
 use twenty_first::math::traits::FiniteField;
 use twenty_first::math::traits::PrimitiveRootOfUnity;
 use twenty_first::prelude::*;
@@ -58,16 +58,28 @@ impl ArithmeticDomain {
             + Mul<BFieldElement, Output = FF>
             + From<BFieldElement>,
     {
-        // The limitation arises in `Polynomial::fast_coset_evaluate` in dependency `twenty-first`.
-        let batch_evaluation_is_possible = self.length >= polynomial.coefficients.len();
-        if batch_evaluation_is_possible {
-            let (offset, generator, length) = (self.offset, self.generator, self.length);
-            polynomial.fast_coset_evaluate::<BFieldElement>(offset, generator, length)
-        } else {
-            let domain_values = self.domain_values().into_iter();
-            let domain_values = domain_values.map(FF::from).collect_vec();
-            polynomial.batch_evaluate(&domain_values)
+        let (offset, generator, length) = (self.offset, self.generator, self.length);
+        let evaluate_from =
+            |chunk| Polynomial::from(chunk).fast_coset_evaluate(offset, generator, length);
+
+        // avoid `enumerate` to directly get index of the right type
+        let mut indexed_chunks = (0..).zip(polynomial.coefficients.chunks(length));
+
+        // only allocate a bunch of zeros if there are no chunks
+        let mut values = indexed_chunks.next().map_or_else(
+            || vec![FF::zero(); length],
+            |(_, first_chunk)| evaluate_from(first_chunk),
+        );
+        for (chunk_index, chunk) in indexed_chunks {
+            let coefficient_index = chunk_index * u64::try_from(length).unwrap();
+            let scaled_offset = offset.mod_pow(coefficient_index);
+            values
+                .par_iter_mut()
+                .zip(evaluate_from(chunk))
+                .for_each(|(value, evaluation)| *value += evaluation * scaled_offset);
         }
+
+        values
     }
 
     pub fn interpolate<FF>(&self, values: &[FF]) -> Polynomial<FF>
@@ -88,8 +100,9 @@ impl ArithmeticDomain {
         target_domain.evaluate(&self.interpolate(codeword))
     }
 
-    pub fn domain_value(&self, index: u32) -> BFieldElement {
-        self.generator.mod_pow_u32(index) * self.offset
+    /// Compute the `n`th element of the domain.
+    pub fn domain_value(&self, n: u32) -> BFieldElement {
+        self.generator.mod_pow_u32(n) * self.offset
     }
 
     pub fn domain_values(&self) -> Vec<BFieldElement> {
@@ -124,6 +137,7 @@ impl ArithmeticDomain {
 mod tests {
     use assert2::let_assert;
     use itertools::Itertools;
+    use proptest::collection::vec;
     use proptest::prelude::*;
     use proptest_arbitrary_interop::arb;
     use test_strategy::proptest;
@@ -283,5 +297,23 @@ mod tests {
             let_assert!(Err(err) = domain.halve());
             assert!(ArithmeticDomainError::TooSmallForHalving(i) == err);
         }
+    }
+
+    #[proptest]
+    fn can_evaluate_polynomial_larger_than_domain(
+        #[strategy(1_usize..10)] _log_domain_length: usize,
+        #[strategy(1_usize..5)] _expansion_factor: usize,
+        #[strategy(Just(1 << #_log_domain_length))] domain_length: usize,
+        #[strategy(vec(arb(),#domain_length*#_expansion_factor))] coefficients: Vec<BFieldElement>,
+        #[strategy(arb())] offset: BFieldElement,
+    ) {
+        let domain = ArithmeticDomain::of_length(domain_length)
+            .unwrap()
+            .with_offset(offset);
+        let polynomial = Polynomial::new(coefficients);
+
+        let values0 = domain.evaluate(&polynomial);
+        let values1 = polynomial.batch_evaluate(&domain.domain_values());
+        assert_eq!(values0, values1);
     }
 }
