@@ -958,11 +958,14 @@ impl<II: InputIndicator> ConstraintCircuitBuilder<II> {
     }
 
     pub fn get_node_by_id(&self, id: usize) -> Option<ConstraintCircuitMonad<II>> {
-        self.all_nodes
-            .borrow()
+        let all_nodes = self.all_nodes.borrow();
+        let mut candidate_nodes = all_nodes
             .iter()
-            .find(|node| node.circuit.borrow().id == id)
-            .cloned()
+            .filter(|node| node.circuit.borrow().id == id);
+        let num_candidates = candidate_nodes.clone().count();
+        assert!(num_candidates <= 1, "ID {id} not unique in builder");
+
+        candidate_nodes.next().cloned()
     }
 
     /// The unique monad representing the constant value 0.
