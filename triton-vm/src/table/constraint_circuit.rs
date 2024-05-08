@@ -1152,16 +1152,19 @@ mod tests {
 
     use super::*;
 
-    /// Circuit monads are put into hash sets. Hence, it is important that `Eq` and `Hash`
-    /// agree whether two nodes are equal: k1 == k2 => h(k1) == h(k2)
+    /// The [`Hash`] trait requires:
+    /// circuit_0 == circuit_1 => hash(circuit_0) == hash(circuit_1)
+    ///
+    /// By De-Morgan's law, this is equivalent to the more meaningful test:
+    /// hash(circuit_0) != hash(circuit_1) => circuit_0 != circuit_1
     #[proptest]
-    fn equality_and_hash_agree(
-        #[strategy(arb())] circuit: ConstraintCircuitMonad<SingleRowIndicator>,
+    fn unequal_hash_implies_unequal_constraint_circuit_monad(
+        #[strategy(arb())] circuit_0: ConstraintCircuitMonad<SingleRowIndicator>,
+        #[strategy(arb())] circuit_1: ConstraintCircuitMonad<SingleRowIndicator>,
     ) {
-        let hash0 = hash_circuit(&circuit);
-        let other_circuit = circuit.clone() + circuit.builder.zero();
-        let hash1 = hash_circuit(&other_circuit);
-        prop_assert_eq!(circuit == other_circuit, hash0 == hash1);
+        if hash_circuit(&circuit_0) != hash_circuit(&circuit_1) {
+            prop_assert_ne!(circuit_0, circuit_1);
+        }
     }
 
     /// The hash of a node may not depend on `ref_count`, `counter`, `id_counter_ref`, or
@@ -1192,11 +1195,11 @@ mod tests {
     fn printing_constraint_circuit_gives_expected_strings() {
         let builder = ConstraintCircuitBuilder::new();
         assert_eq!("1", builder.b_constant(1).to_string());
+        assert_eq!("base_row[5] ", builder.input(BaseRow(5)).to_string());
+        assert_eq!("6", builder.challenge(6_usize).to_string());
 
         let xfe_str = builder.x_constant([2, 3, 4]).to_string();
         assert_eq!("(4·x² + 3·x + 2)", xfe_str);
-        assert_eq!("base_row[5] ", builder.input(BaseRow(5)).to_string());
-        assert_eq!("6", builder.challenge(6_usize).to_string());
     }
 
     #[proptest]
