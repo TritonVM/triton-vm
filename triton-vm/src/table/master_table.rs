@@ -1489,7 +1489,7 @@ mod tests {
     }
 
     fn assert_spec_has(file_path: &Path, snippet: String) {
-        let contents = fs::read_to_string(file_path).unwrap();
+        let contents = fs::read_to_string(file_path).unwrap().replace("\r\n", "\n");
         assert!(
             contents.contains(&snippet),
             "Could not find correct snippet in file \"{}\".",
