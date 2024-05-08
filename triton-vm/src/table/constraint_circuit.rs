@@ -1229,29 +1229,25 @@ mod tests {
         prop_assert_eq!(c.clone(), c.clone() - c.builder.zero());
     }
 
-    /// Terribly confusing, super rare bug that's extremely difficult to reproduce or pin down:
-    /// 1. apply constant folding
-    /// 1. introduce a new redundant circuit,
-    /// 1. apply constant folding again.
-    ///
-    /// As a workaround, only _one_ redundant circuit is produced below.
-    ///
-    /// If you, dear reader, feel like diving into a rabbit hole of confusion and frustration,
-    /// try checking the constant-folding property of all 4 possible combinations in the same test.
     #[proptest]
     fn constant_folding_can_deal_with_adding_effectively_zero_term(
         #[strategy(arb())] c: ConstraintCircuitMonad<DualRowIndicator>,
-        #[strategy(0_usize..4)] test_case: usize,
+        modification_selectors: [bool; 4],
     ) {
         let zero = || c.builder.zero();
-        let redundant_circuit = match test_case {
-            0 => c.clone() + (c.clone() * zero()),
-            1 => c.clone() + (zero() * c.clone()),
-            2 => (c.clone() * zero()) + c.clone(),
-            3 => (zero() * c.clone()) + c.clone(),
-            _ => unreachable!(),
-        };
-
+        let mut redundant_circuit = c.clone();
+        if modification_selectors[0] {
+            redundant_circuit = redundant_circuit + (c.clone() * zero());
+        }
+        if modification_selectors[1] {
+            redundant_circuit = redundant_circuit + (zero() * c.clone());
+        }
+        if modification_selectors[2] {
+            redundant_circuit = (c.clone() * zero()) + redundant_circuit;
+        }
+        if modification_selectors[3] {
+            redundant_circuit = (zero() * c.clone()) + redundant_circuit;
+        }
         prop_assert_eq!(c, redundant_circuit);
     }
 
