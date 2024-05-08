@@ -1,7 +1,4 @@
 use std::cmp::Ordering;
-use std::fmt::Display;
-use std::fmt::Formatter;
-use std::fmt::Result as FmtResult;
 
 use ndarray::parallel::prelude::*;
 use ndarray::*;
@@ -345,25 +342,5 @@ impl JumpStackTable {
                 clock_jump_diff_lookup_log_derivative;
             previous_row = Some(current_row);
         }
-    }
-}
-
-pub struct JumpStackTraceRow {
-    pub row: [BFieldElement; BASE_WIDTH],
-}
-
-impl Display for JumpStackTraceRow {
-    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
-        let width = 5;
-        write!(
-            f,
-            "│ CLK: {:>width$} │ CI:  {:>width$} │ \
-            JSP: {:>width$} │ JSO: {:>width$} │ JSD: {:>width$} │",
-            self.row[CLK.base_table_index()].value(),
-            self.row[CI.base_table_index()].value(),
-            self.row[JSP.base_table_index()].value(),
-            self.row[JSO.base_table_index()].value(),
-            self.row[JSD.base_table_index()].value(),
-        )
     }
 }

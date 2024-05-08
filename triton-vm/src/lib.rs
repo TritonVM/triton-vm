@@ -644,7 +644,6 @@ mod tests {
         implements_auto_traits::<table::hash_table::HashTableMode>();
         implements_auto_traits::<table::jump_stack_table::JumpStackTable>();
         implements_auto_traits::<table::jump_stack_table::ExtJumpStackTable>();
-        implements_auto_traits::<table::jump_stack_table::JumpStackTraceRow>();
         implements_auto_traits::<table::lookup_table::LookupTable>();
         implements_auto_traits::<table::lookup_table::ExtLookupTable>();
         implements_auto_traits::<table::master_table::TableId>();
