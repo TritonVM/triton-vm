@@ -1096,7 +1096,7 @@ mod tests {
         #[strategy(arbitrary_fri())] fri: Fri<Tip5>,
         #[strategy(arb())] mut proof_stream: ProofStream,
     ) {
-        let _ = fri.verify(&mut proof_stream, &mut None);
+        let _verdict = fri.verify(&mut proof_stream, &mut None);
     }
 
     #[proptest]

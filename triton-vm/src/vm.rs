@@ -1115,7 +1115,7 @@ pub(crate) mod tests {
         let program = GREATEST_COMMON_DIVISOR.clone();
         let stdin = PublicInput::from([42, 56].map(|b| bfe!(b)));
         let secret_in = NonDeterminism::default();
-        let _ = program.trace_execution(stdin, secret_in).unwrap();
+        program.trace_execution(stdin, secret_in).unwrap();
     }
 
     #[test]

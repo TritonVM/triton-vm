@@ -541,7 +541,7 @@ pub(crate) mod tests {
     fn ram_table_call_can_be_converted_to_table_row(
         #[strategy(arb())] ram_table_call: RamTableCall,
     ) {
-        let _ = ram_table_call.to_table_row();
+        ram_table_call.to_table_row();
     }
 
     #[test]

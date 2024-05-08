@@ -2679,7 +2679,7 @@ pub(crate) mod tests {
         #[strategy(arb())] claim: Claim,
         #[strategy(arb())] proof: Proof,
     ) {
-        let _ = stark.verify(&claim, &proof, &mut None);
+        let _verdict = stark.verify(&claim, &proof, &mut None);
     }
 
     #[proptest]

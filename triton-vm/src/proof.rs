@@ -138,6 +138,6 @@ mod tests {
     fn decoding_arbitrary_proof_data_does_not_panic(
         #[strategy(vec(arb(), 0..1_000))] proof_data: Vec<BFieldElement>,
     ) {
-        let _ = Proof::decode(&proof_data);
+        let _proof = Proof::decode(&proof_data);
     }
 }

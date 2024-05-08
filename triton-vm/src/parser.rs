@@ -1020,7 +1020,7 @@ pub(crate) mod tests {
 
     #[proptest]
     fn parse_program(#[strategy(arb())] program: Program) {
-        let _ = parse(&program.to_string()).unwrap();
+        parse(&program.to_string()).unwrap();
     }
 
     #[test]

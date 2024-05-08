@@ -150,6 +150,8 @@
 //! [trace_execution]: Program::trace_execution
 
 #![recursion_limit = "4096"]
+#![warn(let_underscore_drop)]
+#![warn(missing_copy_implementations)]
 #![warn(missing_debug_implementations)]
 
 pub use twenty_first;
@@ -818,13 +820,13 @@ mod tests {
         let push_25 = triton_asm![push 0; 25];
         let pop_25 = triton_asm![pop 5; 5];
         let program = triton_program! { push 1 { &push_25 } { &pop_25 } assert halt };
-        let _ = program.run([].into(), [].into()).unwrap();
+        program.run([].into(), [].into()).unwrap();
     }
 
     #[test]
     #[should_panic(expected = "IndexOutOfBounds(0)")]
     fn parsing_pop_with_illegal_argument_fails() {
-        let _ = triton_instr!(pop 0);
+        triton_instr!(pop 0);
     }
 
     #[test]
