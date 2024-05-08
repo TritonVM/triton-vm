@@ -808,23 +808,22 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
                 II::ext_table_input(new_ext_col_idx)
             };
             let new_variable = builder.input(new_input_indicator);
-            let new_circuit = new_variable.circuit.clone();
 
             // Substitute the chosen circuit with the new variable.
-            builder.substitute(chosen_node_id, &new_circuit);
+            builder.substitute(chosen_node_id, new_variable.clone());
+
+            // Treat roots of the multicircuit explicitly.
+            for circuit in multicircuit.iter_mut() {
+                if circuit.circuit.borrow().id == chosen_node_id {
+                    circuit.circuit = new_variable.circuit.clone();
+                }
+            }
 
             // Create new constraint and put it into the appropriate return vector.
             let new_constraint = new_variable - chosen_node;
             match chosen_node_is_base_col {
                 true => base_constraints.push(new_constraint),
                 false => ext_constraints.push(new_constraint),
-            }
-
-            // Treat roots of the multicircuit explicitly.
-            for circuit in multicircuit.iter_mut() {
-                if circuit.circuit.borrow().id == chosen_node_id {
-                    circuit.circuit = new_circuit.clone();
-                }
             }
         }
 
@@ -1034,9 +1033,15 @@ impl<II: InputIndicator> ConstraintCircuitBuilder<II> {
         new_node
     }
 
-    /// Substitute all nodes with ID `old_id` with the given `new` node.
-    pub fn substitute(&self, old_id: usize, new: &Rc<RefCell<ConstraintCircuit<II>>>) {
-        for node in self.all_nodes.borrow().iter() {
+    /// Replace all pointers to a given node (identified by `old_id`) by one
+    /// to the new node. The new node must already live in the circuit
+    /// somewhere, which happens automatically if it was made by the same
+    /// builder. The old node will be kept; it just won't be pointed to anymore.
+    ///
+    /// A circuit's root node cannot be substituted with this method. Manual care
+    /// must be taken to update the root node if necessary.
+    fn substitute(&self, old_id: usize, new: ConstraintCircuitMonad<II>) {
+        for ref mut node in self.all_nodes.borrow().iter() {
             if node.circuit.borrow().id == old_id {
                 continue;
             }
@@ -1047,10 +1052,10 @@ impl<II: InputIndicator> ConstraintCircuitBuilder<II> {
             };
 
             if lhs.borrow().id == old_id {
-                *lhs = new.clone();
+                *lhs = new.circuit.clone();
             }
             if rhs.borrow().id == old_id {
-                *rhs = new.clone();
+                *rhs = new.circuit.clone();
             }
         }
     }
@@ -1151,6 +1156,29 @@ mod tests {
     use crate::Claim;
 
     use super::*;
+
+    impl<II: InputIndicator> ConstraintCircuitMonad<II> {
+        /// Check whether the given node is contained in this circuit.
+        fn contains(&self, other: &Self) -> bool {
+            let self_expression = &self.circuit.borrow().expression;
+            let other_expression = &other.circuit.borrow().expression;
+            self_expression.contains(other_expression)
+        }
+    }
+
+    impl<II: InputIndicator> CircuitExpression<II> {
+        /// Check whether the given node is contained in this circuit.
+        fn contains(&self, other: &Self) -> bool {
+            if self == other {
+                return true;
+            }
+            let BinaryOperation(_, lhs, rhs) = self else {
+                return false;
+            };
+
+            lhs.borrow().expression.contains(other) || rhs.borrow().expression.contains(other)
+        }
+    }
 
     /// The [`Hash`] trait requires:
     /// circuit_0 == circuit_1 => hash(circuit_0) == hash(circuit_1)
@@ -1260,6 +1288,35 @@ mod tests {
         }
         let zero_minus_circuit = circuit.builder.zero() - circuit.clone();
         prop_assert_ne!(&circuit, &zero_minus_circuit);
+    }
+
+    #[test]
+    fn substitution_replaces_a_node_in_a_circuit() {
+        let builder = ConstraintCircuitBuilder::new();
+        let x = |i| builder.input(BaseRow(i));
+        let constant = |c: u32| builder.b_constant(c);
+        let challenge = |i: usize| builder.challenge(i);
+
+        let part = x(0) + x(1);
+        let substitute_me = x(0) * part.clone();
+        let root_0 = part.clone() + challenge(1) - constant(84);
+        let root_1 = substitute_me.clone() + challenge(0) - constant(42);
+        let root_2 = x(2) * substitute_me.clone() - challenge(1);
+
+        assert!(!root_0.contains(&substitute_me));
+        assert!(root_1.contains(&substitute_me));
+        assert!(root_2.contains(&substitute_me));
+
+        let new_variable = x(3);
+        builder.substitute(substitute_me.circuit.borrow().id, new_variable.clone());
+
+        assert!(!root_0.contains(&substitute_me));
+        assert!(!root_1.contains(&substitute_me));
+        assert!(!root_2.contains(&substitute_me));
+
+        assert!(root_0.contains(&part));
+        assert!(root_1.contains(&new_variable));
+        assert!(root_2.contains(&new_variable));
     }
 
     /// Recursively evaluates the given constraint circuit and its sub-circuits on the given
