@@ -18,6 +18,7 @@ use std::hash::Hash;
 use std::hash::Hasher;
 use std::iter::Sum;
 use std::ops::Add;
+use std::ops::AddAssign;
 use std::ops::Mul;
 use std::ops::Neg;
 use std::ops::Sub;
@@ -557,9 +558,9 @@ impl<II: InputIndicator> PartialEq for ConstraintCircuitMonad<II> {
 
 impl<II: InputIndicator> Eq for ConstraintCircuitMonad<II> {}
 
-/// Helper function for binary operations that are used to generate new parent nodes in the
-/// multitree that represents the algebraic circuit. Ensures that each newly created node has a
-/// unique ID.
+/// Helper function for binary operations that are used to generate new parent
+/// nodes in the multitree that represents the algebraic circuit. Ensures that
+/// each newly created node has a unique ID.
 ///
 /// This function does not (currently) catch expressions of the form ((x+1)+1).
 fn binop<II: InputIndicator>(
@@ -591,19 +592,22 @@ fn binop<II: InputIndicator>(
     };
 
     // all `BinOp`s are commutative – try both orders of the operands
+    let all_nodes = &mut lhs.builder.all_nodes.borrow_mut();
     let new_node = binop_new_node(binop, &rhs, &lhs);
-    if let Some(node) = lhs.builder.all_nodes.borrow().get(&new_node) {
+    if let Some(node) = all_nodes.values().find(|&n| n == &new_node) {
         return node.to_owned();
     }
 
     let new_node = binop_new_node(binop, &lhs, &rhs);
-    if let Some(node) = lhs.builder.all_nodes.borrow().get(&new_node) {
+    if let Some(node) = all_nodes.values().find(|&n| n == &new_node) {
         return node.to_owned();
     }
 
-    *lhs.builder.id_counter.borrow_mut() += 1;
-    let was_inserted = lhs.builder.all_nodes.borrow_mut().insert(new_node.clone());
-    assert!(was_inserted, "Binop-created value must be new");
+    let new_id = new_node.circuit.borrow().id;
+    let maybe_existing_node = all_nodes.insert(new_id, new_node.clone());
+    let new_node_is_new = maybe_existing_node.is_none();
+    assert!(new_node_is_new, "new node must not overwrite existing node");
+    lhs.builder.id_counter.borrow_mut().add_assign(1);
     new_node
 }
 
@@ -798,7 +802,7 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
             let chosen_node_id = Self::pick_node_to_substitute(multicircuit, target_degree);
 
             // Create a new variable.
-            let chosen_node = builder.get_node_by_id(chosen_node_id).unwrap();
+            let chosen_node = builder.all_nodes.borrow()[&chosen_node_id].clone();
             let chosen_node_is_base_col = chosen_node.circuit.borrow().evaluates_to_base_element();
             let new_input_indicator = if chosen_node_is_base_col {
                 let new_base_col_idx = num_base_cols + base_constraints.len();
@@ -922,7 +926,7 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
 /// created node gets a unique ID.
 pub struct ConstraintCircuitBuilder<II: InputIndicator> {
     id_counter: Rc<RefCell<usize>>,
-    all_nodes: Rc<RefCell<HashSet<ConstraintCircuitMonad<II>>>>,
+    all_nodes: Rc<RefCell<HashMap<usize, ConstraintCircuitMonad<II>>>>,
 }
 
 impl<II: InputIndicator> Default for ConstraintCircuitBuilder<II> {
@@ -935,7 +939,7 @@ impl<II: InputIndicator> ConstraintCircuitBuilder<II> {
     pub fn new() -> Self {
         Self {
             id_counter: Rc::new(RefCell::new(0)),
-            all_nodes: Rc::new(RefCell::new(HashSet::default())),
+            all_nodes: Rc::new(RefCell::new(HashMap::new())),
         }
     }
 
@@ -954,17 +958,6 @@ impl<II: InputIndicator> ConstraintCircuitBuilder<II> {
             circuit,
             builder: self.clone(),
         }
-    }
-
-    pub fn get_node_by_id(&self, id: usize) -> Option<ConstraintCircuitMonad<II>> {
-        let all_nodes = self.all_nodes.borrow();
-        let mut candidate_nodes = all_nodes
-            .iter()
-            .filter(|node| node.circuit.borrow().id == id);
-        let num_candidates = candidate_nodes.clone().count();
-        assert!(num_candidates <= 1, "ID {id} not unique in builder");
-
-        candidate_nodes.next().cloned()
     }
 
     /// The unique monad representing the constant value 0.
@@ -1023,39 +1016,35 @@ impl<II: InputIndicator> ConstraintCircuitBuilder<II> {
         let circuit = ConstraintCircuit::new(id, expression);
         let new_node = self.new_monad(circuit);
 
-        if let Some(same_node) = self.all_nodes.borrow().get(&new_node) {
+        if let Some(same_node) = self.all_nodes.borrow().values().find(|&n| n == &new_node) {
             return same_node.to_owned();
         }
 
-        *self.id_counter.borrow_mut() += 1;
-        let was_inserted = self.all_nodes.borrow_mut().insert(new_node.clone());
-        assert!(was_inserted, "Leaf-created value must be new… {new_node}");
+        let maybe_previous_node = self.all_nodes.borrow_mut().insert(id, new_node.clone());
+        let new_node_is_new = maybe_previous_node.is_none();
+        assert!(new_node_is_new, "Leaf-created node must be new… {new_node}");
+        self.id_counter.borrow_mut().add_assign(1);
         new_node
     }
 
     /// Replace all pointers to a given node (identified by `old_id`) by one
-    /// to the new node. The new node must already live in the circuit
-    /// somewhere, which happens automatically if it was made by the same
-    /// builder. The old node will be kept; it just won't be pointed to anymore.
+    /// to the new node.
     ///
     /// A circuit's root node cannot be substituted with this method. Manual care
     /// must be taken to update the root node if necessary.
     fn substitute(&self, old_id: usize, new: ConstraintCircuitMonad<II>) {
-        for ref mut node in self.all_nodes.borrow().iter() {
-            if node.circuit.borrow().id == old_id {
-                continue;
-            }
-
-            let BinaryOperation(_, ref mut lhs, ref mut rhs) = node.circuit.borrow_mut().expression
-            else {
+        self.all_nodes.borrow_mut().remove(&old_id);
+        for node in self.all_nodes.borrow_mut().values_mut() {
+            let node_expression = &mut node.circuit.borrow_mut().expression;
+            let BinaryOperation(_, ref mut node_lhs, ref mut node_rhs) = node_expression else {
                 continue;
             };
 
-            if lhs.borrow().id == old_id {
-                *lhs = new.circuit.clone();
+            if node_lhs.borrow().id == old_id {
+                *node_lhs = new.circuit.clone();
             }
-            if rhs.borrow().id == old_id {
-                *rhs = new.circuit.clone();
+            if node_rhs.borrow().id == old_id {
+                *node_rhs = new.circuit.clone();
             }
         }
     }
