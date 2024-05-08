@@ -1,4 +1,21 @@
+//! The constraint generator is a tool that generates efficient-to-evaluate code
+//! for the constraints of Triton Virtual Machine, in particular, for the
+//! Arithmetic Intermediate Representation (AIR) constraints of the
+//! Zero-Knowledge Proof System underpinning the STARK proof system.
+//!
+//! The constraints are defined in the Triton VM crate. In order to leverage
+//! compiler optimizations, rust code is generated using those constraints.
+//!
+//! Additionally, the constraints are also translated to Triton Assembly (TASM).
+//! This allows Triton VM to evaluate its own constraints, which is essential
+//! for recursive proof verification, or Incrementally Verifiable Computation.
+//!
+//! The constraint generator can be run by executing
+//! `cargo run --bin constraint-evaluation-generator`
+//! in the root of the repository.
+
 #![warn(missing_debug_implementations)]
+#![warn(missing_docs)]
 
 use std::fs::write;
 
