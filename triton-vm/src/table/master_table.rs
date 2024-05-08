@@ -496,6 +496,7 @@ pub struct MasterBaseTable {
 }
 
 /// See [`MasterTable`].
+#[derive(Debug, Clone)]
 pub struct MasterExtTable {
     pub num_trace_randomizers: usize,
 

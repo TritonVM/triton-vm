@@ -150,6 +150,7 @@
 //! [trace_execution]: Program::trace_execution
 
 #![recursion_limit = "4096"]
+#![warn(missing_debug_implementations)]
 
 pub use twenty_first;
 

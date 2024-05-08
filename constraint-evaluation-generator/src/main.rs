@@ -1,3 +1,5 @@
+#![warn(missing_debug_implementations)]
+
 use std::fs::write;
 
 use proc_macro2::TokenStream;

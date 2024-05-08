@@ -186,6 +186,7 @@ impl<'a> Arbitrary<'a> for Program {
 }
 
 /// An `InstructionIter` loops the instructions of a `Program` by skipping duplicate placeholders.
+#[derive(Debug, Default, Clone, Eq, PartialEq)]
 pub struct InstructionIter {
     cursor: Cursor<Vec<Instruction>>,
 }
