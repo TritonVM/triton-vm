@@ -5,6 +5,7 @@
     + [Registers](registers.md)
     + [Instructions](instructions.md)
 - [Arithmetization](arithmetization.md)
+    + [Arithmetization Overview](arithmetization-overview.md)
     + [Program Table](program-table.md)
     + [Processor Table](processor-table.md)
         * [Instruction Groups](instruction-groups.md)

@@ -1290,6 +1290,10 @@ pub fn interpolant_degree(padded_height: usize, num_trace_randomizers: usize) ->
 
 #[cfg(test)]
 mod tests {
+    use fs_err as fs;
+    use std::path::Path;
+
+    use master_table::cross_table_argument::GrandCrossTableArg;
     use ndarray::s;
     use ndarray::Array2;
     use num_traits::Zero;
@@ -1300,6 +1304,7 @@ mod tests {
     use test_strategy::proptest;
     use twenty_first::math::b_field_element::BFieldElement;
     use twenty_first::math::traits::FiniteField;
+    use twenty_first::prelude::x_field_element::EXTENSION_DEGREE;
 
     use crate::arithmetic_domain::ArithmeticDomain;
     use crate::shared_tests::ProgramAndInput;
@@ -1309,6 +1314,20 @@ mod tests {
     use crate::table::table_column::*;
     use crate::table::*;
     use crate::triton_program;
+
+    use self::cascade_table::ExtCascadeTable;
+    use self::constraint_circuit::ConstraintCircuitBuilder;
+    use self::constraint_circuit::ConstraintCircuitMonad;
+    use self::constraint_circuit::DualRowIndicator;
+    use self::constraint_circuit::SingleRowIndicator;
+    use self::hash_table::ExtHashTable;
+    use self::jump_stack_table::ExtJumpStackTable;
+    use self::lookup_table::ExtLookupTable;
+    use self::op_stack_table::ExtOpStackTable;
+    use self::processor_table::ExtProcessorTable;
+    use self::program_table::ExtProgramTable;
+    use self::ram_table::ExtRamTable;
+    use self::u32_table::ExtU32Table;
 
     use super::*;
 
@@ -1467,6 +1486,334 @@ mod tests {
         assert!(terminal_zerofier_poly
             .evaluate(small_domain.domain_value(small_order as u32 - 1))
             .is_zero());
+    }
+
+    fn assert_spec_has(file_path: &Path, snippet: String) {
+        let contents = fs::read_to_string(file_path).unwrap().replace("\r\n", "\n");
+        assert!(
+            contents.contains(&snippet),
+            "Could not find correct snippet in file \"{}\".",
+            file_path.display(),
+        );
+    }
+
+    #[test]
+    fn spec_has_correct_table_overview() {
+        let tables = [
+            (
+                "[ProgramTable](program-table.md)",
+                program_table::BASE_WIDTH,
+                program_table::EXT_WIDTH,
+            ),
+            (
+                "[ProcessorTable](processor-table.md)",
+                processor_table::BASE_WIDTH,
+                processor_table::EXT_WIDTH,
+            ),
+            (
+                "[OpStackTable](operational-stack-table.md)",
+                op_stack_table::BASE_WIDTH,
+                op_stack_table::EXT_WIDTH,
+            ),
+            (
+                "[RamTable](random-access-memory-table.md)",
+                ram_table::BASE_WIDTH,
+                ram_table::EXT_WIDTH,
+            ),
+            (
+                "[JumpStackTable](jump-stack-table.md)",
+                jump_stack_table::BASE_WIDTH,
+                jump_stack_table::EXT_WIDTH,
+            ),
+            (
+                "[HashTable](hash-table.md)",
+                hash_table::BASE_WIDTH,
+                hash_table::EXT_WIDTH,
+            ),
+            (
+                "[CascadeTable](cascade-table.md)",
+                cascade_table::BASE_WIDTH,
+                cascade_table::EXT_WIDTH,
+            ),
+            (
+                "[LookupTable](lookup-table.md)",
+                lookup_table::BASE_WIDTH,
+                lookup_table::EXT_WIDTH,
+            ),
+            (
+                "[U32Table](u32-table.md)",
+                u32_table::BASE_WIDTH,
+                u32_table::EXT_WIDTH,
+            ),
+            (
+                "DegreeLowering",
+                degree_lowering_table::BASE_WIDTH,
+                degree_lowering_table::EXT_WIDTH,
+            ),
+            ("Randomizers", 0, NUM_RANDOMIZER_POLYNOMIALS),
+        ];
+
+        // produce table code
+        let mut ft = format!("| {:<42} ", "table name");
+        ft = format!("{ft}| {:<10} ", "#main cols");
+        ft = format!("{ft}| {:<9} ", "#aux cols");
+        ft = format!("{ft}| {:<11} |\n", "total width");
+
+        ft = format!("{ft}|:{:-<42}-", "-");
+        ft = format!("{ft}|-{:-<10}:", "-");
+        ft = format!("{ft}|-{:-<9}:", "-");
+        ft = format!("{ft}|-{:-<11}:|\n", "-");
+
+        let mut total_main = 0;
+        let mut total_aux = 0;
+        for (name, num_main, num_aux) in tables {
+            let num_total = num_main + EXTENSION_DEGREE * num_aux;
+            ft = format!("{ft}| {name:<42} | {num_main:>10} | {num_aux:9} | {num_total:>11} |\n");
+            total_main += num_main;
+            total_aux += num_aux;
+        }
+        ft = format!(
+            "{ft}| {:<42} | {:>10} | {:>9} | {:>11} |\n",
+            "**TOTAL**",
+            format!("**{total_main}**"),
+            format!("**{total_aux}**"),
+            format!("**{}**", total_main + EXTENSION_DEGREE * total_aux)
+        );
+
+        // print embeddable code
+        let specification_generator_name = "spec_has_correct_table_overview";
+        let comment_marker_start =
+            format!("<!-- auto-gen info {} -->", specification_generator_name);
+        let how_reproduce = format!(
+            "<!-- To reproduce this code, please run `cargo run {}`. -->",
+            specification_generator_name
+        );
+        let comment_marker_stop = "<!-- auto-gen info stop -->".to_string();
+        let generated_code = format!(
+            "{}\n{}\n{}{}",
+            comment_marker_start, how_reproduce, ft, comment_marker_stop
+        );
+
+        // current directory is triton-vm/triton-vm/
+        let file_path = Path::new("../specification/src/arithmetization-overview.md");
+        println!(
+            "Please include this code snippet in file \"{}\".",
+            file_path.display()
+        );
+        println!("```");
+        println!("{}", generated_code);
+        println!("```");
+
+        assert_spec_has(file_path, generated_code);
+    }
+
+    struct ConstraintsOverviewRow {
+        pub name: String,
+        pub initial_constraints: Vec<ConstraintCircuitMonad<SingleRowIndicator>>,
+        pub consistency_constraints: Vec<ConstraintCircuitMonad<SingleRowIndicator>>,
+        pub transition_constraints: Vec<ConstraintCircuitMonad<DualRowIndicator>>,
+        pub terminal_constraints: Vec<ConstraintCircuitMonad<SingleRowIndicator>>,
+        pub last_base_column_index: usize,
+        pub last_ext_column_index: usize,
+    }
+
+    macro_rules! constraint_overview_rows {
+        ($($table:ident ends at $base_end:ident and $ext_end: ident.
+        Spec: [$spec_name:literal]($spec_file:literal)),* $(,)?) => {{
+            let single_row_builder = || ConstraintCircuitBuilder::new();
+            let dual_row_builder = || ConstraintCircuitBuilder::new();
+            let mut rows = Vec::new();
+            $(
+            let name = format!("[{}]({})", $spec_name, $spec_file);
+            let row = ConstraintsOverviewRow {
+                name,
+                initial_constraints: $table::initial_constraints(&single_row_builder()),
+                consistency_constraints: $table::consistency_constraints(&single_row_builder()),
+                transition_constraints: $table::transition_constraints(&dual_row_builder()),
+                terminal_constraints: $table::terminal_constraints(&single_row_builder()),
+                last_base_column_index: $base_end,
+                last_ext_column_index: $ext_end,
+            };
+            rows.push(row);
+            )*
+            rows
+        }};
+    }
+
+    #[test]
+    fn spec_has_correct_constraints_overview() {
+        // Declarative macro workaround (because I'm bad at them):
+        // an `expr` cannot be followed up with `and`. Instead, declare this `const` to
+        // have an `ident`, which _can_ be followed up with `and`.
+        const ZERO: usize = 0;
+        let mut tables = constraint_overview_rows!(
+            ExtProgramTable ends at PROGRAM_TABLE_END and EXT_PROGRAM_TABLE_END.
+                Spec: ["ProgramTable"]("program-table.md"),
+            ExtProcessorTable ends at PROCESSOR_TABLE_END and EXT_PROCESSOR_TABLE_END.
+                Spec: ["ProcessorTable"]("processor-table.md"),
+            ExtOpStackTable ends at OP_STACK_TABLE_END and EXT_OP_STACK_TABLE_END.
+                Spec: ["OpStackTable"]("operational-stack-table.md"),
+            ExtRamTable ends at RAM_TABLE_END and EXT_RAM_TABLE_END.
+                Spec: ["RamTable"]("random-access-memory-table.md"),
+            ExtJumpStackTable ends at JUMP_STACK_TABLE_END and EXT_JUMP_STACK_TABLE_END.
+                Spec: ["JumpStackTable"]("jump-stack-table.md"),
+            ExtHashTable ends at HASH_TABLE_END and EXT_HASH_TABLE_END.
+                Spec: ["HashTable"]("hash-table.md"),
+            ExtCascadeTable ends at CASCADE_TABLE_END and EXT_CASCADE_TABLE_END.
+                Spec: ["CascadeTable"]("cascade-table.md"),
+            ExtLookupTable ends at LOOKUP_TABLE_END and EXT_LOOKUP_TABLE_END.
+                Spec: ["LookupTable"]("lookup-table.md"),
+            ExtU32Table ends at U32_TABLE_END and EXT_U32_TABLE_END.
+                Spec: ["U32Table"]("u32-table.md"),
+            GrandCrossTableArg ends at ZERO and ZERO.
+                Spec: ["Grand Cross-Table Argument"]("table-linking.md"),
+        );
+
+        let mut ft = String::new();
+        ft = format!("{ft}\nBefore automatic degree lowering:\n\n");
+        ft = format!("{ft}| {:<46} ", "table name");
+        ft = format!("{ft}| #initial ");
+        ft = format!("{ft}| #consistency ");
+        ft = format!("{ft}| #transition ");
+        ft = format!("{ft}| #terminal ");
+        ft = format!("{ft}| max degree |\n");
+
+        ft = format!("{ft}|:{:-<46}-", "-");
+        ft = format!("{ft}|-{:-<8}:", "-");
+        ft = format!("{ft}|-{:-<12}:", "-");
+        ft = format!("{ft}|-{:-<11}:", "-");
+        ft = format!("{ft}|-{:-<9}:", "-");
+        ft = format!("{ft}|-{:-<10}:|\n", "-");
+
+        let mut total_initial = 0;
+        let mut total_consistency = 0;
+        let mut total_transition = 0;
+        let mut total_terminal = 0;
+        let mut total_max_degree = 0;
+        for table in &tables {
+            let table_max_degree = [
+                ConstraintCircuitMonad::multicircuit_degree(&table.initial_constraints),
+                ConstraintCircuitMonad::multicircuit_degree(&table.consistency_constraints),
+                ConstraintCircuitMonad::multicircuit_degree(&table.transition_constraints),
+                ConstraintCircuitMonad::multicircuit_degree(&table.terminal_constraints),
+            ]
+            .into_iter()
+            .max()
+            .unwrap_or(-1);
+
+            let num_init = table.initial_constraints.len();
+            let num_cons = table.consistency_constraints.len();
+            let num_tran = table.transition_constraints.len();
+            let num_term = table.terminal_constraints.len();
+            ft = format!(
+                "{ft}| {:<46} | {:>8} | {:12} | {:>11} | {:>9} | {:>10} |\n",
+                table.name, num_init, num_cons, num_tran, num_term, table_max_degree,
+            );
+            total_initial += num_init;
+            total_consistency += num_cons;
+            total_transition += num_tran;
+            total_terminal += num_term;
+            total_max_degree = total_max_degree.max(table_max_degree);
+        }
+        ft = format!(
+            "{ft}| {:<46} | {:>8} | {:>12} | {:>11} | {:>9} | {:>10} |\n",
+            "**TOTAL**",
+            format!("**{total_initial}**"),
+            format!("**{total_consistency}**"),
+            format!("**{total_transition}**"),
+            format!("**{total_terminal}**"),
+            format!("**{}**", total_max_degree)
+        );
+        ft = format!("{ft}\nAfter automatically lowering degree to {AIR_TARGET_DEGREE}:\n\n");
+        ft = format!("{ft}| {:<46} ", "table name");
+        ft = format!("{ft}| #initial ");
+        ft = format!("{ft}| #consistency ");
+        ft = format!("{ft}| #transition ");
+        ft = format!("{ft}| #terminal |\n");
+
+        ft = format!("{ft}|:{:-<46}-", "-");
+        ft = format!("{ft}|-{:-<8}:", "-");
+        ft = format!("{ft}|-{:-<12}:", "-");
+        ft = format!("{ft}|-{:-<11}:", "-");
+        ft = format!("{ft}|-{:-<9}:|\n", "-");
+
+        for table in &mut tables {
+            let (new_base_initial, new_ext_initial) = ConstraintCircuitMonad::lower_to_degree(
+                &mut table.initial_constraints,
+                AIR_TARGET_DEGREE,
+                table.last_base_column_index,
+                table.last_ext_column_index,
+            );
+            let (new_base_consistency, new_ext_consistency) =
+                ConstraintCircuitMonad::lower_to_degree(
+                    &mut table.consistency_constraints,
+                    AIR_TARGET_DEGREE,
+                    table.last_base_column_index,
+                    table.last_ext_column_index,
+                );
+            let (new_base_transition, new_ext_transition) = ConstraintCircuitMonad::lower_to_degree(
+                &mut table.transition_constraints,
+                AIR_TARGET_DEGREE,
+                table.last_base_column_index,
+                table.last_ext_column_index,
+            );
+            let (new_base_terminal, new_ext_terminal) = ConstraintCircuitMonad::lower_to_degree(
+                &mut table.terminal_constraints,
+                AIR_TARGET_DEGREE,
+                table.last_base_column_index,
+                table.last_ext_column_index,
+            );
+            ft = format!(
+                "{ft}| {:<46} | {:>8} | {:12} | {:>11} | {:>9} |\n",
+                table.name,
+                table.initial_constraints.len() + new_base_initial.len() + new_ext_initial.len(),
+                table.consistency_constraints.len()
+                    + new_base_consistency.len()
+                    + new_ext_consistency.len(),
+                table.transition_constraints.len()
+                    + new_base_transition.len()
+                    + new_ext_transition.len(),
+                table.terminal_constraints.len() + new_base_terminal.len() + new_ext_terminal.len(),
+            );
+            total_initial += table.initial_constraints.len();
+            total_consistency += table.consistency_constraints.len();
+            total_transition += table.transition_constraints.len();
+            total_terminal += table.terminal_constraints.len();
+        }
+        ft = format!(
+            "{ft}| {:<46} | {:>8} | {:>12} | {:>11} | {:>9} |\n",
+            "**TOTAL**",
+            format!("**{total_initial}**"),
+            format!("**{total_consistency}**"),
+            format!("**{total_transition}**"),
+            format!("**{total_terminal}**"),
+        );
+
+        // print embeddable code
+        let specification_generator_name = "spec_has_correct_constraints_overview";
+        let comment_marker_start =
+            format!("<!-- auto-gen info {} -->", specification_generator_name);
+        let how_reproduce = format!(
+            "<!-- To reproduce this code, please run `cargo run {}`. -->",
+            specification_generator_name
+        );
+        let comment_marker_stop = "<!-- auto-gen info stop -->".to_string();
+        let generated_code = format!(
+            "{}\n{}\n{}{}",
+            comment_marker_start, how_reproduce, ft, comment_marker_stop
+        );
+
+        // current directory is triton-vm/triton-vm/
+        let file_path = Path::new("../specification/src/arithmetization-overview.md");
+        println!(
+            "Please include this code snippet in file \"{}\".",
+            file_path.display()
+        );
+        println!("```");
+        println!("{}", generated_code);
+        println!("```");
+
+        assert_spec_has(file_path, generated_code);
     }
 
     /// intended use: `cargo t print_all_table_widths -- --nocapture`
