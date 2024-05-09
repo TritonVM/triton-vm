@@ -49,6 +49,10 @@ proptest-arbitrary-interop.workspace = true
 serde_json.workspace = true
 test-strategy.workspace = true
 
+[features]
+default = ["no_profile"]
+no_profile = [] # see `profiler.rs` for an explanation of this seemingly backwards feature
+
 [lints]
 workspace = true
 

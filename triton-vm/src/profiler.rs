@@ -8,8 +8,36 @@
 //! This allows multiple threads to run in parallel without interfering with
 //! each other's profiling data.
 //!
+//! # Enabling Profiling
+//!
+//! In release builds, profiling is disabled by default to allow for the fastest
+//! possible proof generation. To enable profiling, either make sure that
+//! `debug_assertions` is set, or add the following to your `Cargo.toml`:
+//!
+//! ```toml
+//! [dependencies]
+//! triton-vm = { version = "x.y.z", default-features = false }
+//! ```
+//!
+//! ### A note on the `no_profile` feature design decision
+//!
+//! The feature `no_profile` _disables_ profiling, and is enabled by default.
+//! This seems backwards. However, it is an expression of how Triton VM favors
+//! performance over profiling. Note [how Cargo resolves dependencies][deps]:
+//! if some dependency is transitively declared multiple times, the _union_ of
+//! all features will be enabled.
+//!
+//! Imagine some dependency `foo` enables a hypothetical `do_profile` feature.
+//! If another dependency `bar` requires the most efficient proof generation,
+//! it would be slowed down by `foo` and could do nothing about it. Instead,
+//! Disabling profiling by <i>en</i>abling the feature `no_profile` allows `bar`
+//! to dictate. This:
+//! 1. makes the profile reports of `foo` disappear, which is sad, but
+//! 1. lets `bar` be fast, which is more important for Triton VM.
+//!
 //! [proving]: crate::stark::Stark::prove
 //! [verifying]: crate::stark::Stark::verify
+//! [deps]: https://doc.rust-lang.org/cargo/reference/features.html#feature-unification
 
 use std::cell::RefCell;
 use std::cmp::max;
@@ -38,17 +66,27 @@ thread_local! {
 
 /// Start profiling. If the profiler is already running, this function cancels
 /// the current profiling session and starts a new one.
+///
+/// See the module-level documentation for information on how to enable profiling.
 pub fn start(profile_name: impl Into<String>) {
-    PROFILER.replace(Some(TritonProfiler::new(profile_name)));
+    if cfg!(any(debug_assertions, not(feature = "no_profile"))) {
+        PROFILER.replace(Some(TritonProfiler::new(profile_name)));
+    }
 }
 
 /// Stop the current profiling session and generate a [`Report`]. If the
-/// profiler is not running, an empty [`Report`] is returned.
+/// profiler is disabled or not running, an empty [`Report`] is returned.
+///
+/// See the module-level documentation for information on how to enable profiling.
 pub fn finish() -> Report {
-    PROFILER
-        .take()
-        .map(|mut profiler| profiler.report())
-        .unwrap_or_default()
+    if cfg!(any(debug_assertions, not(feature = "no_profile"))) {
+        PROFILER
+            .take()
+            .map(|mut profiler| profiler.report())
+            .unwrap_or_default()
+    } else {
+        Report::default()
+    }
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
@@ -92,6 +130,7 @@ impl TritonProfiler {
         }
     }
 
+    #[cfg(any(debug_assertions, not(feature = "no_profile")))]
     fn ignoring(&self) -> bool {
         self.stack
             .last()
@@ -205,12 +244,14 @@ impl TritonProfiler {
         }
     }
 
+    #[cfg(any(debug_assertions, not(feature = "no_profile")))]
     pub fn start(&mut self, name: &str, category: Option<String>) {
         if !self.ignoring() {
             self.plain_start(name, TaskType::Generic, category);
         }
     }
 
+    #[cfg(any(debug_assertions, not(feature = "no_profile")))]
     fn plain_start(
         &mut self,
         name: impl Into<String>,
@@ -235,6 +276,7 @@ impl TritonProfiler {
         });
     }
 
+    #[cfg(any(debug_assertions, not(feature = "no_profile")))]
     pub fn iteration_zero(&mut self, name: &str, category: Option<String>) {
         if self.ignoring() {
             return;
@@ -297,6 +339,7 @@ impl TritonProfiler {
         }
     }
 
+    #[cfg(any(debug_assertions, not(feature = "no_profile")))]
     pub fn stop(&mut self, name: &str) {
         assert!(
             !self.stack.is_empty(),
@@ -423,7 +466,12 @@ impl Report {
 
 impl Default for Report {
     fn default() -> Self {
-        let name = "__empty__".to_string();
+        let name = if cfg!(feature = "no_profile") {
+            "Triton VM's profiler is disabled through feature `no_profile`.".to_string()
+        } else {
+            "__empty__".to_string()
+        };
+
         Self {
             name,
             tasks: vec![],
@@ -583,6 +631,7 @@ impl Display for Report {
 /// The second, optional argument is a task category.
 macro_rules! prof_start {
     ($s:expr, $c:expr) => {{
+        #[cfg(any(debug_assertions, not(feature = "no_profile")))]
         crate::profiler::PROFILER.with_borrow_mut(|profiler| {
             if let Some(profiler) = profiler.as_mut() {
                 profiler.start($s, Some($c.to_string()));
@@ -590,6 +639,7 @@ macro_rules! prof_start {
         })
     }};
     ($s:expr) => {{
+        #[cfg(any(debug_assertions, not(feature = "no_profile")))]
         crate::profiler::PROFILER.with_borrow_mut(|profiler| {
             if let Some(profiler) = profiler.as_mut() {
                 profiler.start($s, None);
@@ -606,6 +656,7 @@ pub(crate) use prof_start;
 /// match to prevent the accidental stopping of a different task.
 macro_rules! prof_stop {
     ($s:expr) => {{
+        #[cfg(any(debug_assertions, not(feature = "no_profile")))]
         crate::profiler::PROFILER.with_borrow_mut(|profiler| {
             if let Some(profiler) = profiler.as_mut() {
                 profiler.stop($s);
@@ -622,6 +673,7 @@ pub(crate) use prof_stop;
 /// the loop has to be stopped with [`prof_stop`] after the loop.
 macro_rules! prof_itr0 {
     ($s:expr, $c:expr) => {{
+        #[cfg(any(debug_assertions, not(feature = "no_profile")))]
         crate::profiler::PROFILER.with_borrow_mut(|profiler| {
             if let Some(profiler) = profiler.as_mut() {
                 profiler.iteration_zero($s, Some($c.to_string()));
@@ -629,6 +681,7 @@ macro_rules! prof_itr0 {
         })
     }};
     ($s:expr) => {{
+        #[cfg(any(debug_assertions, not(feature = "no_profile")))]
         crate::profiler::PROFILER.with_borrow_mut(|profiler| {
             if let Some(profiler) = profiler.as_mut() {
                 profiler.iteration_zero($s, None);
