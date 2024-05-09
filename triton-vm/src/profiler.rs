@@ -461,11 +461,11 @@ impl Display for Report {
             let category_and_relative_time_colored =
                 category_and_relative_time.color(relative_category_color);
 
-            f.write_fmt(format_args!(
-                "{task_name_colored}   \
-                 {task_time_colored}{relative_time_string_colored} \
-                 {category_and_relative_time_colored}\n"
-            ))?;
+            writeln!(
+                f,
+                "{task_name_colored}   {task_time_colored}\
+                 {relative_time_string_colored} {category_and_relative_time_colored}"
+            )?;
         }
 
         if !self.category_times.is_empty() {
@@ -492,6 +492,13 @@ impl Display for Report {
             }
         }
 
+        let Ok(total_time) = usize::try_from(self.total_time.as_millis()) else {
+            return writeln!(f, "WARN: Total time too large. Cannot compute frequency.");
+        };
+        if total_time == 0 {
+            return writeln!(f, "WARN: Total time is zero. Cannot compute frequency.");
+        }
+
         if self.cycle_count.is_some()
             || self.padded_height.is_some()
             || self.fri_domain_len.is_some()
@@ -499,33 +506,21 @@ impl Display for Report {
             writeln!(f)?;
         }
 
-        let total_time = self.total_time.as_millis() as usize;
         if let Some(cycle_count) = self.cycle_count {
-            if total_time != 0 {
-                let freq = 1_000 * cycle_count / total_time;
-                writeln!(
-                    f,
-                    "Clock frequency is {freq} Hz ({cycle_count} clock cycles / {total_time} ms)",
-                )?;
-            }
+            let frequency = 1_000 * cycle_count / total_time;
+            write!(f, "Clock frequency is {frequency} Hz ")?;
+            writeln!(f, "({cycle_count} clock cycles / {total_time} ms)",)?;
         }
 
         if let Some(padded_height) = self.padded_height {
-            if total_time != 0 {
-                let optimal_freq = 1_000 * padded_height / total_time;
-                writeln!(
-                    f,
-                    "Optimal clock frequency is {optimal_freq} Hz \
-                    ({padded_height} padded height / {total_time} ms)",
-                )?;
-            }
+            let frequency = 1_000 * padded_height / total_time;
+            write!(f, "Optimal clock frequency is {frequency} Hz ")?;
+            writeln!(f, "({padded_height} padded height / {total_time} ms)")?;
         }
 
         if let Some(fri_domain_length) = self.fri_domain_len {
-            if fri_domain_length != 0 {
-                let log_2_fri_domain_length = fri_domain_length.ilog2();
-                writeln!(f, "FRI domain length is 2^{log_2_fri_domain_length}")?;
-            }
+            let log_2_fri_domain_length = fri_domain_length.checked_ilog2().unwrap_or(0);
+            writeln!(f, "FRI domain length is 2^{log_2_fri_domain_length}")?;
         }
 
         Ok(())
