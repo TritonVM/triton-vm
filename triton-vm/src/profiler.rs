@@ -5,7 +5,6 @@ use std::fmt::Display;
 use std::fmt::Formatter;
 use std::fmt::Result as FmtResult;
 use std::ops::AddAssign;
-use std::path::Path;
 use std::time::Duration;
 use std::time::Instant;
 use std::vec;
@@ -14,7 +13,6 @@ use arbitrary::Arbitrary;
 use colored::Color;
 use colored::ColoredString;
 use colored::Colorize;
-use criterion::profiler::Profiler;
 use itertools::Itertools;
 use unicode_width::UnicodeWidthStr;
 
@@ -293,25 +291,6 @@ impl TritonProfiler {
 
             self.plain_stop();
         }
-    }
-}
-
-impl Profiler for TritonProfiler {
-    fn start_profiling(&mut self, benchmark_id: &str, benchmark_dir: &Path) {
-        let dir = benchmark_dir
-            .to_str()
-            .expect("Directory must be valid unicode");
-        let name = format!("{dir}{benchmark_id}");
-        let category = None;
-        self.start(&name, category);
-    }
-
-    fn stop_profiling(&mut self, benchmark_id: &str, benchmark_dir: &Path) {
-        let dir = benchmark_dir
-            .to_str()
-            .expect("Directory must be valid unicode");
-        let name = format!("{dir}{benchmark_id}");
-        self.stop(&name)
     }
 }
 
