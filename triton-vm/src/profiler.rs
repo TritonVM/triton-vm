@@ -1,3 +1,17 @@
+//! Allows profiling [proving] and [verifying] of Triton VM's STARK proofs.
+//!
+//! The profiler is used to measure the time taken by various parts of the
+//! proving and verifying process. It can be used to identify bottlenecks and
+//! optimize the performance of the STARK proof system.
+//!
+//! The profiler is thread-local, meaning that each thread has its own profiler.
+//! This allows multiple threads to run in parallel without interfering with
+//! each other's profiling data.
+//!
+//! [proving]: crate::stark::Stark::prove
+//! [verifying]: crate::stark::Stark::verify
+
+use std::cell::RefCell;
 use std::cmp::max;
 use std::collections::HashMap;
 use std::env::var as env_var;
@@ -17,6 +31,25 @@ use itertools::Itertools;
 use unicode_width::UnicodeWidthStr;
 
 const ENV_VAR_PROFILER_LIVE_UPDATE: &str = "TVM_PROFILER_LIVE_UPDATE";
+
+thread_local! {
+    pub(crate) static PROFILER: RefCell<Option<TritonProfiler>> = const { RefCell::new(None) };
+}
+
+/// Start profiling. If the profiler is already running, this function cancels
+/// the current profiling session and starts a new one.
+pub fn start(profile_name: impl Into<String>) {
+    PROFILER.replace(Some(TritonProfiler::new(profile_name)));
+}
+
+/// Stop the current profiling session and generate a [`Report`]. If the
+/// profiler is not running, an empty [`Report`] is returned.
+pub fn finish() -> Report {
+    PROFILER
+        .take()
+        .map(|mut profiler| profiler.report())
+        .unwrap_or_default()
+}
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 struct Task {
@@ -40,7 +73,7 @@ enum TaskType {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub struct TritonProfiler {
+pub(crate) struct TritonProfiler {
     name: String,
     timer: Instant,
     stack: Vec<(usize, String)>,
@@ -334,7 +367,7 @@ impl Weight {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct TaskReport {
     name: String,
     parent_index: Option<usize>,
@@ -349,7 +382,7 @@ struct TaskReport {
     younger_max_weight: Weight,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Report {
     name: String,
     tasks: Vec<TaskReport>,
@@ -385,6 +418,22 @@ impl Report {
         }
 
         format!("{:>3}.{:<4}", time_components[0], time_components[1])
+    }
+}
+
+impl Default for Report {
+    fn default() -> Self {
+        let name = "__empty__".to_string();
+        Self {
+            name,
+            tasks: vec![],
+            total_time: Duration::default(),
+            untracked_time: Duration::default(),
+            category_times: HashMap::default(),
+            cycle_count: None,
+            padded_height: None,
+            fri_domain_len: None,
+        }
     }
 }
 
@@ -527,50 +576,65 @@ impl Display for Report {
     }
 }
 
-/// Start a profiling task.
-/// Requires an `Option<Profiler>` as first argument. Does nothing if this is `None`.
-/// The second argument is the name of the task.
-/// The third argument is an optional task category.
+/// Start a profiling task. Does nothing if the profiler is not running;
+/// see [`start`].
+///
+/// The first argument is the name of the task.
+/// The second, optional argument is a task category.
 macro_rules! prof_start {
-    ($p: ident, $s : expr, $c : expr) => {
-        if let Some(profiler) = $p.as_mut() {
-            profiler.start($s, Some($c.to_string()));
-        }
-    };
-    ($p: ident, $s : expr) => {
-        if let Some(profiler) = $p.as_mut() {
-            profiler.start($s, None);
-        }
-    };
+    ($s:expr, $c:expr) => {{
+        crate::profiler::PROFILER.with_borrow_mut(|profiler| {
+            if let Some(profiler) = profiler.as_mut() {
+                profiler.start($s, Some($c.to_string()));
+            }
+        })
+    }};
+    ($s:expr) => {{
+        crate::profiler::PROFILER.with_borrow_mut(|profiler| {
+            if let Some(profiler) = profiler.as_mut() {
+                profiler.start($s, None);
+            }
+        })
+    }};
 }
 pub(crate) use prof_start;
 
-/// Stop a profiling task. Requires the same arguments as [`prof_start`], except that the task's
-/// category (if any) is inferred. Notably, the task's name needs to be an exact match to prevent
-/// the accidental stopping of a different task.
+/// Stop a profiling task.
+///
+/// Requires the same arguments as [`prof_start`], except that the task's
+/// category (if any) is inferred. Notably, the task's name needs to be an exact
+/// match to prevent the accidental stopping of a different task.
 macro_rules! prof_stop {
-    ($p: ident, $s : expr) => {
-        if let Some(profiler) = $p.as_mut() {
-            profiler.stop($s);
-        }
-    };
+    ($s:expr) => {{
+        crate::profiler::PROFILER.with_borrow_mut(|profiler| {
+            if let Some(profiler) = profiler.as_mut() {
+                profiler.stop($s);
+            }
+        })
+    }};
 }
 pub(crate) use prof_stop;
 
-/// Profile one iteration of a loop. Requires the same arguments as [`prof_start`].
-/// This macro should be invoked inside the loop in question.
-/// The profiling of the loop has to be stopped with [`prof_stop`] after the loop.
+/// Profile one iteration of a loop. Requires the same arguments as
+/// [`prof_start`].
+///
+/// This macro should be invoked inside the loop in question. The profiling of
+/// the loop has to be stopped with [`prof_stop`] after the loop.
 macro_rules! prof_itr0 {
-    ($p : ident, $s : expr, $c : expr) => {
-        if let Some(profiler) = $p.as_mut() {
-            profiler.iteration_zero($s, Some($c.to_string()));
-        }
-    };
-    ($p : ident, $s : expr) => {
-        if let Some(profiler) = $p.as_mut() {
-            profiler.iteration_zero($s, None);
-        }
-    };
+    ($s:expr, $c:expr) => {{
+        crate::profiler::PROFILER.with_borrow_mut(|profiler| {
+            if let Some(profiler) = profiler.as_mut() {
+                profiler.iteration_zero($s, Some($c.to_string()));
+            }
+        })
+    }};
+    ($s:expr) => {{
+        crate::profiler::PROFILER.with_borrow_mut(|profiler| {
+            if let Some(profiler) = profiler.as_mut() {
+                profiler.iteration_zero($s, None);
+            }
+        })
+    }};
 }
 pub(crate) use prof_itr0;
 
@@ -651,24 +715,24 @@ mod tests {
 
     #[test]
     fn clk_freq() {
-        let mut profiler = Some(TritonProfiler::new("Clock Frequency Test"));
-        prof_start!(profiler, "clk_freq_test");
+        crate::profiler::start("Clock Frequency Test");
+        prof_start!("clk_freq_test");
         sleep(Duration::from_millis(3));
-        prof_stop!(profiler, "clk_freq_test");
-        let mut profiler = profiler.unwrap();
+        prof_stop!("clk_freq_test");
+        let report = crate::profiler::finish();
 
-        let report_with_no_optionals = profiler.report();
+        let report_with_no_optionals = report.clone();
         println!("{report_with_no_optionals}");
 
-        let report_with_optionals_set_to_0 = profiler
-            .report()
+        let report_with_optionals_set_to_0 = report
+            .clone()
             .with_cycle_count(0)
             .with_padded_height(0)
             .with_fri_domain_len(0);
         println!("{report_with_optionals_set_to_0}");
 
-        let report_with_optionals_set = profiler
-            .report()
+        let report_with_optionals_set = report
+            .clone()
             .with_cycle_count(10)
             .with_padded_height(12)
             .with_fri_domain_len(32);
@@ -677,14 +741,12 @@ mod tests {
 
     #[test]
     fn macros() {
-        let mut profiler = TritonProfiler::new("Macro Test");
-        let mut profiler_ref = Some(&mut profiler);
+        crate::profiler::start("Macro Test");
         let mut rng = rand::thread_rng();
         let mut stack = vec![];
         let steps = 100;
 
-        for step in 0..steps {
-            let steps_left = steps - step;
+        for steps_left in (0..steps).rev() {
             let pushable = rng.gen() && stack.len() + 1 < steps_left;
             let poppable = ((!pushable && rng.gen())
                 || (stack.len() == steps_left && steps_left > 0))
@@ -694,46 +756,51 @@ mod tests {
                 let name = random_task_name(&mut rng);
                 let category = random_category(&mut rng);
                 stack.push(name.clone());
-                match rng.gen() {
-                    true => prof_start!(profiler_ref, &name, category),
-                    false => prof_start!(profiler_ref, &name),
+                if rng.gen() {
+                    prof_start!(&name, category)
+                } else {
+                    prof_start!(&name)
                 }
             }
 
-            sleep(Duration::from_micros(
-                (rng.next_u64() % 10) * (rng.next_u64() % 10) * (rng.next_u64() % 10),
-            ));
+            let num_micros = rng.gen_range(1..=10) * rng.gen_range(1..=10) * rng.gen_range(1..=10);
+            sleep(Duration::from_micros(num_micros));
 
             if poppable {
                 let name = stack.pop().unwrap();
-                prof_stop!(profiler_ref, &name);
+                prof_stop!(&name);
             }
         }
 
-        println!("{}", profiler.report());
+        println!("{}", crate::profiler::finish());
     }
 
     #[test]
-    fn profiler_without_any_tasks_can_generate_a_report() {
-        let mut profiler = TritonProfiler::new("Empty Test");
-        let report = profiler.report();
+    fn starting_the_profiler_twice_does_not_cause_panic() {
+        crate::profiler::start("Double Start Test 0");
+        crate::profiler::start("Double Start Test 1");
+        let report = crate::profiler::finish();
         println!("{report}");
     }
 
     #[test]
-    fn profiler_can_be_finished_before_generating_a_report() {
-        let mut profiler = TritonProfiler::new("Finish Before Report Test");
-        profiler.start("some task", None);
-        profiler.finish();
-        let report = profiler.report();
+    fn creating_report_without_starting_profile_does_not_cause_panic() {
+        let report = crate::profiler::finish();
+        println!("{report}");
+    }
+
+    #[test]
+    fn profiler_without_any_tasks_can_generate_a_report() {
+        crate::profiler::start("Empty Test");
+        let report = crate::profiler::finish();
         println!("{report}");
     }
 
     #[test]
     fn profiler_with_unfinished_tasks_can_generate_report() {
-        let mut profiler = TritonProfiler::new("Unfinished Tasks Test");
-        profiler.start("unfinished task", None);
-        let report = profiler.report();
+        crate::profiler::start("Unfinished Tasks Test");
+        prof_start!("unfinished task");
+        let report = crate::profiler::finish();
         println!("{report}");
     }
 

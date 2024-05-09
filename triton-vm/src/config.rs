@@ -73,7 +73,6 @@ mod tests {
 
     use crate::example_programs::FIBONACCI_SEQUENCE;
     use crate::prelude::*;
-    use crate::profiler::TritonProfiler;
     use crate::shared_tests::prove_with_low_security_level;
 
     use super::*;
@@ -94,13 +93,12 @@ mod tests {
         let stdin = PublicInput::from(bfe_array![100]);
         let secret_in = NonDeterminism::default();
 
-        let mut profiler = Some(TritonProfiler::new("Prove Fib 100"));
+        crate::profiler::start("Prove Fib 100");
         let (stark, claim, proof) =
-            prove_with_low_security_level(&FIBONACCI_SEQUENCE, stdin, secret_in, &mut profiler);
-        assert!(let Ok(()) = stark.verify(&claim, &proof, &mut None));
+            prove_with_low_security_level(&FIBONACCI_SEQUENCE, stdin, secret_in);
+        assert!(let Ok(()) = stark.verify(&claim, &proof));
 
-        let mut profiler = profiler.unwrap();
-        let report = profiler.report();
+        let report = crate::profiler::finish();
         println!("{report}");
     }
 }

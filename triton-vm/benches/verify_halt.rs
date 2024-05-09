@@ -3,7 +3,6 @@ use criterion::criterion_main;
 use criterion::BenchmarkId;
 use criterion::Criterion;
 
-use triton_vm::profiler::TritonProfiler;
 use triton_vm::proof::Claim;
 use triton_vm::stark::Stark;
 use triton_vm::triton_program;
@@ -16,17 +15,15 @@ fn verify_halt(criterion: &mut Criterion) {
     let claim = Claim::about_program(&program);
 
     let (aet, _) = program.trace_execution([].into(), [].into()).unwrap();
-    let proof = stark.prove(&claim, &aet, &mut None).unwrap();
+    let proof = stark.prove(&claim, &aet).unwrap();
 
-    let mut profiler = Some(TritonProfiler::new("Verify Halt"));
-    stark.verify(&claim, &proof, &mut profiler).unwrap();
+    triton_vm::profiler::start("Verify Halt");
+    stark.verify(&claim, &proof).unwrap();
+    let report = triton_vm::profiler::finish();
 
-    let mut profiler = profiler.unwrap();
-    profiler.finish();
     let padded_height = proof.padded_height().unwrap();
     let fri = stark.derive_fri(padded_height).unwrap();
-    let report = profiler
-        .report()
+    let report = report
         .with_cycle_count(aet.processor_trace.nrows())
         .with_padded_height(padded_height)
         .with_fri_domain_len(fri.domain.length);
@@ -36,7 +33,7 @@ fn verify_halt(criterion: &mut Criterion) {
     group.sample_size(10);
     group.bench_function(bench_id, |bencher| {
         bencher.iter(|| {
-            let _ = stark.verify(&claim, &proof, &mut None);
+            let _ = stark.verify(&claim, &proof);
         });
     });
     group.finish();

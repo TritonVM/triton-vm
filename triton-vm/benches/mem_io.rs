@@ -6,8 +6,6 @@ use criterion::Criterion;
 
 use triton_vm::prelude::*;
 use triton_vm::profiler::Report;
-use triton_vm::profiler::TritonProfiler;
-use triton_vm::table::master_table::TableId;
 
 criterion_main!(benches);
 criterion_group!(
@@ -68,27 +66,22 @@ impl MemIOBench {
     }
 
     fn timing_report(&self) -> Report {
-        let mut profiler = TritonProfiler::new("Memory I/O");
-        profiler.start("generate AET", Some("gen".into()));
         let (aet, output) = self
             .program
             .trace_execution(self.public_input.clone(), self.secret_input.clone())
             .unwrap();
-        profiler.stop("generate AET");
-
         let claim = Claim::about_program(&self.program).with_output(output);
 
         let stark = Stark::default();
-        let mut profiler = Some(profiler);
-        let proof = stark.prove(&claim, &aet, &mut profiler).unwrap();
-        let mut profiler = profiler.unwrap();
+        triton_vm::profiler::start("Memory I/O");
+        let proof = stark.prove(&claim, &aet).unwrap();
+        let report = triton_vm::profiler::finish();
 
-        let trace_len = aet.height_of_table(TableId::OpStack);
+        let trace_len = aet.height().height;
         let padded_height = proof.padded_height().unwrap();
         let fri = stark.derive_fri(padded_height).unwrap();
 
-        profiler
-            .report()
+        report
             .with_cycle_count(trace_len)
             .with_padded_height(padded_height)
             .with_fri_domain_len(fri.domain.length)

@@ -32,7 +32,6 @@ use crate::config::CacheDecision;
 use crate::error::ProvingError;
 use crate::profiler::prof_start;
 use crate::profiler::prof_stop;
-use crate::profiler::TritonProfiler;
 use crate::stark::NUM_RANDOMIZER_POLYNOMIALS;
 use crate::table::cascade_table::CascadeTable;
 use crate::table::challenges::Challenges;
@@ -354,14 +353,14 @@ where
 
     /// Compute a Merkle tree of the FRI domain table. Every row gives one leaf in the tree.
     /// The function [`hash_row`](Self::hash_one_row) is used to hash each row.
-    fn merkle_tree(&self, maybe_profiler: &mut Option<TritonProfiler>) -> MerkleTree<Tip5> {
-        prof_start!(maybe_profiler, "leafs");
+    fn merkle_tree(&self) -> MerkleTree<Tip5> {
+        prof_start!("leafs");
         let hashed_rows = self.hash_all_fri_domain_rows();
-        prof_stop!(maybe_profiler, "leafs");
+        prof_stop!("leafs");
 
-        prof_start!(maybe_profiler, "Merkle tree");
+        prof_start!("Merkle tree");
         let merkle_tree = CpuParallel::from_digests(&hashed_rows).unwrap();
-        prof_stop!(maybe_profiler, "Merkle tree");
+        prof_stop!("Merkle tree");
 
         merkle_tree
     }
@@ -1183,7 +1182,6 @@ pub fn all_quotients_combined(
     quotient_domain: ArithmeticDomain,
     challenges: &Challenges,
     quotient_weights: &[XFieldElement],
-    maybe_profiler: &mut Option<TritonProfiler>,
 ) -> Vec<XFieldElement> {
     assert_eq!(
         quotient_domain.length,
@@ -1199,7 +1197,7 @@ pub fn all_quotients_combined(
     let cons_section_end = init_section_end + MasterExtTable::NUM_CONSISTENCY_CONSTRAINTS;
     let tran_section_end = cons_section_end + MasterExtTable::NUM_TRANSITION_CONSTRAINTS;
 
-    prof_start!(maybe_profiler, "zerofier inverse");
+    prof_start!("zerofier inverse");
     let initial_zerofier_inverse = initial_quotient_zerofier_inverse(quotient_domain);
     let consistency_zerofier_inverse =
         consistency_quotient_zerofier_inverse(trace_domain, quotient_domain);
@@ -1207,9 +1205,9 @@ pub fn all_quotients_combined(
         transition_quotient_zerofier_inverse(trace_domain, quotient_domain);
     let terminal_zerofier_inverse =
         terminal_quotient_zerofier_inverse(trace_domain, quotient_domain);
-    prof_stop!(maybe_profiler, "zerofier inverse");
+    prof_stop!("zerofier inverse");
 
-    prof_start!(maybe_profiler, "evaluate AIR, compute quotient codeword");
+    prof_start!("evaluate AIR, compute quotient codeword");
     let dot_product = |partial_row: Vec<_>, weights: &[_]| -> XFieldElement {
         let pairs = partial_row.into_iter().zip_eq(weights.iter());
         pairs.map(|(v, &w)| v * w).sum()
@@ -1273,7 +1271,7 @@ pub fn all_quotients_combined(
             quotient_value
         })
         .collect();
-    prof_stop!(maybe_profiler, "evaluate AIR, compute quotient codeword");
+    prof_stop!("evaluate AIR, compute quotient codeword");
 
     quotient_codeword
 }
