@@ -51,7 +51,6 @@ use std::time::Duration;
 use std::time::Instant;
 use std::vec;
 
-use arbitrary::Arbitrary;
 use colored::Color;
 use colored::ColoredString;
 use colored::Colorize;
@@ -91,19 +90,10 @@ struct Task {
     parent_index: Option<usize>,
     depth: usize,
     time: Duration,
-    task_type: TaskType,
 
     /// The type of work the task is doing. Helps to track time across specific tasks. For
     /// example, if the task is building a Merkle tree, then the category could be "hash".
     category: Option<String>,
-}
-
-#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Hash, Arbitrary)]
-enum TaskType {
-    #[default]
-    Generic,
-    IterationZero,
-    AnyOtherIteration,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
@@ -124,13 +114,6 @@ impl TritonProfiler {
             active_tasks: vec![],
             profile: vec![],
         }
-    }
-
-    #[cfg(any(debug_assertions, not(feature = "no_profile")))]
-    fn ignoring(&self) -> bool {
-        self.active_tasks
-            .last()
-            .is_some_and(|&idx| self.profile[idx].task_type == TaskType::AnyOtherIteration)
     }
 
     fn younger_sibling_indices(&self, index: usize) -> Vec<usize> {
@@ -170,10 +153,7 @@ impl TritonProfiler {
 
         for (task_index, task) in self.profile.iter().enumerate() {
             let relative_time = task.time.as_secs_f64() / total_time.as_secs_f64();
-            let weight = match task.task_type {
-                TaskType::AnyOtherIteration => Weight::LikeNothing,
-                _ => Weight::weigh(task.time.as_secs_f64() / total_time.as_secs_f64()),
-            };
+            let weight = Weight::weigh(task.time.as_secs_f64() / total_time.as_secs_f64());
 
             let mut ancestors = vec![];
             let mut current_ancestor_index = task.parent_index;
@@ -213,16 +193,10 @@ impl TritonProfiler {
                 .unwrap_or(Weight::LikeNothing);
         }
 
-        // “Other iterations” are not currently tracked
-        let all_tasks = self.profile.iter();
-        let other_iterations = all_tasks.filter(|t| t.task_type == TaskType::AnyOtherIteration);
-        let untracked_time = other_iterations.map(|t| t.time).sum();
-
         Report {
             tasks: report,
             name: self.name.clone(),
             total_time,
-            untracked_time,
             category_times,
             cycle_count: None,
             padded_height: None,
@@ -231,19 +205,7 @@ impl TritonProfiler {
     }
 
     #[cfg(any(debug_assertions, not(feature = "no_profile")))]
-    pub fn start(&mut self, name: &str, category: Option<String>) {
-        if !self.ignoring() {
-            self.plain_start(name, TaskType::Generic, category);
-        }
-    }
-
-    #[cfg(any(debug_assertions, not(feature = "no_profile")))]
-    fn plain_start(
-        &mut self,
-        name: impl Into<String>,
-        task_type: TaskType,
-        category: Option<String>,
-    ) {
+    pub fn start(&mut self, name: impl Into<String>, category: Option<String>) {
         let name = name.into();
         let parent_index = self.active_tasks.last().copied();
         self.active_tasks.push(self.profile.len());
@@ -257,55 +219,8 @@ impl TritonProfiler {
             parent_index,
             depth: self.active_tasks.len(),
             time: self.timer.elapsed(),
-            task_type,
             category,
         });
-    }
-
-    #[cfg(any(debug_assertions, not(feature = "no_profile")))]
-    pub fn iteration_zero(&mut self, name: &str, category: Option<String>) {
-        if self.ignoring() {
-            return;
-        }
-
-        let Some(&top_index) = self.active_tasks.last() else {
-            panic!("Profiler stack is empty; can't iterate.");
-        };
-        let top_task = &self.profile[top_index];
-
-        if top_task.task_type == TaskType::Generic {
-            self.plain_start("iteration 0", TaskType::IterationZero, category);
-            return;
-        }
-
-        let num_active_tasks = self.active_tasks.len();
-        assert!(
-            num_active_tasks >= 2,
-            "To profile zeroth iteration, stack must be at least 2-high, \
-            but got height of {num_active_tasks}"
-        );
-
-        let runner_up_index = self.active_tasks[num_active_tasks - 2];
-        let runner_up_name = &self.profile[runner_up_index].name;
-        dbg!(runner_up_index);
-
-        assert_eq!(
-            runner_up_name, name,
-            "To profile zeroth iteration, name must match with top of stack."
-        );
-
-        if top_task.task_type == TaskType::IterationZero {
-            // switch – stop iteration zero, start “all other iterations”
-            self.plain_stop();
-            self.plain_start(
-                "all other iterations",
-                TaskType::AnyOtherIteration,
-                category,
-            );
-        }
-
-        // top == *"all other iterations"
-        // in this case we do nothing
     }
 
     fn plain_stop(&mut self) {
@@ -326,19 +241,8 @@ impl TritonProfiler {
         let top_task = self.active_tasks.last();
         let &top_index = top_task.expect("Cannot stop any tasks when stack is empty.");
         let top_name = &self.profile[top_index].name;
-
-        if top_name == "iteration 0" || top_name == "all other iterations" {
-            let num_active_tasks = self.active_tasks.len();
-            let runner_up_index = self.active_tasks[num_active_tasks - 2];
-            let runner_up_name = &self.profile[runner_up_index].name;
-            if runner_up_name == name {
-                self.plain_stop();
-                self.plain_stop();
-            }
-        } else {
-            assert_eq!(top_name, name, "can't stop tasks in disorder.");
-            self.plain_stop();
-        }
+        assert_eq!(top_name, name, "can't stop tasks in disorder.");
+        self.plain_stop();
     }
 }
 
@@ -402,7 +306,6 @@ pub struct Report {
     name: String,
     tasks: Vec<TaskReport>,
     total_time: Duration,
-    untracked_time: Duration,
     category_times: HashMap<String, Duration>,
     cycle_count: Option<usize>,
     padded_height: Option<usize>,
@@ -448,7 +351,6 @@ impl Default for Report {
             name,
             tasks: vec![],
             total_time: Duration::default(),
-            untracked_time: Duration::default(),
             category_times: HashMap::default(),
             cycle_count: None,
             padded_height: None,
@@ -476,10 +378,8 @@ impl Display for Report {
         let max_width = max(max_name_width, title.width());
         let title = format!("{title:<max_width$}");
 
-        let tracked_time = self.total_time.saturating_sub(self.untracked_time);
-        let tracked = Self::display_time_aligned(tracked_time);
-        let untracked = Self::display_time_aligned(self.untracked_time);
-        writeln!(f, "tracked {tracked}, leaving {untracked} untracked")?;
+        let tracked = Self::display_time_aligned(self.total_time);
+        writeln!(f, "tracked {tracked}")?;
 
         let total_time = Self::display_time_aligned(self.total_time).bold();
         let share_title = "Share".to_string().bold();
@@ -638,31 +538,6 @@ macro_rules! prof_stop {
 }
 pub(crate) use prof_stop;
 
-/// Profile one iteration of a loop. Requires the same arguments as
-/// [`prof_start`].
-///
-/// This macro should be invoked inside the loop in question. The profiling of
-/// the loop has to be stopped with [`prof_stop`] after the loop.
-macro_rules! prof_itr0 {
-    ($s:expr, $c:expr) => {{
-        #[cfg(any(debug_assertions, not(feature = "no_profile")))]
-        crate::profiler::PROFILER.with_borrow_mut(|profiler| {
-            if let Some(profiler) = profiler.as_mut() {
-                profiler.iteration_zero($s, Some($c.to_string()));
-            }
-        })
-    }};
-    ($s:expr) => {{
-        #[cfg(any(debug_assertions, not(feature = "no_profile")))]
-        crate::profiler::PROFILER.with_borrow_mut(|profiler| {
-            if let Some(profiler) = profiler.as_mut() {
-                profiler.iteration_zero($s, None);
-            }
-        })
-    }};
-}
-pub(crate) use prof_itr0;
-
 #[cfg(test)]
 mod tests {
     use std::thread::sleep;
@@ -722,7 +597,7 @@ mod tests {
                     false => None,
                 };
                 stack.push(name.clone());
-                profiler.start(&name, category);
+                profiler.start(name, category);
             }
 
             sleep(Duration::from_micros(
@@ -825,6 +700,36 @@ mod tests {
     fn profiler_with_unfinished_tasks_can_generate_report() {
         crate::profiler::start("Unfinished Tasks Test");
         prof_start!("unfinished task");
+        let report = crate::profiler::finish();
+        println!("{report}");
+    }
+
+    #[test]
+    fn profiling_loops_works() {
+        crate::profiler::start("Loops");
+        for i in 0..5 {
+            prof_start!("loop");
+            println!("iteration {i}");
+            prof_stop!("loop");
+        }
+        let report = crate::profiler::finish();
+        println!("{report}");
+    }
+
+    #[test]
+    fn profiling_nested_loops_works() {
+        crate::profiler::start("Nested Loops");
+        for i in 0..5 {
+            prof_start!("outer loop");
+            print!("outer loop iteration {i}, inner loop iteration");
+            for j in 0..5 {
+                prof_start!("inner loop");
+                print!(" {j}");
+                prof_stop!("inner loop");
+            }
+            println!();
+            prof_stop!("outer loop");
+        }
         let report = crate::profiler::finish();
         println!("{report}");
     }

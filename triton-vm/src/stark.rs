@@ -21,7 +21,6 @@ use crate::error::ProvingError;
 use crate::error::VerificationError;
 use crate::fri;
 use crate::fri::Fri;
-use crate::profiler::prof_itr0;
 use crate::profiler::prof_start;
 use crate::profiler::prof_stop;
 use crate::proof::Claim;
@@ -976,7 +975,6 @@ impl Stark {
             return Err(VerificationError::IncorrectNumberOfExtTableRows);
         };
 
-        prof_start!("main loop");
         for (row_idx, base_row, ext_row, quotient_segments_elements, fri_value) in izip!(
             revealed_current_row_indices,
             base_table_rows,
@@ -984,7 +982,7 @@ impl Stark {
             revealed_quotient_segments_elements,
             revealed_fri_values,
         ) {
-            prof_itr0!("main loop");
+            prof_start!("main loop");
             let base_row = Array1::from(base_row.to_vec());
             let ext_row = Array1::from(ext_row.to_vec());
             let current_fri_domain_value = fri.domain.domain_value(row_idx as u32);
