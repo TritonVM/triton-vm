@@ -110,7 +110,9 @@ enum TaskType {
 pub(crate) struct TritonProfiler {
     name: String,
     timer: Instant,
-    stack: Vec<(usize, String)>,
+
+    /// An index into the `profile` vector. Keeps track of currently running tasks.
+    active_tasks: Vec<usize>,
     profile: Vec<Task>,
 }
 
@@ -119,16 +121,16 @@ impl TritonProfiler {
         TritonProfiler {
             name: name.into(),
             timer: Instant::now(),
-            stack: vec![],
+            active_tasks: vec![],
             profile: vec![],
         }
     }
 
     #[cfg(any(debug_assertions, not(feature = "no_profile")))]
     fn ignoring(&self) -> bool {
-        self.stack
+        self.active_tasks
             .last()
-            .is_some_and(|&(idx, _)| self.profile[idx].task_type == TaskType::AnyOtherIteration)
+            .is_some_and(|&idx| self.profile[idx].task_type == TaskType::AnyOtherIteration)
     }
 
     fn younger_sibling_indices(&self, index: usize) -> Vec<usize> {
@@ -143,14 +145,12 @@ impl TritonProfiler {
 
     /// Terminate the profiling session and generate a profiling report.
     pub fn finish(mut self) -> Report {
-        let open_task_positions = self.stack.iter().map(|&(i, _)| i);
-        for open_task_position in open_task_positions {
-            let task_name = &mut self.profile[open_task_position].name;
+        for &i in &self.active_tasks {
+            let task_name = &mut self.profile[i].name;
             task_name.push_str(" (unfinished)");
         }
 
-        let num_open_tasks = self.stack.len();
-        for _ in 0..num_open_tasks {
+        for _ in 0..self.active_tasks.len() {
             self.plain_stop();
         }
 
@@ -245,8 +245,8 @@ impl TritonProfiler {
         category: Option<String>,
     ) {
         let name = name.into();
-        let parent_index = self.stack.last().map(|&(u, _)| u);
-        self.stack.push((self.profile.len(), name.clone()));
+        let parent_index = self.active_tasks.last().copied();
+        self.active_tasks.push(self.profile.len());
 
         if env_var(ENV_VAR_PROFILER_LIVE_UPDATE).is_ok() {
             println!("start: {name}");
@@ -255,7 +255,7 @@ impl TritonProfiler {
         self.profile.push(Task {
             name,
             parent_index,
-            depth: self.stack.len(),
+            depth: self.active_tasks.len(),
             time: self.timer.elapsed(),
             task_type,
             category,
@@ -268,39 +268,35 @@ impl TritonProfiler {
             return;
         }
 
-        assert!(
-            !self.stack.is_empty(),
-            "Profiler stack is empty; can't iterate."
-        );
+        let Some(&top_index) = self.active_tasks.last() else {
+            panic!("Profiler stack is empty; can't iterate.");
+        };
+        let top_task = &self.profile[top_index];
 
-        let top_index = self.stack[self.stack.len() - 1].0;
-        let top_type = self.profile[top_index].task_type;
-
-        if top_type != TaskType::IterationZero && top_type != TaskType::AnyOtherIteration {
-            // start
+        if top_task.task_type == TaskType::Generic {
             self.plain_start("iteration 0", TaskType::IterationZero, category);
             return;
         }
 
+        let num_active_tasks = self.active_tasks.len();
         assert!(
-            self.stack.len() >= 2,
-            "To profile zeroth iteration, stack must be at least 2-high, but got height of {}",
-            self.stack.len()
+            num_active_tasks >= 2,
+            "To profile zeroth iteration, stack must be at least 2-high, \
+            but got height of {num_active_tasks}"
         );
 
-        let runner_up = self.stack[self.stack.len() - 2].1.clone();
+        let runner_up_index = self.active_tasks[num_active_tasks - 2];
+        let runner_up_name = &self.profile[runner_up_index].name;
+        dbg!(runner_up_index);
 
         assert_eq!(
-            runner_up, name,
+            runner_up_name, name,
             "To profile zeroth iteration, name must match with top of stack."
         );
 
-        if top_type == TaskType::IterationZero {
-            // switch
-            // stop iteration zero
+        if top_task.task_type == TaskType::IterationZero {
+            // switch – stop iteration zero, start “all other iterations”
             self.plain_stop();
-
-            // start all other iterations
             self.plain_start(
                 "all other iterations",
                 TaskType::AnyOtherIteration,
@@ -313,12 +309,12 @@ impl TritonProfiler {
     }
 
     fn plain_stop(&mut self) {
-        let Some((index, name)) = self.stack.pop() else {
+        let Some(index) = self.active_tasks.pop() else {
             return;
         };
-        let now = self.timer.elapsed();
-        let duration = now - self.profile[index].time;
+        let duration = self.timer.elapsed() - self.profile[index].time;
         self.profile[index].time = duration;
+        let name = &self.profile[index].name;
 
         if env_var(ENV_VAR_PROFILER_LIVE_UPDATE).is_ok() {
             println!("stop:  {name} – took {duration:.2?}");
@@ -327,30 +323,20 @@ impl TritonProfiler {
 
     #[cfg(any(debug_assertions, not(feature = "no_profile")))]
     pub fn stop(&mut self, name: &str) {
-        assert!(
-            !self.stack.is_empty(),
-            "Cannot stop any tasks when stack is empty.",
-        );
+        let top_task = self.active_tasks.last();
+        let &top_index = top_task.expect("Cannot stop any tasks when stack is empty.");
+        let top_name = &self.profile[top_index].name;
 
-        let top = self.stack.last().unwrap().1.clone();
-        if top == *"iteration 0" || top == *"all other iterations" {
-            assert!(
-                self.stack.len() >= 2,
-                "To close profiling of zeroth iteration, stack must be at least 2-high, \
-                but got stack of height {}.",
-                self.stack.len(),
-            );
-            if self.stack[self.stack.len() - 2].1 == *name {
+        if top_name == "iteration 0" || top_name == "all other iterations" {
+            let num_active_tasks = self.active_tasks.len();
+            let runner_up_index = self.active_tasks[num_active_tasks - 2];
+            let runner_up_name = &self.profile[runner_up_index].name;
+            if runner_up_name == name {
                 self.plain_stop();
                 self.plain_stop();
             }
         } else {
-            assert_eq!(
-                top,
-                name.to_owned(),
-                "Profiler stack is LIFO; can't pop in disorder."
-            );
-
+            assert_eq!(top_name, name, "can't stop tasks in disorder.");
             self.plain_stop();
         }
     }
