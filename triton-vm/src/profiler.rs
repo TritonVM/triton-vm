@@ -79,14 +79,10 @@ pub fn start(profile_name: impl Into<String>) {
 ///
 /// See the module-level documentation for information on how to enable profiling.
 pub fn finish() -> Report {
-    if cfg!(any(debug_assertions, not(feature = "no_profile"))) {
-        PROFILER
-            .take()
-            .map(|mut profiler| profiler.report())
-            .unwrap_or_default()
-    } else {
-        Report::default()
-    }
+    cfg!(any(debug_assertions, not(feature = "no_profile")))
+        .then(|| PROFILER.take().map(TritonProfiler::finish))
+        .flatten()
+        .unwrap_or_default()
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
@@ -116,7 +112,6 @@ pub(crate) struct TritonProfiler {
     timer: Instant,
     stack: Vec<(usize, String)>,
     profile: Vec<Task>,
-    total_time: Option<Duration>,
 }
 
 impl TritonProfiler {
@@ -126,7 +121,6 @@ impl TritonProfiler {
             timer: Instant::now(),
             stack: vec![],
             profile: vec![],
-            total_time: None,
         }
     }
 
@@ -147,7 +141,8 @@ impl TritonProfiler {
             .collect()
     }
 
-    pub fn finish(&mut self) {
+    /// Terminate the profiling session and generate a profiling report.
+    pub fn finish(mut self) -> Report {
         let open_task_positions = self.stack.iter().map(|&(i, _)| i);
         for open_task_position in open_task_positions {
             let task_name = &mut self.profile[open_task_position].name;
@@ -159,16 +154,7 @@ impl TritonProfiler {
             self.plain_stop();
         }
 
-        self.total_time = Some(self.timer.elapsed());
-    }
-
-    /// [Finishes](TritonProfiler::finish) the profiling and generates a profiling report.
-    pub fn report(&mut self) -> Report {
-        if self.total_time.is_none() {
-            self.finish();
-        }
-        let total_time = self.total_time.expect("finishing should set a total time");
-
+        let total_time = self.timer.elapsed();
         let mut report: Vec<TaskReport> = vec![];
 
         // todo: this can count the same category multiple times if it's nested
@@ -763,7 +749,7 @@ mod tests {
             }
         }
 
-        println!("{}", profiler.report());
+        println!("{}", profiler.finish());
     }
 
     #[test]
@@ -854,18 +840,6 @@ mod tests {
         crate::profiler::start("Unfinished Tasks Test");
         prof_start!("unfinished task");
         let report = crate::profiler::finish();
-        println!("{report}");
-    }
-
-    #[test]
-    fn profiler_can_generate_multiple_reports() {
-        let mut profiler = TritonProfiler::new("Multiple Reports Test");
-        profiler.start("task 1", None);
-        let report = profiler.report();
-        println!("{report}");
-
-        profiler.start("task 2", None);
-        let report = profiler.report();
         println!("{report}");
     }
 }
