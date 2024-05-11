@@ -10,16 +10,26 @@
 //!
 //! # Enabling Profiling
 //!
+//! ## In Dependencies
+//!
 //! In release builds, profiling is disabled by default to allow for the fastest
-//! possible proof generation. To enable profiling, either make sure that
-//! `debug_assertions` is set, or add the following to your `Cargo.toml`:
+//! possible proof generation & verification. To enable profiling, either make
+//! sure that `debug_assertions` is set, or add the following to your
+//! `Cargo.toml`:
 //!
 //! ```toml
 //! [dependencies]
 //! triton-vm = { version = "x.y.z", default-features = false }
 //! ```
 //!
-//! ### A note on the `no_profile` feature design decision
+//! ## For Benchmarks
+//!
+//! In order to enable profiling when running a benchmark, pass the flag
+//! `--no-default-features` to `cargo bench`. In case this is not working in the
+//! workspace directory, navigate to the crate's directory and run the command
+//! there.
+//!
+//! # A note on the `no_profile` feature design decision
 //!
 //! The feature `no_profile` _disables_ profiling, and is enabled by default.
 //! This seems backwards. However, it is an expression of how Triton VM favors
