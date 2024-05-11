@@ -12,8 +12,8 @@ use crate::error::FriProvingError;
 use crate::error::FriSetupError;
 use crate::error::FriValidationError;
 use crate::error::FriValidationError::*;
-use crate::profiler::prof_start;
-use crate::profiler::prof_stop;
+use crate::profiler::profile_start;
+use crate::profiler::profile_stop;
 use crate::proof_item::FriResponse;
 use crate::proof_item::ProofItem;
 use crate::proof_stream::ProofStream;
@@ -584,18 +584,18 @@ impl<H: AlgebraicHasher> Fri<H> {
         &self,
         proof_stream: &mut ProofStream,
     ) -> VerifierResult<Vec<(usize, XFieldElement)>> {
-        prof_start!("init");
+        profile_start!("init");
         let mut verifier = self.verifier(proof_stream);
         verifier.initialize()?;
-        prof_stop!("init");
+        profile_stop!("init");
 
-        prof_start!("fold all rounds");
+        profile_start!("fold all rounds");
         verifier.compute_last_round_folded_partial_codeword()?;
-        prof_stop!("fold all rounds");
+        profile_stop!("fold all rounds");
 
-        prof_start!("authenticate last round codeword");
+        profile_start!("authenticate last round codeword");
         verifier.authenticate_last_round_codeword()?;
-        prof_stop!("authenticate last round codeword");
+        profile_stop!("authenticate last round codeword");
 
         Ok(verifier.first_round_partially_revealed_codeword())
     }

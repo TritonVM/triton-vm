@@ -597,7 +597,7 @@ impl Display for Report {
 ///
 /// The first argument is the name of the task.
 /// The second, optional argument is a task category.
-macro_rules! prof_start {
+macro_rules! profile_start {
     ($s:expr, $c:expr) => {{
         #[cfg(any(debug_assertions, not(feature = "no_profile")))]
         crate::profiler::PROFILER.with_borrow_mut(|profiler| {
@@ -615,14 +615,14 @@ macro_rules! prof_start {
         })
     }};
 }
-pub(crate) use prof_start;
+pub(crate) use profile_start;
 
 /// Stop a profiling task.
 ///
-/// Requires the same arguments as [`prof_start`], except that the task's
+/// Requires the same arguments as [`profile_start`], except that the task's
 /// category (if any) is inferred. Notably, the task's name needs to be an exact
 /// match to prevent the accidental stopping of a different task.
-macro_rules! prof_stop {
+macro_rules! profile_stop {
     ($s:expr) => {{
         #[cfg(any(debug_assertions, not(feature = "no_profile")))]
         crate::profiler::PROFILER.with_borrow_mut(|profiler| {
@@ -632,7 +632,7 @@ macro_rules! prof_stop {
         })
     }};
 }
-pub(crate) use prof_stop;
+pub(crate) use profile_stop;
 
 #[cfg(test)]
 mod tests {
@@ -686,7 +686,7 @@ mod tests {
     #[proptest]
     fn extensive(mut choices: Vec<DispatchChoice>) {
         fn dispatch(choice: DispatchChoice, remaining_choices: &mut Vec<DispatchChoice>) {
-            prof_start!("dispatcher");
+            profile_start!("dispatcher");
             match choice {
                 DispatchChoice::Function0 => function_0(),
                 DispatchChoice::Function1 => function_1(),
@@ -698,38 +698,38 @@ mod tests {
                     }
                 }
             }
-            prof_stop!("dispatcher");
+            profile_stop!("dispatcher");
         }
 
         fn function_0() {
-            prof_start!("function_0");
+            profile_start!("function_0");
             sleep(Duration::from_micros(1));
-            prof_stop!("function_0");
+            profile_stop!("function_0");
         }
 
         fn function_1() {
-            prof_start!("function_1", "setup");
+            profile_start!("function_1", "setup");
             sleep(Duration::from_micros(1));
-            prof_stop!("function_1");
+            profile_stop!("function_1");
         }
 
         fn function_with_loops() {
             for _ in 0..5 {
-                prof_start!("function_with_loops", "compute");
+                profile_start!("function_with_loops", "compute");
                 sleep(Duration::from_micros(1));
-                prof_stop!("function_with_loops");
+                profile_stop!("function_with_loops");
             }
         }
 
         fn function_with_nested_loop() {
             for _ in 0..5 {
-                prof_start!("function_with_nested_loop", "outer loop");
+                profile_start!("function_with_nested_loop", "outer loop");
                 for _ in 0..3 {
-                    prof_start!("function_with_nested_loop", "inner loop");
+                    profile_start!("function_with_nested_loop", "inner loop");
                     sleep(Duration::from_micros(1));
-                    prof_stop!("function_with_nested_loop");
+                    profile_stop!("function_with_nested_loop");
                 }
-                prof_stop!("function_with_nested_loop");
+                profile_stop!("function_with_nested_loop");
             }
         }
 
@@ -744,9 +744,9 @@ mod tests {
     #[test]
     fn clk_freq() {
         crate::profiler::start("Clock Frequency Test");
-        prof_start!("clk_freq_test");
+        profile_start!("clk_freq_test");
         sleep(Duration::from_millis(3));
-        prof_stop!("clk_freq_test");
+        profile_stop!("clk_freq_test");
         let report = crate::profiler::finish();
 
         let report_with_no_optionals = report.clone();
@@ -798,7 +798,7 @@ mod tests {
     #[test]
     fn profiler_with_unfinished_tasks_can_generate_report() {
         crate::profiler::start("Unfinished Tasks Test");
-        prof_start!("unfinished task");
+        profile_start!("unfinished task");
         let report = crate::profiler::finish();
         println!("{report}");
     }
@@ -807,9 +807,9 @@ mod tests {
     fn loops() {
         crate::profiler::start("Loops");
         for i in 0..5 {
-            prof_start!("loop");
+            profile_start!("loop");
             println!("iteration {i}");
-            prof_stop!("loop");
+            profile_stop!("loop");
         }
         let report = crate::profiler::finish();
         println!("{report}");
@@ -819,15 +819,15 @@ mod tests {
     fn nested_loops() {
         crate::profiler::start("Nested Loops");
         for i in 0..5 {
-            prof_start!("outer loop");
+            profile_start!("outer loop");
             print!("outer loop iteration {i}, inner loop iteration");
             for j in 0..5 {
-                prof_start!("inner loop");
+                profile_start!("inner loop");
                 print!(" {j}");
-                prof_stop!("inner loop");
+                profile_stop!("inner loop");
             }
             println!();
-            prof_stop!("outer loop");
+            profile_stop!("outer loop");
         }
         let report = crate::profiler::finish();
         println!("{report}");
