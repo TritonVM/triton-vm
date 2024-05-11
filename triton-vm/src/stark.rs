@@ -982,7 +982,6 @@ impl Stark {
             revealed_quotient_segments_elements,
             revealed_fri_values,
         ) {
-            prof_start!("main loop");
             let base_row = Array1::from(base_row.to_vec());
             let ext_row = Array1::from(ext_row.to_vec());
             let current_fri_domain_value = fri.domain.domain_value(row_idx as u32);
@@ -1030,7 +1029,6 @@ impl Stark {
             };
             prof_stop!("combination codeword equality");
         }
-        prof_stop!("main loop");
         prof_stop!("linear combination");
         Ok(())
     }
