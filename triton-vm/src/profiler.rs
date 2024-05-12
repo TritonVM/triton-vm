@@ -239,7 +239,7 @@ impl VMPerformanceProfiler {
             let mut current_ancestor_index = task.parent_index;
             while let Some(idx) = current_ancestor_index {
                 ancestors.push(idx);
-                current_ancestor_index = profile[idx].parent_index;
+                current_ancestor_index = profile[idx].ancestors.last().copied();
             }
             ancestors.reverse();
 
@@ -250,7 +250,6 @@ impl VMPerformanceProfiler {
 
             profile.push(TaskReport {
                 name: task.name.clone(),
-                parent_index: task.parent_index,
                 depth: task.depth,
                 duration: task.total_duration,
                 num_invocations: task.num_invocations,
@@ -391,7 +390,6 @@ impl Weight {
 #[derive(Debug, Clone)]
 struct TaskReport {
     name: String,
-    parent_index: Option<usize>,
     depth: usize,
     duration: Duration,
     num_invocations: usize,
@@ -399,6 +397,8 @@ struct TaskReport {
     category: Option<String>,
     relative_category_time: Option<f64>,
     is_last_sibling: bool,
+
+    /// The direct parent is the `.last()` ancestor.
     ancestors: Vec<usize>,
     weight: Weight,
     younger_max_weight: Weight,
