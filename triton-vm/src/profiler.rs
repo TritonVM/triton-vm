@@ -108,7 +108,7 @@ struct Task {
     start_time: Instant,
 
     /// The number of times this task was started,
-    num_invocations: u32,
+    num_invocations: usize,
 
     /// The accumulated time spent in this task, across all invocations.
     total_duration: Duration,
@@ -394,7 +394,7 @@ struct TaskReport {
     parent_index: Option<usize>,
     depth: usize,
     duration: Duration,
-    num_invocations: u32,
+    num_invocations: usize,
     relative_time: f64,
     category: Option<String>,
     relative_category_time: Option<f64>,
@@ -498,7 +498,7 @@ impl Display for VMPerformanceProfile {
         };
         writeln!(
             f,
-            "{title}     {total_time}   {num_reps}  {share_title}  {category_title}"
+            "{title}     {total_time}   {num_reps}   {share_title}  {category_title}"
         )?;
 
         for task in &self.tasks {
@@ -548,53 +548,53 @@ impl Display for VMPerformanceProfile {
         }
 
         if !self.category_times.is_empty() {
-            writeln!(f)?;
-            let category_title = "### Categories".bold();
-            writeln!(f, "{category_title}")?;
-            let category_times_and_names_sorted_by_time = self
-                .category_times
-                .iter()
-                .sorted_by_key(|(_, &time)| time)
-                .rev();
-            for (category, &category_time) in category_times_and_names_sorted_by_time {
-                let category_relative_time =
-                    category_time.as_secs_f64() / self.total_time.as_secs_f64();
-                let category_color = Weight::weigh(category_relative_time).color();
-                let category_relative_time =
-                    format!("{:>6}", format!("{:2.2}%", 100.0 * category_relative_time));
-                let category_time = Self::display_time_aligned(category_time);
+            writeln!(f, "\n{}", "### Categories".bold())?;
+        }
+        for (category, &category_time) in self
+            .category_times
+            .iter()
+            .sorted_by_key(|(_, &time)| time)
+            .rev()
+        {
+            let relative_time = category_time.as_secs_f64() / self.total_time.as_secs_f64();
+            let color = Weight::weigh(relative_time).color();
+            let relative_time = format!("{:>6}", format!("{:2.2}%", 100.0 * relative_time));
+            let category_time = Self::display_time_aligned(category_time);
 
-                let category = format!("{category:<max_category_width$}").color(category_color);
-                let category_time = category_time.color(category_color);
-                let category_relative_time = category_relative_time.color(category_color);
-                writeln!(f, "{category}   {category_time} {category_relative_time}")?;
-            }
+            let category = format!("{category:<max_category_width$}").color(color);
+            let category_time = category_time.color(color);
+            let category_relative_time = relative_time.color(color);
+            writeln!(f, "{category}   {category_time} {category_relative_time}")?;
         }
 
+        let optionals = [self.cycle_count, self.padded_height, self.fri_domain_len];
+        if optionals.iter().all(Option::is_none) {
+            return Ok(());
+        }
         let Ok(total_time) = usize::try_from(self.total_time.as_millis()) else {
             return writeln!(f, "WARN: Total time too large to compute frequency.");
         };
         if total_time == 0 {
             return writeln!(f, "WARN: Total time too small to compute frequency.");
         }
+        let tasks = self.tasks.iter();
+        let num_iters = tasks.map(|t| t.num_invocations).min().unwrap_or(1);
 
-        if self.cycle_count.is_some()
-            || self.padded_height.is_some()
-            || self.fri_domain_len.is_some()
-        {
-            writeln!(f)?;
-        }
-
-        if let Some(cycle_count) = self.cycle_count {
-            let frequency = 1_000 * cycle_count / total_time;
+        writeln!(f)?;
+        if let Some(cycles) = self.cycle_count {
+            let frequency = 1_000 * cycles / total_time / num_iters;
             write!(f, "Clock frequency is {frequency} Hz ")?;
-            writeln!(f, "({cycle_count} clock cycles / {total_time} ms)",)?;
+            write!(f, "({cycles} clock cycles ")?;
+            write!(f, "/ {total_time} ms ")?;
+            writeln!(f, "/ {num_iters} iterations)")?;
         }
 
-        if let Some(padded_height) = self.padded_height {
-            let frequency = 1_000 * padded_height / total_time;
+        if let Some(height) = self.padded_height {
+            let frequency = 1_000 * height / total_time / num_iters;
             write!(f, "Optimal clock frequency is {frequency} Hz ")?;
-            writeln!(f, "({padded_height} padded height / {total_time} ms)")?;
+            write!(f, "({height} padded height ")?;
+            write!(f, "/ {total_time} ms ")?;
+            writeln!(f, "/ {num_iters} iterations)")?;
         }
 
         if let Some(fri_domain_length) = self.fri_domain_len {
