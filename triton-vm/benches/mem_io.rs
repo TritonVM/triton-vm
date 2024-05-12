@@ -5,7 +5,7 @@ use criterion::criterion_main;
 use criterion::Criterion;
 
 use triton_vm::prelude::*;
-use triton_vm::profiler::Report;
+use triton_vm::profiler::VMPerformanceProfile;
 
 criterion_main!(benches);
 criterion_group!(
@@ -16,8 +16,8 @@ criterion_group!(
 
 fn mem_io(criterion: &mut Criterion) {
     let mem_io = MemIOBench::new();
-    let report = mem_io.timing_report();
-    eprintln!("{report}");
+    let profile = mem_io.performance_profile();
+    eprintln!("{profile}");
 
     criterion.bench_function("Memory I/O", |b| b.iter(|| mem_io.prove()));
 }
@@ -65,7 +65,7 @@ impl MemIOBench {
         triton_vm::prove_program(&self.program, public_input, secret_input).unwrap();
     }
 
-    fn timing_report(&self) -> Report {
+    fn performance_profile(&self) -> VMPerformanceProfile {
         let (aet, output) = self
             .program
             .trace_execution(self.public_input.clone(), self.secret_input.clone())
@@ -75,13 +75,13 @@ impl MemIOBench {
         let stark = Stark::default();
         triton_vm::profiler::start("Memory I/O");
         let proof = stark.prove(&claim, &aet).unwrap();
-        let report = triton_vm::profiler::finish();
+        let profile = triton_vm::profiler::finish();
 
         let trace_len = aet.height().height;
         let padded_height = proof.padded_height().unwrap();
         let fri = stark.derive_fri(padded_height).unwrap();
 
-        report
+        profile
             .with_cycle_count(trace_len)
             .with_padded_height(padded_height)
             .with_fri_domain_len(fri.domain.length)

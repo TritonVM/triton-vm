@@ -32,13 +32,13 @@ fn prove_halt(c: &mut Criterion) {
     c.bench_function("Prove Halt", |b| {
         b.iter(|| stark.prove(&claim, &aet).unwrap())
     });
-    let report = triton_vm::profiler::finish();
+    let profile = triton_vm::profiler::finish();
 
     let padded_height = proof.padded_height().unwrap();
     let fri = stark.derive_fri(padded_height).unwrap();
-    let report = report
+    let profile = profile
         .with_cycle_count(aet.height_of_table(TableId::Processor))
         .with_padded_height(padded_height)
         .with_fri_domain_len(fri.domain.length);
-    eprintln!("{report}");
+    eprintln!("{profile}");
 }

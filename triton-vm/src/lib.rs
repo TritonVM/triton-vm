@@ -699,10 +699,10 @@ mod tests {
         implements_auto_traits::<op_stack::NumberOfWords>();
         implements_auto_traits::<parser::ParseError>();
         implements_auto_traits::<parser::InstructionToken>();
-        implements_auto_traits::<profiler::Report>();
+        implements_auto_traits::<profiler::VMPerformanceProfile>();
+        implements_auto_traits::<program::ExecutionTraceProfile>();
         implements_auto_traits::<program::InstructionIter>();
         implements_auto_traits::<program::ProfileLine>();
-        implements_auto_traits::<program::VMProfilingReport>();
         implements_auto_traits::<program::VMTableHeights>();
         implements_auto_traits::<proof_item::FriResponse>();
         implements_auto_traits::<proof_item::ProofItem>();

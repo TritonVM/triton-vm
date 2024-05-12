@@ -71,7 +71,8 @@ use unicode_width::UnicodeWidthStr;
 const ENV_VAR_PROFILER_LIVE_UPDATE: &str = "TVM_PROFILER_LIVE_UPDATE";
 
 thread_local! {
-    pub(crate) static PROFILER: RefCell<Option<TritonProfiler>> = const { RefCell::new(None) };
+    pub(crate) static PROFILER: RefCell<Option<VMPerformanceProfiler>> =
+        const { RefCell::new(None) };
 }
 
 /// Start profiling. If the profiler is already running, this function cancels
@@ -80,17 +81,19 @@ thread_local! {
 /// See the module-level documentation for information on how to enable profiling.
 pub fn start(profile_name: impl Into<String>) {
     if cfg!(any(debug_assertions, not(feature = "no_profile"))) {
-        PROFILER.replace(Some(TritonProfiler::new(profile_name)));
+        PROFILER.replace(Some(VMPerformanceProfiler::new(profile_name)));
     }
 }
 
-/// Stop the current profiling session and generate a [`Report`]. If the
-/// profiler is disabled or not running, an empty [`Report`] is returned.
+/// Stop the current profiling session and generate a [`VMPerformanceProfile`].
+/// If the profiler is disabled or not running, an empty
+/// [`VMPerformanceProfile`] is returned.
 ///
-/// See the module-level documentation for information on how to enable profiling.
-pub fn finish() -> Report {
+/// See the module-level documentation for information on how to enable
+/// profiling.
+pub fn finish() -> VMPerformanceProfile {
     cfg!(any(debug_assertions, not(feature = "no_profile")))
-        .then(|| PROFILER.take().map(TritonProfiler::finish))
+        .then(|| PROFILER.take().map(VMPerformanceProfiler::finish))
         .flatten()
         .unwrap_or_default()
 }
@@ -168,8 +171,9 @@ impl InvocationPath {
     }
 }
 
+/// The internal profiler to measure the performance of Triton VM.
 #[derive(Debug, Clone, Eq, PartialEq)]
-pub(crate) struct TritonProfiler {
+pub(crate) struct VMPerformanceProfiler {
     name: String,
     timer: Instant,
 
@@ -181,9 +185,9 @@ pub(crate) struct TritonProfiler {
     profile: IndexMap<InvocationPath, Task>,
 }
 
-impl TritonProfiler {
+impl VMPerformanceProfiler {
     pub fn new(name: impl Into<String>) -> Self {
-        TritonProfiler {
+        VMPerformanceProfiler {
             name: name.into(),
             timer: Instant::now(),
             active_tasks: vec![],
@@ -203,7 +207,7 @@ impl TritonProfiler {
     }
 
     /// Terminate the profiling session and generate a profiling report.
-    pub fn finish(mut self) -> Report {
+    pub fn finish(mut self) -> VMPerformanceProfile {
         let total_time = self.timer.elapsed();
 
         for &i in &self.active_tasks {
@@ -225,7 +229,7 @@ impl TritonProfiler {
             }
         }
 
-        let mut report: Vec<TaskReport> = vec![];
+        let mut profile: Vec<TaskReport> = vec![];
         for (task_index, task) in self.profile.values().enumerate() {
             let relative_time = task.total_duration.as_secs_f64() / total_time.as_secs_f64();
             let weight =
@@ -235,7 +239,7 @@ impl TritonProfiler {
             let mut current_ancestor_index = task.parent_index;
             while let Some(idx) = current_ancestor_index {
                 ancestors.push(idx);
-                current_ancestor_index = report[idx].parent_index;
+                current_ancestor_index = profile[idx].parent_index;
             }
             ancestors.reverse();
 
@@ -244,7 +248,7 @@ impl TritonProfiler {
             });
             let is_last_sibling = self.younger_sibling_indices(task_index).is_empty();
 
-            report.push(TaskReport {
+            profile.push(TaskReport {
                 name: task.name.clone(),
                 parent_index: task.parent_index,
                 depth: task.depth,
@@ -260,17 +264,17 @@ impl TritonProfiler {
             });
         }
 
-        for task_index in 0..report.len() {
-            report[task_index].younger_max_weight = self
+        for task_index in 0..profile.len() {
+            profile[task_index].younger_max_weight = self
                 .younger_sibling_indices(task_index)
                 .into_iter()
-                .map(|sibling_idx| report[sibling_idx].weight)
+                .map(|sibling_idx| profile[sibling_idx].weight)
                 .max()
                 .unwrap_or(Weight::LikeNothing);
         }
 
-        Report {
-            tasks: report,
+        VMPerformanceProfile {
+            tasks: profile,
             name: self.name.clone(),
             total_time,
             category_times,
@@ -401,7 +405,7 @@ struct TaskReport {
 }
 
 #[derive(Debug, Clone)]
-pub struct Report {
+pub struct VMPerformanceProfile {
     name: String,
     tasks: Vec<TaskReport>,
     total_time: Duration,
@@ -411,7 +415,7 @@ pub struct Report {
     fri_domain_len: Option<usize>,
 }
 
-impl Report {
+impl VMPerformanceProfile {
     pub fn with_cycle_count(mut self, cycle_count: usize) -> Self {
         self.cycle_count = Some(cycle_count);
         self
@@ -438,7 +442,7 @@ impl Report {
     }
 }
 
-impl Default for Report {
+impl Default for VMPerformanceProfile {
     fn default() -> Self {
         let name = if cfg!(feature = "no_profile") {
             "Triton VM's profiler is disabled through feature `no_profile`.".to_string()
@@ -458,7 +462,7 @@ impl Default for Report {
     }
 }
 
-impl Display for Report {
+impl Display for VMPerformanceProfile {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         let max_name_width = self
             .tasks
@@ -655,7 +659,7 @@ mod tests {
 
     #[test]
     fn sanity() {
-        let mut profiler = TritonProfiler::new("Sanity Test");
+        let mut profiler = VMPerformanceProfiler::new("Sanity Test");
         profiler.start("Task 0", here!(), None);
         sleep(Duration::from_millis(1));
         profiler.start("Task 1", here!(), Some("setup".to_string()));
@@ -680,8 +684,8 @@ mod tests {
         sleep(Duration::from_millis(1));
         profiler.stop("Task 6");
         profiler.stop("Task 5");
-        let report = profiler.finish();
-        println!("{report}");
+        let profile = profiler.finish();
+        println!("{profile}");
     }
 
     #[derive(Debug, Clone, Eq, PartialEq, Hash, test_strategy::Arbitrary)]
@@ -747,8 +751,8 @@ mod tests {
         while let Some(choice) = choices.pop() {
             dispatch(choice, &mut choices);
         }
-        let report = crate::profiler::finish();
-        println!("{report}");
+        let profile = crate::profiler::finish();
+        println!("{profile}");
     }
 
     #[test]
@@ -757,45 +761,45 @@ mod tests {
         profile_start!("clk_freq_test");
         sleep(Duration::from_millis(3));
         profile_stop!("clk_freq_test");
-        let report = crate::profiler::finish();
+        let profile = crate::profiler::finish();
 
-        let report_with_no_optionals = report.clone();
-        println!("{report_with_no_optionals}");
+        let profile_with_no_optionals = profile.clone();
+        println!("{profile_with_no_optionals}");
 
-        let report_with_optionals_set_to_0 = report
+        let profile_with_optionals_set_to_0 = profile
             .clone()
             .with_cycle_count(0)
             .with_padded_height(0)
             .with_fri_domain_len(0);
-        println!("{report_with_optionals_set_to_0}");
+        println!("{profile_with_optionals_set_to_0}");
 
-        let report_with_optionals_set = report
+        let profile_with_optionals_set = profile
             .clone()
             .with_cycle_count(10)
             .with_padded_height(12)
             .with_fri_domain_len(32);
-        println!("{report_with_optionals_set}");
+        println!("{profile_with_optionals_set}");
     }
 
     #[test]
     fn starting_the_profiler_twice_does_not_cause_panic() {
         crate::profiler::start("Double Start Test 0");
         crate::profiler::start("Double Start Test 1");
-        let report = crate::profiler::finish();
-        println!("{report}");
+        let profile = crate::profiler::finish();
+        println!("{profile}");
     }
 
     #[test]
-    fn creating_report_without_starting_profile_does_not_cause_panic() {
-        let report = crate::profiler::finish();
-        println!("{report}");
+    fn creating_profile_without_starting_profile_does_not_cause_panic() {
+        let profile = crate::profiler::finish();
+        println!("{profile}");
     }
 
     #[test]
-    fn profiler_without_any_tasks_can_generate_a_report() {
+    fn profiler_without_any_tasks_can_generate_a_profile_report() {
         crate::profiler::start("Empty Test");
-        let report = crate::profiler::finish();
-        println!("{report}");
+        let profile = crate::profiler::finish();
+        println!("{profile}");
     }
 
     #[test]
@@ -806,11 +810,11 @@ mod tests {
     }
 
     #[test]
-    fn profiler_with_unfinished_tasks_can_generate_report() {
+    fn profiler_with_unfinished_tasks_can_generate_profile_report() {
         crate::profiler::start("Unfinished Tasks Test");
         profile_start!("unfinished task");
-        let report = crate::profiler::finish();
-        println!("{report}");
+        let profile = crate::profiler::finish();
+        println!("{profile}");
     }
 
     #[test]
@@ -821,8 +825,8 @@ mod tests {
             println!("iteration {i}");
             profile_stop!("loop");
         }
-        let report = crate::profiler::finish();
-        println!("{report}");
+        let profile = crate::profiler::finish();
+        println!("{profile}");
     }
 
     #[test]
@@ -839,7 +843,7 @@ mod tests {
             println!();
             profile_stop!("outer loop");
         }
-        let report = crate::profiler::finish();
-        println!("{report}");
+        let profile = crate::profiler::finish();
+        println!("{profile}");
     }
 }

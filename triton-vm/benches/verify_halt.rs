@@ -19,11 +19,11 @@ fn verify_halt(criterion: &mut Criterion) {
 
     triton_vm::profiler::start("Verify Halt");
     stark.verify(&claim, &proof).unwrap();
-    let report = triton_vm::profiler::finish();
+    let profile = triton_vm::profiler::finish();
 
     let padded_height = proof.padded_height().unwrap();
     let fri = stark.derive_fri(padded_height).unwrap();
-    let report = report
+    let profile = profile
         .with_cycle_count(aet.processor_trace.nrows())
         .with_padded_height(padded_height)
         .with_fri_domain_len(fri.domain.length);
@@ -38,7 +38,7 @@ fn verify_halt(criterion: &mut Criterion) {
     });
     group.finish();
 
-    eprintln!("{report}");
+    eprintln!("{profile}");
 }
 
 criterion_group! {

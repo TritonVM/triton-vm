@@ -98,7 +98,7 @@ mod tests {
             prove_with_low_security_level(&FIBONACCI_SEQUENCE, stdin, secret_in);
         assert!(let Ok(()) = stark.verify(&claim, &proof));
 
-        let report = crate::profiler::finish();
-        println!("{report}");
+        let profile = crate::profiler::finish();
+        println!("{profile}");
     }
 }

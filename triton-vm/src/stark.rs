@@ -2572,16 +2572,16 @@ pub(crate) mod tests {
             code_with_input.public_input(),
             code_with_input.non_determinism(),
         );
-        let report = crate::profiler::finish();
+        let profile = crate::profiler::finish();
 
         assert!(let Ok(()) = stark.verify(&claim, &proof));
 
         let_assert!(Ok(padded_height) = proof.padded_height());
         let fri = stark.derive_fri(padded_height).unwrap();
-        let report = report
+        let profile = profile
             .with_padded_height(padded_height)
             .with_fri_domain_len(fri.domain.length);
-        println!("{report}");
+        println!("{profile}");
     }
 
     #[test]
@@ -2592,7 +2592,7 @@ pub(crate) mod tests {
         crate::profiler::start("Prove Fib 100");
         let (stark, claim, proof) =
             prove_with_low_security_level(&FIBONACCI_SEQUENCE, stdin, secret_in);
-        let report = crate::profiler::finish();
+        let profile = crate::profiler::finish();
 
         println!("between prove and verify");
 
@@ -2600,10 +2600,10 @@ pub(crate) mod tests {
 
         let_assert!(Ok(padded_height) = proof.padded_height());
         let fri = stark.derive_fri(padded_height).unwrap();
-        let report = report
+        let profile = profile
             .with_padded_height(padded_height)
             .with_fri_domain_len(fri.domain.length);
-        println!("{report}");
+        println!("{profile}");
     }
 
     #[test]
@@ -2634,15 +2634,15 @@ pub(crate) mod tests {
             [].into(),
             [].into(),
         );
-        let report = crate::profiler::finish();
+        let profile = crate::profiler::finish();
         assert!(let Ok(()) = stark.verify(&claim, &proof));
 
         let_assert!(Ok(padded_height) = proof.padded_height());
         let fri = stark.derive_fri(padded_height).unwrap();
-        let report = report
+        let profile = profile
             .with_padded_height(padded_height)
             .with_fri_domain_len(fri.domain.length);
-        println!("{report}");
+        println!("{profile}");
     }
 
     #[proptest]
