@@ -606,47 +606,57 @@ impl Display for VMPerformanceProfile {
     }
 }
 
-/// Start a profiling task. Does nothing if the profiler is not running;
+/// Start or stop a profiling task. Does nothing if the profiler is not running;
 /// see [`start`].
 ///
-/// The first argument is the name of the task.
-/// The second, optional argument is a task category.
-macro_rules! profile_start {
-    ($s:expr, $c:expr) => {{
-        #[cfg(any(debug_assertions, not(feature = "no_profile")))]
-        crate::profiler::PROFILER.with_borrow_mut(|profiler| {
-            if let Some(profiler) = profiler.as_mut() {
-                profiler.start($s, crate::profiler::here!(), Some($c.to_string()));
-            }
-        })
-    }};
-    ($s:expr) => {{
-        #[cfg(any(debug_assertions, not(feature = "no_profile")))]
-        crate::profiler::PROFILER.with_borrow_mut(|profiler| {
-            if let Some(profiler) = profiler.as_mut() {
-                profiler.start($s, crate::profiler::here!(), None);
-            }
-        })
-    }};
-}
-pub(crate) use profile_start;
-
-/// Stop a profiling task.
+/// For starting, use `start` as the first token. For stopping, use `stop`.
+/// When starting, an optional category can be provided in parentheses.
+/// When stopping, the task's name needs to be an exact match to prevent the
+/// accidental stopping of a different task.
 ///
-/// Requires the same arguments as [`profile_start`], except that the task's
-/// category (if any) is inferred. Notably, the task's name needs to be an exact
-/// match to prevent the accidental stopping of a different task.
-macro_rules! profile_stop {
-    ($s:expr) => {{
+/// # Examples
+///
+/// ```no_compile
+/// # // The profiler macros are internal only and cannot be used in doc tests.
+/// use crate::profiler::profiler;
+/// crate::profiler::start("heavy lifting");
+/// profiler!(start "good job" ("compute")); // uses the category “compute”
+/// for _ in 0..5 {
+///     profiler!(start "loop"); // category is optional
+///     /* work hard */
+///     profiler!(stop "loop"); // must match exactly
+/// }
+/// profiler!(stop "good job"); // category is inferred when stopping
+/// let profile = crate::profiler::finish();
+/// ```
+macro_rules! profiler {
+    (start $task:literal ($category:literal)) => {{
         #[cfg(any(debug_assertions, not(feature = "no_profile")))]
-        crate::profiler::PROFILER.with_borrow_mut(|profiler| {
+        $crate::profiler::PROFILER.with_borrow_mut(|profiler| {
             if let Some(profiler) = profiler.as_mut() {
-                profiler.stop($s);
+                let here = $crate::profiler::here!();
+                profiler.start($task, here, Some($category.to_string()));
+            }
+        })
+    }};
+    (start $task:literal) => {{
+        #[cfg(any(debug_assertions, not(feature = "no_profile")))]
+        $crate::profiler::PROFILER.with_borrow_mut(|profiler| {
+            if let Some(profiler) = profiler.as_mut() {
+                profiler.start($task, $crate::profiler::here!(), None);
+            }
+        })
+    }};
+    (stop $task:literal) => {{
+        #[cfg(any(debug_assertions, not(feature = "no_profile")))]
+        $crate::profiler::PROFILER.with_borrow_mut(|profiler| {
+            if let Some(profiler) = profiler.as_mut() {
+                profiler.stop($task);
             }
         })
     }};
 }
-pub(crate) use profile_stop;
+pub(crate) use profiler;
 
 #[cfg(test)]
 mod tests {
@@ -659,10 +669,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn profiling_macros_are_not_pub() {
+    fn profiler_macro_is_private() {
         let trybuild = trybuild::TestCases::new();
-        trybuild.compile_fail("trybuild/macro_profile_start_is_not_pub.rs");
-        trybuild.compile_fail("trybuild/macro_profile_stop_is_not_pub.rs");
+        trybuild.compile_fail("trybuild/profiler_macro_is_private.rs");
     }
 
     #[test]
@@ -708,7 +717,7 @@ mod tests {
     #[proptest]
     fn extensive(mut choices: Vec<DispatchChoice>) {
         fn dispatch(choice: DispatchChoice, remaining_choices: &mut Vec<DispatchChoice>) {
-            profile_start!("dispatcher");
+            profiler!(start "dispatcher");
             match choice {
                 DispatchChoice::Function0 => function_0(),
                 DispatchChoice::Function1 => function_1(),
@@ -720,38 +729,38 @@ mod tests {
                     }
                 }
             }
-            profile_stop!("dispatcher");
+            profiler!(stop "dispatcher");
         }
 
         fn function_0() {
-            profile_start!("function_0");
+            profiler!(start "function_0");
             sleep(Duration::from_micros(1));
-            profile_stop!("function_0");
+            profiler!(stop "function_0");
         }
 
         fn function_1() {
-            profile_start!("function_1", "setup");
+            profiler!(start "function_1" ("setup"));
             sleep(Duration::from_micros(1));
-            profile_stop!("function_1");
+            profiler!(stop "function_1");
         }
 
         fn function_with_loops() {
             for _ in 0..5 {
-                profile_start!("function_with_loops", "compute");
+                profiler!(start "function_with_loops" ("compute"));
                 sleep(Duration::from_micros(1));
-                profile_stop!("function_with_loops");
+                profiler!(stop "function_with_loops");
             }
         }
 
         fn function_with_nested_loop() {
             for _ in 0..5 {
-                profile_start!("function_with_nested_loop", "outer loop");
+                profiler!(start "function_with_nested_loop" ("outer loop"));
                 for _ in 0..3 {
-                    profile_start!("function_with_nested_loop", "inner loop");
+                    profiler!(start "function_with_nested_loop" ("inner loop"));
                     sleep(Duration::from_micros(1));
-                    profile_stop!("function_with_nested_loop");
+                    profiler!(stop "function_with_nested_loop");
                 }
-                profile_stop!("function_with_nested_loop");
+                profiler!(stop "function_with_nested_loop");
             }
         }
 
@@ -766,9 +775,9 @@ mod tests {
     #[test]
     fn clk_freq() {
         crate::profiler::start("Clock Frequency Test");
-        profile_start!("clk_freq_test");
+        profiler!(start "clk_freq_test");
         sleep(Duration::from_millis(3));
-        profile_stop!("clk_freq_test");
+        profiler!(stop "clk_freq_test");
         let profile = crate::profiler::finish();
 
         let profile_with_no_optionals = profile.clone();
@@ -820,7 +829,7 @@ mod tests {
     #[test]
     fn profiler_with_unfinished_tasks_can_generate_profile_report() {
         crate::profiler::start("Unfinished Tasks Test");
-        profile_start!("unfinished task");
+        profiler!(start "unfinished task");
         let profile = crate::profiler::finish();
         println!("{profile}");
     }
@@ -829,9 +838,9 @@ mod tests {
     fn loops() {
         crate::profiler::start("Loops");
         for i in 0..5 {
-            profile_start!("loop");
+            profiler!(start "loop");
             println!("iteration {i}");
-            profile_stop!("loop");
+            profiler!(stop "loop");
         }
         let profile = crate::profiler::finish();
         println!("{profile}");
@@ -841,15 +850,15 @@ mod tests {
     fn nested_loops() {
         crate::profiler::start("Nested Loops");
         for i in 0..5 {
-            profile_start!("outer loop");
+            profiler!(start "outer loop");
             print!("outer loop iteration {i}, inner loop iteration");
             for j in 0..5 {
-                profile_start!("inner loop");
+                profiler!(start "inner loop");
                 print!(" {j}");
-                profile_stop!("inner loop");
+                profiler!(stop "inner loop");
             }
             println!();
-            profile_stop!("outer loop");
+            profiler!(stop "outer loop");
         }
         let profile = crate::profiler::finish();
         println!("{profile}");

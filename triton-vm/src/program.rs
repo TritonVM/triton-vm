@@ -27,8 +27,7 @@ use crate::instruction::TypeHint;
 use crate::parser::parse;
 use crate::parser::to_labelled_instructions;
 use crate::parser::ParseError;
-use crate::profiler::profile_start;
-use crate::profiler::profile_stop;
+use crate::profiler::profiler;
 use crate::table::hash_table::PERMUTATION_TRACE_LENGTH;
 use crate::table::u32_table::U32TableEntry;
 use crate::vm::CoProcessorCall;
@@ -454,10 +453,10 @@ impl Program {
         public_input: PublicInput,
         non_determinism: NonDeterminism,
     ) -> Result<(AlgebraicExecutionTrace, Vec<BFieldElement>)> {
-        profile_start!("trace execution", "gen");
+        profiler!(start "trace execution" ("gen"));
         let state = VMState::new(self, public_input, non_determinism);
         let (aet, terminal_state) = self.trace_execution_of_state(state)?;
-        profile_stop!("trace execution");
+        profiler!(stop "trace execution");
         Ok((aet, terminal_state.public_output))
     }
 
