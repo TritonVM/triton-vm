@@ -27,6 +27,8 @@ use crate::instruction::TypeHint;
 use crate::parser::parse;
 use crate::parser::to_labelled_instructions;
 use crate::parser::ParseError;
+use crate::profiler::profile_start;
+use crate::profiler::profile_stop;
 use crate::table::hash_table::PERMUTATION_TRACE_LENGTH;
 use crate::table::u32_table::U32TableEntry;
 use crate::vm::CoProcessorCall;
@@ -452,15 +454,24 @@ impl Program {
         public_input: PublicInput,
         non_determinism: NonDeterminism,
     ) -> Result<(AlgebraicExecutionTrace, Vec<BFieldElement>)> {
+        profile_start!("trace execution", "gen");
         let state = VMState::new(self, public_input, non_determinism);
         let (aet, terminal_state) = self.trace_execution_of_state(state)?;
+        profile_stop!("trace execution");
         Ok((aet, terminal_state.public_output))
     }
 
-    /// Trace the execution of a [`Program`] from a given [`VMState`]. Consider using
-    /// [`trace_execution`][Self::trace_execution], unless you know this is what you want.
+    /// Trace the execution of a [`Program`] from a given [`VMState`]. Consider
+    /// using [`trace_execution`][Self::trace_execution], unless you know this is
+    /// what you want.
     ///
-    /// Returns the [`AlgebraicExecutionTrace`] and the terminal [`VMState`] if execution succeeds.
+    /// Returns the [`AlgebraicExecutionTrace`] and the terminal [`VMState`] if
+    /// execution succeeds.
+    ///
+    /// # Panics
+    ///
+    /// - if the given [`VMState`] is not about to `self`
+    /// - if the given [`VMState`] is incorrectly initialized
     pub fn trace_execution_of_state(
         &self,
         mut state: VMState,
