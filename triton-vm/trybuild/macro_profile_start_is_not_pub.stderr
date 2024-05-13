@@ -1,0 +1,11 @@
+error[E0603]: macro `profile_start` is private
+ --> trybuild/macro_profile_start_is_not_pub.rs:1:26
+  |
+1 | use triton_vm::profiler::profile_start;
+  |                          ^^^^^^^^^^^^^ private macro
+  |
+note: the macro `profile_start` is defined here
+ --> src/profiler.rs
+  |
+  | pub(crate) use profile_start;
+  |                ^^^^^^^^^^^^^

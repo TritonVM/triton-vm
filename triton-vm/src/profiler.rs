@@ -654,8 +654,16 @@ mod tests {
     use std::time::Duration;
 
     use test_strategy::proptest;
+    use trybuild;
 
     use super::*;
+
+    #[test]
+    fn profiling_macros_are_not_pub() {
+        let trybuild = trybuild::TestCases::new();
+        trybuild.compile_fail("trybuild/macro_profile_start_is_not_pub.rs");
+        trybuild.compile_fail("trybuild/macro_profile_stop_is_not_pub.rs");
+    }
 
     #[test]
     fn sanity() {
