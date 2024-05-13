@@ -12,9 +12,7 @@ use crate::error::FriProvingError;
 use crate::error::FriSetupError;
 use crate::error::FriValidationError;
 use crate::error::FriValidationError::*;
-use crate::profiler::prof_start;
-use crate::profiler::prof_stop;
-use crate::profiler::TritonProfiler;
+use crate::profiler::profiler;
 use crate::proof_item::FriResponse;
 use crate::proof_item::ProofItem;
 use crate::proof_stream::ProofStream;
@@ -584,20 +582,19 @@ impl<H: AlgebraicHasher> Fri<H> {
     pub fn verify(
         &self,
         proof_stream: &mut ProofStream,
-        maybe_profiler: &mut Option<TritonProfiler>,
     ) -> VerifierResult<Vec<(usize, XFieldElement)>> {
-        prof_start!(maybe_profiler, "init");
+        profiler!(start "init");
         let mut verifier = self.verifier(proof_stream);
         verifier.initialize()?;
-        prof_stop!(maybe_profiler, "init");
+        profiler!(stop "init");
 
-        prof_start!(maybe_profiler, "fold all rounds");
+        profiler!(start "fold all rounds");
         verifier.compute_last_round_folded_partial_codeword()?;
-        prof_stop!(maybe_profiler, "fold all rounds");
+        profiler!(stop "fold all rounds");
 
-        prof_start!(maybe_profiler, "authenticate last round codeword");
+        profiler!(start "authenticate last round codeword");
         verifier.authenticate_last_round_codeword()?;
-        prof_stop!(maybe_profiler, "authenticate last round codeword");
+        profiler!(stop "authenticate last round codeword");
 
         Ok(verifier.first_round_partially_revealed_codeword())
     }
@@ -780,7 +777,7 @@ mod tests {
         fri.prove(&codeword, &mut proof_stream).unwrap();
 
         let mut proof_stream = prepare_proof_stream_for_verification(proof_stream);
-        let verdict = fri.verify(&mut proof_stream, &mut None);
+        let verdict = fri.verify(&mut proof_stream);
         prop_assert!(verdict.is_ok());
     }
 
@@ -796,7 +793,7 @@ mod tests {
         fri.prove(&codeword, &mut proof_stream).unwrap();
 
         let mut proof_stream = prepare_proof_stream_for_verification(proof_stream);
-        let verdict = fri.verify(&mut proof_stream, &mut None);
+        let verdict = fri.verify(&mut proof_stream);
         prop_assert!(verdict.is_ok());
     }
 
@@ -813,7 +810,7 @@ mod tests {
         fri.prove(&codeword, &mut proof_stream).unwrap();
 
         let mut proof_stream = prepare_proof_stream_for_verification(proof_stream);
-        let verdict = fri.verify(&mut proof_stream, &mut None);
+        let verdict = fri.verify(&mut proof_stream);
         prop_assert!(verdict.is_err());
     }
 
@@ -911,7 +908,7 @@ mod tests {
         let mut proof_stream =
             modify_last_round_codeword_in_proof_stream_using_seed(proof_stream, rng_seed);
 
-        let verdict = fri.verify(&mut proof_stream, &mut None);
+        let verdict = fri.verify(&mut proof_stream);
         let err = verdict.unwrap_err();
         let FriValidationError::BadMerkleRootForLastCodeword = err else {
             return Err(TestCaseError::Fail("validation must fail".into()));
@@ -962,7 +959,7 @@ mod tests {
         let mut proof_stream =
             change_size_of_some_fri_response_in_proof_stream_using_seed(proof_stream, rng_seed);
 
-        let verdict = fri.verify(&mut proof_stream, &mut None);
+        let verdict = fri.verify(&mut proof_stream);
         let err = verdict.unwrap_err();
         let FriValidationError::IncorrectNumberOfRevealedLeaves = err else {
             return Err(TestCaseError::Fail("validation must fail".into()));
@@ -1016,7 +1013,7 @@ mod tests {
         let mut proof_stream =
             modify_some_auth_structure_in_proof_stream_using_seed(proof_stream, rng_seed);
 
-        let verdict = fri.verify(&mut proof_stream, &mut None);
+        let verdict = fri.verify(&mut proof_stream);
         let_assert!(Err(err) = verdict);
         assert!(let BadMerkleAuthenticationPath = err);
     }
@@ -1069,7 +1066,7 @@ mod tests {
             }
         });
 
-        let verdict = fri.verify(&mut proof_stream, &mut None);
+        let verdict = fri.verify(&mut proof_stream);
         let_assert!(Err(err) = verdict);
         assert!(let LastRoundPolynomialEvaluationMismatch = err);
     }
@@ -1086,7 +1083,7 @@ mod tests {
         fri.prove(&codeword, &mut proof_stream).unwrap();
 
         let mut proof_stream = prepare_proof_stream_for_verification(proof_stream);
-        let verdict = fri.verify(&mut proof_stream, &mut None);
+        let verdict = fri.verify(&mut proof_stream);
         let_assert!(Err(err) = verdict);
         assert!(let LastRoundPolynomialHasTooHighDegree = err);
     }
@@ -1096,7 +1093,7 @@ mod tests {
         #[strategy(arbitrary_fri())] fri: Fri<Tip5>,
         #[strategy(arb())] mut proof_stream: ProofStream,
     ) {
-        let _verdict = fri.verify(&mut proof_stream, &mut None);
+        let _verdict = fri.verify(&mut proof_stream);
     }
 
     #[proptest]

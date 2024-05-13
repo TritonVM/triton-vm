@@ -27,6 +27,7 @@ use crate::instruction::TypeHint;
 use crate::parser::parse;
 use crate::parser::to_labelled_instructions;
 use crate::parser::ParseError;
+use crate::profiler::profiler;
 use crate::table::hash_table::PERMUTATION_TRACE_LENGTH;
 use crate::table::u32_table::U32TableEntry;
 use crate::vm::CoProcessorCall;
@@ -452,15 +453,24 @@ impl Program {
         public_input: PublicInput,
         non_determinism: NonDeterminism,
     ) -> Result<(AlgebraicExecutionTrace, Vec<BFieldElement>)> {
+        profiler!(start "trace execution" ("gen"));
         let state = VMState::new(self, public_input, non_determinism);
         let (aet, terminal_state) = self.trace_execution_of_state(state)?;
+        profiler!(stop "trace execution");
         Ok((aet, terminal_state.public_output))
     }
 
-    /// Trace the execution of a [`Program`] from a given [`VMState`]. Consider using
-    /// [`trace_execution`][Self::trace_execution], unless you know this is what you want.
+    /// Trace the execution of a [`Program`] from a given [`VMState`]. Consider
+    /// using [`trace_execution`][Self::trace_execution], unless you know this is
+    /// what you want.
     ///
-    /// Returns the [`AlgebraicExecutionTrace`] and the terminal [`VMState`] if execution succeeds.
+    /// Returns the [`AlgebraicExecutionTrace`] and the terminal [`VMState`] if
+    /// execution succeeds.
+    ///
+    /// # Panics
+    ///
+    /// - if the given [`VMState`] is not about to `self`
+    /// - if the given [`VMState`] is incorrectly initialized
     pub fn trace_execution_of_state(
         &self,
         mut state: VMState,
@@ -485,9 +495,11 @@ impl Program {
         Ok((aet, state))
     }
 
-    /// Run Triton VM with the given public and secret input, but record the number of cycles spent
-    /// in each callable block of instructions. This function returns a Result wrapping a program
-    /// profiler report, which is a Vec of [`ProfileLine`]s.
+    /// Run Triton VM with the given public and secret input, recording the
+    /// influence of a callable block of instructions on the
+    /// [`AlgebraicExecutionTrace`]. For example, this can be used to identify the
+    /// number of clock cycles spent in some block of instructions, or how many rows
+    /// it contributes to the U32 Table.
     ///
     /// See also [`run`][run] and [`trace_execution`][trace_execution].
     ///
@@ -497,8 +509,8 @@ impl Program {
         &self,
         public_input: PublicInput,
         non_determinism: NonDeterminism,
-    ) -> Result<(Vec<BFieldElement>, VMProfilingReport)> {
-        let mut profiler = VMProfiler::new(self.instructions.len());
+    ) -> Result<(Vec<BFieldElement>, ExecutionTraceProfile)> {
+        let mut profiler = ExecutionTraceProfiler::new(self.instructions.len());
         let mut state = VMState::new(self, public_input, non_determinism);
         while !state.halting {
             if let Ok(Instruction::Call(address)) = state.current_instruction() {
@@ -514,7 +526,7 @@ impl Program {
             };
         }
 
-        Ok((state.public_output, profiler.report()))
+        Ok((state.public_output, profiler.finish()))
     }
 
     /// The label for the given address, or a deterministic, unique substitute if no label is found.
@@ -529,14 +541,15 @@ impl Program {
 }
 
 #[derive(Debug, Default, Clone, Eq, PartialEq, Arbitrary)]
-struct VMProfiler {
+struct ExecutionTraceProfiler {
     call_stack: Vec<usize>,
     profile: Vec<ProfileLine>,
     table_heights: VMTableHeights,
     u32_table_entries: HashSet<U32TableEntry>,
 }
 
-/// A single line in a [profile report](VMProfilingReport) for profiling [Triton](crate) programs.
+/// A single line in a [profile report](ExecutionTraceProfile) for profiling
+/// [Triton](crate) programs.
 #[derive(Debug, Default, Clone, Eq, PartialEq, Hash, Arbitrary)]
 pub struct ProfileLine {
     pub label: String,
@@ -551,15 +564,16 @@ pub struct ProfileLine {
 
 /// A report for the completed execution of a [Triton](crate) program.
 ///
-/// Offers a human-readable [`Display`] implementation and can be processed programmatically.
+/// Offers a human-readable [`Display`] implementation and can be processed
+/// programmatically.
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Arbitrary)]
-pub struct VMProfilingReport {
+pub struct ExecutionTraceProfile {
     pub total: VMTableHeights,
     pub profile: Vec<ProfileLine>,
 }
 
-/// The heights of various [tables](AlgebraicExecutionTrace) relevant for proving the correct
-/// execution in [Triton VM](crate).
+/// The heights of various [tables](AlgebraicExecutionTrace) relevant for
+/// proving the correct execution in [Triton VM](crate).
 #[non_exhaustive]
 #[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Hash, Arbitrary)]
 pub struct VMTableHeights {
@@ -570,7 +584,7 @@ pub struct VMTableHeights {
     pub u32: u32,
 }
 
-impl VMProfiler {
+impl ExecutionTraceProfiler {
     fn new(num_instructions: usize) -> Self {
         Self {
             call_stack: vec![],
@@ -620,12 +634,12 @@ impl VMProfiler {
         }
     }
 
-    fn report(mut self) -> VMProfilingReport {
+    fn finish(mut self) -> ExecutionTraceProfile {
         for &line_number in &self.call_stack {
             self.profile[line_number].table_heights_stop = self.table_heights;
         }
 
-        VMProfilingReport {
+        ExecutionTraceProfile {
             total: self.table_heights,
             profile: self.profile,
         }
@@ -694,7 +708,7 @@ impl Display for ProfileLine {
     }
 }
 
-impl Display for VMProfilingReport {
+impl Display for ExecutionTraceProfile {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         struct AggregateLine {
             label: String,

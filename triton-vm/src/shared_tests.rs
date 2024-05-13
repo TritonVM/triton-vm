@@ -8,9 +8,6 @@ use twenty_first::prelude::*;
 use crate::aet::AlgebraicExecutionTrace;
 use crate::error::VMError;
 use crate::fri::AuthenticationStructure;
-use crate::profiler::prof_start;
-use crate::profiler::prof_stop;
-use crate::profiler::TritonProfiler;
 use crate::program::Program;
 use crate::proof::Claim;
 use crate::proof::Proof;
@@ -100,22 +97,17 @@ pub(crate) fn prove_with_low_security_level(
     program: &Program,
     public_input: PublicInput,
     non_determinism: NonDeterminism,
-    maybe_profiler: &mut Option<TritonProfiler>,
 ) -> (Stark, Claim, Proof) {
-    prof_start!(maybe_profiler, "trace program");
     let (aet, public_output) = program
         .trace_execution(public_input.clone(), non_determinism)
         .unwrap();
-    prof_stop!(maybe_profiler, "trace program");
 
     let claim = Claim::about_program(&aet.program)
         .with_input(public_input.individual_tokens)
         .with_output(public_output);
 
-    prof_start!(maybe_profiler, "prove");
     let stark = low_security_stark();
-    let proof = stark.prove(&claim, &aet, maybe_profiler).unwrap();
-    prof_stop!(maybe_profiler, "prove");
+    let proof = stark.prove(&claim, &aet).unwrap();
 
     (stark, claim, proof)
 }

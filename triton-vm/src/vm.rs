@@ -2281,7 +2281,7 @@ pub(crate) mod tests {
         let_assert!(Ok(public_output) = program.run(public_input.clone(), secret_input.clone()));
         assert!(42 == public_output[0].value());
 
-        prove_with_low_security_level(&program, public_input, secret_input, &mut None);
+        prove_with_low_security_level(&program, public_input, secret_input);
     }
 
     #[proptest(cases = 10)]
@@ -2305,7 +2305,7 @@ pub(crate) mod tests {
         assert!(0 == public_output[0].value());
         assert!(value == public_output[1]);
 
-        prove_with_low_security_level(&program, public_input, secret_input, &mut None);
+        prove_with_low_security_level(&program, public_input, secret_input);
     }
 
     #[test]

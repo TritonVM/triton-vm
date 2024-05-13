@@ -27,8 +27,8 @@ fn prove_fib<const N: u64>(c: &mut Criterion) {
 
     let mut group = c.benchmark_group(format!("prove_fib_{N}"));
     triton_vm::config::overwrite_lde_trace_caching_to(CacheDecision::Cache);
-    group.bench_function("cache", |b| b.iter(|| stark.prove(&claim, &aet, &mut None)));
+    group.bench_function("cache", |b| b.iter(|| stark.prove(&claim, &aet)));
     triton_vm::config::overwrite_lde_trace_caching_to(CacheDecision::NoCache);
-    group.bench_function("jit", |b| b.iter(|| stark.prove(&claim, &aet, &mut None)));
+    group.bench_function("jit", |b| b.iter(|| stark.prove(&claim, &aet)));
     group.finish();
 }

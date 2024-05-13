@@ -6,8 +6,7 @@ use criterion::Criterion;
 use triton_vm::aet::AlgebraicExecutionTrace;
 use triton_vm::example_programs::FIBONACCI_SEQUENCE;
 use triton_vm::prelude::*;
-use triton_vm::profiler::Report;
-use triton_vm::profiler::TritonProfiler;
+use triton_vm::profiler::VMPerformanceProfile;
 
 const FIBONACCI_INDEX: BFieldElement = BFieldElement::new(100);
 
@@ -16,8 +15,8 @@ fn prove_fib(criterion: &mut Criterion) {
     let (claim, aet) = trace_execution();
     fib_benchmark_group(criterion, &claim, &aet);
 
-    let report = prover_timing_report(&claim, &aet);
-    eprintln!("{report}");
+    let profile = prover_performance_profile(&claim, &aet);
+    eprintln!("{profile}");
 }
 
 fn fib_benchmark_group(criterion: &mut Criterion, claim: &Claim, aet: &AlgebraicExecutionTrace) {
@@ -27,23 +26,23 @@ fn fib_benchmark_group(criterion: &mut Criterion, claim: &Claim, aet: &Algebraic
     let mut group = criterion.benchmark_group(bench_group_name);
 
     let stark = Stark::default();
-    group.bench_function(bench_id, |bencher| {
-        bencher.iter(|| stark.prove(claim, aet, &mut None))
-    });
+    group.bench_function(bench_id, |bencher| bencher.iter(|| stark.prove(claim, aet)));
     group.finish();
 }
 
-fn prover_timing_report(claim: &Claim, aet: &AlgebraicExecutionTrace) -> Report {
+fn prover_performance_profile(
+    claim: &Claim,
+    aet: &AlgebraicExecutionTrace,
+) -> VMPerformanceProfile {
     let profile_name = format!("Prove Fibonacci {FIBONACCI_INDEX}");
+    triton_vm::profiler::start(profile_name);
     let stark = Stark::default();
-    let mut profiler = Some(TritonProfiler::new(profile_name));
-    let proof = stark.prove(claim, aet, &mut profiler).unwrap();
-    let mut profiler = profiler.unwrap();
+    let proof = stark.prove(claim, aet).unwrap();
+    let profile = triton_vm::profiler::finish();
 
     let padded_height = proof.padded_height().unwrap();
     let fri = stark.derive_fri(padded_height).unwrap();
-    profiler
-        .report()
+    profile
         .with_cycle_count(aet.processor_trace.nrows())
         .with_padded_height(padded_height)
         .with_fri_domain_len(fri.domain.length)

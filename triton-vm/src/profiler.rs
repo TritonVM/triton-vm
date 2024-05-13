@@ -1,3 +1,55 @@
+//! Allows profiling [proving] and [verifying] of Triton VM's STARK proofs.
+//!
+//! The profiler is used to measure the time taken by various parts of the
+//! proving and verifying process. It can be used to identify bottlenecks and
+//! optimize the performance of the STARK proof system.
+//!
+//! The profiler is thread-local, meaning that each thread has its own profiler.
+//! This allows multiple threads to run in parallel without interfering with
+//! each other's profiling data.
+//!
+//! # Enabling Profiling
+//!
+//! ## In Dependencies
+//!
+//! In release builds, profiling is disabled by default to allow for the fastest
+//! possible proof generation & verification. To enable profiling, either make
+//! sure that `debug_assertions` is set, or add the following to your
+//! `Cargo.toml`:
+//!
+//! ```toml
+//! [dependencies]
+//! triton-vm = { version = "x.y.z", default-features = false }
+//! ```
+//!
+//! ## For Benchmarks
+//!
+//! In order to enable profiling when running a benchmark, pass the flag
+//! `--no-default-features` to `cargo bench`. In case this is not working in the
+//! workspace directory, navigate to the crate's directory and run the command
+//! there.
+//!
+//! # A note on the `no_profile` feature design decision
+//!
+//! The feature `no_profile` _disables_ profiling, and is enabled by default.
+//! This seems backwards. However, it is an expression of how Triton VM favors
+//! performance over profiling. Note [how Cargo resolves dependencies][deps]:
+//! if some dependency is transitively declared multiple times, the _union_ of
+//! all features will be enabled.
+//!
+//! Imagine some dependency `foo` enables a hypothetical `do_profile` feature.
+//! If another dependency `bar` requires the most efficient proof generation,
+//! it would be slowed down by `foo` and could do nothing about it. Instead,
+//! Disabling profiling by <i>en</i>abling the feature `no_profile` allows `bar`
+//! to dictate. This:
+//! 1. makes the profile reports of `foo` disappear, which is sad, but
+//! 1. lets `bar` be fast, which is more important for Triton VM.
+//!
+//! [proving]: crate::stark::Stark::prove
+//! [verifying]: crate::stark::Stark::verify
+//! [deps]: https://doc.rust-lang.org/cargo/reference/features.html#feature-unification
+
+use std::cell::RefCell;
 use std::cmp::max;
 use std::collections::HashMap;
 use std::env::var as env_var;
@@ -5,139 +57,202 @@ use std::fmt::Display;
 use std::fmt::Formatter;
 use std::fmt::Result as FmtResult;
 use std::ops::AddAssign;
-use std::path::Path;
 use std::time::Duration;
 use std::time::Instant;
 use std::vec;
 
-use arbitrary::Arbitrary;
 use colored::Color;
 use colored::ColoredString;
 use colored::Colorize;
-use criterion::profiler::Profiler;
+use indexmap::IndexMap;
 use itertools::Itertools;
 use unicode_width::UnicodeWidthStr;
 
 const ENV_VAR_PROFILER_LIVE_UPDATE: &str = "TVM_PROFILER_LIVE_UPDATE";
+
+thread_local! {
+    pub(crate) static PROFILER: RefCell<Option<VMPerformanceProfiler>> =
+        const { RefCell::new(None) };
+}
+
+/// Start profiling. If the profiler is already running, this function cancels
+/// the current profiling session and starts a new one.
+///
+/// See the module-level documentation for information on how to enable profiling.
+pub fn start(profile_name: impl Into<String>) {
+    if cfg!(any(debug_assertions, not(feature = "no_profile"))) {
+        PROFILER.replace(Some(VMPerformanceProfiler::new(profile_name)));
+    }
+}
+
+/// Stop the current profiling session and generate a [`VMPerformanceProfile`].
+/// If the profiler is disabled or not running, an empty
+/// [`VMPerformanceProfile`] is returned.
+///
+/// See the module-level documentation for information on how to enable
+/// profiling.
+pub fn finish() -> VMPerformanceProfile {
+    cfg!(any(debug_assertions, not(feature = "no_profile")))
+        .then(|| PROFILER.take().map(VMPerformanceProfiler::finish))
+        .flatten()
+        .unwrap_or_default()
+}
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 struct Task {
     name: String,
     parent_index: Option<usize>,
     depth: usize,
-    time: Duration,
-    task_type: TaskType,
+
+    /// The time at which this task was started last.
+    start_time: Instant,
+
+    /// The number of times this task was started,
+    num_invocations: usize,
+
+    /// The accumulated time spent in this task, across all invocations.
+    total_duration: Duration,
 
     /// The type of work the task is doing. Helps to track time across specific tasks. For
     /// example, if the task is building a Merkle tree, then the category could be "hash".
     category: Option<String>,
 }
 
-#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Hash, Arbitrary)]
-enum TaskType {
-    #[default]
-    Generic,
-    IterationZero,
-    AnyOtherIteration,
+/// Helps detect loops in order to aggregate runtimes of their [`Task`]s.
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+pub(crate) struct CodeLocation {
+    file: &'static str,
+    line: u32,
+    column: u32,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub struct TritonProfiler {
+#[cfg(any(debug_assertions, not(feature = "no_profile")))]
+impl CodeLocation {
+    pub fn new(file: &'static str, line: u32, column: u32) -> Self {
+        CodeLocation { file, line, column }
+    }
+}
+
+/// Create a [`CodeLocation`] referencing the location in the source code where
+/// this macro is called.
+#[cfg(any(debug_assertions, not(feature = "no_profile")))]
+macro_rules! here {
+    () => {
+        crate::profiler::CodeLocation::new(file!(), line!(), column!())
+    };
+}
+
+#[cfg(any(debug_assertions, not(feature = "no_profile")))]
+pub(crate) use here;
+
+impl Display for CodeLocation {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        write!(f, "{}:{}:{}", self.file, self.line, self.column)
+    }
+}
+
+/// A path of [`CodeLocation`]s that represent a call stack.
+/// Helps detect loops in order to aggregate runtimes of their [`Task`]s.
+#[derive(Debug, Default, Clone, Eq, PartialEq, Hash)]
+pub(crate) struct InvocationPath(Vec<CodeLocation>);
+
+impl Display for InvocationPath {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        write!(f, "{}", self.0.iter().join("/"))
+    }
+}
+
+#[cfg(any(debug_assertions, not(feature = "no_profile")))]
+impl InvocationPath {
+    pub fn extend(&self, location: CodeLocation) -> Self {
+        let mut locations = self.0.clone();
+        locations.push(location);
+        Self(locations)
+    }
+}
+
+/// The internal profiler to measure the performance of Triton VM.
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub(crate) struct VMPerformanceProfiler {
     name: String,
     timer: Instant,
-    stack: Vec<(usize, String)>,
-    profile: Vec<Task>,
-    total_time: Option<Duration>,
+
+    /// An index into the `profile`. Keeps track of currently running tasks.
+    active_tasks: Vec<usize>,
+
+    /// Tracks all tasks ever started, in the order they were started. Mapping from
+    /// [`InvocationPath`] to [`Task`] allows accumulating time spent in loops.
+    profile: IndexMap<InvocationPath, Task>,
 }
 
-impl TritonProfiler {
+impl VMPerformanceProfiler {
     pub fn new(name: impl Into<String>) -> Self {
-        TritonProfiler {
+        VMPerformanceProfiler {
             name: name.into(),
             timer: Instant::now(),
-            stack: vec![],
-            profile: vec![],
-            total_time: None,
+            active_tasks: vec![],
+            profile: IndexMap::new(),
         }
     }
 
-    fn ignoring(&self) -> bool {
-        self.stack
-            .last()
-            .is_some_and(|&(idx, _)| self.profile[idx].task_type == TaskType::AnyOtherIteration)
-    }
-
     fn younger_sibling_indices(&self, index: usize) -> Vec<usize> {
+        let parent_index = self.profile[index].parent_index;
         self.profile
-            .iter()
+            .values()
             .enumerate()
-            .filter(|&(idx, _)| idx > index)
-            .filter(|&(_, task)| task.parent_index == self.profile[index].parent_index)
+            .filter(|&(idx, _)| idx > index) // younger…
+            .filter(|(_, task)| task.parent_index == parent_index) // …sibling
             .map(|(idx, _)| idx)
             .collect()
     }
 
-    pub fn finish(&mut self) {
-        let open_task_positions = self.stack.iter().map(|&(i, _)| i);
-        for open_task_position in open_task_positions {
-            let task_name = &mut self.profile[open_task_position].name;
-            task_name.push_str(" (unfinished)");
+    /// Terminate the profiling session and generate a profiling report.
+    pub fn finish(mut self) -> VMPerformanceProfile {
+        let total_time = self.timer.elapsed();
+
+        for &i in &self.active_tasks {
+            self.profile[i].name.push_str(" (unfinished)");
         }
 
-        let num_open_tasks = self.stack.len();
-        for _ in 0..num_open_tasks {
-            self.plain_stop();
+        for _ in 0..self.active_tasks.len() {
+            self.unconditional_stop();
         }
-
-        self.total_time = Some(self.timer.elapsed());
-    }
-
-    /// [Finishes](TritonProfiler::finish) the profiling and generates a profiling report.
-    pub fn report(&mut self) -> Report {
-        if self.total_time.is_none() {
-            self.finish();
-        }
-        let total_time = self.total_time.expect("finishing should set a total time");
-
-        let mut report: Vec<TaskReport> = vec![];
 
         // todo: this can count the same category multiple times if it's nested
         let mut category_times = HashMap::new();
-        for task in &self.profile {
+        for task in self.profile.values() {
             if let Some(ref category) = task.category {
                 category_times
                     .entry(category.to_string())
                     .or_insert(Duration::ZERO)
-                    .add_assign(task.time);
+                    .add_assign(task.total_duration);
             }
         }
 
-        for (task_index, task) in self.profile.iter().enumerate() {
-            let relative_time = task.time.as_secs_f64() / total_time.as_secs_f64();
-            let weight = match task.task_type {
-                TaskType::AnyOtherIteration => Weight::LikeNothing,
-                _ => Weight::weigh(task.time.as_secs_f64() / total_time.as_secs_f64()),
-            };
+        let mut profile: Vec<TaskReport> = vec![];
+        for (task_index, task) in self.profile.values().enumerate() {
+            let relative_time = task.total_duration.as_secs_f64() / total_time.as_secs_f64();
+            let weight =
+                Weight::weigh(task.total_duration.as_secs_f64() / total_time.as_secs_f64());
 
             let mut ancestors = vec![];
             let mut current_ancestor_index = task.parent_index;
             while let Some(idx) = current_ancestor_index {
                 ancestors.push(idx);
-                current_ancestor_index = report[idx].parent_index;
+                current_ancestor_index = profile[idx].ancestors.last().copied();
             }
             ancestors.reverse();
 
-            let relative_category_time = task
-                .category
-                .as_ref()
-                .map(|category| task.time.as_secs_f64() / category_times[category].as_secs_f64());
+            let relative_category_time = task.category.as_ref().map(|category| {
+                task.total_duration.as_secs_f64() / category_times[category].as_secs_f64()
+            });
             let is_last_sibling = self.younger_sibling_indices(task_index).is_empty();
 
-            report.push(TaskReport {
+            profile.push(TaskReport {
                 name: task.name.clone(),
-                parent_index: task.parent_index,
                 depth: task.depth,
-                time: task.time,
+                duration: task.total_duration,
+                num_invocations: task.num_invocations,
                 relative_time,
                 category: task.category.clone(),
                 relative_category_time,
@@ -148,25 +263,19 @@ impl TritonProfiler {
             });
         }
 
-        for task_index in 0..report.len() {
-            report[task_index].younger_max_weight = self
+        for task_index in 0..profile.len() {
+            profile[task_index].younger_max_weight = self
                 .younger_sibling_indices(task_index)
                 .into_iter()
-                .map(|sibling_idx| report[sibling_idx].weight)
+                .map(|sibling_idx| profile[sibling_idx].weight)
                 .max()
                 .unwrap_or(Weight::LikeNothing);
         }
 
-        // “Other iterations” are not currently tracked
-        let all_tasks = self.profile.iter();
-        let other_iterations = all_tasks.filter(|t| t.task_type == TaskType::AnyOtherIteration);
-        let untracked_time = other_iterations.map(|t| t.time).sum();
-
-        Report {
-            tasks: report,
+        VMPerformanceProfile {
+            tasks: profile,
             name: self.name.clone(),
             total_time,
-            untracked_time,
             category_times,
             cycle_count: None,
             padded_height: None,
@@ -174,144 +283,67 @@ impl TritonProfiler {
         }
     }
 
-    pub fn start(&mut self, name: &str, category: Option<String>) {
-        if !self.ignoring() {
-            self.plain_start(name, TaskType::Generic, category);
-        }
-    }
-
-    fn plain_start(
+    #[cfg(any(debug_assertions, not(feature = "no_profile")))]
+    pub fn start(
         &mut self,
-        name: impl Into<String>,
-        task_type: TaskType,
+        name: impl Into<String> + Clone,
+        location: CodeLocation,
         category: Option<String>,
     ) {
-        let name = name.into();
-        let parent_index = self.stack.last().map(|&(u, _)| u);
-        self.stack.push((self.profile.len(), name.clone()));
-
         if env_var(ENV_VAR_PROFILER_LIVE_UPDATE).is_ok() {
-            println!("start: {name}");
+            let name = name.clone().into();
+            println!("start: {name} (at {location})");
         }
 
-        self.profile.push(Task {
-            name,
+        let parent_index = self.active_tasks.last().copied();
+        let path = match parent_index.map(|i| self.profile.get_index(i).unwrap()) {
+            Some((path, _)) => path.extend(location),
+            None => InvocationPath::default().extend(location),
+        };
+
+        let new_task = || Task {
+            name: name.into(),
             parent_index,
-            depth: self.stack.len(),
-            time: self.timer.elapsed(),
-            task_type,
+            depth: self.active_tasks.len(),
+            start_time: Instant::now(),
+            num_invocations: 0,
+            total_duration: Duration::ZERO,
             category,
-        });
+        };
+        let new_task = self.profile.entry(path.clone()).or_insert_with(new_task);
+        new_task.start_time = Instant::now();
+        new_task.num_invocations += 1;
+
+        let new_task_index = self.profile.get_index_of(&path).unwrap();
+        self.active_tasks.push(new_task_index);
     }
 
-    pub fn iteration_zero(&mut self, name: &str, category: Option<String>) {
-        if self.ignoring() {
-            return;
-        }
-
-        assert!(
-            !self.stack.is_empty(),
-            "Profiler stack is empty; can't iterate."
-        );
-
-        let top_index = self.stack[self.stack.len() - 1].0;
-        let top_type = self.profile[top_index].task_type;
-
-        if top_type != TaskType::IterationZero && top_type != TaskType::AnyOtherIteration {
-            // start
-            self.plain_start("iteration 0", TaskType::IterationZero, category);
-            return;
-        }
-
-        assert!(
-            self.stack.len() >= 2,
-            "To profile zeroth iteration, stack must be at least 2-high, but got height of {}",
-            self.stack.len()
-        );
-
-        let runner_up = self.stack[self.stack.len() - 2].1.clone();
-
-        assert_eq!(
-            runner_up, name,
-            "To profile zeroth iteration, name must match with top of stack."
-        );
-
-        if top_type == TaskType::IterationZero {
-            // switch
-            // stop iteration zero
-            self.plain_stop();
-
-            // start all other iterations
-            self.plain_start(
-                "all other iterations",
-                TaskType::AnyOtherIteration,
-                category,
-            );
-        }
-
-        // top == *"all other iterations"
-        // in this case we do nothing
+    /// Stops the least recently started task if that is the expected task.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the expected task is not the least recently started task.
+    #[cfg(any(debug_assertions, not(feature = "no_profile")))]
+    pub fn stop(&mut self, name: &str) {
+        let top_task = self.active_tasks.last();
+        let &top_index = top_task.expect("some task should be active in order to be stopped");
+        let top_name = &self.profile[top_index].name;
+        assert_eq!(top_name, name, "can't stop tasks in disorder");
+        self.unconditional_stop();
     }
 
-    fn plain_stop(&mut self) {
-        let Some((index, name)) = self.stack.pop() else {
+    fn unconditional_stop(&mut self) {
+        let Some(index) = self.active_tasks.pop() else {
             return;
         };
-        let now = self.timer.elapsed();
-        let duration = now - self.profile[index].time;
-        self.profile[index].time = duration;
+        let task = &mut self.profile[index];
+        let duration = task.start_time.elapsed();
+        task.total_duration += duration;
 
         if env_var(ENV_VAR_PROFILER_LIVE_UPDATE).is_ok() {
+            let name = &task.name;
             println!("stop:  {name} – took {duration:.2?}");
         }
-    }
-
-    pub fn stop(&mut self, name: &str) {
-        assert!(
-            !self.stack.is_empty(),
-            "Cannot stop any tasks when stack is empty.",
-        );
-
-        let top = self.stack.last().unwrap().1.clone();
-        if top == *"iteration 0" || top == *"all other iterations" {
-            assert!(
-                self.stack.len() >= 2,
-                "To close profiling of zeroth iteration, stack must be at least 2-high, \
-                but got stack of height {}.",
-                self.stack.len(),
-            );
-            if self.stack[self.stack.len() - 2].1 == *name {
-                self.plain_stop();
-                self.plain_stop();
-            }
-        } else {
-            assert_eq!(
-                top,
-                name.to_owned(),
-                "Profiler stack is LIFO; can't pop in disorder."
-            );
-
-            self.plain_stop();
-        }
-    }
-}
-
-impl Profiler for TritonProfiler {
-    fn start_profiling(&mut self, benchmark_id: &str, benchmark_dir: &Path) {
-        let dir = benchmark_dir
-            .to_str()
-            .expect("Directory must be valid unicode");
-        let name = format!("{dir}{benchmark_id}");
-        let category = None;
-        self.start(&name, category);
-    }
-
-    fn stop_profiling(&mut self, benchmark_id: &str, benchmark_dir: &Path) {
-        let dir = benchmark_dir
-            .to_str()
-            .expect("Directory must be valid unicode");
-        let name = format!("{dir}{benchmark_id}");
-        self.stop(&name)
     }
 }
 
@@ -355,34 +387,35 @@ impl Weight {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct TaskReport {
     name: String,
-    parent_index: Option<usize>,
     depth: usize,
-    time: Duration,
+    duration: Duration,
+    num_invocations: usize,
     relative_time: f64,
     category: Option<String>,
     relative_category_time: Option<f64>,
     is_last_sibling: bool,
+
+    /// The direct parent is the `.last()` ancestor.
     ancestors: Vec<usize>,
     weight: Weight,
     younger_max_weight: Weight,
 }
 
-#[derive(Debug)]
-pub struct Report {
+#[derive(Debug, Clone)]
+pub struct VMPerformanceProfile {
     name: String,
     tasks: Vec<TaskReport>,
     total_time: Duration,
-    untracked_time: Duration,
     category_times: HashMap<String, Duration>,
     cycle_count: Option<usize>,
     padded_height: Option<usize>,
     fri_domain_len: Option<usize>,
 }
 
-impl Report {
+impl VMPerformanceProfile {
     pub fn with_cycle_count(mut self, cycle_count: usize) -> Self {
         self.cycle_count = Some(cycle_count);
         self
@@ -409,7 +442,27 @@ impl Report {
     }
 }
 
-impl Display for Report {
+impl Default for VMPerformanceProfile {
+    fn default() -> Self {
+        let name = if cfg!(feature = "no_profile") {
+            "Triton VM's profiler is disabled through feature `no_profile`.".to_string()
+        } else {
+            "__empty__".to_string()
+        };
+
+        Self {
+            name,
+            tasks: vec![],
+            total_time: Duration::default(),
+            category_times: HashMap::default(),
+            cycle_count: None,
+            padded_height: None,
+            fri_domain_len: None,
+        }
+    }
+}
+
+impl Display for VMPerformanceProfile {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         let max_name_width = self
             .tasks
@@ -417,6 +470,13 @@ impl Display for Report {
             .map(|t| t.name.width() + 2 * t.depth)
             .max()
             .unwrap_or_default();
+        let num_reps_width = self
+            .tasks
+            .iter()
+            .map(|t| t.num_invocations.ilog10() as usize)
+            .max()
+            .unwrap_or_default()
+            .max(4);
         let max_category_width = self
             .category_times
             .keys()
@@ -428,12 +488,8 @@ impl Display for Report {
         let max_width = max(max_name_width, title.width());
         let title = format!("{title:<max_width$}");
 
-        let tracked_time = self.total_time.saturating_sub(self.untracked_time);
-        let tracked = Self::display_time_aligned(tracked_time);
-        let untracked = Self::display_time_aligned(self.untracked_time);
-        writeln!(f, "tracked {tracked}, leaving {untracked} untracked")?;
-
         let total_time = Self::display_time_aligned(self.total_time).bold();
+        let num_reps = format!("{:>num_reps_width$}", "#Reps").bold();
         let share_title = "Share".to_string().bold();
         let category_title = if self.category_times.is_empty() {
             ColoredString::default()
@@ -442,7 +498,7 @@ impl Display for Report {
         };
         writeln!(
             f,
-            "{title}   {total_time}   {share_title}  {category_title}"
+            "{title}     {total_time}   {num_reps}   {share_title}  {category_title}"
         )?;
 
         for task in &self.tasks {
@@ -462,8 +518,10 @@ impl Display for Report {
             let task_name_area = max_width - 2 * task.depth;
             let task_name_colored = task.name.color(task.weight.color());
             let task_name_colored = format!("{task_name_colored:<task_name_area$}");
-            let task_time = format!("{:<10}", Self::display_time_aligned(task.time));
+            let task_time = format!("{:<10}", Self::display_time_aligned(task.duration));
             let task_time_colored = task_time.color(task.weight.color());
+            let num_iterations = format!("{:>num_reps_width$}", task.num_invocations);
+            let num_iterations_colored = num_iterations.color(task.weight.color());
             let relative_time_string =
                 format!("{:>6}", format!("{:2.2}%", 100.0 * task.relative_time));
             let relative_time_string_colored = relative_time_string.color(task.weight.color());
@@ -482,296 +540,327 @@ impl Display for Report {
             let category_and_relative_time_colored =
                 category_and_relative_time.color(relative_category_color);
 
-            f.write_fmt(format_args!(
-                "{task_name_colored}   \
-                 {task_time_colored}{relative_time_string_colored} \
-                 {category_and_relative_time_colored}\n"
-            ))?;
+            writeln!(
+                f,
+                "{task_name_colored}   {task_time_colored}  {num_iterations_colored}  \
+                 {relative_time_string_colored}  {category_and_relative_time_colored}"
+            )?;
         }
 
         if !self.category_times.is_empty() {
-            writeln!(f)?;
-            let category_title = "### Categories".bold();
-            writeln!(f, "{category_title}")?;
-            let category_times_and_names_sorted_by_time = self
-                .category_times
-                .iter()
-                .sorted_by_key(|(_, &time)| time)
-                .rev();
-            for (category, &category_time) in category_times_and_names_sorted_by_time {
-                let category_relative_time =
-                    category_time.as_secs_f64() / self.total_time.as_secs_f64();
-                let category_color = Weight::weigh(category_relative_time).color();
-                let category_relative_time =
-                    format!("{:>6}", format!("{:2.2}%", 100.0 * category_relative_time));
-                let category_time = Self::display_time_aligned(category_time);
-
-                let category = format!("{category:<max_category_width$}").color(category_color);
-                let category_time = category_time.color(category_color);
-                let category_relative_time = category_relative_time.color(category_color);
-                writeln!(f, "{category}   {category_time} {category_relative_time}")?;
-            }
+            writeln!(f, "\n{}", "### Categories".bold())?;
         }
-
-        if self.cycle_count.is_some()
-            || self.padded_height.is_some()
-            || self.fri_domain_len.is_some()
+        for (category, &category_time) in self
+            .category_times
+            .iter()
+            .sorted_by_key(|(_, &time)| time)
+            .rev()
         {
-            writeln!(f)?;
+            let relative_time = category_time.as_secs_f64() / self.total_time.as_secs_f64();
+            let color = Weight::weigh(relative_time).color();
+            let relative_time = format!("{:>6}", format!("{:2.2}%", 100.0 * relative_time));
+            let category_time = Self::display_time_aligned(category_time);
+
+            let category = format!("{category:<max_category_width$}").color(color);
+            let category_time = category_time.color(color);
+            let category_relative_time = relative_time.color(color);
+            writeln!(f, "{category}   {category_time} {category_relative_time}")?;
         }
 
-        let total_time = self.total_time.as_millis() as usize;
-        if let Some(cycle_count) = self.cycle_count {
-            if total_time != 0 {
-                let freq = 1_000 * cycle_count / total_time;
-                writeln!(
-                    f,
-                    "Clock frequency is {freq} Hz ({cycle_count} clock cycles / {total_time} ms)",
-                )?;
-            }
+        let optionals = [self.cycle_count, self.padded_height, self.fri_domain_len];
+        if optionals.iter().all(Option::is_none) {
+            return Ok(());
+        }
+        let Ok(total_time) = usize::try_from(self.total_time.as_millis()) else {
+            return writeln!(f, "WARN: Total time too large to compute frequency.");
+        };
+        if total_time == 0 {
+            return writeln!(f, "WARN: Total time too small to compute frequency.");
+        }
+        let tasks = self.tasks.iter();
+        let num_iters = tasks.map(|t| t.num_invocations).min().unwrap_or(1);
+
+        writeln!(f)?;
+        if let Some(cycles) = self.cycle_count {
+            let frequency = 1_000 * cycles / total_time / num_iters;
+            write!(f, "Clock frequency is {frequency} Hz ")?;
+            write!(f, "({cycles} clock cycles ")?;
+            write!(f, "/ {total_time} ms ")?;
+            writeln!(f, "/ {num_iters} iterations)")?;
         }
 
-        if let Some(padded_height) = self.padded_height {
-            if total_time != 0 {
-                let optimal_freq = 1_000 * padded_height / total_time;
-                writeln!(
-                    f,
-                    "Optimal clock frequency is {optimal_freq} Hz \
-                    ({padded_height} padded height / {total_time} ms)",
-                )?;
-            }
+        if let Some(height) = self.padded_height {
+            let frequency = 1_000 * height / total_time / num_iters;
+            write!(f, "Optimal clock frequency is {frequency} Hz ")?;
+            write!(f, "({height} padded height ")?;
+            write!(f, "/ {total_time} ms ")?;
+            writeln!(f, "/ {num_iters} iterations)")?;
         }
 
         if let Some(fri_domain_length) = self.fri_domain_len {
-            if fri_domain_length != 0 {
-                let log_2_fri_domain_length = fri_domain_length.ilog2();
-                writeln!(f, "FRI domain length is 2^{log_2_fri_domain_length}")?;
-            }
+            let log_2_fri_domain_length = fri_domain_length.checked_ilog2().unwrap_or(0);
+            writeln!(f, "FRI domain length is 2^{log_2_fri_domain_length}")?;
         }
 
         Ok(())
     }
 }
 
-/// Start a profiling task.
-/// Requires an `Option<Profiler>` as first argument. Does nothing if this is `None`.
-/// The second argument is the name of the task.
-/// The third argument is an optional task category.
-macro_rules! prof_start {
-    ($p: ident, $s : expr, $c : expr) => {
-        if let Some(profiler) = $p.as_mut() {
-            profiler.start($s, Some($c.to_string()));
-        }
-    };
-    ($p: ident, $s : expr) => {
-        if let Some(profiler) = $p.as_mut() {
-            profiler.start($s, None);
-        }
-    };
+/// Start or stop a profiling task. Does nothing if the profiler is not running;
+/// see [`start`].
+///
+/// For starting, use `start` as the first token. For stopping, use `stop`.
+/// When starting, an optional category can be provided in parentheses.
+/// When stopping, the task's name needs to be an exact match to prevent the
+/// accidental stopping of a different task.
+///
+/// # Examples
+///
+/// ```no_compile
+/// # // The profiler macros are internal only and cannot be used in doc tests.
+/// use crate::profiler::profiler;
+/// crate::profiler::start("heavy lifting");
+/// profiler!(start "good job" ("compute")); // uses the category “compute”
+/// for _ in 0..5 {
+///     profiler!(start "loop"); // category is optional
+///     /* work hard */
+///     profiler!(stop "loop"); // must match exactly
+/// }
+/// profiler!(stop "good job"); // category is inferred when stopping
+/// let profile = crate::profiler::finish();
+/// ```
+macro_rules! profiler {
+    (start $task:literal ($category:literal)) => {{
+        #[cfg(any(debug_assertions, not(feature = "no_profile")))]
+        $crate::profiler::PROFILER.with_borrow_mut(|profiler| {
+            if let Some(profiler) = profiler.as_mut() {
+                let here = $crate::profiler::here!();
+                profiler.start($task, here, Some($category.to_string()));
+            }
+        })
+    }};
+    (start $task:literal) => {{
+        #[cfg(any(debug_assertions, not(feature = "no_profile")))]
+        $crate::profiler::PROFILER.with_borrow_mut(|profiler| {
+            if let Some(profiler) = profiler.as_mut() {
+                profiler.start($task, $crate::profiler::here!(), None);
+            }
+        })
+    }};
+    (stop $task:literal) => {{
+        #[cfg(any(debug_assertions, not(feature = "no_profile")))]
+        $crate::profiler::PROFILER.with_borrow_mut(|profiler| {
+            if let Some(profiler) = profiler.as_mut() {
+                profiler.stop($task);
+            }
+        })
+    }};
 }
-pub(crate) use prof_start;
-
-/// Stop a profiling task. Requires the same arguments as [`prof_start`], except that the task's
-/// category (if any) is inferred. Notably, the task's name needs to be an exact match to prevent
-/// the accidental stopping of a different task.
-macro_rules! prof_stop {
-    ($p: ident, $s : expr) => {
-        if let Some(profiler) = $p.as_mut() {
-            profiler.stop($s);
-        }
-    };
-}
-pub(crate) use prof_stop;
-
-/// Profile one iteration of a loop. Requires the same arguments as [`prof_start`].
-/// This macro should be invoked inside the loop in question.
-/// The profiling of the loop has to be stopped with [`prof_stop`] after the loop.
-macro_rules! prof_itr0 {
-    ($p : ident, $s : expr, $c : expr) => {
-        if let Some(profiler) = $p.as_mut() {
-            profiler.iteration_zero($s, Some($c.to_string()));
-        }
-    };
-    ($p : ident, $s : expr) => {
-        if let Some(profiler) = $p.as_mut() {
-            profiler.iteration_zero($s, None);
-        }
-    };
-}
-pub(crate) use prof_itr0;
+pub(crate) use profiler;
 
 #[cfg(test)]
 mod tests {
     use std::thread::sleep;
     use std::time::Duration;
 
-    use rand::rngs::ThreadRng;
-    use rand::Rng;
-    use rand::RngCore;
+    use test_strategy::proptest;
+    use trybuild;
 
     use super::*;
 
-    fn random_task_name(rng: &mut ThreadRng) -> String {
-        let alphabet = "abcdefghijklmnopqrstuvwxyz_";
-        let length = rng.gen_range(2..12);
-
-        (0..length)
-            .map(|_| (rng.next_u32() as usize) % alphabet.len())
-            .map(|i| alphabet.get(i..=i).unwrap())
-            .collect()
-    }
-
-    fn random_category(rng: &mut ThreadRng) -> String {
-        let categories = ["setup", "compute", "drop", "cleanup"];
-        let num_categories = categories.len();
-        let category_index = rng.gen_range(0..num_categories);
-        let category = categories[category_index];
-        category.to_string()
+    #[test]
+    fn profiler_macro_is_private() {
+        let trybuild = trybuild::TestCases::new();
+        trybuild.compile_fail("trybuild/profiler_macro_is_private.rs");
     }
 
     #[test]
     fn sanity() {
-        let mut rng = rand::thread_rng();
-        let mut stack = vec![];
-        let steps = 100;
-
-        let mut profiler = TritonProfiler::new("Sanity Test");
-
-        for step in 0..steps {
-            let steps_left = steps - step;
-            assert!((1..=steps).contains(&steps_left));
-            assert!(
-                stack.len() <= steps_left,
-                "stack len {} > steps left {}",
-                stack.len(),
-                steps_left
-            );
-
-            let pushable = rng.next_u32() % 2 == 1 && stack.len() + 1 < steps_left;
-            let poppable = ((!pushable && rng.next_u32() % 2 == 1)
-                || (stack.len() == steps_left && steps_left > 0))
-                && !stack.is_empty();
-
-            if pushable {
-                let name = random_task_name(&mut rng);
-                let category = match rng.gen() {
-                    true => Some(random_category(&mut rng)),
-                    false => None,
-                };
-                stack.push(name.clone());
-                profiler.start(&name, category);
+        let mut profiler = VMPerformanceProfiler::new("Sanity Test");
+        profiler.start("Task 0", here!(), None);
+        sleep(Duration::from_millis(1));
+        profiler.start("Task 1", here!(), Some("setup".to_string()));
+        for _ in 0..5 {
+            profiler.start("Task 2", here!(), Some("compute".to_string()));
+            sleep(Duration::from_millis(1));
+            for _ in 0..3 {
+                profiler.start("Task 3", here!(), Some("cleanup".to_string()));
+                sleep(Duration::from_millis(1));
+                profiler.stop("Task 3");
             }
+            profiler.stop("Task 2");
+        }
+        profiler.stop("Task 1");
+        profiler.start("Task 4", here!(), Some("cleanup".to_string()));
+        sleep(Duration::from_millis(1));
+        profiler.stop("Task 4");
+        profiler.stop("Task 0");
+        profiler.start("Task 5", here!(), None);
+        sleep(Duration::from_millis(1));
+        profiler.start("Task 6", here!(), Some("setup".to_string()));
+        sleep(Duration::from_millis(1));
+        profiler.stop("Task 6");
+        profiler.stop("Task 5");
+        let profile = profiler.finish();
+        println!("{profile}");
+    }
 
-            sleep(Duration::from_micros(
-                (rng.next_u64() % 10) * (rng.next_u64() % 10) * (rng.next_u64() % 10),
-            ));
+    #[derive(Debug, Clone, Eq, PartialEq, Hash, test_strategy::Arbitrary)]
+    enum DispatchChoice {
+        Function0,
+        Function1,
+        FunctionWithLoops,
+        FunctionWithNestedLoop,
+        Dispatch,
+    }
 
-            if poppable {
-                let name = stack.pop().unwrap();
-                profiler.stop(&name);
+    #[proptest]
+    fn extensive(mut choices: Vec<DispatchChoice>) {
+        fn dispatch(choice: DispatchChoice, remaining_choices: &mut Vec<DispatchChoice>) {
+            profiler!(start "dispatcher");
+            match choice {
+                DispatchChoice::Function0 => function_0(),
+                DispatchChoice::Function1 => function_1(),
+                DispatchChoice::FunctionWithLoops => function_with_loops(),
+                DispatchChoice::FunctionWithNestedLoop => function_with_nested_loop(),
+                DispatchChoice::Dispatch => {
+                    if let Some(choice) = remaining_choices.pop() {
+                        dispatch(choice, remaining_choices)
+                    }
+                }
+            }
+            profiler!(stop "dispatcher");
+        }
+
+        fn function_0() {
+            profiler!(start "function_0");
+            sleep(Duration::from_micros(1));
+            profiler!(stop "function_0");
+        }
+
+        fn function_1() {
+            profiler!(start "function_1" ("setup"));
+            sleep(Duration::from_micros(1));
+            profiler!(stop "function_1");
+        }
+
+        fn function_with_loops() {
+            for _ in 0..5 {
+                profiler!(start "function_with_loops" ("compute"));
+                sleep(Duration::from_micros(1));
+                profiler!(stop "function_with_loops");
             }
         }
 
-        println!("{}", profiler.report());
+        fn function_with_nested_loop() {
+            for _ in 0..5 {
+                profiler!(start "function_with_nested_loop" ("outer loop"));
+                for _ in 0..3 {
+                    profiler!(start "function_with_nested_loop" ("inner loop"));
+                    sleep(Duration::from_micros(1));
+                    profiler!(stop "function_with_nested_loop");
+                }
+                profiler!(stop "function_with_nested_loop");
+            }
+        }
+
+        crate::profiler::start("Extensive Test");
+        while let Some(choice) = choices.pop() {
+            dispatch(choice, &mut choices);
+        }
+        let profile = crate::profiler::finish();
+        println!("{profile}");
     }
 
     #[test]
     fn clk_freq() {
-        let mut profiler = Some(TritonProfiler::new("Clock Frequency Test"));
-        prof_start!(profiler, "clk_freq_test");
+        crate::profiler::start("Clock Frequency Test");
+        profiler!(start "clk_freq_test");
         sleep(Duration::from_millis(3));
-        prof_stop!(profiler, "clk_freq_test");
-        let mut profiler = profiler.unwrap();
+        profiler!(stop "clk_freq_test");
+        let profile = crate::profiler::finish();
 
-        let report_with_no_optionals = profiler.report();
-        println!("{report_with_no_optionals}");
+        let profile_with_no_optionals = profile.clone();
+        println!("{profile_with_no_optionals}");
 
-        let report_with_optionals_set_to_0 = profiler
-            .report()
+        let profile_with_optionals_set_to_0 = profile
+            .clone()
             .with_cycle_count(0)
             .with_padded_height(0)
             .with_fri_domain_len(0);
-        println!("{report_with_optionals_set_to_0}");
+        println!("{profile_with_optionals_set_to_0}");
 
-        let report_with_optionals_set = profiler
-            .report()
+        let profile_with_optionals_set = profile
+            .clone()
             .with_cycle_count(10)
             .with_padded_height(12)
             .with_fri_domain_len(32);
-        println!("{report_with_optionals_set}");
+        println!("{profile_with_optionals_set}");
     }
 
     #[test]
-    fn macros() {
-        let mut profiler = TritonProfiler::new("Macro Test");
-        let mut profiler_ref = Some(&mut profiler);
-        let mut rng = rand::thread_rng();
-        let mut stack = vec![];
-        let steps = 100;
+    fn starting_the_profiler_twice_does_not_cause_panic() {
+        crate::profiler::start("Double Start Test 0");
+        crate::profiler::start("Double Start Test 1");
+        let profile = crate::profiler::finish();
+        println!("{profile}");
+    }
 
-        for step in 0..steps {
-            let steps_left = steps - step;
-            let pushable = rng.gen() && stack.len() + 1 < steps_left;
-            let poppable = ((!pushable && rng.gen())
-                || (stack.len() == steps_left && steps_left > 0))
-                && !stack.is_empty();
+    #[test]
+    fn creating_profile_without_starting_profile_does_not_cause_panic() {
+        let profile = crate::profiler::finish();
+        println!("{profile}");
+    }
 
-            if pushable {
-                let name = random_task_name(&mut rng);
-                let category = random_category(&mut rng);
-                stack.push(name.clone());
-                match rng.gen() {
-                    true => prof_start!(profiler_ref, &name, category),
-                    false => prof_start!(profiler_ref, &name),
-                }
-            }
+    #[test]
+    fn profiler_without_any_tasks_can_generate_a_profile_report() {
+        crate::profiler::start("Empty Test");
+        let profile = crate::profiler::finish();
+        println!("{profile}");
+    }
 
-            sleep(Duration::from_micros(
-                (rng.next_u64() % 10) * (rng.next_u64() % 10) * (rng.next_u64() % 10),
-            ));
+    #[test]
+    fn invocation_path_can_be_displayed() {
+        let path = InvocationPath::default().extend(here!());
+        let path = path.extend(here!());
+        println!("{path}");
+    }
 
-            if poppable {
-                let name = stack.pop().unwrap();
-                prof_stop!(profiler_ref, &name);
-            }
+    #[test]
+    fn profiler_with_unfinished_tasks_can_generate_profile_report() {
+        crate::profiler::start("Unfinished Tasks Test");
+        profiler!(start "unfinished task");
+        let profile = crate::profiler::finish();
+        println!("{profile}");
+    }
+
+    #[test]
+    fn loops() {
+        crate::profiler::start("Loops");
+        for i in 0..5 {
+            profiler!(start "loop");
+            println!("iteration {i}");
+            profiler!(stop "loop");
         }
-
-        println!("{}", profiler.report());
+        let profile = crate::profiler::finish();
+        println!("{profile}");
     }
 
     #[test]
-    fn profiler_without_any_tasks_can_generate_a_report() {
-        let mut profiler = TritonProfiler::new("Empty Test");
-        let report = profiler.report();
-        println!("{report}");
-    }
-
-    #[test]
-    fn profiler_can_be_finished_before_generating_a_report() {
-        let mut profiler = TritonProfiler::new("Finish Before Report Test");
-        profiler.start("some task", None);
-        profiler.finish();
-        let report = profiler.report();
-        println!("{report}");
-    }
-
-    #[test]
-    fn profiler_with_unfinished_tasks_can_generate_report() {
-        let mut profiler = TritonProfiler::new("Unfinished Tasks Test");
-        profiler.start("unfinished task", None);
-        let report = profiler.report();
-        println!("{report}");
-    }
-
-    #[test]
-    fn profiler_can_generate_multiple_reports() {
-        let mut profiler = TritonProfiler::new("Multiple Reports Test");
-        profiler.start("task 1", None);
-        let report = profiler.report();
-        println!("{report}");
-
-        profiler.start("task 2", None);
-        let report = profiler.report();
-        println!("{report}");
+    fn nested_loops() {
+        crate::profiler::start("Nested Loops");
+        for i in 0..5 {
+            profiler!(start "outer loop");
+            print!("outer loop iteration {i}, inner loop iteration");
+            for j in 0..5 {
+                profiler!(start "inner loop");
+                print!(" {j}");
+                profiler!(stop "inner loop");
+            }
+            println!();
+            profiler!(stop "outer loop");
+        }
+        let profile = crate::profiler::finish();
+        println!("{profile}");
     }
 }
