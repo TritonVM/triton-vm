@@ -75,13 +75,14 @@ For the benefit of clarity, the effect of every possible argument is given below
 
 ## Hashing
 
-| Instruction      | Opcode | old op stack    | new op stack   | Description                                                                                                                    |
-|:-----------------|-------:|:----------------|:---------------|:-------------------------------------------------------------------------------------------------------------------------------|
-| `hash`           |     18 | `_ jihgfedcba`  | `_ yxwvu`      | Hashes the stack's 10 top-most elements and puts their digest onto the stack, shrinking the stack by 5.                        |
-| `assert_vector`  |     26 | `_ edcba edcba` | `_ edcba`      | Assert equality of `st(i)` to `st(i+5)` for `0 <= i < 4`. Crashes the VM if any pair is unequal. Pops the 5 top-most elements. |
-| `sponge_init`    |     32 | `_`             | `_`            | Initializes (resets) the Sponge's state. Must be the first Sponge instruction executed.                                        |
-| `sponge_absorb`  |     34 | `_ _jihgfedcba` | `_`            | Absorbs the stack's ten top-most elements into the Sponge state.                                                               |
-| `sponge_squeeze` |     40 | `_`             | `_ zyxwvutsrq` | Squeezes the Sponge and pushes the 10 squeezed elements onto the stack.                                                        |
+| Instruction         | Opcode | old op stack    | new op stack    | Description                                                                                                                                                         |
+|:--------------------|-------:|:----------------|:----------------|:--------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `hash`              |     18 | `_ jihgfedcba`  | `_ yxwvu`       | Hashes the stack's 10 top-most elements and puts their digest onto the stack, shrinking the stack by 5.                                                             |
+| `assert_vector`     |     26 | `_ edcba edcba` | `_ edcba`       | Assert equality of `st(i)` to `st(i+5)` for `0 <= i < 4`. Crashes the VM if any pair is unequal. Pops the 5 top-most elements.                                      |
+| `sponge_init`       |     32 | `_`             | `_`             | Initializes (resets) the Sponge's state. Must be the first Sponge instruction executed.                                                                             |
+| `sponge_absorb`     |     34 | `_ jihgfedcba`  | `_`             | Absorbs the stack's ten top-most elements into the Sponge state.                                                                                                    |
+| `sponge_absorb_mem` |     40 | `_ dcba p`      | `_ hgfe (p+10)` | Absorbs the ten RAM elements at addresses `p`, `p+1`, … into the Sponge state. Overwrites stack elements `st1` through `st4` with the first four absorbed elements. |
+| `sponge_squeeze`    |     48 | `_`             | `_ zyxwvutsrq`  | Squeezes the Sponge and pushes the 10 squeezed elements onto the stack.                                                                                             |
 
 The instruction `hash` works as follows.
 The stack's 10 top-most elements (`jihgfedcba`) are popped from the stack, reversed, and concatenated with six zeros, resulting in `abcdefghij000000`.
@@ -89,7 +90,7 @@ The Tip5 permutation is applied to `abcdefghij000000`, resulting in `αβγδε�
 The first five elements of this result, i.e., `αβγδε`, are reversed and pushed to the stack.
 For example, the old stack was `_ jihgfedcba` and the new stack is `_ εδγβα`.
 
-The instructions `sponge_init`, `sponge_absorb`, and `sponge_squeeze` are the interface for using the Tip5 permutation in a [Sponge](https://keccak.team/sponge_duplex.html) construction.
+The instructions `sponge_init`, `sponge_absorb`, `sponge_absorb_mem`, and `sponge_squeeze` are the interface for using the Tip5 permutation in a [Sponge](https://keccak.team/sponge_duplex.html) construction.
 The capacity is never accessible to the program that's being executed by Triton VM.
 At any given time, at most one Sponge state exists.
 Only instruction `sponge_init` resets the state of the Sponge, and only the three Sponge instructions influence the Sponge's state.
@@ -103,7 +104,7 @@ Triton VM cannot know the number of elements that will be absorbed.
 |:------------|-------:|:-------------|:-------------|:---------------------------------------------------------------------------------------------------------------------------|
 | `add`       |     42 | `_ b a`      | `_ c`        | Computes the sum (`c`) of the top two elements of the stack (`b` and `a`) over the field.                                  |
 | `mul`       |     50 | `_ b a`      | `_ c`        | Computes the product (`c`) of the top two elements of the stack (`b` and `a`) over the field.                              |
-| `invert`    |     48 | `_ a`        | `_ b`        | Computes the multiplicative inverse (over the field) of the top of the stack. Crashes the VM if the top of the stack is 0. |
+| `invert`    |     56 | `_ a`        | `_ b`        | Computes the multiplicative inverse (over the field) of the top of the stack. Crashes the VM if the top of the stack is 0. |
 | `eq`        |     58 | `_ b a`      | `_ (a == b)` | Tests the top two stack elements for equality.                                                                             |
 
 ## Bitwise Arithmetic on Stack
@@ -139,9 +140,9 @@ Triton VM cannot know the number of elements that will be absorbed.
 
 | Instruction   | Opcode | old op stack    | new op stack                 | Description                                                                                                                                                                                                                                                                                                                                                                                       |
 |:--------------|:-------|:----------------|:-----------------------------|:--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `merkle_step` | 64     | `_ i edcba`     | `_ (i div 2) zyxwv`          | Helps traversing a Merkle tree during authentication path verification. See extended description below.                                                                                                                                                                                                                                                                                           |
-| `xx_dot_step` | 72     | `_ z y x *b *a` | `_ z+p2 y+p1 x+p0 *b+3 *a+3` | Reads two extension field elements from RAM located at the addresses corresponding to the two top stack elements, multiplies the extension field elements, and adds the product `(p0, p1, p2)` to an accumulator located on stack immediately below the two pointers. Also, increase the pointers by the number of words read.                                                                    |
-| `xx_dot_step` | 80     | `_ z y x *b *a` | `_ z+p2 y+p1 x+p0 *b+3 *a+1` | Reads one base field element from RAM located at the addresses corresponding to the top of the stack, one extension field element from RAM located at the address of the second stack element, multiplies the field elements, and adds the product `(p0, p1, p2)` to an accumulator located on stack immediately below the two pointers. Also, increase the pointers by the number of words read. |
+| `merkle_step` | 72     | `_ i edcba`     | `_ (i div 2) zyxwv`          | Helps traversing a Merkle tree during authentication path verification. See extended description below.                                                                                                                                                                                                                                                                                           |
+| `xx_dot_step` | 80     | `_ z y x *b *a` | `_ z+p2 y+p1 x+p0 *b+3 *a+3` | Reads two extension field elements from RAM located at the addresses corresponding to the two top stack elements, multiplies the extension field elements, and adds the product `(p0, p1, p2)` to an accumulator located on stack immediately below the two pointers. Also, increase the pointers by the number of words read.                                                                    |
+| `xx_dot_step` | 88     | `_ z y x *b *a` | `_ z+p2 y+p1 x+p0 *b+3 *a+1` | Reads one base field element from RAM located at the addresses corresponding to the top of the stack, one extension field element from RAM located at the address of the second stack element, multiplies the field elements, and adds the product `(p0, p1, p2)` to an accumulator located on stack immediately below the two pointers. Also, increase the pointers by the number of words read. |
 
 The instruction `merkle_step` works as follows.
 The 6th element of the stack `i` is taken as the node index for a Merkle tree that is claimed to include data whose digest is the content of stack registers `st4` through `st0`, i.e., `edcba`.

@@ -64,8 +64,8 @@ pub struct ExtHashTable;
 /// The current “mode” of the Hash Table. The Hash Table can be in one of four distinct modes:
 ///
 /// 1. Hashing the [`Program`][program]. This is part of program attestation.
-/// 1. Processing all Sponge instructions, _i.e._, `sponge_init`, `sponge_absorb`,
-///     and `sponge_squeeze`.
+/// 1. Processing all Sponge instructions, _i.e._, `sponge_init`,
+///     `sponge_absorb`, `sponge_absorb_mem`, and `sponge_squeeze`.
 /// 1. Processing the `hash` instruction.
 /// 1. Padding mode.
 ///
@@ -96,8 +96,8 @@ pub enum HashTableMode {
     /// [program]: crate::program::Program
     ProgramHashing,
 
-    /// The mode in which Sponge instructions, _i.e._, `sponge_init`, `sponge_absorb`,
-    /// and `sponge_squeeze`, are processed.
+    /// The mode in which Sponge instructions, _i.e._, `sponge_init`,
+    /// `sponge_absorb`, `sponge_absorb_mem`, and `sponge_squeeze`, are processed.
     Sponge,
 
     /// The mode in which the `hash` instruction is processed.

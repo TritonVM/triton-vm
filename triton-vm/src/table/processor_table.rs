@@ -232,13 +232,12 @@ impl ProcessorTable {
 
             // Hash Table – Sponge
             if let Some(prev_row) = previous_row {
-                if prev_row[CI.base_table_index()] == Instruction::SpongeInit.opcode_b() {
+                let prev_ci = prev_row[CI.base_table_index()];
+                if prev_ci == Instruction::SpongeInit.opcode_b() {
                     sponge_running_evaluation = sponge_running_evaluation
                         * challenges[SpongeIndeterminate]
                         + challenges[HashCIWeight] * Instruction::SpongeInit.opcode_b();
-                }
-
-                if prev_row[CI.base_table_index()] == Instruction::SpongeAbsorb.opcode_b() {
+                } else if prev_ci == Instruction::SpongeAbsorb.opcode_b() {
                     let compressed_row: XFieldElement = st0_through_st9
                         .map(|st| prev_row[st.base_table_index()])
                         .into_iter()
@@ -249,9 +248,21 @@ impl ProcessorTable {
                         * challenges[SpongeIndeterminate]
                         + challenges[HashCIWeight] * Instruction::SpongeAbsorb.opcode_b()
                         + compressed_row;
-                }
-
-                if prev_row[CI.base_table_index()] == Instruction::SpongeSqueeze.opcode_b() {
+                } else if prev_ci == Instruction::SpongeAbsorbMem.opcode_b() {
+                    let stack_elements = [ST1, ST2, ST3, ST4];
+                    let helper_variables = [HV0, HV1, HV2, HV3, HV4, HV5];
+                    let compressed_row: XFieldElement = stack_elements
+                        .map(|st| current_row[st.base_table_index()])
+                        .into_iter()
+                        .chain(helper_variables.map(|hv| prev_row[hv.base_table_index()]))
+                        .zip_eq(hash_state_weights.iter())
+                        .map(|(element, &weight)| weight * element)
+                        .sum();
+                    sponge_running_evaluation = sponge_running_evaluation
+                        * challenges[SpongeIndeterminate]
+                        + challenges[HashCIWeight] * Instruction::SpongeAbsorb.opcode_b()
+                        + compressed_row;
+                } else if prev_ci == Instruction::SpongeSqueeze.opcode_b() {
                     let compressed_row: XFieldElement = st0_through_st9
                         .map(|st| current_row[st.base_table_index()])
                         .into_iter()
@@ -428,6 +439,7 @@ impl ProcessorTable {
         let instruction_type = match instruction {
             ReadMem(_) => ram_table::INSTRUCTION_TYPE_READ,
             WriteMem(_) => ram_table::INSTRUCTION_TYPE_WRITE,
+            SpongeAbsorbMem => ram_table::INSTRUCTION_TYPE_READ,
             XxDotStep => ram_table::INSTRUCTION_TYPE_READ,
             XbDotStep => ram_table::INSTRUCTION_TYPE_READ,
             _ => return None,
@@ -436,7 +448,8 @@ impl ProcessorTable {
 
         match instruction {
             ReadMem(_) | WriteMem(_) => {
-                // longer stack means relevant information is on top of stack, i.e., in stack registers
+                // longer stack means relevant information is on top of stack, i.e.,
+                // available in stack registers
                 let row_with_longer_stack = match instruction {
                     ReadMem(_) => current_row.view(),
                     WriteMem(_) => previous_row.view(),
@@ -457,33 +470,36 @@ impl ProcessorTable {
                     accesses.push((offset_ram_pointer, ram_value));
                 }
             }
+            SpongeAbsorbMem => {
+                let mem_pointer = previous_row[ST0.base_table_index()];
+                accesses.push((mem_pointer + bfe!(0), current_row[ST1.base_table_index()]));
+                accesses.push((mem_pointer + bfe!(1), current_row[ST2.base_table_index()]));
+                accesses.push((mem_pointer + bfe!(2), current_row[ST3.base_table_index()]));
+                accesses.push((mem_pointer + bfe!(3), current_row[ST4.base_table_index()]));
+                accesses.push((mem_pointer + bfe!(4), previous_row[HV0.base_table_index()]));
+                accesses.push((mem_pointer + bfe!(5), previous_row[HV1.base_table_index()]));
+                accesses.push((mem_pointer + bfe!(6), previous_row[HV2.base_table_index()]));
+                accesses.push((mem_pointer + bfe!(7), previous_row[HV3.base_table_index()]));
+                accesses.push((mem_pointer + bfe!(8), previous_row[HV4.base_table_index()]));
+                accesses.push((mem_pointer + bfe!(9), previous_row[HV5.base_table_index()]));
+            }
             XxDotStep => {
                 let rhs_pointer = previous_row[ST0.base_table_index()];
                 let lhs_pointer = previous_row[ST1.base_table_index()];
-                let hv0 = previous_row[HV0.base_table_index()];
-                let hv1 = previous_row[HV1.base_table_index()];
-                let hv2 = previous_row[HV2.base_table_index()];
-                let hv3 = previous_row[HV3.base_table_index()];
-                let hv4 = previous_row[HV4.base_table_index()];
-                let hv5 = previous_row[HV5.base_table_index()];
-                accesses.push((rhs_pointer, hv0));
-                accesses.push((rhs_pointer + bfe!(1), hv1));
-                accesses.push((rhs_pointer + bfe!(2), hv2));
-                accesses.push((lhs_pointer, hv3));
-                accesses.push((lhs_pointer + bfe!(1), hv4));
-                accesses.push((lhs_pointer + bfe!(2), hv5));
+                accesses.push((rhs_pointer + bfe!(0), previous_row[HV0.base_table_index()]));
+                accesses.push((rhs_pointer + bfe!(1), previous_row[HV1.base_table_index()]));
+                accesses.push((rhs_pointer + bfe!(2), previous_row[HV2.base_table_index()]));
+                accesses.push((lhs_pointer + bfe!(0), previous_row[HV3.base_table_index()]));
+                accesses.push((lhs_pointer + bfe!(1), previous_row[HV4.base_table_index()]));
+                accesses.push((lhs_pointer + bfe!(2), previous_row[HV5.base_table_index()]));
             }
             XbDotStep => {
                 let rhs_pointer = previous_row[ST0.base_table_index()];
                 let lhs_pointer = previous_row[ST1.base_table_index()];
-                let hv0 = previous_row[HV0.base_table_index()];
-                let hv1 = previous_row[HV1.base_table_index()];
-                let hv2 = previous_row[HV2.base_table_index()];
-                let hv3 = previous_row[HV3.base_table_index()];
-                accesses.push((rhs_pointer, hv0));
-                accesses.push((lhs_pointer, hv1));
-                accesses.push((lhs_pointer + bfe!(1), hv2));
-                accesses.push((lhs_pointer + bfe!(2), hv3));
+                accesses.push((rhs_pointer + bfe!(0), previous_row[HV0.base_table_index()]));
+                accesses.push((lhs_pointer + bfe!(0), previous_row[HV1.base_table_index()]));
+                accesses.push((lhs_pointer + bfe!(1), previous_row[HV2.base_table_index()]));
+                accesses.push((lhs_pointer + bfe!(2), previous_row[HV3.base_table_index()]));
             }
             _ => unreachable!(),
         };
@@ -984,9 +1000,10 @@ impl ExtProcessorTable {
             .map(ProcessorTable::op_stack_column_by_index)
             .map(|sti| next_base_row(sti) - curr_base_row(sti))
             .collect_vec();
-        let ram_perm_arg_remains = Self::instruction_group_keep_op_stack_height(circuit_builder);
+        let op_stack_perm_arg_remains =
+            Self::instruction_group_keep_op_stack_height(circuit_builder);
 
-        [all_but_n_top_elements_remain, ram_perm_arg_remains].concat()
+        [all_but_n_top_elements_remain, op_stack_perm_arg_remains].concat()
     }
 
     /// Op stack does not change, _i.e._, all stack elements persist
@@ -1842,6 +1859,29 @@ impl ExtProcessorTable {
         .concat()
     }
 
+    fn instruction_sponge_absorb_mem(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
+        let curr_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
+        };
+        let next_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(NextBaseRow(col.master_base_table_index()))
+        };
+        let constant = |c| circuit_builder.b_constant(c);
+
+        let increment_ram_pointer =
+            next_base_row(ST0) - curr_base_row(ST0) - constant(tip5::RATE as u32);
+
+        [
+            vec![increment_ram_pointer],
+            Self::instruction_group_step_1(circuit_builder),
+            Self::instruction_group_op_stack_remains_except_top_n(circuit_builder, 5),
+            Self::instruction_group_no_io(circuit_builder),
+        ]
+        .concat()
+    }
+
     fn instruction_sponge_squeeze(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
@@ -2476,6 +2516,7 @@ impl ExtProcessorTable {
             AssertVector => ExtProcessorTable::instruction_assert_vector(circuit_builder),
             SpongeInit => ExtProcessorTable::instruction_sponge_init(circuit_builder),
             SpongeAbsorb => ExtProcessorTable::instruction_sponge_absorb(circuit_builder),
+            SpongeAbsorbMem => ExtProcessorTable::instruction_sponge_absorb_mem(circuit_builder),
             SpongeSqueeze => ExtProcessorTable::instruction_sponge_squeeze(circuit_builder),
             Add => ExtProcessorTable::instruction_add(circuit_builder),
             Mul => ExtProcessorTable::instruction_mul(circuit_builder),
@@ -3353,42 +3394,40 @@ impl ExtProcessorTable {
             Self::instruction_deselector_current_row(circuit_builder, Instruction::SpongeInit);
         let sponge_absorb_deselector =
             Self::instruction_deselector_current_row(circuit_builder, Instruction::SpongeAbsorb);
+        let sponge_absorb_mem_deselector =
+            Self::instruction_deselector_current_row(circuit_builder, Instruction::SpongeAbsorbMem);
         let sponge_squeeze_deselector =
             Self::instruction_deselector_current_row(circuit_builder, Instruction::SpongeSqueeze);
 
         let sponge_instruction_selector = (curr_base_row(CI)
             - constant(Instruction::SpongeInit.opcode()))
             * (curr_base_row(CI) - constant(Instruction::SpongeAbsorb.opcode()))
+            * (curr_base_row(CI) - constant(Instruction::SpongeAbsorbMem.opcode()))
             * (curr_base_row(CI) - constant(Instruction::SpongeSqueeze.opcode()));
 
-        let weights = [
-            HashStateWeight0,
-            HashStateWeight1,
-            HashStateWeight2,
-            HashStateWeight3,
-            HashStateWeight4,
-            HashStateWeight5,
-            HashStateWeight6,
-            HashStateWeight7,
-            HashStateWeight8,
-            HashStateWeight9,
-        ]
-        .map(challenge);
-        let state = [ST0, ST1, ST2, ST3, ST4, ST5, ST6, ST7, ST8, ST9];
-        let compressed_row_current = weights
-            .clone()
-            .into_iter()
-            .zip_eq(state.map(curr_base_row))
-            .map(|(weight, st_curr)| weight * st_curr)
-            .sum();
-        let compressed_row_next = weights
-            .into_iter()
-            .zip_eq(state.map(next_base_row))
-            .map(|(weight, st_next)| weight * st_next)
-            .sum();
+        let weighted_sum = |state| {
+            let weights = [
+                HashStateWeight0,
+                HashStateWeight1,
+                HashStateWeight2,
+                HashStateWeight3,
+                HashStateWeight4,
+                HashStateWeight5,
+                HashStateWeight6,
+                HashStateWeight7,
+                HashStateWeight8,
+                HashStateWeight9,
+            ];
+            let weights = weights.map(challenge).into_iter();
+            weights.zip_eq(state).map(|(w, st)| w * st).sum()
+        };
 
-        // Use domain-specific knowledge: the compressed row (i.e., random linear sum) of the
-        // initial Sponge state is 0.
+        let state = [ST0, ST1, ST2, ST3, ST4, ST5, ST6, ST7, ST8, ST9];
+        let compressed_row_current = weighted_sum(state.map(curr_base_row));
+        let compressed_row_next = weighted_sum(state.map(next_base_row));
+
+        // Use domain-specific knowledge: the compressed row (i.e., random linear sum)
+        // of the initial Sponge state is 0.
         let running_evaluation_updates_for_sponge_init = next_ext_row(SpongeEvalArg)
             - challenge(SpongeIndeterminate) * curr_ext_row(SpongeEvalArg)
             - challenge(HashCIWeight) * curr_base_row(CI);
@@ -3398,9 +3437,21 @@ impl ExtProcessorTable {
             running_evaluation_updates_for_sponge_init.clone() - compressed_row_next;
         let running_evaluation_remains = next_ext_row(SpongeEvalArg) - curr_ext_row(SpongeEvalArg);
 
+        // `sponge_absorb_mem`
+        let stack_elements = [ST1, ST2, ST3, ST4].map(next_base_row);
+        let hv_elements = [HV0, HV1, HV2, HV3, HV4, HV5].map(curr_base_row);
+        let absorb_mem_elements = stack_elements.into_iter().chain(hv_elements);
+        let absorb_mem_elements = absorb_mem_elements.collect_vec().try_into().unwrap();
+        let compressed_row_absorb_mem = weighted_sum(absorb_mem_elements);
+        let running_evaluation_updates_for_absorb_mem = next_ext_row(SpongeEvalArg)
+            - challenge(SpongeIndeterminate) * curr_ext_row(SpongeEvalArg)
+            - challenge(HashCIWeight) * constant(Instruction::SpongeAbsorb.opcode())
+            - compressed_row_absorb_mem;
+
         sponge_instruction_selector * running_evaluation_remains
             + sponge_init_deselector * running_evaluation_updates_for_sponge_init
             + sponge_absorb_deselector * running_evaluation_updates_for_absorb
+            + sponge_absorb_mem_deselector * running_evaluation_updates_for_absorb_mem
             + sponge_squeeze_deselector * running_evaluation_updates_for_squeeze
     }
 
@@ -3945,6 +3996,18 @@ pub(crate) mod tests {
             instruction: SpongeAbsorb,
             debug_cols_curr_row: vec![ST0, ST1, ST2, ST3, ST4, ST5, ST6, ST7, ST8, ST9, ST10],
             debug_cols_next_row: vec![ST0, ST1, ST2, ST3, ST4, ST5, ST6, ST7, ST8, ST9, ST10],
+        };
+        assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
+    }
+
+    #[test]
+    fn transition_constraints_for_instruction_sponge_absorb_mem() {
+        let programs = [triton_program!(sponge_init push 0 sponge_absorb_mem halt)];
+        let test_rows = programs.map(|program| test_row_from_program(program, 2));
+        let debug_info = TestRowsDebugInfo {
+            instruction: SpongeAbsorbMem,
+            debug_cols_curr_row: vec![ST0, HV0, HV1, HV2, HV3, HV4, HV5],
+            debug_cols_next_row: vec![ST0, ST1, ST2, ST3, ST4],
         };
         assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }

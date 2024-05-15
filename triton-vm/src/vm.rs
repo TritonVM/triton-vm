@@ -70,9 +70,9 @@ pub struct VMState {
     /// Current instruction's address in program memory
     pub instruction_pointer: usize,
 
-    /// The current state of the one, global [`Sponge`] that can be manipulated using instructions
-    /// [`SpongeInit`], [`SpongeAbsorb`], and [`SpongeSqueeze`]. Instruction [`SpongeInit`] resets
-    /// the Sponge.
+    /// The current state of the one, global [`Sponge`] that can be manipulated
+    /// using instructions [`SpongeInit`], [`SpongeAbsorb`], [`SpongeAbsorbMem`],
+    /// and [`SpongeSqueeze`]. Instruction [`SpongeInit`] resets the Sponge.
     ///
     /// Note that this is the _full_ state, including capacity. The capacity should never be
     /// exposed outside the VM.
@@ -88,8 +88,10 @@ pub struct VMState {
 pub enum CoProcessorCall {
     SpongeStateReset,
 
-    /// Trace of the state registers for hash coprocessor table when executing instruction `hash`
-    /// or one of the Sponge instructions `sponge_absorb` and `sponge_squeeze`.
+    /// Trace of the state registers for hash coprocessor table when executing
+    /// instruction `hash` or one of the Sponge instructions `sponge_absorb`,
+    /// `sponge_absorb_mem`, and `sponge_squeeze`.
+    ///
     /// One row per round in the Tip5 permutation.
     Tip5Trace(Instruction, Box<PermutationTrace>),
 
@@ -153,6 +155,14 @@ impl VMState {
                 let decomposition = Self::decompose_opcode_for_instruction_skiz(next_opcode);
                 let decomposition = decomposition.map(BFieldElement::new);
                 hvs[1..6].copy_from_slice(&decomposition);
+            }
+            SpongeAbsorbMem => {
+                hvs[0] = ram_read(self.op_stack[ST0] + bfe!(4));
+                hvs[1] = ram_read(self.op_stack[ST0] + bfe!(5));
+                hvs[2] = ram_read(self.op_stack[ST0] + bfe!(6));
+                hvs[3] = ram_read(self.op_stack[ST0] + bfe!(7));
+                hvs[4] = ram_read(self.op_stack[ST0] + bfe!(8));
+                hvs[5] = ram_read(self.op_stack[ST0] + bfe!(9));
             }
             MerkleStep => {
                 let divined_digest = self.secret_digests.front().copied().unwrap_or_default();
@@ -231,6 +241,7 @@ impl VMState {
             Hash => self.hash()?,
             SpongeInit => self.sponge_init(),
             SpongeAbsorb => self.sponge_absorb()?,
+            SpongeAbsorbMem => self.sponge_absorb_mem()?,
             SpongeSqueeze => self.sponge_squeeze()?,
             AssertVector => self.assert_vector()?,
             Add => self.add()?,
@@ -488,6 +499,35 @@ impl VMState {
         let tip5_trace = sponge.trace();
 
         let co_processor_calls = vec![Tip5Trace(SpongeAbsorb, Box::new(tip5_trace))];
+
+        self.instruction_pointer += 1;
+        Ok(co_processor_calls)
+    }
+
+    fn sponge_absorb_mem(&mut self) -> Result<Vec<CoProcessorCall>> {
+        let Some(mut sponge) = self.sponge.take() else {
+            return Err(SpongeNotInitialized);
+        };
+
+        self.start_recording_ram_calls();
+        let mut mem_pointer = self.op_stack.pop()?;
+        for i in 0..tip5::RATE {
+            let element = self.ram_read(mem_pointer);
+            mem_pointer.increment();
+            sponge.state[i] = element;
+
+            // there are not enough helper variables – overwrite part of the stack :(
+            if i < tip5::RATE - NUM_HELPER_VARIABLE_REGISTERS {
+                self.op_stack[i] = element;
+            }
+        }
+        self.op_stack.push(mem_pointer);
+
+        let tip5_trace = sponge.trace();
+        self.sponge = Some(sponge);
+
+        let mut co_processor_calls = self.stop_recording_ram_calls();
+        co_processor_calls.push(Tip5Trace(SpongeAbsorb, Box::new(tip5_trace)));
 
         self.instruction_pointer += 1;
         Ok(co_processor_calls)
@@ -1085,21 +1125,15 @@ pub(crate) mod tests {
     use proptest::collection::vec;
     use proptest::prelude::*;
     use proptest_arbitrary_interop::arb;
-    use rand::prelude::IteratorRandom;
-    use rand::prelude::StdRng;
-    use rand::random;
     use rand::rngs::ThreadRng;
     use rand::Rng;
     use rand::RngCore;
-    use rand_core::SeedableRng;
     use strum::EnumCount;
     use strum::EnumIter;
-    use strum::IntoEnumIterator;
     use test_strategy::proptest;
     use twenty_first::math::other::random_elements;
 
     use crate::example_programs::*;
-    use crate::op_stack::NumberOfWords::*;
     use crate::shared_tests::prove_with_low_security_level;
     use crate::shared_tests::LeavedMerkleTreeTestData;
     use crate::shared_tests::ProgramAndInput;
@@ -1325,84 +1359,91 @@ pub(crate) mod tests {
         ProgramAndInput::new(program).with_input(st)
     }
 
-    /// Test helper for `property_based_test_program_for_sponge_instructions`.
-    #[derive(Debug, Copy, Clone, Eq, PartialEq, EnumCount, EnumIter)]
+    /// Test helper for [`ProgramForSpongeAndHashInstructions`].
+    #[derive(Debug, Copy, Clone, Eq, PartialEq, EnumCount, EnumIter, test_strategy::Arbitrary)]
     enum SpongeAndHashInstructions {
         SpongeInit,
-        SpongeAbsorb,
+        SpongeAbsorb(#[strategy(arb())] [BFieldElement; tip5::RATE]),
+        SpongeAbsorbMem(#[strategy(arb())] BFieldElement),
         SpongeSqueeze,
-        Hash,
+        Hash(#[strategy(arb())] [BFieldElement; tip5::RATE]),
     }
 
     impl SpongeAndHashInstructions {
-        /// Fill the stack with enough elements that any chain of instructions will not underflow.
         fn to_vm_instruction_sequence(self) -> Vec<Instruction> {
-            let push_5_zeros = vec![Push(bfe!(0)); 5];
-            let push_10_zeros = vec![Push(bfe!(0)); 10];
+            let push_array = |a: [_; tip5::RATE]| a.into_iter().rev().map(Push).collect_vec();
 
             match self {
                 Self::SpongeInit => vec![SpongeInit],
-                Self::SpongeAbsorb => [vec![SpongeAbsorb], push_10_zeros].concat(),
-                Self::SpongeSqueeze => vec![Pop(N5), Pop(N5), SpongeSqueeze],
-                Self::Hash => [vec![Hash], push_5_zeros].concat(),
+                Self::SpongeAbsorb(input) => [push_array(input), vec![SpongeAbsorb]].concat(),
+                Self::SpongeAbsorbMem(ram_pointer) => vec![Push(ram_pointer), SpongeAbsorbMem],
+                Self::SpongeSqueeze => vec![SpongeSqueeze],
+                Self::Hash(input) => [push_array(input), vec![Hash]].concat(),
             }
         }
 
-        fn execute(
-            self,
-            mut sponge: Tip5,
-            mut sponge_io: [BFieldElement; tip5::RATE],
-        ) -> (Tip5, [BFieldElement; tip5::RATE]) {
-            let zero_digest = [b_field_element::BFIELD_ZERO; tip5::DIGEST_LENGTH];
+        fn execute(self, sponge: &mut Tip5, ram: &HashMap<BFieldElement, BFieldElement>) {
+            let ram_read = |p| ram.get(&p).copied().unwrap_or_else(|| bfe!(0));
+            let ram_read_array = |p| {
+                let ram_reads = (0..tip5::RATE as u32).map(|i| ram_read(p + bfe!(i)));
+                ram_reads.collect_vec().try_into().unwrap()
+            };
+
             match self {
-                Self::SpongeInit => sponge = Tip5::init(),
-                Self::SpongeAbsorb => {
-                    sponge.absorb(sponge_io);
-                    sponge_io = [b_field_element::BFIELD_ZERO; tip5::RATE];
-                }
-                Self::SpongeSqueeze => sponge_io = sponge.squeeze(),
-                Self::Hash => {
-                    let digest = Tip5::hash_10(&sponge_io);
-                    sponge_io = [zero_digest, digest].concat().try_into().unwrap();
-                }
+                Self::SpongeInit => *sponge = Tip5::init(),
+                Self::SpongeAbsorb(input) => sponge.absorb(input),
+                Self::SpongeAbsorbMem(ram_pointer) => sponge.absorb(ram_read_array(ram_pointer)),
+                Self::SpongeSqueeze => _ = sponge.squeeze(),
+                Self::Hash(_) => (), // no effect on Sponge
             }
-            (sponge, sponge_io)
         }
     }
 
-    pub(crate) fn property_based_test_program_for_sponge_instructions() -> ProgramAndInput {
-        let seed = random();
-        let mut rng = StdRng::seed_from_u64(seed);
-        println!("property_based_test_program_for_sponge_instructions seed: {seed}");
+    /// Test helper for arbitrary sequences of hashing-related instructions.
+    #[derive(Debug, Clone, Eq, PartialEq, test_strategy::Arbitrary)]
+    pub struct ProgramForSpongeAndHashInstructions {
+        instructions: Vec<SpongeAndHashInstructions>,
 
-        let sponge_input = rng.gen();
-        let mut sponge_state = Tip5::init();
-        let mut sponge_io = sponge_input;
-        let mut sponge_and_hash_instructions = vec![];
+        #[strategy(arb())]
+        ram: HashMap<BFieldElement, BFieldElement>,
+    }
 
-        let num_instructions = rng.gen_range(0..100);
+    impl ProgramForSpongeAndHashInstructions {
+        pub fn assemble(self) -> ProgramAndInput {
+            let mut sponge = Tip5::init();
+            for instruction in &self.instructions {
+                instruction.execute(&mut sponge, &self.ram);
+            }
+            let expected_rate = sponge.squeeze();
+            let non_determinism = NonDeterminism::default().with_ram(self.ram);
 
-        for _ in 0..num_instructions {
-            let instruction = SpongeAndHashInstructions::iter().choose(&mut rng).unwrap();
-            sponge_and_hash_instructions.extend(instruction.to_vm_instruction_sequence());
-            (sponge_state, sponge_io) = instruction.execute(sponge_state, sponge_io);
+            let sponge_and_hash_instructions = self
+                .instructions
+                .into_iter()
+                .flat_map(|i| i.to_vm_instruction_sequence())
+                .collect_vec();
+            let output_equality_assertions =
+                vec![triton_asm![read_io 1 eq assert]; tip5::RATE].concat();
+
+            let program = triton_program! {
+                sponge_init
+                {&sponge_and_hash_instructions}
+                sponge_squeeze
+                {&output_equality_assertions}
+                halt
+            };
+
+            ProgramAndInput::new(program)
+                .with_input(expected_rate)
+                .with_non_determinism(non_determinism)
         }
+    }
 
-        let output_equality_assertions = (0..tip5::RATE)
-            .flat_map(|_| triton_asm![read_io 1 eq assert])
-            .collect_vec();
-
-        let [st0, st1, st2, st3, st4, st5, st6, st7, st8, st9] = sponge_input;
-        let program = triton_program!(
-            push {st9} push {st8} push {st7} push {st6} push {st5}
-            push {st4} push {st3} push {st2} push {st1} push {st0}
-            sponge_init
-            {&sponge_and_hash_instructions}
-            {&output_equality_assertions}
-            halt
-        );
-
-        ProgramAndInput::new(program).with_input(sponge_io)
+    #[proptest]
+    fn property_based_sponge_and_hash_instructions_program_sanity_check(
+        program: ProgramForSpongeAndHashInstructions,
+    ) {
+        program.assemble().run()?;
     }
 
     pub(crate) fn test_program_for_add_mul_invert() -> ProgramAndInput {
@@ -2415,10 +2456,22 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn instruction_sponge_absorb_does_not_change_vm_state_when_crashing_vm() {
+    fn instruction_sponge_absorb_does_not_change_vm_state_when_crashing_vm_sponge_uninit() {
         let ten_pushes = triton_asm![push 0; 10];
         let program = triton_program! { {&ten_pushes} sponge_absorb halt };
         instruction_does_not_change_vm_state_when_crashing_vm(ProgramAndInput::new(program), 10);
+    }
+
+    #[test]
+    fn instruction_sponge_absorb_does_not_change_vm_state_when_crashing_vm_stack_too_small() {
+        let program = triton_program! { sponge_init sponge_absorb halt };
+        instruction_does_not_change_vm_state_when_crashing_vm(ProgramAndInput::new(program), 1);
+    }
+
+    #[test]
+    fn instruction_sponge_absorb_mem_does_not_change_vm_state_when_crashing_vm_sponge_uninit() {
+        let program = triton_program! { sponge_absorb_mem halt };
+        instruction_does_not_change_vm_state_when_crashing_vm(ProgramAndInput::new(program), 0);
     }
 
     #[test]

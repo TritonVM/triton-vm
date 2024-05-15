@@ -5,6 +5,9 @@ Similarly, the Sponge instructions `sponge_init`, `sponge_absorb`, and `sponge_s
 The main processor achieves this by using a hash coprocessor.
 The Hash Table is part of the arithmetization of that coprocessor, the other two parts being the [Cascade Table](cascade-table.md) and the [Lookup Table](lookup-table.md).
 In addition to accelerating these [hashing instructions](instructions.md#hashing), the Hash Table helps with [program attestation](program-attestation.md) by hashing the [program](program-table.md).
+    
+Note: the Hash Table is not “aware” of instruction `sponge_absorb_mem`.
+Instead, the processor requests a “regular” `sponge_absorb` from the Hash Table, fetching the to-be-absorbed elements from RAM instead of the stack.
 
 The arithmetization for instruction `hash`, the Sponge instructions `sponge_init`, `sponge_absorb`, and `sponge_squeeze`, and for program hashing are quite similar.
 The main differences are in updates to the `state` registers between executions of the pseudo-random permutation used in Triton VM, the permutation of [Tip5](https://eprint.iacr.org/2023/107.pdf).

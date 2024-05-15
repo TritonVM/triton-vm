@@ -587,6 +587,15 @@ Beyond that, correct transition is guaranteed by the [Hash Table](hash-table.md)
     `·(🪤 - 🍋·clk - 🍊 - 🍉·(op_stack_pointer' + 8) - 🫒·st7')`<br/>
     `·(🪤 - 🍋·clk - 🍊 - 🍉·(op_stack_pointer' + 9) - 🫒·st6')`
 
+## Instruction `sponge_absorb_mem`
+
+In addition to its [instruction groups](instruction-groups.md), this instruction has the following constraints.
+Beyond that, correct transition is guaranteed by the [Hash Table](hash-table.md) and the [RAM Table](random-access-memory-table.md).
+
+### Description
+
+1. `st0` is incremented by 10.
+
 ## Instruction `sponge_squeeze`
 
 In addition to its [instruction groups](instruction-groups.md), this instruction has the following constraints.

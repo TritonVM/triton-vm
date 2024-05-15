@@ -61,8 +61,9 @@ pub struct AlgebraicExecutionTrace {
     /// permutation for each round.
     pub hash_trace: Array2<BFieldElement>,
 
-    /// For the Sponge instructions, i.e., `sponge_init`, `sponge_absorb`, and `sponge_squeeze`,
-    /// the Sponge trace records the internal state of the Tip5 permutation for each round.
+    /// For the Sponge instructions, i.e., `sponge_init`, `sponge_absorb`,
+    /// `sponge_absorb_mem`, and `sponge_squeeze`, the Sponge trace records the
+    /// internal state of the Tip5 permutation for each round.
     pub sponge_trace: Array2<BFieldElement>,
 
     /// The u32 entries hold all pairs of BFieldElements that were written to the U32 Table,

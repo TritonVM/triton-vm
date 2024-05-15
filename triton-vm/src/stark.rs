@@ -1810,9 +1810,11 @@ pub(crate) mod tests {
         check_grand_cross_table_argument(property_based_test_program_for_assert_vector())
     }
 
-    #[test]
-    fn check_grand_cross_table_argument_for_property_based_test_program_for_sponge_instructions() {
-        check_grand_cross_table_argument(property_based_test_program_for_sponge_instructions())
+    #[proptest(cases = 10)]
+    fn check_grand_cross_table_argument_for_property_based_test_program_for_sponge_instructions(
+        program: ProgramForSpongeAndHashInstructions,
+    ) {
+        check_grand_cross_table_argument(program.assemble())
     }
 
     #[test]
@@ -2252,8 +2254,17 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn constraints_evaluate_to_zero_on_property_based_test_program_for_sponge_instructions() {
-        triton_constraints_evaluate_to_zero(property_based_test_program_for_sponge_instructions())
+    fn constraints_evaluate_to_zero_on_single_sponge_absorb_mem_instructions() {
+        let program = triton_program!(sponge_init sponge_absorb_mem halt);
+        let program = ProgramAndInput::new(program);
+        triton_constraints_evaluate_to_zero(program);
+    }
+
+    #[proptest(cases = 3)]
+    fn constraints_evaluate_to_zero_on_property_based_test_program_for_sponge_instructions(
+        program: ProgramForSpongeAndHashInstructions,
+    ) {
+        triton_constraints_evaluate_to_zero(program.assemble())
     }
 
     #[test]
