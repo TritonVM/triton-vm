@@ -284,9 +284,13 @@ where
         let evaluation_domain = self.evaluation_domain();
         let randomized_trace_domain = self.randomized_trace_domain();
         let num_rows = evaluation_domain.length;
+
+        profiler!(start "polynomial zero-initialization");
         let mut interpolation_polynomials = Array1::zeros(Self::NUM_COLUMNS);
+        profiler!(stop "polynomial zero-initialization");
 
         // compute interpolants
+        profiler!(start "interpolation");
         Zip::from(self.randomized_trace_table().axis_iter(Axis(1)))
             .and(interpolation_polynomials.axis_iter_mut(Axis(0)))
             .par_for_each(|trace_column, poly| {
@@ -294,25 +298,52 @@ where
                 let interpolation_polynomial = randomized_trace_domain.interpolate(trace_column);
                 Array0::from_elem((), interpolation_polynomial).move_into(poly);
             });
+        profiler!(stop "interpolation");
 
-        let mut extended_trace = Vec::<FF>::new();
+        let mut extended_trace = Vec::<FF>::with_capacity(0);
         let num_elements = num_rows * Self::NUM_COLUMNS;
-        let should_cache = crate::config::cache_lde_trace().map_or_else(
-            || extended_trace.try_reserve_exact(num_elements).is_ok(),
-            |cd| cd == CacheDecision::Cache,
-        );
+        let should_cache = match crate::config::cache_lde_trace() {
+            Some(CacheDecision::NoCache) => false,
+            Some(CacheDecision::Cache) => {
+                extended_trace = Vec::with_capacity(num_elements);
+                true
+            }
+            None => extended_trace.try_reserve_exact(num_elements).is_ok(),
+        };
 
         if should_cache {
-            extended_trace.resize(num_elements, FF::zero());
+            profiler!(start "resize");
+            assert!(extended_trace.capacity() >= num_elements);
+            unsafe {
+                // Speed up initialization through parallelization.
+                //
+                // SAFETY:
+                // 1. The capacity is sufficiently large – see above `assert!`.
+                // 2. The length is set to equal (or less than) the capacity.
+                // 3. Each element is over-written before being read in the
+                //    immediately following lines.
+                extended_trace.set_len(num_elements);
+            }
             let mut extended_columns =
                 Array2::from_shape_vec([num_rows, Self::NUM_COLUMNS], extended_trace).unwrap();
+            profiler!(stop "resize");
+
+            // Speeds up the subsequent parallel iteration. Maybe because of page faults?
+            profiler!(start "touch memory");
+            extended_columns.par_mapv_inplace(|_| FF::zero());
+            profiler!(stop "touch memory");
+
+            profiler!(start "evaluation");
             Zip::from(extended_columns.axis_iter_mut(Axis(1)))
                 .and(interpolation_polynomials.axis_iter(Axis(0)))
                 .par_for_each(|lde_column, interpolant| {
                     let lde_codeword = evaluation_domain.evaluate(&interpolant[()]);
                     Array1::from(lde_codeword).move_into(lde_column);
                 });
+            profiler!(stop "evaluation");
+            profiler!(start "memoize");
             self.memoize_low_degree_extended_table(extended_columns);
+            profiler!(stop "memoize");
         }
 
         self.memoize_interpolation_polynomials(interpolation_polynomials);
