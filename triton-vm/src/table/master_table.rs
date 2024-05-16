@@ -844,6 +844,7 @@ impl MasterBaseTable {
             u32_table,
         ];
 
+        profiler!(start "pad original tables");
         Self::all_pad_functions()
             .into_par_iter()
             .zip_eq(base_tables.into_par_iter())
@@ -851,8 +852,11 @@ impl MasterBaseTable {
             .for_each(|((pad, base_table), table_length)| {
                 pad(base_table, table_length);
             });
+        profiler!(stop "pad original tables");
 
+        profiler!(start "fill degree-lowering table");
         DegreeLoweringTable::fill_derived_base_columns(self.trace_table_mut());
+        profiler!(stop "fill degree-lowering table");
     }
 
     fn all_pad_functions() -> [PadFunction; NUM_TABLES_WITHOUT_DEGREE_LOWERING] {
