@@ -658,7 +658,7 @@ macro_rules! profiler {
 }
 pub(crate) use profiler;
 
-#[cfg(test)]
+#[cfg(all(test, any(debug_assertions, not(feature = "no_profile"))))]
 mod tests {
     use std::thread::sleep;
     use std::time::Duration;
