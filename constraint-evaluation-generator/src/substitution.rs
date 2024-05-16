@@ -118,32 +118,19 @@ impl Substitutions {
         let derived_section_tran_start = derived_section_cons_start + self.cons.len();
         let derived_section_term_start = derived_section_tran_start + self.tran.len();
 
-        let init_col_indices = (0..self.init.len())
-            .map(|i| i + derived_section_init_start)
-            .collect_vec();
-        let cons_col_indices = (0..self.cons.len())
-            .map(|i| i + derived_section_cons_start)
-            .collect_vec();
-        let tran_col_indices = (0..self.tran.len())
-            .map(|i| i + derived_section_tran_start)
-            .collect_vec();
-        let term_col_indices = (0..self.term.len())
-            .map(|i| i + derived_section_term_start)
-            .collect_vec();
-
         let init_substitutions = Self::several_substitution_rules_to_code(&self.init);
         let cons_substitutions = Self::several_substitution_rules_to_code(&self.cons);
         let tran_substitutions = Self::several_substitution_rules_to_code(&self.tran);
         let term_substitutions = Self::several_substitution_rules_to_code(&self.term);
 
         let init_substitutions =
-            Self::base_single_row_substitutions(&init_col_indices, &init_substitutions);
+            Self::base_single_row_substitutions(derived_section_init_start, &init_substitutions);
         let cons_substitutions =
-            Self::base_single_row_substitutions(&cons_col_indices, &cons_substitutions);
+            Self::base_single_row_substitutions(derived_section_cons_start, &cons_substitutions);
         let tran_substitutions =
-            Self::base_dual_row_substitutions(&tran_col_indices, &tran_substitutions);
+            Self::base_dual_row_substitutions(derived_section_tran_start, &tran_substitutions);
         let term_substitutions =
-            Self::base_single_row_substitutions(&term_col_indices, &term_substitutions);
+            Self::base_single_row_substitutions(derived_section_term_start, &term_substitutions);
 
         quote!(
         #[allow(unused_variables)]
@@ -163,32 +150,19 @@ impl Substitutions {
         let derived_section_tran_start = derived_section_cons_start + self.cons.len();
         let derived_section_term_start = derived_section_tran_start + self.tran.len();
 
-        let init_col_indices = (0..self.init.len())
-            .map(|i| i + derived_section_init_start)
-            .collect_vec();
-        let cons_col_indices = (0..self.cons.len())
-            .map(|i| i + derived_section_cons_start)
-            .collect_vec();
-        let tran_col_indices = (0..self.tran.len())
-            .map(|i| i + derived_section_tran_start)
-            .collect_vec();
-        let term_col_indices = (0..self.term.len())
-            .map(|i| i + derived_section_term_start)
-            .collect_vec();
-
         let init_substitutions = Self::several_substitution_rules_to_code(&self.init);
         let cons_substitutions = Self::several_substitution_rules_to_code(&self.cons);
         let tran_substitutions = Self::several_substitution_rules_to_code(&self.tran);
         let term_substitutions = Self::several_substitution_rules_to_code(&self.term);
 
         let init_substitutions =
-            Self::ext_single_row_substitutions(&init_col_indices, &init_substitutions);
+            Self::ext_single_row_substitutions(derived_section_init_start, &init_substitutions);
         let cons_substitutions =
-            Self::ext_single_row_substitutions(&cons_col_indices, &cons_substitutions);
+            Self::ext_single_row_substitutions(derived_section_cons_start, &cons_substitutions);
         let tran_substitutions =
-            Self::ext_dual_row_substitutions(&tran_col_indices, &tran_substitutions);
+            Self::ext_dual_row_substitutions(derived_section_tran_start, &tran_substitutions);
         let term_substitutions =
-            Self::ext_single_row_substitutions(&term_col_indices, &term_substitutions);
+            Self::ext_single_row_substitutions(derived_section_term_start, &term_substitutions);
 
         quote!(
             #[allow(unused_variables)]
@@ -241,10 +215,12 @@ impl Substitutions {
     }
 
     fn base_single_row_substitutions(
-        indices: &[usize],
+        section_start_index: usize,
         substitutions: &[TokenStream],
     ) -> TokenStream {
-        assert_eq!(indices.len(), substitutions.len());
+        let indices = (0..substitutions.len())
+            .map(|i| i + section_start_index)
+            .collect_vec();
         if indices.is_empty() {
             return quote!();
         }
@@ -260,10 +236,12 @@ impl Substitutions {
     }
 
     fn base_dual_row_substitutions(
-        indices: &[usize],
+        section_start_index: usize,
         substitutions: &[TokenStream],
     ) -> TokenStream {
-        assert_eq!(indices.len(), substitutions.len());
+        let indices = (0..substitutions.len())
+            .map(|i| i + section_start_index)
+            .collect_vec();
         if indices.is_empty() {
             return quote!();
         }
@@ -286,10 +264,12 @@ impl Substitutions {
     }
 
     fn ext_single_row_substitutions(
-        indices: &[usize],
+        section_start_index: usize,
         substitutions: &[TokenStream],
     ) -> TokenStream {
-        assert_eq!(indices.len(), substitutions.len());
+        let indices = (0..substitutions.len())
+            .map(|i| i + section_start_index)
+            .collect_vec();
         if indices.is_empty() {
             return quote!();
         }
@@ -306,8 +286,13 @@ impl Substitutions {
         )
     }
 
-    fn ext_dual_row_substitutions(indices: &[usize], substitutions: &[TokenStream]) -> TokenStream {
-        assert_eq!(indices.len(), substitutions.len());
+    fn ext_dual_row_substitutions(
+        section_start_index: usize,
+        substitutions: &[TokenStream],
+    ) -> TokenStream {
+        let indices = (0..substitutions.len())
+            .map(|i| i + section_start_index)
+            .collect_vec();
         if indices.is_empty() {
             return quote!();
         }
