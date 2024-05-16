@@ -69,6 +69,9 @@ impl AllSubstitutions {
             use ndarray::s;
             use ndarray::ArrayView2;
             use ndarray::ArrayViewMut2;
+            use ndarray::Axis;
+            use ndarray::Zip;
+            use ndarray::array;
             use strum::Display;
             use strum::EnumCount;
             use strum::EnumIter;
@@ -218,20 +221,30 @@ impl Substitutions {
         section_start_index: usize,
         substitutions: &[TokenStream],
     ) -> TokenStream {
-        let indices = (0..substitutions.len())
-            .map(|i| i + section_start_index)
-            .collect_vec();
+        let num_substitutions = substitutions.len();
+        let indices = (0..num_substitutions).collect_vec();
         if indices.is_empty() {
             return quote!();
         }
         quote!(
-            master_base_table.rows_mut().into_iter().for_each(|mut row| {
-            #(
-            let (base_row, mut det_col) =
-                row.multi_slice_mut((s![..#indices],s![#indices..=#indices]));
-            det_col[0] = #substitutions;
-            )*
-            });
+            let (original_part, mut current_section) =
+                master_base_table.multi_slice_mut(
+                    (
+                        s![.., 0..#section_start_index],
+                        s![.., #section_start_index..#section_start_index+#num_substitutions],
+                    )
+                );
+            Zip::from(original_part.rows())
+                .and(current_section.rows_mut())
+                .par_for_each(|original_row, mut section_row| {
+                    let mut base_row = original_row.to_owned();
+                    #(
+                        let (original_row_extension, mut det_col) =
+                            section_row.multi_slice_mut((s![..#indices],s![#indices..=#indices]));
+                            det_col[0] = #substitutions;
+                            base_row.append(Axis(0), array![det_col[0]].view()).unwrap();
+                    )*
+                });
         )
     }
 
