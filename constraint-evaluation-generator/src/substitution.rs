@@ -241,8 +241,8 @@ impl Substitutions {
                     #(
                         let (original_row_extension, mut det_col) =
                             section_row.multi_slice_mut((s![..#indices],s![#indices..=#indices]));
-                            det_col[0] = #substitutions;
-                            base_row.append(Axis(0), array![det_col[0]].view()).unwrap();
+                        det_col[0] = #substitutions;
+                        base_row.append(Axis(0), array![det_col[0]].view()).unwrap();
                     )*
                 });
         )
@@ -280,22 +280,32 @@ impl Substitutions {
         section_start_index: usize,
         substitutions: &[TokenStream],
     ) -> TokenStream {
-        let indices = (0..substitutions.len())
-            .map(|i| i + section_start_index)
-            .collect_vec();
+        let num_substitutions = substitutions.len();
+        let indices = (0..substitutions.len()).collect_vec();
         if indices.is_empty() {
             return quote!();
         }
         quote!(
-            for row_idx in 0..master_base_table.nrows() - 1 {
-                let base_row = master_base_table.row(row_idx);
-                let mut extension_row = master_ext_table.row_mut(row_idx);
-                #(
-                let (ext_row, mut det_col) =
-                    extension_row.multi_slice_mut((s![..#indices],s![#indices..=#indices]));
-                det_col[0] = #substitutions;
-                )*
-            }
+            let (original_part, mut current_section) = master_ext_table.multi_slice_mut(
+                (
+                    s![.., 0..#section_start_index],
+                    s![.., #section_start_index..#section_start_index+#num_substitutions],
+                )
+            );
+            Zip::from(master_base_table.rows())
+                .and(original_part.rows())
+                .and(current_section.rows_mut())
+                .par_for_each(
+                    |base_table_row, original_row, mut section_row| {
+                        let mut extension_row = original_row.to_owned();
+                        #(
+                            let (original_row_extension_row, mut det_col) =
+                                section_row.multi_slice_mut((s![..#indices],s![#indices..=#indices]));
+                            det_col[0] = #substitutions;
+                            extension_row.append(Axis(0), array![det_col[0]].view()).unwrap();
+                        )*
+                    }
+                );
         )
     }
 
