@@ -66,6 +66,7 @@ impl AllSubstitutions {
             //! To re-generate, execute:
             //! `cargo run --bin constraint-evaluation-generator`
 
+            use ndarray::Array2;
             use ndarray::s;
             use ndarray::ArrayView2;
             use ndarray::ArrayViewMut2;
@@ -251,27 +252,39 @@ impl Substitutions {
         section_start_index: usize,
         substitutions: &[TokenStream],
     ) -> TokenStream {
-        let indices = (0..substitutions.len())
-            .map(|i| i + section_start_index)
-            .collect_vec();
+        let num_substitutions = substitutions.len();
+        let indices = (0..substitutions.len()).collect_vec();
         if indices.is_empty() {
             return quote!();
         }
         quote!(
-            for curr_row_idx in 0..master_base_table.nrows() - 1 {
-                let next_row_idx = curr_row_idx + 1;
-                let (mut curr_base_row, next_base_row) = master_base_table.multi_slice_mut((
-                    s![curr_row_idx..=curr_row_idx, ..],
-                    s![next_row_idx..=next_row_idx, ..],
-                ));
-                let mut curr_base_row = curr_base_row.row_mut(0);
-                let next_base_row = next_base_row.row(0);
-                #(
-                let (current_base_row, mut det_col) =
-                    curr_base_row.multi_slice_mut((s![..#indices], s![#indices..=#indices]));
-                det_col[0] = #substitutions;
-                )*
-            }
+            let num_rows = master_base_table.nrows();
+            let (original_part, mut current_section) =
+                master_base_table.multi_slice_mut(
+                    (
+                        s![.., 0..#section_start_index],
+                        s![.., #section_start_index..#section_start_index+#num_substitutions],
+                    )
+                );
+            let row_indices = Array2::from_shape_vec(
+                    [num_rows-1, 1],
+                    (0..num_rows-1).collect::<Vec<_>>())
+                .unwrap();
+            Zip::from(current_section.slice_mut(s![0..num_rows-1, ..]).rows_mut())
+                .and(row_indices.rows())
+                .par_for_each( |mut section_row, current_row_index_as_array| {
+                    let current_row_index = *current_row_index_as_array.get(0).unwrap();
+                    let next_row_index = current_row_index + 1;
+                    let current_base_row_slice = original_part.slice(s![current_row_index..=current_row_index, ..]);
+                    let next_base_row_slice = original_part.slice(s![next_row_index..=next_row_index, ..]);
+                    let mut current_base_row = current_base_row_slice.row(0).to_owned();
+                    let next_base_row = next_base_row_slice.row(0);
+                    #(
+                        let det_col = section_row.get_mut(#indices).unwrap();
+                        *det_col = #substitutions;
+                        current_base_row.append(Axis(0), array![*det_col].view()).unwrap();
+                    )*
+                });
         )
     }
 
