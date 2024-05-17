@@ -239,10 +239,9 @@ impl Substitutions {
                 .par_for_each(|original_row, mut section_row| {
                     let mut base_row = original_row.to_owned();
                     #(
-                        let (original_row_extension, mut det_col) =
-                            section_row.multi_slice_mut((s![..#indices],s![#indices..=#indices]));
-                        det_col[0] = #substitutions;
-                        base_row.append(Axis(0), array![det_col[0]].view()).unwrap();
+                        let det_col = section_row.get_mut(#indices).unwrap();
+                        *det_col = #substitutions;
+                        base_row.append(Axis(0), array![*det_col].view()).unwrap();
                     )*
                 });
         )
