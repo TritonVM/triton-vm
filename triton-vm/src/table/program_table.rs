@@ -11,6 +11,7 @@ use strum::EnumCount;
 use twenty_first::prelude::*;
 
 use crate::aet::AlgebraicExecutionTrace;
+use crate::profiler::profiler;
 use crate::table::challenges::ChallengeId::*;
 use crate::table::challenges::Challenges;
 use crate::table::constraint_circuit::DualRowIndicator::*;
@@ -368,6 +369,7 @@ impl ProgramTable {
         mut ext_table: ArrayViewMut2<XFieldElement>,
         challenges: &Challenges,
     ) {
+        profiler!(start "program table");
         assert_eq!(BASE_WIDTH, base_table.ncols());
         assert_eq!(EXT_WIDTH, ext_table.ncols());
         assert_eq!(base_table.nrows(), ext_table.nrows());
@@ -442,6 +444,8 @@ impl ProgramTable {
         last_ext_row[PrepareChunkRunningEvaluation.ext_table_index()] =
             prepare_chunk_running_evaluation;
         last_ext_row[SendChunkRunningEvaluation.ext_table_index()] = send_chunk_running_evaluation;
+
+        profiler!(stop "program table");
     }
 
     fn update_instruction_lookup_log_derivative(
