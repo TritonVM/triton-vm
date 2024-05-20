@@ -6,6 +6,7 @@ use strum::EnumCount;
 use twenty_first::prelude::*;
 
 use crate::aet::AlgebraicExecutionTrace;
+use crate::profiler::profiler;
 use crate::table::challenges::ChallengeId;
 use crate::table::challenges::ChallengeId::*;
 use crate::table::challenges::Challenges;
@@ -65,6 +66,7 @@ impl CascadeTable {
         mut ext_table: ArrayViewMut2<XFieldElement>,
         challenges: &Challenges,
     ) {
+        profiler!(start "cascade table");
         assert_eq!(BASE_WIDTH, base_table.ncols());
         assert_eq!(EXT_WIDTH, ext_table.ncols());
         assert_eq!(base_table.nrows(), ext_table.nrows());
@@ -111,6 +113,7 @@ impl CascadeTable {
             extension_row[LookupTableClientLogDerivative.ext_table_index()] =
                 lookup_table_log_derivative;
         }
+        profiler!(stop "cascade table");
     }
 
     fn lookup_8_bit_limb(to_look_up: u8) -> BFieldElement {
