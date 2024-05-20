@@ -927,10 +927,12 @@ impl MasterBaseTable {
     pub fn extend(&self, challenges: &Challenges) -> MasterExtTable {
         // randomizer polynomials
         let num_rows = self.randomized_trace_table().nrows();
+        profiler!(start "initialize master table");
         let mut randomized_trace_extension_table = Array2::zeros([num_rows, NUM_EXT_COLUMNS].f());
         randomized_trace_extension_table
             .slice_mut(s![.., NUM_EXT_COLUMNS_WITHOUT_RANDOMIZER_POLYS..])
             .par_mapv_inplace(|_| random::<XFieldElement>());
+        profiler!(stop "initialize master table");
 
         let mut master_ext_table = MasterExtTable {
             num_trace_randomizers: self.num_trace_randomizers,
@@ -945,6 +947,7 @@ impl MasterBaseTable {
 
         // Due to limitations in ndarray, a 10-way multi-slice is not possible. Hence, (1) slicing
         // has to be done in multiple steps, and (2) cannot be put into a method.
+        profiler!(start "slice master table");
         let unit_distance = self.randomized_trace_domain().length / self.trace_domain().length;
         let mut master_ext_table_without_randomizers = master_ext_table
             .randomized_trace_table
@@ -982,6 +985,7 @@ impl MasterBaseTable {
             s![.., LookupExtTableColumn::COUNT..],
         ));
         let u32_table = rest.slice_mut(s![.., ..U32ExtTableColumn::COUNT]);
+        profiler!(stop "slice master table");
 
         let extension_tables = [
             program_table,
@@ -995,6 +999,7 @@ impl MasterBaseTable {
             u32_table,
         ];
 
+        profiler!(start "all tables");
         Self::all_extend_functions()
             .into_par_iter()
             .zip_eq(self.base_tables_for_extending().into_par_iter())
@@ -1002,12 +1007,15 @@ impl MasterBaseTable {
             .for_each(|((extend, base_table), ext_table)| {
                 extend(base_table, ext_table, challenges)
             });
+        profiler!(stop "all tables");
 
+        profiler!(start "fill degree lowering table");
         DegreeLoweringTable::fill_derived_ext_columns(
             self.trace_table(),
             master_ext_table.trace_table_mut(),
             challenges,
         );
+        profiler!(stop "fill degree lowering table");
 
         master_ext_table
     }
