@@ -119,7 +119,6 @@ impl ProcessorTable {
         let mut hash_digest_running_evaluation = EvalArg::default_initial();
         let mut sponge_running_evaluation = EvalArg::default_initial();
         let mut u32_table_running_sum_log_derivative = LookupArg::default_initial();
-        let mut clock_jump_diff_lookup_log_derivative = LookupArg::default_initial();
 
         let mut previous_row: Option<ArrayView1<BFieldElement>> = None;
         for row_idx in 0..base_table.nrows() {
@@ -346,13 +345,6 @@ impl ProcessorTable {
                 }
             }
 
-            // Lookup Argument for clock jump differences
-            let lookup_multiplicity =
-                current_row[ClockJumpDifferenceLookupMultiplicity.base_table_index()];
-            clock_jump_diff_lookup_log_derivative +=
-                (challenges[ClockJumpDifferenceLookupIndeterminate] - clk).inverse()
-                    * lookup_multiplicity;
-
             let mut extension_row = ext_table.row_mut(row_idx);
             extension_row[InputTableEvalArg.ext_table_index()] = input_table_running_evaluation;
             extension_row[OutputTableEvalArg.ext_table_index()] = output_table_running_evaluation;
@@ -366,11 +358,47 @@ impl ProcessorTable {
             extension_row[SpongeEvalArg.ext_table_index()] = sponge_running_evaluation;
             extension_row[U32LookupClientLogDerivative.ext_table_index()] =
                 u32_table_running_sum_log_derivative;
-            extension_row[ClockJumpDifferenceLookupServerLogDerivative.ext_table_index()] =
-                clock_jump_diff_lookup_log_derivative;
             previous_row = Some(current_row);
         }
+
+        let all_column_generators_and_slices = [(
+            Self::extension_column_for_clock_jump_difference_lookup_argument,
+            ext_table.slice_mut(s![
+                ..,
+                ClockJumpDifferenceLookupServerLogDerivative.ext_table_index()
+            ]),
+        )];
+        all_column_generators_and_slices
+            .into_par_iter()
+            .for_each(|(generator, slice)| {
+                generator(base_table, challenges).move_into(slice);
+            });
+
         profiler!(stop "processor table");
+    }
+
+    fn extension_column_for_clock_jump_difference_lookup_argument(
+        base_table: ArrayView2<BFieldElement>,
+        challenges: &Challenges,
+    ) -> Array1<XFieldElement> {
+        let extension_column = (0..base_table.nrows())
+            .scan(
+                LookupArg::default_initial(),
+                |clock_jump_diff_lookup_log_derivative: &mut XFieldElement, row_index: usize| {
+                    let current_row = base_table.row(row_index);
+                    let clk = current_row[CLK.base_table_index()];
+
+                    let lookup_multiplicity =
+                        current_row[ClockJumpDifferenceLookupMultiplicity.base_table_index()];
+                    *clock_jump_diff_lookup_log_derivative +=
+                        (challenges[ClockJumpDifferenceLookupIndeterminate] - clk).inverse()
+                            * lookup_multiplicity;
+
+                    Some(*clock_jump_diff_lookup_log_derivative)
+                },
+            )
+            .collect_vec();
+        Array1::from(extension_column)
     }
 
     fn factor_for_op_stack_table_running_product(
