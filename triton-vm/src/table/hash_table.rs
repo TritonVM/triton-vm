@@ -20,6 +20,7 @@ use crate::instruction::AnInstruction::SpongeAbsorb;
 use crate::instruction::AnInstruction::SpongeInit;
 use crate::instruction::AnInstruction::SpongeSqueeze;
 use crate::instruction::Instruction;
+use crate::profiler::profiler;
 use crate::table::cascade_table::CascadeTable;
 use crate::table::challenges::ChallengeId::*;
 use crate::table::challenges::Challenges;
@@ -1595,6 +1596,7 @@ impl HashTable {
         mut ext_table: ArrayViewMut2<XFieldElement>,
         challenges: &Challenges,
     ) {
+        profiler!(start "hash table");
         assert_eq!(BASE_WIDTH, base_table.ncols());
         assert_eq!(EXT_WIDTH, ext_table.ncols());
         assert_eq!(base_table.nrows(), ext_table.nrows());
@@ -1842,6 +1844,7 @@ impl HashTable {
             extension_row[CascadeState3LowestClientLogDerivative.ext_table_index()] =
                 cascade_state_3_lowest_log_derivative;
         }
+        profiler!(stop "hash table");
     }
 }
 

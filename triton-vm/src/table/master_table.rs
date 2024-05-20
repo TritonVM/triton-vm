@@ -1024,9 +1024,12 @@ impl MasterBaseTable {
 
         profiler!(start "all tables");
         Self::all_extend_functions()
-            .into_par_iter()
-            .zip_eq(self.base_tables_for_extending().into_par_iter())
-            .zip_eq(extension_tables.into_par_iter())
+            // .into_par_iter() // <-- todo: change me back to parallel!
+            // .zip_eq(self.base_tables_for_extending().into_par_iter())
+            // .zip_eq(extension_tables.into_par_iter())
+            .into_iter()
+            .zip_eq(self.base_tables_for_extending())
+            .zip_eq(extension_tables)
             .for_each(|((extend, base_table), ext_table)| {
                 extend(base_table, ext_table, challenges)
             });

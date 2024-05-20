@@ -19,6 +19,7 @@ use crate::instruction::ALL_INSTRUCTIONS;
 use crate::op_stack::NumberOfWords;
 use crate::op_stack::OpStackElement;
 use crate::op_stack::NUM_OP_STACK_REGISTERS;
+use crate::profiler::profiler;
 use crate::table::challenges::ChallengeId;
 use crate::table::challenges::ChallengeId::*;
 use crate::table::challenges::Challenges;
@@ -104,6 +105,7 @@ impl ProcessorTable {
         mut ext_table: ArrayViewMut2<XFieldElement>,
         challenges: &Challenges,
     ) {
+        profiler!(start "processor table");
         assert_eq!(BASE_WIDTH, base_table.ncols());
         assert_eq!(EXT_WIDTH, ext_table.ncols());
         assert_eq!(base_table.nrows(), ext_table.nrows());
@@ -368,6 +370,7 @@ impl ProcessorTable {
                 clock_jump_diff_lookup_log_derivative;
             previous_row = Some(current_row);
         }
+        profiler!(stop "processor table");
     }
 
     fn factor_for_op_stack_table_running_product(

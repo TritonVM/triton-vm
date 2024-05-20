@@ -7,6 +7,7 @@ use twenty_first::prelude::*;
 
 use crate::aet::AlgebraicExecutionTrace;
 use crate::instruction::Instruction;
+use crate::profiler::profiler;
 use crate::table::challenges::ChallengeId::*;
 use crate::table::challenges::Challenges;
 use crate::table::constraint_circuit::DualRowIndicator::*;
@@ -293,6 +294,7 @@ impl JumpStackTable {
         mut ext_table: ArrayViewMut2<XFieldElement>,
         challenges: &Challenges,
     ) {
+        profiler!(start "jump stack table");
         assert_eq!(BASE_WIDTH, base_table.ncols());
         assert_eq!(EXT_WIDTH, ext_table.ncols());
         assert_eq!(base_table.nrows(), ext_table.nrows());
@@ -342,5 +344,6 @@ impl JumpStackTable {
                 clock_jump_diff_lookup_log_derivative;
             previous_row = Some(current_row);
         }
+        profiler!(stop "jump stack table");
     }
 }

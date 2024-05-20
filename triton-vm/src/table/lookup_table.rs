@@ -8,6 +8,7 @@ use twenty_first::prelude::tip5;
 use twenty_first::prelude::*;
 
 use crate::aet::AlgebraicExecutionTrace;
+use crate::profiler::profiler;
 use crate::table::challenges::ChallengeId;
 use crate::table::challenges::ChallengeId::*;
 use crate::table::challenges::Challenges;
@@ -80,6 +81,7 @@ impl LookupTable {
         mut ext_table: ArrayViewMut2<XFieldElement>,
         challenges: &Challenges,
     ) {
+        profiler!(start "lookup table");
         assert_eq!(BASE_WIDTH, base_table.ncols());
         assert_eq!(EXT_WIDTH, ext_table.ncols());
         assert_eq!(base_table.nrows(), ext_table.nrows());
@@ -115,6 +117,7 @@ impl LookupTable {
                 cascade_table_running_sum_log_derivative;
             ext_row[PublicEvaluationArgument.ext_table_index()] = public_running_evaluation;
         }
+        profiler!(stop "lookup table");
     }
 }
 
