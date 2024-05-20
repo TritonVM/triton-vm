@@ -13,10 +13,11 @@ const FIBONACCI_INDEX: BFieldElement = BFieldElement::new(100);
 /// cargo criterion --bench prove_fib
 fn prove_fib(criterion: &mut Criterion) {
     let (claim, aet) = trace_execution();
-    fib_benchmark_group(criterion, &claim, &aet);
 
     let profile = prover_performance_profile(&claim, &aet);
     eprintln!("{profile}");
+
+    fib_benchmark_group(criterion, &claim, &aet);
 }
 
 fn fib_benchmark_group(criterion: &mut Criterion, claim: &Claim, aet: &AlgebraicExecutionTrace) {

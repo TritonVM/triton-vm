@@ -445,7 +445,11 @@ impl VMPerformanceProfile {
 impl Default for VMPerformanceProfile {
     fn default() -> Self {
         let name = if cfg!(feature = "no_profile") {
-            "Triton VM's profiler is disabled through feature `no_profile`.".to_string()
+            "Triton VM's profiler is disabled through feature `no_profile`.\n\
+            To generate a profile, please make sure current working directory is\
+            \"triton-vm/triton-vm/\" and run \
+            `cargo criterion --bench [benchmark name] --no-default-features`"
+                .to_string()
         } else {
             "__empty__".to_string()
         };
