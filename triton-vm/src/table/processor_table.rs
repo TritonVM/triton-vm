@@ -1634,13 +1634,10 @@ impl ExtProcessorTable {
             circuit_builder.input(NextBaseRow(col.master_base_table_index()))
         };
 
-        // The jump stack pointer jsp is decremented by 1.
-        let jsp_incr_1 = next_base_row(JSP) - (curr_base_row(JSP) - constant(1));
+        let jsp_decrements_by_1 = next_base_row(JSP) - curr_base_row(JSP) + constant(1);
+        let ip_is_set_to_jso = next_base_row(IP) - curr_base_row(JSO);
+        let specific_constraints = vec![jsp_decrements_by_1, ip_is_set_to_jso];
 
-        // The instruction pointer ip is set to the last call's origin jso.
-        let ip_becomes_jso = next_base_row(IP) - curr_base_row(JSO);
-
-        let specific_constraints = vec![jsp_incr_1, ip_becomes_jso];
         [
             specific_constraints,
             Self::instruction_group_keep_op_stack(circuit_builder),
