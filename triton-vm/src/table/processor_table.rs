@@ -2490,7 +2490,7 @@ impl ExtProcessorTable {
         .concat()
     }
 
-    fn get_transition_constraints_for_instruction(
+    fn transition_constraints_for_instruction(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
         instruction: Instruction,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
@@ -3577,16 +3577,10 @@ impl ExtProcessorTable {
             vec![clk_increases_by_1, is_padding_is_0_or_does_not_change];
 
         // instruction-specific constraints
-        let all_transition_constraints_by_instruction = ALL_INSTRUCTIONS.map(|instruction| {
-            Self::get_transition_constraints_for_instruction(circuit_builder, instruction)
-        });
-        let all_instructions_and_their_transition_constraints = ALL_INSTRUCTIONS
-            .into_iter()
-            .zip_eq(all_transition_constraints_by_instruction)
-            .collect_vec()
-            .try_into()
-            .unwrap();
-
+        let transition_constraints_for_instruction =
+            |instr| Self::transition_constraints_for_instruction(circuit_builder, instr);
+        let all_instructions_and_their_transition_constraints =
+            ALL_INSTRUCTIONS.map(|instr| (instr, transition_constraints_for_instruction(instr)));
         let deselected_transition_constraints =
             Self::combine_instruction_constraints_with_deselectors(
                 circuit_builder,
@@ -3713,7 +3707,7 @@ pub(crate) mod tests {
     ) {
         let instruction = debug_info.instruction;
         let circuit_builder = ConstraintCircuitBuilder::new();
-        let transition_constraints = ExtProcessorTable::get_transition_constraints_for_instruction(
+        let transition_constraints = ExtProcessorTable::transition_constraints_for_instruction(
             &circuit_builder,
             instruction,
         );
@@ -4355,7 +4349,7 @@ pub(crate) mod tests {
         println!("|:----------------|-------:|--------:|:------------");
         let circuit_builder = ConstraintCircuitBuilder::new();
         for instruction in ALL_INSTRUCTIONS {
-            let constraints = ExtProcessorTable::get_transition_constraints_for_instruction(
+            let constraints = ExtProcessorTable::transition_constraints_for_instruction(
                 &circuit_builder,
                 instruction,
             );
