@@ -66,7 +66,7 @@ impl AllSubstitutions {
             //! To re-generate, execute:
             //! `cargo run --bin constraint-evaluation-generator`
 
-            use ndarray::Array2;
+            use ndarray::Array1;
             use ndarray::s;
             use ndarray::ArrayView2;
             use ndarray::ArrayViewMut2;
@@ -264,14 +264,10 @@ impl Substitutions {
                         s![.., #section_start_index..#section_start_index+#num_substitutions],
                     )
                 );
-            let row_indices = Array2::from_shape_vec(
-                    [num_rows-1, 1],
-                    (0..num_rows-1).collect::<Vec<_>>())
-                .unwrap();
+            let row_indices = Array1::from_vec(Vec::from_iter(0..num_rows - 1));
             Zip::from(current_section.slice_mut(s![0..num_rows-1, ..]).rows_mut())
-                .and(row_indices.rows())
-                .par_for_each( |mut section_row, current_row_index_as_array| {
-                    let current_row_index = current_row_index_as_array[0];
+                .and(row_indices.view())
+                .par_for_each( |mut section_row, &current_row_index| {
                     let next_row_index = current_row_index + 1;
                     let current_base_row_slice = original_part.slice(s![current_row_index..=current_row_index, ..]);
                     let next_base_row_slice = original_part.slice(s![next_row_index..=next_row_index, ..]);
@@ -335,14 +331,10 @@ impl Substitutions {
                     s![.., #section_start_index..#section_start_index+#num_substitutions],
                 )
             );
-            let row_indices = Array2::from_shape_vec(
-                    [num_rows-1, 1],
-                    (0..num_rows-1).collect::<Vec<_>>())
-                .unwrap();
+            let row_indices = Array1::from_vec(Vec::from_iter(0..num_rows-1));
             Zip::from(current_section.slice_mut(s![0..num_rows-1, ..]).rows_mut())
-                .and(row_indices.rows())
-                .par_for_each(|mut section_row, current_row_index_as_array| {
-                    let current_row_index = current_row_index_as_array[0];
+                .and(row_indices.view())
+                .par_for_each(|mut section_row, &current_row_index| {
                     let next_row_index = current_row_index + 1;
                     let current_base_row = master_base_table.row(current_row_index);
                     let next_base_row = master_base_table.row(next_row_index);
