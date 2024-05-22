@@ -72,7 +72,6 @@ impl AllSubstitutions {
             use ndarray::ArrayViewMut2;
             use ndarray::Axis;
             use ndarray::Zip;
-            use ndarray::array;
             use strum::Display;
             use strum::EnumCount;
             use strum::EnumIter;
@@ -240,9 +239,8 @@ impl Substitutions {
                 .par_for_each(|original_row, mut section_row| {
                     let mut base_row = original_row.to_owned();
                     #(
-                        let det_col = &mut section_row[#indices];
-                        *det_col = #substitutions;
-                        base_row.append(Axis(0), array![*det_col].view()).unwrap();
+                        section_row[#indices] = #substitutions;
+                        base_row.push(Axis(0), section_row.slice(s![#indices])).unwrap();
                     )*
                 });
         )
@@ -280,9 +278,8 @@ impl Substitutions {
                     let mut current_base_row = current_base_row_slice.row(0).to_owned();
                     let next_base_row = next_base_row_slice.row(0);
                     #(
-                        let det_col = &mut section_row[#indices];
-                        *det_col = #substitutions;
-                        current_base_row.append(Axis(0), array![*det_col].view()).unwrap();
+                        section_row[#indices] = #substitutions;
+                        current_base_row.push(Axis(0), section_row.slice(s![#indices])).unwrap();
                     )*
                 });
         )
@@ -314,7 +311,7 @@ impl Substitutions {
                             let (original_row_extension_row, mut det_col) =
                                 section_row.multi_slice_mut((s![..#indices],s![#indices..=#indices]));
                             det_col[0] = #substitutions;
-                            extension_row.append(Axis(0), array![det_col[0]].view()).unwrap();
+                            extension_row.push(Axis(0), det_col.slice(s![0])).unwrap();
                         )*
                     }
                 );
@@ -352,9 +349,8 @@ impl Substitutions {
                     let mut current_ext_row = original_part.row(current_row_index).to_owned();
                     let next_ext_row = original_part.row(next_row_index);
                     #(
-                        let det_col = &mut section_row[#indices];
-                        *det_col = #substitutions;
-                        current_ext_row.append(Axis(0), array![*det_col].view()).unwrap();
+                        section_row[#indices]= #substitutions;
+                        current_ext_row.push(Axis(0), section_row.slice(s![#indices])).unwrap();
                     )*
                 });
         )
