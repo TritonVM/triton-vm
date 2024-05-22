@@ -264,7 +264,7 @@ impl Substitutions {
                         s![.., #section_start_index..#section_start_index+#num_substitutions],
                     )
                 );
-            let row_indices = Array1::from_vec(Vec::from_iter(0..num_rows - 1));
+            let row_indices = Array1::from_vec((0..num_rows - 1).collect::<Vec<_>>());
             Zip::from(current_section.slice_mut(s![0..num_rows-1, ..]).rows_mut())
                 .and(row_indices.view())
                 .par_for_each( |mut section_row, &current_row_index| {
@@ -331,7 +331,7 @@ impl Substitutions {
                     s![.., #section_start_index..#section_start_index+#num_substitutions],
                 )
             );
-            let row_indices = Array1::from_vec(Vec::from_iter(0..num_rows-1));
+            let row_indices = Array1::from_vec((0..num_rows - 1).collect::<Vec<_>>());
             Zip::from(current_section.slice_mut(s![0..num_rows-1, ..]).rows_mut())
                 .and(row_indices.view())
                 .par_for_each(|mut section_row, &current_row_index| {
