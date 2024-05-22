@@ -240,7 +240,7 @@ impl Substitutions {
                 .par_for_each(|original_row, mut section_row| {
                     let mut base_row = original_row.to_owned();
                     #(
-                        let det_col = section_row.get_mut(#indices).unwrap();
+                        let det_col = &mut section_row[#indices];
                         *det_col = #substitutions;
                         base_row.append(Axis(0), array![*det_col].view()).unwrap();
                     )*
@@ -280,7 +280,7 @@ impl Substitutions {
                     let mut current_base_row = current_base_row_slice.row(0).to_owned();
                     let next_base_row = next_base_row_slice.row(0);
                     #(
-                        let det_col = section_row.get_mut(#indices).unwrap();
+                        let det_col = &mut section_row[#indices];
                         *det_col = #substitutions;
                         current_base_row.append(Axis(0), array![*det_col].view()).unwrap();
                     )*
@@ -352,7 +352,7 @@ impl Substitutions {
                     let mut current_ext_row = original_part.row(current_row_index).to_owned();
                     let next_ext_row = original_part.row(next_row_index);
                     #(
-                        let det_col = section_row.get_mut(#indices).unwrap();
+                        let det_col = &mut section_row[#indices];
                         *det_col = #substitutions;
                         current_ext_row.append(Axis(0), array![*det_col].view()).unwrap();
                     )*
