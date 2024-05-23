@@ -626,7 +626,7 @@ impl Stark {
     ///    correspond to.
     ///
     /// Returns:
-    ///  - `rows : Vec<[FF; W]>` -- a `Vec`` of arrays of `W` field elements each;
+    ///  - `rows : Vec<[FF; W]>` -- a `Vec` of arrays of `W` field elements each;
     ///    one array per queried index.
     fn recompute_revealed_rows<
         const W: usize,
@@ -646,7 +646,7 @@ impl Stark {
         // for every column (in parallel), fast multi-point evaluate
         let columns = table_as_interpolation_polynomials
             .into_par_iter()
-            .flat_map(|poly| poly.fast_evaluate(&indeterminates))
+            .flat_map(|poly| poly.batch_evaluate(&indeterminates))
             .collect::<Vec<_>>();
 
         // transpose the resulting matrix out-of-place
