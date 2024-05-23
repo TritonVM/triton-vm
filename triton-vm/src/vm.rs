@@ -2322,7 +2322,13 @@ pub(crate) mod tests {
         let_assert!(Ok(public_output) = program.run(public_input.clone(), secret_input.clone()));
         assert!(42 == public_output[0].value());
 
-        prove_with_low_security_level(&program, public_input, secret_input);
+        let log2_fri_expansion_factor = 2;
+        prove_with_low_security_level(
+            &program,
+            public_input,
+            secret_input,
+            log2_fri_expansion_factor,
+        );
     }
 
     #[proptest(cases = 10)]
@@ -2346,7 +2352,13 @@ pub(crate) mod tests {
         assert!(0 == public_output[0].value());
         assert!(value == public_output[1]);
 
-        prove_with_low_security_level(&program, public_input, secret_input);
+        let log2_fri_expansion_factor = 2;
+        prove_with_low_security_level(
+            &program,
+            public_input,
+            secret_input,
+            log2_fri_expansion_factor,
+        );
     }
 
     #[test]
