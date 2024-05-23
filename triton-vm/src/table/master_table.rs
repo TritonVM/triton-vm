@@ -31,6 +31,8 @@ use crate::aet::AlgebraicExecutionTrace;
 use crate::arithmetic_domain::ArithmeticDomain;
 use crate::config::CacheDecision;
 use crate::error::ProvingError;
+use crate::ndarray_helper::horizontal_multi_slice_mut;
+use crate::ndarray_helper::partial_sums;
 use crate::profiler::profiler;
 use crate::stark::NUM_RANDOMIZER_POLYNOMIALS;
 use crate::table::cascade_table::CascadeTable;
@@ -826,54 +828,19 @@ impl MasterBaseTable {
         let mut master_table_without_randomizers = self
             .randomized_trace_table
             .slice_mut(s![..; unit_distance, ..]);
-        let (program_table, mut rest) = master_table_without_randomizers.multi_slice_mut((
-            s![.., ..ProgramBaseTableColumn::COUNT],
-            s![.., ProgramBaseTableColumn::COUNT..],
-        ));
-        let (processor_table, mut rest) = rest.multi_slice_mut((
-            s![.., ..ProcessorBaseTableColumn::COUNT],
-            s![.., ProcessorBaseTableColumn::COUNT..],
-        ));
-        let (op_stack_table, mut rest) = rest.multi_slice_mut((
-            s![.., ..OpStackBaseTableColumn::COUNT],
-            s![.., OpStackBaseTableColumn::COUNT..],
-        ));
-        let (ram_table, mut rest) = rest.multi_slice_mut((
-            s![.., ..RamBaseTableColumn::COUNT],
-            s![.., RamBaseTableColumn::COUNT..],
-        ));
-        let (jump_stack_table, mut rest) = rest.multi_slice_mut((
-            s![.., ..JumpStackBaseTableColumn::COUNT],
-            s![.., JumpStackBaseTableColumn::COUNT..],
-        ));
-        let (hash_table, mut rest) = rest.multi_slice_mut((
-            s![.., ..HashBaseTableColumn::COUNT],
-            s![.., HashBaseTableColumn::COUNT..],
-        ));
-        let (cascade_table, mut rest) = rest.multi_slice_mut((
-            s![.., ..CascadeBaseTableColumn::COUNT],
-            s![.., CascadeBaseTableColumn::COUNT..],
-        ));
-        let (lookup_table, mut rest) = rest.multi_slice_mut((
-            s![.., ..LookupBaseTableColumn::COUNT],
-            s![.., LookupBaseTableColumn::COUNT..],
-        ));
-        let (u32_table, _) = rest.multi_slice_mut((
-            s![.., ..U32BaseTableColumn::COUNT],
-            s![.., U32BaseTableColumn::COUNT..],
-        ));
-
-        let base_tables = [
-            program_table,
-            processor_table,
-            op_stack_table,
-            ram_table,
-            jump_stack_table,
-            hash_table,
-            cascade_table,
-            lookup_table,
-            u32_table,
-        ];
+        let start_indices = partial_sums([
+            ProgramBaseTableColumn::COUNT,
+            ProcessorBaseTableColumn::COUNT,
+            OpStackBaseTableColumn::COUNT,
+            RamBaseTableColumn::COUNT,
+            JumpStackBaseTableColumn::COUNT,
+            HashBaseTableColumn::COUNT,
+            CascadeBaseTableColumn::COUNT,
+            LookupBaseTableColumn::COUNT,
+            U32BaseTableColumn::COUNT,
+        ]);
+        let base_tables =
+            horizontal_multi_slice_mut(&mut master_table_without_randomizers, start_indices);
 
         profiler!(start "pad original tables");
         Self::all_pad_functions()
