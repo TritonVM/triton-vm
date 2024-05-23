@@ -3645,12 +3645,14 @@ pub(crate) mod tests {
     use crate::instruction::Instruction;
     use crate::op_stack::NumberOfWords::*;
     use crate::op_stack::OpStackElement;
+    use crate::prelude::PublicInput;
     use crate::program::Program;
     use crate::shared_tests::ProgramAndInput;
     use crate::stark::tests::master_tables_for_low_security_level;
     use crate::table::master_table::*;
     use crate::triton_asm;
     use crate::triton_program;
+    use crate::vm::VMState;
     use crate::vm::NUM_HELPER_VARIABLE_REGISTERS;
     use crate::NonDeterminism;
 
@@ -4426,6 +4428,42 @@ pub(crate) mod tests {
         let index = thread_rng().gen_range(16..usize::MAX);
         let circuit_builder = ConstraintCircuitBuilder::new();
         ExtProcessorTable::indicator_polynomial(&circuit_builder, index);
+    }
+
+    #[proptest]
+    fn indicator_polynomial_is_one_on_indicated_index_and_zero_on_all_other_indices(
+        #[strategy(0_usize..16)] indicator_poly_index: usize,
+        #[strategy(0_usize..16)] query_index: usize,
+    ) {
+        // Unfortunately, setting up the query index requires a pretty elaborate setup.
+        let program = triton_program!(dup {query_index} halt);
+        let input = PublicInput::default();
+        let non_determinism = NonDeterminism::default();
+        let vm_state = VMState::new(&program, input, non_determinism);
+        let helper_variables = vm_state.derive_helper_variables();
+
+        let mut base_table = Array2::ones([2, NUM_BASE_COLUMNS]);
+        base_table[[0, HV0.master_base_table_index()]] = helper_variables[0];
+        base_table[[0, HV1.master_base_table_index()]] = helper_variables[1];
+        base_table[[0, HV2.master_base_table_index()]] = helper_variables[2];
+        base_table[[0, HV3.master_base_table_index()]] = helper_variables[3];
+        base_table[[0, HV4.master_base_table_index()]] = helper_variables[4];
+        base_table[[0, HV5.master_base_table_index()]] = helper_variables[5];
+
+        let builder = ConstraintCircuitBuilder::new();
+        let indicator_poly =
+            ExtProcessorTable::indicator_polynomial(&builder, indicator_poly_index);
+        let indicator_poly = indicator_poly.consume();
+
+        let ext_table = Array2::ones([2, NUM_EXT_COLUMNS]);
+        let challenges = Challenges::default().challenges;
+        let evaluation = indicator_poly.evaluate(base_table.view(), ext_table.view(), &challenges);
+
+        if indicator_poly_index == query_index {
+            prop_assert_eq!(xfe!(1), evaluation);
+        } else {
+            prop_assert_eq!(xfe!(0), evaluation);
+        }
     }
 
     #[test]
