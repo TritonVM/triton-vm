@@ -267,14 +267,13 @@ impl Stark {
         profiler!(stop "ext");
         let base_and_ext_combination_polynomial =
             base_combination_polynomial + ext_combination_polynomial;
-        let base_and_ext_codeword = fri.domain.evaluate(&base_and_ext_combination_polynomial);
+        let base_and_ext_codeword = short_domain.evaluate(&base_and_ext_combination_polynomial);
 
         profiler!(start "quotient" ("CC"));
         let quotient_segments_combination_polynomial =
             Self::random_linear_sum(quotient_segment_polynomials.view(), weights.quot_segments);
-        let quotient_segments_combination_codeword = fri
-            .domain
-            .evaluate(&quotient_segments_combination_polynomial);
+        let quotient_segments_combination_codeword =
+            short_domain.evaluate(&quotient_segments_combination_polynomial);
         profiler!(stop "quotient");
 
         profiler!(stop "linear combination");
