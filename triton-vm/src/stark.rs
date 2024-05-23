@@ -250,9 +250,10 @@ impl Stark {
         profiler!(stop "Fiat-Shamir");
 
         let fri_domain_is_short_domain = fri.domain.length <= quotient_domain.length;
-        let short_domain = match fri_domain_is_short_domain {
-            true => fri.domain,
-            false => quotient_domain,
+        let short_domain = if fri_domain_is_short_domain {
+            fri.domain
+        } else {
+            quotient_domain
         };
 
         profiler!(start "linear combination");
