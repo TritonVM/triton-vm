@@ -1,11 +1,7 @@
 use itertools::Itertools;
 use ndarray::s;
-use ndarray::ArrayBase;
 use ndarray::ArrayViewMut2;
-use ndarray::DataMut;
-use ndarray::Dim;
 use ndarray::Ix;
-use ndarray::RawData;
 use std::fmt::Debug;
 
 /// Slice a two-dimensional array into many non-overlapping mutable subviews
@@ -15,17 +11,14 @@ use std::fmt::Debug;
 ///
 /// # Panics
 /// Panics if column indices are not sorted or out of bounds.
-pub fn horizontal_multi_slice_mut<'a, T: 'a + RawData + DataMut, const N: usize>(
-    array: &'a mut ArrayBase<T, Dim<[Ix; 2]>>,
+pub fn horizontal_multi_slice_mut<'a, T: 'a + Debug, const N: usize>(
+    array: ArrayViewMut2<'a, T>,
     column_indices: [Ix; N],
-) -> [ArrayViewMut2<'a, <T as RawData>::Elem>; N]
-where
-    <T as ndarray::RawData>::Elem: Debug,
-{
+) -> [ArrayViewMut2<'a, T>; N] {
     let mut returnable_slices = vec![];
 
     let mut stop_index = array.ncols();
-    let mut remainder = array.view_mut();
+    let mut remainder = array;
     for start_index in column_indices.into_iter().rev() {
         let (new_remainder, slice) =
             remainder.multi_slice_move((s![.., ..start_index], s![.., start_index..stop_index]));
@@ -55,9 +48,17 @@ pub fn partial_sums<const N: usize>(indices: [usize; N]) -> [usize; N] {
 
 #[cfg(test)]
 mod test {
+    use ndarray::concatenate;
     use ndarray::Array2;
+    use ndarray::Axis;
 
-    use super::horizontal_multi_slice_mut;
+    use proptest::collection::vec;
+    use proptest::prelude::BoxedStrategy;
+    use proptest::prop_assert_eq;
+    use proptest::strategy::Strategy;
+    use test_strategy::proptest;
+
+    use super::*;
 
     #[test]
     fn horizontal_multi_slice_works_as_expected() {
@@ -65,7 +66,7 @@ mod test {
         let n = 6;
         let mut array = Array2::<usize>::zeros((m, n));
 
-        let [mut a, mut b, mut c] = horizontal_multi_slice_mut(&mut array, [0, 1, 3]);
+        let [mut a, mut b, mut c] = horizontal_multi_slice_mut(array.view_mut(), [0, 1, 3]);
 
         a.mapv_inplace(|_| 1);
         b.mapv_inplace(|_| 2);
@@ -79,5 +80,36 @@ mod test {
             .unwrap(),
             array
         );
+    }
+
+    fn strategy_of_widths() -> BoxedStrategy<[usize; 10]> {
+        vec(0usize..10, 10)
+            .prop_map(|v| v.try_into().unwrap())
+            .boxed()
+    }
+
+    #[proptest]
+    fn horizontal_slice_with_partial_sums(
+        #[strategy(strategy_of_widths())] widths: [usize; 10],
+        #[strategy(0usize..10)] height: usize,
+    ) {
+        let width = widths.iter().cloned().sum::<usize>();
+        let mut array = Array2::zeros((height, width));
+        let mutable_slices = horizontal_multi_slice_mut(array.view_mut(), partial_sums(widths));
+        for (i, mut slice) in mutable_slices.into_iter().enumerate() {
+            slice.mapv_inplace(|_| i as u32);
+        }
+
+        let expected_slices = widths
+            .iter()
+            .enumerate()
+            .map(|(i, &w)| Array2::from_shape_vec((height, w), vec![i as u32; w * height]).unwrap())
+            .collect_vec();
+        let expected_views = expected_slices
+            .iter()
+            .map(|slice| slice.view())
+            .collect_vec();
+        let expected_array = concatenate(Axis(1), &expected_views).unwrap();
+        prop_assert_eq!(expected_array, array);
     }
 }
