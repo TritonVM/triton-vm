@@ -825,22 +825,38 @@ impl MasterBaseTable {
         // Due to limitations in ndarray, a 10-way multi-slice is not possible. Hence, (1) slicing
         // has to be done in multiple steps, and (2) cannot be put into a method.
         let unit_distance = self.randomized_trace_domain().length / self.trace_domain().length;
-        let mut master_table_without_randomizers = self
+        let master_table_without_randomizers = self
             .randomized_trace_table
             .slice_mut(s![..; unit_distance, ..]);
-        let start_indices = partial_sums([
-            ProgramBaseTableColumn::COUNT,
-            ProcessorBaseTableColumn::COUNT,
-            OpStackBaseTableColumn::COUNT,
-            RamBaseTableColumn::COUNT,
-            JumpStackBaseTableColumn::COUNT,
-            HashBaseTableColumn::COUNT,
-            CascadeBaseTableColumn::COUNT,
-            LookupBaseTableColumn::COUNT,
-            U32BaseTableColumn::COUNT,
-        ]);
-        let base_tables =
-            horizontal_multi_slice_mut(&mut master_table_without_randomizers, start_indices);
+
+        let [program_table, processor_table, op_stack_table, ram_table, jump_stack_table, hash_table, cascade_table, lookup_table, u32_table, _randomizer_columns] =
+            horizontal_multi_slice_mut(
+                master_table_without_randomizers,
+                partial_sums([
+                    ProgramBaseTableColumn::COUNT,
+                    ProcessorBaseTableColumn::COUNT,
+                    OpStackBaseTableColumn::COUNT,
+                    RamBaseTableColumn::COUNT,
+                    JumpStackBaseTableColumn::COUNT,
+                    HashBaseTableColumn::COUNT,
+                    CascadeBaseTableColumn::COUNT,
+                    LookupBaseTableColumn::COUNT,
+                    U32BaseTableColumn::COUNT,
+                    0,
+                ]),
+            );
+
+        let base_tables = [
+            program_table,
+            processor_table,
+            op_stack_table,
+            ram_table,
+            jump_stack_table,
+            hash_table,
+            cascade_table,
+            lookup_table,
+            u32_table,
+        ];
 
         profiler!(start "pad original tables");
         Self::all_pad_functions()
