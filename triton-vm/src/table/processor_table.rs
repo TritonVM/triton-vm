@@ -116,7 +116,6 @@ impl ProcessorTable {
         let mut op_stack_table_running_product = PermArg::default_initial();
         let mut ram_table_running_product = PermArg::default_initial();
         let mut jump_stack_running_product = PermArg::default_initial();
-        let mut hash_input_running_evaluation = EvalArg::default_initial();
 
         let mut previous_row: Option<ArrayView1<BFieldElement>> = None;
         for row_idx in 0..base_table.nrows() {
@@ -186,30 +185,6 @@ impl ProcessorTable {
             jump_stack_running_product *=
                 challenges[JumpStackIndeterminate] - compressed_row_for_jump_stack_table;
 
-            // Hash Table – `hash`'s or `merkle_step`'s input from Processor to Hash Coprocessor
-            let st0_through_st9 = [ST0, ST1, ST2, ST3, ST4, ST5, ST6, ST7, ST8, ST9];
-            let hash_state_weights = &challenges[HashStateWeight0..HashStateWeight10];
-
-            if ci == Instruction::Hash.opcode_b() || ci == Instruction::MerkleStep.opcode_b() {
-                let merkle_step_left_sibling = [ST0, ST1, ST2, ST3, ST4, HV0, HV1, HV2, HV3, HV4];
-                let merkle_step_right_sibling = [HV0, HV1, HV2, HV3, HV4, ST0, ST1, ST2, ST3, ST4];
-                let is_left_sibling = current_row[HV5.base_table_index()].value() % 2 == 0;
-                let hash_input = match Self::instruction_from_row(current_row) {
-                    Some(Instruction::MerkleStep) if is_left_sibling => merkle_step_left_sibling,
-                    Some(Instruction::MerkleStep) => merkle_step_right_sibling,
-                    _ => st0_through_st9,
-                };
-                let compressed_row: XFieldElement = hash_input
-                    .map(|st| current_row[st.base_table_index()])
-                    .into_iter()
-                    .zip_eq(hash_state_weights.iter())
-                    .map(|(st, &weight)| weight * st)
-                    .sum();
-                hash_input_running_evaluation = hash_input_running_evaluation
-                    * challenges[HashInputIndeterminate]
-                    + compressed_row;
-            }
-
             let mut extension_row = ext_table.row_mut(row_idx);
             extension_row[InputTableEvalArg.ext_table_index()] = input_table_running_evaluation;
             extension_row[OutputTableEvalArg.ext_table_index()] = output_table_running_evaluation;
@@ -218,7 +193,6 @@ impl ProcessorTable {
             extension_row[OpStackTablePermArg.ext_table_index()] = op_stack_table_running_product;
             extension_row[RamTablePermArg.ext_table_index()] = ram_table_running_product;
             extension_row[JumpStackTablePermArg.ext_table_index()] = jump_stack_running_product;
-            extension_row[HashInputEvalArg.ext_table_index()] = hash_input_running_evaluation;
             previous_row = Some(current_row);
         }
 
@@ -371,13 +345,50 @@ impl ProcessorTable {
 
     fn extension_column_hash_input_eval_argument(
         base_table: ArrayView2<BFieldElement>,
-        _challenges: &Challenges,
+        challenges: &Challenges,
     ) -> Array2<XFieldElement> {
-        Array2::from_shape_vec(
-            (base_table.nrows(), 1),
-            vec![XFieldElement::zero(); base_table.nrows()],
-        )
-        .unwrap()
+        let extension_column = (0..base_table.nrows())
+            .scan(
+                EvalArg::default_initial(),
+                |hash_input_running_evaluation, row_index: usize| {
+                    let current_row = base_table.row(row_index);
+                    let ci = current_row[CI.base_table_index()];
+
+                    // Hash Table – `hash`'s or `merkle_step`'s input from Processor to Hash Coprocessor
+                    let st0_through_st9 = [ST0, ST1, ST2, ST3, ST4, ST5, ST6, ST7, ST8, ST9];
+                    let hash_state_weights = &challenges[HashStateWeight0..HashStateWeight10];
+
+                    if ci == Instruction::Hash.opcode_b()
+                        || ci == Instruction::MerkleStep.opcode_b()
+                    {
+                        let merkle_step_left_sibling =
+                            [ST0, ST1, ST2, ST3, ST4, HV0, HV1, HV2, HV3, HV4];
+                        let merkle_step_right_sibling =
+                            [HV0, HV1, HV2, HV3, HV4, ST0, ST1, ST2, ST3, ST4];
+                        let is_left_sibling = current_row[HV5.base_table_index()].value() % 2 == 0;
+                        let hash_input = match Self::instruction_from_row(current_row) {
+                            Some(Instruction::MerkleStep) if is_left_sibling => {
+                                merkle_step_left_sibling
+                            }
+                            Some(Instruction::MerkleStep) => merkle_step_right_sibling,
+                            _ => st0_through_st9,
+                        };
+                        let compressed_row: XFieldElement = hash_input
+                            .map(|st| current_row[st.base_table_index()])
+                            .into_iter()
+                            .zip_eq(hash_state_weights.iter())
+                            .map(|(st, &weight)| weight * st)
+                            .sum();
+                        *hash_input_running_evaluation = *hash_input_running_evaluation
+                            * challenges[HashInputIndeterminate]
+                            + compressed_row;
+                    }
+
+                    Some(*hash_input_running_evaluation)
+                },
+            )
+            .collect_vec();
+        Array2::from_shape_vec((base_table.nrows(), 1), extension_column).unwrap()
     }
 
     fn extension_column_hash_digest_eval_argument(
