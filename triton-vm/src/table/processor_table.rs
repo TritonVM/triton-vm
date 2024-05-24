@@ -119,7 +119,6 @@ impl ProcessorTable {
         let mut hash_input_running_evaluation = EvalArg::default_initial();
         let mut hash_digest_running_evaluation = EvalArg::default_initial();
         let mut sponge_running_evaluation = EvalArg::default_initial();
-        let mut u32_table_running_sum_log_derivative = LookupArg::default_initial();
 
         let mut previous_row: Option<ArrayView1<BFieldElement>> = None;
         for row_idx in 0..base_table.nrows() {
@@ -278,74 +277,6 @@ impl ProcessorTable {
                 }
             }
 
-            // U32 Table
-            if let Some(prev_row) = previous_row {
-                let previously_current_instruction = prev_row[CI.base_table_index()];
-                if previously_current_instruction == Instruction::Split.opcode_b() {
-                    let compressed_row = current_row[ST0.base_table_index()]
-                        * challenges[U32LhsWeight]
-                        + current_row[ST1.base_table_index()] * challenges[U32RhsWeight]
-                        + prev_row[CI.base_table_index()] * challenges[U32CiWeight];
-                    u32_table_running_sum_log_derivative +=
-                        (challenges[U32Indeterminate] - compressed_row).inverse();
-                }
-                if previously_current_instruction == Instruction::Lt.opcode_b()
-                    || previously_current_instruction == Instruction::And.opcode_b()
-                    || previously_current_instruction == Instruction::Pow.opcode_b()
-                {
-                    let compressed_row = prev_row[ST0.base_table_index()]
-                        * challenges[U32LhsWeight]
-                        + prev_row[ST1.base_table_index()] * challenges[U32RhsWeight]
-                        + prev_row[CI.base_table_index()] * challenges[U32CiWeight]
-                        + current_row[ST0.base_table_index()] * challenges[U32ResultWeight];
-                    u32_table_running_sum_log_derivative +=
-                        (challenges[U32Indeterminate] - compressed_row).inverse();
-                }
-                if previously_current_instruction == Instruction::Xor.opcode_b() {
-                    // Triton VM uses the following equality to compute the results of both the
-                    // `and` and `xor` instruction using the u32 coprocessor's `and` capability:
-                    //     a ^ b = a + b - 2 · (a & b)
-                    // <=> a & b = (a + b - a ^ b) / 2
-                    let st0_prev = prev_row[ST0.base_table_index()];
-                    let st1_prev = prev_row[ST1.base_table_index()];
-                    let st0 = current_row[ST0.base_table_index()];
-                    let from_xor_in_processor_to_and_in_u32_coprocessor =
-                        (st0_prev + st1_prev - st0) / bfe!(2);
-                    let compressed_row = st0_prev * challenges[U32LhsWeight]
-                        + st1_prev * challenges[U32RhsWeight]
-                        + Instruction::And.opcode_b() * challenges[U32CiWeight]
-                        + from_xor_in_processor_to_and_in_u32_coprocessor
-                            * challenges[U32ResultWeight];
-                    u32_table_running_sum_log_derivative +=
-                        (challenges[U32Indeterminate] - compressed_row).inverse();
-                }
-                if previously_current_instruction == Instruction::Log2Floor.opcode_b()
-                    || previously_current_instruction == Instruction::PopCount.opcode_b()
-                {
-                    let compressed_row = prev_row[ST0.base_table_index()]
-                        * challenges[U32LhsWeight]
-                        + prev_row[CI.base_table_index()] * challenges[U32CiWeight]
-                        + current_row[ST0.base_table_index()] * challenges[U32ResultWeight];
-                    u32_table_running_sum_log_derivative +=
-                        (challenges[U32Indeterminate] - compressed_row).inverse();
-                }
-                if previously_current_instruction == Instruction::DivMod.opcode_b() {
-                    let compressed_row_for_lt_check = current_row[ST0.base_table_index()]
-                        * challenges[U32LhsWeight]
-                        + prev_row[ST1.base_table_index()] * challenges[U32RhsWeight]
-                        + Instruction::Lt.opcode_b() * challenges[U32CiWeight]
-                        + bfe!(1) * challenges[U32ResultWeight];
-                    let compressed_row_for_range_check = prev_row[ST0.base_table_index()]
-                        * challenges[U32LhsWeight]
-                        + current_row[ST1.base_table_index()] * challenges[U32RhsWeight]
-                        + Instruction::Split.opcode_b() * challenges[U32CiWeight];
-                    u32_table_running_sum_log_derivative +=
-                        (challenges[U32Indeterminate] - compressed_row_for_lt_check).inverse();
-                    u32_table_running_sum_log_derivative +=
-                        (challenges[U32Indeterminate] - compressed_row_for_range_check).inverse();
-                }
-            }
-
             let mut extension_row = ext_table.row_mut(row_idx);
             extension_row[InputTableEvalArg.ext_table_index()] = input_table_running_evaluation;
             extension_row[OutputTableEvalArg.ext_table_index()] = output_table_running_evaluation;
@@ -357,8 +288,6 @@ impl ProcessorTable {
             extension_row[HashInputEvalArg.ext_table_index()] = hash_input_running_evaluation;
             extension_row[HashDigestEvalArg.ext_table_index()] = hash_digest_running_evaluation;
             extension_row[SpongeEvalArg.ext_table_index()] = sponge_running_evaluation;
-            extension_row[U32LookupClientLogDerivative.ext_table_index()] =
-                u32_table_running_sum_log_derivative;
             previous_row = Some(current_row);
         }
 
@@ -505,13 +434,90 @@ impl ProcessorTable {
 
     fn extension_column_for_u32_lookup_argument(
         base_table: ArrayView2<BFieldElement>,
-        _challenges: &Challenges,
+        challenges: &Challenges,
     ) -> Array2<XFieldElement> {
-        Array2::from_shape_vec(
-            (base_table.nrows(), 1),
-            vec![XFieldElement::zero(); base_table.nrows()],
-        )
-        .unwrap()
+        let extension_column = (0..base_table.nrows())
+            .scan(
+                (
+                    Option::<ArrayBase<ViewRepr<&BFieldElement>, Dim<[usize; 1]>>>::None,
+                    LookupArg::default_initial(),
+                ),
+                |(previous_row, u32_table_running_sum_log_derivative), row_index: usize| {
+                    let current_row = base_table.row(row_index);
+                    if let Some(prev_row) = previous_row {
+                        let previously_current_instruction = prev_row[CI.base_table_index()];
+                        if previously_current_instruction == Instruction::Split.opcode_b() {
+                            let compressed_row = current_row[ST0.base_table_index()]
+                                * challenges[U32LhsWeight]
+                                + current_row[ST1.base_table_index()] * challenges[U32RhsWeight]
+                                + prev_row[CI.base_table_index()] * challenges[U32CiWeight];
+                            *u32_table_running_sum_log_derivative +=
+                                (challenges[U32Indeterminate] - compressed_row).inverse();
+                        }
+                        if previously_current_instruction == Instruction::Lt.opcode_b()
+                            || previously_current_instruction == Instruction::And.opcode_b()
+                            || previously_current_instruction == Instruction::Pow.opcode_b()
+                        {
+                            let compressed_row = prev_row[ST0.base_table_index()]
+                                * challenges[U32LhsWeight]
+                                + prev_row[ST1.base_table_index()] * challenges[U32RhsWeight]
+                                + prev_row[CI.base_table_index()] * challenges[U32CiWeight]
+                                + current_row[ST0.base_table_index()] * challenges[U32ResultWeight];
+                            *u32_table_running_sum_log_derivative +=
+                                (challenges[U32Indeterminate] - compressed_row).inverse();
+                        }
+                        if previously_current_instruction == Instruction::Xor.opcode_b() {
+                            // Triton VM uses the following equality to compute the results of both the
+                            // `and` and `xor` instruction using the u32 coprocessor's `and` capability:
+                            //     a ^ b = a + b - 2 · (a & b)
+                            // <=> a & b = (a + b - a ^ b) / 2
+                            let st0_prev = prev_row[ST0.base_table_index()];
+                            let st1_prev = prev_row[ST1.base_table_index()];
+                            let st0 = current_row[ST0.base_table_index()];
+                            let from_xor_in_processor_to_and_in_u32_coprocessor =
+                                (st0_prev + st1_prev - st0) / bfe!(2);
+                            let compressed_row = st0_prev * challenges[U32LhsWeight]
+                                + st1_prev * challenges[U32RhsWeight]
+                                + Instruction::And.opcode_b() * challenges[U32CiWeight]
+                                + from_xor_in_processor_to_and_in_u32_coprocessor
+                                    * challenges[U32ResultWeight];
+                            *u32_table_running_sum_log_derivative +=
+                                (challenges[U32Indeterminate] - compressed_row).inverse();
+                        }
+                        if previously_current_instruction == Instruction::Log2Floor.opcode_b()
+                            || previously_current_instruction == Instruction::PopCount.opcode_b()
+                        {
+                            let compressed_row = prev_row[ST0.base_table_index()]
+                                * challenges[U32LhsWeight]
+                                + prev_row[CI.base_table_index()] * challenges[U32CiWeight]
+                                + current_row[ST0.base_table_index()] * challenges[U32ResultWeight];
+                            *u32_table_running_sum_log_derivative +=
+                                (challenges[U32Indeterminate] - compressed_row).inverse();
+                        }
+                        if previously_current_instruction == Instruction::DivMod.opcode_b() {
+                            let compressed_row_for_lt_check = current_row[ST0.base_table_index()]
+                                * challenges[U32LhsWeight]
+                                + prev_row[ST1.base_table_index()] * challenges[U32RhsWeight]
+                                + Instruction::Lt.opcode_b() * challenges[U32CiWeight]
+                                + bfe!(1) * challenges[U32ResultWeight];
+                            let compressed_row_for_range_check = prev_row[ST0.base_table_index()]
+                                * challenges[U32LhsWeight]
+                                + current_row[ST1.base_table_index()] * challenges[U32RhsWeight]
+                                + Instruction::Split.opcode_b() * challenges[U32CiWeight];
+                            *u32_table_running_sum_log_derivative += (challenges[U32Indeterminate]
+                                - compressed_row_for_lt_check)
+                                .inverse();
+                            *u32_table_running_sum_log_derivative += (challenges[U32Indeterminate]
+                                - compressed_row_for_range_check)
+                                .inverse();
+                        }
+                    }
+                    *previous_row = Some(current_row);
+                    Some(*u32_table_running_sum_log_derivative)
+                },
+            )
+            .collect_vec();
+        Array2::from_shape_vec((base_table.nrows(), 1), extension_column).unwrap()
     }
 
     fn extension_column_for_clock_jump_difference_lookup_argument(
