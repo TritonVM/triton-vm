@@ -16,6 +16,7 @@ use crate::instruction::AnInstruction::*;
 use crate::instruction::Instruction;
 use crate::instruction::InstructionBit;
 use crate::instruction::ALL_INSTRUCTIONS;
+use crate::ndarray_helper::horizontal_multi_slice_mut;
 use crate::op_stack::NumberOfWords;
 use crate::op_stack::OpStackElement;
 use crate::op_stack::NUM_OP_STACK_REGISTERS;
@@ -361,26 +362,63 @@ impl ProcessorTable {
             previous_row = Some(current_row);
         }
 
-        let all_column_generators_and_slices = [(
+        let all_column_indices = [
+            InputTableEvalArg.ext_table_index(),
+            OutputTableEvalArg.ext_table_index(),
+            InstructionLookupClientLogDerivative.ext_table_index(),
+            OpStackTablePermArg.ext_table_index(),
+            RamTablePermArg.ext_table_index(),
+            JumpStackTablePermArg.ext_table_index(),
+            HashInputEvalArg.ext_table_index(),
+            HashDigestEvalArg.ext_table_index(),
+            SpongeEvalArg.ext_table_index(),
+            U32LookupClientLogDerivative.ext_table_index(),
+            ClockJumpDifferenceLookupServerLogDerivative.ext_table_index(),
+        ];
+        let all_column_slices =
+            horizontal_multi_slice_mut(ext_table.view_mut(), all_column_indices);
+
+        let all_column_generators = [
+            Self::extension_column_identity,
+            Self::extension_column_identity,
+            Self::extension_column_identity,
+            Self::extension_column_identity,
+            Self::extension_column_identity,
+            Self::extension_column_identity,
+            Self::extension_column_identity,
+            Self::extension_column_identity,
+            Self::extension_column_identity,
+            Self::extension_column_identity,
             Self::extension_column_for_clock_jump_difference_lookup_argument,
-            ext_table.slice_mut(s![
-                ..,
-                ClockJumpDifferenceLookupServerLogDerivative.ext_table_index()
-            ]),
-        )];
-        all_column_generators_and_slices
+        ];
+        all_column_generators
             .into_par_iter()
+            .zip_eq(all_column_slices.into_par_iter())
             .for_each(|(generator, slice)| {
-                generator(base_table, challenges).move_into(slice);
+                let column = generator(base_table, challenges);
+                if !column.iter().all(|e| e.is_zero()) {
+                    column.move_into(slice);
+                }
             });
 
         profiler!(stop "processor table");
     }
 
+    fn extension_column_identity(
+        base_table: ArrayView2<BFieldElement>,
+        _challenges: &Challenges,
+    ) -> Array2<XFieldElement> {
+        Array2::from_shape_vec(
+            (base_table.nrows(), 1),
+            vec![XFieldElement::zero(); base_table.nrows()],
+        )
+        .unwrap()
+    }
+
     fn extension_column_for_clock_jump_difference_lookup_argument(
         base_table: ArrayView2<BFieldElement>,
         challenges: &Challenges,
-    ) -> Array1<XFieldElement> {
+    ) -> Array2<XFieldElement> {
         let extension_column = (0..base_table.nrows())
             .scan(
                 LookupArg::default_initial(),
@@ -398,7 +436,7 @@ impl ProcessorTable {
                 },
             )
             .collect_vec();
-        Array1::from(extension_column)
+        Array2::from_shape_vec((base_table.nrows(), 1), extension_column).unwrap()
     }
 
     fn factor_for_op_stack_table_running_product(
