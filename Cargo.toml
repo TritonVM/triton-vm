@@ -116,5 +116,5 @@ default-features = false
 features = ["precommit-hook", "run-cargo-clippy", "run-cargo-fmt"]
 
 [patch.crates-io]
-# ea398c0 is master on twenty-first as of 2024-05-22
-twenty-first = { git = 'https://github.com/Neptune-Crypto/twenty-first.git', rev = 'ea398c0' }
+# 000c0fd is master on twenty-first as of 2024-05-24
+twenty-first = { git = 'https://github.com/Neptune-Crypto/twenty-first.git', rev = '000c0fd' }
