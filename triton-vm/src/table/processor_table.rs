@@ -110,66 +110,6 @@ impl ProcessorTable {
         assert_eq!(BASE_WIDTH, base_table.ncols());
         assert_eq!(EXT_WIDTH, ext_table.ncols());
         assert_eq!(base_table.nrows(), ext_table.nrows());
-        let mut input_table_running_evaluation = EvalArg::default_initial();
-        let mut output_table_running_evaluation = EvalArg::default_initial();
-        let mut instruction_lookup_log_derivative = LookupArg::default_initial();
-        let mut op_stack_table_running_product = PermArg::default_initial();
-
-        let mut previous_row: Option<ArrayView1<BFieldElement>> = None;
-        for row_idx in 0..base_table.nrows() {
-            let current_row = base_table.row(row_idx);
-
-            // Standard Input & Output
-            if let Some(prev_row) = previous_row {
-                let previous_instruction = Self::instruction_from_row(prev_row);
-                if let Some(Instruction::ReadIo(st)) = previous_instruction {
-                    for i in (0..st.num_words()).rev() {
-                        let input_symbol_column = Self::op_stack_column_by_index(i);
-                        let input_symbol = current_row[input_symbol_column.base_table_index()];
-                        input_table_running_evaluation = input_table_running_evaluation
-                            * challenges[StandardInputIndeterminate]
-                            + input_symbol;
-                    }
-                }
-                if let Some(Instruction::WriteIo(st)) = previous_instruction {
-                    for i in 0..st.num_words() {
-                        let output_symbol_column = Self::op_stack_column_by_index(i);
-                        let output_symbol = prev_row[output_symbol_column.base_table_index()];
-                        output_table_running_evaluation = output_table_running_evaluation
-                            * challenges[StandardOutputIndeterminate]
-                            + output_symbol;
-                    }
-                }
-            }
-
-            // Program table
-            if current_row[IsPadding.base_table_index()].is_zero() {
-                let ip = current_row[IP.base_table_index()];
-                let ci = current_row[CI.base_table_index()];
-                let nia = current_row[NIA.base_table_index()];
-                let compressed_row_for_instruction_lookup = ip * challenges[ProgramAddressWeight]
-                    + ci * challenges[ProgramInstructionWeight]
-                    + nia * challenges[ProgramNextInstructionWeight];
-                instruction_lookup_log_derivative += (challenges[InstructionLookupIndeterminate]
-                    - compressed_row_for_instruction_lookup)
-                    .inverse();
-            }
-
-            // OpStack Table
-            op_stack_table_running_product *= Self::factor_for_op_stack_table_running_product(
-                previous_row,
-                current_row,
-                challenges,
-            );
-
-            let mut extension_row = ext_table.row_mut(row_idx);
-            extension_row[InputTableEvalArg.ext_table_index()] = input_table_running_evaluation;
-            extension_row[OutputTableEvalArg.ext_table_index()] = output_table_running_evaluation;
-            extension_row[InstructionLookupClientLogDerivative.ext_table_index()] =
-                instruction_lookup_log_derivative;
-            extension_row[OpStackTablePermArg.ext_table_index()] = op_stack_table_running_product;
-            previous_row = Some(current_row);
-        }
 
         let all_column_indices = [
             InputTableEvalArg.ext_table_index(),
