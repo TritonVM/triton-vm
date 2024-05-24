@@ -117,7 +117,6 @@ impl ProcessorTable {
         let mut ram_table_running_product = PermArg::default_initial();
         let mut jump_stack_running_product = PermArg::default_initial();
         let mut hash_input_running_evaluation = EvalArg::default_initial();
-        let mut hash_digest_running_evaluation = EvalArg::default_initial();
 
         let mut previous_row: Option<ArrayView1<BFieldElement>> = None;
         for row_idx in 0..base_table.nrows() {
@@ -211,25 +210,6 @@ impl ProcessorTable {
                     + compressed_row;
             }
 
-            // Hash Table – `hash`'s output from Hash Coprocessor to Processor
-            if let Some(prev_row) = previous_row {
-                let prev_ci = prev_row[CI.base_table_index()];
-                if prev_ci == Instruction::Hash.opcode_b()
-                    || prev_ci == Instruction::MerkleStep.opcode_b()
-                {
-                    let hash_digest_weights = &challenges[HashStateWeight0..HashStateWeight5];
-                    let compressed_row: XFieldElement = [ST0, ST1, ST2, ST3, ST4]
-                        .map(|st| current_row[st.base_table_index()])
-                        .into_iter()
-                        .zip_eq(hash_digest_weights)
-                        .map(|(st, &weight)| weight * st)
-                        .sum();
-                    hash_digest_running_evaluation = hash_digest_running_evaluation
-                        * challenges[HashDigestIndeterminate]
-                        + compressed_row;
-                }
-            }
-
             let mut extension_row = ext_table.row_mut(row_idx);
             extension_row[InputTableEvalArg.ext_table_index()] = input_table_running_evaluation;
             extension_row[OutputTableEvalArg.ext_table_index()] = output_table_running_evaluation;
@@ -239,7 +219,6 @@ impl ProcessorTable {
             extension_row[RamTablePermArg.ext_table_index()] = ram_table_running_product;
             extension_row[JumpStackTablePermArg.ext_table_index()] = jump_stack_running_product;
             extension_row[HashInputEvalArg.ext_table_index()] = hash_input_running_evaluation;
-            extension_row[HashDigestEvalArg.ext_table_index()] = hash_digest_running_evaluation;
             previous_row = Some(current_row);
         }
 
@@ -403,13 +382,43 @@ impl ProcessorTable {
 
     fn extension_column_hash_digest_eval_argument(
         base_table: ArrayView2<BFieldElement>,
-        _challenges: &Challenges,
+        challenges: &Challenges,
     ) -> Array2<XFieldElement> {
-        Array2::from_shape_vec(
-            (base_table.nrows(), 1),
-            vec![XFieldElement::zero(); base_table.nrows()],
-        )
-        .unwrap()
+        let extension_column = (0..base_table.nrows())
+            .scan(
+                (
+                    Option::<ArrayBase<ViewRepr<&BFieldElement>, Dim<[usize; 1]>>>::None,
+                    EvalArg::default_initial(),
+                ),
+                |(previous_row, hash_digest_running_evaluation), row_index: usize| {
+                    let current_row = base_table.row(row_index);
+
+                    // Hash Table – `hash`'s output from Hash Coprocessor to Processor
+                    if let Some(prev_row) = *previous_row {
+                        let prev_ci = prev_row[CI.base_table_index()];
+                        if prev_ci == Instruction::Hash.opcode_b()
+                            || prev_ci == Instruction::MerkleStep.opcode_b()
+                        {
+                            let hash_digest_weights =
+                                &challenges[HashStateWeight0..HashStateWeight5];
+                            let compressed_row: XFieldElement = [ST0, ST1, ST2, ST3, ST4]
+                                .map(|st| current_row[st.base_table_index()])
+                                .into_iter()
+                                .zip_eq(hash_digest_weights)
+                                .map(|(st, &weight)| weight * st)
+                                .sum();
+                            *hash_digest_running_evaluation = *hash_digest_running_evaluation
+                                * challenges[HashDigestIndeterminate]
+                                + compressed_row;
+                        }
+                    }
+
+                    *previous_row = Some(current_row);
+                    Some(*hash_digest_running_evaluation)
+                },
+            )
+            .collect_vec();
+        Array2::from_shape_vec((base_table.nrows(), 1), extension_column).unwrap()
     }
 
     fn extension_column_sponge_eval_argument(
@@ -427,8 +436,8 @@ impl ProcessorTable {
                 ),
                 |(previous_row, sponge_running_evaluation), row_index: usize| {
                     // Hash Table – Sponge
+                    let current_row = base_table.row(row_index);
                     if let Some(prev_row) = *previous_row {
-                        let current_row = base_table.row(row_index);
                         let prev_ci = prev_row[CI.base_table_index()];
                         if prev_ci == Instruction::SpongeInit.opcode_b() {
                             *sponge_running_evaluation = *sponge_running_evaluation
@@ -471,8 +480,8 @@ impl ProcessorTable {
                                 + challenges[HashCIWeight] * Instruction::SpongeSqueeze.opcode_b()
                                 + compressed_row;
                         }
-                        *previous_row = Some(current_row);
                     }
+                    *previous_row = Some(current_row);
                     Some(*sponge_running_evaluation)
                 },
             )
