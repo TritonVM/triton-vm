@@ -306,13 +306,29 @@ impl ProcessorTable {
 
     fn extension_column_op_stack_table_perm_argument(
         base_table: ArrayView2<BFieldElement>,
-        _challenges: &Challenges,
+        challenges: &Challenges,
     ) -> Array2<XFieldElement> {
-        Array2::from_shape_vec(
-            (base_table.nrows(), 1),
-            vec![XFieldElement::zero(); base_table.nrows()],
-        )
-        .unwrap()
+        let extension_column = (0..base_table.nrows())
+            .scan(
+                (
+                    Option::<ArrayBase<ViewRepr<&BFieldElement>, Dim<[usize; 1]>>>::None,
+                    EvalArg::default_initial(),
+                ),
+                |(previous_row, op_stack_table_running_product), row_index: usize| {
+                    let current_row = base_table.row(row_index);
+                    *op_stack_table_running_product *=
+                        Self::factor_for_op_stack_table_running_product(
+                            *previous_row,
+                            current_row,
+                            challenges,
+                        );
+                    *previous_row = Some(current_row);
+
+                    Some(*op_stack_table_running_product)
+                },
+            )
+            .collect_vec();
+        Array2::from_shape_vec((base_table.nrows(), 1), extension_column).unwrap()
     }
 
     fn extension_column_ram_table_perm_argument(
