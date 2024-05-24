@@ -82,6 +82,30 @@ mod test {
         );
     }
 
+    #[test]
+    fn repeated_index_gives_empty_slice() {
+        let m = 2;
+        let n = 6;
+        let mut array = Array2::<usize>::zeros((m, n));
+
+        let [mut a, mut b, mut c] = horizontal_multi_slice_mut(array.view_mut(), [0, 1, 1]);
+
+        a.mapv_inplace(|_| 1);
+        b.mapv_inplace(|_| 2);
+        c.mapv_inplace(|_| 3);
+
+        assert_eq!(0, b.ncols());
+
+        assert_eq!(
+            Array2::from_shape_vec(
+                (m, n),
+                [vec![1, 3, 3, 3, 3, 3], vec![1, 3, 3, 3, 3, 3]].concat()
+            )
+            .unwrap(),
+            array
+        );
+    }
+
     fn strategy_of_widths() -> BoxedStrategy<[usize; 10]> {
         vec(0usize..10, 10)
             .prop_map(|v| v.try_into().unwrap())
