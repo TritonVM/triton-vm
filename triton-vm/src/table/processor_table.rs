@@ -114,7 +114,6 @@ impl ProcessorTable {
         let mut output_table_running_evaluation = EvalArg::default_initial();
         let mut instruction_lookup_log_derivative = LookupArg::default_initial();
         let mut op_stack_table_running_product = PermArg::default_initial();
-        let mut ram_table_running_product = PermArg::default_initial();
 
         let mut previous_row: Option<ArrayView1<BFieldElement>> = None;
         for row_idx in 0..base_table.nrows() {
@@ -163,20 +162,12 @@ impl ProcessorTable {
                 challenges,
             );
 
-            // RAM Table
-            if let Some(factor) =
-                Self::factor_for_ram_table_running_product(previous_row, current_row, challenges)
-            {
-                ram_table_running_product *= factor;
-            };
-
             let mut extension_row = ext_table.row_mut(row_idx);
             extension_row[InputTableEvalArg.ext_table_index()] = input_table_running_evaluation;
             extension_row[OutputTableEvalArg.ext_table_index()] = output_table_running_evaluation;
             extension_row[InstructionLookupClientLogDerivative.ext_table_index()] =
                 instruction_lookup_log_derivative;
             extension_row[OpStackTablePermArg.ext_table_index()] = op_stack_table_running_product;
-            extension_row[RamTablePermArg.ext_table_index()] = ram_table_running_product;
             previous_row = Some(current_row);
         }
 
@@ -326,13 +317,32 @@ impl ProcessorTable {
 
     fn extension_column_ram_table_perm_argument(
         base_table: ArrayView2<BFieldElement>,
-        _challenges: &Challenges,
+        challenges: &Challenges,
     ) -> Array2<XFieldElement> {
-        Array2::from_shape_vec(
-            (base_table.nrows(), 1),
-            vec![XFieldElement::zero(); base_table.nrows()],
-        )
-        .unwrap()
+        let extension_column = (0..base_table.nrows())
+            .scan(
+                (
+                    Option::<ArrayBase<ViewRepr<&BFieldElement>, Dim<[usize; 1]>>>::None,
+                    PermArg::default_initial(),
+                ),
+                |(previous_row, ram_table_running_product), row_index: usize| {
+                    let current_row = base_table.row(row_index);
+
+                    // RAM Table
+                    if let Some(factor) = Self::factor_for_ram_table_running_product(
+                        *previous_row,
+                        current_row,
+                        challenges,
+                    ) {
+                        *ram_table_running_product *= factor;
+                    };
+
+                    *previous_row = Some(current_row);
+                    Some(*ram_table_running_product)
+                },
+            )
+            .collect_vec();
+        Array2::from_shape_vec((base_table.nrows(), 1), extension_column).unwrap()
     }
 
     fn extension_column_jump_stack_table_perm_argument(
