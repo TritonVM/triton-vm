@@ -144,10 +144,7 @@ impl ProcessorTable {
             .into_par_iter()
             .zip_eq(all_column_slices.into_par_iter())
             .for_each(|(generator, slice)| {
-                let column = generator(base_table, challenges);
-                if !column.iter().all(|e| e.is_zero()) {
-                    column.move_into(slice);
-                }
+                generator(base_table, challenges).move_into(slice);
             });
 
         profiler!(stop "processor table");
