@@ -156,12 +156,14 @@ impl ProcessorTable {
     ) -> Array2<XFieldElement> {
         let extension_column = (0..base_table.nrows())
             .scan(
-                EvalArg::default_initial(),
-                |input_table_running_evaluation: &mut XFieldElement, row_index: usize| {
+                (
+                    Option::<ArrayBase<ViewRepr<&BFieldElement>, Dim<[usize; 1]>>>::None,
+                    EvalArg::default_initial(),
+                ),
+                |(previous_row, input_table_running_evaluation), row_index: usize| {
                     let current_row = base_table.row(row_index);
-                    if !row_index.is_zero() {
-                        let previous_row = base_table.row(row_index - 1);
-                        let previous_instruction = Self::instruction_from_row(previous_row);
+                    if let Some(previous_row) = previous_row {
+                        let previous_instruction = Self::instruction_from_row(*previous_row);
                         if let Some(Instruction::ReadIo(st)) = previous_instruction {
                             for i in (0..st.num_words()).rev() {
                                 let input_symbol_column = Self::op_stack_column_by_index(i);
@@ -174,10 +176,13 @@ impl ProcessorTable {
                         }
                     }
 
+                    *previous_row = Some(current_row);
+
                     Some(*input_table_running_evaluation)
                 },
             )
             .collect_vec();
+
         Array2::from_shape_vec((base_table.nrows(), 1), extension_column).unwrap()
     }
 
@@ -187,11 +192,13 @@ impl ProcessorTable {
     ) -> Array2<XFieldElement> {
         let extension_column = (0..base_table.nrows())
             .scan(
-                EvalArg::default_initial(),
-                |output_table_running_evaluation: &mut XFieldElement, row_index: usize| {
-                    if !row_index.is_zero() {
-                        let previous_row = base_table.row(row_index - 1);
-                        let previous_instruction = Self::instruction_from_row(previous_row);
+                (
+                    Option::<ArrayBase<ViewRepr<&BFieldElement>, Dim<[usize; 1]>>>::None,
+                    EvalArg::default_initial(),
+                ),
+                |(previous_row, output_table_running_evaluation), row_index: usize| {
+                    if let Some(previous_row) = previous_row {
+                        let previous_instruction = Self::instruction_from_row(*previous_row);
                         if let Some(Instruction::WriteIo(st)) = previous_instruction {
                             for i in 0..st.num_words() {
                                 let output_symbol_column = Self::op_stack_column_by_index(i);
@@ -203,6 +210,8 @@ impl ProcessorTable {
                             }
                         }
                     }
+
+                    *previous_row = Some(base_table.row(row_index));
 
                     Some(*output_table_running_evaluation)
                 },
@@ -259,6 +268,7 @@ impl ProcessorTable {
                             current_row,
                             challenges,
                         );
+
                     *previous_row = Some(current_row);
 
                     Some(*op_stack_table_running_product)
@@ -291,6 +301,7 @@ impl ProcessorTable {
                     };
 
                     *previous_row = Some(current_row);
+
                     Some(*ram_table_running_product)
                 },
             )
