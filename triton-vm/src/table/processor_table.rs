@@ -301,13 +301,32 @@ impl ProcessorTable {
 
     fn extension_column_instruction_lookup_argument(
         base_table: ArrayView2<BFieldElement>,
-        _challenges: &Challenges,
+        challenges: &Challenges,
     ) -> Array2<XFieldElement> {
-        Array2::from_shape_vec(
-            (base_table.nrows(), 1),
-            vec![XFieldElement::zero(); base_table.nrows()],
-        )
-        .unwrap()
+        let extension_column = (0..base_table.nrows())
+            .scan(
+                LookupArg::default_initial(),
+                |instruction_lookup_log_derivative: &mut XFieldElement, row_index: usize| {
+                    let current_row = base_table.row(row_index);
+                    if current_row[IsPadding.base_table_index()].is_zero() {
+                        let ip = current_row[IP.base_table_index()];
+                        let ci = current_row[CI.base_table_index()];
+                        let nia = current_row[NIA.base_table_index()];
+                        let compressed_row_for_instruction_lookup = ip
+                            * challenges[ProgramAddressWeight]
+                            + ci * challenges[ProgramInstructionWeight]
+                            + nia * challenges[ProgramNextInstructionWeight];
+                        *instruction_lookup_log_derivative += (challenges
+                            [InstructionLookupIndeterminate]
+                            - compressed_row_for_instruction_lookup)
+                            .inverse();
+                    }
+
+                    Some(*instruction_lookup_log_derivative)
+                },
+            )
+            .collect_vec();
+        Array2::from_shape_vec((base_table.nrows(), 1), extension_column).unwrap()
     }
 
     fn extension_column_op_stack_table_perm_argument(
