@@ -379,16 +379,16 @@ impl ProcessorTable {
             horizontal_multi_slice_mut(ext_table.view_mut(), all_column_indices);
 
         let all_column_generators = [
-            Self::extension_column_identity,
-            Self::extension_column_identity,
-            Self::extension_column_identity,
-            Self::extension_column_identity,
-            Self::extension_column_identity,
-            Self::extension_column_identity,
-            Self::extension_column_identity,
-            Self::extension_column_identity,
-            Self::extension_column_identity,
-            Self::extension_column_identity,
+            Self::extension_column_input_table_eval_argument,
+            Self::extension_column_output_table_eval_argument,
+            Self::extension_column_instruction_lookup_argument,
+            Self::extension_column_op_stack_table_perm_argument,
+            Self::extension_column_ram_table_perm_argument,
+            Self::extension_column_jump_stack_table_perm_argument,
+            Self::extension_column_hash_input_eval_argument,
+            Self::extension_column_hash_digest_eval_argument,
+            Self::extension_column_sponge_eval_argument,
+            Self::extension_column_for_u32_lookup_argument,
             Self::extension_column_for_clock_jump_difference_lookup_argument,
         ];
         all_column_generators
@@ -404,7 +404,106 @@ impl ProcessorTable {
         profiler!(stop "processor table");
     }
 
-    fn extension_column_identity(
+    fn extension_column_input_table_eval_argument(
+        base_table: ArrayView2<BFieldElement>,
+        _challenges: &Challenges,
+    ) -> Array2<XFieldElement> {
+        Array2::from_shape_vec(
+            (base_table.nrows(), 1),
+            vec![XFieldElement::zero(); base_table.nrows()],
+        )
+        .unwrap()
+    }
+
+    fn extension_column_output_table_eval_argument(
+        base_table: ArrayView2<BFieldElement>,
+        _challenges: &Challenges,
+    ) -> Array2<XFieldElement> {
+        Array2::from_shape_vec(
+            (base_table.nrows(), 1),
+            vec![XFieldElement::zero(); base_table.nrows()],
+        )
+        .unwrap()
+    }
+
+    fn extension_column_instruction_lookup_argument(
+        base_table: ArrayView2<BFieldElement>,
+        _challenges: &Challenges,
+    ) -> Array2<XFieldElement> {
+        Array2::from_shape_vec(
+            (base_table.nrows(), 1),
+            vec![XFieldElement::zero(); base_table.nrows()],
+        )
+        .unwrap()
+    }
+
+    fn extension_column_op_stack_table_perm_argument(
+        base_table: ArrayView2<BFieldElement>,
+        _challenges: &Challenges,
+    ) -> Array2<XFieldElement> {
+        Array2::from_shape_vec(
+            (base_table.nrows(), 1),
+            vec![XFieldElement::zero(); base_table.nrows()],
+        )
+        .unwrap()
+    }
+
+    fn extension_column_ram_table_perm_argument(
+        base_table: ArrayView2<BFieldElement>,
+        _challenges: &Challenges,
+    ) -> Array2<XFieldElement> {
+        Array2::from_shape_vec(
+            (base_table.nrows(), 1),
+            vec![XFieldElement::zero(); base_table.nrows()],
+        )
+        .unwrap()
+    }
+
+    fn extension_column_jump_stack_table_perm_argument(
+        base_table: ArrayView2<BFieldElement>,
+        _challenges: &Challenges,
+    ) -> Array2<XFieldElement> {
+        Array2::from_shape_vec(
+            (base_table.nrows(), 1),
+            vec![XFieldElement::zero(); base_table.nrows()],
+        )
+        .unwrap()
+    }
+
+    fn extension_column_hash_input_eval_argument(
+        base_table: ArrayView2<BFieldElement>,
+        _challenges: &Challenges,
+    ) -> Array2<XFieldElement> {
+        Array2::from_shape_vec(
+            (base_table.nrows(), 1),
+            vec![XFieldElement::zero(); base_table.nrows()],
+        )
+        .unwrap()
+    }
+
+    fn extension_column_hash_digest_eval_argument(
+        base_table: ArrayView2<BFieldElement>,
+        _challenges: &Challenges,
+    ) -> Array2<XFieldElement> {
+        Array2::from_shape_vec(
+            (base_table.nrows(), 1),
+            vec![XFieldElement::zero(); base_table.nrows()],
+        )
+        .unwrap()
+    }
+
+    fn extension_column_sponge_eval_argument(
+        base_table: ArrayView2<BFieldElement>,
+        _challenges: &Challenges,
+    ) -> Array2<XFieldElement> {
+        Array2::from_shape_vec(
+            (base_table.nrows(), 1),
+            vec![XFieldElement::zero(); base_table.nrows()],
+        )
+        .unwrap()
+    }
+
+    fn extension_column_for_u32_lookup_argument(
         base_table: ArrayView2<BFieldElement>,
         _challenges: &Challenges,
     ) -> Array2<XFieldElement> {
