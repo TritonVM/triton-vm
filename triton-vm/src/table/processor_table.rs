@@ -115,7 +115,6 @@ impl ProcessorTable {
         let mut instruction_lookup_log_derivative = LookupArg::default_initial();
         let mut op_stack_table_running_product = PermArg::default_initial();
         let mut ram_table_running_product = PermArg::default_initial();
-        let mut jump_stack_running_product = PermArg::default_initial();
 
         let mut previous_row: Option<ArrayView1<BFieldElement>> = None;
         for row_idx in 0..base_table.nrows() {
@@ -171,20 +170,6 @@ impl ProcessorTable {
                 ram_table_running_product *= factor;
             };
 
-            // JumpStack Table
-            let clk = current_row[CLK.base_table_index()];
-            let ci = current_row[CI.base_table_index()];
-            let jsp = current_row[JSP.base_table_index()];
-            let jso = current_row[JSO.base_table_index()];
-            let jsd = current_row[JSD.base_table_index()];
-            let compressed_row_for_jump_stack_table = clk * challenges[JumpStackClkWeight]
-                + ci * challenges[JumpStackCiWeight]
-                + jsp * challenges[JumpStackJspWeight]
-                + jso * challenges[JumpStackJsoWeight]
-                + jsd * challenges[JumpStackJsdWeight];
-            jump_stack_running_product *=
-                challenges[JumpStackIndeterminate] - compressed_row_for_jump_stack_table;
-
             let mut extension_row = ext_table.row_mut(row_idx);
             extension_row[InputTableEvalArg.ext_table_index()] = input_table_running_evaluation;
             extension_row[OutputTableEvalArg.ext_table_index()] = output_table_running_evaluation;
@@ -192,7 +177,6 @@ impl ProcessorTable {
                 instruction_lookup_log_derivative;
             extension_row[OpStackTablePermArg.ext_table_index()] = op_stack_table_running_product;
             extension_row[RamTablePermArg.ext_table_index()] = ram_table_running_product;
-            extension_row[JumpStackTablePermArg.ext_table_index()] = jump_stack_running_product;
             previous_row = Some(current_row);
         }
 
@@ -353,13 +337,33 @@ impl ProcessorTable {
 
     fn extension_column_jump_stack_table_perm_argument(
         base_table: ArrayView2<BFieldElement>,
-        _challenges: &Challenges,
+        challenges: &Challenges,
     ) -> Array2<XFieldElement> {
-        Array2::from_shape_vec(
-            (base_table.nrows(), 1),
-            vec![XFieldElement::zero(); base_table.nrows()],
-        )
-        .unwrap()
+        let extension_column = (0..base_table.nrows())
+            .scan(
+                PermArg::default_initial(),
+                |jump_stack_running_product, row_index: usize| {
+                    let current_row = base_table.row(row_index);
+
+                    // JumpStack Table
+                    let clk = current_row[CLK.base_table_index()];
+                    let ci = current_row[CI.base_table_index()];
+                    let jsp = current_row[JSP.base_table_index()];
+                    let jso = current_row[JSO.base_table_index()];
+                    let jsd = current_row[JSD.base_table_index()];
+                    let compressed_row_for_jump_stack_table = clk * challenges[JumpStackClkWeight]
+                        + ci * challenges[JumpStackCiWeight]
+                        + jsp * challenges[JumpStackJspWeight]
+                        + jso * challenges[JumpStackJsoWeight]
+                        + jsd * challenges[JumpStackJsdWeight];
+                    *jump_stack_running_product *=
+                        challenges[JumpStackIndeterminate] - compressed_row_for_jump_stack_table;
+
+                    Some(*jump_stack_running_product)
+                },
+            )
+            .collect_vec();
+        Array2::from_shape_vec((base_table.nrows(), 1), extension_column).unwrap()
     }
 
     fn extension_column_hash_input_eval_argument(
