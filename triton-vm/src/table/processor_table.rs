@@ -318,13 +318,32 @@ impl ProcessorTable {
 
     fn extension_column_output_table_eval_argument(
         base_table: ArrayView2<BFieldElement>,
-        _challenges: &Challenges,
+        challenges: &Challenges,
     ) -> Array2<XFieldElement> {
-        Array2::from_shape_vec(
-            (base_table.nrows(), 1),
-            vec![XFieldElement::zero(); base_table.nrows()],
-        )
-        .unwrap()
+        let extension_column = (0..base_table.nrows())
+            .scan(
+                EvalArg::default_initial(),
+                |output_table_running_evaluation: &mut XFieldElement, row_index: usize| {
+                    if !row_index.is_zero() {
+                        let previous_row = base_table.row(row_index - 1);
+                        let previous_instruction = Self::instruction_from_row(previous_row);
+                        if let Some(Instruction::WriteIo(st)) = previous_instruction {
+                            for i in 0..st.num_words() {
+                                let output_symbol_column = Self::op_stack_column_by_index(i);
+                                let output_symbol =
+                                    previous_row[output_symbol_column.base_table_index()];
+                                *output_table_running_evaluation = *output_table_running_evaluation
+                                    * challenges[StandardOutputIndeterminate]
+                                    + output_symbol;
+                            }
+                        }
+                    }
+
+                    Some(*output_table_running_evaluation)
+                },
+            )
+            .collect_vec();
+        Array2::from_shape_vec((base_table.nrows(), 1), extension_column).unwrap()
     }
 
     fn extension_column_instruction_lookup_argument(
