@@ -5,6 +5,8 @@ use itertools::Itertools;
 use ndarray::parallel::prelude::*;
 use ndarray::s;
 use ndarray::Array1;
+use ndarray::Array2;
+use ndarray::ArrayBase;
 use ndarray::ArrayView1;
 use ndarray::ArrayView2;
 use ndarray::ArrayViewMut2;
@@ -13,6 +15,7 @@ use strum::EnumCount;
 use twenty_first::prelude::*;
 
 use crate::aet::AlgebraicExecutionTrace;
+use crate::ndarray_helper::horizontal_multi_slice_mut;
 use crate::op_stack::OpStackElement;
 use crate::op_stack::UnderflowIO;
 use crate::profiler::profiler;
@@ -26,6 +29,8 @@ use crate::table::master_table::TableId;
 use crate::table::table_column::OpStackBaseTableColumn::*;
 use crate::table::table_column::OpStackExtTableColumn::*;
 use crate::table::table_column::*;
+use ndarray::Dim;
+use ndarray::ViewRepr;
 
 pub const BASE_WIDTH: usize = OpStackBaseTableColumn::COUNT;
 pub const EXT_WIDTH: usize = OpStackExtTableColumn::COUNT;
@@ -347,56 +352,108 @@ impl OpStackTable {
         assert_eq!(EXT_WIDTH, ext_table.ncols());
         assert_eq!(base_table.nrows(), ext_table.nrows());
 
+        let extension_column_indices = [
+            RunningProductPermArg.ext_table_index(),
+            ClockJumpDifferenceLookupClientLogDerivative.ext_table_index(),
+        ];
+        let extension_column_slices =
+            horizontal_multi_slice_mut(ext_table.view_mut(), extension_column_indices);
+        let extension_functions = [
+            Self::extension_column_running_product_permutation_argument,
+            Self::extension_column_clock_jump_diff_lookup_log_derivative,
+        ];
+
+        extension_functions
+            .into_par_iter()
+            .zip_eq(extension_column_slices.into_par_iter())
+            .for_each(|(generator, slice)| {
+                generator(base_table, challenges).move_into(slice);
+            });
+
+        profiler!(stop "op stack table");
+    }
+
+    fn extension_column_running_product_permutation_argument(
+        base_table: ArrayView2<BFieldElement>,
+        challenges: &Challenges,
+    ) -> Array2<XFieldElement> {
         let clk_weight = challenges[OpStackClkWeight];
         let ib1_weight = challenges[OpStackIb1Weight];
         let stack_pointer_weight = challenges[OpStackPointerWeight];
         let first_underflow_element_weight = challenges[OpStackFirstUnderflowElementWeight];
         let perm_arg_indeterminate = challenges[OpStackIndeterminate];
+
+        let extension_column = (0..base_table.nrows())
+            .scan(
+                PermArg::default_initial(),
+                |running_product, row_index: usize| {
+                    let current_row = base_table.row(row_index);
+                    let ib1 = current_row[IB1ShrinkStack.base_table_index()];
+                    let is_no_padding_row = ib1 != PADDING_VALUE;
+
+                    if is_no_padding_row {
+                        let clk = current_row[CLK.base_table_index()];
+                        let stack_pointer = current_row[StackPointer.base_table_index()];
+                        let first_underflow_element =
+                            current_row[FirstUnderflowElement.base_table_index()];
+                        let compressed_row = clk * clk_weight
+                            + ib1 * ib1_weight
+                            + stack_pointer * stack_pointer_weight
+                            + first_underflow_element * first_underflow_element_weight;
+                        *running_product *= perm_arg_indeterminate - compressed_row;
+                    }
+
+                    Some(*running_product)
+                },
+            )
+            .collect_vec();
+
+        Array2::from_shape_vec((base_table.nrows(), 1), extension_column).unwrap()
+    }
+
+    fn extension_column_clock_jump_diff_lookup_log_derivative(
+        base_table: ArrayView2<BFieldElement>,
+        challenges: &Challenges,
+    ) -> Array2<XFieldElement> {
         let clock_jump_difference_lookup_indeterminate =
             challenges[ClockJumpDifferenceLookupIndeterminate];
+        let extension_column = (0..base_table.nrows())
+            .scan(
+                (
+                    Option::<ArrayBase<ViewRepr<&BFieldElement>, Dim<[usize; 1]>>>::None,
+                    LookupArg::default_initial(),
+                ),
+                |(previous_row, clock_jump_diff_lookup_log_derivative), row_index: usize| {
+                    let current_row = base_table.row(row_index);
+                    let ib1 = current_row[IB1ShrinkStack.base_table_index()];
+                    let is_no_padding_row = ib1 != PADDING_VALUE;
 
-        let mut running_product = PermArg::default_initial();
-        let mut clock_jump_diff_lookup_log_derivative = LookupArg::default_initial();
-        let mut previous_row: Option<ArrayView1<BFieldElement>> = None;
-
-        for row_idx in 0..base_table.nrows() {
-            let current_row = base_table.row(row_idx);
-            let clk = current_row[CLK.base_table_index()];
-            let ib1 = current_row[IB1ShrinkStack.base_table_index()];
-            let stack_pointer = current_row[StackPointer.base_table_index()];
-            let first_underflow_element = current_row[FirstUnderflowElement.base_table_index()];
-
-            let is_no_padding_row = ib1 != PADDING_VALUE;
-
-            if is_no_padding_row {
-                let compressed_row = clk * clk_weight
-                    + ib1 * ib1_weight
-                    + stack_pointer * stack_pointer_weight
-                    + first_underflow_element * first_underflow_element_weight;
-                running_product *= perm_arg_indeterminate - compressed_row;
-
-                // clock jump difference
-                if let Some(prev_row) = previous_row {
-                    let previous_stack_pointer = prev_row[StackPointer.base_table_index()];
-                    let current_stack_pointer = current_row[StackPointer.base_table_index()];
-                    if previous_stack_pointer == current_stack_pointer {
-                        let previous_clock = prev_row[CLK.base_table_index()];
-                        let current_clock = current_row[CLK.base_table_index()];
-                        let clock_jump_difference = current_clock - previous_clock;
-                        let log_derivative_summand =
-                            clock_jump_difference_lookup_indeterminate - clock_jump_difference;
-                        clock_jump_diff_lookup_log_derivative += log_derivative_summand.inverse();
+                    if is_no_padding_row {
+                        if let Some(prev_row) = previous_row {
+                            let previous_stack_pointer = prev_row[StackPointer.base_table_index()];
+                            let current_stack_pointer =
+                                current_row[StackPointer.base_table_index()];
+                            if previous_stack_pointer == current_stack_pointer {
+                                let previous_clock = prev_row[CLK.base_table_index()];
+                                let current_clock = current_row[CLK.base_table_index()];
+                                let clock_jump_difference = current_clock - previous_clock;
+                                let log_derivative_summand =
+                                    clock_jump_difference_lookup_indeterminate
+                                        - clock_jump_difference;
+                                *clock_jump_diff_lookup_log_derivative +=
+                                    log_derivative_summand.inverse();
+                            }
+                        }
                     }
-                }
-            }
 
-            let mut extension_row = ext_table.row_mut(row_idx);
-            extension_row[RunningProductPermArg.ext_table_index()] = running_product;
-            extension_row[ClockJumpDifferenceLookupClientLogDerivative.ext_table_index()] =
-                clock_jump_diff_lookup_log_derivative;
-            previous_row = Some(current_row);
-        }
-        profiler!(stop "op stack table");
+                    *previous_row = Some(current_row);
+
+                    Some(*clock_jump_diff_lookup_log_derivative)
+                },
+            )
+            .collect_vec();
+
+        Array2::from_shape_vec((base_table.nrows(), 1), extension_column).unwrap()
     }
 }
 
