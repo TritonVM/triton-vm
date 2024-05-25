@@ -220,78 +220,8 @@ impl RamTable {
         assert_eq!(EXT_WIDTH, ext_table.ncols());
         assert_eq!(base_table.nrows(), ext_table.nrows());
 
-        let mut running_product_for_perm_arg = PermArg::default_initial();
-        let mut clock_jump_diff_lookup_log_derivative = LookupArg::default_initial();
-
-        // initialize columns establishing Bézout relation
-        let bezout_indeterminate = challenges[RamTableBezoutRelationIndeterminate];
-        let clock_jump_difference_lookup_indeterminate =
-            challenges[ClockJumpDifferenceLookupIndeterminate];
-        let mut running_product_ram_pointer =
-            bezout_indeterminate - base_table.row(0)[RamPointer.base_table_index()];
-        let mut formal_derivative = xfe!(1);
-        let mut bezout_coefficient_0 =
-            base_table.row(0)[BezoutCoefficientPolynomialCoefficient0.base_table_index()].lift();
-        let mut bezout_coefficient_1 =
-            base_table.row(0)[BezoutCoefficientPolynomialCoefficient1.base_table_index()].lift();
-
-        let mut previous_row: Option<ArrayView1<BFieldElement>> = None;
-        for row_idx in 0..base_table.nrows() {
-            let current_row = base_table.row(row_idx);
-            let clk = current_row[CLK.base_table_index()];
-            let instruction_type = current_row[InstructionType.base_table_index()];
-            let current_ram_pointer = current_row[RamPointer.base_table_index()];
-            let ram_value = current_row[RamValue.base_table_index()];
-
-            let is_no_padding_row = instruction_type != PADDING_INDICATOR;
-
-            if is_no_padding_row {
-                if let Some(previous_row) = previous_row {
-                    let previous_ram_pointer = previous_row[RamPointer.base_table_index()];
-                    if previous_ram_pointer == current_ram_pointer {
-                        let previous_clock = previous_row[CLK.base_table_index()];
-                        let current_clock = current_row[CLK.base_table_index()];
-                        let clock_jump_difference = current_clock - previous_clock;
-                        let log_derivative_summand =
-                            clock_jump_difference_lookup_indeterminate - clock_jump_difference;
-                        clock_jump_diff_lookup_log_derivative += log_derivative_summand.inverse();
-                    } else {
-                        // accumulate coefficient for Bézout relation, proving new RAMP is unique
-                        let bcpc0 =
-                            current_row[BezoutCoefficientPolynomialCoefficient0.base_table_index()];
-                        let bcpc1 =
-                            current_row[BezoutCoefficientPolynomialCoefficient1.base_table_index()];
-
-                        formal_derivative = (bezout_indeterminate - current_ram_pointer)
-                            * formal_derivative
-                            + running_product_ram_pointer;
-                        running_product_ram_pointer *= bezout_indeterminate - current_ram_pointer;
-                        bezout_coefficient_0 = bezout_coefficient_0 * bezout_indeterminate + bcpc0;
-                        bezout_coefficient_1 = bezout_coefficient_1 * bezout_indeterminate + bcpc1;
-                    }
-                }
-
-                // permutation argument to Processor Table
-                let compressed_row = clk * challenges[RamClkWeight]
-                    + instruction_type * challenges[RamInstructionTypeWeight]
-                    + current_ram_pointer * challenges[RamPointerWeight]
-                    + ram_value * challenges[RamValueWeight];
-                running_product_for_perm_arg *= challenges[RamIndeterminate] - compressed_row;
-            }
-
-            let mut extension_row = ext_table.row_mut(row_idx);
-            // extension_row[RunningProductPermArg.ext_table_index()] = running_product_for_perm_arg;
-            extension_row[RunningProductOfRAMP.ext_table_index()] = running_product_ram_pointer;
-            extension_row[FormalDerivative.ext_table_index()] = formal_derivative;
-            // extension_row[BezoutCoefficient0.ext_table_index()] = bezout_coefficient_0;
-            // extension_row[BezoutCoefficient1.ext_table_index()] = bezout_coefficient_1;
-            // extension_row[ClockJumpDifferenceLookupClientLogDerivative.ext_table_index()] =
-            // clock_jump_diff_lookup_log_derivative;
-            previous_row = Some(current_row);
-        }
-
         let extension_column_indices = [
-            // RunningProductOfRAMP.ext_table_index(),
+            RunningProductOfRAMP.ext_table_index(),
             BezoutCoefficient0.ext_table_index(),
             BezoutCoefficient1.ext_table_index(),
             RunningProductPermArg.ext_table_index(),
@@ -300,7 +230,7 @@ impl RamTable {
         let extension_column_slices =
             horizontal_multi_slice_mut(ext_table.view_mut(), extension_column_indices);
         let extension_functions = [
-            // Self::extension_column_running_product_of_ramp_and_formal_derivative,
+            Self::extension_column_running_product_of_ramp_and_formal_derivative,
             Self::extension_column_bezout_coefficient_0,
             Self::extension_column_bezout_coefficient_1,
             Self::extension_column_running_product_perm_arg,
@@ -316,7 +246,6 @@ impl RamTable {
         profiler!(stop "ram table");
     }
 
-    // TODO: Not working! FIXME
     fn extension_column_running_product_of_ramp_and_formal_derivative(
         base_table: ArrayView2<BFieldElement>,
         challenges: &Challenges,
@@ -352,7 +281,9 @@ impl RamTable {
             previous_row = Some(current_row);
         }
 
-        Array2::from_shape_vec((row_count, 2), extension_columns).unwrap()
+        Array2::from_shape_vec((2, row_count), extension_columns)
+            .unwrap()
+            .reversed_axes()
     }
 
     fn extension_column_bezout_coefficient_0(
