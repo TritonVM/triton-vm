@@ -61,6 +61,26 @@ mod test {
     use super::*;
 
     #[test]
+    fn can_start_at_non_zero_index() {
+        let dimensions = (2, 6);
+        let mut array = Array2::<usize>::zeros(dimensions);
+
+        let [mut a, mut b] = horizontal_multi_slice_mut(array.view_mut(), [2, 3]);
+
+        a.mapv_inplace(|_| 2);
+        b.mapv_inplace(|_| 3);
+
+        assert_eq!(
+            Array2::from_shape_vec(
+                dimensions,
+                [vec![0, 0, 2, 3, 3, 3], vec![0, 0, 2, 3, 3, 3]].concat()
+            )
+            .unwrap(),
+            array
+        );
+    }
+
+    #[test]
     fn horizontal_multi_slice_works_as_expected() {
         let m = 2;
         let n = 6;
