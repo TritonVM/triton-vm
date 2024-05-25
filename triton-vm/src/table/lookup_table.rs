@@ -1,13 +1,13 @@
-use ndarray::s;
-use ndarray::Array1;
-use ndarray::ArrayView2;
-use ndarray::ArrayViewMut2;
+use itertools::Itertools;
+use ndarray::*;
 use num_traits::One;
+use rayon::iter::*;
 use strum::EnumCount;
 use twenty_first::prelude::tip5;
 use twenty_first::prelude::*;
 
 use crate::aet::AlgebraicExecutionTrace;
+use crate::ndarray_helper::horizontal_multi_slice_mut;
 use crate::profiler::profiler;
 use crate::table::challenges::ChallengeId;
 use crate::table::challenges::ChallengeId::*;
@@ -86,38 +86,86 @@ impl LookupTable {
         assert_eq!(EXT_WIDTH, ext_table.ncols());
         assert_eq!(base_table.nrows(), ext_table.nrows());
 
+        let extension_column_indices = [
+            CascadeTableServerLogDerivative.ext_table_index(),
+            PublicEvaluationArgument.ext_table_index(),
+        ];
+        let extension_column_slices =
+            horizontal_multi_slice_mut(ext_table.view_mut(), extension_column_indices);
+        let extension_functions = [
+            Self::extension_column_cascade_running_sum_log_derivative,
+            Self::extension_column_public_running_evaluation,
+        ];
+
+        extension_functions
+            .into_par_iter()
+            .zip_eq(extension_column_slices.into_par_iter())
+            .for_each(|(generator, slice)| {
+                generator(base_table, challenges).move_into(slice);
+            });
+
+        profiler!(stop "lookup table");
+    }
+
+    fn extension_column_cascade_running_sum_log_derivative(
+        base_table: ArrayView2<BFieldElement>,
+        challenges: &Challenges,
+    ) -> Array2<XFieldElement> {
         let look_in_weight = challenges[LookupTableInputWeight];
         let look_out_weight = challenges[LookupTableOutputWeight];
         let cascade_indeterminate = challenges[CascadeLookupIndeterminate];
+
+        let extension_column = (0..base_table.nrows())
+            .scan(
+                LookupArg::default_initial(),
+                |cascade_table_running_sum_log_derivative, row_index: usize| {
+                    let base_row = base_table.row(row_index);
+                    let is_padding = base_row[IsPadding.base_table_index()].is_one();
+
+                    if !is_padding {
+                        let lookup_input = base_row[LookIn.base_table_index()];
+                        let lookup_output = base_row[LookOut.base_table_index()];
+                        let lookup_multiplicity = base_row[LookupMultiplicity.base_table_index()];
+                        let compressed_row =
+                            lookup_input * look_in_weight + lookup_output * look_out_weight;
+                        *cascade_table_running_sum_log_derivative +=
+                            (cascade_indeterminate - compressed_row).inverse()
+                                * lookup_multiplicity;
+                    }
+
+                    Some(*cascade_table_running_sum_log_derivative)
+                },
+            )
+            .collect_vec();
+
+        Array2::from_shape_vec((base_table.nrows(), 1), extension_column).unwrap()
+    }
+
+    fn extension_column_public_running_evaluation(
+        base_table: ArrayView2<BFieldElement>,
+        challenges: &Challenges,
+    ) -> Array2<XFieldElement> {
         let public_indeterminate = challenges[LookupTablePublicIndeterminate];
 
-        let mut cascade_table_running_sum_log_derivative = LookupArg::default_initial();
-        let mut public_running_evaluation = EvalArg::default_initial();
+        let extension_column = (0..base_table.nrows())
+            .scan(
+                EvalArg::default_initial(),
+                |public_running_evaluation, row_index: usize| {
+                    let base_row = base_table.row(row_index);
+                    let is_padding = base_row[IsPadding.base_table_index()].is_one();
 
-        for row_idx in 0..base_table.nrows() {
-            let base_row = base_table.row(row_idx);
+                    if !is_padding {
+                        let lookup_output = base_row[LookOut.base_table_index()];
+                        *public_running_evaluation =
+                            *public_running_evaluation * public_indeterminate + lookup_output;
+                    }
 
-            let lookup_input = base_row[LookIn.base_table_index()];
-            let lookup_output = base_row[LookOut.base_table_index()];
-            let lookup_multiplicity = base_row[LookupMultiplicity.base_table_index()];
-            let is_padding = base_row[IsPadding.base_table_index()].is_one();
+                    Some(*public_running_evaluation)
+                },
+            )
+            .collect_vec();
 
-            if !is_padding {
-                let compressed_row =
-                    lookup_input * look_in_weight + lookup_output * look_out_weight;
-                cascade_table_running_sum_log_derivative +=
-                    (cascade_indeterminate - compressed_row).inverse() * lookup_multiplicity;
-
-                public_running_evaluation =
-                    public_running_evaluation * public_indeterminate + lookup_output;
-            }
-
-            let mut ext_row = ext_table.row_mut(row_idx);
-            ext_row[CascadeTableServerLogDerivative.ext_table_index()] =
-                cascade_table_running_sum_log_derivative;
-            ext_row[PublicEvaluationArgument.ext_table_index()] = public_running_evaluation;
-        }
-        profiler!(stop "lookup table");
+        Array2::from_shape_vec((base_table.nrows(), 1), extension_column).unwrap()
     }
 }
 
