@@ -7,6 +7,7 @@ use itertools::izip;
 use itertools::Itertools;
 use ndarray::prelude::*;
 use ndarray::Zip;
+use num_traits::Zero;
 use rayon::prelude::*;
 use serde::Deserialize;
 use serde::Serialize;
@@ -332,25 +333,25 @@ impl Stark {
 
         profiler!(start "combined DEEP polynomial");
         profiler!(start "sum" ("CC"));
-        let deep_codeword_components = [
+        let deep_codeword = [
             base_and_ext_curr_row_deep_codeword,
             base_and_ext_next_row_deep_codeword,
             quotient_segments_curr_row_deep_codeword,
-        ];
-        let deep_codeword_components = Array2::from_shape_vec(
-            [short_domain.length, NUM_DEEP_CODEWORD_COMPONENTS].f(),
-            deep_codeword_components.concat(),
-        )
-        .unwrap();
-        let weighted_deep_codeword_components = &deep_codeword_components * &weights.deep;
-        let deep_codeword = weighted_deep_codeword_components.sum_axis(Axis(1));
+        ]
+        .into_par_iter()
+        .zip_eq(weights.deep.to_vec())
+        .map(|(codeword, weight)| codeword.into_par_iter().map(|c| c * weight).collect())
+        .reduce(
+            || vec![XFieldElement::zero(); short_domain.length],
+            |left, right| left.into_iter().zip(right).map(|(l, r)| l + r).collect(),
+        );
+
         profiler!(stop "sum");
         let fri_combination_codeword = if fri_domain_is_short_domain {
-            deep_codeword.to_vec()
+            deep_codeword
         } else {
             profiler!(start "LDE" ("LDE"));
-            let deep_codeword =
-                quotient_domain.low_degree_extension(&deep_codeword.to_vec(), fri.domain);
+            let deep_codeword = quotient_domain.low_degree_extension(&deep_codeword, fri.domain);
             profiler!(stop "LDE");
             deep_codeword
         };
