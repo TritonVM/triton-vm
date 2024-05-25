@@ -520,12 +520,13 @@ impl Stark {
         quotient_segment_polynomials: ArrayView1<Polynomial<XFieldElement>>,
         fri_domain: ArithmeticDomain,
     ) -> Array2<XFieldElement> {
-        let fri_domain_codewords = quotient_segment_polynomials
-            .iter()
-            .map(|segment| fri_domain.evaluate(segment));
+        let fri_domain_codewords: Vec<_> = quotient_segment_polynomials
+            .into_par_iter()
+            .flat_map(|segment| fri_domain.evaluate(segment))
+            .collect();
         Array2::from_shape_vec(
             [fri_domain.length, NUM_QUOTIENT_SEGMENTS].f(),
-            fri_domain_codewords.concat(),
+            fri_domain_codewords,
         )
         .unwrap()
     }
