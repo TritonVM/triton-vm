@@ -1,6 +1,6 @@
-//! Triton Virtual Machine is a Zero-Knowledge Proof System (ZKPS) for proving correct execution
-//! of programs written in Triton assembly. The proof system is a zk-STARK, which is a
-//! state-of-the-art ZKPS.
+//! Triton Virtual Machine is a Zero-Knowledge Proof System (ZKPS) for proving
+//! correct execution of programs written in Triton assembly. The proof system
+//! is a [zk-STARK](Stark), which is a state-of-the-art ZKPS.
 //!
 //! Generally, all arithmetic performed by Triton VM happens in the prime field with
 //! 2^64 - 2^32 + 1 elements. Instructions for u32 operations are provided.
@@ -8,21 +8,29 @@
 //! For a full overview over all available instructions and their effects, see the
 //! [specification](https://triton-vm.org/spec/instructions.html).
 //!
-//! # Time / Memory Trade-Offs
+//! [Triton VM's STARK](Stark) is parametric, but it is highly recommended to
+//! use the provided [default](Stark::default). Furthermore, certain runtime
+//! characteristics are [configurable](config), and usually don't need changing.
 //!
-//! Parts of the [proof generation](Stark::prove) process can trade time for memory. The
-//! [config] module provides ways to control these trade-offs. Additionally, and with lower
-//! precedence, they can be controlled via the following environment variables:
+//! # Non-Determinism
 //!
-//! - `TVM_LDE_TRACE`: Set to `cache` to cache the low-degree extended trace. Set to `no_cache`
-//!   to not cache it. If unset (or set to anything else), Triton VM will make an automatic decision
-//!   based on free memory.
+//! Triton VM is a non-deterministic machine. That is,
+//! 1. Triton VM's random access memory can be initialized arbitrarily, and
+//! 1. for a select few instructions (namely `divine` and `merkle_step`),
+//!   correct state transition is not fully determined by the current state and
+//!   Triton VM's public input.
+//!
+//! The input for those non-deterministic instructions use dedicated input
+//! streams. Those, together with the initial RAM, are collectively called
+//! [`NonDeterminism`].
 //!
 //! # Examples
 //!
-//! Convenience function [`prove_program()`] as well as the [`prove()`] and [`verify()`] methods
-//! natively operate on [`BFieldElement`]s, _i.e_, elements of the prime field with 2^64 - 2^32 + 1
-//! elements.
+//! Below are a few examples on how to use Triton VM. They show the instruction
+//! set architecture in action and highlight the core methods required to
+//! generate & verify a proof of correct execution. Some of these are
+//! convenience function [`prove_program()`] as well as the [`prove()`] and
+//! [`verify()`] methods.
 //!
 //! ## Factorial
 //!
@@ -36,7 +44,6 @@
 //! the state of the operational stack is shown as a comment after most instructions.
 //!
 //! ```
-//! # use triton_vm::*;
 //! # use triton_vm::prelude::*;
 //! let factorial_program = triton_program!(
 //!     read_io 1           // n
@@ -59,13 +66,13 @@
 //!         swap 1          // n-1 acc·n
 //!         recurse
 //! );
-//! let public_input = PublicInput::from([bfe!(10)]);
+//! let public_input = PublicInput::new(bfe_vec![10]);
 //! let non_determinism = NonDeterminism::default();
 //!
 //! let (stark, claim, proof) =
-//!     prove_program(&factorial_program, public_input, non_determinism).unwrap();
+//!     triton_vm::prove_program(&factorial_program, public_input, non_determinism).unwrap();
 //!
-//! let verdict = verify(stark, &claim, &proof);
+//! let verdict = triton_vm::verify(stark, &claim, &proof);
 //! assert!(verdict);
 //!
 //! assert_eq!(1, claim.output.len());

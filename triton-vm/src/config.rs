@@ -1,3 +1,22 @@
+//! This module contains various configuration options for Triton VM. In
+//! general, the configuration options impact performance only. In particular,
+//! any configuration provides the same completeness and soundness guarantees.
+//!
+//! The default configuration is sane and should provide the best performance
+//! for most compilation targets. If you are generation Triton VM proofs on some
+//! “unusual” system, you might want to try a few different options.
+//!
+//! # Time / Memory Trade-Offs
+//!
+//! Parts of the [proof generation](crate::stark::Stark::prove) process can
+//! trade time for memory. This module provides ways to control these
+//! trade-offs. Additionally, and with lower precedence, they can be controlled
+//! via the following environment variables:
+//!
+//! - `TVM_LDE_TRACE`: Set to `cache` to cache the low-degree extended trace.
+//!   Set to `no_cache` to not cache it. If unset (or set to anything else),
+//!   Triton VM will make an automatic decision based on free memory.
+
 use std::cell::RefCell;
 
 use arbitrary::Arbitrary;
