@@ -829,9 +829,9 @@ impl MasterBaseTable {
             .randomized_trace_table
             .slice_mut(s![..; unit_distance, ..]);
 
-        let base_tables = horizontal_multi_slice_mut(
+        let base_tables: [_; NUM_TABLES_WITHOUT_DEGREE_LOWERING] = horizontal_multi_slice_mut(
             master_table_without_randomizers,
-            partial_sums([
+            &partial_sums(&[
                 ProgramBaseTableColumn::COUNT,
                 ProcessorBaseTableColumn::COUNT,
                 OpStackBaseTableColumn::COUNT,
@@ -841,12 +841,10 @@ impl MasterBaseTable {
                 CascadeBaseTableColumn::COUNT,
                 LookupBaseTableColumn::COUNT,
                 U32BaseTableColumn::COUNT,
-                NUM_RANDOMIZER_POLYNOMIALS,
             ]),
         )
-        .into_iter()
-        .take(NUM_TABLES_WITHOUT_DEGREE_LOWERING)
-        .collect_vec();
+        .try_into()
+        .unwrap();
 
         profiler!(start "pad original tables");
         Self::all_pad_functions()
@@ -948,9 +946,9 @@ impl MasterBaseTable {
         let master_ext_table_without_randomizers = master_ext_table
             .randomized_trace_table
             .slice_mut(s![..; unit_distance, ..NUM_EXT_COLUMNS]);
-        let extension_tables = horizontal_multi_slice_mut(
+        let extension_tables: [_; NUM_TABLES_WITHOUT_DEGREE_LOWERING] = horizontal_multi_slice_mut(
             master_ext_table_without_randomizers,
-            partial_sums([
+            &partial_sums(&[
                 ProgramExtTableColumn::COUNT,
                 ProcessorExtTableColumn::COUNT,
                 OpStackExtTableColumn::COUNT,
@@ -960,14 +958,10 @@ impl MasterBaseTable {
                 CascadeExtTableColumn::COUNT,
                 LookupExtTableColumn::COUNT,
                 U32ExtTableColumn::COUNT,
-                0,
             ]),
         )
-        .into_iter()
-        .rev()
-        .skip(1)
-        .rev()
-        .collect_vec();
+        .try_into()
+        .unwrap();
         profiler!(stop "slice master table");
 
         profiler!(start "all tables");
