@@ -82,7 +82,7 @@ mod test {
         #[strategy(#start+1..=#start+100)] stop: usize,
     ) {
         let columns = (start..=stop).collect_vec();
-        let columns_slice = [columns.to_vec(), vec![*columns.last().unwrap() + 1]].concat();
+        let columns_slice = [columns.clone(), vec![*columns.last().unwrap() + 1]].concat();
         prop_assert_eq!(columns_slice, contiguous_column_slices(&columns));
     }
 
@@ -166,7 +166,7 @@ mod test {
         #[strategy(strategy_of_widths())] widths: [usize; 10],
         #[strategy(0usize..10)] height: usize,
     ) {
-        let width = widths.iter().cloned().sum::<usize>();
+        let width = widths.iter().copied().sum::<usize>();
         let mut array = Array2::zeros((height, width));
         let mutable_slices: [_; 10] =
             horizontal_multi_slice_mut(array.view_mut(), &partial_sums(&widths))
