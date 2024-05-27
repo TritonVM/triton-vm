@@ -12,6 +12,7 @@ use twenty_first::math::traits::FiniteField;
 use twenty_first::prelude::*;
 
 use crate::aet::AlgebraicExecutionTrace;
+use crate::ndarray_helper::contiguous_column_slices;
 use crate::ndarray_helper::horizontal_multi_slice_mut;
 use crate::profiler::profiler;
 use crate::table::challenges::ChallengeId::*;
@@ -227,8 +228,10 @@ impl RamTable {
             RunningProductPermArg.ext_table_index(),
             ClockJumpDifferenceLookupClientLogDerivative.ext_table_index(),
         ];
-        let extension_column_slices =
-            horizontal_multi_slice_mut(ext_table.view_mut(), extension_column_indices);
+        let extension_column_slices = horizontal_multi_slice_mut(
+            ext_table.view_mut(),
+            &contiguous_column_slices(&extension_column_indices),
+        );
         let extension_functions = [
             Self::extension_column_running_product_of_ramp_and_formal_derivative,
             Self::extension_column_bezout_coefficient_0,

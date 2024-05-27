@@ -15,6 +15,7 @@ use strum::EnumCount;
 use twenty_first::prelude::*;
 
 use crate::aet::AlgebraicExecutionTrace;
+use crate::ndarray_helper::contiguous_column_slices;
 use crate::ndarray_helper::horizontal_multi_slice_mut;
 use crate::op_stack::OpStackElement;
 use crate::op_stack::UnderflowIO;
@@ -356,8 +357,10 @@ impl OpStackTable {
             RunningProductPermArg.ext_table_index(),
             ClockJumpDifferenceLookupClientLogDerivative.ext_table_index(),
         ];
-        let extension_column_slices =
-            horizontal_multi_slice_mut(ext_table.view_mut(), extension_column_indices);
+        let extension_column_slices = horizontal_multi_slice_mut(
+            ext_table.view_mut(),
+            &contiguous_column_slices(&extension_column_indices),
+        );
         let extension_functions = [
             Self::extension_column_running_product_permutation_argument,
             Self::extension_column_clock_jump_diff_lookup_log_derivative,

@@ -16,6 +16,7 @@ use crate::instruction::AnInstruction::*;
 use crate::instruction::Instruction;
 use crate::instruction::InstructionBit;
 use crate::instruction::ALL_INSTRUCTIONS;
+use crate::ndarray_helper::contiguous_column_slices;
 use crate::ndarray_helper::horizontal_multi_slice_mut;
 use crate::op_stack::NumberOfWords;
 use crate::op_stack::OpStackElement;
@@ -124,8 +125,10 @@ impl ProcessorTable {
             U32LookupClientLogDerivative.ext_table_index(),
             ClockJumpDifferenceLookupServerLogDerivative.ext_table_index(),
         ];
-        let all_column_slices =
-            horizontal_multi_slice_mut(ext_table.view_mut(), all_column_indices);
+        let all_column_slices = horizontal_multi_slice_mut(
+            ext_table.view_mut(),
+            &contiguous_column_slices(&all_column_indices),
+        );
 
         let all_column_generators = [
             Self::extension_column_input_table_eval_argument,
