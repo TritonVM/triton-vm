@@ -228,23 +228,37 @@ impl ProcessorTable {
         base_table: ArrayView2<BFieldElement>,
         challenges: &Challenges,
     ) -> Array2<XFieldElement> {
+        // 1. collect all to-be-inverted elements
+        let mut invert_mes = vec![];
+        for row_index in 0..base_table.nrows() {
+            let current_row = base_table.row(row_index);
+            if current_row[IsPadding.base_table_index()].is_zero() {
+                let ip = current_row[IP.base_table_index()];
+                let ci = current_row[CI.base_table_index()];
+                let nia = current_row[NIA.base_table_index()];
+                let compressed_row_for_instruction_lookup = ip * challenges[ProgramAddressWeight]
+                    + ci * challenges[ProgramInstructionWeight]
+                    + nia * challenges[ProgramNextInstructionWeight];
+
+                invert_mes.push(
+                    challenges[InstructionLookupIndeterminate]
+                        - compressed_row_for_instruction_lookup,
+                );
+            }
+        }
+
+        // 2. batch invert
+        let inverses = XFieldElement::batch_inversion(invert_mes);
+
+        // 3. populate extension column with inverses
+        let mut inverses_iter = inverses.into_iter();
         let extension_column = (0..base_table.nrows())
             .scan(
                 LookupArg::default_initial(),
                 |instruction_lookup_log_derivative: &mut XFieldElement, row_index: usize| {
                     let current_row = base_table.row(row_index);
                     if current_row[IsPadding.base_table_index()].is_zero() {
-                        let ip = current_row[IP.base_table_index()];
-                        let ci = current_row[CI.base_table_index()];
-                        let nia = current_row[NIA.base_table_index()];
-                        let compressed_row_for_instruction_lookup = ip
-                            * challenges[ProgramAddressWeight]
-                            + ci * challenges[ProgramInstructionWeight]
-                            + nia * challenges[ProgramNextInstructionWeight];
-                        *instruction_lookup_log_derivative += (challenges
-                            [InstructionLookupIndeterminate]
-                            - compressed_row_for_instruction_lookup)
-                            .inverse();
+                        *instruction_lookup_log_derivative += inverses_iter.next().unwrap();
                     }
 
                     Some(*instruction_lookup_log_derivative)
