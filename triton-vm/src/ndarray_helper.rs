@@ -6,20 +6,22 @@ use std::fmt::Debug;
 
 /// Slice a two-dimensional array into many non-overlapping mutable subviews
 /// of the same height as the array, based on the contiguous partition induced
-/// by a set of column indices. The supplied indices indicate the first column
-/// of each new slice; and the last slice ends with the array's last column.
+/// by a set of column indices. Except for the last, the supplied indices
+/// indicate the first column of each new slice. The last index indicates the
+/// end point of the last slice. So the number of slices returned is one less
+/// than the number of indices supplied.
 ///
 /// # Panics
 /// Panics if column indices are not sorted or out of bounds.
-pub fn horizontal_multi_slice_mut<'a, T: 'a + Debug, const N: usize>(
+pub fn horizontal_multi_slice_mut<'a, T: 'a + Debug>(
     array: ArrayViewMut2<'a, T>,
-    column_indices: [Ix; N],
-) -> [ArrayViewMut2<'a, T>; N] {
+    column_indices: &[Ix],
+) -> Vec<ArrayViewMut2<'a, T>> {
     let mut returnable_slices = vec![];
 
     let mut stop_index = array.ncols();
     let mut remainder = array;
-    for start_index in column_indices.into_iter().rev() {
+    for &start_index in column_indices.iter().rev() {
         let (new_remainder, slice) =
             remainder.multi_slice_move((s![.., ..start_index], s![.., start_index..stop_index]));
         returnable_slices.push(slice);
@@ -28,22 +30,36 @@ pub fn horizontal_multi_slice_mut<'a, T: 'a + Debug, const N: usize>(
     }
 
     returnable_slices.reverse();
-    returnable_slices.try_into().unwrap()
+    returnable_slices.pop();
+    returnable_slices
 }
 
-/// Computes the list of partial sums, beginning with zero and excluding the
+/// Computes the list of partial sums, beginning with zero and including the
 /// total.
-pub fn partial_sums<const N: usize>(indices: [usize; N]) -> [usize; N] {
-    indices
-        .into_iter()
-        .scan(0, |acc, index| {
-            let yld = *acc;
-            *acc += index;
-            Some(yld)
-        })
-        .collect_vec()
-        .try_into()
-        .unwrap()
+pub fn partial_sums(indices: &[usize]) -> Vec<usize> {
+    [
+        indices
+            .iter()
+            .scan(0, |acc, index| {
+                let yld = *acc;
+                *acc += index;
+                Some(yld)
+            })
+            .collect_vec(),
+        vec![indices.iter().sum()],
+    ]
+    .concat()
+}
+
+/// Given a list of neighboring columns, represented as their sorted indices,
+/// return a list of indices whose overlapping windows of width 2 denote the
+/// start and end point of every column. In practice, this means "append last+1".
+pub fn contiguous_column_slices(column_indices: &[usize]) -> Vec<usize> {
+    [
+        column_indices.to_vec(),
+        vec![*column_indices.last().unwrap() + 1],
+    ]
+    .concat()
 }
 
 #[cfg(test)]
@@ -60,20 +76,31 @@ mod test {
 
     use super::*;
 
+    #[proptest]
+    fn contiguous_column_slices_appends_last_plus_one(
+        #[strategy(0usize..100)] start: usize,
+        #[strategy(#start+1..=#start+100)] stop: usize,
+    ) {
+        let columns = (start..=stop).collect_vec();
+        let columns_slice = [columns.to_vec(), vec![*columns.last().unwrap() + 1]].concat();
+        prop_assert_eq!(columns_slice, contiguous_column_slices(&columns));
+    }
+
     #[test]
-    fn can_start_at_non_zero_index() {
+    fn can_start_at_non_zero_index_and_stop_before_end() {
         let dimensions = (2, 6);
         let mut array = Array2::<usize>::zeros(dimensions);
 
-        let [mut a, mut b] = horizontal_multi_slice_mut(array.view_mut(), [2, 3]);
+        let [mut a] = horizontal_multi_slice_mut(array.view_mut(), &[2, 3])
+            .try_into()
+            .unwrap();
 
         a.mapv_inplace(|_| 2);
-        b.mapv_inplace(|_| 3);
 
         assert_eq!(
             Array2::from_shape_vec(
                 dimensions,
-                [vec![0, 0, 2, 3, 3, 3], vec![0, 0, 2, 3, 3, 3]].concat()
+                [vec![0, 0, 2, 0, 0, 0], vec![0, 0, 2, 0, 0, 0]].concat()
             )
             .unwrap(),
             array
@@ -86,16 +113,17 @@ mod test {
         let n = 6;
         let mut array = Array2::<usize>::zeros((m, n));
 
-        let [mut a, mut b, mut c] = horizontal_multi_slice_mut(array.view_mut(), [0, 1, 3]);
+        let [mut a, mut b] = horizontal_multi_slice_mut(array.view_mut(), &[0, 1, 3])
+            .try_into()
+            .unwrap();
 
         a.mapv_inplace(|_| 1);
         b.mapv_inplace(|_| 2);
-        c.mapv_inplace(|_| 3);
 
         assert_eq!(
             Array2::from_shape_vec(
                 (m, n),
-                [vec![1, 2, 2, 3, 3, 3], vec![1, 2, 2, 3, 3, 3]].concat()
+                [vec![1, 2, 2, 0, 0, 0], vec![1, 2, 2, 0, 0, 0]].concat()
             )
             .unwrap(),
             array
@@ -108,18 +136,19 @@ mod test {
         let n = 6;
         let mut array = Array2::<usize>::zeros((m, n));
 
-        let [mut a, mut b, mut c] = horizontal_multi_slice_mut(array.view_mut(), [0, 1, 1]);
+        let [mut a, mut b] = horizontal_multi_slice_mut(array.view_mut(), &[0, 1, 1])
+            .try_into()
+            .unwrap();
 
         a.mapv_inplace(|_| 1);
         b.mapv_inplace(|_| 2);
-        c.mapv_inplace(|_| 3);
 
         assert_eq!(0, b.ncols());
 
         assert_eq!(
             Array2::from_shape_vec(
                 (m, n),
-                [vec![1, 3, 3, 3, 3, 3], vec![1, 3, 3, 3, 3, 3]].concat()
+                [vec![1, 0, 0, 0, 0, 0], vec![1, 0, 0, 0, 0, 0]].concat()
             )
             .unwrap(),
             array
@@ -139,7 +168,10 @@ mod test {
     ) {
         let width = widths.iter().cloned().sum::<usize>();
         let mut array = Array2::zeros((height, width));
-        let mutable_slices = horizontal_multi_slice_mut(array.view_mut(), partial_sums(widths));
+        let mutable_slices: [_; 10] =
+            horizontal_multi_slice_mut(array.view_mut(), &partial_sums(&widths))
+                .try_into()
+                .unwrap();
         for (i, mut slice) in mutable_slices.into_iter().enumerate() {
             slice.mapv_inplace(|_| i as u32);
         }
