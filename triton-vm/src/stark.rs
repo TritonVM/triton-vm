@@ -250,9 +250,10 @@ impl Stark {
         profiler!(stop "Fiat-Shamir");
 
         let fri_domain_is_short_domain = fri.domain.length <= quotient_domain.length;
-        let short_domain = match fri_domain_is_short_domain {
-            true => fri.domain,
-            false => quotient_domain,
+        let short_domain = if fri_domain_is_short_domain {
+            fri.domain
+        } else {
+            quotient_domain
         };
 
         profiler!(start "linear combination");
@@ -267,14 +268,13 @@ impl Stark {
         profiler!(stop "ext");
         let base_and_ext_combination_polynomial =
             base_combination_polynomial + ext_combination_polynomial;
-        let base_and_ext_codeword = fri.domain.evaluate(&base_and_ext_combination_polynomial);
+        let base_and_ext_codeword = short_domain.evaluate(&base_and_ext_combination_polynomial);
 
         profiler!(start "quotient" ("CC"));
         let quotient_segments_combination_polynomial =
             Self::random_linear_sum(quotient_segment_polynomials.view(), weights.quot_segments);
-        let quotient_segments_combination_codeword = fri
-            .domain
-            .evaluate(&quotient_segments_combination_polynomial);
+        let quotient_segments_combination_codeword =
+            short_domain.evaluate(&quotient_segments_combination_polynomial);
         profiler!(stop "quotient");
 
         profiler!(stop "linear combination");
@@ -1387,6 +1387,8 @@ pub(crate) mod tests {
 
     use super::*;
 
+    const DEFAULT_LOG2_FRI_EXPANSION_FACTOR_FOR_TESTS: usize = 2;
+
     pub(crate) fn master_base_table_for_low_security_level(
         program_and_input: ProgramAndInput,
     ) -> (Stark, Claim, MasterBaseTable) {
@@ -1399,7 +1401,7 @@ pub(crate) mod tests {
         let (aet, stdout) = program
             .trace_execution(public_input.clone(), non_determinism)
             .unwrap();
-        let stark = low_security_stark();
+        let stark = low_security_stark(DEFAULT_LOG2_FRI_EXPANSION_FACTOR_FOR_TESTS);
         let claim = Claim::about_program(&aet.program)
             .with_input(public_input.individual_tokens)
             .with_output(stdout);
@@ -2569,19 +2571,21 @@ pub(crate) mod tests {
             &program_with_input.program,
             program_with_input.public_input(),
             program_with_input.non_determinism(),
+            DEFAULT_LOG2_FRI_EXPANSION_FACTOR_FOR_TESTS,
         );
 
         assert!(let Ok(()) = stark.verify(&claim, &proof));
     }
 
-    #[test]
-    fn prove_verify_halt() {
+    fn prove_verify_halt_prop(log2_expansion_factor: usize) {
         let code_with_input = test_program_for_halt();
+
         crate::profiler::start("Prove Halt");
         let (stark, claim, proof) = prove_with_low_security_level(
             &code_with_input.program,
             code_with_input.public_input(),
             code_with_input.non_determinism(),
+            log2_expansion_factor,
         );
         let profile = crate::profiler::finish();
 
@@ -2596,13 +2600,30 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn prove_verify_halt_simple() {
+        prove_verify_halt_prop(DEFAULT_LOG2_FRI_EXPANSION_FACTOR_FOR_TESTS);
+    }
+
+    #[test]
+    fn prove_verify_halt_different_fri_expansion_factors() {
+        for log2_fri_expansion_factor in 1..5 {
+            println!("Testing with log2_fri_expansion_factor = {log2_fri_expansion_factor}");
+            prove_verify_halt_prop(log2_fri_expansion_factor);
+        }
+    }
+
+    #[test]
     fn prove_verify_fibonacci_100() {
         let stdin = PublicInput::from(bfe_array![100]);
         let secret_in = NonDeterminism::default();
 
         crate::profiler::start("Prove Fib 100");
-        let (stark, claim, proof) =
-            prove_with_low_security_level(&FIBONACCI_SEQUENCE, stdin, secret_in);
+        let (stark, claim, proof) = prove_with_low_security_level(
+            &FIBONACCI_SEQUENCE,
+            stdin,
+            secret_in,
+            DEFAULT_LOG2_FRI_EXPANSION_FACTOR_FOR_TESTS,
+        );
         let profile = crate::profiler::finish();
 
         println!("between prove and verify");
@@ -2622,8 +2643,12 @@ pub(crate) mod tests {
         for (fib_seq_idx, fib_seq_val) in [(0, 1), (7, 21), (11, 144)] {
             let stdin = PublicInput::from(bfe_array![fib_seq_idx]);
             let secret_in = NonDeterminism::default();
-            let (stark, claim, proof) =
-                prove_with_low_security_level(&FIBONACCI_SEQUENCE, stdin, secret_in);
+            let (stark, claim, proof) = prove_with_low_security_level(
+                &FIBONACCI_SEQUENCE,
+                stdin,
+                secret_in,
+                DEFAULT_LOG2_FRI_EXPANSION_FACTOR_FOR_TESTS,
+            );
             assert!(let Ok(()) = stark.verify(&claim, &proof));
 
             assert!(bfe_vec![fib_seq_val] == claim.output);
@@ -2644,6 +2669,7 @@ pub(crate) mod tests {
             &PROGRAM_WITH_MANY_U32_INSTRUCTIONS,
             [].into(),
             [].into(),
+            DEFAULT_LOG2_FRI_EXPANSION_FACTOR_FOR_TESTS,
         );
         let profile = crate::profiler::finish();
         assert!(let Ok(()) = stark.verify(&claim, &proof));

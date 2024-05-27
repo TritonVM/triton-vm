@@ -97,6 +97,7 @@ pub(crate) fn prove_with_low_security_level(
     program: &Program,
     public_input: PublicInput,
     non_determinism: NonDeterminism,
+    log2_fri_expansion_factor: usize,
 ) -> (Stark, Claim, Proof) {
     let (aet, public_output) = program
         .trace_execution(public_input.clone(), non_determinism)
@@ -106,15 +107,14 @@ pub(crate) fn prove_with_low_security_level(
         .with_input(public_input.individual_tokens)
         .with_output(public_output);
 
-    let stark = low_security_stark();
+    let stark = low_security_stark(log2_fri_expansion_factor);
     let proof = stark.prove(&claim, &aet).unwrap();
 
     (stark, claim, proof)
 }
 
-pub(crate) fn low_security_stark() -> Stark {
+pub(crate) fn low_security_stark(log_expansion_factor: usize) -> Stark {
     let security_level = 32;
-    let log_expansion_factor = 2;
     Stark::new(security_level, log_expansion_factor)
 }
 

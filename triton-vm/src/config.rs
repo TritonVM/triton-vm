@@ -112,9 +112,14 @@ mod tests {
         let stdin = PublicInput::from(bfe_array![100]);
         let secret_in = NonDeterminism::default();
 
+        let log2_fri_expansion_factor = 2;
         crate::profiler::start("Prove Fib 100");
-        let (stark, claim, proof) =
-            prove_with_low_security_level(&FIBONACCI_SEQUENCE, stdin, secret_in);
+        let (stark, claim, proof) = prove_with_low_security_level(
+            &FIBONACCI_SEQUENCE,
+            stdin,
+            secret_in,
+            log2_fri_expansion_factor,
+        );
         assert!(let Ok(()) = stark.verify(&claim, &proof));
 
         let profile = crate::profiler::finish();
