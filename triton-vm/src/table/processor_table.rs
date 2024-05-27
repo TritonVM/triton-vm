@@ -622,18 +622,36 @@ impl ProcessorTable {
         base_table: ArrayView2<BFieldElement>,
         challenges: &Challenges,
     ) -> Array2<XFieldElement> {
+        // 1. collect inverses
+        let mut inverses = vec![];
+        for row_index in 0..base_table.nrows() {
+            let current_row = base_table.row(row_index);
+            let clk = current_row[CLK.base_table_index()];
+
+            let lookup_multiplicity =
+                current_row[ClockJumpDifferenceLookupMultiplicity.base_table_index()];
+            if !lookup_multiplicity.is_zero() {
+                inverses.push(challenges[ClockJumpDifferenceLookupIndeterminate] - clk);
+            }
+        }
+
+        // 2. compute batch inverse
+        inverses = XFieldElement::batch_inversion(inverses);
+
+        // 3. populate extension column with inverses
+        let mut inverses_iter = inverses.into_iter();
         let extension_column = (0..base_table.nrows())
             .scan(
                 LookupArg::default_initial(),
                 |clock_jump_diff_lookup_log_derivative: &mut XFieldElement, row_index: usize| {
                     let current_row = base_table.row(row_index);
-                    let clk = current_row[CLK.base_table_index()];
 
                     let lookup_multiplicity =
                         current_row[ClockJumpDifferenceLookupMultiplicity.base_table_index()];
-                    *clock_jump_diff_lookup_log_derivative +=
-                        (challenges[ClockJumpDifferenceLookupIndeterminate] - clk).inverse()
-                            * lookup_multiplicity;
+                    if !lookup_multiplicity.is_zero() {
+                        *clock_jump_diff_lookup_log_derivative +=
+                            inverses_iter.next().unwrap() * lookup_multiplicity;
+                    }
 
                     Some(*clock_jump_diff_lookup_log_derivative)
                 },
