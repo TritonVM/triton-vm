@@ -1,9 +1,11 @@
 use std::cmp::Ordering;
+use std::collections::HashMap;
 
 use itertools::Itertools;
 use ndarray::parallel::prelude::*;
 use ndarray::*;
 use strum::EnumCount;
+use twenty_first::math::traits::FiniteField;
 use twenty_first::prelude::*;
 
 use crate::aet::AlgebraicExecutionTrace;
@@ -367,8 +369,25 @@ impl JumpStackTable {
         base_table: ArrayView2<BFieldElement>,
         challenges: &Challenges,
     ) -> Array2<XFieldElement> {
+        // 1. precompute common to-be-inverted cjd values
+        const INVERSES_DICTIONARY_INITIAL_POPULATION: usize = 100;
         let clock_jump_difference_lookup_indeterminate =
             challenges[ClockJumpDifferenceLookupIndeterminate];
+        let invert_mes = (0..INVERSES_DICTIONARY_INITIAL_POPULATION)
+            .map(|i| clock_jump_difference_lookup_indeterminate - BFieldElement::new(i as u64))
+            .collect();
+
+        // 2. batch-invert
+        let inverses = XFieldElement::batch_inversion(invert_mes);
+
+        // 3. arrange into hashmap
+        let mut inverses_dictionary: HashMap<BFieldElement, XFieldElement> = inverses
+            .into_iter()
+            .enumerate()
+            .map(|(i, inv)| (BFieldElement::new(i as u64), inv))
+            .collect();
+
+        // 4. populate extension column using memoization
         let extension_column = (0..base_table.nrows())
             .scan(
                 (
@@ -383,10 +402,13 @@ impl JumpStackTable {
                         if prev_row[JSP.base_table_index()] == current_row[JSP.base_table_index()] {
                             let clock_jump_difference = current_row[CLK.base_table_index()]
                                 - prev_row[CLK.base_table_index()];
-                            *clock_jump_diff_lookup_log_derivative +=
-                                (clock_jump_difference_lookup_indeterminate
-                                    - clock_jump_difference)
-                                    .inverse();
+                            *clock_jump_diff_lookup_log_derivative += *inverses_dictionary
+                                .entry(clock_jump_difference)
+                                .or_insert_with(|| {
+                                    (clock_jump_difference_lookup_indeterminate
+                                        - clock_jump_difference)
+                                        .inverse()
+                                });
                         }
                     }
 
