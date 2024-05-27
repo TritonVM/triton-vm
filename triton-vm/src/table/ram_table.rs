@@ -140,7 +140,7 @@ impl RamTable {
         let fd_in_roots = fd.batch_evaluate(unique_roots);
         let b_in_roots = BFieldElement::batch_inversion(fd_in_roots);
         let b = Polynomial::interpolate(unique_roots, &b_in_roots);
-        let one_minus_fd_b = Polynomial::one() - fd.fast_multiply(&b);
+        let one_minus_fd_b = Polynomial::one() - fd.multiply(&b);
         let a = one_minus_fd_b.clean_divide(rp);
 
         let mut coefficients_0 = a.coefficients;
