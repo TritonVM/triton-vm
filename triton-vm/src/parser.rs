@@ -231,7 +231,7 @@ fn an_instruction(s: &str) -> ParseResult<AnInstruction<String>> {
     let call = call_instruction();
     let return_ = instruction("return", Return);
     let recurse = instruction("recurse", Recurse);
-    let recurse_or_return = recurse_or_return_instruction();
+    let recurse_or_return = instruction("recurse_or_return", RecurseOrReturn);
     let assert = instruction("assert", Assert);
 
     let control_flow = alt((nop, skiz, call, return_, halt));
@@ -406,14 +406,6 @@ fn call_instruction<'a>() -> impl Fn(&'a str) -> ParseResult<AnInstruction<Strin
         }
 
         Ok((s, Call(addr)))
-    }
-}
-
-fn recurse_or_return_instruction<'a>() -> impl Fn(&'a str) -> ParseResult<AnInstruction<String>> {
-    move |s: &str| {
-        let (s, _) = token1("recurse_or_return")(s)?;
-        let (s, arg) = stack_register(s)?;
-        Ok((s, RecurseOrReturn(arg)))
     }
 }
 

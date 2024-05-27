@@ -15,9 +15,9 @@
 | [CascadeTable](cascade-table.md)           |          6 |         2 |          12 |
 | [LookupTable](lookup-table.md)             |          4 |         2 |          10 |
 | [U32Table](u32-table.md)                   |         10 |         1 |          13 |
-| DegreeLowering                             |        260 |        36 |         368 |
+| DegreeLowering                             |        223 |        36 |         331 |
 | Randomizers                                |          0 |         1 |           3 |
-| **TOTAL**                                  |    **409** |    **86** |     **667** |
+| **TOTAL**                                  |    **372** |    **86** |     **630** |
 <!-- auto-gen info stop -->
 
 ## Constraints
@@ -50,7 +50,7 @@ After automatically lowering degree to 4:
 | table name                                     | #initial | #consistency | #transition | #terminal |
 |:-----------------------------------------------|---------:|-------------:|------------:|----------:|
 | [ProgramTable](program-table.md)               |        6 |            4 |          10 |         2 |
-| [ProcessorTable](processor-table.md)           |       31 |           10 |         295 |         1 |
+| [ProcessorTable](processor-table.md)           |       31 |           10 |         258 |         1 |
 | [OpStackTable](operational-stack-table.md)     |        3 |            0 |           5 |         0 |
 | [RamTable](random-access-memory-table.md)      |        7 |            0 |          13 |         1 |
 | [JumpStackTable](jump-stack-table.md)          |        6 |            0 |           6 |         0 |
