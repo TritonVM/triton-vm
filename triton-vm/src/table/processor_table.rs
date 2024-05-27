@@ -8,6 +8,7 @@ use ndarray::*;
 use num_traits::One;
 use num_traits::Zero;
 use strum::EnumCount;
+use twenty_first::math::traits::FiniteField;
 use twenty_first::prelude::x_field_element::EXTENSION_DEGREE;
 use twenty_first::prelude::*;
 
@@ -504,80 +505,109 @@ impl ProcessorTable {
         base_table: ArrayView2<BFieldElement>,
         challenges: &Challenges,
     ) -> Array2<XFieldElement> {
+        // 1. collect elements to be inverted
+        let mut inverses = vec![];
+        let mut previous_row: Option<ArrayBase<ViewRepr<&BFieldElement>, Dim<[usize; 1]>>> = None;
+        for row_index in 0..base_table.nrows() {
+            let current_row = base_table.row(row_index);
+            if let Some(prev_row) = previous_row {
+                let previously_current_instruction = prev_row[CI.base_table_index()];
+                if previously_current_instruction == Instruction::Split.opcode_b() {
+                    let compressed_row = current_row[ST0.base_table_index()]
+                        * challenges[U32LhsWeight]
+                        + current_row[ST1.base_table_index()] * challenges[U32RhsWeight]
+                        + prev_row[CI.base_table_index()] * challenges[U32CiWeight];
+                    inverses.push(challenges[U32Indeterminate] - compressed_row);
+                }
+                if previously_current_instruction == Instruction::Lt.opcode_b()
+                    || previously_current_instruction == Instruction::And.opcode_b()
+                    || previously_current_instruction == Instruction::Pow.opcode_b()
+                {
+                    let compressed_row = prev_row[ST0.base_table_index()]
+                        * challenges[U32LhsWeight]
+                        + prev_row[ST1.base_table_index()] * challenges[U32RhsWeight]
+                        + prev_row[CI.base_table_index()] * challenges[U32CiWeight]
+                        + current_row[ST0.base_table_index()] * challenges[U32ResultWeight];
+                    inverses.push(challenges[U32Indeterminate] - compressed_row);
+                }
+                if previously_current_instruction == Instruction::Xor.opcode_b() {
+                    // Triton VM uses the following equality to compute the results of both the
+                    // `and` and `xor` instruction using the u32 coprocessor's `and` capability:
+                    //     a ^ b = a + b - 2 · (a & b)
+                    // <=> a & b = (a + b - a ^ b) / 2
+                    let st0_prev = prev_row[ST0.base_table_index()];
+                    let st1_prev = prev_row[ST1.base_table_index()];
+                    let st0 = current_row[ST0.base_table_index()];
+                    let from_xor_in_processor_to_and_in_u32_coprocessor =
+                        (st0_prev + st1_prev - st0) / bfe!(2);
+                    let compressed_row = st0_prev * challenges[U32LhsWeight]
+                        + st1_prev * challenges[U32RhsWeight]
+                        + Instruction::And.opcode_b() * challenges[U32CiWeight]
+                        + from_xor_in_processor_to_and_in_u32_coprocessor
+                            * challenges[U32ResultWeight];
+                    inverses.push(challenges[U32Indeterminate] - compressed_row);
+                }
+                if previously_current_instruction == Instruction::Log2Floor.opcode_b()
+                    || previously_current_instruction == Instruction::PopCount.opcode_b()
+                {
+                    let compressed_row = prev_row[ST0.base_table_index()]
+                        * challenges[U32LhsWeight]
+                        + prev_row[CI.base_table_index()] * challenges[U32CiWeight]
+                        + current_row[ST0.base_table_index()] * challenges[U32ResultWeight];
+                    inverses.push(challenges[U32Indeterminate] - compressed_row);
+                }
+                if previously_current_instruction == Instruction::DivMod.opcode_b() {
+                    let compressed_row_for_lt_check = current_row[ST0.base_table_index()]
+                        * challenges[U32LhsWeight]
+                        + prev_row[ST1.base_table_index()] * challenges[U32RhsWeight]
+                        + Instruction::Lt.opcode_b() * challenges[U32CiWeight]
+                        + bfe!(1) * challenges[U32ResultWeight];
+                    let compressed_row_for_range_check = prev_row[ST0.base_table_index()]
+                        * challenges[U32LhsWeight]
+                        + current_row[ST1.base_table_index()] * challenges[U32RhsWeight]
+                        + Instruction::Split.opcode_b() * challenges[U32CiWeight];
+                    inverses.push(challenges[U32Indeterminate] - compressed_row_for_lt_check);
+                    inverses.push(challenges[U32Indeterminate] - compressed_row_for_range_check);
+                }
+            }
+            previous_row = Some(current_row);
+        }
+
+        // 2. compute batch-inverse
+        inverses = XFieldElement::batch_inversion(inverses);
+
+        // 3. populate column with inverses
+        let mut inverse_iter = inverses.into_iter();
         let extension_column = (0..base_table.nrows())
             .scan(
                 (
                     Option::<ArrayBase<ViewRepr<&BFieldElement>, Dim<[usize; 1]>>>::None,
                     LookupArg::default_initial(),
                 ),
-                |(previous_row, u32_table_running_sum_log_derivative), row_index: usize| {
+                |(previous_row, u32_table_running_sum_log_derivative), row_index| {
                     let current_row = base_table.row(row_index);
                     if let Some(prev_row) = previous_row {
                         let previously_current_instruction = prev_row[CI.base_table_index()];
                         if previously_current_instruction == Instruction::Split.opcode_b() {
-                            let compressed_row = current_row[ST0.base_table_index()]
-                                * challenges[U32LhsWeight]
-                                + current_row[ST1.base_table_index()] * challenges[U32RhsWeight]
-                                + prev_row[CI.base_table_index()] * challenges[U32CiWeight];
-                            *u32_table_running_sum_log_derivative +=
-                                (challenges[U32Indeterminate] - compressed_row).inverse();
+                            *u32_table_running_sum_log_derivative += inverse_iter.next().unwrap();
                         }
                         if previously_current_instruction == Instruction::Lt.opcode_b()
                             || previously_current_instruction == Instruction::And.opcode_b()
                             || previously_current_instruction == Instruction::Pow.opcode_b()
                         {
-                            let compressed_row = prev_row[ST0.base_table_index()]
-                                * challenges[U32LhsWeight]
-                                + prev_row[ST1.base_table_index()] * challenges[U32RhsWeight]
-                                + prev_row[CI.base_table_index()] * challenges[U32CiWeight]
-                                + current_row[ST0.base_table_index()] * challenges[U32ResultWeight];
-                            *u32_table_running_sum_log_derivative +=
-                                (challenges[U32Indeterminate] - compressed_row).inverse();
+                            *u32_table_running_sum_log_derivative += inverse_iter.next().unwrap();
                         }
                         if previously_current_instruction == Instruction::Xor.opcode_b() {
-                            // Triton VM uses the following equality to compute the results of both the
-                            // `and` and `xor` instruction using the u32 coprocessor's `and` capability:
-                            //     a ^ b = a + b - 2 · (a & b)
-                            // <=> a & b = (a + b - a ^ b) / 2
-                            let st0_prev = prev_row[ST0.base_table_index()];
-                            let st1_prev = prev_row[ST1.base_table_index()];
-                            let st0 = current_row[ST0.base_table_index()];
-                            let from_xor_in_processor_to_and_in_u32_coprocessor =
-                                (st0_prev + st1_prev - st0) / bfe!(2);
-                            let compressed_row = st0_prev * challenges[U32LhsWeight]
-                                + st1_prev * challenges[U32RhsWeight]
-                                + Instruction::And.opcode_b() * challenges[U32CiWeight]
-                                + from_xor_in_processor_to_and_in_u32_coprocessor
-                                    * challenges[U32ResultWeight];
-                            *u32_table_running_sum_log_derivative +=
-                                (challenges[U32Indeterminate] - compressed_row).inverse();
+                            *u32_table_running_sum_log_derivative += inverse_iter.next().unwrap();
                         }
                         if previously_current_instruction == Instruction::Log2Floor.opcode_b()
                             || previously_current_instruction == Instruction::PopCount.opcode_b()
                         {
-                            let compressed_row = prev_row[ST0.base_table_index()]
-                                * challenges[U32LhsWeight]
-                                + prev_row[CI.base_table_index()] * challenges[U32CiWeight]
-                                + current_row[ST0.base_table_index()] * challenges[U32ResultWeight];
-                            *u32_table_running_sum_log_derivative +=
-                                (challenges[U32Indeterminate] - compressed_row).inverse();
+                            *u32_table_running_sum_log_derivative += inverse_iter.next().unwrap();
                         }
                         if previously_current_instruction == Instruction::DivMod.opcode_b() {
-                            let compressed_row_for_lt_check = current_row[ST0.base_table_index()]
-                                * challenges[U32LhsWeight]
-                                + prev_row[ST1.base_table_index()] * challenges[U32RhsWeight]
-                                + Instruction::Lt.opcode_b() * challenges[U32CiWeight]
-                                + bfe!(1) * challenges[U32ResultWeight];
-                            let compressed_row_for_range_check = prev_row[ST0.base_table_index()]
-                                * challenges[U32LhsWeight]
-                                + current_row[ST1.base_table_index()] * challenges[U32RhsWeight]
-                                + Instruction::Split.opcode_b() * challenges[U32CiWeight];
-                            *u32_table_running_sum_log_derivative += (challenges[U32Indeterminate]
-                                - compressed_row_for_lt_check)
-                                .inverse();
-                            *u32_table_running_sum_log_derivative += (challenges[U32Indeterminate]
-                                - compressed_row_for_range_check)
-                                .inverse();
+                            *u32_table_running_sum_log_derivative += inverse_iter.next().unwrap();
+                            *u32_table_running_sum_log_derivative += inverse_iter.next().unwrap();
                         }
                     }
                     *previous_row = Some(current_row);
