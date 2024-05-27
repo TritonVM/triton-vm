@@ -1,4 +1,5 @@
 use std::cmp::Ordering;
+use std::collections::HashMap;
 
 use arbitrary::Arbitrary;
 use itertools::Itertools;
@@ -12,6 +13,7 @@ use ndarray::ArrayView2;
 use ndarray::ArrayViewMut2;
 use ndarray::Axis;
 use strum::EnumCount;
+use twenty_first::math::traits::FiniteField;
 use twenty_first::prelude::*;
 
 use crate::aet::AlgebraicExecutionTrace;
@@ -418,8 +420,25 @@ impl OpStackTable {
         base_table: ArrayView2<BFieldElement>,
         challenges: &Challenges,
     ) -> Array2<XFieldElement> {
+        // 1. precompute common values to be inverted
+        const INVERSES_DICTIONARY_INITIAL_POPULATION: usize = 100;
         let clock_jump_difference_lookup_indeterminate =
             challenges[ClockJumpDifferenceLookupIndeterminate];
+        let invert_mes = (0..INVERSES_DICTIONARY_INITIAL_POPULATION)
+            .map(|i| clock_jump_difference_lookup_indeterminate - BFieldElement::new(i as u64))
+            .collect_vec();
+
+        // 2. invert values using batch-inversion
+        let inverses = XFieldElement::batch_inversion(invert_mes);
+
+        // 3. assemble into dictionary
+        let mut inverses_dictionary: HashMap<BFieldElement, XFieldElement> = inverses
+            .into_iter()
+            .enumerate()
+            .map(|(i, inv)| (BFieldElement::new(i as u64), inv))
+            .collect();
+
+        // 4. populate extension column using memoization
         let extension_column = (0..base_table.nrows())
             .scan(
                 (
@@ -440,11 +459,13 @@ impl OpStackTable {
                                 let previous_clock = prev_row[CLK.base_table_index()];
                                 let current_clock = current_row[CLK.base_table_index()];
                                 let clock_jump_difference = current_clock - previous_clock;
-                                let log_derivative_summand =
-                                    clock_jump_difference_lookup_indeterminate
-                                        - clock_jump_difference;
-                                *clock_jump_diff_lookup_log_derivative +=
-                                    log_derivative_summand.inverse();
+                                *clock_jump_diff_lookup_log_derivative += *inverses_dictionary
+                                    .entry(clock_jump_difference)
+                                    .or_insert_with(|| {
+                                        (clock_jump_difference_lookup_indeterminate
+                                            - clock_jump_difference)
+                                            .inverse()
+                                    });
                             }
                         }
                     }
