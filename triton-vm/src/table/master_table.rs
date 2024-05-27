@@ -945,55 +945,30 @@ impl MasterBaseTable {
         // has to be done in multiple steps, and (2) cannot be put into a method.
         profiler!(start "slice master table");
         let unit_distance = self.randomized_trace_domain().length / self.trace_domain().length;
-        let mut master_ext_table_without_randomizers = master_ext_table
+        let master_ext_table_without_randomizers = master_ext_table
             .randomized_trace_table
             .slice_mut(s![..; unit_distance, ..NUM_EXT_COLUMNS]);
-        let (program_table, mut rest) = master_ext_table_without_randomizers.multi_slice_mut((
-            s![.., ..ProgramExtTableColumn::COUNT],
-            s![.., ProgramExtTableColumn::COUNT..],
-        ));
-        let (processor_table, mut rest) = rest.multi_slice_mut((
-            s![.., ..ProcessorExtTableColumn::COUNT],
-            s![.., ProcessorExtTableColumn::COUNT..],
-        ));
-        let (op_stack_table, mut rest) = rest.multi_slice_mut((
-            s![.., ..OpStackExtTableColumn::COUNT],
-            s![.., OpStackExtTableColumn::COUNT..],
-        ));
-        let (ram_table, mut rest) = rest.multi_slice_mut((
-            s![.., ..RamExtTableColumn::COUNT],
-            s![.., RamExtTableColumn::COUNT..],
-        ));
-        let (jump_stack_table, mut rest) = rest.multi_slice_mut((
-            s![.., ..JumpStackExtTableColumn::COUNT],
-            s![.., JumpStackExtTableColumn::COUNT..],
-        ));
-        let (hash_table, mut rest) = rest.multi_slice_mut((
-            s![.., ..HashExtTableColumn::COUNT],
-            s![.., HashExtTableColumn::COUNT..],
-        ));
-        let (cascade_table, mut rest) = rest.multi_slice_mut((
-            s![.., ..CascadeExtTableColumn::COUNT],
-            s![.., CascadeExtTableColumn::COUNT..],
-        ));
-        let (lookup_table, mut rest) = rest.multi_slice_mut((
-            s![.., ..LookupExtTableColumn::COUNT],
-            s![.., LookupExtTableColumn::COUNT..],
-        ));
-        let u32_table = rest.slice_mut(s![.., ..U32ExtTableColumn::COUNT]);
+        let extension_tables = horizontal_multi_slice_mut(
+            master_ext_table_without_randomizers,
+            partial_sums([
+                ProgramExtTableColumn::COUNT,
+                ProcessorExtTableColumn::COUNT,
+                OpStackExtTableColumn::COUNT,
+                RamExtTableColumn::COUNT,
+                JumpStackExtTableColumn::COUNT,
+                HashExtTableColumn::COUNT,
+                CascadeExtTableColumn::COUNT,
+                LookupExtTableColumn::COUNT,
+                U32ExtTableColumn::COUNT,
+                0,
+            ]),
+        )
+        .into_iter()
+        .rev()
+        .skip(1)
+        .rev()
+        .collect_vec();
         profiler!(stop "slice master table");
-
-        let extension_tables = [
-            program_table,
-            processor_table,
-            op_stack_table,
-            ram_table,
-            jump_stack_table,
-            hash_table,
-            cascade_table,
-            lookup_table,
-            u32_table,
-        ];
 
         profiler!(start "all tables");
         Self::all_extend_functions()
