@@ -72,11 +72,6 @@ pub struct Stark {
 
     /// The number of collinearity checks to perform in FRI.
     pub num_collinearity_checks: usize,
-
-    /// The number of combination codeword checks. These checks link the (DEEP) ALI part and the
-    /// FRI part of the zk-STARK. The number of combination codeword checks directly depends on the
-    /// number of collinearity checks and the FRI folding factor.
-    pub num_combination_codeword_checks: usize,
 }
 
 impl Stark {
@@ -92,20 +87,15 @@ impl Stark {
         let fri_expansion_factor = 1 << log2_of_fri_expansion_factor;
         let num_collinearity_checks = security_level / log2_of_fri_expansion_factor;
 
-        // For now, the FRI folding factor is hardcoded in our zk-STARK.
-        let fri_folding_factor = 2;
-        let num_combination_codeword_checks = num_collinearity_checks * fri_folding_factor;
-
         let num_out_of_domain_rows = 2;
-        let num_trace_randomizers = num_combination_codeword_checks
-            + num_out_of_domain_rows * x_field_element::EXTENSION_DEGREE;
+        let num_trace_randomizers =
+            num_collinearity_checks + num_out_of_domain_rows * x_field_element::EXTENSION_DEGREE;
 
         Stark {
             security_level,
             fri_expansion_factor,
             num_trace_randomizers,
             num_collinearity_checks,
-            num_combination_codeword_checks,
         }
     }
 
@@ -362,7 +352,7 @@ impl Stark {
         let revealed_current_row_indices =
             fri.prove(&fri_combination_codeword, &mut proof_stream)?;
         assert_eq!(
-            self.num_combination_codeword_checks,
+            self.num_collinearity_checks,
             revealed_current_row_indices.len()
         );
         profiler!(stop "FRI");
@@ -960,19 +950,19 @@ impl Stark {
         profiler!(stop "check leafs");
 
         profiler!(start "linear combination");
-        if self.num_combination_codeword_checks != revealed_current_row_indices.len() {
+        if self.num_collinearity_checks != revealed_current_row_indices.len() {
             return Err(VerificationError::IncorrectNumberOfRowIndices);
         };
-        if self.num_combination_codeword_checks != revealed_fri_values.len() {
+        if self.num_collinearity_checks != revealed_fri_values.len() {
             return Err(VerificationError::IncorrectNumberOfFRIValues);
         };
-        if self.num_combination_codeword_checks != revealed_quotient_segments_elements.len() {
+        if self.num_collinearity_checks != revealed_quotient_segments_elements.len() {
             return Err(VerificationError::IncorrectNumberOfQuotientSegmentElements);
         };
-        if self.num_combination_codeword_checks != base_table_rows.len() {
+        if self.num_collinearity_checks != base_table_rows.len() {
             return Err(VerificationError::IncorrectNumberOfBaseTableRows);
         };
-        if self.num_combination_codeword_checks != ext_table_rows.len() {
+        if self.num_collinearity_checks != ext_table_rows.len() {
             return Err(VerificationError::IncorrectNumberOfExtTableRows);
         };
 
