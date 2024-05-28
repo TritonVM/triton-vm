@@ -88,8 +88,9 @@ impl Stark {
         let num_collinearity_checks = security_level / log2_of_fri_expansion_factor;
 
         let num_out_of_domain_rows = 2;
-        let num_trace_randomizers =
-            num_collinearity_checks + num_out_of_domain_rows * x_field_element::EXTENSION_DEGREE;
+        let num_trace_randomizers = num_collinearity_checks
+            + num_out_of_domain_rows * x_field_element::EXTENSION_DEGREE
+            + NUM_QUOTIENT_SEGMENTS * x_field_element::EXTENSION_DEGREE;
 
         Stark {
             security_level,
