@@ -607,7 +607,8 @@ impl<H: AlgebraicHasher> Fri<H> {
         let num_rounds_checking_most_locations = num_rounds_checking_all_locations + 1;
 
         let num_rounds = max_num_rounds.saturating_sub(num_rounds_checking_most_locations);
-        num_rounds.try_into().unwrap()
+
+        usize::try_from(num_rounds).unwrap()
     }
 
     pub fn last_round_max_degree(&self) -> usize {
@@ -1057,8 +1058,8 @@ mod tests {
     #[proptest]
     fn codeword_corresponding_to_high_degree_polynomial_results_in_verification_failure(
         #[strategy(arbitrary_fri())] fri: Fri<Tip5>,
-        #[strategy(Just(#fri.first_round_max_degree() as i64 + 1))] _max_degree: i64,
-        #[strategy(#_max_degree..2 * #_max_degree)] _degree: i64,
+        #[strategy(Just(#fri.first_round_max_degree() as i64 + 1))] _min_fail_deg: i64,
+        #[strategy(#_min_fail_deg..2 * #_min_fail_deg)] _degree: i64,
         #[strategy(arbitrary_polynomial_of_degree(#_degree))] poly: Polynomial<XFieldElement>,
     ) {
         let codeword = fri.domain.evaluate(&poly);
