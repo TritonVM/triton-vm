@@ -76,7 +76,7 @@ pub struct VMState {
     ///
     /// Note that this is the _full_ state, including capacity. The capacity should never be
     /// exposed outside the VM.
-    pub sponge: Option<Tip5>,
+    pub sponge: Tip5,
 
     /// Indicates whether the terminating instruction `halt` has been executed.
     pub halting: bool,
@@ -127,7 +127,7 @@ impl VMState {
             jump_stack: vec![],
             cycle_count: 0,
             instruction_pointer: 0,
-            sponge: None,
+            sponge: Tip5::init(),
             halting: false,
         }
     }
@@ -242,7 +242,7 @@ impl VMState {
             SpongeInit => self.sponge_init(),
             SpongeAbsorb => self.sponge_absorb()?,
             SpongeAbsorbMem => self.sponge_absorb_mem()?,
-            SpongeSqueeze => self.sponge_squeeze()?,
+            SpongeSqueeze => self.sponge_squeeze(),
             AssertVector => self.assert_vector()?,
             Add => self.add()?,
             Mul => self.mul()?,
@@ -485,18 +485,15 @@ impl VMState {
     }
 
     fn sponge_init(&mut self) -> Vec<CoProcessorCall> {
-        self.sponge = Some(Tip5::init());
+        self.sponge = Tip5::init();
         self.instruction_pointer += 1;
         vec![SpongeStateReset]
     }
 
     fn sponge_absorb(&mut self) -> Result<Vec<CoProcessorCall>> {
-        let Some(ref mut sponge) = self.sponge else {
-            return Err(SpongeNotInitialized);
-        };
         let to_absorb = self.op_stack.pop_multiple::<{ tip5::RATE }>()?;
-        sponge.state[..tip5::RATE].copy_from_slice(&to_absorb);
-        let tip5_trace = sponge.trace();
+        self.sponge.state[..tip5::RATE].copy_from_slice(&to_absorb);
+        let tip5_trace = self.sponge.trace();
 
         let co_processor_calls = vec![Tip5Trace(SpongeAbsorb, Box::new(tip5_trace))];
 
@@ -505,16 +502,12 @@ impl VMState {
     }
 
     fn sponge_absorb_mem(&mut self) -> Result<Vec<CoProcessorCall>> {
-        let Some(mut sponge) = self.sponge.take() else {
-            return Err(SpongeNotInitialized);
-        };
-
         self.start_recording_ram_calls();
         let mut mem_pointer = self.op_stack.pop()?;
         for i in 0..tip5::RATE {
             let element = self.ram_read(mem_pointer);
             mem_pointer.increment();
-            sponge.state[i] = element;
+            self.sponge.state[i] = element;
 
             // there are not enough helper variables – overwrite part of the stack :(
             if i < tip5::RATE - NUM_HELPER_VARIABLE_REGISTERS {
@@ -523,9 +516,7 @@ impl VMState {
         }
         self.op_stack.push(mem_pointer);
 
-        let tip5_trace = sponge.trace();
-        self.sponge = Some(sponge);
-
+        let tip5_trace = self.sponge.trace();
         let mut co_processor_calls = self.stop_recording_ram_calls();
         co_processor_calls.push(Tip5Trace(SpongeAbsorb, Box::new(tip5_trace)));
 
@@ -533,19 +524,17 @@ impl VMState {
         Ok(co_processor_calls)
     }
 
-    fn sponge_squeeze(&mut self) -> Result<Vec<CoProcessorCall>> {
-        let Some(ref mut sponge) = self.sponge else {
-            return Err(SpongeNotInitialized);
-        };
+    fn sponge_squeeze(&mut self) -> Vec<CoProcessorCall> {
         for i in (0..tip5::RATE).rev() {
-            self.op_stack.push(sponge.state[i]);
+            let sponge_state_i = self.sponge.state[i];
+            self.op_stack.push(sponge_state_i);
         }
-        let tip5_trace = sponge.trace();
+        let tip5_trace = self.sponge.trace();
 
         let co_processor_calls = vec![Tip5Trace(SpongeSqueeze, Box::new(tip5_trace))];
 
         self.instruction_pointer += 1;
-        Ok(co_processor_calls)
+        co_processor_calls
     }
 
     fn assert_vector(&mut self) -> Result<Vec<CoProcessorCall>> {
@@ -1089,11 +1078,7 @@ impl Display for VMState {
         .join(" | ");
         print_row(f, format!("ib6-0:    [ {ib_registers} ]",))?;
 
-        let Some(ref sponge) = self.sponge else {
-            return writeln!(f, "╰─{:─<total_width$}─╯", "");
-        };
-
-        let sponge_state_register = |i: usize| sponge.state[i].value();
+        let sponge_state_register = |i: usize| self.sponge.state[i].value();
         let sponge_state_slice = |idxs: Range<usize>| {
             idxs.map(sponge_state_register)
                 .map(|ss| format!("{ss:>register_width$}"))
@@ -1426,7 +1411,6 @@ pub(crate) mod tests {
                 vec![triton_asm![read_io 1 eq assert]; tip5::RATE].concat();
 
             let program = triton_program! {
-                sponge_init
                 {&sponge_and_hash_instructions}
                 sponge_squeeze
                 {&output_equality_assertions}
@@ -2409,6 +2393,29 @@ pub(crate) mod tests {
         let_assert!(AssertionFailed = err.source);
     }
 
+    #[test]
+    fn instruction_sponge_absorb_does_not_crash_vm_despite_no_explicit_sponge_init_call() {
+        let ten_pushes = triton_asm![push 0; 10];
+        assert_running_and_proving(triton_program! { {&ten_pushes} sponge_absorb halt });
+    }
+
+    #[test]
+    fn instruction_sponge_absorb_mem_does_not_crash_vm_despite_no_explicit_sponge_init_call() {
+        assert_running_and_proving(triton_program! { sponge_absorb_mem halt });
+    }
+
+    #[test]
+    fn instruction_sponge_squeeze_does_not_crash_vm_despite_no_explicit_sponge_init_call() {
+        assert_running_and_proving(triton_program! { sponge_squeeze halt });
+    }
+
+    fn assert_running_and_proving(program: Program) {
+        let input = PublicInput::default();
+        let non_determinism = NonDeterminism::default();
+        assert!(program.run(input.clone(), non_determinism.clone()).is_ok());
+        assert!(crate::prove_program(&program, input, non_determinism).is_ok());
+    }
+
     fn instruction_does_not_change_vm_state_when_crashing_vm(
         program_and_input: ProgramAndInput,
         num_preparatory_steps: usize,
@@ -2468,28 +2475,9 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn instruction_sponge_absorb_does_not_change_vm_state_when_crashing_vm_sponge_uninit() {
-        let ten_pushes = triton_asm![push 0; 10];
-        let program = triton_program! { {&ten_pushes} sponge_absorb halt };
-        instruction_does_not_change_vm_state_when_crashing_vm(ProgramAndInput::new(program), 10);
-    }
-
-    #[test]
     fn instruction_sponge_absorb_does_not_change_vm_state_when_crashing_vm_stack_too_small() {
         let program = triton_program! { sponge_init sponge_absorb halt };
         instruction_does_not_change_vm_state_when_crashing_vm(ProgramAndInput::new(program), 1);
-    }
-
-    #[test]
-    fn instruction_sponge_absorb_mem_does_not_change_vm_state_when_crashing_vm_sponge_uninit() {
-        let program = triton_program! { sponge_absorb_mem halt };
-        instruction_does_not_change_vm_state_when_crashing_vm(ProgramAndInput::new(program), 0);
-    }
-
-    #[test]
-    fn instruction_sponge_squeeze_does_not_change_vm_state_when_crashing_vm() {
-        let program = triton_program! { sponge_squeeze halt };
-        instruction_does_not_change_vm_state_when_crashing_vm(ProgramAndInput::new(program), 0);
     }
 
     #[test]
