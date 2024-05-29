@@ -286,30 +286,24 @@ In addition to its [instruction groups](instruction-groups.md), this instruction
 1. `jsd' - jsd`
 1. `ip' - jsd`
 
-## Instruction `recurse_or_return` + `i`
+## Instruction `recurse_or_return`
 
 In addition to its [instruction groups](instruction-groups.md), this instruction has the following constraints.
 
 ### Description
 
-Let `lhs` the stack element indicated by `i` in the current row.
-Let `rhs` the successor of the stack element indicated by `i`, _i.e._, the stack element at index `i + 1 mod 16`, also in the current row.
-
-For `j` ∈ [0, …, 15]:
-
-1. If `i` equals `j`, and if `lhs` equals `rhs`, then `hv4` in the current row is 0.
-1. If `i` equals `j`, and if `lhs` equals `rhs`, then the difference of `rhs` and `lhs` is 0.
-1. If `i` equals `j`, and if `lhs` equals `rhs`, then `ip` in the next row equals `jso` in the current row.
-1. If `i` equals `j`, and if `lhs` equals `rhs`, then `jsp` decrements by one.<br><br>
-1. If `i` equals `j` and if `lhs` unequal `rhs`, then `ip` in the next row is equal to `jsd` in the current row.
-1. If `i` equals `j` and if `lhs` unequal `rhs`, then `jsp` remains unchanged.
-1. If `i` equals `j` and if `lhs` unequal `rhs`, then `jso` remains unchanged.
-1. If `i` equals `j` and if `lhs` unequal `rhs`, then `jsd` remains unchanged.
+1. If `ST5` equals `ST6`, then `hv0` in the current row is 0.
+1. If `ST5` equals `ST6`, then the difference of `ST5` and `ST6` is 0.
+1. If `ST5` equals `ST6`, then `ip` in the next row equals `jso` in the current row.
+1. If `ST5` equals `ST6`, then `jsp` decrements by one.<br><br>
+1. If `ST5` is unequal to `ST6`, then `ip` in the next row is equal to `jsd` in the current row.
+1. If `ST5` is unequal to `ST6`, then `jsp` remains unchanged.
+1. If `ST5` is unequal to `ST6`, then `jso` remains unchanged.
+1. If `ST5` is unequal to `ST6`, then `jsd` remains unchanged.
 
 Note that constraints 1 through 4 and constraints 5 through 8 are mutually exclusive.
 Consequently, it is possible to build pairwise sums (e.g., constraint 1 plus constraint 5, constraint 2 plus constraint 6, and so on) without changing completeness or soundness.
-Due to the nature of [indicator polynomials](instruction-groups.md#indicator-polynomials-ind_ihv3-hv2-hv1-hv0), the same is true for the various `j`.
-As a result, instruction `recurse_or_return` defines a total of 4 constraints, each of which consists of 2·16 summands.
+As a result, instruction `recurse_or_return` defines a total of 4 constraints, each of which consists of 2 summands.
 
 ## Instruction `assert`
 

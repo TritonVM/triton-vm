@@ -1680,13 +1680,8 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn check_grand_cross_table_argument_for_test_program_for_recurse_or_return_using_st0() {
-        check_grand_cross_table_argument(test_program_for_recurse_or_return_using_st0())
-    }
-
-    #[test]
-    fn check_grand_cross_table_argument_for_test_program_for_recurse_or_return_using_st15() {
-        check_grand_cross_table_argument(test_program_for_recurse_or_return_using_st15())
+    fn check_grand_cross_table_argument_for_test_program_for_recurse_or_return() {
+        check_grand_cross_table_argument(test_program_for_recurse_or_return())
     }
 
     #[proptest]
@@ -2140,13 +2135,8 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn constraints_evaluate_to_zero_on_program_for_recurse_or_return_using_st0() {
-        triton_constraints_evaluate_to_zero(test_program_for_recurse_or_return_using_st0())
-    }
-
-    #[test]
-    fn constraints_evaluate_to_zero_on_program_for_recurse_or_return_using_st15() {
-        triton_constraints_evaluate_to_zero(test_program_for_recurse_or_return_using_st15())
+    fn constraints_evaluate_to_zero_on_program_for_recurse_or_return() {
+        triton_constraints_evaluate_to_zero(test_program_for_recurse_or_return())
     }
 
     #[proptest(cases = 20)]
