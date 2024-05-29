@@ -1,3 +1,4 @@
+use itertools::izip;
 use itertools::Itertools;
 use ndarray::*;
 use num_traits::Zero;
@@ -435,14 +436,15 @@ impl ExtHashTable {
         let if_ci_is_sponge_init_then_round_number_is_0 =
             if_ci_is_sponge_init_then_.clone() * round_number.clone();
 
-        let if_ci_is_sponge_init_then_rate_is_0 = (10..=15).map(|state_index| {
+        // the rate being zero is guaranteed by the evaluation argument
+        let if_ci_is_sponge_init_then_capacity_is_0 = (RATE..STATE_SIZE).map(|state_index| {
             let state_element = base_row(Self::state_column_by_index(state_index));
             if_ci_is_sponge_init_then_.clone() * state_element
         });
 
         let if_mode_is_hash_and_round_no_is_0_then_ = round_number_is_not_0 * mode_is_not_hash;
-        let if_mode_is_hash_and_round_no_is_0_then_states_10_through_15_are_1 =
-            (10..=15).map(|state_index| {
+        let if_mode_is_hash_and_round_no_is_0_then_states_10_through_15_are_1 = (RATE..STATE_SIZE)
+            .map(|state_index| {
                 let state_element = base_row(Self::state_column_by_index(state_index));
                 if_mode_is_hash_and_round_no_is_0_then_.clone() * (state_element - constant(1))
             });
@@ -538,7 +540,7 @@ impl ExtHashTable {
             if_state_3_hi_limbs_are_all_1_then_state_3_lo_limbs_are_all_0,
         ];
 
-        constraints.extend(if_ci_is_sponge_init_then_rate_is_0);
+        constraints.extend(if_ci_is_sponge_init_then_capacity_is_0);
         constraints.extend(if_mode_is_hash_and_round_no_is_0_then_states_10_through_15_are_1);
 
         for round_constant_column_idx in 0..NUM_ROUND_CONSTANTS {
@@ -711,6 +713,14 @@ impl ExtHashTable {
         ]
         .map(challenge);
 
+        assert_eq!(STATE_SIZE, state_current.len());
+        assert_eq!(STATE_SIZE, state_next.len());
+        assert_eq!(STATE_SIZE, state_weights.len());
+        assert_eq!(
+            STATE_SIZE,
+            hash_function_round_correctly_performs_update.len()
+        );
+
         let round_number_is_not_num_rounds =
             Self::round_number_deselector(circuit_builder, &round_number, NUM_ROUNDS);
 
@@ -735,10 +745,16 @@ impl ExtHashTable {
                 * Self::select_mode(circuit_builder, &mode_next, HashTableMode::ProgramHashing)
                 * (compressed_digest - expected_program_digest);
 
-        let if_mode_is_program_hashing_and_next_mode_is_sponge_then_ci_next_is_sponge_init =
+        // correct transition of the rate is handled by the evaluation argument
+        let randomized_sum_of_capacity_next = state_next[RATE..]
+            .iter()
+            .zip_eq(&state_weights[RATE..])
+            .map(|(state_next, weight)| weight.clone() * state_next.clone())
+            .sum();
+        let if_mode_is_program_hashing_and_next_mode_is_sponge_then_capacity_resets =
             Self::mode_deselector(circuit_builder, &mode, HashTableMode::ProgramHashing)
                 * Self::mode_deselector(circuit_builder, &mode_next, HashTableMode::Sponge)
-                * (ci_next.clone() - opcode_sponge_init.clone());
+                * randomized_sum_of_capacity_next;
 
         let if_round_number_is_not_max_and_ci_is_not_sponge_init_then_ci_doesnt_change =
             (round_number.clone() - constant(NUM_ROUNDS as u64))
@@ -765,36 +781,43 @@ impl ExtHashTable {
             Self::mode_deselector(circuit_builder, &mode, HashTableMode::Pad)
                 * Self::select_mode(circuit_builder, &mode_next, HashTableMode::Pad);
 
-        let difference_of_capacity_registers = state_current[RATE..]
-            .iter()
-            .zip_eq(state_next[RATE..].iter())
-            .map(|(current, next)| next.clone() - current.clone())
-            .collect_vec();
-        let randomized_sum_of_capacity_differences = state_weights[RATE..]
-            .iter()
-            .zip_eq(difference_of_capacity_registers)
-            .map(|(weight, state_difference)| weight.clone() * state_difference)
-            .sum::<ConstraintCircuitMonad<_>>();
+        let randomized_sum_of_capacity_differences = izip!(
+            &state_weights[RATE..],
+            &state_current[RATE..],
+            &state_next[RATE..]
+        )
+        .map(|(weight, current, next)| weight.clone() * (next.clone() - current.clone()))
+        .sum::<ConstraintCircuitMonad<_>>();
 
-        let capacity_doesnt_change_at_section_start_when_program_hashing_or_absorbing =
+        // If the next round number is 0, then
+        // - the next mode is either `Hash` or `Pad`, or
+        // - the next instruction is `sponge_init`, or
+        // - the capacity does not change, or
+        // - the current mode is `ProgramHashing` and (!) the next mode is `sponge`.
+        //
+        // The “and” marked with an exclamation mark requires above constraint to be
+        // expressed through two polynomials.
+        let capacity_doesnt_change_at_section_start_when_program_hashing_or_ =
             Self::round_number_deselector(circuit_builder, &round_number_next, 0)
                 * Self::select_mode(circuit_builder, &mode_next, HashTableMode::Hash)
                 * Self::select_mode(circuit_builder, &mode_next, HashTableMode::Pad)
                 * (ci_next.clone() - opcode_sponge_init.clone())
                 * randomized_sum_of_capacity_differences.clone();
 
-        let difference_of_state_registers = state_current
-            .iter()
-            .zip_eq(state_next.iter())
-            .map(|(current, next)| next.clone() - current.clone())
-            .collect_vec();
-        let randomized_sum_of_state_differences = state_weights
-            .iter()
-            .zip_eq(difference_of_state_registers.iter())
-            .map(|(weight, state_difference)| weight.clone() * state_difference.clone())
-            .sum();
-        let if_round_number_next_is_0_and_ci_next_is_squeeze_then_state_doesnt_change =
+        let capacity_doesnt_change_at_section_start_when_program_hashing_or_absorbing_0 =
+            capacity_doesnt_change_at_section_start_when_program_hashing_or_.clone()
+                * Self::select_mode(circuit_builder, &mode, HashTableMode::ProgramHashing);
+        let capacity_doesnt_change_at_section_start_when_program_hashing_or_absorbing_1 =
+            capacity_doesnt_change_at_section_start_when_program_hashing_or_
+                * Self::select_mode(circuit_builder, &mode_next, HashTableMode::Sponge);
+
+        let randomized_sum_of_state_differences =
+            izip!(&state_weights, &state_current, &state_next)
+                .map(|(weight, curr, next)| weight.clone() * (next.clone() - curr.clone()))
+                .sum();
+        let if_next_round_is_0_and_ci_next_is_squeeze_in_sponge_section_then_state_doesnt_change =
             Self::round_number_deselector(circuit_builder, &round_number_next, 0)
+                * Self::select_mode(circuit_builder, &mode, HashTableMode::ProgramHashing)
                 * Self::instruction_deselector(circuit_builder, &ci_next, SpongeSqueeze)
                 * randomized_sum_of_state_differences;
 
@@ -807,7 +830,7 @@ impl ExtHashTable {
         let tip5_input = state_next[..RATE].to_owned();
         let compressed_row_from_processor = tip5_input
             .into_iter()
-            .zip_eq(state_weights[..RATE].iter())
+            .zip_eq(&state_weights[..RATE])
             .map(|(state, weight)| weight.clone() * state)
             .sum();
 
@@ -831,7 +854,7 @@ impl ExtHashTable {
         let hash_digest = state_next[..DIGEST_LENGTH].to_owned();
         let compressed_row_hash_digest = hash_digest
             .into_iter()
-            .zip_eq(state_weights[..DIGEST_LENGTH].iter())
+            .zip_eq(&state_weights[..DIGEST_LENGTH])
             .map(|(state, weight)| weight.clone() * state)
             .sum();
         let running_evaluation_hash_digest_updates = running_evaluation_hash_digest_next
@@ -848,7 +871,7 @@ impl ExtHashTable {
         // The running evaluation for “Sponge” updates correctly.
         let compressed_row_next = state_weights[..RATE]
             .iter()
-            .zip_eq(state_next[..RATE].iter())
+            .zip_eq(&state_next[..RATE])
             .map(|(weight, st_next)| weight.clone() * st_next.clone())
             .sum();
         let running_evaluation_sponge_has_accumulated_ci = running_evaluation_sponge_next.clone()
@@ -900,14 +923,15 @@ impl ExtHashTable {
             next_mode_is_padding_mode_or_round_number_is_num_rounds_or_increments_by_one,
             receive_chunk_of_instructions_iff_next_mode_is_prog_hashing_and_next_round_number_is_0,
             if_mode_changes_from_program_hashing_then_current_digest_is_expected_program_digest,
-            if_mode_is_program_hashing_and_next_mode_is_sponge_then_ci_next_is_sponge_init,
+            if_mode_is_program_hashing_and_next_mode_is_sponge_then_capacity_resets,
             if_round_number_is_not_max_and_ci_is_not_sponge_init_then_ci_doesnt_change,
             if_round_number_is_not_max_and_ci_is_not_sponge_init_then_mode_doesnt_change,
             if_mode_is_sponge_then_mode_next_is_sponge_or_hash_or_pad,
             if_mode_is_hash_then_mode_next_is_hash_or_pad,
             if_mode_is_pad_then_mode_next_is_pad,
-            capacity_doesnt_change_at_section_start_when_program_hashing_or_absorbing,
-            if_round_number_next_is_0_and_ci_next_is_squeeze_then_state_doesnt_change,
+            capacity_doesnt_change_at_section_start_when_program_hashing_or_absorbing_0,
+            capacity_doesnt_change_at_section_start_when_program_hashing_or_absorbing_1,
+            if_next_round_is_0_and_ci_next_is_squeeze_in_sponge_section_then_state_doesnt_change,
             running_evaluation_hash_input_is_updated_correctly,
             running_evaluation_hash_digest_is_updated_correctly,
             running_evaluation_sponge_is_updated_correctly,
@@ -1692,7 +1716,7 @@ impl HashTable {
         let compressed_row = |row: ArrayView1<BFieldElement>| -> XFieldElement {
             rate_registers(row)
                 .iter()
-                .zip_eq(state_weights.iter())
+                .zip_eq(state_weights)
                 .map(|(&state, &weight)| weight * state)
                 .sum()
         };
@@ -1758,7 +1782,7 @@ impl HashTable {
             if in_hash_mode && in_last_round {
                 let compressed_digest: XFieldElement = rate_registers(row)[..DIGEST_LENGTH]
                     .iter()
-                    .zip_eq(state_weights[..DIGEST_LENGTH].iter())
+                    .zip_eq(&state_weights[..DIGEST_LENGTH])
                     .map(|(&state, &weight)| weight * state)
                     .sum();
                 hash_digest_running_evaluation = hash_digest_running_evaluation

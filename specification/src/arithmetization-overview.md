@@ -38,12 +38,12 @@ Before automatic degree lowering:
 | [OpStackTable](operational-stack-table.md)     |        3 |            0 |           5 |         0 |          4 |
 | [RamTable](random-access-memory-table.md)      |        7 |            0 |          12 |         1 |          5 |
 | [JumpStackTable](jump-stack-table.md)          |        6 |            0 |           6 |         0 |          4 |
-| [HashTable](hash-table.md)                     |       22 |           45 |          47 |         2 |          9 |
+| [HashTable](hash-table.md)                     |       22 |           45 |          48 |         2 |         10 |
 | [CascadeTable](cascade-table.md)               |        2 |            1 |           3 |         0 |          4 |
 | [LookupTable](lookup-table.md)                 |        3 |            1 |           4 |         1 |          3 |
 | [U32Table](u32-table.md)                       |        1 |           15 |          22 |         2 |         12 |
 | [Grand Cross-Table Argument](table-linking.md) |        0 |            0 |           0 |        14 |          1 |
-| **TOTAL**                                      |   **79** |       **76** |     **178** |    **23** |     **19** |
+| **TOTAL**                                      |   **79** |       **76** |     **179** |    **23** |     **19** |
 
 After automatically lowering degree to 4:
 
@@ -54,10 +54,10 @@ After automatically lowering degree to 4:
 | [OpStackTable](operational-stack-table.md)     |        3 |            0 |           5 |         0 |
 | [RamTable](random-access-memory-table.md)      |        7 |            0 |          13 |         1 |
 | [JumpStackTable](jump-stack-table.md)          |        6 |            0 |           6 |         0 |
-| [HashTable](hash-table.md)                     |       22 |           52 |          84 |         2 |
+| [HashTable](hash-table.md)                     |       22 |           52 |          85 |         2 |
 | [CascadeTable](cascade-table.md)               |        2 |            1 |           3 |         0 |
 | [LookupTable](lookup-table.md)                 |        3 |            1 |           4 |         1 |
 | [U32Table](u32-table.md)                       |        1 |           26 |          34 |         2 |
 | [Grand Cross-Table Argument](table-linking.md) |        0 |            0 |           0 |        14 |
-| **TOTAL**                                      |   **81** |       **94** |     **414** |    **23** |
+| **TOTAL**                                      |   **81** |       **94** |     **415** |    **23** |
 <!-- auto-gen info stop -->

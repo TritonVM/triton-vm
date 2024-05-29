@@ -119,17 +119,6 @@ Both types of challenges are X-field elements, _i.e._, elements of $\mathbb{F}_{
 1. For `i` $\in \{0, \dots, 3\}$ and `limb` $\in \{$`highest`, `mid_high`, `mid_low`, `lowest` $\}$:<br />
     `state_i_limb_LookupClientLogDerivative` has accumulated `state_i_limb_lkin` and `state_i_limb_lkout` with respect to challenges 🍒, 🍓 and indeterminate 🧺.
 
-### Initial Constraints as Polynomials
-
-1. `Mode - 1`
-1. `round_no`
-1. `RunningEvaluationReceiveChunk - 🪣 - (🪑^10 + state_0·🪑^9 + state_1·🪑^8 + state_2·🪑^7 + state_3·🪑^6 + state_4·🪑^5 + state_5·🪑^4 + state_6·🪑^3 + state_7·🪑^2 + state_8·🪑 + state_9)`
-1. `RunningEvaluationHashInput - 1`
-1. `RunningEvaluationHashDigest - 1`
-1. `RunningEvaluationSponge - 1`
-1. For `i` $\in \{0, \dots, 3\}$ and `limb` $\in \{$`highest`, `mid_high`, `mid_low`, `lowest` $\}$:<br />
-    `state_i_limb_LookupClientLogDerivative·(🧺 - 🍒·state_i_limb_lkin - 🍓·state_i_limb_lkout) - 1`
-
 ## Consistency Constraints
 
 1. The `Mode` is a valid mode, _i.e._, $\in \{0, \dots, 3\}$.
@@ -153,34 +142,13 @@ Let `state_i_hi_limbs_minus_2_pow_32` be an alias for that difference:
     1. The `state_i_inv` is the inverse of `state_i_hi_limbs_minus_2_pow_32` or `state_i_hi_limbs_minus_2_pow_32` is 0.
 1. The round constants adhere to the specification of Tip5.
 
-### Consistency Constraints as Polynomials
-
-1. `(Mode - 0)·(Mode - 1)·(Mode - 2)·(Mode - 3)`
-1. `(Mode - 2)·(CI - opcode(hash))`
-1. `(Mode - 0)·(Mode - 1)·(Mode - 3)`<br />
-    ` ·(CI - opcode(sponge_init))·(CI - opcode(sponge_absorb))·(CI - opcode(sponge_squeeze))`
-1. `(Mode - 1)·(Mode - 2)·(Mode - 3)·(round_no - 0)`
-1. `(CI - opcode(hash))·(CI - opcode(sponge_absorb))·(CI - opcode(sponge_squeeze))·(round_no - 0)`
-1. For `i` $\in\{10, \dots, 15\}$:<br />
-    `·(CI - opcode(hash))·(CI - opcode(sponge_absorb))·(CI - opcode(sponge_squeeze))`<br />
-    `·(state_i - 0)`
-1. For `i` $\in\{10, \dots, 15\}$:<br />
-    `(round_no - 1)·(round_no - 2)·(round_no - 3)·(round_no - 4)·(round_no - 5)`<br />
-    `·(Mode - 0)·(Mode - 1)·(Mode - 2)`<br />
-    `·(state_i - 1)`
-1. For `i` $\in\{0, \dots, 3\}$:
-define `state_i_hi_limbs_minus_2_pow_32 := 2^32 - 1 - 2^16·state_i_highest_lk_in - state_i_mid_high_lk_in`.
-    1. `(1 - state_i_inv · state_i_hi_limbs_minus_2_pow_32)·(2^16·state_i_mid_low_lk_in + state_i_lowest_lk_in)`
-    1. `(1 - state_i_inv · state_i_hi_limbs_minus_2_pow_32)·state_i_inv`
-    1. `(1 - state_i_inv · state_i_hi_limbs_minus_2_pow_32)·state_i_hi_limbs_minus_2_pow_32`
-
 ## Transition Constraints
 
 1. If the `round_no` is 5, then the `round_no` in the next row is 0.
 1. If the `Mode` is not `pad` and the current instruction `CI` is not `sponge_init` and the `round_no` is not 5, then the `round_no` increments by 1.
 1. If the `Mode` in the next row is `program_hashing` and the `round_no` in the next row is 0, then receive a chunk of instructions with respect to challenges 🪣 and 🪑.
 1. If the `Mode` changes from `program_hashing`, then the [Evaluation Argument](evaluation-argument.md) of `state_0` through `state_4` with respect to indeterminate 🥬 equals the public program digest challenge, 🫑.
-1. If the `Mode` is `program_hashing` and the `Mode` in the next row is `sponge`, then the current instruction in the next row is `sponge_init`.
+1. If the `Mode` is `program_hashing` and the `Mode` in the next row is `sponge`, then the capacity in the next row is 0.
 1. If the `round_no` is not 5 and the current instruction `CI` is not `sponge_init`, then the current instruction does not change.
 1. If the `round_no` is not 5 and the current instruction `CI` is not `sponge_init`, then the `Mode` does not change.
 1. If the `Mode` is `sponge`, then the `Mode` in the next row is `sponge` or `hash` or `pad`.
@@ -189,8 +157,12 @@ define `state_i_hi_limbs_minus_2_pow_32 := 2^32 - 1 - 2^16·state_i_highest_lk_i
 1. If the `round_no` in the next row is 0
 and the `Mode` in the next row is either `program_hashing` or `sponge`
 and the instruction in the next row is either `sponge_absorb` or `sponge_init`,
-then the capacity's state registers don't change.
-1. If the `round_no` in the next row is 0 and the current instruction in the next row is `sponge_squeeze`, then none of the state registers change.
+then the capacity's state registers don't change,
+or the `Mode` in the current row is `program_hashing` and the `Mode` in the next row is `sponge`.
+1. If the `round_no` in the next row is 0
+and the current instruction in the next row is `sponge_squeeze`,
+then none of the state registers change,
+or the `Mode` in the current row is `program_hashing`.
 1. If the `round_no` in the next row is 0 and the `Mode` in the next row is `hash`, then `RunningEvaluationHashInput` accumulates the next row with respect to challenges 🧄₀ through 🧄₉ and indeterminate 🚪.
 Otherwise, it remains unchanged.
 1. If the `round_no` in the next row is 5 and the `Mode` in the next row is `hash`, then `RunningEvaluationHashDigest` accumulates the next row with respect to challenges 🧄₀ through 🧄₄ and indeterminate 🪟.
@@ -203,59 +175,10 @@ Otherwise, `state_i_limb_LookupClientLogDerivative` remains unchanged.
 1. For `r` $\in\{0, \dots, 4\}$:<br />
 If the `round_no` is `r`, the `state` registers adhere to the rules of applying round `r` of the Tip5 permutation.
 
-### Transition Constraints as Polynomials
-
-1. `(round_no - 0)·(round_no - 1)·(round_no - 2)·(round_no - 3)·(round_no - 4)·(round_no' - 0)`
-1. `(Mode - 0)·(round_no - 5)·(CI - opcode(sponge_init))·(round_no' - round_no - 1)`
-1. `RunningEvaluationReceiveChunk' - 🪣·RunningEvaluationReceiveChunk - (🪑^10 + state_0·🪑^9 + state_1·🪑^8 + state_2·🪑^7 + state_3·🪑^6 + state_4·🪑^5 + state_5·🪑^4 + state_6·🪑^3 + state_7·🪑^2 + state_8·🪑 + state_9)`
-1. `(Mode - 0)·(Mode - 2)·(Mode - 3)·(Mode' - 1)·(🥬^5 + state_0·🥬^4 + state_1·🥬^3 + state_2·🥬^2 + state_3·🥬^1 + state_4 - 🫑)`
-1. `(Mode - 0)·(Mode - 2)·(Mode - 3)·(Mode' - 2)·(CI' - opcode(sponge_init))`
-1. `(round_no - 5)·(CI - opcode(sponge_init))·(CI' - CI)`
-1. `(round_no - 5)·(CI - opcode(sponge_init))·(Mode' - Mode)`
-1. `(Mode - 0)·(Mode - 1)·(Mode - 3)·(Mode' - 0)·(Mode' - 2)·(Mode' - 3)`
-1. `(Mode - 0)·(Mode - 1)·(Mode - 2)·(Mode' - 0)·(Mode' - 3)`
-1. `(Mode - 1)·(Mode - 2)·(Mode - 3)·(Mode' - 0)`
-1. `(round_no' - 1)·(round_no' - 2)·(round_no' - 3)·(round_no' - 4)·(round_no' - 5)`<br />
-    `·(Mode' - 3)·(Mode' - 0)`<br />
-    `·(CI' - opcode(sponge_init))`<br />
-    `·(🧄₁₀·(state_10' - state_10) + 🧄₁₁·(state_11' - state_11) + 🧄₁₂·(state_12' - state_12) + 🧄₁₃·(state_13' - state_13) + 🧄₁₄·(state_14' - state_14) + 🧄₁₅·(state_15' - state_15))`
-1. `(round_no' - 1)·(round_no' - 2)·(round_no' - 3)·(round_no' - 4)·(round_no' - 5)`<br />
-    `·(CI' - opcode(hash))·(CI' - opcode(sponge_init))·(CI' - opcode(sponge_absorb))`<br />
-    `·(🧄₀·(state_0' - state_0) + 🧄₁·(state_1' - state_1) + 🧄₂·(state_2' - state_2) + 🧄₃·(state_3' - state_3) + 🧄₄·(state_4' - state_4)`<br />
-    ` + 🧄₅·(state_5' - state_5) + 🧄₆·(state_6' - state_6) + 🧄₇·(state_7' - state_7) + 🧄₈·(state_8' - state_8) + 🧄₉·(state_9' - state_9)`<br />
-    ` + 🧄₁₀·(state_10' - state_10) + 🧄₁₁·(state_11' - state_11) + 🧄₁₂·(state_12' - state_12) + 🧄₁₃·(state_13' - state_13) + 🧄₁₄·(state_14' - state_14) + 🧄₁₅·(state_15' - state_15))`
-1. `(round_no' - 0)·(round_no' - 1)·(round_no' - 2)·(round_no' - 3)·(round_no' - 4)`<br />
-    `·(RunningEvaluationHashInput' - 🚪·RunningEvaluationHashInput - 🧄₀·state_0' - 🧄₁·state_1' - 🧄₂·state_2' - 🧄₃·state_3' - 🧄₄·state_4' - 🧄₅·state_5' - 🧄₆·state_6' - 🧄₇·state_7' - 🧄₈·state_8' - 🧄₉·state_9')`<br />
-    `+ (round_no' - 0)·(RunningEvaluationHashInput' - RunningEvaluationHashInput)`<br />
-    `+ (Mode' - 3)·(RunningEvaluationHashInput' - RunningEvaluationHashInput)`
-1. `(round_no' - 0)·(round_no' - 1)·(round_no' - 2)·(round_no' - 3)·(round_no' - 4)`<br />
-    `·(Mode' - 0)·(Mode' - 1)·(Mode' - 2)`<br />
-    `·(RunningEvaluationHashDigest' - 🪟·RunningEvaluationHashDigest - 🧄₀·state_0' - 🧄₁·state_1' - 🧄₂·state_2' - 🧄₃·state_3' - 🧄₄·state_4')`<br />
-    `+ (round_no' - 5)·(RunningEvaluationHashDigest' - RunningEvaluationHashDigest)`<br />
-    `+ (Mode' - 3)·(RunningEvaluationHashDigest' - RunningEvaluationHashDigest)`
-1. `(round_no' - 1)·(round_no' - 2)·(round_no' - 3)·(round_no' - 4)·(round_no' - 5)`<br />
-    `·(CI' - opcode(hash))`<br />
-    `·(RunningEvaluationSponge' - 🧽·RunningEvaluationSponge - 🧅·CI' - 🧄₀·state_0' - 🧄₁·state_1' - 🧄₂·state_2' - 🧄₃·state_3' - 🧄₄·state_4' - 🧄₅·state_5' - 🧄₆·state_6' - 🧄₇·state_7' - 🧄₈·state_8' - 🧄₉·state_9')`<br />
-    `+ (RunningEvaluationSponge' - RunningEvaluationSponge)·(round_no' - 0)`<br />
-    `+ (RunningEvaluationSponge' - RunningEvaluationSponge)·(CI' - opcode(sponge_init))·(CI' - opcode(sponge_absorb))·(CI' - opcode(sponge_squeeze))`
-1. For `i` $\in \{0, \dots, 3\}$ and `limb` $\in \{$`highest`, `mid_high`, `mid_low`, `lowest` $\}$:<br />
-    `(round_no' - 5)·(Mode' - 0)·(CI' - opcode(sponge_init))·((state_i_limb_LookupClientLogDerivative' - state_i_limb_LookupClientLogDerivative)·(🧺 - 🍒·state_i_limb_lkin' - 🍓·state_i_limb_lkout') - 1)`<br />
-    `+ (round_no' - 0)·(round_no' - 1)·(round_no' - 2)·(round_no' - 3)·(round_no' - 4)`<br />
-    `·(state_i_limb_LookupClientLogDerivative' - state_i_limb_LookupClientLogDerivative)`<br />
-    `+ (CI' - opcode(hash))·(CI' - opcode(sponge_absorb))·(CI' - opcode(sponge_squeeze))`<br />
-    `·(state_i_limb_LookupClientLogDerivative' - state_i_limb_LookupClientLogDerivative)`
-1. The remaining constraints are left as an exercise to the reader.
-For hints, see the [Tip5 paper](https://eprint.iacr.org/2023/107.pdf).
-
 ## Terminal Constraints
 
 1. If the `Mode` is `program_hashing`, then the [Evaluation Argument](evaluation-argument.md) of `state_0` through `state_4` with respect to indeterminate 🥬 equals the public program digest challenge, 🫑.
 1. If the `Mode` is not `pad` and the current instruction `CI` is not `sponge_init`, then the `round_no` is 5.
-
-### Terminal Constraints as Polynomials
-
-1. `🥬^5 + state_0·🥬^4 + state_1·🥬^3 + state_2·🥬^2 + state_3·🥬 + state_4 - 🫑`
-1. `(Mode - 0)·(CI - opcode(sponge_init))·(round_no - 5)`
 
 [^oxfoi]:
 This is a special property of the Oxfoi prime.
