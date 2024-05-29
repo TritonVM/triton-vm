@@ -128,12 +128,6 @@ impl<'stream, H: AlgebraicHasher> FriProver<'stream, H> {
             .sample_indices(indices_upper_bound, self.num_collinearity_checks);
     }
 
-    fn all_top_level_collinearity_check_indices(&self) -> Vec<usize> {
-        let a_indices = self.first_round_collinearity_check_indices.clone();
-        let b_indices = self.collinearity_check_b_indices_for_round(0);
-        a_indices.into_iter().chain(b_indices).collect()
-    }
-
     fn collinearity_check_b_indices_for_round(&self, round_number: usize) -> Vec<usize> {
         let domain_length = self.rounds[round_number].domain.length;
         self.first_round_collinearity_check_indices
@@ -499,21 +493,10 @@ impl<'stream, H: AlgebraicHasher> FriVerifier<'stream, H> {
     }
 
     fn first_round_partially_revealed_codeword(&self) -> Vec<(usize, XFieldElement)> {
-        let partial_codeword_a = self.rounds[0].partial_codeword_a.clone();
-        let partial_codeword_b = self.rounds[0].partial_codeword_b.clone();
-
-        let indices_a = self.collinearity_check_a_indices_for_round(0).into_iter();
-
-        let first_round_codeword_b_has_been_revealed = self.num_rounds > 0;
-        let indices_b = match first_round_codeword_b_has_been_revealed {
-            true => self.collinearity_check_b_indices_for_round(0).into_iter(),
-            false => vec![].into_iter(),
-        };
-
-        let codeword_a = indices_a.zip_eq(partial_codeword_a);
-        let codeword_b = indices_b.zip_eq(partial_codeword_b);
-
-        codeword_a.chain(codeword_b).collect()
+        self.collinearity_check_a_indices_for_round(0)
+            .into_iter()
+            .zip_eq(self.rounds[0].partial_codeword_a.clone())
+            .collect()
     }
 }
 
@@ -545,7 +528,7 @@ impl<H: AlgebraicHasher> Fri<H> {
         Ok(fri)
     }
 
-    /// Create a FRI proof and return indices of revealed elements of round 0.
+    /// Create a FRI proof and return a-indices of revealed elements of round 0.
     pub fn prove(
         &self,
         codeword: &[XFieldElement],
@@ -562,8 +545,7 @@ impl<H: AlgebraicHasher> Fri<H> {
         // it is important to modify the sponge state the same way.
         prover.proof_stream.sample_scalars(1);
 
-        let indices = prover.all_top_level_collinearity_check_indices();
-        Ok(indices)
+        Ok(prover.first_round_collinearity_check_indices)
     }
 
     fn prover<'stream>(&'stream self, proof_stream: &'stream mut ProofStream) -> FriProver<H> {
@@ -1074,8 +1056,8 @@ mod tests {
     #[proptest]
     fn codeword_corresponding_to_high_degree_polynomial_results_in_verification_failure(
         #[strategy(arbitrary_fri())] fri: Fri<Tip5>,
-        #[strategy(Just(#fri.first_round_max_degree() as i64 + 1))] _max_degree: i64,
-        #[strategy(#_max_degree..2 * #_max_degree)] _degree: i64,
+        #[strategy(Just(#fri.first_round_max_degree() as i64 + 1))] _min_fail_deg: i64,
+        #[strategy(#_min_fail_deg..2 * #_min_fail_deg)] _degree: i64,
         #[strategy(arbitrary_polynomial_of_degree(#_degree))] poly: Polynomial<XFieldElement>,
     ) {
         let codeword = fri.domain.evaluate(&poly);
