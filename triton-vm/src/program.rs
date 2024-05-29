@@ -512,18 +512,22 @@ impl Program {
     ) -> Result<(Vec<BFieldElement>, ExecutionTraceProfile)> {
         let mut profiler = ExecutionTraceProfiler::new(self.instructions.len());
         let mut state = VMState::new(self, public_input, non_determinism);
+        let mut previous_jump_stack_len = state.jump_stack.len();
         while !state.halting {
             if let Ok(Instruction::Call(address)) = state.current_instruction() {
                 let label = self.label_for_address(address.value());
                 profiler.enter_span(label);
             }
-            if let Ok(Instruction::Return) = state.current_instruction() {
-                profiler.exit_span();
-            }
+
             match state.step() {
                 Ok(calls) => profiler.handle_co_processor_calls(calls),
                 Err(err) => return Err(VMError::new(err, state)),
             };
+
+            if state.jump_stack.len() < previous_jump_stack_len {
+                profiler.exit_span();
+            }
+            previous_jump_stack_len = state.jump_stack.len();
         }
 
         Ok((state.public_output, profiler.finish()))
