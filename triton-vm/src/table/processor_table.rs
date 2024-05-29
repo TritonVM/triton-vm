@@ -1694,10 +1694,11 @@ impl ExtProcessorTable {
             st5_neq_st6() * (next_row(JSP) - curr_row(JSP) + one()),
         ];
         let maybe_recurse = vec![
-            st5_eq_st6() * (next_row(IP) - curr_row(JSD)),
-            st5_eq_st6() * (next_row(JSP) - curr_row(JSP)),
+            // constraints are ordered to line up nicely with group “maybe_return”
             st5_eq_st6() * (next_row(JSO) - curr_row(JSO)),
             st5_eq_st6() * (next_row(JSD) - curr_row(JSD)),
+            st5_eq_st6() * (next_row(IP) - curr_row(JSD)),
+            st5_eq_st6() * (next_row(JSP) - curr_row(JSP)),
         ];
 
         // The two constraint groups are mutually exclusive: the stack element is either
