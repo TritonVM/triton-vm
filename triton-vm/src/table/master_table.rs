@@ -1617,7 +1617,7 @@ mod tests {
         let comment_marker_start =
             format!("<!-- auto-gen info {} -->", specification_generator_name);
         let how_reproduce = format!(
-            "<!-- To reproduce this code, please run `cargo run {}`. -->",
+            "<!-- To reproduce this code, please run `cargo test {}`. -->",
             specification_generator_name
         );
         let comment_marker_stop = "<!-- auto-gen info stop -->".to_string();
@@ -1769,6 +1769,10 @@ mod tests {
         ft = format!("{ft}|-{:-<11}:", "-");
         ft = format!("{ft}|-{:-<9}:|\n", "-");
 
+        let mut total_initial = 0;
+        let mut total_consistency = 0;
+        let mut total_transition = 0;
+        let mut total_terminal = 0;
         for table in &mut tables {
             let (new_base_initial, new_ext_initial) = ConstraintCircuitMonad::lower_to_degree(
                 &mut table.initial_constraints,
@@ -1795,22 +1799,24 @@ mod tests {
                 table.last_base_column_index,
                 table.last_ext_column_index,
             );
+            let num_init =
+                table.initial_constraints.len() + new_base_initial.len() + new_ext_initial.len();
+            let num_cons = table.consistency_constraints.len()
+                + new_base_consistency.len()
+                + new_ext_consistency.len();
+            let num_tran = table.transition_constraints.len()
+                + new_base_transition.len()
+                + new_ext_transition.len();
+            let num_term =
+                table.terminal_constraints.len() + new_base_terminal.len() + new_ext_terminal.len();
             ft = format!(
-                "{ft}| {:<46} | {:>8} | {:12} | {:>11} | {:>9} |\n",
+                "{ft}| {:<46} | {num_init:>8} | {num_cons:12} | {num_tran:>11} | {num_term:>9} |\n",
                 table.name,
-                table.initial_constraints.len() + new_base_initial.len() + new_ext_initial.len(),
-                table.consistency_constraints.len()
-                    + new_base_consistency.len()
-                    + new_ext_consistency.len(),
-                table.transition_constraints.len()
-                    + new_base_transition.len()
-                    + new_ext_transition.len(),
-                table.terminal_constraints.len() + new_base_terminal.len() + new_ext_terminal.len(),
             );
-            total_initial += table.initial_constraints.len();
-            total_consistency += table.consistency_constraints.len();
-            total_transition += table.transition_constraints.len();
-            total_terminal += table.terminal_constraints.len();
+            total_initial += num_init;
+            total_consistency += num_cons;
+            total_transition += num_tran;
+            total_terminal += num_term;
         }
         ft = format!(
             "{ft}| {:<46} | {:>8} | {:>12} | {:>11} | {:>9} |\n",
@@ -1826,7 +1832,7 @@ mod tests {
         let comment_marker_start =
             format!("<!-- auto-gen info {} -->", specification_generator_name);
         let how_reproduce = format!(
-            "<!-- To reproduce this code, please run `cargo run {}`. -->",
+            "<!-- To reproduce this code, please run `cargo test {}`. -->",
             specification_generator_name
         );
         let comment_marker_stop = "<!-- auto-gen info stop -->".to_string();

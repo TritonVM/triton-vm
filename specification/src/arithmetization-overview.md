@@ -3,7 +3,7 @@
 ## Tables
 
 <!-- auto-gen info spec_has_correct_table_overview -->
-<!-- To reproduce this code, please run `cargo run spec_has_correct_table_overview`. -->
+<!-- To reproduce this code, please run `cargo test spec_has_correct_table_overview`. -->
 | table name                                 | #main cols | #aux cols | total width |
 |:-------------------------------------------|-----------:|----------:|------------:|
 | [ProgramTable](program-table.md)           |          7 |         3 |          16 |
@@ -27,7 +27,7 @@ In particular, automatic degree lowering introduces new columns, modifies the co
 is equivalent to what was there before), and lowers the constraints' maximal degree.
 
 <!-- auto-gen info spec_has_correct_constraints_overview -->
-<!-- To reproduce this code, please run `cargo run spec_has_correct_constraints_overview`. -->
+<!-- To reproduce this code, please run `cargo test spec_has_correct_constraints_overview`. -->
 
 Before automatic degree lowering:
 
@@ -59,5 +59,5 @@ After automatically lowering degree to 4:
 | [LookupTable](lookup-table.md)                 |        3 |            1 |           4 |         1 |
 | [U32Table](u32-table.md)                       |        1 |           26 |          34 |         2 |
 | [Grand Cross-Table Argument](table-linking.md) |        0 |            0 |           0 |        14 |
-| **TOTAL**                                      |  **158** |      **152** |     **356** |    **46** |
+| **TOTAL**                                      |   **81** |       **94** |     **414** |    **23** |
 <!-- auto-gen info stop -->
