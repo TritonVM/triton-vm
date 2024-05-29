@@ -170,6 +170,7 @@ pub enum AnInstruction<Dest: PartialEq + Default> {
     Call(Dest),
     Return,
     Recurse,
+    RecurseOrReturn,
     Assert,
 
     // Memory access
@@ -231,18 +232,19 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
             Call(_) => 33,
             Return => 16,
             Recurse => 24,
+            RecurseOrReturn => 32,
             Assert => 10,
             ReadMem(_) => 41,
             WriteMem(_) => 11,
             Hash => 18,
             AssertVector => 26,
-            SpongeInit => 32,
+            SpongeInit => 40,
             SpongeAbsorb => 34,
-            SpongeAbsorbMem => 40,
-            SpongeSqueeze => 48,
+            SpongeAbsorbMem => 48,
+            SpongeSqueeze => 56,
             Add => 42,
             Mul => 50,
-            Invert => 56,
+            Invert => 64,
             Eq => 58,
             Split => 4,
             Lt => 6,
@@ -254,13 +256,13 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
             PopCount => 28,
             XxAdd => 66,
             XxMul => 74,
-            XInvert => 64,
+            XInvert => 72,
             XbMul => 82,
             ReadIo(_) => 49,
             WriteIo(_) => 19,
-            MerkleStep => 72,
-            XxDotStep => 80,
-            XbDotStep => 88,
+            MerkleStep => 80,
+            XxDotStep => 88,
+            XbDotStep => 96,
         }
     }
 
@@ -277,6 +279,7 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
             Call(_) => "call",
             Return => "return",
             Recurse => "recurse",
+            RecurseOrReturn => "recurse_or_return",
             Assert => "assert",
             ReadMem(_) => "read_mem",
             WriteMem(_) => "write_mem",
@@ -351,6 +354,7 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
             Call(label) => Call(f(label)),
             Return => Return,
             Recurse => Recurse,
+            RecurseOrReturn => RecurseOrReturn,
             Assert => Assert,
             ReadMem(x) => ReadMem(*x),
             WriteMem(x) => WriteMem(*x),
@@ -397,6 +401,7 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
             Call(_) => 0,
             Return => 0,
             Recurse => 0,
+            RecurseOrReturn => 0,
             Assert => -1,
             ReadMem(n) => n.num_words() as i32,
             WriteMem(n) => -(n.num_words() as i32),
@@ -492,10 +497,11 @@ impl Instruction {
             _ => return Err(illegal_argument_error),
         };
 
-        match new_instruction.has_illegal_argument() {
-            true => Err(illegal_argument_error),
-            false => Ok(new_instruction),
+        if new_instruction.has_illegal_argument() {
+            return Err(illegal_argument_error);
         }
+
+        Ok(new_instruction)
     }
 }
 
@@ -550,6 +556,7 @@ const fn all_instructions_without_args() -> [AnInstruction<BFieldElement>; Instr
         Call(b_field_element::BFIELD_ZERO),
         Return,
         Recurse,
+        RecurseOrReturn,
         Assert,
         ReadMem(N1),
         WriteMem(N1),
@@ -1023,7 +1030,7 @@ mod tests {
     fn construct_test_program_for_instruction(
         instruction: AnInstruction<BFieldElement>,
     ) -> (Program, usize) {
-        if matches!(instruction, Call(_) | Return | Recurse) {
+        if matches!(instruction, Call(_) | Return | Recurse | RecurseOrReturn) {
             // need jump stack setup
             let program = test_program_for_call_recurse_return().program;
             let stack_size = NUM_OP_STACK_REGISTERS;

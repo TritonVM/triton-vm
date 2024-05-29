@@ -286,6 +286,25 @@ In addition to its [instruction groups](instruction-groups.md), this instruction
 1. `jsd' - jsd`
 1. `ip' - jsd`
 
+## Instruction `recurse_or_return`
+
+In addition to its [instruction groups](instruction-groups.md), this instruction has the following constraints.
+
+### Description
+
+1. If `ST5` equals `ST6`, then `ip` in the next row equals `jso` in the current row.
+1. If `ST5` equals `ST6`, then `jsp` decrements by one.
+1. If `ST5` equals `ST6`, then `hv0` in the current row is 0.
+1. If `ST5` is unequal to `ST6`, then `hv0` in the current row is the inverse of `(ST6 - ST5)`.
+1. If `ST5` is unequal to `ST6`, then `ip` in the next row is equal to `jsd` in the current row.
+1. If `ST5` is unequal to `ST6`, then `jsp` remains unchanged.
+1. If `ST5` is unequal to `ST6`, then `jso` remains unchanged.
+1. If `ST5` is unequal to `ST6`, then `jsd` remains unchanged.
+
+### Helper variable definitions for `recurse_or_return`
+
+To help arithmetizing the equality check between `ST5` and `ST6`, helper variable `hv0` is the inverse-or-zero of `(ST6 - ST5)`.
+
 ## Instruction `assert`
 
 In addition to its [instruction groups](instruction-groups.md), this instruction has the following constraints.

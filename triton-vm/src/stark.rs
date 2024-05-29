@@ -1671,6 +1671,18 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn check_grand_cross_table_argument_for_test_program_for_recurse_or_return() {
+        check_grand_cross_table_argument(test_program_for_recurse_or_return())
+    }
+
+    #[proptest]
+    fn check_grand_cross_table_argument_for_property_based_test_program_for_recurse_or_return(
+        program: ProgramForRecurseOrReturn,
+    ) {
+        check_grand_cross_table_argument(program.assemble())
+    }
+
+    #[test]
     fn check_grand_cross_table_argument_for_test_program_for_write_mem_read_mem() {
         check_grand_cross_table_argument(test_program_for_write_mem_read_mem())
     }
@@ -2111,6 +2123,18 @@ pub(crate) mod tests {
     #[test]
     fn constraints_evaluate_to_zero_on_program_for_call_recurse_return() {
         triton_constraints_evaluate_to_zero(test_program_for_call_recurse_return())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_program_for_recurse_or_return() {
+        triton_constraints_evaluate_to_zero(test_program_for_recurse_or_return())
+    }
+
+    #[proptest(cases = 20)]
+    fn constraints_evaluate_to_zero_on_property_based_test_program_for_recurse_or_return(
+        program: ProgramForRecurseOrReturn,
+    ) {
+        triton_constraints_evaluate_to_zero(program.assemble())
     }
 
     #[test]
