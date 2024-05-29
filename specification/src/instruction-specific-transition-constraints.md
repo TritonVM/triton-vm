@@ -286,6 +286,25 @@ In addition to its [instruction groups](instruction-groups.md), this instruction
 1. `jsd' - jsd`
 1. `ip' - jsd`
 
+## Instruction `recurse_or_return`
+
+In addition to its [instruction groups](instruction-groups.md), this instruction has the following constraints.
+
+### Description
+
+1. If `ST5` equals `ST6`, then `hv0` in the current row is 0.
+1. If `ST5` equals `ST6`, then the difference of `ST5` and `ST6` is 0.
+1. If `ST5` equals `ST6`, then `ip` in the next row equals `jso` in the current row.
+1. If `ST5` equals `ST6`, then `jsp` decrements by one.<br><br>
+1. If `ST5` is unequal to `ST6`, then `ip` in the next row is equal to `jsd` in the current row.
+1. If `ST5` is unequal to `ST6`, then `jsp` remains unchanged.
+1. If `ST5` is unequal to `ST6`, then `jso` remains unchanged.
+1. If `ST5` is unequal to `ST6`, then `jsd` remains unchanged.
+
+Note that constraints 1 through 4 and constraints 5 through 8 are mutually exclusive.
+Consequently, it is possible to build pairwise sums (e.g., constraint 1 plus constraint 5, constraint 2 plus constraint 6, and so on) without changing completeness or soundness.
+As a result, instruction `recurse_or_return` defines a total of 4 constraints, each of which consists of 2 summands.
+
 ## Instruction `assert`
 
 In addition to its [instruction groups](instruction-groups.md), this instruction has the following constraints.

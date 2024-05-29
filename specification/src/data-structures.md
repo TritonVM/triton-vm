@@ -46,8 +46,8 @@ The other mechanism is [dedicated instructions](instructions.md#opstack-manipula
 
 Another last-in;first-out data structure, similar to the op stack.
 The jump stack keeps track of return and destination addresses.
-It changes only when control follows a `call` or `return` instruction.
-Furthermore, executing instruction `recurse` requires a non-empty jump stack.
+It changes only when control follows a `call` or `return` instruction, and might change through the `recurse_or_return` instruction.
+Furthermore, executing instructions `return`, `recurse`, and `recurse_or_return` require a non-empty jump stack.
 
 ---
 

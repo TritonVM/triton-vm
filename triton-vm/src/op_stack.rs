@@ -1,12 +1,14 @@
 use std::fmt::Display;
 use std::fmt::Formatter;
 use std::fmt::Result as FmtResult;
+use std::ops::Add;
 use std::ops::Index;
 use std::ops::IndexMut;
 
 use arbitrary::Arbitrary;
 use get_size::GetSize;
 use itertools::Itertools;
+use num_traits::WrappingAdd;
 use serde_derive::*;
 use strum::EnumCount;
 use strum::EnumIter;
@@ -333,6 +335,24 @@ impl Display for OpStackElement {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         let index = self.index();
         write!(f, "{index}")
+    }
+}
+
+impl Add for OpStackElement {
+    type Output = Self;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        let Ok(sum) = Self::try_from(self.index() + rhs.index()) else {
+            panic!("`OpStackElement` addition overflowed");
+        };
+        sum
+    }
+}
+
+impl WrappingAdd for OpStackElement {
+    fn wrapping_add(&self, &rhs: &Self) -> Self::Output {
+        let wrapped_sum = (self.index() + rhs.index()) % (OpStackElement::COUNT as u32);
+        wrapped_sum.try_into().unwrap()
     }
 }
 
@@ -751,6 +771,62 @@ mod tests {
             let_assert!(Ok(stack_element_again) = OpStackElement::try_from(stack_index));
             assert!(stack_element == stack_element_again);
         }
+    }
+
+    #[test]
+    fn adding_op_stack_elements_works() {
+        assert_eq!(ST0, ST0 + ST0);
+        assert_eq!(ST1, ST0 + ST1);
+        assert_eq!(ST2, ST0 + ST2);
+
+        assert_eq!(ST1, ST1 + ST0);
+        assert_eq!(ST2, ST1 + ST1);
+        assert_eq!(ST3, ST1 + ST2);
+
+        assert_eq!(ST5, ST5 + ST0);
+        assert_eq!(ST10, ST5 + ST5);
+        assert_eq!(ST15, ST5 + ST10);
+    }
+
+    #[test]
+    #[should_panic(expected = "overflow")]
+    fn adding_op_stack_elements_fails_if_result_overflows() {
+        let _ = ST10 + ST10;
+    }
+
+    #[test]
+    fn wrapping_addition_of_op_stack_elements_adds_and_wraps() {
+        assert_eq!(ST0, ST0.wrapping_add(&ST0));
+        assert_eq!(ST1, ST0.wrapping_add(&ST1));
+        assert_eq!(ST2, ST0.wrapping_add(&ST2));
+
+        assert_eq!(ST1, ST1.wrapping_add(&ST0));
+        assert_eq!(ST2, ST1.wrapping_add(&ST1));
+        assert_eq!(ST3, ST1.wrapping_add(&ST2));
+
+        assert_eq!(ST5, ST5.wrapping_add(&ST0));
+        assert_eq!(ST6, ST5.wrapping_add(&ST1));
+        assert_eq!(ST7, ST5.wrapping_add(&ST2));
+
+        assert_eq!(ST15, ST15.wrapping_add(&ST0));
+        assert_eq!(ST0, ST15.wrapping_add(&ST1));
+        assert_eq!(ST1, ST15.wrapping_add(&ST2));
+        assert_eq!(ST2, ST15.wrapping_add(&ST3));
+
+        assert_eq!(ST15, ST0.wrapping_add(&ST15));
+        assert_eq!(ST0, ST1.wrapping_add(&ST15));
+        assert_eq!(ST1, ST2.wrapping_add(&ST15));
+        assert_eq!(ST2, ST3.wrapping_add(&ST15));
+        assert_eq!(ST3, ST4.wrapping_add(&ST15));
+        assert_eq!(ST4, ST5.wrapping_add(&ST15));
+    }
+
+    #[proptest]
+    fn wrapping_addition_of_op_stack_elements_never_panics(
+        #[strategy(arb())] lhs: OpStackElement,
+        #[strategy(arb())] rhs: OpStackElement,
+    ) {
+        lhs.wrapping_add(&rhs);
     }
 
     #[test]

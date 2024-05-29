@@ -41,15 +41,24 @@ the divined values were supplied as and are read from secret input.
 
 ## Control Flow
 
-| Instruction  | Opcode | old op stack | new op stack | old `ip` | new `ip` | old jump stack | new jump stack | Description                                                                                                              |
-|:-------------|-------:|:-------------|:-------------|:---------|:---------|:---------------|:---------------|:-------------------------------------------------------------------------------------------------------------------------|
-| `halt`       |      0 | `_`          | `_`          | `ip`     | `ip+1`   | `_`            | `_`            | Solves the halting problem (if the instruction is reached). Indicates graceful shutdown of the VM.                       |
-| `nop`        |      8 | `_`          | `_`          | `ip`     | `ip+1`   | `_`            | `_`            | Do nothing                                                                                                               |
-| `skiz`       |      2 | `_ a`        | `_`          | `ip`     | `ip+s`   | `_`            | `_`            | Skip next instruction if `a` is zero. `s` ∈ {1, 2, 3} depends on `a` and whether the next instruction takes an argument. |
-| `call` + `d` |     33 | `_`          | `_`          | `ip`     | `d`      | `_`            | `_ (ip+2, d)`  | Push `(ip+2,d)` to the jump stack, and jump to absolute address `d`                                                      |
-| `return`     |     16 | `_`          | `_`          | `ip`     | `o`      | `_ (o, d)`     | `_`            | Pop one pair off the jump stack and jump to that pair's return address (which is the first element).                     |
-| `recurse`    |     24 | `_`          | `_`          | `ip`     | `d`      | `_ (o, d)`     | `_ (o, d)`     | Peek at the top pair of the jump stack and jump to that pair's destination address (which is the second element).        |
-| `assert`     |     10 | `_ a`        | `_`          | `ip`     | `ip+1`   | `_`            | `_`            | Pops `a` if `a == 1`, else crashes the virtual machine.                                                                  |
+| Instruction         | Opcode | old op stack  | new op stack  | old `ip` | new `ip`   | old jump stack | new jump stack    | Description                                                                                                              |
+|:--------------------|-------:|:--------------|:--------------|:---------|:-----------|:---------------|:------------------|:-------------------------------------------------------------------------------------------------------------------------|
+| `halt`              |      0 | `_`           | `_`           | `ip`     | `ip+1`     | `_`            | `_`               | Solves the halting problem (if the instruction is reached). Indicates graceful shutdown of the VM.                       |
+| `nop`               |      8 | `_`           | `_`           | `ip`     | `ip+1`     | `_`            | `_`               | Do nothing                                                                                                               |
+| `skiz`              |      2 | `_ a`         | `_`           | `ip`     | `ip+s`     | `_`            | `_`               | Skip next instruction if `a` is zero. `s` ∈ {1, 2, 3} depends on `a` and whether the next instruction takes an argument. |
+| `call` + `d`        |     33 | `_`           | `_`           | `ip`     | `d`        | `_`            | `_ (ip+2, d)`     | Push `(ip+2,d)` to the jump stack, and jump to absolute address `d`                                                      |
+| `return`            |     16 | `_`           | `_`           | `ip`     | `o`        | `_ (o, d)`     | `_`               | Pop one pair off the jump stack and jump to that pair's return address (which is the first element).                     |
+| `recurse`           |     24 | `_`           | `_`           | `ip`     | `d`        | `_ (o, d)`     | `_ (o, d)`        | Peek at the top pair of the jump stack and jump to that pair's destination address (which is the second element).        |
+| `recurse_or_return` |     32 | `_ b a .....` | `_ b a .....` | `ip`     | `d` or `o` | `_ (o, d)`     | `_ (o, d)` or `_` | Like `recurse` if `st5 = a != b = st6`, like `return` if `a == b`. See also extended description below.                  |
+| `assert`            |     10 | `_ a`         | `_`           | `ip`     | `ip+1`     | `_`            | `_`               | Pops `a` if `a == 1`, else crashes the virtual machine.                                                                  |
+
+The instructions `return`, `recurse`, and `recurse_or_return` require a non-empty jump stack.
+Should the jump stack be empty, executing any of these instruction causes Triton VM to crash.
+
+Instruction `recurse_or_return` behaves – surprise! – either like instruction `recurse` or like instruction `return`.
+The (deterministic) decision which behavior to exhibit is made at runtime and depends on stack elements `st5` and `st6`.
+If `st5 != st6`, then `recurse_or_return` acts like instruction `recurse`, else like `return`.
+The instruction is designed to facilitate loops using pointer equality as termination condition and to play nicely with instruction `merkle_step`.
 
 ## Memory Access
 
@@ -79,10 +88,10 @@ For the benefit of clarity, the effect of every possible argument is given below
 |:--------------------|-------:|:----------------|:----------------|:--------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `hash`              |     18 | `_ jihgfedcba`  | `_ yxwvu`       | Hashes the stack's 10 top-most elements and puts their digest onto the stack, shrinking the stack by 5.                                                             |
 | `assert_vector`     |     26 | `_ edcba edcba` | `_ edcba`       | Assert equality of `st(i)` to `st(i+5)` for `0 <= i < 4`. Crashes the VM if any pair is unequal. Pops the 5 top-most elements.                                      |
-| `sponge_init`       |     32 | `_`             | `_`             | Initializes (resets) the Sponge's state. Must be the first Sponge instruction executed.                                                                             |
+| `sponge_init`       |     40 | `_`             | `_`             | Initializes (resets) the Sponge's state. Must be the first Sponge instruction executed.                                                                             |
 | `sponge_absorb`     |     34 | `_ jihgfedcba`  | `_`             | Absorbs the stack's ten top-most elements into the Sponge state.                                                                                                    |
-| `sponge_absorb_mem` |     40 | `_ dcba p`      | `_ hgfe (p+10)` | Absorbs the ten RAM elements at addresses `p`, `p+1`, … into the Sponge state. Overwrites stack elements `st1` through `st4` with the first four absorbed elements. |
-| `sponge_squeeze`    |     48 | `_`             | `_ zyxwvutsrq`  | Squeezes the Sponge and pushes the 10 squeezed elements onto the stack.                                                                                             |
+| `sponge_absorb_mem` |     48 | `_ dcba p`      | `_ hgfe (p+10)` | Absorbs the ten RAM elements at addresses `p`, `p+1`, … into the Sponge state. Overwrites stack elements `st1` through `st4` with the first four absorbed elements. |
+| `sponge_squeeze`    |     56 | `_`             | `_ zyxwvutsrq`  | Squeezes the Sponge and pushes the 10 squeezed elements onto the stack.                                                                                             |
 
 The instruction `hash` works as follows.
 The stack's 10 top-most elements (`jihgfedcba`) are popped from the stack, reversed, and concatenated with six zeros, resulting in `abcdefghij000000`.
@@ -104,7 +113,7 @@ Triton VM cannot know the number of elements that will be absorbed.
 |:------------|-------:|:-------------|:-------------|:---------------------------------------------------------------------------------------------------------------------------|
 | `add`       |     42 | `_ b a`      | `_ c`        | Computes the sum (`c`) of the top two elements of the stack (`b` and `a`) over the field.                                  |
 | `mul`       |     50 | `_ b a`      | `_ c`        | Computes the product (`c`) of the top two elements of the stack (`b` and `a`) over the field.                              |
-| `invert`    |     56 | `_ a`        | `_ b`        | Computes the multiplicative inverse (over the field) of the top of the stack. Crashes the VM if the top of the stack is 0. |
+| `invert`    |     64 | `_ a`        | `_ b`        | Computes the multiplicative inverse (over the field) of the top of the stack. Crashes the VM if the top of the stack is 0. |
 | `eq`        |     58 | `_ b a`      | `_ (a == b)` | Tests the top two stack elements for equality.                                                                             |
 
 ## Bitwise Arithmetic on Stack
@@ -126,7 +135,7 @@ Triton VM cannot know the number of elements that will be absorbed.
 |:------------|-------:|:----------------|:-------------|:---------------------------------------------------------------------------------------------------------------------------------------------------|
 | `xx_add`    |     66 | `_ z y x b c a` | `_ w v u`    | Adds the two extension field elements encoded by field elements `z y x` and `b c a`.                                                               |
 | `xx_mul`    |     74 | `_ z y x b c a` | `_ w v u`    | Multiplies the two extension field elements encoded by field elements `z y x` and `b c a`.                                                         |
-| `x_invert`  |     64 | `_ z y x`       | `_ w v u`    | Inverts the extension field element encoded by field elements `z y x` in-place. Crashes the VM if the extension field element is 0.                |
+| `x_invert`  |     72 | `_ z y x`       | `_ w v u`    | Inverts the extension field element encoded by field elements `z y x` in-place. Crashes the VM if the extension field element is 0.                |
 | `xb_mul`    |     82 | `_ z y x a`     | `_ w v u`    | Scalar multiplication of the extension field element encoded by field elements `z y x` with field element `a`. Overwrites `z y x` with the result. |
 
 ## Input/Output
@@ -140,9 +149,9 @@ Triton VM cannot know the number of elements that will be absorbed.
 
 | Instruction   | Opcode | old op stack    | new op stack                 | Description                                                                                                                                                                                                                                                                                                                                                                                       |
 |:--------------|:-------|:----------------|:-----------------------------|:--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `merkle_step` | 72     | `_ i edcba`     | `_ (i div 2) zyxwv`          | Helps traversing a Merkle tree during authentication path verification. See extended description below.                                                                                                                                                                                                                                                                                           |
-| `xx_dot_step` | 80     | `_ z y x *b *a` | `_ z+p2 y+p1 x+p0 *b+3 *a+3` | Reads two extension field elements from RAM located at the addresses corresponding to the two top stack elements, multiplies the extension field elements, and adds the product `(p0, p1, p2)` to an accumulator located on stack immediately below the two pointers. Also, increase the pointers by the number of words read.                                                                    |
-| `xx_dot_step` | 88     | `_ z y x *b *a` | `_ z+p2 y+p1 x+p0 *b+3 *a+1` | Reads one base field element from RAM located at the addresses corresponding to the top of the stack, one extension field element from RAM located at the address of the second stack element, multiplies the field elements, and adds the product `(p0, p1, p2)` to an accumulator located on stack immediately below the two pointers. Also, increase the pointers by the number of words read. |
+| `merkle_step` | 80     | `_ i edcba`     | `_ (i div 2) zyxwv`          | Helps traversing a Merkle tree during authentication path verification. See extended description below.                                                                                                                                                                                                                                                                                           |
+| `xx_dot_step` | 88     | `_ z y x *b *a` | `_ z+p2 y+p1 x+p0 *b+3 *a+3` | Reads two extension field elements from RAM located at the addresses corresponding to the two top stack elements, multiplies the extension field elements, and adds the product `(p0, p1, p2)` to an accumulator located on stack immediately below the two pointers. Also, increase the pointers by the number of words read.                                                                    |
+| `xx_dot_step` | 96     | `_ z y x *b *a` | `_ z+p2 y+p1 x+p0 *b+3 *a+1` | Reads one base field element from RAM located at the addresses corresponding to the top of the stack, one extension field element from RAM located at the address of the second stack element, multiplies the field elements, and adds the product `(p0, p1, p2)` to an accumulator located on stack immediately below the two pointers. Also, increase the pointers by the number of words read. |
 
 The instruction `merkle_step` works as follows.
 The 6th element of the stack `i` is taken as the node index for a Merkle tree that is claimed to include data whose digest is the content of stack registers `st4` through `st0`, i.e., `edcba`.
