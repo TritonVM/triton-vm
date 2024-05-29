@@ -781,6 +781,7 @@ impl ExtProcessorTable {
         ]
     }
 
+    /// A polynomial that is 1 when evaluated on the given index, and 0 otherwise.
     fn indicator_polynomial(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
         index: usize,
@@ -1670,6 +1671,78 @@ impl ExtProcessorTable {
         .concat()
     }
 
+    fn instruction_recurse_or_return(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
+        let one = || circuit_builder.b_constant(1);
+        let indicator_poly = |idx| Self::indicator_polynomial(circuit_builder, idx);
+        let curr_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
+        };
+        let next_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(NextBaseRow(col.master_base_table_index()))
+        };
+
+        let lhs = ProcessorTable::op_stack_column_by_index;
+        let rhs = |st| ProcessorTable::op_stack_column_by_index((st + 1) % OpStackElement::COUNT);
+
+        // Zero if the indicated stack element equals its successor (wrapping around).
+        // One if they are not equal.
+        let lhs_eq_rhs = |st| curr_row(HV4) * (curr_row(rhs(st)) - curr_row(lhs(st)));
+        let lhs_neq_rhs = |st| one() - lhs_eq_rhs(st);
+
+        let maybe_return_for_st = |st| {
+            vec![
+                // hv4 is inverse-or-zero of the difference of the indicated stack element and
+                // its successor (wrapping around).
+                indicator_poly(st) * lhs_neq_rhs(st) * curr_row(HV4),
+                indicator_poly(st) * lhs_neq_rhs(st) * (curr_row(rhs(st)) - curr_row(lhs(st))),
+                indicator_poly(st) * lhs_neq_rhs(st) * (next_row(IP) - curr_row(JSO)),
+                indicator_poly(st) * lhs_neq_rhs(st) * (next_row(JSP) - curr_row(JSP) + one()),
+            ]
+        };
+        let maybe_recurse_for_st = |st| {
+            vec![
+                indicator_poly(st) * lhs_eq_rhs(st) * (next_row(IP) - curr_row(JSD)),
+                indicator_poly(st) * lhs_eq_rhs(st) * (next_row(JSP) - curr_row(JSP)),
+                indicator_poly(st) * lhs_eq_rhs(st) * (next_row(JSO) - curr_row(JSO)),
+                indicator_poly(st) * lhs_eq_rhs(st) * (next_row(JSD) - curr_row(JSD)),
+            ]
+        };
+
+        let constraint_groups_for_maybe_return =
+            (0..OpStackElement::COUNT).map(maybe_return_for_st);
+        let constraint_groups_for_maybe_recurse =
+            (0..OpStackElement::COUNT).map(maybe_recurse_for_st);
+
+        // All constraint groups are mutually exclusive:
+        // - The two constraint group types “maybe return” and “maybe recurse” are
+        //   mutually exclusive because the stack element is either equal to its
+        //   successor or not, indicated by `lhs_eq_rhs` and `lhs_neq_rhs`.
+        // - The `OpStackElement::COUNT`-many constraint groups within each type are
+        //   mutually exclusive because the stack element is unique, indicated by
+        //   `indicator_poly`.
+        //
+        // Therefore, it is safe (and sound) to combine all constraint groups into a
+        // single set of constraints.
+        let constraint_groups = [
+            constraint_groups_for_maybe_return.collect_vec(),
+            constraint_groups_for_maybe_recurse.collect_vec(),
+        ]
+        .concat();
+        let specific_constraints =
+            Self::combine_mutually_exclusive_constraint_groups(circuit_builder, constraint_groups);
+
+        [
+            specific_constraints,
+            Self::instruction_group_decompose_arg(circuit_builder),
+            Self::instruction_group_keep_op_stack(circuit_builder),
+            Self::instruction_group_no_ram(circuit_builder),
+            Self::instruction_group_no_io(circuit_builder),
+        ]
+        .concat()
+    }
+
     fn instruction_assert(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
@@ -2506,6 +2579,7 @@ impl ExtProcessorTable {
             Call(_) => ExtProcessorTable::instruction_call(circuit_builder),
             Return => ExtProcessorTable::instruction_return(circuit_builder),
             Recurse => ExtProcessorTable::instruction_recurse(circuit_builder),
+            RecurseOrReturn(_) => ExtProcessorTable::instruction_recurse_or_return(circuit_builder),
             Assert => ExtProcessorTable::instruction_assert(circuit_builder),
             ReadMem(_) => ExtProcessorTable::instruction_read_mem(circuit_builder),
             WriteMem(_) => ExtProcessorTable::instruction_write_mem(circuit_builder),
@@ -2793,8 +2867,8 @@ impl ExtProcessorTable {
     /// ```
     ///
     /// Syntax in above example:
-    /// - `ind_n` is the indicator polynomial for `n`
-    /// - `osp` is the op stack pointer
+    /// - `ind_n` is the [indicator polynomial](Self::indicator_polynomial) for `n`
+    /// - `osp` is the [op stack pointer](OpStackPointer)
     /// - `rp` is the running product for the permutation argument
     /// - `fac_n` is the factor for the running product
     fn combine_mutually_exclusive_constraint_groups(
@@ -3900,6 +3974,27 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn transition_constraints_for_instruction_recurse_or_return() {
+        let program = triton_program! {
+            push 2 swap 6
+            call loop halt
+            loop:
+                swap 5 push 1 add swap 5
+                recurse_or_return 5
+        };
+        let test_rows = [
+            test_row_from_program(program.clone(), 7), // recurse
+            test_row_from_program(program, 12),        // return
+        ];
+        let debug_info = TestRowsDebugInfo {
+            instruction: RecurseOrReturn(OpStackElement::ST5),
+            debug_cols_curr_row: vec![IP, JSP, JSO, JSD, ST5, ST6, HV4],
+            debug_cols_next_row: vec![IP, JSP, JSO, JSD],
+        };
+        assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
+    }
+
+    #[test]
     fn transition_constraints_for_instruction_read_mem() {
         let programs = [
             triton_program!(push 1 read_mem 1 push 0 eq assert assert halt),
@@ -4347,8 +4442,8 @@ pub(crate) mod tests {
     #[test]
     fn print_number_and_degrees_of_transition_constraints_for_all_instructions() {
         println!();
-        println!("| Instruction     | #polys | max deg | Degrees");
-        println!("|:----------------|-------:|--------:|:------------");
+        println!("| Instruction         | #polys | max deg | Degrees");
+        println!("|:--------------------|-------:|--------:|:------------");
         let circuit_builder = ConstraintCircuitBuilder::new();
         for instruction in ALL_INSTRUCTIONS {
             let constraints = ExtProcessorTable::transition_constraints_for_instruction(
@@ -4360,13 +4455,11 @@ pub(crate) mod tests {
                 .map(|circuit| circuit.clone().consume().degree())
                 .collect_vec();
             let max_degree = degrees.iter().max().unwrap_or(&0);
-            let degrees_str = degrees.iter().map(|d| format!("{d}")).join(", ");
+            let degrees_str = degrees.iter().join(", ");
             println!(
-                "| {:<15} | {:>6} | {:>7} | [{}]",
+                "| {:<19} | {:>6} | {max_degree:>7} | [{degrees_str}]",
                 format!("{instruction}"),
                 constraints.len(),
-                max_degree,
-                degrees_str,
             );
         }
     }

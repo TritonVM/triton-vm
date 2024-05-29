@@ -9,6 +9,7 @@ use arbitrary::Arbitrary;
 use itertools::Itertools;
 use ndarray::Array1;
 use num_traits::One;
+use num_traits::WrappingAdd;
 use num_traits::Zero;
 use serde_derive::*;
 use twenty_first::math::x_field_element::EXTENSION_DEGREE;
@@ -138,15 +139,14 @@ impl VMState {
             return hvs;
         };
 
+        let decompose_arg = |a: u64| bfe_array![a % 2, (a >> 1) % 2, (a >> 2) % 2, (a >> 3) % 2];
         let ram_read = |address| self.ram.get(&address).copied().unwrap_or_else(|| bfe!(0));
+
         match current_instruction {
             Pop(_) | Divine(_) | Dup(_) | Swap(_) | ReadMem(_) | WriteMem(_) | ReadIo(_)
             | WriteIo(_) => {
-                let arg_val: u64 = current_instruction.arg().unwrap().value();
-                hvs[0] = bfe!(arg_val % 2);
-                hvs[1] = bfe!((arg_val >> 1) % 2);
-                hvs[2] = bfe!((arg_val >> 2) % 2);
-                hvs[3] = bfe!((arg_val >> 3) % 2);
+                let arg = current_instruction.arg().unwrap().value();
+                hvs[..4].copy_from_slice(&decompose_arg(arg));
             }
             Skiz => {
                 let st0 = self.op_stack[ST0];
@@ -155,6 +155,12 @@ impl VMState {
                 let decomposition = Self::decompose_opcode_for_instruction_skiz(next_opcode);
                 let decomposition = decomposition.map(BFieldElement::new);
                 hvs[1..6].copy_from_slice(&decomposition);
+            }
+            RecurseOrReturn(st) => {
+                hvs[..4].copy_from_slice(&decompose_arg(st.into()));
+                let lhs = self.op_stack[st];
+                let rhs = self.op_stack[st.wrapping_add(&ST1)];
+                hvs[4] = (rhs - lhs).inverse_or_zero();
             }
             SpongeAbsorbMem => {
                 hvs[0] = ram_read(self.op_stack[ST0] + bfe!(4));
@@ -235,6 +241,7 @@ impl VMState {
             Call(address) => self.call(address),
             Return => self.return_from_call()?,
             Recurse => self.recurse()?,
+            RecurseOrReturn(stack_element) => self.recurse_or_return(stack_element)?,
             Assert => self.assert()?,
             ReadMem(n) => self.read_mem(n)?,
             WriteMem(n) => self.write_mem(n)?,
@@ -374,19 +381,32 @@ impl VMState {
         let jump_stack_entry = (call_origin, call_destination);
         self.jump_stack.push(jump_stack_entry);
 
-        self.instruction_pointer = call_destination.value() as usize;
+        self.instruction_pointer = call_destination.value().try_into().unwrap();
         vec![]
     }
 
     fn return_from_call(&mut self) -> Result<Vec<CoProcessorCall>> {
         let (call_origin, _) = self.jump_stack_pop()?;
-        self.instruction_pointer = call_origin.value() as usize;
+        self.instruction_pointer = call_origin.value().try_into().unwrap();
         Ok(vec![])
     }
 
     fn recurse(&mut self) -> Result<Vec<CoProcessorCall>> {
         let (_, call_destination) = self.jump_stack_peek()?;
-        self.instruction_pointer = call_destination.value() as usize;
+        self.instruction_pointer = call_destination.value().try_into().unwrap();
+        Ok(vec![])
+    }
+
+    fn recurse_or_return(&mut self, st: OpStackElement) -> Result<Vec<CoProcessorCall>> {
+        let (_, call_destination) = self.jump_stack_peek()?;
+
+        if self.op_stack[st] == self.op_stack[st.wrapping_add(&ST1)] {
+            let (call_origin, _) = self.jump_stack_pop()?;
+            self.instruction_pointer = call_origin.value().try_into().unwrap();
+        } else {
+            self.instruction_pointer = call_destination.value().try_into().unwrap();
+        }
+
         Ok(vec![])
     }
 
@@ -972,13 +992,11 @@ impl VMState {
     }
 
     fn jump_stack_pop(&mut self) -> Result<(BFieldElement, BFieldElement)> {
-        let maybe_jump_stack_element = self.jump_stack.pop();
-        maybe_jump_stack_element.ok_or(JumpStackIsEmpty)
+        self.jump_stack.pop().ok_or(JumpStackIsEmpty)
     }
 
     fn jump_stack_peek(&mut self) -> Result<(BFieldElement, BFieldElement)> {
-        let maybe_jump_stack_element = self.jump_stack.last().copied();
-        maybe_jump_stack_element.ok_or(JumpStackIsEmpty)
+        self.jump_stack.last().copied().ok_or(JumpStackIsEmpty)
     }
 
     fn pop_secret_digest(&mut self) -> Result<[BFieldElement; tip5::DIGEST_LENGTH]> {
@@ -1218,6 +1236,108 @@ pub(crate) mod tests {
                     recurse
                 return
         ))
+    }
+
+    pub(crate) fn test_program_for_recurse_or_return_using_st0() -> ProgramAndInput {
+        ProgramAndInput::new(triton_program! {
+            push 5 push 0
+            call label
+            halt
+            label:
+                push 1 add
+                recurse_or_return 0
+        })
+    }
+
+    pub(crate) fn test_program_for_recurse_or_return_using_st15() -> ProgramAndInput {
+        ProgramAndInput::new(triton_program! {
+                                        // d4 d3 d2 d1 d0 0 0 0 0 0 0 0 0 0 0 0
+            push 5 swap 15              // d4  5 d2 d1 d0 0 0 0 0 0 0 0 0 0 0 0 d3
+            pop 1 push 0                // d4  5 d2 d1 d0 0 0 0 0 0 0 0 0 0 0 0  0
+            call label
+            halt
+            label:
+                push 1 add
+                recurse_or_return 15    // d4  5 d2 d1 d0 0 0 0 0 0 0 0 0 0 0 0  i
+                                        //     ↑                                 ↑
+                                        //    15 ← the indices being compared →  0
+        })
+    }
+
+    /// Test helper for property testing instruction `recurse_or_return`.
+    ///
+    /// The [assembled](Self::assemble) program
+    /// - sets up a loop incrementing a counter by one per iteration
+    /// - populates the (wrapped-around) successor of the chosen
+    #[derive(Debug, Clone, Eq, PartialEq, test_strategy::Arbitrary)]
+    pub struct ProgramForRecurseOrReturn {
+        #[strategy(arb())]
+        recurse_or_return_register: OpStackElement,
+
+        #[strategy(arb())]
+        iteration_terminator: BFieldElement,
+
+        #[strategy(arb())]
+        #[filter(#other_iterator_values.iter().all(|&v| v != #iteration_terminator))]
+        other_iterator_values: Vec<BFieldElement>,
+    }
+
+    impl ProgramForRecurseOrReturn {
+        pub fn assemble(self) -> ProgramAndInput {
+            let maybe_swap = |st| match st {
+                ST0 => triton_asm!(nop),
+                _ => triton_asm!(swap { st }),
+            };
+
+            // Because stack management is complicated enough, the counter lives in RAM.
+            let iteration_counter_address = 0;
+            let expected_num_iterations = self.other_iterator_values.len() + 1;
+            let successor_register = self.recurse_or_return_register.wrapping_add(&ST1);
+
+            let program = triton_program! {
+                // set up iteration counter
+                push 0 hint iteration_counter = stack[0]
+                push {iteration_counter_address}
+                write_mem 1 pop 1
+
+                // set up termination condition
+                push {self.iteration_terminator}
+                {&maybe_swap(successor_register)}
+
+                call iteration_loop
+
+                // check iteration counter
+                push {iteration_counter_address}
+                read_mem 1 pop 1
+                push {expected_num_iterations}
+                eq assert
+                halt
+
+                iteration_loop:
+                    // increment iteration counter
+                    push {iteration_counter_address}
+                    read_mem 1 pop 1
+                    push 1 add
+                    push {iteration_counter_address}
+                    write_mem 1 pop 1
+
+                    // check loop termination
+                    {&maybe_swap(self.recurse_or_return_register)}
+                    pop 1
+                    read_io 1
+                    {&maybe_swap(self.recurse_or_return_register)}
+                    recurse_or_return {self.recurse_or_return_register}
+            };
+
+            let mut input = self.other_iterator_values;
+            input.push(self.iteration_terminator);
+            ProgramAndInput::new(program).with_input(input)
+        }
+    }
+
+    #[proptest]
+    fn property_based_recurse_or_return_program_sanity_check(program: ProgramForRecurseOrReturn) {
+        program.assemble().run()?;
     }
 
     pub(crate) fn test_program_for_write_mem_read_mem() -> ProgramAndInput {

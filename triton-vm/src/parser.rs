@@ -231,9 +231,10 @@ fn an_instruction(s: &str) -> ParseResult<AnInstruction<String>> {
     let call = call_instruction();
     let return_ = instruction("return", Return);
     let recurse = instruction("recurse", Recurse);
+    let recurse_or_return = recurse_or_return_instruction();
     let assert = instruction("assert", Assert);
 
-    let control_flow = alt((nop, skiz, call, return_, recurse, halt));
+    let control_flow = alt((nop, skiz, call, return_, halt));
 
     // Memory access
     let read_mem = read_mem_instruction();
@@ -296,7 +297,14 @@ fn an_instruction(s: &str) -> ParseResult<AnInstruction<String>> {
     // Successfully parsing "assert" before trying "assert_vector" can lead to
     // picking the wrong one. By trying them in the order of longest first, less
     // backtracking is necessary.
-    let syntax_ambiguous = alt((assert_vector, assert, sponge_absorb_mem, sponge_absorb));
+    let syntax_ambiguous = alt((
+        recurse_or_return,
+        recurse,
+        assert_vector,
+        assert,
+        sponge_absorb_mem,
+        sponge_absorb,
+    ));
 
     alt((
         opstack_manipulation,
@@ -319,37 +327,31 @@ fn instruction<'a>(
     instruction: AnInstruction<String>,
 ) -> impl Fn(&'a str) -> ParseResult<AnInstruction<String>> {
     move |s: &'a str| {
-        let (s, _) = token1(name)(s)?; // require space after instruction name
+        let (s, _) = token1(name)(s)?;
         Ok((s, instruction.clone()))
     }
 }
 
 fn pop_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>> {
     move |s: &str| {
-        let (s, _) = token1("pop")(s)?; // require space after instruction name
+        let (s, _) = token1("pop")(s)?;
         let (s, arg) = number_of_words(s)?;
-        let (s, _) = comment_or_whitespace1(s)?; // require space after field element
-
         Ok((s, Pop(arg)))
     }
 }
 
 fn push_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>> {
     move |s: &str| {
-        let (s, _) = token1("push")(s)?; // require space after instruction name
+        let (s, _) = token1("push")(s)?;
         let (s, elem) = field_element(s)?;
-        let (s, _) = comment_or_whitespace1(s)?; // require space after field element
-
         Ok((s, Push(elem)))
     }
 }
 
 fn divine_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>> {
     move |s: &str| {
-        let (s, _) = token1("divine")(s)?; // require space after instruction name
+        let (s, _) = token1("divine")(s)?;
         let (s, arg) = number_of_words(s)?;
-        let (s, _) = comment_or_whitespace1(s)?;
-
         Ok((s, Divine(arg)))
     }
 }
@@ -358,8 +360,6 @@ fn dup_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>> {
     move |s: &str| {
         let (s, _) = token1("dup")(s)?; // require space before argument
         let (s, stack_register) = stack_register(s)?;
-        let (s, _) = comment_or_whitespace1(s)?;
-
         Ok((s, Dup(stack_register)))
     }
 }
@@ -368,7 +368,6 @@ fn swap_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>> {
     move |s: &str| {
         let (s, _) = token1("swap")(s)?; // require space before argument
         let (s, stack_register) = stack_register(s)?;
-        let (s, _) = comment_or_whitespace1(s)?;
 
         let instruction = Swap(stack_register);
         if instruction.has_illegal_argument() {
@@ -410,42 +409,42 @@ fn call_instruction<'a>() -> impl Fn(&'a str) -> ParseResult<AnInstruction<Strin
     }
 }
 
+fn recurse_or_return_instruction<'a>() -> impl Fn(&'a str) -> ParseResult<AnInstruction<String>> {
+    move |s: &str| {
+        let (s, _) = token1("recurse_or_return")(s)?;
+        let (s, arg) = stack_register(s)?;
+        Ok((s, RecurseOrReturn(arg)))
+    }
+}
+
 fn read_mem_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>> {
     move |s: &str| {
-        let (s, _) = token1("read_mem")(s)?; // require space after instruction name
+        let (s, _) = token1("read_mem")(s)?;
         let (s, arg) = number_of_words(s)?;
-        let (s, _) = comment_or_whitespace1(s)?;
-
         Ok((s, ReadMem(arg)))
     }
 }
 
 fn write_mem_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>> {
     move |s: &str| {
-        let (s, _) = token1("write_mem")(s)?; // require space after instruction name
+        let (s, _) = token1("write_mem")(s)?;
         let (s, arg) = number_of_words(s)?;
-        let (s, _) = comment_or_whitespace1(s)?;
-
         Ok((s, WriteMem(arg)))
     }
 }
 
 fn read_io_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>> {
     move |s: &str| {
-        let (s, _) = token1("read_io")(s)?; // require space after instruction name
+        let (s, _) = token1("read_io")(s)?;
         let (s, arg) = number_of_words(s)?;
-        let (s, _) = comment_or_whitespace1(s)?;
-
         Ok((s, ReadIo(arg)))
     }
 }
 
 fn write_io_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>> {
     move |s: &str| {
-        let (s, _) = token1("write_io")(s)?; // require space after instruction name
+        let (s, _) = token1("write_io")(s)?;
         let (s, arg) = number_of_words(s)?;
-        let (s, _) = comment_or_whitespace1(s)?;
-
         Ok((s, WriteIo(arg)))
     }
 }
@@ -453,6 +452,7 @@ fn write_io_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>>
 fn field_element(s_orig: &str) -> ParseResult<BFieldElement> {
     let (s, negative) = opt(token0("-"))(s_orig)?;
     let (s, n) = digit1(s)?;
+    let (s, _) = comment_or_whitespace1(s)?;
 
     let Ok(mut n): Result<i128, _> = n.parse() else {
         return context("out-of-bounds constant", fail)(s);
@@ -492,6 +492,7 @@ fn stack_register(s: &str) -> ParseResult<OpStackElement> {
         "15" => ST15,
         _ => return context("using an out-of-bounds stack register (0-15 exist)", fail)(s),
     };
+    let (s, _) = comment_or_whitespace1(s)?;
 
     Ok((s, stack_register))
 }
@@ -506,6 +507,7 @@ fn number_of_words(s: &str) -> ParseResult<NumberOfWords> {
         "5" => N5,
         _ => return context("using an out-of-bounds argument (1-5 allowed)", fail)(s),
     };
+    let (s, _) = comment_or_whitespace1(s)?; // require space after element
 
     Ok((s, arg))
 }

@@ -41,21 +41,32 @@ the divined values were supplied as and are read from secret input.
 
 ## Control Flow
 
-| Instruction  | Opcode | old op stack | new op stack | old `ip` | new `ip` | old jump stack | new jump stack | Description                                                                                                              |
-|:-------------|-------:|:-------------|:-------------|:---------|:---------|:---------------|:---------------|:-------------------------------------------------------------------------------------------------------------------------|
-| `halt`       |      0 | `_`          | `_`          | `ip`     | `ip+1`   | `_`            | `_`            | Solves the halting problem (if the instruction is reached). Indicates graceful shutdown of the VM.                       |
-| `nop`        |      8 | `_`          | `_`          | `ip`     | `ip+1`   | `_`            | `_`            | Do nothing                                                                                                               |
-| `skiz`       |      2 | `_ a`        | `_`          | `ip`     | `ip+s`   | `_`            | `_`            | Skip next instruction if `a` is zero. `s` ∈ {1, 2, 3} depends on `a` and whether the next instruction takes an argument. |
-| `call` + `d` |     33 | `_`          | `_`          | `ip`     | `d`      | `_`            | `_ (ip+2, d)`  | Push `(ip+2,d)` to the jump stack, and jump to absolute address `d`                                                      |
-| `return`     |     16 | `_`          | `_`          | `ip`     | `o`      | `_ (o, d)`     | `_`            | Pop one pair off the jump stack and jump to that pair's return address (which is the first element).                     |
-| `recurse`    |     24 | `_`          | `_`          | `ip`     | `d`      | `_ (o, d)`     | `_ (o, d)`     | Peek at the top pair of the jump stack and jump to that pair's destination address (which is the second element).        |
-| `assert`     |     10 | `_ a`        | `_`          | `ip`     | `ip+1`   | `_`            | `_`            | Pops `a` if `a == 1`, else crashes the virtual machine.                                                                  |
+| Instruction               | Opcode | old op stack | new op stack | old `ip` | new `ip`   | old jump stack | new jump stack    | Description                                                                                                              |
+|:--------------------------|-------:|:-------------|:-------------|:---------|:-----------|:---------------|:------------------|:-------------------------------------------------------------------------------------------------------------------------|
+| `halt`                    |      0 | `_`          | `_`          | `ip`     | `ip+1`     | `_`            | `_`               | Solves the halting problem (if the instruction is reached). Indicates graceful shutdown of the VM.                       |
+| `nop`                     |      8 | `_`          | `_`          | `ip`     | `ip+1`     | `_`            | `_`               | Do nothing                                                                                                               |
+| `skiz`                    |      2 | `_ a`        | `_`          | `ip`     | `ip+s`     | `_`            | `_`               | Skip next instruction if `a` is zero. `s` ∈ {1, 2, 3} depends on `a` and whether the next instruction takes an argument. |
+| `call` + `d`              |     33 | `_`          | `_`          | `ip`     | `d`        | `_`            | `_ (ip+2, d)`     | Push `(ip+2,d)` to the jump stack, and jump to absolute address `d`                                                      |
+| `return`                  |     16 | `_`          | `_`          | `ip`     | `o`        | `_ (o, d)`     | `_`               | Pop one pair off the jump stack and jump to that pair's return address (which is the first element).                     |
+| `recurse`                 |     24 | `_`          | `_`          | `ip`     | `d`        | `_ (o, d)`     | `_ (o, d)`        | Peek at the top pair of the jump stack and jump to that pair's destination address (which is the second element).        |
+| `recurse_or_return` + `i` |     41 | `_ b a …`    | `_ b a …`    | `ip`     | `d` or `o` | `_ (o, d)`     | `_ (o, d)` or `_` | Like `recurse` if `a != b`, like `return` if `a == b`. 0 <= `i` <= 15. See also extended description below.              |
+| `assert`                  |     10 | `_ a`        | `_`          | `ip`     | `ip+1`     | `_`            | `_`               | Pops `a` if `a == 1`, else crashes the virtual machine.                                                                  |
+
+The instructions `return`, `recurse`, and `recurse_or_return` require a non-empty jump stack.
+Should the jump stack be empty, executing any of these instruction causes Triton VM to crash.
+
+Instruction `recurse_or_return`  behaves – surprise! – either like instruction `recurse` or like instruction `return`.
+The (deterministic) decision which behavior to exhibit is made at runtime and depends on the current stack as well as the instruction's immediate argument `i`.
+Argument `i` indicates one of the stack's top 16 elements.
+Let the value of the indicated stack element be `a`, and the value of its successor element `b`.
+In the slightly special case of `i == 15`, the indicated element's successor is taken to be stack element with index 0.
+If `a != b`, then `recurse_or_return` acts like instruction `recurse`, else like `return`.
 
 ## Memory Access
 
 | Instruction       | Opcode | old op stack         | new op stack           | old RAM             | new RAM             | Description                                                                                                                                  |
 |:------------------|-------:|:---------------------|:-----------------------|:--------------------|:--------------------|:---------------------------------------------------------------------------------------------------------------------------------------------|
-| `read_mem` + `n`  |     41 | e.g., `_ p+2`        | e.g., `_ v2 v1 v0 p-1` | [p: v0, p+1, v1, …] | [p: v0, p+1, v1, …] | Reads consecutive values `vi` from RAM at address `p` and puts them onto the op stack. Decrements RAM pointer (`st0`) by `n`. 1 ⩽ `n` ⩽ 5    |
+| `read_mem` + `n`  |     49 | e.g., `_ p+2`        | e.g., `_ v2 v1 v0 p-1` | [p: v0, p+1, v1, …] | [p: v0, p+1, v1, …] | Reads consecutive values `vi` from RAM at address `p` and puts them onto the op stack. Decrements RAM pointer (`st0`) by `n`. 1 ⩽ `n` ⩽ 5    |
 | `write_mem` + `n` |     11 | e.g., `_ v2 v1 v0 p` | e.g., `_ p+3`          | []                  | [p: v0, p+1, v1, …] | Writes op stack's `n` top-most values `vi` to RAM at the address `p+i`, popping the `vi`. Increments RAM pointer (`st0`) by `n`. 1 ⩽ `n` ⩽ 5 |
 
 For the benefit of clarity, the effect of every possible argument is given below.
@@ -133,7 +144,7 @@ Triton VM cannot know the number of elements that will be absorbed.
 
 | Instruction      | Opcode | old op stack    | new op stack    | Description                                                                              |
 |:-----------------|-------:|:----------------|:----------------|:-----------------------------------------------------------------------------------------|
-| `read_io` + `n`  |     49 | e.g., `_`       | e.g., `_ c b a` | Reads `n` B-Field elements from standard input and pushes them to the stack. 1 ⩽ `n` ⩽ 5 |
+| `read_io` + `n`  |     57 | e.g., `_`       | e.g., `_ c b a` | Reads `n` B-Field elements from standard input and pushes them to the stack. 1 ⩽ `n` ⩽ 5 |
 | `write_io` + `n` |     19 | e.g., `_ c b a` | e.g., `_`       | Pops `n` elements from the stack and writes them to standard output. 1 ⩽ `n` ⩽ 5         |
 
 ## Many-In-One
