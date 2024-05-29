@@ -1314,6 +1314,13 @@ pub(crate) mod tests {
         program.assemble().run()?;
     }
 
+    #[test]
+    fn vm_crashes_when_executing_recurse_or_return_with_empty_jump_stack() {
+        let program = triton_program!(recurse_or_return halt);
+        let_assert!(Err(err) = program.run(PublicInput::default(), NonDeterminism::default()));
+        assert!(JumpStackIsEmpty == err.source);
+    }
+
     pub(crate) fn test_program_for_write_mem_read_mem() -> ProgramAndInput {
         ProgramAndInput::new(triton_program! {
             push 3 push 1 push 2    // _ 3 1 2
