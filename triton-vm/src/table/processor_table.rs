@@ -1381,33 +1381,19 @@ impl ExtProcessorTable {
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
         let indicator_poly = |idx| Self::indicator_polynomial(circuit_builder, idx);
-        let curr_base_row = |col: ProcessorBaseTableColumn| {
+        let curr_row = |col: ProcessorBaseTableColumn| {
             circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
         };
-        let next_base_row = |col: ProcessorBaseTableColumn| {
+        let next_row = |col: ProcessorBaseTableColumn| {
             circuit_builder.input(NextBaseRow(col.master_base_table_index()))
         };
 
-        let specific_constraints = vec![
-            indicator_poly(0) * (next_base_row(ST0) - curr_base_row(ST0))
-                + indicator_poly(1) * (next_base_row(ST0) - curr_base_row(ST1))
-                + indicator_poly(2) * (next_base_row(ST0) - curr_base_row(ST2))
-                + indicator_poly(3) * (next_base_row(ST0) - curr_base_row(ST3))
-                + indicator_poly(4) * (next_base_row(ST0) - curr_base_row(ST4))
-                + indicator_poly(5) * (next_base_row(ST0) - curr_base_row(ST5))
-                + indicator_poly(6) * (next_base_row(ST0) - curr_base_row(ST6))
-                + indicator_poly(7) * (next_base_row(ST0) - curr_base_row(ST7))
-                + indicator_poly(8) * (next_base_row(ST0) - curr_base_row(ST8))
-                + indicator_poly(9) * (next_base_row(ST0) - curr_base_row(ST9))
-                + indicator_poly(10) * (next_base_row(ST0) - curr_base_row(ST10))
-                + indicator_poly(11) * (next_base_row(ST0) - curr_base_row(ST11))
-                + indicator_poly(12) * (next_base_row(ST0) - curr_base_row(ST12))
-                + indicator_poly(13) * (next_base_row(ST0) - curr_base_row(ST13))
-                + indicator_poly(14) * (next_base_row(ST0) - curr_base_row(ST14))
-                + indicator_poly(15) * (next_base_row(ST0) - curr_base_row(ST15)),
-        ];
+        let st_column = ProcessorTable::op_stack_column_by_index;
+        let duplicate_element = |i| indicator_poly(i) * (next_row(ST0) - curr_row(st_column(i)));
+        let duplicate_indicated_element = (0..OpStackElement::COUNT).map(duplicate_element).sum();
+
         [
-            specific_constraints,
+            vec![duplicate_indicated_element],
             Self::instruction_group_decompose_arg(circuit_builder),
             Self::instruction_group_step_2(circuit_builder),
             Self::instruction_group_grow_op_stack(circuit_builder),
@@ -1422,63 +1408,33 @@ impl ExtProcessorTable {
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
         let one = || circuit_builder.b_constant(1);
         let indicator_poly = |idx| Self::indicator_polynomial(circuit_builder, idx);
-        let curr_base_row = |col: ProcessorBaseTableColumn| {
+        let curr_row = |col: ProcessorBaseTableColumn| {
             circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
         };
-        let next_base_row = |col: ProcessorBaseTableColumn| {
+        let next_row = |col: ProcessorBaseTableColumn| {
             circuit_builder.input(NextBaseRow(col.master_base_table_index()))
         };
 
-        let specific_constraints = vec![
-            indicator_poly(0)
-                + indicator_poly(1) * (next_base_row(ST1) - curr_base_row(ST0))
-                + indicator_poly(2) * (next_base_row(ST2) - curr_base_row(ST0))
-                + indicator_poly(3) * (next_base_row(ST3) - curr_base_row(ST0))
-                + indicator_poly(4) * (next_base_row(ST4) - curr_base_row(ST0))
-                + indicator_poly(5) * (next_base_row(ST5) - curr_base_row(ST0))
-                + indicator_poly(6) * (next_base_row(ST6) - curr_base_row(ST0))
-                + indicator_poly(7) * (next_base_row(ST7) - curr_base_row(ST0))
-                + indicator_poly(8) * (next_base_row(ST8) - curr_base_row(ST0))
-                + indicator_poly(9) * (next_base_row(ST9) - curr_base_row(ST0))
-                + indicator_poly(10) * (next_base_row(ST10) - curr_base_row(ST0))
-                + indicator_poly(11) * (next_base_row(ST11) - curr_base_row(ST0))
-                + indicator_poly(12) * (next_base_row(ST12) - curr_base_row(ST0))
-                + indicator_poly(13) * (next_base_row(ST13) - curr_base_row(ST0))
-                + indicator_poly(14) * (next_base_row(ST14) - curr_base_row(ST0))
-                + indicator_poly(15) * (next_base_row(ST15) - curr_base_row(ST0)),
-            indicator_poly(1) * (next_base_row(ST0) - curr_base_row(ST1))
-                + indicator_poly(2) * (next_base_row(ST0) - curr_base_row(ST2))
-                + indicator_poly(3) * (next_base_row(ST0) - curr_base_row(ST3))
-                + indicator_poly(4) * (next_base_row(ST0) - curr_base_row(ST4))
-                + indicator_poly(5) * (next_base_row(ST0) - curr_base_row(ST5))
-                + indicator_poly(6) * (next_base_row(ST0) - curr_base_row(ST6))
-                + indicator_poly(7) * (next_base_row(ST0) - curr_base_row(ST7))
-                + indicator_poly(8) * (next_base_row(ST0) - curr_base_row(ST8))
-                + indicator_poly(9) * (next_base_row(ST0) - curr_base_row(ST9))
-                + indicator_poly(10) * (next_base_row(ST0) - curr_base_row(ST10))
-                + indicator_poly(11) * (next_base_row(ST0) - curr_base_row(ST11))
-                + indicator_poly(12) * (next_base_row(ST0) - curr_base_row(ST12))
-                + indicator_poly(13) * (next_base_row(ST0) - curr_base_row(ST13))
-                + indicator_poly(14) * (next_base_row(ST0) - curr_base_row(ST14))
-                + indicator_poly(15) * (next_base_row(ST0) - curr_base_row(ST15)),
-            (one() - indicator_poly(1)) * (next_base_row(ST1) - curr_base_row(ST1)),
-            (one() - indicator_poly(2)) * (next_base_row(ST2) - curr_base_row(ST2)),
-            (one() - indicator_poly(3)) * (next_base_row(ST3) - curr_base_row(ST3)),
-            (one() - indicator_poly(4)) * (next_base_row(ST4) - curr_base_row(ST4)),
-            (one() - indicator_poly(5)) * (next_base_row(ST5) - curr_base_row(ST5)),
-            (one() - indicator_poly(6)) * (next_base_row(ST6) - curr_base_row(ST6)),
-            (one() - indicator_poly(7)) * (next_base_row(ST7) - curr_base_row(ST7)),
-            (one() - indicator_poly(8)) * (next_base_row(ST8) - curr_base_row(ST8)),
-            (one() - indicator_poly(9)) * (next_base_row(ST9) - curr_base_row(ST9)),
-            (one() - indicator_poly(10)) * (next_base_row(ST10) - curr_base_row(ST10)),
-            (one() - indicator_poly(11)) * (next_base_row(ST11) - curr_base_row(ST11)),
-            (one() - indicator_poly(12)) * (next_base_row(ST12) - curr_base_row(ST12)),
-            (one() - indicator_poly(13)) * (next_base_row(ST13) - curr_base_row(ST13)),
-            (one() - indicator_poly(14)) * (next_base_row(ST14) - curr_base_row(ST14)),
-            (one() - indicator_poly(15)) * (next_base_row(ST15) - curr_base_row(ST15)),
+        let st_column = ProcessorTable::op_stack_column_by_index;
+        let top_moves_to_i = |i| indicator_poly(i) * (next_row(st_column(i)) - curr_row(ST0));
+        let i_moves_to_top = |i| indicator_poly(i) * (next_row(ST0) - curr_row(st_column(i)));
+
+        let top_moves_to_indicated_element = (1..OpStackElement::COUNT).map(top_moves_to_i).sum();
+        let indicated_element_moves_to_top = (1..OpStackElement::COUNT).map(i_moves_to_top).sum();
+        let indicated_element_is_swapped = vec![
+            indicator_poly(0) + top_moves_to_indicated_element,
+            indicated_element_moves_to_top,
         ];
+
+        let i_does_not_change =
+            |i| (one() - indicator_poly(i)) * (next_row(st_column(i)) - curr_row(st_column(i)));
+        let other_elements_do_not_change = (1..OpStackElement::COUNT)
+            .map(i_does_not_change)
+            .collect_vec();
+
         [
-            specific_constraints,
+            indicated_element_is_swapped,
+            other_elements_do_not_change,
             Self::instruction_group_decompose_arg(circuit_builder),
             Self::instruction_group_step_2(circuit_builder),
             Self::instruction_group_no_ram(circuit_builder),
