@@ -189,7 +189,7 @@ impl ProcessorTable {
 
             // Hash Table – `hash`'s or `merkle_step`'s input from Processor to Hash Coprocessor
             let st0_through_st9 = [ST0, ST1, ST2, ST3, ST4, ST5, ST6, ST7, ST8, ST9];
-            let hash_state_weights = &challenges[HashStateWeight0..HashStateWeight10];
+            let hash_state_weights = &challenges[StackWeight0..StackWeight10];
 
             if ci == Instruction::Hash.opcode_b() || ci == Instruction::MerkleStep.opcode_b() {
                 let merkle_step_left_sibling = [ST0, ST1, ST2, ST3, ST4, HV0, HV1, HV2, HV3, HV4];
@@ -217,7 +217,7 @@ impl ProcessorTable {
                 if prev_ci == Instruction::Hash.opcode_b()
                     || prev_ci == Instruction::MerkleStep.opcode_b()
                 {
-                    let hash_digest_weights = &challenges[HashStateWeight0..HashStateWeight5];
+                    let hash_digest_weights = &challenges[StackWeight0..StackWeight5];
                     let compressed_row: XFieldElement = [ST0, ST1, ST2, ST3, ST4]
                         .map(|st| current_row[st.base_table_index()])
                         .into_iter()
@@ -1375,6 +1375,44 @@ impl ExtProcessorTable {
             Self::instruction_group_no_io(circuit_builder),
         ]
         .concat()
+    }
+
+    /// Compute the randomly-weighted linear combination of the supplied stack
+    /// elements.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the length of the supplied `stack` vector does not equal
+    /// [`OpStackElement::COUNT`].
+    fn compress_stack(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+        stack: Vec<ConstraintCircuitMonad<DualRowIndicator>>,
+    ) -> ConstraintCircuitMonad<DualRowIndicator> {
+        let challenges = [
+            StackWeight0,
+            StackWeight1,
+            StackWeight2,
+            StackWeight3,
+            StackWeight4,
+            StackWeight5,
+            StackWeight6,
+            StackWeight7,
+            StackWeight8,
+            StackWeight9,
+            StackWeight10,
+            StackWeight11,
+            StackWeight12,
+            StackWeight13,
+            StackWeight14,
+            StackWeight15,
+        ]
+        .map(|ch| circuit_builder.challenge(ch));
+
+        challenges
+            .into_iter()
+            .zip_eq(stack)
+            .map(|(weight, st)| weight * st)
+            .sum()
     }
 
     fn instruction_dup(
@@ -3265,16 +3303,16 @@ impl ExtProcessorTable {
             * (next_base_row(CI) - constant(Instruction::MerkleStep.opcode()));
 
         let weights = [
-            HashStateWeight0,
-            HashStateWeight1,
-            HashStateWeight2,
-            HashStateWeight3,
-            HashStateWeight4,
-            HashStateWeight5,
-            HashStateWeight6,
-            HashStateWeight7,
-            HashStateWeight8,
-            HashStateWeight9,
+            StackWeight0,
+            StackWeight1,
+            StackWeight2,
+            StackWeight3,
+            StackWeight4,
+            StackWeight5,
+            StackWeight6,
+            StackWeight7,
+            StackWeight8,
+            StackWeight9,
         ]
         .map(challenge);
 
@@ -3350,11 +3388,11 @@ impl ExtProcessorTable {
             * (curr_base_row(CI) - constant(Instruction::MerkleStep.opcode()));
 
         let weights = [
-            HashStateWeight0,
-            HashStateWeight1,
-            HashStateWeight2,
-            HashStateWeight3,
-            HashStateWeight4,
+            StackWeight0,
+            StackWeight1,
+            StackWeight2,
+            StackWeight3,
+            StackWeight4,
         ]
         .map(challenge);
         let state = [ST0, ST1, ST2, ST3, ST4].map(next_base_row);
@@ -3409,16 +3447,16 @@ impl ExtProcessorTable {
 
         let weighted_sum = |state| {
             let weights = [
-                HashStateWeight0,
-                HashStateWeight1,
-                HashStateWeight2,
-                HashStateWeight3,
-                HashStateWeight4,
-                HashStateWeight5,
-                HashStateWeight6,
-                HashStateWeight7,
-                HashStateWeight8,
-                HashStateWeight9,
+                StackWeight0,
+                StackWeight1,
+                StackWeight2,
+                StackWeight3,
+                StackWeight4,
+                StackWeight5,
+                StackWeight6,
+                StackWeight7,
+                StackWeight8,
+                StackWeight9,
             ];
             let weights = weights.map(challenge).into_iter();
             weights.zip_eq(state).map(|(w, st)| w * st).sum()

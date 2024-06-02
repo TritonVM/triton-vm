@@ -224,7 +224,7 @@ pub(crate) mod tests {
             let ext_row = |i| circuit_builder.input(SingleRowIndicator::ExtRow(i));
 
             let constraint =
-                base_row(0) * challenge(ChallengeId::HashStateWeight5) - ext_row(1) * constant(42);
+                base_row(0) * challenge(ChallengeId::StackWeight5) - ext_row(1) * constant(42);
 
             Self {
                 init: vec![constraint],
@@ -253,7 +253,7 @@ pub(crate) mod tests {
 
             vec![
                 input(0) * input(1) - input(2),
-                input_to_the_4th(0) - challenge(ChallengeId::HashStateWeight3) - constant(16),
+                input_to_the_4th(0) - challenge(ChallengeId::StackWeight3) - constant(16),
                 input(2) * input_to_the_4th(0) - input_to_the_4th(1),
             ]
         }
@@ -272,8 +272,8 @@ pub(crate) mod tests {
                 curr_b_row(0) * next_x_row(1) - next_b_row(1) * curr_x_row(0),
                 curr_b_row(1) * next_x_row(2) - next_b_row(2) * curr_x_row(1),
                 curr_b_row(2) * next_x_row(0) * next_x_row(1) * next_x_row(3) + constant(42),
-                curr_b_row(0) * challenge(ChallengeId::HashStateWeight12)
-                    - challenge(ChallengeId::HashStateWeight5),
+                curr_b_row(0) * challenge(ChallengeId::StackWeight12)
+                    - challenge(ChallengeId::StackWeight5),
             ]
         }
     }

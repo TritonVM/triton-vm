@@ -692,22 +692,22 @@ impl ExtHashTable {
             Self::tip5_constraints_as_circuits(circuit_builder);
 
         let state_weights = [
-            HashStateWeight0,
-            HashStateWeight1,
-            HashStateWeight2,
-            HashStateWeight3,
-            HashStateWeight4,
-            HashStateWeight5,
-            HashStateWeight6,
-            HashStateWeight7,
-            HashStateWeight8,
-            HashStateWeight9,
-            HashStateWeight10,
-            HashStateWeight11,
-            HashStateWeight12,
-            HashStateWeight13,
-            HashStateWeight14,
-            HashStateWeight15,
+            StackWeight0,
+            StackWeight1,
+            StackWeight2,
+            StackWeight3,
+            StackWeight4,
+            StackWeight5,
+            StackWeight6,
+            StackWeight7,
+            StackWeight8,
+            StackWeight9,
+            StackWeight10,
+            StackWeight11,
+            StackWeight12,
+            StackWeight13,
+            StackWeight14,
+            StackWeight15,
         ]
         .map(challenge);
 
@@ -1688,7 +1688,7 @@ impl HashTable {
             ]
         };
 
-        let state_weights = &challenges[HashStateWeight0..HashStateWeight10];
+        let state_weights = &challenges[StackWeight0..StackWeight10];
         let compressed_row = |row: ArrayView1<BFieldElement>| -> XFieldElement {
             rate_registers(row)
                 .iter()

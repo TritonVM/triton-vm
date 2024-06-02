@@ -132,22 +132,23 @@ pub enum ChallengeId {
     ProgramAttestationSendChunkIndeterminate,
 
     HashCIWeight,
-    HashStateWeight0,
-    HashStateWeight1,
-    HashStateWeight2,
-    HashStateWeight3,
-    HashStateWeight4,
-    HashStateWeight5,
-    HashStateWeight6,
-    HashStateWeight7,
-    HashStateWeight8,
-    HashStateWeight9,
-    HashStateWeight10,
-    HashStateWeight11,
-    HashStateWeight12,
-    HashStateWeight13,
-    HashStateWeight14,
-    HashStateWeight15,
+
+    StackWeight0,
+    StackWeight1,
+    StackWeight2,
+    StackWeight3,
+    StackWeight4,
+    StackWeight5,
+    StackWeight6,
+    StackWeight7,
+    StackWeight8,
+    StackWeight9,
+    StackWeight10,
+    StackWeight11,
+    StackWeight12,
+    StackWeight13,
+    StackWeight14,
+    StackWeight15,
 
     /// The indeterminate for the Lookup Argument between the Hash Table and the Cascade Table.
     HashCascadeLookupIndeterminate,
@@ -385,9 +386,9 @@ pub(crate) mod tests {
     #[test]
     fn various_challenge_indexing_operations_are_possible() {
         let challenges = Challenges::placeholder(&Claim::default());
-        let _ = challenges[HashStateWeight0];
-        let _ = challenges[HashStateWeight0..HashStateWeight8];
-        let _ = challenges[HashStateWeight0..=HashStateWeight8];
+        let _ = challenges[StackWeight0];
+        let _ = challenges[StackWeight0..StackWeight8];
+        let _ = challenges[StackWeight0..=StackWeight8];
         let _ = challenges[0];
         let _ = challenges[0..8];
         let _ = challenges[0..=8];
