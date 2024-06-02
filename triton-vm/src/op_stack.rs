@@ -74,6 +74,19 @@ impl OpStack {
         self.stack.pop().ok_or(OpStackTooShallow)
     }
 
+    pub(crate) fn insert(&mut self, index: OpStackElement, element: BFieldElement) {
+        let insertion_index = self.len() - usize::from(index);
+        self.stack.insert(insertion_index, element);
+        self.record_underflow_io(UnderflowIO::Write);
+    }
+
+    pub(crate) fn remove(&mut self, index: OpStackElement) -> BFieldElement {
+        self.record_underflow_io(UnderflowIO::Read);
+        let top_of_stack = self.len() - 1;
+        let index = top_of_stack - usize::from(index);
+        self.stack.remove(index)
+    }
+
     fn record_underflow_io(&mut self, io_type: fn(BFieldElement) -> UnderflowIO) {
         let underflow_io = io_type(self.first_underflow_element());
         self.underflow_io_sequence.push(underflow_io);
@@ -928,5 +941,35 @@ mod tests {
     #[test]
     fn compute_illegal_values_of_number_of_words() {
         let _ = NumberOfWords::illegal_values();
+    }
+
+    #[proptest]
+    fn inserting_an_element_into_the_stack_puts_it_at_the_correct_position(
+        #[strategy(arb())] insertion_index: OpStackElement,
+        #[strategy(arb())] insertion_element: BFieldElement,
+    ) {
+        let mut op_stack = OpStack::default();
+        op_stack.insert(insertion_index, insertion_element);
+        prop_assert_eq!(insertion_element, op_stack[insertion_index]);
+
+        let expected_len = OpStackElement::COUNT + 1;
+        prop_assert_eq!(expected_len, op_stack.len());
+    }
+
+    #[proptest]
+    fn removing_an_element_from_the_stack_removes_the_correct_element(
+        #[strategy(arb())] removal_index: OpStackElement,
+    ) {
+        let mut op_stack = OpStack::default();
+        for i in (0..OpStackElement::COUNT as u64).rev() {
+            op_stack.push(bfe!(i));
+        }
+
+        let expected_element = BFieldElement::from(removal_index);
+        let removed_element = op_stack.remove(removal_index);
+        prop_assert_eq!(expected_element, removed_element);
+
+        let expected_len = 2 * OpStackElement::COUNT - 1;
+        prop_assert_eq!(expected_len, op_stack.len());
     }
 }

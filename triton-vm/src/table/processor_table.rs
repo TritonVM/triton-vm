@@ -1523,6 +1523,104 @@ impl ExtProcessorTable {
         .concat()
     }
 
+    fn instruction_pick(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
+        let curr_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
+        };
+        let next_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(NextBaseRow(col.master_base_table_index()))
+        };
+
+        let stack = (0..OpStackElement::COUNT)
+            .map(ProcessorTable::op_stack_column_by_index)
+            .collect_vec();
+        let stack_with_picked_i = |i| {
+            let mut stack = stack.clone();
+            let new_top = stack.remove(i);
+            stack.insert(0, new_top);
+            stack.into_iter()
+        };
+
+        let next_stack = stack.iter().map(|&st| next_row(st)).collect_vec();
+        let curr_stack_with_picked_i = |i| stack_with_picked_i(i).map(curr_row).collect_vec();
+
+        let compress = |stack: Vec<_>| -> ConstraintCircuitMonad<_> {
+            assert_eq!(OpStackElement::COUNT, stack.len());
+            let weight = |i| circuit_builder.challenge(Self::stack_weight_by_index(i));
+            let enumerated_stack = stack.into_iter().enumerate();
+            enumerated_stack.map(|(i, st)| weight(i) * st).sum()
+        };
+
+        let next_stack_is_current_stack_with_picked_i = |i| {
+            Self::indicator_polynomial(circuit_builder, i)
+                * (compress(next_stack.clone()) - compress(curr_stack_with_picked_i(i)))
+        };
+        let next_stack_is_current_stack_with_correct_element_picked = (0..OpStackElement::COUNT)
+            .map(next_stack_is_current_stack_with_picked_i)
+            .sum();
+
+        [
+            vec![next_stack_is_current_stack_with_correct_element_picked],
+            Self::instruction_group_decompose_arg(circuit_builder),
+            Self::instruction_group_step_2(circuit_builder),
+            Self::instruction_group_no_ram(circuit_builder),
+            Self::instruction_group_no_io(circuit_builder),
+            Self::instruction_group_keep_op_stack_height(circuit_builder),
+        ]
+        .concat()
+    }
+
+    fn instruction_place(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
+        let curr_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
+        };
+        let next_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(NextBaseRow(col.master_base_table_index()))
+        };
+
+        let stack = (0..OpStackElement::COUNT)
+            .map(ProcessorTable::op_stack_column_by_index)
+            .collect_vec();
+        let stack_with_placed_i = |i| {
+            let mut stack = stack.clone();
+            let old_top = stack.remove(0);
+            stack.insert(i, old_top);
+            stack.into_iter()
+        };
+
+        let next_stack = stack.iter().map(|&st| next_row(st)).collect_vec();
+        let curr_stack_with_placed_i = |i| stack_with_placed_i(i).map(curr_row).collect_vec();
+
+        let compress = |stack: Vec<_>| -> ConstraintCircuitMonad<_> {
+            assert_eq!(OpStackElement::COUNT, stack.len());
+            let weight = |i| circuit_builder.challenge(Self::stack_weight_by_index(i));
+            let enumerated_stack = stack.into_iter().enumerate();
+            enumerated_stack.map(|(i, st)| weight(i) * st).sum()
+        };
+
+        let next_stack_is_current_stack_with_placed_i = |i| {
+            Self::indicator_polynomial(circuit_builder, i)
+                * (compress(next_stack.clone()) - compress(curr_stack_with_placed_i(i)))
+        };
+        let next_stack_is_current_stack_with_correct_element_placed = (0..OpStackElement::COUNT)
+            .map(next_stack_is_current_stack_with_placed_i)
+            .sum();
+
+        [
+            vec![next_stack_is_current_stack_with_correct_element_placed],
+            Self::instruction_group_decompose_arg(circuit_builder),
+            Self::instruction_group_step_2(circuit_builder),
+            Self::instruction_group_no_ram(circuit_builder),
+            Self::instruction_group_no_io(circuit_builder),
+            Self::instruction_group_keep_op_stack_height(circuit_builder),
+        ]
+        .concat()
+    }
+
     fn instruction_dup(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
@@ -2654,6 +2752,8 @@ impl ExtProcessorTable {
             Pop(_) => ExtProcessorTable::instruction_pop(circuit_builder),
             Push(_) => ExtProcessorTable::instruction_push(circuit_builder),
             Divine(_) => ExtProcessorTable::instruction_divine(circuit_builder),
+            Pick(_) => ExtProcessorTable::instruction_pick(circuit_builder),
+            Place(_) => ExtProcessorTable::instruction_place(circuit_builder),
             Dup(_) => ExtProcessorTable::instruction_dup(circuit_builder),
             Swap(_) => ExtProcessorTable::instruction_swap(circuit_builder),
             Halt => ExtProcessorTable::instruction_halt(circuit_builder),
@@ -3958,6 +4058,40 @@ pub(crate) mod tests {
         let test_rows = [test_row_from_program_with_input(program_and_input, 0)];
         let debug_info = TestRowsDebugInfo {
             instruction: Divine(n),
+            debug_cols_curr_row: vec![ST0, ST1, ST2],
+            debug_cols_next_row: vec![ST0, ST1, ST2],
+        };
+        assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
+    }
+
+    #[test]
+    fn transition_constraints_for_instruction_pick() {
+        let set_up_stack = (0..OpStackElement::COUNT)
+            .rev()
+            .flat_map(|i| triton_asm!(push { i }))
+            .collect_vec();
+        let test_rows = (0..OpStackElement::COUNT)
+            .map(|i| triton_program!({&set_up_stack} pick {i} push {i} eq assert halt))
+            .map(|program| test_row_from_program(program, 16))
+            .collect_vec();
+
+        let debug_info = TestRowsDebugInfo {
+            instruction: Pick(OpStackElement::ST0),
+            debug_cols_curr_row: vec![ST0, ST1, ST2],
+            debug_cols_next_row: vec![ST0, ST1, ST2],
+        };
+        assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
+    }
+
+    #[test]
+    fn transition_constraints_for_instruction_place() {
+        let test_rows = (0..OpStackElement::COUNT)
+            .map(|i| triton_program!(push 42 place {i} dup {i} push 42 eq assert halt))
+            .map(|program| test_row_from_program(program, 1))
+            .collect_vec();
+
+        let debug_info = TestRowsDebugInfo {
+            instruction: Place(OpStackElement::ST0),
             debug_cols_curr_row: vec![ST0, ST1, ST2],
             debug_cols_next_row: vec![ST0, ST1, ST2],
         };

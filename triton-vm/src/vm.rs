@@ -142,8 +142,8 @@ impl VMState {
         let ram_read = |address| self.ram.get(&address).copied().unwrap_or_else(|| bfe!(0));
 
         match current_instruction {
-            Pop(_) | Divine(_) | Dup(_) | Swap(_) | ReadMem(_) | WriteMem(_) | ReadIo(_)
-            | WriteIo(_) => {
+            Pop(_) | Divine(_) | Pick(_) | Place(_) | Dup(_) | Swap(_) | ReadMem(_)
+            | WriteMem(_) | ReadIo(_) | WriteIo(_) => {
                 let arg = current_instruction.arg().unwrap().value();
                 hvs[..4].copy_from_slice(&decompose_arg(arg));
             }
@@ -226,6 +226,8 @@ impl VMState {
             Pop(n) => self.pop(n)?,
             Push(field_element) => self.push(field_element),
             Divine(n) => self.divine(n)?,
+            Pick(stack_element) => self.pick(stack_element),
+            Place(stack_element) => self.place(stack_element)?,
             Dup(stack_element) => self.dup(stack_element),
             Swap(stack_element) => self.swap(stack_element),
             Halt => self.halt(),
@@ -331,6 +333,22 @@ impl VMState {
             let element = self.secret_individual_tokens.pop_front().unwrap();
             self.op_stack.push(element);
         }
+
+        self.instruction_pointer += 2;
+        Ok(vec![])
+    }
+
+    fn pick(&mut self, stack_register: OpStackElement) -> Vec<CoProcessorCall> {
+        let element = self.op_stack.remove(stack_register);
+        self.op_stack.push(element);
+
+        self.instruction_pointer += 2;
+        vec![]
+    }
+
+    fn place(&mut self, stack_register: OpStackElement) -> Result<Vec<CoProcessorCall>> {
+        let element = self.op_stack.pop()?;
+        self.op_stack.insert(stack_register, element);
 
         self.instruction_pointer += 2;
         Ok(vec![])
