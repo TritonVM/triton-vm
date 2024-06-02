@@ -26,7 +26,7 @@ The third property allows efficient arithmetization of the running product for t
 | `push` + `a`    |      1 | `_`                 | `_ a`                 | Pushes `a` onto the stack.                                                                      |
 | `divine`  + `n` |      9 | e.g., `_`           | e.g., `_ b a`         | Pushes `n` non-deterministic elements `a` to the stack. Interface for secret input. 1 ⩽ `n` ⩽ 5 |
 | `dup`  + `i`    |     17 | e.g., `_ e d c b a` | e.g., `_ e d c b a d` | Duplicates the element `i` positions away from the top. 0 ⩽ `i` < 16                            |
-| `swap` + `i`    |     25 | e.g., `_ e d c b a` | e.g., `_ e a c b d`   | Swaps the `i`th stack element with the top of the stack. 0 < `i` < 16                           |
+| `swap` + `i`    |     25 | e.g., `_ e d c b a` | e.g., `_ e a c b d`   | Swaps the `i`th stack element with the top of the stack. 0 ⩽ `i` < 16                           |
 
 Instruction `divine n` (together with [`merkle_step`](#many-in-one)) make Triton a virtual machine that can execute non-deterministic programs.
 As programs go, this concept is somewhat unusual and benefits from additional explanation.

@@ -366,15 +366,9 @@ fn dup_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>> {
 
 fn swap_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>> {
     move |s: &str| {
-        let (s, _) = token1("swap")(s)?; // require space before argument
+        let (s, _) = token1("swap")(s)?;
         let (s, stack_register) = stack_register(s)?;
-
-        let instruction = Swap(stack_register);
-        if instruction.has_illegal_argument() {
-            return cut(context("instruction `swap` cannot take argument `0`", fail))(s);
-        }
-
-        Ok((s, instruction))
+        Ok((s, Swap(stack_register)))
     }
 }
 
@@ -970,12 +964,6 @@ pub(crate) mod tests {
             expected_error: "expecting label, instruction or eof",
             expected_error_count: 1,
             message: "instruction `pop` cannot take argument `0`",
-        });
-        parse_program_neg_prop(NegativeTestCase {
-            input: "swap 0",
-            expected_error: "instruction `swap` cannot take argument `0`",
-            expected_error_count: 1,
-            message: "instruction `swap` cannot take argument `0`",
         });
 
         parse_program_neg_prop(NegativeTestCase {

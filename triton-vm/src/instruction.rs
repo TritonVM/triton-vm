@@ -442,10 +442,6 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
             Split | Lt | And | Xor | Log2Floor | Pow | DivMod | PopCount
         )
     }
-
-    pub fn has_illegal_argument(&self) -> bool {
-        matches!(self, Swap(ST0))
-    }
 }
 
 impl<Dest: Display + PartialEq + Default> Display for AnInstruction<Dest> {
@@ -496,10 +492,6 @@ impl Instruction {
             WriteIo(_) => WriteIo(num_words?),
             _ => return Err(illegal_argument_error),
         };
-
-        if new_instruction.has_illegal_argument() {
-            return Err(illegal_argument_error);
-        }
 
         Ok(new_instruction)
     }
@@ -665,10 +657,6 @@ impl<'a> Arbitrary<'a> for LabelledInstruction {
         let legal_label = String::from(u.arbitrary::<InstructionLabel>()?);
         let instruction = instruction.map_call_address(|_| legal_label.clone());
 
-        if let Swap(ST0) = instruction {
-            return Ok(Self::Instruction(Swap(ST1)));
-        }
-
         Ok(Self::Instruction(instruction))
     }
 }
@@ -796,18 +784,9 @@ mod tests {
     }
 
     impl Instruction {
-        #[must_use]
-        fn replace_default_argument_if_illegal(self) -> Self {
-            match self {
-                Swap(ST0) => Swap(ST1),
-                _ => self,
-            }
-        }
-
         fn flag_set(self) -> u32 {
-            let instruction = self.replace_default_argument_if_illegal();
             InstructionBucket::iter()
-                .map(|bucket| u32::from(bucket.contains(instruction)))
+                .map(|bucket| u32::from(bucket.contains(self)))
                 .enumerate()
                 .map(|(bucket_index, contains_self)| contains_self << bucket_index)
                 .fold(0, |acc, bit_flag| acc | bit_flag)
@@ -922,7 +901,7 @@ mod tests {
         assert!(Push(bfe!(0)).change_arg(bfe!(7)).is_ok());
         assert!(Dup(ST0).change_arg(bfe!(1024)).is_err());
         assert!(Swap(ST0).change_arg(bfe!(1337)).is_err());
-        assert!(Swap(ST0).change_arg(bfe!(0)).is_err());
+        assert!(Swap(ST0).change_arg(bfe!(0)).is_ok());
         assert!(Swap(ST0).change_arg(bfe!(1)).is_ok());
         assert!(Pop(N4).change_arg(bfe!(0)).is_err());
         assert!(Pop(N1).change_arg(bfe!(2)).is_ok());
@@ -962,7 +941,6 @@ mod tests {
     fn opcodes_are_consistent_with_shrink_stack_indication_bit() {
         let shrink_stack_indicator_bit_mask = 2;
         for instruction in Instruction::iter() {
-            let instruction = instruction.replace_default_argument_if_illegal();
             let opcode = instruction.opcode();
             println!("Testing instruction {instruction} with opcode {opcode}.");
             let shrinks_stack = instruction.op_stack_size_influence() < 0;
@@ -1007,7 +985,6 @@ mod tests {
     #[test]
     fn instructions_act_on_op_stack_as_indicated() {
         for test_instruction in all_instructions_without_args() {
-            let test_instruction = test_instruction.replace_default_argument_if_illegal();
             let (program, stack_size_before_test_instruction) =
                 construct_test_program_for_instruction(test_instruction);
             let public_input = PublicInput::from(bfe_array![0]);

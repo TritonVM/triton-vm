@@ -66,9 +66,6 @@ pub enum InstructionError {
     #[error("vector assertion failed: stack[{0}] != stack[{}]", .0 + tip5::DIGEST_LENGTH)]
     VectorAssertionFailed(usize),
 
-    #[error("cannot swap stack element 0 with itself")]
-    SwapST0,
-
     #[error("0 does not have a multiplicative inverse")]
     InverseOfZero,
 
@@ -313,11 +310,7 @@ mod tests {
     use proptest_arbitrary_interop::arb;
     use test_strategy::proptest;
 
-    use crate::instruction::AnInstruction::*;
-    use crate::instruction::LabelledInstruction;
-    use crate::op_stack::OpStackElement::ST0;
     use crate::triton_program;
-    use crate::Program;
 
     use super::*;
 
@@ -366,16 +359,6 @@ mod tests {
         let_assert!(Err(err) = program.run([].into(), [].into()));
         let_assert!(InstructionError::VectorAssertionFailed(index) = err.source);
         assert!(1 == index);
-    }
-
-    #[test]
-    fn swap_st0() {
-        // The parser rejects this program. Therefore, construct it manually.
-        let swap_0 = LabelledInstruction::Instruction(Swap(ST0));
-        let halt = LabelledInstruction::Instruction(Halt);
-        let program = Program::new(&[swap_0, halt]);
-        let_assert!(Err(err) = program.run([].into(), [].into()));
-        let_assert!(InstructionError::SwapST0 = err.source);
     }
 
     #[proptest]

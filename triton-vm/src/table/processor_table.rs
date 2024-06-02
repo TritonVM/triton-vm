@@ -1444,8 +1444,6 @@ impl ExtProcessorTable {
     fn instruction_swap(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        let one = || circuit_builder.b_constant(1);
-        let indicator_poly = |idx| Self::indicator_polynomial(circuit_builder, idx);
         let curr_row = |col: ProcessorBaseTableColumn| {
             circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
         };
@@ -1453,26 +1451,29 @@ impl ExtProcessorTable {
             circuit_builder.input(NextBaseRow(col.master_base_table_index()))
         };
 
-        let st_column = ProcessorTable::op_stack_column_by_index;
-        let top_moves_to_i = |i| indicator_poly(i) * (next_row(st_column(i)) - curr_row(ST0));
-        let i_moves_to_top = |i| indicator_poly(i) * (next_row(ST0) - curr_row(st_column(i)));
-
-        let top_moves_to_indicated_element = (1..OpStackElement::COUNT).map(top_moves_to_i).sum();
-        let indicated_element_moves_to_top = (1..OpStackElement::COUNT).map(i_moves_to_top).sum();
-        let indicated_element_is_swapped = vec![
-            indicator_poly(0) + top_moves_to_indicated_element,
-            indicated_element_moves_to_top,
-        ];
-
-        let i_does_not_change =
-            |i| (one() - indicator_poly(i)) * (next_row(st_column(i)) - curr_row(st_column(i)));
-        let other_elements_do_not_change = (1..OpStackElement::COUNT)
-            .map(i_does_not_change)
+        let stack = (0..OpStackElement::COUNT)
+            .map(ProcessorTable::op_stack_column_by_index)
             .collect_vec();
+        let stack_with_swapped_i = |i| {
+            let mut stack = stack.clone();
+            stack.swap(0, i);
+            stack.into_iter()
+        };
+
+        let next_stack = stack.iter().map(|&st| next_row(st)).collect_vec();
+        let curr_stack_with_swapped_i = |i| stack_with_swapped_i(i).map(curr_row).collect_vec();
+
+        let next_stack_is_current_stack_with_swapped_i = |i| {
+            Self::indicator_polynomial(circuit_builder, i)
+                * (Self::compress_stack(circuit_builder, next_stack.clone())
+                    - Self::compress_stack(circuit_builder, curr_stack_with_swapped_i(i)))
+        };
+        let next_stack_is_current_stack_with_correct_element_swapped = (0..OpStackElement::COUNT)
+            .map(next_stack_is_current_stack_with_swapped_i)
+            .sum();
 
         [
-            indicated_element_is_swapped,
-            other_elements_do_not_change,
+            vec![next_stack_is_current_stack_with_correct_element_swapped],
             Self::instruction_group_decompose_arg(circuit_builder),
             Self::instruction_group_step_2(circuit_builder),
             Self::instruction_group_no_ram(circuit_builder),
@@ -3863,24 +3864,10 @@ pub(crate) mod tests {
 
     #[test]
     fn transition_constraints_for_instruction_swap() {
-        let programs = [
-            triton_program!(swap  1 halt),
-            triton_program!(swap  2 halt),
-            triton_program!(swap  3 halt),
-            triton_program!(swap  4 halt),
-            triton_program!(swap  5 halt),
-            triton_program!(swap  6 halt),
-            triton_program!(swap  7 halt),
-            triton_program!(swap  8 halt),
-            triton_program!(swap  9 halt),
-            triton_program!(swap 10 halt),
-            triton_program!(swap 11 halt),
-            triton_program!(swap 12 halt),
-            triton_program!(swap 13 halt),
-            triton_program!(swap 14 halt),
-            triton_program!(swap 15 halt),
-        ];
-        let test_rows = programs.map(|program| test_row_from_program(program, 0));
+        let test_rows = (0..OpStackElement::COUNT)
+            .map(|i| triton_program!(swap {i} halt))
+            .map(|program| test_row_from_program(program, 0))
+            .collect_vec();
         let debug_info = TestRowsDebugInfo {
             instruction: Swap(OpStackElement::ST0),
             debug_cols_curr_row: vec![ST0, ST1, ST2],

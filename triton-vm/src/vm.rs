@@ -228,7 +228,7 @@ impl VMState {
             Push(field_element) => self.push(field_element),
             Divine(n) => self.divine(n)?,
             Dup(stack_element) => self.dup(stack_element),
-            Swap(stack_element) => self.swap(stack_element)?,
+            Swap(stack_element) => self.swap(stack_element),
             Halt => self.halt(),
             Nop => self.nop(),
             Skiz => self.skiz()?,
@@ -345,14 +345,10 @@ impl VMState {
         vec![]
     }
 
-    fn swap(&mut self, stack_register: OpStackElement) -> Result<Vec<CoProcessorCall>> {
-        if stack_register == ST0 {
-            return Err(SwapST0);
-        }
-        (self.op_stack[ST0], self.op_stack[stack_register]) =
-            (self.op_stack[stack_register], self.op_stack[ST0]);
+    fn swap(&mut self, st: OpStackElement) -> Vec<CoProcessorCall> {
+        (self.op_stack[ST0], self.op_stack[st]) = (self.op_stack[st], self.op_stack[ST0]);
         self.instruction_pointer += 2;
-        Ok(vec![])
+        vec![]
     }
 
     fn nop(&mut self) -> Vec<CoProcessorCall> {
@@ -2401,6 +2397,13 @@ pub(crate) mod tests {
         let program = triton_program!(push 1 push 2 swap 1 assert write_io 1 halt);
         let_assert!(Ok(standard_out) = program.run([].into(), [].into()));
         assert!(bfe!(2) == standard_out[0]);
+    }
+
+    #[test]
+    fn swap_st0_is_like_no_op() {
+        let program = triton_program!(push 42 swap 0 write_io 1 halt);
+        let_assert!(Ok(standard_out) = program.run([].into(), [].into()));
+        assert!(bfe!(42) == standard_out[0]);
     }
 
     #[test]

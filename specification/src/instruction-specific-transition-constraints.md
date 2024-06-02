@@ -70,105 +70,10 @@ In addition to its [instruction groups](instruction-groups.md), this instruction
 
 ### Description
 
-1. Argument `i` is not 0 and <br />
-    if `i` is 1, then `st0` is moved into `st1` and <br />
-    if `i` is 2, then `st0` is moved into `st2` and <br />
-    if `i` is 3, then `st0` is moved into `st3` and <br />
-    if `i` is 4, then `st0` is moved into `st4` and <br />
-    if `i` is 5, then `st0` is moved into `st5` and <br />
-    if `i` is 6, then `st0` is moved into `st6` and <br />
-    if `i` is 7, then `st0` is moved into `st7` and <br />
-    if `i` is 8, then `st0` is moved into `st8` and <br />
-    if `i` is 9, then `st0` is moved into `st9` and <br />
-    if `i` is 10, then `st0` is moved into `st10` and <br />
-    if `i` is 11, then `st0` is moved into `st11` and <br />
-    if `i` is 12, then `st0` is moved into `st12` and <br />
-    if `i` is 13, then `st0` is moved into `st13` and <br />
-    if `i` is 14, then `st0` is moved into `st14` and <br />
-    if `i` is 15, then `st0` is moved into `st15`.
-1. If `i` is 1, then `st1` is moved into `st0` and <br />
-    if `i` is 2, then `st2` is moved into `st0` and <br />
-    if `i` is 3, then `st3` is moved into `st0` and <br />
-    if `i` is 4, then `st4` is moved into `st0` and <br />
-    if `i` is 5, then `st5` is moved into `st0` and <br />
-    if `i` is 6, then `st6` is moved into `st0` and <br />
-    if `i` is 7, then `st7` is moved into `st0` and <br />
-    if `i` is 8, then `st8` is moved into `st0` and <br />
-    if `i` is 9, then `st9` is moved into `st0` and <br />
-    if `i` is 10, then `st10` is moved into `st0` and <br />
-    if `i` is 11, then `st11` is moved into `st0` and <br />
-    if `i` is 12, then `st12` is moved into `st0` and <br />
-    if `i` is 13, then `st13` is moved into `st0` and <br />
-    if `i` is 14, then `st14` is moved into `st0` and <br />
-    if `i` is 15, then `st15` is moved into `st0`.
-1. If `i` is not 1, then `st1` does not change.
-1. If `i` is not 2, then `st2` does not change.
-1. If `i` is not 3, then `st3` does not change.
-1. If `i` is not 4, then `st4` does not change.
-1. If `i` is not 5, then `st5` does not change.
-1. If `i` is not 6, then `st6` does not change.
-1. If `i` is not 7, then `st7` does not change.
-1. If `i` is not 8, then `st8` does not change.
-1. If `i` is not 9, then `st9` does not change.
-1. If `i` is not 10, then `st10` does not change.
-1. If `i` is not 11, then `st11` does not change.
-1. If `i` is not 12, then `st12` does not change.
-1. If `i` is not 13, then `st13` does not change.
-1. If `i` is not 14, then `st14` does not change.
-1. If `i` is not 15, then `st15` does not change.
-1. The op stack pointer does not change.
-1. The running product for the Op Stack Table remains unchanged.
-
-### Polynomials
-
-1. `ind_0(hv3, hv2, hv1, hv0)`<br />
-    `+ ind_1(hv3, hv2, hv1, hv0)·(st1' - st0)`<br />
-    `+ ind_2(hv3, hv2, hv1, hv0)·(st2' - st0)`<br />
-    `+ ind_3(hv3, hv2, hv1, hv0)·(st3' - st0)`<br />
-    `+ ind_4(hv3, hv2, hv1, hv0)·(st4' - st0)`<br />
-    `+ ind_5(hv3, hv2, hv1, hv0)·(st5' - st0)`<br />
-    `+ ind_6(hv3, hv2, hv1, hv0)·(st6' - st0)`<br />
-    `+ ind_7(hv3, hv2, hv1, hv0)·(st7' - st0)`<br />
-    `+ ind_8(hv3, hv2, hv1, hv0)·(st8' - st0)`<br />
-    `+ ind_9(hv3, hv2, hv1, hv0)·(st9' - st0)`<br />
-    `+ ind_10(hv3, hv2, hv1, hv0)·(st10' - st0)`<br />
-    `+ ind_11(hv3, hv2, hv1, hv0)·(st11' - st0)`<br />
-    `+ ind_12(hv3, hv2, hv1, hv0)·(st12' - st0)`<br />
-    `+ ind_13(hv3, hv2, hv1, hv0)·(st13' - st0)`<br />
-    `+ ind_14(hv3, hv2, hv1, hv0)·(st14' - st0)`<br />
-    `+ ind_15(hv3, hv2, hv1, hv0)·(st15' - st0)`
-1. `ind_1(hv3, hv2, hv1, hv0)·(st0' - st1)`<br />
-    `+ ind_2(hv3, hv2, hv1, hv0)·(st0' - st2)`<br />
-    `+ ind_3(hv3, hv2, hv1, hv0)·(st0' - st3)`<br />
-    `+ ind_4(hv3, hv2, hv1, hv0)·(st0' - st4)`<br />
-    `+ ind_5(hv3, hv2, hv1, hv0)·(st0' - st5)`<br />
-    `+ ind_6(hv3, hv2, hv1, hv0)·(st0' - st6)`<br />
-    `+ ind_7(hv3, hv2, hv1, hv0)·(st0' - st7)`<br />
-    `+ ind_8(hv3, hv2, hv1, hv0)·(st0' - st8)`<br />
-    `+ ind_9(hv3, hv2, hv1, hv0)·(st0' - st9)`<br />
-    `+ ind_10(hv3, hv2, hv1, hv0)·(st0' - st10)`<br />
-    `+ ind_11(hv3, hv2, hv1, hv0)·(st0' - st11)`<br />
-    `+ ind_12(hv3, hv2, hv1, hv0)·(st0' - st12)`<br />
-    `+ ind_13(hv3, hv2, hv1, hv0)·(st0' - st13)`<br />
-    `+ ind_14(hv3, hv2, hv1, hv0)·(st0' - st14)`<br />
-    `+ ind_15(hv3, hv2, hv1, hv0)·(st0' - st15)`
-1. `(1 - ind_1(hv3, hv2, hv1, hv0))·(st1' - st1)`
-1. `(1 - ind_2(hv3, hv2, hv1, hv0))·(st2' - st2)`
-1. `(1 - ind_3(hv3, hv2, hv1, hv0))·(st3' - st3)`
-1. `(1 - ind_4(hv3, hv2, hv1, hv0))·(st4' - st4)`
-1. `(1 - ind_5(hv3, hv2, hv1, hv0))·(st5' - st5)`
-1. `(1 - ind_6(hv3, hv2, hv1, hv0))·(st6' - st6)`
-1. `(1 - ind_7(hv3, hv2, hv1, hv0))·(st7' - st7)`
-1. `(1 - ind_8(hv3, hv2, hv1, hv0))·(st8' - st8)`
-1. `(1 - ind_9(hv3, hv2, hv1, hv0))·(st9' - st9)`
-1. `(1 - ind_10(hv3, hv2, hv1, hv0))·(st10' - st10)`
-1. `(1 - ind_11(hv3, hv2, hv1, hv0))·(st11' - st11)`
-1. `(1 - ind_12(hv3, hv2, hv1, hv0))·(st12' - st12)`
-1. `(1 - ind_13(hv3, hv2, hv1, hv0))·(st13' - st13)`
-1. `(1 - ind_14(hv3, hv2, hv1, hv0))·(st14' - st14)`
-1. `(1 - ind_15(hv3, hv2, hv1, hv0))·(st15' - st15)`
-1. `op_stack_pointer' - op_stack_pointer`
-1. `RunningProductOpStackTable' - RunningProductOpStackTable`
+For 0 ⩽ `i` < 16:
+1. Stack element `i` is moved to the top.
+1. The top stack element is moved to position `i`
+1. For `j` ≠ `i`: stack element `j` remains unchanged.
 
 ## Instruction `nop`
 

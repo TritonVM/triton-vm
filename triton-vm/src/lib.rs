@@ -454,7 +454,6 @@ macro_rules! triton_instr {
         $crate::instruction::LabelledInstruction::Instruction(instruction)
     }};
     (swap $arg:literal) => {{
-        assert_ne!(0_u32, $arg, "`swap 0` is illegal.");
         let argument = $crate::op_stack::OpStackElement::try_from($arg).unwrap();
         let instruction = $crate::instruction::AnInstruction::<String>::Swap(argument);
         $crate::instruction::LabelledInstruction::Instruction(instruction)
