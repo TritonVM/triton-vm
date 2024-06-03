@@ -1,4 +1,3 @@
-use itertools::Itertools;
 use ndarray::*;
 use num_traits::One;
 use rayon::iter::*;
@@ -116,31 +115,28 @@ impl LookupTable {
     ) -> Array2<XFieldElement> {
         let look_in_weight = challenges[LookupTableInputWeight];
         let look_out_weight = challenges[LookupTableOutputWeight];
-        let cascade_indeterminate = challenges[CascadeLookupIndeterminate];
+        let indeterminate = challenges[CascadeLookupIndeterminate];
 
-        let extension_column = (0..base_table.nrows())
-            .scan(
-                LookupArg::default_initial(),
-                |cascade_table_running_sum_log_derivative, row_index: usize| {
-                    let base_row = base_table.row(row_index);
-                    let is_padding = base_row[IsPadding.base_table_index()].is_one();
+        let mut cascade_table_running_sum_log_derivative = LookupArg::default_initial();
+        let mut extension_column = Vec::with_capacity(base_table.nrows());
+        for row in base_table.rows() {
+            if row[IsPadding.base_table_index()].is_one() {
+                break;
+            }
 
-                    if !is_padding {
-                        let lookup_input = base_row[LookIn.base_table_index()];
-                        let lookup_output = base_row[LookOut.base_table_index()];
-                        let lookup_multiplicity = base_row[LookupMultiplicity.base_table_index()];
-                        let compressed_row =
-                            lookup_input * look_in_weight + lookup_output * look_out_weight;
-                        *cascade_table_running_sum_log_derivative +=
-                            (cascade_indeterminate - compressed_row).inverse()
-                                * lookup_multiplicity;
-                    }
+            let lookup_input = row[LookIn.base_table_index()];
+            let lookup_output = row[LookOut.base_table_index()];
+            let compressed_row = lookup_input * look_in_weight + lookup_output * look_out_weight;
 
-                    Some(*cascade_table_running_sum_log_derivative)
-                },
-            )
-            .collect_vec();
+            let lookup_multiplicity = row[LookupMultiplicity.base_table_index()];
+            cascade_table_running_sum_log_derivative +=
+                (indeterminate - compressed_row).inverse() * lookup_multiplicity;
 
+            extension_column.push(cascade_table_running_sum_log_derivative);
+        }
+
+        // fill padding section
+        extension_column.resize(base_table.nrows(), cascade_table_running_sum_log_derivative);
         Array2::from_shape_vec((base_table.nrows(), 1), extension_column).unwrap()
     }
 
@@ -148,26 +144,20 @@ impl LookupTable {
         base_table: ArrayView2<BFieldElement>,
         challenges: &Challenges,
     ) -> Array2<XFieldElement> {
-        let public_indeterminate = challenges[LookupTablePublicIndeterminate];
+        let mut running_evaluation = EvalArg::default_initial();
+        let mut extension_column = Vec::with_capacity(base_table.nrows());
+        for row in base_table.rows() {
+            if row[IsPadding.base_table_index()].is_one() {
+                break;
+            }
 
-        let extension_column = (0..base_table.nrows())
-            .scan(
-                EvalArg::default_initial(),
-                |public_running_evaluation, row_index: usize| {
-                    let base_row = base_table.row(row_index);
-                    let is_padding = base_row[IsPadding.base_table_index()].is_one();
+            running_evaluation = running_evaluation * challenges[LookupTablePublicIndeterminate]
+                + row[LookOut.base_table_index()];
+            extension_column.push(running_evaluation);
+        }
 
-                    if !is_padding {
-                        let lookup_output = base_row[LookOut.base_table_index()];
-                        *public_running_evaluation =
-                            *public_running_evaluation * public_indeterminate + lookup_output;
-                    }
-
-                    Some(*public_running_evaluation)
-                },
-            )
-            .collect_vec();
-
+        // fill padding section
+        extension_column.resize(base_table.nrows(), running_evaluation);
         Array2::from_shape_vec((base_table.nrows(), 1), extension_column).unwrap()
     }
 }

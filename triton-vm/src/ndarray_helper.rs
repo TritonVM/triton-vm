@@ -1,8 +1,8 @@
-use itertools::Itertools;
+use std::fmt::Debug;
+
 use ndarray::s;
 use ndarray::ArrayViewMut2;
 use ndarray::Ix;
-use std::fmt::Debug;
 
 /// Slice a two-dimensional array into many non-overlapping mutable subviews
 /// of the same height as the array, based on the contiguous partition induced
@@ -36,19 +36,12 @@ pub fn horizontal_multi_slice_mut<'a, T: 'a + Debug>(
 
 /// Computes the list of partial sums, beginning with zero and including the
 /// total.
-pub fn partial_sums(indices: &[usize]) -> Vec<usize> {
-    [
-        indices
-            .iter()
-            .scan(0, |acc, index| {
-                let yld = *acc;
-                *acc += index;
-                Some(yld)
-            })
-            .collect_vec(),
-        vec![indices.iter().sum()],
-    ]
-    .concat()
+pub fn partial_sums(summands: &[usize]) -> Vec<usize> {
+    let mut sums = vec![0];
+    for &summand in summands {
+        sums.push(sums.last().copied().unwrap() + summand);
+    }
+    sums
 }
 
 /// Given a list of neighboring columns, represented as their sorted indices,
@@ -64,10 +57,10 @@ pub fn contiguous_column_slices(column_indices: &[usize]) -> Vec<usize> {
 
 #[cfg(test)]
 mod test {
+    use itertools::Itertools;
     use ndarray::concatenate;
     use ndarray::Array2;
     use ndarray::Axis;
-
     use proptest::collection::vec;
     use proptest::prelude::BoxedStrategy;
     use proptest::prop_assert_eq;

@@ -293,83 +293,54 @@ impl RamTable {
         base_table: ArrayView2<BFieldElement>,
         challenges: &Challenges,
     ) -> Array2<XFieldElement> {
-        let bezout_indeterminate = challenges[RamTableBezoutRelationIndeterminate];
-        let bezout_coefficient_0 =
-            base_table.row(0)[BezoutCoefficientPolynomialCoefficient0.base_table_index()].lift();
-
-        let extension_column = (0..base_table.nrows())
-            .scan(
-                (
-                    Option::<ArrayBase<ViewRepr<&BFieldElement>, Dim<[usize; 1]>>>::None,
-                    bezout_coefficient_0,
-                ),
-                |(previous_row, bezout_coefficient_0), row_index: usize| {
-                    let current_row = base_table.row(row_index);
-                    let instruction_type = current_row[InstructionType.base_table_index()];
-                    let is_no_padding_row = instruction_type != PADDING_INDICATOR;
-
-                    if is_no_padding_row {
-                        if let Some(previous_row) = previous_row {
-                            let current_ram_pointer = current_row[RamPointer.base_table_index()];
-                            let previous_ram_pointer = previous_row[RamPointer.base_table_index()];
-                            if previous_ram_pointer != current_ram_pointer {
-                                let bcpc0 = current_row
-                                    [BezoutCoefficientPolynomialCoefficient0.base_table_index()];
-                                *bezout_coefficient_0 =
-                                    *bezout_coefficient_0 * bezout_indeterminate + bcpc0;
-                            }
-                        }
-                    }
-
-                    *previous_row = Some(current_row);
-
-                    Some(*bezout_coefficient_0)
-                },
-            )
-            .collect_vec();
-
-        Array2::from_shape_vec((base_table.nrows(), 1), extension_column).unwrap()
+        Self::extension_column_bezout_coefficient(
+            base_table,
+            challenges,
+            BezoutCoefficientPolynomialCoefficient0,
+        )
     }
 
     fn extension_column_bezout_coefficient_1(
         base_table: ArrayView2<BFieldElement>,
         challenges: &Challenges,
     ) -> Array2<XFieldElement> {
+        Self::extension_column_bezout_coefficient(
+            base_table,
+            challenges,
+            BezoutCoefficientPolynomialCoefficient1,
+        )
+    }
+
+    fn extension_column_bezout_coefficient(
+        base_table: ArrayView2<BFieldElement>,
+        challenges: &Challenges,
+        bezout_cefficient_column: RamBaseTableColumn,
+    ) -> Array2<XFieldElement> {
         let bezout_indeterminate = challenges[RamTableBezoutRelationIndeterminate];
-        let bezout_coefficient_1 =
-            base_table.row(0)[BezoutCoefficientPolynomialCoefficient1.base_table_index()].lift();
 
-        let extension_column = (0..base_table.nrows())
-            .scan(
-                (
-                    Option::<ArrayBase<ViewRepr<&BFieldElement>, Dim<[usize; 1]>>>::None,
-                    bezout_coefficient_1,
-                ),
-                |(previous_row, bezout_coefficient_1), row_index: usize| {
-                    let current_row = base_table.row(row_index);
-                    let instruction_type = current_row[InstructionType.base_table_index()];
-                    let is_no_padding_row = instruction_type != PADDING_INDICATOR;
+        let mut bezout_coefficient =
+            base_table.row(0)[bezout_cefficient_column.base_table_index()].lift();
+        let mut previous_row = None::<ArrayView1<_>>;
+        let mut extension_column = Vec::with_capacity(base_table.nrows());
+        for current_row in base_table.rows() {
+            if current_row[InstructionType.base_table_index()] == PADDING_INDICATOR {
+                break; // padding marks the end of the trace
+            }
 
-                    if is_no_padding_row {
-                        if let Some(previous_row) = previous_row {
-                            let current_ram_pointer = current_row[RamPointer.base_table_index()];
-                            let previous_ram_pointer = previous_row[RamPointer.base_table_index()];
-                            if previous_ram_pointer != current_ram_pointer {
-                                let bcpc1 = current_row
-                                    [BezoutCoefficientPolynomialCoefficient1.base_table_index()];
-                                *bezout_coefficient_1 =
-                                    *bezout_coefficient_1 * bezout_indeterminate + bcpc1;
-                            }
-                        }
-                    }
+            let ram_pointers_are_different = |row: ArrayView1<_>| {
+                row[RamPointer.base_table_index()] != current_row[RamPointer.base_table_index()]
+            };
+            if previous_row.is_some_and(ram_pointers_are_different) {
+                bezout_coefficient = bezout_coefficient * bezout_indeterminate
+                    + current_row[bezout_cefficient_column.base_table_index()];
+            }
 
-                    *previous_row = Some(current_row);
+            previous_row = Some(current_row);
+            extension_column.push(bezout_coefficient);
+        }
 
-                    Some(*bezout_coefficient_1)
-                },
-            )
-            .collect_vec();
-
+        // fill padding section
+        extension_column.resize(base_table.nrows(), bezout_coefficient);
         Array2::from_shape_vec((base_table.nrows(), 1), extension_column).unwrap()
     }
 
@@ -377,31 +348,27 @@ impl RamTable {
         base_table: ArrayView2<BFieldElement>,
         challenges: &Challenges,
     ) -> Array2<XFieldElement> {
-        let extension_column = (0..base_table.nrows())
-            .scan(
-                PermArg::default_initial(),
-                |running_product_for_perm_arg: &mut XFieldElement, row_index: usize| {
-                    let current_row = base_table.row(row_index);
-                    let instruction_type = current_row[InstructionType.base_table_index()];
-                    let is_no_padding_row = instruction_type != PADDING_INDICATOR;
+        let mut running_product_for_perm_arg = PermArg::default_initial();
+        let mut extension_column = Vec::with_capacity(base_table.nrows());
+        for row in base_table.rows() {
+            let instruction_type = row[InstructionType.base_table_index()];
+            if instruction_type == PADDING_INDICATOR {
+                break; // padding marks the end of the trace
+            }
 
-                    if is_no_padding_row {
-                        let clk = current_row[CLK.base_table_index()];
-                        let current_ram_pointer = current_row[RamPointer.base_table_index()];
-                        let ram_value = current_row[RamValue.base_table_index()];
+            let clk = row[CLK.base_table_index()];
+            let current_ram_pointer = row[RamPointer.base_table_index()];
+            let ram_value = row[RamValue.base_table_index()];
+            let compressed_row = clk * challenges[RamClkWeight]
+                + instruction_type * challenges[RamInstructionTypeWeight]
+                + current_ram_pointer * challenges[RamPointerWeight]
+                + ram_value * challenges[RamValueWeight];
+            running_product_for_perm_arg *= challenges[RamIndeterminate] - compressed_row;
+            extension_column.push(running_product_for_perm_arg);
+        }
 
-                        let compressed_row = clk * challenges[RamClkWeight]
-                            + instruction_type * challenges[RamInstructionTypeWeight]
-                            + current_ram_pointer * challenges[RamPointerWeight]
-                            + ram_value * challenges[RamValueWeight];
-                        *running_product_for_perm_arg *=
-                            challenges[RamIndeterminate] - compressed_row;
-                    }
-                    Some(*running_product_for_perm_arg)
-                },
-            )
-            .collect_vec();
-
+        // fill padding section
+        extension_column.resize(base_table.nrows(), running_product_for_perm_arg);
         Array2::from_shape_vec((base_table.nrows(), 1), extension_column).unwrap()
     }
 
@@ -409,44 +376,33 @@ impl RamTable {
         base_table: ArrayView2<BFieldElement>,
         challenges: &Challenges,
     ) -> Array2<XFieldElement> {
-        let clock_jump_difference_lookup_indeterminate =
-            challenges[ClockJumpDifferenceLookupIndeterminate];
+        let cjd_lookup_indeterminate = challenges[ClockJumpDifferenceLookupIndeterminate];
 
-        let extension_column = (0..base_table.nrows())
-            .scan(
-                (
-                    Option::<ArrayBase<ViewRepr<&BFieldElement>, Dim<[usize; 1]>>>::None,
-                    LookupArg::default_initial(),
-                ),
-                |(previous_row, clock_jump_diff_lookup_log_derivative), row_index: usize| {
-                    let current_row = base_table.row(row_index);
-                    let instruction_type = current_row[InstructionType.base_table_index()];
-                    let is_no_padding_row = instruction_type != PADDING_INDICATOR;
+        let mut cjd_lookup_log_derivative = LookupArg::default_initial();
+        let mut previous_row = None::<ArrayView1<_>>;
+        let mut extension_column = Vec::with_capacity(base_table.nrows());
+        for current_row in base_table.rows() {
+            if current_row[InstructionType.base_table_index()] == PADDING_INDICATOR {
+                break; // padding marks the end of the trace
+            }
 
-                    if is_no_padding_row {
-                        if let Some(previous_row) = previous_row {
-                            let current_ram_pointer = current_row[RamPointer.base_table_index()];
-                            let previous_ram_pointer = previous_row[RamPointer.base_table_index()];
-                            if previous_ram_pointer == current_ram_pointer {
-                                let previous_clock = previous_row[CLK.base_table_index()];
-                                let current_clock = current_row[CLK.base_table_index()];
-                                let clock_jump_difference = current_clock - previous_clock;
-                                let log_derivative_summand =
-                                    clock_jump_difference_lookup_indeterminate
-                                        - clock_jump_difference;
-                                *clock_jump_diff_lookup_log_derivative +=
-                                    log_derivative_summand.inverse();
-                            }
-                        }
-                    }
+            let ram_pointers_are_equal = |row: ArrayView1<_>| {
+                row[RamPointer.base_table_index()] == current_row[RamPointer.base_table_index()]
+            };
+            if previous_row.is_some_and(ram_pointers_are_equal) {
+                let previous_clock = previous_row.unwrap()[CLK.base_table_index()];
+                let current_clock = current_row[CLK.base_table_index()];
+                let clock_jump_difference = current_clock - previous_clock;
+                let log_derivative_summand: XFieldElement =
+                    cjd_lookup_indeterminate - clock_jump_difference;
+                cjd_lookup_log_derivative += log_derivative_summand.inverse();
+            }
+            previous_row = Some(current_row);
+            extension_column.push(cjd_lookup_log_derivative);
+        }
 
-                    *previous_row = Some(current_row);
-
-                    Some(*clock_jump_diff_lookup_log_derivative)
-                },
-            )
-            .collect_vec();
-
+        // fill padding section
+        extension_column.resize(base_table.nrows(), cjd_lookup_log_derivative);
         Array2::from_shape_vec((base_table.nrows(), 1), extension_column).unwrap()
     }
 }
