@@ -118,7 +118,6 @@ impl ProcessorTable {
         let mut jump_stack_running_product = PermArg::default_initial();
         let mut hash_input_running_evaluation = EvalArg::default_initial();
         let mut hash_digest_running_evaluation = EvalArg::default_initial();
-        let mut sponge_running_evaluation = EvalArg::default_initial();
 
         let mut previous_row: Option<ArrayView1<BFieldElement>> = None;
         for row_idx in 0..base_table.nrows() {
@@ -231,52 +230,6 @@ impl ProcessorTable {
                 }
             }
 
-            // Hash Table – Sponge
-            if let Some(prev_row) = previous_row {
-                let prev_ci = prev_row[CI.base_table_index()];
-                if prev_ci == Instruction::SpongeInit.opcode_b() {
-                    sponge_running_evaluation = sponge_running_evaluation
-                        * challenges[SpongeIndeterminate]
-                        + challenges[HashCIWeight] * Instruction::SpongeInit.opcode_b();
-                } else if prev_ci == Instruction::SpongeAbsorb.opcode_b() {
-                    let compressed_row: XFieldElement = st0_through_st9
-                        .map(|st| prev_row[st.base_table_index()])
-                        .into_iter()
-                        .zip_eq(hash_state_weights.iter())
-                        .map(|(st, &weight)| weight * st)
-                        .sum();
-                    sponge_running_evaluation = sponge_running_evaluation
-                        * challenges[SpongeIndeterminate]
-                        + challenges[HashCIWeight] * Instruction::SpongeAbsorb.opcode_b()
-                        + compressed_row;
-                } else if prev_ci == Instruction::SpongeAbsorbMem.opcode_b() {
-                    let stack_elements = [ST1, ST2, ST3, ST4];
-                    let helper_variables = [HV0, HV1, HV2, HV3, HV4, HV5];
-                    let compressed_row: XFieldElement = stack_elements
-                        .map(|st| current_row[st.base_table_index()])
-                        .into_iter()
-                        .chain(helper_variables.map(|hv| prev_row[hv.base_table_index()]))
-                        .zip_eq(hash_state_weights.iter())
-                        .map(|(element, &weight)| weight * element)
-                        .sum();
-                    sponge_running_evaluation = sponge_running_evaluation
-                        * challenges[SpongeIndeterminate]
-                        + challenges[HashCIWeight] * Instruction::SpongeAbsorb.opcode_b()
-                        + compressed_row;
-                } else if prev_ci == Instruction::SpongeSqueeze.opcode_b() {
-                    let compressed_row: XFieldElement = st0_through_st9
-                        .map(|st| current_row[st.base_table_index()])
-                        .into_iter()
-                        .zip_eq(hash_state_weights.iter())
-                        .map(|(st, &weight)| weight * st)
-                        .sum();
-                    sponge_running_evaluation = sponge_running_evaluation
-                        * challenges[SpongeIndeterminate]
-                        + challenges[HashCIWeight] * Instruction::SpongeSqueeze.opcode_b()
-                        + compressed_row;
-                }
-            }
-
             let mut extension_row = ext_table.row_mut(row_idx);
             extension_row[InputTableEvalArg.ext_table_index()] = input_table_running_evaluation;
             extension_row[OutputTableEvalArg.ext_table_index()] = output_table_running_evaluation;
@@ -287,7 +240,6 @@ impl ProcessorTable {
             extension_row[JumpStackTablePermArg.ext_table_index()] = jump_stack_running_product;
             extension_row[HashInputEvalArg.ext_table_index()] = hash_input_running_evaluation;
             extension_row[HashDigestEvalArg.ext_table_index()] = hash_digest_running_evaluation;
-            extension_row[SpongeEvalArg.ext_table_index()] = sponge_running_evaluation;
             previous_row = Some(current_row);
         }
 
@@ -423,13 +375,70 @@ impl ProcessorTable {
 
     fn extension_column_sponge_eval_argument(
         base_table: ArrayView2<BFieldElement>,
-        _challenges: &Challenges,
+        challenges: &Challenges,
     ) -> Array2<XFieldElement> {
-        Array2::from_shape_vec(
-            (base_table.nrows(), 1),
-            vec![XFieldElement::zero(); base_table.nrows()],
-        )
-        .unwrap()
+        // Hash Table – `hash`'s or `merkle_step`'s input from Processor to Hash Coprocessor
+        let st0_through_st9 = [ST0, ST1, ST2, ST3, ST4, ST5, ST6, ST7, ST8, ST9];
+        let hash_state_weights = &challenges[StackWeight0..StackWeight10];
+        let extension_column = (0..base_table.nrows())
+            .scan(
+                (
+                    Option::<ArrayBase<ViewRepr<&BFieldElement>, Dim<[usize; 1]>>>::None,
+                    EvalArg::default_initial(),
+                ),
+                |(previous_row, sponge_running_evaluation), row_index: usize| {
+                    // Hash Table – Sponge
+                    if let Some(prev_row) = *previous_row {
+                        let current_row = base_table.row(row_index);
+                        let prev_ci = prev_row[CI.base_table_index()];
+                        if prev_ci == Instruction::SpongeInit.opcode_b() {
+                            *sponge_running_evaluation = *sponge_running_evaluation
+                                * challenges[SpongeIndeterminate]
+                                + challenges[HashCIWeight] * Instruction::SpongeInit.opcode_b();
+                        } else if prev_ci == Instruction::SpongeAbsorb.opcode_b() {
+                            let compressed_row: XFieldElement = st0_through_st9
+                                .map(|st| prev_row[st.base_table_index()])
+                                .into_iter()
+                                .zip_eq(hash_state_weights.iter())
+                                .map(|(st, &weight)| weight * st)
+                                .sum();
+                            *sponge_running_evaluation = *sponge_running_evaluation
+                                * challenges[SpongeIndeterminate]
+                                + challenges[HashCIWeight] * Instruction::SpongeAbsorb.opcode_b()
+                                + compressed_row;
+                        } else if prev_ci == Instruction::SpongeAbsorbMem.opcode_b() {
+                            let stack_elements = [ST1, ST2, ST3, ST4];
+                            let helper_variables = [HV0, HV1, HV2, HV3, HV4, HV5];
+                            let compressed_row: XFieldElement = stack_elements
+                                .map(|st| current_row[st.base_table_index()])
+                                .into_iter()
+                                .chain(helper_variables.map(|hv| prev_row[hv.base_table_index()]))
+                                .zip_eq(hash_state_weights.iter())
+                                .map(|(element, &weight)| weight * element)
+                                .sum();
+                            *sponge_running_evaluation = *sponge_running_evaluation
+                                * challenges[SpongeIndeterminate]
+                                + challenges[HashCIWeight] * Instruction::SpongeAbsorb.opcode_b()
+                                + compressed_row;
+                        } else if prev_ci == Instruction::SpongeSqueeze.opcode_b() {
+                            let compressed_row: XFieldElement = st0_through_st9
+                                .map(|st| current_row[st.base_table_index()])
+                                .into_iter()
+                                .zip_eq(hash_state_weights.iter())
+                                .map(|(st, &weight)| weight * st)
+                                .sum();
+                            *sponge_running_evaluation = *sponge_running_evaluation
+                                * challenges[SpongeIndeterminate]
+                                + challenges[HashCIWeight] * Instruction::SpongeSqueeze.opcode_b()
+                                + compressed_row;
+                        }
+                        *previous_row = Some(current_row);
+                    }
+                    Some(*sponge_running_evaluation)
+                },
+            )
+            .collect_vec();
+        Array2::from_shape_vec((base_table.nrows(), 1), extension_column).unwrap()
     }
 
     fn extension_column_for_u32_lookup_argument(
