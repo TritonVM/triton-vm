@@ -331,37 +331,17 @@ impl JumpStackTable {
         base_table: ArrayView2<BFieldElement>,
         challenges: &Challenges,
     ) -> Array2<XFieldElement> {
-        let clk_weight = challenges[JumpStackClkWeight];
-        let ci_weight = challenges[JumpStackCiWeight];
-        let jsp_weight = challenges[JumpStackJspWeight];
-        let jso_weight = challenges[JumpStackJsoWeight];
-        let jsd_weight = challenges[JumpStackJsdWeight];
-        let perm_arg_indeterminate = challenges[JumpStackIndeterminate];
-
-        let extension_column = (0..base_table.nrows())
-            .scan(
-                PermArg::default_initial(),
-                |running_product, row_index: usize| {
-                    let current_row = base_table.row(row_index);
-                    let clk = current_row[CLK.base_table_index()];
-                    let ci = current_row[CI.base_table_index()];
-                    let jsp = current_row[JSP.base_table_index()];
-                    let jso = current_row[JSO.base_table_index()];
-                    let jsd = current_row[JSD.base_table_index()];
-
-                    let compressed_row_for_permutation_argument = clk * clk_weight
-                        + ci * ci_weight
-                        + jsp * jsp_weight
-                        + jso * jso_weight
-                        + jsd * jsd_weight;
-                    *running_product *=
-                        perm_arg_indeterminate - compressed_row_for_permutation_argument;
-
-                    Some(*running_product)
-                },
-            )
-            .collect_vec();
-
+        let mut running_product = PermArg::default_initial();
+        let mut extension_column = Vec::with_capacity(base_table.nrows());
+        for row in base_table.rows() {
+            let compressed_row = row[CLK.base_table_index()] * challenges[JumpStackClkWeight]
+                + row[CI.base_table_index()] * challenges[JumpStackCiWeight]
+                + row[JSP.base_table_index()] * challenges[JumpStackJspWeight]
+                + row[JSO.base_table_index()] * challenges[JumpStackJsoWeight]
+                + row[JSD.base_table_index()] * challenges[JumpStackJsdWeight];
+            running_product *= challenges[JumpStackIndeterminate] - compressed_row;
+            extension_column.push(running_product);
+        }
         Array2::from_shape_vec((base_table.nrows(), 1), extension_column).unwrap()
     }
 
@@ -369,56 +349,34 @@ impl JumpStackTable {
         base_table: ArrayView2<BFieldElement>,
         challenges: &Challenges,
     ) -> Array2<XFieldElement> {
-        // 1. precompute common to-be-inverted cjd values
-        const INVERSES_DICTIONARY_INITIAL_POPULATION: usize = 100;
-        let clock_jump_difference_lookup_indeterminate =
-            challenges[ClockJumpDifferenceLookupIndeterminate];
-        let invert_mes = (0..INVERSES_DICTIONARY_INITIAL_POPULATION)
-            .map(|i| clock_jump_difference_lookup_indeterminate - BFieldElement::new(i as u64))
+        // - use memoization to avoid recomputing inverses
+        // - precompute common values through batch inversion
+        const INVERSES_DICTIONARY_INITIAL_POPULATION: u64 = 100;
+        let indeterminate = challenges[ClockJumpDifferenceLookupIndeterminate];
+        let to_invert = (0..INVERSES_DICTIONARY_INITIAL_POPULATION)
+            .map(|i| indeterminate - bfe!(i))
             .collect();
+        let mut inverses_dictionary = (0..)
+            .zip(XFieldElement::batch_inversion(to_invert))
+            .map(|(i, inv)| (bfe!(i), inv))
+            .collect::<HashMap<_, _>>();
 
-        // 2. batch-invert
-        let inverses = XFieldElement::batch_inversion(invert_mes);
-
-        // 3. arrange into hashmap
-        let mut inverses_dictionary: HashMap<BFieldElement, XFieldElement> = inverses
-            .into_iter()
-            .enumerate()
-            .map(|(i, inv)| (BFieldElement::new(i as u64), inv))
-            .collect();
-
-        // 4. populate extension column using memoization
-        let extension_column = (0..base_table.nrows())
-            .scan(
-                (
-                    Option::<ArrayBase<ViewRepr<&BFieldElement>, Dim<[usize; 1]>>>::None,
-                    LookupArg::default_initial(),
-                ),
-                |(previous_row, clock_jump_diff_lookup_log_derivative), row_index: usize| {
-                    let current_row = base_table.row(row_index);
-
-                    // clock jump difference
-                    if let Some(prev_row) = previous_row {
-                        if prev_row[JSP.base_table_index()] == current_row[JSP.base_table_index()] {
-                            let clock_jump_difference = current_row[CLK.base_table_index()]
-                                - prev_row[CLK.base_table_index()];
-                            *clock_jump_diff_lookup_log_derivative += *inverses_dictionary
-                                .entry(clock_jump_difference)
-                                .or_insert_with(|| {
-                                    (clock_jump_difference_lookup_indeterminate
-                                        - clock_jump_difference)
-                                        .inverse()
-                                });
-                        }
-                    }
-
-                    *previous_row = Some(current_row);
-
-                    Some(*clock_jump_diff_lookup_log_derivative)
-                },
-            )
-            .collect_vec();
-
+        // populate extension column using memoization
+        let mut cjd_lookup_log_derivative = LookupArg::default_initial();
+        let mut extension_column = Vec::with_capacity(base_table.nrows());
+        extension_column.push(cjd_lookup_log_derivative);
+        for (previous_row, current_row) in base_table.rows().into_iter().tuple_windows() {
+            if previous_row[JSP.base_table_index()] == current_row[JSP.base_table_index()] {
+                let previous_clock = previous_row[CLK.base_table_index()];
+                let current_clock = current_row[CLK.base_table_index()];
+                let clock_jump_difference = current_clock - previous_clock;
+                let &mut inverse = inverses_dictionary
+                    .entry(clock_jump_difference)
+                    .or_insert_with(|| (indeterminate - clock_jump_difference).inverse());
+                cjd_lookup_log_derivative += inverse;
+            }
+            extension_column.push(cjd_lookup_log_derivative);
+        }
         Array2::from_shape_vec((base_table.nrows(), 1), extension_column).unwrap()
     }
 }
