@@ -1,7 +1,9 @@
-use ndarray::*;
+use itertools::Itertools;
+use ndarray::prelude::*;
 use num_traits::One;
 use rayon::iter::*;
 use strum::EnumCount;
+use strum::IntoEnumIterator;
 use twenty_first::prelude::tip5;
 use twenty_first::prelude::*;
 
