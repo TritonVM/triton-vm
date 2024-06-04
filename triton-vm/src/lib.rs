@@ -173,7 +173,7 @@ pub mod error;
 pub mod example_programs;
 pub mod fri;
 pub mod instruction;
-pub mod ndarray_helper;
+mod ndarray_helper;
 pub mod op_stack;
 pub mod parser;
 pub mod prelude;

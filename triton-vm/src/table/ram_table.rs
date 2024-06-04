@@ -3,11 +3,12 @@ use std::cmp::Ordering;
 use arbitrary::Arbitrary;
 use itertools::Itertools;
 use ndarray::parallel::prelude::*;
-use ndarray::*;
+use ndarray::prelude::*;
 use num_traits::One;
 use num_traits::Zero;
 use serde_derive::*;
 use strum::EnumCount;
+use strum::IntoEnumIterator;
 use twenty_first::math::traits::FiniteField;
 use twenty_first::prelude::*;
 
@@ -221,13 +222,12 @@ impl RamTable {
         assert_eq!(EXT_WIDTH, ext_table.ncols());
         assert_eq!(base_table.nrows(), ext_table.nrows());
 
-        let extension_column_indices = [
-            RunningProductOfRAMP.ext_table_index(),
-            BezoutCoefficient0.ext_table_index(),
-            BezoutCoefficient1.ext_table_index(),
-            RunningProductPermArg.ext_table_index(),
-            ClockJumpDifferenceLookupClientLogDerivative.ext_table_index(),
-        ];
+        let extension_column_indices = RamExtTableColumn::iter()
+            // RunningProductOfRAMP + FormalDerivative are constitute one
+            // slice and are populated by the same function
+            .filter(|column| *column != RamExtTableColumn::FormalDerivative)
+            .map(|column| column.ext_table_index())
+            .collect_vec();
         let extension_column_slices = horizontal_multi_slice_mut(
             ext_table.view_mut(),
             &contiguous_column_slices(&extension_column_indices),
@@ -241,7 +241,7 @@ impl RamTable {
         ];
         extension_functions
             .into_par_iter()
-            .zip_eq(extension_column_slices.into_par_iter())
+            .zip_eq(extension_column_slices)
             .for_each(|(generator, slice)| {
                 generator(base_table, challenges).move_into(slice);
             });

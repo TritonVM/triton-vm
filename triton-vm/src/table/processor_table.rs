@@ -8,6 +8,7 @@ use ndarray::*;
 use num_traits::One;
 use num_traits::Zero;
 use strum::EnumCount;
+use strum::IntoEnumIterator;
 use twenty_first::math::traits::FiniteField;
 use twenty_first::prelude::x_field_element::EXTENSION_DEGREE;
 use twenty_first::prelude::*;
@@ -113,19 +114,9 @@ impl ProcessorTable {
         assert_eq!(EXT_WIDTH, ext_table.ncols());
         assert_eq!(base_table.nrows(), ext_table.nrows());
 
-        let all_column_indices = [
-            InputTableEvalArg.ext_table_index(),
-            OutputTableEvalArg.ext_table_index(),
-            InstructionLookupClientLogDerivative.ext_table_index(),
-            OpStackTablePermArg.ext_table_index(),
-            RamTablePermArg.ext_table_index(),
-            JumpStackTablePermArg.ext_table_index(),
-            HashInputEvalArg.ext_table_index(),
-            HashDigestEvalArg.ext_table_index(),
-            SpongeEvalArg.ext_table_index(),
-            U32LookupClientLogDerivative.ext_table_index(),
-            ClockJumpDifferenceLookupServerLogDerivative.ext_table_index(),
-        ];
+        let all_column_indices = ProcessorExtTableColumn::iter()
+            .map(|column| column.ext_table_index())
+            .collect_vec();
         let all_column_slices = horizontal_multi_slice_mut(
             ext_table.view_mut(),
             &contiguous_column_slices(&all_column_indices),
@@ -146,7 +137,7 @@ impl ProcessorTable {
         ];
         all_column_generators
             .into_par_iter()
-            .zip_eq(all_column_slices.into_par_iter())
+            .zip_eq(all_column_slices)
             .for_each(|(generator, slice)| {
                 generator(base_table, challenges).move_into(slice);
             });

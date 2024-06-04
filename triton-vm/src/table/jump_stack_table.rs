@@ -304,10 +304,10 @@ impl JumpStackTable {
         assert_eq!(EXT_WIDTH, ext_table.ncols());
         assert_eq!(base_table.nrows(), ext_table.nrows());
 
-        let extension_column_indices = [
-            RunningProductPermArg.ext_table_index(),
-            ClockJumpDifferenceLookupClientLogDerivative.ext_table_index(),
-        ];
+        // use strum::IntoEnumIterator;
+        let extension_column_indices = JumpStackExtTableColumn::iter()
+            .map(|column| column.ext_table_index())
+            .collect_vec();
         let extension_column_slices = horizontal_multi_slice_mut(
             ext_table.view_mut(),
             &contiguous_column_slices(&extension_column_indices),
@@ -319,7 +319,7 @@ impl JumpStackTable {
 
         extension_functions
             .into_par_iter()
-            .zip_eq(extension_column_slices.into_par_iter())
+            .zip_eq(extension_column_slices)
             .for_each(|(generator, slice)| {
                 generator(base_table, challenges).move_into(slice);
             });

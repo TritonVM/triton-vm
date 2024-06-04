@@ -822,8 +822,6 @@ impl MasterBaseTable {
     pub fn pad(&mut self) {
         let table_lengths = self.all_table_lengths();
 
-        // Due to limitations in ndarray, a 10-way multi-slice is not possible. Hence, (1) slicing
-        // has to be done in multiple steps, and (2) cannot be put into a method.
         let unit_distance = self.randomized_trace_domain().length / self.trace_domain().length;
         let master_table_without_randomizers = self
             .randomized_trace_table
@@ -939,8 +937,6 @@ impl MasterBaseTable {
             interpolation_polynomials: None,
         };
 
-        // Due to limitations in ndarray, a 10-way multi-slice is not possible. Hence, (1) slicing
-        // has to be done in multiple steps, and (2) cannot be put into a method.
         profiler!(start "slice master table");
         let unit_distance = self.randomized_trace_domain().length / self.trace_domain().length;
         let master_ext_table_without_randomizers = master_ext_table
