@@ -71,7 +71,7 @@ mod test {
     use super::*;
 
     #[proptest]
-    fn contiguous_column_slices_appends_last_plus_one(
+    fn contiguous_column_slices_generates_valid_partition(
         #[strategy(0usize..100)] start: usize,
         #[strategy(#start+1..=#start+100)] stop: usize,
     ) {
