@@ -90,14 +90,7 @@ mod test {
 
         a.mapv_inplace(|_| 2);
 
-        assert_eq!(
-            Array2::from_shape_vec(
-                dimensions,
-                [vec![0, 0, 2, 0, 0, 0], vec![0, 0, 2, 0, 0, 0]].concat()
-            )
-            .unwrap(),
-            array
-        );
+        assert_eq!(array![[0, 0, 2, 0, 0, 0], [0, 0, 2, 0, 0, 0]], array);
     }
 
     #[test]
@@ -113,14 +106,7 @@ mod test {
         a.mapv_inplace(|_| 1);
         b.mapv_inplace(|_| 2);
 
-        assert_eq!(
-            Array2::from_shape_vec(
-                (m, n),
-                [vec![1, 2, 2, 0, 0, 0], vec![1, 2, 2, 0, 0, 0]].concat()
-            )
-            .unwrap(),
-            array
-        );
+        assert_eq!(array![[1, 2, 2, 0, 0, 0], [1, 2, 2, 0, 0, 0]], array);
     }
 
     #[test]
@@ -137,15 +123,7 @@ mod test {
         b.mapv_inplace(|_| 2);
 
         assert_eq!(0, b.ncols());
-
-        assert_eq!(
-            Array2::from_shape_vec(
-                (m, n),
-                [vec![1, 0, 0, 0, 0, 0], vec![1, 0, 0, 0, 0, 0]].concat()
-            )
-            .unwrap(),
-            array
-        );
+        assert_eq!(array![[1, 0, 0, 0, 0, 0], [1, 0, 0, 0, 0, 0]], array);
     }
 
     fn strategy_of_widths() -> BoxedStrategy<[usize; 10]> {
