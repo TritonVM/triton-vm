@@ -4,6 +4,7 @@ use arbitrary::Arbitrary;
 use itertools::Itertools;
 use ndarray::parallel::prelude::*;
 use ndarray::prelude::*;
+use ndarray::ViewRepr;
 use num_traits::One;
 use num_traits::Zero;
 use serde_derive::*;

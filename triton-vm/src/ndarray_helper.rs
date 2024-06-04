@@ -45,7 +45,7 @@ pub fn partial_sums(summands: &[usize]) -> Vec<usize> {
 }
 
 /// Given a list of neighboring columns, represented as their sorted indices,
-/// return a list of indices whose overlapping windows of width 2 denote the
+/// return a list of indices whose consecutive pairs (overlapping) denote the
 /// start and end point of every column. In practice, this means "append last+1".
 pub fn contiguous_column_slices(column_indices: &[usize]) -> Vec<usize> {
     [
@@ -58,6 +58,7 @@ pub fn contiguous_column_slices(column_indices: &[usize]) -> Vec<usize> {
 #[cfg(test)]
 mod test {
     use itertools::Itertools;
+    use ndarray::array;
     use ndarray::concatenate;
     use ndarray::Array2;
     use ndarray::Axis;

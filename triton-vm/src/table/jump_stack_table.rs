@@ -3,8 +3,9 @@ use std::collections::HashMap;
 
 use itertools::Itertools;
 use ndarray::parallel::prelude::*;
-use ndarray::*;
+use ndarray::prelude::*;
 use strum::EnumCount;
+use strum::IntoEnumIterator;
 use twenty_first::math::traits::FiniteField;
 use twenty_first::prelude::*;
 
