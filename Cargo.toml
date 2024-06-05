@@ -32,7 +32,7 @@ directories = "5"
 fs-err = "2.11.0"
 get-size = "0.1.4"
 indexmap = "2.2.6"
-itertools = "0.12"
+itertools = "0.13"
 lazy_static = "1.4"
 ndarray = { version = "0.15", features = ["rayon"] }
 nom = "7.1"
@@ -54,7 +54,7 @@ syn = "2.0"
 test-strategy = "0.3.1"
 thiserror = "1.0"
 trybuild = "1.0"
-twenty-first = "0.42.0-alpha.2"
+twenty-first = "0.42.0-alpha.3"
 unicode-width = "0.1"
 
 [workspace.lints.clippy]
@@ -114,7 +114,3 @@ verbose_bit_mask = "warn"
 version = "1.5"
 default-features = false
 features = ["precommit-hook", "run-cargo-clippy", "run-cargo-fmt"]
-
-[patch.crates-io]
-# 000c0fd is master on twenty-first as of 2024-05-24
-twenty-first = { git = 'https://github.com/Neptune-Crypto/twenty-first.git', rev = '000c0fd' }
