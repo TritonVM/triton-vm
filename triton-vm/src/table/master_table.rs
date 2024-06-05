@@ -1529,29 +1529,33 @@ mod tests {
 
     #[test]
     fn update_arithmetization_overview() {
-        let table_overview = generate_table_overview();
-        let constraint_overview = generate_constraints_overview();
-        let tasm_air_overview = generate_tasm_air_evaluation_cost_overview();
+        let spec_snippets = [
+            generate_table_overview(),
+            generate_constraints_overview(),
+            generate_tasm_air_evaluation_cost_overview(),
+        ];
 
         // current directory is triton-vm/triton-vm/
-        let file_path = Path::new("../specification/src/arithmetization-overview.md");
-        update_spec_with(file_path, table_overview);
-        update_spec_with(file_path, constraint_overview);
-        update_spec_with(file_path, tasm_air_overview);
-    }
+        let spec_path = Path::new("../specification/src/arithmetization-overview.md");
+        let current_spec = fs::read_to_string(spec_path).unwrap().replace("\r\n", "\n");
+        let mut new_spec = current_spec.clone();
+        for snippet in spec_snippets {
+            let start = new_spec.find(snippet.start_marker).unwrap();
+            let stop = new_spec.find(snippet.stop_marker).unwrap();
+            new_spec = format!(
+                "{}{}\n{}{}",
+                &new_spec[..start],
+                snippet.start_marker,
+                snippet.snippet,
+                &new_spec[stop..]
+            );
+        }
+        fs::write(spec_path, new_spec.clone()).unwrap();
 
-    fn update_spec_with(spec_path: &Path, snippet: SpecSnippet) {
-        let spec = fs::read_to_string(spec_path).unwrap().replace("\r\n", "\n");
-        let start = spec.find(snippet.start_marker).unwrap();
-        let stop = spec.find(snippet.stop_marker).unwrap();
-        let new_contents = format!(
-            "{}{}\n{}{}",
-            &spec[..start],
-            snippet.start_marker,
-            snippet.snippet,
-            &spec[stop..]
-        );
-        fs::write(spec_path, new_contents).unwrap();
+        if current_spec != new_spec {
+            println!("Updated arithmetization overview to be:\n\n{new_spec}");
+            panic!("The arithmetization overview was updated. Please commit the changes.");
+        }
     }
 
     fn generate_table_overview() -> SpecSnippet {
