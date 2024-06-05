@@ -1520,17 +1520,38 @@ mod tests {
             .is_zero());
     }
 
-    fn assert_spec_has(file_path: &Path, snippet: String) {
-        let contents = fs::read_to_string(file_path).unwrap().replace("\r\n", "\n");
-        assert!(
-            contents.contains(&snippet),
-            "Could not find correct snippet in file \"{}\".",
-            file_path.display(),
+    struct SpecSnippet {
+        pub start_marker: &'static str,
+        pub stop_marker: &'static str,
+        pub snippet: String,
+    }
+
+    fn update_spec_with(spec_path: &Path, snippet: SpecSnippet) {
+        let spec = fs::read_to_string(spec_path).unwrap().replace("\r\n", "\n");
+        let start = spec.find(snippet.start_marker).unwrap();
+        let stop = spec.find(snippet.stop_marker).unwrap();
+        let new_contents = format!(
+            "{}{}\n{}{}",
+            &spec[..start],
+            snippet.start_marker,
+            snippet.snippet,
+            &spec[stop..]
         );
+        fs::write(spec_path, new_contents).unwrap();
     }
 
     #[test]
-    fn spec_has_correct_table_overview() {
+    fn update_arithmetization_overview() {
+        let table_overview = generate_table_overview();
+        let constraint_overview = generate_constraints_overview();
+
+        // current directory is triton-vm/triton-vm/
+        let file_path = Path::new("../specification/src/arithmetization-overview.md");
+        update_spec_with(file_path, table_overview);
+        update_spec_with(file_path, constraint_overview);
+    }
+
+    fn generate_table_overview() -> SpecSnippet {
         let tables = [
             (
                 "[ProgramTable](program-table.md)",
@@ -1612,31 +1633,12 @@ mod tests {
             format!("**{}**", total_main + EXTENSION_DEGREE * total_aux)
         );
 
-        // print embeddable code
-        let specification_generator_name = "spec_has_correct_table_overview";
-        let comment_marker_start =
-            format!("<!-- auto-gen info {} -->", specification_generator_name);
-        let how_reproduce = format!(
-            "<!-- To reproduce this code, please run `cargo test {}`. -->",
-            specification_generator_name
-        );
-        let comment_marker_stop = "<!-- auto-gen info stop -->".to_string();
-        let generated_code = format!(
-            "{}\n{}\n{}{}",
-            comment_marker_start, how_reproduce, ft, comment_marker_stop
-        );
-
-        // current directory is triton-vm/triton-vm/
-        let file_path = Path::new("../specification/src/arithmetization-overview.md");
-        println!(
-            "Please include this code snippet in file \"{}\".",
-            file_path.display()
-        );
-        println!("```");
-        println!("{}", generated_code);
-        println!("```");
-
-        assert_spec_has(file_path, generated_code);
+        let how_to_update = "<!-- To update, please run `cargo test`. -->";
+        SpecSnippet {
+            start_marker: "<!-- auto-gen info start table_overview -->",
+            stop_marker: "<!-- auto-gen info stop table_overview -->",
+            snippet: format!("{how_to_update}\n{ft}"),
+        }
     }
 
     struct ConstraintsOverviewRow {
@@ -1672,8 +1674,7 @@ mod tests {
         }};
     }
 
-    #[test]
-    fn spec_has_correct_constraints_overview() {
+    fn generate_constraints_overview() -> SpecSnippet {
         // Declarative macro workaround (because I'm bad at them):
         // an `expr` cannot be followed up with `and`. Instead, declare this `const` to
         // have an `ident`, which _can_ be followed up with `and`.
@@ -1827,114 +1828,12 @@ mod tests {
             format!("**{total_terminal}**"),
         );
 
-        // print embeddable code
-        let specification_generator_name = "spec_has_correct_constraints_overview";
-        let comment_marker_start =
-            format!("<!-- auto-gen info {} -->", specification_generator_name);
-        let how_reproduce = format!(
-            "<!-- To reproduce this code, please run `cargo test {}`. -->",
-            specification_generator_name
-        );
-        let comment_marker_stop = "<!-- auto-gen info stop -->".to_string();
-        let generated_code = format!(
-            "{}\n{}\n{}{}",
-            comment_marker_start, how_reproduce, ft, comment_marker_stop
-        );
-
-        // current directory is triton-vm/triton-vm/
-        let file_path = Path::new("../specification/src/arithmetization-overview.md");
-        println!(
-            "Please include this code snippet in file \"{}\".",
-            file_path.display()
-        );
-        println!("```");
-        println!("{}", generated_code);
-        println!("```");
-
-        assert_spec_has(file_path, generated_code);
-    }
-
-    /// intended use: `cargo t print_all_table_widths -- --nocapture`
-    #[test]
-    fn print_all_table_widths() {
-        println!();
-        println!("| table name         | #base cols | #ext cols | full width |");
-        println!("|:-------------------|-----------:|----------:|-----------:|");
-        println!(
-            "| {:<18} | {:>10} | {:>9} | {:>10} |",
-            "ProgramTable",
-            program_table::BASE_WIDTH,
-            program_table::EXT_WIDTH,
-            program_table::FULL_WIDTH
-        );
-        println!(
-            "| {:<18} | {:>10} | {:>9} | {:>10} |",
-            "ProcessorTable",
-            processor_table::BASE_WIDTH,
-            processor_table::EXT_WIDTH,
-            processor_table::FULL_WIDTH
-        );
-        println!(
-            "| {:<18} | {:>10} | {:>9} | {:>10} |",
-            "OpStackTable",
-            op_stack_table::BASE_WIDTH,
-            op_stack_table::EXT_WIDTH,
-            op_stack_table::FULL_WIDTH
-        );
-        println!(
-            "| {:<18} | {:>10} | {:>9} | {:>10} |",
-            "RamTable",
-            ram_table::BASE_WIDTH,
-            ram_table::EXT_WIDTH,
-            ram_table::FULL_WIDTH
-        );
-        println!(
-            "| {:<18} | {:>10} | {:>9} | {:>10} |",
-            "JumpStackTable",
-            jump_stack_table::BASE_WIDTH,
-            jump_stack_table::EXT_WIDTH,
-            jump_stack_table::FULL_WIDTH
-        );
-        println!(
-            "| {:<18} | {:>10} | {:>9} | {:>10} |",
-            "HashTable",
-            hash_table::BASE_WIDTH,
-            hash_table::EXT_WIDTH,
-            hash_table::FULL_WIDTH
-        );
-        println!(
-            "| {:<18} | {:>10} | {:>9} | {:>10} |",
-            "CascadeTable",
-            cascade_table::BASE_WIDTH,
-            cascade_table::EXT_WIDTH,
-            cascade_table::FULL_WIDTH
-        );
-        println!(
-            "| {:<18} | {:>10} | {:>9} | {:>10} |",
-            "LookupTable",
-            lookup_table::BASE_WIDTH,
-            lookup_table::EXT_WIDTH,
-            lookup_table::FULL_WIDTH
-        );
-        println!(
-            "| {:<18} | {:>10} | {:>9} | {:>10} |",
-            "U32Table",
-            u32_table::BASE_WIDTH,
-            u32_table::EXT_WIDTH,
-            u32_table::FULL_WIDTH
-        );
-        println!(
-            "| {:<18} | {:>10} | {:>9} | {:>10} |",
-            "DegreeLowering",
-            degree_lowering_table::BASE_WIDTH,
-            degree_lowering_table::EXT_WIDTH,
-            degree_lowering_table::FULL_WIDTH,
-        );
-        println!("|                    |            |           |            |");
-        println!(
-            "| Sum                | {NUM_BASE_COLUMNS:>10} \
-             | {NUM_EXT_COLUMNS:>9} | {NUM_COLUMNS:>10} |",
-        );
+        let how_to_update = "<!-- To update, please run `cargo test`. -->";
+        SpecSnippet {
+            start_marker: "<!-- auto-gen info start constraints_overview -->",
+            stop_marker: "<!-- auto-gen info stop constraints_overview -->",
+            snippet: format!("{how_to_update}\n{ft}"),
+        }
     }
 
     /// intended use: `cargo t print_all_master_table_indices -- --nocapture`

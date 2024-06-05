@@ -2,8 +2,8 @@
 
 ## Tables
 
-<!-- auto-gen info spec_has_correct_table_overview -->
-<!-- To reproduce this code, please run `cargo test spec_has_correct_table_overview`. -->
+<!-- auto-gen info start table_overview -->
+<!-- To update, please run `cargo test`. -->
 | table name                                 | #main cols | #aux cols | total width |
 |:-------------------------------------------|-----------:|----------:|------------:|
 | [ProgramTable](program-table.md)           |          7 |         3 |          16 |
@@ -18,7 +18,7 @@
 | DegreeLowering                             |        212 |        36 |         320 |
 | Randomizers                                |          0 |         1 |           3 |
 | **TOTAL**                                  |    **361** |    **86** |     **619** |
-<!-- auto-gen info stop -->
+<!-- auto-gen info stop table_overview -->
 
 ## Constraints
 
@@ -26,8 +26,8 @@ The following table captures the state of affairs in terms of constraints before
 In particular, automatic degree lowering introduces new columns, modifies the constraint set (in a way that
 is equivalent to what was there before), and lowers the constraints' maximal degree.
 
-<!-- auto-gen info spec_has_correct_constraints_overview -->
-<!-- To reproduce this code, please run `cargo test spec_has_correct_constraints_overview`. -->
+<!-- auto-gen info start constraints_overview -->
+<!-- To update, please run `cargo test`. -->
 
 Before automatic degree lowering:
 
@@ -60,4 +60,4 @@ After automatically lowering degree to 4:
 | [U32Table](u32-table.md)                       |        1 |           26 |          34 |         2 |
 | [Grand Cross-Table Argument](table-linking.md) |        0 |            0 |           0 |        14 |
 | **TOTAL**                                      |   **81** |       **94** |     **386** |    **23** |
-<!-- auto-gen info stop -->
+<!-- auto-gen info stop constraints_overview -->
