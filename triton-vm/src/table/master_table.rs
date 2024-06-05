@@ -1339,6 +1339,7 @@ mod tests {
     use twenty_first::prelude::x_field_element::EXTENSION_DEGREE;
 
     use crate::arithmetic_domain::ArithmeticDomain;
+    use crate::instruction::Instruction;
     use crate::shared_tests::ProgramAndInput;
     use crate::stark::tests::*;
     use crate::table::degree_lowering_table::DegreeLoweringBaseTableColumn;
@@ -1530,11 +1531,13 @@ mod tests {
     fn update_arithmetization_overview() {
         let table_overview = generate_table_overview();
         let constraint_overview = generate_constraints_overview();
+        let tasm_air_overview = generate_tasm_air_evaluation_cost_overview();
 
         // current directory is triton-vm/triton-vm/
         let file_path = Path::new("../specification/src/arithmetization-overview.md");
         update_spec_with(file_path, table_overview);
         update_spec_with(file_path, constraint_overview);
+        update_spec_with(file_path, tasm_air_overview);
     }
 
     fn update_spec_with(spec_path: &Path, snippet: SpecSnippet) {
@@ -1808,6 +1811,46 @@ mod tests {
             start_marker: "<!-- auto-gen info start constraints_overview -->",
             stop_marker: "<!-- auto-gen info stop constraints_overview -->",
             snippet: format!("{how_to_update}\n{ft}"),
+        }
+    }
+
+    fn generate_tasm_air_evaluation_cost_overview() -> SpecSnippet {
+        let layout = TasmConstraintEvaluationMemoryLayout::default();
+        let tasm = tasm_air_constraints::air_constraint_evaluation_tasm(layout);
+        let program = triton_program!({ &tasm });
+
+        let processor = program.clone().into_iter().count();
+        let stack = program
+            .clone()
+            .into_iter()
+            .map(|instruction| instruction.op_stack_size_influence().abs())
+            .sum::<i32>();
+
+        let ram_table_influence = |instruction| match instruction {
+            Instruction::ReadMem(st) | Instruction::WriteMem(st) => st.num_words(),
+            Instruction::SpongeAbsorbMem => tip5::RATE,
+            Instruction::XbDotStep => 4,
+            Instruction::XxDotStep => 6,
+            _ => 0,
+        };
+        let ram = program
+            .clone()
+            .into_iter()
+            .map(ram_table_influence)
+            .sum::<usize>();
+
+        let snippet = format!(
+            "\
+            | Processor | Op Stack |   RAM |\n\
+            |----------:|---------:|------:|\n\
+            | {processor:>9} | {stack:>8} | {ram:>5} |\n\
+            "
+        );
+
+        SpecSnippet {
+            start_marker: "<!-- auto-gen info start tasm_air_evaluation_cost -->",
+            stop_marker: "<!-- auto-gen info stop tasm_air_evaluation_cost -->",
+            snippet,
         }
     }
 

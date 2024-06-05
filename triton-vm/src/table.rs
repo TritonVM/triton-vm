@@ -176,6 +176,22 @@ mod tests {
 
     use super::*;
 
+    impl Default for TasmConstraintEvaluationMemoryLayout {
+        /// For testing purposes only.
+        fn default() -> Self {
+            let mem_page_size = TasmConstraintEvaluationMemoryLayout::MEM_PAGE_SIZE as u64;
+            let mem_page = |i| bfe!(i * mem_page_size);
+            TasmConstraintEvaluationMemoryLayout {
+                free_mem_page_ptr: mem_page(0),
+                curr_base_row_ptr: mem_page(1),
+                curr_ext_row_ptr: mem_page(2),
+                next_base_row_ptr: mem_page(3),
+                next_ext_row_ptr: mem_page(4),
+                challenges_ptr: mem_page(5),
+            }
+        }
+    }
+
     #[proptest]
     fn size_0_memory_region_contains_no_addresses(
         #[strategy(arb())] region_start: BFieldElement,
@@ -200,17 +216,7 @@ mod tests {
 
     #[test]
     fn definitely_integral_memory_layout_is_detected_as_integral() {
-        let mem_page_size = TasmConstraintEvaluationMemoryLayout::MEM_PAGE_SIZE as u64;
-        let mem_page = |i| bfe!(i * mem_page_size);
-        let layout = TasmConstraintEvaluationMemoryLayout {
-            free_mem_page_ptr: mem_page(0),
-            curr_base_row_ptr: mem_page(1),
-            curr_ext_row_ptr: mem_page(2),
-            next_base_row_ptr: mem_page(3),
-            next_ext_row_ptr: mem_page(4),
-            challenges_ptr: mem_page(5),
-        };
-        assert!(layout.is_integral());
+        assert!(TasmConstraintEvaluationMemoryLayout::default().is_integral());
     }
 
     #[test]

@@ -61,3 +61,15 @@ After automatically lowering degree to 4:
 | [Grand Cross-Table Argument](table-linking.md) |        0 |            0 |           0 |        14 |
 | **TOTAL**                                      |   **81** |       **94** |     **386** |    **23** |
 <!-- auto-gen info stop constraints_overview -->
+
+
+## Triton Assembly Constraint Evaluation
+
+Triton VM's recursive verifier needs to evaluate Triton VM's AIR constraints.
+In order to gauge the runtime cost for this step, the following table provides estimates for that step's contribution to various tables.
+
+<!-- auto-gen info start tasm_air_evaluation_cost -->
+| Processor | Op Stack |   RAM |
+|----------:|---------:|------:|
+|     35689 |    66327 | 23592 |
+<!-- auto-gen info stop tasm_air_evaluation_cost -->
