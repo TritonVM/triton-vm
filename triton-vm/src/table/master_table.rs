@@ -1526,6 +1526,17 @@ mod tests {
         pub snippet: String,
     }
 
+    #[test]
+    fn update_arithmetization_overview() {
+        let table_overview = generate_table_overview();
+        let constraint_overview = generate_constraints_overview();
+
+        // current directory is triton-vm/triton-vm/
+        let file_path = Path::new("../specification/src/arithmetization-overview.md");
+        update_spec_with(file_path, table_overview);
+        update_spec_with(file_path, constraint_overview);
+    }
+
     fn update_spec_with(spec_path: &Path, snippet: SpecSnippet) {
         let spec = fs::read_to_string(spec_path).unwrap().replace("\r\n", "\n");
         let start = spec.find(snippet.start_marker).unwrap();
@@ -1540,71 +1551,35 @@ mod tests {
         fs::write(spec_path, new_contents).unwrap();
     }
 
-    #[test]
-    fn update_arithmetization_overview() {
-        let table_overview = generate_table_overview();
-        let constraint_overview = generate_constraints_overview();
-
-        // current directory is triton-vm/triton-vm/
-        let file_path = Path::new("../specification/src/arithmetization-overview.md");
-        update_spec_with(file_path, table_overview);
-        update_spec_with(file_path, constraint_overview);
-    }
-
     fn generate_table_overview() -> SpecSnippet {
-        let tables = [
-            (
-                "[ProgramTable](program-table.md)",
-                program_table::BASE_WIDTH,
-                program_table::EXT_WIDTH,
-            ),
-            (
-                "[ProcessorTable](processor-table.md)",
-                processor_table::BASE_WIDTH,
-                processor_table::EXT_WIDTH,
-            ),
-            (
-                "[OpStackTable](operational-stack-table.md)",
-                op_stack_table::BASE_WIDTH,
-                op_stack_table::EXT_WIDTH,
-            ),
-            (
-                "[RamTable](random-access-memory-table.md)",
-                ram_table::BASE_WIDTH,
-                ram_table::EXT_WIDTH,
-            ),
-            (
-                "[JumpStackTable](jump-stack-table.md)",
-                jump_stack_table::BASE_WIDTH,
-                jump_stack_table::EXT_WIDTH,
-            ),
-            (
-                "[HashTable](hash-table.md)",
-                hash_table::BASE_WIDTH,
-                hash_table::EXT_WIDTH,
-            ),
-            (
-                "[CascadeTable](cascade-table.md)",
-                cascade_table::BASE_WIDTH,
-                cascade_table::EXT_WIDTH,
-            ),
-            (
-                "[LookupTable](lookup-table.md)",
-                lookup_table::BASE_WIDTH,
-                lookup_table::EXT_WIDTH,
-            ),
-            (
-                "[U32Table](u32-table.md)",
-                u32_table::BASE_WIDTH,
-                u32_table::EXT_WIDTH,
-            ),
-            (
-                "DegreeLowering",
-                degree_lowering_table::BASE_WIDTH,
-                degree_lowering_table::EXT_WIDTH,
-            ),
-            ("Randomizers", 0, NUM_RANDOMIZER_POLYNOMIALS),
+        macro_rules! table_info {
+            ($($module:ident: $name:literal at $location:literal),* $(,)?) => {{
+                let mut info = vec![];
+                $(
+                let name = format!("[{}]({})", $name, $location);
+                info.push((name, $module::BASE_WIDTH, $module::EXT_WIDTH));
+                )*
+                info
+            }};
+        }
+
+        let mut all_table_info = table_info![
+            program_table:    "ProgramTable"   at "program-table.md",
+            processor_table:  "ProcessorTable" at "processor-table.md",
+            op_stack_table:   "OpStackTable"   at "operational-stack-table.md",
+            ram_table:        "RamTable"       at "random-access-memory-table.md",
+            jump_stack_table: "JumpStackTable" at "jump-stack-table.md",
+            hash_table:       "HashTable"      at "hash-table.md",
+            cascade_table:    "CascadeTable"   at "cascade-table.md",
+            lookup_table:     "LookupTable"    at "lookup-table.md",
+            u32_table:        "U32Table"       at "u32-table.md",
         ];
+
+        let deg_low_base = degree_lowering_table::BASE_WIDTH;
+        let deg_low_ext = degree_lowering_table::EXT_WIDTH;
+        all_table_info.push(("DegreeLowering".to_string(), deg_low_base, deg_low_ext));
+        all_table_info.push(("Randomizers".to_string(), 0, NUM_RANDOMIZER_POLYNOMIALS));
+        let all_table_info = all_table_info;
 
         // produce table code
         let mut ft = format!("| {:<42} ", "table name");
@@ -1619,7 +1594,7 @@ mod tests {
 
         let mut total_main = 0;
         let mut total_aux = 0;
-        for (name, num_main, num_aux) in tables {
+        for (name, num_main, num_aux) in all_table_info {
             let num_total = num_main + EXTENSION_DEGREE * num_aux;
             ft = format!("{ft}| {name:<42} | {num_main:>10} | {num_aux:9} | {num_total:>11} |\n");
             total_main += num_main;
@@ -1641,40 +1616,40 @@ mod tests {
         }
     }
 
-    struct ConstraintsOverviewRow {
-        pub name: String,
-        pub initial_constraints: Vec<ConstraintCircuitMonad<SingleRowIndicator>>,
-        pub consistency_constraints: Vec<ConstraintCircuitMonad<SingleRowIndicator>>,
-        pub transition_constraints: Vec<ConstraintCircuitMonad<DualRowIndicator>>,
-        pub terminal_constraints: Vec<ConstraintCircuitMonad<SingleRowIndicator>>,
-        pub last_base_column_index: usize,
-        pub last_ext_column_index: usize,
-    }
-
-    macro_rules! constraint_overview_rows {
-        ($($table:ident ends at $base_end:ident and $ext_end: ident.
-        Spec: [$spec_name:literal]($spec_file:literal)),* $(,)?) => {{
-            let single_row_builder = || ConstraintCircuitBuilder::new();
-            let dual_row_builder = || ConstraintCircuitBuilder::new();
-            let mut rows = Vec::new();
-            $(
-            let name = format!("[{}]({})", $spec_name, $spec_file);
-            let row = ConstraintsOverviewRow {
-                name,
-                initial_constraints: $table::initial_constraints(&single_row_builder()),
-                consistency_constraints: $table::consistency_constraints(&single_row_builder()),
-                transition_constraints: $table::transition_constraints(&dual_row_builder()),
-                terminal_constraints: $table::terminal_constraints(&single_row_builder()),
-                last_base_column_index: $base_end,
-                last_ext_column_index: $ext_end,
-            };
-            rows.push(row);
-            )*
-            rows
-        }};
-    }
-
     fn generate_constraints_overview() -> SpecSnippet {
+        struct ConstraintsOverviewRow {
+            pub name: String,
+            pub initial_constraints: Vec<ConstraintCircuitMonad<SingleRowIndicator>>,
+            pub consistency_constraints: Vec<ConstraintCircuitMonad<SingleRowIndicator>>,
+            pub transition_constraints: Vec<ConstraintCircuitMonad<DualRowIndicator>>,
+            pub terminal_constraints: Vec<ConstraintCircuitMonad<SingleRowIndicator>>,
+            pub last_base_column_index: usize,
+            pub last_ext_column_index: usize,
+        }
+
+        macro_rules! constraint_overview_rows {
+            ($($table:ident ends at $base_end:ident and $ext_end: ident.
+            Spec: [$spec_name:literal]($spec_file:literal)),* $(,)?) => {{
+                let single_row_builder = || ConstraintCircuitBuilder::new();
+                let dual_row_builder = || ConstraintCircuitBuilder::new();
+                let mut rows = Vec::new();
+                $(
+                let name = format!("[{}]({})", $spec_name, $spec_file);
+                let row = ConstraintsOverviewRow {
+                    name,
+                    initial_constraints: $table::initial_constraints(&single_row_builder()),
+                    consistency_constraints: $table::consistency_constraints(&single_row_builder()),
+                    transition_constraints: $table::transition_constraints(&dual_row_builder()),
+                    terminal_constraints: $table::terminal_constraints(&single_row_builder()),
+                    last_base_column_index: $base_end,
+                    last_ext_column_index: $ext_end,
+                };
+                rows.push(row);
+                )*
+                rows
+            }};
+        }
+
         // Declarative macro workaround (because I'm bad at them):
         // an `expr` cannot be followed up with `and`. Instead, declare this `const` to
         // have an `ident`, which _can_ be followed up with `and`.
@@ -1839,132 +1814,50 @@ mod tests {
     /// intended use: `cargo t print_all_master_table_indices -- --nocapture`
     #[test]
     fn print_all_master_table_indices() {
+        macro_rules! print_columns {
+            (base $table:ident for $name:literal) => {{
+                for column in $table::iter() {
+                    let idx = column.master_base_table_index();
+                    let name = $name;
+                    println!("| {idx:>3} | {name:<11} | {column}");
+                }
+            }};
+            (ext $table:ident for $name:literal) => {{
+                for column in $table::iter() {
+                    let idx = column.master_ext_table_index();
+                    let name = $name;
+                    println!("| {idx:>3} | {name:<11} | {column}");
+                }
+            }};
+        }
+
         println!();
-        println!("idx | table       | base column");
-        println!("---:|:------------|:-----------");
-        for column in ProgramBaseTableColumn::iter() {
-            println!(
-                "{:>3} | program     | {column}",
-                column.master_base_table_index()
-            );
-        }
-        for column in ProcessorBaseTableColumn::iter() {
-            println!(
-                "{:>3} | processor   | {column}",
-                column.master_base_table_index()
-            );
-        }
-        for column in OpStackBaseTableColumn::iter() {
-            println!(
-                "{:>3} | op stack    | {column}",
-                column.master_base_table_index()
-            );
-        }
-        for column in RamBaseTableColumn::iter() {
-            println!(
-                "{:>3} | ram         | {column}",
-                column.master_base_table_index()
-            );
-        }
-        for column in JumpStackBaseTableColumn::iter() {
-            println!(
-                "{:>3} | jump stack  | {column}",
-                column.master_base_table_index()
-            );
-        }
-        for column in HashBaseTableColumn::iter() {
-            println!(
-                "{:>3} | hash        | {column}",
-                column.master_base_table_index()
-            );
-        }
-        for column in CascadeBaseTableColumn::iter() {
-            println!(
-                "{:>3} | cascade     | {column}",
-                column.master_base_table_index()
-            );
-        }
-        for column in LookupBaseTableColumn::iter() {
-            println!(
-                "{:>3} | lookup      | {column}",
-                column.master_base_table_index()
-            );
-        }
-        for column in U32BaseTableColumn::iter() {
-            println!(
-                "{:>3} | u32         | {column}",
-                column.master_base_table_index()
-            );
-        }
-        for column in DegreeLoweringBaseTableColumn::iter() {
-            println!(
-                "{:>3} | degree low. | {column}",
-                column.master_base_table_index()
-            );
-        }
+        println!("| idx | table       | base column");
+        println!("|----:|:------------|:-----------");
+        print_columns!(base ProgramBaseTableColumn        for "program");
+        print_columns!(base ProcessorBaseTableColumn      for "processor");
+        print_columns!(base OpStackBaseTableColumn        for "op stack");
+        print_columns!(base RamBaseTableColumn            for "ram");
+        print_columns!(base JumpStackBaseTableColumn      for "jump stack");
+        print_columns!(base HashBaseTableColumn           for "hash");
+        print_columns!(base CascadeBaseTableColumn        for "cascade");
+        print_columns!(base LookupBaseTableColumn         for "lookup");
+        print_columns!(base U32BaseTableColumn            for "u32");
+        print_columns!(base DegreeLoweringBaseTableColumn for "degree low.");
+
         println!();
-        println!("idx | table       | extension column");
-        println!("---:|:------------|:----------------");
-        for column in ProgramExtTableColumn::iter() {
-            println!(
-                "{:>3} | program     | {column}",
-                column.master_ext_table_index()
-            );
-        }
-        for column in ProcessorExtTableColumn::iter() {
-            println!(
-                "{:>3} | processor   | {column}",
-                column.master_ext_table_index()
-            );
-        }
-        for column in OpStackExtTableColumn::iter() {
-            println!(
-                "{:>3} | op stack    | {column}",
-                column.master_ext_table_index()
-            );
-        }
-        for column in RamExtTableColumn::iter() {
-            println!(
-                "{:>3} | ram         | {column}",
-                column.master_ext_table_index()
-            );
-        }
-        for column in JumpStackExtTableColumn::iter() {
-            println!(
-                "{:>3} | jump stack  | {column}",
-                column.master_ext_table_index()
-            );
-        }
-        for column in HashExtTableColumn::iter() {
-            println!(
-                "{:>3} | hash        | {column}",
-                column.master_ext_table_index()
-            );
-        }
-        for column in CascadeExtTableColumn::iter() {
-            println!(
-                "{:>3} | cascade     | {column}",
-                column.master_ext_table_index()
-            );
-        }
-        for column in LookupExtTableColumn::iter() {
-            println!(
-                "{:>3} | lookup      | {column}",
-                column.master_ext_table_index()
-            );
-        }
-        for column in U32ExtTableColumn::iter() {
-            println!(
-                "{:>3} | u32         | {column}",
-                column.master_ext_table_index()
-            );
-        }
-        for column in DegreeLoweringExtTableColumn::iter() {
-            println!(
-                "{:>3} | degree low. | {column}",
-                column.master_ext_table_index()
-            );
-        }
+        println!("| idx | table       | extension column");
+        println!("|----:|:------------|:----------------");
+        print_columns!(ext ProgramExtTableColumn          for "program");
+        print_columns!(ext ProcessorExtTableColumn        for "processor");
+        print_columns!(ext OpStackExtTableColumn          for "op stack");
+        print_columns!(ext RamExtTableColumn              for "ram");
+        print_columns!(ext JumpStackExtTableColumn        for "jump stack");
+        print_columns!(ext HashExtTableColumn             for "hash");
+        print_columns!(ext CascadeExtTableColumn          for "cascade");
+        print_columns!(ext LookupExtTableColumn           for "lookup");
+        print_columns!(ext U32ExtTableColumn              for "u32");
+        print_columns!(ext DegreeLoweringExtTableColumn   for "degree low.");
     }
 
     #[test]
