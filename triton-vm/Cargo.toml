@@ -67,6 +67,10 @@ name = "cached_vs_jit_trace"
 harness = false
 
 [[bench]]
+name = "initialize_array"
+harness = false
+
+[[bench]]
 name = "mem_io"
 harness = false
 
