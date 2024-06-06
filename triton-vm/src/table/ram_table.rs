@@ -4,7 +4,6 @@ use arbitrary::Arbitrary;
 use itertools::Itertools;
 use ndarray::parallel::prelude::*;
 use ndarray::prelude::*;
-use ndarray::ViewRepr;
 use num_traits::One;
 use num_traits::Zero;
 use serde_derive::*;
@@ -261,28 +260,27 @@ impl RamTable {
         let mut running_product_ram_pointer =
             bezout_indeterminate - base_table.row(0)[RamPointer.base_table_index()];
         let mut formal_derivative = xfe!(1);
-        let mut previous_row: Option<ArrayBase<ViewRepr<&BFieldElement>, Dim<[usize; 1]>>> = None;
-        for row_index in 0..row_count {
-            let current_row = base_table.row(row_index);
+
+        extension_columns.push(running_product_ram_pointer);
+        extension_columns.push(formal_derivative);
+
+        for (previous_row, current_row) in base_table.rows().into_iter().tuple_windows() {
             let instruction_type = current_row[InstructionType.base_table_index()];
             let is_no_padding_row = instruction_type != PADDING_INDICATOR;
 
             if is_no_padding_row {
-                if let Some(previous_row) = previous_row {
-                    let current_ram_pointer = current_row[RamPointer.base_table_index()];
-                    let previous_ram_pointer = previous_row[RamPointer.base_table_index()];
-                    if previous_ram_pointer != current_ram_pointer {
-                        formal_derivative = (bezout_indeterminate - current_ram_pointer)
-                            * formal_derivative
-                            + running_product_ram_pointer;
-                        running_product_ram_pointer *= bezout_indeterminate - current_ram_pointer;
-                    }
+                let current_ram_pointer = current_row[RamPointer.base_table_index()];
+                let previous_ram_pointer = previous_row[RamPointer.base_table_index()];
+                if previous_ram_pointer != current_ram_pointer {
+                    formal_derivative = (bezout_indeterminate - current_ram_pointer)
+                        * formal_derivative
+                        + running_product_ram_pointer;
+                    running_product_ram_pointer *= bezout_indeterminate - current_ram_pointer;
                 }
             }
 
             extension_columns.push(running_product_ram_pointer);
             extension_columns.push(formal_derivative);
-            previous_row = Some(current_row);
         }
 
         Array2::from_shape_vec((row_count, 2), extension_columns).unwrap()
