@@ -4,12 +4,10 @@ use criterion::criterion_group;
 use criterion::criterion_main;
 use criterion::Criterion;
 use ndarray::prelude::*;
-use num_traits::One;
 use num_traits::Zero;
 use rand::rngs::StdRng;
 use rand::thread_rng;
 use rand::Rng;
-use rand::RngCore;
 use rand::SeedableRng;
 use twenty_first::prelude::*;
 
