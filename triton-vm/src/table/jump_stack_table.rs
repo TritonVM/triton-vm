@@ -1,5 +1,6 @@
 use std::cmp::Ordering;
 use std::collections::HashMap;
+use std::ops::Range;
 
 use itertools::Itertools;
 use ndarray::parallel::prelude::*;
@@ -352,9 +353,9 @@ impl JumpStackTable {
     ) -> Array2<XFieldElement> {
         // - use memoization to avoid recomputing inverses
         // - precompute common values through batch inversion
-        const INVERSES_DICTIONARY_INITIAL_POPULATION: u64 = 100;
+        const PRECOMPUTE_INVERSES_OF: Range<u64> = 0..100;
         let indeterminate = challenges[ClockJumpDifferenceLookupIndeterminate];
-        let to_invert = (0..INVERSES_DICTIONARY_INITIAL_POPULATION)
+        let to_invert = PRECOMPUTE_INVERSES_OF
             .map(|i| indeterminate - bfe!(i))
             .collect();
         let mut inverses_dictionary = (0..)
