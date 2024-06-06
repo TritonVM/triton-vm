@@ -61,8 +61,8 @@ fn init_array<const N: usize>(c: &mut Criterion) {
 fn set_ones<const H: usize, const W: usize>(rng: &mut StdRng, matrix: &mut Array2<XFieldElement>) {
     assert!(!matrix.is_standard_layout());
     for _ in 0..1000 {
-        let r = (rng.next_u32() as usize) % H;
-        let c = (rng.next_u32() as usize) % W;
+        let r = rng.gen_range(0..H);
+        let c = rng.gen_range(0..W);
         matrix[[r, c]] = xfe!(1);
     }
 }
