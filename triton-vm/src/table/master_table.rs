@@ -1,4 +1,5 @@
 use std::borrow::Borrow;
+use std::mem::MaybeUninit;
 use std::ops::Mul;
 use std::ops::MulAssign;
 use std::ops::Range;
@@ -314,24 +315,23 @@ where
         if should_cache {
             profiler!(start "resize");
             assert!(extended_trace.capacity() >= num_elements);
+            extended_trace
+                .spare_capacity_mut()
+                .par_iter_mut()
+                .for_each(|e| *e = MaybeUninit::new(FF::zero()));
+
             unsafe {
                 // Speed up initialization through parallelization.
                 //
                 // SAFETY:
                 // 1. The capacity is sufficiently large – see above `assert!`.
                 // 2. The length is set to equal (or less than) the capacity.
-                // 3. Each element is over-written before being read in the
-                //    immediately following lines.
+                // 3. Each element in the spare capacity is initialized.
                 extended_trace.set_len(num_elements);
             }
             let mut extended_columns =
                 Array2::from_shape_vec([num_rows, Self::NUM_COLUMNS], extended_trace).unwrap();
             profiler!(stop "resize");
-
-            // Speeds up the subsequent parallel iteration. Maybe because of page faults?
-            profiler!(start "touch memory");
-            extended_columns.par_mapv_inplace(|_| FF::zero());
-            profiler!(stop "touch memory");
 
             profiler!(start "evaluation");
             Zip::from(extended_columns.axis_iter_mut(Axis(1)))
