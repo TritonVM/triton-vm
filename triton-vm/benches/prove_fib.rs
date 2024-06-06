@@ -8,7 +8,7 @@ use triton_vm::example_programs::FIBONACCI_SEQUENCE;
 use triton_vm::prelude::*;
 use triton_vm::profiler::VMPerformanceProfile;
 
-const FIBONACCI_INDEX: BFieldElement = BFieldElement::new(100);
+const FIBONACCI_INDEX: BFieldElement = BFieldElement::new(500);
 
 /// cargo criterion --bench prove_fib
 fn prove_fib(criterion: &mut Criterion) {
