@@ -1,8 +1,12 @@
 use std::fmt::Debug;
+use std::mem::MaybeUninit;
 
 use ndarray::s;
+use ndarray::Array2;
 use ndarray::ArrayViewMut2;
 use ndarray::Ix;
+use ndarray::ShapeBuilder;
+use num_traits::Zero;
 
 /// Slice a two-dimensional array into many non-overlapping mutable subviews
 /// of the same height as the array, based on the contiguous partition induced
@@ -55,6 +59,17 @@ pub fn contiguous_column_slices(column_indices: &[usize]) -> Vec<usize> {
     .concat()
 }
 
+pub fn fast_zeros_column_major<
+    FF: Zero + std::marker::Sync + std::marker::Send + std::marker::Copy,
+>(
+    num_rows: usize,
+    num_columns: usize,
+) -> Array2<FF> {
+    let mut array = Array2::<FF>::uninit((num_rows, num_columns).f());
+    array.par_mapv_inplace(|_| MaybeUninit::new(FF::zero()));
+    unsafe { array.assume_init() }
+}
+
 #[cfg(test)]
 mod test {
     use itertools::Itertools;
@@ -62,11 +77,14 @@ mod test {
     use ndarray::concatenate;
     use ndarray::Array2;
     use ndarray::Axis;
+    use num_traits::Zero;
     use proptest::collection::vec;
     use proptest::prelude::BoxedStrategy;
+    use proptest::prop_assert;
     use proptest::prop_assert_eq;
     use proptest::strategy::Strategy;
     use test_strategy::proptest;
+    use twenty_first::math::x_field_element::XFieldElement;
 
     use super::*;
 
@@ -159,5 +177,33 @@ mod test {
             .collect_vec();
         let expected_array = concatenate(Axis(1), &expected_views).unwrap();
         prop_assert_eq!(expected_array, array);
+    }
+
+    #[proptest]
+    fn fast_zeros_column_major_has_right_dimensions(
+        #[strategy(0usize..1000)] height: usize,
+        #[strategy(0usize..1000)] width: usize,
+    ) {
+        let matrix = fast_zeros_column_major::<XFieldElement>(height, width);
+        prop_assert_eq!(height, matrix.nrows());
+        prop_assert_eq!(width, matrix.ncols());
+    }
+
+    #[proptest]
+    fn fast_zeros_column_major_is_not_standard_layout(
+        #[strategy(2usize..1000)] height: usize,
+        #[strategy(2usize..1000)] width: usize,
+    ) {
+        let matrix = fast_zeros_column_major::<XFieldElement>(height, width);
+        prop_assert!(!matrix.is_standard_layout());
+    }
+
+    #[proptest]
+    fn fast_zeros_column_major_is_all_zeros(
+        #[strategy(0usize..1000)] height: usize,
+        #[strategy(0usize..1000)] width: usize,
+    ) {
+        let matrix = fast_zeros_column_major::<XFieldElement>(height, width);
+        prop_assert!(matrix.iter().all(|e| e.is_zero()));
     }
 }

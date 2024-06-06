@@ -31,6 +31,7 @@ use crate::aet::AlgebraicExecutionTrace;
 use crate::arithmetic_domain::ArithmeticDomain;
 use crate::config::CacheDecision;
 use crate::error::ProvingError;
+use crate::ndarray_helper::fast_zeros_column_major;
 use crate::ndarray_helper::horizontal_multi_slice_mut;
 use crate::ndarray_helper::partial_sums;
 use crate::profiler::profiler;
@@ -897,29 +898,8 @@ impl MasterBaseTable {
         // randomizer polynomials
         let num_rows = self.randomized_trace_table().nrows();
         profiler!(start "initialize master table");
-        let num_table_elements = num_rows * NUM_EXT_COLUMNS;
-        let mut randomized_trace_extension_table = Vec::with_capacity(num_table_elements);
-
-        #[allow(clippy::uninit_vec)]
-        unsafe {
-            // Use of unsafe code because it is faster than the alternative, which is
-            // `vec![XFieldElemet::zero(); num_table_elements]` and which is slower
-            // because it is fully sequential.
-            // This use of unsafe code is safe because
-            //  - We have enough capacity to change the length (because the variable `num_table_elements`
-            //    is immutable and is not being shadowed.)
-            //  - All elements are initialized in the next few lines.
-            randomized_trace_extension_table.set_len(num_table_elements);
-        }
-        let mut randomized_trace_extension_table = Array2::from_shape_vec(
-            [num_rows, NUM_EXT_COLUMNS].f(),
-            randomized_trace_extension_table,
-        )
-        .unwrap();
-
-        profiler!(start "memory warmup");
-        randomized_trace_extension_table.par_mapv_inplace(|_| XFieldElement::zero());
-        profiler!(stop "memory warmup");
+        let mut randomized_trace_extension_table =
+            fast_zeros_column_major::<XFieldElement>(num_rows, NUM_EXT_COLUMNS);
 
         randomized_trace_extension_table
             .slice_mut(s![.., NUM_EXT_COLUMNS_WITHOUT_RANDOMIZER_POLYS..])
