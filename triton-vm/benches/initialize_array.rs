@@ -63,7 +63,7 @@ fn set_ones<const H: usize, const W: usize>(rng: &mut StdRng, matrix: &mut Array
     for _ in 0..1000 {
         let r = (rng.next_u32() as usize) % H;
         let c = (rng.next_u32() as usize) % W;
-        *matrix.get_mut((r, c)).unwrap() = XFieldElement::one();
+        matrix[[r, c]] = xfe!(1);
     }
 }
 
