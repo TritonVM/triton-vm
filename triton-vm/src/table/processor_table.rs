@@ -2781,21 +2781,6 @@ impl ExtProcessorTable {
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
         n: usize,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        let running_evaluation_update =
-            Self::running_evaluation_standard_input_accumulates_n_symbols(circuit_builder, n);
-        let conditional_running_evaluation_update =
-            running_evaluation_update * Self::indicator_polynomial(circuit_builder, n);
-
-        let mut constraints =
-            Self::conditional_constraints_for_growing_stack_by(circuit_builder, n);
-        constraints.push(conditional_running_evaluation_update);
-        constraints
-    }
-
-    fn running_evaluation_standard_input_accumulates_n_symbols(
-        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
-        n: usize,
-    ) -> ConstraintCircuitMonad<DualRowIndicator> {
         let indeterminate = || circuit_builder.challenge(StandardInputIndeterminate);
         let next_base_row = |col: ProcessorBaseTableColumn| {
             circuit_builder.input(NextBaseRow(col.master_base_table_index()))
@@ -2813,28 +2798,20 @@ impl ExtProcessorTable {
             running_evaluation =
                 indeterminate() * running_evaluation + next_base_row(stack_element);
         }
-        next_ext_row(InputTableEvalArg) - running_evaluation
+        let running_evaluation_update = next_ext_row(InputTableEvalArg) - running_evaluation;
+        let conditional_running_evaluation_update =
+            Self::indicator_polynomial(circuit_builder, n) * running_evaluation_update;
+
+        let mut constraints =
+            Self::conditional_constraints_for_growing_stack_by(circuit_builder, n);
+        constraints.push(conditional_running_evaluation_update);
+        constraints
     }
 
     fn shrink_stack_by_n_and_write_n_symbols_to_output(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
         n: usize,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        let running_evaluation_update =
-            Self::running_evaluation_standard_output_accumulates_n_symbols(circuit_builder, n);
-        let conditional_running_evaluation_update =
-            running_evaluation_update * Self::indicator_polynomial(circuit_builder, n);
-
-        let mut constraints =
-            Self::conditional_constraints_for_shrinking_stack_by(circuit_builder, n);
-        constraints.push(conditional_running_evaluation_update);
-        constraints
-    }
-
-    fn running_evaluation_standard_output_accumulates_n_symbols(
-        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
-        n: usize,
-    ) -> ConstraintCircuitMonad<DualRowIndicator> {
         let indeterminate = || circuit_builder.challenge(StandardOutputIndeterminate);
         let curr_base_row = |col: ProcessorBaseTableColumn| {
             circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
@@ -2852,7 +2829,14 @@ impl ExtProcessorTable {
             running_evaluation =
                 indeterminate() * running_evaluation + curr_base_row(stack_element);
         }
-        next_ext_row(OutputTableEvalArg) - running_evaluation
+        let running_evaluation_update = next_ext_row(OutputTableEvalArg) - running_evaluation;
+        let conditional_running_evaluation_update =
+            Self::indicator_polynomial(circuit_builder, n) * running_evaluation_update;
+
+        let mut constraints =
+            Self::conditional_constraints_for_shrinking_stack_by(circuit_builder, n);
+        constraints.push(conditional_running_evaluation_update);
+        constraints
     }
 
     fn log_derivative_for_instruction_lookup_updates_correctly(
