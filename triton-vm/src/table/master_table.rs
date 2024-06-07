@@ -1499,10 +1499,10 @@ mod tests {
                 &new_spec[stop..]
             );
         }
-        fs::write(spec_path, new_spec.clone()).unwrap();
 
         if current_spec != new_spec {
             println!("Updated arithmetization overview to be:\n\n{new_spec}");
+            fs::write(spec_path, new_spec).unwrap();
             panic!("The arithmetization overview was updated. Please commit the changes.");
         }
     }
