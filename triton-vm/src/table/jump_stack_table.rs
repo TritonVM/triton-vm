@@ -1,12 +1,20 @@
 use std::cmp::Ordering;
+use std::collections::HashMap;
+use std::ops::Range;
 
+use itertools::Itertools;
 use ndarray::parallel::prelude::*;
-use ndarray::*;
+use ndarray::prelude::*;
 use strum::EnumCount;
+use strum::IntoEnumIterator;
+use twenty_first::math::traits::FiniteField;
 use twenty_first::prelude::*;
 
 use crate::aet::AlgebraicExecutionTrace;
 use crate::instruction::Instruction;
+use crate::ndarray_helper::contiguous_column_slices;
+use crate::ndarray_helper::horizontal_multi_slice_mut;
+use crate::profiler::profiler;
 use crate::table::challenges::ChallengeId::*;
 use crate::table::challenges::Challenges;
 use crate::table::constraint_circuit::DualRowIndicator::*;
@@ -293,54 +301,84 @@ impl JumpStackTable {
         mut ext_table: ArrayViewMut2<XFieldElement>,
         challenges: &Challenges,
     ) {
+        profiler!(start "jump stack table");
         assert_eq!(BASE_WIDTH, base_table.ncols());
         assert_eq!(EXT_WIDTH, ext_table.ncols());
         assert_eq!(base_table.nrows(), ext_table.nrows());
 
-        let clk_weight = challenges[JumpStackClkWeight];
-        let ci_weight = challenges[JumpStackCiWeight];
-        let jsp_weight = challenges[JumpStackJspWeight];
-        let jso_weight = challenges[JumpStackJsoWeight];
-        let jsd_weight = challenges[JumpStackJsdWeight];
-        let perm_arg_indeterminate = challenges[JumpStackIndeterminate];
-        let clock_jump_difference_lookup_indeterminate =
-            challenges[ClockJumpDifferenceLookupIndeterminate];
+        // use strum::IntoEnumIterator;
+        let extension_column_indices = JumpStackExtTableColumn::iter()
+            .map(|column| column.ext_table_index())
+            .collect_vec();
+        let extension_column_slices = horizontal_multi_slice_mut(
+            ext_table.view_mut(),
+            &contiguous_column_slices(&extension_column_indices),
+        );
+        let extension_functions = [
+            Self::extension_column_running_product_permutation_argument,
+            Self::extension_column_clock_jump_diff_lookup_log_derivative,
+        ];
 
+        extension_functions
+            .into_par_iter()
+            .zip_eq(extension_column_slices)
+            .for_each(|(generator, slice)| {
+                generator(base_table, challenges).move_into(slice);
+            });
+
+        profiler!(stop "jump stack table");
+    }
+
+    fn extension_column_running_product_permutation_argument(
+        base_table: ArrayView2<BFieldElement>,
+        challenges: &Challenges,
+    ) -> Array2<XFieldElement> {
         let mut running_product = PermArg::default_initial();
-        let mut clock_jump_diff_lookup_log_derivative = LookupArg::default_initial();
-        let mut previous_row: Option<ArrayView1<BFieldElement>> = None;
-
-        for row_idx in 0..base_table.nrows() {
-            let current_row = base_table.row(row_idx);
-            let clk = current_row[CLK.base_table_index()];
-            let ci = current_row[CI.base_table_index()];
-            let jsp = current_row[JSP.base_table_index()];
-            let jso = current_row[JSO.base_table_index()];
-            let jsd = current_row[JSD.base_table_index()];
-
-            let compressed_row_for_permutation_argument = clk * clk_weight
-                + ci * ci_weight
-                + jsp * jsp_weight
-                + jso * jso_weight
-                + jsd * jsd_weight;
-            running_product *= perm_arg_indeterminate - compressed_row_for_permutation_argument;
-
-            // clock jump difference
-            if let Some(prev_row) = previous_row {
-                if prev_row[JSP.base_table_index()] == current_row[JSP.base_table_index()] {
-                    let clock_jump_difference =
-                        current_row[CLK.base_table_index()] - prev_row[CLK.base_table_index()];
-                    clock_jump_diff_lookup_log_derivative +=
-                        (clock_jump_difference_lookup_indeterminate - clock_jump_difference)
-                            .inverse();
-                }
-            }
-
-            let mut extension_row = ext_table.row_mut(row_idx);
-            extension_row[RunningProductPermArg.ext_table_index()] = running_product;
-            extension_row[ClockJumpDifferenceLookupClientLogDerivative.ext_table_index()] =
-                clock_jump_diff_lookup_log_derivative;
-            previous_row = Some(current_row);
+        let mut extension_column = Vec::with_capacity(base_table.nrows());
+        for row in base_table.rows() {
+            let compressed_row = row[CLK.base_table_index()] * challenges[JumpStackClkWeight]
+                + row[CI.base_table_index()] * challenges[JumpStackCiWeight]
+                + row[JSP.base_table_index()] * challenges[JumpStackJspWeight]
+                + row[JSO.base_table_index()] * challenges[JumpStackJsoWeight]
+                + row[JSD.base_table_index()] * challenges[JumpStackJsdWeight];
+            running_product *= challenges[JumpStackIndeterminate] - compressed_row;
+            extension_column.push(running_product);
         }
+        Array2::from_shape_vec((base_table.nrows(), 1), extension_column).unwrap()
+    }
+
+    fn extension_column_clock_jump_diff_lookup_log_derivative(
+        base_table: ArrayView2<BFieldElement>,
+        challenges: &Challenges,
+    ) -> Array2<XFieldElement> {
+        // - use memoization to avoid recomputing inverses
+        // - precompute common values through batch inversion
+        const PRECOMPUTE_INVERSES_OF: Range<u64> = 0..100;
+        let indeterminate = challenges[ClockJumpDifferenceLookupIndeterminate];
+        let to_invert = PRECOMPUTE_INVERSES_OF
+            .map(|i| indeterminate - bfe!(i))
+            .collect();
+        let mut inverses_dictionary = PRECOMPUTE_INVERSES_OF
+            .zip_eq(XFieldElement::batch_inversion(to_invert))
+            .map(|(i, inv)| (bfe!(i), inv))
+            .collect::<HashMap<_, _>>();
+
+        // populate extension column using memoization
+        let mut cjd_lookup_log_derivative = LookupArg::default_initial();
+        let mut extension_column = Vec::with_capacity(base_table.nrows());
+        extension_column.push(cjd_lookup_log_derivative);
+        for (previous_row, current_row) in base_table.rows().into_iter().tuple_windows() {
+            if previous_row[JSP.base_table_index()] == current_row[JSP.base_table_index()] {
+                let previous_clock = previous_row[CLK.base_table_index()];
+                let current_clock = current_row[CLK.base_table_index()];
+                let clock_jump_difference = current_clock - previous_clock;
+                let &mut inverse = inverses_dictionary
+                    .entry(clock_jump_difference)
+                    .or_insert_with(|| (indeterminate - clock_jump_difference).inverse());
+                cjd_lookup_log_derivative += inverse;
+            }
+            extension_column.push(cjd_lookup_log_derivative);
+        }
+        Array2::from_shape_vec((base_table.nrows(), 1), extension_column).unwrap()
     }
 }

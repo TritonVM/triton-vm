@@ -3,20 +3,19 @@ use std::cmp::Ordering;
 use arbitrary::Arbitrary;
 use itertools::Itertools;
 use ndarray::parallel::prelude::*;
-use ndarray::s;
-use ndarray::Array1;
-use ndarray::ArrayView1;
-use ndarray::ArrayView2;
-use ndarray::ArrayViewMut2;
-use ndarray::Axis;
+use ndarray::prelude::*;
 use num_traits::One;
 use num_traits::Zero;
 use serde_derive::*;
 use strum::EnumCount;
+use strum::IntoEnumIterator;
 use twenty_first::math::traits::FiniteField;
 use twenty_first::prelude::*;
 
 use crate::aet::AlgebraicExecutionTrace;
+use crate::ndarray_helper::contiguous_column_slices;
+use crate::ndarray_helper::horizontal_multi_slice_mut;
+use crate::profiler::profiler;
 use crate::table::challenges::ChallengeId::*;
 use crate::table::challenges::Challenges;
 use crate::table::constraint_circuit::DualRowIndicator::*;
@@ -218,79 +217,185 @@ impl RamTable {
         mut ext_table: ArrayViewMut2<XFieldElement>,
         challenges: &Challenges,
     ) {
+        profiler!(start "ram table");
         assert_eq!(BASE_WIDTH, base_table.ncols());
         assert_eq!(EXT_WIDTH, ext_table.ncols());
         assert_eq!(base_table.nrows(), ext_table.nrows());
 
-        let mut running_product_for_perm_arg = PermArg::default_initial();
-        let mut clock_jump_diff_lookup_log_derivative = LookupArg::default_initial();
+        let extension_column_indices = RamExtTableColumn::iter()
+            // RunningProductOfRAMP + FormalDerivative are constitute one
+            // slice and are populated by the same function
+            .filter(|column| *column != RamExtTableColumn::FormalDerivative)
+            .map(|column| column.ext_table_index())
+            .collect_vec();
+        let extension_column_slices = horizontal_multi_slice_mut(
+            ext_table.view_mut(),
+            &contiguous_column_slices(&extension_column_indices),
+        );
+        let extension_functions = [
+            Self::extension_column_running_product_of_ramp_and_formal_derivative,
+            Self::extension_column_bezout_coefficient_0,
+            Self::extension_column_bezout_coefficient_1,
+            Self::extension_column_running_product_perm_arg,
+            Self::extension_column_clock_jump_difference_lookup_log_derivative,
+        ];
+        extension_functions
+            .into_par_iter()
+            .zip_eq(extension_column_slices)
+            .for_each(|(generator, slice)| {
+                generator(base_table, challenges).move_into(slice);
+            });
 
-        // initialize columns establishing Bézout relation
+        profiler!(stop "ram table");
+    }
+
+    fn extension_column_running_product_of_ramp_and_formal_derivative(
+        base_table: ArrayView2<BFieldElement>,
+        challenges: &Challenges,
+    ) -> Array2<XFieldElement> {
         let bezout_indeterminate = challenges[RamTableBezoutRelationIndeterminate];
-        let clock_jump_difference_lookup_indeterminate =
-            challenges[ClockJumpDifferenceLookupIndeterminate];
+
+        let mut extension_columns = Vec::with_capacity(2 * base_table.nrows());
         let mut running_product_ram_pointer =
             bezout_indeterminate - base_table.row(0)[RamPointer.base_table_index()];
         let mut formal_derivative = xfe!(1);
-        let mut bezout_coefficient_0 =
-            base_table.row(0)[BezoutCoefficientPolynomialCoefficient0.base_table_index()].lift();
-        let mut bezout_coefficient_1 =
-            base_table.row(0)[BezoutCoefficientPolynomialCoefficient1.base_table_index()].lift();
 
-        let mut previous_row: Option<ArrayView1<BFieldElement>> = None;
-        for row_idx in 0..base_table.nrows() {
-            let current_row = base_table.row(row_idx);
-            let clk = current_row[CLK.base_table_index()];
+        extension_columns.push(running_product_ram_pointer);
+        extension_columns.push(formal_derivative);
+
+        for (previous_row, current_row) in base_table.rows().into_iter().tuple_windows() {
             let instruction_type = current_row[InstructionType.base_table_index()];
-            let current_ram_pointer = current_row[RamPointer.base_table_index()];
-            let ram_value = current_row[RamValue.base_table_index()];
-
             let is_no_padding_row = instruction_type != PADDING_INDICATOR;
 
             if is_no_padding_row {
-                if let Some(previous_row) = previous_row {
-                    let previous_ram_pointer = previous_row[RamPointer.base_table_index()];
-                    if previous_ram_pointer == current_ram_pointer {
-                        let previous_clock = previous_row[CLK.base_table_index()];
-                        let current_clock = current_row[CLK.base_table_index()];
-                        let clock_jump_difference = current_clock - previous_clock;
-                        let log_derivative_summand =
-                            clock_jump_difference_lookup_indeterminate - clock_jump_difference;
-                        clock_jump_diff_lookup_log_derivative += log_derivative_summand.inverse();
-                    } else {
-                        // accumulate coefficient for Bézout relation, proving new RAMP is unique
-                        let bcpc0 =
-                            current_row[BezoutCoefficientPolynomialCoefficient0.base_table_index()];
-                        let bcpc1 =
-                            current_row[BezoutCoefficientPolynomialCoefficient1.base_table_index()];
-
-                        formal_derivative = (bezout_indeterminate - current_ram_pointer)
-                            * formal_derivative
-                            + running_product_ram_pointer;
-                        running_product_ram_pointer *= bezout_indeterminate - current_ram_pointer;
-                        bezout_coefficient_0 = bezout_coefficient_0 * bezout_indeterminate + bcpc0;
-                        bezout_coefficient_1 = bezout_coefficient_1 * bezout_indeterminate + bcpc1;
-                    }
+                let current_ram_pointer = current_row[RamPointer.base_table_index()];
+                let previous_ram_pointer = previous_row[RamPointer.base_table_index()];
+                if previous_ram_pointer != current_ram_pointer {
+                    formal_derivative = (bezout_indeterminate - current_ram_pointer)
+                        * formal_derivative
+                        + running_product_ram_pointer;
+                    running_product_ram_pointer *= bezout_indeterminate - current_ram_pointer;
                 }
-
-                // permutation argument to Processor Table
-                let compressed_row = clk * challenges[RamClkWeight]
-                    + instruction_type * challenges[RamInstructionTypeWeight]
-                    + current_ram_pointer * challenges[RamPointerWeight]
-                    + ram_value * challenges[RamValueWeight];
-                running_product_for_perm_arg *= challenges[RamIndeterminate] - compressed_row;
             }
 
-            let mut extension_row = ext_table.row_mut(row_idx);
-            extension_row[RunningProductPermArg.ext_table_index()] = running_product_for_perm_arg;
-            extension_row[RunningProductOfRAMP.ext_table_index()] = running_product_ram_pointer;
-            extension_row[FormalDerivative.ext_table_index()] = formal_derivative;
-            extension_row[BezoutCoefficient0.ext_table_index()] = bezout_coefficient_0;
-            extension_row[BezoutCoefficient1.ext_table_index()] = bezout_coefficient_1;
-            extension_row[ClockJumpDifferenceLookupClientLogDerivative.ext_table_index()] =
-                clock_jump_diff_lookup_log_derivative;
-            previous_row = Some(current_row);
+            extension_columns.push(running_product_ram_pointer);
+            extension_columns.push(formal_derivative);
         }
+
+        Array2::from_shape_vec((base_table.nrows(), 2), extension_columns).unwrap()
+    }
+
+    fn extension_column_bezout_coefficient_0(
+        base_table: ArrayView2<BFieldElement>,
+        challenges: &Challenges,
+    ) -> Array2<XFieldElement> {
+        Self::extension_column_bezout_coefficient(
+            base_table,
+            challenges,
+            BezoutCoefficientPolynomialCoefficient0,
+        )
+    }
+
+    fn extension_column_bezout_coefficient_1(
+        base_table: ArrayView2<BFieldElement>,
+        challenges: &Challenges,
+    ) -> Array2<XFieldElement> {
+        Self::extension_column_bezout_coefficient(
+            base_table,
+            challenges,
+            BezoutCoefficientPolynomialCoefficient1,
+        )
+    }
+
+    fn extension_column_bezout_coefficient(
+        base_table: ArrayView2<BFieldElement>,
+        challenges: &Challenges,
+        bezout_cefficient_column: RamBaseTableColumn,
+    ) -> Array2<XFieldElement> {
+        let bezout_indeterminate = challenges[RamTableBezoutRelationIndeterminate];
+
+        let mut bezout_coefficient =
+            base_table.row(0)[bezout_cefficient_column.base_table_index()].lift();
+        let mut extension_column = Vec::with_capacity(base_table.nrows());
+        extension_column.push(bezout_coefficient);
+
+        for (previous_row, current_row) in base_table.rows().into_iter().tuple_windows() {
+            if current_row[InstructionType.base_table_index()] == PADDING_INDICATOR {
+                break; // padding marks the end of the trace
+            }
+
+            let previous_ram_pointer = previous_row[RamPointer.base_table_index()];
+            let current_ram_pointer = current_row[RamPointer.base_table_index()];
+            if previous_ram_pointer != current_ram_pointer {
+                bezout_coefficient *= bezout_indeterminate;
+                bezout_coefficient += current_row[bezout_cefficient_column.base_table_index()];
+            }
+            extension_column.push(bezout_coefficient);
+        }
+
+        // fill padding section
+        extension_column.resize(base_table.nrows(), bezout_coefficient);
+        Array2::from_shape_vec((base_table.nrows(), 1), extension_column).unwrap()
+    }
+
+    fn extension_column_running_product_perm_arg(
+        base_table: ArrayView2<BFieldElement>,
+        challenges: &Challenges,
+    ) -> Array2<XFieldElement> {
+        let mut running_product_for_perm_arg = PermArg::default_initial();
+        let mut extension_column = Vec::with_capacity(base_table.nrows());
+        for row in base_table.rows() {
+            let instruction_type = row[InstructionType.base_table_index()];
+            if instruction_type == PADDING_INDICATOR {
+                break; // padding marks the end of the trace
+            }
+
+            let clk = row[CLK.base_table_index()];
+            let current_ram_pointer = row[RamPointer.base_table_index()];
+            let ram_value = row[RamValue.base_table_index()];
+            let compressed_row = clk * challenges[RamClkWeight]
+                + instruction_type * challenges[RamInstructionTypeWeight]
+                + current_ram_pointer * challenges[RamPointerWeight]
+                + ram_value * challenges[RamValueWeight];
+            running_product_for_perm_arg *= challenges[RamIndeterminate] - compressed_row;
+            extension_column.push(running_product_for_perm_arg);
+        }
+
+        // fill padding section
+        extension_column.resize(base_table.nrows(), running_product_for_perm_arg);
+        Array2::from_shape_vec((base_table.nrows(), 1), extension_column).unwrap()
+    }
+
+    fn extension_column_clock_jump_difference_lookup_log_derivative(
+        base_table: ArrayView2<BFieldElement>,
+        challenges: &Challenges,
+    ) -> Array2<XFieldElement> {
+        let indeterminate = challenges[ClockJumpDifferenceLookupIndeterminate];
+
+        let mut cjd_lookup_log_derivative = LookupArg::default_initial();
+        let mut extension_column = Vec::with_capacity(base_table.nrows());
+        extension_column.push(cjd_lookup_log_derivative);
+
+        for (previous_row, current_row) in base_table.rows().into_iter().tuple_windows() {
+            if current_row[InstructionType.base_table_index()] == PADDING_INDICATOR {
+                break; // padding marks the end of the trace
+            }
+
+            let previous_ram_pointer = previous_row[RamPointer.base_table_index()];
+            let current_ram_pointer = current_row[RamPointer.base_table_index()];
+            if previous_ram_pointer == current_ram_pointer {
+                let previous_clock = previous_row[CLK.base_table_index()];
+                let current_clock = current_row[CLK.base_table_index()];
+                let clock_jump_difference = current_clock - previous_clock;
+                let log_derivative_summand = (indeterminate - clock_jump_difference).inverse();
+                cjd_lookup_log_derivative += log_derivative_summand;
+            }
+            extension_column.push(cjd_lookup_log_derivative);
+        }
+
+        // fill padding section
+        extension_column.resize(base_table.nrows(), cjd_lookup_log_derivative);
+        Array2::from_shape_vec((base_table.nrows(), 1), extension_column).unwrap()
     }
 }
 

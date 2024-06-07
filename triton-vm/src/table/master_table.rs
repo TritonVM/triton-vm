@@ -31,6 +31,9 @@ use crate::aet::AlgebraicExecutionTrace;
 use crate::arithmetic_domain::ArithmeticDomain;
 use crate::config::CacheDecision;
 use crate::error::ProvingError;
+use crate::ndarray_helper::fast_zeros_column_major;
+use crate::ndarray_helper::horizontal_multi_slice_mut;
+use crate::ndarray_helper::partial_sums;
 use crate::profiler::profiler;
 use crate::stark::NUM_RANDOMIZER_POLYNOMIALS;
 use crate::table::cascade_table::CascadeTable;
@@ -820,60 +823,27 @@ impl MasterBaseTable {
     pub fn pad(&mut self) {
         let table_lengths = self.all_table_lengths();
 
-        // Due to limitations in ndarray, a 10-way multi-slice is not possible. Hence, (1) slicing
-        // has to be done in multiple steps, and (2) cannot be put into a method.
         let unit_distance = self.randomized_trace_domain().length / self.trace_domain().length;
-        let mut master_table_without_randomizers = self
+        let master_table_without_randomizers = self
             .randomized_trace_table
             .slice_mut(s![..; unit_distance, ..]);
-        let (program_table, mut rest) = master_table_without_randomizers.multi_slice_mut((
-            s![.., ..ProgramBaseTableColumn::COUNT],
-            s![.., ProgramBaseTableColumn::COUNT..],
-        ));
-        let (processor_table, mut rest) = rest.multi_slice_mut((
-            s![.., ..ProcessorBaseTableColumn::COUNT],
-            s![.., ProcessorBaseTableColumn::COUNT..],
-        ));
-        let (op_stack_table, mut rest) = rest.multi_slice_mut((
-            s![.., ..OpStackBaseTableColumn::COUNT],
-            s![.., OpStackBaseTableColumn::COUNT..],
-        ));
-        let (ram_table, mut rest) = rest.multi_slice_mut((
-            s![.., ..RamBaseTableColumn::COUNT],
-            s![.., RamBaseTableColumn::COUNT..],
-        ));
-        let (jump_stack_table, mut rest) = rest.multi_slice_mut((
-            s![.., ..JumpStackBaseTableColumn::COUNT],
-            s![.., JumpStackBaseTableColumn::COUNT..],
-        ));
-        let (hash_table, mut rest) = rest.multi_slice_mut((
-            s![.., ..HashBaseTableColumn::COUNT],
-            s![.., HashBaseTableColumn::COUNT..],
-        ));
-        let (cascade_table, mut rest) = rest.multi_slice_mut((
-            s![.., ..CascadeBaseTableColumn::COUNT],
-            s![.., CascadeBaseTableColumn::COUNT..],
-        ));
-        let (lookup_table, mut rest) = rest.multi_slice_mut((
-            s![.., ..LookupBaseTableColumn::COUNT],
-            s![.., LookupBaseTableColumn::COUNT..],
-        ));
-        let (u32_table, _) = rest.multi_slice_mut((
-            s![.., ..U32BaseTableColumn::COUNT],
-            s![.., U32BaseTableColumn::COUNT..],
-        ));
 
-        let base_tables = [
-            program_table,
-            processor_table,
-            op_stack_table,
-            ram_table,
-            jump_stack_table,
-            hash_table,
-            cascade_table,
-            lookup_table,
-            u32_table,
-        ];
+        let base_tables: [_; NUM_TABLES_WITHOUT_DEGREE_LOWERING] = horizontal_multi_slice_mut(
+            master_table_without_randomizers,
+            &partial_sums(&[
+                ProgramBaseTableColumn::COUNT,
+                ProcessorBaseTableColumn::COUNT,
+                OpStackBaseTableColumn::COUNT,
+                RamBaseTableColumn::COUNT,
+                JumpStackBaseTableColumn::COUNT,
+                HashBaseTableColumn::COUNT,
+                CascadeBaseTableColumn::COUNT,
+                LookupBaseTableColumn::COUNT,
+                U32BaseTableColumn::COUNT,
+            ]),
+        )
+        .try_into()
+        .unwrap();
 
         profiler!(start "pad original tables");
         Self::all_pad_functions()
@@ -927,10 +897,14 @@ impl MasterBaseTable {
     pub fn extend(&self, challenges: &Challenges) -> MasterExtTable {
         // randomizer polynomials
         let num_rows = self.randomized_trace_table().nrows();
-        let mut randomized_trace_extension_table = Array2::zeros([num_rows, NUM_EXT_COLUMNS].f());
+        profiler!(start "initialize master table");
+        let mut randomized_trace_extension_table =
+            fast_zeros_column_major::<XFieldElement>(num_rows, NUM_EXT_COLUMNS);
+
         randomized_trace_extension_table
             .slice_mut(s![.., NUM_EXT_COLUMNS_WITHOUT_RANDOMIZER_POLYS..])
             .par_mapv_inplace(|_| random::<XFieldElement>());
+        profiler!(stop "initialize master table");
 
         let mut master_ext_table = MasterExtTable {
             num_trace_randomizers: self.num_trace_randomizers,
@@ -943,58 +917,30 @@ impl MasterBaseTable {
             interpolation_polynomials: None,
         };
 
-        // Due to limitations in ndarray, a 10-way multi-slice is not possible. Hence, (1) slicing
-        // has to be done in multiple steps, and (2) cannot be put into a method.
+        profiler!(start "slice master table");
         let unit_distance = self.randomized_trace_domain().length / self.trace_domain().length;
-        let mut master_ext_table_without_randomizers = master_ext_table
+        let master_ext_table_without_randomizers = master_ext_table
             .randomized_trace_table
             .slice_mut(s![..; unit_distance, ..NUM_EXT_COLUMNS]);
-        let (program_table, mut rest) = master_ext_table_without_randomizers.multi_slice_mut((
-            s![.., ..ProgramExtTableColumn::COUNT],
-            s![.., ProgramExtTableColumn::COUNT..],
-        ));
-        let (processor_table, mut rest) = rest.multi_slice_mut((
-            s![.., ..ProcessorExtTableColumn::COUNT],
-            s![.., ProcessorExtTableColumn::COUNT..],
-        ));
-        let (op_stack_table, mut rest) = rest.multi_slice_mut((
-            s![.., ..OpStackExtTableColumn::COUNT],
-            s![.., OpStackExtTableColumn::COUNT..],
-        ));
-        let (ram_table, mut rest) = rest.multi_slice_mut((
-            s![.., ..RamExtTableColumn::COUNT],
-            s![.., RamExtTableColumn::COUNT..],
-        ));
-        let (jump_stack_table, mut rest) = rest.multi_slice_mut((
-            s![.., ..JumpStackExtTableColumn::COUNT],
-            s![.., JumpStackExtTableColumn::COUNT..],
-        ));
-        let (hash_table, mut rest) = rest.multi_slice_mut((
-            s![.., ..HashExtTableColumn::COUNT],
-            s![.., HashExtTableColumn::COUNT..],
-        ));
-        let (cascade_table, mut rest) = rest.multi_slice_mut((
-            s![.., ..CascadeExtTableColumn::COUNT],
-            s![.., CascadeExtTableColumn::COUNT..],
-        ));
-        let (lookup_table, mut rest) = rest.multi_slice_mut((
-            s![.., ..LookupExtTableColumn::COUNT],
-            s![.., LookupExtTableColumn::COUNT..],
-        ));
-        let u32_table = rest.slice_mut(s![.., ..U32ExtTableColumn::COUNT]);
+        let extension_tables: [_; NUM_TABLES_WITHOUT_DEGREE_LOWERING] = horizontal_multi_slice_mut(
+            master_ext_table_without_randomizers,
+            &partial_sums(&[
+                ProgramExtTableColumn::COUNT,
+                ProcessorExtTableColumn::COUNT,
+                OpStackExtTableColumn::COUNT,
+                RamExtTableColumn::COUNT,
+                JumpStackExtTableColumn::COUNT,
+                HashExtTableColumn::COUNT,
+                CascadeExtTableColumn::COUNT,
+                LookupExtTableColumn::COUNT,
+                U32ExtTableColumn::COUNT,
+            ]),
+        )
+        .try_into()
+        .unwrap();
+        profiler!(stop "slice master table");
 
-        let extension_tables = [
-            program_table,
-            processor_table,
-            op_stack_table,
-            ram_table,
-            jump_stack_table,
-            hash_table,
-            cascade_table,
-            lookup_table,
-            u32_table,
-        ];
-
+        profiler!(start "all tables");
         Self::all_extend_functions()
             .into_par_iter()
             .zip_eq(self.base_tables_for_extending().into_par_iter())
@@ -1002,12 +948,15 @@ impl MasterBaseTable {
             .for_each(|((extend, base_table), ext_table)| {
                 extend(base_table, ext_table, challenges)
             });
+        profiler!(stop "all tables");
 
+        profiler!(start "fill degree lowering table");
         DegreeLoweringTable::fill_derived_ext_columns(
             self.trace_table(),
             master_ext_table.trace_table_mut(),
             challenges,
         );
+        profiler!(stop "fill degree lowering table");
 
         master_ext_table
     }
