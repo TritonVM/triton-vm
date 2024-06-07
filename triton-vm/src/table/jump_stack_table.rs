@@ -358,8 +358,8 @@ impl JumpStackTable {
         let to_invert = PRECOMPUTE_INVERSES_OF
             .map(|i| indeterminate - bfe!(i))
             .collect();
-        let mut inverses_dictionary = (0..)
-            .zip(XFieldElement::batch_inversion(to_invert))
+        let mut inverses_dictionary = PRECOMPUTE_INVERSES_OF
+            .zip_eq(XFieldElement::batch_inversion(to_invert))
             .map(|(i, inv)| (bfe!(i), inv))
             .collect::<HashMap<_, _>>();
 

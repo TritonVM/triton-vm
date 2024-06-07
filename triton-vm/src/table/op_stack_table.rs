@@ -1,5 +1,6 @@
 use std::cmp::Ordering;
 use std::collections::HashMap;
+use std::ops::Range;
 
 use arbitrary::Arbitrary;
 use itertools::Itertools;
@@ -397,14 +398,14 @@ impl OpStackTable {
     ) -> Array2<XFieldElement> {
         // - use memoization to avoid recomputing inverses
         // - precompute common values through batch inversion
-        const INVERSES_DICTIONARY_INITIAL_POPULATION: u64 = 100;
+        const PRECOMPUTE_INVERSES_OF: Range<u64> = 0..100;
         let cjd_lookup_indeterminate = challenges[ClockJumpDifferenceLookupIndeterminate];
-        let to_invert = (0..INVERSES_DICTIONARY_INITIAL_POPULATION)
+        let to_invert = PRECOMPUTE_INVERSES_OF
             .map(|i| cjd_lookup_indeterminate - bfe!(i))
             .collect_vec();
         let inverses = XFieldElement::batch_inversion(to_invert);
-        let mut inverses_dictionary = (0_u64..)
-            .zip(inverses)
+        let mut inverses_dictionary = PRECOMPUTE_INVERSES_OF
+            .zip_eq(inverses)
             .map(|(i, inv)| (bfe!(i), inv))
             .collect::<HashMap<_, _>>();
 
