@@ -1511,16 +1511,18 @@ impl ExtProcessorTable {
     }
 
     /// Compute the randomly-weighted linear combination of the supplied stack
-    /// elements.
+    /// elements using the first `stack.len()` [challenges] as weights.
     ///
     /// # Panics
     ///
-    /// Panics if the length of the supplied `stack` vector does not equal
-    /// [`OpStackElement::COUNT`].
+    /// Panics if the supplied stack is larger than [`OpStackElement::COUNT`].
+    ///
+    /// [challenges]: StackWeight0
     fn compress_stack(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
         stack: Vec<ConstraintCircuitMonad<DualRowIndicator>>,
     ) -> ConstraintCircuitMonad<DualRowIndicator> {
+        assert!(stack.len() <= OpStackElement::COUNT);
         let challenges = [
             StackWeight0,
             StackWeight1,
@@ -1543,7 +1545,7 @@ impl ExtProcessorTable {
 
         challenges
             .into_iter()
-            .zip_eq(stack)
+            .zip(stack)
             .map(|(weight, st)| weight * st)
             .sum()
     }
@@ -1595,11 +1597,14 @@ impl ExtProcessorTable {
 
         let next_stack = stack.iter().map(|&st| next_row(st)).collect_vec();
         let curr_stack_with_swapped_i = |i| stack_with_swapped_i(i).map(curr_row).collect_vec();
+        let compress = |stack: Vec<_>| {
+            assert_eq!(OpStackElement::COUNT, stack.len());
+            Self::compress_stack(circuit_builder, stack)
+        };
 
         let next_stack_is_current_stack_with_swapped_i = |i| {
             Self::indicator_polynomial(circuit_builder, i)
-                * (Self::compress_stack(circuit_builder, next_stack.clone())
-                    - Self::compress_stack(circuit_builder, curr_stack_with_swapped_i(i)))
+                * (compress(next_stack.clone()) - compress(curr_stack_with_swapped_i(i)))
         };
         let next_stack_is_current_stack_with_correct_element_swapped = (0..OpStackElement::COUNT)
             .map(next_stack_is_current_stack_with_swapped_i)
@@ -2999,29 +3004,33 @@ impl ExtProcessorTable {
         n: usize,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
         let constant = |c: usize| circuit_builder.b_constant(u64::try_from(c).unwrap());
-        let curr_base_row = |col: ProcessorBaseTableColumn| {
+        let curr_row = |col: ProcessorBaseTableColumn| {
             circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
         };
-        let next_base_row = |col: ProcessorBaseTableColumn| {
+        let next_row = |col: ProcessorBaseTableColumn| {
             circuit_builder.input(NextBaseRow(col.master_base_table_index()))
         };
 
+        let stack = || (0..OpStackElement::COUNT).map(ProcessorTable::op_stack_column_by_index);
+        let new_stack = stack().dropping_back(n).map(next_row).collect_vec();
+        let old_stack_with_top_n_removed = stack().skip(n).map(curr_row).collect_vec();
+
+        let compress = |stack: Vec<_>| {
+            assert_eq!(OpStackElement::COUNT - n, stack.len());
+            Self::compress_stack(circuit_builder, stack)
+        };
+        let compressed_new_stack = compress(new_stack);
+        let compressed_old_stack = compress(old_stack_with_top_n_removed);
+
         let op_stack_pointer_shrinks_by_n =
-            next_base_row(OpStackPointer) - curr_base_row(OpStackPointer) + constant(n);
+            next_row(OpStackPointer) - curr_row(OpStackPointer) + constant(n);
+        let new_stack_is_old_stack_with_top_n_removed = compressed_new_stack - compressed_old_stack;
 
-        let mut constraints = vec![
+        vec![
             op_stack_pointer_shrinks_by_n,
+            new_stack_is_old_stack_with_top_n_removed,
             Self::running_product_op_stack_accounts_for_shrinking_stack_by(circuit_builder, n),
-        ];
-
-        for i in n..OpStackElement::COUNT {
-            let curr_stack_element = ProcessorTable::op_stack_column_by_index(i);
-            let next_stack_element = ProcessorTable::op_stack_column_by_index(i - n);
-            let element_i_is_shifted_by_n =
-                next_base_row(next_stack_element) - curr_base_row(curr_stack_element);
-            constraints.push(element_i_is_shifted_by_n);
-        }
-        constraints
+        ]
     }
 
     fn constraints_for_growing_stack_by(
@@ -3029,29 +3038,33 @@ impl ExtProcessorTable {
         n: usize,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
         let constant = |c: usize| circuit_builder.b_constant(u32::try_from(c).unwrap());
-        let curr_base_row = |col: ProcessorBaseTableColumn| {
+        let curr_row = |col: ProcessorBaseTableColumn| {
             circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
         };
-        let next_base_row = |col: ProcessorBaseTableColumn| {
+        let next_row = |col: ProcessorBaseTableColumn| {
             circuit_builder.input(NextBaseRow(col.master_base_table_index()))
         };
 
+        let stack = || (0..OpStackElement::COUNT).map(ProcessorTable::op_stack_column_by_index);
+        let new_stack = stack().skip(n).map(next_row).collect_vec();
+        let old_stack_with_top_n_added = stack().map(curr_row).dropping_back(n).collect_vec();
+
+        let compress = |stack: Vec<_>| {
+            assert_eq!(OpStackElement::COUNT - n, stack.len());
+            Self::compress_stack(circuit_builder, stack)
+        };
+        let compressed_new_stack = compress(new_stack);
+        let compressed_old_stack = compress(old_stack_with_top_n_added);
+
         let op_stack_pointer_grows_by_n =
-            next_base_row(OpStackPointer) - curr_base_row(OpStackPointer) - constant(n);
+            next_row(OpStackPointer) - curr_row(OpStackPointer) - constant(n);
+        let new_stack_is_old_stack_with_top_n_added = compressed_new_stack - compressed_old_stack;
 
-        let mut constraints = vec![
+        vec![
             op_stack_pointer_grows_by_n,
+            new_stack_is_old_stack_with_top_n_added,
             Self::running_product_op_stack_accounts_for_growing_stack_by(circuit_builder, n),
-        ];
-
-        for i in 0..OpStackElement::COUNT - n {
-            let curr_stack_element = ProcessorTable::op_stack_column_by_index(i);
-            let next_stack_element = ProcessorTable::op_stack_column_by_index(i + n);
-            let element_i_is_shifted_by_n =
-                next_base_row(next_stack_element) - curr_base_row(curr_stack_element);
-            constraints.push(element_i_is_shifted_by_n);
-        }
-        constraints
+        ]
     }
 
     fn conditional_constraints_for_shrinking_stack_by(

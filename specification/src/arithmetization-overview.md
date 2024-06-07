@@ -15,9 +15,9 @@
 | [CascadeTable](cascade-table.md)           |          6 |         2 |          12 |
 | [LookupTable](lookup-table.md)             |          4 |         2 |          10 |
 | [U32Table](u32-table.md)                   |         10 |         1 |          13 |
-| DegreeLowering                             |        212 |        36 |         320 |
+| DegreeLowering                             |        200 |        36 |         308 |
 | Randomizers                                |          0 |         1 |           3 |
-| **TOTAL**                                  |    **361** |    **86** |     **619** |
+| **TOTAL**                                  |    **349** |    **86** |     **607** |
 <!-- auto-gen info stop table_overview -->
 
 ## Constraints
@@ -50,7 +50,7 @@ After automatically lowering degree to 4:
 | table name                                     | #initial | #consistency | #transition | #terminal |
 |:-----------------------------------------------|---------:|-------------:|------------:|----------:|
 | [ProgramTable](program-table.md)               |        6 |            4 |          10 |         2 |
-| [ProcessorTable](processor-table.md)           |       31 |           10 |         219 |         1 |
+| [ProcessorTable](processor-table.md)           |       31 |           10 |         207 |         1 |
 | [OpStackTable](operational-stack-table.md)     |        3 |            0 |           5 |         0 |
 | [RamTable](random-access-memory-table.md)      |        7 |            0 |          13 |         1 |
 | [JumpStackTable](jump-stack-table.md)          |        6 |            0 |           6 |         0 |
@@ -59,7 +59,7 @@ After automatically lowering degree to 4:
 | [LookupTable](lookup-table.md)                 |        3 |            1 |           4 |         1 |
 | [U32Table](u32-table.md)                       |        1 |           26 |          34 |         2 |
 | [Grand Cross-Table Argument](table-linking.md) |        0 |            0 |           0 |        14 |
-| **TOTAL**                                      |   **81** |       **94** |     **378** |    **23** |
+| **TOTAL**                                      |   **81** |       **94** |     **366** |    **23** |
 <!-- auto-gen info stop constraints_overview -->
 
 
@@ -71,5 +71,5 @@ In order to gauge the runtime cost for this step, the following table provides e
 <!-- auto-gen info start tasm_air_evaluation_cost -->
 | Processor | Op Stack |   RAM |
 |----------:|---------:|------:|
-|     35207 |    65377 | 23220 |
+|     35891 |    66815 | 23667 |
 <!-- auto-gen info stop tasm_air_evaluation_cost -->
