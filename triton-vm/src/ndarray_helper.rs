@@ -59,15 +59,19 @@ pub fn contiguous_column_slices(column_indices: &[usize]) -> Vec<usize> {
     .concat()
 }
 
-pub fn fast_zeros_column_major<
-    FF: Zero + std::marker::Sync + std::marker::Send + std::marker::Copy,
->(
+pub fn fast_zeros_column_major<FF: Zero + Send + Sync + Copy>(
     num_rows: usize,
     num_columns: usize,
 ) -> Array2<FF> {
-    let mut array = Array2::<FF>::uninit((num_rows, num_columns).f());
+    let mut array = Array2::uninit((num_rows, num_columns).f());
     array.par_mapv_inplace(|_| MaybeUninit::new(FF::zero()));
-    unsafe { array.assume_init() }
+
+    unsafe {
+        // SAFETY:
+        // 1. The array is not sliced up.
+        // 2. The array is fully initialized.
+        array.assume_init()
+    }
 }
 
 #[cfg(test)]
