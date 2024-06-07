@@ -254,9 +254,8 @@ impl RamTable {
         challenges: &Challenges,
     ) -> Array2<XFieldElement> {
         let bezout_indeterminate = challenges[RamTableBezoutRelationIndeterminate];
-        let row_count = base_table.nrows();
 
-        let mut extension_columns = Vec::with_capacity(2 * row_count);
+        let mut extension_columns = Vec::with_capacity(2 * base_table.nrows());
         let mut running_product_ram_pointer =
             bezout_indeterminate - base_table.row(0)[RamPointer.base_table_index()];
         let mut formal_derivative = xfe!(1);
@@ -283,7 +282,7 @@ impl RamTable {
             extension_columns.push(formal_derivative);
         }
 
-        Array2::from_shape_vec((row_count, 2), extension_columns).unwrap()
+        Array2::from_shape_vec((base_table.nrows(), 2), extension_columns).unwrap()
     }
 
     fn extension_column_bezout_coefficient_0(
