@@ -2720,9 +2720,10 @@ impl ExtProcessorTable {
     fn prohibit_any_illegal_number_of_words(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        NumberOfWords::illegal_values()
+        vec![NumberOfWords::illegal_values()
             .map(|n| Self::indicator_polynomial(circuit_builder, n))
-            .to_vec()
+            .into_iter()
+            .sum()]
     }
 
     fn log_derivative_accumulates_clk_next(
