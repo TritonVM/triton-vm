@@ -316,22 +316,20 @@ impl RamTable {
 
         let mut bezout_coefficient =
             base_table.row(0)[bezout_cefficient_column.base_table_index()].lift();
-        let mut previous_row = None::<ArrayView1<_>>;
         let mut extension_column = Vec::with_capacity(base_table.nrows());
-        for current_row in base_table.rows() {
+        extension_column.push(bezout_coefficient);
+
+        for (previous_row, current_row) in base_table.rows().into_iter().tuple_windows() {
             if current_row[InstructionType.base_table_index()] == PADDING_INDICATOR {
                 break; // padding marks the end of the trace
             }
 
-            let ram_pointers_are_different = |row: ArrayView1<_>| {
-                row[RamPointer.base_table_index()] != current_row[RamPointer.base_table_index()]
-            };
-            if previous_row.is_some_and(ram_pointers_are_different) {
-                bezout_coefficient = bezout_coefficient * bezout_indeterminate
-                    + current_row[bezout_cefficient_column.base_table_index()];
+            let previous_ram_pointer = previous_row[RamPointer.base_table_index()];
+            let current_ram_pointer = current_row[RamPointer.base_table_index()];
+            if previous_ram_pointer != current_ram_pointer {
+                bezout_coefficient *= bezout_indeterminate;
+                bezout_coefficient += current_row[bezout_cefficient_column.base_table_index()];
             }
-
-            previous_row = Some(current_row);
             extension_column.push(bezout_coefficient);
         }
 
@@ -372,28 +370,26 @@ impl RamTable {
         base_table: ArrayView2<BFieldElement>,
         challenges: &Challenges,
     ) -> Array2<XFieldElement> {
-        let cjd_lookup_indeterminate = challenges[ClockJumpDifferenceLookupIndeterminate];
+        let indeterminate = challenges[ClockJumpDifferenceLookupIndeterminate];
 
         let mut cjd_lookup_log_derivative = LookupArg::default_initial();
-        let mut previous_row = None::<ArrayView1<_>>;
         let mut extension_column = Vec::with_capacity(base_table.nrows());
-        for current_row in base_table.rows() {
+        extension_column.push(cjd_lookup_log_derivative);
+
+        for (previous_row, current_row) in base_table.rows().into_iter().tuple_windows() {
             if current_row[InstructionType.base_table_index()] == PADDING_INDICATOR {
                 break; // padding marks the end of the trace
             }
 
-            let ram_pointers_are_equal = |row: ArrayView1<_>| {
-                row[RamPointer.base_table_index()] == current_row[RamPointer.base_table_index()]
-            };
-            if previous_row.is_some_and(ram_pointers_are_equal) {
-                let previous_clock = previous_row.unwrap()[CLK.base_table_index()];
+            let previous_ram_pointer = previous_row[RamPointer.base_table_index()];
+            let current_ram_pointer = current_row[RamPointer.base_table_index()];
+            if previous_ram_pointer == current_ram_pointer {
+                let previous_clock = previous_row[CLK.base_table_index()];
                 let current_clock = current_row[CLK.base_table_index()];
                 let clock_jump_difference = current_clock - previous_clock;
-                let log_derivative_summand: XFieldElement =
-                    cjd_lookup_indeterminate - clock_jump_difference;
-                cjd_lookup_log_derivative += log_derivative_summand.inverse();
+                let log_derivative_summand = (indeterminate - clock_jump_difference).inverse();
+                cjd_lookup_log_derivative += log_derivative_summand;
             }
-            previous_row = Some(current_row);
             extension_column.push(cjd_lookup_log_derivative);
         }
 
