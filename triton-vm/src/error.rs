@@ -427,6 +427,6 @@ mod tests {
         let program = triton_program!(push 4294967297 push 1 and halt);
         let_assert!(Err(err) = program.run([].into(), [].into()));
         let_assert!(InstructionError::FailedU32Conversion(element) = err.source);
-        assert!(4294967297 == element.value());
+        assert!(4_294_967_297 == element.value());
     }
 }

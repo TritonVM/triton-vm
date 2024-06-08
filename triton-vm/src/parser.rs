@@ -89,7 +89,7 @@ pub fn pretty_print_error(s: &str, mut e: VerboseError<&str>) -> String {
     let (_root_s, root_error) = e.errors[0].clone();
     if matches!(
         root_error,
-        VerboseErrorKind::Nom(ErrorKind::Fail) | VerboseErrorKind::Nom(ErrorKind::Eof)
+        VerboseErrorKind::Nom(ErrorKind::Fail | ErrorKind::Eof)
     ) {
         e.errors.remove(0);
     }
@@ -510,7 +510,7 @@ fn label_addr(s_orig: &str) -> ParseResult<String> {
     }
     let (s, addr_part_1) = take_while(is_label_char)(s)?;
 
-    Ok((s, format!("{}{}", addr_part_0, addr_part_1)))
+    Ok((s, format!("{addr_part_0}{addr_part_1}")))
 }
 
 fn is_label_start_char(c: char) -> bool {
@@ -620,7 +620,7 @@ fn type_hint_variable_name(s: &str) -> ParseResult<String> {
     let (s, variable_name_start) = take_while1(is_type_hint_variable_name_start_character)(s)?;
     let (s, variable_name_end) = take_while(is_type_hint_variable_name_character)(s)?;
     let (s, _) = whitespace0(s)?;
-    let variable_name = format!("{}{}", variable_name_start, variable_name_end);
+    let variable_name = format!("{variable_name_start}{variable_name_end}");
     Ok((s, variable_name))
 }
 
@@ -632,7 +632,7 @@ fn type_hint_type_name(s: &str) -> ParseResult<Option<String>> {
     let (s, type_name_start) = take_while1(is_type_hint_type_name_start_character)(s)?;
     let (s, type_name_end) = take_while(is_type_hint_type_name_character)(s)?;
     let (s, _) = whitespace0(s)?;
-    let type_name = format!("{}{}", type_name_start, type_name_end);
+    let type_name = format!("{type_name_start}{type_name_end}");
 
     Ok((s, Some(type_name)))
 }

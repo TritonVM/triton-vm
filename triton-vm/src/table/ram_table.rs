@@ -661,8 +661,8 @@ pub(crate) mod tests {
         let rp = [1, 2, 3].map(BFieldElement::new);
         let (a, b) = RamTable::bezout_coefficient_polynomials_coefficients(&rp);
 
-        let expected_a = [0x9, 0x7fffffff7ffffffc, 0x0].map(BFieldElement::new);
-        let expected_b = [0x5, 0xfffffffefffffffb, 0x7fffffff80000002].map(BFieldElement::new);
+        let expected_a = [9, 0x7fff_ffff_7fff_fffc, 0].map(BFieldElement::new);
+        let expected_b = [5, 0xffff_fffe_ffff_fffb, 0x7fff_ffff_8000_0002].map(BFieldElement::new);
 
         assert_eq!(expected_a, *a);
         assert_eq!(expected_b, *b);

@@ -416,16 +416,19 @@ pub struct VMPerformanceProfile {
 }
 
 impl VMPerformanceProfile {
+    #[must_use]
     pub fn with_cycle_count(mut self, cycle_count: usize) -> Self {
         self.cycle_count = Some(cycle_count);
         self
     }
 
+    #[must_use]
     pub fn with_padded_height(mut self, padded_height: usize) -> Self {
         self.padded_height = Some(padded_height);
         self
     }
 
+    #[must_use]
     pub fn with_fri_domain_len(mut self, fri_domain_len: usize) -> Self {
         self.fri_domain_len = Some(fri_domain_len);
         self

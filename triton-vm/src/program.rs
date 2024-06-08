@@ -963,14 +963,13 @@ mod tests {
         let program = triton_program!(halt);
         let digest = program.hash::<Tip5>();
 
-        let expected_digest = [
-            4843866011885844809,
-            16618866032559590857,
-            18247689143239181392,
-            7637465675240023996,
-            9104890367162237026,
-        ]
-        .map(BFieldElement::new);
+        let expected_digest = bfe_array![
+            0x4338_de79_520b_3949_u64,
+            0xe6a2_129b_2885_0dc9_u64,
+            0xfd3c_d098_6a86_0450_u64,
+            0x69fd_ba91_0ceb_a7bc_u64,
+            0x7e5b_118c_9594_c062_u64,
+        ];
         let expected_digest = Digest::new(expected_digest);
 
         assert!(expected_digest == digest);
