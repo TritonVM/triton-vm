@@ -658,11 +658,11 @@ pub(crate) mod tests {
 
     #[test]
     fn bezout_coefficient_polynomials_are_as_expected() {
-        let rp = [1, 2, 3].map(BFieldElement::new);
+        let rp = bfe_array![1, 2, 3];
         let (a, b) = RamTable::bezout_coefficient_polynomials_coefficients(&rp);
 
-        let expected_a = [9, 0x7fff_ffff_7fff_fffc, 0].map(BFieldElement::new);
-        let expected_b = [5, 0xffff_fffe_ffff_fffb, 0x7fff_ffff_8000_0002].map(BFieldElement::new);
+        let expected_a = bfe_array![9, 0x7fff_ffff_7fff_fffc_u64, 0];
+        let expected_b = bfe_array![5, 0xffff_fffe_ffff_fffb_u64, 0x7fff_ffff_8000_0002_u64];
 
         assert_eq!(expected_a, *a);
         assert_eq!(expected_b, *b);

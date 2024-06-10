@@ -152,7 +152,6 @@ impl VMState {
                 hvs[0] = st0.inverse_or_zero();
                 let next_opcode = self.next_instruction_or_argument().value();
                 let decomposition = Self::decompose_opcode_for_instruction_skiz(next_opcode);
-                let decomposition = decomposition.map(BFieldElement::new);
                 hvs[1..6].copy_from_slice(&decomposition);
             }
             RecurseOrReturn => hvs[0] = (self.op_stack[ST6] - self.op_stack[ST5]).inverse_or_zero(),
@@ -200,14 +199,14 @@ impl VMState {
         hvs
     }
 
-    fn decompose_opcode_for_instruction_skiz(opcode: u64) -> [u64; 5] {
-        let mut decomposition = [0; 5];
-        decomposition[0] = opcode % 2;
-        decomposition[1] = (opcode >> 1) % 4;
-        decomposition[2] = (opcode >> 3) % 4;
-        decomposition[3] = (opcode >> 5) % 4;
-        decomposition[4] = opcode >> 7;
-        decomposition
+    fn decompose_opcode_for_instruction_skiz(opcode: u64) -> [BFieldElement; 5] {
+        bfe_array![
+            opcode % 2,
+            (opcode >> 1) % 4,
+            (opcode >> 3) % 4,
+            (opcode >> 5) % 4,
+            opcode >> 7,
+        ]
     }
 
     /// Perform the state transition as a mutable operation on `self`.
@@ -1560,7 +1559,7 @@ pub(crate) mod tests {
 
         let program =
             triton_program!(push {st0} split read_io 1 eq assert read_io 1 eq assert halt);
-        ProgramAndInput::new(program).with_input([lo, hi].map(BFieldElement::new))
+        ProgramAndInput::new(program).with_input(bfe_array![lo, hi])
     }
 
     pub(crate) fn test_program_for_eq() -> ProgramAndInput {

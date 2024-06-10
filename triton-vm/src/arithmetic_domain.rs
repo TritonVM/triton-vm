@@ -208,7 +208,7 @@ mod tests {
 
     #[test]
     fn domain_values() {
-        let x_cubed_coefficients = [0, 0, 0, 1].map(BFieldElement::new).to_vec();
+        let x_cubed_coefficients = bfe_vec![0, 0, 0, 1];
         let poly = Polynomial::new(x_cubed_coefficients.clone());
 
         for order in [4, 8, 32] {
@@ -259,7 +259,7 @@ mod tests {
         let short_domain = ArithmeticDomain::of_length(short_domain_len).unwrap();
         let long_domain = ArithmeticDomain::of_length(long_domain_len).unwrap();
 
-        let polynomial = Polynomial::new([1, 2, 3, 4].map(BFieldElement::new).to_vec());
+        let polynomial = Polynomial::new(bfe_vec![1, 2, 3, 4]);
         let short_codeword = short_domain.evaluate(&polynomial);
         let long_codeword = short_domain.low_degree_extension(&short_codeword, long_domain);
 

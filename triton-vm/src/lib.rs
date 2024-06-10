@@ -817,7 +817,7 @@ mod tests {
         let program = triton_program!({ &source_code });
         let public_output = program.run([].into(), [].into()).unwrap();
 
-        let expected_output = [9, 8, 7, 6].map(BFieldElement::new).to_vec();
+        let expected_output = bfe_vec![9, 8, 7, 6];
         assert_eq!(expected_output, public_output);
     }
 
