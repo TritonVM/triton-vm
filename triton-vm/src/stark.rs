@@ -2672,6 +2672,36 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn prove_verify_program_using_pick_and_place() {
+        let input = bfe_vec![6, 3, 7, 5, 1, 2, 4, 4, 7, 3, 6, 1, 5, 2];
+        let program = triton_program! {       //    13 12 11 10  9  8  7  6  5  4  3  2  1  0
+            read_io 5 read_io 5 read_io 4     //  _  6  3  7  5 ›1‹ 2  4  4  7  3  6 ›1‹ 5  2
+            pick 2 pick 9 place 13 place 13   //  _  1  1  6  3  7  5 ›2‹ 4  4  7  3  6  5 ›2‹
+            pick 0 pick 7 place 13 place 13   //  _  2  2  1  1  6 ›3‹ 7  5  4  4  7 ›3‹ 6  5
+            pick 2 pick 8 place 13 place 13   //  _  3  3  2  2  1  1  6  7  5 ›4‹›4‹ 7  6  5
+            pick 3 pick 4 place 13 place 13   //  _  4  4  3  3  2  2  1  1  6  7 ›5‹ 7  6 ›5‹
+            pick 0 pick 3 place 13 place 13   //  _  5  5  4  4  3  3  2  2  1  1 ›6‹ 7  7 ›6‹
+            pick 0 pick 3 place 13 place 13   //  _  6  6  5  5  4  4  3  3  2  2  1  1 ›7‹›7‹
+            pick 1 pick 1 place 13 place 13   //  _  7  7  6  6  5  5  4  4  3  3  2  2  1  1
+            write_io 5 write_io 5 write_io 4  //  _
+            halt
+        };
+
+        let input = PublicInput::new(input);
+        let non_det = NonDeterminism::default();
+        let (stark, claim, proof) = prove_with_low_security_level(
+            &program,
+            input,
+            non_det,
+            DEFAULT_LOG2_FRI_EXPANSION_FACTOR_FOR_TESTS,
+        );
+        assert!(let Ok(()) = stark.verify(&claim, &proof));
+
+        let expected_output = bfe_vec![1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7];
+        assert!(expected_output == claim.output);
+    }
+
+    #[test]
     fn constraints_evaluate_to_zero_on_many_u32_operations() {
         let many_u32_instructions =
             ProgramAndInput::new(PROGRAM_WITH_MANY_U32_INSTRUCTIONS.clone());
