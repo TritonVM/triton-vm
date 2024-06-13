@@ -589,19 +589,19 @@ impl Display for VMPerformanceProfile {
 
         writeln!(f)?;
         if let Some(cycles) = self.cycle_count {
-            let frequency = 1_000 * cycles / total_time / num_iters;
+            let frequency = 1_000 * num_iters * cycles / total_time;
             write!(f, "Clock frequency is {frequency} Hz ")?;
             write!(f, "({cycles} clock cycles ")?;
-            write!(f, "/ {total_time} ms ")?;
-            writeln!(f, "/ {num_iters} iterations)")?;
+            write!(f, "/ ({total_time} ms ")?;
+            writeln!(f, "/ {num_iters} iterations))")?;
         }
 
         if let Some(height) = self.padded_height {
-            let frequency = 1_000 * height / total_time / num_iters;
+            let frequency = 1_000 * num_iters * height / total_time;
             write!(f, "Optimal clock frequency is {frequency} Hz ")?;
             write!(f, "({height} padded height ")?;
-            write!(f, "/ {total_time} ms ")?;
-            writeln!(f, "/ {num_iters} iterations)")?;
+            write!(f, "/ ({total_time} ms ")?;
+            writeln!(f, "/ {num_iters} iterations))")?;
         }
 
         if let Some(fri_domain_length) = self.fri_domain_len {
