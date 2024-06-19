@@ -837,9 +837,11 @@ impl VMState {
             self.op_stack.push(accumulator_digest[i]);
         }
 
-        let co_processor_calls = vec![Tip5Trace(Hash, Box::new(tip5_trace))];
-
         self.instruction_pointer += 1;
+
+        let hash_co_processor_call = Tip5Trace(Hash, Box::new(tip5_trace));
+        let indices_are_u32 = U32Call(U32TableEntry::new(Split, node_index, parent_node_index));
+        let co_processor_calls = vec![hash_co_processor_call, indices_are_u32];
         Ok(co_processor_calls)
     }
 

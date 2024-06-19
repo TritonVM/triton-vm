@@ -260,9 +260,9 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
             XbMul => 82,
             ReadIo(_) => 49,
             WriteIo(_) => 19,
-            MerkleStep => 80,
-            XxDotStep => 88,
-            XbDotStep => 96,
+            MerkleStep => 36,
+            XxDotStep => 80,
+            XbDotStep => 88,
         }
     }
 
@@ -439,7 +439,7 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
     pub fn is_u32_instruction(&self) -> bool {
         matches!(
             self,
-            Split | Lt | And | Xor | Log2Floor | Pow | DivMod | PopCount
+            Split | Lt | And | Xor | Log2Floor | Pow | DivMod | PopCount | MerkleStep
         )
     }
 }

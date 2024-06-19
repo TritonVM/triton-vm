@@ -451,6 +451,12 @@ impl ProcessorTable {
                     + Instruction::Split.opcode_b() * challenges[U32CiWeight];
                 to_invert.push(challenges[U32Indeterminate] - compressed_row_for_lt_check);
                 to_invert.push(challenges[U32Indeterminate] - compressed_row_for_range_check);
+            } else if previous_ci == Instruction::MerkleStep.opcode_b() {
+                let compressed_row = previous_row[ST5.base_table_index()]
+                    * challenges[U32LhsWeight]
+                    + current_row[ST5.base_table_index()] * challenges[U32RhsWeight]
+                    + Instruction::Split.opcode_b() * challenges[U32CiWeight];
+                to_invert.push(challenges[U32Indeterminate] - compressed_row);
             }
         }
         let mut inverses = XFieldElement::batch_inversion(to_invert).into_iter();
@@ -3642,6 +3648,8 @@ impl ExtProcessorTable {
             Self::instruction_deselector_current_row(circuit_builder, Instruction::DivMod);
         let pop_count_deselector =
             Self::instruction_deselector_current_row(circuit_builder, Instruction::PopCount);
+        let merkle_step_deselector =
+            Self::instruction_deselector_current_row(circuit_builder, Instruction::MerkleStep);
 
         let running_sum = curr_ext_row(U32LookupClientLogDerivative);
         let running_sum_next = next_ext_row(U32LookupClientLogDerivative);
@@ -3675,6 +3683,10 @@ impl ExtProcessorTable {
             - challenge(U32LhsWeight) * curr_base_row(ST0)
             - challenge(U32RhsWeight) * next_base_row(ST1)
             - challenge(U32CiWeight) * constant(Instruction::Split.opcode());
+        let merkle_step_range_check_factor = challenge(U32Indeterminate)
+            - challenge(U32LhsWeight) * curr_base_row(ST5)
+            - challenge(U32RhsWeight) * next_base_row(ST5)
+            - challenge(U32CiWeight) * constant(Instruction::Split.opcode());
 
         let running_sum_absorbs_split_factor =
             (running_sum_next.clone() - running_sum.clone()) * split_factor - one();
@@ -3684,6 +3696,9 @@ impl ExtProcessorTable {
             (running_sum_next.clone() - running_sum.clone()) * xor_factor - one();
         let running_sum_absorbs_unop_factor =
             (running_sum_next.clone() - running_sum.clone()) * unop_factor - one();
+        let running_sum_absorbs_merkle_step_factor =
+            (running_sum_next.clone() - running_sum.clone()) * merkle_step_range_check_factor
+                - one();
 
         let split_summand = split_deselector * running_sum_absorbs_split_factor;
         let lt_summand = lt_deselector * running_sum_absorbs_binop_factor.clone();
@@ -3698,6 +3713,7 @@ impl ExtProcessorTable {
                 - div_mod_factor_for_lt
                 - div_mod_factor_for_range_check);
         let pop_count_summand = pop_count_deselector * running_sum_absorbs_unop_factor;
+        let merkle_walk_summand = merkle_step_deselector * running_sum_absorbs_merkle_step_factor;
         let no_update_summand = (one() - curr_base_row(IB2)) * (running_sum_next - running_sum);
 
         split_summand
@@ -3708,6 +3724,7 @@ impl ExtProcessorTable {
             + log_2_floor_summand
             + div_mod_summand
             + pop_count_summand
+            + merkle_walk_summand
             + no_update_summand
     }
 
