@@ -43,20 +43,21 @@ commit_preprocessors = [
 
 # Use <!-- prio --> hack to sort the categories. See: https://github.com/orhun/git-cliff/issues/9
 commit_parsers = [
-  { message = "^feat",            group = "<!-- 00 --> ✨ Features" },
-  { message = "^fix",             group = "<!-- 10 --> 🐛 Bug Fixes" },
-  { message = "^perf",            group = "<!-- 20 --> ⚡️ Performance" },
-  { message = "^doc",             group = "<!-- 30 --> 📚 Documentation" },
-  { message = "^WIP",             skip = true },
-  { message = "^chore\\(deps\\)", skip = true },
-  { message = "^chore\\(pr\\)",   skip = true },
-  { message = "^chore\\(pull\\)", skip = true },
-  { message = "^chore|ci|misc",   group = "<!-- 40 --> ⚙️ Miscellaneous" },
-  { message = "^refactor",        group = "<!-- 50 --> ♻️ Refactor" },
-  { message = "^test",            group = "<!-- 60 --> ✅ Testing" },
-  { body = ".*security",          group = "<!-- 70 --> 🔒️ Security" },
-  { message = "^revert",          group = "<!-- 80 --> ⏪️ Revert" },
-  { message = "^style",           group = "<!-- 90 --> 🎨 Styling" },
+  { message = "^feat",              group = "<!-- 00 --> ✨ Features" },
+  { message = "^fix",               group = "<!-- 10 --> 🐛 Bug Fixes" },
+  { message = "^perf",              group = "<!-- 20 --> ⚡️ Performance" },
+  { message = "^doc",               group = "<!-- 30 --> 📚 Documentation" },
+  { message = "^WIP",               skip = true },
+  { message = "^chore\\(deps\\)",   skip = true },
+  { message = "^chore\\(pr\\)",     skip = true },
+  { message = "^chore\\(pull\\)",   skip = true },
+  { message = "^chore|ci|misc",     group = "<!-- 40 --> ⚙️ Miscellaneous" },
+  { message = "^refactor",          group = "<!-- 50 --> ♻️ Refactor" },
+  { message = "^test",              group = "<!-- 60 --> ✅ Testing" },
+  { body = ".*security",            group = "<!-- 70 --> 🔒️ Security" },
+  { message = "^revert",            group = "<!-- 80 --> ⏪️ Revert" },
+  { message = "^style",             group = "<!-- 90 --> 🎨 Styling" },
+  { footer = "^changelog: ?ignore", skip = true },
 ]
 
 protect_breaking_commits = false
