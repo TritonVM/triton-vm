@@ -284,7 +284,7 @@ impl ProcessorTable {
         for row in base_table.rows() {
             let ci = row[CI.base_table_index()];
             if ci == Instruction::Hash.opcode_b() || ci == Instruction::MerkleStep.opcode_b() {
-                let is_left_sibling = row[HV5.base_table_index()].value() % 2 == 0;
+                let is_left_sibling = row[ST5.base_table_index()].value() % 2 == 0;
                 let hash_input = match Self::instruction_from_row(row) {
                     Some(Instruction::MerkleStep) if is_left_sibling => merkle_step_left_sibling,
                     Some(Instruction::MerkleStep) => merkle_step_right_sibling,
@@ -3435,7 +3435,7 @@ impl ExtProcessorTable {
 
         // hash
         let state_for_hash = [ST0, ST1, ST2, ST3, ST4, ST5, ST6, ST7, ST8, ST9].map(next_base_row);
-        let compressed_row_for_hash = weights
+        let compressed_hash_row = weights
             .iter()
             .zip_eq(state_for_hash)
             .map(|(weight, state)| weight.clone() * state)
@@ -3458,24 +3458,23 @@ impl ExtProcessorTable {
             merkle_step_state_element(HV3, ST3),
             merkle_step_state_element(HV4, ST4),
         ];
-        let compressed_row_for_merkle_step = weights
+        let compressed_merkle_step_row = weights
             .into_iter()
             .zip_eq(state_for_merkle_step)
             .map(|(weight, state)| weight * state)
             .sum();
 
-        let running_evaluation_updates_for_hash = next_ext_row(HashInputEvalArg)
-            - challenge(HashInputIndeterminate) * curr_ext_row(HashInputEvalArg)
-            - compressed_row_for_hash;
-        let running_evaluation_updates_for_merkle_step = next_ext_row(HashInputEvalArg)
-            - challenge(HashInputIndeterminate) * curr_ext_row(HashInputEvalArg)
-            - compressed_row_for_merkle_step;
+        let running_evaluation_updates_with = |compressed_row| {
+            next_ext_row(HashInputEvalArg)
+                - challenge(HashInputIndeterminate) * curr_ext_row(HashInputEvalArg)
+                - compressed_row
+        };
         let running_evaluation_remains =
             next_ext_row(HashInputEvalArg) - curr_ext_row(HashInputEvalArg);
 
         hash_and_merkle_step_selector * running_evaluation_remains
-            + hash_deselector * running_evaluation_updates_for_hash
-            + merkle_step_deselector * running_evaluation_updates_for_merkle_step
+            + hash_deselector * running_evaluation_updates_with(compressed_hash_row)
+            + merkle_step_deselector * running_evaluation_updates_with(compressed_merkle_step_row)
     }
 
     fn running_evaluation_hash_digest_updates_correctly(

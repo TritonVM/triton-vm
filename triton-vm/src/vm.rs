@@ -807,35 +807,28 @@ impl VMState {
     }
 
     fn merkle_step(&mut self) -> Result<Vec<CoProcessorCall>> {
-        if self.secret_digests.is_empty() {
-            return Err(EmptySecretDigestInput);
-        }
-        self.op_stack.is_u32(ST5)?;
-
-        let accumulator_digest = self.op_stack.pop_multiple::<{ tip5::DIGEST_LENGTH }>()?;
-        let node_index = self.op_stack.pop_u32()?;
-
+        let node_index = self.op_stack[ST5];
+        let node_index = u32::try_from(node_index).map_err(|_| FailedU32Conversion(node_index))?;
         let parent_node_index = node_index / 2;
-        self.op_stack.push(parent_node_index.into());
 
-        let stack_contains_left_node = node_index % 2 == 0;
         let sibling_digest = self.pop_secret_digest()?;
-        let mut hash_input = Tip5::new(Domain::FixedLength);
-        if stack_contains_left_node {
-            hash_input.state[..tip5::DIGEST_LENGTH].copy_from_slice(&accumulator_digest);
-            hash_input.state[tip5::DIGEST_LENGTH..2 * tip5::DIGEST_LENGTH]
-                .copy_from_slice(&sibling_digest);
-        } else {
-            hash_input.state[..tip5::DIGEST_LENGTH].copy_from_slice(&sibling_digest);
-            hash_input.state[tip5::DIGEST_LENGTH..2 * tip5::DIGEST_LENGTH]
-                .copy_from_slice(&accumulator_digest);
-        }
-        let tip5_trace = hash_input.trace();
-        let accumulator_digest = &tip5_trace[tip5_trace.len() - 1][0..tip5::DIGEST_LENGTH];
+        let accumulator_digest = self.op_stack.pop_multiple::<{ tip5::DIGEST_LENGTH }>()?;
+        let (left_sibling, right_sibling) = match node_index % 2 {
+            0 => (&accumulator_digest, &sibling_digest),
+            1 => (&sibling_digest, &accumulator_digest),
+            _ => unreachable!(),
+        };
 
-        for i in (0..tip5::DIGEST_LENGTH).rev() {
-            self.op_stack.push(accumulator_digest[i]);
+        let mut tip5 = Tip5::new(Domain::FixedLength);
+        tip5.state[..tip5::DIGEST_LENGTH].copy_from_slice(left_sibling);
+        tip5.state[tip5::DIGEST_LENGTH..2 * tip5::DIGEST_LENGTH].copy_from_slice(right_sibling);
+        let tip5_trace = tip5.trace();
+        let accumulator_digest = &tip5_trace.last().unwrap()[0..tip5::DIGEST_LENGTH];
+
+        for &digest_element in accumulator_digest.iter().rev() {
+            self.op_stack.push(digest_element);
         }
+        self.op_stack[ST5] = parent_node_index.into();
 
         self.instruction_pointer += 1;
 

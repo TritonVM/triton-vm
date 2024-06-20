@@ -71,5 +71,5 @@ In order to gauge the runtime cost for this step, the following table provides e
 <!-- auto-gen info start tasm_air_evaluation_cost -->
 | Processor | Op Stack |   RAM |
 |----------:|---------:|------:|
-|     34467 |    63963 | 22620 |
+|     34469 |    63967 | 22617 |
 <!-- auto-gen info stop tasm_air_evaluation_cost -->
