@@ -138,12 +138,12 @@ The following additional constraints also apply to every pair of rows.
 1. The running sum for the logarithmic derivative of the clock jump difference lookup argument accumulates the next row's `clk` with the appropriate multiplicity `cjd_mul` with respect to indeterminate 🪞.
 1. The running product for the Jump Stack Table absorbs the next row with respect to challenges 🍇, 🍅, 🍌, 🍏, and 🍐 and indeterminate 🧴.
 1.  1. If the current instruction in the next row is `hash`, the running evaluation “Hash Input” absorbs the next row with respect to challenges 🧄₀ through 🧄₉ and indeterminate 🚪.
-    1. If the current instruction in the next row is `merkle_step` and helper variable `hv5`…
+    1. If the current instruction in the next row is `merkle_step` or `merkle_step_mem` and helper variable `hv5`…
         1. …is 0, the running evaluation “Hash Input” absorbs next row's `st0` through `st4` and `hv0` through `hv4`…
         1. …is 1, the running evaluation “Hash Input” absorbs next row's `hv0` through `hv4` and `st0` through `st4`…<br>
     …with respect to challenges 🧄₀ through 🧄₉ and indeterminate 🚪.
     1. Otherwise, it remains unchanged.
-1. If the current instruction is `hash` or `merkle_step`, the running evaluation “Hash Digest” absorbs the next row with respect to challenges 🧄₀ through 🧄₄ and indeterminate 🪟. Otherwise, it remains unchanged.
+1. If the current instruction is `hash`, `merkle_step`, or `merkle_step_mem`, the running evaluation “Hash Digest” absorbs the next row with respect to challenges 🧄₀ through 🧄₄ and indeterminate 🪟. Otherwise, it remains unchanged.
 1. If the current instruction is `sponge_init`, then the running evaluation “Sponge” absorbs the current instruction and the Sponge's default initial state with respect to challenges 🧅 and 🧄₀ through 🧄₉ and indeterminate 🧽.
     Else if the current instruction is `sponge_absorb`, then the running evaluation “Sponge” absorbs the current instruction and the current row with respect to challenges 🧅 and 🧄₀ through 🧄₉ and indeterminate 🧽.
     Else if the current instruction is `sponge_squeeze`, then the running evaluation “Sponge” absorbs the current instruction and the next row with respect to challenges 🧅 and 🧄₀ through 🧄₉ and indeterminate 🧽.
@@ -155,7 +155,7 @@ The following additional constraints also apply to every pair of rows.
     1. If the current instruction is `div_mod`, then the logarithmic derivative for the Lookup Argument with the U32 Table accumulates both
         1. `st0` in the next row and `st1` in the current row as well as the constants `opcode(lt)` and `1` with respect to challenges 🥜, 🌰, 🥑, and 🥕, and indeterminate 🧷.
         1. `st0` in the current row and `st1` in the next row as well as `opcode(split)` with respect to challenges 🥜, 🌰, and 🥑, and indeterminate 🧷.
-    1. If the current instruction is `merkle_step`, then the logarithmic derivative for the Lookup Argument with the U32 Table accumulates `st5` from the current and next rows as well as `opcode(split)` with respect to challenges 🥜, 🌰, and 🥑, and indeterminate 🧷.
+    1. If the current instruction is `merkle_step` or `merkle_step_mem`, then the logarithmic derivative for the Lookup Argument with the U32 Table accumulates `st5` from the current and next rows as well as `opcode(split)` with respect to challenges 🥜, 🌰, and 🥑, and indeterminate 🧷.
     1. If the current instruction is `pop_count`, then the logarithmic derivative for the Lookup Argument with the U32 Table accumulates `st0` and `ci` in the current row and `st0` in the next row with respect to challenges 🥜, 🥑, and 🥕, and indeterminate 🧷.
     1. Else, _i.e._, if the current instruction is not a u32 instruction, the logarithmic derivative for the Lookup Argument with the U32 Table remains unchanged.
 

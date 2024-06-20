@@ -214,6 +214,7 @@ pub enum AnInstruction<Dest: PartialEq + Default> {
 
     // Many-in-One
     MerkleStep,
+    MerkleStepMem,
     XxDotStep,
     XbDotStep,
 }
@@ -262,6 +263,7 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
             ReadIo(_) => 49,
             WriteIo(_) => 19,
             MerkleStep => 36,
+            MerkleStepMem => 44,
             XxDotStep => 80,
             XbDotStep => 88,
         }
@@ -309,6 +311,7 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
             ReadIo(_) => "read_io",
             WriteIo(_) => "write_io",
             MerkleStep => "merkle_step",
+            MerkleStepMem => "merkle_step_mem",
             XxDotStep => "xx_dot_step",
             XbDotStep => "xb_dot_step",
         }
@@ -384,6 +387,7 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
             ReadIo(x) => ReadIo(*x),
             WriteIo(x) => WriteIo(*x),
             MerkleStep => MerkleStep,
+            MerkleStepMem => MerkleStepMem,
             XxDotStep => XxDotStep,
             XbDotStep => XbDotStep,
         }
@@ -431,6 +435,7 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
             ReadIo(n) => n.num_words() as i32,
             WriteIo(n) => -(n.num_words() as i32),
             MerkleStep => 0,
+            MerkleStepMem => 0,
             XxDotStep => 0,
             XbDotStep => 0,
         }
@@ -440,7 +445,16 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
     pub fn is_u32_instruction(&self) -> bool {
         matches!(
             self,
-            Split | Lt | And | Xor | Log2Floor | Pow | DivMod | PopCount | MerkleStep
+            Split
+                | Lt
+                | And
+                | Xor
+                | Log2Floor
+                | Pow
+                | DivMod
+                | PopCount
+                | MerkleStep
+                | MerkleStepMem
         )
     }
 }
@@ -578,6 +592,7 @@ const fn all_instructions_without_args() -> [AnInstruction<BFieldElement>; Instr
         ReadIo(N1),
         WriteIo(N1),
         MerkleStep,
+        MerkleStepMem,
         XxDotStep,
         XbDotStep,
     ]
@@ -889,11 +904,12 @@ pub mod tests {
         }
     }
 
+    /// While the correct _number_ of instructions (respectively instruction names)
+    /// is guaranteed at compile time, this test ensures the absence of repetitions.
     #[test]
-    /// Serves no other purpose than to increase code coverage results.
-    fn run_constant_methods() {
-        all_instructions_without_args();
-        all_instruction_names();
+    fn list_of_all_instructions_contains_unique_instructions() {
+        assert!(all_instructions_without_args().into_iter().all_unique());
+        assert!(all_instruction_names().into_iter().all_unique());
     }
 
     #[test]
