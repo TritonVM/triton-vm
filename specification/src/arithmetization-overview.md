@@ -15,9 +15,9 @@
 | [CascadeTable](cascade-table.md)           |               6 |                2 |              12 |
 | [LookupTable](lookup-table.md)             |               4 |                2 |              10 |
 | [U32Table](u32-table.md)                   |              10 |                1 |              13 |
-| DegreeLowering (-/8/4)                     |       0/111/203 |          0/14/36 |       0/153/311 |
+| DegreeLowering (-/8/4)                     |       0/113/226 |          0/14/38 |       0/155/340 |
 | Randomizers                                |               0 |                1 |               3 |
-| **TOTAL**                                  | **149/260/352** |     **50/64/86** | **299/452/610** |
+| **TOTAL**                                  | **149/262/375** |     **50/64/88** | **299/454/639** |
 <!-- auto-gen info stop table_overview -->
 
 ## Constraints
@@ -44,14 +44,14 @@ Before automatic degree lowering:
 | [U32Table](u32-table.md)                       |        1 |           15 |          22 |         2 |         12 |
 | [Grand Cross-Table Argument](table-linking.md) |        0 |            0 |           0 |        14 |          1 |
 | **TOTAL**                                      |   **79** |       **76** |     **150** |    **23** |     **19** |
-| (# nodes)                                      |    (534) |        (624) |      (6077) |     (213) |            |
+| (# nodes)                                      |    (534) |        (624) |      (6176) |     (213) |            |
 
 After lowering degree to 8:
 
 | table name                                     | #initial | #consistency | #transition | #terminal |
 |:-----------------------------------------------|---------:|-------------:|------------:|----------:|
 | [ProgramTable](program-table.md)               |        6 |            4 |          10 |         2 |
-| [ProcessorTable](processor-table.md)           |       29 |           10 |         158 |         1 |
+| [ProcessorTable](processor-table.md)           |       29 |           10 |         160 |         1 |
 | [OpStackTable](operational-stack-table.md)     |        3 |            0 |           5 |         0 |
 | [RamTable](random-access-memory-table.md)      |        7 |            0 |          12 |         1 |
 | [JumpStackTable](jump-stack-table.md)          |        6 |            0 |           6 |         0 |
@@ -60,15 +60,15 @@ After lowering degree to 8:
 | [LookupTable](lookup-table.md)                 |        3 |            1 |           4 |         1 |
 | [U32Table](u32-table.md)                       |        1 |           18 |          24 |         2 |
 | [Grand Cross-Table Argument](table-linking.md) |        0 |            0 |           0 |        14 |
-| **TOTAL**                                      |   **79** |       **80** |     **271** |    **23** |
-| (# nodes)                                      |    (534) |        (635) |      (6335) |     (213) |
+| **TOTAL**                                      |   **79** |       **80** |     **273** |    **23** |
+| (# nodes)                                      |    (534) |        (635) |      (6438) |     (213) |
 
 After lowering degree to 4:
 
 | table name                                     | #initial | #consistency | #transition | #terminal |
 |:-----------------------------------------------|---------:|-------------:|------------:|----------:|
 | [ProgramTable](program-table.md)               |        6 |            4 |          10 |         2 |
-| [ProcessorTable](processor-table.md)           |       31 |           10 |         209 |         1 |
+| [ProcessorTable](processor-table.md)           |       31 |           10 |         234 |         1 |
 | [OpStackTable](operational-stack-table.md)     |        3 |            0 |           5 |         0 |
 | [RamTable](random-access-memory-table.md)      |        7 |            0 |          13 |         1 |
 | [JumpStackTable](jump-stack-table.md)          |        6 |            0 |           7 |         0 |
@@ -77,8 +77,8 @@ After lowering degree to 4:
 | [LookupTable](lookup-table.md)                 |        3 |            1 |           4 |         1 |
 | [U32Table](u32-table.md)                       |        1 |           26 |          34 |         2 |
 | [Grand Cross-Table Argument](table-linking.md) |        0 |            0 |           0 |        14 |
-| **TOTAL**                                      |   **81** |       **94** |     **369** |    **23** |
-| (# nodes)                                      |    (538) |        (676) |      (6557) |     (213) |
+| **TOTAL**                                      |   **81** |       **94** |     **394** |    **23** |
+| (# nodes)                                      |    (538) |        (676) |      (6731) |     (213) |
 <!-- auto-gen info stop constraints_overview -->
 
 
@@ -90,8 +90,8 @@ In order to gauge the runtime cost for this step, the following table provides e
 <!-- auto-gen info start tasm_air_evaluation_cost -->
 | Type         | Processor | Op Stack |   RAM |
 |:-------------|----------:|---------:|------:|
-| static       |     34609 |    64237 | 22716 |
-| dynamic      |     45793 |    71697 | 26444 |
+| static       |     35381 |    65645 | 23226 |
+| dynamic      |     46805 |    73265 | 27034 |
 <!-- auto-gen info stop tasm_air_evaluation_cost -->
 
 ## Opcode Pressure
@@ -107,7 +107,7 @@ The table below helps answer this question at a glance.
 |            n |            n |            y |            8 |
 |            n |            y |            n |           11 |
 |            n |            y |            y |            3 |
-|            y |            n |            n |            5 |
+|            y |            n |            n |            6 |
 |            y |            n |            y |            0 |
 |            y |            y |            n |            4 |
 |            y |            y |            y |            0 |

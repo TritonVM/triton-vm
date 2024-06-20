@@ -58,7 +58,7 @@ Should the jump stack be empty, executing any of these instruction causes Triton
 Instruction `recurse_or_return` behaves – surprise! – either like instruction `recurse` or like instruction `return`.
 The (deterministic) decision which behavior to exhibit is made at runtime and depends on stack elements `st5` and `st6`.
 If `st5 != st6`, then `recurse_or_return` acts like instruction `recurse`, else like `return`.
-The instruction is designed to facilitate loops using pointer equality as termination condition and to play nicely with instruction `merkle_step`.
+The instruction is designed to facilitate loops using pointer equality as termination condition and to play nicely with instructions [`merkle_step`](#many-in-one) and [`merkle_step_mem`](#many-in-one).
 
 ## Memory Access
 
@@ -148,11 +148,12 @@ Triton VM cannot know the number of elements that will be absorbed.
 
 ## Many-In-One
 
-| Instruction   | Opcode | old op stack    | new op stack                 | Description                                                                                                                                                                                                                                                                                                                                                                                       |
-|:--------------|:-------|:----------------|:-----------------------------|:--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `merkle_step` | 36     | `_ i edcba`     | `_ (i div 2) zyxwv`          | Helps traversing a Merkle tree during authentication path verification. Crashes the VM if `i` is not u32. See extended description below.                                                                                                                                                                                                                                                         |
-| `xx_dot_step` | 80     | `_ z y x *b *a` | `_ z+p2 y+p1 x+p0 *b+3 *a+3` | Reads two extension field elements from RAM located at the addresses corresponding to the two top stack elements, multiplies the extension field elements, and adds the product `(p0, p1, p2)` to an accumulator located on stack immediately below the two pointers. Also, increase the pointers by the number of words read.                                                                    |
-| `xb_dot_step` | 88     | `_ z y x *b *a` | `_ z+p2 y+p1 x+p0 *b+3 *a+1` | Reads one base field element from RAM located at the addresses corresponding to the top of the stack, one extension field element from RAM located at the address of the second stack element, multiplies the field elements, and adds the product `(p0, p1, p2)` to an accumulator located on stack immediately below the two pointers. Also, increase the pointers by the number of words read. |
+| Instruction       | Opcode | old op stack    | new op stack                 | Description                                                                                                                                                                                                                                                                                                                                                                                       |
+|:------------------|:-------|:----------------|:-----------------------------|:--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `merkle_step`     | 36     | `_ i edcba`     | `_ (i div 2) zyxwv`          | Helps traversing a Merkle tree during authentication path verification. Crashes the VM if `i` is not u32. See extended description below.                                                                                                                                                                                                                                                         |
+| `merkle_step_mem` | 44     | `_ p f i edcba` | `_ p+5 f (i div 2) zyxwv`    | Helps traversing a Merkle tree during authentication path verification with the authentication path being supplied in RAM. Crashes the VM if `i` is not u32. See extended description below.                                                                                                                                                                                                      |
+| `xx_dot_step`     | 80     | `_ z y x *b *a` | `_ z+p2 y+p1 x+p0 *b+3 *a+3` | Reads two extension field elements from RAM located at the addresses corresponding to the two top stack elements, multiplies the extension field elements, and adds the product `(p0, p1, p2)` to an accumulator located on stack immediately below the two pointers. Also, increase the pointers by the number of words read.                                                                    |
+| `xb_dot_step`     | 88     | `_ z y x *b *a` | `_ z+p2 y+p1 x+p0 *b+3 *a+1` | Reads one base field element from RAM located at the addresses corresponding to the top of the stack, one extension field element from RAM located at the address of the second stack element, multiplies the field elements, and adds the product `(p0, p1, p2)` to an accumulator located on stack immediately below the two pointers. Also, increase the pointers by the number of words read. |
 
 The instruction `merkle_step` works as follows.
 The 6th element of the stack `i` is taken as the node index for a Merkle tree that is claimed to include data whose digest is the content of stack registers `st4` through `st0`, i.e., `edcba`.
@@ -166,4 +167,14 @@ In either case,
 1. the left and right digests are hashed, and the resulting digest `zyxwv` replaces the top of the stack, and
 1. 6th register `i` is shifted by 1 bit to the right, _i.e._, the least-significant bit is dropped.
 
-In conjunction with instruction `assert_vector`, the instruction `merkle_step` allows to efficiently verify a Merkle authentication path.
+Instruction `merkle_step_mem` works very similarly to instruction `merkle_step`.
+The main difference, as the name suggests, is the source of the sibling digest:
+Instead of reading it from the input interface of secret data, it is supplied via RAM.
+Stack element `st7` is taken as the RAM pointer, holding the memory address at which the next sibling digest is located in RAM.
+Executing instruction `merkle_step_mem` increments the memory pointer by the length of one digest, anticipating an authentication path that is laid out continuously.
+Stack element `st6` does not change when executing instruction `merkle_step_mem` in order to facilitate instruction `recurse_or_return`.
+
+In conjunction with instructions `recurse_or_return` and `assert_vector`, the instructions `merkle_step` and `merkle_step_mem` allow efficient verification of a Merkle authentication path.
+Furthermore, instruction `merkle_step_mem` allows verifiable _re_-use of an authentication path.
+This is necessary, for example, when verifiably updating a Merkle tree: 
+first, the authentication path is used to confirm inclusion of some old leaf, and then to compute the tree's new root from the new leaf.

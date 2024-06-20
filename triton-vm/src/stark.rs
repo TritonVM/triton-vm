@@ -1851,6 +1851,16 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn constraints_evaluate_to_zero_on_program_for_merkle_step_mem_right_sibling() {
+        triton_constraints_evaluate_to_zero(test_program_for_merkle_step_mem_right_sibling())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_program_for_merkle_step_mem_left_sibling() {
+        triton_constraints_evaluate_to_zero(test_program_for_merkle_step_mem_left_sibling())
+    }
+
+    #[test]
     fn constraints_evaluate_to_zero_on_program_for_assert_vector() {
         triton_constraints_evaluate_to_zero(test_program_for_assert_vector())
     }
@@ -2617,6 +2627,8 @@ pub(crate) mod tests {
 
     /// A program that executes every instruction in the instruction set.
     fn program_executing_every_instruction() -> ProgramAndInput {
+        let m_step_mem_addr = 100_000;
+
         let program = triton_program! {
             // merkle_step using the following fake tree:
             //     ─── 1 ───
@@ -2624,14 +2636,17 @@ pub(crate) mod tests {
             //   2           3
             //  ╱  ╲
             // 4    5
-            push 5                  // _ 5 (node index for `merkle_step`)
-            read_io 5               // _ 5 [digest; 5]
-            merkle_step             // _ 2 [digest; 5]
-            merkle_step             // _ 1 [digest; 5]
-            divine 5                // _ 1 [digest; 5] [digest; 5]
-            assert_vector           // _ 1 [digest; 5]
-            pop 5                   // _ 1
-            assert                  // _
+            push {m_step_mem_addr}  // _ addr (address for `merkle_step_mem`)
+            push 0                  // _ addr 0 (spacer)
+            push 5                  // _ addr 0 5 (node index for `merkle_step`s)
+            read_io 5               // _ addr 0 5 [digest; 5]
+            merkle_step             // _ addr 0 2 [digest; 5]
+            merkle_step_mem         // _ addr 0 1 [digest; 5]
+            divine 5                // _ addr 0 1 [digest; 5] [digest; 5]
+            assert_vector           // _ addr 0 1 [digest; 5]
+            pop 5                   // _ addr 0 1
+            assert                  // _ addr 0
+            pop 2                   // _
 
             // dot_step
             push 0 push 0 push 0    // _ [accumulator; 3]
@@ -2733,14 +2748,17 @@ pub(crate) mod tests {
         let public_input = tree_node_5.values().to_vec();
 
         let secret_input = [tree_node_1.reversed().values().to_vec(), bfe_vec![1337; 10]].concat();
-        let dummy_ram = (0..)
+        let mut ram = (0..)
             .zip(42..)
             .take(1_000)
             .map(|(l, r)| (bfe!(l), bfe!(r)))
             .collect::<HashMap<_, _>>();
+        for (address, digest_element) in (m_step_mem_addr..).zip(tree_node_3.values()) {
+            ram.insert(bfe!(address), digest_element);
+        }
         let non_determinism = NonDeterminism::new(secret_input)
-            .with_digests([tree_node_4, tree_node_3])
-            .with_ram(dummy_ram);
+            .with_digests([tree_node_4])
+            .with_ram(ram);
 
         ProgramAndInput::new(program)
             .with_input(public_input)

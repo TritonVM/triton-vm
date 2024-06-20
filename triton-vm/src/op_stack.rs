@@ -99,10 +99,12 @@ impl OpStack {
     }
 
     pub(crate) fn is_u32(&self, stack_element: OpStackElement) -> Result<()> {
+        self.get_u32(stack_element).map(|_| ())
+    }
+
+    pub(crate) fn get_u32(&self, stack_element: OpStackElement) -> Result<u32> {
         let element = self[stack_element];
-        u32::try_from(element.value())
-            .map(|_| ())
-            .map_err(|_| FailedU32Conversion(element))
+        element.try_into().map_err(|_| FailedU32Conversion(element))
     }
 
     pub(crate) fn pop_u32(&mut self) -> Result<u32> {
@@ -643,8 +645,8 @@ mod tests {
 
     use super::*;
 
-    // For testing purposes only.
     impl Default for OpStack {
+        /// For testing purposes only.
         fn default() -> Self {
             OpStack::new(Digest::default())
         }
@@ -658,7 +660,7 @@ mod tests {
         assert!(op_stack.len() == 16);
         assert!(op_stack.pointer().value() as usize == op_stack.len());
 
-        // push elements 1 thru 17
+        // push elements 1 through 17
         for i in 1..=17 {
             op_stack.push(bfe!(i));
         }
@@ -667,8 +669,7 @@ mod tests {
         assert!(op_stack.len() == 33);
         assert!(op_stack.pointer().value() as usize == op_stack.len());
 
-        // verify that all accessible items are different
-        let mut container = vec![
+        assert!([
             op_stack[ST0],
             op_stack[ST1],
             op_stack[ST2],
@@ -686,16 +687,13 @@ mod tests {
             op_stack[ST14],
             op_stack[ST15],
             op_stack.first_underflow_element(),
-        ];
-        let len_before = container.len();
-        container.sort_by_key(|a| a.value());
-        container.dedup();
-        let len_after = container.len();
-        assert!(len_before == len_after);
+        ]
+        .into_iter()
+        .all_unique());
 
         // pop 11 elements
         for _ in 0..11 {
-            let _ = op_stack.pop().expect("can't pop");
+            let _ = op_stack.pop().unwrap();
         }
 
         // verify height
@@ -703,8 +701,8 @@ mod tests {
         assert!(op_stack.pointer().value() as usize == op_stack.len());
 
         // pop 2 XFieldElements
-        let _ = op_stack.pop_extension_field_element().expect("can't pop");
-        let _ = op_stack.pop_extension_field_element().expect("can't pop");
+        let _ = op_stack.pop_extension_field_element().unwrap();
+        let _ = op_stack.pop_extension_field_element().unwrap();
 
         // verify height
         assert!(op_stack.len() == 16);
@@ -928,5 +926,27 @@ mod tests {
     #[test]
     fn compute_illegal_values_of_number_of_words() {
         let _ = NumberOfWords::illegal_values();
+    }
+
+    #[proptest]
+    fn invalid_u32s_cannot_be_retrieved_as_u32s(
+        #[strategy(arb())] st: OpStackElement,
+        #[strategy(u64::from(u32::MAX) + 1..)] non_u32: u64,
+    ) {
+        let mut op_stack = OpStack::default();
+        op_stack[st] = non_u32.into();
+
+        assert!(let Err(_) = op_stack.is_u32(st));
+        assert!(let Err(_) = op_stack.get_u32(st));
+    }
+
+    #[proptest]
+    fn valid_u32s_can_be_retrieved_as_u32s(#[strategy(arb())] st: OpStackElement, valid_u32: u32) {
+        let mut op_stack = OpStack::default();
+        op_stack[st] = valid_u32.into();
+
+        assert!(let Ok(()) = op_stack.is_u32(st));
+        let_assert!(Ok(some_u32) = op_stack.get_u32(st));
+        assert!(valid_u32 == some_u32);
     }
 }

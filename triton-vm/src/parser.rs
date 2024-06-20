@@ -289,10 +289,11 @@ fn an_instruction(s: &str) -> ParseResult<AnInstruction<String>> {
 
     // Many-in-One
     let merkle_step = instruction("merkle_step", MerkleStep);
+    let merkle_step_mem = instruction("merkle_step_mem", MerkleStepMem);
     let xx_dot_step = instruction("xx_dot_step", XxDotStep);
     let xb_dot_step = instruction("xb_dot_step", XbDotStep);
 
-    let many_to_one = alt((merkle_step, xx_dot_step, xb_dot_step));
+    let many_to_one = alt((xx_dot_step, xb_dot_step));
 
     // Because of common prefixes, the following parsers are sensitive to order.
     // Successfully parsing "assert" before trying "assert_vector" can lead to
@@ -307,6 +308,8 @@ fn an_instruction(s: &str) -> ParseResult<AnInstruction<String>> {
         sponge_absorb,
         addi,
         add,
+        merkle_step_mem,
+        merkle_step,
     ));
 
     alt((
@@ -316,8 +319,8 @@ fn an_instruction(s: &str) -> ParseResult<AnInstruction<String>> {
         hashing_related,
         arithmetic_on_stack,
         read_write,
-        syntax_ambiguous,
         many_to_one,
+        syntax_ambiguous,
     ))(s)
 }
 
@@ -736,7 +739,7 @@ pub(crate) mod tests {
         let_assert!(Ok(actual) = parse_result);
 
         let actual_program = Program::new(&to_labelled_instructions(&actual));
-        assert!(test_case.expected == actual_program, "{message}",);
+        assert!(test_case.expected == actual_program, "{message}");
     }
 
     fn parse_program_neg_prop(test_case: NegativeTestCase) {

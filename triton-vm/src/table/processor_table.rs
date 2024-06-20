@@ -283,13 +283,16 @@ impl ProcessorTable {
         let mut hash_input_running_evaluation = EvalArg::default_initial();
         let mut extension_column = Vec::with_capacity(base_table.nrows());
         for row in base_table.rows() {
-            let ci = row[CI.base_table_index()];
-            if ci == Instruction::Hash.opcode_b() || ci == Instruction::MerkleStep.opcode_b() {
+            let current_instruction = row[CI.base_table_index()];
+            if current_instruction == Instruction::Hash.opcode_b()
+                || current_instruction == Instruction::MerkleStep.opcode_b()
+                || current_instruction == Instruction::MerkleStepMem.opcode_b()
+            {
                 let is_left_sibling = row[ST5.base_table_index()].value() % 2 == 0;
                 let hash_input = match Self::instruction_from_row(row) {
-                    Some(Instruction::MerkleStep) if is_left_sibling => merkle_step_left_sibling,
-                    Some(Instruction::MerkleStep) => merkle_step_right_sibling,
-                    Some(Instruction::Hash) => st0_through_st9,
+                    Some(MerkleStep | MerkleStepMem) if is_left_sibling => merkle_step_left_sibling,
+                    Some(MerkleStep | MerkleStepMem) => merkle_step_right_sibling,
+                    Some(Hash) => st0_through_st9,
                     _ => unreachable!(),
                 };
                 let compressed_row = hash_input
@@ -319,6 +322,7 @@ impl ProcessorTable {
             let previous_ci = previous_row[CI.base_table_index()];
             if previous_ci == Instruction::Hash.opcode_b()
                 || previous_ci == Instruction::MerkleStep.opcode_b()
+                || previous_ci == Instruction::MerkleStepMem.opcode_b()
             {
                 let compressed_row = [ST0, ST1, ST2, ST3, ST4]
                     .map(|st| current_row[st.base_table_index()])
@@ -452,7 +456,9 @@ impl ProcessorTable {
                     + Instruction::Split.opcode_b() * challenges[U32CiWeight];
                 to_invert.push(challenges[U32Indeterminate] - compressed_row_for_lt_check);
                 to_invert.push(challenges[U32Indeterminate] - compressed_row_for_range_check);
-            } else if previous_ci == Instruction::MerkleStep.opcode_b() {
+            } else if previous_ci == Instruction::MerkleStep.opcode_b()
+                || previous_ci == Instruction::MerkleStepMem.opcode_b()
+            {
                 let compressed_row = previous_row[ST5.base_table_index()]
                     * challenges[U32LhsWeight]
                     + current_row[ST5.base_table_index()] * challenges[U32RhsWeight]
@@ -580,6 +586,7 @@ impl ProcessorTable {
             ReadMem(_) => ram_table::INSTRUCTION_TYPE_READ,
             WriteMem(_) => ram_table::INSTRUCTION_TYPE_WRITE,
             SpongeAbsorbMem => ram_table::INSTRUCTION_TYPE_READ,
+            MerkleStepMem => ram_table::INSTRUCTION_TYPE_READ,
             XxDotStep => ram_table::INSTRUCTION_TYPE_READ,
             XbDotStep => ram_table::INSTRUCTION_TYPE_READ,
             _ => return None,
@@ -590,10 +597,10 @@ impl ProcessorTable {
             ReadMem(_) | WriteMem(_) => {
                 // longer stack means relevant information is on top of stack, i.e.,
                 // available in stack registers
-                let row_with_longer_stack = match instruction {
-                    ReadMem(_) => current_row.view(),
-                    WriteMem(_) => previous_row.view(),
-                    _ => unreachable!(),
+                let row_with_longer_stack = if let ReadMem(_) = instruction {
+                    current_row.view()
+                } else {
+                    previous_row.view()
                 };
                 let op_stack_delta = instruction.op_stack_size_influence().unsigned_abs() as usize;
 
@@ -622,6 +629,14 @@ impl ProcessorTable {
                 accesses.push((mem_pointer + bfe!(7), previous_row[HV3.base_table_index()]));
                 accesses.push((mem_pointer + bfe!(8), previous_row[HV4.base_table_index()]));
                 accesses.push((mem_pointer + bfe!(9), previous_row[HV5.base_table_index()]));
+            }
+            MerkleStepMem => {
+                let mem_pointer = previous_row[ST7.base_table_index()];
+                accesses.push((mem_pointer + bfe!(0), previous_row[HV0.base_table_index()]));
+                accesses.push((mem_pointer + bfe!(1), previous_row[HV1.base_table_index()]));
+                accesses.push((mem_pointer + bfe!(2), previous_row[HV2.base_table_index()]));
+                accesses.push((mem_pointer + bfe!(3), previous_row[HV3.base_table_index()]));
+                accesses.push((mem_pointer + bfe!(4), previous_row[HV4.base_table_index()]));
             }
             XxDotStep => {
                 let rhs_pointer = previous_row[ST0.base_table_index()];
@@ -1937,35 +1952,71 @@ impl ExtProcessorTable {
         .concat()
     }
 
-    /// Recall that in a Merkle tree, the indices of left (respectively right)
-    /// leaves have 0 (respectively 1) as their least significant bit. The first two
-    /// polynomials achieve that helper variable hv5 holds the result of st5 mod 2.
-    /// The second polynomial sets the new value of st5 to st5 div 2.
-    ///
-    /// Two Evaluation Arguments with the Hash Table guarantee the rest of the
-    /// correct transition.
     fn instruction_merkle_step(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
+        [
+            Self::instruction_merkle_step_shared_constraints(circuit_builder),
+            Self::instruction_group_op_stack_remains_except_top_n(circuit_builder, 6),
+            Self::instruction_group_no_ram(circuit_builder),
+        ]
+        .concat()
+    }
+
+    fn instruction_merkle_step_mem(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
+        let constant = |c: u32| circuit_builder.b_constant(c);
+        let stack_weight = |i| circuit_builder.challenge(Self::stack_weight_by_index(i));
+        let curr = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
+        };
+        let next = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(NextBaseRow(col.master_base_table_index()))
+        };
+
+        let ram_pointers = [0, 1, 2, 3, 4].map(|i| curr(ST7) + constant(i));
+        let ram_read_destinations = [HV0, HV1, HV2, HV3, HV4].map(curr);
+        let read_from_ram_to_hvs =
+            Self::read_from_ram_to(circuit_builder, ram_pointers, ram_read_destinations);
+
+        let st6_does_not_change = next(ST6) - curr(ST6);
+        let st7_increments_by_5 = next(ST7) - curr(ST7) - constant(5);
+        let st6_and_st7_update_correctly =
+            stack_weight(6) * st6_does_not_change + stack_weight(7) * st7_increments_by_5;
+
+        [
+            vec![st6_and_st7_update_correctly, read_from_ram_to_hvs],
+            Self::instruction_merkle_step_shared_constraints(circuit_builder),
+            Self::instruction_group_op_stack_remains_except_top_n(circuit_builder, 8),
+        ]
+        .concat()
+    }
+
+    /// Recall that in a Merkle tree, the indices of left (respectively right)
+    /// leaves have least-significant bit 0 (respectively 1).
+    ///
+    /// Two Evaluation Arguments with the Hash Table guarantee correct transition of
+    /// stack elements ST0 through ST4.
+    fn instruction_merkle_step_shared_constraints(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
         let constant = |c: u32| circuit_builder.b_constant(c);
         let one = || constant(1);
-        let curr_base_row = |col: ProcessorBaseTableColumn| {
+        let curr = |col: ProcessorBaseTableColumn| {
             circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
         };
-        let next_base_row = |col: ProcessorBaseTableColumn| {
+        let next = |col: ProcessorBaseTableColumn| {
             circuit_builder.input(NextBaseRow(col.master_base_table_index()))
         };
 
-        let hv5_is_0_or_1 = curr_base_row(HV5) * (curr_base_row(HV5) - one());
-        let new_st5_is_previous_st5_div_2 =
-            next_base_row(ST5) * constant(2) + curr_base_row(HV5) - curr_base_row(ST5);
-
+        let hv5_is_0_or_1 = curr(HV5) * (curr(HV5) - one());
+        let new_st5_is_previous_st5_div_2 = constant(2) * next(ST5) + curr(HV5) - curr(ST5);
         let update_merkle_tree_node_index = vec![hv5_is_0_or_1, new_st5_is_previous_st5_div_2];
+
         [
             update_merkle_tree_node_index,
-            Self::instruction_group_op_stack_remains_except_top_n(circuit_builder, 6),
             Self::instruction_group_step_1(circuit_builder),
-            Self::instruction_group_no_ram(circuit_builder),
             Self::instruction_group_no_io(circuit_builder),
         ]
         .concat()
@@ -2721,6 +2772,7 @@ impl ExtProcessorTable {
             ReadIo(_) => ExtProcessorTable::instruction_read_io(circuit_builder),
             WriteIo(_) => ExtProcessorTable::instruction_write_io(circuit_builder),
             MerkleStep => ExtProcessorTable::instruction_merkle_step(circuit_builder),
+            MerkleStepMem => ExtProcessorTable::instruction_merkle_step_mem(circuit_builder),
             XxDotStep => ExtProcessorTable::instruction_xx_dot_step(circuit_builder),
             XbDotStep => ExtProcessorTable::instruction_xb_dot_step(circuit_builder),
         }
@@ -3439,9 +3491,12 @@ impl ExtProcessorTable {
             Self::instruction_deselector_next_row(circuit_builder, Instruction::Hash);
         let merkle_step_deselector =
             Self::instruction_deselector_next_row(circuit_builder, Instruction::MerkleStep);
+        let merkle_step_mem_deselector =
+            Self::instruction_deselector_next_row(circuit_builder, Instruction::MerkleStepMem);
         let hash_and_merkle_step_selector = (next_base_row(CI)
             - constant(Instruction::Hash.opcode()))
-            * (next_base_row(CI) - constant(Instruction::MerkleStep.opcode()));
+            * (next_base_row(CI) - constant(Instruction::MerkleStep.opcode()))
+            * (next_base_row(CI) - constant(Instruction::MerkleStepMem.opcode()));
 
         let weights = [
             StackWeight0,
@@ -3486,7 +3541,7 @@ impl ExtProcessorTable {
             .into_iter()
             .zip_eq(state_for_merkle_step)
             .map(|(weight, state)| weight * state)
-            .sum();
+            .sum::<ConstraintCircuitMonad<_>>();
 
         let running_evaluation_updates_with = |compressed_row| {
             next_ext_row(HashInputEvalArg)
@@ -3498,7 +3553,10 @@ impl ExtProcessorTable {
 
         hash_and_merkle_step_selector * running_evaluation_remains
             + hash_deselector * running_evaluation_updates_with(compressed_hash_row)
-            + merkle_step_deselector * running_evaluation_updates_with(compressed_merkle_step_row)
+            + merkle_step_deselector
+                * running_evaluation_updates_with(compressed_merkle_step_row.clone())
+            + merkle_step_mem_deselector
+                * running_evaluation_updates_with(compressed_merkle_step_row)
     }
 
     fn running_evaluation_hash_digest_updates_correctly(
@@ -3523,9 +3581,12 @@ impl ExtProcessorTable {
             Self::instruction_deselector_current_row(circuit_builder, Instruction::Hash);
         let merkle_step_deselector =
             Self::instruction_deselector_current_row(circuit_builder, Instruction::MerkleStep);
+        let merkle_step_mem_deselector =
+            Self::instruction_deselector_current_row(circuit_builder, Instruction::MerkleStepMem);
         let hash_and_merkle_step_selector = (curr_base_row(CI)
             - constant(Instruction::Hash.opcode()))
-            * (curr_base_row(CI) - constant(Instruction::MerkleStep.opcode()));
+            * (curr_base_row(CI) - constant(Instruction::MerkleStep.opcode()))
+            * (curr_base_row(CI) - constant(Instruction::MerkleStepMem.opcode()));
 
         let weights = [
             StackWeight0,
@@ -3549,7 +3610,8 @@ impl ExtProcessorTable {
             next_ext_row(HashDigestEvalArg) - curr_ext_row(HashDigestEvalArg);
 
         hash_and_merkle_step_selector * running_evaluation_remains
-            + (hash_deselector + merkle_step_deselector) * running_evaluation_updates
+            + (hash_deselector + merkle_step_deselector + merkle_step_mem_deselector)
+                * running_evaluation_updates
     }
 
     fn running_evaluation_sponge_updates_correctly(
@@ -3673,6 +3735,8 @@ impl ExtProcessorTable {
             Self::instruction_deselector_current_row(circuit_builder, Instruction::PopCount);
         let merkle_step_deselector =
             Self::instruction_deselector_current_row(circuit_builder, Instruction::MerkleStep);
+        let merkle_step_mem_deselector =
+            Self::instruction_deselector_current_row(circuit_builder, Instruction::MerkleStepMem);
 
         let running_sum = curr_ext_row(U32LookupClientLogDerivative);
         let running_sum_next = next_ext_row(U32LookupClientLogDerivative);
@@ -3736,7 +3800,10 @@ impl ExtProcessorTable {
                 - div_mod_factor_for_lt
                 - div_mod_factor_for_range_check);
         let pop_count_summand = pop_count_deselector * running_sum_absorbs_unop_factor;
-        let merkle_walk_summand = merkle_step_deselector * running_sum_absorbs_merkle_step_factor;
+        let merkle_step_summand =
+            merkle_step_deselector * running_sum_absorbs_merkle_step_factor.clone();
+        let merkle_step_mem_summand =
+            merkle_step_mem_deselector * running_sum_absorbs_merkle_step_factor;
         let no_update_summand = (one() - curr_base_row(IB2)) * (running_sum_next - running_sum);
 
         split_summand
@@ -3747,7 +3814,8 @@ impl ExtProcessorTable {
             + log_2_floor_summand
             + div_mod_summand
             + pop_count_summand
-            + merkle_walk_summand
+            + merkle_step_summand
+            + merkle_step_mem_summand
             + no_update_summand
     }
 
@@ -4181,6 +4249,47 @@ pub(crate) mod tests {
 
         let debug_info = TestRowsDebugInfo {
             instruction: MerkleStep,
+            debug_cols_curr_row: vec![ST0, ST1, ST2, ST3, ST4, ST5, HV0, HV1, HV2, HV3, HV4, HV5],
+            debug_cols_next_row: vec![ST0, ST1, ST2, ST3, ST4, ST5],
+        };
+        assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
+    }
+
+    #[test]
+    fn transition_constraints_for_instruction_merkle_step_mem() {
+        let sibling_digest = bfe_array![1, 2, 3, 4, 5];
+        let acc_digest = bfe_array![11, 12, 13, 14, 15];
+        let test_program = |node_index: u32| {
+            triton_program! {
+                push 42             // RAM pointer
+                push  1             // dummy
+                push {node_index}
+                push {acc_digest[0]}
+                push {acc_digest[1]}
+                push {acc_digest[2]}
+                push {acc_digest[3]}
+                push {acc_digest[4]}
+                merkle_step_mem
+                halt
+            }
+        };
+        let mut ram = HashMap::new();
+        ram.insert(bfe!(42), sibling_digest[0]);
+        ram.insert(bfe!(43), sibling_digest[1]);
+        ram.insert(bfe!(44), sibling_digest[2]);
+        ram.insert(bfe!(45), sibling_digest[3]);
+        ram.insert(bfe!(46), sibling_digest[4]);
+        let non_determinism = NonDeterminism::default().with_ram(ram);
+
+        let node_indices = [2, 3];
+        let test_rows = node_indices
+            .map(test_program)
+            .map(ProgramAndInput::new)
+            .map(|p| p.with_non_determinism(non_determinism.clone()))
+            .map(|p| test_row_from_program_with_input(p, 8));
+
+        let debug_info = TestRowsDebugInfo {
+            instruction: MerkleStepMem,
             debug_cols_curr_row: vec![ST0, ST1, ST2, ST3, ST4, ST5, HV0, HV1, HV2, HV3, HV4, HV5],
             debug_cols_next_row: vec![ST0, ST1, ST2, ST3, ST4, ST5],
         };
