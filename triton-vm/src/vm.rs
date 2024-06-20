@@ -169,6 +169,16 @@ impl VMState {
                 hvs[..5].copy_from_slice(&divined_digest.values());
                 hvs[5] = bfe!(node_index % 2);
             }
+            MerkleStepMem => {
+                let node_index = self.op_stack[ST5].value();
+                let ram_pointer = self.op_stack[ST7];
+                hvs[0] = ram_read(ram_pointer);
+                hvs[1] = ram_read(ram_pointer + bfe!(1));
+                hvs[2] = ram_read(ram_pointer + bfe!(2));
+                hvs[3] = ram_read(ram_pointer + bfe!(3));
+                hvs[4] = ram_read(ram_pointer + bfe!(4));
+                hvs[5] = bfe!(node_index % 2);
+            }
             Split => {
                 let top_of_stack = self.op_stack[ST0].value();
                 let lo = bfe!(top_of_stack & 0xffff_ffff);
@@ -262,7 +272,8 @@ impl VMState {
             XbMul => self.xb_mul()?,
             WriteIo(n) => self.write_io(n)?,
             ReadIo(n) => self.read_io(n)?,
-            MerkleStep => self.merkle_step()?,
+            MerkleStep => self.merkle_step_non_determinism()?,
+            MerkleStepMem => self.merkle_step_mem()?,
             XxDotStep => self.xx_dot_step()?,
             XbDotStep => self.xb_dot_step()?,
         };
@@ -806,22 +817,45 @@ impl VMState {
         Ok(vec![])
     }
 
-    fn merkle_step(&mut self) -> Result<Vec<CoProcessorCall>> {
-        let node_index = self.op_stack[ST5];
-        let node_index = u32::try_from(node_index).map_err(|_| FailedU32Conversion(node_index))?;
+    fn merkle_step_non_determinism(&mut self) -> Result<Vec<CoProcessorCall>> {
+        self.op_stack.is_u32(ST5)?;
+        let sibling_digest = self.pop_secret_digest()?;
+        self.merkle_step(sibling_digest)
+    }
+
+    fn merkle_step_mem(&mut self) -> Result<Vec<CoProcessorCall>> {
+        self.op_stack.is_u32(ST5)?;
+        self.start_recording_ram_calls();
+        let mut ram_pointer = self.op_stack[ST7];
+        let Digest(mut sibling_digest) = Digest::default();
+        for digest_element in &mut sibling_digest {
+            *digest_element = self.ram_read(ram_pointer);
+            ram_pointer.increment();
+        }
+        self.op_stack[ST7] = ram_pointer;
+
+        let mut co_processor_calls = self.merkle_step(sibling_digest)?;
+        co_processor_calls.extend(self.stop_recording_ram_calls());
+        Ok(co_processor_calls)
+    }
+
+    fn merkle_step(
+        &mut self,
+        sibling_digest: [BFieldElement; tip5::DIGEST_LENGTH],
+    ) -> Result<Vec<CoProcessorCall>> {
+        let node_index = self.op_stack.get_u32(ST5)?;
         let parent_node_index = node_index / 2;
 
-        let sibling_digest = self.pop_secret_digest()?;
         let accumulator_digest = self.op_stack.pop_multiple::<{ tip5::DIGEST_LENGTH }>()?;
         let (left_sibling, right_sibling) = match node_index % 2 {
-            0 => (&accumulator_digest, &sibling_digest),
-            1 => (&sibling_digest, &accumulator_digest),
+            0 => (accumulator_digest, sibling_digest),
+            1 => (sibling_digest, accumulator_digest),
             _ => unreachable!(),
         };
 
         let mut tip5 = Tip5::new(Domain::FixedLength);
-        tip5.state[..tip5::DIGEST_LENGTH].copy_from_slice(left_sibling);
-        tip5.state[tip5::DIGEST_LENGTH..2 * tip5::DIGEST_LENGTH].copy_from_slice(right_sibling);
+        tip5.state[..tip5::DIGEST_LENGTH].copy_from_slice(&left_sibling);
+        tip5.state[tip5::DIGEST_LENGTH..2 * tip5::DIGEST_LENGTH].copy_from_slice(&right_sibling);
         let tip5_trace = tip5.trace();
         let accumulator_digest = &tip5_trace.last().unwrap()[0..tip5::DIGEST_LENGTH];
 
@@ -2555,6 +2589,14 @@ pub(crate) mod tests {
     fn instruction_merkle_step_does_not_change_vm_state_when_crashing_vm_no_nd_digests() {
         let valid_u32 = u64::from(u32::MAX);
         let program = triton_program! { push {valid_u32} swap 5 merkle_step halt };
+        let program_and_input = ProgramAndInput::new(program);
+        instruction_does_not_change_vm_state_when_crashing_vm(program_and_input, 2);
+    }
+
+    #[test]
+    fn instruction_merkle_step_mem_does_not_change_vm_state_when_crashing_vm_invalid_node_index() {
+        let non_u32 = u64::from(u32::MAX) + 1;
+        let program = triton_program! { push {non_u32} swap 5 merkle_step_mem halt };
         let program_and_input = ProgramAndInput::new(program);
         instruction_does_not_change_vm_state_when_crashing_vm(program_and_input, 2);
     }
