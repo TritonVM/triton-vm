@@ -4508,6 +4508,43 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn transition_constraints_for_instruction_xx_dot_step() {
+        let operand_0 = xfe!([3, 5, 7]);
+        let operand_1 = xfe!([11, 13, 17]);
+        let product = operand_0 * operand_1;
+
+        let program = triton_program! {
+            push 10 push 20 push 30     // accumulator `[30, 20, 10]`
+            push 96                     // pointer to `operand_1`
+            push 42                     // pointer to `operand_0`
+            xx_dot_step
+            push 45 eq assert
+            push 99 eq assert
+            push {bfe!(30) + product.coefficients[0]} eq assert
+            push {bfe!(20) + product.coefficients[1]} eq assert
+            push {bfe!(10) + product.coefficients[2]} eq assert
+            halt
+        };
+
+        let mut ram = HashMap::new();
+        ram.insert(bfe!(42), operand_0.coefficients[0]);
+        ram.insert(bfe!(43), operand_0.coefficients[1]);
+        ram.insert(bfe!(44), operand_0.coefficients[2]);
+        ram.insert(bfe!(96), operand_1.coefficients[0]);
+        ram.insert(bfe!(97), operand_1.coefficients[1]);
+        ram.insert(bfe!(98), operand_1.coefficients[2]);
+        let non_determinism = NonDeterminism::default().with_ram(ram);
+        let program_and_input = ProgramAndInput::new(program).with_non_determinism(non_determinism);
+        let test_rows = [test_row_from_program_with_input(program_and_input, 5)];
+        let debug_info = TestRowsDebugInfo {
+            instruction: XxDotStep,
+            debug_cols_curr_row: vec![ST0, ST1, ST2, ST3, ST4, HV0, HV1, HV2, HV3, HV4, HV5],
+            debug_cols_next_row: vec![ST0, ST1, ST2, ST3, ST4],
+        };
+        assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
+    }
+
+    #[test]
     fn instruction_deselector_gives_0_for_all_other_instructions() {
         let circuit_builder = ConstraintCircuitBuilder::new();
 
