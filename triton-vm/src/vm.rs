@@ -2366,6 +2366,53 @@ pub(crate) mod tests {
     }
 
     #[proptest]
+    fn triton_assembly_merkle_tree_update(
+        leaved_merkle_tree: LeavedMerkleTreeTestData,
+        #[strategy(arb())] new_leaf: Digest,
+        #[strategy(arb())] auth_path_address: BFieldElement,
+    ) {
+        let merkle_tree = leaved_merkle_tree.merkle_tree;
+        let leaf_index = leaved_merkle_tree.revealed_indices[0];
+        let auth_path = merkle_tree.authentication_structure(&[leaf_index]).unwrap();
+
+        let mut ram = HashMap::new();
+        {
+            let mut auth_path_address = auth_path_address;
+            for &Digest(digest) in &auth_path {
+                for element in digest {
+                    ram.insert(auth_path_address, element);
+                    auth_path_address.increment();
+                }
+            }
+        }
+        let non_determinism = NonDeterminism::default().with_ram(ram);
+
+        let old_leaf = Digest::from(leaved_merkle_tree.leaves[leaf_index]);
+        let old_root = merkle_tree.root();
+        let mut public_input = vec![
+            auth_path_address,
+            u64::try_from(leaf_index).unwrap().into(),
+            u64::try_from(merkle_tree.height()).unwrap().into(),
+        ];
+        public_input.extend(old_leaf.reversed().values());
+        public_input.extend(old_root.reversed().values());
+        public_input.extend(new_leaf.reversed().values());
+        let public_input = PublicInput::new(public_input);
+
+        let program = MERKLE_TREE_UPDATE.clone();
+        let_assert!(Ok(output) = program.run(public_input, non_determinism));
+        let new_root = Digest(output.try_into().unwrap());
+
+        let inclusion_proof = MerkleTreeInclusionProof::<Tip5> {
+            tree_height: merkle_tree.height(),
+            indexed_leaves: vec![(leaf_index, new_leaf)],
+            authentication_structure: auth_path,
+            _hasher: std::marker::PhantomData,
+        };
+        assert!(inclusion_proof.verify(new_root));
+    }
+
+    #[proptest]
     fn run_tvm_get_collinear_y(
         #[strategy(arb())] p0: (BFieldElement, BFieldElement),
         #[strategy(arb())]
