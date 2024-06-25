@@ -1860,6 +1860,13 @@ pub(crate) mod tests {
         triton_constraints_evaluate_to_zero(test_program_for_merkle_step_mem_left_sibling())
     }
 
+    #[proptest(cases = 20)]
+    fn constraints_evaluate_to_zero_on_property_based_test_program_for_merkle_tree_update(
+        program: ProgramForMerkleTreeUpdate,
+    ) {
+        triton_constraints_evaluate_to_zero(program.assemble())
+    }
+
     #[test]
     fn constraints_evaluate_to_zero_on_program_for_assert_vector() {
         triton_constraints_evaluate_to_zero(test_program_for_assert_vector())

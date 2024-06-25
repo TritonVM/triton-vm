@@ -13,6 +13,7 @@ lazy_static! {
         calculate_new_mmr_peaks_from_append_with_safe_lists();
     pub static ref MERKLE_TREE_AUTHENTICATION_PATH_VERIFY: Program =
         merkle_tree_authentication_path_verify();
+    pub static ref MERKLE_TREE_UPDATE: Program = merkle_tree_update();
 }
 
 fn fibonacci_sequence() -> Program {
@@ -172,6 +173,47 @@ fn merkle_tree_authentication_path_verify() -> Program {
         assert_vector                               // actually compare to root of tree
         return
     )
+}
+
+/// Triton program to verifiably change a Merkle tree's leaf. That is:
+/// 1. verify that the supplied `old_leaf` is indeed a leaf in the Merkle tree
+///     defined by the `merkle_root` and the `tree_height`,
+/// 2. update the leaf at the specified `leaf_index` with the `new_leaf`, and
+/// 3. return the new Merkle root.
+///
+/// The authentication path for the leaf to update has to be supplied via RAM.
+///
+/// - input:
+///     - RAM address of leaf's authentication path
+///     - leaf index to update
+///     - Merkle tree's height
+///     - old leaf
+///     - (current) merkle root
+///     - new leaf
+/// - output:
+///     - new root
+fn merkle_tree_update() -> Program {
+    triton_program! {
+        read_io 3           // _ *ap leaf_index tree_height
+        push 2 pow add      // _ *ap node_index
+        dup 1 push 1 dup 2  // _ *ap node_index *ap 1 node_index
+        read_io 5           // _ *ap node_index *ap 1 node_index [old_leaf; 5]
+        call compute_root   // _ *ap node_index *ap' 1 1 [root; 5]
+        read_io 5           // _ *ap node_index *ap' 1 1 [root; 5] [presumed_root; 5]
+        assert_vector       // _ *ap node_index *ap' 1 1 [root; 5]
+        pop 5 pop 3         // _ *ap node_index
+        push 1 swap 1       // _ *ap 1 node_index
+        read_io 5           // _ *ap 1 node_index [new_leaf; 5]
+        call compute_root   // _ *ap' 1 1 [new_root; 5]
+        write_io 5          // _ *ap' 1 1
+        pop 3 halt          // _
+
+        // BEFORE: _ *ap                     1 node_index [leaf; 5]
+        // AFTER:  _ (*ap + 5 * tree_height) 1          1 [root; 5]
+        compute_root:
+            merkle_step_mem
+            recurse_or_return
+    }
 }
 
 fn verify_sudoku() -> Program {

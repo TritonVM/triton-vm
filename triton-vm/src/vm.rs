@@ -1473,6 +1473,80 @@ pub(crate) mod tests {
         ProgramAndInput::new(program).with_non_determinism(non_determinism)
     }
 
+    /// Test helper for property-testing instruction `merkle_step_mem` in a
+    /// meaningful context, namely, using [`MERKLE_TREE_UPDATE`].
+    #[derive(Debug, Clone, test_strategy::Arbitrary)]
+    pub struct ProgramForMerkleTreeUpdate {
+        leaved_merkle_tree: LeavedMerkleTreeTestData,
+
+        #[strategy(0..#leaved_merkle_tree.revealed_indices.len())]
+        #[map(|i| #leaved_merkle_tree.revealed_indices[i])]
+        revealed_leafs_index: usize,
+
+        #[strategy(arb())]
+        new_leaf: Digest,
+
+        #[strategy(arb())]
+        auth_path_address: BFieldElement,
+    }
+
+    impl ProgramForMerkleTreeUpdate {
+        pub fn assemble(self) -> ProgramAndInput {
+            let auth_path = self.authentication_path();
+            let leaf_index = self.revealed_leafs_index;
+            let merkle_tree = self.leaved_merkle_tree.merkle_tree;
+
+            let ram = (self.auth_path_address.value()..)
+                .map(BFieldElement::new)
+                .zip(auth_path.iter().flat_map(|digest| digest.values()))
+                .collect::<HashMap<_, _>>();
+            let non_determinism = NonDeterminism::default().with_ram(ram);
+
+            let old_leaf = Digest::from(self.leaved_merkle_tree.leaves[leaf_index]);
+            let old_root = merkle_tree.root();
+            let mut public_input = vec![
+                self.auth_path_address,
+                u64::try_from(leaf_index).unwrap().into(),
+                u64::try_from(merkle_tree.height()).unwrap().into(),
+            ];
+            public_input.extend(old_leaf.reversed().values());
+            public_input.extend(old_root.reversed().values());
+            public_input.extend(self.new_leaf.reversed().values());
+
+            ProgramAndInput::new(MERKLE_TREE_UPDATE.clone())
+                .with_input(public_input)
+                .with_non_determinism(non_determinism)
+        }
+
+        /// Checks whether the [`ProgramAndInput`] generated through [`Self::assemble`]
+        /// can
+        /// - be executed without crashing the VM, and
+        /// - produces the correct output.
+        #[must_use]
+        pub fn is_integral(&self) -> bool {
+            let inclusion_proof = MerkleTreeInclusionProof::<Tip5> {
+                tree_height: self.leaved_merkle_tree.merkle_tree.height(),
+                indexed_leafs: vec![(self.revealed_leafs_index, self.new_leaf)],
+                authentication_structure: self.authentication_path(),
+                _hasher: std::marker::PhantomData,
+            };
+
+            let new_root = self.clone().assemble().run().unwrap();
+            let new_root = Digest(new_root.try_into().unwrap());
+            inclusion_proof.verify(new_root)
+        }
+
+        /// The authentication path for the leaf at `self.revealed_leafs_index`.
+        /// Independent of the leaf's value, _i.e._, is up to date even one the leaf
+        /// has been updated.
+        fn authentication_path(&self) -> Vec<Digest> {
+            self.leaved_merkle_tree
+                .merkle_tree
+                .authentication_structure(&[self.revealed_leafs_index])
+                .unwrap()
+        }
+    }
+
     pub(crate) fn test_program_for_assert_vector() -> ProgramAndInput {
         ProgramAndInput::new(triton_program!(
             push 1 push 2 push 3 push 4 push 5
@@ -2436,6 +2510,24 @@ pub(crate) mod tests {
 
         let program = MERKLE_TREE_AUTHENTICATION_PATH_VERIFY.clone();
         assert!(let Ok(_) = program.run(public_input.into(), non_determinism));
+    }
+
+    #[proptest]
+    fn merkle_tree_updating_program_correctly_updates_a_merkle_tree(
+        program_for_merkle_tree_update: ProgramForMerkleTreeUpdate,
+    ) {
+        prop_assert!(program_for_merkle_tree_update.is_integral());
+    }
+
+    #[proptest(cases = 10)]
+    fn prove_verify_merkle_tree_update(
+        program_for_merkle_tree_update: ProgramForMerkleTreeUpdate,
+        #[strategy(1_usize..=4)] log_2_fri_expansion_factor: usize,
+    ) {
+        prove_and_verify(
+            program_for_merkle_tree_update.assemble(),
+            log_2_fri_expansion_factor,
+        );
     }
 
     #[proptest]
