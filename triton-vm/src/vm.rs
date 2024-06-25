@@ -169,6 +169,16 @@ impl VMState {
                 hvs[..5].copy_from_slice(&divined_digest.values());
                 hvs[5] = bfe!(node_index % 2);
             }
+            MerkleStepMem => {
+                let node_index = self.op_stack[ST5].value();
+                let ram_pointer = self.op_stack[ST7];
+                hvs[0] = ram_read(ram_pointer);
+                hvs[1] = ram_read(ram_pointer + bfe!(1));
+                hvs[2] = ram_read(ram_pointer + bfe!(2));
+                hvs[3] = ram_read(ram_pointer + bfe!(3));
+                hvs[4] = ram_read(ram_pointer + bfe!(4));
+                hvs[5] = bfe!(node_index % 2);
+            }
             Split => {
                 let top_of_stack = self.op_stack[ST0].value();
                 let lo = bfe!(top_of_stack & 0xffff_ffff);
@@ -262,7 +272,8 @@ impl VMState {
             XbMul => self.xb_mul()?,
             WriteIo(n) => self.write_io(n)?,
             ReadIo(n) => self.read_io(n)?,
-            MerkleStep => self.merkle_step()?,
+            MerkleStep => self.merkle_step_non_determinism()?,
+            MerkleStepMem => self.merkle_step_mem()?,
             XxDotStep => self.xx_dot_step()?,
             XbDotStep => self.xb_dot_step()?,
         };
@@ -806,22 +817,45 @@ impl VMState {
         Ok(vec![])
     }
 
-    fn merkle_step(&mut self) -> Result<Vec<CoProcessorCall>> {
-        let node_index = self.op_stack[ST5];
-        let node_index = u32::try_from(node_index).map_err(|_| FailedU32Conversion(node_index))?;
+    fn merkle_step_non_determinism(&mut self) -> Result<Vec<CoProcessorCall>> {
+        self.op_stack.is_u32(ST5)?;
+        let sibling_digest = self.pop_secret_digest()?;
+        self.merkle_step(sibling_digest)
+    }
+
+    fn merkle_step_mem(&mut self) -> Result<Vec<CoProcessorCall>> {
+        self.op_stack.is_u32(ST5)?;
+        self.start_recording_ram_calls();
+        let mut ram_pointer = self.op_stack[ST7];
+        let Digest(mut sibling_digest) = Digest::default();
+        for digest_element in &mut sibling_digest {
+            *digest_element = self.ram_read(ram_pointer);
+            ram_pointer.increment();
+        }
+        self.op_stack[ST7] = ram_pointer;
+
+        let mut co_processor_calls = self.merkle_step(sibling_digest)?;
+        co_processor_calls.extend(self.stop_recording_ram_calls());
+        Ok(co_processor_calls)
+    }
+
+    fn merkle_step(
+        &mut self,
+        sibling_digest: [BFieldElement; tip5::DIGEST_LENGTH],
+    ) -> Result<Vec<CoProcessorCall>> {
+        let node_index = self.op_stack.get_u32(ST5)?;
         let parent_node_index = node_index / 2;
 
-        let sibling_digest = self.pop_secret_digest()?;
         let accumulator_digest = self.op_stack.pop_multiple::<{ tip5::DIGEST_LENGTH }>()?;
         let (left_sibling, right_sibling) = match node_index % 2 {
-            0 => (&accumulator_digest, &sibling_digest),
-            1 => (&sibling_digest, &accumulator_digest),
+            0 => (accumulator_digest, sibling_digest),
+            1 => (sibling_digest, accumulator_digest),
             _ => unreachable!(),
         };
 
         let mut tip5 = Tip5::new(Domain::FixedLength);
-        tip5.state[..tip5::DIGEST_LENGTH].copy_from_slice(left_sibling);
-        tip5.state[tip5::DIGEST_LENGTH..2 * tip5::DIGEST_LENGTH].copy_from_slice(right_sibling);
+        tip5.state[..tip5::DIGEST_LENGTH].copy_from_slice(&left_sibling);
+        tip5.state[tip5::DIGEST_LENGTH..2 * tip5::DIGEST_LENGTH].copy_from_slice(&right_sibling);
         let tip5_trace = tip5.trace();
         let accumulator_digest = &tip5_trace.last().unwrap()[0..tip5::DIGEST_LENGTH];
 
@@ -2332,6 +2366,53 @@ pub(crate) mod tests {
     }
 
     #[proptest]
+    fn triton_assembly_merkle_tree_update(
+        leaved_merkle_tree: LeavedMerkleTreeTestData,
+        #[strategy(arb())] new_leaf: Digest,
+        #[strategy(arb())] auth_path_address: BFieldElement,
+    ) {
+        let merkle_tree = leaved_merkle_tree.merkle_tree;
+        let leaf_index = leaved_merkle_tree.revealed_indices[0];
+        let auth_path = merkle_tree.authentication_structure(&[leaf_index]).unwrap();
+
+        let mut ram = HashMap::new();
+        {
+            let mut auth_path_address = auth_path_address;
+            for &Digest(digest) in &auth_path {
+                for element in digest {
+                    ram.insert(auth_path_address, element);
+                    auth_path_address.increment();
+                }
+            }
+        }
+        let non_determinism = NonDeterminism::default().with_ram(ram);
+
+        let old_leaf = Digest::from(leaved_merkle_tree.leaves[leaf_index]);
+        let old_root = merkle_tree.root();
+        let mut public_input = vec![
+            auth_path_address,
+            u64::try_from(leaf_index).unwrap().into(),
+            u64::try_from(merkle_tree.height()).unwrap().into(),
+        ];
+        public_input.extend(old_leaf.reversed().values());
+        public_input.extend(old_root.reversed().values());
+        public_input.extend(new_leaf.reversed().values());
+        let public_input = PublicInput::new(public_input);
+
+        let program = MERKLE_TREE_UPDATE.clone();
+        let_assert!(Ok(output) = program.run(public_input, non_determinism));
+        let new_root = Digest(output.try_into().unwrap());
+
+        let inclusion_proof = MerkleTreeInclusionProof::<Tip5> {
+            tree_height: merkle_tree.height(),
+            indexed_leaves: vec![(leaf_index, new_leaf)],
+            authentication_structure: auth_path,
+            _hasher: std::marker::PhantomData,
+        };
+        assert!(inclusion_proof.verify(new_root));
+    }
+
+    #[proptest]
     fn run_tvm_get_collinear_y(
         #[strategy(arb())] p0: (BFieldElement, BFieldElement),
         #[strategy(arb())]
@@ -2555,6 +2636,14 @@ pub(crate) mod tests {
     fn instruction_merkle_step_does_not_change_vm_state_when_crashing_vm_no_nd_digests() {
         let valid_u32 = u64::from(u32::MAX);
         let program = triton_program! { push {valid_u32} swap 5 merkle_step halt };
+        let program_and_input = ProgramAndInput::new(program);
+        instruction_does_not_change_vm_state_when_crashing_vm(program_and_input, 2);
+    }
+
+    #[test]
+    fn instruction_merkle_step_mem_does_not_change_vm_state_when_crashing_vm_invalid_node_index() {
+        let non_u32 = u64::from(u32::MAX) + 1;
+        let program = triton_program! { push {non_u32} swap 5 merkle_step_mem halt };
         let program_and_input = ProgramAndInput::new(program);
         instruction_does_not_change_vm_state_when_crashing_vm(program_and_input, 2);
     }
