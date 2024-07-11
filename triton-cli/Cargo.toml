@@ -1,0 +1,18 @@
+[package]
+name = "triton-cli"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+readme.workspace = true
+documentation.workspace = true
+
+[dependencies]
+clap.workspace = true
+# use a crates.io version to avoid needing to generate constraints
+triton-vm = "0.41.0"
+
+[lints]
+workspace = true
