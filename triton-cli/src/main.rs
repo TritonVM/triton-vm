@@ -40,9 +40,6 @@ fn digest_to_str(d: Digest) -> String {
     let mut hex = String::new();
     d.0.iter()
         .for_each(|v| write!(&mut hex, "{:16x}", u64::from(v)).unwrap());
-
-    // .map(|v| format!("{:16x}", u64::from(v)))
-    // .collect::<String>();
     format!("0x{hex}")
 }
 
@@ -88,7 +85,9 @@ fn prove(asm: &String, out: &String) {
 
     let public_input = PublicInput::from([]);
     let non_determinism = NonDeterminism::default();
+    println!("proving...");
     let data = triton_vm::prove_program(&program, public_input, non_determinism).unwrap();
+    println!("success!");
 
     // write the proof in an arbitrary binary format
     //
@@ -111,6 +110,7 @@ fn prove(asm: &String, out: &String) {
     // public_outputs: u64[public_output_length]
     // proof: u64[proof_length]
     write_proof(data, out).expect("failed to write proof to file");
+    println!("proof written to: {out}");
 }
 
 fn read_proof(proof_path: &String) -> Result<(Stark, Claim, Proof)> {
