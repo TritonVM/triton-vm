@@ -20,6 +20,12 @@ enum Commands {
     Prove {
         asm_path: String,
         proof_out_path: String,
+        #[clap(long)]
+        /// Public inputs to pass to the proof, comma separated
+        public_inputs: Option<String>,
+        #[clap(long)]
+        /// Private inputs to pass to the proof, comma separated
+        private_inputs: Option<String>,
     },
     #[command(arg_required_else_help = true)]
     Verify { proof_path: String },
@@ -31,7 +37,9 @@ fn main() {
         Commands::Prove {
             asm_path,
             proof_out_path,
-        } => prove(&asm_path, &proof_out_path),
+            public_inputs,
+            private_inputs,
+        } => prove(&asm_path, &proof_out_path, public_inputs, private_inputs),
         Commands::Verify { proof_path } => verify(&proof_path),
     }
 }
@@ -76,15 +84,29 @@ fn verify(proof_path: &String) {
     }
 }
 
-fn prove(asm: &String, out: &String) {
+fn parse_inputs(inputs: Option<String>) -> Vec<BFieldElement> {
+    inputs
+        .unwrap_or_default()
+        .split(',')
+        .filter(|v| !v.is_empty())
+        .map(|v| BFieldElement::from(v.parse::<u64>().unwrap()))
+        .collect::<Vec<BFieldElement>>()
+}
+
+fn prove(
+    asm: &String,
+    out: &String,
+    public_inputs: Option<String>,
+    private_inputs: Option<String>,
+) {
     // TODO: test paths before making the proof?
     let asm = fs::read_to_string(asm).expect("unable to read file");
     let instructions = triton_vm::parser::parse(&asm).unwrap();
     let l_instructions = triton_vm::parser::to_labelled_instructions(instructions.as_slice());
     let program = triton_vm::program::Program::new(l_instructions.as_slice());
 
-    let public_input = PublicInput::from([]);
-    let non_determinism = NonDeterminism::default();
+    let public_input = PublicInput::from(parse_inputs(public_inputs));
+    let non_determinism = NonDeterminism::from(parse_inputs(private_inputs));
     println!("proving...");
     let data = triton_vm::prove_program(&program, public_input, non_determinism).unwrap();
     println!("success!");
