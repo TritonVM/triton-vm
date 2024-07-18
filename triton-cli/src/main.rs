@@ -7,19 +7,12 @@ use std::io::Write;
 
 use clap::command;
 use clap::Parser;
-use clap::Subcommand;
 use triton_vm::prelude::*;
 
 #[derive(Debug, Parser)]
 #[command(name = "triton-cli")]
 #[command(about = "Compile, prove and verify Triton assembly programs", long_about = None)]
-struct Cli {
-    #[command(subcommand)]
-    command: Commands,
-}
-
-#[derive(Debug, Subcommand)]
-enum Commands {
+enum CliArg {
     #[command(arg_required_else_help = true)]
     Prove {
         asm_path: String,
@@ -36,15 +29,15 @@ enum Commands {
 }
 
 fn main() {
-    let args = Cli::parse();
-    match args.command {
-        Commands::Prove {
+    let arg = CliArg::parse();
+    match arg {
+        CliArg::Prove {
             asm_path,
             proof_out_path,
             public_inputs,
             private_inputs,
         } => prove(&asm_path, &proof_out_path, public_inputs, private_inputs),
-        Commands::Verify { proof_path } => verify(&proof_path),
+        CliArg::Verify { proof_path } => verify(&proof_path),
     }
 }
 
