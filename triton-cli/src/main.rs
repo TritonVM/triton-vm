@@ -2,9 +2,10 @@ use std::fmt::Write as _;
 use std::fs;
 use std::io::BufReader;
 use std::io::Read;
-use std::io::Result;
 use std::io::Write;
 
+use anyhow::Context;
+use anyhow::Result;
 use clap::command;
 use clap::Parser;
 use triton_vm::prelude::*;
@@ -28,7 +29,7 @@ enum CliArg {
     Verify { proof_path: String },
 }
 
-fn main() {
+fn main() -> Result<()> {
     let arg = CliArg::parse();
     match arg {
         CliArg::Prove {
@@ -36,9 +37,10 @@ fn main() {
             proof_out_path,
             public_inputs,
             private_inputs,
-        } => prove(&asm_path, &proof_out_path, public_inputs, private_inputs),
+        } => prove(&asm_path, &proof_out_path, public_inputs, private_inputs)?,
         CliArg::Verify { proof_path } => verify(&proof_path),
     }
+    Ok(())
 }
 
 fn digest_to_str(d: Digest) -> String {
@@ -54,7 +56,7 @@ fn verify(proof_path: &str) {
     let verdict = triton_vm::verify(stark, &claim, &proof);
     if !verdict {
         println!("Proof is not valid!");
-        return;
+        std::process::exit(1);
     }
     println!("proof is valid!");
     println!("program digest: {}", digest_to_str(claim.program_digest));
@@ -90,21 +92,25 @@ fn parse_inputs(inputs: Option<String>) -> Vec<BFieldElement> {
         .collect()
 }
 
-fn prove(asm: &str, out: &str, public_inputs: Option<String>, private_inputs: Option<String>) {
+fn prove(
+    asm_filepath: &str,
+    out: &str,
+    public_inputs: Option<String>,
+    private_inputs: Option<String>,
+) -> Result<()> {
     if std::path::Path::new(out).exists() {
         println!("output file already exists: {out}");
         std::process::exit(1);
     }
-    // TODO: test paths before making the proof?
-    let asm = fs::read_to_string(asm).expect("unable to read file");
-    let instructions = triton_vm::parser::parse(&asm).unwrap();
-    let l_instructions = triton_vm::parser::to_labelled_instructions(instructions.as_slice());
-    let program = triton_vm::program::Program::new(l_instructions.as_slice());
+    let asm = fs::read_to_string(asm_filepath)
+        .with_context(|| "Failed to read Triton assembly from file")?;
+    let program = triton_program!({ asm });
 
     let public_input = PublicInput::from(parse_inputs(public_inputs));
     let non_determinism = NonDeterminism::from(parse_inputs(private_inputs));
     println!("proving...");
-    let data = triton_vm::prove_program(&program, public_input, non_determinism).unwrap();
+    let data = triton_vm::prove_program(&program, public_input, non_determinism)
+        .with_context(|| "Triton VM errored during program execution")?;
     println!("success!");
 
     // write the proof in an arbitrary binary format
@@ -127,48 +133,49 @@ fn prove(asm: &str, out: &str, public_inputs: Option<String>, private_inputs: Op
     // public_inputs: u64[public_input_length]
     // public_outputs: u64[public_output_length]
     // proof: u64[proof_length]
-    write_proof(data, out).expect("failed to write proof to file");
+    write_proof(data, out).with_context(|| "Failed to write proof to file")?;
     println!("proof written to: {out}");
+    Ok(())
 }
 
 fn read_proof(proof_path: &str) -> Result<(Stark, Claim, Proof)> {
     let file = fs::File::open(proof_path)?;
     let mut reader = BufReader::new(file);
-    let version = read_u8(&mut reader);
+    let version = read_u8(&mut reader)?;
     assert!(version == 1, "wrong proof file version!");
     let stark = Stark {
-        security_level: read_usize(&mut reader),
-        fri_expansion_factor: read_usize(&mut reader),
-        num_trace_randomizers: read_usize(&mut reader),
-        num_collinearity_checks: read_usize(&mut reader),
-        num_combination_codeword_checks: read_usize(&mut reader),
+        security_level: read_usize(&mut reader)?,
+        fri_expansion_factor: read_usize(&mut reader)?,
+        num_trace_randomizers: read_usize(&mut reader)?,
+        num_collinearity_checks: read_usize(&mut reader)?,
+        num_combination_codeword_checks: read_usize(&mut reader)?,
     };
-    let digest_len = read_u8(&mut reader);
-    let input_len = read_u64(&mut reader);
-    let output_len = read_u64(&mut reader);
-    let proof_len = read_u64(&mut reader);
+    let digest_len = read_u8(&mut reader)?;
+    let input_len = read_u64(&mut reader)?;
+    let output_len = read_u64(&mut reader)?;
+    let proof_len = read_u64(&mut reader)?;
     let mut d = Digest::default();
     assert_eq!(
         d.0.len(),
         usize::from(digest_len),
         "digest length mismatch!"
     );
-    read_u64_vec(&mut reader, digest_len.into())
+    read_u64_vec(&mut reader, digest_len.into())?
         .iter()
         .enumerate()
         .for_each(|(i, x)| d.0[i] = BFieldElement::new(*x));
     let claim = Claim {
         program_digest: d,
-        input: read_u64_vec(&mut reader, input_len)
+        input: read_u64_vec(&mut reader, input_len)?
             .iter()
             .map(|v| BFieldElement::new(*v))
             .collect(),
-        output: read_u64_vec(&mut reader, output_len)
+        output: read_u64_vec(&mut reader, output_len)?
             .iter()
             .map(|v| BFieldElement::new(*v))
             .collect(),
     };
-    let proof_vec = read_u64_vec(&mut reader, proof_len)
+    let proof_vec = read_u64_vec(&mut reader, proof_len)?
         .iter()
         .map(|v| BFieldElement::new(*v))
         .collect();
@@ -178,34 +185,18 @@ fn read_proof(proof_path: &str) -> Result<(Stark, Claim, Proof)> {
 fn write_proof(data: (Stark, Claim, Proof), out: &str) -> Result<()> {
     let (stark, claim, proof) = data;
     let mut file = fs::File::create_new(out)?;
-    file.write_all(&[1]).unwrap(); // write the version
-                                   // fails on systems with usize > 64 bits
-    file.write_all(&u64::try_from(stark.security_level).unwrap().to_le_bytes())?;
-    file.write_all(
-        &u64::try_from(stark.fri_expansion_factor)
-            .unwrap()
-            .to_le_bytes(),
-    )?;
-    file.write_all(
-        &u64::try_from(stark.num_trace_randomizers)
-            .unwrap()
-            .to_le_bytes(),
-    )?;
-    file.write_all(
-        &u64::try_from(stark.num_collinearity_checks)
-            .unwrap()
-            .to_le_bytes(),
-    )?;
-    file.write_all(
-        &u64::try_from(stark.num_combination_codeword_checks)
-            .unwrap()
-            .to_le_bytes(),
-    )?;
+    file.write_all(&[1])?; // write the version
+                           // fails on systems with usize > 64 bits
+    file.write_all(&u64::try_from(stark.security_level)?.to_le_bytes())?;
+    file.write_all(&u64::try_from(stark.fri_expansion_factor)?.to_le_bytes())?;
+    file.write_all(&u64::try_from(stark.num_trace_randomizers)?.to_le_bytes())?;
+    file.write_all(&u64::try_from(stark.num_collinearity_checks)?.to_le_bytes())?;
+    file.write_all(&u64::try_from(stark.num_combination_codeword_checks)?.to_le_bytes())?;
 
-    file.write_all(&[u8::try_from(claim.program_digest.0.len()).unwrap()])?;
-    file.write_all(&u64::try_from(claim.input.len()).unwrap().to_le_bytes())?;
-    file.write_all(&u64::try_from(claim.output.len()).unwrap().to_le_bytes())?;
-    file.write_all(&u64::try_from(proof.0.len()).unwrap().to_le_bytes())?;
+    file.write_all(&[u8::try_from(claim.program_digest.0.len())?])?;
+    file.write_all(&u64::try_from(claim.input.len())?.to_le_bytes())?;
+    file.write_all(&u64::try_from(claim.output.len())?.to_le_bytes())?;
+    file.write_all(&u64::try_from(proof.0.len())?.to_le_bytes())?;
     for v in claim.program_digest.0 {
         file.write_all(&u64::from(&v).to_le_bytes())?;
     }
@@ -222,35 +213,36 @@ fn write_proof(data: (Stark, Claim, Proof), out: &str) -> Result<()> {
     Ok(())
 }
 
-fn read_u64_vec<T: Read>(reader: &mut T, len: u64) -> Vec<u64> {
+fn read_u64_vec<T: Read>(reader: &mut T, len: u64) -> Result<Vec<u64>> {
     let mut out = Vec::new();
     for _ in 0..len {
-        out.push(read_u64(reader));
+        out.push(read_u64(reader)?);
     }
-    out
+    Ok(out)
 }
 
-fn read_u64<T: Read>(reader: &mut T) -> u64 {
+fn read_u64<T: Read>(reader: &mut T) -> Result<u64> {
     let mut bytes = [0; 8];
-    reader.read_exact(&mut bytes).unwrap();
-    u64::from_le_bytes(bytes)
+    reader.read_exact(&mut bytes)?;
+    Ok(u64::from_le_bytes(bytes))
 }
 
-fn read_u8<T: Read>(reader: &mut T) -> u8 {
+fn read_u8<T: Read>(reader: &mut T) -> Result<u8> {
     let mut bytes = [0];
-    reader.read_exact(&mut bytes).unwrap();
-    bytes[0]
+    reader.read_exact(&mut bytes)?;
+    Ok(bytes[0])
 }
 
-fn read_usize<T: Read>(reader: &mut T) -> usize {
-    usize::try_from(read_u64(reader)).unwrap()
+fn read_usize<T: Read>(reader: &mut T) -> Result<usize> {
+    Ok(usize::try_from(read_u64(reader)?)?)
 }
 
 #[test]
-fn test_serialization() {
+fn test_serialization() -> Result<()> {
     let asm = "./test-vectors/simple.tasm".to_string();
     let proof = "./test-vectors/simple.proof".to_string();
-    prove(&asm, &proof, None, None);
+    prove(&asm, &proof, None, None)?;
     verify(&proof);
     fs::remove_file(proof).unwrap();
+    Ok(())
 }

@@ -10,6 +10,7 @@ readme.workspace = true
 documentation.workspace = true
 
 [dependencies]
+anyhow.workspace = true
 clap.workspace = true
 # use a crates.io version to avoid needing to generate constraints
 triton-vm = "0.41.0"
