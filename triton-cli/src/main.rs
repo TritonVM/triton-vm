@@ -48,7 +48,7 @@ fn digest_to_str(d: Digest) -> String {
     format!("0x{hex}")
 }
 
-fn verify(proof_path: &String) {
+fn verify(proof_path: &str) {
     let (stark, claim, proof) = read_proof(proof_path).expect("Failed to load proof");
 
     let verdict = triton_vm::verify(stark, &claim, &proof);
@@ -70,14 +70,14 @@ fn verify(proof_path: &String) {
         println!("(none)");
     }
     for v in claim.input {
-        println!("{}", u64::from(v));
+        println!("{v}");
     }
     println!("public outputs:");
     if claim.output.is_empty() {
         println!("(none)");
     }
     for v in claim.output {
-        println!("{}", u64::from(v));
+        println!("{v}");
     }
 }
 
@@ -90,12 +90,7 @@ fn parse_inputs(inputs: Option<String>) -> Vec<BFieldElement> {
         .collect::<Vec<BFieldElement>>()
 }
 
-fn prove(
-    asm: &String,
-    out: &String,
-    public_inputs: Option<String>,
-    private_inputs: Option<String>,
-) {
+fn prove(asm: &str, out: &str, public_inputs: Option<String>, private_inputs: Option<String>) {
     // TODO: test paths before making the proof?
     let asm = fs::read_to_string(asm).expect("unable to read file");
     let instructions = triton_vm::parser::parse(&asm).unwrap();
@@ -132,7 +127,7 @@ fn prove(
     println!("proof written to: {out}");
 }
 
-fn read_proof(proof_path: &String) -> Result<(Stark, Claim, Proof)> {
+fn read_proof(proof_path: &str) -> Result<(Stark, Claim, Proof)> {
     let file = fs::File::open(proof_path)?;
     let mut reader = BufReader::new(file);
     let version = read_u8(&mut reader);
@@ -176,7 +171,7 @@ fn read_proof(proof_path: &String) -> Result<(Stark, Claim, Proof)> {
     Ok((stark, claim, Proof(proof_vec)))
 }
 
-fn write_proof(data: (Stark, Claim, Proof), out: &String) -> Result<()> {
+fn write_proof(data: (Stark, Claim, Proof), out: &str) -> Result<()> {
     let (stark, claim, proof) = data;
     let mut file = fs::File::create_new(out)?;
     file.write_all(&[1]).unwrap(); // write the version
@@ -251,6 +246,7 @@ fn read_usize<T: Read>(reader: &mut T) -> usize {
 fn test_serialization() {
     let asm = "./test-vectors/simple.tasm".to_string();
     let proof = "./test-vectors/simple.proof".to_string();
-    prove(&asm, &proof);
+    prove(&asm, &proof, None, None);
     verify(&proof);
+    fs::remove_file(proof).unwrap();
 }
