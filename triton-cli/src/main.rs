@@ -10,7 +10,7 @@ use clap::Parser;
 use clap::Subcommand;
 use triton_vm::prelude::*;
 
-#[derive(Debug, Parser)] // requires `derive` feature
+#[derive(Debug, Parser)]
 #[command(name = "triton-cli")]
 #[command(about = "Compile, prove and verify tasm programs", long_about = None)]
 struct Cli {
