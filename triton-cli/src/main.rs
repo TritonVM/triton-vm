@@ -118,7 +118,7 @@ fn prove(asm: &str, out: &str, public_inputs: Option<String>, private_inputs: Op
     // public_output_length: u64
     // proof_length: u64
     //
-    // program_digest: u64[digest_length]
+    // program_digest: [u64; digest_length]
     //
     // public_inputs: u64[public_input_length]
     // public_outputs: u64[public_output_length]
