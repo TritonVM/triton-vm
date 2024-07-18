@@ -87,7 +87,7 @@ fn parse_inputs(inputs: Option<String>) -> Vec<BFieldElement> {
         .split(',')
         .filter(|v| !v.is_empty())
         .map(|v| BFieldElement::from(v.parse::<u64>().unwrap()))
-        .collect::<Vec<BFieldElement>>()
+        .collect()
 }
 
 fn prove(asm: &str, out: &str, public_inputs: Option<String>, private_inputs: Option<String>) {
