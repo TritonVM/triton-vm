@@ -1,9 +1,13 @@
-use clap::{command, Parser, Subcommand};
 use std::fmt::Write as _;
-use std::{
-    fs,
-    io::{BufReader, Read, Result, Write},
-};
+use std::fs;
+use std::io::BufReader;
+use std::io::Read;
+use std::io::Result;
+use std::io::Write;
+
+use clap::command;
+use clap::Parser;
+use clap::Subcommand;
 use triton_vm::prelude::*;
 
 #[derive(Debug, Parser)] // requires `derive` feature
