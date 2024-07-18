@@ -86,7 +86,7 @@ fn parse_inputs(inputs: Option<String>) -> Vec<BFieldElement> {
         .unwrap_or_default()
         .split(',')
         .filter(|v| !v.is_empty())
-        .map(|v| BFieldElement::from(v.parse::<u64>().unwrap()))
+        .map(|v| v.parse().unwrap())
         .collect()
 }
 
