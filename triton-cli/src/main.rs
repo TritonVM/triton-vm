@@ -91,6 +91,10 @@ fn parse_inputs(inputs: Option<String>) -> Vec<BFieldElement> {
 }
 
 fn prove(asm: &str, out: &str, public_inputs: Option<String>, private_inputs: Option<String>) {
+    if std::path::Path::new(out).exists() {
+        println!("output file already exists: {out}");
+        std::process::exit(1);
+    }
     // TODO: test paths before making the proof?
     let asm = fs::read_to_string(asm).expect("unable to read file");
     let instructions = triton_vm::parser::parse(&asm).unwrap();
