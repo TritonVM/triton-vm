@@ -11,7 +11,9 @@ documentation.workspace = true
 
 [dependencies]
 anyhow.workspace = true
+bincode = "1.3.0"
 clap.workspace = true
+serde.workspace = true
 # use a crates.io version to avoid needing to generate constraints
 triton-vm = "0.41.0"
 
