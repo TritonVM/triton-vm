@@ -1311,6 +1311,7 @@ impl LinearCombinationWeights {
 #[cfg(test)]
 pub(crate) mod tests {
     use std::collections::HashMap;
+    use std::collections::HashSet;
 
     use assert2::assert;
     use assert2::check;
@@ -1323,6 +1324,7 @@ pub(crate) mod tests {
     use rand::thread_rng;
     use rand::Rng;
     use strum::EnumCount;
+    use strum::IntoEnumIterator;
     use test_strategy::proptest;
     use twenty_first::math::other::random_elements;
     use twenty_first::prelude::x_field_element::EXTENSION_DEGREE;
@@ -3163,5 +3165,171 @@ pub(crate) mod tests {
             NUM_BASE_COLUMNS + NUM_EXT_COLUMNS,
             weights.base_and_ext().len()
         );
+    }
+
+    /// A program that executes every instruction in the instruction set.
+    fn program_executing_every_instruction() -> ProgramAndInput {
+        let program = triton_program! {
+            // merkle_step using the following fake tree:
+            //     ─── 1 ───
+            //    ╱         ╲
+            //   2           3
+            //  ╱  ╲
+            // 4    5
+            push 5                  // _ 5 (node index for `merkle_step`)
+            read_io 5               // _ 5 [digest; 5]
+            merkle_step             // _ 2 [digest; 5]
+            merkle_step             // _ 1 [digest; 5]
+            divine 5                // _ 1 [digest; 5] [digest; 5]
+            assert_vector           // _ 1 [digest; 5]
+            pop 5                   // _ 1
+            assert                  // _
+
+            // dot_step
+            push 0 push 0 push 0    // _ [accumulator; 3]
+            push 500                // _ [accumulator; 3] addr_0
+            push 800                // _ [accumulator; 3] addr_0 addr_1
+            xb_dot_step             // _ [accumulator; 3] addr_0 addr_1
+            xx_dot_step             // _ [accumulator; 3] addr_0 addr_1
+            write_io 5              // _
+
+            // extension field arithmetic
+            push 1 push 2 push 3    // _ [xfe_0; 3]
+            push 7 push 8 push 9    // _ [xfe_0; 3] [xfe_1; 3]
+            dup 3 dup 3 dup 3       // _ [xfe_0; 3] [xfe_1; 3] [xfe_2; 3]
+            xx_add                  // _ [xfe_0; 3] [xfe_1; 3]
+            dup 4 dup 4 dup 4       // _ [xfe_0; 3] [xfe_1; 3] [xfe_2; 3]
+            xx_mul                  // _ [xfe_0; 3] [xfe_1; 3]
+            x_invert                // _ [xfe_0; 3] [xfe_1; 3]
+            push 42                 // _ [xfe_0; 3] [xfe_1; 3] 42
+            xb_mul                  // _ [xfe_0; 3] [xfe_1; 3]
+
+            // base field arithmetic
+            add mul                 // _ bfe_0 bfe_1 bfe_2 bfe_3
+            invert                  // _ bfe_0 bfe_1 bfe_2 bfe_3
+            mul add                 // _ bfe_0 bfe_1
+            eq                      // _ bfe_0
+            pop 1                   // _
+
+            // bit-wise arithmetic
+            push 38                 // _ 38
+            push 2                  // _ 38 2
+            pow                     // _ big_num
+            push 1337               // _ big_num 1337
+            add                     // _ big_num
+            split                   // _ u32_0 u32_1
+            dup 1 dup 1 lt pop 1    // _ u32_0 u32_1
+            dup 1 and               // _ u32_0 u32_1
+            dup 1 xor               // _ u32_0 u32_1
+            push 9                  // _ u32_0 u32_1 9
+            log_2_floor pop 1       // _ u32_0 u32_1
+            div_mod                 // _ u32_0 u32_1
+            pop_count               // _ u32_0 u32_1
+            pop 2                   // _
+
+            // Sponge
+            sponge_init             // _
+            divine 5 divine 5       // _ [stuff; 10]
+            sponge_absorb           // _
+            push 42                 // _ 42
+            sponge_absorb_mem       // _ 52
+            pop 1                   // _
+            sponge_squeeze          // _ [stuff; 10]
+            hash                    // _ [stuff; 5]
+            pop 5                   // _
+
+            // RAM
+            push 300                // _ address
+            read_mem 5              // _ [stuff; 5] address
+            swap 6                  // _ [stuff; 5] address
+            write_mem 5             // _ address
+            pop 1                   // _
+
+            // control flow
+            push 0 skiz nop         // _
+            push 1 skiz nop         // _
+            push 0 push 2           // _ 0 2
+            push 0 push 0 push 0    // _ 0 2 [0; 3]
+            push 0 push 0           // _ 0 2 [0; 5]
+            call rec_or_ret         // _ 0 0 [0; 5]
+            pop 5 pop 2             // _
+            push 2                  // _ 2
+            call rec                // _ 0
+            pop 1
+            halt
+
+            // BEFORE: _ n
+            // AFTER:  _ 0
+            rec:
+                dup 0 push 0 eq     // _ n n==0
+                skiz return         // _ n
+                push -1 add         // _ n-1
+                recurse             // _ n-1
+
+            // BEFORE: _ m n [_; 5]
+            // AFTER:  _ m m [_; 5]
+            rec_or_ret:
+                swap 5              // _ m [_; 5] n
+                push -1 add         // _ m [_; 5] n-1
+                swap 5              // _ m n-1 [_; 5]
+                recurse_or_return   // _ m n-1 [_; 5]
+        };
+
+        let tree_node_5 = Digest::new(bfe_array![5; 5]);
+        let tree_node_4 = Digest::new(bfe_array![4; 5]);
+        let tree_node_3 = Digest::new(bfe_array![3; 5]);
+        let tree_node_2 = Tip5::hash_pair(tree_node_4, tree_node_5);
+        let tree_node_1 = Tip5::hash_pair(tree_node_2, tree_node_3);
+
+        let public_input = tree_node_5.values().to_vec();
+
+        let secret_input = [tree_node_1.reversed().values().to_vec(), bfe_vec![1337; 10]].concat();
+        let dummy_ram = (0..)
+            .zip(42..)
+            .take(1_000)
+            .map(|(l, r)| (bfe!(l), bfe!(r)))
+            .collect::<HashMap<_, _>>();
+        let non_determinism = NonDeterminism::new(secret_input)
+            .with_digests([tree_node_4, tree_node_3])
+            .with_ram(dummy_ram);
+
+        ProgramAndInput::new(program)
+            .with_input(public_input)
+            .with_non_determinism(non_determinism)
+    }
+
+    #[test]
+    fn program_executing_every_instruction_actually_executes_every_instruction() {
+        let ProgramAndInput {
+            program,
+            public_input,
+            non_determinism,
+        } = program_executing_every_instruction();
+        let (aet, _) = program
+            .trace_execution(public_input, non_determinism)
+            .unwrap();
+        let opcodes_of_all_executed_instructions = aet
+            .processor_trace
+            .column(ProcessorBaseTableColumn::CI.base_table_index())
+            .iter()
+            .copied()
+            .collect::<HashSet<_>>();
+
+        let all_opcodes = Instruction::iter()
+            .map(|instruction| instruction.opcode_b())
+            .collect::<HashSet<_>>();
+
+        all_opcodes
+            .difference(&opcodes_of_all_executed_instructions)
+            .for_each(|&opcode| {
+                let instruction = Instruction::try_from(opcode).unwrap();
+                eprintln!("Instruction {instruction} was not executed.");
+            });
+        assert_eq!(all_opcodes, opcodes_of_all_executed_instructions);
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_program_executing_every_instruction() {
+        triton_constraints_evaluate_to_zero(program_executing_every_instruction());
     }
 }
