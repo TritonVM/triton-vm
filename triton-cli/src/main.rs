@@ -144,17 +144,17 @@ fn read_proof(proof_path: &str) -> Result<(Stark, Claim, Proof)> {
             serialized_proof.num_combination_codeword_checks,
         )?,
     };
-    let mut digest = Digest::default();
     assert_eq!(
         DIGEST_LENGTH,
         serialized_proof.program_digest.len(),
         "digest length mismatch!"
     );
-    serialized_proof
+    let digest_elements = serialized_proof
         .program_digest
         .iter()
-        .enumerate()
-        .for_each(|(i, x)| digest.0[i] = BFieldElement::new(*x));
+        .map(|v| BFieldElement::from(*v))
+        .collect::<Vec<BFieldElement>>();
+    let digest = Digest::try_from(&digest_elements[0..DIGEST_LENGTH])?;
     let claim = Claim {
         program_digest: digest,
         input: serialized_proof
@@ -185,7 +185,12 @@ fn write_proof(data: (Stark, Claim, Proof), out: &str) -> Result<()> {
         num_trace_randomizers: u64::try_from(stark.num_trace_randomizers)?,
         num_colinearity_checks: u64::try_from(stark.num_collinearity_checks)?,
         num_combination_codeword_checks: u64::try_from(stark.num_combination_codeword_checks)?,
-        program_digest: claim.program_digest.0.iter().map(u64::from).collect(),
+        program_digest: claim
+            .program_digest
+            .values()
+            .iter()
+            .map(u64::from)
+            .collect(),
         public_inputs: claim.input.iter().map(u64::from).collect(),
         public_outputs: claim.output.iter().map(u64::from).collect(),
         proof: proof.0.iter().map(u64::from).collect(),
