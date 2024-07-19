@@ -22,3 +22,4 @@ pop 1
 push 5
 swap 3
 halt
+
