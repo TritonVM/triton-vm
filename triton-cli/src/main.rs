@@ -54,10 +54,10 @@ fn digest_to_str(d: Digest) -> String {
 fn verify(proof_path: &str) -> Result<()> {
     let (stark, claim, proof) = read_proof(proof_path).expect("Failed to load proof");
 
-    let verdict = triton_vm::verify(stark, &claim, &proof);
-    if !verdict {
-        anyhow::bail!("Proof is not valid!");
-    }
+    stark
+        .verify(&claim, &proof, &mut None)
+        .with_context(|| "Stark proof verification failed")?;
+
     println!("proof is valid!");
     println!("program digest: {}", digest_to_str(claim.program_digest));
     println!("=================");
@@ -203,7 +203,7 @@ fn test_serialization() -> Result<()> {
     let asm = "./test-vectors/simple.tasm".to_string();
     let proof = "./test-vectors/simple.proof".to_string();
     prove(&asm, &proof, None, None)?;
-    verify(&proof);
-    fs::remove_file(proof).unwrap();
+    verify(&proof)?;
+    fs::remove_file(proof)?;
     Ok(())
 }
