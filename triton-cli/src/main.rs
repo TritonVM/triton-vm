@@ -179,8 +179,7 @@ fn read_proof(proof_path: &str) -> Result<(Stark, Claim, Proof)> {
     Ok((stark, claim, Proof(proof_vec)))
 }
 
-fn write_proof(data: (Stark, Claim, Proof), out: &str) -> Result<()> {
-    let (stark, claim, proof) = data;
+fn write_proof((stark, claim, proof): (Stark, Claim, Proof), out: &str) -> Result<()> {
     let serialized = SerializedProof {
         version: 1,
         security_level: u64::try_from(stark.security_level)?,
