@@ -135,6 +135,9 @@ struct SerializedProof {
 fn read_proof(proof_path: &str) -> Result<(Stark, Claim, Proof)> {
     let proof_bytes = fs::read(proof_path)?;
     let serialized_proof: SerializedProof = bincode::deserialize(&proof_bytes)?;
+    if serialized_proof.version != 1 {
+        anyhow::bail!("wrong proof file version!");
+    }
     let stark = Stark {
         security_level: usize::try_from(serialized_proof.security_level)?,
         fri_expansion_factor: usize::try_from(serialized_proof.fri_expansion_factor)?,
