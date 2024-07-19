@@ -1,6 +1,5 @@
 use std::fmt::Write as _;
 use std::fs;
-use std::io::Read;
 use std::io::Write;
 
 use anyhow::Context;
@@ -9,6 +8,7 @@ use clap::command;
 use clap::Parser;
 use serde::Deserialize;
 use serde::Serialize;
+use tip5::DIGEST_LENGTH;
 use triton_vm::prelude::*;
 
 #[derive(Debug, Parser)]
@@ -146,7 +146,7 @@ fn read_proof(proof_path: &str) -> Result<(Stark, Claim, Proof)> {
     };
     let mut digest = Digest::default();
     assert_eq!(
-        digest.0.len(),
+        DIGEST_LENGTH,
         serialized_proof.program_digest.len(),
         "digest length mismatch!"
     );
