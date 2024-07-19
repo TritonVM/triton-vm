@@ -198,9 +198,9 @@ fn write_proof(data: (Stark, Claim, Proof), out: &str) -> Result<()> {
 
 #[test]
 fn test_serialization() -> Result<()> {
-    let asm = "./test-vectors/simple.tasm".to_string();
-    let proof = "./test-vectors/simple.proof".to_string();
-    prove(&asm, &proof, None, None)?;
+    let asm = "./test-vectors/simple.tasm";
+    let proof = "./test-vectors/simple.proof";
+    prove(asm, proof, None, None)?;
     verify(&proof)?;
     fs::remove_file(proof)?;
     Ok(())
