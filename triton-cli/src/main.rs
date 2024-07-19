@@ -133,9 +133,7 @@ struct SerializedProof {
 }
 
 fn read_proof(proof_path: &str) -> Result<(Stark, Claim, Proof)> {
-    let mut file = fs::File::open(proof_path)?;
-    let mut proof_bytes: Vec<u8> = Vec::new();
-    file.read_to_end(&mut proof_bytes)?;
+    let proof_bytes = fs::read(proof_path)?;
     let serialized_proof: SerializedProof = bincode::deserialize(&proof_bytes)?;
     let stark = Stark {
         security_level: usize::try_from(serialized_proof.security_level)?,
