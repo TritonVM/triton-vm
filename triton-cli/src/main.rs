@@ -39,7 +39,7 @@ fn main() -> Result<()> {
             public_inputs,
             private_inputs,
         } => prove(&asm_path, &proof_out_path, public_inputs, private_inputs)?,
-        CliArg::Verify { proof_path } => verify(&proof_path),
+        CliArg::Verify { proof_path } => verify(&proof_path)?,
     }
     Ok(())
 }
@@ -51,13 +51,12 @@ fn digest_to_str(d: Digest) -> String {
     format!("0x{hex}")
 }
 
-fn verify(proof_path: &str) {
+fn verify(proof_path: &str) -> Result<()> {
     let (stark, claim, proof) = read_proof(proof_path).expect("Failed to load proof");
 
     let verdict = triton_vm::verify(stark, &claim, &proof);
     if !verdict {
-        println!("Proof is not valid!");
-        std::process::exit(1);
+        anyhow::bail!("Proof is not valid!");
     }
     println!("proof is valid!");
     println!("program digest: {}", digest_to_str(claim.program_digest));
@@ -82,6 +81,7 @@ fn verify(proof_path: &str) {
     for v in claim.output {
         println!("{v}");
     }
+    Ok(())
 }
 
 fn parse_inputs(inputs: Option<String>) -> Vec<BFieldElement> {
@@ -100,8 +100,7 @@ fn prove(
     private_inputs: Option<String>,
 ) -> Result<()> {
     if std::path::Path::new(out).exists() {
-        println!("output file already exists: {out}");
-        std::process::exit(1);
+        anyhow::bail!("output file already exists: {out}");
     }
     let asm = fs::read_to_string(asm_filepath)
         .with_context(|| "Failed to read Triton assembly from file")?;
