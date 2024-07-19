@@ -118,7 +118,7 @@ fn prove(
     Ok(())
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 struct SerializedProof {
     version: u8,
     security_level: u64,
