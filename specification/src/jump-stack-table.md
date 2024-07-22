@@ -164,16 +164,17 @@ None.
 1. The jump stack pointer `jsp` increases by 1, *or*
 1. (`jsp` does not change and `jso` does not change and `jsd` does not change and the cycle counter `clk` increases by 1), *or*
 1. (`jsp` does not change and `jso` does not change and `jsd` does not change and the current instruction `ci` is `call`), *or*
-1. (`jsp` does not change and the current instruction `ci` is `return`).
+1. (`jsp` does not change and the current instruction `ci` is `return`), *or*
+1. (`jsp` does not change and the current instruction `ci` is `recurse_or_return`).
 1. The running product for the permutation argument `rppa` absorbs the next row  with respect to challenges 🍇, 🍅, 🍌, 🍏, and 🍐 and indeterminate 🧴.
 1. If the jump stack pointer `jsp` does not change, then the logarithmic derivative for the clock jump difference lookup `ClockJumpDifferenceLookupClientLogDerivative` accumulates a factor `(clk' - clk)` relative to indeterminate 🪞.
   Otherwise, it remains the same.
 
 Written as Disjunctive Normal Form, the same constraints can be expressed as:
 1. The jump stack pointer `jsp` increases by 1 or the jump stack pointer `jsp` does not change
-1. The jump stack pointer `jsp` increases by 1 or the jump stack origin `jso` does not change or current instruction `ci` is `return`
-1. The jump stack pointer `jsp` increases by 1 or the jump stack destination `jsd` does not change or current instruction `ci` is `return`
-1. The jump stack pointer `jsp` increases by 1 or the cycle count `clk` increases by 1 or current instruction `ci` is `call` or current instruction `ci` is `return`
+1. The jump stack pointer `jsp` increases by 1 or the jump stack origin `jso` does not change or current instruction `ci` is `return` or `recurse_or_return`
+1. The jump stack pointer `jsp` increases by 1 or the jump stack destination `jsd` does not change or current instruction `ci` is `return` or `recurse_or_return`
+1. The jump stack pointer `jsp` increases by 1 or the cycle count `clk` increases by 1 or current instruction `ci` is `call` or current instruction `ci` is `return` or `recurse_or_return`
 1. `rppa' - rppa·(🧴 - 🍇·clk' - 🍅·ci' - 🍌·jsp' - 🍏·jso' - 🍐·jsd')`
 1. - the `jsp` changes or the logarithmic derivative accumulates a summand, and
    - the `jsp` does not change or the logarithmic derivative does not change.

@@ -82,6 +82,8 @@ impl ExtJumpStackTable {
         let call_opcode =
             circuit_builder.b_constant(Instruction::Call(BFieldElement::default()).opcode_b());
         let return_opcode = circuit_builder.b_constant(Instruction::Return.opcode_b());
+        let recurse_or_return_opcode =
+            circuit_builder.b_constant(Instruction::RecurseOrReturn.opcode_b());
 
         let clk = circuit_builder.input(CurrentBaseRow(CLK.master_base_table_index()));
         let ci = circuit_builder.input(CurrentBaseRow(CI.master_base_table_index()));
@@ -106,50 +108,30 @@ impl ExtJumpStackTable {
             ClockJumpDifferenceLookupClientLogDerivative.master_ext_table_index(),
         ));
 
-        // 1. The jump stack pointer jsp increases by 1
-        //      or the jump stack pointer jsp does not change
         let jsp_inc_or_stays =
             (jsp_next.clone() - jsp.clone() - one()) * (jsp_next.clone() - jsp.clone());
 
-        // 2. The jump stack pointer jsp increases by 1
-        //      or current instruction ci is return
-        //      or the jump stack origin jso does not change
-        let jsp_inc_by_one_or_ci_is_return =
-            (jsp_next.clone() - jsp.clone() - one()) * (ci.clone() - return_opcode.clone());
-        let jsp_inc_or_jso_stays_or_ci_is_ret =
-            jsp_inc_by_one_or_ci_is_return.clone() * (jso_next.clone() - jso);
+        let jsp_inc_by_one_or_ci_can_return = (jsp_next.clone() - jsp.clone() - one())
+            * (ci.clone() - return_opcode)
+            * (ci.clone() - recurse_or_return_opcode);
+        let jsp_inc_or_jso_stays_or_ci_can_ret =
+            jsp_inc_by_one_or_ci_can_return.clone() * (jso_next.clone() - jso);
 
-        // 3. The jump stack pointer jsp increases by 1
-        //      or current instruction ci is return
-        //      or the jump stack destination jsd does not change
-        let jsp_inc_or_jsd_stays_or_ci_ret =
-            jsp_inc_by_one_or_ci_is_return * (jsd_next.clone() - jsd);
+        let jsp_inc_or_jsd_stays_or_ci_can_ret =
+            jsp_inc_by_one_or_ci_can_return.clone() * (jsd_next.clone() - jsd);
 
-        // 4. The jump stack pointer jsp increases by 1
-        //      or the cycle count clk increases by 1
-        //      or current instruction ci is call
-        //      or current instruction ci is return
-        let jsp_inc_or_clk_inc_or_ci_call_or_ci_ret = (jsp_next.clone() - jsp.clone() - one())
+        let jsp_inc_or_clk_inc_or_ci_call_or_ci_can_ret = jsp_inc_by_one_or_ci_can_return
             * (clk_next.clone() - clk.clone() - one())
-            * (ci.clone() - call_opcode)
-            * (ci - return_opcode);
+            * (ci.clone() - call_opcode);
 
-        // The running product for the permutation argument `rppa` accumulates one row in each
-        // row, relative to weights `a`, `b`, `c`, `d`, `e`, and indeterminate `α`.
         let compressed_row = circuit_builder.challenge(JumpStackClkWeight) * clk_next.clone()
             + circuit_builder.challenge(JumpStackCiWeight) * ci_next
             + circuit_builder.challenge(JumpStackJspWeight) * jsp_next.clone()
             + circuit_builder.challenge(JumpStackJsoWeight) * jso_next
             + circuit_builder.challenge(JumpStackJsdWeight) * jsd_next;
-
         let rppa_updates_correctly =
             rppa_next - rppa * (circuit_builder.challenge(JumpStackIndeterminate) - compressed_row);
 
-        // The running sum of the logarithmic derivative for the clock jump difference Lookup
-        // Argument accumulates a summand of `clk_diff` if and only if the `jsp` does not change.
-        // Expressed differently:
-        // - the `jsp` changes or the log derivative accumulates a summand, and
-        // - the `jsp` does not change or the log derivative does not change.
         let log_derivative_remains =
             clock_jump_diff_log_derivative_next.clone() - clock_jump_diff_log_derivative.clone();
         let clk_diff = clk_next - clk;
@@ -163,9 +145,9 @@ impl ExtJumpStackTable {
 
         vec![
             jsp_inc_or_stays,
-            jsp_inc_or_jso_stays_or_ci_is_ret,
-            jsp_inc_or_jsd_stays_or_ci_ret,
-            jsp_inc_or_clk_inc_or_ci_call_or_ci_ret,
+            jsp_inc_or_jso_stays_or_ci_can_ret,
+            jsp_inc_or_jsd_stays_or_ci_can_ret,
+            jsp_inc_or_clk_inc_or_ci_call_or_ci_can_ret,
             rppa_updates_correctly,
             log_derivative_updates_correctly,
         ]
