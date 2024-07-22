@@ -1141,9 +1141,10 @@ pub(crate) mod tests {
     use twenty_first::math::other::random_elements;
 
     use crate::example_programs::*;
-    use crate::shared_tests::prove_with_low_security_level;
+    use crate::shared_tests::prove_and_verify;
     use crate::shared_tests::LeavedMerkleTreeTestData;
     use crate::shared_tests::ProgramAndInput;
+    use crate::shared_tests::DEFAULT_LOG2_FRI_EXPANSION_FACTOR_FOR_TESTS;
     use crate::triton_asm;
     use crate::triton_instr;
     use crate::triton_program;
@@ -2380,10 +2381,14 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn run_tvm_fibonacci_tvm() {
-        let program = FIBONACCI_SEQUENCE.clone();
-        let_assert!(Ok(standard_out) = program.run(bfe_array![7].into(), [].into()));
-        assert!(bfe!(21) == standard_out[0]);
+    fn run_tvm_fibonacci() {
+        for (input, expected_output) in [(0, 1), (7, 21), (11, 144)] {
+            let program_and_input =
+                ProgramAndInput::new(FIBONACCI_SEQUENCE.clone()).with_input(bfe_array![input]);
+            let_assert!(Ok(output) = program_and_input.run());
+            let_assert!(&[output] = &output[..]);
+            assert!(expected_output == output.value(), "input was: {input}");
+        }
     }
 
     #[test]
@@ -2413,49 +2418,46 @@ pub(crate) mod tests {
 
         let mut initial_ram = HashMap::new();
         initial_ram.insert(bfe!(0), bfe!(42));
+        let non_determinism = NonDeterminism::default().with_ram(initial_ram);
+        let program_and_input = ProgramAndInput::new(program).with_non_determinism(non_determinism);
 
-        let public_input = PublicInput::default();
-        let secret_input = NonDeterminism::default().with_ram(initial_ram);
+        let_assert!(Ok(public_output) = program_and_input.run());
+        let_assert!(&[output] = &public_output[..]);
+        assert!(42 == output.value());
 
-        let_assert!(Ok(public_output) = program.run(public_input.clone(), secret_input.clone()));
-        assert!(42 == public_output[0].value());
-
-        let log2_fri_expansion_factor = 2;
-        prove_with_low_security_level(
-            &program,
-            public_input,
-            secret_input,
-            log2_fri_expansion_factor,
+        prove_and_verify(
+            program_and_input,
+            DEFAULT_LOG2_FRI_EXPANSION_FACTOR_FOR_TESTS,
         );
     }
 
     #[proptest(cases = 10)]
     fn read_non_deterministically_initialized_ram_at_random_address(
-        #[strategy(arb())] address: BFieldElement,
+        #[strategy(arb())] uninitialized_address: BFieldElement,
+        #[strategy(arb())]
+        #[filter(#uninitialized_address != #initialized_address)]
+        initialized_address: BFieldElement,
         #[strategy(arb())] value: BFieldElement,
     ) {
         let program = triton_program!(
-            read_mem 1 swap 1 write_io 1
-            push {address} read_mem 1 pop 1 write_io 1
+            push {uninitialized_address} read_mem 1 pop 1 write_io 1
+            push {initialized_address} read_mem 1 pop 1 write_io 1
             halt
         );
 
         let mut initial_ram = HashMap::new();
-        initial_ram.insert(address, value);
+        initial_ram.insert(initialized_address, value);
+        let non_determinism = NonDeterminism::default().with_ram(initial_ram);
+        let program_and_input = ProgramAndInput::new(program).with_non_determinism(non_determinism);
 
-        let public_input = PublicInput::default();
-        let secret_input = NonDeterminism::default().with_ram(initial_ram);
+        let_assert!(Ok(public_output) = program_and_input.run());
+        let_assert!(&[uninit_value, init_value] = &public_output[..]);
+        assert!(0 == uninit_value.value());
+        assert!(value == init_value);
 
-        let_assert!(Ok(public_output) = program.run(public_input.clone(), secret_input.clone()));
-        assert!(0 == public_output[0].value());
-        assert!(value == public_output[1]);
-
-        let log2_fri_expansion_factor = 2;
-        prove_with_low_security_level(
-            &program,
-            public_input,
-            secret_input,
-            log2_fri_expansion_factor,
+        prove_and_verify(
+            program_and_input,
+            DEFAULT_LOG2_FRI_EXPANSION_FACTOR_FOR_TESTS,
         );
     }
 

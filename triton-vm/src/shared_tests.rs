@@ -1,3 +1,5 @@
+use assert2::assert;
+use assert2::let_assert;
 use num_traits::Zero;
 use proptest::collection::vec;
 use proptest::prelude::*;
@@ -8,14 +10,16 @@ use twenty_first::prelude::*;
 use crate::aet::AlgebraicExecutionTrace;
 use crate::error::VMError;
 use crate::fri::AuthenticationStructure;
+use crate::profiler::profiler;
 use crate::program::Program;
 use crate::proof::Claim;
-use crate::proof::Proof;
 use crate::proof_item::FriResponse;
 use crate::stark::Stark;
 use crate::table::master_table::MasterBaseTable;
 use crate::NonDeterminism;
 use crate::PublicInput;
+
+pub(crate) const DEFAULT_LOG2_FRI_EXPANSION_FACTOR_FOR_TESTS: usize = 2;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Arbitrary)]
 #[filter(!#self.0.is_zero())]
@@ -42,7 +46,7 @@ prop_compose! {
             false => vec![],
         };
         let polynomial = Polynomial::new(coefficients);
-        assert_eq!(degree, polynomial.degree() as i64);
+        assert!(degree== polynomial.degree() as i64);
         polynomial
     }
 }
@@ -92,25 +96,47 @@ impl LeavedMerkleTreeTestData {
     }
 }
 
-/// Convenience function to prove correct execution of the given program.
-pub(crate) fn prove_with_low_security_level(
-    program: &Program,
-    public_input: PublicInput,
-    non_determinism: NonDeterminism,
-    log2_fri_expansion_factor: usize,
-) -> (Stark, Claim, Proof) {
+/// Prove correct execution of the supplied program, then verify said proof.
+/// Also print the [`VMPerformanceProfile`][profile] for both proving and
+/// verification to standard out.
+///
+/// [profile]: crate::profiler::VMPerformanceProfile
+pub(crate) fn prove_and_verify(
+    program_and_input: ProgramAndInput,
+    log_2_fri_expansion_factor: usize,
+) {
+    let ProgramAndInput {
+        program,
+        public_input,
+        non_determinism,
+    } = program_and_input;
+
+    profiler!(start "Pre-flight");
     let (aet, public_output) = program
-        .trace_execution(public_input.clone(), non_determinism)
+        .trace_execution(public_input.clone(), non_determinism.clone())
         .unwrap();
 
-    let claim = Claim::about_program(&aet.program)
-        .with_input(public_input.individual_tokens)
+    let claim = Claim::about_program(&program)
+        .with_input(public_input.individual_tokens.clone())
         .with_output(public_output);
+    let stark = low_security_stark(log_2_fri_expansion_factor);
+    profiler!(stop "Pre-flight");
 
-    let stark = low_security_stark(log2_fri_expansion_factor);
+    profiler!(start "Prove");
     let proof = stark.prove(&claim, &aet).unwrap();
+    profiler!(stop "Prove");
 
-    (stark, claim, proof)
+    profiler!(start "Verify");
+    assert!(let Ok(()) = stark.verify(&claim, &proof));
+    profiler!(stop "Verify");
+    let profile = crate::profiler::finish();
+
+    let_assert!(Ok(padded_height) = proof.padded_height());
+    let fri = stark.derive_fri(padded_height).unwrap();
+    let profile = profile
+        .with_padded_height(padded_height)
+        .with_fri_domain_len(fri.domain.length);
+    println!("{profile}");
 }
 
 pub(crate) fn low_security_stark(log_expansion_factor: usize) -> Stark {
@@ -135,6 +161,7 @@ pub(crate) fn construct_master_base_table(
 }
 
 /// Program and associated inputs.
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub(crate) struct ProgramAndInput {
     pub program: Program,
     pub public_input: PublicInput,

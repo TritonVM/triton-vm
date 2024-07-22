@@ -93,8 +93,8 @@ mod tests {
 
     use super::*;
 
-    // For testing purposes only.
     impl Default for Claim {
+        /// For testing purposes only.
         fn default() -> Self {
             Self::new(Digest::default())
         }
@@ -115,7 +115,7 @@ mod tests {
     }
 
     #[proptest(cases = 10)]
-    fn proof_with_no_log_2_padded_height_gives_err(#[strategy(arb())] root: Digest) {
+    fn proof_with_no_padded_height_gives_err(#[strategy(arb())] root: Digest) {
         let mut proof_stream = ProofStream::new();
         proof_stream.enqueue(ProofItem::MerkleRoot(root));
         let proof: Proof = proof_stream.into();
@@ -124,7 +124,7 @@ mod tests {
     }
 
     #[proptest(cases = 10)]
-    fn proof_with_multiple_log_2_padded_height_gives_err(#[strategy(arb())] root: Digest) {
+    fn proof_with_multiple_padded_height_gives_err(#[strategy(arb())] root: Digest) {
         let mut proof_stream = ProofStream::new();
         proof_stream.enqueue(ProofItem::Log2PaddedHeight(8));
         proof_stream.enqueue(ProofItem::MerkleRoot(root));

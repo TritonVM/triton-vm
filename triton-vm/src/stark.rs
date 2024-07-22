@@ -1339,11 +1339,8 @@ pub(crate) mod tests {
     use crate::program::NonDeterminism;
     use crate::shared_tests::*;
     use crate::table::cascade_table::ExtCascadeTable;
-    use crate::table::challenges::ChallengeId::LookupTablePublicTerminal;
     use crate::table::challenges::ChallengeId::StandardInputIndeterminate;
-    use crate::table::challenges::ChallengeId::StandardInputTerminal;
     use crate::table::challenges::ChallengeId::StandardOutputIndeterminate;
-    use crate::table::challenges::ChallengeId::StandardOutputTerminal;
     use crate::table::constraint_circuit::ConstraintCircuitBuilder;
     use crate::table::cross_table_argument::CrossTableArg;
     use crate::table::cross_table_argument::EvalArg;
@@ -1361,7 +1358,6 @@ pub(crate) mod tests {
     use crate::table::program_table::ExtProgramTable;
     use crate::table::ram_table;
     use crate::table::ram_table::ExtRamTable;
-    use crate::table::table_column::LookupExtTableColumn::PublicEvaluationArgument;
     use crate::table::table_column::MasterBaseTableColumn;
     use crate::table::table_column::MasterExtTableColumn;
     use crate::table::table_column::OpStackBaseTableColumn;
@@ -1380,8 +1376,6 @@ pub(crate) mod tests {
     use crate::PublicInput;
 
     use super::*;
-
-    const DEFAULT_LOG2_FRI_EXPANSION_FACTOR_FOR_TESTS: usize = 2;
 
     pub(crate) fn master_base_table_for_low_security_level(
         program_and_input: ProgramAndInput,
@@ -1643,295 +1637,6 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn check_grand_cross_table_argument_for_test_program_for_halt() {
-        check_grand_cross_table_argument(test_program_for_halt())
-    }
-
-    #[test]
-    fn check_grand_cross_table_argument_for_test_program_hash_nop_nop_lt() {
-        check_grand_cross_table_argument(test_program_hash_nop_nop_lt())
-    }
-
-    #[test]
-    fn check_grand_cross_table_argument_for_test_program_for_push_pop_dup_swap_nop() {
-        check_grand_cross_table_argument(test_program_for_push_pop_dup_swap_nop())
-    }
-
-    #[test]
-    fn check_grand_cross_table_argument_for_test_program_for_divine() {
-        check_grand_cross_table_argument(test_program_for_divine())
-    }
-
-    #[test]
-    fn check_grand_cross_table_argument_for_test_program_for_skiz() {
-        check_grand_cross_table_argument(test_program_for_skiz())
-    }
-
-    #[test]
-    fn check_grand_cross_table_argument_for_test_program_for_call_recurse_return() {
-        check_grand_cross_table_argument(test_program_for_call_recurse_return())
-    }
-
-    #[test]
-    fn check_grand_cross_table_argument_for_test_program_for_recurse_or_return() {
-        check_grand_cross_table_argument(test_program_for_recurse_or_return())
-    }
-
-    #[proptest]
-    fn check_grand_cross_table_argument_for_property_based_test_program_for_recurse_or_return(
-        program: ProgramForRecurseOrReturn,
-    ) {
-        check_grand_cross_table_argument(program.assemble())
-    }
-
-    #[test]
-    fn check_grand_cross_table_argument_for_test_program_for_write_mem_read_mem() {
-        check_grand_cross_table_argument(test_program_for_write_mem_read_mem())
-    }
-
-    #[test]
-    fn check_grand_cross_table_argument_for_test_program_for_hash() {
-        check_grand_cross_table_argument(test_program_for_hash())
-    }
-
-    #[test]
-    fn check_grand_cross_table_argument_for_test_program_for_merkle_step_right_sibling() {
-        check_grand_cross_table_argument(test_program_for_merkle_step_right_sibling())
-    }
-
-    #[test]
-    fn check_grand_cross_table_argument_for_test_program_for_merkle_step_left_sibling() {
-        check_grand_cross_table_argument(test_program_for_merkle_step_left_sibling())
-    }
-
-    #[test]
-    fn check_grand_cross_table_argument_for_test_program_for_assert_vector() {
-        check_grand_cross_table_argument(test_program_for_assert_vector())
-    }
-
-    #[test]
-    fn check_grand_cross_table_argument_for_test_program_for_sponge_instructions() {
-        check_grand_cross_table_argument(test_program_for_sponge_instructions())
-    }
-
-    #[test]
-    fn check_grand_cross_table_argument_for_test_program_for_sponge_instructions_2() {
-        check_grand_cross_table_argument(test_program_for_sponge_instructions_2())
-    }
-
-    #[test]
-    fn check_grand_cross_table_argument_for_test_program_for_many_sponge_instructions() {
-        check_grand_cross_table_argument(test_program_for_many_sponge_instructions())
-    }
-
-    #[test]
-    fn check_grand_cross_table_argument_for_test_program_for_add_mul_invert() {
-        check_grand_cross_table_argument(test_program_for_add_mul_invert())
-    }
-
-    #[test]
-    fn check_grand_cross_table_argument_for_test_program_for_eq() {
-        check_grand_cross_table_argument(test_program_for_eq())
-    }
-
-    #[test]
-    fn check_grand_cross_table_argument_for_test_program_for_lsb() {
-        check_grand_cross_table_argument(test_program_for_lsb())
-    }
-
-    #[test]
-    fn check_grand_cross_table_argument_for_test_program_for_split() {
-        check_grand_cross_table_argument(test_program_for_split())
-    }
-
-    #[test]
-    fn check_grand_cross_table_argument_for_test_program_0_lt_0() {
-        check_grand_cross_table_argument(test_program_0_lt_0())
-    }
-
-    #[test]
-    fn check_grand_cross_table_argument_for_test_program_for_lt() {
-        check_grand_cross_table_argument(test_program_for_lt())
-    }
-
-    #[test]
-    fn check_grand_cross_table_argument_for_test_program_for_and() {
-        check_grand_cross_table_argument(test_program_for_and())
-    }
-
-    #[test]
-    fn check_grand_cross_table_argument_for_test_program_for_xor() {
-        check_grand_cross_table_argument(test_program_for_xor())
-    }
-
-    #[test]
-    fn check_grand_cross_table_argument_for_test_program_for_log2floor() {
-        check_grand_cross_table_argument(test_program_for_log2floor())
-    }
-
-    #[test]
-    fn check_grand_cross_table_argument_for_test_program_for_pow() {
-        check_grand_cross_table_argument(test_program_for_pow())
-    }
-
-    #[test]
-    fn check_grand_cross_table_argument_for_test_program_for_div_mod() {
-        check_grand_cross_table_argument(test_program_for_div_mod())
-    }
-
-    #[test]
-    fn check_grand_cross_table_argument_for_test_program_for_starting_with_pop_count() {
-        check_grand_cross_table_argument(test_program_for_starting_with_pop_count())
-    }
-
-    #[test]
-    fn check_grand_cross_table_argument_for_test_program_for_pop_count() {
-        check_grand_cross_table_argument(test_program_for_pop_count())
-    }
-
-    #[test]
-    fn check_grand_cross_table_argument_for_test_program_for_xx_add() {
-        check_grand_cross_table_argument(test_program_for_xx_add())
-    }
-
-    #[test]
-    fn check_grand_cross_table_argument_for_test_program_for_xx_mul() {
-        check_grand_cross_table_argument(test_program_for_xx_mul())
-    }
-
-    #[test]
-    fn check_grand_cross_table_argument_for_test_program_for_x_invert() {
-        check_grand_cross_table_argument(test_program_for_x_invert())
-    }
-
-    #[test]
-    fn check_grand_cross_table_argument_for_test_program_for_xb_mul() {
-        check_grand_cross_table_argument(test_program_for_xb_mul())
-    }
-
-    #[test]
-    fn check_grand_cross_table_argument_for_test_program_for_read_io_write_io() {
-        check_grand_cross_table_argument(test_program_for_read_io_write_io())
-    }
-
-    #[test]
-    fn check_grand_cross_table_argument_for_property_based_test_program_for_assert_vector() {
-        check_grand_cross_table_argument(property_based_test_program_for_assert_vector())
-    }
-
-    #[proptest(cases = 10)]
-    fn check_grand_cross_table_argument_for_property_based_test_program_for_sponge_instructions(
-        program: ProgramForSpongeAndHashInstructions,
-    ) {
-        check_grand_cross_table_argument(program.assemble())
-    }
-
-    #[test]
-    fn check_grand_cross_table_argument_for_property_based_test_program_for_split() {
-        check_grand_cross_table_argument(property_based_test_program_for_split())
-    }
-
-    #[test]
-    fn check_grand_cross_table_argument_for_property_based_test_program_for_eq() {
-        check_grand_cross_table_argument(property_based_test_program_for_eq())
-    }
-
-    #[test]
-    fn check_grand_cross_table_argument_for_property_based_test_program_for_lsb() {
-        check_grand_cross_table_argument(property_based_test_program_for_lsb())
-    }
-
-    #[test]
-    fn check_grand_cross_table_argument_for_property_based_test_program_for_lt() {
-        check_grand_cross_table_argument(property_based_test_program_for_lt())
-    }
-
-    #[test]
-    fn check_grand_cross_table_argument_for_property_based_test_program_for_and() {
-        check_grand_cross_table_argument(property_based_test_program_for_and())
-    }
-
-    #[test]
-    fn check_grand_cross_table_argument_for_property_based_test_program_for_xor() {
-        check_grand_cross_table_argument(property_based_test_program_for_xor())
-    }
-
-    #[test]
-    fn check_grand_cross_table_argument_for_property_based_test_program_for_log2floor() {
-        check_grand_cross_table_argument(property_based_test_program_for_log2floor())
-    }
-
-    #[test]
-    fn check_grand_cross_table_argument_for_property_based_test_program_for_pow() {
-        check_grand_cross_table_argument(property_based_test_program_for_pow())
-    }
-
-    #[test]
-    fn check_grand_cross_table_argument_for_property_based_test_program_for_div_mod() {
-        check_grand_cross_table_argument(property_based_test_program_for_div_mod())
-    }
-
-    #[test]
-    fn check_grand_cross_table_argument_for_property_based_test_program_for_pop_count() {
-        check_grand_cross_table_argument(property_based_test_program_for_pop_count())
-    }
-
-    #[test]
-    fn check_grand_cross_table_argument_for_property_based_test_program_for_is_u32() {
-        check_grand_cross_table_argument(property_based_test_program_for_is_u32())
-    }
-
-    #[test]
-    fn check_grand_cross_table_argument_for_property_based_test_program_for_random_ram_access() {
-        check_grand_cross_table_argument(property_based_test_program_for_random_ram_access())
-    }
-
-    fn check_grand_cross_table_argument(program_and_input: ProgramAndInput) {
-        let circuit_builder = ConstraintCircuitBuilder::new();
-        let terminal_constraints = GrandCrossTableArg::terminal_constraints(&circuit_builder);
-        let terminal_constraints = terminal_constraints
-            .into_iter()
-            .map(|c| c.consume())
-            .collect_vec();
-
-        let (_, _, master_base_table, master_ext_table, challenges) =
-            master_tables_for_low_security_level(program_and_input);
-
-        let processor_table = master_ext_table.table(TableId::Processor);
-        let processor_table_last_row = processor_table.slice(s![-1, ..]);
-        check!(
-            challenges[StandardInputTerminal]
-                == processor_table_last_row[InputTableEvalArg.ext_table_index()],
-        );
-        check!(
-            challenges[StandardOutputTerminal]
-                == processor_table_last_row[OutputTableEvalArg.ext_table_index()],
-        );
-
-        let lookup_table = master_ext_table.table(TableId::Lookup);
-        let lookup_table_last_row = lookup_table.slice(s![-1, ..]);
-        check!(
-            challenges[LookupTablePublicTerminal]
-                == lookup_table_last_row[PublicEvaluationArgument.ext_table_index()],
-        );
-
-        let master_base_trace_table = master_base_table.trace_table();
-        let master_ext_trace_table = master_ext_table.trace_table();
-        let last_master_base_row = master_base_trace_table.slice(s![-1.., ..]);
-        let last_master_ext_row = master_ext_trace_table.slice(s![-1.., ..]);
-        let challenges = challenges.challenges;
-
-        for (i, constraint) in terminal_constraints.iter().enumerate() {
-            let evaluation =
-                constraint.evaluate(last_master_base_row, last_master_ext_row, &challenges);
-            check!(
-                xfe!(0) == evaluation,
-                "Terminal constraint {i} must evaluate to 0."
-            );
-        }
-    }
-
-    #[test]
     fn constraint_polynomials_use_right_number_of_variables() {
         let challenges = Challenges::default();
         let base_row = Array1::<BFieldElement>::zeros(NUM_BASE_COLUMNS);
@@ -2076,11 +1781,6 @@ pub(crate) mod tests {
         assert!(num_cons_quots == MasterExtTable::consistency_quotient_degree_bounds(id, ph).len());
         assert!(num_tran_quots == MasterExtTable::transition_quotient_degree_bounds(id, ph).len());
         assert!(num_term_quots == MasterExtTable::terminal_quotient_degree_bounds(id).len());
-    }
-
-    #[test]
-    fn constraints_evaluate_to_zero_on_halt() {
-        triton_constraints_evaluate_to_zero(test_program_for_halt());
     }
 
     #[test]
@@ -2285,7 +1985,7 @@ pub(crate) mod tests {
     fn constraints_evaluate_to_zero_on_property_based_test_program_for_sponge_instructions(
         program: ProgramForSpongeAndHashInstructions,
     ) {
-        triton_constraints_evaluate_to_zero(program.assemble())
+        triton_constraints_evaluate_to_zero(program.assemble());
     }
 
     #[test]
@@ -2481,6 +2181,7 @@ pub(crate) mod tests {
     check_constraints_fn!(fn check_cascade_table_constraints for ExtCascadeTable);
     check_constraints_fn!(fn check_lookup_table_constraints for ExtLookupTable);
     check_constraints_fn!(fn check_u32_table_constraints for ExtU32Table);
+    check_constraints_fn!(fn check_cross_table_constraints for GrandCrossTableArg);
 
     fn triton_constraints_evaluate_to_zero(program_and_input: ProgramAndInput) {
         let (_, _, master_base_table, master_ext_table, challenges) =
@@ -2503,6 +2204,7 @@ pub(crate) mod tests {
         check_cascade_table_constraints(mbt, met, &challenges);
         check_lookup_table_constraints(mbt, met, &challenges);
         check_u32_table_constraints(mbt, met, &challenges);
+        check_cross_table_constraints(mbt, met, &challenges);
     }
 
     #[test]
@@ -2583,94 +2285,29 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn prove_verify_simple_program() {
-        let program_with_input = test_program_hash_nop_nop_lt();
-        let (stark, claim, proof) = prove_with_low_security_level(
-            &program_with_input.program,
-            program_with_input.public_input(),
-            program_with_input.non_determinism(),
+    fn prove_and_verify_simple_program() {
+        prove_and_verify(
+            test_program_hash_nop_nop_lt(),
             DEFAULT_LOG2_FRI_EXPANSION_FACTOR_FOR_TESTS,
         );
-
-        assert!(let Ok(()) = stark.verify(&claim, &proof));
-    }
-
-    fn prove_verify_halt_prop(log2_expansion_factor: usize) {
-        let code_with_input = test_program_for_halt();
-
-        crate::profiler::start("Prove Halt");
-        let (stark, claim, proof) = prove_with_low_security_level(
-            &code_with_input.program,
-            code_with_input.public_input(),
-            code_with_input.non_determinism(),
-            log2_expansion_factor,
-        );
-        let profile = crate::profiler::finish();
-
-        assert!(let Ok(()) = stark.verify(&claim, &proof));
-
-        let_assert!(Ok(padded_height) = proof.padded_height());
-        let fri = stark.derive_fri(padded_height).unwrap();
-        let profile = profile
-            .with_padded_height(padded_height)
-            .with_fri_domain_len(fri.domain.length);
-        println!("{profile}");
     }
 
     #[test]
-    fn prove_verify_halt_simple() {
-        prove_verify_halt_prop(DEFAULT_LOG2_FRI_EXPANSION_FACTOR_FOR_TESTS);
-    }
-
-    #[test]
-    fn prove_verify_halt_different_fri_expansion_factors() {
-        for log2_fri_expansion_factor in 1..5 {
-            println!("Testing with log2_fri_expansion_factor = {log2_fri_expansion_factor}");
-            prove_verify_halt_prop(log2_fri_expansion_factor);
+    fn prove_and_verify_halt_with_different_fri_expansion_factors() {
+        for log_2_fri_expansion_factor in 1..5 {
+            println!("Testing with log2_fri_expansion_factor = {log_2_fri_expansion_factor}");
+            prove_and_verify(test_program_for_halt(), log_2_fri_expansion_factor);
         }
     }
 
     #[test]
-    fn prove_verify_fibonacci_100() {
-        let stdin = PublicInput::from(bfe_array![100]);
-        let secret_in = NonDeterminism::default();
-
-        crate::profiler::start("Prove Fib 100");
-        let (stark, claim, proof) = prove_with_low_security_level(
-            &FIBONACCI_SEQUENCE,
-            stdin,
-            secret_in,
+    fn prove_and_verify_fibonacci_100() {
+        let program_and_input = ProgramAndInput::new(FIBONACCI_SEQUENCE.clone())
+            .with_input(PublicInput::from(bfe_array![100]));
+        prove_and_verify(
+            program_and_input,
             DEFAULT_LOG2_FRI_EXPANSION_FACTOR_FOR_TESTS,
         );
-        let profile = crate::profiler::finish();
-
-        println!("between prove and verify");
-
-        assert!(let Ok(()) = stark.verify(&claim, &proof));
-
-        let_assert!(Ok(padded_height) = proof.padded_height());
-        let fri = stark.derive_fri(padded_height).unwrap();
-        let profile = profile
-            .with_padded_height(padded_height)
-            .with_fri_domain_len(fri.domain.length);
-        println!("{profile}");
-    }
-
-    #[test]
-    fn prove_verify_fib_shootout() {
-        for (fib_seq_idx, fib_seq_val) in [(0, 1), (7, 21), (11, 144)] {
-            let stdin = PublicInput::from(bfe_array![fib_seq_idx]);
-            let secret_in = NonDeterminism::default();
-            let (stark, claim, proof) = prove_with_low_security_level(
-                &FIBONACCI_SEQUENCE,
-                stdin,
-                secret_in,
-                DEFAULT_LOG2_FRI_EXPANSION_FACTOR_FOR_TESTS,
-            );
-            assert!(let Ok(()) = stark.verify(&claim, &proof));
-
-            assert!(bfe_vec![fib_seq_val] == claim.output);
-        }
     }
 
     #[test]
@@ -2682,22 +2319,10 @@ pub(crate) mod tests {
 
     #[test]
     fn prove_verify_many_u32_operations() {
-        crate::profiler::start("Prove Many U32 Ops");
-        let (stark, claim, proof) = prove_with_low_security_level(
-            &PROGRAM_WITH_MANY_U32_INSTRUCTIONS,
-            [].into(),
-            [].into(),
+        prove_and_verify(
+            ProgramAndInput::new(PROGRAM_WITH_MANY_U32_INSTRUCTIONS.clone()),
             DEFAULT_LOG2_FRI_EXPANSION_FACTOR_FOR_TESTS,
         );
-        let profile = crate::profiler::finish();
-        assert!(let Ok(()) = stark.verify(&claim, &proof));
-
-        let_assert!(Ok(padded_height) = proof.padded_height());
-        let fri = stark.derive_fri(padded_height).unwrap();
-        let profile = profile
-            .with_padded_height(padded_height)
-            .with_fri_domain_len(fri.domain.length);
-        println!("{profile}");
     }
 
     #[proptest]
