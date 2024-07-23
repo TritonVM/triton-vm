@@ -4,6 +4,7 @@ use arbitrary::Arbitrary;
 use itertools::Itertools;
 use ndarray::parallel::prelude::*;
 use ndarray::prelude::*;
+use num_traits::ConstOne;
 use num_traits::One;
 use num_traits::Zero;
 use serde_derive::*;
@@ -202,7 +203,7 @@ impl RamTable {
         padding_row[InstructionType.base_table_index()] = PADDING_INDICATOR;
         if ram_table_len == 0 {
             padding_row[BezoutCoefficientPolynomialCoefficient1.base_table_index()] =
-                b_field_element::BFIELD_ONE;
+                BFieldElement::ONE;
         }
 
         let mut padding_section = ram_table.slice_mut(s![ram_table_len.., ..]);

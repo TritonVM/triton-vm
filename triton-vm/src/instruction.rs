@@ -9,6 +9,7 @@ use arbitrary::Unstructured;
 use get_size::GetSize;
 use itertools::Itertools;
 use lazy_static::lazy_static;
+use num_traits::ConstZero;
 use serde_derive::Deserialize;
 use serde_derive::Serialize;
 use strum::EnumCount;
@@ -538,14 +539,14 @@ impl TryFrom<BFieldElement> for Instruction {
 const fn all_instructions_without_args() -> [AnInstruction<BFieldElement>; Instruction::COUNT] {
     [
         Pop(N1),
-        Push(b_field_element::BFIELD_ZERO),
+        Push(BFieldElement::ZERO),
         Divine(N1),
         Dup(ST0),
         Swap(ST0),
         Halt,
         Nop,
         Skiz,
-        Call(b_field_element::BFIELD_ZERO),
+        Call(BFieldElement::ZERO),
         Return,
         Recurse,
         RecurseOrReturn,

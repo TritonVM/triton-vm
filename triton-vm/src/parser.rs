@@ -693,7 +693,7 @@ pub(crate) mod tests {
     use test_strategy::proptest;
     use test_strategy::Arbitrary;
     use twenty_first::bfe;
-    use twenty_first::prelude::tip5;
+    use twenty_first::prelude::Digest;
 
     use LabelledInstruction::Breakpoint;
     use LabelledInstruction::Instruction;
@@ -1322,8 +1322,8 @@ pub(crate) mod tests {
         let expected_instructions = vec![Instruction(ReadIo(N2)); 15];
         assert_eq!(expected_instructions, instructions);
 
-        let instructions = triton_asm![divine 3; tip5::DIGEST_LENGTH];
-        let expected_instructions = vec![Instruction(Divine(N3)); tip5::DIGEST_LENGTH];
+        let instructions = triton_asm![divine 3; Digest::LEN];
+        let expected_instructions = vec![Instruction(Divine(N3)); Digest::LEN];
         assert_eq!(expected_instructions, instructions);
     }
 

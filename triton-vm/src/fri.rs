@@ -335,11 +335,11 @@ impl<'stream, H: AlgebraicHasher> FriVerifier<'stream, H> {
         let revealed_digests = codeword_as_digests(revealed_leaves);
 
         let leaf_indices = self.collinearity_check_a_indices_for_round(0);
-        let indexed_leaves = leaf_indices.into_iter().zip_eq(revealed_digests).collect();
+        let indexed_leafs = leaf_indices.into_iter().zip_eq(revealed_digests).collect();
 
         let inclusion_proof = MerkleTreeInclusionProof::<H> {
             tree_height: round.merkle_tree_height(),
-            indexed_leaves,
+            indexed_leafs,
             authentication_structure,
             ..MerkleTreeInclusionProof::default()
         };
@@ -359,11 +359,11 @@ impl<'stream, H: AlgebraicHasher> FriVerifier<'stream, H> {
         let revealed_digests = codeword_as_digests(revealed_leaves);
 
         let leaf_indices = self.collinearity_check_b_indices_for_round(round_number);
-        let indexed_leaves = leaf_indices.into_iter().zip_eq(revealed_digests).collect();
+        let indexed_leafs = leaf_indices.into_iter().zip_eq(revealed_digests).collect();
 
         let inclusion_proof = MerkleTreeInclusionProof::<H> {
             tree_height: round.merkle_tree_height(),
-            indexed_leaves,
+            indexed_leafs,
             authentication_structure,
             ..MerkleTreeInclusionProof::default()
         };

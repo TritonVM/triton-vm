@@ -892,7 +892,7 @@ impl Stark {
         profiler!(start "Merkle verify (base tree)" ("hash"));
         let base_merkle_tree_inclusion_proof = MerkleTreeInclusionProof::<Tip5> {
             tree_height: merkle_tree_height,
-            indexed_leaves: index_leaves(leaf_digests_base),
+            indexed_leafs: index_leaves(leaf_digests_base),
             authentication_structure: base_authentication_structure,
             ..MerkleTreeInclusionProof::default()
         };
@@ -918,7 +918,7 @@ impl Stark {
         profiler!(start "Merkle verify (extension tree)" ("hash"));
         let ext_merkle_tree_inclusion_proof = MerkleTreeInclusionProof::<Tip5> {
             tree_height: merkle_tree_height,
-            indexed_leaves: index_leaves(leaf_digests_ext),
+            indexed_leafs: index_leaves(leaf_digests_ext),
             authentication_structure: ext_authentication_structure,
             ..MerkleTreeInclusionProof::default()
         };
@@ -940,7 +940,7 @@ impl Stark {
         profiler!(start "Merkle verify (combined quotient)" ("hash"));
         let quot_merkle_tree_inclusion_proof = MerkleTreeInclusionProof::<Tip5> {
             tree_height: merkle_tree_height,
-            indexed_leaves: index_leaves(revealed_quotient_segments_digests),
+            indexed_leafs: index_leaves(revealed_quotient_segments_digests),
             authentication_structure: revealed_quotient_authentication_structure,
             ..MerkleTreeInclusionProof::default()
         };

@@ -26,7 +26,7 @@ pub const NUM_OP_STACK_REGISTERS: usize = OpStackElement::COUNT;
 
 /// The operational stack of Triton VM.
 /// It always contains at least [`OpStackElement::COUNT`] elements. Initially, the bottom-most
-/// [`DIGEST_LENGTH`](tip5::DIGEST_LENGTH) elements equal the digest of the program being executed.
+/// [`Digest::LEN`] elements equal the digest of the program being executed.
 /// The remaining elements are initially 0.
 ///
 /// The OpStack is represented as one contiguous piece of memory, and Triton VM uses it as such.
@@ -52,7 +52,7 @@ impl OpStack {
         let mut stack = bfe_vec![0; OpStackElement::COUNT];
 
         let reverse_digest = program_digest.reversed().values();
-        stack[..tip5::DIGEST_LENGTH].copy_from_slice(&reverse_digest);
+        stack[..Digest::LEN].copy_from_slice(&reverse_digest);
 
         Self {
             stack,

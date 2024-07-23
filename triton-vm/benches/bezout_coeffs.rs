@@ -1,8 +1,8 @@
 use criterion::criterion_group;
 use criterion::criterion_main;
 use criterion::Criterion;
+use num_traits::ConstOne;
 use num_traits::Zero;
-use twenty_first::prelude::b_field_element::BFIELD_ONE;
 use twenty_first::prelude::*;
 
 use triton_vm::prelude::*;
@@ -43,7 +43,7 @@ fn unique_roots<const N: u64>() -> Vec<BFieldElement> {
 fn bezout_coeffs_xgcd(
     unique_ram_pointers: &[BFieldElement],
 ) -> (Vec<BFieldElement>, Vec<BFieldElement>) {
-    let linear_poly_with_root = |&r: &BFieldElement| Polynomial::new(vec![-r, BFIELD_ONE]);
+    let linear_poly_with_root = |&r: &BFieldElement| Polynomial::new(vec![-r, BFieldElement::ONE]);
 
     let polynomial_with_ram_pointers_as_roots = unique_ram_pointers
         .iter()

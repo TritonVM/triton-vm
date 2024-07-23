@@ -5,7 +5,6 @@ use strum::Display;
 use strum::EnumCount;
 use strum::EnumIter;
 use strum::IntoEnumIterator;
-use twenty_first::prelude::tip5::DIGEST_LENGTH;
 use twenty_first::prelude::tip5::MDS_MATRIX_FIRST_COLUMN;
 use twenty_first::prelude::tip5::NUM_ROUNDS;
 use twenty_first::prelude::tip5::NUM_SPLIT_AND_LOOKUP;
@@ -725,7 +724,7 @@ impl ExtHashTable {
                 * (round_number_next.clone() - round_number.clone() - constant(1));
 
         // compress the digest by computing the terminal of an evaluation argument
-        let compressed_digest = state_current[..DIGEST_LENGTH].iter().fold(
+        let compressed_digest = state_current[..Digest::LEN].iter().fold(
             running_evaluation_initial.clone(),
             |acc, digest_element| {
                 acc * compress_program_digest_indeterminate.clone() + digest_element.clone()
@@ -829,10 +828,10 @@ impl ExtHashTable {
             round_number_next.clone() - constant(NUM_ROUNDS as u64);
         let running_evaluation_hash_digest_remains =
             running_evaluation_hash_digest_next.clone() - running_evaluation_hash_digest.clone();
-        let hash_digest = state_next[..DIGEST_LENGTH].to_owned();
+        let hash_digest = state_next[..Digest::LEN].to_owned();
         let compressed_row_hash_digest = hash_digest
             .into_iter()
-            .zip_eq(state_weights[..DIGEST_LENGTH].iter())
+            .zip_eq(state_weights[..Digest::LEN].iter())
             .map(|(state, weight)| weight.clone() * state)
             .sum();
         let running_evaluation_hash_digest_updates = running_evaluation_hash_digest_next
@@ -1758,9 +1757,9 @@ impl HashTable {
             }
 
             if in_hash_mode && in_last_round {
-                let compressed_digest: XFieldElement = rate_registers(row)[..DIGEST_LENGTH]
+                let compressed_digest: XFieldElement = rate_registers(row)[..Digest::LEN]
                     .iter()
-                    .zip_eq(state_weights[..DIGEST_LENGTH].iter())
+                    .zip_eq(state_weights[..Digest::LEN].iter())
                     .map(|(&state, &weight)| weight * state)
                     .sum();
                 hash_digest_running_evaluation = hash_digest_running_evaluation

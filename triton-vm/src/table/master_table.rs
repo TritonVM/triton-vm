@@ -21,7 +21,6 @@ use rand::random;
 use strum::Display;
 use strum::EnumCount;
 use strum::EnumIter;
-use twenty_first::math::tip5::DIGEST_LENGTH;
 use twenty_first::math::tip5::RATE;
 use twenty_first::math::traits::FiniteField;
 use twenty_first::prelude::*;
@@ -497,7 +496,7 @@ impl SpongeWithPendingAbsorb {
         self.sponge.absorb(self.pending_input);
         self.num_symbols_pending = 0;
 
-        self.sponge.squeeze()[0..DIGEST_LENGTH]
+        self.sponge.squeeze()[0..Digest::LEN]
             .to_vec()
             .try_into()
             .unwrap()

@@ -97,13 +97,8 @@ impl ExtU32Table {
         ]
         .into_iter()
         .filter(|&instruction| instruction != instruction_to_select)
-        .map(|instruction| {
-            current_instruction.clone() - circuit_builder.b_constant(instruction.opcode_b())
-        })
-        .fold(
-            circuit_builder.b_constant(b_field_element::BFIELD_ONE),
-            ConstraintCircuitMonad::mul,
-        )
+        .map(|instr| current_instruction.clone() - circuit_builder.b_constant(instr.opcode_b()))
+        .fold(circuit_builder.b_constant(1), ConstraintCircuitMonad::mul)
     }
 
     pub fn initial_constraints(

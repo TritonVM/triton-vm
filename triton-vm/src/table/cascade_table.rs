@@ -1,6 +1,7 @@
 use ndarray::s;
 use ndarray::ArrayView2;
 use ndarray::ArrayViewMut2;
+use num_traits::ConstOne;
 use num_traits::One;
 use strum::EnumCount;
 use twenty_first::prelude::*;
@@ -58,7 +59,7 @@ impl CascadeTable {
     pub fn pad_trace(mut cascade_table: ArrayViewMut2<BFieldElement>, cascade_table_length: usize) {
         cascade_table
             .slice_mut(s![cascade_table_length.., IsPadding.base_table_index()])
-            .fill(b_field_element::BFIELD_ONE);
+            .fill(BFieldElement::ONE);
     }
 
     pub fn extend(

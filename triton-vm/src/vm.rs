@@ -8,6 +8,7 @@ use std::ops::Range;
 use arbitrary::Arbitrary;
 use itertools::Itertools;
 use ndarray::Array1;
+use num_traits::ConstZero;
 use num_traits::One;
 use num_traits::Zero;
 use serde_derive::*;
@@ -455,7 +456,7 @@ impl VMState {
             .ram
             .get(&ram_pointer)
             .copied()
-            .unwrap_or(b_field_element::BFIELD_ZERO);
+            .unwrap_or(BFieldElement::ZERO);
 
         let ram_table_call = RamTableCall {
             clk: self.cycle_count,
@@ -486,9 +487,9 @@ impl VMState {
         let mut hash_input = Tip5::new(Domain::FixedLength);
         hash_input.state[..tip5::RATE].copy_from_slice(&to_hash);
         let tip5_trace = hash_input.trace();
-        let hash_output = &tip5_trace[tip5_trace.len() - 1][0..tip5::DIGEST_LENGTH];
+        let hash_output = &tip5_trace[tip5_trace.len() - 1][0..Digest::LEN];
 
-        for i in (0..tip5::DIGEST_LENGTH).rev() {
+        for i in (0..Digest::LEN).rev() {
             self.op_stack.push(hash_output[i]);
         }
 
@@ -563,12 +564,12 @@ impl VMState {
     }
 
     fn assert_vector(&mut self) -> Result<Vec<CoProcessorCall>> {
-        for i in 0..tip5::DIGEST_LENGTH {
-            if self.op_stack[i] != self.op_stack[i + tip5::DIGEST_LENGTH] {
+        for i in 0..Digest::LEN {
+            if self.op_stack[i] != self.op_stack[i + Digest::LEN] {
                 return Err(VectorAssertionFailed(i));
             }
         }
-        let _: [_; tip5::DIGEST_LENGTH] = self.op_stack.pop_multiple()?;
+        self.op_stack.pop_multiple::<{ Digest::LEN }>()?;
         self.instruction_pointer += 1;
         Ok(vec![])
     }
@@ -812,7 +813,7 @@ impl VMState {
         let parent_node_index = node_index / 2;
 
         let sibling_digest = self.pop_secret_digest()?;
-        let accumulator_digest = self.op_stack.pop_multiple::<{ tip5::DIGEST_LENGTH }>()?;
+        let accumulator_digest = self.op_stack.pop_multiple::<{ Digest::LEN }>()?;
         let (left_sibling, right_sibling) = match node_index % 2 {
             0 => (&accumulator_digest, &sibling_digest),
             1 => (&sibling_digest, &accumulator_digest),
@@ -820,10 +821,10 @@ impl VMState {
         };
 
         let mut tip5 = Tip5::new(Domain::FixedLength);
-        tip5.state[..tip5::DIGEST_LENGTH].copy_from_slice(left_sibling);
-        tip5.state[tip5::DIGEST_LENGTH..2 * tip5::DIGEST_LENGTH].copy_from_slice(right_sibling);
+        tip5.state[..Digest::LEN].copy_from_slice(left_sibling);
+        tip5.state[Digest::LEN..2 * Digest::LEN].copy_from_slice(right_sibling);
         let tip5_trace = tip5.trace();
-        let accumulator_digest = &tip5_trace.last().unwrap()[0..tip5::DIGEST_LENGTH];
+        let accumulator_digest = &tip5_trace.last().unwrap()[0..Digest::LEN];
 
         for &digest_element in accumulator_digest.iter().rev() {
             self.op_stack.push(digest_element);
@@ -988,7 +989,7 @@ impl VMState {
         self.jump_stack.last().copied().ok_or(JumpStackIsEmpty)
     }
 
-    fn pop_secret_digest(&mut self) -> Result<[BFieldElement; tip5::DIGEST_LENGTH]> {
+    fn pop_secret_digest(&mut self) -> Result<[BFieldElement; Digest::LEN]> {
         let digest = self
             .secret_digests
             .pop_front()
@@ -2198,8 +2199,7 @@ pub(crate) mod tests {
     }
 
     // compile-time assertion
-    const _OP_STACK_IS_BIG_ENOUGH: () =
-        std::assert!(2 * tip5::DIGEST_LENGTH <= OpStackElement::COUNT);
+    const _OP_STACK_IS_BIG_ENOUGH: () = std::assert!(2 * Digest::LEN <= OpStackElement::COUNT);
 
     #[test]
     fn run_tvm_hello_world() {
@@ -2223,7 +2223,7 @@ pub(crate) mod tests {
         );
         let mut vm_state = VMState::new(&program, [].into(), [].into());
         let_assert!(Ok(()) = vm_state.run());
-        assert!(b_field_element::BFIELD_ZERO == vm_state.op_stack[ST0]);
+        assert!(BFieldElement::ZERO == vm_state.op_stack[ST0]);
     }
 
     #[test]
@@ -2245,7 +2245,7 @@ pub(crate) mod tests {
 
         let_assert!(Some(last_processor_row) = aet.processor_trace.rows().into_iter().last());
         let clk_count = last_processor_row[ProcessorBaseTableColumn::CLK.base_table_index()];
-        assert!(b_field_element::BFIELD_ZERO == clk_count);
+        assert!(BFieldElement::ZERO == clk_count);
 
         let last_instruction = last_processor_row[ProcessorBaseTableColumn::CI.base_table_index()];
         assert!(Instruction::Halt.opcode_b() == last_instruction);

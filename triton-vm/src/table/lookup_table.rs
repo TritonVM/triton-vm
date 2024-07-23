@@ -1,10 +1,10 @@
 use itertools::Itertools;
 use ndarray::prelude::*;
+use num_traits::ConstOne;
 use num_traits::One;
 use rayon::iter::*;
 use strum::EnumCount;
 use strum::IntoEnumIterator;
-use twenty_first::prelude::tip5;
 use twenty_first::prelude::*;
 
 use crate::aet::AlgebraicExecutionTrace;
@@ -75,7 +75,7 @@ impl LookupTable {
     pub fn pad_trace(mut lookup_table: ArrayViewMut2<BFieldElement>, lookup_table_length: usize) {
         lookup_table
             .slice_mut(s![lookup_table_length.., IsPadding.base_table_index()])
-            .fill(b_field_element::BFIELD_ONE);
+            .fill(BFieldElement::ONE);
     }
 
     pub fn extend(

@@ -249,14 +249,14 @@ mod tests {
             revealed_leaves,
         } = maybe_same_fri_response;
         let maybe_same_leaf_digests = revealed_leaves.iter().map(|&xfe| xfe.into()).collect_vec();
-        let indexed_leaves = indices_to_check
+        let indexed_leafs = indices_to_check
             .into_iter()
             .zip_eq(maybe_same_leaf_digests)
             .collect();
 
         let inclusion_proof = MerkleTreeInclusionProof::<Tip5> {
             tree_height,
-            indexed_leaves,
+            indexed_leafs,
             authentication_structure: auth_structure,
             ..MerkleTreeInclusionProof::default()
         };

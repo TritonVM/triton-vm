@@ -5,6 +5,7 @@ use itertools::izip;
 use itertools::Itertools;
 use ndarray::parallel::prelude::*;
 use ndarray::*;
+use num_traits::ConstOne;
 use num_traits::One;
 use num_traits::Zero;
 use strum::EnumCount;
@@ -60,7 +61,7 @@ impl ProcessorTable {
             .chain(clk_jump_diffs_jump_stack)
         {
             let clk = clk_jump_diff.value() as usize;
-            clk_jump_diff_multiplicities[clk] += b_field_element::BFIELD_ONE;
+            clk_jump_diff_multiplicities[clk] += BFieldElement::ONE;
         }
 
         let mut processor_table = processor_table.slice_mut(s![0..num_rows, ..]);
@@ -744,7 +745,7 @@ impl ExtProcessorTable {
 
         // Compress the program digest using an Evaluation Argument.
         // Lowest index in the digest corresponds to lowest index on the stack.
-        let program_digest: [_; tip5::DIGEST_LENGTH] = [
+        let program_digest: [_; Digest::LEN] = [
             base_row(ST11),
             base_row(ST12),
             base_row(ST13),

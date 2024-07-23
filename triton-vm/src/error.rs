@@ -63,7 +63,7 @@ pub enum InstructionError {
     #[error("assertion failed: st0 must be 1")]
     AssertionFailed,
 
-    #[error("vector assertion failed: stack[{0}] != stack[{}]", .0 + tip5::DIGEST_LENGTH)]
+    #[error("vector assertion failed: stack[{0}] != stack[{}]", .0 + Digest::LEN)]
     VectorAssertionFailed(usize),
 
     #[error("0 does not have a multiplicative inverse")]
@@ -363,8 +363,8 @@ mod tests {
 
     #[proptest]
     fn assert_unequal_vec(
-        #[strategy(arb())] test_vector: [BFieldElement; tip5::DIGEST_LENGTH],
-        #[strategy(0..tip5::DIGEST_LENGTH)] disturbance_index: usize,
+        #[strategy(arb())] test_vector: [BFieldElement; Digest::LEN],
+        #[strategy(0..Digest::LEN)] disturbance_index: usize,
         #[strategy(arb())]
         #[filter(#test_vector[#disturbance_index] != #random_element)]
         random_element: BFieldElement,
