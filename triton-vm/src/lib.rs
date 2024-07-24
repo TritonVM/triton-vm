@@ -529,7 +529,7 @@ pub fn prove_program(
     // purposefully not used here to highlight that only a program's hash digest, not the full
     // program, is part of the claim.
     let claim = Claim {
-        program_digest: program.hash::<Tip5>(),
+        program_digest: program.hash(),
         input: public_input.individual_tokens,
         output: public_output,
     };
@@ -551,7 +551,7 @@ pub fn prove(
     program: &Program,
     non_determinism: NonDeterminism,
 ) -> Result<Proof, ProvingError> {
-    let program_digest = program.hash::<Tip5>();
+    let program_digest = program.hash();
     if program_digest != claim.program_digest {
         return Err(ProvingError::ProgramDigestMismatch);
     }
@@ -748,7 +748,7 @@ mod tests {
         prop_assert!(verdict);
 
         prop_assert!(claim.output.is_empty());
-        let expected_program_digest = program.hash::<Tip5>();
+        let expected_program_digest = program.hash();
         prop_assert_eq!(expected_program_digest, claim.program_digest);
         prop_assert_eq!(public_input.individual_tokens, claim.input);
     }

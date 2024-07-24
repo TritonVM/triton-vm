@@ -114,7 +114,7 @@ impl VMState {
         public_input: PublicInput,
         non_determinism: NonDeterminism,
     ) -> Self {
-        let program_digest = program.hash::<Tip5>();
+        let program_digest = program.hash();
 
         Self {
             program: program.instructions.clone(),
@@ -2095,7 +2095,7 @@ pub(crate) mod tests {
             halt
         };
 
-        let program_digest = program.hash::<Tip5>();
+        let program_digest = program.hash();
         let enumerated_digest_elements = program_digest.values().into_iter().enumerate();
         let initial_ram = enumerated_digest_elements
             .map(|(address, d)| (bfe!(u64::try_from(address).unwrap()), d))

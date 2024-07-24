@@ -65,7 +65,7 @@ impl Claim {
 
     #[must_use]
     pub fn about_program(program: &Program) -> Self {
-        Self::new(program.hash::<Tip5>())
+        Self::new(program.hash())
     }
 
     #[must_use]

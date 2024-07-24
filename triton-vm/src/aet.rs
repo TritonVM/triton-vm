@@ -188,7 +188,7 @@ impl AlgebraicExecutionTrace {
         // consistency check
         let program_digest = program_sponge.state[..Digest::LEN].try_into().unwrap();
         let program_digest = Digest::new(program_digest);
-        let expected_digest = self.program.hash::<Tip5>();
+        let expected_digest = self.program.hash();
         assert_eq!(expected_digest, program_digest);
     }
 

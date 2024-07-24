@@ -41,8 +41,9 @@ type Result<T> = std::result::Result<T, VMError>;
 /// [`profiled`](Program::profile),
 /// and its execution can be [`traced`](Program::trace_execution).
 ///
-/// [`Hashing`](Program::hash) a program under [`Tip5`] yields a [`Digest`] that can be used
-/// in a [`Claim`](crate::Claim), _i.e._, is consistent with Triton VM's [program attestation].
+/// [`Hashing`](Program::hash) a program yields a [`Digest`] that can be used
+/// in a [`Claim`](crate::Claim), _i.e._, is consistent with Triton VM's
+/// [program attestation].
 ///
 /// A program may contain debug information, such as label names and breakpoints.
 /// Access this information through methods [`label_for_address()`][label_for_address] and
@@ -412,10 +413,11 @@ impl Program {
         self.instructions.is_empty()
     }
 
-    /// Produces the program's canonical hash digest for the given `AlgebraicHasher`.
-    pub fn hash<H: AlgebraicHasher>(&self) -> Digest {
+    /// Produces the program's canonical hash digest. Uses [`Tip5`], the
+    /// canonical hash function for Triton VM.
+    pub fn hash(&self) -> Digest {
         // not encoded using `BFieldCodec` because that would prepend the length
-        H::hash_varlen(&self.to_bwords())
+        Tip5::hash_varlen(&self.to_bwords())
     }
 
     /// Run Triton VM on the [`Program`] with the given public input and non-determinism.
@@ -904,7 +906,6 @@ mod tests {
     use rand::thread_rng;
     use rand::Rng;
     use test_strategy::proptest;
-    use twenty_first::prelude::Tip5;
 
     use crate::error::InstructionError;
     use crate::example_programs::CALCULATE_NEW_MMR_PEAKS_FROM_APPEND_WITH_SAFE_LISTS;
@@ -961,7 +962,7 @@ mod tests {
     #[test]
     fn hash_simple_program() {
         let program = triton_program!(halt);
-        let digest = program.hash::<Tip5>();
+        let digest = program.hash();
 
         let expected_digest = bfe_array![
             0x4338_de79_520b_3949_u64,
