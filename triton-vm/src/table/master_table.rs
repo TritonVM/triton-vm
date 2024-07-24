@@ -1281,13 +1281,16 @@ mod tests {
     use proptest_arbitrary_interop::arb;
     use strum::EnumCount;
     use strum::IntoEnumIterator;
+    use strum::VariantNames;
     use test_strategy::proptest;
     use twenty_first::math::b_field_element::BFieldElement;
     use twenty_first::math::traits::FiniteField;
     use twenty_first::prelude::x_field_element::EXTENSION_DEGREE;
 
     use crate::arithmetic_domain::ArithmeticDomain;
+    use crate::instruction::tests::InstructionBucket;
     use crate::instruction::Instruction;
+    use crate::instruction::InstructionBit;
     use crate::shared_tests::ProgramAndInput;
     use crate::stark::tests::*;
     use crate::table::degree_lowering_table::DegreeLoweringBaseTableColumn;
@@ -1481,6 +1484,7 @@ mod tests {
             generate_table_overview(),
             generate_constraints_overview(),
             generate_tasm_air_evaluation_cost_overview(),
+            generate_opcode_pressure_overview(),
         ];
 
         // current directory is triton-vm/triton-vm/
@@ -1802,6 +1806,60 @@ mod tests {
         SpecSnippet {
             start_marker: "<!-- auto-gen info start tasm_air_evaluation_cost -->",
             stop_marker: "<!-- auto-gen info stop tasm_air_evaluation_cost -->",
+            snippet,
+        }
+    }
+
+    fn generate_opcode_pressure_overview() -> SpecSnippet {
+        const NUM_FLAG_SETS: usize = 1 << InstructionBucket::COUNT;
+        let mut num_opcodes_per_flag_set = [0; NUM_FLAG_SETS];
+        for instruction in Instruction::iter() {
+            num_opcodes_per_flag_set[instruction.flag_set() as usize] += 1;
+        }
+
+        let cell_width = InstructionBucket::VARIANTS
+            .iter()
+            .map(|s| s.len())
+            .max()
+            .unwrap();
+        let mut snippet = String::new();
+        for name in InstructionBucket::VARIANTS.iter().rev() {
+            let cell_titel = format!("| {name:>cell_width$} ");
+            snippet.push_str(&cell_titel);
+        }
+        let num_opcodes_titel = format!("| {:>cell_width$} |\n", "Num Opcodes");
+        snippet.push_str(&num_opcodes_titel);
+
+        let dash = "-";
+        for _ in 0..=InstructionBucket::COUNT {
+            let separator = format!("|-{dash:->cell_width$}:");
+            snippet.push_str(&separator);
+        }
+        snippet.push_str("|\n");
+
+        for (line_no, num_opcodes) in (0..).zip(num_opcodes_per_flag_set) {
+            for bucket in InstructionBucket::iter().rev() {
+                let bucket_active_in_flag_set = if line_no & bucket.flag() > 0 {
+                    "y"
+                } else {
+                    "n"
+                };
+                let cell = format!("| {bucket_active_in_flag_set:>cell_width$} ");
+                snippet.push_str(&cell);
+            }
+            let num_opcodes = format!("| {num_opcodes:>cell_width$} |\n");
+            snippet.push_str(&num_opcodes);
+        }
+
+        let max_opcodes = format!(
+            "\nMaximum number of opcodes per row is {}.\n",
+            1 << (InstructionBit::COUNT - InstructionBucket::COUNT)
+        );
+        snippet.push_str(&max_opcodes);
+
+        SpecSnippet {
+            start_marker: "<!-- auto-gen info start opcode_pressure -->",
+            stop_marker: "<!-- auto-gen info stop opcode_pressure -->",
             snippet,
         }
     }

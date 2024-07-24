@@ -73,3 +73,24 @@ In order to gauge the runtime cost for this step, the following table provides e
 |----------:|---------:|------:|
 |     34477 |    63981 | 22620 |
 <!-- auto-gen info stop tasm_air_evaluation_cost -->
+
+## Opcode Pressure
+
+When changing existing or introducing new instructions, one consideration is:
+how many other instructions compete for opcodes in the same [instruction category](instructions.md#regarding-opcodes)?
+The table below helps answer this question at a glance.
+
+<!-- auto-gen info start opcode_pressure -->
+|        IsU32 | ShrinksStack |       HasArg |  Num Opcodes |
+|-------------:|-------------:|-------------:|-------------:|
+|            n |            n |            n |           12 |
+|            n |            n |            y |            7 |
+|            n |            y |            n |           11 |
+|            n |            y |            y |            3 |
+|            y |            n |            n |            5 |
+|            y |            n |            y |            0 |
+|            y |            y |            n |            4 |
+|            y |            y |            y |            0 |
+
+Maximum number of opcodes per row is 16.
+<!-- auto-gen info stop opcode_pressure -->

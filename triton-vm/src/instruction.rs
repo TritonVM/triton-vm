@@ -743,7 +743,7 @@ impl<'a> Arbitrary<'a> for TypeHintTypeName {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
     use std::collections::HashMap;
 
     use assert2::assert;
@@ -755,6 +755,7 @@ mod tests {
     use rand::Rng;
     use strum::EnumCount;
     use strum::IntoEnumIterator;
+    use strum::VariantNames;
     use twenty_first::prelude::*;
 
     use crate::instruction::*;
@@ -767,29 +768,35 @@ mod tests {
     use crate::NonDeterminism;
     use crate::Program;
 
-    #[derive(Debug, Copy, Clone, EnumCount, EnumIter)]
-    enum InstructionBucket {
+    #[derive(Debug, Copy, Clone, EnumCount, EnumIter, VariantNames)]
+    pub enum InstructionBucket {
         HasArg,
         ShrinksStack,
         IsU32,
     }
 
     impl InstructionBucket {
-        fn contains(self, instruction: Instruction) -> bool {
+        pub fn contains(self, instruction: Instruction) -> bool {
             match self {
                 InstructionBucket::HasArg => instruction.arg().is_some(),
                 InstructionBucket::ShrinksStack => instruction.op_stack_size_influence() < 0,
                 InstructionBucket::IsU32 => instruction.is_u32_instruction(),
             }
         }
+
+        pub fn flag(self) -> u32 {
+            match self {
+                InstructionBucket::HasArg => 1,
+                InstructionBucket::ShrinksStack => 1 << 1,
+                InstructionBucket::IsU32 => 1 << 2,
+            }
+        }
     }
 
     impl Instruction {
-        fn flag_set(self) -> u32 {
+        pub fn flag_set(self) -> u32 {
             InstructionBucket::iter()
-                .map(|bucket| u32::from(bucket.contains(self)))
-                .enumerate()
-                .map(|(bucket_index, contains_self)| contains_self << bucket_index)
+                .map(|bucket| u32::from(bucket.contains(self)) * bucket.flag())
                 .fold(0, |acc, bit_flag| acc | bit_flag)
         }
 
