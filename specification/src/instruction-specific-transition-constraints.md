@@ -885,6 +885,25 @@ The two [Evaluation Arguments also used for instruction hash](processor-table.md
 1. `hv0` through `hv4` hold the sibling digest of the node indicated by `st5`, as read from the interface for non-deterministic input.
 1. `hv5` holds the result of `st5 % 2`, the Merkle tree node index's least significant bit, indicating whether it is a left or right node.
 
+## Instruction `merkle_step_mem`
+
+In addition to its [instruction groups](instruction-groups.md), this instruction has the following constraints.
+The two [Evaluation Arguments also used for instruction hash](processor-table.md#transition-constraints) guarantee correct transition of the top of the stack.
+See also [`merkle_step`](#instruction-merkle_step).
+
+### Description
+
+1. Stack element `st6` does not change.
+1. Stack element `st7` is incremented by 5.
+1. Helper variable `hv5` is either 0 or 1.
+1. `st5` is shifted by 1 bit to the right. In other words, twice `st5` in the next row plus `hv5` equals `st5` in the current row.
+1. The running product with the RAM Table accumulates `hv0` through `hv4` using the (appropriately adjusted) RAM pointer held in `st7`.
+
+### Helper variable definitions for `merkle_step_mem`
+
+1. `hv0` through `hv4` hold the sibling digest of the node indicated by `st5`, as read from RAM at the address held in `st7`.
+1. `hv5` holds the result of `st5 % 2`, the Merkle tree node index's least significant bit, indicating whether it is a left or right node.
+
 ## Instruction `xx_dot_step`
 
 In addition to its [instruction groups](instruction-groups.md), this instruction has the following constraints.
