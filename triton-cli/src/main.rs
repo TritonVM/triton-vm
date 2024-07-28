@@ -38,10 +38,9 @@ fn main() -> Result<()> {
             proof_out_path,
             public_inputs,
             private_inputs,
-        } => prove(&asm_path, &proof_out_path, public_inputs, private_inputs)?,
-        CliArg::Verify { proof_path } => verify(&proof_path)?,
+        } => prove(&asm_path, &proof_out_path, public_inputs, private_inputs),
+        CliArg::Verify { proof_path } => verify(&proof_path),
     }
-    Ok(())
 }
 
 fn digest_to_str(d: Digest) -> String {
