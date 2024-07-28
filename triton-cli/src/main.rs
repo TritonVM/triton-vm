@@ -10,6 +10,8 @@ use serde::Deserialize;
 use serde::Serialize;
 use triton_vm::prelude::*;
 
+const VERSION: &str = env!("CARGO_PKG_VERSION");
+
 #[derive(Debug, Parser)]
 #[command(name = "triton-cli")]
 #[command(about = "Compile, prove and verify Triton assembly programs", long_about = None)]
@@ -91,6 +93,13 @@ fn parse_inputs(inputs: Option<String>) -> Vec<BFieldElement> {
         .collect()
 }
 
+// We take only the major version identifier
+// any non-major version should be non-breaking
+fn prover_version() -> Result<u8> {
+    let split = VERSION.split('.').collect::<Vec<&str>>();
+    Ok(split[0].parse::<u8>()?)
+}
+
 fn prove(
     asm_filepath: &str,
     out: &str,
@@ -119,6 +128,7 @@ fn prove(
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct SerializedProof {
     version: u8,
+    prover_version: u8,
     security_level: u64,
     fri_expansion_factor: u64,
     num_trace_randomizers: u64,
@@ -135,6 +145,9 @@ fn read_proof(proof_path: &str) -> Result<(Stark, Claim, Proof)> {
     let serialized_proof: SerializedProof = bincode::deserialize(&proof_bytes)?;
     if serialized_proof.version != 1 {
         anyhow::bail!("wrong proof file version!");
+    }
+    if serialized_proof.prover_version != prover_version()? {
+        anyhow::bail!("triton-cli was built with an incompatible version number");
     }
     let stark = Stark {
         security_level: usize::try_from(serialized_proof.security_level)?,
@@ -175,6 +188,7 @@ fn read_proof(proof_path: &str) -> Result<(Stark, Claim, Proof)> {
 fn write_proof((stark, claim, proof): (Stark, Claim, Proof), out: &str) -> Result<()> {
     let serialized = SerializedProof {
         version: 1,
+        prover_version: prover_version()?,
         security_level: u64::try_from(stark.security_level)?,
         fri_expansion_factor: u64::try_from(stark.fri_expansion_factor)?,
         num_trace_randomizers: u64::try_from(stark.num_trace_randomizers)?,
