@@ -8,7 +8,6 @@ use clap::command;
 use clap::Parser;
 use serde::Deserialize;
 use serde::Serialize;
-use tip5::DIGEST_LENGTH;
 use triton_vm::prelude::*;
 
 #[derive(Debug, Parser)]
@@ -146,17 +145,12 @@ fn read_proof(proof_path: &str) -> Result<(Stark, Claim, Proof)> {
             serialized_proof.num_combination_codeword_checks,
         )?,
     };
-    assert_eq!(
-        DIGEST_LENGTH,
-        serialized_proof.program_digest.len(),
-        "digest length mismatch!"
-    );
     let digest_elements = serialized_proof
         .program_digest
         .iter()
         .map(|v| BFieldElement::from(*v))
         .collect::<Vec<BFieldElement>>();
-    let digest = Digest::try_from(&digest_elements[0..DIGEST_LENGTH])?;
+    let digest = Digest::try_from(digest_elements)?;
     let claim = Claim {
         program_digest: digest,
         input: serialized_proof
