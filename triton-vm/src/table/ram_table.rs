@@ -135,11 +135,11 @@ impl RamTable {
         // In total, this allows computing the Bézout coefficients in O(n·(log n)^2) time.
 
         debug_assert!(unique_roots.iter().all_unique());
-        let rp = Polynomial::zerofier(unique_roots);
+        let rp = Polynomial::par_zerofier(unique_roots);
         let fd = rp.formal_derivative();
-        let fd_in_roots = fd.batch_evaluate(unique_roots);
+        let fd_in_roots = fd.par_batch_evaluate(unique_roots);
         let b_in_roots = BFieldElement::batch_inversion(fd_in_roots);
-        let b = Polynomial::interpolate(unique_roots, &b_in_roots);
+        let b = Polynomial::par_interpolate(unique_roots, &b_in_roots);
         let one_minus_fd_b = Polynomial::one() - fd.multiply(&b);
         let a = one_minus_fd_b.clean_divide(rp);
 
