@@ -6,17 +6,17 @@
 //!
 //! There are three types of challenges:
 //! - **Weights**. Weights are used to linearly combine multiple elements into one element. The
-//! resulting single element can then be used in a cross-table argument.
+//!   resulting single element can then be used in a cross-table argument.
 //! - **Indeterminates**. All cross-table arguments work by checking the equality of polynomials (or
-//! rational functions). Through the Schwartz-Zippel lemma, this equality check can be performed
-//! by evaluating the polynomials (or rational functions) in a single point. The challenges that
-//! are indeterminates are exactly this evaluation point. The polynomials (or rational functions)
-//! are never stored explicitly. Instead, they are directly evaluated at the point indicated by a
-//! challenge of “type” `Indeterminate`, giving rise to “running products”, “running
-//! evaluations”, _et cetera_.
+//!   rational functions). Through the Schwartz-Zippel lemma, this equality check can be performed
+//!   by evaluating the polynomials (or rational functions) in a single point. The challenges that
+//!   are indeterminates are exactly this evaluation point. The polynomials (or rational functions)
+//!   are never stored explicitly. Instead, they are directly evaluated at the point indicated by a
+//!   challenge of “type” `Indeterminate`, giving rise to “running products”, “running
+//!   evaluations”, _et cetera_.
 //! - **Terminals**. The public input (respectively output) of the program is not stored in any
-//! table. Instead, the terminal of the Evaluation Argument is computed directly from the
-//! public input (respectively output) and the indeterminate.
+//!   table. Instead, the terminal of the Evaluation Argument is computed directly from the
+//!   public input (respectively output) and the indeterminate.
 
 use std::fmt::Debug;
 use std::hash::Hash;
@@ -236,13 +236,13 @@ impl Challenges {
     ///
     /// Concretely:
     /// - The [`StandardInputTerminal`] is computed from Triton VM's public input and the sampled
-    /// indeterminate [`StandardInputIndeterminate`].
+    ///   indeterminate [`StandardInputIndeterminate`].
     /// - The [`StandardOutputTerminal`] is computed from Triton VM's public output and the sampled
-    /// indeterminate [`StandardOutputIndeterminate`].
+    ///   indeterminate [`StandardOutputIndeterminate`].
     /// - The [`LookupTablePublicTerminal`] is computed from the publicly known and constant
-    /// lookup table and the sampled indeterminate [`LookupTablePublicIndeterminate`].
+    ///   lookup table and the sampled indeterminate [`LookupTablePublicIndeterminate`].
     /// - The [`CompressedProgramDigest`] is computed from the program to be executed and the
-    /// sampled indeterminate [`CompressProgramDigestIndeterminate`].
+    ///   sampled indeterminate [`CompressProgramDigestIndeterminate`].
     // When modifying this, be sure to add to the compile-time assertions in the
     // `#[test] const fn compile_time_index_assertions() { … }`
     // at the end of this file.

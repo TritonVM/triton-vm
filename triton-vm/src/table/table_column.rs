@@ -264,9 +264,9 @@ pub enum HashBaseTableColumn {
 
     /// The number of the current round in the permutation. The round number evolves as
     /// - 0 → 1 → 2 → 3 → 4 → 5 (→ 0) in [`Mode`][mode]s
-    /// [`ProgramHashing`][mode_prog_hash], [`Sponge`][mode_sponge] and [`Hash`][mode_hash],
+    ///   [`ProgramHashing`][mode_prog_hash], [`Sponge`][mode_sponge] and [`Hash`][mode_hash],
     /// - 0 → 0 in [`Mode`][mode] [`Sponge`][mode_sponge] if the current instruction [`CI`][ci] is
-    /// `sponge_init`, as an exception to above rule, and
+    ///   `sponge_init`, as an exception to above rule, and
     /// - 0 → 0 in [`Mode`][mode] [`Pad`][mode_pad].
     ///
     /// [ci]: HashBaseTableColumn::CI
@@ -415,15 +415,15 @@ pub enum CascadeExtTableColumn {
     /// verifier-supplied challenge and `Combo` is the weighted sum of
     /// - `2^8·LookInHi + LookInLo`, and
     /// - `2^8·LookOutHi + LookOutLo`
-    /// with weights supplied by the verifier.
+    ///   with weights supplied by the verifier.
     HashTableServerLogDerivative,
 
     /// The (running sum of the) logarithmic derivative for the Lookup Argument with the Lookup
     /// Table. In every row, accumulates the two summands
     /// - `1 / combo_hi` where `combo_hi` is the verifier-weighted combination of `LookInHi` and
-    /// `LookOutHi`, and
+    ///   `LookOutHi`, and
     /// - `1 / combo_lo` where `combo_lo` is the verifier-weighted combination of `LookInLo` and
-    /// `LookOutLo`.
+    ///   `LookOutLo`.
     LookupTableClientLogDerivative,
 }
 
@@ -510,7 +510,7 @@ pub enum U32ExtTableColumn {
 /// A trait for the columns of the master base table. This trait is implemented for all enums
 /// relating to the base tables. This trait provides two methods:
 /// - one to get the index of the column in the ”local“ base table, _i.e., not the master base
-/// table, and
+///   table, and
 /// - one to get the index of the column in the master base table.
 pub trait MasterBaseTableColumn {
     /// The index of the column in the ”local“ base table, _i.e., not the master base table.
@@ -645,7 +645,7 @@ impl MasterBaseTableColumn for DegreeLoweringBaseTableColumn {
 /// A trait for the columns in the master extension table. This trait is implemented for all enums
 /// relating to the extension tables. The trait provides two methods:
 /// - one to get the index of the column in the “local” extension table, _i.e._, not the master
-/// extension table, and
+///   extension table, and
 /// - one to get the index of the column in the master extension table.
 pub trait MasterExtTableColumn {
     /// The index of the column in the “local” extension table, _i.e._, not the master extension

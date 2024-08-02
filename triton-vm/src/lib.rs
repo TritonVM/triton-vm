@@ -17,8 +17,8 @@
 //! Triton VM is a non-deterministic machine. That is,
 //! 1. Triton VM's random access memory can be initialized arbitrarily, and
 //! 1. for a select few instructions (namely `divine` and `merkle_step`),
-//!   correct state transition is not fully determined by the current state and
-//!   Triton VM's public input.
+//!    correct state transition is not fully determined by the current state and
+//!    Triton VM's public input.
 //!
 //! The input for those non-deterministic instructions use dedicated input
 //! streams. Those, together with the initial RAM, are collectively called

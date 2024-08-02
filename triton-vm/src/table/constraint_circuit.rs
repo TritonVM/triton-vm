@@ -770,8 +770,8 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
     /// `CircuitExpression::BinaryOperation(BinOp::Sub, lhs, rhs)` where
     /// - `lhs` is the new variable, and
     /// - `rhs` is the (sub)circuit replaced by `lhs`.
-    /// These can then be used to construct new columns,
-    /// as well as derivation rules for filling those new columns.
+    ///   These can then be used to construct new columns,
+    ///   as well as derivation rules for filling those new columns.
     ///
     /// The highest index of base and extension columns used by the multicircuit have to be
     /// provided. The uniqueness of the new columns' indices depends on these provided values.

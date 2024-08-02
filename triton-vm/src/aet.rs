@@ -276,7 +276,8 @@ impl AlgebraicExecutionTrace {
 
     /// Given a trace of the hash function's permutation, determines how often each entry in the
     /// - cascade table was looked up, and
-    /// - lookup table was looked up
+    /// - lookup table was looked up;
+    ///
     /// and increases the multiplicities accordingly
     fn increase_lookup_multiplicities(&mut self, trace: PermutationTrace) {
         // The last row in the trace is the permutation's result: no lookups are performed for it.

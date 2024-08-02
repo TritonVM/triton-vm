@@ -159,7 +159,7 @@ impl RustBackend {
     /// well as their degrees. In particular:
     /// 1. The first stream contains code that, when evaluated, produces the constraints' degrees,
     /// 1. the second stream contains code that, when evaluated, produces the constraints' values,
-    /// with the input type for the base row being `BFieldElement`, and
+    ///    with the input type for the base row being `BFieldElement`, and
     /// 1. the third stream is like the second, except that the input type for the base row is
     ///    `XFieldElement`.
     fn tokenize_circuits<II: InputIndicator>(
