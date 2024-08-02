@@ -1129,7 +1129,6 @@ mod tests {
 
     use itertools::Itertools;
     use ndarray::Array2;
-    use nom::lib::std::collections::HashSet;
     use proptest::prelude::*;
     use proptest_arbitrary_interop::arb;
     use rand::random;
@@ -2150,10 +2149,11 @@ mod tests {
         let most_frequent_nodes = all_nodes
             .iter()
             .filter(|&node| all_nodes.iter().filter(|&n| n == node).count() == max_occurences)
-            .collect::<HashSet<_>>();
+            .unique()
+            .collect_vec();
         assert_eq!(2, most_frequent_nodes.len());
-        assert!(most_frequent_nodes.contains(&x(2).consume()));
-        assert!(most_frequent_nodes.contains(&x(10).consume()));
+        assert!(most_frequent_nodes.contains(&&x(2).consume()));
+        assert!(most_frequent_nodes.contains(&&x(10).consume()));
     }
 
     /// Fills the derived columns of the degree-lowering table using randomly generated rows and
