@@ -9,7 +9,6 @@
 use std::cell::RefCell;
 use std::cmp;
 use std::collections::HashMap;
-use std::collections::HashSet;
 use std::fmt::Debug;
 use std::fmt::Display;
 use std::fmt::Formatter;
@@ -847,11 +846,11 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
             .map(|c| c.clone().consume())
             .collect_vec();
         let all_nodes = Self::all_nodes_in_multicircuit(&multicircuit);
-        let all_nodes: HashSet<_> = HashSet::from_iter(all_nodes);
 
         // Only nodes with degree > target_degree need changing.
         let high_degree_nodes = all_nodes
             .into_iter()
+            .unique()
             .filter(|node| node.degree() > target_degree)
             .collect_vec();
 
@@ -1128,6 +1127,7 @@ mod tests {
     use rand::Rng;
     use rand::SeedableRng;
     use test_strategy::proptest;
+    use nom::lib::std::collections::HashSet;
 
     use crate::table::cascade_table::ExtCascadeTable;
     use crate::table::challenges::Challenges;
