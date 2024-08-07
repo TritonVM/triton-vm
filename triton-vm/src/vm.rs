@@ -587,7 +587,7 @@ impl VMState {
     fn addi(&mut self, field_element: BFieldElement) -> Result<Vec<CoProcessorCall>> {
         let lhs = self.op_stack.pop()?;
         self.op_stack.push(lhs + field_element);
-        self.instruction_pointer += 1;
+        self.instruction_pointer += 2;
         Ok(vec![])
     }
 

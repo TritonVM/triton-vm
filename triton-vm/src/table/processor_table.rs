@@ -2090,7 +2090,7 @@ impl ExtProcessorTable {
             vec![next_base_row(ST0) - curr_base_row(ST0) - curr_base_row(NIA)];
         [
             specific_constraints,
-            Self::instruction_group_step_1(circuit_builder),
+            Self::instruction_group_step_2(circuit_builder),
             Self::instruction_group_op_stack_remains_except_top_n(circuit_builder, 1),
             Self::instruction_group_no_ram(circuit_builder),
             Self::instruction_group_no_io(circuit_builder),
