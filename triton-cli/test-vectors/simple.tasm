@@ -1,0 +1,25 @@
+push 10
+push 100
+push 10000
+push 5
+swap 3
+pop 1
+push 5
+swap 3
+pop 1
+push 5
+swap 3
+pop 1
+push 5
+swap 3
+pop 1
+push 5
+swap 3
+pop 1
+push 5
+swap 3
+pop 1
+push 5
+swap 3
+halt
+
