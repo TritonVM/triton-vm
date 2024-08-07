@@ -30,7 +30,8 @@ type Result<T> = result::Result<T, InstructionError>;
 /// An `Instruction` has `call` addresses encoded as absolute integers.
 pub type Instruction = AnInstruction<BFieldElement>;
 
-pub const ALL_INSTRUCTIONS: [Instruction; Instruction::COUNT] = all_instructions_without_args();
+pub const ALL_INSTRUCTIONS: [Instruction; Instruction::COUNT] =
+    all_instructions_with_default_args();
 pub const ALL_INSTRUCTION_NAMES: [&str; Instruction::COUNT] = all_instruction_names();
 
 lazy_static! {
@@ -318,6 +319,7 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
         BFieldElement::new(self.opcode() as u64)
     }
 
+    /// Number of words required to represent the instruction.
     pub fn size(&self) -> usize {
         match self {
             Pop(_) | Push(_) => 2,
@@ -536,7 +538,9 @@ impl TryFrom<BFieldElement> for Instruction {
     }
 }
 
-const fn all_instructions_without_args() -> [AnInstruction<BFieldElement>; Instruction::COUNT] {
+/// A list of all instructions with default arguments, if any.
+const fn all_instructions_with_default_args() -> [AnInstruction<BFieldElement>; Instruction::COUNT]
+{
     [
         Pop(N1),
         Push(BFieldElement::ZERO),
@@ -892,7 +896,7 @@ pub mod tests {
     #[test]
     /// Serves no other purpose than to increase code coverage results.
     fn run_constant_methods() {
-        all_instructions_without_args();
+        all_instructions_with_default_args();
         all_instruction_names();
     }
 
@@ -992,7 +996,7 @@ pub mod tests {
 
     #[test]
     fn instructions_act_on_op_stack_as_indicated() {
-        for test_instruction in all_instructions_without_args() {
+        for test_instruction in all_instructions_with_default_args() {
             let (program, stack_size_before_test_instruction) =
                 construct_test_program_for_instruction(test_instruction);
             let public_input = PublicInput::from(bfe_array![0]);
@@ -1033,7 +1037,7 @@ pub mod tests {
 
     #[test]
     fn labelled_instructions_act_on_op_stack_as_indicated() {
-        for instruction in all_instructions_without_args() {
+        for instruction in all_instructions_with_default_args() {
             let labelled_instruction = instruction.map_call_address(|_| "dummy_label".to_string());
             let labelled_instruction = LabelledInstruction::Instruction(labelled_instruction);
 
