@@ -109,12 +109,12 @@ Triton VM cannot know the number of elements that will be absorbed.
 
 ## Base Field Arithmetic on Stack
 
-| Instruction  | Opcode | old op stack | new op stack | Description                                                                                                                 |
+| Instruction  | Opcode | old op stack | new op stack | Description                                                                                                                |
 |:-------------|-------:|:-------------|:-------------|:---------------------------------------------------------------------------------------------------------------------------|
-| `add`        |     42 | `_ b a`      | `_ c`        | Computes the sum (`c`) of the top two elements of the stack (`b` and `a`) over the field.                                                                                |
-| `addi` + `a` |     49 | `_ b`        | `_ c`        | Computes the sum (`c`) of the top element of the stack (`b`) and the immediate argument (`a`)                                                                                 |
-| `mul`        |     50 | `_ b a`      | `_ c`        | Computes the product (`c`) of the top two elements of the stack (`b` and `a`) over the field.                                                                                |
-| `invert`     |     64 | `_ a`        | `_ b`        | Computes the multiplicative inverse (over the field) of the top of the stack. Crashes the VM if the top of the stack is 0.                                                      |
+| `add`        |     42 | `_ b a`      | `_ c`        | Computes the sum (`c`) of the top two elements of the stack (`b` and `a`) over the field.                                  |
+| `addi` + `a` |     49 | `_ b`        | `_ c`        | Computes the sum (`c`) of the top element of the stack (`b`) and the immediate argument (`a`).                             |
+| `mul`        |     50 | `_ b a`      | `_ c`        | Computes the product (`c`) of the top two elements of the stack (`b` and `a`) over the field.                              |
+| `invert`     |     64 | `_ a`        | `_ b`        | Computes the multiplicative inverse (over the field) of the top of the stack. Crashes the VM if the top of the stack is 0. |
 | `eq`         |     58 | `_ b a`      | `_ (a == b)` | Tests the top two stack elements for equality.                                                                             |
 
 ## Bitwise Arithmetic on Stack
