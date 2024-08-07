@@ -1053,4 +1053,18 @@ pub mod tests {
         let labelled_instruction = LabelledInstruction::Label("dummy_label".to_string());
         assert!(0 == labelled_instruction.op_stack_size_influence());
     }
+
+    #[test]
+    fn can_change_arg() {
+        for instruction in all_instructions_with_default_args() {
+            if let Some(arg) = instruction.arg() {
+                assert_ne!(
+                    instruction,
+                    (instruction.change_arg(arg + bfe!(1))).unwrap()
+                );
+            } else {
+                assert!(instruction.change_arg(bfe!(0)).is_err())
+            }
+        }
+    }
 }
