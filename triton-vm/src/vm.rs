@@ -246,6 +246,7 @@ impl VMState {
             SpongeSqueeze => self.sponge_squeeze()?,
             AssertVector => self.assert_vector()?,
             Add => self.add()?,
+            AddI(field_element) => self.addi(field_element),
             Mul => self.mul()?,
             Invert => self.invert()?,
             Eq => self.eq()?,
@@ -581,6 +582,12 @@ impl VMState {
 
         self.instruction_pointer += 1;
         Ok(vec![])
+    }
+
+    fn addi(&mut self, i: BFieldElement) -> Vec<CoProcessorCall> {
+        self.op_stack[ST0] += i;
+        self.instruction_pointer += 2;
+        vec![]
     }
 
     fn mul(&mut self) -> Result<Vec<CoProcessorCall>> {
@@ -1543,6 +1550,7 @@ pub(crate) mod tests {
         ProgramAndInput::new(triton_program!(
             push  2 push -1 add assert
             push -1 push -1 mul assert
+            push  5 addi -4 assert
             push  3 dup 0 invert mul assert
             halt
         ))

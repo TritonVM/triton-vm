@@ -474,6 +474,11 @@ macro_rules! triton_instr {
         let instruction = $crate::instruction::AnInstruction::<String>::WriteMem(argument);
         $crate::instruction::LabelledInstruction::Instruction(instruction)
     }};
+    (addi $arg:expr) => {{
+        let argument = $crate::prelude::BFieldElement::from($arg);
+        let instruction = $crate::instruction::AnInstruction::<String>::AddI(argument);
+        $crate::instruction::LabelledInstruction::Instruction(instruction)
+    }};
     (read_io $arg:literal) => {{
         let argument = $crate::op_stack::NumberOfWords::try_from($arg).unwrap();
         let instruction = $crate::instruction::AnInstruction::<String>::ReadIo(argument);
