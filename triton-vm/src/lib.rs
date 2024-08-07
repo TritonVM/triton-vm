@@ -444,6 +444,11 @@ macro_rules! triton_instr {
         let instruction = $crate::instruction::AnInstruction::<String>::Push(argument);
         $crate::instruction::LabelledInstruction::Instruction(instruction)
     }};
+    (addi $arg:expr) => {{
+        let argument = $crate::prelude::BFieldElement::from($arg);
+        let instruction = $crate::instruction::AnInstruction::<String>::AddI(argument);
+        $crate::instruction::LabelledInstruction::Instruction(instruction)
+    }};
     (divine $arg:literal) => {{
         let argument = $crate::op_stack::NumberOfWords::try_from($arg).unwrap();
         let instruction = $crate::instruction::AnInstruction::<String>::Divine(argument);

@@ -254,6 +254,7 @@ fn an_instruction(s: &str) -> ParseResult<AnInstruction<String>> {
 
     // Arithmetic on stack instructions
     let add = instruction("add", Add);
+    let addi = addi_instruction();
     let mul = instruction("mul", Mul);
     let invert = instruction("invert", Invert);
     let eq = instruction("eq", Eq);
@@ -270,7 +271,7 @@ fn an_instruction(s: &str) -> ParseResult<AnInstruction<String>> {
     let x_invert = instruction("x_invert", XInvert);
     let xb_mul = instruction("xb_mul", XbMul);
 
-    let base_field_arithmetic_on_stack = alt((add, mul, invert, eq));
+    let base_field_arithmetic_on_stack = alt((mul, invert, eq));
     let bitwise_arithmetic_on_stack =
         alt((split, lt, and, xor, log_2_floor, pow, div_mod, pop_count));
     let extension_field_arithmetic_on_stack = alt((xx_add, xx_mul, x_invert, xb_mul));
@@ -304,6 +305,8 @@ fn an_instruction(s: &str) -> ParseResult<AnInstruction<String>> {
         assert,
         sponge_absorb_mem,
         sponge_absorb,
+        addi,
+        add,
     ));
 
     alt((
@@ -345,6 +348,14 @@ fn push_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>> {
         let (s, _) = token1("push")(s)?;
         let (s, elem) = field_element(s)?;
         Ok((s, Push(elem)))
+    }
+}
+
+fn addi_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>> {
+    move |s: &str| {
+        let (s, _) = token1("addi")(s)?;
+        let (s, elem) = field_element(s)?;
+        Ok((s, AddI(elem)))
     }
 }
 
