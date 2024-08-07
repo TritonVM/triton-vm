@@ -2076,6 +2076,28 @@ impl ExtProcessorTable {
         .concat()
     }
 
+    fn instruction_addi(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
+        let curr_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
+        };
+        let next_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(NextBaseRow(col.master_base_table_index()))
+        };
+
+        let specific_constraints =
+            vec![next_base_row(ST0) - curr_base_row(ST0) - curr_base_row(NIA)];
+        [
+            specific_constraints,
+            Self::instruction_group_step_1(circuit_builder),
+            Self::instruction_group_op_stack_remains_except_top_n(circuit_builder, 1),
+            Self::instruction_group_no_ram(circuit_builder),
+            Self::instruction_group_no_io(circuit_builder),
+        ]
+        .concat()
+    }
+
     fn instruction_mul(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
@@ -2680,6 +2702,7 @@ impl ExtProcessorTable {
             SpongeAbsorbMem => ExtProcessorTable::instruction_sponge_absorb_mem(circuit_builder),
             SpongeSqueeze => ExtProcessorTable::instruction_sponge_squeeze(circuit_builder),
             Add => ExtProcessorTable::instruction_add(circuit_builder),
+            AddI(_) => ExtProcessorTable::instruction_addi(circuit_builder),
             Mul => ExtProcessorTable::instruction_mul(circuit_builder),
             Invert => ExtProcessorTable::instruction_invert(circuit_builder),
             Eq => ExtProcessorTable::instruction_eq(circuit_builder),

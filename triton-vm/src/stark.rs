@@ -2831,6 +2831,7 @@ pub(crate) mod tests {
 
             // base field arithmetic
             add mul                 // _ bfe_0 bfe_1 bfe_2 bfe_3
+            addi 0                  // _ bfe_0 bfe_1 bfe_2 bfe_3
             invert                  // _ bfe_0 bfe_1 bfe_2 bfe_3
             mul add                 // _ bfe_0 bfe_1
             eq                      // _ bfe_0

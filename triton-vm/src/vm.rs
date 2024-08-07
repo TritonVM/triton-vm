@@ -246,6 +246,7 @@ impl VMState {
             SpongeSqueeze => self.sponge_squeeze()?,
             AssertVector => self.assert_vector()?,
             Add => self.add()?,
+            AddI(field_element) => self.addi(field_element)?,
             Mul => self.mul()?,
             Invert => self.invert()?,
             Eq => self.eq()?,
@@ -579,6 +580,13 @@ impl VMState {
         let rhs = self.op_stack.pop()?;
         self.op_stack.push(lhs + rhs);
 
+        self.instruction_pointer += 1;
+        Ok(vec![])
+    }
+
+    fn addi(&mut self, field_element: BFieldElement) -> Result<Vec<CoProcessorCall>> {
+        let lhs = self.op_stack.pop()?;
+        self.op_stack.push(lhs + field_element);
         self.instruction_pointer += 1;
         Ok(vec![])
     }

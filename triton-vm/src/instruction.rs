@@ -189,6 +189,7 @@ pub enum AnInstruction<Dest: PartialEq + Default> {
 
     // Base field arithmetic on stack
     Add,
+    AddI(BFieldElement),
     Mul,
     Invert,
     Eq,
@@ -245,6 +246,7 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
             SpongeAbsorbMem => 48,
             SpongeSqueeze => 56,
             Add => 42,
+            AddI(_) => 49,
             Mul => 50,
             Invert => 64,
             Eq => 58,
@@ -260,7 +262,7 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
             XxMul => 74,
             XInvert => 72,
             XbMul => 82,
-            ReadIo(_) => 49,
+            ReadIo(_) => 57,
             WriteIo(_) => 19,
             MerkleStep => 36,
             XxDotStep => 80,
@@ -292,6 +294,7 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
             SpongeAbsorbMem => "sponge_absorb_mem",
             SpongeSqueeze => "sponge_squeeze",
             Add => "add",
+            AddI(_) => "addi",
             Mul => "mul",
             Invert => "invert",
             Eq => "eq",
@@ -328,6 +331,7 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
             Call(_) => 2,
             ReadMem(_) | WriteMem(_) => 2,
             ReadIo(_) | WriteIo(_) => 2,
+            AddI(_) => 2,
             _ => 1,
         }
     }
@@ -368,6 +372,7 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
             SpongeAbsorbMem => SpongeAbsorbMem,
             SpongeSqueeze => SpongeSqueeze,
             Add => Add,
+            AddI(x) => AddI(*x),
             Mul => Mul,
             Invert => Invert,
             Eq => Eq,
@@ -415,6 +420,7 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
             SpongeAbsorbMem => 0,
             SpongeSqueeze => 10,
             Add => -1,
+            AddI(_) => 0,
             Mul => -1,
             Invert => 0,
             Eq => -1,
@@ -457,6 +463,7 @@ impl<Dest: Display + PartialEq + Default> Display for AnInstruction<Dest> {
             Call(arg) => write!(f, " {arg}"),
             ReadMem(arg) | WriteMem(arg) => write!(f, " {arg}"),
             ReadIo(arg) | WriteIo(arg) => write!(f, " {arg}"),
+            AddI(arg) => write!(f, " {arg}"),
             _ => Ok(()),
         }
     }
@@ -471,6 +478,7 @@ impl Instruction {
             Dup(arg) | Swap(arg) => Some(arg.into()),
             ReadMem(arg) | WriteMem(arg) => Some(arg.into()),
             ReadIo(arg) | WriteIo(arg) => Some(arg.into()),
+            AddI(arg) => Some(*arg),
             _ => None,
         }
     }
@@ -485,6 +493,7 @@ impl Instruction {
         let new_instruction = match self {
             Pop(_) => Pop(num_words?),
             Push(_) => Push(new_arg),
+            AddI(_) => AddI(new_arg),
             Divine(_) => Divine(num_words?),
             Dup(_) => Dup(op_stack_element?),
             Swap(_) => Swap(op_stack_element?),
@@ -564,6 +573,7 @@ const fn all_instructions_with_default_args() -> [AnInstruction<BFieldElement>; 
         SpongeAbsorbMem,
         SpongeSqueeze,
         Add,
+        AddI(BFieldElement::ZERO),
         Mul,
         Invert,
         Eq,
