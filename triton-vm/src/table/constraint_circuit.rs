@@ -925,7 +925,7 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
     pub fn num_nodes(constraints: &[Self]) -> usize {
         constraints
             .iter()
-            .flat_map(|ccm| Self::all_nodes_in_circuit(&ccm.circuit.borrow()).into_iter())
+            .flat_map(|ccm| Self::all_nodes_in_circuit(&ccm.circuit.borrow()))
             .unique()
             .count()
     }
