@@ -1287,6 +1287,7 @@ mod tests {
     use twenty_first::math::traits::FiniteField;
     use twenty_first::prelude::x_field_element::EXTENSION_DEGREE;
 
+    use crate::air::Air;
     use crate::arithmetic_domain::ArithmeticDomain;
     use crate::instruction::tests::InstructionBucket;
     use crate::instruction::Instruction;
@@ -1473,25 +1474,6 @@ mod tests {
             .is_zero());
     }
 
-    macro_rules! constraints_without_degree_lowering {
-        ($constraint_type: ident) => {{
-            let circuit_builder = ConstraintCircuitBuilder::new();
-            vec![
-                ExtProgramTable::$constraint_type(&circuit_builder),
-                ExtProcessorTable::$constraint_type(&circuit_builder),
-                ExtOpStackTable::$constraint_type(&circuit_builder),
-                ExtRamTable::$constraint_type(&circuit_builder),
-                ExtJumpStackTable::$constraint_type(&circuit_builder),
-                ExtHashTable::$constraint_type(&circuit_builder),
-                ExtCascadeTable::$constraint_type(&circuit_builder),
-                ExtLookupTable::$constraint_type(&circuit_builder),
-                ExtU32Table::$constraint_type(&circuit_builder),
-                GrandCrossTableArg::$constraint_type(&circuit_builder),
-            ]
-            .concat()
-        }};
-    }
-
     struct SpecSnippet {
         pub start_marker: &'static str,
         pub stop_marker: &'static str,
@@ -1575,14 +1557,10 @@ mod tests {
         let mut deg_low_ext = vec![];
         for maybe_target_degree in DEGREE_LOWERING_TARGETS {
             if let Some(target_degree) = maybe_target_degree {
-                let mut initial_constraints =
-                    constraints_without_degree_lowering!(initial_constraints);
-                let mut consistency_constraints =
-                    constraints_without_degree_lowering!(consistency_constraints);
-                let mut transition_constraints =
-                    constraints_without_degree_lowering!(transition_constraints);
-                let mut terminal_constraints =
-                    constraints_without_degree_lowering!(terminal_constraints);
+                let mut initial_constraints = Air::initial_constraints();
+                let mut consistency_constraints = Air::consistency_constraints();
+                let mut transition_constraints = Air::transition_constraints();
+                let mut terminal_constraints = Air::terminal_constraints();
 
                 let (new_initial_constraints_main, new_initial_constraints_aux) =
                     ConstraintCircuitMonad::lower_to_degree(

@@ -167,6 +167,7 @@ use crate::error::ProvingError;
 use crate::prelude::*;
 
 pub mod aet;
+pub mod air;
 pub mod arithmetic_domain;
 pub mod config;
 pub mod error;
