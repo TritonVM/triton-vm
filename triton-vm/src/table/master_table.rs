@@ -1296,6 +1296,7 @@ mod tests {
     use crate::table::degree_lowering_table::DegreeLoweringBaseTableColumn;
     use crate::table::degree_lowering_table::DegreeLoweringExtTableColumn;
     use crate::table::table_column::*;
+    use crate::table::tasm_air_constraints::air_constraint_evaluation_tasm;
     use crate::table::*;
     use crate::triton_program;
 
@@ -1480,12 +1481,20 @@ mod tests {
 
     #[test]
     fn update_arithmetization_overview() {
-        let spec_snippets = [
-            generate_table_overview(),
-            generate_constraints_overview(),
-            generate_tasm_air_evaluation_cost_overview(),
-            generate_opcode_pressure_overview(),
-        ];
+        let mut spec_snippets = vec![generate_table_overview(), generate_constraints_overview()];
+
+        let tasm_constraints_in_place = std::panic::catch_unwind(|| {
+            air_constraint_evaluation_tasm(TasmConstraintEvaluationMemoryLayout::default());
+        })
+        .is_ok();
+        if tasm_constraints_in_place {
+            spec_snippets.push(generate_tasm_air_evaluation_cost_overview());
+        } else {
+            println!("Cannot verify spec's overview of tasm cost of AIR evaluation; tasm constraints need to be in place for that. To generate them, run:\n");
+            println!("$> cargo run --bin constraint-evaluation-generator");
+        }
+
+        spec_snippets.push(generate_opcode_pressure_overview());
 
         // current directory is triton-vm/triton-vm/
         let spec_path = Path::new("../specification/src/arithmetization-overview.md");
