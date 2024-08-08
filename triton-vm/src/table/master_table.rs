@@ -1473,72 +1473,23 @@ mod tests {
             .is_zero());
     }
 
-    fn initial_constraints() -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
-        let circuit_builder = ConstraintCircuitBuilder::new();
-        vec![
-            ExtProgramTable::initial_constraints(&circuit_builder),
-            ExtProcessorTable::initial_constraints(&circuit_builder),
-            ExtOpStackTable::initial_constraints(&circuit_builder),
-            ExtRamTable::initial_constraints(&circuit_builder),
-            ExtJumpStackTable::initial_constraints(&circuit_builder),
-            ExtHashTable::initial_constraints(&circuit_builder),
-            ExtCascadeTable::initial_constraints(&circuit_builder),
-            ExtLookupTable::initial_constraints(&circuit_builder),
-            ExtU32Table::initial_constraints(&circuit_builder),
-            GrandCrossTableArg::initial_constraints(&circuit_builder),
-        ]
-        .concat()
-    }
-
-    fn consistency_constraints() -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
-        let circuit_builder = ConstraintCircuitBuilder::new();
-        vec![
-            ExtProgramTable::consistency_constraints(&circuit_builder),
-            ExtProcessorTable::consistency_constraints(&circuit_builder),
-            ExtOpStackTable::consistency_constraints(&circuit_builder),
-            ExtRamTable::consistency_constraints(&circuit_builder),
-            ExtJumpStackTable::consistency_constraints(&circuit_builder),
-            ExtHashTable::consistency_constraints(&circuit_builder),
-            ExtCascadeTable::consistency_constraints(&circuit_builder),
-            ExtLookupTable::consistency_constraints(&circuit_builder),
-            ExtU32Table::consistency_constraints(&circuit_builder),
-            GrandCrossTableArg::consistency_constraints(&circuit_builder),
-        ]
-        .concat()
-    }
-
-    fn transition_constraints() -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        let circuit_builder = ConstraintCircuitBuilder::new();
-        vec![
-            ExtProgramTable::transition_constraints(&circuit_builder),
-            ExtProcessorTable::transition_constraints(&circuit_builder),
-            ExtOpStackTable::transition_constraints(&circuit_builder),
-            ExtRamTable::transition_constraints(&circuit_builder),
-            ExtJumpStackTable::transition_constraints(&circuit_builder),
-            ExtHashTable::transition_constraints(&circuit_builder),
-            ExtCascadeTable::transition_constraints(&circuit_builder),
-            ExtLookupTable::transition_constraints(&circuit_builder),
-            ExtU32Table::transition_constraints(&circuit_builder),
-            GrandCrossTableArg::transition_constraints(&circuit_builder),
-        ]
-        .concat()
-    }
-
-    fn terminal_constraints() -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
-        let circuit_builder = ConstraintCircuitBuilder::new();
-        vec![
-            ExtProgramTable::terminal_constraints(&circuit_builder),
-            ExtProcessorTable::terminal_constraints(&circuit_builder),
-            ExtOpStackTable::terminal_constraints(&circuit_builder),
-            ExtRamTable::terminal_constraints(&circuit_builder),
-            ExtJumpStackTable::terminal_constraints(&circuit_builder),
-            ExtHashTable::terminal_constraints(&circuit_builder),
-            ExtCascadeTable::terminal_constraints(&circuit_builder),
-            ExtLookupTable::terminal_constraints(&circuit_builder),
-            ExtU32Table::terminal_constraints(&circuit_builder),
-            GrandCrossTableArg::terminal_constraints(&circuit_builder),
-        ]
-        .concat()
+    macro_rules! constraints_without_degree_lowering {
+        ($constraint_type: ident) => {{
+            let circuit_builder = ConstraintCircuitBuilder::new();
+            vec![
+                ExtProgramTable::$constraint_type(&circuit_builder),
+                ExtProcessorTable::$constraint_type(&circuit_builder),
+                ExtOpStackTable::$constraint_type(&circuit_builder),
+                ExtRamTable::$constraint_type(&circuit_builder),
+                ExtJumpStackTable::$constraint_type(&circuit_builder),
+                ExtHashTable::$constraint_type(&circuit_builder),
+                ExtCascadeTable::$constraint_type(&circuit_builder),
+                ExtLookupTable::$constraint_type(&circuit_builder),
+                ExtU32Table::$constraint_type(&circuit_builder),
+                GrandCrossTableArg::$constraint_type(&circuit_builder),
+            ]
+            .concat()
+        }};
     }
 
     struct SpecSnippet {
@@ -1624,10 +1575,14 @@ mod tests {
         let mut deg_low_ext = vec![];
         for maybe_target_degree in DEGREE_LOWERING_TARGETS {
             if let Some(target_degree) = maybe_target_degree {
-                let mut initial_constraints = initial_constraints();
-                let mut consistency_constraints = consistency_constraints();
-                let mut transition_constraints = transition_constraints();
-                let mut terminal_constraints = terminal_constraints();
+                let mut initial_constraints =
+                    constraints_without_degree_lowering!(initial_constraints);
+                let mut consistency_constraints =
+                    constraints_without_degree_lowering!(consistency_constraints);
+                let mut transition_constraints =
+                    constraints_without_degree_lowering!(transition_constraints);
+                let mut terminal_constraints =
+                    constraints_without_degree_lowering!(terminal_constraints);
 
                 let (new_initial_constraints_main, new_initial_constraints_aux) =
                     ConstraintCircuitMonad::lower_to_degree(
