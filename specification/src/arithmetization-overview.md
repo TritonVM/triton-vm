@@ -4,20 +4,20 @@
 
 <!-- auto-gen info start table_overview -->
 <!-- To update, please run `cargo test`. -->
-| table name                                 | #main cols | #aux cols | total width |
-|:-------------------------------------------|-----------:|----------:|------------:|
-| [ProgramTable](program-table.md)           |          7 |         3 |          16 |
-| [ProcessorTable](processor-table.md)       |         39 |        11 |          72 |
-| [OpStackTable](operational-stack-table.md) |          4 |         2 |          10 |
-| [RamTable](random-access-memory-table.md)  |          7 |         6 |          25 |
-| [JumpStackTable](jump-stack-table.md)      |          5 |         2 |          11 |
-| [HashTable](hash-table.md)                 |         67 |        20 |         127 |
-| [CascadeTable](cascade-table.md)           |          6 |         2 |          12 |
-| [LookupTable](lookup-table.md)             |          4 |         2 |          10 |
-| [U32Table](u32-table.md)                   |         10 |         1 |          13 |
-| DegreeLowering                             |        203 |        36 |         311 |
-| Randomizers                                |          0 |         1 |           3 |
-| **TOTAL**                                  |    **352** |    **86** |     **610** |
+| table name                                 | #main cols      | #aux cols        | total width     |
+|:-------------------------------------------|----------------:|-----------------:|----------------:|
+| [ProgramTable](program-table.md)           |               7 |                3 |              16 |
+| [ProcessorTable](processor-table.md)       |              39 |               11 |              72 |
+| [OpStackTable](operational-stack-table.md) |               4 |                2 |              10 |
+| [RamTable](random-access-memory-table.md)  |               7 |                6 |              25 |
+| [JumpStackTable](jump-stack-table.md)      |               5 |                2 |              11 |
+| [HashTable](hash-table.md)                 |              67 |               20 |             127 |
+| [CascadeTable](cascade-table.md)           |               6 |                2 |              12 |
+| [LookupTable](lookup-table.md)             |               4 |                2 |              10 |
+| [U32Table](u32-table.md)                   |              10 |                1 |              13 |
+| DegreeLowering (-/8/4)                     |       0/111/203 |          0/14/36 |       0/153/311 |
+| Randomizers                                |               0 |                1 |               3 |
+| **TOTAL**                                  | **149/260/352** |     **50/64/86** | **299/452/610** |
 <!-- auto-gen info stop table_overview -->
 
 ## Constraints
