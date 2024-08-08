@@ -2,9 +2,11 @@ pub mod dynamic_tasm;
 
 use crate::table;
 use crate::table::cascade_table::ExtCascadeTable;
+use crate::table::constraint_circuit::ConstraintCircuit;
 use crate::table::constraint_circuit::ConstraintCircuitBuilder;
 use crate::table::constraint_circuit::ConstraintCircuitMonad;
 use crate::table::constraint_circuit::DualRowIndicator;
+use crate::table::constraint_circuit::InputIndicator;
 use crate::table::constraint_circuit::SingleRowIndicator;
 use crate::table::cross_table_argument::GrandCrossTableArg;
 use crate::table::degree_lowering_table;
@@ -16,6 +18,8 @@ use crate::table::processor_table::ExtProcessorTable;
 use crate::table::program_table::ExtProgramTable;
 use crate::table::ram_table::ExtRamTable;
 use crate::table::u32_table::ExtU32Table;
+
+use itertools::Itertools;
 
 #[derive(Debug, Clone)]
 pub struct Air {
@@ -127,5 +131,29 @@ impl Air {
             .append(&mut [tran_base_substitutions, tran_ext_substitutions].concat());
         self.term
             .append(&mut [term_base_substitutions, term_ext_substitutions].concat());
+    }
+
+    pub fn init(&self) -> Vec<ConstraintCircuit<SingleRowIndicator>> {
+        Self::consume(&self.init)
+    }
+
+    pub fn cons(&self) -> Vec<ConstraintCircuit<SingleRowIndicator>> {
+        Self::consume(&self.cons)
+    }
+
+    pub fn tran(&self) -> Vec<ConstraintCircuit<DualRowIndicator>> {
+        Self::consume(&self.tran)
+    }
+
+    pub fn term(&self) -> Vec<ConstraintCircuit<SingleRowIndicator>> {
+        Self::consume(&self.term)
+    }
+
+    fn consume<II: InputIndicator>(
+        constraints: &[ConstraintCircuitMonad<II>],
+    ) -> Vec<ConstraintCircuit<II>> {
+        let mut constraints = constraints.iter().map(|c| c.consume()).collect_vec();
+        ConstraintCircuit::assert_unique_ids(&mut constraints);
+        constraints
     }
 }
