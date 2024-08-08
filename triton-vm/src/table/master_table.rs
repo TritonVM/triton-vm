@@ -1613,187 +1613,206 @@ mod tests {
         // an `expr` cannot be followed up with `and`. Instead, declare this `const` to
         // have an `ident`, which _can_ be followed up with `and`.
         const ZERO: usize = 0;
-        let mut total_initial = 0usize;
-        let mut total_consistency = 0usize;
-        let mut total_transition = 0usize;
-        let mut total_terminal = 0usize;
-        let mut tables = constraint_overview_rows!(
-            ExtProgramTable ends at PROGRAM_TABLE_END and EXT_PROGRAM_TABLE_END.
-                Spec: ["ProgramTable"]("program-table.md"),
-            ExtProcessorTable ends at PROCESSOR_TABLE_END and EXT_PROCESSOR_TABLE_END.
-                Spec: ["ProcessorTable"]("processor-table.md"),
-            ExtOpStackTable ends at OP_STACK_TABLE_END and EXT_OP_STACK_TABLE_END.
-                Spec: ["OpStackTable"]("operational-stack-table.md"),
-            ExtRamTable ends at RAM_TABLE_END and EXT_RAM_TABLE_END.
-                Spec: ["RamTable"]("random-access-memory-table.md"),
-            ExtJumpStackTable ends at JUMP_STACK_TABLE_END and EXT_JUMP_STACK_TABLE_END.
-                Spec: ["JumpStackTable"]("jump-stack-table.md"),
-            ExtHashTable ends at HASH_TABLE_END and EXT_HASH_TABLE_END.
-                Spec: ["HashTable"]("hash-table.md"),
-            ExtCascadeTable ends at CASCADE_TABLE_END and EXT_CASCADE_TABLE_END.
-                Spec: ["CascadeTable"]("cascade-table.md"),
-            ExtLookupTable ends at LOOKUP_TABLE_END and EXT_LOOKUP_TABLE_END.
-                Spec: ["LookupTable"]("lookup-table.md"),
-            ExtU32Table ends at U32_TABLE_END and EXT_U32_TABLE_END.
-                Spec: ["U32Table"]("u32-table.md"),
-            GrandCrossTableArg ends at ZERO and ZERO.
-                Spec: ["Grand Cross-Table Argument"]("table-linking.md"),
-        );
+
+        let degree_lowering_targets = [None, Some(8), Some(4)];
+        assert!(degree_lowering_targets.contains(&Some(AIR_TARGET_DEGREE)));
 
         let mut ft = String::new();
-        ft = format!("{ft}\nBefore automatic degree lowering:\n\n");
-        ft = format!("{ft}| {:<46} ", "table name");
-        ft = format!("{ft}| #initial ");
-        ft = format!("{ft}| #consistency ");
-        ft = format!("{ft}| #transition ");
-        ft = format!("{ft}| #terminal ");
-        ft = format!("{ft}| max degree |\n");
+        for target_degree in degree_lowering_targets {
+            let mut total_initial = 0usize;
+            let mut total_consistency = 0usize;
+            let mut total_transition = 0usize;
+            let mut total_terminal = 0usize;
+            ft = match target_degree {
+                None => format!("{ft}\nBefore automatic degree lowering:\n\n"),
+                Some(target) => format!("{ft}\nAfter lowering degree to {target}:\n\n"),
+            };
+            ft = format!("{ft}| {:<46} ", "table name");
+            ft = format!("{ft}| #initial ");
+            ft = format!("{ft}| #consistency ");
+            ft = format!("{ft}| #transition ");
+            ft = format!("{ft}| #terminal ");
+            if target_degree.is_none() {
+                ft = format!("{ft}| max degree ");
+            }
+            ft = format!("{ft}|\n");
 
-        ft = format!("{ft}|:{:-<46}-", "-");
-        ft = format!("{ft}|-{:-<8}:", "-");
-        ft = format!("{ft}|-{:-<12}:", "-");
-        ft = format!("{ft}|-{:-<11}:", "-");
-        ft = format!("{ft}|-{:-<9}:", "-");
-        ft = format!("{ft}|-{:-<10}:|\n", "-");
+            ft = format!("{ft}|:{:-<46}-", "-");
+            ft = format!("{ft}|-{:-<8}:", "-");
+            ft = format!("{ft}|-{:-<12}:", "-");
+            ft = format!("{ft}|-{:-<11}:", "-");
+            if target_degree.is_none() {
+                ft = format!("{ft}|-{:-<9}:", "-");
+                ft = format!("{ft}|-{:-<10}:|\n", "-");
+            } else {
+                ft = format!("{ft}|-{:-<9}:|\n", "-");
+            }
 
-        let mut total_max_degree = 0;
-        for table in &tables {
-            let table_max_degree = [
-                ConstraintCircuitMonad::multicircuit_degree(&table.initial_constraints),
-                ConstraintCircuitMonad::multicircuit_degree(&table.consistency_constraints),
-                ConstraintCircuitMonad::multicircuit_degree(&table.transition_constraints),
-                ConstraintCircuitMonad::multicircuit_degree(&table.terminal_constraints),
-            ]
-            .into_iter()
-            .max()
-            .unwrap_or(-1);
-
-            let num_init = table.initial_constraints.len();
-            let num_cons = table.consistency_constraints.len();
-            let num_tran = table.transition_constraints.len();
-            let num_term = table.terminal_constraints.len();
-
-            ft = format!(
-                "{ft}| {:<46} | {:>8} | {:12} | {:>11} | {:>9} | {:>10} |\n",
-                table.name, num_init, num_cons, num_tran, num_term, table_max_degree,
+            let mut total_max_degree = 0;
+            let mut tables = constraint_overview_rows!(
+                ExtProgramTable ends at PROGRAM_TABLE_END and EXT_PROGRAM_TABLE_END.
+                    Spec: ["ProgramTable"]("program-table.md"),
+                ExtProcessorTable ends at PROCESSOR_TABLE_END and EXT_PROCESSOR_TABLE_END.
+                    Spec: ["ProcessorTable"]("processor-table.md"),
+                ExtOpStackTable ends at OP_STACK_TABLE_END and EXT_OP_STACK_TABLE_END.
+                    Spec: ["OpStackTable"]("operational-stack-table.md"),
+                ExtRamTable ends at RAM_TABLE_END and EXT_RAM_TABLE_END.
+                    Spec: ["RamTable"]("random-access-memory-table.md"),
+                ExtJumpStackTable ends at JUMP_STACK_TABLE_END and EXT_JUMP_STACK_TABLE_END.
+                    Spec: ["JumpStackTable"]("jump-stack-table.md"),
+                ExtHashTable ends at HASH_TABLE_END and EXT_HASH_TABLE_END.
+                    Spec: ["HashTable"]("hash-table.md"),
+                ExtCascadeTable ends at CASCADE_TABLE_END and EXT_CASCADE_TABLE_END.
+                    Spec: ["CascadeTable"]("cascade-table.md"),
+                ExtLookupTable ends at LOOKUP_TABLE_END and EXT_LOOKUP_TABLE_END.
+                    Spec: ["LookupTable"]("lookup-table.md"),
+                ExtU32Table ends at U32_TABLE_END and EXT_U32_TABLE_END.
+                    Spec: ["U32Table"]("u32-table.md"),
+                GrandCrossTableArg ends at ZERO and ZERO.
+                    Spec: ["Grand Cross-Table Argument"]("table-linking.md"),
             );
-            total_initial += num_init;
-            total_consistency += num_cons;
-            total_transition += num_tran;
-            total_terminal += num_term;
-            total_max_degree = total_max_degree.max(table_max_degree);
-        }
-        ft = format!(
-            "{ft}| {:<46} | {:>8} | {:>12} | {:>11} | {:>9} | {:>10} |\n",
-            "**TOTAL**",
-            format!("**{total_initial}**"),
-            format!("**{total_consistency}**"),
-            format!("**{total_transition}**"),
-            format!("**{total_terminal}**"),
-            format!("**{}**", total_max_degree)
-        );
-        ft = format!("{ft}\nAfter automatically lowering degree to {AIR_TARGET_DEGREE}:\n\n");
-        ft = format!("{ft}| {:<46} ", "table name");
-        ft = format!("{ft}| #initial ");
-        ft = format!("{ft}| #consistency ");
-        ft = format!("{ft}| #transition ");
-        ft = format!("{ft}| #terminal |\n");
+            let mut all_initial_constraints = vec![];
+            let mut all_consistency_constraints = vec![];
+            let mut all_transition_constraints = vec![];
+            let mut all_terminal_constraints = vec![];
+            for table in &mut tables {
+                let (
+                    mut initial_constraints,
+                    mut consistency_constraints,
+                    mut transition_constraints,
+                    mut terminal_constraints,
+                ) = if let Some(target) = target_degree {
+                    let (new_base_initial, new_ext_initial) =
+                        ConstraintCircuitMonad::lower_to_degree(
+                            &mut table.initial_constraints,
+                            target,
+                            table.last_base_column_index,
+                            table.last_ext_column_index,
+                        );
+                    let (new_base_consistency, new_ext_consistency) =
+                        ConstraintCircuitMonad::lower_to_degree(
+                            &mut table.consistency_constraints,
+                            target,
+                            table.last_base_column_index,
+                            table.last_ext_column_index,
+                        );
+                    let (new_base_transition, new_ext_transition) =
+                        ConstraintCircuitMonad::lower_to_degree(
+                            &mut table.transition_constraints,
+                            target,
+                            table.last_base_column_index,
+                            table.last_ext_column_index,
+                        );
+                    let (new_base_terminal, new_ext_terminal) =
+                        ConstraintCircuitMonad::lower_to_degree(
+                            &mut table.terminal_constraints,
+                            target,
+                            table.last_base_column_index,
+                            table.last_ext_column_index,
+                        );
 
-        ft = format!("{ft}|:{:-<46}-", "-");
-        ft = format!("{ft}|-{:-<8}:", "-");
-        ft = format!("{ft}|-{:-<12}:", "-");
-        ft = format!("{ft}|-{:-<11}:", "-");
-        ft = format!("{ft}|-{:-<9}:|\n", "-");
+                    (
+                        [
+                            table.initial_constraints.clone(),
+                            new_base_initial,
+                            new_ext_initial,
+                        ]
+                        .concat(),
+                        [
+                            table.consistency_constraints.clone(),
+                            new_base_consistency,
+                            new_ext_consistency,
+                        ]
+                        .concat(),
+                        [
+                            table.transition_constraints.clone(),
+                            new_base_transition,
+                            new_ext_transition,
+                        ]
+                        .concat(),
+                        [
+                            table.terminal_constraints.clone(),
+                            new_base_terminal,
+                            new_ext_terminal,
+                        ]
+                        .concat(),
+                    )
+                } else {
+                    (
+                        table.initial_constraints.clone(),
+                        table.consistency_constraints.clone(),
+                        table.transition_constraints.clone(),
+                        table.terminal_constraints.clone(),
+                    )
+                };
+                let table_max_degree = [
+                    ConstraintCircuitMonad::multicircuit_degree(&initial_constraints),
+                    ConstraintCircuitMonad::multicircuit_degree(&consistency_constraints),
+                    ConstraintCircuitMonad::multicircuit_degree(&transition_constraints),
+                    ConstraintCircuitMonad::multicircuit_degree(&terminal_constraints),
+                ]
+                .into_iter()
+                .max()
+                .unwrap_or(-1);
 
-        total_initial = 0;
-        total_consistency = 0;
-        total_transition = 0;
-        total_terminal = 0;
-        let mut all_initial_constraints = vec![];
-        let mut all_consistency_constraints = vec![];
-        let mut all_transition_constraints = vec![];
-        let mut all_terminal_constraints = vec![];
-        for table in &mut tables {
-            let (new_base_initial, new_ext_initial) = ConstraintCircuitMonad::lower_to_degree(
-                &mut table.initial_constraints,
-                AIR_TARGET_DEGREE,
-                table.last_base_column_index,
-                table.last_ext_column_index,
-            );
-            let (new_base_consistency, new_ext_consistency) =
-                ConstraintCircuitMonad::lower_to_degree(
-                    &mut table.consistency_constraints,
-                    AIR_TARGET_DEGREE,
-                    table.last_base_column_index,
-                    table.last_ext_column_index,
+                let num_init = initial_constraints.len();
+                let num_cons = consistency_constraints.len();
+                let num_tran = transition_constraints.len();
+                let num_term = terminal_constraints.len();
+
+                all_initial_constraints.append(&mut initial_constraints);
+                all_consistency_constraints.append(&mut consistency_constraints);
+                all_transition_constraints.append(&mut transition_constraints);
+                all_terminal_constraints.append(&mut terminal_constraints);
+
+                ft = format!(
+                    "{ft}| {:<46} | {:>8} | {:12} | {:>11} | {:>9} |",
+                    table.name, num_init, num_cons, num_tran, num_term,
                 );
-            let (new_base_transition, new_ext_transition) = ConstraintCircuitMonad::lower_to_degree(
-                &mut table.transition_constraints,
-                AIR_TARGET_DEGREE,
-                table.last_base_column_index,
-                table.last_ext_column_index,
-            );
-            let (new_base_terminal, new_ext_terminal) = ConstraintCircuitMonad::lower_to_degree(
-                &mut table.terminal_constraints,
-                AIR_TARGET_DEGREE,
-                table.last_base_column_index,
-                table.last_ext_column_index,
-            );
-            let num_init =
-                table.initial_constraints.len() + new_base_initial.len() + new_ext_initial.len();
-            let num_cons = table.consistency_constraints.len()
-                + new_base_consistency.len()
-                + new_ext_consistency.len();
-            let num_tran = table.transition_constraints.len()
-                + new_base_transition.len()
-                + new_ext_transition.len();
-            let num_term =
-                table.terminal_constraints.len() + new_base_terminal.len() + new_ext_terminal.len();
+                if target_degree.is_none() {
+                    ft = format!("{ft} {table_max_degree:>10} |");
+                }
+                ft = format!("{ft}\n",);
+                total_initial += num_init;
+                total_consistency += num_cons;
+                total_transition += num_tran;
+                total_terminal += num_term;
+                total_max_degree = total_max_degree.max(table_max_degree);
+            }
             ft = format!(
-                "{ft}| {:<46} | {num_init:>8} | {num_cons:12} | {num_tran:>11} | {num_term:>9} |\n",
-                table.name,
+                "{ft}| {:<46} | {:>8} | {:>12} | {:>11} | {:>9} |",
+                "**TOTAL**",
+                format!("**{total_initial}**"),
+                format!("**{total_consistency}**"),
+                format!("**{total_transition}**"),
+                format!("**{total_terminal}**"),
             );
-            total_initial += num_init;
-            total_consistency += num_cons;
-            total_transition += num_tran;
-            total_terminal += num_term;
-            all_initial_constraints.extend(table.initial_constraints.iter().cloned());
-            all_initial_constraints.extend(new_base_initial.into_iter());
-            all_initial_constraints.extend(new_ext_initial.into_iter());
-            all_consistency_constraints.extend(table.consistency_constraints.iter().cloned());
-            all_consistency_constraints.extend(new_base_consistency.into_iter());
-            all_consistency_constraints.extend(new_ext_consistency.into_iter());
-            all_transition_constraints.extend(table.transition_constraints.iter().cloned());
-            all_transition_constraints.extend(new_base_transition.into_iter());
-            all_transition_constraints.extend(new_ext_transition.into_iter());
-            all_terminal_constraints.extend(table.terminal_constraints.iter().cloned());
-            all_terminal_constraints.extend(new_base_terminal.into_iter());
-            all_terminal_constraints.extend(new_ext_terminal.into_iter());
+            if target_degree.is_none() {
+                ft = format!("{ft} {:>10} |", format!("**{}**", total_max_degree));
+            }
+            ft = format!("{ft}\n");
+
+            let num_nodes_in_all_initial_constraints =
+                ConstraintCircuitMonad::num_nodes(&all_initial_constraints);
+            let num_nodes_in_all_consistency_constraints =
+                ConstraintCircuitMonad::num_nodes(&all_consistency_constraints);
+            let num_nodes_in_all_transition_constraints =
+                ConstraintCircuitMonad::num_nodes(&all_transition_constraints);
+            let num_nodes_in_all_terminal_constraints =
+                ConstraintCircuitMonad::num_nodes(&all_terminal_constraints);
+            ft = format!(
+                "{ft}| {:<46} | {:>8} | {:>12} | {:>11} | {:>9} |",
+                "(# nodes)",
+                format!("({})", num_nodes_in_all_initial_constraints),
+                format!("({})", num_nodes_in_all_consistency_constraints),
+                format!("({})", num_nodes_in_all_transition_constraints),
+                format!("({})", num_nodes_in_all_terminal_constraints),
+            );
+            if target_degree.is_none() {
+                ft = format!("{ft} {:>10} |", "");
+            }
+            ft = format!("{ft}\n");
         }
-        ft = format!(
-            "{ft}| {:<46} | {:>8} | {:>12} | {:>11} | {:>9} |\n",
-            "**TOTAL**",
-            format!("**{total_initial}**"),
-            format!("**{total_consistency}**"),
-            format!("**{total_transition}**"),
-            format!("**{total_terminal}**"),
-        );
-        let num_nodes_in_all_initial_constraints =
-            ConstraintCircuitMonad::num_nodes(&all_initial_constraints);
-        let num_nodes_in_all_consistency_constraints =
-            ConstraintCircuitMonad::num_nodes(&all_consistency_constraints);
-        let num_nodes_in_all_transition_constraints =
-            ConstraintCircuitMonad::num_nodes(&all_transition_constraints);
-        let num_nodes_in_all_terminal_constraints =
-            ConstraintCircuitMonad::num_nodes(&all_terminal_constraints);
-        ft = format!(
-            "{ft}| {:<46} | {:>8} | {:>12} | {:>11} | {:>9} |\n",
-            "(# nodes)",
-            format!("({})", num_nodes_in_all_initial_constraints),
-            format!("({})", num_nodes_in_all_consistency_constraints),
-            format!("({})", num_nodes_in_all_transition_constraints),
-            format!("({})", num_nodes_in_all_terminal_constraints),
-        );
 
         let how_to_update = "<!-- To update, please run `cargo test`. -->";
         SpecSnippet {
