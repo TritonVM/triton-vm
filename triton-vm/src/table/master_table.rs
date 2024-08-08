@@ -1613,6 +1613,10 @@ mod tests {
         // an `expr` cannot be followed up with `and`. Instead, declare this `const` to
         // have an `ident`, which _can_ be followed up with `and`.
         const ZERO: usize = 0;
+        let mut total_initial = 0usize;
+        let mut total_consistency = 0usize;
+        let mut total_transition = 0usize;
+        let mut total_terminal = 0usize;
         let mut tables = constraint_overview_rows!(
             ExtProgramTable ends at PROGRAM_TABLE_END and EXT_PROGRAM_TABLE_END.
                 Spec: ["ProgramTable"]("program-table.md"),
@@ -1652,10 +1656,6 @@ mod tests {
         ft = format!("{ft}|-{:-<9}:", "-");
         ft = format!("{ft}|-{:-<10}:|\n", "-");
 
-        let mut total_initial = 0;
-        let mut total_consistency = 0;
-        let mut total_transition = 0;
-        let mut total_terminal = 0;
         let mut total_max_degree = 0;
         for table in &tables {
             let table_max_degree = [
@@ -1672,6 +1672,7 @@ mod tests {
             let num_cons = table.consistency_constraints.len();
             let num_tran = table.transition_constraints.len();
             let num_term = table.terminal_constraints.len();
+
             ft = format!(
                 "{ft}| {:<46} | {:>8} | {:12} | {:>11} | {:>9} | {:>10} |\n",
                 table.name, num_init, num_cons, num_tran, num_term, table_max_degree,
@@ -1704,10 +1705,14 @@ mod tests {
         ft = format!("{ft}|-{:-<11}:", "-");
         ft = format!("{ft}|-{:-<9}:|\n", "-");
 
-        let mut total_initial = 0;
-        let mut total_consistency = 0;
-        let mut total_transition = 0;
-        let mut total_terminal = 0;
+        total_initial = 0;
+        total_consistency = 0;
+        total_transition = 0;
+        total_terminal = 0;
+        let mut all_initial_constraints = vec![];
+        let mut all_consistency_constraints = vec![];
+        let mut all_transition_constraints = vec![];
+        let mut all_terminal_constraints = vec![];
         for table in &mut tables {
             let (new_base_initial, new_ext_initial) = ConstraintCircuitMonad::lower_to_degree(
                 &mut table.initial_constraints,
@@ -1752,6 +1757,18 @@ mod tests {
             total_consistency += num_cons;
             total_transition += num_tran;
             total_terminal += num_term;
+            all_initial_constraints.extend(table.initial_constraints.iter().cloned());
+            all_initial_constraints.extend(new_base_initial.into_iter());
+            all_initial_constraints.extend(new_ext_initial.into_iter());
+            all_consistency_constraints.extend(table.consistency_constraints.iter().cloned());
+            all_consistency_constraints.extend(new_base_consistency.into_iter());
+            all_consistency_constraints.extend(new_ext_consistency.into_iter());
+            all_transition_constraints.extend(table.transition_constraints.iter().cloned());
+            all_transition_constraints.extend(new_base_transition.into_iter());
+            all_transition_constraints.extend(new_ext_transition.into_iter());
+            all_terminal_constraints.extend(table.terminal_constraints.iter().cloned());
+            all_terminal_constraints.extend(new_base_terminal.into_iter());
+            all_terminal_constraints.extend(new_ext_terminal.into_iter());
         }
         ft = format!(
             "{ft}| {:<46} | {:>8} | {:>12} | {:>11} | {:>9} |\n",
@@ -1760,6 +1777,22 @@ mod tests {
             format!("**{total_consistency}**"),
             format!("**{total_transition}**"),
             format!("**{total_terminal}**"),
+        );
+        let num_nodes_in_all_initial_constraints =
+            ConstraintCircuitMonad::num_nodes(&all_initial_constraints);
+        let num_nodes_in_all_consistency_constraints =
+            ConstraintCircuitMonad::num_nodes(&all_consistency_constraints);
+        let num_nodes_in_all_transition_constraints =
+            ConstraintCircuitMonad::num_nodes(&all_transition_constraints);
+        let num_nodes_in_all_terminal_constraints =
+            ConstraintCircuitMonad::num_nodes(&all_terminal_constraints);
+        ft = format!(
+            "{ft}| {:<46} | {:>8} | {:>12} | {:>11} | {:>9} |\n",
+            "(# nodes)",
+            format!("({})", num_nodes_in_all_initial_constraints),
+            format!("({})", num_nodes_in_all_consistency_constraints),
+            format!("({})", num_nodes_in_all_transition_constraints),
+            format!("({})", num_nodes_in_all_terminal_constraints),
         );
 
         let how_to_update = "<!-- To update, please run `cargo test`. -->";

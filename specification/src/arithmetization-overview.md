@@ -60,6 +60,7 @@ After automatically lowering degree to 4:
 | [U32Table](u32-table.md)                       |        1 |           26 |          34 |         2 |
 | [Grand Cross-Table Argument](table-linking.md) |        0 |            0 |           0 |        14 |
 | **TOTAL**                                      |   **81** |       **94** |     **369** |    **23** |
+| (# nodes)                                      |    (538) |        (676) |      (6557) |     (213) |
 <!-- auto-gen info stop constraints_overview -->
 
 

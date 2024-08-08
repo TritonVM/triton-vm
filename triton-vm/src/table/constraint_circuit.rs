@@ -920,6 +920,16 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
         all_nodes
     }
 
+    /// Counts the number of nodes in this multicircuit. Only counts nodes that
+    /// are used; not nodes that have been forgotten.
+    pub fn num_nodes(constraints: &[Self]) -> usize {
+        constraints
+            .iter()
+            .flat_map(|ccm| Self::all_nodes_in_circuit(&ccm.circuit.borrow()).into_iter())
+            .unique()
+            .count()
+    }
+
     /// Returns the maximum degree of all circuits in the multicircuit.
     pub(crate) fn multicircuit_degree(multicircuit: &[ConstraintCircuitMonad<II>]) -> isize {
         multicircuit
