@@ -89,7 +89,7 @@ impl Codegen for StaticTasmBackend {
         quote!(
             #[doc = #doc_comment]
             pub fn static_air_constraint_evaluation_tasm(
-                mem_layout: TasmConstraintEvaluationMemoryLayout,
+                mem_layout: StaticTasmConstraintEvaluationMemoryLayout,
             ) -> Vec<LabelledInstruction> {
                 let free_mem_page_ptr = mem_layout.free_mem_page_ptr.value();
                 let curr_base_row_ptr = mem_layout.curr_base_row_ptr.value();
@@ -145,14 +145,14 @@ impl StaticTasmBackend {
          # Requirements
 
          In order for this method to emit Triton assembly, various memory regions need to be
-         declared. This is done through [`TasmConstraintEvaluationMemoryLayout`]. The memory
+         declared. This is done through [`StaticTasmConstraintEvaluationMemoryLayout`]. The memory
          layout must be [integral].
 
          # Guarantees
 
          - The emitted code does not declare any labels.
          - The emitted code is “straight-line”, _i.e._, does not contain any of the instructions
-           `call`, `return`, `recurse`, or `skiz`.
+           `call`, `return`, `recurse`, `recurse_or_return`, or `skiz`.
          - The emitted code does not contain instruction `halt`.
          - All memory write access of the emitted code is within the bounds of the memory region
            pointed to by `*free_memory_page`.
@@ -164,7 +164,7 @@ impl StaticTasmBackend {
             (respectively and in this order) correspond to the evaluations of the initial, consistency,
             transition, and terminal constraints.
 
-         [integral]: TasmConstraintEvaluationMemoryLayout::is_integral
+         [integral]: IntegralMemoryLayout::is_integral
          [xfe]: twenty_first::prelude::XFieldElement
          [total]: crate::table::master_table::MasterExtTable::NUM_CONSTRAINTS
          [init]: crate::table::master_table::MasterExtTable::NUM_INITIAL_CONSTRAINTS
