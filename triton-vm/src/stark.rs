@@ -1367,8 +1367,9 @@ pub(crate) mod tests {
     use crate::table::table_column::RamBaseTableColumn;
     use crate::table::tasm_air_constraints::static_air_constraint_evaluation_tasm;
     use crate::table::u32_table::ExtU32Table;
+    use crate::table::IntegralMemoryLayout;
     use crate::table::MemoryRegion;
-    use crate::table::TasmConstraintEvaluationMemoryLayout;
+    use crate::table::StaticTasmConstraintEvaluationMemoryLayout;
     use crate::triton_instr;
     use crate::triton_program;
     use crate::vm::tests::*;
@@ -2631,7 +2632,7 @@ pub(crate) mod tests {
 
         #[strategy(arb())]
         #[filter(#memory_layout.is_integral())]
-        memory_layout: TasmConstraintEvaluationMemoryLayout,
+        memory_layout: StaticTasmConstraintEvaluationMemoryLayout,
     }
 
     impl ConstraintEvaluationPoint {
@@ -2742,7 +2743,7 @@ pub(crate) mod tests {
         terminal_state.run().unwrap();
 
         let free_mem_page_ptr = point.memory_layout.free_mem_page_ptr;
-        let mem_page_size = TasmConstraintEvaluationMemoryLayout::MEM_PAGE_SIZE;
+        let mem_page_size = StaticTasmConstraintEvaluationMemoryLayout::MEM_PAGE_SIZE;
         let mem_page = MemoryRegion::new(free_mem_page_ptr, mem_page_size);
         let not_in_mem_page = |addr: &_| !mem_page.contains_address(addr);
 
@@ -2753,7 +2754,7 @@ pub(crate) mod tests {
 
     #[proptest]
     fn triton_assembly_constraint_evaluator_declares_no_labels(
-        #[strategy(arb())] memory_layout: TasmConstraintEvaluationMemoryLayout,
+        #[strategy(arb())] memory_layout: StaticTasmConstraintEvaluationMemoryLayout,
     ) {
         for instruction in static_air_constraint_evaluation_tasm(memory_layout) {
             if let LabelledInstruction::Label(label) = instruction {
@@ -2764,7 +2765,7 @@ pub(crate) mod tests {
 
     #[proptest]
     fn triton_assembly_constraint_evaluator_is_straight_line_and_does_not_halt(
-        #[strategy(arb())] memory_layout: TasmConstraintEvaluationMemoryLayout,
+        #[strategy(arb())] memory_layout: StaticTasmConstraintEvaluationMemoryLayout,
     ) {
         type I = AnInstruction<String>;
         let is_legal = |i| !matches!(i, I::Call(_) | I::Return | I::Recurse | I::Skiz | I::Halt);

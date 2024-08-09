@@ -80,11 +80,30 @@ pub type ExtensionRow = [XFieldElement; NUM_EXT_COLUMNS];
 /// See also [`NUM_QUOTIENT_SEGMENTS`].
 pub type QuotientSegments = [XFieldElement; NUM_QUOTIENT_SEGMENTS];
 
-/// Memory layout guarantees for the [Triton assembly AIR constraint evaluator][tasm_air].
+/// Memory layout guarantees for the [*dynamic* Triton assembly AIR constraint evaluator][tasm_air].
 ///
-/// [tasm_air]: tasm_air_constraints::air_constraint_evaluation_tasm
+/// [tasm_air]: tasm_air_constraints::dynamic_air_constraint_evaluation_tasm
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Arbitrary)]
-pub struct TasmConstraintEvaluationMemoryLayout {
+pub struct DynamicTasmConstraintEvaluationMemoryLayout {
+    /// Pointer to a region of memory that is reserved for a) pointers to {current,
+    /// next} {main, aux} rows, and b) intermediate values in the course of constraint
+    /// evaluation. The size of the region must be at least [`MEM_PAGE_SIZE`][mem_page_size]
+    /// [`BFieldElement`]s.
+    ///
+    /// [mem_page_size]: TasmConstraintEvaluationMemoryLayout::MEM_PAGE_SIZE
+    pub free_mem_page_ptr: BFieldElement,
+
+    /// Pointer to an array of [`XFieldElement`]s of length [`NUM_CHALLENGES`][num_challenges].
+    ///
+    /// [num_challenges]: challenges::Challenges::COUNT
+    pub challenges_ptr: BFieldElement,
+}
+
+/// Memory layout guarantees for the [*static* Triton assembly AIR constraint evaluator][tasm_air].
+///
+/// [tasm_air]: tasm_air_constraints::static_air_constraint_evaluation_tasm
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Arbitrary)]
+pub struct StaticTasmConstraintEvaluationMemoryLayout {
     /// Pointer to a region of memory that is reserved for constraint evaluation. The size of the
     /// region must be at least [`MEM_PAGE_SIZE`][mem_page_size] [`BFieldElement`]s.
     ///
@@ -109,14 +128,14 @@ pub struct TasmConstraintEvaluationMemoryLayout {
     pub challenges_ptr: BFieldElement,
 }
 
-impl TasmConstraintEvaluationMemoryLayout {
+pub trait IntegralMemoryLayout {
     /// The minimal required size of a memory page in [`BFieldElement`]s.
-    pub const MEM_PAGE_SIZE: usize = 1 << 32;
+    const MEM_PAGE_SIZE: usize = 1 << 32;
 
     /// Determine if the memory layout's constraints are met, _i.e._, whether the various pointers
     /// point to large enough regions of memory.
-    pub fn is_integral(self) -> bool {
-        let memory_regions = self.into_memory_regions();
+    fn is_integral(&self) -> bool {
+        let memory_regions = self.memory_regions();
         if memory_regions.iter().unique().count() != memory_regions.len() {
             return false;
         }
@@ -128,7 +147,11 @@ impl TasmConstraintEvaluationMemoryLayout {
         memory_regions.iter().all(disjoint_from_all_others)
     }
 
-    fn into_memory_regions(self) -> Box<[MemoryRegion]> {
+    fn memory_regions(&self) -> Box<[MemoryRegion]>;
+}
+
+impl IntegralMemoryLayout for StaticTasmConstraintEvaluationMemoryLayout {
+    fn memory_regions(&self) -> Box<[MemoryRegion]> {
         let all_regions = [
             MemoryRegion::new(self.free_mem_page_ptr, Self::MEM_PAGE_SIZE),
             MemoryRegion::new(self.curr_base_row_ptr, NUM_BASE_COLUMNS),
@@ -141,8 +164,18 @@ impl TasmConstraintEvaluationMemoryLayout {
     }
 }
 
+impl IntegralMemoryLayout for DynamicTasmConstraintEvaluationMemoryLayout {
+    fn memory_regions(&self) -> Box<[MemoryRegion]> {
+        let all_regions = [
+            MemoryRegion::new(self.free_mem_page_ptr, Self::MEM_PAGE_SIZE),
+            MemoryRegion::new(self.challenges_ptr, challenges::Challenges::COUNT),
+        ];
+        Box::new(all_regions)
+    }
+}
+
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
-pub(crate) struct MemoryRegion {
+pub struct MemoryRegion {
     start: u64,
     size: u64,
 }
@@ -176,18 +209,30 @@ mod tests {
 
     use super::*;
 
-    impl Default for TasmConstraintEvaluationMemoryLayout {
+    impl Default for StaticTasmConstraintEvaluationMemoryLayout {
         /// For testing purposes only.
         fn default() -> Self {
-            let mem_page_size = TasmConstraintEvaluationMemoryLayout::MEM_PAGE_SIZE as u64;
+            let mem_page_size = StaticTasmConstraintEvaluationMemoryLayout::MEM_PAGE_SIZE as u64;
             let mem_page = |i| bfe!(i * mem_page_size);
-            TasmConstraintEvaluationMemoryLayout {
+            StaticTasmConstraintEvaluationMemoryLayout {
                 free_mem_page_ptr: mem_page(0),
                 curr_base_row_ptr: mem_page(1),
                 curr_ext_row_ptr: mem_page(2),
                 next_base_row_ptr: mem_page(3),
                 next_ext_row_ptr: mem_page(4),
                 challenges_ptr: mem_page(5),
+            }
+        }
+    }
+
+    impl Default for DynamicTasmConstraintEvaluationMemoryLayout {
+        /// For testing purposes only.
+        fn default() -> Self {
+            let mem_page_size = DynamicTasmConstraintEvaluationMemoryLayout::MEM_PAGE_SIZE as u64;
+            let mem_page = |i| bfe!(i * mem_page_size);
+            DynamicTasmConstraintEvaluationMemoryLayout {
+                free_mem_page_ptr: mem_page(0),
+                challenges_ptr: mem_page(1),
             }
         }
     }
@@ -216,17 +261,24 @@ mod tests {
 
     #[test]
     fn definitely_integral_memory_layout_is_detected_as_integral() {
-        assert!(TasmConstraintEvaluationMemoryLayout::default().is_integral());
+        assert!(StaticTasmConstraintEvaluationMemoryLayout::default().is_integral());
+        assert!(DynamicTasmConstraintEvaluationMemoryLayout::default().is_integral());
     }
 
     #[test]
     fn definitely_non_integral_memory_layout_is_detected_as_non_integral() {
-        let layout = TasmConstraintEvaluationMemoryLayout {
+        let layout = StaticTasmConstraintEvaluationMemoryLayout {
             free_mem_page_ptr: bfe!(0),
             curr_base_row_ptr: bfe!(1),
             curr_ext_row_ptr: bfe!(2),
             next_base_row_ptr: bfe!(3),
             next_ext_row_ptr: bfe!(4),
+            challenges_ptr: bfe!(5),
+        };
+        assert!(!layout.is_integral());
+
+        let layout = DynamicTasmConstraintEvaluationMemoryLayout {
+            free_mem_page_ptr: bfe!(0),
             challenges_ptr: bfe!(5),
         };
         assert!(!layout.is_integral());
