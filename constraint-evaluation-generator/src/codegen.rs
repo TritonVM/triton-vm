@@ -7,6 +7,7 @@ use twenty_first::prelude::XFieldElement;
 
 use crate::constraints::Constraints;
 
+pub(crate) mod common_tasm;
 mod dynamic_tasm;
 mod rust;
 mod static_tasm;

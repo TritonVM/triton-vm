@@ -71,7 +71,6 @@ impl Codegen for StaticTasmBackend {
     ///
     /// [tasm]: triton_vm::prelude::triton_asm
     fn constraint_evaluation_code(constraints: &Constraints) -> TokenStream {
-        let uses = Self::uses();
         let doc_comment = Self::doc_comment();
 
         let mut backend = Self::new();
@@ -88,7 +87,6 @@ impl Codegen for StaticTasmBackend {
         let num_instructions = u64::try_from(num_instructions).unwrap();
 
         quote!(
-            #uses
             #[doc = #doc_comment]
             pub fn static_air_constraint_evaluation_tasm(
                 mem_layout: TasmConstraintEvaluationMemoryLayout,
@@ -132,19 +130,6 @@ impl StaticTasmBackend {
             scope: HashSet::new(),
             elements_written: 0,
         }
-    }
-
-    fn uses() -> TokenStream {
-        quote!(
-            use twenty_first::prelude::BFieldCodec;
-            use twenty_first::prelude::BFieldElement;
-            use crate::instruction::LabelledInstruction;
-            use crate::Program;
-            use crate::table::TasmConstraintEvaluationMemoryLayout;
-            // for rustdoc – https://github.com/rust-lang/rust/issues/74563
-            #[allow(unused_imports)]
-            use crate::table::extension_table::Quotientable;
-        )
     }
 
     fn doc_comment() -> &'static str {
