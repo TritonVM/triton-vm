@@ -109,10 +109,10 @@ impl Codegen for DynamicTasmBackend {
                 let curr_base_row_ptr = mem_layout.free_mem_page_ptr.value();
                 let curr_ext_row_ptr = mem_layout.free_mem_page_ptr.value() + 1;
                 let next_base_row_ptr = mem_layout.free_mem_page_ptr.value() + 2;
-                let next_ext_row_ptr = mem_layout.next_ext_row_ptr.value() + 3;
+                let next_ext_row_ptr = mem_layout.free_mem_page_ptr.value() + 3;
                 let challenges_ptr = mem_layout.challenges_ptr.value();
 
-                let raw_instructions = vec![
+                let raw_instructions = [
                     #num_instructions,
                     #(#copy_row_pointers,)*
                     #(#init_constraints,)*
@@ -120,7 +120,7 @@ impl Codegen for DynamicTasmBackend {
                     #(#tran_constraints,)*
                     #(#term_constraints,)*
                     #(#prepare_return_values,)*
-                ];
+                ].to_vec();
 
                 let raw_instructions = raw_instructions
                     .into_iter()
