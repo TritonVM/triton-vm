@@ -89,7 +89,7 @@ impl Codegen for StaticTasmBackend {
         quote!(
             #uses
             #[doc = #doc_comment]
-            pub fn air_constraint_evaluation_tasm(
+            pub fn static_air_constraint_evaluation_tasm(
                 mem_layout: TasmConstraintEvaluationMemoryLayout,
             ) -> Vec<LabelledInstruction> {
                 let free_mem_page_ptr = mem_layout.free_mem_page_ptr.value();
