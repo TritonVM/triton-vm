@@ -5,6 +5,7 @@ use proc_macro2::TokenStream;
 use quote::quote;
 use quote::ToTokens;
 use triton_vm::air::memory_layout::DynamicTasmConstraintEvaluationMemoryLayout;
+use twenty_first::bfe;
 use twenty_first::prelude::x_field_element::EXTENSION_DEGREE;
 use twenty_first::prelude::BFieldElement;
 use twenty_first::prelude::XFieldElement;
@@ -329,7 +330,23 @@ impl DynamicTasmBackend {
             (false, true) => IOList::NextBaseRow,
             (false, false) => IOList::NextExtRow,
         };
-        Self::load_ext_field_element_from_list(list, input.column())
+        Self::load_input_from_list(list, input.column())
+    }
+
+    fn load_input_from_list(list: IOList, element_index: usize) -> Vec<TokenStream> {
+        let word_offset = element_index * EXTENSION_DEGREE;
+        let start_to_read_offset = EXTENSION_DEGREE - 1;
+        let word_index = word_offset + start_to_read_offset;
+        let word_index = bfe!(u64::try_from(word_index).unwrap());
+        let zero = 0u64;
+
+        let push_address = push!(list + zero);
+        let read_mem_1 = instr!(ReadMem(NumberOfWords::N1));
+        let addi = instr!(AddI(word_index));
+        let read_mem_3 = instr!(ReadMem(NumberOfWords::N3));
+        let pop = instr!(Pop(NumberOfWords::N1));
+
+        [push_address, read_mem_1, pop.clone(), addi, read_mem_3, pop].concat()
     }
 
     fn load_challenge(challenge_idx: usize) -> Vec<TokenStream> {
