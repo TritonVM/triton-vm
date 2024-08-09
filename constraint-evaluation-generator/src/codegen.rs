@@ -7,6 +7,7 @@ use twenty_first::prelude::XFieldElement;
 
 use crate::constraints::Constraints;
 
+mod dynamic_tasm;
 mod rust;
 mod static_tasm;
 
@@ -41,6 +42,19 @@ pub(crate) struct StaticTasmBackend {
 
     /// The number of elements written to the output list.
     ///
-    /// See [`TasmBackend::doc_comment`] for details.
+    /// See [`StaticTasmBackend::doc_comment`] for details.
+    elements_written: usize,
+}
+
+#[derive(Debug, Default, Clone, Eq, PartialEq)]
+pub(crate) struct DynamicTasmBackend {
+    /// All [circuit] IDs known to be processed and stored to memory.
+    ///
+    /// [circuit]: triton_vm::table::constraint_circuit::ConstraintCircuit
+    scope: HashSet<usize>,
+
+    /// The number of elements written to the output list.
+    ///
+    /// See [`DynamicTasmBackend::doc_comment`] for details.
     elements_written: usize,
 }
