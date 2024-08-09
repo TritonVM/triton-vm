@@ -1329,9 +1329,11 @@ pub(crate) mod tests {
     use twenty_first::math::other::random_elements;
     use twenty_first::prelude::x_field_element::EXTENSION_DEGREE;
 
+    use crate::air::memory_layout::DynamicTasmConstraintEvaluationMemoryLayout;
     use crate::air::memory_layout::IntegralMemoryLayout;
     use crate::air::memory_layout::MemoryRegion;
     use crate::air::memory_layout::StaticTasmConstraintEvaluationMemoryLayout;
+    use crate::air::tasm_air_constraints::dynamic_air_constraint_evaluation_tasm;
     use crate::air::tasm_air_constraints::static_air_constraint_evaluation_tasm;
     use crate::error::InstructionError;
     use crate::example_programs::*;
@@ -2631,8 +2633,8 @@ pub(crate) mod tests {
         challenges: Challenges,
 
         #[strategy(arb())]
-        #[filter(#memory_layout.is_integral())]
-        memory_layout: StaticTasmConstraintEvaluationMemoryLayout,
+        #[filter(#static_memory_layout.is_integral())]
+        static_memory_layout: StaticTasmConstraintEvaluationMemoryLayout,
     }
 
     impl ConstraintEvaluationPoint {
@@ -2663,9 +2665,10 @@ pub(crate) mod tests {
             [init, cons, tran, term].concat()
         }
 
-        fn evaluate_all_constraints_tasm(&self) -> Vec<XFieldElement> {
-            let program = self.tasm_constraint_evaluation_code();
-            let mut vm_state = self.set_up_triton_vm_to_evaluate_constraints_in_tasm(&program);
+        fn evaluate_all_constraints_tasm_static(&self) -> Vec<XFieldElement> {
+            let program = self.tasm_static_constraint_evaluation_code();
+            let mut vm_state =
+                self.set_up_triton_vm_to_evaluate_constraints_in_tasm_static(&program);
 
             vm_state.run().unwrap();
 
@@ -2674,18 +2677,43 @@ pub(crate) mod tests {
             Self::read_xfe_list_at_address(vm_state.ram, output_list_ptr, num_quotients)
         }
 
-        fn tasm_constraint_evaluation_code(&self) -> Program {
-            let mut source_code = static_air_constraint_evaluation_tasm(self.memory_layout);
+        fn evaluate_all_constraints_tasm_dynamic(&self) -> Vec<XFieldElement> {
+            let program = self.tasm_dynamic_constraint_evaluation_code();
+            let mut vm_state =
+                self.set_up_triton_vm_to_evaluate_constraints_in_tasm_dynamic(&program);
+
+            vm_state.run().unwrap();
+
+            let output_list_ptr = vm_state.op_stack.pop().unwrap().value();
+            let num_quotients = MasterExtTable::NUM_CONSTRAINTS;
+            Self::read_xfe_list_at_address(vm_state.ram, output_list_ptr, num_quotients)
+        }
+
+        fn tasm_static_constraint_evaluation_code(&self) -> Program {
+            let mut source_code = static_air_constraint_evaluation_tasm(self.static_memory_layout);
             source_code.push(triton_instr!(halt));
             Program::new(&source_code)
         }
 
-        fn set_up_triton_vm_to_evaluate_constraints_in_tasm(&self, program: &Program) -> VMState {
-            let curr_base_row_ptr = self.memory_layout.curr_base_row_ptr;
-            let curr_ext_row_ptr = self.memory_layout.curr_ext_row_ptr;
-            let next_base_row_ptr = self.memory_layout.next_base_row_ptr;
-            let next_ext_row_ptr = self.memory_layout.next_ext_row_ptr;
-            let challenges_ptr = self.memory_layout.challenges_ptr;
+        fn tasm_dynamic_constraint_evaluation_code(&self) -> Program {
+            let dynamic_memory_layout = DynamicTasmConstraintEvaluationMemoryLayout {
+                free_mem_page_ptr: self.static_memory_layout.free_mem_page_ptr,
+                challenges_ptr: self.static_memory_layout.challenges_ptr,
+            };
+            let mut source_code = dynamic_air_constraint_evaluation_tasm(dynamic_memory_layout);
+            source_code.push(triton_instr!(halt));
+            Program::new(&source_code)
+        }
+
+        fn set_up_triton_vm_to_evaluate_constraints_in_tasm_static(
+            &self,
+            program: &Program,
+        ) -> VMState {
+            let curr_base_row_ptr = self.static_memory_layout.curr_base_row_ptr;
+            let curr_ext_row_ptr = self.static_memory_layout.curr_ext_row_ptr;
+            let next_base_row_ptr = self.static_memory_layout.next_base_row_ptr;
+            let next_ext_row_ptr = self.static_memory_layout.next_ext_row_ptr;
+            let challenges_ptr = self.static_memory_layout.challenges_ptr;
 
             let mut ram = HashMap::default();
             Self::extend_ram_at_address(&mut ram, self.curr_base_row.to_vec(), curr_base_row_ptr);
@@ -2696,6 +2724,28 @@ pub(crate) mod tests {
             let non_determinism = NonDeterminism::default().with_ram(ram);
 
             VMState::new(program, PublicInput::default(), non_determinism)
+        }
+
+        fn set_up_triton_vm_to_evaluate_constraints_in_tasm_dynamic(
+            &self,
+            program: &Program,
+        ) -> VMState {
+            // for convenience, reuse the (integral) static memory layout
+            let mut vm_state =
+                self.set_up_triton_vm_to_evaluate_constraints_in_tasm_static(program);
+            vm_state
+                .op_stack
+                .push(self.static_memory_layout.curr_base_row_ptr);
+            vm_state
+                .op_stack
+                .push(self.static_memory_layout.curr_ext_row_ptr);
+            vm_state
+                .op_stack
+                .push(self.static_memory_layout.next_base_row_ptr);
+            vm_state
+                .op_stack
+                .push(self.static_memory_layout.next_ext_row_ptr);
+            vm_state
         }
 
         fn extend_ram_at_address(
@@ -2729,20 +2779,24 @@ pub(crate) mod tests {
     #[proptest]
     fn triton_constraints_and_assembly_constraints_agree(point: ConstraintEvaluationPoint) {
         let all_constraints_rust = point.evaluate_all_constraints_rust();
-        let all_constraints_tasm = point.evaluate_all_constraints_tasm();
-        prop_assert_eq!(all_constraints_rust, all_constraints_tasm);
+        let all_constraints_tasm_static = point.evaluate_all_constraints_tasm_static();
+        prop_assert_eq!(all_constraints_rust.clone(), all_constraints_tasm_static);
+
+        let all_constraints_tasm_dynamic = point.evaluate_all_constraints_tasm_dynamic();
+        prop_assert_eq!(all_constraints_rust, all_constraints_tasm_dynamic);
     }
 
     #[proptest]
-    fn triton_assembly_constraint_evaluator_does_not_write_outside_of_dedicated_memory_region(
+    fn triton_assembly_constraint_evaluators_do_not_write_outside_of_dedicated_memory_region(
         point: ConstraintEvaluationPoint,
     ) {
-        let program = point.tasm_constraint_evaluation_code();
-        let mut initial_state = point.set_up_triton_vm_to_evaluate_constraints_in_tasm(&program);
+        let program = point.tasm_static_constraint_evaluation_code();
+        let mut initial_state =
+            point.set_up_triton_vm_to_evaluate_constraints_in_tasm_static(&program);
         let mut terminal_state = initial_state.clone();
         terminal_state.run().unwrap();
 
-        let free_mem_page_ptr = point.memory_layout.free_mem_page_ptr;
+        let free_mem_page_ptr = point.static_memory_layout.free_mem_page_ptr;
         let mem_page_size = StaticTasmConstraintEvaluationMemoryLayout::MEM_PAGE_SIZE;
         let mem_page = MemoryRegion::new(free_mem_page_ptr, mem_page_size);
         let not_in_mem_page = |addr: &_| !mem_page.contains_address(addr);
@@ -2753,10 +2807,16 @@ pub(crate) mod tests {
     }
 
     #[proptest]
-    fn triton_assembly_constraint_evaluator_declares_no_labels(
-        #[strategy(arb())] memory_layout: StaticTasmConstraintEvaluationMemoryLayout,
+    fn triton_assembly_constraint_evaluators_declare_no_labels(
+        #[strategy(arb())] static_memory_layout: StaticTasmConstraintEvaluationMemoryLayout,
+        #[strategy(arb())] dynamic_memory_layout: DynamicTasmConstraintEvaluationMemoryLayout,
     ) {
-        for instruction in static_air_constraint_evaluation_tasm(memory_layout) {
+        for instruction in static_air_constraint_evaluation_tasm(static_memory_layout)
+            .into_iter()
+            .chain(dynamic_air_constraint_evaluation_tasm(
+                dynamic_memory_layout,
+            ))
+        {
             if let LabelledInstruction::Label(label) = instruction {
                 return Err(TestCaseError::Fail(format!("Found label: {label}").into()));
             }
@@ -2764,13 +2824,20 @@ pub(crate) mod tests {
     }
 
     #[proptest]
-    fn triton_assembly_constraint_evaluator_is_straight_line_and_does_not_halt(
-        #[strategy(arb())] memory_layout: StaticTasmConstraintEvaluationMemoryLayout,
+    fn triton_assembly_constraint_evaluators_are_straight_line_and_does_not_halt(
+        #[strategy(arb())] static_memory_layout: StaticTasmConstraintEvaluationMemoryLayout,
+        #[strategy(arb())] dynamic_memory_layout: DynamicTasmConstraintEvaluationMemoryLayout,
     ) {
         type I = AnInstruction<String>;
         let is_legal = |i| !matches!(i, I::Call(_) | I::Return | I::Recurse | I::Skiz | I::Halt);
 
-        for instruction in static_air_constraint_evaluation_tasm(memory_layout) {
+        for instruction in static_air_constraint_evaluation_tasm(static_memory_layout) {
+            if let LabelledInstruction::Instruction(instruction) = instruction {
+                prop_assert!(is_legal(instruction));
+            }
+        }
+
+        for instruction in dynamic_air_constraint_evaluation_tasm(dynamic_memory_layout) {
             if let LabelledInstruction::Instruction(instruction) = instruction {
                 prop_assert!(is_legal(instruction));
             }
