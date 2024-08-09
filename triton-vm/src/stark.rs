@@ -1329,6 +1329,10 @@ pub(crate) mod tests {
     use twenty_first::math::other::random_elements;
     use twenty_first::prelude::x_field_element::EXTENSION_DEGREE;
 
+    use crate::air::memory_layout::IntegralMemoryLayout;
+    use crate::air::memory_layout::MemoryRegion;
+    use crate::air::memory_layout::StaticTasmConstraintEvaluationMemoryLayout;
+    use crate::air::tasm_air_constraints::static_air_constraint_evaluation_tasm;
     use crate::error::InstructionError;
     use crate::example_programs::*;
     use crate::instruction::AnInstruction;
@@ -1365,11 +1369,7 @@ pub(crate) mod tests {
     use crate::table::table_column::ProcessorExtTableColumn::InputTableEvalArg;
     use crate::table::table_column::ProcessorExtTableColumn::OutputTableEvalArg;
     use crate::table::table_column::RamBaseTableColumn;
-    use crate::table::tasm_air_constraints::static_air_constraint_evaluation_tasm;
     use crate::table::u32_table::ExtU32Table;
-    use crate::table::IntegralMemoryLayout;
-    use crate::table::MemoryRegion;
-    use crate::table::StaticTasmConstraintEvaluationMemoryLayout;
     use crate::triton_instr;
     use crate::triton_program;
     use crate::vm::tests::*;
