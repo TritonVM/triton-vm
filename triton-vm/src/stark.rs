@@ -1365,7 +1365,7 @@ pub(crate) mod tests {
     use crate::table::table_column::ProcessorExtTableColumn::InputTableEvalArg;
     use crate::table::table_column::ProcessorExtTableColumn::OutputTableEvalArg;
     use crate::table::table_column::RamBaseTableColumn;
-    use crate::table::tasm_air_constraints::air_constraint_evaluation_tasm;
+    use crate::table::tasm_air_constraints::static_air_constraint_evaluation_tasm;
     use crate::table::u32_table::ExtU32Table;
     use crate::table::MemoryRegion;
     use crate::table::TasmConstraintEvaluationMemoryLayout;
@@ -2674,7 +2674,7 @@ pub(crate) mod tests {
         }
 
         fn tasm_constraint_evaluation_code(&self) -> Program {
-            let mut source_code = air_constraint_evaluation_tasm(self.memory_layout);
+            let mut source_code = static_air_constraint_evaluation_tasm(self.memory_layout);
             source_code.push(triton_instr!(halt));
             Program::new(&source_code)
         }
@@ -2755,7 +2755,7 @@ pub(crate) mod tests {
     fn triton_assembly_constraint_evaluator_declares_no_labels(
         #[strategy(arb())] memory_layout: TasmConstraintEvaluationMemoryLayout,
     ) {
-        for instruction in air_constraint_evaluation_tasm(memory_layout) {
+        for instruction in static_air_constraint_evaluation_tasm(memory_layout) {
             if let LabelledInstruction::Label(label) = instruction {
                 return Err(TestCaseError::Fail(format!("Found label: {label}").into()));
             }
@@ -2769,7 +2769,7 @@ pub(crate) mod tests {
         type I = AnInstruction<String>;
         let is_legal = |i| !matches!(i, I::Call(_) | I::Return | I::Recurse | I::Skiz | I::Halt);
 
-        for instruction in air_constraint_evaluation_tasm(memory_layout) {
+        for instruction in static_air_constraint_evaluation_tasm(memory_layout) {
             if let LabelledInstruction::Instruction(instruction) = instruction {
                 prop_assert!(is_legal(instruction));
             }

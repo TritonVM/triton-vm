@@ -1296,7 +1296,7 @@ mod tests {
     use crate::table::degree_lowering_table::DegreeLoweringBaseTableColumn;
     use crate::table::degree_lowering_table::DegreeLoweringExtTableColumn;
     use crate::table::table_column::*;
-    use crate::table::tasm_air_constraints::air_constraint_evaluation_tasm;
+    use crate::table::tasm_air_constraints::static_air_constraint_evaluation_tasm;
     use crate::table::*;
     use crate::triton_program;
 
@@ -1503,7 +1503,7 @@ mod tests {
         let mut spec_snippets = vec![generate_table_overview(), generate_constraints_overview()];
 
         let tasm_constraints_in_place = std::panic::catch_unwind(|| {
-            air_constraint_evaluation_tasm(TasmConstraintEvaluationMemoryLayout::default());
+            static_air_constraint_evaluation_tasm(TasmConstraintEvaluationMemoryLayout::default());
         })
         .is_ok();
         if tasm_constraints_in_place {
@@ -1947,7 +1947,7 @@ mod tests {
 
     fn generate_tasm_air_evaluation_cost_overview() -> SpecSnippet {
         let layout = TasmConstraintEvaluationMemoryLayout::default();
-        let tasm = tasm_air_constraints::air_constraint_evaluation_tasm(layout);
+        let tasm = tasm_air_constraints::static_air_constraint_evaluation_tasm(layout);
         let program = triton_program!({ &tasm });
 
         let processor = program.clone().into_iter().count();
