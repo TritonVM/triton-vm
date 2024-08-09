@@ -340,13 +340,21 @@ impl DynamicTasmBackend {
         let word_index = bfe!(u64::try_from(word_index).unwrap());
         let zero = 0u64;
 
-        let push_address = push!(list + zero);
+        let push_pointer_pointer = push!(list + zero);
         let read_mem_1 = instr!(ReadMem(NumberOfWords::N1));
         let addi = instr!(AddI(word_index));
         let read_mem_3 = instr!(ReadMem(NumberOfWords::N3));
         let pop = instr!(Pop(NumberOfWords::N1));
 
-        [push_address, read_mem_1, pop.clone(), addi, read_mem_3, pop].concat()
+        [
+            push_pointer_pointer,
+            read_mem_1,
+            pop.clone(),
+            addi,
+            read_mem_3,
+            pop,
+        ]
+        .concat()
     }
 
     fn load_challenge(challenge_idx: usize) -> Vec<TokenStream> {
