@@ -4,6 +4,7 @@ use itertools::Itertools;
 use proc_macro2::TokenStream;
 use quote::quote;
 use quote::ToTokens;
+use triton_vm::table::StaticTasmConstraintEvaluationMemoryLayout;
 use twenty_first::prelude::x_field_element::EXTENSION_DEGREE;
 use twenty_first::prelude::BFieldElement;
 use twenty_first::prelude::XFieldElement;
@@ -14,7 +15,7 @@ use triton_vm::table::constraint_circuit::BinOp;
 use triton_vm::table::constraint_circuit::CircuitExpression;
 use triton_vm::table::constraint_circuit::ConstraintCircuit;
 use triton_vm::table::constraint_circuit::InputIndicator;
-use triton_vm::table::TasmConstraintEvaluationMemoryLayout;
+use triton_vm::table::IntegralMemoryLayout;
 
 use crate::codegen::Codegen;
 use crate::codegen::StaticTasmBackend;
@@ -25,7 +26,7 @@ use crate::constraints::Constraints;
 ///
 /// [layout]: TasmConstraintEvaluationMemoryLayout
 const OUT_ARRAY_OFFSET: usize = {
-    let mem_page_size = TasmConstraintEvaluationMemoryLayout::MEM_PAGE_SIZE;
+    let mem_page_size = StaticTasmConstraintEvaluationMemoryLayout::MEM_PAGE_SIZE;
     let max_num_words_for_evaluated_constraints = 1 << 16; // magic!
     let out_array_offset_in_words = mem_page_size - max_num_words_for_evaluated_constraints;
     assert!(out_array_offset_in_words % EXTENSION_DEGREE == 0);

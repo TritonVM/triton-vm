@@ -695,7 +695,7 @@ mod tests {
         implements_auto_traits::<table::u32_table::U32TableEntry>();
         implements_auto_traits::<table::u32_table::U32Table>();
         implements_auto_traits::<table::u32_table::ExtU32Table>();
-        implements_auto_traits::<table::TasmConstraintEvaluationMemoryLayout>();
+        implements_auto_traits::<table::StaticTasmConstraintEvaluationMemoryLayout>();
 
         // other
         implements_auto_traits::<aet::AlgebraicExecutionTrace>();

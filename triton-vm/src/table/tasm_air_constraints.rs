@@ -4,16 +4,16 @@
 
 use crate::instruction::LabelledInstruction;
 use crate::table::constraints::ERROR_MESSAGE_GENERATE_CONSTRAINTS;
-use crate::table::TasmConstraintEvaluationMemoryLayout;
+use crate::table::StaticTasmConstraintEvaluationMemoryLayout;
 
 pub fn static_air_constraint_evaluation_tasm(
-    _: TasmConstraintEvaluationMemoryLayout,
+    _: StaticTasmConstraintEvaluationMemoryLayout,
 ) -> Vec<LabelledInstruction> {
     panic!("{ERROR_MESSAGE_GENERATE_CONSTRAINTS}");
 }
 
 pub fn dynamic_air_constraint_evaluation_tasm(
-    _: TasmConstraintEvaluationMemoryLayout,
+    _: StaticTasmConstraintEvaluationMemoryLayout,
 ) -> Vec<LabelledInstruction> {
     panic!("{ERROR_MESSAGE_GENERATE_CONSTRAINTS}");
 }
