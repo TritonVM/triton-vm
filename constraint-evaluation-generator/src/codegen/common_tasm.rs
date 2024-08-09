@@ -7,7 +7,8 @@ pub(crate) fn uses() -> TokenStream {
         use twenty_first::prelude::BFieldElement;
         use crate::instruction::LabelledInstruction;
         use crate::Program;
-        use crate::table::TasmConstraintEvaluationMemoryLayout;
+        use crate::air::memory_layout::StaticTasmConstraintEvaluationMemoryLayout;
+        use crate::air::memory_layout::DynamicTasmConstraintEvaluationMemoryLayout;
         // for rustdoc – https://github.com/rust-lang/rust/issues/74563
         #[allow(unused_imports)]
         use crate::table::extension_table::Quotientable;
