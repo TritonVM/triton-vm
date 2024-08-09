@@ -8,7 +8,7 @@ use twenty_first::prelude::XFieldElement;
 use crate::constraints::Constraints;
 
 mod rust;
-mod tasm;
+mod static_tasm;
 
 pub(crate) trait Codegen {
     fn constraint_evaluation_code(constraints: &Constraints) -> TokenStream;
@@ -33,7 +33,7 @@ pub(crate) struct RustBackend {
 }
 
 #[derive(Debug, Default, Clone, Eq, PartialEq)]
-pub(crate) struct TasmBackend {
+pub(crate) struct StaticTasmBackend {
     /// All [circuit] IDs known to be processed and stored to memory.
     ///
     /// [circuit]: triton_vm::table::constraint_circuit::ConstraintCircuit

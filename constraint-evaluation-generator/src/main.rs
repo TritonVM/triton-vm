@@ -23,7 +23,7 @@ use proc_macro2::TokenStream;
 
 use crate::codegen::Codegen;
 use crate::codegen::RustBackend;
-use crate::codegen::TasmBackend;
+use crate::codegen::StaticTasmBackend;
 use crate::constraints::Constraints;
 
 mod codegen;
@@ -37,7 +37,7 @@ fn main() {
 
     let constraints = constraints.combine_with_substitution_induced_constraints(substitutions);
     let rust = RustBackend::constraint_evaluation_code(&constraints);
-    let tasm = TasmBackend::constraint_evaluation_code(&constraints);
+    let tasm = StaticTasmBackend::constraint_evaluation_code(&constraints);
 
     write_code_to_file(degree_lowering_table_code, "degree_lowering_table");
     write_code_to_file(rust, "constraints");
