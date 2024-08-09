@@ -2557,7 +2557,7 @@ pub(crate) mod tests {
     }
 
     #[proptest]
-    fn polynomial_segments_are_coherent_with_the_polynomial_they_originate_from(
+    fn polynomial_segments_cohere_with_originating_polynomial(
         #[strategy(2_usize..8)] log_trace_length: usize,
         #[strategy(1_usize..#log_trace_length.min(3))] log_num_segments: usize,
         #[strategy(1_usize..6)] log_expansion_factor: usize,
