@@ -74,12 +74,14 @@ impl Codegen for DynamicTasmBackend {
         let doc_comment = Self::doc_comment();
 
         let mut backend = Self::new();
+        let copy_row_pointers = backend.copy_row_pointers();
         let init_constraints = backend.tokenize_circuits(&constraints.init());
         let cons_constraints = backend.tokenize_circuits(&constraints.cons());
         let tran_constraints = backend.tokenize_circuits(&constraints.tran());
         let term_constraints = backend.tokenize_circuits(&constraints.term());
         let prepare_return_values = Self::prepare_return_values();
-        let num_instructions = init_constraints.len()
+        let num_instructions = copy_row_pointers.len()
+            + init_constraints.len()
             + cons_constraints.len()
             + tran_constraints.len()
             + term_constraints.len()
@@ -89,17 +91,19 @@ impl Codegen for DynamicTasmBackend {
         quote!(
             #[doc = #doc_comment]
             pub fn dynamic_air_constraint_evaluation_tasm(
-                mem_layout: TasmConstraintEvaluationMemoryLayout,
+                mem_layout: DynamicTasmConstraintEvaluationMemoryLayout,
             ) -> Vec<LabelledInstruction> {
-                let free_mem_page_ptr = mem_layout.free_mem_page_ptr.value();
-                let curr_base_row_ptr = mem_layout.curr_base_row_ptr.value();
-                let curr_ext_row_ptr = mem_layout.curr_ext_row_ptr.value();
-                let next_base_row_ptr = mem_layout.next_base_row_ptr.value();
-                let next_ext_row_ptr = mem_layout.next_ext_row_ptr.value();
+                let num_pointer_pointers = 4;
+                let free_mem_page_ptr = mem_layout.free_mem_page_ptr.value() + num_pointer_pointers;
+                let curr_base_row_ptr = mem_layout.free_mem_page_ptr.value();
+                let curr_ext_row_ptr = mem_layout.free_mem_page_ptr.value() + 1;
+                let next_base_row_ptr = mem_layout.free_mem_page_ptr.value() + 2;
+                let next_ext_row_ptr = mem_layout.next_ext_row_ptr.value() + 3;
                 let challenges_ptr = mem_layout.challenges_ptr.value();
 
                 let raw_instructions = vec![
                     #num_instructions,
+                    #(#copy_row_pointers,)*
                     #(#init_constraints,)*
                     #(#cons_constraints,)*
                     #(#tran_constraints,)*
@@ -139,20 +143,20 @@ impl DynamicTasmBackend {
          # Signature
 
          ```text
-         BEFORE: _
+         BEFORE: _ *current_main_row *current_aux_row *next_main_row *next_aux_row
          AFTER:  _ *evaluated_constraints
          ```
          # Requirements
 
          In order for this method to emit Triton assembly, various memory regions need to be
-         declared. This is done through [`TasmConstraintEvaluationMemoryLayout`]. The memory
+         declared. This is done through [`DynamicTasmConstraintEvaluationMemoryLayout`]. The memory
          layout must be [integral].
 
          # Guarantees
 
          - The emitted code does not declare any labels.
          - The emitted code is “straight-line”, _i.e._, does not contain any of the instructions
-           `call`, `return`, `recurse`, or `skiz`.
+           `call`, `return`, `recurse`, `recurse_or_return`, or `skiz`.
          - The emitted code does not contain instruction `halt`.
          - All memory write access of the emitted code is within the bounds of the memory region
            pointed to by `*free_memory_page`.
@@ -164,7 +168,7 @@ impl DynamicTasmBackend {
             (respectively and in this order) correspond to the evaluations of the initial, consistency,
             transition, and terminal constraints.
 
-         [integral]: TasmConstraintEvaluationMemoryLayout::is_integral
+         [integral]: IntegralMemoryLayout::is_integral
          [xfe]: twenty_first::prelude::XFieldElement
          [total]: crate::table::master_table::MasterExtTable::NUM_CONSTRAINTS
          [init]: crate::table::master_table::MasterExtTable::NUM_INITIAL_CONSTRAINTS
@@ -172,6 +176,33 @@ impl DynamicTasmBackend {
          [tran]: crate::table::master_table::MasterExtTable::NUM_TRANSITION_CONSTRAINTS
          [term]: crate::table::master_table::MasterExtTable::NUM_TERMINAL_CONSTRAINTS
         "
+    }
+
+    /// Copies the dynamic arguments ({current, next} {main, aux} row pointers)
+    /// to static addresses dedicated to them.
+    fn copy_row_pointers(&self) -> Vec<TokenStream> {
+        // BEFORE: _ *current_main_row *current_aux_row *next_main_row *next_aux_row
+        // AFTER: _
+
+        let zero = 0u64;
+        let copy_pointer = |identifier| {
+            [
+                push!(identifier + zero),
+                instr!(WriteMem(NumberOfWords::N1)),
+                instr!(Pop(NumberOfWords::N1)),
+            ]
+            .concat()
+        };
+
+        [
+            IOList::NextExtRow,
+            IOList::NextBaseRow,
+            IOList::CurrExtRow,
+            IOList::CurrBaseRow,
+        ]
+        .into_iter()
+        .flat_map(copy_pointer)
+        .collect_vec()
     }
 
     fn tokenize_circuits<II: InputIndicator>(
