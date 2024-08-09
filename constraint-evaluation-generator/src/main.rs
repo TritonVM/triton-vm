@@ -17,11 +17,12 @@
 #![warn(missing_debug_implementations)]
 #![warn(missing_docs)]
 
+use proc_macro2::TokenStream;
+use quote::quote;
 use std::fs::write;
 
-use proc_macro2::TokenStream;
-
 use crate::codegen::Codegen;
+use crate::codegen::DynamicTasmBackend;
 use crate::codegen::RustBackend;
 use crate::codegen::StaticTasmBackend;
 use crate::constraints::Constraints;
@@ -37,7 +38,9 @@ fn main() {
 
     let constraints = constraints.combine_with_substitution_induced_constraints(substitutions);
     let rust = RustBackend::constraint_evaluation_code(&constraints);
-    let tasm = StaticTasmBackend::constraint_evaluation_code(&constraints);
+    let static_tasm = StaticTasmBackend::constraint_evaluation_code(&constraints);
+    let dynamic_tasm = DynamicTasmBackend::constraint_evaluation_code(&constraints);
+    let tasm = quote! {#static_tasm #dynamic_tasm};
 
     write_code_to_file(
         degree_lowering_table_code,
