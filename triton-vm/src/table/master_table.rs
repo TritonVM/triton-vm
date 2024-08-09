@@ -1287,7 +1287,9 @@ mod tests {
     use twenty_first::math::traits::FiniteField;
     use twenty_first::prelude::x_field_element::EXTENSION_DEGREE;
 
+    use crate::air::memory_layout::DynamicTasmConstraintEvaluationMemoryLayout;
     use crate::air::memory_layout::StaticTasmConstraintEvaluationMemoryLayout;
+    use crate::air::tasm_air_constraints::dynamic_air_constraint_evaluation_tasm;
     use crate::air::tasm_air_constraints::static_air_constraint_evaluation_tasm;
     use crate::arithmetic_domain::ArithmeticDomain;
     use crate::instruction::tests::InstructionBucket;
@@ -1949,37 +1951,45 @@ mod tests {
     }
 
     fn generate_tasm_air_evaluation_cost_overview() -> SpecSnippet {
-        let layout = StaticTasmConstraintEvaluationMemoryLayout::default();
-        let tasm = static_air_constraint_evaluation_tasm(layout);
-        let program = triton_program!({ &tasm });
+        let static_layout = StaticTasmConstraintEvaluationMemoryLayout::default();
+        let static_tasm = static_air_constraint_evaluation_tasm(static_layout);
+        let dynamic_layout = DynamicTasmConstraintEvaluationMemoryLayout::default();
+        let dynamic_tasm = dynamic_air_constraint_evaluation_tasm(dynamic_layout);
 
-        let processor = program.clone().into_iter().count();
-        let stack = program
-            .clone()
-            .into_iter()
-            .map(|instruction| instruction.op_stack_size_influence().abs())
-            .sum::<i32>();
+        let mut snippet = "\
+        | Type         | Processor | Op Stack |   RAM |\n\
+        |:-------------|----------:|---------:|------:|\n"
+            .to_string();
 
-        let ram_table_influence = |instruction| match instruction {
-            Instruction::ReadMem(st) | Instruction::WriteMem(st) => st.num_words(),
-            Instruction::SpongeAbsorbMem => tip5::RATE,
-            Instruction::XbDotStep => 4,
-            Instruction::XxDotStep => 6,
-            _ => 0,
-        };
-        let ram = program
-            .clone()
-            .into_iter()
-            .map(ram_table_influence)
-            .sum::<usize>();
+        for (label, tasm) in [("static", static_tasm), ("dynamic", dynamic_tasm)] {
+            let program = triton_program!({ &tasm });
 
-        let snippet = format!(
-            "\
-            | Processor | Op Stack |   RAM |\n\
-            |----------:|---------:|------:|\n\
-            | {processor:>9} | {stack:>8} | {ram:>5} |\n\
+            let processor = program.clone().into_iter().count();
+            let stack = program
+                .clone()
+                .into_iter()
+                .map(|instruction| instruction.op_stack_size_influence().abs())
+                .sum::<i32>();
+
+            let ram_table_influence = |instruction| match instruction {
+                Instruction::ReadMem(st) | Instruction::WriteMem(st) => st.num_words(),
+                Instruction::SpongeAbsorbMem => tip5::RATE,
+                Instruction::XbDotStep => 4,
+                Instruction::XxDotStep => 6,
+                _ => 0,
+            };
+            let ram = program
+                .clone()
+                .into_iter()
+                .map(ram_table_influence)
+                .sum::<usize>();
+
+            snippet = format!(
+                "{snippet}\
+            | {label:<12} | {processor:>9} | {stack:>8} | {ram:>5} |\n\
             "
-        );
+            );
+        }
 
         SpecSnippet {
             start_marker: "<!-- auto-gen info start tasm_air_evaluation_cost -->",

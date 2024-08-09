@@ -88,9 +88,10 @@ Triton VM's recursive verifier needs to evaluate Triton VM's AIR constraints.
 In order to gauge the runtime cost for this step, the following table provides estimates for that step's contribution to various tables.
 
 <!-- auto-gen info start tasm_air_evaluation_cost -->
-| Processor | Op Stack |   RAM |
-|----------:|---------:|------:|
-|     34609 |    64237 | 22716 |
+| Type         | Processor | Op Stack |   RAM |
+|:-------------|----------:|---------:|------:|
+| static       |     34609 |    64237 | 22716 |
+| dynamic      |     45793 |    71697 | 26444 |
 <!-- auto-gen info stop tasm_air_evaluation_cost -->
 
 ## Opcode Pressure
