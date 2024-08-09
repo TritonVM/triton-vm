@@ -1287,6 +1287,8 @@ mod tests {
     use twenty_first::math::traits::FiniteField;
     use twenty_first::prelude::x_field_element::EXTENSION_DEGREE;
 
+    use crate::air::memory_layout::StaticTasmConstraintEvaluationMemoryLayout;
+    use crate::air::tasm_air_constraints::static_air_constraint_evaluation_tasm;
     use crate::arithmetic_domain::ArithmeticDomain;
     use crate::instruction::tests::InstructionBucket;
     use crate::instruction::Instruction;
@@ -1296,7 +1298,6 @@ mod tests {
     use crate::table::degree_lowering_table::DegreeLoweringBaseTableColumn;
     use crate::table::degree_lowering_table::DegreeLoweringExtTableColumn;
     use crate::table::table_column::*;
-    use crate::table::tasm_air_constraints::static_air_constraint_evaluation_tasm;
     use crate::table::*;
     use crate::triton_program;
 
@@ -1949,7 +1950,7 @@ mod tests {
 
     fn generate_tasm_air_evaluation_cost_overview() -> SpecSnippet {
         let layout = StaticTasmConstraintEvaluationMemoryLayout::default();
-        let tasm = tasm_air_constraints::static_air_constraint_evaluation_tasm(layout);
+        let tasm = static_air_constraint_evaluation_tasm(layout);
         let program = triton_program!({ &tasm });
 
         let processor = program.clone().into_iter().count();

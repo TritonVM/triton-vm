@@ -4,18 +4,18 @@ use itertools::Itertools;
 use proc_macro2::TokenStream;
 use quote::quote;
 use quote::ToTokens;
-use triton_vm::table::DynamicTasmConstraintEvaluationMemoryLayout;
+use triton_vm::air::memory_layout::DynamicTasmConstraintEvaluationMemoryLayout;
 use twenty_first::prelude::x_field_element::EXTENSION_DEGREE;
 use twenty_first::prelude::BFieldElement;
 use twenty_first::prelude::XFieldElement;
 
+use triton_vm::air::memory_layout::IntegralMemoryLayout;
 use triton_vm::instruction::Instruction;
 use triton_vm::op_stack::NumberOfWords;
 use triton_vm::table::constraint_circuit::BinOp;
 use triton_vm::table::constraint_circuit::CircuitExpression;
 use triton_vm::table::constraint_circuit::ConstraintCircuit;
 use triton_vm::table::constraint_circuit::InputIndicator;
-use triton_vm::table::IntegralMemoryLayout;
 
 use crate::codegen::Codegen;
 use crate::codegen::DynamicTasmBackend;
