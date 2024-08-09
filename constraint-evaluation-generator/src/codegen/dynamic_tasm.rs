@@ -64,6 +64,16 @@ macro_rules! push {
         assert!(offset < u64::MAX - BFieldElement::P);
         vec![quote!(#OPCODE_PUSH), quote!(#$list + #$offset)]
     }};
+    ($list:ident + $expression:expr) => {{
+        let offset = u64::try_from($expression).unwrap();
+        assert!(offset < u64::MAX - BFieldElement::P);
+        if offset == 0 {
+            vec![quote!(#OPCODE_PUSH), quote!(#$list)]
+        }
+        else {
+            vec![quote!(#OPCODE_PUSH), quote!(#$list + #offset)]
+        }
+    }};
 }
 
 impl Codegen for DynamicTasmBackend {
@@ -185,10 +195,9 @@ impl DynamicTasmBackend {
         // BEFORE: _ *current_main_row *current_aux_row *next_main_row *next_aux_row
         // AFTER: _
 
-        let zero = 0u64;
         let copy_pointer = |identifier| {
             [
-                push!(identifier + zero),
+                push!(identifier + 0),
                 instr!(WriteMem(NumberOfWords::N1)),
                 instr!(Pop(NumberOfWords::N1)),
             ]
@@ -338,9 +347,8 @@ impl DynamicTasmBackend {
         let start_to_read_offset = EXTENSION_DEGREE - 1;
         let word_index = word_offset + start_to_read_offset;
         let word_index = bfe!(u64::try_from(word_index).unwrap());
-        let zero = 0u64;
 
-        let push_pointer_pointer = push!(list + zero);
+        let push_pointer_pointer = push!(list + 0);
         let read_mem_1 = instr!(ReadMem(NumberOfWords::N1));
         let addi = instr!(AddI(word_index));
         let read_mem_3 = instr!(ReadMem(NumberOfWords::N3));
