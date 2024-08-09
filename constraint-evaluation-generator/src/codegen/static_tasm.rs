@@ -17,7 +17,7 @@ use triton_vm::table::constraint_circuit::InputIndicator;
 use triton_vm::table::TasmConstraintEvaluationMemoryLayout;
 
 use crate::codegen::Codegen;
-use crate::codegen::TasmBackend;
+use crate::codegen::StaticTasmBackend;
 use crate::constraints::Constraints;
 
 /// An offset from the [memory layout][layout]'s `free_mem_page_ptr`, in number of
@@ -64,7 +64,7 @@ macro_rules! push {
     }};
 }
 
-impl Codegen for TasmBackend {
+impl Codegen for StaticTasmBackend {
     /// Emits a function that emits [Triton assembly][tasm] that evaluates Triton VM's AIR
     /// constraints over the [extension field][XFieldElement].
     ///
@@ -125,7 +125,7 @@ impl Codegen for TasmBackend {
     }
 }
 
-impl TasmBackend {
+impl StaticTasmBackend {
     fn new() -> Self {
         Self {
             scope: HashSet::new(),
@@ -392,7 +392,7 @@ mod tests {
     use super::*;
 
     fn print_constraints_as_tasm(constraints: &Constraints) {
-        let tasm = TasmBackend::constraint_evaluation_code(constraints);
+        let tasm = StaticTasmBackend::constraint_evaluation_code(constraints);
         let syntax_tree = syn::parse2(tasm).unwrap();
         let code = prettyplease::unparse(&syntax_tree);
         println!("{code}");
