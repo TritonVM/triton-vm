@@ -1,4 +1,5 @@
 pub mod memory_layout;
+#[rustfmt::skip]
 pub mod tasm_air_constraints;
 
 #[cfg(test)]

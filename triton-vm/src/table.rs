@@ -29,7 +29,6 @@ pub mod processor_table;
 pub mod program_table;
 pub mod ram_table;
 pub mod table_column;
-#[rustfmt::skip]
 pub mod u32_table;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, EnumCount, EnumIter)]

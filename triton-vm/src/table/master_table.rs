@@ -1795,9 +1795,9 @@ mod tests {
             ft = format!("{ft}|-{:-<11}:", "-");
             ft = format!("{ft}|-{:-<9}:", "-");
             if target_degree.is_none() {
-                ft = format!("{ft}|-{:-<10}:|", "-");
+                ft = format!("{ft}|-{:-<10}:", "-");
             }
-            ft = format!("{ft}\n");
+            ft = format!("{ft}|\n");
 
             let mut total_max_degree = 0;
             let mut tables = constraint_overview_rows!(

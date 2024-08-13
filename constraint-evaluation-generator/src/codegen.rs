@@ -7,10 +7,8 @@ use twenty_first::prelude::XFieldElement;
 
 use crate::constraints::Constraints;
 
-pub(crate) mod common_tasm;
-mod dynamic_tasm;
 mod rust;
-mod static_tasm;
+mod tasm;
 
 pub(crate) trait Codegen {
     fn constraint_evaluation_code(constraints: &Constraints) -> TokenStream;
@@ -35,7 +33,7 @@ pub(crate) struct RustBackend {
 }
 
 #[derive(Debug, Default, Clone, Eq, PartialEq)]
-pub(crate) struct StaticTasmBackend {
+pub(crate) struct TasmBackend {
     /// All [circuit] IDs known to be processed and stored to memory.
     ///
     /// [circuit]: triton_vm::table::constraint_circuit::ConstraintCircuit
@@ -43,19 +41,22 @@ pub(crate) struct StaticTasmBackend {
 
     /// The number of elements written to the output list.
     ///
-    /// See [`StaticTasmBackend::doc_comment`] for details.
+    /// See [`TasmBackend::doc_comment`] for details.
     elements_written: usize,
+
+    /// Whether the code that is to be generated can assume statically provided
+    /// addresses for the various input arrays.
+    input_location_is_static: bool,
 }
 
-#[derive(Debug, Default, Clone, Eq, PartialEq)]
-pub(crate) struct DynamicTasmBackend {
-    /// All [circuit] IDs known to be processed and stored to memory.
-    ///
-    /// [circuit]: triton_vm::table::constraint_circuit::ConstraintCircuit
-    scope: HashSet<usize>,
+#[cfg(test)]
+pub mod tests {
+    use super::*;
 
-    /// The number of elements written to the output list.
-    ///
-    /// See [`DynamicTasmBackend::doc_comment`] for details.
-    elements_written: usize,
+    pub fn print_constraints<B: Codegen>(constraints: &Constraints) {
+        let code = B::constraint_evaluation_code(constraints);
+        let syntax_tree = syn::parse2(code).unwrap();
+        let code = prettyplease::unparse(&syntax_tree);
+        println!("{code}");
+    }
 }

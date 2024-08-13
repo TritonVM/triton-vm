@@ -332,6 +332,8 @@ impl RustBackend {
 mod tests {
     use twenty_first::prelude::*;
 
+    use crate::codegen::tests::print_constraints;
+
     use super::*;
 
     #[test]
@@ -352,20 +354,13 @@ mod tests {
         assert_eq!(expected, RustBackend::tokenize_xfe(xfe).to_string());
     }
 
-    fn print_constraints_as_rust(constraints: &Constraints) {
-        let rust = RustBackend::constraint_evaluation_code(constraints);
-        let syntax_tree = syn::parse2(rust).unwrap();
-        let code = prettyplease::unparse(&syntax_tree);
-        println!("{code}");
+    #[test]
+    fn print_mini_constraints() {
+        print_constraints::<RustBackend>(&Constraints::mini_constraints());
     }
 
     #[test]
-    fn print_mini_constraints_as_rust() {
-        print_constraints_as_rust(&Constraints::mini_constraints());
-    }
-
-    #[test]
-    fn print_test_constraints_as_rust() {
-        print_constraints_as_rust(&Constraints::test_constraints());
+    fn print_test_constraints() {
+        print_constraints::<RustBackend>(&Constraints::test_constraints());
     }
 }
