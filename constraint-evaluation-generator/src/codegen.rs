@@ -40,7 +40,21 @@ pub(crate) struct TasmBackend {
     scope: HashSet<usize>,
 
     /// The number of elements written to the output list.
-    ///
-    /// See [`TasmBackend::doc_comment`] for details.
     elements_written: usize,
+
+    /// Whether the code that is to be generated can assume statically provided
+    /// addresses for the various input arrays.
+    input_location_is_static: bool,
+}
+
+#[cfg(test)]
+pub mod tests {
+    use super::*;
+
+    pub fn print_constraints<B: Codegen>(constraints: &Constraints) {
+        let code = B::constraint_evaluation_code(constraints);
+        let syntax_tree = syn::parse2(code).unwrap();
+        let code = prettyplease::unparse(&syntax_tree);
+        println!("{code}");
+    }
 }

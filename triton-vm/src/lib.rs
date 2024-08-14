@@ -167,6 +167,7 @@ use crate::error::ProvingError;
 use crate::prelude::*;
 
 pub mod aet;
+pub mod air;
 pub mod arithmetic_domain;
 pub mod config;
 pub mod error;
@@ -695,7 +696,8 @@ mod tests {
         implements_auto_traits::<table::u32_table::U32TableEntry>();
         implements_auto_traits::<table::u32_table::U32Table>();
         implements_auto_traits::<table::u32_table::ExtU32Table>();
-        implements_auto_traits::<table::TasmConstraintEvaluationMemoryLayout>();
+        implements_auto_traits::<air::memory_layout::StaticTasmConstraintEvaluationMemoryLayout>();
+        implements_auto_traits::<air::memory_layout::DynamicTasmConstraintEvaluationMemoryLayout>();
 
         // other
         implements_auto_traits::<aet::AlgebraicExecutionTrace>();

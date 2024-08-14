@@ -17,9 +17,8 @@
 #![warn(missing_debug_implementations)]
 #![warn(missing_docs)]
 
-use std::fs::write;
-
 use proc_macro2::TokenStream;
+use std::fs::write;
 
 use crate::codegen::Codegen;
 use crate::codegen::RustBackend;
@@ -39,16 +38,18 @@ fn main() {
     let rust = RustBackend::constraint_evaluation_code(&constraints);
     let tasm = TasmBackend::constraint_evaluation_code(&constraints);
 
-    write_code_to_file(degree_lowering_table_code, "degree_lowering_table");
-    write_code_to_file(rust, "constraints");
-    write_code_to_file(tasm, "tasm_air_constraints");
+    write_code_to_file(
+        degree_lowering_table_code,
+        "triton-vm/src/table/degree_lowering_table.rs",
+    );
+    write_code_to_file(rust, "triton-vm/src/table/constraints.rs");
+    write_code_to_file(tasm, "triton-vm/src/air/tasm_air_constraints.rs");
 }
 
 fn write_code_to_file(code: TokenStream, file_name: &str) {
     let syntax_tree = syn::parse2(code).unwrap();
     let code = prettyplease::unparse(&syntax_tree);
-    let path = format!("triton-vm/src/table/{file_name}.rs");
-    write(path, code).unwrap();
+    write(file_name, code).unwrap();
 }
 
 #[cfg(test)]
