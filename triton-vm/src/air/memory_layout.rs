@@ -1,39 +1,40 @@
 use arbitrary::Arbitrary;
 use itertools::Itertools;
-use twenty_first::prelude::BFieldElement;
+use twenty_first::prelude::*;
 
 use crate::table::challenges::Challenges;
 use crate::table::NUM_BASE_COLUMNS;
 use crate::table::NUM_EXT_COLUMNS;
 
-/// Memory layout guarantees for the [*dynamic* Triton assembly AIR constraint evaluator][tasm_air].
+/// The minimal required size of a memory page in [`BFieldElement`]s.
+pub const MEM_PAGE_SIZE: usize = 1 << 32;
+
+/// Memory layout guarantees for the [Triton assembly AIR constraint evaluator][tasm_air]
+/// with input lists at dynamically known memory locations.
 ///
-/// [tasm_air]: tasm_air_constraints::dynamic_air_constraint_evaluation_tasm
+/// [tasm_air]: crate::air::tasm_air_constraints::dynamic_air_constraint_evaluation_tasm
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Arbitrary)]
 pub struct DynamicTasmConstraintEvaluationMemoryLayout {
-    /// Pointer to a region of memory that is reserved for a) pointers to {current,
-    /// next} {main, aux} rows, and b) intermediate values in the course of constraint
-    /// evaluation. The size of the region must be at least [`MEM_PAGE_SIZE`][mem_page_size]
-    /// [`BFieldElement`]s.
-    ///
-    /// [mem_page_size]: TasmConstraintEvaluationMemoryLayout::MEM_PAGE_SIZE
+    /// Pointer to a region of memory that is reserved for (a) pointers to {current,
+    /// next} {main, aux} rows, and (b) intermediate values in the course of
+    /// constraint evaluation. The size of the region must be at least
+    /// [`MEM_PAGE_SIZE`] [`BFieldElement`]s.
     pub free_mem_page_ptr: BFieldElement,
 
     /// Pointer to an array of [`XFieldElement`]s of length [`NUM_CHALLENGES`][num_challenges].
     ///
-    /// [num_challenges]: challenges::Challenges::COUNT
+    /// [num_challenges]: Challenges::COUNT
     pub challenges_ptr: BFieldElement,
 }
 
-/// Memory layout guarantees for the [*static* Triton assembly AIR constraint evaluator][tasm_air].
+/// Memory layout guarantees for the [Triton assembly AIR constraint evaluator][tasm_air]
+/// with input lists at statically known memory locations.
 ///
-/// [tasm_air]: tasm_air_constraints::static_air_constraint_evaluation_tasm
+/// [tasm_air]: crate::air::tasm_air_constraints::static_air_constraint_evaluation_tasm
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Arbitrary)]
 pub struct StaticTasmConstraintEvaluationMemoryLayout {
-    /// Pointer to a region of memory that is reserved for constraint evaluation. The size of the
-    /// region must be at least [`MEM_PAGE_SIZE`][mem_page_size] [`BFieldElement`]s.
-    ///
-    /// [mem_page_size]: TasmConstraintEvaluationMemoryLayout::MEM_PAGE_SIZE
+    /// Pointer to a region of memory that is reserved for constraint evaluation.
+    /// The size of the region must be at least [`MEM_PAGE_SIZE`] [`BFieldElement`]s.
     pub free_mem_page_ptr: BFieldElement,
 
     /// Pointer to an array of [`XFieldElement`]s of length [`NUM_BASE_COLUMNS`].
@@ -50,16 +51,13 @@ pub struct StaticTasmConstraintEvaluationMemoryLayout {
 
     /// Pointer to an array of [`XFieldElement`]s of length [`NUM_CHALLENGES`][num_challenges].
     ///
-    /// [num_challenges]: challenges::Challenges::COUNT
+    /// [num_challenges]: Challenges::COUNT
     pub challenges_ptr: BFieldElement,
 }
 
 pub trait IntegralMemoryLayout {
-    /// The minimal required size of a memory page in [`BFieldElement`]s.
-    const MEM_PAGE_SIZE: usize = 1 << 32;
-
-    /// Determine if the memory layout's constraints are met, _i.e._, whether the various pointers
-    /// point to large enough regions of memory.
+    /// Determine if the memory layout's constraints are met, _i.e._, whether the
+    /// various pointers point to large enough regions of memory.
     fn is_integral(&self) -> bool {
         let memory_regions = self.memory_regions();
         if memory_regions.iter().unique().count() != memory_regions.len() {
@@ -79,7 +77,7 @@ pub trait IntegralMemoryLayout {
 impl IntegralMemoryLayout for StaticTasmConstraintEvaluationMemoryLayout {
     fn memory_regions(&self) -> Box<[MemoryRegion]> {
         let all_regions = [
-            MemoryRegion::new(self.free_mem_page_ptr, Self::MEM_PAGE_SIZE),
+            MemoryRegion::new(self.free_mem_page_ptr, MEM_PAGE_SIZE),
             MemoryRegion::new(self.curr_base_row_ptr, NUM_BASE_COLUMNS),
             MemoryRegion::new(self.curr_ext_row_ptr, NUM_EXT_COLUMNS),
             MemoryRegion::new(self.next_base_row_ptr, NUM_BASE_COLUMNS),
@@ -93,7 +91,7 @@ impl IntegralMemoryLayout for StaticTasmConstraintEvaluationMemoryLayout {
 impl IntegralMemoryLayout for DynamicTasmConstraintEvaluationMemoryLayout {
     fn memory_regions(&self) -> Box<[MemoryRegion]> {
         let all_regions = [
-            MemoryRegion::new(self.free_mem_page_ptr, Self::MEM_PAGE_SIZE),
+            MemoryRegion::new(self.free_mem_page_ptr, MEM_PAGE_SIZE),
             MemoryRegion::new(self.challenges_ptr, Challenges::COUNT),
         ];
         Box::new(all_regions)
@@ -138,7 +136,7 @@ mod tests {
     impl Default for StaticTasmConstraintEvaluationMemoryLayout {
         /// For testing purposes only.
         fn default() -> Self {
-            let mem_page_size = StaticTasmConstraintEvaluationMemoryLayout::MEM_PAGE_SIZE as u64;
+            let mem_page_size = MEM_PAGE_SIZE as u64;
             let mem_page = |i| bfe!(i * mem_page_size);
             StaticTasmConstraintEvaluationMemoryLayout {
                 free_mem_page_ptr: mem_page(0),
@@ -154,7 +152,7 @@ mod tests {
     impl Default for DynamicTasmConstraintEvaluationMemoryLayout {
         /// For testing purposes only.
         fn default() -> Self {
-            let mem_page_size = DynamicTasmConstraintEvaluationMemoryLayout::MEM_PAGE_SIZE as u64;
+            let mem_page_size = MEM_PAGE_SIZE as u64;
             let mem_page = |i| bfe!(i * mem_page_size);
             DynamicTasmConstraintEvaluationMemoryLayout {
                 free_mem_page_ptr: mem_page(0),

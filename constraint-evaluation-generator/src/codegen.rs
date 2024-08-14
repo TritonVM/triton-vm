@@ -40,8 +40,6 @@ pub(crate) struct TasmBackend {
     scope: HashSet<usize>,
 
     /// The number of elements written to the output list.
-    ///
-    /// See [`TasmBackend::doc_comment`] for details.
     elements_written: usize,
 
     /// Whether the code that is to be generated can assume statically provided

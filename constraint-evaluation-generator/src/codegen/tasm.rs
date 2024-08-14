@@ -4,13 +4,12 @@ use itertools::Itertools;
 use proc_macro2::TokenStream;
 use quote::quote;
 use quote::ToTokens;
-use triton_vm::air::memory_layout::StaticTasmConstraintEvaluationMemoryLayout;
 use twenty_first::prelude::bfe;
 use twenty_first::prelude::x_field_element::EXTENSION_DEGREE;
 use twenty_first::prelude::BFieldElement;
 use twenty_first::prelude::XFieldElement;
 
-use triton_vm::air::memory_layout::IntegralMemoryLayout;
+use triton_vm::air::memory_layout;
 use triton_vm::instruction::Instruction;
 use triton_vm::op_stack::NumberOfWords;
 use triton_vm::table::constraint_circuit::BinOp;
@@ -25,9 +24,9 @@ use crate::constraints::Constraints;
 /// An offset from the [memory layout][layout]'s `free_mem_page_ptr`, in number of
 /// [`XFieldElement`]s. Indicates the start of the to-be-returned array.
 ///
-/// [layout]: TasmConstraintEvaluationMemoryLayout
+/// [layout]: memory_layout::IntegralMemoryLayout
 const OUT_ARRAY_OFFSET: usize = {
-    let mem_page_size = StaticTasmConstraintEvaluationMemoryLayout::MEM_PAGE_SIZE;
+    let mem_page_size = memory_layout::MEM_PAGE_SIZE;
     let max_num_words_for_evaluated_constraints = 1 << 16; // magic!
     let out_array_offset_in_words = mem_page_size - max_num_words_for_evaluated_constraints;
     assert!(out_array_offset_in_words % EXTENSION_DEGREE == 0);
@@ -245,7 +244,7 @@ impl TasmBackend {
             (respectively and in this order) correspond to the evaluations of the initial,
             consistency, transition, and terminal constraints.
 
-         [integral]: IntegralMemoryLayout::is_integral
+         [integral]: crate::air::memory_layout::IntegralMemoryLayout::is_integral
          [xfe]: twenty_first::prelude::XFieldElement
          [total]: crate::table::master_table::MasterExtTable::NUM_CONSTRAINTS
          [init]: crate::table::master_table::MasterExtTable::NUM_INITIAL_CONSTRAINTS
@@ -287,7 +286,7 @@ impl TasmBackend {
             (respectively and in this order) correspond to the evaluations of the initial,
             consistency, transition, and terminal constraints.
 
-         [integral]: IntegralMemoryLayout::is_integral
+         [integral]: crate::air::memory_layout::IntegralMemoryLayout::is_integral
          [xfe]: twenty_first::prelude::XFieldElement
          [total]: crate::table::master_table::MasterExtTable::NUM_CONSTRAINTS
          [init]: crate::table::master_table::MasterExtTable::NUM_INITIAL_CONSTRAINTS
@@ -462,7 +461,7 @@ impl TasmBackend {
     }
 
     fn load_ext_field_element_from_list(list: IOList, element_index: usize) -> Vec<TokenStream> {
-        let word_index = Self::element_index_to_word_index(element_index);
+        let word_index = Self::element_index_to_word_index_for_reading(element_index);
 
         [
             push!(list + word_index),
@@ -476,7 +475,7 @@ impl TasmBackend {
         list: IOList,
         element_index: usize,
     ) -> Vec<TokenStream> {
-        let word_index = Self::element_index_to_word_index(element_index);
+        let word_index = Self::element_index_to_word_index_for_reading(element_index);
 
         [
             push!(list + 0),
@@ -489,7 +488,7 @@ impl TasmBackend {
         .concat()
     }
 
-    fn element_index_to_word_index(element_index: usize) -> BFieldElement {
+    fn element_index_to_word_index_for_reading(element_index: usize) -> BFieldElement {
         let word_offset = element_index * EXTENSION_DEGREE;
         let start_to_read_offset = EXTENSION_DEGREE - 1;
         let word_index = word_offset + start_to_read_offset;

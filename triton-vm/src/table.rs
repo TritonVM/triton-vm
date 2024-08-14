@@ -59,11 +59,12 @@ impl Display for ConstraintType {
 
 /// A single row of a [`MasterBaseTable`][table].
 ///
-/// Usually, the elements in the table are [`BFieldElement`]s. For out-of-domain rows, which is
+/// Usually, the elements in the table are [`BFieldElement`][bfe]s. For out-of-domain rows, which is
 /// relevant for “Domain Extension to Eliminate Pretenders” (DEEP), the elements are
 /// [`XFieldElement`]s.
 ///
 /// [table]: master_table::MasterBaseTable
+/// [bfe]: crate::prelude::BFieldElement
 pub type BaseRow<T> = [T; NUM_BASE_COLUMNS];
 
 /// A single row of a [`MasterExtensionTable`][table].

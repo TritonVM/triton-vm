@@ -11,30 +11,24 @@ mod test {
     use proptest_arbitrary_interop::arb;
     use std::collections::HashMap;
     use test_strategy::proptest;
+    use twenty_first::prelude::x_field_element::EXTENSION_DEGREE;
+    use twenty_first::prelude::*;
 
-    use crate::air::memory_layout::DynamicTasmConstraintEvaluationMemoryLayout;
-    use crate::air::memory_layout::IntegralMemoryLayout;
-    use crate::air::memory_layout::MemoryRegion;
-    use crate::air::memory_layout::StaticTasmConstraintEvaluationMemoryLayout;
     use crate::air::tasm_air_constraints::dynamic_air_constraint_evaluation_tasm;
     use crate::air::tasm_air_constraints::static_air_constraint_evaluation_tasm;
-    use crate::bfe;
     use crate::instruction::AnInstruction;
-    use crate::instruction::LabelledInstruction;
+    use crate::prelude::*;
     use crate::table::challenges::Challenges;
     use crate::table::extension_table::Evaluable;
     use crate::table::extension_table::Quotientable;
     use crate::table::master_table::MasterExtTable;
     use crate::table::NUM_BASE_COLUMNS;
     use crate::table::NUM_EXT_COLUMNS;
-    use crate::triton_instr;
-    use crate::twenty_first::prelude::x_field_element::EXTENSION_DEGREE;
-    use crate::BFieldElement;
-    use crate::NonDeterminism;
-    use crate::Program;
-    use crate::PublicInput;
-    use crate::VMState;
-    use crate::XFieldElement;
+
+    use super::memory_layout::DynamicTasmConstraintEvaluationMemoryLayout;
+    use super::memory_layout::IntegralMemoryLayout;
+    use super::memory_layout::StaticTasmConstraintEvaluationMemoryLayout;
+    use super::*;
 
     #[derive(Debug, Clone, test_strategy::Arbitrary)]
     struct ConstraintEvaluationPoint {
@@ -222,8 +216,8 @@ mod test {
         terminal_state.run().unwrap();
 
         let free_mem_page_ptr = point.static_memory_layout.free_mem_page_ptr;
-        let mem_page_size = StaticTasmConstraintEvaluationMemoryLayout::MEM_PAGE_SIZE;
-        let mem_page = MemoryRegion::new(free_mem_page_ptr, mem_page_size);
+        let mem_page_size = memory_layout::MEM_PAGE_SIZE;
+        let mem_page = memory_layout::MemoryRegion::new(free_mem_page_ptr, mem_page_size);
         let not_in_mem_page = |addr: &_| !mem_page.contains_address(addr);
 
         initial_state.ram.retain(|k, _| not_in_mem_page(k));
@@ -254,7 +248,12 @@ mod test {
         #[strategy(arb())] dynamic_memory_layout: DynamicTasmConstraintEvaluationMemoryLayout,
     ) {
         type I = AnInstruction<String>;
-        let is_legal = |i| !matches!(i, I::Call(_) | I::Return | I::Recurse | I::Skiz | I::Halt);
+        let is_legal = |instruction| {
+            !matches!(
+                instruction,
+                I::Call(_) | I::Return | I::Recurse | I::RecurseOrReturn | I::Skiz | I::Halt
+            )
+        };
 
         for instruction in static_air_constraint_evaluation_tasm(static_memory_layout) {
             if let LabelledInstruction::Instruction(instruction) = instruction {
