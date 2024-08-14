@@ -167,10 +167,10 @@ impl AlgebraicExecutionTrace {
     fn fill_program_hash_trace(&mut self) {
         let padded_program = Self::hash_input_pad_program(&self.program);
         let mut program_sponge = Tip5::init();
-        for chunk in padded_program.chunks(Tip5::RATE) {
+        for chunk_to_absorb in padded_program.chunks(Tip5::RATE) {
             program_sponge.state[..Tip5::RATE]
                 .iter_mut()
-                .zip_eq(chunk)
+                .zip_eq(chunk_to_absorb)
                 .for_each(|(sponge_state_elem, &absorb_elem)| *sponge_state_elem = absorb_elem);
             let hash_trace = program_sponge.trace();
             let trace_addendum = HashTable::trace_to_table_rows(hash_trace);
