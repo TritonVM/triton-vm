@@ -4,7 +4,7 @@
 
 <!-- auto-gen info start table_overview -->
 <!-- To update, please run `cargo test`. -->
-| table name                                 | #main cols      | #aux cols        | total width     |
+| table name                                 |      #main cols |        #aux cols |     total width |
 |:-------------------------------------------|----------------:|-----------------:|----------------:|
 | [ProgramTable](program-table.md)           |               7 |                3 |              16 |
 | [ProcessorTable](processor-table.md)       |              39 |               11 |              72 |
