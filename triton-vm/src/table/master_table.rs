@@ -1534,7 +1534,9 @@ mod tests {
     }
 
     fn generate_table_overview() -> SpecSnippet {
-        const DEGREE_LOWERING_TARGETS: [Option<isize>; 3] = [None, Some(8), Some(4)];
+        const NUM_DEGREE_LOWERING_TARGETS: usize = 3;
+        const DEGREE_LOWERING_TARGETS: [Option<isize>; NUM_DEGREE_LOWERING_TARGETS] =
+            [None, Some(8), Some(4)];
         assert!(DEGREE_LOWERING_TARGETS.contains(&Some(AIR_TARGET_DEGREE)));
 
         macro_rules! table_info {
@@ -1545,8 +1547,8 @@ mod tests {
                 info.push(
                     (
                         name,
-                        [$module::BASE_WIDTH; DEGREE_LOWERING_TARGETS.len()],
-                        [$module::EXT_WIDTH; DEGREE_LOWERING_TARGETS.len()]
+                        [$module::BASE_WIDTH; NUM_DEGREE_LOWERING_TARGETS],
+                        [$module::EXT_WIDTH; NUM_DEGREE_LOWERING_TARGETS]
                     )
                 );
                 )*
@@ -1566,133 +1568,93 @@ mod tests {
             u32_table:        "U32Table"       at "u32-table.md",
         ];
 
-        let mut deg_low_base = vec![];
-        let mut deg_low_ext = vec![];
+        let mut deg_low_main = vec![];
+        let mut deg_low_aux = vec![];
         for maybe_target_degree in DEGREE_LOWERING_TARGETS {
-            if let Some(target_degree) = maybe_target_degree {
-                let mut initial_constraints =
-                    constraints_without_degree_lowering!(initial_constraints);
-                let mut consistency_constraints =
-                    constraints_without_degree_lowering!(consistency_constraints);
-                let mut transition_constraints =
-                    constraints_without_degree_lowering!(transition_constraints);
-                let mut terminal_constraints =
-                    constraints_without_degree_lowering!(terminal_constraints);
+            let Some(target_degree) = maybe_target_degree else {
+                deg_low_main.push(0);
+                deg_low_aux.push(0);
+                continue;
+            };
 
-                let (new_initial_constraints_main, new_initial_constraints_aux) =
-                    ConstraintCircuitMonad::lower_to_degree(
-                        &mut initial_constraints,
-                        target_degree,
-                        1000,
-                        2000,
-                    );
-                let (new_consistency_constraints_main, new_consistency_constraints_aux) =
-                    ConstraintCircuitMonad::lower_to_degree(
-                        &mut consistency_constraints,
-                        target_degree,
-                        1000,
-                        2000,
-                    );
-                let (new_transition_constraints_main, new_transition_constraints_aux) =
-                    ConstraintCircuitMonad::lower_to_degree(
-                        &mut transition_constraints,
-                        target_degree,
-                        1000,
-                        2000,
-                    );
-                let (new_terminal_constraints_main, new_terminal_constraints_aux) =
-                    ConstraintCircuitMonad::lower_to_degree(
-                        &mut terminal_constraints,
-                        target_degree,
-                        1000,
-                        2000,
-                    );
+            let initial_constraints = constraints_without_degree_lowering!(initial_constraints);
+            let consistency_constraints =
+                constraints_without_degree_lowering!(consistency_constraints);
+            let transition_constraints =
+                constraints_without_degree_lowering!(transition_constraints);
+            let terminal_constraints = constraints_without_degree_lowering!(terminal_constraints);
 
-                deg_low_base.push(
-                    new_initial_constraints_main.len()
-                        + new_consistency_constraints_main.len()
-                        + new_transition_constraints_main.len()
-                        + new_terminal_constraints_main.len(),
-                );
-                deg_low_ext.push(
-                    new_initial_constraints_aux.len()
-                        + new_consistency_constraints_aux.len()
-                        + new_transition_constraints_aux.len()
-                        + new_terminal_constraints_aux.len(),
-                );
-            } else {
-                deg_low_base.push(0);
-                deg_low_ext.push(0);
-            }
+            // generic closures are not possible; define two variants :(
+            let lower_to_target_degree_single_row = |mut constraints: Vec<_>| {
+                ConstraintCircuitMonad::lower_to_degree(&mut constraints, target_degree, 0, 0)
+            };
+            let lower_to_target_degree_double_row = |mut constraints: Vec<_>| {
+                ConstraintCircuitMonad::lower_to_degree(&mut constraints, target_degree, 0, 0)
+            };
+
+            let (init_main, init_aux) = lower_to_target_degree_single_row(initial_constraints);
+            let (cons_main, cons_aux) = lower_to_target_degree_single_row(consistency_constraints);
+            let (tran_main, tran_aux) = lower_to_target_degree_double_row(transition_constraints);
+            let (term_main, term_aux) = lower_to_target_degree_single_row(terminal_constraints);
+
+            deg_low_main
+                .push(init_main.len() + cons_main.len() + tran_main.len() + term_main.len());
+            deg_low_aux.push(init_aux.len() + cons_aux.len() + tran_aux.len() + term_aux.len());
         }
+        let target_degrees = DEGREE_LOWERING_TARGETS
+            .into_iter()
+            .map(|target| target.map_or_else(|| "-".to_string(), |t| t.to_string()))
+            .join("/");
         all_table_info.push((
-            format!(
-                "DegreeLowering ({})",
-                DEGREE_LOWERING_TARGETS
-                    .iter()
-                    .map(|maybe_target| if let Some(target) = maybe_target {
-                        target.to_string()
-                    } else {
-                        "-".to_string()
-                    })
-                    .join("/")
-            ),
-            deg_low_base.try_into().unwrap(),
-            deg_low_ext.try_into().unwrap(),
+            format!("DegreeLowering ({target_degrees})"),
+            deg_low_main.try_into().unwrap(),
+            deg_low_aux.try_into().unwrap(),
         ));
         all_table_info.push((
             "Randomizers".to_string(),
-            [0; DEGREE_LOWERING_TARGETS.len()],
-            [NUM_RANDOMIZER_POLYNOMIALS; DEGREE_LOWERING_TARGETS.len()],
+            [0; NUM_DEGREE_LOWERING_TARGETS],
+            [NUM_RANDOMIZER_POLYNOMIALS; NUM_DEGREE_LOWERING_TARGETS],
         ));
         let all_table_info = all_table_info;
 
         // produce table code
         let mut ft = format!("| {:<42} ", "table name");
-        ft = format!("{ft}| {:<15} ", "#main cols");
-        ft = format!("{ft}| {:<16} ", "#aux cols");
-        ft = format!("{ft}| {:<15} |\n", "total width");
+        ft = format!("{ft}| {:>15} ", "#main cols");
+        ft = format!("{ft}| {:>16} ", "#aux cols");
+        ft = format!("{ft}| {:>15} |\n", "total width");
 
         ft = format!("{ft}|:{:-<42}-", "-");
         ft = format!("{ft}|-{:-<15}:", "-");
         ft = format!("{ft}|-{:-<16}:", "-");
         ft = format!("{ft}|-{:-<15}:|\n", "-");
 
-        let mut total_main = [0; 3];
-        let mut total_aux = [0; 3];
+        let format_slice_and_collapse_if_all_entries_equal = |slice: &[usize]| {
+            if slice.iter().all(|&n| n == slice[0]) {
+                format!("{}", slice[0])
+            } else {
+                slice.iter().join("/").to_string()
+            }
+        };
+        let mut total_main = [0; NUM_DEGREE_LOWERING_TARGETS];
+        let mut total_aux = [0; NUM_DEGREE_LOWERING_TARGETS];
         for (name, num_main, num_aux) in all_table_info {
             let num_total = num_main
-                .iter()
-                .zip(num_aux.iter())
-                .map(|(&m, &a)| m + EXTENSION_DEGREE * a)
+                .into_iter()
+                .zip(num_aux)
+                .map(|(m, a)| m + EXTENSION_DEGREE * a)
                 .collect_vec();
             ft = format!(
                 "{ft}| {name:<42} | {:>15} | {:>16} | {:>15} |\n",
-                if num_main.iter().all(|n| *n == num_main[0]) {
-                    format!("{}", num_main[0])
-                } else {
-                    num_main.iter().join("/").to_string()
-                },
-                if num_aux.iter().all(|n| *n == num_aux[0]) {
-                    format!("{}", num_aux[0])
-                } else {
-                    num_aux.iter().join("/").to_string()
-                },
-                if num_total.iter().all(|n| *n == num_total[0]) {
-                    format!("{}", num_total[0])
-                } else {
-                    num_total.iter().join("/").to_string()
-                }
+                format_slice_and_collapse_if_all_entries_equal(&num_main),
+                format_slice_and_collapse_if_all_entries_equal(&num_aux),
+                format_slice_and_collapse_if_all_entries_equal(&num_total),
             );
-            total_main
-                .iter_mut()
-                .zip(num_main.iter())
-                .for_each(|(t, n)| {
-                    *t += *n;
-                });
-            total_aux.iter_mut().zip(num_aux.iter()).for_each(|(t, n)| {
-                *t += *n;
-            });
+            for (t, n) in total_main.iter_mut().zip(num_main) {
+                *t += n;
+            }
+            for (t, n) in total_aux.iter_mut().zip(num_aux) {
+                *t += n;
+            }
         }
         ft = format!(
             "{ft}| {:<42} | {:>15} | {:>16} | {:>15} |\n",
@@ -1702,9 +1664,9 @@ mod tests {
             format!(
                 "**{}**",
                 total_main
-                    .iter()
-                    .zip(total_aux.iter())
-                    .map(|(m, a)| *m + EXTENSION_DEGREE * *a)
+                    .into_iter()
+                    .zip(total_aux)
+                    .map(|(m, a)| m + EXTENSION_DEGREE * a)
                     .join("/")
             )
         );
