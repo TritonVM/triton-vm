@@ -100,13 +100,13 @@ impl IntegralMemoryLayout for DynamicTasmConstraintEvaluationMemoryLayout {
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub struct MemoryRegion {
-    start: u64,
+    start: BFieldElement,
     size: u64,
 }
 
 impl MemoryRegion {
     pub fn new<A: Into<u64>>(address: A, size: usize) -> Self {
-        let start = address.into();
+        let start = bfe!(address.into());
         let size = u64::try_from(size).unwrap();
         Self { start, size }
     }
@@ -120,7 +120,11 @@ impl MemoryRegion {
     }
 
     pub fn contains_address<A: Into<u64>>(self, addr: A) -> bool {
-        (self.start..self.start + self.size).contains(&addr.into())
+        // move all arithmetic to u128 to avoid overflows
+        let addr = u128::from(addr.into());
+        let start = u128::from(self.start.value());
+        let end = start + u128::from(self.size);
+        (start..end).contains(&addr)
     }
 }
 
@@ -206,5 +210,14 @@ mod tests {
             challenges_ptr: bfe!(5),
         };
         assert!(!layout.is_integral());
+    }
+
+    #[test]
+    fn memory_layout_integrity_check_does_not_panic_due_to_arithmetic_overflow() {
+        let mem_layout = DynamicTasmConstraintEvaluationMemoryLayout {
+            free_mem_page_ptr: bfe!(BFieldElement::MAX),
+            challenges_ptr: bfe!(1_u64 << 63),
+        };
+        assert!(mem_layout.is_integral());
     }
 }
