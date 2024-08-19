@@ -78,9 +78,8 @@ fn set_ones(matrix: &mut Array2<XFieldElement>, indices: &[(usize, usize)]) {
 
 fn into_shape<const NUM_ROWS: usize, const NUM_COLS: usize>() -> Array2<XFieldElement> {
     Array1::zeros(NUM_ROWS * NUM_COLS)
-        .into_shape((NUM_COLS, NUM_ROWS))
+        .into_shape_with_order(((NUM_ROWS, NUM_COLS), ndarray::Order::F))
         .unwrap()
-        .reversed_axes()
 }
 
 fn set_len<const NUM_ROWS: usize, const NUM_COLS: usize>() -> Array2<XFieldElement> {

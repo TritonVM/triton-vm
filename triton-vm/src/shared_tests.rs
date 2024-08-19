@@ -65,8 +65,8 @@ pub(crate) struct LeavedMerkleTreeTestData {
     #[strategy(Just(#leaves.iter().map(|&x| x.into()).collect()))]
     pub leaves_as_digests: Vec<Digest>,
 
-    #[strategy(Just(CpuParallel::from_digests(&#leaves_as_digests).unwrap()))]
-    pub merkle_tree: MerkleTree<Tip5>,
+    #[strategy(Just(MerkleTree::new::<CpuParallel>(&#leaves_as_digests).unwrap()))]
+    pub merkle_tree: MerkleTree,
 
     #[strategy(Just(#revealed_indices.iter().map(|&i| #leaves[i]).collect()))]
     pub revealed_leaves: Vec<XFieldElement>,

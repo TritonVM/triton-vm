@@ -196,8 +196,8 @@ impl Stark {
             quotient_segments_rows.map(hash_row).collect::<Vec<_>>();
         profiler!(stop "hash rows of quotient segments");
         profiler!(start "Merkle tree" ("hash"));
-        let quot_merkle_tree: MerkleTree<Tip5> =
-            CpuParallel::from_digests(&fri_domain_quotient_segment_codewords_digests)?;
+        let quot_merkle_tree =
+            MerkleTree::new::<CpuParallel>(&fri_domain_quotient_segment_codewords_digests)?;
         let quot_merkle_tree_root = quot_merkle_tree.root();
         proof_stream.enqueue(ProofItem::MerkleRoot(quot_merkle_tree_root));
         profiler!(stop "Merkle tree");
@@ -890,11 +890,10 @@ impl Stark {
             index_iter.zip_eq(leaves).collect()
         };
         profiler!(start "Merkle verify (base tree)" ("hash"));
-        let base_merkle_tree_inclusion_proof = MerkleTreeInclusionProof::<Tip5> {
+        let base_merkle_tree_inclusion_proof = MerkleTreeInclusionProof {
             tree_height: merkle_tree_height,
             indexed_leafs: index_leaves(leaf_digests_base),
             authentication_structure: base_authentication_structure,
-            ..MerkleTreeInclusionProof::default()
         };
         if !base_merkle_tree_inclusion_proof.verify(base_merkle_tree_root) {
             return Err(VerificationError::BaseCodewordAuthenticationFailure);
@@ -916,11 +915,10 @@ impl Stark {
         profiler!(stop "dequeue extension elements");
 
         profiler!(start "Merkle verify (extension tree)" ("hash"));
-        let ext_merkle_tree_inclusion_proof = MerkleTreeInclusionProof::<Tip5> {
+        let ext_merkle_tree_inclusion_proof = MerkleTreeInclusionProof {
             tree_height: merkle_tree_height,
             indexed_leafs: index_leaves(leaf_digests_ext),
             authentication_structure: ext_authentication_structure,
-            ..MerkleTreeInclusionProof::default()
         };
         if !ext_merkle_tree_inclusion_proof.verify(extension_tree_merkle_root) {
             return Err(VerificationError::ExtensionCodewordAuthenticationFailure);
@@ -938,11 +936,10 @@ impl Stark {
         profiler!(stop "dequeue quotient segments' elements");
 
         profiler!(start "Merkle verify (combined quotient)" ("hash"));
-        let quot_merkle_tree_inclusion_proof = MerkleTreeInclusionProof::<Tip5> {
+        let quot_merkle_tree_inclusion_proof = MerkleTreeInclusionProof {
             tree_height: merkle_tree_height,
             indexed_leafs: index_leaves(revealed_quotient_segments_digests),
             authentication_structure: revealed_quotient_authentication_structure,
-            ..MerkleTreeInclusionProof::default()
         };
         if !quot_merkle_tree_inclusion_proof.verify(quotient_codeword_merkle_root) {
             return Err(VerificationError::QuotientCodewordAuthenticationFailure);

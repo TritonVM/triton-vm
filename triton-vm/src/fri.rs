@@ -32,9 +32,9 @@ pub struct Fri<H: AlgebraicHasher> {
 }
 
 #[derive(Debug, Eq, PartialEq)]
-struct FriProver<'stream, H: AlgebraicHasher> {
+struct FriProver<'stream> {
     proof_stream: &'stream mut ProofStream,
-    rounds: Vec<ProverRound<H>>,
+    rounds: Vec<ProverRound>,
     first_round_domain: ArithmeticDomain,
     num_rounds: usize,
     num_collinearity_checks: usize,
@@ -42,13 +42,13 @@ struct FriProver<'stream, H: AlgebraicHasher> {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
-struct ProverRound<H: AlgebraicHasher> {
+struct ProverRound {
     domain: ArithmeticDomain,
     codeword: Vec<XFieldElement>,
-    merkle_tree: MerkleTree<H>,
+    merkle_tree: MerkleTree,
 }
 
-impl<'stream, H: AlgebraicHasher> FriProver<'stream, H> {
+impl<'stream> FriProver<'stream> {
     fn commit(&mut self, codeword: &[XFieldElement]) -> ProverResult<()> {
         self.commit_to_first_round(codeword)?;
         for _ in 0..self.num_rounds {
@@ -73,17 +73,17 @@ impl<'stream, H: AlgebraicHasher> FriProver<'stream, H> {
         Ok(())
     }
 
-    fn commit_to_round(&mut self, round: &ProverRound<H>) {
+    fn commit_to_round(&mut self, round: &ProverRound) {
         let merkle_root = round.merkle_tree.root();
         let proof_item = ProofItem::MerkleRoot(merkle_root);
         self.proof_stream.enqueue(proof_item);
     }
 
-    fn store_round(&mut self, round: ProverRound<H>) {
+    fn store_round(&mut self, round: ProverRound) {
         self.rounds.push(round);
     }
 
-    fn construct_next_round(&mut self) -> ProverResult<ProverRound<H>> {
+    fn construct_next_round(&mut self) -> ProverResult<ProverRound> {
         let previous_round = self.rounds.last().unwrap();
         let folding_challenge = self.proof_stream.sample_scalars(1)[0];
         let codeword = previous_round.split_and_fold(folding_challenge);
@@ -157,7 +157,7 @@ impl<'stream, H: AlgebraicHasher> FriProver<'stream, H> {
     }
 }
 
-impl<H: AlgebraicHasher> ProverRound<H> {
+impl ProverRound {
     fn new(domain: ArithmeticDomain, codeword: &[XFieldElement]) -> ProverResult<Self> {
         debug_assert_eq!(domain.length, codeword.len());
         let merkle_tree = Self::merkle_tree_from_codeword(codeword)?;
@@ -169,9 +169,9 @@ impl<H: AlgebraicHasher> ProverRound<H> {
         Ok(round)
     }
 
-    fn merkle_tree_from_codeword(codeword: &[XFieldElement]) -> ProverResult<MerkleTree<H>> {
+    fn merkle_tree_from_codeword(codeword: &[XFieldElement]) -> ProverResult<MerkleTree> {
         let digests = codeword_as_digests(codeword);
-        CpuParallel::from_digests(&digests).map_err(FriProvingError::MerkleTreeError)
+        MerkleTree::new::<CpuParallel>(&digests).map_err(FriProvingError::MerkleTreeError)
     }
 
     fn split_and_fold(&self, folding_challenge: XFieldElement) -> Vec<XFieldElement> {
@@ -337,11 +337,10 @@ impl<'stream, H: AlgebraicHasher> FriVerifier<'stream, H> {
         let leaf_indices = self.collinearity_check_a_indices_for_round(0);
         let indexed_leafs = leaf_indices.into_iter().zip_eq(revealed_digests).collect();
 
-        let inclusion_proof = MerkleTreeInclusionProof::<H> {
+        let inclusion_proof = MerkleTreeInclusionProof {
             tree_height: round.merkle_tree_height(),
             indexed_leafs,
             authentication_structure,
-            ..MerkleTreeInclusionProof::default()
         };
         match inclusion_proof.verify(round.merkle_root) {
             true => Ok(()),
@@ -361,11 +360,10 @@ impl<'stream, H: AlgebraicHasher> FriVerifier<'stream, H> {
         let leaf_indices = self.collinearity_check_b_indices_for_round(round_number);
         let indexed_leafs = leaf_indices.into_iter().zip_eq(revealed_digests).collect();
 
-        let inclusion_proof = MerkleTreeInclusionProof::<H> {
+        let inclusion_proof = MerkleTreeInclusionProof {
             tree_height: round.merkle_tree_height(),
             indexed_leafs,
             authentication_structure,
-            ..MerkleTreeInclusionProof::default()
         };
         match inclusion_proof.verify(round.merkle_root) {
             true => Ok(()),
@@ -441,7 +439,7 @@ impl<'stream, H: AlgebraicHasher> FriVerifier<'stream, H> {
 
     fn last_round_codeword_merkle_root(&self) -> VerifierResult<Digest> {
         let codeword_digests = codeword_as_digests(&self.last_round_codeword);
-        let merkle_tree: MerkleTree<H> = CpuParallel::from_digests(&codeword_digests)
+        let merkle_tree = MerkleTree::new::<CpuParallel>(&codeword_digests)
             .map_err(FriValidationError::MerkleTreeError)?;
 
         Ok(merkle_tree.root())
@@ -548,7 +546,7 @@ impl<H: AlgebraicHasher> Fri<H> {
         Ok(prover.first_round_collinearity_check_indices)
     }
 
-    fn prover<'stream>(&'stream self, proof_stream: &'stream mut ProofStream) -> FriProver<H> {
+    fn prover<'stream>(&'stream self, proof_stream: &'stream mut ProofStream) -> FriProver {
         FriProver {
             proof_stream,
             rounds: vec![],

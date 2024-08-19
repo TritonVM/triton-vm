@@ -1524,11 +1524,10 @@ pub(crate) mod tests {
         /// - produces the correct output.
         #[must_use]
         pub fn is_integral(&self) -> bool {
-            let inclusion_proof = MerkleTreeInclusionProof::<Tip5> {
+            let inclusion_proof = MerkleTreeInclusionProof {
                 tree_height: self.leaved_merkle_tree.merkle_tree.height(),
                 indexed_leafs: vec![(self.revealed_leafs_index, self.new_leaf)],
                 authentication_structure: self.authentication_path(),
-                _hasher: std::marker::PhantomData,
             };
 
             let new_root = self.clone().assemble().run().unwrap();

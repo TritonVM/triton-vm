@@ -385,13 +385,13 @@ where
 
     /// Compute a Merkle tree of the FRI domain table. Every row gives one leaf in the tree.
     /// The function [`hash_row`](Self::hash_one_row) is used to hash each row.
-    fn merkle_tree(&self) -> MerkleTree<Tip5> {
+    fn merkle_tree(&self) -> MerkleTree {
         profiler!(start "leafs");
         let hashed_rows = self.hash_all_fri_domain_rows();
         profiler!(stop "leafs");
 
         profiler!(start "Merkle tree");
-        let merkle_tree = CpuParallel::from_digests(&hashed_rows).unwrap();
+        let merkle_tree = MerkleTree::new::<CpuParallel>(&hashed_rows).unwrap();
         profiler!(stop "Merkle tree");
 
         merkle_tree
