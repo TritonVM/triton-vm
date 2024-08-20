@@ -1,5 +1,5 @@
 [workspace]
-members = ["triton-vm", "constraint-evaluation-generator"]
+members = ["triton-vm", "constraint-evaluation-generator", "triton-cli"]
 resolver = "2"
 
 [profile.test]
