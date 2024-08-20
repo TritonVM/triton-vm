@@ -18,7 +18,7 @@ use twenty_first::prelude::*;
 use triton_vm::example_programs::FIBONACCI_SEQUENCE;
 use triton_vm::example_programs::VERIFY_SUDOKU;
 use triton_vm::prelude::*;
-use triton_vm::proof_stream::ProofStream;
+use triton_vm::proof::Stream;
 use triton_vm::prove_program;
 
 /// Ties together a program and its inputs.
@@ -189,7 +189,7 @@ fn log_2_fri_domain_length(stark: Stark, proof: &Proof) -> u32 {
 /// sizes for that type are accumulated.
 fn break_down_proof_size(proof: &Proof) -> HashMap<String, usize> {
     let mut proof_size_breakdown = HashMap::new();
-    let proof_stream = ProofStream::try_from(proof).unwrap();
+    let proof_stream = Stream::try_from(proof).unwrap();
     for proof_item in &proof_stream.items {
         let item_name = proof_item.to_string();
         let item_len = proof_item.encode().len();

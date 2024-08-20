@@ -23,10 +23,11 @@ use crate::error::VerificationError;
 use crate::fri;
 use crate::fri::Fri;
 use crate::profiler::profiler;
+use crate::proof;
 use crate::proof::Claim;
 use crate::proof::Proof;
-use crate::proof_item::ProofItem;
-use crate::proof_stream::ProofStream;
+use crate::proof::Stream;
+use crate::proof::CURRENT_PROOF_VERSION;
 use crate::table::challenges::Challenges;
 use crate::table::extension_table::Evaluable;
 use crate::table::extension_table::Quotientable;
@@ -106,7 +107,8 @@ impl Stark {
         aet: &AlgebraicExecutionTrace,
     ) -> Result<Proof, ProvingError> {
         profiler!(start "Fiat-Shamir: claim" ("hash"));
-        let mut proof_stream = ProofStream::new();
+        let mut proof_stream = Stream::new();
+        proof_stream.alter_fiat_shamir_state_with(&CURRENT_PROOF_VERSION);
         proof_stream.alter_fiat_shamir_state_with(claim);
         profiler!(stop "Fiat-Shamir: claim");
 
@@ -115,7 +117,7 @@ impl Stark {
         let max_degree = self.derive_max_degree(padded_height);
         let fri = self.derive_fri(padded_height)?;
         let quotient_domain = Self::quotient_domain(fri.domain, max_degree)?;
-        proof_stream.enqueue(ProofItem::Log2PaddedHeight(padded_height.ilog2()));
+        proof_stream.enqueue(proof::Item::Log2PaddedHeight(padded_height.ilog2()));
         profiler!(stop "derive additional parameters");
 
         profiler!(start "base tables");
@@ -141,7 +143,7 @@ impl Stark {
         profiler!(stop "Merkle tree");
 
         profiler!(start "Fiat-Shamir" ("hash"));
-        proof_stream.enqueue(ProofItem::MerkleRoot(base_merkle_tree.root()));
+        proof_stream.enqueue(proof::Item::MerkleRoot(base_merkle_tree.root()));
         let challenges = proof_stream.sample_scalars(Challenges::SAMPLE_COUNT);
         let challenges = Challenges::new(challenges, claim);
         profiler!(stop "Fiat-Shamir");
@@ -165,7 +167,7 @@ impl Stark {
         profiler!(stop "Merkle tree");
 
         profiler!(start "Fiat-Shamir" ("hash"));
-        proof_stream.enqueue(ProofItem::MerkleRoot(ext_merkle_tree.root()));
+        proof_stream.enqueue(proof::Item::MerkleRoot(ext_merkle_tree.root()));
 
         // Get the weights with which to compress the many quotients into one.
         let quotient_combination_weights =
@@ -199,7 +201,7 @@ impl Stark {
         let quot_merkle_tree =
             MerkleTree::new::<CpuParallel>(&fri_domain_quotient_segment_codewords_digests)?;
         let quot_merkle_tree_root = quot_merkle_tree.root();
-        proof_stream.enqueue(ProofItem::MerkleRoot(quot_merkle_tree_root));
+        proof_stream.enqueue(proof::Item::MerkleRoot(quot_merkle_tree_root));
         profiler!(stop "Merkle tree");
 
         debug_assert_eq!(fri.domain.length, quot_merkle_tree.num_leafs());
@@ -211,19 +213,19 @@ impl Stark {
 
         let ood_base_row = master_base_table.out_of_domain_row(out_of_domain_point_curr_row);
         let ood_base_row = MasterBaseTable::try_to_base_row(ood_base_row)?;
-        proof_stream.enqueue(ProofItem::OutOfDomainBaseRow(Box::new(ood_base_row)));
+        proof_stream.enqueue(proof::Item::OutOfDomainBaseRow(Box::new(ood_base_row)));
 
         let ood_ext_row = master_ext_table.out_of_domain_row(out_of_domain_point_curr_row);
         let ood_ext_row = MasterExtTable::try_to_ext_row(ood_ext_row)?;
-        proof_stream.enqueue(ProofItem::OutOfDomainExtRow(Box::new(ood_ext_row)));
+        proof_stream.enqueue(proof::Item::OutOfDomainExtRow(Box::new(ood_ext_row)));
 
         let ood_next_base_row = master_base_table.out_of_domain_row(out_of_domain_point_next_row);
         let ood_next_base_row = MasterBaseTable::try_to_base_row(ood_next_base_row)?;
-        proof_stream.enqueue(ProofItem::OutOfDomainBaseRow(Box::new(ood_next_base_row)));
+        proof_stream.enqueue(proof::Item::OutOfDomainBaseRow(Box::new(ood_next_base_row)));
 
         let ood_next_ext_row = master_ext_table.out_of_domain_row(out_of_domain_point_next_row);
         let ood_next_ext_row = MasterExtTable::try_to_ext_row(ood_next_ext_row)?;
-        proof_stream.enqueue(ProofItem::OutOfDomainExtRow(Box::new(ood_next_ext_row)));
+        proof_stream.enqueue(proof::Item::OutOfDomainExtRow(Box::new(ood_next_ext_row)));
 
         let out_of_domain_point_curr_row_pow_num_segments =
             out_of_domain_point_curr_row.mod_pow_u32(NUM_QUOTIENT_SEGMENTS as u32);
@@ -232,7 +234,7 @@ impl Stark {
             .to_vec()
             .try_into()
             .unwrap();
-        proof_stream.enqueue(ProofItem::OutOfDomainQuotientSegments(
+        proof_stream.enqueue(proof::Item::OutOfDomainQuotientSegments(
             out_of_domain_curr_row_quot_segments,
         ));
         profiler!(stop "out-of-domain rows");
@@ -372,8 +374,8 @@ impl Stark {
             };
         let base_authentication_structure =
             base_merkle_tree.authentication_structure(&revealed_current_row_indices)?;
-        proof_stream.enqueue(ProofItem::MasterBaseTableRows(revealed_base_elems));
-        proof_stream.enqueue(ProofItem::AuthenticationStructure(
+        proof_stream.enqueue(proof::Item::MasterBaseTableRows(revealed_base_elems));
+        proof_stream.enqueue(proof::Item::AuthenticationStructure(
             base_authentication_structure,
         ));
 
@@ -389,8 +391,8 @@ impl Stark {
         };
         let ext_authentication_structure =
             ext_merkle_tree.authentication_structure(&revealed_current_row_indices)?;
-        proof_stream.enqueue(ProofItem::MasterExtTableRows(revealed_ext_elems));
-        proof_stream.enqueue(ProofItem::AuthenticationStructure(
+        proof_stream.enqueue(proof::Item::MasterExtTableRows(revealed_ext_elems));
+        proof_stream.enqueue(proof::Item::AuthenticationStructure(
             ext_authentication_structure,
         ));
 
@@ -404,10 +406,10 @@ impl Stark {
             .collect_vec();
         let revealed_quotient_authentication_structure =
             quot_merkle_tree.authentication_structure(&revealed_current_row_indices)?;
-        proof_stream.enqueue(ProofItem::QuotientSegmentsElements(
+        proof_stream.enqueue(proof::Item::QuotientSegmentsElements(
             revealed_quotient_segments_rows,
         ));
-        proof_stream.enqueue(ProofItem::AuthenticationStructure(
+        proof_stream.enqueue(proof::Item::AuthenticationStructure(
             revealed_quotient_authentication_structure,
         ));
         profiler!(stop "open trace leafs");
@@ -724,10 +726,11 @@ impl Stark {
 
     pub fn verify(&self, claim: &Claim, proof: &Proof) -> Result<(), VerificationError> {
         profiler!(start "deserialize");
-        let mut proof_stream = ProofStream::try_from(proof)?;
+        let mut proof_stream = Stream::try_from(proof)?;
         profiler!(stop "deserialize");
 
         profiler!(start "Fiat-Shamir: Claim" ("hash"));
+        proof_stream.alter_fiat_shamir_state_with(&CURRENT_PROOF_VERSION);
         proof_stream.alter_fiat_shamir_state_with(claim);
         profiler!(stop "Fiat-Shamir: Claim");
 
@@ -1284,7 +1287,7 @@ impl LinearCombinationWeights {
     const NUM: usize =
         NUM_BASE_COLUMNS + NUM_EXT_COLUMNS + NUM_QUOTIENT_SEGMENTS + NUM_DEEP_CODEWORD_COMPONENTS;
 
-    fn sample(proof_stream: &mut ProofStream) -> Self {
+    fn sample(proof_stream: &mut Stream) -> Self {
         const BASE_END: usize = NUM_BASE_COLUMNS;
         const EXT_END: usize = BASE_END + NUM_EXT_COLUMNS;
         const QUOT_END: usize = EXT_END + NUM_QUOTIENT_SEGMENTS;
@@ -2615,7 +2618,7 @@ pub(crate) mod tests {
 
     #[proptest]
     fn linear_combination_weights_samples_correct_number_of_elements(
-        #[strategy(arb())] mut proof_stream: ProofStream,
+        #[strategy(arb())] mut proof_stream: Stream,
     ) {
         let weights = LinearCombinationWeights::sample(&mut proof_stream);
 

@@ -181,8 +181,6 @@ pub mod prelude;
 pub mod profiler;
 pub mod program;
 pub mod proof;
-pub mod proof_item;
-pub mod proof_stream;
 pub mod stark;
 pub mod table;
 pub mod vm;
@@ -718,9 +716,9 @@ mod tests {
         implements_auto_traits::<program::InstructionIter>();
         implements_auto_traits::<program::ProfileLine>();
         implements_auto_traits::<program::VMTableHeights>();
-        implements_auto_traits::<proof_item::FriResponse>();
-        implements_auto_traits::<proof_item::ProofItem>();
-        implements_auto_traits::<proof_stream::ProofStream>();
+        implements_auto_traits::<proof::FriResponse>();
+        implements_auto_traits::<proof::Item>();
+        implements_auto_traits::<proof::Stream>();
         implements_auto_traits::<vm::CoProcessorCall>();
     }
 

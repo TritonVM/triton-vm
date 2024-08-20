@@ -13,7 +13,7 @@ use crate::fri::AuthenticationStructure;
 use crate::profiler::profiler;
 use crate::program::Program;
 use crate::proof::Claim;
-use crate::proof_item::FriResponse;
+use crate::proof::FriResponse;
 use crate::stark::Stark;
 use crate::table::master_table::MasterBaseTable;
 use crate::NonDeterminism;

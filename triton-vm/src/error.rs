@@ -8,11 +8,10 @@ use twenty_first::error::MerkleTreeError;
 use twenty_first::prelude::*;
 
 use crate::instruction::Instruction;
-use crate::proof_item::ProofItem;
-use crate::proof_item::ProofItemVariant;
-use crate::proof_stream::ProofStream;
+use crate::proof;
+use crate::proof::Stream;
+use crate::proof::Version;
 use crate::vm::VMState;
-use crate::BFieldElement;
 
 /// Indicates a runtime error that resulted in a crash of Triton VM.
 #[derive(Debug, Clone, Eq, PartialEq, Error)]
@@ -107,13 +106,16 @@ pub enum ArithmeticDomainError {
 #[non_exhaustive]
 #[derive(Debug, Error)]
 pub enum ProofStreamError {
+    #[error("proof version {0} is unknown")]
+    UnknownProofVersion(Version),
+
     #[error("queue must be non-empty in order to dequeue an item")]
     EmptyQueue,
 
     #[error("expected {expected}, got {got}")]
     UnexpectedItem {
-        expected: ProofItemVariant,
-        got: ProofItem,
+        expected: proof::ItemVariant,
+        got: proof::Item,
     },
 
     #[error("the proof stream must contain a log2_padded_height item")]
@@ -123,7 +125,7 @@ pub enum ProofStreamError {
     TooManyLog2PaddedHeights,
 
     #[error(transparent)]
-    DecodingError(#[from] <ProofStream as BFieldCodec>::Error),
+    DecodingError(#[from] <Stream as BFieldCodec>::Error),
 }
 
 #[non_exhaustive]

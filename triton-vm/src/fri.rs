@@ -11,9 +11,8 @@ use crate::error::FriSetupError;
 use crate::error::FriValidationError;
 use crate::error::FriValidationError::*;
 use crate::profiler::profiler;
-use crate::proof_item::FriResponse;
-use crate::proof_item::ProofItem;
-use crate::proof_stream::ProofStream;
+use crate::proof;
+use crate::proof::FriResponse;
 
 pub(crate) type SetupResult<T> = Result<T, FriSetupError>;
 pub(crate) type ProverResult<T> = Result<T, FriProvingError>;
@@ -30,7 +29,7 @@ pub struct Fri {
 
 #[derive(Debug, Eq, PartialEq)]
 struct FriProver<'stream> {
-    proof_stream: &'stream mut ProofStream,
+    proof_stream: &'stream mut proof::Stream,
     rounds: Vec<ProverRound>,
     first_round_domain: ArithmeticDomain,
     num_rounds: usize,
@@ -72,7 +71,7 @@ impl<'stream> FriProver<'stream> {
 
     fn commit_to_round(&mut self, round: &ProverRound) {
         let merkle_root = round.merkle_tree.root();
-        let proof_item = ProofItem::MerkleRoot(merkle_root);
+        let proof_item = proof::Item::MerkleRoot(merkle_root);
         self.proof_stream.enqueue(proof_item);
     }
 
@@ -90,7 +89,7 @@ impl<'stream> FriProver<'stream> {
 
     fn send_last_codeword(&mut self) {
         let last_codeword = self.rounds.last().unwrap().codeword.clone();
-        let proof_item = ProofItem::FriCodeword(last_codeword);
+        let proof_item = proof::Item::FriCodeword(last_codeword);
         self.proof_stream.enqueue(proof_item);
     }
 
@@ -99,7 +98,7 @@ impl<'stream> FriProver<'stream> {
         let last_polynomial = ArithmeticDomain::of_length(last_codeword.len())
             .unwrap()
             .interpolate(last_codeword);
-        let proof_item = ProofItem::FriPolynomial(last_polynomial);
+        let proof_item = proof::Item::FriPolynomial(last_polynomial);
         self.proof_stream.enqueue(proof_item);
     }
 
@@ -148,7 +147,7 @@ impl<'stream> FriProver<'stream> {
             auth_structure,
             revealed_leaves,
         };
-        let proof_item = ProofItem::FriResponse(fri_response);
+        let proof_item = proof::Item::FriResponse(fri_response);
         self.proof_stream.enqueue(proof_item);
         Ok(())
     }
@@ -193,7 +192,7 @@ impl ProverRound {
 
 #[derive(Debug, Eq, PartialEq)]
 struct FriVerifier<'stream> {
-    proof_stream: &'stream mut ProofStream,
+    proof_stream: &'stream mut proof::Stream,
     rounds: Vec<VerifierRound>,
     first_round_domain: ArithmeticDomain,
     last_round_codeword: Vec<XFieldElement>,
@@ -524,7 +523,7 @@ impl Fri {
     pub fn prove(
         &self,
         codeword: &[XFieldElement],
-        proof_stream: &mut ProofStream,
+        proof_stream: &mut proof::Stream,
     ) -> ProverResult<Vec<usize>> {
         let mut prover = self.prover(proof_stream);
 
@@ -540,7 +539,7 @@ impl Fri {
         Ok(prover.first_round_collinearity_check_indices)
     }
 
-    fn prover<'stream>(&'stream self, proof_stream: &'stream mut ProofStream) -> FriProver {
+    fn prover<'stream>(&'stream self, proof_stream: &'stream mut proof::Stream) -> FriProver {
         FriProver {
             proof_stream,
             rounds: vec![],
@@ -555,7 +554,7 @@ impl Fri {
     /// Returns the indices and revealed elements of the codeword at the top level of the FRI proof.
     pub fn verify(
         &self,
-        proof_stream: &mut ProofStream,
+        proof_stream: &mut proof::Stream,
     ) -> VerifierResult<Vec<(usize, XFieldElement)>> {
         profiler!(start "init");
         let mut verifier = self.verifier(proof_stream);
@@ -573,7 +572,7 @@ impl Fri {
         Ok(verifier.first_round_partially_revealed_codeword())
     }
 
-    fn verifier<'stream>(&'stream self, proof_stream: &'stream mut ProofStream) -> FriVerifier {
+    fn verifier<'stream>(&'stream self, proof_stream: &'stream mut proof::Stream) -> FriVerifier {
         FriVerifier {
             proof_stream,
             rounds: vec![],
@@ -669,7 +668,7 @@ mod tests {
     use rand_core::SeedableRng;
     use test_strategy::proptest;
 
-    use ProofItem::*;
+    use proof::Item::*;
 
     use crate::error::FriValidationError;
     use crate::shared_tests::*;
@@ -745,7 +744,7 @@ mod tests {
         let polynomial = Polynomial::new(coefficients);
         let codeword = fri.domain.evaluate(&polynomial);
 
-        let mut proof_stream = ProofStream::new();
+        let mut proof_stream = proof::Stream::new();
         fri.prove(&codeword, &mut proof_stream).unwrap();
 
         let mut proof_stream = prepare_proof_stream_for_verification(proof_stream);
@@ -761,7 +760,7 @@ mod tests {
     ) {
         debug_assert!(polynomial.degree() <= fri.first_round_max_degree() as isize);
         let codeword = fri.domain.evaluate(&polynomial);
-        let mut proof_stream = ProofStream::new();
+        let mut proof_stream = proof::Stream::new();
         fri.prove(&codeword, &mut proof_stream).unwrap();
 
         let mut proof_stream = prepare_proof_stream_for_verification(proof_stream);
@@ -778,7 +777,7 @@ mod tests {
     ) {
         debug_assert!(polynomial.degree() > fri.first_round_max_degree() as isize);
         let codeword = fri.domain.evaluate(&polynomial);
-        let mut proof_stream = ProofStream::new();
+        let mut proof_stream = proof::Stream::new();
         fri.prove(&codeword, &mut proof_stream).unwrap();
 
         let mut proof_stream = prepare_proof_stream_for_verification(proof_stream);
@@ -847,11 +846,11 @@ mod tests {
         #[strategy(arbitrary_polynomial_of_degree(#_degree))] polynomial: Polynomial<XFieldElement>,
     ) {
         let codeword = fri.domain.evaluate(&polynomial);
-        let mut prover_proof_stream = ProofStream::new();
+        let mut prover_proof_stream = proof::Stream::new();
         fri.prove(&codeword, &mut prover_proof_stream).unwrap();
 
         let proof = (&prover_proof_stream).into();
-        let verifier_proof_stream = ProofStream::try_from(&proof).unwrap();
+        let verifier_proof_stream = proof::Stream::try_from(&proof).unwrap();
 
         let prover_items = prover_proof_stream.items.iter();
         let verifier_items = verifier_proof_stream.items.iter();
@@ -873,7 +872,7 @@ mod tests {
         rng_seed: u64,
     ) {
         let codeword = fri.domain.evaluate(&polynomial);
-        let mut proof_stream = ProofStream::new();
+        let mut proof_stream = proof::Stream::new();
         fri.prove(&codeword, &mut proof_stream).unwrap();
 
         let proof_stream = prepare_proof_stream_for_verification(proof_stream);
@@ -888,7 +887,7 @@ mod tests {
     }
 
     #[must_use]
-    fn prepare_proof_stream_for_verification(mut proof_stream: ProofStream) -> ProofStream {
+    fn prepare_proof_stream_for_verification(mut proof_stream: proof::Stream) -> proof::Stream {
         proof_stream.items_index = 0;
         proof_stream.sponge = Tip5::init();
         proof_stream
@@ -896,9 +895,9 @@ mod tests {
 
     #[must_use]
     fn modify_last_round_codeword_in_proof_stream_using_seed(
-        mut proof_stream: ProofStream,
+        mut proof_stream: proof::Stream,
         seed: u64,
-    ) -> ProofStream {
+    ) -> proof::Stream {
         let mut proof_items = proof_stream.items.iter_mut();
         let last_round_codeword = proof_items.find_map(fri_codeword_filter()).unwrap();
 
@@ -910,7 +909,7 @@ mod tests {
         proof_stream
     }
 
-    fn fri_codeword_filter() -> fn(&mut ProofItem) -> Option<&mut Vec<XFieldElement>> {
+    fn fri_codeword_filter() -> fn(&mut proof::Item) -> Option<&mut Vec<XFieldElement>> {
         |proof_item| match proof_item {
             FriCodeword(codeword) => Some(codeword),
             _ => None,
@@ -924,7 +923,7 @@ mod tests {
         rng_seed: u64,
     ) {
         let codeword = fri.domain.evaluate(&polynomial);
-        let mut proof_stream = ProofStream::new();
+        let mut proof_stream = proof::Stream::new();
         fri.prove(&codeword, &mut proof_stream).unwrap();
 
         let proof_stream = prepare_proof_stream_for_verification(proof_stream);
@@ -940,9 +939,9 @@ mod tests {
 
     #[must_use]
     fn change_size_of_some_fri_response_in_proof_stream_using_seed(
-        mut proof_stream: ProofStream,
+        mut proof_stream: proof::Stream,
         seed: u64,
-    ) -> ProofStream {
+    ) -> proof::Stream {
         let proof_items = proof_stream.items.iter_mut();
         let fri_responses = proof_items.filter_map(fri_response_filter());
 
@@ -958,7 +957,7 @@ mod tests {
         proof_stream
     }
 
-    fn fri_response_filter() -> fn(&mut ProofItem) -> Option<&mut super::FriResponse> {
+    fn fri_response_filter() -> fn(&mut proof::Item) -> Option<&mut super::FriResponse> {
         |proof_item| match proof_item {
             FriResponse(fri_response) => Some(fri_response),
             _ => None,
@@ -978,7 +977,7 @@ mod tests {
         }
 
         let codeword = fri.domain.evaluate(&polynomial);
-        let mut proof_stream = ProofStream::new();
+        let mut proof_stream = proof::Stream::new();
         fri.prove(&codeword, &mut proof_stream).unwrap();
 
         let proof_stream = prepare_proof_stream_for_verification(proof_stream);
@@ -992,9 +991,9 @@ mod tests {
 
     #[must_use]
     fn modify_some_auth_structure_in_proof_stream_using_seed(
-        mut proof_stream: ProofStream,
+        mut proof_stream: proof::Stream,
         seed: u64,
-    ) -> ProofStream {
+    ) -> proof::Stream {
         let proof_items = proof_stream.items.iter_mut();
         let auth_structures = proof_items.filter_map(non_trivial_auth_structure_filter());
 
@@ -1012,7 +1011,7 @@ mod tests {
     }
 
     fn non_trivial_auth_structure_filter(
-    ) -> fn(&mut ProofItem) -> Option<&mut super::AuthenticationStructure> {
+    ) -> fn(&mut proof::Item) -> Option<&mut super::AuthenticationStructure> {
         |proof_item| match proof_item {
             FriResponse(fri_response) if fri_response.auth_structure.is_empty() => None,
             FriResponse(fri_response) => Some(&mut fri_response.auth_structure),
@@ -1028,12 +1027,12 @@ mod tests {
         incorrect_polynomial: Polynomial<XFieldElement>,
     ) {
         let codeword = fri.domain.evaluate(&fri_polynomial);
-        let mut proof_stream = ProofStream::new();
+        let mut proof_stream = proof::Stream::new();
         fri.prove(&codeword, &mut proof_stream).unwrap();
 
         let mut proof_stream = prepare_proof_stream_for_verification(proof_stream);
         proof_stream.items.iter_mut().for_each(|item| {
-            if let ProofItem::FriPolynomial(polynomial) = item {
+            if let proof::Item::FriPolynomial(polynomial) = item {
                 *polynomial = incorrect_polynomial.clone();
             }
         });
@@ -1051,7 +1050,7 @@ mod tests {
         #[strategy(arbitrary_polynomial_of_degree(#_degree))] poly: Polynomial<XFieldElement>,
     ) {
         let codeword = fri.domain.evaluate(&poly);
-        let mut proof_stream = ProofStream::new();
+        let mut proof_stream = proof::Stream::new();
         fri.prove(&codeword, &mut proof_stream).unwrap();
 
         let mut proof_stream = prepare_proof_stream_for_verification(proof_stream);
@@ -1063,7 +1062,7 @@ mod tests {
     #[proptest]
     fn verifying_arbitrary_proof_does_not_panic(
         fri: Fri,
-        #[strategy(arb())] mut proof_stream: ProofStream,
+        #[strategy(arb())] mut proof_stream: proof::Stream,
     ) {
         let _verdict = fri.verify(&mut proof_stream);
     }
