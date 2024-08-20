@@ -569,7 +569,7 @@ impl Stark {
     /// In principle, the FRI domain is also influenced by the AIR's degree
     /// (see [`AIR_TARGET_DEGREE`]). However, by segmenting the quotient polynomial into
     /// [`AIR_TARGET_DEGREE`]-many parts, that influence is mitigated.
-    pub fn derive_fri(&self, padded_height: usize) -> fri::SetupResult<Fri<Tip5>> {
+    pub fn derive_fri(&self, padded_height: usize) -> fri::SetupResult<Fri> {
         let interpolant_degree = interpolant_degree(padded_height, self.num_trace_randomizers);
         let interpolant_codeword_length = interpolant_degree as usize + 1;
         let fri_domain_length = self.fri_expansion_factor * interpolant_codeword_length;

@@ -703,7 +703,7 @@ mod tests {
         implements_auto_traits::<aet::AlgebraicExecutionTrace>();
         implements_auto_traits::<aet::TableHeight>();
         implements_auto_traits::<arithmetic_domain::ArithmeticDomain>();
-        implements_auto_traits::<fri::Fri<Tip5>>();
+        implements_auto_traits::<fri::Fri>();
         implements_auto_traits::<TypeHint>();
         implements_auto_traits::<instruction::AnInstruction<usize>>();
         implements_auto_traits::<instruction::InstructionBit>();

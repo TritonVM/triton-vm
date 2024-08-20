@@ -1,5 +1,3 @@
-use std::marker::PhantomData;
-
 use itertools::Itertools;
 use num_traits::Zero;
 use rayon::iter::*;
@@ -24,11 +22,10 @@ pub(crate) type VerifierResult<T> = Result<T, FriValidationError>;
 pub type AuthenticationStructure = Vec<Digest>;
 
 #[derive(Debug, Copy, Clone)]
-pub struct Fri<H: AlgebraicHasher> {
+pub struct Fri {
     pub expansion_factor: usize,
     pub num_collinearity_checks: usize,
     pub domain: ArithmeticDomain,
-    _hasher: PhantomData<H>,
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -195,7 +192,7 @@ impl ProverRound {
 }
 
 #[derive(Debug, Eq, PartialEq)]
-struct FriVerifier<'stream, H: AlgebraicHasher> {
+struct FriVerifier<'stream> {
     proof_stream: &'stream mut ProofStream,
     rounds: Vec<VerifierRound>,
     first_round_domain: ArithmeticDomain,
@@ -205,7 +202,6 @@ struct FriVerifier<'stream, H: AlgebraicHasher> {
     num_rounds: usize,
     num_collinearity_checks: usize,
     first_round_collinearity_check_indices: Vec<usize>,
-    _hasher: PhantomData<H>,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -217,7 +213,7 @@ struct VerifierRound {
     folding_challenge: Option<XFieldElement>,
 }
 
-impl<'stream, H: AlgebraicHasher> FriVerifier<'stream, H> {
+impl<'stream> FriVerifier<'stream> {
     fn initialize(&mut self) -> VerifierResult<()> {
         let domain = self.first_round_domain;
         let first_round = self.construct_round_with_domain(domain)?;
@@ -504,7 +500,7 @@ impl VerifierRound {
     }
 }
 
-impl<H: AlgebraicHasher> Fri<H> {
+impl Fri {
     pub fn new(
         domain: ArithmeticDomain,
         expansion_factor: usize,
@@ -517,13 +513,11 @@ impl<H: AlgebraicHasher> Fri<H> {
             _ => (),
         };
 
-        let fri = Self {
-            domain,
+        Ok(Self {
             expansion_factor,
             num_collinearity_checks,
-            _hasher: PhantomData,
-        };
-        Ok(fri)
+            domain,
+        })
     }
 
     /// Create a FRI proof and return a-indices of revealed elements of round 0.
@@ -579,7 +573,7 @@ impl<H: AlgebraicHasher> Fri<H> {
         Ok(verifier.first_round_partially_revealed_codeword())
     }
 
-    fn verifier<'stream>(&'stream self, proof_stream: &'stream mut ProofStream) -> FriVerifier<H> {
+    fn verifier<'stream>(&'stream self, proof_stream: &'stream mut ProofStream) -> FriVerifier {
         FriVerifier {
             proof_stream,
             rounds: vec![],
@@ -590,7 +584,6 @@ impl<H: AlgebraicHasher> Fri<H> {
             num_rounds: self.num_rounds(),
             num_collinearity_checks: self.num_collinearity_checks,
             first_round_collinearity_check_indices: vec![],
-            _hasher: PhantomData,
         }
     }
 
@@ -684,14 +677,6 @@ mod tests {
     use super::*;
 
     prop_compose! {
-        fn arbitrary_fri()(
-            fri in arbitrary_fri_supporting_degree(-1)
-        ) -> Fri<Tip5> {
-            fri
-        }
-    }
-
-    prop_compose! {
         fn arbitrary_fri_supporting_degree(min_supported_degree: i64)(
             log_2_expansion_factor in 1_usize..=8
         )(
@@ -699,7 +684,7 @@ mod tests {
             log_2_domain_length in log_2_expansion_factor..=18,
             num_collinearity_checks in 1_usize..=320,
             offset in arb(),
-        ) -> Fri<Tip5> {
+        ) -> Fri {
             let expansion_factor = (1 << log_2_expansion_factor) as usize;
             let sampled_domain_length = (1 << log_2_domain_length) as usize;
 
@@ -717,11 +702,18 @@ mod tests {
         }
     }
 
+    impl Arbitrary for Fri {
+        type Parameters = ();
+
+        fn arbitrary_with(_: Self::Parameters) -> Self::Strategy {
+            arbitrary_fri_supporting_degree(-1).boxed()
+        }
+
+        type Strategy = BoxedStrategy<Self>;
+    }
+
     #[proptest]
-    fn sample_indices(
-        #[strategy(arbitrary_fri())] fri: Fri<Tip5>,
-        #[strategy(arb())] initial_absorb: [BFieldElement; tip5::RATE],
-    ) {
+    fn sample_indices(fri: Fri, #[strategy(arb())] initial_absorb: [BFieldElement; tip5::RATE]) {
         let mut sponge = Tip5::init();
         sponge.absorb(initial_absorb);
 
@@ -736,7 +728,7 @@ mod tests {
     }
 
     #[proptest]
-    fn num_rounds_are_reasonable(#[strategy(arbitrary_fri())] fri: Fri<Tip5>) {
+    fn num_rounds_are_reasonable(fri: Fri) {
         let expected_last_round_max_degree = fri.first_round_max_degree() >> fri.num_rounds();
         prop_assert_eq!(expected_last_round_max_degree, fri.last_round_max_degree());
         if fri.num_rounds() > 0 {
@@ -747,7 +739,7 @@ mod tests {
 
     #[proptest(cases = 20)]
     fn prove_and_verify_low_degree_of_twice_cubing_plus_one(
-        #[strategy(arbitrary_fri_supporting_degree(3))] fri: Fri<Tip5>,
+        #[strategy(arbitrary_fri_supporting_degree(3))] fri: Fri,
     ) {
         let coefficients = [1, 0, 0, 2].map(|c| c.into()).to_vec();
         let polynomial = Polynomial::new(coefficients);
@@ -763,7 +755,7 @@ mod tests {
 
     #[proptest(cases = 50)]
     fn prove_and_verify_low_degree_polynomial(
-        #[strategy(arbitrary_fri())] fri: Fri<Tip5>,
+        fri: Fri,
         #[strategy(-1_i64..=#fri.first_round_max_degree() as i64)] _degree: i64,
         #[strategy(arbitrary_polynomial_of_degree(#_degree))] polynomial: Polynomial<XFieldElement>,
     ) {
@@ -779,7 +771,7 @@ mod tests {
 
     #[proptest(cases = 50)]
     fn prove_and_fail_to_verify_high_degree_polynomial(
-        #[strategy(arbitrary_fri())] fri: Fri<Tip5>,
+        fri: Fri,
         #[strategy(Just((1 + #fri.first_round_max_degree()) as i64))] _too_high_degree: i64,
         #[strategy(#_too_high_degree..2 * #_too_high_degree)] _degree: i64,
         #[strategy(arbitrary_polynomial_of_degree(#_degree))] polynomial: Polynomial<XFieldElement>,
@@ -804,7 +796,7 @@ mod tests {
         assert_eq!(0, smallest_fri().first_round_max_degree());
     }
 
-    fn smallest_fri() -> Fri<Tip5> {
+    fn smallest_fri() -> Fri {
         let domain = ArithmeticDomain::of_length(2).unwrap();
         let expansion_factor = 2;
         let num_collinearity_checks = 1;
@@ -816,7 +808,7 @@ mod tests {
         let domain = ArithmeticDomain::of_length(2).unwrap();
         let expansion_factor = 1;
         let num_collinearity_checks = 1;
-        let err = Fri::<Tip5>::new(domain, expansion_factor, num_collinearity_checks).unwrap_err();
+        let err = Fri::new(domain, expansion_factor, num_collinearity_checks).unwrap_err();
         assert_eq!(FriSetupError::ExpansionFactorTooSmall, err);
     }
 
@@ -829,7 +821,7 @@ mod tests {
         let largest_supported_domain_size = 1 << 32;
         let domain = ArithmeticDomain::of_length(largest_supported_domain_size).unwrap();
         let num_collinearity_checks = 1;
-        let err = Fri::<Tip5>::new(domain, expansion_factor, num_collinearity_checks).unwrap_err();
+        let err = Fri::new(domain, expansion_factor, num_collinearity_checks).unwrap_err();
         prop_assert_eq!(FriSetupError::ExpansionFactorUnsupported, err);
     }
 
@@ -842,7 +834,7 @@ mod tests {
         let domain_length = 1 << log_2_domain_length;
         let domain = ArithmeticDomain::of_length(domain_length).unwrap();
         let num_collinearity_checks = 1;
-        let err = Fri::<Tip5>::new(domain, expansion_factor, num_collinearity_checks).unwrap_err();
+        let err = Fri::new(domain, expansion_factor, num_collinearity_checks).unwrap_err();
         prop_assert_eq!(FriSetupError::ExpansionFactorMismatch, err);
     }
 
@@ -850,7 +842,7 @@ mod tests {
 
     #[proptest(cases = 50)]
     fn serialization(
-        #[strategy(arbitrary_fri())] fri: Fri<Tip5>,
+        fri: Fri,
         #[strategy(-1_i64..=#fri.first_round_max_degree() as i64)] _degree: i64,
         #[strategy(arbitrary_polynomial_of_degree(#_degree))] polynomial: Polynomial<XFieldElement>,
     ) {
@@ -876,7 +868,7 @@ mod tests {
 
     #[proptest(cases = 50)]
     fn last_round_codeword_unequal_to_last_round_commitment_results_in_validation_failure(
-        #[strategy(arbitrary_fri())] fri: Fri<Tip5>,
+        fri: Fri,
         #[strategy(arbitrary_polynomial())] polynomial: Polynomial<XFieldElement>,
         rng_seed: u64,
     ) {
@@ -927,7 +919,7 @@ mod tests {
 
     #[proptest(cases = 50)]
     fn revealing_wrong_number_of_leaves_results_in_validation_failure(
-        #[strategy(arbitrary_fri())] fri: Fri<Tip5>,
+        fri: Fri,
         #[strategy(arbitrary_polynomial())] polynomial: Polynomial<XFieldElement>,
         rng_seed: u64,
     ) {
@@ -975,7 +967,7 @@ mod tests {
 
     #[proptest(cases = 50)]
     fn incorrect_authentication_structure_results_in_validation_failure(
-        #[strategy(arbitrary_fri())] fri: Fri<Tip5>,
+        fri: Fri,
         #[strategy(arbitrary_polynomial())] polynomial: Polynomial<XFieldElement>,
         rng_seed: u64,
     ) {
@@ -1030,7 +1022,7 @@ mod tests {
 
     #[proptest]
     fn incorrect_last_round_polynomial_results_in_verification_failure(
-        #[strategy(arbitrary_fri())] fri: Fri<Tip5>,
+        fri: Fri,
         #[strategy(arbitrary_polynomial())] fri_polynomial: Polynomial<XFieldElement>,
         #[strategy(arbitrary_polynomial_of_degree(#fri.last_round_max_degree() as i64))]
         incorrect_polynomial: Polynomial<XFieldElement>,
@@ -1053,7 +1045,7 @@ mod tests {
 
     #[proptest]
     fn codeword_corresponding_to_high_degree_polynomial_results_in_verification_failure(
-        #[strategy(arbitrary_fri())] fri: Fri<Tip5>,
+        fri: Fri,
         #[strategy(Just(#fri.first_round_max_degree() as i64 + 1))] _min_fail_deg: i64,
         #[strategy(#_min_fail_deg..2 * #_min_fail_deg)] _degree: i64,
         #[strategy(arbitrary_polynomial_of_degree(#_degree))] poly: Polynomial<XFieldElement>,
@@ -1070,7 +1062,7 @@ mod tests {
 
     #[proptest]
     fn verifying_arbitrary_proof_does_not_panic(
-        #[strategy(arbitrary_fri())] fri: Fri<Tip5>,
+        fri: Fri,
         #[strategy(arb())] mut proof_stream: ProofStream,
     ) {
         let _verdict = fri.verify(&mut proof_stream);
