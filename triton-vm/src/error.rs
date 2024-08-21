@@ -8,6 +8,7 @@ use twenty_first::error::MerkleTreeError;
 use twenty_first::prelude::*;
 
 use crate::instruction::Instruction;
+use crate::program;
 use crate::proof;
 use crate::proof::Stream;
 use crate::proof::Version;
@@ -186,7 +187,7 @@ pub enum FriValidationError {
 }
 
 #[non_exhaustive]
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Error)]
+#[derive(Debug, Error)]
 pub enum ProgramDecodingError {
     #[error("sequence to decode is empty")]
     EmptySequence,
@@ -199,6 +200,15 @@ pub enum ProgramDecodingError {
 
     #[error("length of decoded program is unexpected")]
     LengthMismatch,
+
+    #[error(transparent)]
+    InvalidVersion(#[from] <program::Version as BFieldCodec>::Error),
+
+    #[error(
+        "only program version {} is supported, {0} is not",
+        program::CURRENT_VERSION
+    )]
+    UnsupportedVersion(program::Version),
 
     #[error("sequence to decode contains invalid instruction at index {0}: {1}")]
     InvalidInstruction(usize, InstructionError),

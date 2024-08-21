@@ -35,6 +35,24 @@ use crate::vm::VMState;
 
 type Result<T> = std::result::Result<T, VMError>;
 
+pub(crate) const CURRENT_VERSION: Version = Version(42_000);
+
+#[derive(
+    Debug, Copy, Clone, Eq, PartialEq, Serialize, Deserialize, BFieldCodec, GetSize, Arbitrary,
+)]
+pub struct Version(u32);
+
+impl Display for Version {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        let precision = 1000;
+        let patch = self.0 % precision;
+        let minor = (self.0 / precision) % precision;
+        let major = self.0 / (precision * precision);
+
+        write!(f, "{major:03}_{minor:03}_{patch:03}")
+    }
+}
+
 /// A program for Triton VM.
 /// It can be
 /// [`run`](Program::run),
@@ -55,6 +73,7 @@ type Result<T> = std::result::Result<T, VMError>;
 /// [is_breakpoint]: Program::is_breakpoint
 #[derive(Debug, Clone, Eq, Serialize, Deserialize, GetSize)]
 pub struct Program {
+    pub version: Version,
     pub instructions: Vec<Instruction>,
     address_to_label: HashMap<u64, String>,
     breakpoints: Vec<bool>,
@@ -72,7 +91,7 @@ impl Display for Program {
 
 impl PartialEq for Program {
     fn eq(&self, other: &Program) -> bool {
-        self.instructions.eq(&other.instructions)
+        self.version == other.version && self.instructions.eq(&other.instructions)
     }
 }
 
@@ -83,6 +102,15 @@ impl BFieldCodec for Program {
         if sequence.is_empty() {
             return Err(Self::Error::EmptySequence);
         }
+
+        let version_len = Version::static_length()
+            .expect("`Version` must have a static length for backwards compatibility");
+        let version = *Version::decode(&sequence[..version_len])?;
+        let sequence = &sequence[version_len..];
+        if version != CURRENT_VERSION {
+            return Err(Self::Error::UnsupportedVersion(version));
+        }
+
         let program_length = sequence[0].value() as usize;
         let sequence = &sequence[1..];
         if sequence.len() < program_length {
@@ -122,6 +150,7 @@ impl BFieldCodec for Program {
         }
 
         Ok(Box::new(Program {
+            version,
             instructions,
             address_to_label: HashMap::default(),
             breakpoints: vec![],
@@ -130,10 +159,12 @@ impl BFieldCodec for Program {
     }
 
     fn encode(&self) -> Vec<BFieldElement> {
-        let mut sequence = Vec::with_capacity(self.len_bwords() + 1);
-        sequence.push(bfe!(self.len_bwords() as u64));
-        sequence.extend(self.to_bwords());
-        sequence
+        let encoded_version = self.version.encode();
+        let mut encoding = Vec::with_capacity(encoded_version.len() + self.len_bwords() + 1);
+        encoding.extend(encoded_version);
+        encoding.push(bfe!(self.len_bwords() as u64));
+        encoding.extend(self.to_bwords());
+        encoding
     }
 
     fn static_length() -> Option<usize> {
@@ -227,6 +258,7 @@ impl Program {
 
         assert_eq!(instructions.len(), breakpoints.len());
         Program {
+            version: CURRENT_VERSION,
             instructions,
             address_to_label,
             breakpoints,
@@ -913,6 +945,19 @@ mod tests {
     use crate::triton_program;
 
     use super::*;
+
+    #[test]
+    fn version_encoding_has_static_length_of_1() {
+        assert!(
+            Some(1) == Version::static_length(),
+            "required for backwards compatibility & future-proofing `Program`"
+        );
+    }
+
+    #[proptest]
+    fn program_len_bwords_is_actually_the_len_in_bwords(#[strategy(arb())] program: Program) {
+        prop_assert_eq!(program.len_bwords(), program.to_bwords().len());
+    }
 
     #[proptest]
     fn random_program_encode_decode_equivalence(#[strategy(arb())] program: Program) {
