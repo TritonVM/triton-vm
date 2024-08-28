@@ -1273,6 +1273,11 @@ mod tests {
     use fs_err as fs;
     use std::path::Path;
 
+    use constraint_builder::ConstraintCircuitBuilder;
+    use constraint_builder::ConstraintCircuitMonad;
+    use constraint_builder::DegreeLoweringInfo;
+    use constraint_builder::DualRowIndicator;
+    use constraint_builder::SingleRowIndicator;
     use master_table::cross_table_argument::GrandCrossTableArg;
     use ndarray::s;
     use ndarray::Array2;
@@ -1292,10 +1297,6 @@ mod tests {
     use crate::air::tasm_air_constraints::dynamic_air_constraint_evaluation_tasm;
     use crate::air::tasm_air_constraints::static_air_constraint_evaluation_tasm;
     use crate::arithmetic_domain::ArithmeticDomain;
-    use crate::codegen::circuit::ConstraintCircuitBuilder;
-    use crate::codegen::circuit::ConstraintCircuitMonad;
-    use crate::codegen::circuit::DualRowIndicator;
-    use crate::codegen::circuit::SingleRowIndicator;
     use crate::instruction::tests::InstructionBucket;
     use crate::instruction::Instruction;
     use crate::instruction::InstructionBit;
@@ -1577,6 +1578,12 @@ mod tests {
                 continue;
             };
 
+            let degree_lowering_info = DegreeLoweringInfo {
+                target_degree,
+                num_base_cols: 0,
+                num_ext_cols: 0,
+            };
+
             let initial_constraints = constraints_without_degree_lowering!(initial_constraints);
             let consistency_constraints =
                 constraints_without_degree_lowering!(consistency_constraints);
@@ -1586,10 +1593,10 @@ mod tests {
 
             // generic closures are not possible; define two variants :(
             let lower_to_target_degree_single_row = |mut constraints: Vec<_>| {
-                ConstraintCircuitMonad::lower_to_degree(&mut constraints, target_degree, 0, 0)
+                ConstraintCircuitMonad::lower_to_degree(&mut constraints, degree_lowering_info)
             };
             let lower_to_target_degree_double_row = |mut constraints: Vec<_>| {
-                ConstraintCircuitMonad::lower_to_degree(&mut constraints, target_degree, 0, 0)
+                ConstraintCircuitMonad::lower_to_degree(&mut constraints, degree_lowering_info)
             };
 
             let (init_main, init_aux) = lower_to_target_degree_single_row(initial_constraints);
@@ -1784,45 +1791,38 @@ mod tests {
                 let mut transition_constraints = table.transition_constraints.clone();
                 let mut terminal_constraints = table.terminal_constraints.clone();
 
-                if let Some(target) = target_degree {
-                    let (new_base_initial, new_ext_initial) =
-                        ConstraintCircuitMonad::lower_to_degree(
-                            &mut table.initial_constraints,
-                            target,
-                            table.last_base_column_index,
-                            table.last_ext_column_index,
-                        );
-                    let (new_base_consistency, new_ext_consistency) =
-                        ConstraintCircuitMonad::lower_to_degree(
-                            &mut table.consistency_constraints,
-                            target,
-                            table.last_base_column_index,
-                            table.last_ext_column_index,
-                        );
-                    let (new_base_transition, new_ext_transition) =
-                        ConstraintCircuitMonad::lower_to_degree(
-                            &mut table.transition_constraints,
-                            target,
-                            table.last_base_column_index,
-                            table.last_ext_column_index,
-                        );
-                    let (new_base_terminal, new_ext_terminal) =
-                        ConstraintCircuitMonad::lower_to_degree(
-                            &mut table.terminal_constraints,
-                            target,
-                            table.last_base_column_index,
-                            table.last_ext_column_index,
-                        );
+                if let Some(target_degree) = target_degree {
+                    let info = DegreeLoweringInfo {
+                        target_degree,
+                        num_base_cols: table.last_base_column_index,
+                        num_ext_cols: table.last_ext_column_index,
+                    };
+                    let (new_base_init, new_ext_init) = ConstraintCircuitMonad::lower_to_degree(
+                        &mut table.initial_constraints,
+                        info,
+                    );
+                    let (new_base_cons, new_ext_cons) = ConstraintCircuitMonad::lower_to_degree(
+                        &mut table.consistency_constraints,
+                        info,
+                    );
+                    let (new_base_tran, new_ext_tran) = ConstraintCircuitMonad::lower_to_degree(
+                        &mut table.transition_constraints,
+                        info,
+                    );
+                    let (new_base_term, new_ext_term) = ConstraintCircuitMonad::lower_to_degree(
+                        &mut table.terminal_constraints,
+                        info,
+                    );
 
-                    initial_constraints.extend(new_base_initial);
-                    consistency_constraints.extend(new_base_consistency);
-                    transition_constraints.extend(new_base_transition);
-                    terminal_constraints.extend(new_base_terminal);
+                    initial_constraints.extend(new_base_init);
+                    consistency_constraints.extend(new_base_cons);
+                    transition_constraints.extend(new_base_tran);
+                    terminal_constraints.extend(new_base_term);
 
-                    initial_constraints.extend(new_ext_initial);
-                    consistency_constraints.extend(new_ext_consistency);
-                    transition_constraints.extend(new_ext_transition);
-                    terminal_constraints.extend(new_ext_terminal);
+                    initial_constraints.extend(new_ext_init);
+                    consistency_constraints.extend(new_ext_cons);
+                    transition_constraints.extend(new_ext_tran);
+                    terminal_constraints.extend(new_ext_term);
                 }
 
                 let table_max_degree = [

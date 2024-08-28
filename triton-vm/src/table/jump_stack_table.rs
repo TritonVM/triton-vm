@@ -2,9 +2,9 @@ use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::ops::Range;
 
-use crate::codegen::circuit::DualRowIndicator::*;
-use crate::codegen::circuit::SingleRowIndicator::*;
-use crate::codegen::circuit::*;
+use constraint_builder::DualRowIndicator::*;
+use constraint_builder::SingleRowIndicator::*;
+use constraint_builder::*;
 use itertools::Itertools;
 use ndarray::parallel::prelude::*;
 use ndarray::prelude::*;

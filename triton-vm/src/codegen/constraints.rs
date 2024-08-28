@@ -3,6 +3,10 @@
 
 use std::collections::HashSet;
 
+use constraint_builder::BinOp;
+use constraint_builder::CircuitExpression;
+use constraint_builder::ConstraintCircuit;
+use constraint_builder::InputIndicator;
 use itertools::Itertools;
 use proc_macro2::TokenStream;
 use quote::format_ident;
@@ -14,10 +18,6 @@ use twenty_first::prelude::*;
 use crate::instruction::Instruction;
 use crate::op_stack::NumberOfWords;
 
-use crate::codegen::circuit::BinOp;
-use crate::codegen::circuit::CircuitExpression;
-use crate::codegen::circuit::ConstraintCircuit;
-use crate::codegen::circuit::InputIndicator;
 use crate::codegen::Constraints;
 
 pub(crate) trait Codegen {
@@ -894,8 +894,8 @@ impl ToTokens for IOList {
 
 #[cfg(test)]
 mod tests {
-    use crate::codegen::circuit::ConstraintCircuitBuilder;
-    use crate::codegen::circuit::SingleRowIndicator;
+    use constraint_builder::ConstraintCircuitBuilder;
+    use constraint_builder::SingleRowIndicator;
     use twenty_first::prelude::*;
 
     use super::*;

@@ -1,0 +1,29 @@
+[package]
+name = "constraint-builder"
+description = """
+AIR constraints build helper for Triton VM.
+"""
+
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+repository.workspace = true
+readme.workspace = true
+
+[dependencies]
+arbitrary.workspace = true
+itertools.workspace = true
+num-traits.workspace = true
+ndarray.workspace = true
+proc-macro2.workspace = true
+quote.workspace = true
+twenty-first.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+proptest-arbitrary-interop.workspace = true
+rand.workspace = true
+test-strategy.workspace = true

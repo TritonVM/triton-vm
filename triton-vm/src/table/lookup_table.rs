@@ -1,9 +1,9 @@
-use crate::codegen::circuit::ConstraintCircuitBuilder;
-use crate::codegen::circuit::ConstraintCircuitMonad;
-use crate::codegen::circuit::DualRowIndicator;
-use crate::codegen::circuit::DualRowIndicator::*;
-use crate::codegen::circuit::SingleRowIndicator;
-use crate::codegen::circuit::SingleRowIndicator::*;
+use constraint_builder::ConstraintCircuitBuilder;
+use constraint_builder::ConstraintCircuitMonad;
+use constraint_builder::DualRowIndicator;
+use constraint_builder::DualRowIndicator::*;
+use constraint_builder::SingleRowIndicator;
+use constraint_builder::SingleRowIndicator::*;
 use itertools::Itertools;
 use ndarray::prelude::*;
 use num_traits::ConstOne;

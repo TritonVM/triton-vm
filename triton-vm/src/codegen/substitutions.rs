@@ -1,17 +1,17 @@
+use constraint_builder::BinOp;
+use constraint_builder::CircuitExpression;
+use constraint_builder::ConstraintCircuit;
+use constraint_builder::ConstraintCircuitMonad;
+use constraint_builder::DegreeLoweringInfo;
+use constraint_builder::DualRowIndicator;
+use constraint_builder::InputIndicator;
+use constraint_builder::SingleRowIndicator;
 use itertools::Itertools;
 use proc_macro2::TokenStream;
 use quote::format_ident;
 use quote::quote;
 
-use crate::codegen::circuit::BinOp;
-use crate::codegen::circuit::CircuitExpression;
-use crate::codegen::circuit::ConstraintCircuit;
-use crate::codegen::circuit::ConstraintCircuitMonad;
-use crate::codegen::circuit::DualRowIndicator;
-use crate::codegen::circuit::InputIndicator;
-use crate::codegen::circuit::SingleRowIndicator;
 use crate::codegen::constraints::RustBackend;
-use crate::codegen::DegreeLoweringInfo;
 
 pub(crate) struct AllSubstitutions {
     pub base: Substitutions,

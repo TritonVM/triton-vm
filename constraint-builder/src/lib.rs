@@ -36,6 +36,18 @@ use quote::ToTokens;
 use twenty_first::prelude::*;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+pub struct DegreeLoweringInfo {
+    /// The degree after degree lowering. Must be greater than 1.
+    pub target_degree: isize,
+
+    /// The total number of base columns _before_ degree lowering has happened.
+    pub num_base_cols: usize,
+
+    /// The total number of extension columns _before_ degree lowering has happened.
+    pub num_ext_cols: usize,
+}
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub enum BinOp {
     Add,
     Mul,
@@ -680,95 +692,6 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
         self.circuit.borrow().to_owned()
     }
 
-    /// Traverse the circuit and find all nodes that are equivalent. Note that
-    /// two nodes are equivalent if they compute the same value on all identical
-    /// inputs. Equivalence is different from identity, which is when two nodes
-    /// connect the same set of neighbors in the same way. (There may be two
-    /// different ways to compute the same result; they are equivalent but
-    /// unequal.)
-    ///
-    /// This function returns a list of lists of equivalent nodes such that
-    /// every inner list can be reduced to a single node without changing the
-    /// circuit's function.
-    ///
-    /// Equivalent nodes are detected probabilistically using the multivariate
-    /// Schwartz-Zippel lemma. The false positive probability is zero (we can be
-    /// certain that equivalent nodes will be found). The false negative
-    /// probability is bounded by max_degree / (2^64 - 2^32 + 1)^3.
-    pub fn find_equivalent_nodes(&self) -> Vec<Vec<Rc<RefCell<ConstraintCircuit<II>>>>> {
-        let mut id_to_eval = HashMap::new();
-        let mut eval_to_ids = HashMap::new();
-        let mut id_to_node = HashMap::new();
-        Self::probe_random(
-            &self.circuit,
-            &mut id_to_eval,
-            &mut eval_to_ids,
-            &mut id_to_node,
-            rand::random(),
-        );
-
-        eval_to_ids
-            .values()
-            .filter(|ids| ids.len() >= 2)
-            .map(|ids| ids.iter().map(|i| id_to_node[i].clone()).collect_vec())
-            .collect_vec()
-    }
-
-    /// Populate the dictionaries such that they associate with every node in
-    /// the circuit its evaluation in a random point. The inputs are assigned
-    /// random values. Equivalent nodes are detected based on evaluating to the
-    /// same value using the Schwartz-Zippel lemma.
-    fn probe_random(
-        circuit: &Rc<RefCell<ConstraintCircuit<II>>>,
-        id_to_eval: &mut HashMap<usize, XFieldElement>,
-        eval_to_ids: &mut HashMap<XFieldElement, Vec<usize>>,
-        id_to_node: &mut HashMap<usize, Rc<RefCell<ConstraintCircuit<II>>>>,
-        master_seed: XFieldElement,
-    ) -> XFieldElement {
-        const DOMAIN_SEPARATOR_CURR_ROW: BFieldElement = BFieldElement::new(0);
-        const DOMAIN_SEPARATOR_NEXT_ROW: BFieldElement = BFieldElement::new(1);
-        const DOMAIN_SEPARATOR_CHALLENGE: BFieldElement = BFieldElement::new(2);
-
-        let circuit_id = circuit.borrow().id;
-        if let Some(&xfe) = id_to_eval.get(&circuit_id) {
-            return xfe;
-        }
-
-        let evaluation = match &circuit.borrow().expression {
-            CircuitExpression::BConstant(bfe) => bfe.lift(),
-            CircuitExpression::XConstant(xfe) => *xfe,
-            CircuitExpression::Input(input) => {
-                let [s0, s1, s2] = master_seed.coefficients;
-                let dom_sep = if input.is_current_row() {
-                    DOMAIN_SEPARATOR_CURR_ROW
-                } else {
-                    DOMAIN_SEPARATOR_NEXT_ROW
-                };
-                let i = bfe!(u64::try_from(input.column()).unwrap());
-                let Digest([d0, d1, d2, _, _]) = Tip5::hash_varlen(&[s0, s1, s2, dom_sep, i]);
-                xfe!([d0, d1, d2])
-            }
-            CircuitExpression::Challenge(challenge) => {
-                let [s0, s1, s2] = master_seed.coefficients;
-                let dom_sep = DOMAIN_SEPARATOR_CHALLENGE;
-                let ch = bfe!(u64::try_from(*challenge).unwrap());
-                let Digest([d0, d1, d2, _, _]) = Tip5::hash_varlen(&[s0, s1, s2, dom_sep, ch]);
-                xfe!([d0, d1, d2])
-            }
-            CircuitExpression::BinaryOperation(bin_op, lhs, rhs) => {
-                let l = Self::probe_random(lhs, id_to_eval, eval_to_ids, id_to_node, master_seed);
-                let r = Self::probe_random(rhs, id_to_eval, eval_to_ids, id_to_node, master_seed);
-                bin_op.operation(l, r)
-            }
-        };
-
-        id_to_eval.insert(circuit_id, evaluation);
-        eval_to_ids.entry(evaluation).or_default().push(circuit_id);
-        id_to_node.insert(circuit_id, circuit.clone());
-
-        evaluation
-    }
-
     /// Lowers the degree of a given multicircuit to the target degree.
     /// This is achieved by introducing additional variables and constraints.
     /// The appropriate substitutions are applied to the given multicircuit.
@@ -791,10 +714,9 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
     /// when a tables' constraints are built using the master table's column indices.
     pub fn lower_to_degree(
         multicircuit: &mut [Self],
-        target_degree: isize,
-        num_base_cols: usize,
-        num_ext_cols: usize,
+        info: DegreeLoweringInfo,
     ) -> (Vec<Self>, Vec<Self>) {
+        let target_degree = info.target_degree;
         assert!(
             target_degree > 1,
             "Target degree must be greater than 1. Got {target_degree}."
@@ -816,10 +738,10 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
             let chosen_node = builder.all_nodes.borrow()[&chosen_node_id].clone();
             let chosen_node_is_base_col = chosen_node.circuit.borrow().evaluates_to_base_element();
             let new_input_indicator = if chosen_node_is_base_col {
-                let new_base_col_idx = num_base_cols + base_constraints.len();
+                let new_base_col_idx = info.num_base_cols + base_constraints.len();
                 II::base_table_input(new_base_col_idx)
             } else {
-                let new_ext_col_idx = num_ext_cols + ext_constraints.len();
+                let new_ext_col_idx = info.num_ext_cols + ext_constraints.len();
                 II::ext_table_input(new_ext_col_idx)
             };
             let new_variable = builder.input(new_input_indicator);
@@ -943,7 +865,7 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
     }
 
     /// Returns the maximum degree of all circuits in the multicircuit.
-    pub(crate) fn multicircuit_degree(multicircuit: &[ConstraintCircuitMonad<II>]) -> isize {
+    pub fn multicircuit_degree(multicircuit: &[ConstraintCircuitMonad<II>]) -> isize {
         multicircuit
             .iter()
             .map(|circuit| circuit.circuit.borrow().degree())
@@ -1128,52 +1050,105 @@ mod tests {
     use std::hash::Hasher;
 
     use itertools::Itertools;
-    use ndarray::Array2;
     use proptest::prelude::*;
     use proptest_arbitrary_interop::arb;
     use rand::random;
-    use rand::rngs::StdRng;
-    use rand::Rng;
-    use rand::SeedableRng;
     use test_strategy::proptest;
-
-    use crate::prelude::Claim;
-    use crate::table::cascade_table::ExtCascadeTable;
-    use crate::table::challenges::Challenges;
-    use crate::table::degree_lowering_table::DegreeLoweringTable;
-    use crate::table::hash_table::ExtHashTable;
-    use crate::table::jump_stack_table::ExtJumpStackTable;
-    use crate::table::lookup_table::ExtLookupTable;
-    use crate::table::master_table::AIR_TARGET_DEGREE;
-    use crate::table::master_table::CASCADE_TABLE_END;
-    use crate::table::master_table::EXT_CASCADE_TABLE_END;
-    use crate::table::master_table::EXT_HASH_TABLE_END;
-    use crate::table::master_table::EXT_JUMP_STACK_TABLE_END;
-    use crate::table::master_table::EXT_LOOKUP_TABLE_END;
-    use crate::table::master_table::EXT_OP_STACK_TABLE_END;
-    use crate::table::master_table::EXT_PROCESSOR_TABLE_END;
-    use crate::table::master_table::EXT_PROGRAM_TABLE_END;
-    use crate::table::master_table::EXT_RAM_TABLE_END;
-    use crate::table::master_table::EXT_U32_TABLE_END;
-    use crate::table::master_table::HASH_TABLE_END;
-    use crate::table::master_table::JUMP_STACK_TABLE_END;
-    use crate::table::master_table::LOOKUP_TABLE_END;
-    use crate::table::master_table::OP_STACK_TABLE_END;
-    use crate::table::master_table::PROCESSOR_TABLE_END;
-    use crate::table::master_table::PROGRAM_TABLE_END;
-    use crate::table::master_table::RAM_TABLE_END;
-    use crate::table::master_table::U32_TABLE_END;
-    use crate::table::op_stack_table::ExtOpStackTable;
-    use crate::table::processor_table::ExtProcessorTable;
-    use crate::table::program_table::ExtProgramTable;
-    use crate::table::ram_table::ExtRamTable;
-    use crate::table::u32_table::ExtU32Table;
-    use crate::table::NUM_BASE_COLUMNS;
-    use crate::table::NUM_EXT_COLUMNS;
 
     use super::*;
 
     impl<II: InputIndicator> ConstraintCircuitMonad<II> {
+        /// Traverse the circuit and find all nodes that are equivalent. Note that
+        /// two nodes are equivalent if they compute the same value on all identical
+        /// inputs. Equivalence is different from identity, which is when two nodes
+        /// connect the same set of neighbors in the same way. (There may be two
+        /// different ways to compute the same result; they are equivalent but
+        /// unequal.)
+        ///
+        /// This function returns a list of lists of equivalent nodes such that
+        /// every inner list can be reduced to a single node without changing the
+        /// circuit's function.
+        ///
+        /// Equivalent nodes are detected probabilistically using the multivariate
+        /// Schwartz-Zippel lemma. The false positive probability is zero (we can be
+        /// certain that equivalent nodes will be found). The false negative
+        /// probability is bounded by max_degree / (2^64 - 2^32 + 1)^3.
+        pub fn find_equivalent_nodes(&self) -> Vec<Vec<Rc<RefCell<ConstraintCircuit<II>>>>> {
+            let mut id_to_eval = HashMap::new();
+            let mut eval_to_ids = HashMap::new();
+            let mut id_to_node = HashMap::new();
+            Self::probe_random(
+                &self.circuit,
+                &mut id_to_eval,
+                &mut eval_to_ids,
+                &mut id_to_node,
+                random(),
+            );
+
+            eval_to_ids
+                .values()
+                .filter(|ids| ids.len() >= 2)
+                .map(|ids| ids.iter().map(|i| id_to_node[i].clone()).collect_vec())
+                .collect_vec()
+        }
+
+        /// Populate the dictionaries such that they associate with every node in
+        /// the circuit its evaluation in a random point. The inputs are assigned
+        /// random values. Equivalent nodes are detected based on evaluating to the
+        /// same value using the Schwartz-Zippel lemma.
+        fn probe_random(
+            circuit: &Rc<RefCell<ConstraintCircuit<II>>>,
+            id_to_eval: &mut HashMap<usize, XFieldElement>,
+            eval_to_ids: &mut HashMap<XFieldElement, Vec<usize>>,
+            id_to_node: &mut HashMap<usize, Rc<RefCell<ConstraintCircuit<II>>>>,
+            master_seed: XFieldElement,
+        ) -> XFieldElement {
+            const DOMAIN_SEPARATOR_CURR_ROW: BFieldElement = BFieldElement::new(0);
+            const DOMAIN_SEPARATOR_NEXT_ROW: BFieldElement = BFieldElement::new(1);
+            const DOMAIN_SEPARATOR_CHALLENGE: BFieldElement = BFieldElement::new(2);
+
+            let circuit_id = circuit.borrow().id;
+            if let Some(&xfe) = id_to_eval.get(&circuit_id) {
+                return xfe;
+            }
+
+            let evaluation = match &circuit.borrow().expression {
+                CircuitExpression::BConstant(bfe) => bfe.lift(),
+                CircuitExpression::XConstant(xfe) => *xfe,
+                CircuitExpression::Input(input) => {
+                    let [s0, s1, s2] = master_seed.coefficients;
+                    let dom_sep = if input.is_current_row() {
+                        DOMAIN_SEPARATOR_CURR_ROW
+                    } else {
+                        DOMAIN_SEPARATOR_NEXT_ROW
+                    };
+                    let i = bfe!(u64::try_from(input.column()).unwrap());
+                    let Digest([d0, d1, d2, _, _]) = Tip5::hash_varlen(&[s0, s1, s2, dom_sep, i]);
+                    xfe!([d0, d1, d2])
+                }
+                CircuitExpression::Challenge(challenge) => {
+                    let [s0, s1, s2] = master_seed.coefficients;
+                    let dom_sep = DOMAIN_SEPARATOR_CHALLENGE;
+                    let ch = bfe!(u64::try_from(*challenge).unwrap());
+                    let Digest([d0, d1, d2, _, _]) = Tip5::hash_varlen(&[s0, s1, s2, dom_sep, ch]);
+                    xfe!([d0, d1, d2])
+                }
+                CircuitExpression::BinaryOperation(bin_op, lhs, rhs) => {
+                    let l =
+                        Self::probe_random(lhs, id_to_eval, eval_to_ids, id_to_node, master_seed);
+                    let r =
+                        Self::probe_random(rhs, id_to_eval, eval_to_ids, id_to_node, master_seed);
+                    bin_op.operation(l, r)
+                }
+            };
+
+            id_to_eval.insert(circuit_id, evaluation);
+            eval_to_ids.entry(evaluation).or_default().push(circuit_id);
+            id_to_node.insert(circuit_id, circuit.clone());
+
+            evaluation
+        }
+
         /// Check whether the given node is contained in this circuit.
         fn contains(&self, other: &Self) -> bool {
             let self_expression = &self.circuit.borrow().expression;
@@ -1338,209 +1313,6 @@ mod tests {
         assert!(root_2.contains(&new_variable));
     }
 
-    /// Recursively evaluates the given constraint circuit and its sub-circuits on the given
-    /// base and extension table, and returns the result of the evaluation.
-    /// At each recursive step, updates the given HashMap with the result of the evaluation.
-    /// If the HashMap already contains the result of the evaluation, panics.
-    /// This function is used to assert that the evaluation of a constraint circuit
-    /// and its sub-circuits is unique.
-    /// It is used to identify redundant constraints or sub-circuits.
-    /// The employed method is the Schwartz-Zippel lemma.
-    fn evaluate_assert_unique<II: InputIndicator>(
-        constraint: &ConstraintCircuit<II>,
-        challenges: &[XFieldElement],
-        base_rows: ArrayView2<BFieldElement>,
-        ext_rows: ArrayView2<XFieldElement>,
-        values: &mut HashMap<XFieldElement, (usize, ConstraintCircuit<II>)>,
-    ) -> XFieldElement {
-        let value = match &constraint.expression {
-            CircuitExpression::BinaryOperation(binop, lhs, rhs) => {
-                let lhs = lhs.borrow();
-                let rhs = rhs.borrow();
-                let lhs = evaluate_assert_unique(&lhs, challenges, base_rows, ext_rows, values);
-                let rhs = evaluate_assert_unique(&rhs, challenges, base_rows, ext_rows, values);
-                binop.operation(lhs, rhs)
-            }
-            _ => constraint.evaluate(base_rows, ext_rows, challenges),
-        };
-
-        let own_id = constraint.id.to_owned();
-        let maybe_entry = values.insert(value, (own_id, constraint.clone()));
-        if let Some((other_id, other_circuit)) = maybe_entry {
-            assert_eq!(
-                own_id, other_id,
-                "Circuit ID {other_id} and circuit ID {own_id} are not unique. \
-                Collision on:\n\
-                ID {other_id} – {other_circuit}\n\
-                ID {own_id} – {constraint}\n\
-                Both evaluate to {value}.",
-            );
-        }
-
-        value
-    }
-
-    /// Verify that all nodes evaluate to a unique value when given a randomized input.
-    /// If this is not the case two nodes that are not equal evaluate to the same value.
-    fn table_constraints_prop<II: InputIndicator>(
-        constraints: &[ConstraintCircuit<II>],
-        table_name: &str,
-    ) {
-        let seed = random();
-        let mut rng = StdRng::seed_from_u64(seed);
-        println!("seed: {seed}");
-
-        let dummy_claim = Claim::default();
-        let challenges: [XFieldElement; Challenges::SAMPLE_COUNT] = rng.gen();
-        let challenges = challenges.to_vec();
-        let challenges = Challenges::new(challenges, &dummy_claim);
-        let challenges = &challenges.challenges;
-
-        let num_rows = 2;
-        let base_shape = [num_rows, NUM_BASE_COLUMNS];
-        let ext_shape = [num_rows, NUM_EXT_COLUMNS];
-        let base_rows = Array2::from_shape_simple_fn(base_shape, || rng.gen::<BFieldElement>());
-        let ext_rows = Array2::from_shape_simple_fn(ext_shape, || rng.gen::<XFieldElement>());
-        let base_rows = base_rows.view();
-        let ext_rows = ext_rows.view();
-
-        let mut values = HashMap::new();
-        for c in constraints {
-            evaluate_assert_unique(c, challenges, base_rows, ext_rows, &mut values);
-        }
-
-        let circuit_degree = constraints.iter().map(|c| c.degree()).max().unwrap_or(-1);
-        println!("Max degree constraint for {table_name} table: {circuit_degree}");
-    }
-
-    fn build_constraints<II: InputIndicator>(
-        multicircuit_builder: &dyn Fn(
-            &ConstraintCircuitBuilder<II>,
-        ) -> Vec<ConstraintCircuitMonad<II>>,
-    ) -> Vec<ConstraintCircuit<II>> {
-        let multicircuit = build_multicircuit(multicircuit_builder);
-        let mut constraints = multicircuit.into_iter().map(|c| c.consume()).collect_vec();
-        ConstraintCircuit::assert_unique_ids(&mut constraints);
-        constraints
-    }
-
-    fn build_multicircuit<II: InputIndicator>(
-        multicircuit_builder: &dyn Fn(
-            &ConstraintCircuitBuilder<II>,
-        ) -> Vec<ConstraintCircuitMonad<II>>,
-    ) -> Vec<ConstraintCircuitMonad<II>> {
-        let circuit_builder = ConstraintCircuitBuilder::new();
-        multicircuit_builder(&circuit_builder)
-    }
-
-    #[test]
-    fn constant_folding_processor_table() {
-        let init = build_constraints(&ExtProcessorTable::initial_constraints);
-        let cons = build_constraints(&ExtProcessorTable::consistency_constraints);
-        let tran = build_constraints(&ExtProcessorTable::transition_constraints);
-        let term = build_constraints(&ExtProcessorTable::terminal_constraints);
-        table_constraints_prop(&init, "processor initial");
-        table_constraints_prop(&cons, "processor consistency");
-        table_constraints_prop(&tran, "processor transition");
-        table_constraints_prop(&term, "processor terminal");
-    }
-
-    #[test]
-    fn constant_folding_program_table() {
-        let init = build_constraints(&ExtProgramTable::initial_constraints);
-        let cons = build_constraints(&ExtProgramTable::consistency_constraints);
-        let tran = build_constraints(&ExtProgramTable::transition_constraints);
-        let term = build_constraints(&ExtProgramTable::terminal_constraints);
-        table_constraints_prop(&init, "program initial");
-        table_constraints_prop(&cons, "program consistency");
-        table_constraints_prop(&tran, "program transition");
-        table_constraints_prop(&term, "program terminal");
-    }
-
-    #[test]
-    fn constant_folding_jump_stack_table() {
-        let init = build_constraints(&ExtJumpStackTable::initial_constraints);
-        let cons = build_constraints(&ExtJumpStackTable::consistency_constraints);
-        let tran = build_constraints(&ExtJumpStackTable::transition_constraints);
-        let term = build_constraints(&ExtJumpStackTable::terminal_constraints);
-        table_constraints_prop(&init, "jump stack initial");
-        table_constraints_prop(&cons, "jump stack consistency");
-        table_constraints_prop(&tran, "jump stack transition");
-        table_constraints_prop(&term, "jump stack terminal");
-    }
-
-    #[test]
-    fn constant_folding_op_stack_table() {
-        let init = build_constraints(&ExtOpStackTable::initial_constraints);
-        let cons = build_constraints(&ExtOpStackTable::consistency_constraints);
-        let tran = build_constraints(&ExtOpStackTable::transition_constraints);
-        let term = build_constraints(&ExtOpStackTable::terminal_constraints);
-        table_constraints_prop(&init, "op stack initial");
-        table_constraints_prop(&cons, "op stack consistency");
-        table_constraints_prop(&tran, "op stack transition");
-        table_constraints_prop(&term, "op stack terminal");
-    }
-
-    #[test]
-    fn constant_folding_ram_table() {
-        let init = build_constraints(&ExtRamTable::initial_constraints);
-        let cons = build_constraints(&ExtRamTable::consistency_constraints);
-        let tran = build_constraints(&ExtRamTable::transition_constraints);
-        let term = build_constraints(&ExtRamTable::terminal_constraints);
-        table_constraints_prop(&init, "ram initial");
-        table_constraints_prop(&cons, "ram consistency");
-        table_constraints_prop(&tran, "ram transition");
-        table_constraints_prop(&term, "ram terminal");
-    }
-
-    #[test]
-    fn constant_folding_hash_table() {
-        let init = build_constraints(&ExtHashTable::initial_constraints);
-        let cons = build_constraints(&ExtHashTable::consistency_constraints);
-        let tran = build_constraints(&ExtHashTable::transition_constraints);
-        let term = build_constraints(&ExtHashTable::terminal_constraints);
-        table_constraints_prop(&init, "hash initial");
-        table_constraints_prop(&cons, "hash consistency");
-        table_constraints_prop(&tran, "hash transition");
-        table_constraints_prop(&term, "hash terminal");
-    }
-
-    #[test]
-    fn constant_folding_u32_table() {
-        let init = build_constraints(&ExtU32Table::initial_constraints);
-        let cons = build_constraints(&ExtU32Table::consistency_constraints);
-        let tran = build_constraints(&ExtU32Table::transition_constraints);
-        let term = build_constraints(&ExtU32Table::terminal_constraints);
-        table_constraints_prop(&init, "u32 initial");
-        table_constraints_prop(&cons, "u32 consistency");
-        table_constraints_prop(&tran, "u32 transition");
-        table_constraints_prop(&term, "u32 terminal");
-    }
-
-    #[test]
-    fn constant_folding_cascade_table() {
-        let init = build_constraints(&ExtCascadeTable::initial_constraints);
-        let cons = build_constraints(&ExtCascadeTable::consistency_constraints);
-        let tran = build_constraints(&ExtCascadeTable::transition_constraints);
-        let term = build_constraints(&ExtCascadeTable::terminal_constraints);
-        table_constraints_prop(&init, "cascade initial");
-        table_constraints_prop(&cons, "cascade consistency");
-        table_constraints_prop(&tran, "cascade transition");
-        table_constraints_prop(&term, "cascade terminal");
-    }
-
-    #[test]
-    fn constant_folding_lookup_table() {
-        let init = build_constraints(&ExtLookupTable::initial_constraints);
-        let cons = build_constraints(&ExtLookupTable::consistency_constraints);
-        let tran = build_constraints(&ExtLookupTable::transition_constraints);
-        let term = build_constraints(&ExtLookupTable::terminal_constraints);
-        table_constraints_prop(&init, "lookup initial");
-        table_constraints_prop(&cons, "lookup consistency");
-        table_constraints_prop(&tran, "lookup transition");
-        table_constraints_prop(&term, "lookup terminal");
-    }
-
     #[test]
     fn simple_degree_lowering() {
         let builder = ConstraintCircuitBuilder::new();
@@ -1549,18 +1321,16 @@ mod tests {
         let x_pow_5 = x() * x() * x() * x() * x();
         let mut multicircuit = [x_pow_5, x_pow_3];
 
-        let target_degree = 3;
-        let num_base_cols = 1;
-        let num_ext_cols = 0;
-        let (new_base_constraints, new_ext_constraints) = lower_degree_and_assert_properties(
-            &mut multicircuit,
-            target_degree,
-            num_base_cols,
-            num_ext_cols,
-        );
+        let degree_lowering_info = DegreeLoweringInfo {
+            target_degree: 3,
+            num_base_cols: 1,
+            num_ext_cols: 0,
+        };
+        let (new_base_constraints, new_ext_constraints) =
+            ConstraintCircuitMonad::lower_to_degree(&mut multicircuit, degree_lowering_info);
 
-        assert!(new_ext_constraints.is_empty());
         assert_eq!(1, new_base_constraints.len());
+        assert!(new_ext_constraints.is_empty());
     }
 
     #[test]
@@ -1579,15 +1349,13 @@ mod tests {
 
         let mut multicircuit = [constraint_0, constraint_1, constraint_2];
 
-        let target_degree = 2;
-        let num_base_cols = 3;
-        let num_ext_cols = 2;
-        let (new_base_constraints, new_ext_constraints) = lower_degree_and_assert_properties(
-            &mut multicircuit,
-            target_degree,
-            num_base_cols,
-            num_ext_cols,
-        );
+        let degree_lowering_info = DegreeLoweringInfo {
+            target_degree: 2,
+            num_base_cols: 3,
+            num_ext_cols: 2,
+        };
+        let (new_base_constraints, new_ext_constraints) =
+            ConstraintCircuitMonad::lower_to_degree(&mut multicircuit, degree_lowering_info);
 
         assert!(new_base_constraints.len() <= 3);
         assert!(new_ext_constraints.len() <= 1);
@@ -1603,520 +1371,16 @@ mod tests {
 
         let mut multicircuit = [constraint_0, constraint_1];
 
-        let target_degree = 3;
-        let num_base_cols = 9;
-        let num_ext_cols = 0;
-        let (new_base_constraints, new_ext_constraints) = lower_degree_and_assert_properties(
-            &mut multicircuit,
-            target_degree,
-            num_base_cols,
-            num_ext_cols,
-        );
+        let degree_lowering_info = DegreeLoweringInfo {
+            target_degree: 2,
+            num_base_cols: 9,
+            num_ext_cols: 0,
+        };
+        let (new_base_constraints, new_ext_constraints) =
+            ConstraintCircuitMonad::lower_to_degree(&mut multicircuit, degree_lowering_info);
 
         assert!(new_base_constraints.len() <= 3);
         assert!(new_ext_constraints.is_empty());
-    }
-
-    #[test]
-    fn program_table_initial_constraints_degree_lowering() {
-        lower_degree_and_assert_properties(
-            &mut build_multicircuit(&ExtProgramTable::initial_constraints),
-            AIR_TARGET_DEGREE,
-            PROGRAM_TABLE_END,
-            EXT_PROGRAM_TABLE_END,
-        );
-    }
-
-    #[test]
-    fn program_table_consistency_constraints_degree_lowering() {
-        lower_degree_and_assert_properties(
-            &mut build_multicircuit(&ExtProgramTable::consistency_constraints),
-            AIR_TARGET_DEGREE,
-            PROGRAM_TABLE_END,
-            EXT_PROGRAM_TABLE_END,
-        );
-    }
-
-    #[test]
-    fn program_table_transition_constraints_degree_lowering() {
-        lower_degree_and_assert_properties(
-            &mut build_multicircuit(&ExtProgramTable::transition_constraints),
-            AIR_TARGET_DEGREE,
-            PROGRAM_TABLE_END,
-            EXT_PROGRAM_TABLE_END,
-        );
-    }
-
-    #[test]
-    fn program_table_terminal_constraints_degree_lowering() {
-        lower_degree_and_assert_properties(
-            &mut build_multicircuit(&ExtProgramTable::terminal_constraints),
-            AIR_TARGET_DEGREE,
-            PROGRAM_TABLE_END,
-            EXT_PROGRAM_TABLE_END,
-        );
-    }
-
-    #[test]
-    fn processor_table_initial_constraints_degree_lowering() {
-        lower_degree_and_assert_properties(
-            &mut build_multicircuit(&ExtProcessorTable::initial_constraints),
-            AIR_TARGET_DEGREE,
-            PROCESSOR_TABLE_END,
-            EXT_PROCESSOR_TABLE_END,
-        );
-    }
-
-    #[test]
-    fn processor_table_consistency_constraints_degree_lowering() {
-        lower_degree_and_assert_properties(
-            &mut build_multicircuit(&ExtProcessorTable::consistency_constraints),
-            AIR_TARGET_DEGREE,
-            PROCESSOR_TABLE_END,
-            EXT_PROCESSOR_TABLE_END,
-        );
-    }
-
-    #[test]
-    fn processor_table_transition_constraints_degree_lowering() {
-        lower_degree_and_assert_properties(
-            &mut build_multicircuit(&ExtProcessorTable::transition_constraints),
-            AIR_TARGET_DEGREE,
-            PROCESSOR_TABLE_END,
-            EXT_PROCESSOR_TABLE_END,
-        );
-    }
-
-    #[test]
-    fn processor_table_terminal_constraints_degree_lowering() {
-        lower_degree_and_assert_properties(
-            &mut build_multicircuit(&ExtProcessorTable::terminal_constraints),
-            AIR_TARGET_DEGREE,
-            PROCESSOR_TABLE_END,
-            EXT_PROCESSOR_TABLE_END,
-        );
-    }
-
-    #[test]
-    fn op_stack_table_initial_constraints_degree_lowering() {
-        lower_degree_and_assert_properties(
-            &mut build_multicircuit(&ExtOpStackTable::initial_constraints),
-            AIR_TARGET_DEGREE,
-            OP_STACK_TABLE_END,
-            EXT_OP_STACK_TABLE_END,
-        );
-    }
-
-    #[test]
-    fn op_stack_table_consistency_constraints_degree_lowering() {
-        lower_degree_and_assert_properties(
-            &mut build_multicircuit(&ExtOpStackTable::consistency_constraints),
-            AIR_TARGET_DEGREE,
-            OP_STACK_TABLE_END,
-            EXT_OP_STACK_TABLE_END,
-        );
-    }
-
-    #[test]
-    fn op_stack_table_transition_constraints_degree_lowering() {
-        lower_degree_and_assert_properties(
-            &mut build_multicircuit(&ExtOpStackTable::transition_constraints),
-            AIR_TARGET_DEGREE,
-            OP_STACK_TABLE_END,
-            EXT_OP_STACK_TABLE_END,
-        );
-    }
-
-    #[test]
-    fn op_stack_table_terminal_constraints_degree_lowering() {
-        lower_degree_and_assert_properties(
-            &mut build_multicircuit(&ExtOpStackTable::terminal_constraints),
-            AIR_TARGET_DEGREE,
-            OP_STACK_TABLE_END,
-            EXT_OP_STACK_TABLE_END,
-        );
-    }
-
-    #[test]
-    fn ram_table_initial_constraints_degree_lowering() {
-        lower_degree_and_assert_properties(
-            &mut build_multicircuit(&ExtRamTable::initial_constraints),
-            AIR_TARGET_DEGREE,
-            RAM_TABLE_END,
-            EXT_RAM_TABLE_END,
-        );
-    }
-
-    #[test]
-    fn ram_table_consistency_constraints_degree_lowering() {
-        lower_degree_and_assert_properties(
-            &mut build_multicircuit(&ExtRamTable::consistency_constraints),
-            AIR_TARGET_DEGREE,
-            RAM_TABLE_END,
-            EXT_RAM_TABLE_END,
-        );
-    }
-
-    #[test]
-    fn ram_table_transition_constraints_degree_lowering() {
-        lower_degree_and_assert_properties(
-            &mut build_multicircuit(&ExtRamTable::transition_constraints),
-            AIR_TARGET_DEGREE,
-            RAM_TABLE_END,
-            EXT_RAM_TABLE_END,
-        );
-    }
-
-    #[test]
-    fn ram_table_terminal_constraints_degree_lowering() {
-        lower_degree_and_assert_properties(
-            &mut build_multicircuit(&ExtRamTable::terminal_constraints),
-            AIR_TARGET_DEGREE,
-            RAM_TABLE_END,
-            EXT_RAM_TABLE_END,
-        );
-    }
-
-    #[test]
-    fn jump_stack_table_initial_constraints_degree_lowering() {
-        lower_degree_and_assert_properties(
-            &mut build_multicircuit(&ExtJumpStackTable::initial_constraints),
-            AIR_TARGET_DEGREE,
-            JUMP_STACK_TABLE_END,
-            EXT_JUMP_STACK_TABLE_END,
-        );
-    }
-
-    #[test]
-    fn jump_stack_table_consistency_constraints_degree_lowering() {
-        lower_degree_and_assert_properties(
-            &mut build_multicircuit(&ExtJumpStackTable::consistency_constraints),
-            AIR_TARGET_DEGREE,
-            JUMP_STACK_TABLE_END,
-            EXT_JUMP_STACK_TABLE_END,
-        );
-    }
-
-    #[test]
-    fn jump_stack_table_transition_constraints_degree_lowering() {
-        lower_degree_and_assert_properties(
-            &mut build_multicircuit(&ExtJumpStackTable::transition_constraints),
-            AIR_TARGET_DEGREE,
-            JUMP_STACK_TABLE_END,
-            EXT_JUMP_STACK_TABLE_END,
-        );
-    }
-
-    #[test]
-    fn jump_stack_table_terminal_constraints_degree_lowering() {
-        lower_degree_and_assert_properties(
-            &mut build_multicircuit(&ExtJumpStackTable::terminal_constraints),
-            AIR_TARGET_DEGREE,
-            JUMP_STACK_TABLE_END,
-            EXT_JUMP_STACK_TABLE_END,
-        );
-    }
-
-    #[test]
-    fn hash_table_initial_constraints_degree_lowering() {
-        lower_degree_and_assert_properties(
-            &mut build_multicircuit(&ExtHashTable::initial_constraints),
-            AIR_TARGET_DEGREE,
-            HASH_TABLE_END,
-            EXT_HASH_TABLE_END,
-        );
-    }
-
-    #[test]
-    fn hash_table_consistency_constraints_degree_lowering() {
-        lower_degree_and_assert_properties(
-            &mut build_multicircuit(&ExtHashTable::consistency_constraints),
-            AIR_TARGET_DEGREE,
-            HASH_TABLE_END,
-            EXT_HASH_TABLE_END,
-        );
-    }
-
-    #[test]
-    fn hash_table_transition_constraints_degree_lowering() {
-        lower_degree_and_assert_properties(
-            &mut build_multicircuit(&ExtHashTable::transition_constraints),
-            AIR_TARGET_DEGREE,
-            HASH_TABLE_END,
-            EXT_HASH_TABLE_END,
-        );
-    }
-
-    #[test]
-    fn hash_table_terminal_constraints_degree_lowering() {
-        lower_degree_and_assert_properties(
-            &mut build_multicircuit(&ExtHashTable::terminal_constraints),
-            AIR_TARGET_DEGREE,
-            HASH_TABLE_END,
-            EXT_HASH_TABLE_END,
-        );
-    }
-
-    #[test]
-    fn cascade_table_initial_constraints_degree_lowering() {
-        lower_degree_and_assert_properties(
-            &mut build_multicircuit(&ExtCascadeTable::initial_constraints),
-            AIR_TARGET_DEGREE,
-            CASCADE_TABLE_END,
-            EXT_CASCADE_TABLE_END,
-        );
-    }
-
-    #[test]
-    fn cascade_table_consistency_constraints_degree_lowering() {
-        lower_degree_and_assert_properties(
-            &mut build_multicircuit(&ExtCascadeTable::consistency_constraints),
-            AIR_TARGET_DEGREE,
-            CASCADE_TABLE_END,
-            EXT_CASCADE_TABLE_END,
-        );
-    }
-
-    #[test]
-    fn cascade_table_transition_constraints_degree_lowering() {
-        lower_degree_and_assert_properties(
-            &mut build_multicircuit(&ExtCascadeTable::transition_constraints),
-            AIR_TARGET_DEGREE,
-            CASCADE_TABLE_END,
-            EXT_CASCADE_TABLE_END,
-        );
-    }
-
-    #[test]
-    fn cascade_table_terminal_constraints_degree_lowering() {
-        lower_degree_and_assert_properties(
-            &mut build_multicircuit(&ExtCascadeTable::terminal_constraints),
-            AIR_TARGET_DEGREE,
-            CASCADE_TABLE_END,
-            EXT_CASCADE_TABLE_END,
-        );
-    }
-
-    #[test]
-    fn lookup_table_initial_constraints_degree_lowering() {
-        lower_degree_and_assert_properties(
-            &mut build_multicircuit(&ExtLookupTable::initial_constraints),
-            AIR_TARGET_DEGREE,
-            LOOKUP_TABLE_END,
-            EXT_LOOKUP_TABLE_END,
-        );
-    }
-
-    #[test]
-    fn lookup_table_consistency_constraints_degree_lowering() {
-        lower_degree_and_assert_properties(
-            &mut build_multicircuit(&ExtLookupTable::consistency_constraints),
-            AIR_TARGET_DEGREE,
-            LOOKUP_TABLE_END,
-            EXT_LOOKUP_TABLE_END,
-        );
-    }
-
-    #[test]
-    fn lookup_table_transition_constraints_degree_lowering() {
-        lower_degree_and_assert_properties(
-            &mut build_multicircuit(&ExtLookupTable::transition_constraints),
-            AIR_TARGET_DEGREE,
-            LOOKUP_TABLE_END,
-            EXT_LOOKUP_TABLE_END,
-        );
-    }
-
-    #[test]
-    fn lookup_table_terminal_constraints_degree_lowering() {
-        lower_degree_and_assert_properties(
-            &mut build_multicircuit(&ExtLookupTable::terminal_constraints),
-            AIR_TARGET_DEGREE,
-            LOOKUP_TABLE_END,
-            EXT_LOOKUP_TABLE_END,
-        );
-    }
-
-    #[test]
-    fn u32_table_initial_constraints_degree_lowering() {
-        lower_degree_and_assert_properties(
-            &mut build_multicircuit(&ExtU32Table::initial_constraints),
-            AIR_TARGET_DEGREE,
-            U32_TABLE_END,
-            EXT_U32_TABLE_END,
-        );
-    }
-
-    #[test]
-    fn u32_table_consistency_constraints_degree_lowering() {
-        lower_degree_and_assert_properties(
-            &mut build_multicircuit(&ExtU32Table::consistency_constraints),
-            AIR_TARGET_DEGREE,
-            U32_TABLE_END,
-            EXT_U32_TABLE_END,
-        );
-    }
-
-    #[test]
-    fn u32_table_transition_constraints_degree_lowering() {
-        lower_degree_and_assert_properties(
-            &mut build_multicircuit(&ExtU32Table::transition_constraints),
-            AIR_TARGET_DEGREE,
-            U32_TABLE_END,
-            EXT_U32_TABLE_END,
-        );
-    }
-
-    #[test]
-    fn u32_table_terminal_constraints_degree_lowering() {
-        lower_degree_and_assert_properties(
-            &mut build_multicircuit(&ExtU32Table::terminal_constraints),
-            AIR_TARGET_DEGREE,
-            U32_TABLE_END,
-            EXT_U32_TABLE_END,
-        );
-    }
-
-    /// Like [`ConstraintCircuitMonad::lower_to_degree`] with additional assertion of expected
-    /// properties. Also prints:
-    /// - the given multicircuit prior to degree lowering
-    /// - the multicircuit after degree lowering
-    /// - the new base constraints
-    /// - the new extension constraints
-    /// - the numbers of original and new constraints
-    fn lower_degree_and_assert_properties<II: InputIndicator>(
-        multicircuit: &mut [ConstraintCircuitMonad<II>],
-        target_deg: isize,
-        num_base_cols: usize,
-        num_ext_cols: usize,
-    ) -> (
-        Vec<ConstraintCircuitMonad<II>>,
-        Vec<ConstraintCircuitMonad<II>>,
-    ) {
-        let seed = random();
-        let mut rng = StdRng::seed_from_u64(seed);
-        println!("seed: {seed}");
-
-        let num_constraints = multicircuit.len();
-        println!("original multicircuit:");
-        for circuit in multicircuit.iter() {
-            println!("  {circuit}");
-        }
-
-        let (new_base_constraints, new_ext_constraints) = ConstraintCircuitMonad::lower_to_degree(
-            multicircuit,
-            target_deg,
-            num_base_cols,
-            num_ext_cols,
-        );
-
-        assert_eq!(num_constraints, multicircuit.len());
-        assert!(ConstraintCircuitMonad::multicircuit_degree(multicircuit) <= target_deg);
-        assert!(ConstraintCircuitMonad::multicircuit_degree(&new_base_constraints) <= target_deg);
-        assert!(ConstraintCircuitMonad::multicircuit_degree(&new_ext_constraints) <= target_deg);
-
-        // Check that the new constraints are simple substitutions.
-        let mut substitution_rules = vec![];
-        for (constraint_type, constraints) in [
-            ("base", &new_base_constraints),
-            ("ext", &new_ext_constraints),
-        ] {
-            for (i, constraint) in constraints.iter().enumerate() {
-                let expression = constraint.circuit.borrow().expression.clone();
-                let CircuitExpression::BinaryOperation(BinOp::Add, lhs, rhs) = expression else {
-                    panic!("New {constraint_type} constraint {i} must be a subtraction.");
-                };
-                let CircuitExpression::Input(input_indicator) = lhs.borrow().expression.clone()
-                else {
-                    panic!("New {constraint_type} constraint {i} must be a simple substitution.");
-                };
-                let substitution_rule = rhs.borrow().clone();
-                assert_substitution_rule_uses_legal_variables(input_indicator, &substitution_rule);
-                substitution_rules.push(substitution_rule);
-            }
-        }
-
-        // Use the Schwartz-Zippel lemma to check no two substitution rules are equal.
-        let dummy_claim = Claim::default();
-        let challenges: [XFieldElement; Challenges::SAMPLE_COUNT] = rng.gen();
-        let challenges = challenges.to_vec();
-        let challenges = Challenges::new(challenges, &dummy_claim);
-        let challenges = &challenges.challenges;
-
-        let num_rows = 2;
-        let num_new_base_constraints = new_base_constraints.len();
-        let num_new_ext_constraints = new_ext_constraints.len();
-        let num_base_cols = NUM_BASE_COLUMNS + num_new_base_constraints;
-        let num_ext_cols = NUM_EXT_COLUMNS + num_new_ext_constraints;
-        let base_shape = [num_rows, num_base_cols];
-        let ext_shape = [num_rows, num_ext_cols];
-        let base_rows = Array2::from_shape_simple_fn(base_shape, || rng.gen::<BFieldElement>());
-        let ext_rows = Array2::from_shape_simple_fn(ext_shape, || rng.gen::<XFieldElement>());
-        let base_rows = base_rows.view();
-        let ext_rows = ext_rows.view();
-
-        let evaluated_substitution_rules = substitution_rules
-            .iter()
-            .map(|c| c.evaluate(base_rows, ext_rows, challenges));
-
-        let mut values_to_index = HashMap::new();
-        for (idx, value) in evaluated_substitution_rules.enumerate() {
-            if let Some(index) = values_to_index.get(&value) {
-                panic!("Substitution {idx} must be distinct from substitution {index}.");
-            } else {
-                values_to_index.insert(value, idx);
-            }
-        }
-
-        // Print the multicircuit and new constraints after degree lowering.
-        println!("new multicircuit:");
-        for circuit in multicircuit.iter() {
-            println!("  {circuit}");
-        }
-        println!("new base constraints:");
-        for constraint in &new_base_constraints {
-            println!("  {constraint}");
-        }
-        println!("new ext constraints:");
-        for constraint in &new_ext_constraints {
-            println!("  {constraint}");
-        }
-
-        println!(
-            "Started with {num_constraints} constraints. \
-            Derived {num_new_base_constraints} new base, \
-            {num_new_ext_constraints} new extension constraints."
-        );
-
-        (new_base_constraints, new_ext_constraints)
-    }
-
-    /// Panics if the given substitution rule uses variables with an index greater than (or equal)
-    /// to the given index. In practice, this given index corresponds to a newly introduced
-    /// variable.
-    fn assert_substitution_rule_uses_legal_variables<II: InputIndicator>(
-        new_var: II,
-        substitution_rule: &ConstraintCircuit<II>,
-    ) {
-        match substitution_rule.expression.clone() {
-            CircuitExpression::BinaryOperation(_, lhs, rhs) => {
-                let lhs = lhs.borrow();
-                let rhs = rhs.borrow();
-                assert_substitution_rule_uses_legal_variables(new_var, &lhs);
-                assert_substitution_rule_uses_legal_variables(new_var, &rhs);
-            }
-            CircuitExpression::Input(old_var) => {
-                let new_var_is_base = new_var.is_base_table_column();
-                let old_var_is_base = old_var.is_base_table_column();
-                let legal_substitute = match (new_var_is_base, old_var_is_base) {
-                    (true, false) => false,
-                    (false, true) => true,
-                    _ => old_var.column() < new_var.column(),
-                };
-                assert!(legal_substitute, "Cannot replace {old_var} with {new_var}.");
-            }
-            _ => (),
-        };
     }
 
     #[test]
@@ -2177,42 +1441,6 @@ mod tests {
         assert_eq!(2, most_frequent_nodes.len());
         assert!(most_frequent_nodes.contains(&&x(2).consume()));
         assert!(most_frequent_nodes.contains(&&x(10).consume()));
-    }
-
-    /// Fills the derived columns of the degree-lowering table using randomly generated rows and
-    /// checks the resulting values for uniqueness. The described method corresponds to an
-    /// application of the Schwartz-Zippel lemma to check uniqueness of the substitution rules
-    /// generated during degree lowering.
-    #[test]
-    #[ignore = "(probably) requires normalization of circuit expressions"]
-    fn substitution_rules_are_unique() {
-        let challenges = Challenges::default();
-        let mut base_table_rows = Array2::from_shape_fn((2, NUM_BASE_COLUMNS), |_| random());
-        let mut ext_table_rows = Array2::from_shape_fn((2, NUM_EXT_COLUMNS), |_| random());
-
-        DegreeLoweringTable::fill_derived_base_columns(base_table_rows.view_mut());
-        DegreeLoweringTable::fill_derived_ext_columns(
-            base_table_rows.view(),
-            ext_table_rows.view_mut(),
-            &challenges,
-        );
-
-        let mut encountered_values = HashMap::new();
-        for col_idx in 0..NUM_BASE_COLUMNS {
-            let val = base_table_rows[(0, col_idx)].lift();
-            let other_entry = encountered_values.insert(val, col_idx);
-            if let Some(other_idx) = other_entry {
-                panic!("Duplicate value {val} in derived base column {other_idx} and {col_idx}.");
-            }
-        }
-        println!("Now comparing extension columns…");
-        for col_idx in 0..NUM_EXT_COLUMNS {
-            let val = ext_table_rows[(0, col_idx)];
-            let other_entry = encountered_values.insert(val, col_idx);
-            if let Some(other_idx) = other_entry {
-                panic!("Duplicate value {val} in derived ext column {other_idx} and {col_idx}.");
-            }
-        }
     }
 
     #[test]

@@ -1325,7 +1325,6 @@ pub(crate) mod tests {
     use test_strategy::proptest;
     use twenty_first::math::other::random_elements;
 
-    use crate::codegen::circuit::ConstraintCircuitBuilder;
     use crate::error::InstructionError;
     use crate::example_programs::*;
     use crate::instruction::Instruction;
@@ -1362,6 +1361,7 @@ pub(crate) mod tests {
     use crate::triton_program;
     use crate::vm::tests::*;
     use crate::PublicInput;
+    use constraint_builder::ConstraintCircuitBuilder;
 
     use super::*;
 

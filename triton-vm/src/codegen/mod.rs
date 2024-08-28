@@ -1,20 +1,19 @@
-use arbitrary::Arbitrary;
+use constraint_builder::ConstraintCircuit;
+use constraint_builder::ConstraintCircuitMonad;
+use constraint_builder::DegreeLoweringInfo;
+use constraint_builder::DualRowIndicator;
+use constraint_builder::InputIndicator;
+use constraint_builder::SingleRowIndicator;
 use itertools::Itertools;
 use proc_macro2::TokenStream;
 use std::fs::write;
 
-use crate::codegen::circuit::ConstraintCircuit;
-use crate::codegen::circuit::ConstraintCircuitMonad;
-use crate::codegen::circuit::DualRowIndicator;
-use crate::codegen::circuit::InputIndicator;
-use crate::codegen::circuit::SingleRowIndicator;
 use crate::codegen::constraints::Codegen;
 use crate::codegen::constraints::RustBackend;
 use crate::codegen::constraints::TasmBackend;
 use crate::codegen::substitutions::AllSubstitutions;
 use crate::codegen::substitutions::Substitutions;
 
-pub(crate) mod circuit;
 mod constraints;
 mod substitutions;
 
@@ -48,74 +47,41 @@ pub(crate) struct Constraints {
     pub term: Vec<ConstraintCircuitMonad<SingleRowIndicator>>,
 }
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
-pub(crate) struct DegreeLoweringInfo {
-    pub target_degree: isize,
-
-    /// The total number of base columns _before_ degree lowering has happened.
-    pub num_base_cols: usize,
-
-    /// The total number of extension columns _before_ degree lowering has happened.
-    pub num_ext_cols: usize,
-}
-
 impl Constraints {
     pub fn lower_to_target_degree_through_substitutions(
         &mut self,
-        info: DegreeLoweringInfo,
+        mut info: DegreeLoweringInfo,
     ) -> AllSubstitutions {
-        // Subtract the degree lowering table's width from the total number of columns to guarantee
-        // the same number of columns even for repeated runs of the constraint evaluation generator.
-        let mut num_base_cols = info.num_base_cols;
-        let mut num_ext_cols = info.num_ext_cols;
+        let lowering_info = info;
+
         let (init_base_substitutions, init_ext_substitutions) =
-            ConstraintCircuitMonad::lower_to_degree(
-                &mut self.init,
-                info.target_degree,
-                num_base_cols,
-                num_ext_cols,
-            );
-        num_base_cols += init_base_substitutions.len();
-        num_ext_cols += init_ext_substitutions.len();
+            ConstraintCircuitMonad::lower_to_degree(&mut self.init, info);
+        info.num_base_cols += init_base_substitutions.len();
+        info.num_ext_cols += init_ext_substitutions.len();
 
         let (cons_base_substitutions, cons_ext_substitutions) =
-            ConstraintCircuitMonad::lower_to_degree(
-                &mut self.cons,
-                info.target_degree,
-                num_base_cols,
-                num_ext_cols,
-            );
-        num_base_cols += cons_base_substitutions.len();
-        num_ext_cols += cons_ext_substitutions.len();
+            ConstraintCircuitMonad::lower_to_degree(&mut self.cons, info);
+        info.num_base_cols += cons_base_substitutions.len();
+        info.num_ext_cols += cons_ext_substitutions.len();
 
         let (tran_base_substitutions, tran_ext_substitutions) =
-            ConstraintCircuitMonad::lower_to_degree(
-                &mut self.tran,
-                info.target_degree,
-                num_base_cols,
-                num_ext_cols,
-            );
-        num_base_cols += tran_base_substitutions.len();
-        num_ext_cols += tran_ext_substitutions.len();
+            ConstraintCircuitMonad::lower_to_degree(&mut self.tran, info);
+        info.num_base_cols += tran_base_substitutions.len();
+        info.num_ext_cols += tran_ext_substitutions.len();
 
         let (term_base_substitutions, term_ext_substitutions) =
-            ConstraintCircuitMonad::lower_to_degree(
-                &mut self.term,
-                info.target_degree,
-                num_base_cols,
-                num_ext_cols,
-            );
+            ConstraintCircuitMonad::lower_to_degree(&mut self.term, info);
 
         AllSubstitutions {
             base: Substitutions {
-                lowering_info: info,
+                lowering_info,
                 init: init_base_substitutions,
                 cons: cons_base_substitutions,
                 tran: tran_base_substitutions,
                 term: term_base_substitutions,
             },
             ext: Substitutions {
-                lowering_info: info,
+                lowering_info,
                 init: init_ext_substitutions,
                 cons: cons_ext_substitutions,
                 tran: tran_ext_substitutions,
@@ -164,29 +130,17 @@ impl Constraints {
 
 #[cfg(test)]
 mod tests {
+    use constraint_builder::ConstraintCircuitBuilder;
     use twenty_first::prelude::*;
 
-    use crate::codegen::circuit::ConstraintCircuitBuilder;
     use crate::table;
 
     use super::*;
-
-    impl Default for DegreeLoweringInfo {
-        /// For testing purposes only.
-        fn default() -> Self {
-            Self {
-                target_degree: 4,
-                num_base_cols: 42,
-                num_ext_cols: 13,
-            }
-        }
-    }
 
     #[repr(usize)]
     enum TestChallenges {
         Ch0,
         Ch1,
-        Ch2,
     }
 
     impl From<TestChallenges> for usize {
@@ -195,33 +149,41 @@ mod tests {
         }
     }
 
+    fn degree_lowering_info() -> DegreeLoweringInfo {
+        DegreeLoweringInfo {
+            target_degree: 4,
+            num_base_cols: 42,
+            num_ext_cols: 13,
+        }
+    }
+
     #[test]
     fn test_constraints_can_be_fetched() {
-        let _ = Constraints::test_constraints();
+        Constraints::test_constraints();
     }
 
     #[test]
     fn degree_lowering_tables_code_can_be_generated_for_test_constraints() {
-        let lowering_info = DegreeLoweringInfo::default();
         let mut constraints = Constraints::test_constraints();
-        let substitutions = constraints.lower_to_target_degree_through_substitutions(lowering_info);
-        let _ = substitutions.generate_degree_lowering_table_code();
+        let substitutions =
+            constraints.lower_to_target_degree_through_substitutions(degree_lowering_info());
+        let _unused = substitutions.generate_degree_lowering_table_code();
     }
 
     #[test]
     fn degree_lowering_tables_code_can_be_generated_from_all_constraints() {
-        let lowering_info = DegreeLoweringInfo::default();
         let mut constraints = table::constraints();
-        let substitutions = constraints.lower_to_target_degree_through_substitutions(lowering_info);
-        let _ = substitutions.generate_degree_lowering_table_code();
+        let substitutions =
+            constraints.lower_to_target_degree_through_substitutions(degree_lowering_info());
+        let _unused = substitutions.generate_degree_lowering_table_code();
     }
 
     #[test]
     fn constraints_and_substitutions_can_be_combined() {
         let mut constraints = Constraints::test_constraints();
         let substitutions =
-            constraints.lower_to_target_degree_through_substitutions(DegreeLoweringInfo::default());
-        let _ = constraints.combine_with_substitution_induced_constraints(substitutions);
+            constraints.lower_to_target_degree_through_substitutions(degree_lowering_info());
+        let _combined = constraints.combine_with_substitution_induced_constraints(substitutions);
     }
 
     impl Constraints {

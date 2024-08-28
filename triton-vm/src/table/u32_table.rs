@@ -1,14 +1,14 @@
 use std::cmp::max;
 use std::ops::Mul;
 
-use crate::codegen::circuit::ConstraintCircuitBuilder;
-use crate::codegen::circuit::ConstraintCircuitMonad;
-use crate::codegen::circuit::DualRowIndicator;
-use crate::codegen::circuit::DualRowIndicator::*;
-use crate::codegen::circuit::InputIndicator;
-use crate::codegen::circuit::SingleRowIndicator;
-use crate::codegen::circuit::SingleRowIndicator::*;
 use arbitrary::Arbitrary;
+use constraint_builder::ConstraintCircuitBuilder;
+use constraint_builder::ConstraintCircuitMonad;
+use constraint_builder::DualRowIndicator;
+use constraint_builder::DualRowIndicator::*;
+use constraint_builder::InputIndicator;
+use constraint_builder::SingleRowIndicator;
+use constraint_builder::SingleRowIndicator::*;
 use ndarray::parallel::prelude::*;
 use ndarray::s;
 use ndarray::Array1;
