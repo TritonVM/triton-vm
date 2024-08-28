@@ -1,14 +1,14 @@
 use std::ops::Add;
 use std::ops::Mul;
 
+use crate::codegen::circuit::ConstraintCircuitBuilder;
+use crate::codegen::circuit::ConstraintCircuitMonad;
+use crate::codegen::circuit::DualRowIndicator;
+use crate::codegen::circuit::SingleRowIndicator;
+use crate::codegen::circuit::SingleRowIndicator::ExtRow;
 use twenty_first::prelude::*;
 
 use crate::table::challenges::ChallengeId::*;
-use crate::table::constraint_circuit::ConstraintCircuitBuilder;
-use crate::table::constraint_circuit::ConstraintCircuitMonad;
-use crate::table::constraint_circuit::DualRowIndicator;
-use crate::table::constraint_circuit::SingleRowIndicator;
-use crate::table::constraint_circuit::SingleRowIndicator::ExtRow;
 use crate::table::table_column::CascadeExtTableColumn;
 use crate::table::table_column::HashExtTableColumn;
 use crate::table::table_column::HashExtTableColumn::*;
@@ -265,7 +265,7 @@ mod tests {
     #[proptest]
     fn lookup_argument_is_identical_to_inverse_of_evaluation_of_zerofier_polynomial(
         #[strategy(arb())]
-        #[filter(#roots.iter().all(|&r| r != #challenge) )]
+        #[filter(#roots.iter().all(|&r| r != #challenge))]
         roots: Vec<BFieldElement>,
         #[strategy(arb())] initial: XFieldElement,
         #[strategy(arb())] challenge: BFieldElement,

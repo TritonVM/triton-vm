@@ -1,5 +1,8 @@
 use std::cmp::Ordering;
 
+use crate::codegen::circuit::DualRowIndicator::*;
+use crate::codegen::circuit::SingleRowIndicator::*;
+use crate::codegen::circuit::*;
 use arbitrary::Arbitrary;
 use itertools::Itertools;
 use ndarray::parallel::prelude::*;
@@ -7,7 +10,8 @@ use ndarray::prelude::*;
 use num_traits::ConstOne;
 use num_traits::One;
 use num_traits::Zero;
-use serde_derive::*;
+use serde::Deserialize;
+use serde::Serialize;
 use strum::EnumCount;
 use strum::IntoEnumIterator;
 use twenty_first::math::traits::FiniteField;
@@ -19,9 +23,6 @@ use crate::ndarray_helper::horizontal_multi_slice_mut;
 use crate::profiler::profiler;
 use crate::table::challenges::ChallengeId::*;
 use crate::table::challenges::Challenges;
-use crate::table::constraint_circuit::DualRowIndicator::*;
-use crate::table::constraint_circuit::SingleRowIndicator::*;
-use crate::table::constraint_circuit::*;
 use crate::table::cross_table_argument::*;
 use crate::table::master_table::TableId;
 use crate::table::table_column::RamBaseTableColumn::*;

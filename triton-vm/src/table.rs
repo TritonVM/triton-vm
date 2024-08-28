@@ -1,19 +1,31 @@
-use std::fmt::Display;
-use std::fmt::Formatter;
-use std::fmt::Result as FmtResult;
-
-use arbitrary::Arbitrary;
-use strum::EnumCount;
-use strum::EnumIter;
-use twenty_first::prelude::XFieldElement;
-
 pub use crate::stark::NUM_QUOTIENT_SEGMENTS;
 pub use crate::table::master_table::NUM_BASE_COLUMNS;
 pub use crate::table::master_table::NUM_EXT_COLUMNS;
 
+use arbitrary::Arbitrary;
+use strum::Display;
+use strum::EnumCount;
+use strum::EnumIter;
+use twenty_first::prelude::XFieldElement;
+
+use crate::codegen::circuit::ConstraintCircuitBuilder;
+use crate::codegen::circuit::ConstraintCircuitMonad;
+use crate::codegen::circuit::DualRowIndicator;
+use crate::codegen::circuit::SingleRowIndicator;
+use crate::codegen::Constraints;
+use crate::table::cascade_table::ExtCascadeTable;
+use crate::table::cross_table_argument::GrandCrossTableArg;
+use crate::table::hash_table::ExtHashTable;
+use crate::table::jump_stack_table::ExtJumpStackTable;
+use crate::table::lookup_table::ExtLookupTable;
+use crate::table::op_stack_table::ExtOpStackTable;
+use crate::table::processor_table::ExtProcessorTable;
+use crate::table::program_table::ExtProgramTable;
+use crate::table::ram_table::ExtRamTable;
+use crate::table::u32_table::ExtU32Table;
+
 pub mod cascade_table;
 pub mod challenges;
-pub mod constraint_circuit;
 #[rustfmt::skip]
 pub mod constraints;
 pub mod cross_table_argument;
@@ -31,7 +43,9 @@ pub mod ram_table;
 pub mod table_column;
 pub mod u32_table;
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, EnumCount, EnumIter)]
+#[derive(
+    Debug, Display, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, EnumCount, EnumIter,
+)]
 pub enum ConstraintType {
     /// Pertains only to the first row of the execution trace.
     Initial,
@@ -44,17 +58,6 @@ pub enum ConstraintType {
 
     /// Pertains only to the last row of the execution trace.
     Terminal,
-}
-
-impl Display for ConstraintType {
-    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
-        match self {
-            ConstraintType::Initial => write!(f, "initial"),
-            ConstraintType::Consistency => write!(f, "consistency"),
-            ConstraintType::Transition => write!(f, "transition"),
-            ConstraintType::Terminal => write!(f, "terminal"),
-        }
-    }
 }
 
 /// A single row of a [`MasterBaseTable`][table].
@@ -76,3 +79,80 @@ pub type ExtensionRow = [XFieldElement; NUM_EXT_COLUMNS];
 ///
 /// See also [`NUM_QUOTIENT_SEGMENTS`].
 pub type QuotientSegments = [XFieldElement; NUM_QUOTIENT_SEGMENTS];
+
+pub fn constraints() -> Constraints {
+    Constraints {
+        init: initial_constraints(),
+        cons: consistency_constraints(),
+        tran: transition_constraints(),
+        term: terminal_constraints(),
+    }
+}
+
+fn initial_constraints() -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
+    let circuit_builder = ConstraintCircuitBuilder::new();
+    vec![
+        ExtProgramTable::initial_constraints(&circuit_builder),
+        ExtProcessorTable::initial_constraints(&circuit_builder),
+        ExtOpStackTable::initial_constraints(&circuit_builder),
+        ExtRamTable::initial_constraints(&circuit_builder),
+        ExtJumpStackTable::initial_constraints(&circuit_builder),
+        ExtHashTable::initial_constraints(&circuit_builder),
+        ExtCascadeTable::initial_constraints(&circuit_builder),
+        ExtLookupTable::initial_constraints(&circuit_builder),
+        ExtU32Table::initial_constraints(&circuit_builder),
+        GrandCrossTableArg::initial_constraints(&circuit_builder),
+    ]
+    .concat()
+}
+
+fn consistency_constraints() -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
+    let circuit_builder = ConstraintCircuitBuilder::new();
+    vec![
+        ExtProgramTable::consistency_constraints(&circuit_builder),
+        ExtProcessorTable::consistency_constraints(&circuit_builder),
+        ExtOpStackTable::consistency_constraints(&circuit_builder),
+        ExtRamTable::consistency_constraints(&circuit_builder),
+        ExtJumpStackTable::consistency_constraints(&circuit_builder),
+        ExtHashTable::consistency_constraints(&circuit_builder),
+        ExtCascadeTable::consistency_constraints(&circuit_builder),
+        ExtLookupTable::consistency_constraints(&circuit_builder),
+        ExtU32Table::consistency_constraints(&circuit_builder),
+        GrandCrossTableArg::consistency_constraints(&circuit_builder),
+    ]
+    .concat()
+}
+
+fn transition_constraints() -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
+    let circuit_builder = ConstraintCircuitBuilder::new();
+    vec![
+        ExtProgramTable::transition_constraints(&circuit_builder),
+        ExtProcessorTable::transition_constraints(&circuit_builder),
+        ExtOpStackTable::transition_constraints(&circuit_builder),
+        ExtRamTable::transition_constraints(&circuit_builder),
+        ExtJumpStackTable::transition_constraints(&circuit_builder),
+        ExtHashTable::transition_constraints(&circuit_builder),
+        ExtCascadeTable::transition_constraints(&circuit_builder),
+        ExtLookupTable::transition_constraints(&circuit_builder),
+        ExtU32Table::transition_constraints(&circuit_builder),
+        GrandCrossTableArg::transition_constraints(&circuit_builder),
+    ]
+    .concat()
+}
+
+fn terminal_constraints() -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
+    let circuit_builder = ConstraintCircuitBuilder::new();
+    vec![
+        ExtProgramTable::terminal_constraints(&circuit_builder),
+        ExtProcessorTable::terminal_constraints(&circuit_builder),
+        ExtOpStackTable::terminal_constraints(&circuit_builder),
+        ExtRamTable::terminal_constraints(&circuit_builder),
+        ExtJumpStackTable::terminal_constraints(&circuit_builder),
+        ExtHashTable::terminal_constraints(&circuit_builder),
+        ExtCascadeTable::terminal_constraints(&circuit_builder),
+        ExtLookupTable::terminal_constraints(&circuit_builder),
+        ExtU32Table::terminal_constraints(&circuit_builder),
+        GrandCrossTableArg::terminal_constraints(&circuit_builder),
+    ]
+    .concat()
+}

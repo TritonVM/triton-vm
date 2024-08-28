@@ -2,11 +2,11 @@
 //! Run `cargo run --bin constraint-evaluation-generator`
 //! to fill in this file with optimized constraints.
 
-use crate::table::challenges::Challenges;
 use ndarray::ArrayView1;
 use twenty_first::prelude::BFieldElement;
 use twenty_first::prelude::XFieldElement;
 
+use crate::table::challenges::Challenges;
 use crate::table::extension_table::Evaluable;
 use crate::table::extension_table::Quotientable;
 use crate::table::master_table::MasterExtTable;

@@ -3,17 +3,15 @@ use proc_macro2::TokenStream;
 use quote::format_ident;
 use quote::quote;
 
-use triton_vm::table;
-use triton_vm::table::constraint_circuit::BinOp;
-use triton_vm::table::constraint_circuit::CircuitExpression;
-use triton_vm::table::constraint_circuit::ConstraintCircuit;
-use triton_vm::table::constraint_circuit::ConstraintCircuitMonad;
-use triton_vm::table::constraint_circuit::DualRowIndicator;
-use triton_vm::table::constraint_circuit::InputIndicator;
-use triton_vm::table::constraint_circuit::SingleRowIndicator;
-use triton_vm::table::degree_lowering_table;
-
-use crate::codegen::RustBackend;
+use crate::codegen::circuit::BinOp;
+use crate::codegen::circuit::CircuitExpression;
+use crate::codegen::circuit::ConstraintCircuit;
+use crate::codegen::circuit::ConstraintCircuitMonad;
+use crate::codegen::circuit::DualRowIndicator;
+use crate::codegen::circuit::InputIndicator;
+use crate::codegen::circuit::SingleRowIndicator;
+use crate::codegen::constraints::RustBackend;
+use crate::codegen::DegreeLoweringInfo;
 
 pub(crate) struct AllSubstitutions {
     pub base: Substitutions,
@@ -21,6 +19,7 @@ pub(crate) struct AllSubstitutions {
 }
 
 pub(crate) struct Substitutions {
+    pub lowering_info: DegreeLoweringInfo,
     pub init: Vec<ConstraintCircuitMonad<SingleRowIndicator>>,
     pub cons: Vec<ConstraintCircuitMonad<SingleRowIndicator>>,
     pub tran: Vec<ConstraintCircuitMonad<DualRowIndicator>>,
@@ -59,7 +58,7 @@ impl AllSubstitutions {
         quote!(
             //! The degree lowering table contains the introduced variables that allow
             //! lowering the degree of the AIR. See
-            //! [`crate::table::master_table::AIR_TARGET_DEGREE`]
+            //! [`table::master_table::AIR_TARGET_DEGREE`]
             //! for additional information.
             //!
             //! This file has been auto-generated. Any modifications _will_ be lost.
@@ -115,8 +114,7 @@ impl Substitutions {
     }
 
     fn generate_fill_base_columns_code(&self) -> TokenStream {
-        let derived_section_init_start =
-            table::NUM_BASE_COLUMNS - degree_lowering_table::BASE_WIDTH;
+        let derived_section_init_start = self.lowering_info.num_base_cols;
         let derived_section_cons_start = derived_section_init_start + self.init.len();
         let derived_section_tran_start = derived_section_cons_start + self.cons.len();
         let derived_section_term_start = derived_section_tran_start + self.tran.len();
@@ -148,7 +146,7 @@ impl Substitutions {
     }
 
     fn generate_fill_ext_columns_code(&self) -> TokenStream {
-        let derived_section_init_start = table::NUM_EXT_COLUMNS - degree_lowering_table::EXT_WIDTH;
+        let derived_section_init_start = self.lowering_info.num_ext_cols;
         let derived_section_cons_start = derived_section_init_start + self.init.len();
         let derived_section_tran_start = derived_section_cons_start + self.cons.len();
         let derived_section_term_start = derived_section_tran_start + self.tran.len();

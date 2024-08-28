@@ -1325,6 +1325,7 @@ pub(crate) mod tests {
     use test_strategy::proptest;
     use twenty_first::math::other::random_elements;
 
+    use crate::codegen::circuit::ConstraintCircuitBuilder;
     use crate::error::InstructionError;
     use crate::example_programs::*;
     use crate::instruction::Instruction;
@@ -1334,7 +1335,6 @@ pub(crate) mod tests {
     use crate::table::cascade_table::ExtCascadeTable;
     use crate::table::challenges::ChallengeId::StandardInputIndeterminate;
     use crate::table::challenges::ChallengeId::StandardOutputIndeterminate;
-    use crate::table::constraint_circuit::ConstraintCircuitBuilder;
     use crate::table::cross_table_argument::CrossTableArg;
     use crate::table::cross_table_argument::EvalArg;
     use crate::table::cross_table_argument::GrandCrossTableArg;

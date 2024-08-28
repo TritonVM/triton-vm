@@ -1292,6 +1292,10 @@ mod tests {
     use crate::air::tasm_air_constraints::dynamic_air_constraint_evaluation_tasm;
     use crate::air::tasm_air_constraints::static_air_constraint_evaluation_tasm;
     use crate::arithmetic_domain::ArithmeticDomain;
+    use crate::codegen::circuit::ConstraintCircuitBuilder;
+    use crate::codegen::circuit::ConstraintCircuitMonad;
+    use crate::codegen::circuit::DualRowIndicator;
+    use crate::codegen::circuit::SingleRowIndicator;
     use crate::instruction::tests::InstructionBucket;
     use crate::instruction::Instruction;
     use crate::instruction::InstructionBit;
@@ -1304,10 +1308,6 @@ mod tests {
     use crate::triton_program;
 
     use self::cascade_table::ExtCascadeTable;
-    use self::constraint_circuit::ConstraintCircuitBuilder;
-    use self::constraint_circuit::ConstraintCircuitMonad;
-    use self::constraint_circuit::DualRowIndicator;
-    use self::constraint_circuit::SingleRowIndicator;
     use self::hash_table::ExtHashTable;
     use self::jump_stack_table::ExtJumpStackTable;
     use self::lookup_table::ExtLookupTable;

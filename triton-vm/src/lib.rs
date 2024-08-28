@@ -169,6 +169,7 @@ use crate::prelude::*;
 pub mod aet;
 pub mod air;
 pub mod arithmetic_domain;
+mod codegen;
 pub mod config;
 pub mod error;
 pub mod example_programs;
@@ -645,9 +646,6 @@ mod tests {
         implements_auto_traits::<table::cascade_table::ExtCascadeTable>();
         implements_auto_traits::<table::challenges::ChallengeId>();
         implements_auto_traits::<table::challenges::Challenges>();
-        implements_auto_traits::<table::constraint_circuit::BinOp>();
-        implements_auto_traits::<table::constraint_circuit::SingleRowIndicator>();
-        implements_auto_traits::<table::constraint_circuit::DualRowIndicator>();
         implements_auto_traits::<table::cross_table_argument::PermArg>();
         implements_auto_traits::<table::cross_table_argument::EvalArg>();
         implements_auto_traits::<table::cross_table_argument::LookupArg>();

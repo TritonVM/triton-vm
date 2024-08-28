@@ -30,8 +30,6 @@ use crate::table::master_table::PROGRAM_TABLE_START;
 use crate::table::master_table::RAM_TABLE_START;
 use crate::table::master_table::U32_TABLE_START;
 
-// -------- Program Table --------
-
 #[repr(usize)]
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, EnumCount, EnumIter)]
 pub enum ProgramBaseTableColumn {
@@ -96,8 +94,6 @@ pub enum ProgramExtTableColumn {
     /// [prep]: ProgramExtTableColumn::PrepareChunkRunningEvaluation
     SendChunkRunningEvaluation,
 }
-
-// -------- Processor Table --------
 
 #[repr(usize)]
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, EnumCount, EnumIter)]
@@ -170,8 +166,6 @@ pub enum ProcessorExtTableColumn {
     ClockJumpDifferenceLookupServerLogDerivative,
 }
 
-// -------- OpStack Table --------
-
 #[repr(usize)]
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, EnumCount, EnumIter)]
 pub enum OpStackBaseTableColumn {
@@ -189,8 +183,6 @@ pub enum OpStackExtTableColumn {
     /// Argument with the Processor Table.
     ClockJumpDifferenceLookupClientLogDerivative,
 }
-
-// -------- RAM Table --------
 
 #[repr(usize)]
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, EnumCount, EnumIter)]
@@ -224,8 +216,6 @@ pub enum RamExtTableColumn {
     ClockJumpDifferenceLookupClientLogDerivative,
 }
 
-// -------- JumpStack Table --------
-
 #[repr(usize)]
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, EnumCount, EnumIter)]
 pub enum JumpStackBaseTableColumn {
@@ -244,8 +234,6 @@ pub enum JumpStackExtTableColumn {
     /// Argument with the Processor Table.
     ClockJumpDifferenceLookupClientLogDerivative,
 }
-
-// -------- Hash Table --------
 
 #[repr(usize)]
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, EnumCount, EnumIter)]
@@ -383,8 +371,6 @@ pub enum HashExtTableColumn {
     CascadeState3LowestClientLogDerivative,
 }
 
-// -------- Cascade Table --------
-
 #[repr(usize)]
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, EnumCount, EnumIter)]
 pub enum CascadeBaseTableColumn {
@@ -427,8 +413,6 @@ pub enum CascadeExtTableColumn {
     LookupTableClientLogDerivative,
 }
 
-// -------- Lookup Table --------
-
 #[repr(usize)]
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, EnumCount, EnumIter)]
 pub enum LookupBaseTableColumn {
@@ -457,8 +441,6 @@ pub enum LookupExtTableColumn {
     /// In every row, accumulates `LookOut`.
     PublicEvaluationArgument,
 }
-
-// -------- U32 Table --------
 
 #[repr(usize)]
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, EnumCount, EnumIter)]
@@ -505,15 +487,13 @@ pub enum U32ExtTableColumn {
     LookupServerLogDerivative,
 }
 
-// --------------------------------------------------------------------
-
 /// A trait for the columns of the master base table. This trait is implemented for all enums
 /// relating to the base tables. This trait provides two methods:
-/// - one to get the index of the column in the ”local“ base table, _i.e., not the master base
+/// - one to get the index of the column in the “local” base table, _i.e., not the master base
 ///   table, and
 /// - one to get the index of the column in the master base table.
 pub trait MasterBaseTableColumn {
-    /// The index of the column in the ”local“ base table, _i.e., not the master base table.
+    /// The index of the column in the “local” base table, _i.e., not the master base table.
     fn base_table_index(&self) -> usize;
 
     /// The index of the column in the master base table.
@@ -639,8 +619,6 @@ impl MasterBaseTableColumn for DegreeLoweringBaseTableColumn {
         DEGREE_LOWERING_TABLE_START + self.base_table_index()
     }
 }
-
-// --------------------------------------------------------------------
 
 /// A trait for the columns in the master extension table. This trait is implemented for all enums
 /// relating to the extension tables. The trait provides two methods:
@@ -775,8 +753,6 @@ impl MasterExtTableColumn for DegreeLoweringExtTableColumn {
         EXT_DEGREE_LOWERING_TABLE_START + self.ext_table_index()
     }
 }
-
-// --------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {

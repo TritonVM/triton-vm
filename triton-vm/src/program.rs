@@ -13,8 +13,8 @@ use std::ops::Sub;
 use arbitrary::Arbitrary;
 use get_size::GetSize;
 use itertools::Itertools;
-use serde_derive::Deserialize;
-use serde_derive::Serialize;
+use serde::Deserialize;
+use serde::Serialize;
 use twenty_first::prelude::*;
 
 use crate::aet::AlgebraicExecutionTrace;

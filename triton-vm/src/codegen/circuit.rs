@@ -1,10 +1,12 @@
-//! Constraint circuits are a way to represent constraint polynomials in a way that is amenable
-//! to optimizations. The constraint circuit is a directed acyclic graph (DAG) of
-//! [`CircuitExpression`]s, where each `CircuitExpression` is a node in the graph. The edges of the
-//! graph are labeled with [`BinOp`]s. The leafs of the graph are the inputs to the constraint
-//! polynomial, and the (multiple) roots of the graph are the outputs of all the
-//! constraint polynomials, with each root corresponding to a different constraint polynomial.
-//! Because the graph has multiple roots, it is called a “multitree.”
+//! Constraint circuits are a way to represent constraint polynomials in a way
+//! that is amenable to optimizations. The constraint circuit is a directed
+//! acyclic graph (DAG) of [`CircuitExpression`]s, where each
+//! `CircuitExpression` is a node in the graph. The edges of the graph are
+//! labeled with [`BinOp`]s. The leafs of the graph are the inputs to the
+//! constraint polynomial, and the (multiple) roots of the graph are the outputs
+//! of all the constraint polynomials, with each root corresponding to a
+//! different constraint polynomial. Because the graph has multiple roots, it is
+//! called a “multitree.”
 
 use std::cell::RefCell;
 use std::cmp;
@@ -102,7 +104,7 @@ pub trait InputIndicator: Debug + Display + Copy + Hash + Eq + ToTokens {
 
 /// The position of a variable in a constraint polynomial that operates on a single row of the
 /// execution trace.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Arbitrary)]
 pub enum SingleRowIndicator {
     BaseRow(usize),
     ExtRow(usize),
@@ -165,7 +167,7 @@ impl InputIndicator for SingleRowIndicator {
 
 /// The position of a variable in a constraint polynomial that operates on two rows (current and
 /// next) of the execution trace.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Arbitrary)]
 pub enum DualRowIndicator {
     CurrentBaseRow(usize),
     CurrentExtRow(usize),
@@ -301,10 +303,10 @@ impl<II: InputIndicator> Hash for CircuitExpression<II> {
 impl<II: InputIndicator> PartialEq for CircuitExpression<II> {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (Self::BConstant(bfe_self), Self::BConstant(bfe_other)) => bfe_self == bfe_other,
-            (Self::XConstant(xfe_self), Self::XConstant(xfe_other)) => xfe_self == xfe_other,
-            (Self::Input(input_self), Self::Input(input_other)) => input_self == input_other,
-            (Self::Challenge(id_self), Self::Challenge(id_other)) => id_self == id_other,
+            (Self::BConstant(b), Self::BConstant(b_o)) => b == b_o,
+            (Self::XConstant(x), Self::XConstant(x_o)) => x == x_o,
+            (Self::Input(i), Self::Input(i_o)) => i == i_o,
+            (Self::Challenge(c), Self::Challenge(c_o)) => c == c_o,
             (Self::BinaryOperation(op, l, r), Self::BinaryOperation(op_o, l_o, r_o)) => {
                 op == op_o && l == l_o && r == r_o
             }
@@ -429,9 +431,10 @@ impl<II: InputIndicator> ConstraintCircuit<II> {
                 let degree_lhs = lhs.borrow().degree();
                 let degree_rhs = rhs.borrow().degree();
                 let degree_additive = cmp::max(degree_lhs, degree_rhs);
-                let degree_multiplicative = match degree_lhs == -1 || degree_rhs == -1 {
-                    true => -1,
-                    false => degree_lhs + degree_rhs,
+                let degree_multiplicative = if cmp::min(degree_lhs, degree_rhs) <= -1 {
+                    -1
+                } else {
+                    degree_lhs + degree_rhs
                 };
                 match binop {
                     BinOp::Add => degree_additive,
@@ -1119,31 +1122,6 @@ fn random_circuit_leaf<'a, II: InputIndicator + Arbitrary<'a>>(
     Ok(leaf)
 }
 
-impl<'a> Arbitrary<'a> for SingleRowIndicator {
-    fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
-        let col_idx = u.arbitrary()?;
-        let indicator = match u.arbitrary()? {
-            true => Self::BaseRow(col_idx),
-            false => Self::ExtRow(col_idx),
-        };
-        Ok(indicator)
-    }
-}
-
-impl<'a> Arbitrary<'a> for DualRowIndicator {
-    fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
-        let col_idx = u.arbitrary()?;
-        let indicator = match u.int_in_range(0..=3)? {
-            0 => Self::CurrentBaseRow(col_idx),
-            1 => Self::CurrentExtRow(col_idx),
-            2 => Self::NextBaseRow(col_idx),
-            3 => Self::NextExtRow(col_idx),
-            _ => unreachable!(),
-        };
-        Ok(indicator)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use std::collections::hash_map::DefaultHasher;
@@ -1159,20 +1137,39 @@ mod tests {
     use rand::SeedableRng;
     use test_strategy::proptest;
 
+    use crate::prelude::Claim;
     use crate::table::cascade_table::ExtCascadeTable;
     use crate::table::challenges::Challenges;
-    use crate::table::constraint_circuit::SingleRowIndicator::*;
     use crate::table::degree_lowering_table::DegreeLoweringTable;
     use crate::table::hash_table::ExtHashTable;
     use crate::table::jump_stack_table::ExtJumpStackTable;
     use crate::table::lookup_table::ExtLookupTable;
-    use crate::table::master_table::*;
+    use crate::table::master_table::AIR_TARGET_DEGREE;
+    use crate::table::master_table::CASCADE_TABLE_END;
+    use crate::table::master_table::EXT_CASCADE_TABLE_END;
+    use crate::table::master_table::EXT_HASH_TABLE_END;
+    use crate::table::master_table::EXT_JUMP_STACK_TABLE_END;
+    use crate::table::master_table::EXT_LOOKUP_TABLE_END;
+    use crate::table::master_table::EXT_OP_STACK_TABLE_END;
+    use crate::table::master_table::EXT_PROCESSOR_TABLE_END;
+    use crate::table::master_table::EXT_PROGRAM_TABLE_END;
+    use crate::table::master_table::EXT_RAM_TABLE_END;
+    use crate::table::master_table::EXT_U32_TABLE_END;
+    use crate::table::master_table::HASH_TABLE_END;
+    use crate::table::master_table::JUMP_STACK_TABLE_END;
+    use crate::table::master_table::LOOKUP_TABLE_END;
+    use crate::table::master_table::OP_STACK_TABLE_END;
+    use crate::table::master_table::PROCESSOR_TABLE_END;
+    use crate::table::master_table::PROGRAM_TABLE_END;
+    use crate::table::master_table::RAM_TABLE_END;
+    use crate::table::master_table::U32_TABLE_END;
     use crate::table::op_stack_table::ExtOpStackTable;
     use crate::table::processor_table::ExtProcessorTable;
     use crate::table::program_table::ExtProgramTable;
     use crate::table::ram_table::ExtRamTable;
     use crate::table::u32_table::ExtU32Table;
-    use crate::Claim;
+    use crate::table::NUM_BASE_COLUMNS;
+    use crate::table::NUM_EXT_COLUMNS;
 
     use super::*;
 
@@ -1242,7 +1239,10 @@ mod tests {
     fn printing_constraint_circuit_gives_expected_strings() {
         let builder = ConstraintCircuitBuilder::new();
         assert_eq!("1", builder.b_constant(1).to_string());
-        assert_eq!("base_row[5] ", builder.input(BaseRow(5)).to_string());
+        assert_eq!(
+            "base_row[5] ",
+            builder.input(SingleRowIndicator::BaseRow(5)).to_string()
+        );
         assert_eq!("6", builder.challenge(6_usize).to_string());
 
         let xfe_str = builder.x_constant([2, 3, 4]).to_string();
@@ -1312,7 +1312,7 @@ mod tests {
     #[test]
     fn substitution_replaces_a_node_in_a_circuit() {
         let builder = ConstraintCircuitBuilder::new();
-        let x = |i| builder.input(BaseRow(i));
+        let x = |i| builder.input(SingleRowIndicator::BaseRow(i));
         let constant = |c: u32| builder.b_constant(c);
         let challenge = |i: usize| builder.challenge(i);
 
@@ -1544,7 +1544,7 @@ mod tests {
     #[test]
     fn simple_degree_lowering() {
         let builder = ConstraintCircuitBuilder::new();
-        let x = || builder.input(BaseRow(0));
+        let x = || builder.input(SingleRowIndicator::BaseRow(0));
         let x_pow_3 = x() * x() * x();
         let x_pow_5 = x() * x() * x() * x() * x();
         let mut multicircuit = [x_pow_5, x_pow_3];
@@ -1566,8 +1566,8 @@ mod tests {
     #[test]
     fn somewhat_simple_degree_lowering() {
         let builder = ConstraintCircuitBuilder::new();
-        let x = |i| builder.input(BaseRow(i));
-        let y = |i| builder.input(ExtRow(i));
+        let x = |i| builder.input(SingleRowIndicator::BaseRow(i));
+        let y = |i| builder.input(SingleRowIndicator::ExtRow(i));
         let b_con = |i: u64| builder.b_constant(i);
 
         let constraint_0 = x(0) * x(0) * (x(1) - x(2)) - x(0) * x(2) - b_con(42);
@@ -1596,7 +1596,7 @@ mod tests {
     #[test]
     fn less_simple_degree_lowering() {
         let builder = ConstraintCircuitBuilder::new();
-        let x = |i| builder.input(BaseRow(i));
+        let x = |i| builder.input(SingleRowIndicator::BaseRow(i));
 
         let constraint_0 = (x(0) * x(1) * x(2)) * (x(3) * x(4)) * x(5);
         let constraint_1 = (x(6) * x(7)) * (x(3) * x(4)) * x(8);
@@ -2123,7 +2123,7 @@ mod tests {
     fn all_nodes_in_multicircuit_are_identified_correctly() {
         let builder = ConstraintCircuitBuilder::new();
 
-        let x = |i| builder.input(BaseRow(i));
+        let x = |i| builder.input(SingleRowIndicator::BaseRow(i));
         let b_con = |i: u64| builder.b_constant(i);
 
         let sub_tree_0 = x(0) * x(1) * (x(2) - b_con(1)) * x(3) * x(4);
@@ -2219,7 +2219,7 @@ mod tests {
     fn equivalent_nodes_are_detected_when_present() {
         let builder = ConstraintCircuitBuilder::new();
 
-        let x = |i| builder.input(BaseRow(i));
+        let x = |i| builder.input(SingleRowIndicator::BaseRow(i));
         let ch = |i: usize| builder.challenge(i);
 
         let u0 = x(0) + x(1);

@@ -1,5 +1,8 @@
 use std::cmp::Ordering;
 
+use crate::codegen::circuit::DualRowIndicator::*;
+use crate::codegen::circuit::SingleRowIndicator::*;
+use crate::codegen::circuit::*;
 use ndarray::s;
 use ndarray::Array1;
 use ndarray::ArrayView1;
@@ -14,9 +17,6 @@ use crate::aet::AlgebraicExecutionTrace;
 use crate::profiler::profiler;
 use crate::table::challenges::ChallengeId::*;
 use crate::table::challenges::Challenges;
-use crate::table::constraint_circuit::DualRowIndicator::*;
-use crate::table::constraint_circuit::SingleRowIndicator::*;
-use crate::table::constraint_circuit::*;
 use crate::table::cross_table_argument::CrossTableArg;
 use crate::table::cross_table_argument::EvalArg;
 use crate::table::cross_table_argument::LookupArg;

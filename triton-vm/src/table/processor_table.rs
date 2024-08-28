@@ -1,6 +1,9 @@
 use std::cmp::max;
 use std::ops::Mul;
 
+use crate::codegen::circuit::DualRowIndicator::*;
+use crate::codegen::circuit::SingleRowIndicator::*;
+use crate::codegen::circuit::*;
 use itertools::izip;
 use itertools::Itertools;
 use ndarray::parallel::prelude::*;
@@ -28,9 +31,6 @@ use crate::profiler::profiler;
 use crate::table::challenges::ChallengeId;
 use crate::table::challenges::ChallengeId::*;
 use crate::table::challenges::Challenges;
-use crate::table::constraint_circuit::DualRowIndicator::*;
-use crate::table::constraint_circuit::SingleRowIndicator::*;
-use crate::table::constraint_circuit::*;
 use crate::table::cross_table_argument::*;
 use crate::table::ram_table;
 use crate::table::table_column::ProcessorBaseTableColumn::*;

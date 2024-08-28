@@ -1,6 +1,13 @@
 use std::cmp::max;
 use std::ops::Mul;
 
+use crate::codegen::circuit::ConstraintCircuitBuilder;
+use crate::codegen::circuit::ConstraintCircuitMonad;
+use crate::codegen::circuit::DualRowIndicator;
+use crate::codegen::circuit::DualRowIndicator::*;
+use crate::codegen::circuit::InputIndicator;
+use crate::codegen::circuit::SingleRowIndicator;
+use crate::codegen::circuit::SingleRowIndicator::*;
 use arbitrary::Arbitrary;
 use ndarray::parallel::prelude::*;
 use ndarray::s;
@@ -19,13 +26,6 @@ use crate::instruction::Instruction;
 use crate::profiler::profiler;
 use crate::table::challenges::ChallengeId::*;
 use crate::table::challenges::Challenges;
-use crate::table::constraint_circuit::ConstraintCircuitBuilder;
-use crate::table::constraint_circuit::ConstraintCircuitMonad;
-use crate::table::constraint_circuit::DualRowIndicator;
-use crate::table::constraint_circuit::DualRowIndicator::*;
-use crate::table::constraint_circuit::InputIndicator;
-use crate::table::constraint_circuit::SingleRowIndicator;
-use crate::table::constraint_circuit::SingleRowIndicator::*;
 use crate::table::cross_table_argument::CrossTableArg;
 use crate::table::cross_table_argument::LookupArg;
 use crate::table::table_column::MasterBaseTableColumn;
