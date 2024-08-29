@@ -1278,6 +1278,8 @@ mod tests {
     use constraint_builder::DegreeLoweringInfo;
     use constraint_builder::DualRowIndicator;
     use constraint_builder::SingleRowIndicator;
+    use isa::instruction::Instruction;
+    use isa::instruction::InstructionBit;
     use master_table::cross_table_argument::GrandCrossTableArg;
     use ndarray::s;
     use ndarray::Array2;
@@ -1297,9 +1299,6 @@ mod tests {
     use crate::air::tasm_air_constraints::dynamic_air_constraint_evaluation_tasm;
     use crate::air::tasm_air_constraints::static_air_constraint_evaluation_tasm;
     use crate::arithmetic_domain::ArithmeticDomain;
-    use crate::instruction::tests::InstructionBucket;
-    use crate::instruction::Instruction;
-    use crate::instruction::InstructionBit;
     use crate::shared_tests::ProgramAndInput;
     use crate::stark::tests::*;
     use crate::table::degree_lowering_table::DegreeLoweringBaseTableColumn;
@@ -1951,10 +1950,43 @@ mod tests {
     }
 
     fn generate_opcode_pressure_overview() -> SpecSnippet {
+        // todo: de-duplicate this from `triton_isa::instruction::tests`
+        #[derive(Debug, Copy, Clone, EnumCount, EnumIter, VariantNames)]
+        enum InstructionBucket {
+            HasArg,
+            ShrinksStack,
+            IsU32,
+        }
+
+        impl InstructionBucket {
+            pub fn contains(self, instruction: Instruction) -> bool {
+                match self {
+                    InstructionBucket::HasArg => instruction.arg().is_some(),
+                    InstructionBucket::ShrinksStack => instruction.op_stack_size_influence() < 0,
+                    InstructionBucket::IsU32 => instruction.is_u32_instruction(),
+                }
+            }
+
+            pub fn flag(self) -> usize {
+                match self {
+                    InstructionBucket::HasArg => 1,
+                    InstructionBucket::ShrinksStack => 1 << 1,
+                    InstructionBucket::IsU32 => 1 << 2,
+                }
+            }
+        }
+
+        fn flag_set(instruction: Instruction) -> usize {
+            InstructionBucket::iter()
+                .map(|bucket| usize::from(bucket.contains(instruction)) * bucket.flag())
+                .fold(0, |acc, bit_flag| acc | bit_flag)
+        }
+        // todo: end of duplication
+
         const NUM_FLAG_SETS: usize = 1 << InstructionBucket::COUNT;
         let mut num_opcodes_per_flag_set = [0; NUM_FLAG_SETS];
         for instruction in Instruction::iter() {
-            num_opcodes_per_flag_set[instruction.flag_set() as usize] += 1;
+            num_opcodes_per_flag_set[flag_set(instruction)] += 1;
         }
 
         let cell_width = InstructionBucket::VARIANTS

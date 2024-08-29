@@ -5,6 +5,11 @@ use constraint_builder::DualRowIndicator::*;
 use constraint_builder::InputIndicator;
 use constraint_builder::SingleRowIndicator;
 use constraint_builder::SingleRowIndicator::*;
+use isa::instruction::AnInstruction::Hash;
+use isa::instruction::AnInstruction::SpongeAbsorb;
+use isa::instruction::AnInstruction::SpongeInit;
+use isa::instruction::AnInstruction::SpongeSqueeze;
+use isa::instruction::Instruction;
 use itertools::Itertools;
 use ndarray::*;
 use num_traits::Zero;
@@ -21,11 +26,6 @@ use twenty_first::prelude::tip5::STATE_SIZE;
 use twenty_first::prelude::*;
 
 use crate::aet::AlgebraicExecutionTrace;
-use crate::instruction::AnInstruction::Hash;
-use crate::instruction::AnInstruction::SpongeAbsorb;
-use crate::instruction::AnInstruction::SpongeInit;
-use crate::instruction::AnInstruction::SpongeSqueeze;
-use crate::instruction::Instruction;
 use crate::profiler::profiler;
 use crate::table::cascade_table::CascadeTable;
 use crate::table::challenges::ChallengeId::*;
@@ -84,7 +84,7 @@ pub struct ExtHashTable;
 /// The empty program is not valid since any valid [`Program`][program] must execute
 /// instruction `halt`.
 ///
-/// [program]: crate::program::Program
+/// [program]: isa::program::Program
 /// [prog_hash]: HashTableMode::ProgramHashing
 /// [sponge]: HashTableMode::Sponge
 /// [hash]: type@HashTableMode::Hash
@@ -93,7 +93,7 @@ pub struct ExtHashTable;
 pub enum HashTableMode {
     /// The mode in which the [`Program`][program] is hashed. This is part of program attestation.
     ///
-    /// [program]: crate::program::Program
+    /// [program]: isa::program::Program
     ProgramHashing,
 
     /// The mode in which Sponge instructions, _i.e._, `sponge_init`,
@@ -554,7 +554,7 @@ impl ExtHashTable {
                     Self::round_number_deselector(circuit_builder, &round_number, round_idx);
                 round_constant_constraint_circuit = round_constant_constraint_circuit
                     + round_deselector_circuit
-                        * (round_constant_column_circuit.clone() - round_constant);
+                    * (round_constant_column_circuit.clone() - round_constant);
             }
             constraints.push(round_constant_constraint_circuit);
         }
@@ -709,7 +709,7 @@ impl ExtHashTable {
             StackWeight14,
             StackWeight15,
         ]
-        .map(challenge);
+            .map(challenge);
 
         let round_number_is_not_num_rounds =
             Self::round_number_deselector(circuit_builder, &round_number, NUM_ROUNDS);
@@ -820,7 +820,7 @@ impl ExtHashTable {
                 * running_evaluation_hash_input_updates
                 + round_number_next.clone() * running_evaluation_hash_input_remains.clone()
                 + Self::select_mode(circuit_builder, &mode_next, HashTableMode::Hash)
-                    * running_evaluation_hash_input_remains;
+                * running_evaluation_hash_input_remains;
 
         // If (and only if) the row number in the next row is NUM_ROUNDS and the current instruction
         // in the next row corresponds to `hash`, update running evaluation “hash digest.”
@@ -843,7 +843,7 @@ impl ExtHashTable {
                 * running_evaluation_hash_digest_updates
                 + round_number_next_is_num_rounds * running_evaluation_hash_digest_remains.clone()
                 + Self::select_mode(circuit_builder, &mode_next, HashTableMode::Hash)
-                    * running_evaluation_hash_digest_remains;
+                * running_evaluation_hash_digest_remains;
 
         // The running evaluation for “Sponge” updates correctly.
         let compressed_row_next = state_weights[..RATE]
@@ -893,7 +893,7 @@ impl ExtHashTable {
                 * receive_chunk_running_evaluation_absorbs_chunk_of_instructions
                 + round_number_next * receive_chunk_running_evaluation_remains.clone()
                 + Self::select_mode(circuit_builder, &mode_next, HashTableMode::ProgramHashing)
-                    * receive_chunk_running_evaluation_remains;
+                * receive_chunk_running_evaluation_remains;
 
         let constraints = vec![
             round_number_is_0_through_4_or_round_number_next_is_0,
@@ -1013,7 +1013,7 @@ impl ExtHashTable {
             constraints,
             hash_function_round_correctly_performs_update.to_vec(),
         ]
-        .concat()
+            .concat()
     }
 
     fn indicate_column_index_in_base_row(column: HashBaseTableColumn) -> SingleRowIndicator {
@@ -1112,7 +1112,7 @@ impl ExtHashTable {
             State4, State5, State6, State7, State8, State9, State10, State11, State12, State13,
             State14, State15,
         ]
-        .map(current_base_row);
+            .map(current_base_row);
 
         let state_part_after_power_map = {
             let mut exponentiation_accumulator = state_part_before_power_map.clone();
@@ -1156,7 +1156,7 @@ impl ExtHashTable {
             Constant8, Constant9, Constant10, Constant11, Constant12, Constant13, Constant14,
             Constant15,
         ]
-        .map(current_base_row);
+            .map(current_base_row);
 
         let state_after_round_constant_addition = state_after_matrix_multiplication
             .into_iter()
@@ -1857,6 +1857,7 @@ pub(crate) mod tests {
     use crate::table::master_table::TableId;
     use crate::triton_asm;
     use crate::triton_program;
+    use crate::vm::VM;
 
     use super::*;
 
@@ -1885,7 +1886,7 @@ pub(crate) mod tests {
             halt
         };
 
-        let (aet, _) = program.trace_execution([].into(), [].into()).unwrap();
+        let (aet, _) = VM::trace_execution(&program, [].into(), [].into()).unwrap();
         dbg!(aet.height());
         dbg!(aet.padded_height());
         dbg!(aet.height_of_table(TableId::Hash));

@@ -4,6 +4,13 @@ use std::ops::Mul;
 use constraint_builder::DualRowIndicator::*;
 use constraint_builder::SingleRowIndicator::*;
 use constraint_builder::*;
+use isa::instruction::AnInstruction::*;
+use isa::instruction::Instruction;
+use isa::instruction::InstructionBit;
+use isa::instruction::ALL_INSTRUCTIONS;
+use isa::op_stack::NumberOfWords;
+use isa::op_stack::OpStackElement;
+use isa::op_stack::NUM_OP_STACK_REGISTERS;
 use itertools::izip;
 use itertools::Itertools;
 use ndarray::parallel::prelude::*;
@@ -18,15 +25,8 @@ use twenty_first::prelude::x_field_element::EXTENSION_DEGREE;
 use twenty_first::prelude::*;
 
 use crate::aet::AlgebraicExecutionTrace;
-use crate::instruction::AnInstruction::*;
-use crate::instruction::Instruction;
-use crate::instruction::InstructionBit;
-use crate::instruction::ALL_INSTRUCTIONS;
 use crate::ndarray_helper::contiguous_column_slices;
 use crate::ndarray_helper::horizontal_multi_slice_mut;
-use crate::op_stack::NumberOfWords;
-use crate::op_stack::OpStackElement;
-use crate::op_stack::NUM_OP_STACK_REGISTERS;
 use crate::profiler::profiler;
 use crate::table::challenges::ChallengeId;
 use crate::table::challenges::ChallengeId::*;
@@ -3916,6 +3916,12 @@ pub(crate) mod tests {
     use std::collections::HashMap;
 
     use assert2::assert;
+    use isa::instruction::Instruction;
+    use isa::op_stack::NumberOfWords::*;
+    use isa::op_stack::OpStackElement;
+    use isa::program::Program;
+    use isa::triton_asm;
+    use isa::triton_program;
     use ndarray::Array2;
     use proptest::collection::vec;
     use proptest::prop_assert_eq;
@@ -3926,18 +3932,13 @@ pub(crate) mod tests {
     use test_strategy::proptest;
 
     use crate::error::InstructionError::DivisionByZero;
-    use crate::instruction::Instruction;
-    use crate::op_stack::NumberOfWords::*;
-    use crate::op_stack::OpStackElement;
     use crate::prelude::PublicInput;
-    use crate::program::Program;
     use crate::shared_tests::ProgramAndInput;
     use crate::stark::tests::master_tables_for_low_security_level;
     use crate::table::master_table::*;
-    use crate::triton_asm;
-    use crate::triton_program;
     use crate::vm::VMState;
     use crate::vm::NUM_HELPER_VARIABLE_REGISTERS;
+    use crate::vm::VM;
     use crate::NonDeterminism;
 
     use super::*;
@@ -3946,7 +3947,7 @@ pub(crate) mod tests {
     #[test]
     fn print_simple_processor_table_row() {
         let program = triton_program!(push 2 sponge_init assert halt);
-        let err = program.run([].into(), [].into()).unwrap_err();
+        let err = VM::run(&program, [].into(), [].into()).unwrap_err();
         println!("\n{}", err.vm_state);
     }
 

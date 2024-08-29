@@ -1,3 +1,4 @@
+use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::error::Error;
@@ -13,16 +14,16 @@ use nom::error::*;
 use nom::multi::*;
 use nom::Finish;
 use nom::IResult;
+use twenty_first::bfe;
 use twenty_first::prelude::BFieldElement;
 
-use crate::instruction::AnInstruction::*;
+use crate::instruction::AnInstruction;
+use crate::instruction::Instruction;
 use crate::instruction::LabelledInstruction;
+use crate::instruction::TypeHint;
 use crate::instruction::ALL_INSTRUCTION_NAMES;
-use crate::instruction::*;
 use crate::op_stack::NumberOfWords;
-use crate::op_stack::NumberOfWords::*;
 use crate::op_stack::OpStackElement;
-use crate::op_stack::OpStackElement::*;
 
 #[derive(Debug, PartialEq)]
 pub struct ParseError<'a> {
@@ -85,7 +86,7 @@ pub fn to_labelled_instructions(instructions: &[InstructionToken]) -> Vec<Labell
 /// Every `fail()` is wrapped in a `context()`, so by skipping the root `ErrorKind::Fail`s
 /// and `ErrorKind::Eof`s, manually triggered custom errors are only shown in the output
 /// once with the `context()` message.
-pub fn pretty_print_error(s: &str, mut e: VerboseError<&str>) -> String {
+fn pretty_print_error(s: &str, mut e: VerboseError<&str>) -> String {
     let (_root_s, root_error) = e.errors[0].clone();
     if matches!(
         root_error,
@@ -97,7 +98,7 @@ pub fn pretty_print_error(s: &str, mut e: VerboseError<&str>) -> String {
 }
 
 /// Parse a program
-pub fn parse(input: &str) -> Result<Vec<InstructionToken>, ParseError> {
+pub(crate) fn parse(input: &str) -> Result<Vec<InstructionToken>, ParseError> {
     let instructions = match tokenize(input).finish() {
         Ok((_, instructions)) => Ok(instructions),
         Err(errors) => Err(ParseError { input, errors }),
@@ -142,7 +143,7 @@ fn identify_missing_labels<'a>(
 ) -> HashSet<InstructionToken<'a>> {
     let mut missing_labels = HashSet::default();
     for instruction in instructions {
-        if let InstructionToken::Instruction(Call(label), _) = instruction {
+        if let InstructionToken::Instruction(AnInstruction::Call(label), _) = instruction {
             if !seen_labels.contains_key(label.as_str()) {
                 missing_labels.insert(instruction.to_owned());
             }
@@ -225,14 +226,14 @@ fn an_instruction(s: &str) -> ParseResult<AnInstruction<String>> {
     let opstack_manipulation = alt((pop, push, divine, dup, swap));
 
     // Control flow
-    let halt = instruction("halt", Halt);
-    let nop = instruction("nop", Nop);
-    let skiz = instruction("skiz", Skiz);
+    let halt = instruction("halt", AnInstruction::Halt);
+    let nop = instruction("nop", AnInstruction::Nop);
+    let skiz = instruction("skiz", AnInstruction::Skiz);
     let call = call_instruction();
-    let return_ = instruction("return", Return);
-    let recurse = instruction("recurse", Recurse);
-    let recurse_or_return = instruction("recurse_or_return", RecurseOrReturn);
-    let assert = instruction("assert", Assert);
+    let return_ = instruction("return", AnInstruction::Return);
+    let recurse = instruction("recurse", AnInstruction::Recurse);
+    let recurse_or_return = instruction("recurse_or_return", AnInstruction::RecurseOrReturn);
+    let assert = instruction("assert", AnInstruction::Assert);
 
     let control_flow = alt((nop, skiz, call, return_, halt));
 
@@ -243,33 +244,33 @@ fn an_instruction(s: &str) -> ParseResult<AnInstruction<String>> {
     let memory_access = alt((read_mem, write_mem));
 
     // Hashing-related instructions
-    let hash = instruction("hash", Hash);
-    let assert_vector = instruction("assert_vector", AssertVector);
-    let sponge_init = instruction("sponge_init", SpongeInit);
-    let sponge_absorb = instruction("sponge_absorb", SpongeAbsorb);
-    let sponge_absorb_mem = instruction("sponge_absorb_mem", SpongeAbsorbMem);
-    let sponge_squeeze = instruction("sponge_squeeze", SpongeSqueeze);
+    let hash = instruction("hash", AnInstruction::Hash);
+    let assert_vector = instruction("assert_vector", AnInstruction::AssertVector);
+    let sponge_init = instruction("sponge_init", AnInstruction::SpongeInit);
+    let sponge_absorb = instruction("sponge_absorb", AnInstruction::SpongeAbsorb);
+    let sponge_absorb_mem = instruction("sponge_absorb_mem", AnInstruction::SpongeAbsorbMem);
+    let sponge_squeeze = instruction("sponge_squeeze", AnInstruction::SpongeSqueeze);
 
     let hashing_related = alt((hash, sponge_init, sponge_squeeze));
 
     // Arithmetic on stack instructions
-    let add = instruction("add", Add);
+    let add = instruction("add", AnInstruction::Add);
     let addi = addi_instruction();
-    let mul = instruction("mul", Mul);
-    let invert = instruction("invert", Invert);
-    let eq = instruction("eq", Eq);
-    let split = instruction("split", Split);
-    let lt = instruction("lt", Lt);
-    let and = instruction("and", And);
-    let xor = instruction("xor", Xor);
-    let log_2_floor = instruction("log_2_floor", Log2Floor);
-    let pow = instruction("pow", Pow);
-    let div_mod = instruction("div_mod", DivMod);
-    let pop_count = instruction("pop_count", PopCount);
-    let xx_add = instruction("xx_add", XxAdd);
-    let xx_mul = instruction("xx_mul", XxMul);
-    let x_invert = instruction("x_invert", XInvert);
-    let xb_mul = instruction("xb_mul", XbMul);
+    let mul = instruction("mul", AnInstruction::Mul);
+    let invert = instruction("invert", AnInstruction::Invert);
+    let eq = instruction("eq", AnInstruction::Eq);
+    let split = instruction("split", AnInstruction::Split);
+    let lt = instruction("lt", AnInstruction::Lt);
+    let and = instruction("and", AnInstruction::And);
+    let xor = instruction("xor", AnInstruction::Xor);
+    let log_2_floor = instruction("log_2_floor", AnInstruction::Log2Floor);
+    let pow = instruction("pow", AnInstruction::Pow);
+    let div_mod = instruction("div_mod", AnInstruction::DivMod);
+    let pop_count = instruction("pop_count", AnInstruction::PopCount);
+    let xx_add = instruction("xx_add", AnInstruction::XxAdd);
+    let xx_mul = instruction("xx_mul", AnInstruction::XxMul);
+    let x_invert = instruction("x_invert", AnInstruction::XInvert);
+    let xb_mul = instruction("xb_mul", AnInstruction::XbMul);
 
     let base_field_arithmetic_on_stack = alt((mul, invert, eq));
     let bitwise_arithmetic_on_stack =
@@ -288,10 +289,10 @@ fn an_instruction(s: &str) -> ParseResult<AnInstruction<String>> {
     let read_write = alt((read_io, write_io));
 
     // Many-in-One
-    let merkle_step = instruction("merkle_step", MerkleStep);
-    let merkle_step_mem = instruction("merkle_step_mem", MerkleStepMem);
-    let xx_dot_step = instruction("xx_dot_step", XxDotStep);
-    let xb_dot_step = instruction("xb_dot_step", XbDotStep);
+    let merkle_step = instruction("merkle_step", AnInstruction::MerkleStep);
+    let merkle_step_mem = instruction("merkle_step_mem", AnInstruction::MerkleStepMem);
+    let xx_dot_step = instruction("xx_dot_step", AnInstruction::XxDotStep);
+    let xb_dot_step = instruction("xb_dot_step", AnInstruction::XbDotStep);
 
     let many_to_one = alt((xx_dot_step, xb_dot_step));
 
@@ -342,7 +343,7 @@ fn pop_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>> {
     move |s: &str| {
         let (s, _) = token1("pop")(s)?;
         let (s, arg) = number_of_words(s)?;
-        Ok((s, Pop(arg)))
+        Ok((s, AnInstruction::Pop(arg)))
     }
 }
 
@@ -350,7 +351,7 @@ fn push_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>> {
     move |s: &str| {
         let (s, _) = token1("push")(s)?;
         let (s, elem) = field_element(s)?;
-        Ok((s, Push(elem)))
+        Ok((s, AnInstruction::Push(elem)))
     }
 }
 
@@ -358,7 +359,7 @@ fn addi_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>> {
     move |s: &str| {
         let (s, _) = token1("addi")(s)?;
         let (s, elem) = field_element(s)?;
-        Ok((s, AddI(elem)))
+        Ok((s, AnInstruction::AddI(elem)))
     }
 }
 
@@ -366,7 +367,7 @@ fn divine_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>> {
     move |s: &str| {
         let (s, _) = token1("divine")(s)?;
         let (s, arg) = number_of_words(s)?;
-        Ok((s, Divine(arg)))
+        Ok((s, AnInstruction::Divine(arg)))
     }
 }
 
@@ -374,7 +375,7 @@ fn dup_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>> {
     move |s: &str| {
         let (s, _) = token1("dup")(s)?; // require space before argument
         let (s, stack_register) = stack_register(s)?;
-        Ok((s, Dup(stack_register)))
+        Ok((s, AnInstruction::Dup(stack_register)))
     }
 }
 
@@ -382,7 +383,7 @@ fn swap_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>> {
     move |s: &str| {
         let (s, _) = token1("swap")(s)?;
         let (s, stack_register) = stack_register(s)?;
-        Ok((s, Swap(stack_register)))
+        Ok((s, AnInstruction::Swap(stack_register)))
     }
 }
 
@@ -413,7 +414,7 @@ fn call_instruction<'a>() -> impl Fn(&'a str) -> ParseResult<AnInstruction<Strin
             return cut(context("label cannot be named after instruction", fail))(s);
         }
 
-        Ok((s, Call(addr)))
+        Ok((s, AnInstruction::Call(addr)))
     }
 }
 
@@ -421,7 +422,7 @@ fn read_mem_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>>
     move |s: &str| {
         let (s, _) = token1("read_mem")(s)?;
         let (s, arg) = number_of_words(s)?;
-        Ok((s, ReadMem(arg)))
+        Ok((s, AnInstruction::ReadMem(arg)))
     }
 }
 
@@ -429,7 +430,7 @@ fn write_mem_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>
     move |s: &str| {
         let (s, _) = token1("write_mem")(s)?;
         let (s, arg) = number_of_words(s)?;
-        Ok((s, WriteMem(arg)))
+        Ok((s, AnInstruction::WriteMem(arg)))
     }
 }
 
@@ -437,7 +438,7 @@ fn read_io_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>> 
     move |s: &str| {
         let (s, _) = token1("read_io")(s)?;
         let (s, arg) = number_of_words(s)?;
-        Ok((s, ReadIo(arg)))
+        Ok((s, AnInstruction::ReadIo(arg)))
     }
 }
 
@@ -445,7 +446,7 @@ fn write_io_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>>
     move |s: &str| {
         let (s, _) = token1("write_io")(s)?;
         let (s, arg) = number_of_words(s)?;
-        Ok((s, WriteIo(arg)))
+        Ok((s, AnInstruction::WriteIo(arg)))
     }
 }
 
@@ -474,22 +475,22 @@ fn field_element(s_orig: &str) -> ParseResult<BFieldElement> {
 fn stack_register(s: &str) -> ParseResult<OpStackElement> {
     let (s, n) = digit1(s)?;
     let stack_register = match n {
-        "0" => ST0,
-        "1" => ST1,
-        "2" => ST2,
-        "3" => ST3,
-        "4" => ST4,
-        "5" => ST5,
-        "6" => ST6,
-        "7" => ST7,
-        "8" => ST8,
-        "9" => ST9,
-        "10" => ST10,
-        "11" => ST11,
-        "12" => ST12,
-        "13" => ST13,
-        "14" => ST14,
-        "15" => ST15,
+        "0" => OpStackElement::ST0,
+        "1" => OpStackElement::ST1,
+        "2" => OpStackElement::ST2,
+        "3" => OpStackElement::ST3,
+        "4" => OpStackElement::ST4,
+        "5" => OpStackElement::ST5,
+        "6" => OpStackElement::ST6,
+        "7" => OpStackElement::ST7,
+        "8" => OpStackElement::ST8,
+        "9" => OpStackElement::ST9,
+        "10" => OpStackElement::ST10,
+        "11" => OpStackElement::ST11,
+        "12" => OpStackElement::ST12,
+        "13" => OpStackElement::ST13,
+        "14" => OpStackElement::ST14,
+        "15" => OpStackElement::ST15,
         _ => return context("using an out-of-bounds stack register (0-15 exist)", fail)(s),
     };
     let (s, _) = comment_or_whitespace1(s)?;
@@ -500,11 +501,11 @@ fn stack_register(s: &str) -> ParseResult<OpStackElement> {
 fn number_of_words(s: &str) -> ParseResult<NumberOfWords> {
     let (s, n) = digit1(s)?;
     let arg = match n {
-        "1" => N1,
-        "2" => N2,
-        "3" => N3,
-        "4" => N4,
-        "5" => N5,
+        "1" => NumberOfWords::N1,
+        "2" => NumberOfWords::N2,
+        "3" => NumberOfWords::N3,
+        "4" => NumberOfWords::N4,
+        "5" => NumberOfWords::N5,
         _ => return context("using an out-of-bounds argument (1-5 allowed)", fail)(s),
     };
     let (s, _) = comment_or_whitespace1(s)?; // require space after element
@@ -694,6 +695,57 @@ fn parse_str_to_usize(s: &str) -> ParseResult<usize> {
     }
 }
 
+pub(crate) fn build_label_to_address_map(program: &[LabelledInstruction]) -> HashMap<String, u64> {
+    let mut label_map = HashMap::new();
+    let mut instruction_pointer = 0;
+
+    for labelled_instruction in program {
+        if let LabelledInstruction::Instruction(instruction) = labelled_instruction {
+            instruction_pointer += instruction.size() as u64;
+            continue;
+        }
+
+        let LabelledInstruction::Label(label) = labelled_instruction else {
+            continue;
+        };
+        let Entry::Vacant(new_label_map_entry) = label_map.entry(label.clone()) else {
+            panic!("Duplicate label: {label}");
+        };
+        new_label_map_entry.insert(instruction_pointer);
+    }
+
+    label_map
+}
+
+pub(crate) fn turn_labels_into_addresses(
+    labelled_instructions: &[LabelledInstruction],
+    label_to_address: &HashMap<String, u64>,
+) -> Vec<Instruction> {
+    fn turn_label_to_address_for_instruction(
+        labelled_instruction: &LabelledInstruction,
+        label_map: &HashMap<String, u64>,
+    ) -> Option<Instruction> {
+        let LabelledInstruction::Instruction(instruction) = labelled_instruction else {
+            return None;
+        };
+
+        let instruction_with_absolute_address =
+            instruction.map_call_address(|label| address_for_label(label, label_map));
+        Some(instruction_with_absolute_address)
+    }
+
+    fn address_for_label(label: &str, label_map: &HashMap<String, u64>) -> BFieldElement {
+        let maybe_address = label_map.get(label).map(|&a| bfe!(a));
+        maybe_address.unwrap_or_else(|| panic!("Label not found: {label}"))
+    }
+
+    labelled_instructions
+        .iter()
+        .filter_map(|inst| turn_label_to_address_for_instruction(inst, label_to_address))
+        .flat_map(|inst| vec![inst; inst.size()])
+        .collect()
+}
+
 #[cfg(test)]
 pub(crate) mod tests {
     use assert2::assert;
@@ -709,11 +761,6 @@ pub(crate) mod tests {
     use twenty_first::bfe;
     use twenty_first::prelude::Digest;
 
-    use LabelledInstruction::Breakpoint;
-    use LabelledInstruction::Instruction;
-    use LabelledInstruction::Label;
-
-    use crate::program::Program;
     use crate::triton_asm;
     use crate::triton_instr;
     use crate::triton_program;
@@ -722,7 +769,7 @@ pub(crate) mod tests {
 
     struct TestCase<'a> {
         input: &'a str,
-        expected: Program,
+        expected: Vec<Instruction>,
         message: &'static str,
     }
 
@@ -733,104 +780,121 @@ pub(crate) mod tests {
         message: &'static str,
     }
 
-    fn parse_program_prop(test_case: TestCase) {
-        let message = test_case.message;
-        let parse_result = parse(test_case.input).map_err(|err| format!("{message}:\n{err}"));
-        let_assert!(Ok(actual) = parse_result);
+    impl<'a> TestCase<'a> {
+        fn run(&self) {
+            let message = self.message;
+            let parse_result = parse(self.input).map_err(|err| format!("{message}:\n{err}"));
+            let_assert!(Ok(actual) = parse_result);
 
-        let actual_program = Program::new(&to_labelled_instructions(&actual));
-        assert!(test_case.expected == actual_program, "{message}");
+            let labelled_instructions = to_labelled_instructions(&actual);
+            let label_to_address = build_label_to_address_map(&labelled_instructions);
+            let instructions =
+                turn_labels_into_addresses(&labelled_instructions, &label_to_address);
+            assert!(self.expected == instructions, "{message}");
+        }
     }
 
-    fn parse_program_neg_prop(test_case: NegativeTestCase) {
-        let result = parse(test_case.input);
-        if result.is_ok() {
-            eprintln!("parser input: {}", test_case.input);
-            eprintln!("parser output: {:?}", result.unwrap());
-            panic!("parser should fail, but didn't: {}", test_case.message);
-        }
+    impl<'a> NegativeTestCase<'a> {
+        fn run(self) {
+            let result = parse(self.input);
+            if result.is_ok() {
+                eprintln!("parser input: {}", self.input);
+                eprintln!("parser output: {:?}", result.unwrap());
+                panic!("parser should fail, but didn't: {}", self.message);
+            }
 
-        let error = result.unwrap_err();
-        let actual_error_message = format!("{error}");
-        let actual_error_count = actual_error_message
-            .match_indices(test_case.expected_error)
-            .count();
-        if test_case.expected_error_count != actual_error_count {
-            eprintln!("Actual error message:");
-            eprintln!("{actual_error_message}");
-            assert_eq!(
-                test_case.expected_error_count, actual_error_count,
-                "parser should report '{}' {} times: {}",
-                test_case.expected_error, test_case.expected_error_count, test_case.message
-            )
+            let error = result.unwrap_err();
+            let actual_error_message = format!("{error}");
+            let actual_error_count = actual_error_message
+                .match_indices(self.expected_error)
+                .count();
+            if self.expected_error_count != actual_error_count {
+                eprintln!("Actual error message:");
+                eprintln!("{actual_error_message}");
+                assert_eq!(
+                    self.expected_error_count, actual_error_count,
+                    "parser should report '{}' {} times: {}",
+                    self.expected_error, self.expected_error_count, self.message
+                )
+            }
         }
     }
 
     #[test]
     fn parse_program_empty() {
-        parse_program_prop(TestCase {
+        TestCase {
             input: "",
-            expected: Program::new(&[]),
+            expected: vec![],
             message: "empty string should parse as empty program",
-        });
+        }
+        .run();
 
-        parse_program_prop(TestCase {
+        TestCase {
             input: "   ",
-            expected: Program::new(&[]),
+            expected: vec![],
             message: "spaces should parse as empty program",
-        });
+        }
+        .run();
 
-        parse_program_prop(TestCase {
+        TestCase {
             input: "\n",
-            expected: Program::new(&[]),
+            expected: vec![],
             message: "linebreaks should parse as empty program (1)",
-        });
+        }
+        .run();
 
-        parse_program_prop(TestCase {
+        TestCase {
             input: "   \n ",
-            expected: Program::new(&[]),
+            expected: vec![],
             message: "linebreaks should parse as empty program (2)",
-        });
+        }
+        .run();
 
-        parse_program_prop(TestCase {
+        TestCase {
             input: "   \n \n",
-            expected: Program::new(&[]),
+            expected: vec![],
             message: "linebreaks should parse as empty program (3)",
-        });
+        }
+        .run();
 
-        parse_program_prop(TestCase {
+        TestCase {
             input: "// empty program",
-            expected: Program::new(&[]),
+            expected: vec![],
             message: "single comment should parse as empty program",
-        });
+        }
+        .run();
 
-        parse_program_prop(TestCase {
+        TestCase {
             input: "// empty program\n",
-            expected: Program::new(&[]),
+            expected: vec![],
             message: "single comment with linebreak should parse as empty program",
-        });
+        }
+        .run();
 
-        parse_program_prop(TestCase {
+        TestCase {
             input: "// multi-line\n// comment",
-            expected: Program::new(&[]),
+            expected: vec![],
             message: "multiple comments should parse as empty program",
-        });
+        }
+        .run();
 
-        parse_program_prop(TestCase {
+        TestCase {
             input: "// multi-line\n// comment\n ",
-            expected: Program::new(&[]),
+            expected: vec![],
             message: "multiple comments with trailing whitespace should parse as empty program",
-        });
+        }
+        .run();
     }
 
     #[proptest]
     fn arbitrary_whitespace_and_comment_sequence_is_empty_program(whitespace: Vec<Whitespace>) {
         let whitespace = whitespace.into_iter().join("");
-        parse_program_prop(TestCase {
+        TestCase {
             input: &whitespace,
-            expected: Program::new(&[]),
+            expected: vec![],
             message: "arbitrary whitespace should parse as empty program",
-        });
+        }
+        .run();
     }
 
     #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, EnumCount, Arbitrary)]
@@ -858,367 +922,278 @@ pub(crate) mod tests {
 
     #[test]
     fn parse_program_whitespace() {
-        parse_program_neg_prop(NegativeTestCase {
+        NegativeTestCase {
             input: "poppop",
             expected_error: "n/a",
             expected_error_count: 0,
             message: "whitespace required between instructions (pop)",
-        });
+        }
+        .run();
 
-        parse_program_neg_prop(NegativeTestCase {
+        NegativeTestCase {
             input: "dup 0dup 0",
             expected_error: "n/a",
             expected_error_count: 0,
             message: "whitespace required between instructions (dup 0)",
-        });
+        }
+        .run();
 
-        parse_program_neg_prop(NegativeTestCase {
+        NegativeTestCase {
             input: "swap 10swap 10",
             expected_error: "n/a",
             expected_error_count: 0,
             message: "whitespace required between instructions (swap 10)",
-        });
+        }
+        .run();
 
-        parse_program_neg_prop(NegativeTestCase {
+        NegativeTestCase {
             input: "push10",
             expected_error: "n/a",
             expected_error_count: 0,
             message: "push requires whitespace before its constant",
-        });
+        }
+        .run();
 
-        parse_program_neg_prop(NegativeTestCase {
+        NegativeTestCase {
             input: "push 10pop",
             expected_error: "n/a",
             expected_error_count: 0,
             message: "push requires whitespace after its constant",
-        });
+        }
+        .run();
 
-        parse_program_neg_prop(NegativeTestCase {
+        NegativeTestCase {
             input: "hello: callhello",
             expected_error: "n/a",
             expected_error_count: 0,
             message: "call requires whitespace before its label",
-        });
+        }
+        .run();
 
-        parse_program_neg_prop(NegativeTestCase {
+        NegativeTestCase {
             input: "hello: popcall hello",
             expected_error: "n/a",
             expected_error_count: 0,
             message: "required space between pop and call",
-        });
+        }
+        .run();
     }
 
     #[test]
     fn parse_program_label() {
-        parse_program_prop(TestCase {
+        TestCase {
             input: "foo: call foo",
-            expected: Program::new(&[
-                Label("foo".to_string()),
-                Instruction(Call("foo".to_string())),
-            ]),
+            expected: vec![Instruction::Call(bfe!(0))],
             message: "parse labels and calls to labels",
-        });
+        }
+        .run();
 
-        parse_program_prop(TestCase {
+        TestCase {
             input: "foo:call foo",
-            expected: Program::new(&[
-                Label("foo".to_string()),
-                Instruction(Call("foo".to_string())),
-            ]),
+            expected: vec![Instruction::Call(bfe!(0))],
             message: "whitespace is not required after 'label:'",
-        });
+        }
+        .run();
 
         // FIXME: Increase coverage of negative tests for duplicate labels.
-        parse_program_neg_prop(NegativeTestCase {
+        NegativeTestCase {
             input: "foo: pop 1 foo: pop 1 call foo",
             expected_error: "duplicate label",
             expected_error_count: 2,
             message: "labels cannot occur twice",
-        });
+        }
+        .run();
 
         // FIXME: Increase coverage of negative tests for missing labels.
-        parse_program_neg_prop(NegativeTestCase {
+        NegativeTestCase {
             input: "foo: pop 1 call herp call derp",
             expected_error: "missing label",
             expected_error_count: 2,
             message: "non-existent labels cannot be called",
-        });
+        }
+        .run();
 
         // FIXME: Increase coverage of negative tests for label/keyword overlap.
-        parse_program_neg_prop(NegativeTestCase {
+        NegativeTestCase {
             input: "pop: call pop",
             expected_error: "label cannot be named after instruction",
             expected_error_count: 1,
             message: "label names may not overlap with instruction names",
-        });
+        }
+        .run();
 
-        parse_program_prop(TestCase {
+        TestCase {
             input: "pops: call pops",
-            expected: Program::new(&[
-                Label("pops".to_string()),
-                Instruction(Call("pops".to_string())),
-            ]),
+            expected: vec![Instruction::Call(bfe!(0))],
             message: "labels that share a common prefix with instruction are labels",
-        });
+        }
+        .run();
 
-        parse_program_prop(TestCase {
+        TestCase {
             input: "_call: call _call",
-            expected: Program::new(&[
-                Label("_call".to_string()),
-                Instruction(Call("_call".to_string())),
-            ]),
+            expected: vec![Instruction::Call(bfe!(0))],
             message: "labels that share a common suffix with instruction are labels",
-        });
+        }
+        .run();
     }
 
     #[test]
     fn parse_program_nonexistent_instructions() {
-        parse_program_neg_prop(NegativeTestCase {
+        NegativeTestCase {
             input: "pop 0",
             expected_error: "expecting label, instruction or eof",
             expected_error_count: 1,
             message: "instruction `pop` cannot take argument `0`",
-        });
+        }
+        .run();
 
-        parse_program_neg_prop(NegativeTestCase {
+        NegativeTestCase {
             input: "swap 16",
             expected_error: "expecting label, instruction or eof",
             expected_error_count: 1,
             message: "there is no swap 16 instruction",
-        });
+        }
+        .run();
 
-        parse_program_neg_prop(NegativeTestCase {
+        NegativeTestCase {
             input: "dup 16",
             expected_error: "expecting label, instruction or eof",
             expected_error_count: 1,
             message: "there is no dup 16 instruction",
-        });
+        }
+        .run();
     }
 
     #[test]
     fn parse_program_bracket_syntax() {
-        parse_program_prop(TestCase {
+        TestCase {
             input: "foo: [foo]",
-            expected: Program::new(&[
-                Label("foo".to_string()),
-                Instruction(Call("foo".to_string())),
-            ]),
+            expected: vec![Instruction::Call(bfe!(0))],
             message: "Handle brackets as call syntax sugar",
-        });
+        }
+        .run();
 
-        parse_program_neg_prop(NegativeTestCase {
+        NegativeTestCase {
             input: "foo: [bar]",
             expected_error: "missing label",
             expected_error_count: 1,
             message: "Handle missing labels with bracket syntax",
-        })
-    }
-
-    #[proptest]
-    fn parse_program(#[strategy(arb())] program: Program) {
-        parse(&program.to_string()).unwrap();
+        }
+        .run();
     }
 
     #[test]
     fn parse_program_label_must_start_with_alphabetic_character_or_underscore() {
-        parse_program_neg_prop(NegativeTestCase {
+        NegativeTestCase {
             input: "1foo: call 1foo",
             expected_error: "expecting label, instruction or eof",
             expected_error_count: 1,
             message: "labels cannot start with a digit",
-        });
+        }
+        .run();
 
-        parse_program_neg_prop(NegativeTestCase {
+        NegativeTestCase {
             input: "-foo: call -foo",
             expected_error: "expecting label, instruction or eof",
             expected_error_count: 1,
             message: "labels cannot start with a dash",
-        });
+        }
+        .run();
 
-        parse_program_prop(TestCase {
+        TestCase {
             input: "_foo: call _foo",
-            expected: Program::new(&[
-                Label("_foo".to_string()),
-                Instruction(Call("_foo".to_string())),
-            ]),
+            expected: vec![Instruction::Call(bfe!(0))],
             message: "labels can start with an underscore",
-        });
-    }
-
-    #[test]
-    fn parse_simple_type_hint() {
-        let expected_type_hint = TypeHint {
-            starting_index: 0,
-            length: 1,
-            type_name: Some("Type".to_string()),
-            variable_name: "foo".to_string(),
-        };
-
-        parse_program_prop(TestCase {
-            input: "hint foo: Type = stack[0]",
-            expected: Program::new(&[LabelledInstruction::TypeHint(expected_type_hint)]),
-            message: "parse type hint",
-        });
-    }
-
-    #[test]
-    fn parse_type_hint_with_range() {
-        let expected_type_hint = TypeHint {
-            starting_index: 0,
-            length: 5,
-            type_name: Some("Digest".to_string()),
-            variable_name: "foo".to_string(),
-        };
-
-        parse_program_prop(TestCase {
-            input: "hint foo: Digest = stack[0..5]",
-            expected: Program::new(&[LabelledInstruction::TypeHint(expected_type_hint)]),
-            message: "parse type hint with range",
-        });
-    }
-
-    #[test]
-    fn parse_type_hint_with_range_and_offset() {
-        let expected_type_hint = TypeHint {
-            starting_index: 7,
-            length: 3,
-            type_name: Some("XFieldElement".to_string()),
-            variable_name: "bar".to_string(),
-        };
-
-        parse_program_prop(TestCase {
-            input: "hint bar: XFieldElement = stack[7..10]",
-            expected: Program::new(&[LabelledInstruction::TypeHint(expected_type_hint)]),
-            message: "parse type hint with range and offset",
-        });
-    }
-
-    #[test]
-    fn parse_type_hint_with_range_and_offset_and_weird_whitespace() {
-        let expected_type_hint = TypeHint {
-            starting_index: 2,
-            length: 12,
-            type_name: Some("BigType".to_string()),
-            variable_name: "bar".to_string(),
-        };
-
-        parse_program_prop(TestCase {
-            input: " hint \t \t foo  :BigType=stack[ 2\t.. 14 ]\t \n",
-            expected: Program::new(&[LabelledInstruction::TypeHint(expected_type_hint)]),
-            message: "parse type hint with range and offset and weird whitespace",
-        });
-    }
-
-    #[test]
-    fn parse_type_hint_with_no_type_only_variable_name() {
-        let expected_type_hint = TypeHint {
-            starting_index: 0,
-            length: 1,
-            type_name: None,
-            variable_name: "foo".to_string(),
-        };
-
-        parse_program_prop(TestCase {
-            input: "hint foo = stack[0]",
-            expected: Program::new(&[LabelledInstruction::TypeHint(expected_type_hint)]),
-            message: "parse type hint with no type, only variable name",
-        });
-    }
-
-    #[test]
-    fn parse_type_hint_with_no_type_only_variable_name_with_range() {
-        let expected_type_hint = TypeHint {
-            starting_index: 2,
-            length: 5,
-            type_name: None,
-            variable_name: "foo".to_string(),
-        };
-
-        parse_program_prop(TestCase {
-            input: "hint foo = stack[2..7]",
-            expected: Program::new(&[LabelledInstruction::TypeHint(expected_type_hint)]),
-            message: "parse type hint with no type, only variable name, with range",
-        });
+        }
+        .run();
     }
 
     #[test]
     fn parse_type_hint_with_zero_length_range() {
-        parse_program_neg_prop(NegativeTestCase {
+        NegativeTestCase {
             input: "hint foo: Type = stack[0..0]",
             expected_error: "range end must be greater than range start",
             expected_error_count: 1,
             message: "parse type hint with zero-length range",
-        });
+        }
+        .run();
     }
 
     #[test]
     fn parse_type_hint_with_range_and_offset_and_missing_closing_bracket() {
-        parse_program_neg_prop(NegativeTestCase {
+        NegativeTestCase {
             input: "hint foo: Type = stack[2..5",
             expected_error: "expecting label, instruction or eof",
             expected_error_count: 1,
             message: "parse type hint with range and offset and missing closing bracket",
-        });
+        }
+        .run();
     }
 
     #[test]
     fn parse_type_hint_with_range_and_offset_and_missing_opening_bracket() {
-        parse_program_neg_prop(NegativeTestCase {
+        NegativeTestCase {
             input: "hint foo: Type = stack2..5]",
             expected_error: "expecting label, instruction or eof",
             expected_error_count: 1,
             message: "parse type hint with range and offset and missing opening bracket",
-        });
+        }
+        .run();
     }
 
     #[test]
     fn parse_type_hint_with_range_and_offset_and_missing_equals_sign() {
-        parse_program_neg_prop(NegativeTestCase {
+        NegativeTestCase {
             input: "hint foo: Type stack[2..5];",
             expected_error: "expecting label, instruction or eof",
             expected_error_count: 1,
             message: "parse type hint with range and offset and missing equals sign",
-        });
+        }
+        .run();
     }
 
     #[test]
     fn parse_type_hint_with_range_and_offset_and_missing_type_name() {
-        parse_program_neg_prop(NegativeTestCase {
+        NegativeTestCase {
             input: "hint foo: = stack[2..5]",
             expected_error: "expecting label, instruction or eof",
             expected_error_count: 1,
             message: "parse type hint with range and offset and missing type name",
-        });
+        }
+        .run();
     }
 
     #[test]
     fn parse_type_hint_with_range_and_offset_and_missing_variable_name() {
-        parse_program_neg_prop(NegativeTestCase {
+        NegativeTestCase {
             input: "hint : Type = stack[2..5]",
             expected_error: "expecting label, instruction or eof",
             expected_error_count: 1,
             message: "parse type hint with range and offset and missing variable name",
-        });
+        }
+        .run();
     }
 
     #[test]
     fn parse_type_hint_with_range_and_offset_and_missing_colon() {
-        parse_program_neg_prop(NegativeTestCase {
+        NegativeTestCase {
             input: "hint foo Type = stack[2..5]",
             expected_error: "expecting label, instruction or eof",
             expected_error_count: 1,
             message: "parse type hint with range and offset and missing colon",
-        });
+        }
+        .run();
     }
 
     #[test]
     fn parse_type_hint_with_range_and_offset_and_missing_hint() {
-        parse_program_neg_prop(NegativeTestCase {
+        NegativeTestCase {
             input: "foo: Type = stack[2..5];",
             expected_error: "expecting label, instruction or eof",
             expected_error_count: 1,
             message: "parse type hint with range and offset and missing hint",
-        });
+        }
+        .run();
     }
 
     #[proptest]
@@ -1236,30 +1211,57 @@ pub(crate) mod tests {
     #[test]
     fn triton_asm_macro() {
         let instructions = triton_asm!(write_io 3 push 17 call huh lt swap 3);
-        assert_eq!(Instruction(WriteIo(N3)), instructions[0]);
-        assert_eq!(Instruction(Push(bfe!(17))), instructions[1]);
-        assert_eq!(Instruction(Call("huh".to_string())), instructions[2]);
-        assert_eq!(Instruction(Lt), instructions[3]);
-        assert_eq!(Instruction(Swap(ST3)), instructions[4]);
+        assert_eq!(
+            LabelledInstruction::Instruction(AnInstruction::WriteIo(NumberOfWords::N3)),
+            instructions[0]
+        );
+        assert_eq!(
+            LabelledInstruction::Instruction(AnInstruction::Push(bfe!(17))),
+            instructions[1]
+        );
+        assert_eq!(
+            LabelledInstruction::Instruction(AnInstruction::Call("huh".to_string())),
+            instructions[2]
+        );
+        assert_eq!(
+            LabelledInstruction::Instruction(AnInstruction::Lt),
+            instructions[3]
+        );
+        assert_eq!(
+            LabelledInstruction::Instruction(AnInstruction::Swap(OpStackElement::ST3)),
+            instructions[4]
+        );
     }
 
     #[test]
     fn triton_asm_macro_with_a_single_return() {
         let instructions = triton_asm!(return);
-        assert_eq!(Instruction(Return), instructions[0]);
+        assert_eq!(
+            LabelledInstruction::Instruction(AnInstruction::Return),
+            instructions[0]
+        );
     }
 
     #[test]
     fn triton_asm_macro_with_a_single_assert() {
         let instructions = triton_asm!(assert);
-        assert_eq!(Instruction(Assert), instructions[0]);
+        assert_eq!(
+            LabelledInstruction::Instruction(AnInstruction::Assert),
+            instructions[0]
+        );
     }
 
     #[test]
     fn triton_asm_macro_with_only_assert_and_return() {
         let instructions = triton_asm!(assert return);
-        assert_eq!(Instruction(Assert), instructions[0]);
-        assert_eq!(Instruction(Return), instructions[1]);
+        assert_eq!(
+            LabelledInstruction::Instruction(AnInstruction::Assert),
+            instructions[0]
+        );
+        assert_eq!(
+            LabelledInstruction::Instruction(AnInstruction::Return),
+            instructions[1]
+        );
     }
 
     #[test]
@@ -1295,18 +1297,26 @@ pub(crate) mod tests {
     #[test]
     fn triton_program_macro_interpolates_various_types() {
         let push_arg = thread_rng().gen_range(0_u64..BFieldElement::P);
-        let instruction_push = Instruction(Push(push_arg.into()));
+        let instruction_push =
+            LabelledInstruction::Instruction(AnInstruction::Push(push_arg.into()));
         let swap_argument = "1";
-        triton_program!({instruction_push} push {push_arg} swap {swap_argument} eq assert halt)
-            .run([].into(), [].into())
-            .unwrap();
+        triton_program!({instruction_push} push {push_arg} swap {swap_argument} eq assert halt);
     }
 
     #[test]
     fn triton_instruction_macro_parses_simple_instructions() {
-        assert_eq!(Instruction(Halt), triton_instr!(halt));
-        assert_eq!(Instruction(Add), triton_instr!(add));
-        assert_eq!(Instruction(Pop(N3)), triton_instr!(pop 3));
+        assert_eq!(
+            LabelledInstruction::Instruction(AnInstruction::Halt),
+            triton_instr!(halt)
+        );
+        assert_eq!(
+            LabelledInstruction::Instruction(AnInstruction::Add),
+            triton_instr!(add)
+        );
+        assert_eq!(
+            LabelledInstruction::Instruction(AnInstruction::Pop(NumberOfWords::N3)),
+            triton_instr!(pop 3)
+        );
     }
 
     #[test]
@@ -1317,11 +1327,20 @@ pub(crate) mod tests {
 
     #[test]
     fn triton_instruction_macro_parses_instructions_with_argument() {
-        assert_eq!(Instruction(Push(bfe!(7))), triton_instr!(push 7));
-        assert_eq!(Instruction(Dup(ST3)), triton_instr!(dup 3));
-        assert_eq!(Instruction(Swap(ST5)), triton_instr!(swap 5));
         assert_eq!(
-            Instruction(Call("my_label".to_string())),
+            LabelledInstruction::Instruction(AnInstruction::Push(bfe!(7))),
+            triton_instr!(push 7)
+        );
+        assert_eq!(
+            LabelledInstruction::Instruction(AnInstruction::Dup(OpStackElement::ST3)),
+            triton_instr!(dup 3)
+        );
+        assert_eq!(
+            LabelledInstruction::Instruction(AnInstruction::Swap(OpStackElement::ST5)),
+            triton_instr!(swap 5)
+        );
+        assert_eq!(
+            LabelledInstruction::Instruction(AnInstruction::Call("my_label".to_string())),
             triton_instr!(call my_label)
         );
     }
@@ -1329,22 +1348,28 @@ pub(crate) mod tests {
     #[test]
     fn triton_asm_macro_can_repeat_instructions() {
         let instructions = triton_asm![push 42; 3];
-        let expected_instructions = vec![Instruction(Push(bfe!(42))); 3];
+        let expected_instructions =
+            vec![LabelledInstruction::Instruction(AnInstruction::Push(bfe!(42))); 3];
         assert_eq!(expected_instructions, instructions);
 
         let instructions = triton_asm![read_io 2; 15];
-        let expected_instructions = vec![Instruction(ReadIo(N2)); 15];
+        let expected_instructions =
+            vec![LabelledInstruction::Instruction(AnInstruction::ReadIo(NumberOfWords::N2)); 15];
         assert_eq!(expected_instructions, instructions);
 
         let instructions = triton_asm![divine 3; Digest::LEN];
-        let expected_instructions = vec![Instruction(Divine(N3)); Digest::LEN];
+        let expected_instructions =
+            vec![
+                LabelledInstruction::Instruction(AnInstruction::Divine(NumberOfWords::N3));
+                Digest::LEN
+            ];
         assert_eq!(expected_instructions, instructions);
     }
 
     #[test]
     fn break_gets_turned_into_labelled_instruction() {
         let instructions = triton_asm![break];
-        let expected_instructions = vec![Breakpoint];
+        let expected_instructions = vec![LabelledInstruction::Breakpoint];
         assert_eq!(expected_instructions, instructions);
     }
 
@@ -1352,38 +1377,5 @@ pub(crate) mod tests {
     fn break_does_not_propagate_to_full_program() {
         let program = triton_program! { break halt break };
         assert_eq!(1, program.len_bwords());
-    }
-
-    #[test]
-    fn printing_program_includes_debug_information() {
-        let source_code = "\
-            call foo\n\
-            break\n\
-            call bar\n\
-            halt\n\
-            foo:\n\
-            break\n\
-            call baz\n\
-            push 1\n\
-            nop\n\
-            return\n\
-            baz:\n\
-            hash\n\
-            hint my_digest: Digest = stack[0..5]\n\
-            hint random_stuff = stack[17]\n\
-            return\n\
-            nop\n\
-            pop 1\n\
-            bar:\n\
-            divine 1\n\
-            hint got_insight: Magic = stack[0]\n\
-            skiz\n\
-            split\n\
-            break\n\
-            return\n\
-        ";
-        let program = Program::from_code(source_code).unwrap();
-        let printed_program = format!("{program}");
-        assert_eq!(source_code, &printed_program);
     }
 }

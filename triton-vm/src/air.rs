@@ -4,6 +4,7 @@ pub mod tasm_air_constraints;
 
 #[cfg(test)]
 mod test {
+    use isa::instruction::AnInstruction;
     use itertools::Itertools;
     use ndarray::Array1;
     use proptest::collection::vec;
@@ -16,7 +17,6 @@ mod test {
 
     use crate::air::tasm_air_constraints::dynamic_air_constraint_evaluation_tasm;
     use crate::air::tasm_air_constraints::static_air_constraint_evaluation_tasm;
-    use crate::instruction::AnInstruction;
     use crate::prelude::*;
     use crate::table::challenges::Challenges;
     use crate::table::extension_table::Evaluable;

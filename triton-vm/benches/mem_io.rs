@@ -66,10 +66,12 @@ impl MemIOBench {
     }
 
     fn performance_profile(&self) -> VMPerformanceProfile {
-        let (aet, output) = self
-            .program
-            .trace_execution(self.public_input.clone(), self.secret_input.clone())
-            .unwrap();
+        let (aet, output) = VM::trace_execution(
+            &self.program,
+            self.public_input.clone(),
+            self.secret_input.clone(),
+        )
+        .unwrap();
         let claim = Claim::about_program(&self.program).with_output(output);
 
         let stark = Stark::default();

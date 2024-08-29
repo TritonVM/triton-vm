@@ -20,9 +20,11 @@ readme.workspace = true
 [dependencies]
 arbitrary.workspace = true
 colored.workspace = true
+constraint-builder = { path = "../triton-constraint-builder", package = "triton-constraint-builder" }
 criterion.workspace = true
 get-size.workspace = true
 indexmap.workspace = true
+isa = { path = "../triton-isa", package = "triton-isa" }
 itertools.workspace = true
 lazy_static.workspace = true
 ndarray.workspace = true
@@ -40,7 +42,6 @@ syn.workspace = true
 thiserror.workspace = true
 twenty-first.workspace = true
 unicode-width.workspace = true
-constraint-builder = { path = "../constraint-builder" }
 
 [dev-dependencies]
 assert2.workspace = true

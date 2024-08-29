@@ -4,6 +4,10 @@ use std::collections::HashMap;
 use std::ops::AddAssign;
 
 use arbitrary::Arbitrary;
+use isa::error::InstructionError;
+use isa::error::InstructionError::InstructionPointerOverflow;
+use isa::instruction::Instruction;
+use isa::program::Program;
 use itertools::Itertools;
 use ndarray::s;
 use ndarray::Array2;
@@ -11,10 +15,6 @@ use ndarray::Axis;
 use strum::IntoEnumIterator;
 use twenty_first::prelude::*;
 
-use crate::error::InstructionError;
-use crate::error::InstructionError::InstructionPointerOverflow;
-use crate::instruction::Instruction;
-use crate::program::Program;
 use crate::table::hash_table::HashTable;
 use crate::table::hash_table::PermutationTrace;
 use crate::table::master_table::TableId;
@@ -357,10 +357,11 @@ impl Ord for TableHeight {
 #[cfg(test)]
 mod tests {
     use assert2::assert;
-
-    use crate::prelude::*;
+    use isa::triton_asm;
+    use isa::triton_program;
 
     use super::*;
+    use crate::prelude::*;
 
     #[test]
     fn pad_program_requiring_no_padding_zeros() {
@@ -375,9 +376,9 @@ mod tests {
     #[test]
     fn height_of_any_table_can_be_computed() {
         let program = triton_program!(halt);
-        let (aet, _) = program
-            .trace_execution(PublicInput::default(), NonDeterminism::default())
-            .unwrap();
+        let (aet, _) =
+            VM::trace_execution(&program, PublicInput::default(), NonDeterminism::default())
+                .unwrap();
 
         let _ = aet.height();
         for table in TableId::iter() {

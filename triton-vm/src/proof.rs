@@ -1,12 +1,12 @@
 use arbitrary::Arbitrary;
 use get_size::GetSize;
+use isa::program::Program;
 use itertools::Itertools;
 use serde::Deserialize;
 use serde::Serialize;
 use twenty_first::prelude::*;
 
 use crate::error::ProofStreamError;
-use crate::program::Program;
 use crate::proof_stream::ProofStream;
 
 /// Contains the necessary cryptographic information to verify a computation.

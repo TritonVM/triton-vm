@@ -1,5 +1,5 @@
 [package]
-name = "constraint-builder"
+name = "triton-constraint-builder"
 description = """
 AIR constraints build helper for Triton VM.
 """
@@ -27,3 +27,6 @@ proptest.workspace = true
 proptest-arbitrary-interop.workspace = true
 rand.workspace = true
 test-strategy.workspace = true
+
+[lints]
+workspace = true

@@ -1,6 +1,7 @@
 use std::fmt::Display;
 use std::fmt::Formatter;
 use std::fmt::Result as FmtResult;
+use std::num::TryFromIntError;
 use std::ops::Index;
 use std::ops::IndexMut;
 
@@ -12,13 +13,10 @@ use serde::Serialize;
 use strum::EnumCount;
 use strum::EnumIter;
 use strum::IntoEnumIterator;
+use thiserror::Error;
 use twenty_first::prelude::*;
 
-use crate::error::InstructionError::*;
-use crate::error::*;
-use crate::op_stack::OpStackElement::*;
-
-type Result<T> = std::result::Result<T, InstructionError>;
+type Result<T> = std::result::Result<T, OpStackError>;
 type OpStackElementResult<T> = std::result::Result<T, OpStackElementError>;
 type NumWordsResult<T> = std::result::Result<T, NumberOfWordsError>;
 
@@ -48,6 +46,16 @@ pub struct OpStack {
     underflow_io_sequence: Vec<UnderflowIO>,
 }
 
+#[non_exhaustive]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Error)]
+pub enum OpStackError {
+    #[error("operational stack is too shallow")]
+    TooShallow,
+
+    #[error("failed to convert BFieldElement {0} into u32")]
+    FailedU32Conversion(BFieldElement),
+}
+
 impl OpStack {
     pub fn new(program_digest: Digest) -> Self {
         let mut stack = bfe_vec![0; OpStackElement::COUNT];
@@ -65,14 +73,14 @@ impl OpStack {
         self.stack.len()
     }
 
-    pub(crate) fn push(&mut self, element: BFieldElement) {
+    pub fn push(&mut self, element: BFieldElement) {
         self.stack.push(element);
         self.record_underflow_io(UnderflowIO::Write);
     }
 
-    pub(crate) fn pop(&mut self) -> Result<BFieldElement> {
+    pub fn pop(&mut self) -> Result<BFieldElement> {
         self.record_underflow_io(UnderflowIO::Read);
-        self.stack.pop().ok_or(OpStackTooShallow)
+        self.stack.pop().ok_or(OpStackError::TooShallow)
     }
 
     fn record_underflow_io(&mut self, io_type: fn(BFieldElement) -> UnderflowIO) {
@@ -80,40 +88,44 @@ impl OpStack {
         self.underflow_io_sequence.push(underflow_io);
     }
 
-    pub(crate) fn start_recording_underflow_io_sequence(&mut self) {
+    pub fn start_recording_underflow_io_sequence(&mut self) {
         self.underflow_io_sequence.clear();
     }
 
-    pub(crate) fn stop_recording_underflow_io_sequence(&mut self) -> Vec<UnderflowIO> {
+    pub fn stop_recording_underflow_io_sequence(&mut self) -> Vec<UnderflowIO> {
         self.underflow_io_sequence.drain(..).collect()
     }
 
-    pub(crate) fn push_extension_field_element(&mut self, element: XFieldElement) {
+    pub fn push_extension_field_element(&mut self, element: XFieldElement) {
         for coefficient in element.coefficients.into_iter().rev() {
             self.push(coefficient);
         }
     }
 
-    pub(crate) fn pop_extension_field_element(&mut self) -> Result<XFieldElement> {
+    pub fn pop_extension_field_element(&mut self) -> Result<XFieldElement> {
         let coefficients = self.pop_multiple()?;
         Ok(xfe!(coefficients))
     }
 
-    pub(crate) fn is_u32(&self, stack_element: OpStackElement) -> Result<()> {
+    pub fn is_u32(&self, stack_element: OpStackElement) -> Result<()> {
         self.get_u32(stack_element).map(|_| ())
     }
 
-    pub(crate) fn get_u32(&self, stack_element: OpStackElement) -> Result<u32> {
+    pub fn get_u32(&self, stack_element: OpStackElement) -> Result<u32> {
         let element = self[stack_element];
-        element.try_into().map_err(|_| FailedU32Conversion(element))
+        element
+            .try_into()
+            .map_err(|_| OpStackError::FailedU32Conversion(element))
     }
 
-    pub(crate) fn pop_u32(&mut self) -> Result<u32> {
+    pub fn pop_u32(&mut self) -> Result<u32> {
         let element = self.pop()?;
-        element.try_into().map_err(|_| FailedU32Conversion(element))
+        element
+            .try_into()
+            .map_err(|_| OpStackError::FailedU32Conversion(element))
     }
 
-    pub(crate) fn pop_multiple<const N: usize>(&mut self) -> Result<[BFieldElement; N]> {
+    pub fn pop_multiple<const N: usize>(&mut self) -> Result<[BFieldElement; N]> {
         let mut elements = bfe_array![0; N];
         for element in &mut elements {
             *element = self.pop()?;
@@ -121,18 +133,18 @@ impl OpStack {
         Ok(elements)
     }
 
-    pub(crate) fn peek_at_top_extension_field_element(&self) -> XFieldElement {
+    pub fn peek_at_top_extension_field_element(&self) -> XFieldElement {
         xfe!([self[0], self[1], self[2]])
     }
 
-    pub(crate) fn would_be_too_shallow(&self, stack_delta: i32) -> bool {
+    pub fn would_be_too_shallow(&self, stack_delta: i32) -> bool {
         self.len() as i32 + stack_delta < OpStackElement::COUNT as i32
     }
 
     /// The address of the next free address of the op-stack. Equivalent to the current length of
     /// the op-stack.
-    pub(crate) fn pointer(&self) -> BFieldElement {
-        (self.len() as u64).into()
+    pub fn pointer(&self) -> BFieldElement {
+        u64::try_from(self.len()).unwrap().into()
     }
 
     /// The first element of the op-stack underflow memory, or 0 if the op-stack underflow memory
@@ -309,25 +321,35 @@ pub enum OpStackElement {
     ST15,
 }
 
+#[non_exhaustive]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Error)]
+pub enum OpStackElementError {
+    #[error("index {0} is out of range for `OpStackElement`")]
+    IndexOutOfBounds(u32),
+
+    #[error(transparent)]
+    FailedIntegerConversion(#[from] TryFromIntError),
+}
+
 impl OpStackElement {
     pub const fn index(self) -> u32 {
         match self {
-            ST0 => 0,
-            ST1 => 1,
-            ST2 => 2,
-            ST3 => 3,
-            ST4 => 4,
-            ST5 => 5,
-            ST6 => 6,
-            ST7 => 7,
-            ST8 => 8,
-            ST9 => 9,
-            ST10 => 10,
-            ST11 => 11,
-            ST12 => 12,
-            ST13 => 13,
-            ST14 => 14,
-            ST15 => 15,
+            OpStackElement::ST0 => 0,
+            OpStackElement::ST1 => 1,
+            OpStackElement::ST2 => 2,
+            OpStackElement::ST3 => 3,
+            OpStackElement::ST4 => 4,
+            OpStackElement::ST5 => 5,
+            OpStackElement::ST6 => 6,
+            OpStackElement::ST7 => 7,
+            OpStackElement::ST8 => 8,
+            OpStackElement::ST9 => 9,
+            OpStackElement::ST10 => 10,
+            OpStackElement::ST11 => 11,
+            OpStackElement::ST12 => 12,
+            OpStackElement::ST13 => 13,
+            OpStackElement::ST14 => 14,
+            OpStackElement::ST15 => 15,
         }
     }
 }
@@ -356,22 +378,22 @@ impl TryFrom<u32> for OpStackElement {
 
     fn try_from(stack_index: u32) -> OpStackElementResult<Self> {
         match stack_index {
-            0 => Ok(ST0),
-            1 => Ok(ST1),
-            2 => Ok(ST2),
-            3 => Ok(ST3),
-            4 => Ok(ST4),
-            5 => Ok(ST5),
-            6 => Ok(ST6),
-            7 => Ok(ST7),
-            8 => Ok(ST8),
-            9 => Ok(ST9),
-            10 => Ok(ST10),
-            11 => Ok(ST11),
-            12 => Ok(ST12),
-            13 => Ok(ST13),
-            14 => Ok(ST14),
-            15 => Ok(ST15),
+            0 => Ok(OpStackElement::ST0),
+            1 => Ok(OpStackElement::ST1),
+            2 => Ok(OpStackElement::ST2),
+            3 => Ok(OpStackElement::ST3),
+            4 => Ok(OpStackElement::ST4),
+            5 => Ok(OpStackElement::ST5),
+            6 => Ok(OpStackElement::ST6),
+            7 => Ok(OpStackElement::ST7),
+            8 => Ok(OpStackElement::ST8),
+            9 => Ok(OpStackElement::ST9),
+            10 => Ok(OpStackElement::ST10),
+            11 => Ok(OpStackElement::ST11),
+            12 => Ok(OpStackElement::ST12),
+            13 => Ok(OpStackElement::ST13),
+            14 => Ok(OpStackElement::ST14),
+            15 => Ok(OpStackElement::ST15),
             _ => Err(Self::Error::IndexOutOfBounds(stack_index)),
         }
     }
@@ -478,6 +500,16 @@ pub enum NumberOfWords {
     N5,
 }
 
+#[non_exhaustive]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Error)]
+pub enum NumberOfWordsError {
+    #[error("index {0} is out of range for `NumberOfWords`")]
+    IndexOutOfBounds(usize),
+
+    #[error(transparent)]
+    FailedIntegerConversion(#[from] TryFromIntError),
+}
+
 impl NumberOfWords {
     pub const fn num_words(self) -> usize {
         match self {
@@ -489,12 +521,12 @@ impl NumberOfWords {
         }
     }
 
-    pub(crate) fn legal_values() -> [usize; Self::COUNT] {
+    pub fn legal_values() -> [usize; Self::COUNT] {
         let legal_indices = Self::iter().map(|n| n.num_words()).collect_vec();
         legal_indices.try_into().unwrap()
     }
 
-    pub(crate) fn illegal_values() -> [usize; OpStackElement::COUNT - Self::COUNT] {
+    pub fn illegal_values() -> [usize; OpStackElement::COUNT - Self::COUNT] {
         let all_values = OpStackElement::iter().map(|st| st.index() as usize);
         let illegal_values = all_values
             .filter(|i| !Self::legal_values().contains(i))
@@ -642,8 +674,6 @@ mod tests {
     use strum::IntoEnumIterator;
     use test_strategy::proptest;
 
-    use crate::op_stack::NumberOfWords::N1;
-
     use super::*;
 
     impl Default for OpStack {
@@ -671,22 +701,22 @@ mod tests {
         assert!(op_stack.pointer().value() as usize == op_stack.len());
 
         assert!([
-            op_stack[ST0],
-            op_stack[ST1],
-            op_stack[ST2],
-            op_stack[ST3],
-            op_stack[ST4],
-            op_stack[ST5],
-            op_stack[ST6],
-            op_stack[ST7],
-            op_stack[ST8],
-            op_stack[ST9],
-            op_stack[ST10],
-            op_stack[ST11],
-            op_stack[ST12],
-            op_stack[ST13],
-            op_stack[ST14],
-            op_stack[ST15],
+            op_stack[OpStackElement::ST0],
+            op_stack[OpStackElement::ST1],
+            op_stack[OpStackElement::ST2],
+            op_stack[OpStackElement::ST3],
+            op_stack[OpStackElement::ST4],
+            op_stack[OpStackElement::ST5],
+            op_stack[OpStackElement::ST6],
+            op_stack[OpStackElement::ST7],
+            op_stack[OpStackElement::ST8],
+            op_stack[OpStackElement::ST9],
+            op_stack[OpStackElement::ST10],
+            op_stack[OpStackElement::ST11],
+            op_stack[OpStackElement::ST12],
+            op_stack[OpStackElement::ST13],
+            op_stack[OpStackElement::ST14],
+            op_stack[OpStackElement::ST15],
             op_stack.first_underflow_element(),
         ]
         .into_iter()
@@ -719,7 +749,7 @@ mod tests {
         #[filter(#op_stack.len() > 0)]
         op_stack: OpStack,
     ) {
-        let top_element = op_stack[ST0];
+        let top_element = op_stack[OpStackElement::ST0];
         let mut iterator = op_stack.into_iter();
         assert!(top_element == iterator.next().unwrap());
     }
@@ -854,40 +884,42 @@ mod tests {
         assert!(let Ok(_) = NumberOfWords::try_from(1_u64));
         assert!(let Ok(_) = NumberOfWords::try_from(1_usize));
         assert!(let Ok(_) = NumberOfWords::try_from(bfe!(1)));
-        assert!(let Ok(_) = NumberOfWords::try_from(ST1));
+        assert!(let Ok(_) = NumberOfWords::try_from(OpStackElement::ST1));
     }
 
     #[test]
     fn convert_from_op_stack_element_to_various_primitive_types() {
-        let _ = u32::from(ST0);
-        let _ = u64::from(ST0);
-        let _ = usize::from(ST0);
-        let _ = i32::from(ST0);
-        let _ = BFieldElement::from(ST0);
-        let _ = bfe!(ST0);
+        let _ = u32::from(OpStackElement::ST0);
+        let _ = u64::from(OpStackElement::ST0);
+        let _ = usize::from(OpStackElement::ST0);
+        let _ = i32::from(OpStackElement::ST0);
+        let _ = BFieldElement::from(OpStackElement::ST0);
+        let _ = bfe!(OpStackElement::ST0);
 
-        let _ = u32::from(&ST0);
-        let _ = usize::from(&ST0);
-        let _ = i32::from(&ST0);
-        let _ = BFieldElement::from(&ST0);
-        let _ = bfe!(&ST0);
+        let _ = u32::from(&OpStackElement::ST0);
+        let _ = usize::from(&OpStackElement::ST0);
+        let _ = i32::from(&OpStackElement::ST0);
+        let _ = BFieldElement::from(&OpStackElement::ST0);
+        let _ = bfe!(&OpStackElement::ST0);
     }
 
     #[test]
     fn convert_from_number_of_words_to_various_primitive_types() {
-        let _ = u32::from(N1);
-        let _ = u64::from(N1);
-        let _ = usize::from(N1);
-        let _ = BFieldElement::from(N1);
-        let _ = OpStackElement::from(N1);
-        let _ = bfe!(N1);
+        let n1 = NumberOfWords::N1;
 
-        let _ = u32::from(&N1);
-        let _ = u64::from(&N1);
-        let _ = usize::from(&N1);
-        let _ = BFieldElement::from(&N1);
-        let _ = OpStackElement::from(&N1);
-        let _ = bfe!(&N1);
+        let _ = u32::from(n1);
+        let _ = u64::from(n1);
+        let _ = usize::from(n1);
+        let _ = BFieldElement::from(n1);
+        let _ = OpStackElement::from(n1);
+        let _ = bfe!(n1);
+
+        let _ = u32::from(&n1);
+        let _ = u64::from(&n1);
+        let _ = usize::from(&n1);
+        let _ = BFieldElement::from(&n1);
+        let _ = OpStackElement::from(&n1);
+        let _ = bfe!(&n1);
     }
 
     #[proptest]

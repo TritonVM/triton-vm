@@ -2,12 +2,8 @@ use criterion::criterion_group;
 use criterion::criterion_main;
 use criterion::Criterion;
 
-use triton_vm::prelude::NonDeterminism;
-use triton_vm::prelude::PublicInput;
-use triton_vm::proof::Claim;
-use triton_vm::stark::Stark;
+use triton_vm::prelude::*;
 use triton_vm::table::master_table::TableId;
-use triton_vm::triton_program;
 
 criterion_main!(benches);
 
@@ -20,9 +16,8 @@ criterion_group! {
 /// cargo criterion --bench prove_halt
 fn prove_halt(c: &mut Criterion) {
     let program = triton_program!(halt);
-    let (aet, output) = program
-        .trace_execution(PublicInput::default(), NonDeterminism::default())
-        .unwrap();
+    let (aet, output) =
+        VM::trace_execution(&program, PublicInput::default(), NonDeterminism::default()).unwrap();
 
     let stark = Stark::default();
     let claim = Claim::about_program(&program).with_output(output);

@@ -1,7 +1,6 @@
+use isa::program::Program;
+use isa::triton_program;
 use lazy_static::lazy_static;
-
-use crate::program::Program;
-use crate::triton_program;
 
 lazy_static! {
     pub static ref FIBONACCI_SEQUENCE: Program = fibonacci_sequence();

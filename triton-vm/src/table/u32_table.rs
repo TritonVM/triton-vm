@@ -9,6 +9,7 @@ use constraint_builder::DualRowIndicator::*;
 use constraint_builder::InputIndicator;
 use constraint_builder::SingleRowIndicator;
 use constraint_builder::SingleRowIndicator::*;
+use isa::instruction::Instruction;
 use ndarray::parallel::prelude::*;
 use ndarray::s;
 use ndarray::Array1;
@@ -22,7 +23,6 @@ use strum::EnumCount;
 use twenty_first::prelude::*;
 
 use crate::aet::AlgebraicExecutionTrace;
-use crate::instruction::Instruction;
 use crate::profiler::profiler;
 use crate::table::challenges::ChallengeId::*;
 use crate::table::challenges::Challenges;

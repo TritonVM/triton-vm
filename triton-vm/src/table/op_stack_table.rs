@@ -6,6 +6,8 @@ use arbitrary::Arbitrary;
 use constraint_builder::DualRowIndicator::*;
 use constraint_builder::SingleRowIndicator::*;
 use constraint_builder::*;
+use isa::op_stack::OpStackElement;
+use isa::op_stack::UnderflowIO;
 use itertools::Itertools;
 use ndarray::parallel::prelude::*;
 use ndarray::prelude::*;
@@ -17,8 +19,6 @@ use twenty_first::prelude::*;
 use crate::aet::AlgebraicExecutionTrace;
 use crate::ndarray_helper::contiguous_column_slices;
 use crate::ndarray_helper::horizontal_multi_slice_mut;
-use crate::op_stack::OpStackElement;
-use crate::op_stack::UnderflowIO;
 use crate::profiler::profiler;
 use crate::table::challenges::ChallengeId::*;
 use crate::table::challenges::Challenges;
@@ -443,13 +443,12 @@ impl OpStackTable {
 #[cfg(test)]
 pub(crate) mod tests {
     use assert2::assert;
+    use isa::op_stack::OpStackElement;
     use itertools::Itertools;
     use proptest::collection::vec;
     use proptest::prelude::*;
     use proptest_arbitrary_interop::arb;
     use test_strategy::proptest;
-
-    use crate::op_stack::OpStackElement;
 
     use super::*;
 

@@ -6,6 +6,12 @@ use std::fmt::Result as FmtResult;
 use std::ops::Range;
 
 use arbitrary::Arbitrary;
+use isa::error::InstructionError;
+use isa::instruction::AnInstruction::*;
+use isa::instruction::Instruction;
+use isa::op_stack::OpStackElement::*;
+use isa::op_stack::*;
+use isa::program::Program;
 use itertools::Itertools;
 use ndarray::Array1;
 use num_traits::ConstZero;
@@ -17,13 +23,11 @@ use twenty_first::math::x_field_element::EXTENSION_DEGREE;
 use twenty_first::prelude::*;
 use twenty_first::util_types::algebraic_hasher::Domain;
 
-use crate::error::InstructionError;
-use crate::error::InstructionError::*;
-use crate::instruction::AnInstruction::*;
-use crate::instruction::Instruction;
-use crate::op_stack::OpStackElement::*;
-use crate::op_stack::*;
-use crate::program::*;
+use crate::aet::AlgebraicExecutionTrace;
+use crate::error::VMError;
+use crate::execution_trace_profiler::ExecutionTraceProfile;
+use crate::execution_trace_profiler::ExecutionTraceProfiler;
+use crate::profiler::profiler;
 use crate::table::hash_table::PermutationTrace;
 use crate::table::op_stack_table::OpStackTableEntry;
 use crate::table::processor_table;
@@ -32,10 +36,14 @@ use crate::table::table_column::*;
 use crate::table::u32_table::U32TableEntry;
 use crate::vm::CoProcessorCall::*;
 
-type Result<T> = std::result::Result<T, InstructionError>;
+type VMResult<T> = Result<T, VMError>;
+type InstructionResult<T> = Result<T, InstructionError>;
 
 /// The number of helper variable registers
 pub const NUM_HELPER_VARIABLE_REGISTERS: usize = 6;
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize, Deserialize, Arbitrary)]
+pub struct VM;
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize, Arbitrary)]
 pub struct VMState {
@@ -102,6 +110,123 @@ pub enum CoProcessorCall {
     OpStackCall(OpStackTableEntry),
 
     RamCall(RamTableCall),
+}
+
+impl VM {
+    /// Run Triton VM on the [`Program`] with the given public input and non-determinism.
+    /// If an error is encountered, the returned [`VMError`] contains the [`VMState`] at the point
+    /// of execution failure.
+    ///
+    /// See also [`trace_execution`][trace_execution] and [`profile`][profile].
+    ///
+    /// [trace_execution]: Self::trace_execution
+    /// [profile]: Self::profile
+    pub fn run(
+        program: &Program,
+        public_input: PublicInput,
+        non_determinism: NonDeterminism,
+    ) -> VMResult<Vec<BFieldElement>> {
+        let mut state = VMState::new(program, public_input, non_determinism);
+        if let Err(err) = state.run() {
+            return Err(VMError::new(err, state));
+        }
+        Ok(state.public_output)
+    }
+
+    /// Trace the execution of a [`Program`]. That is, [`run`][run] the [`Program`] and additionally
+    /// record that part of every encountered state that is necessary for proving correct execution.
+    /// If execution  succeeds, returns
+    /// 1. an [`AlgebraicExecutionTrace`], and
+    /// 1. the output of the program.
+    ///
+    /// See also [`run`][run] and [`profile`][profile].
+    ///
+    /// [run]: Self::run
+    /// [profile]: Self::profile
+    pub fn trace_execution(
+        program: &Program,
+        public_input: PublicInput,
+        non_determinism: NonDeterminism,
+    ) -> VMResult<(AlgebraicExecutionTrace, Vec<BFieldElement>)> {
+        profiler!(start "trace execution" ("gen"));
+        let state = VMState::new(program, public_input, non_determinism);
+        let (aet, terminal_state) = Self::trace_execution_of_state(program, state)?;
+        profiler!(stop "trace execution");
+        Ok((aet, terminal_state.public_output))
+    }
+
+    /// Trace the execution of a [`Program`] from a given [`VMState`]. Consider
+    /// using [`trace_execution`][Self::trace_execution], unless you know this is
+    /// what you want.
+    ///
+    /// Returns the [`AlgebraicExecutionTrace`] and the terminal [`VMState`] if
+    /// execution succeeds.
+    ///
+    /// # Panics
+    ///
+    /// - if the given [`VMState`] is not about to `self`
+    /// - if the given [`VMState`] is incorrectly initialized
+    pub fn trace_execution_of_state(
+        program: &Program,
+        mut state: VMState,
+    ) -> VMResult<(AlgebraicExecutionTrace, VMState)> {
+        let mut aet = AlgebraicExecutionTrace::new(program.clone());
+        assert_eq!(program.instructions, state.program);
+        assert_eq!(program.len_bwords(), aet.instruction_multiplicities.len());
+
+        while !state.halting {
+            if let Err(err) = aet.record_state(&state) {
+                return Err(VMError::new(err, state));
+            };
+            let co_processor_calls = match state.step() {
+                Ok(calls) => calls,
+                Err(err) => return Err(VMError::new(err, state)),
+            };
+            for call in co_processor_calls {
+                aet.record_co_processor_call(call);
+            }
+        }
+
+        Ok((aet, state))
+    }
+
+    /// Run Triton VM with the given public and secret input, recording the
+    /// influence of a callable block of instructions on the
+    /// [`AlgebraicExecutionTrace`]. For example, this can be used to identify the
+    /// number of clock cycles spent in some block of instructions, or how many rows
+    /// it contributes to the U32 Table.
+    ///
+    /// See also [`run`][run] and [`trace_execution`][trace_execution].
+    ///
+    /// [run]: Self::run
+    /// [trace_execution]: Self::trace_execution
+    pub fn profile(
+        program: &Program,
+        public_input: PublicInput,
+        non_determinism: NonDeterminism,
+    ) -> VMResult<(Vec<BFieldElement>, ExecutionTraceProfile)> {
+        let mut profiler = ExecutionTraceProfiler::new(program.instructions.len());
+        let mut state = VMState::new(program, public_input, non_determinism);
+        let mut previous_jump_stack_len = state.jump_stack.len();
+        while !state.halting {
+            if let Ok(Instruction::Call(address)) = state.current_instruction() {
+                let label = program.label_for_address(address.value());
+                profiler.enter_span(label);
+            }
+
+            match state.step() {
+                Ok(calls) => profiler.handle_co_processor_calls(calls),
+                Err(err) => return Err(VMError::new(err, state)),
+            };
+
+            if state.jump_stack.len() < previous_jump_stack_len {
+                profiler.exit_span();
+            }
+            previous_jump_stack_len = state.jump_stack.len();
+        }
+
+        Ok((state.public_output, profiler.finish()))
+    }
 }
 
 impl VMState {
@@ -222,15 +347,15 @@ impl VMState {
     }
 
     /// Perform the state transition as a mutable operation on `self`.
-    pub fn step(&mut self) -> Result<Vec<CoProcessorCall>> {
+    pub fn step(&mut self) -> InstructionResult<Vec<CoProcessorCall>> {
         if self.halting {
-            return Err(MachineHalted);
+            return Err(InstructionError::MachineHalted);
         }
 
         let current_instruction = self.current_instruction()?;
         let op_stack_delta = current_instruction.op_stack_size_influence();
         if self.op_stack.would_be_too_shallow(op_stack_delta) {
-            return Err(OpStackTooShallow);
+            return Err(InstructionError::OpStackError(OpStackError::TooShallow));
         }
 
         self.start_recording_op_stack_calls();
@@ -320,7 +445,7 @@ impl VMState {
         self.ram_calls.drain(..).map(RamCall).collect()
     }
 
-    fn pop(&mut self, n: NumberOfWords) -> Result<Vec<CoProcessorCall>> {
+    fn pop(&mut self, n: NumberOfWords) -> InstructionResult<Vec<CoProcessorCall>> {
         for _ in 0..n.num_words() {
             self.op_stack.pop()?;
         }
@@ -336,10 +461,10 @@ impl VMState {
         vec![]
     }
 
-    fn divine(&mut self, n: NumberOfWords) -> Result<Vec<CoProcessorCall>> {
+    fn divine(&mut self, n: NumberOfWords) -> InstructionResult<Vec<CoProcessorCall>> {
         let input_len = self.secret_individual_tokens.len();
         if input_len < n.num_words() {
-            return Err(EmptySecretInput(input_len));
+            return Err(InstructionError::EmptySecretInput(input_len));
         }
         for _ in 0..n.num_words() {
             let element = self.secret_individual_tokens.pop_front().unwrap();
@@ -369,7 +494,7 @@ impl VMState {
         vec![]
     }
 
-    fn skiz(&mut self) -> Result<Vec<CoProcessorCall>> {
+    fn skiz(&mut self) -> InstructionResult<Vec<CoProcessorCall>> {
         let top_of_stack = self.op_stack.pop()?;
         self.instruction_pointer += match top_of_stack.is_zero() {
             true => 1 + self.next_instruction()?.size(),
@@ -388,21 +513,21 @@ impl VMState {
         vec![]
     }
 
-    fn return_from_call(&mut self) -> Result<Vec<CoProcessorCall>> {
+    fn return_from_call(&mut self) -> InstructionResult<Vec<CoProcessorCall>> {
         let (call_origin, _) = self.jump_stack_pop()?;
         self.instruction_pointer = call_origin.value().try_into().unwrap();
         Ok(vec![])
     }
 
-    fn recurse(&mut self) -> Result<Vec<CoProcessorCall>> {
+    fn recurse(&mut self) -> InstructionResult<Vec<CoProcessorCall>> {
         let (_, call_destination) = self.jump_stack_peek()?;
         self.instruction_pointer = call_destination.value().try_into().unwrap();
         Ok(vec![])
     }
 
-    fn recurse_or_return(&mut self) -> Result<Vec<CoProcessorCall>> {
+    fn recurse_or_return(&mut self) -> InstructionResult<Vec<CoProcessorCall>> {
         if self.jump_stack.is_empty() {
-            return Err(JumpStackIsEmpty);
+            return Err(InstructionError::JumpStackIsEmpty);
         }
 
         let new_ip = if self.op_stack[ST5] == self.op_stack[ST6] {
@@ -418,9 +543,9 @@ impl VMState {
         Ok(vec![])
     }
 
-    fn assert(&mut self) -> Result<Vec<CoProcessorCall>> {
+    fn assert(&mut self) -> InstructionResult<Vec<CoProcessorCall>> {
         if !self.op_stack[ST0].is_one() {
-            return Err(AssertionFailed);
+            return Err(InstructionError::AssertionFailed);
         }
         let _ = self.op_stack.pop()?;
 
@@ -434,7 +559,7 @@ impl VMState {
         vec![]
     }
 
-    fn read_mem(&mut self, n: NumberOfWords) -> Result<Vec<CoProcessorCall>> {
+    fn read_mem(&mut self, n: NumberOfWords) -> InstructionResult<Vec<CoProcessorCall>> {
         self.start_recording_ram_calls();
         let mut ram_pointer = self.op_stack.pop()?;
         for _ in 0..n.num_words() {
@@ -449,7 +574,7 @@ impl VMState {
         Ok(ram_calls)
     }
 
-    fn write_mem(&mut self, n: NumberOfWords) -> Result<Vec<CoProcessorCall>> {
+    fn write_mem(&mut self, n: NumberOfWords) -> InstructionResult<Vec<CoProcessorCall>> {
         self.start_recording_ram_calls();
         let mut ram_pointer = self.op_stack.pop()?;
         for _ in 0..n.num_words() {
@@ -494,7 +619,7 @@ impl VMState {
         self.ram.insert(ram_pointer, ram_value);
     }
 
-    fn hash(&mut self) -> Result<Vec<CoProcessorCall>> {
+    fn hash(&mut self) -> InstructionResult<Vec<CoProcessorCall>> {
         let to_hash = self.op_stack.pop_multiple::<{ tip5::RATE }>()?;
 
         let mut hash_input = Tip5::new(Domain::FixedLength);
@@ -518,9 +643,9 @@ impl VMState {
         vec![SpongeStateReset]
     }
 
-    fn sponge_absorb(&mut self) -> Result<Vec<CoProcessorCall>> {
+    fn sponge_absorb(&mut self) -> InstructionResult<Vec<CoProcessorCall>> {
         let Some(ref mut sponge) = self.sponge else {
-            return Err(SpongeNotInitialized);
+            return Err(InstructionError::SpongeNotInitialized);
         };
         let to_absorb = self.op_stack.pop_multiple::<{ tip5::RATE }>()?;
         sponge.state[..tip5::RATE].copy_from_slice(&to_absorb);
@@ -532,9 +657,9 @@ impl VMState {
         Ok(co_processor_calls)
     }
 
-    fn sponge_absorb_mem(&mut self) -> Result<Vec<CoProcessorCall>> {
+    fn sponge_absorb_mem(&mut self) -> InstructionResult<Vec<CoProcessorCall>> {
         let Some(mut sponge) = self.sponge.take() else {
-            return Err(SpongeNotInitialized);
+            return Err(InstructionError::SpongeNotInitialized);
         };
 
         self.start_recording_ram_calls();
@@ -561,9 +686,9 @@ impl VMState {
         Ok(co_processor_calls)
     }
 
-    fn sponge_squeeze(&mut self) -> Result<Vec<CoProcessorCall>> {
+    fn sponge_squeeze(&mut self) -> InstructionResult<Vec<CoProcessorCall>> {
         let Some(ref mut sponge) = self.sponge else {
-            return Err(SpongeNotInitialized);
+            return Err(InstructionError::SpongeNotInitialized);
         };
         for i in (0..tip5::RATE).rev() {
             self.op_stack.push(sponge.state[i]);
@@ -576,10 +701,10 @@ impl VMState {
         Ok(co_processor_calls)
     }
 
-    fn assert_vector(&mut self) -> Result<Vec<CoProcessorCall>> {
+    fn assert_vector(&mut self) -> InstructionResult<Vec<CoProcessorCall>> {
         for i in 0..Digest::LEN {
             if self.op_stack[i] != self.op_stack[i + Digest::LEN] {
-                return Err(VectorAssertionFailed(i));
+                return Err(InstructionError::VectorAssertionFailed(i));
             }
         }
         self.op_stack.pop_multiple::<{ Digest::LEN }>()?;
@@ -587,7 +712,7 @@ impl VMState {
         Ok(vec![])
     }
 
-    fn add(&mut self) -> Result<Vec<CoProcessorCall>> {
+    fn add(&mut self) -> InstructionResult<Vec<CoProcessorCall>> {
         let lhs = self.op_stack.pop()?;
         let rhs = self.op_stack.pop()?;
         self.op_stack.push(lhs + rhs);
@@ -602,7 +727,7 @@ impl VMState {
         vec![]
     }
 
-    fn mul(&mut self) -> Result<Vec<CoProcessorCall>> {
+    fn mul(&mut self) -> InstructionResult<Vec<CoProcessorCall>> {
         let lhs = self.op_stack.pop()?;
         let rhs = self.op_stack.pop()?;
         self.op_stack.push(lhs * rhs);
@@ -611,10 +736,10 @@ impl VMState {
         Ok(vec![])
     }
 
-    fn invert(&mut self) -> Result<Vec<CoProcessorCall>> {
+    fn invert(&mut self) -> InstructionResult<Vec<CoProcessorCall>> {
         let top_of_stack = self.op_stack[ST0];
         if top_of_stack.is_zero() {
-            return Err(InverseOfZero);
+            return Err(InstructionError::InverseOfZero);
         }
         let _ = self.op_stack.pop()?;
         self.op_stack.push(top_of_stack.inverse());
@@ -622,7 +747,7 @@ impl VMState {
         Ok(vec![])
     }
 
-    fn eq(&mut self) -> Result<Vec<CoProcessorCall>> {
+    fn eq(&mut self) -> InstructionResult<Vec<CoProcessorCall>> {
         let lhs = self.op_stack.pop()?;
         let rhs = self.op_stack.pop()?;
         let eq: u32 = (lhs == rhs).into();
@@ -632,7 +757,7 @@ impl VMState {
         Ok(vec![])
     }
 
-    fn split(&mut self) -> Result<Vec<CoProcessorCall>> {
+    fn split(&mut self) -> InstructionResult<Vec<CoProcessorCall>> {
         let top_of_stack = self.op_stack.pop()?;
         let lo = bfe!(top_of_stack.value() & 0xffff_ffff);
         let hi = bfe!(top_of_stack.value() >> 32);
@@ -646,7 +771,7 @@ impl VMState {
         Ok(co_processor_calls)
     }
 
-    fn lt(&mut self) -> Result<Vec<CoProcessorCall>> {
+    fn lt(&mut self) -> InstructionResult<Vec<CoProcessorCall>> {
         self.op_stack.is_u32(ST0)?;
         self.op_stack.is_u32(ST1)?;
         let lhs = self.op_stack.pop_u32()?;
@@ -661,7 +786,7 @@ impl VMState {
         Ok(co_processor_calls)
     }
 
-    fn and(&mut self) -> Result<Vec<CoProcessorCall>> {
+    fn and(&mut self) -> InstructionResult<Vec<CoProcessorCall>> {
         self.op_stack.is_u32(ST0)?;
         self.op_stack.is_u32(ST1)?;
         let lhs = self.op_stack.pop_u32()?;
@@ -676,7 +801,7 @@ impl VMState {
         Ok(co_processor_calls)
     }
 
-    fn xor(&mut self) -> Result<Vec<CoProcessorCall>> {
+    fn xor(&mut self) -> InstructionResult<Vec<CoProcessorCall>> {
         self.op_stack.is_u32(ST0)?;
         self.op_stack.is_u32(ST1)?;
         let lhs = self.op_stack.pop_u32()?;
@@ -694,11 +819,11 @@ impl VMState {
         Ok(co_processor_calls)
     }
 
-    fn log_2_floor(&mut self) -> Result<Vec<CoProcessorCall>> {
+    fn log_2_floor(&mut self) -> InstructionResult<Vec<CoProcessorCall>> {
         self.op_stack.is_u32(ST0)?;
         let top_of_stack = self.op_stack[ST0];
         if top_of_stack.is_zero() {
-            return Err(LogarithmOfZero);
+            return Err(InstructionError::LogarithmOfZero);
         }
         let top_of_stack = self.op_stack.pop_u32()?;
         let log_2_floor = top_of_stack.ilog2();
@@ -711,7 +836,7 @@ impl VMState {
         Ok(co_processor_calls)
     }
 
-    fn pow(&mut self) -> Result<Vec<CoProcessorCall>> {
+    fn pow(&mut self) -> InstructionResult<Vec<CoProcessorCall>> {
         self.op_stack.is_u32(ST1)?;
         let base = self.op_stack.pop()?;
         let exponent = self.op_stack.pop_u32()?;
@@ -725,12 +850,12 @@ impl VMState {
         Ok(co_processor_calls)
     }
 
-    fn div_mod(&mut self) -> Result<Vec<CoProcessorCall>> {
+    fn div_mod(&mut self) -> InstructionResult<Vec<CoProcessorCall>> {
         self.op_stack.is_u32(ST0)?;
         self.op_stack.is_u32(ST1)?;
         let denominator = self.op_stack[ST1];
         if denominator.is_zero() {
-            return Err(DivisionByZero);
+            return Err(InstructionError::DivisionByZero);
         }
 
         let numerator = self.op_stack.pop_u32()?;
@@ -752,7 +877,7 @@ impl VMState {
         Ok(co_processor_calls)
     }
 
-    fn pop_count(&mut self) -> Result<Vec<CoProcessorCall>> {
+    fn pop_count(&mut self) -> InstructionResult<Vec<CoProcessorCall>> {
         self.op_stack.is_u32(ST0)?;
         let top_of_stack = self.op_stack.pop_u32()?;
         let pop_count = top_of_stack.count_ones();
@@ -765,7 +890,7 @@ impl VMState {
         Ok(co_processor_calls)
     }
 
-    fn xx_add(&mut self) -> Result<Vec<CoProcessorCall>> {
+    fn xx_add(&mut self) -> InstructionResult<Vec<CoProcessorCall>> {
         let lhs = self.op_stack.pop_extension_field_element()?;
         let rhs = self.op_stack.pop_extension_field_element()?;
         self.op_stack.push_extension_field_element(lhs + rhs);
@@ -773,7 +898,7 @@ impl VMState {
         Ok(vec![])
     }
 
-    fn xx_mul(&mut self) -> Result<Vec<CoProcessorCall>> {
+    fn xx_mul(&mut self) -> InstructionResult<Vec<CoProcessorCall>> {
         let lhs = self.op_stack.pop_extension_field_element()?;
         let rhs = self.op_stack.pop_extension_field_element()?;
         self.op_stack.push_extension_field_element(lhs * rhs);
@@ -781,10 +906,10 @@ impl VMState {
         Ok(vec![])
     }
 
-    fn x_invert(&mut self) -> Result<Vec<CoProcessorCall>> {
+    fn x_invert(&mut self) -> InstructionResult<Vec<CoProcessorCall>> {
         let top_of_stack = self.op_stack.peek_at_top_extension_field_element();
         if top_of_stack.is_zero() {
-            return Err(InverseOfZero);
+            return Err(InstructionError::InverseOfZero);
         }
         let inverse = top_of_stack.inverse();
         let _ = self.op_stack.pop_extension_field_element()?;
@@ -793,7 +918,7 @@ impl VMState {
         Ok(vec![])
     }
 
-    fn xb_mul(&mut self) -> Result<Vec<CoProcessorCall>> {
+    fn xb_mul(&mut self) -> InstructionResult<Vec<CoProcessorCall>> {
         let lhs = self.op_stack.pop()?;
         let rhs = self.op_stack.pop_extension_field_element()?;
         self.op_stack.push_extension_field_element(lhs.lift() * rhs);
@@ -802,7 +927,7 @@ impl VMState {
         Ok(vec![])
     }
 
-    fn write_io(&mut self, n: NumberOfWords) -> Result<Vec<CoProcessorCall>> {
+    fn write_io(&mut self, n: NumberOfWords) -> InstructionResult<Vec<CoProcessorCall>> {
         for _ in 0..n.num_words() {
             let top_of_stack = self.op_stack.pop()?;
             self.public_output.push(top_of_stack);
@@ -812,10 +937,10 @@ impl VMState {
         Ok(vec![])
     }
 
-    fn read_io(&mut self, n: NumberOfWords) -> Result<Vec<CoProcessorCall>> {
+    fn read_io(&mut self, n: NumberOfWords) -> InstructionResult<Vec<CoProcessorCall>> {
         let input_len = self.public_input.len();
         if input_len < n.num_words() {
-            return Err(EmptyPublicInput(input_len));
+            return Err(InstructionError::EmptyPublicInput(input_len));
         }
         for _ in 0..n.num_words() {
             let read_element = self.public_input.pop_front().unwrap();
@@ -826,13 +951,13 @@ impl VMState {
         Ok(vec![])
     }
 
-    fn merkle_step_non_determinism(&mut self) -> Result<Vec<CoProcessorCall>> {
+    fn merkle_step_non_determinism(&mut self) -> InstructionResult<Vec<CoProcessorCall>> {
         self.op_stack.is_u32(ST5)?;
         let sibling_digest = self.pop_secret_digest()?;
         self.merkle_step(sibling_digest)
     }
 
-    fn merkle_step_mem(&mut self) -> Result<Vec<CoProcessorCall>> {
+    fn merkle_step_mem(&mut self) -> InstructionResult<Vec<CoProcessorCall>> {
         self.op_stack.is_u32(ST5)?;
         self.start_recording_ram_calls();
         let mut ram_pointer = self.op_stack[ST7];
@@ -851,7 +976,7 @@ impl VMState {
     fn merkle_step(
         &mut self,
         sibling_digest: [BFieldElement; Digest::LEN],
-    ) -> Result<Vec<CoProcessorCall>> {
+    ) -> InstructionResult<Vec<CoProcessorCall>> {
         let node_index = self.op_stack.get_u32(ST5)?;
         let parent_node_index = node_index / 2;
 
@@ -881,7 +1006,7 @@ impl VMState {
         Ok(co_processor_calls)
     }
 
-    fn xx_dot_step(&mut self) -> Result<Vec<CoProcessorCall>> {
+    fn xx_dot_step(&mut self) -> InstructionResult<Vec<CoProcessorCall>> {
         self.start_recording_ram_calls();
         let mut rhs_address = self.op_stack.pop()?;
         let mut lhs_address = self.op_stack.pop()?;
@@ -902,7 +1027,7 @@ impl VMState {
         Ok(ram_calls)
     }
 
-    fn xb_dot_step(&mut self) -> Result<Vec<CoProcessorCall>> {
+    fn xb_dot_step(&mut self) -> InstructionResult<Vec<CoProcessorCall>> {
         self.start_recording_ram_calls();
         let mut rhs_address = self.op_stack.pop()?;
         let mut lhs_address = self.op_stack.pop()?;
@@ -923,7 +1048,7 @@ impl VMState {
     }
 
     pub fn to_processor_row(&self) -> Array1<BFieldElement> {
-        use crate::instruction::InstructionBit;
+        use isa::instruction::InstructionBit;
         use ProcessorBaseTableColumn::*;
         let mut processor_row = Array1::zeros(processor_table::BASE_WIDTH);
 
@@ -1006,9 +1131,9 @@ impl VMState {
         maybe_destination.unwrap_or_else(BFieldElement::zero)
     }
 
-    pub fn current_instruction(&self) -> Result<Instruction> {
+    pub fn current_instruction(&self) -> InstructionResult<Instruction> {
         let maybe_current_instruction = self.program.get(self.instruction_pointer).copied();
-        maybe_current_instruction.ok_or(InstructionPointerOverflow)
+        maybe_current_instruction.ok_or(InstructionError::InstructionPointerOverflow)
     }
 
     /// Return the next instruction on the tape, skipping arguments.
@@ -1016,31 +1141,36 @@ impl VMState {
     /// Note that this is not necessarily the next instruction to execute, since the current
     /// instruction could be a jump, but it is either program[ip + 1] or program[ip + 2],
     /// depending on whether the current instruction takes an argument.
-    pub fn next_instruction(&self) -> Result<Instruction> {
+    pub fn next_instruction(&self) -> InstructionResult<Instruction> {
         let current_instruction = self.current_instruction()?;
         let next_instruction_pointer = self.instruction_pointer + current_instruction.size();
         let maybe_next_instruction = self.program.get(next_instruction_pointer).copied();
-        maybe_next_instruction.ok_or(InstructionPointerOverflow)
+        maybe_next_instruction.ok_or(InstructionError::InstructionPointerOverflow)
     }
 
-    fn jump_stack_pop(&mut self) -> Result<(BFieldElement, BFieldElement)> {
-        self.jump_stack.pop().ok_or(JumpStackIsEmpty)
+    fn jump_stack_pop(&mut self) -> InstructionResult<(BFieldElement, BFieldElement)> {
+        self.jump_stack
+            .pop()
+            .ok_or(InstructionError::JumpStackIsEmpty)
     }
 
-    fn jump_stack_peek(&mut self) -> Result<(BFieldElement, BFieldElement)> {
-        self.jump_stack.last().copied().ok_or(JumpStackIsEmpty)
+    fn jump_stack_peek(&mut self) -> InstructionResult<(BFieldElement, BFieldElement)> {
+        self.jump_stack
+            .last()
+            .copied()
+            .ok_or(InstructionError::JumpStackIsEmpty)
     }
 
-    fn pop_secret_digest(&mut self) -> Result<[BFieldElement; Digest::LEN]> {
+    fn pop_secret_digest(&mut self) -> InstructionResult<[BFieldElement; Digest::LEN]> {
         let digest = self
             .secret_digests
             .pop_front()
-            .ok_or(EmptySecretDigestInput)?;
+            .ok_or(InstructionError::EmptySecretDigestInput)?;
         Ok(digest.values())
     }
 
     /// Run Triton VM on this state to completion, or until an error occurs.
-    pub fn run(&mut self) -> Result<()> {
+    pub fn run(&mut self) -> InstructionResult<()> {
         while !self.halting {
             self.step()?;
         }
@@ -1164,6 +1294,97 @@ impl Display for VMState {
     }
 }
 
+#[derive(Debug, Default, Clone, Eq, PartialEq, BFieldCodec, Arbitrary)]
+pub struct PublicInput {
+    pub individual_tokens: Vec<BFieldElement>,
+}
+
+impl From<Vec<BFieldElement>> for PublicInput {
+    fn from(individual_tokens: Vec<BFieldElement>) -> Self {
+        Self::new(individual_tokens)
+    }
+}
+
+impl From<&Vec<BFieldElement>> for PublicInput {
+    fn from(tokens: &Vec<BFieldElement>) -> Self {
+        Self::new(tokens.to_owned())
+    }
+}
+
+impl<const N: usize> From<[BFieldElement; N]> for PublicInput {
+    fn from(tokens: [BFieldElement; N]) -> Self {
+        Self::new(tokens.to_vec())
+    }
+}
+
+impl From<&[BFieldElement]> for PublicInput {
+    fn from(tokens: &[BFieldElement]) -> Self {
+        Self::new(tokens.to_vec())
+    }
+}
+
+impl PublicInput {
+    pub fn new(individual_tokens: Vec<BFieldElement>) -> Self {
+        Self { individual_tokens }
+    }
+}
+
+/// All sources of non-determinism for a program. This includes elements that
+/// can be read using instruction `divine`, digests that can be read using
+/// instruction `merkle_step`, and an initial state of random-access memory.
+#[derive(Debug, Default, Clone, Eq, PartialEq, Serialize, Deserialize, Arbitrary)]
+pub struct NonDeterminism {
+    pub individual_tokens: Vec<BFieldElement>,
+    pub digests: Vec<Digest>,
+    pub ram: HashMap<BFieldElement, BFieldElement>,
+}
+
+impl From<Vec<BFieldElement>> for NonDeterminism {
+    fn from(tokens: Vec<BFieldElement>) -> Self {
+        Self::new(tokens)
+    }
+}
+
+impl From<&Vec<BFieldElement>> for NonDeterminism {
+    fn from(tokens: &Vec<BFieldElement>) -> Self {
+        Self::new(tokens.to_owned())
+    }
+}
+
+impl<const N: usize> From<[BFieldElement; N]> for NonDeterminism {
+    fn from(tokens: [BFieldElement; N]) -> Self {
+        Self::new(tokens.to_vec())
+    }
+}
+
+impl From<&[BFieldElement]> for NonDeterminism {
+    fn from(tokens: &[BFieldElement]) -> Self {
+        Self::new(tokens.to_vec())
+    }
+}
+
+impl NonDeterminism {
+    pub fn new<V: Into<Vec<BFieldElement>>>(individual_tokens: V) -> Self {
+        Self {
+            individual_tokens: individual_tokens.into(),
+            digests: vec![],
+            ram: HashMap::new(),
+        }
+    }
+
+    #[must_use]
+    pub fn with_digests<V: Into<Vec<Digest>>>(mut self, digests: V) -> Self {
+        self.digests = digests.into();
+        self
+    }
+
+    #[must_use]
+    pub fn with_ram<H: Into<HashMap<BFieldElement, BFieldElement>>>(mut self, ram: H) -> Self {
+        self.ram = ram.into();
+        self
+    }
+}
+
 #[cfg(test)]
 pub(crate) mod tests {
     use std::ops::BitAnd;
@@ -1171,6 +1392,13 @@ pub(crate) mod tests {
 
     use assert2::assert;
     use assert2::let_assert;
+    use isa::instruction::AnInstruction;
+    use isa::instruction::LabelledInstruction;
+    use isa::instruction::ALL_INSTRUCTIONS;
+    use isa::program::Program;
+    use isa::triton_asm;
+    use isa::triton_instr;
+    use isa::triton_program;
     use itertools::izip;
     use proptest::collection::vec;
     use proptest::prelude::*;
@@ -1188,19 +1416,119 @@ pub(crate) mod tests {
     use crate::shared_tests::LeavedMerkleTreeTestData;
     use crate::shared_tests::ProgramAndInput;
     use crate::shared_tests::DEFAULT_LOG2_FRI_EXPANSION_FACTOR_FOR_TESTS;
-    use crate::triton_asm;
-    use crate::triton_instr;
-    use crate::triton_program;
-    use crate::LabelledInstruction;
+    use crate::table::master_table::TableId;
 
     use super::*;
+
+    #[test]
+    fn instructions_act_on_op_stack_as_indicated() {
+        for test_instruction in ALL_INSTRUCTIONS {
+            let (program, stack_size_before_test_instruction) =
+                construct_test_program_for_instruction(test_instruction);
+            let public_input = PublicInput::from(bfe_array![0]);
+            let mock_digests = [Digest::default()];
+            let non_determinism = NonDeterminism::from(bfe_array![0]).with_digests(mock_digests);
+
+            let mut vm_state = VMState::new(&program, public_input, non_determinism);
+            let_assert!(Ok(()) = vm_state.run());
+            let stack_size_after_test_instruction = vm_state.op_stack.len();
+
+            let stack_size_difference = (stack_size_after_test_instruction as i32)
+                - (stack_size_before_test_instruction as i32);
+            assert!(
+                test_instruction.op_stack_size_influence() == stack_size_difference,
+                "{test_instruction}"
+            );
+        }
+    }
+
+    fn construct_test_program_for_instruction(
+        instruction: AnInstruction<BFieldElement>,
+    ) -> (Program, usize) {
+        if matches!(instruction, Call(_) | Return | Recurse | RecurseOrReturn) {
+            // need jump stack setup
+            let program = test_program_for_call_recurse_return().program;
+            let stack_size = NUM_OP_STACK_REGISTERS;
+            (program, stack_size)
+        } else {
+            let num_push_instructions = 10;
+            let push_instructions = triton_asm![push 1; num_push_instructions];
+            let program = triton_program!(sponge_init {&push_instructions} {instruction} nop halt);
+
+            let stack_size_when_reaching_test_instruction =
+                NUM_OP_STACK_REGISTERS + num_push_instructions;
+            (program, stack_size_when_reaching_test_instruction)
+        }
+    }
+
+    #[test]
+    fn profile_can_be_created_and_agrees_with_regular_vm_run() {
+        let program = CALCULATE_NEW_MMR_PEAKS_FROM_APPEND_WITH_SAFE_LISTS.clone();
+        let (profile_output, profile) = VM::profile(&program, [].into(), [].into()).unwrap();
+        let mut vm_state = VMState::new(&program, [].into(), [].into());
+        let_assert!(Ok(()) = vm_state.run());
+        assert!(profile_output == vm_state.public_output);
+        assert!(profile.total.processor == vm_state.cycle_count);
+
+        let_assert!(Ok((aet, trace_output)) = VM::trace_execution(&program, [].into(), [].into()));
+        assert!(profile_output == trace_output);
+        let proc_height = u32::try_from(aet.height_of_table(TableId::Processor)).unwrap();
+        assert!(proc_height == profile.total.processor);
+
+        let op_stack_height = u32::try_from(aet.height_of_table(TableId::OpStack)).unwrap();
+        assert!(op_stack_height == profile.total.op_stack);
+
+        let ram_height = u32::try_from(aet.height_of_table(TableId::Ram)).unwrap();
+        assert!(ram_height == profile.total.ram);
+
+        let hash_height = u32::try_from(aet.height_of_table(TableId::Hash)).unwrap();
+        assert!(hash_height == profile.total.hash);
+
+        let u32_height = u32::try_from(aet.height_of_table(TableId::U32)).unwrap();
+        assert!(u32_height == profile.total.u32);
+
+        println!("{profile}");
+    }
+
+    #[test]
+    fn program_with_too_many_returns_crashes_vm_but_not_profiler() {
+        let program = triton_program! {
+            call foo return halt
+            foo: return
+        };
+        let_assert!(Err(err) = VM::profile(&program, [].into(), [].into()));
+        let_assert!(InstructionError::JumpStackIsEmpty = err.source);
+    }
+
+    #[proptest]
+    fn from_various_types_to_public_input(#[strategy(arb())] tokens: Vec<BFieldElement>) {
+        let public_input = PublicInput::new(tokens.clone());
+
+        assert!(public_input == tokens.clone().into());
+        assert!(public_input == (&tokens).into());
+        assert!(public_input == tokens[..].into());
+        assert!(public_input == (&tokens[..]).into());
+
+        assert!(PublicInput::new(vec![]) == [].into());
+    }
+
+    #[proptest]
+    fn from_various_types_to_non_determinism(#[strategy(arb())] tokens: Vec<BFieldElement>) {
+        let non_determinism = NonDeterminism::new(tokens.clone());
+
+        assert!(non_determinism == tokens.clone().into());
+        assert!(non_determinism == tokens[..].into());
+        assert!(non_determinism == (&tokens[..]).into());
+
+        assert!(NonDeterminism::new(vec![]) == [].into());
+    }
 
     #[test]
     fn initialise_table() {
         let program = GREATEST_COMMON_DIVISOR.clone();
         let stdin = PublicInput::from([42, 56].map(|b| bfe!(b)));
         let secret_in = NonDeterminism::default();
-        program.trace_execution(stdin, secret_in).unwrap();
+        VM::trace_execution(&program, stdin, secret_in).unwrap();
     }
 
     #[test]
@@ -1208,7 +1536,7 @@ pub(crate) mod tests {
         let program = GREATEST_COMMON_DIVISOR.clone();
         let stdin = PublicInput::from([42, 56].map(|b| bfe!(b)));
         let secret_in = NonDeterminism::default();
-        let_assert!(Ok(stdout) = program.run(stdin, secret_in));
+        let_assert!(Ok(stdout) = VM::run(&program, stdin, secret_in));
 
         let output = stdout.iter().map(|o| format!("{o}")).join(", ");
         println!("VM output: [{output}]");
@@ -1219,7 +1547,7 @@ pub(crate) mod tests {
     #[test]
     fn crash_triton_vm_and_print_vm_error() {
         let crashing_program = triton_program!(push 2 assert halt);
-        let_assert!(Err(err) = crashing_program.run([].into(), [].into()));
+        let_assert!(Err(err) = VM::run(&crashing_program, [].into(), [].into()));
         println!("{err}");
     }
 
@@ -1351,8 +1679,10 @@ pub(crate) mod tests {
     #[test]
     fn vm_crashes_when_executing_recurse_or_return_with_empty_jump_stack() {
         let program = triton_program!(recurse_or_return halt);
-        let_assert!(Err(err) = program.run(PublicInput::default(), NonDeterminism::default()));
-        assert!(JumpStackIsEmpty == err.source);
+        let_assert!(
+            Err(err) = VM::run(&program, PublicInput::default(), NonDeterminism::default())
+        );
+        assert!(InstructionError::JumpStackIsEmpty == err.source);
     }
 
     pub(crate) fn test_program_for_write_mem_read_mem() -> ProgramAndInput {
@@ -2051,9 +2381,7 @@ pub(crate) mod tests {
     #[test]
     fn can_compute_dot_product_from_uninitialized_ram() {
         let program = triton_program!(xx_dot_step xb_dot_step halt);
-        program
-            .run(PublicInput::default(), NonDeterminism::default())
-            .unwrap();
+        VM::run(&program, PublicInput::default(), NonDeterminism::default()).unwrap();
     }
 
     pub(crate) fn property_based_test_program_for_xx_dot_step() -> ProgramAndInput {
@@ -2208,7 +2536,7 @@ pub(crate) mod tests {
         );
         let program_and_input = ProgramAndInput::new(program);
         let_assert!(Err(err) = program_and_input.run());
-        let_assert!(AssertionFailed = err.source);
+        let_assert!(InstructionError::AssertionFailed = err.source);
     }
 
     pub(crate) fn test_program_for_split() -> ProgramAndInput {
@@ -2289,7 +2617,7 @@ pub(crate) mod tests {
             write_io 3
             halt
         );
-        let actual_stdout = program.run([].into(), [].into())?;
+        let actual_stdout = VM::run(&program, [].into(), [].into())?;
         let expected_stdout = (left_operand + right_operand).coefficients.to_vec();
         prop_assert_eq!(expected_stdout, actual_stdout);
     }
@@ -2310,7 +2638,7 @@ pub(crate) mod tests {
             write_io 3
             halt
         );
-        let actual_stdout = program.run([].into(), [].into())?;
+        let actual_stdout = VM::run(&program, [].into(), [].into())?;
         let expected_stdout = (left_operand * right_operand).coefficients.to_vec();
         prop_assert_eq!(expected_stdout, actual_stdout);
     }
@@ -2329,7 +2657,7 @@ pub(crate) mod tests {
             write_io 3
             halt
         );
-        let actual_stdout = program.run([].into(), [].into())?;
+        let actual_stdout = VM::run(&program, [].into(), [].into())?;
         let expected_stdout = operand.inverse().coefficients.to_vec();
         prop_assert_eq!(expected_stdout, actual_stdout);
     }
@@ -2345,7 +2673,7 @@ pub(crate) mod tests {
             write_io 3
             halt
         );
-        let actual_stdout = program.run([].into(), [].into())?;
+        let actual_stdout = VM::run(&program, [].into(), [].into())?;
         let expected_stdout = (scalar * operand).coefficients.to_vec();
         prop_assert_eq!(expected_stdout, actual_stdout);
     }
@@ -2421,7 +2749,7 @@ pub(crate) mod tests {
     #[test]
     fn run_tvm_halt_then_do_stuff() {
         let program = triton_program!(halt push 1 push 2 add invert write_io 5);
-        let_assert!(Ok((aet, _)) = program.trace_execution([].into(), [].into()));
+        let_assert!(Ok((aet, _)) = VM::trace_execution(&program, [].into(), [].into()));
 
         let_assert!(Some(last_processor_row) = aet.processor_trace.rows().into_iter().last());
         let clk_count = last_processor_row[ProcessorBaseTableColumn::CLK.base_table_index()];
@@ -2509,7 +2837,7 @@ pub(crate) mod tests {
         }
 
         let program = MERKLE_TREE_AUTHENTICATION_PATH_VERIFY.clone();
-        assert!(let Ok(_) = program.run(public_input.into(), non_determinism));
+        assert!(let Ok(_) = VM::run(&program, public_input.into(), non_determinism));
     }
 
     #[proptest]
@@ -2551,7 +2879,7 @@ pub(crate) mod tests {
         );
 
         let public_input = vec![p2_x, p1.1, p1.0, p0.1, p0.0];
-        let_assert!(Ok(output) = get_collinear_y_program.run(public_input.into(), [].into()));
+        let_assert!(Ok(output) = VM::run(&get_collinear_y_program, public_input.into(), [].into()));
         prop_assert_eq!(p2_y, output[0]);
     }
 
@@ -2573,7 +2901,7 @@ pub(crate) mod tests {
                 halt
         );
 
-        let_assert!(Ok(standard_out) = countdown_program.run([].into(), [].into()));
+        let_assert!(Ok(standard_out) = VM::run(&countdown_program, [].into(), [].into()));
         let expected = (0..=10).map(BFieldElement::new).rev().collect_vec();
         assert!(expected == standard_out);
     }
@@ -2592,21 +2920,21 @@ pub(crate) mod tests {
     #[test]
     fn run_tvm_swap() {
         let program = triton_program!(push 1 push 2 swap 1 assert write_io 1 halt);
-        let_assert!(Ok(standard_out) = program.run([].into(), [].into()));
+        let_assert!(Ok(standard_out) = VM::run(&program, [].into(), [].into()));
         assert!(bfe!(2) == standard_out[0]);
     }
 
     #[test]
     fn swap_st0_is_like_no_op() {
         let program = triton_program!(push 42 swap 0 write_io 1 halt);
-        let_assert!(Ok(standard_out) = program.run([].into(), [].into()));
+        let_assert!(Ok(standard_out) = VM::run(&program, [].into(), [].into()));
         assert!(bfe!(42) == standard_out[0]);
     }
 
     #[test]
     fn read_mem_uninitialized() {
         let program = triton_program!(read_mem 3 halt);
-        let_assert!(Ok((aet, _)) = program.trace_execution([].into(), [].into()));
+        let_assert!(Ok((aet, _)) = VM::trace_execution(&program, [].into(), [].into()));
         assert!(2 == aet.processor_trace.nrows());
     }
 
@@ -2662,8 +2990,8 @@ pub(crate) mod tests {
     #[test]
     fn program_without_halt() {
         let program = triton_program!(nop);
-        let_assert!(Err(err) = program.trace_execution([].into(), [].into()));
-        let_assert!(InstructionPointerOverflow = err.source);
+        let_assert!(Err(err) = VM::trace_execution(&program, [].into(), [].into()));
+        let_assert!(InstructionError::InstructionPointerOverflow = err.source);
     }
 
     #[test]
@@ -2685,7 +3013,7 @@ pub(crate) mod tests {
 
         let std_in = PublicInput::from(sudoku.map(|b| bfe!(b)));
         let secret_in = NonDeterminism::default();
-        assert!(let Ok(_) = program.trace_execution(std_in, secret_in));
+        assert!(let Ok(_) = VM::trace_execution(&program, std_in, secret_in));
 
         // rows and columns adhere to Sudoku rules, boxes do not
         let bad_sudoku = [
@@ -2703,8 +3031,8 @@ pub(crate) mod tests {
         ];
         let bad_std_in = PublicInput::from(bad_sudoku.map(|b| bfe!(b)));
         let secret_in = NonDeterminism::default();
-        let_assert!(Err(err) = program.trace_execution(bad_std_in, secret_in));
-        let_assert!(AssertionFailed = err.source);
+        let_assert!(Err(err) = VM::trace_execution(&program, bad_std_in, secret_in));
+        let_assert!(InstructionError::AssertionFailed = err.source);
     }
 
     fn instruction_does_not_change_vm_state_when_crashing_vm(

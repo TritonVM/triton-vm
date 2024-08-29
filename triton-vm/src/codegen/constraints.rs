@@ -7,6 +7,8 @@ use constraint_builder::BinOp;
 use constraint_builder::CircuitExpression;
 use constraint_builder::ConstraintCircuit;
 use constraint_builder::InputIndicator;
+use isa::instruction::Instruction;
+use isa::op_stack::NumberOfWords;
 use itertools::Itertools;
 use proc_macro2::TokenStream;
 use quote::format_ident;
@@ -14,9 +16,6 @@ use quote::quote;
 use quote::ToTokens;
 use twenty_first::prelude::x_field_element::EXTENSION_DEGREE;
 use twenty_first::prelude::*;
-
-use crate::instruction::Instruction;
-use crate::op_stack::NumberOfWords;
 
 use crate::codegen::Constraints;
 

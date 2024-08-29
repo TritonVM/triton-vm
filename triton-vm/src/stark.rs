@@ -1313,6 +1313,10 @@ pub(crate) mod tests {
     use assert2::assert;
     use assert2::check;
     use assert2::let_assert;
+    use constraint_builder::ConstraintCircuitBuilder;
+    use isa::error::OpStackError;
+    use isa::instruction::Instruction;
+    use isa::op_stack::OpStackElement;
     use itertools::izip;
     use num_traits::Zero;
     use proptest::collection::vec;
@@ -1327,9 +1331,6 @@ pub(crate) mod tests {
 
     use crate::error::InstructionError;
     use crate::example_programs::*;
-    use crate::instruction::Instruction;
-    use crate::op_stack::OpStackElement;
-    use crate::program::NonDeterminism;
     use crate::shared_tests::*;
     use crate::table::cascade_table::ExtCascadeTable;
     use crate::table::challenges::ChallengeId::StandardInputIndeterminate;
@@ -1360,8 +1361,9 @@ pub(crate) mod tests {
     use crate::table::u32_table::ExtU32Table;
     use crate::triton_program;
     use crate::vm::tests::*;
+    use crate::vm::NonDeterminism;
+    use crate::vm::VM;
     use crate::PublicInput;
-    use constraint_builder::ConstraintCircuitBuilder;
 
     use super::*;
 
@@ -1374,9 +1376,8 @@ pub(crate) mod tests {
             non_determinism,
         } = program_and_input;
 
-        let (aet, stdout) = program
-            .trace_execution(public_input.clone(), non_determinism)
-            .unwrap();
+        let (aet, stdout) =
+            VM::trace_execution(&program, public_input.clone(), non_determinism).unwrap();
         let stark = low_security_stark(DEFAULT_LOG2_FRI_EXPANSION_FACTOR_FOR_TESTS);
         let claim = Claim::about_program(&aet.program)
             .with_input(public_input.individual_tokens)
@@ -2074,7 +2075,7 @@ pub(crate) mod tests {
                 xx_dot_step
                 halt
             };
-            let result = program.run(PublicInput::default(), NonDeterminism::default());
+            let result = VM::run(&program, PublicInput::default(), NonDeterminism::default());
             assert!(result.is_ok());
             let program_and_input = ProgramAndInput::new(program);
             triton_constraints_evaluate_to_zero(program_and_input);
@@ -2346,15 +2347,16 @@ pub(crate) mod tests {
         st0: BFieldElement,
     ) {
         let program = triton_program!(push {st0} log_2_floor halt);
-        let_assert!(Err(err) = program.run([].into(), [].into()));
-        let_assert!(InstructionError::FailedU32Conversion(element) = err.source);
+        let_assert!(Err(err) = VM::run(&program, [].into(), [].into()));
+        let_assert!(InstructionError::OpStackError(err) = err.source);
+        let_assert!(OpStackError::FailedU32Conversion(element) = err);
         assert!(st0 == element);
     }
 
     #[test]
     fn negative_log_2_floor_of_0() {
         let program = triton_program!(push 0 log_2_floor halt);
-        let_assert!(Err(err) = program.run([].into(), [].into()));
+        let_assert!(Err(err) = VM::run(&program, [].into(), [].into()));
         let_assert!(InstructionError::LogarithmOfZero = err.source);
     }
 
@@ -2776,9 +2778,7 @@ pub(crate) mod tests {
             public_input,
             non_determinism,
         } = program_executing_every_instruction();
-        let (aet, _) = program
-            .trace_execution(public_input, non_determinism)
-            .unwrap();
+        let (aet, _) = VM::trace_execution(&program, public_input, non_determinism).unwrap();
         let opcodes_of_all_executed_instructions = aet
             .processor_trace
             .column(ProcessorBaseTableColumn::CI.base_table_index())

@@ -5,6 +5,7 @@ use std::ops::Range;
 use constraint_builder::DualRowIndicator::*;
 use constraint_builder::SingleRowIndicator::*;
 use constraint_builder::*;
+use isa::instruction::Instruction;
 use itertools::Itertools;
 use ndarray::parallel::prelude::*;
 use ndarray::prelude::*;
@@ -14,7 +15,6 @@ use twenty_first::math::traits::FiniteField;
 use twenty_first::prelude::*;
 
 use crate::aet::AlgebraicExecutionTrace;
-use crate::instruction::Instruction;
 use crate::ndarray_helper::contiguous_column_slices;
 use crate::ndarray_helper::horizontal_multi_slice_mut;
 use crate::profiler::profiler;

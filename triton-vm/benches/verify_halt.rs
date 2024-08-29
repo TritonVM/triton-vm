@@ -3,9 +3,7 @@ use criterion::criterion_main;
 use criterion::BenchmarkId;
 use criterion::Criterion;
 
-use triton_vm::proof::Claim;
-use triton_vm::stark::Stark;
-use triton_vm::triton_program;
+use triton_vm::prelude::*;
 
 /// cargo criterion --bench verify_halt
 fn verify_halt(criterion: &mut Criterion) {
@@ -14,7 +12,7 @@ fn verify_halt(criterion: &mut Criterion) {
     let stark = Stark::default();
     let claim = Claim::about_program(&program);
 
-    let (aet, _) = program.trace_execution([].into(), [].into()).unwrap();
+    let (aet, _) = VM::trace_execution(&program, [].into(), [].into()).unwrap();
     let proof = stark.prove(&claim, &aet).unwrap();
 
     triton_vm::profiler::start("Verify Halt");

@@ -1,5 +1,5 @@
 [workspace]
-members = ["constraint-builder", "triton-vm"]
+members = ["triton-vm", "triton-constraint-builder", "triton-isa"]
 resolver = "2"
 
 [profile.test]
@@ -55,6 +55,11 @@ thiserror = "1.0"
 trybuild = "1.0"
 twenty-first = "0.42.0-alpha.9"
 unicode-width = "0.1"
+
+[workspace.lints.rust]
+let_underscore_drop = "warn"
+missing_copy_implementations = "warn"
+missing_debug_implementations = "warn"
 
 [workspace.lints.clippy]
 cast_lossless = "warn"

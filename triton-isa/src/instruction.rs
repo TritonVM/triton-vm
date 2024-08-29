@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::fmt::Display;
 use std::fmt::Formatter;
 use std::fmt::Result as FmtResult;
+use std::num::TryFromIntError;
 use std::result;
 
 use arbitrary::Arbitrary;
@@ -15,24 +16,74 @@ use serde::Serialize;
 use strum::EnumCount;
 use strum::EnumIter;
 use strum::IntoEnumIterator;
+use thiserror::Error;
 use twenty_first::prelude::*;
 
-use AnInstruction::*;
-
-use crate::error::InstructionError;
-use crate::instruction::InstructionBit::*;
-use crate::op_stack::NumberOfWords::*;
-use crate::op_stack::OpStackElement::*;
-use crate::op_stack::*;
+use crate::op_stack::NumberOfWords;
+use crate::op_stack::OpStackElement;
+use crate::op_stack::OpStackError;
 
 type Result<T> = result::Result<T, InstructionError>;
 
 /// An `Instruction` has `call` addresses encoded as absolute integers.
 pub type Instruction = AnInstruction<BFieldElement>;
 
-pub const ALL_INSTRUCTIONS: [Instruction; Instruction::COUNT] =
-    all_instructions_with_default_args();
-pub const ALL_INSTRUCTION_NAMES: [&str; Instruction::COUNT] = all_instruction_names();
+pub const ALL_INSTRUCTIONS: [Instruction; Instruction::COUNT] = [
+    Instruction::Pop(NumberOfWords::N1),
+    Instruction::Push(BFieldElement::ZERO),
+    Instruction::Divine(NumberOfWords::N1),
+    Instruction::Dup(OpStackElement::ST0),
+    Instruction::Swap(OpStackElement::ST0),
+    Instruction::Halt,
+    Instruction::Nop,
+    Instruction::Skiz,
+    Instruction::Call(BFieldElement::ZERO),
+    Instruction::Return,
+    Instruction::Recurse,
+    Instruction::RecurseOrReturn,
+    Instruction::Assert,
+    Instruction::ReadMem(NumberOfWords::N1),
+    Instruction::WriteMem(NumberOfWords::N1),
+    Instruction::Hash,
+    Instruction::AssertVector,
+    Instruction::SpongeInit,
+    Instruction::SpongeAbsorb,
+    Instruction::SpongeAbsorbMem,
+    Instruction::SpongeSqueeze,
+    Instruction::Add,
+    Instruction::AddI(BFieldElement::ZERO),
+    Instruction::Mul,
+    Instruction::Invert,
+    Instruction::Eq,
+    Instruction::Split,
+    Instruction::Lt,
+    Instruction::And,
+    Instruction::Xor,
+    Instruction::Log2Floor,
+    Instruction::Pow,
+    Instruction::DivMod,
+    Instruction::PopCount,
+    Instruction::XxAdd,
+    Instruction::XxMul,
+    Instruction::XInvert,
+    Instruction::XbMul,
+    Instruction::ReadIo(NumberOfWords::N1),
+    Instruction::WriteIo(NumberOfWords::N1),
+    Instruction::MerkleStep,
+    Instruction::MerkleStepMem,
+    Instruction::XxDotStep,
+    Instruction::XbDotStep,
+];
+
+pub const ALL_INSTRUCTION_NAMES: [&str; Instruction::COUNT] = {
+    let mut names = [""; Instruction::COUNT];
+    let mut i = 0;
+    while i < Instruction::COUNT {
+        names[i] = ALL_INSTRUCTIONS[i].name();
+        i += 1;
+    }
+    names
+};
 
 lazy_static! {
     pub static ref OPCODE_TO_INSTRUCTION_MAP: HashMap<u32, Instruction> = {
@@ -225,99 +276,99 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
     /// Assign a unique positive integer to each `Instruction`.
     pub const fn opcode(&self) -> u32 {
         match self {
-            Pop(_) => 3,
-            Push(_) => 1,
-            Divine(_) => 9,
-            Dup(_) => 17,
-            Swap(_) => 25,
-            Halt => 0,
-            Nop => 8,
-            Skiz => 2,
-            Call(_) => 33,
-            Return => 16,
-            Recurse => 24,
-            RecurseOrReturn => 32,
-            Assert => 10,
-            ReadMem(_) => 41,
-            WriteMem(_) => 11,
-            Hash => 18,
-            AssertVector => 26,
-            SpongeInit => 40,
-            SpongeAbsorb => 34,
-            SpongeAbsorbMem => 48,
-            SpongeSqueeze => 56,
-            Add => 42,
-            AddI(_) => 49,
-            Mul => 50,
-            Invert => 64,
-            Eq => 58,
-            Split => 4,
-            Lt => 6,
-            And => 14,
-            Xor => 22,
-            Log2Floor => 12,
-            Pow => 30,
-            DivMod => 20,
-            PopCount => 28,
-            XxAdd => 66,
-            XxMul => 74,
-            XInvert => 72,
-            XbMul => 82,
-            ReadIo(_) => 57,
-            WriteIo(_) => 19,
-            MerkleStep => 36,
-            MerkleStepMem => 44,
-            XxDotStep => 80,
-            XbDotStep => 88,
+            AnInstruction::Pop(_) => 3,
+            AnInstruction::Push(_) => 1,
+            AnInstruction::Divine(_) => 9,
+            AnInstruction::Dup(_) => 17,
+            AnInstruction::Swap(_) => 25,
+            AnInstruction::Halt => 0,
+            AnInstruction::Nop => 8,
+            AnInstruction::Skiz => 2,
+            AnInstruction::Call(_) => 33,
+            AnInstruction::Return => 16,
+            AnInstruction::Recurse => 24,
+            AnInstruction::RecurseOrReturn => 32,
+            AnInstruction::Assert => 10,
+            AnInstruction::ReadMem(_) => 41,
+            AnInstruction::WriteMem(_) => 11,
+            AnInstruction::Hash => 18,
+            AnInstruction::AssertVector => 26,
+            AnInstruction::SpongeInit => 40,
+            AnInstruction::SpongeAbsorb => 34,
+            AnInstruction::SpongeAbsorbMem => 48,
+            AnInstruction::SpongeSqueeze => 56,
+            AnInstruction::Add => 42,
+            AnInstruction::AddI(_) => 49,
+            AnInstruction::Mul => 50,
+            AnInstruction::Invert => 64,
+            AnInstruction::Eq => 58,
+            AnInstruction::Split => 4,
+            AnInstruction::Lt => 6,
+            AnInstruction::And => 14,
+            AnInstruction::Xor => 22,
+            AnInstruction::Log2Floor => 12,
+            AnInstruction::Pow => 30,
+            AnInstruction::DivMod => 20,
+            AnInstruction::PopCount => 28,
+            AnInstruction::XxAdd => 66,
+            AnInstruction::XxMul => 74,
+            AnInstruction::XInvert => 72,
+            AnInstruction::XbMul => 82,
+            AnInstruction::ReadIo(_) => 57,
+            AnInstruction::WriteIo(_) => 19,
+            AnInstruction::MerkleStep => 36,
+            AnInstruction::MerkleStepMem => 44,
+            AnInstruction::XxDotStep => 80,
+            AnInstruction::XbDotStep => 88,
         }
     }
 
-    pub(crate) const fn name(&self) -> &'static str {
+    pub const fn name(&self) -> &'static str {
         match self {
-            Pop(_) => "pop",
-            Push(_) => "push",
-            Divine(_) => "divine",
-            Dup(_) => "dup",
-            Swap(_) => "swap",
-            Halt => "halt",
-            Nop => "nop",
-            Skiz => "skiz",
-            Call(_) => "call",
-            Return => "return",
-            Recurse => "recurse",
-            RecurseOrReturn => "recurse_or_return",
-            Assert => "assert",
-            ReadMem(_) => "read_mem",
-            WriteMem(_) => "write_mem",
-            Hash => "hash",
-            AssertVector => "assert_vector",
-            SpongeInit => "sponge_init",
-            SpongeAbsorb => "sponge_absorb",
-            SpongeAbsorbMem => "sponge_absorb_mem",
-            SpongeSqueeze => "sponge_squeeze",
-            Add => "add",
-            AddI(_) => "addi",
-            Mul => "mul",
-            Invert => "invert",
-            Eq => "eq",
-            Split => "split",
-            Lt => "lt",
-            And => "and",
-            Xor => "xor",
-            Log2Floor => "log_2_floor",
-            Pow => "pow",
-            DivMod => "div_mod",
-            PopCount => "pop_count",
-            XxAdd => "xx_add",
-            XxMul => "xx_mul",
-            XInvert => "x_invert",
-            XbMul => "xb_mul",
-            ReadIo(_) => "read_io",
-            WriteIo(_) => "write_io",
-            MerkleStep => "merkle_step",
-            MerkleStepMem => "merkle_step_mem",
-            XxDotStep => "xx_dot_step",
-            XbDotStep => "xb_dot_step",
+            AnInstruction::Pop(_) => "pop",
+            AnInstruction::Push(_) => "push",
+            AnInstruction::Divine(_) => "divine",
+            AnInstruction::Dup(_) => "dup",
+            AnInstruction::Swap(_) => "swap",
+            AnInstruction::Halt => "halt",
+            AnInstruction::Nop => "nop",
+            AnInstruction::Skiz => "skiz",
+            AnInstruction::Call(_) => "call",
+            AnInstruction::Return => "return",
+            AnInstruction::Recurse => "recurse",
+            AnInstruction::RecurseOrReturn => "recurse_or_return",
+            AnInstruction::Assert => "assert",
+            AnInstruction::ReadMem(_) => "read_mem",
+            AnInstruction::WriteMem(_) => "write_mem",
+            AnInstruction::Hash => "hash",
+            AnInstruction::AssertVector => "assert_vector",
+            AnInstruction::SpongeInit => "sponge_init",
+            AnInstruction::SpongeAbsorb => "sponge_absorb",
+            AnInstruction::SpongeAbsorbMem => "sponge_absorb_mem",
+            AnInstruction::SpongeSqueeze => "sponge_squeeze",
+            AnInstruction::Add => "add",
+            AnInstruction::AddI(_) => "addi",
+            AnInstruction::Mul => "mul",
+            AnInstruction::Invert => "invert",
+            AnInstruction::Eq => "eq",
+            AnInstruction::Split => "split",
+            AnInstruction::Lt => "lt",
+            AnInstruction::And => "and",
+            AnInstruction::Xor => "xor",
+            AnInstruction::Log2Floor => "log_2_floor",
+            AnInstruction::Pow => "pow",
+            AnInstruction::DivMod => "div_mod",
+            AnInstruction::PopCount => "pop_count",
+            AnInstruction::XxAdd => "xx_add",
+            AnInstruction::XxMul => "xx_mul",
+            AnInstruction::XInvert => "x_invert",
+            AnInstruction::XbMul => "xb_mul",
+            AnInstruction::ReadIo(_) => "read_io",
+            AnInstruction::WriteIo(_) => "write_io",
+            AnInstruction::MerkleStep => "merkle_step",
+            AnInstruction::MerkleStepMem => "merkle_step_mem",
+            AnInstruction::XxDotStep => "xx_dot_step",
+            AnInstruction::XbDotStep => "xb_dot_step",
         }
     }
 
@@ -328,13 +379,13 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
     /// Number of words required to represent the instruction.
     pub fn size(&self) -> usize {
         match self {
-            Pop(_) | Push(_) => 2,
-            Divine(_) => 2,
-            Dup(_) | Swap(_) => 2,
-            Call(_) => 2,
-            ReadMem(_) | WriteMem(_) => 2,
-            AddI(_) => 2,
-            ReadIo(_) | WriteIo(_) => 2,
+            AnInstruction::Pop(_) | AnInstruction::Push(_) => 2,
+            AnInstruction::Divine(_) => 2,
+            AnInstruction::Dup(_) | AnInstruction::Swap(_) => 2,
+            AnInstruction::Call(_) => 2,
+            AnInstruction::ReadMem(_) | AnInstruction::WriteMem(_) => 2,
+            AnInstruction::AddI(_) => 2,
+            AnInstruction::ReadIo(_) | AnInstruction::WriteIo(_) => 2,
             _ => 1,
         }
     }
@@ -353,99 +404,99 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
         NewDest: PartialEq + Default,
     {
         match self {
-            Pop(x) => Pop(*x),
-            Push(x) => Push(*x),
-            Divine(x) => Divine(*x),
-            Dup(x) => Dup(*x),
-            Swap(x) => Swap(*x),
-            Halt => Halt,
-            Nop => Nop,
-            Skiz => Skiz,
-            Call(label) => Call(f(label)),
-            Return => Return,
-            Recurse => Recurse,
-            RecurseOrReturn => RecurseOrReturn,
-            Assert => Assert,
-            ReadMem(x) => ReadMem(*x),
-            WriteMem(x) => WriteMem(*x),
-            Hash => Hash,
-            AssertVector => AssertVector,
-            SpongeInit => SpongeInit,
-            SpongeAbsorb => SpongeAbsorb,
-            SpongeAbsorbMem => SpongeAbsorbMem,
-            SpongeSqueeze => SpongeSqueeze,
-            Add => Add,
-            AddI(x) => AddI(*x),
-            Mul => Mul,
-            Invert => Invert,
-            Eq => Eq,
-            Split => Split,
-            Lt => Lt,
-            And => And,
-            Xor => Xor,
-            Log2Floor => Log2Floor,
-            Pow => Pow,
-            DivMod => DivMod,
-            PopCount => PopCount,
-            XxAdd => XxAdd,
-            XxMul => XxMul,
-            XInvert => XInvert,
-            XbMul => XbMul,
-            ReadIo(x) => ReadIo(*x),
-            WriteIo(x) => WriteIo(*x),
-            MerkleStep => MerkleStep,
-            MerkleStepMem => MerkleStepMem,
-            XxDotStep => XxDotStep,
-            XbDotStep => XbDotStep,
+            AnInstruction::Pop(x) => AnInstruction::Pop(*x),
+            AnInstruction::Push(x) => AnInstruction::Push(*x),
+            AnInstruction::Divine(x) => AnInstruction::Divine(*x),
+            AnInstruction::Dup(x) => AnInstruction::Dup(*x),
+            AnInstruction::Swap(x) => AnInstruction::Swap(*x),
+            AnInstruction::Halt => AnInstruction::Halt,
+            AnInstruction::Nop => AnInstruction::Nop,
+            AnInstruction::Skiz => AnInstruction::Skiz,
+            AnInstruction::Call(label) => AnInstruction::Call(f(label)),
+            AnInstruction::Return => AnInstruction::Return,
+            AnInstruction::Recurse => AnInstruction::Recurse,
+            AnInstruction::RecurseOrReturn => AnInstruction::RecurseOrReturn,
+            AnInstruction::Assert => AnInstruction::Assert,
+            AnInstruction::ReadMem(x) => AnInstruction::ReadMem(*x),
+            AnInstruction::WriteMem(x) => AnInstruction::WriteMem(*x),
+            AnInstruction::Hash => AnInstruction::Hash,
+            AnInstruction::AssertVector => AnInstruction::AssertVector,
+            AnInstruction::SpongeInit => AnInstruction::SpongeInit,
+            AnInstruction::SpongeAbsorb => AnInstruction::SpongeAbsorb,
+            AnInstruction::SpongeAbsorbMem => AnInstruction::SpongeAbsorbMem,
+            AnInstruction::SpongeSqueeze => AnInstruction::SpongeSqueeze,
+            AnInstruction::Add => AnInstruction::Add,
+            AnInstruction::AddI(x) => AnInstruction::AddI(*x),
+            AnInstruction::Mul => AnInstruction::Mul,
+            AnInstruction::Invert => AnInstruction::Invert,
+            AnInstruction::Eq => AnInstruction::Eq,
+            AnInstruction::Split => AnInstruction::Split,
+            AnInstruction::Lt => AnInstruction::Lt,
+            AnInstruction::And => AnInstruction::And,
+            AnInstruction::Xor => AnInstruction::Xor,
+            AnInstruction::Log2Floor => AnInstruction::Log2Floor,
+            AnInstruction::Pow => AnInstruction::Pow,
+            AnInstruction::DivMod => AnInstruction::DivMod,
+            AnInstruction::PopCount => AnInstruction::PopCount,
+            AnInstruction::XxAdd => AnInstruction::XxAdd,
+            AnInstruction::XxMul => AnInstruction::XxMul,
+            AnInstruction::XInvert => AnInstruction::XInvert,
+            AnInstruction::XbMul => AnInstruction::XbMul,
+            AnInstruction::ReadIo(x) => AnInstruction::ReadIo(*x),
+            AnInstruction::WriteIo(x) => AnInstruction::WriteIo(*x),
+            AnInstruction::MerkleStep => AnInstruction::MerkleStep,
+            AnInstruction::MerkleStepMem => AnInstruction::MerkleStepMem,
+            AnInstruction::XxDotStep => AnInstruction::XxDotStep,
+            AnInstruction::XbDotStep => AnInstruction::XbDotStep,
         }
     }
 
     pub const fn op_stack_size_influence(&self) -> i32 {
         match self {
-            Pop(n) => -(n.num_words() as i32),
-            Push(_) => 1,
-            Divine(n) => n.num_words() as i32,
-            Dup(_) => 1,
-            Swap(_) => 0,
-            Halt => 0,
-            Nop => 0,
-            Skiz => -1,
-            Call(_) => 0,
-            Return => 0,
-            Recurse => 0,
-            RecurseOrReturn => 0,
-            Assert => -1,
-            ReadMem(n) => n.num_words() as i32,
-            WriteMem(n) => -(n.num_words() as i32),
-            Hash => -5,
-            AssertVector => -5,
-            SpongeInit => 0,
-            SpongeAbsorb => -10,
-            SpongeAbsorbMem => 0,
-            SpongeSqueeze => 10,
-            Add => -1,
-            AddI(_) => 0,
-            Mul => -1,
-            Invert => 0,
-            Eq => -1,
-            Split => 1,
-            Lt => -1,
-            And => -1,
-            Xor => -1,
-            Log2Floor => 0,
-            Pow => -1,
-            DivMod => 0,
-            PopCount => 0,
-            XxAdd => -3,
-            XxMul => -3,
-            XInvert => 0,
-            XbMul => -1,
-            ReadIo(n) => n.num_words() as i32,
-            WriteIo(n) => -(n.num_words() as i32),
-            MerkleStep => 0,
-            MerkleStepMem => 0,
-            XxDotStep => 0,
-            XbDotStep => 0,
+            AnInstruction::Pop(n) => -(n.num_words() as i32),
+            AnInstruction::Push(_) => 1,
+            AnInstruction::Divine(n) => n.num_words() as i32,
+            AnInstruction::Dup(_) => 1,
+            AnInstruction::Swap(_) => 0,
+            AnInstruction::Halt => 0,
+            AnInstruction::Nop => 0,
+            AnInstruction::Skiz => -1,
+            AnInstruction::Call(_) => 0,
+            AnInstruction::Return => 0,
+            AnInstruction::Recurse => 0,
+            AnInstruction::RecurseOrReturn => 0,
+            AnInstruction::Assert => -1,
+            AnInstruction::ReadMem(n) => n.num_words() as i32,
+            AnInstruction::WriteMem(n) => -(n.num_words() as i32),
+            AnInstruction::Hash => -5,
+            AnInstruction::AssertVector => -5,
+            AnInstruction::SpongeInit => 0,
+            AnInstruction::SpongeAbsorb => -10,
+            AnInstruction::SpongeAbsorbMem => 0,
+            AnInstruction::SpongeSqueeze => 10,
+            AnInstruction::Add => -1,
+            AnInstruction::AddI(_) => 0,
+            AnInstruction::Mul => -1,
+            AnInstruction::Invert => 0,
+            AnInstruction::Eq => -1,
+            AnInstruction::Split => 1,
+            AnInstruction::Lt => -1,
+            AnInstruction::And => -1,
+            AnInstruction::Xor => -1,
+            AnInstruction::Log2Floor => 0,
+            AnInstruction::Pow => -1,
+            AnInstruction::DivMod => 0,
+            AnInstruction::PopCount => 0,
+            AnInstruction::XxAdd => -3,
+            AnInstruction::XxMul => -3,
+            AnInstruction::XInvert => 0,
+            AnInstruction::XbMul => -1,
+            AnInstruction::ReadIo(n) => n.num_words() as i32,
+            AnInstruction::WriteIo(n) => -(n.num_words() as i32),
+            AnInstruction::MerkleStep => 0,
+            AnInstruction::MerkleStepMem => 0,
+            AnInstruction::XxDotStep => 0,
+            AnInstruction::XbDotStep => 0,
         }
     }
 
@@ -453,16 +504,16 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
     pub fn is_u32_instruction(&self) -> bool {
         matches!(
             self,
-            Split
-                | Lt
-                | And
-                | Xor
-                | Log2Floor
-                | Pow
-                | DivMod
-                | PopCount
-                | MerkleStep
-                | MerkleStepMem
+            AnInstruction::Split
+                | AnInstruction::Lt
+                | AnInstruction::And
+                | AnInstruction::Xor
+                | AnInstruction::Log2Floor
+                | AnInstruction::Pow
+                | AnInstruction::DivMod
+                | AnInstruction::PopCount
+                | AnInstruction::MerkleStep
+                | AnInstruction::MerkleStepMem
         )
     }
 }
@@ -471,13 +522,17 @@ impl<Dest: Display + PartialEq + Default> Display for AnInstruction<Dest> {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         write!(f, "{}", self.name())?;
         match self {
-            Push(arg) => write!(f, " {arg}"),
-            Pop(arg) | Divine(arg) => write!(f, " {arg}"),
-            Dup(arg) | Swap(arg) => write!(f, " {arg}"),
-            Call(arg) => write!(f, " {arg}"),
-            ReadMem(arg) | WriteMem(arg) => write!(f, " {arg}"),
-            AddI(arg) => write!(f, " {arg}"),
-            ReadIo(arg) | WriteIo(arg) => write!(f, " {arg}"),
+            AnInstruction::Push(arg) => write!(f, " {arg}"),
+            AnInstruction::Pop(arg) => write!(f, " {arg}"),
+            AnInstruction::Divine(arg) => write!(f, " {arg}"),
+            AnInstruction::Dup(arg) => write!(f, " {arg}"),
+            AnInstruction::Swap(arg) => write!(f, " {arg}"),
+            AnInstruction::Call(arg) => write!(f, " {arg}"),
+            AnInstruction::ReadMem(arg) => write!(f, " {arg}"),
+            AnInstruction::WriteMem(arg) => write!(f, " {arg}"),
+            AnInstruction::AddI(arg) => write!(f, " {arg}"),
+            AnInstruction::ReadIo(arg) => write!(f, " {arg}"),
+            AnInstruction::WriteIo(arg) => write!(f, " {arg}"),
             _ => Ok(()),
         }
     }
@@ -487,12 +542,17 @@ impl Instruction {
     /// Get the argument of the instruction, if it has one.
     pub fn arg(&self) -> Option<BFieldElement> {
         match self {
-            Push(arg) | Call(arg) => Some(*arg),
-            Pop(arg) | Divine(arg) => Some(arg.into()),
-            Dup(arg) | Swap(arg) => Some(arg.into()),
-            ReadMem(arg) | WriteMem(arg) => Some(arg.into()),
-            AddI(arg) => Some(*arg),
-            ReadIo(arg) | WriteIo(arg) => Some(arg.into()),
+            AnInstruction::Push(arg) => Some(*arg),
+            AnInstruction::Call(arg) => Some(*arg),
+            AnInstruction::Pop(arg) => Some(arg.into()),
+            AnInstruction::Divine(arg) => Some(arg.into()),
+            AnInstruction::Dup(arg) => Some(arg.into()),
+            AnInstruction::Swap(arg) => Some(arg.into()),
+            AnInstruction::ReadMem(arg) => Some(arg.into()),
+            AnInstruction::WriteMem(arg) => Some(arg.into()),
+            AnInstruction::AddI(arg) => Some(*arg),
+            AnInstruction::ReadIo(arg) => Some(arg.into()),
+            AnInstruction::WriteIo(arg) => Some(arg.into()),
             _ => None,
         }
     }
@@ -505,17 +565,17 @@ impl Instruction {
         let op_stack_element = new_arg.try_into().map_err(|_| illegal_argument_error);
 
         let new_instruction = match self {
-            Pop(_) => Pop(num_words?),
-            Push(_) => Push(new_arg),
-            Divine(_) => Divine(num_words?),
-            Dup(_) => Dup(op_stack_element?),
-            Swap(_) => Swap(op_stack_element?),
-            Call(_) => Call(new_arg),
-            ReadMem(_) => ReadMem(num_words?),
-            WriteMem(_) => WriteMem(num_words?),
-            AddI(_) => AddI(new_arg),
-            ReadIo(_) => ReadIo(num_words?),
-            WriteIo(_) => WriteIo(num_words?),
+            AnInstruction::Pop(_) => AnInstruction::Pop(num_words?),
+            AnInstruction::Push(_) => AnInstruction::Push(new_arg),
+            AnInstruction::Divine(_) => AnInstruction::Divine(num_words?),
+            AnInstruction::Dup(_) => AnInstruction::Dup(op_stack_element?),
+            AnInstruction::Swap(_) => AnInstruction::Swap(op_stack_element?),
+            AnInstruction::Call(_) => AnInstruction::Call(new_arg),
+            AnInstruction::ReadMem(_) => AnInstruction::ReadMem(num_words?),
+            AnInstruction::WriteMem(_) => AnInstruction::WriteMem(num_words?),
+            AnInstruction::AddI(_) => AnInstruction::AddI(new_arg),
+            AnInstruction::ReadIo(_) => AnInstruction::ReadIo(num_words?),
+            AnInstruction::WriteIo(_) => AnInstruction::WriteIo(num_words?),
             _ => return Err(illegal_argument_error),
         };
 
@@ -561,67 +621,6 @@ impl TryFrom<BFieldElement> for Instruction {
     }
 }
 
-/// A list of all instructions with default arguments, if any.
-const fn all_instructions_with_default_args() -> [AnInstruction<BFieldElement>; Instruction::COUNT]
-{
-    [
-        Pop(N1),
-        Push(BFieldElement::ZERO),
-        Divine(N1),
-        Dup(ST0),
-        Swap(ST0),
-        Halt,
-        Nop,
-        Skiz,
-        Call(BFieldElement::ZERO),
-        Return,
-        Recurse,
-        RecurseOrReturn,
-        Assert,
-        ReadMem(N1),
-        WriteMem(N1),
-        Hash,
-        AssertVector,
-        SpongeInit,
-        SpongeAbsorb,
-        SpongeAbsorbMem,
-        SpongeSqueeze,
-        Add,
-        AddI(BFieldElement::ZERO),
-        Mul,
-        Invert,
-        Eq,
-        Split,
-        Lt,
-        And,
-        Xor,
-        Log2Floor,
-        Pow,
-        DivMod,
-        PopCount,
-        XxAdd,
-        XxMul,
-        XInvert,
-        XbMul,
-        ReadIo(N1),
-        WriteIo(N1),
-        MerkleStep,
-        MerkleStepMem,
-        XxDotStep,
-        XbDotStep,
-    ]
-}
-
-const fn all_instruction_names() -> [&'static str; Instruction::COUNT] {
-    let mut names = [""; Instruction::COUNT];
-    let mut i = 0;
-    while i < Instruction::COUNT {
-        names[i] = ALL_INSTRUCTIONS[i].name();
-        i += 1;
-    }
-    names
-}
-
 /// Indicators for all the possible bits in an [`Instruction`].
 #[derive(Debug, Default, Copy, Clone, Eq, PartialEq, EnumCount, EnumIter)]
 pub enum InstructionBit {
@@ -645,13 +644,13 @@ impl Display for InstructionBit {
 impl From<InstructionBit> for usize {
     fn from(instruction_bit: InstructionBit) -> Self {
         match instruction_bit {
-            IB0 => 0,
-            IB1 => 1,
-            IB2 => 2,
-            IB3 => 3,
-            IB4 => 4,
-            IB5 => 5,
-            IB6 => 6,
+            InstructionBit::IB0 => 0,
+            InstructionBit::IB1 => 1,
+            InstructionBit::IB2 => 2,
+            InstructionBit::IB3 => 3,
+            InstructionBit::IB4 => 4,
+            InstructionBit::IB5 => 5,
+            InstructionBit::IB6 => 6,
         }
     }
 }
@@ -661,13 +660,13 @@ impl TryFrom<usize> for InstructionBit {
 
     fn try_from(bit_index: usize) -> result::Result<Self, Self::Error> {
         match bit_index {
-            0 => Ok(IB0),
-            1 => Ok(IB1),
-            2 => Ok(IB2),
-            3 => Ok(IB3),
-            4 => Ok(IB4),
-            5 => Ok(IB5),
-            6 => Ok(IB6),
+            0 => Ok(InstructionBit::IB0),
+            1 => Ok(InstructionBit::IB1),
+            2 => Ok(InstructionBit::IB2),
+            3 => Ok(InstructionBit::IB3),
+            4 => Ok(InstructionBit::IB4),
+            5 => Ok(InstructionBit::IB5),
+            6 => Ok(InstructionBit::IB6),
             _ => Err(format!(
                 "Index {bit_index} is out of range for `InstructionBit`."
             )),
@@ -771,12 +770,63 @@ impl<'a> Arbitrary<'a> for TypeHintTypeName {
     }
 }
 
+#[non_exhaustive]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Error)]
+pub enum InstructionError {
+    #[error("opcode {0} is invalid")]
+    InvalidOpcode(u32),
+
+    #[error("opcode is out of range: {0}")]
+    OutOfRangeOpcode(#[from] TryFromIntError),
+
+    #[error("invalid argument {1} for instruction `{0}`")]
+    IllegalArgument(Instruction, BFieldElement),
+
+    #[error("instruction pointer points outside of program")]
+    InstructionPointerOverflow,
+
+    #[error("jump stack is empty")]
+    JumpStackIsEmpty,
+
+    #[error("assertion failed: st0 must be 1")]
+    AssertionFailed,
+
+    #[error("vector assertion failed: stack[{0}] != stack[{}]", .0 + Digest::LEN)]
+    VectorAssertionFailed(usize),
+
+    #[error("0 does not have a multiplicative inverse")]
+    InverseOfZero,
+
+    #[error("division by 0 is impossible")]
+    DivisionByZero,
+
+    #[error("the Sponge state must be initialized before it can be used")]
+    SpongeNotInitialized,
+
+    #[error("the logarithm of 0 does not exist")]
+    LogarithmOfZero,
+
+    #[error("public input buffer is empty after {0} reads")]
+    EmptyPublicInput(usize),
+
+    #[error("secret input buffer is empty after {0} reads")]
+    EmptySecretInput(usize),
+
+    #[error("no more secret digests available")]
+    EmptySecretDigestInput,
+
+    #[error("Triton VM has halted and cannot execute any further instructions")]
+    MachineHalted,
+
+    #[error(transparent)]
+    OpStackError(#[from] OpStackError),
+}
+
 #[cfg(test)]
 pub mod tests {
     use std::collections::HashMap;
 
     use assert2::assert;
-    use assert2::let_assert;
     use itertools::Itertools;
     use num_traits::One;
     use num_traits::Zero;
@@ -787,15 +837,10 @@ pub mod tests {
     use strum::VariantNames;
     use twenty_first::prelude::*;
 
-    use crate::instruction::*;
-    use crate::op_stack::NUM_OP_STACK_REGISTERS;
-    use crate::program::PublicInput;
     use crate::triton_asm;
     use crate::triton_program;
-    use crate::vm::tests::test_program_for_call_recurse_return;
-    use crate::vm::VMState;
-    use crate::NonDeterminism;
-    use crate::Program;
+
+    use super::*;
 
     #[derive(Debug, Copy, Clone, EnumCount, EnumIter, VariantNames)]
     pub enum InstructionBucket {
@@ -883,7 +928,12 @@ pub mod tests {
     fn parse_push_pop() {
         let program = triton_program!(push 1 push 1 add pop 2);
         let instructions = program.into_iter().collect_vec();
-        let expected = vec![Push(bfe!(1)), Push(bfe!(1)), Add, Pop(N2)];
+        let expected = vec![
+            Instruction::Push(bfe!(1)),
+            Instruction::Push(bfe!(1)),
+            Instruction::Add,
+            Instruction::Pop(NumberOfWords::N2),
+        ];
 
         assert!(expected == instructions);
     }
@@ -922,10 +972,8 @@ pub mod tests {
     /// is guaranteed at compile time, this test ensures the absence of repetitions.
     #[test]
     fn list_of_all_instructions_contains_unique_instructions() {
-        assert!(all_instructions_with_default_args()
-            .into_iter()
-            .all_unique());
-        assert!(all_instruction_names().into_iter().all_unique());
+        assert!(ALL_INSTRUCTIONS.into_iter().all_unique());
+        assert!(ALL_INSTRUCTION_NAMES.into_iter().all_unique());
     }
 
     #[test]
@@ -938,14 +986,26 @@ pub mod tests {
 
     #[test]
     fn change_arguments_of_various_instructions() {
-        assert!(Push(bfe!(0)).change_arg(bfe!(7)).is_ok());
-        assert!(Dup(ST0).change_arg(bfe!(1024)).is_err());
-        assert!(Swap(ST0).change_arg(bfe!(1337)).is_err());
-        assert!(Swap(ST0).change_arg(bfe!(0)).is_ok());
-        assert!(Swap(ST0).change_arg(bfe!(1)).is_ok());
-        assert!(Pop(N4).change_arg(bfe!(0)).is_err());
-        assert!(Pop(N1).change_arg(bfe!(2)).is_ok());
-        assert!(Nop.change_arg(bfe!(7)).is_err());
+        assert!(Instruction::Push(bfe!(0)).change_arg(bfe!(7)).is_ok());
+        assert!(Instruction::Dup(OpStackElement::ST0)
+            .change_arg(bfe!(1024))
+            .is_err());
+        assert!(Instruction::Swap(OpStackElement::ST0)
+            .change_arg(bfe!(1337))
+            .is_err());
+        assert!(Instruction::Swap(OpStackElement::ST0)
+            .change_arg(bfe!(0))
+            .is_ok());
+        assert!(Instruction::Swap(OpStackElement::ST0)
+            .change_arg(bfe!(1))
+            .is_ok());
+        assert!(Instruction::Pop(NumberOfWords::N4)
+            .change_arg(bfe!(0))
+            .is_err());
+        assert!(Instruction::Pop(NumberOfWords::N1)
+            .change_arg(bfe!(2))
+            .is_ok());
+        assert!(Instruction::Nop.change_arg(bfe!(7)).is_err());
     }
 
     #[test]
@@ -953,7 +1013,10 @@ pub mod tests {
         println!("instruction_push: {:?}", Instruction::Push(bfe!(7)));
         println!("instruction_assert: {}", Instruction::Assert);
         println!("instruction_invert: {:?}", Instruction::Invert);
-        println!("instruction_dup: {}", Instruction::Dup(ST14));
+        println!(
+            "instruction_dup: {}",
+            Instruction::Dup(OpStackElement::ST14)
+        );
     }
 
     #[test]
@@ -1023,49 +1086,8 @@ pub mod tests {
     }
 
     #[test]
-    fn instructions_act_on_op_stack_as_indicated() {
-        for test_instruction in all_instructions_with_default_args() {
-            let (program, stack_size_before_test_instruction) =
-                construct_test_program_for_instruction(test_instruction);
-            let public_input = PublicInput::from(bfe_array![0]);
-            let mock_digests = [Digest::default()];
-            let non_determinism = NonDeterminism::from(bfe_array![0]).with_digests(mock_digests);
-
-            let mut vm_state = VMState::new(&program, public_input, non_determinism);
-            let_assert!(Ok(()) = vm_state.run());
-            let stack_size_after_test_instruction = vm_state.op_stack.len();
-
-            let stack_size_difference = (stack_size_after_test_instruction as i32)
-                - (stack_size_before_test_instruction as i32);
-            assert!(
-                test_instruction.op_stack_size_influence() == stack_size_difference,
-                "{test_instruction}"
-            );
-        }
-    }
-
-    fn construct_test_program_for_instruction(
-        instruction: AnInstruction<BFieldElement>,
-    ) -> (Program, usize) {
-        if matches!(instruction, Call(_) | Return | Recurse | RecurseOrReturn) {
-            // need jump stack setup
-            let program = test_program_for_call_recurse_return().program;
-            let stack_size = NUM_OP_STACK_REGISTERS;
-            (program, stack_size)
-        } else {
-            let num_push_instructions = 10;
-            let push_instructions = triton_asm![push 1; num_push_instructions];
-            let program = triton_program!(sponge_init {&push_instructions} {instruction} nop halt);
-
-            let stack_size_when_reaching_test_instruction =
-                NUM_OP_STACK_REGISTERS + num_push_instructions;
-            (program, stack_size_when_reaching_test_instruction)
-        }
-    }
-
-    #[test]
     fn labelled_instructions_act_on_op_stack_as_indicated() {
-        for instruction in all_instructions_with_default_args() {
+        for instruction in ALL_INSTRUCTIONS {
             let labelled_instruction = instruction.map_call_address(|_| "dummy_label".to_string());
             let labelled_instruction = LabelledInstruction::Instruction(labelled_instruction);
 
@@ -1084,14 +1106,11 @@ pub mod tests {
 
     #[test]
     fn can_change_arg() {
-        for instruction in all_instructions_with_default_args() {
-            if let Some(arg) = instruction.arg() {
-                assert_ne!(
-                    instruction,
-                    (instruction.change_arg(arg + bfe!(1))).unwrap()
-                );
+        for intsr in ALL_INSTRUCTIONS {
+            if let Some(arg) = intsr.arg() {
+                assert_ne!(intsr, intsr.change_arg(arg + bfe!(1)).unwrap());
             } else {
-                assert!(instruction.change_arg(bfe!(0)).is_err())
+                assert!(intsr.change_arg(bfe!(0)).is_err())
             }
         }
     }
