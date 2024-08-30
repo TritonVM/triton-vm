@@ -1,10 +1,10 @@
-use constraint_builder::ConstraintCircuitBuilder;
-use constraint_builder::ConstraintCircuitMonad;
-use constraint_builder::DualRowIndicator;
-use constraint_builder::DualRowIndicator::*;
-use constraint_builder::InputIndicator;
-use constraint_builder::SingleRowIndicator;
-use constraint_builder::SingleRowIndicator::*;
+use constraint_circuit::ConstraintCircuitBuilder;
+use constraint_circuit::ConstraintCircuitMonad;
+use constraint_circuit::DualRowIndicator;
+use constraint_circuit::DualRowIndicator::*;
+use constraint_circuit::InputIndicator;
+use constraint_circuit::SingleRowIndicator;
+use constraint_circuit::SingleRowIndicator::*;
 use isa::instruction::AnInstruction::Hash;
 use isa::instruction::AnInstruction::SpongeAbsorb;
 use isa::instruction::AnInstruction::SpongeInit;
@@ -554,7 +554,7 @@ impl ExtHashTable {
                     Self::round_number_deselector(circuit_builder, &round_number, round_idx);
                 round_constant_constraint_circuit = round_constant_constraint_circuit
                     + round_deselector_circuit
-                    * (round_constant_column_circuit.clone() - round_constant);
+                        * (round_constant_column_circuit.clone() - round_constant);
             }
             constraints.push(round_constant_constraint_circuit);
         }
@@ -709,7 +709,7 @@ impl ExtHashTable {
             StackWeight14,
             StackWeight15,
         ]
-            .map(challenge);
+        .map(challenge);
 
         let round_number_is_not_num_rounds =
             Self::round_number_deselector(circuit_builder, &round_number, NUM_ROUNDS);
@@ -820,7 +820,7 @@ impl ExtHashTable {
                 * running_evaluation_hash_input_updates
                 + round_number_next.clone() * running_evaluation_hash_input_remains.clone()
                 + Self::select_mode(circuit_builder, &mode_next, HashTableMode::Hash)
-                * running_evaluation_hash_input_remains;
+                    * running_evaluation_hash_input_remains;
 
         // If (and only if) the row number in the next row is NUM_ROUNDS and the current instruction
         // in the next row corresponds to `hash`, update running evaluation “hash digest.”
@@ -843,7 +843,7 @@ impl ExtHashTable {
                 * running_evaluation_hash_digest_updates
                 + round_number_next_is_num_rounds * running_evaluation_hash_digest_remains.clone()
                 + Self::select_mode(circuit_builder, &mode_next, HashTableMode::Hash)
-                * running_evaluation_hash_digest_remains;
+                    * running_evaluation_hash_digest_remains;
 
         // The running evaluation for “Sponge” updates correctly.
         let compressed_row_next = state_weights[..RATE]
@@ -893,7 +893,7 @@ impl ExtHashTable {
                 * receive_chunk_running_evaluation_absorbs_chunk_of_instructions
                 + round_number_next * receive_chunk_running_evaluation_remains.clone()
                 + Self::select_mode(circuit_builder, &mode_next, HashTableMode::ProgramHashing)
-                * receive_chunk_running_evaluation_remains;
+                    * receive_chunk_running_evaluation_remains;
 
         let constraints = vec![
             round_number_is_0_through_4_or_round_number_next_is_0,
@@ -1013,7 +1013,7 @@ impl ExtHashTable {
             constraints,
             hash_function_round_correctly_performs_update.to_vec(),
         ]
-            .concat()
+        .concat()
     }
 
     fn indicate_column_index_in_base_row(column: HashBaseTableColumn) -> SingleRowIndicator {
@@ -1112,7 +1112,7 @@ impl ExtHashTable {
             State4, State5, State6, State7, State8, State9, State10, State11, State12, State13,
             State14, State15,
         ]
-            .map(current_base_row);
+        .map(current_base_row);
 
         let state_part_after_power_map = {
             let mut exponentiation_accumulator = state_part_before_power_map.clone();
@@ -1156,7 +1156,7 @@ impl ExtHashTable {
             Constant8, Constant9, Constant10, Constant11, Constant12, Constant13, Constant14,
             Constant15,
         ]
-            .map(current_base_row);
+        .map(current_base_row);
 
         let state_after_round_constant_addition = state_after_matrix_multiplication
             .into_iter()

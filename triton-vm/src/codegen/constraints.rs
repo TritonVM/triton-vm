@@ -3,10 +3,10 @@
 
 use std::collections::HashSet;
 
-use constraint_builder::BinOp;
-use constraint_builder::CircuitExpression;
-use constraint_builder::ConstraintCircuit;
-use constraint_builder::InputIndicator;
+use constraint_circuit::BinOp;
+use constraint_circuit::CircuitExpression;
+use constraint_circuit::ConstraintCircuit;
+use constraint_circuit::InputIndicator;
 use isa::instruction::Instruction;
 use isa::op_stack::NumberOfWords;
 use itertools::Itertools;
@@ -893,8 +893,8 @@ impl ToTokens for IOList {
 
 #[cfg(test)]
 mod tests {
-    use constraint_builder::ConstraintCircuitBuilder;
-    use constraint_builder::SingleRowIndicator;
+    use constraint_circuit::ConstraintCircuitBuilder;
+    use constraint_circuit::SingleRowIndicator;
     use twenty_first::prelude::*;
 
     use super::*;

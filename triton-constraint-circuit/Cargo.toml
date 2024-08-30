@@ -1,5 +1,5 @@
 [package]
-name = "triton-constraint-builder"
+name = "triton-constraint-circuit"
 description = """
 AIR constraints build helper for Triton VM.
 """

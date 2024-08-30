@@ -1,9 +1,9 @@
-use constraint_builder::ConstraintCircuitBuilder;
-use constraint_builder::ConstraintCircuitMonad;
-use constraint_builder::DualRowIndicator;
-use constraint_builder::DualRowIndicator::*;
-use constraint_builder::SingleRowIndicator;
-use constraint_builder::SingleRowIndicator::*;
+use constraint_circuit::ConstraintCircuitBuilder;
+use constraint_circuit::ConstraintCircuitMonad;
+use constraint_circuit::DualRowIndicator;
+use constraint_circuit::DualRowIndicator::*;
+use constraint_circuit::SingleRowIndicator;
+use constraint_circuit::SingleRowIndicator::*;
 use ndarray::s;
 use ndarray::ArrayView2;
 use ndarray::ArrayViewMut2;

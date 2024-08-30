@@ -1273,11 +1273,11 @@ mod tests {
     use fs_err as fs;
     use std::path::Path;
 
-    use constraint_builder::ConstraintCircuitBuilder;
-    use constraint_builder::ConstraintCircuitMonad;
-    use constraint_builder::DegreeLoweringInfo;
-    use constraint_builder::DualRowIndicator;
-    use constraint_builder::SingleRowIndicator;
+    use constraint_circuit::ConstraintCircuitBuilder;
+    use constraint_circuit::ConstraintCircuitMonad;
+    use constraint_circuit::DegreeLoweringInfo;
+    use constraint_circuit::DualRowIndicator;
+    use constraint_circuit::SingleRowIndicator;
     use isa::instruction::Instruction;
     use isa::instruction::InstructionBit;
     use master_table::cross_table_argument::GrandCrossTableArg;

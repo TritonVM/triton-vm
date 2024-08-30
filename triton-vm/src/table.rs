@@ -3,10 +3,10 @@ pub use crate::table::master_table::NUM_BASE_COLUMNS;
 pub use crate::table::master_table::NUM_EXT_COLUMNS;
 
 use arbitrary::Arbitrary;
-use constraint_builder::ConstraintCircuitBuilder;
-use constraint_builder::ConstraintCircuitMonad;
-use constraint_builder::DualRowIndicator;
-use constraint_builder::SingleRowIndicator;
+use constraint_circuit::ConstraintCircuitBuilder;
+use constraint_circuit::ConstraintCircuitMonad;
+use constraint_circuit::DualRowIndicator;
+use constraint_circuit::SingleRowIndicator;
 use strum::Display;
 use strum::EnumCount;
 use strum::EnumIter;
@@ -161,13 +161,13 @@ fn terminal_constraints() -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
 mod tests {
     use std::collections::HashMap;
 
-    use constraint_builder::BinOp;
-    use constraint_builder::CircuitExpression;
-    use constraint_builder::ConstraintCircuit;
-    use constraint_builder::ConstraintCircuitBuilder;
-    use constraint_builder::ConstraintCircuitMonad;
-    use constraint_builder::DegreeLoweringInfo;
-    use constraint_builder::InputIndicator;
+    use constraint_circuit::BinOp;
+    use constraint_circuit::CircuitExpression;
+    use constraint_circuit::ConstraintCircuit;
+    use constraint_circuit::ConstraintCircuitBuilder;
+    use constraint_circuit::ConstraintCircuitMonad;
+    use constraint_circuit::DegreeLoweringInfo;
+    use constraint_circuit::InputIndicator;
     use itertools::Itertools;
     use ndarray::Array2;
     use ndarray::ArrayView2;

@@ -2,9 +2,9 @@ use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::ops::Range;
 
-use constraint_builder::DualRowIndicator::*;
-use constraint_builder::SingleRowIndicator::*;
-use constraint_builder::*;
+use constraint_circuit::DualRowIndicator::*;
+use constraint_circuit::SingleRowIndicator::*;
+use constraint_circuit::*;
 use isa::instruction::Instruction;
 use itertools::Itertools;
 use ndarray::parallel::prelude::*;

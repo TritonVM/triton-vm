@@ -1,9 +1,9 @@
 use std::cmp::max;
 use std::ops::Mul;
 
-use constraint_builder::DualRowIndicator::*;
-use constraint_builder::SingleRowIndicator::*;
-use constraint_builder::*;
+use constraint_circuit::DualRowIndicator::*;
+use constraint_circuit::SingleRowIndicator::*;
+use constraint_circuit::*;
 use isa::instruction::AnInstruction::*;
 use isa::instruction::Instruction;
 use isa::instruction::InstructionBit;

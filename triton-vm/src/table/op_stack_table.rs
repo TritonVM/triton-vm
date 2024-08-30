@@ -3,9 +3,9 @@ use std::collections::HashMap;
 use std::ops::Range;
 
 use arbitrary::Arbitrary;
-use constraint_builder::DualRowIndicator::*;
-use constraint_builder::SingleRowIndicator::*;
-use constraint_builder::*;
+use constraint_circuit::DualRowIndicator::*;
+use constraint_circuit::SingleRowIndicator::*;
+use constraint_circuit::*;
 use isa::op_stack::OpStackElement;
 use isa::op_stack::UnderflowIO;
 use itertools::Itertools;

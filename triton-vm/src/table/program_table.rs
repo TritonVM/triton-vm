@@ -1,8 +1,8 @@
 use std::cmp::Ordering;
 
-use constraint_builder::DualRowIndicator::*;
-use constraint_builder::SingleRowIndicator::*;
-use constraint_builder::*;
+use constraint_circuit::DualRowIndicator::*;
+use constraint_circuit::SingleRowIndicator::*;
+use constraint_circuit::*;
 use ndarray::s;
 use ndarray::Array1;
 use ndarray::ArrayView1;

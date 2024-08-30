@@ -1313,7 +1313,7 @@ pub(crate) mod tests {
     use assert2::assert;
     use assert2::check;
     use assert2::let_assert;
-    use constraint_builder::ConstraintCircuitBuilder;
+    use constraint_circuit::ConstraintCircuitBuilder;
     use isa::error::OpStackError;
     use isa::instruction::Instruction;
     use isa::op_stack::OpStackElement;

@@ -1,9 +1,9 @@
-use constraint_builder::ConstraintCircuit;
-use constraint_builder::ConstraintCircuitMonad;
-use constraint_builder::DegreeLoweringInfo;
-use constraint_builder::DualRowIndicator;
-use constraint_builder::InputIndicator;
-use constraint_builder::SingleRowIndicator;
+use constraint_circuit::ConstraintCircuit;
+use constraint_circuit::ConstraintCircuitMonad;
+use constraint_circuit::DegreeLoweringInfo;
+use constraint_circuit::DualRowIndicator;
+use constraint_circuit::InputIndicator;
+use constraint_circuit::SingleRowIndicator;
 use itertools::Itertools;
 use proc_macro2::TokenStream;
 use std::fs::write;
@@ -130,7 +130,7 @@ impl Constraints {
 
 #[cfg(test)]
 mod tests {
-    use constraint_builder::ConstraintCircuitBuilder;
+    use constraint_circuit::ConstraintCircuitBuilder;
     use twenty_first::prelude::*;
 
     use crate::table;
