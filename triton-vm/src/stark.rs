@@ -1,6 +1,8 @@
 use std::ops::Mul;
 use std::ops::MulAssign;
 
+use air::table::NUM_BASE_COLUMNS;
+use air::table::NUM_EXT_COLUMNS;
 use arbitrary::Arbitrary;
 use arbitrary::Unstructured;
 use itertools::izip;
@@ -18,6 +20,7 @@ use twenty_first::prelude::*;
 
 use crate::aet::AlgebraicExecutionTrace;
 use crate::arithmetic_domain::ArithmeticDomain;
+use crate::challenges::Challenges;
 use crate::error::ProvingError;
 use crate::error::VerificationError;
 use crate::fri;
@@ -27,7 +30,6 @@ use crate::proof::Claim;
 use crate::proof::Proof;
 use crate::proof_item::ProofItem;
 use crate::proof_stream::ProofStream;
-use crate::table::challenges::Challenges;
 use crate::table::extension_table::Evaluable;
 use crate::table::extension_table::Quotientable;
 use crate::table::master_table::all_quotients_combined;
@@ -36,14 +38,11 @@ use crate::table::master_table::max_degree_with_origin;
 use crate::table::master_table::MasterBaseTable;
 use crate::table::master_table::MasterExtTable;
 use crate::table::master_table::MasterTable;
-use crate::table::master_table::AIR_TARGET_DEGREE;
 use crate::table::QuotientSegments;
-use crate::table::NUM_BASE_COLUMNS;
-use crate::table::NUM_EXT_COLUMNS;
 
 /// The number of segments the quotient polynomial is split into.
 /// Helps keeping the FRI domain small.
-pub const NUM_QUOTIENT_SEGMENTS: usize = AIR_TARGET_DEGREE as usize;
+pub const NUM_QUOTIENT_SEGMENTS: usize = air::TARGET_DEGREE as usize;
 
 /// The number of randomizer polynomials over the [extension field](XFieldElement) used in the
 /// [`STARK`](Stark). Integral for achieving zero-knowledge in [FRI](Fri).
@@ -567,8 +566,8 @@ impl Stark {
     /// length of the execution trace and the FRI expansion factor, a security parameter.
     ///
     /// In principle, the FRI domain is also influenced by the AIR's degree
-    /// (see [`AIR_TARGET_DEGREE`]). However, by segmenting the quotient polynomial into
-    /// [`AIR_TARGET_DEGREE`]-many parts, that influence is mitigated.
+    /// (see [`TARGET_DEGREE`]). However, by segmenting the quotient polynomial into
+    /// [`TARGET_DEGREE`]-many parts, that influence is mitigated.
     pub fn derive_fri(&self, padded_height: usize) -> fri::SetupResult<Fri> {
         let interpolant_degree = interpolant_degree(padded_height, self.num_trace_randomizers);
         let interpolant_codeword_length = interpolant_degree as usize + 1;
@@ -1310,6 +1309,30 @@ pub(crate) mod tests {
     use std::collections::HashMap;
     use std::collections::HashSet;
 
+    use air::challenge_id::ChallengeId::StandardInputIndeterminate;
+    use air::challenge_id::ChallengeId::StandardOutputIndeterminate;
+    use air::cross_table_argument::CrossTableArg;
+    use air::cross_table_argument::EvalArg;
+    use air::cross_table_argument::GrandCrossTableArg;
+    use air::table::cascade::CascadeTable;
+    use air::table::hash::HashTable;
+    use air::table::jump_stack::JumpStackTable;
+    use air::table::lookup::LookupTable;
+    use air::table::op_stack::OpStackTable;
+    use air::table::processor::ProcessorTable;
+    use air::table::program::ProgramTable;
+    use air::table::ram;
+    use air::table::ram::RamTable;
+    use air::table::u32::U32Table;
+    use air::table::TableId;
+    use air::table_column::MasterBaseTableColumn;
+    use air::table_column::MasterExtTableColumn;
+    use air::table_column::OpStackBaseTableColumn;
+    use air::table_column::ProcessorBaseTableColumn;
+    use air::table_column::ProcessorExtTableColumn::InputTableEvalArg;
+    use air::table_column::ProcessorExtTableColumn::OutputTableEvalArg;
+    use air::table_column::RamBaseTableColumn;
+    use air::AIR;
     use assert2::assert;
     use assert2::check;
     use assert2::let_assert;
@@ -1332,33 +1355,10 @@ pub(crate) mod tests {
     use crate::error::InstructionError;
     use crate::example_programs::*;
     use crate::shared_tests::*;
-    use crate::table::cascade_table::ExtCascadeTable;
-    use crate::table::challenges::ChallengeId::StandardInputIndeterminate;
-    use crate::table::challenges::ChallengeId::StandardOutputIndeterminate;
-    use crate::table::cross_table_argument::CrossTableArg;
-    use crate::table::cross_table_argument::EvalArg;
-    use crate::table::cross_table_argument::GrandCrossTableArg;
     use crate::table::extension_table;
     use crate::table::extension_table::Evaluable;
     use crate::table::extension_table::Quotientable;
-    use crate::table::hash_table::ExtHashTable;
-    use crate::table::jump_stack_table::ExtJumpStackTable;
-    use crate::table::lookup_table::ExtLookupTable;
     use crate::table::master_table::MasterExtTable;
-    use crate::table::master_table::TableId;
-    use crate::table::op_stack_table::ExtOpStackTable;
-    use crate::table::processor_table::ExtProcessorTable;
-    use crate::table::program_table::ExtProgramTable;
-    use crate::table::ram_table;
-    use crate::table::ram_table::ExtRamTable;
-    use crate::table::table_column::MasterBaseTableColumn;
-    use crate::table::table_column::MasterExtTableColumn;
-    use crate::table::table_column::OpStackBaseTableColumn;
-    use crate::table::table_column::ProcessorBaseTableColumn;
-    use crate::table::table_column::ProcessorExtTableColumn::InputTableEvalArg;
-    use crate::table::table_column::ProcessorExtTableColumn::OutputTableEvalArg;
-    use crate::table::table_column::RamBaseTableColumn;
-    use crate::table::u32_table::ExtU32Table;
     use crate::triton_program;
     use crate::vm::tests::*;
     use crate::vm::NonDeterminism;
@@ -1469,9 +1469,9 @@ pub(crate) mod tests {
 
             let instruction_type =
                 match row[RamBaseTableColumn::InstructionType.base_table_index()] {
-                    ram_table::INSTRUCTION_TYPE_READ => "read",
-                    ram_table::INSTRUCTION_TYPE_WRITE => "write",
-                    ram_table::PADDING_INDICATOR => "pad",
+                    ram::INSTRUCTION_TYPE_READ => "read",
+                    ram::INSTRUCTION_TYPE_WRITE => "write",
+                    ram::PADDING_INDICATOR => "pad",
                     _ => "-",
                 }
                 .to_string();
@@ -1656,57 +1656,57 @@ pub(crate) mod tests {
         ];
         let circuit_builder = ConstraintCircuitBuilder::new();
         let all_init = [
-            ExtProgramTable::initial_constraints(&circuit_builder),
-            ExtProcessorTable::initial_constraints(&circuit_builder),
-            ExtOpStackTable::initial_constraints(&circuit_builder),
-            ExtRamTable::initial_constraints(&circuit_builder),
-            ExtJumpStackTable::initial_constraints(&circuit_builder),
-            ExtHashTable::initial_constraints(&circuit_builder),
-            ExtCascadeTable::initial_constraints(&circuit_builder),
-            ExtLookupTable::initial_constraints(&circuit_builder),
-            ExtU32Table::initial_constraints(&circuit_builder),
+            ProgramTable::initial_constraints(&circuit_builder),
+            ProcessorTable::initial_constraints(&circuit_builder),
+            OpStackTable::initial_constraints(&circuit_builder),
+            RamTable::initial_constraints(&circuit_builder),
+            JumpStackTable::initial_constraints(&circuit_builder),
+            HashTable::initial_constraints(&circuit_builder),
+            CascadeTable::initial_constraints(&circuit_builder),
+            LookupTable::initial_constraints(&circuit_builder),
+            U32Table::initial_constraints(&circuit_builder),
             GrandCrossTableArg::initial_constraints(&circuit_builder),
         ]
         .map(|vec| vec.len());
         let circuit_builder = ConstraintCircuitBuilder::new();
         let all_cons = [
-            ExtProgramTable::consistency_constraints(&circuit_builder),
-            ExtProcessorTable::consistency_constraints(&circuit_builder),
-            ExtOpStackTable::consistency_constraints(&circuit_builder),
-            ExtRamTable::consistency_constraints(&circuit_builder),
-            ExtJumpStackTable::consistency_constraints(&circuit_builder),
-            ExtHashTable::consistency_constraints(&circuit_builder),
-            ExtCascadeTable::consistency_constraints(&circuit_builder),
-            ExtLookupTable::consistency_constraints(&circuit_builder),
-            ExtU32Table::consistency_constraints(&circuit_builder),
+            ProgramTable::consistency_constraints(&circuit_builder),
+            ProcessorTable::consistency_constraints(&circuit_builder),
+            OpStackTable::consistency_constraints(&circuit_builder),
+            RamTable::consistency_constraints(&circuit_builder),
+            JumpStackTable::consistency_constraints(&circuit_builder),
+            HashTable::consistency_constraints(&circuit_builder),
+            CascadeTable::consistency_constraints(&circuit_builder),
+            LookupTable::consistency_constraints(&circuit_builder),
+            U32Table::consistency_constraints(&circuit_builder),
             GrandCrossTableArg::consistency_constraints(&circuit_builder),
         ]
         .map(|vec| vec.len());
         let circuit_builder = ConstraintCircuitBuilder::new();
         let all_trans = [
-            ExtProgramTable::transition_constraints(&circuit_builder),
-            ExtProcessorTable::transition_constraints(&circuit_builder),
-            ExtOpStackTable::transition_constraints(&circuit_builder),
-            ExtRamTable::transition_constraints(&circuit_builder),
-            ExtJumpStackTable::transition_constraints(&circuit_builder),
-            ExtHashTable::transition_constraints(&circuit_builder),
-            ExtCascadeTable::transition_constraints(&circuit_builder),
-            ExtLookupTable::transition_constraints(&circuit_builder),
-            ExtU32Table::transition_constraints(&circuit_builder),
+            ProgramTable::transition_constraints(&circuit_builder),
+            ProcessorTable::transition_constraints(&circuit_builder),
+            OpStackTable::transition_constraints(&circuit_builder),
+            RamTable::transition_constraints(&circuit_builder),
+            JumpStackTable::transition_constraints(&circuit_builder),
+            HashTable::transition_constraints(&circuit_builder),
+            CascadeTable::transition_constraints(&circuit_builder),
+            LookupTable::transition_constraints(&circuit_builder),
+            U32Table::transition_constraints(&circuit_builder),
             GrandCrossTableArg::transition_constraints(&circuit_builder),
         ]
         .map(|vec| vec.len());
         let circuit_builder = ConstraintCircuitBuilder::new();
         let all_term = [
-            ExtProgramTable::terminal_constraints(&circuit_builder),
-            ExtProcessorTable::terminal_constraints(&circuit_builder),
-            ExtOpStackTable::terminal_constraints(&circuit_builder),
-            ExtRamTable::terminal_constraints(&circuit_builder),
-            ExtJumpStackTable::terminal_constraints(&circuit_builder),
-            ExtHashTable::terminal_constraints(&circuit_builder),
-            ExtCascadeTable::terminal_constraints(&circuit_builder),
-            ExtLookupTable::terminal_constraints(&circuit_builder),
-            ExtU32Table::terminal_constraints(&circuit_builder),
+            ProgramTable::terminal_constraints(&circuit_builder),
+            ProcessorTable::terminal_constraints(&circuit_builder),
+            OpStackTable::terminal_constraints(&circuit_builder),
+            RamTable::terminal_constraints(&circuit_builder),
+            JumpStackTable::terminal_constraints(&circuit_builder),
+            HashTable::terminal_constraints(&circuit_builder),
+            CascadeTable::terminal_constraints(&circuit_builder),
+            LookupTable::terminal_constraints(&circuit_builder),
+            U32Table::terminal_constraints(&circuit_builder),
             GrandCrossTableArg::terminal_constraints(&circuit_builder),
         ]
         .map(|vec| vec.len());
@@ -2178,15 +2178,15 @@ pub(crate) mod tests {
         };
     }
 
-    check_constraints_fn!(fn check_program_table_constraints for ExtProgramTable);
-    check_constraints_fn!(fn check_processor_table_constraints for ExtProcessorTable);
-    check_constraints_fn!(fn check_op_stack_table_constraints for ExtOpStackTable);
-    check_constraints_fn!(fn check_ram_table_constraints for ExtRamTable);
-    check_constraints_fn!(fn check_jump_stack_table_constraints for ExtJumpStackTable);
-    check_constraints_fn!(fn check_hash_table_constraints for ExtHashTable);
-    check_constraints_fn!(fn check_cascade_table_constraints for ExtCascadeTable);
-    check_constraints_fn!(fn check_lookup_table_constraints for ExtLookupTable);
-    check_constraints_fn!(fn check_u32_table_constraints for ExtU32Table);
+    check_constraints_fn!(fn check_program_table_constraints for ProgramTable);
+    check_constraints_fn!(fn check_processor_table_constraints for ProcessorTable);
+    check_constraints_fn!(fn check_op_stack_table_constraints for OpStackTable);
+    check_constraints_fn!(fn check_ram_table_constraints for RamTable);
+    check_constraints_fn!(fn check_jump_stack_table_constraints for JumpStackTable);
+    check_constraints_fn!(fn check_hash_table_constraints for HashTable);
+    check_constraints_fn!(fn check_cascade_table_constraints for CascadeTable);
+    check_constraints_fn!(fn check_lookup_table_constraints for LookupTable);
+    check_constraints_fn!(fn check_u32_table_constraints for U32Table);
     check_constraints_fn!(fn check_cross_table_constraints for GrandCrossTableArg);
 
     fn triton_constraints_evaluate_to_zero(program_and_input: ProgramAndInput) {

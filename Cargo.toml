@@ -1,5 +1,5 @@
 [workspace]
-members = ["triton-vm", "triton-constraint-circuit", "triton-isa"]
+members = ["triton-air", "triton-constraint-circuit", "triton-isa", "triton-vm"]
 resolver = "2"
 
 [profile.test]
@@ -22,6 +22,7 @@ readme = "README.md"
 documentation = "https://triton-vm.org/spec/"
 
 [workspace.dependencies]
+air = { path = "triton-air", package = "triton-air" }
 anyhow = "1.0"
 arbitrary = { version = "1", features = ["derive"] }
 assert2 = "0.3"

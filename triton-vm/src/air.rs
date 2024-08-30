@@ -4,6 +4,8 @@ pub mod tasm_air_constraints;
 
 #[cfg(test)]
 mod test {
+    use air::table::NUM_BASE_COLUMNS;
+    use air::table::NUM_EXT_COLUMNS;
     use isa::instruction::AnInstruction;
     use itertools::Itertools;
     use ndarray::Array1;
@@ -17,13 +19,11 @@ mod test {
 
     use crate::air::tasm_air_constraints::dynamic_air_constraint_evaluation_tasm;
     use crate::air::tasm_air_constraints::static_air_constraint_evaluation_tasm;
+    use crate::challenges::Challenges;
     use crate::prelude::*;
-    use crate::table::challenges::Challenges;
     use crate::table::extension_table::Evaluable;
     use crate::table::extension_table::Quotientable;
     use crate::table::master_table::MasterExtTable;
-    use crate::table::NUM_BASE_COLUMNS;
-    use crate::table::NUM_EXT_COLUMNS;
 
     use super::memory_layout::DynamicTasmConstraintEvaluationMemoryLayout;
     use super::memory_layout::IntegralMemoryLayout;

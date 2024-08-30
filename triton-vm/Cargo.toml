@@ -18,6 +18,7 @@ repository.workspace = true
 readme.workspace = true
 
 [dependencies]
+air.workspace = true
 arbitrary.workspace = true
 colored.workspace = true
 constraint-circuit.workspace = true

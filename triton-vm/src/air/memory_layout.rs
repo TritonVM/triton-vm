@@ -1,10 +1,10 @@
+use air::table::NUM_BASE_COLUMNS;
+use air::table::NUM_EXT_COLUMNS;
 use arbitrary::Arbitrary;
 use itertools::Itertools;
 use twenty_first::prelude::*;
 
-use crate::table::challenges::Challenges;
-use crate::table::NUM_BASE_COLUMNS;
-use crate::table::NUM_EXT_COLUMNS;
+use crate::challenges::Challenges;
 
 /// The minimal required size of a memory page in [`BFieldElement`]s.
 pub const MEM_PAGE_SIZE: usize = 1 << 32;

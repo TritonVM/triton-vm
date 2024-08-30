@@ -5,6 +5,11 @@ use std::fmt::Formatter;
 use std::fmt::Result as FmtResult;
 use std::ops::Range;
 
+use air::table::hash::PermutationTrace;
+use air::table::processor::ProcessorTable;
+use air::table::processor::NUM_HELPER_VARIABLE_REGISTERS;
+use air::table_column::*;
+use air::AIR;
 use arbitrary::Arbitrary;
 use isa::error::InstructionError;
 use isa::instruction::AnInstruction::*;
@@ -19,6 +24,7 @@ use num_traits::One;
 use num_traits::Zero;
 use serde::Deserialize;
 use serde::Serialize;
+use strum::EnumCount;
 use twenty_first::math::x_field_element::EXTENSION_DEGREE;
 use twenty_first::prelude::*;
 use twenty_first::util_types::algebraic_hasher::Domain;
@@ -28,19 +34,14 @@ use crate::error::VMError;
 use crate::execution_trace_profiler::ExecutionTraceProfile;
 use crate::execution_trace_profiler::ExecutionTraceProfiler;
 use crate::profiler::profiler;
-use crate::table::hash_table::PermutationTrace;
-use crate::table::op_stack_table::OpStackTableEntry;
-use crate::table::processor_table;
-use crate::table::ram_table::RamTableCall;
-use crate::table::table_column::*;
-use crate::table::u32_table::U32TableEntry;
+use crate::table::op_stack::OpStackTableEntry;
+use crate::table::processor;
+use crate::table::ram::RamTableCall;
+use crate::table::u32::U32TableEntry;
 use crate::vm::CoProcessorCall::*;
 
 type VMResult<T> = Result<T, VMError>;
 type InstructionResult<T> = Result<T, InstructionError>;
-
-/// The number of helper variable registers
-pub const NUM_HELPER_VARIABLE_REGISTERS: usize = 6;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize, Deserialize, Arbitrary)]
 pub struct VM;
@@ -1050,7 +1051,7 @@ impl VMState {
     pub fn to_processor_row(&self) -> Array1<BFieldElement> {
         use isa::instruction::InstructionBit;
         use ProcessorBaseTableColumn::*;
-        let mut processor_row = Array1::zeros(processor_table::BASE_WIDTH);
+        let mut processor_row = Array1::zeros(<ProcessorTable as AIR>::MainColumn::COUNT);
 
         let current_instruction = self.current_instruction().unwrap_or(Nop);
         let helper_variables = self.derive_helper_variables();
@@ -1390,6 +1391,7 @@ pub(crate) mod tests {
     use std::ops::BitAnd;
     use std::ops::BitXor;
 
+    use air::table::TableId;
     use assert2::assert;
     use assert2::let_assert;
     use isa::instruction::AnInstruction;
@@ -1416,7 +1418,6 @@ pub(crate) mod tests {
     use crate::shared_tests::LeavedMerkleTreeTestData;
     use crate::shared_tests::ProgramAndInput;
     use crate::shared_tests::DEFAULT_LOG2_FRI_EXPANSION_FACTOR_FOR_TESTS;
-    use crate::table::master_table::TableId;
 
     use super::*;
 

@@ -1,143 +1,41 @@
 use constraint_circuit::ConstraintCircuitBuilder;
 use constraint_circuit::ConstraintCircuitMonad;
 use constraint_circuit::DualRowIndicator;
-use constraint_circuit::DualRowIndicator::*;
+use constraint_circuit::DualRowIndicator::CurrentBaseRow;
+use constraint_circuit::DualRowIndicator::CurrentExtRow;
+use constraint_circuit::DualRowIndicator::NextBaseRow;
+use constraint_circuit::DualRowIndicator::NextExtRow;
 use constraint_circuit::SingleRowIndicator;
-use constraint_circuit::SingleRowIndicator::*;
-use ndarray::s;
-use ndarray::ArrayView2;
-use ndarray::ArrayViewMut2;
-use num_traits::ConstOne;
-use num_traits::One;
-use strum::EnumCount;
-use twenty_first::prelude::*;
+use constraint_circuit::SingleRowIndicator::BaseRow;
+use constraint_circuit::SingleRowIndicator::ExtRow;
 
-use crate::aet::AlgebraicExecutionTrace;
-use crate::profiler::profiler;
-use crate::table::challenges::ChallengeId;
-use crate::table::challenges::ChallengeId::*;
-use crate::table::challenges::Challenges;
-use crate::table::cross_table_argument::CrossTableArg;
-use crate::table::cross_table_argument::LookupArg;
-use crate::table::table_column::CascadeBaseTableColumn;
-use crate::table::table_column::CascadeBaseTableColumn::*;
-use crate::table::table_column::CascadeExtTableColumn;
-use crate::table::table_column::CascadeExtTableColumn::*;
-use crate::table::table_column::MasterBaseTableColumn;
-use crate::table::table_column::MasterExtTableColumn;
-
-pub const BASE_WIDTH: usize = CascadeBaseTableColumn::COUNT;
-pub const EXT_WIDTH: usize = CascadeExtTableColumn::COUNT;
-pub const FULL_WIDTH: usize = BASE_WIDTH + EXT_WIDTH;
+use crate::challenge_id::ChallengeId;
+use crate::challenge_id::ChallengeId::CascadeLookupIndeterminate;
+use crate::challenge_id::ChallengeId::HashCascadeLookInWeight;
+use crate::challenge_id::ChallengeId::HashCascadeLookOutWeight;
+use crate::challenge_id::ChallengeId::HashCascadeLookupIndeterminate;
+use crate::challenge_id::ChallengeId::LookupTableInputWeight;
+use crate::challenge_id::ChallengeId::LookupTableOutputWeight;
+use crate::cross_table_argument::CrossTableArg;
+use crate::cross_table_argument::LookupArg;
+use crate::table_column::MasterBaseTableColumn;
+use crate::table_column::MasterExtTableColumn;
+use crate::AIR;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct CascadeTable;
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
-pub struct ExtCascadeTable;
+impl AIR for CascadeTable {
+    type MainColumn = crate::table_column::CascadeBaseTableColumn;
+    type AuxColumn = crate::table_column::CascadeExtTableColumn;
 
-impl CascadeTable {
-    pub fn fill_trace(
-        cascade_table: &mut ArrayViewMut2<BFieldElement>,
-        aet: &AlgebraicExecutionTrace,
-    ) {
-        for (row_idx, (&to_look_up, &multiplicity)) in
-            aet.cascade_table_lookup_multiplicities.iter().enumerate()
-        {
-            let to_look_up_lo = (to_look_up & 0xff) as u8;
-            let to_look_up_hi = ((to_look_up >> 8) & 0xff) as u8;
-
-            let mut row = cascade_table.row_mut(row_idx);
-            row[LookInLo.base_table_index()] = bfe!(to_look_up_lo);
-            row[LookInHi.base_table_index()] = bfe!(to_look_up_hi);
-            row[LookOutLo.base_table_index()] = Self::lookup_8_bit_limb(to_look_up_lo);
-            row[LookOutHi.base_table_index()] = Self::lookup_8_bit_limb(to_look_up_hi);
-            row[LookupMultiplicity.base_table_index()] = bfe!(multiplicity);
-        }
-    }
-
-    pub fn pad_trace(mut cascade_table: ArrayViewMut2<BFieldElement>, cascade_table_length: usize) {
-        cascade_table
-            .slice_mut(s![cascade_table_length.., IsPadding.base_table_index()])
-            .fill(BFieldElement::ONE);
-    }
-
-    pub fn extend(
-        base_table: ArrayView2<BFieldElement>,
-        mut ext_table: ArrayViewMut2<XFieldElement>,
-        challenges: &Challenges,
-    ) {
-        profiler!(start "cascade table");
-        assert_eq!(BASE_WIDTH, base_table.ncols());
-        assert_eq!(EXT_WIDTH, ext_table.ncols());
-        assert_eq!(base_table.nrows(), ext_table.nrows());
-
-        let mut hash_table_log_derivative = LookupArg::default_initial();
-        let mut lookup_table_log_derivative = LookupArg::default_initial();
-
-        let two_pow_8 = bfe!(1 << 8);
-
-        let hash_indeterminate = challenges[HashCascadeLookupIndeterminate];
-        let hash_input_weight = challenges[HashCascadeLookInWeight];
-        let hash_output_weight = challenges[HashCascadeLookOutWeight];
-
-        let lookup_indeterminate = challenges[CascadeLookupIndeterminate];
-        let lookup_input_weight = challenges[LookupTableInputWeight];
-        let lookup_output_weight = challenges[LookupTableOutputWeight];
-
-        for row_idx in 0..base_table.nrows() {
-            let base_row = base_table.row(row_idx);
-            let is_padding = base_row[IsPadding.base_table_index()].is_one();
-
-            if !is_padding {
-                let look_in = two_pow_8 * base_row[LookInHi.base_table_index()]
-                    + base_row[LookInLo.base_table_index()];
-                let look_out = two_pow_8 * base_row[LookOutHi.base_table_index()]
-                    + base_row[LookOutLo.base_table_index()];
-                let compressed_row_hash =
-                    hash_input_weight * look_in + hash_output_weight * look_out;
-                let lookup_multiplicity = base_row[LookupMultiplicity.base_table_index()];
-                hash_table_log_derivative +=
-                    (hash_indeterminate - compressed_row_hash).inverse() * lookup_multiplicity;
-
-                let compressed_row_lo = lookup_input_weight * base_row[LookInLo.base_table_index()]
-                    + lookup_output_weight * base_row[LookOutLo.base_table_index()];
-                let compressed_row_hi = lookup_input_weight * base_row[LookInHi.base_table_index()]
-                    + lookup_output_weight * base_row[LookOutHi.base_table_index()];
-                lookup_table_log_derivative += (lookup_indeterminate - compressed_row_lo).inverse();
-                lookup_table_log_derivative += (lookup_indeterminate - compressed_row_hi).inverse();
-            }
-
-            let mut extension_row = ext_table.row_mut(row_idx);
-            extension_row[HashTableServerLogDerivative.ext_table_index()] =
-                hash_table_log_derivative;
-            extension_row[LookupTableClientLogDerivative.ext_table_index()] =
-                lookup_table_log_derivative;
-        }
-        profiler!(stop "cascade table");
-    }
-
-    fn lookup_8_bit_limb(to_look_up: u8) -> BFieldElement {
-        tip5::LOOKUP_TABLE[to_look_up as usize].into()
-    }
-
-    pub fn lookup_16_bit_limb(to_look_up: u16) -> BFieldElement {
-        let to_look_up_lo = (to_look_up & 0xff) as u8;
-        let to_look_up_hi = ((to_look_up >> 8) & 0xff) as u8;
-        let looked_up_lo = Self::lookup_8_bit_limb(to_look_up_lo);
-        let looked_up_hi = Self::lookup_8_bit_limb(to_look_up_hi);
-        bfe!(1 << 8) * looked_up_hi + looked_up_lo
-    }
-}
-
-impl ExtCascadeTable {
-    pub fn initial_constraints(
+    fn initial_constraints(
         circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
-        let base_row = |col_id: CascadeBaseTableColumn| {
+        let main_row = |col_id: Self::MainColumn| {
             circuit_builder.input(BaseRow(col_id.master_base_table_index()))
         };
-        let ext_row = |col_id: CascadeExtTableColumn| {
+        let aux_row = |col_id: Self::AuxColumn| {
             circuit_builder.input(ExtRow(col_id.master_ext_table_index()))
         };
         let challenge = |challenge_id: ChallengeId| circuit_builder.challenge(challenge_id);
@@ -147,14 +45,16 @@ impl ExtCascadeTable {
         let two_pow_8 = circuit_builder.b_constant(1 << 8);
         let lookup_arg_default_initial = circuit_builder.x_constant(LookupArg::default_initial());
 
-        let is_padding = base_row(IsPadding);
-        let look_in_hi = base_row(LookInHi);
-        let look_in_lo = base_row(LookInLo);
-        let look_out_hi = base_row(LookOutHi);
-        let look_out_lo = base_row(LookOutLo);
-        let lookup_multiplicity = base_row(LookupMultiplicity);
-        let hash_table_server_log_derivative = ext_row(HashTableServerLogDerivative);
-        let lookup_table_client_log_derivative = ext_row(LookupTableClientLogDerivative);
+        let is_padding = main_row(Self::MainColumn::IsPadding);
+        let look_in_hi = main_row(Self::MainColumn::LookInHi);
+        let look_in_lo = main_row(Self::MainColumn::LookInLo);
+        let look_out_hi = main_row(Self::MainColumn::LookOutHi);
+        let look_out_lo = main_row(Self::MainColumn::LookOutLo);
+        let lookup_multiplicity = main_row(Self::MainColumn::LookupMultiplicity);
+        let hash_table_server_log_derivative =
+            aux_row(Self::AuxColumn::HashTableServerLogDerivative);
+        let lookup_table_client_log_derivative =
+            aux_row(Self::AuxColumn::LookupTableClientLogDerivative);
 
         let hash_indeterminate = challenge(HashCascadeLookupIndeterminate);
         let hash_input_weight = challenge(HashCascadeLookInWeight);
@@ -202,36 +102,36 @@ impl ExtCascadeTable {
         ]
     }
 
-    pub fn consistency_constraints(
+    fn consistency_constraints(
         circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
-        let base_row = |col_id: CascadeBaseTableColumn| {
+        let row = |col_id: Self::MainColumn| {
             circuit_builder.input(BaseRow(col_id.master_base_table_index()))
         };
 
         let one = circuit_builder.b_constant(1);
-        let is_padding = base_row(IsPadding);
+        let is_padding = row(Self::MainColumn::IsPadding);
         let is_padding_is_0_or_1 = is_padding.clone() * (one - is_padding);
 
         vec![is_padding_is_0_or_1]
     }
 
-    pub fn transition_constraints(
+    fn transition_constraints(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
         let challenge = |c| circuit_builder.challenge(c);
         let constant = |c: u64| circuit_builder.b_constant(c);
 
-        let current_base_row = |column_idx: CascadeBaseTableColumn| {
+        let curr_main_row = |column_idx: Self::MainColumn| {
             circuit_builder.input(CurrentBaseRow(column_idx.master_base_table_index()))
         };
-        let next_base_row = |column_idx: CascadeBaseTableColumn| {
+        let next_main_row = |column_idx: Self::MainColumn| {
             circuit_builder.input(NextBaseRow(column_idx.master_base_table_index()))
         };
-        let current_ext_row = |column_idx: CascadeExtTableColumn| {
+        let curr_aux_row = |column_idx: Self::AuxColumn| {
             circuit_builder.input(CurrentExtRow(column_idx.master_ext_table_index()))
         };
-        let next_ext_row = |column_idx: CascadeExtTableColumn| {
+        let next_aux_row = |column_idx: Self::AuxColumn| {
             circuit_builder.input(NextExtRow(column_idx.master_ext_table_index()))
         };
 
@@ -239,18 +139,22 @@ impl ExtCascadeTable {
         let two = constant(2);
         let two_pow_8 = constant(1 << 8);
 
-        let is_padding = current_base_row(IsPadding);
-        let hash_table_server_log_derivative = current_ext_row(HashTableServerLogDerivative);
-        let lookup_table_client_log_derivative = current_ext_row(LookupTableClientLogDerivative);
+        let is_padding = curr_main_row(Self::MainColumn::IsPadding);
+        let hash_table_server_log_derivative =
+            curr_aux_row(Self::AuxColumn::HashTableServerLogDerivative);
+        let lookup_table_client_log_derivative =
+            curr_aux_row(Self::AuxColumn::LookupTableClientLogDerivative);
 
-        let is_padding_next = next_base_row(IsPadding);
-        let look_in_hi_next = next_base_row(LookInHi);
-        let look_in_lo_next = next_base_row(LookInLo);
-        let look_out_hi_next = next_base_row(LookOutHi);
-        let look_out_lo_next = next_base_row(LookOutLo);
-        let lookup_multiplicity_next = next_base_row(LookupMultiplicity);
-        let hash_table_server_log_derivative_next = next_ext_row(HashTableServerLogDerivative);
-        let lookup_table_client_log_derivative_next = next_ext_row(LookupTableClientLogDerivative);
+        let is_padding_next = next_main_row(Self::MainColumn::IsPadding);
+        let look_in_hi_next = next_main_row(Self::MainColumn::LookInHi);
+        let look_in_lo_next = next_main_row(Self::MainColumn::LookInLo);
+        let look_out_hi_next = next_main_row(Self::MainColumn::LookOutHi);
+        let look_out_lo_next = next_main_row(Self::MainColumn::LookOutLo);
+        let lookup_multiplicity_next = next_main_row(Self::MainColumn::LookupMultiplicity);
+        let hash_table_server_log_derivative_next =
+            next_aux_row(Self::AuxColumn::HashTableServerLogDerivative);
+        let lookup_table_client_log_derivative_next =
+            next_aux_row(Self::AuxColumn::LookupTableClientLogDerivative);
 
         let hash_indeterminate = challenge(HashCascadeLookupIndeterminate);
         let hash_input_weight = challenge(HashCascadeLookInWeight);
@@ -304,7 +208,7 @@ impl ExtCascadeTable {
         ]
     }
 
-    pub fn terminal_constraints(
+    fn terminal_constraints(
         _circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
         // no further constraints

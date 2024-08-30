@@ -9,11 +9,7 @@ use strum::EnumIter;
 use twenty_first::prelude::BFieldElement;
 use twenty_first::prelude::XFieldElement;
 
-use crate::table::challenges::Challenges;
-
-pub const BASE_WIDTH: usize = DegreeLoweringBaseTableColumn::COUNT;
-pub const EXT_WIDTH: usize = DegreeLoweringExtTableColumn::COUNT;
-pub const FULL_WIDTH: usize = BASE_WIDTH + EXT_WIDTH;
+use crate::challenges::Challenges;
 
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, EnumCount, EnumIter)]
 pub enum DegreeLoweringBaseTableColumn {}

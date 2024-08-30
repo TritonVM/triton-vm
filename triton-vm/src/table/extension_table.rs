@@ -7,7 +7,7 @@ use ndarray::ArrayView1;
 use twenty_first::math::traits::FiniteField;
 use twenty_first::prelude::*;
 
-use crate::table::challenges::Challenges;
+use crate::challenges::Challenges;
 use crate::table::master_table::MasterExtTable;
 use crate::table::ConstraintType;
 

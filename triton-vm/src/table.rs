@@ -1,47 +1,69 @@
-pub use crate::stark::NUM_QUOTIENT_SEGMENTS;
-pub use crate::table::master_table::NUM_BASE_COLUMNS;
-pub use crate::table::master_table::NUM_EXT_COLUMNS;
-
+use air::cross_table_argument::GrandCrossTableArg;
+use air::table::cascade::CascadeTable;
+use air::table::hash::HashTable;
+use air::table::jump_stack::JumpStackTable;
+use air::table::lookup::LookupTable;
+use air::table::op_stack::OpStackTable;
+use air::table::processor::ProcessorTable;
+use air::table::program::ProgramTable;
+use air::table::ram::RamTable;
+use air::table::u32::U32Table;
+use air::table::NUM_BASE_COLUMNS;
+use air::table::NUM_EXT_COLUMNS;
+use air::AIR;
 use arbitrary::Arbitrary;
 use constraint_circuit::ConstraintCircuitBuilder;
 use constraint_circuit::ConstraintCircuitMonad;
 use constraint_circuit::DualRowIndicator;
 use constraint_circuit::SingleRowIndicator;
+use ndarray::ArrayView2;
+use ndarray::ArrayViewMut2;
 use strum::Display;
 use strum::EnumCount;
 use strum::EnumIter;
-use twenty_first::prelude::XFieldElement;
+use twenty_first::prelude::*;
 
+use crate::aet::AlgebraicExecutionTrace;
+use crate::challenges::Challenges;
 use crate::codegen::Constraints;
-use crate::table::cascade_table::ExtCascadeTable;
-use crate::table::cross_table_argument::GrandCrossTableArg;
-use crate::table::hash_table::ExtHashTable;
-use crate::table::jump_stack_table::ExtJumpStackTable;
-use crate::table::lookup_table::ExtLookupTable;
-use crate::table::op_stack_table::ExtOpStackTable;
-use crate::table::processor_table::ExtProcessorTable;
-use crate::table::program_table::ExtProgramTable;
-use crate::table::ram_table::ExtRamTable;
-use crate::table::u32_table::ExtU32Table;
+pub use crate::stark::NUM_QUOTIENT_SEGMENTS;
 
-pub mod cascade_table;
-pub mod challenges;
 #[rustfmt::skip]
 pub mod constraints;
-pub mod cross_table_argument;
 #[rustfmt::skip]
 pub mod degree_lowering_table;
+
+pub mod cascade;
 pub mod extension_table;
-pub mod hash_table;
-pub mod jump_stack_table;
-pub mod lookup_table;
+pub mod hash;
+pub mod jump_stack;
+pub mod lookup;
 pub mod master_table;
-pub mod op_stack_table;
-pub mod processor_table;
-pub mod program_table;
-pub mod ram_table;
-pub mod table_column;
-pub mod u32_table;
+pub mod op_stack;
+pub mod processor;
+pub mod program;
+pub mod ram;
+pub mod u32;
+
+trait TraceTable: AIR {
+    // a nicer design is in order
+    type FillParam;
+    type FillReturnInfo;
+
+    fn fill(
+        main_table: ArrayViewMut2<BFieldElement>,
+        aet: &AlgebraicExecutionTrace,
+        _: Self::FillParam,
+    ) -> Self::FillReturnInfo;
+
+    fn pad(main_table: ArrayViewMut2<BFieldElement>, table_length: usize);
+
+    fn extend(
+        base_table: ArrayView2<BFieldElement>,
+        ext_table: ArrayViewMut2<XFieldElement>,
+        challenges: &Challenges,
+    );
+}
 
 #[derive(
     Debug, Display, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, EnumCount, EnumIter,
@@ -62,12 +84,11 @@ pub enum ConstraintType {
 
 /// A single row of a [`MasterBaseTable`][table].
 ///
-/// Usually, the elements in the table are [`BFieldElement`][bfe]s. For out-of-domain rows, which is
+/// Usually, the elements in the table are [`BFieldElement`]s. For out-of-domain rows, which is
 /// relevant for “Domain Extension to Eliminate Pretenders” (DEEP), the elements are
 /// [`XFieldElement`]s.
 ///
 /// [table]: master_table::MasterBaseTable
-/// [bfe]: crate::prelude::BFieldElement
 pub type BaseRow<T> = [T; NUM_BASE_COLUMNS];
 
 /// A single row of a [`MasterExtensionTable`][table].
@@ -92,15 +113,15 @@ pub(crate) fn constraints() -> Constraints {
 fn initial_constraints() -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
     let circuit_builder = ConstraintCircuitBuilder::new();
     vec![
-        ExtProgramTable::initial_constraints(&circuit_builder),
-        ExtProcessorTable::initial_constraints(&circuit_builder),
-        ExtOpStackTable::initial_constraints(&circuit_builder),
-        ExtRamTable::initial_constraints(&circuit_builder),
-        ExtJumpStackTable::initial_constraints(&circuit_builder),
-        ExtHashTable::initial_constraints(&circuit_builder),
-        ExtCascadeTable::initial_constraints(&circuit_builder),
-        ExtLookupTable::initial_constraints(&circuit_builder),
-        ExtU32Table::initial_constraints(&circuit_builder),
+        ProgramTable::initial_constraints(&circuit_builder),
+        ProcessorTable::initial_constraints(&circuit_builder),
+        OpStackTable::initial_constraints(&circuit_builder),
+        RamTable::initial_constraints(&circuit_builder),
+        JumpStackTable::initial_constraints(&circuit_builder),
+        HashTable::initial_constraints(&circuit_builder),
+        CascadeTable::initial_constraints(&circuit_builder),
+        LookupTable::initial_constraints(&circuit_builder),
+        U32Table::initial_constraints(&circuit_builder),
         GrandCrossTableArg::initial_constraints(&circuit_builder),
     ]
     .concat()
@@ -109,15 +130,15 @@ fn initial_constraints() -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
 fn consistency_constraints() -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
     let circuit_builder = ConstraintCircuitBuilder::new();
     vec![
-        ExtProgramTable::consistency_constraints(&circuit_builder),
-        ExtProcessorTable::consistency_constraints(&circuit_builder),
-        ExtOpStackTable::consistency_constraints(&circuit_builder),
-        ExtRamTable::consistency_constraints(&circuit_builder),
-        ExtJumpStackTable::consistency_constraints(&circuit_builder),
-        ExtHashTable::consistency_constraints(&circuit_builder),
-        ExtCascadeTable::consistency_constraints(&circuit_builder),
-        ExtLookupTable::consistency_constraints(&circuit_builder),
-        ExtU32Table::consistency_constraints(&circuit_builder),
+        ProgramTable::consistency_constraints(&circuit_builder),
+        ProcessorTable::consistency_constraints(&circuit_builder),
+        OpStackTable::consistency_constraints(&circuit_builder),
+        RamTable::consistency_constraints(&circuit_builder),
+        JumpStackTable::consistency_constraints(&circuit_builder),
+        HashTable::consistency_constraints(&circuit_builder),
+        CascadeTable::consistency_constraints(&circuit_builder),
+        LookupTable::consistency_constraints(&circuit_builder),
+        U32Table::consistency_constraints(&circuit_builder),
         GrandCrossTableArg::consistency_constraints(&circuit_builder),
     ]
     .concat()
@@ -126,15 +147,15 @@ fn consistency_constraints() -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> 
 fn transition_constraints() -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
     let circuit_builder = ConstraintCircuitBuilder::new();
     vec![
-        ExtProgramTable::transition_constraints(&circuit_builder),
-        ExtProcessorTable::transition_constraints(&circuit_builder),
-        ExtOpStackTable::transition_constraints(&circuit_builder),
-        ExtRamTable::transition_constraints(&circuit_builder),
-        ExtJumpStackTable::transition_constraints(&circuit_builder),
-        ExtHashTable::transition_constraints(&circuit_builder),
-        ExtCascadeTable::transition_constraints(&circuit_builder),
-        ExtLookupTable::transition_constraints(&circuit_builder),
-        ExtU32Table::transition_constraints(&circuit_builder),
+        ProgramTable::transition_constraints(&circuit_builder),
+        ProcessorTable::transition_constraints(&circuit_builder),
+        OpStackTable::transition_constraints(&circuit_builder),
+        RamTable::transition_constraints(&circuit_builder),
+        JumpStackTable::transition_constraints(&circuit_builder),
+        HashTable::transition_constraints(&circuit_builder),
+        CascadeTable::transition_constraints(&circuit_builder),
+        LookupTable::transition_constraints(&circuit_builder),
+        U32Table::transition_constraints(&circuit_builder),
         GrandCrossTableArg::transition_constraints(&circuit_builder),
     ]
     .concat()
@@ -143,15 +164,15 @@ fn transition_constraints() -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
 fn terminal_constraints() -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
     let circuit_builder = ConstraintCircuitBuilder::new();
     vec![
-        ExtProgramTable::terminal_constraints(&circuit_builder),
-        ExtProcessorTable::terminal_constraints(&circuit_builder),
-        ExtOpStackTable::terminal_constraints(&circuit_builder),
-        ExtRamTable::terminal_constraints(&circuit_builder),
-        ExtJumpStackTable::terminal_constraints(&circuit_builder),
-        ExtHashTable::terminal_constraints(&circuit_builder),
-        ExtCascadeTable::terminal_constraints(&circuit_builder),
-        ExtLookupTable::terminal_constraints(&circuit_builder),
-        ExtU32Table::terminal_constraints(&circuit_builder),
+        ProgramTable::terminal_constraints(&circuit_builder),
+        ProcessorTable::terminal_constraints(&circuit_builder),
+        OpStackTable::terminal_constraints(&circuit_builder),
+        RamTable::terminal_constraints(&circuit_builder),
+        JumpStackTable::terminal_constraints(&circuit_builder),
+        HashTable::terminal_constraints(&circuit_builder),
+        CascadeTable::terminal_constraints(&circuit_builder),
+        LookupTable::terminal_constraints(&circuit_builder),
+        U32Table::terminal_constraints(&circuit_builder),
         GrandCrossTableArg::terminal_constraints(&circuit_builder),
     ]
     .concat()
@@ -161,6 +182,26 @@ fn terminal_constraints() -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
 mod tests {
     use std::collections::HashMap;
 
+    use air::table::hash::HashTable;
+    use air::table::op_stack::OpStackTable;
+    use air::table::CASCADE_TABLE_END;
+    use air::table::EXT_CASCADE_TABLE_END;
+    use air::table::EXT_HASH_TABLE_END;
+    use air::table::EXT_JUMP_STACK_TABLE_END;
+    use air::table::EXT_LOOKUP_TABLE_END;
+    use air::table::EXT_OP_STACK_TABLE_END;
+    use air::table::EXT_PROCESSOR_TABLE_END;
+    use air::table::EXT_PROGRAM_TABLE_END;
+    use air::table::EXT_RAM_TABLE_END;
+    use air::table::EXT_U32_TABLE_END;
+    use air::table::HASH_TABLE_END;
+    use air::table::JUMP_STACK_TABLE_END;
+    use air::table::LOOKUP_TABLE_END;
+    use air::table::OP_STACK_TABLE_END;
+    use air::table::PROCESSOR_TABLE_END;
+    use air::table::PROGRAM_TABLE_END;
+    use air::table::RAM_TABLE_END;
+    use air::table::U32_TABLE_END;
     use constraint_circuit::BinOp;
     use constraint_circuit::CircuitExpression;
     use constraint_circuit::ConstraintCircuit;
@@ -177,28 +218,9 @@ mod tests {
     use rand_core::SeedableRng;
     use twenty_first::prelude::BFieldElement;
 
+    use crate::challenges::Challenges;
     use crate::prelude::Claim;
-    use crate::table::challenges::Challenges;
     use crate::table::degree_lowering_table::DegreeLoweringTable;
-    use crate::table::master_table::AIR_TARGET_DEGREE;
-    use crate::table::master_table::CASCADE_TABLE_END;
-    use crate::table::master_table::EXT_CASCADE_TABLE_END;
-    use crate::table::master_table::EXT_HASH_TABLE_END;
-    use crate::table::master_table::EXT_JUMP_STACK_TABLE_END;
-    use crate::table::master_table::EXT_LOOKUP_TABLE_END;
-    use crate::table::master_table::EXT_OP_STACK_TABLE_END;
-    use crate::table::master_table::EXT_PROCESSOR_TABLE_END;
-    use crate::table::master_table::EXT_PROGRAM_TABLE_END;
-    use crate::table::master_table::EXT_RAM_TABLE_END;
-    use crate::table::master_table::EXT_U32_TABLE_END;
-    use crate::table::master_table::HASH_TABLE_END;
-    use crate::table::master_table::JUMP_STACK_TABLE_END;
-    use crate::table::master_table::LOOKUP_TABLE_END;
-    use crate::table::master_table::OP_STACK_TABLE_END;
-    use crate::table::master_table::PROCESSOR_TABLE_END;
-    use crate::table::master_table::PROGRAM_TABLE_END;
-    use crate::table::master_table::RAM_TABLE_END;
-    use crate::table::master_table::U32_TABLE_END;
 
     use super::*;
 
@@ -304,15 +326,15 @@ mod tests {
             }};
         }
 
-        assert_constraint_properties!(ExtProcessorTable);
-        assert_constraint_properties!(ExtProgramTable);
-        assert_constraint_properties!(ExtJumpStackTable);
-        assert_constraint_properties!(ExtOpStackTable);
-        assert_constraint_properties!(ExtRamTable);
-        assert_constraint_properties!(ExtHashTable);
-        assert_constraint_properties!(ExtU32Table);
-        assert_constraint_properties!(ExtCascadeTable);
-        assert_constraint_properties!(ExtLookupTable);
+        assert_constraint_properties!(ProcessorTable);
+        assert_constraint_properties!(ProgramTable);
+        assert_constraint_properties!(JumpStackTable);
+        assert_constraint_properties!(OpStackTable);
+        assert_constraint_properties!(RamTable);
+        assert_constraint_properties!(HashTable);
+        assert_constraint_properties!(U32Table);
+        assert_constraint_properties!(CascadeTable);
+        assert_constraint_properties!(LookupTable);
     }
 
     /// Like [`ConstraintCircuitMonad::lower_to_degree`] with additional assertion of expected
@@ -458,7 +480,7 @@ mod tests {
         macro_rules! assert_degree_lowering {
             ($table:ident ($base_end:ident, $ext_end:ident)) => {{
                 let degree_lowering_info = DegreeLoweringInfo {
-                    target_degree: AIR_TARGET_DEGREE,
+                    target_degree: air::TARGET_DEGREE,
                     num_base_cols: $base_end,
                     num_ext_cols: $ext_end,
                 };
@@ -480,21 +502,18 @@ mod tests {
             }};
         }
 
-        assert_degree_lowering!(ExtProgramTable(PROGRAM_TABLE_END, EXT_PROGRAM_TABLE_END));
-        assert_degree_lowering!(ExtProcessorTable(
-            PROCESSOR_TABLE_END,
-            EXT_PROCESSOR_TABLE_END
-        ));
-        assert_degree_lowering!(ExtOpStackTable(OP_STACK_TABLE_END, EXT_OP_STACK_TABLE_END));
-        assert_degree_lowering!(ExtRamTable(RAM_TABLE_END, EXT_RAM_TABLE_END));
-        assert_degree_lowering!(ExtJumpStackTable(
+        assert_degree_lowering!(ProgramTable(PROGRAM_TABLE_END, EXT_PROGRAM_TABLE_END));
+        assert_degree_lowering!(ProcessorTable(PROCESSOR_TABLE_END, EXT_PROCESSOR_TABLE_END));
+        assert_degree_lowering!(OpStackTable(OP_STACK_TABLE_END, EXT_OP_STACK_TABLE_END));
+        assert_degree_lowering!(RamTable(RAM_TABLE_END, EXT_RAM_TABLE_END));
+        assert_degree_lowering!(JumpStackTable(
             JUMP_STACK_TABLE_END,
             EXT_JUMP_STACK_TABLE_END
         ));
-        assert_degree_lowering!(ExtHashTable(HASH_TABLE_END, EXT_HASH_TABLE_END));
-        assert_degree_lowering!(ExtCascadeTable(CASCADE_TABLE_END, EXT_CASCADE_TABLE_END));
-        assert_degree_lowering!(ExtLookupTable(LOOKUP_TABLE_END, EXT_LOOKUP_TABLE_END));
-        assert_degree_lowering!(ExtU32Table(U32_TABLE_END, EXT_U32_TABLE_END));
+        assert_degree_lowering!(HashTable(HASH_TABLE_END, EXT_HASH_TABLE_END));
+        assert_degree_lowering!(CascadeTable(CASCADE_TABLE_END, EXT_CASCADE_TABLE_END));
+        assert_degree_lowering!(LookupTable(LOOKUP_TABLE_END, EXT_LOOKUP_TABLE_END));
+        assert_degree_lowering!(U32Table(U32_TABLE_END, EXT_U32_TABLE_END));
     }
 
     /// Fills the derived columns of the degree-lowering table using randomly generated rows and

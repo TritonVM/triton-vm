@@ -6,11 +6,11 @@ use std::ops::Add;
 use std::ops::AddAssign;
 use std::ops::Sub;
 
+use air::table::hash::PERMUTATION_TRACE_LENGTH;
 use arbitrary::Arbitrary;
 use twenty_first::prelude::*;
 
-use crate::table::hash_table::PERMUTATION_TRACE_LENGTH;
-use crate::table::u32_table::U32TableEntry;
+use crate::table::u32::U32TableEntry;
 use crate::vm::CoProcessorCall;
 
 #[derive(Debug, Default, Clone, Eq, PartialEq, Arbitrary)]

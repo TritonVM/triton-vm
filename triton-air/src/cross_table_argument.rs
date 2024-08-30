@@ -8,22 +8,18 @@ use constraint_circuit::SingleRowIndicator;
 use constraint_circuit::SingleRowIndicator::ExtRow;
 use twenty_first::prelude::*;
 
-use crate::table::challenges::ChallengeId::*;
-use crate::table::table_column::CascadeExtTableColumn;
-use crate::table::table_column::HashExtTableColumn;
-use crate::table::table_column::HashExtTableColumn::*;
-use crate::table::table_column::JumpStackExtTableColumn;
-use crate::table::table_column::LookupExtTableColumn;
-use crate::table::table_column::LookupExtTableColumn::*;
-use crate::table::table_column::MasterExtTableColumn;
-use crate::table::table_column::OpStackExtTableColumn;
-use crate::table::table_column::ProcessorExtTableColumn;
-use crate::table::table_column::ProcessorExtTableColumn::*;
-use crate::table::table_column::ProgramExtTableColumn;
-use crate::table::table_column::ProgramExtTableColumn::*;
-use crate::table::table_column::RamExtTableColumn;
-use crate::table::table_column::U32ExtTableColumn;
-use crate::table::table_column::U32ExtTableColumn::*;
+use crate::challenge_id::ChallengeId;
+
+use crate::table_column::CascadeExtTableColumn;
+use crate::table_column::HashExtTableColumn;
+use crate::table_column::JumpStackExtTableColumn;
+use crate::table_column::LookupExtTableColumn;
+use crate::table_column::MasterExtTableColumn;
+use crate::table_column::OpStackExtTableColumn;
+use crate::table_column::ProcessorExtTableColumn;
+use crate::table_column::ProgramExtTableColumn;
+use crate::table_column::RamExtTableColumn;
+use crate::table_column::U32ExtTableColumn;
 
 pub trait CrossTableArg {
     fn default_initial() -> XFieldElement
@@ -154,50 +150,55 @@ impl GrandCrossTableArg {
             |column: LookupExtTableColumn| ext_row(column.master_ext_table_index());
         let u32_ext_row = |column: U32ExtTableColumn| ext_row(column.master_ext_table_index());
 
-        let program_attestation = program_ext_row(SendChunkRunningEvaluation)
-            - hash_ext_row(ReceiveChunkRunningEvaluation);
-        let input_to_processor =
-            challenge(StandardInputTerminal) - processor_ext_row(InputTableEvalArg);
-        let processor_to_output =
-            processor_ext_row(OutputTableEvalArg) - challenge(StandardOutputTerminal);
-        let instruction_lookup = processor_ext_row(InstructionLookupClientLogDerivative)
-            - program_ext_row(InstructionLookupServerLogDerivative);
-        let processor_to_op_stack = processor_ext_row(OpStackTablePermArg)
+        let program_attestation =
+            program_ext_row(ProgramExtTableColumn::SendChunkRunningEvaluation)
+                - hash_ext_row(HashExtTableColumn::ReceiveChunkRunningEvaluation);
+        let input_to_processor = challenge(ChallengeId::StandardInputTerminal)
+            - processor_ext_row(ProcessorExtTableColumn::InputTableEvalArg);
+        let processor_to_output = processor_ext_row(ProcessorExtTableColumn::OutputTableEvalArg)
+            - challenge(ChallengeId::StandardOutputTerminal);
+        let instruction_lookup =
+            processor_ext_row(ProcessorExtTableColumn::InstructionLookupClientLogDerivative)
+                - program_ext_row(ProgramExtTableColumn::InstructionLookupServerLogDerivative);
+        let processor_to_op_stack = processor_ext_row(ProcessorExtTableColumn::OpStackTablePermArg)
             - op_stack_ext_row(OpStackExtTableColumn::RunningProductPermArg);
-        let processor_to_ram = processor_ext_row(RamTablePermArg)
+        let processor_to_ram = processor_ext_row(ProcessorExtTableColumn::RamTablePermArg)
             - ram_ext_row(RamExtTableColumn::RunningProductPermArg);
-        let processor_to_jump_stack = processor_ext_row(JumpStackTablePermArg)
-            - jump_stack_ext_row(JumpStackExtTableColumn::RunningProductPermArg);
-        let hash_input =
-            processor_ext_row(HashInputEvalArg) - hash_ext_row(HashInputRunningEvaluation);
-        let hash_digest =
-            hash_ext_row(HashDigestRunningEvaluation) - processor_ext_row(HashDigestEvalArg);
-        let sponge = processor_ext_row(SpongeEvalArg) - hash_ext_row(SpongeRunningEvaluation);
+        let processor_to_jump_stack =
+            processor_ext_row(ProcessorExtTableColumn::JumpStackTablePermArg)
+                - jump_stack_ext_row(JumpStackExtTableColumn::RunningProductPermArg);
+        let hash_input = processor_ext_row(ProcessorExtTableColumn::HashInputEvalArg)
+            - hash_ext_row(HashExtTableColumn::HashInputRunningEvaluation);
+        let hash_digest = hash_ext_row(HashExtTableColumn::HashDigestRunningEvaluation)
+            - processor_ext_row(ProcessorExtTableColumn::HashDigestEvalArg);
+        let sponge = processor_ext_row(ProcessorExtTableColumn::SpongeEvalArg)
+            - hash_ext_row(HashExtTableColumn::SpongeRunningEvaluation);
         let hash_to_cascade = cascade_ext_row(CascadeExtTableColumn::HashTableServerLogDerivative)
-            - hash_ext_row(CascadeState0HighestClientLogDerivative)
-            - hash_ext_row(CascadeState0MidHighClientLogDerivative)
-            - hash_ext_row(CascadeState0MidLowClientLogDerivative)
-            - hash_ext_row(CascadeState0LowestClientLogDerivative)
-            - hash_ext_row(CascadeState1HighestClientLogDerivative)
-            - hash_ext_row(CascadeState1MidHighClientLogDerivative)
-            - hash_ext_row(CascadeState1MidLowClientLogDerivative)
-            - hash_ext_row(CascadeState1LowestClientLogDerivative)
-            - hash_ext_row(CascadeState2HighestClientLogDerivative)
-            - hash_ext_row(CascadeState2MidHighClientLogDerivative)
-            - hash_ext_row(CascadeState2MidLowClientLogDerivative)
-            - hash_ext_row(CascadeState2LowestClientLogDerivative)
-            - hash_ext_row(CascadeState3HighestClientLogDerivative)
-            - hash_ext_row(CascadeState3MidHighClientLogDerivative)
-            - hash_ext_row(CascadeState3MidLowClientLogDerivative)
-            - hash_ext_row(CascadeState3LowestClientLogDerivative);
+            - hash_ext_row(HashExtTableColumn::CascadeState0HighestClientLogDerivative)
+            - hash_ext_row(HashExtTableColumn::CascadeState0MidHighClientLogDerivative)
+            - hash_ext_row(HashExtTableColumn::CascadeState0MidLowClientLogDerivative)
+            - hash_ext_row(HashExtTableColumn::CascadeState0LowestClientLogDerivative)
+            - hash_ext_row(HashExtTableColumn::CascadeState1HighestClientLogDerivative)
+            - hash_ext_row(HashExtTableColumn::CascadeState1MidHighClientLogDerivative)
+            - hash_ext_row(HashExtTableColumn::CascadeState1MidLowClientLogDerivative)
+            - hash_ext_row(HashExtTableColumn::CascadeState1LowestClientLogDerivative)
+            - hash_ext_row(HashExtTableColumn::CascadeState2HighestClientLogDerivative)
+            - hash_ext_row(HashExtTableColumn::CascadeState2MidHighClientLogDerivative)
+            - hash_ext_row(HashExtTableColumn::CascadeState2MidLowClientLogDerivative)
+            - hash_ext_row(HashExtTableColumn::CascadeState2LowestClientLogDerivative)
+            - hash_ext_row(HashExtTableColumn::CascadeState3HighestClientLogDerivative)
+            - hash_ext_row(HashExtTableColumn::CascadeState3MidHighClientLogDerivative)
+            - hash_ext_row(HashExtTableColumn::CascadeState3MidLowClientLogDerivative)
+            - hash_ext_row(HashExtTableColumn::CascadeState3LowestClientLogDerivative);
         let cascade_to_lookup =
             cascade_ext_row(CascadeExtTableColumn::LookupTableClientLogDerivative)
-                - lookup_ext_row(CascadeTableServerLogDerivative);
-        let processor_to_u32 = processor_ext_row(U32LookupClientLogDerivative)
-            - u32_ext_row(LookupServerLogDerivative);
+                - lookup_ext_row(LookupExtTableColumn::CascadeTableServerLogDerivative);
+        let processor_to_u32 =
+            processor_ext_row(ProcessorExtTableColumn::U32LookupClientLogDerivative)
+                - u32_ext_row(U32ExtTableColumn::LookupServerLogDerivative);
 
         // Introduce new variable names to increase readability. Potentially opinionated.
-        let processor_cjdld = ClockJumpDifferenceLookupServerLogDerivative;
+        let processor_cjdld = ProcessorExtTableColumn::ClockJumpDifferenceLookupServerLogDerivative;
         let op_stack_cjdld = OpStackExtTableColumn::ClockJumpDifferenceLookupClientLogDerivative;
         let ram_cjdld = RamExtTableColumn::ClockJumpDifferenceLookupClientLogDerivative;
         let j_stack_cjdld = JumpStackExtTableColumn::ClockJumpDifferenceLookupClientLogDerivative;

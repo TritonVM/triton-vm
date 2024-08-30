@@ -1,9 +1,9 @@
+use air::table::TableId;
 use criterion::criterion_group;
 use criterion::criterion_main;
 use criterion::Criterion;
 
 use triton_vm::prelude::*;
-use triton_vm::table::master_table::TableId;
 
 criterion_main!(benches);
 

@@ -1,5 +1,5 @@
-//! Enums that convert table column names into `usize` indices. Allows addressing columns by name
-//! rather than their hard-to-remember index.
+//! Enums that convert table column names into `usize` indices. Allows
+//! addressing columns by name rather than their hard-to-remember index.
 
 use std::hash::Hash;
 
@@ -7,28 +7,24 @@ use strum::Display;
 use strum::EnumCount;
 use strum::EnumIter;
 
-use crate::table::degree_lowering_table::DegreeLoweringBaseTableColumn;
-use crate::table::degree_lowering_table::DegreeLoweringExtTableColumn;
-use crate::table::master_table::CASCADE_TABLE_START;
-use crate::table::master_table::DEGREE_LOWERING_TABLE_START;
-use crate::table::master_table::EXT_CASCADE_TABLE_START;
-use crate::table::master_table::EXT_DEGREE_LOWERING_TABLE_START;
-use crate::table::master_table::EXT_HASH_TABLE_START;
-use crate::table::master_table::EXT_JUMP_STACK_TABLE_START;
-use crate::table::master_table::EXT_LOOKUP_TABLE_START;
-use crate::table::master_table::EXT_OP_STACK_TABLE_START;
-use crate::table::master_table::EXT_PROCESSOR_TABLE_START;
-use crate::table::master_table::EXT_PROGRAM_TABLE_START;
-use crate::table::master_table::EXT_RAM_TABLE_START;
-use crate::table::master_table::EXT_U32_TABLE_START;
-use crate::table::master_table::HASH_TABLE_START;
-use crate::table::master_table::JUMP_STACK_TABLE_START;
-use crate::table::master_table::LOOKUP_TABLE_START;
-use crate::table::master_table::OP_STACK_TABLE_START;
-use crate::table::master_table::PROCESSOR_TABLE_START;
-use crate::table::master_table::PROGRAM_TABLE_START;
-use crate::table::master_table::RAM_TABLE_START;
-use crate::table::master_table::U32_TABLE_START;
+use crate::table::CASCADE_TABLE_START;
+use crate::table::EXT_CASCADE_TABLE_START;
+use crate::table::EXT_HASH_TABLE_START;
+use crate::table::EXT_JUMP_STACK_TABLE_START;
+use crate::table::EXT_LOOKUP_TABLE_START;
+use crate::table::EXT_OP_STACK_TABLE_START;
+use crate::table::EXT_PROCESSOR_TABLE_START;
+use crate::table::EXT_PROGRAM_TABLE_START;
+use crate::table::EXT_RAM_TABLE_START;
+use crate::table::EXT_U32_TABLE_START;
+use crate::table::HASH_TABLE_START;
+use crate::table::JUMP_STACK_TABLE_START;
+use crate::table::LOOKUP_TABLE_START;
+use crate::table::OP_STACK_TABLE_START;
+use crate::table::PROCESSOR_TABLE_START;
+use crate::table::PROGRAM_TABLE_START;
+use crate::table::RAM_TABLE_START;
+use crate::table::U32_TABLE_START;
 
 #[repr(usize)]
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, EnumCount, EnumIter)]
@@ -608,18 +604,6 @@ impl MasterBaseTableColumn for U32BaseTableColumn {
     }
 }
 
-impl MasterBaseTableColumn for DegreeLoweringBaseTableColumn {
-    #[inline]
-    fn base_table_index(&self) -> usize {
-        (*self) as usize
-    }
-
-    #[inline]
-    fn master_base_table_index(&self) -> usize {
-        DEGREE_LOWERING_TABLE_START + self.base_table_index()
-    }
-}
-
 /// A trait for the columns in the master extension table. This trait is implemented for all enums
 /// relating to the extension tables. The trait provides two methods:
 /// - one to get the index of the column in the “local” extension table, _i.e._, not the master
@@ -742,188 +726,11 @@ impl MasterExtTableColumn for U32ExtTableColumn {
     }
 }
 
-impl MasterExtTableColumn for DegreeLoweringExtTableColumn {
-    #[inline]
-    fn ext_table_index(&self) -> usize {
-        (*self) as usize
-    }
-
-    #[inline]
-    fn master_ext_table_index(&self) -> usize {
-        EXT_DEGREE_LOWERING_TABLE_START + self.ext_table_index()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use strum::IntoEnumIterator;
 
-    use crate::table::cascade_table;
-    use crate::table::hash_table;
-    use crate::table::jump_stack_table;
-    use crate::table::lookup_table;
-    use crate::table::op_stack_table;
-    use crate::table::processor_table;
-    use crate::table::program_table;
-    use crate::table::ram_table;
-    use crate::table::u32_table;
-
     use super::*;
-
-    #[test]
-    fn column_max_bound_matches_table_width() {
-        assert_eq!(
-            program_table::BASE_WIDTH,
-            ProgramBaseTableColumn::iter()
-                .last()
-                .unwrap()
-                .base_table_index()
-                + 1,
-            "ProgramTable's BASE_WIDTH is 1 + its max column index",
-        );
-        assert_eq!(
-            processor_table::BASE_WIDTH,
-            ProcessorBaseTableColumn::iter()
-                .last()
-                .unwrap()
-                .base_table_index()
-                + 1,
-            "ProcessorTable's BASE_WIDTH is 1 + its max column index",
-        );
-        assert_eq!(
-            op_stack_table::BASE_WIDTH,
-            OpStackBaseTableColumn::iter()
-                .last()
-                .unwrap()
-                .base_table_index()
-                + 1,
-            "OpStackTable's BASE_WIDTH is 1 + its max column index",
-        );
-        assert_eq!(
-            ram_table::BASE_WIDTH,
-            RamBaseTableColumn::iter()
-                .last()
-                .unwrap()
-                .base_table_index()
-                + 1,
-            "RamTable's BASE_WIDTH is 1 + its max column index",
-        );
-        assert_eq!(
-            jump_stack_table::BASE_WIDTH,
-            JumpStackBaseTableColumn::iter()
-                .last()
-                .unwrap()
-                .base_table_index()
-                + 1,
-            "JumpStackTable's BASE_WIDTH is 1 + its max column index",
-        );
-        assert_eq!(
-            hash_table::BASE_WIDTH,
-            HashBaseTableColumn::iter()
-                .last()
-                .unwrap()
-                .base_table_index()
-                + 1,
-            "HashTable's BASE_WIDTH is 1 + its max column index",
-        );
-        assert_eq!(
-            cascade_table::BASE_WIDTH,
-            CascadeBaseTableColumn::iter()
-                .last()
-                .unwrap()
-                .base_table_index()
-                + 1,
-            "CascadeTable's BASE_WIDTH is 1 + its max column index",
-        );
-        assert_eq!(
-            lookup_table::BASE_WIDTH,
-            LookupBaseTableColumn::iter()
-                .last()
-                .unwrap()
-                .base_table_index()
-                + 1,
-            "LookupTable's BASE_WIDTH is 1 + its max column index",
-        );
-        assert_eq!(
-            u32_table::BASE_WIDTH,
-            U32BaseTableColumn::iter()
-                .last()
-                .unwrap()
-                .base_table_index()
-                + 1,
-            "U32Table's BASE_WIDTH is 1 + its max column index",
-        );
-
-        assert_eq!(
-            program_table::EXT_WIDTH,
-            ProgramExtTableColumn::iter()
-                .last()
-                .unwrap()
-                .ext_table_index()
-                + 1,
-            "ProgramTable's EXT_WIDTH is 1 + its max column index",
-        );
-        assert_eq!(
-            processor_table::EXT_WIDTH,
-            ProcessorExtTableColumn::iter()
-                .last()
-                .unwrap()
-                .ext_table_index()
-                + 1,
-            "ProcessorTable's EXT_WIDTH is 1 + its max column index",
-        );
-        assert_eq!(
-            op_stack_table::EXT_WIDTH,
-            OpStackExtTableColumn::iter()
-                .last()
-                .unwrap()
-                .ext_table_index()
-                + 1,
-            "OpStack:Table's EXT_WIDTH is 1 + its max column index",
-        );
-        assert_eq!(
-            ram_table::EXT_WIDTH,
-            RamExtTableColumn::iter().last().unwrap().ext_table_index() + 1,
-            "RamTable's EXT_WIDTH is 1 + its max column index",
-        );
-        assert_eq!(
-            jump_stack_table::EXT_WIDTH,
-            JumpStackExtTableColumn::iter()
-                .last()
-                .unwrap()
-                .ext_table_index()
-                + 1,
-            "JumpStack:Table's EXT_WIDTH is 1 + its max column index",
-        );
-        assert_eq!(
-            hash_table::EXT_WIDTH,
-            HashExtTableColumn::iter().last().unwrap().ext_table_index() + 1,
-            "HashTable's EXT_WIDTH is 1 + its max column index",
-        );
-        assert_eq!(
-            cascade_table::EXT_WIDTH,
-            CascadeExtTableColumn::iter()
-                .last()
-                .unwrap()
-                .ext_table_index()
-                + 1,
-            "CascadeTable's EXT_WIDTH is 1 + its max column index",
-        );
-        assert_eq!(
-            lookup_table::EXT_WIDTH,
-            LookupExtTableColumn::iter()
-                .last()
-                .unwrap()
-                .ext_table_index()
-                + 1,
-            "LookupTable's EXT_WIDTH is 1 + its max column index",
-        );
-        assert_eq!(
-            u32_table::EXT_WIDTH,
-            U32ExtTableColumn::iter().last().unwrap().ext_table_index() + 1,
-            "U32Table's EXT_WIDTH is 1 + its max column index",
-        );
-    }
 
     #[test]
     fn master_base_table_is_contiguous() {
@@ -961,10 +768,6 @@ mod tests {
             expected_column_index += 1;
         }
         for column in U32BaseTableColumn::iter() {
-            assert_eq!(expected_column_index, column.master_base_table_index());
-            expected_column_index += 1;
-        }
-        for column in DegreeLoweringBaseTableColumn::iter() {
             assert_eq!(expected_column_index, column.master_base_table_index());
             expected_column_index += 1;
         }
@@ -1006,10 +809,6 @@ mod tests {
             expected_column_index += 1;
         }
         for column in U32ExtTableColumn::iter() {
-            assert_eq!(expected_column_index, column.master_ext_table_index());
-            expected_column_index += 1;
-        }
-        for column in DegreeLoweringExtTableColumn::iter() {
             assert_eq!(expected_column_index, column.master_ext_table_index());
             expected_column_index += 1;
         }
