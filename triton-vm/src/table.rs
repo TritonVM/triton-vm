@@ -1,21 +1,7 @@
-use air::cross_table_argument::GrandCrossTableArg;
 use air::table::cascade::CascadeTable;
 use air::table::hash::HashTable;
 use air::table::jump_stack::JumpStackTable;
-use air::table::lookup::LookupTable;
-use air::table::op_stack::OpStackTable;
-use air::table::processor::ProcessorTable;
-use air::table::program::ProgramTable;
-use air::table::ram::RamTable;
-use air::table::u32::U32Table;
-use air::table::NUM_BASE_COLUMNS;
-use air::table::NUM_EXT_COLUMNS;
 use air::AIR;
-use arbitrary::Arbitrary;
-use constraint_circuit::ConstraintCircuitBuilder;
-use constraint_circuit::ConstraintCircuitMonad;
-use constraint_circuit::DualRowIndicator;
-use constraint_circuit::SingleRowIndicator;
 use ndarray::ArrayView2;
 use ndarray::ArrayViewMut2;
 use strum::Display;
@@ -25,13 +11,12 @@ use twenty_first::prelude::*;
 
 use crate::aet::AlgebraicExecutionTrace;
 use crate::challenges::Challenges;
-use crate::codegen::Constraints;
 pub use crate::stark::NUM_QUOTIENT_SEGMENTS;
+use crate::table::master_table::MasterBaseTable;
+use crate::table::master_table::MasterExtTable;
+use crate::table::master_table::MasterTable;
 
-#[rustfmt::skip]
-pub mod constraints;
-#[rustfmt::skip]
-pub mod degree_lowering_table;
+pub mod degree_lowering;
 
 pub mod cascade;
 pub mod extension_table;
@@ -44,6 +29,17 @@ pub mod processor;
 pub mod program;
 pub mod ram;
 pub mod u32;
+
+/// The total number of main columns across all tables.
+/// The degree lowering columns _are_ included.
+pub const NUM_MAIN_COLUMNS: usize =
+    air::table::NUM_BASE_COLUMNS + degree_lowering::DegreeLoweringBaseTableColumn::COUNT;
+
+/// The total number of auxiliary columns across all tables.
+/// The degree lowering columns _are_ included,
+/// randomizer polynomials are _not_ included.
+pub const NUM_AUX_COLUMNS: usize =
+    air::table::NUM_EXT_COLUMNS + degree_lowering::DegreeLoweringExtTableColumn::COUNT;
 
 trait TraceTable: AIR {
     // a nicer design is in order
@@ -89,101 +85,29 @@ pub enum ConstraintType {
 /// [`XFieldElement`]s.
 ///
 /// [table]: master_table::MasterBaseTable
-pub type BaseRow<T> = [T; NUM_BASE_COLUMNS];
+pub type BaseRow<T> = [T; MasterBaseTable::NUM_COLUMNS];
 
 /// A single row of a [`MasterExtensionTable`][table].
 ///
 /// [table]: master_table::MasterExtTable
-pub type ExtensionRow = [XFieldElement; NUM_EXT_COLUMNS];
+pub type ExtensionRow = [XFieldElement; MasterExtTable::NUM_COLUMNS];
 
 /// An element of the split-up quotient polynomial.
 ///
 /// See also [`NUM_QUOTIENT_SEGMENTS`].
 pub type QuotientSegments = [XFieldElement; NUM_QUOTIENT_SEGMENTS];
 
-pub(crate) fn constraints() -> Constraints {
-    Constraints {
-        init: initial_constraints(),
-        cons: consistency_constraints(),
-        tran: transition_constraints(),
-        term: terminal_constraints(),
-    }
-}
-
-fn initial_constraints() -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
-    let circuit_builder = ConstraintCircuitBuilder::new();
-    vec![
-        ProgramTable::initial_constraints(&circuit_builder),
-        ProcessorTable::initial_constraints(&circuit_builder),
-        OpStackTable::initial_constraints(&circuit_builder),
-        RamTable::initial_constraints(&circuit_builder),
-        JumpStackTable::initial_constraints(&circuit_builder),
-        HashTable::initial_constraints(&circuit_builder),
-        CascadeTable::initial_constraints(&circuit_builder),
-        LookupTable::initial_constraints(&circuit_builder),
-        U32Table::initial_constraints(&circuit_builder),
-        GrandCrossTableArg::initial_constraints(&circuit_builder),
-    ]
-    .concat()
-}
-
-fn consistency_constraints() -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
-    let circuit_builder = ConstraintCircuitBuilder::new();
-    vec![
-        ProgramTable::consistency_constraints(&circuit_builder),
-        ProcessorTable::consistency_constraints(&circuit_builder),
-        OpStackTable::consistency_constraints(&circuit_builder),
-        RamTable::consistency_constraints(&circuit_builder),
-        JumpStackTable::consistency_constraints(&circuit_builder),
-        HashTable::consistency_constraints(&circuit_builder),
-        CascadeTable::consistency_constraints(&circuit_builder),
-        LookupTable::consistency_constraints(&circuit_builder),
-        U32Table::consistency_constraints(&circuit_builder),
-        GrandCrossTableArg::consistency_constraints(&circuit_builder),
-    ]
-    .concat()
-}
-
-fn transition_constraints() -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-    let circuit_builder = ConstraintCircuitBuilder::new();
-    vec![
-        ProgramTable::transition_constraints(&circuit_builder),
-        ProcessorTable::transition_constraints(&circuit_builder),
-        OpStackTable::transition_constraints(&circuit_builder),
-        RamTable::transition_constraints(&circuit_builder),
-        JumpStackTable::transition_constraints(&circuit_builder),
-        HashTable::transition_constraints(&circuit_builder),
-        CascadeTable::transition_constraints(&circuit_builder),
-        LookupTable::transition_constraints(&circuit_builder),
-        U32Table::transition_constraints(&circuit_builder),
-        GrandCrossTableArg::transition_constraints(&circuit_builder),
-    ]
-    .concat()
-}
-
-fn terminal_constraints() -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
-    let circuit_builder = ConstraintCircuitBuilder::new();
-    vec![
-        ProgramTable::terminal_constraints(&circuit_builder),
-        ProcessorTable::terminal_constraints(&circuit_builder),
-        OpStackTable::terminal_constraints(&circuit_builder),
-        RamTable::terminal_constraints(&circuit_builder),
-        JumpStackTable::terminal_constraints(&circuit_builder),
-        HashTable::terminal_constraints(&circuit_builder),
-        CascadeTable::terminal_constraints(&circuit_builder),
-        LookupTable::terminal_constraints(&circuit_builder),
-        U32Table::terminal_constraints(&circuit_builder),
-        GrandCrossTableArg::terminal_constraints(&circuit_builder),
-    ]
-    .concat()
-}
-
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
 
     use air::table::hash::HashTable;
+    use air::table::lookup::LookupTable;
     use air::table::op_stack::OpStackTable;
+    use air::table::processor::ProcessorTable;
+    use air::table::program::ProgramTable;
+    use air::table::ram::RamTable;
+    use air::table::u32::U32Table;
     use air::table::CASCADE_TABLE_END;
     use air::table::EXT_CASCADE_TABLE_END;
     use air::table::EXT_HASH_TABLE_END;
@@ -220,7 +144,7 @@ mod tests {
 
     use crate::challenges::Challenges;
     use crate::prelude::Claim;
-    use crate::table::degree_lowering_table::DegreeLoweringTable;
+    use crate::table::degree_lowering::DegreeLoweringTable;
 
     use super::*;
 
@@ -241,8 +165,8 @@ mod tests {
         let challenges = &challenges.challenges;
 
         let num_rows = 2;
-        let base_shape = [num_rows, NUM_BASE_COLUMNS];
-        let ext_shape = [num_rows, NUM_EXT_COLUMNS];
+        let base_shape = [num_rows, NUM_MAIN_COLUMNS];
+        let ext_shape = [num_rows, NUM_AUX_COLUMNS];
         let base_rows = Array2::from_shape_simple_fn(base_shape, || rng.gen::<BFieldElement>());
         let ext_rows = Array2::from_shape_simple_fn(ext_shape, || rng.gen::<XFieldElement>());
         let base_rows = base_rows.view();
@@ -402,8 +326,8 @@ mod tests {
         let num_rows = 2;
         let num_new_base_constraints = new_base_constraints.len();
         let num_new_ext_constraints = new_ext_constraints.len();
-        let num_base_cols = NUM_BASE_COLUMNS + num_new_base_constraints;
-        let num_ext_cols = NUM_EXT_COLUMNS + num_new_ext_constraints;
+        let num_base_cols = NUM_MAIN_COLUMNS + num_new_base_constraints;
+        let num_ext_cols = NUM_AUX_COLUMNS + num_new_ext_constraints;
         let base_shape = [num_rows, num_base_cols];
         let ext_shape = [num_rows, num_ext_cols];
         let base_rows = Array2::from_shape_simple_fn(base_shape, || rng.gen::<BFieldElement>());
@@ -524,8 +448,8 @@ mod tests {
     #[ignore = "(probably) requires normalization of circuit expressions"]
     fn substitution_rules_are_unique() {
         let challenges = Challenges::default();
-        let mut base_table_rows = Array2::from_shape_fn((2, NUM_BASE_COLUMNS), |_| random());
-        let mut ext_table_rows = Array2::from_shape_fn((2, NUM_EXT_COLUMNS), |_| random());
+        let mut base_table_rows = Array2::from_shape_fn((2, NUM_MAIN_COLUMNS), |_| random());
+        let mut ext_table_rows = Array2::from_shape_fn((2, NUM_AUX_COLUMNS), |_| random());
 
         DegreeLoweringTable::fill_derived_base_columns(base_table_rows.view_mut());
         DegreeLoweringTable::fill_derived_ext_columns(
@@ -535,7 +459,7 @@ mod tests {
         );
 
         let mut encountered_values = HashMap::new();
-        for col_idx in 0..NUM_BASE_COLUMNS {
+        for col_idx in 0..NUM_MAIN_COLUMNS {
             let val = base_table_rows[(0, col_idx)].lift();
             let other_entry = encountered_values.insert(val, col_idx);
             if let Some(other_idx) = other_entry {
@@ -543,7 +467,7 @@ mod tests {
             }
         }
         println!("Now comparing extension columns…");
-        for col_idx in 0..NUM_EXT_COLUMNS {
+        for col_idx in 0..NUM_AUX_COLUMNS {
             let val = ext_table_rows[(0, col_idx)];
             let other_entry = encountered_values.insert(val, col_idx);
             if let Some(other_idx) = other_entry {

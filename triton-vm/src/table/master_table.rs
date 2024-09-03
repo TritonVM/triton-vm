@@ -62,9 +62,7 @@ use num_traits::Zero;
 use rand::distributions::Standard;
 use rand::prelude::Distribution;
 use rand::random;
-use strum::Display;
 use strum::EnumCount;
-use strum::EnumIter;
 use twenty_first::math::tip5::RATE;
 use twenty_first::math::traits::FiniteField;
 use twenty_first::prelude::*;
@@ -80,10 +78,9 @@ use crate::ndarray_helper::horizontal_multi_slice_mut;
 use crate::ndarray_helper::partial_sums;
 use crate::profiler::profiler;
 use crate::stark::NUM_RANDOMIZER_POLYNOMIALS;
-use crate::table::degree_lowering_table::DegreeLoweringTable;
+use crate::table::degree_lowering::DegreeLoweringTable;
 use crate::table::extension_table::all_degrees_with_origin;
 use crate::table::extension_table::DegreeWithOrigin;
-use crate::table::extension_table::Quotientable;
 use crate::table::processor::ClkJumpDiffs;
 use crate::table::*;
 
@@ -461,7 +458,7 @@ pub struct MasterExtTable {
 }
 
 impl MasterTable<BFieldElement> for MasterBaseTable {
-    const NUM_COLUMNS: usize = NUM_BASE_COLUMNS;
+    const NUM_COLUMNS: usize = NUM_MAIN_COLUMNS;
 
     fn trace_domain(&self) -> ArithmeticDomain {
         self.trace_domain
@@ -567,7 +564,7 @@ impl MasterTable<BFieldElement> for MasterBaseTable {
 }
 
 impl MasterTable<XFieldElement> for MasterExtTable {
-    const NUM_COLUMNS: usize = NUM_EXT_COLUMNS;
+    const NUM_COLUMNS: usize = NUM_AUX_COLUMNS + NUM_RANDOMIZER_POLYNOMIALS;
 
     fn trace_domain(&self) -> ArithmeticDomain {
         self.trace_domain
@@ -588,13 +585,13 @@ impl MasterTable<XFieldElement> for MasterExtTable {
     fn trace_table(&self) -> ArrayView2<XFieldElement> {
         let unit_distance = self.randomized_trace_domain().length / self.trace_domain().length;
         self.randomized_trace_table
-            .slice(s![..; unit_distance, ..NUM_EXT_COLUMNS])
+            .slice(s![..; unit_distance, ..Self::NUM_COLUMNS])
     }
 
     fn trace_table_mut(&mut self) -> ArrayViewMut2<XFieldElement> {
         let unit_distance = self.randomized_trace_domain().length / self.trace_domain().length;
         self.randomized_trace_table
-            .slice_mut(s![..; unit_distance, ..NUM_EXT_COLUMNS])
+            .slice_mut(s![..; unit_distance, ..Self::NUM_COLUMNS])
     }
 
     fn randomized_trace_table(&self) -> ArrayView2<XFieldElement> {
@@ -655,7 +652,7 @@ impl MasterTable<XFieldElement> for MasterExtTable {
 
     fn out_of_domain_row(&self, indeterminate: XFieldElement) -> Array1<XFieldElement> {
         self.interpolation_polynomials()
-            .slice(s![..NUM_EXT_COLUMNS])
+            .slice(s![..Self::NUM_COLUMNS])
             .into_par_iter()
             .map(|polynomial| polynomial.evaluate(indeterminate))
             .collect::<Vec<_>>()
@@ -682,7 +679,7 @@ impl MasterBaseTable {
             ArithmeticDomain::of_length(randomized_padded_trace_len).unwrap();
 
         let num_rows = randomized_padded_trace_len;
-        let num_columns = NUM_BASE_COLUMNS;
+        let num_columns = Self::NUM_COLUMNS;
         let randomized_trace_table = Array2::zeros([num_rows, num_columns].f());
 
         let mut master_base_table = Self {
@@ -811,11 +808,13 @@ impl MasterBaseTable {
         // randomizer polynomials
         let num_rows = self.randomized_trace_table().nrows();
         profiler!(start "initialize master table");
+        let num_aux_columns = MasterExtTable::NUM_COLUMNS;
         let mut randomized_trace_extension_table =
-            fast_zeros_column_major(num_rows, NUM_EXT_COLUMNS + NUM_RANDOMIZER_POLYNOMIALS);
+            fast_zeros_column_major(num_rows, num_aux_columns);
 
+        let randomizers_start = MasterExtTable::NUM_COLUMNS - NUM_RANDOMIZER_POLYNOMIALS;
         randomized_trace_extension_table
-            .slice_mut(s![.., NUM_EXT_COLUMNS..])
+            .slice_mut(s![.., randomizers_start..])
             .par_mapv_inplace(|_| random::<XFieldElement>());
         profiler!(stop "initialize master table");
 
@@ -834,7 +833,7 @@ impl MasterBaseTable {
         let unit_distance = self.randomized_trace_domain().length / self.trace_domain().length;
         let master_ext_table_without_randomizers = master_ext_table
             .randomized_trace_table
-            .slice_mut(s![..; unit_distance, ..NUM_EXT_COLUMNS]);
+            .slice_mut(s![..; unit_distance, ..randomizers_start]);
         let extension_tables: [_; TableId::COUNT] = horizontal_multi_slice_mut(
             master_ext_table_without_randomizers,
             &partial_sums(&[
@@ -856,8 +855,8 @@ impl MasterBaseTable {
         profiler!(start "all tables");
         Self::all_extend_functions()
             .into_par_iter()
-            .zip_eq(self.base_tables_for_extending().into_par_iter())
-            .zip_eq(extension_tables.into_par_iter())
+            .zip_eq(self.base_tables_for_extending())
+            .zip_eq(extension_tables)
             .for_each(|((extend, base_table), ext_table)| {
                 extend(base_table, ext_table, challenges)
             });
@@ -937,7 +936,7 @@ impl MasterBaseTable {
         row: Array1<T>,
     ) -> Result<BaseRow<T>, ProvingError> {
         let err = || ProvingError::TableRowConversionError {
-            expected_len: NUM_BASE_COLUMNS,
+            expected_len: Self::NUM_COLUMNS,
             actual_len: row.len(),
         };
         row.to_vec().try_into().map_err(|_| err())
@@ -978,7 +977,7 @@ impl MasterExtTable {
 
     pub(crate) fn try_to_ext_row(row: Array1<XFieldElement>) -> Result<ExtensionRow, ProvingError> {
         let err = || ProvingError::TableRowConversionError {
-            expected_len: NUM_EXT_COLUMNS,
+            expected_len: Self::NUM_COLUMNS,
             actual_len: row.len(),
         };
         row.to_vec().try_into().map_err(|_| err())
@@ -1194,8 +1193,8 @@ mod tests {
     use constraint_circuit::SingleRowIndicator;
     use isa::instruction::Instruction;
     use isa::instruction::InstructionBit;
-    use ndarray::s;
     use ndarray::Array2;
+    use num_traits::ConstZero;
     use num_traits::Zero;
     use proptest::prelude::*;
     use proptest_arbitrary_interop::arb;
@@ -1207,15 +1206,15 @@ mod tests {
     use twenty_first::math::traits::FiniteField;
     use twenty_first::prelude::x_field_element::EXTENSION_DEGREE;
 
-    use crate::air::memory_layout::DynamicTasmConstraintEvaluationMemoryLayout;
-    use crate::air::memory_layout::StaticTasmConstraintEvaluationMemoryLayout;
-    use crate::air::tasm_air_constraints::dynamic_air_constraint_evaluation_tasm;
-    use crate::air::tasm_air_constraints::static_air_constraint_evaluation_tasm;
+    use crate::air::dynamic_air_constraint_evaluation_tasm;
+    use crate::air::static_air_constraint_evaluation_tasm;
     use crate::arithmetic_domain::ArithmeticDomain;
+    use crate::memory_layout::DynamicTasmConstraintEvaluationMemoryLayout;
+    use crate::memory_layout::StaticTasmConstraintEvaluationMemoryLayout;
     use crate::shared_tests::ProgramAndInput;
     use crate::stark::tests::*;
-    use crate::table::degree_lowering_table::DegreeLoweringBaseTableColumn;
-    use crate::table::degree_lowering_table::DegreeLoweringExtTableColumn;
+    use crate::table::degree_lowering::DegreeLoweringBaseTableColumn;
+    use crate::table::degree_lowering::DegreeLoweringExtTableColumn;
     use crate::table::*;
     use crate::triton_program;
 
@@ -1304,15 +1303,6 @@ mod tests {
         assert_eq!(
             <U32Table as AIR>::AuxColumn::COUNT,
             master_ext_table.table(TableId::U32).ncols()
-        );
-
-        // use some domain-specific knowledge to also check for the randomizer columns
-        assert_eq!(
-            NUM_RANDOMIZER_POLYNOMIALS,
-            master_ext_table
-                .randomized_trace_table()
-                .slice(s![.., EXT_U32_TABLE_END..])
-                .ncols()
         );
     }
 
@@ -1410,14 +1400,13 @@ mod tests {
     }
 
     fn generate_table_overview() -> SpecSnippet {
-        const NUM_DEGREE_LOWERING_TARGETS: usize = 3;
-        const DEGREE_LOWERING_TARGETS: [Option<isize>; NUM_DEGREE_LOWERING_TARGETS] =
-            [None, Some(8), Some(4)];
-
-        fn table_widths<A: AIR>() -> ((usize, usize)) {
+        fn table_widths<A: AIR>() -> (usize, usize) {
             (A::MainColumn::COUNT, A::AuxColumn::COUNT)
         }
 
+        const NUM_DEGREE_LOWERING_TARGETS: usize = 3;
+        const DEGREE_LOWERING_TARGETS: [Option<isize>; NUM_DEGREE_LOWERING_TARGETS] =
+            [None, Some(8), Some(4)];
         assert!(DEGREE_LOWERING_TARGETS.contains(&Some(air::TARGET_DEGREE)));
 
         let mut all_table_info = [
@@ -1463,7 +1452,7 @@ mod tests {
                 ConstraintCircuitMonad::lower_to_degree(&mut constraints, degree_lowering_info)
             };
 
-            let constraints = crate::table::constraints();
+            let constraints = constraint_builder::Constraints::all();
             let (init_main, init_aux) = lower_to_target_degree_single_row(constraints.init);
             let (cons_main, cons_aux) = lower_to_target_degree_single_row(constraints.cons);
             let (tran_main, tran_aux) = lower_to_target_degree_double_row(constraints.tran);
@@ -1768,10 +1757,21 @@ mod tests {
     }
 
     fn generate_tasm_air_evaluation_cost_overview() -> SpecSnippet {
-        let static_layout = StaticTasmConstraintEvaluationMemoryLayout::default();
-        let static_tasm = static_air_constraint_evaluation_tasm(static_layout);
-        let dynamic_layout = DynamicTasmConstraintEvaluationMemoryLayout::default();
-        let dynamic_tasm = dynamic_air_constraint_evaluation_tasm(dynamic_layout);
+        let dummy_static_layout = StaticTasmConstraintEvaluationMemoryLayout {
+            free_mem_page_ptr: BFieldElement::ZERO,
+            curr_base_row_ptr: BFieldElement::ZERO,
+            curr_ext_row_ptr: BFieldElement::ZERO,
+            next_base_row_ptr: BFieldElement::ZERO,
+            next_ext_row_ptr: BFieldElement::ZERO,
+            challenges_ptr: BFieldElement::ZERO,
+        };
+        let dummy_dynamic_layout = DynamicTasmConstraintEvaluationMemoryLayout {
+            free_mem_page_ptr: BFieldElement::ZERO,
+            challenges_ptr: BFieldElement::ZERO,
+        };
+
+        let static_tasm = static_air_constraint_evaluation_tasm(dummy_static_layout);
+        let dynamic_tasm = dynamic_air_constraint_evaluation_tasm(dummy_dynamic_layout);
 
         let mut snippet = "\
         | Type         | Processor | Op Stack |   RAM |\n\
@@ -1934,7 +1934,7 @@ mod tests {
         print_columns!(base CascadeBaseTableColumn        for "cascade");
         print_columns!(base LookupBaseTableColumn         for "lookup");
         print_columns!(base U32BaseTableColumn            for "u32");
-        // print_columns!(base DegreeLoweringBaseTableColumn for "degree low."); // todo
+        print_columns!(base DegreeLoweringBaseTableColumn for "degree low.");
 
         println!();
         println!("| idx | table       | extension column");
@@ -1948,7 +1948,7 @@ mod tests {
         print_columns!(ext CascadeExtTableColumn          for "cascade");
         print_columns!(ext LookupExtTableColumn           for "lookup");
         print_columns!(ext U32ExtTableColumn              for "u32");
-        // print_columns!(ext DegreeLoweringExtTableColumn   for "degree low."); // todo
+        print_columns!(ext DegreeLoweringExtTableColumn   for "degree low.");
     }
 
     #[test]
@@ -1959,7 +1959,7 @@ mod tests {
         let fri_domain = ArithmeticDomain::of_length(1 << 11).unwrap();
 
         let randomized_trace_table =
-            Array2::zeros((randomized_trace_domain.length, NUM_EXT_COLUMNS));
+            Array2::zeros((randomized_trace_domain.length, NUM_AUX_COLUMNS));
 
         let mut master_table = MasterExtTable {
             num_trace_randomizers: 16,

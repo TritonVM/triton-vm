@@ -1372,7 +1372,7 @@ mod tests {
         let mut multicircuit = [constraint_0, constraint_1];
 
         let degree_lowering_info = DegreeLoweringInfo {
-            target_degree: 2,
+            target_degree: 3,
             num_base_cols: 9,
             num_ext_cols: 0,
         };

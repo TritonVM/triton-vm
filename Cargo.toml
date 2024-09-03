@@ -1,5 +1,11 @@
 [workspace]
-members = ["triton-air", "triton-constraint-circuit", "triton-isa", "triton-vm"]
+members = [
+    "triton-air",
+    "triton-constraint-builder",
+    "triton-constraint-circuit",
+    "triton-isa",
+    "triton-vm",
+]
 resolver = "2"
 
 [profile.test]
@@ -27,6 +33,7 @@ anyhow = "1.0"
 arbitrary = { version = "1", features = ["derive"] }
 assert2 = "0.3"
 colored = "2.1"
+constraint-builder = { path = "triton-constraint-builder", package = "triton-constraint-builder" }
 constraint-circuit = { path = "triton-constraint-circuit", package = "triton-constraint-circuit" }
 clap = { version = "4", features = ["derive", "cargo", "wrap_help", "unicode", "string"] }
 criterion = { version = "0.5", features = ["html_reports"] }

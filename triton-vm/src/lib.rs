@@ -168,12 +168,12 @@ pub mod aet;
 pub mod air;
 pub mod arithmetic_domain;
 pub mod challenges;
-mod codegen;
 pub mod config;
 pub mod error;
 pub mod example_programs;
 pub mod execution_trace_profiler;
 pub mod fri;
+pub mod memory_layout;
 mod ndarray_helper;
 pub mod prelude;
 pub mod profiler;
@@ -331,30 +331,31 @@ mod tests {
 
         // table things
         implements_auto_traits::<challenges::Challenges>();
-        implements_auto_traits::<table::degree_lowering_table::DegreeLoweringBaseTableColumn>();
-        implements_auto_traits::<table::degree_lowering_table::DegreeLoweringExtTableColumn>();
-        implements_auto_traits::<table::degree_lowering_table::DegreeLoweringTable>();
+        implements_auto_traits::<table::degree_lowering::DegreeLoweringBaseTableColumn>();
+        implements_auto_traits::<table::degree_lowering::DegreeLoweringExtTableColumn>();
+        implements_auto_traits::<table::degree_lowering::DegreeLoweringTable>();
         implements_auto_traits::<table::master_table::MasterBaseTable>();
         implements_auto_traits::<table::master_table::MasterExtTable>();
         implements_auto_traits::<table::op_stack::OpStackTableEntry>();
         implements_auto_traits::<table::ram::RamTableCall>();
         implements_auto_traits::<table::u32::U32TableEntry>();
-        implements_auto_traits::<air::memory_layout::StaticTasmConstraintEvaluationMemoryLayout>();
-        implements_auto_traits::<air::memory_layout::DynamicTasmConstraintEvaluationMemoryLayout>();
 
         // other
         implements_auto_traits::<aet::AlgebraicExecutionTrace>();
         implements_auto_traits::<aet::TableHeight>();
         implements_auto_traits::<arithmetic_domain::ArithmeticDomain>();
-        implements_auto_traits::<fri::Fri>();
-        implements_auto_traits::<TypeHint>();
-        implements_auto_traits::<profiler::VMPerformanceProfile>();
         implements_auto_traits::<execution_trace_profiler::ExecutionTraceProfile>();
         implements_auto_traits::<execution_trace_profiler::ProfileLine>();
         implements_auto_traits::<execution_trace_profiler::VMTableHeights>();
+        implements_auto_traits::<fri::Fri>();
+        implements_auto_traits::<memory_layout::DynamicTasmConstraintEvaluationMemoryLayout>();
+        implements_auto_traits::<memory_layout::MemoryRegion>();
+        implements_auto_traits::<memory_layout::StaticTasmConstraintEvaluationMemoryLayout>();
+        implements_auto_traits::<profiler::VMPerformanceProfile>();
         implements_auto_traits::<proof_item::FriResponse>();
         implements_auto_traits::<proof_item::ProofItem>();
         implements_auto_traits::<proof_stream::ProofStream>();
+        implements_auto_traits::<TypeHint>();
         implements_auto_traits::<vm::CoProcessorCall>();
     }
 

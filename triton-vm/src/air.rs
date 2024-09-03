@@ -1,11 +1,7 @@
-pub mod memory_layout;
-#[rustfmt::skip]
-pub mod tasm_air_constraints;
+include!(concat!(env!("OUT_DIR"), "/tasm_constraints.rs"));
 
 #[cfg(test)]
 mod test {
-    use air::table::NUM_BASE_COLUMNS;
-    use air::table::NUM_EXT_COLUMNS;
     use isa::instruction::AnInstruction;
     use itertools::Itertools;
     use ndarray::Array1;
@@ -17,34 +13,34 @@ mod test {
     use twenty_first::prelude::x_field_element::EXTENSION_DEGREE;
     use twenty_first::prelude::*;
 
-    use crate::air::tasm_air_constraints::dynamic_air_constraint_evaluation_tasm;
-    use crate::air::tasm_air_constraints::static_air_constraint_evaluation_tasm;
+    use crate::air::dynamic_air_constraint_evaluation_tasm;
+    use crate::air::static_air_constraint_evaluation_tasm;
     use crate::challenges::Challenges;
+    use crate::memory_layout;
+    use crate::memory_layout::DynamicTasmConstraintEvaluationMemoryLayout;
+    use crate::memory_layout::IntegralMemoryLayout;
+    use crate::memory_layout::StaticTasmConstraintEvaluationMemoryLayout;
     use crate::prelude::*;
     use crate::table::extension_table::Evaluable;
-    use crate::table::extension_table::Quotientable;
     use crate::table::master_table::MasterExtTable;
-
-    use super::memory_layout::DynamicTasmConstraintEvaluationMemoryLayout;
-    use super::memory_layout::IntegralMemoryLayout;
-    use super::memory_layout::StaticTasmConstraintEvaluationMemoryLayout;
-    use super::*;
+    use crate::table::NUM_AUX_COLUMNS;
+    use crate::table::NUM_MAIN_COLUMNS;
 
     #[derive(Debug, Clone, test_strategy::Arbitrary)]
     struct ConstraintEvaluationPoint {
-        #[strategy(vec(arb(), NUM_BASE_COLUMNS))]
+        #[strategy(vec(arb(), NUM_MAIN_COLUMNS))]
         #[map(Array1::from)]
         curr_base_row: Array1<XFieldElement>,
 
-        #[strategy(vec(arb(), NUM_EXT_COLUMNS))]
+        #[strategy(vec(arb(), NUM_AUX_COLUMNS))]
         #[map(Array1::from)]
         curr_ext_row: Array1<XFieldElement>,
 
-        #[strategy(vec(arb(), NUM_BASE_COLUMNS))]
+        #[strategy(vec(arb(), NUM_MAIN_COLUMNS))]
         #[map(Array1::from)]
         next_base_row: Array1<XFieldElement>,
 
-        #[strategy(vec(arb(), NUM_EXT_COLUMNS))]
+        #[strategy(vec(arb(), NUM_AUX_COLUMNS))]
         #[map(Array1::from)]
         next_ext_row: Array1<XFieldElement>,
 
@@ -88,24 +84,16 @@ mod test {
             let program = self.tasm_static_constraint_evaluation_code();
             let mut vm_state =
                 self.set_up_triton_vm_to_evaluate_constraints_in_tasm_static(&program);
-
             vm_state.run().unwrap();
-
-            let output_list_ptr = vm_state.op_stack.pop().unwrap().value();
-            let num_quotients = MasterExtTable::NUM_CONSTRAINTS;
-            Self::read_xfe_list_at_address(vm_state.ram, output_list_ptr, num_quotients)
+            Self::extract_constraint_evaluations(vm_state)
         }
 
         fn evaluate_all_constraints_tasm_dynamic(&self) -> Vec<XFieldElement> {
             let program = self.tasm_dynamic_constraint_evaluation_code();
             let mut vm_state =
                 self.set_up_triton_vm_to_evaluate_constraints_in_tasm_dynamic(&program);
-
             vm_state.run().unwrap();
-
-            let output_list_ptr = vm_state.op_stack.pop().unwrap().value();
-            let num_quotients = MasterExtTable::NUM_CONSTRAINTS;
-            Self::read_xfe_list_at_address(vm_state.ram, output_list_ptr, num_quotients)
+            Self::extract_constraint_evaluations(vm_state)
         }
 
         fn tasm_static_constraint_evaluation_code(&self) -> Program {
@@ -122,6 +110,14 @@ mod test {
             let mut source_code = dynamic_air_constraint_evaluation_tasm(dynamic_memory_layout);
             source_code.push(triton_instr!(halt));
             Program::new(&source_code)
+        }
+
+        /// Requires a VM State that has executed constraint evaluation code.
+        fn extract_constraint_evaluations(mut vm_state: VMState) -> Vec<XFieldElement> {
+            assert!(vm_state.halting);
+            let output_list_ptr = vm_state.op_stack.pop().unwrap().value();
+            let num_quotients = MasterExtTable::NUM_CONSTRAINTS;
+            Self::read_xfe_list_at_address(vm_state.ram, output_list_ptr, num_quotients)
         }
 
         fn set_up_triton_vm_to_evaluate_constraints_in_tasm_static(
@@ -152,18 +148,12 @@ mod test {
             // for convenience, reuse the (integral) static memory layout
             let mut vm_state =
                 self.set_up_triton_vm_to_evaluate_constraints_in_tasm_static(program);
-            vm_state
-                .op_stack
-                .push(self.static_memory_layout.curr_base_row_ptr);
-            vm_state
-                .op_stack
-                .push(self.static_memory_layout.curr_ext_row_ptr);
-            vm_state
-                .op_stack
-                .push(self.static_memory_layout.next_base_row_ptr);
-            vm_state
-                .op_stack
-                .push(self.static_memory_layout.next_ext_row_ptr);
+
+            let layout = self.static_memory_layout;
+            vm_state.op_stack.push(layout.curr_base_row_ptr);
+            vm_state.op_stack.push(layout.curr_ext_row_ptr);
+            vm_state.op_stack.push(layout.next_base_row_ptr);
+            vm_state.op_stack.push(layout.next_ext_row_ptr);
             vm_state
         }
 

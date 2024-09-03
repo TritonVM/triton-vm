@@ -17,9 +17,9 @@ use quote::ToTokens;
 use twenty_first::prelude::x_field_element::EXTENSION_DEGREE;
 use twenty_first::prelude::*;
 
-use crate::codegen::Constraints;
+use crate::Constraints;
 
-pub(crate) trait Codegen {
+pub trait Codegen {
     fn constraint_evaluation_code(constraints: &Constraints) -> TokenStream;
 
     fn tokenize_bfe(bfe: BFieldElement) -> TokenStream {
@@ -34,7 +34,7 @@ pub(crate) trait Codegen {
 }
 
 #[derive(Debug, Default, Clone, Eq, PartialEq)]
-pub(crate) struct RustBackend {
+pub struct RustBackend {
     /// All [circuit] IDs known to be in scope.
     ///
     /// [circuit]: triton_vm::table::circuit::ConstraintCircuit
@@ -42,7 +42,7 @@ pub(crate) struct RustBackend {
 }
 
 #[derive(Debug, Default, Clone, Eq, PartialEq)]
-pub(crate) struct TasmBackend {
+pub struct TasmBackend {
     /// All [circuit] IDs known to be processed and stored to memory.
     ///
     /// [circuit]: triton_vm::table::circuit::ConstraintCircuit
@@ -72,7 +72,6 @@ impl Codegen for RustBackend {
         let (term_constraint_degrees, term_constraints_bfe, term_constraints_xfe) =
             Self::tokenize_circuits(&constraints.term());
 
-        let uses = Self::uses();
         let evaluable_over_base_field = Self::generate_evaluable_implementation_over_field(
             &init_constraints_bfe,
             &cons_constraints_bfe,
@@ -89,20 +88,24 @@ impl Codegen for RustBackend {
         );
 
         let quotient_trait_impl = quote!(
-        impl Quotientable for MasterExtTable {
-            const NUM_INITIAL_CONSTRAINTS: usize = #num_init_constraints;
-            const NUM_CONSISTENCY_CONSTRAINTS: usize = #num_cons_constraints;
-            const NUM_TRANSITION_CONSTRAINTS: usize = #num_tran_constraints;
-            const NUM_TERMINAL_CONSTRAINTS: usize = #num_term_constraints;
+        impl MasterExtTable {
+            pub const NUM_INITIAL_CONSTRAINTS: usize = #num_init_constraints;
+            pub const NUM_CONSISTENCY_CONSTRAINTS: usize = #num_cons_constraints;
+            pub const NUM_TRANSITION_CONSTRAINTS: usize = #num_tran_constraints;
+            pub const NUM_TERMINAL_CONSTRAINTS: usize = #num_term_constraints;
+            pub const NUM_CONSTRAINTS: usize = Self::NUM_INITIAL_CONSTRAINTS
+                + Self::NUM_CONSISTENCY_CONSTRAINTS
+                + Self::NUM_TRANSITION_CONSTRAINTS
+                + Self::NUM_TERMINAL_CONSTRAINTS;
 
             #[allow(unused_variables)]
-            fn initial_quotient_degree_bounds(interpolant_degree: isize) -> Vec<isize> {
+            pub fn initial_quotient_degree_bounds(interpolant_degree: isize) -> Vec<isize> {
                 let zerofier_degree = 1;
                 [#init_constraint_degrees].to_vec()
             }
 
             #[allow(unused_variables)]
-            fn consistency_quotient_degree_bounds(
+            pub fn consistency_quotient_degree_bounds(
                 interpolant_degree: isize,
                 padded_height: usize,
             ) -> Vec<isize> {
@@ -111,7 +114,7 @@ impl Codegen for RustBackend {
             }
 
             #[allow(unused_variables)]
-            fn transition_quotient_degree_bounds(
+            pub fn transition_quotient_degree_bounds(
                 interpolant_degree: isize,
                 padded_height: usize,
             ) -> Vec<isize> {
@@ -120,7 +123,7 @@ impl Codegen for RustBackend {
             }
 
             #[allow(unused_variables)]
-            fn terminal_quotient_degree_bounds(interpolant_degree: isize) -> Vec<isize> {
+            pub fn terminal_quotient_degree_bounds(interpolant_degree: isize) -> Vec<isize> {
                 let zerofier_degree = 1;
                 [#term_constraint_degrees].to_vec()
             }
@@ -128,7 +131,6 @@ impl Codegen for RustBackend {
         );
 
         quote!(
-            #uses
             #evaluable_over_base_field
             #evaluable_over_ext_field
             #quotient_trait_impl
@@ -137,19 +139,6 @@ impl Codegen for RustBackend {
 }
 
 impl RustBackend {
-    fn uses() -> TokenStream {
-        quote!(
-            use ndarray::ArrayView1;
-            use twenty_first::prelude::BFieldElement;
-            use twenty_first::prelude::XFieldElement;
-
-            use crate::table::challenges::Challenges;
-            use crate::table::extension_table::Evaluable;
-            use crate::table::extension_table::Quotientable;
-            use crate::table::master_table::MasterExtTable;
-        )
-    }
-
     fn generate_evaluable_implementation_over_field(
         init_constraints: &TokenStream,
         cons_constraints: &TokenStream,
@@ -373,14 +362,16 @@ impl RustBackend {
     }
 }
 
+/// The minimal required size of a memory page in [`BFieldElement`]s.
+pub const MEM_PAGE_SIZE: usize = 1 << 32;
+
 /// An offset from the [memory layout][layout]'s `free_mem_page_ptr`, in number of
 /// [`XFieldElement`]s. Indicates the start of the to-be-returned array.
 ///
 /// [layout]: memory_layout::IntegralMemoryLayout
 const OUT_ARRAY_OFFSET: usize = {
-    let mem_page_size = crate::air::memory_layout::MEM_PAGE_SIZE;
     let max_num_words_for_evaluated_constraints = 1 << 16; // magic!
-    let out_array_offset_in_words = mem_page_size - max_num_words_for_evaluated_constraints;
+    let out_array_offset_in_words = MEM_PAGE_SIZE - max_num_words_for_evaluated_constraints;
     assert!(out_array_offset_in_words % EXTENSION_DEGREE == 0);
     out_array_offset_in_words / EXTENSION_DEGREE
 };
@@ -554,13 +545,10 @@ impl TasmBackend {
         quote!(
             use twenty_first::prelude::BFieldCodec;
             use twenty_first::prelude::BFieldElement;
-            use crate::instruction::LabelledInstruction;
-            use crate::Program;
-            use crate::air::memory_layout::StaticTasmConstraintEvaluationMemoryLayout;
-            use crate::air::memory_layout::DynamicTasmConstraintEvaluationMemoryLayout;
-            // for rustdoc – https://github.com/rust-lang/rust/issues/74563
-            #[allow(unused_imports)]
-            use crate::table::extension_table::Quotientable;
+            use isa::instruction::LabelledInstruction;
+            use isa::program::Program;
+            use crate::memory_layout::StaticTasmConstraintEvaluationMemoryLayout;
+            use crate::memory_layout::DynamicTasmConstraintEvaluationMemoryLayout;
         )
     }
 
@@ -596,7 +584,7 @@ impl TasmBackend {
             (respectively and in this order) correspond to the evaluations of the initial,
             consistency, transition, and terminal constraints.
 
-         [integral]: crate::air::memory_layout::IntegralMemoryLayout::is_integral
+         [integral]: crate::memory_layout::IntegralMemoryLayout::is_integral
          [xfe]: twenty_first::prelude::XFieldElement
          [total]: crate::table::master_table::MasterExtTable::NUM_CONSTRAINTS
          [init]: crate::table::master_table::MasterExtTable::NUM_INITIAL_CONSTRAINTS
@@ -638,7 +626,7 @@ impl TasmBackend {
             (respectively and in this order) correspond to the evaluations of the initial,
             consistency, transition, and terminal constraints.
 
-         [integral]: crate::air::memory_layout::IntegralMemoryLayout::is_integral
+         [integral]: crate::memory_layout::IntegralMemoryLayout::is_integral
          [xfe]: twenty_first::prelude::XFieldElement
          [total]: crate::table::master_table::MasterExtTable::NUM_CONSTRAINTS
          [init]: crate::table::master_table::MasterExtTable::NUM_INITIAL_CONSTRAINTS

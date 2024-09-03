@@ -983,14 +983,14 @@ pub(crate) mod tests {
     fn parse_program_label() {
         TestCase {
             input: "foo: call foo",
-            expected: vec![Instruction::Call(bfe!(0))],
+            expected: vec![Instruction::Call(bfe!(0)), Instruction::Call(bfe!(0))],
             message: "parse labels and calls to labels",
         }
         .run();
 
         TestCase {
             input: "foo:call foo",
-            expected: vec![Instruction::Call(bfe!(0))],
+            expected: vec![Instruction::Call(bfe!(0)), Instruction::Call(bfe!(0))],
             message: "whitespace is not required after 'label:'",
         }
         .run();
@@ -1024,14 +1024,14 @@ pub(crate) mod tests {
 
         TestCase {
             input: "pops: call pops",
-            expected: vec![Instruction::Call(bfe!(0))],
+            expected: vec![Instruction::Call(bfe!(0)), Instruction::Call(bfe!(0))],
             message: "labels that share a common prefix with instruction are labels",
         }
         .run();
 
         TestCase {
             input: "_call: call _call",
-            expected: vec![Instruction::Call(bfe!(0))],
+            expected: vec![Instruction::Call(bfe!(0)), Instruction::Call(bfe!(0))],
             message: "labels that share a common suffix with instruction are labels",
         }
         .run();
@@ -1068,7 +1068,7 @@ pub(crate) mod tests {
     fn parse_program_bracket_syntax() {
         TestCase {
             input: "foo: [foo]",
-            expected: vec![Instruction::Call(bfe!(0))],
+            expected: vec![Instruction::Call(bfe!(0)), Instruction::Call(bfe!(0))],
             message: "Handle brackets as call syntax sugar",
         }
         .run();
@@ -1102,7 +1102,7 @@ pub(crate) mod tests {
 
         TestCase {
             input: "_foo: call _foo",
-            expected: vec![Instruction::Call(bfe!(0))],
+            expected: vec![Instruction::Call(bfe!(0)), Instruction::Call(bfe!(0))],
             message: "labels can start with an underscore",
         }
         .run();

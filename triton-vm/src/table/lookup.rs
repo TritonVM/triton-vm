@@ -1,21 +1,11 @@
 use air::challenge_id::ChallengeId;
-use air::challenge_id::ChallengeId::*;
 use air::cross_table_argument::CrossTableArg;
 use air::cross_table_argument::EvalArg;
 use air::cross_table_argument::LookupArg;
 use air::table::lookup::LookupTable;
-use air::table_column::LookupBaseTableColumn;
-use air::table_column::LookupBaseTableColumn::*;
-use air::table_column::LookupExtTableColumn;
-use air::table_column::LookupExtTableColumn::*;
 use air::table_column::MasterBaseTableColumn;
 use air::table_column::MasterExtTableColumn;
-use constraint_circuit::ConstraintCircuitBuilder;
-use constraint_circuit::ConstraintCircuitMonad;
-use constraint_circuit::DualRowIndicator;
-use constraint_circuit::DualRowIndicator::*;
-use constraint_circuit::SingleRowIndicator;
-use constraint_circuit::SingleRowIndicator::*;
+use air::AIR;
 use itertools::Itertools;
 use ndarray::prelude::*;
 use num_traits::ConstOne;
@@ -32,26 +22,29 @@ use crate::ndarray_helper::horizontal_multi_slice_mut;
 use crate::profiler::profiler;
 use crate::table::TraceTable;
 
+type MainColumn = <LookupTable as AIR>::MainColumn;
+type AuxColumn = <LookupTable as AIR>::AuxColumn;
+
 fn extension_column_cascade_running_sum_log_derivative(
     base_table: ArrayView2<BFieldElement>,
     challenges: &Challenges,
 ) -> Array2<XFieldElement> {
-    let look_in_weight = challenges[LookupTableInputWeight];
-    let look_out_weight = challenges[LookupTableOutputWeight];
-    let indeterminate = challenges[CascadeLookupIndeterminate];
+    let look_in_weight = challenges[ChallengeId::LookupTableInputWeight];
+    let look_out_weight = challenges[ChallengeId::LookupTableOutputWeight];
+    let indeterminate = challenges[ChallengeId::CascadeLookupIndeterminate];
 
     let mut cascade_table_running_sum_log_derivative = LookupArg::default_initial();
     let mut extension_column = Vec::with_capacity(base_table.nrows());
     for row in base_table.rows() {
-        if row[IsPadding.base_table_index()].is_one() {
+        if row[MainColumn::IsPadding.base_table_index()].is_one() {
             break;
         }
 
-        let lookup_input = row[LookIn.base_table_index()];
-        let lookup_output = row[LookOut.base_table_index()];
+        let lookup_input = row[MainColumn::LookIn.base_table_index()];
+        let lookup_output = row[MainColumn::LookOut.base_table_index()];
         let compressed_row = lookup_input * look_in_weight + lookup_output * look_out_weight;
 
-        let lookup_multiplicity = row[LookupMultiplicity.base_table_index()];
+        let lookup_multiplicity = row[MainColumn::LookupMultiplicity.base_table_index()];
         cascade_table_running_sum_log_derivative +=
             (indeterminate - compressed_row).inverse() * lookup_multiplicity;
 
@@ -70,12 +63,13 @@ fn extension_column_public_running_evaluation(
     let mut running_evaluation = EvalArg::default_initial();
     let mut extension_column = Vec::with_capacity(base_table.nrows());
     for row in base_table.rows() {
-        if row[IsPadding.base_table_index()].is_one() {
+        if row[MainColumn::IsPadding.base_table_index()].is_one() {
             break;
         }
 
-        running_evaluation = running_evaluation * challenges[LookupTablePublicIndeterminate]
-            + row[LookOut.base_table_index()];
+        running_evaluation = running_evaluation
+            * challenges[ChallengeId::LookupTablePublicIndeterminate]
+            + row[MainColumn::LookOut.base_table_index()];
         extension_column.push(running_evaluation);
     }
 
@@ -94,14 +88,18 @@ impl TraceTable for LookupTable {
 
         // Lookup Table input
         let lookup_input = Array1::from_iter((0..LOOKUP_TABLE_LEN).map(|i| bfe!(i as u64)));
-        let lookup_input_column =
-            main_table.slice_mut(s![..LOOKUP_TABLE_LEN, LookIn.base_table_index()]);
+        let lookup_input_column = main_table.slice_mut(s![
+            ..LOOKUP_TABLE_LEN,
+            MainColumn::LookIn.base_table_index()
+        ]);
         lookup_input.move_into(lookup_input_column);
 
         // Lookup Table output
         let lookup_output = Array1::from_iter(tip5::LOOKUP_TABLE.map(BFieldElement::from));
-        let lookup_output_column =
-            main_table.slice_mut(s![..LOOKUP_TABLE_LEN, LookOut.base_table_index()]);
+        let lookup_output_column = main_table.slice_mut(s![
+            ..LOOKUP_TABLE_LEN,
+            MainColumn::LookOut.base_table_index()
+        ]);
         lookup_output.move_into(lookup_output_column);
 
         // Lookup Table multiplicities
@@ -111,14 +109,14 @@ impl TraceTable for LookupTable {
         );
         let lookup_multiplicities_column = main_table.slice_mut(s![
             ..LOOKUP_TABLE_LEN,
-            LookupMultiplicity.base_table_index()
+            MainColumn::LookupMultiplicity.base_table_index()
         ]);
         lookup_multiplicities.move_into(lookup_multiplicities_column);
     }
 
     fn pad(mut lookup_table: ArrayViewMut2<BFieldElement>, table_length: usize) {
         lookup_table
-            .slice_mut(s![table_length.., IsPadding.base_table_index()])
+            .slice_mut(s![table_length.., MainColumn::IsPadding.base_table_index()])
             .fill(BFieldElement::ONE);
     }
 
@@ -128,11 +126,11 @@ impl TraceTable for LookupTable {
         challenges: &Challenges,
     ) {
         profiler!(start "lookup table");
-        assert_eq!(Self::MainColumn::COUNT, main_table.ncols());
-        assert_eq!(Self::AuxColumn::COUNT, aux_table.ncols());
+        assert_eq!(MainColumn::COUNT, main_table.ncols());
+        assert_eq!(AuxColumn::COUNT, aux_table.ncols());
         assert_eq!(main_table.nrows(), aux_table.nrows());
 
-        let extension_column_indices = LookupExtTableColumn::iter()
+        let extension_column_indices = AuxColumn::iter()
             .map(|column| column.ext_table_index())
             .collect_vec();
         let extension_column_slices = horizontal_multi_slice_mut(

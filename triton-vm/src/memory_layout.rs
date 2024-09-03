@@ -1,18 +1,17 @@
+pub use constraint_builder::codegen::MEM_PAGE_SIZE;
+
+use air::challenge_id::ChallengeId;
 use air::table::NUM_BASE_COLUMNS;
 use air::table::NUM_EXT_COLUMNS;
 use arbitrary::Arbitrary;
 use itertools::Itertools;
+use strum::EnumCount;
 use twenty_first::prelude::*;
-
-use crate::challenges::Challenges;
-
-/// The minimal required size of a memory page in [`BFieldElement`]s.
-pub const MEM_PAGE_SIZE: usize = 1 << 32;
 
 /// Memory layout guarantees for the [Triton assembly AIR constraint evaluator][tasm_air]
 /// with input lists at dynamically known memory locations.
 ///
-/// [tasm_air]: crate::air::tasm_air_constraints::dynamic_air_constraint_evaluation_tasm
+/// [tasm_air]: crate::air::dynamic_air_constraint_evaluation_tasm
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Arbitrary)]
 pub struct DynamicTasmConstraintEvaluationMemoryLayout {
     /// Pointer to a region of memory that is reserved for (a) pointers to {current,
@@ -23,14 +22,14 @@ pub struct DynamicTasmConstraintEvaluationMemoryLayout {
 
     /// Pointer to an array of [`XFieldElement`]s of length [`NUM_CHALLENGES`][num_challenges].
     ///
-    /// [num_challenges]: Challenges::COUNT
+    /// [num_challenges]: ChallengeId::COUNT
     pub challenges_ptr: BFieldElement,
 }
 
 /// Memory layout guarantees for the [Triton assembly AIR constraint evaluator][tasm_air]
 /// with input lists at statically known memory locations.
 ///
-/// [tasm_air]: crate::air::tasm_air_constraints::static_air_constraint_evaluation_tasm
+/// [tasm_air]: crate::air::static_air_constraint_evaluation_tasm
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Arbitrary)]
 pub struct StaticTasmConstraintEvaluationMemoryLayout {
     /// Pointer to a region of memory that is reserved for constraint evaluation.
@@ -51,7 +50,7 @@ pub struct StaticTasmConstraintEvaluationMemoryLayout {
 
     /// Pointer to an array of [`XFieldElement`]s of length [`NUM_CHALLENGES`][num_challenges].
     ///
-    /// [num_challenges]: Challenges::COUNT
+    /// [num_challenges]: ChallengeId::COUNT
     pub challenges_ptr: BFieldElement,
 }
 
@@ -82,7 +81,7 @@ impl IntegralMemoryLayout for StaticTasmConstraintEvaluationMemoryLayout {
             MemoryRegion::new(self.curr_ext_row_ptr, NUM_EXT_COLUMNS),
             MemoryRegion::new(self.next_base_row_ptr, NUM_BASE_COLUMNS),
             MemoryRegion::new(self.next_ext_row_ptr, NUM_EXT_COLUMNS),
-            MemoryRegion::new(self.challenges_ptr, Challenges::COUNT),
+            MemoryRegion::new(self.challenges_ptr, ChallengeId::COUNT),
         ];
         Box::new(all_regions)
     }
@@ -92,7 +91,7 @@ impl IntegralMemoryLayout for DynamicTasmConstraintEvaluationMemoryLayout {
     fn memory_regions(&self) -> Box<[MemoryRegion]> {
         let all_regions = [
             MemoryRegion::new(self.free_mem_page_ptr, MEM_PAGE_SIZE),
-            MemoryRegion::new(self.challenges_ptr, Challenges::COUNT),
+            MemoryRegion::new(self.challenges_ptr, ChallengeId::COUNT),
         ];
         Box::new(all_regions)
     }

@@ -11,14 +11,16 @@ use proc_macro2::TokenStream;
 use quote::format_ident;
 use quote::quote;
 
-use crate::codegen::constraints::RustBackend;
+use crate::codegen::RustBackend;
 
-pub(crate) struct AllSubstitutions {
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+pub struct AllSubstitutions {
     pub base: Substitutions,
     pub ext: Substitutions,
 }
 
-pub(crate) struct Substitutions {
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+pub struct Substitutions {
     pub lowering_info: DegreeLoweringInfo,
     pub init: Vec<ConstraintCircuitMonad<SingleRowIndicator>>,
     pub cons: Vec<ConstraintCircuitMonad<SingleRowIndicator>>,
@@ -56,15 +58,6 @@ impl AllSubstitutions {
         let fill_ext_columns_code = self.ext.generate_fill_ext_columns_code();
 
         quote!(
-            //! The degree lowering table contains the introduced variables that allow
-            //! lowering the degree of the AIR. See
-            //! [`table::master_table::AIR_TARGET_DEGREE`]
-            //! for additional information.
-            //!
-            //! This file has been auto-generated. Any modifications _will_ be lost.
-            //! To re-generate, execute:
-            //! `cargo run --bin constraint-evaluation-generator`
-
             use ndarray::Array1;
             use ndarray::s;
             use ndarray::ArrayView2;
@@ -76,14 +69,11 @@ impl AllSubstitutions {
             use strum::EnumIter;
             use twenty_first::prelude::BFieldElement;
             use twenty_first::prelude::XFieldElement;
+            use air::table_column::MasterBaseTableColumn;
+            use air::table_column::MasterExtTableColumn;
 
-            use crate::table::challenges::Challenges;
-            use crate::table::master_table::NUM_BASE_COLUMNS;
-            use crate::table::master_table::NUM_EXT_COLUMNS;
-
-            pub const BASE_WIDTH: usize = DegreeLoweringBaseTableColumn::COUNT;
-            pub const EXT_WIDTH: usize = DegreeLoweringExtTableColumn::COUNT;
-            pub const FULL_WIDTH: usize = BASE_WIDTH + EXT_WIDTH;
+            use crate::challenges::Challenges;
+            use crate::table::master_table::MasterTable;
 
             #base_repr_usize
             #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, EnumCount, EnumIter)]
@@ -91,10 +81,32 @@ impl AllSubstitutions {
                 #(#base_columns),*
             }
 
+            impl MasterBaseTableColumn for DegreeLoweringBaseTableColumn {
+                fn base_table_index(&self) -> usize {
+                    (*self) as usize
+                }
+
+                fn master_base_table_index(&self) -> usize {
+                    // hardcore domain-specific knowledge, and bad style
+                    air::table::U32_TABLE_END + self.base_table_index()
+                }
+            }
+
             #ext_repr_usize
             #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, EnumCount, EnumIter)]
             pub enum DegreeLoweringExtTableColumn {
                 #(#ext_columns),*
+            }
+
+            impl MasterExtTableColumn for DegreeLoweringExtTableColumn {
+                fn ext_table_index(&self) -> usize {
+                    (*self) as usize
+                }
+
+                fn master_ext_table_index(&self) -> usize {
+                    // hardcore domain-specific knowledge, and bad style
+                    air::table::EXT_U32_TABLE_END + self.ext_table_index()
+                }
             }
 
             #[derive(Debug, Copy, Clone, Eq, PartialEq)]
@@ -134,14 +146,18 @@ impl Substitutions {
             Self::base_single_row_substitutions(derived_section_term_start, &term_substitutions);
 
         quote!(
-        #[allow(unused_variables)]
-        pub fn fill_derived_base_columns(mut master_base_table: ArrayViewMut2<BFieldElement>) {
-            assert_eq!(NUM_BASE_COLUMNS, master_base_table.ncols());
-            #init_substitutions
-            #cons_substitutions
-            #tran_substitutions
-            #term_substitutions
-        }
+            #[allow(unused_variables)]
+            pub fn fill_derived_base_columns(
+                mut master_base_table: ArrayViewMut2<BFieldElement>
+            ) {
+                let num_expected_columns =
+                    crate::table::master_table::MasterBaseTable::NUM_COLUMNS;
+                assert_eq!(num_expected_columns, master_base_table.ncols());
+                #init_substitutions
+                #cons_substitutions
+                #tran_substitutions
+                #term_substitutions
+            }
         )
     }
 
@@ -173,8 +189,12 @@ impl Substitutions {
                 mut master_ext_table: ArrayViewMut2<XFieldElement>,
                 challenges: &Challenges,
             ) {
-                assert_eq!(NUM_BASE_COLUMNS, master_base_table.ncols());
-                assert_eq!(NUM_EXT_COLUMNS, master_ext_table.ncols());
+                let num_expected_main_columns =
+                    crate::table::master_table::MasterBaseTable::NUM_COLUMNS;
+                let num_expected_aux_columns =
+                    crate::table::master_table::MasterExtTable::NUM_COLUMNS;
+                assert_eq!(num_expected_main_columns, master_base_table.ncols());
+                assert_eq!(num_expected_aux_columns, master_ext_table.ncols());
                 assert_eq!(master_base_table.nrows(), master_ext_table.nrows());
                 #init_substitutions
                 #cons_substitutions

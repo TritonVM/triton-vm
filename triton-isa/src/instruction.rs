@@ -398,7 +398,7 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
         ((opcode >> bit_number) & 1).into()
     }
 
-    pub(crate) fn map_call_address<F, NewDest>(&self, f: F) -> AnInstruction<NewDest>
+    pub fn map_call_address<F, NewDest>(&self, f: F) -> AnInstruction<NewDest>
     where
         F: FnOnce(&Dest) -> NewDest,
         NewDest: PartialEq + Default,

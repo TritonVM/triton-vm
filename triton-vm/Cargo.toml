@@ -21,7 +21,7 @@ readme.workspace = true
 air.workspace = true
 arbitrary.workspace = true
 colored.workspace = true
-constraint-circuit.workspace = true
+constraint-builder.workspace = true
 criterion.workspace = true
 get-size.workspace = true
 indexmap.workspace = true
@@ -47,6 +47,7 @@ unicode-width.workspace = true
 [dev-dependencies]
 assert2.workspace = true
 cargo-husky.workspace = true
+constraint-circuit.workspace = true
 fs-err.workspace = true
 pretty_assertions.workspace = true
 prettyplease.workspace = true
@@ -55,6 +56,15 @@ proptest-arbitrary-interop.workspace = true
 serde_json.workspace = true
 test-strategy.workspace = true
 trybuild.workspace = true
+
+[build-dependencies]
+air.workspace = true
+constraint-builder.workspace = true
+constraint-circuit.workspace = true
+prettyplease.workspace = true
+proc-macro2.workspace = true
+quote.workspace = true
+syn.workspace = true
 
 [features]
 default = ["no_profile"]

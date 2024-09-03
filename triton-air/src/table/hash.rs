@@ -634,7 +634,7 @@ impl AIR for HashTable {
             ),
             cascade_log_derivative_init_circuit(
                 Self::MainColumn::State1MidLowLkIn,
-                Self::MainColumn::State2MidHighLkIn,
+                Self::MainColumn::State1MidLowLkOut,
                 Self::AuxColumn::CascadeState1MidLowClientLogDerivative,
             ),
             cascade_log_derivative_init_circuit(
@@ -643,7 +643,7 @@ impl AIR for HashTable {
                 Self::AuxColumn::CascadeState1LowestClientLogDerivative,
             ),
             cascade_log_derivative_init_circuit(
-                Self::MainColumn::State2LowestLkIn,
+                Self::MainColumn::State2HighestLkIn,
                 Self::MainColumn::State2HighestLkOut,
                 Self::AuxColumn::CascadeState2HighestClientLogDerivative,
             ),

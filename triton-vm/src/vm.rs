@@ -35,7 +35,6 @@ use crate::execution_trace_profiler::ExecutionTraceProfile;
 use crate::execution_trace_profiler::ExecutionTraceProfiler;
 use crate::profiler::profiler;
 use crate::table::op_stack::OpStackTableEntry;
-use crate::table::processor;
 use crate::table::ram::RamTableCall;
 use crate::table::u32::U32TableEntry;
 use crate::vm::CoProcessorCall::*;

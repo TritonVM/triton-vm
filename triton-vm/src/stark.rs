@@ -1,8 +1,6 @@
 use std::ops::Mul;
 use std::ops::MulAssign;
 
-use air::table::NUM_BASE_COLUMNS;
-use air::table::NUM_EXT_COLUMNS;
 use arbitrary::Arbitrary;
 use arbitrary::Unstructured;
 use itertools::izip;
@@ -31,7 +29,6 @@ use crate::proof::Proof;
 use crate::proof_item::ProofItem;
 use crate::proof_stream::ProofStream;
 use crate::table::extension_table::Evaluable;
-use crate::table::extension_table::Quotientable;
 use crate::table::master_table::all_quotients_combined;
 use crate::table::master_table::interpolant_degree;
 use crate::table::master_table::max_degree_with_origin;
@@ -250,12 +247,12 @@ impl Stark {
         profiler!(start "linear combination");
         profiler!(start "base" ("CC"));
         let base_combination_polynomial =
-            Self::random_linear_sum(master_base_table.interpolation_polynomials(), weights.base);
+            Self::random_linear_sum(master_base_table.interpolation_polynomials(), weights.main);
 
         profiler!(stop "base");
         profiler!(start "ext" ("CC"));
         let ext_combination_polynomial =
-            Self::random_linear_sum(master_ext_table.interpolation_polynomials(), weights.ext);
+            Self::random_linear_sum(master_ext_table.interpolation_polynomials(), weights.aux);
         profiler!(stop "ext");
         let base_and_ext_combination_polynomial =
             base_combination_polynomial + ext_combination_polynomial;
@@ -363,7 +360,7 @@ impl Stark {
             if let Some(fri_domain_table) = master_base_table.fri_domain_table() {
                 Self::read_revealed_rows(fri_domain_table, &revealed_current_row_indices)?
             } else {
-                Self::recompute_revealed_rows::<NUM_BASE_COLUMNS, BFieldElement>(
+                Self::recompute_revealed_rows::<{ MasterBaseTable::NUM_COLUMNS }, BFieldElement>(
                     &master_base_table.interpolation_polynomials(),
                     &revealed_current_row_indices,
                     fri.domain,
@@ -1266,11 +1263,11 @@ impl<'a> Arbitrary<'a> for Stark {
 /// Fiat-Shamir-sampled challenges to compress a row into a single
 /// [extension field element][XFieldElement].
 struct LinearCombinationWeights {
-    /// of length [`NUM_BASE_COLUMNS`]
-    base: Array1<XFieldElement>,
+    /// of length [`MasterBaseTable::NUM_COLUMNS`]
+    main: Array1<XFieldElement>,
 
-    /// of length [`NUM_EXT_COLUMNS`]
-    ext: Array1<XFieldElement>,
+    /// of length [`MasterExtTable::NUM_COLUMNS`]
+    aux: Array1<XFieldElement>,
 
     /// of length [`NUM_QUOTIENT_SEGMENTS`]
     quot_segments: Array1<XFieldElement>,
@@ -1280,27 +1277,29 @@ struct LinearCombinationWeights {
 }
 
 impl LinearCombinationWeights {
-    const NUM: usize =
-        NUM_BASE_COLUMNS + NUM_EXT_COLUMNS + NUM_QUOTIENT_SEGMENTS + NUM_DEEP_CODEWORD_COMPONENTS;
+    const NUM: usize = MasterBaseTable::NUM_COLUMNS
+        + MasterExtTable::NUM_COLUMNS
+        + NUM_QUOTIENT_SEGMENTS
+        + NUM_DEEP_CODEWORD_COMPONENTS;
 
     fn sample(proof_stream: &mut ProofStream) -> Self {
-        const BASE_END: usize = NUM_BASE_COLUMNS;
-        const EXT_END: usize = BASE_END + NUM_EXT_COLUMNS;
-        const QUOT_END: usize = EXT_END + NUM_QUOTIENT_SEGMENTS;
+        const MAIN_END: usize = MasterBaseTable::NUM_COLUMNS;
+        const AUX_END: usize = MAIN_END + MasterExtTable::NUM_COLUMNS;
+        const QUOT_END: usize = AUX_END + NUM_QUOTIENT_SEGMENTS;
 
         let weights = proof_stream.sample_scalars(Self::NUM);
 
         Self {
-            base: weights[..BASE_END].to_vec().into(),
-            ext: weights[BASE_END..EXT_END].to_vec().into(),
-            quot_segments: weights[EXT_END..QUOT_END].to_vec().into(),
+            main: weights[..MAIN_END].to_vec().into(),
+            aux: weights[MAIN_END..AUX_END].to_vec().into(),
+            quot_segments: weights[AUX_END..QUOT_END].to_vec().into(),
             deep: weights[QUOT_END..].to_vec().into(),
         }
     }
 
     fn base_and_ext(&self) -> Array1<XFieldElement> {
-        let base = self.base.clone().into_iter();
-        base.chain(self.ext.clone()).collect()
+        let base = self.main.clone().into_iter();
+        base.chain(self.aux.clone()).collect()
     }
 }
 
@@ -1357,7 +1356,6 @@ pub(crate) mod tests {
     use crate::shared_tests::*;
     use crate::table::extension_table;
     use crate::table::extension_table::Evaluable;
-    use crate::table::extension_table::Quotientable;
     use crate::table::master_table::MasterExtTable;
     use crate::triton_program;
     use crate::vm::tests::*;
@@ -1628,8 +1626,8 @@ pub(crate) mod tests {
     #[test]
     fn constraint_polynomials_use_right_number_of_variables() {
         let challenges = Challenges::default();
-        let base_row = Array1::<BFieldElement>::zeros(NUM_BASE_COLUMNS);
-        let ext_row = Array1::zeros(NUM_EXT_COLUMNS);
+        let base_row = Array1::<BFieldElement>::zeros(MasterBaseTable::NUM_COLUMNS);
+        let ext_row = Array1::zeros(MasterExtTable::NUM_COLUMNS);
 
         let br = base_row.view();
         let er = ext_row.view();
@@ -1738,8 +1736,8 @@ pub(crate) mod tests {
 
     #[test]
     fn number_of_quotient_degree_bounds_match_number_of_constraints() {
-        let base_row = Array1::<BFieldElement>::zeros(NUM_BASE_COLUMNS);
-        let ext_row = Array1::zeros(NUM_EXT_COLUMNS);
+        let base_row = Array1::<BFieldElement>::zeros(MasterBaseTable::NUM_COLUMNS);
+        let ext_row = Array1::zeros(MasterExtTable::NUM_COLUMNS);
         let ch = Challenges::default();
         let padded_height = 2;
         let num_trace_randomizers = 2;
@@ -2193,9 +2191,9 @@ pub(crate) mod tests {
         let (_, _, master_base_table, master_ext_table, challenges) =
             master_tables_for_low_security_level(program_and_input);
 
-        let num_base_rows = master_base_table.randomized_trace_table().nrows();
-        let num_ext_rows = master_ext_table.randomized_trace_table().nrows();
-        assert!(num_base_rows == num_ext_rows);
+        let num_main_rows = master_base_table.randomized_trace_table().nrows();
+        let num_aux_rows = master_ext_table.randomized_trace_table().nrows();
+        assert!(num_main_rows == num_aux_rows);
 
         let mbt = master_base_table.trace_table();
         let met = master_ext_table.trace_table();
@@ -2471,8 +2469,10 @@ pub(crate) mod tests {
         #[strategy(arb())]
         #[filter(!#offset.is_zero())]
         offset: BFieldElement,
-        #[strategy(arb())] main_polynomials: [Polynomial<BFieldElement>; NUM_BASE_COLUMNS],
-        #[strategy(arb())] aux_polynomials: [Polynomial<XFieldElement>; NUM_EXT_COLUMNS],
+        #[strategy(arb())] main_polynomials: [Polynomial<BFieldElement>;
+            MasterBaseTable::NUM_COLUMNS],
+        #[strategy(arb())] aux_polynomials: [Polynomial<XFieldElement>;
+            MasterExtTable::NUM_COLUMNS],
         #[strategy(arb())] challenges: Challenges,
         #[strategy(arb())] quotient_weights: [XFieldElement; MasterExtTable::NUM_CONSTRAINTS],
     ) {
@@ -2529,14 +2529,14 @@ pub(crate) mod tests {
         quotient_weights: &[XFieldElement],
     ) -> (Array2<XFieldElement>, Array1<Polynomial<XFieldElement>>) {
         let mut base_quotient_domain_codewords =
-            Array2::<BFieldElement>::zeros([quotient_domain.length, NUM_BASE_COLUMNS]);
+            Array2::<BFieldElement>::zeros([quotient_domain.length, MasterBaseTable::NUM_COLUMNS]);
         Zip::from(base_quotient_domain_codewords.axis_iter_mut(Axis(1)))
             .and(main_polynomials.axis_iter(Axis(0)))
             .for_each(|codeword, polynomial| {
                 Array1::from_vec(quotient_domain.evaluate(&polynomial[()])).move_into(codeword);
             });
         let mut ext_quotient_domain_codewords =
-            Array2::<XFieldElement>::zeros([quotient_domain.length, NUM_EXT_COLUMNS]);
+            Array2::<XFieldElement>::zeros([quotient_domain.length, MasterExtTable::NUM_COLUMNS]);
         Zip::from(ext_quotient_domain_codewords.axis_iter_mut(Axis(1)))
             .and(aux_polynomials.axis_iter(Axis(0)))
             .for_each(|codeword, polynomial| {
@@ -2621,12 +2621,12 @@ pub(crate) mod tests {
     ) {
         let weights = LinearCombinationWeights::sample(&mut proof_stream);
 
-        prop_assert_eq!(NUM_BASE_COLUMNS, weights.base.len());
-        prop_assert_eq!(NUM_EXT_COLUMNS, weights.ext.len());
+        prop_assert_eq!(MasterBaseTable::NUM_COLUMNS, weights.main.len());
+        prop_assert_eq!(MasterExtTable::NUM_COLUMNS, weights.aux.len());
         prop_assert_eq!(NUM_QUOTIENT_SEGMENTS, weights.quot_segments.len());
         prop_assert_eq!(NUM_DEEP_CODEWORD_COMPONENTS, weights.deep.len());
         prop_assert_eq!(
-            NUM_BASE_COLUMNS + NUM_EXT_COLUMNS,
+            MasterBaseTable::NUM_COLUMNS + MasterExtTable::NUM_COLUMNS,
             weights.base_and_ext().len()
         );
     }

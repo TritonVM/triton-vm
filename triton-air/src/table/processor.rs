@@ -148,7 +148,7 @@ impl ProcessorTable {
     /// Panics if the index is out of bounds.
     pub fn op_stack_column_by_index(index: usize) -> ProcessorBaseTableColumn {
         assert!(
-            OpStackElement::COUNT < index,
+            index < OpStackElement::COUNT,
             "Op Stack column index must be in [0, 15], not {index}"
         );
 

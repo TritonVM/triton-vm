@@ -1,4 +1,16 @@
+use air::cross_table_argument::GrandCrossTableArg;
+use air::table::cascade::CascadeTable;
+use air::table::hash::HashTable;
+use air::table::jump_stack::JumpStackTable;
+use air::table::lookup::LookupTable;
+use air::table::op_stack::OpStackTable;
+use air::table::processor::ProcessorTable;
+use air::table::program::ProgramTable;
+use air::table::ram::RamTable;
+use air::table::u32::U32Table;
+use air::AIR;
 use constraint_circuit::ConstraintCircuit;
+use constraint_circuit::ConstraintCircuitBuilder;
 use constraint_circuit::ConstraintCircuitMonad;
 use constraint_circuit::DegreeLoweringInfo;
 use constraint_circuit::DualRowIndicator;
@@ -8,13 +20,13 @@ use itertools::Itertools;
 use proc_macro2::TokenStream;
 use std::fs::write;
 
-use crate::codegen::constraints::Codegen;
-use crate::codegen::constraints::RustBackend;
-use crate::codegen::constraints::TasmBackend;
-use crate::codegen::substitutions::AllSubstitutions;
-use crate::codegen::substitutions::Substitutions;
+use crate::codegen::Codegen;
+use crate::codegen::RustBackend;
+use crate::codegen::TasmBackend;
+use crate::substitutions::AllSubstitutions;
+use crate::substitutions::Substitutions;
 
-mod constraints;
+pub mod codegen;
 mod substitutions;
 
 pub fn gen(mut constraints: Constraints, info: DegreeLoweringInfo) {
@@ -40,7 +52,7 @@ fn write_code_to_file(code: TokenStream, file_name: &str) {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct Constraints {
+pub struct Constraints {
     pub init: Vec<ConstraintCircuitMonad<SingleRowIndicator>>,
     pub cons: Vec<ConstraintCircuitMonad<SingleRowIndicator>>,
     pub tran: Vec<ConstraintCircuitMonad<DualRowIndicator>>,
@@ -48,11 +60,88 @@ pub(crate) struct Constraints {
 }
 
 impl Constraints {
+    pub fn all() -> Constraints {
+        Constraints {
+            init: Self::initial_constraints(),
+            cons: Self::consistency_constraints(),
+            tran: Self::transition_constraints(),
+            term: Self::terminal_constraints(),
+        }
+    }
+
+    pub fn initial_constraints() -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
+        let circuit_builder = ConstraintCircuitBuilder::new();
+        vec![
+            ProgramTable::initial_constraints(&circuit_builder),
+            ProcessorTable::initial_constraints(&circuit_builder),
+            OpStackTable::initial_constraints(&circuit_builder),
+            RamTable::initial_constraints(&circuit_builder),
+            JumpStackTable::initial_constraints(&circuit_builder),
+            HashTable::initial_constraints(&circuit_builder),
+            CascadeTable::initial_constraints(&circuit_builder),
+            LookupTable::initial_constraints(&circuit_builder),
+            U32Table::initial_constraints(&circuit_builder),
+            GrandCrossTableArg::initial_constraints(&circuit_builder),
+        ]
+        .concat()
+    }
+
+    pub fn consistency_constraints() -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
+        let circuit_builder = ConstraintCircuitBuilder::new();
+        vec![
+            ProgramTable::consistency_constraints(&circuit_builder),
+            ProcessorTable::consistency_constraints(&circuit_builder),
+            OpStackTable::consistency_constraints(&circuit_builder),
+            RamTable::consistency_constraints(&circuit_builder),
+            JumpStackTable::consistency_constraints(&circuit_builder),
+            HashTable::consistency_constraints(&circuit_builder),
+            CascadeTable::consistency_constraints(&circuit_builder),
+            LookupTable::consistency_constraints(&circuit_builder),
+            U32Table::consistency_constraints(&circuit_builder),
+            GrandCrossTableArg::consistency_constraints(&circuit_builder),
+        ]
+        .concat()
+    }
+
+    pub fn transition_constraints() -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
+        let circuit_builder = ConstraintCircuitBuilder::new();
+        vec![
+            ProgramTable::transition_constraints(&circuit_builder),
+            ProcessorTable::transition_constraints(&circuit_builder),
+            OpStackTable::transition_constraints(&circuit_builder),
+            RamTable::transition_constraints(&circuit_builder),
+            JumpStackTable::transition_constraints(&circuit_builder),
+            HashTable::transition_constraints(&circuit_builder),
+            CascadeTable::transition_constraints(&circuit_builder),
+            LookupTable::transition_constraints(&circuit_builder),
+            U32Table::transition_constraints(&circuit_builder),
+            GrandCrossTableArg::transition_constraints(&circuit_builder),
+        ]
+        .concat()
+    }
+
+    pub fn terminal_constraints() -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
+        let circuit_builder = ConstraintCircuitBuilder::new();
+        vec![
+            ProgramTable::terminal_constraints(&circuit_builder),
+            ProcessorTable::terminal_constraints(&circuit_builder),
+            OpStackTable::terminal_constraints(&circuit_builder),
+            RamTable::terminal_constraints(&circuit_builder),
+            JumpStackTable::terminal_constraints(&circuit_builder),
+            HashTable::terminal_constraints(&circuit_builder),
+            CascadeTable::terminal_constraints(&circuit_builder),
+            LookupTable::terminal_constraints(&circuit_builder),
+            U32Table::terminal_constraints(&circuit_builder),
+            GrandCrossTableArg::terminal_constraints(&circuit_builder),
+        ]
+        .concat()
+    }
+
     pub fn lower_to_target_degree_through_substitutions(
         &mut self,
-        mut info: DegreeLoweringInfo,
+        lowering_info: DegreeLoweringInfo,
     ) -> AllSubstitutions {
-        let lowering_info = info;
+        let mut info = lowering_info;
 
         let (init_base_substitutions, init_ext_substitutions) =
             ConstraintCircuitMonad::lower_to_degree(&mut self.init, info);
@@ -133,8 +222,6 @@ mod tests {
     use constraint_circuit::ConstraintCircuitBuilder;
     use twenty_first::prelude::*;
 
-    use crate::table;
-
     use super::*;
 
     #[repr(usize)]
@@ -158,6 +245,19 @@ mod tests {
     }
 
     #[test]
+    fn public_types_implement_usual_auto_traits() {
+        fn implements_auto_traits<T: Sized + Send + Sync + Unpin>() {}
+
+        implements_auto_traits::<RustBackend>();
+        implements_auto_traits::<TasmBackend>();
+
+        // maybe some day
+        // implements_auto_traits::<Constraints>();
+        // implements_auto_traits::<substitutions::Substitutions>();
+        // implements_auto_traits::<substitutions::AllSubstitutions>();
+    }
+
+    #[test]
     fn test_constraints_can_be_fetched() {
         Constraints::test_constraints();
     }
@@ -172,7 +272,7 @@ mod tests {
 
     #[test]
     fn degree_lowering_tables_code_can_be_generated_from_all_constraints() {
-        let mut constraints = table::constraints();
+        let mut constraints = Constraints::all();
         let substitutions =
             constraints.lower_to_target_degree_through_substitutions(degree_lowering_info());
         let _unused = substitutions.generate_degree_lowering_table_code();
