@@ -28,9 +28,6 @@ jobs:
       - name: Install nextest
         uses: taiki-e/install-action@nextest
 
-      - name: Build AIR constraints
-        run: cargo run --bin constraint-evaluation-generator
-
       - name: Run fmt
         run: cargo fmt --all -- --check
 
