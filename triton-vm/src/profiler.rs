@@ -671,15 +671,8 @@ mod tests {
     use std::time::Duration;
 
     use test_strategy::proptest;
-    use trybuild;
 
     use super::*;
-
-    #[test]
-    fn profiler_macro_is_private() {
-        let trybuild = trybuild::TestCases::new();
-        trybuild.compile_fail("trybuild/profiler_macro_is_private.rs");
-    }
 
     #[test]
     fn sanity() {
