@@ -188,9 +188,9 @@ pub enum RamBaseTableColumn {
     /// Is [`INSTRUCTION_TYPE_READ`] for instruction `read_mem` and [`INSTRUCTION_TYPE_WRITE`]
     /// for instruction `write_mem`. For padding rows, this is set to [`PADDING_INDICATOR`].
     ///
-    /// [`INSTRUCTION_TYPE_READ`]: crate::table::ram_table::INSTRUCTION_TYPE_READ
-    /// [`INSTRUCTION_TYPE_WRITE`]: crate::table::ram_table::INSTRUCTION_TYPE_WRITE
-    /// [`PADDING_INDICATOR`]: crate::table::ram_table::PADDING_INDICATOR
+    /// [`INSTRUCTION_TYPE_READ`]: crate::table::ram::INSTRUCTION_TYPE_READ
+    /// [`INSTRUCTION_TYPE_WRITE`]: crate::table::ram::INSTRUCTION_TYPE_WRITE
+    /// [`PADDING_INDICATOR`]: crate::table::ram::PADDING_INDICATOR
     InstructionType,
     RamPointer,
     RamValue,
@@ -236,14 +236,14 @@ pub enum JumpStackExtTableColumn {
 pub enum HashBaseTableColumn {
     /// The indicator for the [`HashTableMode`][mode].
     ///
-    /// [mode]: crate::table::hash_table::HashTableMode
+    /// [mode]: crate::table::hash::HashTableMode
     Mode,
 
     /// The current instruction. Only relevant for [`Mode`][mode] [`Sponge`][mode_sponge]
     /// in order to distinguish between the different Sponge instructions.
     ///
     /// [mode]: HashBaseTableColumn::Mode
-    /// [mode_sponge]: crate::table::hash_table::HashTableMode::Sponge
+    /// [mode_sponge]: crate::table::hash::HashTableMode::Sponge
     CI,
 
     /// The number of the current round in the permutation. The round number evolves as
@@ -255,10 +255,10 @@ pub enum HashBaseTableColumn {
     ///
     /// [ci]: HashBaseTableColumn::CI
     /// [mode]: HashBaseTableColumn::Mode
-    /// [mode_prog_hash]: crate::table::hash_table::HashTableMode::ProgramHashing
-    /// [mode_sponge]: crate::table::hash_table::HashTableMode::Sponge
-    /// [mode_hash]: crate::table::hash_table::HashTableMode::Hash
-    /// [mode_pad]: crate::table::hash_table::HashTableMode::Pad
+    /// [mode_prog_hash]: crate::table::hash::HashTableMode::ProgramHashing
+    /// [mode_sponge]: crate::table::hash::HashTableMode::Sponge
+    /// [mode_hash]: crate::table::hash::HashTableMode::Hash
+    /// [mode_pad]: crate::table::hash::HashTableMode::Pad
     RoundNumber,
 
     State0HighestLkIn,

@@ -16,7 +16,7 @@ pub mod table_column;
 ///
 /// Using substitution and the introduction of new variables, the degree of the AIR as specified
 /// in the respective tables
-/// (e.g., in [`processor_table::ExtProcessorTable::transition_constraints`])
+/// (e.g., in [`table::processor::ProcessorTable::transition_constraints`])
 /// is lowered to this value.
 /// For example, with a target degree of 2 and a (fictional) constraint of the form
 /// `a = b²·c²·d`,
@@ -25,14 +25,7 @@ pub mod table_column;
 /// - introduce new constraints `e = b²`, `f = c²`, and `g = e·f`,
 /// - replace the original constraint with `a = g·d`.
 ///
-/// The degree lowering happens in the constraint evaluation generator.
-/// It can be executed by running `cargo run --bin constraint-evaluation-generator`.
-/// Executing the constraint evaluator is a prerequisite for running both the Stark prover
-/// and the Stark verifier.
-///
-/// The new variables introduced by the degree lowering step are called “derived columns.”
-/// They are added to the [`DegreeLoweringTable`], whose sole purpose is to store the values
-/// of these derived columns.
+/// The degree lowering happens in the Triton VM's build script, `build.rs`.
 pub const TARGET_DEGREE: isize = 4;
 
 pub trait AIR {

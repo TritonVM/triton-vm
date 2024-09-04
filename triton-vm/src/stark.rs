@@ -563,8 +563,8 @@ impl Stark {
     /// length of the execution trace and the FRI expansion factor, a security parameter.
     ///
     /// In principle, the FRI domain is also influenced by the AIR's degree
-    /// (see [`TARGET_DEGREE`]). However, by segmenting the quotient polynomial into
-    /// [`TARGET_DEGREE`]-many parts, that influence is mitigated.
+    /// (see [`air::TARGET_DEGREE`]). However, by segmenting the quotient polynomial into
+    /// `TARGET_DEGREE`-many parts, that influence is mitigated.
     pub fn derive_fri(&self, padded_height: usize) -> fri::SetupResult<Fri> {
         let interpolant_degree = interpolant_degree(padded_height, self.num_trace_randomizers);
         let interpolant_codeword_length = interpolant_degree as usize + 1;

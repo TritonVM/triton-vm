@@ -14,21 +14,28 @@ use strum::EnumIter;
 #[repr(usize)]
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, EnumCount, EnumIter, Arbitrary)]
 pub enum ChallengeId {
-    /// The indeterminate for the [Evaluation Argument](EvalArg) compressing the program digest
-    /// into a single extension field element, _i.e._, [`CompressedProgramDigest`].
+    /// The indeterminate for the [Evaluation Argument][eval] compressing the program digest
+    /// into a single extension field element, _i.e._,
+    /// [`CompressedProgramDigest`][Self::CompressedProgramDigest].
     /// Relates to program attestation.
+    ///
+    /// [eval]: crate::cross_table_argument::EvalArg
     CompressProgramDigestIndeterminate,
 
-    /// The indeterminate for the [Evaluation Argument](EvalArg) with standard input.
+    /// The indeterminate for the [Evaluation Argument][eval] with standard input.
+    ///
+    /// [eval]: crate::cross_table_argument::EvalArg
     StandardInputIndeterminate,
 
-    /// The indeterminate for the [Evaluation Argument](EvalArg) with standard output.
+    /// The indeterminate for the [Evaluation Argument][eval] with standard output.
+    ///
+    /// [eval]: crate::cross_table_argument::EvalArg
     StandardOutputIndeterminate,
 
     /// The indeterminate for the instruction
-    /// [Lookup Argument](crate::table::cross_table_argument::LookupArg)
-    /// between the [Processor Table](crate::table::processor_table) and the
-    /// [Program Table](crate::table::program_table) guaranteeing that the instructions and their
+    /// [Lookup Argument](crate::cross_table_argument::LookupArg)
+    /// between the [Processor Table](crate::table::processor) and the
+    /// [Program Table](crate::table::program) guaranteeing that the instructions and their
     /// arguments are copied correctly.
     InstructionLookupIndeterminate,
 
@@ -87,18 +94,20 @@ pub enum ChallengeId {
     ///
     /// Used by the evaluation argument [`PrepareChunkEvalArg`][prep] and in the Hash Table.
     ///
-    /// [rate]: tip5::RATE
-    /// [prep]: crate::table::table_column::ProgramExtTableColumn::PrepareChunkRunningEvaluation
+    /// [rate]: twenty_first::prelude::tip5::RATE
+    /// [prep]: crate::table_column::ProgramExtTableColumn::PrepareChunkRunningEvaluation
     ProgramAttestationPrepareChunkIndeterminate,
 
     /// The indeterminate for the bus over which the [`RATE`][rate]-sized chunks of instructions
     /// are sent. Relates to program attestation.
     /// Used by the evaluation arguments [`SendChunkEvalArg`][send] and
-    /// [`ReceiveChunkEvalArg`][recv]. See also: [`ProgramAttestationPrepareChunkIndeterminate`].
+    /// [`ReceiveChunkEvalArg`][recv]. See also:
+    /// [`ProgramAttestationPrepareChunkIndeterminate`][ind].
     ///
-    /// [rate]: tip5::RATE
-    /// [send]: crate::table::table_column::ProgramExtTableColumn::SendChunkRunningEvaluation
-    /// [recv]: crate::table::table_column::HashExtTableColumn::ReceiveChunkRunningEvaluation
+    /// [rate]: twenty_first::prelude::tip5::RATE
+    /// [send]: crate::table_column::ProgramExtTableColumn::SendChunkRunningEvaluation
+    /// [recv]: crate::table_column::HashExtTableColumn::ReceiveChunkRunningEvaluation
+    /// [ind]: ChallengeId::ProgramAttestationPrepareChunkIndeterminate
     ProgramAttestationSendChunkIndeterminate,
 
     HashCIWeight,
@@ -160,23 +169,34 @@ pub enum ChallengeId {
     // When modifying this, be sure to add to the compile-time assertions in the
     // `#[test] const fn compile_time_index_assertions() { … }`
     // at the end of this file.
-    /// The terminal for the [`EvaluationArgument`](EvalArg) with standard input.
-    /// Makes use of challenge [`StandardInputIndeterminate`].
+    /// The terminal for the [`EvaluationArgument`][eval] with standard input.
+    /// Makes use of challenge
+    /// [`StandardInputIndeterminate`][Self::StandardInputIndeterminate].
+    ///
+    /// [eval]: crate::cross_table_argument::EvalArg
     StandardInputTerminal,
 
-    /// The terminal for the [`EvaluationArgument`](EvalArg) with standard output.
-    /// Makes use of challenge [`StandardOutputIndeterminate`].
+    /// The terminal for the [`EvaluationArgument`][eval] with standard output.
+    /// Makes use of challenge
+    /// [`StandardOutputIndeterminate`][Self::StandardOutputIndeterminate].
+    ///
+    /// [eval]: crate::cross_table_argument::EvalArg
     StandardOutputTerminal,
 
-    /// The terminal for the [`EvaluationArgument`](EvalArg) establishing correctness of the
-    /// [Lookup Table](crate::table::lookup_table::LookupTable).
-    /// Makes use of challenge [`LookupTablePublicIndeterminate`].
+    /// The terminal for the [`EvaluationArgument`][eval] establishing correctness of the
+    /// [Lookup Table](crate::table::lookup::LookupTable).
+    /// Makes use of challenge
+    /// [`LookupTablePublicIndeterminate`][Self::LookupTablePublicIndeterminate].
+    ///
+    /// [eval]: crate::cross_table_argument::EvalArg
     LookupTablePublicTerminal,
 
     /// The digest of the program to be executed, compressed into a single extension field element.
-    /// The compression happens using an [`EvaluationArgument`](EvalArg) under challenge
-    /// [`CompressProgramDigestIndeterminate`].
+    /// The compression happens using an [`EvaluationArgument`][eval] under challenge
+    /// [`CompressProgramDigestIndeterminate`][Self::CompressProgramDigestIndeterminate].
     /// Relates to program attestation.
+    ///
+    /// [eval]: crate::cross_table_argument::EvalArg
     CompressedProgramDigest,
 }
 

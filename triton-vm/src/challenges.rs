@@ -1,7 +1,7 @@
 //! Challenges are needed for the [cross-table arguments](CrossTableArg), _i.e._,
-//! [Permutation Arguments](crate::cross_table_argument::PermArg),
-//! [Evaluation Arguments](crate::cross_table_argument::EvalArg), and
-//! [Lookup Arguments](crate::cross_table_argument::LookupArg),
+//! [Permutation Arguments](air::cross_table_argument::PermArg),
+//! [Evaluation Arguments](EvalArg), and
+//! [Lookup Arguments](air::cross_table_argument::LookupArg),
 //! as well as for the RAM Table's Contiguity Argument.
 //!
 //! There are three types of challenges:
@@ -50,14 +50,18 @@ impl Challenges {
     /// from publicly known values and other, sampled challenges.
     ///
     /// Concretely:
-    /// - The [`StandardInputTerminal`] is computed from Triton VM's public input and the sampled
-    ///   indeterminate [`StandardInputIndeterminate`].
-    /// - The [`StandardOutputTerminal`] is computed from Triton VM's public output and the sampled
-    ///   indeterminate [`StandardOutputIndeterminate`].
-    /// - The [`LookupTablePublicTerminal`] is computed from the publicly known and constant
-    ///   lookup table and the sampled indeterminate [`LookupTablePublicIndeterminate`].
-    /// - The [`CompressedProgramDigest`] is computed from the program to be executed and the
-    ///   sampled indeterminate [`CompressProgramDigestIndeterminate`].
+    /// - The [`StandardInputTerminal`][ChallengeId::StandardInputTerminal] is computed
+    ///   from Triton VM's public input and the sampled indeterminate
+    ///   [`StandardInputIndeterminate`][ChallengeId::StandardInputIndeterminate].
+    /// - The [`StandardOutputTerminal`][ChallengeId::StandardOutputTerminal] is computed
+    ///   from Triton VM's public output and the sampled indeterminate
+    ///   [`StandardOutputIndeterminate`][ChallengeId::StandardOutputIndeterminate].
+    /// - The [`LookupTablePublicTerminal`][ChallengeId::LookupTablePublicTerminal] is
+    ///   computed from the publicly known and constant lookup table and the sampled indeterminate
+    ///   [`LookupTablePublicIndeterminate`][ChallengeId::LookupTablePublicIndeterminate].
+    /// - The [`CompressedProgramDigest`][ChallengeId::CompressedProgramDigest] is computed
+    ///   from the program to be executed and the sampled indeterminate
+    ///   [`CompressProgramDigestIndeterminate`][ChallengeId::CompressProgramDigestIndeterminate].
     pub const SAMPLE_COUNT: usize = Self::COUNT - ChallengeId::NUM_DERIVED_CHALLENGES;
 
     pub fn new(mut challenges: Vec<XFieldElement>, claim: &Claim) -> Self {

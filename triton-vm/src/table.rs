@@ -78,18 +78,14 @@ pub enum ConstraintType {
     Terminal,
 }
 
-/// A single row of a [`MasterBaseTable`][table].
+/// A single row of a [`MasterBaseTable`].
 ///
 /// Usually, the elements in the table are [`BFieldElement`]s. For out-of-domain rows, which is
 /// relevant for “Domain Extension to Eliminate Pretenders” (DEEP), the elements are
 /// [`XFieldElement`]s.
-///
-/// [table]: master_table::MasterBaseTable
 pub type BaseRow<T> = [T; MasterBaseTable::NUM_COLUMNS];
 
-/// A single row of a [`MasterExtensionTable`][table].
-///
-/// [table]: master_table::MasterExtTable
+/// A single row of a [`MasterExtTable`].
 pub type ExtensionRow = [XFieldElement; MasterExtTable::NUM_COLUMNS];
 
 /// An element of the split-up quotient polynomial.

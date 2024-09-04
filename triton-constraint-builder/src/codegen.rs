@@ -417,7 +417,7 @@ impl Codegen for TasmBackend {
     /// Emits a function that emits [Triton assembly][tasm] that evaluates Triton VM's AIR
     /// constraints over the [extension field][XFieldElement].
     ///
-    /// [tasm]: triton_vm::prelude::triton_asm
+    /// [tasm]: isa::triton_asm
     fn constraint_evaluation_code(constraints: &Constraints) -> TokenStream {
         let doc_comment = Self::doc_comment_static_version();
 

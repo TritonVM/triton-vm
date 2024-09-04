@@ -26,12 +26,11 @@ use crate::table_column::MasterBaseTableColumn;
 use crate::table_column::MasterExtTableColumn;
 use crate::AIR;
 
-/// See [`HashTable::base_field_element_into_16_bit_limbs`] for more details.
 pub const MONTGOMERY_MODULUS: BFieldElement =
     BFieldElement::new(((1_u128 << 64) % BFieldElement::P as u128) as u64);
 
-pub const POWER_MAP_EXPONENT: u64 = 7;
-pub const NUM_ROUND_CONSTANTS: usize = tip5::STATE_SIZE;
+const POWER_MAP_EXPONENT: u64 = 7;
+const NUM_ROUND_CONSTANTS: usize = tip5::STATE_SIZE;
 
 pub const PERMUTATION_TRACE_LENGTH: usize = NUM_ROUNDS + 1;
 
@@ -159,9 +158,11 @@ impl HashTable {
             .fold(constant(1), |accumulator, factor| accumulator * factor)
     }
 
-    /// The [`HashBaseTableColumn`] for the round constant corresponding to the given index.
+    /// The [main column][col] for the round constant corresponding to the given index.
     /// Valid indices are 0 through 15, corresponding to the 16 round constants
-    /// [`Constant0`] through [`Constant15`].
+    /// `Constant0` through `Constant15`.
+    ///
+    /// [col]: crate::table_column::HashBaseTableColumn
     pub fn round_constant_column_by_index(index: usize) -> <Self as AIR>::MainColumn {
         match index {
             0 => <Self as AIR>::MainColumn::Constant0,
@@ -1329,8 +1330,8 @@ impl AIR for HashTable {
 /// 1. Processing the `hash` instruction.
 /// 1. Padding mode.
 ///
-/// Changing the mode is only possible when the current [`RoundNumber`] is [`NUM_ROUNDS`].
-/// The mode evolves as
+/// Changing the mode is only possible when the current [`RoundNumber`][round_no]
+/// is [`NUM_ROUNDS`]. The mode evolves as
 /// [`ProgramHashing`][prog_hash] → [`Sponge`][sponge] → [`Hash`][hash] → [`Pad`][pad].
 /// Once mode [`Pad`][pad] is reached, it is not possible to change the mode anymore.
 /// Skipping any or all of the modes [`Sponge`][sponge], [`Hash`][hash], or [`Pad`][pad]
@@ -1344,6 +1345,7 @@ impl AIR for HashTable {
 /// The empty program is not valid since any valid [`Program`][program] must execute
 /// instruction `halt`.
 ///
+/// [round_no]: crate::table_column::HashBaseTableColumn::RoundNumber
 /// [program]: isa::program::Program
 /// [prog_hash]: HashTableMode::ProgramHashing
 /// [sponge]: HashTableMode::Sponge

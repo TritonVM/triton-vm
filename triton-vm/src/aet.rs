@@ -121,7 +121,7 @@ impl AlgebraicExecutionTrace {
     ///
     /// Guaranteed to be a power of two.
     ///
-    /// [pad]: master_table::MasterBaseTable::pad
+    /// [pad]: table::master_table::MasterBaseTable::pad
     pub fn padded_height(&self) -> usize {
         self.height().height.next_power_of_two()
     }
@@ -129,7 +129,7 @@ impl AlgebraicExecutionTrace {
     /// The height of the [AET](AlgebraicExecutionTrace) before [padding][pad].
     /// Corresponds to the height of the longest table.
     ///
-    /// [pad]: master_table::MasterBaseTable::pad
+    /// [pad]: table::master_table::MasterBaseTable::pad
     pub fn height(&self) -> TableHeight {
         TableId::iter()
             .map(|t| TableHeight::new(t, self.height_of_table(t)))

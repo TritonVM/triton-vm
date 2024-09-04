@@ -122,7 +122,7 @@ use crate::table::*;
 ///   [`MasterExtensionTable`][master_ext_table] but does induce a nonzero number of constraints
 ///   and thus terms in the [quotient combination][all_quotients_combined].
 ///
-/// [cross_arg]: cross_table_argument::GrandCrossTableArg
+/// [cross_arg]: air::cross_table_argument::GrandCrossTableArg
 /// [overwrite_cache]: crate::config::overwrite_lde_trace_caching_to
 /// [lde]: Self::low_degree_extend_all_columns
 /// [quot_table]: Self::quotient_domain_table
@@ -1410,15 +1410,36 @@ mod tests {
         assert!(DEGREE_LOWERING_TARGETS.contains(&Some(air::TARGET_DEGREE)));
 
         let mut all_table_info = [
-            ("program-table.md", table_widths::<ProgramTable>()),
-            ("processor-table.md", table_widths::<ProcessorTable>()),
-            ("operational-stack-table.md", table_widths::<OpStackTable>()),
-            ("random-access-memory-table.md", table_widths::<RamTable>()),
-            ("jump-stack-table.md", table_widths::<JumpStackTable>()),
-            ("hash-table.md", table_widths::<HashTable>()),
-            ("cascade-table.md", table_widths::<CascadeTable>()),
-            ("lookup-table.md", table_widths::<LookupTable>()),
-            ("u32-table.md", table_widths::<U32Table>()),
+            (
+                "[ProgramTable](program-table.md)",
+                table_widths::<ProgramTable>(),
+            ),
+            (
+                "[ProcessorTable](processor-table.md)",
+                table_widths::<ProcessorTable>(),
+            ),
+            (
+                "[OpStackTable](operational-stack-table.md)",
+                table_widths::<OpStackTable>(),
+            ),
+            (
+                "[RamTable](random-access-memory-table.md)",
+                table_widths::<RamTable>(),
+            ),
+            (
+                "[JumpStackTable](jump-stack-table.md)",
+                table_widths::<JumpStackTable>(),
+            ),
+            ("[HashTable](hash-table.md)", table_widths::<HashTable>()),
+            (
+                "[CascadeTable](cascade-table.md)",
+                table_widths::<CascadeTable>(),
+            ),
+            (
+                "[LookupTable](lookup-table.md)",
+                table_widths::<LookupTable>(),
+            ),
+            ("[U32Table](u32-table.md)", table_widths::<U32Table>()),
         ]
         .map(|(description, (main_width, aux_width))| {
             (
