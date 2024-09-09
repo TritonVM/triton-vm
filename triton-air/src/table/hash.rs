@@ -39,6 +39,9 @@ pub type PermutationTrace = [[BFieldElement; tip5::STATE_SIZE]; PERMUTATION_TRAC
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct HashTable;
 
+type MainColumn = <HashTable as AIR>::MainColumn;
+type AuxColumn = <HashTable as AIR>::AuxColumn;
+
 impl HashTable {
     /// Get the MDS matrix's entry in row `row_idx` and column `col_idx`.
     const fn mds_matrix_entry(row_idx: usize, col_idx: usize) -> BFieldElement {
@@ -163,24 +166,24 @@ impl HashTable {
     /// `Constant0` through `Constant15`.
     ///
     /// [col]: crate::table_column::HashBaseTableColumn
-    pub fn round_constant_column_by_index(index: usize) -> <Self as AIR>::MainColumn {
+    pub fn round_constant_column_by_index(index: usize) -> MainColumn {
         match index {
-            0 => <Self as AIR>::MainColumn::Constant0,
-            1 => <Self as AIR>::MainColumn::Constant1,
-            2 => <Self as AIR>::MainColumn::Constant2,
-            3 => <Self as AIR>::MainColumn::Constant3,
-            4 => <Self as AIR>::MainColumn::Constant4,
-            5 => <Self as AIR>::MainColumn::Constant5,
-            6 => <Self as AIR>::MainColumn::Constant6,
-            7 => <Self as AIR>::MainColumn::Constant7,
-            8 => <Self as AIR>::MainColumn::Constant8,
-            9 => <Self as AIR>::MainColumn::Constant9,
-            10 => <Self as AIR>::MainColumn::Constant10,
-            11 => <Self as AIR>::MainColumn::Constant11,
-            12 => <Self as AIR>::MainColumn::Constant12,
-            13 => <Self as AIR>::MainColumn::Constant13,
-            14 => <Self as AIR>::MainColumn::Constant14,
-            15 => <Self as AIR>::MainColumn::Constant15,
+            0 => MainColumn::Constant0,
+            1 => MainColumn::Constant1,
+            2 => MainColumn::Constant2,
+            3 => MainColumn::Constant3,
+            4 => MainColumn::Constant4,
+            5 => MainColumn::Constant5,
+            6 => MainColumn::Constant6,
+            7 => MainColumn::Constant7,
+            8 => MainColumn::Constant8,
+            9 => MainColumn::Constant9,
+            10 => MainColumn::Constant10,
+            11 => MainColumn::Constant11,
+            12 => MainColumn::Constant12,
+            13 => MainColumn::Constant13,
+            14 => MainColumn::Constant14,
+            15 => MainColumn::Constant15,
             _ => panic!("invalid constant column index"),
         }
     }
@@ -192,104 +195,68 @@ impl HashTable {
     /// States with indices 0 through 3 have to be assembled from the respective limbs;
     /// see [`Self::re_compose_states_0_through_3_before_lookup`]
     /// or [`Self::re_compose_16_bit_limbs`].
-    fn state_column_by_index(index: usize) -> <Self as AIR>::MainColumn {
+    fn state_column_by_index(index: usize) -> MainColumn {
         match index {
-            4 => <Self as AIR>::MainColumn::State4,
-            5 => <Self as AIR>::MainColumn::State5,
-            6 => <Self as AIR>::MainColumn::State6,
-            7 => <Self as AIR>::MainColumn::State7,
-            8 => <Self as AIR>::MainColumn::State8,
-            9 => <Self as AIR>::MainColumn::State9,
-            10 => <Self as AIR>::MainColumn::State10,
-            11 => <Self as AIR>::MainColumn::State11,
-            12 => <Self as AIR>::MainColumn::State12,
-            13 => <Self as AIR>::MainColumn::State13,
-            14 => <Self as AIR>::MainColumn::State14,
-            15 => <Self as AIR>::MainColumn::State15,
+            4 => MainColumn::State4,
+            5 => MainColumn::State5,
+            6 => MainColumn::State6,
+            7 => MainColumn::State7,
+            8 => MainColumn::State8,
+            9 => MainColumn::State9,
+            10 => MainColumn::State10,
+            11 => MainColumn::State11,
+            12 => MainColumn::State12,
+            13 => MainColumn::State13,
+            14 => MainColumn::State14,
+            15 => MainColumn::State15,
             _ => panic!("invalid state column index"),
         }
     }
 
-    fn indicate_column_index_in_base_row(column: <Self as AIR>::MainColumn) -> SingleRowIndicator {
+    fn indicate_column_index_in_base_row(column: MainColumn) -> SingleRowIndicator {
         BaseRow(column.master_base_table_index())
     }
 
-    fn indicate_column_index_in_current_base_row(
-        column: <Self as AIR>::MainColumn,
-    ) -> DualRowIndicator {
+    fn indicate_column_index_in_current_base_row(column: MainColumn) -> DualRowIndicator {
         CurrentBaseRow(column.master_base_table_index())
     }
 
-    fn indicate_column_index_in_next_base_row(
-        column: <Self as AIR>::MainColumn,
-    ) -> DualRowIndicator {
+    fn indicate_column_index_in_next_base_row(column: MainColumn) -> DualRowIndicator {
         NextBaseRow(column.master_base_table_index())
     }
 
     fn re_compose_states_0_through_3_before_lookup<II: InputIndicator>(
         circuit_builder: &ConstraintCircuitBuilder<II>,
-        main_row_to_input_indicator: fn(<Self as AIR>::MainColumn) -> II,
+        main_row_to_input_indicator: fn(MainColumn) -> II,
     ) -> [ConstraintCircuitMonad<II>; 4] {
         let input = |input_indicator: II| circuit_builder.input(input_indicator);
         let state_0 = Self::re_compose_16_bit_limbs(
             circuit_builder,
-            input(main_row_to_input_indicator(
-                <Self as AIR>::MainColumn::State0HighestLkIn,
-            )),
-            input(main_row_to_input_indicator(
-                <Self as AIR>::MainColumn::State0MidHighLkIn,
-            )),
-            input(main_row_to_input_indicator(
-                <Self as AIR>::MainColumn::State0MidLowLkIn,
-            )),
-            input(main_row_to_input_indicator(
-                <Self as AIR>::MainColumn::State0LowestLkIn,
-            )),
+            input(main_row_to_input_indicator(MainColumn::State0HighestLkIn)),
+            input(main_row_to_input_indicator(MainColumn::State0MidHighLkIn)),
+            input(main_row_to_input_indicator(MainColumn::State0MidLowLkIn)),
+            input(main_row_to_input_indicator(MainColumn::State0LowestLkIn)),
         );
         let state_1 = Self::re_compose_16_bit_limbs(
             circuit_builder,
-            input(main_row_to_input_indicator(
-                <Self as AIR>::MainColumn::State1HighestLkIn,
-            )),
-            input(main_row_to_input_indicator(
-                <Self as AIR>::MainColumn::State1MidHighLkIn,
-            )),
-            input(main_row_to_input_indicator(
-                <Self as AIR>::MainColumn::State1MidLowLkIn,
-            )),
-            input(main_row_to_input_indicator(
-                <Self as AIR>::MainColumn::State1LowestLkIn,
-            )),
+            input(main_row_to_input_indicator(MainColumn::State1HighestLkIn)),
+            input(main_row_to_input_indicator(MainColumn::State1MidHighLkIn)),
+            input(main_row_to_input_indicator(MainColumn::State1MidLowLkIn)),
+            input(main_row_to_input_indicator(MainColumn::State1LowestLkIn)),
         );
         let state_2 = Self::re_compose_16_bit_limbs(
             circuit_builder,
-            input(main_row_to_input_indicator(
-                <Self as AIR>::MainColumn::State2HighestLkIn,
-            )),
-            input(main_row_to_input_indicator(
-                <Self as AIR>::MainColumn::State2MidHighLkIn,
-            )),
-            input(main_row_to_input_indicator(
-                <Self as AIR>::MainColumn::State2MidLowLkIn,
-            )),
-            input(main_row_to_input_indicator(
-                <Self as AIR>::MainColumn::State2LowestLkIn,
-            )),
+            input(main_row_to_input_indicator(MainColumn::State2HighestLkIn)),
+            input(main_row_to_input_indicator(MainColumn::State2MidHighLkIn)),
+            input(main_row_to_input_indicator(MainColumn::State2MidLowLkIn)),
+            input(main_row_to_input_indicator(MainColumn::State2LowestLkIn)),
         );
         let state_3 = Self::re_compose_16_bit_limbs(
             circuit_builder,
-            input(main_row_to_input_indicator(
-                <Self as AIR>::MainColumn::State3HighestLkIn,
-            )),
-            input(main_row_to_input_indicator(
-                <Self as AIR>::MainColumn::State3MidHighLkIn,
-            )),
-            input(main_row_to_input_indicator(
-                <Self as AIR>::MainColumn::State3MidLowLkIn,
-            )),
-            input(main_row_to_input_indicator(
-                <Self as AIR>::MainColumn::State3LowestLkIn,
-            )),
+            input(main_row_to_input_indicator(MainColumn::State3HighestLkIn)),
+            input(main_row_to_input_indicator(MainColumn::State3MidHighLkIn)),
+            input(main_row_to_input_indicator(MainColumn::State3MidLowLkIn)),
+            input(main_row_to_input_indicator(MainColumn::State3LowestLkIn)),
         );
         [state_0, state_1, state_2, state_3]
     }
@@ -302,55 +269,55 @@ impl HashTable {
     ) {
         let constant = |c: u64| circuit_builder.b_constant(c);
         let b_constant = |c| circuit_builder.b_constant(c);
-        let current_main_row = |column_idx: <Self as AIR>::MainColumn| {
+        let current_main_row = |column_idx: MainColumn| {
             circuit_builder.input(CurrentBaseRow(column_idx.master_base_table_index()))
         };
-        let next_main_row = |column_idx: <Self as AIR>::MainColumn| {
+        let next_main_row = |column_idx: MainColumn| {
             circuit_builder.input(NextBaseRow(column_idx.master_base_table_index()))
         };
 
         let state_0_after_lookup = Self::re_compose_16_bit_limbs(
             circuit_builder,
-            current_main_row(<Self as AIR>::MainColumn::State0HighestLkOut),
-            current_main_row(<Self as AIR>::MainColumn::State0MidHighLkOut),
-            current_main_row(<Self as AIR>::MainColumn::State0MidLowLkOut),
-            current_main_row(<Self as AIR>::MainColumn::State0LowestLkOut),
+            current_main_row(MainColumn::State0HighestLkOut),
+            current_main_row(MainColumn::State0MidHighLkOut),
+            current_main_row(MainColumn::State0MidLowLkOut),
+            current_main_row(MainColumn::State0LowestLkOut),
         );
         let state_1_after_lookup = Self::re_compose_16_bit_limbs(
             circuit_builder,
-            current_main_row(<Self as AIR>::MainColumn::State1HighestLkOut),
-            current_main_row(<Self as AIR>::MainColumn::State1MidHighLkOut),
-            current_main_row(<Self as AIR>::MainColumn::State1MidLowLkOut),
-            current_main_row(<Self as AIR>::MainColumn::State1LowestLkOut),
+            current_main_row(MainColumn::State1HighestLkOut),
+            current_main_row(MainColumn::State1MidHighLkOut),
+            current_main_row(MainColumn::State1MidLowLkOut),
+            current_main_row(MainColumn::State1LowestLkOut),
         );
         let state_2_after_lookup = Self::re_compose_16_bit_limbs(
             circuit_builder,
-            current_main_row(<Self as AIR>::MainColumn::State2HighestLkOut),
-            current_main_row(<Self as AIR>::MainColumn::State2MidHighLkOut),
-            current_main_row(<Self as AIR>::MainColumn::State2MidLowLkOut),
-            current_main_row(<Self as AIR>::MainColumn::State2LowestLkOut),
+            current_main_row(MainColumn::State2HighestLkOut),
+            current_main_row(MainColumn::State2MidHighLkOut),
+            current_main_row(MainColumn::State2MidLowLkOut),
+            current_main_row(MainColumn::State2LowestLkOut),
         );
         let state_3_after_lookup = Self::re_compose_16_bit_limbs(
             circuit_builder,
-            current_main_row(<Self as AIR>::MainColumn::State3HighestLkOut),
-            current_main_row(<Self as AIR>::MainColumn::State3MidHighLkOut),
-            current_main_row(<Self as AIR>::MainColumn::State3MidLowLkOut),
-            current_main_row(<Self as AIR>::MainColumn::State3LowestLkOut),
+            current_main_row(MainColumn::State3HighestLkOut),
+            current_main_row(MainColumn::State3MidHighLkOut),
+            current_main_row(MainColumn::State3MidLowLkOut),
+            current_main_row(MainColumn::State3LowestLkOut),
         );
 
         let state_part_before_power_map: [_; tip5::STATE_SIZE - tip5::NUM_SPLIT_AND_LOOKUP] = [
-            <Self as AIR>::MainColumn::State4,
-            <Self as AIR>::MainColumn::State5,
-            <Self as AIR>::MainColumn::State6,
-            <Self as AIR>::MainColumn::State7,
-            <Self as AIR>::MainColumn::State8,
-            <Self as AIR>::MainColumn::State9,
-            <Self as AIR>::MainColumn::State10,
-            <Self as AIR>::MainColumn::State11,
-            <Self as AIR>::MainColumn::State12,
-            <Self as AIR>::MainColumn::State13,
-            <Self as AIR>::MainColumn::State14,
-            <Self as AIR>::MainColumn::State15,
+            MainColumn::State4,
+            MainColumn::State5,
+            MainColumn::State6,
+            MainColumn::State7,
+            MainColumn::State8,
+            MainColumn::State9,
+            MainColumn::State10,
+            MainColumn::State11,
+            MainColumn::State12,
+            MainColumn::State13,
+            MainColumn::State14,
+            MainColumn::State15,
         ]
         .map(current_main_row);
 
@@ -392,22 +359,22 @@ impl HashTable {
         }
 
         let round_constants: [_; tip5::STATE_SIZE] = [
-            <Self as AIR>::MainColumn::Constant0,
-            <Self as AIR>::MainColumn::Constant1,
-            <Self as AIR>::MainColumn::Constant2,
-            <Self as AIR>::MainColumn::Constant3,
-            <Self as AIR>::MainColumn::Constant4,
-            <Self as AIR>::MainColumn::Constant5,
-            <Self as AIR>::MainColumn::Constant6,
-            <Self as AIR>::MainColumn::Constant7,
-            <Self as AIR>::MainColumn::Constant8,
-            <Self as AIR>::MainColumn::Constant9,
-            <Self as AIR>::MainColumn::Constant10,
-            <Self as AIR>::MainColumn::Constant11,
-            <Self as AIR>::MainColumn::Constant12,
-            <Self as AIR>::MainColumn::Constant13,
-            <Self as AIR>::MainColumn::Constant14,
-            <Self as AIR>::MainColumn::Constant15,
+            MainColumn::Constant0,
+            MainColumn::Constant1,
+            MainColumn::Constant2,
+            MainColumn::Constant3,
+            MainColumn::Constant4,
+            MainColumn::Constant5,
+            MainColumn::Constant6,
+            MainColumn::Constant7,
+            MainColumn::Constant8,
+            MainColumn::Constant9,
+            MainColumn::Constant10,
+            MainColumn::Constant11,
+            MainColumn::Constant12,
+            MainColumn::Constant13,
+            MainColumn::Constant14,
+            MainColumn::Constant15,
         ]
         .map(current_main_row);
 
@@ -427,21 +394,21 @@ impl HashTable {
             state_1_next,
             state_2_next,
             state_3_next,
-            next_main_row(<Self as AIR>::MainColumn::State4),
-            next_main_row(<Self as AIR>::MainColumn::State5),
-            next_main_row(<Self as AIR>::MainColumn::State6),
-            next_main_row(<Self as AIR>::MainColumn::State7),
-            next_main_row(<Self as AIR>::MainColumn::State8),
-            next_main_row(<Self as AIR>::MainColumn::State9),
-            next_main_row(<Self as AIR>::MainColumn::State10),
-            next_main_row(<Self as AIR>::MainColumn::State11),
-            next_main_row(<Self as AIR>::MainColumn::State12),
-            next_main_row(<Self as AIR>::MainColumn::State13),
-            next_main_row(<Self as AIR>::MainColumn::State14),
-            next_main_row(<Self as AIR>::MainColumn::State15),
+            next_main_row(MainColumn::State4),
+            next_main_row(MainColumn::State5),
+            next_main_row(MainColumn::State6),
+            next_main_row(MainColumn::State7),
+            next_main_row(MainColumn::State8),
+            next_main_row(MainColumn::State9),
+            next_main_row(MainColumn::State10),
+            next_main_row(MainColumn::State11),
+            next_main_row(MainColumn::State12),
+            next_main_row(MainColumn::State13),
+            next_main_row(MainColumn::State14),
+            next_main_row(MainColumn::State15),
         ];
 
-        let round_number_next = next_main_row(<Self as AIR>::MainColumn::RoundNumber);
+        let round_number_next = next_main_row(MainColumn::RoundNumber);
         let hash_function_round_correctly_performs_update = state_after_round_constant_addition
             .into_iter()
             .zip_eq(state_next.clone())
@@ -457,20 +424,20 @@ impl HashTable {
 
     fn cascade_log_derivative_update_circuit(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
-        look_in_column: <Self as AIR>::MainColumn,
-        look_out_column: <Self as AIR>::MainColumn,
-        cascade_log_derivative_column: <Self as AIR>::AuxColumn,
+        look_in_column: MainColumn,
+        look_out_column: MainColumn,
+        cascade_log_derivative_column: AuxColumn,
     ) -> ConstraintCircuitMonad<DualRowIndicator> {
         let challenge = |c| circuit_builder.challenge(c);
         let opcode = |instruction: Instruction| circuit_builder.b_constant(instruction.opcode_b());
         let constant = |c: u32| circuit_builder.b_constant(c);
-        let next_main_row = |column_idx: <Self as AIR>::MainColumn| {
+        let next_main_row = |column_idx: MainColumn| {
             circuit_builder.input(NextBaseRow(column_idx.master_base_table_index()))
         };
-        let current_aux_row = |column_idx: <Self as AIR>::AuxColumn| {
+        let current_aux_row = |column_idx: AuxColumn| {
             circuit_builder.input(CurrentExtRow(column_idx.master_ext_table_index()))
         };
-        let next_aux_row = |column_idx: <Self as AIR>::AuxColumn| {
+        let next_aux_row = |column_idx: AuxColumn| {
             circuit_builder.input(NextExtRow(column_idx.master_ext_table_index()))
         };
 
@@ -478,9 +445,9 @@ impl HashTable {
         let look_in_weight = challenge(ChallengeId::HashCascadeLookInWeight);
         let look_out_weight = challenge(ChallengeId::HashCascadeLookOutWeight);
 
-        let ci_next = next_main_row(<Self as AIR>::MainColumn::CI);
-        let mode_next = next_main_row(<Self as AIR>::MainColumn::Mode);
-        let round_number_next = next_main_row(<Self as AIR>::MainColumn::RoundNumber);
+        let ci_next = next_main_row(MainColumn::CI);
+        let mode_next = next_main_row(MainColumn::Mode);
+        let round_number_next = next_main_row(MainColumn::RoundNumber);
         let cascade_log_derivative = current_aux_row(cascade_log_derivative_column);
         let cascade_log_derivative_next = next_aux_row(cascade_log_derivative_column);
 
