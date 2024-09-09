@@ -1206,9 +1206,9 @@ mod tests {
     use twenty_first::math::traits::FiniteField;
     use twenty_first::prelude::x_field_element::EXTENSION_DEGREE;
 
-    use crate::air::dynamic_air_constraint_evaluation_tasm;
-    use crate::air::static_air_constraint_evaluation_tasm;
     use crate::arithmetic_domain::ArithmeticDomain;
+    use crate::constraints::dynamic_air_constraint_evaluation_tasm;
+    use crate::constraints::static_air_constraint_evaluation_tasm;
     use crate::memory_layout::DynamicTasmConstraintEvaluationMemoryLayout;
     use crate::memory_layout::StaticTasmConstraintEvaluationMemoryLayout;
     use crate::shared_tests::ProgramAndInput;

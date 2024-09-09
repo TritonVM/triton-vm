@@ -1,4 +1,9 @@
 pub use isa::error::InstructionError;
+pub use isa::error::NumberOfWordsError;
+pub use isa::error::OpStackElementError;
+pub use isa::error::OpStackError;
+pub use isa::error::ParseError;
+pub use isa::error::ProgramDecodingError;
 
 use std::fmt;
 use std::fmt::Display;

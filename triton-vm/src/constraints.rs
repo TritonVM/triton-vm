@@ -13,8 +13,6 @@ mod test {
     use twenty_first::prelude::x_field_element::EXTENSION_DEGREE;
     use twenty_first::prelude::*;
 
-    use crate::air::dynamic_air_constraint_evaluation_tasm;
-    use crate::air::static_air_constraint_evaluation_tasm;
     use crate::challenges::Challenges;
     use crate::memory_layout;
     use crate::memory_layout::DynamicTasmConstraintEvaluationMemoryLayout;
@@ -25,6 +23,9 @@ mod test {
     use crate::table::master_table::MasterExtTable;
     use crate::table::NUM_AUX_COLUMNS;
     use crate::table::NUM_MAIN_COLUMNS;
+
+    use super::dynamic_air_constraint_evaluation_tasm;
+    use super::static_air_constraint_evaluation_tasm;
 
     #[derive(Debug, Clone, test_strategy::Arbitrary)]
     struct ConstraintEvaluationPoint {

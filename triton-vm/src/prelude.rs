@@ -19,14 +19,23 @@ pub use twenty_first::prelude::Digest;
 pub use twenty_first::prelude::Tip5;
 pub use twenty_first::prelude::XFieldElement;
 
-pub use isa as triton_isa;
-pub use isa::error::InstructionError;
+pub use isa;
 pub use isa::instruction::LabelledInstruction;
 pub use isa::program::Program;
 pub use isa::triton_asm;
 pub use isa::triton_instr;
 pub use isa::triton_program;
 
+pub use air::table::TableId;
+pub use air::AIR;
+
+pub use crate::error::InstructionError;
+pub use crate::error::NumberOfWordsError;
+pub use crate::error::OpStackElementError;
+pub use crate::error::OpStackError;
+pub use crate::error::ParseError;
+pub use crate::error::ProgramDecodingError;
+pub use crate::error::VMError;
 pub use crate::proof::Claim;
 pub use crate::proof::Proof;
 pub use crate::stark::Stark;

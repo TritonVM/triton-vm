@@ -141,7 +141,7 @@
 //! `halt` as its last instruction. Certain instructions, such as `assert`, `invert`, or the u32
 //! instructions, can also cause the VM to crash. Upon crashing Triton VM, methods like
 //! [`run`](VM::run) and [`trace_execution`](VM::trace_execution) will return a
-//! [`VMError`][vm_error]. This can be helpful for debugging.
+//! [`VMError`]. This can be helpful for debugging.
 //!
 //! ```
 //! # use triton_vm::*;
@@ -152,11 +152,11 @@
 //! // inspect the VM state
 //! eprintln!("{vm_error}");
 //! ```
-//!
-//! [vm_error]: error::VMError
 
 #![recursion_limit = "4096"]
 
+pub use air;
+pub use isa;
 pub use twenty_first;
 
 use isa::program::Program;
@@ -165,10 +165,10 @@ use crate::error::ProvingError;
 use crate::prelude::*;
 
 pub mod aet;
-pub mod air;
 pub mod arithmetic_domain;
 pub mod challenges;
 pub mod config;
+pub mod constraints;
 pub mod error;
 pub mod example_programs;
 pub mod execution_trace_profiler;

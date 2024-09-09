@@ -11,7 +11,7 @@ use twenty_first::prelude::*;
 /// Memory layout guarantees for the [Triton assembly AIR constraint evaluator][tasm_air]
 /// with input lists at dynamically known memory locations.
 ///
-/// [tasm_air]: crate::air::dynamic_air_constraint_evaluation_tasm
+/// [tasm_air]: crate::constraints::dynamic_air_constraint_evaluation_tasm
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Arbitrary)]
 pub struct DynamicTasmConstraintEvaluationMemoryLayout {
     /// Pointer to a region of memory that is reserved for (a) pointers to {current,
@@ -29,7 +29,7 @@ pub struct DynamicTasmConstraintEvaluationMemoryLayout {
 /// Memory layout guarantees for the [Triton assembly AIR constraint evaluator][tasm_air]
 /// with input lists at statically known memory locations.
 ///
-/// [tasm_air]: crate::air::static_air_constraint_evaluation_tasm
+/// [tasm_air]: crate::constraints::static_air_constraint_evaluation_tasm
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Arbitrary)]
 pub struct StaticTasmConstraintEvaluationMemoryLayout {
     /// Pointer to a region of memory that is reserved for constraint evaluation.
