@@ -57,6 +57,7 @@ commit_parsers = [
   { body = ".*security",            group = "<!-- 70 --> 🔒️ Security" },
   { message = "^revert",            group = "<!-- 80 --> ⏪️ Revert" },
   { message = "^style",             group = "<!-- 90 --> 🎨 Styling" },
+  { message = "^build",             group = "<!-- 95 --> 🛠 Build" },
   { footer = "^changelog: ?ignore", skip = true },
 ]
 

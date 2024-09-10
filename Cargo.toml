@@ -18,7 +18,7 @@ lto = "thin"
 lto = "thin"
 
 [workspace.package]
-version = "0.42.0-alpha.9"
+version = "0.42.0-alpha.10"
 edition = "2021"
 authors = ["Triton Software AG"]
 license = "Apache-2.0"
@@ -27,21 +27,38 @@ repository = "https://github.com/TritonVM/triton-vm"
 readme = "README.md"
 documentation = "https://triton-vm.org/spec/"
 
+[workspace.dependencies.air]
+version = "0.42.0-alpha.10"
+path = "triton-air"
+package = "triton-air"
+
+[workspace.dependencies.constraint-builder]
+version = "0.42.0-alpha.10"
+path = "triton-constraint-builder"
+package = "triton-constraint-builder"
+
+
+[workspace.dependencies.constraint-circuit]
+version = "0.42.0-alpha.10"
+path = "triton-constraint-circuit"
+package = "triton-constraint-circuit"
+
+[workspace.dependencies.isa]
+version = "0.42.0-alpha.10"
+path = "triton-isa"
+package = "triton-isa"
+
 [workspace.dependencies]
-air = { path = "triton-air", package = "triton-air" }
 anyhow = "1.0"
 arbitrary = { version = "1", features = ["derive"] }
 assert2 = "0.3"
 colored = "2.1"
-constraint-builder = { path = "triton-constraint-builder", package = "triton-constraint-builder" }
-constraint-circuit = { path = "triton-constraint-circuit", package = "triton-constraint-circuit" }
 clap = { version = "4", features = ["derive", "cargo", "wrap_help", "unicode", "string"] }
 criterion = { version = "0.5", features = ["html_reports"] }
 directories = "5"
 fs-err = "2.11.0"
 get-size = "0.1.4"
 indexmap = "2.2.6"
-isa = { path = "triton-isa", package = "triton-isa" }
 itertools = "0.13"
 lazy_static = "1.5"
 ndarray = { version = "0.16", features = ["rayon"] }
