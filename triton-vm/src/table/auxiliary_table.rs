@@ -8,7 +8,7 @@ use twenty_first::math::traits::FiniteField;
 use twenty_first::prelude::*;
 
 use crate::challenges::Challenges;
-use crate::table::master_table::MasterExtTable;
+use crate::table::master_table::MasterAuxTable;
 use crate::table::ConstraintType;
 
 include!(concat!(env!("OUT_DIR"), "/evaluate_constraints.rs"));
@@ -16,28 +16,28 @@ include!(concat!(env!("OUT_DIR"), "/evaluate_constraints.rs"));
 // The implementations of these functions are generated in `build.rs`.
 pub trait Evaluable<FF: FiniteField> {
     fn evaluate_initial_constraints(
-        base_row: ArrayView1<FF>,
-        ext_row: ArrayView1<XFieldElement>,
+        main_row: ArrayView1<FF>,
+        aux_row: ArrayView1<XFieldElement>,
         challenges: &Challenges,
     ) -> Vec<XFieldElement>;
 
     fn evaluate_consistency_constraints(
-        base_row: ArrayView1<FF>,
-        ext_row: ArrayView1<XFieldElement>,
+        main_row: ArrayView1<FF>,
+        aux_row: ArrayView1<XFieldElement>,
         challenges: &Challenges,
     ) -> Vec<XFieldElement>;
 
     fn evaluate_transition_constraints(
-        current_base_row: ArrayView1<FF>,
-        current_ext_row: ArrayView1<XFieldElement>,
-        next_base_row: ArrayView1<FF>,
-        next_ext_row: ArrayView1<XFieldElement>,
+        current_main_row: ArrayView1<FF>,
+        current_aux_row: ArrayView1<XFieldElement>,
+        next_main_row: ArrayView1<FF>,
+        next_aux_row: ArrayView1<XFieldElement>,
         challenges: &Challenges,
     ) -> Vec<XFieldElement>;
 
     fn evaluate_terminal_constraints(
-        base_row: ArrayView1<FF>,
-        ext_row: ArrayView1<XFieldElement>,
+        main_row: ArrayView1<FF>,
+        aux_row: ArrayView1<XFieldElement>,
         challenges: &Challenges,
     ) -> Vec<XFieldElement>;
 }
@@ -77,7 +77,7 @@ pub(crate) fn all_degrees_with_origin(
     padded_height: usize,
 ) -> Vec<DegreeWithOrigin> {
     let initial_degrees_with_origin =
-        MasterExtTable::initial_quotient_degree_bounds(interpolant_degree)
+        MasterAuxTable::initial_quotient_degree_bounds(interpolant_degree)
             .into_iter()
             .enumerate()
             .map(|(origin_index, degree)| DegreeWithOrigin {
@@ -91,7 +91,7 @@ pub(crate) fn all_degrees_with_origin(
             .collect_vec();
 
     let consistency_degrees_with_origin =
-        MasterExtTable::consistency_quotient_degree_bounds(interpolant_degree, padded_height)
+        MasterAuxTable::consistency_quotient_degree_bounds(interpolant_degree, padded_height)
             .into_iter()
             .enumerate()
             .map(|(origin_index, degree)| DegreeWithOrigin {
@@ -105,7 +105,7 @@ pub(crate) fn all_degrees_with_origin(
             .collect();
 
     let transition_degrees_with_origin =
-        MasterExtTable::transition_quotient_degree_bounds(interpolant_degree, padded_height)
+        MasterAuxTable::transition_quotient_degree_bounds(interpolant_degree, padded_height)
             .into_iter()
             .enumerate()
             .map(|(origin_index, degree)| DegreeWithOrigin {
@@ -119,7 +119,7 @@ pub(crate) fn all_degrees_with_origin(
             .collect();
 
     let terminal_degrees_with_origin =
-        MasterExtTable::terminal_quotient_degree_bounds(interpolant_degree)
+        MasterAuxTable::terminal_quotient_degree_bounds(interpolant_degree)
             .into_iter()
             .enumerate()
             .map(|(origin_index, degree)| DegreeWithOrigin {

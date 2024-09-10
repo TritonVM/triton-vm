@@ -16,13 +16,13 @@ By the [Schwartz–Zippel lemma](https://en.wikipedia.org/wiki/Schwartz%E2%80%93
 In Triton VM, the Evaluation Argument is generally used to show that (parts of) some row appear in two tables in the same order.
 To establish this, the prover
 
-- commits to the base column in question,[^2]
+- commits to the main column in question,[^2]
 - samples a random challenge $\alpha$ through the Fiat-Shamir heuristic,
-- computes the _running evaluation_ of $f_A(\alpha)$ and $f_B(\alpha)$ in the respective tables' extension column.
+- computes the _running evaluation_ of $f_A(\alpha)$ and $f_B(\alpha)$ in the respective tables' auxiliary column.
 
 For example, in both Table A and B:
 
-| base column | extension column: running evaluation                       |
+| main column | auxiliary column: running evaluation                       |
 |------------:|:-----------------------------------------------------------|
 |           0 | $\alpha^1 + 0\alpha^0$                                     |
 |           1 | $\alpha^2 + 0\alpha^1 + 1\alpha^0$                         |
@@ -33,13 +33,13 @@ It is possible to establish a subset relation by skipping over certain elements 
 The running evaluation must incorporate the same elements in both tables.
 Otherwise, the Evaluation Argument will fail.
 
-Examples for subset Evaluation Arguments can be found between the [Hash Table](hash-table.md#extension-columns) and the [Processor Table](processor-table.md#extension-colums).
+Examples for subset Evaluation Arguments can be found between the [Hash Table](hash-table.md#auxiliary-columns) and the [Processor Table](processor-table.md#auxiliary-colums).
 
 ---
 
 [^1]: This depends on the length $n$ of the lists $A$ and $B$ as well as the field size.
 For Triton VM, $n < 2^{32}$.
-The polynomials $f_A(X)$ and $f_B(X)$ are evaluated over the extension field with $p^3 \approx 2^{192}$ elements.
+The polynomials $f_A(X)$ and $f_B(X)$ are evaluated over the auxiliary field with $p^3 \approx 2^{192}$ elements.
 The false positive rate is therefore $n / |\mathbb{F}_{p^3}| \leqslant 2^{-160}$.
 
 [^2]: See “[Compressing Multiple Elements](table-linking.md#compressing-multiple-elements).”

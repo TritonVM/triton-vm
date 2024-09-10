@@ -129,18 +129,18 @@ mod tests {
     use crate::proof_item::FriResponse;
     use crate::proof_item::ProofItem;
     use crate::shared_tests::LeavedMerkleTreeTestData;
-    use crate::table::BaseRow;
-    use crate::table::ExtensionRow;
+    use crate::table::AuxiliaryRow;
+    use crate::table::MainRow;
     use crate::table::QuotientSegments;
 
     use super::*;
 
     #[proptest]
     fn serialize_proof_with_fiat_shamir(
-        #[strategy(vec(arb(), 2..100))] base_rows: Vec<BaseRow<BFieldElement>>,
-        #[strategy(vec(arb(), 2..100))] ext_rows: Vec<ExtensionRow>,
-        #[strategy(arb())] ood_base_row: Box<BaseRow<XFieldElement>>,
-        #[strategy(arb())] ood_ext_row: Box<ExtensionRow>,
+        #[strategy(vec(arb(), 2..100))] main_rows: Vec<MainRow<BFieldElement>>,
+        #[strategy(vec(arb(), 2..100))] aux_rows: Vec<AuxiliaryRow>,
+        #[strategy(arb())] ood_main_row: Box<MainRow<XFieldElement>>,
+        #[strategy(arb())] ood_aux_row: Box<AuxiliaryRow>,
         #[strategy(arb())] quot_elements: Vec<QuotientSegments>,
         leaved_merkle_tree: LeavedMerkleTreeTestData,
     ) {
@@ -155,13 +155,13 @@ mod tests {
         sponge_states.push_back(proof_stream.sponge.state);
         proof_stream.enqueue(ProofItem::AuthenticationStructure(auth_structure.clone()));
         sponge_states.push_back(proof_stream.sponge.state);
-        proof_stream.enqueue(ProofItem::MasterBaseTableRows(base_rows.clone()));
+        proof_stream.enqueue(ProofItem::MasterMainTableRows(main_rows.clone()));
         sponge_states.push_back(proof_stream.sponge.state);
-        proof_stream.enqueue(ProofItem::MasterExtTableRows(ext_rows.clone()));
+        proof_stream.enqueue(ProofItem::MasterAuxTableRows(aux_rows.clone()));
         sponge_states.push_back(proof_stream.sponge.state);
-        proof_stream.enqueue(ProofItem::OutOfDomainBaseRow(ood_base_row.clone()));
+        proof_stream.enqueue(ProofItem::OutOfDomainMainRow(ood_main_row.clone()));
         sponge_states.push_back(proof_stream.sponge.state);
-        proof_stream.enqueue(ProofItem::OutOfDomainExtRow(ood_ext_row.clone()));
+        proof_stream.enqueue(ProofItem::OutOfDomainAuxRow(ood_aux_row.clone()));
         sponge_states.push_back(proof_stream.sponge.state);
         proof_stream.enqueue(ProofItem::MerkleRoot(root));
         sponge_states.push_back(proof_stream.sponge.state);
@@ -181,20 +181,20 @@ mod tests {
         assert!(auth_structure == auth_structure_);
 
         assert!(sponge_states.pop_front() == Some(proof_stream.sponge.state));
-        let_assert!(Ok(ProofItem::MasterBaseTableRows(base_rows_)) = proof_stream.dequeue());
-        assert!(base_rows == base_rows_);
+        let_assert!(Ok(ProofItem::MasterMainTableRows(main_rows_)) = proof_stream.dequeue());
+        assert!(main_rows == main_rows_);
 
         assert!(sponge_states.pop_front() == Some(proof_stream.sponge.state));
-        let_assert!(Ok(ProofItem::MasterExtTableRows(ext_rows_)) = proof_stream.dequeue());
-        assert!(ext_rows == ext_rows_);
+        let_assert!(Ok(ProofItem::MasterAuxTableRows(aux_rows_)) = proof_stream.dequeue());
+        assert!(aux_rows == aux_rows_);
 
         assert!(sponge_states.pop_front() == Some(proof_stream.sponge.state));
-        let_assert!(Ok(ProofItem::OutOfDomainBaseRow(ood_base_row_)) = proof_stream.dequeue());
-        assert!(ood_base_row == ood_base_row_);
+        let_assert!(Ok(ProofItem::OutOfDomainMainRow(ood_main_row_)) = proof_stream.dequeue());
+        assert!(ood_main_row == ood_main_row_);
 
         assert!(sponge_states.pop_front() == Some(proof_stream.sponge.state));
-        let_assert!(Ok(ProofItem::OutOfDomainExtRow(ood_ext_row_)) = proof_stream.dequeue());
-        assert!(ood_ext_row == ood_ext_row_);
+        let_assert!(Ok(ProofItem::OutOfDomainAuxRow(ood_aux_row_)) = proof_stream.dequeue());
+        assert!(ood_aux_row == ood_aux_row_);
 
         assert!(sponge_states.pop_front() == Some(proof_stream.sponge.state));
         let_assert!(Ok(ProofItem::MerkleRoot(root_)) = proof_stream.dequeue());

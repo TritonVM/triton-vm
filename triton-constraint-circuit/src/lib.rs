@@ -40,11 +40,11 @@ pub struct DegreeLoweringInfo {
     /// The degree after degree lowering. Must be greater than 1.
     pub target_degree: isize,
 
-    /// The total number of base columns _before_ degree lowering has happened.
-    pub num_base_cols: usize,
+    /// The total number of main columns _before_ degree lowering has happened.
+    pub num_main_cols: usize,
 
-    /// The total number of extension columns _before_ degree lowering has happened.
-    pub num_ext_cols: usize,
+    /// The total number of auxiliary columns _before_ degree lowering has happened.
+    pub num_aux_cols: usize,
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
@@ -96,7 +96,7 @@ impl BinOp {
 /// Having `Copy + Hash + Eq` helps to put `InputIndicator`s into containers.
 pub trait InputIndicator: Debug + Display + Copy + Hash + Eq + ToTokens {
     /// `true` iff `self` refers to a column in the base table.
-    fn is_base_table_column(&self) -> bool;
+    fn is_main_table_column(&self) -> bool;
 
     /// `true` iff `self` refers to the current row.
     fn is_current_row(&self) -> bool;
@@ -105,7 +105,7 @@ pub trait InputIndicator: Debug + Display + Copy + Hash + Eq + ToTokens {
     fn column(&self) -> usize;
 
     fn base_table_input(index: usize) -> Self;
-    fn ext_table_input(index: usize) -> Self;
+    fn aux_table_input(index: usize) -> Self;
 
     fn evaluate(
         &self,
@@ -118,15 +118,15 @@ pub trait InputIndicator: Debug + Display + Copy + Hash + Eq + ToTokens {
 /// execution trace.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Arbitrary)]
 pub enum SingleRowIndicator {
-    BaseRow(usize),
-    ExtRow(usize),
+    Main(usize),
+    Aux(usize),
 }
 
 impl Display for SingleRowIndicator {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         let input_indicator: String = match self {
-            Self::BaseRow(i) => format!("base_row[{i}]"),
-            Self::ExtRow(i) => format!("ext_row[{i}]"),
+            Self::Main(i) => format!("main_row[{i}]"),
+            Self::Aux(i) => format!("aux_row[{i}]"),
         };
 
         write!(f, "{input_indicator}")
@@ -136,15 +136,15 @@ impl Display for SingleRowIndicator {
 impl ToTokens for SingleRowIndicator {
     fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
         match self {
-            Self::BaseRow(i) => tokens.extend(quote!(base_row[#i])),
-            Self::ExtRow(i) => tokens.extend(quote!(ext_row[#i])),
+            Self::Main(i) => tokens.extend(quote!(main_row[#i])),
+            Self::Aux(i) => tokens.extend(quote!(aux_row[#i])),
         }
     }
 }
 
 impl InputIndicator for SingleRowIndicator {
-    fn is_base_table_column(&self) -> bool {
-        matches!(self, Self::BaseRow(_))
+    fn is_main_table_column(&self) -> bool {
+        matches!(self, Self::Main(_))
     }
 
     fn is_current_row(&self) -> bool {
@@ -153,16 +153,16 @@ impl InputIndicator for SingleRowIndicator {
 
     fn column(&self) -> usize {
         match self {
-            Self::BaseRow(i) | Self::ExtRow(i) => *i,
+            Self::Main(i) | Self::Aux(i) => *i,
         }
     }
 
     fn base_table_input(index: usize) -> Self {
-        Self::BaseRow(index)
+        Self::Main(index)
     }
 
-    fn ext_table_input(index: usize) -> Self {
-        Self::ExtRow(index)
+    fn aux_table_input(index: usize) -> Self {
+        Self::Aux(index)
     }
 
     fn evaluate(
@@ -171,8 +171,8 @@ impl InputIndicator for SingleRowIndicator {
         ext_table: ArrayView2<XFieldElement>,
     ) -> XFieldElement {
         match self {
-            Self::BaseRow(i) => base_table[[0, *i]].lift(),
-            Self::ExtRow(i) => ext_table[[0, *i]],
+            Self::Main(i) => base_table[[0, *i]].lift(),
+            Self::Aux(i) => ext_table[[0, *i]],
         }
     }
 }
@@ -181,19 +181,19 @@ impl InputIndicator for SingleRowIndicator {
 /// next) of the execution trace.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Arbitrary)]
 pub enum DualRowIndicator {
-    CurrentBaseRow(usize),
-    CurrentExtRow(usize),
-    NextBaseRow(usize),
-    NextExtRow(usize),
+    CurrentMain(usize),
+    CurrentAux(usize),
+    NextMain(usize),
+    NextAux(usize),
 }
 
 impl Display for DualRowIndicator {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         let input_indicator: String = match self {
-            Self::CurrentBaseRow(i) => format!("current_base_row[{i}]"),
-            Self::CurrentExtRow(i) => format!("current_ext_row[{i}]"),
-            Self::NextBaseRow(i) => format!("next_base_row[{i}]"),
-            Self::NextExtRow(i) => format!("next_ext_row[{i}]"),
+            Self::CurrentMain(i) => format!("current_main_row[{i}]"),
+            Self::CurrentAux(i) => format!("current_aux_row[{i}]"),
+            Self::NextMain(i) => format!("next_main_row[{i}]"),
+            Self::NextAux(i) => format!("next_aux_row[{i}]"),
         };
 
         write!(f, "{input_indicator}")
@@ -203,29 +203,26 @@ impl Display for DualRowIndicator {
 impl ToTokens for DualRowIndicator {
     fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
         match self {
-            Self::CurrentBaseRow(i) => tokens.extend(quote!(current_base_row[#i])),
-            Self::CurrentExtRow(i) => tokens.extend(quote!(current_ext_row[#i])),
-            Self::NextBaseRow(i) => tokens.extend(quote!(next_base_row[#i])),
-            Self::NextExtRow(i) => tokens.extend(quote!(next_ext_row[#i])),
+            Self::CurrentMain(i) => tokens.extend(quote!(current_main_row[#i])),
+            Self::CurrentAux(i) => tokens.extend(quote!(current_aux_row[#i])),
+            Self::NextMain(i) => tokens.extend(quote!(next_main_row[#i])),
+            Self::NextAux(i) => tokens.extend(quote!(next_aux_row[#i])),
         }
     }
 }
 
 impl InputIndicator for DualRowIndicator {
-    fn is_base_table_column(&self) -> bool {
-        matches!(self, Self::CurrentBaseRow(_) | Self::NextBaseRow(_))
+    fn is_main_table_column(&self) -> bool {
+        matches!(self, Self::CurrentMain(_) | Self::NextMain(_))
     }
 
     fn is_current_row(&self) -> bool {
-        matches!(self, Self::CurrentBaseRow(_) | Self::CurrentExtRow(_))
+        matches!(self, Self::CurrentMain(_) | Self::CurrentAux(_))
     }
 
     fn column(&self) -> usize {
         match self {
-            Self::CurrentBaseRow(i)
-            | Self::NextBaseRow(i)
-            | Self::CurrentExtRow(i)
-            | Self::NextExtRow(i) => *i,
+            Self::CurrentMain(i) | Self::NextMain(i) | Self::CurrentAux(i) | Self::NextAux(i) => *i,
         }
     }
 
@@ -233,11 +230,11 @@ impl InputIndicator for DualRowIndicator {
         // It seems that the choice between `CurrentBaseRow` and `NextBaseRow` is arbitrary:
         // any transition constraint polynomial is evaluated on both the current and the next row.
         // Hence, both rows are in scope.
-        Self::CurrentBaseRow(index)
+        Self::CurrentMain(index)
     }
 
-    fn ext_table_input(index: usize) -> Self {
-        Self::CurrentExtRow(index)
+    fn aux_table_input(index: usize) -> Self {
+        Self::CurrentAux(index)
     }
 
     fn evaluate(
@@ -246,10 +243,10 @@ impl InputIndicator for DualRowIndicator {
         ext_table: ArrayView2<XFieldElement>,
     ) -> XFieldElement {
         match self {
-            Self::CurrentBaseRow(i) => base_table[[0, *i]].lift(),
-            Self::CurrentExtRow(i) => ext_table[[0, *i]],
-            Self::NextBaseRow(i) => base_table[[1, *i]].lift(),
-            Self::NextExtRow(i) => ext_table[[1, *i]],
+            Self::CurrentMain(i) => base_table[[0, *i]].lift(),
+            Self::CurrentAux(i) => ext_table[[0, *i]],
+            Self::NextMain(i) => base_table[[1, *i]].lift(),
+            Self::NextAux(i) => ext_table[[1, *i]],
         }
     }
 }
@@ -501,14 +498,14 @@ impl<II: InputIndicator> ConstraintCircuit<II> {
     }
 
     /// Recursively check whether this node is composed of only BFieldElements, i.e., only uses
-    /// 1. inputs from base rows,
+    /// 1. inputs from main rows,
     /// 2. constants from the B-field, and
     /// 3. binary operations on BFieldElements.
     pub fn evaluates_to_base_element(&self) -> bool {
         match &self.expression {
             CircuitExpression::BConstant(_) => true,
             CircuitExpression::XConstant(_) => false,
-            CircuitExpression::Input(indicator) => indicator.is_base_table_column(),
+            CircuitExpression::Input(indicator) => indicator.is_main_table_column(),
             CircuitExpression::Challenge(_) => false,
             CircuitExpression::BinaryOperation(_, lhs, rhs) => {
                 lhs.borrow().evaluates_to_base_element() && rhs.borrow().evaluates_to_base_element()
@@ -698,8 +695,8 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
     /// The target degree must be greater than 1.
     ///
     /// The new constraints are returned as two vector of ConstraintCircuitMonads:
-    /// the first corresponds to base columns and constraints,
-    /// the second to extension columns and constraints.
+    /// the first corresponds to main columns and constraints,
+    /// the second to auxiliary columns and constraints.
     ///
     /// Each returned constraint is guaranteed to correspond to some
     /// `CircuitExpression::BinaryOperation(BinOp::Sub, lhs, rhs)` where
@@ -722,11 +719,11 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
             "Target degree must be greater than 1. Got {target_degree}."
         );
 
-        let mut base_constraints = vec![];
-        let mut ext_constraints = vec![];
+        let mut main_constraints = vec![];
+        let mut aux_constraints = vec![];
 
         if multicircuit.is_empty() {
-            return (base_constraints, ext_constraints);
+            return (main_constraints, aux_constraints);
         }
 
         let builder = multicircuit[0].builder.clone();
@@ -736,13 +733,13 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
 
             // Create a new variable.
             let chosen_node = builder.all_nodes.borrow()[&chosen_node_id].clone();
-            let chosen_node_is_base_col = chosen_node.circuit.borrow().evaluates_to_base_element();
-            let new_input_indicator = if chosen_node_is_base_col {
-                let new_base_col_idx = info.num_base_cols + base_constraints.len();
-                II::base_table_input(new_base_col_idx)
+            let chosen_node_is_main_col = chosen_node.circuit.borrow().evaluates_to_base_element();
+            let new_input_indicator = if chosen_node_is_main_col {
+                let new_main_col_idx = info.num_main_cols + main_constraints.len();
+                II::base_table_input(new_main_col_idx)
             } else {
-                let new_ext_col_idx = info.num_ext_cols + ext_constraints.len();
-                II::ext_table_input(new_ext_col_idx)
+                let new_aux_col_idx = info.num_aux_cols + aux_constraints.len();
+                II::aux_table_input(new_aux_col_idx)
             };
             let new_variable = builder.input(new_input_indicator);
 
@@ -758,13 +755,13 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
 
             // Create new constraint and put it into the appropriate return vector.
             let new_constraint = new_variable - chosen_node;
-            match chosen_node_is_base_col {
-                true => base_constraints.push(new_constraint),
-                false => ext_constraints.push(new_constraint),
+            match chosen_node_is_main_col {
+                true => main_constraints.push(new_constraint),
+                false => aux_constraints.push(new_constraint),
             }
         }
 
-        (base_constraints, ext_constraints)
+        (main_constraints, aux_constraints)
     }
 
     /// Heuristically pick a node from the given multicircuit that is to be substituted with a new
@@ -1215,8 +1212,8 @@ mod tests {
         let builder = ConstraintCircuitBuilder::new();
         assert_eq!("1", builder.b_constant(1).to_string());
         assert_eq!(
-            "base_row[5] ",
-            builder.input(SingleRowIndicator::BaseRow(5)).to_string()
+            "main_row[5] ",
+            builder.input(SingleRowIndicator::Main(5)).to_string()
         );
         assert_eq!("6", builder.challenge(6_usize).to_string());
 
@@ -1287,7 +1284,7 @@ mod tests {
     #[test]
     fn substitution_replaces_a_node_in_a_circuit() {
         let builder = ConstraintCircuitBuilder::new();
-        let x = |i| builder.input(SingleRowIndicator::BaseRow(i));
+        let x = |i| builder.input(SingleRowIndicator::Main(i));
         let constant = |c: u32| builder.b_constant(c);
         let challenge = |i: usize| builder.challenge(i);
 
@@ -1316,28 +1313,28 @@ mod tests {
     #[test]
     fn simple_degree_lowering() {
         let builder = ConstraintCircuitBuilder::new();
-        let x = || builder.input(SingleRowIndicator::BaseRow(0));
+        let x = || builder.input(SingleRowIndicator::Main(0));
         let x_pow_3 = x() * x() * x();
         let x_pow_5 = x() * x() * x() * x() * x();
         let mut multicircuit = [x_pow_5, x_pow_3];
 
         let degree_lowering_info = DegreeLoweringInfo {
             target_degree: 3,
-            num_base_cols: 1,
-            num_ext_cols: 0,
+            num_main_cols: 1,
+            num_aux_cols: 0,
         };
-        let (new_base_constraints, new_ext_constraints) =
+        let (new_main_constraints, new_aux_constraints) =
             ConstraintCircuitMonad::lower_to_degree(&mut multicircuit, degree_lowering_info);
 
-        assert_eq!(1, new_base_constraints.len());
-        assert!(new_ext_constraints.is_empty());
+        assert_eq!(1, new_main_constraints.len());
+        assert!(new_aux_constraints.is_empty());
     }
 
     #[test]
     fn somewhat_simple_degree_lowering() {
         let builder = ConstraintCircuitBuilder::new();
-        let x = |i| builder.input(SingleRowIndicator::BaseRow(i));
-        let y = |i| builder.input(SingleRowIndicator::ExtRow(i));
+        let x = |i| builder.input(SingleRowIndicator::Main(i));
+        let y = |i| builder.input(SingleRowIndicator::Aux(i));
         let b_con = |i: u64| builder.b_constant(i);
 
         let constraint_0 = x(0) * x(0) * (x(1) - x(2)) - x(0) * x(2) - b_con(42);
@@ -1351,20 +1348,20 @@ mod tests {
 
         let degree_lowering_info = DegreeLoweringInfo {
             target_degree: 2,
-            num_base_cols: 3,
-            num_ext_cols: 2,
+            num_main_cols: 3,
+            num_aux_cols: 2,
         };
-        let (new_base_constraints, new_ext_constraints) =
+        let (new_main_constraints, new_aux_constraints) =
             ConstraintCircuitMonad::lower_to_degree(&mut multicircuit, degree_lowering_info);
 
-        assert!(new_base_constraints.len() <= 3);
-        assert!(new_ext_constraints.len() <= 1);
+        assert!(new_main_constraints.len() <= 3);
+        assert!(new_aux_constraints.len() <= 1);
     }
 
     #[test]
     fn less_simple_degree_lowering() {
         let builder = ConstraintCircuitBuilder::new();
-        let x = |i| builder.input(SingleRowIndicator::BaseRow(i));
+        let x = |i| builder.input(SingleRowIndicator::Main(i));
 
         let constraint_0 = (x(0) * x(1) * x(2)) * (x(3) * x(4)) * x(5);
         let constraint_1 = (x(6) * x(7)) * (x(3) * x(4)) * x(8);
@@ -1373,21 +1370,21 @@ mod tests {
 
         let degree_lowering_info = DegreeLoweringInfo {
             target_degree: 3,
-            num_base_cols: 9,
-            num_ext_cols: 0,
+            num_main_cols: 9,
+            num_aux_cols: 0,
         };
-        let (new_base_constraints, new_ext_constraints) =
+        let (new_main_constraints, new_aux_constraints) =
             ConstraintCircuitMonad::lower_to_degree(&mut multicircuit, degree_lowering_info);
 
-        assert!(new_base_constraints.len() <= 3);
-        assert!(new_ext_constraints.is_empty());
+        assert!(new_main_constraints.len() <= 3);
+        assert!(new_aux_constraints.is_empty());
     }
 
     #[test]
     fn all_nodes_in_multicircuit_are_identified_correctly() {
         let builder = ConstraintCircuitBuilder::new();
 
-        let x = |i| builder.input(SingleRowIndicator::BaseRow(i));
+        let x = |i| builder.input(SingleRowIndicator::Main(i));
         let b_con = |i: u64| builder.b_constant(i);
 
         let sub_tree_0 = x(0) * x(1) * (x(2) - b_con(1)) * x(3) * x(4);
@@ -1447,7 +1444,7 @@ mod tests {
     fn equivalent_nodes_are_detected_when_present() {
         let builder = ConstraintCircuitBuilder::new();
 
-        let x = |i| builder.input(SingleRowIndicator::BaseRow(i));
+        let x = |i| builder.input(SingleRowIndicator::Main(i));
         let ch = |i: usize| builder.challenge(i);
 
         let u0 = x(0) + x(1);

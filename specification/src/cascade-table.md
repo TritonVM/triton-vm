@@ -6,9 +6,9 @@ The Cascade Table facilitates the translation of limb widths.
 For the actual lookup of the 8-bit limbs, the [Lookup Table](lookup-table.md) is used.
 For a more detailed explanation and in-depth analysis, see the [Tip5 paper](https://eprint.iacr.org/2023/107.pdf).
 
-## Base Columns
+## Main Columns
 
-The Cascade Table has 6 base columns:
+The Cascade Table has 6 main columns:
 
 | name                 | description                                                   |
 |:---------------------|:--------------------------------------------------------------|
@@ -19,9 +19,9 @@ The Cascade Table has 6 base columns:
 | `LookOutLo`          | The less significant bits of the lookup output.               |
 | `LookupMultiplicity` | The number of times the value is looked up by the Hash Table. |
 
-## Extension Columns
+## Auxiliary Columns
 
-The Cascade Table has 2 extension columns:
+The Cascade Table has 2 auxiliary columns:
 
 - `HashTableServerLogDerivative`, the (running sum of the) logarithmic derivative for the Lookup Argument with the Hash Table.
     In every row, the sum accumulates `LookupMultiplicity / (🧺 - Combo)` where 🧺 is a verifier-supplied challenge

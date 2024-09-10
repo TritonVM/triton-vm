@@ -82,7 +82,7 @@ impl OpStackTableEntry {
         op_stack_table_entries
     }
 
-    pub fn to_base_table_row(self) -> Array1<BFieldElement> {
+    pub fn to_main_table_row(self) -> Array1<BFieldElement> {
         let shrink_stack_indicator = if self.shrinks_stack() {
             bfe!(1)
         } else {
@@ -90,10 +90,10 @@ impl OpStackTableEntry {
         };
 
         let mut row = Array1::zeros(<OpStackTable as AIR>::MainColumn::COUNT);
-        row[MainColumn::CLK.base_table_index()] = self.clk.into();
-        row[MainColumn::IB1ShrinkStack.base_table_index()] = shrink_stack_indicator;
-        row[MainColumn::StackPointer.base_table_index()] = self.op_stack_pointer;
-        row[MainColumn::FirstUnderflowElement.base_table_index()] = self.underflow_io.payload();
+        row[MainColumn::CLK.main_index()] = self.clk.into();
+        row[MainColumn::IB1ShrinkStack.main_index()] = shrink_stack_indicator;
+        row[MainColumn::StackPointer.main_index()] = self.op_stack_pointer;
+        row[MainColumn::FirstUnderflowElement.main_index()] = self.underflow_io.payload();
         row
     }
 }
@@ -107,13 +107,11 @@ fn extension_column_running_product_permutation_argument(
     let mut running_product = PermArg::default_initial();
     let mut extension_column = Vec::with_capacity(base_table.nrows());
     for row in base_table.rows() {
-        if row[MainColumn::IB1ShrinkStack.base_table_index()] != PADDING_VALUE {
-            let compressed_row = row[MainColumn::CLK.base_table_index()]
-                * challenges[OpStackClkWeight]
-                + row[MainColumn::IB1ShrinkStack.base_table_index()] * challenges[OpStackIb1Weight]
-                + row[MainColumn::StackPointer.base_table_index()]
-                    * challenges[OpStackPointerWeight]
-                + row[MainColumn::FirstUnderflowElement.base_table_index()]
+        if row[MainColumn::IB1ShrinkStack.main_index()] != PADDING_VALUE {
+            let compressed_row = row[MainColumn::CLK.main_index()] * challenges[OpStackClkWeight]
+                + row[MainColumn::IB1ShrinkStack.main_index()] * challenges[OpStackIb1Weight]
+                + row[MainColumn::StackPointer.main_index()] * challenges[OpStackPointerWeight]
+                + row[MainColumn::FirstUnderflowElement.main_index()]
                     * challenges[OpStackFirstUnderflowElementWeight];
             running_product *= perm_arg_indeterminate - compressed_row;
         }
@@ -144,15 +142,15 @@ fn extension_column_clock_jump_diff_lookup_log_derivative(
     let mut extension_column = Vec::with_capacity(base_table.nrows());
     extension_column.push(cjd_lookup_log_derivative);
     for (previous_row, current_row) in base_table.rows().into_iter().tuple_windows() {
-        if current_row[MainColumn::IB1ShrinkStack.base_table_index()] == PADDING_VALUE {
+        if current_row[MainColumn::IB1ShrinkStack.main_index()] == PADDING_VALUE {
             break;
         };
 
-        let previous_stack_pointer = previous_row[MainColumn::StackPointer.base_table_index()];
-        let current_stack_pointer = current_row[MainColumn::StackPointer.base_table_index()];
+        let previous_stack_pointer = previous_row[MainColumn::StackPointer.main_index()];
+        let current_stack_pointer = current_row[MainColumn::StackPointer.main_index()];
         if previous_stack_pointer == current_stack_pointer {
-            let previous_clock = previous_row[MainColumn::CLK.base_table_index()];
-            let current_clock = current_row[MainColumn::CLK.base_table_index()];
+            let previous_clock = previous_row[MainColumn::CLK.main_index()];
+            let current_clock = current_row[MainColumn::CLK.main_index()];
             let clock_jump_difference = current_clock - previous_clock;
             let &mut inverse = inverses_dictionary
                 .entry(clock_jump_difference)
@@ -192,10 +190,10 @@ impl TraceTable for OpStackTable {
     fn pad(mut op_stack_table: ArrayViewMut2<BFieldElement>, op_stack_table_len: usize) {
         let last_row_index = op_stack_table_len.saturating_sub(1);
         let mut padding_row = op_stack_table.row(last_row_index).to_owned();
-        padding_row[MainColumn::IB1ShrinkStack.base_table_index()] = PADDING_VALUE;
+        padding_row[MainColumn::IB1ShrinkStack.main_index()] = PADDING_VALUE;
         if op_stack_table_len == 0 {
             let first_stack_pointer = u32::try_from(OpStackElement::COUNT).unwrap().into();
-            padding_row[MainColumn::StackPointer.base_table_index()] = first_stack_pointer;
+            padding_row[MainColumn::StackPointer.main_index()] = first_stack_pointer;
         }
 
         let mut padding_section = op_stack_table.slice_mut(s![op_stack_table_len.., ..]);
@@ -215,8 +213,8 @@ impl TraceTable for OpStackTable {
         assert_eq!(AuxColumn::COUNT, aux_table.ncols());
         assert_eq!(main_table.nrows(), aux_table.nrows());
 
-        let extension_column_indices = OpStackExtTableColumn::iter()
-            .map(|column| column.ext_table_index())
+        let extension_column_indices = OpStackAuxColumn::iter()
+            .map(|column| column.aux_index())
             .collect_vec();
         let extension_column_slices = horizontal_multi_slice_mut(
             aux_table.view_mut(),
@@ -239,12 +237,12 @@ impl TraceTable for OpStackTable {
 }
 
 fn compare_rows(row_0: ArrayView1<BFieldElement>, row_1: ArrayView1<BFieldElement>) -> Ordering {
-    let stack_pointer_0 = row_0[MainColumn::StackPointer.base_table_index()].value();
-    let stack_pointer_1 = row_1[MainColumn::StackPointer.base_table_index()].value();
+    let stack_pointer_0 = row_0[MainColumn::StackPointer.main_index()].value();
+    let stack_pointer_1 = row_1[MainColumn::StackPointer.main_index()].value();
     let compare_stack_pointers = stack_pointer_0.cmp(&stack_pointer_1);
 
-    let clk_0 = row_0[MainColumn::CLK.base_table_index()].value();
-    let clk_1 = row_1[MainColumn::CLK.base_table_index()].value();
+    let clk_0 = row_0[MainColumn::CLK.main_index()].value();
+    let clk_1 = row_1[MainColumn::CLK.main_index()].value();
     let compare_clocks = clk_0.cmp(&clk_1);
 
     compare_stack_pointers.then(compare_clocks)
@@ -255,11 +253,11 @@ fn clock_jump_differences(op_stack_table: ArrayView2<BFieldElement>) -> Vec<BFie
     for consecutive_rows in op_stack_table.axis_windows(Axis(0), 2) {
         let current_row = consecutive_rows.row(0);
         let next_row = consecutive_rows.row(1);
-        let current_stack_pointer = current_row[MainColumn::StackPointer.base_table_index()];
-        let next_stack_pointer = next_row[MainColumn::StackPointer.base_table_index()];
+        let current_stack_pointer = current_row[MainColumn::StackPointer.main_index()];
+        let next_stack_pointer = next_row[MainColumn::StackPointer.main_index()];
         if current_stack_pointer == next_stack_pointer {
-            let current_clk = current_row[MainColumn::CLK.base_table_index()];
-            let next_clk = next_row[MainColumn::CLK.base_table_index()];
+            let current_clk = current_row[MainColumn::CLK.main_index()];
+            let next_clk = next_row[MainColumn::CLK.main_index()];
             let clk_difference = next_clk - current_clk;
             clock_jump_differences.push(clk_difference);
         }
@@ -357,12 +355,12 @@ pub(crate) mod tests {
         const BASE_WIDTH: usize = <OpStackTable as AIR>::MainColumn::COUNT;
 
         let mut row_0 = Array1::zeros(BASE_WIDTH);
-        row_0[MainColumn::StackPointer.base_table_index()] = stack_pointer_0.into();
-        row_0[MainColumn::CLK.base_table_index()] = clk.into();
+        row_0[MainColumn::StackPointer.main_index()] = stack_pointer_0.into();
+        row_0[MainColumn::CLK.main_index()] = clk.into();
 
         let mut row_1 = Array1::zeros(BASE_WIDTH);
-        row_1[MainColumn::StackPointer.base_table_index()] = stack_pointer_1.into();
-        row_1[MainColumn::CLK.base_table_index()] = clk.into();
+        row_1[MainColumn::StackPointer.main_index()] = stack_pointer_1.into();
+        row_1[MainColumn::CLK.main_index()] = clk.into();
 
         let stack_pointer_comparison = stack_pointer_0.cmp(&stack_pointer_1);
         let row_comparison = compare_rows(row_0.view(), row_1.view());
@@ -379,12 +377,12 @@ pub(crate) mod tests {
         const BASE_WIDTH: usize = <OpStackTable as AIR>::MainColumn::COUNT;
 
         let mut row_0 = Array1::zeros(BASE_WIDTH);
-        row_0[MainColumn::StackPointer.base_table_index()] = stack_pointer.into();
-        row_0[MainColumn::CLK.base_table_index()] = clk_0.into();
+        row_0[MainColumn::StackPointer.main_index()] = stack_pointer.into();
+        row_0[MainColumn::CLK.main_index()] = clk_0.into();
 
         let mut row_1 = Array1::zeros(BASE_WIDTH);
-        row_1[MainColumn::StackPointer.base_table_index()] = stack_pointer.into();
-        row_1[MainColumn::CLK.base_table_index()] = clk_1.into();
+        row_1[MainColumn::StackPointer.main_index()] = stack_pointer.into();
+        row_1[MainColumn::CLK.main_index()] = clk_1.into();
 
         let clk_comparison = clk_0.cmp(&clk_1);
         let row_comparison = compare_rows(row_0.view(), row_1.view());

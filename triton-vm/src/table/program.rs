@@ -6,8 +6,8 @@ use air::cross_table_argument::EvalArg;
 use air::cross_table_argument::LookupArg;
 use air::table::program::ProgramTable;
 use air::table::TableId;
-use air::table_column::ProgramBaseTableColumn::*;
-use air::table_column::ProgramExtTableColumn::*;
+use air::table_column::ProgramAuxColumn::*;
+use air::table_column::ProgramMainColumn::*;
 use air::table_column::*;
 use ndarray::s;
 use ndarray::Array1;
@@ -61,12 +61,12 @@ impl TraceTable for ProgramTable {
             };
 
             let mut current_row = program_table.row_mut(row_idx);
-            current_row[Address.base_table_index()] = address;
-            current_row[Instruction.base_table_index()] = instruction;
-            current_row[LookupMultiplicity.base_table_index()] = lookup_multiplicity;
-            current_row[IndexInChunk.base_table_index()] = index_in_chunk;
-            current_row[MaxMinusIndexInChunkInv.base_table_index()] = max_minus_index_in_chunk_inv;
-            current_row[IsHashInputPadding.base_table_index()] = is_hash_input_padding;
+            current_row[Address.main_index()] = address;
+            current_row[Instruction.main_index()] = instruction;
+            current_row[LookupMultiplicity.main_index()] = lookup_multiplicity;
+            current_row[IndexInChunk.main_index()] = index_in_chunk;
+            current_row[MaxMinusIndexInChunkInv.main_index()] = max_minus_index_in_chunk_inv;
+            current_row[IsHashInputPadding.main_index()] = is_hash_input_padding;
         }
     }
 
@@ -74,7 +74,7 @@ impl TraceTable for ProgramTable {
         let addresses =
             (program_len..program_table.nrows()).map(|a| bfe!(u64::try_from(a).unwrap()));
         let addresses = Array1::from_iter(addresses);
-        let address_column = program_table.slice_mut(s![program_len.., Address.base_table_index()]);
+        let address_column = program_table.slice_mut(s![program_len.., Address.main_index()]);
         addresses.move_into(address_column);
 
         let indices_in_chunks = (program_len..program_table.nrows())
@@ -82,7 +82,7 @@ impl TraceTable for ProgramTable {
             .map(|ac| bfe!(u64::try_from(ac).unwrap()));
         let indices_in_chunks = Array1::from_iter(indices_in_chunks);
         let index_in_chunk_column =
-            program_table.slice_mut(s![program_len.., IndexInChunk.base_table_index()]);
+            program_table.slice_mut(s![program_len.., IndexInChunk.main_index()]);
         indices_in_chunks.move_into(index_in_chunk_column);
 
         let max_minus_indices_in_chunks_inverses = (program_len..program_table.nrows())
@@ -91,17 +91,15 @@ impl TraceTable for ProgramTable {
             .map(|bfe| bfe.inverse_or_zero());
         let max_minus_indices_in_chunks_inverses =
             Array1::from_iter(max_minus_indices_in_chunks_inverses);
-        let max_minus_index_in_chunk_inv_column = program_table.slice_mut(s![
-            program_len..,
-            MaxMinusIndexInChunkInv.base_table_index()
-        ]);
+        let max_minus_index_in_chunk_inv_column =
+            program_table.slice_mut(s![program_len.., MaxMinusIndexInChunkInv.main_index()]);
         max_minus_indices_in_chunks_inverses.move_into(max_minus_index_in_chunk_inv_column);
 
         program_table
-            .slice_mut(s![program_len.., IsHashInputPadding.base_table_index()])
+            .slice_mut(s![program_len.., IsHashInputPadding.main_index()])
             .fill(BFieldElement::one());
         program_table
-            .slice_mut(s![program_len.., IsTablePadding.base_table_index()])
+            .slice_mut(s![program_len.., IsTablePadding.main_index()])
             .fill(BFieldElement::one());
     }
 
@@ -139,7 +137,7 @@ impl TraceTable for ProgramTable {
             // The logarithmic derivative's final value, allowing for a meaningful cross-table
             // argument, is recorded in the first padding row. This row is guaranteed to exist
             // due to the hash-input padding mechanics.
-            extension_row[InstructionLookupServerLogDerivative.ext_table_index()] =
+            extension_row[InstructionLookupServerLogDerivative.aux_index()] =
                 instruction_lookup_log_derivative;
 
             instruction_lookup_log_derivative = update_instruction_lookup_log_derivative(
@@ -160,35 +158,33 @@ impl TraceTable for ProgramTable {
                 prepare_chunk_running_evaluation,
             );
 
-            extension_row[PrepareChunkRunningEvaluation.ext_table_index()] =
+            extension_row[PrepareChunkRunningEvaluation.aux_index()] =
                 prepare_chunk_running_evaluation;
-            extension_row[SendChunkRunningEvaluation.ext_table_index()] =
-                send_chunk_running_evaluation;
+            extension_row[SendChunkRunningEvaluation.aux_index()] = send_chunk_running_evaluation;
         }
 
         // special treatment for the last row
-        let base_rows_iter = main_table.rows().into_iter();
-        let ext_rows_iter = aux_table.rows_mut().into_iter();
-        let last_base_row = base_rows_iter.last().unwrap();
-        let mut last_ext_row = ext_rows_iter.last().unwrap();
+        let main_rows_iter = main_table.rows().into_iter();
+        let aux_rows_iter = aux_table.rows_mut().into_iter();
+        let last_main_row = main_rows_iter.last().unwrap();
+        let mut last_aux_row = aux_rows_iter.last().unwrap();
 
         prepare_chunk_running_evaluation = update_prepare_chunk_running_evaluation(
-            last_base_row,
+            last_main_row,
             challenges,
             prepare_chunk_running_evaluation,
         );
         send_chunk_running_evaluation = update_send_chunk_running_evaluation(
-            last_base_row,
+            last_main_row,
             challenges,
             send_chunk_running_evaluation,
             prepare_chunk_running_evaluation,
         );
 
-        last_ext_row[InstructionLookupServerLogDerivative.ext_table_index()] =
+        last_aux_row[InstructionLookupServerLogDerivative.aux_index()] =
             instruction_lookup_log_derivative;
-        last_ext_row[PrepareChunkRunningEvaluation.ext_table_index()] =
-            prepare_chunk_running_evaluation;
-        last_ext_row[SendChunkRunningEvaluation.ext_table_index()] = send_chunk_running_evaluation;
+        last_aux_row[PrepareChunkRunningEvaluation.aux_index()] = prepare_chunk_running_evaluation;
+        last_aux_row[SendChunkRunningEvaluation.aux_index()] = send_chunk_running_evaluation;
 
         profiler!(stop "program table");
     }
@@ -200,7 +196,7 @@ fn update_instruction_lookup_log_derivative(
     next_row: ArrayView1<BFieldElement>,
     instruction_lookup_log_derivative: XFieldElement,
 ) -> XFieldElement {
-    if row[IsHashInputPadding.base_table_index()].is_one() {
+    if row[IsHashInputPadding.main_index()].is_one() {
         return instruction_lookup_log_derivative;
     }
     instruction_lookup_log_derivative
@@ -212,11 +208,11 @@ fn instruction_lookup_log_derivative_summand(
     next_row: ArrayView1<BFieldElement>,
     challenges: &Challenges,
 ) -> XFieldElement {
-    let compressed_row = row[Address.base_table_index()] * challenges[ProgramAddressWeight]
-        + row[Instruction.base_table_index()] * challenges[ProgramInstructionWeight]
-        + next_row[Instruction.base_table_index()] * challenges[ProgramNextInstructionWeight];
+    let compressed_row = row[Address.main_index()] * challenges[ProgramAddressWeight]
+        + row[Instruction.main_index()] * challenges[ProgramInstructionWeight]
+        + next_row[Instruction.main_index()] * challenges[ProgramNextInstructionWeight];
     (challenges[InstructionLookupIndeterminate] - compressed_row).inverse()
-        * row[LookupMultiplicity.base_table_index()]
+        * row[LookupMultiplicity.main_index()]
 }
 
 fn update_prepare_chunk_running_evaluation(
@@ -224,7 +220,7 @@ fn update_prepare_chunk_running_evaluation(
     challenges: &Challenges,
     prepare_chunk_running_evaluation: XFieldElement,
 ) -> XFieldElement {
-    let running_evaluation_resets = row[IndexInChunk.base_table_index()].is_zero();
+    let running_evaluation_resets = row[IndexInChunk.main_index()].is_zero();
     let prepare_chunk_running_evaluation = if running_evaluation_resets {
         EvalArg::default_initial()
     } else {
@@ -232,7 +228,7 @@ fn update_prepare_chunk_running_evaluation(
     };
 
     prepare_chunk_running_evaluation * challenges[ProgramAttestationPrepareChunkIndeterminate]
-        + row[Instruction.base_table_index()]
+        + row[Instruction.main_index()]
 }
 
 fn update_send_chunk_running_evaluation(
@@ -241,8 +237,8 @@ fn update_send_chunk_running_evaluation(
     send_chunk_running_evaluation: XFieldElement,
     prepare_chunk_running_evaluation: XFieldElement,
 ) -> XFieldElement {
-    let index_in_chunk = row[IndexInChunk.base_table_index()];
-    let is_table_padding_row = row[IsTablePadding.base_table_index()].is_one();
+    let index_in_chunk = row[IndexInChunk.main_index()];
+    let is_table_padding_row = row[IsTablePadding.main_index()].is_one();
     let max_index_in_chunk = Tip5::RATE as u64 - 1;
     let running_evaluation_needs_update =
         !is_table_padding_row && index_in_chunk.value() == max_index_in_chunk;

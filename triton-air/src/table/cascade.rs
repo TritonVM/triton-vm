@@ -1,13 +1,13 @@
 use constraint_circuit::ConstraintCircuitBuilder;
 use constraint_circuit::ConstraintCircuitMonad;
 use constraint_circuit::DualRowIndicator;
-use constraint_circuit::DualRowIndicator::CurrentBaseRow;
-use constraint_circuit::DualRowIndicator::CurrentExtRow;
-use constraint_circuit::DualRowIndicator::NextBaseRow;
-use constraint_circuit::DualRowIndicator::NextExtRow;
+use constraint_circuit::DualRowIndicator::CurrentAux;
+use constraint_circuit::DualRowIndicator::CurrentMain;
+use constraint_circuit::DualRowIndicator::NextAux;
+use constraint_circuit::DualRowIndicator::NextMain;
 use constraint_circuit::SingleRowIndicator;
-use constraint_circuit::SingleRowIndicator::BaseRow;
-use constraint_circuit::SingleRowIndicator::ExtRow;
+use constraint_circuit::SingleRowIndicator::Aux;
+use constraint_circuit::SingleRowIndicator::Main;
 
 use crate::challenge_id::ChallengeId;
 use crate::challenge_id::ChallengeId::CascadeLookupIndeterminate;
@@ -18,26 +18,24 @@ use crate::challenge_id::ChallengeId::LookupTableInputWeight;
 use crate::challenge_id::ChallengeId::LookupTableOutputWeight;
 use crate::cross_table_argument::CrossTableArg;
 use crate::cross_table_argument::LookupArg;
-use crate::table_column::MasterBaseTableColumn;
-use crate::table_column::MasterExtTableColumn;
+use crate::table_column::MasterAuxColumn;
+use crate::table_column::MasterMainColumn;
 use crate::AIR;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct CascadeTable;
 
 impl AIR for CascadeTable {
-    type MainColumn = crate::table_column::CascadeBaseTableColumn;
-    type AuxColumn = crate::table_column::CascadeExtTableColumn;
+    type MainColumn = crate::table_column::CascadeMainColumn;
+    type AuxColumn = crate::table_column::CascadeAuxColumn;
 
     fn initial_constraints(
         circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
-        let main_row = |col_id: Self::MainColumn| {
-            circuit_builder.input(BaseRow(col_id.master_base_table_index()))
-        };
-        let aux_row = |col_id: Self::AuxColumn| {
-            circuit_builder.input(ExtRow(col_id.master_ext_table_index()))
-        };
+        let main_row =
+            |col_id: Self::MainColumn| circuit_builder.input(Main(col_id.master_main_index()));
+        let aux_row =
+            |col_id: Self::AuxColumn| circuit_builder.input(Aux(col_id.master_aux_index()));
         let challenge = |challenge_id: ChallengeId| circuit_builder.challenge(challenge_id);
 
         let one = || circuit_builder.b_constant(1);
@@ -105,9 +103,8 @@ impl AIR for CascadeTable {
     fn consistency_constraints(
         circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
-        let row = |col_id: Self::MainColumn| {
-            circuit_builder.input(BaseRow(col_id.master_base_table_index()))
-        };
+        let row =
+            |col_id: Self::MainColumn| circuit_builder.input(Main(col_id.master_main_index()));
 
         let one = circuit_builder.b_constant(1);
         let is_padding = row(Self::MainColumn::IsPadding);
@@ -123,16 +120,16 @@ impl AIR for CascadeTable {
         let constant = |c: u64| circuit_builder.b_constant(c);
 
         let curr_main_row = |column_idx: Self::MainColumn| {
-            circuit_builder.input(CurrentBaseRow(column_idx.master_base_table_index()))
+            circuit_builder.input(CurrentMain(column_idx.master_main_index()))
         };
         let next_main_row = |column_idx: Self::MainColumn| {
-            circuit_builder.input(NextBaseRow(column_idx.master_base_table_index()))
+            circuit_builder.input(NextMain(column_idx.master_main_index()))
         };
         let curr_aux_row = |column_idx: Self::AuxColumn| {
-            circuit_builder.input(CurrentExtRow(column_idx.master_ext_table_index()))
+            circuit_builder.input(CurrentAux(column_idx.master_aux_index()))
         };
         let next_aux_row = |column_idx: Self::AuxColumn| {
-            circuit_builder.input(NextExtRow(column_idx.master_ext_table_index()))
+            circuit_builder.input(NextAux(column_idx.master_aux_index()))
         };
 
         let one = constant(1);

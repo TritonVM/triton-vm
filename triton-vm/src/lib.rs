@@ -331,11 +331,11 @@ mod tests {
 
         // table things
         implements_auto_traits::<challenges::Challenges>();
-        implements_auto_traits::<table::degree_lowering::DegreeLoweringBaseTableColumn>();
-        implements_auto_traits::<table::degree_lowering::DegreeLoweringExtTableColumn>();
+        implements_auto_traits::<table::degree_lowering::DegreeLoweringMainColumn>();
+        implements_auto_traits::<table::degree_lowering::DegreeLoweringAuxColumn>();
         implements_auto_traits::<table::degree_lowering::DegreeLoweringTable>();
-        implements_auto_traits::<table::master_table::MasterBaseTable>();
-        implements_auto_traits::<table::master_table::MasterExtTable>();
+        implements_auto_traits::<table::master_table::MasterMainTable>();
+        implements_auto_traits::<table::master_table::MasterAuxTable>();
         implements_auto_traits::<table::op_stack::OpStackTableEntry>();
         implements_auto_traits::<table::ram::RamTableCall>();
         implements_auto_traits::<table::u32::U32TableEntry>();

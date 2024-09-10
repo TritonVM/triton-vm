@@ -1,6 +1,6 @@
 # Proof of Memory Consistency
 
-Whenever the Processor Table reads a value "from" a memory-like table, this value appears nondeterministically and is unconstrained by the base table AIR constraints. However, there is a permutation argument that links the Processor Table to the memory-like table in question. *The construction satisfies memory consistency if it guarantees that whenever a memory cell is read, its value is consistent with the last time that cell was written.*
+Whenever the Processor Table reads a value "from" a memory-like table, this value appears nondeterministically and is unconstrained by the main table AIR constraints. However, there is a permutation argument that links the Processor Table to the memory-like table in question. *The construction satisfies memory consistency if it guarantees that whenever a memory cell is read, its value is consistent with the last time that cell was written.*
 
 The above is too informal to provide a meaningful proof for. Let's put formal meanings on the proposition and premises, before reducing the former to the latter.
 

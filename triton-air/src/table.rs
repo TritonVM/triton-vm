@@ -26,7 +26,7 @@ pub mod u32;
 
 /// The total number of main columns across all tables.
 /// The degree lowering columns are _not_ included.
-pub const NUM_BASE_COLUMNS: usize = <ProgramTable as AIR>::MainColumn::COUNT
+pub const NUM_MAIN_COLUMNS: usize = <ProgramTable as AIR>::MainColumn::COUNT
     + <ProcessorTable as AIR>::MainColumn::COUNT
     + <OpStackTable as AIR>::MainColumn::COUNT
     + <RamTable as AIR>::MainColumn::COUNT
@@ -39,7 +39,7 @@ pub const NUM_BASE_COLUMNS: usize = <ProgramTable as AIR>::MainColumn::COUNT
 /// The total number of auxiliary columns across all tables.
 /// The degree lowering columns as well as any randomizer polynomials are _not_
 /// included.
-pub const NUM_EXT_COLUMNS: usize = <ProgramTable as AIR>::AuxColumn::COUNT
+pub const NUM_AUX_COLUMNS: usize = <ProgramTable as AIR>::AuxColumn::COUNT
     + <ProcessorTable as AIR>::AuxColumn::COUNT
     + <OpStackTable as AIR>::AuxColumn::COUNT
     + <RamTable as AIR>::AuxColumn::COUNT
@@ -71,30 +71,30 @@ pub const LOOKUP_TABLE_END: usize = LOOKUP_TABLE_START + <LookupTable as AIR>::M
 pub const U32_TABLE_START: usize = LOOKUP_TABLE_END;
 pub const U32_TABLE_END: usize = U32_TABLE_START + <U32Table as AIR>::MainColumn::COUNT;
 
-pub const EXT_PROGRAM_TABLE_START: usize = 0;
-pub const EXT_PROGRAM_TABLE_END: usize =
-    EXT_PROGRAM_TABLE_START + <ProgramTable as AIR>::AuxColumn::COUNT;
-pub const EXT_PROCESSOR_TABLE_START: usize = EXT_PROGRAM_TABLE_END;
-pub const EXT_PROCESSOR_TABLE_END: usize =
-    EXT_PROCESSOR_TABLE_START + <ProcessorTable as AIR>::AuxColumn::COUNT;
-pub const EXT_OP_STACK_TABLE_START: usize = EXT_PROCESSOR_TABLE_END;
-pub const EXT_OP_STACK_TABLE_END: usize =
-    EXT_OP_STACK_TABLE_START + <OpStackTable as AIR>::AuxColumn::COUNT;
-pub const EXT_RAM_TABLE_START: usize = EXT_OP_STACK_TABLE_END;
-pub const EXT_RAM_TABLE_END: usize = EXT_RAM_TABLE_START + <RamTable as AIR>::AuxColumn::COUNT;
-pub const EXT_JUMP_STACK_TABLE_START: usize = EXT_RAM_TABLE_END;
-pub const EXT_JUMP_STACK_TABLE_END: usize =
-    EXT_JUMP_STACK_TABLE_START + <JumpStackTable as AIR>::AuxColumn::COUNT;
-pub const EXT_HASH_TABLE_START: usize = EXT_JUMP_STACK_TABLE_END;
-pub const EXT_HASH_TABLE_END: usize = EXT_HASH_TABLE_START + <HashTable as AIR>::AuxColumn::COUNT;
-pub const EXT_CASCADE_TABLE_START: usize = EXT_HASH_TABLE_END;
-pub const EXT_CASCADE_TABLE_END: usize =
-    EXT_CASCADE_TABLE_START + <CascadeTable as AIR>::AuxColumn::COUNT;
-pub const EXT_LOOKUP_TABLE_START: usize = EXT_CASCADE_TABLE_END;
-pub const EXT_LOOKUP_TABLE_END: usize =
-    EXT_LOOKUP_TABLE_START + <LookupTable as AIR>::AuxColumn::COUNT;
-pub const EXT_U32_TABLE_START: usize = EXT_LOOKUP_TABLE_END;
-pub const EXT_U32_TABLE_END: usize = EXT_U32_TABLE_START + <U32Table as AIR>::AuxColumn::COUNT;
+pub const AUX_PROGRAM_TABLE_START: usize = 0;
+pub const AUX_PROGRAM_TABLE_END: usize =
+    AUX_PROGRAM_TABLE_START + <ProgramTable as AIR>::AuxColumn::COUNT;
+pub const AUX_PROCESSOR_TABLE_START: usize = AUX_PROGRAM_TABLE_END;
+pub const AUX_PROCESSOR_TABLE_END: usize =
+    AUX_PROCESSOR_TABLE_START + <ProcessorTable as AIR>::AuxColumn::COUNT;
+pub const AUX_OP_STACK_TABLE_START: usize = AUX_PROCESSOR_TABLE_END;
+pub const AUX_OP_STACK_TABLE_END: usize =
+    AUX_OP_STACK_TABLE_START + <OpStackTable as AIR>::AuxColumn::COUNT;
+pub const AUX_RAM_TABLE_START: usize = AUX_OP_STACK_TABLE_END;
+pub const AUX_RAM_TABLE_END: usize = AUX_RAM_TABLE_START + <RamTable as AIR>::AuxColumn::COUNT;
+pub const AUX_JUMP_STACK_TABLE_START: usize = AUX_RAM_TABLE_END;
+pub const AUX_JUMP_STACK_TABLE_END: usize =
+    AUX_JUMP_STACK_TABLE_START + <JumpStackTable as AIR>::AuxColumn::COUNT;
+pub const AUX_HASH_TABLE_START: usize = AUX_JUMP_STACK_TABLE_END;
+pub const AUX_HASH_TABLE_END: usize = AUX_HASH_TABLE_START + <HashTable as AIR>::AuxColumn::COUNT;
+pub const AUX_CASCADE_TABLE_START: usize = AUX_HASH_TABLE_END;
+pub const AUX_CASCADE_TABLE_END: usize =
+    AUX_CASCADE_TABLE_START + <CascadeTable as AIR>::AuxColumn::COUNT;
+pub const AUX_LOOKUP_TABLE_START: usize = AUX_CASCADE_TABLE_END;
+pub const AUX_LOOKUP_TABLE_END: usize =
+    AUX_LOOKUP_TABLE_START + <LookupTable as AIR>::AuxColumn::COUNT;
+pub const AUX_U32_TABLE_START: usize = AUX_LOOKUP_TABLE_END;
+pub const AUX_U32_TABLE_END: usize = AUX_U32_TABLE_START + <U32Table as AIR>::AuxColumn::COUNT;
 
 /// Uniquely determines one of Triton VM's tables.
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, EnumCount, EnumIter, Arbitrary)]

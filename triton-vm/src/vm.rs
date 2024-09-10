@@ -1049,49 +1049,49 @@ impl VMState {
 
     pub fn to_processor_row(&self) -> Array1<BFieldElement> {
         use isa::instruction::InstructionBit;
-        use ProcessorBaseTableColumn::*;
+        use ProcessorMainColumn::*;
         let mut processor_row = Array1::zeros(<ProcessorTable as AIR>::MainColumn::COUNT);
 
         let current_instruction = self.current_instruction().unwrap_or(Nop);
         let helper_variables = self.derive_helper_variables();
 
-        processor_row[CLK.base_table_index()] = u64::from(self.cycle_count).into();
-        processor_row[IP.base_table_index()] = (self.instruction_pointer as u32).into();
-        processor_row[CI.base_table_index()] = current_instruction.opcode_b();
-        processor_row[NIA.base_table_index()] = self.next_instruction_or_argument();
-        processor_row[IB0.base_table_index()] = current_instruction.ib(InstructionBit::IB0);
-        processor_row[IB1.base_table_index()] = current_instruction.ib(InstructionBit::IB1);
-        processor_row[IB2.base_table_index()] = current_instruction.ib(InstructionBit::IB2);
-        processor_row[IB3.base_table_index()] = current_instruction.ib(InstructionBit::IB3);
-        processor_row[IB4.base_table_index()] = current_instruction.ib(InstructionBit::IB4);
-        processor_row[IB5.base_table_index()] = current_instruction.ib(InstructionBit::IB5);
-        processor_row[IB6.base_table_index()] = current_instruction.ib(InstructionBit::IB6);
-        processor_row[JSP.base_table_index()] = self.jump_stack_pointer();
-        processor_row[JSO.base_table_index()] = self.jump_stack_origin();
-        processor_row[JSD.base_table_index()] = self.jump_stack_destination();
-        processor_row[ST0.base_table_index()] = self.op_stack[OpStackElement::ST0];
-        processor_row[ST1.base_table_index()] = self.op_stack[OpStackElement::ST1];
-        processor_row[ST2.base_table_index()] = self.op_stack[OpStackElement::ST2];
-        processor_row[ST3.base_table_index()] = self.op_stack[OpStackElement::ST3];
-        processor_row[ST4.base_table_index()] = self.op_stack[OpStackElement::ST4];
-        processor_row[ST5.base_table_index()] = self.op_stack[OpStackElement::ST5];
-        processor_row[ST6.base_table_index()] = self.op_stack[OpStackElement::ST6];
-        processor_row[ST7.base_table_index()] = self.op_stack[OpStackElement::ST7];
-        processor_row[ST8.base_table_index()] = self.op_stack[OpStackElement::ST8];
-        processor_row[ST9.base_table_index()] = self.op_stack[OpStackElement::ST9];
-        processor_row[ST10.base_table_index()] = self.op_stack[OpStackElement::ST10];
-        processor_row[ST11.base_table_index()] = self.op_stack[OpStackElement::ST11];
-        processor_row[ST12.base_table_index()] = self.op_stack[OpStackElement::ST12];
-        processor_row[ST13.base_table_index()] = self.op_stack[OpStackElement::ST13];
-        processor_row[ST14.base_table_index()] = self.op_stack[OpStackElement::ST14];
-        processor_row[ST15.base_table_index()] = self.op_stack[OpStackElement::ST15];
-        processor_row[OpStackPointer.base_table_index()] = self.op_stack.pointer();
-        processor_row[HV0.base_table_index()] = helper_variables[0];
-        processor_row[HV1.base_table_index()] = helper_variables[1];
-        processor_row[HV2.base_table_index()] = helper_variables[2];
-        processor_row[HV3.base_table_index()] = helper_variables[3];
-        processor_row[HV4.base_table_index()] = helper_variables[4];
-        processor_row[HV5.base_table_index()] = helper_variables[5];
+        processor_row[CLK.main_index()] = u64::from(self.cycle_count).into();
+        processor_row[IP.main_index()] = (self.instruction_pointer as u32).into();
+        processor_row[CI.main_index()] = current_instruction.opcode_b();
+        processor_row[NIA.main_index()] = self.next_instruction_or_argument();
+        processor_row[IB0.main_index()] = current_instruction.ib(InstructionBit::IB0);
+        processor_row[IB1.main_index()] = current_instruction.ib(InstructionBit::IB1);
+        processor_row[IB2.main_index()] = current_instruction.ib(InstructionBit::IB2);
+        processor_row[IB3.main_index()] = current_instruction.ib(InstructionBit::IB3);
+        processor_row[IB4.main_index()] = current_instruction.ib(InstructionBit::IB4);
+        processor_row[IB5.main_index()] = current_instruction.ib(InstructionBit::IB5);
+        processor_row[IB6.main_index()] = current_instruction.ib(InstructionBit::IB6);
+        processor_row[JSP.main_index()] = self.jump_stack_pointer();
+        processor_row[JSO.main_index()] = self.jump_stack_origin();
+        processor_row[JSD.main_index()] = self.jump_stack_destination();
+        processor_row[ST0.main_index()] = self.op_stack[OpStackElement::ST0];
+        processor_row[ST1.main_index()] = self.op_stack[OpStackElement::ST1];
+        processor_row[ST2.main_index()] = self.op_stack[OpStackElement::ST2];
+        processor_row[ST3.main_index()] = self.op_stack[OpStackElement::ST3];
+        processor_row[ST4.main_index()] = self.op_stack[OpStackElement::ST4];
+        processor_row[ST5.main_index()] = self.op_stack[OpStackElement::ST5];
+        processor_row[ST6.main_index()] = self.op_stack[OpStackElement::ST6];
+        processor_row[ST7.main_index()] = self.op_stack[OpStackElement::ST7];
+        processor_row[ST8.main_index()] = self.op_stack[OpStackElement::ST8];
+        processor_row[ST9.main_index()] = self.op_stack[OpStackElement::ST9];
+        processor_row[ST10.main_index()] = self.op_stack[OpStackElement::ST10];
+        processor_row[ST11.main_index()] = self.op_stack[OpStackElement::ST11];
+        processor_row[ST12.main_index()] = self.op_stack[OpStackElement::ST12];
+        processor_row[ST13.main_index()] = self.op_stack[OpStackElement::ST13];
+        processor_row[ST14.main_index()] = self.op_stack[OpStackElement::ST14];
+        processor_row[ST15.main_index()] = self.op_stack[OpStackElement::ST15];
+        processor_row[OpStackPointer.main_index()] = self.op_stack.pointer();
+        processor_row[HV0.main_index()] = helper_variables[0];
+        processor_row[HV1.main_index()] = helper_variables[1];
+        processor_row[HV2.main_index()] = helper_variables[2];
+        processor_row[HV3.main_index()] = helper_variables[3];
+        processor_row[HV4.main_index()] = helper_variables[4];
+        processor_row[HV5.main_index()] = helper_variables[5];
 
         processor_row
     }
@@ -1180,7 +1180,7 @@ impl VMState {
 
 impl Display for VMState {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
-        use ProcessorBaseTableColumn as ProcCol;
+        use ProcessorMainColumn as ProcCol;
 
         let Ok(instruction) = self.current_instruction() else {
             return write!(f, "END-OF-FILE");
@@ -1197,8 +1197,8 @@ impl Display for VMState {
 
         let row = self.to_processor_row();
 
-        let register = |reg: ProcessorBaseTableColumn| {
-            let reg_string = format!("{}", row[reg.base_table_index()]);
+        let register = |reg: ProcessorMainColumn| {
+            let reg_string = format!("{}", row[reg.main_index()]);
             format!("{reg_string:>register_width$}")
         };
         let multi_register = |regs: [_; 4]| regs.map(register).join(" | ");
@@ -1219,7 +1219,7 @@ impl Display for VMState {
         let jso = register(ProcCol::JSO);
         let jsd = register(ProcCol::JSD);
         let osp = register(ProcCol::OpStackPointer);
-        let clk = row[ProcCol::CLK.base_table_index()].to_string();
+        let clk = row[ProcCol::CLK.main_index()].to_string();
         let clk = clk.trim_start_matches('0');
 
         let first_line = format!("ip:   {ip} ╷ ci:   {ci} ╷ nia: {nia} │ {clk: >clk_width$}");
@@ -1264,7 +1264,7 @@ impl Display for VMState {
             ProcCol::IB1,
             ProcCol::IB0,
         ]
-        .map(|reg| row[reg.base_table_index()])
+        .map(|reg| row[reg.main_index()])
         .map(|bfe| format!("{bfe:>2}"))
         .join(" | ");
         print_row(f, format!("ib6-0:    [ {ib_registers} ]",))?;
@@ -2752,10 +2752,10 @@ pub(crate) mod tests {
         let_assert!(Ok((aet, _)) = VM::trace_execution(&program, [].into(), [].into()));
 
         let_assert!(Some(last_processor_row) = aet.processor_trace.rows().into_iter().last());
-        let clk_count = last_processor_row[ProcessorBaseTableColumn::CLK.base_table_index()];
+        let clk_count = last_processor_row[ProcessorMainColumn::CLK.main_index()];
         assert!(BFieldElement::ZERO == clk_count);
 
-        let last_instruction = last_processor_row[ProcessorBaseTableColumn::CI.base_table_index()];
+        let last_instruction = last_processor_row[ProcessorMainColumn::CI.main_index()];
         assert!(Instruction::Halt.opcode_b() == last_instruction);
 
         println!("{last_processor_row}");

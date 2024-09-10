@@ -95,7 +95,7 @@ pub enum ChallengeId {
     /// Used by the evaluation argument [`PrepareChunkEvalArg`][prep] and in the Hash Table.
     ///
     /// [rate]: twenty_first::prelude::tip5::RATE
-    /// [prep]: crate::table_column::ProgramExtTableColumn::PrepareChunkRunningEvaluation
+    /// [prep]: crate::table_column::ProgramAuxColumn::PrepareChunkRunningEvaluation
     ProgramAttestationPrepareChunkIndeterminate,
 
     /// The indeterminate for the bus over which the [`RATE`][rate]-sized chunks of instructions
@@ -105,8 +105,8 @@ pub enum ChallengeId {
     /// [`ProgramAttestationPrepareChunkIndeterminate`][ind].
     ///
     /// [rate]: twenty_first::prelude::tip5::RATE
-    /// [send]: crate::table_column::ProgramExtTableColumn::SendChunkRunningEvaluation
-    /// [recv]: crate::table_column::HashExtTableColumn::ReceiveChunkRunningEvaluation
+    /// [send]: crate::table_column::ProgramAuxColumn::SendChunkRunningEvaluation
+    /// [recv]: crate::table_column::HashAuxColumn::ReceiveChunkRunningEvaluation
     /// [ind]: ChallengeId::ProgramAttestationPrepareChunkIndeterminate
     ProgramAttestationSendChunkIndeterminate,
 

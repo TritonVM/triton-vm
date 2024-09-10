@@ -1,49 +1,47 @@
 use constraint_circuit::ConstraintCircuitBuilder;
 use constraint_circuit::ConstraintCircuitMonad;
 use constraint_circuit::DualRowIndicator;
-use constraint_circuit::DualRowIndicator::CurrentBaseRow;
-use constraint_circuit::DualRowIndicator::CurrentExtRow;
-use constraint_circuit::DualRowIndicator::NextBaseRow;
-use constraint_circuit::DualRowIndicator::NextExtRow;
+use constraint_circuit::DualRowIndicator::CurrentAux;
+use constraint_circuit::DualRowIndicator::CurrentMain;
+use constraint_circuit::DualRowIndicator::NextAux;
+use constraint_circuit::DualRowIndicator::NextMain;
 use constraint_circuit::SingleRowIndicator;
-use constraint_circuit::SingleRowIndicator::BaseRow;
-use constraint_circuit::SingleRowIndicator::ExtRow;
+use constraint_circuit::SingleRowIndicator::Aux;
+use constraint_circuit::SingleRowIndicator::Main;
 use twenty_first::prelude::*;
 
 use crate::challenge_id::ChallengeId;
 use crate::cross_table_argument::CrossTableArg;
 use crate::cross_table_argument::EvalArg;
 use crate::cross_table_argument::LookupArg;
-use crate::table_column::MasterBaseTableColumn;
-use crate::table_column::MasterExtTableColumn;
+use crate::table_column::MasterAuxColumn;
+use crate::table_column::MasterMainColumn;
 use crate::AIR;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct ProgramTable;
 
 impl AIR for ProgramTable {
-    type MainColumn = crate::table_column::ProgramBaseTableColumn;
-    type AuxColumn = crate::table_column::ProgramExtTableColumn;
+    type MainColumn = crate::table_column::ProgramMainColumn;
+    type AuxColumn = crate::table_column::ProgramAuxColumn;
 
     fn initial_constraints(
         circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
         let challenge = |c| circuit_builder.challenge(c);
         let x_constant = |xfe| circuit_builder.x_constant(xfe);
-        let base_row =
-            |col: Self::MainColumn| circuit_builder.input(BaseRow(col.master_base_table_index()));
-        let ext_row =
-            |col: Self::AuxColumn| circuit_builder.input(ExtRow(col.master_ext_table_index()));
+        let main_row = |col: Self::MainColumn| circuit_builder.input(Main(col.master_main_index()));
+        let aux_row = |col: Self::AuxColumn| circuit_builder.input(Aux(col.master_aux_index()));
 
-        let address = base_row(Self::MainColumn::Address);
-        let instruction = base_row(Self::MainColumn::Instruction);
-        let index_in_chunk = base_row(Self::MainColumn::IndexInChunk);
-        let is_hash_input_padding = base_row(Self::MainColumn::IsHashInputPadding);
+        let address = main_row(Self::MainColumn::Address);
+        let instruction = main_row(Self::MainColumn::Instruction);
+        let index_in_chunk = main_row(Self::MainColumn::IndexInChunk);
+        let is_hash_input_padding = main_row(Self::MainColumn::IsHashInputPadding);
         let instruction_lookup_log_derivative =
-            ext_row(Self::AuxColumn::InstructionLookupServerLogDerivative);
+            aux_row(Self::AuxColumn::InstructionLookupServerLogDerivative);
         let prepare_chunk_running_evaluation =
-            ext_row(Self::AuxColumn::PrepareChunkRunningEvaluation);
-        let send_chunk_running_evaluation = ext_row(Self::AuxColumn::SendChunkRunningEvaluation);
+            aux_row(Self::AuxColumn::PrepareChunkRunningEvaluation);
+        let send_chunk_running_evaluation = aux_row(Self::AuxColumn::SendChunkRunningEvaluation);
 
         let lookup_arg_initial = x_constant(LookupArg::default_initial());
         let eval_arg_initial = x_constant(EvalArg::default_initial());
@@ -80,8 +78,7 @@ impl AIR for ProgramTable {
         circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
         let constant = |c: u32| circuit_builder.b_constant(c);
-        let main_row =
-            |col: Self::MainColumn| circuit_builder.input(BaseRow(col.master_base_table_index()));
+        let main_row = |col: Self::MainColumn| circuit_builder.input(Main(col.master_main_index()));
 
         let one = constant(1);
         let max_index_in_chunk = constant((Tip5::RATE - 1).try_into().unwrap());
@@ -117,17 +114,14 @@ impl AIR for ProgramTable {
         let challenge = |c| circuit_builder.challenge(c);
         let constant = |c: u64| circuit_builder.b_constant(c);
 
-        let current_base_row = |col: Self::MainColumn| {
-            circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
-        };
-        let next_base_row = |col: Self::MainColumn| {
-            circuit_builder.input(NextBaseRow(col.master_base_table_index()))
-        };
-        let current_ext_row = |col: Self::AuxColumn| {
-            circuit_builder.input(CurrentExtRow(col.master_ext_table_index()))
-        };
-        let next_ext_row =
-            |col: Self::AuxColumn| circuit_builder.input(NextExtRow(col.master_ext_table_index()));
+        let current_main_row =
+            |col: Self::MainColumn| circuit_builder.input(CurrentMain(col.master_main_index()));
+        let next_main_row =
+            |col: Self::MainColumn| circuit_builder.input(NextMain(col.master_main_index()));
+        let current_aux_row =
+            |col: Self::AuxColumn| circuit_builder.input(CurrentAux(col.master_aux_index()));
+        let next_aux_row =
+            |col: Self::AuxColumn| circuit_builder.input(NextAux(col.master_aux_index()));
 
         let one = constant(1);
         let rate_minus_one = constant(u64::try_from(Tip5::RATE).unwrap() - 1);
@@ -137,33 +131,33 @@ impl AIR for ProgramTable {
         let send_chunk_indeterminate =
             challenge(ChallengeId::ProgramAttestationSendChunkIndeterminate);
 
-        let address = current_base_row(Self::MainColumn::Address);
-        let instruction = current_base_row(Self::MainColumn::Instruction);
-        let lookup_multiplicity = current_base_row(Self::MainColumn::LookupMultiplicity);
-        let index_in_chunk = current_base_row(Self::MainColumn::IndexInChunk);
+        let address = current_main_row(Self::MainColumn::Address);
+        let instruction = current_main_row(Self::MainColumn::Instruction);
+        let lookup_multiplicity = current_main_row(Self::MainColumn::LookupMultiplicity);
+        let index_in_chunk = current_main_row(Self::MainColumn::IndexInChunk);
         let max_minus_index_in_chunk_inv =
-            current_base_row(Self::MainColumn::MaxMinusIndexInChunkInv);
-        let is_hash_input_padding = current_base_row(Self::MainColumn::IsHashInputPadding);
-        let is_table_padding = current_base_row(Self::MainColumn::IsTablePadding);
-        let log_derivative = current_ext_row(Self::AuxColumn::InstructionLookupServerLogDerivative);
+            current_main_row(Self::MainColumn::MaxMinusIndexInChunkInv);
+        let is_hash_input_padding = current_main_row(Self::MainColumn::IsHashInputPadding);
+        let is_table_padding = current_main_row(Self::MainColumn::IsTablePadding);
+        let log_derivative = current_aux_row(Self::AuxColumn::InstructionLookupServerLogDerivative);
         let prepare_chunk_running_evaluation =
-            current_ext_row(Self::AuxColumn::PrepareChunkRunningEvaluation);
+            current_aux_row(Self::AuxColumn::PrepareChunkRunningEvaluation);
         let send_chunk_running_evaluation =
-            current_ext_row(Self::AuxColumn::SendChunkRunningEvaluation);
+            current_aux_row(Self::AuxColumn::SendChunkRunningEvaluation);
 
-        let address_next = next_base_row(Self::MainColumn::Address);
-        let instruction_next = next_base_row(Self::MainColumn::Instruction);
-        let index_in_chunk_next = next_base_row(Self::MainColumn::IndexInChunk);
+        let address_next = next_main_row(Self::MainColumn::Address);
+        let instruction_next = next_main_row(Self::MainColumn::Instruction);
+        let index_in_chunk_next = next_main_row(Self::MainColumn::IndexInChunk);
         let max_minus_index_in_chunk_inv_next =
-            next_base_row(Self::MainColumn::MaxMinusIndexInChunkInv);
-        let is_hash_input_padding_next = next_base_row(Self::MainColumn::IsHashInputPadding);
-        let is_table_padding_next = next_base_row(Self::MainColumn::IsTablePadding);
+            next_main_row(Self::MainColumn::MaxMinusIndexInChunkInv);
+        let is_hash_input_padding_next = next_main_row(Self::MainColumn::IsHashInputPadding);
+        let is_table_padding_next = next_main_row(Self::MainColumn::IsTablePadding);
         let log_derivative_next =
-            next_ext_row(Self::AuxColumn::InstructionLookupServerLogDerivative);
+            next_aux_row(Self::AuxColumn::InstructionLookupServerLogDerivative);
         let prepare_chunk_running_evaluation_next =
-            next_ext_row(Self::AuxColumn::PrepareChunkRunningEvaluation);
+            next_aux_row(Self::AuxColumn::PrepareChunkRunningEvaluation);
         let send_chunk_running_evaluation_next =
-            next_ext_row(Self::AuxColumn::SendChunkRunningEvaluation);
+            next_aux_row(Self::AuxColumn::SendChunkRunningEvaluation);
 
         let address_increases_by_one = address_next - (address.clone() + one.clone());
         let is_table_padding_is_0_or_remains_unchanged =
@@ -258,8 +252,7 @@ impl AIR for ProgramTable {
         circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
         let constant = |c: u64| circuit_builder.b_constant(c);
-        let main_row =
-            |col: Self::MainColumn| circuit_builder.input(BaseRow(col.master_base_table_index()));
+        let main_row = |col: Self::MainColumn| circuit_builder.input(Main(col.master_main_index()));
 
         let index_in_chunk = main_row(Self::MainColumn::IndexInChunk);
         let is_hash_input_padding = main_row(Self::MainColumn::IsHashInputPadding);

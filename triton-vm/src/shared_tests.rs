@@ -14,7 +14,7 @@ use crate::fri::AuthenticationStructure;
 use crate::prelude::*;
 use crate::profiler::profiler;
 use crate::proof_item::FriResponse;
-use crate::table::master_table::MasterBaseTable;
+use crate::table::master_table::MasterMainTable;
 
 pub(crate) const DEFAULT_LOG2_FRI_EXPANSION_FACTOR_FOR_TESTS: usize = 2;
 
@@ -140,15 +140,15 @@ pub(crate) fn low_security_stark(log_expansion_factor: usize) -> Stark {
     Stark::new(security_level, log_expansion_factor)
 }
 
-pub(crate) fn construct_master_base_table(
+pub(crate) fn construct_master_main_table(
     stark: Stark,
     aet: &AlgebraicExecutionTrace,
-) -> MasterBaseTable {
+) -> MasterMainTable {
     let padded_height = aet.padded_height();
     let fri = stark.derive_fri(padded_height).unwrap();
     let max_degree = stark.derive_max_degree(padded_height);
     let quotient_domain = Stark::quotient_domain(fri.domain, max_degree).unwrap();
-    MasterBaseTable::new(
+    MasterMainTable::new(
         aet,
         stark.num_trace_randomizers,
         quotient_domain,

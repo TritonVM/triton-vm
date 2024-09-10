@@ -19,31 +19,31 @@ mod test {
     use crate::memory_layout::IntegralMemoryLayout;
     use crate::memory_layout::StaticTasmConstraintEvaluationMemoryLayout;
     use crate::prelude::*;
-    use crate::table::extension_table::Evaluable;
-    use crate::table::master_table::MasterExtTable;
-    use crate::table::NUM_AUX_COLUMNS;
-    use crate::table::NUM_MAIN_COLUMNS;
+    use crate::table::auxiliary_table::Evaluable;
+    use crate::table::master_table::MasterAuxTable;
+    use crate::table::master_table::MasterMainTable;
+    use crate::table::master_table::MasterTable;
 
     use super::dynamic_air_constraint_evaluation_tasm;
     use super::static_air_constraint_evaluation_tasm;
 
     #[derive(Debug, Clone, test_strategy::Arbitrary)]
     struct ConstraintEvaluationPoint {
-        #[strategy(vec(arb(), NUM_MAIN_COLUMNS))]
+        #[strategy(vec(arb(), MasterMainTable::NUM_COLUMNS))]
         #[map(Array1::from)]
-        curr_base_row: Array1<XFieldElement>,
+        curr_main_row: Array1<XFieldElement>,
 
-        #[strategy(vec(arb(), NUM_AUX_COLUMNS))]
+        #[strategy(vec(arb(), MasterAuxTable::NUM_COLUMNS))]
         #[map(Array1::from)]
-        curr_ext_row: Array1<XFieldElement>,
+        curr_aux_row: Array1<XFieldElement>,
 
-        #[strategy(vec(arb(), NUM_MAIN_COLUMNS))]
+        #[strategy(vec(arb(), MasterMainTable::NUM_COLUMNS))]
         #[map(Array1::from)]
-        next_base_row: Array1<XFieldElement>,
+        next_main_row: Array1<XFieldElement>,
 
-        #[strategy(vec(arb(), NUM_AUX_COLUMNS))]
+        #[strategy(vec(arb(), MasterAuxTable::NUM_COLUMNS))]
         #[map(Array1::from)]
-        next_ext_row: Array1<XFieldElement>,
+        next_aux_row: Array1<XFieldElement>,
 
         #[strategy(arb())]
         challenges: Challenges,
@@ -55,26 +55,26 @@ mod test {
 
     impl ConstraintEvaluationPoint {
         fn evaluate_all_constraints_rust(&self) -> Vec<XFieldElement> {
-            let init = MasterExtTable::evaluate_initial_constraints(
-                self.curr_base_row.view(),
-                self.curr_ext_row.view(),
+            let init = MasterAuxTable::evaluate_initial_constraints(
+                self.curr_main_row.view(),
+                self.curr_aux_row.view(),
                 &self.challenges,
             );
-            let cons = MasterExtTable::evaluate_consistency_constraints(
-                self.curr_base_row.view(),
-                self.curr_ext_row.view(),
+            let cons = MasterAuxTable::evaluate_consistency_constraints(
+                self.curr_main_row.view(),
+                self.curr_aux_row.view(),
                 &self.challenges,
             );
-            let tran = MasterExtTable::evaluate_transition_constraints(
-                self.curr_base_row.view(),
-                self.curr_ext_row.view(),
-                self.next_base_row.view(),
-                self.next_ext_row.view(),
+            let tran = MasterAuxTable::evaluate_transition_constraints(
+                self.curr_main_row.view(),
+                self.curr_aux_row.view(),
+                self.next_main_row.view(),
+                self.next_aux_row.view(),
                 &self.challenges,
             );
-            let term = MasterExtTable::evaluate_terminal_constraints(
-                self.curr_base_row.view(),
-                self.curr_ext_row.view(),
+            let term = MasterAuxTable::evaluate_terminal_constraints(
+                self.curr_main_row.view(),
+                self.curr_aux_row.view(),
                 &self.challenges,
             );
 
@@ -117,7 +117,7 @@ mod test {
         fn extract_constraint_evaluations(mut vm_state: VMState) -> Vec<XFieldElement> {
             assert!(vm_state.halting);
             let output_list_ptr = vm_state.op_stack.pop().unwrap().value();
-            let num_quotients = MasterExtTable::NUM_CONSTRAINTS;
+            let num_quotients = MasterAuxTable::NUM_CONSTRAINTS;
             Self::read_xfe_list_at_address(vm_state.ram, output_list_ptr, num_quotients)
         }
 
@@ -125,17 +125,17 @@ mod test {
             &self,
             program: &Program,
         ) -> VMState {
-            let curr_base_row_ptr = self.static_memory_layout.curr_base_row_ptr;
-            let curr_ext_row_ptr = self.static_memory_layout.curr_ext_row_ptr;
-            let next_base_row_ptr = self.static_memory_layout.next_base_row_ptr;
-            let next_ext_row_ptr = self.static_memory_layout.next_ext_row_ptr;
+            let curr_main_row_ptr = self.static_memory_layout.curr_main_row_ptr;
+            let curr_aux_row_ptr = self.static_memory_layout.curr_aux_row_ptr;
+            let next_main_row_ptr = self.static_memory_layout.next_main_row_ptr;
+            let next_aux_row_ptr = self.static_memory_layout.next_aux_row_ptr;
             let challenges_ptr = self.static_memory_layout.challenges_ptr;
 
             let mut ram = HashMap::default();
-            Self::extend_ram_at_address(&mut ram, self.curr_base_row.to_vec(), curr_base_row_ptr);
-            Self::extend_ram_at_address(&mut ram, self.curr_ext_row.to_vec(), curr_ext_row_ptr);
-            Self::extend_ram_at_address(&mut ram, self.next_base_row.to_vec(), next_base_row_ptr);
-            Self::extend_ram_at_address(&mut ram, self.next_ext_row.to_vec(), next_ext_row_ptr);
+            Self::extend_ram_at_address(&mut ram, self.curr_main_row.to_vec(), curr_main_row_ptr);
+            Self::extend_ram_at_address(&mut ram, self.curr_aux_row.to_vec(), curr_aux_row_ptr);
+            Self::extend_ram_at_address(&mut ram, self.next_main_row.to_vec(), next_main_row_ptr);
+            Self::extend_ram_at_address(&mut ram, self.next_aux_row.to_vec(), next_aux_row_ptr);
             Self::extend_ram_at_address(&mut ram, self.challenges.challenges, challenges_ptr);
             let non_determinism = NonDeterminism::default().with_ram(ram);
 
@@ -151,10 +151,10 @@ mod test {
                 self.set_up_triton_vm_to_evaluate_constraints_in_tasm_static(program);
 
             let layout = self.static_memory_layout;
-            vm_state.op_stack.push(layout.curr_base_row_ptr);
-            vm_state.op_stack.push(layout.curr_ext_row_ptr);
-            vm_state.op_stack.push(layout.next_base_row_ptr);
-            vm_state.op_stack.push(layout.next_ext_row_ptr);
+            vm_state.op_stack.push(layout.curr_main_row_ptr);
+            vm_state.op_stack.push(layout.curr_aux_row_ptr);
+            vm_state.op_stack.push(layout.next_main_row_ptr);
+            vm_state.op_stack.push(layout.next_aux_row_ptr);
             vm_state
         }
 

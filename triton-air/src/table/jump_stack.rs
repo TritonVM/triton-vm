@@ -1,13 +1,13 @@
 use constraint_circuit::ConstraintCircuitBuilder;
 use constraint_circuit::ConstraintCircuitMonad;
 use constraint_circuit::DualRowIndicator;
-use constraint_circuit::DualRowIndicator::CurrentBaseRow;
-use constraint_circuit::DualRowIndicator::CurrentExtRow;
-use constraint_circuit::DualRowIndicator::NextBaseRow;
-use constraint_circuit::DualRowIndicator::NextExtRow;
+use constraint_circuit::DualRowIndicator::CurrentAux;
+use constraint_circuit::DualRowIndicator::CurrentMain;
+use constraint_circuit::DualRowIndicator::NextAux;
+use constraint_circuit::DualRowIndicator::NextMain;
 use constraint_circuit::SingleRowIndicator;
-use constraint_circuit::SingleRowIndicator::BaseRow;
-use constraint_circuit::SingleRowIndicator::ExtRow;
+use constraint_circuit::SingleRowIndicator::Aux;
+use constraint_circuit::SingleRowIndicator::Main;
 use isa::instruction::Instruction;
 use twenty_first::prelude::BFieldElement;
 
@@ -20,35 +20,35 @@ use crate::challenge_id::ChallengeId::JumpStackJsoWeight;
 use crate::challenge_id::ChallengeId::JumpStackJspWeight;
 use crate::cross_table_argument::CrossTableArg;
 use crate::cross_table_argument::LookupArg;
-use crate::table_column::JumpStackBaseTableColumn::CI;
-use crate::table_column::JumpStackBaseTableColumn::CLK;
-use crate::table_column::JumpStackBaseTableColumn::JSD;
-use crate::table_column::JumpStackBaseTableColumn::JSO;
-use crate::table_column::JumpStackBaseTableColumn::JSP;
-use crate::table_column::JumpStackExtTableColumn::ClockJumpDifferenceLookupClientLogDerivative;
-use crate::table_column::JumpStackExtTableColumn::RunningProductPermArg;
-use crate::table_column::MasterBaseTableColumn;
-use crate::table_column::MasterExtTableColumn;
+use crate::table_column::JumpStackAuxColumn::ClockJumpDifferenceLookupClientLogDerivative;
+use crate::table_column::JumpStackAuxColumn::RunningProductPermArg;
+use crate::table_column::JumpStackMainColumn::CI;
+use crate::table_column::JumpStackMainColumn::CLK;
+use crate::table_column::JumpStackMainColumn::JSD;
+use crate::table_column::JumpStackMainColumn::JSO;
+use crate::table_column::JumpStackMainColumn::JSP;
+use crate::table_column::MasterAuxColumn;
+use crate::table_column::MasterMainColumn;
 use crate::AIR;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct JumpStackTable;
 
 impl AIR for JumpStackTable {
-    type MainColumn = crate::table_column::JumpStackBaseTableColumn;
-    type AuxColumn = crate::table_column::JumpStackExtTableColumn;
+    type MainColumn = crate::table_column::JumpStackMainColumn;
+    type AuxColumn = crate::table_column::JumpStackAuxColumn;
 
     fn initial_constraints(
         circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
-        let clk = circuit_builder.input(BaseRow(CLK.master_base_table_index()));
-        let jsp = circuit_builder.input(BaseRow(JSP.master_base_table_index()));
-        let jso = circuit_builder.input(BaseRow(JSO.master_base_table_index()));
-        let jsd = circuit_builder.input(BaseRow(JSD.master_base_table_index()));
-        let ci = circuit_builder.input(BaseRow(CI.master_base_table_index()));
-        let rppa = circuit_builder.input(ExtRow(RunningProductPermArg.master_ext_table_index()));
-        let clock_jump_diff_log_derivative = circuit_builder.input(ExtRow(
-            ClockJumpDifferenceLookupClientLogDerivative.master_ext_table_index(),
+        let clk = circuit_builder.input(Main(CLK.master_main_index()));
+        let jsp = circuit_builder.input(Main(JSP.master_main_index()));
+        let jso = circuit_builder.input(Main(JSO.master_main_index()));
+        let jsd = circuit_builder.input(Main(JSD.master_main_index()));
+        let ci = circuit_builder.input(Main(CI.master_main_index()));
+        let rppa = circuit_builder.input(Aux(RunningProductPermArg.master_aux_index()));
+        let clock_jump_diff_log_derivative = circuit_builder.input(Aux(
+            ClockJumpDifferenceLookupClientLogDerivative.master_aux_index(),
         ));
 
         let processor_perm_indeterminate = circuit_builder.challenge(JumpStackIndeterminate);
@@ -87,27 +87,24 @@ impl AIR for JumpStackTable {
         let recurse_or_return_opcode =
             circuit_builder.b_constant(Instruction::RecurseOrReturn.opcode_b());
 
-        let clk = circuit_builder.input(CurrentBaseRow(CLK.master_base_table_index()));
-        let ci = circuit_builder.input(CurrentBaseRow(CI.master_base_table_index()));
-        let jsp = circuit_builder.input(CurrentBaseRow(JSP.master_base_table_index()));
-        let jso = circuit_builder.input(CurrentBaseRow(JSO.master_base_table_index()));
-        let jsd = circuit_builder.input(CurrentBaseRow(JSD.master_base_table_index()));
-        let rppa = circuit_builder.input(CurrentExtRow(
-            RunningProductPermArg.master_ext_table_index(),
-        ));
-        let clock_jump_diff_log_derivative = circuit_builder.input(CurrentExtRow(
-            ClockJumpDifferenceLookupClientLogDerivative.master_ext_table_index(),
+        let clk = circuit_builder.input(CurrentMain(CLK.master_main_index()));
+        let ci = circuit_builder.input(CurrentMain(CI.master_main_index()));
+        let jsp = circuit_builder.input(CurrentMain(JSP.master_main_index()));
+        let jso = circuit_builder.input(CurrentMain(JSO.master_main_index()));
+        let jsd = circuit_builder.input(CurrentMain(JSD.master_main_index()));
+        let rppa = circuit_builder.input(CurrentAux(RunningProductPermArg.master_aux_index()));
+        let clock_jump_diff_log_derivative = circuit_builder.input(CurrentAux(
+            ClockJumpDifferenceLookupClientLogDerivative.master_aux_index(),
         ));
 
-        let clk_next = circuit_builder.input(NextBaseRow(CLK.master_base_table_index()));
-        let ci_next = circuit_builder.input(NextBaseRow(CI.master_base_table_index()));
-        let jsp_next = circuit_builder.input(NextBaseRow(JSP.master_base_table_index()));
-        let jso_next = circuit_builder.input(NextBaseRow(JSO.master_base_table_index()));
-        let jsd_next = circuit_builder.input(NextBaseRow(JSD.master_base_table_index()));
-        let rppa_next =
-            circuit_builder.input(NextExtRow(RunningProductPermArg.master_ext_table_index()));
-        let clock_jump_diff_log_derivative_next = circuit_builder.input(NextExtRow(
-            ClockJumpDifferenceLookupClientLogDerivative.master_ext_table_index(),
+        let clk_next = circuit_builder.input(NextMain(CLK.master_main_index()));
+        let ci_next = circuit_builder.input(NextMain(CI.master_main_index()));
+        let jsp_next = circuit_builder.input(NextMain(JSP.master_main_index()));
+        let jso_next = circuit_builder.input(NextMain(JSO.master_main_index()));
+        let jsd_next = circuit_builder.input(NextMain(JSD.master_main_index()));
+        let rppa_next = circuit_builder.input(NextAux(RunningProductPermArg.master_aux_index()));
+        let clock_jump_diff_log_derivative_next = circuit_builder.input(NextAux(
+            ClockJumpDifferenceLookupClientLogDerivative.master_aux_index(),
         ));
 
         let jsp_inc_or_stays =

@@ -2,7 +2,7 @@ use air::challenge_id::ChallengeId;
 use air::cross_table_argument::*;
 use air::table::processor::ProcessorTable;
 use air::table::ram;
-use air::table_column::ProcessorBaseTableColumn::*;
+use air::table_column::ProcessorMainColumn::*;
 use air::table_column::*;
 use isa::instruction::AnInstruction::*;
 use isa::instruction::Instruction;
@@ -57,15 +57,15 @@ impl TraceTable for ProcessorTable {
         let mut processor_table = main_table.slice_mut(s![0..num_rows, ..]);
         processor_table.assign(&aet.processor_trace);
         processor_table
-            .column_mut(ClockJumpDifferenceLookupMultiplicity.base_table_index())
+            .column_mut(ClockJumpDifferenceLookupMultiplicity.main_index())
             .assign(&clk_jump_diff_multiplicities);
     }
 
     fn pad(mut main_table: ArrayViewMut2<BFieldElement>, table_len: usize) {
         assert!(table_len > 0, "Processor Table must have at least one row.");
         let mut padding_template = main_table.row(table_len - 1).to_owned();
-        padding_template[IsPadding.base_table_index()] = bfe!(1);
-        padding_template[ClockJumpDifferenceLookupMultiplicity.base_table_index()] = bfe!(0);
+        padding_template[IsPadding.main_index()] = bfe!(1);
+        padding_template[ClockJumpDifferenceLookupMultiplicity.main_index()] = bfe!(0);
         main_table
             .slice_mut(s![table_len.., ..])
             .axis_iter_mut(Axis(0))
@@ -74,7 +74,7 @@ impl TraceTable for ProcessorTable {
 
         let clk_range = table_len..main_table.nrows();
         let clk_col = Array1::from_iter(clk_range.map(|a| bfe!(a as u64)));
-        clk_col.move_into(main_table.slice_mut(s![table_len.., CLK.base_table_index()]));
+        clk_col.move_into(main_table.slice_mut(s![table_len.., CLK.main_index()]));
 
         // The Jump Stack Table does not have a padding indicator. Hence, clock jump differences are
         // being looked up in its padding sections. The clock jump differences in that section are
@@ -84,7 +84,7 @@ impl TraceTable for ProcessorTable {
         let num_padding_rows = bfe!(num_padding_rows as u64);
         let mut row_1 = main_table.row_mut(1);
 
-        row_1[ClockJumpDifferenceLookupMultiplicity.base_table_index()] += num_padding_rows;
+        row_1[ClockJumpDifferenceLookupMultiplicity.main_index()] += num_padding_rows;
     }
 
     fn extend(
@@ -97,8 +97,8 @@ impl TraceTable for ProcessorTable {
         assert_eq!(Self::AuxColumn::COUNT, aux_table.ncols());
         assert_eq!(main_table.nrows(), aux_table.nrows());
 
-        let all_column_indices = ProcessorExtTableColumn::iter()
-            .map(|column| column.ext_table_index())
+        let all_column_indices = ProcessorAuxColumn::iter()
+            .map(|column| column.aux_index())
             .collect_vec();
         let all_column_slices = horizontal_multi_slice_mut(
             aux_table.view_mut(),
@@ -140,7 +140,7 @@ fn extension_column_input_table_eval_argument(
         if let Some(Instruction::ReadIo(st)) = instruction_from_row(previous_row) {
             for i in (0..st.num_words()).rev() {
                 let input_symbol_column = ProcessorTable::op_stack_column_by_index(i);
-                let input_symbol = current_row[input_symbol_column.base_table_index()];
+                let input_symbol = current_row[input_symbol_column.main_index()];
                 input_table_running_evaluation = input_table_running_evaluation
                     * challenges[ChallengeId::StandardInputIndeterminate]
                     + input_symbol;
@@ -162,7 +162,7 @@ fn extension_column_output_table_eval_argument(
         if let Some(Instruction::WriteIo(st)) = instruction_from_row(previous_row) {
             for i in 0..st.num_words() {
                 let output_symbol_column = ProcessorTable::op_stack_column_by_index(i);
-                let output_symbol = previous_row[output_symbol_column.base_table_index()];
+                let output_symbol = previous_row[output_symbol_column.main_index()];
                 output_table_running_evaluation = output_table_running_evaluation
                     * challenges[ChallengeId::StandardOutputIndeterminate]
                     + output_symbol;
@@ -180,14 +180,13 @@ fn extension_column_instruction_lookup_argument(
     // collect all to-be-inverted elements for batch inversion
     let mut to_invert = vec![];
     for row in base_table.rows() {
-        if row[IsPadding.base_table_index()].is_one() {
+        if row[IsPadding.main_index()].is_one() {
             break; // padding marks the end of the trace
         }
 
-        let compressed_row = row[IP.base_table_index()]
-            * challenges[ChallengeId::ProgramAddressWeight]
-            + row[CI.base_table_index()] * challenges[ChallengeId::ProgramInstructionWeight]
-            + row[NIA.base_table_index()] * challenges[ChallengeId::ProgramNextInstructionWeight];
+        let compressed_row = row[IP.main_index()] * challenges[ChallengeId::ProgramAddressWeight]
+            + row[CI.main_index()] * challenges[ChallengeId::ProgramInstructionWeight]
+            + row[NIA.main_index()] * challenges[ChallengeId::ProgramNextInstructionWeight];
         to_invert.push(challenges[ChallengeId::InstructionLookupIndeterminate] - compressed_row);
     }
 
@@ -242,12 +241,11 @@ fn extension_column_jump_stack_table_perm_argument(
     let mut jump_stack_running_product = PermArg::default_initial();
     let mut extension_column = Vec::with_capacity(base_table.nrows());
     for row in base_table.rows() {
-        let compressed_row = row[CLK.base_table_index()]
-            * challenges[ChallengeId::JumpStackClkWeight]
-            + row[CI.base_table_index()] * challenges[ChallengeId::JumpStackCiWeight]
-            + row[JSP.base_table_index()] * challenges[ChallengeId::JumpStackJspWeight]
-            + row[JSO.base_table_index()] * challenges[ChallengeId::JumpStackJsoWeight]
-            + row[JSD.base_table_index()] * challenges[ChallengeId::JumpStackJsdWeight];
+        let compressed_row = row[CLK.main_index()] * challenges[ChallengeId::JumpStackClkWeight]
+            + row[CI.main_index()] * challenges[ChallengeId::JumpStackCiWeight]
+            + row[JSP.main_index()] * challenges[ChallengeId::JumpStackJspWeight]
+            + row[JSO.main_index()] * challenges[ChallengeId::JumpStackJsoWeight]
+            + row[JSD.main_index()] * challenges[ChallengeId::JumpStackJsdWeight];
         jump_stack_running_product *=
             challenges[ChallengeId::JumpStackIndeterminate] - compressed_row;
         extension_column.push(jump_stack_running_product);
@@ -269,12 +267,12 @@ fn extension_column_hash_input_eval_argument(
     let mut hash_input_running_evaluation = EvalArg::default_initial();
     let mut extension_column = Vec::with_capacity(base_table.nrows());
     for row in base_table.rows() {
-        let current_instruction = row[CI.base_table_index()];
+        let current_instruction = row[CI.main_index()];
         if current_instruction == Instruction::Hash.opcode_b()
             || current_instruction == Instruction::MerkleStep.opcode_b()
             || current_instruction == Instruction::MerkleStepMem.opcode_b()
         {
-            let is_left_sibling = row[ST5.base_table_index()].value() % 2 == 0;
+            let is_left_sibling = row[ST5.main_index()].value() % 2 == 0;
             let hash_input = match instruction_from_row(row) {
                 Some(MerkleStep | MerkleStepMem) if is_left_sibling => merkle_step_left_sibling,
                 Some(MerkleStep | MerkleStepMem) => merkle_step_right_sibling,
@@ -282,7 +280,7 @@ fn extension_column_hash_input_eval_argument(
                 _ => unreachable!(),
             };
             let compressed_row = hash_input
-                .map(|st| row[st.base_table_index()])
+                .map(|st| row[st.main_index()])
                 .into_iter()
                 .zip_eq(hash_state_weights.iter())
                 .map(|(st, &weight)| weight * st)
@@ -305,13 +303,13 @@ fn extension_column_hash_digest_eval_argument(
     let mut extension_column = Vec::with_capacity(base_table.nrows());
     extension_column.push(hash_digest_running_evaluation);
     for (previous_row, current_row) in base_table.rows().into_iter().tuple_windows() {
-        let previous_ci = previous_row[CI.base_table_index()];
+        let previous_ci = previous_row[CI.main_index()];
         if previous_ci == Instruction::Hash.opcode_b()
             || previous_ci == Instruction::MerkleStep.opcode_b()
             || previous_ci == Instruction::MerkleStepMem.opcode_b()
         {
             let compressed_row = [ST0, ST1, ST2, ST3, ST4]
-                .map(|st| current_row[st.base_table_index()])
+                .map(|st| current_row[st.main_index()])
                 .into_iter()
                 .zip_eq(&challenges[ChallengeId::StackWeight0..=ChallengeId::StackWeight4])
                 .map(|(st, &weight)| weight * st)
@@ -337,14 +335,14 @@ fn extension_column_sponge_eval_argument(
     let mut extension_column = Vec::with_capacity(base_table.nrows());
     extension_column.push(sponge_running_evaluation);
     for (previous_row, current_row) in base_table.rows().into_iter().tuple_windows() {
-        let previous_ci = previous_row[CI.base_table_index()];
+        let previous_ci = previous_row[CI.main_index()];
         if previous_ci == Instruction::SpongeInit.opcode_b() {
             sponge_running_evaluation = sponge_running_evaluation
                 * challenges[ChallengeId::SpongeIndeterminate]
                 + challenges[ChallengeId::HashCIWeight] * Instruction::SpongeInit.opcode_b();
         } else if previous_ci == Instruction::SpongeAbsorb.opcode_b() {
             let compressed_row = st0_through_st9
-                .map(|st| previous_row[st.base_table_index()])
+                .map(|st| previous_row[st.main_index()])
                 .into_iter()
                 .zip_eq(hash_state_weights.iter())
                 .map(|(st, &weight)| weight * st)
@@ -357,9 +355,9 @@ fn extension_column_sponge_eval_argument(
             let stack_elements = [ST1, ST2, ST3, ST4];
             let helper_variables = [HV0, HV1, HV2, HV3, HV4, HV5];
             let compressed_row = stack_elements
-                .map(|st| current_row[st.base_table_index()])
+                .map(|st| current_row[st.main_index()])
                 .into_iter()
-                .chain(helper_variables.map(|hv| previous_row[hv.base_table_index()]))
+                .chain(helper_variables.map(|hv| previous_row[hv.main_index()]))
                 .zip_eq(hash_state_weights.iter())
                 .map(|(element, &weight)| weight * element)
                 .sum::<XFieldElement>();
@@ -369,7 +367,7 @@ fn extension_column_sponge_eval_argument(
                 + compressed_row;
         } else if previous_ci == Instruction::SpongeSqueeze.opcode_b() {
             let compressed_row = st0_through_st9
-                .map(|st| current_row[st.base_table_index()])
+                .map(|st| current_row[st.main_index()])
                 .into_iter()
                 .zip_eq(hash_state_weights.iter())
                 .map(|(st, &weight)| weight * st)
@@ -391,31 +389,31 @@ fn extension_column_for_u32_lookup_argument(
     // collect elements to be inverted for more performant batch inversion
     let mut to_invert = vec![];
     for (previous_row, current_row) in base_table.rows().into_iter().tuple_windows() {
-        let previous_ci = previous_row[CI.base_table_index()];
+        let previous_ci = previous_row[CI.main_index()];
         if previous_ci == Instruction::Split.opcode_b() {
-            let compressed_row = current_row[ST0.base_table_index()]
+            let compressed_row = current_row[ST0.main_index()]
                 * challenges[ChallengeId::U32LhsWeight]
-                + current_row[ST1.base_table_index()] * challenges[ChallengeId::U32RhsWeight]
-                + previous_row[CI.base_table_index()] * challenges[ChallengeId::U32CiWeight];
+                + current_row[ST1.main_index()] * challenges[ChallengeId::U32RhsWeight]
+                + previous_row[CI.main_index()] * challenges[ChallengeId::U32CiWeight];
             to_invert.push(challenges[ChallengeId::U32Indeterminate] - compressed_row);
         } else if previous_ci == Instruction::Lt.opcode_b()
             || previous_ci == Instruction::And.opcode_b()
             || previous_ci == Instruction::Pow.opcode_b()
         {
-            let compressed_row = previous_row[ST0.base_table_index()]
+            let compressed_row = previous_row[ST0.main_index()]
                 * challenges[ChallengeId::U32LhsWeight]
-                + previous_row[ST1.base_table_index()] * challenges[ChallengeId::U32RhsWeight]
-                + previous_row[CI.base_table_index()] * challenges[ChallengeId::U32CiWeight]
-                + current_row[ST0.base_table_index()] * challenges[ChallengeId::U32ResultWeight];
+                + previous_row[ST1.main_index()] * challenges[ChallengeId::U32RhsWeight]
+                + previous_row[CI.main_index()] * challenges[ChallengeId::U32CiWeight]
+                + current_row[ST0.main_index()] * challenges[ChallengeId::U32ResultWeight];
             to_invert.push(challenges[ChallengeId::U32Indeterminate] - compressed_row);
         } else if previous_ci == Instruction::Xor.opcode_b() {
             // Triton VM uses the following equality to compute the results of both the
             // `and` and `xor` instruction using the u32 coprocessor's `and` capability:
             //     a ^ b = a + b - 2 · (a & b)
             // <=> a & b = (a + b - a ^ b) / 2
-            let st0_prev = previous_row[ST0.base_table_index()];
-            let st1_prev = previous_row[ST1.base_table_index()];
-            let st0 = current_row[ST0.base_table_index()];
+            let st0_prev = previous_row[ST0.main_index()];
+            let st1_prev = previous_row[ST1.main_index()];
+            let st0 = current_row[ST0.main_index()];
             let from_xor_in_processor_to_and_in_u32_coprocessor =
                 (st0_prev + st1_prev - st0) / bfe!(2);
             let compressed_row = st0_prev * challenges[ChallengeId::U32LhsWeight]
@@ -427,20 +425,20 @@ fn extension_column_for_u32_lookup_argument(
         } else if previous_ci == Instruction::Log2Floor.opcode_b()
             || previous_ci == Instruction::PopCount.opcode_b()
         {
-            let compressed_row = previous_row[ST0.base_table_index()]
+            let compressed_row = previous_row[ST0.main_index()]
                 * challenges[ChallengeId::U32LhsWeight]
-                + previous_row[CI.base_table_index()] * challenges[ChallengeId::U32CiWeight]
-                + current_row[ST0.base_table_index()] * challenges[ChallengeId::U32ResultWeight];
+                + previous_row[CI.main_index()] * challenges[ChallengeId::U32CiWeight]
+                + current_row[ST0.main_index()] * challenges[ChallengeId::U32ResultWeight];
             to_invert.push(challenges[ChallengeId::U32Indeterminate] - compressed_row);
         } else if previous_ci == Instruction::DivMod.opcode_b() {
-            let compressed_row_for_lt_check = current_row[ST0.base_table_index()]
+            let compressed_row_for_lt_check = current_row[ST0.main_index()]
                 * challenges[ChallengeId::U32LhsWeight]
-                + previous_row[ST1.base_table_index()] * challenges[ChallengeId::U32RhsWeight]
+                + previous_row[ST1.main_index()] * challenges[ChallengeId::U32RhsWeight]
                 + Instruction::Lt.opcode_b() * challenges[ChallengeId::U32CiWeight]
                 + bfe!(1) * challenges[ChallengeId::U32ResultWeight];
-            let compressed_row_for_range_check = previous_row[ST0.base_table_index()]
+            let compressed_row_for_range_check = previous_row[ST0.main_index()]
                 * challenges[ChallengeId::U32LhsWeight]
-                + current_row[ST1.base_table_index()] * challenges[ChallengeId::U32RhsWeight]
+                + current_row[ST1.main_index()] * challenges[ChallengeId::U32RhsWeight]
                 + Instruction::Split.opcode_b() * challenges[ChallengeId::U32CiWeight];
             to_invert.push(challenges[ChallengeId::U32Indeterminate] - compressed_row_for_lt_check);
             to_invert
@@ -448,9 +446,9 @@ fn extension_column_for_u32_lookup_argument(
         } else if previous_ci == Instruction::MerkleStep.opcode_b()
             || previous_ci == Instruction::MerkleStepMem.opcode_b()
         {
-            let compressed_row = previous_row[ST5.base_table_index()]
+            let compressed_row = previous_row[ST5.main_index()]
                 * challenges[ChallengeId::U32LhsWeight]
-                + current_row[ST5.base_table_index()] * challenges[ChallengeId::U32RhsWeight]
+                + current_row[ST5.main_index()] * challenges[ChallengeId::U32RhsWeight]
                 + Instruction::Split.opcode_b() * challenges[ChallengeId::U32CiWeight];
             to_invert.push(challenges[ChallengeId::U32Indeterminate] - compressed_row);
         }
@@ -462,7 +460,7 @@ fn extension_column_for_u32_lookup_argument(
     let mut extension_column = Vec::with_capacity(base_table.nrows());
     extension_column.push(u32_table_running_sum_log_derivative);
     for (previous_row, _) in base_table.rows().into_iter().tuple_windows() {
-        let previous_ci = previous_row[CI.base_table_index()];
+        let previous_ci = previous_row[CI.main_index()];
         if Instruction::try_from(previous_ci)
             .unwrap()
             .is_u32_instruction()
@@ -488,9 +486,9 @@ fn extension_column_for_clock_jump_difference_lookup_argument(
     // collect inverses to batch invert
     let mut to_invert = vec![];
     for row in base_table.rows() {
-        let lookup_multiplicity = row[ClockJumpDifferenceLookupMultiplicity.base_table_index()];
+        let lookup_multiplicity = row[ClockJumpDifferenceLookupMultiplicity.main_index()];
         if !lookup_multiplicity.is_zero() {
-            let clk = row[CLK.base_table_index()];
+            let clk = row[CLK.main_index()];
             to_invert.push(challenges[ChallengeId::ClockJumpDifferenceLookupIndeterminate] - clk);
         }
     }
@@ -500,7 +498,7 @@ fn extension_column_for_clock_jump_difference_lookup_argument(
     let mut cjd_lookup_log_derivative = LookupArg::default_initial();
     let mut extension_column = Vec::with_capacity(base_table.nrows());
     for row in base_table.rows() {
-        let lookup_multiplicity = row[ClockJumpDifferenceLookupMultiplicity.base_table_index()];
+        let lookup_multiplicity = row[ClockJumpDifferenceLookupMultiplicity.main_index()];
         if !lookup_multiplicity.is_zero() {
             cjd_lookup_log_derivative += inverses.next().unwrap() * lookup_multiplicity;
         }
@@ -517,7 +515,7 @@ fn factor_for_op_stack_table_running_product(
 ) -> XFieldElement {
     let default_factor = xfe!(1);
 
-    let is_padding_row = current_row[IsPadding.base_table_index()].is_one();
+    let is_padding_row = current_row[IsPadding.main_index()].is_one();
     if is_padding_row {
         return default_factor;
     }
@@ -541,14 +539,14 @@ fn factor_for_op_stack_table_running_product(
         let max_stack_element_index = OpStackElement::COUNT - 1;
         let stack_element_index = max_stack_element_index - op_stack_pointer_offset;
         let stack_element_column = ProcessorTable::op_stack_column_by_index(stack_element_index);
-        let underflow_element = row_with_shorter_stack[stack_element_column.base_table_index()];
+        let underflow_element = row_with_shorter_stack[stack_element_column.main_index()];
 
-        let op_stack_pointer = row_with_shorter_stack[OpStackPointer.base_table_index()];
+        let op_stack_pointer = row_with_shorter_stack[OpStackPointer.main_index()];
         let offset = bfe!(op_stack_pointer_offset as u64);
         let offset_op_stack_pointer = op_stack_pointer + offset;
 
-        let clk = previous_row[CLK.base_table_index()];
-        let ib1_shrink_stack = previous_row[IB1.base_table_index()];
+        let clk = previous_row[CLK.main_index()];
+        let ib1_shrink_stack = previous_row[IB1.main_index()];
         let compressed_row = clk * challenges[ChallengeId::OpStackClkWeight]
             + ib1_shrink_stack * challenges[ChallengeId::OpStackIb1Weight]
             + offset_op_stack_pointer * challenges[ChallengeId::OpStackPointerWeight]
@@ -563,14 +561,14 @@ fn factor_for_ram_table_running_product(
     current_row: ArrayView1<BFieldElement>,
     challenges: &Challenges,
 ) -> Option<XFieldElement> {
-    let is_padding_row = current_row[IsPadding.base_table_index()].is_one();
+    let is_padding_row = current_row[IsPadding.main_index()].is_one();
     if is_padding_row {
         return None;
     }
 
     let instruction = instruction_from_row(previous_row)?;
 
-    let clk = previous_row[CLK.base_table_index()];
+    let clk = previous_row[CLK.main_index()];
     let instruction_type = match instruction {
         ReadMem(_) => ram::INSTRUCTION_TYPE_READ,
         WriteMem(_) => ram::INSTRUCTION_TYPE_WRITE,
@@ -597,50 +595,50 @@ fn factor_for_ram_table_running_product(
             for ram_pointer_offset in 0..op_stack_delta {
                 let ram_value_index = ram_pointer_offset + num_ram_pointers;
                 let ram_value_column = ProcessorTable::op_stack_column_by_index(ram_value_index);
-                let ram_value = row_with_longer_stack[ram_value_column.base_table_index()];
+                let ram_value = row_with_longer_stack[ram_value_column.main_index()];
                 let offset_ram_pointer =
                     offset_ram_pointer(instruction, row_with_longer_stack, ram_pointer_offset);
                 accesses.push((offset_ram_pointer, ram_value));
             }
         }
         SpongeAbsorbMem => {
-            let mem_pointer = previous_row[ST0.base_table_index()];
-            accesses.push((mem_pointer + bfe!(0), current_row[ST1.base_table_index()]));
-            accesses.push((mem_pointer + bfe!(1), current_row[ST2.base_table_index()]));
-            accesses.push((mem_pointer + bfe!(2), current_row[ST3.base_table_index()]));
-            accesses.push((mem_pointer + bfe!(3), current_row[ST4.base_table_index()]));
-            accesses.push((mem_pointer + bfe!(4), previous_row[HV0.base_table_index()]));
-            accesses.push((mem_pointer + bfe!(5), previous_row[HV1.base_table_index()]));
-            accesses.push((mem_pointer + bfe!(6), previous_row[HV2.base_table_index()]));
-            accesses.push((mem_pointer + bfe!(7), previous_row[HV3.base_table_index()]));
-            accesses.push((mem_pointer + bfe!(8), previous_row[HV4.base_table_index()]));
-            accesses.push((mem_pointer + bfe!(9), previous_row[HV5.base_table_index()]));
+            let mem_pointer = previous_row[ST0.main_index()];
+            accesses.push((mem_pointer + bfe!(0), current_row[ST1.main_index()]));
+            accesses.push((mem_pointer + bfe!(1), current_row[ST2.main_index()]));
+            accesses.push((mem_pointer + bfe!(2), current_row[ST3.main_index()]));
+            accesses.push((mem_pointer + bfe!(3), current_row[ST4.main_index()]));
+            accesses.push((mem_pointer + bfe!(4), previous_row[HV0.main_index()]));
+            accesses.push((mem_pointer + bfe!(5), previous_row[HV1.main_index()]));
+            accesses.push((mem_pointer + bfe!(6), previous_row[HV2.main_index()]));
+            accesses.push((mem_pointer + bfe!(7), previous_row[HV3.main_index()]));
+            accesses.push((mem_pointer + bfe!(8), previous_row[HV4.main_index()]));
+            accesses.push((mem_pointer + bfe!(9), previous_row[HV5.main_index()]));
         }
         MerkleStepMem => {
-            let mem_pointer = previous_row[ST7.base_table_index()];
-            accesses.push((mem_pointer + bfe!(0), previous_row[HV0.base_table_index()]));
-            accesses.push((mem_pointer + bfe!(1), previous_row[HV1.base_table_index()]));
-            accesses.push((mem_pointer + bfe!(2), previous_row[HV2.base_table_index()]));
-            accesses.push((mem_pointer + bfe!(3), previous_row[HV3.base_table_index()]));
-            accesses.push((mem_pointer + bfe!(4), previous_row[HV4.base_table_index()]));
+            let mem_pointer = previous_row[ST7.main_index()];
+            accesses.push((mem_pointer + bfe!(0), previous_row[HV0.main_index()]));
+            accesses.push((mem_pointer + bfe!(1), previous_row[HV1.main_index()]));
+            accesses.push((mem_pointer + bfe!(2), previous_row[HV2.main_index()]));
+            accesses.push((mem_pointer + bfe!(3), previous_row[HV3.main_index()]));
+            accesses.push((mem_pointer + bfe!(4), previous_row[HV4.main_index()]));
         }
         XxDotStep => {
-            let rhs_pointer = previous_row[ST0.base_table_index()];
-            let lhs_pointer = previous_row[ST1.base_table_index()];
-            accesses.push((rhs_pointer + bfe!(0), previous_row[HV0.base_table_index()]));
-            accesses.push((rhs_pointer + bfe!(1), previous_row[HV1.base_table_index()]));
-            accesses.push((rhs_pointer + bfe!(2), previous_row[HV2.base_table_index()]));
-            accesses.push((lhs_pointer + bfe!(0), previous_row[HV3.base_table_index()]));
-            accesses.push((lhs_pointer + bfe!(1), previous_row[HV4.base_table_index()]));
-            accesses.push((lhs_pointer + bfe!(2), previous_row[HV5.base_table_index()]));
+            let rhs_pointer = previous_row[ST0.main_index()];
+            let lhs_pointer = previous_row[ST1.main_index()];
+            accesses.push((rhs_pointer + bfe!(0), previous_row[HV0.main_index()]));
+            accesses.push((rhs_pointer + bfe!(1), previous_row[HV1.main_index()]));
+            accesses.push((rhs_pointer + bfe!(2), previous_row[HV2.main_index()]));
+            accesses.push((lhs_pointer + bfe!(0), previous_row[HV3.main_index()]));
+            accesses.push((lhs_pointer + bfe!(1), previous_row[HV4.main_index()]));
+            accesses.push((lhs_pointer + bfe!(2), previous_row[HV5.main_index()]));
         }
         XbDotStep => {
-            let rhs_pointer = previous_row[ST0.base_table_index()];
-            let lhs_pointer = previous_row[ST1.base_table_index()];
-            accesses.push((rhs_pointer + bfe!(0), previous_row[HV0.base_table_index()]));
-            accesses.push((lhs_pointer + bfe!(0), previous_row[HV1.base_table_index()]));
-            accesses.push((lhs_pointer + bfe!(1), previous_row[HV2.base_table_index()]));
-            accesses.push((lhs_pointer + bfe!(2), previous_row[HV3.base_table_index()]));
+            let rhs_pointer = previous_row[ST0.main_index()];
+            let lhs_pointer = previous_row[ST1.main_index()];
+            accesses.push((rhs_pointer + bfe!(0), previous_row[HV0.main_index()]));
+            accesses.push((lhs_pointer + bfe!(0), previous_row[HV1.main_index()]));
+            accesses.push((lhs_pointer + bfe!(1), previous_row[HV2.main_index()]));
+            accesses.push((lhs_pointer + bfe!(2), previous_row[HV3.main_index()]));
         }
         _ => unreachable!(),
     };
@@ -662,7 +660,7 @@ fn offset_ram_pointer(
     row_with_longer_stack: ArrayView1<BFieldElement>,
     ram_pointer_offset: usize,
 ) -> BFieldElement {
-    let ram_pointer = row_with_longer_stack[ST0.base_table_index()];
+    let ram_pointer = row_with_longer_stack[ST0.main_index()];
     let offset = bfe!(ram_pointer_offset as u64);
 
     match instruction {
@@ -675,11 +673,11 @@ fn offset_ram_pointer(
 }
 
 fn instruction_from_row(row: ArrayView1<BFieldElement>) -> Option<Instruction> {
-    let opcode = row[CI.base_table_index()];
+    let opcode = row[CI.main_index()];
     let instruction = Instruction::try_from(opcode).ok()?;
 
     if instruction.arg().is_some() {
-        let arg = row[NIA.base_table_index()];
+        let arg = row[NIA.main_index()];
         return instruction.change_arg(arg).ok();
     }
 
@@ -733,8 +731,8 @@ pub(crate) mod tests {
     #[derive(Debug, Clone)]
     struct TestRowsDebugInfo {
         pub instruction: Instruction,
-        pub debug_cols_curr_row: Vec<ProcessorBaseTableColumn>,
-        pub debug_cols_next_row: Vec<ProcessorBaseTableColumn>,
+        pub debug_cols_curr_row: Vec<ProcessorMainColumn>,
+        pub debug_cols_next_row: Vec<ProcessorMainColumn>,
     }
 
     fn test_row_from_program(program: Program, row_num: usize) -> TestRows {
@@ -777,16 +775,16 @@ pub(crate) mod tests {
 
             println!("Testing all constraints of {instruction} for test case {case_idx}…");
             for &c in &debug_info.debug_cols_curr_row {
-                print!("{c}  = {}, ", curr_row[c.master_base_table_index()]);
+                print!("{c}  = {}, ", curr_row[c.master_main_index()]);
             }
             println!();
             for &c in &debug_info.debug_cols_next_row {
-                print!("{c}' = {}, ", next_row[c.master_base_table_index()]);
+                print!("{c}' = {}, ", next_row[c.master_main_index()]);
             }
             println!();
 
             assert!(
-                instruction.opcode_b() == curr_row[CI.master_base_table_index()],
+                instruction.opcode_b() == curr_row[CI.master_main_index()],
                 "The test is trying to check the wrong transition constraint polynomials."
             );
 

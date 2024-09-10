@@ -28,17 +28,17 @@ See “[Arguments Using Public Information](arithmetization.md#arguments-using-p
 
 ![](img/aet-relations.png)
 
-### Base Tables
+### Main Tables
 
 The values of all registers, and consequently the elements on the stack, in memory, and so on, are elements of the _B-field_, _i.e._, $\mathbb{F}_p$ where $p$ is the Oxfoi prime, $2^{64}-2^{32}+1$.
 All values of columns corresponding to one such register are elements of the B-Field as well.
-Together, these columns are referred to as table's _base_ columns, and make up the _base table_.
+Together, these columns are referred to as table's _main_ columns, and make up the _main table_.
 
-### Extension Tables
+### Auxiliary Tables
 
 The entries of a table's columns corresponding to [Permutation](permutation-argument.md), [Evaluation](evaluation-argument.md), and [Lookup Arguments](lookup-argument.md) are elements from the _X-field_ $\mathbb{F}_{p^3}$.
-These columns are referred to as a table's _extension_ columns, both because the entries are elements of the X-field and because the entries can only be computed using the base tables, through an _extension_ process.
-Together, these columns are referred to as a table's _extension_ columns, and make up the _extension table_.
+These columns are referred to as a table's _auxiliary_ columns, both because the entries are elements of the X-field and because the entries can only be computed using the main tables, through an _auxiliary_ process.
+Together, these columns are referred to as a table's _auxiliary_ columns, and make up the _auxiliary table_.
 
 ### Padding
 

@@ -1,13 +1,13 @@
 use constraint_circuit::ConstraintCircuitBuilder;
 use constraint_circuit::ConstraintCircuitMonad;
 use constraint_circuit::DualRowIndicator;
-use constraint_circuit::DualRowIndicator::CurrentBaseRow;
-use constraint_circuit::DualRowIndicator::CurrentExtRow;
-use constraint_circuit::DualRowIndicator::NextBaseRow;
-use constraint_circuit::DualRowIndicator::NextExtRow;
+use constraint_circuit::DualRowIndicator::CurrentAux;
+use constraint_circuit::DualRowIndicator::CurrentMain;
+use constraint_circuit::DualRowIndicator::NextAux;
+use constraint_circuit::DualRowIndicator::NextMain;
 use constraint_circuit::SingleRowIndicator;
-use constraint_circuit::SingleRowIndicator::BaseRow;
-use constraint_circuit::SingleRowIndicator::ExtRow;
+use constraint_circuit::SingleRowIndicator::Aux;
+use constraint_circuit::SingleRowIndicator::Main;
 
 use crate::challenge_id::ChallengeId;
 use crate::challenge_id::ChallengeId::CascadeLookupIndeterminate;
@@ -18,34 +18,32 @@ use crate::challenge_id::ChallengeId::LookupTablePublicTerminal;
 use crate::cross_table_argument::CrossTableArg;
 use crate::cross_table_argument::EvalArg;
 use crate::cross_table_argument::LookupArg;
-use crate::table_column::LookupBaseTableColumn;
-use crate::table_column::LookupBaseTableColumn::IsPadding;
-use crate::table_column::LookupBaseTableColumn::LookIn;
-use crate::table_column::LookupBaseTableColumn::LookOut;
-use crate::table_column::LookupBaseTableColumn::LookupMultiplicity;
-use crate::table_column::LookupExtTableColumn;
-use crate::table_column::LookupExtTableColumn::CascadeTableServerLogDerivative;
-use crate::table_column::LookupExtTableColumn::PublicEvaluationArgument;
-use crate::table_column::MasterBaseTableColumn;
-use crate::table_column::MasterExtTableColumn;
+use crate::table_column::LookupAuxColumn;
+use crate::table_column::LookupAuxColumn::CascadeTableServerLogDerivative;
+use crate::table_column::LookupAuxColumn::PublicEvaluationArgument;
+use crate::table_column::LookupMainColumn;
+use crate::table_column::LookupMainColumn::IsPadding;
+use crate::table_column::LookupMainColumn::LookIn;
+use crate::table_column::LookupMainColumn::LookOut;
+use crate::table_column::LookupMainColumn::LookupMultiplicity;
+use crate::table_column::MasterAuxColumn;
+use crate::table_column::MasterMainColumn;
 use crate::AIR;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct LookupTable;
 
 impl AIR for LookupTable {
-    type MainColumn = LookupBaseTableColumn;
-    type AuxColumn = LookupExtTableColumn;
+    type MainColumn = LookupMainColumn;
+    type AuxColumn = LookupAuxColumn;
 
     fn initial_constraints(
         circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
-        let main_row = |col_id: Self::MainColumn| {
-            circuit_builder.input(BaseRow(col_id.master_base_table_index()))
-        };
-        let aux_row = |col_id: Self::AuxColumn| {
-            circuit_builder.input(ExtRow(col_id.master_ext_table_index()))
-        };
+        let main_row =
+            |col_id: Self::MainColumn| circuit_builder.input(Main(col_id.master_main_index()));
+        let aux_row =
+            |col_id: Self::AuxColumn| circuit_builder.input(Aux(col_id.master_aux_index()));
         let challenge = |challenge_id: ChallengeId| circuit_builder.challenge(challenge_id);
 
         let lookup_input = main_row(LookIn);
@@ -85,9 +83,8 @@ impl AIR for LookupTable {
         circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
         let constant = |c: u64| circuit_builder.b_constant(c);
-        let main_row = |col_id: Self::MainColumn| {
-            circuit_builder.input(BaseRow(col_id.master_base_table_index()))
-        };
+        let main_row =
+            |col_id: Self::MainColumn| circuit_builder.input(Main(col_id.master_main_index()));
 
         let padding_is_0_or_1 = main_row(IsPadding) * (constant(1) - main_row(IsPadding));
 
@@ -100,17 +97,14 @@ impl AIR for LookupTable {
         let one = || circuit_builder.b_constant(1);
 
         let current_main_row = |col_id: Self::MainColumn| {
-            circuit_builder.input(CurrentBaseRow(col_id.master_base_table_index()))
+            circuit_builder.input(CurrentMain(col_id.master_main_index()))
         };
-        let next_main_row = |col_id: Self::MainColumn| {
-            circuit_builder.input(NextBaseRow(col_id.master_base_table_index()))
-        };
-        let current_aux_row = |col_id: Self::AuxColumn| {
-            circuit_builder.input(CurrentExtRow(col_id.master_ext_table_index()))
-        };
-        let next_aux_row = |col_id: Self::AuxColumn| {
-            circuit_builder.input(NextExtRow(col_id.master_ext_table_index()))
-        };
+        let next_main_row =
+            |col_id: Self::MainColumn| circuit_builder.input(NextMain(col_id.master_main_index()));
+        let current_aux_row =
+            |col_id: Self::AuxColumn| circuit_builder.input(CurrentAux(col_id.master_aux_index()));
+        let next_aux_row =
+            |col_id: Self::AuxColumn| circuit_builder.input(NextAux(col_id.master_aux_index()));
         let challenge = |challenge_id: ChallengeId| circuit_builder.challenge(challenge_id);
 
         let lookup_input = current_main_row(LookIn);
@@ -177,9 +171,8 @@ impl AIR for LookupTable {
         circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
         let challenge = |challenge_id: ChallengeId| circuit_builder.challenge(challenge_id);
-        let aux_row = |col_id: Self::AuxColumn| {
-            circuit_builder.input(ExtRow(col_id.master_ext_table_index()))
-        };
+        let aux_row =
+            |col_id: Self::AuxColumn| circuit_builder.input(Aux(col_id.master_aux_index()));
 
         let narrow_table_terminal_matches_user_supplied_terminal =
             aux_row(PublicEvaluationArgument) - challenge(LookupTablePublicTerminal);

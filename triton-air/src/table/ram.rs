@@ -1,21 +1,21 @@
 use constraint_circuit::ConstraintCircuitBuilder;
 use constraint_circuit::ConstraintCircuitMonad;
 use constraint_circuit::DualRowIndicator;
-use constraint_circuit::DualRowIndicator::CurrentBaseRow;
-use constraint_circuit::DualRowIndicator::CurrentExtRow;
-use constraint_circuit::DualRowIndicator::NextBaseRow;
-use constraint_circuit::DualRowIndicator::NextExtRow;
+use constraint_circuit::DualRowIndicator::CurrentAux;
+use constraint_circuit::DualRowIndicator::CurrentMain;
+use constraint_circuit::DualRowIndicator::NextAux;
+use constraint_circuit::DualRowIndicator::NextMain;
 use constraint_circuit::SingleRowIndicator;
-use constraint_circuit::SingleRowIndicator::BaseRow;
-use constraint_circuit::SingleRowIndicator::ExtRow;
+use constraint_circuit::SingleRowIndicator::Aux;
+use constraint_circuit::SingleRowIndicator::Main;
 use twenty_first::prelude::*;
 
 use crate::challenge_id::ChallengeId;
 use crate::cross_table_argument::CrossTableArg;
 use crate::cross_table_argument::LookupArg;
 use crate::cross_table_argument::PermArg;
-use crate::table_column::MasterBaseTableColumn;
-use crate::table_column::MasterExtTableColumn;
+use crate::table_column::MasterAuxColumn;
+use crate::table_column::MasterMainColumn;
 use crate::AIR;
 
 pub const INSTRUCTION_TYPE_WRITE: BFieldElement = BFieldElement::new(0);
@@ -26,8 +26,8 @@ pub const PADDING_INDICATOR: BFieldElement = BFieldElement::new(2);
 pub struct RamTable;
 
 impl AIR for RamTable {
-    type MainColumn = crate::table_column::RamBaseTableColumn;
-    type AuxColumn = crate::table_column::RamExtTableColumn;
+    type MainColumn = crate::table_column::RamMainColumn;
+    type AuxColumn = crate::table_column::RamAuxColumn;
 
     fn initial_constraints(
         circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
@@ -35,12 +35,10 @@ impl AIR for RamTable {
         let challenge = |c| circuit_builder.challenge(c);
         let constant = |c| circuit_builder.b_constant(c);
         let x_constant = |c| circuit_builder.x_constant(c);
-        let main_row = |column: Self::MainColumn| {
-            circuit_builder.input(BaseRow(column.master_base_table_index()))
-        };
-        let aux_row = |column: Self::AuxColumn| {
-            circuit_builder.input(ExtRow(column.master_ext_table_index()))
-        };
+        let main_row =
+            |column: Self::MainColumn| circuit_builder.input(Main(column.master_main_index()));
+        let aux_row =
+            |column: Self::AuxColumn| circuit_builder.input(Aux(column.master_aux_index()));
 
         let first_row_is_padding_row =
             main_row(Self::MainColumn::InstructionType) - constant(PADDING_INDICATOR);
@@ -108,54 +106,51 @@ impl AIR for RamTable {
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
         let constant = |c| circuit_builder.b_constant(c);
         let challenge = |c| circuit_builder.challenge(c);
-        let curr_base_row = |column: Self::MainColumn| {
-            circuit_builder.input(CurrentBaseRow(column.master_base_table_index()))
+        let curr_main_row = |column: Self::MainColumn| {
+            circuit_builder.input(CurrentMain(column.master_main_index()))
         };
-        let curr_ext_row = |column: Self::AuxColumn| {
-            circuit_builder.input(CurrentExtRow(column.master_ext_table_index()))
-        };
-        let next_base_row = |column: Self::MainColumn| {
-            circuit_builder.input(NextBaseRow(column.master_base_table_index()))
-        };
-        let next_ext_row = |column: Self::AuxColumn| {
-            circuit_builder.input(NextExtRow(column.master_ext_table_index()))
-        };
+        let curr_aux_row =
+            |column: Self::AuxColumn| circuit_builder.input(CurrentAux(column.master_aux_index()));
+        let next_main_row =
+            |column: Self::MainColumn| circuit_builder.input(NextMain(column.master_main_index()));
+        let next_aux_row =
+            |column: Self::AuxColumn| circuit_builder.input(NextAux(column.master_aux_index()));
 
         let one = constant(1_u32.into());
 
         let bezout_challenge = challenge(ChallengeId::RamTableBezoutRelationIndeterminate);
 
-        let clock = curr_base_row(Self::MainColumn::CLK);
-        let ram_pointer = curr_base_row(Self::MainColumn::RamPointer);
-        let ram_value = curr_base_row(Self::MainColumn::RamValue);
-        let instruction_type = curr_base_row(Self::MainColumn::InstructionType);
+        let clock = curr_main_row(Self::MainColumn::CLK);
+        let ram_pointer = curr_main_row(Self::MainColumn::RamPointer);
+        let ram_value = curr_main_row(Self::MainColumn::RamValue);
+        let instruction_type = curr_main_row(Self::MainColumn::InstructionType);
         let inverse_of_ram_pointer_difference =
-            curr_base_row(Self::MainColumn::InverseOfRampDifference);
-        let bcpc0 = curr_base_row(Self::MainColumn::BezoutCoefficientPolynomialCoefficient0);
-        let bcpc1 = curr_base_row(Self::MainColumn::BezoutCoefficientPolynomialCoefficient1);
+            curr_main_row(Self::MainColumn::InverseOfRampDifference);
+        let bcpc0 = curr_main_row(Self::MainColumn::BezoutCoefficientPolynomialCoefficient0);
+        let bcpc1 = curr_main_row(Self::MainColumn::BezoutCoefficientPolynomialCoefficient1);
 
-        let running_product_ram_pointer = curr_ext_row(Self::AuxColumn::RunningProductOfRAMP);
-        let fd = curr_ext_row(Self::AuxColumn::FormalDerivative);
-        let bc0 = curr_ext_row(Self::AuxColumn::BezoutCoefficient0);
-        let bc1 = curr_ext_row(Self::AuxColumn::BezoutCoefficient1);
-        let rppa = curr_ext_row(Self::AuxColumn::RunningProductPermArg);
+        let running_product_ram_pointer = curr_aux_row(Self::AuxColumn::RunningProductOfRAMP);
+        let fd = curr_aux_row(Self::AuxColumn::FormalDerivative);
+        let bc0 = curr_aux_row(Self::AuxColumn::BezoutCoefficient0);
+        let bc1 = curr_aux_row(Self::AuxColumn::BezoutCoefficient1);
+        let rppa = curr_aux_row(Self::AuxColumn::RunningProductPermArg);
         let clock_jump_diff_log_derivative =
-            curr_ext_row(Self::AuxColumn::ClockJumpDifferenceLookupClientLogDerivative);
+            curr_aux_row(Self::AuxColumn::ClockJumpDifferenceLookupClientLogDerivative);
 
-        let clock_next = next_base_row(Self::MainColumn::CLK);
-        let ram_pointer_next = next_base_row(Self::MainColumn::RamPointer);
-        let ram_value_next = next_base_row(Self::MainColumn::RamValue);
-        let instruction_type_next = next_base_row(Self::MainColumn::InstructionType);
-        let bcpc0_next = next_base_row(Self::MainColumn::BezoutCoefficientPolynomialCoefficient0);
-        let bcpc1_next = next_base_row(Self::MainColumn::BezoutCoefficientPolynomialCoefficient1);
+        let clock_next = next_main_row(Self::MainColumn::CLK);
+        let ram_pointer_next = next_main_row(Self::MainColumn::RamPointer);
+        let ram_value_next = next_main_row(Self::MainColumn::RamValue);
+        let instruction_type_next = next_main_row(Self::MainColumn::InstructionType);
+        let bcpc0_next = next_main_row(Self::MainColumn::BezoutCoefficientPolynomialCoefficient0);
+        let bcpc1_next = next_main_row(Self::MainColumn::BezoutCoefficientPolynomialCoefficient1);
 
-        let running_product_ram_pointer_next = next_ext_row(Self::AuxColumn::RunningProductOfRAMP);
-        let fd_next = next_ext_row(Self::AuxColumn::FormalDerivative);
-        let bc0_next = next_ext_row(Self::AuxColumn::BezoutCoefficient0);
-        let bc1_next = next_ext_row(Self::AuxColumn::BezoutCoefficient1);
-        let rppa_next = next_ext_row(Self::AuxColumn::RunningProductPermArg);
+        let running_product_ram_pointer_next = next_aux_row(Self::AuxColumn::RunningProductOfRAMP);
+        let fd_next = next_aux_row(Self::AuxColumn::FormalDerivative);
+        let bc0_next = next_aux_row(Self::AuxColumn::BezoutCoefficient0);
+        let bc1_next = next_aux_row(Self::AuxColumn::BezoutCoefficient1);
+        let rppa_next = next_aux_row(Self::AuxColumn::RunningProductPermArg);
         let clock_jump_diff_log_derivative_next =
-            next_ext_row(Self::AuxColumn::ClockJumpDifferenceLookupClientLogDerivative);
+            next_aux_row(Self::AuxColumn::ClockJumpDifferenceLookupClientLogDerivative);
 
         let next_row_is_padding_row =
             instruction_type_next.clone() - constant(PADDING_INDICATOR).clone();
@@ -260,14 +255,13 @@ impl AIR for RamTable {
         circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
         let constant = |c: u32| circuit_builder.b_constant(c);
-        let ext_row = |column: Self::AuxColumn| {
-            circuit_builder.input(ExtRow(column.master_ext_table_index()))
-        };
+        let aux_row =
+            |column: Self::AuxColumn| circuit_builder.input(Aux(column.master_aux_index()));
 
-        let bezout_relation_holds = ext_row(Self::AuxColumn::BezoutCoefficient0)
-            * ext_row(Self::AuxColumn::RunningProductOfRAMP)
-            + ext_row(Self::AuxColumn::BezoutCoefficient1)
-                * ext_row(Self::AuxColumn::FormalDerivative)
+        let bezout_relation_holds = aux_row(Self::AuxColumn::BezoutCoefficient0)
+            * aux_row(Self::AuxColumn::RunningProductOfRAMP)
+            + aux_row(Self::AuxColumn::BezoutCoefficient1)
+                * aux_row(Self::AuxColumn::FormalDerivative)
             - constant(1);
 
         vec![bezout_relation_holds]

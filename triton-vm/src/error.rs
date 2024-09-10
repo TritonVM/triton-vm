@@ -173,7 +173,7 @@ pub enum VerificationError {
     BaseCodewordAuthenticationFailure,
 
     #[error("failed to verify authentication path for extension codeword")]
-    ExtensionCodewordAuthenticationFailure,
+    AuxiliaryCodewordAuthenticationFailure,
 
     #[error("failed to verify authentication path for combined quotient codeword")]
     QuotientCodewordAuthenticationFailure,
@@ -190,10 +190,10 @@ pub enum VerificationError {
     #[error("the number of received quotient segment elements does not match the parameters")]
     IncorrectNumberOfQuotientSegmentElements,
 
-    #[error("the number of received base table rows does not match the parameters")]
-    IncorrectNumberOfBaseTableRows,
+    #[error("the number of received main table rows does not match the parameters")]
+    IncorrectNumberOfMainTableRows,
 
-    #[error("the number of received extension table rows does not match the parameters")]
+    #[error("the number of received auxiliary table rows does not match the parameters")]
     IncorrectNumberOfExtTableRows,
 
     #[error(transparent)]

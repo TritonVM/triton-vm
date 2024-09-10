@@ -88,7 +88,7 @@ impl Codegen for RustBackend {
         );
 
         let quotient_trait_impl = quote!(
-        impl MasterExtTable {
+        impl MasterAuxTable {
             pub const NUM_INITIAL_CONSTRAINTS: usize = #num_init_constraints;
             pub const NUM_CONSISTENCY_CONSTRAINTS: usize = #num_cons_constraints;
             pub const NUM_TRANSITION_CONSTRAINTS: usize = #num_tran_constraints;
@@ -147,11 +147,11 @@ impl RustBackend {
         field: TokenStream,
     ) -> TokenStream {
         quote!(
-        impl Evaluable<#field> for MasterExtTable {
+        impl Evaluable<#field> for MasterAuxTable {
             #[allow(unused_variables)]
             fn evaluate_initial_constraints(
-                base_row: ArrayView1<#field>,
-                ext_row: ArrayView1<XFieldElement>,
+                main_row: ArrayView1<#field>,
+                aux_row: ArrayView1<XFieldElement>,
                 challenges: &Challenges,
             ) -> Vec<XFieldElement> {
                 #init_constraints
@@ -159,8 +159,8 @@ impl RustBackend {
 
             #[allow(unused_variables)]
             fn evaluate_consistency_constraints(
-                base_row: ArrayView1<#field>,
-                ext_row: ArrayView1<XFieldElement>,
+                main_row: ArrayView1<#field>,
+                aux_row: ArrayView1<XFieldElement>,
                 challenges: &Challenges,
             ) -> Vec<XFieldElement> {
                 #cons_constraints
@@ -168,10 +168,10 @@ impl RustBackend {
 
             #[allow(unused_variables)]
             fn evaluate_transition_constraints(
-                current_base_row: ArrayView1<#field>,
-                current_ext_row: ArrayView1<XFieldElement>,
-                next_base_row: ArrayView1<#field>,
-                next_ext_row: ArrayView1<XFieldElement>,
+                current_main_row: ArrayView1<#field>,
+                current_aux_row: ArrayView1<XFieldElement>,
+                next_main_row: ArrayView1<#field>,
+                next_aux_row: ArrayView1<XFieldElement>,
                 challenges: &Challenges,
             ) -> Vec<XFieldElement> {
                 #tran_constraints
@@ -179,8 +179,8 @@ impl RustBackend {
 
             #[allow(unused_variables)]
             fn evaluate_terminal_constraints(
-                base_row: ArrayView1<#field>,
-                ext_row: ArrayView1<XFieldElement>,
+                main_row: ArrayView1<#field>,
+                aux_row: ArrayView1<XFieldElement>,
                 challenges: &Challenges,
             ) -> Vec<XFieldElement> {
                 #term_constraints
@@ -205,16 +205,16 @@ impl RustBackend {
 
         let mut backend = Self::default();
         let shared_declarations = backend.declare_shared_nodes(constraints);
-        let (base_constraints, ext_constraints): (Vec<_>, Vec<_>) = constraints
+        let (main_constraints, aux_constraints): (Vec<_>, Vec<_>) = constraints
             .iter()
             .partition(|constraint| constraint.evaluates_to_base_element());
 
         // The order of the constraints' degrees must match the order of the constraints.
         // Hence, listing the degrees is only possible after the partition into base and extension
         // constraints is known.
-        let tokenized_degree_bounds = base_constraints
+        let tokenized_degree_bounds = main_constraints
             .iter()
-            .chain(&ext_constraints)
+            .chain(&aux_constraints)
             .map(|circuit| match circuit.degree() {
                 d if d > 1 => quote!(interpolant_degree * #d - zerofier_degree),
                 1 => quote!(interpolant_degree - zerofier_degree),
@@ -229,32 +229,32 @@ impl RustBackend {
                 .map(|constraint| backend.evaluate_single_node(constraint))
                 .collect_vec()
         };
-        let tokenized_base_constraints = tokenize_constraint_evaluation(&base_constraints);
-        let tokenized_ext_constraints = tokenize_constraint_evaluation(&ext_constraints);
+        let tokenized_main_constraints = tokenize_constraint_evaluation(&main_constraints);
+        let tokenized_aux_constraints = tokenize_constraint_evaluation(&aux_constraints);
 
         // If there are no base constraints, the type needs to be explicitly declared.
-        let tokenized_bfe_base_constraints = match base_constraints.is_empty() {
-            true => quote!(let base_constraints: [BFieldElement; 0] = []),
-            false => quote!(let base_constraints = [#(#tokenized_base_constraints),*]),
+        let tokenized_bfe_main_constraints = match main_constraints.is_empty() {
+            true => quote!(let main_constraints: [BFieldElement; 0] = []),
+            false => quote!(let main_constraints = [#(#tokenized_main_constraints),*]),
         };
         let tokenized_bfe_constraints = quote!(
             #(#shared_declarations)*
-            #tokenized_bfe_base_constraints;
-            let ext_constraints = [#(#tokenized_ext_constraints),*];
-            base_constraints
+            #tokenized_bfe_main_constraints;
+            let aux_constraints = [#(#tokenized_aux_constraints),*];
+            main_constraints
                 .into_iter()
                 .map(|bfe| bfe.lift())
-                .chain(ext_constraints)
+                .chain(aux_constraints)
                 .collect()
         );
 
         let tokenized_xfe_constraints = quote!(
             #(#shared_declarations)*
-            let base_constraints = [#(#tokenized_base_constraints),*];
-            let ext_constraints = [#(#tokenized_ext_constraints),*];
-            base_constraints
+            let main_constraints = [#(#tokenized_main_constraints),*];
+            let aux_constraints = [#(#tokenized_aux_constraints),*];
+            main_constraints
                 .into_iter()
-                .chain(ext_constraints)
+                .chain(aux_constraints)
                 .collect()
         );
 
@@ -455,10 +455,10 @@ impl Codegen for TasmBackend {
                 mem_layout: StaticTasmConstraintEvaluationMemoryLayout,
             ) -> Vec<LabelledInstruction> {
                 let free_mem_page_ptr = mem_layout.free_mem_page_ptr.value();
-                let curr_base_row_ptr = mem_layout.curr_base_row_ptr.value();
-                let curr_ext_row_ptr = mem_layout.curr_ext_row_ptr.value();
-                let next_base_row_ptr = mem_layout.next_base_row_ptr.value();
-                let next_ext_row_ptr = mem_layout.next_ext_row_ptr.value();
+                let curr_main_row_ptr = mem_layout.curr_main_row_ptr.value();
+                let curr_aux_row_ptr = mem_layout.curr_aux_row_ptr.value();
+                let next_main_row_ptr = mem_layout.next_main_row_ptr.value();
+                let next_aux_row_ptr = mem_layout.next_aux_row_ptr.value();
                 let challenges_ptr = mem_layout.challenges_ptr.value();
 
                 let raw_instructions = vec![
@@ -497,10 +497,10 @@ impl Codegen for TasmBackend {
             ) -> Vec<LabelledInstruction> {
                 let num_pointer_pointers = 4;
                 let free_mem_page_ptr = mem_layout.free_mem_page_ptr.value() + num_pointer_pointers;
-                let curr_base_row_ptr = mem_layout.free_mem_page_ptr.value();
-                let curr_ext_row_ptr = mem_layout.free_mem_page_ptr.value() + 1;
-                let next_base_row_ptr = mem_layout.free_mem_page_ptr.value() + 2;
-                let next_ext_row_ptr = mem_layout.free_mem_page_ptr.value() + 3;
+                let curr_main_row_ptr = mem_layout.free_mem_page_ptr.value();
+                let curr_aux_row_ptr = mem_layout.free_mem_page_ptr.value() + 1;
+                let next_main_row_ptr = mem_layout.free_mem_page_ptr.value() + 2;
+                let next_aux_row_ptr = mem_layout.free_mem_page_ptr.value() + 3;
                 let challenges_ptr = mem_layout.challenges_ptr.value();
 
                 let raw_instructions = vec![
@@ -586,11 +586,11 @@ impl TasmBackend {
 
          [integral]: crate::memory_layout::IntegralMemoryLayout::is_integral
          [xfe]: twenty_first::prelude::XFieldElement
-         [total]: crate::table::master_table::MasterExtTable::NUM_CONSTRAINTS
-         [init]: crate::table::master_table::MasterExtTable::NUM_INITIAL_CONSTRAINTS
-         [cons]: crate::table::master_table::MasterExtTable::NUM_CONSISTENCY_CONSTRAINTS
-         [tran]: crate::table::master_table::MasterExtTable::NUM_TRANSITION_CONSTRAINTS
-         [term]: crate::table::master_table::MasterExtTable::NUM_TERMINAL_CONSTRAINTS
+         [total]: crate::table::master_table::MasterAuxTable::NUM_CONSTRAINTS
+         [init]: crate::table::master_table::MasterAuxTable::NUM_INITIAL_CONSTRAINTS
+         [cons]: crate::table::master_table::MasterAuxTable::NUM_CONSISTENCY_CONSTRAINTS
+         [tran]: crate::table::master_table::MasterAuxTable::NUM_TRANSITION_CONSTRAINTS
+         [term]: crate::table::master_table::MasterAuxTable::NUM_TERMINAL_CONSTRAINTS
         "
     }
 
@@ -628,11 +628,11 @@ impl TasmBackend {
 
          [integral]: crate::memory_layout::IntegralMemoryLayout::is_integral
          [xfe]: twenty_first::prelude::XFieldElement
-         [total]: crate::table::master_table::MasterExtTable::NUM_CONSTRAINTS
-         [init]: crate::table::master_table::MasterExtTable::NUM_INITIAL_CONSTRAINTS
-         [cons]: crate::table::master_table::MasterExtTable::NUM_CONSISTENCY_CONSTRAINTS
-         [tran]: crate::table::master_table::MasterExtTable::NUM_TRANSITION_CONSTRAINTS
-         [term]: crate::table::master_table::MasterExtTable::NUM_TERMINAL_CONSTRAINTS
+         [total]: crate::table::master_table::MasterAuxTable::NUM_CONSTRAINTS
+         [init]: crate::table::master_table::MasterAuxTable::NUM_INITIAL_CONSTRAINTS
+         [cons]: crate::table::master_table::MasterAuxTable::NUM_CONSISTENCY_CONSTRAINTS
+         [tran]: crate::table::master_table::MasterAuxTable::NUM_TRANSITION_CONSTRAINTS
+         [term]: crate::table::master_table::MasterAuxTable::NUM_TERMINAL_CONSTRAINTS
         "
     }
 
@@ -670,10 +670,10 @@ impl TasmBackend {
         let store_shared_nodes = self.store_all_shared_nodes(constraints);
 
         // to match the `RustBackend`, base constraints must be emitted first
-        let (base_constraints, ext_constraints): (Vec<_>, Vec<_>) = constraints
+        let (main_constraints, aux_constraints): (Vec<_>, Vec<_>) = constraints
             .iter()
             .partition(|constraint| constraint.evaluates_to_base_element());
-        let sorted_constraints = base_constraints.into_iter().chain(ext_constraints);
+        let sorted_constraints = main_constraints.into_iter().chain(aux_constraints);
         let write_to_output = sorted_constraints
             .map(|c| self.write_evaluated_constraint_into_output_list(c))
             .concat();
@@ -779,7 +779,7 @@ impl TasmBackend {
     }
 
     fn load_input<II: InputIndicator>(&self, input: II) -> Vec<TokenStream> {
-        let list = match (input.is_current_row(), input.is_base_table_column()) {
+        let list = match (input.is_current_row(), input.is_main_table_column()) {
             (true, true) => IOList::CurrBaseRow,
             (true, false) => IOList::CurrExtRow,
             (false, true) => IOList::NextBaseRow,
@@ -870,10 +870,10 @@ impl ToTokens for IOList {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         match self {
             IOList::FreeMemPage => tokens.extend(quote!(free_mem_page_ptr)),
-            IOList::CurrBaseRow => tokens.extend(quote!(curr_base_row_ptr)),
-            IOList::CurrExtRow => tokens.extend(quote!(curr_ext_row_ptr)),
-            IOList::NextBaseRow => tokens.extend(quote!(next_base_row_ptr)),
-            IOList::NextExtRow => tokens.extend(quote!(next_ext_row_ptr)),
+            IOList::CurrBaseRow => tokens.extend(quote!(curr_main_row_ptr)),
+            IOList::CurrExtRow => tokens.extend(quote!(curr_aux_row_ptr)),
+            IOList::NextBaseRow => tokens.extend(quote!(next_main_row_ptr)),
+            IOList::NextExtRow => tokens.extend(quote!(next_aux_row_ptr)),
             IOList::Challenges => tokens.extend(quote!(challenges_ptr)),
         }
     }
@@ -891,10 +891,10 @@ mod tests {
         let circuit_builder = ConstraintCircuitBuilder::new();
         let challenge = |c: usize| circuit_builder.challenge(c);
         let constant = |c: u32| circuit_builder.x_constant(c);
-        let base_row = |i| circuit_builder.input(SingleRowIndicator::BaseRow(i));
-        let ext_row = |i| circuit_builder.input(SingleRowIndicator::ExtRow(i));
+        let main_row = |i| circuit_builder.input(SingleRowIndicator::Main(i));
+        let aux_row = |i| circuit_builder.input(SingleRowIndicator::Aux(i));
 
-        let constraint = base_row(0) * challenge(3) - ext_row(1) * constant(42);
+        let constraint = main_row(0) * challenge(3) - aux_row(1) * constant(42);
 
         Constraints {
             init: vec![constraint],

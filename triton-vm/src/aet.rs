@@ -9,8 +9,8 @@ use air::table::op_stack;
 use air::table::processor;
 use air::table::ram;
 use air::table::TableId;
-use air::table_column::HashBaseTableColumn::CI;
-use air::table_column::MasterBaseTableColumn;
+use air::table_column::HashMainColumn::CI;
+use air::table_column::MasterMainColumn;
 use air::AIR;
 use arbitrary::Arbitrary;
 use isa::error::InstructionError;
@@ -121,7 +121,7 @@ impl AlgebraicExecutionTrace {
     ///
     /// Guaranteed to be a power of two.
     ///
-    /// [pad]: table::master_table::MasterBaseTable::pad
+    /// [pad]: table::master_table::MasterMainTable::pad
     pub fn padded_height(&self) -> usize {
         self.height().height.next_power_of_two()
     }
@@ -129,7 +129,7 @@ impl AlgebraicExecutionTrace {
     /// The height of the [AET](AlgebraicExecutionTrace) before [padding][pad].
     /// Corresponds to the height of the longest table.
     ///
-    /// [pad]: table::master_table::MasterBaseTable::pad
+    /// [pad]: table::master_table::MasterMainTable::pad
     pub fn height(&self) -> TableHeight {
         TableId::iter()
             .map(|t| TableHeight::new(t, self.height_of_table(t)))
@@ -191,7 +191,7 @@ impl AlgebraicExecutionTrace {
                 .expect("shapes must be identical");
         }
 
-        let instruction_column_index = CI.base_table_index();
+        let instruction_column_index = CI.main_index();
         let mut instruction_column = self.program_hash_trace.column_mut(instruction_column_index);
         instruction_column.fill(Instruction::Hash.opcode_b());
 
@@ -254,7 +254,7 @@ impl AlgebraicExecutionTrace {
         self.increase_lookup_multiplicities(trace);
         let mut hash_trace_addendum = table::hash::trace_to_table_rows(trace);
         hash_trace_addendum
-            .slice_mut(s![.., CI.base_table_index()])
+            .slice_mut(s![.., CI.main_index()])
             .fill(Instruction::Hash.opcode_b());
         self.hash_trace
             .append(Axis(0), hash_trace_addendum.view())
@@ -265,7 +265,7 @@ impl AlgebraicExecutionTrace {
         let round_number = 0;
         let initial_state = Tip5::init().state;
         let mut hash_table_row = table::hash::trace_row_to_table_row(initial_state, round_number);
-        hash_table_row[CI.base_table_index()] = Instruction::SpongeInit.opcode_b();
+        hash_table_row[CI.main_index()] = Instruction::SpongeInit.opcode_b();
         self.sponge_trace.push_row(hash_table_row.view()).unwrap();
     }
 
@@ -277,7 +277,7 @@ impl AlgebraicExecutionTrace {
         self.increase_lookup_multiplicities(trace);
         let mut sponge_trace_addendum = table::hash::trace_to_table_rows(trace);
         sponge_trace_addendum
-            .slice_mut(s![.., CI.base_table_index()])
+            .slice_mut(s![.., CI.main_index()])
             .fill(instruction.opcode_b());
         self.sponge_trace
             .append(Axis(0), sponge_trace_addendum.view())
@@ -333,7 +333,7 @@ impl AlgebraicExecutionTrace {
     }
 
     fn record_op_stack_entry(&mut self, op_stack_entry: OpStackTableEntry) {
-        let op_stack_table_row = op_stack_entry.to_base_table_row();
+        let op_stack_table_row = op_stack_entry.to_main_table_row();
         self.op_stack_underflow_trace
             .push_row(op_stack_table_row.view())
             .unwrap();

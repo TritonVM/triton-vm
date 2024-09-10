@@ -12,9 +12,9 @@ If some RAM address is read from before it is written to, the corresponding valu
 This is one of interfaces for non-deterministic input in Triton VM.
 Consecutive reads from any such address always returns the same value (until overwritten via `write_mem`).  
 
-## Base Columns
+## Main Columns
 
-The RAM Table has 7 base columns:
+The RAM Table has 7 main columns:
 1. the cycle counter `clk`,
 1. the executed `instruction_type` – 0 for “write”, 1 for “read”, 2 for padding rows,
 1. RAM pointer `ram_pointer`,
@@ -29,13 +29,13 @@ The function of `iord` is best explained in the context of sorting the RAM Table
 The Bézout coefficient polynomial coefficients `bcpc0` and `bcpc1` represent the coefficients of polynomials that are needed for the [contiguity argument](memory-consistency.md#contiguity-for-ram-table).
 This argument establishes that all regions of constant `ram_pointer` are contiguous.
 
-## Extension Columns
+## Auxiliary Columns
 
-The RAM Table has 6 extension columns:
+The RAM Table has 6 auxiliary columns:
 1. `RunningProductOfRAMP`, accumulating next row's `ram_pointer` as a root whenever `ram_pointer` changes between two rows,
 1. `FormalDerivative`, the (evaluated) formal derivative of `RunningProductOfRAMP`,
-1. `BezoutCoefficient0`, the (evaluated) polynomial with base column `bcpc0` as coefficients,
-1. `BezoutCoefficient1`, the (evaluated) polynomial with base column `bcpc1` as coefficients,
+1. `BezoutCoefficient0`, the (evaluated) polynomial with main column `bcpc0` as coefficients,
+1. `BezoutCoefficient1`, the (evaluated) polynomial with main column `bcpc1` as coefficients,
 1. `RunningProductPermArg`, the [Permutation Argument](permutation-argument.md) with the [Processor Table](processor-table.md), and
 1. `ClockJumpDifferenceLookupClientLogDerivative`, part of [memory consistency](clock-jump-differences-and-inner-sorting.md).
 

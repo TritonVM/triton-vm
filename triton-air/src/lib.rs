@@ -4,8 +4,8 @@ use constraint_circuit::DualRowIndicator;
 use constraint_circuit::SingleRowIndicator;
 use strum::EnumCount;
 
-use crate::table_column::MasterBaseTableColumn;
-use crate::table_column::MasterExtTableColumn;
+use crate::table_column::MasterAuxColumn;
+use crate::table_column::MasterMainColumn;
 
 pub mod challenge_id;
 pub mod cross_table_argument;
@@ -29,8 +29,8 @@ pub mod table_column;
 pub const TARGET_DEGREE: isize = 4;
 
 pub trait AIR {
-    type MainColumn: MasterBaseTableColumn + EnumCount;
-    type AuxColumn: MasterExtTableColumn + EnumCount;
+    type MainColumn: MasterMainColumn + EnumCount;
+    type AuxColumn: MasterAuxColumn + EnumCount;
 
     fn initial_constraints(
         circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
@@ -62,24 +62,24 @@ mod tests {
         implements_auto_traits::<cross_table_argument::EvalArg>();
         implements_auto_traits::<cross_table_argument::LookupArg>();
         implements_auto_traits::<cross_table_argument::GrandCrossTableArg>();
-        implements_auto_traits::<table_column::ProgramBaseTableColumn>();
-        implements_auto_traits::<table_column::ProgramExtTableColumn>();
-        implements_auto_traits::<table_column::ProcessorBaseTableColumn>();
-        implements_auto_traits::<table_column::ProcessorExtTableColumn>();
-        implements_auto_traits::<table_column::OpStackBaseTableColumn>();
-        implements_auto_traits::<table_column::OpStackExtTableColumn>();
-        implements_auto_traits::<table_column::RamBaseTableColumn>();
-        implements_auto_traits::<table_column::RamExtTableColumn>();
-        implements_auto_traits::<table_column::JumpStackBaseTableColumn>();
-        implements_auto_traits::<table_column::JumpStackExtTableColumn>();
-        implements_auto_traits::<table_column::HashBaseTableColumn>();
-        implements_auto_traits::<table_column::HashExtTableColumn>();
-        implements_auto_traits::<table_column::CascadeBaseTableColumn>();
-        implements_auto_traits::<table_column::CascadeExtTableColumn>();
-        implements_auto_traits::<table_column::LookupBaseTableColumn>();
-        implements_auto_traits::<table_column::LookupExtTableColumn>();
-        implements_auto_traits::<table_column::U32BaseTableColumn>();
-        implements_auto_traits::<table_column::U32ExtTableColumn>();
+        implements_auto_traits::<table_column::ProgramMainColumn>();
+        implements_auto_traits::<table_column::ProgramAuxColumn>();
+        implements_auto_traits::<table_column::ProcessorMainColumn>();
+        implements_auto_traits::<table_column::ProcessorAuxColumn>();
+        implements_auto_traits::<table_column::OpStackMainColumn>();
+        implements_auto_traits::<table_column::OpStackAuxColumn>();
+        implements_auto_traits::<table_column::RamMainColumn>();
+        implements_auto_traits::<table_column::RamAuxColumn>();
+        implements_auto_traits::<table_column::JumpStackMainColumn>();
+        implements_auto_traits::<table_column::JumpStackAuxColumn>();
+        implements_auto_traits::<table_column::HashMainColumn>();
+        implements_auto_traits::<table_column::HashAuxColumn>();
+        implements_auto_traits::<table_column::CascadeMainColumn>();
+        implements_auto_traits::<table_column::CascadeAuxColumn>();
+        implements_auto_traits::<table_column::LookupMainColumn>();
+        implements_auto_traits::<table_column::LookupAuxColumn>();
+        implements_auto_traits::<table_column::U32MainColumn>();
+        implements_auto_traits::<table_column::U32AuxColumn>();
 
         implements_auto_traits::<table::TableId>();
         implements_auto_traits::<table::cascade::CascadeTable>();

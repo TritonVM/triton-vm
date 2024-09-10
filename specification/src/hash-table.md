@@ -63,9 +63,9 @@ For convenience, this document occasionally refers to those states as if they we
 This is an alias for
 $(2^{48}\cdot\texttt{state\_i\_highest\_lkin} + 2^{32}\cdot\texttt{state\_i\_mid\_high\_lkin} + 2^{16}\cdot\texttt{state\_i\_mid\_low\_lkin} + \texttt{state\_i\_lowest\_lkin})\cdot R^{-1}$.
 
-## Base Columns
+## Main Columns
 
-The Hash Table has 67 base columns:
+The Hash Table has 67 main columns:
 
 - The `Mode` indicator, as described above.
 It takes value
@@ -84,9 +84,9 @@ This column is only relevant for mode `sponge`.
 - 4 columns `state_i_inv` establishing correct decomposition of `state_0_*_lkin` through `state_3_*_lkin` into 16-bit wide limbs.
 - 16 columns `constant_i`, which hold the round constant for the round indicated by `RoundNumber`, or 0 if no round with this round number exists.
 
-## Extension Columns
+## Auxiliary Columns
 
-The Hash Table has 20 extension columns:
+The Hash Table has 20 auxiliary columns:
 
 - `RunningEvaluationReceiveChunk` for the [Evaluation Argument](evaluation-argument.md) for copying chunks of size $\texttt{rate}$ from the [Program Table](program-table.md).
 Relevant for [program attestation](program-attestation.md).

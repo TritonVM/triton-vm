@@ -1,13 +1,13 @@
 use constraint_circuit::ConstraintCircuitBuilder;
 use constraint_circuit::ConstraintCircuitMonad;
 use constraint_circuit::DualRowIndicator;
-use constraint_circuit::DualRowIndicator::CurrentBaseRow;
-use constraint_circuit::DualRowIndicator::CurrentExtRow;
-use constraint_circuit::DualRowIndicator::NextBaseRow;
-use constraint_circuit::DualRowIndicator::NextExtRow;
+use constraint_circuit::DualRowIndicator::CurrentAux;
+use constraint_circuit::DualRowIndicator::CurrentMain;
+use constraint_circuit::DualRowIndicator::NextAux;
+use constraint_circuit::DualRowIndicator::NextMain;
 use constraint_circuit::SingleRowIndicator;
-use constraint_circuit::SingleRowIndicator::BaseRow;
-use constraint_circuit::SingleRowIndicator::ExtRow;
+use constraint_circuit::SingleRowIndicator::Aux;
+use constraint_circuit::SingleRowIndicator::Main;
 use isa::op_stack::OpStackElement;
 use strum::EnumCount;
 use twenty_first::prelude::*;
@@ -16,8 +16,8 @@ use crate::challenge_id::ChallengeId;
 use crate::cross_table_argument::CrossTableArg;
 use crate::cross_table_argument::LookupArg;
 use crate::cross_table_argument::PermArg;
-use crate::table_column::MasterBaseTableColumn;
-use crate::table_column::MasterExtTableColumn;
+use crate::table_column::MasterAuxColumn;
+use crate::table_column::MasterMainColumn;
 use crate::AIR;
 
 /// The value indicating a padding row in the op stack table. Stored in the
@@ -28,8 +28,8 @@ pub const PADDING_VALUE: BFieldElement = BFieldElement::new(2);
 pub struct OpStackTable;
 
 impl AIR for OpStackTable {
-    type MainColumn = crate::table_column::OpStackBaseTableColumn;
-    type AuxColumn = crate::table_column::OpStackExtTableColumn;
+    type MainColumn = crate::table_column::OpStackMainColumn;
+    type AuxColumn = crate::table_column::OpStackAuxColumn;
 
     fn initial_constraints(
         circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
@@ -37,12 +37,10 @@ impl AIR for OpStackTable {
         let challenge = |c| circuit_builder.challenge(c);
         let constant = |c| circuit_builder.b_constant(c);
         let x_constant = |c| circuit_builder.x_constant(c);
-        let main_row = |column: Self::MainColumn| {
-            circuit_builder.input(BaseRow(column.master_base_table_index()))
-        };
-        let aux_row = |column: Self::AuxColumn| {
-            circuit_builder.input(ExtRow(column.master_ext_table_index()))
-        };
+        let main_row =
+            |column: Self::MainColumn| circuit_builder.input(Main(column.master_main_index()));
+        let aux_row =
+            |column: Self::AuxColumn| circuit_builder.input(Aux(column.master_aux_index()));
 
         let initial_stack_length = u32::try_from(OpStackElement::COUNT).unwrap();
         let initial_stack_length = constant(initial_stack_length.into());
@@ -97,17 +95,14 @@ impl AIR for OpStackTable {
         let constant = |c| circuit_builder.b_constant(c);
         let challenge = |c| circuit_builder.challenge(c);
         let current_main_row = |column: Self::MainColumn| {
-            circuit_builder.input(CurrentBaseRow(column.master_base_table_index()))
+            circuit_builder.input(CurrentMain(column.master_main_index()))
         };
-        let current_aux_row = |column: Self::AuxColumn| {
-            circuit_builder.input(CurrentExtRow(column.master_ext_table_index()))
-        };
-        let next_main_row = |column: Self::MainColumn| {
-            circuit_builder.input(NextBaseRow(column.master_base_table_index()))
-        };
-        let next_aux_row = |column: Self::AuxColumn| {
-            circuit_builder.input(NextExtRow(column.master_ext_table_index()))
-        };
+        let current_aux_row =
+            |column: Self::AuxColumn| circuit_builder.input(CurrentAux(column.master_aux_index()));
+        let next_main_row =
+            |column: Self::MainColumn| circuit_builder.input(NextMain(column.master_main_index()));
+        let next_aux_row =
+            |column: Self::AuxColumn| circuit_builder.input(NextAux(column.master_aux_index()));
 
         let one = constant(1_u32.into());
         let padding_indicator = constant(PADDING_VALUE);

@@ -34,12 +34,11 @@ fn extension_column_running_product_permutation_argument(
     let mut running_product = PermArg::default_initial();
     let mut extension_column = Vec::with_capacity(main_table.nrows());
     for row in main_table.rows() {
-        let compressed_row = row[MainColumn::CLK.base_table_index()]
-            * challenges[JumpStackClkWeight]
-            + row[MainColumn::CI.base_table_index()] * challenges[JumpStackCiWeight]
-            + row[MainColumn::JSP.base_table_index()] * challenges[JumpStackJspWeight]
-            + row[MainColumn::JSO.base_table_index()] * challenges[JumpStackJsoWeight]
-            + row[MainColumn::JSD.base_table_index()] * challenges[JumpStackJsdWeight];
+        let compressed_row = row[MainColumn::CLK.main_index()] * challenges[JumpStackClkWeight]
+            + row[MainColumn::CI.main_index()] * challenges[JumpStackCiWeight]
+            + row[MainColumn::JSP.main_index()] * challenges[JumpStackJspWeight]
+            + row[MainColumn::JSO.main_index()] * challenges[JumpStackJsoWeight]
+            + row[MainColumn::JSD.main_index()] * challenges[JumpStackJsdWeight];
         running_product *= challenges[JumpStackIndeterminate] - compressed_row;
         extension_column.push(running_product);
     }
@@ -67,11 +66,9 @@ fn extension_column_clock_jump_diff_lookup_log_derivative(
     let mut extension_column = Vec::with_capacity(main_table.nrows());
     extension_column.push(cjd_lookup_log_derivative);
     for (previous_row, current_row) in main_table.rows().into_iter().tuple_windows() {
-        if previous_row[MainColumn::JSP.base_table_index()]
-            == current_row[MainColumn::JSP.base_table_index()]
-        {
-            let previous_clock = previous_row[MainColumn::CLK.base_table_index()];
-            let current_clock = current_row[MainColumn::CLK.base_table_index()];
+        if previous_row[MainColumn::JSP.main_index()] == current_row[MainColumn::JSP.main_index()] {
+            let previous_clock = previous_row[MainColumn::CLK.main_index()];
+            let current_clock = current_row[MainColumn::CLK.main_index()];
             let clock_jump_difference = current_clock - previous_clock;
             let &mut inverse = inverses_dictionary
                 .entry(clock_jump_difference)
@@ -97,11 +94,11 @@ impl TraceTable for JumpStackTable {
         // rows, which are sorted by CLK.
         let mut pre_processed_jump_stack_table: Vec<Vec<_>> = vec![];
         for processor_row in aet.processor_trace.rows() {
-            let clk = processor_row[ProcessorBaseTableColumn::CLK.base_table_index()];
-            let ci = processor_row[ProcessorBaseTableColumn::CI.base_table_index()];
-            let jsp = processor_row[ProcessorBaseTableColumn::JSP.base_table_index()];
-            let jso = processor_row[ProcessorBaseTableColumn::JSO.base_table_index()];
-            let jsd = processor_row[ProcessorBaseTableColumn::JSD.base_table_index()];
+            let clk = processor_row[ProcessorMainColumn::CLK.main_index()];
+            let ci = processor_row[ProcessorMainColumn::CI.main_index()];
+            let jsp = processor_row[ProcessorMainColumn::JSP.main_index()];
+            let jso = processor_row[ProcessorMainColumn::JSO.main_index()];
+            let jsd = processor_row[ProcessorMainColumn::JSD.main_index()];
             // The (honest) prover can only grow the Jump Stack's size by at most 1 per execution
             // step. Hence, the following (a) works, and (b) sorts.
             let jsp_val = jsp.value() as usize;
@@ -119,11 +116,11 @@ impl TraceTable for JumpStackTable {
         {
             let jsp = bfe!(jsp_val as u64);
             for (clk, ci, jso, jsd) in rows_with_this_jsp {
-                jump_stack_table[(jump_stack_table_row, MainColumn::CLK.base_table_index())] = clk;
-                jump_stack_table[(jump_stack_table_row, MainColumn::CI.base_table_index())] = ci;
-                jump_stack_table[(jump_stack_table_row, MainColumn::JSP.base_table_index())] = jsp;
-                jump_stack_table[(jump_stack_table_row, MainColumn::JSO.base_table_index())] = jso;
-                jump_stack_table[(jump_stack_table_row, MainColumn::JSD.base_table_index())] = jsd;
+                jump_stack_table[(jump_stack_table_row, MainColumn::CLK.main_index())] = clk;
+                jump_stack_table[(jump_stack_table_row, MainColumn::CI.main_index())] = ci;
+                jump_stack_table[(jump_stack_table_row, MainColumn::JSP.main_index())] = jsp;
+                jump_stack_table[(jump_stack_table_row, MainColumn::JSO.main_index())] = jso;
+                jump_stack_table[(jump_stack_table_row, MainColumn::JSD.main_index())] = jsd;
                 jump_stack_table_row += 1;
             }
         }
@@ -135,11 +132,9 @@ impl TraceTable for JumpStackTable {
         for row_idx in 0..aet.processor_trace.nrows() - 1 {
             let curr_row = jump_stack_table.row(row_idx);
             let next_row = jump_stack_table.row(row_idx + 1);
-            let clk_diff = next_row[MainColumn::CLK.base_table_index()]
-                - curr_row[MainColumn::CLK.base_table_index()];
-            if curr_row[MainColumn::JSP.base_table_index()]
-                == next_row[MainColumn::JSP.base_table_index()]
-            {
+            let clk_diff =
+                next_row[MainColumn::CLK.main_index()] - curr_row[MainColumn::CLK.main_index()];
+            if curr_row[MainColumn::JSP.main_index()] == next_row[MainColumn::JSP.main_index()] {
                 clock_jump_differences.push(clk_diff);
             }
         }
@@ -158,7 +153,7 @@ impl TraceTable for JumpStackTable {
             .into_iter()
             .enumerate()
             .find(|(_, row)| {
-                row[MainColumn::CLK.base_table_index()].value() as usize == max_clk_before_padding
+                row[MainColumn::CLK.main_index()].value() as usize == max_clk_before_padding
             })
             .map(|(idx, _)| idx)
             .expect("Jump Stack Table must contain row with clock cycle equal to max cycle.");
@@ -199,8 +194,7 @@ impl TraceTable for JumpStackTable {
         // CLK keeps increasing by 1 also in the padding section.
         let new_clk_values =
             Array1::from_iter((table_len..padded_height).map(|clk| bfe!(clk as u64)));
-        new_clk_values
-            .move_into(padding_section.slice_mut(s![.., MainColumn::CLK.base_table_index()]));
+        new_clk_values.move_into(padding_section.slice_mut(s![.., MainColumn::CLK.main_index()]));
     }
 
     fn extend(
@@ -214,8 +208,8 @@ impl TraceTable for JumpStackTable {
         assert_eq!(main_table.nrows(), aux_table.nrows());
 
         // use strum::IntoEnumIterator;
-        let extension_column_indices = JumpStackExtTableColumn::iter()
-            .map(|column| column.ext_table_index())
+        let extension_column_indices = JumpStackAuxColumn::iter()
+            .map(|column| column.aux_index())
             .collect_vec();
         let extension_column_slices = horizontal_multi_slice_mut(
             aux_table.view_mut(),

@@ -145,31 +145,31 @@ impl Constraints {
 
         let (init_base_substitutions, init_ext_substitutions) =
             ConstraintCircuitMonad::lower_to_degree(&mut self.init, info);
-        info.num_base_cols += init_base_substitutions.len();
-        info.num_ext_cols += init_ext_substitutions.len();
+        info.num_main_cols += init_base_substitutions.len();
+        info.num_aux_cols += init_ext_substitutions.len();
 
         let (cons_base_substitutions, cons_ext_substitutions) =
             ConstraintCircuitMonad::lower_to_degree(&mut self.cons, info);
-        info.num_base_cols += cons_base_substitutions.len();
-        info.num_ext_cols += cons_ext_substitutions.len();
+        info.num_main_cols += cons_base_substitutions.len();
+        info.num_aux_cols += cons_ext_substitutions.len();
 
         let (tran_base_substitutions, tran_ext_substitutions) =
             ConstraintCircuitMonad::lower_to_degree(&mut self.tran, info);
-        info.num_base_cols += tran_base_substitutions.len();
-        info.num_ext_cols += tran_ext_substitutions.len();
+        info.num_main_cols += tran_base_substitutions.len();
+        info.num_aux_cols += tran_ext_substitutions.len();
 
         let (term_base_substitutions, term_ext_substitutions) =
             ConstraintCircuitMonad::lower_to_degree(&mut self.term, info);
 
         AllSubstitutions {
-            base: Substitutions {
+            main: Substitutions {
                 lowering_info,
                 init: init_base_substitutions,
                 cons: cons_base_substitutions,
                 tran: tran_base_substitutions,
                 term: term_base_substitutions,
             },
-            ext: Substitutions {
+            aux: Substitutions {
                 lowering_info,
                 init: init_ext_substitutions,
                 cons: cons_ext_substitutions,
@@ -182,7 +182,10 @@ impl Constraints {
     #[must_use]
     pub fn combine_with_substitution_induced_constraints(
         self,
-        AllSubstitutions { base, ext }: AllSubstitutions,
+        AllSubstitutions {
+            main: base,
+            aux: ext,
+        }: AllSubstitutions,
     ) -> Self {
         Self {
             init: [self.init, base.init, ext.init].concat(),
@@ -239,8 +242,8 @@ mod tests {
     fn degree_lowering_info() -> DegreeLoweringInfo {
         DegreeLoweringInfo {
             target_degree: 4,
-            num_base_cols: 42,
-            num_ext_cols: 13,
+            num_main_cols: 42,
+            num_aux_cols: 13,
         }
     }
 
@@ -301,7 +304,7 @@ mod tests {
             let circuit_builder = ConstraintCircuitBuilder::new();
             let challenge = |c| circuit_builder.challenge(c);
             let constant = |c: u32| circuit_builder.b_constant(bfe!(c));
-            let input = |i| circuit_builder.input(SingleRowIndicator::BaseRow(i));
+            let input = |i| circuit_builder.input(SingleRowIndicator::Main(i));
             let input_to_the_4th = |i| input(i) * input(i) * input(i) * input(i);
 
             vec![
@@ -316,10 +319,10 @@ mod tests {
             let challenge = |c| circuit_builder.challenge(c);
             let constant = |c: u32| circuit_builder.x_constant(c);
 
-            let curr_b_row = |col| circuit_builder.input(DualRowIndicator::CurrentBaseRow(col));
-            let next_b_row = |col| circuit_builder.input(DualRowIndicator::NextBaseRow(col));
-            let curr_x_row = |col| circuit_builder.input(DualRowIndicator::CurrentExtRow(col));
-            let next_x_row = |col| circuit_builder.input(DualRowIndicator::NextExtRow(col));
+            let curr_b_row = |col| circuit_builder.input(DualRowIndicator::CurrentMain(col));
+            let next_b_row = |col| circuit_builder.input(DualRowIndicator::NextMain(col));
+            let curr_x_row = |col| circuit_builder.input(DualRowIndicator::CurrentAux(col));
+            let next_x_row = |col| circuit_builder.input(DualRowIndicator::NextAux(col));
 
             vec![
                 curr_b_row(0) * next_x_row(1) - next_b_row(1) * curr_x_row(0),

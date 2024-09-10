@@ -12,14 +12,13 @@ use twenty_first::prelude::*;
 use crate::aet::AlgebraicExecutionTrace;
 use crate::challenges::Challenges;
 pub use crate::stark::NUM_QUOTIENT_SEGMENTS;
-use crate::table::master_table::MasterBaseTable;
-use crate::table::master_table::MasterExtTable;
+use crate::table::master_table::MasterAuxTable;
+use crate::table::master_table::MasterMainTable;
 use crate::table::master_table::MasterTable;
 
-pub mod degree_lowering;
-
+pub mod auxiliary_table;
 pub mod cascade;
-pub mod extension_table;
+pub mod degree_lowering;
 pub mod hash;
 pub mod jump_stack;
 pub mod lookup;
@@ -29,17 +28,6 @@ pub mod processor;
 pub mod program;
 pub mod ram;
 pub mod u32;
-
-/// The total number of main columns across all tables.
-/// The degree lowering columns _are_ included.
-pub const NUM_MAIN_COLUMNS: usize =
-    air::table::NUM_BASE_COLUMNS + degree_lowering::DegreeLoweringBaseTableColumn::COUNT;
-
-/// The total number of auxiliary columns across all tables.
-/// The degree lowering columns _are_ included,
-/// randomizer polynomials are _not_ included.
-pub const NUM_AUX_COLUMNS: usize =
-    air::table::NUM_EXT_COLUMNS + degree_lowering::DegreeLoweringExtTableColumn::COUNT;
 
 trait TraceTable: AIR {
     // a nicer design is in order
@@ -55,8 +43,8 @@ trait TraceTable: AIR {
     fn pad(main_table: ArrayViewMut2<BFieldElement>, table_length: usize);
 
     fn extend(
-        base_table: ArrayView2<BFieldElement>,
-        ext_table: ArrayViewMut2<XFieldElement>,
+        main_table: ArrayView2<BFieldElement>,
+        aux_table: ArrayViewMut2<XFieldElement>,
         challenges: &Challenges,
     );
 }
@@ -78,15 +66,15 @@ pub enum ConstraintType {
     Terminal,
 }
 
-/// A single row of a [`MasterBaseTable`].
+/// A single row of a [`MasterMainTable`].
 ///
 /// Usually, the elements in the table are [`BFieldElement`]s. For out-of-domain rows, which is
 /// relevant for “Domain Extension to Eliminate Pretenders” (DEEP), the elements are
 /// [`XFieldElement`]s.
-pub type BaseRow<T> = [T; MasterBaseTable::NUM_COLUMNS];
+pub type MainRow<T> = [T; MasterMainTable::NUM_COLUMNS];
 
-/// A single row of a [`MasterExtTable`].
-pub type ExtensionRow = [XFieldElement; MasterExtTable::NUM_COLUMNS];
+/// A single row of a [`MasterAuxTable`].
+pub type AuxiliaryRow = [XFieldElement; MasterAuxTable::NUM_COLUMNS];
 
 /// An element of the split-up quotient polynomial.
 ///
@@ -104,16 +92,16 @@ mod tests {
     use air::table::program::ProgramTable;
     use air::table::ram::RamTable;
     use air::table::u32::U32Table;
+    use air::table::AUX_CASCADE_TABLE_END;
+    use air::table::AUX_HASH_TABLE_END;
+    use air::table::AUX_JUMP_STACK_TABLE_END;
+    use air::table::AUX_LOOKUP_TABLE_END;
+    use air::table::AUX_OP_STACK_TABLE_END;
+    use air::table::AUX_PROCESSOR_TABLE_END;
+    use air::table::AUX_PROGRAM_TABLE_END;
+    use air::table::AUX_RAM_TABLE_END;
+    use air::table::AUX_U32_TABLE_END;
     use air::table::CASCADE_TABLE_END;
-    use air::table::EXT_CASCADE_TABLE_END;
-    use air::table::EXT_HASH_TABLE_END;
-    use air::table::EXT_JUMP_STACK_TABLE_END;
-    use air::table::EXT_LOOKUP_TABLE_END;
-    use air::table::EXT_OP_STACK_TABLE_END;
-    use air::table::EXT_PROCESSOR_TABLE_END;
-    use air::table::EXT_PROGRAM_TABLE_END;
-    use air::table::EXT_RAM_TABLE_END;
-    use air::table::EXT_U32_TABLE_END;
     use air::table::HASH_TABLE_END;
     use air::table::JUMP_STACK_TABLE_END;
     use air::table::LOOKUP_TABLE_END;
@@ -161,16 +149,16 @@ mod tests {
         let challenges = &challenges.challenges;
 
         let num_rows = 2;
-        let base_shape = [num_rows, NUM_MAIN_COLUMNS];
-        let ext_shape = [num_rows, NUM_AUX_COLUMNS];
-        let base_rows = Array2::from_shape_simple_fn(base_shape, || rng.gen::<BFieldElement>());
-        let ext_rows = Array2::from_shape_simple_fn(ext_shape, || rng.gen::<XFieldElement>());
-        let base_rows = base_rows.view();
-        let ext_rows = ext_rows.view();
+        let base_shape = [num_rows, MasterMainTable::NUM_COLUMNS];
+        let aux_shape = [num_rows, MasterAuxTable::NUM_COLUMNS];
+        let main_rows = Array2::from_shape_simple_fn(base_shape, || rng.gen::<BFieldElement>());
+        let aux_rows = Array2::from_shape_simple_fn(aux_shape, || rng.gen::<XFieldElement>());
+        let main_rows = main_rows.view();
+        let aux_rows = aux_rows.view();
 
         let mut values = HashMap::new();
         for c in constraints {
-            evaluate_assert_unique(c, challenges, base_rows, ext_rows, &mut values);
+            evaluate_assert_unique(c, challenges, main_rows, aux_rows, &mut values);
         }
 
         let circuit_degree = constraints.iter().map(|c| c.degree()).max().unwrap_or(-1);
@@ -188,19 +176,19 @@ mod tests {
     fn evaluate_assert_unique<II: InputIndicator>(
         constraint: &ConstraintCircuit<II>,
         challenges: &[XFieldElement],
-        base_rows: ArrayView2<BFieldElement>,
-        ext_rows: ArrayView2<XFieldElement>,
+        main_rows: ArrayView2<BFieldElement>,
+        aux_rows: ArrayView2<XFieldElement>,
         values: &mut HashMap<XFieldElement, (usize, ConstraintCircuit<II>)>,
     ) -> XFieldElement {
         let value = match &constraint.expression {
             CircuitExpression::BinaryOperation(binop, lhs, rhs) => {
                 let lhs = lhs.borrow();
                 let rhs = rhs.borrow();
-                let lhs = evaluate_assert_unique(&lhs, challenges, base_rows, ext_rows, values);
-                let rhs = evaluate_assert_unique(&rhs, challenges, base_rows, ext_rows, values);
+                let lhs = evaluate_assert_unique(&lhs, challenges, main_rows, aux_rows, values);
+                let rhs = evaluate_assert_unique(&rhs, challenges, main_rows, aux_rows, values);
                 binop.operation(lhs, rhs)
             }
-            _ => constraint.evaluate(base_rows, ext_rows, challenges),
+            _ => constraint.evaluate(main_rows, aux_rows, challenges),
         };
 
         let own_id = constraint.id.to_owned();
@@ -281,21 +269,21 @@ mod tests {
             println!("  {circuit}");
         }
 
-        let (new_base_constraints, new_ext_constraints) =
+        let (new_main_constraints, new_aux_constraints) =
             ConstraintCircuitMonad::lower_to_degree(multicircuit, info);
 
         assert_eq!(num_constraints, multicircuit.len());
 
         let target_deg = info.target_degree;
         assert!(ConstraintCircuitMonad::multicircuit_degree(multicircuit) <= target_deg);
-        assert!(ConstraintCircuitMonad::multicircuit_degree(&new_base_constraints) <= target_deg);
-        assert!(ConstraintCircuitMonad::multicircuit_degree(&new_ext_constraints) <= target_deg);
+        assert!(ConstraintCircuitMonad::multicircuit_degree(&new_main_constraints) <= target_deg);
+        assert!(ConstraintCircuitMonad::multicircuit_degree(&new_aux_constraints) <= target_deg);
 
         // Check that the new constraints are simple substitutions.
         let mut substitution_rules = vec![];
         for (constraint_type, constraints) in [
-            ("base", &new_base_constraints),
-            ("ext", &new_ext_constraints),
+            ("base", &new_main_constraints),
+            ("ext", &new_aux_constraints),
         ] {
             for (i, constraint) in constraints.iter().enumerate() {
                 let expression = constraint.circuit.borrow().expression.clone();
@@ -320,20 +308,16 @@ mod tests {
         let challenges = &challenges.challenges;
 
         let num_rows = 2;
-        let num_new_base_constraints = new_base_constraints.len();
-        let num_new_ext_constraints = new_ext_constraints.len();
-        let num_base_cols = NUM_MAIN_COLUMNS + num_new_base_constraints;
-        let num_ext_cols = NUM_AUX_COLUMNS + num_new_ext_constraints;
-        let base_shape = [num_rows, num_base_cols];
-        let ext_shape = [num_rows, num_ext_cols];
-        let base_rows = Array2::from_shape_simple_fn(base_shape, || rng.gen::<BFieldElement>());
-        let ext_rows = Array2::from_shape_simple_fn(ext_shape, || rng.gen::<XFieldElement>());
-        let base_rows = base_rows.view();
-        let ext_rows = ext_rows.view();
+        let main_shape = [num_rows, MasterMainTable::NUM_COLUMNS];
+        let aux_shape = [num_rows, MasterAuxTable::NUM_COLUMNS];
+        let main_rows = Array2::from_shape_simple_fn(main_shape, || rng.gen::<BFieldElement>());
+        let aux_rows = Array2::from_shape_simple_fn(aux_shape, || rng.gen::<XFieldElement>());
+        let main_rows = main_rows.view();
+        let aux_rows = aux_rows.view();
 
         let evaluated_substitution_rules = substitution_rules
             .iter()
-            .map(|c| c.evaluate(base_rows, ext_rows, challenges));
+            .map(|c| c.evaluate(main_rows, aux_rows, challenges));
 
         let mut values_to_index = HashMap::new();
         for (idx, value) in evaluated_substitution_rules.enumerate() {
@@ -350,21 +334,23 @@ mod tests {
             println!("  {circuit}");
         }
         println!("new base constraints:");
-        for constraint in &new_base_constraints {
+        for constraint in &new_main_constraints {
             println!("  {constraint}");
         }
         println!("new ext constraints:");
-        for constraint in &new_ext_constraints {
+        for constraint in &new_aux_constraints {
             println!("  {constraint}");
         }
 
+        let num_new_main_constraints = new_main_constraints.len();
+        let num_new_aux_constraints = new_aux_constraints.len();
         println!(
             "Started with {num_constraints} constraints. \
-            Derived {num_new_base_constraints} new base, \
-            {num_new_ext_constraints} new extension constraints."
+            Derived {num_new_main_constraints} new main, \
+            {num_new_aux_constraints} new auxiliary constraints."
         );
 
-        (new_base_constraints, new_ext_constraints)
+        (new_main_constraints, new_aux_constraints)
     }
 
     /// Panics if the given substitution rule uses variables with an index greater than (or equal)
@@ -382,8 +368,8 @@ mod tests {
                 assert_substitution_rule_uses_legal_variables(new_var, &rhs);
             }
             CircuitExpression::Input(old_var) => {
-                let new_var_is_base = new_var.is_base_table_column();
-                let old_var_is_base = old_var.is_base_table_column();
+                let new_var_is_base = new_var.is_main_table_column();
+                let old_var_is_base = old_var.is_main_table_column();
                 let legal_substitute = match (new_var_is_base, old_var_is_base) {
                     (true, false) => false,
                     (false, true) => true,
@@ -401,8 +387,8 @@ mod tests {
             ($table:ident ($base_end:ident, $ext_end:ident)) => {{
                 let degree_lowering_info = DegreeLoweringInfo {
                     target_degree: air::TARGET_DEGREE,
-                    num_base_cols: $base_end,
-                    num_ext_cols: $ext_end,
+                    num_main_cols: $base_end,
+                    num_aux_cols: $ext_end,
                 };
                 let circuit_builder = ConstraintCircuitBuilder::new();
                 let mut init = $table::initial_constraints(&circuit_builder);
@@ -422,18 +408,18 @@ mod tests {
             }};
         }
 
-        assert_degree_lowering!(ProgramTable(PROGRAM_TABLE_END, EXT_PROGRAM_TABLE_END));
-        assert_degree_lowering!(ProcessorTable(PROCESSOR_TABLE_END, EXT_PROCESSOR_TABLE_END));
-        assert_degree_lowering!(OpStackTable(OP_STACK_TABLE_END, EXT_OP_STACK_TABLE_END));
-        assert_degree_lowering!(RamTable(RAM_TABLE_END, EXT_RAM_TABLE_END));
+        assert_degree_lowering!(ProgramTable(PROGRAM_TABLE_END, AUX_PROGRAM_TABLE_END));
+        assert_degree_lowering!(ProcessorTable(PROCESSOR_TABLE_END, AUX_PROCESSOR_TABLE_END));
+        assert_degree_lowering!(OpStackTable(OP_STACK_TABLE_END, AUX_OP_STACK_TABLE_END));
+        assert_degree_lowering!(RamTable(RAM_TABLE_END, AUX_RAM_TABLE_END));
         assert_degree_lowering!(JumpStackTable(
             JUMP_STACK_TABLE_END,
-            EXT_JUMP_STACK_TABLE_END
+            AUX_JUMP_STACK_TABLE_END
         ));
-        assert_degree_lowering!(HashTable(HASH_TABLE_END, EXT_HASH_TABLE_END));
-        assert_degree_lowering!(CascadeTable(CASCADE_TABLE_END, EXT_CASCADE_TABLE_END));
-        assert_degree_lowering!(LookupTable(LOOKUP_TABLE_END, EXT_LOOKUP_TABLE_END));
-        assert_degree_lowering!(U32Table(U32_TABLE_END, EXT_U32_TABLE_END));
+        assert_degree_lowering!(HashTable(HASH_TABLE_END, AUX_HASH_TABLE_END));
+        assert_degree_lowering!(CascadeTable(CASCADE_TABLE_END, AUX_CASCADE_TABLE_END));
+        assert_degree_lowering!(LookupTable(LOOKUP_TABLE_END, AUX_LOOKUP_TABLE_END));
+        assert_degree_lowering!(U32Table(U32_TABLE_END, AUX_U32_TABLE_END));
     }
 
     /// Fills the derived columns of the degree-lowering table using randomly generated rows and
@@ -444,30 +430,32 @@ mod tests {
     #[ignore = "(probably) requires normalization of circuit expressions"]
     fn substitution_rules_are_unique() {
         let challenges = Challenges::default();
-        let mut base_table_rows = Array2::from_shape_fn((2, NUM_MAIN_COLUMNS), |_| random());
-        let mut ext_table_rows = Array2::from_shape_fn((2, NUM_AUX_COLUMNS), |_| random());
+        let mut base_table_rows =
+            Array2::from_shape_fn((2, MasterMainTable::NUM_COLUMNS), |_| random());
+        let mut ext_table_rows =
+            Array2::from_shape_fn((2, MasterAuxTable::NUM_COLUMNS), |_| random());
 
-        DegreeLoweringTable::fill_derived_base_columns(base_table_rows.view_mut());
-        DegreeLoweringTable::fill_derived_ext_columns(
+        DegreeLoweringTable::fill_derived_main_columns(base_table_rows.view_mut());
+        DegreeLoweringTable::fill_derived_aux_columns(
             base_table_rows.view(),
             ext_table_rows.view_mut(),
             &challenges,
         );
 
         let mut encountered_values = HashMap::new();
-        for col_idx in 0..NUM_MAIN_COLUMNS {
+        for col_idx in 0..MasterMainTable::NUM_COLUMNS {
             let val = base_table_rows[(0, col_idx)].lift();
             let other_entry = encountered_values.insert(val, col_idx);
             if let Some(other_idx) = other_entry {
-                panic!("Duplicate value {val} in derived base column {other_idx} and {col_idx}.");
+                panic!("Duplicate value {val} in derived main column {other_idx} and {col_idx}.");
             }
         }
         println!("Now comparing extension columns…");
-        for col_idx in 0..NUM_AUX_COLUMNS {
+        for col_idx in 0..MasterAuxTable::NUM_COLUMNS {
             let val = ext_table_rows[(0, col_idx)];
             let other_entry = encountered_values.insert(val, col_idx);
             if let Some(other_idx) = other_entry {
-                panic!("Duplicate value {val} in derived ext column {other_idx} and {col_idx}.");
+                panic!("Duplicate value {val} in derived aux column {other_idx} and {col_idx}.");
             }
         }
     }

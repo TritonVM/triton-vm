@@ -1,12 +1,14 @@
 pub use constraint_builder::codegen::MEM_PAGE_SIZE;
 
 use air::challenge_id::ChallengeId;
-use air::table::NUM_BASE_COLUMNS;
-use air::table::NUM_EXT_COLUMNS;
 use arbitrary::Arbitrary;
 use itertools::Itertools;
 use strum::EnumCount;
 use twenty_first::prelude::*;
+
+use crate::table::master_table::MasterAuxTable;
+use crate::table::master_table::MasterMainTable;
+use crate::table::master_table::MasterTable;
 
 /// Memory layout guarantees for the [Triton assembly AIR constraint evaluator][tasm_air]
 /// with input lists at dynamically known memory locations.
@@ -36,17 +38,17 @@ pub struct StaticTasmConstraintEvaluationMemoryLayout {
     /// The size of the region must be at least [`MEM_PAGE_SIZE`] [`BFieldElement`]s.
     pub free_mem_page_ptr: BFieldElement,
 
-    /// Pointer to an array of [`XFieldElement`]s of length [`NUM_BASE_COLUMNS`].
-    pub curr_base_row_ptr: BFieldElement,
+    /// Pointer to an array of [`XFieldElement`]s of length [`MasterMainTable::NUM_COLUMNS`].
+    pub curr_main_row_ptr: BFieldElement,
 
-    /// Pointer to an array of [`XFieldElement`]s of length [`NUM_EXT_COLUMNS`].
-    pub curr_ext_row_ptr: BFieldElement,
+    /// Pointer to an array of [`XFieldElement`]s of length [`MasterAuxTable::NUM_COLUMNS`].
+    pub curr_aux_row_ptr: BFieldElement,
 
-    /// Pointer to an array of [`XFieldElement`]s of length [`NUM_BASE_COLUMNS`].
-    pub next_base_row_ptr: BFieldElement,
+    /// Pointer to an array of [`XFieldElement`]s of length [`MasterMainTable::NUM_COLUMNS`].
+    pub next_main_row_ptr: BFieldElement,
 
-    /// Pointer to an array of [`XFieldElement`]s of length [`NUM_EXT_COLUMNS`].
-    pub next_ext_row_ptr: BFieldElement,
+    /// Pointer to an array of [`XFieldElement`]s of length [`MasterAuxTable::NUM_COLUMNS`].
+    pub next_aux_row_ptr: BFieldElement,
 
     /// Pointer to an array of [`XFieldElement`]s of length [`NUM_CHALLENGES`][num_challenges].
     ///
@@ -77,10 +79,10 @@ impl IntegralMemoryLayout for StaticTasmConstraintEvaluationMemoryLayout {
     fn memory_regions(&self) -> Box<[MemoryRegion]> {
         let all_regions = [
             MemoryRegion::new(self.free_mem_page_ptr, MEM_PAGE_SIZE),
-            MemoryRegion::new(self.curr_base_row_ptr, NUM_BASE_COLUMNS),
-            MemoryRegion::new(self.curr_ext_row_ptr, NUM_EXT_COLUMNS),
-            MemoryRegion::new(self.next_base_row_ptr, NUM_BASE_COLUMNS),
-            MemoryRegion::new(self.next_ext_row_ptr, NUM_EXT_COLUMNS),
+            MemoryRegion::new(self.curr_main_row_ptr, MasterMainTable::NUM_COLUMNS),
+            MemoryRegion::new(self.curr_aux_row_ptr, MasterAuxTable::NUM_COLUMNS),
+            MemoryRegion::new(self.next_main_row_ptr, MasterMainTable::NUM_COLUMNS),
+            MemoryRegion::new(self.next_aux_row_ptr, MasterAuxTable::NUM_COLUMNS),
             MemoryRegion::new(self.challenges_ptr, ChallengeId::COUNT),
         ];
         Box::new(all_regions)
@@ -143,10 +145,10 @@ mod tests {
             let mem_page = |i| bfe!(i * mem_page_size);
             StaticTasmConstraintEvaluationMemoryLayout {
                 free_mem_page_ptr: mem_page(0),
-                curr_base_row_ptr: mem_page(1),
-                curr_ext_row_ptr: mem_page(2),
-                next_base_row_ptr: mem_page(3),
-                next_ext_row_ptr: mem_page(4),
+                curr_main_row_ptr: mem_page(1),
+                curr_aux_row_ptr: mem_page(2),
+                next_main_row_ptr: mem_page(3),
+                next_aux_row_ptr: mem_page(4),
                 challenges_ptr: mem_page(5),
             }
         }
@@ -196,10 +198,10 @@ mod tests {
     fn definitely_non_integral_memory_layout_is_detected_as_non_integral() {
         let layout = StaticTasmConstraintEvaluationMemoryLayout {
             free_mem_page_ptr: bfe!(0),
-            curr_base_row_ptr: bfe!(1),
-            curr_ext_row_ptr: bfe!(2),
-            next_base_row_ptr: bfe!(3),
-            next_ext_row_ptr: bfe!(4),
+            curr_main_row_ptr: bfe!(1),
+            curr_aux_row_ptr: bfe!(2),
+            next_main_row_ptr: bfe!(3),
+            next_aux_row_ptr: bfe!(4),
             challenges_ptr: bfe!(5),
         };
         assert!(!layout.is_integral());

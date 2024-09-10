@@ -12,8 +12,8 @@ fn main() {
     let mut constraints = Constraints::all();
     let degree_lowering_info = constraint_circuit::DegreeLoweringInfo {
         target_degree: air::TARGET_DEGREE,
-        num_base_cols: air::table::NUM_BASE_COLUMNS,
-        num_ext_cols: air::table::NUM_EXT_COLUMNS,
+        num_main_cols: air::table::NUM_MAIN_COLUMNS,
+        num_aux_cols: air::table::NUM_AUX_COLUMNS,
     };
     let substitutions =
         constraints.lower_to_target_degree_through_substitutions(degree_lowering_info);

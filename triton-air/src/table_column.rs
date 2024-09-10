@@ -7,16 +7,16 @@ use strum::Display;
 use strum::EnumCount;
 use strum::EnumIter;
 
+use crate::table::AUX_CASCADE_TABLE_START;
+use crate::table::AUX_HASH_TABLE_START;
+use crate::table::AUX_JUMP_STACK_TABLE_START;
+use crate::table::AUX_LOOKUP_TABLE_START;
+use crate::table::AUX_OP_STACK_TABLE_START;
+use crate::table::AUX_PROCESSOR_TABLE_START;
+use crate::table::AUX_PROGRAM_TABLE_START;
+use crate::table::AUX_RAM_TABLE_START;
+use crate::table::AUX_U32_TABLE_START;
 use crate::table::CASCADE_TABLE_START;
-use crate::table::EXT_CASCADE_TABLE_START;
-use crate::table::EXT_HASH_TABLE_START;
-use crate::table::EXT_JUMP_STACK_TABLE_START;
-use crate::table::EXT_LOOKUP_TABLE_START;
-use crate::table::EXT_OP_STACK_TABLE_START;
-use crate::table::EXT_PROCESSOR_TABLE_START;
-use crate::table::EXT_PROGRAM_TABLE_START;
-use crate::table::EXT_RAM_TABLE_START;
-use crate::table::EXT_U32_TABLE_START;
 use crate::table::HASH_TABLE_START;
 use crate::table::JUMP_STACK_TABLE_START;
 use crate::table::LOOKUP_TABLE_START;
@@ -28,7 +28,7 @@ use crate::table::U32_TABLE_START;
 
 #[repr(usize)]
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, EnumCount, EnumIter)]
-pub enum ProgramBaseTableColumn {
+pub enum ProgramMainColumn {
     /// An instruction's address.
     Address,
 
@@ -43,14 +43,14 @@ pub enum ProgramBaseTableColumn {
     /// In other words:
     /// [`Address`] modulo [`Rate`].
     ///
-    /// [`Address`]: ProgramBaseTableColumn::Address
+    /// [`Address`]: ProgramMainColumn::Address
     /// [`Rate`]: twenty_first::math::tip5::RATE
     IndexInChunk,
 
     /// The inverse-or-zero of [`Rate`] - 1 - [`IndexInChunk`].
     /// Helper variable to guarantee [`IndexInChunk`]'s correct transition.
     ///
-    /// [`IndexInChunk`]: ProgramBaseTableColumn::IndexInChunk
+    /// [`IndexInChunk`]: ProgramMainColumn::IndexInChunk
     /// [`Rate`]: twenty_first::math::tip5::RATE
     MaxMinusIndexInChunkInv,
 
@@ -63,16 +63,16 @@ pub enum ProgramBaseTableColumn {
 
 #[repr(usize)]
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, EnumCount, EnumIter)]
-pub enum ProgramExtTableColumn {
+pub enum ProgramAuxColumn {
     /// The server part of the instruction lookup.
     ///
     /// The counterpart to [`InstructionLookupClientLogDerivative`][client].
     ///
-    /// [client]: ProcessorExtTableColumn::InstructionLookupClientLogDerivative
+    /// [client]: ProcessorAuxColumn::InstructionLookupClientLogDerivative
     InstructionLookupServerLogDerivative,
 
     /// An evaluation argument accumulating [`RATE`][rate] many instructions before
-    /// they are sent using [`SendChunkEvalArg`](ProgramExtTableColumn::SendChunkRunningEvaluation).
+    /// they are sent using [`SendChunkEvalArg`](ProgramAuxColumn::SendChunkRunningEvaluation).
     /// Resets to zero after each chunk.
     /// Relevant for program attestation.
     ///
@@ -84,16 +84,16 @@ pub enum ProgramExtTableColumn {
     /// This bus is used for sending those chunks to the Hash Table.
     /// Relevant for program attestation.
     ///
-    /// The counterpart to [`RcvChunkEvalArg`](HashExtTableColumn::ReceiveChunkRunningEvaluation).
+    /// The counterpart to [`RcvChunkEvalArg`](HashAuxColumn::ReceiveChunkRunningEvaluation).
     ///
     /// [rate]: twenty_first::math::tip5::RATE
-    /// [prep]: ProgramExtTableColumn::PrepareChunkRunningEvaluation
+    /// [prep]: ProgramAuxColumn::PrepareChunkRunningEvaluation
     SendChunkRunningEvaluation,
 }
 
 #[repr(usize)]
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, EnumCount, EnumIter)]
-pub enum ProcessorBaseTableColumn {
+pub enum ProcessorMainColumn {
     CLK,
     IsPadding,
     IP,
@@ -138,7 +138,7 @@ pub enum ProcessorBaseTableColumn {
 
 #[repr(usize)]
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, EnumCount, EnumIter)]
-pub enum ProcessorExtTableColumn {
+pub enum ProcessorAuxColumn {
     InputTableEvalArg,
     OutputTableEvalArg,
     InstructionLookupClientLogDerivative,
@@ -164,7 +164,7 @@ pub enum ProcessorExtTableColumn {
 
 #[repr(usize)]
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, EnumCount, EnumIter)]
-pub enum OpStackBaseTableColumn {
+pub enum OpStackMainColumn {
     CLK,
     IB1ShrinkStack,
     StackPointer,
@@ -173,7 +173,7 @@ pub enum OpStackBaseTableColumn {
 
 #[repr(usize)]
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, EnumCount, EnumIter)]
-pub enum OpStackExtTableColumn {
+pub enum OpStackAuxColumn {
     RunningProductPermArg,
     /// The (running sum of the) logarithmic derivative for the clock jump difference Lookup
     /// Argument with the Processor Table.
@@ -182,7 +182,7 @@ pub enum OpStackExtTableColumn {
 
 #[repr(usize)]
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, EnumCount, EnumIter)]
-pub enum RamBaseTableColumn {
+pub enum RamMainColumn {
     CLK,
 
     /// Is [`INSTRUCTION_TYPE_READ`] for instruction `read_mem` and [`INSTRUCTION_TYPE_WRITE`]
@@ -201,7 +201,7 @@ pub enum RamBaseTableColumn {
 
 #[repr(usize)]
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, EnumCount, EnumIter)]
-pub enum RamExtTableColumn {
+pub enum RamAuxColumn {
     RunningProductOfRAMP,
     FormalDerivative,
     BezoutCoefficient0,
@@ -214,7 +214,7 @@ pub enum RamExtTableColumn {
 
 #[repr(usize)]
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, EnumCount, EnumIter)]
-pub enum JumpStackBaseTableColumn {
+pub enum JumpStackMainColumn {
     CLK,
     CI,
     JSP,
@@ -224,7 +224,7 @@ pub enum JumpStackBaseTableColumn {
 
 #[repr(usize)]
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, EnumCount, EnumIter)]
-pub enum JumpStackExtTableColumn {
+pub enum JumpStackAuxColumn {
     RunningProductPermArg,
     /// The (running sum of the) logarithmic derivative for the clock jump difference Lookup
     /// Argument with the Processor Table.
@@ -233,7 +233,7 @@ pub enum JumpStackExtTableColumn {
 
 #[repr(usize)]
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, EnumCount, EnumIter)]
-pub enum HashBaseTableColumn {
+pub enum HashMainColumn {
     /// The indicator for the [`HashTableMode`][mode].
     ///
     /// [mode]: crate::table::hash::HashTableMode
@@ -242,7 +242,7 @@ pub enum HashBaseTableColumn {
     /// The current instruction. Only relevant for [`Mode`][mode] [`Sponge`][mode_sponge]
     /// in order to distinguish between the different Sponge instructions.
     ///
-    /// [mode]: HashBaseTableColumn::Mode
+    /// [mode]: HashMainColumn::Mode
     /// [mode_sponge]: crate::table::hash::HashTableMode::Sponge
     CI,
 
@@ -253,8 +253,8 @@ pub enum HashBaseTableColumn {
     ///   `sponge_init`, as an exception to above rule, and
     /// - 0 → 0 in [`Mode`][mode] [`Pad`][mode_pad].
     ///
-    /// [ci]: HashBaseTableColumn::CI
-    /// [mode]: HashBaseTableColumn::Mode
+    /// [ci]: HashMainColumn::CI
+    /// [mode]: HashMainColumn::Mode
     /// [mode_prog_hash]: crate::table::hash::HashTableMode::ProgramHashing
     /// [mode_sponge]: crate::table::hash::HashTableMode::Sponge
     /// [mode_hash]: crate::table::hash::HashTableMode::Hash
@@ -331,12 +331,12 @@ pub enum HashBaseTableColumn {
 
 #[repr(usize)]
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, EnumCount, EnumIter)]
-pub enum HashExtTableColumn {
+pub enum HashAuxColumn {
     /// The evaluation argument corresponding to receiving instructions in chunks of size
     /// [`RATE`][rate]. The chunks are hashed in Sponge mode.
     /// This allows program attestation.
     ///
-    /// The counterpart to [`SendChunkEvalArg`](ProgramExtTableColumn::SendChunkRunningEvaluation).
+    /// The counterpart to [`SendChunkEvalArg`](ProgramAuxColumn::SendChunkRunningEvaluation).
     ///
     /// [rate]: twenty_first::math::tip5::RATE
     ReceiveChunkRunningEvaluation,
@@ -369,7 +369,7 @@ pub enum HashExtTableColumn {
 
 #[repr(usize)]
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, EnumCount, EnumIter)]
-pub enum CascadeBaseTableColumn {
+pub enum CascadeMainColumn {
     /// Indicator for padding rows.
     IsPadding,
 
@@ -391,7 +391,7 @@ pub enum CascadeBaseTableColumn {
 
 #[repr(usize)]
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, EnumCount, EnumIter)]
-pub enum CascadeExtTableColumn {
+pub enum CascadeAuxColumn {
     /// The (running sum of the) logarithmic derivative for the Lookup Argument with the Hash Table.
     /// In every row, the sum accumulates `LookupMultiplicity / (X - Combo)` where `X` is a
     /// verifier-supplied challenge and `Combo` is the weighted sum of
@@ -411,7 +411,7 @@ pub enum CascadeExtTableColumn {
 
 #[repr(usize)]
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, EnumCount, EnumIter)]
-pub enum LookupBaseTableColumn {
+pub enum LookupMainColumn {
     /// Indicator for padding rows.
     IsPadding,
 
@@ -427,7 +427,7 @@ pub enum LookupBaseTableColumn {
 
 #[repr(usize)]
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, EnumCount, EnumIter)]
-pub enum LookupExtTableColumn {
+pub enum LookupAuxColumn {
     /// The (running sum of the) logarithmic derivative for the Lookup Argument with the Cascade
     /// Table. In every row, accumulates the summand `LookupMultiplicity / Combo` where `Combo` is
     /// the verifier-weighted combination of `LookIn` and `LookOut`.
@@ -440,7 +440,7 @@ pub enum LookupExtTableColumn {
 
 #[repr(usize)]
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, EnumCount, EnumIter)]
-pub enum U32BaseTableColumn {
+pub enum U32MainColumn {
     /// Marks the beginning of an independent section within the U32 table.
     CopyFlag,
 
@@ -477,7 +477,7 @@ pub enum U32BaseTableColumn {
 
 #[repr(usize)]
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, EnumCount, EnumIter)]
-pub enum U32ExtTableColumn {
+pub enum U32AuxColumn {
     /// The (running sum of the) logarithmic derivative for the Lookup Argument with the
     /// Processor Table.
     LookupServerLogDerivative,
@@ -488,119 +488,119 @@ pub enum U32ExtTableColumn {
 /// - one to get the index of the column in the “local” base table, _i.e., not the master base
 ///   table, and
 /// - one to get the index of the column in the master base table.
-pub trait MasterBaseTableColumn {
+pub trait MasterMainColumn {
     /// The index of the column in the “local” base table, _i.e., not the master base table.
-    fn base_table_index(&self) -> usize;
+    fn main_index(&self) -> usize;
 
     /// The index of the column in the master base table.
-    fn master_base_table_index(&self) -> usize;
+    fn master_main_index(&self) -> usize;
 }
 
-impl MasterBaseTableColumn for ProgramBaseTableColumn {
+impl MasterMainColumn for ProgramMainColumn {
     #[inline]
-    fn base_table_index(&self) -> usize {
+    fn main_index(&self) -> usize {
         (*self) as usize
     }
 
     #[inline]
-    fn master_base_table_index(&self) -> usize {
-        PROGRAM_TABLE_START + self.base_table_index()
+    fn master_main_index(&self) -> usize {
+        PROGRAM_TABLE_START + self.main_index()
     }
 }
 
-impl MasterBaseTableColumn for ProcessorBaseTableColumn {
+impl MasterMainColumn for ProcessorMainColumn {
     #[inline]
-    fn base_table_index(&self) -> usize {
+    fn main_index(&self) -> usize {
         (*self) as usize
     }
 
     #[inline]
-    fn master_base_table_index(&self) -> usize {
-        PROCESSOR_TABLE_START + self.base_table_index()
+    fn master_main_index(&self) -> usize {
+        PROCESSOR_TABLE_START + self.main_index()
     }
 }
 
-impl MasterBaseTableColumn for OpStackBaseTableColumn {
+impl MasterMainColumn for OpStackMainColumn {
     #[inline]
-    fn base_table_index(&self) -> usize {
+    fn main_index(&self) -> usize {
         (*self) as usize
     }
 
     #[inline]
-    fn master_base_table_index(&self) -> usize {
-        OP_STACK_TABLE_START + self.base_table_index()
+    fn master_main_index(&self) -> usize {
+        OP_STACK_TABLE_START + self.main_index()
     }
 }
 
-impl MasterBaseTableColumn for RamBaseTableColumn {
+impl MasterMainColumn for RamMainColumn {
     #[inline]
-    fn base_table_index(&self) -> usize {
+    fn main_index(&self) -> usize {
         (*self) as usize
     }
 
     #[inline]
-    fn master_base_table_index(&self) -> usize {
-        RAM_TABLE_START + self.base_table_index()
+    fn master_main_index(&self) -> usize {
+        RAM_TABLE_START + self.main_index()
     }
 }
 
-impl MasterBaseTableColumn for JumpStackBaseTableColumn {
+impl MasterMainColumn for JumpStackMainColumn {
     #[inline]
-    fn base_table_index(&self) -> usize {
+    fn main_index(&self) -> usize {
         (*self) as usize
     }
 
     #[inline]
-    fn master_base_table_index(&self) -> usize {
-        JUMP_STACK_TABLE_START + self.base_table_index()
+    fn master_main_index(&self) -> usize {
+        JUMP_STACK_TABLE_START + self.main_index()
     }
 }
 
-impl MasterBaseTableColumn for HashBaseTableColumn {
+impl MasterMainColumn for HashMainColumn {
     #[inline]
-    fn base_table_index(&self) -> usize {
+    fn main_index(&self) -> usize {
         (*self) as usize
     }
 
     #[inline]
-    fn master_base_table_index(&self) -> usize {
-        HASH_TABLE_START + self.base_table_index()
+    fn master_main_index(&self) -> usize {
+        HASH_TABLE_START + self.main_index()
     }
 }
 
-impl MasterBaseTableColumn for CascadeBaseTableColumn {
+impl MasterMainColumn for CascadeMainColumn {
     #[inline]
-    fn base_table_index(&self) -> usize {
+    fn main_index(&self) -> usize {
         (*self) as usize
     }
 
     #[inline]
-    fn master_base_table_index(&self) -> usize {
-        CASCADE_TABLE_START + self.base_table_index()
+    fn master_main_index(&self) -> usize {
+        CASCADE_TABLE_START + self.main_index()
     }
 }
 
-impl MasterBaseTableColumn for LookupBaseTableColumn {
+impl MasterMainColumn for LookupMainColumn {
     #[inline]
-    fn base_table_index(&self) -> usize {
+    fn main_index(&self) -> usize {
         (*self) as usize
     }
 
     #[inline]
-    fn master_base_table_index(&self) -> usize {
-        LOOKUP_TABLE_START + self.base_table_index()
+    fn master_main_index(&self) -> usize {
+        LOOKUP_TABLE_START + self.main_index()
     }
 }
 
-impl MasterBaseTableColumn for U32BaseTableColumn {
+impl MasterMainColumn for U32MainColumn {
     #[inline]
-    fn base_table_index(&self) -> usize {
+    fn main_index(&self) -> usize {
         (*self) as usize
     }
 
     #[inline]
-    fn master_base_table_index(&self) -> usize {
-        U32_TABLE_START + self.base_table_index()
+    fn master_main_index(&self) -> usize {
+        U32_TABLE_START + self.main_index()
     }
 }
 
@@ -609,120 +609,120 @@ impl MasterBaseTableColumn for U32BaseTableColumn {
 /// - one to get the index of the column in the “local” extension table, _i.e._, not the master
 ///   extension table, and
 /// - one to get the index of the column in the master extension table.
-pub trait MasterExtTableColumn {
+pub trait MasterAuxColumn {
     /// The index of the column in the “local” extension table, _i.e._, not the master extension
     /// table.
-    fn ext_table_index(&self) -> usize;
+    fn aux_index(&self) -> usize;
 
     /// The index of the column in the master extension table.
-    fn master_ext_table_index(&self) -> usize;
+    fn master_aux_index(&self) -> usize;
 }
 
-impl MasterExtTableColumn for ProgramExtTableColumn {
+impl MasterAuxColumn for ProgramAuxColumn {
     #[inline]
-    fn ext_table_index(&self) -> usize {
+    fn aux_index(&self) -> usize {
         (*self) as usize
     }
 
     #[inline]
-    fn master_ext_table_index(&self) -> usize {
-        EXT_PROGRAM_TABLE_START + self.ext_table_index()
+    fn master_aux_index(&self) -> usize {
+        AUX_PROGRAM_TABLE_START + self.aux_index()
     }
 }
 
-impl MasterExtTableColumn for ProcessorExtTableColumn {
+impl MasterAuxColumn for ProcessorAuxColumn {
     #[inline]
-    fn ext_table_index(&self) -> usize {
+    fn aux_index(&self) -> usize {
         (*self) as usize
     }
 
     #[inline]
-    fn master_ext_table_index(&self) -> usize {
-        EXT_PROCESSOR_TABLE_START + self.ext_table_index()
+    fn master_aux_index(&self) -> usize {
+        AUX_PROCESSOR_TABLE_START + self.aux_index()
     }
 }
 
-impl MasterExtTableColumn for OpStackExtTableColumn {
+impl MasterAuxColumn for OpStackAuxColumn {
     #[inline]
-    fn ext_table_index(&self) -> usize {
+    fn aux_index(&self) -> usize {
         (*self) as usize
     }
 
     #[inline]
-    fn master_ext_table_index(&self) -> usize {
-        EXT_OP_STACK_TABLE_START + self.ext_table_index()
+    fn master_aux_index(&self) -> usize {
+        AUX_OP_STACK_TABLE_START + self.aux_index()
     }
 }
 
-impl MasterExtTableColumn for RamExtTableColumn {
+impl MasterAuxColumn for RamAuxColumn {
     #[inline]
-    fn ext_table_index(&self) -> usize {
+    fn aux_index(&self) -> usize {
         (*self) as usize
     }
 
     #[inline]
-    fn master_ext_table_index(&self) -> usize {
-        EXT_RAM_TABLE_START + self.ext_table_index()
+    fn master_aux_index(&self) -> usize {
+        AUX_RAM_TABLE_START + self.aux_index()
     }
 }
 
-impl MasterExtTableColumn for JumpStackExtTableColumn {
+impl MasterAuxColumn for JumpStackAuxColumn {
     #[inline]
-    fn ext_table_index(&self) -> usize {
+    fn aux_index(&self) -> usize {
         (*self) as usize
     }
 
     #[inline]
-    fn master_ext_table_index(&self) -> usize {
-        EXT_JUMP_STACK_TABLE_START + self.ext_table_index()
+    fn master_aux_index(&self) -> usize {
+        AUX_JUMP_STACK_TABLE_START + self.aux_index()
     }
 }
 
-impl MasterExtTableColumn for HashExtTableColumn {
+impl MasterAuxColumn for HashAuxColumn {
     #[inline]
-    fn ext_table_index(&self) -> usize {
+    fn aux_index(&self) -> usize {
         (*self) as usize
     }
 
     #[inline]
-    fn master_ext_table_index(&self) -> usize {
-        EXT_HASH_TABLE_START + self.ext_table_index()
+    fn master_aux_index(&self) -> usize {
+        AUX_HASH_TABLE_START + self.aux_index()
     }
 }
 
-impl MasterExtTableColumn for CascadeExtTableColumn {
+impl MasterAuxColumn for CascadeAuxColumn {
     #[inline]
-    fn ext_table_index(&self) -> usize {
+    fn aux_index(&self) -> usize {
         (*self) as usize
     }
 
     #[inline]
-    fn master_ext_table_index(&self) -> usize {
-        EXT_CASCADE_TABLE_START + self.ext_table_index()
+    fn master_aux_index(&self) -> usize {
+        AUX_CASCADE_TABLE_START + self.aux_index()
     }
 }
 
-impl MasterExtTableColumn for LookupExtTableColumn {
+impl MasterAuxColumn for LookupAuxColumn {
     #[inline]
-    fn ext_table_index(&self) -> usize {
+    fn aux_index(&self) -> usize {
         (*self) as usize
     }
 
     #[inline]
-    fn master_ext_table_index(&self) -> usize {
-        EXT_LOOKUP_TABLE_START + self.ext_table_index()
+    fn master_aux_index(&self) -> usize {
+        AUX_LOOKUP_TABLE_START + self.aux_index()
     }
 }
 
-impl MasterExtTableColumn for U32ExtTableColumn {
+impl MasterAuxColumn for U32AuxColumn {
     #[inline]
-    fn ext_table_index(&self) -> usize {
+    fn aux_index(&self) -> usize {
         (*self) as usize
     }
 
     #[inline]
-    fn master_ext_table_index(&self) -> usize {
-        EXT_U32_TABLE_START + self.ext_table_index()
+    fn master_aux_index(&self) -> usize {
+        AUX_U32_TABLE_START + self.aux_index()
     }
 }
 
@@ -735,40 +735,40 @@ mod tests {
     #[test]
     fn master_base_table_is_contiguous() {
         let mut expected_column_index = 0;
-        for column in ProgramBaseTableColumn::iter() {
-            assert_eq!(expected_column_index, column.master_base_table_index());
+        for column in ProgramMainColumn::iter() {
+            assert_eq!(expected_column_index, column.master_main_index());
             expected_column_index += 1;
         }
-        for column in ProcessorBaseTableColumn::iter() {
-            assert_eq!(expected_column_index, column.master_base_table_index());
+        for column in ProcessorMainColumn::iter() {
+            assert_eq!(expected_column_index, column.master_main_index());
             expected_column_index += 1;
         }
-        for column in OpStackBaseTableColumn::iter() {
-            assert_eq!(expected_column_index, column.master_base_table_index());
+        for column in OpStackMainColumn::iter() {
+            assert_eq!(expected_column_index, column.master_main_index());
             expected_column_index += 1;
         }
-        for column in RamBaseTableColumn::iter() {
-            assert_eq!(expected_column_index, column.master_base_table_index());
+        for column in RamMainColumn::iter() {
+            assert_eq!(expected_column_index, column.master_main_index());
             expected_column_index += 1;
         }
-        for column in JumpStackBaseTableColumn::iter() {
-            assert_eq!(expected_column_index, column.master_base_table_index());
+        for column in JumpStackMainColumn::iter() {
+            assert_eq!(expected_column_index, column.master_main_index());
             expected_column_index += 1;
         }
-        for column in HashBaseTableColumn::iter() {
-            assert_eq!(expected_column_index, column.master_base_table_index());
+        for column in HashMainColumn::iter() {
+            assert_eq!(expected_column_index, column.master_main_index());
             expected_column_index += 1;
         }
-        for column in CascadeBaseTableColumn::iter() {
-            assert_eq!(expected_column_index, column.master_base_table_index());
+        for column in CascadeMainColumn::iter() {
+            assert_eq!(expected_column_index, column.master_main_index());
             expected_column_index += 1;
         }
-        for column in LookupBaseTableColumn::iter() {
-            assert_eq!(expected_column_index, column.master_base_table_index());
+        for column in LookupMainColumn::iter() {
+            assert_eq!(expected_column_index, column.master_main_index());
             expected_column_index += 1;
         }
-        for column in U32BaseTableColumn::iter() {
-            assert_eq!(expected_column_index, column.master_base_table_index());
+        for column in U32MainColumn::iter() {
+            assert_eq!(expected_column_index, column.master_main_index());
             expected_column_index += 1;
         }
     }
@@ -776,40 +776,40 @@ mod tests {
     #[test]
     fn master_ext_table_is_contiguous() {
         let mut expected_column_index = 0;
-        for column in ProgramExtTableColumn::iter() {
-            assert_eq!(expected_column_index, column.master_ext_table_index());
+        for column in ProgramAuxColumn::iter() {
+            assert_eq!(expected_column_index, column.master_aux_index());
             expected_column_index += 1;
         }
-        for column in ProcessorExtTableColumn::iter() {
-            assert_eq!(expected_column_index, column.master_ext_table_index());
+        for column in ProcessorAuxColumn::iter() {
+            assert_eq!(expected_column_index, column.master_aux_index());
             expected_column_index += 1;
         }
-        for column in OpStackExtTableColumn::iter() {
-            assert_eq!(expected_column_index, column.master_ext_table_index());
+        for column in OpStackAuxColumn::iter() {
+            assert_eq!(expected_column_index, column.master_aux_index());
             expected_column_index += 1;
         }
-        for column in RamExtTableColumn::iter() {
-            assert_eq!(expected_column_index, column.master_ext_table_index());
+        for column in RamAuxColumn::iter() {
+            assert_eq!(expected_column_index, column.master_aux_index());
             expected_column_index += 1;
         }
-        for column in JumpStackExtTableColumn::iter() {
-            assert_eq!(expected_column_index, column.master_ext_table_index());
+        for column in JumpStackAuxColumn::iter() {
+            assert_eq!(expected_column_index, column.master_aux_index());
             expected_column_index += 1;
         }
-        for column in HashExtTableColumn::iter() {
-            assert_eq!(expected_column_index, column.master_ext_table_index());
+        for column in HashAuxColumn::iter() {
+            assert_eq!(expected_column_index, column.master_aux_index());
             expected_column_index += 1;
         }
-        for column in CascadeExtTableColumn::iter() {
-            assert_eq!(expected_column_index, column.master_ext_table_index());
+        for column in CascadeAuxColumn::iter() {
+            assert_eq!(expected_column_index, column.master_aux_index());
             expected_column_index += 1;
         }
-        for column in LookupExtTableColumn::iter() {
-            assert_eq!(expected_column_index, column.master_ext_table_index());
+        for column in LookupAuxColumn::iter() {
+            assert_eq!(expected_column_index, column.master_aux_index());
             expected_column_index += 1;
         }
-        for column in U32ExtTableColumn::iter() {
-            assert_eq!(expected_column_index, column.master_ext_table_index());
+        for column in U32AuxColumn::iter() {
+            assert_eq!(expected_column_index, column.master_aux_index());
             expected_column_index += 1;
         }
     }

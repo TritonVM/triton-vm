@@ -1,14 +1,14 @@
 use constraint_circuit::ConstraintCircuitBuilder;
 use constraint_circuit::ConstraintCircuitMonad;
 use constraint_circuit::DualRowIndicator;
-use constraint_circuit::DualRowIndicator::CurrentBaseRow;
-use constraint_circuit::DualRowIndicator::CurrentExtRow;
-use constraint_circuit::DualRowIndicator::NextBaseRow;
-use constraint_circuit::DualRowIndicator::NextExtRow;
+use constraint_circuit::DualRowIndicator::CurrentAux;
+use constraint_circuit::DualRowIndicator::CurrentMain;
+use constraint_circuit::DualRowIndicator::NextAux;
+use constraint_circuit::DualRowIndicator::NextMain;
 use constraint_circuit::InputIndicator;
 use constraint_circuit::SingleRowIndicator;
-use constraint_circuit::SingleRowIndicator::BaseRow;
-use constraint_circuit::SingleRowIndicator::ExtRow;
+use constraint_circuit::SingleRowIndicator::Aux;
+use constraint_circuit::SingleRowIndicator::Main;
 use isa::instruction::Instruction;
 use itertools::Itertools;
 use strum::Display;
@@ -22,8 +22,8 @@ use crate::challenge_id::ChallengeId;
 use crate::cross_table_argument::CrossTableArg;
 use crate::cross_table_argument::EvalArg;
 use crate::cross_table_argument::LookupArg;
-use crate::table_column::MasterBaseTableColumn;
-use crate::table_column::MasterExtTableColumn;
+use crate::table_column::MasterAuxColumn;
+use crate::table_column::MasterMainColumn;
 use crate::AIR;
 
 pub const MONTGOMERY_MODULUS: BFieldElement =
@@ -165,7 +165,7 @@ impl HashTable {
     /// Valid indices are 0 through 15, corresponding to the 16 round constants
     /// `Constant0` through `Constant15`.
     ///
-    /// [col]: crate::table_column::HashBaseTableColumn
+    /// [col]: crate::table_column::HashMainColumn
     pub fn round_constant_column_by_index(index: usize) -> MainColumn {
         match index {
             0 => MainColumn::Constant0,
@@ -188,7 +188,7 @@ impl HashTable {
         }
     }
 
-    /// The [`HashBaseTableColumn`] for the state corresponding to the given index.
+    /// The [`HashMainColumn`] for the state corresponding to the given index.
     /// Valid indices are 4 through 15, corresponding to the 12 state columns
     /// [`State4`] through [`State15`].
     ///
@@ -213,16 +213,16 @@ impl HashTable {
         }
     }
 
-    fn indicate_column_index_in_base_row(column: MainColumn) -> SingleRowIndicator {
-        BaseRow(column.master_base_table_index())
+    fn indicate_column_index_in_main_row(column: MainColumn) -> SingleRowIndicator {
+        Main(column.master_main_index())
     }
 
-    fn indicate_column_index_in_current_base_row(column: MainColumn) -> DualRowIndicator {
-        CurrentBaseRow(column.master_base_table_index())
+    fn indicate_column_index_in_current_main_row(column: MainColumn) -> DualRowIndicator {
+        CurrentMain(column.master_main_index())
     }
 
-    fn indicate_column_index_in_next_base_row(column: MainColumn) -> DualRowIndicator {
-        NextBaseRow(column.master_base_table_index())
+    fn indicate_column_index_in_next_main_row(column: MainColumn) -> DualRowIndicator {
+        NextMain(column.master_main_index())
     }
 
     fn re_compose_states_0_through_3_before_lookup<II: InputIndicator>(
@@ -270,10 +270,10 @@ impl HashTable {
         let constant = |c: u64| circuit_builder.b_constant(c);
         let b_constant = |c| circuit_builder.b_constant(c);
         let current_main_row = |column_idx: MainColumn| {
-            circuit_builder.input(CurrentBaseRow(column_idx.master_base_table_index()))
+            circuit_builder.input(CurrentMain(column_idx.master_main_index()))
         };
         let next_main_row = |column_idx: MainColumn| {
-            circuit_builder.input(NextBaseRow(column_idx.master_base_table_index()))
+            circuit_builder.input(NextMain(column_idx.master_main_index()))
         };
 
         let state_0_after_lookup = Self::re_compose_16_bit_limbs(
@@ -387,7 +387,7 @@ impl HashTable {
         let [state_0_next, state_1_next, state_2_next, state_3_next] =
             Self::re_compose_states_0_through_3_before_lookup(
                 circuit_builder,
-                Self::indicate_column_index_in_next_base_row,
+                Self::indicate_column_index_in_next_main_row,
             );
         let state_next = [
             state_0_next,
@@ -432,14 +432,13 @@ impl HashTable {
         let opcode = |instruction: Instruction| circuit_builder.b_constant(instruction.opcode_b());
         let constant = |c: u32| circuit_builder.b_constant(c);
         let next_main_row = |column_idx: MainColumn| {
-            circuit_builder.input(NextBaseRow(column_idx.master_base_table_index()))
+            circuit_builder.input(NextMain(column_idx.master_main_index()))
         };
         let current_aux_row = |column_idx: AuxColumn| {
-            circuit_builder.input(CurrentExtRow(column_idx.master_ext_table_index()))
+            circuit_builder.input(CurrentAux(column_idx.master_aux_index()))
         };
-        let next_aux_row = |column_idx: AuxColumn| {
-            circuit_builder.input(NextExtRow(column_idx.master_ext_table_index()))
-        };
+        let next_aux_row =
+            |column_idx: AuxColumn| circuit_builder.input(NextAux(column_idx.master_aux_index()));
 
         let cascade_indeterminate = challenge(ChallengeId::HashCascadeLookupIndeterminate);
         let look_in_weight = challenge(ChallengeId::HashCascadeLookInWeight);
@@ -477,8 +476,8 @@ impl HashTable {
 }
 
 impl AIR for HashTable {
-    type MainColumn = crate::table_column::HashBaseTableColumn;
-    type AuxColumn = crate::table_column::HashExtTableColumn;
+    type MainColumn = crate::table_column::HashMainColumn;
+    type AuxColumn = crate::table_column::HashAuxColumn;
 
     fn initial_constraints(
         circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
@@ -486,12 +485,10 @@ impl AIR for HashTable {
         let challenge = |c| circuit_builder.challenge(c);
         let constant = |c: u64| circuit_builder.b_constant(c);
 
-        let main_row = |column: Self::MainColumn| {
-            circuit_builder.input(BaseRow(column.master_base_table_index()))
-        };
-        let aux_row = |column: Self::AuxColumn| {
-            circuit_builder.input(ExtRow(column.master_ext_table_index()))
-        };
+        let main_row =
+            |column: Self::MainColumn| circuit_builder.input(Main(column.master_main_index()));
+        let aux_row =
+            |column: Self::AuxColumn| circuit_builder.input(Aux(column.master_aux_index()));
 
         let running_evaluation_initial = circuit_builder.x_constant(EvalArg::default_initial());
         let lookup_arg_default_initial = circuit_builder.x_constant(LookupArg::default_initial());
@@ -515,7 +512,7 @@ impl AIR for HashTable {
         let [state_0, state_1, state_2, state_3] =
             Self::re_compose_states_0_through_3_before_lookup(
                 circuit_builder,
-                Self::indicate_column_index_in_base_row,
+                Self::indicate_column_index_in_main_row,
             );
         let state_rate_part: [_; tip5::RATE] = [
             state_0,
@@ -659,7 +656,7 @@ impl AIR for HashTable {
         let opcode = |instruction: Instruction| circuit_builder.b_constant(instruction.opcode_b());
         let constant = |c: u64| circuit_builder.b_constant(c);
         let main_row = |column_id: Self::MainColumn| {
-            circuit_builder.input(BaseRow(column_id.master_base_table_index()))
+            circuit_builder.input(Main(column_id.master_main_index()))
         };
 
         let mode = main_row(Self::MainColumn::Mode);
@@ -837,16 +834,16 @@ impl AIR for HashTable {
         let opcode_sponge_squeeze = opcode(Instruction::SpongeSqueeze);
 
         let current_main_row = |column_idx: Self::MainColumn| {
-            circuit_builder.input(CurrentBaseRow(column_idx.master_base_table_index()))
+            circuit_builder.input(CurrentMain(column_idx.master_main_index()))
         };
-        let next_base_row = |column_idx: Self::MainColumn| {
-            circuit_builder.input(NextBaseRow(column_idx.master_base_table_index()))
+        let next_main_row = |column_idx: Self::MainColumn| {
+            circuit_builder.input(NextMain(column_idx.master_main_index()))
         };
-        let current_ext_row = |column_idx: Self::AuxColumn| {
-            circuit_builder.input(CurrentExtRow(column_idx.master_ext_table_index()))
+        let current_aux_row = |column_idx: Self::AuxColumn| {
+            circuit_builder.input(CurrentAux(column_idx.master_aux_index()))
         };
-        let next_ext_row = |column_idx: Self::AuxColumn| {
-            circuit_builder.input(NextExtRow(column_idx.master_ext_table_index()))
+        let next_aux_row = |column_idx: Self::AuxColumn| {
+            circuit_builder.input(NextAux(column_idx.master_aux_index()))
         };
 
         let running_evaluation_initial = circuit_builder.x_constant(EvalArg::default_initial());
@@ -866,28 +863,28 @@ impl AIR for HashTable {
         let ci = current_main_row(Self::MainColumn::CI);
         let round_number = current_main_row(Self::MainColumn::RoundNumber);
         let running_evaluation_receive_chunk =
-            current_ext_row(Self::AuxColumn::ReceiveChunkRunningEvaluation);
+            current_aux_row(Self::AuxColumn::ReceiveChunkRunningEvaluation);
         let running_evaluation_hash_input =
-            current_ext_row(Self::AuxColumn::HashInputRunningEvaluation);
+            current_aux_row(Self::AuxColumn::HashInputRunningEvaluation);
         let running_evaluation_hash_digest =
-            current_ext_row(Self::AuxColumn::HashDigestRunningEvaluation);
-        let running_evaluation_sponge = current_ext_row(Self::AuxColumn::SpongeRunningEvaluation);
+            current_aux_row(Self::AuxColumn::HashDigestRunningEvaluation);
+        let running_evaluation_sponge = current_aux_row(Self::AuxColumn::SpongeRunningEvaluation);
 
-        let mode_next = next_base_row(Self::MainColumn::Mode);
-        let ci_next = next_base_row(Self::MainColumn::CI);
-        let round_number_next = next_base_row(Self::MainColumn::RoundNumber);
+        let mode_next = next_main_row(Self::MainColumn::Mode);
+        let ci_next = next_main_row(Self::MainColumn::CI);
+        let round_number_next = next_main_row(Self::MainColumn::RoundNumber);
         let running_evaluation_receive_chunk_next =
-            next_ext_row(Self::AuxColumn::ReceiveChunkRunningEvaluation);
+            next_aux_row(Self::AuxColumn::ReceiveChunkRunningEvaluation);
         let running_evaluation_hash_input_next =
-            next_ext_row(Self::AuxColumn::HashInputRunningEvaluation);
+            next_aux_row(Self::AuxColumn::HashInputRunningEvaluation);
         let running_evaluation_hash_digest_next =
-            next_ext_row(Self::AuxColumn::HashDigestRunningEvaluation);
-        let running_evaluation_sponge_next = next_ext_row(Self::AuxColumn::SpongeRunningEvaluation);
+            next_aux_row(Self::AuxColumn::HashDigestRunningEvaluation);
+        let running_evaluation_sponge_next = next_aux_row(Self::AuxColumn::SpongeRunningEvaluation);
 
         let [state_0, state_1, state_2, state_3] =
             Self::re_compose_states_0_through_3_before_lookup(
                 circuit_builder,
-                Self::indicate_column_index_in_current_base_row,
+                Self::indicate_column_index_in_current_main_row,
             );
 
         let state_current = [
@@ -1248,7 +1245,7 @@ impl AIR for HashTable {
         let opcode = |instruction: Instruction| circuit_builder.b_constant(instruction.opcode_b());
         let constant = |c: u64| circuit_builder.b_constant(c);
         let main_row = |column_idx: Self::MainColumn| {
-            circuit_builder.input(BaseRow(column_idx.master_base_table_index()))
+            circuit_builder.input(Main(column_idx.master_main_index()))
         };
 
         let mode = main_row(Self::MainColumn::Mode);
@@ -1263,7 +1260,7 @@ impl AIR for HashTable {
         let [state_0, state_1, state_2, state_3] =
             Self::re_compose_states_0_through_3_before_lookup(
                 circuit_builder,
-                Self::indicate_column_index_in_base_row,
+                Self::indicate_column_index_in_main_row,
             );
         let state_4 = main_row(Self::MainColumn::State4);
         let program_digest = [state_0, state_1, state_2, state_3, state_4];
@@ -1312,7 +1309,7 @@ impl AIR for HashTable {
 /// The empty program is not valid since any valid [`Program`][program] must execute
 /// instruction `halt`.
 ///
-/// [round_no]: crate::table_column::HashBaseTableColumn::RoundNumber
+/// [round_no]: crate::table_column::HashMainColumn::RoundNumber
 /// [program]: isa::program::Program
 /// [prog_hash]: HashTableMode::ProgramHashing
 /// [sponge]: HashTableMode::Sponge

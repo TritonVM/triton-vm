@@ -3,8 +3,8 @@ use air::cross_table_argument::CrossTableArg;
 use air::cross_table_argument::EvalArg;
 use air::cross_table_argument::LookupArg;
 use air::table::lookup::LookupTable;
-use air::table_column::MasterBaseTableColumn;
-use air::table_column::MasterExtTableColumn;
+use air::table_column::MasterAuxColumn;
+use air::table_column::MasterMainColumn;
 use air::AIR;
 use itertools::Itertools;
 use ndarray::prelude::*;
@@ -36,15 +36,15 @@ fn extension_column_cascade_running_sum_log_derivative(
     let mut cascade_table_running_sum_log_derivative = LookupArg::default_initial();
     let mut extension_column = Vec::with_capacity(base_table.nrows());
     for row in base_table.rows() {
-        if row[MainColumn::IsPadding.base_table_index()].is_one() {
+        if row[MainColumn::IsPadding.main_index()].is_one() {
             break;
         }
 
-        let lookup_input = row[MainColumn::LookIn.base_table_index()];
-        let lookup_output = row[MainColumn::LookOut.base_table_index()];
+        let lookup_input = row[MainColumn::LookIn.main_index()];
+        let lookup_output = row[MainColumn::LookOut.main_index()];
         let compressed_row = lookup_input * look_in_weight + lookup_output * look_out_weight;
 
-        let lookup_multiplicity = row[MainColumn::LookupMultiplicity.base_table_index()];
+        let lookup_multiplicity = row[MainColumn::LookupMultiplicity.main_index()];
         cascade_table_running_sum_log_derivative +=
             (indeterminate - compressed_row).inverse() * lookup_multiplicity;
 
@@ -63,13 +63,13 @@ fn extension_column_public_running_evaluation(
     let mut running_evaluation = EvalArg::default_initial();
     let mut extension_column = Vec::with_capacity(base_table.nrows());
     for row in base_table.rows() {
-        if row[MainColumn::IsPadding.base_table_index()].is_one() {
+        if row[MainColumn::IsPadding.main_index()].is_one() {
             break;
         }
 
         running_evaluation = running_evaluation
             * challenges[ChallengeId::LookupTablePublicIndeterminate]
-            + row[MainColumn::LookOut.base_table_index()];
+            + row[MainColumn::LookOut.main_index()];
         extension_column.push(running_evaluation);
     }
 
@@ -88,18 +88,14 @@ impl TraceTable for LookupTable {
 
         // Lookup Table input
         let lookup_input = Array1::from_iter((0..LOOKUP_TABLE_LEN).map(|i| bfe!(i as u64)));
-        let lookup_input_column = main_table.slice_mut(s![
-            ..LOOKUP_TABLE_LEN,
-            MainColumn::LookIn.base_table_index()
-        ]);
+        let lookup_input_column =
+            main_table.slice_mut(s![..LOOKUP_TABLE_LEN, MainColumn::LookIn.main_index()]);
         lookup_input.move_into(lookup_input_column);
 
         // Lookup Table output
         let lookup_output = Array1::from_iter(tip5::LOOKUP_TABLE.map(BFieldElement::from));
-        let lookup_output_column = main_table.slice_mut(s![
-            ..LOOKUP_TABLE_LEN,
-            MainColumn::LookOut.base_table_index()
-        ]);
+        let lookup_output_column =
+            main_table.slice_mut(s![..LOOKUP_TABLE_LEN, MainColumn::LookOut.main_index()]);
         lookup_output.move_into(lookup_output_column);
 
         // Lookup Table multiplicities
@@ -109,14 +105,14 @@ impl TraceTable for LookupTable {
         );
         let lookup_multiplicities_column = main_table.slice_mut(s![
             ..LOOKUP_TABLE_LEN,
-            MainColumn::LookupMultiplicity.base_table_index()
+            MainColumn::LookupMultiplicity.main_index()
         ]);
         lookup_multiplicities.move_into(lookup_multiplicities_column);
     }
 
     fn pad(mut lookup_table: ArrayViewMut2<BFieldElement>, table_length: usize) {
         lookup_table
-            .slice_mut(s![table_length.., MainColumn::IsPadding.base_table_index()])
+            .slice_mut(s![table_length.., MainColumn::IsPadding.main_index()])
             .fill(BFieldElement::ONE);
     }
 
@@ -131,7 +127,7 @@ impl TraceTable for LookupTable {
         assert_eq!(main_table.nrows(), aux_table.nrows());
 
         let extension_column_indices = AuxColumn::iter()
-            .map(|column| column.ext_table_index())
+            .map(|column| column.aux_index())
             .collect_vec();
         let extension_column_slices = horizontal_multi_slice_mut(
             aux_table.view_mut(),

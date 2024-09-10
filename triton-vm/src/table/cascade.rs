@@ -2,8 +2,8 @@ use air::challenge_id::ChallengeId;
 use air::cross_table_argument::CrossTableArg;
 use air::cross_table_argument::LookupArg;
 use air::table::cascade::CascadeTable;
-use air::table_column::MasterBaseTableColumn;
-use air::table_column::MasterExtTableColumn;
+use air::table_column::MasterAuxColumn;
+use air::table_column::MasterMainColumn;
 use air::AIR;
 use ndarray::s;
 use ndarray::ArrayView2;
@@ -45,11 +45,11 @@ impl TraceTable for CascadeTable {
             let to_look_up_hi = ((to_look_up >> 8) & 0xff) as u8;
 
             let mut row = main_table.row_mut(row_idx);
-            row[MainColumn::LookInLo.base_table_index()] = bfe!(to_look_up_lo);
-            row[MainColumn::LookInHi.base_table_index()] = bfe!(to_look_up_hi);
-            row[MainColumn::LookOutLo.base_table_index()] = lookup_8_bit_limb(to_look_up_lo);
-            row[MainColumn::LookOutHi.base_table_index()] = lookup_8_bit_limb(to_look_up_hi);
-            row[MainColumn::LookupMultiplicity.base_table_index()] = bfe!(multiplicity);
+            row[MainColumn::LookInLo.main_index()] = bfe!(to_look_up_lo);
+            row[MainColumn::LookInHi.main_index()] = bfe!(to_look_up_hi);
+            row[MainColumn::LookOutLo.main_index()] = lookup_8_bit_limb(to_look_up_lo);
+            row[MainColumn::LookOutHi.main_index()] = lookup_8_bit_limb(to_look_up_hi);
+            row[MainColumn::LookupMultiplicity.main_index()] = bfe!(multiplicity);
         }
     }
 
@@ -57,7 +57,7 @@ impl TraceTable for CascadeTable {
         main_table
             .slice_mut(s![
                 cascade_table_length..,
-                MainColumn::IsPadding.base_table_index()
+                MainColumn::IsPadding.main_index()
             ])
             .fill(BFieldElement::ONE);
     }
@@ -86,35 +86,34 @@ impl TraceTable for CascadeTable {
         let lookup_output_weight = challenges[ChallengeId::LookupTableOutputWeight];
 
         for row_idx in 0..main_table.nrows() {
-            let base_row = main_table.row(row_idx);
-            let is_padding = base_row[MainColumn::IsPadding.base_table_index()].is_one();
+            let main_row = main_table.row(row_idx);
+            let is_padding = main_row[MainColumn::IsPadding.main_index()].is_one();
 
             if !is_padding {
-                let look_in = two_pow_8 * base_row[MainColumn::LookInHi.base_table_index()]
-                    + base_row[MainColumn::LookInLo.base_table_index()];
-                let look_out = two_pow_8 * base_row[MainColumn::LookOutHi.base_table_index()]
-                    + base_row[MainColumn::LookOutLo.base_table_index()];
+                let look_in = two_pow_8 * main_row[MainColumn::LookInHi.main_index()]
+                    + main_row[MainColumn::LookInLo.main_index()];
+                let look_out = two_pow_8 * main_row[MainColumn::LookOutHi.main_index()]
+                    + main_row[MainColumn::LookOutLo.main_index()];
                 let compressed_row_hash =
                     hash_input_weight * look_in + hash_output_weight * look_out;
-                let lookup_multiplicity =
-                    base_row[MainColumn::LookupMultiplicity.base_table_index()];
+                let lookup_multiplicity = main_row[MainColumn::LookupMultiplicity.main_index()];
                 hash_table_log_derivative +=
                     (hash_indeterminate - compressed_row_hash).inverse() * lookup_multiplicity;
 
                 let compressed_row_lo = lookup_input_weight
-                    * base_row[MainColumn::LookInLo.base_table_index()]
-                    + lookup_output_weight * base_row[MainColumn::LookOutLo.base_table_index()];
+                    * main_row[MainColumn::LookInLo.main_index()]
+                    + lookup_output_weight * main_row[MainColumn::LookOutLo.main_index()];
                 let compressed_row_hi = lookup_input_weight
-                    * base_row[MainColumn::LookInHi.base_table_index()]
-                    + lookup_output_weight * base_row[MainColumn::LookOutHi.base_table_index()];
+                    * main_row[MainColumn::LookInHi.main_index()]
+                    + lookup_output_weight * main_row[MainColumn::LookOutHi.main_index()];
                 lookup_table_log_derivative += (lookup_indeterminate - compressed_row_lo).inverse();
                 lookup_table_log_derivative += (lookup_indeterminate - compressed_row_hi).inverse();
             }
 
             let mut extension_row = aux_table.row_mut(row_idx);
-            extension_row[AuxColumn::HashTableServerLogDerivative.ext_table_index()] =
+            extension_row[AuxColumn::HashTableServerLogDerivative.aux_index()] =
                 hash_table_log_derivative;
-            extension_row[AuxColumn::LookupTableClientLogDerivative.ext_table_index()] =
+            extension_row[AuxColumn::LookupTableClientLogDerivative.aux_index()] =
                 lookup_table_log_derivative;
         }
         profiler!(stop "cascade table");
