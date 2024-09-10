@@ -13,14 +13,14 @@ they can compare their own program digest to the program digest of the proof the
 This way, a recursive verifier can easily determine if they are actually recursing, or whether the proof they are checking was generated using an entirely different program.
 A more detailed explanation of the mechanics can be found on the page about [program attestation](program-attestation.md).
 
-## Base Columns
+## Main Columns
 
 The processor consists of all registers defined in the [Instruction Set Architecture](isa.md).
 Each register is assigned a column in the processor table.
 
-## Extension Columns
+## Auxiliary Columns
 
-The Processor Table has the following extension columns, corresponding to [Evaluation Arguments](evaluation-argument.md), [Permutation Arguments](permutation-argument.md), and [Lookup Arguments](lookup-argument.md):
+The Processor Table has the following auxiliary columns, corresponding to [Evaluation Arguments](evaluation-argument.md), [Permutation Arguments](permutation-argument.md), and [Lookup Arguments](lookup-argument.md):
 
 1. `RunningEvaluationStandardInput` for the Evaluation Argument with the input symbols.
 1. `RunningEvaluationStandardOutput` for the Evaluation Argument with the output symbols.

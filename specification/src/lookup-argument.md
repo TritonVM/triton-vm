@@ -69,14 +69,14 @@ $$
 \sum_{i=0}^\ell \frac{1}{X - a_i} = \sum_{i=0}^n \frac{m_i}{X - b_i}
 $$
 
-To compute the sums, the lists $A$ and $B$ are base columns in the two respective tables.
-Additionally, the lookup multiplicity is recorded explicitly in a base column of the lookup table.
+To compute the sums, the lists $A$ and $B$ are main columns in the two respective tables.
+Additionally, the lookup multiplicity is recorded explicitly in a main column of the lookup table.
 
 ## Example
 
 In Table A:
 
-| base column A | extension column A: logarithmic derivative                           |
+| main column A | auxiliary column A: logarithmic derivative                           |
 |--------------:|:---------------------------------------------------------------------|
 |             0 | $\frac{1}{\alpha - 0}$                                               |
 |             2 | $\frac{1}{\alpha - 0} + \frac{1}{\alpha - 2}$                        |
@@ -86,7 +86,7 @@ In Table A:
 
 And in Table B:
 
-| base column B | multiplicity | extension column B: logarithmic derivative                           |
+| main column B | multiplicity | auxiliary column B: logarithmic derivative                           |
 |--------------:|-------------:|:---------------------------------------------------------------------|
 |             0 |            1 | $\frac{1}{\alpha - 0}$                                               |
 |             1 |            1 | $\frac{1}{\alpha - 0} + \frac{1}{\alpha - 1}$                        |
@@ -96,7 +96,7 @@ It is possible to establish a subset relation by skipping over certain elements 
 The logarithmic derivative must incorporate the same elements with the same multiplicity in both tables.
 Otherwise, the Lookup Argument will fail.
 
-An example for a Lookup Argument can be found between the [Program Table](program-table.md) and the [Processor Table](processor-table.md#extension-colums).
+An example for a Lookup Argument can be found between the [Program Table](program-table.md) and the [Processor Table](processor-table.md#auxiliary-colums).
 
 ---
 

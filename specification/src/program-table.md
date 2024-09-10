@@ -6,9 +6,9 @@ The [processor](processor-table.md) looks up instructions and arguments using it
 For [program attestation](program-attestation.md), the program is [padded](program-attestation.md#mechanics) and sent to the [Hash Table](hash-table.md) in chunks of size 10, which is the $\texttt{rate}$ of the [Tip5 hash function][tip5].
 Program padding is one 1 followed by the minimal number of 0’s necessary to make the padded input length a multiple of the $\texttt{rate}$[^padding].
 
-## Base Columns
+## Main Columns
 
-The Program Table consists of 7 base columns.
+The Program Table consists of 7 main columns.
 Those columns marked with an asterisk (\*) are only used for [program attestation](program-attestation.md).
 
 | Column                      | Description                                                                               |
@@ -21,10 +21,10 @@ Those columns marked with an asterisk (\*) are only used for [program attestatio
 | \*`IsHashInputPadding`      | padding indicator for absorbing the program into the Sponge                               |
 | `IsTablePadding`            | padding indicator for rows only required due to the dominating length of some other table |
 
-## Extension Columns
+## Auxiliary Columns
 
 A [Lookup Argument](lookup-argument.md) with the [Processor Table](processor-table.md) establishes that the processor has loaded the correct instruction (and its argument) from program memory.
-To establish the program memory's side of the Lookup Argument, the Program Table has extension column `InstructionLookupServerLogDerivative`.
+To establish the program memory's side of the Lookup Argument, the Program Table has auxiliary column `InstructionLookupServerLogDerivative`.
 
 For sending the padded program to the [Hash Table](hash-table.md), a combination of two [Evaluation Arguments](evaluation-argument.md) is used.
 The first, `PrepareChunkRunningEvaluation`, absorbs one chunk of $\texttt{rate}$ (_i.e._ 10) instructions at a time, after which it is reset and starts absorbing again.

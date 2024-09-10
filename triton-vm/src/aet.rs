@@ -3,27 +3,32 @@ use std::collections::hash_map::Entry::Vacant;
 use std::collections::HashMap;
 use std::ops::AddAssign;
 
+use air::table::hash::HashTable;
+use air::table::hash::PermutationTrace;
+use air::table::op_stack;
+use air::table::processor;
+use air::table::ram;
+use air::table::TableId;
+use air::table_column::HashMainColumn::CI;
+use air::table_column::MasterMainColumn;
+use air::AIR;
 use arbitrary::Arbitrary;
+use isa::error::InstructionError;
+use isa::error::InstructionError::InstructionPointerOverflow;
+use isa::instruction::Instruction;
+use isa::program::Program;
 use itertools::Itertools;
 use ndarray::s;
 use ndarray::Array2;
 use ndarray::Axis;
+use strum::EnumCount;
 use strum::IntoEnumIterator;
 use twenty_first::prelude::*;
 
-use crate::error::InstructionError;
-use crate::error::InstructionError::InstructionPointerOverflow;
-use crate::instruction::Instruction;
-use crate::program::Program;
-use crate::table::hash_table::HashTable;
-use crate::table::hash_table::PermutationTrace;
-use crate::table::master_table::TableId;
-use crate::table::op_stack_table::OpStackTableEntry;
-use crate::table::ram_table::RamTableCall;
-use crate::table::table_column::HashBaseTableColumn::CI;
-use crate::table::table_column::MasterBaseTableColumn;
-use crate::table::u32_table::U32TableEntry;
-use crate::table::*;
+use crate::table;
+use crate::table::op_stack::OpStackTableEntry;
+use crate::table::ram::RamTableCall;
+use crate::table::u32::U32TableEntry;
 use crate::vm::CoProcessorCall;
 use crate::vm::CoProcessorCall::*;
 use crate::vm::VMState;
@@ -88,17 +93,22 @@ impl AlgebraicExecutionTrace {
     pub(crate) const LOOKUP_TABLE_HEIGHT: usize = 1 << 8;
 
     pub fn new(program: Program) -> Self {
+        const PROCESSOR_WIDTH: usize = <processor::ProcessorTable as AIR>::MainColumn::COUNT;
+        const OP_STACK_WIDTH: usize = <op_stack::OpStackTable as AIR>::MainColumn::COUNT;
+        const RAM_WIDTH: usize = <ram::RamTable as AIR>::MainColumn::COUNT;
+        const HASH_WIDTH: usize = <HashTable as AIR>::MainColumn::COUNT;
+
         let program_len = program.len_bwords();
 
         let mut aet = Self {
             program,
             instruction_multiplicities: vec![0_u32; program_len],
-            processor_trace: Array2::default([0, processor_table::BASE_WIDTH]),
-            op_stack_underflow_trace: Array2::default([0, op_stack_table::BASE_WIDTH]),
-            ram_trace: Array2::default([0, ram_table::BASE_WIDTH]),
-            program_hash_trace: Array2::default([0, hash_table::BASE_WIDTH]),
-            hash_trace: Array2::default([0, hash_table::BASE_WIDTH]),
-            sponge_trace: Array2::default([0, hash_table::BASE_WIDTH]),
+            processor_trace: Array2::default([0, PROCESSOR_WIDTH]),
+            op_stack_underflow_trace: Array2::default([0, OP_STACK_WIDTH]),
+            ram_trace: Array2::default([0, RAM_WIDTH]),
+            program_hash_trace: Array2::default([0, HASH_WIDTH]),
+            hash_trace: Array2::default([0, HASH_WIDTH]),
+            sponge_trace: Array2::default([0, HASH_WIDTH]),
             u32_entries: HashMap::new(),
             cascade_table_lookup_multiplicities: HashMap::new(),
             lookup_table_lookup_multiplicities: [0; Self::LOOKUP_TABLE_HEIGHT],
@@ -111,7 +121,7 @@ impl AlgebraicExecutionTrace {
     ///
     /// Guaranteed to be a power of two.
     ///
-    /// [pad]: master_table::MasterBaseTable::pad
+    /// [pad]: table::master_table::MasterMainTable::pad
     pub fn padded_height(&self) -> usize {
         self.height().height.next_power_of_two()
     }
@@ -119,11 +129,12 @@ impl AlgebraicExecutionTrace {
     /// The height of the [AET](AlgebraicExecutionTrace) before [padding][pad].
     /// Corresponds to the height of the longest table.
     ///
-    /// [pad]: master_table::MasterBaseTable::pad
+    /// [pad]: table::master_table::MasterMainTable::pad
     pub fn height(&self) -> TableHeight {
-        let relevant_tables = TableId::iter().filter(|&t| t != TableId::DegreeLowering);
-        let heights = relevant_tables.map(|t| TableHeight::new(t, self.height_of_table(t)));
-        heights.max().unwrap()
+        TableId::iter()
+            .map(|t| TableHeight::new(t, self.height_of_table(t)))
+            .max()
+            .unwrap()
     }
 
     pub fn height_of_table(&self, table: TableId) -> usize {
@@ -141,7 +152,6 @@ impl AlgebraicExecutionTrace {
             TableId::Cascade => self.cascade_table_lookup_multiplicities.len(),
             TableId::Lookup => Self::LOOKUP_TABLE_HEIGHT,
             TableId::U32 => self.u32_table_height(),
-            TableId::DegreeLowering => self.height().height,
         }
     }
 
@@ -173,7 +183,7 @@ impl AlgebraicExecutionTrace {
                 .zip_eq(chunk_to_absorb)
                 .for_each(|(sponge_state_elem, &absorb_elem)| *sponge_state_elem = absorb_elem);
             let hash_trace = program_sponge.trace();
-            let trace_addendum = HashTable::trace_to_table_rows(hash_trace);
+            let trace_addendum = table::hash::trace_to_table_rows(hash_trace);
 
             self.increase_lookup_multiplicities(hash_trace);
             self.program_hash_trace
@@ -181,7 +191,7 @@ impl AlgebraicExecutionTrace {
                 .expect("shapes must be identical");
         }
 
-        let instruction_column_index = CI.base_table_index();
+        let instruction_column_index = CI.main_index();
         let mut instruction_column = self.program_hash_trace.column_mut(instruction_column_index);
         instruction_column.fill(Instruction::Hash.opcode_b());
 
@@ -242,9 +252,9 @@ impl AlgebraicExecutionTrace {
 
     fn append_hash_trace(&mut self, trace: PermutationTrace) {
         self.increase_lookup_multiplicities(trace);
-        let mut hash_trace_addendum = HashTable::trace_to_table_rows(trace);
+        let mut hash_trace_addendum = table::hash::trace_to_table_rows(trace);
         hash_trace_addendum
-            .slice_mut(s![.., CI.base_table_index()])
+            .slice_mut(s![.., CI.main_index()])
             .fill(Instruction::Hash.opcode_b());
         self.hash_trace
             .append(Axis(0), hash_trace_addendum.view())
@@ -254,8 +264,8 @@ impl AlgebraicExecutionTrace {
     fn append_initial_sponge_state(&mut self) {
         let round_number = 0;
         let initial_state = Tip5::init().state;
-        let mut hash_table_row = HashTable::trace_row_to_table_row(initial_state, round_number);
-        hash_table_row[CI.base_table_index()] = Instruction::SpongeInit.opcode_b();
+        let mut hash_table_row = table::hash::trace_row_to_table_row(initial_state, round_number);
+        hash_table_row[CI.main_index()] = Instruction::SpongeInit.opcode_b();
         self.sponge_trace.push_row(hash_table_row.view()).unwrap();
     }
 
@@ -265,9 +275,9 @@ impl AlgebraicExecutionTrace {
             Instruction::SpongeAbsorb | Instruction::SpongeSqueeze
         ));
         self.increase_lookup_multiplicities(trace);
-        let mut sponge_trace_addendum = HashTable::trace_to_table_rows(trace);
+        let mut sponge_trace_addendum = table::hash::trace_to_table_rows(trace);
         sponge_trace_addendum
-            .slice_mut(s![.., CI.base_table_index()])
+            .slice_mut(s![.., CI.main_index()])
             .fill(instruction.opcode_b());
         self.sponge_trace
             .append(Axis(0), sponge_trace_addendum.view())
@@ -298,7 +308,7 @@ impl AlgebraicExecutionTrace {
     /// Given one state element, increase the multiplicities of the corresponding entries in the
     /// cascade table and/or the lookup table.
     fn increase_lookup_multiplicities_for_state_element(&mut self, state_element: BFieldElement) {
-        for limb in HashTable::base_field_element_into_16_bit_limbs(state_element) {
+        for limb in table::hash::base_field_element_into_16_bit_limbs(state_element) {
             match self.cascade_table_lookup_multiplicities.entry(limb) {
                 Occupied(mut cascade_table_entry) => *cascade_table_entry.get_mut() += 1,
                 Vacant(cascade_table_entry) => {
@@ -323,7 +333,7 @@ impl AlgebraicExecutionTrace {
     }
 
     fn record_op_stack_entry(&mut self, op_stack_entry: OpStackTableEntry) {
-        let op_stack_table_row = op_stack_entry.to_base_table_row();
+        let op_stack_table_row = op_stack_entry.to_main_table_row();
         self.op_stack_underflow_trace
             .push_row(op_stack_table_row.view())
             .unwrap();
@@ -357,10 +367,11 @@ impl Ord for TableHeight {
 #[cfg(test)]
 mod tests {
     use assert2::assert;
-
-    use crate::prelude::*;
+    use isa::triton_asm;
+    use isa::triton_program;
 
     use super::*;
+    use crate::prelude::*;
 
     #[test]
     fn pad_program_requiring_no_padding_zeros() {
@@ -375,9 +386,9 @@ mod tests {
     #[test]
     fn height_of_any_table_can_be_computed() {
         let program = triton_program!(halt);
-        let (aet, _) = program
-            .trace_execution(PublicInput::default(), NonDeterminism::default())
-            .unwrap();
+        let (aet, _) =
+            VM::trace_execution(&program, PublicInput::default(), NonDeterminism::default())
+                .unwrap();
 
         let _ = aet.height();
         for table in TableId::iter() {

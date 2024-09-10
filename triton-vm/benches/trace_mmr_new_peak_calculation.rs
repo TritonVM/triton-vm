@@ -1,5 +1,6 @@
 use criterion::*;
 use triton_vm::example_programs;
+use triton_vm::prelude::VM;
 
 criterion_main!(benches);
 
@@ -14,7 +15,7 @@ fn run_mmr_new_peak_calculation(criterion: &mut Criterion) {
 
     criterion.bench_function("Run finding new peaks for MMR", |bencher| {
         bencher.iter(|| {
-            program.run([].into(), [].into()).unwrap();
+            VM::run(&program, [].into(), [].into()).unwrap();
         });
     });
 }
@@ -24,7 +25,7 @@ fn trace_mmr_new_peak_calculation(criterion: &mut Criterion) {
 
     criterion.bench_function("Trace execution of finding new peaks for MMR", |bencher| {
         bencher.iter(|| {
-            program.trace_execution([].into(), [].into()).unwrap();
+            VM::trace_execution(&program, [].into(), [].into()).unwrap();
         });
     });
 }

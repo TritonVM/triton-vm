@@ -4,8 +4,52 @@ use std::ops::Mul;
 use std::ops::MulAssign;
 use std::ops::Range;
 
+use air::table::lookup::LookupTable;
+use air::table::op_stack::OpStackTable;
+use air::table::processor::ProcessorTable;
+use air::table::program::ProgramTable;
+use air::table::ram::RamTable;
+use air::table::u32::U32Table;
+use air::table::TableId;
+use air::table::AUX_CASCADE_TABLE_END;
+use air::table::AUX_CASCADE_TABLE_START;
+use air::table::AUX_HASH_TABLE_END;
+use air::table::AUX_HASH_TABLE_START;
+use air::table::AUX_JUMP_STACK_TABLE_END;
+use air::table::AUX_JUMP_STACK_TABLE_START;
+use air::table::AUX_LOOKUP_TABLE_END;
+use air::table::AUX_LOOKUP_TABLE_START;
+use air::table::AUX_OP_STACK_TABLE_END;
+use air::table::AUX_OP_STACK_TABLE_START;
+use air::table::AUX_PROCESSOR_TABLE_END;
+use air::table::AUX_PROCESSOR_TABLE_START;
+use air::table::AUX_PROGRAM_TABLE_END;
+use air::table::AUX_PROGRAM_TABLE_START;
+use air::table::AUX_RAM_TABLE_END;
+use air::table::AUX_RAM_TABLE_START;
+use air::table::AUX_U32_TABLE_END;
+use air::table::AUX_U32_TABLE_START;
+use air::table::CASCADE_TABLE_END;
+use air::table::CASCADE_TABLE_START;
+use air::table::HASH_TABLE_END;
+use air::table::HASH_TABLE_START;
+use air::table::JUMP_STACK_TABLE_END;
+use air::table::JUMP_STACK_TABLE_START;
+use air::table::LOOKUP_TABLE_END;
+use air::table::LOOKUP_TABLE_START;
+use air::table::OP_STACK_TABLE_END;
+use air::table::OP_STACK_TABLE_START;
+use air::table::PROCESSOR_TABLE_END;
+use air::table::PROCESSOR_TABLE_START;
+use air::table::PROGRAM_TABLE_END;
+use air::table::PROGRAM_TABLE_START;
+use air::table::RAM_TABLE_END;
+use air::table::RAM_TABLE_START;
+use air::table::U32_TABLE_END;
+use air::table::U32_TABLE_START;
+use air::table_column::*;
 use itertools::Itertools;
-use master_table::extension_table::Evaluable;
+use master_table::auxiliary_table::Evaluable;
 use ndarray::parallel::prelude::*;
 use ndarray::prelude::*;
 use ndarray::s;
@@ -13,14 +57,13 @@ use ndarray::Array2;
 use ndarray::ArrayView2;
 use ndarray::ArrayViewMut2;
 use ndarray::Zip;
+use num_traits::ConstZero;
 use num_traits::One;
 use num_traits::Zero;
 use rand::distributions::Standard;
 use rand::prelude::Distribution;
 use rand::random;
-use strum::Display;
 use strum::EnumCount;
-use strum::EnumIter;
 use twenty_first::math::tip5::RATE;
 use twenty_first::math::traits::FiniteField;
 use twenty_first::prelude::*;
@@ -28,6 +71,7 @@ use twenty_first::util_types::algebraic_hasher;
 
 use crate::aet::AlgebraicExecutionTrace;
 use crate::arithmetic_domain::ArithmeticDomain;
+use crate::challenges::Challenges;
 use crate::config::CacheDecision;
 use crate::error::ProvingError;
 use crate::ndarray_helper::fast_zeros_column_major;
@@ -35,138 +79,11 @@ use crate::ndarray_helper::horizontal_multi_slice_mut;
 use crate::ndarray_helper::partial_sums;
 use crate::profiler::profiler;
 use crate::stark::NUM_RANDOMIZER_POLYNOMIALS;
-use crate::table::cascade_table::CascadeTable;
-use crate::table::challenges::Challenges;
-use crate::table::degree_lowering_table::DegreeLoweringTable;
-use crate::table::extension_table::all_degrees_with_origin;
-use crate::table::extension_table::DegreeWithOrigin;
-use crate::table::extension_table::Quotientable;
-use crate::table::hash_table::HashTable;
-use crate::table::jump_stack_table::JumpStackTable;
-use crate::table::lookup_table::LookupTable;
-use crate::table::op_stack_table::OpStackTable;
-use crate::table::processor_table::ProcessorTable;
-use crate::table::program_table::ProgramTable;
-use crate::table::ram_table::RamTable;
-use crate::table::table_column::*;
-use crate::table::u32_table::U32Table;
+use crate::table::auxiliary_table::all_degrees_with_origin;
+use crate::table::auxiliary_table::DegreeWithOrigin;
+use crate::table::degree_lowering::DegreeLoweringTable;
+use crate::table::processor::ClkJumpDiffs;
 use crate::table::*;
-
-/// The degree of the AIR after the degree lowering step.
-///
-/// Using substitution and the introduction of new variables, the degree of the AIR as specified
-/// in the respective tables
-/// (e.g., in [`processor_table::ExtProcessorTable::transition_constraints`])
-/// is lowered to this value.
-/// For example, with a target degree of 2 and a (fictional) constraint of the form
-/// `a = b²·c²·d`,
-/// the degree lowering step could (as one among multiple possibilities)
-/// - introduce new variables `e`, `f`, and `g`,
-/// - introduce new constraints `e = b²`, `f = c²`, and `g = e·f`,
-/// - replace the original constraint with `a = g·d`.
-///
-/// The degree lowering happens in the constraint evaluation generator.
-/// It can be executed by running `cargo run --bin constraint-evaluation-generator`.
-/// Executing the constraint evaluator is a prerequisite for running both the Stark prover
-/// and the Stark verifier.
-///
-/// The new variables introduced by the degree lowering step are called “derived columns.”
-/// They are added to the [`DegreeLoweringTable`], whose sole purpose is to store the values
-/// of these derived columns.
-pub const AIR_TARGET_DEGREE: isize = 4;
-
-/// The total number of base columns across all tables.
-pub const NUM_BASE_COLUMNS: usize = program_table::BASE_WIDTH
-    + processor_table::BASE_WIDTH
-    + op_stack_table::BASE_WIDTH
-    + ram_table::BASE_WIDTH
-    + jump_stack_table::BASE_WIDTH
-    + hash_table::BASE_WIDTH
-    + cascade_table::BASE_WIDTH
-    + lookup_table::BASE_WIDTH
-    + u32_table::BASE_WIDTH
-    + degree_lowering_table::BASE_WIDTH;
-
-const NUM_EXT_COLUMNS_WITHOUT_RANDOMIZER_POLYS: usize = program_table::EXT_WIDTH
-    + processor_table::EXT_WIDTH
-    + op_stack_table::EXT_WIDTH
-    + ram_table::EXT_WIDTH
-    + jump_stack_table::EXT_WIDTH
-    + hash_table::EXT_WIDTH
-    + cascade_table::EXT_WIDTH
-    + lookup_table::EXT_WIDTH
-    + u32_table::EXT_WIDTH
-    + degree_lowering_table::EXT_WIDTH;
-
-/// The total number of extension columns across all tables.
-/// Includes the columns required for [randomizer polynomials](NUM_RANDOMIZER_POLYNOMIALS).
-pub const NUM_EXT_COLUMNS: usize =
-    NUM_EXT_COLUMNS_WITHOUT_RANDOMIZER_POLYS + NUM_RANDOMIZER_POLYNOMIALS;
-
-/// The total number of columns across all tables.
-pub const NUM_COLUMNS: usize = NUM_BASE_COLUMNS + NUM_EXT_COLUMNS;
-
-pub const PROGRAM_TABLE_START: usize = 0;
-pub const PROGRAM_TABLE_END: usize = PROGRAM_TABLE_START + program_table::BASE_WIDTH;
-pub const PROCESSOR_TABLE_START: usize = PROGRAM_TABLE_END;
-pub const PROCESSOR_TABLE_END: usize = PROCESSOR_TABLE_START + processor_table::BASE_WIDTH;
-pub const OP_STACK_TABLE_START: usize = PROCESSOR_TABLE_END;
-pub const OP_STACK_TABLE_END: usize = OP_STACK_TABLE_START + op_stack_table::BASE_WIDTH;
-pub const RAM_TABLE_START: usize = OP_STACK_TABLE_END;
-pub const RAM_TABLE_END: usize = RAM_TABLE_START + ram_table::BASE_WIDTH;
-pub const JUMP_STACK_TABLE_START: usize = RAM_TABLE_END;
-pub const JUMP_STACK_TABLE_END: usize = JUMP_STACK_TABLE_START + jump_stack_table::BASE_WIDTH;
-pub const HASH_TABLE_START: usize = JUMP_STACK_TABLE_END;
-pub const HASH_TABLE_END: usize = HASH_TABLE_START + hash_table::BASE_WIDTH;
-pub const CASCADE_TABLE_START: usize = HASH_TABLE_END;
-pub const CASCADE_TABLE_END: usize = CASCADE_TABLE_START + cascade_table::BASE_WIDTH;
-pub const LOOKUP_TABLE_START: usize = CASCADE_TABLE_END;
-pub const LOOKUP_TABLE_END: usize = LOOKUP_TABLE_START + lookup_table::BASE_WIDTH;
-pub const U32_TABLE_START: usize = LOOKUP_TABLE_END;
-pub const U32_TABLE_END: usize = U32_TABLE_START + u32_table::BASE_WIDTH;
-pub const DEGREE_LOWERING_TABLE_START: usize = U32_TABLE_END;
-pub const DEGREE_LOWERING_TABLE_END: usize =
-    DEGREE_LOWERING_TABLE_START + degree_lowering_table::BASE_WIDTH;
-
-pub const EXT_PROGRAM_TABLE_START: usize = 0;
-pub const EXT_PROGRAM_TABLE_END: usize = EXT_PROGRAM_TABLE_START + program_table::EXT_WIDTH;
-pub const EXT_PROCESSOR_TABLE_START: usize = EXT_PROGRAM_TABLE_END;
-pub const EXT_PROCESSOR_TABLE_END: usize = EXT_PROCESSOR_TABLE_START + processor_table::EXT_WIDTH;
-pub const EXT_OP_STACK_TABLE_START: usize = EXT_PROCESSOR_TABLE_END;
-pub const EXT_OP_STACK_TABLE_END: usize = EXT_OP_STACK_TABLE_START + op_stack_table::EXT_WIDTH;
-pub const EXT_RAM_TABLE_START: usize = EXT_OP_STACK_TABLE_END;
-pub const EXT_RAM_TABLE_END: usize = EXT_RAM_TABLE_START + ram_table::EXT_WIDTH;
-pub const EXT_JUMP_STACK_TABLE_START: usize = EXT_RAM_TABLE_END;
-pub const EXT_JUMP_STACK_TABLE_END: usize =
-    EXT_JUMP_STACK_TABLE_START + jump_stack_table::EXT_WIDTH;
-pub const EXT_HASH_TABLE_START: usize = EXT_JUMP_STACK_TABLE_END;
-pub const EXT_HASH_TABLE_END: usize = EXT_HASH_TABLE_START + hash_table::EXT_WIDTH;
-pub const EXT_CASCADE_TABLE_START: usize = EXT_HASH_TABLE_END;
-pub const EXT_CASCADE_TABLE_END: usize = EXT_CASCADE_TABLE_START + cascade_table::EXT_WIDTH;
-pub const EXT_LOOKUP_TABLE_START: usize = EXT_CASCADE_TABLE_END;
-pub const EXT_LOOKUP_TABLE_END: usize = EXT_LOOKUP_TABLE_START + lookup_table::EXT_WIDTH;
-pub const EXT_U32_TABLE_START: usize = EXT_LOOKUP_TABLE_END;
-pub const EXT_U32_TABLE_END: usize = EXT_U32_TABLE_START + u32_table::EXT_WIDTH;
-pub const EXT_DEGREE_LOWERING_TABLE_START: usize = EXT_U32_TABLE_END;
-pub const EXT_DEGREE_LOWERING_TABLE_END: usize =
-    EXT_DEGREE_LOWERING_TABLE_START + degree_lowering_table::EXT_WIDTH;
-
-const NUM_TABLES_WITHOUT_DEGREE_LOWERING: usize = TableId::COUNT - 1;
-
-/// A `TableId` uniquely determines one of Triton VM's tables.
-#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, EnumCount, EnumIter, Arbitrary)]
-pub enum TableId {
-    Program,
-    Processor,
-    OpStack,
-    Ram,
-    JumpStack,
-    Hash,
-    Cascade,
-    Lookup,
-    U32,
-    DegreeLowering,
-}
 
 /// A Master Table is, in some sense, a top-level table of Triton VM. It contains all the data
 /// but little logic beyond bookkeeping and presenting the data in useful ways. Conversely, the
@@ -178,49 +95,50 @@ pub enum TableId {
 /// completely separate from each other. Only the [cross-table arguments][cross_arg] link all tables
 /// together.
 ///
-/// Conceptually, there are two Master Tables: the [`MasterBaseTable`] ("main"), the Master
+/// Conceptually, there are two Master Tables: the [`MasterMainTable`] ("main"), the Master
 /// Extension Table ("auxiliary"). The lifecycle of the Master Tables is
 /// as follows:
-/// 1. The [`MasterBaseTable`] is instantiated and filled using the Algebraic Execution Trace.
-/// 2. The [`MasterBaseTable`] is padded using logic from the individual tables.
-/// 3. The still-empty entries in the [`MasterBaseTable`] are filled with random elements. This
+/// 1. The [`MasterMainTable`] is instantiated and filled using the Algebraic Execution Trace.
+/// 2. The [`MasterMainTable`] is padded using logic from the individual tables.
+/// 3. The still-empty entries in the [`MasterMainTable`] are filled with random elements. This
 ///     step is also known as “trace randomization.”
-/// 4. If there is enough RAM, then each column of the [`MasterBaseTable`] is low-degree extended.
-///    The results are stored on the [`MasterBaseTable`] for quick access later.
+/// 4. If there is enough RAM, then each column of the [`MasterMainTable`] is low-degree extended.
+///    The results are stored on the [`MasterMainTable`] for quick access later.
 ///    If there is not enough RAM, then the low-degree extensions of the trace columns will be
 ///    computed and sometimes recomputed just-in-time, and the memory freed afterward.
 ///    The caching behavior [can be forced][overwrite_cache].
-/// 5. The [`MasterBaseTable`] is used to derive the [`MasterExtensionTable`][master_ext_table]
+/// 5. The [`MasterMainTable`] is used to derive the [`MasterAuxiliaryTable`][master_aux_table]
 ///     using logic from the individual tables.
-/// 6. The [`MasterExtensionTable`][master_ext_table] is trace-randomized.
-/// 7. Each column of the [`MasterExtensionTable`][master_ext_table] is [low-degree extended][lde].
-///     The effects are the same as for the [`MasterBaseTable`].
-/// 8. Using the [`MasterBaseTable`] and the [`MasterExtensionTable`][master_ext_table], the
+/// 6. The [`MasterAuxiliaryTable`][master_aux_table] is trace-randomized.
+/// 7. Each column of the [`MasterAuxiliaryTable`][master_aux_table] is [low-degree extended][lde].
+///     The effects are the same as for the [`MasterMainTable`].
+/// 8. Using the [`MasterMainTable`] and the [`MasterAuxiliaryTable`][master_aux_table], the
 ///     [quotient codeword][master_quot_table] is derived using the AIR. Each individual table
 ///     defines that part of the AIR that is relevant to it.
 ///
 /// The following points are of note:
-/// - The [`MasterExtensionTable`][master_ext_table]'s rightmost columns are the randomizer
+/// - The [`MasterMainColumns are the randomizer
 ///     codewords. These are necessary for zero-knowledge.
-/// - The cross-table argument has zero width for the [`MasterBaseTable`] and
-///   [`MasterExtensionTable`][master_ext_table] but does induce a nonzero number of constraints
+/// - The cross-table argument has zero width for the [`MasterMainTable`] and
+///   [`MasterAuxiliaryTable`][master_aux_table] but does induce a nonzero number of constraints
 ///   and thus terms in the [quotient combination][all_quotients_combined].
 ///
-/// [cross_arg]: cross_table_argument::GrandCrossTableArg
+/// [cross_arg]: air::cross_table_argument::GrandCrossTableArg
 /// [overwrite_cache]: crate::config::overwrite_lde_trace_caching_to
 /// [lde]: Self::low_degree_extend_all_columns
 /// [quot_table]: Self::quotient_domain_table
-/// [master_ext_table]: MasterExtTable
+/// [master_aux_table]: MasterAuxTable
 /// [master_quot_table]: all_quotients_combined
-pub trait MasterTable<FF>: Sync
+pub trait MasterTable: Sync
 where
-    FF: FiniteField
+    Standard: Distribution<Self::Field>,
+{
+    type Field: FiniteField
         + MulAssign<BFieldElement>
         + From<BFieldElement>
         + BFieldCodec
-        + Mul<BFieldElement, Output = FF>,
-    Standard: Distribution<FF>,
-{
+        + Mul<BFieldElement, Output = Self::Field>;
+
     const NUM_COLUMNS: usize;
 
     fn trace_domain(&self) -> ArithmeticDomain;
@@ -245,15 +163,15 @@ where
     }
 
     /// Presents underlying trace data, excluding trace randomizers and randomizer polynomials.
-    fn trace_table(&self) -> ArrayView2<FF>;
+    fn trace_table(&self) -> ArrayView2<Self::Field>;
 
     /// Mutably presents underlying trace data, excluding trace randomizers and randomizer
     /// polynomials.
-    fn trace_table_mut(&mut self) -> ArrayViewMut2<FF>;
+    fn trace_table_mut(&mut self) -> ArrayViewMut2<Self::Field>;
 
-    fn randomized_trace_table(&self) -> ArrayView2<FF>;
+    fn randomized_trace_table(&self) -> ArrayView2<Self::Field>;
 
-    fn randomized_trace_table_mut(&mut self) -> ArrayViewMut2<FF>;
+    fn randomized_trace_table_mut(&mut self) -> ArrayViewMut2<Self::Field>;
 
     /// The quotient-domain view of the cached low-degree-extended table, if
     /// 1. the table has been [low-degree extended][lde], and
@@ -265,7 +183,7 @@ where
     // pointer to an array that must live somewhere and cannot live on the stack.
     // From the trait implementation we cannot access the implementing object's
     // fields.
-    fn quotient_domain_table(&self) -> Option<ArrayView2<FF>>;
+    fn quotient_domain_table(&self) -> Option<ArrayView2<Self::Field>>;
 
     /// Set all rows _not_ part of the actual (padded) trace to random values.
     fn randomize_trace(&mut self) {
@@ -273,7 +191,7 @@ where
         (1..unit_distance).for_each(|offset| {
             self.randomized_trace_table_mut()
                 .slice_mut(s![offset..; unit_distance, ..])
-                .par_mapv_inplace(|_| random::<FF>())
+                .par_mapv_inplace(|_| random::<Self::Field>())
         });
     }
 
@@ -303,7 +221,7 @@ where
             });
         profiler!(stop "interpolation");
 
-        let mut extended_trace = Vec::<FF>::with_capacity(0);
+        let mut extended_trace = Vec::<Self::Field>::with_capacity(0);
         let num_elements = num_rows * Self::NUM_COLUMNS;
         let should_cache = match crate::config::cache_lde_trace() {
             Some(CacheDecision::NoCache) => false,
@@ -320,7 +238,7 @@ where
             extended_trace
                 .spare_capacity_mut()
                 .par_iter_mut()
-                .for_each(|e| *e = MaybeUninit::new(FF::zero()));
+                .for_each(|e| *e = MaybeUninit::new(Self::Field::ZERO));
 
             unsafe {
                 // Speed up initialization through parallelization.
@@ -353,29 +271,32 @@ where
 
     /// Not intended for direct use, but through [`Self::low_degree_extend_all_columns`].
     #[doc(hidden)]
-    fn memoize_low_degree_extended_table(&mut self, low_degree_extended_columns: Array2<FF>);
+    fn memoize_low_degree_extended_table(
+        &mut self,
+        low_degree_extended_columns: Array2<Self::Field>,
+    );
 
     /// Return the cached low-degree-extended table, if any.
-    fn low_degree_extended_table(&self) -> Option<ArrayView2<FF>>;
+    fn low_degree_extended_table(&self) -> Option<ArrayView2<Self::Field>>;
 
     /// Return the FRI domain view of the cached low-degree-extended table, if any.
     ///
     /// This method cannot be implemented generically on the trait because it returns a pointer to
     /// an array and that array has to live somewhere; it cannot live on stack and from the trait
     /// implementation we cannot access the implementing object's fields.
-    fn fri_domain_table(&self) -> Option<ArrayView2<FF>>;
+    fn fri_domain_table(&self) -> Option<ArrayView2<Self::Field>>;
 
     /// Memoize the polynomials interpolating the columns.
     /// Not intended for direct use, but through [`Self::low_degree_extend_all_columns`].
     #[doc(hidden)]
     fn memoize_interpolation_polynomials(
         &mut self,
-        interpolation_polynomials: Array1<Polynomial<FF>>,
+        interpolation_polynomials: Array1<Polynomial<Self::Field>>,
     );
 
     /// Requires having called
-    /// [`low_degree_extend_all_columns`](Self::low_degree_extend_all_columns) first.    
-    fn interpolation_polynomials(&self) -> ArrayView1<Polynomial<FF>>;
+    /// [`low_degree_extend_all_columns`](Self::low_degree_extend_all_columns) first.
+    fn interpolation_polynomials(&self) -> ArrayView1<Polynomial<Self::Field>>;
 
     /// Get one row of the table at an arbitrary index. Notably, the index does not have to be in
     /// any of the domains. In other words, can be used to compute out-of-domain rows. Requires
@@ -406,7 +327,7 @@ where
         }
     }
 
-    fn hash_one_row(row: ArrayView1<FF>) -> Digest {
+    fn hash_one_row(row: ArrayView1<Self::Field>) -> Digest {
         Tip5::hash_varlen(&row.iter().flat_map(|e| e.encode()).collect_vec())
     }
 
@@ -505,7 +426,7 @@ impl SpongeWithPendingAbsorb {
 
 /// See [`MasterTable`].
 #[derive(Debug, Clone)]
-pub struct MasterBaseTable {
+pub struct MasterMainTable {
     pub num_trace_randomizers: usize,
 
     program_table_len: usize,
@@ -528,7 +449,7 @@ pub struct MasterBaseTable {
 
 /// See [`MasterTable`].
 #[derive(Debug, Clone)]
-pub struct MasterExtTable {
+pub struct MasterAuxTable {
     pub num_trace_randomizers: usize,
 
     trace_domain: ArithmeticDomain,
@@ -541,8 +462,10 @@ pub struct MasterExtTable {
     interpolation_polynomials: Option<Array1<Polynomial<XFieldElement>>>,
 }
 
-impl MasterTable<BFieldElement> for MasterBaseTable {
-    const NUM_COLUMNS: usize = NUM_BASE_COLUMNS;
+impl MasterTable for MasterMainTable {
+    type Field = BFieldElement;
+    const NUM_COLUMNS: usize =
+        air::table::NUM_MAIN_COLUMNS + degree_lowering::DegreeLoweringMainColumn::COUNT;
 
     fn trace_domain(&self) -> ArithmeticDomain {
         self.trace_domain
@@ -647,8 +570,11 @@ impl MasterTable<BFieldElement> for MasterBaseTable {
     }
 }
 
-impl MasterTable<XFieldElement> for MasterExtTable {
-    const NUM_COLUMNS: usize = NUM_EXT_COLUMNS;
+impl MasterTable for MasterAuxTable {
+    type Field = XFieldElement;
+    const NUM_COLUMNS: usize = air::table::NUM_AUX_COLUMNS
+        + degree_lowering::DegreeLoweringAuxColumn::COUNT
+        + NUM_RANDOMIZER_POLYNOMIALS;
 
     fn trace_domain(&self) -> ArithmeticDomain {
         self.trace_domain
@@ -669,13 +595,13 @@ impl MasterTable<XFieldElement> for MasterExtTable {
     fn trace_table(&self) -> ArrayView2<XFieldElement> {
         let unit_distance = self.randomized_trace_domain().length / self.trace_domain().length;
         self.randomized_trace_table
-            .slice(s![..; unit_distance, ..NUM_EXT_COLUMNS])
+            .slice(s![..; unit_distance, ..Self::NUM_COLUMNS])
     }
 
     fn trace_table_mut(&mut self) -> ArrayViewMut2<XFieldElement> {
         let unit_distance = self.randomized_trace_domain().length / self.trace_domain().length;
         self.randomized_trace_table
-            .slice_mut(s![..; unit_distance, ..NUM_EXT_COLUMNS])
+            .slice_mut(s![..; unit_distance, ..Self::NUM_COLUMNS])
     }
 
     fn randomized_trace_table(&self) -> ArrayView2<XFieldElement> {
@@ -736,7 +662,7 @@ impl MasterTable<XFieldElement> for MasterExtTable {
 
     fn out_of_domain_row(&self, indeterminate: XFieldElement) -> Array1<XFieldElement> {
         self.interpolation_polynomials()
-            .slice(s![..NUM_EXT_COLUMNS])
+            .slice(s![..Self::NUM_COLUMNS])
             .into_par_iter()
             .map(|polynomial| polynomial.evaluate(indeterminate))
             .collect::<Vec<_>>()
@@ -747,7 +673,7 @@ impl MasterTable<XFieldElement> for MasterExtTable {
 type PadFunction = fn(ArrayViewMut2<BFieldElement>, usize);
 type ExtendFunction = fn(ArrayView2<BFieldElement>, ArrayViewMut2<XFieldElement>, &Challenges);
 
-impl MasterBaseTable {
+impl MasterMainTable {
     pub fn new(
         aet: &AlgebraicExecutionTrace,
         num_trace_randomizers: usize,
@@ -763,7 +689,7 @@ impl MasterBaseTable {
             ArithmeticDomain::of_length(randomized_padded_trace_len).unwrap();
 
         let num_rows = randomized_padded_trace_len;
-        let num_columns = NUM_BASE_COLUMNS;
+        let num_columns = Self::NUM_COLUMNS;
         let randomized_trace_table = Array2::zeros([num_rows, num_columns].f());
 
         let mut master_base_table = Self {
@@ -787,26 +713,24 @@ impl MasterBaseTable {
         // memory-like tables must be filled in before clock jump differences are known, hence
         // the break from the usual order
         let clk_jump_diffs_op_stack =
-            OpStackTable::fill_trace(&mut master_base_table.table_mut(TableId::OpStack), aet);
-        let clk_jump_diffs_ram =
-            RamTable::fill_trace(&mut master_base_table.table_mut(TableId::Ram), aet);
+            OpStackTable::fill(master_base_table.table_mut(TableId::OpStack), aet, ());
+        let clk_jump_diffs_ram = RamTable::fill(master_base_table.table_mut(TableId::Ram), aet, ());
         let clk_jump_diffs_jump_stack =
-            JumpStackTable::fill_trace(&mut master_base_table.table_mut(TableId::JumpStack), aet);
+            JumpStackTable::fill(master_base_table.table_mut(TableId::JumpStack), aet, ());
 
-        let processor_table = &mut master_base_table.table_mut(TableId::Processor);
-        ProcessorTable::fill_trace(
-            processor_table,
-            aet,
-            &clk_jump_diffs_op_stack,
-            &clk_jump_diffs_ram,
-            &clk_jump_diffs_jump_stack,
-        );
+        let clk_jump_diffs = ClkJumpDiffs {
+            op_stack: clk_jump_diffs_op_stack,
+            ram: clk_jump_diffs_ram,
+            jump_stack: clk_jump_diffs_jump_stack,
+        };
+        let processor_table = master_base_table.table_mut(TableId::Processor);
+        ProcessorTable::fill(processor_table, aet, clk_jump_diffs);
 
-        ProgramTable::fill_trace(&mut master_base_table.table_mut(TableId::Program), aet);
-        HashTable::fill_trace(&mut master_base_table.table_mut(TableId::Hash), aet);
-        CascadeTable::fill_trace(&mut master_base_table.table_mut(TableId::Cascade), aet);
-        LookupTable::fill_trace(&mut master_base_table.table_mut(TableId::Lookup), aet);
-        U32Table::fill_trace(&mut master_base_table.table_mut(TableId::U32), aet);
+        ProgramTable::fill(master_base_table.table_mut(TableId::Program), aet, ());
+        HashTable::fill(master_base_table.table_mut(TableId::Hash), aet, ());
+        CascadeTable::fill(master_base_table.table_mut(TableId::Cascade), aet, ());
+        LookupTable::fill(master_base_table.table_mut(TableId::Lookup), aet, ());
+        U32Table::fill(master_base_table.table_mut(TableId::U32), aet, ());
 
         // Filling the degree-lowering table only makes sense after padding has happened.
         // Hence, this table is omitted here.
@@ -827,25 +751,36 @@ impl MasterBaseTable {
             .randomized_trace_table
             .slice_mut(s![..; unit_distance, ..]);
 
-        let base_tables: [_; NUM_TABLES_WITHOUT_DEGREE_LOWERING] = horizontal_multi_slice_mut(
+        let base_tables: [_; TableId::COUNT] = horizontal_multi_slice_mut(
             master_table_without_randomizers,
             &partial_sums(&[
-                ProgramBaseTableColumn::COUNT,
-                ProcessorBaseTableColumn::COUNT,
-                OpStackBaseTableColumn::COUNT,
-                RamBaseTableColumn::COUNT,
-                JumpStackBaseTableColumn::COUNT,
-                HashBaseTableColumn::COUNT,
-                CascadeBaseTableColumn::COUNT,
-                LookupBaseTableColumn::COUNT,
-                U32BaseTableColumn::COUNT,
+                ProgramMainColumn::COUNT,
+                ProcessorMainColumn::COUNT,
+                OpStackMainColumn::COUNT,
+                RamMainColumn::COUNT,
+                JumpStackMainColumn::COUNT,
+                HashMainColumn::COUNT,
+                CascadeMainColumn::COUNT,
+                LookupMainColumn::COUNT,
+                U32MainColumn::COUNT,
             ]),
         )
         .try_into()
         .unwrap();
 
         profiler!(start "pad original tables");
-        Self::all_pad_functions()
+        let all_pad_functions: [PadFunction; TableId::COUNT] = [
+            ProgramTable::pad,
+            ProcessorTable::pad,
+            OpStackTable::pad,
+            RamTable::pad,
+            JumpStackTable::pad,
+            HashTable::pad,
+            CascadeTable::pad,
+            LookupTable::pad,
+            U32Table::pad,
+        ];
+        all_pad_functions
             .into_par_iter()
             .zip_eq(base_tables.into_par_iter())
             .zip_eq(table_lengths.into_par_iter())
@@ -855,25 +790,11 @@ impl MasterBaseTable {
         profiler!(stop "pad original tables");
 
         profiler!(start "fill degree-lowering table");
-        DegreeLoweringTable::fill_derived_base_columns(self.trace_table_mut());
+        DegreeLoweringTable::fill_derived_main_columns(self.trace_table_mut());
         profiler!(stop "fill degree-lowering table");
     }
 
-    fn all_pad_functions() -> [PadFunction; NUM_TABLES_WITHOUT_DEGREE_LOWERING] {
-        [
-            ProgramTable::pad_trace,
-            ProcessorTable::pad_trace,
-            OpStackTable::pad_trace,
-            RamTable::pad_trace,
-            JumpStackTable::pad_trace,
-            HashTable::pad_trace,
-            CascadeTable::pad_trace,
-            LookupTable::pad_trace,
-            U32Table::pad_trace,
-        ]
-    }
-
-    fn all_table_lengths(&self) -> [usize; NUM_TABLES_WITHOUT_DEGREE_LOWERING] {
+    fn all_table_lengths(&self) -> [usize; TableId::COUNT] {
         let processor_table_len = self.main_execution_len;
         let jump_stack_table_len = self.main_execution_len;
 
@@ -890,22 +811,24 @@ impl MasterBaseTable {
         ]
     }
 
-    /// Create a `MasterExtTable` from a `MasterBaseTable` by `.extend()`ing each individual base
+    /// Create a `MasterAuxTable` from a `MasterMainTable` by `.extend()`ing each individual base
     /// table. The `.extend()` for each table is specific to that table, but always involves
     /// adding some number of columns.
-    pub fn extend(&self, challenges: &Challenges) -> MasterExtTable {
+    pub fn extend(&self, challenges: &Challenges) -> MasterAuxTable {
         // randomizer polynomials
         let num_rows = self.randomized_trace_table().nrows();
         profiler!(start "initialize master table");
+        let num_aux_columns = MasterAuxTable::NUM_COLUMNS;
         let mut randomized_trace_extension_table =
-            fast_zeros_column_major::<XFieldElement>(num_rows, NUM_EXT_COLUMNS);
+            fast_zeros_column_major(num_rows, num_aux_columns);
 
+        let randomizers_start = MasterAuxTable::NUM_COLUMNS - NUM_RANDOMIZER_POLYNOMIALS;
         randomized_trace_extension_table
-            .slice_mut(s![.., NUM_EXT_COLUMNS_WITHOUT_RANDOMIZER_POLYS..])
+            .slice_mut(s![.., randomizers_start..])
             .par_mapv_inplace(|_| random::<XFieldElement>());
         profiler!(stop "initialize master table");
 
-        let mut master_ext_table = MasterExtTable {
+        let mut master_ext_table = MasterAuxTable {
             num_trace_randomizers: self.num_trace_randomizers,
             trace_domain: self.trace_domain(),
             randomized_trace_domain: self.randomized_trace_domain(),
@@ -920,19 +843,19 @@ impl MasterBaseTable {
         let unit_distance = self.randomized_trace_domain().length / self.trace_domain().length;
         let master_ext_table_without_randomizers = master_ext_table
             .randomized_trace_table
-            .slice_mut(s![..; unit_distance, ..NUM_EXT_COLUMNS]);
-        let extension_tables: [_; NUM_TABLES_WITHOUT_DEGREE_LOWERING] = horizontal_multi_slice_mut(
+            .slice_mut(s![..; unit_distance, ..randomizers_start]);
+        let extension_tables: [_; TableId::COUNT] = horizontal_multi_slice_mut(
             master_ext_table_without_randomizers,
             &partial_sums(&[
-                ProgramExtTableColumn::COUNT,
-                ProcessorExtTableColumn::COUNT,
-                OpStackExtTableColumn::COUNT,
-                RamExtTableColumn::COUNT,
-                JumpStackExtTableColumn::COUNT,
-                HashExtTableColumn::COUNT,
-                CascadeExtTableColumn::COUNT,
-                LookupExtTableColumn::COUNT,
-                U32ExtTableColumn::COUNT,
+                ProgramAuxColumn::COUNT,
+                ProcessorAuxColumn::COUNT,
+                OpStackAuxColumn::COUNT,
+                RamAuxColumn::COUNT,
+                JumpStackAuxColumn::COUNT,
+                HashAuxColumn::COUNT,
+                CascadeAuxColumn::COUNT,
+                LookupAuxColumn::COUNT,
+                U32AuxColumn::COUNT,
             ]),
         )
         .try_into()
@@ -942,15 +865,15 @@ impl MasterBaseTable {
         profiler!(start "all tables");
         Self::all_extend_functions()
             .into_par_iter()
-            .zip_eq(self.base_tables_for_extending().into_par_iter())
-            .zip_eq(extension_tables.into_par_iter())
+            .zip_eq(self.base_tables_for_extending())
+            .zip_eq(extension_tables)
             .for_each(|((extend, base_table), ext_table)| {
                 extend(base_table, ext_table, challenges)
             });
         profiler!(stop "all tables");
 
         profiler!(start "fill degree lowering table");
-        DegreeLoweringTable::fill_derived_ext_columns(
+        DegreeLoweringTable::fill_derived_aux_columns(
             self.trace_table(),
             master_ext_table.trace_table_mut(),
             challenges,
@@ -960,7 +883,7 @@ impl MasterBaseTable {
         master_ext_table
     }
 
-    fn all_extend_functions() -> [ExtendFunction; NUM_TABLES_WITHOUT_DEGREE_LOWERING] {
+    fn all_extend_functions() -> [ExtendFunction; TableId::COUNT] {
         [
             ProgramTable::extend,
             ProcessorTable::extend,
@@ -974,9 +897,7 @@ impl MasterBaseTable {
         ]
     }
 
-    fn base_tables_for_extending(
-        &self,
-    ) -> [ArrayView2<BFieldElement>; NUM_TABLES_WITHOUT_DEGREE_LOWERING] {
+    fn base_tables_for_extending(&self) -> [ArrayView2<BFieldElement>; TableId::COUNT] {
         [
             self.table(TableId::Program),
             self.table(TableId::Processor),
@@ -1002,7 +923,6 @@ impl MasterBaseTable {
             Cascade => CASCADE_TABLE_START..CASCADE_TABLE_END,
             Lookup => LOOKUP_TABLE_START..LOOKUP_TABLE_END,
             U32 => U32_TABLE_START..U32_TABLE_END,
-            DegreeLowering => DEGREE_LOWERING_TABLE_START..DEGREE_LOWERING_TABLE_END,
         }
     }
 
@@ -1022,31 +942,30 @@ impl MasterBaseTable {
             .slice_mut(s![..; unit_distance, column_indices])
     }
 
-    pub(crate) fn try_to_base_row<T: FiniteField>(
+    pub(crate) fn try_to_main_row<T: FiniteField>(
         row: Array1<T>,
-    ) -> Result<BaseRow<T>, ProvingError> {
+    ) -> Result<MainRow<T>, ProvingError> {
         let err = || ProvingError::TableRowConversionError {
-            expected_len: NUM_BASE_COLUMNS,
+            expected_len: Self::NUM_COLUMNS,
             actual_len: row.len(),
         };
         row.to_vec().try_into().map_err(|_| err())
     }
 }
 
-impl MasterExtTable {
+impl MasterAuxTable {
     fn column_indices_for_table(id: TableId) -> Range<usize> {
         use TableId::*;
         match id {
-            Program => EXT_PROGRAM_TABLE_START..EXT_PROGRAM_TABLE_END,
-            Processor => EXT_PROCESSOR_TABLE_START..EXT_PROCESSOR_TABLE_END,
-            OpStack => EXT_OP_STACK_TABLE_START..EXT_OP_STACK_TABLE_END,
-            Ram => EXT_RAM_TABLE_START..EXT_RAM_TABLE_END,
-            JumpStack => EXT_JUMP_STACK_TABLE_START..EXT_JUMP_STACK_TABLE_END,
-            Hash => EXT_HASH_TABLE_START..EXT_HASH_TABLE_END,
-            Cascade => EXT_CASCADE_TABLE_START..EXT_CASCADE_TABLE_END,
-            Lookup => EXT_LOOKUP_TABLE_START..EXT_LOOKUP_TABLE_END,
-            U32 => EXT_U32_TABLE_START..EXT_U32_TABLE_END,
-            DegreeLowering => EXT_DEGREE_LOWERING_TABLE_START..EXT_DEGREE_LOWERING_TABLE_END,
+            Program => AUX_PROGRAM_TABLE_START..AUX_PROGRAM_TABLE_END,
+            Processor => AUX_PROCESSOR_TABLE_START..AUX_PROCESSOR_TABLE_END,
+            OpStack => AUX_OP_STACK_TABLE_START..AUX_OP_STACK_TABLE_END,
+            Ram => AUX_RAM_TABLE_START..AUX_RAM_TABLE_END,
+            JumpStack => AUX_JUMP_STACK_TABLE_START..AUX_JUMP_STACK_TABLE_END,
+            Hash => AUX_HASH_TABLE_START..AUX_HASH_TABLE_END,
+            Cascade => AUX_CASCADE_TABLE_START..AUX_CASCADE_TABLE_END,
+            Lookup => AUX_LOOKUP_TABLE_START..AUX_LOOKUP_TABLE_END,
+            U32 => AUX_U32_TABLE_START..AUX_U32_TABLE_END,
         }
     }
 
@@ -1066,9 +985,9 @@ impl MasterExtTable {
             .slice_mut(s![..; unit_distance, column_indices])
     }
 
-    pub(crate) fn try_to_ext_row(row: Array1<XFieldElement>) -> Result<ExtensionRow, ProvingError> {
+    pub(crate) fn try_to_aux_row(row: Array1<XFieldElement>) -> Result<AuxiliaryRow, ProvingError> {
         let err = || ProvingError::TableRowConversionError {
-            expected_len: NUM_EXT_COLUMNS,
+            expected_len: Self::NUM_COLUMNS,
             actual_len: row.len(),
         };
         row.to_vec().try_into().map_err(|_| err())
@@ -1173,11 +1092,11 @@ pub fn all_quotients_combined(
         quotient_domain.length,
         quotient_domain_master_ext_table.nrows()
     );
-    assert_eq!(MasterExtTable::NUM_CONSTRAINTS, quotient_weights.len());
+    assert_eq!(MasterAuxTable::NUM_CONSTRAINTS, quotient_weights.len());
 
-    let init_section_end = MasterExtTable::NUM_INITIAL_CONSTRAINTS;
-    let cons_section_end = init_section_end + MasterExtTable::NUM_CONSISTENCY_CONSTRAINTS;
-    let tran_section_end = cons_section_end + MasterExtTable::NUM_TRANSITION_CONSTRAINTS;
+    let init_section_end = MasterAuxTable::NUM_INITIAL_CONSTRAINTS;
+    let cons_section_end = init_section_end + MasterAuxTable::NUM_CONSISTENCY_CONSTRAINTS;
+    let tran_section_end = cons_section_end + MasterAuxTable::NUM_TRANSITION_CONSTRAINTS;
 
     profiler!(start "zerofier inverse");
     let initial_zerofier_inverse = initial_quotient_zerofier_inverse(quotient_domain);
@@ -1205,7 +1124,7 @@ pub fn all_quotients_combined(
             let next_row_main = quotient_domain_master_base_table.row(next_row_index);
             let next_row_aux = quotient_domain_master_ext_table.row(next_row_index);
 
-            let initial_constraint_values = MasterExtTable::evaluate_initial_constraints(
+            let initial_constraint_values = MasterAuxTable::evaluate_initial_constraints(
                 current_row_main,
                 current_row_aux,
                 challenges,
@@ -1216,7 +1135,7 @@ pub fn all_quotients_combined(
             );
             let mut quotient_value = initial_inner_product * initial_zerofier_inverse[row_index];
 
-            let consistency_constraint_values = MasterExtTable::evaluate_consistency_constraints(
+            let consistency_constraint_values = MasterAuxTable::evaluate_consistency_constraints(
                 current_row_main,
                 current_row_aux,
                 challenges,
@@ -1227,7 +1146,7 @@ pub fn all_quotients_combined(
             );
             quotient_value += consistency_inner_product * consistency_zerofier_inverse[row_index];
 
-            let transition_constraint_values = MasterExtTable::evaluate_transition_constraints(
+            let transition_constraint_values = MasterAuxTable::evaluate_transition_constraints(
                 current_row_main,
                 current_row_aux,
                 next_row_main,
@@ -1240,7 +1159,7 @@ pub fn all_quotients_combined(
             );
             quotient_value += transition_inner_product * transition_zerofier_inverse[row_index];
 
-            let terminal_constraint_values = MasterExtTable::evaluate_terminal_constraints(
+            let terminal_constraint_values = MasterAuxTable::evaluate_terminal_constraints(
                 current_row_main,
                 current_row_aux,
                 challenges,
@@ -1273,9 +1192,19 @@ mod tests {
     use fs_err as fs;
     use std::path::Path;
 
-    use master_table::cross_table_argument::GrandCrossTableArg;
-    use ndarray::s;
+    use air::cross_table_argument::GrandCrossTableArg;
+    use air::table::cascade::CascadeTable;
+    use air::table::hash::HashTable;
+    use air::table::jump_stack::JumpStackTable;
+    use constraint_circuit::ConstraintCircuitBuilder;
+    use constraint_circuit::ConstraintCircuitMonad;
+    use constraint_circuit::DegreeLoweringInfo;
+    use constraint_circuit::DualRowIndicator;
+    use constraint_circuit::SingleRowIndicator;
+    use isa::instruction::Instruction;
+    use isa::instruction::InstructionBit;
     use ndarray::Array2;
+    use num_traits::ConstZero;
     use num_traits::Zero;
     use proptest::prelude::*;
     use proptest_arbitrary_interop::arb;
@@ -1287,35 +1216,17 @@ mod tests {
     use twenty_first::math::traits::FiniteField;
     use twenty_first::prelude::x_field_element::EXTENSION_DEGREE;
 
-    use crate::air::memory_layout::DynamicTasmConstraintEvaluationMemoryLayout;
-    use crate::air::memory_layout::StaticTasmConstraintEvaluationMemoryLayout;
-    use crate::air::tasm_air_constraints::dynamic_air_constraint_evaluation_tasm;
-    use crate::air::tasm_air_constraints::static_air_constraint_evaluation_tasm;
     use crate::arithmetic_domain::ArithmeticDomain;
-    use crate::instruction::tests::InstructionBucket;
-    use crate::instruction::Instruction;
-    use crate::instruction::InstructionBit;
+    use crate::constraints::dynamic_air_constraint_evaluation_tasm;
+    use crate::constraints::static_air_constraint_evaluation_tasm;
+    use crate::memory_layout::DynamicTasmConstraintEvaluationMemoryLayout;
+    use crate::memory_layout::StaticTasmConstraintEvaluationMemoryLayout;
     use crate::shared_tests::ProgramAndInput;
     use crate::stark::tests::*;
-    use crate::table::degree_lowering_table::DegreeLoweringBaseTableColumn;
-    use crate::table::degree_lowering_table::DegreeLoweringExtTableColumn;
-    use crate::table::table_column::*;
+    use crate::table::degree_lowering::DegreeLoweringAuxColumn;
+    use crate::table::degree_lowering::DegreeLoweringMainColumn;
     use crate::table::*;
     use crate::triton_program;
-
-    use self::cascade_table::ExtCascadeTable;
-    use self::constraint_circuit::ConstraintCircuitBuilder;
-    use self::constraint_circuit::ConstraintCircuitMonad;
-    use self::constraint_circuit::DualRowIndicator;
-    use self::constraint_circuit::SingleRowIndicator;
-    use self::hash_table::ExtHashTable;
-    use self::jump_stack_table::ExtJumpStackTable;
-    use self::lookup_table::ExtLookupTable;
-    use self::op_stack_table::ExtOpStackTable;
-    use self::processor_table::ExtProcessorTable;
-    use self::program_table::ExtProgramTable;
-    use self::ram_table::ExtRamTable;
-    use self::u32_table::ExtU32Table;
 
     use super::*;
 
@@ -1325,44 +1236,40 @@ mod tests {
         let (_, _, master_base_table) = master_base_table_for_low_security_level(program);
 
         assert_eq!(
-            program_table::BASE_WIDTH,
+            <ProgramTable as AIR>::MainColumn::COUNT,
             master_base_table.table(TableId::Program).ncols()
         );
         assert_eq!(
-            processor_table::BASE_WIDTH,
+            <ProcessorTable as AIR>::MainColumn::COUNT,
             master_base_table.table(TableId::Processor).ncols()
         );
         assert_eq!(
-            op_stack_table::BASE_WIDTH,
+            <OpStackTable as AIR>::MainColumn::COUNT,
             master_base_table.table(TableId::OpStack).ncols()
         );
         assert_eq!(
-            ram_table::BASE_WIDTH,
+            <RamTable as AIR>::MainColumn::COUNT,
             master_base_table.table(TableId::Ram).ncols()
         );
         assert_eq!(
-            jump_stack_table::BASE_WIDTH,
+            <JumpStackTable as AIR>::MainColumn::COUNT,
             master_base_table.table(TableId::JumpStack).ncols()
         );
         assert_eq!(
-            hash_table::BASE_WIDTH,
+            <HashTable as AIR>::MainColumn::COUNT,
             master_base_table.table(TableId::Hash).ncols()
         );
         assert_eq!(
-            cascade_table::BASE_WIDTH,
+            <CascadeTable as AIR>::MainColumn::COUNT,
             master_base_table.table(TableId::Cascade).ncols()
         );
         assert_eq!(
-            lookup_table::BASE_WIDTH,
+            <LookupTable as AIR>::MainColumn::COUNT,
             master_base_table.table(TableId::Lookup).ncols()
         );
         assert_eq!(
-            u32_table::BASE_WIDTH,
+            <U32Table as AIR>::MainColumn::COUNT,
             master_base_table.table(TableId::U32).ncols()
-        );
-        assert_eq!(
-            degree_lowering_table::BASE_WIDTH,
-            master_base_table.table(TableId::DegreeLowering).ncols()
         );
     }
 
@@ -1372,52 +1279,40 @@ mod tests {
         let (_, _, _, master_ext_table, _) = master_tables_for_low_security_level(program);
 
         assert_eq!(
-            program_table::EXT_WIDTH,
+            <ProgramTable as AIR>::AuxColumn::COUNT,
             master_ext_table.table(TableId::Program).ncols()
         );
         assert_eq!(
-            processor_table::EXT_WIDTH,
+            <ProcessorTable as AIR>::AuxColumn::COUNT,
             master_ext_table.table(TableId::Processor).ncols()
         );
         assert_eq!(
-            op_stack_table::EXT_WIDTH,
+            <OpStackTable as AIR>::AuxColumn::COUNT,
             master_ext_table.table(TableId::OpStack).ncols()
         );
         assert_eq!(
-            ram_table::EXT_WIDTH,
+            <RamTable as AIR>::AuxColumn::COUNT,
             master_ext_table.table(TableId::Ram).ncols()
         );
         assert_eq!(
-            jump_stack_table::EXT_WIDTH,
+            <JumpStackTable as AIR>::AuxColumn::COUNT,
             master_ext_table.table(TableId::JumpStack).ncols()
         );
         assert_eq!(
-            hash_table::EXT_WIDTH,
+            <HashTable as AIR>::AuxColumn::COUNT,
             master_ext_table.table(TableId::Hash).ncols()
         );
         assert_eq!(
-            cascade_table::EXT_WIDTH,
+            <CascadeTable as AIR>::AuxColumn::COUNT,
             master_ext_table.table(TableId::Cascade).ncols()
         );
         assert_eq!(
-            lookup_table::EXT_WIDTH,
+            <LookupTable as AIR>::AuxColumn::COUNT,
             master_ext_table.table(TableId::Lookup).ncols()
         );
         assert_eq!(
-            u32_table::EXT_WIDTH,
+            <U32Table as AIR>::AuxColumn::COUNT,
             master_ext_table.table(TableId::U32).ncols()
-        );
-        assert_eq!(
-            degree_lowering_table::EXT_WIDTH,
-            master_ext_table.table(TableId::DegreeLowering).ncols()
-        );
-        // use some domain-specific knowledge to also check for the randomizer columns
-        assert_eq!(
-            NUM_RANDOMIZER_POLYNOMIALS,
-            master_ext_table
-                .randomized_trace_table()
-                .slice(s![.., EXT_DEGREE_LOWERING_TABLE_END..])
-                .ncols()
         );
     }
 
@@ -1476,25 +1371,6 @@ mod tests {
             .is_zero());
     }
 
-    macro_rules! constraints_without_degree_lowering {
-        ($constraint_type: ident) => {{
-            let circuit_builder = ConstraintCircuitBuilder::new();
-            vec![
-                ExtProgramTable::$constraint_type(&circuit_builder),
-                ExtProcessorTable::$constraint_type(&circuit_builder),
-                ExtOpStackTable::$constraint_type(&circuit_builder),
-                ExtRamTable::$constraint_type(&circuit_builder),
-                ExtJumpStackTable::$constraint_type(&circuit_builder),
-                ExtHashTable::$constraint_type(&circuit_builder),
-                ExtCascadeTable::$constraint_type(&circuit_builder),
-                ExtLookupTable::$constraint_type(&circuit_builder),
-                ExtU32Table::$constraint_type(&circuit_builder),
-                GrandCrossTableArg::$constraint_type(&circuit_builder),
-            ]
-            .concat()
-        }};
-    }
-
     struct SpecSnippet {
         pub start_marker: &'static str,
         pub stop_marker: &'static str,
@@ -1534,39 +1410,55 @@ mod tests {
     }
 
     fn generate_table_overview() -> SpecSnippet {
+        fn table_widths<A: AIR>() -> (usize, usize) {
+            (A::MainColumn::COUNT, A::AuxColumn::COUNT)
+        }
+
         const NUM_DEGREE_LOWERING_TARGETS: usize = 3;
         const DEGREE_LOWERING_TARGETS: [Option<isize>; NUM_DEGREE_LOWERING_TARGETS] =
             [None, Some(8), Some(4)];
-        assert!(DEGREE_LOWERING_TARGETS.contains(&Some(AIR_TARGET_DEGREE)));
+        assert!(DEGREE_LOWERING_TARGETS.contains(&Some(air::TARGET_DEGREE)));
 
-        macro_rules! table_info {
-            ($($module:ident: $name:literal at $location:literal),* $(,)?) => {{
-                let mut info = vec![];
-                $(
-                let name = format!("[{}]({})", $name, $location);
-                info.push(
-                    (
-                        name,
-                        [$module::BASE_WIDTH; NUM_DEGREE_LOWERING_TARGETS],
-                        [$module::EXT_WIDTH; NUM_DEGREE_LOWERING_TARGETS]
-                    )
-                );
-                )*
-                info
-            }};
-        }
-
-        let mut all_table_info = table_info![
-            program_table:    "ProgramTable"   at "program-table.md",
-            processor_table:  "ProcessorTable" at "processor-table.md",
-            op_stack_table:   "OpStackTable"   at "operational-stack-table.md",
-            ram_table:        "RamTable"       at "random-access-memory-table.md",
-            jump_stack_table: "JumpStackTable" at "jump-stack-table.md",
-            hash_table:       "HashTable"      at "hash-table.md",
-            cascade_table:    "CascadeTable"   at "cascade-table.md",
-            lookup_table:     "LookupTable"    at "lookup-table.md",
-            u32_table:        "U32Table"       at "u32-table.md",
-        ];
+        let mut all_table_info = [
+            (
+                "[ProgramTable](program-table.md)",
+                table_widths::<ProgramTable>(),
+            ),
+            (
+                "[ProcessorTable](processor-table.md)",
+                table_widths::<ProcessorTable>(),
+            ),
+            (
+                "[OpStackTable](operational-stack-table.md)",
+                table_widths::<OpStackTable>(),
+            ),
+            (
+                "[RamTable](random-access-memory-table.md)",
+                table_widths::<RamTable>(),
+            ),
+            (
+                "[JumpStackTable](jump-stack-table.md)",
+                table_widths::<JumpStackTable>(),
+            ),
+            ("[HashTable](hash-table.md)", table_widths::<HashTable>()),
+            (
+                "[CascadeTable](cascade-table.md)",
+                table_widths::<CascadeTable>(),
+            ),
+            (
+                "[LookupTable](lookup-table.md)",
+                table_widths::<LookupTable>(),
+            ),
+            ("[U32Table](u32-table.md)", table_widths::<U32Table>()),
+        ]
+        .map(|(description, (main_width, aux_width))| {
+            (
+                description.to_string(),
+                [main_width; NUM_DEGREE_LOWERING_TARGETS],
+                [aux_width; NUM_DEGREE_LOWERING_TARGETS],
+            )
+        })
+        .to_vec();
 
         let mut deg_low_main = vec![];
         let mut deg_low_aux = vec![];
@@ -1577,25 +1469,25 @@ mod tests {
                 continue;
             };
 
-            let initial_constraints = constraints_without_degree_lowering!(initial_constraints);
-            let consistency_constraints =
-                constraints_without_degree_lowering!(consistency_constraints);
-            let transition_constraints =
-                constraints_without_degree_lowering!(transition_constraints);
-            let terminal_constraints = constraints_without_degree_lowering!(terminal_constraints);
+            let degree_lowering_info = DegreeLoweringInfo {
+                target_degree,
+                num_main_cols: 0,
+                num_aux_cols: 0,
+            };
 
             // generic closures are not possible; define two variants :(
             let lower_to_target_degree_single_row = |mut constraints: Vec<_>| {
-                ConstraintCircuitMonad::lower_to_degree(&mut constraints, target_degree, 0, 0)
+                ConstraintCircuitMonad::lower_to_degree(&mut constraints, degree_lowering_info)
             };
             let lower_to_target_degree_double_row = |mut constraints: Vec<_>| {
-                ConstraintCircuitMonad::lower_to_degree(&mut constraints, target_degree, 0, 0)
+                ConstraintCircuitMonad::lower_to_degree(&mut constraints, degree_lowering_info)
             };
 
-            let (init_main, init_aux) = lower_to_target_degree_single_row(initial_constraints);
-            let (cons_main, cons_aux) = lower_to_target_degree_single_row(consistency_constraints);
-            let (tran_main, tran_aux) = lower_to_target_degree_double_row(transition_constraints);
-            let (term_main, term_aux) = lower_to_target_degree_single_row(terminal_constraints);
+            let constraints = constraint_builder::Constraints::all();
+            let (init_main, init_aux) = lower_to_target_degree_single_row(constraints.init);
+            let (cons_main, cons_aux) = lower_to_target_degree_single_row(constraints.cons);
+            let (tran_main, tran_aux) = lower_to_target_degree_double_row(constraints.tran);
+            let (term_main, term_aux) = lower_to_target_degree_single_row(constraints.term);
 
             deg_low_main
                 .push(init_main.len() + cons_main.len() + tran_main.len() + term_main.len());
@@ -1686,12 +1578,12 @@ mod tests {
             pub consistency_constraints: Vec<ConstraintCircuitMonad<SingleRowIndicator>>,
             pub transition_constraints: Vec<ConstraintCircuitMonad<DualRowIndicator>>,
             pub terminal_constraints: Vec<ConstraintCircuitMonad<SingleRowIndicator>>,
-            pub last_base_column_index: usize,
-            pub last_ext_column_index: usize,
+            pub last_main_column_index: usize,
+            pub last_aux_column_index: usize,
         }
 
         macro_rules! constraint_overview_rows {
-            ($($table:ident ends at $base_end:ident and $ext_end: ident.
+            ($($table:ident ends at $main_end:ident and $aux_end: ident.
             Spec: [$spec_name:literal]($spec_file:literal)),* $(,)?) => {{
                 let single_row_builder = || ConstraintCircuitBuilder::new();
                 let dual_row_builder = || ConstraintCircuitBuilder::new();
@@ -1704,8 +1596,8 @@ mod tests {
                     consistency_constraints: $table::consistency_constraints(&single_row_builder()),
                     transition_constraints: $table::transition_constraints(&dual_row_builder()),
                     terminal_constraints: $table::terminal_constraints(&single_row_builder()),
-                    last_base_column_index: $base_end,
-                    last_ext_column_index: $ext_end,
+                    last_main_column_index: $main_end,
+                    last_aux_column_index: $aux_end,
                 };
                 rows.push(row);
                 )*
@@ -1719,7 +1611,7 @@ mod tests {
         const ZERO: usize = 0;
 
         let degree_lowering_targets = [None, Some(8), Some(4)];
-        assert!(degree_lowering_targets.contains(&Some(AIR_TARGET_DEGREE)));
+        assert!(degree_lowering_targets.contains(&Some(air::TARGET_DEGREE)));
 
         let mut ft = String::new();
         for target_degree in degree_lowering_targets {
@@ -1753,23 +1645,23 @@ mod tests {
 
             let mut total_max_degree = 0;
             let mut tables = constraint_overview_rows!(
-                ExtProgramTable ends at PROGRAM_TABLE_END and EXT_PROGRAM_TABLE_END.
+                ProgramTable ends at PROGRAM_TABLE_END and AUX_PROGRAM_TABLE_END.
                     Spec: ["ProgramTable"]("program-table.md"),
-                ExtProcessorTable ends at PROCESSOR_TABLE_END and EXT_PROCESSOR_TABLE_END.
+                ProcessorTable ends at PROCESSOR_TABLE_END and AUX_PROCESSOR_TABLE_END.
                     Spec: ["ProcessorTable"]("processor-table.md"),
-                ExtOpStackTable ends at OP_STACK_TABLE_END and EXT_OP_STACK_TABLE_END.
+                OpStackTable ends at OP_STACK_TABLE_END and AUX_OP_STACK_TABLE_END.
                     Spec: ["OpStackTable"]("operational-stack-table.md"),
-                ExtRamTable ends at RAM_TABLE_END and EXT_RAM_TABLE_END.
+                RamTable ends at RAM_TABLE_END and AUX_RAM_TABLE_END.
                     Spec: ["RamTable"]("random-access-memory-table.md"),
-                ExtJumpStackTable ends at JUMP_STACK_TABLE_END and EXT_JUMP_STACK_TABLE_END.
+                JumpStackTable ends at JUMP_STACK_TABLE_END and AUX_JUMP_STACK_TABLE_END.
                     Spec: ["JumpStackTable"]("jump-stack-table.md"),
-                ExtHashTable ends at HASH_TABLE_END and EXT_HASH_TABLE_END.
+                HashTable ends at HASH_TABLE_END and AUX_HASH_TABLE_END.
                     Spec: ["HashTable"]("hash-table.md"),
-                ExtCascadeTable ends at CASCADE_TABLE_END and EXT_CASCADE_TABLE_END.
+                CascadeTable ends at CASCADE_TABLE_END and AUX_CASCADE_TABLE_END.
                     Spec: ["CascadeTable"]("cascade-table.md"),
-                ExtLookupTable ends at LOOKUP_TABLE_END and EXT_LOOKUP_TABLE_END.
+                LookupTable ends at LOOKUP_TABLE_END and AUX_LOOKUP_TABLE_END.
                     Spec: ["LookupTable"]("lookup-table.md"),
-                ExtU32Table ends at U32_TABLE_END and EXT_U32_TABLE_END.
+                U32Table ends at U32_TABLE_END and AUX_U32_TABLE_END.
                     Spec: ["U32Table"]("u32-table.md"),
                 GrandCrossTableArg ends at ZERO and ZERO.
                     Spec: ["Grand Cross-Table Argument"]("table-linking.md"),
@@ -1784,45 +1676,38 @@ mod tests {
                 let mut transition_constraints = table.transition_constraints.clone();
                 let mut terminal_constraints = table.terminal_constraints.clone();
 
-                if let Some(target) = target_degree {
-                    let (new_base_initial, new_ext_initial) =
-                        ConstraintCircuitMonad::lower_to_degree(
-                            &mut table.initial_constraints,
-                            target,
-                            table.last_base_column_index,
-                            table.last_ext_column_index,
-                        );
-                    let (new_base_consistency, new_ext_consistency) =
-                        ConstraintCircuitMonad::lower_to_degree(
-                            &mut table.consistency_constraints,
-                            target,
-                            table.last_base_column_index,
-                            table.last_ext_column_index,
-                        );
-                    let (new_base_transition, new_ext_transition) =
-                        ConstraintCircuitMonad::lower_to_degree(
-                            &mut table.transition_constraints,
-                            target,
-                            table.last_base_column_index,
-                            table.last_ext_column_index,
-                        );
-                    let (new_base_terminal, new_ext_terminal) =
-                        ConstraintCircuitMonad::lower_to_degree(
-                            &mut table.terminal_constraints,
-                            target,
-                            table.last_base_column_index,
-                            table.last_ext_column_index,
-                        );
+                if let Some(target_degree) = target_degree {
+                    let info = DegreeLoweringInfo {
+                        target_degree,
+                        num_main_cols: table.last_main_column_index,
+                        num_aux_cols: table.last_aux_column_index,
+                    };
+                    let (new_base_init, new_ext_init) = ConstraintCircuitMonad::lower_to_degree(
+                        &mut table.initial_constraints,
+                        info,
+                    );
+                    let (new_base_cons, new_ext_cons) = ConstraintCircuitMonad::lower_to_degree(
+                        &mut table.consistency_constraints,
+                        info,
+                    );
+                    let (new_base_tran, new_ext_tran) = ConstraintCircuitMonad::lower_to_degree(
+                        &mut table.transition_constraints,
+                        info,
+                    );
+                    let (new_base_term, new_ext_term) = ConstraintCircuitMonad::lower_to_degree(
+                        &mut table.terminal_constraints,
+                        info,
+                    );
 
-                    initial_constraints.extend(new_base_initial);
-                    consistency_constraints.extend(new_base_consistency);
-                    transition_constraints.extend(new_base_transition);
-                    terminal_constraints.extend(new_base_terminal);
+                    initial_constraints.extend(new_base_init);
+                    consistency_constraints.extend(new_base_cons);
+                    transition_constraints.extend(new_base_tran);
+                    terminal_constraints.extend(new_base_term);
 
-                    initial_constraints.extend(new_ext_initial);
-                    consistency_constraints.extend(new_ext_consistency);
-                    transition_constraints.extend(new_ext_transition);
-                    terminal_constraints.extend(new_ext_terminal);
+                    initial_constraints.extend(new_ext_init);
+                    consistency_constraints.extend(new_ext_cons);
+                    transition_constraints.extend(new_ext_tran);
+                    terminal_constraints.extend(new_ext_term);
                 }
 
                 let table_max_degree = [
@@ -1903,10 +1788,21 @@ mod tests {
     }
 
     fn generate_tasm_air_evaluation_cost_overview() -> SpecSnippet {
-        let static_layout = StaticTasmConstraintEvaluationMemoryLayout::default();
-        let static_tasm = static_air_constraint_evaluation_tasm(static_layout);
-        let dynamic_layout = DynamicTasmConstraintEvaluationMemoryLayout::default();
-        let dynamic_tasm = dynamic_air_constraint_evaluation_tasm(dynamic_layout);
+        let dummy_static_layout = StaticTasmConstraintEvaluationMemoryLayout {
+            free_mem_page_ptr: BFieldElement::ZERO,
+            curr_main_row_ptr: BFieldElement::ZERO,
+            curr_aux_row_ptr: BFieldElement::ZERO,
+            next_main_row_ptr: BFieldElement::ZERO,
+            next_aux_row_ptr: BFieldElement::ZERO,
+            challenges_ptr: BFieldElement::ZERO,
+        };
+        let dummy_dynamic_layout = DynamicTasmConstraintEvaluationMemoryLayout {
+            free_mem_page_ptr: BFieldElement::ZERO,
+            challenges_ptr: BFieldElement::ZERO,
+        };
+
+        let static_tasm = static_air_constraint_evaluation_tasm(dummy_static_layout);
+        let dynamic_tasm = dynamic_air_constraint_evaluation_tasm(dummy_dynamic_layout);
 
         let mut snippet = "\
         | Type         | Processor | Op Stack |   RAM |\n\
@@ -1951,10 +1847,43 @@ mod tests {
     }
 
     fn generate_opcode_pressure_overview() -> SpecSnippet {
+        // todo: de-duplicate this from `triton_isa::instruction::tests`
+        #[derive(Debug, Copy, Clone, EnumCount, EnumIter, VariantNames)]
+        enum InstructionBucket {
+            HasArg,
+            ShrinksStack,
+            IsU32,
+        }
+
+        impl InstructionBucket {
+            pub fn contains(self, instruction: Instruction) -> bool {
+                match self {
+                    InstructionBucket::HasArg => instruction.arg().is_some(),
+                    InstructionBucket::ShrinksStack => instruction.op_stack_size_influence() < 0,
+                    InstructionBucket::IsU32 => instruction.is_u32_instruction(),
+                }
+            }
+
+            pub fn flag(self) -> usize {
+                match self {
+                    InstructionBucket::HasArg => 1,
+                    InstructionBucket::ShrinksStack => 1 << 1,
+                    InstructionBucket::IsU32 => 1 << 2,
+                }
+            }
+        }
+
+        fn flag_set(instruction: Instruction) -> usize {
+            InstructionBucket::iter()
+                .map(|bucket| usize::from(bucket.contains(instruction)) * bucket.flag())
+                .fold(0, |acc, bit_flag| acc | bit_flag)
+        }
+        // todo: end of duplication
+
         const NUM_FLAG_SETS: usize = 1 << InstructionBucket::COUNT;
         let mut num_opcodes_per_flag_set = [0; NUM_FLAG_SETS];
         for instruction in Instruction::iter() {
-            num_opcodes_per_flag_set[instruction.flag_set() as usize] += 1;
+            num_opcodes_per_flag_set[flag_set(instruction)] += 1;
         }
 
         let cell_width = InstructionBucket::VARIANTS
@@ -2010,14 +1939,14 @@ mod tests {
         macro_rules! print_columns {
             (base $table:ident for $name:literal) => {{
                 for column in $table::iter() {
-                    let idx = column.master_base_table_index();
+                    let idx = column.master_main_index();
                     let name = $name;
                     println!("| {idx:>3} | {name:<11} | {column}");
                 }
             }};
             (ext $table:ident for $name:literal) => {{
                 for column in $table::iter() {
-                    let idx = column.master_ext_table_index();
+                    let idx = column.master_aux_index();
                     let name = $name;
                     println!("| {idx:>3} | {name:<11} | {column}");
                 }
@@ -2025,32 +1954,32 @@ mod tests {
         }
 
         println!();
-        println!("| idx | table       | base column");
+        println!("| idx | table       | main column");
         println!("|----:|:------------|:-----------");
-        print_columns!(base ProgramBaseTableColumn        for "program");
-        print_columns!(base ProcessorBaseTableColumn      for "processor");
-        print_columns!(base OpStackBaseTableColumn        for "op stack");
-        print_columns!(base RamBaseTableColumn            for "ram");
-        print_columns!(base JumpStackBaseTableColumn      for "jump stack");
-        print_columns!(base HashBaseTableColumn           for "hash");
-        print_columns!(base CascadeBaseTableColumn        for "cascade");
-        print_columns!(base LookupBaseTableColumn         for "lookup");
-        print_columns!(base U32BaseTableColumn            for "u32");
-        print_columns!(base DegreeLoweringBaseTableColumn for "degree low.");
+        print_columns!(base ProgramMainColumn        for "program");
+        print_columns!(base ProcessorMainColumn      for "processor");
+        print_columns!(base OpStackMainColumn        for "op stack");
+        print_columns!(base RamMainColumn            for "ram");
+        print_columns!(base JumpStackMainColumn      for "jump stack");
+        print_columns!(base HashMainColumn           for "hash");
+        print_columns!(base CascadeMainColumn        for "cascade");
+        print_columns!(base LookupMainColumn         for "lookup");
+        print_columns!(base U32MainColumn            for "u32");
+        print_columns!(base DegreeLoweringMainColumn for "degree low.");
 
         println!();
-        println!("| idx | table       | extension column");
+        println!("| idx | table       | auxiliary column");
         println!("|----:|:------------|:----------------");
-        print_columns!(ext ProgramExtTableColumn          for "program");
-        print_columns!(ext ProcessorExtTableColumn        for "processor");
-        print_columns!(ext OpStackExtTableColumn          for "op stack");
-        print_columns!(ext RamExtTableColumn              for "ram");
-        print_columns!(ext JumpStackExtTableColumn        for "jump stack");
-        print_columns!(ext HashExtTableColumn             for "hash");
-        print_columns!(ext CascadeExtTableColumn          for "cascade");
-        print_columns!(ext LookupExtTableColumn           for "lookup");
-        print_columns!(ext U32ExtTableColumn              for "u32");
-        print_columns!(ext DegreeLoweringExtTableColumn   for "degree low.");
+        print_columns!(ext ProgramAuxColumn          for "program");
+        print_columns!(ext ProcessorAuxColumn        for "processor");
+        print_columns!(ext OpStackAuxColumn          for "op stack");
+        print_columns!(ext RamAuxColumn              for "ram");
+        print_columns!(ext JumpStackAuxColumn        for "jump stack");
+        print_columns!(ext HashAuxColumn             for "hash");
+        print_columns!(ext CascadeAuxColumn          for "cascade");
+        print_columns!(ext LookupAuxColumn           for "lookup");
+        print_columns!(ext U32AuxColumn              for "u32");
+        print_columns!(ext DegreeLoweringAuxColumn   for "degree low.");
     }
 
     #[test]
@@ -2061,9 +1990,9 @@ mod tests {
         let fri_domain = ArithmeticDomain::of_length(1 << 11).unwrap();
 
         let randomized_trace_table =
-            Array2::zeros((randomized_trace_domain.length, NUM_EXT_COLUMNS));
+            Array2::zeros((randomized_trace_domain.length, MasterAuxTable::NUM_COLUMNS));
 
-        let mut master_table = MasterExtTable {
+        let mut master_table = MasterAuxTable {
             num_trace_randomizers: 16,
             trace_domain,
             randomized_trace_domain,
@@ -2075,23 +2004,23 @@ mod tests {
         };
 
         let num_rows = trace_domain.length;
-        Array2::from_elem((num_rows, ProgramExtTableColumn::COUNT), 1.into())
+        Array2::from_elem((num_rows, ProgramAuxColumn::COUNT), 1.into())
             .move_into(&mut master_table.table_mut(TableId::Program));
-        Array2::from_elem((num_rows, ProcessorExtTableColumn::COUNT), 2.into())
+        Array2::from_elem((num_rows, ProcessorAuxColumn::COUNT), 2.into())
             .move_into(&mut master_table.table_mut(TableId::Processor));
-        Array2::from_elem((num_rows, OpStackExtTableColumn::COUNT), 3.into())
+        Array2::from_elem((num_rows, OpStackAuxColumn::COUNT), 3.into())
             .move_into(&mut master_table.table_mut(TableId::OpStack));
-        Array2::from_elem((num_rows, RamExtTableColumn::COUNT), 4.into())
+        Array2::from_elem((num_rows, RamAuxColumn::COUNT), 4.into())
             .move_into(&mut master_table.table_mut(TableId::Ram));
-        Array2::from_elem((num_rows, JumpStackExtTableColumn::COUNT), 5.into())
+        Array2::from_elem((num_rows, JumpStackAuxColumn::COUNT), 5.into())
             .move_into(&mut master_table.table_mut(TableId::JumpStack));
-        Array2::from_elem((num_rows, HashExtTableColumn::COUNT), 6.into())
+        Array2::from_elem((num_rows, HashAuxColumn::COUNT), 6.into())
             .move_into(&mut master_table.table_mut(TableId::Hash));
-        Array2::from_elem((num_rows, CascadeExtTableColumn::COUNT), 7.into())
+        Array2::from_elem((num_rows, CascadeAuxColumn::COUNT), 7.into())
             .move_into(&mut master_table.table_mut(TableId::Cascade));
-        Array2::from_elem((num_rows, LookupExtTableColumn::COUNT), 8.into())
+        Array2::from_elem((num_rows, LookupAuxColumn::COUNT), 8.into())
             .move_into(&mut master_table.table_mut(TableId::Lookup));
-        Array2::from_elem((num_rows, U32ExtTableColumn::COUNT), 9.into())
+        Array2::from_elem((num_rows, U32AuxColumn::COUNT), 9.into())
             .move_into(&mut master_table.table_mut(TableId::U32));
 
         let trace_domain_element = |column| {
@@ -2105,29 +2034,29 @@ mod tests {
             xfe.unlift().unwrap().value()
         };
 
-        assert_eq!(1, trace_domain_element(EXT_PROGRAM_TABLE_START));
-        assert_eq!(2, trace_domain_element(EXT_PROCESSOR_TABLE_START));
-        assert_eq!(3, trace_domain_element(EXT_OP_STACK_TABLE_START));
-        assert_eq!(4, trace_domain_element(EXT_RAM_TABLE_START));
-        assert_eq!(5, trace_domain_element(EXT_JUMP_STACK_TABLE_START));
-        assert_eq!(6, trace_domain_element(EXT_HASH_TABLE_START));
-        assert_eq!(7, trace_domain_element(EXT_CASCADE_TABLE_START));
-        assert_eq!(8, trace_domain_element(EXT_LOOKUP_TABLE_START));
-        assert_eq!(9, trace_domain_element(EXT_U32_TABLE_START));
+        assert_eq!(1, trace_domain_element(AUX_PROGRAM_TABLE_START));
+        assert_eq!(2, trace_domain_element(AUX_PROCESSOR_TABLE_START));
+        assert_eq!(3, trace_domain_element(AUX_OP_STACK_TABLE_START));
+        assert_eq!(4, trace_domain_element(AUX_RAM_TABLE_START));
+        assert_eq!(5, trace_domain_element(AUX_JUMP_STACK_TABLE_START));
+        assert_eq!(6, trace_domain_element(AUX_HASH_TABLE_START));
+        assert_eq!(7, trace_domain_element(AUX_CASCADE_TABLE_START));
+        assert_eq!(8, trace_domain_element(AUX_LOOKUP_TABLE_START));
+        assert_eq!(9, trace_domain_element(AUX_U32_TABLE_START));
 
-        assert_eq!(0, not_trace_domain_element(EXT_PROGRAM_TABLE_START));
-        assert_eq!(0, not_trace_domain_element(EXT_PROCESSOR_TABLE_START));
-        assert_eq!(0, not_trace_domain_element(EXT_OP_STACK_TABLE_START));
-        assert_eq!(0, not_trace_domain_element(EXT_RAM_TABLE_START));
-        assert_eq!(0, not_trace_domain_element(EXT_JUMP_STACK_TABLE_START));
-        assert_eq!(0, not_trace_domain_element(EXT_HASH_TABLE_START));
-        assert_eq!(0, not_trace_domain_element(EXT_CASCADE_TABLE_START));
-        assert_eq!(0, not_trace_domain_element(EXT_LOOKUP_TABLE_START));
-        assert_eq!(0, not_trace_domain_element(EXT_U32_TABLE_START));
+        assert_eq!(0, not_trace_domain_element(AUX_PROGRAM_TABLE_START));
+        assert_eq!(0, not_trace_domain_element(AUX_PROCESSOR_TABLE_START));
+        assert_eq!(0, not_trace_domain_element(AUX_OP_STACK_TABLE_START));
+        assert_eq!(0, not_trace_domain_element(AUX_RAM_TABLE_START));
+        assert_eq!(0, not_trace_domain_element(AUX_JUMP_STACK_TABLE_START));
+        assert_eq!(0, not_trace_domain_element(AUX_HASH_TABLE_START));
+        assert_eq!(0, not_trace_domain_element(AUX_CASCADE_TABLE_START));
+        assert_eq!(0, not_trace_domain_element(AUX_LOOKUP_TABLE_START));
+        assert_eq!(0, not_trace_domain_element(AUX_U32_TABLE_START));
     }
 
     #[proptest]
-    fn test_sponge_with_pending_absorb(
+    fn sponge_with_pending_absorb_is_equivalent_to_usual_sponge(
         #[strategy(arb())] elements: Vec<BFieldElement>,
         #[strategy(0_usize..=#elements.len())] substring_index: usize,
     ) {

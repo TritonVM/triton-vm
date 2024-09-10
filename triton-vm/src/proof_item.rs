@@ -8,8 +8,8 @@ use twenty_first::prelude::*;
 use crate::error::ProofStreamError;
 use crate::error::ProofStreamError::UnexpectedItem;
 use crate::fri::AuthenticationStructure;
-use crate::table::BaseRow;
-use crate::table::ExtensionRow;
+use crate::table::AuxiliaryRow;
+use crate::table::MainRow;
 use crate::table::QuotientSegments;
 
 /// A `FriResponse` is an `AuthenticationStructure` together with the values of the
@@ -99,14 +99,14 @@ macro_rules! proof_items {
 
 proof_items!(
     MerkleRoot(Digest) => true, try_into_merkle_root,
-    OutOfDomainBaseRow(Box<BaseRow<XFieldElement>>) => true, try_into_out_of_domain_base_row,
-    OutOfDomainExtRow(Box<ExtensionRow>) => true, try_into_out_of_domain_ext_row,
+    OutOfDomainMainRow(Box<MainRow<XFieldElement>>) => true, try_into_out_of_domain_main_row,
+    OutOfDomainAuxRow(Box<AuxiliaryRow>) => true, try_into_out_of_domain_aux_row,
     OutOfDomainQuotientSegments(QuotientSegments) => true, try_into_out_of_domain_quot_segments,
 
     // the following are implied by some Merkle root, thus not included in the Fiat-Shamir heuristic
     AuthenticationStructure(AuthenticationStructure) => false, try_into_authentication_structure,
-    MasterBaseTableRows(Vec<BaseRow<BFieldElement>>) => false, try_into_master_base_table_rows,
-    MasterExtTableRows(Vec<ExtensionRow>) => false, try_into_master_ext_table_rows,
+    MasterMainTableRows(Vec<MainRow<BFieldElement>>) => false, try_into_master_main_table_rows,
+    MasterAuxTableRows(Vec<AuxiliaryRow>) => false, try_into_master_aux_table_rows,
     Log2PaddedHeight(u32) => false, try_into_log2_padded_height,
     QuotientSegmentsElements(Vec<QuotientSegments>) => false, try_into_quot_segments_elements,
     FriCodeword(Vec<XFieldElement>) => false, try_into_fri_codeword,
@@ -182,10 +182,10 @@ pub(crate) mod tests {
         let item = ProofItem::MerkleRoot(fake_root);
         assert!(let Err(UnexpectedItem{..}) = item.clone().try_into_authentication_structure());
         assert!(let Err(UnexpectedItem{..}) = item.clone().try_into_fri_response());
-        assert!(let Err(UnexpectedItem{..}) = item.clone().try_into_master_base_table_rows());
-        assert!(let Err(UnexpectedItem{..}) = item.clone().try_into_master_ext_table_rows());
-        assert!(let Err(UnexpectedItem{..}) = item.clone().try_into_out_of_domain_base_row());
-        assert!(let Err(UnexpectedItem{..}) = item.clone().try_into_out_of_domain_ext_row());
+        assert!(let Err(UnexpectedItem{..}) = item.clone().try_into_master_main_table_rows());
+        assert!(let Err(UnexpectedItem{..}) = item.clone().try_into_master_aux_table_rows());
+        assert!(let Err(UnexpectedItem{..}) = item.clone().try_into_out_of_domain_main_row());
+        assert!(let Err(UnexpectedItem{..}) = item.clone().try_into_out_of_domain_aux_row());
         assert!(let Err(UnexpectedItem{..}) = item.clone().try_into_out_of_domain_quot_segments());
         assert!(let Err(UnexpectedItem{..}) = item.clone().try_into_log2_padded_height());
         assert!(let Err(UnexpectedItem{..}) = item.clone().try_into_quot_segments_elements());

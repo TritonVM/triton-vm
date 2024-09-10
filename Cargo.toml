@@ -1,5 +1,11 @@
 [workspace]
-members = ["triton-vm", "constraint-evaluation-generator"]
+members = [
+    "triton-air",
+    "triton-constraint-builder",
+    "triton-constraint-circuit",
+    "triton-isa",
+    "triton-vm",
+]
 resolver = "2"
 
 [profile.test]
@@ -22,16 +28,20 @@ readme = "README.md"
 documentation = "https://triton-vm.org/spec/"
 
 [workspace.dependencies]
+air = { path = "triton-air", package = "triton-air" }
 anyhow = "1.0"
 arbitrary = { version = "1", features = ["derive"] }
 assert2 = "0.3"
 colored = "2.1"
+constraint-builder = { path = "triton-constraint-builder", package = "triton-constraint-builder" }
+constraint-circuit = { path = "triton-constraint-circuit", package = "triton-constraint-circuit" }
 clap = { version = "4", features = ["derive", "cargo", "wrap_help", "unicode", "string"] }
 criterion = { version = "0.5", features = ["html_reports"] }
 directories = "5"
 fs-err = "2.11.0"
 get-size = "0.1.4"
 indexmap = "2.2.6"
+isa = { path = "triton-isa", package = "triton-isa" }
 itertools = "0.13"
 lazy_static = "1.5"
 ndarray = { version = "0.16", features = ["rayon"] }
@@ -47,15 +57,18 @@ rand = "0.8.5"
 rand_core = "0.6.4"
 rayon = "1.10"
 serde = { version = "1", features = ["derive"] }
-serde_derive = "1"
 serde_json = "1.0"
 strum = { version = "0.26", features = ["derive"] }
 syn = "2.0"
 test-strategy = "0.4.0"
 thiserror = "1.0"
-trybuild = "1.0"
 twenty-first = "0.42.0-alpha.9"
 unicode-width = "0.1"
+
+[workspace.lints.rust]
+let_underscore_drop = "warn"
+missing_copy_implementations = "warn"
+missing_debug_implementations = "warn"
 
 [workspace.lints.clippy]
 cast_lossless = "warn"

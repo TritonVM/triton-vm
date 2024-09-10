@@ -1,5 +1,6 @@
 use assert2::assert;
 use assert2::let_assert;
+use isa::program::Program;
 use num_traits::Zero;
 use proptest::collection::vec;
 use proptest::prelude::*;
@@ -10,14 +11,10 @@ use twenty_first::prelude::*;
 use crate::aet::AlgebraicExecutionTrace;
 use crate::error::VMError;
 use crate::fri::AuthenticationStructure;
+use crate::prelude::*;
 use crate::profiler::profiler;
-use crate::program::Program;
-use crate::proof::Claim;
 use crate::proof_item::FriResponse;
-use crate::stark::Stark;
-use crate::table::master_table::MasterBaseTable;
-use crate::NonDeterminism;
-use crate::PublicInput;
+use crate::table::master_table::MasterMainTable;
 
 pub(crate) const DEFAULT_LOG2_FRI_EXPANSION_FACTOR_FOR_TESTS: usize = 2;
 
@@ -112,9 +109,8 @@ pub(crate) fn prove_and_verify(
     } = program_and_input;
 
     profiler!(start "Pre-flight");
-    let (aet, public_output) = program
-        .trace_execution(public_input.clone(), non_determinism.clone())
-        .unwrap();
+    let (aet, public_output) =
+        VM::trace_execution(&program, public_input.clone(), non_determinism.clone()).unwrap();
 
     let claim = Claim::about_program(&program)
         .with_input(public_input.individual_tokens.clone())
@@ -144,15 +140,15 @@ pub(crate) fn low_security_stark(log_expansion_factor: usize) -> Stark {
     Stark::new(security_level, log_expansion_factor)
 }
 
-pub(crate) fn construct_master_base_table(
+pub(crate) fn construct_master_main_table(
     stark: Stark,
     aet: &AlgebraicExecutionTrace,
-) -> MasterBaseTable {
+) -> MasterMainTable {
     let padded_height = aet.padded_height();
     let fri = stark.derive_fri(padded_height).unwrap();
     let max_degree = stark.derive_max_degree(padded_height);
     let quotient_domain = Stark::quotient_domain(fri.domain, max_degree).unwrap();
-    MasterBaseTable::new(
+    MasterMainTable::new(
         aet,
         stark.num_trace_randomizers,
         quotient_domain,
@@ -197,9 +193,8 @@ impl ProgramAndInput {
         self.non_determinism.clone()
     }
 
-    /// A thin wrapper around [`Program::run`].
+    /// A thin wrapper around [`VM::run`].
     pub fn run(&self) -> Result<Vec<BFieldElement>, VMError> {
-        self.program
-            .run(self.public_input(), self.non_determinism())
+        VM::run(&self.program, self.public_input(), self.non_determinism())
     }
 }

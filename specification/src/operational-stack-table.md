@@ -12,7 +12,7 @@ The sole task of the Op Stack Table is to keep underflow memory immutable.
 To achieve this, any read or write accesses to the underflow memory are recorded in the Op Stack Table.
 Read and write accesses to op stack underflow memory are a side effect of shrinking or growing the op stack.
 
-## Base Columns
+## Main Columns
 
 The Op Stack Table consists of 4 columns:
 1. the cycle counter `clk`
@@ -100,9 +100,9 @@ Operational Stack Table:
 |     8 |              1 |              10 |                        44 |
 
 
-## Extension Columns
+## Auxiliary Columns
 
-The Op Stack Table has 2 extension columns, `rppa` and `ClockJumpDifferenceLookupClientLogDerivative`.
+The Op Stack Table has 2 auxiliary columns, `rppa` and `ClockJumpDifferenceLookupClientLogDerivative`.
 
 1. A Permutation Argument establishes that the rows of the Op Stack Table correspond to the rows of the [Processor Table](processor-table.md).
   The running product for this argument is contained in the `rppa` column.

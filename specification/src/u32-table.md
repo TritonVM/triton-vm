@@ -12,7 +12,7 @@ The processor's current instruction `CI` is recorded within the section and dict
 Crucially, the rows of the U32 table are independent of the processor's clock.
 Hence, the result of the instruction can be transferred into the processor within one clock cycle.
 
-## Base Columns
+## Main Columns
 
 | name                 | description                                                                                     |
 |:---------------------|:------------------------------------------------------------------------------------------------|
@@ -98,9 +98,9 @@ A new row with `CopyFlag = 1` can only be inserted if
 
 It is impossible to create a valid proof of correct execution of Triton VM if `Bits` is 33 in any row.
 
-## Extension Columns
+## Auxiliary Columns
 
-The U32 Table has 1 extension column, `U32LookupServerLogDerivative`.
+The U32 Table has 1 auxiliary column, `U32LookupServerLogDerivative`.
 It corresponds to the [Lookup Argument](lookup-argument.md) with the [Processor Table](processor-table.md), establishing that whenever the processor executes a u32 instruction, the following holds:
 
 - the processor's requested left-hand side is copied into `LHS`,

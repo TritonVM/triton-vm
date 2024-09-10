@@ -2,7 +2,7 @@
 
 The Jump Stack Memory contains the underflow from the Jump Stack.
 
-## Base Columns
+## Main Columns
 
 The Jump Stack Table consists of 5 columns:
 1. the cycle counter `clk`
@@ -103,9 +103,9 @@ Jump Stack Table:
 |    14 | `bar`    |     2 | `0xB3` | `0xC0` |
 |    15 | `return` |     2 | `0xB3` | `0xC0` |
 
-## Extension Columns
+## Auxiliary Columns
 
-The Jump Stack Table has 2 extension columns, `rppa` and `ClockJumpDifferenceLookupClientLogDerivative`.
+The Jump Stack Table has 2 auxiliary columns, `rppa` and `ClockJumpDifferenceLookupClientLogDerivative`.
 
 1. A Permutation Argument establishes that the rows of the Jump Stack Table match with the rows in the [Processor Table](processor-table.md).
   The running product for this argument is contained in the `rppa` column.

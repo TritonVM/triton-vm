@@ -18,9 +18,7 @@ fn prove_fib<const N: u64>(c: &mut Criterion) {
     let program = triton_vm::example_programs::FIBONACCI_SEQUENCE.clone();
     let public_input = PublicInput::from(bfe_array![N]);
     let non_determinism = NonDeterminism::default();
-    let (aet, output) = program
-        .trace_execution(public_input, non_determinism)
-        .unwrap();
+    let (aet, output) = VM::trace_execution(&program, public_input, non_determinism).unwrap();
     let claim = Claim::about_program(&program)
         .with_input(bfe_vec![N])
         .with_output(output);

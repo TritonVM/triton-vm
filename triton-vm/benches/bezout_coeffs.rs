@@ -6,7 +6,7 @@ use num_traits::Zero;
 use twenty_first::prelude::*;
 
 use triton_vm::prelude::*;
-use triton_vm::table::ram_table::RamTable;
+use triton_vm::table::ram::bezout_coefficient_polynomials_coefficients;
 
 criterion_main!(benches);
 criterion_group!(
@@ -32,7 +32,7 @@ fn current_design<const N: u64>(c: &mut Criterion) {
     let roots = unique_roots::<N>();
     let bench_id = format!("Bézout coefficients (current design) (degree {N})");
     c.bench_function(&bench_id, |b| {
-        b.iter(|| RamTable::bezout_coefficient_polynomials_coefficients(&roots))
+        b.iter(|| bezout_coefficient_polynomials_coefficients(&roots))
     });
 }
 

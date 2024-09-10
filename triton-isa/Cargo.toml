@@ -1,0 +1,36 @@
+[package]
+name = "triton-isa"
+description = """
+The instruction set architecture for Triton VM.
+"""
+readme = "README.md"
+
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+repository.workspace = true
+
+[dependencies]
+arbitrary.workspace = true
+get-size.workspace = true
+itertools.workspace = true
+lazy_static.workspace = true
+nom.workspace = true
+num-traits.workspace = true
+serde.workspace = true
+strum.workspace = true
+thiserror.workspace = true
+twenty-first.workspace = true
+
+[dev-dependencies]
+assert2.workspace = true
+proptest.workspace = true
+proptest-arbitrary-interop.workspace = true
+rand.workspace = true
+test-strategy.workspace = true
+
+[lints]
+workspace = true

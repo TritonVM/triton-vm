@@ -9,9 +9,9 @@ Correct creation of the Lookup Table is guaranteed through a public-facing [Eval
 after sampling some challenge $X$, the verifier computes the terminal of the Evaluation Argument over the list of all the expected lookup values with respect to challenge $X$.
 The equality of this verifier-supplied terminal against the similarly computed, in-table part of the Evaluation Argument is checked by the Lookup Table's terminal constraint.
 
-## Base Columns
+## Main Columns
 
-The Lookup Table has 4 base columns:
+The Lookup Table has 4 main columns:
 
 | name                 | description                                 |
 |:---------------------|:--------------------------------------------|
@@ -20,9 +20,9 @@ The Lookup Table has 4 base columns:
 | `LookOut`            | The lookup output.                          |
 | `LookupMultiplicity` | The number of times the value is looked up. |
 
-## Extension Columns
+## Auxiliary Columns
 
-The Lookup Table has 2 extension columns:
+The Lookup Table has 2 auxiliary columns:
 
 - `CascadeTableServerLogDerivative`, the (running sum of the) logarithmic derivative for the Lookup Argument with the Cascade Table.
     In every row, accumulates the summand `LookupMultiplicity / Combo` where `Combo` is the verifier-weighted combination of `LookIn` and `LookOut`.

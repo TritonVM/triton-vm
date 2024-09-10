@@ -19,7 +19,7 @@ Analogously to the Op Stack Table, the Jump Stack's memory pointer `jsp` can onl
 ## Contiguity for RAM Table
 
 The *Contiguity Argument* for the RAM table establishes that all RAM pointer regions start with distinct values.
-It is easy to ignore _consecutive_ duplicates in the list of all RAM pointers using one additional base column.
+It is easy to ignore _consecutive_ duplicates in the list of all RAM pointers using one additional main column.
 This allows identification of the RAM pointer values at the regions' boundaries, $A$.
 The Contiguity Argument then shows that the list $A$ contains no duplicates.
 For this, it uses [Bézout's identity for univariate polynomials](https://en.wikipedia.org/wiki/Polynomial_greatest_common_divisor#B%C3%A9zout's_identity_and_extended_GCD_algorithm).
@@ -36,11 +36,11 @@ This implies that all roots of $f_A(X)$ have multiplicity 1, which holds if and 
 
 The following columns and constraints are needed for the Contiguity Argument:
 
- - Base column `iord` and two deterministic transition constraints enable conditioning on a changed memory pointer.
- - Base columns `bcpc0` and `bcpc1` and two deterministic transition constraints contain and constrain the symbolic Bézout coefficient polynomials' coefficients.
- - Extension column `rpp` is a running product similar to that of a conditioned [permutation argument](permutation-argument.md). A randomized transition constraint verifies the correct accumulation of factors for updating this column.
- - Extension column `fd` is the formal derivative of `rpp`. A randomized transition constraint verifies the correct application of the product rule of differentiation to update this column.
- - Extension columns `bc0` and `bc1` build up the Bézout coefficient polynomials based on the corresponding base columns, `bcpc0` and `bcpc1`.
+ - Main column `iord` and two deterministic transition constraints enable conditioning on a changed memory pointer.
+ - Main columns `bcpc0` and `bcpc1` and two deterministic transition constraints contain and constrain the symbolic Bézout coefficient polynomials' coefficients.
+ - Auxiliary column `rpp` is a running product similar to that of a conditioned [permutation argument](permutation-argument.md). A randomized transition constraint verifies the correct accumulation of factors for updating this column.
+ - Auxiliary column `fd` is the formal derivative of `rpp`. A randomized transition constraint verifies the correct application of the product rule of differentiation to update this column.
+ - Auxiliary columns `bc0` and `bc1` build up the Bézout coefficient polynomials based on the corresponding main columns, `bcpc0` and `bcpc1`.
 Two randomized transition constraints enforce the correct build-up of the Bézout coefficient polynomials.
  - A terminal constraint takes the weighted sum of the running product and the formal derivative, where the weights are the Bézout coefficient polynomials, and equates it to one. This equation asserts the Bézout relation.
 
@@ -57,7 +57,7 @@ Columns not needed for establishing memory consistency are not displayed.
 | $c$    | 0            | $k$     | $n$     | $(X - a)(X - b)(X - c)$ | $q(X)$ | $jX + k$ | $\ell X^2 + mX + n$ |
 | $c$    | -            | $k$     | $n$     | $(X - a)(X - b)(X - c)$ | $q(X)$ | $jX + k$ | $\ell X^2 + mX + n$ |
 
-The values contained in the extension columns are undetermined until the verifier's challenge $\alpha$ is known; before that happens it is worthwhile to present the polynomial expressions in $X$, anticipating the substitution $X \mapsto \alpha$. The constraints are articulated relative to `α`.
+The values contained in the auxiliary columns are undetermined until the verifier's challenge $\alpha$ is known; before that happens it is worthwhile to present the polynomial expressions in $X$, anticipating the substitution $X \mapsto \alpha$. The constraints are articulated relative to `α`.
 
 The inverse of RAMP difference `iord` takes the inverse of the difference between the current and next `ramp` values if that difference is non-zero, and zero else. This constraint corresponds to two transition constraint polynomials:
 
@@ -87,7 +87,7 @@ $$f_\mathsf{bc0}(X) \cdot f_{\mathsf{rp}}(X) + f_\mathsf{bc1}(X) \cdot f_{\maths
 The prover finds $f_\mathsf{bc0}(X)$ and $f_\mathsf{bc1}(X)$ as the minimal-degree Bézout coefficients as returned by the extended Euclidean algorithm.
 Concretely, the degree of $f_\mathsf{bc0}(X)$ is smaller than the degree of $f_\mathsf{fd}(X)$, and the degree of $f_\mathsf{bc1}(X)$ is smaller than the degree of $f_\mathsf{rp}(X)$.
 
-The (scalar) coefficients of the Bézout coefficient polynomials are recorded in base columns `bcpc0` and `bcpc1`, respectively.
+The (scalar) coefficients of the Bézout coefficient polynomials are recorded in main columns `bcpc0` and `bcpc1`, respectively.
 The transition constraints for these columns enforce that the value in one such column can only change if the memory pointer `ramp` changes.
 However, unlike the conditional update rule enforced by the transition constraints of `rp` and `fd`, the new value is unconstrained.
 Concretely, the two transition constraints are:
@@ -96,7 +96,7 @@ Concretely, the two transition constraints are:
  - `(1 - (ramp' - ramp) ⋅ iord) ⋅ (bcpc1' - bcpc1)`
 
 Additionally, `bcpc0` must initially be zero, which is enforced by an initial constraint.
-This upper-bounds the degrees of the Bézout coefficient polynomials, which are built from base columns `bcpc0` and `bcpc1`.
+This upper-bounds the degrees of the Bézout coefficient polynomials, which are built from main columns `bcpc0` and `bcpc1`.
 Two transition constraints enforce the correct build-up of the Bézout coefficient polynomials:
 
  - `(1 - (ramp' - ramp) ⋅ iord) ⋅ (bc0' - bc0) + (ramp' - ramp) ⋅ (bc0' - α ⋅ bc0 - bcpc0')`
