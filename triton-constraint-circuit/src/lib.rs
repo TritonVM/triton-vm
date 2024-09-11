@@ -35,6 +35,11 @@ use quote::quote;
 use quote::ToTokens;
 use twenty_first::prelude::*;
 
+mod private {
+    // A public but un-nameable type for sealing traits.
+    pub trait Seal {}
+}
+
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub struct DegreeLoweringInfo {
     /// The degree after degree lowering. Must be greater than 1.
@@ -94,7 +99,10 @@ impl BinOp {
 /// a uniform interface for accessing the index.
 ///
 /// Having `Copy + Hash + Eq` helps to put `InputIndicator`s into containers.
-pub trait InputIndicator: Debug + Display + Copy + Hash + Eq + ToTokens {
+///
+/// This is a _sealed_ trait. It is not intended (or possible) to implement this trait outside the
+/// crate defining it.
+pub trait InputIndicator: Debug + Display + Copy + Hash + Eq + ToTokens + private::Seal {
     /// `true` iff `self` refers to a column in the base table.
     fn is_main_table_column(&self) -> bool;
 
@@ -121,6 +129,8 @@ pub enum SingleRowIndicator {
     Main(usize),
     Aux(usize),
 }
+
+impl private::Seal for SingleRowIndicator {}
 
 impl Display for SingleRowIndicator {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
@@ -186,6 +196,8 @@ pub enum DualRowIndicator {
     NextMain(usize),
     NextAux(usize),
 }
+
+impl private::Seal for DualRowIndicator {}
 
 impl Display for DualRowIndicator {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
