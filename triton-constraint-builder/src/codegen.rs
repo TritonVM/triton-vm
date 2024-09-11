@@ -304,7 +304,7 @@ impl RustBackend {
         }
 
         // constants can be declared trivially
-        let CircuitExpression::BinaryOperation(_, lhs, rhs) = &circuit.expression else {
+        let CircuitExpression::BinOp(_, lhs, rhs) = &circuit.expression else {
             return None;
         };
 
@@ -339,7 +339,7 @@ impl RustBackend {
             return Self::binding_name(circuit);
         }
 
-        let CircuitExpression::BinaryOperation(binop, lhs, rhs) = &circuit.expression else {
+        let CircuitExpression::BinOp(binop, lhs, rhs) = &circuit.expression else {
             return Self::binding_name(circuit);
         };
 
@@ -350,11 +350,11 @@ impl RustBackend {
 
     fn binding_name<II: InputIndicator>(circuit: &ConstraintCircuit<II>) -> TokenStream {
         match &circuit.expression {
-            CircuitExpression::BConstant(bfe) => Self::tokenize_bfe(*bfe),
-            CircuitExpression::XConstant(xfe) => Self::tokenize_xfe(*xfe),
+            CircuitExpression::BConst(bfe) => Self::tokenize_bfe(*bfe),
+            CircuitExpression::XConst(xfe) => Self::tokenize_xfe(*xfe),
             CircuitExpression::Input(idx) => quote!(#idx),
             CircuitExpression::Challenge(challenge) => quote!(challenges[#challenge]),
-            CircuitExpression::BinaryOperation(_, _, _) => {
+            CircuitExpression::BinOp(_, _, _) => {
                 let node_ident = format_ident!("node_{}", circuit.id);
                 quote!(#node_ident)
             }
@@ -712,7 +712,7 @@ impl TasmBackend {
             return vec![];
         }
 
-        let CircuitExpression::BinaryOperation(_, lhs, rhs) = &constraint.expression else {
+        let CircuitExpression::BinOp(_, lhs, rhs) = &constraint.expression else {
             return vec![];
         };
 
@@ -739,7 +739,7 @@ impl TasmBackend {
             return self.load_node(constraint);
         }
 
-        let CircuitExpression::BinaryOperation(binop, lhs, rhs) = &constraint.expression else {
+        let CircuitExpression::BinOp(binop, lhs, rhs) = &constraint.expression else {
             return self.load_node(constraint);
         };
 
@@ -765,11 +765,11 @@ impl TasmBackend {
 
     fn load_node<II: InputIndicator>(&self, circuit: &ConstraintCircuit<II>) -> Vec<TokenStream> {
         match circuit.expression {
-            CircuitExpression::BConstant(bfe) => Self::load_ext_field_constant(bfe.into()),
-            CircuitExpression::XConstant(xfe) => Self::load_ext_field_constant(xfe),
+            CircuitExpression::BConst(bfe) => Self::load_ext_field_constant(bfe.into()),
+            CircuitExpression::XConst(xfe) => Self::load_ext_field_constant(xfe),
             CircuitExpression::Input(input) => self.load_input(input),
             CircuitExpression::Challenge(challenge_idx) => Self::load_challenge(challenge_idx),
-            CircuitExpression::BinaryOperation(_, _, _) => Self::load_evaluated_bin_op(circuit.id),
+            CircuitExpression::BinOp(_, _, _) => Self::load_evaluated_bin_op(circuit.id),
         }
     }
 

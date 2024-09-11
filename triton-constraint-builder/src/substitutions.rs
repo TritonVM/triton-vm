@@ -218,15 +218,14 @@ impl Substitutions {
     fn substitution_rule_to_code<II: InputIndicator>(
         circuit: ConstraintCircuit<II>,
     ) -> TokenStream {
-        let CircuitExpression::BinaryOperation(BinOp::Add, new_var, expr) = circuit.expression
-        else {
+        let CircuitExpression::BinOp(BinOp::Add, new_var, expr) = circuit.expression else {
             panic!("Substitution rule must be a subtraction, i.e., addition of `x` and `-expr`.");
         };
         let CircuitExpression::Input(_) = new_var.borrow().expression else {
             panic!("Substitution rule must be a simple substitution.");
         };
         let expr = expr.borrow();
-        let CircuitExpression::BinaryOperation(BinOp::Mul, neg_one, expr) = &expr.expression else {
+        let CircuitExpression::BinOp(BinOp::Mul, neg_one, expr) = &expr.expression else {
             panic!("Substitution rule must be a subtraction.");
         };
         assert!(neg_one.borrow().is_neg_one());

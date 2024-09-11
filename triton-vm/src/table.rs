@@ -181,7 +181,7 @@ mod tests {
         values: &mut HashMap<XFieldElement, (usize, ConstraintCircuit<II>)>,
     ) -> XFieldElement {
         let value = match &constraint.expression {
-            CircuitExpression::BinaryOperation(binop, lhs, rhs) => {
+            CircuitExpression::BinOp(binop, lhs, rhs) => {
                 let lhs = lhs.borrow();
                 let rhs = rhs.borrow();
                 let lhs = evaluate_assert_unique(&lhs, challenges, main_rows, aux_rows, values);
@@ -287,7 +287,7 @@ mod tests {
         ] {
             for (i, constraint) in constraints.iter().enumerate() {
                 let expression = constraint.circuit.borrow().expression.clone();
-                let CircuitExpression::BinaryOperation(BinOp::Add, lhs, rhs) = expression else {
+                let CircuitExpression::BinOp(BinOp::Add, lhs, rhs) = expression else {
                     panic!("New {constraint_type} constraint {i} must be a subtraction.");
                 };
                 let CircuitExpression::Input(input_indicator) = lhs.borrow().expression.clone()
@@ -361,7 +361,7 @@ mod tests {
         substitution_rule: &ConstraintCircuit<II>,
     ) {
         match substitution_rule.expression.clone() {
-            CircuitExpression::BinaryOperation(_, lhs, rhs) => {
+            CircuitExpression::BinOp(_, lhs, rhs) => {
                 let lhs = lhs.borrow();
                 let rhs = rhs.borrow();
                 assert_substitution_rule_uses_legal_variables(new_var, &lhs);
