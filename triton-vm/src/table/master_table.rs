@@ -1231,6 +1231,8 @@ mod tests {
     use num_traits::Zero;
     use proptest::prelude::*;
     use proptest_arbitrary_interop::arb;
+    use rand::rngs::StdRng;
+    use rand_core::SeedableRng;
     use strum::EnumCount;
     use strum::EnumIter;
     use strum::IntoEnumIterator;
@@ -2092,5 +2094,116 @@ mod tests {
 
         let expected_digest = Tip5::hash_varlen(&elements);
         prop_assert_eq!(expected_digest, pending_absorb_digest);
+    }
+
+    /// Test whether the AIR constraint evaluators are the same between
+    ///  (a) the time when this test was written or last updated; and
+    ///  (b) the time when the test is being executed.
+    ///
+    /// This test catches (whp) unintended changes, whether due to
+    /// nondeterminisms (on a single machine or across various machines) or due
+    /// to changes to the definitions of the constraints. If the change to the
+    /// constraints was intentional, this test should fail until the expected
+    /// value in the assert-statement is updated.
+    #[test]
+    fn air_constraints_evaluators_have_not_changed() {
+        let seed: [u8; 32] = [
+            193, 123, 173, 34, 45, 172, 73, 224, 156, 208, 121, 29, 245, 142, 215, 124, 188, 114,
+            203, 148, 186, 245, 224, 76, 142, 129, 82, 225, 81, 28, 216, 183,
+        ];
+
+        let mut rng: StdRng = SeedableRng::from_seed(seed);
+
+        // pseudorandomly populate circuit inputs
+        let main_row_current_base = rng.gen::<[BFieldElement; MasterMainTable::NUM_COLUMNS]>();
+        let main_row_current_base = Array1::<BFieldElement>::from(main_row_current_base.to_vec());
+        let main_row_current_extension = rng.gen::<[BFieldElement; MasterMainTable::NUM_COLUMNS]>();
+        let main_row_current_extension =
+            Array1::<BFieldElement>::from(main_row_current_extension.to_vec());
+        let aux_row_current = rng.gen::<[XFieldElement; MasterAuxTable::NUM_COLUMNS]>();
+        let aux_row_current = Array1::<XFieldElement>::from(aux_row_current.to_vec());
+        let main_row_next_base = rng.gen::<[BFieldElement; MasterMainTable::NUM_COLUMNS]>();
+        let main_row_next_base = Array1::<BFieldElement>::from(main_row_next_base.to_vec());
+        let main_row_next_extension = rng.gen::<[BFieldElement; MasterMainTable::NUM_COLUMNS]>();
+        let main_row_next_extension =
+            Array1::<BFieldElement>::from(main_row_next_extension.to_vec());
+        let aux_row_next = rng.gen::<[XFieldElement; MasterAuxTable::NUM_COLUMNS]>();
+        let aux_row_next = Array1::<XFieldElement>::from(aux_row_next.to_vec());
+        let challenges = Challenges {
+            challenges: rng.gen(),
+        };
+
+        // invoke all possible AIR circuit evaluators
+        let initial_base = MasterAuxTable::evaluate_initial_constraints(
+            main_row_current_base.view(),
+            aux_row_current.view(),
+            &challenges,
+        );
+        let initial_extension = MasterAuxTable::evaluate_initial_constraints(
+            main_row_current_extension.view(),
+            aux_row_current.view(),
+            &challenges,
+        );
+        let consistency_base = MasterAuxTable::evaluate_consistency_constraints(
+            main_row_current_base.view(),
+            aux_row_current.view(),
+            &challenges,
+        );
+        let consistency_extension = MasterAuxTable::evaluate_consistency_constraints(
+            main_row_current_extension.view(),
+            aux_row_current.view(),
+            &challenges,
+        );
+        let transition_base = MasterAuxTable::evaluate_transition_constraints(
+            main_row_current_base.view(),
+            aux_row_current.view(),
+            main_row_next_base.view(),
+            aux_row_next.view(),
+            &challenges,
+        );
+        let transition_extension = MasterAuxTable::evaluate_transition_constraints(
+            main_row_current_extension.view(),
+            aux_row_current.view(),
+            main_row_next_extension.view(),
+            aux_row_next.view(),
+            &challenges,
+        );
+        let terminal_base = MasterAuxTable::evaluate_terminal_constraints(
+            main_row_current_base.view(),
+            aux_row_current.view(),
+            &challenges,
+        );
+        let terminal_extension = MasterAuxTable::evaluate_terminal_constraints(
+            main_row_current_extension.view(),
+            aux_row_current.view(),
+            &challenges,
+        );
+
+        // interpret result as coefficient vector of polynomial
+        let coefficients = [
+            initial_base,
+            initial_extension,
+            consistency_base,
+            consistency_extension,
+            transition_base,
+            transition_extension,
+            terminal_base,
+            terminal_extension,
+        ]
+        .concat();
+        let polynomial = Polynomial::new(coefficients);
+
+        // evaluate polynomial in pseudorandom indeterminate
+        let x = rng.gen::<XFieldElement>();
+        let value = polynomial.evaluate(x);
+        let expected = xfe!([
+            9140558386905394900_u64,
+            6769459618545093804_u64,
+            3756754445351585926_u64
+        ]);
+        assert_eq!(
+            expected, value,
+            "expected value was {expected} but observation was {value}"
+        );
     }
 }
