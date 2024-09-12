@@ -142,7 +142,8 @@ mod tests {
     use proptest_arbitrary_interop::arb;
     use test_strategy::proptest;
 
-    use crate::shared_tests::*;
+    use crate::shared_tests::arbitrary_polynomial;
+    use crate::shared_tests::arbitrary_polynomial_of_degree;
 
     use super::*;
 

@@ -6,16 +6,17 @@ use std::fmt::Result as FmtResult;
 use std::ops::Range;
 
 use air::table::hash::PermutationTrace;
-use air::table::processor::ProcessorTable;
 use air::table::processor::NUM_HELPER_VARIABLE_REGISTERS;
-use air::table_column::*;
-use air::AIR;
+use air::table_column::MasterMainColumn;
+use air::table_column::ProcessorMainColumn;
 use arbitrary::Arbitrary;
 use isa::error::InstructionError;
-use isa::instruction::AnInstruction::*;
+use isa::error::OpStackError;
 use isa::instruction::Instruction;
-use isa::op_stack::OpStackElement::*;
-use isa::op_stack::*;
+use isa::op_stack::NumberOfWords;
+use isa::op_stack::OpStack;
+use isa::op_stack::OpStackElement;
+use isa::op_stack::UnderflowIO;
 use isa::program::Program;
 use itertools::Itertools;
 use ndarray::Array1;
@@ -37,7 +38,6 @@ use crate::profiler::profiler;
 use crate::table::op_stack::OpStackTableEntry;
 use crate::table::ram::RamTableCall;
 use crate::table::u32::U32TableEntry;
-use crate::vm::CoProcessorCall::*;
 
 type VMResult<T> = Result<T, VMError>;
 type InstructionResult<T> = Result<T, InstructionError>;
@@ -81,19 +81,25 @@ pub struct VMState {
     pub instruction_pointer: usize,
 
     /// The current state of the one, global [`Sponge`] that can be manipulated
-    /// using instructions [`SpongeInit`], [`SpongeAbsorb`], [`SpongeAbsorbMem`],
-    /// and [`SpongeSqueeze`]. Instruction [`SpongeInit`] resets the Sponge.
+    /// using instructions [`SpongeInit`][init], [`SpongeAbsorb`][absorb],
+    /// [`SpongeAbsorbMem`][absorb_mem], and [`SpongeSqueeze`][squeeze].
+    /// Instruction [`SpongeInit`][init] resets the Sponge.
     ///
     /// Note that this is the _full_ state, including capacity. The capacity should never be
     /// exposed outside the VM.
+    ///
+    /// [init]: Instruction::SpongeInit
+    /// [absorb]: Instruction::SpongeAbsorb
+    /// [absorb_mem]: Instruction::SpongeAbsorbMem
+    /// [squeeze]: Instruction::SpongeSqueeze
     pub sponge: Option<Tip5>,
 
     /// Indicates whether the terminating instruction `halt` has been executed.
     pub halting: bool,
 }
 
-/// A call from the main processor to one of the co-processors, including the trace for that
-/// co-processor or enough information to deduce the trace.
+/// A call from the main processor to one of the coprocessors, including the trace for that
+/// coprocessor or enough information to deduce the trace.
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum CoProcessorCall {
     SpongeStateReset,
@@ -105,11 +111,11 @@ pub enum CoProcessorCall {
     /// One row per round in the Tip5 permutation.
     Tip5Trace(Instruction, Box<PermutationTrace>),
 
-    U32Call(U32TableEntry),
+    U32(U32TableEntry),
 
-    OpStackCall(OpStackTableEntry),
+    OpStack(OpStackTableEntry),
 
-    RamCall(RamTableCall),
+    Ram(RamTableCall),
 }
 
 impl VM {
@@ -269,36 +275,44 @@ impl VMState {
         let ram_read = |address| self.ram.get(&address).copied().unwrap_or_else(|| bfe!(0));
 
         match current_instruction {
-            Pop(_) | Divine(_) | Dup(_) | Swap(_) | ReadMem(_) | WriteMem(_) | ReadIo(_)
-            | WriteIo(_) => {
+            Instruction::Pop(_)
+            | Instruction::Divine(_)
+            | Instruction::Dup(_)
+            | Instruction::Swap(_)
+            | Instruction::ReadMem(_)
+            | Instruction::WriteMem(_)
+            | Instruction::ReadIo(_)
+            | Instruction::WriteIo(_) => {
                 let arg = current_instruction.arg().unwrap().value();
                 hvs[..4].copy_from_slice(&decompose_arg(arg));
             }
-            Skiz => {
-                let st0 = self.op_stack[ST0];
+            Instruction::Skiz => {
+                let st0 = self.op_stack[0];
                 hvs[0] = st0.inverse_or_zero();
                 let next_opcode = self.next_instruction_or_argument().value();
                 let decomposition = Self::decompose_opcode_for_instruction_skiz(next_opcode);
                 hvs[1..6].copy_from_slice(&decomposition);
             }
-            RecurseOrReturn => hvs[0] = (self.op_stack[ST6] - self.op_stack[ST5]).inverse_or_zero(),
-            SpongeAbsorbMem => {
-                hvs[0] = ram_read(self.op_stack[ST0] + bfe!(4));
-                hvs[1] = ram_read(self.op_stack[ST0] + bfe!(5));
-                hvs[2] = ram_read(self.op_stack[ST0] + bfe!(6));
-                hvs[3] = ram_read(self.op_stack[ST0] + bfe!(7));
-                hvs[4] = ram_read(self.op_stack[ST0] + bfe!(8));
-                hvs[5] = ram_read(self.op_stack[ST0] + bfe!(9));
+            Instruction::RecurseOrReturn => {
+                hvs[0] = (self.op_stack[6] - self.op_stack[5]).inverse_or_zero()
             }
-            MerkleStep => {
+            Instruction::SpongeAbsorbMem => {
+                hvs[0] = ram_read(self.op_stack[0] + bfe!(4));
+                hvs[1] = ram_read(self.op_stack[0] + bfe!(5));
+                hvs[2] = ram_read(self.op_stack[0] + bfe!(6));
+                hvs[3] = ram_read(self.op_stack[0] + bfe!(7));
+                hvs[4] = ram_read(self.op_stack[0] + bfe!(8));
+                hvs[5] = ram_read(self.op_stack[0] + bfe!(9));
+            }
+            Instruction::MerkleStep => {
                 let divined_digest = self.secret_digests.front().copied().unwrap_or_default();
-                let node_index = self.op_stack[ST5].value();
+                let node_index = self.op_stack[5].value();
                 hvs[..5].copy_from_slice(&divined_digest.values());
                 hvs[5] = bfe!(node_index % 2);
             }
-            MerkleStepMem => {
-                let node_index = self.op_stack[ST5].value();
-                let ram_pointer = self.op_stack[ST7];
+            Instruction::MerkleStepMem => {
+                let node_index = self.op_stack[5].value();
+                let ram_pointer = self.op_stack[7];
                 hvs[0] = ram_read(ram_pointer);
                 hvs[1] = ram_read(ram_pointer + bfe!(1));
                 hvs[2] = ram_read(ram_pointer + bfe!(2));
@@ -306,8 +320,8 @@ impl VMState {
                 hvs[4] = ram_read(ram_pointer + bfe!(4));
                 hvs[5] = bfe!(node_index % 2);
             }
-            Split => {
-                let top_of_stack = self.op_stack[ST0].value();
+            Instruction::Split => {
+                let top_of_stack = self.op_stack[0].value();
                 let lo = bfe!(top_of_stack & 0xffff_ffff);
                 let hi = bfe!(top_of_stack >> 32);
                 if !lo.is_zero() {
@@ -315,20 +329,20 @@ impl VMState {
                     hvs[0] = (hi - max_val_of_hi).inverse_or_zero();
                 }
             }
-            Eq => hvs[0] = (self.op_stack[ST1] - self.op_stack[ST0]).inverse_or_zero(),
-            XxDotStep => {
-                hvs[0] = ram_read(self.op_stack[ST0]);
-                hvs[1] = ram_read(self.op_stack[ST0] + bfe!(1));
-                hvs[2] = ram_read(self.op_stack[ST0] + bfe!(2));
-                hvs[3] = ram_read(self.op_stack[ST1]);
-                hvs[4] = ram_read(self.op_stack[ST1] + bfe!(1));
-                hvs[5] = ram_read(self.op_stack[ST1] + bfe!(2));
+            Instruction::Eq => hvs[0] = (self.op_stack[1] - self.op_stack[0]).inverse_or_zero(),
+            Instruction::XxDotStep => {
+                hvs[0] = ram_read(self.op_stack[0]);
+                hvs[1] = ram_read(self.op_stack[0] + bfe!(1));
+                hvs[2] = ram_read(self.op_stack[0] + bfe!(2));
+                hvs[3] = ram_read(self.op_stack[1]);
+                hvs[4] = ram_read(self.op_stack[1] + bfe!(1));
+                hvs[5] = ram_read(self.op_stack[1] + bfe!(2));
             }
-            XbDotStep => {
-                hvs[0] = ram_read(self.op_stack[ST0]);
-                hvs[1] = ram_read(self.op_stack[ST1]);
-                hvs[2] = ram_read(self.op_stack[ST1] + bfe!(1));
-                hvs[3] = ram_read(self.op_stack[ST1] + bfe!(2));
+            Instruction::XbDotStep => {
+                hvs[0] = ram_read(self.op_stack[0]);
+                hvs[1] = ram_read(self.op_stack[1]);
+                hvs[2] = ram_read(self.op_stack[1] + bfe!(1));
+                hvs[3] = ram_read(self.op_stack[1] + bfe!(2));
             }
             _ => (),
         }
@@ -360,50 +374,50 @@ impl VMState {
 
         self.start_recording_op_stack_calls();
         let mut co_processor_calls = match current_instruction {
-            Pop(n) => self.pop(n)?,
-            Push(field_element) => self.push(field_element),
-            Divine(n) => self.divine(n)?,
-            Dup(stack_element) => self.dup(stack_element),
-            Swap(stack_element) => self.swap(stack_element),
-            Halt => self.halt(),
-            Nop => self.nop(),
-            Skiz => self.skiz()?,
-            Call(address) => self.call(address),
-            Return => self.return_from_call()?,
-            Recurse => self.recurse()?,
-            RecurseOrReturn => self.recurse_or_return()?,
-            Assert => self.assert()?,
-            ReadMem(n) => self.read_mem(n)?,
-            WriteMem(n) => self.write_mem(n)?,
-            Hash => self.hash()?,
-            SpongeInit => self.sponge_init(),
-            SpongeAbsorb => self.sponge_absorb()?,
-            SpongeAbsorbMem => self.sponge_absorb_mem()?,
-            SpongeSqueeze => self.sponge_squeeze()?,
-            AssertVector => self.assert_vector()?,
-            Add => self.add()?,
-            AddI(field_element) => self.addi(field_element),
-            Mul => self.mul()?,
-            Invert => self.invert()?,
-            Eq => self.eq()?,
-            Split => self.split()?,
-            Lt => self.lt()?,
-            And => self.and()?,
-            Xor => self.xor()?,
-            Log2Floor => self.log_2_floor()?,
-            Pow => self.pow()?,
-            DivMod => self.div_mod()?,
-            PopCount => self.pop_count()?,
-            XxAdd => self.xx_add()?,
-            XxMul => self.xx_mul()?,
-            XInvert => self.x_invert()?,
-            XbMul => self.xb_mul()?,
-            WriteIo(n) => self.write_io(n)?,
-            ReadIo(n) => self.read_io(n)?,
-            MerkleStep => self.merkle_step_non_determinism()?,
-            MerkleStepMem => self.merkle_step_mem()?,
-            XxDotStep => self.xx_dot_step()?,
-            XbDotStep => self.xb_dot_step()?,
+            Instruction::Pop(n) => self.pop(n)?,
+            Instruction::Push(field_element) => self.push(field_element),
+            Instruction::Divine(n) => self.divine(n)?,
+            Instruction::Dup(stack_element) => self.dup(stack_element),
+            Instruction::Swap(stack_element) => self.swap(stack_element),
+            Instruction::Halt => self.halt(),
+            Instruction::Nop => self.nop(),
+            Instruction::Skiz => self.skiz()?,
+            Instruction::Call(address) => self.call(address),
+            Instruction::Return => self.return_from_call()?,
+            Instruction::Recurse => self.recurse()?,
+            Instruction::RecurseOrReturn => self.recurse_or_return()?,
+            Instruction::Assert => self.assert()?,
+            Instruction::ReadMem(n) => self.read_mem(n)?,
+            Instruction::WriteMem(n) => self.write_mem(n)?,
+            Instruction::Hash => self.hash()?,
+            Instruction::SpongeInit => self.sponge_init(),
+            Instruction::SpongeAbsorb => self.sponge_absorb()?,
+            Instruction::SpongeAbsorbMem => self.sponge_absorb_mem()?,
+            Instruction::SpongeSqueeze => self.sponge_squeeze()?,
+            Instruction::AssertVector => self.assert_vector()?,
+            Instruction::Add => self.add()?,
+            Instruction::AddI(field_element) => self.addi(field_element),
+            Instruction::Mul => self.mul()?,
+            Instruction::Invert => self.invert()?,
+            Instruction::Eq => self.eq()?,
+            Instruction::Split => self.split()?,
+            Instruction::Lt => self.lt()?,
+            Instruction::And => self.and()?,
+            Instruction::Xor => self.xor()?,
+            Instruction::Log2Floor => self.log_2_floor()?,
+            Instruction::Pow => self.pow()?,
+            Instruction::DivMod => self.div_mod()?,
+            Instruction::PopCount => self.pop_count()?,
+            Instruction::XxAdd => self.xx_add()?,
+            Instruction::XxMul => self.xx_mul()?,
+            Instruction::XInvert => self.x_invert()?,
+            Instruction::XbMul => self.xb_mul()?,
+            Instruction::WriteIo(n) => self.write_io(n)?,
+            Instruction::ReadIo(n) => self.read_io(n)?,
+            Instruction::MerkleStep => self.merkle_step_non_determinism()?,
+            Instruction::MerkleStepMem => self.merkle_step_mem()?,
+            Instruction::XxDotStep => self.xx_dot_step()?,
+            Instruction::XbDotStep => self.xb_dot_step()?,
         };
         let op_stack_calls = self.stop_recording_op_stack_calls();
         co_processor_calls.extend(op_stack_calls);
@@ -433,7 +447,7 @@ impl VMState {
         );
         op_stack_table_entries
             .into_iter()
-            .map(OpStackCall)
+            .map(CoProcessorCall::OpStack)
             .collect()
     }
 
@@ -442,7 +456,7 @@ impl VMState {
     }
 
     fn stop_recording_ram_calls(&mut self) -> Vec<CoProcessorCall> {
-        self.ram_calls.drain(..).map(RamCall).collect()
+        self.ram_calls.drain(..).map(CoProcessorCall::Ram).collect()
     }
 
     fn pop(&mut self, n: NumberOfWords) -> InstructionResult<Vec<CoProcessorCall>> {
@@ -484,7 +498,7 @@ impl VMState {
     }
 
     fn swap(&mut self, st: OpStackElement) -> Vec<CoProcessorCall> {
-        (self.op_stack[ST0], self.op_stack[st]) = (self.op_stack[st], self.op_stack[ST0]);
+        (self.op_stack[0], self.op_stack[st]) = (self.op_stack[st], self.op_stack[0]);
         self.instruction_pointer += 2;
         vec![]
     }
@@ -530,7 +544,7 @@ impl VMState {
             return Err(InstructionError::JumpStackIsEmpty);
         }
 
-        let new_ip = if self.op_stack[ST5] == self.op_stack[ST6] {
+        let new_ip = if self.op_stack[5] == self.op_stack[6] {
             let (call_origin, _) = self.jump_stack_pop()?;
             call_origin
         } else {
@@ -544,7 +558,7 @@ impl VMState {
     }
 
     fn assert(&mut self) -> InstructionResult<Vec<CoProcessorCall>> {
-        if !self.op_stack[ST0].is_one() {
+        if !self.op_stack[0].is_one() {
             return Err(InstructionError::AssertionFailed);
         }
         let _ = self.op_stack.pop()?;
@@ -631,7 +645,10 @@ impl VMState {
             self.op_stack.push(hash_output[i]);
         }
 
-        let co_processor_calls = vec![Tip5Trace(Hash, Box::new(tip5_trace))];
+        let co_processor_calls = vec![CoProcessorCall::Tip5Trace(
+            Instruction::Hash,
+            Box::new(tip5_trace),
+        )];
 
         self.instruction_pointer += 1;
         Ok(co_processor_calls)
@@ -640,7 +657,7 @@ impl VMState {
     fn sponge_init(&mut self) -> Vec<CoProcessorCall> {
         self.sponge = Some(Tip5::init());
         self.instruction_pointer += 1;
-        vec![SpongeStateReset]
+        vec![CoProcessorCall::SpongeStateReset]
     }
 
     fn sponge_absorb(&mut self) -> InstructionResult<Vec<CoProcessorCall>> {
@@ -651,7 +668,10 @@ impl VMState {
         sponge.state[..tip5::RATE].copy_from_slice(&to_absorb);
         let tip5_trace = sponge.trace();
 
-        let co_processor_calls = vec![Tip5Trace(SpongeAbsorb, Box::new(tip5_trace))];
+        let co_processor_calls = vec![CoProcessorCall::Tip5Trace(
+            Instruction::SpongeAbsorb,
+            Box::new(tip5_trace),
+        )];
 
         self.instruction_pointer += 1;
         Ok(co_processor_calls)
@@ -680,7 +700,10 @@ impl VMState {
         self.sponge = Some(sponge);
 
         let mut co_processor_calls = self.stop_recording_ram_calls();
-        co_processor_calls.push(Tip5Trace(SpongeAbsorb, Box::new(tip5_trace)));
+        co_processor_calls.push(CoProcessorCall::Tip5Trace(
+            Instruction::SpongeAbsorb,
+            Box::new(tip5_trace),
+        ));
 
         self.instruction_pointer += 1;
         Ok(co_processor_calls)
@@ -695,7 +718,10 @@ impl VMState {
         }
         let tip5_trace = sponge.trace();
 
-        let co_processor_calls = vec![Tip5Trace(SpongeSqueeze, Box::new(tip5_trace))];
+        let co_processor_calls = vec![CoProcessorCall::Tip5Trace(
+            Instruction::SpongeSqueeze,
+            Box::new(tip5_trace),
+        )];
 
         self.instruction_pointer += 1;
         Ok(co_processor_calls)
@@ -722,7 +748,7 @@ impl VMState {
     }
 
     fn addi(&mut self, i: BFieldElement) -> Vec<CoProcessorCall> {
-        self.op_stack[ST0] += i;
+        self.op_stack[0] += i;
         self.instruction_pointer += 2;
         vec![]
     }
@@ -737,7 +763,7 @@ impl VMState {
     }
 
     fn invert(&mut self) -> InstructionResult<Vec<CoProcessorCall>> {
-        let top_of_stack = self.op_stack[ST0];
+        let top_of_stack = self.op_stack[0];
         if top_of_stack.is_zero() {
             return Err(InstructionError::InverseOfZero);
         }
@@ -764,46 +790,46 @@ impl VMState {
         self.op_stack.push(hi);
         self.op_stack.push(lo);
 
-        let u32_table_entry = U32TableEntry::new(Split, lo, hi);
-        let co_processor_calls = vec![U32Call(u32_table_entry)];
+        let u32_table_entry = U32TableEntry::new(Instruction::Split, lo, hi);
+        let co_processor_calls = vec![CoProcessorCall::U32(u32_table_entry)];
 
         self.instruction_pointer += 1;
         Ok(co_processor_calls)
     }
 
     fn lt(&mut self) -> InstructionResult<Vec<CoProcessorCall>> {
-        self.op_stack.is_u32(ST0)?;
-        self.op_stack.is_u32(ST1)?;
+        self.op_stack.is_u32(OpStackElement::ST0)?;
+        self.op_stack.is_u32(OpStackElement::ST1)?;
         let lhs = self.op_stack.pop_u32()?;
         let rhs = self.op_stack.pop_u32()?;
         let lt: u32 = (lhs < rhs).into();
         self.op_stack.push(lt.into());
 
-        let u32_table_entry = U32TableEntry::new(Lt, lhs, rhs);
-        let co_processor_calls = vec![U32Call(u32_table_entry)];
+        let u32_table_entry = U32TableEntry::new(Instruction::Lt, lhs, rhs);
+        let co_processor_calls = vec![CoProcessorCall::U32(u32_table_entry)];
 
         self.instruction_pointer += 1;
         Ok(co_processor_calls)
     }
 
     fn and(&mut self) -> InstructionResult<Vec<CoProcessorCall>> {
-        self.op_stack.is_u32(ST0)?;
-        self.op_stack.is_u32(ST1)?;
+        self.op_stack.is_u32(OpStackElement::ST0)?;
+        self.op_stack.is_u32(OpStackElement::ST1)?;
         let lhs = self.op_stack.pop_u32()?;
         let rhs = self.op_stack.pop_u32()?;
         let and = lhs & rhs;
         self.op_stack.push(and.into());
 
-        let u32_table_entry = U32TableEntry::new(And, lhs, rhs);
-        let co_processor_calls = vec![U32Call(u32_table_entry)];
+        let u32_table_entry = U32TableEntry::new(Instruction::And, lhs, rhs);
+        let co_processor_calls = vec![CoProcessorCall::U32(u32_table_entry)];
 
         self.instruction_pointer += 1;
         Ok(co_processor_calls)
     }
 
     fn xor(&mut self) -> InstructionResult<Vec<CoProcessorCall>> {
-        self.op_stack.is_u32(ST0)?;
-        self.op_stack.is_u32(ST1)?;
+        self.op_stack.is_u32(OpStackElement::ST0)?;
+        self.op_stack.is_u32(OpStackElement::ST1)?;
         let lhs = self.op_stack.pop_u32()?;
         let rhs = self.op_stack.pop_u32()?;
         let xor = lhs ^ rhs;
@@ -812,16 +838,16 @@ impl VMState {
         // Triton VM uses the following equality to compute the results of both the `and`
         // and `xor` instruction using the u32 coprocessor's `and` capability:
         // a ^ b = a + b - 2 · (a & b)
-        let u32_table_entry = U32TableEntry::new(And, lhs, rhs);
-        let co_processor_calls = vec![U32Call(u32_table_entry)];
+        let u32_table_entry = U32TableEntry::new(Instruction::And, lhs, rhs);
+        let co_processor_calls = vec![CoProcessorCall::U32(u32_table_entry)];
 
         self.instruction_pointer += 1;
         Ok(co_processor_calls)
     }
 
     fn log_2_floor(&mut self) -> InstructionResult<Vec<CoProcessorCall>> {
-        self.op_stack.is_u32(ST0)?;
-        let top_of_stack = self.op_stack[ST0];
+        self.op_stack.is_u32(OpStackElement::ST0)?;
+        let top_of_stack = self.op_stack[0];
         if top_of_stack.is_zero() {
             return Err(InstructionError::LogarithmOfZero);
         }
@@ -829,31 +855,31 @@ impl VMState {
         let log_2_floor = top_of_stack.ilog2();
         self.op_stack.push(log_2_floor.into());
 
-        let u32_table_entry = U32TableEntry::new(Log2Floor, top_of_stack, 0);
-        let co_processor_calls = vec![U32Call(u32_table_entry)];
+        let u32_table_entry = U32TableEntry::new(Instruction::Log2Floor, top_of_stack, 0);
+        let co_processor_calls = vec![CoProcessorCall::U32(u32_table_entry)];
 
         self.instruction_pointer += 1;
         Ok(co_processor_calls)
     }
 
     fn pow(&mut self) -> InstructionResult<Vec<CoProcessorCall>> {
-        self.op_stack.is_u32(ST1)?;
+        self.op_stack.is_u32(OpStackElement::ST1)?;
         let base = self.op_stack.pop()?;
         let exponent = self.op_stack.pop_u32()?;
         let base_pow_exponent = base.mod_pow(exponent.into());
         self.op_stack.push(base_pow_exponent);
 
-        let u32_table_entry = U32TableEntry::new(Pow, base, exponent);
-        let co_processor_calls = vec![U32Call(u32_table_entry)];
+        let u32_table_entry = U32TableEntry::new(Instruction::Pow, base, exponent);
+        let co_processor_calls = vec![CoProcessorCall::U32(u32_table_entry)];
 
         self.instruction_pointer += 1;
         Ok(co_processor_calls)
     }
 
     fn div_mod(&mut self) -> InstructionResult<Vec<CoProcessorCall>> {
-        self.op_stack.is_u32(ST0)?;
-        self.op_stack.is_u32(ST1)?;
-        let denominator = self.op_stack[ST1];
+        self.op_stack.is_u32(OpStackElement::ST0)?;
+        self.op_stack.is_u32(OpStackElement::ST1)?;
+        let denominator = self.op_stack[1];
         if denominator.is_zero() {
             return Err(InstructionError::DivisionByZero);
         }
@@ -866,11 +892,13 @@ impl VMState {
         self.op_stack.push(quotient.into());
         self.op_stack.push(remainder.into());
 
-        let remainder_is_less_than_denominator = U32TableEntry::new(Lt, remainder, denominator);
-        let numerator_and_quotient_range_check = U32TableEntry::new(Split, numerator, quotient);
+        let remainder_is_less_than_denominator =
+            U32TableEntry::new(Instruction::Lt, remainder, denominator);
+        let numerator_and_quotient_range_check =
+            U32TableEntry::new(Instruction::Split, numerator, quotient);
         let co_processor_calls = vec![
-            U32Call(remainder_is_less_than_denominator),
-            U32Call(numerator_and_quotient_range_check),
+            CoProcessorCall::U32(remainder_is_less_than_denominator),
+            CoProcessorCall::U32(numerator_and_quotient_range_check),
         ];
 
         self.instruction_pointer += 1;
@@ -878,13 +906,13 @@ impl VMState {
     }
 
     fn pop_count(&mut self) -> InstructionResult<Vec<CoProcessorCall>> {
-        self.op_stack.is_u32(ST0)?;
+        self.op_stack.is_u32(OpStackElement::ST0)?;
         let top_of_stack = self.op_stack.pop_u32()?;
         let pop_count = top_of_stack.count_ones();
         self.op_stack.push(pop_count.into());
 
-        let u32_table_entry = U32TableEntry::new(PopCount, top_of_stack, 0);
-        let co_processor_calls = vec![U32Call(u32_table_entry)];
+        let u32_table_entry = U32TableEntry::new(Instruction::PopCount, top_of_stack, 0);
+        let co_processor_calls = vec![CoProcessorCall::U32(u32_table_entry)];
 
         self.instruction_pointer += 1;
         Ok(co_processor_calls)
@@ -952,21 +980,21 @@ impl VMState {
     }
 
     fn merkle_step_non_determinism(&mut self) -> InstructionResult<Vec<CoProcessorCall>> {
-        self.op_stack.is_u32(ST5)?;
+        self.op_stack.is_u32(OpStackElement::ST5)?;
         let sibling_digest = self.pop_secret_digest()?;
         self.merkle_step(sibling_digest)
     }
 
     fn merkle_step_mem(&mut self) -> InstructionResult<Vec<CoProcessorCall>> {
-        self.op_stack.is_u32(ST5)?;
+        self.op_stack.is_u32(OpStackElement::ST5)?;
         self.start_recording_ram_calls();
-        let mut ram_pointer = self.op_stack[ST7];
+        let mut ram_pointer = self.op_stack[7];
         let Digest(mut sibling_digest) = Digest::default();
         for digest_element in &mut sibling_digest {
             *digest_element = self.ram_read(ram_pointer);
             ram_pointer.increment();
         }
-        self.op_stack[ST7] = ram_pointer;
+        self.op_stack[7] = ram_pointer;
 
         let mut co_processor_calls = self.merkle_step(sibling_digest)?;
         co_processor_calls.extend(self.stop_recording_ram_calls());
@@ -977,7 +1005,7 @@ impl VMState {
         &mut self,
         sibling_digest: [BFieldElement; Digest::LEN],
     ) -> InstructionResult<Vec<CoProcessorCall>> {
-        let node_index = self.op_stack.get_u32(ST5)?;
+        let node_index = self.op_stack.get_u32(OpStackElement::ST5)?;
         let parent_node_index = node_index / 2;
 
         let accumulator_digest = self.op_stack.pop_multiple::<{ Digest::LEN }>()?;
@@ -996,12 +1024,17 @@ impl VMState {
         for &digest_element in accumulator_digest.iter().rev() {
             self.op_stack.push(digest_element);
         }
-        self.op_stack[ST5] = parent_node_index.into();
+        self.op_stack[5] = parent_node_index.into();
 
         self.instruction_pointer += 1;
 
-        let hash_co_processor_call = Tip5Trace(Hash, Box::new(tip5_trace));
-        let indices_are_u32 = U32Call(U32TableEntry::new(Split, node_index, parent_node_index));
+        let hash_co_processor_call =
+            CoProcessorCall::Tip5Trace(Instruction::Hash, Box::new(tip5_trace));
+        let indices_are_u32 = CoProcessorCall::U32(U32TableEntry::new(
+            Instruction::Split,
+            node_index,
+            parent_node_index,
+        ));
         let co_processor_calls = vec![hash_co_processor_call, indices_are_u32];
         Ok(co_processor_calls)
     }
@@ -1049,49 +1082,56 @@ impl VMState {
 
     pub fn to_processor_row(&self) -> Array1<BFieldElement> {
         use isa::instruction::InstructionBit;
-        use ProcessorMainColumn::*;
-        let mut processor_row = Array1::zeros(<ProcessorTable as AIR>::MainColumn::COUNT);
+        let mut processor_row = Array1::zeros(ProcessorMainColumn::COUNT);
 
-        let current_instruction = self.current_instruction().unwrap_or(Nop);
+        let current_instruction = self.current_instruction().unwrap_or(Instruction::Nop);
         let helper_variables = self.derive_helper_variables();
 
-        processor_row[CLK.main_index()] = u64::from(self.cycle_count).into();
-        processor_row[IP.main_index()] = (self.instruction_pointer as u32).into();
-        processor_row[CI.main_index()] = current_instruction.opcode_b();
-        processor_row[NIA.main_index()] = self.next_instruction_or_argument();
-        processor_row[IB0.main_index()] = current_instruction.ib(InstructionBit::IB0);
-        processor_row[IB1.main_index()] = current_instruction.ib(InstructionBit::IB1);
-        processor_row[IB2.main_index()] = current_instruction.ib(InstructionBit::IB2);
-        processor_row[IB3.main_index()] = current_instruction.ib(InstructionBit::IB3);
-        processor_row[IB4.main_index()] = current_instruction.ib(InstructionBit::IB4);
-        processor_row[IB5.main_index()] = current_instruction.ib(InstructionBit::IB5);
-        processor_row[IB6.main_index()] = current_instruction.ib(InstructionBit::IB6);
-        processor_row[JSP.main_index()] = self.jump_stack_pointer();
-        processor_row[JSO.main_index()] = self.jump_stack_origin();
-        processor_row[JSD.main_index()] = self.jump_stack_destination();
-        processor_row[ST0.main_index()] = self.op_stack[OpStackElement::ST0];
-        processor_row[ST1.main_index()] = self.op_stack[OpStackElement::ST1];
-        processor_row[ST2.main_index()] = self.op_stack[OpStackElement::ST2];
-        processor_row[ST3.main_index()] = self.op_stack[OpStackElement::ST3];
-        processor_row[ST4.main_index()] = self.op_stack[OpStackElement::ST4];
-        processor_row[ST5.main_index()] = self.op_stack[OpStackElement::ST5];
-        processor_row[ST6.main_index()] = self.op_stack[OpStackElement::ST6];
-        processor_row[ST7.main_index()] = self.op_stack[OpStackElement::ST7];
-        processor_row[ST8.main_index()] = self.op_stack[OpStackElement::ST8];
-        processor_row[ST9.main_index()] = self.op_stack[OpStackElement::ST9];
-        processor_row[ST10.main_index()] = self.op_stack[OpStackElement::ST10];
-        processor_row[ST11.main_index()] = self.op_stack[OpStackElement::ST11];
-        processor_row[ST12.main_index()] = self.op_stack[OpStackElement::ST12];
-        processor_row[ST13.main_index()] = self.op_stack[OpStackElement::ST13];
-        processor_row[ST14.main_index()] = self.op_stack[OpStackElement::ST14];
-        processor_row[ST15.main_index()] = self.op_stack[OpStackElement::ST15];
-        processor_row[OpStackPointer.main_index()] = self.op_stack.pointer();
-        processor_row[HV0.main_index()] = helper_variables[0];
-        processor_row[HV1.main_index()] = helper_variables[1];
-        processor_row[HV2.main_index()] = helper_variables[2];
-        processor_row[HV3.main_index()] = helper_variables[3];
-        processor_row[HV4.main_index()] = helper_variables[4];
-        processor_row[HV5.main_index()] = helper_variables[5];
+        processor_row[ProcessorMainColumn::CLK.main_index()] = u64::from(self.cycle_count).into();
+        processor_row[ProcessorMainColumn::IP.main_index()] =
+            (self.instruction_pointer as u32).into();
+        processor_row[ProcessorMainColumn::CI.main_index()] = current_instruction.opcode_b();
+        processor_row[ProcessorMainColumn::NIA.main_index()] = self.next_instruction_or_argument();
+        processor_row[ProcessorMainColumn::IB0.main_index()] =
+            current_instruction.ib(InstructionBit::IB0);
+        processor_row[ProcessorMainColumn::IB1.main_index()] =
+            current_instruction.ib(InstructionBit::IB1);
+        processor_row[ProcessorMainColumn::IB2.main_index()] =
+            current_instruction.ib(InstructionBit::IB2);
+        processor_row[ProcessorMainColumn::IB3.main_index()] =
+            current_instruction.ib(InstructionBit::IB3);
+        processor_row[ProcessorMainColumn::IB4.main_index()] =
+            current_instruction.ib(InstructionBit::IB4);
+        processor_row[ProcessorMainColumn::IB5.main_index()] =
+            current_instruction.ib(InstructionBit::IB5);
+        processor_row[ProcessorMainColumn::IB6.main_index()] =
+            current_instruction.ib(InstructionBit::IB6);
+        processor_row[ProcessorMainColumn::JSP.main_index()] = self.jump_stack_pointer();
+        processor_row[ProcessorMainColumn::JSO.main_index()] = self.jump_stack_origin();
+        processor_row[ProcessorMainColumn::JSD.main_index()] = self.jump_stack_destination();
+        processor_row[ProcessorMainColumn::ST0.main_index()] = self.op_stack[0];
+        processor_row[ProcessorMainColumn::ST1.main_index()] = self.op_stack[1];
+        processor_row[ProcessorMainColumn::ST2.main_index()] = self.op_stack[2];
+        processor_row[ProcessorMainColumn::ST3.main_index()] = self.op_stack[3];
+        processor_row[ProcessorMainColumn::ST4.main_index()] = self.op_stack[4];
+        processor_row[ProcessorMainColumn::ST5.main_index()] = self.op_stack[5];
+        processor_row[ProcessorMainColumn::ST6.main_index()] = self.op_stack[6];
+        processor_row[ProcessorMainColumn::ST7.main_index()] = self.op_stack[7];
+        processor_row[ProcessorMainColumn::ST8.main_index()] = self.op_stack[8];
+        processor_row[ProcessorMainColumn::ST9.main_index()] = self.op_stack[9];
+        processor_row[ProcessorMainColumn::ST10.main_index()] = self.op_stack[10];
+        processor_row[ProcessorMainColumn::ST11.main_index()] = self.op_stack[11];
+        processor_row[ProcessorMainColumn::ST12.main_index()] = self.op_stack[12];
+        processor_row[ProcessorMainColumn::ST13.main_index()] = self.op_stack[13];
+        processor_row[ProcessorMainColumn::ST14.main_index()] = self.op_stack[14];
+        processor_row[ProcessorMainColumn::ST15.main_index()] = self.op_stack[15];
+        processor_row[ProcessorMainColumn::OpStackPointer.main_index()] = self.op_stack.pointer();
+        processor_row[ProcessorMainColumn::HV0.main_index()] = helper_variables[0];
+        processor_row[ProcessorMainColumn::HV1.main_index()] = helper_variables[1];
+        processor_row[ProcessorMainColumn::HV2.main_index()] = helper_variables[2];
+        processor_row[ProcessorMainColumn::HV3.main_index()] = helper_variables[3];
+        processor_row[ProcessorMainColumn::HV4.main_index()] = helper_variables[4];
+        processor_row[ProcessorMainColumn::HV5.main_index()] = helper_variables[5];
 
         processor_row
     }
@@ -1396,6 +1436,7 @@ pub(crate) mod tests {
     use isa::instruction::AnInstruction;
     use isa::instruction::LabelledInstruction;
     use isa::instruction::ALL_INSTRUCTIONS;
+    use isa::op_stack::NUM_OP_STACK_REGISTERS;
     use isa::program::Program;
     use isa::triton_asm;
     use isa::triton_instr;
@@ -1412,7 +1453,6 @@ pub(crate) mod tests {
     use test_strategy::proptest;
     use twenty_first::math::other::random_elements;
 
-    use crate::example_programs::*;
     use crate::shared_tests::prove_and_verify;
     use crate::shared_tests::LeavedMerkleTreeTestData;
     use crate::shared_tests::ProgramAndInput;
@@ -1445,7 +1485,13 @@ pub(crate) mod tests {
     fn construct_test_program_for_instruction(
         instruction: AnInstruction<BFieldElement>,
     ) -> (Program, usize) {
-        if matches!(instruction, Call(_) | Return | Recurse | RecurseOrReturn) {
+        if matches!(
+            instruction,
+            Instruction::Call(_)
+                | Instruction::Return
+                | Instruction::Recurse
+                | Instruction::RecurseOrReturn
+        ) {
             // need jump stack setup
             let program = test_program_for_call_recurse_return().program;
             let stack_size = NUM_OP_STACK_REGISTERS;
@@ -1463,7 +1509,8 @@ pub(crate) mod tests {
 
     #[test]
     fn profile_can_be_created_and_agrees_with_regular_vm_run() {
-        let program = CALCULATE_NEW_MMR_PEAKS_FROM_APPEND_WITH_SAFE_LISTS.clone();
+        let program =
+            crate::example_programs::CALCULATE_NEW_MMR_PEAKS_FROM_APPEND_WITH_SAFE_LISTS.clone();
         let (profile_output, profile) = VM::profile(&program, [].into(), [].into()).unwrap();
         let mut vm_state = VMState::new(&program, [].into(), [].into());
         let_assert!(Ok(()) = vm_state.run());
@@ -1525,7 +1572,7 @@ pub(crate) mod tests {
 
     #[test]
     fn initialise_table() {
-        let program = GREATEST_COMMON_DIVISOR.clone();
+        let program = crate::example_programs::GREATEST_COMMON_DIVISOR.clone();
         let stdin = PublicInput::from([42, 56].map(|b| bfe!(b)));
         let secret_in = NonDeterminism::default();
         VM::trace_execution(&program, stdin, secret_in).unwrap();
@@ -1533,7 +1580,7 @@ pub(crate) mod tests {
 
     #[test]
     fn run_tvm_gcd() {
-        let program = GREATEST_COMMON_DIVISOR.clone();
+        let program = crate::example_programs::GREATEST_COMMON_DIVISOR.clone();
         let stdin = PublicInput::from([42, 56].map(|b| bfe!(b)));
         let secret_in = NonDeterminism::default();
         let_assert!(Ok(stdout) = VM::run(&program, stdin, secret_in));
@@ -1844,7 +1891,7 @@ pub(crate) mod tests {
             public_input.extend(old_root.reversed().values());
             public_input.extend(self.new_leaf.reversed().values());
 
-            ProgramAndInput::new(MERKLE_TREE_UPDATE.clone())
+            ProgramAndInput::new(crate::example_programs::MERKLE_TREE_UPDATE.clone())
                 .with_input(public_input)
                 .with_non_determinism(non_determinism)
         }
@@ -1961,14 +2008,19 @@ pub(crate) mod tests {
 
     impl SpongeAndHashInstructions {
         fn to_vm_instruction_sequence(self) -> Vec<Instruction> {
-            let push_array = |a: [_; tip5::RATE]| a.into_iter().rev().map(Push).collect_vec();
+            let push_array =
+                |a: [_; tip5::RATE]| a.into_iter().rev().map(Instruction::Push).collect_vec();
 
             match self {
-                Self::SpongeInit => vec![SpongeInit],
-                Self::SpongeAbsorb(input) => [push_array(input), vec![SpongeAbsorb]].concat(),
-                Self::SpongeAbsorbMem(ram_pointer) => vec![Push(ram_pointer), SpongeAbsorbMem],
-                Self::SpongeSqueeze => vec![SpongeSqueeze],
-                Self::Hash(input) => [push_array(input), vec![Hash]].concat(),
+                Self::SpongeInit => vec![Instruction::SpongeInit],
+                Self::SpongeAbsorb(input) => {
+                    [push_array(input), vec![Instruction::SpongeAbsorb]].concat()
+                }
+                Self::SpongeAbsorbMem(ram_pointer) => {
+                    vec![Instruction::Push(ram_pointer), Instruction::SpongeAbsorbMem]
+                }
+                Self::SpongeSqueeze => vec![Instruction::SpongeSqueeze],
+                Self::Hash(input) => [push_array(input), vec![Instruction::Hash]].concat(),
             }
         }
 
@@ -2719,7 +2771,7 @@ pub(crate) mod tests {
         );
         let mut vm_state = VMState::new(&program, [].into(), [].into());
         let_assert!(Ok(()) = vm_state.run());
-        assert!(BFieldElement::ZERO == vm_state.op_stack[ST0]);
+        assert!(BFieldElement::ZERO == vm_state.op_stack[0]);
     }
 
     #[test]
@@ -2776,10 +2828,10 @@ pub(crate) mod tests {
 
         let mut vm_state = VMState::new(&program, [].into(), [].into());
         let_assert!(Ok(()) = vm_state.run());
-        assert!(4 == vm_state.op_stack[ST0].value());
-        assert!(7 == vm_state.op_stack[ST1].value());
-        assert!(14 == vm_state.op_stack[ST2].value());
-        assert!(18 == vm_state.op_stack[ST3].value());
+        assert!(4 == vm_state.op_stack[0].value());
+        assert!(7 == vm_state.op_stack[1].value());
+        assert!(14 == vm_state.op_stack[2].value());
+        assert!(18 == vm_state.op_stack[3].value());
     }
 
     #[test]
@@ -2809,9 +2861,9 @@ pub(crate) mod tests {
 
         let mut vm_state = VMState::new(&program, [].into(), [].into());
         let_assert!(Ok(()) = vm_state.run());
-        assert!(2_u64 == vm_state.op_stack[ST0].value());
-        assert!(5_u64 == vm_state.op_stack[ST1].value());
-        assert!(5_u64 == vm_state.op_stack[ST2].value());
+        assert!(2_u64 == vm_state.op_stack[0].value());
+        assert!(5_u64 == vm_state.op_stack[1].value());
+        assert!(5_u64 == vm_state.op_stack[2].value());
     }
 
     #[proptest]
@@ -2836,7 +2888,7 @@ pub(crate) mod tests {
             public_input.extend(revealed_leaf.reversed().values());
         }
 
-        let program = MERKLE_TREE_AUTHENTICATION_PATH_VERIFY.clone();
+        let program = crate::example_programs::MERKLE_TREE_AUTHENTICATION_PATH_VERIFY.clone();
         assert!(let Ok(_) = VM::run(&program, public_input.into(), non_determinism));
     }
 
@@ -2910,7 +2962,8 @@ pub(crate) mod tests {
     fn run_tvm_fibonacci() {
         for (input, expected_output) in [(0, 1), (7, 21), (11, 144)] {
             let program_and_input =
-                ProgramAndInput::new(FIBONACCI_SEQUENCE.clone()).with_input(bfe_array![input]);
+                ProgramAndInput::new(crate::example_programs::FIBONACCI_SEQUENCE.clone())
+                    .with_input(bfe_array![input]);
             let_assert!(Ok(output) = program_and_input.run());
             let_assert!(&[output] = &output[..]);
             assert!(expected_output == output.value(), "input was: {input}");
@@ -2996,7 +3049,7 @@ pub(crate) mod tests {
 
     #[test]
     fn verify_sudoku() {
-        let program = VERIFY_SUDOKU.clone();
+        let program = crate::example_programs::VERIFY_SUDOKU.clone();
         let sudoku = [
             8, 5, 9, /**/ 7, 6, 1, /**/ 4, 2, 3, //
             4, 2, 6, /**/ 8, 5, 3, /**/ 7, 9, 1, //

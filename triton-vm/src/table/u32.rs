@@ -1,6 +1,6 @@
 use std::cmp::max;
 
-use air::challenge_id::ChallengeId::*;
+use air::challenge_id::ChallengeId;
 use air::cross_table_argument::CrossTableArg;
 use air::cross_table_argument::LookupArg;
 use air::table::u32::U32Table;
@@ -128,11 +128,11 @@ impl TraceTable for U32Table {
         assert_eq!(AuxColumn::COUNT, aux_table.ncols());
         assert_eq!(main_table.nrows(), aux_table.nrows());
 
-        let ci_weight = challenges[U32CiWeight];
-        let lhs_weight = challenges[U32LhsWeight];
-        let rhs_weight = challenges[U32RhsWeight];
-        let result_weight = challenges[U32ResultWeight];
-        let lookup_indeterminate = challenges[U32Indeterminate];
+        let ci_weight = challenges[ChallengeId::U32CiWeight];
+        let lhs_weight = challenges[ChallengeId::U32LhsWeight];
+        let rhs_weight = challenges[ChallengeId::U32RhsWeight];
+        let result_weight = challenges[ChallengeId::U32ResultWeight];
+        let lookup_indeterminate = challenges[ChallengeId::U32Indeterminate];
 
         let mut running_sum_log_derivative = LookupArg::default_initial();
         for row_idx in 0..main_table.nrows() {

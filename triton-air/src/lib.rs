@@ -25,7 +25,7 @@ pub mod table_column;
 /// - introduce new constraints `e = b²`, `f = c²`, and `g = e·f`,
 /// - replace the original constraint with `a = g·d`.
 ///
-/// The degree lowering happens in the Triton VM's build script, `build.rs`.
+/// The degree lowering happens in Triton VM's build script, `build.rs`.
 pub const TARGET_DEGREE: isize = 4;
 
 pub trait AIR {

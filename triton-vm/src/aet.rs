@@ -30,7 +30,6 @@ use crate::table::op_stack::OpStackTableEntry;
 use crate::table::ram::RamTableCall;
 use crate::table::u32::U32TableEntry;
 use crate::vm::CoProcessorCall;
-use crate::vm::CoProcessorCall::*;
 use crate::vm::VMState;
 
 /// An Algebraic Execution Trace (AET) is the primary witness required for proof generation. It
@@ -241,12 +240,14 @@ impl AlgebraicExecutionTrace {
 
     pub(crate) fn record_co_processor_call(&mut self, co_processor_call: CoProcessorCall) {
         match co_processor_call {
-            Tip5Trace(Instruction::Hash, trace) => self.append_hash_trace(*trace),
-            SpongeStateReset => self.append_initial_sponge_state(),
-            Tip5Trace(instruction, trace) => self.append_sponge_trace(instruction, *trace),
-            U32Call(u32_entry) => self.record_u32_table_entry(u32_entry),
-            OpStackCall(op_stack_entry) => self.record_op_stack_entry(op_stack_entry),
-            RamCall(ram_call) => self.record_ram_call(ram_call),
+            CoProcessorCall::Tip5Trace(Instruction::Hash, trace) => self.append_hash_trace(*trace),
+            CoProcessorCall::SpongeStateReset => self.append_initial_sponge_state(),
+            CoProcessorCall::Tip5Trace(instruction, trace) => {
+                self.append_sponge_trace(instruction, *trace)
+            }
+            CoProcessorCall::U32(u32_entry) => self.record_u32_table_entry(u32_entry),
+            CoProcessorCall::OpStack(op_stack_entry) => self.record_op_stack_entry(op_stack_entry),
+            CoProcessorCall::Ram(ram_call) => self.record_ram_call(ram_call),
         }
     }
 

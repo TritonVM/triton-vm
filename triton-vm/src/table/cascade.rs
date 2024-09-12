@@ -4,7 +4,6 @@ use air::cross_table_argument::LookupArg;
 use air::table::cascade::CascadeTable;
 use air::table_column::MasterAuxColumn;
 use air::table_column::MasterMainColumn;
-use air::AIR;
 use ndarray::s;
 use ndarray::ArrayView2;
 use ndarray::ArrayViewMut2;
@@ -18,8 +17,8 @@ use crate::challenges::Challenges;
 use crate::profiler::profiler;
 use crate::table::TraceTable;
 
-type MainColumn = <CascadeTable as AIR>::MainColumn;
-type AuxColumn = <CascadeTable as AIR>::AuxColumn;
+type MainColumn = <CascadeTable as air::AIR>::MainColumn;
+type AuxColumn = <CascadeTable as air::AIR>::AuxColumn;
 
 fn lookup_8_bit_limb(to_look_up: u8) -> BFieldElement {
     tip5::LOOKUP_TABLE[usize::from(to_look_up)].into()

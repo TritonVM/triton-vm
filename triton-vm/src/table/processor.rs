@@ -1,15 +1,17 @@
 use air::challenge_id::ChallengeId;
-use air::cross_table_argument::*;
+use air::cross_table_argument::CrossTableArg;
+use air::cross_table_argument::EvalArg;
+use air::cross_table_argument::LookupArg;
+use air::cross_table_argument::PermArg;
 use air::table::processor::ProcessorTable;
 use air::table::ram;
-use air::table_column::ProcessorMainColumn::*;
-use air::table_column::*;
-use isa::instruction::AnInstruction::*;
+use air::table_column::MasterAuxColumn;
+use air::table_column::MasterMainColumn;
 use isa::instruction::Instruction;
 use isa::op_stack::OpStackElement;
 use itertools::Itertools;
 use ndarray::parallel::prelude::*;
-use ndarray::*;
+use ndarray::prelude::*;
 use num_traits::ConstOne;
 use num_traits::One;
 use num_traits::Zero;
@@ -24,6 +26,9 @@ use crate::ndarray_helper::contiguous_column_slices;
 use crate::ndarray_helper::horizontal_multi_slice_mut;
 use crate::profiler::profiler;
 use crate::table::TraceTable;
+
+type MainColumn = <ProcessorTable as air::AIR>::MainColumn;
+type AuxColumn = <ProcessorTable as air::AIR>::AuxColumn;
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub(super) struct ClkJumpDiffs {
@@ -57,15 +62,15 @@ impl TraceTable for ProcessorTable {
         let mut processor_table = main_table.slice_mut(s![0..num_rows, ..]);
         processor_table.assign(&aet.processor_trace);
         processor_table
-            .column_mut(ClockJumpDifferenceLookupMultiplicity.main_index())
+            .column_mut(MainColumn::ClockJumpDifferenceLookupMultiplicity.main_index())
             .assign(&clk_jump_diff_multiplicities);
     }
 
     fn pad(mut main_table: ArrayViewMut2<BFieldElement>, table_len: usize) {
         assert!(table_len > 0, "Processor Table must have at least one row.");
         let mut padding_template = main_table.row(table_len - 1).to_owned();
-        padding_template[IsPadding.main_index()] = bfe!(1);
-        padding_template[ClockJumpDifferenceLookupMultiplicity.main_index()] = bfe!(0);
+        padding_template[MainColumn::IsPadding.main_index()] = bfe!(1);
+        padding_template[MainColumn::ClockJumpDifferenceLookupMultiplicity.main_index()] = bfe!(0);
         main_table
             .slice_mut(s![table_len.., ..])
             .axis_iter_mut(Axis(0))
@@ -74,7 +79,7 @@ impl TraceTable for ProcessorTable {
 
         let clk_range = table_len..main_table.nrows();
         let clk_col = Array1::from_iter(clk_range.map(|a| bfe!(a as u64)));
-        clk_col.move_into(main_table.slice_mut(s![table_len.., CLK.main_index()]));
+        clk_col.move_into(main_table.slice_mut(s![table_len.., MainColumn::CLK.main_index()]));
 
         // The Jump Stack Table does not have a padding indicator. Hence, clock jump differences are
         // being looked up in its padding sections. The clock jump differences in that section are
@@ -84,7 +89,7 @@ impl TraceTable for ProcessorTable {
         let num_padding_rows = bfe!(num_padding_rows as u64);
         let mut row_1 = main_table.row_mut(1);
 
-        row_1[ClockJumpDifferenceLookupMultiplicity.main_index()] += num_padding_rows;
+        row_1[MainColumn::ClockJumpDifferenceLookupMultiplicity.main_index()] += num_padding_rows;
     }
 
     fn extend(
@@ -93,11 +98,11 @@ impl TraceTable for ProcessorTable {
         challenges: &Challenges,
     ) {
         profiler!(start "processor table");
-        assert_eq!(Self::MainColumn::COUNT, main_table.ncols());
-        assert_eq!(Self::AuxColumn::COUNT, aux_table.ncols());
+        assert_eq!(MainColumn::COUNT, main_table.ncols());
+        assert_eq!(AuxColumn::COUNT, aux_table.ncols());
         assert_eq!(main_table.nrows(), aux_table.nrows());
 
-        let all_column_indices = ProcessorAuxColumn::iter()
+        let all_column_indices = AuxColumn::iter()
             .map(|column| column.aux_index())
             .collect_vec();
         let all_column_slices = horizontal_multi_slice_mut(
@@ -180,13 +185,15 @@ fn auxiliary_column_instruction_lookup_argument(
     // collect all to-be-inverted elements for batch inversion
     let mut to_invert = vec![];
     for row in main_table.rows() {
-        if row[IsPadding.main_index()].is_one() {
+        if row[MainColumn::IsPadding.main_index()].is_one() {
             break; // padding marks the end of the trace
         }
 
-        let compressed_row = row[IP.main_index()] * challenges[ChallengeId::ProgramAddressWeight]
-            + row[CI.main_index()] * challenges[ChallengeId::ProgramInstructionWeight]
-            + row[NIA.main_index()] * challenges[ChallengeId::ProgramNextInstructionWeight];
+        let compressed_row = row[MainColumn::IP.main_index()]
+            * challenges[ChallengeId::ProgramAddressWeight]
+            + row[MainColumn::CI.main_index()] * challenges[ChallengeId::ProgramInstructionWeight]
+            + row[MainColumn::NIA.main_index()]
+                * challenges[ChallengeId::ProgramNextInstructionWeight];
         to_invert.push(challenges[ChallengeId::InstructionLookupIndeterminate] - compressed_row);
     }
 
@@ -241,11 +248,12 @@ fn auxiliary_column_jump_stack_table_perm_argument(
     let mut jump_stack_running_product = PermArg::default_initial();
     let mut auxiliary_column = Vec::with_capacity(main_table.nrows());
     for row in main_table.rows() {
-        let compressed_row = row[CLK.main_index()] * challenges[ChallengeId::JumpStackClkWeight]
-            + row[CI.main_index()] * challenges[ChallengeId::JumpStackCiWeight]
-            + row[JSP.main_index()] * challenges[ChallengeId::JumpStackJspWeight]
-            + row[JSO.main_index()] * challenges[ChallengeId::JumpStackJsoWeight]
-            + row[JSD.main_index()] * challenges[ChallengeId::JumpStackJsdWeight];
+        let compressed_row = row[MainColumn::CLK.main_index()]
+            * challenges[ChallengeId::JumpStackClkWeight]
+            + row[MainColumn::CI.main_index()] * challenges[ChallengeId::JumpStackCiWeight]
+            + row[MainColumn::JSP.main_index()] * challenges[ChallengeId::JumpStackJspWeight]
+            + row[MainColumn::JSO.main_index()] * challenges[ChallengeId::JumpStackJsoWeight]
+            + row[MainColumn::JSD.main_index()] * challenges[ChallengeId::JumpStackJsdWeight];
         jump_stack_running_product *=
             challenges[ChallengeId::JumpStackIndeterminate] - compressed_row;
         auxiliary_column.push(jump_stack_running_product);
@@ -258,25 +266,62 @@ fn auxiliary_column_hash_input_eval_argument(
     main_table: ArrayView2<BFieldElement>,
     challenges: &Challenges,
 ) -> Array2<XFieldElement> {
-    let st0_through_st9 = [ST0, ST1, ST2, ST3, ST4, ST5, ST6, ST7, ST8, ST9];
+    let st0_through_st9 = [
+        MainColumn::ST0,
+        MainColumn::ST1,
+        MainColumn::ST2,
+        MainColumn::ST3,
+        MainColumn::ST4,
+        MainColumn::ST5,
+        MainColumn::ST6,
+        MainColumn::ST7,
+        MainColumn::ST8,
+        MainColumn::ST9,
+    ];
     let hash_state_weights = &challenges[ChallengeId::StackWeight0..ChallengeId::StackWeight10];
 
-    let merkle_step_left_sibling = [ST0, ST1, ST2, ST3, ST4, HV0, HV1, HV2, HV3, HV4];
-    let merkle_step_right_sibling = [HV0, HV1, HV2, HV3, HV4, ST0, ST1, ST2, ST3, ST4];
+    let merkle_step_left_sibling = [
+        MainColumn::ST0,
+        MainColumn::ST1,
+        MainColumn::ST2,
+        MainColumn::ST3,
+        MainColumn::ST4,
+        MainColumn::HV0,
+        MainColumn::HV1,
+        MainColumn::HV2,
+        MainColumn::HV3,
+        MainColumn::HV4,
+    ];
+    let merkle_step_right_sibling = [
+        MainColumn::HV0,
+        MainColumn::HV1,
+        MainColumn::HV2,
+        MainColumn::HV3,
+        MainColumn::HV4,
+        MainColumn::ST0,
+        MainColumn::ST1,
+        MainColumn::ST2,
+        MainColumn::ST3,
+        MainColumn::ST4,
+    ];
 
     let mut hash_input_running_evaluation = EvalArg::default_initial();
     let mut auxiliary_column = Vec::with_capacity(main_table.nrows());
     for row in main_table.rows() {
-        let current_instruction = row[CI.main_index()];
+        let current_instruction = row[MainColumn::CI.main_index()];
         if current_instruction == Instruction::Hash.opcode_b()
             || current_instruction == Instruction::MerkleStep.opcode_b()
             || current_instruction == Instruction::MerkleStepMem.opcode_b()
         {
-            let is_left_sibling = row[ST5.main_index()].value() % 2 == 0;
+            let is_left_sibling = row[MainColumn::ST5.main_index()].value() % 2 == 0;
             let hash_input = match instruction_from_row(row) {
-                Some(MerkleStep | MerkleStepMem) if is_left_sibling => merkle_step_left_sibling,
-                Some(MerkleStep | MerkleStepMem) => merkle_step_right_sibling,
-                Some(Hash) => st0_through_st9,
+                Some(Instruction::MerkleStep | Instruction::MerkleStepMem) if is_left_sibling => {
+                    merkle_step_left_sibling
+                }
+                Some(Instruction::MerkleStep | Instruction::MerkleStepMem) => {
+                    merkle_step_right_sibling
+                }
+                Some(Instruction::Hash) => st0_through_st9,
                 _ => unreachable!(),
             };
             let compressed_row = hash_input
@@ -303,17 +348,23 @@ fn auxiliary_column_hash_digest_eval_argument(
     let mut auxiliary_column = Vec::with_capacity(main_table.nrows());
     auxiliary_column.push(hash_digest_running_evaluation);
     for (previous_row, current_row) in main_table.rows().into_iter().tuple_windows() {
-        let previous_ci = previous_row[CI.main_index()];
+        let previous_ci = previous_row[MainColumn::CI.main_index()];
         if previous_ci == Instruction::Hash.opcode_b()
             || previous_ci == Instruction::MerkleStep.opcode_b()
             || previous_ci == Instruction::MerkleStepMem.opcode_b()
         {
-            let compressed_row = [ST0, ST1, ST2, ST3, ST4]
-                .map(|st| current_row[st.main_index()])
-                .into_iter()
-                .zip_eq(&challenges[ChallengeId::StackWeight0..=ChallengeId::StackWeight4])
-                .map(|(st, &weight)| weight * st)
-                .sum::<XFieldElement>();
+            let compressed_row = [
+                MainColumn::ST0,
+                MainColumn::ST1,
+                MainColumn::ST2,
+                MainColumn::ST3,
+                MainColumn::ST4,
+            ]
+            .map(|st| current_row[st.main_index()])
+            .into_iter()
+            .zip_eq(&challenges[ChallengeId::StackWeight0..=ChallengeId::StackWeight4])
+            .map(|(st, &weight)| weight * st)
+            .sum::<XFieldElement>();
             hash_digest_running_evaluation = hash_digest_running_evaluation
                 * challenges[ChallengeId::HashDigestIndeterminate]
                 + compressed_row;
@@ -328,14 +379,25 @@ fn auxiliary_column_sponge_eval_argument(
     main_table: ArrayView2<BFieldElement>,
     challenges: &Challenges,
 ) -> Array2<XFieldElement> {
-    let st0_through_st9 = [ST0, ST1, ST2, ST3, ST4, ST5, ST6, ST7, ST8, ST9];
+    let st0_through_st9 = [
+        MainColumn::ST0,
+        MainColumn::ST1,
+        MainColumn::ST2,
+        MainColumn::ST3,
+        MainColumn::ST4,
+        MainColumn::ST5,
+        MainColumn::ST6,
+        MainColumn::ST7,
+        MainColumn::ST8,
+        MainColumn::ST9,
+    ];
     let hash_state_weights = &challenges[ChallengeId::StackWeight0..ChallengeId::StackWeight10];
 
     let mut sponge_running_evaluation = EvalArg::default_initial();
     let mut auxiliary_column = Vec::with_capacity(main_table.nrows());
     auxiliary_column.push(sponge_running_evaluation);
     for (previous_row, current_row) in main_table.rows().into_iter().tuple_windows() {
-        let previous_ci = previous_row[CI.main_index()];
+        let previous_ci = previous_row[MainColumn::CI.main_index()];
         if previous_ci == Instruction::SpongeInit.opcode_b() {
             sponge_running_evaluation = sponge_running_evaluation
                 * challenges[ChallengeId::SpongeIndeterminate]
@@ -352,8 +414,20 @@ fn auxiliary_column_sponge_eval_argument(
                 + challenges[ChallengeId::HashCIWeight] * Instruction::SpongeAbsorb.opcode_b()
                 + compressed_row;
         } else if previous_ci == Instruction::SpongeAbsorbMem.opcode_b() {
-            let stack_elements = [ST1, ST2, ST3, ST4];
-            let helper_variables = [HV0, HV1, HV2, HV3, HV4, HV5];
+            let stack_elements = [
+                MainColumn::ST1,
+                MainColumn::ST2,
+                MainColumn::ST3,
+                MainColumn::ST4,
+            ];
+            let helper_variables = [
+                MainColumn::HV0,
+                MainColumn::HV1,
+                MainColumn::HV2,
+                MainColumn::HV3,
+                MainColumn::HV4,
+                MainColumn::HV5,
+            ];
             let compressed_row = stack_elements
                 .map(|st| current_row[st.main_index()])
                 .into_iter()
@@ -389,31 +463,33 @@ fn auxiliary_column_for_u32_lookup_argument(
     // collect elements to be inverted for more performant batch inversion
     let mut to_invert = vec![];
     for (previous_row, current_row) in main_table.rows().into_iter().tuple_windows() {
-        let previous_ci = previous_row[CI.main_index()];
+        let previous_ci = previous_row[MainColumn::CI.main_index()];
         if previous_ci == Instruction::Split.opcode_b() {
-            let compressed_row = current_row[ST0.main_index()]
+            let compressed_row = current_row[MainColumn::ST0.main_index()]
                 * challenges[ChallengeId::U32LhsWeight]
-                + current_row[ST1.main_index()] * challenges[ChallengeId::U32RhsWeight]
-                + previous_row[CI.main_index()] * challenges[ChallengeId::U32CiWeight];
+                + current_row[MainColumn::ST1.main_index()] * challenges[ChallengeId::U32RhsWeight]
+                + previous_row[MainColumn::CI.main_index()] * challenges[ChallengeId::U32CiWeight];
             to_invert.push(challenges[ChallengeId::U32Indeterminate] - compressed_row);
         } else if previous_ci == Instruction::Lt.opcode_b()
             || previous_ci == Instruction::And.opcode_b()
             || previous_ci == Instruction::Pow.opcode_b()
         {
-            let compressed_row = previous_row[ST0.main_index()]
+            let compressed_row = previous_row[MainColumn::ST0.main_index()]
                 * challenges[ChallengeId::U32LhsWeight]
-                + previous_row[ST1.main_index()] * challenges[ChallengeId::U32RhsWeight]
-                + previous_row[CI.main_index()] * challenges[ChallengeId::U32CiWeight]
-                + current_row[ST0.main_index()] * challenges[ChallengeId::U32ResultWeight];
+                + previous_row[MainColumn::ST1.main_index()]
+                    * challenges[ChallengeId::U32RhsWeight]
+                + previous_row[MainColumn::CI.main_index()] * challenges[ChallengeId::U32CiWeight]
+                + current_row[MainColumn::ST0.main_index()]
+                    * challenges[ChallengeId::U32ResultWeight];
             to_invert.push(challenges[ChallengeId::U32Indeterminate] - compressed_row);
         } else if previous_ci == Instruction::Xor.opcode_b() {
             // Triton VM uses the following equality to compute the results of both the
             // `and` and `xor` instruction using the u32 coprocessor's `and` capability:
             //     a ^ b = a + b - 2 · (a & b)
             // <=> a & b = (a + b - a ^ b) / 2
-            let st0_prev = previous_row[ST0.main_index()];
-            let st1_prev = previous_row[ST1.main_index()];
-            let st0 = current_row[ST0.main_index()];
+            let st0_prev = previous_row[MainColumn::ST0.main_index()];
+            let st1_prev = previous_row[MainColumn::ST1.main_index()];
+            let st0 = current_row[MainColumn::ST0.main_index()];
             let from_xor_in_processor_to_and_in_u32_coprocessor =
                 (st0_prev + st1_prev - st0) / bfe!(2);
             let compressed_row = st0_prev * challenges[ChallengeId::U32LhsWeight]
@@ -425,20 +501,22 @@ fn auxiliary_column_for_u32_lookup_argument(
         } else if previous_ci == Instruction::Log2Floor.opcode_b()
             || previous_ci == Instruction::PopCount.opcode_b()
         {
-            let compressed_row = previous_row[ST0.main_index()]
+            let compressed_row = previous_row[MainColumn::ST0.main_index()]
                 * challenges[ChallengeId::U32LhsWeight]
-                + previous_row[CI.main_index()] * challenges[ChallengeId::U32CiWeight]
-                + current_row[ST0.main_index()] * challenges[ChallengeId::U32ResultWeight];
+                + previous_row[MainColumn::CI.main_index()] * challenges[ChallengeId::U32CiWeight]
+                + current_row[MainColumn::ST0.main_index()]
+                    * challenges[ChallengeId::U32ResultWeight];
             to_invert.push(challenges[ChallengeId::U32Indeterminate] - compressed_row);
         } else if previous_ci == Instruction::DivMod.opcode_b() {
-            let compressed_row_for_lt_check = current_row[ST0.main_index()]
+            let compressed_row_for_lt_check = current_row[MainColumn::ST0.main_index()]
                 * challenges[ChallengeId::U32LhsWeight]
-                + previous_row[ST1.main_index()] * challenges[ChallengeId::U32RhsWeight]
+                + previous_row[MainColumn::ST1.main_index()]
+                    * challenges[ChallengeId::U32RhsWeight]
                 + Instruction::Lt.opcode_b() * challenges[ChallengeId::U32CiWeight]
                 + bfe!(1) * challenges[ChallengeId::U32ResultWeight];
-            let compressed_row_for_range_check = previous_row[ST0.main_index()]
+            let compressed_row_for_range_check = previous_row[MainColumn::ST0.main_index()]
                 * challenges[ChallengeId::U32LhsWeight]
-                + current_row[ST1.main_index()] * challenges[ChallengeId::U32RhsWeight]
+                + current_row[MainColumn::ST1.main_index()] * challenges[ChallengeId::U32RhsWeight]
                 + Instruction::Split.opcode_b() * challenges[ChallengeId::U32CiWeight];
             to_invert.push(challenges[ChallengeId::U32Indeterminate] - compressed_row_for_lt_check);
             to_invert
@@ -446,9 +524,9 @@ fn auxiliary_column_for_u32_lookup_argument(
         } else if previous_ci == Instruction::MerkleStep.opcode_b()
             || previous_ci == Instruction::MerkleStepMem.opcode_b()
         {
-            let compressed_row = previous_row[ST5.main_index()]
+            let compressed_row = previous_row[MainColumn::ST5.main_index()]
                 * challenges[ChallengeId::U32LhsWeight]
-                + current_row[ST5.main_index()] * challenges[ChallengeId::U32RhsWeight]
+                + current_row[MainColumn::ST5.main_index()] * challenges[ChallengeId::U32RhsWeight]
                 + Instruction::Split.opcode_b() * challenges[ChallengeId::U32CiWeight];
             to_invert.push(challenges[ChallengeId::U32Indeterminate] - compressed_row);
         }
@@ -460,7 +538,7 @@ fn auxiliary_column_for_u32_lookup_argument(
     let mut auxiliary_column = Vec::with_capacity(main_table.nrows());
     auxiliary_column.push(u32_table_running_sum_log_derivative);
     for (previous_row, _) in main_table.rows().into_iter().tuple_windows() {
-        let previous_ci = previous_row[CI.main_index()];
+        let previous_ci = previous_row[MainColumn::CI.main_index()];
         if Instruction::try_from(previous_ci)
             .unwrap()
             .is_u32_instruction()
@@ -486,9 +564,10 @@ fn auxiliary_column_for_clock_jump_difference_lookup_argument(
     // collect inverses to batch invert
     let mut to_invert = vec![];
     for row in main_table.rows() {
-        let lookup_multiplicity = row[ClockJumpDifferenceLookupMultiplicity.main_index()];
+        let lookup_multiplicity =
+            row[MainColumn::ClockJumpDifferenceLookupMultiplicity.main_index()];
         if !lookup_multiplicity.is_zero() {
-            let clk = row[CLK.main_index()];
+            let clk = row[MainColumn::CLK.main_index()];
             to_invert.push(challenges[ChallengeId::ClockJumpDifferenceLookupIndeterminate] - clk);
         }
     }
@@ -498,7 +577,8 @@ fn auxiliary_column_for_clock_jump_difference_lookup_argument(
     let mut cjd_lookup_log_derivative = LookupArg::default_initial();
     let mut auxiliary_column = Vec::with_capacity(main_table.nrows());
     for row in main_table.rows() {
-        let lookup_multiplicity = row[ClockJumpDifferenceLookupMultiplicity.main_index()];
+        let lookup_multiplicity =
+            row[MainColumn::ClockJumpDifferenceLookupMultiplicity.main_index()];
         if !lookup_multiplicity.is_zero() {
             cjd_lookup_log_derivative += inverses.next().unwrap() * lookup_multiplicity;
         }
@@ -515,7 +595,7 @@ fn factor_for_op_stack_table_running_product(
 ) -> XFieldElement {
     let default_factor = xfe!(1);
 
-    let is_padding_row = current_row[IsPadding.main_index()].is_one();
+    let is_padding_row = current_row[MainColumn::IsPadding.main_index()].is_one();
     if is_padding_row {
         return default_factor;
     }
@@ -541,12 +621,12 @@ fn factor_for_op_stack_table_running_product(
         let stack_element_column = ProcessorTable::op_stack_column_by_index(stack_element_index);
         let underflow_element = row_with_shorter_stack[stack_element_column.main_index()];
 
-        let op_stack_pointer = row_with_shorter_stack[OpStackPointer.main_index()];
+        let op_stack_pointer = row_with_shorter_stack[MainColumn::OpStackPointer.main_index()];
         let offset = bfe!(op_stack_pointer_offset as u64);
         let offset_op_stack_pointer = op_stack_pointer + offset;
 
-        let clk = previous_row[CLK.main_index()];
-        let ib1_shrink_stack = previous_row[IB1.main_index()];
+        let clk = previous_row[MainColumn::CLK.main_index()];
+        let ib1_shrink_stack = previous_row[MainColumn::IB1.main_index()];
         let compressed_row = clk * challenges[ChallengeId::OpStackClkWeight]
             + ib1_shrink_stack * challenges[ChallengeId::OpStackIb1Weight]
             + offset_op_stack_pointer * challenges[ChallengeId::OpStackPointerWeight]
@@ -557,37 +637,37 @@ fn factor_for_op_stack_table_running_product(
 }
 
 fn factor_for_ram_table_running_product(
-    previous_row: ArrayView1<BFieldElement>,
-    current_row: ArrayView1<BFieldElement>,
+    prev_row: ArrayView1<BFieldElement>,
+    curr_row: ArrayView1<BFieldElement>,
     challenges: &Challenges,
 ) -> Option<XFieldElement> {
-    let is_padding_row = current_row[IsPadding.main_index()].is_one();
+    let is_padding_row = curr_row[MainColumn::IsPadding.main_index()].is_one();
     if is_padding_row {
         return None;
     }
 
-    let instruction = instruction_from_row(previous_row)?;
+    let instruction = instruction_from_row(prev_row)?;
 
-    let clk = previous_row[CLK.main_index()];
+    let clk = prev_row[MainColumn::CLK.main_index()];
     let instruction_type = match instruction {
-        ReadMem(_) => ram::INSTRUCTION_TYPE_READ,
-        WriteMem(_) => ram::INSTRUCTION_TYPE_WRITE,
-        SpongeAbsorbMem => ram::INSTRUCTION_TYPE_READ,
-        MerkleStepMem => ram::INSTRUCTION_TYPE_READ,
-        XxDotStep => ram::INSTRUCTION_TYPE_READ,
-        XbDotStep => ram::INSTRUCTION_TYPE_READ,
+        Instruction::ReadMem(_) => ram::INSTRUCTION_TYPE_READ,
+        Instruction::WriteMem(_) => ram::INSTRUCTION_TYPE_WRITE,
+        Instruction::SpongeAbsorbMem => ram::INSTRUCTION_TYPE_READ,
+        Instruction::MerkleStepMem => ram::INSTRUCTION_TYPE_READ,
+        Instruction::XxDotStep => ram::INSTRUCTION_TYPE_READ,
+        Instruction::XbDotStep => ram::INSTRUCTION_TYPE_READ,
         _ => return None,
     };
     let mut accesses = vec![];
 
     match instruction {
-        ReadMem(_) | WriteMem(_) => {
+        Instruction::ReadMem(_) | Instruction::WriteMem(_) => {
             // longer stack means relevant information is on top of stack, i.e.,
             // available in stack registers
-            let row_with_longer_stack = if let ReadMem(_) = instruction {
-                current_row.view()
+            let row_with_longer_stack = if let Instruction::ReadMem(_) = instruction {
+                curr_row.view()
             } else {
-                previous_row.view()
+                prev_row.view()
             };
             let op_stack_delta = instruction.op_stack_size_influence().unsigned_abs() as usize;
 
@@ -601,44 +681,52 @@ fn factor_for_ram_table_running_product(
                 accesses.push((offset_ram_pointer, ram_value));
             }
         }
-        SpongeAbsorbMem => {
-            let mem_pointer = previous_row[ST0.main_index()];
-            accesses.push((mem_pointer + bfe!(0), current_row[ST1.main_index()]));
-            accesses.push((mem_pointer + bfe!(1), current_row[ST2.main_index()]));
-            accesses.push((mem_pointer + bfe!(2), current_row[ST3.main_index()]));
-            accesses.push((mem_pointer + bfe!(3), current_row[ST4.main_index()]));
-            accesses.push((mem_pointer + bfe!(4), previous_row[HV0.main_index()]));
-            accesses.push((mem_pointer + bfe!(5), previous_row[HV1.main_index()]));
-            accesses.push((mem_pointer + bfe!(6), previous_row[HV2.main_index()]));
-            accesses.push((mem_pointer + bfe!(7), previous_row[HV3.main_index()]));
-            accesses.push((mem_pointer + bfe!(8), previous_row[HV4.main_index()]));
-            accesses.push((mem_pointer + bfe!(9), previous_row[HV5.main_index()]));
+        Instruction::SpongeAbsorbMem => {
+            let mem_ptr = prev_row[MainColumn::ST0.main_index()];
+            accesses = vec![
+                (mem_ptr + bfe!(0), curr_row[MainColumn::ST1.main_index()]),
+                (mem_ptr + bfe!(1), curr_row[MainColumn::ST2.main_index()]),
+                (mem_ptr + bfe!(2), curr_row[MainColumn::ST3.main_index()]),
+                (mem_ptr + bfe!(3), curr_row[MainColumn::ST4.main_index()]),
+                (mem_ptr + bfe!(4), prev_row[MainColumn::HV0.main_index()]),
+                (mem_ptr + bfe!(5), prev_row[MainColumn::HV1.main_index()]),
+                (mem_ptr + bfe!(6), prev_row[MainColumn::HV2.main_index()]),
+                (mem_ptr + bfe!(7), prev_row[MainColumn::HV3.main_index()]),
+                (mem_ptr + bfe!(8), prev_row[MainColumn::HV4.main_index()]),
+                (mem_ptr + bfe!(9), prev_row[MainColumn::HV5.main_index()]),
+            ];
         }
-        MerkleStepMem => {
-            let mem_pointer = previous_row[ST7.main_index()];
-            accesses.push((mem_pointer + bfe!(0), previous_row[HV0.main_index()]));
-            accesses.push((mem_pointer + bfe!(1), previous_row[HV1.main_index()]));
-            accesses.push((mem_pointer + bfe!(2), previous_row[HV2.main_index()]));
-            accesses.push((mem_pointer + bfe!(3), previous_row[HV3.main_index()]));
-            accesses.push((mem_pointer + bfe!(4), previous_row[HV4.main_index()]));
+        Instruction::MerkleStepMem => {
+            let mem_ptr = prev_row[MainColumn::ST7.main_index()];
+            accesses = vec![
+                (mem_ptr + bfe!(0), prev_row[MainColumn::HV0.main_index()]),
+                (mem_ptr + bfe!(1), prev_row[MainColumn::HV1.main_index()]),
+                (mem_ptr + bfe!(2), prev_row[MainColumn::HV2.main_index()]),
+                (mem_ptr + bfe!(3), prev_row[MainColumn::HV3.main_index()]),
+                (mem_ptr + bfe!(4), prev_row[MainColumn::HV4.main_index()]),
+            ];
         }
-        XxDotStep => {
-            let rhs_pointer = previous_row[ST0.main_index()];
-            let lhs_pointer = previous_row[ST1.main_index()];
-            accesses.push((rhs_pointer + bfe!(0), previous_row[HV0.main_index()]));
-            accesses.push((rhs_pointer + bfe!(1), previous_row[HV1.main_index()]));
-            accesses.push((rhs_pointer + bfe!(2), previous_row[HV2.main_index()]));
-            accesses.push((lhs_pointer + bfe!(0), previous_row[HV3.main_index()]));
-            accesses.push((lhs_pointer + bfe!(1), previous_row[HV4.main_index()]));
-            accesses.push((lhs_pointer + bfe!(2), previous_row[HV5.main_index()]));
+        Instruction::XxDotStep => {
+            let rhs_ptr = prev_row[MainColumn::ST0.main_index()];
+            let lhs_ptr = prev_row[MainColumn::ST1.main_index()];
+            accesses = vec![
+                (rhs_ptr + bfe!(0), prev_row[MainColumn::HV0.main_index()]),
+                (rhs_ptr + bfe!(1), prev_row[MainColumn::HV1.main_index()]),
+                (rhs_ptr + bfe!(2), prev_row[MainColumn::HV2.main_index()]),
+                (lhs_ptr + bfe!(0), prev_row[MainColumn::HV3.main_index()]),
+                (lhs_ptr + bfe!(1), prev_row[MainColumn::HV4.main_index()]),
+                (lhs_ptr + bfe!(2), prev_row[MainColumn::HV5.main_index()]),
+            ];
         }
-        XbDotStep => {
-            let rhs_pointer = previous_row[ST0.main_index()];
-            let lhs_pointer = previous_row[ST1.main_index()];
-            accesses.push((rhs_pointer + bfe!(0), previous_row[HV0.main_index()]));
-            accesses.push((lhs_pointer + bfe!(0), previous_row[HV1.main_index()]));
-            accesses.push((lhs_pointer + bfe!(1), previous_row[HV2.main_index()]));
-            accesses.push((lhs_pointer + bfe!(2), previous_row[HV3.main_index()]));
+        Instruction::XbDotStep => {
+            let rhs_ptr = prev_row[MainColumn::ST0.main_index()];
+            let lhs_ptr = prev_row[MainColumn::ST1.main_index()];
+            accesses = vec![
+                (rhs_ptr + bfe!(0), prev_row[MainColumn::HV0.main_index()]),
+                (lhs_ptr + bfe!(0), prev_row[MainColumn::HV1.main_index()]),
+                (lhs_ptr + bfe!(1), prev_row[MainColumn::HV2.main_index()]),
+                (lhs_ptr + bfe!(2), prev_row[MainColumn::HV3.main_index()]),
+            ];
         }
         _ => unreachable!(),
     };
@@ -660,24 +748,24 @@ fn offset_ram_pointer(
     row_with_longer_stack: ArrayView1<BFieldElement>,
     ram_pointer_offset: usize,
 ) -> BFieldElement {
-    let ram_pointer = row_with_longer_stack[ST0.main_index()];
+    let ram_pointer = row_with_longer_stack[MainColumn::ST0.main_index()];
     let offset = bfe!(ram_pointer_offset as u64);
 
     match instruction {
         // adjust for ram_pointer pointing in front of last-read address:
         // `push 0 read_mem 1` leaves stack as `_ a -1` where `a` was read from address 0.
-        ReadMem(_) => ram_pointer + offset + bfe!(1),
-        WriteMem(_) => ram_pointer + offset,
+        Instruction::ReadMem(_) => ram_pointer + offset + bfe!(1),
+        Instruction::WriteMem(_) => ram_pointer + offset,
         _ => unreachable!(),
     }
 }
 
 fn instruction_from_row(row: ArrayView1<BFieldElement>) -> Option<Instruction> {
-    let opcode = row[CI.main_index()];
+    let opcode = row[MainColumn::CI.main_index()];
     let instruction = Instruction::try_from(opcode).ok()?;
 
     if instruction.arg().is_some() {
-        let arg = row[NIA.main_index()];
+        let arg = row[MainColumn::NIA.main_index()];
         return instruction.change_arg(arg).ok();
     }
 
@@ -689,7 +777,7 @@ pub(crate) mod tests {
     use std::collections::HashMap;
 
     use assert2::assert;
-    use constraint_circuit::*;
+    use constraint_circuit::ConstraintCircuitBuilder;
     use isa::instruction::Instruction;
     use isa::op_stack::NumberOfWords;
     use isa::op_stack::OpStackElement;
@@ -705,7 +793,7 @@ pub(crate) mod tests {
     use crate::error::InstructionError::DivisionByZero;
     use crate::shared_tests::ProgramAndInput;
     use crate::stark::tests::master_tables_for_low_security_level;
-    use crate::table::master_table::*;
+    use crate::table::master_table::MasterTable;
     use crate::vm::VM;
     use crate::NonDeterminism;
 
@@ -731,8 +819,8 @@ pub(crate) mod tests {
     #[derive(Debug, Clone)]
     struct TestRowsDebugInfo {
         pub instruction: Instruction,
-        pub debug_cols_curr_row: Vec<ProcessorMainColumn>,
-        pub debug_cols_next_row: Vec<ProcessorMainColumn>,
+        pub debug_cols_curr_row: Vec<MainColumn>,
+        pub debug_cols_next_row: Vec<MainColumn>,
     }
 
     fn test_row_from_program(program: Program, row_num: usize) -> TestRows {
@@ -784,7 +872,7 @@ pub(crate) mod tests {
             println!();
 
             assert!(
-                instruction.opcode_b() == curr_row[CI.master_main_index()],
+                instruction.opcode_b() == curr_row[MainColumn::CI.master_main_index()],
                 "The test is trying to check the wrong transition constraint polynomials."
             );
 
@@ -809,9 +897,9 @@ pub(crate) mod tests {
 
         let test_rows = [test_row_from_program(program, 5)];
         let debug_info = TestRowsDebugInfo {
-            instruction: Pop(n),
-            debug_cols_curr_row: vec![ST0, ST1, ST2],
-            debug_cols_next_row: vec![ST0, ST1, ST2],
+            instruction: Instruction::Pop(n),
+            debug_cols_curr_row: vec![MainColumn::ST0, MainColumn::ST1, MainColumn::ST2],
+            debug_cols_next_row: vec![MainColumn::ST0, MainColumn::ST1, MainColumn::ST2],
         };
         assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
@@ -821,9 +909,9 @@ pub(crate) mod tests {
         let test_rows = [test_row_from_program(triton_program!(push 1 halt), 0)];
 
         let debug_info = TestRowsDebugInfo {
-            instruction: Push(bfe!(1)),
-            debug_cols_curr_row: vec![ST0, ST1, ST2],
-            debug_cols_next_row: vec![ST0, ST1, ST2],
+            instruction: Instruction::Push(bfe!(1)),
+            debug_cols_curr_row: vec![MainColumn::ST0, MainColumn::ST1, MainColumn::ST2],
+            debug_cols_next_row: vec![MainColumn::ST0, MainColumn::ST1, MainColumn::ST2],
         };
         assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
@@ -836,9 +924,9 @@ pub(crate) mod tests {
         let program_and_input = ProgramAndInput::new(program).with_non_determinism(non_determinism);
         let test_rows = [test_row_from_program_with_input(program_and_input, 0)];
         let debug_info = TestRowsDebugInfo {
-            instruction: Divine(n),
-            debug_cols_curr_row: vec![ST0, ST1, ST2],
-            debug_cols_next_row: vec![ST0, ST1, ST2],
+            instruction: Instruction::Divine(n),
+            debug_cols_curr_row: vec![MainColumn::ST0, MainColumn::ST1, MainColumn::ST2],
+            debug_cols_next_row: vec![MainColumn::ST0, MainColumn::ST1, MainColumn::ST2],
         };
         assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
@@ -866,9 +954,9 @@ pub(crate) mod tests {
         let test_rows = programs.map(|program| test_row_from_program(program, 0));
 
         let debug_info = TestRowsDebugInfo {
-            instruction: Dup(OpStackElement::ST0),
-            debug_cols_curr_row: vec![ST0, ST1, ST2],
-            debug_cols_next_row: vec![ST0, ST1, ST2],
+            instruction: Instruction::Dup(OpStackElement::ST0),
+            debug_cols_curr_row: vec![MainColumn::ST0, MainColumn::ST1, MainColumn::ST2],
+            debug_cols_next_row: vec![MainColumn::ST0, MainColumn::ST1, MainColumn::ST2],
         };
         assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
@@ -880,9 +968,9 @@ pub(crate) mod tests {
             .map(|program| test_row_from_program(program, 0))
             .collect_vec();
         let debug_info = TestRowsDebugInfo {
-            instruction: Swap(OpStackElement::ST0),
-            debug_cols_curr_row: vec![ST0, ST1, ST2],
-            debug_cols_next_row: vec![ST0, ST1, ST2],
+            instruction: Instruction::Swap(OpStackElement::ST0),
+            debug_cols_curr_row: vec![MainColumn::ST0, MainColumn::ST1, MainColumn::ST2],
+            debug_cols_next_row: vec![MainColumn::ST0, MainColumn::ST1, MainColumn::ST2],
         };
         assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
@@ -896,9 +984,9 @@ pub(crate) mod tests {
         ];
         let test_rows = programs.map(|program| test_row_from_program(program, 1));
         let debug_info = TestRowsDebugInfo {
-            instruction: Skiz,
-            debug_cols_curr_row: vec![IP, NIA, ST0, HV5, HV4, HV3, HV2],
-            debug_cols_next_row: vec![IP],
+            instruction: Instruction::Skiz,
+            debug_cols_curr_row: vec![MainColumn::IP, MainColumn::NIA, MainColumn::ST0],
+            debug_cols_next_row: vec![MainColumn::IP],
         };
         assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
@@ -907,10 +995,18 @@ pub(crate) mod tests {
     fn transition_constraints_for_instruction_call() {
         let programs = [triton_program!(call label label: halt)];
         let test_rows = programs.map(|program| test_row_from_program(program, 0));
+        let debug_cols = [
+            MainColumn::IP,
+            MainColumn::CI,
+            MainColumn::NIA,
+            MainColumn::JSP,
+            MainColumn::JSO,
+            MainColumn::JSD,
+        ];
         let debug_info = TestRowsDebugInfo {
-            instruction: Call(BFieldElement::default()),
-            debug_cols_curr_row: vec![IP, CI, NIA, JSP, JSO, JSD],
-            debug_cols_next_row: vec![IP, CI, NIA, JSP, JSO, JSD],
+            instruction: Instruction::Call(BFieldElement::default()),
+            debug_cols_curr_row: debug_cols.to_vec(),
+            debug_cols_next_row: debug_cols.to_vec(),
         };
         assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
@@ -919,10 +1015,16 @@ pub(crate) mod tests {
     fn transition_constraints_for_instruction_return() {
         let programs = [triton_program!(call label halt label: return)];
         let test_rows = programs.map(|program| test_row_from_program(program, 1));
+        let debug_cols = [
+            MainColumn::IP,
+            MainColumn::JSP,
+            MainColumn::JSO,
+            MainColumn::JSD,
+        ];
         let debug_info = TestRowsDebugInfo {
-            instruction: Return,
-            debug_cols_curr_row: vec![IP, JSP, JSO, JSD],
-            debug_cols_next_row: vec![IP, JSP, JSO, JSD],
+            instruction: Instruction::Return,
+            debug_cols_curr_row: debug_cols.to_vec(),
+            debug_cols_next_row: debug_cols.to_vec(),
         };
         assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
@@ -932,10 +1034,16 @@ pub(crate) mod tests {
         let programs =
             [triton_program!(push 2 call label halt label: push -1 add dup 0 skiz recurse return)];
         let test_rows = programs.map(|program| test_row_from_program(program, 6));
+        let debug_cols = [
+            MainColumn::IP,
+            MainColumn::JSP,
+            MainColumn::JSO,
+            MainColumn::JSD,
+        ];
         let debug_info = TestRowsDebugInfo {
-            instruction: Recurse,
-            debug_cols_curr_row: vec![IP, JSP, JSO, JSD],
-            debug_cols_next_row: vec![IP, JSP, JSO, JSD],
+            instruction: Instruction::Recurse,
+            debug_cols_curr_row: debug_cols.to_vec(),
+            debug_cols_next_row: debug_cols.to_vec(),
         };
         assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
@@ -954,9 +1062,22 @@ pub(crate) mod tests {
             test_row_from_program(program, 12),        // return
         ];
         let debug_info = TestRowsDebugInfo {
-            instruction: RecurseOrReturn,
-            debug_cols_curr_row: vec![IP, JSP, JSO, JSD, ST5, ST6, HV4],
-            debug_cols_next_row: vec![IP, JSP, JSO, JSD],
+            instruction: Instruction::RecurseOrReturn,
+            debug_cols_curr_row: vec![
+                MainColumn::IP,
+                MainColumn::JSP,
+                MainColumn::JSO,
+                MainColumn::JSD,
+                MainColumn::ST5,
+                MainColumn::ST6,
+                MainColumn::HV4,
+            ],
+            debug_cols_next_row: vec![
+                MainColumn::IP,
+                MainColumn::JSP,
+                MainColumn::JSO,
+                MainColumn::JSD,
+            ],
         };
         assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
@@ -979,9 +1100,9 @@ pub(crate) mod tests {
         });
         let test_rows = programs_with_input.map(|p_w_i| test_row_from_program_with_input(p_w_i, 1));
         let debug_info = TestRowsDebugInfo {
-            instruction: ReadMem(NumberOfWords::N1),
-            debug_cols_curr_row: vec![ST0, ST1],
-            debug_cols_next_row: vec![ST0, ST1],
+            instruction: Instruction::ReadMem(NumberOfWords::N1),
+            debug_cols_curr_row: vec![MainColumn::ST0, MainColumn::ST1],
+            debug_cols_next_row: vec![MainColumn::ST0, MainColumn::ST1],
         };
         assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
@@ -998,9 +1119,9 @@ pub(crate) mod tests {
         ];
         let test_rows = programs.map(|program| test_row_from_program(program, 10));
         let debug_info = TestRowsDebugInfo {
-            instruction: WriteMem(NumberOfWords::N1),
-            debug_cols_curr_row: vec![ST0, ST1],
-            debug_cols_next_row: vec![ST0, ST1],
+            instruction: Instruction::WriteMem(NumberOfWords::N1),
+            debug_cols_curr_row: vec![MainColumn::ST0, MainColumn::ST1],
+            debug_cols_next_row: vec![MainColumn::ST0, MainColumn::ST1],
         };
         assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
@@ -1019,9 +1140,9 @@ pub(crate) mod tests {
         let test_rows = programs_with_input.map(|p_w_i| test_row_from_program_with_input(p_w_i, 2));
 
         let debug_info = TestRowsDebugInfo {
-            instruction: MerkleStep,
-            debug_cols_curr_row: vec![ST0, ST1, ST2, ST3, ST4, ST5, HV0, HV1, HV2, HV3, HV4, HV5],
-            debug_cols_next_row: vec![ST0, ST1, ST2, ST3, ST4, ST5],
+            instruction: Instruction::MerkleStep,
+            debug_cols_curr_row: vec![],
+            debug_cols_next_row: vec![],
         };
         assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
@@ -1060,9 +1181,9 @@ pub(crate) mod tests {
             .map(|p| test_row_from_program_with_input(p, 8));
 
         let debug_info = TestRowsDebugInfo {
-            instruction: MerkleStepMem,
-            debug_cols_curr_row: vec![ST0, ST1, ST2, ST3, ST4, ST5, HV0, HV1, HV2, HV3, HV4, HV5],
-            debug_cols_next_row: vec![ST0, ST1, ST2, ST3, ST4, ST5],
+            instruction: Instruction::MerkleStepMem,
+            debug_cols_curr_row: vec![],
+            debug_cols_next_row: vec![],
         };
         assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
@@ -1072,7 +1193,7 @@ pub(crate) mod tests {
         let programs = [triton_program!(sponge_init halt)];
         let test_rows = programs.map(|program| test_row_from_program(program, 0));
         let debug_info = TestRowsDebugInfo {
-            instruction: SpongeInit,
+            instruction: Instruction::SpongeInit,
             debug_cols_curr_row: vec![],
             debug_cols_next_row: vec![],
         };
@@ -1089,9 +1210,9 @@ pub(crate) mod tests {
         ];
         let test_rows = programs.map(|program| test_row_from_program(program, 11));
         let debug_info = TestRowsDebugInfo {
-            instruction: SpongeAbsorb,
-            debug_cols_curr_row: vec![ST0, ST1, ST2, ST3, ST4, ST5, ST6, ST7, ST8, ST9, ST10],
-            debug_cols_next_row: vec![ST0, ST1, ST2, ST3, ST4, ST5, ST6, ST7, ST8, ST9, ST10],
+            instruction: Instruction::SpongeAbsorb,
+            debug_cols_curr_row: vec![],
+            debug_cols_next_row: vec![],
         };
         assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
@@ -1101,9 +1222,9 @@ pub(crate) mod tests {
         let programs = [triton_program!(sponge_init push 0 sponge_absorb_mem halt)];
         let test_rows = programs.map(|program| test_row_from_program(program, 2));
         let debug_info = TestRowsDebugInfo {
-            instruction: SpongeAbsorbMem,
-            debug_cols_curr_row: vec![ST0, HV0, HV1, HV2, HV3, HV4, HV5],
-            debug_cols_next_row: vec![ST0, ST1, ST2, ST3, ST4],
+            instruction: Instruction::SpongeAbsorbMem,
+            debug_cols_curr_row: vec![],
+            debug_cols_next_row: vec![],
         };
         assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
@@ -1113,9 +1234,9 @@ pub(crate) mod tests {
         let programs = [triton_program!(sponge_init sponge_squeeze halt)];
         let test_rows = programs.map(|program| test_row_from_program(program, 1));
         let debug_info = TestRowsDebugInfo {
-            instruction: SpongeSqueeze,
-            debug_cols_curr_row: vec![ST0, ST1, ST2, ST3, ST4, ST5, ST6, ST7, ST8, ST9, ST10],
-            debug_cols_next_row: vec![ST0, ST1, ST2, ST3, ST4, ST5, ST6, ST7, ST8, ST9, ST10],
+            instruction: Instruction::SpongeSqueeze,
+            debug_cols_curr_row: vec![],
+            debug_cols_next_row: vec![],
         };
         assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
@@ -1128,9 +1249,9 @@ pub(crate) mod tests {
         ];
         let test_rows = programs.map(|program| test_row_from_program(program, 2));
         let debug_info = TestRowsDebugInfo {
-            instruction: Eq,
-            debug_cols_curr_row: vec![ST0, ST1, HV0],
-            debug_cols_next_row: vec![ST0],
+            instruction: Instruction::Eq,
+            debug_cols_curr_row: vec![MainColumn::ST0, MainColumn::ST1, MainColumn::HV0],
+            debug_cols_next_row: vec![MainColumn::ST0],
         };
         assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
@@ -1149,10 +1270,11 @@ pub(crate) mod tests {
             triton_program!(push 4294967297 split halt),
         ];
         let test_rows = programs.map(|program| test_row_from_program(program, 1));
+        let debug_cols = [MainColumn::ST0, MainColumn::ST1, MainColumn::HV0];
         let debug_info = TestRowsDebugInfo {
-            instruction: Split,
-            debug_cols_curr_row: vec![ST0, ST1, HV0],
-            debug_cols_next_row: vec![ST0, ST1, HV0],
+            instruction: Instruction::Split,
+            debug_cols_curr_row: debug_cols.to_vec(),
+            debug_cols_next_row: debug_cols.to_vec(),
         };
         assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
@@ -1167,9 +1289,9 @@ pub(crate) mod tests {
         ];
         let test_rows = programs.map(|program| test_row_from_program(program, 2));
         let debug_info = TestRowsDebugInfo {
-            instruction: Lt,
-            debug_cols_curr_row: vec![ST0, ST1],
-            debug_cols_next_row: vec![ST0],
+            instruction: Instruction::Lt,
+            debug_cols_curr_row: vec![MainColumn::ST0, MainColumn::ST1],
+            debug_cols_next_row: vec![MainColumn::ST0],
         };
         assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
@@ -1181,9 +1303,9 @@ pub(crate) mod tests {
             2,
         )];
         let debug_info = TestRowsDebugInfo {
-            instruction: And,
-            debug_cols_curr_row: vec![ST0, ST1],
-            debug_cols_next_row: vec![ST0],
+            instruction: Instruction::And,
+            debug_cols_curr_row: vec![MainColumn::ST0, MainColumn::ST1],
+            debug_cols_next_row: vec![MainColumn::ST0],
         };
         assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
@@ -1195,9 +1317,9 @@ pub(crate) mod tests {
             2,
         )];
         let debug_info = TestRowsDebugInfo {
-            instruction: Xor,
-            debug_cols_curr_row: vec![ST0, ST1],
-            debug_cols_next_row: vec![ST0],
+            instruction: Instruction::Xor,
+            debug_cols_curr_row: vec![MainColumn::ST0, MainColumn::ST1],
+            debug_cols_next_row: vec![MainColumn::ST0],
         };
         assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
@@ -1226,9 +1348,9 @@ pub(crate) mod tests {
 
         let test_rows = programs.map(|program| test_row_from_program(program, 1));
         let debug_info = TestRowsDebugInfo {
-            instruction: Log2Floor,
-            debug_cols_curr_row: vec![ST0, ST1],
-            debug_cols_next_row: vec![ST0],
+            instruction: Instruction::Log2Floor,
+            debug_cols_curr_row: vec![MainColumn::ST0, MainColumn::ST1],
+            debug_cols_next_row: vec![MainColumn::ST0],
         };
         assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
@@ -1260,9 +1382,9 @@ pub(crate) mod tests {
 
         let test_rows = programs.map(|program| test_row_from_program(program, 2));
         let debug_info = TestRowsDebugInfo {
-            instruction: Pow,
-            debug_cols_curr_row: vec![ST0, ST1],
-            debug_cols_next_row: vec![ST0],
+            instruction: Instruction::Pow,
+            debug_cols_curr_row: vec![MainColumn::ST0, MainColumn::ST1],
+            debug_cols_next_row: vec![MainColumn::ST0],
         };
         assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
@@ -1276,9 +1398,9 @@ pub(crate) mod tests {
         ];
         let test_rows = programs.map(|program| test_row_from_program(program, 2));
         let debug_info = TestRowsDebugInfo {
-            instruction: DivMod,
-            debug_cols_curr_row: vec![ST0, ST1],
-            debug_cols_next_row: vec![ST0, ST1],
+            instruction: Instruction::DivMod,
+            debug_cols_curr_row: vec![MainColumn::ST0, MainColumn::ST1],
+            debug_cols_next_row: vec![MainColumn::ST0, MainColumn::ST1],
         };
         assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
@@ -1297,10 +1419,18 @@ pub(crate) mod tests {
             triton_program!(push 2 push 3 push 4 push -2 push -3 push -4 xx_add halt),
         ];
         let test_rows = programs.map(|program| test_row_from_program(program, 6));
+        let debug_cols = [
+            MainColumn::ST0,
+            MainColumn::ST1,
+            MainColumn::ST2,
+            MainColumn::ST3,
+            MainColumn::ST4,
+            MainColumn::ST5,
+        ];
         let debug_info = TestRowsDebugInfo {
-            instruction: XxAdd,
-            debug_cols_curr_row: vec![ST0, ST1, ST2, ST3, ST4, ST5],
-            debug_cols_next_row: vec![ST0, ST1, ST2, ST3, ST4, ST5],
+            instruction: Instruction::XxAdd,
+            debug_cols_curr_row: debug_cols.to_vec(),
+            debug_cols_next_row: debug_cols.to_vec(),
         };
         assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
@@ -1312,10 +1442,18 @@ pub(crate) mod tests {
             triton_program!(push 2 push 3 push 4 push -2 push -3 push -4 xx_mul halt),
         ];
         let test_rows = programs.map(|program| test_row_from_program(program, 6));
+        let debug_cols = [
+            MainColumn::ST0,
+            MainColumn::ST1,
+            MainColumn::ST2,
+            MainColumn::ST3,
+            MainColumn::ST4,
+            MainColumn::ST5,
+        ];
         let debug_info = TestRowsDebugInfo {
-            instruction: XxMul,
-            debug_cols_curr_row: vec![ST0, ST1, ST2, ST3, ST4, ST5],
-            debug_cols_next_row: vec![ST0, ST1, ST2, ST3, ST4, ST5],
+            instruction: Instruction::XxMul,
+            debug_cols_curr_row: debug_cols.to_vec(),
+            debug_cols_next_row: debug_cols.to_vec(),
         };
         assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
@@ -1327,10 +1465,11 @@ pub(crate) mod tests {
             triton_program!(push -2 push -3 push -4 x_invert halt),
         ];
         let test_rows = programs.map(|program| test_row_from_program(program, 3));
+        let debug_cols = [MainColumn::ST0, MainColumn::ST1, MainColumn::ST2];
         let debug_info = TestRowsDebugInfo {
-            instruction: XInvert,
-            debug_cols_curr_row: vec![ST0, ST1, ST2],
-            debug_cols_next_row: vec![ST0, ST1, ST2],
+            instruction: Instruction::XInvert,
+            debug_cols_curr_row: debug_cols.to_vec(),
+            debug_cols_next_row: debug_cols.to_vec(),
         };
         assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
@@ -1342,10 +1481,18 @@ pub(crate) mod tests {
             triton_program!(push 2 push 3 push 4 push -2 xb_mul halt),
         ];
         let test_rows = programs.map(|program| test_row_from_program(program, 4));
+        let debug_cols = [
+            MainColumn::ST0,
+            MainColumn::ST1,
+            MainColumn::ST2,
+            MainColumn::ST3,
+            MainColumn::OpStackPointer,
+            MainColumn::HV0,
+        ];
         let debug_info = TestRowsDebugInfo {
-            instruction: XbMul,
-            debug_cols_curr_row: vec![ST0, ST1, ST2, ST3, OpStackPointer, HV0],
-            debug_cols_next_row: vec![ST0, ST1, ST2, ST3, OpStackPointer, HV0],
+            instruction: Instruction::XbMul,
+            debug_cols_curr_row: debug_cols.to_vec(),
+            debug_cols_next_row: debug_cols.to_vec(),
         };
         assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
@@ -1357,10 +1504,11 @@ pub(crate) mod tests {
         let public_input = (1..=16).map(|i| bfe!(i)).collect_vec();
         let program_and_input = ProgramAndInput::new(program).with_input(public_input);
         let test_rows = [test_row_from_program_with_input(program_and_input, 0)];
+        let debug_cols = [MainColumn::ST0, MainColumn::ST1, MainColumn::ST2];
         let debug_info = TestRowsDebugInfo {
-            instruction: ReadIo(n),
-            debug_cols_curr_row: vec![ST0, ST1, ST2],
-            debug_cols_next_row: vec![ST0, ST1, ST2],
+            instruction: Instruction::ReadIo(n),
+            debug_cols_curr_row: debug_cols.to_vec(),
+            debug_cols_next_row: debug_cols.to_vec(),
         };
         assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
@@ -1372,10 +1520,18 @@ pub(crate) mod tests {
         let non_determinism = (1..=16).map(|b| bfe!(b)).collect_vec();
         let program_and_input = ProgramAndInput::new(program).with_non_determinism(non_determinism);
         let test_rows = [test_row_from_program_with_input(program_and_input, 1)];
+        let debug_cols = [
+            MainColumn::ST0,
+            MainColumn::ST1,
+            MainColumn::ST2,
+            MainColumn::ST3,
+            MainColumn::ST4,
+            MainColumn::ST5,
+        ];
         let debug_info = TestRowsDebugInfo {
-            instruction: WriteIo(n),
-            debug_cols_curr_row: vec![ST0, ST1, ST2, ST3, ST4, ST5],
-            debug_cols_next_row: vec![ST0, ST1, ST2, ST3, ST4, ST5],
+            instruction: Instruction::WriteIo(n),
+            debug_cols_curr_row: debug_cols.to_vec(),
+            debug_cols_next_row: debug_cols.to_vec(),
         };
         assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
@@ -1404,9 +1560,25 @@ pub(crate) mod tests {
         let program_and_input = ProgramAndInput::new(program).with_non_determinism(non_determinism);
         let test_rows = [test_row_from_program_with_input(program_and_input, 5)];
         let debug_info = TestRowsDebugInfo {
-            instruction: XbDotStep,
-            debug_cols_curr_row: vec![ST0, ST1, ST2, ST3, ST4, HV0, HV1, HV2, HV3],
-            debug_cols_next_row: vec![ST0, ST1, ST2, ST3, ST4],
+            instruction: Instruction::XbDotStep,
+            debug_cols_curr_row: vec![
+                MainColumn::ST0,
+                MainColumn::ST1,
+                MainColumn::ST2,
+                MainColumn::ST3,
+                MainColumn::ST4,
+                MainColumn::HV0,
+                MainColumn::HV1,
+                MainColumn::HV2,
+                MainColumn::HV3,
+            ],
+            debug_cols_next_row: vec![
+                MainColumn::ST0,
+                MainColumn::ST1,
+                MainColumn::ST2,
+                MainColumn::ST3,
+                MainColumn::ST4,
+            ],
         };
         assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
@@ -1441,9 +1613,27 @@ pub(crate) mod tests {
         let program_and_input = ProgramAndInput::new(program).with_non_determinism(non_determinism);
         let test_rows = [test_row_from_program_with_input(program_and_input, 5)];
         let debug_info = TestRowsDebugInfo {
-            instruction: XxDotStep,
-            debug_cols_curr_row: vec![ST0, ST1, ST2, ST3, ST4, HV0, HV1, HV2, HV3, HV4, HV5],
-            debug_cols_next_row: vec![ST0, ST1, ST2, ST3, ST4],
+            instruction: Instruction::XxDotStep,
+            debug_cols_curr_row: vec![
+                MainColumn::ST0,
+                MainColumn::ST1,
+                MainColumn::ST2,
+                MainColumn::ST3,
+                MainColumn::ST4,
+                MainColumn::HV0,
+                MainColumn::HV1,
+                MainColumn::HV2,
+                MainColumn::HV3,
+                MainColumn::HV4,
+                MainColumn::HV5,
+            ],
+            debug_cols_next_row: vec![
+                MainColumn::ST0,
+                MainColumn::ST1,
+                MainColumn::ST2,
+                MainColumn::ST3,
+                MainColumn::ST4,
+            ],
         };
         assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }

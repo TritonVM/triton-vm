@@ -94,7 +94,6 @@
 //! paths. It is not used in this example. See [`NonDeterminism`] for more information.
 //!
 //! ```
-//! # use triton_vm::*;
 //! # use triton_vm::prelude::*;
 //! let sum_of_squares_program = triton_program!(
 //!     read_io 1                       // n
@@ -129,9 +128,9 @@
 //! let non_determinism = NonDeterminism::from(secret_input).with_ram(initial_ram);
 //!
 //! let (stark, claim, proof) =
-//!    prove_program(&sum_of_squares_program, public_input, non_determinism).unwrap();
+//!    triton_vm::prove_program(&sum_of_squares_program, public_input, non_determinism).unwrap();
 //!
-//! let verdict = verify(stark, &claim, &proof);
+//! let verdict = triton_vm::verify(stark, &claim, &proof);
 //! assert!(verdict);
 //! ```
 //!
@@ -144,7 +143,6 @@
 //! [`VMError`]. This can be helpful for debugging.
 //!
 //! ```
-//! # use triton_vm::*;
 //! # use triton_vm::prelude::*;
 //! let crashing_program = triton_program!(push 2 assert halt);
 //! let vm_error = VM::run(&crashing_program, [].into(), [].into()).unwrap_err();

@@ -4,6 +4,9 @@ use std::ops::Mul;
 use std::ops::MulAssign;
 use std::ops::Range;
 
+use air::table::cascade::CascadeTable;
+use air::table::hash::HashTable;
+use air::table::jump_stack::JumpStackTable;
 use air::table::lookup::LookupTable;
 use air::table::op_stack::OpStackTable;
 use air::table::processor::ProcessorTable;
@@ -47,9 +50,25 @@ use air::table::RAM_TABLE_END;
 use air::table::RAM_TABLE_START;
 use air::table::U32_TABLE_END;
 use air::table::U32_TABLE_START;
-use air::table_column::*;
+use air::table_column::CascadeAuxColumn;
+use air::table_column::CascadeMainColumn;
+use air::table_column::HashAuxColumn;
+use air::table_column::HashMainColumn;
+use air::table_column::JumpStackAuxColumn;
+use air::table_column::JumpStackMainColumn;
+use air::table_column::LookupAuxColumn;
+use air::table_column::LookupMainColumn;
+use air::table_column::OpStackAuxColumn;
+use air::table_column::OpStackMainColumn;
+use air::table_column::ProcessorAuxColumn;
+use air::table_column::ProcessorMainColumn;
+use air::table_column::ProgramAuxColumn;
+use air::table_column::ProgramMainColumn;
+use air::table_column::RamAuxColumn;
+use air::table_column::RamMainColumn;
+use air::table_column::U32AuxColumn;
+use air::table_column::U32MainColumn;
 use itertools::Itertools;
-use master_table::auxiliary_table::Evaluable;
 use ndarray::parallel::prelude::*;
 use ndarray::prelude::*;
 use ndarray::s;
@@ -81,9 +100,12 @@ use crate::profiler::profiler;
 use crate::stark::NUM_RANDOMIZER_POLYNOMIALS;
 use crate::table::auxiliary_table::all_degrees_with_origin;
 use crate::table::auxiliary_table::DegreeWithOrigin;
+use crate::table::auxiliary_table::Evaluable;
 use crate::table::degree_lowering::DegreeLoweringTable;
 use crate::table::processor::ClkJumpDiffs;
-use crate::table::*;
+use crate::table::AuxiliaryRow;
+use crate::table::MainRow;
+use crate::table::TraceTable;
 
 /// A Master Table is, in some sense, a top-level table of Triton VM. It contains all the data
 /// but little logic beyond bookkeeping and presenting the data in useful ways. Conversely, the
@@ -464,8 +486,8 @@ pub struct MasterAuxTable {
 
 impl MasterTable for MasterMainTable {
     type Field = BFieldElement;
-    const NUM_COLUMNS: usize =
-        air::table::NUM_MAIN_COLUMNS + degree_lowering::DegreeLoweringMainColumn::COUNT;
+    const NUM_COLUMNS: usize = air::table::NUM_MAIN_COLUMNS
+        + crate::table::degree_lowering::DegreeLoweringMainColumn::COUNT;
 
     fn trace_domain(&self) -> ArithmeticDomain {
         self.trace_domain
@@ -573,7 +595,7 @@ impl MasterTable for MasterMainTable {
 impl MasterTable for MasterAuxTable {
     type Field = XFieldElement;
     const NUM_COLUMNS: usize = air::table::NUM_AUX_COLUMNS
-        + degree_lowering::DegreeLoweringAuxColumn::COUNT
+        + crate::table::degree_lowering::DegreeLoweringAuxColumn::COUNT
         + NUM_RANDOMIZER_POLYNOMIALS;
 
     fn trace_domain(&self) -> ArithmeticDomain {
@@ -912,17 +934,16 @@ impl MasterMainTable {
     }
 
     fn column_indices_for_table(id: TableId) -> Range<usize> {
-        use TableId::*;
         match id {
-            Program => PROGRAM_TABLE_START..PROGRAM_TABLE_END,
-            Processor => PROCESSOR_TABLE_START..PROCESSOR_TABLE_END,
-            OpStack => OP_STACK_TABLE_START..OP_STACK_TABLE_END,
-            Ram => RAM_TABLE_START..RAM_TABLE_END,
-            JumpStack => JUMP_STACK_TABLE_START..JUMP_STACK_TABLE_END,
-            Hash => HASH_TABLE_START..HASH_TABLE_END,
-            Cascade => CASCADE_TABLE_START..CASCADE_TABLE_END,
-            Lookup => LOOKUP_TABLE_START..LOOKUP_TABLE_END,
-            U32 => U32_TABLE_START..U32_TABLE_END,
+            TableId::Program => PROGRAM_TABLE_START..PROGRAM_TABLE_END,
+            TableId::Processor => PROCESSOR_TABLE_START..PROCESSOR_TABLE_END,
+            TableId::OpStack => OP_STACK_TABLE_START..OP_STACK_TABLE_END,
+            TableId::Ram => RAM_TABLE_START..RAM_TABLE_END,
+            TableId::JumpStack => JUMP_STACK_TABLE_START..JUMP_STACK_TABLE_END,
+            TableId::Hash => HASH_TABLE_START..HASH_TABLE_END,
+            TableId::Cascade => CASCADE_TABLE_START..CASCADE_TABLE_END,
+            TableId::Lookup => LOOKUP_TABLE_START..LOOKUP_TABLE_END,
+            TableId::U32 => U32_TABLE_START..U32_TABLE_END,
         }
     }
 
@@ -955,17 +976,16 @@ impl MasterMainTable {
 
 impl MasterAuxTable {
     fn column_indices_for_table(id: TableId) -> Range<usize> {
-        use TableId::*;
         match id {
-            Program => AUX_PROGRAM_TABLE_START..AUX_PROGRAM_TABLE_END,
-            Processor => AUX_PROCESSOR_TABLE_START..AUX_PROCESSOR_TABLE_END,
-            OpStack => AUX_OP_STACK_TABLE_START..AUX_OP_STACK_TABLE_END,
-            Ram => AUX_RAM_TABLE_START..AUX_RAM_TABLE_END,
-            JumpStack => AUX_JUMP_STACK_TABLE_START..AUX_JUMP_STACK_TABLE_END,
-            Hash => AUX_HASH_TABLE_START..AUX_HASH_TABLE_END,
-            Cascade => AUX_CASCADE_TABLE_START..AUX_CASCADE_TABLE_END,
-            Lookup => AUX_LOOKUP_TABLE_START..AUX_LOOKUP_TABLE_END,
-            U32 => AUX_U32_TABLE_START..AUX_U32_TABLE_END,
+            TableId::Program => AUX_PROGRAM_TABLE_START..AUX_PROGRAM_TABLE_END,
+            TableId::Processor => AUX_PROCESSOR_TABLE_START..AUX_PROCESSOR_TABLE_END,
+            TableId::OpStack => AUX_OP_STACK_TABLE_START..AUX_OP_STACK_TABLE_END,
+            TableId::Ram => AUX_RAM_TABLE_START..AUX_RAM_TABLE_END,
+            TableId::JumpStack => AUX_JUMP_STACK_TABLE_START..AUX_JUMP_STACK_TABLE_END,
+            TableId::Hash => AUX_HASH_TABLE_START..AUX_HASH_TABLE_END,
+            TableId::Cascade => AUX_CASCADE_TABLE_START..AUX_CASCADE_TABLE_END,
+            TableId::Lookup => AUX_LOOKUP_TABLE_START..AUX_LOOKUP_TABLE_END,
+            TableId::U32 => AUX_U32_TABLE_START..AUX_U32_TABLE_END,
         }
     }
 
@@ -1196,6 +1216,9 @@ mod tests {
     use air::table::cascade::CascadeTable;
     use air::table::hash::HashTable;
     use air::table::jump_stack::JumpStackTable;
+    use air::table_column::MasterAuxColumn;
+    use air::table_column::MasterMainColumn;
+    use air::AIR;
     use constraint_circuit::ConstraintCircuitBuilder;
     use constraint_circuit::ConstraintCircuitMonad;
     use constraint_circuit::DegreeLoweringInfo;
@@ -1209,6 +1232,7 @@ mod tests {
     use proptest::prelude::*;
     use proptest_arbitrary_interop::arb;
     use strum::EnumCount;
+    use strum::EnumIter;
     use strum::IntoEnumIterator;
     use strum::VariantNames;
     use test_strategy::proptest;
@@ -1222,10 +1246,10 @@ mod tests {
     use crate::memory_layout::DynamicTasmConstraintEvaluationMemoryLayout;
     use crate::memory_layout::StaticTasmConstraintEvaluationMemoryLayout;
     use crate::shared_tests::ProgramAndInput;
-    use crate::stark::tests::*;
+    use crate::stark::tests::master_main_table_for_low_security_level;
+    use crate::stark::tests::master_tables_for_low_security_level;
     use crate::table::degree_lowering::DegreeLoweringAuxColumn;
     use crate::table::degree_lowering::DegreeLoweringMainColumn;
-    use crate::table::*;
     use crate::triton_program;
 
     use super::*;

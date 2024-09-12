@@ -96,13 +96,13 @@ impl ExecutionTraceProfiler {
                 CoProcessorCall::Tip5Trace(_, trace) => {
                     self.table_heights.hash += u32::try_from(trace.len()).unwrap();
                 }
-                CoProcessorCall::U32Call(c) => {
+                CoProcessorCall::U32(c) => {
                     self.u32_table_entries.insert(c);
                     let contribution = U32TableEntry::table_height_contribution;
                     self.table_heights.u32 = self.u32_table_entries.iter().map(contribution).sum();
                 }
-                CoProcessorCall::OpStackCall(_) => self.table_heights.op_stack += 1,
-                CoProcessorCall::RamCall(_) => self.table_heights.ram += 1,
+                CoProcessorCall::OpStack(_) => self.table_heights.op_stack += 1,
+                CoProcessorCall::Ram(_) => self.table_heights.ram += 1,
             }
         }
     }

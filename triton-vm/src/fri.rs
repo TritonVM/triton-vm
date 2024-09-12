@@ -1,6 +1,6 @@
 use itertools::Itertools;
 use num_traits::Zero;
-use rayon::iter::*;
+use rayon::prelude::*;
 use twenty_first::math::traits::FiniteField;
 use twenty_first::math::traits::PrimitiveRootOfUnity;
 use twenty_first::prelude::*;
@@ -9,7 +9,6 @@ use crate::arithmetic_domain::ArithmeticDomain;
 use crate::error::FriProvingError;
 use crate::error::FriSetupError;
 use crate::error::FriValidationError;
-use crate::error::FriValidationError::*;
 use crate::profiler::profiler;
 use crate::proof_item::FriResponse;
 use crate::proof_item::ProofItem;
@@ -318,7 +317,7 @@ impl<'stream> FriVerifier<'stream> {
     fn assert_enough_leaves_were_received(&self, leaves: &[XFieldElement]) -> VerifierResult<()> {
         match self.num_collinearity_checks == leaves.len() {
             true => Ok(()),
-            false => Err(IncorrectNumberOfRevealedLeaves),
+            false => Err(FriValidationError::IncorrectNumberOfRevealedLeaves),
         }
     }
 
@@ -340,7 +339,7 @@ impl<'stream> FriVerifier<'stream> {
         };
         match inclusion_proof.verify(round.merkle_root) {
             true => Ok(()),
-            false => Err(BadMerkleAuthenticationPath),
+            false => Err(FriValidationError::BadMerkleAuthenticationPath),
         }
     }
 
@@ -363,7 +362,7 @@ impl<'stream> FriVerifier<'stream> {
         };
         match inclusion_proof.verify(round.merkle_root) {
             true => Ok(()),
-            false => Err(BadMerkleAuthenticationPath),
+            false => Err(FriValidationError::BadMerkleAuthenticationPath),
         }
     }
 
@@ -429,7 +428,7 @@ impl<'stream> FriVerifier<'stream> {
     fn assert_last_round_codeword_matches_last_round_commitment(&self) -> VerifierResult<()> {
         match self.last_round_merkle_root() == self.last_round_codeword_merkle_root()? {
             true => Ok(()),
-            false => Err(BadMerkleRootForLastCodeword),
+            false => Err(FriValidationError::BadMerkleRootForLastCodeword),
         }
     }
 
@@ -452,7 +451,7 @@ impl<'stream> FriVerifier<'stream> {
         let partial_received_codeword = self.received_last_round_codeword_at_indices_a();
         match partial_received_codeword == partial_folded_codeword {
             true => Ok(()),
-            false => Err(LastCodewordMismatch),
+            false => Err(FriValidationError::LastCodewordMismatch),
         }
     }
 
@@ -473,14 +472,14 @@ impl<'stream> FriVerifier<'stream> {
         &mut self,
     ) -> VerifierResult<()> {
         if self.last_round_polynomial.degree() > self.last_round_max_degree.try_into().unwrap() {
-            return Err(LastRoundPolynomialHasTooHighDegree);
+            return Err(FriValidationError::LastRoundPolynomialHasTooHighDegree);
         }
 
         let indeterminate = self.proof_stream.sample_scalars(1)[0];
         let horner_evaluation = self.last_round_polynomial.evaluate(indeterminate);
         let barycentric_evaluation = barycentric_evaluate(&self.last_round_codeword, indeterminate);
         if horner_evaluation != barycentric_evaluation {
-            return Err(LastRoundPolynomialEvaluationMismatch);
+            return Err(FriValidationError::LastRoundPolynomialEvaluationMismatch);
         }
 
         Ok(())
@@ -669,10 +668,9 @@ mod tests {
     use rand_core::SeedableRng;
     use test_strategy::proptest;
 
-    use ProofItem::*;
-
     use crate::error::FriValidationError;
-    use crate::shared_tests::*;
+    use crate::shared_tests::arbitrary_polynomial;
+    use crate::shared_tests::arbitrary_polynomial_of_degree;
 
     use super::*;
 
@@ -856,11 +854,12 @@ mod tests {
         let prover_items = prover_proof_stream.items.iter();
         let verifier_items = verifier_proof_stream.items.iter();
         for (prover_item, verifier_item) in prover_items.zip_eq(verifier_items) {
+            use ProofItem as PI;
             match (prover_item, verifier_item) {
-                (MerkleRoot(p), MerkleRoot(v)) => prop_assert_eq!(p, v),
-                (FriResponse(p), FriResponse(v)) => prop_assert_eq!(p, v),
-                (FriCodeword(p), FriCodeword(v)) => prop_assert_eq!(p, v),
-                (FriPolynomial(p), FriPolynomial(v)) => prop_assert_eq!(p, v),
+                (PI::MerkleRoot(p), PI::MerkleRoot(v)) => prop_assert_eq!(p, v),
+                (PI::FriResponse(p), PI::FriResponse(v)) => prop_assert_eq!(p, v),
+                (PI::FriCodeword(p), PI::FriCodeword(v)) => prop_assert_eq!(p, v),
+                (PI::FriPolynomial(p), PI::FriPolynomial(v)) => prop_assert_eq!(p, v),
                 _ => panic!("Unknown items.\nProver: {prover_item:?}\nVerifier: {verifier_item:?}"),
             }
         }
@@ -912,7 +911,7 @@ mod tests {
 
     fn fri_codeword_filter() -> fn(&mut ProofItem) -> Option<&mut Vec<XFieldElement>> {
         |proof_item| match proof_item {
-            FriCodeword(codeword) => Some(codeword),
+            ProofItem::FriCodeword(codeword) => Some(codeword),
             _ => None,
         }
     }
@@ -960,7 +959,7 @@ mod tests {
 
     fn fri_response_filter() -> fn(&mut ProofItem) -> Option<&mut super::FriResponse> {
         |proof_item| match proof_item {
-            FriResponse(fri_response) => Some(fri_response),
+            ProofItem::FriResponse(fri_response) => Some(fri_response),
             _ => None,
         }
     }
@@ -987,7 +986,7 @@ mod tests {
 
         let verdict = fri.verify(&mut proof_stream);
         let_assert!(Err(err) = verdict);
-        assert!(let BadMerkleAuthenticationPath = err);
+        assert!(let FriValidationError::BadMerkleAuthenticationPath = err);
     }
 
     #[must_use]
@@ -1012,10 +1011,10 @@ mod tests {
     }
 
     fn non_trivial_auth_structure_filter(
-    ) -> fn(&mut ProofItem) -> Option<&mut super::AuthenticationStructure> {
+    ) -> fn(&mut ProofItem) -> Option<&mut AuthenticationStructure> {
         |proof_item| match proof_item {
-            FriResponse(fri_response) if fri_response.auth_structure.is_empty() => None,
-            FriResponse(fri_response) => Some(&mut fri_response.auth_structure),
+            ProofItem::FriResponse(fri_response) if fri_response.auth_structure.is_empty() => None,
+            ProofItem::FriResponse(fri_response) => Some(&mut fri_response.auth_structure),
             _ => None,
         }
     }
@@ -1040,7 +1039,7 @@ mod tests {
 
         let verdict = fri.verify(&mut proof_stream);
         let_assert!(Err(err) = verdict);
-        assert!(let LastRoundPolynomialEvaluationMismatch = err);
+        assert!(let FriValidationError::LastRoundPolynomialEvaluationMismatch = err);
     }
 
     #[proptest]
@@ -1057,7 +1056,7 @@ mod tests {
         let mut proof_stream = prepare_proof_stream_for_verification(proof_stream);
         let verdict = fri.verify(&mut proof_stream);
         let_assert!(Err(err) = verdict);
-        assert!(let LastRoundPolynomialHasTooHighDegree = err);
+        assert!(let FriValidationError::LastRoundPolynomialHasTooHighDegree = err);
     }
 
     #[proptest]

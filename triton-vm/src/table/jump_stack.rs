@@ -2,13 +2,14 @@ use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::ops::Range;
 
-use air::challenge_id::ChallengeId::*;
+use air::challenge_id::ChallengeId;
 use air::cross_table_argument::CrossTableArg;
 use air::cross_table_argument::LookupArg;
 use air::cross_table_argument::PermArg;
 use air::table::jump_stack::JumpStackTable;
-use air::table_column::*;
-use air::AIR;
+use air::table_column::MasterAuxColumn;
+use air::table_column::MasterMainColumn;
+use air::table_column::ProcessorMainColumn;
 use itertools::Itertools;
 use ndarray::parallel::prelude::*;
 use ndarray::prelude::*;
@@ -24,8 +25,8 @@ use crate::ndarray_helper::horizontal_multi_slice_mut;
 use crate::profiler::profiler;
 use crate::table::TraceTable;
 
-type MainColumn = <JumpStackTable as AIR>::MainColumn;
-type AuxColumn = <JumpStackTable as AIR>::AuxColumn;
+type MainColumn = <JumpStackTable as air::AIR>::MainColumn;
+type AuxColumn = <JumpStackTable as air::AIR>::AuxColumn;
 
 fn auxiliary_column_running_product_permutation_argument(
     main_table: ArrayView2<BFieldElement>,
@@ -34,12 +35,13 @@ fn auxiliary_column_running_product_permutation_argument(
     let mut running_product = PermArg::default_initial();
     let mut auxiliary_column = Vec::with_capacity(main_table.nrows());
     for row in main_table.rows() {
-        let compressed_row = row[MainColumn::CLK.main_index()] * challenges[JumpStackClkWeight]
-            + row[MainColumn::CI.main_index()] * challenges[JumpStackCiWeight]
-            + row[MainColumn::JSP.main_index()] * challenges[JumpStackJspWeight]
-            + row[MainColumn::JSO.main_index()] * challenges[JumpStackJsoWeight]
-            + row[MainColumn::JSD.main_index()] * challenges[JumpStackJsdWeight];
-        running_product *= challenges[JumpStackIndeterminate] - compressed_row;
+        let compressed_row = row[MainColumn::CLK.main_index()]
+            * challenges[ChallengeId::JumpStackClkWeight]
+            + row[MainColumn::CI.main_index()] * challenges[ChallengeId::JumpStackCiWeight]
+            + row[MainColumn::JSP.main_index()] * challenges[ChallengeId::JumpStackJspWeight]
+            + row[MainColumn::JSO.main_index()] * challenges[ChallengeId::JumpStackJsoWeight]
+            + row[MainColumn::JSD.main_index()] * challenges[ChallengeId::JumpStackJsdWeight];
+        running_product *= challenges[ChallengeId::JumpStackIndeterminate] - compressed_row;
         auxiliary_column.push(running_product);
     }
     Array2::from_shape_vec((main_table.nrows(), 1), auxiliary_column).unwrap()
@@ -52,7 +54,7 @@ fn auxiliary_column_clock_jump_diff_lookup_log_derivative(
     // - use memoization to avoid recomputing inverses
     // - precompute common values through batch inversion
     const PRECOMPUTE_INVERSES_OF: Range<u64> = 0..100;
-    let indeterminate = challenges[ClockJumpDifferenceLookupIndeterminate];
+    let indeterminate = challenges[ChallengeId::ClockJumpDifferenceLookupIndeterminate];
     let to_invert = PRECOMPUTE_INVERSES_OF
         .map(|i| indeterminate - bfe!(i))
         .collect();
@@ -166,7 +168,7 @@ impl TraceTable for JumpStackTable {
         let padding_section_end = padding_section_start + num_padding_rows;
         assert_eq!(padded_height, rows_to_move_dest_section_end);
 
-        // Move all rows below the row with highest CLK to the end of the table – if they exist.
+        // Move all rows below the row with the highest CLK to the end of the table – if they exist.
         if num_rows_to_move > 0 {
             let rows_to_move_source_range =
                 rows_to_move_source_section_start..rows_to_move_source_section_end;
@@ -208,7 +210,7 @@ impl TraceTable for JumpStackTable {
         assert_eq!(main_table.nrows(), aux_table.nrows());
 
         // use strum::IntoEnumIterator;
-        let auxiliary_column_indices = JumpStackAuxColumn::iter()
+        let auxiliary_column_indices = AuxColumn::iter()
             .map(|column| column.aux_index())
             .collect_vec();
         let auxiliary_column_slices = horizontal_multi_slice_mut(

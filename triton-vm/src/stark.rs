@@ -1351,19 +1351,74 @@ pub(crate) mod tests {
     use test_strategy::proptest;
     use twenty_first::math::other::random_elements;
 
+    use super::*;
     use crate::error::InstructionError;
-    use crate::example_programs::*;
-    use crate::shared_tests::*;
+    use crate::shared_tests::construct_master_main_table;
+    use crate::shared_tests::low_security_stark;
+    use crate::shared_tests::prove_and_verify;
+    use crate::shared_tests::ProgramAndInput;
+    use crate::shared_tests::DEFAULT_LOG2_FRI_EXPANSION_FACTOR_FOR_TESTS;
     use crate::table::auxiliary_table;
     use crate::table::auxiliary_table::Evaluable;
     use crate::table::master_table::MasterAuxTable;
     use crate::triton_program;
-    use crate::vm::tests::*;
+    use crate::vm::tests::property_based_test_program_for_and;
+    use crate::vm::tests::property_based_test_program_for_assert_vector;
+    use crate::vm::tests::property_based_test_program_for_div_mod;
+    use crate::vm::tests::property_based_test_program_for_eq;
+    use crate::vm::tests::property_based_test_program_for_is_u32;
+    use crate::vm::tests::property_based_test_program_for_log2floor;
+    use crate::vm::tests::property_based_test_program_for_lsb;
+    use crate::vm::tests::property_based_test_program_for_lt;
+    use crate::vm::tests::property_based_test_program_for_pop_count;
+    use crate::vm::tests::property_based_test_program_for_pow;
+    use crate::vm::tests::property_based_test_program_for_random_ram_access;
+    use crate::vm::tests::property_based_test_program_for_split;
+    use crate::vm::tests::property_based_test_program_for_xb_dot_step;
+    use crate::vm::tests::property_based_test_program_for_xor;
+    use crate::vm::tests::property_based_test_program_for_xx_dot_step;
+    use crate::vm::tests::test_program_0_lt_0;
+    use crate::vm::tests::test_program_claim_in_ram_corresponds_to_currently_running_program;
+    use crate::vm::tests::test_program_for_add_mul_invert;
+    use crate::vm::tests::test_program_for_and;
+    use crate::vm::tests::test_program_for_assert_vector;
+    use crate::vm::tests::test_program_for_call_recurse_return;
+    use crate::vm::tests::test_program_for_div_mod;
+    use crate::vm::tests::test_program_for_divine;
+    use crate::vm::tests::test_program_for_eq;
+    use crate::vm::tests::test_program_for_halt;
+    use crate::vm::tests::test_program_for_hash;
+    use crate::vm::tests::test_program_for_log2floor;
+    use crate::vm::tests::test_program_for_lsb;
+    use crate::vm::tests::test_program_for_lt;
+    use crate::vm::tests::test_program_for_many_sponge_instructions;
+    use crate::vm::tests::test_program_for_merkle_step_left_sibling;
+    use crate::vm::tests::test_program_for_merkle_step_mem_left_sibling;
+    use crate::vm::tests::test_program_for_merkle_step_mem_right_sibling;
+    use crate::vm::tests::test_program_for_merkle_step_right_sibling;
+    use crate::vm::tests::test_program_for_pop_count;
+    use crate::vm::tests::test_program_for_pow;
+    use crate::vm::tests::test_program_for_push_pop_dup_swap_nop;
+    use crate::vm::tests::test_program_for_read_io_write_io;
+    use crate::vm::tests::test_program_for_recurse_or_return;
+    use crate::vm::tests::test_program_for_skiz;
+    use crate::vm::tests::test_program_for_split;
+    use crate::vm::tests::test_program_for_sponge_instructions;
+    use crate::vm::tests::test_program_for_sponge_instructions_2;
+    use crate::vm::tests::test_program_for_starting_with_pop_count;
+    use crate::vm::tests::test_program_for_write_mem_read_mem;
+    use crate::vm::tests::test_program_for_x_invert;
+    use crate::vm::tests::test_program_for_xb_mul;
+    use crate::vm::tests::test_program_for_xor;
+    use crate::vm::tests::test_program_for_xx_add;
+    use crate::vm::tests::test_program_for_xx_mul;
+    use crate::vm::tests::test_program_hash_nop_nop_lt;
+    use crate::vm::tests::ProgramForMerkleTreeUpdate;
+    use crate::vm::tests::ProgramForRecurseOrReturn;
+    use crate::vm::tests::ProgramForSpongeAndHashInstructions;
     use crate::vm::NonDeterminism;
     use crate::vm::VM;
     use crate::PublicInput;
-
-    use super::*;
 
     pub(crate) fn master_main_table_for_low_security_level(
         program_and_input: ProgramAndInput,
@@ -1770,14 +1825,16 @@ pub(crate) mod tests {
     #[test]
     fn constraints_evaluate_to_zero_on_fibonacci() {
         let source_code_and_input =
-            ProgramAndInput::new(FIBONACCI_SEQUENCE.clone()).with_input(bfe_array![100]);
+            ProgramAndInput::new(crate::example_programs::FIBONACCI_SEQUENCE.clone())
+                .with_input(bfe_array![100]);
         triton_constraints_evaluate_to_zero(source_code_and_input);
     }
 
     #[test]
     fn constraints_evaluate_to_zero_on_big_mmr_snippet() {
-        let source_code_and_input =
-            ProgramAndInput::new(CALCULATE_NEW_MMR_PEAKS_FROM_APPEND_WITH_SAFE_LISTS.clone());
+        let source_code_and_input = ProgramAndInput::new(
+            crate::example_programs::CALCULATE_NEW_MMR_PEAKS_FROM_APPEND_WITH_SAFE_LISTS.clone(),
+        );
         triton_constraints_evaluate_to_zero(source_code_and_input);
     }
 
@@ -2303,8 +2360,9 @@ pub(crate) mod tests {
 
     #[test]
     fn prove_and_verify_fibonacci_100() {
-        let program_and_input = ProgramAndInput::new(FIBONACCI_SEQUENCE.clone())
-            .with_input(PublicInput::from(bfe_array![100]));
+        let program_and_input =
+            ProgramAndInput::new(crate::example_programs::FIBONACCI_SEQUENCE.clone())
+                .with_input(PublicInput::from(bfe_array![100]));
         prove_and_verify(
             program_and_input,
             DEFAULT_LOG2_FRI_EXPANSION_FACTOR_FOR_TESTS,
@@ -2313,15 +2371,18 @@ pub(crate) mod tests {
 
     #[test]
     fn constraints_evaluate_to_zero_on_many_u32_operations() {
-        let many_u32_instructions =
-            ProgramAndInput::new(PROGRAM_WITH_MANY_U32_INSTRUCTIONS.clone());
+        let many_u32_instructions = ProgramAndInput::new(
+            crate::example_programs::PROGRAM_WITH_MANY_U32_INSTRUCTIONS.clone(),
+        );
         triton_constraints_evaluate_to_zero(many_u32_instructions);
     }
 
     #[test]
     fn prove_verify_many_u32_operations() {
         prove_and_verify(
-            ProgramAndInput::new(PROGRAM_WITH_MANY_U32_INSTRUCTIONS.clone()),
+            ProgramAndInput::new(
+                crate::example_programs::PROGRAM_WITH_MANY_U32_INSTRUCTIONS.clone(),
+            ),
             DEFAULT_LOG2_FRI_EXPANSION_FACTOR_FOR_TESTS,
         );
     }

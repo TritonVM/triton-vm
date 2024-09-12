@@ -5,12 +5,11 @@ use air::cross_table_argument::LookupArg;
 use air::table::lookup::LookupTable;
 use air::table_column::MasterAuxColumn;
 use air::table_column::MasterMainColumn;
-use air::AIR;
 use itertools::Itertools;
 use ndarray::prelude::*;
 use num_traits::ConstOne;
 use num_traits::One;
-use rayon::iter::*;
+use rayon::prelude::*;
 use strum::EnumCount;
 use strum::IntoEnumIterator;
 use twenty_first::prelude::*;
@@ -22,8 +21,8 @@ use crate::ndarray_helper::horizontal_multi_slice_mut;
 use crate::profiler::profiler;
 use crate::table::TraceTable;
 
-type MainColumn = <LookupTable as AIR>::MainColumn;
-type AuxColumn = <LookupTable as AIR>::AuxColumn;
+type MainColumn = <LookupTable as air::AIR>::MainColumn;
+type AuxColumn = <LookupTable as air::AIR>::AuxColumn;
 
 fn auxiliary_column_cascade_running_sum_log_derivative(
     main_table: ArrayView2<BFieldElement>,

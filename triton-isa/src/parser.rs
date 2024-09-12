@@ -7,11 +7,19 @@ use std::fmt::Formatter;
 use std::fmt::Result as FmtResult;
 
 use nom::branch::alt;
-use nom::bytes::complete::*;
+use nom::bytes::complete::tag;
+use nom::bytes::complete::take_while;
+use nom::bytes::complete::take_while1;
 use nom::character::complete::digit1;
-use nom::combinator::*;
-use nom::error::*;
-use nom::multi::*;
+use nom::combinator::cut;
+use nom::combinator::eof;
+use nom::combinator::fail;
+use nom::combinator::opt;
+use nom::error::ErrorKind;
+use nom::error::VerboseError;
+use nom::error::VerboseErrorKind;
+use nom::multi::many0;
+use nom::multi::many1;
 use nom::Finish;
 use nom::IResult;
 use twenty_first::bfe;
@@ -60,12 +68,15 @@ impl<'a> InstructionToken<'a> {
     }
 
     pub fn to_labelled_instruction(&self) -> LabelledInstruction {
-        use InstructionToken::*;
         match self {
-            Instruction(instr, _) => LabelledInstruction::Instruction(instr.to_owned()),
-            Label(label, _) => LabelledInstruction::Label(label.to_owned()),
-            Breakpoint(_) => LabelledInstruction::Breakpoint,
-            TypeHint(type_hint, _) => LabelledInstruction::TypeHint(type_hint.to_owned()),
+            InstructionToken::Instruction(instr, _) => {
+                LabelledInstruction::Instruction(instr.to_owned())
+            }
+            InstructionToken::Label(label, _) => LabelledInstruction::Label(label.to_owned()),
+            InstructionToken::Breakpoint(_) => LabelledInstruction::Breakpoint,
+            InstructionToken::TypeHint(type_hint, _) => {
+                LabelledInstruction::TypeHint(type_hint.to_owned())
+            }
         }
     }
 }
@@ -94,7 +105,7 @@ fn pretty_print_error(s: &str, mut e: VerboseError<&str>) -> String {
     ) {
         e.errors.remove(0);
     }
-    convert_error(s, e)
+    nom::error::convert_error(s, e)
 }
 
 /// Parse a program
@@ -185,7 +196,7 @@ type ParseResult<'input, Out> = IResult<&'input str, Out, VerboseError<&'input s
 pub fn tokenize(s: &str) -> ParseResult<Vec<InstructionToken>> {
     let (s, _) = comment_or_whitespace0(s)?;
     let (s, instructions) = many0(alt((label, labelled_instruction, breakpoint, type_hint)))(s)?;
-    let (s, _) = context("expecting label, instruction or eof", eof)(s)?;
+    let (s, _) = nom::error::context("expecting label, instruction or eof", eof)(s)?;
 
     Ok((s, instructions))
 }
@@ -204,7 +215,10 @@ fn label(label_s: &str) -> ParseResult<InstructionToken> {
     // `cut` will reject the alternative parser of `label`, being `labelled_instruction`, which
     // *is* allowed to contain valid instruction names.
     if is_instruction_name(&addr) {
-        return cut(context("label cannot be named after instruction", fail))(label_s);
+        return cut(nom::error::context(
+            "label cannot be named after instruction",
+            fail,
+        ))(label_s);
     }
 
     Ok((s, InstructionToken::Label(addr, label_s)))
@@ -411,7 +425,10 @@ fn call_instruction<'a>() -> impl Fn(&'a str) -> ParseResult<AnInstruction<Strin
         // between the scenarios `<label>:` and `call <label>`; the former requires
         // parsing the `:` before rejecting a possible instruction name in the label.
         if is_instruction_name(&addr) {
-            return cut(context("label cannot be named after instruction", fail))(s);
+            return cut(nom::error::context(
+                "label cannot be named after instruction",
+                fail,
+            ))(s);
         }
 
         Ok((s, AnInstruction::Call(addr)))
@@ -456,12 +473,12 @@ fn field_element(s_orig: &str) -> ParseResult<BFieldElement> {
     let (s, _) = comment_or_whitespace1(s)?;
 
     let Ok(mut n): Result<i128, _> = n.parse() else {
-        return context("out-of-bounds constant", fail)(s);
+        return nom::error::context("out-of-bounds constant", fail)(s);
     };
 
     let quotient = i128::from(BFieldElement::P);
     if n >= quotient {
-        return context("out-of-bounds constant", fail)(s_orig);
+        return nom::error::context("out-of-bounds constant", fail)(s_orig);
     }
 
     if negative.is_some() {
@@ -491,7 +508,11 @@ fn stack_register(s: &str) -> ParseResult<OpStackElement> {
         "13" => OpStackElement::ST13,
         "14" => OpStackElement::ST14,
         "15" => OpStackElement::ST15,
-        _ => return context("using an out-of-bounds stack register (0-15 exist)", fail)(s),
+        _ => {
+            return nom::error::context("using an out-of-bounds stack register (0-15 exist)", fail)(
+                s,
+            )
+        }
     };
     let (s, _) = comment_or_whitespace1(s)?;
 
@@ -506,7 +527,7 @@ fn number_of_words(s: &str) -> ParseResult<NumberOfWords> {
         "3" => NumberOfWords::N3,
         "4" => NumberOfWords::N4,
         "5" => NumberOfWords::N5,
-        _ => return context("using an out-of-bounds argument (1-5 allowed)", fail)(s),
+        _ => return nom::error::context("using an out-of-bounds argument (1-5 allowed)", fail)(s),
     };
     let (s, _) = comment_or_whitespace1(s)?; // require space after element
 
@@ -521,7 +542,7 @@ fn label_addr(s_orig: &str) -> ParseResult<String> {
         //  `alt`. With a custom error type, it is possible to have alt return the error of the
         //  parser that went the farthest in the input data.
         let failure_reason = "label must start with an alphabetic character or underscore";
-        return context(failure_reason, fail)(s_orig);
+        return nom::error::context(failure_reason, fail)(s_orig);
     }
     let (s, addr_part_1) = take_while(is_label_char)(s)?;
 
@@ -615,7 +636,10 @@ fn type_hint(s_type_hint: &str) -> ParseResult<InstructionToken> {
 
     let length = match maybe_range_end {
         Some(range_end) if range_end <= range_start => {
-            return cut(context("range end must be greater than range start", fail))(s)
+            return cut(nom::error::context(
+                "range end must be greater than range start",
+                fail,
+            ))(s)
         }
         Some(range_end) => range_end - range_start,
         None => 1,
@@ -691,7 +715,7 @@ fn is_type_hint_type_name_character(c: char) -> bool {
 fn parse_str_to_usize(s: &str) -> ParseResult<usize> {
     match s.parse::<usize>() {
         Ok(u) => Ok((s, u)),
-        Err(_) => cut(context("integer conversion failure", fail))(s),
+        Err(_) => cut(nom::error::context("integer conversion failure", fail))(s),
     }
 }
 

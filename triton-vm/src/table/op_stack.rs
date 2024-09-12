@@ -2,13 +2,16 @@ use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::ops::Range;
 
-use air::challenge_id::ChallengeId::*;
-use air::cross_table_argument::*;
+use air::challenge_id::ChallengeId;
+use air::cross_table_argument::CrossTableArg;
+use air::cross_table_argument::LookupArg;
+use air::cross_table_argument::PermArg;
 use air::table::op_stack::OpStackTable;
 use air::table::op_stack::PADDING_VALUE;
 use air::table::TableId;
-use air::table_column::*;
-use air::AIR;
+use air::table_column::MasterAuxColumn;
+use air::table_column::MasterMainColumn;
+use air::table_column::OpStackAuxColumn;
 use arbitrary::Arbitrary;
 use isa::op_stack::OpStackElement;
 use isa::op_stack::UnderflowIO;
@@ -27,8 +30,8 @@ use crate::ndarray_helper::horizontal_multi_slice_mut;
 use crate::profiler::profiler;
 use crate::table::TraceTable;
 
-type MainColumn = <OpStackTable as AIR>::MainColumn;
-type AuxColumn = <OpStackTable as AIR>::AuxColumn;
+type MainColumn = <OpStackTable as air::AIR>::MainColumn;
+type AuxColumn = <OpStackTable as air::AIR>::AuxColumn;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Arbitrary)]
 pub struct OpStackTableEntry {
@@ -89,7 +92,7 @@ impl OpStackTableEntry {
             bfe!(0)
         };
 
-        let mut row = Array1::zeros(<OpStackTable as AIR>::MainColumn::COUNT);
+        let mut row = Array1::zeros(MainColumn::COUNT);
         row[MainColumn::CLK.main_index()] = self.clk.into();
         row[MainColumn::IB1ShrinkStack.main_index()] = shrink_stack_indicator;
         row[MainColumn::StackPointer.main_index()] = self.op_stack_pointer;
@@ -102,17 +105,20 @@ fn auxiliary_column_running_product_permutation_argument(
     main_table: ArrayView2<BFieldElement>,
     challenges: &Challenges,
 ) -> Array2<XFieldElement> {
-    let perm_arg_indeterminate = challenges[OpStackIndeterminate];
+    let perm_arg_indeterminate = challenges[ChallengeId::OpStackIndeterminate];
 
     let mut running_product = PermArg::default_initial();
     let mut auxiliary_column = Vec::with_capacity(main_table.nrows());
     for row in main_table.rows() {
         if row[MainColumn::IB1ShrinkStack.main_index()] != PADDING_VALUE {
-            let compressed_row = row[MainColumn::CLK.main_index()] * challenges[OpStackClkWeight]
-                + row[MainColumn::IB1ShrinkStack.main_index()] * challenges[OpStackIb1Weight]
-                + row[MainColumn::StackPointer.main_index()] * challenges[OpStackPointerWeight]
+            let compressed_row = row[MainColumn::CLK.main_index()]
+                * challenges[ChallengeId::OpStackClkWeight]
+                + row[MainColumn::IB1ShrinkStack.main_index()]
+                    * challenges[ChallengeId::OpStackIb1Weight]
+                + row[MainColumn::StackPointer.main_index()]
+                    * challenges[ChallengeId::OpStackPointerWeight]
                 + row[MainColumn::FirstUnderflowElement.main_index()]
-                    * challenges[OpStackFirstUnderflowElementWeight];
+                    * challenges[ChallengeId::OpStackFirstUnderflowElementWeight];
             running_product *= perm_arg_indeterminate - compressed_row;
         }
         auxiliary_column.push(running_product);
@@ -127,7 +133,7 @@ fn auxiliary_column_clock_jump_diff_lookup_log_derivative(
     // - use memoization to avoid recomputing inverses
     // - precompute common values through batch inversion
     const PRECOMPUTE_INVERSES_OF: Range<u64> = 0..100;
-    let cjd_lookup_indeterminate = challenges[ClockJumpDifferenceLookupIndeterminate];
+    let cjd_lookup_indeterminate = challenges[ChallengeId::ClockJumpDifferenceLookupIndeterminate];
     let to_invert = PRECOMPUTE_INVERSES_OF
         .map(|i| cjd_lookup_indeterminate - bfe!(i))
         .collect_vec();
@@ -352,13 +358,11 @@ pub(crate) mod tests {
         stack_pointer_1: u64,
         clk: u64,
     ) {
-        const MAIN_WIDTH: usize = <OpStackTable as AIR>::MainColumn::COUNT;
-
-        let mut row_0 = Array1::zeros(MAIN_WIDTH);
+        let mut row_0 = Array1::zeros(MainColumn::COUNT);
         row_0[MainColumn::StackPointer.main_index()] = stack_pointer_0.into();
         row_0[MainColumn::CLK.main_index()] = clk.into();
 
-        let mut row_1 = Array1::zeros(MAIN_WIDTH);
+        let mut row_1 = Array1::zeros(MainColumn::COUNT);
         row_1[MainColumn::StackPointer.main_index()] = stack_pointer_1.into();
         row_1[MainColumn::CLK.main_index()] = clk.into();
 
@@ -374,13 +378,11 @@ pub(crate) mod tests {
         clk_0: u64,
         clk_1: u64,
     ) {
-        const MAIN_WIDTH: usize = <OpStackTable as AIR>::MainColumn::COUNT;
-
-        let mut row_0 = Array1::zeros(MAIN_WIDTH);
+        let mut row_0 = Array1::zeros(MainColumn::COUNT);
         row_0[MainColumn::StackPointer.main_index()] = stack_pointer.into();
         row_0[MainColumn::CLK.main_index()] = clk_0.into();
 
-        let mut row_1 = Array1::zeros(MAIN_WIDTH);
+        let mut row_1 = Array1::zeros(MainColumn::COUNT);
         row_1[MainColumn::StackPointer.main_index()] = stack_pointer.into();
         row_1[MainColumn::CLK.main_index()] = clk_1.into();
 

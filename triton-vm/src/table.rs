@@ -1,6 +1,3 @@
-use air::table::cascade::CascadeTable;
-use air::table::hash::HashTable;
-use air::table::jump_stack::JumpStackTable;
 use air::AIR;
 use ndarray::ArrayView2;
 use ndarray::ArrayViewMut2;
@@ -85,7 +82,9 @@ pub type QuotientSegments = [XFieldElement; NUM_QUOTIENT_SEGMENTS];
 mod tests {
     use std::collections::HashMap;
 
+    use air::table::cascade::CascadeTable;
     use air::table::hash::HashTable;
+    use air::table::jump_stack::JumpStackTable;
     use air::table::lookup::LookupTable;
     use air::table::op_stack::OpStackTable;
     use air::table::processor::ProcessorTable;

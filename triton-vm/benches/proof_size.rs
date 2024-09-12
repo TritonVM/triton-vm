@@ -87,34 +87,31 @@ enum DataSizeOrderOfMagnitude {
 impl DataSizeOrderOfMagnitude {
     /// The order of magnitude the given number of bytes falls in.
     fn order_of_magnitude(num_bytes: f64) -> Self {
-        use DataSizeOrderOfMagnitude::*;
         match num_bytes {
-            b if b < KiloBytes.min_bytes_in_order_of_magnitude() => Bytes,
-            b if b < MegaBytes.min_bytes_in_order_of_magnitude() => KiloBytes,
-            b if b < GigaBytes.min_bytes_in_order_of_magnitude() => MegaBytes,
-            _ => GigaBytes,
+            b if b < Self::KiloBytes.min_bytes_in_order_of_magnitude() => Self::Bytes,
+            b if b < Self::MegaBytes.min_bytes_in_order_of_magnitude() => Self::KiloBytes,
+            b if b < Self::GigaBytes.min_bytes_in_order_of_magnitude() => Self::MegaBytes,
+            _ => Self::GigaBytes,
         }
     }
 
     /// The minimal number of bytes to be considered some order of magnitude.
     fn min_bytes_in_order_of_magnitude(self) -> f64 {
-        use DataSizeOrderOfMagnitude::*;
         match self {
-            Bytes => 1.0,
-            KiloBytes => 1024.0,
-            MegaBytes => 1024.0 * 1024.0,
-            GigaBytes => 1024.0 * 1024.0 * 1024.0,
+            Self::Bytes => 1.0,
+            Self::KiloBytes => 1024.0,
+            Self::MegaBytes => 1024.0 * 1024.0,
+            Self::GigaBytes => 1024.0 * 1024.0 * 1024.0,
         }
     }
 
     /// The typical abbreviation for this order of magnitude.
     fn abbreviation(self) -> &'static str {
-        use DataSizeOrderOfMagnitude::*;
         match self {
-            Bytes => "bytes",
-            KiloBytes => "KiB",
-            MegaBytes => "MiB",
-            GigaBytes => "GiB",
+            Self::Bytes => "bytes",
+            Self::KiloBytes => "KiB",
+            Self::MegaBytes => "MiB",
+            Self::GigaBytes => "GiB",
         }
     }
 }
