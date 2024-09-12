@@ -3,6 +3,7 @@ use std::collections::VecDeque;
 use std::fmt::Display;
 use std::fmt::Formatter;
 use std::fmt::Result as FmtResult;
+use std::ops::Deref;
 use std::ops::Range;
 
 use air::table::hash::PermutationTrace;
@@ -1307,7 +1308,7 @@ impl Display for VMState {
         .map(|reg| row[reg.main_index()])
         .map(|bfe| format!("{bfe:>2}"))
         .join(" | ");
-        print_row(f, format!("ib6-0:    [ {ib_registers} ]",))?;
+        print_row(f, format!("ib6-0:    [ {ib_registers} ]"))?;
 
         let Some(ref sponge) = self.sponge else {
             return writeln!(f, "╰─{:─<total_width$}─╯", "");
@@ -1345,6 +1346,12 @@ impl From<Vec<BFieldElement>> for PublicInput {
     }
 }
 
+impl From<PublicInput> for Vec<BFieldElement> {
+    fn from(value: PublicInput) -> Self {
+        value.individual_tokens
+    }
+}
+
 impl From<&Vec<BFieldElement>> for PublicInput {
     fn from(tokens: &Vec<BFieldElement>) -> Self {
         Self::new(tokens.to_owned())
@@ -1360,6 +1367,14 @@ impl<const N: usize> From<[BFieldElement; N]> for PublicInput {
 impl From<&[BFieldElement]> for PublicInput {
     fn from(tokens: &[BFieldElement]) -> Self {
         Self::new(tokens.to_vec())
+    }
+}
+
+impl Deref for PublicInput {
+    type Target = [BFieldElement];
+
+    fn deref(&self) -> &Self::Target {
+        &self.individual_tokens
     }
 }
 
@@ -1555,6 +1570,7 @@ pub(crate) mod tests {
         assert!(public_input == (&tokens).into());
         assert!(public_input == tokens[..].into());
         assert!(public_input == (&tokens[..]).into());
+        assert!(tokens == <Vec<_>>::from(public_input));
 
         assert!(PublicInput::new(vec![]) == [].into());
     }
@@ -3384,5 +3400,12 @@ pub(crate) mod tests {
             .map(|(l, r)| l * r)
             .sum::<XFieldElement>();
         prop_assert_eq!(expected_dot_product, observed_dot_product);
+    }
+
+    #[test]
+    fn iterating_over_public_inputs_individual_tokens_is_easy() {
+        let public_input = PublicInput::from(bfe_vec![1, 2, 3]);
+        let actual = public_input.iter().join(", ");
+        assert_eq!("1, 2, 3", actual);
     }
 }
