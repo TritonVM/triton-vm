@@ -707,7 +707,8 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
     ///
     /// The new constraints are returned as two vector of ConstraintCircuitMonads:
     /// the first corresponds to main columns and constraints,
-    /// the second to auxiliary columns and constraints.
+    /// the second to auxiliary columns and constraints. The modifications are
+    /// applied to the function argument in-place.
     ///
     /// Each returned constraint is guaranteed to correspond to some
     /// `CircuitExpression::BinaryOperation(BinOp::Sub, lhs, rhs)` where
@@ -715,6 +716,9 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
     /// - `rhs` is the (sub)circuit replaced by `lhs`.
     ///   These can then be used to construct new columns,
     ///   as well as derivation rules for filling those new columns.
+    ///
+    /// For example, starting with the constraint set {x^4}, we insert
+    /// {y - x^2} and modify in-place (x^4) --> (y^2).
     ///
     /// The highest index of main and auxiliary columns used by the multicircuit have to be
     /// provided. The uniqueness of the new columns' indices depends on these provided values.
@@ -737,42 +741,61 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
             return (main_constraints, aux_constraints);
         }
 
-        let builder = multicircuit[0].builder.clone();
-
         while Self::multicircuit_degree(multicircuit) > target_degree {
             let chosen_node_id = Self::pick_node_to_substitute(multicircuit, target_degree);
 
-            // Create a new variable.
-            let chosen_node = builder.all_nodes.borrow()[&chosen_node_id].clone();
-            let chosen_node_is_main_col = chosen_node.circuit.borrow().evaluates_to_base_element();
-            let new_input_indicator = if chosen_node_is_main_col {
-                let new_main_col_idx = info.num_main_cols + main_constraints.len();
-                II::main_table_input(new_main_col_idx)
-            } else {
-                let new_aux_col_idx = info.num_aux_cols + aux_constraints.len();
-                II::aux_table_input(new_aux_col_idx)
-            };
-            let new_variable = builder.input(new_input_indicator);
+            let new_constraint = Self::substitute_node_and_produce_constraint(
+                multicircuit,
+                info,
+                chosen_node_id,
+                main_constraints.len(),
+                aux_constraints.len(),
+            );
 
-            // Substitute the chosen circuit with the new variable.
-            builder.substitute(chosen_node_id, new_variable.clone());
-
-            // Treat roots of the multicircuit explicitly.
-            for circuit in multicircuit.iter_mut() {
-                if circuit.circuit.borrow().id == chosen_node_id {
-                    circuit.circuit = new_variable.circuit.clone();
-                }
-            }
-
-            // Create new constraint and put it into the appropriate return vector.
-            let new_constraint = new_variable - chosen_node;
-            match chosen_node_is_main_col {
+            let evaluates_to_base_element =
+                new_constraint.circuit.borrow().evaluates_to_base_element();
+            match evaluates_to_base_element {
                 true => main_constraints.push(new_constraint),
                 false => aux_constraints.push(new_constraint),
             }
         }
 
         (main_constraints, aux_constraints)
+    }
+
+    fn substitute_node_and_produce_constraint(
+        multicircuit: &mut [Self],
+        info: DegreeLoweringInfo,
+        chosen_node_id: usize,
+        main_constraints_count: usize,
+        aux_constraints_count: usize,
+    ) -> ConstraintCircuitMonad<II> {
+        let builder = multicircuit[0].builder.clone();
+
+        // Create a new variable.
+        let chosen_node = builder.all_nodes.borrow()[&chosen_node_id].clone();
+        let chosen_node_is_main_col = chosen_node.circuit.borrow().evaluates_to_base_element();
+        let new_input_indicator = if chosen_node_is_main_col {
+            let new_main_col_idx = info.num_main_cols + main_constraints_count;
+            II::main_table_input(new_main_col_idx)
+        } else {
+            let new_aux_col_idx = info.num_aux_cols + aux_constraints_count;
+            II::aux_table_input(new_aux_col_idx)
+        };
+        let new_variable = builder.input(new_input_indicator);
+
+        // Substitute the chosen circuit with the new variable.
+        builder.substitute(chosen_node_id, new_variable.clone());
+
+        // Treat roots of the multicircuit explicitly.
+        for circuit in multicircuit.iter_mut() {
+            if circuit.circuit.borrow().id == chosen_node_id {
+                circuit.circuit = new_variable.circuit.clone();
+            }
+        }
+
+        // Create new constraint and return it
+        new_variable - chosen_node
     }
 
     /// Heuristically pick a node from the given multicircuit that is to be substituted with a new
