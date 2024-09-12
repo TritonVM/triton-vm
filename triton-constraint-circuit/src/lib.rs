@@ -1420,6 +1420,42 @@ mod tests {
     }
 
     #[test]
+    fn degree_lowering_specific_simple_circuit_is_deterministic() {
+        // this multicircuit can be degree-lowered in more than one way
+        let generate_circuit = || {
+            let builder = ConstraintCircuitBuilder::new();
+            let x = |i| builder.input(SingleRowIndicator::Main(i));
+
+            let constraint_0 = x(0) * x(0) * x(0);
+            let constraint_1 = x(1) * x(1) * x(1);
+
+            [constraint_0, constraint_1]
+        };
+
+        let degree_lowering_info = DegreeLoweringInfo {
+            target_degree: 2,
+            num_main_cols: 2,
+            num_aux_cols: 0,
+        };
+
+        let mut original_multicircuit = generate_circuit();
+        let (new_main_constraints, _) = ConstraintCircuitMonad::lower_to_degree(
+            &mut original_multicircuit,
+            degree_lowering_info,
+        );
+
+        for _ in 0..20 {
+            let mut new_multicircuit = generate_circuit();
+            let (new_main_constraints_again, _) = ConstraintCircuitMonad::lower_to_degree(
+                &mut new_multicircuit,
+                degree_lowering_info,
+            );
+            assert_eq!(new_main_constraints, new_main_constraints_again);
+            assert_eq!(original_multicircuit, new_multicircuit);
+        }
+    }
+
+    #[test]
     fn all_nodes_in_multicircuit_are_identified_correctly() {
         let builder = ConstraintCircuitBuilder::new();
 
