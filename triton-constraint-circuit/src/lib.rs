@@ -1419,33 +1419,48 @@ mod tests {
         assert!(new_aux_constraints.is_empty());
     }
 
+    /// Return a multi circuit with multiple options for degree lowering to
+    /// degree 2.
+    fn circuit_with_multiple_options_for_degree_lowering_to_degree_2(
+    ) -> [ConstraintCircuitMonad<SingleRowIndicator>; 2] {
+        let builder = ConstraintCircuitBuilder::new();
+        let x = |i| builder.input(SingleRowIndicator::Main(i));
+
+        let constraint_0 = x(0) * x(0) * x(0);
+        let constraint_1 = x(1) * x(1) * x(1);
+
+        [constraint_0, constraint_1]
+    }
+
+    #[test]
+    fn pick_node_to_substitute_is_deterministic() {
+        let multicircuit = circuit_with_multiple_options_for_degree_lowering_to_degree_2();
+        let first_node_id = ConstraintCircuitMonad::pick_node_to_substitute(&multicircuit, 2);
+
+        for _ in 0..20 {
+            let node_id_again = ConstraintCircuitMonad::pick_node_to_substitute(&multicircuit, 2);
+            assert_eq!(first_node_id, node_id_again);
+        }
+    }
+
     #[test]
     fn degree_lowering_specific_simple_circuit_is_deterministic() {
-        // this multicircuit can be degree-lowered in more than one way
-        let generate_circuit = || {
-            let builder = ConstraintCircuitBuilder::new();
-            let x = |i| builder.input(SingleRowIndicator::Main(i));
-
-            let constraint_0 = x(0) * x(0) * x(0);
-            let constraint_1 = x(1) * x(1) * x(1);
-
-            [constraint_0, constraint_1]
-        };
-
         let degree_lowering_info = DegreeLoweringInfo {
             target_degree: 2,
             num_main_cols: 2,
             num_aux_cols: 0,
         };
 
-        let mut original_multicircuit = generate_circuit();
+        let mut original_multicircuit =
+            circuit_with_multiple_options_for_degree_lowering_to_degree_2();
         let (new_main_constraints, _) = ConstraintCircuitMonad::lower_to_degree(
             &mut original_multicircuit,
             degree_lowering_info,
         );
 
         for _ in 0..20 {
-            let mut new_multicircuit = generate_circuit();
+            let mut new_multicircuit =
+                circuit_with_multiple_options_for_degree_lowering_to_degree_2();
             let (new_main_constraints_again, _) = ConstraintCircuitMonad::lower_to_degree(
                 &mut new_multicircuit,
                 degree_lowering_info,
