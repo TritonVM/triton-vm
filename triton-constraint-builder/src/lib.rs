@@ -17,39 +17,12 @@ use constraint_circuit::DualRowIndicator;
 use constraint_circuit::InputIndicator;
 use constraint_circuit::SingleRowIndicator;
 use itertools::Itertools;
-use proc_macro2::TokenStream;
-use std::fs::write;
 
-use crate::codegen::Codegen;
-use crate::codegen::RustBackend;
-use crate::codegen::TasmBackend;
 use crate::substitutions::AllSubstitutions;
 use crate::substitutions::Substitutions;
 
 pub mod codegen;
 mod substitutions;
-
-pub fn gen(mut constraints: Constraints, info: DegreeLoweringInfo) {
-    let substitutions = constraints.lower_to_target_degree_through_substitutions(info);
-    let degree_lowering_table_code = substitutions.generate_degree_lowering_table_code();
-
-    let constraints = constraints.combine_with_substitution_induced_constraints(substitutions);
-    let rust = RustBackend::constraint_evaluation_code(&constraints);
-    let tasm = TasmBackend::constraint_evaluation_code(&constraints);
-
-    write_code_to_file(
-        degree_lowering_table_code,
-        "triton-vm/src/table/degree_lowering_table.rs",
-    );
-    write_code_to_file(rust, "triton-vm/src/table/constraints.rs");
-    write_code_to_file(tasm, "triton-vm/src/air/tasm_air_constraints.rs");
-}
-
-fn write_code_to_file(code: TokenStream, file_name: &str) {
-    let syntax_tree = syn::parse2(code).unwrap();
-    let code = prettyplease::unparse(&syntax_tree);
-    write(file_name, code).unwrap();
-}
 
 #[derive(Debug, Clone)]
 pub struct Constraints {
@@ -223,6 +196,8 @@ mod tests {
     use twenty_first::prelude::*;
 
     use super::*;
+    use crate::codegen::RustBackend;
+    use crate::codegen::TasmBackend;
 
     #[repr(usize)]
     enum TestChallenges {

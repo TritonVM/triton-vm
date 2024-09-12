@@ -15,7 +15,6 @@ repository.workspace = true
 
 [dependencies]
 air.workspace = true
-arbitrary.workspace = true
 constraint-circuit.workspace = true
 isa.workspace = true
 itertools.workspace = true
