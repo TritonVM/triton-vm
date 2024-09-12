@@ -193,8 +193,8 @@ impl RustBackend {
     /// well as their degrees. In particular:
     /// 1. The first stream contains code that, when evaluated, produces the constraints' degrees,
     /// 1. the second stream contains code that, when evaluated, produces the constraints' values,
-    ///    with the input type for the base row being `BFieldElement`, and
-    /// 1. the third stream is like the second, except that the input type for the base row is
+    ///    with the input type for the main row being `BFieldElement`, and
+    /// 1. the third stream is like the second, except that the input type for the main row is
     ///    `XFieldElement`.
     fn tokenize_circuits<II: InputIndicator>(
         constraints: &[ConstraintCircuit<II>],
@@ -210,7 +210,7 @@ impl RustBackend {
             .partition(|constraint| constraint.evaluates_to_base_element());
 
         // The order of the constraints' degrees must match the order of the constraints.
-        // Hence, listing the degrees is only possible after the partition into base and extension
+        // Hence, listing the degrees is only possible after the partition into main and auxiliary
         // constraints is known.
         let tokenized_degree_bounds = main_constraints
             .iter()
@@ -232,7 +232,7 @@ impl RustBackend {
         let tokenized_main_constraints = tokenize_constraint_evaluation(&main_constraints);
         let tokenized_aux_constraints = tokenize_constraint_evaluation(&aux_constraints);
 
-        // If there are no base constraints, the type needs to be explicitly declared.
+        // If there are no main constraints, the type needs to be explicitly declared.
         let tokenized_bfe_main_constraints = match main_constraints.is_empty() {
             true => quote!(let main_constraints: [BFieldElement; 0] = []),
             false => quote!(let main_constraints = [#(#tokenized_main_constraints),*]),
@@ -652,10 +652,10 @@ impl TasmBackend {
         };
 
         [
-            IOList::NextExtRow,
-            IOList::NextBaseRow,
-            IOList::CurrExtRow,
-            IOList::CurrBaseRow,
+            IOList::NextAuxRow,
+            IOList::NextMainRow,
+            IOList::CurrAuxRow,
+            IOList::CurrMainRow,
         ]
         .into_iter()
         .flat_map(write_pointer_to_ram)
@@ -669,7 +669,7 @@ impl TasmBackend {
         self.scope = HashSet::new();
         let store_shared_nodes = self.store_all_shared_nodes(constraints);
 
-        // to match the `RustBackend`, base constraints must be emitted first
+        // to match the `RustBackend`, main constraints must be emitted first
         let (main_constraints, aux_constraints): (Vec<_>, Vec<_>) = constraints
             .iter()
             .partition(|constraint| constraint.evaluates_to_base_element());
@@ -780,10 +780,10 @@ impl TasmBackend {
 
     fn load_input<II: InputIndicator>(&self, input: II) -> Vec<TokenStream> {
         let list = match (input.is_current_row(), input.is_main_table_column()) {
-            (true, true) => IOList::CurrBaseRow,
-            (true, false) => IOList::CurrExtRow,
-            (false, true) => IOList::NextBaseRow,
-            (false, false) => IOList::NextExtRow,
+            (true, true) => IOList::CurrMainRow,
+            (true, false) => IOList::CurrAuxRow,
+            (false, true) => IOList::NextMainRow,
+            (false, false) => IOList::NextAuxRow,
         };
         if self.input_location_is_static {
             Self::load_ext_field_element_from_list(list, input.column())
@@ -859,10 +859,10 @@ impl TasmBackend {
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 enum IOList {
     FreeMemPage,
-    CurrBaseRow,
-    CurrExtRow,
-    NextBaseRow,
-    NextExtRow,
+    CurrMainRow,
+    CurrAuxRow,
+    NextMainRow,
+    NextAuxRow,
     Challenges,
 }
 
@@ -870,10 +870,10 @@ impl ToTokens for IOList {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         match self {
             IOList::FreeMemPage => tokens.extend(quote!(free_mem_page_ptr)),
-            IOList::CurrBaseRow => tokens.extend(quote!(curr_main_row_ptr)),
-            IOList::CurrExtRow => tokens.extend(quote!(curr_aux_row_ptr)),
-            IOList::NextBaseRow => tokens.extend(quote!(next_main_row_ptr)),
-            IOList::NextExtRow => tokens.extend(quote!(next_aux_row_ptr)),
+            IOList::CurrMainRow => tokens.extend(quote!(curr_main_row_ptr)),
+            IOList::CurrAuxRow => tokens.extend(quote!(curr_aux_row_ptr)),
+            IOList::NextMainRow => tokens.extend(quote!(next_main_row_ptr)),
+            IOList::NextAuxRow => tokens.extend(quote!(next_aux_row_ptr)),
             IOList::Challenges => tokens.extend(quote!(challenges_ptr)),
         }
     }

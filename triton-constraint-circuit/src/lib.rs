@@ -94,8 +94,8 @@ impl BinOp {
 /// The position of variable in a constraint polynomial is, in principle, a `usize`. However,
 /// depending on the type of the constraint polynomial, this index may be an index into a single
 /// row (for initial, consistency and terminal constraints), or a pair of adjacent rows (for
-/// transition constraints). Additionally, the index may refer to a column in the base table, or
-/// a column in the extension table. This trait abstracts over these possibilities, and provides
+/// transition constraints). Additionally, the index may refer to a column in the main table, or
+/// a column in the auxiliary table. This trait abstracts over these possibilities, and provides
 /// a uniform interface for accessing the index.
 ///
 /// Having `Copy + Hash + Eq` helps to put `InputIndicator`s into containers.
@@ -103,22 +103,22 @@ impl BinOp {
 /// This is a _sealed_ trait. It is not intended (or possible) to implement this trait outside the
 /// crate defining it.
 pub trait InputIndicator: Debug + Display + Copy + Hash + Eq + ToTokens + private::Seal {
-    /// `true` iff `self` refers to a column in the base table.
+    /// `true` iff `self` refers to a column in the main table.
     fn is_main_table_column(&self) -> bool;
 
     /// `true` iff `self` refers to the current row.
     fn is_current_row(&self) -> bool;
 
-    /// The index of the indicated (base or extension) column.
+    /// The index of the indicated (main or auxiliary) column.
     fn column(&self) -> usize;
 
-    fn base_table_input(index: usize) -> Self;
+    fn main_table_input(index: usize) -> Self;
     fn aux_table_input(index: usize) -> Self;
 
     fn evaluate(
         &self,
-        base_table: ArrayView2<BFieldElement>,
-        ext_table: ArrayView2<XFieldElement>,
+        main_table: ArrayView2<BFieldElement>,
+        aux_table: ArrayView2<XFieldElement>,
     ) -> XFieldElement;
 }
 
@@ -167,7 +167,7 @@ impl InputIndicator for SingleRowIndicator {
         }
     }
 
-    fn base_table_input(index: usize) -> Self {
+    fn main_table_input(index: usize) -> Self {
         Self::Main(index)
     }
 
@@ -177,12 +177,12 @@ impl InputIndicator for SingleRowIndicator {
 
     fn evaluate(
         &self,
-        base_table: ArrayView2<BFieldElement>,
-        ext_table: ArrayView2<XFieldElement>,
+        main_table: ArrayView2<BFieldElement>,
+        aux_table: ArrayView2<XFieldElement>,
     ) -> XFieldElement {
         match self {
-            Self::Main(i) => base_table[[0, *i]].lift(),
-            Self::Aux(i) => ext_table[[0, *i]],
+            Self::Main(i) => main_table[[0, *i]].lift(),
+            Self::Aux(i) => aux_table[[0, *i]],
         }
     }
 }
@@ -238,8 +238,8 @@ impl InputIndicator for DualRowIndicator {
         }
     }
 
-    fn base_table_input(index: usize) -> Self {
-        // It seems that the choice between `CurrentBaseRow` and `NextBaseRow` is arbitrary:
+    fn main_table_input(index: usize) -> Self {
+        // It seems that the choice between `CurrentMain` and `NextMain` is arbitrary:
         // any transition constraint polynomial is evaluated on both the current and the next row.
         // Hence, both rows are in scope.
         Self::CurrentMain(index)
@@ -251,14 +251,14 @@ impl InputIndicator for DualRowIndicator {
 
     fn evaluate(
         &self,
-        base_table: ArrayView2<BFieldElement>,
-        ext_table: ArrayView2<XFieldElement>,
+        main_table: ArrayView2<BFieldElement>,
+        aux_table: ArrayView2<XFieldElement>,
     ) -> XFieldElement {
         match self {
-            Self::CurrentMain(i) => base_table[[0, *i]].lift(),
-            Self::CurrentAux(i) => ext_table[[0, *i]],
-            Self::NextMain(i) => base_table[[1, *i]].lift(),
-            Self::NextAux(i) => ext_table[[1, *i]],
+            Self::CurrentMain(i) => main_table[[0, *i]].lift(),
+            Self::CurrentAux(i) => aux_table[[0, *i]],
+            Self::NextMain(i) => main_table[[1, *i]].lift(),
+            Self::NextAux(i) => aux_table[[1, *i]],
         }
     }
 }
@@ -527,18 +527,18 @@ impl<II: InputIndicator> ConstraintCircuit<II> {
 
     pub fn evaluate(
         &self,
-        base_table: ArrayView2<BFieldElement>,
-        ext_table: ArrayView2<XFieldElement>,
+        main_table: ArrayView2<BFieldElement>,
+        aux_table: ArrayView2<XFieldElement>,
         challenges: &[XFieldElement],
     ) -> XFieldElement {
         match &self.expression {
             CircuitExpression::BConst(bfe) => bfe.lift(),
             CircuitExpression::XConst(xfe) => *xfe,
-            CircuitExpression::Input(input) => input.evaluate(base_table, ext_table),
+            CircuitExpression::Input(input) => input.evaluate(main_table, aux_table),
             CircuitExpression::Challenge(challenge_id) => challenges[*challenge_id],
             CircuitExpression::BinOp(binop, lhs, rhs) => {
-                let lhs_value = lhs.borrow().evaluate(base_table, ext_table, challenges);
-                let rhs_value = rhs.borrow().evaluate(base_table, ext_table, challenges);
+                let lhs_value = lhs.borrow().evaluate(main_table, aux_table, challenges);
+                let rhs_value = rhs.borrow().evaluate(main_table, aux_table, challenges);
                 binop.operation(lhs_value, rhs_value)
             }
         }
@@ -716,7 +716,7 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
     ///   These can then be used to construct new columns,
     ///   as well as derivation rules for filling those new columns.
     ///
-    /// The highest index of base and extension columns used by the multicircuit have to be
+    /// The highest index of main and auxiliary columns used by the multicircuit have to be
     /// provided. The uniqueness of the new columns' indices depends on these provided values.
     /// Note that these indices are generally not equal to the number of used columns, especially
     /// when a tables' constraints are built using the master table's column indices.
@@ -747,7 +747,7 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
             let chosen_node_is_main_col = chosen_node.circuit.borrow().evaluates_to_base_element();
             let new_input_indicator = if chosen_node_is_main_col {
                 let new_main_col_idx = info.num_main_cols + main_constraints.len();
-                II::base_table_input(new_main_col_idx)
+                II::main_table_input(new_main_col_idx)
             } else {
                 let new_aux_col_idx = info.num_aux_cols + aux_constraints.len();
                 II::aux_table_input(new_aux_col_idx)

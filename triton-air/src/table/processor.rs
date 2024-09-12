@@ -3190,8 +3190,8 @@ mod tests {
     fn instruction_deselector_gives_0_for_all_other_instructions() {
         let circuit_builder = ConstraintCircuitBuilder::new();
 
-        let mut master_base_table = Array2::zeros([2, NUM_MAIN_COLUMNS]);
-        let master_ext_table = Array2::zeros([2, NUM_AUX_COLUMNS]);
+        let mut master_main_table = Array2::zeros([2, NUM_MAIN_COLUMNS]);
+        let master_aux_table = Array2::zeros([2, NUM_AUX_COLUMNS]);
 
         // For this test, dummy challenges suffice to evaluate the constraints.
         let dummy_challenges = (0..ChallengeId::COUNT)
@@ -3208,7 +3208,7 @@ mod tests {
                 .into_iter()
                 .filter(|other_instruction| *other_instruction != instruction)
             {
-                let mut curr_row = master_base_table.slice_mut(s![0, ..]);
+                let mut curr_row = master_main_table.slice_mut(s![0, ..]);
                 curr_row[IB0.master_main_index()] = other_instruction.ib(InstructionBit::IB0);
                 curr_row[IB1.master_main_index()] = other_instruction.ib(InstructionBit::IB1);
                 curr_row[IB2.master_main_index()] = other_instruction.ib(InstructionBit::IB2);
@@ -3217,8 +3217,8 @@ mod tests {
                 curr_row[IB5.master_main_index()] = other_instruction.ib(InstructionBit::IB5);
                 curr_row[IB6.master_main_index()] = other_instruction.ib(InstructionBit::IB6);
                 let result = deselector.clone().consume().evaluate(
-                    master_base_table.view(),
-                    master_ext_table.view(),
+                    master_main_table.view(),
+                    master_aux_table.view(),
                     &dummy_challenges,
                 );
 
@@ -3231,7 +3231,7 @@ mod tests {
             }
 
             // Positive tests
-            let mut curr_row = master_base_table.slice_mut(s![0, ..]);
+            let mut curr_row = master_main_table.slice_mut(s![0, ..]);
             curr_row[IB0.master_main_index()] = instruction.ib(InstructionBit::IB0);
             curr_row[IB1.master_main_index()] = instruction.ib(InstructionBit::IB1);
             curr_row[IB2.master_main_index()] = instruction.ib(InstructionBit::IB2);
@@ -3240,8 +3240,8 @@ mod tests {
             curr_row[IB5.master_main_index()] = instruction.ib(InstructionBit::IB5);
             curr_row[IB6.master_main_index()] = instruction.ib(InstructionBit::IB6);
             let result = deselector.consume().evaluate(
-                master_base_table.view(),
-                master_ext_table.view(),
+                master_main_table.view(),
+                master_aux_table.view(),
                 &dummy_challenges,
             );
             assert!(
@@ -3328,17 +3328,17 @@ mod tests {
         #[strategy(0_usize..16)] indicator_poly_index: usize,
         #[strategy(0_u64..16)] query_index: u64,
     ) {
-        let mut base_table = Array2::ones([2, NUM_MAIN_COLUMNS]);
+        let mut main_table = Array2::ones([2, NUM_MAIN_COLUMNS]);
         let aux_table = Array2::ones([2, NUM_AUX_COLUMNS]);
 
-        base_table[[0, HV0.master_main_index()]] = bfe!(query_index % 2);
-        base_table[[0, HV1.master_main_index()]] = bfe!((query_index >> 1) % 2);
-        base_table[[0, HV2.master_main_index()]] = bfe!((query_index >> 2) % 2);
-        base_table[[0, HV3.master_main_index()]] = bfe!((query_index >> 3) % 2);
+        main_table[[0, HV0.master_main_index()]] = bfe!(query_index % 2);
+        main_table[[0, HV1.master_main_index()]] = bfe!((query_index >> 1) % 2);
+        main_table[[0, HV2.master_main_index()]] = bfe!((query_index >> 2) % 2);
+        main_table[[0, HV3.master_main_index()]] = bfe!((query_index >> 3) % 2);
 
         let builder = ConstraintCircuitBuilder::new();
         let indicator_poly = indicator_polynomial(&builder, indicator_poly_index).consume();
-        let evaluation = indicator_poly.evaluate(base_table.view(), aux_table.view(), &[]);
+        let evaluation = indicator_poly.evaluate(main_table.view(), aux_table.view(), &[]);
 
         if indicator_poly_index as u64 == query_index {
             prop_assert_eq!(xfe!(1), evaluation);
@@ -3387,18 +3387,18 @@ mod tests {
             |col: ProcessorMainColumn| circuit_builder.input(Main(col.master_main_index()));
         let [x0, x1, x2, y0, y1, y2] = [ST0, ST1, ST2, ST3, ST4, ST5].map(main_row);
 
-        let mut base_table = Array2::zeros([1, NUM_MAIN_COLUMNS]);
-        let ext_table = Array2::zeros([1, NUM_AUX_COLUMNS]);
-        base_table[[0, ST0.master_main_index()]] = a.coefficients[0];
-        base_table[[0, ST1.master_main_index()]] = a.coefficients[1];
-        base_table[[0, ST2.master_main_index()]] = a.coefficients[2];
-        base_table[[0, ST3.master_main_index()]] = b.coefficients[0];
-        base_table[[0, ST4.master_main_index()]] = b.coefficients[1];
-        base_table[[0, ST5.master_main_index()]] = b.coefficients[2];
+        let mut main_table = Array2::zeros([1, NUM_MAIN_COLUMNS]);
+        let aux_table = Array2::zeros([1, NUM_AUX_COLUMNS]);
+        main_table[[0, ST0.master_main_index()]] = a.coefficients[0];
+        main_table[[0, ST1.master_main_index()]] = a.coefficients[1];
+        main_table[[0, ST2.master_main_index()]] = a.coefficients[2];
+        main_table[[0, ST3.master_main_index()]] = b.coefficients[0];
+        main_table[[0, ST4.master_main_index()]] = b.coefficients[1];
+        main_table[[0, ST5.master_main_index()]] = b.coefficients[2];
 
         let [c0, c1, c2] = xx_product([x0, x1, x2], [y0, y1, y2])
             .map(|c| c.consume())
-            .map(|c| c.evaluate(base_table.view(), ext_table.view(), &[]))
+            .map(|c| c.evaluate(main_table.view(), aux_table.view(), &[]))
             .map(|xfe| xfe.unlift().unwrap());
 
         let c = a * b;
@@ -3417,16 +3417,16 @@ mod tests {
             |col: ProcessorMainColumn| circuit_builder.input(Main(col.master_main_index()));
         let [x0, x1, x2, y] = [ST0, ST1, ST2, ST3].map(main_row);
 
-        let mut base_table = Array2::zeros([1, NUM_MAIN_COLUMNS]);
-        let ext_table = Array2::zeros([1, NUM_AUX_COLUMNS]);
-        base_table[[0, ST0.master_main_index()]] = a.coefficients[0];
-        base_table[[0, ST1.master_main_index()]] = a.coefficients[1];
-        base_table[[0, ST2.master_main_index()]] = a.coefficients[2];
-        base_table[[0, ST3.master_main_index()]] = b;
+        let mut main_table = Array2::zeros([1, NUM_MAIN_COLUMNS]);
+        let aux_table = Array2::zeros([1, NUM_AUX_COLUMNS]);
+        main_table[[0, ST0.master_main_index()]] = a.coefficients[0];
+        main_table[[0, ST1.master_main_index()]] = a.coefficients[1];
+        main_table[[0, ST2.master_main_index()]] = a.coefficients[2];
+        main_table[[0, ST3.master_main_index()]] = b;
 
         let [c0, c1, c2] = xb_product([x0, x1, x2], y)
             .map(|c| c.consume())
-            .map(|c| c.evaluate(base_table.view(), ext_table.view(), &[]))
+            .map(|c| c.evaluate(main_table.view(), aux_table.view(), &[]))
             .map(|xfe| xfe.unlift().unwrap());
 
         let c = a * b;

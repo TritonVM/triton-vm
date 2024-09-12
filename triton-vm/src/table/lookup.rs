@@ -25,8 +25,8 @@ use crate::table::TraceTable;
 type MainColumn = <LookupTable as AIR>::MainColumn;
 type AuxColumn = <LookupTable as AIR>::AuxColumn;
 
-fn extension_column_cascade_running_sum_log_derivative(
-    base_table: ArrayView2<BFieldElement>,
+fn auxiliary_column_cascade_running_sum_log_derivative(
+    main_table: ArrayView2<BFieldElement>,
     challenges: &Challenges,
 ) -> Array2<XFieldElement> {
     let look_in_weight = challenges[ChallengeId::LookupTableInputWeight];
@@ -34,8 +34,8 @@ fn extension_column_cascade_running_sum_log_derivative(
     let indeterminate = challenges[ChallengeId::CascadeLookupIndeterminate];
 
     let mut cascade_table_running_sum_log_derivative = LookupArg::default_initial();
-    let mut extension_column = Vec::with_capacity(base_table.nrows());
-    for row in base_table.rows() {
+    let mut auxiliary_column = Vec::with_capacity(main_table.nrows());
+    for row in main_table.rows() {
         if row[MainColumn::IsPadding.main_index()].is_one() {
             break;
         }
@@ -48,21 +48,21 @@ fn extension_column_cascade_running_sum_log_derivative(
         cascade_table_running_sum_log_derivative +=
             (indeterminate - compressed_row).inverse() * lookup_multiplicity;
 
-        extension_column.push(cascade_table_running_sum_log_derivative);
+        auxiliary_column.push(cascade_table_running_sum_log_derivative);
     }
 
     // fill padding section
-    extension_column.resize(base_table.nrows(), cascade_table_running_sum_log_derivative);
-    Array2::from_shape_vec((base_table.nrows(), 1), extension_column).unwrap()
+    auxiliary_column.resize(main_table.nrows(), cascade_table_running_sum_log_derivative);
+    Array2::from_shape_vec((main_table.nrows(), 1), auxiliary_column).unwrap()
 }
 
-fn extension_column_public_running_evaluation(
-    base_table: ArrayView2<BFieldElement>,
+fn auxiliary_column_public_running_evaluation(
+    main_table: ArrayView2<BFieldElement>,
     challenges: &Challenges,
 ) -> Array2<XFieldElement> {
     let mut running_evaluation = EvalArg::default_initial();
-    let mut extension_column = Vec::with_capacity(base_table.nrows());
-    for row in base_table.rows() {
+    let mut auxiliary_column = Vec::with_capacity(main_table.nrows());
+    for row in main_table.rows() {
         if row[MainColumn::IsPadding.main_index()].is_one() {
             break;
         }
@@ -70,12 +70,12 @@ fn extension_column_public_running_evaluation(
         running_evaluation = running_evaluation
             * challenges[ChallengeId::LookupTablePublicIndeterminate]
             + row[MainColumn::LookOut.main_index()];
-        extension_column.push(running_evaluation);
+        auxiliary_column.push(running_evaluation);
     }
 
     // fill padding section
-    extension_column.resize(base_table.nrows(), running_evaluation);
-    Array2::from_shape_vec((base_table.nrows(), 1), extension_column).unwrap()
+    auxiliary_column.resize(main_table.nrows(), running_evaluation);
+    Array2::from_shape_vec((main_table.nrows(), 1), auxiliary_column).unwrap()
 }
 
 impl TraceTable for LookupTable {
@@ -126,21 +126,21 @@ impl TraceTable for LookupTable {
         assert_eq!(AuxColumn::COUNT, aux_table.ncols());
         assert_eq!(main_table.nrows(), aux_table.nrows());
 
-        let extension_column_indices = AuxColumn::iter()
+        let auxiliary_column_indices = AuxColumn::iter()
             .map(|column| column.aux_index())
             .collect_vec();
-        let extension_column_slices = horizontal_multi_slice_mut(
+        let auxiliary_column_slices = horizontal_multi_slice_mut(
             aux_table.view_mut(),
-            &contiguous_column_slices(&extension_column_indices),
+            &contiguous_column_slices(&auxiliary_column_indices),
         );
         let extension_functions = [
-            extension_column_cascade_running_sum_log_derivative,
-            extension_column_public_running_evaluation,
+            auxiliary_column_cascade_running_sum_log_derivative,
+            auxiliary_column_public_running_evaluation,
         ];
 
         extension_functions
             .into_par_iter()
-            .zip_eq(extension_column_slices)
+            .zip_eq(auxiliary_column_slices)
             .for_each(|(generator, slice)| {
                 generator(main_table, challenges).move_into(slice);
             });

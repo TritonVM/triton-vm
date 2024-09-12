@@ -505,43 +505,43 @@ impl TraceTable for HashTable {
                     log_derivative_summand(row, State3LowestLkIn, State3LowestLkOut);
             }
 
-            let mut extension_row = aux_table.row_mut(row_idx);
-            extension_row[ReceiveChunkRunningEvaluation.aux_index()] =
+            let mut auxiliary_row = aux_table.row_mut(row_idx);
+            auxiliary_row[ReceiveChunkRunningEvaluation.aux_index()] =
                 receive_chunk_running_evaluation;
-            extension_row[HashInputRunningEvaluation.aux_index()] = hash_input_running_evaluation;
-            extension_row[HashDigestRunningEvaluation.aux_index()] = hash_digest_running_evaluation;
-            extension_row[SpongeRunningEvaluation.aux_index()] = sponge_running_evaluation;
-            extension_row[CascadeState0HighestClientLogDerivative.aux_index()] =
+            auxiliary_row[HashInputRunningEvaluation.aux_index()] = hash_input_running_evaluation;
+            auxiliary_row[HashDigestRunningEvaluation.aux_index()] = hash_digest_running_evaluation;
+            auxiliary_row[SpongeRunningEvaluation.aux_index()] = sponge_running_evaluation;
+            auxiliary_row[CascadeState0HighestClientLogDerivative.aux_index()] =
                 cascade_state_0_highest_log_derivative;
-            extension_row[CascadeState0MidHighClientLogDerivative.aux_index()] =
+            auxiliary_row[CascadeState0MidHighClientLogDerivative.aux_index()] =
                 cascade_state_0_mid_high_log_derivative;
-            extension_row[CascadeState0MidLowClientLogDerivative.aux_index()] =
+            auxiliary_row[CascadeState0MidLowClientLogDerivative.aux_index()] =
                 cascade_state_0_mid_low_log_derivative;
-            extension_row[CascadeState0LowestClientLogDerivative.aux_index()] =
+            auxiliary_row[CascadeState0LowestClientLogDerivative.aux_index()] =
                 cascade_state_0_lowest_log_derivative;
-            extension_row[CascadeState1HighestClientLogDerivative.aux_index()] =
+            auxiliary_row[CascadeState1HighestClientLogDerivative.aux_index()] =
                 cascade_state_1_highest_log_derivative;
-            extension_row[CascadeState1MidHighClientLogDerivative.aux_index()] =
+            auxiliary_row[CascadeState1MidHighClientLogDerivative.aux_index()] =
                 cascade_state_1_mid_high_log_derivative;
-            extension_row[CascadeState1MidLowClientLogDerivative.aux_index()] =
+            auxiliary_row[CascadeState1MidLowClientLogDerivative.aux_index()] =
                 cascade_state_1_mid_low_log_derivative;
-            extension_row[CascadeState1LowestClientLogDerivative.aux_index()] =
+            auxiliary_row[CascadeState1LowestClientLogDerivative.aux_index()] =
                 cascade_state_1_lowest_log_derivative;
-            extension_row[CascadeState2HighestClientLogDerivative.aux_index()] =
+            auxiliary_row[CascadeState2HighestClientLogDerivative.aux_index()] =
                 cascade_state_2_highest_log_derivative;
-            extension_row[CascadeState2MidHighClientLogDerivative.aux_index()] =
+            auxiliary_row[CascadeState2MidHighClientLogDerivative.aux_index()] =
                 cascade_state_2_mid_high_log_derivative;
-            extension_row[CascadeState2MidLowClientLogDerivative.aux_index()] =
+            auxiliary_row[CascadeState2MidLowClientLogDerivative.aux_index()] =
                 cascade_state_2_mid_low_log_derivative;
-            extension_row[CascadeState2LowestClientLogDerivative.aux_index()] =
+            auxiliary_row[CascadeState2LowestClientLogDerivative.aux_index()] =
                 cascade_state_2_lowest_log_derivative;
-            extension_row[CascadeState3HighestClientLogDerivative.aux_index()] =
+            auxiliary_row[CascadeState3HighestClientLogDerivative.aux_index()] =
                 cascade_state_3_highest_log_derivative;
-            extension_row[CascadeState3MidHighClientLogDerivative.aux_index()] =
+            auxiliary_row[CascadeState3MidHighClientLogDerivative.aux_index()] =
                 cascade_state_3_mid_high_log_derivative;
-            extension_row[CascadeState3MidLowClientLogDerivative.aux_index()] =
+            auxiliary_row[CascadeState3MidLowClientLogDerivative.aux_index()] =
                 cascade_state_3_mid_low_log_derivative;
-            extension_row[CascadeState3LowestClientLogDerivative.aux_index()] =
+            auxiliary_row[CascadeState3LowestClientLogDerivative.aux_index()] =
                 cascade_state_3_lowest_log_derivative;
         }
         profiler!(stop "hash table");

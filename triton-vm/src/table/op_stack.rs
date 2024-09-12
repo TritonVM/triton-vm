@@ -98,15 +98,15 @@ impl OpStackTableEntry {
     }
 }
 
-fn extension_column_running_product_permutation_argument(
-    base_table: ArrayView2<BFieldElement>,
+fn auxiliary_column_running_product_permutation_argument(
+    main_table: ArrayView2<BFieldElement>,
     challenges: &Challenges,
 ) -> Array2<XFieldElement> {
     let perm_arg_indeterminate = challenges[OpStackIndeterminate];
 
     let mut running_product = PermArg::default_initial();
-    let mut extension_column = Vec::with_capacity(base_table.nrows());
-    for row in base_table.rows() {
+    let mut auxiliary_column = Vec::with_capacity(main_table.nrows());
+    for row in main_table.rows() {
         if row[MainColumn::IB1ShrinkStack.main_index()] != PADDING_VALUE {
             let compressed_row = row[MainColumn::CLK.main_index()] * challenges[OpStackClkWeight]
                 + row[MainColumn::IB1ShrinkStack.main_index()] * challenges[OpStackIb1Weight]
@@ -115,13 +115,13 @@ fn extension_column_running_product_permutation_argument(
                     * challenges[OpStackFirstUnderflowElementWeight];
             running_product *= perm_arg_indeterminate - compressed_row;
         }
-        extension_column.push(running_product);
+        auxiliary_column.push(running_product);
     }
-    Array2::from_shape_vec((base_table.nrows(), 1), extension_column).unwrap()
+    Array2::from_shape_vec((main_table.nrows(), 1), auxiliary_column).unwrap()
 }
 
-fn extension_column_clock_jump_diff_lookup_log_derivative(
-    base_table: ArrayView2<BFieldElement>,
+fn auxiliary_column_clock_jump_diff_lookup_log_derivative(
+    main_table: ArrayView2<BFieldElement>,
     challenges: &Challenges,
 ) -> Array2<XFieldElement> {
     // - use memoization to avoid recomputing inverses
@@ -137,11 +137,11 @@ fn extension_column_clock_jump_diff_lookup_log_derivative(
         .map(|(i, inv)| (bfe!(i), inv))
         .collect::<HashMap<_, _>>();
 
-    // populate extension column using memoization
+    // populate auxiliary column using memoization
     let mut cjd_lookup_log_derivative = LookupArg::default_initial();
-    let mut extension_column = Vec::with_capacity(base_table.nrows());
-    extension_column.push(cjd_lookup_log_derivative);
-    for (previous_row, current_row) in base_table.rows().into_iter().tuple_windows() {
+    let mut auxiliary_column = Vec::with_capacity(main_table.nrows());
+    auxiliary_column.push(cjd_lookup_log_derivative);
+    for (previous_row, current_row) in main_table.rows().into_iter().tuple_windows() {
         if current_row[MainColumn::IB1ShrinkStack.main_index()] == PADDING_VALUE {
             break;
         };
@@ -157,12 +157,12 @@ fn extension_column_clock_jump_diff_lookup_log_derivative(
                 .or_insert_with(|| (cjd_lookup_indeterminate - clock_jump_difference).inverse());
             cjd_lookup_log_derivative += inverse;
         }
-        extension_column.push(cjd_lookup_log_derivative);
+        auxiliary_column.push(cjd_lookup_log_derivative);
     }
 
     // fill padding section
-    extension_column.resize(base_table.nrows(), cjd_lookup_log_derivative);
-    Array2::from_shape_vec((base_table.nrows(), 1), extension_column).unwrap()
+    auxiliary_column.resize(main_table.nrows(), cjd_lookup_log_derivative);
+    Array2::from_shape_vec((main_table.nrows(), 1), auxiliary_column).unwrap()
 }
 
 impl TraceTable for OpStackTable {
@@ -213,21 +213,21 @@ impl TraceTable for OpStackTable {
         assert_eq!(AuxColumn::COUNT, aux_table.ncols());
         assert_eq!(main_table.nrows(), aux_table.nrows());
 
-        let extension_column_indices = OpStackAuxColumn::iter()
+        let auxiliary_column_indices = OpStackAuxColumn::iter()
             .map(|column| column.aux_index())
             .collect_vec();
-        let extension_column_slices = horizontal_multi_slice_mut(
+        let auxiliary_column_slices = horizontal_multi_slice_mut(
             aux_table.view_mut(),
-            &contiguous_column_slices(&extension_column_indices),
+            &contiguous_column_slices(&auxiliary_column_indices),
         );
         let extension_functions = [
-            extension_column_running_product_permutation_argument,
-            extension_column_clock_jump_diff_lookup_log_derivative,
+            auxiliary_column_running_product_permutation_argument,
+            auxiliary_column_clock_jump_diff_lookup_log_derivative,
         ];
 
         extension_functions
             .into_par_iter()
-            .zip_eq(extension_column_slices)
+            .zip_eq(auxiliary_column_slices)
             .for_each(|(generator, slice)| {
                 generator(main_table, challenges).move_into(slice);
             });
@@ -352,13 +352,13 @@ pub(crate) mod tests {
         stack_pointer_1: u64,
         clk: u64,
     ) {
-        const BASE_WIDTH: usize = <OpStackTable as AIR>::MainColumn::COUNT;
+        const MAIN_WIDTH: usize = <OpStackTable as AIR>::MainColumn::COUNT;
 
-        let mut row_0 = Array1::zeros(BASE_WIDTH);
+        let mut row_0 = Array1::zeros(MAIN_WIDTH);
         row_0[MainColumn::StackPointer.main_index()] = stack_pointer_0.into();
         row_0[MainColumn::CLK.main_index()] = clk.into();
 
-        let mut row_1 = Array1::zeros(BASE_WIDTH);
+        let mut row_1 = Array1::zeros(MAIN_WIDTH);
         row_1[MainColumn::StackPointer.main_index()] = stack_pointer_1.into();
         row_1[MainColumn::CLK.main_index()] = clk.into();
 
@@ -374,13 +374,13 @@ pub(crate) mod tests {
         clk_0: u64,
         clk_1: u64,
     ) {
-        const BASE_WIDTH: usize = <OpStackTable as AIR>::MainColumn::COUNT;
+        const MAIN_WIDTH: usize = <OpStackTable as AIR>::MainColumn::COUNT;
 
-        let mut row_0 = Array1::zeros(BASE_WIDTH);
+        let mut row_0 = Array1::zeros(MAIN_WIDTH);
         row_0[MainColumn::StackPointer.main_index()] = stack_pointer.into();
         row_0[MainColumn::CLK.main_index()] = clk_0.into();
 
-        let mut row_1 = Array1::zeros(BASE_WIDTH);
+        let mut row_1 = Array1::zeros(MAIN_WIDTH);
         row_1[MainColumn::StackPointer.main_index()] = stack_pointer.into();
         row_1[MainColumn::CLK.main_index()] = clk_1.into();
 

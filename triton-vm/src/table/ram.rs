@@ -96,37 +96,37 @@ impl TraceTable for RamTable {
     }
 
     fn extend(
-        base_table: ArrayView2<BFieldElement>,
-        mut ext_table: ArrayViewMut2<XFieldElement>,
+        main_table: ArrayView2<BFieldElement>,
+        mut aux_table: ArrayViewMut2<XFieldElement>,
         challenges: &Challenges,
     ) {
         profiler!(start "ram table");
-        assert_eq!(Self::MainColumn::COUNT, base_table.ncols());
-        assert_eq!(Self::AuxColumn::COUNT, ext_table.ncols());
-        assert_eq!(base_table.nrows(), ext_table.nrows());
+        assert_eq!(Self::MainColumn::COUNT, main_table.ncols());
+        assert_eq!(Self::AuxColumn::COUNT, aux_table.ncols());
+        assert_eq!(main_table.nrows(), aux_table.nrows());
 
-        let extension_column_indices = RamAuxColumn::iter()
+        let auxiliary_column_indices = RamAuxColumn::iter()
             // RunningProductOfRAMP + FormalDerivative are constitute one
             // slice and are populated by the same function
             .filter(|column| *column != RamAuxColumn::FormalDerivative)
             .map(|column| column.aux_index())
             .collect_vec();
-        let extension_column_slices = horizontal_multi_slice_mut(
-            ext_table.view_mut(),
-            &contiguous_column_slices(&extension_column_indices),
+        let auxiliary_column_slices = horizontal_multi_slice_mut(
+            aux_table.view_mut(),
+            &contiguous_column_slices(&auxiliary_column_indices),
         );
         let extension_functions = [
-            extension_column_running_product_of_ramp_and_formal_derivative,
-            extension_column_bezout_coefficient_0,
-            extension_column_bezout_coefficient_1,
-            extension_column_running_product_perm_arg,
-            extension_column_clock_jump_difference_lookup_log_derivative,
+            auxiliary_column_running_product_of_ramp_and_formal_derivative,
+            auxiliary_column_bezout_coefficient_0,
+            auxiliary_column_bezout_coefficient_1,
+            auxiliary_column_running_product_perm_arg,
+            auxiliary_column_clock_jump_difference_lookup_log_derivative,
         ];
         extension_functions
             .into_par_iter()
-            .zip_eq(extension_column_slices)
+            .zip_eq(auxiliary_column_slices)
             .for_each(|(generator, slice)| {
-                generator(base_table, challenges).move_into(slice);
+                generator(main_table, challenges).move_into(slice);
             });
 
         profiler!(stop "ram table");
@@ -236,21 +236,21 @@ fn make_ram_table_consistent(
     clock_jump_differences
 }
 
-fn extension_column_running_product_of_ramp_and_formal_derivative(
-    base_table: ArrayView2<BFieldElement>,
+fn auxiliary_column_running_product_of_ramp_and_formal_derivative(
+    main_table: ArrayView2<BFieldElement>,
     challenges: &Challenges,
 ) -> Array2<XFieldElement> {
     let bezout_indeterminate = challenges[RamTableBezoutRelationIndeterminate];
 
-    let mut extension_columns = Vec::with_capacity(2 * base_table.nrows());
+    let mut auxiliary_columns = Vec::with_capacity(2 * main_table.nrows());
     let mut running_product_ram_pointer =
-        bezout_indeterminate - base_table.row(0)[RamPointer.main_index()];
+        bezout_indeterminate - main_table.row(0)[RamPointer.main_index()];
     let mut formal_derivative = xfe!(1);
 
-    extension_columns.push(running_product_ram_pointer);
-    extension_columns.push(formal_derivative);
+    auxiliary_columns.push(running_product_ram_pointer);
+    auxiliary_columns.push(formal_derivative);
 
-    for (previous_row, current_row) in base_table.rows().into_iter().tuple_windows() {
+    for (previous_row, current_row) in main_table.rows().into_iter().tuple_windows() {
         let instruction_type = current_row[InstructionType.main_index()];
         let is_no_padding_row = instruction_type != PADDING_INDICATOR;
 
@@ -265,47 +265,47 @@ fn extension_column_running_product_of_ramp_and_formal_derivative(
             }
         }
 
-        extension_columns.push(running_product_ram_pointer);
-        extension_columns.push(formal_derivative);
+        auxiliary_columns.push(running_product_ram_pointer);
+        auxiliary_columns.push(formal_derivative);
     }
 
-    Array2::from_shape_vec((base_table.nrows(), 2), extension_columns).unwrap()
+    Array2::from_shape_vec((main_table.nrows(), 2), auxiliary_columns).unwrap()
 }
 
-fn extension_column_bezout_coefficient_0(
-    base_table: ArrayView2<BFieldElement>,
+fn auxiliary_column_bezout_coefficient_0(
+    main_table: ArrayView2<BFieldElement>,
     challenges: &Challenges,
 ) -> Array2<XFieldElement> {
-    extension_column_bezout_coefficient(
-        base_table,
+    auxiliary_column_bezout_coefficient(
+        main_table,
         challenges,
         BezoutCoefficientPolynomialCoefficient0,
     )
 }
 
-fn extension_column_bezout_coefficient_1(
-    base_table: ArrayView2<BFieldElement>,
+fn auxiliary_column_bezout_coefficient_1(
+    main_table: ArrayView2<BFieldElement>,
     challenges: &Challenges,
 ) -> Array2<XFieldElement> {
-    extension_column_bezout_coefficient(
-        base_table,
+    auxiliary_column_bezout_coefficient(
+        main_table,
         challenges,
         BezoutCoefficientPolynomialCoefficient1,
     )
 }
 
-fn extension_column_bezout_coefficient(
-    base_table: ArrayView2<BFieldElement>,
+fn auxiliary_column_bezout_coefficient(
+    main_table: ArrayView2<BFieldElement>,
     challenges: &Challenges,
     bezout_cefficient_column: RamMainColumn,
 ) -> Array2<XFieldElement> {
     let bezout_indeterminate = challenges[RamTableBezoutRelationIndeterminate];
 
-    let mut bezout_coefficient = base_table.row(0)[bezout_cefficient_column.main_index()].lift();
-    let mut extension_column = Vec::with_capacity(base_table.nrows());
-    extension_column.push(bezout_coefficient);
+    let mut bezout_coefficient = main_table.row(0)[bezout_cefficient_column.main_index()].lift();
+    let mut auxiliary_column = Vec::with_capacity(main_table.nrows());
+    auxiliary_column.push(bezout_coefficient);
 
-    for (previous_row, current_row) in base_table.rows().into_iter().tuple_windows() {
+    for (previous_row, current_row) in main_table.rows().into_iter().tuple_windows() {
         if current_row[InstructionType.main_index()] == PADDING_INDICATOR {
             break; // padding marks the end of the trace
         }
@@ -316,21 +316,21 @@ fn extension_column_bezout_coefficient(
             bezout_coefficient *= bezout_indeterminate;
             bezout_coefficient += current_row[bezout_cefficient_column.main_index()];
         }
-        extension_column.push(bezout_coefficient);
+        auxiliary_column.push(bezout_coefficient);
     }
 
     // fill padding section
-    extension_column.resize(base_table.nrows(), bezout_coefficient);
-    Array2::from_shape_vec((base_table.nrows(), 1), extension_column).unwrap()
+    auxiliary_column.resize(main_table.nrows(), bezout_coefficient);
+    Array2::from_shape_vec((main_table.nrows(), 1), auxiliary_column).unwrap()
 }
 
-fn extension_column_running_product_perm_arg(
-    base_table: ArrayView2<BFieldElement>,
+fn auxiliary_column_running_product_perm_arg(
+    main_table: ArrayView2<BFieldElement>,
     challenges: &Challenges,
 ) -> Array2<XFieldElement> {
     let mut running_product_for_perm_arg = PermArg::default_initial();
-    let mut extension_column = Vec::with_capacity(base_table.nrows());
-    for row in base_table.rows() {
+    let mut auxiliary_column = Vec::with_capacity(main_table.nrows());
+    for row in main_table.rows() {
         let instruction_type = row[InstructionType.main_index()];
         if instruction_type == PADDING_INDICATOR {
             break; // padding marks the end of the trace
@@ -344,25 +344,25 @@ fn extension_column_running_product_perm_arg(
             + current_ram_pointer * challenges[RamPointerWeight]
             + ram_value * challenges[RamValueWeight];
         running_product_for_perm_arg *= challenges[RamIndeterminate] - compressed_row;
-        extension_column.push(running_product_for_perm_arg);
+        auxiliary_column.push(running_product_for_perm_arg);
     }
 
     // fill padding section
-    extension_column.resize(base_table.nrows(), running_product_for_perm_arg);
-    Array2::from_shape_vec((base_table.nrows(), 1), extension_column).unwrap()
+    auxiliary_column.resize(main_table.nrows(), running_product_for_perm_arg);
+    Array2::from_shape_vec((main_table.nrows(), 1), auxiliary_column).unwrap()
 }
 
-fn extension_column_clock_jump_difference_lookup_log_derivative(
-    base_table: ArrayView2<BFieldElement>,
+fn auxiliary_column_clock_jump_difference_lookup_log_derivative(
+    main_table: ArrayView2<BFieldElement>,
     challenges: &Challenges,
 ) -> Array2<XFieldElement> {
     let indeterminate = challenges[ClockJumpDifferenceLookupIndeterminate];
 
     let mut cjd_lookup_log_derivative = LookupArg::default_initial();
-    let mut extension_column = Vec::with_capacity(base_table.nrows());
-    extension_column.push(cjd_lookup_log_derivative);
+    let mut auxiliary_column = Vec::with_capacity(main_table.nrows());
+    auxiliary_column.push(cjd_lookup_log_derivative);
 
-    for (previous_row, current_row) in base_table.rows().into_iter().tuple_windows() {
+    for (previous_row, current_row) in main_table.rows().into_iter().tuple_windows() {
         if current_row[InstructionType.main_index()] == PADDING_INDICATOR {
             break; // padding marks the end of the trace
         }
@@ -376,12 +376,12 @@ fn extension_column_clock_jump_difference_lookup_log_derivative(
             let log_derivative_summand = (indeterminate - clock_jump_difference).inverse();
             cjd_lookup_log_derivative += log_derivative_summand;
         }
-        extension_column.push(cjd_lookup_log_derivative);
+        auxiliary_column.push(cjd_lookup_log_derivative);
     }
 
     // fill padding section
-    extension_column.resize(base_table.nrows(), cjd_lookup_log_derivative);
-    Array2::from_shape_vec((base_table.nrows(), 1), extension_column).unwrap()
+    auxiliary_column.resize(main_table.nrows(), cjd_lookup_log_derivative);
+    Array2::from_shape_vec((main_table.nrows(), 1), auxiliary_column).unwrap()
 }
 
 #[cfg(test)]

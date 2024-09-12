@@ -106,17 +106,17 @@ impl TraceTable for ProcessorTable {
         );
 
         let all_column_generators = [
-            extension_column_input_table_eval_argument,
-            extension_column_output_table_eval_argument,
-            extension_column_instruction_lookup_argument,
-            extension_column_op_stack_table_perm_argument,
-            extension_column_ram_table_perm_argument,
-            extension_column_jump_stack_table_perm_argument,
-            extension_column_hash_input_eval_argument,
-            extension_column_hash_digest_eval_argument,
-            extension_column_sponge_eval_argument,
-            extension_column_for_u32_lookup_argument,
-            extension_column_for_clock_jump_difference_lookup_argument,
+            auxiliary_column_input_table_eval_argument,
+            auxiliary_column_output_table_eval_argument,
+            auxiliary_column_instruction_lookup_argument,
+            auxiliary_column_op_stack_table_perm_argument,
+            auxiliary_column_ram_table_perm_argument,
+            auxiliary_column_jump_stack_table_perm_argument,
+            auxiliary_column_hash_input_eval_argument,
+            auxiliary_column_hash_digest_eval_argument,
+            auxiliary_column_sponge_eval_argument,
+            auxiliary_column_for_u32_lookup_argument,
+            auxiliary_column_for_clock_jump_difference_lookup_argument,
         ];
         all_column_generators
             .into_par_iter()
@@ -129,14 +129,14 @@ impl TraceTable for ProcessorTable {
     }
 }
 
-fn extension_column_input_table_eval_argument(
-    base_table: ArrayView2<BFieldElement>,
+fn auxiliary_column_input_table_eval_argument(
+    main_table: ArrayView2<BFieldElement>,
     challenges: &Challenges,
 ) -> Array2<XFieldElement> {
     let mut input_table_running_evaluation = EvalArg::default_initial();
-    let mut extension_column = Vec::with_capacity(base_table.nrows());
-    extension_column.push(input_table_running_evaluation);
-    for (previous_row, current_row) in base_table.rows().into_iter().tuple_windows() {
+    let mut auxiliary_column = Vec::with_capacity(main_table.nrows());
+    auxiliary_column.push(input_table_running_evaluation);
+    for (previous_row, current_row) in main_table.rows().into_iter().tuple_windows() {
         if let Some(Instruction::ReadIo(st)) = instruction_from_row(previous_row) {
             for i in (0..st.num_words()).rev() {
                 let input_symbol_column = ProcessorTable::op_stack_column_by_index(i);
@@ -146,19 +146,19 @@ fn extension_column_input_table_eval_argument(
                     + input_symbol;
             }
         }
-        extension_column.push(input_table_running_evaluation);
+        auxiliary_column.push(input_table_running_evaluation);
     }
-    Array2::from_shape_vec((base_table.nrows(), 1), extension_column).unwrap()
+    Array2::from_shape_vec((main_table.nrows(), 1), auxiliary_column).unwrap()
 }
 
-fn extension_column_output_table_eval_argument(
-    base_table: ArrayView2<BFieldElement>,
+fn auxiliary_column_output_table_eval_argument(
+    main_table: ArrayView2<BFieldElement>,
     challenges: &Challenges,
 ) -> Array2<XFieldElement> {
     let mut output_table_running_evaluation = EvalArg::default_initial();
-    let mut extension_column = Vec::with_capacity(base_table.nrows());
-    extension_column.push(output_table_running_evaluation);
-    for (previous_row, _) in base_table.rows().into_iter().tuple_windows() {
+    let mut auxiliary_column = Vec::with_capacity(main_table.nrows());
+    auxiliary_column.push(output_table_running_evaluation);
+    for (previous_row, _) in main_table.rows().into_iter().tuple_windows() {
         if let Some(Instruction::WriteIo(st)) = instruction_from_row(previous_row) {
             for i in 0..st.num_words() {
                 let output_symbol_column = ProcessorTable::op_stack_column_by_index(i);
@@ -168,18 +168,18 @@ fn extension_column_output_table_eval_argument(
                     + output_symbol;
             }
         }
-        extension_column.push(output_table_running_evaluation);
+        auxiliary_column.push(output_table_running_evaluation);
     }
-    Array2::from_shape_vec((base_table.nrows(), 1), extension_column).unwrap()
+    Array2::from_shape_vec((main_table.nrows(), 1), auxiliary_column).unwrap()
 }
 
-fn extension_column_instruction_lookup_argument(
-    base_table: ArrayView2<BFieldElement>,
+fn auxiliary_column_instruction_lookup_argument(
+    main_table: ArrayView2<BFieldElement>,
     challenges: &Challenges,
 ) -> Array2<XFieldElement> {
     // collect all to-be-inverted elements for batch inversion
     let mut to_invert = vec![];
-    for row in base_table.rows() {
+    for row in main_table.rows() {
         if row[IsPadding.main_index()].is_one() {
             break; // padding marks the end of the trace
         }
@@ -190,57 +190,57 @@ fn extension_column_instruction_lookup_argument(
         to_invert.push(challenges[ChallengeId::InstructionLookupIndeterminate] - compressed_row);
     }
 
-    // populate extension column with inverses
+    // populate auxiliary column with inverses
     let mut instruction_lookup_log_derivative = LookupArg::default_initial();
-    let mut extension_column = Vec::with_capacity(base_table.nrows());
+    let mut auxiliary_column = Vec::with_capacity(main_table.nrows());
     for inverse in XFieldElement::batch_inversion(to_invert) {
         instruction_lookup_log_derivative += inverse;
-        extension_column.push(instruction_lookup_log_derivative);
+        auxiliary_column.push(instruction_lookup_log_derivative);
     }
 
     // fill padding section
-    extension_column.resize(base_table.nrows(), instruction_lookup_log_derivative);
-    Array2::from_shape_vec((base_table.nrows(), 1), extension_column).unwrap()
+    auxiliary_column.resize(main_table.nrows(), instruction_lookup_log_derivative);
+    Array2::from_shape_vec((main_table.nrows(), 1), auxiliary_column).unwrap()
 }
 
-fn extension_column_op_stack_table_perm_argument(
-    base_table: ArrayView2<BFieldElement>,
+fn auxiliary_column_op_stack_table_perm_argument(
+    main_table: ArrayView2<BFieldElement>,
     challenges: &Challenges,
 ) -> Array2<XFieldElement> {
     let mut op_stack_table_running_product = EvalArg::default_initial();
-    let mut extension_column = Vec::with_capacity(base_table.nrows());
-    extension_column.push(op_stack_table_running_product);
-    for (prev, curr) in base_table.rows().into_iter().tuple_windows() {
+    let mut auxiliary_column = Vec::with_capacity(main_table.nrows());
+    auxiliary_column.push(op_stack_table_running_product);
+    for (prev, curr) in main_table.rows().into_iter().tuple_windows() {
         op_stack_table_running_product *=
             factor_for_op_stack_table_running_product(prev, curr, challenges);
-        extension_column.push(op_stack_table_running_product);
+        auxiliary_column.push(op_stack_table_running_product);
     }
-    Array2::from_shape_vec((base_table.nrows(), 1), extension_column).unwrap()
+    Array2::from_shape_vec((main_table.nrows(), 1), auxiliary_column).unwrap()
 }
 
-fn extension_column_ram_table_perm_argument(
-    base_table: ArrayView2<BFieldElement>,
+fn auxiliary_column_ram_table_perm_argument(
+    main_table: ArrayView2<BFieldElement>,
     challenges: &Challenges,
 ) -> Array2<XFieldElement> {
     let mut ram_table_running_product = PermArg::default_initial();
-    let mut extension_column = Vec::with_capacity(base_table.nrows());
-    extension_column.push(ram_table_running_product);
-    for (prev, curr) in base_table.rows().into_iter().tuple_windows() {
+    let mut auxiliary_column = Vec::with_capacity(main_table.nrows());
+    auxiliary_column.push(ram_table_running_product);
+    for (prev, curr) in main_table.rows().into_iter().tuple_windows() {
         if let Some(f) = factor_for_ram_table_running_product(prev, curr, challenges) {
             ram_table_running_product *= f;
         };
-        extension_column.push(ram_table_running_product);
+        auxiliary_column.push(ram_table_running_product);
     }
-    Array2::from_shape_vec((base_table.nrows(), 1), extension_column).unwrap()
+    Array2::from_shape_vec((main_table.nrows(), 1), auxiliary_column).unwrap()
 }
 
-fn extension_column_jump_stack_table_perm_argument(
-    base_table: ArrayView2<BFieldElement>,
+fn auxiliary_column_jump_stack_table_perm_argument(
+    main_table: ArrayView2<BFieldElement>,
     challenges: &Challenges,
 ) -> Array2<XFieldElement> {
     let mut jump_stack_running_product = PermArg::default_initial();
-    let mut extension_column = Vec::with_capacity(base_table.nrows());
-    for row in base_table.rows() {
+    let mut auxiliary_column = Vec::with_capacity(main_table.nrows());
+    for row in main_table.rows() {
         let compressed_row = row[CLK.main_index()] * challenges[ChallengeId::JumpStackClkWeight]
             + row[CI.main_index()] * challenges[ChallengeId::JumpStackCiWeight]
             + row[JSP.main_index()] * challenges[ChallengeId::JumpStackJspWeight]
@@ -248,14 +248,14 @@ fn extension_column_jump_stack_table_perm_argument(
             + row[JSD.main_index()] * challenges[ChallengeId::JumpStackJsdWeight];
         jump_stack_running_product *=
             challenges[ChallengeId::JumpStackIndeterminate] - compressed_row;
-        extension_column.push(jump_stack_running_product);
+        auxiliary_column.push(jump_stack_running_product);
     }
-    Array2::from_shape_vec((base_table.nrows(), 1), extension_column).unwrap()
+    Array2::from_shape_vec((main_table.nrows(), 1), auxiliary_column).unwrap()
 }
 
 /// Hash Table – `hash`'s or `merkle_step`'s input from Processor to Hash Coprocessor
-fn extension_column_hash_input_eval_argument(
-    base_table: ArrayView2<BFieldElement>,
+fn auxiliary_column_hash_input_eval_argument(
+    main_table: ArrayView2<BFieldElement>,
     challenges: &Challenges,
 ) -> Array2<XFieldElement> {
     let st0_through_st9 = [ST0, ST1, ST2, ST3, ST4, ST5, ST6, ST7, ST8, ST9];
@@ -265,8 +265,8 @@ fn extension_column_hash_input_eval_argument(
     let merkle_step_right_sibling = [HV0, HV1, HV2, HV3, HV4, ST0, ST1, ST2, ST3, ST4];
 
     let mut hash_input_running_evaluation = EvalArg::default_initial();
-    let mut extension_column = Vec::with_capacity(base_table.nrows());
-    for row in base_table.rows() {
+    let mut auxiliary_column = Vec::with_capacity(main_table.nrows());
+    for row in main_table.rows() {
         let current_instruction = row[CI.main_index()];
         if current_instruction == Instruction::Hash.opcode_b()
             || current_instruction == Instruction::MerkleStep.opcode_b()
@@ -289,20 +289,20 @@ fn extension_column_hash_input_eval_argument(
                 * challenges[ChallengeId::HashInputIndeterminate]
                 + compressed_row;
         }
-        extension_column.push(hash_input_running_evaluation);
+        auxiliary_column.push(hash_input_running_evaluation);
     }
-    Array2::from_shape_vec((base_table.nrows(), 1), extension_column).unwrap()
+    Array2::from_shape_vec((main_table.nrows(), 1), auxiliary_column).unwrap()
 }
 
 /// Hash Table – `hash`'s output from Hash Coprocessor to Processor
-fn extension_column_hash_digest_eval_argument(
-    base_table: ArrayView2<BFieldElement>,
+fn auxiliary_column_hash_digest_eval_argument(
+    main_table: ArrayView2<BFieldElement>,
     challenges: &Challenges,
 ) -> Array2<XFieldElement> {
     let mut hash_digest_running_evaluation = EvalArg::default_initial();
-    let mut extension_column = Vec::with_capacity(base_table.nrows());
-    extension_column.push(hash_digest_running_evaluation);
-    for (previous_row, current_row) in base_table.rows().into_iter().tuple_windows() {
+    let mut auxiliary_column = Vec::with_capacity(main_table.nrows());
+    auxiliary_column.push(hash_digest_running_evaluation);
+    for (previous_row, current_row) in main_table.rows().into_iter().tuple_windows() {
         let previous_ci = previous_row[CI.main_index()];
         if previous_ci == Instruction::Hash.opcode_b()
             || previous_ci == Instruction::MerkleStep.opcode_b()
@@ -318,23 +318,23 @@ fn extension_column_hash_digest_eval_argument(
                 * challenges[ChallengeId::HashDigestIndeterminate]
                 + compressed_row;
         }
-        extension_column.push(hash_digest_running_evaluation);
+        auxiliary_column.push(hash_digest_running_evaluation);
     }
-    Array2::from_shape_vec((base_table.nrows(), 1), extension_column).unwrap()
+    Array2::from_shape_vec((main_table.nrows(), 1), auxiliary_column).unwrap()
 }
 
 /// Hash Table – `hash`'s or `merkle_step`'s input from Processor to Hash Coprocessor
-fn extension_column_sponge_eval_argument(
-    base_table: ArrayView2<BFieldElement>,
+fn auxiliary_column_sponge_eval_argument(
+    main_table: ArrayView2<BFieldElement>,
     challenges: &Challenges,
 ) -> Array2<XFieldElement> {
     let st0_through_st9 = [ST0, ST1, ST2, ST3, ST4, ST5, ST6, ST7, ST8, ST9];
     let hash_state_weights = &challenges[ChallengeId::StackWeight0..ChallengeId::StackWeight10];
 
     let mut sponge_running_evaluation = EvalArg::default_initial();
-    let mut extension_column = Vec::with_capacity(base_table.nrows());
-    extension_column.push(sponge_running_evaluation);
-    for (previous_row, current_row) in base_table.rows().into_iter().tuple_windows() {
+    let mut auxiliary_column = Vec::with_capacity(main_table.nrows());
+    auxiliary_column.push(sponge_running_evaluation);
+    for (previous_row, current_row) in main_table.rows().into_iter().tuple_windows() {
         let previous_ci = previous_row[CI.main_index()];
         if previous_ci == Instruction::SpongeInit.opcode_b() {
             sponge_running_evaluation = sponge_running_evaluation
@@ -377,18 +377,18 @@ fn extension_column_sponge_eval_argument(
                 + challenges[ChallengeId::HashCIWeight] * Instruction::SpongeSqueeze.opcode_b()
                 + compressed_row;
         }
-        extension_column.push(sponge_running_evaluation);
+        auxiliary_column.push(sponge_running_evaluation);
     }
-    Array2::from_shape_vec((base_table.nrows(), 1), extension_column).unwrap()
+    Array2::from_shape_vec((main_table.nrows(), 1), auxiliary_column).unwrap()
 }
 
-fn extension_column_for_u32_lookup_argument(
-    base_table: ArrayView2<BFieldElement>,
+fn auxiliary_column_for_u32_lookup_argument(
+    main_table: ArrayView2<BFieldElement>,
     challenges: &Challenges,
 ) -> Array2<XFieldElement> {
     // collect elements to be inverted for more performant batch inversion
     let mut to_invert = vec![];
-    for (previous_row, current_row) in base_table.rows().into_iter().tuple_windows() {
+    for (previous_row, current_row) in main_table.rows().into_iter().tuple_windows() {
         let previous_ci = previous_row[CI.main_index()];
         if previous_ci == Instruction::Split.opcode_b() {
             let compressed_row = current_row[ST0.main_index()]
@@ -457,9 +457,9 @@ fn extension_column_for_u32_lookup_argument(
 
     // populate column with inverses
     let mut u32_table_running_sum_log_derivative = LookupArg::default_initial();
-    let mut extension_column = Vec::with_capacity(base_table.nrows());
-    extension_column.push(u32_table_running_sum_log_derivative);
-    for (previous_row, _) in base_table.rows().into_iter().tuple_windows() {
+    let mut auxiliary_column = Vec::with_capacity(main_table.nrows());
+    auxiliary_column.push(u32_table_running_sum_log_derivative);
+    for (previous_row, _) in main_table.rows().into_iter().tuple_windows() {
         let previous_ci = previous_row[CI.main_index()];
         if Instruction::try_from(previous_ci)
             .unwrap()
@@ -473,19 +473,19 @@ fn extension_column_for_u32_lookup_argument(
             u32_table_running_sum_log_derivative += inverses.next().unwrap();
         }
 
-        extension_column.push(u32_table_running_sum_log_derivative);
+        auxiliary_column.push(u32_table_running_sum_log_derivative);
     }
 
-    Array2::from_shape_vec((base_table.nrows(), 1), extension_column).unwrap()
+    Array2::from_shape_vec((main_table.nrows(), 1), auxiliary_column).unwrap()
 }
 
-fn extension_column_for_clock_jump_difference_lookup_argument(
-    base_table: ArrayView2<BFieldElement>,
+fn auxiliary_column_for_clock_jump_difference_lookup_argument(
+    main_table: ArrayView2<BFieldElement>,
     challenges: &Challenges,
 ) -> Array2<XFieldElement> {
     // collect inverses to batch invert
     let mut to_invert = vec![];
-    for row in base_table.rows() {
+    for row in main_table.rows() {
         let lookup_multiplicity = row[ClockJumpDifferenceLookupMultiplicity.main_index()];
         if !lookup_multiplicity.is_zero() {
             let clk = row[CLK.main_index()];
@@ -494,18 +494,18 @@ fn extension_column_for_clock_jump_difference_lookup_argument(
     }
     let mut inverses = XFieldElement::batch_inversion(to_invert).into_iter();
 
-    // populate extension column with inverses
+    // populate auxiliary column with inverses
     let mut cjd_lookup_log_derivative = LookupArg::default_initial();
-    let mut extension_column = Vec::with_capacity(base_table.nrows());
-    for row in base_table.rows() {
+    let mut auxiliary_column = Vec::with_capacity(main_table.nrows());
+    for row in main_table.rows() {
         let lookup_multiplicity = row[ClockJumpDifferenceLookupMultiplicity.main_index()];
         if !lookup_multiplicity.is_zero() {
             cjd_lookup_log_derivative += inverses.next().unwrap() * lookup_multiplicity;
         }
-        extension_column.push(cjd_lookup_log_derivative);
+        auxiliary_column.push(cjd_lookup_log_derivative);
     }
 
-    Array2::from_shape_vec((base_table.nrows(), 1), extension_column).unwrap()
+    Array2::from_shape_vec((main_table.nrows(), 1), auxiliary_column).unwrap()
 }
 
 fn factor_for_op_stack_table_running_product(
@@ -724,8 +724,8 @@ pub(crate) mod tests {
     #[derive(Debug, Clone)]
     struct TestRows {
         pub challenges: Challenges,
-        pub consecutive_master_base_table_rows: Array2<BFieldElement>,
-        pub consecutive_ext_base_table_rows: Array2<XFieldElement>,
+        pub consecutive_master_main_table_rows: Array2<BFieldElement>,
+        pub consecutive_master_aux_table_rows: Array2<XFieldElement>,
     }
 
     #[derive(Debug, Clone)]
@@ -743,15 +743,15 @@ pub(crate) mod tests {
         program_and_input: ProgramAndInput,
         row_num: usize,
     ) -> TestRows {
-        let (_, _, master_base_table, master_ext_table, challenges) =
+        let (_, _, master_main_table, master_aux_table, challenges) =
             master_tables_for_low_security_level(program_and_input);
         TestRows {
             challenges,
-            consecutive_master_base_table_rows: master_base_table
+            consecutive_master_main_table_rows: master_main_table
                 .trace_table()
                 .slice(s![row_num..=row_num + 1, ..])
                 .to_owned(),
-            consecutive_ext_base_table_rows: master_ext_table
+            consecutive_master_aux_table_rows: master_aux_table
                 .trace_table()
                 .slice(s![row_num..=row_num + 1, ..])
                 .to_owned(),
@@ -770,8 +770,8 @@ pub(crate) mod tests {
         );
 
         for (case_idx, rows) in test_rows.iter().enumerate() {
-            let curr_row = rows.consecutive_master_base_table_rows.slice(s![0, ..]);
-            let next_row = rows.consecutive_master_base_table_rows.slice(s![1, ..]);
+            let curr_row = rows.consecutive_master_main_table_rows.slice(s![0, ..]);
+            let next_row = rows.consecutive_master_main_table_rows.slice(s![1, ..]);
 
             println!("Testing all constraints of {instruction} for test case {case_idx}…");
             for &c in &debug_info.debug_cols_curr_row {
@@ -790,8 +790,8 @@ pub(crate) mod tests {
 
             for (constraint_idx, constraint) in transition_constraints.iter().enumerate() {
                 let evaluation_result = constraint.clone().consume().evaluate(
-                    rows.consecutive_master_base_table_rows.view(),
-                    rows.consecutive_ext_base_table_rows.view(),
+                    rows.consecutive_master_main_table_rows.view(),
+                    rows.consecutive_master_aux_table_rows.view(),
                     &rows.challenges.challenges,
                 );
                 assert!(

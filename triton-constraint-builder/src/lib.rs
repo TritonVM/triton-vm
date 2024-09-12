@@ -143,38 +143,38 @@ impl Constraints {
     ) -> AllSubstitutions {
         let mut info = lowering_info;
 
-        let (init_base_substitutions, init_ext_substitutions) =
+        let (init_main_substitutions, init_aux_substitutions) =
             ConstraintCircuitMonad::lower_to_degree(&mut self.init, info);
-        info.num_main_cols += init_base_substitutions.len();
-        info.num_aux_cols += init_ext_substitutions.len();
+        info.num_main_cols += init_main_substitutions.len();
+        info.num_aux_cols += init_aux_substitutions.len();
 
-        let (cons_base_substitutions, cons_ext_substitutions) =
+        let (cons_main_substitutions, cons_aux_substitutions) =
             ConstraintCircuitMonad::lower_to_degree(&mut self.cons, info);
-        info.num_main_cols += cons_base_substitutions.len();
-        info.num_aux_cols += cons_ext_substitutions.len();
+        info.num_main_cols += cons_main_substitutions.len();
+        info.num_aux_cols += cons_aux_substitutions.len();
 
-        let (tran_base_substitutions, tran_ext_substitutions) =
+        let (tran_main_substitutions, tran_aux_substitutions) =
             ConstraintCircuitMonad::lower_to_degree(&mut self.tran, info);
-        info.num_main_cols += tran_base_substitutions.len();
-        info.num_aux_cols += tran_ext_substitutions.len();
+        info.num_main_cols += tran_main_substitutions.len();
+        info.num_aux_cols += tran_aux_substitutions.len();
 
-        let (term_base_substitutions, term_ext_substitutions) =
+        let (term_main_substitutions, term_aux_substitutions) =
             ConstraintCircuitMonad::lower_to_degree(&mut self.term, info);
 
         AllSubstitutions {
             main: Substitutions {
                 lowering_info,
-                init: init_base_substitutions,
-                cons: cons_base_substitutions,
-                tran: tran_base_substitutions,
-                term: term_base_substitutions,
+                init: init_main_substitutions,
+                cons: cons_main_substitutions,
+                tran: tran_main_substitutions,
+                term: term_main_substitutions,
             },
             aux: Substitutions {
                 lowering_info,
-                init: init_ext_substitutions,
-                cons: cons_ext_substitutions,
-                tran: tran_ext_substitutions,
-                term: term_ext_substitutions,
+                init: init_aux_substitutions,
+                cons: cons_aux_substitutions,
+                tran: tran_aux_substitutions,
+                term: term_aux_substitutions,
             },
         }
     }
@@ -182,16 +182,13 @@ impl Constraints {
     #[must_use]
     pub fn combine_with_substitution_induced_constraints(
         self,
-        AllSubstitutions {
-            main: base,
-            aux: ext,
-        }: AllSubstitutions,
+        AllSubstitutions { main, aux }: AllSubstitutions,
     ) -> Self {
         Self {
-            init: [self.init, base.init, ext.init].concat(),
-            cons: [self.cons, base.cons, ext.cons].concat(),
-            tran: [self.tran, base.tran, ext.tran].concat(),
-            term: [self.term, base.term, ext.term].concat(),
+            init: [self.init, main.init, aux.init].concat(),
+            cons: [self.cons, main.cons, aux.cons].concat(),
+            tran: [self.tran, main.tran, aux.tran].concat(),
+            term: [self.term, main.term, aux.term].concat(),
         }
     }
 

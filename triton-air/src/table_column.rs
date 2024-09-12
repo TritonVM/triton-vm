@@ -483,16 +483,16 @@ pub enum U32AuxColumn {
     LookupServerLogDerivative,
 }
 
-/// A trait for the columns of the master base table. This trait is implemented for all enums
-/// relating to the base tables. This trait provides two methods:
-/// - one to get the index of the column in the “local” base table, _i.e., not the master base
+/// A trait for the columns of the master main table. This trait is implemented for all enums
+/// relating to the main tables. This trait provides two methods:
+/// - one to get the index of the column in the “local” main table, _i.e., not the master base
 ///   table, and
-/// - one to get the index of the column in the master base table.
+/// - one to get the index of the column in the master main table.
 pub trait MasterMainColumn {
-    /// The index of the column in the “local” base table, _i.e., not the master base table.
+    /// The index of the column in the “local” main table, _i.e., not the master base table.
     fn main_index(&self) -> usize;
 
-    /// The index of the column in the master base table.
+    /// The index of the column in the master main table.
     fn master_main_index(&self) -> usize;
 }
 
@@ -604,17 +604,17 @@ impl MasterMainColumn for U32MainColumn {
     }
 }
 
-/// A trait for the columns in the master extension table. This trait is implemented for all enums
-/// relating to the extension tables. The trait provides two methods:
-/// - one to get the index of the column in the “local” extension table, _i.e._, not the master
-///   extension table, and
-/// - one to get the index of the column in the master extension table.
+/// A trait for the columns in the master auxiliary table. This trait is implemented for all enums
+/// relating to the auxiliary tables. The trait provides two methods:
+/// - one to get the index of the column in the “local” auxiliary table, _i.e._, not the master
+///   auxiliary table, and
+/// - one to get the index of the column in the master auxiliary table.
 pub trait MasterAuxColumn {
-    /// The index of the column in the “local” extension table, _i.e._, not the master extension
+    /// The index of the column in the “local” auxiliary table, _i.e._, not the master extension
     /// table.
     fn aux_index(&self) -> usize;
 
-    /// The index of the column in the master extension table.
+    /// The index of the column in the master auxiliary table.
     fn master_aux_index(&self) -> usize;
 }
 
@@ -733,7 +733,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn master_base_table_is_contiguous() {
+    fn master_main_table_is_contiguous() {
         let mut expected_column_index = 0;
         for column in ProgramMainColumn::iter() {
             assert_eq!(expected_column_index, column.master_main_index());
@@ -774,7 +774,7 @@ mod tests {
     }
 
     #[test]
-    fn master_ext_table_is_contiguous() {
+    fn master_aux_table_is_contiguous() {
         let mut expected_column_index = 0;
         for column in ProgramAuxColumn::iter() {
             assert_eq!(expected_column_index, column.master_aux_index());

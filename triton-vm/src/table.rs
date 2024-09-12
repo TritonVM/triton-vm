@@ -149,9 +149,9 @@ mod tests {
         let challenges = &challenges.challenges;
 
         let num_rows = 2;
-        let base_shape = [num_rows, MasterMainTable::NUM_COLUMNS];
+        let main_shape = [num_rows, MasterMainTable::NUM_COLUMNS];
         let aux_shape = [num_rows, MasterAuxTable::NUM_COLUMNS];
-        let main_rows = Array2::from_shape_simple_fn(base_shape, || rng.gen::<BFieldElement>());
+        let main_rows = Array2::from_shape_simple_fn(main_shape, || rng.gen::<BFieldElement>());
         let aux_rows = Array2::from_shape_simple_fn(aux_shape, || rng.gen::<XFieldElement>());
         let main_rows = main_rows.view();
         let aux_rows = aux_rows.view();
@@ -166,7 +166,7 @@ mod tests {
     }
 
     /// Recursively evaluates the given constraint circuit and its sub-circuits on the given
-    /// base and extension table, and returns the result of the evaluation.
+    /// main and auxiliary table, and returns the result of the evaluation.
     /// At each recursive step, updates the given HashMap with the result of the evaluation.
     /// If the HashMap already contains the result of the evaluation, panics.
     /// This function is used to assert that the evaluation of a constraint circuit
@@ -250,7 +250,7 @@ mod tests {
     /// - the given multicircuit prior to degree lowering
     /// - the multicircuit after degree lowering
     /// - the new base constraints
-    /// - the new extension constraints
+    /// - the new auxiliary constraints
     /// - the numbers of original and new constraints
     fn lower_degree_and_assert_properties<II: InputIndicator>(
         multicircuit: &mut [ConstraintCircuitMonad<II>],
@@ -282,8 +282,8 @@ mod tests {
         // Check that the new constraints are simple substitutions.
         let mut substitution_rules = vec![];
         for (constraint_type, constraints) in [
-            ("base", &new_main_constraints),
-            ("ext", &new_aux_constraints),
+            ("main", &new_main_constraints),
+            ("aux", &new_aux_constraints),
         ] {
             for (i, constraint) in constraints.iter().enumerate() {
                 let expression = constraint.circuit.borrow().expression.clone();
@@ -333,11 +333,11 @@ mod tests {
         for circuit in multicircuit.iter() {
             println!("  {circuit}");
         }
-        println!("new base constraints:");
+        println!("new main constraints:");
         for constraint in &new_main_constraints {
             println!("  {constraint}");
         }
-        println!("new ext constraints:");
+        println!("new aux constraints:");
         for constraint in &new_aux_constraints {
             println!("  {constraint}");
         }
@@ -368,9 +368,9 @@ mod tests {
                 assert_substitution_rule_uses_legal_variables(new_var, &rhs);
             }
             CircuitExpression::Input(old_var) => {
-                let new_var_is_base = new_var.is_main_table_column();
-                let old_var_is_base = old_var.is_main_table_column();
-                let legal_substitute = match (new_var_is_base, old_var_is_base) {
+                let new_var_is_main = new_var.is_main_table_column();
+                let old_var_is_main = old_var.is_main_table_column();
+                let legal_substitute = match (new_var_is_main, old_var_is_main) {
                     (true, false) => false,
                     (false, true) => true,
                     _ => old_var.column() < new_var.column(),
@@ -384,11 +384,11 @@ mod tests {
     #[test]
     fn degree_lowering_works_correctly_for_all_tables() {
         macro_rules! assert_degree_lowering {
-            ($table:ident ($base_end:ident, $ext_end:ident)) => {{
+            ($table:ident ($main_end:ident, $aux_end:ident)) => {{
                 let degree_lowering_info = DegreeLoweringInfo {
                     target_degree: air::TARGET_DEGREE,
-                    num_main_cols: $base_end,
-                    num_aux_cols: $ext_end,
+                    num_main_cols: $main_end,
+                    num_aux_cols: $aux_end,
                 };
                 let circuit_builder = ConstraintCircuitBuilder::new();
                 let mut init = $table::initial_constraints(&circuit_builder);
@@ -430,29 +430,29 @@ mod tests {
     #[ignore = "(probably) requires normalization of circuit expressions"]
     fn substitution_rules_are_unique() {
         let challenges = Challenges::default();
-        let mut base_table_rows =
+        let mut main_table_rows =
             Array2::from_shape_fn((2, MasterMainTable::NUM_COLUMNS), |_| random());
-        let mut ext_table_rows =
+        let mut aux_table_rows =
             Array2::from_shape_fn((2, MasterAuxTable::NUM_COLUMNS), |_| random());
 
-        DegreeLoweringTable::fill_derived_main_columns(base_table_rows.view_mut());
+        DegreeLoweringTable::fill_derived_main_columns(main_table_rows.view_mut());
         DegreeLoweringTable::fill_derived_aux_columns(
-            base_table_rows.view(),
-            ext_table_rows.view_mut(),
+            main_table_rows.view(),
+            aux_table_rows.view_mut(),
             &challenges,
         );
 
         let mut encountered_values = HashMap::new();
         for col_idx in 0..MasterMainTable::NUM_COLUMNS {
-            let val = base_table_rows[(0, col_idx)].lift();
+            let val = main_table_rows[(0, col_idx)].lift();
             let other_entry = encountered_values.insert(val, col_idx);
             if let Some(other_idx) = other_entry {
                 panic!("Duplicate value {val} in derived main column {other_idx} and {col_idx}.");
             }
         }
-        println!("Now comparing extension columns…");
+        println!("Now comparing auxiliary columns…");
         for col_idx in 0..MasterAuxTable::NUM_COLUMNS {
-            let val = ext_table_rows[(0, col_idx)];
+            let val = aux_table_rows[(0, col_idx)];
             let other_entry = encountered_values.insert(val, col_idx);
             if let Some(other_idx) = other_entry {
                 panic!("Duplicate value {val} in derived aux column {other_idx} and {col_idx}.");

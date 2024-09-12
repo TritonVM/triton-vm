@@ -169,10 +169,10 @@ pub enum VerificationError {
     #[error("received and computed out-of-domain quotient values don't match")]
     OutOfDomainQuotientValueMismatch,
 
-    #[error("failed to verify authentication path for base codeword")]
-    BaseCodewordAuthenticationFailure,
+    #[error("failed to verify authentication path for main codeword")]
+    MainCodewordAuthenticationFailure,
 
-    #[error("failed to verify authentication path for extension codeword")]
+    #[error("failed to verify authentication path for auxiliary codeword")]
     AuxiliaryCodewordAuthenticationFailure,
 
     #[error("failed to verify authentication path for combined quotient codeword")]
@@ -194,7 +194,7 @@ pub enum VerificationError {
     IncorrectNumberOfMainTableRows,
 
     #[error("the number of received auxiliary table rows does not match the parameters")]
-    IncorrectNumberOfExtTableRows,
+    IncorrectNumberOfAuxTableRows,
 
     #[error(transparent)]
     ProofStreamError(#[from] ProofStreamError),

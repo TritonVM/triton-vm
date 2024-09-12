@@ -119,14 +119,14 @@ impl TraceTable for U32Table {
     }
 
     fn extend(
-        base_table: ArrayView2<BFieldElement>,
-        mut ext_table: ArrayViewMut2<XFieldElement>,
+        main_table: ArrayView2<BFieldElement>,
+        mut aux_table: ArrayViewMut2<XFieldElement>,
         challenges: &Challenges,
     ) {
         profiler!(start "u32 table");
-        assert_eq!(MainColumn::COUNT, base_table.ncols());
-        assert_eq!(AuxColumn::COUNT, ext_table.ncols());
-        assert_eq!(base_table.nrows(), ext_table.nrows());
+        assert_eq!(MainColumn::COUNT, main_table.ncols());
+        assert_eq!(AuxColumn::COUNT, aux_table.ncols());
+        assert_eq!(main_table.nrows(), aux_table.nrows());
 
         let ci_weight = challenges[U32CiWeight];
         let lhs_weight = challenges[U32LhsWeight];
@@ -135,8 +135,8 @@ impl TraceTable for U32Table {
         let lookup_indeterminate = challenges[U32Indeterminate];
 
         let mut running_sum_log_derivative = LookupArg::default_initial();
-        for row_idx in 0..base_table.nrows() {
-            let current_row = base_table.row(row_idx);
+        for row_idx in 0..main_table.nrows() {
+            let current_row = main_table.row(row_idx);
             if current_row[MainColumn::CopyFlag.main_index()].is_one() {
                 let lookup_multiplicity = current_row[MainColumn::LookupMultiplicity.main_index()];
                 let compressed_row = ci_weight * current_row[MainColumn::CI.main_index()]
@@ -147,8 +147,8 @@ impl TraceTable for U32Table {
                     lookup_multiplicity * (lookup_indeterminate - compressed_row).inverse();
             }
 
-            let mut extension_row = ext_table.row_mut(row_idx);
-            extension_row[AuxColumn::LookupServerLogDerivative.aux_index()] =
+            let mut auxiliary_row = aux_table.row_mut(row_idx);
+            auxiliary_row[AuxColumn::LookupServerLogDerivative.aux_index()] =
                 running_sum_log_derivative;
         }
         profiler!(stop "u32 table");

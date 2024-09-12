@@ -147,7 +147,7 @@ impl Stark {
         profiler!(stop "extend");
         profiler!(stop "main tables");
 
-        profiler!(start "ext tables");
+        profiler!(start "aux tables");
         profiler!(start "randomize trace" ("gen"));
         master_aux_table.randomize_trace();
         profiler!(stop "randomize trace");
@@ -167,7 +167,7 @@ impl Stark {
         let quotient_combination_weights =
             proof_stream.sample_scalars(MasterAuxTable::NUM_CONSTRAINTS);
         profiler!(stop "Fiat-Shamir");
-        profiler!(stop "ext tables");
+        profiler!(stop "aux tables");
 
         let (fri_domain_quotient_segment_codewords, quotient_segment_polynomials) =
             Self::compute_quotient_segments(
@@ -245,18 +245,18 @@ impl Stark {
         };
 
         profiler!(start "linear combination");
-        profiler!(start "base" ("CC"));
-        let base_combination_polynomial =
+        profiler!(start "main" ("CC"));
+        let main_combination_polynomial =
             Self::random_linear_sum(master_main_table.interpolation_polynomials(), weights.main);
 
-        profiler!(stop "base");
-        profiler!(start "ext" ("CC"));
-        let ext_combination_polynomial =
+        profiler!(stop "main");
+        profiler!(start "aux" ("CC"));
+        let aux_combination_polynomial =
             Self::random_linear_sum(master_aux_table.interpolation_polynomials(), weights.aux);
-        profiler!(stop "ext");
-        let base_and_ext_combination_polynomial =
-            base_combination_polynomial + ext_combination_polynomial;
-        let base_and_ext_codeword = short_domain.evaluate(&base_and_ext_combination_polynomial);
+        profiler!(stop "aux");
+        let main_and_aux_combination_polynomial =
+            main_combination_polynomial + aux_combination_polynomial;
+        let main_and_aux_codeword = short_domain.evaluate(&main_and_aux_combination_polynomial);
 
         profiler!(start "quotient" ("CC"));
         let quotient_segments_combination_polynomial =
@@ -269,11 +269,11 @@ impl Stark {
 
         profiler!(start "DEEP");
         // There are (at least) two possible ways to perform the DEEP update.
-        // 1. The one used here, where base & ext codewords are DEEP'd twice: once with the out-of-
+        // 1. The one used here, where main & aux codewords are DEEP'd twice: once with the out-of-
         //    domain point for the current row (i.e., α) and once using the out-of-domain point for
         //    the next row (i.e., ω·α). The DEEP update's denominator is a degree-1 polynomial in
         //    both cases, namely (ω^i - α) and (ω^i - ω·α) respectively.
-        // 2. One where the base & ext codewords are DEEP'd only once, using the degree-2 polynomial
+        // 2. One where the main & aux codewords are DEEP'd only once, using the degree-2 polynomial
         //    (ω^i - α)·(ω^i - ω·α) as the denominator. This requires a linear interpolation in the
         //    numerator: b(ω^i) - i((b(α), α) + (b(ω·α), ω·α))(w^i).
         //
@@ -284,27 +284,27 @@ impl Stark {
         //
         // Both approaches are sound. The first approach is more efficient, as it requires fewer
         // operations.
-        profiler!(start "base&ext curr row");
-        let out_of_domain_curr_row_base_and_ext_value =
-            base_and_ext_combination_polynomial.evaluate(out_of_domain_point_curr_row);
-        let base_and_ext_curr_row_deep_codeword = Self::deep_codeword(
-            &base_and_ext_codeword.clone(),
+        profiler!(start "main&aux curr row");
+        let out_of_domain_curr_row_main_and_aux_value =
+            main_and_aux_combination_polynomial.evaluate(out_of_domain_point_curr_row);
+        let main_and_aux_curr_row_deep_codeword = Self::deep_codeword(
+            &main_and_aux_codeword.clone(),
             short_domain,
             out_of_domain_point_curr_row,
-            out_of_domain_curr_row_base_and_ext_value,
+            out_of_domain_curr_row_main_and_aux_value,
         );
-        profiler!(stop "base&ext curr row");
+        profiler!(stop "main&aux curr row");
 
-        profiler!(start "base&ext next row");
-        let out_of_domain_next_row_base_and_ext_value =
-            base_and_ext_combination_polynomial.evaluate(out_of_domain_point_next_row);
-        let base_and_ext_next_row_deep_codeword = Self::deep_codeword(
-            &base_and_ext_codeword.clone(),
+        profiler!(start "main&aux next row");
+        let out_of_domain_next_row_main_and_aux_value =
+            main_and_aux_combination_polynomial.evaluate(out_of_domain_point_next_row);
+        let main_and_aux_next_row_deep_codeword = Self::deep_codeword(
+            &main_and_aux_codeword.clone(),
             short_domain,
             out_of_domain_point_next_row,
-            out_of_domain_next_row_base_and_ext_value,
+            out_of_domain_next_row_main_and_aux_value,
         );
-        profiler!(stop "base&ext next row");
+        profiler!(stop "main&aux next row");
 
         profiler!(start "segmented quotient");
         let out_of_domain_curr_row_quot_segments_value = quotient_segments_combination_polynomial
@@ -321,8 +321,8 @@ impl Stark {
         profiler!(start "combined DEEP polynomial");
         profiler!(start "sum" ("CC"));
         let deep_codeword = [
-            base_and_ext_curr_row_deep_codeword,
-            base_and_ext_next_row_deep_codeword,
+            main_and_aux_curr_row_deep_codeword,
+            main_and_aux_next_row_deep_codeword,
             quotient_segments_curr_row_deep_codeword,
         ]
         .into_par_iter()
@@ -356,7 +356,7 @@ impl Stark {
 
         profiler!(start "open trace leafs");
         // Open leafs of zipped codewords at indicated positions
-        let revealed_base_elems =
+        let revealed_main_elems =
             if let Some(fri_domain_table) = master_main_table.fri_domain_table() {
                 Self::read_revealed_rows(fri_domain_table, &revealed_current_row_indices)?
             } else {
@@ -368,12 +368,12 @@ impl Stark {
             };
         let base_authentication_structure =
             main_merkle_tree.authentication_structure(&revealed_current_row_indices)?;
-        proof_stream.enqueue(ProofItem::MasterMainTableRows(revealed_base_elems));
+        proof_stream.enqueue(ProofItem::MasterMainTableRows(revealed_main_elems));
         proof_stream.enqueue(ProofItem::AuthenticationStructure(
             base_authentication_structure,
         ));
 
-        let revealed_ext_elems = if let Some(fri_domain_table) = master_aux_table.fri_domain_table()
+        let revealed_aux_elems = if let Some(fri_domain_table) = master_aux_table.fri_domain_table()
         {
             Self::read_revealed_rows(fri_domain_table, &revealed_current_row_indices)?
         } else {
@@ -383,14 +383,14 @@ impl Stark {
                 fri.domain,
             )
         };
-        let ext_authentication_structure =
+        let aux_authentication_structure =
             aux_merkle_tree.authentication_structure(&revealed_current_row_indices)?;
-        proof_stream.enqueue(ProofItem::MasterAuxTableRows(revealed_ext_elems));
+        proof_stream.enqueue(ProofItem::MasterAuxTableRows(revealed_aux_elems));
         proof_stream.enqueue(ProofItem::AuthenticationStructure(
-            ext_authentication_structure,
+            aux_authentication_structure,
         ));
 
-        // Open quotient & combination codewords at the same positions as base & ext codewords.
+        // Open quotient & combination codewords at the same positions as main & aux codewords.
         let into_fixed_width_row =
             |row: ArrayView1<_>| -> QuotientSegments { row.to_vec().try_into().unwrap() };
         let revealed_quotient_segments_rows = revealed_current_row_indices
@@ -735,7 +735,7 @@ impl Stark {
         profiler!(stop "derive additional parameters");
 
         profiler!(start "Fiat-Shamir 1" ("hash"));
-        let base_merkle_tree_root = proof_stream.dequeue()?.try_into_merkle_root()?;
+        let main_merkle_tree_root = proof_stream.dequeue()?.try_into_merkle_root()?;
         let extension_challenge_weights = proof_stream.sample_scalars(Challenges::SAMPLE_COUNT);
         let challenges = Challenges::new(extension_challenge_weights, claim);
         let auxiliary_tree_merkle_root = proof_stream.dequeue()?.try_into_merkle_root()?;
@@ -843,19 +843,19 @@ impl Stark {
 
         profiler!(start "Fiat-Shamir 2" ("hash"));
         let weights = LinearCombinationWeights::sample(&mut proof_stream);
-        let base_and_ext_codeword_weights = weights.base_and_ext();
+        let main_and_aux_codeword_weights = weights.main_and_aux();
         profiler!(stop "Fiat-Shamir 2");
 
         profiler!(start "sum out-of-domain values" ("CC"));
-        let out_of_domain_curr_row_base_and_ext_value = Self::linearly_sum_main_and_aux_row(
+        let out_of_domain_curr_row_main_and_aux_value = Self::linearly_sum_main_and_aux_row(
             out_of_domain_curr_main_row.view(),
             out_of_domain_curr_aux_row.view(),
-            base_and_ext_codeword_weights.view(),
+            main_and_aux_codeword_weights.view(),
         );
-        let out_of_domain_next_row_base_and_ext_value = Self::linearly_sum_main_and_aux_row(
+        let out_of_domain_next_row_main_and_aux_value = Self::linearly_sum_main_and_aux_row(
             out_of_domain_next_main_row.view(),
             out_of_domain_next_aux_row.view(),
-            base_and_ext_codeword_weights.view(),
+            main_and_aux_codeword_weights.view(),
         );
         let out_of_domain_curr_row_quotient_segment_value = weights
             .quot_segments
@@ -871,13 +871,13 @@ impl Stark {
 
         profiler!(start "check leafs");
         profiler!(start "dequeue main elements");
-        let base_table_rows = proof_stream.dequeue()?.try_into_master_main_table_rows()?;
-        let base_authentication_structure = proof_stream
+        let main_table_rows = proof_stream.dequeue()?.try_into_master_main_table_rows()?;
+        let main_authentication_structure = proof_stream
             .dequeue()?
             .try_into_authentication_structure()?;
-        let leaf_digests_base: Vec<_> = base_table_rows
+        let leaf_digests_main: Vec<_> = main_table_rows
             .par_iter()
-            .map(|revealed_base_elem| Tip5::hash_varlen(revealed_base_elem))
+            .map(|revealed_main_elem| Tip5::hash_varlen(revealed_main_elem))
             .collect();
         profiler!(stop "dequeue main elements");
 
@@ -888,20 +888,20 @@ impl Stark {
         profiler!(start "Merkle verify (main tree)" ("hash"));
         let base_merkle_tree_inclusion_proof = MerkleTreeInclusionProof {
             tree_height: merkle_tree_height,
-            indexed_leafs: index_leaves(leaf_digests_base),
-            authentication_structure: base_authentication_structure,
+            indexed_leafs: index_leaves(leaf_digests_main),
+            authentication_structure: main_authentication_structure,
         };
-        if !base_merkle_tree_inclusion_proof.verify(base_merkle_tree_root) {
-            return Err(VerificationError::BaseCodewordAuthenticationFailure);
+        if !base_merkle_tree_inclusion_proof.verify(main_merkle_tree_root) {
+            return Err(VerificationError::MainCodewordAuthenticationFailure);
         }
         profiler!(stop "Merkle verify (main tree)");
 
         profiler!(start "dequeue auxiliary elements");
-        let ext_table_rows = proof_stream.dequeue()?.try_into_master_aux_table_rows()?;
-        let ext_authentication_structure = proof_stream
+        let aux_table_rows = proof_stream.dequeue()?.try_into_master_aux_table_rows()?;
+        let aux_authentication_structure = proof_stream
             .dequeue()?
             .try_into_authentication_structure()?;
-        let leaf_digests_ext = ext_table_rows
+        let leaf_digests_aux = aux_table_rows
             .par_iter()
             .map(|xvalues| {
                 let b_values = xvalues.iter().flat_map(|xfe| xfe.coefficients.to_vec());
@@ -911,12 +911,12 @@ impl Stark {
         profiler!(stop "dequeue auxiliary elements");
 
         profiler!(start "Merkle verify (auxiliary tree)" ("hash"));
-        let ext_merkle_tree_inclusion_proof = MerkleTreeInclusionProof {
+        let aux_merkle_tree_inclusion_proof = MerkleTreeInclusionProof {
             tree_height: merkle_tree_height,
-            indexed_leafs: index_leaves(leaf_digests_ext),
-            authentication_structure: ext_authentication_structure,
+            indexed_leafs: index_leaves(leaf_digests_aux),
+            authentication_structure: aux_authentication_structure,
         };
-        if !ext_merkle_tree_inclusion_proof.verify(auxiliary_tree_merkle_root) {
+        if !aux_merkle_tree_inclusion_proof.verify(auxiliary_tree_merkle_root) {
             return Err(VerificationError::AuxiliaryCodewordAuthenticationFailure);
         }
         profiler!(stop "Merkle verify (auxiliary tree)");
@@ -953,17 +953,17 @@ impl Stark {
         if self.num_collinearity_checks != revealed_quotient_segments_elements.len() {
             return Err(VerificationError::IncorrectNumberOfQuotientSegmentElements);
         };
-        if self.num_collinearity_checks != base_table_rows.len() {
+        if self.num_collinearity_checks != main_table_rows.len() {
             return Err(VerificationError::IncorrectNumberOfMainTableRows);
         };
-        if self.num_collinearity_checks != ext_table_rows.len() {
-            return Err(VerificationError::IncorrectNumberOfExtTableRows);
+        if self.num_collinearity_checks != aux_table_rows.len() {
+            return Err(VerificationError::IncorrectNumberOfAuxTableRows);
         };
 
         for (row_idx, main_row, aux_row, quotient_segments_elements, fri_value) in izip!(
             revealed_current_row_indices,
-            base_table_rows,
-            ext_table_rows,
+            main_table_rows,
+            aux_table_rows,
             revealed_quotient_segments_elements,
             revealed_fri_values,
         ) {
@@ -971,29 +971,29 @@ impl Stark {
             let aux_row = Array1::from(aux_row.to_vec());
             let current_fri_domain_value = fri.domain.domain_value(row_idx as u32);
 
-            profiler!(start "base & ext elements" ("CC"));
-            let base_and_ext_curr_row_element = Self::linearly_sum_main_and_aux_row(
+            profiler!(start "main & aux elements" ("CC"));
+            let main_and_aux_curr_row_element = Self::linearly_sum_main_and_aux_row(
                 main_row.view(),
                 aux_row.view(),
-                base_and_ext_codeword_weights.view(),
+                main_and_aux_codeword_weights.view(),
             );
             let quotient_segments_curr_row_element = weights
                 .quot_segments
                 .dot(&Array1::from(quotient_segments_elements.to_vec()));
-            profiler!(stop "base & ext elements");
+            profiler!(stop "main & aux elements");
 
             profiler!(start "DEEP update");
-            let base_and_ext_curr_row_deep_value = Self::deep_update(
+            let main_and_aux_curr_row_deep_value = Self::deep_update(
                 current_fri_domain_value,
-                base_and_ext_curr_row_element,
+                main_and_aux_curr_row_element,
                 out_of_domain_point_curr_row,
-                out_of_domain_curr_row_base_and_ext_value,
+                out_of_domain_curr_row_main_and_aux_value,
             );
-            let base_and_ext_next_row_deep_value = Self::deep_update(
+            let main_and_aux_next_row_deep_value = Self::deep_update(
                 current_fri_domain_value,
-                base_and_ext_curr_row_element,
+                main_and_aux_curr_row_element,
                 out_of_domain_point_next_row,
-                out_of_domain_next_row_base_and_ext_value,
+                out_of_domain_next_row_main_and_aux_value,
             );
             let quot_curr_row_deep_value = Self::deep_update(
                 current_fri_domain_value,
@@ -1005,8 +1005,8 @@ impl Stark {
 
             profiler!(start "combination codeword equality");
             let deep_value_components = Array1::from(vec![
-                base_and_ext_curr_row_deep_value,
-                base_and_ext_next_row_deep_value,
+                main_and_aux_curr_row_deep_value,
+                main_and_aux_next_row_deep_value,
                 quot_curr_row_deep_value,
             ]);
             if fri_value != weights.deep.dot(&deep_value_components) {
@@ -1043,12 +1043,12 @@ impl Stark {
         profiler!(stop "collect");
         profiler!(start "inner product");
         // todo: Try to get rid of this clone. The alternative line
-        //   `let base_and_ext_element = (&weights * &summands).sum();`
+        //   `let main_and_aux_element = (&weights * &summands).sum();`
         //   without cloning the weights does not compile for a seemingly nonsensical reason.
         let weights = weights.to_owned();
-        let base_and_ext_element = (weights * row).sum();
+        let main_and_aux_element = (weights * row).sum();
         profiler!(stop "inner product");
-        base_and_ext_element
+        main_and_aux_element
     }
 
     /// Computes the quotient segments in a memory-friendly way, i.e., without ever
@@ -1297,9 +1297,9 @@ impl LinearCombinationWeights {
         }
     }
 
-    fn base_and_ext(&self) -> Array1<XFieldElement> {
-        let base = self.main.clone().into_iter();
-        base.chain(self.aux.clone()).collect()
+    fn main_and_aux(&self) -> Array1<XFieldElement> {
+        let main = self.main.clone().into_iter();
+        main.chain(self.aux.clone()).collect()
     }
 }
 
@@ -1365,7 +1365,7 @@ pub(crate) mod tests {
 
     use super::*;
 
-    pub(crate) fn master_base_table_for_low_security_level(
+    pub(crate) fn master_main_table_for_low_security_level(
         program_and_input: ProgramAndInput,
     ) -> (Stark, Claim, MasterMainTable) {
         let ProgramAndInput {
@@ -1380,26 +1380,26 @@ pub(crate) mod tests {
         let claim = Claim::about_program(&aet.program)
             .with_input(public_input.individual_tokens)
             .with_output(stdout);
-        let master_base_table = construct_master_main_table(stark, &aet);
+        let master_main_table = construct_master_main_table(stark, &aet);
 
-        (stark, claim, master_base_table)
+        (stark, claim, master_main_table)
     }
 
     pub(crate) fn master_tables_for_low_security_level(
         program_and_input: ProgramAndInput,
     ) -> (Stark, Claim, MasterMainTable, MasterAuxTable, Challenges) {
-        let (stark, claim, mut master_base_table) =
-            master_base_table_for_low_security_level(program_and_input);
+        let (stark, claim, mut master_main_table) =
+            master_main_table_for_low_security_level(program_and_input);
 
         let challenges = Challenges::placeholder(&claim);
-        master_base_table.pad();
-        let master_ext_table = master_base_table.extend(&challenges);
+        master_main_table.pad();
+        let master_aux_table = master_main_table.extend(&challenges);
 
         (
             stark,
             claim,
-            master_base_table,
-            master_ext_table,
+            master_main_table,
+            master_aux_table,
             challenges,
         )
     }
@@ -1419,14 +1419,14 @@ pub(crate) mod tests {
             push 100 read_mem 1 pop 2           // read from address 100
             halt
         );
-        let (_, _, master_base_table, _, _) =
+        let (_, _, master_main_table, _, _) =
             master_tables_for_low_security_level(ProgramAndInput::new(program));
 
         println!();
         println!("Processor Table:\n");
         println!("| clk | ci  | nia | st0 | st1 | st2 | st3 | st4 | st5 |");
         println!("|----:|:----|:----|----:|----:|----:|----:|----:|----:|");
-        for row in master_base_table
+        for row in master_main_table
             .table(TableId::Processor)
             .rows()
             .into_iter()
@@ -1453,7 +1453,7 @@ pub(crate) mod tests {
         println!("RAM Table:\n");
         println!("| clk | type | pointer | value | iord |");
         println!("|----:|:-----|--------:|------:|-----:|");
-        for row in master_base_table
+        for row in master_main_table
             .table(TableId::Ram)
             .rows()
             .into_iter()
@@ -1493,14 +1493,14 @@ pub(crate) mod tests {
             pop 1 pop 2 pop 3
             halt
         };
-        let (_, _, master_base_table) =
-            master_base_table_for_low_security_level(ProgramAndInput::new(program));
+        let (_, _, master_main_table) =
+            master_main_table_for_low_security_level(ProgramAndInput::new(program));
 
         println!();
         println!("Processor Table:");
         println!("| clk | ci  | nia | st0 | st1 | st2 | st3 | underflow | pointer |");
         println!("|----:|:----|----:|----:|----:|----:|----:|:----------|--------:|");
-        for row in master_base_table
+        for row in master_main_table
             .table(TableId::Processor)
             .rows()
             .into_iter()
@@ -1544,7 +1544,7 @@ pub(crate) mod tests {
         println!("Op Stack Table:");
         println!("| clk | ib1 | pointer | value |");
         println!("|----:|----:|--------:|------:|");
-        for row in master_base_table
+        for row in master_main_table
             .table(TableId::OpStack)
             .rows()
             .into_iter()
@@ -1598,10 +1598,10 @@ pub(crate) mod tests {
         );
         let mut program_and_input = ProgramAndInput::new(read_nop_program);
         program_and_input.public_input = PublicInput::from([3, 5, 7].map(|b| bfe!(b)));
-        let (_, claim, _, master_ext_table, all_challenges) =
+        let (_, claim, _, master_aux_table, all_challenges) =
             master_tables_for_low_security_level(program_and_input);
 
-        let processor_table = master_ext_table.table(TableId::Processor);
+        let processor_table = master_aux_table.table(TableId::Processor);
         let processor_table_last_row = processor_table.slice(s![-1, ..]);
         let ptie = processor_table_last_row[InputTableEvalArg.aux_index()];
         let ine = EvalArg::compute_terminal(
@@ -2087,11 +2087,11 @@ pub(crate) mod tests {
     macro_rules! check_constraints_fn {
         (fn $fn_name:ident for $table:ident) => {
             fn $fn_name(
-                master_base_trace_table: ArrayView2<BFieldElement>,
-                master_ext_trace_table: ArrayView2<XFieldElement>,
+                master_main_trace_table: ArrayView2<BFieldElement>,
+                master_aux_trace_table: ArrayView2<XFieldElement>,
                 challenges: &Challenges,
             ) {
-                assert!(master_base_trace_table.nrows() == master_ext_trace_table.nrows());
+                assert!(master_main_trace_table.nrows() == master_aux_trace_table.nrows());
                 let challenges = &challenges.challenges;
 
                 let builder = ConstraintCircuitBuilder::new();
@@ -2101,8 +2101,8 @@ pub(crate) mod tests {
                     .enumerate()
                 {
                     let evaluated_constraint = constraint.evaluate(
-                        master_base_trace_table.slice(s![..1, ..]),
-                        master_ext_trace_table.slice(s![..1, ..]),
+                        master_main_trace_table.slice(s![..1, ..]),
+                        master_aux_trace_table.slice(s![..1, ..]),
                         challenges,
                     );
                     check!(
@@ -2118,10 +2118,10 @@ pub(crate) mod tests {
                     .map(|constraint_monad| constraint_monad.consume())
                     .enumerate()
                 {
-                    for row_idx in 0..master_base_trace_table.nrows() {
+                    for row_idx in 0..master_main_trace_table.nrows() {
                         let evaluated_constraint = constraint.evaluate(
-                            master_base_trace_table.slice(s![row_idx..=row_idx, ..]),
-                            master_ext_trace_table.slice(s![row_idx..=row_idx, ..]),
+                            master_main_trace_table.slice(s![row_idx..=row_idx, ..]),
+                            master_aux_trace_table.slice(s![row_idx..=row_idx, ..]),
                             challenges,
                         );
                         check!(
@@ -2138,10 +2138,10 @@ pub(crate) mod tests {
                     .map(|constraint_monad| constraint_monad.consume())
                     .enumerate()
                 {
-                    for row_idx in 0..master_base_trace_table.nrows() - 1 {
+                    for row_idx in 0..master_main_trace_table.nrows() - 1 {
                         let evaluated_constraint = constraint.evaluate(
-                            master_base_trace_table.slice(s![row_idx..=row_idx + 1, ..]),
-                            master_ext_trace_table.slice(s![row_idx..=row_idx + 1, ..]),
+                            master_main_trace_table.slice(s![row_idx..=row_idx + 1, ..]),
+                            master_aux_trace_table.slice(s![row_idx..=row_idx + 1, ..]),
                             challenges,
                         );
                         check!(
@@ -2159,8 +2159,8 @@ pub(crate) mod tests {
                     .enumerate()
                 {
                     let evaluated_constraint = constraint.evaluate(
-                        master_base_trace_table.slice(s![-1.., ..]),
-                        master_ext_trace_table.slice(s![-1.., ..]),
+                        master_main_trace_table.slice(s![-1.., ..]),
+                        master_aux_trace_table.slice(s![-1.., ..]),
                         challenges,
                     );
                     check!(
@@ -2185,15 +2185,15 @@ pub(crate) mod tests {
     check_constraints_fn!(fn check_cross_table_constraints for GrandCrossTableArg);
 
     fn triton_constraints_evaluate_to_zero(program_and_input: ProgramAndInput) {
-        let (_, _, master_base_table, master_ext_table, challenges) =
+        let (_, _, master_main_table, master_aux_table, challenges) =
             master_tables_for_low_security_level(program_and_input);
 
-        let num_main_rows = master_base_table.randomized_trace_table().nrows();
-        let num_aux_rows = master_ext_table.randomized_trace_table().nrows();
+        let num_main_rows = master_main_table.randomized_trace_table().nrows();
+        let num_aux_rows = master_aux_table.randomized_trace_table().nrows();
         assert!(num_main_rows == num_aux_rows);
 
-        let mbt = master_base_table.trace_table();
-        let met = master_ext_table.trace_table();
+        let mbt = master_main_table.trace_table();
+        let met = master_aux_table.trace_table();
         assert!(mbt.nrows() == met.nrows());
 
         check_program_table_constraints(mbt, met, &challenges);
@@ -2214,15 +2214,15 @@ pub(crate) mod tests {
     }
 
     fn derived_constraints_evaluate_to_zero(program_and_input: ProgramAndInput) {
-        let (_, _, master_base_table, master_ext_table, challenges) =
+        let (_, _, master_main_table, master_aux_table, challenges) =
             master_tables_for_low_security_level(program_and_input);
 
-        let master_base_trace_table = master_base_table.trace_table();
-        let master_ext_trace_table = master_ext_table.trace_table();
+        let master_main_trace_table = master_main_table.trace_table();
+        let master_aux_trace_table = master_aux_table.trace_table();
 
         let evaluated_initial_constraints = MasterAuxTable::evaluate_initial_constraints(
-            master_base_trace_table.row(0),
-            master_ext_trace_table.row(0),
+            master_main_trace_table.row(0),
+            master_aux_trace_table.row(0),
             &challenges,
         );
         for (constraint_idx, evaluated_constraint) in
@@ -2234,11 +2234,11 @@ pub(crate) mod tests {
             );
         }
 
-        for row_idx in 0..master_base_trace_table.nrows() {
+        for row_idx in 0..master_main_trace_table.nrows() {
             let evaluated_consistency_constraints =
                 MasterAuxTable::evaluate_consistency_constraints(
-                    master_base_trace_table.row(row_idx),
-                    master_ext_trace_table.row(row_idx),
+                    master_main_trace_table.row(row_idx),
+                    master_aux_trace_table.row(row_idx),
                     &challenges,
                 );
             for (constraint_idx, evaluated_constraint) in
@@ -2251,13 +2251,13 @@ pub(crate) mod tests {
             }
         }
 
-        for curr_row_idx in 0..master_base_trace_table.nrows() - 1 {
+        for curr_row_idx in 0..master_main_trace_table.nrows() - 1 {
             let next_row_idx = curr_row_idx + 1;
             let evaluated_transition_constraints = MasterAuxTable::evaluate_transition_constraints(
-                master_base_trace_table.row(curr_row_idx),
-                master_ext_trace_table.row(curr_row_idx),
-                master_base_trace_table.row(next_row_idx),
-                master_ext_trace_table.row(next_row_idx),
+                master_main_trace_table.row(curr_row_idx),
+                master_aux_trace_table.row(curr_row_idx),
+                master_main_trace_table.row(next_row_idx),
+                master_aux_trace_table.row(next_row_idx),
                 &challenges,
             );
             for (constraint_idx, evaluated_constraint) in
@@ -2271,8 +2271,8 @@ pub(crate) mod tests {
         }
 
         let evaluated_terminal_constraints = MasterAuxTable::evaluate_terminal_constraints(
-            master_base_trace_table.row(master_base_trace_table.nrows() - 1),
-            master_ext_trace_table.row(master_ext_trace_table.nrows() - 1),
+            master_main_trace_table.row(master_main_trace_table.nrows() - 1),
+            master_aux_trace_table.row(master_aux_trace_table.nrows() - 1),
             &challenges,
         );
         for (constraint_idx, evaluated_constraint) in
@@ -2525,9 +2525,9 @@ pub(crate) mod tests {
         challenges: &Challenges,
         quotient_weights: &[XFieldElement],
     ) -> (Array2<XFieldElement>, Array1<Polynomial<XFieldElement>>) {
-        let mut base_quotient_domain_codewords =
+        let mut main_quotient_domain_codewords =
             Array2::<BFieldElement>::zeros([quotient_domain.length, MasterMainTable::NUM_COLUMNS]);
-        Zip::from(base_quotient_domain_codewords.axis_iter_mut(Axis(1)))
+        Zip::from(main_quotient_domain_codewords.axis_iter_mut(Axis(1)))
             .and(main_polynomials.axis_iter(Axis(0)))
             .for_each(|codeword, polynomial| {
                 Array1::from_vec(quotient_domain.evaluate(&polynomial[()])).move_into(codeword);
@@ -2541,7 +2541,7 @@ pub(crate) mod tests {
             });
 
         let quotient_codeword = all_quotients_combined(
-            base_quotient_domain_codewords.view(),
+            main_quotient_domain_codewords.view(),
             aux_quotient_domain_codewords.view(),
             trace_domain,
             quotient_domain,
@@ -2624,7 +2624,7 @@ pub(crate) mod tests {
         prop_assert_eq!(NUM_DEEP_CODEWORD_COMPONENTS, weights.deep.len());
         prop_assert_eq!(
             MasterMainTable::NUM_COLUMNS + MasterAuxTable::NUM_COLUMNS,
-            weights.base_and_ext().len()
+            weights.main_and_aux().len()
         );
     }
 

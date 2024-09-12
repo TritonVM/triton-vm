@@ -110,10 +110,10 @@ impl TraceTable for CascadeTable {
                 lookup_table_log_derivative += (lookup_indeterminate - compressed_row_hi).inverse();
             }
 
-            let mut extension_row = aux_table.row_mut(row_idx);
-            extension_row[AuxColumn::HashTableServerLogDerivative.aux_index()] =
+            let mut auxiliary_row = aux_table.row_mut(row_idx);
+            auxiliary_row[AuxColumn::HashTableServerLogDerivative.aux_index()] =
                 hash_table_log_derivative;
-            extension_row[AuxColumn::LookupTableClientLogDerivative.aux_index()] =
+            auxiliary_row[AuxColumn::LookupTableClientLogDerivative.aux_index()] =
                 lookup_table_log_derivative;
         }
         profiler!(stop "cascade table");

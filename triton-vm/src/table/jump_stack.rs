@@ -27,12 +27,12 @@ use crate::table::TraceTable;
 type MainColumn = <JumpStackTable as AIR>::MainColumn;
 type AuxColumn = <JumpStackTable as AIR>::AuxColumn;
 
-fn extension_column_running_product_permutation_argument(
+fn auxiliary_column_running_product_permutation_argument(
     main_table: ArrayView2<BFieldElement>,
     challenges: &Challenges,
 ) -> Array2<XFieldElement> {
     let mut running_product = PermArg::default_initial();
-    let mut extension_column = Vec::with_capacity(main_table.nrows());
+    let mut auxiliary_column = Vec::with_capacity(main_table.nrows());
     for row in main_table.rows() {
         let compressed_row = row[MainColumn::CLK.main_index()] * challenges[JumpStackClkWeight]
             + row[MainColumn::CI.main_index()] * challenges[JumpStackCiWeight]
@@ -40,12 +40,12 @@ fn extension_column_running_product_permutation_argument(
             + row[MainColumn::JSO.main_index()] * challenges[JumpStackJsoWeight]
             + row[MainColumn::JSD.main_index()] * challenges[JumpStackJsdWeight];
         running_product *= challenges[JumpStackIndeterminate] - compressed_row;
-        extension_column.push(running_product);
+        auxiliary_column.push(running_product);
     }
-    Array2::from_shape_vec((main_table.nrows(), 1), extension_column).unwrap()
+    Array2::from_shape_vec((main_table.nrows(), 1), auxiliary_column).unwrap()
 }
 
-fn extension_column_clock_jump_diff_lookup_log_derivative(
+fn auxiliary_column_clock_jump_diff_lookup_log_derivative(
     main_table: ArrayView2<BFieldElement>,
     challenges: &Challenges,
 ) -> Array2<XFieldElement> {
@@ -61,10 +61,10 @@ fn extension_column_clock_jump_diff_lookup_log_derivative(
         .map(|(i, inv)| (bfe!(i), inv))
         .collect::<HashMap<_, _>>();
 
-    // populate extension column using memoization
+    // populate auxiliary column using memoization
     let mut cjd_lookup_log_derivative = LookupArg::default_initial();
-    let mut extension_column = Vec::with_capacity(main_table.nrows());
-    extension_column.push(cjd_lookup_log_derivative);
+    let mut auxiliary_column = Vec::with_capacity(main_table.nrows());
+    auxiliary_column.push(cjd_lookup_log_derivative);
     for (previous_row, current_row) in main_table.rows().into_iter().tuple_windows() {
         if previous_row[MainColumn::JSP.main_index()] == current_row[MainColumn::JSP.main_index()] {
             let previous_clock = previous_row[MainColumn::CLK.main_index()];
@@ -75,9 +75,9 @@ fn extension_column_clock_jump_diff_lookup_log_derivative(
                 .or_insert_with(|| (indeterminate - clock_jump_difference).inverse());
             cjd_lookup_log_derivative += inverse;
         }
-        extension_column.push(cjd_lookup_log_derivative);
+        auxiliary_column.push(cjd_lookup_log_derivative);
     }
-    Array2::from_shape_vec((main_table.nrows(), 1), extension_column).unwrap()
+    Array2::from_shape_vec((main_table.nrows(), 1), auxiliary_column).unwrap()
 }
 
 impl TraceTable for JumpStackTable {
@@ -208,21 +208,21 @@ impl TraceTable for JumpStackTable {
         assert_eq!(main_table.nrows(), aux_table.nrows());
 
         // use strum::IntoEnumIterator;
-        let extension_column_indices = JumpStackAuxColumn::iter()
+        let auxiliary_column_indices = JumpStackAuxColumn::iter()
             .map(|column| column.aux_index())
             .collect_vec();
-        let extension_column_slices = horizontal_multi_slice_mut(
+        let auxiliary_column_slices = horizontal_multi_slice_mut(
             aux_table.view_mut(),
-            &contiguous_column_slices(&extension_column_indices),
+            &contiguous_column_slices(&auxiliary_column_indices),
         );
         let extension_functions = [
-            extension_column_running_product_permutation_argument,
-            extension_column_clock_jump_diff_lookup_log_derivative,
+            auxiliary_column_running_product_permutation_argument,
+            auxiliary_column_clock_jump_diff_lookup_log_derivative,
         ];
 
         extension_functions
             .into_par_iter()
-            .zip_eq(extension_column_slices)
+            .zip_eq(auxiliary_column_slices)
             .for_each(|(generator, slice)| {
                 generator(main_table, challenges).move_into(slice);
             });

@@ -124,7 +124,7 @@ impl TraceTable for ProgramTable {
         {
             let row = consecutive_rows.row(0);
             let next_row = consecutive_rows.row(1);
-            let mut extension_row = aux_table.row_mut(idx);
+            let mut auxiliary_row = aux_table.row_mut(idx);
 
             // In the Program Table, the logarithmic derivative for the instruction lookup
             // argument does record the initial in the first row, as an exception to all other
@@ -137,7 +137,7 @@ impl TraceTable for ProgramTable {
             // The logarithmic derivative's final value, allowing for a meaningful cross-table
             // argument, is recorded in the first padding row. This row is guaranteed to exist
             // due to the hash-input padding mechanics.
-            extension_row[InstructionLookupServerLogDerivative.aux_index()] =
+            auxiliary_row[InstructionLookupServerLogDerivative.aux_index()] =
                 instruction_lookup_log_derivative;
 
             instruction_lookup_log_derivative = update_instruction_lookup_log_derivative(
@@ -158,9 +158,9 @@ impl TraceTable for ProgramTable {
                 prepare_chunk_running_evaluation,
             );
 
-            extension_row[PrepareChunkRunningEvaluation.aux_index()] =
+            auxiliary_row[PrepareChunkRunningEvaluation.aux_index()] =
                 prepare_chunk_running_evaluation;
-            extension_row[SendChunkRunningEvaluation.aux_index()] = send_chunk_running_evaluation;
+            auxiliary_row[SendChunkRunningEvaluation.aux_index()] = send_chunk_running_evaluation;
         }
 
         // special treatment for the last row
