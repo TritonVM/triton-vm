@@ -10,11 +10,7 @@ fn main() {
     println!("cargo::rerun-if-changed=build.rs");
 
     let mut constraints = Constraints::all();
-    let degree_lowering_info = constraint_circuit::DegreeLoweringInfo {
-        target_degree: air::TARGET_DEGREE,
-        num_main_cols: air::table::NUM_MAIN_COLUMNS,
-        num_aux_cols: air::table::NUM_AUX_COLUMNS,
-    };
+    let degree_lowering_info = Constraints::default_degree_lowering_info();
     let substitutions =
         constraints.lower_to_target_degree_through_substitutions(degree_lowering_info);
     let deg_low_table = substitutions.generate_degree_lowering_table_code();
