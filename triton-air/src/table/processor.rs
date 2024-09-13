@@ -880,6 +880,96 @@ fn instruction_divine(
     .concat()
 }
 
+fn instruction_pick(
+    circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
+    let curr_row = |col: MainColumn| circuit_builder.input(CurrentMain(col.master_main_index()));
+    let next_row = |col: MainColumn| circuit_builder.input(NextMain(col.master_main_index()));
+
+    let stack = (0..OpStackElement::COUNT)
+        .map(ProcessorTable::op_stack_column_by_index)
+        .collect_vec();
+    let stack_with_picked_i = |i| {
+        let mut stack = stack.clone();
+        let new_top = stack.remove(i);
+        stack.insert(0, new_top);
+        stack.into_iter()
+    };
+
+    let next_stack = stack.iter().map(|&st| next_row(st)).collect_vec();
+    let curr_stack_with_picked_i = |i| stack_with_picked_i(i).map(curr_row).collect_vec();
+
+    let compress = |stack: Vec<_>| -> ConstraintCircuitMonad<_> {
+        assert_eq!(OpStackElement::COUNT, stack.len());
+        let weight = |i| circuit_builder.challenge(stack_weight_by_index(i));
+        let enumerated_stack = stack.into_iter().enumerate();
+        enumerated_stack.map(|(i, st)| weight(i) * st).sum()
+    };
+
+    let next_stack_is_current_stack_with_picked_i = |i| {
+        indicator_polynomial(circuit_builder, i)
+            * (compress(next_stack.clone()) - compress(curr_stack_with_picked_i(i)))
+    };
+    let next_stack_is_current_stack_with_correct_element_picked = (0..OpStackElement::COUNT)
+        .map(next_stack_is_current_stack_with_picked_i)
+        .sum();
+
+    [
+        vec![next_stack_is_current_stack_with_correct_element_picked],
+        instruction_group_decompose_arg(circuit_builder),
+        instruction_group_step_2(circuit_builder),
+        instruction_group_no_ram(circuit_builder),
+        instruction_group_no_io(circuit_builder),
+        instruction_group_keep_op_stack_height(circuit_builder),
+    ]
+    .concat()
+}
+
+fn instruction_place(
+    circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
+    let curr_row = |col: MainColumn| circuit_builder.input(CurrentMain(col.master_main_index()));
+    let next_row = |col: MainColumn| circuit_builder.input(NextMain(col.master_main_index()));
+
+    let stack = (0..OpStackElement::COUNT)
+        .map(ProcessorTable::op_stack_column_by_index)
+        .collect_vec();
+    let stack_with_placed_i = |i| {
+        let mut stack = stack.clone();
+        let old_top = stack.remove(0);
+        stack.insert(i, old_top);
+        stack.into_iter()
+    };
+
+    let next_stack = stack.iter().map(|&st| next_row(st)).collect_vec();
+    let curr_stack_with_placed_i = |i| stack_with_placed_i(i).map(curr_row).collect_vec();
+
+    let compress = |stack: Vec<_>| -> ConstraintCircuitMonad<_> {
+        assert_eq!(OpStackElement::COUNT, stack.len());
+        let weight = |i| circuit_builder.challenge(stack_weight_by_index(i));
+        let enumerated_stack = stack.into_iter().enumerate();
+        enumerated_stack.map(|(i, st)| weight(i) * st).sum()
+    };
+
+    let next_stack_is_current_stack_with_placed_i = |i| {
+        indicator_polynomial(circuit_builder, i)
+            * (compress(next_stack.clone()) - compress(curr_stack_with_placed_i(i)))
+    };
+    let next_stack_is_current_stack_with_correct_element_placed = (0..OpStackElement::COUNT)
+        .map(next_stack_is_current_stack_with_placed_i)
+        .sum();
+
+    [
+        vec![next_stack_is_current_stack_with_correct_element_placed],
+        instruction_group_decompose_arg(circuit_builder),
+        instruction_group_step_2(circuit_builder),
+        instruction_group_no_ram(circuit_builder),
+        instruction_group_no_io(circuit_builder),
+        instruction_group_keep_op_stack_height(circuit_builder),
+    ]
+    .concat()
+}
+
 fn instruction_dup(
     circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
 ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
@@ -2071,6 +2161,8 @@ pub fn transition_constraints_for_instruction(
         Instruction::Pop(_) => instruction_pop(circuit_builder),
         Instruction::Push(_) => instruction_push(circuit_builder),
         Instruction::Divine(_) => instruction_divine(circuit_builder),
+        Instruction::Pick(_) => instruction_pick(circuit_builder),
+        Instruction::Place(_) => instruction_place(circuit_builder),
         Instruction::Dup(_) => instruction_dup(circuit_builder),
         Instruction::Swap(_) => instruction_swap(circuit_builder),
         Instruction::Halt => instruction_halt(circuit_builder),

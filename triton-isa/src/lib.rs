@@ -219,6 +219,8 @@ macro_rules! triton_asm {
     [pop $arg:literal; $num:expr] => { vec![ $crate::triton_instr!(pop $arg); $num ] };
     [push $arg:literal; $num:expr] => { vec![ $crate::triton_instr!(push $arg); $num ] };
     [divine $arg:literal; $num:expr] => { vec![ $crate::triton_instr!(divine $arg); $num ] };
+    [pick $arg:literal; $num:expr] => { vec![ $crate::triton_instr!(pick $arg); $num ] };
+    [place $arg:literal; $num:expr] => { vec![ $crate::triton_instr!(place $arg); $num ] };
     [dup $arg:literal; $num:expr] => { vec![ $crate::triton_instr!(dup $arg); $num ] };
     [swap $arg:literal; $num:expr] => { vec![ $crate::triton_instr!(swap $arg); $num ] };
     [call $arg:ident; $num:expr] => { vec![ $crate::triton_instr!(call $arg); $num ] };
@@ -265,6 +267,16 @@ macro_rules! triton_instr {
     (divine $arg:literal) => {{
         let argument = $crate::op_stack::NumberOfWords::try_from($arg).unwrap();
         let instruction = $crate::instruction::AnInstruction::<String>::Divine(argument);
+        $crate::instruction::LabelledInstruction::Instruction(instruction)
+    }};
+    (pick $arg:literal) => {{
+        let argument = $crate::op_stack::OpStackElement::try_from($arg).unwrap();
+        let instruction = $crate::instruction::AnInstruction::<String>::Pick(argument);
+        $crate::instruction::LabelledInstruction::Instruction(instruction)
+    }};
+    (place $arg:literal) => {{
+        let argument = $crate::op_stack::OpStackElement::try_from($arg).unwrap();
+        let instruction = $crate::instruction::AnInstruction::<String>::Place(argument);
         $crate::instruction::LabelledInstruction::Instruction(instruction)
     }};
     (dup $arg:literal) => {{

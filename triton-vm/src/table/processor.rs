@@ -932,6 +932,40 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn transition_constraints_for_instruction_pick() {
+        let set_up_stack = (0..OpStackElement::COUNT)
+            .rev()
+            .flat_map(|i| triton_asm!(push { i }))
+            .collect_vec();
+        let test_rows = (0..OpStackElement::COUNT)
+            .map(|i| triton_program!({&set_up_stack} pick {i} push {i} eq assert halt))
+            .map(|program| test_row_from_program(program, 16))
+            .collect_vec();
+
+        let debug_info = TestRowsDebugInfo {
+            instruction: Instruction::Pick(OpStackElement::ST0),
+            debug_cols_curr_row: vec![MainColumn::ST0, MainColumn::ST1, MainColumn::ST2],
+            debug_cols_next_row: vec![MainColumn::ST0, MainColumn::ST1, MainColumn::ST2],
+        };
+        assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
+    }
+
+    #[test]
+    fn transition_constraints_for_instruction_place() {
+        let test_rows = (0..OpStackElement::COUNT)
+            .map(|i| triton_program!(push 42 place {i} dup {i} push 42 eq assert halt))
+            .map(|program| test_row_from_program(program, 1))
+            .collect_vec();
+
+        let debug_info = TestRowsDebugInfo {
+            instruction: Instruction::Place(OpStackElement::ST0),
+            debug_cols_curr_row: vec![MainColumn::ST0, MainColumn::ST1, MainColumn::ST2],
+            debug_cols_next_row: vec![MainColumn::ST0, MainColumn::ST1, MainColumn::ST2],
+        };
+        assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
+    }
+
+    #[test]
     fn transition_constraints_for_instruction_dup() {
         let programs = [
             triton_program!(dup  0 halt),

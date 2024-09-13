@@ -278,6 +278,8 @@ impl VMState {
         match current_instruction {
             Instruction::Pop(_)
             | Instruction::Divine(_)
+            | Instruction::Pick(_)
+            | Instruction::Place(_)
             | Instruction::Dup(_)
             | Instruction::Swap(_)
             | Instruction::ReadMem(_)
@@ -378,6 +380,8 @@ impl VMState {
             Instruction::Pop(n) => self.pop(n)?,
             Instruction::Push(field_element) => self.push(field_element),
             Instruction::Divine(n) => self.divine(n)?,
+            Instruction::Pick(stack_element) => self.pick(stack_element),
+            Instruction::Place(stack_element) => self.place(stack_element)?,
             Instruction::Dup(stack_element) => self.dup(stack_element),
             Instruction::Swap(stack_element) => self.swap(stack_element),
             Instruction::Halt => self.halt(),
@@ -485,6 +489,22 @@ impl VMState {
             let element = self.secret_individual_tokens.pop_front().unwrap();
             self.op_stack.push(element);
         }
+
+        self.instruction_pointer += 2;
+        Ok(vec![])
+    }
+
+    fn pick(&mut self, stack_register: OpStackElement) -> Vec<CoProcessorCall> {
+        let element = self.op_stack.remove(stack_register);
+        self.op_stack.push(element);
+
+        self.instruction_pointer += 2;
+        vec![]
+    }
+
+    fn place(&mut self, stack_register: OpStackElement) -> InstructionResult<Vec<CoProcessorCall>> {
+        let element = self.op_stack.pop()?;
+        self.op_stack.insert(stack_register, element);
 
         self.instruction_pointer += 2;
         Ok(vec![])

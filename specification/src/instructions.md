@@ -25,8 +25,10 @@ The third property allows efficient arithmetization of the running product for t
 | `pop` + `n`     |      3 | e.g., `_ c b a`     | e.g., `_`             | Pops the `n` top elements from the stack. 1 ⩽ `n` ⩽ 5                                           |
 | `push` + `a`    |      1 | `_`                 | `_ a`                 | Pushes `a` onto the stack.                                                                      |
 | `divine`  + `n` |      9 | e.g., `_`           | e.g., `_ b a`         | Pushes `n` non-deterministic elements `a` to the stack. Interface for secret input. 1 ⩽ `n` ⩽ 5 |
-| `dup`  + `i`    |     17 | e.g., `_ e d c b a` | e.g., `_ e d c b a d` | Duplicates the element `i` positions away from the top. 0 ⩽ `i` < 16                            |
-| `swap` + `i`    |     25 | e.g., `_ e d c b a` | e.g., `_ e a c b d`   | Swaps the `i`th stack element with the top of the stack. 0 ⩽ `i` < 16                           |
+| `pick`  + `i`   |     17 | e.g., `_ d x c b a` | e.g., `_ d c b a x`   | Moves the element indicated by `i` to the top of the stack. 0 ⩽ `i` < 16                        |
+| `place`  + `i`  |     25 | e.g., `_ d c b a x` | e.g., `_ d x c b a`   | Moves the top of the stack to the indicated position `i`. 0 ⩽ `i` < 16                          |
+| `dup`  + `i`    |     33 | e.g., `_ e d c b a` | e.g., `_ e d c b a d` | Duplicates the element `i` positions away from the top. 0 ⩽ `i` < 16                            |
+| `swap` + `i`    |     41 | e.g., `_ e d c b a` | e.g., `_ e a c b d`   | Swaps the `i`th stack element with the top of the stack. 0 ⩽ `i` < 16                           |
 
 Instruction `divine n` (together with [`merkle_step`](#many-in-one)) make Triton a virtual machine that can execute non-deterministic programs.
 As programs go, this concept is somewhat unusual and benefits from additional explanation.
@@ -46,7 +48,7 @@ the divined values were supplied as and are read from secret input.
 | `halt`              |      0 | `_`           | `_`           | `ip`     | `ip+1`     | `_`            | `_`               | Solves the halting problem (if the instruction is reached). Indicates graceful shutdown of the VM.                       |
 | `nop`               |      8 | `_`           | `_`           | `ip`     | `ip+1`     | `_`            | `_`               | Do nothing                                                                                                               |
 | `skiz`              |      2 | `_ a`         | `_`           | `ip`     | `ip+s`     | `_`            | `_`               | Skip next instruction if `a` is zero. `s` ∈ {1, 2, 3} depends on `a` and whether the next instruction takes an argument. |
-| `call` + `d`        |     33 | `_`           | `_`           | `ip`     | `d`        | `_`            | `_ (ip+2, d)`     | Push `(ip+2,d)` to the jump stack, and jump to absolute address `d`                                                      |
+| `call` + `d`        |     49 | `_`           | `_`           | `ip`     | `d`        | `_`            | `_ (ip+2, d)`     | Push `(ip+2,d)` to the jump stack, and jump to absolute address `d`                                                      |
 | `return`            |     16 | `_`           | `_`           | `ip`     | `o`        | `_ (o, d)`     | `_`               | Pop one pair off the jump stack and jump to that pair's return address (which is the first element).                     |
 | `recurse`           |     24 | `_`           | `_`           | `ip`     | `d`        | `_ (o, d)`     | `_ (o, d)`        | Peek at the top pair of the jump stack and jump to that pair's destination address (which is the second element).        |
 | `recurse_or_return` |     32 | `_ b a .....` | `_ b a .....` | `ip`     | `d` or `o` | `_ (o, d)`     | `_ (o, d)` or `_` | Like `recurse` if `st5 = a != b = st6`, like `return` if `a == b`. See also extended description below.                  |
@@ -64,7 +66,7 @@ The instruction is designed to facilitate loops using pointer equality as termin
 
 | Instruction       | Opcode | old op stack         | new op stack           | old RAM             | new RAM             | Description                                                                                                                                  |
 |:------------------|-------:|:---------------------|:-----------------------|:--------------------|:--------------------|:---------------------------------------------------------------------------------------------------------------------------------------------|
-| `read_mem` + `n`  |     41 | e.g., `_ p+2`        | e.g., `_ v2 v1 v0 p-1` | [p: v0, p+1, v1, …] | [p: v0, p+1, v1, …] | Reads consecutive values `vi` from RAM at address `p` and puts them onto the op stack. Decrements RAM pointer (`st0`) by `n`. 1 ⩽ `n` ⩽ 5    |
+| `read_mem` + `n`  |     57 | e.g., `_ p+2`        | e.g., `_ v2 v1 v0 p-1` | [p: v0, p+1, v1, …] | [p: v0, p+1, v1, …] | Reads consecutive values `vi` from RAM at address `p` and puts them onto the op stack. Decrements RAM pointer (`st0`) by `n`. 1 ⩽ `n` ⩽ 5    |
 | `write_mem` + `n` |     11 | e.g., `_ v2 v1 v0 p` | e.g., `_ p+3`          | []                  | [p: v0, p+1, v1, …] | Writes op stack's `n` top-most values `vi` to RAM at the address `p+i`, popping the `vi`. Increments RAM pointer (`st0`) by `n`. 1 ⩽ `n` ⩽ 5 |
 
 For the benefit of clarity, the effect of every possible argument is given below.
@@ -112,7 +114,7 @@ Triton VM cannot know the number of elements that will be absorbed.
 | Instruction  | Opcode | old op stack | new op stack | Description                                                                                                                |
 |:-------------|-------:|:-------------|:-------------|:---------------------------------------------------------------------------------------------------------------------------|
 | `add`        |     42 | `_ b a`      | `_ c`        | Computes the sum (`c`) of the top two elements of the stack (`b` and `a`) over the field.                                  |
-| `addi` + `a` |     49 | `_ b`        | `_ c`        | Computes the sum (`c`) of the top element of the stack (`b`) and the immediate argument (`a`).                             |
+| `addi` + `a` |     65 | `_ b`        | `_ c`        | Computes the sum (`c`) of the top element of the stack (`b`) and the immediate argument (`a`).                             |
 | `mul`        |     50 | `_ b a`      | `_ c`        | Computes the product (`c`) of the top two elements of the stack (`b` and `a`) over the field.                              |
 | `invert`     |     64 | `_ a`        | `_ b`        | Computes the multiplicative inverse (over the field) of the top of the stack. Crashes the VM if the top of the stack is 0. |
 | `eq`         |     58 | `_ b a`      | `_ (a == b)` | Tests the top two stack elements for equality.                                                                             |
@@ -143,7 +145,7 @@ Triton VM cannot know the number of elements that will be absorbed.
 
 | Instruction      | Opcode | old op stack    | new op stack    | Description                                                                              |
 |:-----------------|-------:|:----------------|:----------------|:-----------------------------------------------------------------------------------------|
-| `read_io` + `n`  |     49 | e.g., `_`       | e.g., `_ c b a` | Reads `n` B-Field elements from standard input and pushes them to the stack. 1 ⩽ `n` ⩽ 5 |
+| `read_io` + `n`  |     73 | e.g., `_`       | e.g., `_ c b a` | Reads `n` B-Field elements from standard input and pushes them to the stack. 1 ⩽ `n` ⩽ 5 |
 | `write_io` + `n` |     19 | e.g., `_ c b a` | e.g., `_`       | Pops `n` elements from the stack and writes them to standard output. 1 ⩽ `n` ⩽ 5         |
 
 ## Many-In-One

@@ -20,6 +20,30 @@ In addition to its [instruction groups](instruction-groups.md), this instruction
 
 This instruction is fully constrained by its [instruction groups](instruction-groups.md)
 
+## Instruction `pick` + `i`
+
+This instruction makes use of [indicator polynomials](instruction-groups.md#indicator-polynomials-ind_ihv3-hv2-hv1-hv0).
+In addition to its [instruction groups](instruction-groups.md), this instruction has the following constraints.
+
+### Description
+
+For 0 ⩽ `i` < 16:
+1. Stack element `i` is moved to the top.
+1. For 0 ⩽ `j` < `i`: stack element `j` is shifted down by 1.
+1. For `j` > `i`: stack element `j` remains unchanged.
+
+## Instruction `place` + `i`
+
+This instruction makes use of [indicator polynomials](instruction-groups.md#indicator-polynomials-ind_ihv3-hv2-hv1-hv0).
+In addition to its [instruction groups](instruction-groups.md), this instruction has the following constraints.
+
+### Description
+
+For 0 ⩽ `i` < 16:
+1. Stack element 0 is moved to position `i`.
+1. For 0 ⩽ `j` < `i`: stack element `j` is shifted up by 1.
+1. For `j` > `i`: stack element `j` remains unchanged.
+
 ## Instruction `dup` + `i`
 
 This instruction makes use of [indicator polynomials](instruction-groups.md#indicator-polynomials-ind_ihv3-hv2-hv1-hv0).

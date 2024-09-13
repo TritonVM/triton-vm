@@ -32,6 +32,8 @@ pub const ALL_INSTRUCTIONS: [Instruction; Instruction::COUNT] = [
     Instruction::Pop(NumberOfWords::N1),
     Instruction::Push(BFieldElement::ZERO),
     Instruction::Divine(NumberOfWords::N1),
+    Instruction::Pick(OpStackElement::ST0),
+    Instruction::Place(OpStackElement::ST0),
     Instruction::Dup(OpStackElement::ST0),
     Instruction::Swap(OpStackElement::ST0),
     Instruction::Halt,
@@ -213,6 +215,8 @@ pub enum AnInstruction<Dest: PartialEq + Default> {
     Pop(NumberOfWords),
     Push(BFieldElement),
     Divine(NumberOfWords),
+    Pick(OpStackElement),
+    Place(OpStackElement),
     Dup(OpStackElement),
     Swap(OpStackElement),
 
@@ -279,17 +283,19 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
             AnInstruction::Pop(_) => 3,
             AnInstruction::Push(_) => 1,
             AnInstruction::Divine(_) => 9,
-            AnInstruction::Dup(_) => 17,
-            AnInstruction::Swap(_) => 25,
+            AnInstruction::Pick(_) => 17,
+            AnInstruction::Place(_) => 25,
+            AnInstruction::Dup(_) => 33,
+            AnInstruction::Swap(_) => 41,
             AnInstruction::Halt => 0,
             AnInstruction::Nop => 8,
             AnInstruction::Skiz => 2,
-            AnInstruction::Call(_) => 33,
+            AnInstruction::Call(_) => 49,
             AnInstruction::Return => 16,
             AnInstruction::Recurse => 24,
             AnInstruction::RecurseOrReturn => 32,
             AnInstruction::Assert => 10,
-            AnInstruction::ReadMem(_) => 41,
+            AnInstruction::ReadMem(_) => 57,
             AnInstruction::WriteMem(_) => 11,
             AnInstruction::Hash => 18,
             AnInstruction::AssertVector => 26,
@@ -298,7 +304,7 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
             AnInstruction::SpongeAbsorbMem => 48,
             AnInstruction::SpongeSqueeze => 56,
             AnInstruction::Add => 42,
-            AnInstruction::AddI(_) => 49,
+            AnInstruction::AddI(_) => 65,
             AnInstruction::Mul => 50,
             AnInstruction::Invert => 64,
             AnInstruction::Eq => 58,
@@ -314,7 +320,7 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
             AnInstruction::XxMul => 74,
             AnInstruction::XInvert => 72,
             AnInstruction::XbMul => 82,
-            AnInstruction::ReadIo(_) => 57,
+            AnInstruction::ReadIo(_) => 73,
             AnInstruction::WriteIo(_) => 19,
             AnInstruction::MerkleStep => 36,
             AnInstruction::MerkleStepMem => 44,
@@ -328,6 +334,8 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
             AnInstruction::Pop(_) => "pop",
             AnInstruction::Push(_) => "push",
             AnInstruction::Divine(_) => "divine",
+            AnInstruction::Pick(_) => "pick",
+            AnInstruction::Place(_) => "place",
             AnInstruction::Dup(_) => "dup",
             AnInstruction::Swap(_) => "swap",
             AnInstruction::Halt => "halt",
@@ -381,6 +389,7 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
         match self {
             AnInstruction::Pop(_) | AnInstruction::Push(_) => 2,
             AnInstruction::Divine(_) => 2,
+            AnInstruction::Pick(_) | AnInstruction::Place(_) => 2,
             AnInstruction::Dup(_) | AnInstruction::Swap(_) => 2,
             AnInstruction::Call(_) => 2,
             AnInstruction::ReadMem(_) | AnInstruction::WriteMem(_) => 2,
@@ -392,10 +401,7 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
 
     /// Get the i'th instruction bit
     pub fn ib(&self, arg: InstructionBit) -> BFieldElement {
-        let opcode = self.opcode();
-        let bit_number: usize = arg.into();
-
-        ((opcode >> bit_number) & 1).into()
+        bfe!((self.opcode() >> usize::from(arg)) & 1)
     }
 
     pub fn map_call_address<F, NewDest>(&self, f: F) -> AnInstruction<NewDest>
@@ -407,6 +413,8 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
             AnInstruction::Pop(x) => AnInstruction::Pop(*x),
             AnInstruction::Push(x) => AnInstruction::Push(*x),
             AnInstruction::Divine(x) => AnInstruction::Divine(*x),
+            AnInstruction::Pick(x) => AnInstruction::Pick(*x),
+            AnInstruction::Place(x) => AnInstruction::Place(*x),
             AnInstruction::Dup(x) => AnInstruction::Dup(*x),
             AnInstruction::Swap(x) => AnInstruction::Swap(*x),
             AnInstruction::Halt => AnInstruction::Halt,
@@ -456,6 +464,8 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
             AnInstruction::Pop(n) => -(n.num_words() as i32),
             AnInstruction::Push(_) => 1,
             AnInstruction::Divine(n) => n.num_words() as i32,
+            AnInstruction::Pick(_) => 0,
+            AnInstruction::Place(_) => 0,
             AnInstruction::Dup(_) => 1,
             AnInstruction::Swap(_) => 0,
             AnInstruction::Halt => 0,
@@ -523,6 +533,8 @@ impl<Dest: Display + PartialEq + Default> Display for AnInstruction<Dest> {
         write!(f, "{}", self.name())?;
         match self {
             AnInstruction::Push(arg) => write!(f, " {arg}"),
+            AnInstruction::Pick(arg) => write!(f, " {arg}"),
+            AnInstruction::Place(arg) => write!(f, " {arg}"),
             AnInstruction::Pop(arg) => write!(f, " {arg}"),
             AnInstruction::Divine(arg) => write!(f, " {arg}"),
             AnInstruction::Dup(arg) => write!(f, " {arg}"),
@@ -546,6 +558,8 @@ impl Instruction {
             AnInstruction::Call(arg) => Some(*arg),
             AnInstruction::Pop(arg) => Some(arg.into()),
             AnInstruction::Divine(arg) => Some(arg.into()),
+            AnInstruction::Pick(arg) => Some(arg.into()),
+            AnInstruction::Place(arg) => Some(arg.into()),
             AnInstruction::Dup(arg) => Some(arg.into()),
             AnInstruction::Swap(arg) => Some(arg.into()),
             AnInstruction::ReadMem(arg) => Some(arg.into()),
@@ -568,6 +582,8 @@ impl Instruction {
             AnInstruction::Pop(_) => AnInstruction::Pop(num_words?),
             AnInstruction::Push(_) => AnInstruction::Push(new_arg),
             AnInstruction::Divine(_) => AnInstruction::Divine(num_words?),
+            AnInstruction::Pick(_) => AnInstruction::Pick(op_stack_element?),
+            AnInstruction::Place(_) => AnInstruction::Place(op_stack_element?),
             AnInstruction::Dup(_) => AnInstruction::Dup(op_stack_element?),
             AnInstruction::Swap(_) => AnInstruction::Swap(op_stack_element?),
             AnInstruction::Call(_) => AnInstruction::Call(new_arg),
@@ -1106,11 +1122,13 @@ pub mod tests {
 
     #[test]
     fn can_change_arg() {
-        for intsr in ALL_INSTRUCTIONS {
-            if let Some(arg) = intsr.arg() {
-                assert_ne!(intsr, intsr.change_arg(arg + bfe!(1)).unwrap());
+        for instr in ALL_INSTRUCTIONS {
+            if let Some(arg) = instr.arg() {
+                let new_instr = instr.change_arg(arg + bfe!(1)).unwrap();
+                assert_eq!(instr.opcode(), new_instr.opcode());
+                assert_ne!(instr, new_instr);
             } else {
-                assert!(intsr.change_arg(bfe!(0)).is_err())
+                assert!(instr.change_arg(bfe!(0)).is_err())
             }
         }
     }

@@ -234,10 +234,12 @@ fn an_instruction(s: &str) -> ParseResult<AnInstruction<String>> {
     let pop = pop_instruction();
     let push = push_instruction();
     let divine = divine_instruction();
+    let pick = pick_instruction();
+    let place = place_instruction();
     let dup = dup_instruction();
     let swap = swap_instruction();
 
-    let opstack_manipulation = alt((pop, push, divine, dup, swap));
+    let opstack_manipulation = alt((pop, push, divine, pick, place, dup, swap));
 
     // Control flow
     let halt = instruction("halt", AnInstruction::Halt);
@@ -382,6 +384,22 @@ fn divine_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>> {
         let (s, _) = token1("divine")(s)?;
         let (s, arg) = number_of_words(s)?;
         Ok((s, AnInstruction::Divine(arg)))
+    }
+}
+
+fn pick_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>> {
+    move |s: &str| {
+        let (s, _) = token1("pick")(s)?;
+        let (s, arg) = stack_register(s)?;
+        Ok((s, AnInstruction::Pick(arg)))
+    }
+}
+
+fn place_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>> {
+    move |s: &str| {
+        let (s, _) = token1("place")(s)?;
+        let (s, arg) = stack_register(s)?;
+        Ok((s, AnInstruction::Place(arg)))
     }
 }
 
