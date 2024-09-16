@@ -1092,6 +1092,8 @@ mod tests {
     use std::hash::Hasher;
 
     use itertools::Itertools;
+    use proptest::arbitrary::Arbitrary;
+    use proptest::collection::vec;
     use proptest::prelude::*;
     use proptest_arbitrary_interop::arb;
     use rand::random;
@@ -1556,5 +1558,200 @@ mod tests {
 
         let o = ch(0) * z1 - ch(1) * w;
         assert!(!o.find_equivalent_nodes().is_empty());
+    }
+
+    #[derive(Debug, Copy, Clone, Eq, PartialEq, test_strategy::Arbitrary)]
+    enum CircuitOperationChoice {
+        Add(usize, usize),
+        Mul(usize, usize),
+    }
+
+    #[derive(Debug, Copy, Clone, Eq, PartialEq, test_strategy::Arbitrary)]
+    enum CircuitInputType {
+        Main,
+        Aux,
+    }
+
+    #[derive(Debug, Copy, Clone, Eq, PartialEq, test_strategy::Arbitrary)]
+    enum CircuitConstantType {
+        Base(#[strategy(arb())] BFieldElement),
+        Extension(#[strategy(arb())] XFieldElement),
+    }
+
+    fn arbitrary_circuit<II: InputIndicator>(
+        num_inputs: usize,
+        num_challenges: usize,
+        num_constants: usize,
+        num_nodes: usize,
+        num_outputs: usize,
+    ) -> BoxedStrategy<Vec<ConstraintCircuit<II>>> {
+        (
+            vec(CircuitInputType::arbitrary(), num_inputs),
+            vec(CircuitConstantType::arbitrary(), num_constants),
+            vec(
+                CircuitOperationChoice::arbitrary(),
+                num_nodes - num_inputs - num_constants - num_outputs,
+            ),
+            vec(arb::<usize>(), num_outputs),
+        )
+            .prop_map(move |(inputs, constants, operations, outputs)| {
+                let builder = ConstraintCircuitBuilder::<II>::new();
+                let mut num_main_inputs = 0;
+                let mut num_aux_inputs = 0;
+                let mut all_nodes = vec![];
+                let mut output_nodes = vec![];
+
+                for input in inputs {
+                    match input {
+                        CircuitInputType::Main => {
+                            let node = builder.input(II::main_table_input(num_main_inputs));
+                            num_main_inputs += 1;
+                            all_nodes.push(node);
+                        }
+                        CircuitInputType::Aux => {
+                            let node = builder.input(II::aux_table_input(num_aux_inputs));
+                            num_aux_inputs += 1;
+                            all_nodes.push(node);
+                        }
+                    }
+                }
+
+                for i in 0..num_challenges {
+                    let node = builder.challenge(i);
+                    all_nodes.push(node);
+                }
+
+                for constant in constants {
+                    match constant {
+                        CircuitConstantType::Base(bfe) => {
+                            let node = builder.b_constant(bfe);
+                            all_nodes.push(node);
+                        }
+                        CircuitConstantType::Extension(xfe) => {
+                            let node = builder.x_constant(xfe);
+                            all_nodes.push(node);
+                        }
+                    }
+                }
+
+                for operation in operations {
+                    match operation {
+                        CircuitOperationChoice::Add(lhs, rhs) => {
+                            if !all_nodes.is_empty() {
+                                let lhs_index = lhs % all_nodes.len();
+                                let rhs_index = rhs % all_nodes.len();
+
+                                let lhs_node = all_nodes[lhs_index].clone();
+                                let rhs_node = all_nodes[rhs_index].clone();
+
+                                let node = lhs_node + rhs_node;
+                                all_nodes.push(node);
+                            }
+                        }
+                        CircuitOperationChoice::Mul(lhs, rhs) => {
+                            if !all_nodes.is_empty() {
+                                let lhs_index = lhs % all_nodes.len();
+                                let rhs_index = rhs % all_nodes.len();
+
+                                let lhs_node = all_nodes[lhs_index].clone();
+                                let rhs_node = all_nodes[rhs_index].clone();
+
+                                let node = lhs_node * rhs_node;
+                                all_nodes.push(node);
+                            }
+                        }
+                    }
+                }
+
+                for output in outputs {
+                    if !all_nodes.is_empty() {
+                        let index = output % all_nodes.len();
+                        output_nodes.push(all_nodes[index].clone());
+                    }
+                }
+
+                output_nodes
+                    .into_iter()
+                    .map(|node| node.consume())
+                    .collect_vec()
+            })
+            .boxed()
+    }
+
+    fn all_main_inputs<II: InputIndicator>(multicircuit: &[ConstraintCircuit<II>]) -> Vec<usize> {
+        multicircuit
+            .iter()
+            .flat_map(|c| match &c.expression {
+                CircuitExpression::Input(ii) => {
+                    if ii.is_main_table_column() {
+                        vec![ii.column()]
+                    } else {
+                        vec![]
+                    }
+                }
+                CircuitExpression::BinOp(_, lhs, rhs) => {
+                    all_main_inputs(&[lhs.borrow().clone(), rhs.borrow().clone()])
+                }
+                _ => {
+                    vec![]
+                }
+            })
+            .unique()
+            .collect_vec()
+    }
+
+    fn all_aux_inputs<II: InputIndicator>(multicircuit: &[ConstraintCircuit<II>]) -> Vec<usize> {
+        multicircuit
+            .iter()
+            .flat_map(|c| match &c.expression {
+                CircuitExpression::Input(ii) => {
+                    if ii.is_main_table_column() {
+                        vec![]
+                    } else {
+                        vec![ii.column()]
+                    }
+                }
+                CircuitExpression::BinOp(_, lhs, rhs) => {
+                    all_aux_inputs(&[lhs.borrow().clone(), rhs.borrow().clone()])
+                }
+                _ => {
+                    vec![]
+                }
+            })
+            .unique()
+            .collect_vec()
+    }
+
+    fn all_challenges<II: InputIndicator>(multicircuit: &[ConstraintCircuit<II>]) -> Vec<usize> {
+        multicircuit
+            .iter()
+            .flat_map(|c| match &c.expression {
+                CircuitExpression::Challenge(ch) => {
+                    vec![*ch]
+                }
+                CircuitExpression::BinOp(_, lhs, rhs) => {
+                    all_challenges(&[lhs.borrow().clone(), rhs.borrow().clone()])
+                }
+                _ => {
+                    vec![]
+                }
+            })
+            .unique()
+            .collect_vec()
+    }
+
+    #[proptest]
+    fn node_substitution_is_complete(
+        #[strategy(arbitrary_circuit(10, 10, 10, 100, 10))] multicircuit: Vec<
+            ConstraintCircuit<SingleRowIndicator>,
+        >,
+        #[strategy(vec(arb::<BFieldElement>(), 1+all_main_inputs(&#multicircuit).into_iter().max().unwrap()))]
+        main_input: Vec<BFieldElement>,
+        #[strategy(vec(arb::<XFieldElement>(), 1+all_aux_inputs(&#multicircuit).into_iter().max().unwrap()))]
+        aux_input: Vec<XFieldElement>,
+        #[strategy(vec(arb::<XFieldElement>(), 1+all_challenges(&#multicircuit).into_iter().max().unwrap()))]
+        challenges: Vec<XFieldElement>,
+    ) {
+        todo!()
     }
 }
