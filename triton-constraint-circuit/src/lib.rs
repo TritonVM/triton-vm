@@ -700,7 +700,7 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
         self.circuit.borrow().to_owned()
     }
 
-    /// Lowers the degree of a given multicircuit to the target degree.
+    /// Lower the degree of a given multicircuit to the target degree.
     /// This is achieved by introducing additional variables and constraints.
     /// The appropriate substitutions are applied to the given multicircuit.
     /// The target degree must be greater than 1.
@@ -744,7 +744,7 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
         while Self::multicircuit_degree(multicircuit) > target_degree {
             let chosen_node_id = Self::pick_node_to_substitute(multicircuit, target_degree);
 
-            let new_constraint = Self::substitute_node_and_produce_constraint(
+            let new_constraint = Self::apply_substitution(
                 multicircuit,
                 info,
                 chosen_node_id,
@@ -763,7 +763,13 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
         (main_constraints, aux_constraints)
     }
 
-    fn substitute_node_and_produce_constraint(
+    /// Apply a substitution:
+    ///  - create a new variable to replaces the chosen node;
+    ///  - make all nodes that point to the chosen node point to the new
+    ///    variable instead;
+    ///  - return the new constraint that makes it sound: new variable minus
+    ///    chosen node's expression.
+    fn apply_substitution(
         multicircuit: &mut [Self],
         info: DegreeLoweringInfo,
         chosen_node_id: usize,
