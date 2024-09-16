@@ -33,6 +33,8 @@ use crate::AIR;
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct LookupTable;
 
+impl crate::private::Seal for LookupTable {}
+
 impl AIR for LookupTable {
     type MainColumn = LookupMainColumn;
     type AuxColumn = LookupAuxColumn;

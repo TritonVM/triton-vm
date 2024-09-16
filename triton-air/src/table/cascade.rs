@@ -25,6 +25,8 @@ use crate::AIR;
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct CascadeTable;
 
+impl crate::private::Seal for CascadeTable {}
+
 impl AIR for CascadeTable {
     type MainColumn = crate::table_column::CascadeMainColumn;
     type AuxColumn = crate::table_column::CascadeAuxColumn;

@@ -22,6 +22,8 @@ use crate::AIR;
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct U32Table;
 
+impl crate::private::Seal for U32Table {}
+
 impl AIR for U32Table {
     type MainColumn = crate::table_column::U32MainColumn;
     type AuxColumn = crate::table_column::U32AuxColumn;

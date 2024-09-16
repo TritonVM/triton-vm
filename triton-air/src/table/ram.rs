@@ -25,6 +25,8 @@ pub const PADDING_INDICATOR: BFieldElement = BFieldElement::new(2);
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct RamTable;
 
+impl crate::private::Seal for RamTable {}
+
 impl AIR for RamTable {
     type MainColumn = crate::table_column::RamMainColumn;
     type AuxColumn = crate::table_column::RamAuxColumn;

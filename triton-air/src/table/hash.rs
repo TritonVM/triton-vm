@@ -39,6 +39,8 @@ pub type PermutationTrace = [[BFieldElement; tip5::STATE_SIZE]; PERMUTATION_TRAC
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct HashTable;
 
+impl crate::private::Seal for HashTable {}
+
 type MainColumn = <HashTable as AIR>::MainColumn;
 type AuxColumn = <HashTable as AIR>::AuxColumn;
 

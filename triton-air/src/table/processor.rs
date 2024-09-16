@@ -40,6 +40,8 @@ pub const NUM_HELPER_VARIABLE_REGISTERS: usize = 6;
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct ProcessorTable;
 
+impl crate::private::Seal for ProcessorTable {}
+
 type MainColumn = <ProcessorTable as AIR>::MainColumn;
 type AuxColumn = <ProcessorTable as AIR>::AuxColumn;
 

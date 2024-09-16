@@ -27,6 +27,8 @@ pub const PADDING_VALUE: BFieldElement = BFieldElement::new(2);
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct OpStackTable;
 
+impl crate::private::Seal for OpStackTable {}
+
 impl AIR for OpStackTable {
     type MainColumn = crate::table_column::OpStackMainColumn;
     type AuxColumn = crate::table_column::OpStackAuxColumn;

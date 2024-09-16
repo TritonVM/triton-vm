@@ -21,6 +21,8 @@ use crate::AIR;
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct ProgramTable;
 
+impl crate::private::Seal for ProgramTable {}
+
 impl AIR for ProgramTable {
     type MainColumn = crate::table_column::ProgramMainColumn;
     type AuxColumn = crate::table_column::ProgramAuxColumn;

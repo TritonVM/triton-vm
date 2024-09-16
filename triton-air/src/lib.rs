@@ -12,6 +12,10 @@ pub mod cross_table_argument;
 pub mod table;
 pub mod table_column;
 
+mod private {
+    pub trait Seal {}
+}
+
 /// The degree of the AIR after the degree lowering step.
 ///
 /// Using substitution and the introduction of new variables, the degree of the AIR as specified
@@ -28,7 +32,17 @@ pub mod table_column;
 /// The degree lowering happens in Triton VM's build script, `build.rs`.
 pub const TARGET_DEGREE: isize = 4;
 
-pub trait AIR {
+/// The main trait for the [tables]' Arithmetic Intermediate Representation.
+///
+/// This is a _sealed_ trait. It is not intended (or possible) to implement this
+/// trait outside the crate defining it.
+///
+/// [tables]: table::TableId
+///
+/// ### Object safety
+///
+/// This trait is _not_ object safe.
+pub trait AIR: private::Seal {
     type MainColumn: MasterMainColumn + EnumCount;
     type AuxColumn: MasterAuxColumn + EnumCount;
 

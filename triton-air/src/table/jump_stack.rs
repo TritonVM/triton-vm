@@ -34,6 +34,8 @@ use crate::AIR;
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct JumpStackTable;
 
+impl crate::private::Seal for JumpStackTable {}
+
 impl AIR for JumpStackTable {
     type MainColumn = crate::table_column::JumpStackMainColumn;
     type AuxColumn = crate::table_column::JumpStackAuxColumn;
