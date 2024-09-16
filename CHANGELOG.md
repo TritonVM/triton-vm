@@ -3,6 +3,121 @@
 All notable changes are documented in this file.
 Lines marked “(!)” indicate a breaking change.
 
+## [0.42.0](https://github.com/TritonVM/triton-vm/compare/v0.41.0..v0.42.0) - 2024-09-16
+
+### ✨ Features
+
+- Include `ConstraintType` in public API ([1592459b](https://github.com/TritonVM/triton-vm/commit/1592459b))
+- Detect equivalent nodes in constraint circuit ([17c5b616](https://github.com/TritonVM/triton-vm/commit/17c5b616))
+- Introduce instruction for dot product ([5abf529b](https://github.com/TritonVM/triton-vm/commit/5abf529b))
+- Introduce instruction `merkle_step` ([01c04e52](https://github.com/TritonVM/triton-vm/commit/01c04e52))
+- Introduce memory friendly proving path ([70b740e9](https://github.com/TritonVM/triton-vm/commit/70b740e9))
+- Introduce instruction `sponge_absorb_mem` ([6dd9b54a](https://github.com/TritonVM/triton-vm/commit/6dd9b54a))
+- Introduce instruction `recurse_or_return` ([98dbd9ff](https://github.com/TritonVM/triton-vm/commit/98dbd9ff))
+- Add instruction `addi` ([3b5bc128](https://github.com/TritonVM/triton-vm/commit/3b5bc128))
+- Add dynamic counterpart to tasm code generator ([72b6f5bc](https://github.com/TritonVM/triton-vm/commit/72b6f5bc))
+- Introduce instruction `merkle_step_mem` ([3b1e3590](https://github.com/TritonVM/triton-vm/commit/3b1e3590))
+- Implement `Deref` for `PublicInput` ([5a521542](https://github.com/TritonVM/triton-vm/commit/5a521542))
+- Introduce instructions `pick` and `place` ([b7693922](https://github.com/TritonVM/triton-vm/commit/b7693922))
+
+### 🐛 Bug Fixes
+
+- Don't mutate `HashSet`'s content in-place ([6e5443e5](https://github.com/TritonVM/triton-vm/commit/6e5443e5))
+- Use correct domain for deep codeword ([4e52b67e](https://github.com/TritonVM/triton-vm/commit/4e52b67e))
+- *(docs)* Correctly sum number of constraints ([3bf33255](https://github.com/TritonVM/triton-vm/commit/3bf33255))
+- *(ZK)* Ensure ZK from quotient segment openings ([be87aefe](https://github.com/TritonVM/triton-vm/commit/be87aefe))
+- *(profiler)* Correctly compute clock frequency ([e1281b0e](https://github.com/TritonVM/triton-vm/commit/e1281b0e))
+- Ensure node index for `merkle_step` is u32 ([c510b163](https://github.com/TritonVM/triton-vm/commit/c510b163))
+- Fix arithmetic overflow in `MemoryRegion` ([f83f8aa0](https://github.com/TritonVM/triton-vm/commit/f83f8aa0))
+
+### ⚡️ Performance
+
+- Faster domain-evaluation for too-large polynomial ([3905d808](https://github.com/TritonVM/triton-vm/commit/3905d808))
+- Use parallelism more when evaluating domain ([8c623e82](https://github.com/TritonVM/triton-vm/commit/8c623e82))
+- Profile and fix slow zero-initialization ([f7b13e74](https://github.com/TritonVM/triton-vm/commit/f7b13e74))
+- Parallelize Filling of Degree-Lowering Table ([9c02c646](https://github.com/TritonVM/triton-vm/commit/9c02c646))
+- Parallelize evaluation-part of quotient-LDE ([82de2994](https://github.com/TritonVM/triton-vm/commit/82de2994))
+- Use fastest polynomial multiplication ([89cc89ad](https://github.com/TritonVM/triton-vm/commit/89cc89ad))
+- Parallelize deep codeword inner product ([72238cf5](https://github.com/TritonVM/triton-vm/commit/72238cf5))
+- (!) Halve number of combination codeword checks ([deecc224](https://github.com/TritonVM/triton-vm/commit/deecc224))
+- Sum mutually exclusive constraints ([3e96faca](https://github.com/TritonVM/triton-vm/commit/3e96faca))
+- (!) Simplify constraints of instruction `swap` ([62187169](https://github.com/TritonVM/triton-vm/commit/62187169))
+- Parallelize table extension (#294) ([0ac5c370](https://github.com/TritonVM/triton-vm/commit/0ac5c370))
+- Combine constraints of illegal `num_words` ([d74e10a9](https://github.com/TritonVM/triton-vm/commit/d74e10a9))
+- Combine constraints for stack push / pop ([70361ff1](https://github.com/TritonVM/triton-vm/commit/70361ff1))
+- Combine constraints for group `keep_stack` ([2ce5ff15](https://github.com/TritonVM/triton-vm/commit/2ce5ff15))
+- Compress compressible constraints ([e53402eb](https://github.com/TritonVM/triton-vm/commit/e53402eb))
+- Parallelize polynomial arithmetic in Bezout argument.
+- *(test)* Remove super slow try-build test ([65545fe9](https://github.com/TritonVM/triton-vm/commit/65545fe9))
+
+### 📚 Documentation
+
+- Add arithmetization overview page ([c5b7eec1](https://github.com/TritonVM/triton-vm/commit/c5b7eec1))
+- Describe cached/just-in-time low-degree-extension ([e72a4185](https://github.com/TritonVM/triton-vm/commit/e72a4185))
+- Document the constraint generator ([49864e42](https://github.com/TritonVM/triton-vm/commit/49864e42))
+- Document `config` module ([f05643ff](https://github.com/TritonVM/triton-vm/commit/f05643ff))
+- Add overview of opcode pressure ([903a5718](https://github.com/TritonVM/triton-vm/commit/903a5718))
+- Add AIR circuit node count to arithmetization overview ([c8436943](https://github.com/TritonVM/triton-vm/commit/c8436943))
+- Add constraints overview table for AIR of degree 8 ([ac98c22f](https://github.com/TritonVM/triton-vm/commit/ac98c22f))
+- Add column counts for various degree lowering targets ([c26cf9cc](https://github.com/TritonVM/triton-vm/commit/c26cf9cc))
+- Add dynamic AIR eval cost to overview ([be9b4410](https://github.com/TritonVM/triton-vm/commit/be9b4410))
+
+### ⚙️ Miscellaneous
+
+- Test printing constraint circuits ([5724997f](https://github.com/TritonVM/triton-vm/commit/5724997f))
+- Include `{bfe, xfe}_{array, vec}` in prelude ([4c27f360](https://github.com/TritonVM/triton-vm/commit/4c27f360))
+- (!) Remove unused method `max_id` ([9e99027f](https://github.com/TritonVM/triton-vm/commit/9e99027f))
+- (!) Remove deprecated functions ([d65730d8](https://github.com/TritonVM/triton-vm/commit/d65730d8))
+- (!) Make instruction names more consistent ([96c92eab](https://github.com/TritonVM/triton-vm/commit/96c92eab))
+- Provide API to overwrite cache decision ([0f313a7b](https://github.com/TritonVM/triton-vm/commit/0f313a7b))
+- *(profiler)* Include tracing execution ([4dea54d0](https://github.com/TritonVM/triton-vm/commit/4dea54d0))
+- *(test)* Fail if spec needs updating ([3e15ff9a](https://github.com/TritonVM/triton-vm/commit/3e15ff9a))
+- *(bench)* Streamline Fibonacci benchmark ([3b210e67](https://github.com/TritonVM/triton-vm/commit/3b210e67))
+- Use types over anonymous tuples ([4358acec](https://github.com/TritonVM/triton-vm/commit/4358acec))
+- (!) Break cyclic build dependency ([f594167d](https://github.com/TritonVM/triton-vm/commit/f594167d))
+- (!) Seal `InputIndicator` trait ([b803e13a](https://github.com/TritonVM/triton-vm/commit/b803e13a))
+- (!) Seal trait `AIR` ([44d94848](https://github.com/TritonVM/triton-vm/commit/44d94848))
+
+### ♻️ Refactor
+
+- (!) Use `Polynomial` in FRI proof item ([7367c677](https://github.com/TritonVM/triton-vm/commit/7367c677))
+- Compute segments directly ([d62e5587](https://github.com/TritonVM/triton-vm/commit/d62e5587))
+- (!) Remove unused `JumpStackTraceRow` ([e257c358](https://github.com/TritonVM/triton-vm/commit/e257c358))
+- (!) Improve internal profiler ([fa7c8b70](https://github.com/TritonVM/triton-vm/commit/fa7c8b70))
+- (!) *(profiler)* Make `TritonProfiler` private ([1ecd11cd](https://github.com/TritonVM/triton-vm/commit/1ecd11cd))
+- *(profiler)* Remove from optimized builds ([f4340159](https://github.com/TritonVM/triton-vm/commit/f4340159))
+- *(profiler)* Accumulate loops ([195d1854](https://github.com/TritonVM/triton-vm/commit/195d1854))
+- *(test)* Automatically update spec overview ([ac50fa33](https://github.com/TritonVM/triton-vm/commit/ac50fa33))
+- *(test)* Simplify constraint checking, etc ([6fd207f4](https://github.com/TritonVM/triton-vm/commit/6fd207f4))
+- (!) Remove generic parameter from FRI ([05c6be86](https://github.com/TritonVM/triton-vm/commit/05c6be86))
+
+### ✅ Testing
+
+- Verify FRI failure for too-high degree polys ([262b048e](https://github.com/TritonVM/triton-vm/commit/262b048e))
+- Increase coverage of constraint generator ([06b1167b](https://github.com/TritonVM/triton-vm/commit/06b1167b))
+- Ensure public types implement auto traits ([da1a99b0](https://github.com/TritonVM/triton-vm/commit/da1a99b0))
+- *(bench)* Bench proving with cached / jit trace ([4bc5b9fc](https://github.com/TritonVM/triton-vm/commit/4bc5b9fc))
+- Assert uniqueness of nodes on fetch by id ([51eb30a9](https://github.com/TritonVM/triton-vm/commit/51eb30a9))
+- Test correct node substitution ([cfe7d093](https://github.com/TritonVM/triton-vm/commit/cfe7d093))
+- Test indicator polynomial properties ([b8220690](https://github.com/TritonVM/triton-vm/commit/b8220690))
+- Test FRI expansion factors > 4 ([1edecc59](https://github.com/TritonVM/triton-vm/commit/1edecc59))
+- `recurse_or_return` needs jump stack content ([b68f0233](https://github.com/TritonVM/triton-vm/commit/b68f0233))
+- Test transition constraints of `xb_dot_step` ([13d1fd12](https://github.com/TritonVM/triton-vm/commit/13d1fd12))
+- Test transition constraints of `xx_dot_step` ([a64e8c24](https://github.com/TritonVM/triton-vm/commit/a64e8c24))
+- Test constraints for every instruction ([0baff704](https://github.com/TritonVM/triton-vm/commit/0baff704))
+- Verify that arguments, if any, can be changed ([e55c2474](https://github.com/TritonVM/triton-vm/commit/e55c2474))
+- Deduplicate code using macros ([592d7bfa](https://github.com/TritonVM/triton-vm/commit/592d7bfa))
+- *(dyn air)* Verify that dynamic and static evaluators agree ([574e407d](https://github.com/TritonVM/triton-vm/commit/574e407d))
+- Add example program for `merkle_step_mem` ([d9edddd4](https://github.com/TritonVM/triton-vm/commit/d9edddd4))
+
+### 🎨 Styling
+
+- Enable additional lints ([dd496f71](https://github.com/TritonVM/triton-vm/commit/dd496f71))
+
+### 🛠 Build
+
+- Remove Makefile ([d88a7613](https://github.com/TritonVM/triton-vm/commit/d88a7613))
+
 ## [0.41.0](https://github.com/TritonVM/triton-vm/compare/v0.40.0..v0.41.0) - 2024-04-23
 
 ### ✨ Features
