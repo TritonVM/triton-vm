@@ -784,8 +784,8 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
         };
         let new_variable = builder.input(new_input_indicator);
 
-        // Substitute the chosen circuit with the new variable.
-        builder.substitute(chosen_node_id, new_variable.clone());
+        // Make all descendants of the chosen node point to the new variable instead
+        builder.redirect_pointers(chosen_node_id, new_variable.clone());
 
         // Treat roots of the multicircuit explicitly.
         for circuit in multicircuit.iter_mut() {
@@ -1022,7 +1022,7 @@ impl<II: InputIndicator> ConstraintCircuitBuilder<II> {
     ///
     /// A circuit's root node cannot be substituted with this method. Manual care
     /// must be taken to update the root node if necessary.
-    fn substitute(&self, old_id: usize, new: ConstraintCircuitMonad<II>) {
+    fn redirect_pointers(&self, old_id: usize, new: ConstraintCircuitMonad<II>) {
         self.all_nodes.borrow_mut().remove(&old_id);
         for node in self.all_nodes.borrow_mut().values_mut() {
             let node_expression = &mut node.circuit.borrow_mut().expression;
@@ -1321,7 +1321,7 @@ mod tests {
     }
 
     #[test]
-    fn substitution_replaces_a_node_in_a_circuit() {
+    fn pointer_redirection_obliviates_a_node_in_a_circuit() {
         let builder = ConstraintCircuitBuilder::new();
         let x = |i| builder.input(SingleRowIndicator::Main(i));
         let constant = |c: u32| builder.b_constant(c);
@@ -1338,7 +1338,7 @@ mod tests {
         assert!(root_2.contains(&substitute_me));
 
         let new_variable = x(3);
-        builder.substitute(substitute_me.circuit.borrow().id, new_variable.clone());
+        builder.redirect_pointers(substitute_me.circuit.borrow().id, new_variable.clone());
 
         assert!(!root_0.contains(&substitute_me));
         assert!(!root_1.contains(&substitute_me));
