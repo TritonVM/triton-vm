@@ -1784,13 +1784,13 @@ mod tests {
             ft = format!("{ft}\n");
 
             let num_nodes_in_all_initial_constraints =
-                ConstraintCircuitMonad::num_nodes(&all_initial_constraints);
+                ConstraintCircuitMonad::num_visible_nodes(&all_initial_constraints);
             let num_nodes_in_all_consistency_constraints =
-                ConstraintCircuitMonad::num_nodes(&all_consistency_constraints);
+                ConstraintCircuitMonad::num_visible_nodes(&all_consistency_constraints);
             let num_nodes_in_all_transition_constraints =
-                ConstraintCircuitMonad::num_nodes(&all_transition_constraints);
+                ConstraintCircuitMonad::num_visible_nodes(&all_transition_constraints);
             let num_nodes_in_all_terminal_constraints =
-                ConstraintCircuitMonad::num_nodes(&all_terminal_constraints);
+                ConstraintCircuitMonad::num_visible_nodes(&all_terminal_constraints);
             ft = format!(
                 "{ft}| {:<46} | {:>8} | {:>12} | {:>11} | {:>9} |",
                 "(# nodes)",
