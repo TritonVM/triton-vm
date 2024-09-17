@@ -263,19 +263,19 @@ impl InputIndicator for DualRowIndicator {
     }
 }
 
-/// A circuit expression is the recursive data structure that represents the constraint polynomials.
-/// It is a directed, acyclic graph of binary operations on the variables of the constraint
-/// polynomials, constants, and challenges. It has multiple roots, making it a “multitree.” Each
-/// root corresponds to one constraint polynomial.
+/// A circuit expression is the recursive data structure that represents the constraint circuit.
+/// It is a directed, acyclic graph of binary operations on a) the variables corresponding
+/// to columns in the AET, b) constants, and c) challenges. It has multiple roots, making it a “multitree.” Each
+/// root corresponds to one constraint.
 ///
 /// The leafs of the tree are
 /// - constants in the base field, _i.e._, [`BFieldElement`]s,
 /// - constants in the extension field, _i.e._, [`XFieldElement`]s,
-/// - input variables, _i.e._, entries from the Algebraic Execution Trace, and
+/// - input variables, _i.e._, entries from the Algebraic Execution Trace, main or aux, and
 /// - challenges, _i.e._, (pseudo-)random values sampled through the Fiat-Shamir heuristic.
 ///
-/// An inner node, representing some binary operation, is either addition, multiplication, or
-/// subtraction. The left and right children of the node are the operands of the binary operation.
+/// An internal node, representing some binary operation, is either addition, multiplication.
+/// The left and right children of the node are the operands of the binary operation.
 /// The left and right children are not themselves `CircuitExpression`s, but rather
 /// [`ConstraintCircuit`]s, which is a wrapper around `CircuitExpression` that manages additional
 /// bookkeeping information.
@@ -348,7 +348,11 @@ impl<II: InputIndicator> Hash for ConstraintCircuitMonad<II> {
     }
 }
 
-/// A wrapper around a [`CircuitExpression`] that manages additional bookkeeping information.
+/// A wrapper around a [`CircuitExpression`] that manages additional bookkeeping
+/// information, such as node id and visited counter.
+///
+/// In contrast to [`ConstraintCircuitMonad`], this struct cannot manage the state
+/// required to insert new nodes.
 #[derive(Debug, Clone)]
 pub struct ConstraintCircuit<II: InputIndicator> {
     pub id: usize,
@@ -545,8 +549,15 @@ impl<II: InputIndicator> ConstraintCircuit<II> {
     }
 }
 
-/// Constraint expressions, with context needed to ensure that two equal nodes are not added to
-/// the multicircuit.
+/// [`ConstraintCircuit`] with extra context pertaining to the whole multicircuit.
+///
+/// This context is needed to ensure that two equal nodes (meaning: same expression)
+/// are not added to the multicircuit. It also enables a rudimentary check for node
+/// equivalence (commutation + constant folding), in which case the existing expression
+/// is used instead.
+///
+/// One can create new instances of [`ConstraintCircuitMonad`] by applying arithmetic
+/// operations to existing instances, *e.g.*, `let c = a * b;`.
 #[derive(Clone)]
 pub struct ConstraintCircuitMonad<II: InputIndicator> {
     pub circuit: Rc<RefCell<ConstraintCircuit<II>>>,
@@ -917,9 +928,11 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
     }
 }
 
+/// Helper struct to construct new leaf nodes (*i.e.*, input or challenge or constant)
+/// in the circuit multitree. Ensures that newly created nodes, even non-leaf nodes
+/// created through joining two other nodes using an arithmetic operation, get a
+/// unique ID.
 #[derive(Debug, Clone, Eq, PartialEq)]
-/// Helper struct to construct new leaf nodes in the circuit multitree. Ensures that each newly
-/// created node gets a unique ID.
 pub struct ConstraintCircuitBuilder<II: InputIndicator> {
     id_counter: Rc<RefCell<usize>>,
     all_nodes: Rc<RefCell<HashMap<usize, ConstraintCircuitMonad<II>>>>,
@@ -1001,6 +1014,11 @@ impl<II: InputIndicator> ConstraintCircuitBuilder<II> {
     }
 
     fn make_leaf(&self, mut expression: CircuitExpression<II>) -> ConstraintCircuitMonad<II> {
+        assert!(
+            !matches!(expression, CircuitExpression::BinOp(_, _, _)),
+            "`make_leaf` is intended for anything but `BinOp`s"
+        );
+
         // Don't generate an X field leaf if it can be expressed as a B field leaf
         if let CircuitExpression::XConst(xfe) = expression {
             if let Some(bfe) = xfe.unlift() {
