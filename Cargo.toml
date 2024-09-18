@@ -17,6 +17,18 @@ lto = "thin"
 [profile.bench]
 lto = "thin"
 
+[profile.release.build-override]
+opt-level = 3
+
+[profile.dev.build-override]
+opt-level = 3
+
+[profile.test.build-override]
+opt-level = 3
+
+[profile.bench.build-override]
+opt-level = 3
+
 [workspace.package]
 version = "0.42.0"
 edition = "2021"
