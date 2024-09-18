@@ -1853,7 +1853,57 @@ mod tests {
     /// Test the completeness and soundness of the `apply_substitution` function,
     /// which substitutes a single node.
     ///
-    /// In this context, completeness means:
+    /// In this context, completeness means: "given a satisfying assignment to the
+    /// circuit before degree lowering, one can derive a satisfying assignment to
+    /// the circuit after degree lowering." Soundness means the converse.
+    ///
+    /// We test these features using random input vectors. Naturally, the output
+    /// is not the zero vector (with high probability) and so the given input is
+    /// *not* a satisfying assignment (with high probability). However, the
+    /// circuit can be extended by way of thought experiment into one that subtracts
+    /// a fixed constant from the original output. For the right choice of substrahend,
+    /// the random input now *is* a satisfying assignment to the circuit.
+    ///
+    /// Specifically, let `input` denote the original (before degree lowering) input,
+    /// and `C` the circuit. Then `input` is a satisfying input for the new circuit
+    /// `C'(X) = C(X) - C(input)`
+    ///
+    /// After applying a substitution to obtain circuit `C || k` from `C`, where
+    /// `k = Z - some_expr(X)` and `Z` is the introduced variable, the length
+    /// of the input and output increases by 1. Moreover, if `input` is a satisfying
+    /// input to `C'` then `input || some_expr(input)` is* a satisfying input to
+    /// `C' || k`.
+    ///
+    /// (*: If the transformation is complete.)
+    ///
+    /// To establish the converse, we want to start from a satisfying input to
+    /// `C" || k` and reduce it to a satisfying input to `C"`. The requirement,
+    /// implied by "satisfying input", that `k(X || Z) == 0` implies `Z == some_expr(X)`.
+    /// Therefore, in order to sample a random satisfying input to `C" || k`, it
+    /// suffices to select `input` at random, define `C"(X) = C(X) - C(input)`,
+    /// and evaluate `some_expr(input)`. Then `input || some_expr(input)` is a
+    /// random satisfying input to `C" || k`. It follows** that `input` is a
+    /// satisfying input to `C"`.
+    ///
+    /// (**: If the transformation is sound.)
+    ///
+    /// This description makes use of the following commutative diagram.
+    ///
+    /// ```notest
+    ///          C ---- degree-lowering -----> C || k
+    ///          |                               |
+    /// subtract |                      subtract |
+    ///    fixed |                         fixed |
+    ///   output |                        output |
+    ///          |                               |
+    ///          v                               v
+    ///          C* --- degree-lowering ----> C* || k
+    /// ```
+    ///
+    /// The point of this elaboration is that in this particular case, testing completeness
+    /// and soundness require the same code path. If `input` and `input || some_expr(input)`
+    /// work for circuits before and after degree lowering, this fact establishes
+    /// both completeness and soundness simultaneously.
     ///
     /// Shrinking on this test is disabled because we noticed some weird ass behavior.
     /// In short, shrinking does not play ball with the arbitrary circuit generator;
