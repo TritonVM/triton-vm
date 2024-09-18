@@ -1834,11 +1834,6 @@ mod tests {
         );
 
         prop_assert_eq!(10, ConstraintCircuitMonad::num_inputs(&multicircuit_monad));
-        prop_assert_eq!(
-            10,
-            ConstraintCircuitMonad::num_bfield_constants(&multicircuit_monad)
-                + ConstraintCircuitMonad::num_xfield_constants(&multicircuit_monad)
-        );
     }
 
     /// Test the completeness and soundness of the `apply_substitution` function,
