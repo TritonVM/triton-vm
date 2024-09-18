@@ -90,8 +90,8 @@ In order to gauge the runtime cost for this step, the following table provides e
 <!-- auto-gen info start tasm_air_evaluation_cost -->
 | Type         | Processor | Op Stack |   RAM |
 |:-------------|----------:|---------:|------:|
-| static       |     37759 |    70227 | 24996 |
-| dynamic      |     49456 |    78029 | 28895 |
+| static       |     34519 |    63747 | 24996 |
+| dynamic      |     46216 |    71549 | 28895 |
 <!-- auto-gen info stop tasm_air_evaluation_cost -->
 
 ## Opcode Pressure

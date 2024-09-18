@@ -712,6 +712,8 @@ impl TasmBackend {
             return vec![];
         }
 
+        // Nodes that are not binary operations are already in scope as inputs
+        // or challenges, or they are constants.
         let CircuitExpression::BinOp(_, lhs, rhs) = &constraint.expression else {
             return vec![];
         };
@@ -743,13 +745,30 @@ impl TasmBackend {
             return self.load_node(constraint);
         };
 
-        let lhs = self.evaluate_single_node(&lhs.borrow());
-        let rhs = self.evaluate_single_node(&rhs.borrow());
-        let binop = match binop {
-            BinOp::Add => instr!(XxAdd),
-            BinOp::Mul => instr!(XxMul),
-        };
-        [lhs, rhs, binop].concat()
+        // Use correct operator as lhs/rhs can be either a base-field element
+        // or an extension-field element. Since the TASM code evaluates
+        // out-of-domain rows, all inputs are extension field elements. So the
+        // only expression that is a base-field element is a base-field
+        // constant.
+        let lhs_expr = self.evaluate_single_node(&lhs.borrow());
+        let rhs_expr = self.evaluate_single_node(&rhs.borrow());
+        let lhs_is_bfe = matches!(lhs.borrow().expression, CircuitExpression::BConst(_));
+        let rhs_is_bfe = matches!(rhs.borrow().expression, CircuitExpression::BConst(_));
+
+        match (binop, lhs_is_bfe, rhs_is_bfe) {
+            (_, true, true) => unreachable!("Constant folding should have handled this"),
+            (binop, false, false) => {
+                let binop = match binop {
+                    BinOp::Add => instr!(XxAdd),
+                    BinOp::Mul => instr!(XxMul),
+                };
+                [lhs_expr, rhs_expr, binop].concat()
+            }
+            (BinOp::Add, true, false) => [rhs_expr, lhs_expr, instr!(Add)].concat(),
+            (BinOp::Add, false, true) => [lhs_expr, rhs_expr, instr!(Add)].concat(),
+            (BinOp::Mul, true, false) => [rhs_expr, lhs_expr, instr!(XbMul)].concat(),
+            (BinOp::Mul, false, true) => [lhs_expr, rhs_expr, instr!(XbMul)].concat(),
+        }
     }
 
     fn write_evaluated_constraint_into_output_list<II: InputIndicator>(
@@ -765,12 +784,16 @@ impl TasmBackend {
 
     fn load_node<II: InputIndicator>(&self, circuit: &ConstraintCircuit<II>) -> Vec<TokenStream> {
         match circuit.expression {
-            CircuitExpression::BConst(bfe) => Self::load_ext_field_constant(bfe.into()),
+            CircuitExpression::BConst(bfe) => Self::load_base_field_constant(bfe),
             CircuitExpression::XConst(xfe) => Self::load_ext_field_constant(xfe),
             CircuitExpression::Input(input) => self.load_input(input),
             CircuitExpression::Challenge(challenge_idx) => Self::load_challenge(challenge_idx),
             CircuitExpression::BinOp(_, _, _) => Self::load_evaluated_bin_op(circuit.id),
         }
+    }
+
+    fn load_base_field_constant(bfe: BFieldElement) -> Vec<TokenStream> {
+        push!(bfe)
     }
 
     fn load_ext_field_constant(xfe: XFieldElement) -> Vec<TokenStream> {
