@@ -87,6 +87,7 @@ test-strategy = "0.4.0"
 thiserror = "1.0"
 twenty-first = "0.42.0-alpha.9"
 unicode-width = "0.1"
+divan = "0.1.14"
 
 [workspace.lints.rust]
 let_underscore_drop = "warn"

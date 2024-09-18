@@ -763,11 +763,10 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
                 aux_constraints.len(),
             );
 
-            let evaluates_to_base_element =
-                new_constraint.circuit.borrow().evaluates_to_base_element();
-            match evaluates_to_base_element {
-                true => main_constraints.push(new_constraint),
-                false => aux_constraints.push(new_constraint),
+            if new_constraint.circuit.borrow().evaluates_to_base_element() {
+                main_constraints.push(new_constraint)
+            } else {
+                aux_constraints.push(new_constraint)
             }
         }
 
@@ -811,7 +810,7 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
             }
         }
 
-        // Create new constraint and return it
+        // return substitution equation
         new_variable - chosen_node
     }
 
@@ -1573,8 +1572,6 @@ mod tests {
         assert!(new_aux_constraints.is_empty());
     }
 
-    /// Return a multi circuit with multiple options for degree lowering to
-    /// degree 2.
     fn circuit_with_multiple_options_for_degree_lowering_to_degree_2(
     ) -> [ConstraintCircuitMonad<SingleRowIndicator>; 2] {
         let builder = ConstraintCircuitBuilder::new();
