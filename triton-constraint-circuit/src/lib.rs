@@ -1742,6 +1742,13 @@ mod tests {
         )
             .prop_map(move |(inputs, constants, operations, outputs)| {
                 let builder = ConstraintCircuitBuilder::<II>::new();
+
+                assert_eq!(0, *builder.id_counter.as_ref().borrow());
+                assert!(
+                    builder.all_nodes.borrow().is_empty(),
+                    "fresh hashmap should be empty"
+                );
+
                 let mut num_main_inputs = 0;
                 let mut num_aux_inputs = 0;
                 let mut all_nodes = vec![];
@@ -1780,10 +1787,10 @@ mod tests {
                     }
                 }
 
-                for operation in operations {
-                    match operation {
-                        CircuitOperationChoice::Add(lhs, rhs) => {
-                            if !all_nodes.is_empty() {
+                if !all_nodes.is_empty() {
+                    for operation in operations {
+                        match operation {
+                            CircuitOperationChoice::Add(lhs, rhs) => {
                                 let lhs_index = lhs % all_nodes.len();
                                 let rhs_index = rhs % all_nodes.len();
 
@@ -1793,9 +1800,7 @@ mod tests {
                                 let node = lhs_node + rhs_node;
                                 all_nodes.push(node);
                             }
-                        }
-                        CircuitOperationChoice::Mul(lhs, rhs) => {
-                            if !all_nodes.is_empty() {
+                            CircuitOperationChoice::Mul(lhs, rhs) => {
                                 let lhs_index = lhs % all_nodes.len();
                                 let rhs_index = rhs % all_nodes.len();
 
@@ -1838,17 +1843,24 @@ mod tests {
         );
 
         prop_assert_eq!(10, ConstraintCircuitMonad::num_inputs(&multicircuit_monad));
-        prop_assert_eq!(10, ConstraintCircuitMonad::num_bfield_constants(&multicircuit_monad)
-            + ConstraintCircuitMonad::num_xfield_constants(&multicircuit_monad));
+        prop_assert_eq!(
+            10,
+            ConstraintCircuitMonad::num_bfield_constants(&multicircuit_monad)
+                + ConstraintCircuitMonad::num_xfield_constants(&multicircuit_monad)
+        );
     }
 
     /// Test the completeness and soundness of the `apply_substitution` function,
     /// which substitutes a single node.
     ///
     /// In this context, completeness means:
-    #[proptest]
+    ///
+    /// Shrinking on this test is disabled because we noticed some weird ass behavior.
+    /// In short, shrinking does not play ball with the arbitrary circuit generator;
+    /// it seems to make the generated circuits *more* complex, not less so.
+    #[proptest(cases = 1000, max_shrink_iters = 0)]
     fn node_substitution_is_complete_and_sound(
-        #[strategy(arbitrary_circuit_monad(5, 5, 0, 20, 5))] mut multicircuit_monad: Vec<
+        #[strategy(arbitrary_circuit_monad(10, 10, 10, 200, 10))] mut multicircuit_monad: Vec<
             ConstraintCircuitMonad<SingleRowIndicator>,
         >,
         #[strategy(vec(arb::<BFieldElement>(), ConstraintCircuitMonad::num_main_inputs(&#multicircuit_monad)))]
@@ -1878,14 +1890,27 @@ mod tests {
 
         // apply one step of degree-lowering
         let num_nodes = multicircuit_monad[0].builder.all_nodes.borrow().len();
-        let substitution_node_id = multicircuit_monad[0]
+        let (mut substitution_node_id, mut substituted) = multicircuit_monad[0]
             .builder
             .all_nodes
             .borrow()
             .iter()
             .nth(substitution_node_index % num_nodes)
-            .map(|(i, _n)| *i)
+            .map(|(i, n)| (*i, n.clone()))
             .unwrap();
+        let mut j = 0;
+        while substituted.circuit.borrow().is_zero() && j < num_nodes {
+            (substitution_node_id, substituted) = multicircuit_monad[0]
+                .builder
+                .all_nodes
+                .borrow()
+                .iter()
+                .nth((substitution_node_index + j) % num_nodes)
+                .map(|(i, n)| (*i, n.clone()))
+                .unwrap();
+            j += 1;
+        }
+        prop_assert_ne!(j, num_nodes, "no suitable nodes to substitute");
 
         let degree_lowering_info = DegreeLoweringInfo {
             target_degree: 2,
@@ -1906,17 +1931,17 @@ mod tests {
         else {
             unreachable!();
         };
-        let CircuitExpression::BinOp(BinOp::Mul, _neg_one, expression) =
-            &neg_expression.as_ref().borrow().expression
-        else {
-            unreachable!();
-        };
-
-        // extend input consistently with the introduced variable
         let extra_input =
-            expression
-                .borrow()
-                .evaluate(main_input.view(), aux_input.view(), &challenges);
+            match &neg_expression.as_ref().borrow().expression {
+                CircuitExpression::BinOp(BinOp::Mul, _neg_one, circuit) => circuit
+                    .borrow()
+                    .evaluate(main_input.view(), aux_input.view(), &challenges),
+                CircuitExpression::BConst(c) => -c.lift(),
+                CircuitExpression::XConst(c) => -*c,
+                _ => {
+                    unreachable!()
+                }
+            };
         if variable.borrow().evaluates_to_base_element() {
             main_input
                 .append(
