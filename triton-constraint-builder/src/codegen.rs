@@ -750,24 +750,30 @@ impl TasmBackend {
         // out-of-domain rows, all inputs are extension field elements. So the
         // only expression that is a base-field element is a base-field
         // constant.
-        let lhs_expr = self.evaluate_single_node(&lhs.borrow());
-        let rhs_expr = self.evaluate_single_node(&rhs.borrow());
-        let lhs_is_bfe = matches!(lhs.borrow().expression, CircuitExpression::BConst(_));
-        let rhs_is_bfe = matches!(rhs.borrow().expression, CircuitExpression::BConst(_));
+        let lhs_bfe_const = match lhs.borrow().expression {
+            CircuitExpression::BConst(bfe) => Some(bfe),
+            _ => None,
+        };
+        let rhs_bfe_const = match rhs.borrow().expression {
+            CircuitExpression::BConst(bfe) => Some(bfe),
+            _ => None,
+        };
+        let lhs = self.evaluate_single_node(&lhs.borrow());
+        let rhs = self.evaluate_single_node(&rhs.borrow());
 
-        match (binop, lhs_is_bfe, rhs_is_bfe) {
-            (_, true, true) => unreachable!("Constant folding should have handled this"),
-            (binop, false, false) => {
+        match (binop, lhs_bfe_const, rhs_bfe_const) {
+            (_, Some(_), Some(_)) => unreachable!("Constant folding should have handled this"),
+            (binop, None, None) => {
                 let binop = match binop {
                     BinOp::Add => instr!(XxAdd),
                     BinOp::Mul => instr!(XxMul),
                 };
-                [lhs_expr, rhs_expr, binop].concat()
+                [lhs, rhs, binop].concat()
             }
-            (BinOp::Add, true, false) => [rhs_expr, lhs_expr, instr!(Add)].concat(),
-            (BinOp::Add, false, true) => [lhs_expr, rhs_expr, instr!(Add)].concat(),
-            (BinOp::Mul, true, false) => [rhs_expr, lhs_expr, instr!(XbMul)].concat(),
-            (BinOp::Mul, false, true) => [lhs_expr, rhs_expr, instr!(XbMul)].concat(),
+            (BinOp::Add, None, Some(bfe)) => [lhs, instr!(AddI(bfe))].concat(),
+            (BinOp::Add, Some(bfe), None) => [rhs, instr!(AddI(bfe))].concat(),
+            (BinOp::Mul, None, Some(_)) => [lhs, rhs, instr!(XbMul)].concat(),
+            (BinOp::Mul, Some(_), None) => [rhs, lhs, instr!(XbMul)].concat(),
         }
     }
 
