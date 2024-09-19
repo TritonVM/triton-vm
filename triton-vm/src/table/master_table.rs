@@ -2100,8 +2100,8 @@ mod tests {
     ///  (a) the time when this test was written or last updated; and
     ///  (b) the time when the test is being executed.
     ///
-    /// This test catches (whp) unintended changes, whether due to
-    /// nondeterminisms (on a single machine or across various machines) or due
+    /// This test catches (with high probability) unintended changes, whether due
+    /// to nondeterminisms (on a single machine or across various machines) or due
     /// to changes to the definitions of the constraints. If the change to the
     /// constraints was intentional, this test should fail until the expected
     /// value in the assert-statement is updated.
@@ -2115,20 +2115,12 @@ mod tests {
         let mut rng: StdRng = SeedableRng::from_seed(seed);
 
         // pseudorandomly populate circuit inputs
-        let main_row_current_base = rng.gen::<[BFieldElement; MasterMainTable::NUM_COLUMNS]>();
-        let main_row_current_base = Array1::<BFieldElement>::from(main_row_current_base.to_vec());
-        let main_row_current_extension = rng.gen::<[BFieldElement; MasterMainTable::NUM_COLUMNS]>();
-        let main_row_current_extension =
-            Array1::<BFieldElement>::from(main_row_current_extension.to_vec());
-        let aux_row_current = rng.gen::<[XFieldElement; MasterAuxTable::NUM_COLUMNS]>();
-        let aux_row_current = Array1::<XFieldElement>::from(aux_row_current.to_vec());
-        let main_row_next_base = rng.gen::<[BFieldElement; MasterMainTable::NUM_COLUMNS]>();
-        let main_row_next_base = Array1::<BFieldElement>::from(main_row_next_base.to_vec());
-        let main_row_next_extension = rng.gen::<[BFieldElement; MasterMainTable::NUM_COLUMNS]>();
-        let main_row_next_extension =
-            Array1::<BFieldElement>::from(main_row_next_extension.to_vec());
-        let aux_row_next = rng.gen::<[XFieldElement; MasterAuxTable::NUM_COLUMNS]>();
-        let aux_row_next = Array1::<XFieldElement>::from(aux_row_next.to_vec());
+        let main_row_current_base = Array1::from(rng.gen::<MainRow<BFieldElement>>().to_vec());
+        let main_row_current_extension = Array1::from(rng.gen::<MainRow<XFieldElement>>().to_vec());
+        let aux_row_current = Array1::from(rng.gen::<AuxiliaryRow>().to_vec());
+        let main_row_next_base = Array1::from(rng.gen::<MainRow<BFieldElement>>().to_vec());
+        let main_row_next_extension = Array1::from(rng.gen::<MainRow<XFieldElement>>().to_vec());
+        let aux_row_next = Array1::from(rng.gen::<AuxiliaryRow>().to_vec());
         let challenges = Challenges {
             challenges: rng.gen(),
         };
@@ -2194,16 +2186,12 @@ mod tests {
         let polynomial = Polynomial::new(coefficients);
 
         // evaluate polynomial in pseudorandom indeterminate
-        let x = rng.gen::<XFieldElement>();
-        let value = polynomial.evaluate(x);
+        let value = polynomial.evaluate(rng.gen());
         let expected = xfe!([
             9140558386905394900_u64,
             6769459618545093804_u64,
             3756754445351585926_u64
         ]);
-        assert_eq!(
-            expected, value,
-            "expected value was {expected} but observation was {value}"
-        );
+        assert_eq!(expected, value, "expected: {expected}\nobserved: {value}");
     }
 }
