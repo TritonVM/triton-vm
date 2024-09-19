@@ -1,7 +1,9 @@
 //! The various tables' constraints are very inefficient to evaluate if they live in RAM.
 //! Instead, the build script turns them into rust code, which is then optimized by rustc.
 
+use std::cell::RefCell;
 use std::collections::HashSet;
+use std::rc::Rc;
 
 use constraint_circuit::BinOp;
 use constraint_circuit::CircuitExpression;
@@ -745,35 +747,33 @@ impl TasmBackend {
             return self.load_node(constraint);
         };
 
-        // Use correct operator as lhs/rhs can be either a base-field element
-        // or an extension-field element. Since the TASM code evaluates
-        // out-of-domain rows, all inputs are extension field elements. So the
-        // only expression that is a base-field element is a base-field
-        // constant.
-        let lhs_bfe_const = match lhs.borrow().expression {
-            CircuitExpression::BConst(bfe) => Some(bfe),
-            _ => None,
+        let tokenized_lhs = self.evaluate_single_node(&lhs.borrow());
+        let tokenized_rhs = self.evaluate_single_node(&rhs.borrow());
+        let tokenized_binop = match binop {
+            BinOp::Add => instr!(XxAdd),
+            BinOp::Mul => instr!(XxMul),
         };
-        let rhs_bfe_const = match rhs.borrow().expression {
-            CircuitExpression::BConst(bfe) => Some(bfe),
-            _ => None,
-        };
-        let lhs = self.evaluate_single_node(&lhs.borrow());
-        let rhs = self.evaluate_single_node(&rhs.borrow());
 
-        match (binop, lhs_bfe_const, rhs_bfe_const) {
-            (_, Some(_), Some(_)) => unreachable!("Constant folding should have handled this"),
-            (binop, None, None) => {
-                let binop = match binop {
-                    BinOp::Add => instr!(XxAdd),
-                    BinOp::Mul => instr!(XxMul),
-                };
-                [lhs, rhs, binop].concat()
+        // Use more efficient instructions if one side is a base field element.
+        // Applying domain-specific knowledge, `CircuitExpression::Input`s can
+        // never be base field elements as the verifier only evaluates the
+        // constraints on out-of-domain rows. The TASM backend is only intended
+        // for verification.
+        let extract_bfe_const =
+            |circuit: &Rc<RefCell<ConstraintCircuit<II>>>| match circuit.borrow().expression {
+                CircuitExpression::BConst(bfe) => Some(bfe),
+                _ => None,
+            };
+
+        match (binop, extract_bfe_const(lhs), extract_bfe_const(rhs)) {
+            (_, Some(_), Some(_)) => {
+                panic!("Constant folding should have eliminated this binary operation")
             }
-            (BinOp::Add, None, Some(bfe)) => [lhs, instr!(AddI(bfe))].concat(),
-            (BinOp::Add, Some(bfe), None) => [rhs, instr!(AddI(bfe))].concat(),
-            (BinOp::Mul, None, Some(_)) => [lhs, rhs, instr!(XbMul)].concat(),
-            (BinOp::Mul, Some(_), None) => [rhs, lhs, instr!(XbMul)].concat(),
+            (_, None, None) => [tokenized_lhs, tokenized_rhs, tokenized_binop].concat(),
+            (BinOp::Add, None, Some(c)) => [tokenized_lhs, instr!(AddI(c))].concat(),
+            (BinOp::Add, Some(c), None) => [tokenized_rhs, instr!(AddI(c))].concat(),
+            (BinOp::Mul, None, Some(_)) => [tokenized_lhs, tokenized_rhs, instr!(XbMul)].concat(),
+            (BinOp::Mul, Some(_), None) => [tokenized_rhs, tokenized_lhs, instr!(XbMul)].concat(),
         }
     }
 
@@ -790,21 +790,15 @@ impl TasmBackend {
 
     fn load_node<II: InputIndicator>(&self, circuit: &ConstraintCircuit<II>) -> Vec<TokenStream> {
         match circuit.expression {
-            CircuitExpression::BConst(bfe) => Self::load_base_field_constant(bfe),
-            CircuitExpression::XConst(xfe) => Self::load_ext_field_constant(xfe),
+            CircuitExpression::BConst(bfe) => push!(bfe),
+            CircuitExpression::XConst(xfe) => {
+                let [c0, c1, c2] = xfe.coefficients.map(|c| push!(c));
+                [c2, c1, c0].concat()
+            }
             CircuitExpression::Input(input) => self.load_input(input),
             CircuitExpression::Challenge(challenge_idx) => Self::load_challenge(challenge_idx),
             CircuitExpression::BinOp(_, _, _) => Self::load_evaluated_bin_op(circuit.id),
         }
-    }
-
-    fn load_base_field_constant(bfe: BFieldElement) -> Vec<TokenStream> {
-        push!(bfe)
-    }
-
-    fn load_ext_field_constant(xfe: XFieldElement) -> Vec<TokenStream> {
-        let [c0, c1, c2] = xfe.coefficients.map(|c| push!(c));
-        [c2, c1, c0].concat()
     }
 
     fn load_input<II: InputIndicator>(&self, input: II) -> Vec<TokenStream> {
