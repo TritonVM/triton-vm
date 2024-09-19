@@ -42,13 +42,13 @@ jobs:
       - name: Test triton-isa
         run: cargo nextest run -p triton-isa --no-fail-fast --all-targets
 
-      - name: Test triton--constraint-circuit
+      - name: Test triton-constraint-circuit
         run: cargo nextest run -p triton-constraint-circuit --no-fail-fast --all-targets
 
       - name: Test triton-air
         run: cargo nextest run -p triton-air --no-fail-fast --all-targets
 
-      - name: Test triton--constraint-builder
+      - name: Test triton-constraint-builder
         # without --all-targets because the divan benchmark doesn't play ball with nextest
         run: cargo nextest run -p triton-constraint-builder --no-fail-fast
 
