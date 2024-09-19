@@ -29,7 +29,7 @@ twenty-first.workspace = true
 proptest.workspace = true
 proptest-arbitrary-interop.workspace = true
 test-strategy.workspace = true
-divan = "0.1.14"
+divan.workspace = true
 
 [lints]
 workspace = true
