@@ -2105,6 +2105,10 @@ mod tests {
     /// to changes to the definitions of the constraints. If the change to the
     /// constraints was intentional, this test should fail until the expected
     /// value in the assert-statement is updated.
+    ///
+    /// This test might fail in the course of CI for a pull request, if in the
+    /// mean time the constraints are modified on master. In this case, rebasing
+    /// the topic branch on top of master is recommended.
     #[test]
     fn air_constraints_evaluators_have_not_changed() {
         let seed: [u8; 32] = [
@@ -2188,9 +2192,9 @@ mod tests {
         // evaluate polynomial in pseudorandom indeterminate
         let value = polynomial.evaluate(rng.gen());
         let expected = xfe!([
-            9140558386905394900_u64,
-            6769459618545093804_u64,
-            3756754445351585926_u64
+            14115119063754412580_u64,
+            13661591558076455036_u64,
+            14714205515170095309_u64,
         ]);
         assert_eq!(expected, value, "expected: {expected}\nobserved: {value}");
     }
