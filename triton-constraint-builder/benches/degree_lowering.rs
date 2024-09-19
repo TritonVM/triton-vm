@@ -20,9 +20,10 @@ fn initial_constraints(bencher: divan::Bencher) {
             (degree_lowering_info, constraints)
         })
         .bench_values(|(degree_lowering_info, mut constraints)| {
-            let (initial_main_substitutions, initial_aux_substitutions) =
-                ConstraintCircuitMonad::lower_to_degree(&mut constraints, degree_lowering_info);
-            black_box((initial_main_substitutions, initial_aux_substitutions));
+            black_box(ConstraintCircuitMonad::lower_to_degree(
+                &mut constraints,
+                degree_lowering_info,
+            ));
         });
 }
 
@@ -35,11 +36,9 @@ fn consistency_constraints(bencher: divan::Bencher) {
             (degree_lowering_info, constraints)
         })
         .bench_values(|(degree_lowering_info, mut constraints)| {
-            let (consistency_main_substitutions, consistency_aux_substitutions) =
-                ConstraintCircuitMonad::lower_to_degree(&mut constraints, degree_lowering_info);
-            black_box((
-                consistency_main_substitutions,
-                consistency_aux_substitutions,
+            black_box(ConstraintCircuitMonad::lower_to_degree(
+                &mut constraints,
+                degree_lowering_info,
             ));
         });
 }
@@ -53,9 +52,10 @@ fn transition_constraints(bencher: divan::Bencher) {
             (degree_lowering_info, constraints)
         })
         .bench_values(|(degree_lowering_info, mut constraints)| {
-            let (transition_main_substitutions, transition_aux_substitutions) =
-                ConstraintCircuitMonad::lower_to_degree(&mut constraints, degree_lowering_info);
-            black_box((transition_main_substitutions, transition_aux_substitutions));
+            black_box(ConstraintCircuitMonad::lower_to_degree(
+                &mut constraints,
+                degree_lowering_info,
+            ));
         });
 }
 
@@ -68,9 +68,10 @@ fn terminal_constraints(bencher: divan::Bencher) {
             (degree_lowering_info, constraints)
         })
         .bench_values(|(degree_lowering_info, mut constraints)| {
-            let (terminal_main_substitutions, terminal_aux_substitutions) =
-                ConstraintCircuitMonad::lower_to_degree(&mut constraints, degree_lowering_info);
-            black_box((terminal_main_substitutions, terminal_aux_substitutions));
+            black_box(ConstraintCircuitMonad::lower_to_degree(
+                &mut constraints,
+                degree_lowering_info,
+            ));
         });
 }
 
@@ -83,8 +84,8 @@ fn degree_lower_all(bencher: divan::Bencher) {
             (degree_lowering_info, constraints)
         })
         .bench_values(|(degree_lowering_info, mut constraints)| {
-            let substitutions =
-                constraints.lower_to_target_degree_through_substitutions(degree_lowering_info);
-            black_box(substitutions);
+            black_box(
+                constraints.lower_to_target_degree_through_substitutions(degree_lowering_info),
+            );
         });
 }
