@@ -276,11 +276,11 @@ impl InputIndicator for DualRowIndicator {
 /// - challenges, _i.e._, (pseudo-)random values sampled through the Fiat-Shamir
 ///   heuristic.
 ///
-/// An internal node, representing some binary operation, is either addition, multiplication.
-/// The left and right children of the node are the operands of the binary operation.
-/// The left and right children are not themselves `CircuitExpression`s, but rather
-/// [`ConstraintCircuit`]s, which is a wrapper around `CircuitExpression` that manages
-/// additional bookkeeping information.
+/// An internal node, representing some binary operation, is either addition or
+/// multiplication. The left and right children of the node are the operands of
+/// the binary operation. The left and right children are not themselves `CircuitExpression`s,
+/// but rather [`ConstraintCircuit`]s, which is a wrapper around `CircuitExpression`
+/// that manages additional bookkeeping information.
 #[derive(Debug, Clone)]
 pub enum CircuitExpression<II: InputIndicator> {
     BConst(BFieldElement),
