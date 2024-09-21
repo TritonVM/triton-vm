@@ -1772,50 +1772,39 @@ mod tests {
                 }
 
                 for constant in constants {
-                    match constant {
-                        CircuitConstantType::Base(bfe) => {
-                            let node = builder.b_constant(bfe);
-                            all_nodes.push(node);
-                        }
-                        CircuitConstantType::Extension(xfe) => {
-                            let node = builder.x_constant(xfe);
-                            all_nodes.push(node);
-                        }
-                    }
+                    let node = match constant {
+                        CircuitConstantType::Base(bfe) => builder.b_constant(bfe),
+                        CircuitConstantType::Extension(xfe) => builder.x_constant(xfe),
+                    };
+                    all_nodes.push(node);
                 }
 
-                if !all_nodes.is_empty() {
-                    for operation in operations {
-                        match operation {
-                            CircuitOperationChoice::Add(lhs, rhs) => {
-                                let lhs_index = lhs % all_nodes.len();
-                                let rhs_index = rhs % all_nodes.len();
+                if all_nodes.is_empty() {
+                    return vec![];
+                }
 
-                                let lhs_node = all_nodes[lhs_index].clone();
-                                let rhs_node = all_nodes[rhs_index].clone();
+                for operation in operations {
+                    let (lhs, rhs) = match operation {
+                        CircuitOperationChoice::Add(lhs, rhs) => (lhs, rhs),
+                        CircuitOperationChoice::Mul(lhs, rhs) => (lhs, rhs),
+                    };
 
-                                let node = lhs_node + rhs_node;
-                                all_nodes.push(node);
-                            }
-                            CircuitOperationChoice::Mul(lhs, rhs) => {
-                                let lhs_index = lhs % all_nodes.len();
-                                let rhs_index = rhs % all_nodes.len();
+                    let lhs_index = lhs % all_nodes.len();
+                    let rhs_index = rhs % all_nodes.len();
 
-                                let lhs_node = all_nodes[lhs_index].clone();
-                                let rhs_node = all_nodes[rhs_index].clone();
+                    let lhs_node = all_nodes[lhs_index].clone();
+                    let rhs_node = all_nodes[rhs_index].clone();
 
-                                let node = lhs_node * rhs_node;
-                                all_nodes.push(node);
-                            }
-                        }
-                    }
+                    let node = match operation {
+                        CircuitOperationChoice::Add(_, _) => lhs_node + rhs_node,
+                        CircuitOperationChoice::Mul(_, _) => lhs_node * rhs_node,
+                    };
+                    all_nodes.push(node);
                 }
 
                 for output in outputs {
-                    if !all_nodes.is_empty() {
-                        let index = output % all_nodes.len();
-                        output_nodes.push(all_nodes[index].clone());
-                    }
+                    let index = output % all_nodes.len();
+                    output_nodes.push(all_nodes[index].clone());
                 }
 
                 output_nodes
