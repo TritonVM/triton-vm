@@ -707,6 +707,20 @@ impl<II: InputIndicator> Sum for ConstraintCircuitMonad<II> {
     }
 }
 
+struct EvolvingMainConstraintsNumber(usize);
+impl From<EvolvingMainConstraintsNumber> for usize {
+    fn from(value: EvolvingMainConstraintsNumber) -> Self {
+        value.0
+    }
+}
+
+struct EvolvingAuxConstraintsNumber(usize);
+impl From<EvolvingAuxConstraintsNumber> for usize {
+    fn from(value: EvolvingAuxConstraintsNumber) -> Self {
+        value.0
+    }
+}
+
 impl<II: InputIndicator> ConstraintCircuitMonad<II> {
     /// Unwrap a ConstraintCircuitMonad to reveal its inner ConstraintCircuit
     pub fn consume(&self) -> ConstraintCircuit<II> {
@@ -761,8 +775,8 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
                 multicircuit,
                 info,
                 chosen_node_id,
-                main_constraints.len(),
-                aux_constraints.len(),
+                EvolvingMainConstraintsNumber(main_constraints.len()),
+                EvolvingAuxConstraintsNumber(aux_constraints.len()),
             );
 
             if new_constraint.circuit.borrow().evaluates_to_base_element() {
@@ -785,8 +799,8 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
         multicircuit: &mut [Self],
         info: DegreeLoweringInfo,
         chosen_node_id: usize,
-        new_main_constraints_count: usize,
-        new_aux_constraints_count: usize,
+        new_main_constraints_count: EvolvingMainConstraintsNumber,
+        new_aux_constraints_count: EvolvingAuxConstraintsNumber,
     ) -> ConstraintCircuitMonad<II> {
         let builder = multicircuit[0].builder.clone();
 
@@ -794,10 +808,10 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
         let chosen_node = builder.all_nodes.borrow()[&chosen_node_id].clone();
         let chosen_node_is_main_col = chosen_node.circuit.borrow().evaluates_to_base_element();
         let new_input_indicator = if chosen_node_is_main_col {
-            let new_main_col_idx = info.num_main_cols + new_main_constraints_count;
+            let new_main_col_idx = info.num_main_cols + usize::from(new_main_constraints_count);
             II::main_table_input(new_main_col_idx)
         } else {
-            let new_aux_col_idx = info.num_aux_cols + new_aux_constraints_count;
+            let new_aux_col_idx = info.num_aux_cols + usize::from(new_aux_constraints_count);
             II::aux_table_input(new_aux_col_idx)
         };
         let new_variable = builder.input(new_input_indicator);
@@ -1951,8 +1965,8 @@ mod tests {
             &mut multicircuit_monad,
             degree_lowering_info,
             substitution_node_id,
-            0,
-            0,
+            EvolvingMainConstraintsNumber(0),
+            EvolvingAuxConstraintsNumber(0),
         );
 
         // extract substituted constraint
