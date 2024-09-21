@@ -263,22 +263,24 @@ impl InputIndicator for DualRowIndicator {
     }
 }
 
-/// A circuit expression is the recursive data structure that represents the constraint circuit.
-/// It is a directed, acyclic graph of binary operations on a) the variables corresponding
-/// to columns in the AET, b) constants, and c) challenges. It has multiple roots, making it a “multitree.” Each
-/// root corresponds to one constraint.
+/// A circuit expression is the recursive data structure that represents the constraint
+/// circuit. It is a directed, acyclic graph of binary operations on a) the variables
+/// corresponding to columns in the AET, b) constants, and c) challenges. It has
+/// multiple roots, making it a “multitree.” Each root corresponds to one constraint.
 ///
 /// The leafs of the tree are
 /// - constants in the base field, _i.e._, [`BFieldElement`]s,
 /// - constants in the extension field, _i.e._, [`XFieldElement`]s,
-/// - input variables, _i.e._, entries from the Algebraic Execution Trace, main or aux, and
-/// - challenges, _i.e._, (pseudo-)random values sampled through the Fiat-Shamir heuristic.
+/// - input variables, _i.e._, entries from the Algebraic Execution Trace, main
+///   or aux, and
+/// - challenges, _i.e._, (pseudo-)random values sampled through the Fiat-Shamir
+///   heuristic.
 ///
 /// An internal node, representing some binary operation, is either addition, multiplication.
 /// The left and right children of the node are the operands of the binary operation.
 /// The left and right children are not themselves `CircuitExpression`s, but rather
-/// [`ConstraintCircuit`]s, which is a wrapper around `CircuitExpression` that manages additional
-/// bookkeeping information.
+/// [`ConstraintCircuit`]s, which is a wrapper around `CircuitExpression` that manages
+/// additional bookkeeping information.
 #[derive(Debug, Clone)]
 pub enum CircuitExpression<II: InputIndicator> {
     BConst(BFieldElement),
