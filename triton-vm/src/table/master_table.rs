@@ -2103,20 +2103,14 @@ mod tests {
     /// This test catches (with high probability) unintended changes, whether due
     /// to nondeterminisms (on a single machine or across various machines) or due
     /// to changes to the definitions of the constraints. If the change to the
-    /// constraints was intentional, this test should fail until the expected
-    /// value in the assert-statement is updated.
+    /// constraints was intentional, this test should be updated.
     ///
     /// This test might fail in the course of CI for a pull request, if in the
     /// mean time the constraints are modified on master. In this case, rebasing
     /// the topic branch on top of master is recommended.
     #[test]
     fn air_constraints_evaluators_have_not_changed() {
-        let seed: [u8; 32] = [
-            193, 123, 173, 34, 45, 172, 73, 224, 156, 208, 121, 29, 245, 142, 215, 124, 188, 114,
-            203, 148, 186, 245, 224, 76, 142, 129, 82, 225, 81, 28, 216, 183,
-        ];
-
-        let mut rng: StdRng = SeedableRng::from_seed(seed);
+        let mut rng = StdRng::seed_from_u64(3508729174085202315_u64);
 
         // pseudorandomly populate circuit inputs
         let main_row_current_base = Array1::from(rng.gen::<MainRow<BFieldElement>>().to_vec());
@@ -2192,10 +2186,15 @@ mod tests {
         // evaluate polynomial in pseudorandom indeterminate
         let value = polynomial.evaluate(rng.gen());
         let expected = xfe!([
-            14115119063754412580_u64,
-            13661591558076455036_u64,
-            14714205515170095309_u64,
+            3564660585377840245_u64,
+            8403714483000428991_u64,
+            2799326871924992342_u64,
         ]);
-        assert_eq!(expected, value, "expected: {expected}\nobserved: {value}");
+        assert_eq!(
+            expected, value,
+            "expected: {expected}\nobserved: {value}\n\
+        If there was an intentional change to the constraints, don't forget to \
+        update the value of `expected`."
+        );
     }
 }
