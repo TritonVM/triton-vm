@@ -1894,20 +1894,19 @@ mod tests {
         #[strategy(arbitrary_circuit_monad(10, 10, 10, 200, 10))] mut multicircuit_monad: Vec<
             ConstraintCircuitMonad<SingleRowIndicator>,
         >,
-        #[strategy(vec(arb::<BFieldElement>(), ConstraintCircuitMonad::num_main_inputs(&#multicircuit_monad)))]
+        #[strategy(vec(arb(), ConstraintCircuitMonad::num_main_inputs(&#multicircuit_monad)))]
         #[filter(!#main_input.is_empty())]
         main_input: Vec<BFieldElement>,
-        #[strategy(vec(arb::<XFieldElement>(), ConstraintCircuitMonad::num_aux_inputs(&#multicircuit_monad)))]
+        #[strategy(vec(arb(), ConstraintCircuitMonad::num_aux_inputs(&#multicircuit_monad)))]
         #[filter(!#aux_input.is_empty())]
         aux_input: Vec<XFieldElement>,
-        #[strategy(vec(arb::<XFieldElement>(), ConstraintCircuitMonad::num_challenges(&#multicircuit_monad)))]
+        #[strategy(vec(arb(), ConstraintCircuitMonad::num_challenges(&#multicircuit_monad)))]
         challenges: Vec<XFieldElement>,
         #[strategy(arb())] substitution_node_index: usize,
     ) {
         let mut main_input = Array2::from_shape_vec((1, main_input.len()), main_input).unwrap();
         let mut aux_input = Array2::from_shape_vec((1, aux_input.len()), aux_input).unwrap();
 
-        // compute circuit output before degree-lowering
         let output_before_lowering = multicircuit_monad
             .iter()
             .map(|constraint| {
