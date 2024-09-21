@@ -1103,7 +1103,8 @@ mod tests {
     use std::hash::Hasher;
 
     use itertools::Itertools;
-    use ndarray::{Array2, Axis};
+    use ndarray::Array2;
+    use ndarray::Axis;
     use proptest::arbitrary::Arbitrary;
     use proptest::collection::vec;
     use proptest::prelude::*;
