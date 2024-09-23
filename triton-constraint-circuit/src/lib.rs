@@ -1276,7 +1276,13 @@ mod tests {
         /// The number of inputs from the aux table
         fn num_aux_inputs(constraints: &[Self]) -> usize {
             Self::iter_nodes(constraints)
-                .filter(|(_, cc)| !cc.is_main_table_column())
+                .filter(|(_, cc)| {
+                    if let CircuitExpression::Input(ii) = cc.circuit.as_ref().borrow().expression {
+                        !ii.is_main_table_column()
+                    } else {
+                        false
+                    }
+                })
                 .count()
         }
 
@@ -1716,13 +1722,13 @@ mod tests {
         num_inputs: usize,
         num_challenges: usize,
         num_constants: usize,
-        num_binops: usize,
+        num_operations: usize,
         num_outputs: usize,
     ) -> BoxedStrategy<Vec<ConstraintCircuitMonad<II>>> {
         (
             vec(CircuitInputType::arbitrary(), num_inputs),
             vec(CircuitConstantType::arbitrary(), num_constants),
-            vec(CircuitOperationChoice::arbitrary(), num_binops),
+            vec(CircuitOperationChoice::arbitrary(), num_operations),
             vec(arb::<usize>(), num_outputs),
         )
             .prop_map(move |(inputs, constants, operations, outputs)| {
