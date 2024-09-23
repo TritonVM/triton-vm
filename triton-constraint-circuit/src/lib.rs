@@ -1923,13 +1923,8 @@ mod tests {
 
         let output_before_lowering = multicircuit_monad
             .iter()
-            .map(|constraint| {
-                constraint.circuit.borrow().evaluate(
-                    main_input.view(),
-                    aux_input.view(),
-                    &challenges,
-                )
-            })
+            .map(|m| m.circuit.borrow())
+            .map(|c| c.evaluate(main_input.view(), aux_input.view(), &challenges))
             .collect_vec();
 
         // apply one step of degree-lowering
@@ -1993,13 +1988,8 @@ mod tests {
         // evaluate again
         let output_after_lowering = multicircuit_monad
             .iter()
-            .map(|constraint| {
-                constraint.circuit.borrow().evaluate(
-                    main_input.view(),
-                    aux_input.view(),
-                    &challenges,
-                )
-            })
+            .map(|m| m.circuit.borrow())
+            .map(|c| c.evaluate(main_input.view(), aux_input.view(), &challenges))
             .collect_vec();
 
         prop_assert_eq!(output_before_lowering, output_after_lowering);
