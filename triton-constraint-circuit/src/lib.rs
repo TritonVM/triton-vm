@@ -1117,6 +1117,7 @@ fn random_circuit_leaf<'a, II: InputIndicator + Arbitrary<'a>>(
 mod tests {
     use std::collections::hash_map::DefaultHasher;
     use std::hash::Hasher;
+    use std::ops::Not;
 
     use itertools::Itertools;
     use ndarray::Array2;
@@ -1937,13 +1938,7 @@ mod tests {
             .cycle()
             .skip(substitution_node_index % num_nodes)
             .take(num_nodes)
-            .find_map(|(id, monad)| {
-                if monad.circuit.borrow().is_zero() {
-                    None
-                } else {
-                    Some(id)
-                }
-            })
+            .find_map(|(id, monad)| monad.circuit.borrow().is_zero().not().then_some(id))
             .expect("no suitable nodes to substitute");
 
         let degree_lowering_info = DegreeLoweringInfo {
