@@ -1968,7 +1968,7 @@ mod tests {
         let CircuitExpression::BinOp(BinOp::Add, variable, neg_expression) =
             &substitution_constraint.circuit.as_ref().borrow().expression
         else {
-            unreachable!();
+            panic!();
         };
         let extra_input =
             match &neg_expression.as_ref().borrow().expression {
@@ -1978,7 +1978,7 @@ mod tests {
                 CircuitExpression::BConst(c) => -c.lift(),
                 CircuitExpression::XConst(c) => -*c,
                 _ => {
-                    unreachable!()
+                    panic!()
                 }
             };
         if variable.borrow().evaluates_to_base_element() {
