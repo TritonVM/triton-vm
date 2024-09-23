@@ -1934,27 +1934,22 @@ mod tests {
 
         // apply one step of degree-lowering
         let num_nodes = ConstraintCircuitMonad::num_nodes(&multicircuit_monad);
-        let (mut substitution_node_id, mut substituted) = multicircuit_monad[0]
+        let &substitution_node_id = multicircuit_monad[0]
             .builder
             .all_nodes
             .borrow()
             .iter()
-            .nth(substitution_node_index % num_nodes)
-            .map(|(i, n)| (*i, n.clone()))
-            .unwrap();
-        let mut j = 0;
-        while substituted.circuit.borrow().is_zero() && j < num_nodes {
-            (substitution_node_id, substituted) = multicircuit_monad[0]
-                .builder
-                .all_nodes
-                .borrow()
-                .iter()
-                .nth((substitution_node_index + j) % num_nodes)
-                .map(|(i, n)| (*i, n.clone()))
-                .unwrap();
-            j += 1;
-        }
-        prop_assert_ne!(j, num_nodes, "no suitable nodes to substitute");
+            .cycle()
+            .skip(substitution_node_index % num_nodes)
+            .take(num_nodes)
+            .find_map(|(id, monad)| {
+                if monad.circuit.borrow().is_zero() {
+                    None
+                } else {
+                    Some(id)
+                }
+            })
+            .expect("no suitable nodes to substitute");
 
         let degree_lowering_info = DegreeLoweringInfo {
             target_degree: 2,
