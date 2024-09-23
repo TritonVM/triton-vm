@@ -1250,7 +1250,7 @@ mod tests {
             }
         }
 
-        /// Counts the number of inputs from the main table
+        /// The number of inputs from the main table
         fn num_nodes(constraints: &[Self]) -> usize {
             Self::iter_nodes(constraints).count()
         }
@@ -1265,7 +1265,7 @@ mod tests {
             }
         }
 
-        /// Counts the number of inputs from the main table
+        /// The number of inputs from the main table
         fn num_main_inputs(constraints: &[Self]) -> usize {
             Self::iter_nodes(constraints)
                 .filter(|(_, cc)| cc.is_main_table_column())
@@ -1273,19 +1273,19 @@ mod tests {
                 .count()
         }
 
-        /// Counts the number of inputs from the aux table
+        /// The number of inputs from the aux table
         fn num_aux_inputs(constraints: &[Self]) -> usize {
             Self::iter_nodes(constraints)
                 .filter(|(_, cc)| !cc.is_main_table_column())
                 .count()
         }
 
-        /// Counts the number of total (*i.e.*, main + aux) inputs
+        /// The number of total (*i.e.*, main + aux) inputs
         fn num_inputs(constraints: &[Self]) -> usize {
             Self::num_main_inputs(constraints) + Self::num_aux_inputs(constraints)
         }
 
-        /// Counts the number of challenges
+        /// The number of challenges
         fn num_challenges(constraints: &[Self]) -> usize {
             Self::iter_nodes(constraints)
                 .filter(|(_, cc)| {
@@ -1297,7 +1297,7 @@ mod tests {
                 .count()
         }
 
-        /// Counts the number of `BinOp`s
+        // The number of `BinOp`s
         fn num_binops(constraints: &[Self]) -> usize {
             Self::iter_nodes(constraints)
                 .filter(|(_, cc)| {
@@ -1309,7 +1309,7 @@ mod tests {
                 .count()
         }
 
-        /// Counts the number of BFE constants
+        /// The number of BFE constants
         fn num_bfield_constants(constraints: &[Self]) -> usize {
             Self::iter_nodes(constraints)
                 .filter(|(_, cc)| {
@@ -1321,7 +1321,7 @@ mod tests {
                 .count()
         }
 
-        /// Counts the number of XFE constants
+        /// The number of XFE constants
         fn num_xfield_constants(constraints: &[Self]) -> usize {
             Self::iter_nodes(constraints)
                 .filter(|(_, cc)| {
