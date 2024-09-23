@@ -1250,7 +1250,7 @@ mod tests {
             }
         }
 
-        /// The number of inputs from the main table
+        /// The total number of nodes in the multicircuit
         fn num_nodes(constraints: &[Self]) -> usize {
             Self::iter_nodes(constraints).count()
         }
