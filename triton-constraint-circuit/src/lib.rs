@@ -1982,23 +1982,12 @@ mod tests {
                 }
             };
         if variable.borrow().evaluates_to_base_element() {
-            main_input
-                .append(
-                    Axis(1),
-                    Array2::from_shape_vec([1, 1], vec![extra_input.coefficients[0]])
-                        .unwrap()
-                        .view(),
-                )
-                .unwrap();
+            let extra_input = extra_input.unlift().unwrap();
+            let extra_input = Array2::from_shape_vec([1, 1], vec![extra_input]).unwrap();
+            main_input.append(Axis(1), extra_input.view()).unwrap();
         } else {
-            aux_input
-                .append(
-                    Axis(1),
-                    Array2::from_shape_vec([1, 1], vec![extra_input])
-                        .unwrap()
-                        .view(),
-                )
-                .unwrap();
+            let extra_input = Array2::from_shape_vec([1, 1], vec![extra_input]).unwrap();
+            aux_input.append(Axis(1), extra_input.view()).unwrap();
         }
 
         // evaluate again
