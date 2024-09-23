@@ -1856,7 +1856,7 @@ mod tests {
     /// is not the zero vector (with high probability) and so the given input is
     /// *not* a satisfying assignment (with high probability). However, the
     /// circuit can be extended by way of thought experiment into one that subtracts
-    /// a fixed constant from the original output. For the right choice of substrahend,
+    /// a fixed constant from the original output. For the right choice of subtrahend,
     /// the random input now *is* a satisfying assignment to the circuit.
     ///
     /// Specifically, let `input` denote the original (before degree lowering) input,
@@ -1884,25 +1884,25 @@ mod tests {
     ///
     /// This description makes use of the following commutative diagram.
     ///
-    /// ```notest
-    ///          C ---- degree-lowering -----> C || k
-    ///          |                               |
-    /// subtract |                      subtract |
-    ///    fixed |                         fixed |
-    ///   output |                        output |
-    ///          |                               |
+    /// ```text
+    ///          C ───── degree-lowering ────> C || k
+    ///          │                               │
+    /// subtract │                      subtract │
+    ///    fixed │                         fixed │
+    ///   output │                        output │
+    ///          │                               │
     ///          v                               v
-    ///          C* --- degree-lowering ----> C* || k
+    ///          C* ─── degree-lowering ────> C* || k
     /// ```
     ///
     /// The point of this elaboration is that in this particular case, testing completeness
     /// and soundness require the same code path. If `input` and `input || some_expr(input)`
     /// work for circuits before and after degree lowering, this fact establishes
     /// both completeness and soundness simultaneously.
-    ///
-    /// Shrinking on this test is disabled because we noticed some weird ass behavior.
-    /// In short, shrinking does not play ball with the arbitrary circuit generator;
-    /// it seems to make the generated circuits *more* complex, not less so.
+    //
+    // Shrinking on this test is disabled because we noticed some weird ass behavior.
+    // In short, shrinking does not play ball with the arbitrary circuit generator;
+    // it seems to make the generated circuits *more* complex, not less so.
     #[proptest(cases = 1000, max_shrink_iters = 0)]
     fn node_substitution_is_complete_and_sound(
         #[strategy(arbitrary_circuit_monad(10, 10, 10, 200, 10))] mut multicircuit_monad: Vec<
@@ -2002,10 +2002,8 @@ mod tests {
             })
             .collect_vec();
 
-        // assert same value in original constraints
         prop_assert_eq!(output_before_lowering, output_after_lowering);
 
-        // assert zero in substitution constraint
         prop_assert!(substitution_constraint
             .circuit
             .borrow()
