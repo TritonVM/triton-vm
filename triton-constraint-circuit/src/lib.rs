@@ -1933,7 +1933,7 @@ mod tests {
             .collect_vec();
 
         // apply one step of degree-lowering
-        let num_nodes = multicircuit_monad[0].builder.all_nodes.borrow().len();
+        let num_nodes = ConstraintCircuitMonad::num_nodes(&multicircuit_monad);
         let (mut substitution_node_id, mut substituted) = multicircuit_monad[0]
             .builder
             .all_nodes
