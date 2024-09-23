@@ -1716,16 +1716,13 @@ mod tests {
         num_inputs: usize,
         num_challenges: usize,
         num_constants: usize,
-        num_nodes: usize,
+        num_binops: usize,
         num_outputs: usize,
     ) -> BoxedStrategy<Vec<ConstraintCircuitMonad<II>>> {
         (
             vec(CircuitInputType::arbitrary(), num_inputs),
             vec(CircuitConstantType::arbitrary(), num_constants),
-            vec(
-                CircuitOperationChoice::arbitrary(),
-                num_nodes - num_inputs - num_constants - num_outputs,
-            ),
+            vec(CircuitOperationChoice::arbitrary(), num_binops),
             vec(arb::<usize>(), num_outputs),
         )
             .prop_map(move |(inputs, constants, operations, outputs)| {
@@ -1805,7 +1802,7 @@ mod tests {
 
     #[proptest]
     fn node_type_counts_add_up(
-        #[strategy(arbitrary_circuit_monad(10, 10, 10, 100, 10))] multicircuit_monad: Vec<
+        #[strategy(arbitrary_circuit_monad(10, 10, 10, 60, 10))] multicircuit_monad: Vec<
             ConstraintCircuitMonad<SingleRowIndicator>,
         >,
     ) {
@@ -1882,7 +1879,7 @@ mod tests {
     // it seems to make the generated circuits *more* complex, not less so.
     #[proptest(cases = 1000, max_shrink_iters = 0)]
     fn node_substitution_is_complete_and_sound(
-        #[strategy(arbitrary_circuit_monad(10, 10, 10, 200, 10))] mut multicircuit_monad: Vec<
+        #[strategy(arbitrary_circuit_monad(10, 10, 10, 160, 10))] mut multicircuit_monad: Vec<
             ConstraintCircuitMonad<SingleRowIndicator>,
         >,
         #[strategy(vec(arb(), ConstraintCircuitMonad::num_main_inputs(&#multicircuit_monad)))]
