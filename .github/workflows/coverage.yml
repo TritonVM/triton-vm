@@ -28,7 +28,7 @@ jobs:
         uses: taiki-e/install-action@nextest
 
       - name: Collect coverage data
-        run: cargo llvm-cov nextest --all-targets --lcov --output-path lcov.info
+        run: cargo llvm-cov nextest --lcov --output-path lcov.info
 
       - name: Upload coverage to coveralls.io
         uses: coverallsapp/github-action@v2

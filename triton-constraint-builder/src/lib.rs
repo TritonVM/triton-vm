@@ -42,6 +42,17 @@ impl Constraints {
         }
     }
 
+    // Implementing Default for DegreeLoweringInfo is impossible because the
+    // constants are defined in crate `air` but struct `DegreeLoweringInfo` is
+    // defined in crate `triton-constraint-circuit`. Cfr. orphan rule.
+    pub fn default_degree_lowering_info() -> DegreeLoweringInfo {
+        constraint_circuit::DegreeLoweringInfo {
+            target_degree: air::TARGET_DEGREE,
+            num_main_cols: air::table::NUM_MAIN_COLUMNS,
+            num_aux_cols: air::table::NUM_AUX_COLUMNS,
+        }
+    }
+
     pub fn initial_constraints() -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
         let circuit_builder = ConstraintCircuitBuilder::new();
         vec![

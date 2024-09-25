@@ -263,22 +263,24 @@ impl InputIndicator for DualRowIndicator {
     }
 }
 
-/// A circuit expression is the recursive data structure that represents the constraint polynomials.
-/// It is a directed, acyclic graph of binary operations on the variables of the constraint
-/// polynomials, constants, and challenges. It has multiple roots, making it a “multitree.” Each
-/// root corresponds to one constraint polynomial.
+/// A circuit expression is the recursive data structure that represents the constraint
+/// circuit. It is a directed, acyclic graph of binary operations on a) the variables
+/// corresponding to columns in the AET, b) constants, and c) challenges. It has
+/// multiple roots, making it a “multitree.” Each root corresponds to one constraint.
 ///
 /// The leafs of the tree are
 /// - constants in the base field, _i.e._, [`BFieldElement`]s,
 /// - constants in the extension field, _i.e._, [`XFieldElement`]s,
-/// - input variables, _i.e._, entries from the Algebraic Execution Trace, and
-/// - challenges, _i.e._, (pseudo-)random values sampled through the Fiat-Shamir heuristic.
+/// - input variables, _i.e._, entries from the Algebraic Execution Trace, main
+///   or aux, and
+/// - challenges, _i.e._, (pseudo-)random values sampled through the Fiat-Shamir
+///   heuristic.
 ///
-/// An inner node, representing some binary operation, is either addition, multiplication, or
-/// subtraction. The left and right children of the node are the operands of the binary operation.
-/// The left and right children are not themselves `CircuitExpression`s, but rather
-/// [`ConstraintCircuit`]s, which is a wrapper around `CircuitExpression` that manages additional
-/// bookkeeping information.
+/// An internal node, representing some binary operation, is either addition or
+/// multiplication. The left and right children of the node are the operands of
+/// the binary operation. The left and right children are not themselves `CircuitExpression`s,
+/// but rather [`ConstraintCircuit`]s, which is a wrapper around `CircuitExpression`
+/// that manages additional bookkeeping information.
 #[derive(Debug, Clone)]
 pub enum CircuitExpression<II: InputIndicator> {
     BConst(BFieldElement),
@@ -348,7 +350,11 @@ impl<II: InputIndicator> Hash for ConstraintCircuitMonad<II> {
     }
 }
 
-/// A wrapper around a [`CircuitExpression`] that manages additional bookkeeping information.
+/// A wrapper around a [`CircuitExpression`] that manages additional bookkeeping
+/// information, such as node id and visited counter.
+///
+/// In contrast to [`ConstraintCircuitMonad`], this struct cannot manage the state
+/// required to insert new nodes.
 #[derive(Debug, Clone)]
 pub struct ConstraintCircuit<II: InputIndicator> {
     pub id: usize,
@@ -545,8 +551,15 @@ impl<II: InputIndicator> ConstraintCircuit<II> {
     }
 }
 
-/// Constraint expressions, with context needed to ensure that two equal nodes are not added to
-/// the multicircuit.
+/// [`ConstraintCircuit`] with extra context pertaining to the whole multicircuit.
+///
+/// This context is needed to ensure that two equal nodes (meaning: same expression)
+/// are not added to the multicircuit. It also enables a rudimentary check for node
+/// equivalence (commutation + constant folding), in which case the existing expression
+/// is used instead.
+///
+/// One can create new instances of [`ConstraintCircuitMonad`] by applying arithmetic
+/// operations to existing instances, *e.g.*, `let c = a * b;`.
 #[derive(Clone)]
 pub struct ConstraintCircuitMonad<II: InputIndicator> {
     pub circuit: Rc<RefCell<ConstraintCircuit<II>>>,
@@ -694,20 +707,35 @@ impl<II: InputIndicator> Sum for ConstraintCircuitMonad<II> {
     }
 }
 
+struct EvolvingMainConstraintsNumber(usize);
+impl From<EvolvingMainConstraintsNumber> for usize {
+    fn from(value: EvolvingMainConstraintsNumber) -> Self {
+        value.0
+    }
+}
+
+struct EvolvingAuxConstraintsNumber(usize);
+impl From<EvolvingAuxConstraintsNumber> for usize {
+    fn from(value: EvolvingAuxConstraintsNumber) -> Self {
+        value.0
+    }
+}
+
 impl<II: InputIndicator> ConstraintCircuitMonad<II> {
     /// Unwrap a ConstraintCircuitMonad to reveal its inner ConstraintCircuit
     pub fn consume(&self) -> ConstraintCircuit<II> {
         self.circuit.borrow().to_owned()
     }
 
-    /// Lowers the degree of a given multicircuit to the target degree.
+    /// Lower the degree of a given multicircuit to the target degree.
     /// This is achieved by introducing additional variables and constraints.
     /// The appropriate substitutions are applied to the given multicircuit.
     /// The target degree must be greater than 1.
     ///
     /// The new constraints are returned as two vector of ConstraintCircuitMonads:
     /// the first corresponds to main columns and constraints,
-    /// the second to auxiliary columns and constraints.
+    /// the second to auxiliary columns and constraints. The modifications are
+    /// applied to the function argument in-place.
     ///
     /// Each returned constraint is guaranteed to correspond to some
     /// `CircuitExpression::BinaryOperation(BinOp::Sub, lhs, rhs)` where
@@ -715,6 +743,9 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
     /// - `rhs` is the (sub)circuit replaced by `lhs`.
     ///   These can then be used to construct new columns,
     ///   as well as derivation rules for filling those new columns.
+    ///
+    /// For example, starting with the constraint set {x^4}, we insert
+    /// {y - x^2} and modify in-place (x^4) --> (y^2).
     ///
     /// The highest index of main and auxiliary columns used by the multicircuit have to be
     /// provided. The uniqueness of the new columns' indices depends on these provided values.
@@ -737,42 +768,66 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
             return (main_constraints, aux_constraints);
         }
 
-        let builder = multicircuit[0].builder.clone();
-
         while Self::multicircuit_degree(multicircuit) > target_degree {
             let chosen_node_id = Self::pick_node_to_substitute(multicircuit, target_degree);
 
-            // Create a new variable.
-            let chosen_node = builder.all_nodes.borrow()[&chosen_node_id].clone();
-            let chosen_node_is_main_col = chosen_node.circuit.borrow().evaluates_to_base_element();
-            let new_input_indicator = if chosen_node_is_main_col {
-                let new_main_col_idx = info.num_main_cols + main_constraints.len();
-                II::main_table_input(new_main_col_idx)
+            let new_constraint = Self::apply_substitution(
+                multicircuit,
+                info,
+                chosen_node_id,
+                EvolvingMainConstraintsNumber(main_constraints.len()),
+                EvolvingAuxConstraintsNumber(aux_constraints.len()),
+            );
+
+            if new_constraint.circuit.borrow().evaluates_to_base_element() {
+                main_constraints.push(new_constraint)
             } else {
-                let new_aux_col_idx = info.num_aux_cols + aux_constraints.len();
-                II::aux_table_input(new_aux_col_idx)
-            };
-            let new_variable = builder.input(new_input_indicator);
-
-            // Substitute the chosen circuit with the new variable.
-            builder.substitute(chosen_node_id, new_variable.clone());
-
-            // Treat roots of the multicircuit explicitly.
-            for circuit in multicircuit.iter_mut() {
-                if circuit.circuit.borrow().id == chosen_node_id {
-                    circuit.circuit = new_variable.circuit.clone();
-                }
-            }
-
-            // Create new constraint and put it into the appropriate return vector.
-            let new_constraint = new_variable - chosen_node;
-            match chosen_node_is_main_col {
-                true => main_constraints.push(new_constraint),
-                false => aux_constraints.push(new_constraint),
+                aux_constraints.push(new_constraint)
             }
         }
 
         (main_constraints, aux_constraints)
+    }
+
+    /// Apply a substitution:
+    ///  - create a new variable to replaces the chosen node;
+    ///  - make all nodes that point to the chosen node point to the new
+    ///    variable instead;
+    ///  - return the new constraint that makes it sound: new variable minus
+    ///    chosen node's expression.
+    fn apply_substitution(
+        multicircuit: &mut [Self],
+        info: DegreeLoweringInfo,
+        chosen_node_id: usize,
+        new_main_constraints_count: EvolvingMainConstraintsNumber,
+        new_aux_constraints_count: EvolvingAuxConstraintsNumber,
+    ) -> ConstraintCircuitMonad<II> {
+        let builder = multicircuit[0].builder.clone();
+
+        // Create a new variable.
+        let chosen_node = builder.all_nodes.borrow()[&chosen_node_id].clone();
+        let chosen_node_is_main_col = chosen_node.circuit.borrow().evaluates_to_base_element();
+        let new_input_indicator = if chosen_node_is_main_col {
+            let new_main_col_idx = info.num_main_cols + usize::from(new_main_constraints_count);
+            II::main_table_input(new_main_col_idx)
+        } else {
+            let new_aux_col_idx = info.num_aux_cols + usize::from(new_aux_constraints_count);
+            II::aux_table_input(new_aux_col_idx)
+        };
+        let new_variable = builder.input(new_input_indicator);
+
+        // Make all descendants of the chosen node point to the new variable instead
+        builder.redirect_all_references_to_node(chosen_node_id, new_variable.clone());
+
+        // Treat roots of the multicircuit explicitly.
+        for circuit in multicircuit.iter_mut() {
+            if circuit.circuit.borrow().id == chosen_node_id {
+                circuit.circuit = new_variable.circuit.clone();
+            }
+        }
+
+        // return substitution equation
+        new_variable - chosen_node
     }
 
     /// Heuristically pick a node from the given multicircuit that is to be substituted with a new
@@ -864,7 +919,7 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
 
     /// Counts the number of nodes in this multicircuit. Only counts nodes that
     /// are used; not nodes that have been forgotten.
-    pub fn num_nodes(constraints: &[Self]) -> usize {
+    pub fn num_visible_nodes(constraints: &[Self]) -> usize {
         constraints
             .iter()
             .flat_map(|ccm| Self::all_nodes_in_circuit(&ccm.circuit.borrow()))
@@ -882,9 +937,11 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
     }
 }
 
+/// Helper struct to construct new leaf nodes (*i.e.*, input or challenge or constant)
+/// in the circuit multitree. Ensures that newly created nodes, even non-leaf nodes
+/// created through joining two other nodes using an arithmetic operation, get a
+/// unique ID.
 #[derive(Debug, Clone, Eq, PartialEq)]
-/// Helper struct to construct new leaf nodes in the circuit multitree. Ensures that each newly
-/// created node gets a unique ID.
 pub struct ConstraintCircuitBuilder<II: InputIndicator> {
     id_counter: Rc<RefCell<usize>>,
     all_nodes: Rc<RefCell<HashMap<usize, ConstraintCircuitMonad<II>>>>,
@@ -966,6 +1023,11 @@ impl<II: InputIndicator> ConstraintCircuitBuilder<II> {
     }
 
     fn make_leaf(&self, mut expression: CircuitExpression<II>) -> ConstraintCircuitMonad<II> {
+        assert!(
+            !matches!(expression, CircuitExpression::BinOp(_, _, _)),
+            "`make_leaf` is intended for anything but `BinOp`s"
+        );
+
         // Don't generate an X field leaf if it can be expressed as a B field leaf
         if let CircuitExpression::XConst(xfe) = expression {
             if let Some(bfe) = xfe.unlift() {
@@ -993,7 +1055,7 @@ impl<II: InputIndicator> ConstraintCircuitBuilder<II> {
     ///
     /// A circuit's root node cannot be substituted with this method. Manual care
     /// must be taken to update the root node if necessary.
-    fn substitute(&self, old_id: usize, new: ConstraintCircuitMonad<II>) {
+    fn redirect_all_references_to_node(&self, old_id: usize, new: ConstraintCircuitMonad<II>) {
         self.all_nodes.borrow_mut().remove(&old_id);
         for node in self.all_nodes.borrow_mut().values_mut() {
             let node_expression = &mut node.circuit.borrow_mut().expression;
@@ -1055,8 +1117,13 @@ fn random_circuit_leaf<'a, II: InputIndicator + Arbitrary<'a>>(
 mod tests {
     use std::collections::hash_map::DefaultHasher;
     use std::hash::Hasher;
+    use std::ops::Not;
 
     use itertools::Itertools;
+    use ndarray::Array2;
+    use ndarray::Axis;
+    use proptest::arbitrary::Arbitrary;
+    use proptest::collection::vec;
     use proptest::prelude::*;
     use proptest_arbitrary_interop::arb;
     use rand::random;
@@ -1161,6 +1228,109 @@ mod tests {
             let self_expression = &self.circuit.borrow().expression;
             let other_expression = &other.circuit.borrow().expression;
             self_expression.contains(other_expression)
+        }
+
+        /// Produces an iter over all nodes in the multicircuit, if it is non-empty.
+        ///
+        /// Helper function for counting the number of nodes of a specific type.
+        fn iter_nodes(
+            constraints: &[Self],
+        ) -> std::vec::IntoIter<(usize, ConstraintCircuitMonad<II>)> {
+            let Some(first) = constraints.first() else {
+                return vec![].into_iter();
+            };
+
+            first
+                .builder
+                .all_nodes
+                .borrow()
+                .iter()
+                .map(|(n, m)| (*n, m.clone()))
+                .collect_vec()
+                .into_iter()
+        }
+
+        /// The total number of nodes in the multicircuit
+        fn num_nodes(constraints: &[Self]) -> usize {
+            Self::iter_nodes(constraints).count()
+        }
+
+        /// Determine if the constraint circuit monad corresponds to a main table
+        /// column.
+        fn is_main_table_column(&self) -> bool {
+            if let CircuitExpression::Input(ii) = self.circuit.borrow().expression {
+                ii.is_main_table_column()
+            } else {
+                false
+            }
+        }
+
+        /// The number of inputs from the main table
+        fn num_main_inputs(constraints: &[Self]) -> usize {
+            Self::iter_nodes(constraints)
+                .filter(|(_, cc)| cc.is_main_table_column())
+                .filter(|(_, cc)| cc.circuit.borrow().evaluates_to_base_element())
+                .count()
+        }
+
+        /// The number of inputs from the aux table
+        fn num_aux_inputs(constraints: &[Self]) -> usize {
+            Self::iter_nodes(constraints)
+                .filter(|(_, cc)| !cc.is_main_table_column())
+                .filter(|(_, cc)| {
+                    matches!(cc.circuit.borrow().expression, CircuitExpression::Input(_))
+                })
+                .count()
+        }
+
+        /// The number of total (*i.e.*, main + aux) inputs
+        fn num_inputs(constraints: &[Self]) -> usize {
+            Self::num_main_inputs(constraints) + Self::num_aux_inputs(constraints)
+        }
+
+        /// The number of challenges
+        fn num_challenges(constraints: &[Self]) -> usize {
+            Self::iter_nodes(constraints)
+                .filter(|(_, cc)| {
+                    matches!(
+                        cc.circuit.borrow().expression,
+                        CircuitExpression::Challenge(_)
+                    )
+                })
+                .count()
+        }
+
+        /// The number of `BinOp`s
+        fn num_binops(constraints: &[Self]) -> usize {
+            Self::iter_nodes(constraints)
+                .filter(|(_, cc)| {
+                    matches!(
+                        cc.circuit.borrow().expression,
+                        CircuitExpression::BinOp(_, _, _)
+                    )
+                })
+                .count()
+        }
+
+        /// The number of BFE constants
+        fn num_bfield_constants(constraints: &[Self]) -> usize {
+            Self::iter_nodes(constraints)
+                .filter(|(_, cc)| {
+                    matches!(cc.circuit.borrow().expression, CircuitExpression::BConst(_))
+                })
+                .count()
+        }
+
+        /// The number of XFE constants
+        fn num_xfield_constants(constraints: &[Self]) -> usize {
+            Self::iter_nodes(constraints)
+                .filter(|(_, cc)| {
+                    matches!(
+                        cc.circuit.as_ref().borrow().expression,
+                        CircuitExpression::XConst(_)
+                    )
+                })
+                .count()
         }
     }
 
@@ -1292,7 +1462,7 @@ mod tests {
     }
 
     #[test]
-    fn substitution_replaces_a_node_in_a_circuit() {
+    fn pointer_redirection_obliviates_a_node_in_a_circuit() {
         let builder = ConstraintCircuitBuilder::new();
         let x = |i| builder.input(SingleRowIndicator::Main(i));
         let constant = |c: u32| builder.b_constant(c);
@@ -1309,7 +1479,10 @@ mod tests {
         assert!(root_2.contains(&substitute_me));
 
         let new_variable = x(3);
-        builder.substitute(substitute_me.circuit.borrow().id, new_variable.clone());
+        builder.redirect_all_references_to_node(
+            substitute_me.circuit.borrow().id,
+            new_variable.clone(),
+        );
 
         assert!(!root_0.contains(&substitute_me));
         assert!(!root_1.contains(&substitute_me));
@@ -1388,6 +1561,55 @@ mod tests {
 
         assert!(new_main_constraints.len() <= 3);
         assert!(new_aux_constraints.is_empty());
+    }
+
+    fn circuit_with_multiple_options_for_degree_lowering_to_degree_2(
+    ) -> [ConstraintCircuitMonad<SingleRowIndicator>; 2] {
+        let builder = ConstraintCircuitBuilder::new();
+        let x = |i| builder.input(SingleRowIndicator::Main(i));
+
+        let constraint_0 = x(0) * x(0) * x(0);
+        let constraint_1 = x(1) * x(1) * x(1);
+
+        [constraint_0, constraint_1]
+    }
+
+    #[test]
+    fn pick_node_to_substitute_is_deterministic() {
+        let multicircuit = circuit_with_multiple_options_for_degree_lowering_to_degree_2();
+        let first_node_id = ConstraintCircuitMonad::pick_node_to_substitute(&multicircuit, 2);
+
+        for _ in 0..20 {
+            let node_id_again = ConstraintCircuitMonad::pick_node_to_substitute(&multicircuit, 2);
+            assert_eq!(first_node_id, node_id_again);
+        }
+    }
+
+    #[test]
+    fn degree_lowering_specific_simple_circuit_is_deterministic() {
+        let degree_lowering_info = DegreeLoweringInfo {
+            target_degree: 2,
+            num_main_cols: 2,
+            num_aux_cols: 0,
+        };
+
+        let mut original_multicircuit =
+            circuit_with_multiple_options_for_degree_lowering_to_degree_2();
+        let (new_main_constraints, _) = ConstraintCircuitMonad::lower_to_degree(
+            &mut original_multicircuit,
+            degree_lowering_info,
+        );
+
+        for _ in 0..20 {
+            let mut new_multicircuit =
+                circuit_with_multiple_options_for_degree_lowering_to_degree_2();
+            let (new_main_constraints_again, _) = ConstraintCircuitMonad::lower_to_degree(
+                &mut new_multicircuit,
+                degree_lowering_info,
+            );
+            assert_eq!(new_main_constraints, new_main_constraints_again);
+            assert_eq!(original_multicircuit, new_multicircuit);
+        }
     }
 
     #[test]
@@ -1470,5 +1692,278 @@ mod tests {
 
         let o = ch(0) * z1 - ch(1) * w;
         assert!(!o.find_equivalent_nodes().is_empty());
+    }
+
+    #[derive(Debug, Copy, Clone, Eq, PartialEq, test_strategy::Arbitrary)]
+    enum CircuitOperationChoice {
+        Add(usize, usize),
+        Mul(usize, usize),
+    }
+
+    #[derive(Debug, Copy, Clone, Eq, PartialEq, test_strategy::Arbitrary)]
+    enum CircuitInputType {
+        Main,
+        Aux,
+    }
+
+    #[derive(Debug, Copy, Clone, Eq, PartialEq, test_strategy::Arbitrary)]
+    enum CircuitConstantType {
+        Base(#[strategy(arb())] BFieldElement),
+        Extension(#[strategy(arb())] XFieldElement),
+    }
+
+    fn arbitrary_circuit_monad<II: InputIndicator>(
+        num_inputs: usize,
+        num_challenges: usize,
+        num_constants: usize,
+        num_operations: usize,
+        num_outputs: usize,
+    ) -> BoxedStrategy<Vec<ConstraintCircuitMonad<II>>> {
+        (
+            vec(CircuitInputType::arbitrary(), num_inputs),
+            vec(CircuitConstantType::arbitrary(), num_constants),
+            vec(CircuitOperationChoice::arbitrary(), num_operations),
+            vec(arb::<usize>(), num_outputs),
+        )
+            .prop_map(move |(inputs, constants, operations, outputs)| {
+                let builder = ConstraintCircuitBuilder::<II>::new();
+
+                assert_eq!(0, *builder.id_counter.borrow());
+                assert!(
+                    builder.all_nodes.borrow().is_empty(),
+                    "fresh hashmap should be empty"
+                );
+
+                let mut num_main_inputs = 0;
+                let mut num_aux_inputs = 0;
+                let mut all_nodes = vec![];
+                let mut output_nodes = vec![];
+
+                for input in inputs {
+                    match input {
+                        CircuitInputType::Main => {
+                            let node = builder.input(II::main_table_input(num_main_inputs));
+                            num_main_inputs += 1;
+                            all_nodes.push(node);
+                        }
+                        CircuitInputType::Aux => {
+                            let node = builder.input(II::aux_table_input(num_aux_inputs));
+                            num_aux_inputs += 1;
+                            all_nodes.push(node);
+                        }
+                    }
+                }
+
+                for i in 0..num_challenges {
+                    let node = builder.challenge(i);
+                    all_nodes.push(node);
+                }
+
+                for constant in constants {
+                    let node = match constant {
+                        CircuitConstantType::Base(bfe) => builder.b_constant(bfe),
+                        CircuitConstantType::Extension(xfe) => builder.x_constant(xfe),
+                    };
+                    all_nodes.push(node);
+                }
+
+                if all_nodes.is_empty() {
+                    return vec![];
+                }
+
+                for operation in operations {
+                    let (lhs, rhs) = match operation {
+                        CircuitOperationChoice::Add(lhs, rhs) => (lhs, rhs),
+                        CircuitOperationChoice::Mul(lhs, rhs) => (lhs, rhs),
+                    };
+
+                    let lhs_index = lhs % all_nodes.len();
+                    let rhs_index = rhs % all_nodes.len();
+
+                    let lhs_node = all_nodes[lhs_index].clone();
+                    let rhs_node = all_nodes[rhs_index].clone();
+
+                    let node = match operation {
+                        CircuitOperationChoice::Add(_, _) => lhs_node + rhs_node,
+                        CircuitOperationChoice::Mul(_, _) => lhs_node * rhs_node,
+                    };
+                    all_nodes.push(node);
+                }
+
+                for output in outputs {
+                    let index = output % all_nodes.len();
+                    output_nodes.push(all_nodes[index].clone());
+                }
+
+                output_nodes
+            })
+            .boxed()
+    }
+
+    #[proptest]
+    fn node_type_counts_add_up(
+        #[strategy(arbitrary_circuit_monad(10, 10, 10, 60, 10))] multicircuit_monad: Vec<
+            ConstraintCircuitMonad<SingleRowIndicator>,
+        >,
+    ) {
+        prop_assert_eq!(
+            ConstraintCircuitMonad::num_nodes(&multicircuit_monad),
+            ConstraintCircuitMonad::num_main_inputs(&multicircuit_monad)
+                + ConstraintCircuitMonad::num_aux_inputs(&multicircuit_monad)
+                + ConstraintCircuitMonad::num_challenges(&multicircuit_monad)
+                + ConstraintCircuitMonad::num_bfield_constants(&multicircuit_monad)
+                + ConstraintCircuitMonad::num_xfield_constants(&multicircuit_monad)
+                + ConstraintCircuitMonad::num_binops(&multicircuit_monad)
+        );
+
+        prop_assert_eq!(10, ConstraintCircuitMonad::num_inputs(&multicircuit_monad));
+    }
+
+    /// Test the completeness and soundness of the `apply_substitution` function,
+    /// which substitutes a single node.
+    ///
+    /// In this context, completeness means: "given a satisfying assignment to the
+    /// circuit before degree lowering, one can derive a satisfying assignment to
+    /// the circuit after degree lowering." Soundness means the converse.
+    ///
+    /// We test these features using random input vectors. Naturally, the output
+    /// is not the zero vector (with high probability) and so the given input is
+    /// *not* a satisfying assignment (with high probability). However, the
+    /// circuit can be extended by way of thought experiment into one that subtracts
+    /// a fixed constant from the original output. For the right choice of subtrahend,
+    /// the random input now *is* a satisfying assignment to the circuit.
+    ///
+    /// Specifically, let `input` denote the original (before degree lowering) input,
+    /// and `C` the circuit. Then `input` is a satisfying input for the new circuit
+    /// `C'(X) = C(X) - C(input)`
+    ///
+    /// After applying a substitution to obtain circuit `C || k` from `C`, where
+    /// `k = Z - some_expr(X)` and `Z` is the introduced variable, the length
+    /// of the input and output increases by 1. Moreover, if `input` is a satisfying
+    /// input to `C'` then `input || some_expr(input)` is* a satisfying input to
+    /// `C' || k`.
+    ///
+    /// (*: If the transformation is complete.)
+    ///
+    /// To establish the converse, we want to start from a satisfying input to
+    /// `C" || k` and reduce it to a satisfying input to `C"`. The requirement,
+    /// implied by "satisfying input", that `k(X || Z) == 0` implies `Z == some_expr(X)`.
+    /// Therefore, in order to sample a random satisfying input to `C" || k`, it
+    /// suffices to select `input` at random, define `C"(X) = C(X) - C(input)`,
+    /// and evaluate `some_expr(input)`. Then `input || some_expr(input)` is a
+    /// random satisfying input to `C" || k`. It follows** that `input` is a
+    /// satisfying input to `C"`.
+    ///
+    /// (**: If the transformation is sound.)
+    ///
+    /// This description makes use of the following commutative diagram.
+    ///
+    /// ```text
+    ///          C ───── degree-lowering ────> C || k
+    ///          │                               │
+    /// subtract │                      subtract │
+    ///    fixed │                         fixed │
+    ///   output │                        output │
+    ///          │                               │
+    ///          v                               v
+    ///          C* ─── degree-lowering ────> C* || k
+    /// ```
+    ///
+    /// The point of this elaboration is that in this particular case, testing completeness
+    /// and soundness require the same code path. If `input` and `input || some_expr(input)`
+    /// work for circuits before and after degree lowering, this fact establishes
+    /// both completeness and soundness simultaneously.
+    //
+    // Shrinking on this test is disabled because we noticed some weird ass behavior.
+    // In short, shrinking does not play ball with the arbitrary circuit generator;
+    // it seems to make the generated circuits *more* complex, not less so.
+    #[proptest(cases = 1000, max_shrink_iters = 0)]
+    fn node_substitution_is_complete_and_sound(
+        #[strategy(arbitrary_circuit_monad(10, 10, 10, 160, 10))] mut multicircuit_monad: Vec<
+            ConstraintCircuitMonad<SingleRowIndicator>,
+        >,
+        #[strategy(vec(arb(), ConstraintCircuitMonad::num_main_inputs(&#multicircuit_monad)))]
+        #[filter(!#main_input.is_empty())]
+        main_input: Vec<BFieldElement>,
+        #[strategy(vec(arb(), ConstraintCircuitMonad::num_aux_inputs(&#multicircuit_monad)))]
+        #[filter(!#aux_input.is_empty())]
+        aux_input: Vec<XFieldElement>,
+        #[strategy(vec(arb(), ConstraintCircuitMonad::num_challenges(&#multicircuit_monad)))]
+        challenges: Vec<XFieldElement>,
+        #[strategy(arb())] substitution_node_index: usize,
+    ) {
+        let mut main_input = Array2::from_shape_vec((1, main_input.len()), main_input).unwrap();
+        let mut aux_input = Array2::from_shape_vec((1, aux_input.len()), aux_input).unwrap();
+
+        let output_before_lowering = multicircuit_monad
+            .iter()
+            .map(|m| m.circuit.borrow())
+            .map(|c| c.evaluate(main_input.view(), aux_input.view(), &challenges))
+            .collect_vec();
+
+        // apply one step of degree-lowering
+        let num_nodes = ConstraintCircuitMonad::num_nodes(&multicircuit_monad);
+        let &substitution_node_id = multicircuit_monad[0]
+            .builder
+            .all_nodes
+            .borrow()
+            .iter()
+            .cycle()
+            .skip(substitution_node_index % num_nodes)
+            .take(num_nodes)
+            .find_map(|(id, monad)| monad.circuit.borrow().is_zero().not().then_some(id))
+            .expect("no suitable nodes to substitute");
+
+        let degree_lowering_info = DegreeLoweringInfo {
+            target_degree: 2,
+            num_main_cols: main_input.len(),
+            num_aux_cols: aux_input.len(),
+        };
+        let substitution_constraint = ConstraintCircuitMonad::apply_substitution(
+            &mut multicircuit_monad,
+            degree_lowering_info,
+            substitution_node_id,
+            EvolvingMainConstraintsNumber(0),
+            EvolvingAuxConstraintsNumber(0),
+        );
+
+        // extract substituted constraint
+        let CircuitExpression::BinOp(BinOp::Add, variable, neg_expression) =
+            &substitution_constraint.circuit.borrow().expression
+        else {
+            panic!();
+        };
+        let extra_input =
+            match &neg_expression.borrow().expression {
+                CircuitExpression::BinOp(BinOp::Mul, _neg_one, circuit) => circuit
+                    .borrow()
+                    .evaluate(main_input.view(), aux_input.view(), &challenges),
+                CircuitExpression::BConst(c) => -c.lift(),
+                CircuitExpression::XConst(c) => -*c,
+                _ => panic!(),
+            };
+        if variable.borrow().evaluates_to_base_element() {
+            let extra_input = extra_input.unlift().unwrap();
+            let extra_input = Array2::from_shape_vec([1, 1], vec![extra_input]).unwrap();
+            main_input.append(Axis(1), extra_input.view()).unwrap();
+        } else {
+            let extra_input = Array2::from_shape_vec([1, 1], vec![extra_input]).unwrap();
+            aux_input.append(Axis(1), extra_input.view()).unwrap();
+        }
+
+        // evaluate again
+        let output_after_lowering = multicircuit_monad
+            .iter()
+            .map(|m| m.circuit.borrow())
+            .map(|c| c.evaluate(main_input.view(), aux_input.view(), &challenges))
+            .collect_vec();
+
+        prop_assert_eq!(output_before_lowering, output_after_lowering);
+
+        prop_assert!(substitution_constraint
+            .circuit
+            .borrow()
+            .evaluate(main_input.view(), aux_input.view(), &challenges)
+            .is_zero());
     }
 }

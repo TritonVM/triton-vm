@@ -1231,6 +1231,8 @@ mod tests {
     use num_traits::Zero;
     use proptest::prelude::*;
     use proptest_arbitrary_interop::arb;
+    use rand::rngs::StdRng;
+    use rand_core::SeedableRng;
     use strum::EnumCount;
     use strum::EnumIter;
     use strum::IntoEnumIterator;
@@ -1782,13 +1784,13 @@ mod tests {
             ft = format!("{ft}\n");
 
             let num_nodes_in_all_initial_constraints =
-                ConstraintCircuitMonad::num_nodes(&all_initial_constraints);
+                ConstraintCircuitMonad::num_visible_nodes(&all_initial_constraints);
             let num_nodes_in_all_consistency_constraints =
-                ConstraintCircuitMonad::num_nodes(&all_consistency_constraints);
+                ConstraintCircuitMonad::num_visible_nodes(&all_consistency_constraints);
             let num_nodes_in_all_transition_constraints =
-                ConstraintCircuitMonad::num_nodes(&all_transition_constraints);
+                ConstraintCircuitMonad::num_visible_nodes(&all_transition_constraints);
             let num_nodes_in_all_terminal_constraints =
-                ConstraintCircuitMonad::num_nodes(&all_terminal_constraints);
+                ConstraintCircuitMonad::num_visible_nodes(&all_terminal_constraints);
             ft = format!(
                 "{ft}| {:<46} | {:>8} | {:>12} | {:>11} | {:>9} |",
                 "(# nodes)",
@@ -2092,5 +2094,107 @@ mod tests {
 
         let expected_digest = Tip5::hash_varlen(&elements);
         prop_assert_eq!(expected_digest, pending_absorb_digest);
+    }
+
+    /// Test whether the AIR constraint evaluators are the same between
+    ///  (a) the time when this test was written or last updated; and
+    ///  (b) the time when the test is being executed.
+    ///
+    /// This test catches (with high probability) unintended changes, whether due
+    /// to nondeterminisms (on a single machine or across various machines) or due
+    /// to changes to the definitions of the constraints. If the change to the
+    /// constraints was intentional, this test should be updated.
+    ///
+    /// This test might fail in the course of CI for a pull request, if in the
+    /// mean time the constraints are modified on master. In this case, rebasing
+    /// the topic branch on top of master is recommended.
+    #[test]
+    fn air_constraints_evaluators_have_not_changed() {
+        let mut rng = StdRng::seed_from_u64(3508729174085202315_u64);
+
+        // pseudorandomly populate circuit inputs
+        let main_row_current_base = Array1::from(rng.gen::<MainRow<BFieldElement>>().to_vec());
+        let main_row_current_extension = Array1::from(rng.gen::<MainRow<XFieldElement>>().to_vec());
+        let aux_row_current = Array1::from(rng.gen::<AuxiliaryRow>().to_vec());
+        let main_row_next_base = Array1::from(rng.gen::<MainRow<BFieldElement>>().to_vec());
+        let main_row_next_extension = Array1::from(rng.gen::<MainRow<XFieldElement>>().to_vec());
+        let aux_row_next = Array1::from(rng.gen::<AuxiliaryRow>().to_vec());
+        let challenges = Challenges {
+            challenges: rng.gen(),
+        };
+
+        // invoke all possible AIR circuit evaluators
+        let initial_base = MasterAuxTable::evaluate_initial_constraints(
+            main_row_current_base.view(),
+            aux_row_current.view(),
+            &challenges,
+        );
+        let initial_extension = MasterAuxTable::evaluate_initial_constraints(
+            main_row_current_extension.view(),
+            aux_row_current.view(),
+            &challenges,
+        );
+        let consistency_base = MasterAuxTable::evaluate_consistency_constraints(
+            main_row_current_base.view(),
+            aux_row_current.view(),
+            &challenges,
+        );
+        let consistency_extension = MasterAuxTable::evaluate_consistency_constraints(
+            main_row_current_extension.view(),
+            aux_row_current.view(),
+            &challenges,
+        );
+        let transition_base = MasterAuxTable::evaluate_transition_constraints(
+            main_row_current_base.view(),
+            aux_row_current.view(),
+            main_row_next_base.view(),
+            aux_row_next.view(),
+            &challenges,
+        );
+        let transition_extension = MasterAuxTable::evaluate_transition_constraints(
+            main_row_current_extension.view(),
+            aux_row_current.view(),
+            main_row_next_extension.view(),
+            aux_row_next.view(),
+            &challenges,
+        );
+        let terminal_base = MasterAuxTable::evaluate_terminal_constraints(
+            main_row_current_base.view(),
+            aux_row_current.view(),
+            &challenges,
+        );
+        let terminal_extension = MasterAuxTable::evaluate_terminal_constraints(
+            main_row_current_extension.view(),
+            aux_row_current.view(),
+            &challenges,
+        );
+
+        // interpret result as coefficient vector of polynomial
+        let coefficients = [
+            initial_base,
+            initial_extension,
+            consistency_base,
+            consistency_extension,
+            transition_base,
+            transition_extension,
+            terminal_base,
+            terminal_extension,
+        ]
+        .concat();
+        let polynomial = Polynomial::new(coefficients);
+
+        // evaluate polynomial in pseudorandom indeterminate
+        let value = polynomial.evaluate(rng.gen());
+        let expected = xfe!([
+            3564660585377840245_u64,
+            8403714483000428991_u64,
+            2799326871924992342_u64,
+        ]);
+        assert_eq!(
+            expected, value,
+            "expected: {expected}\nobserved: {value}\n\
+        If there was an intentional change to the constraints, don't forget to \
+        update the value of `expected`."
+        );
     }
 }
