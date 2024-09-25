@@ -1236,18 +1236,18 @@ mod tests {
         fn iter_nodes(
             constraints: &[Self],
         ) -> std::vec::IntoIter<(usize, ConstraintCircuitMonad<II>)> {
-            if let Some(first) = constraints.first() {
-                first
-                    .builder
-                    .all_nodes
-                    .borrow()
-                    .iter()
-                    .map(|(n, m)| (*n, m.clone()))
-                    .collect_vec()
-                    .into_iter()
-            } else {
-                vec![].into_iter()
-            }
+            let Some(first) = constraints.first() else {
+                return vec![].into_iter();
+            };
+
+            first
+                .builder
+                .all_nodes
+                .borrow()
+                .iter()
+                .map(|(n, m)| (*n, m.clone()))
+                .collect_vec()
+                .into_iter()
         }
 
         /// The total number of nodes in the multicircuit
@@ -1258,7 +1258,7 @@ mod tests {
         /// Determine if the constraint circuit monad corresponds to a main table
         /// column.
         fn is_main_table_column(&self) -> bool {
-            if let CircuitExpression::Input(ii) = self.circuit.as_ref().borrow().expression {
+            if let CircuitExpression::Input(ii) = self.circuit.borrow().expression {
                 ii.is_main_table_column()
             } else {
                 false
@@ -1276,12 +1276,9 @@ mod tests {
         /// The number of inputs from the aux table
         fn num_aux_inputs(constraints: &[Self]) -> usize {
             Self::iter_nodes(constraints)
+                .filter(|(_, cc)| !cc.is_main_table_column())
                 .filter(|(_, cc)| {
-                    if let CircuitExpression::Input(ii) = cc.circuit.as_ref().borrow().expression {
-                        !ii.is_main_table_column()
-                    } else {
-                        false
-                    }
+                    matches!(cc.circuit.borrow().expression, CircuitExpression::Input(_))
                 })
                 .count()
         }
@@ -1296,19 +1293,19 @@ mod tests {
             Self::iter_nodes(constraints)
                 .filter(|(_, cc)| {
                     matches!(
-                        cc.circuit.as_ref().borrow().expression,
+                        cc.circuit.borrow().expression,
                         CircuitExpression::Challenge(_)
                     )
                 })
                 .count()
         }
 
-        // The number of `BinOp`s
+        /// The number of `BinOp`s
         fn num_binops(constraints: &[Self]) -> usize {
             Self::iter_nodes(constraints)
                 .filter(|(_, cc)| {
                     matches!(
-                        cc.circuit.as_ref().borrow().expression,
+                        cc.circuit.borrow().expression,
                         CircuitExpression::BinOp(_, _, _)
                     )
                 })
@@ -1319,10 +1316,7 @@ mod tests {
         fn num_bfield_constants(constraints: &[Self]) -> usize {
             Self::iter_nodes(constraints)
                 .filter(|(_, cc)| {
-                    matches!(
-                        cc.circuit.as_ref().borrow().expression,
-                        CircuitExpression::BConst(_)
-                    )
+                    matches!(cc.circuit.borrow().expression, CircuitExpression::BConst(_))
                 })
                 .count()
         }
@@ -1734,7 +1728,7 @@ mod tests {
             .prop_map(move |(inputs, constants, operations, outputs)| {
                 let builder = ConstraintCircuitBuilder::<II>::new();
 
-                assert_eq!(0, *builder.id_counter.as_ref().borrow());
+                assert_eq!(0, *builder.id_counter.borrow());
                 assert!(
                     builder.all_nodes.borrow().is_empty(),
                     "fresh hashmap should be empty"
@@ -1935,20 +1929,18 @@ mod tests {
 
         // extract substituted constraint
         let CircuitExpression::BinOp(BinOp::Add, variable, neg_expression) =
-            &substitution_constraint.circuit.as_ref().borrow().expression
+            &substitution_constraint.circuit.borrow().expression
         else {
             panic!();
         };
         let extra_input =
-            match &neg_expression.as_ref().borrow().expression {
+            match &neg_expression.borrow().expression {
                 CircuitExpression::BinOp(BinOp::Mul, _neg_one, circuit) => circuit
                     .borrow()
                     .evaluate(main_input.view(), aux_input.view(), &challenges),
                 CircuitExpression::BConst(c) => -c.lift(),
                 CircuitExpression::XConst(c) => -*c,
-                _ => {
-                    panic!()
-                }
+                _ => panic!(),
             };
         if variable.borrow().evaluates_to_base_element() {
             let extra_input = extra_input.unlift().unwrap();
