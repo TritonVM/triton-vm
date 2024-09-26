@@ -10,27 +10,21 @@ resolver = "2"
 
 [profile.test]
 opt-level = 1
+build-override.opt-level = 3
 
 [profile.release]
 lto = "thin"
+build-override.opt-level = 3
 
 [profile.bench]
 lto = "thin"
+build-override.opt-level = 3
 
-[profile.release.build-override]
-opt-level = 3
-
-[profile.dev.build-override]
-opt-level = 3
-
-[profile.test.build-override]
-opt-level = 3
-
-[profile.bench.build-override]
-opt-level = 3
+[profile.dev]
+build-override.opt-level = 3
 
 [workspace.package]
-version = "0.42.0"
+version = "0.42.1"
 edition = "2021"
 authors = ["Triton Software AG"]
 license = "Apache-2.0"
@@ -40,23 +34,22 @@ readme = "README.md"
 documentation = "https://triton-vm.org/spec/"
 
 [workspace.dependencies.air]
-version = "0.42.0"
+version = "0.42.1"
 path = "triton-air"
 package = "triton-air"
 
 [workspace.dependencies.constraint-builder]
-version = "0.42.0"
+version = "0.42.1"
 path = "triton-constraint-builder"
 package = "triton-constraint-builder"
 
-
 [workspace.dependencies.constraint-circuit]
-version = "0.42.0"
+version = "0.42.1"
 path = "triton-constraint-circuit"
 package = "triton-constraint-circuit"
 
 [workspace.dependencies.isa]
-version = "0.42.0"
+version = "0.42.1"
 path = "triton-isa"
 package = "triton-isa"
 

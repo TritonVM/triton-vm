@@ -3,6 +3,26 @@
 All notable changes are documented in this file.
 Lines marked “(!)” indicate a breaking change.
 
+## [0.42.1](https://github.com/TritonVM/triton-vm/compare/v0.42.0..v0.42.1) - 2024-09-26
+
+### ⚡️ Performance
+
+- *(degree_lowering)* Cache node-degrees ([6496a740](https://github.com/TritonVM/triton-vm/commit/6496a740))
+- *(TasmBackend)* Exploit mixed-type instructions ([8898bdc9](https://github.com/TritonVM/triton-vm/commit/8898bdc9))
+- *(TasmBackend)* Use `addi` instruction if possible ([6d55b80d](https://github.com/TritonVM/triton-vm/commit/6d55b80d))
+
+### ✅ Testing
+
+- Correctness & soundness of degree lowering ([667c9103](https://github.com/TritonVM/triton-vm/commit/667c9103))
+
+### 🛠 Build
+
+- Set `opt-level=3` on build script execution ([5e16b087](https://github.com/TritonVM/triton-vm/commit/5e16b087))
+
+### ⏱ Bench
+
+- Add benchmark for degree lowering times ([86cf9623](https://github.com/TritonVM/triton-vm/commit/86cf9623))
+
 ## [0.42.0](https://github.com/TritonVM/triton-vm/compare/v0.41.0..v0.42.0) - 2024-09-16
 
 ### ✨ Features

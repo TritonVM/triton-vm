@@ -58,6 +58,7 @@ commit_parsers = [
   { message = "^revert",            group = "<!-- 80 --> ⏪️ Revert" },
   { message = "^style",             group = "<!-- 90 --> 🎨 Styling" },
   { message = "^build",             group = "<!-- 95 --> 🛠 Build" },
+  { message = "^bench",             group = "<!-- 98 --> ⏱ Bench" },
   { footer = "^changelog: ?ignore", skip = true },
 ]
 
