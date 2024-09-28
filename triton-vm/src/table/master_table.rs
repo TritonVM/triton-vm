@@ -139,7 +139,7 @@ use crate::table::TraceTable;
 ///     defines that part of the AIR that is relevant to it.
 ///
 /// The following points are of note:
-/// - The [`MasterMainColumns are the randomizer
+/// - The [`MasterAuxiliaryTable`][master_aux_table]'s rightmost columns are the randomizer
 ///     codewords. These are necessary for zero-knowledge.
 /// - The cross-table argument has zero width for the [`MasterMainTable`] and
 ///   [`MasterAuxiliaryTable`][master_aux_table] but does induce a nonzero number of constraints
@@ -159,7 +159,8 @@ where
         + MulAssign<BFieldElement>
         + From<BFieldElement>
         + BFieldCodec
-        + Mul<BFieldElement, Output = Self::Field>;
+        + Mul<BFieldElement, Output = Self::Field>
+        + Mul<XFieldElement, Output = XFieldElement>;
 
     const NUM_COLUMNS: usize;
 
@@ -191,6 +192,7 @@ where
     /// polynomials.
     fn trace_table_mut(&mut self) -> ArrayViewMut2<Self::Field>;
 
+    /// The trace data _with_ trace randomizers, in column-major (“`F`”) order.
     fn randomized_trace_table(&self) -> ArrayView2<Self::Field>;
 
     fn randomized_trace_table_mut(&mut self) -> ArrayViewMut2<Self::Field>;
@@ -287,8 +289,6 @@ where
             self.memoize_low_degree_extended_table(extended_columns);
             profiler!(stop "memoize");
         }
-
-        self.memoize_interpolation_polynomials(interpolation_polynomials);
     }
 
     /// Not intended for direct use, but through [`Self::low_degree_extend_all_columns`].
@@ -308,23 +308,46 @@ where
     /// implementation we cannot access the implementing object's fields.
     fn fri_domain_table(&self) -> Option<ArrayView2<Self::Field>>;
 
-    /// Memoize the polynomials interpolating the columns.
-    /// Not intended for direct use, but through [`Self::low_degree_extend_all_columns`].
-    #[doc(hidden)]
-    fn memoize_interpolation_polynomials(
-        &mut self,
-        interpolation_polynomials: Array1<Polynomial<Self::Field>>,
-    );
-
-    /// Requires having called
-    /// [`low_degree_extend_all_columns`](Self::low_degree_extend_all_columns) first.
-    fn interpolation_polynomials(&self) -> ArrayView1<Polynomial<Self::Field>>;
-
     /// Get one row of the table at an arbitrary index. Notably, the index does not have to be in
     /// any of the domains. In other words, can be used to compute out-of-domain rows. Requires
     /// having called [`low_degree_extend_all_columns`](Self::low_degree_extend_all_columns) first.
     /// Does not include randomizer polynomials.
-    fn out_of_domain_row(&self, indeterminate: XFieldElement) -> Array1<XFieldElement>;
+    fn out_of_domain_row(&self, indeterminate: XFieldElement) -> Array1<XFieldElement> {
+        let mut ood_row = Array1::from_vec(vec![
+            XFieldElement::ZERO;
+            self.randomized_trace_table().ncols()
+        ]);
+
+        // The following is a batched version of barycentric Lagrangian evaluation.
+        // Since the method `barycentric_evaluate` is self-contained, not returning
+        // intermediate items necessary for batching, and since returning and reusing
+        // those indermediate items would produce a challenging interface, the relevant
+        // parts are reimplemented here.
+        let domain = self.randomized_trace_domain().domain_values();
+        let domain_shift = domain.iter().map(|&d| indeterminate - d).collect();
+        let domain_shift_inverses = XFieldElement::batch_inversion(domain_shift);
+        let domain_over_domain_shift = domain
+            .into_iter()
+            .zip(domain_shift_inverses)
+            .map(|(d, inv)| d * inv);
+        let denominator_inverse = domain_over_domain_shift
+            .clone()
+            .sum::<XFieldElement>()
+            .inverse();
+
+        Zip::from(ood_row.axis_iter_mut(Axis(0)))
+            .and(self.randomized_trace_table().axis_iter(Axis(1)))
+            .par_for_each(|v, codeword| {
+                let numerator = domain_over_domain_shift
+                    .clone()
+                    .zip(codeword)
+                    .map(|(dsi, &abscis)| abscis * dsi)
+                    .sum::<XFieldElement>();
+
+                Array0::from_elem((), numerator * denominator_inverse).move_into(v);
+            });
+        ood_row
+    }
 
     /// Compute a Merkle tree of the FRI domain table. Every row gives one leaf in the tree.
     /// The function [`hash_row`](Self::hash_one_row) is used to hash each row.
@@ -368,15 +391,20 @@ where
             .unwrap_or(1);
         let fri_domain = self.fri_domain();
         let mut sponge_states = vec![SpongeWithPendingAbsorb::new(); fri_domain.length];
-        let interpolants = self.interpolation_polynomials();
 
         let mut codewords = Array2::zeros([fri_domain.length, num_threads]);
-        for interpolants_chunk in interpolants.axis_chunks_iter(Axis(0), num_threads) {
-            let mut codewords = codewords.slice_mut(s![.., 0..interpolants_chunk.len()]);
+        for trace_columns in self
+            .randomized_trace_table()
+            .axis_chunks_iter(Axis(1), num_threads)
+        {
+            let mut codewords = codewords.slice_mut(s![.., 0..trace_columns.ncols()]);
             Zip::from(codewords.axis_iter_mut(Axis(1)))
-                .and(interpolants_chunk.axis_iter(Axis(0)))
-                .par_for_each(|codeword, interpolant| {
-                    let lde_codeword = fri_domain.evaluate(&interpolant[()]);
+                .and(trace_columns.axis_iter(Axis(1)))
+                .par_for_each(|codeword, trace_column| {
+                    let interpolant = self
+                        .randomized_trace_domain()
+                        .interpolate(trace_column.as_slice().unwrap());
+                    let lde_codeword = fri_domain.evaluate(&interpolant);
                     Array1::from(lde_codeword).move_into(codeword);
                 });
             sponge_states
@@ -466,7 +494,6 @@ pub struct MasterMainTable {
 
     randomized_trace_table: Array2<BFieldElement>,
     low_degree_extended_table: Option<Array2<BFieldElement>>,
-    interpolation_polynomials: Option<Array1<Polynomial<BFieldElement>>>,
 }
 
 /// See [`MasterTable`].
@@ -481,7 +508,6 @@ pub struct MasterAuxTable {
 
     randomized_trace_table: Array2<XFieldElement>,
     low_degree_extended_table: Option<Array2<XFieldElement>>,
-    interpolation_polynomials: Option<Array1<Polynomial<XFieldElement>>>,
 }
 
 impl MasterTable for MasterMainTable {
@@ -556,39 +582,6 @@ impl MasterTable for MasterMainTable {
         } else {
             Some(table.view())
         }
-    }
-
-    fn memoize_interpolation_polynomials(
-        &mut self,
-        interpolation_polynomials: Array1<Polynomial<BFieldElement>>,
-    ) {
-        self.interpolation_polynomials = Some(interpolation_polynomials);
-    }
-
-    fn interpolation_polynomials(&self) -> ArrayView1<Polynomial<BFieldElement>> {
-        let Some(interpolation_polynomials) = &self.interpolation_polynomials else {
-            panic!("Interpolation polynomials must be computed first.");
-        };
-        interpolation_polynomials.view()
-    }
-
-    fn out_of_domain_row(&self, indeterminate: XFieldElement) -> Array1<XFieldElement> {
-        // Evaluate a base field polynomial in an extension field point. Manual re-implementation
-        // to overcome the lack of the corresponding functionality in `twenty-first`.
-        let evaluate = |bfp: &Polynomial<_>, x| {
-            let mut acc = XFieldElement::zero();
-            for &coefficient in bfp.coefficients.iter().rev() {
-                acc *= x;
-                acc += coefficient;
-            }
-            acc
-        };
-
-        self.interpolation_polynomials()
-            .into_par_iter()
-            .map(|polynomial| evaluate(polynomial, indeterminate))
-            .collect::<Vec<_>>()
-            .into()
     }
 }
 
@@ -667,29 +660,6 @@ impl MasterTable for MasterAuxTable {
             Some(table.view())
         }
     }
-
-    fn memoize_interpolation_polynomials(
-        &mut self,
-        interpolation_polynomials: Array1<Polynomial<XFieldElement>>,
-    ) {
-        self.interpolation_polynomials = Some(interpolation_polynomials);
-    }
-
-    fn interpolation_polynomials(&self) -> ArrayView1<Polynomial<XFieldElement>> {
-        let Some(interpolation_polynomials) = &self.interpolation_polynomials else {
-            panic!("Interpolation polynomials must be computed first.");
-        };
-        interpolation_polynomials.view()
-    }
-
-    fn out_of_domain_row(&self, indeterminate: XFieldElement) -> Array1<XFieldElement> {
-        self.interpolation_polynomials()
-            .slice(s![..Self::NUM_COLUMNS])
-            .into_par_iter()
-            .map(|polynomial| polynomial.evaluate(indeterminate))
-            .collect::<Vec<_>>()
-            .into()
-    }
 }
 
 type PadFunction = fn(ArrayViewMut2<BFieldElement>, usize);
@@ -729,7 +699,6 @@ impl MasterMainTable {
             fri_domain,
             randomized_trace_table,
             low_degree_extended_table: None,
-            interpolation_polynomials: None,
         };
 
         // memory-like tables must be filled in before clock jump differences are known, hence
@@ -858,7 +827,6 @@ impl MasterMainTable {
             fri_domain: self.fri_domain(),
             randomized_trace_table: randomized_trace_auxiliary_table,
             low_degree_extended_table: None,
-            interpolation_polynomials: None,
         };
 
         profiler!(start "slice master table");
@@ -1340,6 +1308,14 @@ mod tests {
             <U32Table as AIR>::AuxColumn::COUNT,
             master_aux_table.table(TableId::U32).ncols()
         );
+    }
+
+    #[test]
+    fn randomized_trace_tables_are_in_column_major_order() {
+        let (_, _, main, aux, _) =
+            master_tables_for_low_security_level(ProgramAndInput::new(triton_program!(halt)));
+        main.randomized_trace_table().column(0).as_slice().unwrap();
+        aux.randomized_trace_table().column(0).as_slice().unwrap();
     }
 
     #[test]
@@ -2026,7 +2002,6 @@ mod tests {
             fri_domain,
             randomized_trace_table,
             low_degree_extended_table: None,
-            interpolation_polynomials: None,
         };
 
         let num_rows = trace_domain.length;

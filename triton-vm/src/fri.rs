@@ -1,8 +1,8 @@
 use itertools::Itertools;
 use num_traits::Zero;
 use rayon::prelude::*;
+use std::ops::Mul;
 use twenty_first::math::traits::FiniteField;
-use twenty_first::math::traits::PrimitiveRootOfUnity;
 use twenty_first::prelude::*;
 
 use crate::arithmetic_domain::ArithmeticDomain;
@@ -471,6 +471,9 @@ impl<'stream> FriVerifier<'stream> {
     fn assert_last_round_codeword_corresponds_to_low_degree_polynomial(
         &mut self,
     ) -> VerifierResult<()> {
+        // todo: remove once deprecated local function `barycentric_evaluate` is removed
+        use twenty_first::math::polynomial::barycentric_evaluate;
+
         if self.last_round_polynomial.degree() > self.last_round_max_degree.try_into().unwrap() {
             return Err(FriValidationError::LastRoundPolynomialHasTooHighDegree);
         }
@@ -624,33 +627,15 @@ fn codeword_as_digests(codeword: &[XFieldElement]) -> Vec<Digest> {
 /// Panics if the codeword is some length that is not a power of 2 or greater than (1 << 32).
 ///
 /// [Credit]: https://github.com/0xPolygonMiden/miden-vm/issues/568
-pub fn barycentric_evaluate(
-    codeword: &[XFieldElement],
+#[deprecated(
+    since = "0.42.2",
+    note = "use `twenty_first::math::polynomial::barycentric_evaluate` instead"
+)]
+pub fn barycentric_evaluate<FF: FiniteField + Mul<XFieldElement, Output = XFieldElement>>(
+    codeword: &[FF],
     indeterminate: XFieldElement,
 ) -> XFieldElement {
-    let root_order = codeword.len().try_into().unwrap();
-    let generator = BFieldElement::primitive_root_of_unity(root_order).unwrap();
-    let domain_iter = (0..root_order)
-        .scan(bfe!(1), |acc, _| {
-            let to_yield = Some(*acc);
-            *acc *= generator;
-            to_yield
-        })
-        .collect_vec();
-
-    let domain_shift = domain_iter.iter().map(|&d| indeterminate - d).collect();
-    let domain_shift_inverses = XFieldElement::batch_inversion(domain_shift);
-    let domain_over_domain_shift = domain_iter
-        .into_iter()
-        .zip(domain_shift_inverses)
-        .map(|(d, inv)| d * inv);
-    let numerator = domain_over_domain_shift
-        .clone()
-        .zip(codeword)
-        .map(|(dsi, &abscis)| dsi * abscis)
-        .sum::<XFieldElement>();
-    let denominator = domain_over_domain_shift.sum::<XFieldElement>();
-    numerator / denominator
+    twenty_first::math::polynomial::barycentric_evaluate(codeword, indeterminate)
 }
 
 #[cfg(test)]
@@ -661,7 +646,6 @@ mod tests {
     use assert2::assert;
     use assert2::let_assert;
     use itertools::Itertools;
-    use proptest::collection::vec;
     use proptest::prelude::*;
     use proptest_arbitrary_interop::arb;
     use rand::prelude::*;
@@ -1065,22 +1049,5 @@ mod tests {
         #[strategy(arb())] mut proof_stream: ProofStream,
     ) {
         let _verdict = fri.verify(&mut proof_stream);
-    }
-
-    #[proptest]
-    fn polynomial_evaluation_and_barycentric_evaluation_are_equivalent(
-        #[strategy(1_usize..13)] _log_num_coefficients: usize,
-        #[strategy(1_usize..6)] log_expansion_factor: usize,
-        #[strategy(vec(arb(), 1 << #_log_num_coefficients))] coefficients: Vec<XFieldElement>,
-        #[strategy(arb())] indeterminate: XFieldElement,
-    ) {
-        let domain_len = coefficients.len() * (1 << log_expansion_factor);
-        let domain = ArithmeticDomain::of_length(domain_len).unwrap();
-        let polynomial = Polynomial::from(&coefficients);
-        let codeword = domain.evaluate(&polynomial);
-        prop_assert_eq!(
-            polynomial.evaluate(indeterminate),
-            barycentric_evaluate(&codeword, indeterminate)
-        );
     }
 }

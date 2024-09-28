@@ -6,7 +6,8 @@ use itertools::Itertools;
 use rand::prelude::StdRng;
 use rand::Rng;
 use rand_core::SeedableRng;
-use triton_vm::fri::barycentric_evaluate;
+use twenty_first::math::polynomial::barycentric_evaluate;
+use twenty_first::prelude::XFieldElement;
 
 criterion_main!(benches);
 criterion_group!(
@@ -25,7 +26,7 @@ fn barycentric_eval<const LOG2_N: usize>(c: &mut Criterion) {
     c.bench_function(&format!("barycentric_evaluation_(1<<{LOG2_N})"), |b| {
         b.iter_batched(
             || ((0..1 << LOG2_N).map(|_| rng.gen()).collect_vec(), rng.gen()),
-            |(codeword, indeterminate)| barycentric_evaluate(&codeword, indeterminate),
+            |(cw, ind): (Vec<XFieldElement>, XFieldElement)| barycentric_evaluate(&cw, ind),
             BatchSize::SmallInput,
         )
     });
