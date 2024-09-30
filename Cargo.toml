@@ -63,7 +63,7 @@ criterion = { version = "0.5", features = ["html_reports"] }
 directories = "5"
 fs-err = "2.11.0"
 get-size = "0.1.4"
-indexmap = "2.2.6"
+indexmap = "2.5.0"
 itertools = "0.13"
 lazy_static = "1.5"
 ndarray = { version = "0.16", features = ["rayon"] }
@@ -85,7 +85,7 @@ syn = "2.0"
 test-strategy = "0.4.0"
 thiserror = "1.0"
 twenty-first = "0.42.0-alpha.10"
-unicode-width = "0.1"
+unicode-width = "0.2"
 divan = "0.1.14"
 
 [workspace.lints.rust]
