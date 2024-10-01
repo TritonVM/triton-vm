@@ -67,6 +67,10 @@ no_profile = [] # see `profiler.rs` for an explanation of this seemingly backwar
 workspace = true
 
 [[bench]]
+name = "barycentric_eval"
+harness = false
+
+[[bench]]
 name = "bezout_coeffs"
 harness = false
 
