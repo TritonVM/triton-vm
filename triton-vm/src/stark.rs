@@ -266,8 +266,10 @@ impl Stark {
         let main_and_aux_codeword = short_domain.evaluate(&main_and_aux_combination_polynomial);
 
         profiler!(start "quotient" ("CC"));
-        let quotient_segments_combination_polynomial =
-            Self::random_linear_sum(quotient_segment_polynomials.view(), weights.quot_segments);
+        let quotient_segments_combination_polynomial = quotient_segment_polynomials
+            .into_iter()
+            .zip_eq(weights.quot_segments)
+            .fold(Polynomial::zero(), |acc, (poly, w)| acc + poly * w);
         let quotient_segments_combination_codeword =
             short_domain.evaluate(&quotient_segments_combination_polynomial);
         profiler!(stop "quotient");
@@ -478,39 +480,6 @@ impl Stark {
             fri_domain_quotient_segment_codewords,
             quotient_segment_polynomials,
         )
-    }
-
-    /// # Panics
-    ///
-    /// Panics if the number of polynomials and weights are not equal.
-    fn random_linear_sum<FF>(
-        polynomials: ArrayView1<Polynomial<FF>>,
-        weights: Array1<XFieldElement>,
-    ) -> Polynomial<XFieldElement>
-    where
-        FF: FiniteField + Mul<XFieldElement, Output = XFieldElement>,
-    {
-        assert_eq!(polynomials.len(), weights.len());
-
-        let random_linear_sum = (0..polynomials[0].coefficients.len())
-            .into_par_iter()
-            .map(|i| {
-                polynomials
-                    .axis_iter(Axis(0))
-                    .zip(&weights)
-                    .map(|(poly, &w)| poly[()].coefficients[i] * w)
-                    .sum()
-            })
-            .collect();
-        Polynomial::new(random_linear_sum)
-
-        // todo: replace by
-        //  ```
-        //  Zip::from(polynomials)
-        //      .and(&weights)
-        //      .fold(Polynomial::zero(), |acc, poly, &w| acc + poly.scalar_mul(w))
-        //  ```
-        //  (and maybe alter trait bounds) once `twenty-first` v0.42.0 is released.
     }
 
     /// Take a linear combination of the columns of the matrix with given weights.
