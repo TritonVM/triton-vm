@@ -69,8 +69,8 @@ impl Claim {
     }
 
     #[must_use]
-    pub fn with_input(mut self, input: Vec<BFieldElement>) -> Self {
-        self.input = input;
+    pub fn with_input(mut self, input: impl Into<Vec<BFieldElement>>) -> Self {
+        self.input = input.into();
         self
     }
 
@@ -90,6 +90,7 @@ mod tests {
     use test_strategy::proptest;
 
     use crate::proof_item::ProofItem;
+    use crate::vm::PublicInput;
 
     use super::*;
 
@@ -98,6 +99,14 @@ mod tests {
         fn default() -> Self {
             Self::new(Digest::default())
         }
+    }
+
+    #[test]
+    fn claim_accepts_various_types_for_public_input() {
+        let _claim = Claim::default()
+            .with_input(bfe_vec![42])
+            .with_input(bfe_array![42])
+            .with_input(PublicInput::new(bfe_vec![42]));
     }
 
     #[proptest]
