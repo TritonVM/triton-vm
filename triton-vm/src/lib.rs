@@ -223,11 +223,9 @@ pub fn prove_program(
     // While it is more convenient to construct a `Claim::about_program(&program)`, this API is
     // purposefully not used here to highlight that only a program's hash digest, not the full
     // program, is part of the claim.
-    let claim = Claim {
-        program_digest: program.hash(),
-        input: public_input.individual_tokens,
-        output: public_output,
-    };
+    let claim = Claim::new(program.hash())
+        .with_input(public_input)
+        .with_output(public_output);
 
     // The default parameters give a (conjectured) security level of 160 bits.
     let stark = Stark::default();

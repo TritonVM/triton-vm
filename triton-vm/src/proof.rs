@@ -8,6 +8,30 @@ use twenty_first::prelude::*;
 use crate::error::ProofStreamError;
 use crate::proof_stream::ProofStream;
 
+/// A version tag for the combination of Triton VM's
+/// [instruction set architecture (ISA)][isa] as well as the
+/// [STARK proof system][crate::stark::Stark].
+/// This version changes whenever either of the two changes.
+///
+/// # Rationale
+///
+/// A change in the ISA might give a [`Program`] a new meaning, and an existing
+/// proof might erroneously attest to the “new” program's graceful halt. By
+/// bumping this version when changing the ISA, the old proof is surely invalid
+/// under the new version. If the program's meaning has not changed, or the new
+/// meaning is accepted, a new proof can be generated.
+///
+/// A change in the STARK proof system generally means that the verifier has to
+/// perform different operations to verify a proof. This means that existing
+/// proofs about some program _should_ be accepted as valid, but (generally) are
+/// not. This version helps to make the discrepancy explicit.
+///
+/// Note that proofs remain valid for their matching versions indefinitely.
+///
+/// This version is separate from the crate's semantic version to allow software
+/// upgrades with no semantic changes to both, the ISA and the proof system.
+pub const CURRENT_VERSION: u32 = 0;
+
 /// Contains the necessary cryptographic information to verify a computation.
 /// Should be used together with a [`Claim`].
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize, GetSize, BFieldCodec, Arbitrary)]
@@ -43,8 +67,15 @@ impl Proof {
     Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize, GetSize, BFieldCodec, Arbitrary,
 )]
 pub struct Claim {
-    /// The hash digest of the program that was executed. The hash function in use is Tip5.
+    /// The hash digest of the program that was executed. The hash function in use is [`Tip5`].
     pub program_digest: Digest,
+
+    /// The version of the Triton VM instruction set architecture the
+    /// [`program_digest`][digest] is about, as well as of the STARK proof system
+    /// in use. See also: [`CURRENT_VERSION`].
+    ///
+    /// [digest]: Self::program_digest
+    pub version: u32,
 
     /// The public input to the computation.
     pub input: Vec<BFieldElement>,
@@ -54,9 +85,14 @@ pub struct Claim {
 }
 
 impl Claim {
+    /// Create a new Claim.
+    ///
+    /// Assumes the version to be [`CURRENT_VERSION`]. The version can be changed
+    /// with method [`about_version`][Self::about_version].
     pub fn new(program_digest: Digest) -> Self {
         Self {
             program_digest,
+            version: CURRENT_VERSION,
             input: vec![],
             output: vec![],
         }
@@ -78,18 +114,25 @@ impl Claim {
         self.output = output;
         self
     }
+
+    #[must_use]
+    pub fn about_version(mut self, version: u32) -> Self {
+        self.version = version;
+        self
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use assert2::assert;
+    use fs_err as fs;
     use proptest::collection::vec;
     use proptest::prelude::*;
     use proptest_arbitrary_interop::arb;
     use test_strategy::proptest;
 
+    use crate::prelude::*;
     use crate::proof_item::ProofItem;
-    use crate::vm::PublicInput;
 
     use super::*;
 
@@ -147,5 +190,41 @@ mod tests {
         #[strategy(vec(arb(), 0..1_000))] proof_data: Vec<BFieldElement>,
     ) {
         let _proof = Proof::decode(&proof_data);
+    }
+
+    #[test]
+    fn current_proof_version_is_still_current() {
+        // todo: Once the prover can be de-randomized (issue #334), change this test.
+        //  In particular:
+        //  Seed prover, generate proof, hash the proof, compare to hardcoded digest.
+        //  Remove the proof stored on disk, and remove dependency `bincode`.
+
+        fn generate_proof_file(program: Program, claim: Claim) {
+            let input = claim.input.clone().into();
+            let non_determinism = NonDeterminism::default();
+            let (aet, _) = VM::trace_execution(&program, input, non_determinism).unwrap();
+            let proof = Stark::default().prove(&claim, &aet).unwrap();
+            let proof = bincode::serialize(&proof).unwrap();
+            fs::create_dir_all("./test_data/").unwrap();
+            fs::write("./test_data/current_version_is_current.proof.new", proof).unwrap();
+            eprintln!("New proof generated. Delete “.new” from its file name & commit to accept.");
+        }
+
+        let program = triton_program! {
+            pick 11 pick 12 pick 13 pick 14 pick 15
+            read_io 5 assert_vector halt
+        };
+        let claim = Claim::about_program(&program).with_input(program.hash());
+
+        let Ok(proof) = fs::read("./test_data/current_version_is_current.proof") else {
+            generate_proof_file(program, claim);
+            panic!("Proof file does not exist.");
+        };
+        let proof = bincode::deserialize(&proof).unwrap();
+
+        if Stark::default().verify(&claim, &proof).is_err() {
+            generate_proof_file(program, claim);
+            panic!("Verification of existing proof failed. Need to bump proof version?");
+        };
     }
 }
