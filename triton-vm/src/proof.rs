@@ -1,7 +1,6 @@
 use arbitrary::Arbitrary;
 use get_size::GetSize;
 use isa::program::Program;
-use itertools::Itertools;
 use serde::Deserialize;
 use serde::Serialize;
 use twenty_first::prelude::*;
@@ -19,19 +18,19 @@ impl Proof {
     /// This is an upper bound on the length of the computation this proof is for.
     /// It is one of the main contributing factors to the length of the FRI domain.
     pub fn padded_height(&self) -> Result<usize, ProofStreamError> {
-        let proof_stream = ProofStream::try_from(self)?;
-        let proof_items = proof_stream.items.into_iter();
-        let log_2_padded_heights = proof_items
-            .filter_map(|item| item.try_into_log2_padded_height().ok())
-            .collect_vec();
+        let mut log_2_padded_heights = ProofStream::try_from(self)?
+            .items
+            .into_iter()
+            .filter_map(|item| item.try_into_log2_padded_height().ok());
 
-        if log_2_padded_heights.is_empty() {
-            return Err(ProofStreamError::NoLog2PaddedHeight);
-        }
-        if log_2_padded_heights.len() > 1 {
+        let log_2_padded_height = log_2_padded_heights
+            .next()
+            .ok_or(ProofStreamError::NoLog2PaddedHeight)?;
+        if log_2_padded_heights.next().is_some() {
             return Err(ProofStreamError::TooManyLog2PaddedHeights);
         }
-        Ok(1 << log_2_padded_heights[0])
+
+        Ok(1 << log_2_padded_height)
     }
 }
 
