@@ -227,8 +227,20 @@ where
     /// [cache]: crate::config::overwrite_lde_trace_caching_to
     fn low_degree_extend_all_columns(&mut self) {
         let evaluation_domain = self.evaluation_domain();
-        let randomized_trace_domain = self.randomized_trace_domain();
         let num_rows = evaluation_domain.length;
+        let num_elements = num_rows * Self::NUM_COLUMNS;
+
+        let mut extended_trace = Vec::with_capacity(0);
+        match crate::config::cache_lde_trace() {
+            Some(CacheDecision::NoCache) => return,
+            Some(CacheDecision::Cache) => extended_trace.reserve_exact(num_elements),
+            None => {
+                let reservation_result = extended_trace.try_reserve_exact(num_elements);
+                if reservation_result.is_err() {
+                    return;
+                }
+            }
+        };
 
         profiler!(start "polynomial zero-initialization");
         let mut interpolation_polynomials = Array1::zeros(Self::NUM_COLUMNS);
@@ -236,6 +248,7 @@ where
 
         // compute interpolants
         profiler!(start "interpolation");
+        let randomized_trace_domain = self.randomized_trace_domain();
         Zip::from(self.randomized_trace_table().axis_iter(Axis(1)))
             .and(interpolation_polynomials.axis_iter_mut(Axis(0)))
             .par_for_each(|trace_column, poly| {
@@ -245,50 +258,37 @@ where
             });
         profiler!(stop "interpolation");
 
-        let mut extended_trace = Vec::<Self::Field>::with_capacity(0);
-        let num_elements = num_rows * Self::NUM_COLUMNS;
-        let should_cache = match crate::config::cache_lde_trace() {
-            Some(CacheDecision::NoCache) => false,
-            Some(CacheDecision::Cache) => {
-                extended_trace = Vec::with_capacity(num_elements);
-                true
-            }
-            None => extended_trace.try_reserve_exact(num_elements).is_ok(),
-        };
+        profiler!(start "resize");
+        assert!(extended_trace.capacity() >= num_elements);
+        extended_trace
+            .spare_capacity_mut()
+            .par_iter_mut()
+            .for_each(|e| *e = MaybeUninit::new(Self::Field::ZERO));
 
-        if should_cache {
-            profiler!(start "resize");
-            assert!(extended_trace.capacity() >= num_elements);
-            extended_trace
-                .spare_capacity_mut()
-                .par_iter_mut()
-                .for_each(|e| *e = MaybeUninit::new(Self::Field::ZERO));
-
-            unsafe {
-                // Speed up initialization through parallelization.
-                //
-                // SAFETY:
-                // 1. The capacity is sufficiently large – see above `assert!`.
-                // 2. The length is set to equal (or less than) the capacity.
-                // 3. Each element in the spare capacity is initialized.
-                extended_trace.set_len(num_elements);
-            }
-            let mut extended_columns =
-                Array2::from_shape_vec([num_rows, Self::NUM_COLUMNS], extended_trace).unwrap();
-            profiler!(stop "resize");
-
-            profiler!(start "evaluation");
-            Zip::from(extended_columns.axis_iter_mut(Axis(1)))
-                .and(interpolation_polynomials.axis_iter(Axis(0)))
-                .par_for_each(|lde_column, interpolant| {
-                    let lde_codeword = evaluation_domain.evaluate(&interpolant[()]);
-                    Array1::from(lde_codeword).move_into(lde_column);
-                });
-            profiler!(stop "evaluation");
-            profiler!(start "memoize");
-            self.memoize_low_degree_extended_table(extended_columns);
-            profiler!(stop "memoize");
+        unsafe {
+            // Speed up initialization through parallelization.
+            //
+            // SAFETY:
+            // 1. The capacity is sufficiently large – see above `assert!`.
+            // 2. The length is set to equal (or less than) the capacity.
+            // 3. Each element in the spare capacity is initialized.
+            extended_trace.set_len(num_elements);
         }
+        let mut extended_columns =
+            Array2::from_shape_vec([num_rows, Self::NUM_COLUMNS], extended_trace).unwrap();
+        profiler!(stop "resize");
+
+        profiler!(start "evaluation");
+        Zip::from(extended_columns.axis_iter_mut(Axis(1)))
+            .and(interpolation_polynomials.axis_iter(Axis(0)))
+            .par_for_each(|lde_column, interpolant| {
+                let lde_codeword = evaluation_domain.evaluate(&interpolant[()]);
+                Array1::from(lde_codeword).move_into(lde_column);
+            });
+        profiler!(stop "evaluation");
+        profiler!(start "memoize");
+        self.memoize_low_degree_extended_table(extended_columns);
+        profiler!(stop "memoize");
     }
 
     /// Not intended for direct use, but through [`Self::low_degree_extend_all_columns`].
