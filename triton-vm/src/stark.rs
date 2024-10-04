@@ -7,6 +7,7 @@ use itertools::izip;
 use itertools::Itertools;
 use ndarray::prelude::*;
 use ndarray::Zip;
+use num_traits::ConstZero;
 use num_traits::Zero;
 use rayon::prelude::*;
 use serde::Deserialize;
@@ -297,7 +298,7 @@ impl Stark {
         let out_of_domain_curr_row_main_and_aux_value =
             main_and_aux_combination_polynomial.evaluate(out_of_domain_point_curr_row);
         let main_and_aux_curr_row_deep_codeword = Self::deep_codeword(
-            &main_and_aux_codeword.clone(),
+            &main_and_aux_codeword,
             short_domain,
             out_of_domain_point_curr_row,
             out_of_domain_curr_row_main_and_aux_value,
@@ -308,7 +309,7 @@ impl Stark {
         let out_of_domain_next_row_main_and_aux_value =
             main_and_aux_combination_polynomial.evaluate(out_of_domain_point_next_row);
         let main_and_aux_next_row_deep_codeword = Self::deep_codeword(
-            &main_and_aux_codeword.clone(),
+            &main_and_aux_codeword,
             short_domain,
             out_of_domain_point_next_row,
             out_of_domain_next_row_main_and_aux_value,
@@ -319,7 +320,7 @@ impl Stark {
         let out_of_domain_curr_row_quot_segments_value = quotient_segments_combination_polynomial
             .evaluate(out_of_domain_point_curr_row_pow_num_segments);
         let quotient_segments_curr_row_deep_codeword = Self::deep_codeword(
-            &quotient_segments_combination_codeword.clone(),
+            &quotient_segments_combination_codeword,
             short_domain,
             out_of_domain_point_curr_row_pow_num_segments,
             out_of_domain_curr_row_quot_segments_value,
@@ -335,10 +336,10 @@ impl Stark {
             quotient_segments_curr_row_deep_codeword,
         ]
         .into_par_iter()
-        .zip_eq(weights.deep.to_vec())
-        .map(|(codeword, weight)| codeword.into_par_iter().map(|c| c * weight).collect())
+        .zip_eq(weights.deep.as_slice().unwrap())
+        .map(|(codeword, &weight)| codeword.into_par_iter().map(|c| c * weight).collect())
         .reduce(
-            || vec![XFieldElement::zero(); short_domain.length],
+            || vec![XFieldElement::ZERO; short_domain.length],
             |left, right| left.into_iter().zip(right).map(|(l, r)| l + r).collect(),
         );
 
@@ -673,7 +674,7 @@ impl Stark {
         domain
             .domain_values()
             .par_iter()
-            .zip_eq(codeword.par_iter())
+            .zip_eq(codeword)
             .map(|(&in_domain_value, &in_domain_evaluation)| {
                 Self::deep_update(
                     in_domain_value,
