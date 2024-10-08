@@ -85,7 +85,7 @@ strum = { version = "0.26", features = ["derive"] }
 syn = "2.0"
 test-strategy = "0.4.0"
 thiserror = "1.0"
-twenty-first = "0.42.0-alpha.10"
+twenty-first = "0.42.0-alpha.11"
 unicode-width = "0.2"
 divan = "0.1.14"
 

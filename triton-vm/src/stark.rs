@@ -2514,11 +2514,11 @@ pub(crate) mod tests {
     ) {
         let x_pow_n = x.mod_pow_u32(N as u32);
         let evaluate_segment = |(segment_idx, segment): (_, &Polynomial<_>)| {
-            segment.evaluate(x_pow_n) * x.mod_pow_u32(segment_idx as u32)
+            segment.evaluate::<_, FF>(x_pow_n) * x.mod_pow_u32(segment_idx as u32)
         };
         let evaluated_segments = segments.iter().enumerate().map(evaluate_segment);
         let sum_of_evaluated_segments = evaluated_segments.fold(FF::zero(), |acc, x| acc + x);
-        assert!(f.evaluate(x) == sum_of_evaluated_segments);
+        assert!(f.evaluate::<_, FF>(x) == sum_of_evaluated_segments);
     }
 
     fn assert_segments_degrees_are_small_enough<const N: usize, FF: FiniteField>(
@@ -2739,13 +2739,16 @@ pub(crate) mod tests {
 
         let segments_evaluated = (0..)
             .zip(&segment_polynomials)
-            .map(|(segment_index, segment_polynomial)| {
+            .map(|(segment_index, segment_polynomial)| -> XFieldElement {
                 let point_to_the_seg_idx = random_point.mod_pow_u32(segment_index);
                 let point_to_the_num_seg = random_point.mod_pow_u32(num_segments as u32);
-                point_to_the_seg_idx * segment_polynomial.evaluate(point_to_the_num_seg)
+                let segment_in_point_to_the_num_seg =
+                    segment_polynomial.evaluate_in_same_field(point_to_the_num_seg);
+                point_to_the_seg_idx * segment_in_point_to_the_num_seg
             })
             .sum::<XFieldElement>();
-        prop_assert_eq!(segments_evaluated, polynomial.evaluate(random_point));
+        let evaluation_in_random_point = polynomial.evaluate_in_same_field(random_point);
+        prop_assert_eq!(segments_evaluated, evaluation_in_random_point);
 
         let segments_codewords = segment_polynomials
             .iter()

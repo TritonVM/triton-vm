@@ -209,8 +209,8 @@ mod tests {
 
     #[test]
     fn domain_values() {
-        let x_cubed_coefficients = bfe_vec![0, 0, 0, 1];
-        let poly = Polynomial::new(x_cubed_coefficients.clone());
+        let poly = Polynomial::<BFieldElement>::x_to_the(3);
+        let x_cubed_coefficients = poly.coefficients.clone();
 
         for order in [4, 8, 32] {
             let generator = BFieldElement::primitive_root_of_unity(order).unwrap();
@@ -226,14 +226,8 @@ mod tests {
             let actual_b_values_2 = (0..order as u32)
                 .map(|i| b_domain.domain_value(i))
                 .collect_vec();
-            assert_eq!(
-                expected_b_values, actual_b_values_1,
-                "domain_values() generates the arithmetic domain's BFieldElement values"
-            );
-            assert_eq!(
-                expected_b_values, actual_b_values_2,
-                "domain_value() generates the given domain BFieldElement value"
-            );
+            assert_eq!(expected_b_values, actual_b_values_1);
+            assert_eq!(expected_b_values, actual_b_values_2);
 
             let values = b_domain.evaluate(&poly);
             assert_ne!(values, x_cubed_coefficients);
@@ -243,10 +237,9 @@ mod tests {
 
             // Verify that batch-evaluated values match a manual evaluation
             for i in 0..order {
-                assert_eq!(
-                    poly.evaluate(b_domain.domain_value(i as u32)),
-                    values[i as usize]
-                );
+                let indeterminate = b_domain.domain_value(i as u32);
+                let evaluation: BFieldElement = poly.evaluate(indeterminate);
+                assert_eq!(evaluation, values[i as usize]);
             }
         }
     }

@@ -1335,7 +1335,7 @@ mod tests {
         assert_eq!(big_order as usize, initial_zerofier_inv.len());
         assert_eq!(1, initial_zerofier_poly.degree());
         assert!(initial_zerofier_poly
-            .evaluate(small_domain.domain_value(0))
+            .evaluate_in_same_field(small_domain.domain_value(0))
             .is_zero());
 
         let consistency_zerofier_inv =
@@ -1346,7 +1346,9 @@ mod tests {
         assert_eq!(big_order as usize, consistency_zerofier_inv.len());
         assert_eq!(small_order as isize, consistency_zerofier_poly.degree());
         for val in small_domain.domain_values() {
-            assert!(consistency_zerofier_poly.evaluate(val).is_zero());
+            assert!(consistency_zerofier_poly
+                .evaluate_in_same_field(val)
+                .is_zero());
         }
 
         let transition_zerofier_inv =
@@ -1360,7 +1362,9 @@ mod tests {
             .iter()
             .take(small_order as usize - 1)
         {
-            assert!(transition_zerofier_poly.evaluate(val).is_zero());
+            assert!(transition_zerofier_poly
+                .evaluate_in_same_field(val)
+                .is_zero());
         }
 
         let terminal_zerofier_inv = terminal_quotient_zerofier_inverse(small_domain, big_domain);
@@ -1369,7 +1373,7 @@ mod tests {
         assert_eq!(big_order as usize, terminal_zerofier_inv.len());
         assert_eq!(1, terminal_zerofier_poly.degree());
         assert!(terminal_zerofier_poly
-            .evaluate(small_domain.domain_value(small_order as u32 - 1))
+            .evaluate_in_same_field(small_domain.domain_value(small_order as u32 - 1))
             .is_zero());
     }
 
@@ -2081,11 +2085,11 @@ mod tests {
     /// constraints was intentional, this test should be updated.
     ///
     /// This test might fail in the course of CI for a pull request, if in the
-    /// mean time the constraints are modified on master. In this case, rebasing
+    /// meantime the constraints are modified on master. In this case, rebasing
     /// the topic branch on top of master is recommended.
     #[test]
     fn air_constraints_evaluators_have_not_changed() {
-        let mut rng = StdRng::seed_from_u64(3508729174085202315_u64);
+        let mut rng = StdRng::seed_from_u64(3508729174085202315);
 
         // pseudorandomly populate circuit inputs
         let main_row_current_base = Array1::from(rng.gen::<MainRow<BFieldElement>>().to_vec());
@@ -2159,7 +2163,7 @@ mod tests {
         let polynomial = Polynomial::new(coefficients);
 
         // evaluate polynomial in pseudorandom indeterminate
-        let value = polynomial.evaluate(rng.gen());
+        let value = polynomial.evaluate(rng.gen::<XFieldElement>());
         let expected = xfe!([
             3564660585377840245_u64,
             8403714483000428991_u64,
@@ -2168,8 +2172,8 @@ mod tests {
         assert_eq!(
             expected, value,
             "expected: {expected}\nobserved: {value}\n\
-        If there was an intentional change to the constraints, don't forget to \
-        update the value of `expected`."
+            If there was an intentional change to the constraints, don't forget to \
+            update the value of `expected`."
         );
     }
 }

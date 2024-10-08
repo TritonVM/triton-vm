@@ -214,6 +214,7 @@ impl GrandCrossTableArg {
 
 #[cfg(test)]
 mod tests {
+    use num_traits::Zero;
     use proptest::prelude::*;
     use proptest_arbitrary_interop::arb;
     use test_strategy::proptest;
@@ -224,27 +225,29 @@ mod tests {
     fn permutation_argument_is_identical_to_evaluating_zerofier_polynomial(
         #[strategy(arb())] roots: Vec<BFieldElement>,
         #[strategy(arb())] initial: XFieldElement,
-        #[strategy(arb())] challenge: BFieldElement,
+        #[strategy(arb())] challenge: XFieldElement,
     ) {
-        let poly_evaluation = initial * Polynomial::zerofier(&roots).evaluate(challenge);
-        let perm_arg_terminal = PermArg::compute_terminal(&roots, initial, challenge.lift());
+        let poly_evaluation =
+            initial * Polynomial::zerofier(&roots).evaluate::<_, XFieldElement>(challenge);
+        let perm_arg_terminal = PermArg::compute_terminal(&roots, initial, challenge);
         prop_assert_eq!(poly_evaluation, perm_arg_terminal);
     }
 
     #[proptest]
     fn evaluation_argument_is_identical_to_evaluating_polynomial(
-        #[strategy(arb())] polynomial: Polynomial<BFieldElement>,
-        #[strategy(arb())] challenge: BFieldElement,
+        #[strategy(arb())]
+        #[filter(!#polynomial.is_zero())]
+        polynomial: Polynomial<BFieldElement>,
+        #[strategy(arb())] challenge: XFieldElement,
     ) {
-        let poly_evaluation = polynomial.evaluate(challenge).lift();
+        let poly_evaluation: XFieldElement = polynomial.evaluate(challenge);
 
         let mut polynomial = polynomial;
         polynomial.normalize(); // remove leading zeros
-        let initial = polynomial.coefficients.pop();
-        let initial = initial.ok_or(TestCaseError::Reject("polynomial must be non-zero".into()))?;
+        let initial = polynomial.coefficients.pop().unwrap();
         polynomial.coefficients.reverse();
         let eval_arg_terminal =
-            EvalArg::compute_terminal(&polynomial.coefficients, initial.lift(), challenge.lift());
+            EvalArg::compute_terminal(&polynomial.coefficients, initial.lift(), challenge);
 
         prop_assert_eq!(poly_evaluation, eval_arg_terminal);
     }
@@ -252,15 +255,16 @@ mod tests {
     #[proptest]
     fn lookup_argument_is_identical_to_inverse_of_evaluation_of_zerofier_polynomial(
         #[strategy(arb())]
-        #[filter(#roots.iter().all(|&r| r != #challenge))]
+        #[filter(#roots.iter().all(|r| r.lift() != #challenge))]
         roots: Vec<BFieldElement>,
         #[strategy(arb())] initial: XFieldElement,
-        #[strategy(arb())] challenge: BFieldElement,
+        #[strategy(arb())] challenge: XFieldElement,
     ) {
         let polynomial = Polynomial::zerofier(&roots);
         let derivative = polynomial.formal_derivative();
-        let poly_evaluation = derivative.evaluate(challenge) / polynomial.evaluate(challenge);
-        let lookup_arg_terminal = LookupArg::compute_terminal(&roots, initial, challenge.lift());
+        let poly_evaluation = derivative.evaluate::<_, XFieldElement>(challenge)
+            / polynomial.evaluate::<_, XFieldElement>(challenge);
+        let lookup_arg_terminal = LookupArg::compute_terminal(&roots, initial, challenge);
         prop_assert_eq!(initial + poly_evaluation, lookup_arg_terminal);
     }
 }
