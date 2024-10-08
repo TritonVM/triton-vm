@@ -1237,17 +1237,17 @@ impl Stark {
         // Matrix `quotients_codewords` contains q_k(Ψ^F · ω^(j+i·F)) in cell (j+i·F, k).
         // To see this, observe that
         //
-        //     (      ·       )   ( (    ·                )   (     ·                ) )
-        //     ( ·  ξ^(l·k) · ) · ( ( ψ^k · ι^(j·k+i·k·F) ) o ( q_k(ψ^F · ω^(j+i·F)) ) )
-        //     (      ·       )   ( (    ·                )   (     ·                ) )
+        //     ⎛      …       ⎞   ⎛ ⎛    …                ⎞   ⎛     …                ⎞ ⎞
+        //     ⎜ …  ξ^(l·k) … ⎟ · ⎜ ⎜ ψ^k · ι^(j·k+i·k·F) ⎟ ∘ ⎜ q_k(ψ^F · ω^(j+i·F)) ⎟ ⎟
+        //     ⎝      …       ⎠   ⎝ ⎝    …                ⎠   ⎝     …                ⎠ ⎠
         //  =
-        //     (      ·                            )   (    ·                 )
-        //     ( ·  ψ^k · ι^(j·k+i·k·F+l·k·N/F)  · ) · ( q_k(ψ^F · ω^(j+i·F)) )
-        //     (      ·                            )   (    ·                 )
+        //     ⎛      …                            ⎞   ⎛    …                 ⎞
+        //     ⎜ …  ψ^k · ι^(j·k+i·k·F+l·k·N/F)  … ⎟ · ⎜ q_k(ψ^F · ω^(j+i·F)) ⎟
+        //     ⎝      …                            ⎠   ⎝    …                 ⎠
         //  =
-        //     (      ·                       )
-        //     ( q(ψ · ι^j · ω^(i + l · N/F)) )
-        //     (      ·                       )
+        //     ⎛      …                       ⎞
+        //     ⎜ q(ψ · ι^j · ω^(i + l · N/F)) ⎟
+        //     ⎝      …                       ⎠
 
         // low-degree extend columns from trace to FRI domain
         let mut quotient_codewords = Array2::zeros([fri_domain.length, num_segments]);
