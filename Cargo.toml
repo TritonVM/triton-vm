@@ -21,6 +21,7 @@ lto = "thin"
 build-override.opt-level = 3
 
 [profile.dev]
+opt-level = 1
 build-override.opt-level = 3
 
 [workspace.package]
