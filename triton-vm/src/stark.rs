@@ -1248,14 +1248,17 @@ pub(crate) mod tests {
     use proptest::collection::vec;
     use proptest::prelude::*;
     use proptest_arbitrary_interop::arb;
+    use rand::prelude::StdRng;
     use rand::thread_rng;
     use rand::Rng;
+    use rand_core::SeedableRng;
     use strum::EnumCount;
     use strum::IntoEnumIterator;
     use test_strategy::proptest;
     use twenty_first::math::other::random_elements;
 
     use super::*;
+    use crate::config::CacheDecision;
     use crate::error::InstructionError;
     use crate::shared_tests::construct_master_main_table;
     use crate::shared_tests::low_security_stark;
@@ -1361,6 +1364,40 @@ pub(crate) mod tests {
             master_aux_table,
             challenges,
         )
+    }
+
+    #[test]
+    fn quotient_segments_are_independent_of_fri_table_caching() {
+        // ensure caching _can_ happen by overwriting environment variables
+        crate::config::overwrite_lde_trace_caching_to(CacheDecision::Cache);
+
+        let mut rng = StdRng::seed_from_u64(1632525295622789151);
+        let weights = rng.gen::<[XFieldElement; MasterAuxTable::NUM_CONSTRAINTS]>();
+
+        let program = ProgramAndInput::new(triton_program!(halt));
+        let (stark, _, mut main, mut aux, ch) = master_tables_for_low_security_level(program);
+        let padded_height = main.trace_table().nrows();
+        let fri_dom = stark.derive_fri(padded_height).unwrap().domain;
+        let max_degree = stark.derive_max_degree(padded_height);
+        let quot_dom = Stark::quotient_domain(fri_dom, max_degree).unwrap();
+
+        debug_assert!(main.fri_domain_table().is_none());
+        debug_assert!(aux.fri_domain_table().is_none());
+        let jit_segments =
+            Stark::compute_quotient_segments(&main, &aux, fri_dom, quot_dom, &ch, &weights);
+
+        debug_assert!(main.fri_domain_table().is_none());
+        main.maybe_low_degree_extend_all_columns();
+        debug_assert!(main.fri_domain_table().is_some());
+
+        debug_assert!(aux.fri_domain_table().is_none());
+        aux.maybe_low_degree_extend_all_columns();
+        debug_assert!(aux.fri_domain_table().is_some());
+
+        let cache_segments =
+            Stark::compute_quotient_segments(&main, &aux, fri_dom, quot_dom, &ch, &weights);
+
+        assert_eq!(jit_segments, cache_segments);
     }
 
     #[test]

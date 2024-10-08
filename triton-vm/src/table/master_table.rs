@@ -1289,6 +1289,8 @@ pub fn interpolant_degree(padded_height: usize, num_trace_randomizers: usize) ->
 #[cfg(test)]
 mod tests {
     use fs_err as fs;
+    use std::fmt::Debug;
+    use std::ops::Add;
     use std::path::Path;
 
     use air::cross_table_argument::GrandCrossTableArg;
@@ -1426,6 +1428,66 @@ mod tests {
             master_tables_for_low_security_level(ProgramAndInput::new(triton_program!(halt)));
         main.trace_table().column(0).as_slice().unwrap();
         aux.trace_table().column(0).as_slice().unwrap();
+    }
+
+    #[test]
+    fn fri_domain_table_row_hashing_is_independent_of_fri_table_caching() {
+        fn row_hashes_are_identical<FF>(mut table: impl MasterTable<Field = FF>)
+        where
+            Standard: Distribution<FF>,
+            XFieldElement: Add<FF, Output = XFieldElement>,
+        {
+            assert!(table.fri_domain_table().is_none());
+            let jit_digests = table.hash_all_fri_domain_rows();
+
+            assert!(table.fri_domain_table().is_none());
+            table.maybe_low_degree_extend_all_columns();
+
+            assert!(table.fri_domain_table().is_some());
+            let cache_digests = table.hash_all_fri_domain_rows();
+
+            assert_eq!(jit_digests, cache_digests);
+        }
+
+        // ensure caching _can_ happen by overwriting environment variables
+        crate::config::overwrite_lde_trace_caching_to(CacheDecision::Cache);
+        let program = ProgramAndInput::new(triton_program!(halt));
+        let (_, _, main_table, aux_table, _) = master_tables_for_low_security_level(program);
+        row_hashes_are_identical(main_table);
+        row_hashes_are_identical(aux_table);
+    }
+
+    #[proptest]
+    fn revealing_rows_is_independent_of_fri_table_caching(row_indices: Vec<usize>) {
+        fn revealed_rows_are_identical<FF>(
+            mut table: impl MasterTable<Field = FF>,
+            indices: &[usize],
+        ) where
+            FF: Debug + PartialEq,
+            Standard: Distribution<FF>,
+            XFieldElement: Add<FF, Output = XFieldElement>,
+        {
+            assert!(table.fri_domain_table().is_none());
+            let jit_rows = table.reveal_rows(indices);
+
+            assert!(table.fri_domain_table().is_none());
+            table.maybe_low_degree_extend_all_columns();
+
+            assert!(table.fri_domain_table().is_some());
+            let cache_rows = table.reveal_rows(indices);
+
+            assert_eq!(jit_rows, cache_rows);
+        }
+
+        // ensure caching _can_ happen by overwriting environment variables
+        crate::config::overwrite_lde_trace_caching_to(CacheDecision::Cache);
+        let program = ProgramAndInput::new(triton_program!(halt));
+        let (_, _, main_table, aux_table, _) = master_tables_for_low_security_level(program);
+
+        let len = main_table.trace_table.nrows();
+        let row_indices = row_indices.into_iter().map(|idx| idx % len).collect_vec();
+        revealed_rows_are_identical(main_table, &row_indices);
+        revealed_rows_are_identical(aux_table, &row_indices);
     }
 
     #[test]
