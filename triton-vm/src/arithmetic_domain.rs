@@ -82,10 +82,16 @@ impl ArithmeticDomain {
         values
     }
 
+    /// # Panics
+    ///
+    /// Panics if the length of the argument does not match the length of `self`.
     pub fn interpolate<FF>(&self, values: &[FF]) -> Polynomial<FF>
     where
         FF: FiniteField + MulAssign<BFieldElement> + Mul<BFieldElement, Output = FF>,
     {
+        // required by `fast_coset_interpolate`
+        debug_assert_eq!(self.length, values.len());
+
         // generic type made explicit to avoid performance regressions due to auto-conversion
         Polynomial::fast_coset_interpolate::<BFieldElement>(self.offset, self.generator, values)
     }
