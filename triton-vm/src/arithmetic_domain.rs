@@ -1,7 +1,9 @@
 use std::ops::Mul;
 use std::ops::MulAssign;
 
+use num_traits::ConstOne;
 use num_traits::One;
+use num_traits::Zero;
 use rayon::prelude::*;
 use twenty_first::math::traits::FiniteField;
 use twenty_first::math::traits::PrimitiveRootOfUnity;
@@ -27,7 +29,7 @@ impl ArithmeticDomain {
     /// Errors if the domain length is not a power of 2.
     pub fn of_length(length: usize) -> Result<Self> {
         let domain = Self {
-            offset: bfe!(1),
+            offset: BFieldElement::ONE,
             generator: Self::generator_for_length(length as u64)?,
             length,
         };
@@ -124,6 +126,29 @@ impl ArithmeticDomain {
             "length must be the order of the generator"
         );
         domain_values
+    }
+
+    /// A polynomial that evaluates to 0 on (and only on)
+    /// a [domain value][Self::domain_values].
+    pub fn zerofier(&self) -> Polynomial<BFieldElement> {
+        if self.offset.is_zero() {
+            return Polynomial::x_to_the(1);
+        }
+
+        Polynomial::x_to_the(self.length)
+            - Polynomial::from_constant(self.offset.mod_pow(self.length as u64))
+    }
+
+    /// [`Self::zerofier`] times the argument.
+    /// More performant than polynomial multiplication.
+    /// See [`Self::zerofier`] for details.
+    pub fn mul_zerofier_with<FF>(&self, polynomial: Polynomial<FF>) -> Polynomial<FF>
+    where
+        FF: FiniteField + Mul<BFieldElement, Output = FF>,
+    {
+        // use knowledge of zerofier's shape for faster multiplication
+        polynomial.shift_coefficients(self.length)
+            - polynomial.scalar_mul(self.offset.mod_pow(self.length as u64))
     }
 
     pub(crate) fn halve(&self) -> Result<Self> {
@@ -315,5 +340,21 @@ mod tests {
         let values0 = domain.evaluate(&polynomial);
         let values1 = polynomial.batch_evaluate(&domain.domain_values());
         assert_eq!(values0, values1);
+    }
+
+    #[proptest]
+    fn zerofier_is_actually_zerofier(#[strategy(arbitrary_domain())] domain: ArithmeticDomain) {
+        let actual_zerofier = Polynomial::zerofier(&domain.domain_values());
+        prop_assert_eq!(actual_zerofier, domain.zerofier());
+    }
+
+    #[proptest]
+    fn multiplication_with_zerofier_is_identical_to_method_mul_with_zerofier(
+        #[strategy(arbitrary_domain())] domain: ArithmeticDomain,
+        #[strategy(arbitrary_polynomial())] polynomial: Polynomial<XFieldElement>,
+    ) {
+        let mul = domain.zerofier() * polynomial.clone();
+        let mul_with = domain.mul_zerofier_with(polynomial);
+        prop_assert_eq!(mul, mul_with);
     }
 }
