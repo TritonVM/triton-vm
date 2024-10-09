@@ -357,9 +357,7 @@ where
             .trace_domain()
             .interpolate(column_codeword.as_slice().unwrap());
 
-        let randomizer = self
-            .trace_randomizer_for_column(idx)
-            .multiply(&self.trace_domain_zerofier());
+        let randomizer = self.mul_trace_domain_zerofier_with(self.trace_randomizer_for_column(idx));
 
         column_interpolant + randomizer
     }
@@ -373,8 +371,22 @@ where
     ///
     /// If _only_ the randomized column is needed, see
     /// [`Self::randomized_column_interpolant`].
+    ///
+    /// If you _only_ need this zerofier for multiplication, see
+    /// [`Self::mul_trace_domain_zerofier_with`], which is faster for
+    /// this particular operation.
     fn trace_domain_zerofier(&self) -> Polynomial<BFieldElement> {
         Polynomial::x_to_the(self.trace_domain().length) - Polynomial::one()
+    }
+
+    /// [`Self::trace_domain_zerofier`] times the argument.
+    /// See [`Self::trace_domain_zerofier`] for more details.
+    fn mul_trace_domain_zerofier_with<FF: FiniteField>(
+        &self,
+        poly: Polynomial<FF>,
+    ) -> Polynomial<FF> {
+        // use knowledge of zerofier's shape for faster multiplication
+        poly.shift_coefficients(self.trace_domain().length) - poly
     }
 
     /// When added to a column in the correct way (see
@@ -474,9 +486,8 @@ where
             .enumerate()
             .map(|(i, &w)| self.trace_randomizer_for_column(i).scalar_mul(w))
             .reduce(Polynomial::zero, |sum, x| sum + x);
-        let randomizer_contribution = self
-            .trace_domain_zerofier()
-            .multiply(&weighted_sum_of_trace_randomizer_polynomials);
+        let randomizer_contribution =
+            self.mul_trace_domain_zerofier_with(weighted_sum_of_trace_randomizer_polynomials);
 
         weighted_sum_of_trace_columns + randomizer_contribution
     }
