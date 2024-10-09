@@ -2180,14 +2180,13 @@ mod tests {
         print_columns!(aux DegreeLoweringAuxColumn   for "degree low.");
     }
 
-    #[test]
-    fn master_aux_table_mut() {
+    fn dummy_master_aux_table() -> MasterAuxTable {
         let trace_domain = ArithmeticDomain::of_length(1 << 8).unwrap();
         let randomized_trace_domain = ArithmeticDomain::of_length(1 << 9).unwrap();
         let quotient_domain = ArithmeticDomain::of_length(1 << 10).unwrap();
         let fri_domain = ArithmeticDomain::of_length(1 << 11).unwrap();
 
-        let mut master_table = MasterAuxTable {
+        MasterAuxTable {
             num_trace_randomizers: 16,
             trace_domain,
             randomized_trace_domain,
@@ -2196,9 +2195,14 @@ mod tests {
             trace_table: Array2::zeros((trace_domain.length, MasterAuxTable::NUM_COLUMNS)),
             trace_randomizer_seed: StdRng::seed_from_u64(5323196155778693784).gen(),
             low_degree_extended_table: None,
-        };
+        }
+    }
 
-        let num_rows = trace_domain.length;
+    #[test]
+    fn master_aux_table_mut() {
+        let mut master_table = dummy_master_aux_table();
+
+        let num_rows = master_table.trace_domain().length;
         Array2::from_elem((num_rows, ProgramAuxColumn::COUNT), 1.into())
             .move_into(&mut master_table.table_mut(TableId::Program));
         Array2::from_elem((num_rows, ProcessorAuxColumn::COUNT), 2.into())
@@ -2350,5 +2354,59 @@ mod tests {
             If there was an intentional change to the constraints, don't forget to \
             update the value of `expected`."
         );
+    }
+
+    /// Verify for a dummy trace table that the trace randomizer for every pair
+    /// of columns have large Hamming distances. If this test fails, then the
+    /// random number generator is not cryptographically secure or is misused
+    /// somehow.
+    #[test]
+    fn trace_randomizers_have_large_hamming_distances() {
+        let aux_table = dummy_master_aux_table();
+
+        // It is a priori possible that the first few coefficients are
+        // correlated but then the latter coefficients are independent. We do
+        // want the latter coefficients to mask a far-from-random signal.
+        // So we look at the first `num_coefficients`-many coefficients only.
+        // This parameter must lie in 1..=aux_table.num_trace_randomizers.
+        let num_coefficients = 1;
+
+        // Binomial distribution with
+        // n = total number of bits
+        // p = q = 1/2
+        let n = num_coefficients * EXTENSION_DEGREE * std::mem::size_of::<BFieldElement>() * 8;
+        let mean = n / 2;
+        let variance = n / 4;
+        let stddev = (variance as f64).sqrt();
+        // four-sigma rule: four nines certainty
+        let threshold = (mean as f64) - 4.0 * stddev;
+
+        for i in 0..MasterAuxTable::NUM_COLUMNS {
+            let randomizer_i = aux_table.trace_randomizer_for_column(i);
+            for j in i + 1..MasterAuxTable::NUM_COLUMNS {
+                let randomizer_j = aux_table.trace_randomizer_for_column(j);
+
+                let distance = randomizer_i
+                    .coefficients
+                    .iter()
+                    .take(num_coefficients)
+                    .flat_map(|xfe| xfe.coefficients)
+                    .zip_eq(
+                        randomizer_j
+                            .coefficients
+                            .into_iter()
+                            .take(num_coefficients)
+                            .flat_map(|xfe| xfe.coefficients),
+                    )
+                    .map(|(lhs, rhs)| lhs.value() ^ rhs.value())
+                    .map(|u| u.count_ones())
+                    .sum::<u32>();
+
+                assert!(
+                    f64::from(distance) > threshold,
+                    "distance: {distance}\nthreshold: {threshold}"
+                );
+            }
+        }
     }
 }
