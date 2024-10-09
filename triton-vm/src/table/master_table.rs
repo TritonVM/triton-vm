@@ -397,7 +397,31 @@ where
     /// # Panics
     ///
     /// Panics if the `idx` is larger than or equal to [`Self::NUM_COLUMNS`].
-    fn trace_randomizer_for_column(&self, idx: usize) -> Polynomial<Self::Field>;
+    fn trace_randomizer_for_column(&self, idx: usize) -> Polynomial<Self::Field> {
+        // While possible to produce some randomizer for a too-large index, it does not
+        // have any useful application and is almost certainly a logic error.
+        assert!(idx < Self::NUM_COLUMNS);
+
+        // Add the index to the seed. The specific implementation ensures that the
+        // operation is independent of the target pointer width since `to_le_bytes`
+        // yields any leading zeros _after_ the bits of lesser significance.
+        // Note that this does not guarantee portability across architectures, as
+        // `rand::StdRng` is specifically documented as being not portable.
+        let mut seed = self.trace_randomizer_seed();
+        for (seed_byte, idx_byte) in seed.iter_mut().zip(idx.to_le_bytes()) {
+            *seed_byte = seed_byte.wrapping_add(idx_byte);
+        }
+        let mut rng = StdRng::from_seed(seed);
+
+        let coefficients = (0..self.num_trace_randomizers())
+            .map(|_| rng.gen())
+            .collect();
+        Polynomial::new(coefficients)
+    }
+
+    fn trace_randomizer_seed(&self) -> <StdRng as SeedableRng>::Seed;
+
+    fn num_trace_randomizers(&self) -> usize;
 
     /// Compute a Merkle tree of the FRI domain table. Every row gives one leaf in the tree.
     fn merkle_tree(&self) -> MerkleTree {
@@ -633,7 +657,7 @@ pub struct MasterMainTable {
     fri_domain: ArithmeticDomain,
 
     trace_table: Array2<BFieldElement>,
-    column_randomizer_seeds: Vec<<StdRng as SeedableRng>::Seed>,
+    trace_randomizer_seed: <StdRng as SeedableRng>::Seed,
 
     low_degree_extended_table: Option<Array2<BFieldElement>>,
 }
@@ -649,7 +673,7 @@ pub struct MasterAuxTable {
     fri_domain: ArithmeticDomain,
 
     trace_table: Array2<XFieldElement>,
-    column_randomizer_seeds: Vec<<StdRng as SeedableRng>::Seed>,
+    trace_randomizer_seed: <StdRng as SeedableRng>::Seed,
 
     low_degree_extended_table: Option<Array2<XFieldElement>>,
 }
@@ -718,10 +742,12 @@ impl MasterTable for MasterMainTable {
         }
     }
 
-    fn trace_randomizer_for_column(&self, idx: usize) -> Polynomial<Self::Field> {
-        let mut rng = StdRng::from_seed(self.column_randomizer_seeds[idx]);
-        let coefficients = (0..self.num_trace_randomizers).map(|_| rng.gen()).collect();
-        Polynomial::new(coefficients)
+    fn trace_randomizer_seed(&self) -> <StdRng as SeedableRng>::Seed {
+        self.trace_randomizer_seed
+    }
+
+    fn num_trace_randomizers(&self) -> usize {
+        self.num_trace_randomizers
     }
 }
 
@@ -789,10 +815,12 @@ impl MasterTable for MasterAuxTable {
         }
     }
 
-    fn trace_randomizer_for_column(&self, idx: usize) -> Polynomial<Self::Field> {
-        let mut rng = StdRng::from_seed(self.column_randomizer_seeds[idx]);
-        let coefficients = (0..self.num_trace_randomizers).map(|_| rng.gen()).collect();
-        Polynomial::new(coefficients)
+    fn trace_randomizer_seed(&self) -> <StdRng as SeedableRng>::Seed {
+        self.trace_randomizer_seed
+    }
+
+    fn num_trace_randomizers(&self) -> usize {
+        self.num_trace_randomizers
     }
 }
 
@@ -815,8 +843,6 @@ impl MasterMainTable {
         let trace_domain = randomized_trace_domain.halve().unwrap();
         let trace_table = fast_zeros_column_major(trace_domain.length, Self::NUM_COLUMNS);
 
-        let column_randomizer_seeds = (0..Self::NUM_COLUMNS).map(|_| random()).collect();
-
         let mut master_main_table = Self {
             num_trace_randomizers,
             program_table_len: aet.height_of_table(TableId::Program),
@@ -831,7 +857,7 @@ impl MasterMainTable {
             quotient_domain,
             fri_domain,
             trace_table,
-            column_randomizer_seeds,
+            trace_randomizer_seed: random(),
             low_degree_extended_table: None,
         };
 
@@ -945,8 +971,6 @@ impl MasterMainTable {
             .par_mapv_inplace(|_| random());
         profiler!(stop "initialize master table");
 
-        let column_randomizer_seeds = (0..Self::NUM_COLUMNS).map(|_| random()).collect();
-
         let mut master_aux_table = MasterAuxTable {
             num_trace_randomizers: self.num_trace_randomizers,
             trace_domain: self.trace_domain(),
@@ -954,7 +978,7 @@ impl MasterMainTable {
             quotient_domain: self.quotient_domain(),
             fri_domain: self.fri_domain(),
             trace_table: aux_trace_table,
-            column_randomizer_seeds,
+            trace_randomizer_seed: random(),
             low_degree_extended_table: None,
         };
 
@@ -2178,11 +2202,6 @@ mod tests {
         let quotient_domain = ArithmeticDomain::of_length(1 << 10).unwrap();
         let fri_domain = ArithmeticDomain::of_length(1 << 11).unwrap();
 
-        let mut rng = StdRng::seed_from_u64(5323196155778693784);
-        let column_randomizer_seeds = (0..MasterAuxTable::NUM_COLUMNS)
-            .map(|_| rng.gen())
-            .collect();
-
         let mut master_table = MasterAuxTable {
             num_trace_randomizers: 16,
             trace_domain,
@@ -2190,7 +2209,7 @@ mod tests {
             quotient_domain,
             fri_domain,
             trace_table: Array2::zeros((trace_domain.length, MasterAuxTable::NUM_COLUMNS)),
-            column_randomizer_seeds,
+            trace_randomizer_seed: StdRng::seed_from_u64(5323196155778693784).gen(),
             low_degree_extended_table: None,
         };
 
