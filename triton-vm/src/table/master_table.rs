@@ -327,7 +327,7 @@ where
             .inverse();
 
         let ood_trace_domain_zerofier: XFieldElement =
-            self.trace_domain_zerofier().evaluate(indeterminate);
+            self.trace_domain().zerofier().evaluate(indeterminate);
 
         let trace_table = self.trace_table();
         (0..Self::NUM_COLUMNS)
@@ -358,29 +358,25 @@ where
             .interpolate(column_codeword.as_slice().unwrap());
 
         let randomizer = self
-            .trace_randomizer_for_column(idx)
-            .multiply(&self.trace_domain_zerofier());
+            .trace_domain()
+            .mul_zerofier_with(self.trace_randomizer_for_column(idx));
 
         column_interpolant + randomizer
     }
 
-    /// The zerofier for the [trace domain][Self::trace_domain]. When used in
-    /// combination with  a [trace randomizer][Self::trace_randomizer_for_column],
-    /// this zerofier makes sure that the trace is not influenced anywhere on the
-    /// trace domain. In particular, use the following formula:
+    /// Uniquely enables the revelation of up to `num_trace_randomizers` entries in
+    /// the corresponding column without compromising zero-knowledge.
+    ///
+    /// In order for the trace randomizer to not influence the trace on the
+    /// [trace domain][Self::trace_domain], it must be multiplied with a polynomial
+    /// that evaluates to zero on that domain. The polynomial of lowest degree with
+    /// this property is the corresponding [zerofier][ArithmeticDomain::zerofier].
+    /// The randomized trace column interpolant can then be obtained through:
     ///
     /// `column + zerofier·randomizer`
     ///
-    /// If _only_ the randomized column is needed, see
-    /// [`Self::randomized_column_interpolant`].
-    fn trace_domain_zerofier(&self) -> Polynomial<BFieldElement> {
-        Polynomial::x_to_the(self.trace_domain().length) - Polynomial::one()
-    }
-
-    /// When added to a column in the correct way (see
-    /// [`Self::trace_domain_zerofier`]), allows revealing up to
-    /// `num_trace_randomizers` entries of the column without breaking
-    /// zero-knowledge.
+    /// If you want to multiply the trace randomizer with the zerofier, the most
+    /// performant approach is [`ArithmeticDomain::mul_zerofier_with`].
     ///
     /// # Panics
     ///
@@ -475,8 +471,8 @@ where
             .map(|(i, &w)| self.trace_randomizer_for_column(i).scalar_mul(w))
             .reduce(Polynomial::zero, |sum, x| sum + x);
         let randomizer_contribution = self
-            .trace_domain_zerofier()
-            .multiply(&weighted_sum_of_trace_randomizer_polynomials);
+            .trace_domain()
+            .mul_zerofier_with(weighted_sum_of_trace_randomizer_polynomials);
 
         weighted_sum_of_trace_columns + randomizer_contribution
     }
@@ -512,10 +508,9 @@ where
         // add trace randomizers to their columns
         // todo: this could be done using `Polynomial::batch_evaluate` if that function
         //       had more general trait bounds 🤷
-        let zerofier = self.trace_domain_zerofier();
         let zerofier_evals = indeterminates
             .par_iter()
-            .map(|&i| zerofier.evaluate::<_, Self::Field>(i))
+            .map(|&i| self.trace_domain().zerofier().evaluate::<_, Self::Field>(i))
             .collect::<Vec<_>>();
 
         let trace_randomizers = (0..Self::NUM_COLUMNS)
