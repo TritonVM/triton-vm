@@ -59,11 +59,12 @@ pub fn contiguous_column_slices(column_indices: &[usize]) -> Vec<usize> {
     .concat()
 }
 
-pub fn fast_zeros_column_major<FF: Zero + Send + Sync + Copy>(
-    num_rows: usize,
-    num_columns: usize,
-) -> Array2<FF> {
-    let mut array = Array2::uninit((num_rows, num_columns).f());
+/// Faster than [`Array2::zeros`] through parallelism.
+pub fn par_zeros<FF>(shape: impl ShapeBuilder<Dim = ndarray::Dim<[Ix; 2]>>) -> Array2<FF>
+where
+    FF: Zero + Send + Sync + Copy,
+{
+    let mut array = Array2::uninit(shape);
     array.par_mapv_inplace(|_| MaybeUninit::new(FF::zero()));
 
     unsafe {
@@ -184,30 +185,43 @@ mod test {
     }
 
     #[proptest]
-    fn fast_zeros_column_major_has_right_dimensions(
+    fn par_zeros_has_right_dimensions(
         #[strategy(0usize..1000)] height: usize,
         #[strategy(0usize..1000)] width: usize,
+        column_majority: bool,
     ) {
-        let matrix = fast_zeros_column_major::<XFieldElement>(height, width);
+        let shape = (height, width).set_f(column_majority);
+        let matrix = par_zeros::<XFieldElement>(shape);
         prop_assert_eq!(height, matrix.nrows());
         prop_assert_eq!(width, matrix.ncols());
     }
 
     #[proptest]
-    fn fast_zeros_column_major_is_not_standard_layout(
+    fn par_zeros_row_major_is_standard_layout(
         #[strategy(2usize..1000)] height: usize,
         #[strategy(2usize..1000)] width: usize,
     ) {
-        let matrix = fast_zeros_column_major::<XFieldElement>(height, width);
+        let matrix = par_zeros::<XFieldElement>((height, width));
+        prop_assert!(matrix.is_standard_layout());
+    }
+
+    #[proptest]
+    fn par_zeros_column_major_is_not_standard_layout(
+        #[strategy(2usize..1000)] height: usize,
+        #[strategy(2usize..1000)] width: usize,
+    ) {
+        let matrix = par_zeros::<XFieldElement>((height, width).f());
         prop_assert!(!matrix.is_standard_layout());
     }
 
     #[proptest]
-    fn fast_zeros_column_major_is_all_zeros(
+    fn par_zeros_is_all_zeros(
         #[strategy(0usize..1000)] height: usize,
         #[strategy(0usize..1000)] width: usize,
+        column_majority: bool,
     ) {
-        let matrix = fast_zeros_column_major::<XFieldElement>(height, width);
+        let shape = (height, width).set_f(column_majority);
+        let matrix = par_zeros::<XFieldElement>(shape);
         prop_assert!(matrix.iter().all(|e| e.is_zero()));
     }
 }

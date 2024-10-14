@@ -98,7 +98,7 @@ use crate::arithmetic_domain::ArithmeticDomain;
 use crate::challenges::Challenges;
 use crate::config::CacheDecision;
 use crate::error::ProvingError;
-use crate::ndarray_helper::fast_zeros_column_major;
+use crate::ndarray_helper;
 use crate::ndarray_helper::horizontal_multi_slice_mut;
 use crate::ndarray_helper::partial_sums;
 use crate::profiler::profiler;
@@ -826,7 +826,9 @@ impl MasterMainTable {
         // For the current approach to trace randomizers to work, the randomized trace
         // must be _exactly_ twice as long as the trace without trace randomizers.
         let trace_domain = randomized_trace_domain.halve().unwrap();
-        let trace_table = fast_zeros_column_major(trace_domain.length, Self::NUM_COLUMNS);
+
+        // column majority (“`F`”) for contiguous column slices
+        let trace_table = ndarray_helper::par_zeros((trace_domain.length, Self::NUM_COLUMNS).f());
 
         let mut master_main_table = Self {
             num_trace_randomizers,
@@ -947,8 +949,10 @@ impl MasterMainTable {
     /// adding some number of columns.
     pub fn extend(&self, challenges: &Challenges) -> MasterAuxTable {
         profiler!(start "initialize master table");
-        let mut aux_trace_table =
-            fast_zeros_column_major(self.trace_table().nrows(), MasterAuxTable::NUM_COLUMNS);
+        // column majority (“`F`”) for contiguous column slices
+        let mut aux_trace_table = ndarray_helper::par_zeros(
+            (self.trace_table().nrows(), MasterAuxTable::NUM_COLUMNS).f(),
+        );
 
         let randomizers_start = MasterAuxTable::NUM_COLUMNS - NUM_RANDOMIZER_POLYNOMIALS;
         aux_trace_table

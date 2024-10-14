@@ -23,7 +23,7 @@ use crate::error::ProvingError;
 use crate::error::VerificationError;
 use crate::fri;
 use crate::fri::Fri;
-use crate::ndarray_helper::fast_zeros_column_major;
+use crate::ndarray_helper;
 use crate::profiler::profiler;
 use crate::proof::Claim;
 use crate::proof::Proof;
@@ -965,10 +965,13 @@ impl Stark {
 
         // for every coset, evaluate constraints
         profiler!(start "zero-initialization");
+        // column majority (“`F`”) for contiguous column slices
         let mut quotient_multicoset_evaluations =
-            fast_zeros_column_major(num_rows, NUM_QUOTIENT_SEGMENTS);
-        let mut main_columns = fast_zeros_column_major(num_rows, MasterMainTable::NUM_COLUMNS);
-        let mut aux_columns = fast_zeros_column_major(num_rows, MasterAuxTable::NUM_COLUMNS);
+            ndarray_helper::par_zeros((num_rows, NUM_QUOTIENT_SEGMENTS).f());
+        let mut main_columns =
+            ndarray_helper::par_zeros((num_rows, MasterMainTable::NUM_COLUMNS).f());
+        let mut aux_columns =
+            ndarray_helper::par_zeros((num_rows, MasterAuxTable::NUM_COLUMNS).f());
         profiler!(stop "zero-initialization");
 
         profiler!(start "calculate quotients");
