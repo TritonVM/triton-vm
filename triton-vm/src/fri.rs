@@ -196,7 +196,7 @@ struct FriVerifier<'stream> {
     rounds: Vec<VerifierRound>,
     first_round_domain: ArithmeticDomain,
     last_round_codeword: Vec<XFieldElement>,
-    last_round_polynomial: Polynomial<XFieldElement>,
+    last_round_polynomial: Polynomial<'static, XFieldElement>,
     last_round_max_degree: usize,
     num_rounds: usize,
     num_collinearity_checks: usize,
@@ -660,6 +660,9 @@ mod tests {
 
     use super::*;
 
+    /// A type alias exclusive to this test module.
+    type XfePoly = Polynomial<'static, XFieldElement>;
+
     prop_compose! {
         fn arbitrary_fri_supporting_degree(min_supported_degree: i64)(
             log_2_expansion_factor in 1_usize..=8
@@ -741,7 +744,7 @@ mod tests {
     fn prove_and_verify_low_degree_polynomial(
         fri: Fri,
         #[strategy(-1_i64..=#fri.first_round_max_degree() as i64)] _degree: i64,
-        #[strategy(arbitrary_polynomial_of_degree(#_degree))] polynomial: Polynomial<XFieldElement>,
+        #[strategy(arbitrary_polynomial_of_degree(#_degree))] polynomial: XfePoly,
     ) {
         debug_assert!(polynomial.degree() <= fri.first_round_max_degree() as isize);
         let codeword = fri.domain.evaluate(&polynomial);
@@ -758,7 +761,7 @@ mod tests {
         fri: Fri,
         #[strategy(Just((1 + #fri.first_round_max_degree()) as i64))] _too_high_degree: i64,
         #[strategy(#_too_high_degree..2 * #_too_high_degree)] _degree: i64,
-        #[strategy(arbitrary_polynomial_of_degree(#_degree))] polynomial: Polynomial<XFieldElement>,
+        #[strategy(arbitrary_polynomial_of_degree(#_degree))] polynomial: XfePoly,
     ) {
         debug_assert!(polynomial.degree() > fri.first_round_max_degree() as isize);
         let codeword = fri.domain.evaluate(&polynomial);
@@ -828,7 +831,7 @@ mod tests {
     fn serialization(
         fri: Fri,
         #[strategy(-1_i64..=#fri.first_round_max_degree() as i64)] _degree: i64,
-        #[strategy(arbitrary_polynomial_of_degree(#_degree))] polynomial: Polynomial<XFieldElement>,
+        #[strategy(arbitrary_polynomial_of_degree(#_degree))] polynomial: XfePoly,
     ) {
         let codeword = fri.domain.evaluate(&polynomial);
         let mut prover_proof_stream = ProofStream::new();
@@ -854,7 +857,7 @@ mod tests {
     #[proptest(cases = 50)]
     fn last_round_codeword_unequal_to_last_round_commitment_results_in_validation_failure(
         fri: Fri,
-        #[strategy(arbitrary_polynomial())] polynomial: Polynomial<XFieldElement>,
+        #[strategy(arbitrary_polynomial())] polynomial: XfePoly,
         rng_seed: u64,
     ) {
         let codeword = fri.domain.evaluate(&polynomial);
@@ -905,7 +908,7 @@ mod tests {
     #[proptest(cases = 50)]
     fn revealing_wrong_number_of_leaves_results_in_validation_failure(
         fri: Fri,
-        #[strategy(arbitrary_polynomial())] polynomial: Polynomial<XFieldElement>,
+        #[strategy(arbitrary_polynomial())] polynomial: XfePoly,
         rng_seed: u64,
     ) {
         let codeword = fri.domain.evaluate(&polynomial);
@@ -953,7 +956,7 @@ mod tests {
     #[proptest(cases = 50)]
     fn incorrect_authentication_structure_results_in_validation_failure(
         fri: Fri,
-        #[strategy(arbitrary_polynomial())] polynomial: Polynomial<XFieldElement>,
+        #[strategy(arbitrary_polynomial())] polynomial: XfePoly,
         rng_seed: u64,
     ) {
         let all_authentication_structures_are_trivial =
@@ -1008,9 +1011,9 @@ mod tests {
     #[proptest]
     fn incorrect_last_round_polynomial_results_in_verification_failure(
         fri: Fri,
-        #[strategy(arbitrary_polynomial())] fri_polynomial: Polynomial<XFieldElement>,
+        #[strategy(arbitrary_polynomial())] fri_polynomial: XfePoly,
         #[strategy(arbitrary_polynomial_of_degree(#fri.last_round_max_degree() as i64))]
-        incorrect_polynomial: Polynomial<XFieldElement>,
+        incorrect_polynomial: XfePoly,
     ) {
         let codeword = fri.domain.evaluate(&fri_polynomial);
         let mut proof_stream = ProofStream::new();
@@ -1033,7 +1036,7 @@ mod tests {
         fri: Fri,
         #[strategy(Just(#fri.first_round_max_degree() as i64 + 1))] _min_fail_deg: i64,
         #[strategy(#_min_fail_deg..2 * #_min_fail_deg)] _degree: i64,
-        #[strategy(arbitrary_polynomial_of_degree(#_degree))] poly: Polynomial<XFieldElement>,
+        #[strategy(arbitrary_polynomial_of_degree(#_degree))] poly: XfePoly,
     ) {
         let codeword = fri.domain.evaluate(&poly);
         let mut proof_stream = ProofStream::new();

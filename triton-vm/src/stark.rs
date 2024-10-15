@@ -13,6 +13,7 @@ use rayon::prelude::*;
 use serde::Deserialize;
 use serde::Serialize;
 use twenty_first::math::ntt::intt;
+use twenty_first::math::ntt::ntt;
 use twenty_first::math::traits::FiniteField;
 use twenty_first::math::traits::PrimitiveRootOfUnity;
 use twenty_first::prelude::*;
@@ -162,8 +163,8 @@ impl Stark {
 
         let (fri_domain_quotient_segment_codewords, quotient_segment_polynomials) =
             Self::compute_quotient_segments(
-                &master_main_table,
-                &master_aux_table,
+                &mut master_main_table,
+                &mut master_aux_table,
                 quotient_domain,
                 &challenges,
                 &quotient_combination_weights,
@@ -399,16 +400,37 @@ impl Stark {
     }
 
     fn compute_quotient_segments(
-        main_table: &MasterMainTable,
-        aux_table: &MasterAuxTable,
+        main_table: &mut MasterMainTable,
+        aux_table: &mut MasterAuxTable,
         quotient_domain: ArithmeticDomain,
         challenges: &Challenges,
         quotient_combination_weights: &[XFieldElement],
-    ) -> (Array2<XFieldElement>, Array1<Polynomial<XFieldElement>>) {
+    ) -> (
+        Array2<XFieldElement>,
+        Array1<Polynomial<'static, XFieldElement>>,
+    ) {
         let (Some(main_quotient_domain_codewords), Some(aux_quotient_domain_codewords)) = (
             main_table.quotient_domain_table(),
             aux_table.quotient_domain_table(),
         ) else {
+            // The decision to cache the quotient domain main table can be independent of
+            // the decision to cache the quotient domain auxiliary table. Additionally,
+            // available memory is affected by other running programs. Together, this may
+            // result in one table being cached while the other is not. To compute the
+            // quotients, either both or neither are needed.[^1] For peak memory
+            // consumption, it is beneficial to clear any unused cache.
+            //
+            // Discarding the cache incurs a performance penalty later, when revealing the
+            // rows indicated by FRI. This is an acceptable tradeoff:
+            // Executing this very code path means that in the current environment, peak
+            // memory usage is a concern. Running out of memory results in abnormal
+            // termination of the prover. Slower execution is an acceptable price for normal
+            // termination.
+            //
+            // [^1]: Code using exactly one cache _could_ exist, but oh! the engineering.
+            main_table.clear_cache();
+            aux_table.clear_cache();
+
             profiler!(start "quotient calculation (just-in-time)");
             let (fri_domain_quotient_segment_codewords, quotient_segment_polynomials) =
                 Self::compute_quotient_segments_with_jit_lde(
@@ -471,10 +493,10 @@ impl Stark {
     fn interpolate_quotient_segments(
         quotient_codeword: Array1<XFieldElement>,
         quotient_domain: ArithmeticDomain,
-    ) -> Array1<Polynomial<XFieldElement>> {
+    ) -> Array1<Polynomial<'static, XFieldElement>> {
         let quotient_interpolation_poly = quotient_domain.interpolate(&quotient_codeword.to_vec());
         let quotient_segments: [_; NUM_QUOTIENT_SEGMENTS] =
-            Self::split_polynomial_into_segments(&quotient_interpolation_poly);
+            Self::split_polynomial_into_segments(quotient_interpolation_poly);
         Array1::from(quotient_segments.to_vec())
     }
 
@@ -581,13 +603,13 @@ impl Stark {
     ///
     /// The following equality holds: `f(x) == f_0(x^3) + x·f_1(x^3) + x^2·f_2(x^3)`.
     fn split_polynomial_into_segments<const N: usize, FF: FiniteField>(
-        polynomial: &Polynomial<FF>,
-    ) -> [Polynomial<FF>; N] {
-        let mut segments = vec![];
+        polynomial: Polynomial<FF>,
+    ) -> [Polynomial<'static, FF>; N] {
+        let mut segments = Vec::with_capacity(N);
+        let coefficients = polynomial.into_coefficients();
         for segment_index in 0..N {
-            let coefficient_iter_at_start = polynomial.coefficients.iter().skip(segment_index);
-            let segment_coefficients = coefficient_iter_at_start.step_by(N).copied().collect();
-            let segment = Polynomial::new(segment_coefficients);
+            let segment_coefficients = coefficients.iter().skip(segment_index).step_by(N);
+            let segment = Polynomial::new(segment_coefficients.copied().collect());
             segments.push(segment);
         }
         segments.try_into().unwrap()
@@ -932,36 +954,43 @@ impl Stark {
     /// there. The resulting coset-quotients are linearly recombined to produce the
     /// quotient segment codewords.
     fn compute_quotient_segments_with_jit_lde(
-        main_table: &MasterMainTable,
-        aux_table: &MasterAuxTable,
+        main_table: &mut MasterMainTable,
+        aux_table: &mut MasterAuxTable,
         challenges: &Challenges,
         quotient_combination_weights: &[XFieldElement],
-    ) -> (Array2<XFieldElement>, Array1<Polynomial<XFieldElement>>) {
+    ) -> (
+        Array2<XFieldElement>,
+        Array1<Polynomial<'static, XFieldElement>>,
+    ) {
         // This parameter regulates a time-memory tradeoff. Semantically, it is the
         // ratio of the randomized trace length to the length of the domain used for
         // calculating the quotient segments (aka “working domain”). When this factor is
         // larger, there are _more_ cosets of _smaller_ size over which the trace
         // polynomials are evaluated.
-        // Must be a power of two and lie in 1..=randomized_trace_domain.length.
+        // Must be a power of two and lie in 2..=randomized_trace_domain.length.
+        //
+        // The requirement for the working domain to be at most as long as the trace
+        // domain, i.e., at most half the size of the randomzied trace domain, is
+        // explained below.
         const RANDOMIZED_TRACE_LEN_TO_WORKING_DOMAIN_LEN_RATIO: usize = 2;
         const NUM_COSETS: usize =
             NUM_QUOTIENT_SEGMENTS * RANDOMIZED_TRACE_LEN_TO_WORKING_DOMAIN_LEN_RATIO;
 
-        assert!(RANDOMIZED_TRACE_LEN_TO_WORKING_DOMAIN_LEN_RATIO.is_power_of_two());
+        debug_assert!(RANDOMIZED_TRACE_LEN_TO_WORKING_DOMAIN_LEN_RATIO.is_power_of_two());
 
         let mut working_domain = main_table.randomized_trace_domain();
         for _ in 0..RANDOMIZED_TRACE_LEN_TO_WORKING_DOMAIN_LEN_RATIO.ilog2() {
             working_domain = working_domain.halve().unwrap();
         }
         let working_domain = working_domain;
+        let trace_domain = main_table.trace_domain();
         let fri_domain = main_table.fri_domain();
 
         let num_rows = working_domain.length;
         let coset_root_order = (num_rows * NUM_COSETS).try_into().unwrap();
 
         // the powers of ι define `NUM_COSETS`-many cosets of the working domain
-        let iota = BFieldElement::primitive_root_of_unity(coset_root_order)
-            .expect("Cannot find ι, a primitive nth root of unity of the right order n.");
+        let iota = BFieldElement::primitive_root_of_unity(coset_root_order).unwrap();
         let psi = fri_domain.offset;
 
         // for every coset, evaluate constraints
@@ -975,17 +1004,30 @@ impl Stark {
             ndarray_helper::par_zeros((num_rows, MasterAuxTable::NUM_COLUMNS).f());
         profiler!(stop "zero-initialization");
 
+        profiler!(start "fetch trace randomizers");
+        let main_trace_randomizers = (0..MasterMainTable::NUM_COLUMNS)
+            .into_par_iter()
+            .map(|i| main_table.trace_randomizer_for_column(i))
+            .collect::<Vec<_>>();
+        let aux_trace_randomizers = (0..MasterAuxTable::NUM_COLUMNS)
+            .into_par_iter()
+            .map(|i| aux_table.trace_randomizer_for_column(i))
+            .collect::<Vec<_>>();
+        let main_trace_randomizers = Array1::from(main_trace_randomizers);
+        let aux_trace_randomizers = Array1::from(aux_trace_randomizers);
+        profiler!(stop "fetch trace randomizers");
+
         profiler!(start "poly interpolate" ("LDE"));
-        let randomized_main_columns = (0..MasterMainTable::NUM_COLUMNS)
+        main_table
+            .trace_table_mut()
+            .axis_iter_mut(Axis(1))
             .into_par_iter()
-            .map(|i| main_table.randomized_column_interpolant(i))
-            .collect();
-        let randomized_aux_columns = (0..MasterAuxTable::NUM_COLUMNS)
+            .for_each(|mut column| intt(column.as_slice_mut().unwrap()));
+        aux_table
+            .trace_table_mut()
+            .axis_iter_mut(Axis(1))
             .into_par_iter()
-            .map(|i| aux_table.randomized_column_interpolant(i))
-            .collect();
-        let randomized_main_columns = Array1::from_vec(randomized_main_columns);
-        let randomized_aux_columns = Array1::from_vec(randomized_aux_columns);
+            .for_each(|mut column| intt(column.as_slice_mut().unwrap()));
         profiler!(stop "poly interpolate");
 
         profiler!(start "calculate quotients");
@@ -995,23 +1037,89 @@ impl Stark {
             // always also offset by fri domain offset to avoid division-by-zero errors
             let working_domain = working_domain.with_offset(iota.mod_pow(coset_index) * psi);
             profiler!(start "poly evaluate" ("LDE"));
-            Zip::from(randomized_main_columns.view())
+            Zip::from(main_table.trace_table().axis_iter(Axis(1)))
                 .and(main_columns.axis_iter_mut(Axis(1)))
-                .par_for_each(|trace_poly, target_column| {
-                    Array1::from(working_domain.evaluate(trace_poly)).move_into(target_column);
+                .par_for_each(|trace_column, target_column| {
+                    let trace_poly = Polynomial::new_borrowed(trace_column.as_slice().unwrap());
+                    Array1::from(working_domain.evaluate(&trace_poly)).move_into(target_column);
                 });
-            Zip::from(randomized_aux_columns.view())
+            Zip::from(aux_table.trace_table().axis_iter(Axis(1)))
                 .and(aux_columns.axis_iter_mut(Axis(1)))
-                .par_for_each(|trace_poly, target_column| {
-                    Array1::from(working_domain.evaluate(trace_poly)).move_into(target_column);
+                .par_for_each(|trace_column, target_column| {
+                    let trace_poly = Polynomial::new_borrowed(trace_column.as_slice().unwrap());
+                    Array1::from(working_domain.evaluate(&trace_poly)).move_into(target_column);
                 });
             profiler!(stop "poly evaluate");
+
+            // A _randomized_ trace interpolant is:
+            //
+            //    trace_interpolant + trace_zerofier·trace_randomizer
+            //    ╶───────┬───────╴   ╶──────────────┬─────────────╴
+            //            ╵                          │
+            //   was just moved into                 ╵
+            //  `{main, aux}_columns`          still missing
+            //
+            //
+            // Knowing the shape of the trace zerofier (see also `domain.zerofier()`), and
+            // with the length of the trace domain being `n`, this is:
+            //
+            //  trace_zerofier·trace_randomizer = (X^n - 1)·trace_randomizer
+            //
+            // For reasons of efficiency, all three components (interpolant, zerofier, and
+            // randomizer) are evaluated over the `working_domain`, i.e., they are
+            // codewords. The constant `RANDOMIZED_TRACE_LEN_TO_WORKING_DOMAIN_LEN_RATIO`
+            // defines the length of the working domain in relation to the randomized trace
+            // domain. Let the length of the working domain `m`, the generator of the
+            // working domain a primitive mth root of unity ξ, and the working domain's
+            // offset γ.
+            //
+            // If the length of the working domain `m` is less than or equal the length of
+            // the trace domain, i.e., if m <= n or equivalently, if constant
+            //  `RANDOMIZED_TRACE_LEN_TO_WORKING_DOMAIN_LEN_RATIO` >= 2, then evaluating the
+            // trace zerofier (X^n - 1) on the `i`th working domain value gives:
+            //
+            //   (X^n - 1)(ξ^i·γ) = (ξ^i·γ)^n - 1 = 1^i · γ^n - 1 = γ^n - 1
+            //
+            // In other words, the trace_zerofier codeword over the working domain is
+            // [working_domain_offset^n - 1; m].
+            //
+            // Should a future re-design want to consider a working domain of length equal
+            // to the randomized trace domain, or in other words, should it consider a
+            // `RANDOMIZED_TRACE_LEN_TO_WORKING_DOMAIN_LEN_RATIO` of 1, then the
+            // trace_zerofier's contribution below needs to be generalized. On
+            // working_domain's value `i`, the zerofier contribution would then be
+            // (-1)^i·γ^n - 1. In particular, note the term (-1)^i, which is absent from the
+            // trace randomizer when evaluated on working domains at most as long as the
+            // trace domain.
+            assert!(working_domain.length <= trace_domain.length);
+
+            profiler!(start "trace randomizers" ("LDE"));
+            let trace_domain_len = u64::try_from(trace_domain.length).unwrap();
+            let zerofier = working_domain.offset.mod_pow(trace_domain_len) - BFieldElement::ONE;
+
+            Zip::from(main_columns.axis_iter_mut(Axis(1)))
+                .and(main_trace_randomizers.axis_iter(Axis(0)))
+                .par_for_each(|mut column, randomizer_polynomial| {
+                    let randomizer_codeword = working_domain.evaluate(&randomizer_polynomial[[]]);
+                    for (cell, randomizer) in column.iter_mut().zip(randomizer_codeword) {
+                        *cell += zerofier * randomizer;
+                    }
+                });
+            Zip::from(aux_columns.axis_iter_mut(Axis(1)))
+                .and(aux_trace_randomizers.axis_iter(Axis(0)))
+                .par_for_each(|mut column, randomizer_polynomial| {
+                    let randomizer_codeword = working_domain.evaluate(&randomizer_polynomial[[]]);
+                    for (cell, randomizer) in column.iter_mut().zip(randomizer_codeword) {
+                        *cell += zerofier * randomizer;
+                    }
+                });
+            profiler!(stop "trace randomizers");
 
             profiler!(start "AIR evaluation" ("AIR"));
             let all_quotients = all_quotients_combined(
                 main_columns.view(),
                 aux_columns.view(),
-                main_table.trace_domain(),
+                trace_domain,
                 working_domain,
                 challenges,
                 quotient_combination_weights,
@@ -1029,6 +1137,19 @@ impl Stark {
             fri_domain,
         );
         profiler!(stop "segmentify");
+
+        profiler!(start "restore original trace" ("LDE"));
+        main_table
+            .trace_table_mut()
+            .axis_iter_mut(Axis(1))
+            .into_par_iter()
+            .for_each(|mut column| ntt(column.as_slice_mut().unwrap()));
+        aux_table
+            .trace_table_mut()
+            .axis_iter_mut(Axis(1))
+            .into_par_iter()
+            .for_each(|mut column| ntt(column.as_slice_mut().unwrap()));
+        profiler!(stop "restore original trace");
 
         segmentification
     }
@@ -1156,7 +1277,10 @@ impl Stark {
         psi: BFieldElement,
         iota: BFieldElement,
         fri_domain: ArithmeticDomain,
-    ) -> (Array2<XFieldElement>, Array1<Polynomial<XFieldElement>>) {
+    ) -> (
+        Array2<XFieldElement>,
+        Array1<Polynomial<'static, XFieldElement>>,
+    ) {
         let num_input_rows = quotient_multicoset_evaluations.nrows();
         let num_cosets = quotient_multicoset_evaluations.ncols();
         let num_output_rows = num_input_rows * num_cosets / NUM_SEGMENTS;
@@ -1193,13 +1317,10 @@ impl Stark {
             });
 
         // apply inverse of Vandermonde matrix for ξ = ι^L to every row
-        let xi = iota.mod_pow_u32(num_output_rows.try_into().unwrap());
-        debug_assert_eq!(bfe!(1), xi.mod_pow(NUM_SEGMENTS.try_into().unwrap()));
-        let log2_num_segments = NUM_SEGMENTS.ilog2();
         quotient_segments
             .axis_iter_mut(Axis(0))
             .into_par_iter()
-            .for_each(|mut row| intt(row.as_slice_mut().unwrap(), xi, log2_num_segments));
+            .for_each(|mut row| intt(row.as_slice_mut().unwrap()));
 
         // scale every row by Ψ^-k · ι^(-k(j+i·M))
         let num_threads = std::thread::available_parallelism()
@@ -1484,7 +1605,8 @@ pub(crate) mod tests {
 
         debug_assert!(main.fri_domain_table().is_none());
         debug_assert!(aux.fri_domain_table().is_none());
-        let jit_segments = Stark::compute_quotient_segments(&main, &aux, quot_dom, &ch, &weights);
+        let jit_segments =
+            Stark::compute_quotient_segments(&mut main, &mut aux, quot_dom, &ch, &weights);
 
         debug_assert!(main.fri_domain_table().is_none());
         main.maybe_low_degree_extend_all_columns();
@@ -1494,9 +1616,51 @@ pub(crate) mod tests {
         aux.maybe_low_degree_extend_all_columns();
         debug_assert!(aux.fri_domain_table().is_some());
 
-        let cache_segments = Stark::compute_quotient_segments(&main, &aux, quot_dom, &ch, &weights);
+        let cache_segments =
+            Stark::compute_quotient_segments(&mut main, &mut aux, quot_dom, &ch, &weights);
 
         assert_eq!(jit_segments, cache_segments);
+    }
+
+    /// [`Stark::compute_quotient_segments`] takes mutable references to both, the
+    /// main and the auxiliary tables. It is vital that certain information is
+    /// _not_ mutated.
+    #[test]
+    fn computing_quotient_segments_does_not_change_execution_trace() {
+        fn assert_no_trace_mutation(cache_decision: CacheDecision) {
+            crate::config::overwrite_lde_trace_caching_to(cache_decision);
+
+            let mut rng = StdRng::seed_from_u64(15157673430940347283);
+            let weights = rng.gen::<[XFieldElement; MasterAuxTable::NUM_CONSTRAINTS]>();
+
+            let program = ProgramAndInput::new(triton_program!(halt));
+            let (stark, _, mut main, mut aux, ch) = master_tables_for_low_security_level(program);
+
+            let original_main_trace = main.trace_table().to_owned();
+            let original_aux_trace = aux.trace_table().to_owned();
+
+            let padded_height = main.trace_table().nrows();
+            let fri_dom = stark.derive_fri(padded_height).unwrap().domain;
+            let max_degree = stark.derive_max_degree(padded_height);
+            let quot_dom = Stark::quotient_domain(fri_dom, max_degree).unwrap();
+
+            if cache_decision == CacheDecision::Cache {
+                main.maybe_low_degree_extend_all_columns();
+                assert!(main.fri_domain_table().is_some());
+
+                aux.maybe_low_degree_extend_all_columns();
+                assert!(aux.fri_domain_table().is_some());
+            }
+
+            let _segments =
+                Stark::compute_quotient_segments(&mut main, &mut aux, quot_dom, &ch, &weights);
+
+            assert_eq!(original_main_trace, main.trace_table());
+            assert_eq!(original_aux_trace, aux.trace_table());
+        }
+
+        assert_no_trace_mutation(CacheDecision::Cache);
+        assert_no_trace_mutation(CacheDecision::NoCache);
     }
 
     #[test]
@@ -2543,10 +2707,10 @@ pub(crate) mod tests {
         let coefficients: [XFieldElement; 211] = thread_rng().gen();
         let f = Polynomial::new(coefficients.to_vec());
 
-        let segments_2 = Stark::split_polynomial_into_segments::<2, _>(&f);
-        let segments_3 = Stark::split_polynomial_into_segments::<3, _>(&f);
-        let segments_4 = Stark::split_polynomial_into_segments::<4, _>(&f);
-        let segments_7 = Stark::split_polynomial_into_segments::<7, _>(&f);
+        let segments_2 = Stark::split_polynomial_into_segments::<2, _>(f.clone());
+        let segments_3 = Stark::split_polynomial_into_segments::<3, _>(f.clone());
+        let segments_4 = Stark::split_polynomial_into_segments::<4, _>(f.clone());
+        let segments_7 = Stark::split_polynomial_into_segments::<7, _>(f.clone());
 
         assert_segments_degrees_are_small_enough(&f, &segments_2);
         assert_segments_degrees_are_small_enough(&f, &segments_3);
@@ -2565,10 +2729,10 @@ pub(crate) mod tests {
         let coefficients: [BFieldElement; 2 * 3 * 4 * 7] = thread_rng().gen();
         let f = Polynomial::new(coefficients.to_vec());
 
-        let segments_2 = Stark::split_polynomial_into_segments::<2, _>(&f);
-        let segments_3 = Stark::split_polynomial_into_segments::<3, _>(&f);
-        let segments_4 = Stark::split_polynomial_into_segments::<4, _>(&f);
-        let segments_7 = Stark::split_polynomial_into_segments::<7, _>(&f);
+        let segments_2 = Stark::split_polynomial_into_segments::<2, _>(f.clone());
+        let segments_3 = Stark::split_polynomial_into_segments::<3, _>(f.clone());
+        let segments_4 = Stark::split_polynomial_into_segments::<4, _>(f.clone());
+        let segments_7 = Stark::split_polynomial_into_segments::<7, _>(f.clone());
 
         assert_segments_degrees_are_small_enough(&f, &segments_2);
         assert_segments_degrees_are_small_enough(&f, &segments_3);
@@ -2595,7 +2759,7 @@ pub(crate) mod tests {
 
         #[strategy(vec(arb(), (1 << #log_num_cosets) * (1 << #log_trace_length)))]
         #[map(Polynomial::new)]
-        polynomial: Polynomial<XFieldElement>,
+        polynomial: Polynomial<'static, XFieldElement>,
 
         #[strategy(arb())]
         psi: BFieldElement,

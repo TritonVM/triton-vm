@@ -169,7 +169,8 @@ where
         + From<BFieldElement>
         + BFieldCodec
         + Mul<BFieldElement, Output = Self::Field>
-        + Mul<XFieldElement, Output = XFieldElement>;
+        + Mul<XFieldElement, Output = XFieldElement>
+        + 'static;
 
     const NUM_COLUMNS: usize;
 
@@ -294,8 +295,13 @@ where
         low_degree_extended_columns: Array2<Self::Field>,
     );
 
-    /// Return the cached low-degree-extended table, if any.
-    fn low_degree_extended_table(&self) -> Option<ArrayView2<Self::Field>>;
+    #[doc(hidden)]
+    fn cache_is_empty(&self) -> bool {
+        self.fri_domain_table().is_none()
+    }
+
+    #[doc(hidden)]
+    fn clear_cache(&mut self);
 
     /// Return the FRI domain view of the cached low-degree-extended table, if any.
     ///
@@ -350,7 +356,7 @@ where
             .into()
     }
 
-    fn randomized_column_interpolant(&self, idx: usize) -> Polynomial<Self::Field> {
+    fn randomized_column_interpolant(&self, idx: usize) -> Polynomial<'static, Self::Field> {
         let trace_table = self.trace_table();
         let column_codeword = trace_table.column(idx);
         let column_interpolant = self
@@ -381,7 +387,7 @@ where
     /// # Panics
     ///
     /// Panics if the `idx` is larger than or equal to [`Self::NUM_COLUMNS`].
-    fn trace_randomizer_for_column(&self, idx: usize) -> Polynomial<Self::Field> {
+    fn trace_randomizer_for_column(&self, idx: usize) -> Polynomial<'static, Self::Field> {
         // While possible to produce some randomizer for a too-large index, it does not
         // have any useful application and is almost certainly a logic error.
         assert!(idx < Self::NUM_COLUMNS);
@@ -711,9 +717,8 @@ impl MasterTable for MasterMainTable {
         self.low_degree_extended_table = Some(low_degree_extended_columns);
     }
 
-    fn low_degree_extended_table(&self) -> Option<ArrayView2<BFieldElement>> {
-        let low_degree_extended_table = self.low_degree_extended_table.as_ref()?;
-        Some(low_degree_extended_table.view())
+    fn clear_cache(&mut self) {
+        drop(self.low_degree_extended_table.take());
     }
 
     fn fri_domain_table(&self) -> Option<ArrayView2<BFieldElement>> {
@@ -784,9 +789,8 @@ impl MasterTable for MasterAuxTable {
         self.low_degree_extended_table = Some(low_degree_extended_columns);
     }
 
-    fn low_degree_extended_table(&self) -> Option<ArrayView2<XFieldElement>> {
-        let low_degree_extended_table = self.low_degree_extended_table.as_ref()?;
-        Some(low_degree_extended_table.view())
+    fn clear_cache(&mut self) {
+        drop(self.low_degree_extended_table.take());
     }
 
     fn fri_domain_table(&self) -> Option<ArrayView2<XFieldElement>> {
@@ -2391,7 +2395,7 @@ mod tests {
                 let randomizer_j = aux_table.trace_randomizer_for_column(j);
 
                 let first_few_coefficients = |poly: &Polynomial<XFieldElement>| {
-                    poly.coefficients
+                    poly.coefficients()
                         .iter()
                         .take(num_coefficients)
                         .flat_map(|xfe| xfe.coefficients)

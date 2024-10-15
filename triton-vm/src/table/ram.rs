@@ -14,6 +14,7 @@ use itertools::Itertools;
 use ndarray::parallel::prelude::*;
 use ndarray::prelude::*;
 use num_traits::ConstOne;
+use num_traits::ConstZero;
 use num_traits::One;
 use num_traits::Zero;
 use serde::Deserialize;
@@ -190,10 +191,10 @@ pub fn bezout_coefficient_polynomials_coefficients(
     let one_minus_fd_b = Polynomial::one() - fd.multiply(&b);
     let a = one_minus_fd_b.clean_divide(rp);
 
-    let mut coefficients_0 = a.coefficients;
-    let mut coefficients_1 = b.coefficients;
-    coefficients_0.resize(unique_roots.len(), bfe!(0));
-    coefficients_1.resize(unique_roots.len(), bfe!(0));
+    let mut coefficients_0 = a.into_coefficients();
+    let mut coefficients_1 = b.into_coefficients();
+    coefficients_0.resize(unique_roots.len(), BFieldElement::ZERO);
+    coefficients_1.resize(unique_roots.len(), BFieldElement::ZERO);
     (coefficients_0, coefficients_1)
 }
 
@@ -439,11 +440,11 @@ pub(crate) mod tests {
         let fd = rp.formal_derivative();
         let (_, a_xgcd, b_xgcd) = Polynomial::xgcd(rp, fd);
 
-        let mut a_xgcd = a_xgcd.coefficients;
-        let mut b_xgcd = b_xgcd.coefficients;
+        let mut a_xgcd = a_xgcd.into_coefficients();
+        let mut b_xgcd = b_xgcd.into_coefficients();
 
-        a_xgcd.resize(ram_pointers.len(), bfe!(0));
-        b_xgcd.resize(ram_pointers.len(), bfe!(0));
+        a_xgcd.resize(ram_pointers.len(), BFieldElement::ZERO);
+        b_xgcd.resize(ram_pointers.len(), BFieldElement::ZERO);
 
         prop_assert_eq!(a, a_xgcd);
         prop_assert_eq!(b, b_xgcd);

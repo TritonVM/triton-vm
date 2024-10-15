@@ -2,6 +2,7 @@ use criterion::criterion_group;
 use criterion::criterion_main;
 use criterion::Criterion;
 use num_traits::ConstOne;
+use num_traits::ConstZero;
 use num_traits::Zero;
 use twenty_first::prelude::*;
 
@@ -55,9 +56,9 @@ fn bezout_coeffs_xgcd(
     let (_, bezout_poly_0, bezout_poly_1) =
         Polynomial::xgcd(polynomial_with_ram_pointers_as_roots, formal_derivative);
 
-    let mut coefficients_0 = bezout_poly_0.coefficients;
-    let mut coefficients_1 = bezout_poly_1.coefficients;
-    coefficients_0.resize(unique_ram_pointers.len(), bfe!(0));
-    coefficients_1.resize(unique_ram_pointers.len(), bfe!(0));
+    let mut coefficients_0 = bezout_poly_0.into_coefficients();
+    let mut coefficients_1 = bezout_poly_1.into_coefficients();
+    coefficients_0.resize(unique_ram_pointers.len(), BFieldElement::ZERO);
+    coefficients_1.resize(unique_ram_pointers.len(), BFieldElement::ZERO);
     (coefficients_0, coefficients_1)
 }

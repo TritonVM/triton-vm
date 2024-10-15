@@ -237,17 +237,15 @@ mod tests {
     fn evaluation_argument_is_identical_to_evaluating_polynomial(
         #[strategy(arb())]
         #[filter(!#polynomial.is_zero())]
-        polynomial: Polynomial<BFieldElement>,
+        polynomial: Polynomial<'static, BFieldElement>,
         #[strategy(arb())] challenge: XFieldElement,
     ) {
         let poly_evaluation: XFieldElement = polynomial.evaluate(challenge);
 
-        let mut polynomial = polynomial;
-        polynomial.normalize(); // remove leading zeros
-        let initial = polynomial.coefficients.pop().unwrap();
-        polynomial.coefficients.reverse();
-        let eval_arg_terminal =
-            EvalArg::compute_terminal(&polynomial.coefficients, initial.lift(), challenge);
+        let mut coefficients = polynomial.into_coefficients();
+        let initial = coefficients.pop().unwrap();
+        coefficients.reverse();
+        let eval_arg_terminal = EvalArg::compute_terminal(&coefficients, initial.lift(), challenge);
 
         prop_assert_eq!(poly_evaluation, eval_arg_terminal);
     }
