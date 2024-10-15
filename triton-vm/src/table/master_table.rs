@@ -294,8 +294,13 @@ where
         low_degree_extended_columns: Array2<Self::Field>,
     );
 
-    /// Return the cached low-degree-extended table, if any.
-    fn low_degree_extended_table(&self) -> Option<ArrayView2<Self::Field>>;
+    #[doc(hidden)]
+    fn cache_is_empty(&self) -> bool {
+        self.fri_domain_table().is_none()
+    }
+
+    #[doc(hidden)]
+    fn clear_cache(&mut self);
 
     /// Return the FRI domain view of the cached low-degree-extended table, if any.
     ///
@@ -711,9 +716,8 @@ impl MasterTable for MasterMainTable {
         self.low_degree_extended_table = Some(low_degree_extended_columns);
     }
 
-    fn low_degree_extended_table(&self) -> Option<ArrayView2<BFieldElement>> {
-        let low_degree_extended_table = self.low_degree_extended_table.as_ref()?;
-        Some(low_degree_extended_table.view())
+    fn clear_cache(&mut self) {
+        drop(self.low_degree_extended_table.take());
     }
 
     fn fri_domain_table(&self) -> Option<ArrayView2<BFieldElement>> {
@@ -784,9 +788,8 @@ impl MasterTable for MasterAuxTable {
         self.low_degree_extended_table = Some(low_degree_extended_columns);
     }
 
-    fn low_degree_extended_table(&self) -> Option<ArrayView2<XFieldElement>> {
-        let low_degree_extended_table = self.low_degree_extended_table.as_ref()?;
-        Some(low_degree_extended_table.view())
+    fn clear_cache(&mut self) {
+        drop(self.low_degree_extended_table.take());
     }
 
     fn fri_domain_table(&self) -> Option<ArrayView2<XFieldElement>> {

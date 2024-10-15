@@ -160,6 +160,21 @@ impl Stark {
         profiler!(stop "Fiat-Shamir");
         profiler!(stop "aux tables");
 
+        // It is possible that the quotient domain codewords are cached for the main
+        // table, but not for the auxiliary table. To compute the quotients, either both
+        // or neither are needed.[^1] For peak memory consumption, it is beneficial to
+        // clear any unused cache.
+        //
+        // Throwing away any cache here incurs a performance penalty later, when
+        // revealing the rows indicated by FRI. This is deemed an acceptable tradeoff
+        // when peak memory usage is a larger issue than compute time.
+        //
+        // [^1]: Code using exactly one cache _could_ exist, but oh! the engineering.
+        if master_main_table.cache_is_empty() || master_aux_table.cache_is_empty() {
+            master_main_table.clear_cache();
+            master_aux_table.clear_cache();
+        }
+
         let (fri_domain_quotient_segment_codewords, quotient_segment_polynomials) =
             Self::compute_quotient_segments(
                 &master_main_table,
