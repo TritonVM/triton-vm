@@ -18,12 +18,11 @@ criterion_group! {
 fn prove_fib(c: &mut Criterion) {
     let program = FIBONACCI_SEQUENCE.clone();
     let public_input = PublicInput::new(bfe_vec![FIBONACCI_INDEX]);
-    let (aet, output) =
-        VM::trace_execution(&program, public_input.clone(), NonDeterminism::default()).unwrap();
+    let claim = Claim::about_program(&program).with_input(public_input.clone());
 
-    let claim = Claim::about_program(&program)
-        .with_input(public_input.individual_tokens)
-        .with_output(output);
+    let (aet, output) =
+        VM::trace_execution(program, public_input, NonDeterminism::default()).unwrap();
+    let claim = claim.with_output(output);
 
     let stark = Stark::default();
     let bench_id = format!("Prove Fibonacci {FIBONACCI_INDEX}");

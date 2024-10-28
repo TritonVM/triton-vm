@@ -202,7 +202,7 @@ mod tests {
         fn generate_proof_file(program: Program, claim: Claim) {
             let input = claim.input.clone().into();
             let non_determinism = NonDeterminism::default();
-            let (aet, _) = VM::trace_execution(&program, input, non_determinism).unwrap();
+            let (aet, _) = VM::trace_execution(program, input, non_determinism).unwrap();
             let proof = Stark::default().prove(&claim, &aet).unwrap();
             let proof = bincode::serialize(&proof).unwrap();
             fs::create_dir_all("./test_data/").unwrap();

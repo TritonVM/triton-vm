@@ -238,7 +238,7 @@ fn sum_of_proof_lengths_for_source_code(
     let mut sum_of_proof_lengths = 0;
     for _ in 0..num_iterations {
         let (_, _, proof) = prove_program(
-            &program_and_input.program,
+            program_and_input.program.clone(),
             program_and_input.public_input.clone(),
             program_and_input.non_determinism.clone(),
         )
@@ -255,7 +255,7 @@ fn generate_proof_and_benchmark_id(
     program_and_input: &ProgramAndInput,
 ) -> (Proof, BenchmarkId) {
     let (stark, _, proof) = prove_program(
-        &program_and_input.program,
+        program_and_input.program.clone(),
         program_and_input.public_input.clone(),
         program_and_input.non_determinism.clone(),
     )

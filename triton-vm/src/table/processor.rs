@@ -794,7 +794,6 @@ pub(crate) mod tests {
     use crate::shared_tests::ProgramAndInput;
     use crate::stark::tests::master_tables_for_low_security_level;
     use crate::table::master_table::MasterTable;
-    use crate::vm::VM;
     use crate::NonDeterminism;
 
     use super::*;
@@ -805,8 +804,9 @@ pub(crate) mod tests {
     #[test]
     fn print_simple_processor_table_row() {
         let program = triton_program!(push 2 sponge_init assert halt);
-        let err = VM::run(&program, [].into(), [].into()).unwrap_err();
-        println!("\n{}", err.vm_state);
+        let err = ProgramAndInput::new(program).run().unwrap_err();
+        let state = err.vm_state;
+        println!("\n{state}");
     }
 
     #[derive(Debug, Clone)]

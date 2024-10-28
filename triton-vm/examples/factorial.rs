@@ -55,7 +55,7 @@ fn main() {
     //
     // Triton VM's default parameters give a (conjectured) security level of 160 bits.
     let (stark, claim, proof) =
-        triton_vm::prove_program(&factorial_program, public_input, non_determinism).unwrap();
+        triton_vm::prove_program(factorial_program, public_input, non_determinism).unwrap();
 
     let verdict = triton_vm::verify(stark, &claim, &proof);
     assert!(verdict);

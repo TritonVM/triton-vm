@@ -388,7 +388,7 @@ mod tests {
     fn height_of_any_table_can_be_computed() {
         let program = triton_program!(halt);
         let (aet, _) =
-            VM::trace_execution(&program, PublicInput::default(), NonDeterminism::default())
+            VM::trace_execution(program, PublicInput::default(), NonDeterminism::default())
                 .unwrap();
 
         let _ = aet.height();

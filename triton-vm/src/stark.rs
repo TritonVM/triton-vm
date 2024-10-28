@@ -1458,12 +1458,11 @@ pub(crate) mod tests {
             non_determinism,
         } = program_and_input;
 
-        let (aet, stdout) =
-            VM::trace_execution(&program, public_input.clone(), non_determinism).unwrap();
+        let claim = Claim::about_program(&program).with_input(public_input.clone());
+        let (aet, stdout) = VM::trace_execution(program, public_input, non_determinism).unwrap();
+        let claim = claim.with_output(stdout);
+
         let stark = low_security_stark(DEFAULT_LOG2_FRI_EXPANSION_FACTOR_FOR_TESTS);
-        let claim = Claim::about_program(&aet.program)
-            .with_input(public_input.individual_tokens)
-            .with_output(stdout);
         let master_main_table = construct_master_main_table(stark, &aet);
 
         (stark, claim, master_main_table)
@@ -2147,18 +2146,17 @@ pub(crate) mod tests {
 
     #[test]
     fn can_read_twice_from_same_ram_address_within_one_cycle() {
-        for i in 0..=2 {
+        for i in 0..x_field_element::EXTENSION_DEGREE {
             // This program reads from the same address twice, even if the stack
             // is not well-initialized.
             let program = triton_program! {
                 dup 0
-                push {i} add
+                addi {i}
                 xx_dot_step
                 halt
             };
-            let result = VM::run(&program, PublicInput::default(), NonDeterminism::default());
-            assert!(result.is_ok());
             let program_and_input = ProgramAndInput::new(program);
+            debug_assert!(program_and_input.clone().run().is_ok());
             triton_constraints_evaluate_to_zero(program_and_input);
         }
     }
@@ -2415,7 +2413,7 @@ pub(crate) mod tests {
         };
 
         let program_and_input = ProgramAndInput::new(program).with_input(input);
-        let output = program_and_input.run().unwrap();
+        let output = program_and_input.clone().run().unwrap();
         let expected_output = bfe_vec![1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7];
         assert!(expected_output == output);
 
@@ -2459,7 +2457,7 @@ pub(crate) mod tests {
         st0: BFieldElement,
     ) {
         let program = triton_program!(push {st0} log_2_floor halt);
-        let_assert!(Err(err) = VM::run(&program, [].into(), [].into()));
+        let_assert!(Err(err) = VM::run(program, [].into(), [].into()));
         let_assert!(InstructionError::OpStackError(err) = err.source);
         let_assert!(OpStackError::FailedU32Conversion(element) = err);
         assert!(st0 == element);
@@ -2468,7 +2466,7 @@ pub(crate) mod tests {
     #[test]
     fn negative_log_2_floor_of_0() {
         let program = triton_program!(push 0 log_2_floor halt);
-        let_assert!(Err(err) = VM::run(&program, [].into(), [].into()));
+        let_assert!(Err(err) = VM::run(program, [].into(), [].into()));
         let_assert!(InstructionError::LogarithmOfZero = err.source);
     }
 
@@ -2933,7 +2931,7 @@ pub(crate) mod tests {
             public_input,
             non_determinism,
         } = program_executing_every_instruction();
-        let (aet, _) = VM::trace_execution(&program, public_input, non_determinism).unwrap();
+        let (aet, _) = VM::trace_execution(program, public_input, non_determinism).unwrap();
         let opcodes_of_all_executed_instructions = aet
             .processor_trace
             .column(ProcessorMainColumn::CI.main_index())

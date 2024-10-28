@@ -50,7 +50,7 @@ pub struct VM;
 pub struct VMState {
     /// The **program memory** stores the instructions (and their arguments) of the program
     /// currently being executed by Triton VM. It is read-only.
-    pub program: Vec<Instruction>,
+    pub program: Program,
 
     /// A list of [`BFieldElement`]s the program can read from using instruction `read_io`.
     pub public_input: VecDeque<BFieldElement>,
@@ -129,7 +129,7 @@ impl VM {
     /// [trace_execution]: Self::trace_execution
     /// [profile]: Self::profile
     pub fn run(
-        program: &Program,
+        program: Program,
         public_input: PublicInput,
         non_determinism: NonDeterminism,
     ) -> VMResult<Vec<BFieldElement>> {
@@ -151,13 +151,13 @@ impl VM {
     /// [run]: Self::run
     /// [profile]: Self::profile
     pub fn trace_execution(
-        program: &Program,
+        program: Program,
         public_input: PublicInput,
         non_determinism: NonDeterminism,
     ) -> VMResult<(AlgebraicExecutionTrace, Vec<BFieldElement>)> {
         profiler!(start "trace execution" ("gen"));
         let state = VMState::new(program, public_input, non_determinism);
-        let (aet, terminal_state) = Self::trace_execution_of_state(program, state)?;
+        let (aet, terminal_state) = Self::trace_execution_of_state(state)?;
         profiler!(stop "trace execution");
         Ok((aet, terminal_state.public_output))
     }
@@ -169,17 +169,10 @@ impl VM {
     /// Returns the [`AlgebraicExecutionTrace`] and the terminal [`VMState`] if
     /// execution succeeds.
     ///
-    /// # Panics
-    ///
-    /// - if the given [`VMState`] is not about to `self`
-    /// - if the given [`VMState`] is incorrectly initialized
     pub fn trace_execution_of_state(
-        program: &Program,
         mut state: VMState,
     ) -> VMResult<(AlgebraicExecutionTrace, VMState)> {
-        let mut aet = AlgebraicExecutionTrace::new(program.clone());
-        assert_eq!(program.instructions, state.program);
-        assert_eq!(program.len_bwords(), aet.instruction_multiplicities.len());
+        let mut aet = AlgebraicExecutionTrace::new(state.program.clone());
 
         while !state.halting {
             if let Err(err) = aet.record_state(&state) {
@@ -208,12 +201,12 @@ impl VM {
     /// [run]: Self::run
     /// [trace_execution]: Self::trace_execution
     pub fn profile(
-        program: &Program,
+        program: Program,
         public_input: PublicInput,
         non_determinism: NonDeterminism,
     ) -> VMResult<(Vec<BFieldElement>, ExecutionTraceProfile)> {
         let mut profiler = ExecutionTraceProfiler::new(program.instructions.len());
-        let mut state = VMState::new(program, public_input, non_determinism);
+        let mut state = VMState::new(program.clone(), public_input, non_determinism);
         let mut previous_jump_stack_len = state.jump_stack.len();
         while !state.halting {
             if let Ok(Instruction::Call(address)) = state.current_instruction() {
@@ -237,20 +230,16 @@ impl VM {
 }
 
 impl VMState {
-    /// Create initial `VMState` for a given `program`
-    ///
-    /// Since `program` is read-only across individual states, and multiple
-    /// inner helper functions refer to it, a read-only reference is kept in
-    /// the struct.
+    /// Create initial `VMState` for a given `program`.
     pub fn new(
-        program: &Program,
+        program: Program,
         public_input: PublicInput,
         non_determinism: NonDeterminism,
     ) -> Self {
         let program_digest = program.hash();
 
         Self {
-            program: program.instructions.clone(),
+            program,
             public_input: public_input.individual_tokens.into(),
             public_output: vec![],
             secret_individual_tokens: non_determinism.individual_tokens.into(),
@@ -1193,19 +1182,22 @@ impl VMState {
     }
 
     pub fn current_instruction(&self) -> InstructionResult<Instruction> {
-        let maybe_current_instruction = self.program.get(self.instruction_pointer).copied();
+        let instructions = &self.program.instructions;
+        let maybe_current_instruction = instructions.get(self.instruction_pointer).copied();
         maybe_current_instruction.ok_or(InstructionError::InstructionPointerOverflow)
     }
 
     /// Return the next instruction on the tape, skipping arguments.
     ///
-    /// Note that this is not necessarily the next instruction to execute, since the current
-    /// instruction could be a jump, but it is either program[ip + 1] or program[ip + 2],
-    /// depending on whether the current instruction takes an argument.
+    /// Note that this is not necessarily the next instruction to execute, since the
+    /// current instruction could be a jump, but it is either
+    /// `program.instructions[ip + 1]` or `program.instructions[ip + 2]`, depending
+    /// on whether the current instruction takes an argument.
     pub fn next_instruction(&self) -> InstructionResult<Instruction> {
         let current_instruction = self.current_instruction()?;
         let next_instruction_pointer = self.instruction_pointer + current_instruction.size();
-        let maybe_next_instruction = self.program.get(next_instruction_pointer).copied();
+        let instructions = &self.program.instructions;
+        let maybe_next_instruction = instructions.get(next_instruction_pointer).copied();
         maybe_next_instruction.ok_or(InstructionError::InstructionPointerOverflow)
     }
 
@@ -1504,7 +1496,7 @@ pub(crate) mod tests {
             let mock_digests = [Digest::default()];
             let non_determinism = NonDeterminism::from(bfe_array![0]).with_digests(mock_digests);
 
-            let mut vm_state = VMState::new(&program, public_input, non_determinism);
+            let mut vm_state = VMState::new(program, public_input, non_determinism);
             let_assert!(Ok(()) = vm_state.run());
             let stack_size_after_test_instruction = vm_state.op_stack.len();
 
@@ -1546,13 +1538,13 @@ pub(crate) mod tests {
     fn profile_can_be_created_and_agrees_with_regular_vm_run() {
         let program =
             crate::example_programs::CALCULATE_NEW_MMR_PEAKS_FROM_APPEND_WITH_SAFE_LISTS.clone();
-        let (profile_output, profile) = VM::profile(&program, [].into(), [].into()).unwrap();
-        let mut vm_state = VMState::new(&program, [].into(), [].into());
+        let (profile_output, profile) = VM::profile(program.clone(), [].into(), [].into()).unwrap();
+        let mut vm_state = VMState::new(program.clone(), [].into(), [].into());
         let_assert!(Ok(()) = vm_state.run());
         assert!(profile_output == vm_state.public_output);
         assert!(profile.total.processor == vm_state.cycle_count);
 
-        let_assert!(Ok((aet, trace_output)) = VM::trace_execution(&program, [].into(), [].into()));
+        let_assert!(Ok((aet, trace_output)) = VM::trace_execution(program, [].into(), [].into()));
         assert!(profile_output == trace_output);
         let proc_height = u32::try_from(aet.height_of_table(TableId::Processor)).unwrap();
         assert!(proc_height == profile.total.processor);
@@ -1578,7 +1570,7 @@ pub(crate) mod tests {
             call foo return halt
             foo: return
         };
-        let_assert!(Err(err) = VM::profile(&program, [].into(), [].into()));
+        let_assert!(Err(err) = VM::profile(program, [].into(), [].into()));
         let_assert!(InstructionError::JumpStackIsEmpty = err.source);
     }
 
@@ -1611,7 +1603,7 @@ pub(crate) mod tests {
         let program = crate::example_programs::GREATEST_COMMON_DIVISOR.clone();
         let stdin = PublicInput::from([42, 56].map(|b| bfe!(b)));
         let secret_in = NonDeterminism::default();
-        VM::trace_execution(&program, stdin, secret_in).unwrap();
+        VM::trace_execution(program, stdin, secret_in).unwrap();
     }
 
     #[test]
@@ -1619,7 +1611,7 @@ pub(crate) mod tests {
         let program = crate::example_programs::GREATEST_COMMON_DIVISOR.clone();
         let stdin = PublicInput::from([42, 56].map(|b| bfe!(b)));
         let secret_in = NonDeterminism::default();
-        let_assert!(Ok(stdout) = VM::run(&program, stdin, secret_in));
+        let_assert!(Ok(stdout) = VM::run(program, stdin, secret_in));
 
         let output = stdout.iter().map(|o| format!("{o}")).join(", ");
         println!("VM output: [{output}]");
@@ -1630,7 +1622,7 @@ pub(crate) mod tests {
     #[test]
     fn crash_triton_vm_and_print_vm_error() {
         let crashing_program = triton_program!(push 2 assert halt);
-        let_assert!(Err(err) = VM::run(&crashing_program, [].into(), [].into()));
+        let_assert!(Err(err) = VM::run(crashing_program, [].into(), [].into()));
         println!("{err}");
     }
 
@@ -1762,9 +1754,7 @@ pub(crate) mod tests {
     #[test]
     fn vm_crashes_when_executing_recurse_or_return_with_empty_jump_stack() {
         let program = triton_program!(recurse_or_return halt);
-        let_assert!(
-            Err(err) = VM::run(&program, PublicInput::default(), NonDeterminism::default())
-        );
+        let_assert!(Err(err) = VM::run(program, PublicInput::default(), NonDeterminism::default()));
         assert!(InstructionError::JumpStackIsEmpty == err.source);
     }
 
@@ -2469,7 +2459,7 @@ pub(crate) mod tests {
     #[test]
     fn can_compute_dot_product_from_uninitialized_ram() {
         let program = triton_program!(xx_dot_step xb_dot_step halt);
-        VM::run(&program, PublicInput::default(), NonDeterminism::default()).unwrap();
+        VM::run(program, PublicInput::default(), NonDeterminism::default()).unwrap();
     }
 
     pub(crate) fn property_based_test_program_for_xx_dot_step() -> ProgramAndInput {
@@ -2705,7 +2695,7 @@ pub(crate) mod tests {
             write_io 3
             halt
         );
-        let actual_stdout = VM::run(&program, [].into(), [].into())?;
+        let actual_stdout = VM::run(program, [].into(), [].into())?;
         let expected_stdout = (left_operand + right_operand).coefficients.to_vec();
         prop_assert_eq!(expected_stdout, actual_stdout);
     }
@@ -2726,7 +2716,7 @@ pub(crate) mod tests {
             write_io 3
             halt
         );
-        let actual_stdout = VM::run(&program, [].into(), [].into())?;
+        let actual_stdout = VM::run(program, [].into(), [].into())?;
         let expected_stdout = (left_operand * right_operand).coefficients.to_vec();
         prop_assert_eq!(expected_stdout, actual_stdout);
     }
@@ -2745,7 +2735,7 @@ pub(crate) mod tests {
             write_io 3
             halt
         );
-        let actual_stdout = VM::run(&program, [].into(), [].into())?;
+        let actual_stdout = VM::run(program, [].into(), [].into())?;
         let expected_stdout = operand.inverse().coefficients.to_vec();
         prop_assert_eq!(expected_stdout, actual_stdout);
     }
@@ -2761,7 +2751,7 @@ pub(crate) mod tests {
             write_io 3
             halt
         );
-        let actual_stdout = VM::run(&program, [].into(), [].into())?;
+        let actual_stdout = VM::run(program, [].into(), [].into())?;
         let expected_stdout = (scalar * operand).coefficients.to_vec();
         prop_assert_eq!(expected_stdout, actual_stdout);
     }
@@ -2805,7 +2795,7 @@ pub(crate) mod tests {
             write_io 5 write_io 5 write_io 4
             halt
         );
-        let mut vm_state = VMState::new(&program, [].into(), [].into());
+        let mut vm_state = VMState::new(program, [].into(), [].into());
         let_assert!(Ok(()) = vm_state.run());
         assert!(BFieldElement::ZERO == vm_state.op_stack[0]);
     }
@@ -2837,7 +2827,7 @@ pub(crate) mod tests {
     #[test]
     fn run_tvm_halt_then_do_stuff() {
         let program = triton_program!(halt push 1 push 2 add invert write_io 5);
-        let_assert!(Ok((aet, _)) = VM::trace_execution(&program, [].into(), [].into()));
+        let_assert!(Ok((aet, _)) = VM::trace_execution(program, [].into(), [].into()));
 
         let_assert!(Some(last_processor_row) = aet.processor_trace.rows().into_iter().last());
         let clk_count = last_processor_row[ProcessorMainColumn::CLK.main_index()];
@@ -2862,7 +2852,7 @@ pub(crate) mod tests {
             halt
         );
 
-        let mut vm_state = VMState::new(&program, [].into(), [].into());
+        let mut vm_state = VMState::new(program, [].into(), [].into());
         let_assert!(Ok(()) = vm_state.run());
         assert!(4 == vm_state.op_stack[0].value());
         assert!(7 == vm_state.op_stack[1].value());
@@ -2895,7 +2885,7 @@ pub(crate) mod tests {
             halt
         );
 
-        let mut vm_state = VMState::new(&program, [].into(), [].into());
+        let mut vm_state = VMState::new(program, [].into(), [].into());
         let_assert!(Ok(()) = vm_state.run());
         assert!(2_u64 == vm_state.op_stack[0].value());
         assert!(5_u64 == vm_state.op_stack[1].value());
@@ -2925,7 +2915,7 @@ pub(crate) mod tests {
         }
 
         let program = crate::example_programs::MERKLE_TREE_AUTHENTICATION_PATH_VERIFY.clone();
-        assert!(let Ok(_) = VM::run(&program, public_input.into(), non_determinism));
+        assert!(let Ok(_) = VM::run(program, public_input.into(), non_determinism));
     }
 
     #[proptest]
@@ -2967,7 +2957,7 @@ pub(crate) mod tests {
         );
 
         let public_input = vec![p2_x, p1.1, p1.0, p0.1, p0.0];
-        let_assert!(Ok(output) = VM::run(&get_collinear_y_program, public_input.into(), [].into()));
+        let_assert!(Ok(output) = VM::run(get_collinear_y_program, public_input.into(), [].into()));
         prop_assert_eq!(p2_y, output[0]);
     }
 
@@ -2989,7 +2979,7 @@ pub(crate) mod tests {
                 halt
         );
 
-        let_assert!(Ok(standard_out) = VM::run(&countdown_program, [].into(), [].into()));
+        let_assert!(Ok(standard_out) = VM::run(countdown_program, [].into(), [].into()));
         let expected = (0..=10).map(BFieldElement::new).rev().collect_vec();
         assert!(expected == standard_out);
     }
@@ -3009,21 +2999,21 @@ pub(crate) mod tests {
     #[test]
     fn run_tvm_swap() {
         let program = triton_program!(push 1 push 2 swap 1 assert write_io 1 halt);
-        let_assert!(Ok(standard_out) = VM::run(&program, [].into(), [].into()));
+        let_assert!(Ok(standard_out) = VM::run(program, [].into(), [].into()));
         assert!(bfe!(2) == standard_out[0]);
     }
 
     #[test]
     fn swap_st0_is_like_no_op() {
         let program = triton_program!(push 42 swap 0 write_io 1 halt);
-        let_assert!(Ok(standard_out) = VM::run(&program, [].into(), [].into()));
+        let_assert!(Ok(standard_out) = VM::run(program, [].into(), [].into()));
         assert!(bfe!(42) == standard_out[0]);
     }
 
     #[test]
     fn read_mem_uninitialized() {
         let program = triton_program!(read_mem 3 halt);
-        let_assert!(Ok((aet, _)) = VM::trace_execution(&program, [].into(), [].into()));
+        let_assert!(Ok((aet, _)) = VM::trace_execution(program, [].into(), [].into()));
         assert!(2 == aet.processor_trace.nrows());
     }
 
@@ -3036,7 +3026,7 @@ pub(crate) mod tests {
         let non_determinism = NonDeterminism::default().with_ram(initial_ram);
         let program_and_input = ProgramAndInput::new(program).with_non_determinism(non_determinism);
 
-        let_assert!(Ok(public_output) = program_and_input.run());
+        let_assert!(Ok(public_output) = program_and_input.clone().run());
         let_assert!(&[output] = &public_output[..]);
         assert!(42 == output.value());
 
@@ -3065,7 +3055,7 @@ pub(crate) mod tests {
         let non_determinism = NonDeterminism::default().with_ram(initial_ram);
         let program_and_input = ProgramAndInput::new(program).with_non_determinism(non_determinism);
 
-        let_assert!(Ok(public_output) = program_and_input.run());
+        let_assert!(Ok(public_output) = program_and_input.clone().run());
         let_assert!(&[uninit_value, init_value] = &public_output[..]);
         assert!(0 == uninit_value.value());
         assert!(value == init_value);
@@ -3079,7 +3069,7 @@ pub(crate) mod tests {
     #[test]
     fn program_without_halt() {
         let program = triton_program!(nop);
-        let_assert!(Err(err) = VM::trace_execution(&program, [].into(), [].into()));
+        let_assert!(Err(err) = VM::trace_execution(program, [].into(), [].into()));
         let_assert!(InstructionError::InstructionPointerOverflow = err.source);
     }
 
@@ -3102,7 +3092,7 @@ pub(crate) mod tests {
 
         let std_in = PublicInput::from(sudoku.map(|b| bfe!(b)));
         let secret_in = NonDeterminism::default();
-        assert!(let Ok(_) = VM::trace_execution(&program, std_in, secret_in));
+        assert!(let Ok(_) = VM::trace_execution(program.clone(), std_in, secret_in));
 
         // rows and columns adhere to Sudoku rules, boxes do not
         let bad_sudoku = [
@@ -3120,7 +3110,7 @@ pub(crate) mod tests {
         ];
         let bad_std_in = PublicInput::from(bad_sudoku.map(|b| bfe!(b)));
         let secret_in = NonDeterminism::default();
-        let_assert!(Err(err) = VM::trace_execution(&program, bad_std_in, secret_in));
+        let_assert!(Err(err) = VM::trace_execution(program, bad_std_in, secret_in));
         let_assert!(InstructionError::AssertionFailed = err.source);
     }
 
@@ -3129,7 +3119,7 @@ pub(crate) mod tests {
         num_preparatory_steps: usize,
     ) {
         let mut vm_state = VMState::new(
-            &program_and_input.program,
+            program_and_input.program,
             program_and_input.public_input,
             program_and_input.non_determinism,
         );
@@ -3341,7 +3331,7 @@ pub(crate) mod tests {
             halt
         };
 
-        let mut vmstate = VMState::new(&program, public_input, secret_input);
+        let mut vmstate = VMState::new(program, public_input, secret_input);
         prop_assert!(vmstate.run().is_ok());
 
         prop_assert_eq!(
@@ -3402,7 +3392,7 @@ pub(crate) mod tests {
             halt
         };
 
-        let mut vmstate = VMState::new(&program, public_input, secret_input);
+        let mut vmstate = VMState::new(program, public_input, secret_input);
         prop_assert!(vmstate.run().is_ok());
 
         prop_assert_eq!(

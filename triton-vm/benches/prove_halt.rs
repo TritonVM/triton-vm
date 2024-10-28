@@ -16,11 +16,12 @@ criterion_group! {
 /// cargo criterion --bench prove_halt
 fn prove_halt(c: &mut Criterion) {
     let program = triton_program!(halt);
+    let claim = Claim::about_program(&program);
     let (aet, output) =
-        VM::trace_execution(&program, PublicInput::default(), NonDeterminism::default()).unwrap();
+        VM::trace_execution(program, PublicInput::default(), NonDeterminism::default()).unwrap();
 
     let stark = Stark::default();
-    let claim = Claim::about_program(&program).with_output(output);
+    let claim = claim.with_output(output);
     let proof = stark.prove(&claim, &aet).unwrap();
 
     triton_vm::profiler::start("Prove Halt");

@@ -2,6 +2,7 @@
 
 use criterion::criterion_group;
 use criterion::criterion_main;
+use criterion::BatchSize;
 use criterion::Criterion;
 
 use triton_vm::prelude::*;
@@ -16,10 +17,16 @@ criterion_group!(
 
 fn mem_io(criterion: &mut Criterion) {
     let mem_io = MemIOBench::new();
-    let profile = mem_io.performance_profile();
+    let profile = mem_io.clone().performance_profile();
     eprintln!("{profile}");
 
-    criterion.bench_function("Memory I/O", |b| b.iter(|| mem_io.prove()));
+    criterion.bench_function("Memory I/O", |b| {
+        b.iter_batched(
+            || mem_io.clone(),
+            |mem_io| mem_io.prove(),
+            BatchSize::SmallInput,
+        )
+    });
 }
 
 fn program() -> Program {
@@ -38,7 +45,7 @@ fn program() -> Program {
         write_then_read_digest_loop:
             dup 0 push 0 eq skiz return
             write_mem 5 read_mem 5
-            push -1 add
+            addi -1
             recurse
     }
 }
@@ -59,20 +66,15 @@ impl MemIOBench {
         }
     }
 
-    fn prove(&self) {
-        let public_input = self.public_input.clone();
-        let secret_input = self.secret_input.clone();
-        triton_vm::prove_program(&self.program, public_input, secret_input).unwrap();
+    fn prove(self) {
+        triton_vm::prove_program(self.program, self.public_input, self.secret_input).unwrap();
     }
 
-    fn performance_profile(&self) -> VMPerformanceProfile {
-        let (aet, output) = VM::trace_execution(
-            &self.program,
-            self.public_input.clone(),
-            self.secret_input.clone(),
-        )
-        .unwrap();
-        let claim = Claim::about_program(&self.program).with_output(output);
+    fn performance_profile(self) -> VMPerformanceProfile {
+        let claim = Claim::about_program(&self.program);
+        let (aet, output) =
+            VM::trace_execution(self.program, self.public_input, self.secret_input).unwrap();
+        let claim = claim.with_output(output);
 
         let stark = Stark::default();
         triton_vm::profiler::start("Memory I/O");

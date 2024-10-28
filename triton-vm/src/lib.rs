@@ -70,7 +70,7 @@
 //! let non_determinism = NonDeterminism::default();
 //!
 //! let (stark, claim, proof) =
-//!     triton_vm::prove_program(&factorial_program, public_input, non_determinism).unwrap();
+//!     triton_vm::prove_program(factorial_program, public_input, non_determinism).unwrap();
 //!
 //! let verdict = triton_vm::verify(stark, &claim, &proof);
 //! assert!(verdict);
@@ -128,7 +128,7 @@
 //! let non_determinism = NonDeterminism::from(secret_input).with_ram(initial_ram);
 //!
 //! let (stark, claim, proof) =
-//!    triton_vm::prove_program(&sum_of_squares_program, public_input, non_determinism).unwrap();
+//!    triton_vm::prove_program(sum_of_squares_program, public_input, non_determinism).unwrap();
 //!
 //! let verdict = triton_vm::verify(stark, &claim, &proof);
 //! assert!(verdict);
@@ -145,7 +145,7 @@
 //! ```
 //! # use triton_vm::prelude::*;
 //! let crashing_program = triton_program!(push 2 assert halt);
-//! let vm_error = VM::run(&crashing_program, [].into(), [].into()).unwrap_err();
+//! let vm_error = VM::run(crashing_program, [].into(), [].into()).unwrap_err();
 //! assert!(matches!(vm_error.source, InstructionError::AssertionFailed));
 //! // inspect the VM state
 //! eprintln!("{vm_error}");
@@ -200,10 +200,18 @@ mod shared_tests;
 ///
 /// The default STARK parameters used by Triton VM give a (conjectured) security level of 160 bits.
 pub fn prove_program(
-    program: &Program,
+    program: Program,
     public_input: PublicInput,
     non_determinism: NonDeterminism,
 ) -> Result<(Stark, Claim, Proof), ProvingError> {
+    // Set up the claim that is to be proven. The claim contains all public information. The
+    // proof is zero-knowledge with respect to everything else.
+    //
+    // While it is more convenient to construct a `Claim::about_program(&program)`, this API is
+    // purposefully not used here to highlight that only a program's hash digest, not the full
+    // program, is part of the claim.
+    let claim = Claim::new(program.hash()).with_input(public_input.clone());
+
     // Generate
     // - the witness required for proof generation, i.e., the Algebraic Execution Trace (AET), and
     // - the (public) output of the program.
@@ -215,17 +223,10 @@ pub fn prove_program(
     // - if any of the two inputs does not conform to the program,
     // - because of a bug in the program, among other things.
     // If the VM crashes, proof generation will fail.
-    let (aet, public_output) = VM::trace_execution(program, public_input.clone(), non_determinism)?;
+    let (aet, public_output) = VM::trace_execution(program, public_input, non_determinism)?;
 
-    // Set up the claim that is to be proven. The claim contains all public information. The
-    // proof is zero-knowledge with respect to everything else.
-    //
-    // While it is more convenient to construct a `Claim::about_program(&program)`, this API is
-    // purposefully not used here to highlight that only a program's hash digest, not the full
-    // program, is part of the claim.
-    let claim = Claim::new(program.hash())
-        .with_input(public_input)
-        .with_output(public_output);
+    // Now that the public output is computed, populate the claim accordingly.
+    let claim = claim.with_output(public_output);
 
     // The default parameters give a (conjectured) security level of 160 bits.
     let stark = Stark::default();
@@ -241,7 +242,7 @@ pub fn prove_program(
 pub fn prove(
     stark: Stark,
     claim: &Claim,
-    program: &Program,
+    program: Program,
     non_determinism: NonDeterminism,
 ) -> Result<Proof, ProvingError> {
     let program_digest = program.hash();
@@ -377,7 +378,7 @@ mod tests {
 
         let public_input = PublicInput::from(some_tie_to_an_outer_context.reversed().values());
         let non_determinism = NonDeterminism::new(hash_preimage.reversed().values());
-        let maybe_proof = prove_program(&program, public_input.clone(), non_determinism);
+        let maybe_proof = prove_program(program.clone(), public_input.clone(), non_determinism);
         let (stark, claim, proof) =
             maybe_proof.map_err(|err| TestCaseError::Fail(err.to_string().into()))?;
         prop_assert_eq!(Stark::default(), stark);
@@ -403,7 +404,7 @@ mod tests {
         let public_input = PublicInput::default();
         let initial_ram = [(42, 17), (51, 13)].map(|(address, v)| (bfe!(address), bfe!(v)));
         let non_determinism = NonDeterminism::default().with_ram(initial_ram);
-        let (stark, claim, proof) = prove_program(&program, public_input, non_determinism).unwrap();
+        let (stark, claim, proof) = prove_program(program, public_input, non_determinism).unwrap();
         assert!(13 * 17 == claim.output[0].value());
 
         let verdict = verify(stark, &claim, &proof);
@@ -416,7 +417,7 @@ mod tests {
         let claim = Claim::about_program(&program);
 
         let stark = Stark::default();
-        let proof = prove(stark, &claim, &program, [].into()).unwrap();
+        let proof = prove(stark, &claim, program, [].into()).unwrap();
         let verdict = verify(stark, &claim, &proof);
         assert!(verdict);
     }
@@ -428,7 +429,7 @@ mod tests {
         let claim = Claim::about_program(&other_program);
 
         let stark = Stark::default();
-        let_assert!(Err(err) = prove(stark, &claim, &program, [].into()));
+        let_assert!(Err(err) = prove(stark, &claim, program, [].into()));
         assert!(let ProvingError::ProgramDigestMismatch = err);
     }
 
@@ -440,7 +441,7 @@ mod tests {
             .with_output(bfe_vec![5]);
 
         let stark = Stark::default();
-        let_assert!(Err(err) = prove(stark, &claim, &program, [].into()));
+        let_assert!(Err(err) = prove(stark, &claim, program, [].into()));
         assert!(let ProvingError::PublicOutputMismatch = err);
     }
 
@@ -453,7 +454,7 @@ mod tests {
         let source_code = triton_asm!(push 6 {&snippet_0} {&snippet_1} halt);
 
         let program = triton_program!({ &source_code });
-        let public_output = VM::run(&program, [].into(), [].into()).unwrap();
+        let public_output = VM::run(program, [].into(), [].into()).unwrap();
 
         let expected_output = bfe_vec![9, 8, 7, 6];
         assert_eq!(expected_output, public_output);
@@ -464,7 +465,7 @@ mod tests {
         let push_25 = triton_asm![push 0; 25];
         let pop_25 = triton_asm![pop 5; 5];
         let program = triton_program! { push 1 { &push_25 } { &pop_25 } assert halt };
-        VM::run(&program, [].into(), [].into()).unwrap();
+        VM::run(program, [].into(), [].into()).unwrap();
     }
 
     #[test]

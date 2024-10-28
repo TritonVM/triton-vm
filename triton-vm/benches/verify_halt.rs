@@ -10,7 +10,7 @@ fn verify_halt(criterion: &mut Criterion) {
 
     let stark = Stark::default();
     let claim = Claim::about_program(&program);
-    let (aet, _) = VM::trace_execution(&program, [].into(), [].into()).unwrap();
+    let (aet, _) = VM::trace_execution(program, [].into(), [].into()).unwrap();
     let proof = stark.prove(&claim, &aet).unwrap();
 
     triton_vm::profiler::start("Verify Halt");

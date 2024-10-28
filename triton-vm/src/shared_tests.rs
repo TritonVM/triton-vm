@@ -109,12 +109,9 @@ pub(crate) fn prove_and_verify(
     } = program_and_input;
 
     profiler!(start "Pre-flight");
-    let (aet, public_output) =
-        VM::trace_execution(&program, public_input.clone(), non_determinism.clone()).unwrap();
-
-    let claim = Claim::about_program(&program)
-        .with_input(public_input.individual_tokens.clone())
-        .with_output(public_output);
+    let claim = Claim::about_program(&program).with_input(public_input.clone());
+    let (aet, public_output) = VM::trace_execution(program, public_input, non_determinism).unwrap();
+    let claim = claim.with_output(public_output);
     let stark = low_security_stark(log_2_fri_expansion_factor);
     profiler!(stop "Pre-flight");
 
@@ -194,7 +191,9 @@ impl ProgramAndInput {
     }
 
     /// A thin wrapper around [`VM::run`].
-    pub fn run(&self) -> Result<Vec<BFieldElement>, VMError> {
-        VM::run(&self.program, self.public_input(), self.non_determinism())
+    pub fn run(self) -> Result<Vec<BFieldElement>, VMError> {
+        let public_input = self.public_input();
+        let non_determinism = self.non_determinism();
+        VM::run(self.program, public_input, non_determinism)
     }
 }

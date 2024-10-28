@@ -647,7 +647,7 @@ pub(crate) mod tests {
             halt
         };
 
-        let (aet, _) = VM::trace_execution(&program, [].into(), [].into()).unwrap();
+        let (aet, _) = VM::trace_execution(program.clone(), [].into(), [].into()).unwrap();
         dbg!(aet.height());
         dbg!(aet.padded_height());
         dbg!(aet.height_of_table(TableId::Hash));

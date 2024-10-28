@@ -84,7 +84,7 @@ mod test {
         fn evaluate_all_constraints_tasm_static(&self) -> Vec<XFieldElement> {
             let program = self.tasm_static_constraint_evaluation_code();
             let mut vm_state =
-                self.set_up_triton_vm_to_evaluate_constraints_in_tasm_static(&program);
+                self.set_up_triton_vm_to_evaluate_constraints_in_tasm_static(program);
             vm_state.run().unwrap();
             Self::extract_constraint_evaluations(vm_state)
         }
@@ -92,7 +92,7 @@ mod test {
         fn evaluate_all_constraints_tasm_dynamic(&self) -> Vec<XFieldElement> {
             let program = self.tasm_dynamic_constraint_evaluation_code();
             let mut vm_state =
-                self.set_up_triton_vm_to_evaluate_constraints_in_tasm_dynamic(&program);
+                self.set_up_triton_vm_to_evaluate_constraints_in_tasm_dynamic(program);
             vm_state.run().unwrap();
             Self::extract_constraint_evaluations(vm_state)
         }
@@ -123,7 +123,7 @@ mod test {
 
         fn set_up_triton_vm_to_evaluate_constraints_in_tasm_static(
             &self,
-            program: &Program,
+            program: Program,
         ) -> VMState {
             let curr_main_row_ptr = self.static_memory_layout.curr_main_row_ptr;
             let curr_aux_row_ptr = self.static_memory_layout.curr_aux_row_ptr;
@@ -144,7 +144,7 @@ mod test {
 
         fn set_up_triton_vm_to_evaluate_constraints_in_tasm_dynamic(
             &self,
-            program: &Program,
+            program: Program,
         ) -> VMState {
             // for convenience, reuse the (integral) static memory layout
             let mut vm_state =
@@ -202,7 +202,7 @@ mod test {
     ) {
         let program = point.tasm_static_constraint_evaluation_code();
         let mut initial_state =
-            point.set_up_triton_vm_to_evaluate_constraints_in_tasm_static(&program);
+            point.set_up_triton_vm_to_evaluate_constraints_in_tasm_static(program);
         let mut terminal_state = initial_state.clone();
         terminal_state.run().unwrap();
 
