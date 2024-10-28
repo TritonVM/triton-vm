@@ -2775,7 +2775,7 @@ pub(crate) mod tests {
     }
 
     /// A program that executes every instruction in the instruction set.
-    fn program_executing_every_instruction() -> ProgramAndInput {
+    pub fn program_executing_every_instruction() -> ProgramAndInput {
         let m_step_mem_addr = 100_000;
 
         let program = triton_program! {

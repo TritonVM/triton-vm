@@ -1235,30 +1235,41 @@ impl Display for VMState {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         use ProcessorMainColumn as ProcCol;
 
-        let Ok(instruction) = self.current_instruction() else {
-            return write!(f, "END-OF-FILE");
-        };
+        let instruction = self
+            .current_instruction()
+            .map_or_else(
+                |_| "--".to_string(),
+                |instruction| {
+                    if let Instruction::Call(address) = instruction {
+                        format!("call {}", self.program.label_for_address(address.value()))
+                    } else {
+                        instruction.to_string()
+                    }
+                },
+            )
+            .chars()
+            .take(54)
+            .collect::<String>();
 
         let total_width = 103;
-        let tab_width = 54;
+        let tab_width = instruction.chars().count().max(8);
         let clk_width = 17;
         let register_width = 20;
         let buffer_width = total_width - tab_width - clk_width - 7;
 
         let print_row = |f: &mut Formatter, s: String| writeln!(f, "│ {s: <total_width$} │");
         let print_blank_row = |f: &mut Formatter| print_row(f, String::new());
+        let print_section_separator = |f: &mut Formatter| writeln!(f, "├─{:─<total_width$}─┤", "");
 
         let row = self.to_processor_row();
 
-        let register = |reg: ProcessorMainColumn| {
-            let reg_string = format!("{}", row[reg.main_index()]);
-            format!("{reg_string:>register_width$}")
-        };
+        let register =
+            |col: ProcCol| format!("{:>register_width$}", row[col.main_index()].to_string());
         let multi_register = |regs: [_; 4]| regs.map(register).join(" | ");
 
         writeln!(f)?;
         writeln!(f, " ╭─{:─<tab_width$}─╮", "")?;
-        writeln!(f, " │ {: <tab_width$} │", format!("{instruction}"))?;
+        writeln!(f, " │ {instruction: <tab_width$} │")?;
         writeln!(
             f,
             "╭┴─{:─<tab_width$}─┴─{:─<buffer_width$}─┬─{:─>clk_width$}─╮",
@@ -1322,27 +1333,43 @@ impl Display for VMState {
         .join(" | ");
         print_row(f, format!("ib6-0:    [ {ib_registers} ]"))?;
 
-        let Some(ref sponge) = self.sponge else {
-            return writeln!(f, "╰─{:─<total_width$}─╯", "");
+        print_section_separator(f)?;
+        if let Some(ref sponge) = self.sponge {
+            let sponge_state_slice = |idxs: Range<usize>| {
+                idxs.map(|i| sponge.state[i].value())
+                    .map(|ss| format!("{ss:>register_width$}"))
+                    .join(" | ")
+            };
+
+            print_row(f, format!("sp0-3:    [ {} ]", sponge_state_slice(0..4)))?;
+            print_row(f, format!("sp4-7:    [ {} ]", sponge_state_slice(4..8)))?;
+            print_row(f, format!("sp8-11:   [ {} ]", sponge_state_slice(8..12)))?;
+            print_row(f, format!("sp12-15:  [ {} ]", sponge_state_slice(12..16)))?;
+        } else {
+            let uninit_msg = format!("{:^total_width$}", "-- sponge is not initialized --");
+            print_row(f, uninit_msg)?;
         };
 
-        let sponge_state_register = |i: usize| sponge.state[i].value();
-        let sponge_state_slice = |idxs: Range<usize>| {
-            idxs.map(sponge_state_register)
-                .map(|ss| format!("{ss:>register_width$}"))
-                .join(" | ")
-        };
+        print_section_separator(f)?;
+        if self.jump_stack.is_empty() {
+            print_row(f, format!("{:^total_width$}", "-- jump stack is empty --"))?;
+        } else {
+            let idx_width = 3;
+            let max_label_width = total_width - idx_width - 2; // for `: `
 
-        let sponge_state_00_03 = sponge_state_slice(0..4);
-        let sponge_state_04_07 = sponge_state_slice(4..8);
-        let sponge_state_08_11 = sponge_state_slice(8..12);
-        let sponge_state_12_15 = sponge_state_slice(12..16);
+            for (idx, &(_, address)) in self.jump_stack.iter().rev().enumerate() {
+                let label = self.program.label_for_address(address.value());
+                let label = label.chars().take(max_label_width).collect::<String>();
+                print_row(f, format!("{idx:>idx_width$}: {label}"))?;
+                print_row(f, format!("        at {address}"))?;
+            }
+        }
 
-        writeln!(f, "├─{:─<total_width$}─┤", "")?;
-        print_row(f, format!("sp0-3:    [ {sponge_state_00_03} ]"))?;
-        print_row(f, format!("sp4-7:    [ {sponge_state_04_07} ]"))?;
-        print_row(f, format!("sp8-11:   [ {sponge_state_08_11} ]"))?;
-        print_row(f, format!("sp12-15:  [ {sponge_state_12_15} ]"))?;
+        if self.halting {
+            print_section_separator(f)?;
+            print_row(f, format!("{:^total_width$}", "! halting !"))?;
+        }
+
         writeln!(f, "╰─{:─<total_width$}─╯", "")
     }
 }
@@ -1484,6 +1511,7 @@ pub(crate) mod tests {
     use crate::shared_tests::LeavedMerkleTreeTestData;
     use crate::shared_tests::ProgramAndInput;
     use crate::shared_tests::DEFAULT_LOG2_FRI_EXPANSION_FACTOR_FOR_TESTS;
+    use crate::stark::tests::program_executing_every_instruction;
 
     use super::*;
 
@@ -1622,6 +1650,77 @@ pub(crate) mod tests {
     #[test]
     fn crash_triton_vm_and_print_vm_error() {
         let crashing_program = triton_program!(push 2 assert halt);
+        let_assert!(Err(err) = VM::run(crashing_program, [].into(), [].into()));
+        println!("{err}");
+    }
+
+    #[test]
+    fn crash_tritom_vm_with_non_empty_jump_stack_and_print_vm_error() {
+        let crashing_program = triton_program! {
+            call foo halt
+            foo: call bar return
+            bar: push 2 assert return
+        };
+        let_assert!(Err(err) = VM::run(crashing_program, [].into(), [].into()));
+        let err_str = err.to_string();
+
+        let_assert!(Some(bar_pos) = err_str.find("bar"));
+        let_assert!(Some(foo_pos) = err_str.find("foo"));
+        assert!(bar_pos < foo_pos, "deeper call must be listed higher");
+
+        println!("{err_str}");
+    }
+
+    #[test]
+    fn print_various_vm_states() {
+        let ProgramAndInput {
+            program,
+            public_input,
+            non_determinism,
+        } = program_executing_every_instruction();
+        let mut state = VMState::new(program, public_input, non_determinism);
+        while !state.halting {
+            println!("{state}");
+            state.step().unwrap();
+        }
+    }
+
+    #[test]
+    fn print_vm_state_with_long_jump_stack() {
+        let labels = [
+            "astraldropper_",
+            "bongoquest_",
+            "cloudmother_",
+            "daydream_",
+            "essence_",
+            "flowerflight_",
+            "groovesister_",
+            "highride_",
+            "meadowdream_",
+            "naturesounds_",
+            "opaldancer_",
+            "peacespirit_",
+            "quyhrmfields_",
+        ]
+        .map(|s| s.repeat(15));
+
+        let crashing_program = triton_program! {
+            call {labels[0]}
+            {labels[0]}:  call {labels[1]}
+            {labels[1]}:  call {labels[2]}
+            {labels[2]}:  call {labels[3]}
+            {labels[3]}:  call {labels[4]}
+            {labels[4]}:  call {labels[5]}
+            {labels[5]}:  call {labels[6]}
+            {labels[6]}:  call {labels[7]}
+            {labels[7]}:  call {labels[8]}
+            {labels[8]}:  call {labels[9]}
+            {labels[9]}:  call {labels[10]}
+            {labels[10]}: call {labels[11]}
+            {labels[11]}: call {labels[12]}
+            {labels[12]}: nop
+        };
+
         let_assert!(Err(err) = VM::run(crashing_program, [].into(), [].into()));
         println!("{err}");
     }
