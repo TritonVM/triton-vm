@@ -841,6 +841,11 @@ mod tests {
         assert!(shrinks_stack ^ grows_stack);
     }
 
+    #[test]
+    fn empty_underflow_io_sequence_does_not_crash_uniformity_test() {
+        assert!(UnderflowIO::is_uniform_sequence(&[]));
+    }
+
     #[proptest]
     fn non_empty_uniform_underflow_io_sequence_is_either_reading_or_writing(
         #[strategy(vec(arb(), 1..OpStackElement::COUNT))] sequence: Vec<UnderflowIO>,
