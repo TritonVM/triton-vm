@@ -27,7 +27,7 @@ prop_compose! {
         degree in -1_i64..1 << 10,
     )(
         polynomial in arbitrary_polynomial_of_degree(degree),
-    ) -> Polynomial<XFieldElement> {
+    ) -> Polynomial<'static, XFieldElement> {
         polynomial
     }
 }
@@ -36,14 +36,14 @@ prop_compose! {
     pub(crate) fn arbitrary_polynomial_of_degree(degree: i64)(
         leading_coefficient: NonZeroXFieldElement,
         other_coefficients in vec(arb(), degree.try_into().unwrap_or(0)),
-    ) -> Polynomial<XFieldElement> {
+    ) -> Polynomial<'static, XFieldElement> {
         let leading_coefficient = leading_coefficient.0;
         let coefficients = match degree >= 0 {
             true => [other_coefficients, vec![leading_coefficient]].concat(),
             false => vec![],
         };
         let polynomial = Polynomial::new(coefficients);
-        assert!(degree== polynomial.degree() as i64);
+        assert!(degree == polynomial.degree() as i64);
         polynomial
     }
 }

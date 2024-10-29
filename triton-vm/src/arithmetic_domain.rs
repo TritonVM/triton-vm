@@ -1,7 +1,9 @@
 use std::ops::Mul;
 use std::ops::MulAssign;
 
+use num_traits::ConstOne;
 use num_traits::One;
+use num_traits::Zero;
 use rayon::prelude::*;
 use twenty_first::math::traits::FiniteField;
 use twenty_first::math::traits::PrimitiveRootOfUnity;
@@ -27,7 +29,7 @@ impl ArithmeticDomain {
     /// Errors if the domain length is not a power of 2.
     pub fn of_length(length: usize) -> Result<Self> {
         let domain = Self {
-            offset: bfe!(1),
+            offset: BFieldElement::ONE,
             generator: Self::generator_for_length(length as u64)?,
             length,
         };
@@ -56,18 +58,18 @@ impl ArithmeticDomain {
         FF: FiniteField
             + MulAssign<BFieldElement>
             + Mul<BFieldElement, Output = FF>
-            + From<BFieldElement>,
+            + From<BFieldElement>
+            + 'static,
     {
-        let (offset, generator, length) = (self.offset, self.generator, self.length);
-        let evaluate_from =
-            |chunk| Polynomial::from(chunk).fast_coset_evaluate(offset, generator, length);
+        let (offset, length) = (self.offset, self.length);
+        let evaluate_from = |chunk| Polynomial::from(chunk).fast_coset_evaluate(offset, length);
 
         // avoid `enumerate` to directly get index of the right type
-        let mut indexed_chunks = (0..).zip(polynomial.coefficients.chunks(length));
+        let mut indexed_chunks = (0..).zip(polynomial.coefficients().chunks(length));
 
         // only allocate a bunch of zeros if there are no chunks
         let mut values = indexed_chunks.next().map_or_else(
-            || vec![FF::zero(); length],
+            || vec![FF::ZERO; length],
             |(_, first_chunk)| evaluate_from(first_chunk),
         );
         for (chunk_index, chunk) in indexed_chunks {
@@ -82,12 +84,18 @@ impl ArithmeticDomain {
         values
     }
 
-    pub fn interpolate<FF>(&self, values: &[FF]) -> Polynomial<FF>
+    /// # Panics
+    ///
+    /// Panics if the length of the argument does not match the length of `self`.
+    pub fn interpolate<FF>(&self, values: &[FF]) -> Polynomial<'static, FF>
     where
         FF: FiniteField + MulAssign<BFieldElement> + Mul<BFieldElement, Output = FF>,
     {
+        // required by `fast_coset_interpolate`
+        debug_assert_eq!(self.length, values.len());
+
         // generic type made explicit to avoid performance regressions due to auto-conversion
-        Polynomial::fast_coset_interpolate::<BFieldElement>(self.offset, self.generator, values)
+        Polynomial::fast_coset_interpolate::<BFieldElement>(self.offset, values)
     }
 
     pub fn low_degree_extension<FF>(&self, codeword: &[FF], target_domain: Self) -> Vec<FF>
@@ -95,7 +103,8 @@ impl ArithmeticDomain {
         FF: FiniteField
             + MulAssign<BFieldElement>
             + Mul<BFieldElement, Output = FF>
-            + From<BFieldElement>,
+            + From<BFieldElement>
+            + 'static,
     {
         target_domain.evaluate(&self.interpolate(codeword))
     }
@@ -118,6 +127,29 @@ impl ArithmeticDomain {
             "length must be the order of the generator"
         );
         domain_values
+    }
+
+    /// A polynomial that evaluates to 0 on (and only on)
+    /// a [domain value][Self::domain_values].
+    pub fn zerofier(&self) -> Polynomial<BFieldElement> {
+        if self.offset.is_zero() {
+            return Polynomial::x_to_the(1);
+        }
+
+        Polynomial::x_to_the(self.length)
+            - Polynomial::from_constant(self.offset.mod_pow(self.length as u64))
+    }
+
+    /// [`Self::zerofier`] times the argument.
+    /// More performant than polynomial multiplication.
+    /// See [`Self::zerofier`] for details.
+    pub fn mul_zerofier_with<FF>(&self, polynomial: Polynomial<FF>) -> Polynomial<'static, FF>
+    where
+        FF: FiniteField + Mul<BFieldElement, Output = FF>,
+    {
+        // use knowledge of zerofier's shape for faster multiplication
+        polynomial.clone().shift_coefficients(self.length)
+            - polynomial.scalar_mul(self.offset.mod_pow(self.length as u64))
     }
 
     pub(crate) fn halve(&self) -> Result<Self> {
@@ -178,31 +210,31 @@ mod tests {
     #[proptest]
     fn evaluate_empty_polynomial(
         #[strategy(arbitrary_domain())] domain: ArithmeticDomain,
-        #[strategy(arbitrary_polynomial_of_degree(-1))] polynomial: Polynomial<XFieldElement>,
+        #[strategy(arbitrary_polynomial_of_degree(-1))] poly: Polynomial<'static, XFieldElement>,
     ) {
-        domain.evaluate(&polynomial);
+        domain.evaluate(&poly);
     }
 
     #[proptest]
     fn evaluate_constant_polynomial(
         #[strategy(arbitrary_domain())] domain: ArithmeticDomain,
-        #[strategy(arbitrary_polynomial_of_degree(0))] polynomial: Polynomial<XFieldElement>,
+        #[strategy(arbitrary_polynomial_of_degree(0))] poly: Polynomial<'static, XFieldElement>,
     ) {
-        domain.evaluate(&polynomial);
+        domain.evaluate(&poly);
     }
 
     #[proptest]
     fn evaluate_linear_polynomial(
         #[strategy(arbitrary_domain())] domain: ArithmeticDomain,
-        #[strategy(arbitrary_polynomial_of_degree(1))] polynomial: Polynomial<XFieldElement>,
+        #[strategy(arbitrary_polynomial_of_degree(1))] poly: Polynomial<'static, XFieldElement>,
     ) {
-        domain.evaluate(&polynomial);
+        domain.evaluate(&poly);
     }
 
     #[proptest]
     fn evaluate_polynomial(
         #[strategy(arbitrary_domain())] domain: ArithmeticDomain,
-        #[strategy(arbitrary_polynomial())] polynomial: Polynomial<XFieldElement>,
+        #[strategy(arbitrary_polynomial())] polynomial: Polynomial<'static, XFieldElement>,
     ) {
         domain.evaluate(&polynomial);
     }
@@ -210,7 +242,7 @@ mod tests {
     #[test]
     fn domain_values() {
         let poly = Polynomial::<BFieldElement>::x_to_the(3);
-        let x_cubed_coefficients = poly.coefficients.clone();
+        let x_cubed_coefficients = poly.clone().into_coefficients();
 
         for order in [4, 8, 32] {
             let generator = BFieldElement::primitive_root_of_unity(order).unwrap();
@@ -309,5 +341,21 @@ mod tests {
         let values0 = domain.evaluate(&polynomial);
         let values1 = polynomial.batch_evaluate(&domain.domain_values());
         assert_eq!(values0, values1);
+    }
+
+    #[proptest]
+    fn zerofier_is_actually_zerofier(#[strategy(arbitrary_domain())] domain: ArithmeticDomain) {
+        let actual_zerofier = Polynomial::zerofier(&domain.domain_values());
+        prop_assert_eq!(actual_zerofier, domain.zerofier());
+    }
+
+    #[proptest]
+    fn multiplication_with_zerofier_is_identical_to_method_mul_with_zerofier(
+        #[strategy(arbitrary_domain())] domain: ArithmeticDomain,
+        #[strategy(arbitrary_polynomial())] polynomial: Polynomial<'static, XFieldElement>,
+    ) {
+        let mul = domain.zerofier() * polynomial.clone();
+        let mul_with = domain.mul_zerofier_with(polynomial);
+        prop_assert_eq!(mul, mul_with);
     }
 }
