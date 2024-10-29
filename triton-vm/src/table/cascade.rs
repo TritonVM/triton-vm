@@ -7,8 +7,10 @@ use air::table_column::MasterMainColumn;
 use ndarray::s;
 use ndarray::ArrayView2;
 use ndarray::ArrayViewMut2;
+use ndarray::Axis;
 use num_traits::ConstOne;
 use num_traits::One;
+use rayon::prelude::*;
 use strum::EnumCount;
 use twenty_first::prelude::*;
 
@@ -37,19 +39,21 @@ impl TraceTable for CascadeTable {
     type FillReturnInfo = ();
 
     fn fill(mut main_table: ArrayViewMut2<BFieldElement>, aet: &AlgebraicExecutionTrace, _: ()) {
-        for (row_idx, (&to_look_up, &multiplicity)) in
-            aet.cascade_table_lookup_multiplicities.iter().enumerate()
-        {
+        let rows_and_multiplicities = main_table
+            .axis_iter_mut(Axis(0))
+            .into_par_iter()
+            .zip(&aet.cascade_table_lookup_multiplicities);
+
+        rows_and_multiplicities.for_each(|(mut row, (&to_look_up, &multiplicity))| {
             let to_look_up_lo = (to_look_up & 0xff) as u8;
             let to_look_up_hi = ((to_look_up >> 8) & 0xff) as u8;
 
-            let mut row = main_table.row_mut(row_idx);
             row[MainColumn::LookInLo.main_index()] = bfe!(to_look_up_lo);
             row[MainColumn::LookInHi.main_index()] = bfe!(to_look_up_hi);
             row[MainColumn::LookOutLo.main_index()] = lookup_8_bit_limb(to_look_up_lo);
             row[MainColumn::LookOutHi.main_index()] = lookup_8_bit_limb(to_look_up_hi);
             row[MainColumn::LookupMultiplicity.main_index()] = bfe!(multiplicity);
-        }
+        });
     }
 
     fn pad(mut main_table: ArrayViewMut2<BFieldElement>, cascade_table_length: usize) {

@@ -6,7 +6,7 @@ use ndarray::Array2;
 use ndarray::ArrayViewMut2;
 use ndarray::Ix;
 use ndarray::ShapeBuilder;
-use num_traits::Zero;
+use num_traits::ConstZero;
 
 /// Slice a two-dimensional array into many non-overlapping mutable subviews
 /// of the same height as the array, based on the contiguous partition induced
@@ -62,10 +62,10 @@ pub fn contiguous_column_slices(column_indices: &[usize]) -> Vec<usize> {
 /// Faster than [`Array2::zeros`] through parallelism.
 pub fn par_zeros<FF>(shape: impl ShapeBuilder<Dim = ndarray::Dim<[Ix; 2]>>) -> Array2<FF>
 where
-    FF: Zero + Send + Sync + Copy,
+    FF: ConstZero + Send + Sync + Copy,
 {
     let mut array = Array2::uninit(shape);
-    array.par_mapv_inplace(|_| MaybeUninit::new(FF::zero()));
+    array.par_mapv_inplace(|_| MaybeUninit::new(FF::ZERO));
 
     unsafe {
         // SAFETY:
@@ -80,7 +80,6 @@ mod test {
     use itertools::Itertools;
     use ndarray::array;
     use ndarray::concatenate;
-    use ndarray::Array2;
     use ndarray::Axis;
     use num_traits::Zero;
     use proptest::collection::vec;
@@ -89,7 +88,7 @@ mod test {
     use proptest::prop_assert_eq;
     use proptest::strategy::Strategy;
     use test_strategy::proptest;
-    use twenty_first::math::x_field_element::XFieldElement;
+    use twenty_first::prelude::XFieldElement;
 
     use super::*;
 

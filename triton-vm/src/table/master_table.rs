@@ -80,11 +80,11 @@ use ndarray::ArrayViewMut2;
 use ndarray::Zip;
 use num_traits::ConstZero;
 use num_traits::One;
+use num_traits::ToBytes;
 use num_traits::Zero;
 use rand::distributions::Standard;
 use rand::prelude::Distribution;
 use rand::prelude::StdRng;
-use rand::random;
 use rand::Rng;
 use rand_core::SeedableRng;
 use strum::EnumCount;
@@ -392,17 +392,7 @@ where
         // have any useful application and is almost certainly a logic error.
         assert!(idx < Self::NUM_COLUMNS);
 
-        // Add the index to the seed. The specific implementation ensures that the
-        // operation is independent of the target pointer width since `to_le_bytes`
-        // yields any leading zeros _after_ the bits of lesser significance.
-        // Note that this does not guarantee portability across architectures, as
-        // `rand::StdRng` is specifically documented as being not portable.
-        let mut seed = self.trace_randomizer_seed();
-        for (seed_byte, idx_byte) in seed.iter_mut().zip(idx.to_le_bytes()) {
-            *seed_byte = seed_byte.wrapping_add(idx_byte);
-        }
-        let mut rng = StdRng::from_seed(seed);
-
+        let mut rng = rng_from_offset_seed(self.trace_randomizer_seed(), idx);
         let coefficients = (0..self.num_trace_randomizers())
             .map(|_| rng.gen())
             .collect();
@@ -573,6 +563,28 @@ where
             .map(|row| row.to_vec())
             .collect()
     }
+}
+
+/// Create a [random-number generator](StdRng) from a seed and an offset.
+fn rng_from_offset_seed<B>(mut seed: <StdRng as SeedableRng>::Seed, offset: B) -> StdRng
+where
+    B: ToBytes,
+    <B as ToBytes>::Bytes: IntoIterator<Item = u8>,
+{
+    let offset_le_bytes = offset.to_le_bytes();
+
+    // entire offset must be used
+    debug_assert!(offset_le_bytes.as_ref().len() <= seed.len());
+
+    // Ensure that the operation is independent of the target pointer:
+    // `to_le_bytes` yields any leading zeros _after_ bits of lesser significance.
+    // Note that this does not guarantee portability across architectures, as
+    // `rand::StdRng` is specifically documented as being not portable.
+    for (seed_byte, offset_byte) in seed.iter_mut().zip(offset_le_bytes) {
+        *seed_byte = seed_byte.wrapping_add(offset_byte);
+    }
+
+    StdRng::from_seed(seed)
 }
 
 /// Helper struct and function to absorb however many elements are available; used in
@@ -819,9 +831,10 @@ type ExtendFunction = fn(ArrayView2<BFieldElement>, ArrayViewMut2<XFieldElement>
 impl MasterMainTable {
     pub fn new(
         aet: &AlgebraicExecutionTrace,
-        num_trace_randomizers: usize,
         quotient_domain: ArithmeticDomain,
         fri_domain: ArithmeticDomain,
+        num_trace_randomizers: usize,
+        trace_randomizer_seed: <StdRng as SeedableRng>::Seed,
     ) -> Self {
         let padded_height = aet.padded_height();
         let num_rows = randomized_trace_len(padded_height, num_trace_randomizers);
@@ -848,7 +861,7 @@ impl MasterMainTable {
             quotient_domain,
             fri_domain,
             trace_table,
-            trace_randomizer_seed: random(),
+            trace_randomizer_seed,
             low_degree_extended_table: None,
         };
 
@@ -888,7 +901,7 @@ impl MasterMainTable {
     pub fn pad(&mut self) {
         let table_lengths = self.all_table_lengths();
 
-        let main_tables: [_; TableId::COUNT] = horizontal_multi_slice_mut(
+        let tables: [_; TableId::COUNT] = horizontal_multi_slice_mut(
             self.trace_table.view_mut(),
             &partial_sums(&[
                 ProgramMainColumn::COUNT,
@@ -917,13 +930,12 @@ impl MasterMainTable {
             LookupTable::pad,
             U32Table::pad,
         ];
+
         all_pad_functions
             .into_par_iter()
-            .zip_eq(main_tables.into_par_iter())
-            .zip_eq(table_lengths.into_par_iter())
-            .for_each(|((pad, main_table), table_length)| {
-                pad(main_table, table_length);
-            });
+            .zip_eq(tables)
+            .zip_eq(table_lengths)
+            .for_each(|((pad, table), table_length)| pad(table, table_length));
         profiler!(stop "pad original tables");
 
         profiler!(start "fill degree-lowering table");
@@ -952,26 +964,28 @@ impl MasterMainTable {
     /// table. The `.extend()` for each table is specific to that table, but always involves
     /// adding some number of columns.
     pub fn extend(&self, challenges: &Challenges) -> MasterAuxTable {
+        // construct a seed that hasn't been used for any column's trace randomizer
+        let mut rng = rng_from_offset_seed(self.trace_randomizer_seed(), Self::NUM_COLUMNS);
+
         profiler!(start "initialize master table");
         // column majority (“`F`”) for contiguous column slices
-        let mut aux_trace_table = ndarray_helper::par_zeros(
-            (self.trace_table().nrows(), MasterAuxTable::NUM_COLUMNS).f(),
-        );
+        let aux_trace_table_shape = (self.trace_table().nrows(), MasterAuxTable::NUM_COLUMNS).f();
+        let mut aux_trace_table = ndarray_helper::par_zeros(aux_trace_table_shape);
 
         let randomizers_start = MasterAuxTable::NUM_COLUMNS - NUM_RANDOMIZER_POLYNOMIALS;
         aux_trace_table
             .slice_mut(s![.., randomizers_start..])
-            .par_mapv_inplace(|_| random());
+            .mapv_inplace(|_| rng.gen());
         profiler!(stop "initialize master table");
 
         let mut master_aux_table = MasterAuxTable {
             num_trace_randomizers: self.num_trace_randomizers,
-            trace_domain: self.trace_domain(),
-            randomized_trace_domain: self.randomized_trace_domain(),
-            quotient_domain: self.quotient_domain(),
-            fri_domain: self.fri_domain(),
+            trace_domain: self.trace_domain,
+            randomized_trace_domain: self.randomized_trace_domain,
+            quotient_domain: self.quotient_domain,
+            fri_domain: self.fri_domain,
             trace_table: aux_trace_table,
-            trace_randomizer_seed: random(),
+            trace_randomizer_seed: rng.gen(),
             low_degree_extended_table: None,
         };
 

@@ -9,6 +9,9 @@ use ndarray::Zip;
 use num_traits::ConstOne;
 use num_traits::ConstZero;
 use num_traits::Zero;
+use rand::prelude::StdRng;
+use rand::random;
+use rand_core::SeedableRng;
 use rayon::prelude::*;
 use serde::Deserialize;
 use serde::Serialize;
@@ -82,9 +85,23 @@ pub struct Stark {
 /// The prover for Triton VM's [zk-STARK](Stark). The core method is
 /// [`prove`](Prover::prove). It is probably more convenient to call
 /// [`Stark::prove`] directly.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Arbitrary)]
+///
+/// It is possible to [set the randomness seed][seed] used for deriving all
+/// prover randomness. To prevent accidental randomness re-use, the [`Prover`]
+/// does not implement [`Clone`].
+///
+/// [seed]: Prover::set_randomness_seed_which_may_break_zero_knowledge
+#[expect(missing_copy_implementations)]
+#[derive(Debug, Eq, PartialEq, Arbitrary)]
 pub struct Prover {
     parameters: Stark,
+
+    /// The seed for all randomness used while [proving][Stark::prove].
+    ///
+    /// For Triton VM's proofs to be zero knowledge, this seed must be sampled
+    /// uniformly at random, and independently of all other input. No information
+    /// about it must reach the verifier.
+    randomness_seed: <StdRng as SeedableRng>::Seed,
 }
 
 /// The verifier for Triton VM's [zs-STARK](Stark). The core method is
@@ -96,8 +113,40 @@ pub struct Verifier {
 }
 
 impl Prover {
+    /// A [`Prover`] with a sane [randomness seed][seed].
+    ///
+    /// [seed]: Prover::set_randomness_seed_which_may_break_zero_knowledge
     pub fn new(parameters: Stark) -> Self {
-        Self { parameters }
+        Self {
+            parameters,
+            randomness_seed: random(),
+        }
+    }
+
+    /// Manually set the seed for the randomness used during [proving](Self::prove).
+    /// This makes the generated [proof](Proof) deterministic.
+    ///
+    /// # WARNING!
+    ///
+    /// Careless use of this method can break Zero-Knowledge of Triton VM. In
+    /// particular, the [verifier](Stark::verify) must learn nothing about the
+    /// supplied seed, must be unable to influence the supplied seed, and must be
+    /// unable to guess anything about the supplied seed. The latter implies that
+    /// whatever source of randomness is chosen must have sufficient entropy.
+    ///
+    /// ### If in doubt, don't use this method.
+    // Even though this method can be used to disable or cripple one of the
+    // core promises of Triton VM, it is not marked `unsafe` because it is always
+    // _memory_ safe. See also: https://doc.rust-lang.org/std/keyword.unsafe.html
+    //
+    // The length of the name is intended to discourage use.
+    #[must_use]
+    pub fn set_randomness_seed_which_may_break_zero_knowledge(
+        mut self,
+        seed: <StdRng as SeedableRng>::Seed,
+    ) -> Self {
+        self.randomness_seed = seed;
+        self
     }
 
     /// See also [`Stark::prove`].
@@ -123,9 +172,10 @@ impl Prover {
         profiler!(start "create" ("gen"));
         let mut master_main_table = MasterMainTable::new(
             aet,
-            self.parameters.num_trace_randomizers,
             quotient_domain,
             fri.domain,
+            self.parameters.num_trace_randomizers,
+            self.randomness_seed,
         );
         profiler!(stop "create");
 
@@ -1667,6 +1717,12 @@ pub(crate) mod tests {
         )
     }
 
+    #[proptest]
+    fn two_default_provers_have_different_randomness_seeds() {
+        let seed = || Prover::default().randomness_seed;
+        prop_assert_ne!(seed(), seed());
+    }
+
     #[test]
     fn quotient_segments_are_independent_of_fri_table_caching() {
         // ensure caching _can_ happen by overwriting environment variables
@@ -1740,6 +1796,37 @@ pub(crate) mod tests {
 
         assert_no_trace_mutation(CacheDecision::Cache);
         assert_no_trace_mutation(CacheDecision::NoCache);
+    }
+
+    #[test]
+    fn supplying_prover_randomness_seed_fully_derandomizes_produced_proof() {
+        let ProgramAndInput {
+            program,
+            public_input,
+            non_determinism,
+        } = program_executing_every_instruction();
+
+        let claim = Claim::about_program(&program).with_input(public_input.clone());
+        let (aet, output) = VM::trace_execution(program, public_input, non_determinism).unwrap();
+        let claim = claim.with_output(output);
+
+        let stark = low_security_stark(DEFAULT_LOG2_FRI_EXPANSION_FACTOR_FOR_TESTS);
+        let mut rng = StdRng::seed_from_u64(3351975627407608972);
+        let proof = Prover::new(stark)
+            .set_randomness_seed_which_may_break_zero_knowledge(rng.gen())
+            .prove(&claim, &aet)
+            .unwrap();
+        let digest = Tip5::hash(&proof);
+        dbg!(digest.to_string());
+
+        let expected_digest = Digest::new(bfe_array![
+            1208218823199023966_u64,
+            7248217050651886224_u64,
+            7139898735589794621_u64,
+            11774487641367625949_u64,
+            6650915987150064355_u64,
+        ]);
+        assert_eq!(expected_digest, digest);
     }
 
     #[test]

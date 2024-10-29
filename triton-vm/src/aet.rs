@@ -1,6 +1,3 @@
-use std::collections::hash_map::Entry::Occupied;
-use std::collections::hash_map::Entry::Vacant;
-use std::collections::HashMap;
 use std::ops::AddAssign;
 
 use air::table::hash::HashTable;
@@ -13,6 +10,9 @@ use air::table_column::HashMainColumn::CI;
 use air::table_column::MasterMainColumn;
 use air::AIR;
 use arbitrary::Arbitrary;
+use indexmap::map::Entry::Occupied;
+use indexmap::map::Entry::Vacant;
+use indexmap::IndexMap;
 use isa::error::InstructionError;
 use isa::error::InstructionError::InstructionPointerOverflow;
 use isa::instruction::Instruction;
@@ -73,10 +73,13 @@ pub struct AlgebraicExecutionTrace {
     /// The u32 entries hold all pairs of BFieldElements that were written to the U32 Table,
     /// alongside the u32 instruction that was executed at the time. Additionally, it records how
     /// often the instruction was executed with these arguments.
-    pub u32_entries: HashMap<U32TableEntry, u64>,
+    // `IndexMap` over `HashMap` for deterministic iteration order. This is not
+    // needed for correctness of the STARK.
+    pub u32_entries: IndexMap<U32TableEntry, u64>,
 
     /// Records how often each entry in the cascade table was looked up.
-    pub cascade_table_lookup_multiplicities: HashMap<u16, u64>,
+    // `IndexMap` over `HashMap` for the same reasons as for field `u32_entries`.
+    pub cascade_table_lookup_multiplicities: IndexMap<u16, u64>,
 
     /// Records how often each entry in the lookup table was looked up.
     pub lookup_table_lookup_multiplicities: [u64; AlgebraicExecutionTrace::LOOKUP_TABLE_HEIGHT],
@@ -108,8 +111,8 @@ impl AlgebraicExecutionTrace {
             program_hash_trace: Array2::default([0, HASH_WIDTH]),
             hash_trace: Array2::default([0, HASH_WIDTH]),
             sponge_trace: Array2::default([0, HASH_WIDTH]),
-            u32_entries: HashMap::new(),
-            cascade_table_lookup_multiplicities: HashMap::new(),
+            u32_entries: IndexMap::new(),
+            cascade_table_lookup_multiplicities: IndexMap::new(),
             lookup_table_lookup_multiplicities: [0; Self::LOOKUP_TABLE_HEIGHT],
         };
         aet.fill_program_hash_trace();

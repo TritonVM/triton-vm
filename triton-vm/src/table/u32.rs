@@ -1,4 +1,5 @@
 use std::cmp::max;
+use std::cmp::Ordering;
 
 use air::challenge_id::ChallengeId;
 use air::cross_table_argument::CrossTableArg;
@@ -61,6 +62,39 @@ impl U32TableEntry {
             0 => 2 - 1,
             _ => 2 + dominant_operand.ilog2(),
         }
+    }
+}
+
+impl PartialOrd for U32TableEntry {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for U32TableEntry {
+    fn cmp(&self, other: &Self) -> Ordering {
+        // destructure to get compilation errors if fields change
+        let Self {
+            instruction: self_instruction,
+            left_operand: self_left_operand,
+            right_operand: self_right_operand,
+        } = *self;
+        let Self {
+            instruction: other_instruction,
+            left_operand: other_left_operand,
+            right_operand: other_right_operand,
+        } = *other;
+
+        // Even though field elements (like `BFieldElement`) do not have a natural
+        // ordering, the operands of any valid `Self` are `u32`s, which _do_ have a
+        // natural ordering.
+        let instruction_cmp = self_instruction.opcode().cmp(&other_instruction.opcode());
+        let left_operand_cmp = self_left_operand.value().cmp(&other_left_operand.value());
+        let right_operand_cmp = self_right_operand.value().cmp(&other_right_operand.value());
+
+        instruction_cmp
+            .then(left_operand_cmp)
+            .then(right_operand_cmp)
     }
 }
 

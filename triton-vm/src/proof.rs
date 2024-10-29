@@ -125,10 +125,11 @@ impl Claim {
 #[cfg(test)]
 mod tests {
     use assert2::assert;
-    use fs_err as fs;
     use proptest::collection::vec;
     use proptest::prelude::*;
     use proptest_arbitrary_interop::arb;
+    use rand::prelude::StdRng;
+    use rand_core::SeedableRng;
     use test_strategy::proptest;
 
     use crate::prelude::*;
@@ -194,37 +195,31 @@ mod tests {
 
     #[test]
     fn current_proof_version_is_still_current() {
-        // todo: Once the prover can be de-randomized (issue #334), change this test.
-        //  In particular:
-        //  Seed prover, generate proof, hash the proof, compare to hardcoded digest.
-        //  Remove the proof stored on disk, and remove dependency `bincode`.
-
-        fn generate_proof_file(program: Program, claim: Claim) {
-            let input = claim.input.clone().into();
-            let non_determinism = NonDeterminism::default();
-            let (aet, _) = VM::trace_execution(program, input, non_determinism).unwrap();
-            let proof = Stark::default().prove(&claim, &aet).unwrap();
-            let proof = bincode::serialize(&proof).unwrap();
-            fs::create_dir_all("./test_data/").unwrap();
-            fs::write("./test_data/current_version_is_current.proof.new", proof).unwrap();
-            eprintln!("New proof generated. Delete “.new” from its file name & commit to accept.");
-        }
-
         let program = triton_program! {
             pick 11 pick 12 pick 13 pick 14 pick 15
             read_io 5 assert_vector halt
         };
         let claim = Claim::about_program(&program).with_input(program.hash());
 
-        let Ok(proof) = fs::read("./test_data/current_version_is_current.proof") else {
-            generate_proof_file(program, claim);
-            panic!("Proof file does not exist.");
-        };
-        let proof = bincode::deserialize(&proof).unwrap();
+        let input = claim.input.clone().into();
+        let non_determinism = NonDeterminism::default();
+        let (aet, _) = VM::trace_execution(program, input, non_determinism).unwrap();
 
-        if Stark::default().verify(&claim, &proof).is_err() {
-            generate_proof_file(program, claim);
-            panic!("Verification of existing proof failed. Need to bump proof version?");
-        };
+        let mut rng = StdRng::seed_from_u64(4742841043836029231);
+        let proof = Prover::default()
+            .set_randomness_seed_which_may_break_zero_knowledge(rng.gen())
+            .prove(&claim, &aet)
+            .unwrap();
+        let proof_digest = Tip5::hash(&proof);
+        dbg!(proof_digest.to_string());
+
+        let expected_digest = Digest::new(bfe_array![
+            11952904396812311265_u64,
+            16054901534874249652_u64,
+            9773073309626813769_u64,
+            15649970038336331462_u64,
+            7145239594398485773_u64,
+        ]);
+        assert_eq!(expected_digest, proof_digest);
     }
 }

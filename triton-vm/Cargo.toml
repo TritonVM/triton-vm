@@ -41,7 +41,6 @@ unicode-width.workspace = true
 
 [dev-dependencies]
 assert2.workspace = true
-bincode.workspace = true
 cargo-husky.workspace = true
 constraint-circuit.workspace = true
 fs-err.workspace = true
