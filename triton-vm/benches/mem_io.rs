@@ -83,7 +83,7 @@ impl MemIOBench {
 
         let trace_len = aet.height().height;
         let padded_height = proof.padded_height().unwrap();
-        let fri = stark.derive_fri(padded_height).unwrap();
+        let fri = stark.fri(padded_height).unwrap();
 
         profile
             .with_cycle_count(trace_len)

@@ -312,7 +312,9 @@ mod tests {
         implements_auto_traits::<PublicInput>();
         implements_auto_traits::<Claim>();
         implements_auto_traits::<Proof>();
+        implements_auto_traits::<Prover>();
         implements_auto_traits::<Stark>();
+        implements_auto_traits::<Verifier>();
         implements_auto_traits::<VM>();
         implements_auto_traits::<VMState>();
 

@@ -51,7 +51,10 @@ pub const NUM_RANDOMIZER_POLYNOMIALS: usize = 1;
 
 const NUM_DEEP_CODEWORD_COMPONENTS: usize = 3;
 
-/// The Zero-Knowledge [Scalable Transparent ARgument of Knowledge (STARK)][stark] for Triton VM.
+/// Parameters for the Zero-Knowledge
+/// [Scalable Transparent ARgument of Knowledge (STARK)][stark] for Triton VM.
+///
+/// The two core methods are [`Stark::prove`] and [`Stark::verify`].
 ///
 /// [stark]: https://www.iacr.org/archive/crypto2019/116940201/116940201.pdf
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
@@ -61,47 +64,45 @@ pub struct Stark {
     /// - has soundness error 2^(-security_level).
     pub security_level: usize,
 
-    /// The ratio between the lengths of the randomized trace domain and the FRI domain.
-    /// Must be a power of 2 for efficiency reasons.
+    /// The ratio between the lengths of the randomized trace domain and the
+    /// [FRI domain](Stark::fri). Must be a power of 2 for efficiency reasons.
     pub fri_expansion_factor: usize,
 
-    /// The number of randomizers for the execution trace. The trace randomizers are integral for
-    /// achieving zero-knowledge. In particular, they achieve ZK for the (DEEP) ALI part of the
-    /// zk-STARK.
+    /// The number of randomizers for the execution trace. The trace randomizers are
+    /// integral for achieving zero-knowledge. In particular, they achieve ZK for
+    /// the (DEEP) ALI part of the zk-STARK.
+    ///
+    /// See also [`MasterTable::trace_randomizer_for_column`].
     pub num_trace_randomizers: usize,
 
-    /// The number of collinearity checks to perform in FRI.
+    /// The number of collinearity checks to perform in [FRI](Fri).
     pub num_collinearity_checks: usize,
 }
 
-impl Stark {
-    /// # Panics
-    ///
-    /// Panics if `log2_of_fri_expansion_factor` is zero.
-    pub fn new(security_level: usize, log2_of_fri_expansion_factor: usize) -> Self {
-        assert_ne!(
-            0, log2_of_fri_expansion_factor,
-            "FRI expansion factor must be greater than one."
-        );
+/// The prover for Triton VM's [zk-STARK](Stark). The core method is
+/// [`prove`](Prover::prove). It is probably more convenient to call
+/// [`Stark::prove`] directly.
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Arbitrary)]
+pub struct Prover {
+    parameters: Stark,
+}
 
-        let fri_expansion_factor = 1 << log2_of_fri_expansion_factor;
-        let num_collinearity_checks = security_level / log2_of_fri_expansion_factor;
+/// The verifier for Triton VM's [zs-STARK](Stark). The core method is
+/// [`verify`](Verifier::verify). It is probably more convenient to call
+/// [`Stark::verify`] directly.
+#[derive(Debug, Copy, Clone, Default, Eq, PartialEq, Hash, Serialize, Deserialize, Arbitrary)]
+pub struct Verifier {
+    parameters: Stark,
+}
 
-        let num_out_of_domain_rows = 2;
-        let num_trace_randomizers = num_collinearity_checks
-            + num_out_of_domain_rows * x_field_element::EXTENSION_DEGREE
-            + NUM_QUOTIENT_SEGMENTS * x_field_element::EXTENSION_DEGREE;
-
-        Stark {
-            security_level,
-            fri_expansion_factor,
-            num_trace_randomizers,
-            num_collinearity_checks,
-        }
+impl Prover {
+    pub fn new(parameters: Stark) -> Self {
+        Self { parameters }
     }
 
+    /// See also [`Stark::prove`].
     pub fn prove(
-        &self,
+        self,
         claim: &Claim,
         aet: &AlgebraicExecutionTrace,
     ) -> Result<Proof, ProvingError> {
@@ -112,16 +113,20 @@ impl Stark {
 
         profiler!(start "derive additional parameters");
         let padded_height = aet.padded_height();
-        let max_degree = self.derive_max_degree(padded_height);
-        let fri = self.derive_fri(padded_height)?;
+        let max_degree = self.parameters.max_degree(padded_height);
+        let fri = self.parameters.fri(padded_height)?;
         let quotient_domain = Self::quotient_domain(fri.domain, max_degree)?;
         proof_stream.enqueue(ProofItem::Log2PaddedHeight(padded_height.ilog2()));
         profiler!(stop "derive additional parameters");
 
         profiler!(start "main tables");
         profiler!(start "create" ("gen"));
-        let mut master_main_table =
-            MasterMainTable::new(aet, self.num_trace_randomizers, quotient_domain, fri.domain);
+        let mut master_main_table = MasterMainTable::new(
+            aet,
+            self.parameters.num_trace_randomizers,
+            quotient_domain,
+            fri.domain,
+        );
         profiler!(stop "create");
 
         profiler!(start "pad" ("gen"));
@@ -339,7 +344,7 @@ impl Stark {
         let revealed_current_row_indices =
             fri.prove(&fri_combination_codeword, &mut proof_stream)?;
         assert_eq!(
-            self.num_collinearity_checks,
+            self.parameters.num_collinearity_checks,
             revealed_current_row_indices.len()
         );
         profiler!(stop "FRI");
@@ -397,6 +402,20 @@ impl Stark {
         profiler!(stop "open trace leafs");
 
         Ok(proof_stream.into())
+    }
+
+    /// An [`ArithmeticDomain`] _just_ large enough to perform all the necessary
+    /// computations on polynomials. Concretely, the maximal degree of a polynomial
+    /// over the quotient domain is at most only slightly larger than the maximal
+    /// degree allowed in the STARK proof, and could be equal. This makes
+    /// computation for the prover much faster.
+    pub(crate) fn quotient_domain(
+        fri_domain: ArithmeticDomain,
+        max_degree: isize,
+    ) -> Result<ArithmeticDomain, ProvingError> {
+        let max_degree = usize::try_from(max_degree).expect("AIR should constrain the VM");
+        let domain_length = max_degree.next_power_of_two();
+        Ok(ArithmeticDomain::of_length(domain_length)?.with_offset(fri_domain.offset))
     }
 
     fn compute_quotient_segments(
@@ -473,479 +492,6 @@ impl Stark {
             fri_domain_quotient_segment_codewords,
             quotient_segment_polynomials,
         )
-    }
-
-    fn fri_domain_segment_polynomials(
-        quotient_segment_polynomials: ArrayView1<Polynomial<XFieldElement>>,
-        fri_domain: ArithmeticDomain,
-    ) -> Array2<XFieldElement> {
-        let fri_domain_codewords: Vec<_> = quotient_segment_polynomials
-            .into_par_iter()
-            .flat_map(|segment| fri_domain.evaluate(segment))
-            .collect();
-        Array2::from_shape_vec(
-            [fri_domain.length, NUM_QUOTIENT_SEGMENTS].f(),
-            fri_domain_codewords,
-        )
-        .unwrap()
-    }
-
-    fn interpolate_quotient_segments(
-        quotient_codeword: Array1<XFieldElement>,
-        quotient_domain: ArithmeticDomain,
-    ) -> Array1<Polynomial<'static, XFieldElement>> {
-        let quotient_interpolation_poly = quotient_domain.interpolate(&quotient_codeword.to_vec());
-        let quotient_segments: [_; NUM_QUOTIENT_SEGMENTS] =
-            Self::split_polynomial_into_segments(quotient_interpolation_poly);
-        Array1::from(quotient_segments.to_vec())
-    }
-
-    /// An [`ArithmeticDomain`] _just_ large enough to perform all the necessary computations on
-    /// polynomials. Concretely, the maximal degree of a polynomial over the quotient domain is at
-    /// most only slightly larger than the maximal degree allowed in the STARK proof, and could be
-    /// equal. This makes computation for the prover much faster.
-    pub(crate) fn quotient_domain(
-        fri_domain: ArithmeticDomain,
-        max_degree: isize,
-    ) -> Result<ArithmeticDomain, ProvingError> {
-        let max_degree = usize::try_from(max_degree).expect("AIR should constrain the VM");
-        let domain_length = max_degree.next_power_of_two();
-        Ok(ArithmeticDomain::of_length(domain_length)?.with_offset(fri_domain.offset))
-    }
-
-    /// Compute the upper bound to use for the maximum degree the quotients given the length of the
-    /// trace and the number of trace randomizers.
-    /// The degree of the quotients depends on the constraints, _i.e._, the AIR.
-    pub fn derive_max_degree(&self, padded_height: usize) -> isize {
-        let interpolant_degree = interpolant_degree(padded_height, self.num_trace_randomizers);
-        let max_constraint_degree_with_origin =
-            max_degree_with_origin(interpolant_degree, padded_height);
-        let max_constraint_degree = max_constraint_degree_with_origin.degree as u64;
-        let min_arithmetic_domain_length_supporting_max_constraint_degree =
-            max_constraint_degree.next_power_of_two();
-        let max_degree_supported_by_that_smallest_arithmetic_domain =
-            min_arithmetic_domain_length_supporting_max_constraint_degree - 1;
-
-        max_degree_supported_by_that_smallest_arithmetic_domain as isize
-    }
-
-    /// Compute the parameters for FRI. The length of the FRI domain, _i.e._, the number of
-    /// elements in the FRI domain, has a major influence on proving time. It is influenced by the
-    /// length of the execution trace and the FRI expansion factor, a security parameter.
-    ///
-    /// In principle, the FRI domain is also influenced by the AIR's degree
-    /// (see [`air::TARGET_DEGREE`]). However, by segmenting the quotient polynomial into
-    /// `TARGET_DEGREE`-many parts, that influence is mitigated.
-    pub fn derive_fri(&self, padded_height: usize) -> fri::SetupResult<Fri> {
-        let fri_domain_length = self.fri_expansion_factor
-            * randomized_trace_len(padded_height, self.num_trace_randomizers);
-        let coset_offset = BFieldElement::generator();
-        let domain = ArithmeticDomain::of_length(fri_domain_length)?.with_offset(coset_offset);
-
-        Fri::new(
-            domain,
-            self.fri_expansion_factor,
-            self.num_collinearity_checks,
-        )
-    }
-
-    /// Apply the [DEEP update](Self::deep_update) to a polynomial in value form, _i.e._, to a
-    /// codeword.
-    fn deep_codeword(
-        codeword: &[XFieldElement],
-        domain: ArithmeticDomain,
-        out_of_domain_point: XFieldElement,
-        out_of_domain_value: XFieldElement,
-    ) -> Vec<XFieldElement> {
-        domain
-            .domain_values()
-            .par_iter()
-            .zip_eq(codeword)
-            .map(|(&in_domain_value, &in_domain_evaluation)| {
-                Self::deep_update(
-                    in_domain_value,
-                    in_domain_evaluation,
-                    out_of_domain_point,
-                    out_of_domain_value,
-                )
-            })
-            .collect()
-    }
-
-    /// Given `f(x)` (the in-domain evaluation of polynomial `f` in `x`), the domain point `x` at
-    /// which polynomial `f` was evaluated, the out-of-domain evaluation `f(α)`, and the
-    /// out-of-domain domain point `α`, apply the DEEP update: `(f(x) - f(α)) / (x - α)`.
-    #[inline]
-    fn deep_update(
-        in_domain_point: BFieldElement,
-        in_domain_value: XFieldElement,
-        out_of_domain_point: XFieldElement,
-        out_of_domain_value: XFieldElement,
-    ) -> XFieldElement {
-        (in_domain_value - out_of_domain_value) / (in_domain_point - out_of_domain_point)
-    }
-
-    /// Losslessly split the given polynomial `f` into `N` segments of (roughly) equal degree.
-    /// The degree of each segment is at most `f.degree() / N`.
-    /// It holds that `f(x) = Σ_{i=0}^{N-1} x^i·f_i(x^N)`, where the `f_i` are the segments.
-    ///
-    /// For example, let
-    /// - `N = 3`, and
-    /// - `f(x) = 7·x^7 + 6·x^6 + 5·x^5 + 4·x^4 + 3·x^3 + 2·x^2 + 1·x + 0`.
-    ///
-    /// Then, the function returns the array:
-    ///
-    /// ```text
-    /// [f_0(x) = 6·x^2 + 3·x + 0,
-    ///  f_1(x) = 7·x^2 + 4·x + 1,
-    ///  f_2(x) =         5·x + 2]
-    /// ```
-    ///
-    /// The following equality holds: `f(x) == f_0(x^3) + x·f_1(x^3) + x^2·f_2(x^3)`.
-    fn split_polynomial_into_segments<const N: usize, FF: FiniteField>(
-        polynomial: Polynomial<FF>,
-    ) -> [Polynomial<'static, FF>; N] {
-        let mut segments = Vec::with_capacity(N);
-        let coefficients = polynomial.into_coefficients();
-        for segment_index in 0..N {
-            let segment_coefficients = coefficients.iter().skip(segment_index).step_by(N);
-            let segment = Polynomial::new(segment_coefficients.copied().collect());
-            segments.push(segment);
-        }
-        segments.try_into().unwrap()
-    }
-
-    pub fn verify(&self, claim: &Claim, proof: &Proof) -> Result<(), VerificationError> {
-        profiler!(start "deserialize");
-        let mut proof_stream = ProofStream::try_from(proof)?;
-        profiler!(stop "deserialize");
-
-        profiler!(start "Fiat-Shamir: Claim" ("hash"));
-        proof_stream.alter_fiat_shamir_state_with(claim);
-        profiler!(stop "Fiat-Shamir: Claim");
-
-        profiler!(start "derive additional parameters");
-        let log_2_padded_height = proof_stream.dequeue()?.try_into_log2_padded_height()?;
-        let padded_height = 1 << log_2_padded_height;
-        let fri = self.derive_fri(padded_height)?;
-        let merkle_tree_height = fri.domain.length.ilog2() as usize;
-        profiler!(stop "derive additional parameters");
-
-        profiler!(start "Fiat-Shamir 1" ("hash"));
-        let main_merkle_tree_root = proof_stream.dequeue()?.try_into_merkle_root()?;
-        let extension_challenge_weights = proof_stream.sample_scalars(Challenges::SAMPLE_COUNT);
-        let challenges = Challenges::new(extension_challenge_weights, claim);
-        let auxiliary_tree_merkle_root = proof_stream.dequeue()?.try_into_merkle_root()?;
-        // Sample weights for quotient codeword, which is a part of the combination codeword.
-        // See corresponding part in the prover for a more detailed explanation.
-        let quot_codeword_weights = proof_stream.sample_scalars(MasterAuxTable::NUM_CONSTRAINTS);
-        let quot_codeword_weights = Array1::from(quot_codeword_weights);
-        let quotient_codeword_merkle_root = proof_stream.dequeue()?.try_into_merkle_root()?;
-        profiler!(stop "Fiat-Shamir 1");
-
-        profiler!(start "dequeue ood point and rows" ("hash"));
-        let trace_domain_generator = ArithmeticDomain::generator_for_length(padded_height as u64)?;
-        let out_of_domain_point_curr_row = proof_stream.sample_scalars(1)[0];
-        let out_of_domain_point_next_row = trace_domain_generator * out_of_domain_point_curr_row;
-        let out_of_domain_point_curr_row_pow_num_segments =
-            out_of_domain_point_curr_row.mod_pow_u32(NUM_QUOTIENT_SEGMENTS as u32);
-
-        let out_of_domain_curr_main_row =
-            proof_stream.dequeue()?.try_into_out_of_domain_main_row()?;
-        let out_of_domain_curr_aux_row =
-            proof_stream.dequeue()?.try_into_out_of_domain_aux_row()?;
-        let out_of_domain_next_main_row =
-            proof_stream.dequeue()?.try_into_out_of_domain_main_row()?;
-        let out_of_domain_next_aux_row =
-            proof_stream.dequeue()?.try_into_out_of_domain_aux_row()?;
-        let out_of_domain_curr_row_quot_segments = proof_stream
-            .dequeue()?
-            .try_into_out_of_domain_quot_segments()?;
-
-        let out_of_domain_curr_main_row = Array1::from(out_of_domain_curr_main_row.to_vec());
-        let out_of_domain_curr_aux_row = Array1::from(out_of_domain_curr_aux_row.to_vec());
-        let out_of_domain_next_main_row = Array1::from(out_of_domain_next_main_row.to_vec());
-        let out_of_domain_next_aux_row = Array1::from(out_of_domain_next_aux_row.to_vec());
-        let out_of_domain_curr_row_quot_segments =
-            Array1::from(out_of_domain_curr_row_quot_segments.to_vec());
-        profiler!(stop "dequeue ood point and rows");
-
-        profiler!(start "out-of-domain quotient element");
-        profiler!(start "evaluate AIR" ("AIR"));
-        let evaluated_initial_constraints = MasterAuxTable::evaluate_initial_constraints(
-            out_of_domain_curr_main_row.view(),
-            out_of_domain_curr_aux_row.view(),
-            &challenges,
-        );
-        let evaluated_consistency_constraints = MasterAuxTable::evaluate_consistency_constraints(
-            out_of_domain_curr_main_row.view(),
-            out_of_domain_curr_aux_row.view(),
-            &challenges,
-        );
-        let evaluated_transition_constraints = MasterAuxTable::evaluate_transition_constraints(
-            out_of_domain_curr_main_row.view(),
-            out_of_domain_curr_aux_row.view(),
-            out_of_domain_next_main_row.view(),
-            out_of_domain_next_aux_row.view(),
-            &challenges,
-        );
-        let evaluated_terminal_constraints = MasterAuxTable::evaluate_terminal_constraints(
-            out_of_domain_curr_main_row.view(),
-            out_of_domain_curr_aux_row.view(),
-            &challenges,
-        );
-        profiler!(stop "evaluate AIR");
-
-        profiler!(start "zerofiers");
-        let initial_zerofier_inv = (out_of_domain_point_curr_row - bfe!(1)).inverse();
-        let consistency_zerofier_inv =
-            (out_of_domain_point_curr_row.mod_pow_u32(padded_height as u32) - bfe!(1)).inverse();
-        let except_last_row = out_of_domain_point_curr_row - trace_domain_generator.inverse();
-        let transition_zerofier_inv = except_last_row * consistency_zerofier_inv;
-        let terminal_zerofier_inv = except_last_row.inverse(); // i.e., only last row
-        profiler!(stop "zerofiers");
-
-        profiler!(start "divide");
-        let divide = |constraints: Vec<_>, z_inv| constraints.into_iter().map(move |c| c * z_inv);
-        let initial_quotients = divide(evaluated_initial_constraints, initial_zerofier_inv);
-        let consistency_quotients =
-            divide(evaluated_consistency_constraints, consistency_zerofier_inv);
-        let transition_quotients =
-            divide(evaluated_transition_constraints, transition_zerofier_inv);
-        let terminal_quotients = divide(evaluated_terminal_constraints, terminal_zerofier_inv);
-
-        let quotient_summands = initial_quotients
-            .chain(consistency_quotients)
-            .chain(transition_quotients)
-            .chain(terminal_quotients)
-            .collect_vec();
-        profiler!(stop "divide");
-
-        profiler!(start "inner product" ("CC"));
-        let out_of_domain_quotient_value =
-            quot_codeword_weights.dot(&Array1::from(quotient_summands));
-        profiler!(stop "inner product");
-        profiler!(stop "out-of-domain quotient element");
-
-        profiler!(start "verify quotient's segments");
-        let powers_of_out_of_domain_point_curr_row = (0..NUM_QUOTIENT_SEGMENTS as u32)
-            .map(|exponent| out_of_domain_point_curr_row.mod_pow_u32(exponent))
-            .collect::<Array1<_>>();
-        let sum_of_evaluated_out_of_domain_quotient_segments =
-            powers_of_out_of_domain_point_curr_row.dot(&out_of_domain_curr_row_quot_segments);
-        if out_of_domain_quotient_value != sum_of_evaluated_out_of_domain_quotient_segments {
-            return Err(VerificationError::OutOfDomainQuotientValueMismatch);
-        };
-        profiler!(stop "verify quotient's segments");
-
-        profiler!(start "Fiat-Shamir 2" ("hash"));
-        let weights = LinearCombinationWeights::sample(&mut proof_stream);
-        let main_and_aux_codeword_weights = weights.main_and_aux();
-        profiler!(stop "Fiat-Shamir 2");
-
-        profiler!(start "sum out-of-domain values" ("CC"));
-        let out_of_domain_curr_row_main_and_aux_value = Self::linearly_sum_main_and_aux_row(
-            out_of_domain_curr_main_row.view(),
-            out_of_domain_curr_aux_row.view(),
-            main_and_aux_codeword_weights.view(),
-        );
-        let out_of_domain_next_row_main_and_aux_value = Self::linearly_sum_main_and_aux_row(
-            out_of_domain_next_main_row.view(),
-            out_of_domain_next_aux_row.view(),
-            main_and_aux_codeword_weights.view(),
-        );
-        let out_of_domain_curr_row_quotient_segment_value = weights
-            .quot_segments
-            .dot(&out_of_domain_curr_row_quot_segments);
-        profiler!(stop "sum out-of-domain values");
-
-        // verify low degree of combination polynomial with FRI
-        profiler!(start "FRI");
-        let revealed_fri_indices_and_elements = fri.verify(&mut proof_stream)?;
-        let (revealed_current_row_indices, revealed_fri_values): (Vec<_>, Vec<_>) =
-            revealed_fri_indices_and_elements.into_iter().unzip();
-        profiler!(stop "FRI");
-
-        profiler!(start "check leafs");
-        profiler!(start "dequeue main elements");
-        let main_table_rows = proof_stream.dequeue()?.try_into_master_main_table_rows()?;
-        let main_authentication_structure = proof_stream
-            .dequeue()?
-            .try_into_authentication_structure()?;
-        let leaf_digests_main: Vec<_> = main_table_rows
-            .par_iter()
-            .map(|revealed_main_elem| Tip5::hash_varlen(revealed_main_elem))
-            .collect();
-        profiler!(stop "dequeue main elements");
-
-        let index_leaves = |leaves| {
-            let index_iter = revealed_current_row_indices.iter().copied();
-            index_iter.zip_eq(leaves).collect()
-        };
-        profiler!(start "Merkle verify (main tree)" ("hash"));
-        let base_merkle_tree_inclusion_proof = MerkleTreeInclusionProof {
-            tree_height: merkle_tree_height,
-            indexed_leafs: index_leaves(leaf_digests_main),
-            authentication_structure: main_authentication_structure,
-        };
-        if !base_merkle_tree_inclusion_proof.verify(main_merkle_tree_root) {
-            return Err(VerificationError::MainCodewordAuthenticationFailure);
-        }
-        profiler!(stop "Merkle verify (main tree)");
-
-        profiler!(start "dequeue auxiliary elements");
-        let aux_table_rows = proof_stream.dequeue()?.try_into_master_aux_table_rows()?;
-        let aux_authentication_structure = proof_stream
-            .dequeue()?
-            .try_into_authentication_structure()?;
-        let leaf_digests_aux = aux_table_rows
-            .par_iter()
-            .map(|xvalues| {
-                let b_values = xvalues.iter().flat_map(|xfe| xfe.coefficients.to_vec());
-                Tip5::hash_varlen(&b_values.collect_vec())
-            })
-            .collect::<Vec<_>>();
-        profiler!(stop "dequeue auxiliary elements");
-
-        profiler!(start "Merkle verify (auxiliary tree)" ("hash"));
-        let aux_merkle_tree_inclusion_proof = MerkleTreeInclusionProof {
-            tree_height: merkle_tree_height,
-            indexed_leafs: index_leaves(leaf_digests_aux),
-            authentication_structure: aux_authentication_structure,
-        };
-        if !aux_merkle_tree_inclusion_proof.verify(auxiliary_tree_merkle_root) {
-            return Err(VerificationError::AuxiliaryCodewordAuthenticationFailure);
-        }
-        profiler!(stop "Merkle verify (auxiliary tree)");
-
-        profiler!(start "dequeue quotient segments' elements");
-        let revealed_quotient_segments_elements =
-            proof_stream.dequeue()?.try_into_quot_segments_elements()?;
-        let revealed_quotient_segments_digests =
-            Self::hash_quotient_segment_elements(&revealed_quotient_segments_elements);
-        let revealed_quotient_authentication_structure = proof_stream
-            .dequeue()?
-            .try_into_authentication_structure()?;
-        profiler!(stop "dequeue quotient segments' elements");
-
-        profiler!(start "Merkle verify (combined quotient)" ("hash"));
-        let quot_merkle_tree_inclusion_proof = MerkleTreeInclusionProof {
-            tree_height: merkle_tree_height,
-            indexed_leafs: index_leaves(revealed_quotient_segments_digests),
-            authentication_structure: revealed_quotient_authentication_structure,
-        };
-        if !quot_merkle_tree_inclusion_proof.verify(quotient_codeword_merkle_root) {
-            return Err(VerificationError::QuotientCodewordAuthenticationFailure);
-        }
-        profiler!(stop "Merkle verify (combined quotient)");
-        profiler!(stop "check leafs");
-
-        profiler!(start "linear combination");
-        if self.num_collinearity_checks != revealed_current_row_indices.len() {
-            return Err(VerificationError::IncorrectNumberOfRowIndices);
-        };
-        if self.num_collinearity_checks != revealed_fri_values.len() {
-            return Err(VerificationError::IncorrectNumberOfFRIValues);
-        };
-        if self.num_collinearity_checks != revealed_quotient_segments_elements.len() {
-            return Err(VerificationError::IncorrectNumberOfQuotientSegmentElements);
-        };
-        if self.num_collinearity_checks != main_table_rows.len() {
-            return Err(VerificationError::IncorrectNumberOfMainTableRows);
-        };
-        if self.num_collinearity_checks != aux_table_rows.len() {
-            return Err(VerificationError::IncorrectNumberOfAuxTableRows);
-        };
-
-        for (row_idx, main_row, aux_row, quotient_segments_elements, fri_value) in izip!(
-            revealed_current_row_indices,
-            main_table_rows,
-            aux_table_rows,
-            revealed_quotient_segments_elements,
-            revealed_fri_values,
-        ) {
-            let main_row = Array1::from(main_row.to_vec());
-            let aux_row = Array1::from(aux_row.to_vec());
-            let current_fri_domain_value = fri.domain.domain_value(row_idx as u32);
-
-            profiler!(start "main & aux elements" ("CC"));
-            let main_and_aux_curr_row_element = Self::linearly_sum_main_and_aux_row(
-                main_row.view(),
-                aux_row.view(),
-                main_and_aux_codeword_weights.view(),
-            );
-            let quotient_segments_curr_row_element = weights
-                .quot_segments
-                .dot(&Array1::from(quotient_segments_elements.to_vec()));
-            profiler!(stop "main & aux elements");
-
-            profiler!(start "DEEP update");
-            let main_and_aux_curr_row_deep_value = Self::deep_update(
-                current_fri_domain_value,
-                main_and_aux_curr_row_element,
-                out_of_domain_point_curr_row,
-                out_of_domain_curr_row_main_and_aux_value,
-            );
-            let main_and_aux_next_row_deep_value = Self::deep_update(
-                current_fri_domain_value,
-                main_and_aux_curr_row_element,
-                out_of_domain_point_next_row,
-                out_of_domain_next_row_main_and_aux_value,
-            );
-            let quot_curr_row_deep_value = Self::deep_update(
-                current_fri_domain_value,
-                quotient_segments_curr_row_element,
-                out_of_domain_point_curr_row_pow_num_segments,
-                out_of_domain_curr_row_quotient_segment_value,
-            );
-            profiler!(stop "DEEP update");
-
-            profiler!(start "combination codeword equality");
-            let deep_value_components = Array1::from(vec![
-                main_and_aux_curr_row_deep_value,
-                main_and_aux_next_row_deep_value,
-                quot_curr_row_deep_value,
-            ]);
-            if fri_value != weights.deep.dot(&deep_value_components) {
-                return Err(VerificationError::CombinationCodewordMismatch);
-            };
-            profiler!(stop "combination codeword equality");
-        }
-        profiler!(stop "linear combination");
-        Ok(())
-    }
-
-    fn hash_quotient_segment_elements(quotient_segment_rows: &[QuotientSegments]) -> Vec<Digest> {
-        let interpret_xfe_as_bfes = |xfe: XFieldElement| xfe.coefficients.to_vec();
-        let collect_row_as_bfes = |row: &QuotientSegments| row.map(interpret_xfe_as_bfes).concat();
-        quotient_segment_rows
-            .par_iter()
-            .map(collect_row_as_bfes)
-            .map(|row| Tip5::hash_varlen(&row))
-            .collect()
-    }
-
-    fn linearly_sum_main_and_aux_row<FF>(
-        main_row: ArrayView1<FF>,
-        aux_row: ArrayView1<XFieldElement>,
-        weights: ArrayView1<XFieldElement>,
-    ) -> XFieldElement
-    where
-        FF: FiniteField + Into<XFieldElement>,
-        XFieldElement: Mul<FF, Output = XFieldElement>,
-    {
-        profiler!(start "collect");
-        let mut row = main_row.map(|&element| element.into());
-        row.append(Axis(0), aux_row).unwrap();
-        profiler!(stop "collect");
-        profiler!(start "inner product");
-        // todo: Try to get rid of this clone. The alternative line
-        //   `let main_and_aux_element = (&weights * &summands).sum();`
-        //   without cloning the weights does not compile for a seemingly nonsensical reason.
-        let weights = weights.to_owned();
-        let main_and_aux_element = (weights * row).sum();
-        profiler!(stop "inner product");
-        main_and_aux_element
     }
 
     /// Computes the quotient segments in a memory-friendly way, i.e., without ever
@@ -1367,6 +913,534 @@ impl Stark {
 
         (quotient_codewords, quotient_polynomials)
     }
+
+    fn interpolate_quotient_segments(
+        quotient_codeword: Array1<XFieldElement>,
+        quotient_domain: ArithmeticDomain,
+    ) -> Array1<Polynomial<'static, XFieldElement>> {
+        let quotient_interpolation_poly = quotient_domain.interpolate(&quotient_codeword.to_vec());
+        let quotient_segments: [_; NUM_QUOTIENT_SEGMENTS] =
+            Self::split_polynomial_into_segments(quotient_interpolation_poly);
+        Array1::from(quotient_segments.to_vec())
+    }
+
+    /// Losslessly split the given polynomial `f` into `N` segments of (roughly) equal degree.
+    /// The degree of each segment is at most `f.degree() / N`.
+    /// It holds that `f(x) = Σ_{i=0}^{N-1} x^i·f_i(x^N)`, where the `f_i` are the segments.
+    ///
+    /// For example, let
+    /// - `N = 3`, and
+    /// - `f(x) = 7·x^7 + 6·x^6 + 5·x^5 + 4·x^4 + 3·x^3 + 2·x^2 + 1·x + 0`.
+    ///
+    /// Then, the function returns the array:
+    ///
+    /// ```text
+    /// [f_0(x) = 6·x^2 + 3·x + 0,
+    ///  f_1(x) = 7·x^2 + 4·x + 1,
+    ///  f_2(x) =         5·x + 2]
+    /// ```
+    ///
+    /// The following equality holds: `f(x) == f_0(x^3) + x·f_1(x^3) + x^2·f_2(x^3)`.
+    fn split_polynomial_into_segments<const N: usize, FF: FiniteField>(
+        polynomial: Polynomial<FF>,
+    ) -> [Polynomial<'static, FF>; N] {
+        let mut segments = Vec::with_capacity(N);
+        let coefficients = polynomial.into_coefficients();
+        for segment_index in 0..N {
+            let segment_coefficients = coefficients.iter().skip(segment_index).step_by(N);
+            let segment = Polynomial::new(segment_coefficients.copied().collect());
+            segments.push(segment);
+        }
+        segments.try_into().unwrap()
+    }
+
+    fn fri_domain_segment_polynomials(
+        quotient_segment_polynomials: ArrayView1<Polynomial<XFieldElement>>,
+        fri_domain: ArithmeticDomain,
+    ) -> Array2<XFieldElement> {
+        let fri_domain_codewords: Vec<_> = quotient_segment_polynomials
+            .into_par_iter()
+            .flat_map(|segment| fri_domain.evaluate(segment))
+            .collect();
+        Array2::from_shape_vec(
+            [fri_domain.length, NUM_QUOTIENT_SEGMENTS].f(),
+            fri_domain_codewords,
+        )
+        .unwrap()
+    }
+
+    /// Apply the [DEEP update](Stark::deep_update) to a polynomial in value form,
+    /// _i.e._, to a codeword.
+    fn deep_codeword(
+        codeword: &[XFieldElement],
+        domain: ArithmeticDomain,
+        out_of_domain_point: XFieldElement,
+        out_of_domain_value: XFieldElement,
+    ) -> Vec<XFieldElement> {
+        domain
+            .domain_values()
+            .par_iter()
+            .zip_eq(codeword)
+            .map(|(&in_domain_value, &in_domain_evaluation)| {
+                Stark::deep_update(
+                    in_domain_value,
+                    in_domain_evaluation,
+                    out_of_domain_point,
+                    out_of_domain_value,
+                )
+            })
+            .collect()
+    }
+}
+
+impl Verifier {
+    pub fn new(parameters: Stark) -> Self {
+        Self { parameters }
+    }
+
+    /// See also [`Stark::verify`].
+    pub fn verify(self, claim: &Claim, proof: &Proof) -> Result<(), VerificationError> {
+        profiler!(start "deserialize");
+        let mut proof_stream = ProofStream::try_from(proof)?;
+        profiler!(stop "deserialize");
+
+        profiler!(start "Fiat-Shamir: Claim" ("hash"));
+        proof_stream.alter_fiat_shamir_state_with(claim);
+        profiler!(stop "Fiat-Shamir: Claim");
+
+        profiler!(start "derive additional parameters");
+        let log_2_padded_height = proof_stream.dequeue()?.try_into_log2_padded_height()?;
+        let padded_height = 1 << log_2_padded_height;
+        let fri = self.parameters.fri(padded_height)?;
+        let merkle_tree_height = fri.domain.length.ilog2() as usize;
+        profiler!(stop "derive additional parameters");
+
+        profiler!(start "Fiat-Shamir 1" ("hash"));
+        let main_merkle_tree_root = proof_stream.dequeue()?.try_into_merkle_root()?;
+        let extension_challenge_weights = proof_stream.sample_scalars(Challenges::SAMPLE_COUNT);
+        let challenges = Challenges::new(extension_challenge_weights, claim);
+        let auxiliary_tree_merkle_root = proof_stream.dequeue()?.try_into_merkle_root()?;
+        // Sample weights for quotient codeword, which is a part of the combination codeword.
+        // See corresponding part in the prover for a more detailed explanation.
+        let quot_codeword_weights = proof_stream.sample_scalars(MasterAuxTable::NUM_CONSTRAINTS);
+        let quot_codeword_weights = Array1::from(quot_codeword_weights);
+        let quotient_codeword_merkle_root = proof_stream.dequeue()?.try_into_merkle_root()?;
+        profiler!(stop "Fiat-Shamir 1");
+
+        profiler!(start "dequeue ood point and rows" ("hash"));
+        let trace_domain_generator = ArithmeticDomain::generator_for_length(padded_height as u64)?;
+        let out_of_domain_point_curr_row = proof_stream.sample_scalars(1)[0];
+        let out_of_domain_point_next_row = trace_domain_generator * out_of_domain_point_curr_row;
+        let out_of_domain_point_curr_row_pow_num_segments =
+            out_of_domain_point_curr_row.mod_pow_u32(NUM_QUOTIENT_SEGMENTS as u32);
+
+        let out_of_domain_curr_main_row =
+            proof_stream.dequeue()?.try_into_out_of_domain_main_row()?;
+        let out_of_domain_curr_aux_row =
+            proof_stream.dequeue()?.try_into_out_of_domain_aux_row()?;
+        let out_of_domain_next_main_row =
+            proof_stream.dequeue()?.try_into_out_of_domain_main_row()?;
+        let out_of_domain_next_aux_row =
+            proof_stream.dequeue()?.try_into_out_of_domain_aux_row()?;
+        let out_of_domain_curr_row_quot_segments = proof_stream
+            .dequeue()?
+            .try_into_out_of_domain_quot_segments()?;
+
+        let out_of_domain_curr_main_row = Array1::from(out_of_domain_curr_main_row.to_vec());
+        let out_of_domain_curr_aux_row = Array1::from(out_of_domain_curr_aux_row.to_vec());
+        let out_of_domain_next_main_row = Array1::from(out_of_domain_next_main_row.to_vec());
+        let out_of_domain_next_aux_row = Array1::from(out_of_domain_next_aux_row.to_vec());
+        let out_of_domain_curr_row_quot_segments =
+            Array1::from(out_of_domain_curr_row_quot_segments.to_vec());
+        profiler!(stop "dequeue ood point and rows");
+
+        profiler!(start "out-of-domain quotient element");
+        profiler!(start "evaluate AIR" ("AIR"));
+        let evaluated_initial_constraints = MasterAuxTable::evaluate_initial_constraints(
+            out_of_domain_curr_main_row.view(),
+            out_of_domain_curr_aux_row.view(),
+            &challenges,
+        );
+        let evaluated_consistency_constraints = MasterAuxTable::evaluate_consistency_constraints(
+            out_of_domain_curr_main_row.view(),
+            out_of_domain_curr_aux_row.view(),
+            &challenges,
+        );
+        let evaluated_transition_constraints = MasterAuxTable::evaluate_transition_constraints(
+            out_of_domain_curr_main_row.view(),
+            out_of_domain_curr_aux_row.view(),
+            out_of_domain_next_main_row.view(),
+            out_of_domain_next_aux_row.view(),
+            &challenges,
+        );
+        let evaluated_terminal_constraints = MasterAuxTable::evaluate_terminal_constraints(
+            out_of_domain_curr_main_row.view(),
+            out_of_domain_curr_aux_row.view(),
+            &challenges,
+        );
+        profiler!(stop "evaluate AIR");
+
+        profiler!(start "zerofiers");
+        let initial_zerofier_inv = (out_of_domain_point_curr_row - bfe!(1)).inverse();
+        let consistency_zerofier_inv =
+            (out_of_domain_point_curr_row.mod_pow_u32(padded_height as u32) - bfe!(1)).inverse();
+        let except_last_row = out_of_domain_point_curr_row - trace_domain_generator.inverse();
+        let transition_zerofier_inv = except_last_row * consistency_zerofier_inv;
+        let terminal_zerofier_inv = except_last_row.inverse(); // i.e., only last row
+        profiler!(stop "zerofiers");
+
+        profiler!(start "divide");
+        let divide = |constraints: Vec<_>, z_inv| constraints.into_iter().map(move |c| c * z_inv);
+        let initial_quotients = divide(evaluated_initial_constraints, initial_zerofier_inv);
+        let consistency_quotients =
+            divide(evaluated_consistency_constraints, consistency_zerofier_inv);
+        let transition_quotients =
+            divide(evaluated_transition_constraints, transition_zerofier_inv);
+        let terminal_quotients = divide(evaluated_terminal_constraints, terminal_zerofier_inv);
+
+        let quotient_summands = initial_quotients
+            .chain(consistency_quotients)
+            .chain(transition_quotients)
+            .chain(terminal_quotients)
+            .collect_vec();
+        profiler!(stop "divide");
+
+        profiler!(start "inner product" ("CC"));
+        let out_of_domain_quotient_value =
+            quot_codeword_weights.dot(&Array1::from(quotient_summands));
+        profiler!(stop "inner product");
+        profiler!(stop "out-of-domain quotient element");
+
+        profiler!(start "verify quotient's segments");
+        let powers_of_out_of_domain_point_curr_row = (0..NUM_QUOTIENT_SEGMENTS as u32)
+            .map(|exponent| out_of_domain_point_curr_row.mod_pow_u32(exponent))
+            .collect::<Array1<_>>();
+        let sum_of_evaluated_out_of_domain_quotient_segments =
+            powers_of_out_of_domain_point_curr_row.dot(&out_of_domain_curr_row_quot_segments);
+        if out_of_domain_quotient_value != sum_of_evaluated_out_of_domain_quotient_segments {
+            return Err(VerificationError::OutOfDomainQuotientValueMismatch);
+        };
+        profiler!(stop "verify quotient's segments");
+
+        profiler!(start "Fiat-Shamir 2" ("hash"));
+        let weights = LinearCombinationWeights::sample(&mut proof_stream);
+        let main_and_aux_codeword_weights = weights.main_and_aux();
+        profiler!(stop "Fiat-Shamir 2");
+
+        profiler!(start "sum out-of-domain values" ("CC"));
+        let out_of_domain_curr_row_main_and_aux_value = Self::linearly_sum_main_and_aux_row(
+            out_of_domain_curr_main_row.view(),
+            out_of_domain_curr_aux_row.view(),
+            main_and_aux_codeword_weights.view(),
+        );
+        let out_of_domain_next_row_main_and_aux_value = Self::linearly_sum_main_and_aux_row(
+            out_of_domain_next_main_row.view(),
+            out_of_domain_next_aux_row.view(),
+            main_and_aux_codeword_weights.view(),
+        );
+        let out_of_domain_curr_row_quotient_segment_value = weights
+            .quot_segments
+            .dot(&out_of_domain_curr_row_quot_segments);
+        profiler!(stop "sum out-of-domain values");
+
+        // verify low degree of combination polynomial with FRI
+        profiler!(start "FRI");
+        let revealed_fri_indices_and_elements = fri.verify(&mut proof_stream)?;
+        let (revealed_current_row_indices, revealed_fri_values): (Vec<_>, Vec<_>) =
+            revealed_fri_indices_and_elements.into_iter().unzip();
+        profiler!(stop "FRI");
+
+        profiler!(start "check leafs");
+        profiler!(start "dequeue main elements");
+        let main_table_rows = proof_stream.dequeue()?.try_into_master_main_table_rows()?;
+        let main_authentication_structure = proof_stream
+            .dequeue()?
+            .try_into_authentication_structure()?;
+        let leaf_digests_main: Vec<_> = main_table_rows
+            .par_iter()
+            .map(|revealed_main_elem| Tip5::hash_varlen(revealed_main_elem))
+            .collect();
+        profiler!(stop "dequeue main elements");
+
+        let index_leaves = |leaves| {
+            let index_iter = revealed_current_row_indices.iter().copied();
+            index_iter.zip_eq(leaves).collect()
+        };
+        profiler!(start "Merkle verify (main tree)" ("hash"));
+        let base_merkle_tree_inclusion_proof = MerkleTreeInclusionProof {
+            tree_height: merkle_tree_height,
+            indexed_leafs: index_leaves(leaf_digests_main),
+            authentication_structure: main_authentication_structure,
+        };
+        if !base_merkle_tree_inclusion_proof.verify(main_merkle_tree_root) {
+            return Err(VerificationError::MainCodewordAuthenticationFailure);
+        }
+        profiler!(stop "Merkle verify (main tree)");
+
+        profiler!(start "dequeue auxiliary elements");
+        let aux_table_rows = proof_stream.dequeue()?.try_into_master_aux_table_rows()?;
+        let aux_authentication_structure = proof_stream
+            .dequeue()?
+            .try_into_authentication_structure()?;
+        let leaf_digests_aux = aux_table_rows
+            .par_iter()
+            .map(|xvalues| {
+                let b_values = xvalues.iter().flat_map(|xfe| xfe.coefficients.to_vec());
+                Tip5::hash_varlen(&b_values.collect_vec())
+            })
+            .collect::<Vec<_>>();
+        profiler!(stop "dequeue auxiliary elements");
+
+        profiler!(start "Merkle verify (auxiliary tree)" ("hash"));
+        let aux_merkle_tree_inclusion_proof = MerkleTreeInclusionProof {
+            tree_height: merkle_tree_height,
+            indexed_leafs: index_leaves(leaf_digests_aux),
+            authentication_structure: aux_authentication_structure,
+        };
+        if !aux_merkle_tree_inclusion_proof.verify(auxiliary_tree_merkle_root) {
+            return Err(VerificationError::AuxiliaryCodewordAuthenticationFailure);
+        }
+        profiler!(stop "Merkle verify (auxiliary tree)");
+
+        profiler!(start "dequeue quotient segments' elements");
+        let revealed_quotient_segments_elements =
+            proof_stream.dequeue()?.try_into_quot_segments_elements()?;
+        let revealed_quotient_segments_digests =
+            Self::hash_quotient_segment_elements(&revealed_quotient_segments_elements);
+        let revealed_quotient_authentication_structure = proof_stream
+            .dequeue()?
+            .try_into_authentication_structure()?;
+        profiler!(stop "dequeue quotient segments' elements");
+
+        profiler!(start "Merkle verify (combined quotient)" ("hash"));
+        let quot_merkle_tree_inclusion_proof = MerkleTreeInclusionProof {
+            tree_height: merkle_tree_height,
+            indexed_leafs: index_leaves(revealed_quotient_segments_digests),
+            authentication_structure: revealed_quotient_authentication_structure,
+        };
+        if !quot_merkle_tree_inclusion_proof.verify(quotient_codeword_merkle_root) {
+            return Err(VerificationError::QuotientCodewordAuthenticationFailure);
+        }
+        profiler!(stop "Merkle verify (combined quotient)");
+        profiler!(stop "check leafs");
+
+        profiler!(start "linear combination");
+        if self.parameters.num_collinearity_checks != revealed_current_row_indices.len() {
+            return Err(VerificationError::IncorrectNumberOfRowIndices);
+        };
+        if self.parameters.num_collinearity_checks != revealed_fri_values.len() {
+            return Err(VerificationError::IncorrectNumberOfFRIValues);
+        };
+        if self.parameters.num_collinearity_checks != revealed_quotient_segments_elements.len() {
+            return Err(VerificationError::IncorrectNumberOfQuotientSegmentElements);
+        };
+        if self.parameters.num_collinearity_checks != main_table_rows.len() {
+            return Err(VerificationError::IncorrectNumberOfMainTableRows);
+        };
+        if self.parameters.num_collinearity_checks != aux_table_rows.len() {
+            return Err(VerificationError::IncorrectNumberOfAuxTableRows);
+        };
+
+        for (row_idx, main_row, aux_row, quotient_segments_elements, fri_value) in izip!(
+            revealed_current_row_indices,
+            main_table_rows,
+            aux_table_rows,
+            revealed_quotient_segments_elements,
+            revealed_fri_values,
+        ) {
+            let main_row = Array1::from(main_row.to_vec());
+            let aux_row = Array1::from(aux_row.to_vec());
+            let current_fri_domain_value = fri.domain.domain_value(row_idx as u32);
+
+            profiler!(start "main & aux elements" ("CC"));
+            let main_and_aux_curr_row_element = Self::linearly_sum_main_and_aux_row(
+                main_row.view(),
+                aux_row.view(),
+                main_and_aux_codeword_weights.view(),
+            );
+            let quotient_segments_curr_row_element = weights
+                .quot_segments
+                .dot(&Array1::from(quotient_segments_elements.to_vec()));
+            profiler!(stop "main & aux elements");
+
+            profiler!(start "DEEP update");
+            let main_and_aux_curr_row_deep_value = Stark::deep_update(
+                current_fri_domain_value,
+                main_and_aux_curr_row_element,
+                out_of_domain_point_curr_row,
+                out_of_domain_curr_row_main_and_aux_value,
+            );
+            let main_and_aux_next_row_deep_value = Stark::deep_update(
+                current_fri_domain_value,
+                main_and_aux_curr_row_element,
+                out_of_domain_point_next_row,
+                out_of_domain_next_row_main_and_aux_value,
+            );
+            let quot_curr_row_deep_value = Stark::deep_update(
+                current_fri_domain_value,
+                quotient_segments_curr_row_element,
+                out_of_domain_point_curr_row_pow_num_segments,
+                out_of_domain_curr_row_quotient_segment_value,
+            );
+            profiler!(stop "DEEP update");
+
+            profiler!(start "combination codeword equality");
+            let deep_value_components = Array1::from(vec![
+                main_and_aux_curr_row_deep_value,
+                main_and_aux_next_row_deep_value,
+                quot_curr_row_deep_value,
+            ]);
+            if fri_value != weights.deep.dot(&deep_value_components) {
+                return Err(VerificationError::CombinationCodewordMismatch);
+            };
+            profiler!(stop "combination codeword equality");
+        }
+        profiler!(stop "linear combination");
+        Ok(())
+    }
+
+    fn hash_quotient_segment_elements(quotient_segment_rows: &[QuotientSegments]) -> Vec<Digest> {
+        let interpret_xfe_as_bfes = |xfe: XFieldElement| xfe.coefficients.to_vec();
+        let collect_row_as_bfes = |row: &QuotientSegments| row.map(interpret_xfe_as_bfes).concat();
+        quotient_segment_rows
+            .par_iter()
+            .map(collect_row_as_bfes)
+            .map(|row| Tip5::hash_varlen(&row))
+            .collect()
+    }
+
+    fn linearly_sum_main_and_aux_row<FF>(
+        main_row: ArrayView1<FF>,
+        aux_row: ArrayView1<XFieldElement>,
+        weights: ArrayView1<XFieldElement>,
+    ) -> XFieldElement
+    where
+        FF: FiniteField + Into<XFieldElement>,
+        XFieldElement: Mul<FF, Output = XFieldElement>,
+    {
+        profiler!(start "collect");
+        let mut row = main_row.map(|&element| element.into());
+        row.append(Axis(0), aux_row).unwrap();
+        profiler!(stop "collect");
+        profiler!(start "inner product");
+        // todo: Try to get rid of this clone. The alternative line
+        //   `let main_and_aux_element = (&weights * &summands).sum();`
+        //   without cloning the weights does not compile for a seemingly nonsensical reason.
+        let weights = weights.to_owned();
+        let main_and_aux_element = (weights * row).sum();
+        profiler!(stop "inner product");
+        main_and_aux_element
+    }
+}
+
+impl Stark {
+    /// # Panics
+    ///
+    /// Panics if `log2_of_fri_expansion_factor` is zero.
+    pub fn new(security_level: usize, log2_of_fri_expansion_factor: usize) -> Self {
+        assert_ne!(
+            0, log2_of_fri_expansion_factor,
+            "FRI expansion factor must be greater than one."
+        );
+
+        let fri_expansion_factor = 1 << log2_of_fri_expansion_factor;
+        let num_collinearity_checks = security_level / log2_of_fri_expansion_factor;
+
+        let num_out_of_domain_rows = 2;
+        let num_trace_randomizers = num_collinearity_checks
+            + num_out_of_domain_rows * x_field_element::EXTENSION_DEGREE
+            + NUM_QUOTIENT_SEGMENTS * x_field_element::EXTENSION_DEGREE;
+
+        Stark {
+            security_level,
+            fri_expansion_factor,
+            num_trace_randomizers,
+            num_collinearity_checks,
+        }
+    }
+
+    /// Prove the correctness of the given [Claim] using the given
+    /// [witness](AlgebraicExecutionTrace).
+    ///
+    /// This method should be the first option to consider for proving.
+    /// For more control over the proving process, see [`Prover`].
+    // This pass-through method guarantees fresh prover randomness at each call.
+    pub fn prove(
+        &self,
+        claim: &Claim,
+        aet: &AlgebraicExecutionTrace,
+    ) -> Result<Proof, ProvingError> {
+        Prover::new(*self).prove(claim, aet)
+    }
+
+    /// Verify the accuracy of the given [Claim], supported by the [Proof].
+    ///
+    /// See also [`Verifier`].
+    // This pass-through method achieves symmetry with the [`Prover`].
+    pub fn verify(&self, claim: &Claim, proof: &Proof) -> Result<(), VerificationError> {
+        Verifier::new(*self).verify(claim, proof)
+    }
+
+    #[deprecated(since = "0.43.0", note = "use `stark.max_degree` instead")]
+    pub fn derive_max_degree(&self, padded_height: usize) -> isize {
+        self.max_degree(padded_height)
+    }
+
+    /// The upper bound to use for the maximum degree the quotients given the length
+    /// of the trace and the number of trace randomizers. The degree of the
+    /// quotients depends on the [AIR](air) constraints.
+    pub fn max_degree(&self, padded_height: usize) -> isize {
+        let interpolant_degree = interpolant_degree(padded_height, self.num_trace_randomizers);
+        let max_constraint_degree_with_origin =
+            max_degree_with_origin(interpolant_degree, padded_height);
+        let max_constraint_degree = max_constraint_degree_with_origin.degree as u64;
+        let min_arithmetic_domain_length_supporting_max_constraint_degree =
+            max_constraint_degree.next_power_of_two();
+        let max_degree_supported_by_that_smallest_arithmetic_domain =
+            min_arithmetic_domain_length_supporting_max_constraint_degree - 1;
+
+        max_degree_supported_by_that_smallest_arithmetic_domain as isize
+    }
+
+    #[deprecated(since = "0.43.0", note = "use `stark.fri` instead")]
+    pub fn derive_fri(&self, padded_height: usize) -> fri::SetupResult<Fri> {
+        self.fri(padded_height)
+    }
+
+    /// The parameters for [FRI](Fri). The length of the
+    /// [FRI domain](ArithmeticDomain) has a major influence on
+    /// [proving](Prover::prove) time. It is influenced by the length of the
+    /// [execution trace](AlgebraicExecutionTrace) and the FRI expansion factor,
+    /// a security parameter.
+    ///
+    /// In principle, the FRI domain length is also influenced by the AIR's degree
+    /// (see [`air::TARGET_DEGREE`]). However, by segmenting the quotient polynomial
+    /// into `TARGET_DEGREE`-many parts, that influence is mitigated.
+    pub fn fri(&self, padded_height: usize) -> fri::SetupResult<Fri> {
+        let fri_domain_length = self.fri_expansion_factor
+            * randomized_trace_len(padded_height, self.num_trace_randomizers);
+        let coset_offset = BFieldElement::generator();
+        let domain = ArithmeticDomain::of_length(fri_domain_length)?.with_offset(coset_offset);
+
+        Fri::new(
+            domain,
+            self.fri_expansion_factor,
+            self.num_collinearity_checks,
+        )
+    }
+
+    /// Given `f(x)` (the in-domain evaluation of polynomial `f` in `x`), the domain point `x` at
+    /// which polynomial `f` was evaluated, the out-of-domain evaluation `f(α)`, and the
+    /// out-of-domain domain point `α`, apply the DEEP update: `(f(x) - f(α)) / (x - α)`.
+    #[inline]
+    fn deep_update(
+        in_domain_point: BFieldElement,
+        in_domain_value: XFieldElement,
+        out_of_domain_point: XFieldElement,
+        out_of_domain_value: XFieldElement,
+    ) -> XFieldElement {
+        (in_domain_value - out_of_domain_value) / (in_domain_point - out_of_domain_point)
+    }
 }
 
 impl Default for Stark {
@@ -1375,6 +1449,12 @@ impl Default for Stark {
         let security_level = 160;
 
         Self::new(security_level, log_2_of_fri_expansion_factor)
+    }
+}
+
+impl Default for Prover {
+    fn default() -> Self {
+        Self::new(Stark::default())
     }
 }
 
@@ -1598,14 +1678,14 @@ pub(crate) mod tests {
         let program = ProgramAndInput::new(triton_program!(halt));
         let (stark, _, mut main, mut aux, ch) = master_tables_for_low_security_level(program);
         let padded_height = main.trace_table().nrows();
-        let fri_dom = stark.derive_fri(padded_height).unwrap().domain;
-        let max_degree = stark.derive_max_degree(padded_height);
-        let quot_dom = Stark::quotient_domain(fri_dom, max_degree).unwrap();
+        let fri_dom = stark.fri(padded_height).unwrap().domain;
+        let max_degree = stark.max_degree(padded_height);
+        let quot_dom = Prover::quotient_domain(fri_dom, max_degree).unwrap();
 
         debug_assert!(main.fri_domain_table().is_none());
         debug_assert!(aux.fri_domain_table().is_none());
         let jit_segments =
-            Stark::compute_quotient_segments(&mut main, &mut aux, quot_dom, &ch, &weights);
+            Prover::compute_quotient_segments(&mut main, &mut aux, quot_dom, &ch, &weights);
 
         debug_assert!(main.fri_domain_table().is_none());
         main.maybe_low_degree_extend_all_columns();
@@ -1616,7 +1696,7 @@ pub(crate) mod tests {
         debug_assert!(aux.fri_domain_table().is_some());
 
         let cache_segments =
-            Stark::compute_quotient_segments(&mut main, &mut aux, quot_dom, &ch, &weights);
+            Prover::compute_quotient_segments(&mut main, &mut aux, quot_dom, &ch, &weights);
 
         assert_eq!(jit_segments, cache_segments);
     }
@@ -1639,9 +1719,9 @@ pub(crate) mod tests {
             let original_aux_trace = aux.trace_table().to_owned();
 
             let padded_height = main.trace_table().nrows();
-            let fri_dom = stark.derive_fri(padded_height).unwrap().domain;
-            let max_degree = stark.derive_max_degree(padded_height);
-            let quot_dom = Stark::quotient_domain(fri_dom, max_degree).unwrap();
+            let fri_dom = stark.fri(padded_height).unwrap().domain;
+            let max_degree = stark.max_degree(padded_height);
+            let quot_dom = Prover::quotient_domain(fri_dom, max_degree).unwrap();
 
             if cache_decision == CacheDecision::Cache {
                 main.maybe_low_degree_extend_all_columns();
@@ -1652,7 +1732,7 @@ pub(crate) mod tests {
             }
 
             let _segments =
-                Stark::compute_quotient_segments(&mut main, &mut aux, quot_dom, &ch, &weights);
+                Prover::compute_quotient_segments(&mut main, &mut aux, quot_dom, &ch, &weights);
 
             assert_eq!(original_main_trace, main.trace_table());
             assert_eq!(original_aux_trace, aux.trace_table());
@@ -2654,7 +2734,7 @@ pub(crate) mod tests {
         let out_of_domain_point: XFieldElement = thread_rng().gen();
         let out_of_domain_value = low_deg_poly.evaluate(out_of_domain_point);
 
-        let deep_poly = Stark::deep_codeword(
+        let deep_poly = Prover::deep_codeword(
             &low_deg_codeword,
             domain,
             out_of_domain_point,
@@ -2664,7 +2744,7 @@ pub(crate) mod tests {
         assert!(poly_degree as isize - 2 == poly_of_maybe_low_degree.degree());
 
         let bogus_out_of_domain_value = thread_rng().gen();
-        let bogus_deep_poly = Stark::deep_codeword(
+        let bogus_deep_poly = Prover::deep_codeword(
             &low_deg_codeword,
             domain,
             out_of_domain_point,
@@ -2705,10 +2785,10 @@ pub(crate) mod tests {
         let coefficients: [XFieldElement; 211] = thread_rng().gen();
         let f = Polynomial::new(coefficients.to_vec());
 
-        let segments_2 = Stark::split_polynomial_into_segments::<2, _>(f.clone());
-        let segments_3 = Stark::split_polynomial_into_segments::<3, _>(f.clone());
-        let segments_4 = Stark::split_polynomial_into_segments::<4, _>(f.clone());
-        let segments_7 = Stark::split_polynomial_into_segments::<7, _>(f.clone());
+        let segments_2 = Prover::split_polynomial_into_segments::<2, _>(f.clone());
+        let segments_3 = Prover::split_polynomial_into_segments::<3, _>(f.clone());
+        let segments_4 = Prover::split_polynomial_into_segments::<4, _>(f.clone());
+        let segments_7 = Prover::split_polynomial_into_segments::<7, _>(f.clone());
 
         assert_segments_degrees_are_small_enough(&f, &segments_2);
         assert_segments_degrees_are_small_enough(&f, &segments_3);
@@ -2727,10 +2807,10 @@ pub(crate) mod tests {
         let coefficients: [BFieldElement; 2 * 3 * 4 * 7] = thread_rng().gen();
         let f = Polynomial::new(coefficients.to_vec());
 
-        let segments_2 = Stark::split_polynomial_into_segments::<2, _>(f.clone());
-        let segments_3 = Stark::split_polynomial_into_segments::<3, _>(f.clone());
-        let segments_4 = Stark::split_polynomial_into_segments::<4, _>(f.clone());
-        let segments_7 = Stark::split_polynomial_into_segments::<7, _>(f.clone());
+        let segments_2 = Prover::split_polynomial_into_segments::<2, _>(f.clone());
+        let segments_3 = Prover::split_polynomial_into_segments::<3, _>(f.clone());
+        let segments_4 = Prover::split_polynomial_into_segments::<4, _>(f.clone());
+        let segments_7 = Prover::split_polynomial_into_segments::<7, _>(f.clone());
 
         assert_segments_degrees_are_small_enough(&f, &segments_2);
         assert_segments_degrees_are_small_enough(&f, &segments_3);
@@ -2791,7 +2871,7 @@ pub(crate) mod tests {
                 Array2::from_shape_vec((trace_length, num_cosets).f(), coset_evaluations)?;
 
             let (actual_segment_codewords, segment_polynomials) =
-                Stark::segmentify::<N>(coset_evaluations, test_data.psi, iota, fri_domain);
+                Prover::segmentify::<N>(coset_evaluations, test_data.psi, iota, fri_domain);
 
             prop_assert_eq!(N, actual_segment_codewords.ncols());
             prop_assert_eq!(N, segment_polynomials.len());

@@ -178,7 +178,7 @@ fn program_halt() -> ProgramAndInput {
 /// The base 2, integer logarithm of the FRI domain length.
 fn log_2_fri_domain_length(stark: Stark, proof: &Proof) -> u32 {
     let padded_height = proof.padded_height().unwrap();
-    let fri = stark.derive_fri(padded_height).unwrap();
+    let fri = stark.fri(padded_height).unwrap();
     fri.domain.length.ilog2()
 }
 

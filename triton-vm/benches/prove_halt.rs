@@ -31,7 +31,7 @@ fn prove_halt(c: &mut Criterion) {
     let profile = triton_vm::profiler::finish();
 
     let padded_height = proof.padded_height().unwrap();
-    let fri = stark.derive_fri(padded_height).unwrap();
+    let fri = stark.fri(padded_height).unwrap();
     let profile = profile
         .with_cycle_count(aet.height_of_table(TableId::Processor))
         .with_padded_height(padded_height)

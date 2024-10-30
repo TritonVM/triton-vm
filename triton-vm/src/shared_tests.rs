@@ -125,7 +125,7 @@ pub(crate) fn prove_and_verify(
     let profile = crate::profiler::finish();
 
     let_assert!(Ok(padded_height) = proof.padded_height());
-    let fri = stark.derive_fri(padded_height).unwrap();
+    let fri = stark.fri(padded_height).unwrap();
     let profile = profile
         .with_padded_height(padded_height)
         .with_fri_domain_len(fri.domain.length);
@@ -142,9 +142,9 @@ pub(crate) fn construct_master_main_table(
     aet: &AlgebraicExecutionTrace,
 ) -> MasterMainTable {
     let padded_height = aet.padded_height();
-    let fri = stark.derive_fri(padded_height).unwrap();
-    let max_degree = stark.derive_max_degree(padded_height);
-    let quotient_domain = Stark::quotient_domain(fri.domain, max_degree).unwrap();
+    let fri = stark.fri(padded_height).unwrap();
+    let max_degree = stark.max_degree(padded_height);
+    let quotient_domain = Prover::quotient_domain(fri.domain, max_degree).unwrap();
     MasterMainTable::new(
         aet,
         stark.num_trace_randomizers,

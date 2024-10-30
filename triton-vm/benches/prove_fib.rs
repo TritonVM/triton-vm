@@ -31,7 +31,7 @@ fn prove_fib(c: &mut Criterion) {
     let profile = triton_vm::profiler::finish();
 
     let padded_height = aet.padded_height();
-    let fri = stark.derive_fri(padded_height).unwrap();
+    let fri = stark.fri(padded_height).unwrap();
     let profile = profile
         .with_cycle_count(aet.processor_trace.nrows())
         .with_padded_height(padded_height)
