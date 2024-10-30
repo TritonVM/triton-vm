@@ -1816,17 +1816,15 @@ pub(crate) mod tests {
             .set_randomness_seed_which_may_break_zero_knowledge(rng.gen())
             .prove(&claim, &aet)
             .unwrap();
-        let digest = Tip5::hash(&proof);
-        dbg!(digest.to_string());
 
-        let expected_digest = Digest::new(bfe_array![
-            1208218823199023966_u64,
-            7248217050651886224_u64,
-            7139898735589794621_u64,
-            11774487641367625949_u64,
-            6650915987150064355_u64,
-        ]);
-        assert_eq!(expected_digest, digest);
+        insta::assert_snapshot!(
+            Tip5::hash(&proof),
+            @"01208218823199023966,\
+              07248217050651886224,\
+              07139898735589794621,\
+              11774487641367625949,\
+              06650915987150064355",
+        );
     }
 
     #[test]

@@ -26,6 +26,7 @@ syn.workspace = true
 twenty-first.workspace = true
 
 [dev-dependencies]
+insta.workspace = true
 proptest.workspace = true
 proptest-arbitrary-interop.workspace = true
 test-strategy.workspace = true

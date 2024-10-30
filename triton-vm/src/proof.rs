@@ -210,16 +210,14 @@ mod tests {
             .set_randomness_seed_which_may_break_zero_knowledge(rng.gen())
             .prove(&claim, &aet)
             .unwrap();
-        let proof_digest = Tip5::hash(&proof);
-        dbg!(proof_digest.to_string());
 
-        let expected_digest = Digest::new(bfe_array![
-            11952904396812311265_u64,
-            16054901534874249652_u64,
-            9773073309626813769_u64,
-            15649970038336331462_u64,
-            7145239594398485773_u64,
-        ]);
-        assert_eq!(expected_digest, proof_digest);
+        insta::assert_snapshot!(
+            Tip5::hash(&proof),
+            @"11952904396812311265,\
+              16054901534874249652,\
+              09773073309626813769,\
+              15649970038336331462,\
+              07145239594398485773",
+        );
     }
 }
