@@ -144,11 +144,14 @@
 //!
 //! ```
 //! # use triton_vm::prelude::*;
-//! let crashing_program = triton_program!(push 2 assert halt);
+//! let crashing_program = triton_program!(push 2 assert error_id 42 halt);
 //! let vm_error = VM::run(crashing_program, [].into(), [].into()).unwrap_err();
-//! assert!(matches!(vm_error.source, InstructionError::AssertionFailed));
-//! // inspect the VM state
-//! eprintln!("{vm_error}");
+//! let InstructionError::AssertionFailed(ref assertion_error) = vm_error.source else {
+//!     unreachable!();
+//! };
+//!
+//! assert_eq!(Some(42), assertion_error.id);
+//! eprintln!("{vm_error}"); // inspect the VM state
 //! ```
 
 #![recursion_limit = "4096"]

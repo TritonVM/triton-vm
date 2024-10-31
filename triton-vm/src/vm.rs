@@ -11,6 +11,7 @@ use air::table::processor::NUM_HELPER_VARIABLE_REGISTERS;
 use air::table_column::MasterMainColumn;
 use air::table_column::ProcessorMainColumn;
 use arbitrary::Arbitrary;
+use isa::error::AssertionError;
 use isa::error::InstructionError;
 use isa::error::OpStackError;
 use isa::instruction::Instruction;
@@ -21,8 +22,8 @@ use isa::op_stack::UnderflowIO;
 use isa::program::Program;
 use itertools::Itertools;
 use ndarray::Array1;
+use num_traits::ConstOne;
 use num_traits::ConstZero;
-use num_traits::One;
 use num_traits::Zero;
 use serde::Deserialize;
 use serde::Serialize;
@@ -568,8 +569,11 @@ impl VMState {
     }
 
     fn assert(&mut self) -> InstructionResult<Vec<CoProcessorCall>> {
-        if !self.op_stack[0].is_one() {
-            return Err(InstructionError::AssertionFailed);
+        let actual = self.op_stack[0];
+        let expected = BFieldElement::ONE;
+        if actual != expected {
+            let error = self.contextualized_assertion_error(expected, actual);
+            return Err(InstructionError::AssertionFailed(error));
         }
         let _ = self.op_stack.pop()?;
 
@@ -739,8 +743,11 @@ impl VMState {
 
     fn assert_vector(&mut self) -> InstructionResult<Vec<CoProcessorCall>> {
         for i in 0..Digest::LEN {
-            if self.op_stack[i] != self.op_stack[i + Digest::LEN] {
-                return Err(InstructionError::VectorAssertionFailed(i));
+            let expected = self.op_stack[i];
+            let actual = self.op_stack[i + Digest::LEN];
+            if expected != actual {
+                let error = self.contextualized_assertion_error(expected, actual);
+                return Err(InstructionError::VectorAssertionFailed(i, error));
             }
         }
         self.op_stack.pop_multiple::<{ Digest::LEN }>()?;
@@ -1229,24 +1236,39 @@ impl VMState {
         }
         Ok(())
     }
+
+    fn contextualized_assertion_error(
+        &self,
+        expected: BFieldElement,
+        actual: BFieldElement,
+    ) -> AssertionError {
+        let current_address =
+            u64::try_from(self.instruction_pointer).expect("usize should fit in u64");
+
+        let error = AssertionError::new(expected, actual);
+        if let Some(context) = self.program.assertion_context_at(current_address) {
+            error.with_context(context)
+        } else {
+            error
+        }
+    }
 }
 
 impl Display for VMState {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         use ProcessorMainColumn as ProcCol;
 
+        let display_instruction = |instruction: Instruction| {
+            if let Instruction::Call(address) = instruction {
+                format!("call {}", self.program.label_for_address(address.value()))
+            } else {
+                instruction.to_string()
+            }
+        };
+
         let instruction = self
             .current_instruction()
-            .map_or_else(
-                |_| "--".to_string(),
-                |instruction| {
-                    if let Instruction::Call(address) = instruction {
-                        format!("call {}", self.program.label_for_address(address.value()))
-                    } else {
-                        instruction.to_string()
-                    }
-                },
-            )
+            .map_or_else(|_| "--".to_string(), display_instruction)
             .chars()
             .take(54)
             .collect::<String>();
@@ -2713,7 +2735,7 @@ pub(crate) mod tests {
         );
         let program_and_input = ProgramAndInput::new(program);
         let_assert!(Err(err) = program_and_input.run());
-        let_assert!(InstructionError::AssertionFailed = err.source);
+        let_assert!(InstructionError::AssertionFailed(_) = err.source);
     }
 
     pub(crate) fn test_program_for_split() -> ProgramAndInput {
@@ -3210,7 +3232,7 @@ pub(crate) mod tests {
         let bad_std_in = PublicInput::from(bad_sudoku.map(|b| bfe!(b)));
         let secret_in = NonDeterminism::default();
         let_assert!(Err(err) = VM::trace_execution(program, bad_std_in, secret_in));
-        let_assert!(InstructionError::AssertionFailed = err.source);
+        let_assert!(InstructionError::AssertionFailed(_) = err.source);
     }
 
     fn instruction_does_not_change_vm_state_when_crashing_vm(

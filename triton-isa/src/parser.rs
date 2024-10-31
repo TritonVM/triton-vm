@@ -26,12 +26,19 @@ use twenty_first::bfe;
 use twenty_first::prelude::BFieldElement;
 
 use crate::instruction::AnInstruction;
+use crate::instruction::AssertionContext;
 use crate::instruction::Instruction;
 use crate::instruction::LabelledInstruction;
 use crate::instruction::TypeHint;
 use crate::instruction::ALL_INSTRUCTION_NAMES;
 use crate::op_stack::NumberOfWords;
 use crate::op_stack::OpStackElement;
+
+const KEYWORDS: [&str; 3] = [
+    "hint",
+    "error_id",
+    "error_message", // reserved for future use
+];
 
 #[derive(Debug, PartialEq)]
 pub struct ParseError<'a> {
@@ -47,11 +54,20 @@ pub enum InstructionToken<'a> {
     Label(String, &'a str),
     Breakpoint(&'a str),
     TypeHint(TypeHint, &'a str),
+    AssertionContext(AssertionContext, &'a str),
 }
 
 impl<'a> Display for ParseError<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
-        write!(f, "{}", pretty_print_error(self.input, self.errors.clone()))
+        let mut errors = self.errors.clone();
+        if matches!(
+            errors.errors.first(),
+            Some((_, VerboseErrorKind::Nom(ErrorKind::Fail | ErrorKind::Eof)))
+        ) {
+            errors.errors.remove(0);
+        }
+
+        write!(f, "{}", nom::error::convert_error(self.input, errors))
     }
 }
 
@@ -60,23 +76,21 @@ impl<'a> Error for ParseError<'a> {}
 impl<'a> InstructionToken<'a> {
     pub fn token_str(&self) -> &'a str {
         match self {
-            InstructionToken::Instruction(_, token_str) => token_str,
-            InstructionToken::Label(_, token_str) => token_str,
-            InstructionToken::Breakpoint(token_str) => token_str,
-            InstructionToken::TypeHint(_, token_str) => token_str,
+            Self::Instruction(_, token_str) => token_str,
+            Self::Label(_, token_str) => token_str,
+            Self::Breakpoint(token_str) => token_str,
+            Self::TypeHint(_, token_str) => token_str,
+            Self::AssertionContext(_, token_str) => token_str,
         }
     }
 
     pub fn to_labelled_instruction(&self) -> LabelledInstruction {
         match self {
-            InstructionToken::Instruction(instr, _) => {
-                LabelledInstruction::Instruction(instr.to_owned())
-            }
-            InstructionToken::Label(label, _) => LabelledInstruction::Label(label.to_owned()),
-            InstructionToken::Breakpoint(_) => LabelledInstruction::Breakpoint,
-            InstructionToken::TypeHint(type_hint, _) => {
-                LabelledInstruction::TypeHint(type_hint.to_owned())
-            }
+            Self::Instruction(instr, _) => LabelledInstruction::Instruction(instr.to_owned()),
+            Self::Label(label, _) => LabelledInstruction::Label(label.to_owned()),
+            Self::Breakpoint(_) => LabelledInstruction::Breakpoint,
+            Self::TypeHint(type_hint, _) => LabelledInstruction::TypeHint(type_hint.to_owned()),
+            Self::AssertionContext(ctx, _) => LabelledInstruction::AssertionContext(ctx.to_owned()),
         }
     }
 }
@@ -88,34 +102,14 @@ pub fn to_labelled_instructions(instructions: &[InstructionToken]) -> Vec<Labell
         .collect()
 }
 
-/// Pretty-print a parse error
-///
-/// This function wraps `convert_error()`.
-///
-/// `VerboseError` accumulates each nested contexts in which an error occurs.
-///
-/// Every `fail()` is wrapped in a `context()`, so by skipping the root `ErrorKind::Fail`s
-/// and `ErrorKind::Eof`s, manually triggered custom errors are only shown in the output
-/// once with the `context()` message.
-fn pretty_print_error(s: &str, mut e: VerboseError<&str>) -> String {
-    let (_root_s, root_error) = e.errors[0].clone();
-    if matches!(
-        root_error,
-        VerboseErrorKind::Nom(ErrorKind::Fail | ErrorKind::Eof)
-    ) {
-        e.errors.remove(0);
-    }
-    nom::error::convert_error(s, e)
-}
-
 /// Parse a program
 pub(crate) fn parse(input: &str) -> Result<Vec<InstructionToken>, ParseError> {
-    let instructions = match tokenize(input).finish() {
-        Ok((_, instructions)) => Ok(instructions),
-        Err(errors) => Err(ParseError { input, errors }),
-    }?;
+    let (_, instructions) = tokenize(input)
+        .finish()
+        .map_err(|errors| ParseError { input, errors })?;
 
     ensure_no_missing_or_duplicate_labels(input, &instructions)?;
+    ensure_assertion_context_is_matched_with_assertion(input, &instructions)?;
 
     Ok(instructions)
 }
@@ -125,7 +119,7 @@ fn ensure_no_missing_or_duplicate_labels<'a>(
     instructions: &[InstructionToken<'a>],
 ) -> Result<(), ParseError<'a>> {
     // identify all and duplicate labels
-    let mut seen_labels: HashMap<&str, InstructionToken> = HashMap::default();
+    let mut seen_labels = HashMap::<_, InstructionToken>::default();
     let mut duplicate_labels = HashSet::default();
     for instruction in instructions {
         if let InstructionToken::Label(label, _) = instruction {
@@ -189,21 +183,59 @@ fn errors_for_labels_with_context(
         .collect()
 }
 
+fn ensure_assertion_context_is_matched_with_assertion<'a>(
+    input: &'a str,
+    instructions: &[InstructionToken<'a>],
+) -> Result<(), ParseError<'a>> {
+    type IT<'a> = InstructionToken<'a>;
+
+    let mut accept_id = false;
+    let mut incorrectly_placed_contexts = HashSet::new();
+
+    for instruction in instructions {
+        match instruction {
+            IT::Instruction(AnInstruction::Assert | AnInstruction::AssertVector, _) => {
+                accept_id = true;
+            }
+            IT::AssertionContext(AssertionContext::ID(_), _) => {
+                if !accept_id {
+                    incorrectly_placed_contexts.insert(instruction.clone());
+                }
+                accept_id = false;
+            }
+
+            // any assertion context must immediately follow an `assert` or `assert_vector`
+            _ => accept_id = false,
+        }
+    }
+
+    let parser_context = VerboseErrorKind::Context("incorrectly placed assertion context");
+    let errors = errors_for_labels_with_context(incorrectly_placed_contexts, parser_context);
+
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        let errors = VerboseError { errors };
+        Err(ParseError { input, errors })
+    }
+}
+
 /// Auxiliary type alias: `IResult` defaults to `nom::error::Error` as concrete
 /// error type, but we want `nom::error::VerboseError` as it allows `context()`.
 type ParseResult<'input, Out> = IResult<&'input str, Out, VerboseError<&'input str>>;
 
 pub fn tokenize(s: &str) -> ParseResult<Vec<InstructionToken>> {
     let (s, _) = comment_or_whitespace0(s)?;
-    let (s, instructions) = many0(alt((label, labelled_instruction, breakpoint, type_hint)))(s)?;
+    let (s, instructions) = many0(alt((
+        label,
+        labelled_instruction,
+        breakpoint,
+        type_hint,
+        assertion_context,
+    )))(s)?;
     let (s, _) = nom::error::context("expecting label, instruction or eof", eof)(s)?;
 
     Ok((s, instructions))
-}
-
-fn labelled_instruction(s_instr: &str) -> ParseResult<InstructionToken> {
-    let (s, instr) = an_instruction(s_instr)?;
-    Ok((s, InstructionToken::Instruction(instr, s_instr)))
 }
 
 fn label(label_s: &str) -> ParseResult<InstructionToken> {
@@ -211,14 +243,12 @@ fn label(label_s: &str) -> ParseResult<InstructionToken> {
     let (s, _) = whitespace0(s)?; // whitespace between label and ':' is allowed
     let (s, _) = token0(":")(s)?; // don't require space after ':'
 
-    // Checking if `<label>:` is an instruction must happen after parsing `:`, since otherwise
-    // `cut` will reject the alternative parser of `label`, being `labelled_instruction`, which
-    // *is* allowed to contain valid instruction names.
-    if is_instruction_name(&addr) {
-        return cut(nom::error::context(
-            "label cannot be named after instruction",
-            fail,
-        ))(label_s);
+    // Checking if `<label>:` is an instruction must happen after parsing `:`, since
+    // otherwise `cut` will reject the alternative parsers of `label`, like
+    // `labelled_instruction`, where valid instructions names *are* allowed.
+    if is_illegal_label(&addr) {
+        let failure_reason = "label must be neither instruction nor keyword";
+        return cut(nom::error::context(failure_reason, fail))(label_s);
     }
 
     Ok((s, InstructionToken::Label(addr, label_s)))
@@ -227,6 +257,11 @@ fn label(label_s: &str) -> ParseResult<InstructionToken> {
 fn breakpoint(breakpoint_s: &str) -> ParseResult<InstructionToken> {
     let (s, _) = token1("break")(breakpoint_s)?;
     Ok((s, InstructionToken::Breakpoint(breakpoint_s)))
+}
+
+fn labelled_instruction(s_instr: &str) -> ParseResult<InstructionToken> {
+    let (s, instr) = an_instruction(s_instr)?;
+    Ok((s, InstructionToken::Instruction(instr, s_instr)))
 }
 
 fn an_instruction(s: &str) -> ParseResult<AnInstruction<String>> {
@@ -341,8 +376,8 @@ fn an_instruction(s: &str) -> ParseResult<AnInstruction<String>> {
     ))(s)
 }
 
-fn is_instruction_name(s: &str) -> bool {
-    ALL_INSTRUCTION_NAMES.contains(&s)
+fn is_illegal_label(s: &str) -> bool {
+    ALL_INSTRUCTION_NAMES.contains(&s) || KEYWORDS.contains(&s)
 }
 
 fn instruction<'a>(
@@ -437,19 +472,17 @@ fn call_instruction<'a>() -> impl Fn(&'a str) -> ParseResult<AnInstruction<Strin
     };
 
     move |s: &'a str| {
-        let (s, addr) = alt((call_syntax, bracket_syntax))(s)?;
+        let (s, label) = alt((call_syntax, bracket_syntax))(s)?;
 
         // This check cannot be moved into `label_addr`, since `label_addr` is shared
         // between the scenarios `<label>:` and `call <label>`; the former requires
         // parsing the `:` before rejecting a possible instruction name in the label.
-        if is_instruction_name(&addr) {
-            return cut(nom::error::context(
-                "label cannot be named after instruction",
-                fail,
-            ))(s);
+        if is_illegal_label(&label) {
+            let failure_reason = "label must be neither instruction nor keyword";
+            return cut(nom::error::context(failure_reason, fail))(s);
         }
 
-        Ok((s, AnInstruction::Call(addr)))
+        Ok((s, AnInstruction::Call(label)))
     }
 }
 
@@ -527,9 +560,8 @@ fn stack_register(s: &str) -> ParseResult<OpStackElement> {
         "14" => OpStackElement::ST14,
         "15" => OpStackElement::ST15,
         _ => {
-            return nom::error::context("using an out-of-bounds stack register (0-15 exist)", fail)(
-                s,
-            )
+            let failure_reason = "using an out-of-bounds stack register (0-15 exist)";
+            return nom::error::context(failure_reason, fail)(s);
         }
     };
     let (s, _) = comment_or_whitespace1(s)?;
@@ -654,10 +686,8 @@ fn type_hint(s_type_hint: &str) -> ParseResult<InstructionToken> {
 
     let length = match maybe_range_end {
         Some(range_end) if range_end <= range_start => {
-            return cut(nom::error::context(
-                "range end must be greater than range start",
-                fail,
-            ))(s)
+            let failure_reason = "range end must be greater than range start";
+            return cut(nom::error::context(failure_reason, fail))(s);
         }
         Some(range_end) => range_end - range_start,
         None => 1,
@@ -737,6 +767,22 @@ fn parse_str_to_usize(s: &str) -> ParseResult<usize> {
     }
 }
 
+fn assertion_context(s_ctx: &str) -> ParseResult<InstructionToken> {
+    let (s, assertion_context) = assertion_context_id(s_ctx)?;
+    let assertion_context = InstructionToken::AssertionContext(assertion_context, s_ctx);
+
+    Ok((s, assertion_context))
+}
+
+fn assertion_context_id(s_ctx: &str) -> ParseResult<AssertionContext> {
+    let (s, _) = token1("error_id")(s_ctx)?;
+    let (s, id) = nom::character::complete::i128(s)?;
+    let (s, _) = comment_or_whitespace1(s)?;
+
+    let assertion_context = AssertionContext::ID(id);
+    Ok((s, assertion_context))
+}
+
 pub(crate) fn build_label_to_address_map(program: &[LabelledInstruction]) -> HashMap<String, u64> {
     let mut label_map = HashMap::new();
     let mut instruction_pointer = 0;
@@ -809,12 +855,14 @@ pub(crate) mod tests {
 
     use super::*;
 
+    #[must_use]
     struct TestCase<'a> {
         input: &'a str,
         expected: Vec<Instruction>,
         message: &'static str,
     }
 
+    #[must_use]
     struct NegativeTestCase<'a> {
         input: &'a str,
         expected_error: &'static str,
@@ -838,26 +886,28 @@ pub(crate) mod tests {
 
     impl<'a> NegativeTestCase<'a> {
         fn run(self) {
-            let result = parse(self.input);
-            if result.is_ok() {
-                eprintln!("parser input: {}", self.input);
-                eprintln!("parser output: {:?}", result.unwrap());
-                panic!("parser should fail, but didn't: {}", self.message);
+            let Self {
+                input,
+                expected_error,
+                expected_error_count,
+                message,
+            } = self;
+
+            let parse_result = parse(input);
+            if let Ok(instructions) = parse_result {
+                eprintln!("parser input: {input}");
+                eprintln!("parser output: {instructions:?}");
+                panic!("parser should fail, but didn't: {message}");
             }
 
-            let error = result.unwrap_err();
-            let actual_error_message = format!("{error}");
-            let actual_error_count = actual_error_message
-                .match_indices(self.expected_error)
-                .count();
-            if self.expected_error_count != actual_error_count {
-                eprintln!("Actual error message:");
-                eprintln!("{actual_error_message}");
-                assert_eq!(
-                    self.expected_error_count, actual_error_count,
-                    "parser should report '{}' {} times: {}",
-                    self.expected_error, self.expected_error_count, self.message
-                )
+            let actual_error = parse_result.map_err(|e| e.to_string()).unwrap_err();
+            let actual_error_count = actual_error.match_indices(expected_error).count();
+            if expected_error_count != actual_error_count {
+                eprintln!("Expected error message ({expected_error_count} times):");
+                eprintln!("{expected_error}");
+                eprintln!("Actual error message (found {actual_error_count} times):");
+                eprintln!("{actual_error}");
+                panic!("Additional context: {message}");
             }
         }
     }
@@ -1058,7 +1108,7 @@ pub(crate) mod tests {
         // FIXME: Increase coverage of negative tests for label/keyword overlap.
         NegativeTestCase {
             input: "pop: call pop",
-            expected_error: "label cannot be named after instruction",
+            expected_error: "label must be neither instruction nor keyword",
             expected_error_count: 1,
             message: "label names may not overlap with instruction names",
         }
@@ -1209,7 +1259,7 @@ pub(crate) mod tests {
     fn parse_type_hint_with_range_and_offset_and_missing_variable_name() {
         NegativeTestCase {
             input: "hint : Type = stack[2..5]",
-            expected_error: "expecting label, instruction or eof",
+            expected_error: "label must be neither instruction nor keyword",
             expected_error_count: 1,
             message: "parse type hint with range and offset and missing variable name",
         }
@@ -1238,6 +1288,186 @@ pub(crate) mod tests {
         .run();
     }
 
+    #[test]
+    fn parse_simple_assertion_contexts() {
+        TestCase {
+            input: "assert",
+            expected: vec![Instruction::Assert],
+            message: "naked assert",
+        }
+        .run();
+        TestCase {
+            input: "assert_vector",
+            expected: vec![Instruction::AssertVector],
+            message: "naked assert_vector",
+        }
+        .run();
+
+        TestCase {
+            input: "assert error_id 42",
+            expected: vec![Instruction::Assert],
+            message: "assert, then id",
+        }
+        .run();
+        TestCase {
+            input: "assert_vector error_id 42",
+            expected: vec![Instruction::AssertVector],
+            message: "assert_vector, then id",
+        }
+        .run();
+
+        TestCase {
+            input: "assert error_id -42",
+            expected: vec![Instruction::Assert],
+            message: "assert, then negative id",
+        }
+        .run();
+        TestCase {
+            input: "assert_vector error_id -42",
+            expected: vec![Instruction::AssertVector],
+            message: "assert_vector, then negative id",
+        }
+        .run();
+
+        TestCase {
+            input: "assert error_id 42 nop",
+            expected: vec![Instruction::Assert, Instruction::Nop],
+            message: "assert, then id, then nop",
+        }
+        .run();
+        TestCase {
+            input: "assert_vector error_id 42 nop",
+            expected: vec![Instruction::AssertVector, Instruction::Nop],
+            message: "assert_vector, then id, then nop",
+        }
+        .run();
+    }
+
+    #[test]
+    fn assertion_context_error_id_can_handle_edge_case_ids() {
+        let instructions = [
+            ("assert", Instruction::Assert),
+            ("assert_vector", Instruction::AssertVector),
+        ];
+        let ids = [i128::MIN, -1, 0, 1, i128::MAX];
+
+        for ((instruction_str, instruction), id) in instructions.into_iter().cartesian_product(ids)
+        {
+            TestCase {
+                input: &format!("{instruction_str} error_id {id}"),
+                expected: vec![instruction],
+                message: "assert, then edge case id",
+            }
+            .run();
+        }
+    }
+
+    #[test]
+    fn assertion_context_error_id_fails_on_too_large_error_ids() {
+        NegativeTestCase {
+            input: "assert error_id -170141183460469231731687303715884105729",
+            expected_error: "expecting label, instruction or eof",
+            expected_error_count: 1,
+            message: "error id smaller than i128::MIN",
+        }
+        .run();
+        NegativeTestCase {
+            input: "assert error_id 170141183460469231731687303715884105728",
+            expected_error: "expecting label, instruction or eof",
+            expected_error_count: 1,
+            message: "error id larger than i128::MAX",
+        }
+        .run();
+    }
+
+    #[proptest]
+    fn assertion_context_error_id_can_handle_any_valid_id(id: i128) {
+        TestCase {
+            input: &format!("assert error_id {id}"),
+            expected: vec![Instruction::Assert],
+            message: "assert, then random id",
+        }
+        .run();
+    }
+
+    #[test]
+    fn parse_erroneous_assertion_contexts_for_assert() {
+        NegativeTestCase {
+            input: "assert error_id",
+            expected_error: "expecting label, instruction or eof",
+            expected_error_count: 1,
+            message: "missing id after keyword `error_id`",
+        }
+        .run();
+        NegativeTestCase {
+            input: "assert error id 42",
+            expected_error: "expecting label, instruction or eof",
+            expected_error_count: 1,
+            message: "incorrect keyword `error id`",
+        }
+        .run();
+        NegativeTestCase {
+            input: "error_id 42",
+            expected_error: "incorrectly placed assertion context",
+            expected_error_count: 1,
+            message: "standalone assertion context",
+        }
+        .run();
+        NegativeTestCase {
+            input: "error_id 42 error_id 42",
+            expected_error: "incorrectly placed assertion context",
+            expected_error_count: 2,
+            message: "multiple standalone assertion contexts",
+        }
+        .run();
+        NegativeTestCase {
+            input: "nop error_id 42",
+            expected_error: "incorrectly placed assertion context",
+            expected_error_count: 1,
+            message: "error id without assertion",
+        }
+        .run();
+        NegativeTestCase {
+            input: "assert error_id 42 error_id 1337",
+            expected_error: "incorrectly placed assertion context",
+            expected_error_count: 1,
+            message: "multiple error ids for the same assertion",
+        }
+        .run();
+        NegativeTestCase {
+            input: "assert_vector error_id 42 error_id 1337",
+            expected_error: "incorrectly placed assertion context",
+            expected_error_count: 1,
+            message: "multiple error ids for the same vector assertion",
+        }
+        .run();
+        NegativeTestCase {
+            input: "error_id 42 assert",
+            expected_error: "incorrectly placed assertion context",
+            expected_error_count: 1,
+            message: "error id precedes assertion",
+        }
+        .run();
+        NegativeTestCase {
+            input: "error_id 42 assert error_id 1337",
+            expected_error: "incorrectly placed assertion context",
+            expected_error_count: 1,
+            message: "first error id precedes assertion",
+        }
+        .run();
+    }
+
+    #[proptest]
+    fn assertion_context_error_id_fails_for_invalid_id(
+        #[strategy(proptest::strategy::Union::new(["assert", "assert_vector"]))]
+        instruction: String,
+        #[filter(#id.parse::<i128>().is_err())] id: String,
+    ) {
+        // not using `NegativeTest`: different `id`s trigger different errors
+        let input = format!("{instruction} error_id {id}");
+        prop_assert!(parse(&input).is_err());
+    }
+
     #[proptest]
     fn type_hint_to_string_to_type_hint_is_identity(#[strategy(arb())] type_hint: TypeHint) {
         let type_hint_string = type_hint.to_string();
@@ -1248,6 +1478,19 @@ pub(crate) mod tests {
         let first_labelled_instruction = labelled_instructions[0].clone();
         let_assert!(LabelledInstruction::TypeHint(parsed_type_hint) = first_labelled_instruction);
         prop_assert_eq!(type_hint, parsed_type_hint);
+    }
+
+    #[proptest]
+    fn assertion_context_to_string_to_assertion_context_is_identity(
+        #[strategy(arb())] context: AssertionContext,
+    ) {
+        let assert_with_context = format!("assert {context}");
+        let instruction_tokens = parse(&assert_with_context)
+            .map_err(|err| TestCaseError::Fail(format!("{err}").into()))?;
+        let labelled_instructions = to_labelled_instructions(&instruction_tokens);
+        prop_assert_eq!(2, labelled_instructions.len());
+        let_assert!(LabelledInstruction::AssertionContext(parsed) = &labelled_instructions[1]);
+        prop_assert_eq!(&context, parsed);
     }
 
     #[test]

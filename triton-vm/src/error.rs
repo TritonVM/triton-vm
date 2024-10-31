@@ -254,7 +254,20 @@ mod tests {
     fn assert_false() {
         let program = triton_program!(push 0 assert halt);
         let_assert!(Err(err) = VM::run(program, [].into(), [].into()));
-        let_assert!(InstructionError::AssertionFailed = err.source);
+        let_assert!(InstructionError::AssertionFailed(error) = err.source);
+        assert!(bfe!(1) == error.expected);
+        assert!(bfe!(0) == error.actual);
+        assert!(error.id.is_none());
+    }
+
+    #[test]
+    fn assert_false_with_assertion_context() {
+        let program = triton_program!(push 0 assert error_id 42 halt);
+        let_assert!(Err(err) = VM::run(program, [].into(), [].into()));
+        let_assert!(InstructionError::AssertionFailed(err) = err.source);
+        assert!(bfe!(1) == err.expected);
+        assert!(bfe!(0) == err.actual);
+        assert!(Some(42) == err.id);
     }
 
     #[test]
@@ -265,8 +278,48 @@ mod tests {
             assert_vector halt
         };
         let_assert!(Err(err) = VM::run(program, [].into(), [].into()));
-        let_assert!(InstructionError::VectorAssertionFailed(index) = err.source);
+        let_assert!(InstructionError::VectorAssertionFailed(index, err) = err.source);
         assert!(1 == index);
+        assert!(bfe!(10) == err.expected);
+        assert!(bfe!(1) == err.actual);
+        assert!(None == err.id);
+    }
+
+    #[proptest]
+    fn assertion_context_error_id_is_propagated_correctly(
+        #[filter(#actual != 1)] actual: i64,
+        error_id: Option<i128>,
+    ) {
+        let program = if let Some(id) = error_id {
+            triton_program! {push {actual} assert error_id {id}}
+        } else {
+            triton_program! {push {actual} assert}
+        };
+        let_assert!(Err(err) = VM::run(program, [].into(), [].into()));
+        let_assert!(InstructionError::AssertionFailed(err) = err.source);
+        prop_assert_eq!(bfe!(1), err.expected);
+        prop_assert_eq!(bfe!(actual), err.actual);
+        prop_assert_eq!(error_id, err.id);
+    }
+
+    #[proptest]
+    fn triggering_assertion_failure_results_in_expected_error_id(
+        #[strategy(0_usize..5)] failure_index: usize,
+    ) {
+        let mut almost_all_ones = [1; 5];
+        almost_all_ones[failure_index] = 0;
+
+        let program = triton_program! {
+            push {almost_all_ones[0]} assert error_id 0
+            push {almost_all_ones[1]} assert error_id 1
+            push {almost_all_ones[2]} assert error_id 2
+            push {almost_all_ones[3]} assert error_id 3
+            push {almost_all_ones[4]} assert error_id 4
+        };
+        let_assert!(Err(err) = VM::run(program, [].into(), [].into()));
+        let_assert!(InstructionError::AssertionFailed(err) = err.source);
+        let expected_error_id = i128::try_from(failure_index)?;
+        prop_assert_eq!(expected_error_id, err.id.unwrap());
     }
 
     #[proptest]
@@ -276,30 +329,34 @@ mod tests {
         #[strategy(arb())]
         #[filter(#test_vector[#disturbance_index] != #random_element)]
         random_element: BFieldElement,
+        error_id: i128,
     ) {
         let mut disturbed_vector = test_vector;
         disturbed_vector[disturbance_index] = random_element;
 
         let program = triton_program! {
-            push {test_vector[4]}
-            push {test_vector[3]}
-            push {test_vector[2]}
-            push {test_vector[1]}
-            push {test_vector[0]}
-
             push {disturbed_vector[4]}
             push {disturbed_vector[3]}
             push {disturbed_vector[2]}
             push {disturbed_vector[1]}
             push {disturbed_vector[0]}
 
-            assert_vector
+            push {test_vector[4]}
+            push {test_vector[3]}
+            push {test_vector[2]}
+            push {test_vector[1]}
+            push {test_vector[0]}
+
+            assert_vector error_id {error_id}
             halt
         };
 
         let_assert!(Err(err) = VM::run(program, [].into(), [].into()));
-        let_assert!(InstructionError::VectorAssertionFailed(index) = err.source);
+        let_assert!(InstructionError::VectorAssertionFailed(index, err) = err.source);
         prop_assert_eq!(disturbance_index, index);
+        prop_assert_eq!(test_vector[index], err.expected, "unequal “expected”");
+        prop_assert_eq!(disturbed_vector[index], err.actual, "unequal “actual”");
+        prop_assert_eq!(Some(error_id), err.id);
     }
 
     #[test]

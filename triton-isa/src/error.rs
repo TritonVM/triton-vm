@@ -1,3 +1,4 @@
+pub use crate::instruction::AssertionError;
 pub use crate::instruction::InstructionError;
 pub use crate::op_stack::NumberOfWordsError;
 pub use crate::op_stack::OpStackElementError;

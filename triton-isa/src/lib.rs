@@ -333,6 +333,7 @@ mod tests {
     fn public_types_implement_usual_auto_traits() {
         fn implements_auto_traits<T: Sized + Send + Sync + Unpin>() {}
 
+        implements_auto_traits::<error::AssertionError>();
         implements_auto_traits::<error::InstructionError>();
         implements_auto_traits::<error::NumberOfWordsError>();
         implements_auto_traits::<error::OpStackElementError>();

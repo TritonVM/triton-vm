@@ -16,6 +16,7 @@ use thiserror::Error;
 use twenty_first::prelude::*;
 
 use crate::instruction::AnInstruction;
+use crate::instruction::AssertionContext;
 use crate::instruction::Instruction;
 use crate::instruction::InstructionError;
 use crate::instruction::LabelledInstruction;
@@ -39,8 +40,7 @@ use crate::parser::ParseError;
 pub struct Program {
     pub instructions: Vec<Instruction>,
     address_to_label: HashMap<u64, String>,
-    breakpoints: Vec<bool>,
-    type_hints: HashMap<u64, Vec<TypeHint>>,
+    debug_information: DebugInformation,
 }
 
 impl Display for Program {
@@ -106,8 +106,7 @@ impl BFieldCodec for Program {
         Ok(Box::new(Program {
             instructions,
             address_to_label: HashMap::default(),
-            breakpoints: vec![],
-            type_hints: HashMap::default(),
+            debug_information: DebugInformation::default(),
         }))
     }
 
@@ -136,6 +135,14 @@ impl<'a> Arbitrary<'a> for Program {
                     _ => false,
                 })
         };
+        let is_assertion = |maybe_instruction: &_| {
+            matches!(
+                maybe_instruction,
+                LabelledInstruction::Instruction(
+                    AnInstruction::Assert | AnInstruction::AssertVector
+                )
+            )
+        };
 
         let mut labelled_instructions = vec![];
         for _ in 0..u.arbitrary_len::<LabelledInstruction>()? {
@@ -143,26 +150,35 @@ impl<'a> Arbitrary<'a> for Program {
             if contains_label(&labelled_instructions, &labelled_instruction) {
                 continue;
             }
+            if let LabelledInstruction::AssertionContext(_) = labelled_instruction {
+                // assertion context must come after an assertion
+                continue;
+            }
+
+            let is_assertion = is_assertion(&labelled_instruction);
             labelled_instructions.push(labelled_instruction);
+
+            if is_assertion && u.arbitrary()? {
+                let assertion_context = LabelledInstruction::AssertionContext(u.arbitrary()?);
+                labelled_instructions.push(assertion_context);
+            }
         }
 
-        let call_targets = labelled_instructions
+        let all_call_targets = labelled_instructions
             .iter()
             .filter_map(|instruction| match instruction {
                 LabelledInstruction::Instruction(AnInstruction::Call(target)) => Some(target),
                 _ => None,
             })
             .unique();
-        let additional_labels = call_targets
+        let labels_that_are_called_but_not_declared = all_call_targets
             .map(|target| LabelledInstruction::Label(target.clone()))
+            .filter(|label| !contains_label(&labelled_instructions, label))
             .collect_vec();
 
-        for additional_label in additional_labels {
-            if contains_label(&labelled_instructions, &additional_label) {
-                continue;
-            }
+        for label in labels_that_are_called_but_not_declared {
             let insertion_index = u.choose_index(labelled_instructions.len() + 1)?;
-            labelled_instructions.insert(insertion_index, additional_label);
+            labelled_instructions.insert(insertion_index, label);
         }
 
         Ok(Program::new(&labelled_instructions))
@@ -199,20 +215,26 @@ impl IntoIterator for Program {
     }
 }
 
+#[derive(Debug, Default, Clone, Eq, PartialEq, Serialize, Deserialize, Arbitrary, GetSize)]
+struct DebugInformation {
+    breakpoints: Vec<bool>,
+    type_hints: HashMap<u64, Vec<TypeHint>>,
+    assertion_context: HashMap<u64, AssertionContext>,
+}
+
 impl Program {
     pub fn new(labelled_instructions: &[LabelledInstruction]) -> Self {
         let label_to_address = parser::build_label_to_address_map(labelled_instructions);
         let instructions =
             parser::turn_labels_into_addresses(labelled_instructions, &label_to_address);
         let address_to_label = Self::flip_map(label_to_address);
-        let (breakpoints, type_hints) = Self::extract_debug_information(labelled_instructions);
+        let debug_information = Self::extract_debug_information(labelled_instructions);
 
-        assert_eq!(instructions.len(), breakpoints.len());
+        debug_assert_eq!(instructions.len(), debug_information.breakpoints.len());
         Program {
             instructions,
             address_to_label,
-            breakpoints,
-            type_hints,
+            debug_information,
         }
     }
 
@@ -222,29 +244,34 @@ impl Program {
 
     fn extract_debug_information(
         labelled_instructions: &[LabelledInstruction],
-    ) -> (Vec<bool>, HashMap<u64, Vec<TypeHint>>) {
-        let mut breakpoints = vec![];
-        let mut type_hints = HashMap::<_, Vec<_>>::new();
-        let mut break_before_next_instruction = false;
-
+    ) -> DebugInformation {
         let mut address = 0;
+        let mut break_before_next_instruction = false;
+        let mut debug_info = DebugInformation::default();
         for instruction in labelled_instructions {
             match instruction {
                 LabelledInstruction::Instruction(instruction) => {
-                    breakpoints.extend(vec![break_before_next_instruction; instruction.size()]);
+                    let new_breakpoints = vec![break_before_next_instruction; instruction.size()];
+                    debug_info.breakpoints.extend(new_breakpoints);
                     break_before_next_instruction = false;
                     address += instruction.size() as u64;
                 }
                 LabelledInstruction::Label(_) => (),
                 LabelledInstruction::Breakpoint => break_before_next_instruction = true,
-                LabelledInstruction::TypeHint(type_hint) => match type_hints.entry(address) {
-                    Entry::Occupied(mut entry) => entry.get_mut().push(type_hint.clone()),
-                    Entry::Vacant(entry) => _ = entry.insert(vec![type_hint.clone()]),
+                LabelledInstruction::TypeHint(hint) => match debug_info.type_hints.entry(address) {
+                    Entry::Occupied(mut entry) => entry.get_mut().push(hint.clone()),
+                    Entry::Vacant(entry) => entry.insert(vec![]).push(hint.clone()),
                 },
+                LabelledInstruction::AssertionContext(ctx) => {
+                    let address_of_associated_assertion = address.saturating_sub(1);
+                    debug_info
+                        .assertion_context
+                        .insert(address_of_associated_assertion, ctx.clone());
+                }
             }
         }
 
-        (breakpoints, type_hints)
+        debug_info
     }
 
     /// Create a `Program` by parsing source code.
@@ -277,6 +304,9 @@ impl Program {
                 labelled_instructions.push(LabelledInstruction::Breakpoint);
             }
             labelled_instructions.push(LabelledInstruction::Instruction(instruction));
+            if let Some(context) = self.assertion_context_at(address) {
+                labelled_instructions.push(LabelledInstruction::AssertionContext(context));
+            }
 
             for _ in 1..instruction_size {
                 instruction_stream.next();
@@ -308,11 +338,26 @@ impl Program {
 
     pub fn is_breakpoint(&self, address: u64) -> bool {
         let address: usize = address.try_into().unwrap();
-        self.breakpoints.get(address).unwrap_or(&false).to_owned()
+        self.debug_information
+            .breakpoints
+            .get(address)
+            .copied()
+            .unwrap_or_default()
     }
 
     pub fn type_hints_at(&self, address: u64) -> Vec<TypeHint> {
-        self.type_hints.get(&address).cloned().unwrap_or_default()
+        self.debug_information
+            .type_hints
+            .get(&address)
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    pub fn assertion_context_at(&self, address: u64) -> Option<AssertionContext> {
+        self.debug_information
+            .assertion_context
+            .get(&address)
+            .cloned()
     }
 
     /// Turn the program into a sequence of `BFieldElement`s. Each instruction is encoded as its
@@ -363,7 +408,7 @@ impl Program {
 }
 
 #[non_exhaustive]
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Error)]
+#[derive(Debug, Clone, Eq, PartialEq, Error)]
 pub enum ProgramDecodingError {
     #[error("sequence to decode is empty")]
     EmptySequence,
@@ -540,7 +585,7 @@ mod tests {
 
     #[proptest]
     fn printed_program_can_be_parsed_again(#[strategy(arb())] program: Program) {
-        parser::parse(&program.to_string()).unwrap();
+        parser::parse(&program.to_string())?;
     }
 
     struct TypeHintTestCase {
@@ -655,6 +700,17 @@ mod tests {
     }
 
     #[test]
+    fn assertion_context_is_propagated_into_debug_info() {
+        let program = triton_program! {push 1000 assert error_id 17 halt};
+        //                              ↑0   ↑1   ↑2
+
+        let assertion_contexts = program.debug_information.assertion_context;
+        assert!(1 == assertion_contexts.len());
+        let_assert!(AssertionContext::ID(error_id) = &assertion_contexts[&2]);
+        assert!(17 == *error_id);
+    }
+
+    #[test]
     fn printing_program_includes_debug_information() {
         let source_code = "\
             call foo\n\
@@ -680,6 +736,8 @@ mod tests {
             skiz\n\
             split\n\
             break\n\
+            assert\n\
+            error_id 1337\n\
             return\n\
         ";
         let program = Program::from_code(source_code).unwrap();

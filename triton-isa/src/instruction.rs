@@ -111,6 +111,8 @@ pub enum LabelledInstruction {
     Breakpoint,
 
     TypeHint(TypeHint),
+
+    AssertionContext(AssertionContext),
 }
 
 /// A hint about a range of stack elements. Helps debugging programs written for Triton VM.
@@ -133,42 +135,13 @@ pub struct TypeHint {
     pub variable_name: String,
 }
 
-impl Display for TypeHint {
-    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
-        let variable = &self.variable_name;
-
-        let format_type = |t| format!(": {t}");
-        let maybe_type = self.type_name.as_ref();
-        let type_name = maybe_type.map(format_type).unwrap_or_default();
-
-        let start = self.starting_index;
-        let range = match self.length {
-            1 => format!("{start}"),
-            _ => format!("{start}..{end}", end = start + self.length),
-        };
-
-        write!(f, "hint {variable}{type_name} = stack[{range}]")
-    }
-}
-
-impl<'a> Arbitrary<'a> for TypeHint {
-    fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
-        let starting_index = u.arbitrary()?;
-        let length = u.int_in_range(1..=500)?;
-        let type_name = match u.arbitrary()? {
-            true => Some(u.arbitrary::<TypeHintTypeName>()?.into()),
-            false => None,
-        };
-        let variable_name = u.arbitrary::<TypeHintVariableName>()?.into();
-
-        let type_hint = Self {
-            starting_index,
-            length,
-            type_name,
-            variable_name,
-        };
-        Ok(type_hint)
-    }
+/// Context to help debugging failing instructions [`assert`](Instruction::Assert) or
+/// [`assert_vector`](Instruction::AssertVector).
+#[non_exhaustive]
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize, GetSize, Arbitrary)]
+pub enum AssertionContext {
+    ID(i128),
+    // Message(String),
 }
 
 impl LabelledInstruction {
@@ -187,7 +160,54 @@ impl Display for LabelledInstruction {
             LabelledInstruction::Label(label) => write!(f, "{label}:"),
             LabelledInstruction::Breakpoint => write!(f, "break"),
             LabelledInstruction::TypeHint(type_hint) => write!(f, "{type_hint}"),
+            LabelledInstruction::AssertionContext(ctx) => write!(f, "{ctx}"),
         }
+    }
+}
+
+impl Display for TypeHint {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        let variable = &self.variable_name;
+
+        let format_type = |t| format!(": {t}");
+        let maybe_type = self.type_name.as_ref();
+        let type_name = maybe_type.map(format_type).unwrap_or_default();
+
+        let start = self.starting_index;
+        let range = match self.length {
+            1 => format!("{start}"),
+            _ => format!("{start}..{end}", end = start + self.length),
+        };
+
+        write!(f, "hint {variable}{type_name} = stack[{range}]")
+    }
+}
+
+impl Display for AssertionContext {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        let Self::ID(id) = self;
+        write!(f, "error_id {id}")
+    }
+}
+
+impl<'a> Arbitrary<'a> for TypeHint {
+    fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
+        let starting_index = u.arbitrary()?;
+        let length = u.int_in_range(1..=500)?;
+        let type_name = if u.arbitrary()? {
+            Some(u.arbitrary::<TypeHintTypeName>()?.into())
+        } else {
+            None
+        };
+        let variable_name = u.arbitrary::<TypeHintVariableName>()?.into();
+
+        let type_hint = Self {
+            starting_index,
+            length,
+            type_name,
+            variable_name,
+        };
+        Ok(type_hint)
     }
 }
 
@@ -574,9 +594,9 @@ impl Instruction {
     /// Change the argument of the instruction, if it has one. Returns an `Err` if the instruction
     /// does not have an argument or if the argument is out of range.
     pub fn change_arg(self, new_arg: BFieldElement) -> Result<Self> {
-        let illegal_argument_error = InstructionError::IllegalArgument(self, new_arg);
-        let num_words = new_arg.try_into().map_err(|_| illegal_argument_error);
-        let op_stack_element = new_arg.try_into().map_err(|_| illegal_argument_error);
+        let illegal_argument_error = || InstructionError::IllegalArgument(self, new_arg);
+        let num_words = new_arg.try_into().map_err(|_| illegal_argument_error());
+        let op_stack_element = new_arg.try_into().map_err(|_| illegal_argument_error());
 
         let new_instruction = match self {
             AnInstruction::Pop(_) => AnInstruction::Pop(num_words?),
@@ -592,7 +612,7 @@ impl Instruction {
             AnInstruction::AddI(_) => AnInstruction::AddI(new_arg),
             AnInstruction::ReadIo(_) => AnInstruction::ReadIo(num_words?),
             AnInstruction::WriteIo(_) => AnInstruction::WriteIo(num_words?),
-            _ => return Err(illegal_argument_error),
+            _ => return Err(illegal_argument_error()),
         };
 
         Ok(new_instruction)
@@ -697,6 +717,7 @@ impl<'a> Arbitrary<'a> for LabelledInstruction {
             1 => return Ok(Self::Label(u.arbitrary::<InstructionLabel>()?.into())),
             2 => return Ok(Self::Breakpoint),
             3 => return Ok(Self::TypeHint(u.arbitrary()?)),
+            4 => return Ok(Self::AssertionContext(u.arbitrary()?)),
             _ => unreachable!(),
         };
         let legal_label = String::from(u.arbitrary::<InstructionLabel>()?);
@@ -787,7 +808,7 @@ impl<'a> Arbitrary<'a> for TypeHintTypeName {
 }
 
 #[non_exhaustive]
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Error)]
+#[derive(Debug, Clone, Eq, PartialEq, Error)]
 pub enum InstructionError {
     #[error("opcode {0} is invalid")]
     InvalidOpcode(u32),
@@ -804,11 +825,11 @@ pub enum InstructionError {
     #[error("jump stack is empty")]
     JumpStackIsEmpty,
 
-    #[error("assertion failed: st0 must be 1")]
-    AssertionFailed,
+    #[error("assertion failed: {0}")]
+    AssertionFailed(AssertionError),
 
-    #[error("vector assertion failed: stack[{0}] != stack[{}]", .0 + Digest::LEN)]
-    VectorAssertionFailed(usize),
+    #[error("vector assertion failed because stack[{0}] != stack[{}]: {1}", .0 + Digest::LEN)]
+    VectorAssertionFailed(usize, AssertionError),
 
     #[error("0 does not have a multiplicative inverse")]
     InverseOfZero,
@@ -836,6 +857,50 @@ pub enum InstructionError {
 
     #[error(transparent)]
     OpStackError(#[from] OpStackError),
+}
+
+/// An error giving additional context to any failed assertion.
+#[non_exhaustive]
+#[derive(Debug, Clone, Eq, PartialEq, Error)]
+pub struct AssertionError {
+    /// The [element](BFieldElement) expected by the assertion.
+    pub expected: BFieldElement,
+
+    /// The actual [element](BFieldElement) encountered when executing the assertion.
+    pub actual: BFieldElement,
+
+    /// A user-defined error ID. Only has user-defined, no inherent, semantics.
+    pub id: Option<i128>,
+    //
+    // /// A user-defined error message supplying context to the failed assertion.
+    // pub message: Option<String>,
+}
+
+impl Display for AssertionError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        if let Some(id) = self.id {
+            write!(f, "[{id}] ")?;
+        }
+        write!(f, "expected {}, got {}", self.expected, self.actual)
+    }
+}
+
+impl AssertionError {
+    pub fn new(expected: impl Into<BFieldElement>, actual: impl Into<BFieldElement>) -> Self {
+        Self {
+            expected: expected.into(),
+            actual: actual.into(),
+            id: None,
+        }
+    }
+
+    #[must_use]
+    pub fn with_context(mut self, context: AssertionContext) -> Self {
+        match context {
+            AssertionContext::ID(id) => self.id = Some(id),
+        };
+        self
+    }
 }
 
 #[cfg(test)]
