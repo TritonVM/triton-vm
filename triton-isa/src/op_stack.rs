@@ -184,7 +184,6 @@ impl Index<usize> for OpStack {
     }
 }
 
-// TODO test it
 impl Index<Range<usize>> for OpStack {
     type Output = [BFieldElement];
 
@@ -197,7 +196,6 @@ impl Index<Range<usize>> for OpStack {
     }
 }
 
-// TODO test it
 impl Index<RangeInclusive<usize>> for OpStack {
     type Output = [BFieldElement];
 
@@ -217,7 +215,6 @@ impl IndexMut<usize> for OpStack {
     }
 }
 
-// TODO test it
 impl IndexMut<Range<usize>> for OpStack {
     fn index_mut(&mut self, range: Range<usize>) -> &mut Self::Output {
         if range.end <= self.stack.len() && range.start < range.end {
@@ -228,7 +225,6 @@ impl IndexMut<Range<usize>> for OpStack {
     }
 }
 
-// TODO test it
 impl IndexMut<RangeInclusive<usize>> for OpStack {
     fn index_mut(&mut self, range: RangeInclusive<usize>) -> &mut Self::Output {
         if range.end() <= &self.stack.len() && range.start() < range.end() {
@@ -247,7 +243,6 @@ impl Index<OpStackElement> for OpStack {
     }
 }
 
-// TODO test it
 impl Index<Range<OpStackElement>> for OpStack {
     type Output = [BFieldElement];
 
@@ -261,14 +256,13 @@ impl Index<Range<OpStackElement>> for OpStack {
     }
 }
 
-// TODO test it
 impl Index<RangeInclusive<OpStackElement>> for OpStack {
     type Output = [BFieldElement];
 
     fn index(&self, range: RangeInclusive<OpStackElement>) -> &Self::Output {
         let (start, end) = (usize::from(range.start()), usize::from(range.end()));
         if end <= self.stack.len() && start < end {
-            &self.stack[start..end]
+            &self.stack[start..=end]
         } else {
             panic!("a range is out of bounds")
         }
@@ -1130,5 +1124,151 @@ mod tests {
 
         let expected_len = 2 * OpStackElement::COUNT - 1;
         prop_assert_eq!(expected_len, op_stack.len());
+    }
+
+    fn setup_op_stack() -> OpStack {
+        OpStack {
+            stack: bfe_vec![1, 2, 3, 4, 5],
+            underflow_io_sequence: vec![],
+        }
+    }
+
+    #[test]
+    fn test_opstack_index_range() {
+        let op_stack = setup_op_stack();
+
+        let actual = op_stack.index(1..3);
+
+        let expected = bfe_vec![2, 3];
+
+        // Test typical range
+        assert_eq!(actual.to_vec(), expected);
+
+        // Test boundary range
+        assert_eq!(&op_stack[0..op_stack.stack.len()], &op_stack.stack[..]);
+
+        // Test out-of-bounds range (should panic)
+        let result = std::panic::catch_unwind(|| {
+            let _ = op_stack.index(3..6);
+        });
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_opstack_index_range_inclusive() {
+        let op_stack = setup_op_stack();
+
+        let actual = op_stack.index(1..=3);
+
+        let expected = bfe_vec!(2, 3, 4);
+
+        // Test typical inclusive range
+        assert_eq!(actual.to_vec(), expected,);
+
+        // Test boundary inclusive range
+        assert_eq!(&op_stack[0..=op_stack.stack.len() - 1], &op_stack.stack[..]);
+
+        // Test out-of-bounds inclusive range (should panic)
+        let result = std::panic::catch_unwind(|| {
+            let _ = op_stack.index(2..=5);
+        });
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_opstack_index_mut_range_usize() {
+        let mut stack = setup_op_stack();
+
+        // Modify a middle range of elements
+        let range = 1..3;
+        let slice = stack.index_mut(range);
+        slice[0] = BFieldElement::new(20);
+        slice[1] = BFieldElement::new(30);
+
+        assert_eq!(
+            stack.stack,
+            vec![bfe!(1), bfe!(20), bfe!(30), bfe!(4), bfe!(5)]
+        );
+
+        // Test out-of-bounds access (should panic)
+        let result = std::panic::catch_unwind(move || {
+            let _ = stack.index_mut(3..6); // This should panic
+        });
+        assert!(result.is_err(), "Expected a panic for out-of-bounds range");
+    }
+
+    #[test]
+    fn test_opstack_index_mut_range_inclusive_usize() {
+        let mut stack = setup_op_stack();
+
+        // Modify an inclusive range of elements
+        let range = 1..=3;
+        let slice = stack.index_mut(range);
+        slice[0] = bfe!(25);
+        slice[1] = bfe!(35);
+        slice[2] = bfe!(45);
+
+        assert_eq!(
+            stack.stack,
+            vec![bfe!(1), bfe!(25), bfe!(35), bfe!(45), bfe!(5),]
+        );
+
+        // Test out-of-bounds access (should panic)
+        let result = std::panic::catch_unwind(move || {
+            let _ = stack.index_mut(3..=5); // This should panic
+        });
+        assert!(
+            result.is_err(),
+            "Expected a panic for out-of-bounds inclusive range"
+        );
+    }
+
+    #[test]
+    fn test_opstack_element_index_range() {
+        // Initialize an OpStack with some BFieldElement values
+        let op_stack = setup_op_stack();
+
+        // Define some ranges
+        let range = Range::<OpStackElement> {
+            start: OpStackElement::ST1,
+            end: OpStackElement::ST3,
+        };
+
+        // Test valid range indexing
+        let slice = op_stack.index(range);
+        assert_eq!(slice, &[bfe!(2), bfe!(3)]);
+
+        // Test out of bounds range
+        let out_of_bounds_range = Range::<OpStackElement> {
+            start: OpStackElement::ST3,
+            end: OpStackElement::ST6,
+        };
+        let result = std::panic::catch_unwind(|| op_stack.index(out_of_bounds_range));
+        assert!(result.is_err(), "Expected out of bounds panic");
+    }
+
+    #[test]
+    fn test_opstack_element_index_range_inclusive() {
+        // Initialize an OpStack with some BFieldElement values
+        let op_stack = setup_op_stack();
+
+        // Define some inclusive ranges
+        let inclusive_range =
+            RangeInclusive::<OpStackElement>::new(OpStackElement::ST1, OpStackElement::ST3);
+
+        // Test valid inclusive range indexing
+        let inclusive_slice = op_stack.index(inclusive_range);
+        assert_eq!(inclusive_slice, &[bfe!(2), bfe!(3), bfe!(4)]);
+
+        // Test out of bounds inclusive range
+        let out_of_bounds_inclusive =
+            RangeInclusive::<OpStackElement>::new(OpStackElement::ST2, OpStackElement::ST5);
+        let result = std::panic::catch_unwind(|| op_stack.index(out_of_bounds_inclusive));
+        assert!(result.is_err());
+
+        // Test single element range
+        //     let single_element_range = RangeInclusive::<OpStackElement>::new(OpStackElement::ST2, OpStackElement::ST2);
+        //     let single_element_slice = op_stack.index(single_element_range);
+        //     assert_eq!(single_element_slice, &[BFieldElement::new(3)]);
     }
 }

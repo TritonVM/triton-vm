@@ -1,0 +1,10 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 4aaff1f88a9cf5299763b9d8c18c56556418aeeccbd4bed18e6c3600edb7b911 # shrinks to input = _CannotGetStackWeightForOutOfRangeIndexArgs { index: 16 }
+cc d4911feba1af17da8508124e5019c16b94f50a263acc87a90b11fd41ffcc47a0 # shrinks to input = _CannotGetHelperVariableForOutOfRangeIndexArgs { index: 6 }
+cc fbb7a017123a4358a5596b823f694b7fa1b6894bc6ac316f1964f054b2a2bd2f # shrinks to input = _CannotGetOpStackColumnForOutOfRangeIndexArgs { index: 16 }
+cc 30aae9f964fd0d8b2baaa655c86be5fe89a1a1c32704320aa3620972ded5f67d # shrinks to input = _CannotGetIndicatorPolynomialForOutOfRangeIndexArgs { index: 16 }
