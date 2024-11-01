@@ -4,6 +4,7 @@ use std::fmt::Result as FmtResult;
 use std::num::TryFromIntError;
 use std::ops::Index;
 use std::ops::IndexMut;
+use std::ops::{Range, RangeInclusive};
 
 use arbitrary::Arbitrary;
 use get_size2::GetSize;
@@ -183,10 +184,58 @@ impl Index<usize> for OpStack {
     }
 }
 
+// TODO test it
+impl Index<Range<usize>> for OpStack {
+    type Output = [BFieldElement];
+
+    fn index(&self, range: Range<usize>) -> &Self::Output {
+        if range.end <= self.stack.len() && range.start < range.end {
+            &self.stack[range]
+        } else {
+            panic!("a range is out of bounds")
+        }
+    }
+}
+
+// TODO test it
+impl Index<RangeInclusive<usize>> for OpStack {
+    type Output = [BFieldElement];
+
+    fn index(&self, range: RangeInclusive<usize>) -> &Self::Output {
+        if range.end() <= &self.stack.len() && range.start() < range.end() {
+            &self.stack[range]
+        } else {
+            panic!("a range is out of bounds")
+        }
+    }
+}
+
 impl IndexMut<usize> for OpStack {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         let top_of_stack = self.len() - 1;
         &mut self.stack[top_of_stack - index]
+    }
+}
+
+// TODO test it
+impl IndexMut<Range<usize>> for OpStack {
+    fn index_mut(&mut self, range: Range<usize>) -> &mut Self::Output {
+        if range.end <= self.stack.len() && range.start < range.end {
+            &mut self.stack[range]
+        } else {
+            panic!("a range is out of bounds")
+        }
+    }
+}
+
+// TODO test it
+impl IndexMut<RangeInclusive<usize>> for OpStack {
+    fn index_mut(&mut self, range: RangeInclusive<usize>) -> &mut Self::Output {
+        if range.end() <= &self.stack.len() && range.start() < range.end() {
+            &mut self.stack[range]
+        } else {
+            panic!("a range is out of bounds")
+        }
     }
 }
 
@@ -198,9 +247,61 @@ impl Index<OpStackElement> for OpStack {
     }
 }
 
+// TODO test it
+impl Index<Range<OpStackElement>> for OpStack {
+    type Output = [BFieldElement];
+
+    fn index(&self, range: Range<OpStackElement>) -> &Self::Output {
+        let (start, end) = (usize::from(range.start), usize::from(range.end));
+        if end <= self.stack.len() && start < end {
+            &self.stack[start..end]
+        } else {
+            panic!("a range is out of bounds")
+        }
+    }
+}
+
+// TODO test it
+impl Index<RangeInclusive<OpStackElement>> for OpStack {
+    type Output = [BFieldElement];
+
+    fn index(&self, range: RangeInclusive<OpStackElement>) -> &Self::Output {
+        let (start, end) = (usize::from(range.start()), usize::from(range.end()));
+        if end <= self.stack.len() && start < end {
+            &self.stack[start..end]
+        } else {
+            panic!("a range is out of bounds")
+        }
+    }
+}
+
 impl IndexMut<OpStackElement> for OpStack {
     fn index_mut(&mut self, stack_element: OpStackElement) -> &mut Self::Output {
         &mut self[usize::from(stack_element)]
+    }
+}
+
+// TODO test it
+impl IndexMut<Range<OpStackElement>> for OpStack {
+    fn index_mut(&mut self, range: Range<OpStackElement>) -> &mut Self::Output {
+        let (start, end) = (usize::from(range.start), usize::from(range.end));
+        if end <= self.stack.len() && start < end {
+            &mut self.stack[start..end]
+        } else {
+            panic!("a range is out of bounds")
+        }
+    }
+}
+
+// TODO test it
+impl IndexMut<RangeInclusive<OpStackElement>> for OpStack {
+    fn index_mut(&mut self, range: RangeInclusive<OpStackElement>) -> &mut Self::Output {
+        let (start, end) = (usize::from(range.start()), usize::from(range.end()));
+        if end <= self.stack.len() && start < end {
+            &mut self.stack[start..end]
+        } else {
+            panic!("a range is out of bounds")
+        }
     }
 }
 
