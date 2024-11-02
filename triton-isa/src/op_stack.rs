@@ -1161,7 +1161,7 @@ mod tests {
         let expected = bfe_vec!(2, 3, 4);
 
         // Test typical inclusive range
-        assert_eq!(actual.to_vec(), expected,);
+        assert_eq!(actual.to_vec(), expected);
 
         // Test boundary inclusive range
         assert_eq!(&op_stack[0..=op_stack.stack.len() - 1], &op_stack.stack[..]);
