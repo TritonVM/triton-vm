@@ -275,7 +275,6 @@ impl IndexMut<OpStackElement> for OpStack {
     }
 }
 
-// TODO test it
 impl IndexMut<Range<OpStackElement>> for OpStack {
     fn index_mut(&mut self, range: Range<OpStackElement>) -> &mut Self::Output {
         let (start, end) = (usize::from(range.start), usize::from(range.end));
@@ -287,12 +286,11 @@ impl IndexMut<Range<OpStackElement>> for OpStack {
     }
 }
 
-// TODO test it
 impl IndexMut<RangeInclusive<OpStackElement>> for OpStack {
     fn index_mut(&mut self, range: RangeInclusive<OpStackElement>) -> &mut Self::Output {
         let (start, end) = (usize::from(range.start()), usize::from(range.end()));
         if end <= self.stack.len() && start < end {
-            &mut self.stack[start..end]
+            &mut self.stack[start..=end]
         } else {
             panic!("a range is out of bounds")
         }
@@ -1249,7 +1247,6 @@ mod tests {
 
     #[test]
     fn test_opstack_element_index_range_inclusive() {
-        // Initialize an OpStack with some BFieldElement values
         let op_stack = setup_op_stack();
 
         // Define some inclusive ranges
@@ -1261,14 +1258,72 @@ mod tests {
         assert_eq!(inclusive_slice, &[bfe!(2), bfe!(3), bfe!(4)]);
 
         // Test out of bounds inclusive range
-        let out_of_bounds_inclusive =
-            RangeInclusive::<OpStackElement>::new(OpStackElement::ST2, OpStackElement::ST5);
+        let out_of_bounds_inclusive = RangeInclusive::new(OpStackElement::ST2, OpStackElement::ST5);
         let result = std::panic::catch_unwind(|| op_stack.index(out_of_bounds_inclusive));
         assert!(result.is_err());
+    }
 
-        // Test single element range
-        //     let single_element_range = RangeInclusive::<OpStackElement>::new(OpStackElement::ST2, OpStackElement::ST2);
-        //     let single_element_slice = op_stack.index(single_element_range);
-        //     assert_eq!(single_element_slice, &[BFieldElement::new(3)]);
+    #[test]
+    fn test_opstack_element_index_mut_range() {
+        // Initialize an OpStack with some BFieldElement values
+        let mut op_stack = setup_op_stack();
+
+        // Define a mutable range and modify the values within it
+        let range = Range {
+            start: OpStackElement::ST1,
+            end: OpStackElement::ST4,
+        };
+
+        let slice = op_stack.index_mut(range);
+        slice[0] = bfe!(20);
+        slice[1] = bfe!(30);
+        slice[2] = bfe!(40);
+
+        // Verify modifications
+        assert_eq!(
+            op_stack.stack,
+            vec![bfe!(1), bfe!(20), bfe!(30), bfe!(40), bfe!(5),]
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "a range is out of bounds")]
+    fn test_op_stack_index_mut_range_out_of_bounds_panic() {
+        let mut op_stack = setup_op_stack();
+        // Test out of bounds range
+        let out_of_bounds_range = Range {
+            start: OpStackElement::ST3,
+            end: OpStackElement::ST6,
+        };
+        let _ = op_stack.index_mut(out_of_bounds_range);
+    }
+
+    #[test]
+    fn test_index_mut_range_inclusive() {
+        // Initialize an OpStack with some BFieldElement values
+        let mut op_stack = setup_op_stack();
+
+        // Define a mutable inclusive range and modify the values within it
+        let inclusive_range = RangeInclusive::new(OpStackElement::ST1, OpStackElement::ST3);
+        {
+            let inclusive_slice = op_stack.index_mut(inclusive_range);
+            inclusive_slice[0] = bfe!(25);
+            inclusive_slice[1] = bfe!(35);
+            inclusive_slice[2] = bfe!(45);
+        }
+
+        // Verify modifications
+        assert_eq!(
+            op_stack.stack,
+            vec![bfe!(1), bfe!(25), bfe!(35), bfe!(45), bfe!(5),]
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "range end index 6 out of range for slice of length 5")]
+    fn test_op_stack_index_mut_range_inclusive_out_of_bounds_panic() {
+        let mut op_stack = setup_op_stack();
+        let out_of_bounds_inclusive = RangeInclusive::new(OpStackElement::ST2, OpStackElement::ST5);
+        let _ = op_stack.index_mut(out_of_bounds_inclusive);
     }
 }
