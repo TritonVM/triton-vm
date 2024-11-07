@@ -34,9 +34,6 @@ pub const NUM_OP_STACK_REGISTERS: usize = OpStackElement::COUNT;
 /// [`OpStackElement::COUNT`] elements of the op-stack, and the op-stack underflow memory is the
 /// remaining elements.
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize, Arbitrary)]
-// If the op stack is empty, things have gone horribly wrong. Suppressing this lint is preferred
-// to implementing a basically useless `is_empty()` method.
-#[allow(clippy::len_without_is_empty)]
 pub struct OpStack {
     /// The underlying, actual stack. When manually accessing, be aware of reversed indexing:
     /// while `op_stack[0]` is the top of the stack, `op_stack.stack[0]` is the lowest element in
@@ -69,6 +66,9 @@ impl OpStack {
         }
     }
 
+    // If the op stack is empty, things have gone horribly wrong. Suppressing this
+    // lint is preferred to implementing a basically useless `is_empty()`.
+    #[expect(clippy::len_without_is_empty)]
     pub fn len(&self) -> usize {
         self.stack.len()
     }
