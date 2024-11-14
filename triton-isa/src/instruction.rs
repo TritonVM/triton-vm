@@ -828,7 +828,7 @@ pub enum InstructionError {
     #[error("assertion failed: {0}")]
     AssertionFailed(AssertionError),
 
-    #[error("vector assertion failed because stack[{0}] != stack[{}]: {1}", .0 + Digest::LEN)]
+    #[error("vector assertion failed because stack[{0}] != stack[{r}]: {1}", r = .0 + Digest::LEN)]
     VectorAssertionFailed(usize, AssertionError),
 
     #[error("0 does not have a multiplicative inverse")]

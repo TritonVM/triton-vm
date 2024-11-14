@@ -62,7 +62,7 @@ colored = "2.1"
 clap = { version = "4", features = ["derive", "cargo", "wrap_help", "unicode", "string"] }
 criterion = { version = "0.5", features = ["html_reports"] }
 directories = "5"
-fs-err = "2.11.0"
+fs-err = "3.0"
 get-size = "0.1.4"
 indexmap = { version = "2.5.0", features = ["rayon"] }
 insta = "1.41.0"
@@ -85,7 +85,7 @@ serde_json = "1.0"
 strum = { version = "0.26", features = ["derive"] }
 syn = "2.0"
 test-strategy = "0.4.0"
-thiserror = "1.0"
+thiserror = "2.0"
 twenty-first = "0.43.0"
 unicode-width = "0.2"
 divan = "0.1.14"
