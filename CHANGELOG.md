@@ -3,6 +3,36 @@
 All notable changes are documented in this file.
 Lines marked “(!)” indicate a breaking change.
 
+## [0.43.0](https://github.com/TritonVM/triton-vm/compare/v0.42.1..v0.43.0) - 2024-11-14
+
+### ✨ Features
+
+- *(Claim)* Accept more types for public input ([6451d764](https://github.com/TritonVM/triton-vm/commit/6451d764))
+- (!) Add field `version` to `Claim` ([48f896a7](https://github.com/TritonVM/triton-vm/commit/48f896a7))
+- Display jump stack when printing `VMState` ([0665f2f9](https://github.com/TritonVM/triton-vm/commit/0665f2f9))
+- (!) Optionally supply prover randomness seed ([923e9e11](https://github.com/TritonVM/triton-vm/commit/923e9e11))
+- (!) Introduce assertion error ([a987ebe7](https://github.com/TritonVM/triton-vm/commit/a987ebe7))
+
+### ⚡️ Performance
+
+- *(RAM)* Drop cached polynomials ([9bf637dd](https://github.com/TritonVM/triton-vm/commit/9bf637dd))
+- *(LDE)* Only interpolate if result is used ([4133b6e4](https://github.com/TritonVM/triton-vm/commit/4133b6e4))
+- Reduce prover's space requirements ([833244d0](https://github.com/TritonVM/triton-vm/commit/833244d0))
+
+### ♻️ Refactor
+
+- (!) Store debug information in `VMState` ([d9664e52](https://github.com/TritonVM/triton-vm/commit/d9664e52))
+- Introduce structs `Prover` & `Verifier` ([2f5b7a97](https://github.com/TritonVM/triton-vm/commit/2f5b7a97))
+
+### ✅ Testing
+
+- Computations are independent of caching ([ecd31083](https://github.com/TritonVM/triton-vm/commit/ecd31083))
+- Verify randomizers' large Hamming distance ([ba2e92be](https://github.com/TritonVM/triton-vm/commit/ba2e92be))
+
+### ⏱ Bench
+
+- Benchmark barycentric evaluation ([ce592a9d](https://github.com/TritonVM/triton-vm/commit/ce592a9d))
+
 ## [0.42.1](https://github.com/TritonVM/triton-vm/compare/v0.42.0..v0.42.1) - 2024-09-26
 
 ### ⚡️ Performance
