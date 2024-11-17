@@ -455,24 +455,10 @@ fn swap_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>> {
 }
 
 fn call_instruction<'a>() -> impl Fn(&'a str) -> ParseResult<AnInstruction<String>> {
-    let call_syntax = move |s: &'a str| {
-        let (s_label, _) = token1("call")(s)?; // require space before called label
-        let (s, addr) = label_addr(s_label)?;
-        let (s, _) = comment_or_whitespace1(s)?; // require space after called label
-
-        Ok((s, addr))
-    };
-
-    let bracket_syntax = move |s: &'a str| {
-        let (s, _) = tag("[")(s)?;
-        let (s, addr) = label_addr(s)?;
-        let (s, _) = token0("]")(s)?;
-
-        Ok((s, addr))
-    };
-
     move |s: &'a str| {
-        let (s, label) = alt((call_syntax, bracket_syntax))(s)?;
+        let (s, _) = token1("call")(s)?;
+        let (s, label) = label_addr(s)?;
+        let (s, _) = comment_or_whitespace1(s)?;
 
         // This check cannot be moved into `label_addr`, since `label_addr` is shared
         // between the scenarios `<label>:` and `call <label>`; the former requires
@@ -1158,18 +1144,19 @@ pub(crate) mod tests {
 
     #[test]
     fn parse_program_bracket_syntax() {
-        TestCase {
+        NegativeTestCase {
             input: "foo: [foo]",
-            expected: vec![Instruction::Call(bfe!(0)), Instruction::Call(bfe!(0))],
-            message: "Handle brackets as call syntax sugar",
+            expected_error: "expecting label, instruction or eof",
+            expected_error_count: 1,
+            message: "brackets as call syntax sugar are unsupported",
         }
         .run();
 
         NegativeTestCase {
             input: "foo: [bar]",
-            expected_error: "missing label",
+            expected_error: "expecting label, instruction or eof",
             expected_error_count: 1,
-            message: "Handle missing labels with bracket syntax",
+            message: "brackets as call syntax sugar are unsupported",
         }
         .run();
     }
