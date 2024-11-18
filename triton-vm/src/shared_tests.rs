@@ -110,6 +110,7 @@ pub(crate) fn prove_and_verify(
         non_determinism,
     } = program_and_input;
 
+    crate::profiler::start("");
     profiler!(start "Pre-flight");
     let claim = Claim::about_program(&program).with_input(public_input.clone());
     let (aet, public_output) = VM::trace_execution(program, public_input, non_determinism).unwrap();
