@@ -1,7 +1,7 @@
 use itertools::Itertools;
 use num_traits::Zero;
 use rayon::prelude::*;
-use std::ops::Mul;
+use twenty_first::math::polynomial::barycentric_evaluate;
 use twenty_first::math::traits::FiniteField;
 use twenty_first::prelude::*;
 
@@ -471,9 +471,6 @@ impl<'stream> FriVerifier<'stream> {
     fn assert_last_round_codeword_corresponds_to_low_degree_polynomial(
         &mut self,
     ) -> VerifierResult<()> {
-        // todo: remove once deprecated local function `barycentric_evaluate` is removed
-        use twenty_first::math::polynomial::barycentric_evaluate;
-
         if self.last_round_polynomial.degree() > self.last_round_max_degree.try_into().unwrap() {
             return Err(FriValidationError::LastRoundPolynomialHasTooHighDegree);
         }
@@ -616,28 +613,6 @@ impl Fri {
 
 fn codeword_as_digests(codeword: &[XFieldElement]) -> Vec<Digest> {
     codeword.par_iter().map(|&xfe| xfe.into()).collect()
-}
-
-/// Use the barycentric Lagrange evaluation formula to extrapolate the codeword
-/// to an out-of-domain location.
-///
-/// [Credit] for (re)discovering this formula and especially its application to
-/// FRI goes to Al-Kindi.
-///
-/// # Panics
-///
-/// Panics if the codeword is some length that is not a power of 2 or greater than (1 << 32).
-///
-/// [Credit]: https://github.com/0xPolygonMiden/miden-vm/issues/568
-#[deprecated(
-    since = "0.42.2",
-    note = "use `twenty_first::math::polynomial::barycentric_evaluate` instead"
-)]
-pub fn barycentric_evaluate<FF: FiniteField + Mul<XFieldElement, Output = XFieldElement>>(
-    codeword: &[FF],
-    indeterminate: XFieldElement,
-) -> XFieldElement {
-    twenty_first::math::polynomial::barycentric_evaluate(codeword, indeterminate)
 }
 
 #[cfg(test)]

@@ -1431,11 +1431,6 @@ impl Stark {
         Verifier::new(*self).verify(claim, proof)
     }
 
-    #[deprecated(since = "0.43.0", note = "use `stark.max_degree` instead")]
-    pub fn derive_max_degree(&self, padded_height: usize) -> isize {
-        self.max_degree(padded_height)
-    }
-
     /// The upper bound to use for the maximum degree the quotients given the length
     /// of the trace and the number of trace randomizers. The degree of the
     /// quotients depends on the [AIR](air) constraints.
@@ -1450,11 +1445,6 @@ impl Stark {
             min_arithmetic_domain_length_supporting_max_constraint_degree - 1;
 
         max_degree_supported_by_that_smallest_arithmetic_domain as isize
-    }
-
-    #[deprecated(since = "0.43.0", note = "use `stark.fri` instead")]
-    pub fn derive_fri(&self, padded_height: usize) -> fri::SetupResult<Fri> {
-        self.fri(padded_height)
     }
 
     /// The parameters for [FRI](Fri). The length of the
