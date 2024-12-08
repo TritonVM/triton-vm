@@ -27,6 +27,7 @@ build-override.opt-level = 3
 [workspace.package]
 version = "0.43.0"
 edition = "2021"
+rust-version = "1.80"
 authors = ["Triton Software AG"]
 license = "Apache-2.0"
 homepage = "https://triton-vm.org/"
