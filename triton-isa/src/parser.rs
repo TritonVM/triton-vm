@@ -57,7 +57,7 @@ pub enum InstructionToken<'a> {
     AssertionContext(AssertionContext, &'a str),
 }
 
-impl<'a> Display for ParseError<'a> {
+impl Display for ParseError<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         let mut errors = self.errors.clone();
         if matches!(
@@ -71,7 +71,7 @@ impl<'a> Display for ParseError<'a> {
     }
 }
 
-impl<'a> Error for ParseError<'a> {}
+impl Error for ParseError<'_> {}
 
 impl<'a> InstructionToken<'a> {
     pub fn token_str(&self) -> &'a str {
@@ -383,7 +383,7 @@ fn is_illegal_label(s: &str) -> bool {
 fn instruction<'a>(
     name: &'a str,
     instruction: AnInstruction<String>,
-) -> impl Fn(&'a str) -> ParseResult<AnInstruction<String>> {
+) -> impl Fn(&'a str) -> ParseResult<'a, AnInstruction<String>> {
     move |s: &'a str| {
         let (s, _) = token1(name)(s)?;
         Ok((s, instruction.clone()))
@@ -454,7 +454,7 @@ fn swap_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>> {
     }
 }
 
-fn call_instruction<'a>() -> impl Fn(&'a str) -> ParseResult<AnInstruction<String>> {
+fn call_instruction<'a>() -> impl Fn(&'a str) -> ParseResult<'a, AnInstruction<String>> {
     move |s: &'a str| {
         let (s, _) = token1("call")(s)?;
         let (s, label) = label_addr(s)?;
@@ -604,7 +604,7 @@ fn comment_or_whitespace0(s: &str) -> ParseResult<&str> {
 /// Parse at least one comment and/or whitespace, or eof.
 ///
 /// This is used after places where whitespace is mandatory (e.g. after tokens).
-fn comment_or_whitespace1<'a>(s: &'a str) -> ParseResult<&'a str> {
+fn comment_or_whitespace1<'a>(s: &'a str) -> ParseResult<'a, &'a str> {
     let cws1 = |s: &'a str| -> ParseResult<&str> {
         let (s, _) = many1(alt((comment1, whitespace1)))(s)?;
         Ok((s, ""))
@@ -636,7 +636,7 @@ fn is_linebreak(c: char) -> bool {
 }
 
 /// `token0(tok)` will parse the string `tok` and munch 0 or more comment or whitespace.
-fn token0<'a>(token: &'a str) -> impl Fn(&'a str) -> ParseResult<()> {
+fn token0<'a>(token: &'a str) -> impl Fn(&'a str) -> ParseResult<'a, ()> {
     move |s: &'a str| {
         let (s, _) = tag(token)(s)?;
         let (s, _) = comment_or_whitespace0(s)?;
@@ -646,7 +646,7 @@ fn token0<'a>(token: &'a str) -> impl Fn(&'a str) -> ParseResult<()> {
 
 /// `token1(tok)` will parse the string `tok` and munch at least one comment and/or whitespace,
 /// or eof.
-fn token1<'a>(token: &'a str) -> impl Fn(&'a str) -> ParseResult<()> {
+fn token1<'a>(token: &'a str) -> impl Fn(&'a str) -> ParseResult<'a, ()> {
     move |s: &'a str| {
         let (s, _) = tag(token)(s)?;
         let (s, _) = comment_or_whitespace1(s)?;
@@ -856,7 +856,7 @@ pub(crate) mod tests {
         message: &'static str,
     }
 
-    impl<'a> TestCase<'a> {
+    impl TestCase<'_> {
         fn run(&self) {
             let message = self.message;
             let parse_result = parse(self.input).map_err(|err| format!("{message}:\n{err}"));
@@ -870,7 +870,7 @@ pub(crate) mod tests {
         }
     }
 
-    impl<'a> NegativeTestCase<'a> {
+    impl NegativeTestCase<'_> {
         fn run(self) {
             let Self {
                 input,

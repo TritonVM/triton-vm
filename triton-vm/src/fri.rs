@@ -44,7 +44,7 @@ struct ProverRound {
     merkle_tree: MerkleTree,
 }
 
-impl<'stream> FriProver<'stream> {
+impl FriProver<'_> {
     fn commit(&mut self, codeword: &[XFieldElement]) -> ProverResult<()> {
         self.commit_to_first_round(codeword)?;
         for _ in 0..self.num_rounds {
@@ -212,7 +212,7 @@ struct VerifierRound {
     folding_challenge: Option<XFieldElement>,
 }
 
-impl<'stream> FriVerifier<'stream> {
+impl FriVerifier<'_> {
     fn initialize(&mut self) -> VerifierResult<()> {
         let domain = self.first_round_domain;
         let first_round = self.construct_round_with_domain(domain)?;
@@ -541,7 +541,10 @@ impl Fri {
         Ok(prover.first_round_collinearity_check_indices)
     }
 
-    fn prover<'stream>(&'stream self, proof_stream: &'stream mut ProofStream) -> FriProver {
+    fn prover<'stream>(
+        &'stream self,
+        proof_stream: &'stream mut ProofStream,
+    ) -> FriProver<'stream> {
         FriProver {
             proof_stream,
             rounds: vec![],
@@ -574,7 +577,10 @@ impl Fri {
         Ok(verifier.first_round_partially_revealed_codeword())
     }
 
-    fn verifier<'stream>(&'stream self, proof_stream: &'stream mut ProofStream) -> FriVerifier {
+    fn verifier<'stream>(
+        &'stream self,
+        proof_stream: &'stream mut ProofStream,
+    ) -> FriVerifier<'stream> {
         FriVerifier {
             proof_stream,
             rounds: vec![],
