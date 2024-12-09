@@ -16,7 +16,7 @@ repository.workspace = true
 
 [dependencies]
 arbitrary.workspace = true
-get-size.workspace = true
+get-size2.workspace = true
 itertools.workspace = true
 lazy_static.workspace = true
 nom.workspace = true

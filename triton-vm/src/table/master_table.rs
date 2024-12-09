@@ -91,7 +91,7 @@ use strum::EnumCount;
 use twenty_first::math::tip5::RATE;
 use twenty_first::math::traits::FiniteField;
 use twenty_first::prelude::*;
-use twenty_first::util_types::algebraic_hasher;
+use twenty_first::util_types::sponge;
 
 use crate::aet::AlgebraicExecutionTrace;
 use crate::arithmetic_domain::ArithmeticDomain;
@@ -602,7 +602,7 @@ struct SpongeWithPendingAbsorb {
 impl SpongeWithPendingAbsorb {
     pub fn new() -> Self {
         Self {
-            sponge: Tip5::new(algebraic_hasher::Domain::VariableLength),
+            sponge: Tip5::new(sponge::Domain::VariableLength),
             pending_input: bfe_array![0; RATE],
             num_symbols_pending: 0,
         }

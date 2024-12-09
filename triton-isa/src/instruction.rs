@@ -7,7 +7,7 @@ use std::result;
 
 use arbitrary::Arbitrary;
 use arbitrary::Unstructured;
-use get_size::GetSize;
+use get_size2::GetSize;
 use itertools::Itertools;
 use lazy_static::lazy_static;
 use num_traits::ConstZero;

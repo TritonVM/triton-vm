@@ -30,7 +30,7 @@ use serde::Serialize;
 use strum::EnumCount;
 use twenty_first::math::x_field_element::EXTENSION_DEGREE;
 use twenty_first::prelude::*;
-use twenty_first::util_types::algebraic_hasher::Domain;
+use twenty_first::util_types::sponge;
 
 use crate::aet::AlgebraicExecutionTrace;
 use crate::error::VMError;
@@ -650,7 +650,7 @@ impl VMState {
     fn hash(&mut self) -> InstructionResult<Vec<CoProcessorCall>> {
         let to_hash = self.op_stack.pop_multiple::<{ tip5::RATE }>()?;
 
-        let mut hash_input = Tip5::new(Domain::FixedLength);
+        let mut hash_input = Tip5::new(sponge::Domain::FixedLength);
         hash_input.state[..tip5::RATE].copy_from_slice(&to_hash);
         let tip5_trace = hash_input.trace();
         let hash_output = &tip5_trace[tip5_trace.len() - 1][0..Digest::LEN];
@@ -1032,7 +1032,7 @@ impl VMState {
             _ => unreachable!(),
         };
 
-        let mut tip5 = Tip5::new(Domain::FixedLength);
+        let mut tip5 = Tip5::new(sponge::Domain::FixedLength);
         tip5.state[..Digest::LEN].copy_from_slice(&left_sibling);
         tip5.state[Digest::LEN..2 * Digest::LEN].copy_from_slice(&right_sibling);
         let tip5_trace = tip5.trace();

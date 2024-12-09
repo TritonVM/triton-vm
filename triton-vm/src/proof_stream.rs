@@ -87,7 +87,7 @@ impl ProofStream {
             .collect()
     }
 
-    /// A thin wrapper around [`H::sample_scalars`](AlgebraicHasher::sample_scalars).
+    /// A thin wrapper around [`Tip5::sample_scalars`].
     pub fn sample_scalars(&mut self, num_scalars: usize) -> Vec<XFieldElement> {
         self.sponge.sample_scalars(num_scalars)
     }

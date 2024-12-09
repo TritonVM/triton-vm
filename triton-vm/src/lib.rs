@@ -279,7 +279,6 @@ mod tests {
     use proptest_arbitrary_interop::arb;
     use test_strategy::proptest;
     use twenty_first::prelude::*;
-    use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
 
     use crate::prelude::*;
 
