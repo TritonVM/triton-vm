@@ -3,6 +3,17 @@
 All notable changes are documented in this file.
 Lines marked “(!)” indicate a breaking change.
 
+## [0.44.0](https://github.com/TritonVM/triton-vm/compare/v0.43.0..v0.44.0) - 2024-12-09
+
+### ✨ Features
+
+- Set minimum supported rust version (MSRV) ([a6cc98a3](https://github.com/TritonVM/triton-vm/commit/a6cc98a3))
+
+### ♻️ Refactor
+
+- (!) Remove bracket syntax sugar for `call` ([847b513e](https://github.com/TritonVM/triton-vm/commit/847b513e))
+- (!) Remove deprecated functions ([5a16da96](https://github.com/TritonVM/triton-vm/commit/5a16da96))
+
 ## [0.43.0](https://github.com/TritonVM/triton-vm/compare/v0.42.1..v0.43.0) - 2024-11-14
 
 ### ✨ Features
