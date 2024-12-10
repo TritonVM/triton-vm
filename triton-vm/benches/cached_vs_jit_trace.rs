@@ -10,7 +10,7 @@ criterion_main!(benches);
 criterion_group!(
     name = benches;
     config = Criterion::default().sample_size(10);
-    targets = prove_fib<1>, prove_fib<100>, prove_fib<1_000>,
+    targets = prove_fib<1_000>,
 );
 
 fn prove_fib<const N: u64>(c: &mut Criterion) {

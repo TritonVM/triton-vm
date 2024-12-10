@@ -13,13 +13,7 @@ criterion_main!(benches);
 criterion_group!(
     name = benches;
     config = Criterion::default().sample_size(10);
-    targets = current_design<10>,
-              current_design<100>,
-              current_design<1_000>,
-              current_design<10_000>,
-              with_xgcd<10>,
-              with_xgcd<100>,
-              with_xgcd<1_000>,
+    targets = current_design<10_000>,
               with_xgcd<10_000>,
 );
 
