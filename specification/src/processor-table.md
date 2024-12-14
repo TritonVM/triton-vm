@@ -157,7 +157,7 @@ The following additional constraints also apply to every pair of rows.
         1. `st0` in the current row and `st1` in the next row as well as `opcode(split)` with respect to challenges 🥜, 🌰, and 🥑, and indeterminate 🧷.
     1. If the current instruction is `merkle_step` or `merkle_step_mem`, then the logarithmic derivative for the Lookup Argument with the U32 Table accumulates `st5` from the current and next rows as well as `opcode(split)` with respect to challenges 🥜, 🌰, and 🥑, and indeterminate 🧷.
     1. If the current instruction is `pop_count`, then the logarithmic derivative for the Lookup Argument with the U32 Table accumulates `st0` and `ci` in the current row and `st0` in the next row with respect to challenges 🥜, 🥑, and 🥕, and indeterminate 🧷.
-    1. Else, _i.e._, if the current instruction is not a u32 instruction, the logarithmic derivative for the Lookup Argument with the U32 Table remains unchanged.
+    1. Else, _i.e._, if the current instruction is not an u32 instruction, the logarithmic derivative for the Lookup Argument with the U32 Table remains unchanged.
 
 ## Terminal Constraints
 
