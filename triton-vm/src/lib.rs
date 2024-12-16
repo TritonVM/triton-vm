@@ -427,6 +427,18 @@ mod tests {
     }
 
     #[test]
+    fn prove_then_verify_concurrently() {
+        let program = crate::example_programs::FIBONACCI_SEQUENCE.clone();
+        let input = PublicInput::from(bfe_array![100]);
+
+        let (stark, claim, proof) =
+            prove_program(program, input, NonDeterminism::default()).unwrap();
+
+        let verify = || assert!(stark.verify(&claim, &proof).is_ok());
+        rayon::join(verify, verify);
+    }
+
+    #[test]
     fn lib_prove_with_incorrect_program_digest_gives_appropriate_error() {
         let program = triton_program!(push 1 assert halt);
         let other_program = triton_program!(push 2 assert halt);
