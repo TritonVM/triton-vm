@@ -3,7 +3,7 @@
 The [Lookup Argument](https://eprint.iacr.org/2023/107.pdf) establishes that all elements of list $A = (a_0, \dots, a_\ell)$ also occur in list $B = (b_0, \dots, b_n)$.
 In this context, $A$ contains the values that are being looked up, while $B$ is the lookup table.[^1]
 Both lists $A$ and $B$ may contain duplicates.
-However, it is inefficient if $B$ does, and is therefor assumed not to.
+However, it is inefficient if $B$ does, and is therefore assumed not to.
 
 The example at the end of this section summarizes the necessary computations for the Lookup Argument.
 The rest of the section derives those computations.
