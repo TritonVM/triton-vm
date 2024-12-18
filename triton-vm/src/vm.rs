@@ -1099,58 +1099,58 @@ impl VMState {
 
     pub fn to_processor_row(&self) -> Array1<BFieldElement> {
         use isa::instruction::InstructionBit;
-        let mut processor_row = Array1::zeros(ProcessorMainColumn::COUNT);
+        use ProcessorMainColumn as Col;
+
+        assert!(
+            self.op_stack.len() >= OpStackElement::COUNT,
+            "unrecoverable internal error: Triton VM's stack is too shallow",
+        );
+
+        let mut row = Array1::zeros(Col::COUNT);
+        row[Col::CLK.main_index()] = u64::from(self.cycle_count).into();
+        row[Col::IP.main_index()] = (self.instruction_pointer as u32).into();
 
         let current_instruction = self.current_instruction().unwrap_or(Instruction::Nop);
+        row[Col::CI.main_index()] = current_instruction.opcode_b();
+        row[Col::NIA.main_index()] = self.next_instruction_or_argument();
+        row[Col::IB0.main_index()] = current_instruction.ib(InstructionBit::IB0);
+        row[Col::IB1.main_index()] = current_instruction.ib(InstructionBit::IB1);
+        row[Col::IB2.main_index()] = current_instruction.ib(InstructionBit::IB2);
+        row[Col::IB3.main_index()] = current_instruction.ib(InstructionBit::IB3);
+        row[Col::IB4.main_index()] = current_instruction.ib(InstructionBit::IB4);
+        row[Col::IB5.main_index()] = current_instruction.ib(InstructionBit::IB5);
+        row[Col::IB6.main_index()] = current_instruction.ib(InstructionBit::IB6);
+
+        row[Col::JSP.main_index()] = self.jump_stack_pointer();
+        row[Col::JSO.main_index()] = self.jump_stack_origin();
+        row[Col::JSD.main_index()] = self.jump_stack_destination();
+        row[Col::ST0.main_index()] = self.op_stack[0];
+        row[Col::ST1.main_index()] = self.op_stack[1];
+        row[Col::ST2.main_index()] = self.op_stack[2];
+        row[Col::ST3.main_index()] = self.op_stack[3];
+        row[Col::ST4.main_index()] = self.op_stack[4];
+        row[Col::ST5.main_index()] = self.op_stack[5];
+        row[Col::ST6.main_index()] = self.op_stack[6];
+        row[Col::ST7.main_index()] = self.op_stack[7];
+        row[Col::ST8.main_index()] = self.op_stack[8];
+        row[Col::ST9.main_index()] = self.op_stack[9];
+        row[Col::ST10.main_index()] = self.op_stack[10];
+        row[Col::ST11.main_index()] = self.op_stack[11];
+        row[Col::ST12.main_index()] = self.op_stack[12];
+        row[Col::ST13.main_index()] = self.op_stack[13];
+        row[Col::ST14.main_index()] = self.op_stack[14];
+        row[Col::ST15.main_index()] = self.op_stack[15];
+        row[Col::OpStackPointer.main_index()] = self.op_stack.pointer();
+
         let helper_variables = self.derive_helper_variables();
+        row[Col::HV0.main_index()] = helper_variables[0];
+        row[Col::HV1.main_index()] = helper_variables[1];
+        row[Col::HV2.main_index()] = helper_variables[2];
+        row[Col::HV3.main_index()] = helper_variables[3];
+        row[Col::HV4.main_index()] = helper_variables[4];
+        row[Col::HV5.main_index()] = helper_variables[5];
 
-        processor_row[ProcessorMainColumn::CLK.main_index()] = u64::from(self.cycle_count).into();
-        processor_row[ProcessorMainColumn::IP.main_index()] =
-            (self.instruction_pointer as u32).into();
-        processor_row[ProcessorMainColumn::CI.main_index()] = current_instruction.opcode_b();
-        processor_row[ProcessorMainColumn::NIA.main_index()] = self.next_instruction_or_argument();
-        processor_row[ProcessorMainColumn::IB0.main_index()] =
-            current_instruction.ib(InstructionBit::IB0);
-        processor_row[ProcessorMainColumn::IB1.main_index()] =
-            current_instruction.ib(InstructionBit::IB1);
-        processor_row[ProcessorMainColumn::IB2.main_index()] =
-            current_instruction.ib(InstructionBit::IB2);
-        processor_row[ProcessorMainColumn::IB3.main_index()] =
-            current_instruction.ib(InstructionBit::IB3);
-        processor_row[ProcessorMainColumn::IB4.main_index()] =
-            current_instruction.ib(InstructionBit::IB4);
-        processor_row[ProcessorMainColumn::IB5.main_index()] =
-            current_instruction.ib(InstructionBit::IB5);
-        processor_row[ProcessorMainColumn::IB6.main_index()] =
-            current_instruction.ib(InstructionBit::IB6);
-        processor_row[ProcessorMainColumn::JSP.main_index()] = self.jump_stack_pointer();
-        processor_row[ProcessorMainColumn::JSO.main_index()] = self.jump_stack_origin();
-        processor_row[ProcessorMainColumn::JSD.main_index()] = self.jump_stack_destination();
-        processor_row[ProcessorMainColumn::ST0.main_index()] = self.op_stack[0];
-        processor_row[ProcessorMainColumn::ST1.main_index()] = self.op_stack[1];
-        processor_row[ProcessorMainColumn::ST2.main_index()] = self.op_stack[2];
-        processor_row[ProcessorMainColumn::ST3.main_index()] = self.op_stack[3];
-        processor_row[ProcessorMainColumn::ST4.main_index()] = self.op_stack[4];
-        processor_row[ProcessorMainColumn::ST5.main_index()] = self.op_stack[5];
-        processor_row[ProcessorMainColumn::ST6.main_index()] = self.op_stack[6];
-        processor_row[ProcessorMainColumn::ST7.main_index()] = self.op_stack[7];
-        processor_row[ProcessorMainColumn::ST8.main_index()] = self.op_stack[8];
-        processor_row[ProcessorMainColumn::ST9.main_index()] = self.op_stack[9];
-        processor_row[ProcessorMainColumn::ST10.main_index()] = self.op_stack[10];
-        processor_row[ProcessorMainColumn::ST11.main_index()] = self.op_stack[11];
-        processor_row[ProcessorMainColumn::ST12.main_index()] = self.op_stack[12];
-        processor_row[ProcessorMainColumn::ST13.main_index()] = self.op_stack[13];
-        processor_row[ProcessorMainColumn::ST14.main_index()] = self.op_stack[14];
-        processor_row[ProcessorMainColumn::ST15.main_index()] = self.op_stack[15];
-        processor_row[ProcessorMainColumn::OpStackPointer.main_index()] = self.op_stack.pointer();
-        processor_row[ProcessorMainColumn::HV0.main_index()] = helper_variables[0];
-        processor_row[ProcessorMainColumn::HV1.main_index()] = helper_variables[1];
-        processor_row[ProcessorMainColumn::HV2.main_index()] = helper_variables[2];
-        processor_row[ProcessorMainColumn::HV3.main_index()] = helper_variables[3];
-        processor_row[ProcessorMainColumn::HV4.main_index()] = helper_variables[4];
-        processor_row[ProcessorMainColumn::HV5.main_index()] = helper_variables[5];
-
-        processor_row
+        row
     }
 
     /// The “next instruction or argument” (NIA) is
