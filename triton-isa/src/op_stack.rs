@@ -2,8 +2,7 @@ use std::fmt::Display;
 use std::fmt::Formatter;
 use std::fmt::Result as FmtResult;
 use std::num::TryFromIntError;
-use std::ops::Index;
-use std::ops::IndexMut;
+use std::ops::{Index, IndexMut, Range, RangeInclusive};
 
 use arbitrary::Arbitrary;
 use get_size2::GetSize;
@@ -183,10 +182,66 @@ impl Index<usize> for OpStack {
     }
 }
 
+fn compute_range(start: usize, end: usize, len: usize) -> (usize, usize) {
+    match (start, end) {
+        (0, end) if end == len => (0, len),
+        (0, end) => (len - end, len),
+        _ => (len - end, len - start),
+    }
+}
+
+impl Index<Range<usize>> for OpStack {
+    type Output = [BFieldElement];
+
+    fn index(&self, range: Range<usize>) -> &Self::Output {
+        let (start, end) = compute_range(range.start, range.end, self.stack.len());
+        let mut stack = self.stack[start..end].to_vec();
+        stack.reverse();
+        Box::leak(Box::new(stack))
+    }
+}
+
+fn compute_range_inclusive(start: usize, end: usize, len: usize) -> (usize, usize) {
+    match (start, end) {
+        (0, end) if end == len - 1 => (0, len),
+        (0, end) => (len - end - 1, len),
+        _ => (len - end - 1, len - start),
+    }
+}
+
+impl Index<RangeInclusive<usize>> for OpStack {
+    type Output = [BFieldElement];
+
+    fn index(&self, range: RangeInclusive<usize>) -> &Self::Output {
+        let (start, end) = compute_range_inclusive(*range.start(), *range.end(), self.stack.len());
+        let mut stack = self.stack[start..end].to_vec();
+        stack.reverse();
+        Box::leak(Box::new(stack))
+    }
+}
+
 impl IndexMut<usize> for OpStack {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         let top_of_stack = self.len() - 1;
         &mut self.stack[top_of_stack - index]
+    }
+}
+
+impl IndexMut<Range<usize>> for OpStack {
+    fn index_mut(&mut self, range: Range<usize>) -> &mut Self::Output {
+        let (start, end) = compute_range(range.start, range.end, self.stack.len());
+        let slice = &mut self.stack[start..end];
+        slice.reverse();
+        slice
+    }
+}
+
+impl IndexMut<RangeInclusive<usize>> for OpStack {
+    fn index_mut(&mut self, range: RangeInclusive<usize>) -> &mut Self::Output {
+        let (start, end) = compute_range_inclusive(*range.start(), *range.end(), self.stack.len());
+        let slice = &mut self.stack[start..end];
+        slice.reverse();
+        slice
     }
 }
 
@@ -198,9 +253,66 @@ impl Index<OpStackElement> for OpStack {
     }
 }
 
+impl Index<Range<OpStackElement>> for OpStack {
+    type Output = [BFieldElement];
+
+    fn index(&self, range: Range<OpStackElement>) -> &Self::Output {
+        let (start, end) = compute_range(
+            usize::from(range.start),
+            usize::from(range.end),
+            self.stack.len(),
+        );
+        let mut stack = self.stack[start..end].to_vec();
+        stack.reverse();
+        Box::leak(Box::new(stack))
+    }
+}
+
+impl Index<RangeInclusive<OpStackElement>> for OpStack {
+    type Output = [BFieldElement];
+
+    fn index(&self, range: RangeInclusive<OpStackElement>) -> &Self::Output {
+        let (start, end) = compute_range_inclusive(
+            usize::from(range.start()),
+            usize::from(range.end()),
+            self.stack.len(),
+        );
+        let mut stack = self.stack[start..end].to_vec();
+        stack.reverse();
+
+        Box::leak(Box::new(stack))
+    }
+}
+
 impl IndexMut<OpStackElement> for OpStack {
     fn index_mut(&mut self, stack_element: OpStackElement) -> &mut Self::Output {
         &mut self[usize::from(stack_element)]
+    }
+}
+
+impl IndexMut<Range<OpStackElement>> for OpStack {
+    fn index_mut(&mut self, range: Range<OpStackElement>) -> &mut Self::Output {
+        let (start, end) = compute_range(
+            usize::from(range.start),
+            usize::from(range.end),
+            self.stack.len(),
+        );
+        let slice = &mut self.stack[start..end];
+        slice.reverse();
+        slice
+    }
+}
+
+impl IndexMut<RangeInclusive<OpStackElement>> for OpStack {
+    fn index_mut(&mut self, range: RangeInclusive<OpStackElement>) -> &mut Self::Output {
+        let (start, end) = compute_range_inclusive(
+            usize::from(range.start()),
+            usize::from(range.end()),
+            self.stack.len(),
+        );
+        let slice = &mut self.stack[start..end];
+        slice.reverse();
+        slice
     }
 }
 
@@ -1030,4 +1142,159 @@ mod tests {
         let expected_len = 2 * OpStackElement::COUNT - 1;
         prop_assert_eq!(expected_len, op_stack.len());
     }
+
+    fn setup_op_stack() -> OpStack {
+        OpStack {
+            stack: bfe_vec![1, 2, 3, 4, 5],
+            underflow_io_sequence: vec![],
+        }
+    }
+
+    fn reversed_range(stack: &[BFieldElement], start: usize, end: usize) -> Vec<BFieldElement> {
+        stack[start..end].iter().rev().copied().collect()
+    }
+
+    #[test]
+    fn test_opstack_index_range() {
+        let op_stack = setup_op_stack();
+
+        test_opstack_range1_internal(&op_stack, 0..5, 0..5);
+        test_opstack_range1_internal(&op_stack, 0..2, 3..5);
+        test_opstack_range1_internal(&op_stack, 1..3, 2..4);
+    }
+
+    fn test_opstack_range1_internal(
+        op_stack: &OpStack,
+        actual_range: Range<usize>,
+        expected_range: Range<usize>,
+    ) {
+        let (start, end) = (actual_range.start, actual_range.end);
+        let actual = op_stack[start..end].to_vec();
+
+        let (start, end) = (expected_range.start, expected_range.end);
+        let expected = reversed_range(&op_stack.stack, start, end);
+        assert_eq!(actual, expected);
+    }
+
+    // #[test]
+    // fn test_opstack_index_range1() {
+    //     let op_stack = setup_op_stack();
+    //     let len = op_stack.stack.len();
+
+    //     // Test boundary ranges
+    //     let actual = op_stack[0..len].to_vec();
+    //     let expected = reversed_range(&op_stack.stack, 0, len);
+    //     assert_eq!(actual, expected);
+
+    //     // Test start boundary range
+    //     let actual = op_stack[0..2].to_vec();
+    //     let expected = reversed_range(&op_stack.stack, 3, len);
+    //     assert_eq!(actual, expected);
+
+    //     // Test typical range
+    //     let actual = op_stack[1..3].to_vec();
+    //     let expected = reversed_range(&op_stack.stack, 2, 4);
+    //     assert_eq!(actual, expected);
+
+    //     // ADDRESS len = 5, how to handle out of bounds in vector?
+    //     // let actual = op_stack[1..6].to_vec();
+    // }
+
+    #[test]
+    fn test_opstack_index_range_inclusive() {
+        let op_stack = setup_op_stack();
+        let len = op_stack.stack.len();
+        let last = len - 1;
+
+        // Test boundary ranges
+        let actual = op_stack[0..=last].to_vec();
+        let expected = reversed_range(&op_stack.stack, 0, len);
+        assert_eq!(actual, expected);
+
+        // Test start boundary range
+        let actual = op_stack[0..=2].to_vec();
+        let expected = reversed_range(&op_stack.stack, 2, len);
+        assert_eq!(actual, expected);
+
+        // Test typical range
+        let actual = op_stack[1..=3].to_vec();
+        let expected = reversed_range(&op_stack.stack, 1, 4);
+        assert_eq!(actual, expected);
+    }
+
+    fn test_opstack_range_mut_inclusive(
+        actual_range: RangeInclusive<usize>,
+        expected_range: RangeInclusive<usize>,
+    ) {
+        let mut op_stack = setup_op_stack();
+
+        let (start, end) = (*expected_range.start(), *expected_range.end());
+        let mut expected = op_stack.stack.clone()[start..=end].to_vec();
+        expected.reverse();
+
+        let (start, end) = (*actual_range.start(), *actual_range.end());
+        let actual = op_stack.index_mut(start..=end);
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_opstack_index_mut_range_inclusive() {
+        test_opstack_range_mut_inclusive(0..=4, 0..=4);
+        test_opstack_range_mut_inclusive(0..=2, 2..=4);
+        test_opstack_range_mut_inclusive(1..=2, 2..=3);
+    }
+
+    // #[test]
+    // fn test_opstack_index_mut_range_inclusive() {
+    //     let mut op_stack = setup_op_stack();
+    //     let len = op_stack.stack.len();
+    //     let mut expected = op_stack.stack.clone();
+    //     expected.reverse();
+
+    //     // Test boundary ranges
+    //     let actual = op_stack.index_mut(0..=len-1);
+    //     assert_eq!(actual, expected);
+
+    //     // Test start boundary range
+    //     let mut op_stack = setup_op_stack();
+    //     let mut expected = op_stack.stack.clone()[2..].to_vec();
+    //     expected.reverse();
+    //     let actual = op_stack.index_mut(0..=2);
+    //     assert_eq!(actual, expected);
+
+    //     // Test typical range
+    //     let mut op_stack = setup_op_stack();
+    //     let mut expected = op_stack.stack.clone()[2..4].to_vec();
+    //     expected.reverse();
+    //     let actual = op_stack.index_mut(1..=2);
+    //     assert_eq!(actual, expected);
+    // }
+
+    // #[test]
+    // fn test_opstack_index_mut_range_inclusive_usize() {
+    //     let mut op_stack = setup_op_stack();
+    //     let len = op_stack.stack.len();
+    //     let last = len - 1;
+    //     let mut expected = op_stack.stack.clone();
+    //     expected.reverse();
+
+    //     // Test boundary ranges
+    //     let actual = op_stack.index_mut(0..=last);
+    //     assert_eq!(actual, expected);
+
+    //     // Test start boundary range
+    //     let mut op_stack = setup_op_stack();
+    //     let mut expected = op_stack.stack.clone()[2..].to_vec();
+    //     expected.reverse();
+    //     let actual = op_stack.index_mut(0..=2);
+    //     assert_eq!(actual, expected);
+
+    //     // Test typical range
+    //     let mut op_stack = setup_op_stack();
+    //     let mut expected = op_stack.stack.clone()[1..4].to_vec();
+    //     expected.reverse();
+    //     let actual = op_stack.index_mut(1..=3);
+    //     assert_eq!(actual, expected);
+    // }
 }
