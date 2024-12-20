@@ -42,7 +42,7 @@ It is possible to establish a subset relation by skipping over certain elements 
 The running product must incorporate the same elements in both tables.
 Otherwise, the Permutation Argument will fail.
 
-An example of a subset Permutation Argument can be found between the [U32 Table](u32-table.md#auxiliary-columns) and the [Processor Table](processor-table.md#auxiliary-colums).
+An example of a subset Permutation Argument can be found between the [U32 Table](u32-table.md#auxiliary-columns) and the [Processor Table](processor-table.md#auxiliary-columns).
 
 ---
 

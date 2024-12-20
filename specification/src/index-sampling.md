@@ -80,7 +80,7 @@ For a concrete example, set $k=\lambda=160$ and $U=2^{32}$. Then $\mu$ needs to 
 
 ### Security Degradation
 
-Suppose the user is malicous and hopes to conceal his fraud by selecting a set of indices that do not expose it. Suppose that the proportion of subsets of $[0:U)$ of size $k$ that are suitable for the adversary is $\rho$. Then clearly with the standard old index sampling method the attacker's success probability is bounded by $\rho \approx 2^{-\lambda}$. The question is whether the improved index sampler enables a higher success probability (and if so, how much higher).
+Suppose the user is malicious and hopes to conceal his fraud by selecting a set of indices that do not expose it. Suppose that the proportion of subsets of $[0:U)$ of size $k$ that are suitable for the adversary is $\rho$. Then clearly with the standard old index sampling method the attacker's success probability is bounded by $\rho \approx 2^{-\lambda}$. The question is whether the improved index sampler enables a higher success probability (and if so, how much higher).
 
 The attacker has access to at most $\binom{k+\mu}{\mu}$ subsets of $[0:U)$ of size $k$. The probability that a given subset is suitable for the attack is $\rho$, and so:
  - The probability that one subset is unsuitable for attack is $1 - \rho$.

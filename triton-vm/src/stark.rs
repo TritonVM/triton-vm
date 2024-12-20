@@ -566,7 +566,7 @@ impl Prover {
         // Must be a power of two and lie in 2..=randomized_trace_domain.length.
         //
         // The requirement for the working domain to be at most as long as the trace
-        // domain, i.e., at most half the size of the randomzied trace domain, is
+        // domain, i.e., at most half the size of the randomized trace domain, is
         // explained below.
         const RANDOMIZED_TRACE_LEN_TO_WORKING_DOMAIN_LEN_RATIO: usize = 2;
         const NUM_COSETS: usize =

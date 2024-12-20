@@ -267,7 +267,7 @@ impl AIR for ProcessorTable {
             main_row(MainColumn::IsPadding) * (main_row(MainColumn::IsPadding) - constant(1));
 
         // In padding rows, the clock jump difference lookup multiplicity is 0. The one row
-        // exempt from this rule is the row wth CLK == 1: since the memory-like tables don't have
+        // exempt from this rule is the row with CLK == 1: since the memory-like tables don't have
         // an “awareness” of padding rows, they keep looking up clock jump differences of
         // magnitude 1.
         let clock_jump_diff_lookup_multiplicity_is_0_in_padding_rows =

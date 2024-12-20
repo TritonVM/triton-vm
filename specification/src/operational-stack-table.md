@@ -156,7 +156,7 @@ None.
 1.  - the `stack_pointer` increases by 1, *or*
     - the `stack_pointer` does not change AND the `first_underflow_element` does not change, *or*
     - the `stack_pointer` does not change AND the shrink stack indicator `shrink_stack` in the next row is 0.
-1. If thex next row is not a padding row, the running product for the permutation argument with the Processor Table `rppa` absorbs the next row with respect to challenges 🍋, 🍊, 🍉, and 🫒 and indeterminate 🪤.
+1. If the next row is not a padding row, the running product for the permutation argument with the Processor Table `rppa` absorbs the next row with respect to challenges 🍋, 🍊, 🍉, and 🫒 and indeterminate 🪤.
   Otherwise, the running product remains unchanged.
 1. If the current row is a padding row, then the next row is a padding row.
 1. If the next row is not a padding row and the op stack pointer `stack_pointer` does not change, then the logarithmic derivative for the clock jump difference lookup `ClockJumpDifferenceLookupClientLogDerivative` accumulates a factor `(clk' - clk)` relative to indeterminate 🪞.

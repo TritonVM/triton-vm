@@ -33,7 +33,7 @@ It is possible to establish a subset relation by skipping over certain elements 
 The running evaluation must incorporate the same elements in both tables.
 Otherwise, the Evaluation Argument will fail.
 
-Examples for subset Evaluation Arguments can be found between the [Hash Table](hash-table.md#auxiliary-columns) and the [Processor Table](processor-table.md#auxiliary-colums).
+Examples for subset Evaluation Arguments can be found between the [Hash Table](hash-table.md#auxiliary-columns) and the [Processor Table](processor-table.md#auxiliary-columns).
 
 ---
 

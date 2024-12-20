@@ -1655,16 +1655,16 @@ mod tests {
         let tree = (x(0) * x(1) * (x(2) - b_con(1))).consume();
         assert_eq!(4, count_node(tree));
 
-        let max_occurences = all_nodes
+        let max_occurrences = all_nodes
             .iter()
             .map(|node| all_nodes.iter().filter(|&n| n == node).count())
             .max()
             .unwrap();
-        assert_eq!(8, max_occurences);
+        assert_eq!(8, max_occurrences);
 
         let most_frequent_nodes = all_nodes
             .iter()
-            .filter(|&node| all_nodes.iter().filter(|&n| n == node).count() == max_occurences)
+            .filter(|&node| all_nodes.iter().filter(|&n| n == node).count() == max_occurrences)
             .unique()
             .collect_vec();
         assert_eq!(2, most_frequent_nodes.len());

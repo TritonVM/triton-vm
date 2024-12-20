@@ -652,7 +652,7 @@ pub struct MasterMainTable {
     ram_table_len: usize,
     hash_coprocessor_execution_len: usize,
     cascade_table_len: usize,
-    u32_coprocesor_execution_len: usize,
+    u32_coprocessor_execution_len: usize,
 
     trace_domain: ArithmeticDomain,
     randomized_trace_domain: ArithmeticDomain,
@@ -855,7 +855,7 @@ impl MasterMainTable {
             ram_table_len: aet.height_of_table(TableId::Ram),
             hash_coprocessor_execution_len: aet.height_of_table(TableId::Hash),
             cascade_table_len: aet.height_of_table(TableId::Cascade),
-            u32_coprocesor_execution_len: aet.height_of_table(TableId::U32),
+            u32_coprocessor_execution_len: aet.height_of_table(TableId::U32),
             trace_domain,
             randomized_trace_domain,
             quotient_domain,
@@ -956,7 +956,7 @@ impl MasterMainTable {
             self.hash_coprocessor_execution_len,
             self.cascade_table_len,
             AlgebraicExecutionTrace::LOOKUP_TABLE_HEIGHT,
-            self.u32_coprocesor_execution_len,
+            self.u32_coprocessor_execution_len,
         ]
     }
 
@@ -2113,11 +2113,11 @@ mod tests {
             .unwrap();
         let mut snippet = String::new();
         for name in InstructionBucket::VARIANTS.iter().rev() {
-            let cell_titel = format!("| {name:>cell_width$} ");
-            snippet.push_str(&cell_titel);
+            let cell_title = format!("| {name:>cell_width$} ");
+            snippet.push_str(&cell_title);
         }
-        let num_opcodes_titel = format!("| {:>cell_width$} |\n", "Num Opcodes");
-        snippet.push_str(&num_opcodes_titel);
+        let num_opcodes_title = format!("| {:>cell_width$} |\n", "Num Opcodes");
+        snippet.push_str(&num_opcodes_title);
 
         let dash = "-";
         for _ in 0..=InstructionBucket::COUNT {
