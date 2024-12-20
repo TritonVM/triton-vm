@@ -20,15 +20,15 @@ The third property allows efficient arithmetization of the running product for t
 
 ## Op Stack Manipulation
 
-| Instruction     | Opcode | old op stack        | new op stack          | Description                                                                                     |
-|:----------------|-------:|:--------------------|:----------------------|:------------------------------------------------------------------------------------------------|
-| `pop` + `n`     |      3 | e.g., `_ c b a`     | e.g., `_`             | Pops the `n` top elements from the stack. 1 ⩽ `n` ⩽ 5                                           |
-| `push` + `a`    |      1 | `_`                 | `_ a`                 | Pushes `a` onto the stack.                                                                      |
-| `divine`  + `n` |      9 | e.g., `_`           | e.g., `_ b a`         | Pushes `n` non-deterministic elements `a` to the stack. Interface for secret input. 1 ⩽ `n` ⩽ 5 |
-| `pick`  + `i`   |     17 | e.g., `_ d x c b a` | e.g., `_ d c b a x`   | Moves the element indicated by `i` to the top of the stack. 0 ⩽ `i` < 16                        |
-| `place`  + `i`  |     25 | e.g., `_ d c b a x` | e.g., `_ d x c b a`   | Moves the top of the stack to the indicated position `i`. 0 ⩽ `i` < 16                          |
-| `dup`  + `i`    |     33 | e.g., `_ e d c b a` | e.g., `_ e d c b a d` | Duplicates the element `i` positions away from the top. 0 ⩽ `i` < 16                            |
-| `swap` + `i`    |     41 | e.g., `_ e d c b a` | e.g., `_ e a c b d`   | Swaps the `i`th stack element with the top of the stack. 0 ⩽ `i` < 16                           |
+| Instruction     | Opcode | old op stack            | new op stack    | Description                                                                                     |
+|:----------------|-------:|:------------------------|:----------------|:------------------------------------------------------------------------------------------------|
+| `pop` + `n`     |      3 | `_ c b a` for `n=3`     | `_`             | Pops the `n` top elements from the stack. 1 ⩽ `n` ⩽ 5                                           |
+| `push` + `a`    |      1 | `_`                     | `_ a`           | Pushes `a` onto the stack.                                                                      |
+| `divine`  + `n` |      9 | `_` for `n=2`           | `_ b a`         | Pushes `n` non-deterministic elements `a` to the stack. Interface for secret input. 1 ⩽ `n` ⩽ 5 |
+| `pick`  + `i`   |     17 | `_ d x c b a` for `i=3` | `_ d c b a x`   | Moves the element indicated by `i` to the top of the stack. 0 ⩽ `i` < 16                        |
+| `place`  + `i`  |     25 | `_ d c b a x` for `i=3` | `_ d x c b a`   | Moves the top of the stack to the indicated position `i`. 0 ⩽ `i` < 16                          |
+| `dup`  + `i`    |     33 | `_ e d c b a` for `i=3` | `_ e d c b a d` | Duplicates the element `i` positions away from the top. 0 ⩽ `i` < 16                            |
+| `swap` + `i`    |     41 | `_ e d c b a` for `i=3` | `_ e a c b d`   | Swaps the `i`th stack element with the top of the stack. 0 ⩽ `i` < 16                           |
 
 Instruction `divine n` (together with [`merkle_step`](#many-in-one)) make Triton a virtual machine that can execute non-deterministic programs.
 As programs go, this concept is somewhat unusual and benefits from additional explanation.
@@ -64,10 +64,10 @@ The instruction is designed to facilitate loops using pointer equality as termin
 
 ## Memory Access
 
-| Instruction       | Opcode | old op stack         | new op stack           | old RAM             | new RAM             | Description                                                                                                                                  |
-|:------------------|-------:|:---------------------|:-----------------------|:--------------------|:--------------------|:---------------------------------------------------------------------------------------------------------------------------------------------|
-| `read_mem` + `n`  |     57 | e.g., `_ p+2`        | e.g., `_ v2 v1 v0 p-1` | [p: v0, p+1, v1, …] | [p: v0, p+1, v1, …] | Reads consecutive values `vi` from RAM at address `p` and puts them onto the op stack. Decrements RAM pointer (`st0`) by `n`. 1 ⩽ `n` ⩽ 5    |
-| `write_mem` + `n` |     11 | e.g., `_ v2 v1 v0 p` | e.g., `_ p+3`          | []                  | [p: v0, p+1, v1, …] | Writes op stack's `n` top-most values `vi` to RAM at the address `p+i`, popping the `vi`. Increments RAM pointer (`st0`) by `n`. 1 ⩽ `n` ⩽ 5 |
+| Instruction       | Opcode | old op stack             | new op stack     | old RAM             | new RAM             | Description                                                                                                                                  |
+|:------------------|-------:|:-------------------------|:-----------------|:--------------------|:--------------------|:---------------------------------------------------------------------------------------------------------------------------------------------|
+| `read_mem` + `n`  |     57 | `_ p+2` for `n=3`        | `_ v2 v1 v0 p-1` | [p: v0, p+1, v1, …] | [p: v0, p+1, v1, …] | Reads consecutive values `vi` from RAM at address `p` and puts them onto the op stack. Decrements RAM pointer (`st0`) by `n`. 1 ⩽ `n` ⩽ 5    |
+| `write_mem` + `n` |     11 | `_ v2 v1 v0 p` for `n=3` | `_ p+3`          | []                  | [p: v0, p+1, v1, …] | Writes op stack's `n` top-most values `vi` to RAM at the address `p+i`, popping the `vi`. Increments RAM pointer (`st0`) by `n`. 1 ⩽ `n` ⩽ 5 |
 
 For the benefit of clarity, the effect of every possible argument is given below.
 
@@ -143,10 +143,10 @@ Triton VM cannot know the number of elements that will be absorbed.
 
 ## Input/Output
 
-| Instruction      | Opcode | old op stack    | new op stack    | Description                                                                              |
-|:-----------------|-------:|:----------------|:----------------|:-----------------------------------------------------------------------------------------|
-| `read_io` + `n`  |     73 | e.g., `_`       | e.g., `_ c b a` | Reads `n` B-Field elements from standard input and pushes them to the stack. 1 ⩽ `n` ⩽ 5 |
-| `write_io` + `n` |     19 | e.g., `_ c b a` | e.g., `_`       | Pops `n` elements from the stack and writes them to standard output. 1 ⩽ `n` ⩽ 5         |
+| Instruction      | Opcode | old op stack        | new op stack | Description                                                                              |
+|:-----------------|-------:|:--------------------|:-------------|:-----------------------------------------------------------------------------------------|
+| `read_io` + `n`  |     73 | `_`       for `n=3` | `_ c b a`    | Reads `n` B-Field elements from standard input and pushes them to the stack. 1 ⩽ `n` ⩽ 5 |
+| `write_io` + `n` |     19 | `_ c b a` for `n=3` | `_`          | Pops `n` elements from the stack and writes them to standard output. 1 ⩽ `n` ⩽ 5         |
 
 ## Many-In-One
 
