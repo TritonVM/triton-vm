@@ -855,8 +855,8 @@ pub enum InstructionError {
     #[error("Triton VM has halted and cannot execute any further instructions")]
     MachineHalted,
 
-   #[error(transparent)]
-   OpStackError(#[from] OpStackError),
+    #[error(transparent)]
+    OpStackError(#[from] OpStackError),
 }
 
 /// An error giving additional context to any failed assertion.

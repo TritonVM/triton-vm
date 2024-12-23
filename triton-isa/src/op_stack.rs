@@ -52,8 +52,8 @@ pub enum OpStackError {
     #[error("failed to convert BFieldElement {0} into u32")]
     FailedU32Conversion(BFieldElement),
 
-   #[error("index {0} is out of range for OpStack")]
-   IndexOutOfBounds(usize),
+    #[error("index {0} is out of range for OpStack")]
+    IndexOutOfBounds(usize),
 }
 
 impl OpStack {

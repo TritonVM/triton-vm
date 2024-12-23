@@ -58,6 +58,6 @@ specification/cheatsheet.log
 specification/cheatsheet.synctex.gz
 triton-vm/proofs/*
 
-# Ignore proptest-regression processor file caused by bug
-triton-air/proptest-regressions/table/processor.txt
- triton-isa/proptest-regressions/op_stack.txt
+# Ignore proptest-regression files caused by bug
+triton-air/proptest-regressions/table/*
+triton-isa/proptest-regressions/*

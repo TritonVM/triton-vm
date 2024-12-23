@@ -1,12 +1,5 @@
 #![allow(clippy::needless_lifetimes)]
 #![allow(elided_named_lifetimes)]
-use std::collections::hash_map::Entry;
-use std::collections::HashMap;
-use std::collections::HashSet;
-use std::error::Error;
-use std::fmt::Display;
-use std::fmt::Formatter;
-use std::fmt::Result as FmtResult;
 use nom::branch::alt;
 use nom::bytes::complete::tag;
 use nom::bytes::complete::take_while;
@@ -23,6 +16,13 @@ use nom::multi::many0;
 use nom::multi::many1;
 use nom::Finish;
 use nom::IResult;
+use std::collections::hash_map::Entry;
+use std::collections::HashMap;
+use std::collections::HashSet;
+use std::error::Error;
+use std::fmt::Display;
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 use twenty_first::bfe;
 use twenty_first::prelude::BFieldElement;
 

@@ -484,7 +484,7 @@ impl VMState {
         Ok(vec![])
     }
 
-    fn pick(&mut self, stack_register: OpStackElement) -> InstructionResult<Vec<CoProcessorCall>>{
+    fn pick(&mut self, stack_register: OpStackElement) -> InstructionResult<Vec<CoProcessorCall>> {
         let element = self.op_stack.remove(stack_register)?;
         self.op_stack.push(element);
         self.instruction_pointer += 2;
