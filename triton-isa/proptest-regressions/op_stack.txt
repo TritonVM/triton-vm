@@ -1,0 +1,9 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 1aba9848f7ed5ca8eadafb158a8556f275347643f66c593835cdcf8f0d65f2de # shrinks to input = _RemovingAnElementFromTheStackRemovesTheCorrectElementArgs { removal_index: ST0 }
+cc 576ed2bf621f2eee2d85b258a07bb4a20ef2c5d646ddaf4f970bff3fba1a6bdf # shrinks to input = _InsertingAnElementIntoTheStackPutsItAtTheCorrectPositionArgs { insertion_index: ST0, insertion_element: BFieldElement(0) }
+cc b51d5062351be8a8060741fa637009e4fb11553a67a5c29ff10fece1e1e9d743 # shrinks to input = _InvalidU32sCannotBeRetrievedAsU32sArgs { st: ST7, non_u32: 4294967296 }
