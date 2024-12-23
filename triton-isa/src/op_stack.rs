@@ -3,7 +3,10 @@ use std::fmt::Display;
 use std::fmt::Formatter;
 use std::fmt::Result as FmtResult;
 use std::num::TryFromIntError;
-use std::ops::{Index, IndexMut, Range, RangeInclusive};
+use std::ops::Index;
+use std::ops::IndexMut;
+use std::ops::Range;
+use std::ops::RangeInclusive;
 
 use arbitrary::Arbitrary;
 use get_size2::GetSize;
