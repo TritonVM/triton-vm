@@ -1450,6 +1450,13 @@ pub(crate) mod tests {
         instruction: String,
         #[filter(#id.parse::<i128>().is_err())] id: String,
     ) {
+        // A valid ID followed by a comment is valid, and therefore not relevant here.
+        // This might be a monkey-patch, but I don't know how to generate better input.
+        if let Some(comment_idx) = id.find("//") {
+            let (id, _) = id.split_at(comment_idx);
+            prop_assume!(id.parse::<i128>().is_err());
+        }
+
         // not using `NegativeTest`: different `id`s trigger different errors
         let input = format!("{instruction} error_id {id}");
         prop_assert!(parse(&input).is_err());
