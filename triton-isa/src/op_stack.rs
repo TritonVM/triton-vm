@@ -36,9 +36,8 @@ pub const NUM_OP_STACK_REGISTERS: usize = OpStackElement::COUNT;
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize, Arbitrary)]
 pub struct OpStack {
     ///`op_stack[0]` is the top of the stack,
-    /// `op_stack.stack[0]` is the lowest element in the stack. to figure out how it is achieved?
-    // TODO rename this field to queue
-    pub stack: VecDeque<BFieldElement>,
+    /// `op_stack.stack[0]` is the lowest element in the stack.
+    stack: VecDeque<BFieldElement>,
 
     underflow_io_sequence: Vec<UnderflowIO>,
 }
