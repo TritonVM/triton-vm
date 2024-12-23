@@ -1,3 +1,5 @@
+#![allow(clippy::needless_lifetimes)]
+#![allow(elided_named_lifetimes)]
 use itertools::Itertools;
 use num_traits::Zero;
 use rayon::prelude::*;

@@ -370,7 +370,7 @@ impl VMState {
             Instruction::Pop(n) => self.pop(n)?,
             Instruction::Push(field_element) => self.push(field_element),
             Instruction::Divine(n) => self.divine(n)?,
-            Instruction::Pick(stack_element) => self.pick(stack_element),
+            Instruction::Pick(stack_element) => self.pick(stack_element)?,
             Instruction::Place(stack_element) => self.place(stack_element)?,
             Instruction::Dup(stack_element) => self.dup(stack_element),
             Instruction::Swap(stack_element) => self.swap(stack_element),
@@ -484,12 +484,11 @@ impl VMState {
         Ok(vec![])
     }
 
-    fn pick(&mut self, stack_register: OpStackElement) -> Vec<CoProcessorCall> {
-        let element = self.op_stack.remove(stack_register);
+    fn pick(&mut self, stack_register: OpStackElement) -> InstructionResult<Vec<CoProcessorCall>>{
+        let element = self.op_stack.remove(stack_register)?;
         self.op_stack.push(element);
-
         self.instruction_pointer += 2;
-        vec![]
+        Ok(vec![])
     }
 
     fn place(&mut self, stack_register: OpStackElement) -> InstructionResult<Vec<CoProcessorCall>> {

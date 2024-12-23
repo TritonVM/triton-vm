@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 2743b74a372c974c49932a8db3db2be90fbf365c87cab10b86dee3eb57c5f179 # shrinks to input = _ProveVerifyKnowledgeOfHashPreimageArgs { hash_preimage: Digest([BFieldElement(0), BFieldElement(0), BFieldElement(0), BFieldElement(0), BFieldElement(0)]), some_tie_to_an_outer_context: Digest([BFieldElement(0), BFieldElement(0), BFieldElement(0), BFieldElement(0), BFieldElement(0)]) }
