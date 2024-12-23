@@ -286,15 +286,17 @@ impl Substitutions {
                 .and(row_indices.view())
                 .par_for_each( |mut section_row, &current_row_index| {
                     let next_row_index = current_row_index + 1;
-                    let current_main_row_slice = original_part.slice(s![current_row_index..=current_row_index, ..]);
-                    let next_main_row_slice = original_part.slice(s![next_row_index..=next_row_index, ..]);
+                    let current_main_row_slice =
+                        original_part.slice(s![current_row_index..=current_row_index, ..]);
+                    let next_main_row_slice =
+                        original_part.slice(s![next_row_index..=next_row_index, ..]);
                     let mut current_main_row = current_main_row_slice.row(0).to_owned();
                     let next_main_row = next_main_row_slice.row(0);
                     #(
                         section_row[#indices] = #substitutions;
                         current_main_row.push(Axis(0), section_row.slice(s![#indices])).unwrap();
                     )*
-                });
+            });
         )
     }
 
@@ -321,10 +323,10 @@ impl Substitutions {
                     |main_table_row, original_row, mut section_row| {
                         let mut auxiliary_row = original_row.to_owned();
                         #(
-                            let (original_row_auxiliary_row, mut det_col) =
-                                section_row.multi_slice_mut((s![..#indices],s![#indices..=#indices]));
-                            det_col[0] = #substitutions;
-                            auxiliary_row.push(Axis(0), det_col.slice(s![0])).unwrap();
+                        let (original_row_auxiliary_row, mut det_col) =
+                            section_row.multi_slice_mut((s![..#indices],s![#indices..=#indices]));
+                        det_col[0] = #substitutions;
+                        auxiliary_row.push(Axis(0), det_col.slice(s![0])).unwrap();
                         )*
                     }
                 );

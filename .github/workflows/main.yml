@@ -28,6 +28,11 @@ jobs:
       - name: Install nextest
         uses: taiki-e/install-action@nextest
 
+      - name: Check max line length
+        # rustfmt gives up on lines that are too long
+        if: runner.os == 'Linux'
+        run: "! grep -rP '^.{101}' --include='*.rs' ."
+
       - name: Run fmt
         run: cargo fmt --all -- --check
 

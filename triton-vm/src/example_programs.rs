@@ -405,79 +405,79 @@ pub(crate) fn calculate_new_mmr_peaks_from_append_with_safe_lists() -> Program {
         halt
 
         // Main function
-        // BEFORE: _ old_leaf_count_hi old_leaf_count_lo *peaks [digest]
+        // BEFORE: _ [old_leaf_count: u64] *peaks [digest]
         // AFTER:  _ *new_peaks *auth_path
         tasm_mmr_calculate_new_peaks_from_append_safe:
             dup 5 dup 5 dup 5 dup 5 dup 5 dup 5
             call tasm_list_safe_u32_push_digest
-            pop 5                       // _ old_leaf_count_hi old_leaf_count_lo *peaks
+            pop 5                       // _ [old_leaf_count: u64] *peaks
 
             // Create auth_path return value (vector living in RAM)
             // All MMR auth paths have capacity for 64 digests
-            push 64                     // _ old_leaf_count_hi old_leaf_count_lo *peaks 64
+            push 64                     // _ [old_leaf_count: u64] *peaks 64
             call tasm_list_safe_u32_new_digest
 
             swap 1
-            // stack: _ old_leaf_count_hi old_leaf_count_lo *auth_path *peaks
+            // _ [old_leaf_count: u64] *auth_path *peaks
 
             dup 3 dup 3
-            // stack: _ old_leaf_count_hi old_leaf_count_lo *auth_path *peaks old_leaf_count_hi old_leaf_count_lo
+            // _ [old_leaf_count: u64] *auth_path *peaks [old_leaf_count: u64]
 
             call tasm_arithmetic_u64_incr
             call tasm_arithmetic_u64_index_of_last_nonzero_bit
 
             call tasm_mmr_calculate_new_peaks_from_append_safe_while
-            // stack: _ old_leaf_count_hi old_leaf_count_lo *auth_path *peaks (rll = 0)
+            // _ [old_leaf_count: u64] *auth_path *peaks (rll = 0)
 
             pop 1
             swap 3 pop 1 swap 1 pop 1
-            // stack: _ *peaks *auth_path
+            // _ *peaks *auth_path
 
             return
 
-        // Stack start and end: _ old_leaf_count_hi old_leaf_count_lo *auth_path *peaks rll
+        // Stack start and end: _ *auth_path *peaks rll
         tasm_mmr_calculate_new_peaks_from_append_safe_while:
             dup 0
             push 0
             eq
             skiz
                 return
-            // Stack: _ old_leaf_count_hi old_leaf_count_lo *auth_path *peaks rll
+            // _ *auth_path *peaks rll
 
             swap 2 swap 1
-            // Stack: _ old_leaf_count_hi old_leaf_count_lo rll *auth_path *peaks
+            // _ rll *auth_path *peaks
 
             dup 0
             dup 0
             call tasm_list_safe_u32_pop_digest
-            // Stack: _ old_leaf_count_hi old_leaf_count_lo rll *auth_path *peaks *peaks [digest (new_hash)]
+            // _ rll *auth_path *peaks *peaks [digest (new_hash)]
 
             dup 5
-            // Stack: _ old_leaf_count_hi old_leaf_count_lo rll *auth_path *peaks *peaks [digest (new_hash)] *peaks
+            // _ rll *auth_path *peaks *peaks [digest (new_hash)] *peaks
 
             call tasm_list_safe_u32_pop_digest
-            // Stack: _ old_leaf_count_hi old_leaf_count_lo rll *auth_path *peaks *peaks [digest (new_hash)] [digests (previous_peak)]
+            // _ rll *auth_path *peaks *peaks [digest (new_hash)] [digests (old_peak)]
 
             // Update authentication path with latest previous_peak
             dup 12
-            dup 5 dup 5 dup 5 dup 5 dup 5
-            // Stack: _ old_leaf_count_hi old_leaf_count_lo rll *auth_path *peaks *peaks [digest (new_hash)] [digests (previous_peak)] *auth_path [digests (previous_peak)]
+            // _ rll *auth_path *peaks *peaks [digest (new_hash)] [digests (old_peak)] *auth_path
 
+            dup 5 dup 5 dup 5 dup 5 dup 5
             call tasm_list_safe_u32_push_digest
-            // Stack: _ old_leaf_count_hi old_leaf_count_lo rll *auth_path *peaks *peaks [digest (new_hash)] [digests (previous_peak)]
+            // _ rll *auth_path *peaks *peaks [digest (new_hash)] [digests (old_peak)]
 
             hash
-            // Stack: _ old_leaf_count_hi old_leaf_count_lo rll *auth_path *peaks *peaks [digests (new_peak)]
+            // _ rll *auth_path *peaks *peaks [digests (new_peak)]
 
             call tasm_list_safe_u32_push_digest
-            // Stack: _ old_leaf_count_hi old_leaf_count_lo rll *auth_path *peaks
+            // _ rll *auth_path *peaks
 
             swap 1 swap 2
-            // Stack: _ old_leaf_count_hi old_leaf_count_lo *auth_path *peaks rll
+            // _ *auth_path *peaks rll
 
             push -1
             add
-            // Stack: _ old_leaf_count_hi old_leaf_count_lo *auth_path *peaks (rll - 1)
+            // _ *auth_path *peaks (rll - 1)
 
             recurse
 
@@ -595,35 +595,35 @@ pub(crate) fn calculate_new_mmr_peaks_from_append_with_safe_lists() -> Program {
             swap 1
             push 1
             dup 1
-            // stack: _ value_lo value_hi 1 value_hi
+            // _ value_lo value_hi 1 value_hi
 
             skiz call tasm_arithmetic_u64_log_2_floor_then
             skiz call tasm_arithmetic_u64_log_2_floor_else
-            // stack: _ log2_floor(value)
+            // _ log2_floor(value)
 
             return
 
         tasm_arithmetic_u64_log_2_floor_then:
             // value_hi != 0
-            // stack: _ value_lo value_hi 1
+            // _ value_lo value_hi 1
             swap 1
             swap 2
             pop 2
-            // stack: _ value_hi
+            // _ value_hi
 
             log_2_floor
             push 32
             add
-            // stack: _ (log2_floor(value_hi) + 32)
+            // _ (log2_floor(value_hi) + 32)
 
             push 0
-            // stack: _ (log2_floor(value_hi) + 32) 0
+            // _ (log2_floor(value_hi) + 32) 0
 
             return
 
         tasm_arithmetic_u64_log_2_floor_else:
             // value_hi == 0
-            // stack: _ value_lo value_hi
+            // _ value_lo value_hi
             pop 1
             log_2_floor
             return
@@ -666,11 +666,11 @@ pub(crate) fn calculate_new_mmr_peaks_from_append_with_safe_lists() -> Program {
         tasm_arithmetic_u64_and:
             swap 3
             and
-            // stack: _ lhs_lo rhs_lo (lhs_hi & rhs_hi)
+            // _ lhs_lo rhs_lo (lhs_hi & rhs_hi)
 
             swap 2
             and
-            // stack: _ (lhs_hi & rhs_hi) (rhs_lo & lhs_lo)
+            // _ (lhs_hi & rhs_hi) (rhs_lo & lhs_lo)
 
             return
 
@@ -748,11 +748,11 @@ pub(crate) fn calculate_new_mmr_peaks_from_append_with_safe_lists() -> Program {
         tasm_arithmetic_u64_xor:
             swap 3
             xor
-            // stack: _ lhs_lo rhs_lo (lhs_hi ^ rhs_hi)
+            // _ lhs_lo rhs_lo (lhs_hi ^ rhs_hi)
 
             swap 2
             xor
-            // stack: _ (lhs_hi ^ rhs_hi) (rhs_lo ^ lhs_lo)
+            // _ (lhs_hi ^ rhs_hi) (rhs_lo ^ lhs_lo)
 
             return
     )

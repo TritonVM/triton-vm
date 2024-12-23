@@ -229,7 +229,7 @@ impl AIR for ProgramTable {
         let index_in_chunk_next_is_not_max =
             one - max_minus_index_in_chunk_inv_next * index_in_chunk_next_is_max.clone();
 
-        let send_chunk_running_eval_absorbs_chunk_iff_index_in_chunk_next_is_max_and_not_padding_row =
+        let send_chunk_running_eval_absorbs_chunk_iff_index_in_chunk_next_is_max_and_not_padding =
             send_chunk_running_evaluation_absorbs_next_chunk
                 * next_row_is_table_padding_row
                 * index_in_chunk_next_is_not_max
@@ -246,7 +246,7 @@ impl AIR for ProgramTable {
             table_padding_starts_when_hash_input_padding_is_active_and_index_in_chunk_is_zero,
             log_derivative_updates_if_and_only_if_not_a_padding_row,
             prepare_chunk_running_evaluation_resets_every_rate_rows_and_absorbs_next_instruction,
-            send_chunk_running_eval_absorbs_chunk_iff_index_in_chunk_next_is_max_and_not_padding_row,
+            send_chunk_running_eval_absorbs_chunk_iff_index_in_chunk_next_is_max_and_not_padding,
         ]
     }
 
