@@ -1,9 +1,12 @@
+use std::collections::VecDeque;
 use std::fmt::Display;
 use std::fmt::Formatter;
 use std::fmt::Result as FmtResult;
 use std::num::TryFromIntError;
 use std::ops::Index;
 use std::ops::IndexMut;
+use std::ops::Range;
+use std::ops::RangeInclusive;
 
 use arbitrary::Arbitrary;
 use get_size2::GetSize;
@@ -35,10 +38,9 @@ pub const NUM_OP_STACK_REGISTERS: usize = OpStackElement::COUNT;
 /// remaining elements.
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize, Arbitrary)]
 pub struct OpStack {
-    /// The underlying, actual stack. When manually accessing, be aware of reversed indexing:
-    /// while `op_stack[0]` is the top of the stack, `op_stack.stack[0]` is the lowest element in
-    /// the stack.
-    pub stack: Vec<BFieldElement>,
+    ///`op_stack[0]` is the top of the stack,
+    /// `op_stack.stack[0]` is the lowest element in the stack.
+    stack: VecDeque<BFieldElement>,
 
     underflow_io_sequence: Vec<UnderflowIO>,
 }
@@ -51,17 +53,18 @@ pub enum OpStackError {
 
     #[error("failed to convert BFieldElement {0} into u32")]
     FailedU32Conversion(BFieldElement),
+
+    #[error("index {0} is out of range for OpStack")]
+    IndexOutOfBounds(usize),
 }
 
 impl OpStack {
     pub fn new(program_digest: Digest) -> Self {
         let mut stack = bfe_vec![0; OpStackElement::COUNT];
-
-        let reverse_digest = program_digest.reversed().values();
-        stack[..Digest::LEN].copy_from_slice(&reverse_digest);
+        stack[..Digest::LEN].copy_from_slice(&program_digest.values());
 
         Self {
-            stack,
+            stack: VecDeque::from(stack),
             underflow_io_sequence: vec![],
         }
     }
@@ -74,26 +77,27 @@ impl OpStack {
     }
 
     pub fn push(&mut self, element: BFieldElement) {
-        self.stack.push(element);
+        self.stack.push_front(element);
         self.record_underflow_io(UnderflowIO::Write);
     }
 
     pub fn pop(&mut self) -> Result<BFieldElement> {
         self.record_underflow_io(UnderflowIO::Read);
-        self.stack.pop().ok_or(OpStackError::TooShallow)
+        self.stack.pop_front().ok_or(OpStackError::TooShallow)
     }
 
     pub fn insert(&mut self, index: OpStackElement, element: BFieldElement) {
-        let insertion_index = self.len() - usize::from(index);
+        let insertion_index = usize::from(index);
         self.stack.insert(insertion_index, element);
         self.record_underflow_io(UnderflowIO::Write);
     }
 
-    pub fn remove(&mut self, index: OpStackElement) -> BFieldElement {
+    pub fn remove(&mut self, index: OpStackElement) -> Result<BFieldElement> {
         self.record_underflow_io(UnderflowIO::Read);
-        let top_of_stack = self.len() - 1;
-        let index = top_of_stack - usize::from(index);
-        self.stack.remove(index)
+        let index = usize::from(index);
+        self.stack
+            .remove(index)
+            .ok_or(OpStackError::IndexOutOfBounds(index))
     }
 
     fn record_underflow_io(&mut self, io_type: fn(BFieldElement) -> UnderflowIO) {
@@ -178,15 +182,44 @@ impl Index<usize> for OpStack {
     type Output = BFieldElement;
 
     fn index(&self, index: usize) -> &Self::Output {
-        let top_of_stack = self.len() - 1;
-        &self.stack[top_of_stack - index]
+        &self.stack[index]
+    }
+}
+
+impl Index<Range<usize>> for OpStack {
+    type Output = [BFieldElement];
+
+    fn index(&self, range: Range<usize>) -> &Self::Output {
+        &self.stack.as_slices().0[range.start..range.end]
+    }
+}
+
+impl Index<RangeInclusive<usize>> for OpStack {
+    type Output = [BFieldElement];
+
+    fn index(&self, range: RangeInclusive<usize>) -> &Self::Output {
+        let (start, end) = (*range.start(), *range.end());
+        &self.stack.as_slices().0[start..=end]
     }
 }
 
 impl IndexMut<usize> for OpStack {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
-        let top_of_stack = self.len() - 1;
-        &mut self.stack[top_of_stack - index]
+        &mut self.stack[index]
+    }
+}
+
+impl IndexMut<Range<usize>> for OpStack {
+    fn index_mut(&mut self, range: Range<usize>) -> &mut Self::Output {
+        let (start, end) = (range.start, range.end);
+        &mut self.stack.as_mut_slices().0[start..end]
+    }
+}
+
+impl IndexMut<RangeInclusive<usize>> for OpStack {
+    fn index_mut(&mut self, range: RangeInclusive<usize>) -> &mut Self::Output {
+        let (start, end) = (*range.start(), *range.end());
+        &mut self.stack.as_mut_slices().0[start..=end]
     }
 }
 
@@ -198,20 +231,50 @@ impl Index<OpStackElement> for OpStack {
     }
 }
 
+impl Index<Range<OpStackElement>> for OpStack {
+    type Output = [BFieldElement];
+
+    fn index(&self, range: Range<OpStackElement>) -> &Self::Output {
+        let (start, end) = (usize::from(range.start), usize::from(range.end));
+        &self.stack.as_slices().0[start..end]
+    }
+}
+
+impl Index<RangeInclusive<OpStackElement>> for OpStack {
+    type Output = [BFieldElement];
+
+    fn index(&self, range: RangeInclusive<OpStackElement>) -> &Self::Output {
+        let (start, end) = (usize::from(range.start()), usize::from(range.end()));
+        &self.stack.as_slices().0[start..=end]
+    }
+}
+
 impl IndexMut<OpStackElement> for OpStack {
     fn index_mut(&mut self, stack_element: OpStackElement) -> &mut Self::Output {
         &mut self[usize::from(stack_element)]
     }
 }
 
+impl IndexMut<Range<OpStackElement>> for OpStack {
+    fn index_mut(&mut self, range: Range<OpStackElement>) -> &mut Self::Output {
+        let (start, end) = (usize::from(range.start), usize::from(range.end));
+        &mut self.stack.as_mut_slices().0[start..end]
+    }
+}
+
+impl IndexMut<RangeInclusive<OpStackElement>> for OpStack {
+    fn index_mut(&mut self, range: RangeInclusive<OpStackElement>) -> &mut Self::Output {
+        let (start, end) = (usize::from(range.start()), usize::from(range.end()));
+        &mut self.stack.as_mut_slices().0[start..=end]
+    }
+}
+
 impl IntoIterator for OpStack {
     type Item = BFieldElement;
-    type IntoIter = std::vec::IntoIter<Self::Item>;
+    type IntoIter = std::collections::vec_deque::IntoIter<Self::Item>;
 
     fn into_iter(self) -> Self::IntoIter {
-        let mut stack = self.stack;
-        stack.reverse();
-        stack.into_iter()
+        self.stack.into_iter()
     }
 }
 
@@ -1024,10 +1087,61 @@ mod tests {
         }
 
         let expected_element = BFieldElement::from(removal_index);
-        let removed_element = op_stack.remove(removal_index);
+        let removed_element = op_stack.remove(removal_index).unwrap();
         prop_assert_eq!(expected_element, removed_element);
 
         let expected_len = 2 * OpStackElement::COUNT - 1;
         prop_assert_eq!(expected_len, op_stack.len());
+    }
+
+    fn setup_op_stack() -> OpStack {
+        OpStack {
+            stack: VecDeque::from(bfe_vec![1, 2, 3, 4, 5]),
+            underflow_io_sequence: vec![],
+        }
+    }
+
+    #[test]
+    fn test_opstack_index_range() {
+        let mut op_stack = setup_op_stack();
+
+        assert_eq!(op_stack[0], op_stack.stack[0]);
+        assert_eq!(
+            &op_stack[0..2],
+            &[BFieldElement::from(1), BFieldElement::from(2)]
+        );
+        assert_eq!(
+            &op_stack[0..=2],
+            &[
+                BFieldElement::from(1),
+                BFieldElement::from(2),
+                BFieldElement::from(3)
+            ]
+        );
+
+        op_stack.push(BFieldElement::from(0));
+        assert_eq!(op_stack[0], BFieldElement::from(0));
+
+        assert!(op_stack.pop().is_ok());
+        assert_eq!(op_stack[0], BFieldElement::from(1));
+
+        assert_eq!(
+            Ok(BFieldElement::from(3)),
+            op_stack.remove(OpStackElement::ST2),
+        );
+
+        let mut op_stack = setup_op_stack();
+        assert_eq!(
+            &mut op_stack[0..2],
+            &mut [BFieldElement::from(1), BFieldElement::from(2)]
+        );
+        assert_eq!(
+            &mut op_stack[0..=2],
+            &mut [
+                BFieldElement::from(1),
+                BFieldElement::from(2),
+                BFieldElement::from(3)
+            ]
+        );
     }
 }
