@@ -1,5 +1,3 @@
-#![allow(clippy::needless_lifetimes)]
-#![allow(elided_named_lifetimes)]
 use nom::branch::alt;
 use nom::bytes::complete::tag;
 use nom::bytes::complete::take_while;
