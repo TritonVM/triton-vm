@@ -57,3 +57,8 @@ specification/cheatsheet.aux
 specification/cheatsheet.log
 specification/cheatsheet.synctex.gz
 triton-vm/proofs/*
+
+# Ignore proptest-regression files caused by bug
+triton-air/proptest-regressions/table/*
+triton-isa/proptest-regressions/*
+triton-vm/proptest-regressions/*
