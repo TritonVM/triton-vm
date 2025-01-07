@@ -3,6 +3,22 @@
 All notable changes are documented in this file.
 Lines marked “(!)” indicate a breaking change.
 
+## [0.44.1](https://github.com/TritonVM/triton-vm/compare/v0.44.0..v0.44.1) - 2025-01-07
+
+### 🐛 Bug Fixes
+
+- Improve error message on internal error ([9c6cc1c2](https://github.com/TritonVM/triton-vm/commit/9c6cc1c2))
+
+### 📚 Documentation
+
+- Add contribution guidelines ([5f17e2dc](https://github.com/TritonVM/triton-vm/commit/5f17e2dc))
+- Clarify examples of instruction behavior ([875cd09e](https://github.com/TritonVM/triton-vm/commit/875cd09e))
+
+### ⚙️ Miscellaneous
+
+- Enable continuous benchmarks through codspeed ([b9f78adb](https://github.com/TritonVM/triton-vm/commit/b9f78adb))
+- Fix typos ([595889f0](https://github.com/TritonVM/triton-vm/commit/595889f0))
+
 ## [0.44.0](https://github.com/TritonVM/triton-vm/compare/v0.43.0..v0.44.0) - 2024-12-09
 
 ### ✨ Features
