@@ -410,7 +410,7 @@ where
         profiler!(stop "leafs");
 
         profiler!(start "Merkle tree" ("hash"));
-        let merkle_tree = MerkleTree::new::<CpuParallel>(&hashed_rows).unwrap();
+        let merkle_tree = MerkleTree::par_new(&hashed_rows).unwrap();
         profiler!(stop "Merkle tree");
 
         merkle_tree

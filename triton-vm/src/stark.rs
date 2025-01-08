@@ -238,8 +238,7 @@ impl Prover {
             quotient_segments_rows.map(hash_row).collect::<Vec<_>>();
         profiler!(stop "hash rows of quotient segments");
         profiler!(start "Merkle tree" ("hash"));
-        let quot_merkle_tree =
-            MerkleTree::new::<CpuParallel>(&fri_domain_quotient_segment_codewords_digests)?;
+        let quot_merkle_tree = MerkleTree::par_new(&fri_domain_quotient_segment_codewords_digests)?;
         let quot_merkle_tree_root = quot_merkle_tree.root();
         proof_stream.enqueue(ProofItem::MerkleRoot(quot_merkle_tree_root));
         profiler!(stop "Merkle tree");
@@ -1353,7 +1352,7 @@ impl Verifier {
         let interpret_xfe_as_bfes = |xfe: XFieldElement| xfe.coefficients.to_vec();
         let collect_row_as_bfes = |row: &QuotientSegments| row.map(interpret_xfe_as_bfes).concat();
         quotient_segment_rows
-            .par_iter()
+            .iter()
             .map(collect_row_as_bfes)
             .map(|row| Tip5::hash_varlen(&row))
             .collect()

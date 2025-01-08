@@ -166,8 +166,8 @@ impl ProverRound {
     }
 
     fn merkle_tree_from_codeword(codeword: &[XFieldElement]) -> ProverResult<MerkleTree> {
-        let digests = codeword_as_digests(codeword);
-        MerkleTree::new::<CpuParallel>(&digests).map_err(FriProvingError::MerkleTreeError)
+        let digests: Vec<_> = codeword.par_iter().map(|&xfe| xfe.into()).collect();
+        MerkleTree::par_new(&digests).map_err(FriProvingError::MerkleTreeError)
     }
 
     fn split_and_fold(&self, folding_challenge: XFieldElement) -> Vec<XFieldElement> {
@@ -385,7 +385,6 @@ impl FriVerifier<'_> {
         let folding_challenge = round.folding_challenge.unwrap();
 
         (0..self.num_collinearity_checks)
-            .into_par_iter()
             .map(|i| {
                 let point_a_x = domain.domain_value(a_indices[i] as u32).lift();
                 let point_b_x = domain.domain_value(b_indices[i] as u32).lift();
@@ -434,7 +433,7 @@ impl FriVerifier<'_> {
 
     fn last_round_codeword_merkle_root(&self) -> VerifierResult<Digest> {
         let codeword_digests = codeword_as_digests(&self.last_round_codeword);
-        let merkle_tree = MerkleTree::new::<CpuParallel>(&codeword_digests)
+        let merkle_tree = MerkleTree::sequential_new(&codeword_digests)
             .map_err(FriValidationError::MerkleTreeError)?;
 
         Ok(merkle_tree.root())
@@ -618,7 +617,7 @@ impl Fri {
 }
 
 fn codeword_as_digests(codeword: &[XFieldElement]) -> Vec<Digest> {
-    codeword.par_iter().map(|&xfe| xfe.into()).collect()
+    codeword.iter().map(|&xfe| xfe.into()).collect()
 }
 
 #[cfg(test)]
