@@ -1353,7 +1353,7 @@ impl Verifier {
         let interpret_xfe_as_bfes = |xfe: XFieldElement| xfe.coefficients.to_vec();
         let collect_row_as_bfes = |row: &QuotientSegments| row.map(interpret_xfe_as_bfes).concat();
         quotient_segment_rows
-            .par_iter()
+            .iter()
             .map(collect_row_as_bfes)
             .map(|row| Tip5::hash_varlen(&row))
             .collect()
