@@ -166,7 +166,7 @@ impl ProverRound {
     }
 
     fn merkle_tree_from_codeword(codeword: &[XFieldElement]) -> ProverResult<MerkleTree> {
-        let digests = codeword_as_digests(codeword);
+        let digests: Vec<_> = codeword.par_iter().map(|&xfe| xfe.into()).collect();
         MerkleTree::new::<CpuParallel>(&digests).map_err(FriProvingError::MerkleTreeError)
     }
 
@@ -385,7 +385,6 @@ impl FriVerifier<'_> {
         let folding_challenge = round.folding_challenge.unwrap();
 
         (0..self.num_collinearity_checks)
-            .into_par_iter()
             .map(|i| {
                 let point_a_x = domain.domain_value(a_indices[i] as u32).lift();
                 let point_b_x = domain.domain_value(b_indices[i] as u32).lift();
@@ -618,7 +617,7 @@ impl Fri {
 }
 
 fn codeword_as_digests(codeword: &[XFieldElement]) -> Vec<Digest> {
-    codeword.par_iter().map(|&xfe| xfe.into()).collect()
+    codeword.iter().map(|&xfe| xfe.into()).collect()
 }
 
 #[cfg(test)]
