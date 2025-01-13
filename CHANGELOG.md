@@ -3,6 +3,12 @@
 All notable changes are documented in this file.
 Lines marked “(!)” indicate a breaking change.
 
+## [0.45.0](https://github.com/TritonVM/triton-vm/compare/v0.44.1..v0.45.0) - 2025-01-13
+
+### ⚡️ Performance
+
+- *(verifier)* Remove parallelism ([baf5860f](https://github.com/TritonVM/triton-vm/commit/baf5860f))
+
 ## [0.44.1](https://github.com/TritonVM/triton-vm/compare/v0.44.0..v0.44.1) - 2025-01-07
 
 ### 🐛 Bug Fixes

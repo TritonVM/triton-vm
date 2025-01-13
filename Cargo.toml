@@ -25,7 +25,7 @@ opt-level = 1
 build-override.opt-level = 3
 
 [workspace.package]
-version = "0.44.1"
+version = "0.45.0"
 edition = "2021"
 rust-version = "1.80"
 authors = ["Triton Software AG"]
@@ -36,22 +36,22 @@ readme = "README.md"
 documentation = "https://triton-vm.org/spec/"
 
 [workspace.dependencies.air]
-version = "0.44.1"
+version = "0.45.0"
 path = "triton-air"
 package = "triton-air"
 
 [workspace.dependencies.constraint-builder]
-version = "0.44.1"
+version = "0.45.0"
 path = "triton-constraint-builder"
 package = "triton-constraint-builder"
 
 [workspace.dependencies.constraint-circuit]
-version = "0.44.1"
+version = "0.45.0"
 path = "triton-constraint-circuit"
 package = "triton-constraint-circuit"
 
 [workspace.dependencies.isa]
-version = "0.44.1"
+version = "0.45.0"
 path = "triton-isa"
 package = "triton-isa"
 
