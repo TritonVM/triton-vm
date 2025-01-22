@@ -19,7 +19,7 @@ criterion_group! {
 }
 
 fn assemble_constraints(criterion: &mut Criterion) {
-    criterion.bench_function("assemble all constraints", |bencher| {
+    criterion.bench_function("Assemble all constraints", |bencher| {
         bencher.iter(|| black_box(Constraints::all()))
     });
 }
@@ -35,10 +35,11 @@ fn degree_lower_constraint_types(c: &mut Criterion) {
 
 fn degree_lower_constraints<II: InputIndicator>(
     group: &mut BenchmarkGroup<WallTime>,
-    bench_name: &str,
+    constraint_group_name: &str,
     constraints: Vec<ConstraintCircuitMonad<II>>,
 ) {
     let info = Constraints::default_degree_lowering_info();
+    let bench_name = format!("Degree-lower {constraint_group_name} constraints");
     group.bench_function(bench_name, |bencher| {
         bencher.iter_batched(
             || constraints.clone(),
@@ -50,7 +51,7 @@ fn degree_lower_constraints<II: InputIndicator>(
 
 fn degree_lower_all(criterion: &mut Criterion) {
     let info = Constraints::default_degree_lowering_info();
-    criterion.bench_function("degree lower all constraints", |bencher| {
+    criterion.bench_function("Degree-lower all constraints", |bencher| {
         bencher.iter_batched(
             Constraints::all,
             |mut c| black_box(c.lower_to_target_degree_through_substitutions(info)),

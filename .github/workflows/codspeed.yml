@@ -34,6 +34,7 @@ jobs:
           mem_io
           prove_fib
           verify_halt
+          degree_lowering
 
       - name: Run benchmarks
         uses: CodSpeedHQ/action@v3
