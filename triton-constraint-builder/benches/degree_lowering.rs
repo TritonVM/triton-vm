@@ -1,91 +1,60 @@
 use constraint_circuit::ConstraintCircuitMonad;
-use divan::black_box;
+use constraint_circuit::InputIndicator;
+use criterion::black_box;
+use criterion::criterion_group;
+use criterion::criterion_main;
+use criterion::measurement::WallTime;
+use criterion::BatchSize::SmallInput;
+use criterion::BenchmarkGroup;
+use criterion::Criterion;
 use triton_constraint_builder::Constraints;
 
-fn main() {
-    divan::main();
+criterion_main!(benches);
+criterion_group! {
+    name = benches;
+    config = Criterion::default().sample_size(10);
+    targets = assemble_constraints,
+              degree_lower_constraint_types,
+              degree_lower_all,
 }
 
-#[divan::bench(sample_count = 10)]
-fn assemble_constraints() {
-    black_box(Constraints::all());
+fn assemble_constraints(criterion: &mut Criterion) {
+    criterion.bench_function("assemble all constraints", |bencher| {
+        bencher.iter(|| black_box(Constraints::all()))
+    });
 }
 
-#[divan::bench(sample_count = 10)]
-fn initial_constraints(bencher: divan::Bencher) {
-    bencher
-        .with_inputs(|| {
-            let degree_lowering_info = Constraints::default_degree_lowering_info();
-            let constraints = Constraints::initial_constraints();
-            (degree_lowering_info, constraints)
-        })
-        .bench_values(|(degree_lowering_info, mut constraints)| {
-            black_box(ConstraintCircuitMonad::lower_to_degree(
-                &mut constraints,
-                degree_lowering_info,
-            ));
-        });
+fn degree_lower_constraint_types(c: &mut Criterion) {
+    let mut group = c.benchmark_group("lower to target degree");
+    degree_lower_constraints(&mut group, "init", Constraints::initial_constraints());
+    degree_lower_constraints(&mut group, "cons", Constraints::consistency_constraints());
+    degree_lower_constraints(&mut group, "tran", Constraints::transition_constraints());
+    degree_lower_constraints(&mut group, "term", Constraints::terminal_constraints());
+    group.finish();
 }
 
-#[divan::bench(sample_count = 10)]
-fn consistency_constraints(bencher: divan::Bencher) {
-    bencher
-        .with_inputs(|| {
-            let degree_lowering_info = Constraints::default_degree_lowering_info();
-            let constraints = Constraints::consistency_constraints();
-            (degree_lowering_info, constraints)
-        })
-        .bench_values(|(degree_lowering_info, mut constraints)| {
-            black_box(ConstraintCircuitMonad::lower_to_degree(
-                &mut constraints,
-                degree_lowering_info,
-            ));
-        });
+fn degree_lower_constraints<II: InputIndicator>(
+    group: &mut BenchmarkGroup<WallTime>,
+    bench_name: &str,
+    constraints: Vec<ConstraintCircuitMonad<II>>,
+) {
+    let info = Constraints::default_degree_lowering_info();
+    group.bench_function(bench_name, |bencher| {
+        bencher.iter_batched(
+            || constraints.clone(),
+            |mut constr| black_box(ConstraintCircuitMonad::lower_to_degree(&mut constr, info)),
+            SmallInput,
+        )
+    });
 }
 
-#[divan::bench(sample_count = 1)]
-fn transition_constraints(bencher: divan::Bencher) {
-    bencher
-        .with_inputs(|| {
-            let degree_lowering_info = Constraints::default_degree_lowering_info();
-            let constraints = Constraints::transition_constraints();
-            (degree_lowering_info, constraints)
-        })
-        .bench_values(|(degree_lowering_info, mut constraints)| {
-            black_box(ConstraintCircuitMonad::lower_to_degree(
-                &mut constraints,
-                degree_lowering_info,
-            ));
-        });
-}
-
-#[divan::bench(sample_count = 10)]
-fn terminal_constraints(bencher: divan::Bencher) {
-    bencher
-        .with_inputs(|| {
-            let degree_lowering_info = Constraints::default_degree_lowering_info();
-            let constraints = Constraints::terminal_constraints();
-            (degree_lowering_info, constraints)
-        })
-        .bench_values(|(degree_lowering_info, mut constraints)| {
-            black_box(ConstraintCircuitMonad::lower_to_degree(
-                &mut constraints,
-                degree_lowering_info,
-            ));
-        });
-}
-
-#[divan::bench(sample_count = 1)]
-fn degree_lower_all(bencher: divan::Bencher) {
-    bencher
-        .with_inputs(|| {
-            let constraints = Constraints::all();
-            let degree_lowering_info = Constraints::default_degree_lowering_info();
-            (degree_lowering_info, constraints)
-        })
-        .bench_values(|(degree_lowering_info, mut constraints)| {
-            black_box(
-                constraints.lower_to_target_degree_through_substitutions(degree_lowering_info),
-            );
-        });
+fn degree_lower_all(criterion: &mut Criterion) {
+    let info = Constraints::default_degree_lowering_info();
+    criterion.bench_function("degree lower all constraints", |bencher| {
+        bencher.iter_batched(
+            Constraints::all,
+            |mut c| black_box(c.lower_to_target_degree_through_substitutions(info)),
+            SmallInput,
+        )
+    });
 }
