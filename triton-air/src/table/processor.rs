@@ -2412,9 +2412,11 @@ fn stack_grows_by_any_of(
 ///
 /// Syntax in above example:
 /// - `ind_n` is the [indicator polynomial](indicator_polynomial) for `n`
-/// - `osp` is the [op stack pointer](OpStackPointer)
+/// - `osp` is the [op stack pointer][osp]
 /// - `rp` is the running product for the permutation argument
 /// - `fac_n` is the factor for the running product
+///
+/// [osp]: crate::table_column::ProcessorMainColumn::OpStackPointer
 fn combine_mutually_exclusive_constraint_groups(
     circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     all_constraint_groups: Vec<Vec<ConstraintCircuitMonad<DualRowIndicator>>>,

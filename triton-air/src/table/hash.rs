@@ -70,12 +70,15 @@ impl HashTable {
     }
 
     /// Construct one of the states 0 through 3 from its constituent limbs.
-    /// For example, state 0 (prior to it being looked up in the split-and-lookup S-Box, which is
-    /// usually the desired version of the state) is constructed from limbs
-    /// [`State0HighestLkIn`] through [`State0LowestLkIn`].
+    /// For example, state 0 (prior to it being looked up in the split-and-lookup
+    /// S-Box, which is usually the desired version of the state) is constructed
+    /// from limbs [`State0HighestLkIn`][hi] through [`State0LowestLkIn`][lo].
     ///
     /// States 4 through 15 are directly accessible. See also the slightly related
     /// [`Self::state_column_by_index`].
+    ///
+    /// [hi]: crate::table_column::HashMainColumn::State0HighestLkIn
+    /// [lo]: crate::table_column::HashMainColumn::State0LowestLkIn
     fn re_compose_16_bit_limbs<II: InputIndicator>(
         circuit_builder: &ConstraintCircuitBuilder<II>,
         highest: ConstraintCircuitMonad<II>,
@@ -163,11 +166,13 @@ impl HashTable {
             .fold(constant(1), |accumulator, factor| accumulator * factor)
     }
 
-    /// The [main column][col] for the round constant corresponding to the given index.
-    /// Valid indices are 0 through 15, corresponding to the 16 round constants
-    /// `Constant0` through `Constant15`.
+    /// The [main column][main_col] for the round constant corresponding to the
+    /// given index. Valid indices are 0 through 15, corresponding to the 16 round
+    /// constants [`Constant0`][c0] through [`Constant15`][c15].
     ///
-    /// [col]: crate::table_column::HashMainColumn
+    /// [main_col]: crate::table_column::HashMainColumn
+    /// [c0]: crate::table_column::HashMainColumn::Constant0
+    /// [c15]: crate::table_column::HashMainColumn::Constant15
     pub fn round_constant_column_by_index(index: usize) -> MainColumn {
         match index {
             0 => MainColumn::Constant0,
@@ -190,13 +195,16 @@ impl HashTable {
         }
     }
 
-    /// The [`HashMainColumn`] for the state corresponding to the given index.
-    /// Valid indices are 4 through 15, corresponding to the 12 state columns
-    /// [`State4`] through [`State15`].
+    /// The [`HashMainColumn`][MainColumn] for the state corresponding to the given
+    /// index. Valid indices are 4 through 15, corresponding to the 12 state columns
+    /// [`State4`][state_4] through [`State15`][state_15].
     ///
-    /// States with indices 0 through 3 have to be assembled from the respective limbs;
-    /// see [`Self::re_compose_states_0_through_3_before_lookup`]
+    /// States with indices 0 through 3 have to be assembled from the respective
+    /// limbs; see [`Self::re_compose_states_0_through_3_before_lookup`]
     /// or [`Self::re_compose_16_bit_limbs`].
+    ///
+    /// [state_4]: crate::table_column::HashMainColumn::State4
+    /// [state_15]: crate::table_column::HashMainColumn::State15
     fn state_column_by_index(index: usize) -> MainColumn {
         match index {
             4 => MainColumn::State4,

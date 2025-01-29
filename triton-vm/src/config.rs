@@ -36,7 +36,7 @@ pub enum CacheDecision {
 struct Config {
     /// Whether to cache the [low-degree extended trace][lde] when [proving].
     /// `None` means the decision is made automatically, based on free memory.
-    /// Can be accessed via [`Config::cache_lde_trace`].
+    /// Can be accessed via [`cache_lde_trace`].
     ///
     /// [lde]: crate::table::master_table::MasterTable::maybe_low_degree_extend_all_columns
     /// [proving]: crate::stark::Stark::prove

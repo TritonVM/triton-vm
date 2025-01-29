@@ -1,5 +1,6 @@
-//! The various tables' constraints are very inefficient to evaluate if they live in RAM.
-//! Instead, the build script turns them into rust code, which is then optimized by rustc.
+//! The various tables' constraints are very inefficient to evaluate if they
+//! live in RAM. Instead, the build script turns them into rust code, which is
+//! then optimized by rustc.
 
 use std::cell::RefCell;
 use std::collections::HashSet;
@@ -37,17 +38,14 @@ pub trait Codegen {
 
 #[derive(Debug, Default, Clone, Eq, PartialEq)]
 pub struct RustBackend {
-    /// All [circuit] IDs known to be in scope.
-    ///
-    /// [circuit]: triton_vm::table::circuit::ConstraintCircuit
+    /// All [circuit][ConstraintCircuit] IDs known to be in scope.
     scope: HashSet<usize>,
 }
 
 #[derive(Debug, Default, Clone, Eq, PartialEq)]
 pub struct TasmBackend {
-    /// All [circuit] IDs known to be processed and stored to memory.
-    ///
-    /// [circuit]: triton_vm::table::circuit::ConstraintCircuit
+    /// All [circuit][ConstraintCircuit] IDs known to be processed and stored to
+    /// memory.
     scope: HashSet<usize>,
 
     /// The number of elements written to the output list.
@@ -367,10 +365,10 @@ impl RustBackend {
 /// The minimal required size of a memory page in [`BFieldElement`]s.
 pub const MEM_PAGE_SIZE: usize = 1 << 32;
 
-/// An offset from the [memory layout][layout]'s `free_mem_page_ptr`, in number of
+/// An offset from the memory layout's `free_mem_page_ptr`, in number of
 /// [`XFieldElement`]s. Indicates the start of the to-be-returned array.
 ///
-/// [layout]: memory_layout::IntegralMemoryLayout
+/// See `IntegralMemoryLayout` in crate triton-vm for more context.
 const OUT_ARRAY_OFFSET: usize = {
     let max_num_words_for_evaluated_constraints = 1 << 16; // magic!
     let out_array_offset_in_words = MEM_PAGE_SIZE - max_num_words_for_evaluated_constraints;
@@ -395,7 +393,7 @@ macro_rules! instr {
 
 /// Convenience macro to get raw opcode of a [`Push`][push] instruction including its argument.
 ///
-/// [push]: triton_vm::instruction::AnInstruction::Push
+/// [push]: Instruction::Push
 macro_rules! push {
     ($arg:ident) => {{
         let opcode = u64::from(Instruction::Push(BFieldElement::new(0)).opcode());

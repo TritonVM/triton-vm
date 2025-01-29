@@ -43,7 +43,9 @@ pub(crate) fn base_field_element_into_16_bit_limbs(x: BFieldElement) -> [u16; 4]
 
 /// Convert a permutation trace to a segment in the Hash Table.
 ///
-/// **Note**: The current instruction [`CI`] is _not_ set.
+/// **Note**: The current instruction [`CI`][ci] is _not_ set.
+///
+/// [ci]: air::table_column::HashMainColumn::CI
 pub(crate) fn trace_to_table_rows(trace: PermutationTrace) -> Array2<BFieldElement> {
     let mut table_rows = Array2::default([0, MainColumn::COUNT]);
     for (round_number, &trace_row) in trace.iter().enumerate() {
