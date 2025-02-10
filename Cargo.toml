@@ -56,13 +56,10 @@ path = "triton-isa"
 package = "triton-isa"
 
 [workspace.dependencies]
-anyhow = "1.0"
 arbitrary = { version = "1", features = ["derive"] }
 assert2 = "0.3"
-colored = "2.2"
-clap = { version = "4", features = ["derive", "cargo", "wrap_help", "unicode", "string"] }
+colored = "3.0"
 criterion = { package = "codspeed-criterion-compat", version = "2.7", features = ["html_reports"] }
-directories = "5"
 fs-err = "3.0"
 get-size2 = { version = "0.1.3", features = ["derive"] }
 indexmap = { version = "2.7.0", features = ["rayon"] }
@@ -73,21 +70,19 @@ ndarray = { version = "0.16", features = ["rayon"] }
 nom = "7.1"
 num-traits = "0.2"
 prettyplease = "0.2"
-pretty_assertions = "1.4"
 proc-macro2 = "1.0"
 proptest = "1.6"
 proptest-arbitrary-interop = "0.1"
 quote = "1.0"
-rand = "0.8.5"
-rand_core = "0.6.4"
+rand = "0.9.0"
 rayon = "1.10"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1.0"
-strum = { version = "0.26", features = ["derive"] }
+strum = { version = "0.27", features = ["derive"] }
 syn = "2.0"
 test-strategy = "0.4.0"
 thiserror = "2.0"
-twenty-first = "0.45.0"
+twenty-first = "0.48.0"
 unicode-width = "0.2"
 
 [workspace.lints.rust]

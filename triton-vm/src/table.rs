@@ -119,11 +119,8 @@ mod tests {
     use itertools::Itertools;
     use ndarray::Array2;
     use ndarray::ArrayView2;
-    use rand::prelude::StdRng;
+    use rand::prelude::*;
     use rand::random;
-    use rand::Rng;
-    use rand_core::SeedableRng;
-    use twenty_first::prelude::BFieldElement;
 
     use crate::challenges::Challenges;
     use crate::prelude::Claim;
@@ -142,7 +139,7 @@ mod tests {
         println!("seed: {seed}");
 
         let dummy_claim = Claim::default();
-        let challenges: [XFieldElement; Challenges::SAMPLE_COUNT] = rng.gen();
+        let challenges: [XFieldElement; Challenges::SAMPLE_COUNT] = rng.random();
         let challenges = challenges.to_vec();
         let challenges = Challenges::new(challenges, &dummy_claim);
         let challenges = &challenges.challenges;
@@ -150,8 +147,8 @@ mod tests {
         let num_rows = 2;
         let main_shape = [num_rows, MasterMainTable::NUM_COLUMNS];
         let aux_shape = [num_rows, MasterAuxTable::NUM_COLUMNS];
-        let main_rows = Array2::from_shape_simple_fn(main_shape, || rng.gen::<BFieldElement>());
-        let aux_rows = Array2::from_shape_simple_fn(aux_shape, || rng.gen::<XFieldElement>());
+        let main_rows = Array2::from_shape_simple_fn(main_shape, || rng.random::<BFieldElement>());
+        let aux_rows = Array2::from_shape_simple_fn(aux_shape, || rng.random::<XFieldElement>());
         let main_rows = main_rows.view();
         let aux_rows = aux_rows.view();
 
@@ -301,7 +298,7 @@ mod tests {
 
         // Use the Schwartz-Zippel lemma to check no two substitution rules are equal.
         let dummy_claim = Claim::default();
-        let challenges: [XFieldElement; Challenges::SAMPLE_COUNT] = rng.gen();
+        let challenges: [XFieldElement; Challenges::SAMPLE_COUNT] = rng.random();
         let challenges = challenges.to_vec();
         let challenges = Challenges::new(challenges, &dummy_claim);
         let challenges = &challenges.challenges;
@@ -309,8 +306,8 @@ mod tests {
         let num_rows = 2;
         let main_shape = [num_rows, MasterMainTable::NUM_COLUMNS];
         let aux_shape = [num_rows, MasterAuxTable::NUM_COLUMNS];
-        let main_rows = Array2::from_shape_simple_fn(main_shape, || rng.gen::<BFieldElement>());
-        let aux_rows = Array2::from_shape_simple_fn(aux_shape, || rng.gen::<XFieldElement>());
+        let main_rows = Array2::from_shape_simple_fn(main_shape, || rng.random::<BFieldElement>());
+        let aux_rows = Array2::from_shape_simple_fn(aux_shape, || rng.random::<XFieldElement>());
         let main_rows = main_rows.view();
         let aux_rows = aux_rows.view();
 

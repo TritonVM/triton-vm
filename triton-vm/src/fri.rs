@@ -631,7 +631,6 @@ mod tests {
     use proptest::prelude::*;
     use proptest_arbitrary_interop::arb;
     use rand::prelude::*;
-    use rand_core::SeedableRng;
     use test_strategy::proptest;
 
     use crate::error::FriValidationError;
@@ -871,8 +870,8 @@ mod tests {
         let last_round_codeword = proof_items.find_map(fri_codeword_filter()).unwrap();
 
         let mut rng = StdRng::seed_from_u64(seed);
-        let modification_index = rng.gen_range(0..last_round_codeword.len());
-        let replacement_element = rng.gen();
+        let modification_index = rng.random_range(0..last_round_codeword.len());
+        let replacement_element = rng.random();
 
         last_round_codeword[modification_index] = replacement_element;
         proof_stream
@@ -917,10 +916,11 @@ mod tests {
         let mut rng = StdRng::seed_from_u64(seed);
         let fri_response = fri_responses.choose(&mut rng).unwrap();
         let revealed_leaves = &mut fri_response.revealed_leaves;
-        let modification_index = rng.gen_range(0..revealed_leaves.len());
-        match rng.gen() {
-            true => _ = revealed_leaves.remove(modification_index),
-            false => revealed_leaves.insert(modification_index, rng.gen()),
+        let modification_index = rng.random_range(0..revealed_leaves.len());
+        if rng.random() {
+            revealed_leaves.remove(modification_index);
+        } else {
+            revealed_leaves.insert(modification_index, rng.random());
         };
 
         proof_stream
@@ -968,11 +968,11 @@ mod tests {
 
         let mut rng = StdRng::seed_from_u64(seed);
         let auth_structure = auth_structures.choose(&mut rng).unwrap();
-        let modification_index = rng.gen_range(0..auth_structure.len());
-        match rng.gen_range(0..3) {
+        let modification_index = rng.random_range(0..auth_structure.len());
+        match rng.random_range(0..3) {
             0 => _ = auth_structure.remove(modification_index),
-            1 => auth_structure.insert(modification_index, rng.gen()),
-            2 => auth_structure[modification_index] = rng.gen(),
+            1 => auth_structure.insert(modification_index, rng.random()),
+            2 => auth_structure[modification_index] = rng.random(),
             _ => unreachable!(),
         };
 

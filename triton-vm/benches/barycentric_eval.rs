@@ -2,10 +2,7 @@ use criterion::criterion_group;
 use criterion::criterion_main;
 use criterion::BatchSize;
 use criterion::Criterion;
-use itertools::Itertools;
-use rand::prelude::StdRng;
-use rand::Rng;
-use rand_core::SeedableRng;
+use rand::prelude::*;
 use twenty_first::math::polynomial::barycentric_evaluate;
 use twenty_first::prelude::XFieldElement;
 
@@ -25,7 +22,11 @@ fn barycentric_eval<const LOG2_N: usize>(c: &mut Criterion) {
     let mut rng = StdRng::seed_from_u64(13902833756029401496);
     c.bench_function(&format!("barycentric_evaluation_(1<<{LOG2_N})"), |b| {
         b.iter_batched(
-            || ((0..1 << LOG2_N).map(|_| rng.gen()).collect_vec(), rng.gen()),
+            || {
+                let codeword = (0..1 << LOG2_N).map(|_| rng.random()).collect();
+                let indeterminate = rng.random();
+                (codeword, indeterminate)
+            },
             |(cw, ind): (Vec<XFieldElement>, XFieldElement)| barycentric_evaluate(&cw, ind),
             BatchSize::SmallInput,
         )

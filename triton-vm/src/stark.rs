@@ -9,9 +9,8 @@ use ndarray::Zip;
 use num_traits::ConstOne;
 use num_traits::ConstZero;
 use num_traits::Zero;
-use rand::prelude::StdRng;
+use rand::prelude::*;
 use rand::random;
-use rand_core::SeedableRng;
 use rayon::prelude::*;
 use serde::Deserialize;
 use serde::Serialize;
@@ -1589,10 +1588,8 @@ pub(crate) mod tests {
     use proptest::prelude::*;
     use proptest::test_runner::TestCaseResult;
     use proptest_arbitrary_interop::arb;
-    use rand::prelude::StdRng;
-    use rand::thread_rng;
+    use rand::prelude::*;
     use rand::Rng;
-    use rand_core::SeedableRng;
     use strum::EnumCount;
     use strum::IntoEnumIterator;
     use test_strategy::proptest;
@@ -1718,7 +1715,7 @@ pub(crate) mod tests {
         crate::config::overwrite_lde_trace_caching_to(CacheDecision::Cache);
 
         let mut rng = StdRng::seed_from_u64(1632525295622789151);
-        let weights = rng.gen::<[XFieldElement; MasterAuxTable::NUM_CONSTRAINTS]>();
+        let weights = rng.random::<[XFieldElement; MasterAuxTable::NUM_CONSTRAINTS]>();
 
         let program = ProgramAndInput::new(triton_program!(halt));
         let (stark, _, mut main, mut aux, ch) = master_tables_for_low_security_level(program);
@@ -1755,7 +1752,7 @@ pub(crate) mod tests {
             crate::config::overwrite_lde_trace_caching_to(cache_decision);
 
             let mut rng = StdRng::seed_from_u64(15157673430940347283);
-            let weights = rng.gen::<[XFieldElement; MasterAuxTable::NUM_CONSTRAINTS]>();
+            let weights = rng.random::<[XFieldElement; MasterAuxTable::NUM_CONSTRAINTS]>();
 
             let program = ProgramAndInput::new(triton_program!(halt));
             let (stark, _, mut main, mut aux, ch) = master_tables_for_low_security_level(program);
@@ -1802,17 +1799,17 @@ pub(crate) mod tests {
         let stark = low_security_stark(DEFAULT_LOG2_FRI_EXPANSION_FACTOR_FOR_TESTS);
         let mut rng = StdRng::seed_from_u64(3351975627407608972);
         let proof = Prover::new(stark)
-            .set_randomness_seed_which_may_break_zero_knowledge(rng.gen())
+            .set_randomness_seed_which_may_break_zero_knowledge(rng.random())
             .prove(&claim, &aet)
             .unwrap();
 
         insta::assert_snapshot!(
             Tip5::hash(&proof),
-            @"01208218823199023966,\
-              07248217050651886224,\
-              07139898735589794621,\
-              11774487641367625949,\
-              06650915987150064355",
+            @"17275651906185656762,\
+              13250937299792022858,\
+              05731754925513787901,\
+              05512095638892086027,\
+              08634562101877660478",
         );
     }
 
@@ -2800,12 +2797,12 @@ pub(crate) mod tests {
         let domain_length = 1 << 10;
         let domain = ArithmeticDomain::of_length(domain_length).unwrap();
 
-        let poly_degree = thread_rng().gen_range(2..20);
+        let poly_degree = rand::rng().random_range(2..20);
         let low_deg_poly_coeffs: Vec<XFieldElement> = random_elements(poly_degree);
         let low_deg_poly = Polynomial::new(low_deg_poly_coeffs.clone());
         let low_deg_codeword = domain.evaluate(&low_deg_poly);
 
-        let out_of_domain_point: XFieldElement = thread_rng().gen();
+        let out_of_domain_point: XFieldElement = rand::rng().random();
         let out_of_domain_value = low_deg_poly.evaluate(out_of_domain_point);
 
         let deep_poly = Prover::deep_codeword(
@@ -2817,7 +2814,7 @@ pub(crate) mod tests {
         let poly_of_maybe_low_degree = domain.interpolate(&deep_poly);
         assert!(poly_degree as isize - 2 == poly_of_maybe_low_degree.degree());
 
-        let bogus_out_of_domain_value = thread_rng().gen();
+        let bogus_out_of_domain_value = rand::rng().random();
         let bogus_deep_poly = Prover::deep_codeword(
             &low_deg_codeword,
             domain,
@@ -2856,7 +2853,7 @@ pub(crate) mod tests {
 
     #[test]
     fn split_polynomial_into_segments_of_unequal_size() {
-        let coefficients: [XFieldElement; 211] = thread_rng().gen();
+        let coefficients: [XFieldElement; 211] = rand::rng().random();
         let f = Polynomial::new(coefficients.to_vec());
 
         let segments_2 = Prover::split_polynomial_into_segments::<2, _>(f.clone());
@@ -2869,7 +2866,7 @@ pub(crate) mod tests {
         assert_segments_degrees_are_small_enough(&f, &segments_4);
         assert_segments_degrees_are_small_enough(&f, &segments_7);
 
-        let x = thread_rng().gen();
+        let x = rand::rng().random();
         assert_polynomial_equals_recomposed_segments(&f, &segments_2, x);
         assert_polynomial_equals_recomposed_segments(&f, &segments_3, x);
         assert_polynomial_equals_recomposed_segments(&f, &segments_4, x);
@@ -2878,7 +2875,7 @@ pub(crate) mod tests {
 
     #[test]
     fn split_polynomial_into_segments_of_equal_size() {
-        let coefficients: [BFieldElement; 2 * 3 * 4 * 7] = thread_rng().gen();
+        let coefficients: [BFieldElement; 2 * 3 * 4 * 7] = rand::rng().random();
         let f = Polynomial::new(coefficients.to_vec());
 
         let segments_2 = Prover::split_polynomial_into_segments::<2, _>(f.clone());
@@ -2891,7 +2888,7 @@ pub(crate) mod tests {
         assert_segments_degrees_are_small_enough(&f, &segments_4);
         assert_segments_degrees_are_small_enough(&f, &segments_7);
 
-        let x = thread_rng().gen();
+        let x = rand::rng().random();
         assert_polynomial_equals_recomposed_segments(&f, &segments_2, x);
         assert_polynomial_equals_recomposed_segments(&f, &segments_3, x);
         assert_polynomial_equals_recomposed_segments(&f, &segments_4, x);

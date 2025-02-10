@@ -5,8 +5,8 @@ use num_traits::Zero;
 use proptest::collection::vec;
 use proptest::prelude::*;
 use proptest_arbitrary_interop::arb;
-use rand::rngs::StdRng;
-use rand_core::SeedableRng;
+use rand::prelude::*;
+use rand::Rng;
 use test_strategy::Arbitrary;
 use twenty_first::prelude::*;
 
@@ -148,7 +148,7 @@ pub(crate) fn construct_master_main_table(
     let fri = stark.fri(padded_height).unwrap();
     let max_degree = stark.max_degree(padded_height);
     let quotient_domain = Prover::quotient_domain(fri.domain, max_degree).unwrap();
-    let seed = StdRng::seed_from_u64(6718321586953195571).gen();
+    let seed = StdRng::seed_from_u64(6718321586953195571).random();
 
     MasterMainTable::new(
         aet,

@@ -6,9 +6,7 @@ use criterion::Criterion;
 use itertools::Itertools;
 use ndarray::prelude::*;
 use num_traits::Zero;
-use rand::prelude::StdRng;
-use rand::Rng;
-use rand_core::SeedableRng;
+use rand::prelude::*;
 use rayon::prelude::*;
 use twenty_first::prelude::*;
 
@@ -32,7 +30,7 @@ fn init_array<const NUM_ROWS: usize>(c: &mut Criterion) {
     let mut group = c.benchmark_group(format!("initialize_array_{NUM_ROWS}x{NUM_COLS}"));
     let mut rng = StdRng::seed_from_u64(0);
     let write_to_indices = (0..NUM_WRITE_INDICES)
-        .map(|_| (rng.gen_range(0..NUM_ROWS), rng.gen_range(0..NUM_COLS)))
+        .map(|_| (rng.random_range(0..NUM_ROWS), rng.random_range(0..NUM_COLS)))
         .collect_vec();
 
     let mut matrix = Array2::zeros((0, 0).f());

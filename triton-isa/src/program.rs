@@ -435,7 +435,6 @@ mod tests {
     use assert2::let_assert;
     use proptest::prelude::*;
     use proptest_arbitrary_interop::arb;
-    use rand::thread_rng;
     use rand::Rng;
     use test_strategy::proptest;
 
@@ -513,7 +512,7 @@ mod tests {
 
     #[test]
     fn create_program_from_code() {
-        let element_3 = thread_rng().gen_range(0_u64..BFieldElement::P);
+        let element_3 = rand::rng().random_range(0..BFieldElement::P);
         let element_2 = 1337_usize;
         let element_1 = "17";
         let element_0 = bfe!(0);

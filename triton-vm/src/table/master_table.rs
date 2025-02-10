@@ -82,11 +82,8 @@ use num_traits::ConstZero;
 use num_traits::One;
 use num_traits::ToBytes;
 use num_traits::Zero;
-use rand::distributions::Standard;
-use rand::prelude::Distribution;
-use rand::prelude::StdRng;
-use rand::Rng;
-use rand_core::SeedableRng;
+use rand::distr::StandardUniform;
+use rand::prelude::*;
 use strum::EnumCount;
 use twenty_first::math::tip5::RATE;
 use twenty_first::math::traits::FiniteField;
@@ -158,7 +155,7 @@ use crate::table::TraceTable;
 /// [master_quot_table]: all_quotients_combined
 pub trait MasterTable: Sync
 where
-    Standard: Distribution<Self::Field>,
+    StandardUniform: Distribution<Self::Field>,
     XFieldElement: Add<Self::Field, Output = XFieldElement>
         // _no_ clue why this is necessary
         + Add<XFieldElement, Output = XFieldElement>,
@@ -394,7 +391,7 @@ where
 
         let mut rng = rng_from_offset_seed(self.trace_randomizer_seed(), idx);
         let coefficients = (0..self.num_trace_randomizers())
-            .map(|_| rng.gen())
+            .map(|_| rng.random())
             .collect();
         Polynomial::new(coefficients)
     }
@@ -975,7 +972,7 @@ impl MasterMainTable {
         let randomizers_start = MasterAuxTable::NUM_COLUMNS - NUM_RANDOMIZER_POLYNOMIALS;
         aux_trace_table
             .slice_mut(s![.., randomizers_start..])
-            .mapv_inplace(|_| rng.gen());
+            .mapv_inplace(|_| rng.random());
         profiler!(stop "initialize master table");
 
         let mut master_aux_table = MasterAuxTable {
@@ -985,7 +982,7 @@ impl MasterMainTable {
             quotient_domain: self.quotient_domain,
             fri_domain: self.fri_domain,
             trace_table: aux_trace_table,
-            trace_randomizer_seed: rng.gen(),
+            trace_randomizer_seed: rng.random(),
             low_degree_extended_table: None,
         };
 
@@ -1353,8 +1350,6 @@ mod tests {
     use num_traits::ConstZero;
     use proptest::prelude::*;
     use proptest_arbitrary_interop::arb;
-    use rand::rngs::StdRng;
-    use rand_core::SeedableRng;
     use strum::EnumCount;
     use strum::EnumIter;
     use strum::IntoEnumIterator;
@@ -1476,7 +1471,7 @@ mod tests {
     fn fri_domain_table_row_hashing_is_independent_of_fri_table_caching() {
         fn row_hashes_are_identical<FF>(mut table: impl MasterTable<Field = FF>)
         where
-            Standard: Distribution<FF>,
+            StandardUniform: Distribution<FF>,
             XFieldElement: Add<FF, Output = XFieldElement>,
         {
             assert!(table.fri_domain_table().is_none());
@@ -1506,7 +1501,7 @@ mod tests {
             indices: &[usize],
         ) where
             FF: Debug + PartialEq,
-            Standard: Distribution<FF>,
+            StandardUniform: Distribution<FF>,
             XFieldElement: Add<FF, Output = XFieldElement>,
         {
             assert!(table.fri_domain_table().is_none());
@@ -2215,7 +2210,7 @@ mod tests {
             quotient_domain,
             fri_domain,
             trace_table: Array2::zeros((trace_domain.length, MasterAuxTable::NUM_COLUMNS)),
-            trace_randomizer_seed: StdRng::seed_from_u64(5323196155778693784).gen(),
+            trace_randomizer_seed: StdRng::seed_from_u64(5323196155778693784).random(),
             low_degree_extended_table: None,
         }
     }
@@ -2293,14 +2288,14 @@ mod tests {
         let mut rng = StdRng::seed_from_u64(3508729174085202315);
 
         // pseudorandomly populate circuit inputs
-        let main_row_current_base = Array1::from(rng.gen::<MainRow<BFieldElement>>().to_vec());
-        let main_row_current_extension = Array1::from(rng.gen::<MainRow<XFieldElement>>().to_vec());
-        let aux_row_current = Array1::from(rng.gen::<AuxiliaryRow>().to_vec());
-        let main_row_next_base = Array1::from(rng.gen::<MainRow<BFieldElement>>().to_vec());
-        let main_row_next_extension = Array1::from(rng.gen::<MainRow<XFieldElement>>().to_vec());
-        let aux_row_next = Array1::from(rng.gen::<AuxiliaryRow>().to_vec());
+        let main_row_current_base = Array1::from(rng.random::<MainRow<BFieldElement>>().to_vec());
+        let main_row_current_ext = Array1::from(rng.random::<MainRow<XFieldElement>>().to_vec());
+        let aux_row_current = Array1::from(rng.random::<AuxiliaryRow>().to_vec());
+        let main_row_next_base = Array1::from(rng.random::<MainRow<BFieldElement>>().to_vec());
+        let main_row_next_ext = Array1::from(rng.random::<MainRow<XFieldElement>>().to_vec());
+        let aux_row_next = Array1::from(rng.random::<AuxiliaryRow>().to_vec());
         let challenges = Challenges {
-            challenges: rng.gen(),
+            challenges: rng.random(),
         };
 
         // invoke all possible AIR circuit evaluators
@@ -2310,7 +2305,7 @@ mod tests {
             &challenges,
         );
         let initial_extension = MasterAuxTable::evaluate_initial_constraints(
-            main_row_current_extension.view(),
+            main_row_current_ext.view(),
             aux_row_current.view(),
             &challenges,
         );
@@ -2320,7 +2315,7 @@ mod tests {
             &challenges,
         );
         let consistency_extension = MasterAuxTable::evaluate_consistency_constraints(
-            main_row_current_extension.view(),
+            main_row_current_ext.view(),
             aux_row_current.view(),
             &challenges,
         );
@@ -2332,9 +2327,9 @@ mod tests {
             &challenges,
         );
         let transition_extension = MasterAuxTable::evaluate_transition_constraints(
-            main_row_current_extension.view(),
+            main_row_current_ext.view(),
             aux_row_current.view(),
-            main_row_next_extension.view(),
+            main_row_next_ext.view(),
             aux_row_next.view(),
             &challenges,
         );
@@ -2344,7 +2339,7 @@ mod tests {
             &challenges,
         );
         let terminal_extension = MasterAuxTable::evaluate_terminal_constraints(
-            main_row_current_extension.view(),
+            main_row_current_ext.view(),
             aux_row_current.view(),
             &challenges,
         );
@@ -2364,11 +2359,11 @@ mod tests {
         let polynomial = Polynomial::new(coefficients);
 
         // evaluate polynomial in pseudorandom indeterminate
-        let value = polynomial.evaluate(rng.gen::<XFieldElement>());
+        let value = polynomial.evaluate(rng.random::<XFieldElement>());
         let expected = xfe!([
-            3564660585377840245_u64,
-            8403714483000428991_u64,
-            2799326871924992342_u64,
+            5298563950139081492_u64,
+            1414892817496408712_u64,
+            2288680969693784735_u64,
         ]);
         assert_eq!(
             expected, value,

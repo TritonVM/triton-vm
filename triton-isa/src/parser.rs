@@ -827,7 +827,6 @@ pub(crate) mod tests {
     use itertools::Itertools;
     use proptest::prelude::*;
     use proptest_arbitrary_interop::arb;
-    use rand::prelude::*;
     use rand::Rng;
     use strum::EnumCount;
     use test_strategy::proptest;
@@ -1575,7 +1574,7 @@ pub(crate) mod tests {
 
     #[test]
     fn triton_program_macro_interpolates_various_types() {
-        let push_arg = thread_rng().gen_range(0_u64..BFieldElement::P);
+        let push_arg = rand::rng().random_range(0..BFieldElement::P);
         let instruction_push =
             LabelledInstruction::Instruction(AnInstruction::Push(push_arg.into()));
         let swap_argument = "1";

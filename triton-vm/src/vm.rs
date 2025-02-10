@@ -2133,7 +2133,7 @@ pub(crate) mod tests {
 
     pub(crate) fn property_based_test_program_for_assert_vector() -> ProgramAndInput {
         let mut rng = ThreadRng::default();
-        let st: [BFieldElement; 5] = rng.gen();
+        let st: [BFieldElement; 5] = rng.random();
 
         let program = triton_program!(
             push {st[0]} push {st[1]} push {st[2]} push {st[3]} push {st[4]}
@@ -2443,11 +2443,11 @@ pub(crate) mod tests {
     pub(crate) fn property_based_test_program_for_pow() -> ProgramAndInput {
         let mut rng = ThreadRng::default();
 
-        let base_0: BFieldElement = rng.gen();
+        let base_0: BFieldElement = rng.random();
         let exp_0 = rng.next_u32();
         let result_0 = base_0.mod_pow_u32(exp_0);
 
-        let base_1: BFieldElement = rng.gen();
+        let base_1: BFieldElement = rng.random();
         let exp_1 = rng.next_u32();
         let result_1 = base_1.mod_pow_u32(exp_1);
 
@@ -2507,7 +2507,7 @@ pub(crate) mod tests {
 
     pub(crate) fn property_based_test_program_for_random_ram_access() -> ProgramAndInput {
         let mut rng = ThreadRng::default();
-        let num_memory_accesses = rng.gen_range(10..50);
+        let num_memory_accesses = rng.random_range(10..50);
         let memory_addresses: Vec<BFieldElement> = random_elements(num_memory_accesses);
         let mut memory_values: Vec<BFieldElement> = random_elements(num_memory_accesses);
         let mut instructions = vec![];
@@ -2528,7 +2528,7 @@ pub(crate) mod tests {
         // Read back in random order and check that the values did not change.
         let mut reading_permutation = (0..num_memory_accesses).collect_vec();
         for i in 0..num_memory_accesses {
-            let j = rng.gen_range(0..num_memory_accesses);
+            let j = rng.random_range(0..num_memory_accesses);
             reading_permutation.swap(i, j);
         }
         for idx in reading_permutation {
@@ -2541,12 +2541,12 @@ pub(crate) mod tests {
         // Overwrite half the values with new ones.
         let mut writing_permutation = (0..num_memory_accesses).collect_vec();
         for i in 0..num_memory_accesses {
-            let j = rng.gen_range(0..num_memory_accesses);
+            let j = rng.random_range(0..num_memory_accesses);
             writing_permutation.swap(i, j);
         }
         for idx in 0..num_memory_accesses / 2 {
             let address = memory_addresses[writing_permutation[idx]];
-            let new_memory_value = rng.gen();
+            let new_memory_value = rng.random();
             memory_values[writing_permutation[idx]] = new_memory_value;
             instructions
                 .extend(triton_asm!(push {new_memory_value} push {address} write_mem 1 pop 1));
@@ -2556,7 +2556,7 @@ pub(crate) mod tests {
         // order and check that the values did not change.
         let mut reading_permutation = (0..num_memory_accesses).collect_vec();
         for i in 0..num_memory_accesses {
-            let j = rng.gen_range(0..num_memory_accesses);
+            let j = rng.random_range(0..num_memory_accesses);
             reading_permutation.swap(i, j);
         }
         for idx in reading_permutation {
@@ -2585,7 +2585,7 @@ pub(crate) mod tests {
 
     pub(crate) fn property_based_test_program_for_xx_dot_step() -> ProgramAndInput {
         let mut rng = ThreadRng::default();
-        let n = rng.gen_range(0..10);
+        let n = rng.random_range(0..10);
 
         let push_xfe = |xfe: XFieldElement| {
             let [c_0, c_1, c_2] = xfe.coefficients;
@@ -2608,8 +2608,8 @@ pub(crate) mod tests {
                 .collect_vec()
         };
 
-        let vector_one = (0..n).map(|_| rng.gen()).collect_vec();
-        let vector_two = (0..n).map(|_| rng.gen()).collect_vec();
+        let vector_one = (0..n).map(|_| rng.random()).collect_vec();
+        let vector_two = (0..n).map(|_| rng.random()).collect_vec();
         let inner_product = vector_one
             .iter()
             .zip(&vector_two)
@@ -2650,7 +2650,7 @@ pub(crate) mod tests {
 
     pub(crate) fn property_based_test_program_for_xb_dot_step() -> ProgramAndInput {
         let mut rng = ThreadRng::default();
-        let n = rng.gen_range(0..10);
+        let n = rng.random_range(0..10);
         let push_xfe = |x: XFieldElement| {
             triton_asm! {
                 push {x.coefficients[2]}
@@ -2678,8 +2678,8 @@ pub(crate) mod tests {
                 pop 1
             }
         };
-        let vector_one = (0..n).map(|_| rng.gen::<XFieldElement>()).collect_vec();
-        let vector_two = (0..n).map(|_| rng.gen::<BFieldElement>()).collect_vec();
+        let vector_one = (0..n).map(|_| rng.random::<XFieldElement>()).collect_vec();
+        let vector_two = (0..n).map(|_| rng.random::<BFieldElement>()).collect_vec();
         let inner_product = vector_one
             .iter()
             .zip(vector_two.iter())

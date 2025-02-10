@@ -128,8 +128,7 @@ mod tests {
     use proptest::collection::vec;
     use proptest::prelude::*;
     use proptest_arbitrary_interop::arb;
-    use rand::prelude::StdRng;
-    use rand_core::SeedableRng;
+    use rand::prelude::*;
     use test_strategy::proptest;
 
     use crate::prelude::*;
@@ -207,17 +206,17 @@ mod tests {
 
         let mut rng = StdRng::seed_from_u64(4742841043836029231);
         let proof = Prover::default()
-            .set_randomness_seed_which_may_break_zero_knowledge(rng.gen())
+            .set_randomness_seed_which_may_break_zero_knowledge(rng.random())
             .prove(&claim, &aet)
             .unwrap();
 
         insta::assert_snapshot!(
             Tip5::hash(&proof),
-            @"11952904396812311265,\
-              16054901534874249652,\
-              09773073309626813769,\
-              15649970038336331462,\
-              07145239594398485773",
+            @"09201244033942307448,\
+              02199220141408935358,\
+              14798078607418975656,\
+              16178332457365390929,\
+              00369058580658580912",
         );
     }
 }
