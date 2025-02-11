@@ -3,6 +3,20 @@
 All notable changes are documented in this file.
 Lines marked “(!)” indicate a breaking change.
 
+## [0.48.0](https://github.com/TritonVM/triton-vm/compare/v0.45.0..v0.48.0) - 2025-02-11
+
+### 📚 Documentation
+
+- Fix internal intra-doc links ([d3fbc654](https://github.com/TritonVM/triton-vm/commit/d3fbc654))
+
+### ⚙️ Miscellaneous
+
+- Add degree lowering benchmark to codspeed ([048ea2ea](https://github.com/TritonVM/triton-vm/commit/048ea2ea))
+
+### ♻️ Refactor
+
+- Consistently use criterion in benchmarks ([872d42c3](https://github.com/TritonVM/triton-vm/commit/872d42c3))
+
 ## [0.45.0](https://github.com/TritonVM/triton-vm/compare/v0.44.1..v0.45.0) - 2025-01-13
 
 ### ⚡️ Performance
