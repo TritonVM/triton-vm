@@ -11,9 +11,9 @@ use nom::bytes::complete::tag;
 use nom::bytes::complete::take_while;
 use nom::bytes::complete::take_while1;
 use nom::character::complete::digit1;
+use nom::combinator::cut;
 use nom::combinator::eof;
-use nom::combinator::opt;
-use nom::error::ErrorKind;
+use nom::error::context;
 use nom::multi::many0;
 use nom::multi::many1;
 use nom::Finish;
@@ -58,15 +58,7 @@ pub enum InstructionToken<'a> {
 
 impl Display for ParseError<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
-        let mut errors = self.errors.clone();
-        if matches!(
-            errors.errors.first(),
-            Some((_, VerboseErrorKind::Nom(ErrorKind::Fail | ErrorKind::Eof)))
-        ) {
-            errors.errors.remove(0);
-        }
-
-        let err_display = nom_language::error::convert_error(self.input, errors);
+        let err_display = nom_language::error::convert_error(self.input, self.errors.clone());
         write!(f, "{err_display}")
     }
 }
@@ -234,7 +226,7 @@ pub fn tokenize(s: &str) -> ParseResult<Vec<InstructionToken>> {
         assertion_context,
     )))
     .parse(s)?;
-    let (s, _) = nom::error::context("expecting label, instruction or eof", eof).parse(s)?;
+    let (s, _) = context("expected label, instruction, or end of file", eof).parse(s)?;
 
     Ok((s, instructions))
 }
@@ -401,7 +393,7 @@ fn instruction<'a>(
 fn pop_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>> {
     move |s: &str| {
         let (s, _) = token1("pop")(s)?;
-        let (s, arg) = number_of_words(s)?;
+        let (s, arg) = cut(number_of_words).parse(s)?;
         Ok((s, AnInstruction::Pop(arg)))
     }
 }
@@ -409,7 +401,7 @@ fn pop_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>> {
 fn push_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>> {
     move |s: &str| {
         let (s, _) = token1("push")(s)?;
-        let (s, elem) = field_element(s)?;
+        let (s, elem) = cut(field_element).parse(s)?;
         Ok((s, AnInstruction::Push(elem)))
     }
 }
@@ -417,7 +409,7 @@ fn push_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>> {
 fn addi_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>> {
     move |s: &str| {
         let (s, _) = token1("addi")(s)?;
-        let (s, elem) = field_element(s)?;
+        let (s, elem) = cut(field_element).parse(s)?;
         Ok((s, AnInstruction::AddI(elem)))
     }
 }
@@ -425,7 +417,7 @@ fn addi_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>> {
 fn divine_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>> {
     move |s: &str| {
         let (s, _) = token1("divine")(s)?;
-        let (s, arg) = number_of_words(s)?;
+        let (s, arg) = cut(number_of_words).parse(s)?;
         Ok((s, AnInstruction::Divine(arg)))
     }
 }
@@ -433,7 +425,7 @@ fn divine_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>> {
 fn pick_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>> {
     move |s: &str| {
         let (s, _) = token1("pick")(s)?;
-        let (s, arg) = stack_register(s)?;
+        let (s, arg) = cut(stack_register).parse(s)?;
         Ok((s, AnInstruction::Pick(arg)))
     }
 }
@@ -441,7 +433,7 @@ fn pick_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>> {
 fn place_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>> {
     move |s: &str| {
         let (s, _) = token1("place")(s)?;
-        let (s, arg) = stack_register(s)?;
+        let (s, arg) = cut(stack_register).parse(s)?;
         Ok((s, AnInstruction::Place(arg)))
     }
 }
@@ -449,7 +441,7 @@ fn place_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>> {
 fn dup_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>> {
     move |s: &str| {
         let (s, _) = token1("dup")(s)?; // require space before argument
-        let (s, stack_register) = stack_register(s)?;
+        let (s, stack_register) = cut(stack_register).parse(s)?;
         Ok((s, AnInstruction::Dup(stack_register)))
     }
 }
@@ -457,7 +449,7 @@ fn dup_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>> {
 fn swap_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>> {
     move |s: &str| {
         let (s, _) = token1("swap")(s)?;
-        let (s, stack_register) = stack_register(s)?;
+        let (s, stack_register) = cut(stack_register).parse(s)?;
         Ok((s, AnInstruction::Swap(stack_register)))
     }
 }
@@ -465,7 +457,7 @@ fn swap_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>> {
 fn call_instruction<'a>() -> impl Fn(&'a str) -> ParseResult<'a, AnInstruction<String>> {
     move |s: &'a str| {
         let (s, _) = token1("call")(s)?;
-        let (s, label) = label_addr(s)?;
+        let (s, label) = cut(label_addr).parse(s)?;
         let (s, _) = comment_or_whitespace1(s)?;
 
         // This check cannot be moved into `label_addr`, since `label_addr` is shared
@@ -480,7 +472,7 @@ fn call_instruction<'a>() -> impl Fn(&'a str) -> ParseResult<'a, AnInstruction<S
 fn read_mem_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>> {
     move |s: &str| {
         let (s, _) = token1("read_mem")(s)?;
-        let (s, arg) = number_of_words(s)?;
+        let (s, arg) = cut(number_of_words).parse(s)?;
         Ok((s, AnInstruction::ReadMem(arg)))
     }
 }
@@ -488,7 +480,7 @@ fn read_mem_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>>
 fn write_mem_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>> {
     move |s: &str| {
         let (s, _) = token1("write_mem")(s)?;
-        let (s, arg) = number_of_words(s)?;
+        let (s, arg) = cut(number_of_words).parse(s)?;
         Ok((s, AnInstruction::WriteMem(arg)))
     }
 }
@@ -496,7 +488,7 @@ fn write_mem_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>
 fn read_io_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>> {
     move |s: &str| {
         let (s, _) = token1("read_io")(s)?;
-        let (s, arg) = number_of_words(s)?;
+        let (s, arg) = cut(number_of_words).parse(s)?;
         Ok((s, AnInstruction::ReadIo(arg)))
     }
 }
@@ -504,33 +496,26 @@ fn read_io_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>> 
 fn write_io_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>> {
     move |s: &str| {
         let (s, _) = token1("write_io")(s)?;
-        let (s, arg) = number_of_words(s)?;
+        let (s, arg) = cut(number_of_words).parse(s)?;
         Ok((s, AnInstruction::WriteIo(arg)))
     }
 }
 
 fn field_element(s_orig: &str) -> ParseResult<BFieldElement> {
-    let (s, negative) = opt(token0("-")).parse(s_orig)?;
-    let (s, n) = digit1(s)?;
+    let (s, n) = context(
+        "expected a reasonably-sized integer",
+        nom::character::complete::i128,
+    )
+    .parse(s_orig)?;
     let (s, _) = comment_or_whitespace1(s)?;
 
-    let Ok(mut n): Result<i128, _> = n.parse() else {
+    let p = i128::from(BFieldElement::P);
+    if n <= -p || p <= n {
         let fail_context = "out-of-bounds constant";
         let errors = vec![(s, VerboseErrorKind::Context(fail_context))];
-        return Err(nom::Err::Failure(VerboseError { errors }));
-    };
-
-    let quotient = i128::from(BFieldElement::P);
-    if n >= quotient {
-        let fail_context = "out-of-bounds constant";
-        let errors = vec![(s_orig, VerboseErrorKind::Context(fail_context))];
-        return Err(nom::Err::Failure(VerboseError { errors }));
+        return Err(nom::Err::Error(VerboseError { errors }));
     }
-
-    if negative.is_some() {
-        n *= -1;
-        n += quotient;
-    }
+    let n = if n >= 0 { n } else { n + p };
 
     Ok((s, BFieldElement::new(n as u64)))
 }
@@ -557,7 +542,7 @@ fn stack_register(s: &str) -> ParseResult<OpStackElement> {
         _ => {
             let fail_context = "using an out-of-bounds stack register (0-15 exist)";
             let errors = vec![(s, VerboseErrorKind::Context(fail_context))];
-            return Err(nom::Err::Failure(VerboseError { errors }));
+            return Err(nom::Err::Error(VerboseError { errors }));
         }
     };
     let (s, _) = comment_or_whitespace1(s)?;
@@ -576,7 +561,7 @@ fn number_of_words(s: &str) -> ParseResult<NumberOfWords> {
         _ => {
             let fail_context = "using an out-of-bounds argument (1-5 allowed)";
             let errors = vec![(s, VerboseErrorKind::Context(fail_context))];
-            return Err(nom::Err::Failure(VerboseError { errors }));
+            return Err(nom::Err::Error(VerboseError { errors }));
         }
     };
     let (s, _) = comment_or_whitespace1(s)?; // require space after element
@@ -586,26 +571,18 @@ fn number_of_words(s: &str) -> ParseResult<NumberOfWords> {
 
 /// Parse a label address. This is used in "`<label>:`" and in "`call <label>`".
 fn label_addr(s_orig: &str) -> ParseResult<String> {
-    let (s, addr_part_0) = take_while1(is_label_start_char)(s_orig)?;
-    if addr_part_0.is_empty() {
-        // todo: this error is never shown to the user, since the `label` parser is wrapped in an
-        //  `alt`. With a custom error type, it is possible to have alt return the error of the
-        //  parser that went the farthest in the input data.
-        let fail_context = "label must start with an alphabetic character or underscore";
-        let errors = vec![(s_orig, VerboseErrorKind::Context(fail_context))];
-        return Err(nom::Err::Failure(VerboseError { errors }));
-    }
-    let (s, addr_part_1) = take_while(is_label_char)(s)?;
+    let (s, addr_part_0) = context(
+        "label must start with an alphabetic character or `_`",
+        take_while1(|c: char| c.is_alphabetic() || c == '_'),
+    )
+    .parse(s_orig)?;
+    let (s, addr_part_1) = context(
+        "label must contain only alphanumeric characters or `_` or `-`",
+        take_while(|c: char| c.is_alphanumeric() || c == '_' || c == '-'),
+    )
+    .parse(s)?;
 
     Ok((s, format!("{addr_part_0}{addr_part_1}")))
-}
-
-fn is_label_start_char(c: char) -> bool {
-    c.is_alphabetic() || c == '_'
-}
-
-fn is_label_char(c: char) -> bool {
-    is_label_start_char(c) || c.is_numeric() || c == '-'
 }
 
 /// Parse 0 or more comments and/or whitespace.
@@ -678,16 +655,40 @@ fn token1<'a>(token: &'a str) -> impl Fn(&'a str) -> ParseResult<'a, ()> {
 /// ```
 fn type_hint(s_type_hint: &str) -> ParseResult<InstructionToken> {
     let (s, _) = token1("hint")(s_type_hint)?;
-    let (s, variable_name) = type_hint_variable_name(s)?;
-    let (s, type_name) = type_hint_type_name(s)?;
-    let (s, range_start) = type_hint_starting_index(s)?;
-    let (s, maybe_range_end) = type_hint_ending_index(s)?;
+    let (s, variable_name) = context(
+        "type hint requires variable's name",
+        cut(type_hint_variable_name),
+    )
+    .parse(s)?;
+    let (s, type_name) = context(
+        "type hint's type name is malformed",
+        cut(type_hint_type_name),
+    )
+    .parse(s)?;
+    let (s, _) = context("syntax error", cut(token0("="))).parse(s)?;
+    let (s, _) = context("syntax error", cut(tag("stack"))).parse(s)?;
+    let (s, _) = context("syntax error", cut(token0("["))).parse(s)?;
+    let (s, range_start) = context(
+        "type hint requires a stack position (or range) indicator",
+        cut(nom::character::complete::usize),
+    )
+    .parse(s)?;
     let (s, _) = whitespace0(s)?;
-    let (s, _) = token0("]")(s)?;
+    let (s, maybe_range_end) = context(
+        "type hint's stack range indicator is malformed",
+        cut(type_hint_ending_index),
+    )
+    .parse(s)?;
+    let (s, _) = whitespace0(s)?;
+    let (s, _) = context(
+        "type hint requires closing bracket for stack position (or range) indicator",
+        cut(token0("]")),
+    )
+    .parse(s)?;
 
     let length = match maybe_range_end {
         Some(range_end) if range_end <= range_start => {
-            let fail_context = "range end must be greater than range start";
+            let fail_context = "type hint's stack range indicator must be non-empty";
             let errors = vec![(s, VerboseErrorKind::Context(fail_context))];
             return Err(nom::Err::Failure(VerboseError { errors }));
         }
@@ -706,8 +707,16 @@ fn type_hint(s_type_hint: &str) -> ParseResult<InstructionToken> {
 }
 
 fn type_hint_variable_name(s: &str) -> ParseResult<String> {
-    let (s, variable_name_start) = take_while1(is_type_hint_variable_name_start_character)(s)?;
-    let (s, variable_name_end) = take_while(is_type_hint_variable_name_character)(s)?;
+    let (s, variable_name_start) = context(
+        "type hint's variable name must start with a lowercase alphabetic character or `_`",
+        take_while1(|c: char| (c.is_alphabetic() && c.is_lowercase()) || c == '_'),
+    )
+    .parse(s)?;
+    let (s, variable_name_end) = context(
+        "type hint's variable name must contain only lowercase alphanumeric characters or `_`",
+        take_while(|c: char| (c.is_alphabetic() && c.is_lowercase()) || c == '_' || c.is_numeric()),
+    )
+    .parse(s)?;
     let (s, _) = whitespace0(s)?;
     let variable_name = format!("{variable_name_start}{variable_name_end}");
     Ok((s, variable_name))
@@ -718,8 +727,16 @@ fn type_hint_type_name(s: &str) -> ParseResult<Option<String>> {
         return Ok((s, None));
     };
 
-    let (s, type_name_start) = take_while1(is_type_hint_type_name_start_character)(s)?;
-    let (s, type_name_end) = take_while(is_type_hint_type_name_character)(s)?;
+    let (s, type_name_start) = context(
+        "type hint's type name must start with alphabetic character",
+        cut(take_while1(|c: char| c.is_alphabetic())),
+    )
+    .parse(s)?;
+    let (s, type_name_end) = context(
+        "type hint's type name must contain only alphanumeric characters and `_`",
+        cut(take_while(|c: char| c.is_alphanumeric() || c == '_')),
+    )
+    .parse(s)?;
     let (s, _) = whitespace0(s)?;
     let type_name = format!("{type_name_start}{type_name_end}");
 
@@ -730,45 +747,14 @@ fn type_hint_ending_index(s: &str) -> ParseResult<Option<usize>> {
     let Ok((s, _)) = token0("..")(s) else {
         return Ok((s, None));
     };
-
-    let (s, range_end) = take_while(|c: char| c.is_numeric())(s)?;
-    let (_, range_end) = parse_str_to_usize(range_end)?;
+    let (s, range_end) = context(
+        "type hint with range indicator requires a range end",
+        cut(nom::character::complete::usize),
+    )
+    .parse(s)?;
+    let (s, _) = whitespace0(s)?;
 
     Ok((s, Some(range_end)))
-}
-
-fn type_hint_starting_index(s: &str) -> ParseResult<usize> {
-    let (s, _) = token0("=")(s)?;
-    let (s, _) = token0("stack[")(s)?;
-    let (s, range_start) = take_while(|c: char| c.is_numeric())(s)?;
-    let (_, range_start) = parse_str_to_usize(range_start)?;
-    let (s, _) = whitespace0(s)?;
-    Ok((s, range_start))
-}
-
-fn is_type_hint_variable_name_start_character(c: char) -> bool {
-    (c.is_alphabetic() && c.is_lowercase()) || c == '_'
-}
-
-fn is_type_hint_variable_name_character(c: char) -> bool {
-    is_type_hint_variable_name_start_character(c) || c.is_numeric()
-}
-
-fn is_type_hint_type_name_start_character(c: char) -> bool {
-    c.is_alphabetic()
-}
-
-fn is_type_hint_type_name_character(c: char) -> bool {
-    is_type_hint_type_name_start_character(c) || c.is_numeric() || c == '_'
-}
-
-fn parse_str_to_usize(s: &str) -> ParseResult<usize> {
-    if let Ok(u) = s.parse() {
-        Ok((s, u))
-    } else {
-        let errors = vec![(s, VerboseErrorKind::Context("integer conversion failure"))];
-        Err(nom::Err::Failure(VerboseError { errors }))
-    }
 }
 
 fn assertion_context(s_ctx: &str) -> ParseResult<InstructionToken> {
@@ -780,7 +766,11 @@ fn assertion_context(s_ctx: &str) -> ParseResult<InstructionToken> {
 
 fn assertion_context_id(s_ctx: &str) -> ParseResult<AssertionContext> {
     let (s, _) = token1("error_id")(s_ctx)?;
-    let (s, id) = nom::character::complete::i128(s)?;
+    let (s, id) = context(
+        "expected a valid error ID of type i128",
+        cut(nom::character::complete::i128),
+    )
+    .parse(s)?;
     let (s, _) = comment_or_whitespace1(s)?;
 
     let assertion_context = AssertionContext::ID(id);
@@ -981,6 +971,25 @@ pub(crate) mod tests {
         .run();
     }
 
+    #[test]
+    fn parse_simple_programs() {
+        TestCase {
+            input: "halt",
+            expected: vec![Instruction::Halt],
+            message: "most simple program should work",
+        }
+        .run();
+
+        TestCase {
+            input: "push -1 push 0 push 1",
+            expected: [-1, -1, 0, 0, 1, 1]
+                .map(|i| Instruction::Push(bfe!(i)))
+                .to_vec(),
+            message: "simple parameters for push should work",
+        }
+        .run();
+    }
+
     #[proptest]
     fn arbitrary_whitespace_and_comment_sequence_is_empty_program(whitespace: Vec<Whitespace>) {
         let whitespace = whitespace.into_iter().join("");
@@ -1163,7 +1172,7 @@ pub(crate) mod tests {
     fn parse_program_bracket_syntax() {
         NegativeTestCase {
             input: "foo: [foo]",
-            expected_error: "expecting label, instruction or eof",
+            expected_error: "expected label, instruction, or end of file",
             expected_error_count: 1,
             message: "brackets as call syntax sugar are unsupported",
         }
@@ -1171,7 +1180,7 @@ pub(crate) mod tests {
 
         NegativeTestCase {
             input: "foo: [bar]",
-            expected_error: "expecting label, instruction or eof",
+            expected_error: "expected label, instruction, or end of file",
             expected_error_count: 1,
             message: "brackets as call syntax sugar are unsupported",
         }
@@ -1182,7 +1191,7 @@ pub(crate) mod tests {
     fn parse_program_label_must_start_with_alphabetic_character_or_underscore() {
         NegativeTestCase {
             input: "1foo: call 1foo",
-            expected_error: "expecting label, instruction or eof",
+            expected_error: "expected label, instruction, or end of file",
             expected_error_count: 1,
             message: "labels cannot start with a digit",
         }
@@ -1190,7 +1199,15 @@ pub(crate) mod tests {
 
         NegativeTestCase {
             input: "-foo: call -foo",
-            expected_error: "expecting label, instruction or eof",
+            expected_error: "expected label, instruction, or end of file",
+            expected_error_count: 1,
+            message: "labels cannot start with a dash",
+        }
+        .run();
+
+        NegativeTestCase {
+            input: "call -foo",
+            expected_error: "label must start with an alphabetic character or `_`",
             expected_error_count: 1,
             message: "labels cannot start with a dash",
         }
@@ -1208,7 +1225,7 @@ pub(crate) mod tests {
     fn parse_type_hint_with_zero_length_range() {
         NegativeTestCase {
             input: "hint foo: Type = stack[0..0]",
-            expected_error: "range end must be greater than range start",
+            expected_error: "type hint's stack range indicator must be non-empty",
             expected_error_count: 1,
             message: "parse type hint with zero-length range",
         }
@@ -1219,7 +1236,7 @@ pub(crate) mod tests {
     fn parse_type_hint_with_range_and_offset_and_missing_closing_bracket() {
         NegativeTestCase {
             input: "hint foo: Type = stack[2..5",
-            expected_error: "expecting label, instruction or eof",
+            expected_error: "type hint requires closing bracket",
             expected_error_count: 1,
             message: "parse type hint with range and offset and missing closing bracket",
         }
@@ -1230,7 +1247,7 @@ pub(crate) mod tests {
     fn parse_type_hint_with_range_and_offset_and_missing_opening_bracket() {
         NegativeTestCase {
             input: "hint foo: Type = stack2..5]",
-            expected_error: "expecting label, instruction or eof",
+            expected_error: "syntax error",
             expected_error_count: 1,
             message: "parse type hint with range and offset and missing opening bracket",
         }
@@ -1241,7 +1258,7 @@ pub(crate) mod tests {
     fn parse_type_hint_with_range_and_offset_and_missing_equals_sign() {
         NegativeTestCase {
             input: "hint foo: Type stack[2..5];",
-            expected_error: "expecting label, instruction or eof",
+            expected_error: "syntax error",
             expected_error_count: 1,
             message: "parse type hint with range and offset and missing equals sign",
         }
@@ -1252,7 +1269,7 @@ pub(crate) mod tests {
     fn parse_type_hint_with_range_and_offset_and_missing_type_name() {
         NegativeTestCase {
             input: "hint foo: = stack[2..5]",
-            expected_error: "expecting label, instruction or eof",
+            expected_error: "type hint's type name is malformed",
             expected_error_count: 1,
             message: "parse type hint with range and offset and missing type name",
         }
@@ -1274,7 +1291,7 @@ pub(crate) mod tests {
     fn parse_type_hint_with_range_and_offset_and_missing_colon() {
         NegativeTestCase {
             input: "hint foo Type = stack[2..5]",
-            expected_error: "expecting label, instruction or eof",
+            expected_error: "syntax error",
             expected_error_count: 1,
             message: "parse type hint with range and offset and missing colon",
         }
@@ -1285,7 +1302,7 @@ pub(crate) mod tests {
     fn parse_type_hint_with_range_and_offset_and_missing_hint() {
         NegativeTestCase {
             input: "foo: Type = stack[2..5];",
-            expected_error: "expecting label, instruction or eof",
+            expected_error: "expected label, instruction, or end of file",
             expected_error_count: 1,
             message: "parse type hint with range and offset and missing hint",
         }
@@ -1370,14 +1387,14 @@ pub(crate) mod tests {
     fn assertion_context_error_id_fails_on_too_large_error_ids() {
         NegativeTestCase {
             input: "assert error_id -170141183460469231731687303715884105729",
-            expected_error: "expecting label, instruction or eof",
+            expected_error: "expected a valid error ID of type i128",
             expected_error_count: 1,
             message: "error id smaller than i128::MIN",
         }
         .run();
         NegativeTestCase {
             input: "assert error_id 170141183460469231731687303715884105728",
-            expected_error: "expecting label, instruction or eof",
+            expected_error: "expected a valid error ID of type i128",
             expected_error_count: 1,
             message: "error id larger than i128::MAX",
         }
@@ -1398,14 +1415,14 @@ pub(crate) mod tests {
     fn parse_erroneous_assertion_contexts_for_assert() {
         NegativeTestCase {
             input: "assert error_id",
-            expected_error: "expecting label, instruction or eof",
+            expected_error: "expected a valid error ID of type i128",
             expected_error_count: 1,
             message: "missing id after keyword `error_id`",
         }
         .run();
         NegativeTestCase {
             input: "assert error id 42",
-            expected_error: "expecting label, instruction or eof",
+            expected_error: "expected label, instruction, or end of file",
             expected_error_count: 1,
             message: "incorrect keyword `error id`",
         }
