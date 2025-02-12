@@ -13,6 +13,7 @@ pub mod table;
 pub mod table_column;
 
 mod private {
+    /// A public but unnameable trait to seal trait [`AIR`][super::AIR].
     pub trait Seal {}
 }
 
@@ -39,9 +40,9 @@ pub const TARGET_DEGREE: isize = 4;
 ///
 /// [tables]: table::TableId
 ///
-/// ### Object safety
+/// ### Dyn Compatibility
 ///
-/// This trait is _not_ object safe.
+/// This trait is _not_ dyn-compatible.
 pub trait AIR: private::Seal {
     type MainColumn: MasterMainColumn + EnumCount;
     type AuxColumn: MasterAuxColumn + EnumCount;
