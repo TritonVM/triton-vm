@@ -50,11 +50,6 @@ impl ProcessorTable {
     ///
     /// Panics if the index is out of bounds.
     pub fn op_stack_column_by_index(index: usize) -> MainColumn {
-        assert!(
-            index < OpStackElement::COUNT,
-            "Op Stack column index must be in [0, 15], not {index}"
-        );
-
         match index {
             0 => MainColumn::ST0,
             1 => MainColumn::ST1,
@@ -72,7 +67,7 @@ impl ProcessorTable {
             13 => MainColumn::ST13,
             14 => MainColumn::ST14,
             15 => MainColumn::ST15,
-            _ => unreachable!(),
+            _ => panic!("Op Stack column index must be in [0, 15], not {index}"),
         }
     }
 }
