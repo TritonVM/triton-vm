@@ -11,17 +11,16 @@ use nom::bytes::complete::tag;
 use nom::bytes::complete::take_while;
 use nom::bytes::complete::take_while1;
 use nom::character::complete::digit1;
-use nom::combinator::cut;
 use nom::combinator::eof;
-use nom::combinator::fail;
 use nom::combinator::opt;
 use nom::error::ErrorKind;
-use nom::error::VerboseError;
-use nom::error::VerboseErrorKind;
 use nom::multi::many0;
 use nom::multi::many1;
 use nom::Finish;
 use nom::IResult;
+use nom::Parser;
+use nom_language::error::VerboseError;
+use nom_language::error::VerboseErrorKind;
 use twenty_first::bfe;
 use twenty_first::prelude::BFieldElement;
 
@@ -67,7 +66,8 @@ impl Display for ParseError<'_> {
             errors.errors.remove(0);
         }
 
-        write!(f, "{}", nom::error::convert_error(self.input, errors))
+        let err_display = nom_language::error::convert_error(self.input, errors);
+        write!(f, "{err_display}")
     }
 }
 
@@ -232,8 +232,9 @@ pub fn tokenize(s: &str) -> ParseResult<Vec<InstructionToken>> {
         breakpoint,
         type_hint,
         assertion_context,
-    )))(s)?;
-    let (s, _) = nom::error::context("expecting label, instruction or eof", eof)(s)?;
+    )))
+    .parse(s)?;
+    let (s, _) = nom::error::context("expecting label, instruction or eof", eof).parse(s)?;
 
     Ok((s, instructions))
 }
@@ -243,13 +244,10 @@ fn label(label_s: &str) -> ParseResult<InstructionToken> {
     let (s, _) = whitespace0(s)?; // whitespace between label and ':' is allowed
     let (s, _) = token0(":")(s)?; // don't require space after ':'
 
-    // Checking if `<label>:` is an instruction must happen after parsing `:`, since
-    // otherwise `cut` will reject the alternative parsers of `label`, like
-    // `labelled_instruction`, where valid instructions names *are* allowed.
-    if is_illegal_label(&addr) {
-        let failure_reason = "label must be neither instruction nor keyword";
-        return cut(nom::error::context(failure_reason, fail))(label_s);
-    }
+    // Checking if `<label>:` is an instruction must happen after parsing `:`.
+    // Otherwise, alternative parsers of `label` (like `labelled_instruction`) are
+    // rejected, even though valid instruction names *are* allowed there.
+    assert_label_is_legal(s, &addr)?;
 
     Ok((s, InstructionToken::Label(addr, label_s)))
 }
@@ -373,11 +371,21 @@ fn an_instruction(s: &str) -> ParseResult<AnInstruction<String>> {
         read_write,
         many_to_one,
         syntax_ambiguous,
-    ))(s)
+    ))
+    .parse(s)
 }
 
-fn is_illegal_label(s: &str) -> bool {
-    ALL_INSTRUCTION_NAMES.contains(&s) || KEYWORDS.contains(&s)
+fn assert_label_is_legal<'s>(
+    s: &'s str,
+    label: &str,
+) -> Result<(), nom::Err<VerboseError<&'s str>>> {
+    if ALL_INSTRUCTION_NAMES.contains(&label) || KEYWORDS.contains(&label) {
+        let fail_context = "label must be neither instruction nor keyword";
+        let errors = vec![(s, VerboseErrorKind::Context(fail_context))];
+        return Err(nom::Err::Failure(VerboseError { errors }));
+    }
+
+    Ok(())
 }
 
 fn instruction<'a>(
@@ -463,10 +471,7 @@ fn call_instruction<'a>() -> impl Fn(&'a str) -> ParseResult<'a, AnInstruction<S
         // This check cannot be moved into `label_addr`, since `label_addr` is shared
         // between the scenarios `<label>:` and `call <label>`; the former requires
         // parsing the `:` before rejecting a possible instruction name in the label.
-        if is_illegal_label(&label) {
-            let failure_reason = "label must be neither instruction nor keyword";
-            return cut(nom::error::context(failure_reason, fail))(s);
-        }
+        assert_label_is_legal(s, &label)?;
 
         Ok((s, AnInstruction::Call(label)))
     }
@@ -505,17 +510,21 @@ fn write_io_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>>
 }
 
 fn field_element(s_orig: &str) -> ParseResult<BFieldElement> {
-    let (s, negative) = opt(token0("-"))(s_orig)?;
+    let (s, negative) = opt(token0("-")).parse(s_orig)?;
     let (s, n) = digit1(s)?;
     let (s, _) = comment_or_whitespace1(s)?;
 
     let Ok(mut n): Result<i128, _> = n.parse() else {
-        return nom::error::context("out-of-bounds constant", fail)(s);
+        let fail_context = "out-of-bounds constant";
+        let errors = vec![(s, VerboseErrorKind::Context(fail_context))];
+        return Err(nom::Err::Failure(VerboseError { errors }));
     };
 
     let quotient = i128::from(BFieldElement::P);
     if n >= quotient {
-        return nom::error::context("out-of-bounds constant", fail)(s_orig);
+        let fail_context = "out-of-bounds constant";
+        let errors = vec![(s_orig, VerboseErrorKind::Context(fail_context))];
+        return Err(nom::Err::Failure(VerboseError { errors }));
     }
 
     if negative.is_some() {
@@ -546,8 +555,9 @@ fn stack_register(s: &str) -> ParseResult<OpStackElement> {
         "14" => OpStackElement::ST14,
         "15" => OpStackElement::ST15,
         _ => {
-            let failure_reason = "using an out-of-bounds stack register (0-15 exist)";
-            return nom::error::context(failure_reason, fail)(s);
+            let fail_context = "using an out-of-bounds stack register (0-15 exist)";
+            let errors = vec![(s, VerboseErrorKind::Context(fail_context))];
+            return Err(nom::Err::Failure(VerboseError { errors }));
         }
     };
     let (s, _) = comment_or_whitespace1(s)?;
@@ -563,7 +573,11 @@ fn number_of_words(s: &str) -> ParseResult<NumberOfWords> {
         "3" => NumberOfWords::N3,
         "4" => NumberOfWords::N4,
         "5" => NumberOfWords::N5,
-        _ => return nom::error::context("using an out-of-bounds argument (1-5 allowed)", fail)(s),
+        _ => {
+            let fail_context = "using an out-of-bounds argument (1-5 allowed)";
+            let errors = vec![(s, VerboseErrorKind::Context(fail_context))];
+            return Err(nom::Err::Failure(VerboseError { errors }));
+        }
     };
     let (s, _) = comment_or_whitespace1(s)?; // require space after element
 
@@ -577,8 +591,9 @@ fn label_addr(s_orig: &str) -> ParseResult<String> {
         // todo: this error is never shown to the user, since the `label` parser is wrapped in an
         //  `alt`. With a custom error type, it is possible to have alt return the error of the
         //  parser that went the farthest in the input data.
-        let failure_reason = "label must start with an alphabetic character or underscore";
-        return nom::error::context(failure_reason, fail)(s_orig);
+        let fail_context = "label must start with an alphabetic character or underscore";
+        let errors = vec![(s_orig, VerboseErrorKind::Context(fail_context))];
+        return Err(nom::Err::Failure(VerboseError { errors }));
     }
     let (s, addr_part_1) = take_while(is_label_char)(s)?;
 
@@ -597,7 +612,7 @@ fn is_label_char(c: char) -> bool {
 ///
 /// This is used after places where whitespace is optional (e.g. after ':').
 fn comment_or_whitespace0(s: &str) -> ParseResult<&str> {
-    let (s, _) = many0(alt((comment1, whitespace1)))(s)?;
+    let (s, _) = many0(alt((comment1, whitespace1))).parse(s)?;
     Ok((s, ""))
 }
 
@@ -606,10 +621,10 @@ fn comment_or_whitespace0(s: &str) -> ParseResult<&str> {
 /// This is used after places where whitespace is mandatory (e.g. after tokens).
 fn comment_or_whitespace1<'a>(s: &'a str) -> ParseResult<'a, &'a str> {
     let cws1 = |s: &'a str| -> ParseResult<&str> {
-        let (s, _) = many1(alt((comment1, whitespace1)))(s)?;
+        let (s, _) = many1(alt((comment1, whitespace1))).parse(s)?;
         Ok((s, ""))
     };
-    alt((eof, cws1))(s)
+    alt((eof, cws1)).parse(s)
 }
 
 /// Parse one comment (not including the linebreak)
@@ -672,8 +687,9 @@ fn type_hint(s_type_hint: &str) -> ParseResult<InstructionToken> {
 
     let length = match maybe_range_end {
         Some(range_end) if range_end <= range_start => {
-            let failure_reason = "range end must be greater than range start";
-            return cut(nom::error::context(failure_reason, fail))(s);
+            let fail_context = "range end must be greater than range start";
+            let errors = vec![(s, VerboseErrorKind::Context(fail_context))];
+            return Err(nom::Err::Failure(VerboseError { errors }));
         }
         Some(range_end) => range_end - range_start,
         None => 1,
@@ -747,9 +763,11 @@ fn is_type_hint_type_name_character(c: char) -> bool {
 }
 
 fn parse_str_to_usize(s: &str) -> ParseResult<usize> {
-    match s.parse::<usize>() {
-        Ok(u) => Ok((s, u)),
-        Err(_) => cut(nom::error::context("integer conversion failure", fail))(s),
+    if let Ok(u) = s.parse() {
+        Ok((s, u))
+    } else {
+        let errors = vec![(s, VerboseErrorKind::Context("integer conversion failure"))];
+        Err(nom::Err::Failure(VerboseError { errors }))
     }
 }
 
@@ -1118,7 +1136,7 @@ pub(crate) mod tests {
     fn parse_program_nonexistent_instructions() {
         NegativeTestCase {
             input: "pop 0",
-            expected_error: "expecting label, instruction or eof",
+            expected_error: "using an out-of-bounds argument (1-5 allowed)",
             expected_error_count: 1,
             message: "instruction `pop` cannot take argument `0`",
         }
@@ -1126,7 +1144,7 @@ pub(crate) mod tests {
 
         NegativeTestCase {
             input: "swap 16",
-            expected_error: "expecting label, instruction or eof",
+            expected_error: "using an out-of-bounds stack register (0-15 exist)",
             expected_error_count: 1,
             message: "there is no swap 16 instruction",
         }
@@ -1134,7 +1152,7 @@ pub(crate) mod tests {
 
         NegativeTestCase {
             input: "dup 16",
-            expected_error: "expecting label, instruction or eof",
+            expected_error: "using an out-of-bounds stack register (0-15 exist)",
             expected_error_count: 1,
             message: "there is no dup 16 instruction",
         }
