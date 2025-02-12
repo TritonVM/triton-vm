@@ -49,23 +49,27 @@ pub struct VM;
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize, Arbitrary)]
 pub struct VMState {
-    /// The **program memory** stores the instructions (and their arguments) of the program
-    /// currently being executed by Triton VM. It is read-only.
+    /// The **program memory** stores the instructions (and their arguments) of
+    /// the program currently being executed by Triton VM. It is read-only.
     pub program: Program,
 
-    /// A list of [`BFieldElement`]s the program can read from using instruction `read_io`.
+    /// A list of [`BFieldElement`]s the program can read from using instruction
+    /// `read_io`.
     pub public_input: VecDeque<BFieldElement>,
 
-    /// A list of [`BFieldElement`]s the program can write to using instruction `write_io`.
+    /// A list of [`BFieldElement`]s the program can write to using instruction
+    /// `write_io`.
     pub public_output: Vec<BFieldElement>,
 
-    /// A list of [`BFieldElement`]s the program can read from using instruction `divine`.
+    /// A list of [`BFieldElement`]s the program can read from using instruction
+    /// `divine`.
     pub secret_individual_tokens: VecDeque<BFieldElement>,
 
     /// A list of [`Digest`]s the program can use for instruction `merkle_step`.
     pub secret_digests: VecDeque<Digest>,
 
-    /// The read-write **random-access memory** allows Triton VM to store arbitrary data.
+    /// The read-write **random-access memory** allows Triton VM to store
+    /// arbitrary data.
     pub ram: HashMap<BFieldElement, BFieldElement>,
 
     ram_calls: Vec<RamTableCall>,
@@ -87,8 +91,8 @@ pub struct VMState {
     /// [`SpongeAbsorbMem`][absorb_mem], and [`SpongeSqueeze`][squeeze].
     /// Instruction [`SpongeInit`][init] resets the Sponge.
     ///
-    /// Note that this is the _full_ state, including capacity. The capacity should never be
-    /// exposed outside the VM.
+    /// Note that this is the _full_ state, including capacity. The capacity
+    /// should never be exposed outside the VM.
     ///
     /// [init]: Instruction::SpongeInit
     /// [absorb]: Instruction::SpongeAbsorb
@@ -100,8 +104,8 @@ pub struct VMState {
     pub halting: bool,
 }
 
-/// A call from the main processor to one of the coprocessors, including the trace for that
-/// coprocessor or enough information to deduce the trace.
+/// A call from the main processor to one of the coprocessors, including the
+/// trace for that coprocessor or enough information to deduce the trace.
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum CoProcessorCall {
     SpongeStateReset,
@@ -121,9 +125,10 @@ pub enum CoProcessorCall {
 }
 
 impl VM {
-    /// Run Triton VM on the [`Program`] with the given public input and non-determinism.
-    /// If an error is encountered, the returned [`VMError`] contains the [`VMState`] at the point
-    /// of execution failure.
+    /// Run Triton VM on the [`Program`] with the given public input and
+    /// non-determinism. If an error is encountered, the returned
+    /// [`VMError`] contains the [`VMState`] at the point of execution
+    /// failure.
     ///
     /// See also [`trace_execution`][trace_execution] and [`profile`][profile].
     ///
@@ -141,9 +146,10 @@ impl VM {
         Ok(state.public_output)
     }
 
-    /// Trace the execution of a [`Program`]. That is, [`run`][run] the [`Program`] and additionally
-    /// record that part of every encountered state that is necessary for proving correct execution.
-    /// If execution  succeeds, returns
+    /// Trace the execution of a [`Program`]. That is, [`run`][run] the
+    /// [`Program`] and additionally record that part of every encountered
+    /// state that is necessary for proving correct execution. If execution
+    /// succeeds, returns
     /// 1. an [`AlgebraicExecutionTrace`], and
     /// 1. the output of the program.
     ///
@@ -164,12 +170,11 @@ impl VM {
     }
 
     /// Trace the execution of a [`Program`] from a given [`VMState`]. Consider
-    /// using [`trace_execution`][Self::trace_execution], unless you know this is
-    /// what you want.
+    /// using [`trace_execution`][Self::trace_execution], unless you know this
+    /// is what you want.
     ///
     /// Returns the [`AlgebraicExecutionTrace`] and the terminal [`VMState`] if
     /// execution succeeds.
-    ///
     pub fn trace_execution_of_state(
         mut state: VMState,
     ) -> VMResult<(AlgebraicExecutionTrace, VMState)> {
@@ -193,9 +198,9 @@ impl VM {
 
     /// Run Triton VM with the given public and secret input, recording the
     /// influence of a callable block of instructions on the
-    /// [`AlgebraicExecutionTrace`]. For example, this can be used to identify the
-    /// number of clock cycles spent in some block of instructions, or how many rows
-    /// it contributes to the U32 Table.
+    /// [`AlgebraicExecutionTrace`]. For example, this can be used to identify
+    /// the number of clock cycles spent in some block of instructions, or
+    /// how many rows it contributes to the U32 Table.
     ///
     /// See also [`run`][run] and [`trace_execution`][trace_execution].
     ///
@@ -852,9 +857,9 @@ impl VMState {
         let xor = lhs ^ rhs;
         self.op_stack.push(xor.into());
 
-        // Triton VM uses the following equality to compute the results of both the `and`
-        // and `xor` instruction using the u32 coprocessor's `and` capability:
-        // a ^ b = a + b - 2 · (a & b)
+        // Triton VM uses the following equality to compute the results of both the
+        // `and` and `xor` instruction using the u32 coprocessor's `and`
+        // capability: a ^ b = a + b - 2 · (a & b)
         let u32_table_entry = U32TableEntry::new(Instruction::And, lhs, rhs);
         let co_processor_calls = vec![CoProcessorCall::U32(u32_table_entry)];
 
@@ -1157,8 +1162,9 @@ impl VMState {
     /// - the argument of the current instruction if it has one, or
     /// - the opcode of the next instruction otherwise.
     ///
-    /// If the current instruction has no argument and there is no next instruction, the NIA is 1
-    /// to account for the hash-input padding separator of the program.
+    /// If the current instruction has no argument and there is no next
+    /// instruction, the NIA is 1 to account for the hash-input padding
+    /// separator of the program.
     ///
     /// If the instruction pointer is out of bounds, the returned NIA is 0.
     fn next_instruction_or_argument(&self) -> BFieldElement {
@@ -1196,10 +1202,10 @@ impl VMState {
 
     /// Return the next instruction on the tape, skipping arguments.
     ///
-    /// Note that this is not necessarily the next instruction to execute, since the
-    /// current instruction could be a jump, but it is either
-    /// `program.instructions[ip + 1]` or `program.instructions[ip + 2]`, depending
-    /// on whether the current instruction takes an argument.
+    /// Note that this is not necessarily the next instruction to execute, since
+    /// the current instruction could be a jump, but it is either
+    /// `program.instructions[ip + 1]` or `program.instructions[ip + 2]`,
+    /// depending on whether the current instruction takes an argument.
     pub fn next_instruction(&self) -> InstructionResult<Instruction> {
         let current_instruction = self.current_instruction()?;
         let next_instruction_pointer = self.instruction_pointer + current_instruction.size();
@@ -1903,7 +1909,8 @@ pub(crate) mod tests {
         ProgramAndInput::new(program).with_input(&digest[..=0])
     }
 
-    /// Helper function that returns code to push a digest to the top of the stack
+    /// Helper function that returns code to push a digest to the top of the
+    /// stack
     fn push_digest_to_stack_tasm(Digest([d0, d1, d2, d3, d4]): Digest) -> Vec<LabelledInstruction> {
         triton_asm!(push {d4} push {d3} push {d2} push {d1} push {d0})
     }
@@ -2043,8 +2050,8 @@ pub(crate) mod tests {
                 .with_non_determinism(non_determinism)
         }
 
-        /// Checks whether the [`ProgramAndInput`] generated through [`Self::assemble`]
-        /// can
+        /// Checks whether the [`ProgramAndInput`] generated through
+        /// [`Self::assemble`] can
         /// - be executed without crashing the VM, and
         /// - produces the correct output.
         #[must_use]
@@ -2061,8 +2068,8 @@ pub(crate) mod tests {
         }
 
         /// The authentication path for the leaf at `self.revealed_leafs_index`.
-        /// Independent of the leaf's value, _i.e._, is up to date even one the leaf
-        /// has been updated.
+        /// Independent of the leaf's value, _i.e._, is up to date even one the
+        /// leaf has been updated.
         fn authentication_path(&self) -> Vec<Digest> {
             self.leaved_merkle_tree
                 .merkle_tree
@@ -2512,8 +2519,9 @@ pub(crate) mod tests {
         let mut memory_values: Vec<BFieldElement> = random_elements(num_memory_accesses);
         let mut instructions = vec![];
 
-        // Read some memory before first write to ensure that the memory is initialized with 0s.
-        // Not all addresses are read to have different access patterns:
+        // Read some memory before first write to ensure that the memory is initialized
+        // with 0s. Not all addresses are read to have different access
+        // patterns:
         // - Some addresses are read before written to.
         // - Other addresses are written to before read.
         for address in memory_addresses.iter().take(num_memory_accesses / 4) {
@@ -2552,8 +2560,8 @@ pub(crate) mod tests {
                 .extend(triton_asm!(push {new_memory_value} push {address} write_mem 1 pop 1));
         }
 
-        // Read back all, i.e., unchanged and overwritten values in (different from before) random
-        // order and check that the values did not change.
+        // Read back all, i.e., unchanged and overwritten values in (different from
+        // before) random order and check that the values did not change.
         let mut reading_permutation = (0..num_memory_accesses).collect_vec();
         for i in 0..num_memory_accesses {
             let j = rng.random_range(0..num_memory_accesses);
@@ -2570,7 +2578,8 @@ pub(crate) mod tests {
         ProgramAndInput::new(program)
     }
 
-    /// Sanity check for the relatively complex property-based test for random RAM access.
+    /// Sanity check for the relatively complex property-based test for random
+    /// RAM access.
     #[test]
     fn run_dont_prove_property_based_test_for_random_ram_access() {
         let source_code_and_input = property_based_test_program_for_random_ram_access();
@@ -3198,17 +3207,17 @@ pub(crate) mod tests {
     fn verify_sudoku() {
         let program = crate::example_programs::VERIFY_SUDOKU.clone();
         let sudoku = [
-            8, 5, 9, /**/ 7, 6, 1, /**/ 4, 2, 3, //
-            4, 2, 6, /**/ 8, 5, 3, /**/ 7, 9, 1, //
-            7, 1, 3, /**/ 9, 2, 4, /**/ 8, 5, 6, //
-            /*************************************/
-            9, 6, 1, /**/ 5, 3, 7, /**/ 2, 8, 4, //
-            2, 8, 7, /**/ 4, 1, 9, /**/ 6, 3, 5, //
-            3, 4, 5, /**/ 2, 8, 6, /**/ 1, 7, 9, //
-            /*************************************/
-            5, 3, 4, /**/ 6, 7, 8, /**/ 9, 1, 2, //
-            6, 7, 2, /**/ 1, 9, 5, /**/ 3, 4, 8, //
-            1, 9, 8, /**/ 3, 4, 2, /**/ 5, 6, 7, //
+            8, 5, 9, /*  */ 7, 6, 1, /*  */ 4, 2, 3, //
+            4, 2, 6, /*  */ 8, 5, 3, /*  */ 7, 9, 1, //
+            7, 1, 3, /*  */ 9, 2, 4, /*  */ 8, 5, 6, //
+            /************************************ */
+            9, 6, 1, /*  */ 5, 3, 7, /*  */ 2, 8, 4, //
+            2, 8, 7, /*  */ 4, 1, 9, /*  */ 6, 3, 5, //
+            3, 4, 5, /*  */ 2, 8, 6, /*  */ 1, 7, 9, //
+            /************************************ */
+            5, 3, 4, /*  */ 6, 7, 8, /*  */ 9, 1, 2, //
+            6, 7, 2, /*  */ 1, 9, 5, /*  */ 3, 4, 8, //
+            1, 9, 8, /*  */ 3, 4, 2, /*  */ 5, 6, 7, //
         ];
 
         let std_in = PublicInput::from(sudoku.map(|b| bfe!(b)));
@@ -3217,17 +3226,17 @@ pub(crate) mod tests {
 
         // rows and columns adhere to Sudoku rules, boxes do not
         let bad_sudoku = [
-            1, 2, 3, /**/ 4, 5, 7, /**/ 8, 9, 6, //
-            4, 3, 1, /**/ 5, 2, 9, /**/ 6, 7, 8, //
-            2, 7, 9, /**/ 6, 1, 3, /**/ 5, 8, 4, //
-            /*************************************/
-            7, 6, 5, /**/ 3, 4, 8, /**/ 9, 2, 1, //
-            5, 1, 4, /**/ 9, 8, 6, /**/ 7, 3, 2, //
-            6, 8, 2, /**/ 7, 9, 4, /**/ 1, 5, 3, //
-            /*************************************/
-            3, 5, 6, /**/ 8, 7, 2, /**/ 4, 1, 9, //
-            9, 4, 8, /**/ 1, 3, 5, /**/ 2, 6, 7, //
-            8, 9, 7, /**/ 2, 6, 1, /**/ 3, 4, 5, //
+            1, 2, 3, /*  */ 4, 5, 7, /*  */ 8, 9, 6, //
+            4, 3, 1, /*  */ 5, 2, 9, /*  */ 6, 7, 8, //
+            2, 7, 9, /*  */ 6, 1, 3, /*  */ 5, 8, 4, //
+            /************************************ */
+            7, 6, 5, /*  */ 3, 4, 8, /*  */ 9, 2, 1, //
+            5, 1, 4, /*  */ 9, 8, 6, /*  */ 7, 3, 2, //
+            6, 8, 2, /*  */ 7, 9, 4, /*  */ 1, 5, 3, //
+            /************************************ */
+            3, 5, 6, /*  */ 8, 7, 2, /*  */ 4, 1, 9, //
+            9, 4, 8, /*  */ 1, 3, 5, /*  */ 2, 6, 7, //
+            8, 9, 7, /*  */ 2, 6, 1, /*  */ 3, 4, 5, //
         ];
         let bad_std_in = PublicInput::from(bad_sudoku.map(|b| bfe!(b)));
         let secret_in = NonDeterminism::default();

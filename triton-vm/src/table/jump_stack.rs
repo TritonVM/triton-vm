@@ -91,9 +91,9 @@ impl TraceTable for JumpStackTable {
         aet: &AlgebraicExecutionTrace,
         _: Self::FillParam,
     ) -> Self::FillReturnInfo {
-        // Store the registers relevant for the Jump Stack Table, i.e., CLK, CI, JSP, JSO, JSD,
-        // with JSP as the key. Preserves, thus allows reusing, the order of the processor's
-        // rows, which are sorted by CLK.
+        // Store the registers relevant for the Jump Stack Table, i.e., CLK, CI, JSP,
+        // JSO, JSD, with JSP as the key. Preserves, thus allows reusing, the
+        // order of the processor's rows, which are sorted by CLK.
         let mut pre_processed_jump_stack_table: Vec<Vec<_>> = vec![];
         for processor_row in aet.processor_trace.rows() {
             let clk = processor_row[ProcessorMainColumn::CLK.main_index()];
@@ -101,8 +101,8 @@ impl TraceTable for JumpStackTable {
             let jsp = processor_row[ProcessorMainColumn::JSP.main_index()];
             let jso = processor_row[ProcessorMainColumn::JSO.main_index()];
             let jsd = processor_row[ProcessorMainColumn::JSD.main_index()];
-            // The (honest) prover can only grow the Jump Stack's size by at most 1 per execution
-            // step. Hence, the following (a) works, and (b) sorts.
+            // The (honest) prover can only grow the Jump Stack's size by at most 1 per
+            // execution step. Hence, the following (a) works, and (b) sorts.
             let jsp_val = jsp.value() as usize;
             let jump_stack_row = (clk, ci, jso, jsd);
             match jsp_val.cmp(&pre_processed_jump_stack_table.len()) {
@@ -168,7 +168,8 @@ impl TraceTable for JumpStackTable {
         let padding_section_end = padding_section_start + num_padding_rows;
         assert_eq!(padded_height, rows_to_move_dest_section_end);
 
-        // Move all rows below the row with the highest CLK to the end of the table – if they exist.
+        // Move all rows below the row with the highest CLK to the end of the table – if
+        // they exist.
         if num_rows_to_move > 0 {
             let rows_to_move_source_range =
                 rows_to_move_source_section_start..rows_to_move_source_section_end;
@@ -181,8 +182,8 @@ impl TraceTable for JumpStackTable {
                 .move_into(&mut jump_stack_table.slice_mut(s![rows_to_move_dest_range, ..]));
         }
 
-        // Fill the created gap with padding rows, i.e., with copies of the last row before the
-        // gap. This is the padding section.
+        // Fill the created gap with padding rows, i.e., with copies of the last row
+        // before the gap. This is the padding section.
         let padding_row_template = jump_stack_table
             .row(max_clk_before_padding_row_idx)
             .to_owned();

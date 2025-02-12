@@ -32,10 +32,11 @@ use crate::table::u32::U32TableEntry;
 use crate::vm::CoProcessorCall;
 use crate::vm::VMState;
 
-/// An Algebraic Execution Trace (AET) is the primary witness required for proof generation. It
-/// holds every intermediate state of the processor and all co-processors, alongside additional
-/// witness information, such as the number of times each instruction has been looked up
-/// (equivalently, how often each instruction has been executed).
+/// An Algebraic Execution Trace (AET) is the primary witness required for proof
+/// generation. It holds every intermediate state of the processor and all
+/// co-processors, alongside additional witness information, such as the number
+/// of times each instruction has been looked up (equivalently, how often each
+/// instruction has been executed).
 #[derive(Debug, Clone)]
 pub struct AlgebraicExecutionTrace {
     /// The program that was executed in order to generate the trace.
@@ -43,9 +44,10 @@ pub struct AlgebraicExecutionTrace {
 
     /// The number of times each instruction has been executed.
     ///
-    /// Each instruction in the `program` has one associated entry in `instruction_multiplicities`,
-    /// counting the number of times this specific instruction at that location in the program
-    /// memory has been executed.
+    /// Each instruction in the `program` has one associated entry in
+    /// `instruction_multiplicities`, counting the number of times this
+    /// specific instruction at that location in the program memory has been
+    /// executed.
     pub instruction_multiplicities: Vec<u32>,
 
     /// Records the state of the processor after each instruction.
@@ -55,14 +57,15 @@ pub struct AlgebraicExecutionTrace {
 
     pub ram_trace: Array2<BFieldElement>,
 
-    /// The trace of hashing the program whose execution generated this `AlgebraicExecutionTrace`.
-    /// The resulting digest
-    /// 1. ties a [`Proof`](crate::proof::Proof) to the program it was produced from, and
+    /// The trace of hashing the program whose execution generated this
+    /// `AlgebraicExecutionTrace`. The resulting digest
+    /// 1. ties a [`Proof`](crate::proof::Proof) to the program it was produced
+    ///    from, and
     /// 1. is accessible to the program being executed.
     pub program_hash_trace: Array2<BFieldElement>,
 
-    /// For the `hash` instruction, the hash trace records the internal state of the Tip5
-    /// permutation for each round.
+    /// For the `hash` instruction, the hash trace records the internal state of
+    /// the Tip5 permutation for each round.
     pub hash_trace: Array2<BFieldElement>,
 
     /// For the Sponge instructions, i.e., `sponge_init`, `sponge_absorb`,
@@ -70,9 +73,10 @@ pub struct AlgebraicExecutionTrace {
     /// internal state of the Tip5 permutation for each round.
     pub sponge_trace: Array2<BFieldElement>,
 
-    /// The u32 entries hold all pairs of BFieldElements that were written to the U32 Table,
-    /// alongside the u32 instruction that was executed at the time. Additionally, it records how
-    /// often the instruction was executed with these arguments.
+    /// The u32 entries hold all pairs of BFieldElements that were written to
+    /// the U32 Table, alongside the u32 instruction that was executed at
+    /// the time. Additionally, it records how often the instruction was
+    /// executed with these arguments.
     // `IndexMap` over `HashMap` for deterministic iteration order. This is not
     // needed for correctness of the STARK.
     pub u32_entries: IndexMap<U32TableEntry, u64>,
@@ -169,13 +173,15 @@ impl AlgebraicExecutionTrace {
 
     fn padded_program_length(program: &Program) -> usize {
         // Padding is at least one 1.
-        // Also note that the Program Table's side of the instruction lookup argument requires at
-        // least one padding row to account for the processor's “next instruction or argument.”
-        // Both of these are captured by the “+ 1” in the following line.
+        // Also note that the Program Table's side of the instruction lookup argument
+        // requires at least one padding row to account for the processor's
+        // “next instruction or argument.” Both of these are captured by the “+
+        // 1” in the following line.
         (program.len_bwords() + 1).next_multiple_of(Tip5::RATE)
     }
 
-    /// Hash the program and record the entire Sponge's trace for program attestation.
+    /// Hash the program and record the entire Sponge's trace for program
+    /// attestation.
     fn fill_program_hash_trace(&mut self) {
         let padded_program = Self::hash_input_pad_program(&self.program);
         let mut program_sponge = Tip5::init();
@@ -288,29 +294,32 @@ impl AlgebraicExecutionTrace {
             .expect("shapes must be identical");
     }
 
-    /// Given a trace of the hash function's permutation, determines how often each entry in the
+    /// Given a trace of the hash function's permutation, determines how often
+    /// each entry in the
     /// - cascade table was looked up, and
     /// - lookup table was looked up;
     ///
     /// and increases the multiplicities accordingly
     fn increase_lookup_multiplicities(&mut self, trace: PermutationTrace) {
-        // The last row in the trace is the permutation's result: no lookups are performed for it.
+        // The last row in the trace is the permutation's result: no lookups are
+        // performed for it.
         let rows_for_which_lookups_are_performed = trace.iter().dropping_back(1);
         for row in rows_for_which_lookups_are_performed {
             self.increase_lookup_multiplicities_for_row(row);
         }
     }
 
-    /// Given one row of the hash function's permutation trace, increase the multiplicities of the
-    /// relevant entries in the cascade table and/or the lookup table.
+    /// Given one row of the hash function's permutation trace, increase the
+    /// multiplicities of the relevant entries in the cascade table and/or
+    /// the lookup table.
     fn increase_lookup_multiplicities_for_row(&mut self, row: &[BFieldElement; tip5::STATE_SIZE]) {
         for &state_element in &row[0..tip5::NUM_SPLIT_AND_LOOKUP] {
             self.increase_lookup_multiplicities_for_state_element(state_element);
         }
     }
 
-    /// Given one state element, increase the multiplicities of the corresponding entries in the
-    /// cascade table and/or the lookup table.
+    /// Given one state element, increase the multiplicities of the
+    /// corresponding entries in the cascade table and/or the lookup table.
     fn increase_lookup_multiplicities_for_state_element(&mut self, state_element: BFieldElement) {
         for limb in table::hash::base_field_element_into_16_bit_limbs(state_element) {
             match self.cascade_table_lookup_multiplicities.entry(limb) {
@@ -323,8 +332,8 @@ impl AlgebraicExecutionTrace {
         }
     }
 
-    /// Given one 16-bit limb, increase the multiplicities of the corresponding entries in the
-    /// lookup table.
+    /// Given one 16-bit limb, increase the multiplicities of the corresponding
+    /// entries in the lookup table.
     fn increase_lookup_table_multiplicities_for_limb(&mut self, limb: u16) {
         let limb_lo = limb & 0xff;
         let limb_hi = (limb >> 8) & 0xff;

@@ -54,7 +54,8 @@ impl AIR for JumpStackTable {
         ));
 
         let processor_perm_indeterminate = circuit_builder.challenge(JumpStackIndeterminate);
-        // note: `clk`, `jsp`, `jso`, and `jsd` are all constrained to be 0 and can thus be omitted.
+        // note: `clk`, `jsp`, `jso`, and `jsd` are all constrained to be 0 and can thus
+        // be omitted.
         let compressed_row = circuit_builder.challenge(JumpStackCiWeight) * ci;
         let rppa_starts_correctly = rppa - (processor_perm_indeterminate - compressed_row);
 

@@ -81,9 +81,10 @@ impl TraceTable for ProcessorTable {
         let clk_col = Array1::from_iter(clk_range.map(|a| bfe!(a as u64)));
         clk_col.move_into(main_table.slice_mut(s![table_len.., MainColumn::CLK.main_index()]));
 
-        // The Jump Stack Table does not have a padding indicator. Hence, clock jump differences are
-        // being looked up in its padding sections. The clock jump differences in that section are
-        // always 1. The lookup multiplicities of clock value 1 must be increased accordingly: one
+        // The Jump Stack Table does not have a padding indicator. Hence, clock jump
+        // differences are being looked up in its padding sections. The clock
+        // jump differences in that section are always 1. The lookup
+        // multiplicities of clock value 1 must be increased accordingly: one
         // per padding row.
         let num_padding_rows = main_table.nrows() - table_len;
         let num_padding_rows = bfe!(num_padding_rows as u64);
@@ -261,7 +262,8 @@ fn auxiliary_column_jump_stack_table_perm_argument(
     Array2::from_shape_vec((main_table.nrows(), 1), auxiliary_column).unwrap()
 }
 
-/// Hash Table – `hash`'s or `merkle_step`'s input from Processor to Hash Coprocessor
+/// Hash Table – `hash`'s or `merkle_step`'s input from Processor to Hash
+/// Coprocessor
 fn auxiliary_column_hash_input_eval_argument(
     main_table: ArrayView2<BFieldElement>,
     challenges: &Challenges,
@@ -374,7 +376,8 @@ fn auxiliary_column_hash_digest_eval_argument(
     Array2::from_shape_vec((main_table.nrows(), 1), auxiliary_column).unwrap()
 }
 
-/// Hash Table – `hash`'s or `merkle_step`'s input from Processor to Hash Coprocessor
+/// Hash Table – `hash`'s or `merkle_step`'s input from Processor to Hash
+/// Coprocessor
 fn auxiliary_column_sponge_eval_argument(
     main_table: ArrayView2<BFieldElement>,
     challenges: &Challenges,
@@ -604,7 +607,8 @@ fn factor_for_op_stack_table_running_product(
         return default_factor;
     };
 
-    // shorter stack means relevant information is on top of stack, i.e., in stack registers
+    // shorter stack means relevant information is on top of stack, i.e., in stack
+    // registers
     let row_with_shorter_stack = if previous_instruction.op_stack_size_influence() > 0 {
         previous_row.view()
     } else {
@@ -753,7 +757,7 @@ fn offset_ram_pointer(
 
     match instruction {
         // adjust for ram_pointer pointing in front of last-read address:
-        // `push 0 read_mem 1` leaves stack as `_ a -1` where `a` was read from address 0.
+        // `push 0 read_mem 1` leaves stack as `_ a -1`, with `a` read from address 0.
         Instruction::ReadMem(_) => ram_pointer + offset + bfe!(1),
         Instruction::WriteMem(_) => ram_pointer + offset,
         _ => unreachable!(),

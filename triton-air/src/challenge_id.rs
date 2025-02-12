@@ -14,20 +14,22 @@ use strum::EnumIter;
 #[repr(usize)]
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, EnumCount, EnumIter, Arbitrary)]
 pub enum ChallengeId {
-    /// The indeterminate for the [Evaluation Argument][eval] compressing the program digest
-    /// into a single extension field element, _i.e._,
+    /// The indeterminate for the [Evaluation Argument][eval] compressing the
+    /// program digest into a single extension field element, _i.e._,
     /// [`CompressedProgramDigest`][Self::CompressedProgramDigest].
     /// Relates to program attestation.
     ///
     /// [eval]: crate::cross_table_argument::EvalArg
     CompressProgramDigestIndeterminate,
 
-    /// The indeterminate for the [Evaluation Argument][eval] with standard input.
+    /// The indeterminate for the [Evaluation Argument][eval] with standard
+    /// input.
     ///
     /// [eval]: crate::cross_table_argument::EvalArg
     StandardInputIndeterminate,
 
-    /// The indeterminate for the [Evaluation Argument][eval] with standard output.
+    /// The indeterminate for the [Evaluation Argument][eval] with standard
+    /// output.
     ///
     /// [eval]: crate::cross_table_argument::EvalArg
     StandardOutputIndeterminate,
@@ -35,8 +37,8 @@ pub enum ChallengeId {
     /// The indeterminate for the instruction
     /// [Lookup Argument](crate::cross_table_argument::LookupArg)
     /// between the [Processor Table](crate::table::processor) and the
-    /// [Program Table](crate::table::program) guaranteeing that the instructions and their
-    /// arguments are copied correctly.
+    /// [Program Table](crate::table::program) guaranteeing that the
+    /// instructions and their arguments are copied correctly.
     InstructionLookupIndeterminate,
 
     HashInputIndeterminate,
@@ -49,9 +51,10 @@ pub enum ChallengeId {
 
     U32Indeterminate,
 
-    /// The indeterminate for the Lookup Argument between the Processor Table and all memory-like
-    /// tables, _i.e._, the OpStack Table, the Ram Table, and the JumpStack Table, guaranteeing
-    /// that all clock jump differences are directed forward.
+    /// The indeterminate for the Lookup Argument between the Processor Table
+    /// and all memory-like tables, _i.e._, the OpStack Table, the Ram
+    /// Table, and the JumpStack Table, guaranteeing that all clock jump
+    /// differences are directed forward.
     ClockJumpDifferenceLookupIndeterminate,
 
     /// The indeterminate for the Contiguity Argument within the Ram Table.
@@ -88,18 +91,19 @@ pub enum ChallengeId {
     JumpStackJsoWeight,
     JumpStackJsdWeight,
 
-    /// The indeterminate for compressing a [`RATE`][rate]-sized chunk of instructions into a
-    /// single extension field element.
+    /// The indeterminate for compressing a [`RATE`][rate]-sized chunk of
+    /// instructions into a single extension field element.
     /// Relates to program attestation.
     ///
-    /// Used by the evaluation argument [`PrepareChunkEvalArg`][prep] and in the Hash Table.
+    /// Used by the evaluation argument [`PrepareChunkEvalArg`][prep] and in the
+    /// Hash Table.
     ///
     /// [rate]: twenty_first::prelude::tip5::RATE
     /// [prep]: crate::table_column::ProgramAuxColumn::PrepareChunkRunningEvaluation
     ProgramAttestationPrepareChunkIndeterminate,
 
-    /// The indeterminate for the bus over which the [`RATE`][rate]-sized chunks of instructions
-    /// are sent. Relates to program attestation.
+    /// The indeterminate for the bus over which the [`RATE`][rate]-sized chunks
+    /// of instructions are sent. Relates to program attestation.
     /// Used by the evaluation arguments [`SendChunkEvalArg`][send] and
     /// [`ReceiveChunkEvalArg`][recv]. See also:
     /// [`ProgramAttestationPrepareChunkIndeterminate`][ind].
@@ -129,7 +133,8 @@ pub enum ChallengeId {
     StackWeight14,
     StackWeight15,
 
-    /// The indeterminate for the Lookup Argument between the Hash Table and the Cascade Table.
+    /// The indeterminate for the Lookup Argument between the Hash Table and the
+    /// Cascade Table.
     HashCascadeLookupIndeterminate,
 
     /// A weight for linearly combining multiple elements. Applies to
@@ -142,7 +147,8 @@ pub enum ChallengeId {
     /// - `2^16·LookOutHi + LookOutLo` in the Cascade Table.
     HashCascadeLookOutWeight,
 
-    /// The indeterminate for the Lookup Argument between the Cascade Table and the Lookup Table.
+    /// The indeterminate for the Lookup Argument between the Cascade Table and
+    /// the Lookup Table.
     CascadeLookupIndeterminate,
 
     /// A weight for linearly combining multiple elements. Applies to
@@ -155,8 +161,8 @@ pub enum ChallengeId {
     /// - `LookOut` in the Lookup Table.
     LookupTableOutputWeight,
 
-    /// The indeterminate for the public Evaluation Argument establishing correctness of the
-    /// Lookup Table.
+    /// The indeterminate for the public Evaluation Argument establishing
+    /// correctness of the Lookup Table.
     LookupTablePublicIndeterminate,
 
     U32LhsWeight,
@@ -183,7 +189,8 @@ pub enum ChallengeId {
     /// [eval]: crate::cross_table_argument::EvalArg
     StandardOutputTerminal,
 
-    /// The terminal for the [`EvaluationArgument`][eval] establishing correctness of the
+    /// The terminal for the [`EvaluationArgument`][eval] establishing
+    /// correctness of the
     /// [Lookup Table](crate::table::lookup::LookupTable).
     /// Makes use of challenge
     /// [`LookupTablePublicIndeterminate`][Self::LookupTablePublicIndeterminate].
@@ -191,12 +198,15 @@ pub enum ChallengeId {
     /// [eval]: crate::cross_table_argument::EvalArg
     LookupTablePublicTerminal,
 
-    /// The digest of the program to be executed, compressed into a single extension field element.
-    /// The compression happens using an [`EvaluationArgument`][eval] under challenge
-    /// [`CompressProgramDigestIndeterminate`][Self::CompressProgramDigestIndeterminate].
+    /// The digest of the program to be executed, compressed into a single
+    /// extension field element. The compression happens using an
+    /// [`EvaluationArgument`][eval] under challenge
+    /// [`CompressProgramDigestIndeterminate`][ind].
+    ///
     /// Relates to program attestation.
     ///
     /// [eval]: crate::cross_table_argument::EvalArg
+    /// [ind]: Self::CompressProgramDigestIndeterminate
     CompressedProgramDigest,
 }
 
@@ -223,9 +233,10 @@ pub(crate) mod tests {
     use super::*;
 
     /// Terminal challenges are computed from public information, such as public
-    /// input or public output, and other challenges. Because these other challenges
-    /// are used to compute the terminal challenges, the terminal challenges must be
-    /// inserted into the challenges vector after the used challenges.
+    /// input or public output, and other challenges. Because these other
+    /// challenges are used to compute the terminal challenges, the terminal
+    /// challenges must be inserted into the challenges vector after the
+    /// used challenges.
     #[test]
     const fn compile_time_index_assertions() {
         const DERIVED: [ChallengeId; ChallengeId::NUM_DERIVED_CHALLENGES] = [

@@ -43,9 +43,9 @@ impl CrossTableArg for PermArg {
         1.into()
     }
 
-    /// Compute the product for a permutation argument as specified by `initial`, `challenge`,
-    /// and `symbols`. This amounts to evaluating polynomial
-    ///  `f(x) = initial · Π_i (x - symbols[i])`
+    /// Compute the product for a permutation argument as specified by
+    /// `initial`, `challenge`, and `symbols`. This amounts to evaluating
+    /// polynomial  `f(x) = initial · Π_i (x - symbols[i])`
     /// at point `challenge`, _i.e._, returns `f(challenge)`.
     fn compute_terminal(
         symbols: &[BFieldElement],
@@ -67,9 +67,9 @@ impl CrossTableArg for EvalArg {
         1.into()
     }
 
-    /// Compute the evaluation for an evaluation argument as specified by `initial`, `challenge`,
-    /// and `symbols`. This amounts to evaluating polynomial
-    /// `f(x) = initial·x^n + Σ_i symbols[n-i]·x^i`
+    /// Compute the evaluation for an evaluation argument as specified by
+    /// `initial`, `challenge`, and `symbols`. This amounts to evaluating
+    /// polynomial `f(x) = initial·x^n + Σ_i symbols[n-i]·x^i`
     /// at point `challenge`, _i.e._, returns `f(challenge)`.
     fn compute_terminal(
         symbols: &[BFieldElement],
@@ -133,7 +133,8 @@ impl GrandCrossTableArg {
         let challenge = |c| circuit_builder.challenge(c);
         let aux_row = |col_index| circuit_builder.input(Aux(col_index));
 
-        // Closures cannot take arguments of type `impl Trait`. Hence: some more helpers. \o/
+        // Closures cannot take arguments of type `impl Trait`. Hence: some more
+        // helpers. \o/
         let program_aux_row = |column: ProgramAuxColumn| aux_row(column.master_aux_index());
         let processor_aux_row = |column: ProcessorAuxColumn| aux_row(column.master_aux_index());
         let op_stack_aux_row = |column: OpStackAuxColumn| aux_row(column.master_aux_index());

@@ -19,12 +19,12 @@ mod private {
 
 /// The degree of the AIR after the degree lowering step.
 ///
-/// Using substitution and the introduction of new variables, the degree of the AIR as specified
-/// in the respective tables
+/// Using substitution and the introduction of new variables, the degree of the
+/// AIR as specified in the respective tables
 /// (e.g., in [`table::processor::ProcessorTable::transition_constraints`])
 /// is lowered to this value.
-/// For example, with a target degree of 2 and a (fictional) constraint of the form
-/// `a = b²·c²·d`,
+/// For example, with a target degree of 2 and a (fictional) constraint of the
+/// form `a = b²·c²·d`,
 /// the degree lowering step could (as one among multiple possibilities)
 /// - introduce new variables `e`, `f`, and `g`,
 /// - introduce new constraints `e = b²`, `f = c²`, and `g = e·f`,

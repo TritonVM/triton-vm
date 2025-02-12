@@ -273,7 +273,8 @@ mod tests {
     }
 
     impl Constraints {
-        /// For testing purposes only. There is no meaning behind any of the constraints.
+        /// For testing purposes only. There is no meaning behind any of the
+        /// constraints.
         pub(crate) fn test_constraints() -> Self {
             Self {
                 init: Self::small_init_constraints(),

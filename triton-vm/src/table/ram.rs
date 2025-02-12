@@ -151,10 +151,12 @@ fn compare_rows(row_0: ArrayView1<BFieldElement>, row_1: ArrayView1<BFieldElemen
     compare_ram_pointers.then(compare_clocks)
 }
 
-/// Compute the [Bézout coefficients](https://en.wikipedia.org/wiki/B%C3%A9zout%27s_identity)
+/// Compute the
+/// [Bézout coefficients](https://en.wikipedia.org/wiki/B%C3%A9zout%27s_identity)
 /// of the polynomial with the given roots and its formal derivative.
 ///
-/// All roots _must_ be unique. That is, the corresponding polynomial must be square free.
+/// All roots _must_ be unique. That is, the corresponding polynomial must be
+/// square free.
 #[doc(hidden)] // public for benchmarking purposes only
 pub fn bezout_coefficient_polynomials_coefficients(
     unique_roots: &[BFieldElement],
@@ -163,24 +165,28 @@ pub fn bezout_coefficient_polynomials_coefficients(
         return (vec![], vec![]);
     }
 
-    // The structure of the problem is exploited heavily to compute the Bézout coefficients
-    // as fast as possible. In the following paragraphs, let `rp` denote the polynomial with the
-    // given `unique_roots` as its roots, and `fd` the formal derivative of `rp`.
+    // The structure of the problem is exploited heavily to compute the Bézout
+    // coefficients as fast as possible. In the following paragraphs, let `rp`
+    // denote the polynomial with the given `unique_roots` as its roots, and
+    // `fd` the formal derivative of `rp`.
     //
-    // The naïve approach is to perform the extended Euclidean algorithm (xgcd) on `rp` and
-    // `fd`. This has a time complexity in O(n^2) where `n` is the number of roots: for the
-    // given problem shape, the degrees `rp` and `fd` are `n` and `n-1`, respectively. Each step
-    // of the (x)gcd takes O(n) time and reduces the degree of the polynomials by one.
-    // For programs with a large number of different RAM accesses, `n` is large.
+    // The naïve approach is to perform the extended Euclidean algorithm (xgcd) on
+    // `rp` and `fd`. This has a time complexity in O(n^2) where `n` is the
+    // number of roots: for the given problem shape, the degrees `rp` and `fd`
+    // are `n` and `n-1`, respectively. Each step of the (x)gcd takes O(n) time
+    // and reduces the degree of the polynomials by one. For programs with a
+    // large number of different RAM accesses, `n` is large.
     //
-    // The approach taken here is to exploit the structure of the problem. Concretely, since all
-    // roots of `rp` are unique, _i.e._, `rp` is square free, the gcd of `rp` and `fd` is 1.
-    // This implies `∀ r ∈ unique_roots: fd(r)·b(r) = 1`, where `b` is one of the Bézout
-    // coefficients. In other words, the evaluation of `fd` in `unique_roots` is the inverse of
-    // the evaluation of `b` in `unique_roots`. Furthermore, `b` is a polynomial of degree `n`,
-    // and therefore fully determined by the evaluations in `unique_roots`. Finally, the other
-    // Bézout coefficient `a` is determined by `a = (1 - fd·b) / rp`.
-    // In total, this allows computing the Bézout coefficients in O(n·(log n)^2) time.
+    // The approach taken here is to exploit the structure of the problem.
+    // Concretely, since all roots of `rp` are unique, _i.e._, `rp` is square
+    // free, the gcd of `rp` and `fd` is 1. This implies `∀ r ∈ unique_roots:
+    // fd(r)·b(r) = 1`, where `b` is one of the Bézout coefficients. In other
+    // words, the evaluation of `fd` in `unique_roots` is the inverse of
+    // the evaluation of `b` in `unique_roots`. Furthermore, `b` is a polynomial of
+    // degree `n`, and therefore fully determined by the evaluations in
+    // `unique_roots`. Finally, the other Bézout coefficient `a` is determined
+    // by `a = (1 - fd·b) / rp`. In total, this allows computing the Bézout
+    // coefficients in O(n·(log n)^2) time.
 
     debug_assert!(unique_roots.iter().all_unique());
     let rp = Polynomial::par_zerofier(unique_roots);
@@ -199,7 +205,8 @@ pub fn bezout_coefficient_polynomials_coefficients(
 }
 
 /// - Set inverse of RAM pointer difference
-/// - Fill in the Bézout coefficients if the RAM pointer changes between two consecutive rows
+/// - Fill in the Bézout coefficients if the RAM pointer changes between two
+///   consecutive rows
 /// - Collect and return all clock jump differences
 fn make_ram_table_consistent(
     ram_table: &mut ArrayViewMut2<BFieldElement>,

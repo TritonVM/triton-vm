@@ -45,8 +45,8 @@ pub struct ParseError<'a> {
     pub errors: VerboseError<&'a str>,
 }
 
-/// An intermediate object for the parsing / compilation pipeline. You probably want
-/// [`LabelledInstruction`].
+/// An intermediate object for the parsing / compilation pipeline. You probably
+/// want [`LabelledInstruction`].
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum InstructionToken<'a> {
     Instruction(AnInstruction<String>, &'a str),
@@ -627,7 +627,8 @@ fn is_linebreak(c: char) -> bool {
     c == '\r' || c == '\n'
 }
 
-/// `token0(tok)` will parse the string `tok` and munch 0 or more comment or whitespace.
+/// `token0(tok)` will parse the string `tok` and munch 0 or more comment or
+/// whitespace.
 fn token0<'a>(token: &'a str) -> impl Fn(&'a str) -> ParseResult<'a, ()> {
     move |s: &'a str| {
         let (s, _) = tag(token)(s)?;
@@ -636,8 +637,8 @@ fn token0<'a>(token: &'a str) -> impl Fn(&'a str) -> ParseResult<'a, ()> {
     }
 }
 
-/// `token1(tok)` will parse the string `tok` and munch at least one comment and/or whitespace,
-/// or eof.
+/// `token1(tok)` will parse the string `tok` and munch at least one comment
+/// and/or whitespace, or eof.
 fn token1<'a>(token: &'a str) -> impl Fn(&'a str) -> ParseResult<'a, ()> {
     move |s: &'a str| {
         let (s, _) = tag(token)(s)?;

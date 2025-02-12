@@ -28,8 +28,9 @@ use crate::parser::ParseError;
 /// and trace its execution in order to generate a proof of correct execution.
 /// See there for details.
 ///
-/// A program may contain debug information, such as label names and breakpoints.
-/// Access this information through methods [`label_for_address()`][label_for_address] and
+/// A program may contain debug information, such as label names and
+/// breakpoints. Access this information through methods
+/// [`label_for_address()`][label_for_address] and
 /// [`is_breakpoint()`][is_breakpoint]. Some operations, most notably
 /// [BField-encoding](BFieldCodec::encode), discard this debug information.
 ///
@@ -185,7 +186,8 @@ impl<'a> Arbitrary<'a> for Program {
     }
 }
 
-/// An `InstructionIter` loops the instructions of a `Program` by skipping duplicate placeholders.
+/// An `InstructionIter` loops the instructions of a `Program` by skipping
+/// duplicate placeholders.
 #[derive(Debug, Default, Clone, Eq, PartialEq)]
 pub struct InstructionIter {
     cursor: Cursor<Vec<Instruction>>,
@@ -360,11 +362,12 @@ impl Program {
             .cloned()
     }
 
-    /// Turn the program into a sequence of `BFieldElement`s. Each instruction is encoded as its
-    /// opcode, followed by its argument (if any).
+    /// Turn the program into a sequence of `BFieldElement`s. Each instruction
+    /// is encoded as its opcode, followed by its argument (if any).
     ///
-    /// **Note**: This is _almost_ (but not quite!) equivalent to [encoding](BFieldCodec::encode)
-    /// the program. For that, use [`encode()`](Self::encode()) instead.
+    /// **Note**: This is _almost_ (but not quite!) equivalent to
+    /// [encoding](BFieldCodec::encode) the program. For that, use
+    /// [`encode()`](Self::encode()) instead.
     pub fn to_bwords(&self) -> Vec<BFieldElement> {
         self.clone()
             .into_iter()
@@ -379,8 +382,8 @@ impl Program {
             .collect()
     }
 
-    /// The total length of the program as `BFieldElement`s. Double-word instructions contribute
-    /// two `BFieldElement`s.
+    /// The total length of the program as `BFieldElement`s. Double-word
+    /// instructions contribute two `BFieldElement`s.
     pub fn len_bwords(&self) -> usize {
         self.instructions.len()
     }
@@ -396,7 +399,8 @@ impl Program {
         Tip5::hash_varlen(&self.to_bwords())
     }
 
-    /// The label for the given address, or a deterministic, unique substitute if no label is found.
+    /// The label for the given address, or a deterministic, unique substitute
+    /// if no label is found.
     pub fn label_for_address(&self, address: u64) -> String {
         // Uniqueness of the label is relevant for printing and subsequent parsing:
         // Parsing fails on duplicate labels.

@@ -47,8 +47,9 @@ use crate::table::QuotientSegments;
 /// Helps keeping the FRI domain small.
 pub const NUM_QUOTIENT_SEGMENTS: usize = air::TARGET_DEGREE as usize;
 
-/// The number of randomizer polynomials over the [extension field](XFieldElement) used in the
-/// [`STARK`](Stark). Integral for achieving zero-knowledge in [FRI](Fri).
+/// The number of randomizer polynomials over the [extension
+/// field](XFieldElement) used in the [`STARK`](Stark). Integral for achieving
+/// zero-knowledge in [FRI](Fri).
 pub const NUM_RANDOMIZER_POLYNOMIALS: usize = 1;
 
 const NUM_DEEP_CODEWORD_COMPONENTS: usize = 3;
@@ -70,9 +71,9 @@ pub struct Stark {
     /// [FRI domain](Stark::fri). Must be a power of 2 for efficiency reasons.
     pub fri_expansion_factor: usize,
 
-    /// The number of randomizers for the execution trace. The trace randomizers are
-    /// integral for achieving zero-knowledge. In particular, they achieve ZK for
-    /// the (DEEP) ALI part of the zk-STARK.
+    /// The number of randomizers for the execution trace. The trace randomizers
+    /// are integral for achieving zero-knowledge. In particular, they
+    /// achieve ZK for the (DEEP) ALI part of the zk-STARK.
     ///
     /// See also [`MasterTable::trace_randomizer_for_column`].
     pub num_trace_randomizers: usize,
@@ -98,8 +99,8 @@ pub struct Prover {
     /// The seed for all randomness used while [proving][Stark::prove].
     ///
     /// For Triton VM's proofs to be zero knowledge, this seed must be sampled
-    /// uniformly at random, and independently of all other input. No information
-    /// about it must reach the verifier.
+    /// uniformly at random, and independently of all other input. No
+    /// information about it must reach the verifier.
     randomness_seed: <StdRng as SeedableRng>::Seed,
 }
 
@@ -122,16 +123,18 @@ impl Prover {
         }
     }
 
-    /// Manually set the seed for the randomness used during [proving](Self::prove).
-    /// This makes the generated [proof](Proof) deterministic.
+    /// Manually set the seed for the randomness used during
+    /// [proving](Self::prove). This makes the generated [proof](Proof)
+    /// deterministic.
     ///
     /// # WARNING!
     ///
     /// Careless use of this method can break Zero-Knowledge of Triton VM. In
     /// particular, the [verifier](Stark::verify) must learn nothing about the
-    /// supplied seed, must be unable to influence the supplied seed, and must be
-    /// unable to guess anything about the supplied seed. The latter implies that
-    /// whatever source of randomness is chosen must have sufficient entropy.
+    /// supplied seed, must be unable to influence the supplied seed, and must
+    /// be unable to guess anything about the supplied seed. The latter
+    /// implies that whatever source of randomness is chosen must have
+    /// sufficient entropy.
     ///
     /// ### If in doubt, don't use this method.
     // Even though this method can be used to disable or cripple one of the
@@ -312,21 +315,23 @@ impl Prover {
 
         profiler!(start "DEEP");
         // There are (at least) two possible ways to perform the DEEP update.
-        // 1. The one used here, where main & aux codewords are DEEP'd twice: once with the out-of-
-        //    domain point for the current row (i.e., α) and once using the out-of-domain point for
-        //    the next row (i.e., ω·α). The DEEP update's denominator is a degree-1 polynomial in
-        //    both cases, namely (ω^i - α) and (ω^i - ω·α) respectively.
-        // 2. One where the main & aux codewords are DEEP'd only once, using the degree-2 polynomial
-        //    (ω^i - α)·(ω^i - ω·α) as the denominator. This requires a linear interpolation in the
-        //    numerator: b(ω^i) - i((b(α), α) + (b(ω·α), ω·α))(w^i).
+        // 1. The one used here, where main & aux codewords are DEEP'd twice: once with
+        //    the out-of- domain point for the current row (i.e., α) and once using the
+        //    out-of-domain point for the next row (i.e., ω·α). The DEEP update's
+        //    denominator is a degree-1 polynomial in both cases, namely (ω^i - α) and
+        //    (ω^i - ω·α) respectively.
+        // 2. One where the main & aux codewords are DEEP'd only once, using the
+        //    degree-2 polynomial (ω^i - α)·(ω^i - ω·α) as the denominator. This
+        //    requires a linear interpolation in the numerator: b(ω^i) - i((b(α), α) +
+        //    (b(ω·α), ω·α))(w^i).
         //
-        // In either case, the DEEP'd quotient polynomial is an additional summand for the
-        // combination codeword: (q(ω^i) - q(α)) / (ω^i - α).
-        // All (three or two) summands are weighted and summed to form the combination codeword.
-        // The weights are sampled through the Fiat-Shamir heuristic.
+        // In either case, the DEEP'd quotient polynomial is an additional summand for
+        // the combination codeword: (q(ω^i) - q(α)) / (ω^i - α).
+        // All (three or two) summands are weighted and summed to form the combination
+        // codeword. The weights are sampled through the Fiat-Shamir heuristic.
         //
-        // Both approaches are sound. The first approach is more efficient, as it requires fewer
-        // operations.
+        // Both approaches are sound. The first approach is more efficient, as it
+        // requires fewer operations.
         profiler!(start "main&aux curr row");
         let out_of_domain_curr_row_main_and_aux_value =
             main_and_aux_combination_polynomial.evaluate(out_of_domain_point_curr_row);
@@ -431,7 +436,8 @@ impl Prover {
             aux_authentication_structure,
         ));
 
-        // Open quotient & combination codewords at the same positions as main & aux codewords.
+        // Open quotient & combination codewords at the same positions as main & aux
+        // codewords.
         let into_fixed_width_row =
             |row: ArrayView1<_>| -> QuotientSegments { row.to_vec().try_into().unwrap() };
         let revealed_quotient_segments_rows = revealed_current_row_indices
@@ -453,10 +459,10 @@ impl Prover {
     }
 
     /// An [`ArithmeticDomain`] _just_ large enough to perform all the necessary
-    /// computations on polynomials. Concretely, the maximal degree of a polynomial
-    /// over the quotient domain is at most only slightly larger than the maximal
-    /// degree allowed in the STARK proof, and could be equal. This makes
-    /// computation for the prover much faster.
+    /// computations on polynomials. Concretely, the maximal degree of a
+    /// polynomial over the quotient domain is at most only slightly larger
+    /// than the maximal degree allowed in the STARK proof, and could be
+    /// equal. This makes computation for the prover much faster.
     pub(crate) fn quotient_domain(
         fri_domain: ArithmeticDomain,
         max_degree: isize,
@@ -542,11 +548,11 @@ impl Prover {
         )
     }
 
-    /// Computes the quotient segments in a memory-friendly way, i.e., without ever
-    /// representing the entire low-degree extended trace. Instead, the trace is
-    /// extrapolated over cosets of the trace domain, and the quotients are computed
-    /// there. The resulting coset-quotients are linearly recombined to produce the
-    /// quotient segment codewords.
+    /// Computes the quotient segments in a memory-friendly way, i.e., without
+    /// ever representing the entire low-degree extended trace. Instead, the
+    /// trace is extrapolated over cosets of the trace domain, and the
+    /// quotients are computed there. The resulting coset-quotients are
+    /// linearly recombined to produce the quotient segment codewords.
     fn compute_quotient_segments_with_jit_lde(
         main_table: &mut MasterMainTable,
         aux_table: &mut MasterAuxTable,
@@ -749,17 +755,17 @@ impl Prover {
     }
 
     /// Map a matrix whose columns represent the evaluation of a high-degree
-    /// polynomial f on all constituents of a partition of some large domain into
-    /// smaller cosets, to
+    /// polynomial f on all constituents of a partition of some large domain
+    /// into smaller cosets, to
     /// 1. a matrix of segment codewords (on the FRI domain), and
     /// 2. an array of matching segment polynomials,
     ///
-    /// such that the segment polynomials correspond to the interleaving split of
-    /// the original high-degree polynomial.
+    /// such that the segment polynomials correspond to the interleaving split
+    /// of the original high-degree polynomial.
     ///
-    /// For example, let f(X) have degree M·N where N is the chosen domain's length.
-    /// Then the input is an N×M matrix representing the values of f(X) on the
-    /// chosen domain and its cosets:
+    /// For example, let f(X) have degree M·N where N is the chosen domain's
+    /// length. Then the input is an N×M matrix representing the values of
+    /// f(X) on the chosen domain and its cosets:
     ///
     /// ```txt
     /// ⎛  …          …   …           ⎞  ┬
@@ -769,12 +775,12 @@ impl Prover {
     /// ├───────── NUM_COSETS ────────┤
     /// ```
     ///
-    /// The `NUM_SEGMENTS` (=:`K`) produced segment polynomials are f_i(X) such that
-    /// f(X) = Σ_k x^k · f_k(X^K).
+    /// The `NUM_SEGMENTS` (=:`K`) produced segment polynomials are f_i(X) such
+    /// that f(X) = Σ_k x^k · f_k(X^K).
     /// For example, for `K = 2`, this is f(X) = f_E(X²) + X·f_O(X²).
     ///
-    /// The produced segment codewords are the segment polynomial's evaluations on
-    /// the FRI domain:
+    /// The produced segment codewords are the segment polynomial's evaluations
+    /// on the FRI domain:
     ///
     /// ```txt
     /// ⎛  …            …   …             ⎞  ┬
@@ -972,9 +978,10 @@ impl Prover {
         Array1::from(quotient_segments.to_vec())
     }
 
-    /// Losslessly split the given polynomial `f` into `N` segments of (roughly) equal degree.
-    /// The degree of each segment is at most `f.degree() / N`.
-    /// It holds that `f(x) = Σ_{i=0}^{N-1} x^i·f_i(x^N)`, where the `f_i` are the segments.
+    /// Losslessly split the given polynomial `f` into `N` segments of (roughly)
+    /// equal degree. The degree of each segment is at most `f.degree() /
+    /// N`. It holds that `f(x) = Σ_{i=0}^{N-1} x^i·f_i(x^N)`, where the
+    /// `f_i` are the segments.
     ///
     /// For example, let
     /// - `N = 3`, and
@@ -988,7 +995,8 @@ impl Prover {
     ///  f_2(x) =         5·x + 2]
     /// ```
     ///
-    /// The following equality holds: `f(x) == f_0(x^3) + x·f_1(x^3) + x^2·f_2(x^3)`.
+    /// The following equality holds: `f(x) == f_0(x^3) + x·f_1(x^3) +
+    /// x^2·f_2(x^3)`.
     fn split_polynomial_into_segments<const N: usize, FF: FiniteField>(
         polynomial: Polynomial<FF>,
     ) -> [Polynomial<'static, FF>; N] {
@@ -1017,8 +1025,8 @@ impl Prover {
         .unwrap()
     }
 
-    /// Apply the [DEEP update](Stark::deep_update) to a polynomial in value form,
-    /// _i.e._, to a codeword.
+    /// Apply the [DEEP update](Stark::deep_update) to a polynomial in value
+    /// form, _i.e._, to a codeword.
     fn deep_codeword(
         codeword: &[XFieldElement],
         domain: ArithmeticDomain,
@@ -1068,8 +1076,9 @@ impl Verifier {
         let extension_challenge_weights = proof_stream.sample_scalars(Challenges::SAMPLE_COUNT);
         let challenges = Challenges::new(extension_challenge_weights, claim);
         let auxiliary_tree_merkle_root = proof_stream.dequeue()?.try_into_merkle_root()?;
-        // Sample weights for quotient codeword, which is a part of the combination codeword.
-        // See corresponding part in the prover for a more detailed explanation.
+        // Sample weights for quotient codeword, which is a part of the combination
+        // codeword. See corresponding part in the prover for a more detailed
+        // explanation.
         let quot_codeword_weights = proof_stream.sample_scalars(MasterAuxTable::NUM_CONSTRAINTS);
         let quot_codeword_weights = Array1::from(quot_codeword_weights);
         let quotient_codeword_merkle_root = proof_stream.dequeue()?.try_into_merkle_root()?;
@@ -1373,7 +1382,8 @@ impl Verifier {
         profiler!(start "inner product");
         // todo: Try to get rid of this clone. The alternative line
         //   `let main_and_aux_element = (&weights * &summands).sum();`
-        //   without cloning the weights does not compile for a seemingly nonsensical reason.
+        //   without cloning the weights does not compile for a seemingly nonsensical
+        // reason.
         let weights = weights.to_owned();
         let main_and_aux_element = (weights * row).sum();
         profiler!(stop "inner product");
@@ -1429,9 +1439,9 @@ impl Stark {
         Verifier::new(*self).verify(claim, proof)
     }
 
-    /// The upper bound to use for the maximum degree the quotients given the length
-    /// of the trace and the number of trace randomizers. The degree of the
-    /// quotients depends on the [AIR](air) constraints.
+    /// The upper bound to use for the maximum degree the quotients given the
+    /// length of the trace and the number of trace randomizers. The degree
+    /// of the quotients depends on the [AIR](air) constraints.
     pub fn max_degree(&self, padded_height: usize) -> isize {
         let interpolant_degree = interpolant_degree(padded_height, self.num_trace_randomizers);
         let max_constraint_degree_with_origin =
@@ -1451,9 +1461,10 @@ impl Stark {
     /// [execution trace](AlgebraicExecutionTrace) and the FRI expansion factor,
     /// a security parameter.
     ///
-    /// In principle, the FRI domain length is also influenced by the AIR's degree
-    /// (see [`air::TARGET_DEGREE`]). However, by segmenting the quotient polynomial
-    /// into `TARGET_DEGREE`-many parts, that influence is mitigated.
+    /// In principle, the FRI domain length is also influenced by the AIR's
+    /// degree (see [`air::TARGET_DEGREE`]). However, by segmenting the
+    /// quotient polynomial into `TARGET_DEGREE`-many parts, that influence
+    /// is mitigated.
     pub fn fri(&self, padded_height: usize) -> fri::SetupResult<Fri> {
         let fri_domain_length = self.fri_expansion_factor
             * randomized_trace_len(padded_height, self.num_trace_randomizers);
@@ -1467,9 +1478,10 @@ impl Stark {
         )
     }
 
-    /// Given `f(x)` (the in-domain evaluation of polynomial `f` in `x`), the domain point `x` at
-    /// which polynomial `f` was evaluated, the out-of-domain evaluation `f(α)`, and the
-    /// out-of-domain domain point `α`, apply the DEEP update: `(f(x) - f(α)) / (x - α)`.
+    /// Given `f(x)` (the in-domain evaluation of polynomial `f` in `x`), the
+    /// domain point `x` at which polynomial `f` was evaluated, the
+    /// out-of-domain evaluation `f(α)`, and the out-of-domain domain point
+    /// `α`, apply the DEEP update: `(f(x) - f(α)) / (x - α)`.
     #[inline]
     fn deep_update(
         in_domain_point: BFieldElement,
@@ -1743,9 +1755,9 @@ pub(crate) mod tests {
         assert_eq!(jit_segments, cache_segments);
     }
 
-    /// [`Stark::compute_quotient_segments`] takes mutable references to both, the
-    /// main and the auxiliary tables. It is vital that certain information is
-    /// _not_ mutated.
+    /// [`Stark::compute_quotient_segments`] takes mutable references to both,
+    /// the main and the auxiliary tables. It is vital that certain
+    /// information is _not_ mutated.
     #[test]
     fn computing_quotient_segments_does_not_change_execution_trace() {
         fn assert_no_trace_mutation(cache_decision: CacheDecision) {
@@ -2825,8 +2837,9 @@ pub(crate) mod tests {
         assert!(domain_length as isize - 1 == poly_of_hopefully_high_degree.degree());
     }
 
-    /// Re-compose the segments of a polynomial and assert that the result is equal to the
-    /// polynomial itself. Uses the Schwartz-Zippel lemma to test polynomial equality.
+    /// Re-compose the segments of a polynomial and assert that the result is
+    /// equal to the polynomial itself. Uses the Schwartz-Zippel lemma to
+    /// test polynomial equality.
     fn assert_polynomial_equals_recomposed_segments<const N: usize, FF: FiniteField>(
         f: &Polynomial<FF>,
         segments: &[Polynomial<FF>; N],

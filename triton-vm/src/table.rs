@@ -65,9 +65,9 @@ pub enum ConstraintType {
 
 /// A single row of a [`MasterMainTable`].
 ///
-/// Usually, the elements in the table are [`BFieldElement`]s. For out-of-domain rows, which is
-/// relevant for “Domain Extension to Eliminate Pretenders” (DEEP), the elements are
-/// [`XFieldElement`]s.
+/// Usually, the elements in the table are [`BFieldElement`]s. For out-of-domain
+/// rows, which is relevant for “Domain Extension to Eliminate Pretenders”
+/// (DEEP), the elements are [`XFieldElement`]s.
 pub type MainRow<T> = [T; MasterMainTable::NUM_COLUMNS];
 
 /// A single row of a [`MasterAuxTable`].
@@ -128,8 +128,9 @@ mod tests {
 
     use super::*;
 
-    /// Verify that all nodes evaluate to a unique value when given a randomized input.
-    /// If this is not the case two nodes that are not equal evaluate to the same value.
+    /// Verify that all nodes evaluate to a unique value when given a randomized
+    /// input. If this is not the case two nodes that are not equal evaluate
+    /// to the same value.
     fn table_constraints_prop<II: InputIndicator>(
         constraints: &[ConstraintCircuit<II>],
         table_name: &str,
@@ -161,14 +162,14 @@ mod tests {
         println!("Max degree constraint for {table_name} table: {circuit_degree}");
     }
 
-    /// Recursively evaluates the given constraint circuit and its sub-circuits on the given
-    /// main and auxiliary table, and returns the result of the evaluation.
-    /// At each recursive step, updates the given HashMap with the result of the evaluation.
-    /// If the HashMap already contains the result of the evaluation, panics.
-    /// This function is used to assert that the evaluation of a constraint circuit
-    /// and its sub-circuits is unique.
-    /// It is used to identify redundant constraints or sub-circuits.
-    /// The employed method is the Schwartz-Zippel lemma.
+    /// Recursively evaluates the given constraint circuit and its sub-circuits
+    /// on the given main and auxiliary table, and returns the result of the
+    /// evaluation. At each recursive step, updates the given HashMap with
+    /// the result of the evaluation. If the HashMap already contains the
+    /// result of the evaluation, panics. This function is used to assert
+    /// that the evaluation of a constraint circuit and its sub-circuits is
+    /// unique. It is used to identify redundant constraints or
+    /// sub-circuits. The employed method is the Schwartz-Zippel lemma.
     fn evaluate_assert_unique<II: InputIndicator>(
         constraint: &ConstraintCircuit<II>,
         challenges: &[XFieldElement],
@@ -241,8 +242,8 @@ mod tests {
         assert_constraint_properties!(LookupTable);
     }
 
-    /// Like [`ConstraintCircuitMonad::lower_to_degree`] with additional assertion of expected
-    /// properties. Also prints:
+    /// Like [`ConstraintCircuitMonad::lower_to_degree`] with additional
+    /// assertion of expected properties. Also prints:
     /// - the given multicircuit prior to degree lowering
     /// - the multicircuit after degree lowering
     /// - the new base constraints
@@ -349,9 +350,9 @@ mod tests {
         (new_main_constraints, new_aux_constraints)
     }
 
-    /// Panics if the given substitution rule uses variables with an index greater than (or equal)
-    /// to the given index. In practice, this given index corresponds to a newly introduced
-    /// variable.
+    /// Panics if the given substitution rule uses variables with an index
+    /// greater than (or equal) to the given index. In practice, this given
+    /// index corresponds to a newly introduced variable.
     fn assert_substitution_rule_uses_legal_variables<II: InputIndicator>(
         new_var: II,
         substitution_rule: &ConstraintCircuit<II>,
@@ -418,9 +419,10 @@ mod tests {
         assert_degree_lowering!(U32Table(U32_TABLE_END, AUX_U32_TABLE_END));
     }
 
-    /// Fills the derived columns of the degree-lowering table using randomly generated rows and
-    /// checks the resulting values for uniqueness. The described method corresponds to an
-    /// application of the Schwartz-Zippel lemma to check uniqueness of the substitution rules
+    /// Fills the derived columns of the degree-lowering table using randomly
+    /// generated rows and checks the resulting values for uniqueness. The
+    /// described method corresponds to an application of the
+    /// Schwartz-Zippel lemma to check uniqueness of the substitution rules
     /// generated during degree lowering.
     #[test]
     #[ignore = "(probably) requires normalization of circuit expressions"]

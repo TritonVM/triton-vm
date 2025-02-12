@@ -39,8 +39,9 @@ pub struct Proof(pub Vec<BFieldElement>);
 
 impl Proof {
     /// Get the height of the trace used during proof generation.
-    /// This is an upper bound on the length of the computation this proof is for.
-    /// It is one of the main contributing factors to the length of the FRI domain.
+    /// This is an upper bound on the length of the computation this proof is
+    /// for. It is one of the main contributing factors to the length of the
+    /// FRI domain.
     pub fn padded_height(&self) -> Result<usize, ProofStreamError> {
         let mut log_2_padded_heights = ProofStream::try_from(self)?
             .items
@@ -60,19 +61,21 @@ impl Proof {
 
 /// Contains the public information of a verifiably correct computation.
 /// A corresponding [`Proof`] is needed to verify the computation.
-/// One additional piece of public information not explicitly listed in the [`Claim`] is the
-/// `padded_height`, an upper bound on the length of the computation.
-/// It is derivable from a [`Proof`] by calling [`Proof::padded_height()`].
+/// One additional piece of public information not explicitly listed in the
+/// [`Claim`] is the `padded_height`, an upper bound on the length of the
+/// computation. It is derivable from a [`Proof`] by calling
+/// [`Proof::padded_height()`].
 #[derive(
     Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize, GetSize, BFieldCodec, Arbitrary,
 )]
 pub struct Claim {
-    /// The hash digest of the program that was executed. The hash function in use is [`Tip5`].
+    /// The hash digest of the program that was executed. The hash function in
+    /// use is [`Tip5`].
     pub program_digest: Digest,
 
     /// The version of the Triton VM instruction set architecture the
-    /// [`program_digest`][digest] is about, as well as of the STARK proof system
-    /// in use. See also: [`CURRENT_VERSION`].
+    /// [`program_digest`][digest] is about, as well as of the STARK proof
+    /// system in use. See also: [`CURRENT_VERSION`].
     ///
     /// [digest]: Self::program_digest
     pub version: u32,
@@ -87,8 +90,8 @@ pub struct Claim {
 impl Claim {
     /// Create a new Claim.
     ///
-    /// Assumes the version to be [`CURRENT_VERSION`]. The version can be changed
-    /// with method [`about_version`][Self::about_version].
+    /// Assumes the version to be [`CURRENT_VERSION`]. The version can be
+    /// changed with method [`about_version`][Self::about_version].
     pub fn new(program_digest: Digest) -> Self {
         Self {
             program_digest,

@@ -109,43 +109,51 @@ use crate::table::AuxiliaryRow;
 use crate::table::MainRow;
 use crate::table::TraceTable;
 
-/// A Master Table is, in some sense, a top-level table of Triton VM. It contains all the data
-/// but little logic beyond bookkeeping and presenting the data in useful ways. Conversely, the
-/// individual tables contain no data but all the respective logic. Master Tables are
-/// responsible for managing the individual tables and for presenting the right data to the right
-/// tables, serving as a clean interface between the VM and the individual tables.
+/// A Master Table is, in some sense, a top-level table of Triton VM. It
+/// contains all the data but little logic beyond bookkeeping and presenting the
+/// data in useful ways. Conversely, the individual tables contain no data but
+/// all the respective logic. Master Tables are responsible for managing the
+/// individual tables and for presenting the right data to the right
+/// tables, serving as a clean interface between the VM and the individual
+/// tables.
 ///
-/// As a mental model, it is perfectly fine to think of the data for the individual tables as
-/// completely separate from each other. Only the [cross-table arguments][cross_arg] link all tables
-/// together.
+/// As a mental model, it is perfectly fine to think of the data for the
+/// individual tables as completely separate from each other. Only the
+/// [cross-table arguments][cross_arg] link all tables together.
 ///
-/// Conceptually, there are two Master Tables: the [`MasterMainTable`], and the Master Auxiliary
-/// Table. The lifecycle of the Master Tables is
+/// Conceptually, there are two Master Tables: the [`MasterMainTable`], and the
+/// Master Auxiliary Table. The lifecycle of the Master Tables is
 /// as follows:
-/// 1. The [`MasterMainTable`] is instantiated and filled using the Algebraic Execution Trace.
+/// 1. The [`MasterMainTable`] is instantiated and filled using the Algebraic
+///    Execution Trace.
 /// 2. The [`MasterMainTable`] is padded using logic from the individual tables.
-/// 3. The still-empty entries in the [`MasterMainTable`] are filled with random elements. This
-///     step is also known as “trace randomization.”
-/// 4. If there is enough RAM, then each column of the [`MasterMainTable`] is low-degree extended.
-///    The results are stored on the [`MasterMainTable`] for quick access later.
-///    If there is not enough RAM, then the low-degree extensions of the trace columns will be
-///    computed and sometimes recomputed just-in-time, and the memory freed afterward.
-///    The caching behavior [can be forced][overwrite_cache].
-/// 5. The [`MasterMainTable`] is used to derive the [`MasterAuxiliaryTable`][master_aux_table]
-///     using logic from the individual tables.
+/// 3. The still-empty entries in the [`MasterMainTable`] are filled with random
+///    elements. This step is also known as “trace randomization.”
+/// 4. If there is enough RAM, then each column of the [`MasterMainTable`] is
+///    low-degree extended. The results are stored on the [`MasterMainTable`]
+///    for quick access later. If there is not enough RAM, then the low-degree
+///    extensions of the trace columns will be computed and sometimes recomputed
+///    just-in-time, and the memory freed afterward. The caching behavior [can
+///    be forced][overwrite_cache].
+/// 5. The [`MasterMainTable`] is used to derive the
+///    [`MasterAuxiliaryTable`][master_aux_table] using logic from the
+///    individual tables.
 /// 6. The [`MasterAuxiliaryTable`][master_aux_table] is trace-randomized.
-/// 7. Each column of the [`MasterAuxiliaryTable`][master_aux_table] is [low-degree extended][lde].
-///     The effects are the same as for the [`MasterMainTable`].
-/// 8. Using the [`MasterMainTable`] and the [`MasterAuxiliaryTable`][master_aux_table], the
-///     [quotient codeword][master_quot_table] is derived using the AIR. Each individual table
-///     defines that part of the AIR that is relevant to it.
+/// 7. Each column of the [`MasterAuxiliaryTable`][master_aux_table] is
+///    [low-degree extended][lde]. The effects are the same as for the
+///    [`MasterMainTable`].
+/// 8. Using the [`MasterMainTable`] and the
+///    [`MasterAuxiliaryTable`][master_aux_table], the [quotient
+///    codeword][master_quot_table] is derived using the AIR. Each individual
+///    table defines that part of the AIR that is relevant to it.
 ///
 /// The following points are of note:
-/// - The [`MasterAuxiliaryTable`][master_aux_table]'s rightmost columns are the randomizer
-///     codewords. These are necessary for zero-knowledge.
+/// - The [`MasterAuxiliaryTable`][master_aux_table]'s rightmost columns are the
+///   randomizer codewords. These are necessary for zero-knowledge.
 /// - The cross-table argument has zero width for the [`MasterMainTable`] and
-///   [`MasterAuxiliaryTable`][master_aux_table] but does induce a nonzero number of constraints
-///   and thus terms in the [quotient combination][all_quotients_combined].
+///   [`MasterAuxiliaryTable`][master_aux_table] but does induce a nonzero
+///   number of constraints and thus terms in the [quotient
+///   combination][all_quotients_combined].
 ///
 /// [cross_arg]: air::cross_table_argument::GrandCrossTableArg
 /// [overwrite_cache]: crate::config::overwrite_lde_trace_caching_to
@@ -194,11 +202,12 @@ where
         }
     }
 
-    /// Presents underlying trace data, excluding trace randomizers and randomizer polynomials.
+    /// Presents underlying trace data, excluding trace randomizers and
+    /// randomizer polynomials.
     fn trace_table(&self) -> ArrayView2<Self::Field>;
 
-    /// Mutably presents underlying trace data, excluding trace randomizers and randomizer
-    /// polynomials.
+    /// Mutably presents underlying trace data, excluding trace randomizers and
+    /// randomizer polynomials.
     fn trace_table_mut(&mut self) -> ArrayViewMut2<Self::Field>;
 
     /// The quotient-domain view of the cached low-degree-extended table, if
@@ -285,7 +294,8 @@ where
         profiler!(stop "LDE");
     }
 
-    /// Not intended for direct use, but through [`Self::maybe_low_degree_extend_all_columns`].
+    /// Not intended for direct use, but through
+    /// [`Self::maybe_low_degree_extend_all_columns`].
     #[doc(hidden)]
     fn memoize_low_degree_extended_table(
         &mut self,
@@ -300,16 +310,18 @@ where
     #[doc(hidden)]
     fn clear_cache(&mut self);
 
-    /// Return the FRI domain view of the cached low-degree-extended table, if any.
+    /// Return the FRI domain view of the cached low-degree-extended table, if
+    /// any.
     ///
-    /// This method cannot be implemented generically on the trait because it returns a pointer to
-    /// an array and that array has to live somewhere; it cannot live on stack and from the trait
-    /// implementation we cannot access the implementing object's fields.
+    /// This method cannot be implemented generically on the trait because it
+    /// returns a pointer to an array and that array has to live somewhere;
+    /// it cannot live on stack and from the trait implementation we cannot
+    /// access the implementing object's fields.
     fn fri_domain_table(&self) -> Option<ArrayView2<Self::Field>>;
 
-    /// Get one row of the table at an arbitrary index. Notably, the index does not have to be in
-    /// any of the domains. In other words, can be used to compute out-of-domain rows.
-    /// Does not include randomizer polynomials.
+    /// Get one row of the table at an arbitrary index. Notably, the index does
+    /// not have to be in any of the domains. In other words, can be used to
+    /// compute out-of-domain rows. Does not include randomizer polynomials.
     fn out_of_domain_row(&self, indeterminate: XFieldElement) -> Array1<XFieldElement> {
         // The following is a batched version of barycentric Lagrangian evaluation.
         // Since the method `barycentric_evaluate` is self-contained, not returning
@@ -367,14 +379,15 @@ where
         column_interpolant + randomizer
     }
 
-    /// Uniquely enables the revelation of up to `num_trace_randomizers` entries in
-    /// the corresponding column without compromising zero-knowledge.
+    /// Uniquely enables the revelation of up to `num_trace_randomizers` entries
+    /// in the corresponding column without compromising zero-knowledge.
     ///
     /// In order for the trace randomizer to not influence the trace on the
-    /// [trace domain][Self::trace_domain], it must be multiplied with a polynomial
-    /// that evaluates to zero on that domain. The polynomial of lowest degree with
-    /// this property is the corresponding [zerofier][ArithmeticDomain::zerofier].
-    /// The randomized trace column interpolant can then be obtained through:
+    /// [trace domain][Self::trace_domain], it must be multiplied with a
+    /// polynomial that evaluates to zero on that domain. The polynomial of
+    /// lowest degree with this property is the corresponding
+    /// [zerofier][ArithmeticDomain::zerofier]. The randomized trace column
+    /// interpolant can then be obtained through:
     ///
     /// `column + zerofier·randomizer`
     ///
@@ -400,7 +413,8 @@ where
 
     fn num_trace_randomizers(&self) -> usize;
 
-    /// Compute a Merkle tree of the FRI domain table. Every row gives one leaf in the tree.
+    /// Compute a Merkle tree of the FRI domain table. Every row gives one leaf
+    /// in the tree.
     fn merkle_tree(&self) -> MerkleTree {
         profiler!(start "leafs");
         let hashed_rows = self.hash_all_fri_domain_rows();
@@ -496,8 +510,8 @@ where
 
     /// # Panics
     ///
-    /// Panics if any of the requested indices is out of range; that is, larger than
-    /// `min(self.fri_domain().length, u32::MAX)`.
+    /// Panics if any of the requested indices is out of range; that is, larger
+    /// than `min(self.fri_domain().length, u32::MAX)`.
     fn reveal_rows(&self, row_indices: &[usize]) -> Vec<Vec<Self::Field>> {
         if let Some(fri_domain_table) = self.fri_domain_table() {
             // the cache already contains the requested information
@@ -584,8 +598,8 @@ where
     StdRng::from_seed(seed)
 }
 
-/// Helper struct and function to absorb however many elements are available; used in
-/// the context of hashing rows in a streaming fashion.
+/// Helper struct and function to absorb however many elements are available;
+/// used in the context of hashing rows in a streaming fashion.
 #[derive(Clone)]
 struct SpongeWithPendingAbsorb {
     sponge: Tip5,
@@ -605,7 +619,8 @@ impl SpongeWithPendingAbsorb {
         }
     }
 
-    /// Similar to [`Tip5::absorb`] but buffers input elements until a full block is available.
+    /// Similar to [`Tip5::absorb`] but buffers input elements until a full
+    /// block is available.
     pub fn absorb<I>(&mut self, some_input: I)
     where
         I: IntoIterator,
@@ -862,8 +877,8 @@ impl MasterMainTable {
             low_degree_extended_table: None,
         };
 
-        // memory-like tables must be filled in before clock jump differences are known, hence
-        // the break from the usual order
+        // memory-like tables must be filled in before clock jump differences are known,
+        // hence the break from the usual order
         let clk_jump_diffs_op_stack =
             OpStackTable::fill(master_main_table.table_mut(TableId::OpStack), aet, ());
         let clk_jump_diffs_ram = RamTable::fill(master_main_table.table_mut(TableId::Ram), aet, ());
@@ -884,17 +899,19 @@ impl MasterMainTable {
         LookupTable::fill(master_main_table.table_mut(TableId::Lookup), aet, ());
         U32Table::fill(master_main_table.table_mut(TableId::U32), aet, ());
 
-        // Filling the degree-lowering table only makes sense after padding has happened.
-        // Hence, this table is omitted here.
+        // Filling the degree-lowering table only makes sense after padding has
+        // happened. Hence, this table is omitted here.
 
         master_main_table
     }
 
-    /// Pad the trace to the next power of two using the various, table-specific padding rules.
-    /// All tables must have the same height for reasons of verifier efficiency.
-    /// Furthermore, that height must be a power of two for reasons of prover efficiency.
-    /// Concretely, the Number Theory Transform (NTT) performed by the prover is particularly
-    /// efficient over the used base field when the number of rows is a power of two.
+    /// Pad the trace to the next power of two using the various, table-specific
+    /// padding rules. All tables must have the same height for reasons of
+    /// verifier efficiency. Furthermore, that height must be a power of two
+    /// for reasons of prover efficiency. Concretely, the Number Theory
+    /// Transform (NTT) performed by the prover is particularly
+    /// efficient over the used base field when the number of rows is a power of
+    /// two.
     pub fn pad(&mut self) {
         let table_lengths = self.all_table_lengths();
 
@@ -957,9 +974,10 @@ impl MasterMainTable {
         ]
     }
 
-    /// Create a `MasterAuxTable` from a `MasterMainTable` by `.extend()`ing each individual main
-    /// table. The `.extend()` for each table is specific to that table, but always involves
-    /// adding some number of columns.
+    /// Create a `MasterAuxTable` from a `MasterMainTable` by `.extend()`ing
+    /// each individual main table. The `.extend()` for each table is
+    /// specific to that table, but always involves adding some number of
+    /// columns.
     pub fn extend(&self, challenges: &Challenges) -> MasterAuxTable {
         // construct a seed that hasn't been used for any column's trace randomizer
         let mut rng = rng_from_offset_seed(self.trace_randomizer_seed(), Self::NUM_COLUMNS);
@@ -1200,15 +1218,15 @@ pub fn terminal_quotient_zerofier_inverse(
     BFieldElement::batch_inversion(zerofier_codeword).into()
 }
 
-/// Computes the quotient codeword, which is the randomized linear combination of all individual
-/// quotients.
+/// Computes the quotient codeword, which is the randomized linear combination
+/// of all individual quotients.
 ///
-/// About assigning weights to quotients: the quotients are ordered by category – initial,
-/// consistency, transition, and then terminal. Within each category, the quotients follow the
-/// canonical order of the tables. The last column holds the terminal quotient of the cross-table
-/// argument, which is strictly speaking not a table.
-/// The order of the quotients is not actually important. However, it must be consistent between
-/// [prover] and [verifier].
+/// About assigning weights to quotients: the quotients are ordered by category
+/// – initial, consistency, transition, and then terminal. Within each category,
+/// the quotients follow the canonical order of the tables. The last column
+/// holds the terminal quotient of the cross-table argument, which is strictly
+/// speaking not a table. The order of the quotients is not actually important.
+/// However, it must be consistent between [prover] and [verifier].
 ///
 /// [prover]: crate::stark::Stark::prove
 /// [verifier]: crate::stark::Stark::verify
@@ -2275,10 +2293,11 @@ mod tests {
     ///  (a) the time when this test was written or last updated; and
     ///  (b) the time when the test is being executed.
     ///
-    /// This test catches (with high probability) unintended changes, whether due
-    /// to nondeterminisms (on a single machine or across various machines) or due
-    /// to changes to the definitions of the constraints. If the change to the
-    /// constraints was intentional, this test should be updated.
+    /// This test catches (with high probability) unintended changes, whether
+    /// due to nondeterminisms (on a single machine or across various
+    /// machines) or due to changes to the definitions of the constraints.
+    /// If the change to the constraints was intentional, this test should
+    /// be updated.
     ///
     /// This test might fail in the course of CI for a pull request, if in the
     /// meantime the constraints are modified on master. In this case, rebasing

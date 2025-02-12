@@ -555,7 +555,8 @@ impl Fri {
     }
 
     /// Verify low-degreeness of the polynomial on the proof stream.
-    /// Returns the indices and revealed elements of the codeword at the top level of the FRI proof.
+    /// Returns the indices and revealed elements of the codeword at the top
+    /// level of the FRI proof.
     pub fn verify(
         &self,
         proof_stream: &mut ProofStream,

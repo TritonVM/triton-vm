@@ -147,26 +147,27 @@ impl ValueFormatter for ProofSizeFormatter {
     }
 }
 
-/// The source code for verifying a Sudoku with an example Sudoku provided as input.
+/// The source code for verifying a Sudoku with an example Sudoku provided as
+/// input.
 fn program_verify_sudoku() -> ProgramAndInput {
     let sudoku = [
-        1, 2, 3, /**/ 4, 5, 6, /**/ 7, 8, 9, //
-        4, 5, 6, /**/ 7, 8, 9, /**/ 1, 2, 3, //
-        7, 8, 9, /**/ 1, 2, 3, /**/ 4, 5, 6, //
-        /*************************************/
-        2, 3, 4, /**/ 5, 6, 7, /**/ 8, 9, 1, //
-        5, 6, 7, /**/ 8, 9, 1, /**/ 2, 3, 4, //
-        8, 9, 1, /**/ 2, 3, 4, /**/ 5, 6, 7, //
-        /*************************************/
-        3, 4, 5, /**/ 6, 7, 8, /**/ 9, 1, 2, //
-        6, 7, 8, /**/ 9, 1, 2, /**/ 3, 4, 5, //
-        9, 1, 2, /**/ 3, 4, 5, /**/ 6, 7, 8, //
+        1, 2, 3, /*  */ 4, 5, 6, /*  */ 7, 8, 9, //
+        4, 5, 6, /*  */ 7, 8, 9, /*  */ 1, 2, 3, //
+        7, 8, 9, /*  */ 1, 2, 3, /*  */ 4, 5, 6, //
+        /************************************ */
+        2, 3, 4, /*  */ 5, 6, 7, /*  */ 8, 9, 1, //
+        5, 6, 7, /*  */ 8, 9, 1, /*  */ 2, 3, 4, //
+        8, 9, 1, /*  */ 2, 3, 4, /*  */ 5, 6, 7, //
+        /************************************ */
+        3, 4, 5, /*  */ 6, 7, 8, /*  */ 9, 1, 2, //
+        6, 7, 8, /*  */ 9, 1, 2, /*  */ 3, 4, 5, //
+        9, 1, 2, /*  */ 3, 4, 5, /*  */ 6, 7, 8, //
     ];
     ProgramAndInput::new(VERIFY_SUDOKU.clone()).with_input(sudoku.map(|b| bfe!(b)))
 }
 
-/// The program for computing some Fibonacci number, accepting as input which number of the
-/// sequence to compute.
+/// The program for computing some Fibonacci number, accepting as input which
+/// number of the sequence to compute.
 fn program_fib(nth_element: u64) -> ProgramAndInput {
     ProgramAndInput::new(FIBONACCI_SEQUENCE.clone()).with_input(bfe_array![nth_element])
 }
@@ -182,8 +183,8 @@ fn log_2_fri_domain_length(stark: Stark, proof: &Proof) -> u32 {
     fri.domain.length.ilog2()
 }
 
-/// List the sizes of the proof's parts. If the same item type is contained multiple times, the
-/// sizes for that type are accumulated.
+/// List the sizes of the proof's parts. If the same item type is contained
+/// multiple times, the sizes for that type are accumulated.
 fn break_down_proof_size(proof: &Proof) -> HashMap<String, usize> {
     let mut proof_size_breakdown = HashMap::new();
     let proof_stream = ProofStream::try_from(proof).unwrap();
@@ -229,8 +230,8 @@ fn print_proof_size_breakdown(program_name: &str, proof: &Proof) {
     eprintln!();
 }
 
-/// Create `num_iterations` many proofs for the program with the supplied source code and
-/// public & private input, summing up the lengths of all proofs.
+/// Create `num_iterations` many proofs for the program with the supplied source
+/// code and public & private input, summing up the lengths of all proofs.
 fn sum_of_proof_lengths_for_source_code(
     program_and_input: &ProgramAndInput,
     num_iterations: u64,
@@ -248,8 +249,9 @@ fn sum_of_proof_lengths_for_source_code(
     ProofSize(sum_of_proof_lengths as f64)
 }
 
-/// Given the name and source for some program, generate a proof for its correct execution
-/// and a benchmark ID for that proof. The benchmark ID contains the length of the FRI domain.
+/// Given the name and source for some program, generate a proof for its correct
+/// execution and a benchmark ID for that proof. The benchmark ID contains the
+/// length of the FRI domain.
 fn generate_proof_and_benchmark_id(
     program_name: &str,
     program_and_input: &ProgramAndInput,

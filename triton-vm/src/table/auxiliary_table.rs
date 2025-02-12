@@ -42,8 +42,9 @@ pub trait Evaluable<FF: FiniteField> {
     ) -> Vec<XFieldElement>;
 }
 
-/// Helps debugging and benchmarking. The maximal degree achieved in any table dictates the length
-/// of the FRI domain, which in turn is responsible for the main performance bottleneck.
+/// Helps debugging and benchmarking. The maximal degree achieved in any table
+/// dictates the length of the FRI domain, which in turn is responsible for the
+/// main performance bottleneck.
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub(crate) struct DegreeWithOrigin {
     pub degree: isize,
@@ -52,8 +53,9 @@ pub(crate) struct DegreeWithOrigin {
     pub origin_index: usize,
     pub origin_table_height: usize,
 
-    /// Can be used to determine the degree bounds for the quotient polynomials: the
-    /// degree of the zerofier polynomials differ between the constraint types.
+    /// Can be used to determine the degree bounds for the quotient polynomials:
+    /// the degree of the zerofier polynomials differ between the constraint
+    /// types.
     pub origin_constraint_type: ConstraintType,
 }
 
@@ -71,7 +73,8 @@ impl Display for DegreeWithOrigin {
     }
 }
 
-/// Compute the degrees of the quotients from all AIR constraints that apply to the table.
+/// Compute the degrees of the quotients from all AIR constraints that apply to
+/// the table.
 pub(crate) fn all_degrees_with_origin(
     interpolant_degree: isize,
     padded_height: usize,

@@ -24,20 +24,21 @@ type NumWordsResult<T> = std::result::Result<T, NumberOfWordsError>;
 pub const NUM_OP_STACK_REGISTERS: usize = OpStackElement::COUNT;
 
 /// The operational stack of Triton VM.
-/// It always contains at least [`OpStackElement::COUNT`] elements. Initially, the bottom-most
-/// [`Digest::LEN`] elements equal the digest of the program being executed.
-/// The remaining elements are initially 0.
+/// It always contains at least [`OpStackElement::COUNT`] elements. Initially,
+/// the bottom-most [`Digest::LEN`] elements equal the digest of the program
+/// being executed. The remaining elements are initially 0.
 ///
-/// The OpStack is represented as one contiguous piece of memory, and Triton VM uses it as such.
-/// For reasons of arithmetization, however, there is a distinction between the op-stack registers
-/// and the op-stack underflow memory. The op-stack registers are the first
-/// [`OpStackElement::COUNT`] elements of the op-stack, and the op-stack underflow memory is the
-/// remaining elements.
+/// The OpStack is represented as one contiguous piece of memory, and Triton VM
+/// uses it as such. For reasons of arithmetization, however, there is a
+/// distinction between the op-stack registers and the op-stack underflow
+/// memory. The op-stack registers are the first [`OpStackElement::COUNT`]
+/// elements of the op-stack, and the op-stack underflow memory is the remaining
+/// elements.
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize, Arbitrary)]
 pub struct OpStack {
-    /// The underlying, actual stack. When manually accessing, be aware of reversed indexing:
-    /// while `op_stack[0]` is the top of the stack, `op_stack.stack[0]` is the lowest element in
-    /// the stack.
+    /// The underlying, actual stack. When manually accessing, be aware of
+    /// reversed indexing: while `op_stack[0]` is the top of the stack,
+    /// `op_stack.stack[0]` is the lowest element in the stack.
     pub stack: Vec<BFieldElement>,
 
     underflow_io_sequence: Vec<UnderflowIO>,
@@ -154,14 +155,14 @@ impl OpStack {
         self.len() as i32 + stack_delta < OpStackElement::COUNT as i32
     }
 
-    /// The address of the next free address of the op-stack. Equivalent to the current length of
-    /// the op-stack.
+    /// The address of the next free address of the op-stack. Equivalent to the
+    /// current length of the op-stack.
     pub fn pointer(&self) -> BFieldElement {
         u64::try_from(self.len()).unwrap().into()
     }
 
-    /// The first element of the op-stack underflow memory, or 0 if the op-stack underflow memory
-    /// is empty.
+    /// The first element of the op-stack underflow memory, or 0 if the op-stack
+    /// underflow memory is empty.
     pub(crate) fn first_underflow_element(&self) -> BFieldElement {
         let default = bfe!(0);
         let Some(top_of_stack_index) = self.len().checked_sub(1) else {
@@ -224,11 +225,12 @@ pub enum UnderflowIO {
 }
 
 impl UnderflowIO {
-    /// Remove spurious read/write sequences arising from temporary stack changes.
+    /// Remove spurious read/write sequences arising from temporary stack
+    /// changes.
     ///
-    /// For example, the sequence `[Read(5), Write(5), Read(7)]` can be replaced with `[Read(7)]`.
-    /// Similarly, the sequence `[Write(5), Write(3), Read(3), Read(5), Write(7)]` can be replaced
-    /// with `[Write(7)]`.
+    /// For example, the sequence `[Read(5), Write(5), Read(7)]` can be replaced
+    /// with `[Read(7)]`. Similarly, the sequence `[Write(5), Write(3),
+    /// Read(3), Read(5), Write(7)]` can be replaced with `[Write(7)]`.
     pub fn canonicalize_sequence(sequence: &mut Vec<Self>) {
         while let Some(index) = Self::index_of_dual_pair(sequence) {
             let _ = sequence.remove(index);
@@ -252,7 +254,8 @@ impl UnderflowIO {
         }
     }
 
-    /// Whether the sequence of underflow IOs consists of either only reads or only writes.
+    /// Whether the sequence of underflow IOs consists of either only reads or
+    /// only writes.
     pub fn is_uniform_sequence(sequence: &[Self]) -> bool {
         sequence.iter().all(|io| io.is_same_type_as(sequence[0]))
     }
@@ -486,7 +489,8 @@ impl TryFrom<BFieldElement> for OpStackElement {
     }
 }
 
-/// Represents the argument, _i.e._, the `n`, for instructions like `pop n` or `read_io n`.
+/// Represents the argument, _i.e._, the `n`, for instructions like `pop n` or
+/// `read_io n`.
 #[derive(
     Debug,
     Default,

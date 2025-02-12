@@ -115,10 +115,12 @@ pub enum LabelledInstruction {
     AssertionContext(AssertionContext),
 }
 
-/// A hint about a range of stack elements. Helps debugging programs written for Triton VM.
-/// **Does not enforce types.**
+/// A hint about a range of stack elements. Helps debugging programs written for
+/// Triton VM. **Does not enforce types.**
 ///
-/// Usually constructed by parsing special annotations in the assembly code, for example:
+/// Usually constructed by parsing special annotations in the assembly code, for
+/// example:
+///
 /// ```tasm
 /// hint variable_name: the_type = stack[0]
 /// hint my_list = stack[1..4]
@@ -135,7 +137,8 @@ pub struct TypeHint {
     pub variable_name: String,
 }
 
-/// Context to help debugging failing instructions [`assert`](Instruction::Assert) or
+/// Context to help debugging failing instructions
+/// [`assert`](Instruction::Assert) or
 /// [`assert_vector`](Instruction::AssertVector).
 #[non_exhaustive]
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize, GetSize, Arbitrary)]
@@ -215,7 +218,8 @@ impl<'a> Arbitrary<'a> for TypeHint {
 /// [Instruction Set Architecture](https://triton-vm.org/spec/isa.html)
 /// for more details.
 ///
-/// The type parameter `Dest` describes the type of addresses (absolute or labels).
+/// The type parameter `Dest` describes the type of addresses (absolute or
+/// labels).
 #[derive(
     Debug,
     Copy,
@@ -530,7 +534,8 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
         }
     }
 
-    /// Indicates whether the instruction operates on base field elements that are also u32s.
+    /// Indicates whether the instruction operates on base field elements that
+    /// are also u32s.
     pub fn is_u32_instruction(&self) -> bool {
         matches!(
             self,
@@ -591,8 +596,9 @@ impl Instruction {
         }
     }
 
-    /// Change the argument of the instruction, if it has one. Returns an `Err` if the instruction
-    /// does not have an argument or if the argument is out of range.
+    /// Change the argument of the instruction, if it has one. Returns an `Err`
+    /// if the instruction does not have an argument or if the argument is
+    /// out of range.
     pub fn change_arg(self, new_arg: BFieldElement) -> Result<Self> {
         let illegal_argument_error = || InstructionError::IllegalArgument(self, new_arg);
         let num_words = new_arg.try_into().map_err(|_| illegal_argument_error());
@@ -866,7 +872,8 @@ pub struct AssertionError {
     /// The [element](BFieldElement) expected by the assertion.
     pub expected: BFieldElement,
 
-    /// The actual [element](BFieldElement) encountered when executing the assertion.
+    /// The actual [element](BFieldElement) encountered when executing the
+    /// assertion.
     pub actual: BFieldElement,
 
     /// A user-defined error ID. Only has user-defined, no inherent, semantics.
@@ -1048,8 +1055,9 @@ pub mod tests {
         }
     }
 
-    /// While the correct _number_ of instructions (respectively instruction names)
-    /// is guaranteed at compile time, this test ensures the absence of repetitions.
+    /// While the correct _number_ of instructions (respectively instruction
+    /// names) is guaranteed at compile time, this test ensures the absence
+    /// of repetitions.
     #[test]
     fn list_of_all_instructions_contains_unique_instructions() {
         assert!(ALL_INSTRUCTIONS.into_iter().all_unique());

@@ -10,8 +10,8 @@ pub mod program;
 /// Triton VM can run the resulting [`Program`](program::Program); see there for
 /// details.
 ///
-/// It is possible to use string-like interpolation to insert instructions, arguments, labels,
-/// or other substrings into the program.
+/// It is possible to use string-like interpolation to insert instructions,
+/// arguments, labels, or other substrings into the program.
 ///
 /// # Examples
 ///
@@ -30,9 +30,9 @@ pub mod program;
 /// );
 /// ```
 ///
-/// Any type with an appropriate [`Display`](std::fmt::Display) implementation can be
-/// interpolated. This includes, for example, primitive types like `u64` and `&str`, but also
-/// [`Instruction`](instruction::Instruction)s,
+/// Any type with an appropriate [`Display`](std::fmt::Display) implementation
+/// can be interpolated. This includes, for example, primitive types like `u64`
+/// and `&str`, but also [`Instruction`](instruction::Instruction)s,
 /// [`BFieldElement`](twenty_first::prelude::BFieldElement)s, and
 /// [`Label`](instruction::LabelledInstruction)s, among others.
 ///
@@ -61,9 +61,11 @@ pub mod program;
 /// - unknown (_e.g._ misspelled) instructions
 /// - invalid instruction arguments, _e.g._, `push 1.5` or `swap 42`
 /// - missing or duplicate labels
-/// - invalid labels, _e.g._, using a reserved keyword or starting a label with a digit
+/// - invalid labels, _e.g._, using a reserved keyword or starting a label with
+///   a digit
 ///
-/// For a version that returns a `Result`, see [`Program::from_code()`][from_code].
+/// For a version that returns a `Result`, see
+/// [`Program::from_code()`][from_code].
 ///
 /// [tasm]: https://triton-vm.org/spec/instructions.html
 /// [from_code]: program::Program::from_code
@@ -77,17 +79,20 @@ macro_rules! triton_program {
 
 /// Compile [Triton assembly][tasm] into a list of labelled
 /// [`Instruction`](instruction::LabelledInstruction)s.
-/// Similar to [`triton_program!`](triton_program), it is possible to use string-like
-/// interpolation to insert instructions, arguments, labels, or other expressions.
+/// Similar to [`triton_program!`](triton_program), it is possible to use
+/// string-like interpolation to insert instructions, arguments, labels, or
+/// other expressions.
 ///
-/// Similar to [`vec!`], a single instruction can be repeated a specified number of times.
+/// Similar to [`vec!`], a single instruction can be repeated a specified number
+/// of times.
 ///
-/// Furthermore, a list of [`LabelledInstruction`](instruction::LabelledInstruction)s
-/// can be inserted like so: `{&list}`.
+/// Furthermore, a list of
+/// [`LabelledInstruction`](instruction::LabelledInstruction)s can be inserted
+/// like so: `{&list}`.
 ///
-/// The labels for instruction `call`, if any, are also parsed. Instruction `call` can refer to
-/// a label defined later in the program, _i.e.,_ labels are not checked for existence or
-/// uniqueness by this parser.
+/// The labels for instruction `call`, if any, are also parsed. Instruction
+/// `call` can refer to a label defined later in the program, _i.e.,_ labels are
+/// not checked for existence or uniqueness by this parser.
 ///
 /// # Examples
 ///
@@ -140,13 +145,13 @@ macro_rules! triton_program {
 /// assert_eq!(LabelledInstruction::Instruction(Pop(N1)), surrounding_code[3]);
 /// # let one = bfe!(1);
 /// # assert_eq!(LabelledInstruction::Instruction(Push(one)), surrounding_code[4]);
-///```
+/// ```
 ///
 /// # Panics
 ///
 /// **Panics** if the instructions cannot be parsed.
-/// For examples, see [`triton_program!`](triton_program), with the exception that
-/// labels are not checked for existence or uniqueness.
+/// For examples, see [`triton_program!`](triton_program), with the exception
+/// that labels are not checked for existence or uniqueness.
 ///
 /// [tasm]: https://triton-vm.org/spec/instructions.html
 #[macro_export]

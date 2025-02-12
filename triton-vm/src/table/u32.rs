@@ -137,9 +137,10 @@ impl TraceTable for U32Table {
             padding_row[[MainColumn::Result.main_index()]] =
                 last_row[MainColumn::Result.main_index()];
 
-            // In the edge case that the last non-padding row comes from executing instruction
-            // `lt` on operands 0 and 0, the `Result` column is 0. For the padding section,
-            // where the `CopyFlag` is always 0, the `Result` needs to be set to 2 instead.
+            // In the edge case that the last non-padding row comes from executing
+            // instruction `lt` on operands 0 and 0, the `Result` column is 0.
+            // For the padding section, where the `CopyFlag` is always 0, the
+            // `Result` needs to be set to 2 instead.
             if padding_row[[MainColumn::CI.main_index()]] == Instruction::Lt.opcode_b() {
                 padding_row[[MainColumn::Result.main_index()]] = bfe!(2);
             }
@@ -211,15 +212,16 @@ fn u32_section_next_row(mut section: Array2<BFieldElement>) -> Array2<BFieldElem
             _ => panic!("Must be u32 instruction, not {current_instruction}."),
         };
 
-        // If instruction `lt` is executed on operands 0 and 0, the result is known to be 0.
-        // The edge case can be reliably detected by checking whether column `Bits` is 0.
+        // If instruction `lt` is executed on operands 0 and 0, the result is known to
+        // be 0. The edge case can be reliably detected by checking whether
+        // column `Bits` is 0.
         let both_operands_are_0 = section[[row_idx, MainColumn::Bits.main_index()]].is_zero();
         if current_instruction == Instruction::Lt && both_operands_are_0 {
             section[[row_idx, MainColumn::Result.main_index()]] = bfe!(0);
         }
 
-        // The right hand side is guaranteed to be 0. However, if the current instruction is
-        // `pow`, then the left hand side might be non-zero.
+        // The right hand side is guaranteed to be 0. However, if the current
+        // instruction is `pow`, then the left hand side might be non-zero.
         let lhs_inv_or_0 = section[[row_idx, MainColumn::LHS.main_index()]].inverse_or_zero();
         section[[row_idx, MainColumn::LhsInv.main_index()]] = lhs_inv_or_0;
 

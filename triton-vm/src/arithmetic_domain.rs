@@ -22,7 +22,8 @@ pub struct ArithmeticDomain {
 
 impl ArithmeticDomain {
     /// Create a new domain with the given length.
-    /// No offset is applied, but can be added through [`with_offset()`](Self::with_offset).
+    /// No offset is applied, but can be added through
+    /// [`with_offset()`](Self::with_offset).
     ///
     /// # Errors
     ///
@@ -86,7 +87,8 @@ impl ArithmeticDomain {
 
     /// # Panics
     ///
-    /// Panics if the length of the argument does not match the length of `self`.
+    /// Panics if the length of the argument does not match the length of
+    /// `self`.
     pub fn interpolate<FF>(&self, values: &[FF]) -> Polynomial<'static, FF>
     where
         FF: FiniteField + MulAssign<BFieldElement> + Mul<BFieldElement, Output = FF>,
@@ -94,7 +96,8 @@ impl ArithmeticDomain {
         // required by `fast_coset_interpolate`
         debug_assert_eq!(self.length, values.len());
 
-        // generic type made explicit to avoid performance regressions due to auto-conversion
+        // generic type made explicit to avoid performance regressions due to
+        // auto-conversion
         Polynomial::fast_coset_interpolate::<BFieldElement>(self.offset, values)
     }
 

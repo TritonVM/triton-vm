@@ -25,17 +25,19 @@ use crate::table::TraceTable;
 type MainColumn = <HashTable as air::AIR>::MainColumn;
 type AuxColumn = <HashTable as air::AIR>::AuxColumn;
 
-/// Return the 16-bit chunks of the “un-Montgomery'd” representation, in little-endian chunk
-/// order. This (basically) translates to the application of `σ(R·x)` for input `x`, which
-/// are the first two steps in Tip5's split-and-lookup S-Box.
-/// `R` is the Montgomery modulus, _i.e._, `R = 2^64 mod p`.
-/// `σ` as described in the paper decomposes the 64-bit input into 8-bit limbs, whereas
-/// this method decomposes into 16-bit limbs for arithmetization reasons; the 16-bit limbs
-/// are split into 8-bit limbs in the Cascade Table.
-/// For a more in-depth explanation of all the necessary steps in the split-and-lookup S-Box,
-/// see the [Tip5 paper](https://eprint.iacr.org/2023/107.pdf).
+/// Return the 16-bit chunks of the “un-Montgomery'd” representation, in
+/// little-endian chunk order. This (basically) translates to the application of
+/// `σ(R·x)` for input `x`, which are the first two steps in Tip5's
+/// split-and-lookup S-Box. `R` is the Montgomery modulus, _i.e._, `R = 2^64 mod
+/// p`. `σ` as described in the paper decomposes the 64-bit input into 8-bit
+/// limbs, whereas this method decomposes into 16-bit limbs for arithmetization
+/// reasons; the 16-bit limbs are split into 8-bit limbs in the Cascade Table.
+/// For a more in-depth explanation of all the necessary steps in the
+/// split-and-lookup S-Box, see the
+/// [Tip5 paper](https://eprint.iacr.org/2023/107.pdf).
 ///
-/// Note: this is distinct from the seemingly similar [`raw_u16s`](BFieldElement::raw_u16s).
+/// Note: this is distinct from the seemingly similar
+/// [`raw_u16s`](BFieldElement::raw_u16s).
 pub(crate) fn base_field_element_into_16_bit_limbs(x: BFieldElement) -> [u16; 4] {
     let r_times_x = (MONTGOMERY_MODULUS * x).value();
     [0, 16, 32, 48].map(|shift| ((r_times_x >> shift) & 0xffff) as u16)
@@ -195,9 +197,9 @@ fn fill_row_with_state_inverses_using_trace_row(
     row
 }
 
-/// The inverse-or-zero of (2^32 - 1 - 2^16·`highest` - `mid_high`) where `highest`
-/// is the most significant limb of the given `state_element`, and `mid_high` the second-most
-/// significant limb.
+/// The inverse-or-zero of (2^32 - 1 - 2^16·`highest` - `mid_high`) where
+/// `highest` is the most significant limb of the given `state_element`, and
+/// `mid_high` the second-most significant limb.
 fn inverse_or_zero_of_highest_2_limbs(state_element: BFieldElement) -> BFieldElement {
     let limbs = base_field_element_into_16_bit_limbs(state_element);
     let highest: u64 = limbs[3].into();

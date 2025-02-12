@@ -64,12 +64,14 @@ impl Default for Config {
     }
 }
 
-/// Overwrite the automatic decision whether to cache the [low-degree extended trace][lde] when
-/// [proving]. Takes precedence over the environment variable `TVM_LDE_TRACE`.
+/// Overwrite the automatic decision whether to cache the [low-degree extended
+/// trace][lde] when [proving]. Takes precedence over the environment variable
+/// `TVM_LDE_TRACE`.
 ///
-/// Caching the low-degree extended trace improves proving speed but requires more memory. It is
-/// generally recommended to cache the trace. Triton VM will make an automatic decision based on
-/// free memory. Use this function if you know your requirements better.
+/// Caching the low-degree extended trace improves proving speed but requires
+/// more memory. It is generally recommended to cache the trace. Triton VM will
+/// make an automatic decision based on free memory. Use this function if you
+/// know your requirements better.
 ///
 /// [lde]: crate::table::master_table::MasterTable::maybe_low_degree_extend_all_columns
 /// [proving]: crate::stark::Stark::prove

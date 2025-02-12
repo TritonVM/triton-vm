@@ -31,8 +31,8 @@ impl ProofStream {
         b_field_elements.len()
     }
 
-    /// Alters the Fiat-Shamir's sponge state with the encoding of the given item.
-    /// Does _not_ record the given item in the proof stream.
+    /// Alters the Fiat-Shamir's sponge state with the encoding of the given
+    /// item. Does _not_ record the given item in the proof stream.
     /// This is useful for items that are not sent to the verifier, _e.g._, the
     /// [`Claim`](crate::proof::Claim).
     ///
@@ -42,15 +42,17 @@ impl ProofStream {
     }
 
     /// Send a proof item as prover to verifier.
-    /// Some items do not need to be included in the Fiat-Shamir heuristic, _i.e._, they do not
-    /// need to modify the sponge state. For those items, namely those that evaluate to `false`
-    /// according to [`ProofItem::include_in_fiat_shamir_heuristic`], the sponge state is not
+    /// Some items do not need to be included in the Fiat-Shamir heuristic,
+    /// _i.e._, they do not need to modify the sponge state. For those
+    /// items, namely those that evaluate to `false` according to
+    /// [`ProofItem::include_in_fiat_shamir_heuristic`], the sponge state is not
     /// modified.
     /// For example:
-    /// - Merkle authentication structure do not need to be hashed if the root of the tree
-    ///     in question was hashed previously.
-    /// - If the proof stream is not used to sample any more randomness, _i.e._, after the last
-    ///     round of interaction, no further items need to be hashed.
+    /// - Merkle authentication structure do not need to be hashed if the root
+    ///   of the tree in question was hashed previously.
+    /// - If the proof stream is not used to sample any more randomness, _i.e._,
+    ///   after the last round of interaction, no further items need to be
+    ///   hashed.
     pub fn enqueue(&mut self, item: ProofItem) {
         if item.include_in_fiat_shamir_heuristic() {
             self.alter_fiat_shamir_state_with(&item);
@@ -72,10 +74,11 @@ impl ProofStream {
         Ok(item)
     }
 
-    /// Given an `upper_bound` that is a power of 2, produce `num_indices` uniform random numbers
-    /// in the interval `[0; upper_bound)`.
+    /// Given an `upper_bound` that is a power of 2, produce `num_indices`
+    /// uniform random numbers in the interval `[0; upper_bound)`.
     ///
-    /// - `upper_bound`: The (non-inclusive) upper bound. Must be a power of two.
+    /// - `upper_bound`: The (non-inclusive) upper bound. Must be a power of
+    ///   two.
     /// - `num_indices`: The number of indices to sample
     pub fn sample_indices(&mut self, upper_bound: usize, num_indices: usize) -> Vec<usize> {
         assert!(upper_bound.is_power_of_two());

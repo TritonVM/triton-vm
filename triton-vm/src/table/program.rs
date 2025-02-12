@@ -136,15 +136,17 @@ impl TraceTable for ProgramTable {
             let mut auxiliary_row = aux_table.row_mut(idx);
 
             // In the Program Table, the logarithmic derivative for the instruction lookup
-            // argument does record the initial in the first row, as an exception to all other
-            // table-linking arguments.
-            // This is necessary because an instruction's potential argument, or else the next
-            // instruction, is recorded in the next row. To be able to check correct initialization
-            // of the logarithmic derivative, both the current and the next row must be accessible
-            // to the constraint. Only transition constraints can access both rows. Hence, the
-            // initial value of the logarithmic derivative must be independent of the second row.
-            // The logarithmic derivative's final value, allowing for a meaningful cross-table
-            // argument, is recorded in the first padding row. This row is guaranteed to exist
+            // argument does record the initial in the first row, as an exception to all
+            // other table-linking arguments.
+            // This is necessary because an instruction's potential argument, or else the
+            // next instruction, is recorded in the next row. To be able to
+            // check correct initialization of the logarithmic derivative, both
+            // the current and the next row must be accessible
+            // to the constraint. Only transition constraints can access both rows. Hence,
+            // the initial value of the logarithmic derivative must be
+            // independent of the second row. The logarithmic derivative's final
+            // value, allowing for a meaningful cross-table argument, is
+            // recorded in the first padding row. This row is guaranteed to exist
             // due to the hash-input padding mechanics.
             auxiliary_row[AuxColumn::InstructionLookupServerLogDerivative.aux_index()] =
                 instruction_lookup_log_derivative;

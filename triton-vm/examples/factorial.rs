@@ -1,6 +1,7 @@
 //! # [Triton VM] Example: Factorial
 //!
-//! This example demonstrates how to use Triton VM to prove the correct execution of a program.
+//! This example demonstrates how to use Triton VM to prove the correct
+//! execution of a program.
 //!
 //! [Triton VM]: https://triton-vm.org/
 
@@ -36,8 +37,9 @@ fn main() {
     // The `bfe!` macro is used to create elements of this field.
     let public_input = PublicInput::from([bfe!(1_000)]);
 
-    // The execution of the factorial program is already fully determined by the public input.
-    // Hence, in this case, there is no need for specifying non-determinism.
+    // The execution of the factorial program is already fully determined by the
+    // public input. Hence, in this case, there is no need for specifying
+    // non-determinism.
     let non_determinism = NonDeterminism::default();
 
     // Generate
@@ -50,10 +52,11 @@ fn main() {
     //   - the program's public output.
     //
     // Triton VM is zero-knowledge with respect to almost everything else.
-    // The only other piece of revealed information is an upper bound for the number of steps
-    // the program was running for.
+    // The only other piece of revealed information is an upper bound for the number
+    // of steps the program was running for.
     //
-    // Triton VM's default parameters give a (conjectured) security level of 160 bits.
+    // Triton VM's default parameters give a (conjectured) security level of 160
+    // bits.
     let (stark, claim, proof) =
         triton_vm::prove_program(factorial_program, public_input, non_determinism).unwrap();
 

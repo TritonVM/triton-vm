@@ -55,8 +55,8 @@ impl HashTable {
         BFieldElement::new(mds_matrix_entry as u64)
     }
 
-    /// The round constants for round `r` if it is a valid round number in the Tip5 permutation,
-    /// and the zero vector otherwise.
+    /// The round constants for round `r` if it is a valid round number in the
+    /// Tip5 permutation, and the zero vector otherwise.
     pub fn tip5_round_constants_by_round_number(r: usize) -> [BFieldElement; NUM_ROUND_CONSTANTS] {
         if r >= NUM_ROUNDS {
             return bfe_array![0; NUM_ROUND_CONSTANTS];
@@ -70,12 +70,13 @@ impl HashTable {
     }
 
     /// Construct one of the states 0 through 3 from its constituent limbs.
-    /// For example, state 0 (prior to it being looked up in the split-and-lookup
-    /// S-Box, which is usually the desired version of the state) is constructed
-    /// from limbs [`State0HighestLkIn`][hi] through [`State0LowestLkIn`][lo].
+    /// For example, state 0 (prior to it being looked up in the
+    /// split-and-lookup S-Box, which is usually the desired version of the
+    /// state) is constructed from limbs [`State0HighestLkIn`][hi] through
+    /// [`State0LowestLkIn`][lo].
     ///
-    /// States 4 through 15 are directly accessible. See also the slightly related
-    /// [`Self::state_column_by_index`].
+    /// States 4 through 15 are directly accessible. See also the slightly
+    /// related [`Self::state_column_by_index`].
     ///
     /// [hi]: crate::table_column::HashMainColumn::State0HighestLkIn
     /// [lo]: crate::table_column::HashMainColumn::State0LowestLkIn
@@ -97,7 +98,8 @@ impl HashTable {
     }
 
     /// A constraint circuit evaluating to zero if and only if the given
-    /// `round_number_circuit_node` is not equal to the given `round_number_to_deselect`.
+    /// `round_number_circuit_node` is not equal to the given
+    /// `round_number_to_deselect`.
     fn round_number_deselector<II: InputIndicator>(
         circuit_builder: &ConstraintCircuitBuilder<II>,
         round_number_circuit_node: &ConstraintCircuitMonad<II>,
@@ -120,8 +122,8 @@ impl HashTable {
             .fold(first_factor, |a, b| a * b)
     }
 
-    /// A constraint circuit evaluating to zero if and only if the given `mode_circuit_node` is
-    /// equal to the given `mode_to_select`.
+    /// A constraint circuit evaluating to zero if and only if the given
+    /// `mode_circuit_node` is equal to the given `mode_to_select`.
     fn select_mode<II: InputIndicator>(
         circuit_builder: &ConstraintCircuitBuilder<II>,
         mode_circuit_node: &ConstraintCircuitMonad<II>,
@@ -130,8 +132,8 @@ impl HashTable {
         mode_circuit_node.clone() - circuit_builder.b_constant(mode_to_select)
     }
 
-    /// A constraint circuit evaluating to zero if and only if the given `mode_circuit_node` is
-    /// not equal to the given `mode_to_deselect`.
+    /// A constraint circuit evaluating to zero if and only if the given
+    /// `mode_circuit_node` is not equal to the given `mode_to_deselect`.
     fn mode_deselector<II: InputIndicator>(
         circuit_builder: &ConstraintCircuitBuilder<II>,
         mode_circuit_node: &ConstraintCircuitMonad<II>,
@@ -167,8 +169,8 @@ impl HashTable {
     }
 
     /// The [main column][main_col] for the round constant corresponding to the
-    /// given index. Valid indices are 0 through 15, corresponding to the 16 round
-    /// constants [`Constant0`][c0] through [`Constant15`][c15].
+    /// given index. Valid indices are 0 through 15, corresponding to the 16
+    /// round constants [`Constant0`][c0] through [`Constant15`][c15].
     ///
     /// [main_col]: crate::table_column::HashMainColumn
     /// [c0]: crate::table_column::HashMainColumn::Constant0
@@ -195,9 +197,9 @@ impl HashTable {
         }
     }
 
-    /// The [`HashMainColumn`][MainColumn] for the state corresponding to the given
-    /// index. Valid indices are 4 through 15, corresponding to the 12 state columns
-    /// [`State4`][state_4] through [`State15`][state_15].
+    /// The [`HashMainColumn`][MainColumn] for the state corresponding to the
+    /// given index. Valid indices are 4 through 15, corresponding to the 12
+    /// state columns [`State4`][state_4] through [`State15`][state_15].
     ///
     /// States with indices 0 through 3 have to be assembled from the respective
     /// limbs; see [`Self::re_compose_states_0_through_3_before_lookup`]
@@ -518,7 +520,8 @@ impl AIR for HashTable {
         let receive_chunk_indeterminate =
             challenge(ChallengeId::ProgramAttestationSendChunkIndeterminate);
 
-        // First chunk of the program is received correctly. Relates to program attestation.
+        // First chunk of the program is received correctly. Relates to program
+        // attestation.
         let [state_0, state_1, state_2, state_3] =
             Self::re_compose_states_0_through_3_before_lookup(
                 circuit_builder,
@@ -546,7 +549,8 @@ impl AIR for HashTable {
                 - receive_chunk_indeterminate * running_evaluation_initial.clone()
                 - compressed_chunk;
 
-        // The lookup arguments with the Cascade Table for the S-Boxes are initialized correctly.
+        // The lookup arguments with the Cascade Table for the S-Boxes are initialized
+        // correctly.
         let cascade_log_derivative_init_circuit =
             |look_in_column, look_out_column, cascade_log_derivative_column| {
                 let look_in = main_row(look_in_column);
@@ -1032,8 +1036,8 @@ impl AIR for HashTable {
 
         // Evaluation Arguments
 
-        // If (and only if) the row number in the next row is 0 and the mode in the next row is
-        // `hash`, update running evaluation “hash input.”
+        // If (and only if) the row number in the next row is 0 and the mode in the next
+        // row is `hash`, update running evaluation “hash input.”
         let running_evaluation_hash_input_remains =
             running_evaluation_hash_input_next.clone() - running_evaluation_hash_input.clone();
         let tip5_input = state_next[..tip5::RATE].to_owned();
@@ -1054,8 +1058,9 @@ impl AIR for HashTable {
                 + Self::select_mode(circuit_builder, &mode_next, HashTableMode::Hash)
                     * running_evaluation_hash_input_remains;
 
-        // If (and only if) the row number in the next row is NUM_ROUNDS and the current instruction
-        // in the next row corresponds to `hash`, update running evaluation “hash digest.”
+        // If (and only if) the row number in the next row is NUM_ROUNDS and the current
+        // instruction in the next row corresponds to `hash`, update running
+        // evaluation “hash digest.”
         let round_number_next_is_num_rounds =
             round_number_next.clone() - constant(NUM_ROUNDS as u64);
         let running_evaluation_hash_digest_remains =
@@ -1107,7 +1112,8 @@ impl AIR for HashTable {
                 + if_round_no_next_is_not_0_then_running_evaluation_sponge_remains
                 + if_ci_next_is_not_spongy_then_running_evaluation_sponge_remains;
 
-        // program attestation: absorb RATE instructions if in the right mode on the right row
+        // program attestation: absorb RATE instructions if in the right mode on the
+        // right row
         let compressed_chunk = state_next[..tip5::RATE]
             .iter()
             .fold(running_evaluation_initial, |acc, rate_element| {
@@ -1296,28 +1302,33 @@ impl AIR for HashTable {
     }
 }
 
-/// The current “mode” of the Hash Table. The Hash Table can be in one of four distinct modes:
+/// The current “mode” of the Hash Table. The Hash Table can be in one of four
+/// distinct modes:
 ///
 /// 1. Hashing the [`Program`][program]. This is part of program attestation.
 /// 1. Processing all Sponge instructions, _i.e._, `sponge_init`,
-///     `sponge_absorb`, `sponge_absorb_mem`, and `sponge_squeeze`.
+///    `sponge_absorb`, `sponge_absorb_mem`, and `sponge_squeeze`.
 /// 1. Processing the `hash` instruction.
 /// 1. Padding mode.
 ///
-/// Changing the mode is only possible when the current [`RoundNumber`][round_no]
-/// is [`NUM_ROUNDS`]. The mode evolves as
-/// [`ProgramHashing`][prog_hash] → [`Sponge`][sponge] → [`Hash`][hash] → [`Pad`][pad].
-/// Once mode [`Pad`][pad] is reached, it is not possible to change the mode anymore.
-/// Skipping any or all of the modes [`Sponge`][sponge], [`Hash`][hash], or [`Pad`][pad]
-/// is possible in principle:
-/// - if no Sponge instructions are executed, mode [`Sponge`][sponge] will be skipped,
-/// - if no `hash` instruction is executed, mode [`Hash`][hash] will be skipped, and
-/// - if the Hash Table does not require any padding, mode [`Pad`][pad] will be skipped.
+/// Changing the mode is only possible when the current
+/// [`RoundNumber`][round_no] is [`NUM_ROUNDS`]. The mode evolves as
+/// [`ProgramHashing`][prog_hash] → [`Sponge`][sponge] → [`Hash`][hash] →
+/// [`Pad`][pad]. Once mode [`Pad`][pad] is reached, it is not possible to
+/// change the mode anymore. Skipping any or all of the modes
+/// [`Sponge`][sponge], [`Hash`][hash], or [`Pad`][pad] is possible in
+/// principle:
+/// - if no Sponge instructions are executed, mode [`Sponge`][sponge] will be
+///   skipped,
+/// - if no `hash` instruction is executed, mode [`Hash`][hash] will be skipped,
+///   and
+/// - if the Hash Table does not require any padding, mode [`Pad`][pad] will be
+///   skipped.
 ///
 /// It is not possible to skip mode [`ProgramHashing`][prog_hash]:
 /// the [`Program`][program] is always hashed.
-/// The empty program is not valid since any valid [`Program`][program] must execute
-/// instruction `halt`.
+/// The empty program is not valid since any valid [`Program`][program] must
+/// execute instruction `halt`.
 ///
 /// [round_no]: crate::table_column::HashMainColumn::RoundNumber
 /// [program]: isa::program::Program
@@ -1327,13 +1338,15 @@ impl AIR for HashTable {
 /// [pad]: HashTableMode::Pad
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, EnumCount, EnumIter)]
 pub enum HashTableMode {
-    /// The mode in which the [`Program`][program] is hashed. This is part of program attestation.
+    /// The mode in which the [`Program`][program] is hashed. This is part of
+    /// program attestation.
     ///
     /// [program]: isa::program::Program
     ProgramHashing,
 
     /// The mode in which Sponge instructions, _i.e._, `sponge_init`,
-    /// `sponge_absorb`, `sponge_absorb_mem`, and `sponge_squeeze`, are processed.
+    /// `sponge_absorb`, `sponge_absorb_mem`, and `sponge_squeeze`, are
+    /// processed.
     Sponge,
 
     /// The mode in which the `hash` instruction is processed.

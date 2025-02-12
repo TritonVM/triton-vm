@@ -121,7 +121,8 @@ impl AIR for ProcessorTable {
         let compressed_program_digest_is_expected_program_digest =
             compressed_program_digest - challenge(ChallengeId::CompressedProgramDigest);
 
-        // Permutation and Evaluation Arguments with all tables the Processor Table relates to
+        // Permutation and Evaluation Arguments with all tables the Processor Table
+        // relates to
 
         // standard input
         let running_evaluation_for_standard_input_is_initialized_correctly =
@@ -177,7 +178,8 @@ impl AIR for ProcessorTable {
         let hash_selector = main_row(MainColumn::CI) - constant(Instruction::Hash.opcode());
         let hash_deselector = instruction_deselector_single_row(circuit_builder, Instruction::Hash);
         let hash_input_indeterminate = challenge(ChallengeId::HashInputIndeterminate);
-        // the opStack is guaranteed to be initialized to 0 by virtue of other initial constraints
+        // the opStack is guaranteed to be initialized to 0 by virtue of other initial
+        // constraints
         let compressed_row = constant(0);
         let running_evaluation_hash_input_has_absorbed_first_row =
             aux_row(AuxColumn::HashInputEvalArg)
@@ -241,7 +243,8 @@ impl AIR for ProcessorTable {
         let constant = |c: u32| circuit_builder.b_constant(c);
         let main_row = |col: MainColumn| circuit_builder.input(Main(col.master_main_index()));
 
-        // The composition of instruction bits ib0-ib7 corresponds the current instruction ci.
+        // The composition of instruction bits ib0-ib7 corresponds the current
+        // instruction ci.
         let ib_composition = main_row(MainColumn::IB0)
             + constant(1 << 1) * main_row(MainColumn::IB1)
             + constant(1 << 2) * main_row(MainColumn::IB2)
@@ -261,10 +264,10 @@ impl AIR for ProcessorTable {
         let is_padding_is_bit =
             main_row(MainColumn::IsPadding) * (main_row(MainColumn::IsPadding) - constant(1));
 
-        // In padding rows, the clock jump difference lookup multiplicity is 0. The one row
-        // exempt from this rule is the row with CLK == 1: since the memory-like tables don't have
-        // an “awareness” of padding rows, they keep looking up clock jump differences of
-        // magnitude 1.
+        // In padding rows, the clock jump difference lookup multiplicity is 0. The one
+        // row exempt from this rule is the row with CLK == 1: since the
+        // memory-like tables don't have an “awareness” of padding rows, they
+        // keep looking up clock jump differences of magnitude 1.
         let clock_jump_diff_lookup_multiplicity_is_0_in_padding_rows =
             main_row(MainColumn::IsPadding)
                 * (main_row(MainColumn::CLK) - constant(1))
@@ -312,7 +315,8 @@ impl AIR for ProcessorTable {
             all_instructions_and_their_transition_constraints,
         );
 
-        // if next row is padding row: disable transition constraints, enable padding constraints
+        // if next row is padding row: disable transition constraints, enable padding
+        // constraints
         let doubly_deselected_transition_constraints =
             combine_transition_constraints_with_padding_constraints(
                 circuit_builder,
@@ -349,8 +353,9 @@ impl AIR for ProcessorTable {
     }
 }
 
-/// Instruction-specific transition constraints are combined with deselectors in such a way
-/// that arbitrary sets of mutually exclusive combinations are summed, i.e.,
+/// Instruction-specific transition constraints are combined with deselectors in
+/// such a way that arbitrary sets of mutually exclusive combinations are
+/// summed, i.e.,
 ///
 /// ```py
 /// [ deselector_pop * tc_pop_0 + deselector_push * tc_push_0 + ...,
@@ -361,9 +366,10 @@ impl AIR for ProcessorTable {
 ///   ...,
 /// ]
 /// ```
-/// For instructions that have fewer transition constraints than the maximal number of
-/// transition constraints among all instructions, the deselector is multiplied with a zero,
-/// causing no additional terms in the final sets of combined transition constraint polynomials.
+/// For instructions that have fewer transition constraints than the maximal
+/// number of transition constraints among all instructions, the deselector is
+/// multiplied with a zero, causing no additional terms in the final sets of
+/// combined transition constraint polynomials.
 fn combine_instruction_constraints_with_deselectors(
     circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     instr_tc_polys_tuples: [(Instruction, Vec<ConstraintCircuitMonad<DualRowIndicator>>);
@@ -726,8 +732,9 @@ fn instruction_group_step_2(
     .concat()
 }
 
-/// Internal helper function to de-duplicate functionality common between the similar (but
-/// different on a type level) functions for construction deselectors.
+/// Internal helper function to de-duplicate functionality common between the
+/// similar (but different on a type level) functions for construction
+/// deselectors.
 fn instruction_deselector_common_functionality<II: InputIndicator>(
     circuit_builder: &ConstraintCircuitBuilder<II>,
     instruction: Instruction,
@@ -1071,12 +1078,14 @@ fn instruction_skiz(
     // If `st0` is 0 and `nia` takes no argument, register `ip` is incremented by 2.
     // If `st0` is 0 and `nia` takes an argument, register `ip` is incremented by 3.
     //
-    // The opcodes are constructed such that hv1 == 1 means that nia takes an argument.
+    // The opcodes are constructed such that hv1 == 1 means that nia takes an
+    // argument.
     //
     // Written as Disjunctive Normal Form, the constraint can be expressed as:
     // (Register `st0` is 0 or `ip` is incremented by 1), and
-    // (`st0` has a multiplicative inverse or `hv1` is 1 or `ip` is incremented by 2), and
-    // (`st0` has a multiplicative inverse or `hv1` is 0 or `ip` is incremented by 3).
+    // (`st0` has a multiplicative inverse or `hv1` is 1 or `ip` is incremented by
+    // 2), and (`st0` has a multiplicative inverse or `hv1` is 0 or `ip` is
+    // incremented by 3).
     let ip_case_1 = (next_main_row(MainColumn::IP) - curr_main_row(MainColumn::IP) - constant(1))
         * curr_main_row(MainColumn::ST0);
     let ip_case_2 = (next_main_row(MainColumn::IP) - curr_main_row(MainColumn::IP) - constant(2))
@@ -1599,17 +1608,18 @@ fn instruction_eq(
                 * (curr_main_row(MainColumn::ST1) - curr_main_row(MainColumn::ST0))
     };
 
-    // Helper variable hv0 is the inverse-or-zero of the difference of the stack's two top-most
-    // elements: `hv0·(1 - hv0·(st1 - st0))`
+    // Helper variable hv0 is the inverse-or-zero of the difference of the stack's
+    // two top-most elements: `hv0·(1 - hv0·(st1 - st0))`
     let hv0_is_inverse_of_diff_or_hv0_is_0 = curr_main_row(MainColumn::HV0) * st0_eq_st1();
 
-    // Helper variable hv0 is the inverse-or-zero of the difference of the stack's two
-    // top-most elements: `(st1 - st0)·(1 - hv0·(st1 - st0))`
+    // Helper variable hv0 is the inverse-or-zero of the difference of the stack's
+    // two top-most elements: `(st1 - st0)·(1 - hv0·(st1 - st0))`
     let hv0_is_inverse_of_diff_or_diff_is_0 =
         (curr_main_row(MainColumn::ST1) - curr_main_row(MainColumn::ST0)) * st0_eq_st1();
 
-    // The new top of the stack is 1 if the difference between the stack's two top-most
-    // elements is not invertible, 0 otherwise: `st0' - (1 - hv0·(st1 - st0))`
+    // The new top of the stack is 1 if the difference between the stack's two
+    // top-most elements is not invertible, 0 otherwise: `st0' - (1 - hv0·(st1 -
+    // st0))`
     let st0_becomes_1_if_diff_is_not_invertible = next_main_row(MainColumn::ST0) - st0_eq_st1();
 
     let specific_constraints = vec![
@@ -1636,13 +1646,14 @@ fn instruction_split(
         |col: MainColumn| circuit_builder.input(CurrentMain(col.master_main_index()));
     let next_main_row = |col: MainColumn| circuit_builder.input(NextMain(col.master_main_index()));
 
-    // The top of the stack is decomposed as 32-bit chunks into the stack's top-most elements:
-    // st0 - (2^32·st0' + st1') = 0$
+    // The top of the stack is decomposed as 32-bit chunks into the stack's top-most
+    // elements: st0 - (2^32·st0' + st1') = 0$
     let st0_decomposes_to_two_32_bit_chunks = curr_main_row(MainColumn::ST0)
         - (constant(1 << 32) * next_main_row(MainColumn::ST1) + next_main_row(MainColumn::ST0));
 
     // Helper variable `hv0` = 0 if either
-    // 1. `hv0` is the difference between (2^32 - 1) and the high 32 bits (`st0'`), or
+    // 1. `hv0` is the difference between (2^32 - 1) and the high 32 bits (`st0'`),
+    //    or
     // 1. the low 32 bits (`st1'`) are 0.
     //
     // st1'·(hv0·(st0' - (2^32 - 1)) - 1)
@@ -2370,11 +2381,12 @@ fn stack_grows_by_any_of(
     combine_mutually_exclusive_constraint_groups(circuit_builder, all_constraints_for_all_growths)
 }
 
-/// Reduces the number of constraints by summing mutually exclusive constraints. The mutual
-/// exclusion is due to the conditional nature of the constraints, which has to be guaranteed by
-/// the caller.
+/// Reduces the number of constraints by summing mutually exclusive constraints.
+/// The mutual exclusion is due to the conditional nature of the constraints,
+/// which has to be guaranteed by the caller.
 ///
-/// For example, the constraints for shrinking the stack by 2, 3, and 4 elements are:
+/// For example, the constraints for shrinking the stack by 2, 3, and 4 elements
+/// are:
 ///
 /// ```markdown
 /// |            shrink by 2 |            shrink by 3 |            shrink by 4 |
@@ -2389,7 +2401,8 @@ fn stack_grows_by_any_of(
 /// | ind_2·(rp' - rp·fac_2) |                        |                        |
 /// ```
 ///
-/// This method sums these constraints “per row”. That is, the resulting constraints are:
+/// This method sums these constraints “per row”. That is, the resulting
+/// constraints are:
 ///
 /// ```markdown
 /// |                                                  shrink by 2 or 3 or 4 |

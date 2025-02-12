@@ -1,7 +1,8 @@
 //! Re-exports the most commonly-needed APIs of Triton VM.
 //!
-//! This module is intended to be wildcard-imported, _i.e._, `use triton_vm::prelude::*;`.
-//! You might also want to consider wildcard-importing the prelude of twenty_first, _i.e._,
+//! This module is intended to be wildcard-imported, _i.e._, `use
+//! triton_vm::prelude::*;`. You might also want to consider wildcard-importing
+//! the prelude of twenty_first, _i.e._,
 //! `use triton_vm::twenty_first::prelude::*;`.
 
 pub use twenty_first;

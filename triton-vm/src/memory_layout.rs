@@ -10,55 +10,62 @@ use crate::table::master_table::MasterAuxTable;
 use crate::table::master_table::MasterMainTable;
 use crate::table::master_table::MasterTable;
 
-/// Memory layout guarantees for the [Triton assembly AIR constraint evaluator][tasm_air]
-/// with input lists at dynamically known memory locations.
+/// Memory layout guarantees for the [Triton assembly AIR constraint
+/// evaluator][tasm_air] with input lists at dynamically known memory locations.
 ///
 /// [tasm_air]: crate::constraints::dynamic_air_constraint_evaluation_tasm
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Arbitrary)]
 pub struct DynamicTasmConstraintEvaluationMemoryLayout {
-    /// Pointer to a region of memory that is reserved for (a) pointers to {current,
-    /// next} {main, aux} rows, and (b) intermediate values in the course of
-    /// constraint evaluation. The size of the region must be at least
-    /// [`MEM_PAGE_SIZE`] [`BFieldElement`]s.
+    /// Pointer to a region of memory that is reserved for (a) pointers to
+    /// {current, next} {main, aux} rows, and (b) intermediate values in the
+    /// course of constraint evaluation. The size of the region must be at
+    /// least [`MEM_PAGE_SIZE`] [`BFieldElement`]s.
     pub free_mem_page_ptr: BFieldElement,
 
-    /// Pointer to an array of [`XFieldElement`]s of length [`NUM_CHALLENGES`][num_challenges].
+    /// Pointer to an array of [`XFieldElement`]s of length
+    /// [`NUM_CHALLENGES`][num_challenges].
     ///
     /// [num_challenges]: ChallengeId::COUNT
     pub challenges_ptr: BFieldElement,
 }
 
-/// Memory layout guarantees for the [Triton assembly AIR constraint evaluator][tasm_air]
-/// with input lists at statically known memory locations.
+/// Memory layout guarantees for the [Triton assembly AIR constraint
+/// evaluator][tasm_air] with input lists at statically known memory locations.
 ///
 /// [tasm_air]: crate::constraints::static_air_constraint_evaluation_tasm
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Arbitrary)]
 pub struct StaticTasmConstraintEvaluationMemoryLayout {
-    /// Pointer to a region of memory that is reserved for constraint evaluation.
-    /// The size of the region must be at least [`MEM_PAGE_SIZE`] [`BFieldElement`]s.
+    /// Pointer to a region of memory that is reserved for constraint
+    /// evaluation. The size of the region must be at least
+    /// [`MEM_PAGE_SIZE`] [`BFieldElement`]s.
     pub free_mem_page_ptr: BFieldElement,
 
-    /// Pointer to an array of [`XFieldElement`]s of length [`MasterMainTable::NUM_COLUMNS`].
+    /// Pointer to an array of [`XFieldElement`]s of length
+    /// [`MasterMainTable::NUM_COLUMNS`].
     pub curr_main_row_ptr: BFieldElement,
 
-    /// Pointer to an array of [`XFieldElement`]s of length [`MasterAuxTable::NUM_COLUMNS`].
+    /// Pointer to an array of [`XFieldElement`]s of length
+    /// [`MasterAuxTable::NUM_COLUMNS`].
     pub curr_aux_row_ptr: BFieldElement,
 
-    /// Pointer to an array of [`XFieldElement`]s of length [`MasterMainTable::NUM_COLUMNS`].
+    /// Pointer to an array of [`XFieldElement`]s of length
+    /// [`MasterMainTable::NUM_COLUMNS`].
     pub next_main_row_ptr: BFieldElement,
 
-    /// Pointer to an array of [`XFieldElement`]s of length [`MasterAuxTable::NUM_COLUMNS`].
+    /// Pointer to an array of [`XFieldElement`]s of length
+    /// [`MasterAuxTable::NUM_COLUMNS`].
     pub next_aux_row_ptr: BFieldElement,
 
-    /// Pointer to an array of [`XFieldElement`]s of length [`NUM_CHALLENGES`][num_challenges].
+    /// Pointer to an array of [`XFieldElement`]s of length
+    /// [`NUM_CHALLENGES`][num_challenges].
     ///
     /// [num_challenges]: ChallengeId::COUNT
     pub challenges_ptr: BFieldElement,
 }
 
 pub trait IntegralMemoryLayout {
-    /// Determine if the memory layout's constraints are met, _i.e._, whether the
-    /// various pointers point to large enough regions of memory.
+    /// Determine if the memory layout's constraints are met, _i.e._, whether
+    /// the various pointers point to large enough regions of memory.
     fn is_integral(&self) -> bool {
         let memory_regions = self.memory_regions();
         if memory_regions.iter().unique().count() != memory_regions.len() {

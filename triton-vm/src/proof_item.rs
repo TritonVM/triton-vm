@@ -12,8 +12,8 @@ use crate::table::AuxiliaryRow;
 use crate::table::MainRow;
 use crate::table::QuotientSegments;
 
-/// A `FriResponse` is an `AuthenticationStructure` together with the values of the
-/// revealed leaves of the Merkle tree. Together, they correspond to the
+/// A `FriResponse` is an `AuthenticationStructure` together with the values of
+/// the revealed leaves of the Merkle tree. Together, they correspond to the
 /// queried indices of the FRI codeword (of that round).
 #[derive(Debug, Clone, Eq, PartialEq, Hash, BFieldCodec, Arbitrary)]
 pub struct FriResponse {
@@ -46,14 +46,17 @@ macro_rules! proof_items {
         }
 
         impl ProofItem {
-            /// Whether a given proof item should be considered in the Fiat-Shamir heuristic.
-            /// The Fiat-Shamir heuristic is sound only if all elements in the (current) transcript
-            /// are considered. However, certain elements indirectly appear more than once. For
-            /// example, a Merkle root is a commitment to any number of elements. If the Merkle root
-            /// is part of the transcript, has been considered in the Fiat-Shamir heuristic, and
-            /// assuming collision resistance of the hash function in use, none of the committed-to
-            /// elements have to be considered in the Fiat-Shamir heuristic again.
-            /// This also extends to the authentication structure of these elements, et cetera.
+            /// Whether a given proof item should be considered in the Fiat-Shamir
+            /// heuristic.
+            ///
+            /// The Fiat-Shamir heuristic is sound only if all elements in the (current)
+            /// transcript are considered. However, certain elements indirectly appear more
+            /// than once. For example, a Merkle root is a commitment to any number of
+            /// elements. If the Merkle root is part of the transcript, has been considered
+            /// in the Fiat-Shamir heuristic, and assuming collision resistance of the hash
+            /// function in use, none of the committed-to elements have to be considered in
+            /// the Fiat-Shamir heuristic again. This also extends to the authentication
+            /// structure of these elements, et cetera.
             pub const fn include_in_fiat_shamir_heuristic(&self) -> bool {
                 match self {
                     $( Self::$variant(_) => $in_fiat_shamir_heuristic, )+
@@ -103,7 +106,7 @@ proof_items!(
     OutOfDomainAuxRow(Box<AuxiliaryRow>) => true, try_into_out_of_domain_aux_row,
     OutOfDomainQuotientSegments(QuotientSegments) => true, try_into_out_of_domain_quot_segments,
 
-    // the following are implied by some Merkle root, thus not included in the Fiat-Shamir heuristic
+    // implied by some Merkle root, thus not included in the Fiat-Shamir heuristic
     AuthenticationStructure(AuthenticationStructure) => false, try_into_authentication_structure,
     MasterMainTableRows(Vec<MainRow<BFieldElement>>) => false, try_into_master_main_table_rows,
     MasterAuxTableRows(Vec<AuxiliaryRow>) => false, try_into_master_aux_table_rows,

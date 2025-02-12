@@ -28,8 +28,9 @@ pub struct ProfileLine {
     pub label: String,
     pub call_depth: usize,
 
-    /// Table heights at the start of this span, _i.e._, right before the corresponding
-    /// [`call`](isa::instruction::Instruction::Call) instruction was executed.
+    /// Table heights at the start of this span, _i.e._, right before the
+    /// corresponding [`call`](isa::instruction::Instruction::Call)
+    /// instruction was executed.
     pub table_heights_start: VMTableHeights,
 
     table_heights_stop: VMTableHeights,
@@ -45,8 +46,8 @@ pub struct ExecutionTraceProfile {
     pub profile: Vec<ProfileLine>,
 }
 
-/// The heights of various [tables](crate::aet::AlgebraicExecutionTrace) relevant for
-/// proving the correct execution in [Triton VM](crate).
+/// The heights of various [tables](crate::aet::AlgebraicExecutionTrace)
+/// relevant for proving the correct execution in [Triton VM](crate).
 #[non_exhaustive]
 #[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Hash, Arbitrary)]
 pub struct VMTableHeights {

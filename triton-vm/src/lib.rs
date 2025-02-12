@@ -2,11 +2,11 @@
 //! correct execution of programs written in Triton assembly. The proof system
 //! is a [zk-STARK](Stark), which is a state-of-the-art ZKPS.
 //!
-//! Generally, all arithmetic performed by Triton VM happens in the prime field with
-//! 2^64 - 2^32 + 1 elements. Instructions for u32 operations are provided.
+//! Generally, all arithmetic performed by Triton VM happens in the prime field
+//! with 2^64 - 2^32 + 1 elements. Instructions for u32 operations are provided.
 //!
-//! For a full overview over all available instructions and their effects, see the
-//! [specification](https://triton-vm.org/spec/instructions.html).
+//! For a full overview over all available instructions and their effects, see
+//! the [specification](https://triton-vm.org/spec/instructions.html).
 //!
 //! [Triton VM's STARK](Stark) is parametric, but it is highly recommended to
 //! use the provided [default](Stark::default). Furthermore, certain runtime
@@ -36,12 +36,13 @@
 //!
 //! Compute the factorial of the given public input.
 //!
-//! The execution of the factorial program is already fully determined by the public input.
-//! Hence, in this case, there is no need for specifying non-determinism.
-//! Keep reading for an example that does use non-determinism.
+//! The execution of the factorial program is already fully determined by the
+//! public input. Hence, in this case, there is no need for specifying
+//! non-determinism. Keep reading for an example that does use non-determinism.
 //!
-//! The [`triton_program!`] macro is used to conveniently write Triton assembly. In below example,
-//! the state of the operational stack is shown as a comment after most instructions.
+//! The [`triton_program!`] macro is used to conveniently write Triton assembly.
+//! In below example, the state of the operational stack is shown as a comment
+//! after most instructions.
 //!
 //! ```
 //! # use triton_vm::prelude::*;
@@ -81,17 +82,20 @@
 //!
 //! ## Non-Determinism
 //!
-//! In the following example, a public field elements equality to the sum of some squared secret
-//! elements is proven. For demonstration purposes, some of the secret elements come from secret in,
-//! and some are read from RAM, which can be initialized arbitrarily.
+//! In the following example, a public field elements equality to the sum of
+//! some squared secret elements is proven. For demonstration purposes, some of
+//! the secret elements come from secret in, and some are read from RAM, which
+//! can be initialized arbitrarily.
 //!
-//! Note that the non-determinism is not required for proof verification, and does not appear in
-//! the claim or the proof. It is only used for proof generation. This way, the verifier can be
-//! convinced that the prover did indeed know some input that satisfies the claim, but learns
-//! nothing beyond that fact.
+//! Note that the non-determinism is not required for proof verification, and
+//! does not appear in the claim or the proof. It is only used for proof
+//! generation. This way, the verifier can be convinced that the prover did
+//! indeed know some input that satisfies the claim, but learns nothing beyond
+//! that fact.
 //!
-//! The third potential source of non-determinism is intended for verifying Merkle authentication
-//! paths. It is not used in this example. See [`NonDeterminism`] for more information.
+//! The third potential source of non-determinism is intended for verifying
+//! Merkle authentication paths. It is not used in this example. See
+//! [`NonDeterminism`] for more information.
 //!
 //! ```
 //! # use triton_vm::prelude::*;
@@ -136,11 +140,12 @@
 //!
 //! ## Crashing Triton VM
 //!
-//! Successful termination of a program is not guaranteed. For example, a program must execute
-//! `halt` as its last instruction. Certain instructions, such as `assert`, `invert`, or the u32
-//! instructions, can also cause the VM to crash. Upon crashing Triton VM, methods like
-//! [`run`](VM::run) and [`trace_execution`](VM::trace_execution) will return a
-//! [`VMError`]. This can be helpful for debugging.
+//! Successful termination of a program is not guaranteed. For example, a
+//! program must execute `halt` as its last instruction. Certain instructions,
+//! such as `assert`, `invert`, or the u32 instructions, can also cause the VM
+//! to crash. Upon crashing Triton VM, methods like [`run`](VM::run) and
+//! [`trace_execution`](VM::trace_execution) will return a [`VMError`]. This can
+//! be helpful for debugging.
 //!
 //! ```
 //! # use triton_vm::prelude::*;
@@ -189,40 +194,44 @@ pub mod vm;
 mod shared_tests;
 
 /// Prove correct execution of a program written in Triton assembly.
-/// This is a convenience function, abstracting away the details of the STARK construction.
-/// If you want to have more control over the STARK construction, this method can serve as a
-/// reference for how to use Triton VM.
+/// This is a convenience function, abstracting away the details of the STARK
+/// construction. If you want to have more control over the STARK construction,
+/// this method can serve as a reference for how to use Triton VM.
 ///
-/// Note that all arithmetic is in the prime field with 2^64 - 2^32 + 1 elements. If the
-/// provided public input or secret input contains elements larger than this, proof generation
-/// will be aborted.
+/// Note that all arithmetic is in the prime field with 2^64 - 2^32 + 1
+/// elements. If the provided public input or secret input contains elements
+/// larger than this, proof generation will be aborted.
 ///
-/// The program executed by Triton VM must terminate gracefully, i.e., with instruction `halt`.
-/// If the program crashes, _e.g._, due to an out-of-bounds instruction pointer or a failing
-/// `assert` instruction, proof generation will fail.
+/// The program executed by Triton VM must terminate gracefully, i.e., with
+/// instruction `halt`. If the program crashes, _e.g._, due to an out-of-bounds
+/// instruction pointer or a failing `assert` instruction, proof generation will
+/// fail.
 ///
-/// The default STARK parameters used by Triton VM give a (conjectured) security level of 160 bits.
+/// The default STARK parameters used by Triton VM give a (conjectured) security
+/// level of 160 bits.
 pub fn prove_program(
     program: Program,
     public_input: PublicInput,
     non_determinism: NonDeterminism,
 ) -> Result<(Stark, Claim, Proof), ProvingError> {
-    // Set up the claim that is to be proven. The claim contains all public information. The
-    // proof is zero-knowledge with respect to everything else.
+    // Set up the claim that is to be proven. The claim contains all public
+    // information. The proof is zero-knowledge with respect to everything else.
     //
-    // While it is more convenient to construct a `Claim::about_program(&program)`, this API is
-    // purposefully not used here to highlight that only a program's hash digest, not the full
-    // program, is part of the claim.
+    // While it is more convenient to construct a `Claim::about_program(&program)`,
+    // this API is purposefully not used here to highlight that only a program's
+    // hash digest, not the full program, is part of the claim.
     let claim = Claim::new(program.hash()).with_input(public_input.clone());
 
     // Generate
-    // - the witness required for proof generation, i.e., the Algebraic Execution Trace (AET), and
+    // - the witness required for proof generation, i.e., the Algebraic Execution
+    //   Trace (AET), and
     // - the (public) output of the program.
     //
     // Crashes in the VM can occur for many reasons. For example:
     // - due to failing `assert` instructions,
     // - due to an out-of-bounds instruction pointer,
-    // - if the program does not terminate gracefully, _i.e._, with instruction `halt`,
+    // - if the program does not terminate gracefully, _i.e._, with instruction
+    //   `halt`,
     // - if any of the two inputs does not conform to the program,
     // - because of a bug in the program, among other things.
     // If the VM crashes, proof generation will fail.
@@ -240,8 +249,9 @@ pub fn prove_program(
     Ok((stark, claim, proof))
 }
 
-/// A convenience function for proving a [`Claim`] and the program that claim corresponds to.
-/// Method [`prove_program`] gives a simpler interface with less control.
+/// A convenience function for proving a [`Claim`] and the program that claim
+/// corresponds to. Method [`prove_program`] gives a simpler interface with less
+/// control.
 pub fn prove(
     stark: Stark,
     claim: &Claim,
@@ -284,17 +294,17 @@ mod tests {
 
     use super::*;
 
-    /// The compiler automatically adds any applicable auto trait (all of which are
-    /// marker traits) to self-defined types. This implies that these trait bounds
-    /// might vanish if the necessary pre-conditions are no longer met. That'd be a
-    /// breaking API change!
+    /// The compiler automatically adds any applicable auto trait (all of which
+    /// are marker traits) to self-defined types. This implies that these
+    /// trait bounds might vanish if the necessary pre-conditions are no
+    /// longer met. That'd be a breaking API change!
     ///
-    /// To prevent _accidental_ removal of auto trait implementations, this method
-    /// tests for their presence. If you are re-designing any of the types below
-    /// and a test fails as a result, that might be fine. You are now definitely
-    /// aware of a consequence you might not have known about otherwise. (If you
-    /// were already aware you know how subtle this stuff can be and are hopefully
-    /// fine with reading this comment.)
+    /// To prevent _accidental_ removal of auto trait implementations, this
+    /// method tests for their presence. If you are re-designing any of the
+    /// types below and a test fails as a result, that might be fine. You
+    /// are now definitely aware of a consequence you might not have known
+    /// about otherwise. (If you were already aware you know how subtle this
+    /// stuff can be and are hopefully fine with reading this comment.)
     ///
     /// Inspired by “Rust for Rustaceans” by Jon Gjengset.
     fn implements_auto_traits<T: Sized + Send + Sync + Unpin>() {}

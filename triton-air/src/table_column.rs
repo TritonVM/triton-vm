@@ -38,8 +38,8 @@ pub enum ProgramMainColumn {
     /// How often an instruction has been executed.
     LookupMultiplicity,
 
-    /// The index in the vector of length [`Rate`] that is to be absorbed in the Sponge
-    /// in order to compute the program's digest.
+    /// The index in the vector of length [`Rate`] that is to be absorbed in the
+    /// Sponge in order to compute the program's digest.
     /// In other words:
     /// [`Address`] modulo [`Rate`].
     ///
@@ -57,7 +57,8 @@ pub enum ProgramMainColumn {
     /// Padding indicator for absorbing the program into the Sponge.
     IsHashInputPadding,
 
-    /// Padding indicator for rows only required due to the dominating length of some other table.
+    /// Padding indicator for rows only required due to the dominating length of
+    /// some other table.
     IsTablePadding,
 }
 
@@ -71,20 +72,22 @@ pub enum ProgramAuxColumn {
     /// [client]: ProcessorAuxColumn::InstructionLookupClientLogDerivative
     InstructionLookupServerLogDerivative,
 
-    /// An evaluation argument accumulating [`RATE`][rate] many instructions before
-    /// they are sent using [`SendChunkEvalArg`](ProgramAuxColumn::SendChunkRunningEvaluation).
+    /// An evaluation argument accumulating [`RATE`][rate] many instructions
+    /// before they are sent using
+    /// [`SendChunkEvalArg`](ProgramAuxColumn::SendChunkRunningEvaluation).
     /// Resets to zero after each chunk.
     /// Relevant for program attestation.
     ///
     /// [rate]: twenty_first::math::tip5::RATE
     PrepareChunkRunningEvaluation,
 
-    /// An evaluation argument over all [`RATE`][rate]-sized chunks of instructions,
-    /// which are prepared in [`PrepareChunkEvalArg`][prep].
+    /// An evaluation argument over all [`RATE`][rate]-sized chunks of
+    /// instructions, which are prepared in [`PrepareChunkEvalArg`][prep].
     /// This bus is used for sending those chunks to the Hash Table.
     /// Relevant for program attestation.
     ///
-    /// The counterpart to [`RcvChunkEvalArg`](HashAuxColumn::ReceiveChunkRunningEvaluation).
+    /// The counterpart to
+    /// [`RcvChunkEvalArg`](HashAuxColumn::ReceiveChunkRunningEvaluation).
     ///
     /// [rate]: twenty_first::math::tip5::RATE
     /// [prep]: ProgramAuxColumn::PrepareChunkRunningEvaluation
@@ -132,7 +135,8 @@ pub enum ProcessorMainColumn {
     HV3,
     HV4,
     HV5,
-    /// The number of clock jump differences of magnitude `CLK` in all memory-like tables.
+    /// The number of clock jump differences of magnitude `CLK` in all
+    /// memory-like tables.
     ClockJumpDifferenceLookupMultiplicity,
 }
 
@@ -150,15 +154,17 @@ pub enum ProcessorAuxColumn {
     HashInputEvalArg,
     /// For copying the hash digest from the hash coprocessor.
     HashDigestEvalArg,
-    /// For copying the RATE next to-be-absorbed to the hash coprocessor and the RATE squeezed
-    /// elements from the hash coprocessor, depending on the executed instruction.
+    /// For copying the RATE next to-be-absorbed to the hash coprocessor and the
+    /// RATE squeezed elements from the hash coprocessor, depending on the
+    /// executed instruction.
     SpongeEvalArg,
 
-    /// The (running sum of the) logarithmic derivative for the Lookup Argument with the U32 Table.
+    /// The (running sum of the) logarithmic derivative for the Lookup Argument
+    /// with the U32 Table.
     U32LookupClientLogDerivative,
 
-    /// The (running sum of the) logarithmic derivative for the clock jump difference Lookup
-    /// Argument with the memory-like tables.
+    /// The (running sum of the) logarithmic derivative for the clock jump
+    /// difference Lookup Argument with the memory-like tables.
     ClockJumpDifferenceLookupServerLogDerivative,
 }
 
@@ -175,8 +181,8 @@ pub enum OpStackMainColumn {
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, EnumCount, EnumIter)]
 pub enum OpStackAuxColumn {
     RunningProductPermArg,
-    /// The (running sum of the) logarithmic derivative for the clock jump difference Lookup
-    /// Argument with the Processor Table.
+    /// The (running sum of the) logarithmic derivative for the clock jump
+    /// difference Lookup Argument with the Processor Table.
     ClockJumpDifferenceLookupClientLogDerivative,
 }
 
@@ -185,8 +191,9 @@ pub enum OpStackAuxColumn {
 pub enum RamMainColumn {
     CLK,
 
-    /// Is [`INSTRUCTION_TYPE_READ`] for instruction `read_mem` and [`INSTRUCTION_TYPE_WRITE`]
-    /// for instruction `write_mem`. For padding rows, this is set to [`PADDING_INDICATOR`].
+    /// Is [`INSTRUCTION_TYPE_READ`] for instruction `read_mem` and
+    /// [`INSTRUCTION_TYPE_WRITE`] for instruction `write_mem`. For padding
+    /// rows, this is set to [`PADDING_INDICATOR`].
     ///
     /// [`INSTRUCTION_TYPE_READ`]: crate::table::ram::INSTRUCTION_TYPE_READ
     /// [`INSTRUCTION_TYPE_WRITE`]: crate::table::ram::INSTRUCTION_TYPE_WRITE
@@ -207,8 +214,8 @@ pub enum RamAuxColumn {
     BezoutCoefficient0,
     BezoutCoefficient1,
     RunningProductPermArg,
-    /// The (running sum of the) logarithmic derivative for the clock jump difference Lookup
-    /// Argument with the Processor Table.
+    /// The (running sum of the) logarithmic derivative for the clock jump
+    /// difference Lookup Argument with the Processor Table.
     ClockJumpDifferenceLookupClientLogDerivative,
 }
 
@@ -226,8 +233,8 @@ pub enum JumpStackMainColumn {
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, EnumCount, EnumIter)]
 pub enum JumpStackAuxColumn {
     RunningProductPermArg,
-    /// The (running sum of the) logarithmic derivative for the clock jump difference Lookup
-    /// Argument with the Processor Table.
+    /// The (running sum of the) logarithmic derivative for the clock jump
+    /// difference Lookup Argument with the Processor Table.
     ClockJumpDifferenceLookupClientLogDerivative,
 }
 
@@ -239,18 +246,22 @@ pub enum HashMainColumn {
     /// [mode]: crate::table::hash::HashTableMode
     Mode,
 
-    /// The current instruction. Only relevant for [`Mode`][mode] [`Sponge`][mode_sponge]
-    /// in order to distinguish between the different Sponge instructions.
+    /// The current instruction. Only relevant for [`Mode`][mode]
+    /// [`Sponge`][mode_sponge] in order to distinguish between the
+    /// different Sponge instructions.
     ///
     /// [mode]: HashMainColumn::Mode
     /// [mode_sponge]: crate::table::hash::HashTableMode::Sponge
     CI,
 
-    /// The number of the current round in the permutation. The round number evolves as
+    /// The number of the current round in the permutation. The round number
+    /// evolves as
     /// - 0 → 1 → 2 → 3 → 4 → 5 (→ 0) in [`Mode`][mode]s
-    ///   [`ProgramHashing`][mode_prog_hash], [`Sponge`][mode_sponge] and [`Hash`][mode_hash],
-    /// - 0 → 0 in [`Mode`][mode] [`Sponge`][mode_sponge] if the current instruction [`CI`][ci] is
-    ///   `sponge_init`, as an exception to above rule, and
+    ///   [`ProgramHashing`][mode_prog_hash], [`Sponge`][mode_sponge] and
+    ///   [`Hash`][mode_hash],
+    /// - 0 → 0 in [`Mode`][mode] [`Sponge`][mode_sponge] if the current
+    ///   instruction [`CI`][ci] is `sponge_init`, as an exception to above
+    ///   rule, and
     /// - 0 → 0 in [`Mode`][mode] [`Pad`][mode_pad].
     ///
     /// [ci]: HashMainColumn::CI
@@ -332,11 +343,12 @@ pub enum HashMainColumn {
 #[repr(usize)]
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, EnumCount, EnumIter)]
 pub enum HashAuxColumn {
-    /// The evaluation argument corresponding to receiving instructions in chunks of size
-    /// [`RATE`][rate]. The chunks are hashed in Sponge mode.
+    /// The evaluation argument corresponding to receiving instructions in
+    /// chunks of size [`RATE`][rate]. The chunks are hashed in Sponge mode.
     /// This allows program attestation.
     ///
-    /// The counterpart to [`SendChunkEvalArg`](ProgramAuxColumn::SendChunkRunningEvaluation).
+    /// The counterpart to
+    /// [`SendChunkEvalArg`](ProgramAuxColumn::SendChunkRunningEvaluation).
     ///
     /// [rate]: twenty_first::math::tip5::RATE
     ReceiveChunkRunningEvaluation,
@@ -385,27 +397,28 @@ pub enum CascadeMainColumn {
     /// The less significant bits of the lookup output.
     LookOutLo,
 
-    /// The number of times the S-Box is evaluated, _i.e._, the value is looked up.
+    /// The number of times the S-Box is evaluated, _i.e._, the value is looked
+    /// up.
     LookupMultiplicity,
 }
 
 #[repr(usize)]
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, EnumCount, EnumIter)]
 pub enum CascadeAuxColumn {
-    /// The (running sum of the) logarithmic derivative for the Lookup Argument with the Hash Table.
-    /// In every row, the sum accumulates `LookupMultiplicity / (X - Combo)` where `X` is a
-    /// verifier-supplied challenge and `Combo` is the weighted sum of
+    /// The (running sum of the) logarithmic derivative for the Lookup Argument
+    /// with the Hash Table. In every row, the sum accumulates
+    /// `LookupMultiplicity / (X - Combo)` where `X` is a verifier-supplied
+    /// challenge and `Combo` is the weighted sum of
     /// - `2^8·LookInHi + LookInLo`, and
-    /// - `2^8·LookOutHi + LookOutLo`
-    ///   with weights supplied by the verifier.
+    /// - `2^8·LookOutHi + LookOutLo` with weights supplied by the verifier.
     HashTableServerLogDerivative,
 
-    /// The (running sum of the) logarithmic derivative for the Lookup Argument with the Lookup
-    /// Table. In every row, accumulates the two summands
-    /// - `1 / combo_hi` where `combo_hi` is the verifier-weighted combination of `LookInHi` and
-    ///   `LookOutHi`, and
-    /// - `1 / combo_lo` where `combo_lo` is the verifier-weighted combination of `LookInLo` and
-    ///   `LookOutLo`.
+    /// The (running sum of the) logarithmic derivative for the Lookup Argument
+    /// with the Lookup Table. In every row, accumulates the two summands
+    /// - `1 / combo_hi` where `combo_hi` is the verifier-weighted combination
+    ///   of `LookInHi` and `LookOutHi`, and
+    /// - `1 / combo_lo` where `combo_lo` is the verifier-weighted combination
+    ///   of `LookInLo` and `LookOutLo`.
     LookupTableClientLogDerivative,
 }
 
@@ -428,9 +441,10 @@ pub enum LookupMainColumn {
 #[repr(usize)]
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, EnumCount, EnumIter)]
 pub enum LookupAuxColumn {
-    /// The (running sum of the) logarithmic derivative for the Lookup Argument with the Cascade
-    /// Table. In every row, accumulates the summand `LookupMultiplicity / Combo` where `Combo` is
-    /// the verifier-weighted combination of `LookIn` and `LookOut`.
+    /// The (running sum of the) logarithmic derivative for the Lookup Argument
+    /// with the Cascade Table. In every row, accumulates the summand
+    /// `LookupMultiplicity / Combo` where `Combo` is the verifier-weighted
+    /// combination of `LookIn` and `LookOut`.
     CascadeTableServerLogDerivative,
 
     /// The running sum for the public evaluation argument of the Lookup Table.
@@ -448,48 +462,54 @@ pub enum U32MainColumn {
     Bits,
 
     /// The inverse-or-zero of the difference between
-    /// 1. the first disallowed number of bits to shift LHS and RHS by, _i.e.,_ 33, and
+    /// 1. the first disallowed number of bits to shift LHS and RHS by, _i.e.,_
+    ///    33, and
     /// 2. the number of bits that LHS and RHS have already been shifted by.
     BitsMinus33Inv,
 
-    /// Current Instruction, the instruction the processor is currently executing.
+    /// Current Instruction, the instruction the processor is currently
+    /// executing.
     CI,
 
     /// Left-hand side of the operation.
     LHS,
 
-    /// The inverse-or-zero of LHS. Needed to check whether `LHS` is unequal to 0.
+    /// The inverse-or-zero of LHS. Needed to check whether `LHS` is unequal to
+    /// 0.
     LhsInv,
 
     /// Right-hand side of the operation.
     RHS,
 
-    /// The inverse-or-zero of RHS. Needed to check whether `RHS` is unequal to 0.
+    /// The inverse-or-zero of RHS. Needed to check whether `RHS` is unequal to
+    /// 0.
     RhsInv,
 
-    /// The result (or intermediate result) of the instruction requested by the processor.
+    /// The result (or intermediate result) of the instruction requested by the
+    /// processor.
     Result,
 
-    /// The number of times the processor has executed the current instruction with the same
-    /// arguments.
+    /// The number of times the processor has executed the current instruction
+    /// with the same arguments.
     LookupMultiplicity,
 }
 
 #[repr(usize)]
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, EnumCount, EnumIter)]
 pub enum U32AuxColumn {
-    /// The (running sum of the) logarithmic derivative for the Lookup Argument with the
-    /// Processor Table.
+    /// The (running sum of the) logarithmic derivative for the Lookup Argument
+    /// with the Processor Table.
     LookupServerLogDerivative,
 }
 
-/// A trait for the columns of the master main table. This trait is implemented for all enums
-/// relating to the main tables. This trait provides two methods:
-/// - one to get the index of the column in the “local” main table, _i.e., not the master base
-///   table, and
+/// A trait for the columns of the master main table. This trait is implemented
+/// for all enums relating to the main tables. This trait provides two methods:
+/// - one to get the index of the column in the “local” main table, _i.e., not
+///   the master base table, and
 /// - one to get the index of the column in the master main table.
 pub trait MasterMainColumn {
-    /// The index of the column in the “local” main table, _i.e., not the master base table.
+    /// The index of the column in the “local” main table, _i.e., not the master
+    /// base table.
     fn main_index(&self) -> usize;
 
     /// The index of the column in the master main table.
@@ -604,14 +624,15 @@ impl MasterMainColumn for U32MainColumn {
     }
 }
 
-/// A trait for the columns in the master auxiliary table. This trait is implemented for all enums
-/// relating to the auxiliary tables. The trait provides two methods:
-/// - one to get the index of the column in the “local” auxiliary table, _i.e._, not the master
-///   auxiliary table, and
+/// A trait for the columns in the master auxiliary table. This trait is
+/// implemented for all enums relating to the auxiliary tables. The trait
+/// provides two methods:
+/// - one to get the index of the column in the “local” auxiliary table, _i.e._,
+///   not the master auxiliary table, and
 /// - one to get the index of the column in the master auxiliary table.
 pub trait MasterAuxColumn {
-    /// The index of the column in the “local” auxiliary table, _i.e._, not the master extension
-    /// table.
+    /// The index of the column in the “local” auxiliary table, _i.e._, not the
+    /// master extension table.
     fn aux_index(&self) -> usize;
 
     /// The index of the column in the master auxiliary table.

@@ -57,7 +57,8 @@ impl AIR for LookupTable {
         let lookup_input_is_0 = lookup_input;
 
         // Lookup Argument with Cascade Table
-        // note: `lookup_input` is known to be 0 and thus doesn't appear in the compressed row
+        // note: `lookup_input` is known to be 0 and thus doesn't appear in the
+        // compressed row
         let lookup_argument_default_initial =
             circuit_builder.x_constant(LookupArg::default_initial());
         let cascade_table_indeterminate = challenge(CascadeLookupIndeterminate);
@@ -122,12 +123,13 @@ impl AIR for LookupTable {
             next_aux_row(CascadeTableServerLogDerivative);
         let public_evaluation_argument_next = next_aux_row(PublicEvaluationArgument);
 
-        // Padding section is contiguous: if the current row is a padding row, then the next row
-        // is also a padding row.
+        // Padding section is contiguous: if the current row is a padding row, then the
+        // next row is also a padding row.
         let if_current_row_is_padding_row_then_next_row_is_padding_row =
             is_padding * (one() - is_padding_next.clone());
 
-        // Lookup Table's input increments by 1 if and only if the next row is not a padding row
+        // Lookup Table's input increments by 1 if and only if the next row is not a
+        // padding row
         let if_next_row_is_padding_row_then_lookup_input_next_is_0 =
             is_padding_next.clone() * lookup_input_next.clone();
         let if_next_row_is_not_padding_row_then_lookup_input_next_increments_by_1 =

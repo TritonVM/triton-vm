@@ -30,7 +30,8 @@ pub struct Substitutions {
 
 impl AllSubstitutions {
     /// Generate code that evaluates all substitution rules in order.
-    /// This includes generating the columns that are to be filled using the substitution rules.
+    /// This includes generating the columns that are to be filled using the
+    /// substitution rules.
     pub fn generate_degree_lowering_table_code(&self) -> TokenStream {
         let num_new_main_cols = self.main.len();
         let num_new_aux_cols = self.aux.len();
@@ -213,8 +214,8 @@ impl Substitutions {
             .collect()
     }
 
-    /// Given a substitution rule, i.e., a `ConstraintCircuit` of the form `x - expr`, generate code
-    /// that evaluates `expr`.
+    /// Given a substitution rule, i.e., a `ConstraintCircuit` of the form `x -
+    /// expr`, generate code that evaluates `expr`.
     fn substitution_rule_to_code<II: InputIndicator>(
         circuit: ConstraintCircuit<II>,
     ) -> TokenStream {

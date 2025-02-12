@@ -189,13 +189,15 @@ impl RustBackend {
         )
     }
 
-    /// Return a tuple of [`TokenStream`]s corresponding to code evaluating these constraints as
-    /// well as their degrees. In particular:
-    /// 1. The first stream contains code that, when evaluated, produces the constraints' degrees,
-    /// 1. the second stream contains code that, when evaluated, produces the constraints' values,
-    ///    with the input type for the main row being `BFieldElement`, and
-    /// 1. the third stream is like the second, except that the input type for the main row is
-    ///    `XFieldElement`.
+    /// Return a tuple of [`TokenStream`]s corresponding to code evaluating
+    /// these constraints as well as their degrees. In particular:
+    /// 1. The first stream contains code that, when evaluated, produces the
+    ///    constraints' degrees,
+    /// 1. the second stream contains code that, when evaluated, produces the
+    ///    constraints' values, with the input type for the main row being
+    ///    `BFieldElement`, and
+    /// 1. the third stream is like the second, except that the input type for
+    ///    the main row is `XFieldElement`.
     fn tokenize_circuits<II: InputIndicator>(
         constraints: &[ConstraintCircuit<II>],
     ) -> (TokenStream, TokenStream, TokenStream) {
@@ -209,9 +211,9 @@ impl RustBackend {
             .iter()
             .partition(|constraint| constraint.evaluates_to_base_element());
 
-        // The order of the constraints' degrees must match the order of the constraints.
-        // Hence, listing the degrees is only possible after the partition into main and auxiliary
-        // constraints is known.
+        // The order of the constraints' degrees must match the order of the
+        // constraints. Hence, listing the degrees is only possible after the
+        // partition into main and auxiliary constraints is known.
         let tokenized_degree_bounds = main_constraints
             .iter()
             .chain(&aux_constraints)
@@ -267,7 +269,8 @@ impl RustBackend {
 
     /// Declare all shared variables, i.e., those with a ref count greater than 1.
     /// These declarations must be made starting from the highest ref count.
-    /// Otherwise, the resulting code will refer to bindings that have not yet been made.
+    /// Otherwise, the resulting code will refer to bindings that have not yet been
+    /// made.
     fn declare_shared_nodes<II: InputIndicator>(
         &mut self,
         constraints: &[ConstraintCircuit<II>],
@@ -376,8 +379,8 @@ const OUT_ARRAY_OFFSET: usize = {
     out_array_offset_in_words / EXTENSION_DEGREE
 };
 
-/// Convenience macro to get raw opcodes of any [`Instruction`] variant, including its argument if
-/// applicable.
+/// Convenience macro to get raw opcodes of any [`Instruction`] variant,
+/// including its argument if applicable.
 ///
 /// [labelled]: triton_vm::instruction::LabelledInstruction::Instruction
 macro_rules! instr {
@@ -391,7 +394,8 @@ macro_rules! instr {
     }};
 }
 
-/// Convenience macro to get raw opcode of a [`Push`][push] instruction including its argument.
+/// Convenience macro to get raw opcode of a [`Push`][push] instruction
+/// including its argument.
 ///
 /// [push]: Instruction::Push
 macro_rules! push {
@@ -414,8 +418,9 @@ macro_rules! push {
 }
 
 impl Codegen for TasmBackend {
-    /// Emits a function that emits [Triton assembly][tasm] that evaluates Triton VM's AIR
-    /// constraints over the [extension field][XFieldElement].
+    /// Emits a function that emits [Triton assembly][tasm] that evaluates
+    /// Triton VM's AIR constraints over the [extension
+    /// field][XFieldElement].
     ///
     /// [tasm]: isa::triton_asm
     fn constraint_evaluation_code(constraints: &Constraints) -> TokenStream {

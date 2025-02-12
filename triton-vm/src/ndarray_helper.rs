@@ -50,7 +50,8 @@ pub fn partial_sums(summands: &[usize]) -> Vec<usize> {
 
 /// Given a list of neighboring columns, represented as their sorted indices,
 /// return a list of indices whose consecutive pairs (overlapping) denote the
-/// start and end point of every column. In practice, this means "append last+1".
+/// start and end point of every column. In practice, this means "append
+/// last+1".
 pub fn contiguous_column_slices(column_indices: &[usize]) -> Vec<usize> {
     [
         column_indices.to_vec(),

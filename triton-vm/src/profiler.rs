@@ -78,7 +78,8 @@ thread_local! {
 /// Start profiling. If the profiler is already running, this function cancels
 /// the current profiling session and starts a new one.
 ///
-/// See the module-level documentation for information on how to enable profiling.
+/// See the module-level documentation for information on how to enable
+/// profiling.
 pub fn start(profile_name: impl Into<String>) {
     if cfg!(any(debug_assertions, not(feature = "no_profile"))) {
         PROFILER.replace(Some(VMPerformanceProfiler::new(profile_name)));
@@ -113,8 +114,9 @@ struct Task {
     /// The accumulated time spent in this task, across all invocations.
     total_duration: Duration,
 
-    /// The type of work the task is doing. Helps to track time across specific tasks. For
-    /// example, if the task is building a Merkle tree, then the category could be "hash".
+    /// The type of work the task is doing. Helps to track time across specific
+    /// tasks. For example, if the task is building a Merkle tree, then the
+    /// category could be "hash".
     category: Option<String>,
 }
 
@@ -180,8 +182,9 @@ pub(crate) struct VMPerformanceProfiler {
     /// An index into the `profile`. Keeps track of currently running tasks.
     active_tasks: Vec<usize>,
 
-    /// Tracks all tasks ever started, in the order they were started. Mapping from
-    /// [`InvocationPath`] to [`Task`] allows accumulating time spent in loops.
+    /// Tracks all tasks ever started, in the order they were started. Mapping
+    /// from [`InvocationPath`] to [`Task`] allows accumulating time spent
+    /// in loops.
     profile: IndexMap<InvocationPath, Task>,
 }
 
@@ -359,7 +362,8 @@ enum Weight {
 }
 
 impl Weight {
-    /// Assign a weight based on a relative cost, which is a number between 0 and 1.
+    /// Assign a weight based on a relative cost, which is a number between 0
+    /// and 1.
     fn weigh(relative_cost: f64) -> Weight {
         match relative_cost {
             rc if rc >= 0.4 => Weight::SuperMassive,

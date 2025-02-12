@@ -1,22 +1,26 @@
-//! Challenges are needed for the [cross-table arguments](CrossTableArg), _i.e._,
-//! [Permutation Arguments](air::cross_table_argument::PermArg),
+//! Challenges are needed for the [cross-table arguments](CrossTableArg),
+//! _i.e._, [Permutation Arguments](air::cross_table_argument::PermArg),
 //! [Evaluation Arguments](EvalArg), and
 //! [Lookup Arguments](air::cross_table_argument::LookupArg),
 //! as well as for the RAM Table's Contiguity Argument.
 //!
 //! There are three types of challenges:
-//! - **Weights**. Weights are used to linearly combine multiple elements into one element. The
-//!   resulting single element can then be used in a cross-table argument.
-//! - **Indeterminates**. All cross-table arguments work by checking the equality of polynomials (or
-//!   rational functions). Through the Schwartz-Zippel lemma, this equality check can be performed
-//!   by evaluating the polynomials (or rational functions) in a single point. The challenges that
-//!   are indeterminates are exactly this evaluation point. The polynomials (or rational functions)
-//!   are never stored explicitly. Instead, they are directly evaluated at the point indicated by a
-//!   challenge of “type” `Indeterminate`, giving rise to “running products”, “running
-//!   evaluations”, _et cetera_.
-//! - **Terminals**. The public input (respectively output) of the program is not stored in any
-//!   table. Instead, the terminal of the Evaluation Argument is computed directly from the
-//!   public input (respectively output) and the indeterminate.
+//! - **Weights**. Weights are used to linearly combine multiple elements into
+//!   one element. The resulting single element can then be used in a
+//!   cross-table argument.
+//! - **Indeterminates**. All cross-table arguments work by checking the
+//!   equality of polynomials (or rational functions). Through the
+//!   Schwartz-Zippel lemma, this equality check can be performed by evaluating
+//!   the polynomials (or rational functions) in a single point. The challenges
+//!   that are indeterminates are exactly this evaluation point. The polynomials
+//!   (or rational functions) are never stored explicitly. Instead, they are
+//!   directly evaluated at the point indicated by a challenge of “type”
+//!   `Indeterminate`, giving rise to “running products”, “running evaluations”,
+//!   _et cetera_.
+//! - **Terminals**. The public input (respectively output) of the program is
+//!   not stored in any table. Instead, the terminal of the Evaluation Argument
+//!   is computed directly from the public input (respectively output) and the
+//!   indeterminate.
 
 use arbitrary::Arbitrary;
 use std::ops::Index;
@@ -45,23 +49,33 @@ impl Challenges {
     /// The total number of challenges used in Triton VM.
     pub const COUNT: usize = ChallengeId::COUNT;
 
-    /// The number of weights to sample using the Fiat-Shamir heuristic. This number is lower
-    /// than the number of challenges because several challenges are not sampled, but computed
-    /// from publicly known values and other, sampled challenges.
+    /// The number of weights to sample using the Fiat-Shamir heuristic. This
+    /// number is lower than the number of challenges because several
+    /// challenges are not sampled, but computed from publicly known values
+    /// and other, sampled challenges.
     ///
     /// Concretely:
-    /// - The [`StandardInputTerminal`][ChallengeId::StandardInputTerminal] is computed
-    ///   from Triton VM's public input and the sampled indeterminate
-    ///   [`StandardInputIndeterminate`][ChallengeId::StandardInputIndeterminate].
-    /// - The [`StandardOutputTerminal`][ChallengeId::StandardOutputTerminal] is computed
-    ///   from Triton VM's public output and the sampled indeterminate
-    ///   [`StandardOutputIndeterminate`][ChallengeId::StandardOutputIndeterminate].
-    /// - The [`LookupTablePublicTerminal`][ChallengeId::LookupTablePublicTerminal] is
-    ///   computed from the publicly known and constant lookup table and the sampled indeterminate
-    ///   [`LookupTablePublicIndeterminate`][ChallengeId::LookupTablePublicIndeterminate].
-    /// - The [`CompressedProgramDigest`][ChallengeId::CompressedProgramDigest] is computed
-    ///   from the program to be executed and the sampled indeterminate
-    ///   [`CompressProgramDigestIndeterminate`][ChallengeId::CompressProgramDigestIndeterminate].
+    /// - The [`StandardInputTerminal`][std_in_term] is computed from Triton
+    ///   VM's public input and the sampled indeterminate
+    ///   [`StandardInputIndeterminate`][std_in_ind].
+    /// - The [`StandardOutputTerminal`][std_out_term] is computed from Triton
+    ///   VM's public output and the sampled indeterminate
+    ///   [`StandardOutputIndeterminate`][std_out_ind].
+    /// - The [`LookupTablePublicTerminal`][lk_up_term] is computed from the
+    ///   publicly known and constant lookup table and the sampled indeterminate
+    ///   [`LookupTablePublicIndeterminate`][lk_up_ind].
+    /// - The [`CompressedProgramDigest`][program_digest] is computed from the
+    ///   program to be executed and the sampled indeterminate
+    ///   [`CompressProgramDigestIndeterminate`][program_digest_ind].
+    ///
+    /// [std_in_term]: ChallengeId::StandardInputTerminal
+    /// [std_in_ind]: ChallengeId::StandardInputIndeterminate
+    /// [std_out_term]: ChallengeId::StandardOutputTerminal
+    /// [std_out_ind]: ChallengeId::StandardOutputIndeterminate
+    /// [lk_up_term]: ChallengeId::LookupTablePublicTerminal
+    /// [lk_up_ind]: ChallengeId::LookupTablePublicIndeterminate
+    /// [program_digest]: ChallengeId::CompressedProgramDigest
+    /// [program_digest_ind]: ChallengeId::CompressProgramDigestIndeterminate
     pub const SAMPLE_COUNT: usize = Self::COUNT - ChallengeId::NUM_DERIVED_CHALLENGES;
 
     pub fn new(mut challenges: Vec<XFieldElement>, claim: &Claim) -> Self {
@@ -167,8 +181,9 @@ mod tests {
     }
 
     impl Challenges {
-        /// Stand-in challenges for use in tests. For non-interactive STARKs, use the
-        /// Fiat-Shamir heuristic to derive the actual challenges.
+        /// Stand-in challenges for use in tests. For non-interactive STARKs,
+        /// use the Fiat-Shamir heuristic to derive the actual
+        /// challenges.
         pub fn placeholder(claim: &Claim) -> Self {
             let stand_in_challenges = (1..=Self::SAMPLE_COUNT)
                 .map(|i| xfe!([42, i as u64, 24]))

@@ -48,7 +48,8 @@ pub struct DegreeLoweringInfo {
     /// The total number of main columns _before_ degree lowering has happened.
     pub num_main_cols: usize,
 
-    /// The total number of auxiliary columns _before_ degree lowering has happened.
+    /// The total number of auxiliary columns _before_ degree lowering has
+    /// happened.
     pub num_aux_cols: usize,
 }
 
@@ -88,20 +89,21 @@ impl BinOp {
     }
 }
 
-/// Describes the position of a variable in a constraint polynomial in the row layout applicable
-/// for a certain kind of constraint polynomial.
+/// Describes the position of a variable in a constraint polynomial in the row
+/// layout applicable for a certain kind of constraint polynomial.
 ///
-/// The position of variable in a constraint polynomial is, in principle, a `usize`. However,
-/// depending on the type of the constraint polynomial, this index may be an index into a single
-/// row (for initial, consistency and terminal constraints), or a pair of adjacent rows (for
-/// transition constraints). Additionally, the index may refer to a column in the main table, or
-/// a column in the auxiliary table. This trait abstracts over these possibilities, and provides
-/// a uniform interface for accessing the index.
+/// The position of variable in a constraint polynomial is, in principle, a
+/// `usize`. However, depending on the type of the constraint polynomial, this
+/// index may be an index into a single row (for initial, consistency and
+/// terminal constraints), or a pair of adjacent rows (for transition
+/// constraints). Additionally, the index may refer to a column in the main
+/// table, or a column in the auxiliary table. This trait abstracts over these
+/// possibilities, and provides a uniform interface for accessing the index.
 ///
 /// Having `Copy + Hash + Eq` helps to put `InputIndicator`s into containers.
 ///
-/// This is a _sealed_ trait. It is not intended (or possible) to implement this trait outside the
-/// crate defining it.
+/// This is a _sealed_ trait. It is not intended (or possible) to implement this
+/// trait outside the crate defining it.
 pub trait InputIndicator: Debug + Display + Copy + Hash + Eq + ToTokens + private::Seal {
     /// `true` iff `self` refers to a column in the main table.
     fn is_main_table_column(&self) -> bool;
@@ -122,8 +124,8 @@ pub trait InputIndicator: Debug + Display + Copy + Hash + Eq + ToTokens + privat
     ) -> XFieldElement;
 }
 
-/// The position of a variable in a constraint polynomial that operates on a single row of the
-/// execution trace.
+/// The position of a variable in a constraint polynomial that operates on a
+/// single row of the execution trace.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Arbitrary)]
 pub enum SingleRowIndicator {
     Main(usize),
@@ -187,8 +189,8 @@ impl InputIndicator for SingleRowIndicator {
     }
 }
 
-/// The position of a variable in a constraint polynomial that operates on two rows (current and
-/// next) of the execution trace.
+/// The position of a variable in a constraint polynomial that operates on two
+/// rows (current and next) of the execution trace.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Arbitrary)]
 pub enum DualRowIndicator {
     CurrentMain(usize),
@@ -240,8 +242,8 @@ impl InputIndicator for DualRowIndicator {
 
     fn main_table_input(index: usize) -> Self {
         // It seems that the choice between `CurrentMain` and `NextMain` is arbitrary:
-        // any transition constraint polynomial is evaluated on both the current and the next row.
-        // Hence, both rows are in scope.
+        // any transition constraint polynomial is evaluated on both the current and the
+        // next row. Hence, both rows are in scope.
         Self::CurrentMain(index)
     }
 
@@ -263,10 +265,11 @@ impl InputIndicator for DualRowIndicator {
     }
 }
 
-/// A circuit expression is the recursive data structure that represents the constraint
-/// circuit. It is a directed, acyclic graph of binary operations on a) the variables
-/// corresponding to columns in the AET, b) constants, and c) challenges. It has
-/// multiple roots, making it a “multitree.” Each root corresponds to one constraint.
+/// A circuit expression is the recursive data structure that represents the
+/// constraint circuit. It is a directed, acyclic graph of binary operations on
+/// a) the variables corresponding to columns in the AET, b) constants, and c)
+/// challenges. It has multiple roots, making it a “multitree.” Each root
+/// corresponds to one constraint.
 ///
 /// The leafs of the tree are
 /// - constants in the base field, _i.e._, [`BFieldElement`]s,
@@ -278,9 +281,9 @@ impl InputIndicator for DualRowIndicator {
 ///
 /// An internal node, representing some binary operation, is either addition or
 /// multiplication. The left and right children of the node are the operands of
-/// the binary operation. The left and right children are not themselves `CircuitExpression`s,
-/// but rather [`ConstraintCircuit`]s, which is a wrapper around `CircuitExpression`
-/// that manages additional bookkeeping information.
+/// the binary operation. The left and right children are not themselves
+/// `CircuitExpression`s, but rather [`ConstraintCircuit`]s, which is a wrapper
+/// around `CircuitExpression` that manages additional bookkeeping information.
 #[derive(Debug, Clone)]
 pub enum CircuitExpression<II: InputIndicator> {
     BConst(BFieldElement),
@@ -353,8 +356,8 @@ impl<II: InputIndicator> Hash for ConstraintCircuitMonad<II> {
 /// A wrapper around a [`CircuitExpression`] that manages additional bookkeeping
 /// information, such as node id and visited counter.
 ///
-/// In contrast to [`ConstraintCircuitMonad`], this struct cannot manage the state
-/// required to insert new nodes.
+/// In contrast to [`ConstraintCircuitMonad`], this struct cannot manage the
+/// state required to insert new nodes.
 #[derive(Debug, Clone)]
 pub struct ConstraintCircuit<II: InputIndicator> {
     pub id: usize,
@@ -365,9 +368,10 @@ pub struct ConstraintCircuit<II: InputIndicator> {
 impl<II: InputIndicator> Eq for ConstraintCircuit<II> {}
 
 impl<II: InputIndicator> PartialEq for ConstraintCircuit<II> {
-    /// Calculate equality of circuits. In particular, this function does *not* attempt to
-    /// simplify or reduce neutral terms or products. So this comparison will return false for
-    /// `a == a + 0`. It will also return false for `XFieldElement(7) == BFieldElement(7)`
+    /// Calculate equality of circuits. In particular, this function does *not*
+    /// attempt to simplify or reduce neutral terms or products. So this
+    /// comparison will return false for `a == a + 0`. It will also return
+    /// false for `XFieldElement(7) == BFieldElement(7)`
     fn eq(&self, other: &Self) -> bool {
         self.expression == other.expression
     }
@@ -431,7 +435,8 @@ impl<II: InputIndicator> ConstraintCircuit<II> {
     }
 
     /// Assert that a multicircuit has unique IDs.
-    /// Also determines how often each node is referenced, updating the respective `ref_count`s.
+    /// Also determines how often each node is referenced, updating the
+    /// respective `ref_count`s.
     ///
     /// # Panics
     ///
@@ -488,7 +493,8 @@ impl<II: InputIndicator> ConstraintCircuit<II> {
     }
 
     /// Is the node the constant 0?
-    /// Does not catch composite expressions that will always evaluate to zero, like `0·a`.
+    /// Does not catch composite expressions that will always evaluate to zero,
+    /// like `0·a`.
     pub fn is_zero(&self) -> bool {
         match self.expression {
             CircuitExpression::BConst(bfe) => bfe.is_zero(),
@@ -498,7 +504,8 @@ impl<II: InputIndicator> ConstraintCircuit<II> {
     }
 
     /// Is the node the constant 1?
-    /// Does not catch composite expressions that will always evaluate to one, like `1·1`.
+    /// Does not catch composite expressions that will always evaluate to one,
+    /// like `1·1`.
     pub fn is_one(&self) -> bool {
         match self.expression {
             CircuitExpression::BConst(bfe) => bfe.is_one(),
@@ -515,7 +522,8 @@ impl<II: InputIndicator> ConstraintCircuit<II> {
         }
     }
 
-    /// Recursively check whether this node is composed of only BFieldElements, i.e., only uses
+    /// Recursively check whether this node is composed of only BFieldElements,
+    /// i.e., only uses
     /// 1. inputs from main rows,
     /// 2. constants from the B-field, and
     /// 3. binary operations on BFieldElements.
@@ -551,15 +559,16 @@ impl<II: InputIndicator> ConstraintCircuit<II> {
     }
 }
 
-/// [`ConstraintCircuit`] with extra context pertaining to the whole multicircuit.
+/// [`ConstraintCircuit`] with extra context pertaining to the whole
+/// multicircuit.
 ///
-/// This context is needed to ensure that two equal nodes (meaning: same expression)
-/// are not added to the multicircuit. It also enables a rudimentary check for node
-/// equivalence (commutation + constant folding), in which case the existing expression
-/// is used instead.
+/// This context is needed to ensure that two equal nodes (meaning: same
+/// expression) are not added to the multicircuit. It also enables a rudimentary
+/// check for node equivalence (commutation + constant folding), in which case
+/// the existing expression is used instead.
 ///
-/// One can create new instances of [`ConstraintCircuitMonad`] by applying arithmetic
-/// operations to existing instances, *e.g.*, `let c = a * b;`.
+/// One can create new instances of [`ConstraintCircuitMonad`] by applying
+/// arithmetic operations to existing instances, *e.g.*, `let c = a * b;`.
 #[derive(Clone)]
 pub struct ConstraintCircuitMonad<II: InputIndicator> {
     pub circuit: Rc<RefCell<ConstraintCircuit<II>>>,
@@ -567,8 +576,8 @@ pub struct ConstraintCircuitMonad<II: InputIndicator> {
 }
 
 impl<II: InputIndicator> Debug for ConstraintCircuitMonad<II> {
-    // `all_nodes` contains itself, leading to infinite recursion during `Debug` printing.
-    // Hence, this manual implementation.
+    // `all_nodes` contains itself, leading to infinite recursion during `Debug`
+    // printing. Hence, this manual implementation.
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         f.debug_struct("ConstraintCircuitMonad")
             .field("id", &self.circuit)
@@ -698,8 +707,8 @@ impl<II: InputIndicator> Neg for ConstraintCircuitMonad<II> {
     }
 }
 
-/// This will panic if the iterator is empty because the neutral element needs a unique ID, and
-/// we have no way of getting that here.
+/// This will panic if the iterator is empty because the neutral element needs a
+/// unique ID, and we have no way of getting that here.
 impl<II: InputIndicator> Sum for ConstraintCircuitMonad<II> {
     fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
         iter.reduce(|accum, item| accum + item)
@@ -732,25 +741,26 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
     /// The appropriate substitutions are applied to the given multicircuit.
     /// The target degree must be greater than 1.
     ///
-    /// The new constraints are returned as two vector of ConstraintCircuitMonads:
-    /// the first corresponds to main columns and constraints,
-    /// the second to auxiliary columns and constraints. The modifications are
-    /// applied to the function argument in-place.
+    /// The new constraints are returned as two vector of
+    /// ConstraintCircuitMonads: the first corresponds to main columns and
+    /// constraints, the second to auxiliary columns and constraints. The
+    /// modifications are applied to the function argument in-place.
     ///
     /// Each returned constraint is guaranteed to correspond to some
     /// `CircuitExpression::BinaryOperation(BinOp::Sub, lhs, rhs)` where
     /// - `lhs` is the new variable, and
-    /// - `rhs` is the (sub)circuit replaced by `lhs`.
-    ///   These can then be used to construct new columns,
-    ///   as well as derivation rules for filling those new columns.
+    /// - `rhs` is the (sub)circuit replaced by `lhs`. These can then be used to
+    ///   construct new columns, as well as derivation rules for filling those
+    ///   new columns.
     ///
     /// For example, starting with the constraint set {x^4}, we insert
     /// {y - x^2} and modify in-place (x^4) --> (y^2).
     ///
-    /// The highest index of main and auxiliary columns used by the multicircuit have to be
-    /// provided. The uniqueness of the new columns' indices depends on these provided values.
-    /// Note that these indices are generally not equal to the number of used columns, especially
-    /// when a tables' constraints are built using the master table's column indices.
+    /// The highest index of main and auxiliary columns used by the multicircuit
+    /// have to be provided. The uniqueness of the new columns' indices
+    /// depends on these provided values. Note that these indices are
+    /// generally not equal to the number of used columns, especially when a
+    /// tables' constraints are built using the master table's column indices.
     pub fn lower_to_degree(
         multicircuit: &mut [Self],
         info: DegreeLoweringInfo,
@@ -830,8 +840,9 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
         new_variable - chosen_node
     }
 
-    /// Heuristically pick a node from the given multicircuit that is to be substituted with a new
-    /// variable. The ID of the chosen node is returned.
+    /// Heuristically pick a node from the given multicircuit that is to be
+    /// substituted with a new variable. The ID of the chosen node is
+    /// returned.
     fn pick_node_to_substitute(
         multicircuit: &[ConstraintCircuitMonad<II>],
         target_degree: isize,
@@ -855,9 +866,10 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
             .unique()
             .collect_vec();
 
-        // Collect all candidates for substitution, i.e., descendents of high_degree_nodes
-        // with degree <= target_degree.
-        // Substituting a node of degree 1 is both pointless and can lead to infinite iteration.
+        // Collect all candidates for substitution, i.e., descendents of
+        // high_degree_nodes with degree <= target_degree.
+        // Substituting a node of degree 1 is both pointless and can lead to infinite
+        // iteration.
         let low_degree_nodes = Self::all_nodes_in_multicircuit(&high_degree_nodes)
             .into_iter()
             .filter(|node| 1 < node_degrees[&node.id] && node_degrees[&node.id] <= target_degree)
@@ -892,8 +904,10 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
 
     /// Returns all nodes used in the multicircuit.
     /// This is distinct from `ConstraintCircuitBuilder::all_nodes` because it
-    /// 1. only considers nodes used in the given multicircuit, not all nodes in the builder,
-    /// 2. returns the nodes as [`ConstraintCircuit`]s, not as [`ConstraintCircuitMonad`]s, and
+    /// 1. only considers nodes used in the given multicircuit, not all nodes in
+    ///    the builder,
+    /// 2. returns the nodes as [`ConstraintCircuit`]s, not as
+    ///    [`ConstraintCircuitMonad`]s, and
     /// 3. keeps duplicates, allowing to count how often a node occurs.
     pub fn all_nodes_in_multicircuit(
         multicircuit: &[ConstraintCircuit<II>],
@@ -937,10 +951,10 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
     }
 }
 
-/// Helper struct to construct new leaf nodes (*i.e.*, input or challenge or constant)
-/// in the circuit multitree. Ensures that newly created nodes, even non-leaf nodes
-/// created through joining two other nodes using an arithmetic operation, get a
-/// unique ID.
+/// Helper struct to construct new leaf nodes (*i.e.*, input or challenge or
+/// constant) in the circuit multitree. Ensures that newly created nodes, even
+/// non-leaf nodes created through joining two other nodes using an arithmetic
+/// operation, get a unique ID.
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct ConstraintCircuitBuilder<II: InputIndicator> {
     id_counter: Rc<RefCell<usize>>,
@@ -963,8 +977,9 @@ impl<II: InputIndicator> ConstraintCircuitBuilder<II> {
 
     /// Check whether two builders are the same.
     ///
-    /// Notably, this is distinct from checking equality: two builders are equal if they are in the
-    /// same state. Two builders are the same if they are the same instance.
+    /// Notably, this is distinct from checking equality: two builders are equal
+    /// if they are in the same state. Two builders are the same if they are
+    /// the same instance.
     pub fn is_same_as(&self, other: &Self) -> bool {
         Rc::ptr_eq(&self.id_counter, &other.id_counter)
             && Rc::ptr_eq(&self.all_nodes, &other.all_nodes)
@@ -1053,8 +1068,8 @@ impl<II: InputIndicator> ConstraintCircuitBuilder<II> {
     /// Replace all pointers to a given node (identified by `old_id`) by one
     /// to the new node.
     ///
-    /// A circuit's root node cannot be substituted with this method. Manual care
-    /// must be taken to update the root node if necessary.
+    /// A circuit's root node cannot be substituted with this method. Manual
+    /// care must be taken to update the root node if necessary.
     fn redirect_all_references_to_node(&self, old_id: usize, new: ConstraintCircuitMonad<II>) {
         self.all_nodes.borrow_mut().remove(&old_id);
         for node in self.all_nodes.borrow_mut().values_mut() {
@@ -1132,21 +1147,23 @@ mod tests {
     use super::*;
 
     impl<II: InputIndicator> ConstraintCircuitMonad<II> {
-        /// Traverse the circuit and find all nodes that are equivalent. Note that
-        /// two nodes are equivalent if they compute the same value on all identical
-        /// inputs. Equivalence is different from identity, which is when two nodes
-        /// connect the same set of neighbors in the same way. (There may be two
-        /// different ways to compute the same result; they are equivalent but
+        /// Traverse the circuit and find all nodes that are equivalent. Note
+        /// that two nodes are equivalent if they compute the same value
+        /// on all identical inputs. Equivalence is different from
+        /// identity, which is when two nodes connect the same set of
+        /// neighbors in the same way. (There may be two different ways
+        /// to compute the same result; they are equivalent but
         /// unequal.)
         ///
         /// This function returns a list of lists of equivalent nodes such that
-        /// every inner list can be reduced to a single node without changing the
-        /// circuit's function.
+        /// every inner list can be reduced to a single node without changing
+        /// the circuit's function.
         ///
-        /// Equivalent nodes are detected probabilistically using the multivariate
-        /// Schwartz-Zippel lemma. The false positive probability is zero (we can be
-        /// certain that equivalent nodes will be found). The false negative
-        /// probability is bounded by max_degree / (2^64 - 2^32 + 1)^3.
+        /// Equivalent nodes are detected probabilistically using the
+        /// multivariate Schwartz-Zippel lemma. The false positive
+        /// probability is zero (we can be certain that equivalent nodes
+        /// will be found). The false negative probability is bounded by
+        /// max_degree / (2^64 - 2^32 + 1)^3.
         pub fn find_equivalent_nodes(&self) -> Vec<Vec<Rc<RefCell<ConstraintCircuit<II>>>>> {
             let mut id_to_eval = HashMap::new();
             let mut eval_to_ids = HashMap::new();
@@ -1166,10 +1183,11 @@ mod tests {
                 .collect_vec()
         }
 
-        /// Populate the dictionaries such that they associate with every node in
-        /// the circuit its evaluation in a random point. The inputs are assigned
-        /// random values. Equivalent nodes are detected based on evaluating to the
-        /// same value using the Schwartz-Zippel lemma.
+        /// Populate the dictionaries such that they associate with every node
+        /// in the circuit its evaluation in a random point. The inputs
+        /// are assigned random values. Equivalent nodes are detected
+        /// based on evaluating to the same value using the
+        /// Schwartz-Zippel lemma.
         fn probe_random(
             circuit: &Rc<RefCell<ConstraintCircuit<II>>>,
             id_to_eval: &mut HashMap<usize, XFieldElement>,
@@ -1230,7 +1248,8 @@ mod tests {
             self_expression.contains(other_expression)
         }
 
-        /// Produces an iter over all nodes in the multicircuit, if it is non-empty.
+        /// Produces an iter over all nodes in the multicircuit, if it is
+        /// non-empty.
         ///
         /// Helper function for counting the number of nodes of a specific type.
         fn iter_nodes(
@@ -1255,8 +1274,8 @@ mod tests {
             Self::iter_nodes(constraints).count()
         }
 
-        /// Determine if the constraint circuit monad corresponds to a main table
-        /// column.
+        /// Determine if the constraint circuit monad corresponds to a main
+        /// table column.
         fn is_main_table_column(&self) -> bool {
             if let CircuitExpression::Input(ii) = self.circuit.borrow().expression {
                 ii.is_main_table_column()
@@ -1363,9 +1382,10 @@ mod tests {
         }
     }
 
-    /// The hash of a node may not depend on `ref_count`, `counter`, `id_counter_ref`, or
-    /// `all_nodes`, since `all_nodes` contains the digest of all nodes in the multi tree.
-    /// For more details, see [`HashSet`].
+    /// The hash of a node may not depend on `ref_count`, `counter`,
+    /// `id_counter_ref`, or `all_nodes`, since `all_nodes` contains the
+    /// digest of all nodes in the multi tree. For more details, see
+    /// [`HashSet`].
     #[proptest]
     fn multi_circuit_hash_is_unchanged_by_meta_data(
         #[strategy(arb())] circuit: ConstraintCircuitMonad<DualRowIndicator>,
@@ -1819,40 +1839,42 @@ mod tests {
         prop_assert_eq!(10, ConstraintCircuitMonad::num_inputs(&multicircuit_monad));
     }
 
-    /// Test the completeness and soundness of the `apply_substitution` function,
-    /// which substitutes a single node.
+    /// Test the completeness and soundness of the `apply_substitution`
+    /// function, which substitutes a single node.
     ///
-    /// In this context, completeness means: "given a satisfying assignment to the
-    /// circuit before degree lowering, one can derive a satisfying assignment to
-    /// the circuit after degree lowering." Soundness means the converse.
+    /// In this context, completeness means: "given a satisfying assignment to
+    /// the circuit before degree lowering, one can derive a satisfying
+    /// assignment to the circuit after degree lowering." Soundness means
+    /// the converse.
     ///
     /// We test these features using random input vectors. Naturally, the output
     /// is not the zero vector (with high probability) and so the given input is
     /// *not* a satisfying assignment (with high probability). However, the
-    /// circuit can be extended by way of thought experiment into one that subtracts
-    /// a fixed constant from the original output. For the right choice of subtrahend,
-    /// the random input now *is* a satisfying assignment to the circuit.
+    /// circuit can be extended by way of thought experiment into one that
+    /// subtracts a fixed constant from the original output. For the right
+    /// choice of subtrahend, the random input now *is* a satisfying
+    /// assignment to the circuit.
     ///
-    /// Specifically, let `input` denote the original (before degree lowering) input,
-    /// and `C` the circuit. Then `input` is a satisfying input for the new circuit
-    /// `C'(X) = C(X) - C(input)`
+    /// Specifically, let `input` denote the original (before degree lowering)
+    /// input, and `C` the circuit. Then `input` is a satisfying input for
+    /// the new circuit `C'(X) = C(X) - C(input)`
     ///
     /// After applying a substitution to obtain circuit `C || k` from `C`, where
     /// `k = Z - some_expr(X)` and `Z` is the introduced variable, the length
-    /// of the input and output increases by 1. Moreover, if `input` is a satisfying
-    /// input to `C'` then `input || some_expr(input)` is* a satisfying input to
-    /// `C' || k`.
+    /// of the input and output increases by 1. Moreover, if `input` is a
+    /// satisfying input to `C'` then `input || some_expr(input)` is* a
+    /// satisfying input to `C' || k`.
     ///
     /// (*: If the transformation is complete.)
     ///
     /// To establish the converse, we want to start from a satisfying input to
     /// `C" || k` and reduce it to a satisfying input to `C"`. The requirement,
-    /// implied by "satisfying input", that `k(X || Z) == 0` implies `Z == some_expr(X)`.
-    /// Therefore, in order to sample a random satisfying input to `C" || k`, it
-    /// suffices to select `input` at random, define `C"(X) = C(X) - C(input)`,
-    /// and evaluate `some_expr(input)`. Then `input || some_expr(input)` is a
-    /// random satisfying input to `C" || k`. It follows** that `input` is a
-    /// satisfying input to `C"`.
+    /// implied by "satisfying input", that `k(X || Z) == 0` implies `Z ==
+    /// some_expr(X)`. Therefore, in order to sample a random satisfying
+    /// input to `C" || k`, it suffices to select `input` at random, define
+    /// `C"(X) = C(X) - C(input)`, and evaluate `some_expr(input)`. Then
+    /// `input || some_expr(input)` is a random satisfying input to `C" ||
+    /// k`. It follows** that `input` is a satisfying input to `C"`.
     ///
     /// (**: If the transformation is sound.)
     ///
@@ -1869,14 +1891,16 @@ mod tests {
     ///          C* ─── degree-lowering ────> C* || k
     /// ```
     ///
-    /// The point of this elaboration is that in this particular case, testing completeness
-    /// and soundness require the same code path. If `input` and `input || some_expr(input)`
-    /// work for circuits before and after degree lowering, this fact establishes
-    /// both completeness and soundness simultaneously.
+    /// The point of this elaboration is that in this particular case, testing
+    /// completeness and soundness require the same code path. If `input`
+    /// and `input || some_expr(input)` work for circuits before and after
+    /// degree lowering, this fact establishes both completeness and
+    /// soundness simultaneously.
     //
-    // Shrinking on this test is disabled because we noticed some weird ass behavior.
-    // In short, shrinking does not play ball with the arbitrary circuit generator;
-    // it seems to make the generated circuits *more* complex, not less so.
+    // Shrinking on this test is disabled because we noticed some weird ass
+    // behavior. In short, shrinking does not play ball with the arbitrary circuit
+    // generator; it seems to make the generated circuits *more* complex, not less
+    // so.
     #[proptest(cases = 1000, max_shrink_iters = 0)]
     fn node_substitution_is_complete_and_sound(
         #[strategy(arbitrary_circuit_monad(10, 10, 10, 160, 10))] mut multicircuit_monad: Vec<
