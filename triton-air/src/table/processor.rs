@@ -340,11 +340,10 @@ impl AIR for ProcessorTable {
     fn terminal_constraints(
         circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
-        let main_row = |col: Self::MainColumn| circuit_builder.input(Main(col.master_main_index()));
+        let main_row = |col: MainColumn| circuit_builder.input(Main(col.master_main_index()));
         let constant = |c| circuit_builder.b_constant(c);
 
-        let last_ci_is_halt =
-            main_row(Self::MainColumn::CI) - constant(Instruction::Halt.opcode_b());
+        let last_ci_is_halt = main_row(MainColumn::CI) - constant(Instruction::Halt.opcode_b());
 
         vec![last_ci_is_halt]
     }
