@@ -87,9 +87,11 @@ twenty-first = "0.48.0"
 unicode-width = "0.2"
 
 [workspace.lints.rust]
+edition-2024-expr-fragment-specifier = "allow" # accept the new `expr` fragment specifier rules
 let_underscore_drop = "warn"
 missing_copy_implementations = "warn"
 missing_debug_implementations = "warn"
+rust-2024-compatibility = "warn"
 
 [workspace.lints.clippy]
 cast_lossless = "warn"

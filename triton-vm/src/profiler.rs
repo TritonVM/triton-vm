@@ -564,7 +564,7 @@ impl Display for VMPerformanceProfile {
         for (category, &category_time) in self
             .category_times
             .iter()
-            .sorted_by_key(|(_, &time)| time)
+            .sorted_by_key(|&(_, &time)| time)
             .rev()
         {
             let relative_time = category_time.as_secs_f64() / self.total_time.as_secs_f64();

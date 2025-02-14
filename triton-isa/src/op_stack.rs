@@ -242,7 +242,7 @@ impl UnderflowIO {
         sequence
             .iter()
             .tuple_windows()
-            .find_position(|(&left, &right)| left.is_dual_to(right))
+            .find_position(|&(&left, &right)| left.is_dual_to(right))
             .map(|(index, _)| index)
     }
 

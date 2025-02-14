@@ -319,7 +319,7 @@ impl Program {
         let leftover_labels = self
             .address_to_label
             .iter()
-            .filter(|(&labels_address, _)| labels_address >= address)
+            .filter(|&(&labels_address, _)| labels_address >= address)
             .sorted();
         for (_, label) in leftover_labels {
             labelled_instructions.push(LabelledInstruction::Label(label.clone()));

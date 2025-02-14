@@ -1073,17 +1073,16 @@ impl<II: InputIndicator> ConstraintCircuitBuilder<II> {
     fn redirect_all_references_to_node(&self, old_id: usize, new: ConstraintCircuitMonad<II>) {
         self.all_nodes.borrow_mut().remove(&old_id);
         for node in self.all_nodes.borrow_mut().values_mut() {
-            let node_expression = &mut node.circuit.borrow_mut().expression;
-            let CircuitExpression::BinOp(_, ref mut node_lhs, ref mut node_rhs) = node_expression
+            let CircuitExpression::BinOp(_, ref mut left, ref mut right) =
+                node.circuit.borrow_mut().expression
             else {
                 continue;
             };
-
-            if node_lhs.borrow().id == old_id {
-                *node_lhs = new.circuit.clone();
+            if left.borrow().id == old_id {
+                *left = new.circuit.clone();
             }
-            if node_rhs.borrow().id == old_id {
-                *node_rhs = new.circuit.clone();
+            if right.borrow().id == old_id {
+                *right = new.circuit.clone();
             }
         }
     }
@@ -1277,11 +1276,11 @@ mod tests {
         /// Determine if the constraint circuit monad corresponds to a main
         /// table column.
         fn is_main_table_column(&self) -> bool {
-            if let CircuitExpression::Input(ii) = self.circuit.borrow().expression {
-                ii.is_main_table_column()
-            } else {
-                false
-            }
+            let CircuitExpression::Input(ii) = self.circuit.borrow().expression else {
+                return false;
+            };
+
+            ii.is_main_table_column()
         }
 
         /// The number of inputs from the main table
