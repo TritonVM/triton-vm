@@ -153,8 +153,3 @@ unused_async = "warn"
 used_underscore_binding = "warn"
 verbose_bit_mask = "warn"
 wildcard_imports = "warn"
-
-[workspace.dependencies.cargo-husky]
-version = "1.5"
-default-features = false
-features = ["precommit-hook", "run-cargo-clippy", "run-cargo-fmt"]
