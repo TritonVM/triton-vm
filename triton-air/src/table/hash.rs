@@ -18,13 +18,13 @@ use strum::IntoEnumIterator;
 use twenty_first::prelude::tip5::NUM_ROUNDS;
 use twenty_first::prelude::*;
 
+use crate::AIR;
 use crate::challenge_id::ChallengeId;
 use crate::cross_table_argument::CrossTableArg;
 use crate::cross_table_argument::EvalArg;
 use crate::cross_table_argument::LookupArg;
 use crate::table_column::MasterAuxColumn;
 use crate::table_column::MasterMainColumn;
-use crate::AIR;
 
 pub const MONTGOMERY_MODULUS: BFieldElement =
     BFieldElement::new(((1_u128 << 64) % BFieldElement::P as u128) as u64);

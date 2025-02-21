@@ -1,8 +1,8 @@
 use std::mem::MaybeUninit;
 
+use criterion::Criterion;
 use criterion::criterion_group;
 use criterion::criterion_main;
-use criterion::Criterion;
 use itertools::Itertools;
 use ndarray::prelude::*;
 use num_traits::Zero;

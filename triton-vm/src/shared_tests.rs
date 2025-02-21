@@ -5,8 +5,8 @@ use num_traits::Zero;
 use proptest::collection::vec;
 use proptest::prelude::*;
 use proptest_arbitrary_interop::arb;
-use rand::prelude::*;
 use rand::Rng;
+use rand::prelude::*;
 use test_strategy::Arbitrary;
 use twenty_first::prelude::*;
 

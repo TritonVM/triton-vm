@@ -1,3 +1,4 @@
+use air::AIR;
 use air::cross_table_argument::GrandCrossTableArg;
 use air::table::cascade::CascadeTable;
 use air::table::hash::HashTable;
@@ -8,7 +9,6 @@ use air::table::processor::ProcessorTable;
 use air::table::program::ProgramTable;
 use air::table::ram::RamTable;
 use air::table::u32::U32Table;
-use air::AIR;
 use constraint_circuit::ConstraintCircuit;
 use constraint_circuit::ConstraintCircuitBuilder;
 use constraint_circuit::ConstraintCircuitMonad;

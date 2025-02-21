@@ -1,9 +1,9 @@
 use std::path::Path;
 
+use constraint_builder::Constraints;
 use constraint_builder::codegen::Codegen;
 use constraint_builder::codegen::RustBackend;
 use constraint_builder::codegen::TasmBackend;
-use constraint_builder::Constraints;
 use proc_macro2::TokenStream;
 
 fn main() {

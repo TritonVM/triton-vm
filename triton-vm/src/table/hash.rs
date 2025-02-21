@@ -4,8 +4,8 @@ use air::cross_table_argument::EvalArg;
 use air::cross_table_argument::LookupArg;
 use air::table::hash::HashTable;
 use air::table::hash::HashTableMode;
-use air::table::hash::PermutationTrace;
 use air::table::hash::MONTGOMERY_MODULUS;
+use air::table::hash::PermutationTrace;
 use air::table_column::MasterAuxColumn;
 use air::table_column::MasterMainColumn;
 use isa::instruction::Instruction;
@@ -215,23 +215,22 @@ fn fill_row_with_round_constants_for_round(
     round_number: usize,
 ) -> Array1<BFieldElement> {
     let round_constants = HashTable::tip5_round_constants_by_round_number(round_number);
-    let [r0, r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11, r12, r13, r14, r15] = round_constants;
-    row[MainColumn::Constant0.main_index()] = r0;
-    row[MainColumn::Constant1.main_index()] = r1;
-    row[MainColumn::Constant2.main_index()] = r2;
-    row[MainColumn::Constant3.main_index()] = r3;
-    row[MainColumn::Constant4.main_index()] = r4;
-    row[MainColumn::Constant5.main_index()] = r5;
-    row[MainColumn::Constant6.main_index()] = r6;
-    row[MainColumn::Constant7.main_index()] = r7;
-    row[MainColumn::Constant8.main_index()] = r8;
-    row[MainColumn::Constant9.main_index()] = r9;
-    row[MainColumn::Constant10.main_index()] = r10;
-    row[MainColumn::Constant11.main_index()] = r11;
-    row[MainColumn::Constant12.main_index()] = r12;
-    row[MainColumn::Constant13.main_index()] = r13;
-    row[MainColumn::Constant14.main_index()] = r14;
-    row[MainColumn::Constant15.main_index()] = r15;
+    row[MainColumn::Constant0.main_index()] = round_constants[0];
+    row[MainColumn::Constant1.main_index()] = round_constants[1];
+    row[MainColumn::Constant2.main_index()] = round_constants[2];
+    row[MainColumn::Constant3.main_index()] = round_constants[3];
+    row[MainColumn::Constant4.main_index()] = round_constants[4];
+    row[MainColumn::Constant5.main_index()] = round_constants[5];
+    row[MainColumn::Constant6.main_index()] = round_constants[6];
+    row[MainColumn::Constant7.main_index()] = round_constants[7];
+    row[MainColumn::Constant8.main_index()] = round_constants[8];
+    row[MainColumn::Constant9.main_index()] = round_constants[9];
+    row[MainColumn::Constant10.main_index()] = round_constants[10];
+    row[MainColumn::Constant11.main_index()] = round_constants[11];
+    row[MainColumn::Constant12.main_index()] = round_constants[12];
+    row[MainColumn::Constant13.main_index()] = round_constants[13];
+    row[MainColumn::Constant14.main_index()] = round_constants[14];
+    row[MainColumn::Constant15.main_index()] = round_constants[15];
     row
 }
 
@@ -611,8 +610,8 @@ impl TraceTable for HashTable {
 
 #[cfg(test)]
 pub(crate) mod tests {
-    use air::table::TableId;
     use air::AIR;
+    use air::table::TableId;
     use constraint_circuit::ConstraintCircuitBuilder;
     use std::collections::HashMap;
     use strum::IntoEnumIterator;

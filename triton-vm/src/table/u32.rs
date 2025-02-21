@@ -1,5 +1,5 @@
-use std::cmp::max;
 use std::cmp::Ordering;
+use std::cmp::max;
 
 use air::challenge_id::ChallengeId;
 use air::cross_table_argument::CrossTableArg;
@@ -9,13 +9,13 @@ use air::table_column::MasterAuxColumn;
 use air::table_column::MasterMainColumn;
 use arbitrary::Arbitrary;
 use isa::instruction::Instruction;
-use ndarray::parallel::prelude::*;
-use ndarray::s;
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView2;
 use ndarray::ArrayViewMut2;
 use ndarray::Axis;
+use ndarray::parallel::prelude::*;
+use ndarray::s;
 use num_traits::One;
 use num_traits::Zero;
 use strum::EnumCount;

@@ -3,6 +3,7 @@ use strum::Display;
 use strum::EnumCount;
 use strum::EnumIter;
 
+use crate::AIR;
 use crate::table::cascade::CascadeTable;
 use crate::table::hash::HashTable;
 use crate::table::jump_stack::JumpStackTable;
@@ -12,7 +13,6 @@ use crate::table::processor::ProcessorTable;
 use crate::table::program::ProgramTable;
 use crate::table::ram::RamTable;
 use crate::table::u32::U32Table;
-use crate::AIR;
 
 pub mod cascade;
 pub mod hash;

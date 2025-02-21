@@ -5,16 +5,6 @@ use std::ops::Mul;
 use std::ops::MulAssign;
 use std::ops::Range;
 
-use air::table::cascade::CascadeTable;
-use air::table::hash::HashTable;
-use air::table::jump_stack::JumpStackTable;
-use air::table::lookup::LookupTable;
-use air::table::op_stack::OpStackTable;
-use air::table::processor::ProcessorTable;
-use air::table::program::ProgramTable;
-use air::table::ram::RamTable;
-use air::table::u32::U32Table;
-use air::table::TableId;
 use air::table::AUX_CASCADE_TABLE_END;
 use air::table::AUX_CASCADE_TABLE_START;
 use air::table::AUX_HASH_TABLE_END;
@@ -49,8 +39,18 @@ use air::table::PROGRAM_TABLE_END;
 use air::table::PROGRAM_TABLE_START;
 use air::table::RAM_TABLE_END;
 use air::table::RAM_TABLE_START;
+use air::table::TableId;
 use air::table::U32_TABLE_END;
 use air::table::U32_TABLE_START;
+use air::table::cascade::CascadeTable;
+use air::table::hash::HashTable;
+use air::table::jump_stack::JumpStackTable;
+use air::table::lookup::LookupTable;
+use air::table::op_stack::OpStackTable;
+use air::table::processor::ProcessorTable;
+use air::table::program::ProgramTable;
+use air::table::ram::RamTable;
+use air::table::u32::U32Table;
 use air::table_column::CascadeAuxColumn;
 use air::table_column::CascadeMainColumn;
 use air::table_column::HashAuxColumn;
@@ -69,15 +69,15 @@ use air::table_column::RamAuxColumn;
 use air::table_column::RamMainColumn;
 use air::table_column::U32AuxColumn;
 use air::table_column::U32MainColumn;
-use itertools::izip;
 use itertools::Itertools;
-use ndarray::parallel::prelude::*;
-use ndarray::prelude::*;
-use ndarray::s;
+use itertools::izip;
 use ndarray::Array2;
 use ndarray::ArrayView2;
 use ndarray::ArrayViewMut2;
 use ndarray::Zip;
+use ndarray::parallel::prelude::*;
+use ndarray::prelude::*;
+use ndarray::s;
 use num_traits::ConstZero;
 use num_traits::One;
 use num_traits::ToBytes;
@@ -100,14 +100,14 @@ use crate::ndarray_helper::horizontal_multi_slice_mut;
 use crate::ndarray_helper::partial_sums;
 use crate::profiler::profiler;
 use crate::stark::NUM_RANDOMIZER_POLYNOMIALS;
-use crate::table::auxiliary_table::all_degrees_with_origin;
-use crate::table::auxiliary_table::DegreeWithOrigin;
-use crate::table::auxiliary_table::Evaluable;
-use crate::table::degree_lowering::DegreeLoweringTable;
-use crate::table::processor::ClkJumpDiffs;
 use crate::table::AuxiliaryRow;
 use crate::table::MainRow;
 use crate::table::TraceTable;
+use crate::table::auxiliary_table::DegreeWithOrigin;
+use crate::table::auxiliary_table::Evaluable;
+use crate::table::auxiliary_table::all_degrees_with_origin;
+use crate::table::degree_lowering::DegreeLoweringTable;
+use crate::table::processor::ClkJumpDiffs;
 
 /// A Master Table is, in some sense, a top-level table of Triton VM. It
 /// contains all the data but little logic beyond bookkeeping and presenting the
@@ -1350,13 +1350,13 @@ mod tests {
     use std::ops::Add;
     use std::path::Path;
 
+    use air::AIR;
     use air::cross_table_argument::GrandCrossTableArg;
     use air::table::cascade::CascadeTable;
     use air::table::hash::HashTable;
     use air::table::jump_stack::JumpStackTable;
     use air::table_column::MasterAuxColumn;
     use air::table_column::MasterMainColumn;
-    use air::AIR;
     use constraint_circuit::ConstraintCircuitBuilder;
     use constraint_circuit::ConstraintCircuitMonad;
     use constraint_circuit::DegreeLoweringInfo;
@@ -1554,16 +1554,16 @@ mod tests {
             .with_offset(big_offset);
 
         let small_order = 8;
-        let small_domain = ArithmeticDomain::of_length(small_order as usize).unwrap();
+        let small_domain = ArithmeticDomain::of_length(small_order).unwrap();
 
         let initial_zerofier_inv = initial_quotient_zerofier_inverse(big_domain);
         let initial_zerofier = BFieldElement::batch_inversion(initial_zerofier_inv.to_vec());
         let initial_zerofier_poly = big_domain.interpolate(&initial_zerofier);
         assert_eq!(big_order as usize, initial_zerofier_inv.len());
         assert_eq!(1, initial_zerofier_poly.degree());
-        assert!(initial_zerofier_poly
-            .evaluate_in_same_field(small_domain.domain_value(0))
-            .is_zero());
+        let initial_zerofier_eval =
+            initial_zerofier_poly.evaluate_in_same_field(small_domain.domain_value(0));
+        assert_eq!(bfe!(0), initial_zerofier_eval);
 
         let consistency_zerofier_inv =
             consistency_quotient_zerofier_inverse(small_domain, big_domain);
@@ -1573,9 +1573,8 @@ mod tests {
         assert_eq!(big_order as usize, consistency_zerofier_inv.len());
         assert_eq!(small_order as isize, consistency_zerofier_poly.degree());
         for val in small_domain.domain_values() {
-            assert!(consistency_zerofier_poly
-                .evaluate_in_same_field(val)
-                .is_zero());
+            let consistency_zerofier_eval = consistency_zerofier_poly.evaluate_in_same_field(val);
+            assert_eq!(bfe!(0), consistency_zerofier_eval);
         }
 
         let transition_zerofier_inv =
@@ -1584,14 +1583,9 @@ mod tests {
         let transition_zerofier_poly = big_domain.interpolate(&transition_zerofier);
         assert_eq!(big_order as usize, transition_zerofier_inv.len());
         assert_eq!(small_order as isize - 1, transition_zerofier_poly.degree());
-        for &val in small_domain
-            .domain_values()
-            .iter()
-            .take(small_order as usize - 1)
-        {
-            assert!(transition_zerofier_poly
-                .evaluate_in_same_field(val)
-                .is_zero());
+        for &val in small_domain.domain_values().iter().take(small_order - 1) {
+            let transition_zerofier_eval = transition_zerofier_poly.evaluate_in_same_field(val);
+            assert_eq!(bfe!(0), transition_zerofier_eval);
         }
 
         let terminal_zerofier_inv = terminal_quotient_zerofier_inverse(small_domain, big_domain);
@@ -1599,9 +1593,9 @@ mod tests {
         let terminal_zerofier_poly = big_domain.interpolate(&terminal_zerofier);
         assert_eq!(big_order as usize, terminal_zerofier_inv.len());
         assert_eq!(1, terminal_zerofier_poly.degree());
-        assert!(terminal_zerofier_poly
-            .evaluate_in_same_field(small_domain.domain_value(small_order as u32 - 1))
-            .is_zero());
+        let terminal_zerofier_eval = terminal_zerofier_poly
+            .evaluate_in_same_field(small_domain.domain_value(small_order as u32 - 1));
+        assert_eq!(bfe!(0), terminal_zerofier_eval);
     }
 
     struct SpecSnippet {

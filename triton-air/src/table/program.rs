@@ -10,13 +10,13 @@ use constraint_circuit::SingleRowIndicator::Aux;
 use constraint_circuit::SingleRowIndicator::Main;
 use twenty_first::prelude::*;
 
+use crate::AIR;
 use crate::challenge_id::ChallengeId;
 use crate::cross_table_argument::CrossTableArg;
 use crate::cross_table_argument::EvalArg;
 use crate::cross_table_argument::LookupArg;
 use crate::table_column::MasterAuxColumn;
 use crate::table_column::MasterMainColumn;
-use crate::AIR;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct ProgramTable;

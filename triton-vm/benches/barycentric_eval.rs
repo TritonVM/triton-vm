@@ -1,7 +1,7 @@
-use criterion::criterion_group;
-use criterion::criterion_main;
 use criterion::BatchSize;
 use criterion::Criterion;
+use criterion::criterion_group;
+use criterion::criterion_main;
 use rand::prelude::*;
 use twenty_first::math::polynomial::barycentric_evaluate;
 use twenty_first::prelude::XFieldElement;

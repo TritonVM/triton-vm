@@ -12,13 +12,13 @@ use isa::op_stack::OpStackElement;
 use strum::EnumCount;
 use twenty_first::prelude::*;
 
+use crate::AIR;
 use crate::challenge_id::ChallengeId;
 use crate::cross_table_argument::CrossTableArg;
 use crate::cross_table_argument::LookupArg;
 use crate::cross_table_argument::PermArg;
 use crate::table_column::MasterAuxColumn;
 use crate::table_column::MasterMainColumn;
-use crate::AIR;
 
 /// The value indicating a padding row in the op stack table. Stored in the
 /// `ib1_shrink_stack` column.

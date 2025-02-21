@@ -14,9 +14,9 @@ use isa::instruction::Instruction;
 use isa::op_stack::NumberOfWords;
 use itertools::Itertools;
 use proc_macro2::TokenStream;
+use quote::ToTokens;
 use quote::format_ident;
 use quote::quote;
-use quote::ToTokens;
 use twenty_first::prelude::x_field_element::EXTENSION_DEGREE;
 use twenty_first::prelude::*;
 

@@ -2,10 +2,10 @@ use std::ops::Mul;
 
 use arbitrary::Arbitrary;
 use arbitrary::Unstructured;
-use itertools::izip;
 use itertools::Itertools;
-use ndarray::prelude::*;
+use itertools::izip;
 use ndarray::Zip;
+use ndarray::prelude::*;
 use num_traits::ConstOne;
 use num_traits::ConstZero;
 use num_traits::Zero;
@@ -33,15 +33,15 @@ use crate::proof::Claim;
 use crate::proof::Proof;
 use crate::proof_item::ProofItem;
 use crate::proof_stream::ProofStream;
+use crate::table::QuotientSegments;
 use crate::table::auxiliary_table::Evaluable;
+use crate::table::master_table::MasterAuxTable;
+use crate::table::master_table::MasterMainTable;
+use crate::table::master_table::MasterTable;
 use crate::table::master_table::all_quotients_combined;
 use crate::table::master_table::interpolant_degree;
 use crate::table::master_table::max_degree_with_origin;
 use crate::table::master_table::randomized_trace_len;
-use crate::table::master_table::MasterAuxTable;
-use crate::table::master_table::MasterMainTable;
-use crate::table::master_table::MasterTable;
-use crate::table::QuotientSegments;
 
 /// The number of segments the quotient polynomial is split into.
 /// Helps keeping the FRI domain small.
@@ -1564,11 +1564,13 @@ pub(crate) mod tests {
     use std::collections::HashMap;
     use std::collections::HashSet;
 
+    use air::AIR;
     use air::challenge_id::ChallengeId::StandardInputIndeterminate;
     use air::challenge_id::ChallengeId::StandardOutputIndeterminate;
     use air::cross_table_argument::CrossTableArg;
     use air::cross_table_argument::EvalArg;
     use air::cross_table_argument::GrandCrossTableArg;
+    use air::table::TableId;
     use air::table::cascade::CascadeTable;
     use air::table::hash::HashTable;
     use air::table::jump_stack::JumpStackTable;
@@ -1579,7 +1581,6 @@ pub(crate) mod tests {
     use air::table::ram;
     use air::table::ram::RamTable;
     use air::table::u32::U32Table;
-    use air::table::TableId;
     use air::table_column::MasterAuxColumn;
     use air::table_column::MasterMainColumn;
     use air::table_column::OpStackMainColumn;
@@ -1587,7 +1588,6 @@ pub(crate) mod tests {
     use air::table_column::ProcessorAuxColumn::OutputTableEvalArg;
     use air::table_column::ProcessorMainColumn;
     use air::table_column::RamMainColumn;
-    use air::AIR;
     use assert2::assert;
     use assert2::check;
     use assert2::let_assert;
@@ -1600,25 +1600,31 @@ pub(crate) mod tests {
     use proptest::prelude::*;
     use proptest::test_runner::TestCaseResult;
     use proptest_arbitrary_interop::arb;
-    use rand::prelude::*;
     use rand::Rng;
+    use rand::prelude::*;
     use strum::EnumCount;
     use strum::IntoEnumIterator;
     use test_strategy::proptest;
     use twenty_first::math::other::random_elements;
 
     use super::*;
+    use crate::PublicInput;
     use crate::config::CacheDecision;
     use crate::error::InstructionError;
+    use crate::shared_tests::DEFAULT_LOG2_FRI_EXPANSION_FACTOR_FOR_TESTS;
+    use crate::shared_tests::ProgramAndInput;
     use crate::shared_tests::construct_master_main_table;
     use crate::shared_tests::low_security_stark;
     use crate::shared_tests::prove_and_verify;
-    use crate::shared_tests::ProgramAndInput;
-    use crate::shared_tests::DEFAULT_LOG2_FRI_EXPANSION_FACTOR_FOR_TESTS;
     use crate::table::auxiliary_table;
     use crate::table::auxiliary_table::Evaluable;
     use crate::table::master_table::MasterAuxTable;
     use crate::triton_program;
+    use crate::vm::NonDeterminism;
+    use crate::vm::VM;
+    use crate::vm::tests::ProgramForMerkleTreeUpdate;
+    use crate::vm::tests::ProgramForRecurseOrReturn;
+    use crate::vm::tests::ProgramForSpongeAndHashInstructions;
     use crate::vm::tests::property_based_test_program_for_and;
     use crate::vm::tests::property_based_test_program_for_assert_vector;
     use crate::vm::tests::property_based_test_program_for_div_mod;
@@ -1670,12 +1676,6 @@ pub(crate) mod tests {
     use crate::vm::tests::test_program_for_xx_add;
     use crate::vm::tests::test_program_for_xx_mul;
     use crate::vm::tests::test_program_hash_nop_nop_lt;
-    use crate::vm::tests::ProgramForMerkleTreeUpdate;
-    use crate::vm::tests::ProgramForRecurseOrReturn;
-    use crate::vm::tests::ProgramForSpongeAndHashInstructions;
-    use crate::vm::NonDeterminism;
-    use crate::vm::VM;
-    use crate::PublicInput;
 
     pub(crate) fn master_main_table_for_low_security_level(
         program_and_input: ProgramAndInput,

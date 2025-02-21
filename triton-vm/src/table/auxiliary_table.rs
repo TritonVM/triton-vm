@@ -8,8 +8,8 @@ use twenty_first::math::traits::FiniteField;
 use twenty_first::prelude::*;
 
 use crate::challenges::Challenges;
-use crate::table::master_table::MasterAuxTable;
 use crate::table::ConstraintType;
+use crate::table::master_table::MasterAuxTable;
 
 include!(concat!(env!("OUT_DIR"), "/evaluate_constraints.rs"));
 

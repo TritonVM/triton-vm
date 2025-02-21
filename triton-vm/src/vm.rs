@@ -1103,8 +1103,8 @@ impl VMState {
     }
 
     pub fn to_processor_row(&self) -> Array1<BFieldElement> {
-        use isa::instruction::InstructionBit;
         use ProcessorMainColumn as Col;
+        use isa::instruction::InstructionBit;
 
         assert!(
             self.op_stack.len() >= OpStackElement::COUNT,
@@ -1515,9 +1515,9 @@ pub(crate) mod tests {
     use air::table::TableId;
     use assert2::assert;
     use assert2::let_assert;
+    use isa::instruction::ALL_INSTRUCTIONS;
     use isa::instruction::AnInstruction;
     use isa::instruction::LabelledInstruction;
-    use isa::instruction::ALL_INSTRUCTIONS;
     use isa::op_stack::NUM_OP_STACK_REGISTERS;
     use isa::program::Program;
     use isa::triton_asm;
@@ -1527,18 +1527,18 @@ pub(crate) mod tests {
     use proptest::collection::vec;
     use proptest::prelude::*;
     use proptest_arbitrary_interop::arb;
-    use rand::rngs::ThreadRng;
     use rand::Rng;
     use rand::RngCore;
+    use rand::rngs::ThreadRng;
     use strum::EnumCount;
     use strum::EnumIter;
     use test_strategy::proptest;
     use twenty_first::math::other::random_elements;
 
-    use crate::shared_tests::prove_and_verify;
+    use crate::shared_tests::DEFAULT_LOG2_FRI_EXPANSION_FACTOR_FOR_TESTS;
     use crate::shared_tests::LeavedMerkleTreeTestData;
     use crate::shared_tests::ProgramAndInput;
-    use crate::shared_tests::DEFAULT_LOG2_FRI_EXPANSION_FACTOR_FOR_TESTS;
+    use crate::shared_tests::prove_and_verify;
     use crate::stark::tests::program_executing_every_instruction;
 
     use super::*;
@@ -2790,8 +2790,8 @@ pub(crate) mod tests {
         ProgramAndInput::new(program).with_input([1, 3, 14].map(|b| bfe!(b)))
     }
 
-    pub(crate) fn test_program_claim_in_ram_corresponds_to_currently_running_program(
-    ) -> ProgramAndInput {
+    pub(crate) fn test_program_claim_in_ram_corresponds_to_currently_running_program()
+    -> ProgramAndInput {
         let program = triton_program! {
             dup 15 dup 15 dup 15 dup 15 dup 15  // _ [own_digest]
             push 4 read_mem 5 pop 1             // _ [own_digest] [claim_digest]

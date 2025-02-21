@@ -980,8 +980,8 @@ mod tests {
         proof_stream
     }
 
-    fn non_trivial_auth_structure_filter(
-    ) -> fn(&mut ProofItem) -> Option<&mut AuthenticationStructure> {
+    fn non_trivial_auth_structure_filter()
+    -> fn(&mut ProofItem) -> Option<&mut AuthenticationStructure> {
         |proof_item| match proof_item {
             ProofItem::FriResponse(fri_response) if fri_response.auth_structure.is_empty() => None,
             ProofItem::FriResponse(fri_response) => Some(&mut fri_response.auth_structure),

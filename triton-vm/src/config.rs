@@ -91,9 +91,9 @@ pub(crate) fn cache_lde_trace() -> Option<CacheDecision> {
 mod tests {
     use crate::example_programs::FIBONACCI_SEQUENCE;
     use crate::prelude::*;
-    use crate::shared_tests::prove_and_verify;
-    use crate::shared_tests::ProgramAndInput;
     use crate::shared_tests::DEFAULT_LOG2_FRI_EXPANSION_FACTOR_FOR_TESTS;
+    use crate::shared_tests::ProgramAndInput;
+    use crate::shared_tests::prove_and_verify;
 
     use super::*;
 

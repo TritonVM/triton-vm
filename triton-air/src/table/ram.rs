@@ -10,13 +10,13 @@ use constraint_circuit::SingleRowIndicator::Aux;
 use constraint_circuit::SingleRowIndicator::Main;
 use twenty_first::prelude::*;
 
+use crate::AIR;
 use crate::challenge_id::ChallengeId;
 use crate::cross_table_argument::CrossTableArg;
 use crate::cross_table_argument::LookupArg;
 use crate::cross_table_argument::PermArg;
 use crate::table_column::MasterAuxColumn;
 use crate::table_column::MasterMainColumn;
-use crate::AIR;
 
 pub const INSTRUCTION_TYPE_WRITE: BFieldElement = BFieldElement::new(0);
 pub const INSTRUCTION_TYPE_READ: BFieldElement = BFieldElement::new(1);

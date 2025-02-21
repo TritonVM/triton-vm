@@ -1,12 +1,12 @@
 use constraint_circuit::ConstraintCircuitMonad;
 use constraint_circuit::InputIndicator;
+use criterion::BatchSize::SmallInput;
+use criterion::BenchmarkGroup;
+use criterion::Criterion;
 use criterion::black_box;
 use criterion::criterion_group;
 use criterion::criterion_main;
 use criterion::measurement::WallTime;
-use criterion::BatchSize::SmallInput;
-use criterion::BenchmarkGroup;
-use criterion::Criterion;
 use triton_constraint_builder::Constraints;
 
 criterion_main!(benches);

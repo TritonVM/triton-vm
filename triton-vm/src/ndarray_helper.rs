@@ -1,11 +1,11 @@
 use std::fmt::Debug;
 use std::mem::MaybeUninit;
 
-use ndarray::s;
 use ndarray::Array2;
 use ndarray::ArrayViewMut2;
 use ndarray::Ix;
 use ndarray::ShapeBuilder;
+use ndarray::s;
 use num_traits::ConstZero;
 
 /// Slice a two-dimensional array into many non-overlapping mutable subviews
@@ -79,9 +79,9 @@ where
 #[cfg(test)]
 mod test {
     use itertools::Itertools;
+    use ndarray::Axis;
     use ndarray::array;
     use ndarray::concatenate;
-    use ndarray::Axis;
     use num_traits::Zero;
     use proptest::collection::vec;
     use proptest::prelude::BoxedStrategy;

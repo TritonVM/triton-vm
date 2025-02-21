@@ -12,12 +12,12 @@ use constraint_circuit::SingleRowIndicator::Main;
 use isa::instruction::Instruction;
 use std::ops::Mul;
 
+use crate::AIR;
 use crate::challenge_id::ChallengeId;
 use crate::cross_table_argument::CrossTableArg;
 use crate::cross_table_argument::LookupArg;
 use crate::table_column::MasterAuxColumn;
 use crate::table_column::MasterMainColumn;
-use crate::AIR;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct U32Table;

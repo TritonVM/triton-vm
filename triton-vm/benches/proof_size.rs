@@ -1,14 +1,14 @@
 use std::collections::HashMap;
 use std::ops::AddAssign;
 
-use criterion::criterion_group;
-use criterion::criterion_main;
-use criterion::measurement::Measurement;
-use criterion::measurement::ValueFormatter;
 use criterion::BenchmarkGroup;
 use criterion::BenchmarkId;
 use criterion::Criterion;
 use criterion::Throughput;
+use criterion::criterion_group;
+use criterion::criterion_main;
+use criterion::measurement::Measurement;
+use criterion::measurement::ValueFormatter;
 use itertools::Itertools;
 use strum::Display;
 use strum::EnumCount;

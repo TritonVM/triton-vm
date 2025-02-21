@@ -794,11 +794,11 @@ pub(crate) mod tests {
     use strum::IntoEnumIterator;
     use test_strategy::proptest;
 
+    use crate::NonDeterminism;
     use crate::error::InstructionError::DivisionByZero;
     use crate::shared_tests::ProgramAndInput;
     use crate::stark::tests::master_tables_for_low_security_level;
     use crate::table::master_table::MasterTable;
-    use crate::NonDeterminism;
 
     use super::*;
 

@@ -1,7 +1,7 @@
-use criterion::criterion_group;
-use criterion::criterion_main;
 use criterion::BatchSize;
 use criterion::Criterion;
+use criterion::criterion_group;
+use criterion::criterion_main;
 use triton_vm::example_programs;
 use triton_vm::prelude::VM;
 

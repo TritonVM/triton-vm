@@ -1,7 +1,7 @@
 use air::table::TableId;
+use criterion::Criterion;
 use criterion::criterion_group;
 use criterion::criterion_main;
-use criterion::Criterion;
 
 use triton_vm::prelude::*;
 

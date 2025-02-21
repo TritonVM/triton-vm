@@ -1074,45 +1074,35 @@ pub mod tests {
 
     #[test]
     fn change_arguments_of_various_instructions() {
+        use NumberOfWords::N1;
+        use NumberOfWords::N4;
+        use OpStackElement::ST0;
+
         assert!(Instruction::Push(bfe!(0)).change_arg(bfe!(7)).is_ok());
-        assert!(Instruction::Dup(OpStackElement::ST0)
-            .change_arg(bfe!(1024))
-            .is_err());
-        assert!(Instruction::Swap(OpStackElement::ST0)
-            .change_arg(bfe!(1337))
-            .is_err());
-        assert!(Instruction::Swap(OpStackElement::ST0)
-            .change_arg(bfe!(0))
-            .is_ok());
-        assert!(Instruction::Swap(OpStackElement::ST0)
-            .change_arg(bfe!(1))
-            .is_ok());
-        assert!(Instruction::Pop(NumberOfWords::N4)
-            .change_arg(bfe!(0))
-            .is_err());
-        assert!(Instruction::Pop(NumberOfWords::N1)
-            .change_arg(bfe!(2))
-            .is_ok());
+        assert!(Instruction::Dup(ST0).change_arg(bfe!(1024)).is_err());
+        assert!(Instruction::Swap(ST0).change_arg(bfe!(1337)).is_err());
+        assert!(Instruction::Swap(ST0).change_arg(bfe!(0)).is_ok());
+        assert!(Instruction::Swap(ST0).change_arg(bfe!(1)).is_ok());
+        assert!(Instruction::Pop(N1).change_arg(bfe!(2)).is_ok());
+        assert!(Instruction::Pop(N4).change_arg(bfe!(0)).is_err());
         assert!(Instruction::Nop.change_arg(bfe!(7)).is_err());
     }
 
     #[test]
     fn print_various_instructions() {
-        println!("instruction_push: {:?}", Instruction::Push(bfe!(7)));
-        println!("instruction_assert: {}", Instruction::Assert);
-        println!("instruction_invert: {:?}", Instruction::Invert);
-        println!(
-            "instruction_dup: {}",
-            Instruction::Dup(OpStackElement::ST14)
-        );
+        println!("{:?}", Instruction::Push(bfe!(7)));
+        println!("{}", Instruction::Assert);
+        println!("{:?}", Instruction::Invert);
+        println!("{}", Instruction::Dup(OpStackElement::ST14));
     }
 
     #[test]
     fn instruction_size_is_consistent_with_having_arguments() {
         for instruction in Instruction::iter() {
-            match instruction.arg() {
-                Some(_) => assert!(2 == instruction.size()),
-                None => assert!(1 == instruction.size()),
+            if instruction.arg().is_some() {
+                assert!(2 == instruction.size())
+            } else {
+                assert!(1 == instruction.size())
             }
         }
     }

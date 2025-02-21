@@ -717,7 +717,7 @@ mod tests {
         assert!(op_stack.len() == 33);
         assert!(op_stack.pointer().value() as usize == op_stack.len());
 
-        assert!([
+        let entire_stack = [
             op_stack[OpStackElement::ST0],
             op_stack[OpStackElement::ST1],
             op_stack[OpStackElement::ST2],
@@ -735,9 +735,8 @@ mod tests {
             op_stack[OpStackElement::ST14],
             op_stack[OpStackElement::ST15],
             op_stack.first_underflow_element(),
-        ]
-        .into_iter()
-        .all_unique());
+        ];
+        assert!(entire_stack.into_iter().all_unique());
 
         // pop 11 elements
         for _ in 0..11 {

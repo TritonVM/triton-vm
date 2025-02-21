@@ -1,11 +1,14 @@
-use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::collections::hash_map::Entry;
 use std::error::Error;
 use std::fmt::Display;
 use std::fmt::Formatter;
 use std::fmt::Result as FmtResult;
 
+use nom::Finish;
+use nom::IResult;
+use nom::Parser;
 use nom::branch::alt;
 use nom::bytes::complete::tag;
 use nom::bytes::complete::take_while;
@@ -16,20 +19,17 @@ use nom::combinator::eof;
 use nom::error::context;
 use nom::multi::many0;
 use nom::multi::many1;
-use nom::Finish;
-use nom::IResult;
-use nom::Parser;
 use nom_language::error::VerboseError;
 use nom_language::error::VerboseErrorKind;
 use twenty_first::bfe;
 use twenty_first::prelude::BFieldElement;
 
+use crate::instruction::ALL_INSTRUCTION_NAMES;
 use crate::instruction::AnInstruction;
 use crate::instruction::AssertionContext;
 use crate::instruction::Instruction;
 use crate::instruction::LabelledInstruction;
 use crate::instruction::TypeHint;
-use crate::instruction::ALL_INSTRUCTION_NAMES;
 use crate::op_stack::NumberOfWords;
 use crate::op_stack::OpStackElement;
 
@@ -838,8 +838,8 @@ pub(crate) mod tests {
     use proptest_arbitrary_interop::arb;
     use rand::Rng;
     use strum::EnumCount;
-    use test_strategy::proptest;
     use test_strategy::Arbitrary;
+    use test_strategy::proptest;
     use twenty_first::bfe;
     use twenty_first::prelude::Digest;
 

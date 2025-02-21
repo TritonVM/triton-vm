@@ -11,6 +11,7 @@ use constraint_circuit::SingleRowIndicator::Main;
 use isa::instruction::Instruction;
 use twenty_first::prelude::BFieldElement;
 
+use crate::AIR;
 use crate::challenge_id::ChallengeId::ClockJumpDifferenceLookupIndeterminate;
 use crate::challenge_id::ChallengeId::JumpStackCiWeight;
 use crate::challenge_id::ChallengeId::JumpStackClkWeight;
@@ -29,7 +30,6 @@ use crate::table_column::JumpStackMainColumn::JSO;
 use crate::table_column::JumpStackMainColumn::JSP;
 use crate::table_column::MasterAuxColumn;
 use crate::table_column::MasterMainColumn;
-use crate::AIR;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct JumpStackTable;

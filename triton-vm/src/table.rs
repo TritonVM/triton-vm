@@ -82,15 +82,6 @@ pub type QuotientSegments = [XFieldElement; NUM_QUOTIENT_SEGMENTS];
 mod tests {
     use std::collections::HashMap;
 
-    use air::table::cascade::CascadeTable;
-    use air::table::hash::HashTable;
-    use air::table::jump_stack::JumpStackTable;
-    use air::table::lookup::LookupTable;
-    use air::table::op_stack::OpStackTable;
-    use air::table::processor::ProcessorTable;
-    use air::table::program::ProgramTable;
-    use air::table::ram::RamTable;
-    use air::table::u32::U32Table;
     use air::table::AUX_CASCADE_TABLE_END;
     use air::table::AUX_HASH_TABLE_END;
     use air::table::AUX_JUMP_STACK_TABLE_END;
@@ -109,6 +100,15 @@ mod tests {
     use air::table::PROGRAM_TABLE_END;
     use air::table::RAM_TABLE_END;
     use air::table::U32_TABLE_END;
+    use air::table::cascade::CascadeTable;
+    use air::table::hash::HashTable;
+    use air::table::jump_stack::JumpStackTable;
+    use air::table::lookup::LookupTable;
+    use air::table::op_stack::OpStackTable;
+    use air::table::processor::ProcessorTable;
+    use air::table::program::ProgramTable;
+    use air::table::ram::RamTable;
+    use air::table::u32::U32Table;
     use constraint_circuit::BinOp;
     use constraint_circuit::CircuitExpression;
     use constraint_circuit::ConstraintCircuit;

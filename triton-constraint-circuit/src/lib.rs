@@ -31,8 +31,8 @@ use itertools::Itertools;
 use ndarray::ArrayView2;
 use num_traits::One;
 use num_traits::Zero;
-use quote::quote;
 use quote::ToTokens;
+use quote::quote;
 use twenty_first::prelude::*;
 
 mod private {
@@ -630,16 +630,16 @@ fn binop<II: InputIndicator>(
         &rhs.circuit.borrow().expression,
     ) {
         (&CircuitExpression::BConst(l), &CircuitExpression::BConst(r)) => {
-            return lhs.builder.b_constant(binop.operation(l, r))
+            return lhs.builder.b_constant(binop.operation(l, r));
         }
         (&CircuitExpression::BConst(l), &CircuitExpression::XConst(r)) => {
-            return lhs.builder.x_constant(binop.operation(l, r))
+            return lhs.builder.x_constant(binop.operation(l, r));
         }
         (&CircuitExpression::XConst(l), &CircuitExpression::BConst(r)) => {
-            return lhs.builder.x_constant(binop.operation(l, r))
+            return lhs.builder.x_constant(binop.operation(l, r));
         }
         (&CircuitExpression::XConst(l), &CircuitExpression::XConst(r)) => {
-            return lhs.builder.x_constant(binop.operation(l, r))
+            return lhs.builder.x_constant(binop.operation(l, r));
         }
         _ => (),
     };
@@ -1582,8 +1582,8 @@ mod tests {
         assert!(new_aux_constraints.is_empty());
     }
 
-    fn circuit_with_multiple_options_for_degree_lowering_to_degree_2(
-    ) -> [ConstraintCircuitMonad<SingleRowIndicator>; 2] {
+    fn circuit_with_multiple_options_for_degree_lowering_to_degree_2()
+    -> [ConstraintCircuitMonad<SingleRowIndicator>; 2] {
         let builder = ConstraintCircuitBuilder::new();
         let x = |i| builder.input(SingleRowIndicator::Main(i));
 
@@ -1980,13 +1980,13 @@ mod tests {
             .map(|m| m.circuit.borrow())
             .map(|c| c.evaluate(main_input.view(), aux_input.view(), &challenges))
             .collect_vec();
-
         prop_assert_eq!(output_before_lowering, output_after_lowering);
 
-        prop_assert!(substitution_constraint
-            .circuit
-            .borrow()
-            .evaluate(main_input.view(), aux_input.view(), &challenges)
-            .is_zero());
+        let evaluated_constraint = substitution_constraint.circuit.borrow().evaluate(
+            main_input.view(),
+            aux_input.view(),
+            &challenges,
+        );
+        prop_assert!(evaluated_constraint.is_zero());
     }
 }

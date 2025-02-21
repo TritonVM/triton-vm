@@ -7,6 +7,11 @@
 
 pub use twenty_first;
 pub use twenty_first::math::traits::FiniteField;
+pub use twenty_first::prelude::BFieldCodec;
+pub use twenty_first::prelude::BFieldElement;
+pub use twenty_first::prelude::Digest;
+pub use twenty_first::prelude::Tip5;
+pub use twenty_first::prelude::XFieldElement;
 pub use twenty_first::prelude::bfe;
 pub use twenty_first::prelude::bfe_array;
 pub use twenty_first::prelude::bfe_vec;
@@ -14,11 +19,6 @@ pub use twenty_first::prelude::tip5;
 pub use twenty_first::prelude::xfe;
 pub use twenty_first::prelude::xfe_array;
 pub use twenty_first::prelude::xfe_vec;
-pub use twenty_first::prelude::BFieldCodec;
-pub use twenty_first::prelude::BFieldElement;
-pub use twenty_first::prelude::Digest;
-pub use twenty_first::prelude::Tip5;
-pub use twenty_first::prelude::XFieldElement;
 
 pub use isa;
 pub use isa::instruction::LabelledInstruction;
@@ -27,8 +27,8 @@ pub use isa::triton_asm;
 pub use isa::triton_instr;
 pub use isa::triton_program;
 
-pub use air::table::TableId;
 pub use air::AIR;
+pub use air::table::TableId;
 
 pub use crate::error::InstructionError;
 pub use crate::error::NumberOfWordsError;
@@ -44,5 +44,5 @@ pub use crate::stark::Stark;
 pub use crate::stark::Verifier;
 pub use crate::vm::NonDeterminism;
 pub use crate::vm::PublicInput;
-pub use crate::vm::VMState;
 pub use crate::vm::VM;
+pub use crate::vm::VMState;

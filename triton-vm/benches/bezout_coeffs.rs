@@ -1,6 +1,6 @@
+use criterion::Criterion;
 use criterion::criterion_group;
 use criterion::criterion_main;
-use criterion::Criterion;
 use num_traits::ConstOne;
 use num_traits::ConstZero;
 use num_traits::Zero;

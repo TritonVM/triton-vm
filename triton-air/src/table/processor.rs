@@ -12,18 +12,19 @@ use constraint_circuit::InputIndicator;
 use constraint_circuit::SingleRowIndicator;
 use constraint_circuit::SingleRowIndicator::Aux;
 use constraint_circuit::SingleRowIndicator::Main;
+use isa::instruction::ALL_INSTRUCTIONS;
 use isa::instruction::Instruction;
 use isa::instruction::InstructionBit;
-use isa::instruction::ALL_INSTRUCTIONS;
+use isa::op_stack::NUM_OP_STACK_REGISTERS;
 use isa::op_stack::NumberOfWords;
 use isa::op_stack::OpStackElement;
-use isa::op_stack::NUM_OP_STACK_REGISTERS;
-use itertools::izip;
 use itertools::Itertools;
+use itertools::izip;
 use strum::EnumCount;
 use twenty_first::math::x_field_element::EXTENSION_DEGREE;
 use twenty_first::prelude::*;
 
+use crate::AIR;
 use crate::challenge_id::ChallengeId;
 use crate::cross_table_argument::CrossTableArg;
 use crate::cross_table_argument::EvalArg;
@@ -32,7 +33,6 @@ use crate::cross_table_argument::PermArg;
 use crate::table;
 use crate::table_column::MasterAuxColumn;
 use crate::table_column::MasterMainColumn;
-use crate::AIR;
 
 /// The number of helper variable registers
 pub const NUM_HELPER_VARIABLE_REGISTERS: usize = 6;
@@ -2218,10 +2218,12 @@ pub fn transition_constraints_for_instruction(
 fn prohibit_any_illegal_number_of_words(
     circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
 ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-    vec![NumberOfWords::illegal_values()
+    let prohibitions = NumberOfWords::illegal_values()
         .map(|n| indicator_polynomial(circuit_builder, n))
         .into_iter()
-        .sum()]
+        .sum();
+
+    vec![prohibitions]
 }
 
 fn log_derivative_accumulates_clk_next(
@@ -3264,8 +3266,8 @@ fn helper_variable(
 
 #[cfg(test)]
 mod tests {
-    use ndarray::s;
     use ndarray::Array2;
+    use ndarray::s;
     use num_traits::identities::Zero;
     use proptest::prop_assert_eq;
     use proptest_arbitrary_interop::arb;
