@@ -15,6 +15,14 @@ jobs:
   benchmarks:
     name: Run benchmarks
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        benchmark:
+          - bezout_coeffs
+          - mem_io
+          - prove_fib
+          - verify_halt
+          - degree_lowering
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -28,13 +36,7 @@ jobs:
           tool: cargo-codspeed
 
       - name: Build benchmarks
-        run: >
-          cargo codspeed build
-          bezout_coeffs
-          mem_io
-          prove_fib
-          verify_halt
-          degree_lowering
+        run: cargo codspeed build ${{ matrix.benchmark }}
 
       - name: Run benchmarks
         uses: CodSpeedHQ/action@v3
