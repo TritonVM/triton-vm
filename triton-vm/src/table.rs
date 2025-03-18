@@ -297,7 +297,8 @@ mod tests {
             }
         }
 
-        // Use the Schwartz-Zippel lemma to check no two substitution rules are equal.
+        // Use the Schwartz-Zippel lemma to check that no two substitution rules
+        // are equal.
         let dummy_claim = Claim::default();
         let challenges: [XFieldElement; Challenges::SAMPLE_COUNT] = rng.random();
         let challenges = challenges.to_vec();

@@ -216,10 +216,11 @@ where
     ///
     /// [lde]: Self::maybe_low_degree_extend_all_columns
     /// [cache]: crate::config::overwrite_lde_trace_caching_to
+    //
     // This cannot be implemented generically on the trait because it returns a
-    // pointer to an array that must live somewhere and cannot live on the stack.
-    // From the trait implementation we cannot access the implementing object's
-    // fields.
+    // pointer to an array that must live somewhere and cannot live on the
+    // stack. From the trait implementation we cannot access the implementing
+    // object's fields.
     fn quotient_domain_table(&self) -> Option<ArrayView2<Self::Field>>;
 
     /// Low-degree extend all columns of the trace table (including randomizers)
@@ -323,11 +324,12 @@ where
     /// not have to be in any of the domains. In other words, can be used to
     /// compute out-of-domain rows. Does not include randomizer polynomials.
     fn out_of_domain_row(&self, indeterminate: XFieldElement) -> Array1<XFieldElement> {
-        // The following is a batched version of barycentric Lagrangian evaluation.
-        // Since the method `barycentric_evaluate` is self-contained, not returning
-        // intermediate items necessary for batching, and since returning and reusing
-        // those intermediate items would produce a challenging interface, the relevant
-        // parts are reimplemented here.
+        // The following is a batched version of barycentric Lagrangian
+        // evaluation. Since the method `barycentric_evaluate` is
+        // self-contained, not returning intermediate items necessary for
+        // batching, and since returning and reusing those intermediate items
+        // would produce a challenging interface, the relevant parts are
+        // reimplemented here.
 
         let domain = self.trace_domain().domain_values();
         let domain_shift = domain.iter().map(|&d| indeterminate - d).collect();
@@ -398,8 +400,9 @@ where
     ///
     /// Panics if the `idx` is larger than or equal to [`Self::NUM_COLUMNS`].
     fn trace_randomizer_for_column(&self, idx: usize) -> Polynomial<'static, Self::Field> {
-        // While possible to produce some randomizer for a too-large index, it does not
-        // have any useful application and is almost certainly a logic error.
+        // While possible to produce some randomizer for a too-large index, it
+        // does not have any useful application and is almost certainly a logic
+        // error.
         assert!(idx < Self::NUM_COLUMNS);
 
         let mut rng = rng_from_offset_seed(self.trace_randomizer_seed(), idx);
@@ -439,8 +442,8 @@ where
             return all_digests;
         }
 
-        // Now knowing that the low-degree extensions are not cached, hash all FRI
-        // domain rows of the table using just-in-time low-degree-extension.
+        // Now knowing that the low-degree extensions are not cached, hash all
+        // FRI domain rows of the table using just-in-time low-degree-extension.
         let num_threads = std::thread::available_parallelism()
             .map(|x| x.get())
             .unwrap_or(1);
@@ -537,8 +540,8 @@ where
         });
 
         // add trace randomizers to their columns
-        // todo: this could be done using `Polynomial::batch_evaluate` if that function
-        //       had more general trait bounds 🤷
+        // todo: this could be done using `Polynomial::batch_evaluate` if that
+        //   function had more general trait bounds 🤷
         let zerofier_evals = indeterminates
             .par_iter()
             .map(|&i| self.trace_domain().zerofier().evaluate::<_, Self::Field>(i))
@@ -588,9 +591,10 @@ where
     debug_assert!(offset_le_bytes.as_ref().len() <= seed.len());
 
     // Ensure that the operation is independent of the target pointer:
-    // `to_le_bytes` yields any leading zeros _after_ bits of lesser significance.
-    // Note that this does not guarantee portability across architectures, as
-    // `rand::StdRng` is specifically documented as being not portable.
+    // `to_le_bytes` yields any leading zeros _after_ bits of lesser
+    // significance. Note that this does not guarantee portability across
+    // architectures, as `rand::StdRng` is specifically documented as being not
+    // portable.
     for (seed_byte, offset_byte) in seed.iter_mut().zip(offset_le_bytes) {
         *seed_byte = seed_byte.wrapping_add(offset_byte);
     }
@@ -852,8 +856,9 @@ impl MasterMainTable {
         let num_rows = randomized_trace_len(padded_height, num_trace_randomizers);
         let randomized_trace_domain = ArithmeticDomain::of_length(num_rows).unwrap();
 
-        // For the current approach to trace randomizers to work, the randomized trace
-        // must be _exactly_ twice as long as the trace without trace randomizers.
+        // For the current approach to trace randomizers to work, the randomized
+        // trace must be _exactly_ twice as long as the trace without trace
+        // randomizers.
         let trace_domain = randomized_trace_domain.halve().unwrap();
 
         // column majority (“`F`”) for contiguous column slices
@@ -877,8 +882,8 @@ impl MasterMainTable {
             low_degree_extended_table: None,
         };
 
-        // memory-like tables must be filled in before clock jump differences are known,
-        // hence the break from the usual order
+        // memory-like tables must be filled in before clock jump differences
+        // are known, hence the break from the usual order
         let clk_jump_diffs_op_stack =
             OpStackTable::fill(master_main_table.table_mut(TableId::OpStack), aet, ());
         let clk_jump_diffs_ram = RamTable::fill(master_main_table.table_mut(TableId::Ram), aet, ());
@@ -979,7 +984,8 @@ impl MasterMainTable {
     /// specific to that table, but always involves adding some number of
     /// columns.
     pub fn extend(&self, challenges: &Challenges) -> MasterAuxTable {
-        // construct a seed that hasn't been used for any column's trace randomizer
+        // construct a seed that hasn't been used for any main table column's
+        // trace randomizer
         let mut rng = rng_from_offset_seed(self.trace_randomizer_seed(), Self::NUM_COLUMNS);
 
         profiler!(start "initialize master table");
@@ -1833,8 +1839,8 @@ mod tests {
         }
 
         // Declarative macro workaround (because I'm bad at them):
-        // an `expr` cannot be followed up with `and`. Instead, declare this `const` to
-        // have an `ident`, which _can_ be followed up with `and`.
+        // an `expr` cannot be followed up with `and`. Instead, declare this
+        // `const` to have an `ident`, which _can_ be followed up with `and`.
         const ZERO: usize = 0;
 
         let degree_lowering_targets = [None, Some(8), Some(4)];
@@ -2394,10 +2400,10 @@ mod tests {
     fn trace_randomizers_have_large_hamming_distances() {
         let aux_table = dummy_master_aux_table();
 
-        // It is a priori possible that the first few coefficients are correlated but
-        // then the latter coefficients are independent. We do not want the latter
-        // coefficients to mask a far-from-random signal. So we look at the first
-        // `num_coefficients`-many coefficients only.
+        // It is a priori possible that the first few coefficients are
+        // correlated but then the latter coefficients are independent. We do
+        // not want the latter coefficients to mask a far-from-random signal. So
+        // we look at the first `num_coefficients`-many coefficients only.
         // This parameter must lie in 1..=aux_table.num_trace_randomizers.
         let num_coefficients = 1;
 

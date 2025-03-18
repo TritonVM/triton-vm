@@ -708,7 +708,7 @@ impl VMState {
             mem_pointer.increment();
             sponge.state[i] = element;
 
-            // there are not enough helper variables – overwrite part of the stack :(
+            // not enough helper variables – overwrite part of the stack :(
             if i < tip5::RATE - NUM_HELPER_VARIABLE_REGISTERS {
                 self.op_stack[i] = element;
             }
@@ -857,8 +857,8 @@ impl VMState {
         let xor = lhs ^ rhs;
         self.op_stack.push(xor.into());
 
-        // Triton VM uses the following equality to compute the results of both the
-        // `and` and `xor` instruction using the u32 coprocessor's `and`
+        // Triton VM uses the following equality to compute the results of both
+        // the `and` and `xor` instruction using the u32 coprocessor's `and`
         // capability: a ^ b = a + b - 2 · (a & b)
         let u32_table_entry = U32TableEntry::new(Instruction::And, lhs, rhs);
         let co_processor_calls = vec![CoProcessorCall::U32(u32_table_entry)];
@@ -2421,7 +2421,7 @@ pub(crate) mod tests {
 
     pub(crate) fn test_program_for_pow() -> ProgramAndInput {
         ProgramAndInput::new(triton_program!(
-            // push <exponent: u32> push <base: BFE> pow push <result: BFE> eq assert
+            // push [exponent] push [base] pow push [result] eq assert
             push  0 push 0 pow push    1 eq assert
             push  0 push 1 pow push    1 eq assert
             push  0 push 2 pow push    1 eq assert
@@ -2519,9 +2519,9 @@ pub(crate) mod tests {
         let mut memory_values: Vec<BFieldElement> = random_elements(num_memory_accesses);
         let mut instructions = vec![];
 
-        // Read some memory before first write to ensure that the memory is initialized
-        // with 0s. Not all addresses are read to have different access
-        // patterns:
+        // Read some memory before first write to ensure that the memory is
+        // initialized with 0s. Not all addresses are read to have different
+        // access patterns:
         // - Some addresses are read before written to.
         // - Other addresses are written to before read.
         for address in memory_addresses.iter().take(num_memory_accesses / 4) {
@@ -2560,8 +2560,8 @@ pub(crate) mod tests {
                 .extend(triton_asm!(push {new_memory_value} push {address} write_mem 1 pop 1));
         }
 
-        // Read back all, i.e., unchanged and overwritten values in (different from
-        // before) random order and check that the values did not change.
+        // Read back all, i.e., unchanged and overwritten values in (different
+        // from before) random order and check that the values did not change.
         let mut reading_permutation = (0..num_memory_accesses).collect_vec();
         for i in 0..num_memory_accesses {
             let j = rng.random_range(0..num_memory_accesses);

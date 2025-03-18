@@ -137,9 +137,11 @@ impl Prover {
     /// sufficient entropy.
     ///
     /// ### If in doubt, don't use this method.
+    //
     // Even though this method can be used to disable or cripple one of the
-    // core promises of Triton VM, it is not marked `unsafe` because it is always
-    // _memory_ safe. See also: https://doc.rust-lang.org/std/keyword.unsafe.html
+    // core promises of Triton VM, it is not marked `unsafe` because it is
+    // always _memory_ safe. See also:
+    // https://doc.rust-lang.org/std/keyword.unsafe.html
     //
     // The length of the name is intended to discourage use.
     #[must_use]
@@ -315,23 +317,25 @@ impl Prover {
 
         profiler!(start "DEEP");
         // There are (at least) two possible ways to perform the DEEP update.
-        // 1. The one used here, where main & aux codewords are DEEP'd twice: once with
-        //    the out-of- domain point for the current row (i.e., α) and once using the
-        //    out-of-domain point for the next row (i.e., ω·α). The DEEP update's
-        //    denominator is a degree-1 polynomial in both cases, namely (ω^i - α) and
-        //    (ω^i - ω·α) respectively.
+        // 1. The one used here, where main & aux codewords are DEEP'd twice:
+        //    once with the out-of- domain point for the current row (i.e., α)
+        //    and once using the out-of-domain point for the next row
+        //    (i.e., ω·α). The DEEP update's denominator is a degree-1
+        //    polynomial in both cases, namely (ω^i - α) and (ω^i - ω·α)
+        //    respectively.
         // 2. One where the main & aux codewords are DEEP'd only once, using the
         //    degree-2 polynomial (ω^i - α)·(ω^i - ω·α) as the denominator. This
-        //    requires a linear interpolation in the numerator: b(ω^i) - i((b(α), α) +
-        //    (b(ω·α), ω·α))(w^i).
+        //    requires a linear interpolation in the numerator:
+        //    b(ω^i) - i((b(α), α) + (b(ω·α), ω·α))(w^i).
         //
-        // In either case, the DEEP'd quotient polynomial is an additional summand for
-        // the combination codeword: (q(ω^i) - q(α)) / (ω^i - α).
-        // All (three or two) summands are weighted and summed to form the combination
-        // codeword. The weights are sampled through the Fiat-Shamir heuristic.
+        // In either case, the DEEP'd quotient polynomial is an additional
+        // summand for the combination codeword: (q(ω^i) - q(α)) / (ω^i - α).
+        // All (three or two) summands are weighted and summed to form the
+        // combination codeword. The weights are sampled through the Fiat-Shamir
+        // heuristic.
         //
-        // Both approaches are sound. The first approach is more efficient, as it
-        // requires fewer operations.
+        // Both approaches are sound. The first approach is more efficient, as
+        // it requires fewer operations.
         profiler!(start "main&aux curr row");
         let out_of_domain_curr_row_main_and_aux_value =
             main_and_aux_combination_polynomial.evaluate(out_of_domain_point_curr_row);
@@ -436,8 +440,8 @@ impl Prover {
             aux_authentication_structure,
         ));
 
-        // Open quotient & combination codewords at the same positions as main & aux
-        // codewords.
+        // Open quotient & combination codewords at the same positions as
+        // main & aux codewords.
         let into_fixed_width_row =
             |row: ArrayView1<_>| -> QuotientSegments { row.to_vec().try_into().unwrap() };
         let revealed_quotient_segments_rows = revealed_current_row_indices
@@ -486,21 +490,23 @@ impl Prover {
             main_table.quotient_domain_table(),
             aux_table.quotient_domain_table(),
         ) else {
-            // The decision to cache the quotient domain main table can be independent of
-            // the decision to cache the quotient domain auxiliary table. Additionally,
-            // available memory is affected by other running programs. Together, this may
-            // result in one table being cached while the other is not. To compute the
-            // quotients, either both or neither are needed.[^1] For peak memory
+            // The decision to cache the quotient domain main table can be
+            // independent of the decision to cache the quotient domain
+            // auxiliary table. Additionally, available memory is affected by
+            // other running programs. Together, this may result in one table
+            // being cached while the other is not. To compute the quotients,
+            // either both or neither are needed.[^1] For peak memory
             // consumption, it is beneficial to clear any unused cache.
             //
-            // Discarding the cache incurs a performance penalty later, when revealing the
-            // rows indicated by FRI. This is an acceptable tradeoff:
-            // Executing this very code path means that in the current environment, peak
-            // memory usage is a concern. Running out of memory results in abnormal
-            // termination of the prover. Slower execution is an acceptable price for normal
-            // termination.
+            // Discarding the cache incurs a performance penalty later, when
+            // revealing the rows indicated by FRI. This is an acceptable
+            // tradeoff: Executing this very code path means that in the current
+            // environment, peak memory usage is a concern. Running out of
+            // memory results in abnormal termination of the prover. Slower
+            // execution is an acceptable price for normal termination.
             //
-            // [^1]: Code using exactly one cache _could_ exist, but oh! the engineering.
+            // [^1]: Code using exactly one cache _could_ exist, but oh! the
+            //       engineering.
             main_table.clear_cache();
             aux_table.clear_cache();
 
@@ -562,16 +568,16 @@ impl Prover {
         Array2<XFieldElement>,
         Array1<Polynomial<'static, XFieldElement>>,
     ) {
-        // This parameter regulates a time-memory tradeoff. Semantically, it is the
-        // ratio of the randomized trace length to the length of the domain used for
-        // calculating the quotient segments (aka “working domain”). When this factor is
-        // larger, there are _more_ cosets of _smaller_ size over which the trace
-        // polynomials are evaluated.
+        // This parameter regulates a time-memory tradeoff. Semantically, it is
+        // the ratio of the randomized trace length to the length of the domain
+        // used for calculating the quotient segments (aka “working domain”).
+        // When this factor is larger, there are _more_ cosets of _smaller_ size
+        // over which the trace polynomials are evaluated.
         // Must be a power of two and lie in 2..=randomized_trace_domain.length.
         //
-        // The requirement for the working domain to be at most as long as the trace
-        // domain, i.e., at most half the size of the randomized trace domain, is
-        // explained below.
+        // The requirement for the working domain to be at most as long as the
+        // trace domain, i.e., at most half the size of the randomized trace
+        // domain, is explained below.
         const RANDOMIZED_TRACE_LEN_TO_WORKING_DOMAIN_LEN_RATIO: usize = 2;
         const NUM_COSETS: usize =
             NUM_QUOTIENT_SEGMENTS * RANDOMIZED_TRACE_LEN_TO_WORKING_DOMAIN_LEN_RATIO;
@@ -634,7 +640,7 @@ impl Prover {
         for (coset_index, quotient_column) in
             (0..).zip(quotient_multicoset_evaluations.columns_mut())
         {
-            // always also offset by fri domain offset to avoid division-by-zero errors
+            // offset by fri domain offset to avoid division-by-zero errors
             let working_domain = working_domain.with_offset(iota.mod_pow(coset_index) * psi);
             profiler!(start "poly evaluate" ("LDE"));
             Zip::from(main_table.trace_table().axis_iter(Axis(1)))
@@ -654,43 +660,47 @@ impl Prover {
             // A _randomized_ trace interpolant is:
             //
             //    trace_interpolant + trace_zerofier·trace_randomizer
-            //    ╶───────┬───────╴   ╶──────────────┬─────────────╴
+            //    ╶───────┬───────╴   ╶──────────────┬──────────────╴
             //            ╵                          │
             //   was just moved into                 ╵
             //  `{main, aux}_columns`          still missing
             //
             //
-            // Knowing the shape of the trace zerofier (see also `domain.zerofier()`), and
-            // with the length of the trace domain being `n`, this is:
+            // Knowing the shape of the trace zerofier (see also
+            // `domain.zerofier()`), and with the length of the trace domain
+            // being `n`, this is:
             //
             //  trace_zerofier·trace_randomizer = (X^n - 1)·trace_randomizer
             //
-            // For reasons of efficiency, all three components (interpolant, zerofier, and
-            // randomizer) are evaluated over the `working_domain`, i.e., they are
-            // codewords. The constant `RANDOMIZED_TRACE_LEN_TO_WORKING_DOMAIN_LEN_RATIO`
-            // defines the length of the working domain in relation to the randomized trace
-            // domain. Let the length of the working domain `m`, the generator of the
-            // working domain a primitive mth root of unity ξ, and the working domain's
-            // offset γ.
+            // For reasons of efficiency, all three components (interpolant,
+            // zerofier, and randomizer) are evaluated over the
+            // `working_domain`, i.e., they are codewords. The constant
+            // `RANDOMIZED_TRACE_LEN_TO_WORKING_DOMAIN_LEN_RATIO` defines the
+            // length of the working domain in relation to the randomized trace
+            // domain. Let the length of the working domain `m`, the generator
+            // of the working domain a primitive mth root of unity ξ, and the
+            // working domain's offset γ.
             //
-            // If the length of the working domain `m` is less than or equal the length of
-            // the trace domain, i.e., if m <= n or equivalently, if constant
-            //  `RANDOMIZED_TRACE_LEN_TO_WORKING_DOMAIN_LEN_RATIO` >= 2, then evaluating the
-            // trace zerofier (X^n - 1) on the `i`th working domain value gives:
+            // If the length of the working domain `m` is less than or equal the
+            // length of the trace domain, i.e., if m <= n or equivalently, if
+            // constant `RANDOMIZED_TRACE_LEN_TO_WORKING_DOMAIN_LEN_RATIO` >= 2,
+            // then evaluating the trace zerofier (X^n - 1) on the `i`th working
+            // domain value gives:
             //
             //   (X^n - 1)(ξ^i·γ) = (ξ^i·γ)^n - 1 = 1^i · γ^n - 1 = γ^n - 1
             //
-            // In other words, the trace_zerofier codeword over the working domain is
-            // [working_domain_offset^n - 1; m].
+            // In other words, the trace_zerofier codeword over the working
+            // domain is [working_domain_offset^n - 1; m].
             //
-            // Should a future re-design want to consider a working domain of length equal
-            // to the randomized trace domain, or in other words, should it consider a
+            // Should a future re-design want to consider a working domain of
+            // length equal to the randomized trace domain, or in other words,
+            // should it consider a
             // `RANDOMIZED_TRACE_LEN_TO_WORKING_DOMAIN_LEN_RATIO` of 1, then the
             // trace_zerofier's contribution below needs to be generalized. On
-            // working_domain's value `i`, the zerofier contribution would then be
-            // (-1)^i·γ^n - 1. In particular, note the term (-1)^i, which is absent from the
-            // trace randomizer when evaluated on working domains at most as long as the
-            // trace domain.
+            // working_domain's value `i`, the zerofier contribution would then
+            // be (-1)^i·γ^n - 1. In particular, note the term (-1)^i, which is
+            // absent from the trace randomizer when evaluated on working
+            // domains at most as long as the trace domain.
             assert!(working_domain.length <= trace_domain.length);
 
             profiler!(start "trace randomizers" ("LDE"));
@@ -790,54 +800,56 @@ impl Prover {
     /// ├────────── NUM_SEGMENTS ─────────┤
     /// ```
     //
-    // The mechanics of this function are backed by some serious maths originally
-    // derived by Alan Szepieniec, and later generalized by him and Jan Ferdinand
-    // Sauer.
+    // The mechanics of this function are backed by some serious maths
+    // originally derived by Alan Szepieniec, and later generalized by him and
+    // Jan Ferdinand Sauer.
     //
-    // The main idea is based on the segmentation formula. For K segments, this is
+    // The main idea is based on the segmentation formula. For K segments, this
+    // is
     //
     // f(X) = Σ_{k=0}^{K-1} X^k · f_k(X^K)
     //
-    // where each f_k is one segment. When substituting X for X·ξ^l, where ξ is a
-    // Kth root of unity (i.e., ξ^K = 1), this gives rise to K equations, where
-    // l ∈ { 0, …, K-1 }:
+    // where each f_k is one segment. When substituting X for X·ξ^l, where ξ is
+    // a Kth root of unity (i.e., ξ^K = 1), this gives rise to K equations,
+    // where l ∈ { 0, …, K-1 }:
     //
     // f(X·ξ^0)     = Σ_{k=0}^{K-1} (X·ξ^0)^k     · f_k(X^K)
     //              ⋮
     // f(X·ξ^(K-1)) = Σ_{k=0}^{K-1} (X·ξ^(K-1))^k · f_k(X^K)
     //
-    // Note how the indeterminates of the f_k are identical for all rows. That is,
-    // the mapping between f's evaluations on (the “right”) cosets and f's segments
-    // is a linear one.
+    // Note how the indeterminates of the f_k are identical for all rows. That
+    // is, the mapping between f's evaluations on (the “right”) cosets and f's
+    // segments is a linear one.
     //
     // ⎛  …       ⎞       ⎛     …               ⎞   ⎛  …       ⎞
-    // ⎜ f(X·ξ^l) ⎟   =   ⎜ …  X^k · ξ^(k·l)  … ⎟ · ⎜ f_k(X^K) ⎟                 (1)
+    // ⎜ f(X·ξ^l) ⎟   =   ⎜ …  X^k · ξ^(k·l)  … ⎟ · ⎜ f_k(X^K) ⎟             (1)
     // ⎝  …       ⎠       ⎝     …               ⎠   ⎝  …       ⎠
     //
-    // This function works by applying the inverse of the coefficient matrix to the
-    // function's input, i.e., to the left hand side of above equation. To compute
-    // this map efficiently, it is decomposed as follows.
-    // Operator “∘” denotes the Hadamard, i.e., element-wise product.
+    // This function works by applying the inverse of the coefficient matrix to
+    // the function's input, i.e., to the left hand side of above equation. To
+    // compute this map efficiently, it is decomposed as follows. Operator “∘”
+    // denotes the Hadamard, i.e., element-wise product.
     //
     //                    ⎛     …         ⎞   ⎛ ⎛  …  ⎞   ⎛  …       ⎞ ⎞
     //                =   ⎜ …  ξ^(k·l)  … ⎟ · ⎜ ⎜ X^k ⎟ ∘ ⎜ f_k(X^K) ⎟ ⎟
     //                    ⎝     …         ⎠   ⎝ ⎝  …  ⎠   ⎝  …       ⎠ ⎠
     //
-    // The coefficient matrix has dimensions K×K. Since ξ is a Kth root of unity,
-    // above matrix is an NTT matrix. That means its application can be efficiently
-    // reverted by performing iNTTs.
+    // The coefficient matrix has dimensions K×K. Since ξ is a Kth root of
+    // unity, above matrix is an NTT matrix. That means its application can be
+    // efficiently reverted by performing iNTTs.
     // The final step is elementwise multiplication with the vector (X^(-k)) to
     // get the segment polynomials.
     //
-    // For reasons of efficiency, this function does not operate on polynomials in
-    // monomial coefficient form, but on polynomial evaluations on some domain,
-    // i.e., codewords.
-    // Also for reasons of efficiency, the domain length N is a power of two, and
-    // the evaluation points are multiples of an Nth root of unity, ω. In order to
-    // avoid divisions by zero, the domain is offset by Ψ. Furthermore, the offset
-    // of a coset is some power of ι, which itself is a root of unity of order N·M,
-    // where M is the number of cosets. That is, ι^M = ω, and ω^N = 1.
-    // Summarizing, this function's input is a matrix of the following form:
+    // For reasons of efficiency, this function does not operate on polynomials
+    // in monomial coefficient form, but on polynomial evaluations on some
+    // domain, i.e., codewords.
+    // Also for reasons of efficiency, the domain length N is a power of two,
+    // and the evaluation points are multiples of an Nth root of unity, ω. In
+    // order to avoid divisions by zero, the domain is offset by Ψ. Furthermore,
+    // the offset of a coset is some power of ι, which itself is a root of unity
+    // of order N·M, where M is the number of cosets. That is, ι^M = ω,
+    // and ω^N = 1. Summarizing, this function's input is a matrix of the
+    // following form:
     //
     // ⎛     …                  ⎞╷ ┬       ⎛     …                   ⎞
     // ⎜ …  f(Ψ · ι^j · ω^i)  … ⎟i N   =   ⎜ …  f(Ψ · ι^(j + iM))  … ⎟
@@ -846,11 +858,11 @@ impl Prover {
     // ├─────────── M ──────────┤
     //
     // In order to kick off the series of steps derived & outlined above, this
-    // matrix needs to be rearranged. The desired shape can be derived by taking the
-    // left-hand side of the system of equations (1) and substituting the
+    // matrix needs to be rearranged. The desired shape can be derived by taking
+    // the left-hand side of the system of equations (1) and substituting the
     // indeterminate X for the points at which f is evaluated, Ψ · ι^j · ω^i.
-    // Let L such that N·M = L·K. Observe that ξ being a Kth root of unity implies
-    // ξ = ω^(N/K) = ι^(N·M/K) = ι^L.
+    // Let L such that N·M = L·K. Observe that ξ being a Kth root of unity
+    // implies ξ = ω^(N/K) = ι^(N·M/K) = ι^L.
     //
     // ⎛  …       ⎞       ⎛     …                          ⎞ ┬
     // ⎜ f(X·ξ^l) ⎟   ↦   ⎜ …  f(ψ · ι^(j + i·M + l·L))  … ⎟ L
@@ -861,10 +873,10 @@ impl Prover {
     // Helpful insights to understand the matrix re-arrangement are:
     // - the various powers of ι, i.e., { ι^(j + i·M) | 0 ⩽ i < N, 0 ⩽ j < M },
     //   sweep the entire input matrix (which has dimensions N×M)
-    // - ι is a (primitive) (N·M)th root of unity and thus, _all_ powers of ι are
-    //   required to index the entirety of the input matrix
-    // - the re-arranged matrix (which has dimensions L×K) has all the same entries
-    //   as the input matrix
+    // - ι is a (primitive) (N·M)th root of unity and thus, _all_ powers of ι
+    //   are required to index the entirety of the input matrix
+    // - the re-arranged matrix (which has dimensions L×K) has all the same
+    //   entries as the input matrix
     //
     // The map that satisfies all of these re-arrangement constraints is
     // (i, j) ↦ ((j + i·M) % L, (j + i·M) // L)
@@ -899,9 +911,9 @@ impl Prover {
         );
 
         // Re-arrange data in preparation for iNTT:
-        // Move appropriate powers of ξ^(k·l) with the same k into the same row. Change
-        // the matrix's dimensions from N×M to L×K, with row majority (“`C`”) to get
-        // contiguous row slices for iNTT.
+        // Move appropriate powers of ξ^(k·l) with the same k into the same row.
+        // Change the matrix's dimensions from N×M to L×K, with row majority
+        // (“`C`”) to get contiguous row slices for iNTT.
         let mut quotient_segments = ndarray_helper::par_zeros((num_output_rows, NUM_SEGMENTS));
         quotient_segments
             .axis_iter_mut(Axis(0))
@@ -958,7 +970,8 @@ impl Prover {
             .and(quotient_codewords.axis_iter_mut(Axis(1)))
             .and(quotient_polynomials.axis_iter_mut(Axis(0)))
             .par_for_each(|segment, target_codeword, target_polynomial| {
-                // `quotient_segments` is in row-major order, requiring `segment.to_vec()`
+                // Getting a column as a contiguous piece of memory from a
+                // row-majority matrix requires `.to_vec()`.
                 let interpolant = segment_domain.interpolate(&segment.to_vec());
                 let lde_codeword = fri_domain.evaluate(&interpolant);
                 Array1::from(lde_codeword).move_into(target_codeword);
@@ -1076,9 +1089,10 @@ impl Verifier {
         let extension_challenge_weights = proof_stream.sample_scalars(Challenges::SAMPLE_COUNT);
         let challenges = Challenges::new(extension_challenge_weights, claim);
         let auxiliary_tree_merkle_root = proof_stream.dequeue()?.try_into_merkle_root()?;
-        // Sample weights for quotient codeword, which is a part of the combination
-        // codeword. See corresponding part in the prover for a more detailed
-        // explanation.
+
+        // Sample weights for quotient codeword, which is a part of the
+        // combination codeword. See corresponding part in the prover for a more
+        // detailed explanation.
         let quot_codeword_weights = proof_stream.sample_scalars(MasterAuxTable::NUM_CONSTRAINTS);
         let quot_codeword_weights = Array1::from(quot_codeword_weights);
         let quotient_codeword_merkle_root = proof_stream.dequeue()?.try_into_merkle_root()?;
@@ -1382,8 +1396,8 @@ impl Verifier {
         profiler!(start "inner product");
         // todo: Try to get rid of this clone. The alternative line
         //   `let main_and_aux_element = (&weights * &summands).sum();`
-        //   without cloning the weights does not compile for a seemingly nonsensical
-        // reason.
+        //   without cloning the weights does not compile for a seemingly
+        //   nonsensical reason.
         let weights = weights.to_owned();
         let main_and_aux_element = (weights * row).sum();
         profiler!(stop "inner product");
@@ -1422,6 +1436,7 @@ impl Stark {
     ///
     /// This method should be the first option to consider for proving.
     /// For more control over the proving process, see [`Prover`].
+    //
     // This pass-through method guarantees fresh prover randomness at each call.
     pub fn prove(
         &self,
@@ -1434,6 +1449,7 @@ impl Stark {
     /// Verify the accuracy of the given [Claim], supported by the [Proof].
     ///
     /// See also [`Verifier`].
+    //
     // This pass-through method achieves symmetry with the [`Prover`].
     pub fn verify(&self, claim: &Claim, proof: &Proof) -> Result<(), VerificationError> {
         Verifier::new(*self).verify(claim, proof)

@@ -139,7 +139,8 @@ impl AIR for OpStackTable {
             * (ib1_shrink_stack - one.clone())
             * next_row_is_padding_row.clone();
 
-        // The running product for the permutation argument `rppa` is updated correctly.
+        // The running product for the permutation argument `rppa` is updated
+        // correctly.
         let compressed_row = circuit_builder.challenge(ChallengeId::OpStackClkWeight)
             * clk_next.clone()
             + circuit_builder.challenge(ChallengeId::OpStackIb1Weight)

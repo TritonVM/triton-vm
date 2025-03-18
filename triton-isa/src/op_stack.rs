@@ -67,8 +67,8 @@ impl OpStack {
         }
     }
 
-    // If the op stack is empty, things have gone horribly wrong. Suppressing this
-    // lint is preferred to implementing a basically useless `is_empty()`.
+    // If the op stack is empty, things have gone horribly wrong. Suppressing
+    // this lint is preferred to implementing a basically useless `is_empty()`.
     #[expect(clippy::len_without_is_empty)]
     pub fn len(&self) -> usize {
         self.stack.len()

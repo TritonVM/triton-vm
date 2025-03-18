@@ -241,9 +241,9 @@ impl InputIndicator for DualRowIndicator {
     }
 
     fn main_table_input(index: usize) -> Self {
-        // It seems that the choice between `CurrentMain` and `NextMain` is arbitrary:
-        // any transition constraint polynomial is evaluated on both the current and the
-        // next row. Hence, both rows are in scope.
+        // It seems that the choice between `CurrentMain` and `NextMain` is
+        // arbitrary: any transition constraint polynomial is evaluated on both
+        // the current and the next row. Hence, both rows are in scope.
         Self::CurrentMain(index)
     }
 
@@ -442,7 +442,8 @@ impl<II: InputIndicator> ConstraintCircuit<II> {
     ///
     /// Panics if a duplicate ID is found.
     pub fn assert_unique_ids(constraints: &mut [ConstraintCircuit<II>]) {
-        // inner uniqueness checks relies on reference counters being 0 for unseen nodes
+        // inner uniqueness checks relies on reference counters being 0 for
+        // unseen nodes
         for circuit in constraints.iter_mut() {
             circuit.reset_ref_count_for_tree();
         }
@@ -594,8 +595,8 @@ impl<II: InputIndicator> Display for ConstraintCircuitMonad<II> {
 }
 
 impl<II: InputIndicator> PartialEq for ConstraintCircuitMonad<II> {
-    // Equality for the ConstraintCircuitMonad is defined by the circuit, not the
-    // other metadata (e.g. ID) that it carries around.
+    // Equality for the ConstraintCircuitMonad is defined by the circuit, not
+    // the other metadata (e.g. ID) that it carries around.
     fn eq(&self, other: &Self) -> bool {
         self.circuit == other.circuit
     }
@@ -826,7 +827,7 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
         };
         let new_variable = builder.input(new_input_indicator);
 
-        // Make all descendants of the chosen node point to the new variable instead
+        // Point all descendants of the chosen node to the new variable instead
         builder.redirect_all_references_to_node(chosen_node_id, new_variable.clone());
 
         // Treat roots of the multicircuit explicitly.
@@ -867,16 +868,15 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
             .collect_vec();
 
         // Collect all candidates for substitution, i.e., descendents of
-        // high_degree_nodes with degree <= target_degree.
-        // Substituting a node of degree 1 is both pointless and can lead to infinite
-        // iteration.
+        // high_degree_nodes with degree <= target_degree. Substituting a node
+        // of degree 1 is both pointless and can lead to infinite iteration.
         let low_degree_nodes = Self::all_nodes_in_multicircuit(&high_degree_nodes)
             .into_iter()
             .filter(|node| 1 < node_degrees[&node.id] && node_degrees[&node.id] <= target_degree)
             .map(|node| node.id)
             .collect_vec();
 
-        // If the resulting list is empty, there is no way forward. Stop – panic time!
+        // If the resulting list is empty, there is no way forward.
         assert!(!low_degree_nodes.is_empty(), "Cannot lower degree.");
 
         // Of the remaining nodes, keep the ones occurring the most often.
@@ -888,7 +888,8 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
         nodes_and_occurrences.retain(|_, &mut count| count == max_occurrences);
         let mut candidate_node_ids = nodes_and_occurrences.keys().copied().collect_vec();
 
-        // If there are still multiple nodes, pick the one with the highest degree.
+        // If there are still multiple nodes, pick the one with the highest
+        // degree.
         let max_degree = candidate_node_ids
             .iter()
             .map(|node_id| node_degrees[node_id])
@@ -898,7 +899,8 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
 
         candidate_node_ids.sort_unstable();
 
-        // If there are still multiple nodes, pick any one – but deterministically so.
+        // If there are still multiple nodes, pick any one – but
+        // deterministically so.
         candidate_node_ids.into_iter().min().unwrap()
     }
 
@@ -1043,7 +1045,7 @@ impl<II: InputIndicator> ConstraintCircuitBuilder<II> {
             "`make_leaf` is intended for anything but `BinOp`s"
         );
 
-        // Don't generate an X field leaf if it can be expressed as a B field leaf
+        // don't use X field if the B field suffices
         if let CircuitExpression::XConst(xfe) = expression {
             if let Some(bfe) = xfe.unlift() {
                 expression = CircuitExpression::BConst(bfe);
@@ -1897,9 +1899,9 @@ mod tests {
     /// soundness simultaneously.
     //
     // Shrinking on this test is disabled because we noticed some weird ass
-    // behavior. In short, shrinking does not play ball with the arbitrary circuit
-    // generator; it seems to make the generated circuits *more* complex, not less
-    // so.
+    // behavior. In short, shrinking does not play ball with the arbitrary
+    // circuit generator; it seems to make the generated circuits *more*
+    // complex, not less so.
     #[proptest(cases = 1000, max_shrink_iters = 0)]
     fn node_substitution_is_complete_and_sound(
         #[strategy(arbitrary_circuit_monad(10, 10, 10, 160, 10))] mut multicircuit_monad: Vec<

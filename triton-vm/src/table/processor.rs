@@ -81,9 +81,9 @@ impl TraceTable for ProcessorTable {
         let clk_col = Array1::from_iter(clk_range.map(|a| bfe!(a as u64)));
         clk_col.move_into(main_table.slice_mut(s![table_len.., MainColumn::CLK.main_index()]));
 
-        // The Jump Stack Table does not have a padding indicator. Hence, clock jump
-        // differences are being looked up in its padding sections. The clock
-        // jump differences in that section are always 1. The lookup
+        // The Jump Stack Table does not have a padding indicator. Hence, clock
+        // jump differences are being looked up in its padding sections. The
+        // clock jump differences in that section are always 1. The lookup
         // multiplicities of clock value 1 must be increased accordingly: one
         // per padding row.
         let num_padding_rows = main_table.nrows() - table_len;
@@ -486,8 +486,9 @@ fn auxiliary_column_for_u32_lookup_argument(
                     * challenges[ChallengeId::U32ResultWeight];
             to_invert.push(challenges[ChallengeId::U32Indeterminate] - compressed_row);
         } else if previous_ci == Instruction::Xor.opcode_b() {
-            // Triton VM uses the following equality to compute the results of both the
-            // `and` and `xor` instruction using the u32 coprocessor's `and` capability:
+            // Triton VM uses the following equality to compute the results of
+            // both the `and` and `xor` instruction using the u32 coprocessor's
+            // `and` capability:
             //     a ^ b = a + b - 2 · (a & b)
             // <=> a & b = (a + b - a ^ b) / 2
             let st0_prev = previous_row[MainColumn::ST0.main_index()];
@@ -607,8 +608,8 @@ fn factor_for_op_stack_table_running_product(
         return default_factor;
     };
 
-    // shorter stack means relevant information is on top of stack, i.e., in stack
-    // registers
+    // shorter stack means relevant information is on top of stack, i.e., in
+    // stack registers
     let row_with_shorter_stack = if previous_instruction.op_stack_size_influence() > 0 {
         previous_row.view()
     } else {
@@ -757,7 +758,8 @@ fn offset_ram_pointer(
 
     match instruction {
         // adjust for ram_pointer pointing in front of last-read address:
-        // `push 0 read_mem 1` leaves stack as `_ a -1`, with `a` read from address 0.
+        // `push 0 read_mem 1` leaves stack as `_ a -1`, with `a` read from
+        // address 0.
         Instruction::ReadMem(_) => ram_pointer + offset + bfe!(1),
         Instruction::WriteMem(_) => ram_pointer + offset,
         _ => unreachable!(),

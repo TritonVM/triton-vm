@@ -170,8 +170,8 @@ pub fn bezout_coefficient_polynomials_coefficients(
     // denote the polynomial with the given `unique_roots` as its roots, and
     // `fd` the formal derivative of `rp`.
     //
-    // The naïve approach is to perform the extended Euclidean algorithm (xgcd) on
-    // `rp` and `fd`. This has a time complexity in O(n^2) where `n` is the
+    // The naïve approach is to perform the extended Euclidean algorithm (xgcd)
+    // on `rp` and `fd`. This has a time complexity in O(n^2) where `n` is the
     // number of roots: for the given problem shape, the degrees `rp` and `fd`
     // are `n` and `n-1`, respectively. Each step of the (x)gcd takes O(n) time
     // and reduces the degree of the polynomials by one. For programs with a
@@ -182,8 +182,8 @@ pub fn bezout_coefficient_polynomials_coefficients(
     // free, the gcd of `rp` and `fd` is 1. This implies `∀ r ∈ unique_roots:
     // fd(r)·b(r) = 1`, where `b` is one of the Bézout coefficients. In other
     // words, the evaluation of `fd` in `unique_roots` is the inverse of
-    // the evaluation of `b` in `unique_roots`. Furthermore, `b` is a polynomial of
-    // degree `n`, and therefore fully determined by the evaluations in
+    // the evaluation of `b` in `unique_roots`. Furthermore, `b` is a polynomial
+    // of degree `n`, and therefore fully determined by the evaluations in
     // `unique_roots`. Finally, the other Bézout coefficient `a` is determined
     // by `a = (1 - fd·b) / rp`. In total, this allows computing the Bézout
     // coefficients in O(n·(log n)^2) time.

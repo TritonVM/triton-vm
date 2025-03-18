@@ -531,10 +531,11 @@ impl Fri {
         prover.commit(codeword)?;
         prover.query()?;
 
-        // Sample one XFieldElement from Fiat-Shamir and then throw it away. This
-        // scalar is the indeterminate for the low degree test using the barycentric
-        // evaluation formula. This indeterminate is used only by the verifier, but
-        // it is important to modify the sponge state the same way.
+        // Sample one XFieldElement from Fiat-Shamir and then throw it away.
+        // This scalar is the indeterminate for the low degree test using the
+        // barycentric evaluation formula. This indeterminate is used only by
+        // the verifier, but it is important to modify the sponge state the same
+        // way.
         prover.proof_stream.sample_scalars(1);
 
         Ok(prover.first_round_collinearity_check_indices)
@@ -598,8 +599,9 @@ impl Fri {
         let first_round_code_dimension = self.first_round_max_degree() + 1;
         let max_num_rounds = first_round_code_dimension.next_power_of_two().ilog2();
 
-        // Skip rounds for which Merkle tree verification cost exceeds arithmetic cost,
-        // because more than half the codeword's locations are queried.
+        // Skip rounds for which Merkle tree verification cost exceeds
+        // arithmetic cost, because more than half the codeword's locations are
+        // queried.
         let num_rounds_checking_all_locations = self.num_collinearity_checks.ilog2();
         let num_rounds_checking_most_locations = num_rounds_checking_all_locations + 1;
 

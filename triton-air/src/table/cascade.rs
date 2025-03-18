@@ -163,7 +163,7 @@ impl AIR for CascadeTable {
         let lookup_input_weight = challenge(LookupTableInputWeight);
         let lookup_output_weight = challenge(LookupTableOutputWeight);
 
-        // Contiguous padding region: if current row is padding, then so is next row
+        // Contiguous padding: if current row is padding, then so is next row
         let if_current_row_is_padding_row_then_next_row_is_padding_row =
             is_padding * (one.clone() - is_padding_next.clone());
 

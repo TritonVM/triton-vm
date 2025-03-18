@@ -54,12 +54,13 @@ impl AIR for JumpStackTable {
         ));
 
         let processor_perm_indeterminate = circuit_builder.challenge(JumpStackIndeterminate);
-        // note: `clk`, `jsp`, `jso`, and `jsd` are all constrained to be 0 and can thus
-        // be omitted.
+        // note: `clk`, `jsp`, `jso`, and `jsd` are all constrained to be 0 and
+        // can thus be omitted.
         let compressed_row = circuit_builder.challenge(JumpStackCiWeight) * ci;
         let rppa_starts_correctly = rppa - (processor_perm_indeterminate - compressed_row);
 
-        // A clock jump difference of 0 is not allowed. Hence, the initial is recorded.
+        // A clock jump difference of 0 is not allowed. Hence, the initial is
+        // recorded.
         let clock_jump_diff_log_derivative_starts_correctly = clock_jump_diff_log_derivative
             - circuit_builder.x_constant(LookupArg::default_initial());
 

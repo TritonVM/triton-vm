@@ -217,14 +217,15 @@ pub fn prove_program(
     // Set up the claim that is to be proven. The claim contains all public
     // information. The proof is zero-knowledge with respect to everything else.
     //
-    // While it is more convenient to construct a `Claim::about_program(&program)`,
-    // this API is purposefully not used here to highlight that only a program's
-    // hash digest, not the full program, is part of the claim.
+    // While it is more convenient to construct a
+    // `Claim::about_program(&program)`, this API is purposefully not used here
+    // to highlight that only a program's hash digest, not the full program, is
+    // part of the claim.
     let claim = Claim::new(program.hash()).with_input(public_input.clone());
 
     // Generate
-    // - the witness required for proof generation, i.e., the Algebraic Execution
-    //   Trace (AET), and
+    // - the witness required for proof generation, i.e., the Algebraic
+    //   Execution Trace (AET), and
     // - the (public) output of the program.
     //
     // Crashes in the VM can occur for many reasons. For example:

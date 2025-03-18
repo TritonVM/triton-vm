@@ -549,8 +549,8 @@ impl AIR for HashTable {
                 - receive_chunk_indeterminate * running_evaluation_initial.clone()
                 - compressed_chunk;
 
-        // The lookup arguments with the Cascade Table for the S-Boxes are initialized
-        // correctly.
+        // The lookup arguments with the Cascade Table for the S-Boxes are
+        // initialized correctly.
         let cascade_log_derivative_init_circuit =
             |look_in_column, look_out_column, cascade_log_derivative_column| {
                 let look_in = main_row(look_in_column);
@@ -955,7 +955,8 @@ impl AIR for HashTable {
                 * (round_number.clone() - constant(NUM_ROUNDS as u64))
                 * (round_number_next.clone() - round_number.clone() - constant(1));
 
-        // compress the digest by computing the terminal of an evaluation argument
+        // compress the digest by computing the terminal of an evaluation
+        // argument
         let compressed_digest = state_current[..Digest::LEN].iter().fold(
             running_evaluation_initial.clone(),
             |acc, digest_element| {
@@ -1036,8 +1037,8 @@ impl AIR for HashTable {
 
         // Evaluation Arguments
 
-        // If (and only if) the row number in the next row is 0 and the mode in the next
-        // row is `hash`, update running evaluation “hash input.”
+        // If (and only if) the row number in the next row is 0 and the mode in
+        // the next row is `hash`, update running evaluation “hash input.”
         let running_evaluation_hash_input_remains =
             running_evaluation_hash_input_next.clone() - running_evaluation_hash_input.clone();
         let tip5_input = state_next[..tip5::RATE].to_owned();
@@ -1058,9 +1059,9 @@ impl AIR for HashTable {
                 + Self::select_mode(circuit_builder, &mode_next, HashTableMode::Hash)
                     * running_evaluation_hash_input_remains;
 
-        // If (and only if) the row number in the next row is NUM_ROUNDS and the current
-        // instruction in the next row corresponds to `hash`, update running
-        // evaluation “hash digest.”
+        // If (and only if) the row number in the next row is NUM_ROUNDS and the
+        // current instruction in the next row corresponds to `hash`, update
+        // running evaluation “hash digest.”
         let round_number_next_is_num_rounds =
             round_number_next.clone() - constant(NUM_ROUNDS as u64);
         let running_evaluation_hash_digest_remains =
@@ -1112,8 +1113,8 @@ impl AIR for HashTable {
                 + if_round_no_next_is_not_0_then_running_evaluation_sponge_remains
                 + if_ci_next_is_not_spongy_then_running_evaluation_sponge_remains;
 
-        // program attestation: absorb RATE instructions if in the right mode on the
-        // right row
+        // program attestation: absorb RATE instructions if in the right mode on
+        // the right row
         let compressed_chunk = state_next[..tip5::RATE]
             .iter()
             .fold(running_evaluation_initial, |acc, rate_element| {

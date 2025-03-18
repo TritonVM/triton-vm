@@ -55,11 +55,11 @@ impl U32TableEntry {
         let lhs = self.left_operand.value();
         let rhs = self.right_operand.value();
         let dominant_operand = match self.instruction {
-            Instruction::Pow => rhs, // left-hand side doesn't change between rows
+            Instruction::Pow => rhs, // left operand doesn't change across rows
             _ => max(lhs, rhs),
         };
         match dominant_operand {
-            0 => 2 - 1,
+            0 => 1,
             _ => 2 + dominant_operand.ilog2(),
         }
     }
@@ -85,9 +85,9 @@ impl Ord for U32TableEntry {
             right_operand: other_right_operand,
         } = *other;
 
-        // Even though field elements (like `BFieldElement`) do not have a natural
-        // ordering, the operands of any valid `Self` are `u32`s, which _do_ have a
-        // natural ordering.
+        // Even though field elements (like `BFieldElement`) do not have a
+        // natural ordering, the operands of any valid `Self` are `u32`s, which
+        // _do_ have a natural ordering.
         let instruction_cmp = self_instruction.opcode().cmp(&other_instruction.opcode());
         let left_operand_cmp = self_left_operand.value().cmp(&other_left_operand.value());
         let right_operand_cmp = self_right_operand.value().cmp(&other_right_operand.value());
@@ -137,10 +137,10 @@ impl TraceTable for U32Table {
             padding_row[[MainColumn::Result.main_index()]] =
                 last_row[MainColumn::Result.main_index()];
 
-            // In the edge case that the last non-padding row comes from executing
-            // instruction `lt` on operands 0 and 0, the `Result` column is 0.
-            // For the padding section, where the `CopyFlag` is always 0, the
-            // `Result` needs to be set to 2 instead.
+            // In the edge case that the last non-padding row comes from
+            // executing instruction `lt` on operands 0 and 0, the `Result`
+            // column is 0. For the padding section, where the `CopyFlag` is
+            // always 0, the `Result` needs to be set to 2 instead.
             if padding_row[[MainColumn::CI.main_index()]] == Instruction::Lt.opcode_b() {
                 padding_row[[MainColumn::Result.main_index()]] = bfe!(2);
             }
@@ -212,9 +212,9 @@ fn u32_section_next_row(mut section: Array2<BFieldElement>) -> Array2<BFieldElem
             _ => panic!("Must be u32 instruction, not {current_instruction}."),
         };
 
-        // If instruction `lt` is executed on operands 0 and 0, the result is known to
-        // be 0. The edge case can be reliably detected by checking whether
-        // column `Bits` is 0.
+        // If instruction `lt` is executed on operands 0 and 0, the result is
+        // known to be 0. The edge case can be reliably detected by checking
+        // whether column `Bits` is 0.
         let both_operands_are_0 = section[[row_idx, MainColumn::Bits.main_index()]].is_zero();
         if current_instruction == Instruction::Lt && both_operands_are_0 {
             section[[row_idx, MainColumn::Result.main_index()]] = bfe!(0);

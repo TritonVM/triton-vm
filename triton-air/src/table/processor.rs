@@ -121,8 +121,8 @@ impl AIR for ProcessorTable {
         let compressed_program_digest_is_expected_program_digest =
             compressed_program_digest - challenge(ChallengeId::CompressedProgramDigest);
 
-        // Permutation and Evaluation Arguments with all tables the Processor Table
-        // relates to
+        // Permutation and Evaluation Arguments with all tables the Processor
+        // Table relates to
 
         // standard input
         let running_evaluation_for_standard_input_is_initialized_correctly =
@@ -165,8 +165,8 @@ impl AIR for ProcessorTable {
 
         // clock jump difference lookup argument
         // The clock jump difference logarithmic derivative accumulator starts
-        // off having accumulated the contribution from the first row.
-        // Note that (challenge(ClockJumpDifferenceLookupIndeterminate) - main_row(CLK))
+        // off having accumulated the contribution from the first row. Note that
+        // (challenge(ClockJumpDifferenceLookupIndeterminate) - main_row(CLK))
         // collapses to challenge(ClockJumpDifferenceLookupIndeterminate)
         // because main_row(CLK) = 0 is already a constraint.
         let clock_jump_diff_lookup_log_derivative_is_initialized_correctly =
@@ -178,8 +178,8 @@ impl AIR for ProcessorTable {
         let hash_selector = main_row(MainColumn::CI) - constant(Instruction::Hash.opcode());
         let hash_deselector = instruction_deselector_single_row(circuit_builder, Instruction::Hash);
         let hash_input_indeterminate = challenge(ChallengeId::HashInputIndeterminate);
-        // the opStack is guaranteed to be initialized to 0 by virtue of other initial
-        // constraints
+        // the opStack is guaranteed to be initialized to 0 by virtue of other
+        // initial constraints
         let compressed_row = constant(0);
         let running_evaluation_hash_input_has_absorbed_first_row =
             aux_row(AuxColumn::HashInputEvalArg)
@@ -264,8 +264,8 @@ impl AIR for ProcessorTable {
         let is_padding_is_bit =
             main_row(MainColumn::IsPadding) * (main_row(MainColumn::IsPadding) - constant(1));
 
-        // In padding rows, the clock jump difference lookup multiplicity is 0. The one
-        // row exempt from this rule is the row with CLK == 1: since the
+        // In padding rows, the clock jump difference lookup multiplicity is 0.
+        // The one row exempt from this rule is the row with CLK == 1: since the
         // memory-like tables don't have an “awareness” of padding rows, they
         // keep looking up clock jump differences of magnitude 1.
         let clock_jump_diff_lookup_multiplicity_is_0_in_padding_rows =
@@ -315,8 +315,8 @@ impl AIR for ProcessorTable {
             all_instructions_and_their_transition_constraints,
         );
 
-        // if next row is padding row: disable transition constraints, enable padding
-        // constraints
+        // if next row is padding row: disable transition constraints, enable
+        // padding constraints
         let doubly_deselected_transition_constraints =
             combine_transition_constraints_with_padding_constraints(
                 circuit_builder,
@@ -1075,16 +1075,16 @@ fn instruction_skiz(
         - constant(1 << 7) * curr_main_row(MainColumn::HV5);
 
     // If `st0` is non-zero, register `ip` is incremented by 1.
-    // If `st0` is 0 and `nia` takes no argument, register `ip` is incremented by 2.
-    // If `st0` is 0 and `nia` takes an argument, register `ip` is incremented by 3.
+    // If `st0` is 0 and `nia` takes no argument, `ip` is incremented by 2.
+    // If `st0` is 0 and `nia` takes an argument, `ip` is incremented by 3.
     //
     // The opcodes are constructed such that hv1 == 1 means that nia takes an
     // argument.
     //
     // Written as Disjunctive Normal Form, the constraint can be expressed as:
     // (Register `st0` is 0 or `ip` is incremented by 1), and
-    // (`st0` has a multiplicative inverse or `hv1` is 1 or `ip` is incremented by
-    // 2), and (`st0` has a multiplicative inverse or `hv1` is 0 or `ip` is
+    // (`st0` has a multiplicative inverse or `hv1` is 1 or `ip` is incremented
+    // by 2), and (`st0` has a multiplicative inverse or `hv1` is 0 or `ip` is
     // incremented by 3).
     let ip_case_1 = (next_main_row(MainColumn::IP) - curr_main_row(MainColumn::IP) - constant(1))
         * curr_main_row(MainColumn::ST0);
@@ -1145,17 +1145,10 @@ fn instruction_call(
         |col: MainColumn| circuit_builder.input(CurrentMain(col.master_main_index()));
     let next_main_row = |col: MainColumn| circuit_builder.input(NextMain(col.master_main_index()));
 
-    // The jump stack pointer jsp is incremented by 1.
     let jsp_incr_1 = next_main_row(MainColumn::JSP) - curr_main_row(MainColumn::JSP) - constant(1);
-
-    // The jump's origin jso is set to the current instruction pointer ip plus 2.
     let jso_becomes_ip_plus_2 =
         next_main_row(MainColumn::JSO) - curr_main_row(MainColumn::IP) - constant(2);
-
-    // The jump's destination jsd is set to the instruction's argument.
     let jsd_becomes_nia = next_main_row(MainColumn::JSD) - curr_main_row(MainColumn::NIA);
-
-    // The instruction pointer ip is set to the instruction's argument.
     let ip_becomes_nia = next_main_row(MainColumn::IP) - curr_main_row(MainColumn::NIA);
 
     let specific_constraints = vec![
@@ -1242,10 +1235,10 @@ fn instruction_recurse_or_return(
         st5_eq_st6() * (next_row(MainColumn::JSP) - curr_row(MainColumn::JSP)),
     ];
 
-    // The two constraint groups are mutually exclusive: the stack element is either
-    // equal to its successor or not, indicated by `st5_eq_st6` and `st5_neq_st6`.
-    // Therefore, it is safe (and sound) to combine the groups into a single set of
-    // constraints.
+    // The two constraint groups are mutually exclusive: the stack element is
+    // either equal to its successor or not, indicated by `st5_eq_st6` and
+    // `st5_neq_st6`. Therefore, it is safe (and sound) to combine the groups
+    // into a single set of constraints.
     let constraint_groups = vec![maybe_return, maybe_recurse];
     let specific_constraints =
         combine_mutually_exclusive_constraint_groups(circuit_builder, constraint_groups);
@@ -1608,12 +1601,12 @@ fn instruction_eq(
                 * (curr_main_row(MainColumn::ST1) - curr_main_row(MainColumn::ST0))
     };
 
-    // Helper variable hv0 is the inverse-or-zero of the difference of the stack's
-    // two top-most elements: `hv0·(1 - hv0·(st1 - st0))`
+    // Helper variable hv0 is the inverse-or-zero of the difference of the
+    // stack's two top-most elements: `hv0·(1 - hv0·(st1 - st0))`
     let hv0_is_inverse_of_diff_or_hv0_is_0 = curr_main_row(MainColumn::HV0) * st0_eq_st1();
 
-    // Helper variable hv0 is the inverse-or-zero of the difference of the stack's
-    // two top-most elements: `(st1 - st0)·(1 - hv0·(st1 - st0))`
+    // Helper variable hv0 is the inverse-or-zero of the difference of the
+    // stack's two top-most elements: `(st1 - st0)·(1 - hv0·(st1 - st0))`
     let hv0_is_inverse_of_diff_or_diff_is_0 =
         (curr_main_row(MainColumn::ST1) - curr_main_row(MainColumn::ST0)) * st0_eq_st1();
 
@@ -1646,15 +1639,15 @@ fn instruction_split(
         |col: MainColumn| circuit_builder.input(CurrentMain(col.master_main_index()));
     let next_main_row = |col: MainColumn| circuit_builder.input(NextMain(col.master_main_index()));
 
-    // The top of the stack is decomposed as 32-bit chunks into the stack's top-most
-    // elements: st0 - (2^32·st0' + st1') = 0$
+    // The top of the stack is decomposed as 32-bit chunks into the stack's
+    // top-most elements: st0 - (2^32·st0' + st1') = 0
     let st0_decomposes_to_two_32_bit_chunks = curr_main_row(MainColumn::ST0)
         - (constant(1 << 32) * next_main_row(MainColumn::ST1) + next_main_row(MainColumn::ST0));
 
-    // Helper variable `hv0` = 0 if either
-    // 1. `hv0` is the difference between (2^32 - 1) and the high 32 bits (`st0'`),
+    // Helper variable hv0 is 0 if either
+    // 1. `hv0` is the difference between 2^32 - 1 and the high 32 bits (st0'),
     //    or
-    // 1. the low 32 bits (`st1'`) are 0.
+    // 1. the low 32 bits (st1') are 0.
     //
     // st1'·(hv0·(st0' - (2^32 - 1)) - 1)
     //   lo·(hv0·(hi - 0xffff_ffff)) - 1)
@@ -3043,8 +3036,8 @@ fn running_evaluation_sponge_updates_correctly(
     let compressed_row_current = weighted_sum(state.map(curr_main_row));
     let compressed_row_next = weighted_sum(state.map(next_main_row));
 
-    // Use domain-specific knowledge: the compressed row (i.e., random linear sum)
-    // of the initial Sponge state is 0.
+    // Use domain-specific knowledge: the compressed row (i.e., random linear
+    // sum) of the initial Sponge state is 0.
     let running_evaluation_updates_for_sponge_init = next_aux_row(AuxColumn::SpongeEvalArg)
         - challenge(ChallengeId::SpongeIndeterminate) * curr_aux_row(AuxColumn::SpongeEvalArg)
         - challenge(ChallengeId::HashCIWeight) * curr_main_row(MainColumn::CI);

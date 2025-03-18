@@ -878,9 +878,6 @@ pub struct AssertionError {
 
     /// A user-defined error ID. Only has user-defined, no inherent, semantics.
     pub id: Option<i128>,
-    //
-    // /// A user-defined error message supplying context to the failed assertion.
-    // pub message: Option<String>,
 }
 
 impl Display for AssertionError {

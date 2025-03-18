@@ -234,7 +234,8 @@ impl RustBackend {
         let tokenized_main_constraints = tokenize_constraint_evaluation(&main_constraints);
         let tokenized_aux_constraints = tokenize_constraint_evaluation(&aux_constraints);
 
-        // If there are no main constraints, the type needs to be explicitly declared.
+        // If there are no main constraints, the type needs to be explicitly
+        // declared.
         let tokenized_bfe_main_constraints = match main_constraints.is_empty() {
             true => quote!(let main_constraints: [BFieldElement; 0] = []),
             false => quote!(let main_constraints = [#(#tokenized_main_constraints),*]),
@@ -267,10 +268,10 @@ impl RustBackend {
         )
     }
 
-    /// Declare all shared variables, i.e., those with a ref count greater than 1.
-    /// These declarations must be made starting from the highest ref count.
-    /// Otherwise, the resulting code will refer to bindings that have not yet been
-    /// made.
+    /// Declare all shared variables, i.e., those with a reference count greater
+    /// than 1. These declarations must be made starting from the highest ref
+    /// count. Otherwise, the resulting code will refer to bindings that have
+    /// not yet been made.
     fn declare_shared_nodes<II: InputIndicator>(
         &mut self,
         constraints: &[ConstraintCircuit<II>],

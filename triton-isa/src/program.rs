@@ -402,8 +402,8 @@ impl Program {
     /// The label for the given address, or a deterministic, unique substitute
     /// if no label is found.
     pub fn label_for_address(&self, address: u64) -> String {
-        // Uniqueness of the label is relevant for printing and subsequent parsing:
-        // Parsing fails on duplicate labels.
+        // Uniqueness of the label is relevant for printing and subsequent
+        // parsing: Parsing fails on duplicate labels.
         self.address_to_label
             .get(&address)
             .cloned()

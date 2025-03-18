@@ -242,8 +242,8 @@ fn verify_sudoku() -> Program {
         call check_squares
         call assert_flag
 
-        // For checking whether the Sudoku is valid. Initially `true`, set to `false`
-        // if any inconsistency is found.
+        // For checking whether the Sudoku is valid. Initially `true`, set to
+        // `false` if any inconsistency is found.
         initialize_flag:
             push 1                        // _ 1
             push 0                        // _ 1 0
@@ -265,8 +265,8 @@ fn verify_sudoku() -> Program {
             assert                        // _
             halt
 
-        // For mapping legal Sudoku digits to distinct primes. Helps with checking
-        // consistency of rows, columns, and boxes.
+        // For mapping legal Sudoku digits to distinct primes. Helps with
+        // checking consistency of rows, columns, and boxes.
         initialize_primes:
             push 23 push 19 push 17
             push 13 push 11 push  7
@@ -547,8 +547,8 @@ pub(crate) fn calculate_new_mmr_peaks_from_append_with_safe_lists() -> Program {
         // BEFORE: _ capacity
         // AFTER:
         tasm_list_safe_u32_new_digest:
-            // Convert capacity in number of elements to number of VM words required for
-            // that list
+            // Convert capacity in number of elements to number of VM words
+            // required for that list
             dup 0       // _ capacity capacity
             push 5      // _ capacity capacity 5
             mul         // _ capacity 5·capacity
@@ -695,16 +695,18 @@ pub(crate) fn calculate_new_mmr_peaks_from_append_with_safe_lists() -> Program {
             call tasm_arithmetic_u64_and
             // _ (value & ~(value - 1))_hi (value & ~(value - 1))_lo
 
-            // The above value is now a power of two in u64. Calling log2_floor on this
-            // value gives us the index we are looking for.
+            // The above value is now a power of two in u64. Calling log2_floor
+            // on this value gives us the index we are looking for.
             call tasm_arithmetic_u64_log_2_floor
 
             return
 
 
-        // Return a pointer to a free address and allocate `size` words for this pointer
+        // Return a pointer to a free address and allocate `size` words for this
+        // pointer
+
         // Before: _ size
-        // After: _ *next_addr
+        // After:  _ *next_addr
         tasm_memory_dyn_malloc:
             push 0                     // _ size *free_pointer
             read_mem 1                 // _ size *next_addr' *free_pointer-1
@@ -728,8 +730,8 @@ pub(crate) fn calculate_new_mmr_peaks_from_append_with_safe_lists() -> Program {
 
             add                        // _ size *free_pointer *next_addr *(next_addr + size)
 
-            // Ensure that no more than 2^32 words are allocated, because I don't want a
-            // wrap-around in the address space
+            // Ensure that no more than 2^32 words are allocated, because I
+            // don't want a wrap-around in the address space
             split
             swap 1
             push 0

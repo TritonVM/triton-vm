@@ -33,8 +33,8 @@ fn main() {
             recurse
     );
 
-    // Note that all arithmetic is in the prime field with 2^64 - 2^32 + 1 elements.
-    // The `bfe!` macro is used to create elements of this field.
+    // Note that all arithmetic is in the prime field with 2^64 - 2^32 + 1
+    // elements. The `bfe!` macro is used to create elements of this field.
     let public_input = PublicInput::from([bfe!(1_000)]);
 
     // The execution of the factorial program is already fully determined by the
@@ -52,8 +52,8 @@ fn main() {
     //   - the program's public output.
     //
     // Triton VM is zero-knowledge with respect to almost everything else.
-    // The only other piece of revealed information is an upper bound for the number
-    // of steps the program was running for.
+    // The only other piece of revealed information is an upper bound for the
+    // number of steps the program was running for.
     //
     // Triton VM's default parameters give a (conjectured) security level of 160
     // bits.

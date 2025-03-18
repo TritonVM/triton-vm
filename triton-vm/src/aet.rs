@@ -77,12 +77,14 @@ pub struct AlgebraicExecutionTrace {
     /// the U32 Table, alongside the u32 instruction that was executed at
     /// the time. Additionally, it records how often the instruction was
     /// executed with these arguments.
+    //
     // `IndexMap` over `HashMap` for deterministic iteration order. This is not
     // needed for correctness of the STARK.
     pub u32_entries: IndexMap<U32TableEntry, u64>,
 
     /// Records how often each entry in the cascade table was looked up.
-    // `IndexMap` over `HashMap` for the same reasons as for field `u32_entries`.
+    //
+    // `IndexMap` over `HashMap` for the same reasons as for field `u32_entries`
     pub cascade_table_lookup_multiplicities: IndexMap<u16, u64>,
 
     /// Records how often each entry in the lookup table was looked up.
@@ -173,10 +175,10 @@ impl AlgebraicExecutionTrace {
 
     fn padded_program_length(program: &Program) -> usize {
         // Padding is at least one 1.
-        // Also note that the Program Table's side of the instruction lookup argument
-        // requires at least one padding row to account for the processor's
-        // “next instruction or argument.” Both of these are captured by the “+
-        // 1” in the following line.
+        // Also note that the Program Table's side of the instruction lookup
+        // argument requires at least one padding row to account for the
+        // processor's “next instruction or argument.” Both of these are
+        // captured by the “+ 1” in the following line.
         (program.len_bwords() + 1).next_multiple_of(Tip5::RATE)
     }
 

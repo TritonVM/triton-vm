@@ -196,7 +196,8 @@ fn ensure_assertion_context_is_matched_with_assertion<'a>(
                 accept_id = false;
             }
 
-            // any assertion context must immediately follow an `assert` or `assert_vector`
+            // any assertion context must immediately follow an `assert` or
+            // `assert_vector`
             _ => accept_id = false,
         }
     }
@@ -237,8 +238,8 @@ fn label(label_s: &str) -> ParseResult<InstructionToken> {
     let (s, _) = token0(":")(s)?; // don't require space after ':'
 
     // Checking if `<label>:` is an instruction must happen after parsing `:`.
-    // Otherwise, alternative parsers of `label` (like `labelled_instruction`) are
-    // rejected, even though valid instruction names *are* allowed there.
+    // Otherwise, alternative parsers of `label` (like `labelled_instruction`)
+    // are rejected, even though valid instruction names *are* allowed there.
     assert_label_is_legal(s, &addr)?;
 
     Ok((s, InstructionToken::Label(addr, label_s)))
@@ -460,9 +461,10 @@ fn call_instruction<'a>() -> impl Fn(&'a str) -> ParseResult<'a, AnInstruction<S
         let (s, label) = cut(label_addr).parse(s)?;
         let (s, _) = comment_or_whitespace1(s)?;
 
-        // This check cannot be moved into `label_addr`, since `label_addr` is shared
-        // between the scenarios `<label>:` and `call <label>`; the former requires
-        // parsing the `:` before rejecting a possible instruction name in the label.
+        // This check cannot be moved into `label_addr`, since `label_addr` is
+        // shared between the scenarios `<label>:` and `call <label>`; the
+        // former requires parsing the `:` before rejecting a possible
+        // instruction name in the label.
         assert_label_is_legal(s, &label)?;
 
         Ok((s, AnInstruction::Call(label)))
@@ -1485,8 +1487,9 @@ pub(crate) mod tests {
         instruction: String,
         #[filter(#id.parse::<i128>().is_err())] id: String,
     ) {
-        // A valid ID followed by a comment is valid, and therefore not relevant here.
-        // This might be a monkey-patch, but I don't know how to generate better input.
+        // A valid ID followed by a comment is valid, and therefore not relevant
+        // here. This might be a monkey-patch, but I don't know how to generate
+        // better input.
         if let Some(comment_idx) = id.find("//") {
             let (id, _) = id.split_at(comment_idx);
             prop_assume!(id.parse::<i128>().is_err());
