@@ -6,156 +6,186 @@ use std::ops::Add;
 use std::ops::AddAssign;
 use std::ops::Sub;
 
-use air::table::hash::PERMUTATION_TRACE_LENGTH;
+use air::table::TableId;
 use arbitrary::Arbitrary;
-use twenty_first::prelude::*;
+use strum::IntoEnumIterator;
 
+use crate::aet::AlgebraicExecutionTrace;
 use crate::table::u32::U32TableEntry;
-use crate::vm::CoProcessorCall;
 
 #[derive(Debug, Default, Clone, Eq, PartialEq, Arbitrary)]
 pub(crate) struct ExecutionTraceProfiler {
     call_stack: Vec<usize>,
     profile: Vec<ProfileLine>,
-    table_heights: VMTableHeights,
     u32_table_entries: HashSet<U32TableEntry>,
 }
 
 /// A single line in a [profile report](ExecutionTraceProfile) for profiling
 /// [Triton](crate) programs.
+#[non_exhaustive]
 #[derive(Debug, Default, Clone, Eq, PartialEq, Hash, Arbitrary)]
 pub struct ProfileLine {
     pub label: String,
     pub call_depth: usize,
 
-    /// Table heights at the start of this span, _i.e._, right before the
+    /// Table heights at the start of this span, _i.e._, right after the
     /// corresponding [`call`](isa::instruction::Instruction::Call)
     /// instruction was executed.
     pub table_heights_start: VMTableHeights,
 
-    table_heights_stop: VMTableHeights,
+    /// Table heights at the end of this span, _i.e._, right after the
+    /// corresponding [`return`](isa::instruction::Instruction::Return)
+    /// or [`recurse_or_return`](isa::instruction::Instruction::RecurseOrReturn)
+    /// (in “return” mode) was executed
+    pub table_heights_stop: VMTableHeights,
 }
 
 /// A report for the completed execution of a [Triton](crate) program.
 ///
 /// Offers a human-readable [`Display`] implementation and can be processed
 /// programmatically.
+#[non_exhaustive]
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Arbitrary)]
 pub struct ExecutionTraceProfile {
+    /// The total height of all tables in the [AET](AlgebraicExecutionTrace).
     pub total: VMTableHeights,
+
+    /// The profile lines, each representing a span of the program execution.
     pub profile: Vec<ProfileLine>,
+
+    /// The [padded height](AlgebraicExecutionTrace::padded_height) of the
+    /// [AET](AlgebraicExecutionTrace).
+    pub padded_height: usize,
 }
 
-/// The heights of various [tables](crate::aet::AlgebraicExecutionTrace)
+/// The heights of various [tables](AlgebraicExecutionTrace)
 /// relevant for proving the correct execution in [Triton VM](crate).
-#[non_exhaustive]
 #[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Hash, Arbitrary)]
 pub struct VMTableHeights {
+    pub program: u32,
     pub processor: u32,
     pub op_stack: u32,
     pub ram: u32,
+    pub jump_stack: u32,
     pub hash: u32,
+    pub cascade: u32,
+    pub lookup: u32,
     pub u32: u32,
 }
 
 impl ExecutionTraceProfiler {
-    pub fn new(num_instructions: usize) -> Self {
+    pub fn new() -> Self {
         Self {
             call_stack: vec![],
             profile: vec![],
-            table_heights: VMTableHeights::new(num_instructions),
             u32_table_entries: HashSet::default(),
         }
     }
 
-    pub fn enter_span(&mut self, label: impl Into<String>) {
-        let call_stack_len = self.call_stack.len();
-        let line_number = self.profile.len();
-
+    pub fn enter_span(&mut self, label: impl Into<String>, aet: &AlgebraicExecutionTrace) {
         let profile_line = ProfileLine {
             label: label.into(),
-            call_depth: call_stack_len,
-            table_heights_start: self.table_heights,
+            call_depth: self.call_stack.len(),
+            table_heights_start: Self::extract_table_heights(aet),
             table_heights_stop: VMTableHeights::default(),
         };
 
+        let line_number = self.profile.len();
         self.profile.push(profile_line);
         self.call_stack.push(line_number);
     }
 
-    pub fn exit_span(&mut self) {
+    pub fn exit_span(&mut self, aet: &AlgebraicExecutionTrace) {
         if let Some(line_number) = self.call_stack.pop() {
-            self.profile[line_number].table_heights_stop = self.table_heights;
+            self.profile[line_number].table_heights_stop = Self::extract_table_heights(aet);
         };
     }
 
-    pub fn handle_co_processor_calls(&mut self, calls: Vec<CoProcessorCall>) {
-        self.table_heights.processor += 1;
-        for call in calls {
-            match call {
-                CoProcessorCall::SpongeStateReset => self.table_heights.hash += 1,
-                CoProcessorCall::Tip5Trace(_, trace) => {
-                    self.table_heights.hash += u32::try_from(trace.len()).unwrap();
-                }
-                CoProcessorCall::U32(c) => {
-                    self.u32_table_entries.insert(c);
-                    let contribution = U32TableEntry::table_height_contribution;
-                    self.table_heights.u32 = self.u32_table_entries.iter().map(contribution).sum();
-                }
-                CoProcessorCall::OpStack(_) => self.table_heights.op_stack += 1,
-                CoProcessorCall::Ram(_) => self.table_heights.ram += 1,
-            }
-        }
-    }
-
-    pub fn finish(mut self) -> ExecutionTraceProfile {
+    pub fn finish(mut self, aet: &AlgebraicExecutionTrace) -> ExecutionTraceProfile {
+        let table_heights = Self::extract_table_heights(aet);
         for &line_number in &self.call_stack {
-            self.profile[line_number].table_heights_stop = self.table_heights;
+            self.profile[line_number].table_heights_stop = table_heights;
         }
 
         ExecutionTraceProfile {
-            total: self.table_heights,
+            total: table_heights,
             profile: self.profile,
+            padded_height: aet.padded_height(),
+        }
+    }
+
+    fn extract_table_heights(aet: &AlgebraicExecutionTrace) -> VMTableHeights {
+        // any table in Triton VM can be of length at most u32::MAX
+        let height = |id| aet.height_of_table(id).try_into().unwrap_or(u32::MAX);
+
+        VMTableHeights {
+            program: height(TableId::Program),
+            processor: height(TableId::Processor),
+            op_stack: height(TableId::OpStack),
+            ram: height(TableId::Ram),
+            jump_stack: height(TableId::JumpStack),
+            hash: height(TableId::Hash),
+            cascade: height(TableId::Cascade),
+            lookup: height(TableId::Lookup),
+            u32: height(TableId::U32),
         }
     }
 }
 
 impl VMTableHeights {
-    fn new(num_instructions: usize) -> Self {
-        let padded_program_len = (num_instructions + 1).next_multiple_of(Tip5::RATE);
-        let num_absorbs = padded_program_len / Tip5::RATE;
-        let initial_hash_table_len = num_absorbs * PERMUTATION_TRACE_LENGTH;
-
-        Self {
-            hash: initial_hash_table_len.try_into().unwrap(),
-            ..Default::default()
+    fn height_of_table(&self, table: TableId) -> u32 {
+        match table {
+            TableId::Program => self.program,
+            TableId::Processor => self.processor,
+            TableId::OpStack => self.op_stack,
+            TableId::Ram => self.ram,
+            TableId::JumpStack => self.jump_stack,
+            TableId::Hash => self.hash,
+            TableId::Cascade => self.cascade,
+            TableId::Lookup => self.lookup,
+            TableId::U32 => self.u32,
         }
+    }
+
+    fn max(&self) -> u32 {
+        TableId::iter()
+            .map(|id| self.height_of_table(id))
+            .max()
+            .unwrap()
     }
 }
 
-impl Sub<Self> for VMTableHeights {
+impl Sub for VMTableHeights {
     type Output = Self;
 
     fn sub(self, rhs: Self) -> Self::Output {
         Self {
+            program: self.program.saturating_sub(rhs.program),
             processor: self.processor.saturating_sub(rhs.processor),
             op_stack: self.op_stack.saturating_sub(rhs.op_stack),
             ram: self.ram.saturating_sub(rhs.ram),
+            jump_stack: self.jump_stack.saturating_sub(rhs.jump_stack),
             hash: self.hash.saturating_sub(rhs.hash),
+            cascade: self.cascade.saturating_sub(rhs.cascade),
+            lookup: self.lookup.saturating_sub(rhs.lookup),
             u32: self.u32.saturating_sub(rhs.u32),
         }
     }
 }
 
-impl Add<Self> for VMTableHeights {
+impl Add for VMTableHeights {
     type Output = Self;
 
     fn add(self, rhs: Self) -> Self::Output {
         Self {
+            program: self.program + rhs.program,
             processor: self.processor + rhs.processor,
             op_stack: self.op_stack + rhs.op_stack,
             ram: self.ram + rhs.ram,
+            jump_stack: self.jump_stack + rhs.jump_stack,
             hash: self.hash + rhs.hash,
+            cascade: self.cascade + rhs.cascade,
+            lookup: self.lookup + rhs.lookup,
             u32: self.u32 + rhs.u32,
         }
     }
@@ -214,29 +244,24 @@ impl Display for ExecutionTraceProfile {
         });
 
         let label = |line: &AggregateLine| "··".repeat(line.call_depth) + &line.label;
-        let label_len = |line| label(line).len();
 
-        let max_label_len = aggregated.iter().map(label_len).max();
+        let max_label_len = aggregated.iter().map(|line| label(line).len()).max();
         let max_label_len = max_label_len.unwrap_or_default().max(COL_WIDTH);
 
-        let [subroutine, processor, op_stack, ram, hash, u32_title] =
-            ["Subroutine", "Processor", "Op Stack", "RAM", "Hash", "U32"];
-
-        write!(f, "| {subroutine:<max_label_len$} ")?;
-        write!(f, "| {processor:>COL_WIDTH$} ")?;
-        write!(f, "| {op_stack:>COL_WIDTH$} ")?;
-        write!(f, "| {ram:>COL_WIDTH$} ")?;
-        write!(f, "| {hash:>COL_WIDTH$} ")?;
-        write!(f, "| {u32_title:>COL_WIDTH$} ")?;
+        write!(f, "| {: <max_label_len$} ", "Subroutine")?;
+        write!(f, "| {: >COL_WIDTH$} ", "Processor")?;
+        write!(f, "| {: >COL_WIDTH$} ", "OpStack")?;
+        write!(f, "| {: >COL_WIDTH$} ", "Ram")?;
+        write!(f, "| {: >COL_WIDTH$} ", "Hash")?;
+        write!(f, "| {: >COL_WIDTH$} ", "U32")?;
         writeln!(f, "|")?;
 
-        let dash = "-";
-        write!(f, "|:{dash:-<max_label_len$}-")?;
-        write!(f, "|-{dash:->COL_WIDTH$}:")?;
-        write!(f, "|-{dash:->COL_WIDTH$}:")?;
-        write!(f, "|-{dash:->COL_WIDTH$}:")?;
-        write!(f, "|-{dash:->COL_WIDTH$}:")?;
-        write!(f, "|-{dash:->COL_WIDTH$}:")?;
+        write!(f, "|:{:-<max_label_len$}-", "")?;
+        write!(f, "|-{:->COL_WIDTH$}:", "")?;
+        write!(f, "|-{:->COL_WIDTH$}:", "")?;
+        write!(f, "|-{:->COL_WIDTH$}:", "")?;
+        write!(f, "|-{:->COL_WIDTH$}:", "")?;
+        write!(f, "|-{:->COL_WIDTH$}:", "")?;
         writeln!(f, "|")?;
 
         for line in &aggregated {
@@ -270,6 +295,81 @@ impl Display for ExecutionTraceProfile {
             writeln!(f, "|")?;
         }
 
+        // print total height of all tables
+        let max_height = self.total.max();
+        let height_len = std::cmp::max(max_height.to_string().len(), "Height".len());
+
+        writeln!(f)?;
+        writeln!(f, "| Table     | {: >height_len$} | Dominates |", "Height")?;
+        writeln!(f, "|:----------|-{:->height_len$}:|----------:|", "")?;
+        for id in TableId::iter() {
+            let height = self.total.height_of_table(id);
+            let dominates = if height == max_height { "yes" } else { "no" };
+            writeln!(f, "| {id:<9} | {height:>height_len$} | {dominates:>9} |")?;
+        }
+        writeln!(f)?;
+        writeln!(f, "Padded height: 2^{}", self.padded_height.ilog2())?;
+
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use assert2::assert;
+    use assert2::let_assert;
+
+    use crate::prelude::InstructionError;
+    use crate::prelude::TableId;
+    use crate::prelude::VM;
+    use crate::prelude::VMState;
+    use crate::prelude::triton_program;
+
+    #[test]
+    fn profile_can_be_created_and_agrees_with_regular_vm_run() {
+        let program =
+            crate::example_programs::CALCULATE_NEW_MMR_PEAKS_FROM_APPEND_WITH_SAFE_LISTS.clone();
+        let (profile_output, profile) = VM::profile(program.clone(), [].into(), [].into()).unwrap();
+        let mut vm_state = VMState::new(program.clone(), [].into(), [].into());
+        let_assert!(Ok(()) = vm_state.run());
+        assert!(profile_output == vm_state.public_output);
+        assert!(profile.total.processor == vm_state.cycle_count);
+
+        let_assert!(Ok((aet, trace_output)) = VM::trace_execution(program, [].into(), [].into()));
+        assert!(profile_output == trace_output);
+
+        let height = |id| u32::try_from(aet.height_of_table(id)).unwrap();
+        assert!(height(TableId::Program) == profile.total.program);
+        assert!(height(TableId::Processor) == profile.total.processor);
+        assert!(height(TableId::OpStack) == profile.total.op_stack);
+        assert!(height(TableId::Ram) == profile.total.ram);
+        assert!(height(TableId::Hash) == profile.total.hash);
+        assert!(height(TableId::Cascade) == profile.total.cascade);
+        assert!(height(TableId::Lookup) == profile.total.lookup);
+        assert!(height(TableId::U32) == profile.total.u32);
+
+        println!("{profile}");
+    }
+
+    #[test]
+    fn program_with_too_many_returns_crashes_vm_but_not_profiler() {
+        let program = triton_program! {
+            call foo return halt
+            foo: return
+        };
+        let_assert!(Err(err) = VM::profile(program, [].into(), [].into()));
+        let_assert!(InstructionError::JumpStackIsEmpty = err.source);
+    }
+
+    #[test]
+    fn call_instruction_does_not_contribute_to_profile_span() {
+        let program = triton_program! { call foo halt foo: return };
+        let_assert!(Ok((_, profile)) = VM::profile(program, [].into(), [].into()));
+
+        let [foo_span] = &profile.profile[..] else {
+            panic!("span `foo` must be present")
+        };
+        assert!("foo" == foo_span.label);
+        assert!(1 == foo_span.table_height_contributions().processor);
     }
 }

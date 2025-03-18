@@ -200,7 +200,7 @@ impl VM {
     /// influence of a callable block of instructions on the
     /// [`AlgebraicExecutionTrace`]. For example, this can be used to identify
     /// the number of clock cycles spent in some block of instructions, or
-    /// how many rows it contributes to the U32 Table.
+    /// how many rows that block of instructions contributes to the U32 Table.
     ///
     /// See also [`run`][run] and [`trace_execution`][trace_execution].
     ///
@@ -211,27 +211,34 @@ impl VM {
         public_input: PublicInput,
         non_determinism: NonDeterminism,
     ) -> VMResult<(Vec<BFieldElement>, ExecutionTraceProfile)> {
-        let mut profiler = ExecutionTraceProfiler::new(program.instructions.len());
+        let mut profiler = ExecutionTraceProfiler::new();
         let mut state = VMState::new(program.clone(), public_input, non_determinism);
         let mut previous_jump_stack_len = state.jump_stack.len();
+        let mut aet = AlgebraicExecutionTrace::new(state.program.clone());
         while !state.halting {
+            if let Err(err) = aet.record_state(&state) {
+                return Err(VMError::new(err, state));
+            };
             if let Ok(Instruction::Call(address)) = state.current_instruction() {
                 let label = program.label_for_address(address.value());
-                profiler.enter_span(label);
+                profiler.enter_span(label, &aet);
             }
 
-            match state.step() {
-                Ok(calls) => profiler.handle_co_processor_calls(calls),
+            let co_processor_calls = match state.step() {
+                Ok(calls) => calls,
                 Err(err) => return Err(VMError::new(err, state)),
             };
+            for call in co_processor_calls {
+                aet.record_co_processor_call(call);
+            }
 
             if state.jump_stack.len() < previous_jump_stack_len {
-                profiler.exit_span();
+                profiler.exit_span(&aet);
             }
             previous_jump_stack_len = state.jump_stack.len();
         }
 
-        Ok((state.public_output, profiler.finish()))
+        Ok((state.public_output, profiler.finish(&aet)))
     }
 }
 
@@ -1512,7 +1519,6 @@ pub(crate) mod tests {
     use std::ops::BitAnd;
     use std::ops::BitXor;
 
-    use air::table::TableId;
     use assert2::assert;
     use assert2::let_assert;
     use isa::instruction::ALL_INSTRUCTIONS;
@@ -1588,46 +1594,6 @@ pub(crate) mod tests {
                 NUM_OP_STACK_REGISTERS + num_push_instructions;
             (program, stack_size_when_reaching_test_instruction)
         }
-    }
-
-    #[test]
-    fn profile_can_be_created_and_agrees_with_regular_vm_run() {
-        let program =
-            crate::example_programs::CALCULATE_NEW_MMR_PEAKS_FROM_APPEND_WITH_SAFE_LISTS.clone();
-        let (profile_output, profile) = VM::profile(program.clone(), [].into(), [].into()).unwrap();
-        let mut vm_state = VMState::new(program.clone(), [].into(), [].into());
-        let_assert!(Ok(()) = vm_state.run());
-        assert!(profile_output == vm_state.public_output);
-        assert!(profile.total.processor == vm_state.cycle_count);
-
-        let_assert!(Ok((aet, trace_output)) = VM::trace_execution(program, [].into(), [].into()));
-        assert!(profile_output == trace_output);
-        let proc_height = u32::try_from(aet.height_of_table(TableId::Processor)).unwrap();
-        assert!(proc_height == profile.total.processor);
-
-        let op_stack_height = u32::try_from(aet.height_of_table(TableId::OpStack)).unwrap();
-        assert!(op_stack_height == profile.total.op_stack);
-
-        let ram_height = u32::try_from(aet.height_of_table(TableId::Ram)).unwrap();
-        assert!(ram_height == profile.total.ram);
-
-        let hash_height = u32::try_from(aet.height_of_table(TableId::Hash)).unwrap();
-        assert!(hash_height == profile.total.hash);
-
-        let u32_height = u32::try_from(aet.height_of_table(TableId::U32)).unwrap();
-        assert!(u32_height == profile.total.u32);
-
-        println!("{profile}");
-    }
-
-    #[test]
-    fn program_with_too_many_returns_crashes_vm_but_not_profiler() {
-        let program = triton_program! {
-            call foo return halt
-            foo: return
-        };
-        let_assert!(Err(err) = VM::profile(program, [].into(), [].into()));
-        let_assert!(InstructionError::JumpStackIsEmpty = err.source);
     }
 
     #[proptest]
