@@ -26,7 +26,7 @@ The RAM Table has 7 main columns:
 Column `iord` helps with detecting a change of `ram_pointer` across two RAM Table rows.
 The function of `iord` is best explained in the context of sorting the RAM Table's rows, which is what the next section is about.
 
-The Bézout coefficient polynomial coefficients `bcpc0` and `bcpc1` represent the coefficients of polynomials that are needed for the [contiguity argument](memory-consistency.md#contiguity-for-ram-table).
+The Bézout coefficient polynomial coefficients `bcpc0` and `bcpc1` represent the coefficients of polynomials that are needed for the [contiguity argument](contiguity-of-memory-pointer-regions.md#contiguity-for-ram-table).
 This argument establishes that all regions of constant `ram_pointer` are contiguous.
 
 ## Auxiliary Columns

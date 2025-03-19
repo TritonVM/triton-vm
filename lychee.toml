@@ -1,0 +1,3 @@
+# Configuration for link-checker lychee. See also: https://lychee.cli.rs
+include_fragments = true
+require_https = true

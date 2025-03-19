@@ -40,7 +40,7 @@ Programs can read from and write to RAM using [instructions](instructions.md#mem
 The initial RAM is determined by the entity running Triton VM.
 Populating RAM this way can be beneficial for a program's execution and proving time, especially if substantial amounts of data from the input streams needs to be persisted in RAM.
 This initialization is one form of secret input, and one of two mechanisms that make Triton VM a non-deterministic virtual machine.
-The other mechanism is [dedicated instructions](instructions.md#opstack-manipulation).
+The other mechanism is [dedicated instructions](instructions.md#op-stack-manipulation).
 
 ## Jump Stack
 

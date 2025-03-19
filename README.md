@@ -5,6 +5,7 @@
 [![crates.io](https://img.shields.io/crates/v/triton-vm.svg)](https://crates.io/crates/triton-vm)
 [![Spec: online](https://img.shields.io/badge/Spec-online-success)](https://triton-vm.org/spec/)
 [![Coverage Status](https://coveralls.io/repos/github/TritonVM/triton-vm/badge.svg?branch=master)](https://coveralls.io/github/TritonVM/triton-vm?branch=master)
+[![Check Links](https://github.com/TritonVM/triton-vm/actions/workflows/link_checker.yml/badge.svg)](https://github.com/TritonVM/triton-vm/actions/workflows/link_checker.yml)
 
 Triton is a virtual machine that comes with Algebraic Execution Tables (AET) and Arithmetic
 Intermediate Representations (AIR) for use in combination with

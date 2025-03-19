@@ -1,0 +1,119 @@
+name: Link Checker
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+  schedule:
+    - cron: "0 0 * * *"
+
+# Original source, at commit with id 444094f5:
+# https://github.com/kdeldycke/workflows/blob/main/.github/workflows/lint.yaml
+jobs:
+  linkChecker:
+    name: Link Checker
+    runs-on: ubuntu-latest
+
+    # Manually manage the life-cycle of issues created in this job because the
+    # `create-issue-from-file` action blindly creates issues ad-nauseam.
+    # See also: https://github.com/peter-evans/create-issue-from-file/issues/298
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore lychee cache
+        uses: actions/cache@v4
+        with:
+          path: .lycheecache
+          key: cache-lychee-${{ github.sha }}
+          restore-keys: cache-lychee-
+
+      - name: Link Checker
+        uses: lycheeverse/lychee-action@v2.3.0
+        id: lychee_run
+        with:
+          args: |
+            --cache
+            --verbose
+            --no-progress
+            '.'
+
+      - name: List open issues
+        id: open_issues
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: >
+          echo "issues=$(
+          gh issue list
+          --state open
+          --author 'github-actions[bot]'
+          --json number,title,createdAt )" | tee -a "$GITHUB_OUTPUT"
+
+      - name: Filter issues
+        id: issue_groups
+        shell: python
+        run: |
+          import json
+          import os
+          from operator import itemgetter
+          from pathlib import Path
+
+          exit_code = """${{ steps.lychee_run.outputs.exit_code }}"""
+          print(f"Lychee exit code: {exit_code!r}")
+          broken_links_found = bool(int(exit_code))
+          if broken_links_found:
+              print("Broken links found: create a new issue or update the existing one.")
+          else:
+              print("No broken link found: close all open issues.")
+
+          open_issues = json.loads("""${{ steps.open_issues.outputs.issues }}""")
+          issue_to_update: int | None = None
+          issues_to_close: set[int] = set()
+
+          for issue in sorted(open_issues, key=itemgetter("createdAt"), reverse=True):
+              print(f"Processing {issue!r} ...")
+              if issue["title"] != "Broken links":
+                  print(f"{issue!r} is not a broken links issue, skip it.")
+                  continue
+              if broken_links_found and not issue_to_update:
+                  print(f"{issue!r} is the most recent open issue.")
+                  issue_to_update = issue["number"]
+              else:
+                  print(f"{issue!r} is an old open issue we have to close.")
+                  issues_to_close.add(issue["number"])
+
+          output = f"broken_links_found={str(broken_links_found).lower()}\n"
+          output += f"issue_to_update={issue_to_update}\n"
+          output += f"issues_to_close={' '.join(issues_to_close)}\n"
+
+          env_file = Path(os.getenv("GITHUB_OUTPUT"))
+          env_file.write_text(output)
+
+      - name: Print issue groups
+        run: |
+          echo "Broken links found: ${{ steps.issue_groups.outputs.broken_links_found }}"
+          echo "Issue to update: ${{ steps.issue_groups.outputs.issue_to_update }}"
+          echo "Issues to close: ${{ steps.issue_groups.outputs.issues_to_close }}"
+
+      - name: Close old issues
+        if: steps.issue_groups.outputs.issues_to_close
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: >
+          NUMBER_LIST="${{ steps.issue_groups.outputs.issues_to_close }}";
+          for number in $NUMBER_LIST; do
+              gh issue close "$number" --comment
+              "Superseded by #${{ steps.issue_groups.outputs.issue_to_update }}.";
+          done
+
+      - name: Create or update issue
+        if: fromJSON(steps.issue_groups.outputs.broken_links_found)
+        uses: peter-evans/create-issue-from-file@v5.0.1
+        with:
+          title: "Broken links"
+          issue-number: ${{ steps.issue_groups.outputs.issue_to_update }}
+          content-filepath: ./lychee/out.md
+          labels: 📚 documentation, 🤖 automated issue
