@@ -17,6 +17,9 @@ jobs:
   linkChecker:
     name: Link Checker
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write # required for peter-evans/create-issue-from-file
 
     # Manually manage the life-cycle of issues created in this job because the
     # `create-issue-from-file` action blindly creates issues ad-nauseam.
@@ -40,19 +43,24 @@ jobs:
             --verbose
             --no-progress
             '.'
+        continue-on-error: true
 
       - name: List open issues
+        if: github.ref == 'refs/heads/master'
         id: open_issues
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: >
           echo "issues=$(
           gh issue list
           --state open
           --author 'github-actions[bot]'
-          --json number,title,createdAt )" | tee -a "$GITHUB_OUTPUT"
+          --json number,title,createdAt
+          )"
+          | tee -a "$GITHUB_OUTPUT"
 
       - name: Filter issues
+        if: github.ref == 'refs/heads/master'
         id: issue_groups
         shell: python
         run: |
@@ -69,7 +77,11 @@ jobs:
           else:
               print("No broken link found: close all open issues.")
 
-          open_issues = json.loads("""${{ steps.open_issues.outputs.issues }}""")
+          open_issues_raw = '${{ steps.open_issues.outputs.issues }}'
+          if open_issues_raw:
+              open_issues = json.loads(open_issues_raw)
+          else:
+              open_issues = []
           issue_to_update: int | None = None
           issues_to_close: set[int] = set()
 
@@ -87,33 +99,44 @@ jobs:
 
           output = f"broken_links_found={str(broken_links_found).lower()}\n"
           output += f"issue_to_update={issue_to_update}\n"
-          output += f"issues_to_close={' '.join(issues_to_close)}\n"
+          output += f"issues_to_close={' '.join(map(str, issues_to_close))}\n"
 
           env_file = Path(os.getenv("GITHUB_OUTPUT"))
           env_file.write_text(output)
 
       - name: Print issue groups
+        if: github.ref == 'refs/heads/master'
         run: |
           echo "Broken links found: ${{ steps.issue_groups.outputs.broken_links_found }}"
           echo "Issue to update: ${{ steps.issue_groups.outputs.issue_to_update }}"
           echo "Issues to close: ${{ steps.issue_groups.outputs.issues_to_close }}"
 
-      - name: Close old issues
-        if: steps.issue_groups.outputs.issues_to_close
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: >
-          NUMBER_LIST="${{ steps.issue_groups.outputs.issues_to_close }}";
-          for number in $NUMBER_LIST; do
-              gh issue close "$number" --comment
-              "Superseded by #${{ steps.issue_groups.outputs.issue_to_update }}.";
-          done
-
       - name: Create or update issue
-        if: fromJSON(steps.issue_groups.outputs.broken_links_found)
+        if: >
+          github.ref == 'refs/heads/master'
+          && fromJSON(steps.issue_groups.outputs.broken_links_found)
         uses: peter-evans/create-issue-from-file@v5.0.1
         with:
           title: "Broken links"
           issue-number: ${{ steps.issue_groups.outputs.issue_to_update }}
           content-filepath: ./lychee/out.md
           labels: 📚 documentation, 🤖 automated issue
+
+      - name: Close old issues
+        if: >
+          github.ref == 'refs/heads/master'
+          && steps.issue_groups.outputs.issues_to_close
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          for number in ${{ steps.issue_groups.outputs.issues_to_close }}; do
+              if [[ "${{ steps.issue_groups.outputs.issue_to_update }}" =~ ^[0-9]+$ ]]; then
+                  comment="Superseded by #${{ steps.issue_groups.outputs.issue_to_update }}.";
+              else
+                  comment="All broken links are fixed. 👏"
+              fi
+              gh issue close "$number" --comment "$comment";
+          done
+
+      - name: Fail workflow on broken links
+        run: exit ${{ steps.lychee_run.outputs.exit_code }}
