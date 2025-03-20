@@ -9,26 +9,24 @@
 
 Triton is a virtual machine that comes with Algebraic Execution Tables (AET) and Arithmetic
 Intermediate Representations (AIR) for use in combination with
-a [STARK proof system](https://neptune.cash/learn/stark-anatomy/).
-It defines a Turing complete [Instruction Set Architecture](https://triton-vm.org/spec/isa.html), as
-well as the corresponding [arithmetization](https://triton-vm.org/spec/arithmetization.html) of the
-VM.
-The really cool thing about Triton VM is its efficient _recursive_ verification of the STARKs
-produced when running Triton VM.
+a [STARK proof system](https://neptune.cash/learn/stark-anatomy/). It defines a Turing
+complete [Instruction Set Architecture](https://triton-vm.org/spec/isa.html), as well as the
+corresponding [arithmetization](https://triton-vm.org/spec/arithmetization.html) of the VM. The
+really cool thing about Triton VM is its efficient _recursive_ verification of the STARKs produced
+when running Triton VM.
 
 ## Getting Started
 
-If you want to start writing programs for Triton VM, check
-out [Triton TUI](https://github.com/TritonVM/triton-tui).
-If you want to generate or verify proofs of correct execution, take a look at
-the [examples](triton-vm/examples).
+If you want to start writing programs for Triton VM, check out the
+[Triton TUI](https://github.com/TritonVM/triton-tui). If you want to generate or verify proofs of
+correct execution, check out the [Triton CLI](https://github.com/TritonVM/triton-cli). If you want
+to use Triton VM as a library, check out the [examples](triton-vm/examples).
 
 ## Recursive STARKs of Computational Integrity
 
 Normally, when executing a machine – virtual or not – the flow of information can be regarded as
-follows.
-The tuple of (`input`, `program`) is given to the machine, which takes the `program`, evaluates it
-on the `input`, and produces some `output`.
+follows. The tuple of (`input`, `program`) is given to the machine, which takes the `program`,
+evaluates it on the `input`, and produces some `output`.
 
 ![](./specification/src/img/recursive-1.svg)
 
@@ -39,12 +37,12 @@ output is a `proof` of computational integrity.
 
 Only if `input`, `program`, and `output` correspond to one another, i.e., if `output` is indeed the
 result of evaluating the `program` on the `input` according to the rules defined by the virtual
-machine, then producing such a `proof` is easy.
-Otherwise, producing a `proof` is next to impossible.
+machine, then producing such a `proof` is easy. Otherwise, producing a `proof` is next to
+impossible.
 
-The routine that checks whether a `proof` is, in fact, a valid one, is called the Verifier.
-It takes as input a 4-tuple (`input`, `program`, `output`, `proof`) and evaluates to `true` if and
-only if that 4-tuple is consistent with the rules of the virtual machine.
+The routine that checks whether a `proof` is, in fact, a valid one, is called the Verifier. It takes
+as input a 4-tuple (`input`, `program`, `output`, `proof`) and evaluates to `true` if and only if
+that 4-tuple is consistent with the rules of the virtual machine.
 
 ![](./specification/src/img/recursive-3.svg)
 
@@ -61,18 +59,16 @@ Triton VM is specifically designed to allow fast recursive verification.
 
 ## Project Status
 
-Triton VM is still under construction.
-We currently don't recommend using it in production.
+Triton VM is still under construction. We currently don't recommend using it in production.
 
 Please note that the [Instruction Set Architecture](https://triton-vm.org/spec/isa.html) is not to
-be considered final.
-However, we don't currently foresee big changes.
+be considered final. However, we don't currently foresee big changes.
 
 ## Specification
 
-The specification can be found [online](https://triton-vm.org/spec/).
-Alternatively, you can self-host the [mdBook](https://rust-lang.github.io/mdBook/) by first
-installing the dependencies, then serving the mdBook.
+The specification can be found [online](https://triton-vm.org/spec/). Alternatively, you can
+self-host the [mdBook](https://rust-lang.github.io/mdBook/) by first installing the dependencies,
+then serving the mdBook.
 
 ```sh
 cargo install mdbook
