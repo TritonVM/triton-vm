@@ -6,19 +6,28 @@ use std::fmt::Display;
 use std::fmt::Formatter;
 use std::fmt::Result as FmtResult;
 
+use itertools::Itertools;
 use nom::Finish;
 use nom::IResult;
 use nom::Parser;
 use nom::branch::alt;
+use nom::bytes::complete::is_not;
 use nom::bytes::complete::tag;
+use nom::bytes::complete::take_until;
 use nom::bytes::complete::take_while;
 use nom::bytes::complete::take_while1;
+use nom::character::char;
 use nom::character::complete::digit1;
 use nom::combinator::cut;
 use nom::combinator::eof;
+use nom::combinator::opt;
+use nom::combinator::value;
 use nom::error::context;
 use nom::multi::many0;
 use nom::multi::many1;
+use nom::multi::separated_list1;
+use nom::sequence::delimited;
+use nom::sequence::terminated;
 use nom_language::error::VerboseError;
 use nom_language::error::VerboseErrorKind;
 use twenty_first::bfe;
@@ -589,15 +598,15 @@ fn label_addr(s_orig: &str) -> ParseResult<String> {
 
 /// Parse 0 or more comments and/or whitespace.
 ///
-/// This is used after places where whitespace is optional (e.g. after ':').
+/// This is used in places where whitespace is optional (e.g. after ':').
 fn comment_or_whitespace0(s: &str) -> ParseResult<&str> {
     let (s, _) = many0(alt((comment1, whitespace1))).parse(s)?;
     Ok((s, ""))
 }
 
-/// Parse at least one comment and/or whitespace, or eof.
+/// Parse at least one comment and/or whitespace, or [eof].
 ///
-/// This is used after places where whitespace is mandatory (e.g. after tokens).
+/// This is used in places where whitespace is mandatory (e.g. after tokens).
 fn comment_or_whitespace1<'a>(s: &'a str) -> ParseResult<'a, &'a str> {
     let cws1 = |s: &'a str| -> ParseResult<&str> {
         let (s, _) = many1(alt((comment1, whitespace1))).parse(s)?;
@@ -606,27 +615,38 @@ fn comment_or_whitespace1<'a>(s: &'a str) -> ParseResult<'a, &'a str> {
     alt((eof, cws1)).parse(s)
 }
 
-/// Parse one comment (not including the linebreak)
+/// Parse one comment
 fn comment1(s: &str) -> ParseResult<()> {
-    let (s, _) = tag("//")(s)?;
-    let (s, _) = take_while(|c| !is_linebreak(c))(s)?;
+    alt((eol_comment, inline_comment)).parse(s)
+}
+
+/// Parse one “//”-comment (not including the linebreak)
+fn eol_comment(s: &str) -> ParseResult<()> {
+    let (s, _) = tag("//").parse(s)?;
+    let (s, _) = is_not("\n\r").parse(s)?;
+
+    Ok((s, ()))
+}
+
+/// Parse one “/* … */”-comment
+fn inline_comment(s: &str) -> ParseResult<()> {
+    let (s, _) = tag("/*").parse(s)?;
+    let (s, _) = take_until("*/").parse(s)?;
+    let (s, _) = tag("*/").parse(s)?;
+
     Ok((s, ()))
 }
 
 /// Parse whitespace characters (can be none)
 fn whitespace0(s: &str) -> ParseResult<()> {
-    let (s, _) = take_while(|c: char| c.is_whitespace())(s)?;
+    let (s, _) = take_while(char::is_whitespace)(s)?;
     Ok((s, ()))
 }
 
 /// Parse at least one whitespace character
 fn whitespace1(s: &str) -> ParseResult<()> {
-    let (s, _) = take_while1(|c: char| c.is_whitespace())(s)?;
+    let (s, _) = take_while1(char::is_whitespace)(s)?;
     Ok((s, ()))
-}
-
-fn is_linebreak(c: char) -> bool {
-    c == '\r' || c == '\n'
 }
 
 /// `token0(tok)` will parse the string `tok` and munch 0 or more comment or
@@ -726,24 +746,66 @@ fn type_hint_variable_name(s: &str) -> ParseResult<String> {
 }
 
 fn type_hint_type_name(s: &str) -> ParseResult<Option<String>> {
+    #[derive(Debug, Clone)]
+    pub enum TypeHintType<'a> {
+        Simple(&'a str),
+        Generic(&'a str, Vec<TypeHintType<'a>>),
+    }
+
+    impl Display for TypeHintType<'_> {
+        fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+            match self {
+                TypeHintType::Simple(ty) => write!(f, "{ty}"),
+                TypeHintType::Generic(ty, ge) => write!(f, "{ty}<{ge}>", ge = ge.iter().join(", ")),
+            }
+        }
+    }
+
+    fn ty(input: &str) -> ParseResult<TypeHintType> {
+        alt((generic_ty, simple_ty)).parse(input)
+    }
+
+    fn simple_ty(s: &str) -> ParseResult<TypeHintType> {
+        let (s, ty) = ty_name(s)?;
+        Ok((s, TypeHintType::Simple(ty)))
+    }
+
+    fn generic_ty(s: &str) -> ParseResult<TypeHintType> {
+        let (s, name) = ty_name(s)?;
+        let (s, _) = comment_or_whitespace0(s)?;
+
+        let list_elem = delimited(comment_or_whitespace0, ty, comment_or_whitespace0);
+        let separator = || delimited(comment_or_whitespace0, char(','), comment_or_whitespace0);
+        let ty_list = separated_list1(separator(), list_elem);
+        let ty_list = terminated(ty_list, opt(separator()));
+        let empty_list = value(Vec::new(), comment_or_whitespace1);
+        let (s, generics) = delimited(tag("<"), alt((ty_list, empty_list)), tag(">")).parse(s)?;
+
+        let ty = if generics.is_empty() {
+            TypeHintType::Simple(name)
+        } else {
+            TypeHintType::Generic(name, generics)
+        };
+
+        Ok((s, ty))
+    }
+
+    fn ty_name(input: &str) -> ParseResult<&str> {
+        let (s, stars) = take_while(|c: char| c == '*').parse(input)?;
+        let (s, begin) = take_while1(|c: char| c.is_ascii_alphabetic() || c == '_').parse(s)?;
+        let (s, rest) = take_while(|c: char| c.is_ascii_alphanumeric() || c == '_').parse(s)?;
+
+        Ok((s, &input[..stars.len() + begin.len() + rest.len()]))
+    }
+
     let Ok((s, _)) = token0(":")(s) else {
         return Ok((s, None));
     };
 
-    let (s, type_name_start) = context(
-        "type hint's type name must start with alphabetic character",
-        cut(take_while1(|c: char| c.is_alphabetic())),
-    )
-    .parse(s)?;
-    let (s, type_name_end) = context(
-        "type hint's type name must contain only alphanumeric characters and `_`",
-        cut(take_while(|c: char| c.is_alphanumeric() || c == '_')),
-    )
-    .parse(s)?;
+    let (s, type_name) = cut(ty).parse(s)?;
     let (s, _) = whitespace0(s)?;
-    let type_name = format!("{type_name_start}{type_name_end}");
 
-    Ok((s, Some(type_name)))
+    Ok((s, Some(type_name.to_string())))
 }
 
 fn type_hint_ending_index(s: &str) -> ParseResult<Option<usize>> {
@@ -1504,7 +1566,7 @@ pub(crate) mod tests {
     fn type_hint_to_string_to_type_hint_is_identity(#[strategy(arb())] type_hint: TypeHint) {
         let type_hint_string = type_hint.to_string();
         let instruction_tokens =
-            parse(&type_hint_string).map_err(|err| TestCaseError::Fail(format!("{err}").into()))?;
+            parse(&type_hint_string).map_err(|err| TestCaseError::fail(err.to_string()))?;
         let labelled_instructions = to_labelled_instructions(&instruction_tokens);
         prop_assert_eq!(1, labelled_instructions.len());
         let first_labelled_instruction = labelled_instructions[0].clone();
@@ -1517,12 +1579,86 @@ pub(crate) mod tests {
         #[strategy(arb())] context: AssertionContext,
     ) {
         let assert_with_context = format!("assert {context}");
-        let instruction_tokens = parse(&assert_with_context)
-            .map_err(|err| TestCaseError::Fail(format!("{err}").into()))?;
+        let instruction_tokens =
+            parse(&assert_with_context).map_err(|err| TestCaseError::fail(err.to_string()))?;
         let labelled_instructions = to_labelled_instructions(&instruction_tokens);
         prop_assert_eq!(2, labelled_instructions.len());
         let_assert!(LabelledInstruction::AssertionContext(parsed) = &labelled_instructions[1]);
         prop_assert_eq!(&context, parsed);
+    }
+
+    #[test]
+    fn type_hint_type_can_contain_angle_brackets_and_leading_asterisks() {
+        fn test(expected: Option<&'static str>, input: &'static str) {
+            dbg!(input);
+            let input = format!(": {input}");
+            let parse_result = type_hint_type_name(&input);
+            let Some(expected) = expected else {
+                if let Ok((_, Some(ty))) = parse_result {
+                    panic!("expected error but parsed \"{ty}\"");
+                }
+                return assert!(parse_result.is_err());
+            };
+            let_assert!(Ok((rest, Some(ty))) = parse_result);
+            dbg!(rest);
+            assert!(expected == ty);
+        }
+
+        test(Some("MyType"), "MyType");
+        test(Some("MyType"), " MyType ");
+
+        test(Some("*Pointer"), "*Pointer");
+        test(Some("*_Pointer"), "*_Pointer");
+        test(Some("***Pointer"), "***Pointer");
+        test(Some("*Po"), "*Po*nter");
+        test(Some("*Po_"), "*Po_*nter");
+
+        test(Some("NoGenerics"), "NoGenerics<>");
+        test(Some("NoGenerics"), "NoGenerics <>");
+        test(Some("NoGenerics"), "NoGenerics< /* comment */ >");
+        test(Some("NoGenerics"), "NoGenerics<");
+        test(Some("NoGenerics"), "NoGenerics< /* comment */");
+        test(Some("NoGenerics"), "NoGenerics< // comment");
+
+        test(Some("OneGeneric<A>"), "OneGeneric<A>");
+        test(Some("OneGeneric<A>"), "OneGeneric<A >");
+        test(Some("OneGeneric<A>"), "OneGeneric< A>");
+        test(Some("OneGeneric<A>"), "OneGeneric< A >");
+        test(Some("OneGeneric<A>"), "OneGeneric<A,>");
+        test(Some("OneGeneric<A>"), "OneGeneric<A, /* … */ >");
+        test(Some("OneGeneric"), "OneGeneric<A,,>");
+        test(Some("OneGeneric"), "OneGeneric<,A,>");
+        test(Some("OneGeneric<*A>"), "OneGeneric<*A>");
+        test(Some("OneGeneric<*A>"), "OneGeneric<*A,>");
+        test(Some("OneGeneric<*A>"), "OneGeneric<*A, >");
+        test(Some("OneGeneric<*A>"), "OneGeneric< *A, >");
+        test(Some("OneGeneric<*A>"), "OneGeneric< *A , >");
+        test(Some("OneGeneric"), "OneGeneric< *A , , >");
+
+        test(Some("TwoGenerics<A, B>"), "TwoGenerics<A, B>");
+        test(Some("TwoGenerics<A, B>"), "TwoGenerics<A, B >");
+        test(Some("TwoGenerics<A, B>"), "TwoGenerics< A, B>");
+        test(Some("TwoGenerics<A, B>"), "TwoGenerics< A, B >");
+        test(Some("TwoGenerics<A, B>"), "TwoGenerics<A, B,>");
+        test(Some("TwoGenerics<A, B>"), "TwoGenerics<A, B, /* … */ >");
+        test(Some("TwoGenerics"), "TwoGenerics<A, B,,>");
+        test(Some("TwoGenerics"), "TwoGenerics<,A, B,>");
+        test(Some("TwoGenerics<*A, B>"), "TwoGenerics<*A, B>");
+        test(Some("TwoGenerics<*A, B>"), "TwoGenerics<*A, B,>");
+        test(Some("TwoGenerics<A, *B>"), "TwoGenerics<A, *B,>");
+        test(Some("*TwoGenerics<A, B>"), "*TwoGenerics<A, B,>");
+
+        test(Some("Outer<Inner<A>>"), "Outer<Inner<A>>");
+        test(Some("Outer<Inner<A>>"), "Outer < Inner < A > >");
+        test(Some("Outer<*Inner<A>>"), "Outer < *Inner < A > >");
+        test(Some("Outer<*Inner<*A>>"), "Outer < *Inner < *A > >");
+        test(Some("*Outer<*Inner<*A>>"), "*Outer < *Inner < *A > >");
+        test(Some("**Outer<**Inner<**A>>"), "**Outer < **Inner < **A > >");
+
+        test(None, "");
+        test(None, "0");
+        test(None, "*0");
+        test(None, "*0MyType");
     }
 
     #[test]

@@ -799,16 +799,30 @@ impl From<TypeHintTypeName> for String {
 
 impl<'a> Arbitrary<'a> for TypeHintTypeName {
     fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
-        let legal_start_characters = ('a'..='z').chain('A'..='Z');
-        let legal_characters = legal_start_characters
-            .clone()
-            .chain('0'..='9')
-            .collect_vec();
+        let mut type_name = String::new();
+        for _ in 0..u.arbitrary_len::<char>()?.min(3) {
+            type_name.push('*');
+        }
 
-        let mut type_name = u.choose(&legal_start_characters.collect_vec())?.to_string();
-        for _ in 0..u.arbitrary_len::<char>()? {
+        let legal_start_characters = ('a'..='z').chain('A'..='Z').chain(std::iter::once('_'));
+        type_name.push(*u.choose(&legal_start_characters.clone().collect_vec())?);
+
+        let legal_characters = legal_start_characters.chain('0'..='9').collect_vec();
+        for _ in 0..u.arbitrary_len::<char>()?.min(10) {
             type_name.push(*u.choose(&legal_characters)?);
         }
+
+        let mut generics = Vec::new();
+        for _ in 0..u.arbitrary_len::<Self>()?.min(3) {
+            let Self(generic) = u.arbitrary()?;
+            generics.push(generic);
+        }
+        if !generics.is_empty() {
+            type_name.push('<');
+            type_name.push_str(&generics.into_iter().join(", "));
+            type_name.push('>');
+        }
+
         Ok(Self(type_name))
     }
 }
