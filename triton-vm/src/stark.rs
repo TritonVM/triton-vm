@@ -1415,6 +1415,7 @@ impl Stark {
 
         let fri_expansion_factor = 1 << log2_of_fri_expansion_factor;
         let num_collinearity_checks = security_level / log2_of_fri_expansion_factor;
+        let num_collinearity_checks = std::cmp::max(num_collinearity_checks, 1);
 
         let num_out_of_domain_rows = 2;
         let num_trace_randomizers = num_collinearity_checks
@@ -1578,6 +1579,7 @@ impl LinearCombinationWeights {
 pub(crate) mod tests {
     use std::collections::HashMap;
     use std::collections::HashSet;
+    use std::fmt::Formatter;
 
     use air::AIR;
     use air::challenge_id::ChallengeId::StandardInputIndeterminate;
@@ -1620,17 +1622,14 @@ pub(crate) mod tests {
     use strum::EnumCount;
     use strum::IntoEnumIterator;
     use test_strategy::proptest;
+    use thiserror::Error;
     use twenty_first::math::other::random_elements;
 
     use super::*;
     use crate::PublicInput;
     use crate::config::CacheDecision;
     use crate::error::InstructionError;
-    use crate::shared_tests::DEFAULT_LOG2_FRI_EXPANSION_FACTOR_FOR_TESTS;
-    use crate::shared_tests::ProgramAndInput;
-    use crate::shared_tests::construct_master_main_table;
-    use crate::shared_tests::low_security_stark;
-    use crate::shared_tests::prove_and_verify;
+    use crate::shared_tests::TestableProgram;
     use crate::table::auxiliary_table;
     use crate::table::auxiliary_table::Evaluable;
     use crate::table::master_table::MasterAuxTable;
@@ -1692,42 +1691,13 @@ pub(crate) mod tests {
     use crate::vm::tests::test_program_for_xx_mul;
     use crate::vm::tests::test_program_hash_nop_nop_lt;
 
-    pub(crate) fn master_main_table_for_low_security_level(
-        program_and_input: ProgramAndInput,
-    ) -> (Stark, Claim, MasterMainTable) {
-        let ProgramAndInput {
-            program,
-            public_input,
-            non_determinism,
-        } = program_and_input;
+    impl Stark {
+        pub const LOW_SECURITY_LEVEL: usize = 32;
 
-        let claim = Claim::about_program(&program).with_input(public_input.clone());
-        let (aet, stdout) = VM::trace_execution(program, public_input, non_determinism).unwrap();
-        let claim = claim.with_output(stdout);
-
-        let stark = low_security_stark(DEFAULT_LOG2_FRI_EXPANSION_FACTOR_FOR_TESTS);
-        let master_main_table = construct_master_main_table(stark, &aet);
-
-        (stark, claim, master_main_table)
-    }
-
-    pub(crate) fn master_tables_for_low_security_level(
-        program_and_input: ProgramAndInput,
-    ) -> (Stark, Claim, MasterMainTable, MasterAuxTable, Challenges) {
-        let (stark, claim, mut master_main_table) =
-            master_main_table_for_low_security_level(program_and_input);
-
-        let challenges = Challenges::placeholder(&claim);
-        master_main_table.pad();
-        let master_aux_table = master_main_table.extend(&challenges);
-
-        (
-            stark,
-            claim,
-            master_main_table,
-            master_aux_table,
-            challenges,
-        )
+        pub fn low_security() -> Self {
+            let log_expansion_factor = 2;
+            Stark::new(Self::LOW_SECURITY_LEVEL, log_expansion_factor)
+        }
     }
 
     #[proptest]
@@ -1741,15 +1711,18 @@ pub(crate) mod tests {
         // ensure caching _can_ happen by overwriting environment variables
         crate::config::overwrite_lde_trace_caching_to(CacheDecision::Cache);
 
-        let mut rng = StdRng::seed_from_u64(1632525295622789151);
-        let weights = rng.random::<[XFieldElement; MasterAuxTable::NUM_CONSTRAINTS]>();
-
-        let program = ProgramAndInput::new(triton_program!(halt));
-        let (stark, _, mut main, mut aux, ch) = master_tables_for_low_security_level(program);
+        let test_program = TestableProgram::new(triton_program!(halt));
+        let stark = test_program.stark;
+        let artifacts = test_program.generate_proof_artifacts();
+        let mut main = artifacts.master_main_table;
+        let mut aux = artifacts.master_aux_table;
+        let ch = artifacts.challenges;
         let padded_height = main.trace_table().nrows();
         let fri_dom = stark.fri(padded_height).unwrap().domain;
         let max_degree = stark.max_degree(padded_height);
         let quot_dom = Prover::quotient_domain(fri_dom, max_degree).unwrap();
+        let weights = StdRng::seed_from_u64(1632525295622789151)
+            .random::<[XFieldElement; MasterAuxTable::NUM_CONSTRAINTS]>();
 
         debug_assert!(main.fri_domain_table().is_none());
         debug_assert!(aux.fri_domain_table().is_none());
@@ -1778,11 +1751,12 @@ pub(crate) mod tests {
         fn assert_no_trace_mutation(cache_decision: CacheDecision) {
             crate::config::overwrite_lde_trace_caching_to(cache_decision);
 
-            let mut rng = StdRng::seed_from_u64(15157673430940347283);
-            let weights = rng.random::<[XFieldElement; MasterAuxTable::NUM_CONSTRAINTS]>();
-
-            let program = ProgramAndInput::new(triton_program!(halt));
-            let (stark, _, mut main, mut aux, ch) = master_tables_for_low_security_level(program);
+            let test_program = TestableProgram::new(triton_program!(halt));
+            let stark = test_program.stark;
+            let artifacts = test_program.generate_proof_artifacts();
+            let mut main = artifacts.master_main_table;
+            let mut aux = artifacts.master_aux_table;
+            let ch = artifacts.challenges;
 
             let original_main_trace = main.trace_table().to_owned();
             let original_aux_trace = aux.trace_table().to_owned();
@@ -1800,6 +1774,8 @@ pub(crate) mod tests {
                 assert!(aux.fri_domain_table().is_some());
             }
 
+            let weights = StdRng::seed_from_u64(15157673430940347283)
+                .random::<[XFieldElement; MasterAuxTable::NUM_CONSTRAINTS]>();
             let _segments =
                 Prover::compute_quotient_segments(&mut main, &mut aux, quot_dom, &ch, &weights);
 
@@ -1813,17 +1789,17 @@ pub(crate) mod tests {
 
     #[test]
     fn supplying_prover_randomness_seed_fully_derandomizes_produced_proof() {
-        let ProgramAndInput {
+        let TestableProgram {
             program,
             public_input,
             non_determinism,
+            stark,
         } = program_executing_every_instruction();
 
         let claim = Claim::about_program(&program).with_input(public_input.clone());
         let (aet, output) = VM::trace_execution(program, public_input, non_determinism).unwrap();
         let claim = claim.with_output(output);
 
-        let stark = low_security_stark(DEFAULT_LOG2_FRI_EXPANSION_FACTOR_FOR_TESTS);
         let mut rng = StdRng::seed_from_u64(3351975627407608972);
         let proof = Prover::new(stark)
             .set_randomness_seed_which_may_break_zero_knowledge(rng.random())
@@ -1855,8 +1831,9 @@ pub(crate) mod tests {
             push 100 read_mem 1 pop 2           // read from address 100
             halt
         );
-        let (_, _, master_main_table, _, _) =
-            master_tables_for_low_security_level(ProgramAndInput::new(program));
+        let master_main_table = TestableProgram::new(program)
+            .generate_proof_artifacts()
+            .master_main_table;
 
         println!();
         println!("Processor Table:\n");
@@ -1929,8 +1906,9 @@ pub(crate) mod tests {
             pop 1 pop 2 pop 3
             halt
         };
-        let (_, _, master_main_table) =
-            master_main_table_for_low_security_level(ProgramAndInput::new(program));
+        let master_main_table = TestableProgram::new(program)
+            .generate_proof_artifacts()
+            .master_main_table;
 
         println!();
         println!("Processor Table:");
@@ -2032,26 +2010,25 @@ pub(crate) mod tests {
         let read_nop_program = triton_program!(
             read_io 3 nop nop write_io 2 push 17 write_io 1 halt
         );
-        let mut program_and_input = ProgramAndInput::new(read_nop_program);
-        program_and_input.public_input = PublicInput::from([3, 5, 7].map(|b| bfe!(b)));
-        let (_, claim, _, master_aux_table, all_challenges) =
-            master_tables_for_low_security_level(program_and_input);
+        let artifacts = TestableProgram::new(read_nop_program)
+            .with_input(bfe_vec![3, 5, 7])
+            .generate_proof_artifacts();
 
-        let processor_table = master_aux_table.table(TableId::Processor);
+        let processor_table = artifacts.master_aux_table.table(TableId::Processor);
         let processor_table_last_row = processor_table.slice(s![-1, ..]);
         let ptie = processor_table_last_row[InputTableEvalArg.aux_index()];
         let ine = EvalArg::compute_terminal(
-            &claim.input,
+            &artifacts.claim.input,
             EvalArg::default_initial(),
-            all_challenges[StandardInputIndeterminate],
+            artifacts.challenges[StandardInputIndeterminate],
         );
         check!(ptie == ine);
 
         let ptoe = processor_table_last_row[OutputTableEvalArg.aux_index()];
         let oute = EvalArg::compute_terminal(
-            &claim.output,
+            &artifacts.claim.output,
             EvalArg::default_initial(),
-            all_challenges[StandardOutputIndeterminate],
+            artifacts.challenges[StandardOutputIndeterminate],
         );
         check!(ptoe == oute);
     }
@@ -2179,18 +2156,18 @@ pub(crate) mod tests {
         // Shorten some names for better formatting. This is just a test.
         let ph = padded_height;
         let id = interpolant_degree;
-        let br = main_row.view();
-        let er = aux_row.view();
+        let mr = main_row.view();
+        let ar = aux_row.view();
 
         let num_init_quots = MasterAuxTable::NUM_INITIAL_CONSTRAINTS;
         let num_cons_quots = MasterAuxTable::NUM_CONSISTENCY_CONSTRAINTS;
         let num_tran_quots = MasterAuxTable::NUM_TRANSITION_CONSTRAINTS;
         let num_term_quots = MasterAuxTable::NUM_TERMINAL_CONSTRAINTS;
 
-        let eval_init_consts = MasterAuxTable::evaluate_initial_constraints(br, er, &ch);
-        let eval_cons_consts = MasterAuxTable::evaluate_consistency_constraints(br, er, &ch);
-        let eval_tran_consts = MasterAuxTable::evaluate_transition_constraints(br, er, br, er, &ch);
-        let eval_term_consts = MasterAuxTable::evaluate_terminal_constraints(br, er, &ch);
+        let eval_init_consts = MasterAuxTable::evaluate_initial_constraints(mr, ar, &ch);
+        let eval_cons_consts = MasterAuxTable::evaluate_consistency_constraints(mr, ar, &ch);
+        let eval_tran_consts = MasterAuxTable::evaluate_transition_constraints(mr, ar, mr, ar, &ch);
+        let eval_term_consts = MasterAuxTable::evaluate_terminal_constraints(mr, ar, &ch);
 
         assert!(num_init_quots == eval_init_consts.len());
         assert!(num_cons_quots == eval_cons_consts.len());
@@ -2203,322 +2180,54 @@ pub(crate) mod tests {
         assert!(num_term_quots == MasterAuxTable::terminal_quotient_degree_bounds(id).len());
     }
 
-    #[test]
-    fn constraints_evaluate_to_zero_on_fibonacci() {
-        let source_code_and_input =
-            ProgramAndInput::new(crate::example_programs::FIBONACCI_SEQUENCE.clone())
-                .with_input(bfe_array![100]);
-        triton_constraints_evaluate_to_zero(source_code_and_input);
+    type ConstraintResult = Result<(), ConstraintErrorCollection>;
+
+    #[derive(Debug, Clone, Eq, PartialEq)]
+    struct ConstraintErrorCollection {
+        table: &'static str,
+        errors: Vec<ConstraintError>,
     }
 
-    #[test]
-    fn constraints_evaluate_to_zero_on_big_mmr_snippet() {
-        let source_code_and_input = ProgramAndInput::new(
-            crate::example_programs::CALCULATE_NEW_MMR_PEAKS_FROM_APPEND_WITH_SAFE_LISTS.clone(),
-        );
-        triton_constraints_evaluate_to_zero(source_code_and_input);
-    }
+    impl ConstraintErrorCollection {
+        fn new(table: &'static str) -> Self {
+            let errors = Vec::new();
+            Self { table, errors }
+        }
 
-    #[test]
-    fn constraints_evaluate_to_zero_on_program_for_halt() {
-        triton_constraints_evaluate_to_zero(test_program_for_halt())
-    }
+        fn record(&mut self, err: ConstraintError) {
+            self.errors.push(err);
+        }
 
-    #[test]
-    fn constraints_evaluate_to_zero_on_program_hash_nop_nop_lt() {
-        triton_constraints_evaluate_to_zero(test_program_hash_nop_nop_lt())
-    }
-
-    #[test]
-    fn constraints_evaluate_to_zero_on_program_for_push_pop_dup_swap_nop() {
-        triton_constraints_evaluate_to_zero(test_program_for_push_pop_dup_swap_nop())
-    }
-
-    #[test]
-    fn constraints_evaluate_to_zero_on_program_for_divine() {
-        triton_constraints_evaluate_to_zero(test_program_for_divine())
-    }
-
-    #[test]
-    fn constraints_evaluate_to_zero_on_program_for_skiz() {
-        triton_constraints_evaluate_to_zero(test_program_for_skiz())
-    }
-
-    #[test]
-    fn constraints_evaluate_to_zero_on_program_for_call_recurse_return() {
-        triton_constraints_evaluate_to_zero(test_program_for_call_recurse_return())
-    }
-
-    #[test]
-    fn constraints_evaluate_to_zero_on_program_for_recurse_or_return() {
-        triton_constraints_evaluate_to_zero(test_program_for_recurse_or_return())
-    }
-
-    #[proptest(cases = 20)]
-    fn constraints_evaluate_to_zero_on_property_based_test_program_for_recurse_or_return(
-        program: ProgramForRecurseOrReturn,
-    ) {
-        triton_constraints_evaluate_to_zero(program.assemble())
-    }
-
-    #[test]
-    fn constraints_evaluate_to_zero_on_program_for_write_mem_read_mem() {
-        triton_constraints_evaluate_to_zero(test_program_for_write_mem_read_mem())
-    }
-
-    #[test]
-    fn constraints_evaluate_to_zero_on_program_for_hash() {
-        triton_constraints_evaluate_to_zero(test_program_for_hash())
-    }
-
-    #[test]
-    fn constraints_evaluate_to_zero_on_program_for_merkle_step_right_sibling() {
-        triton_constraints_evaluate_to_zero(test_program_for_merkle_step_right_sibling())
-    }
-
-    #[test]
-    fn constraints_evaluate_to_zero_on_program_for_merkle_step_left_sibling() {
-        triton_constraints_evaluate_to_zero(test_program_for_merkle_step_left_sibling())
-    }
-
-    #[test]
-    fn constraints_evaluate_to_zero_on_program_for_merkle_step_mem_right_sibling() {
-        triton_constraints_evaluate_to_zero(test_program_for_merkle_step_mem_right_sibling())
-    }
-
-    #[test]
-    fn constraints_evaluate_to_zero_on_program_for_merkle_step_mem_left_sibling() {
-        triton_constraints_evaluate_to_zero(test_program_for_merkle_step_mem_left_sibling())
-    }
-
-    #[proptest(cases = 20)]
-    fn constraints_evaluate_to_zero_on_property_based_test_program_for_merkle_tree_update(
-        program: ProgramForMerkleTreeUpdate,
-    ) {
-        triton_constraints_evaluate_to_zero(program.assemble())
-    }
-
-    #[test]
-    fn constraints_evaluate_to_zero_on_program_for_assert_vector() {
-        triton_constraints_evaluate_to_zero(test_program_for_assert_vector())
-    }
-
-    #[test]
-    fn constraints_evaluate_to_zero_on_program_for_sponge_instructions() {
-        triton_constraints_evaluate_to_zero(test_program_for_sponge_instructions())
-    }
-
-    #[test]
-    fn constraints_evaluate_to_zero_on_program_for_sponge_instructions_2() {
-        triton_constraints_evaluate_to_zero(test_program_for_sponge_instructions_2())
-    }
-
-    #[test]
-    fn constraints_evaluate_to_zero_on_program_for_many_sponge_instructions() {
-        triton_constraints_evaluate_to_zero(test_program_for_many_sponge_instructions())
-    }
-
-    #[test]
-    fn constraints_evaluate_to_zero_on_program_for_add_mul_invert() {
-        triton_constraints_evaluate_to_zero(test_program_for_add_mul_invert())
-    }
-
-    #[test]
-    fn constraints_evaluate_to_zero_on_program_for_eq() {
-        triton_constraints_evaluate_to_zero(test_program_for_eq())
-    }
-
-    #[test]
-    fn constraints_evaluate_to_zero_on_program_for_lsb() {
-        triton_constraints_evaluate_to_zero(test_program_for_lsb())
-    }
-
-    #[test]
-    fn constraints_evaluate_to_zero_on_program_for_split() {
-        triton_constraints_evaluate_to_zero(test_program_for_split())
-    }
-
-    #[test]
-    fn constraints_evaluate_to_zero_on_program_0_lt_0() {
-        triton_constraints_evaluate_to_zero(test_program_0_lt_0())
-    }
-
-    #[test]
-    fn constraints_evaluate_to_zero_on_program_for_lt() {
-        triton_constraints_evaluate_to_zero(test_program_for_lt())
-    }
-
-    #[test]
-    fn constraints_evaluate_to_zero_on_program_for_and() {
-        triton_constraints_evaluate_to_zero(test_program_for_and())
-    }
-
-    #[test]
-    fn constraints_evaluate_to_zero_on_program_for_xor() {
-        triton_constraints_evaluate_to_zero(test_program_for_xor())
-    }
-
-    #[test]
-    fn constraints_evaluate_to_zero_on_program_for_log2floor() {
-        triton_constraints_evaluate_to_zero(test_program_for_log2floor())
-    }
-
-    #[test]
-    fn constraints_evaluate_to_zero_on_program_for_pow() {
-        triton_constraints_evaluate_to_zero(test_program_for_pow())
-    }
-
-    #[test]
-    fn constraints_evaluate_to_zero_on_program_for_div_mod() {
-        triton_constraints_evaluate_to_zero(test_program_for_div_mod())
-    }
-
-    #[test]
-    fn constraints_evaluate_to_zero_on_program_for_starting_with_pop_count() {
-        triton_constraints_evaluate_to_zero(test_program_for_starting_with_pop_count())
-    }
-
-    #[test]
-    fn constraints_evaluate_to_zero_on_program_for_pop_count() {
-        triton_constraints_evaluate_to_zero(test_program_for_pop_count())
-    }
-
-    #[test]
-    fn constraints_evaluate_to_zero_on_program_for_xx_add() {
-        triton_constraints_evaluate_to_zero(test_program_for_xx_add())
-    }
-
-    #[test]
-    fn constraints_evaluate_to_zero_on_program_for_xx_mul() {
-        triton_constraints_evaluate_to_zero(test_program_for_xx_mul())
-    }
-
-    #[test]
-    fn constraints_evaluate_to_zero_on_program_for_x_invert() {
-        triton_constraints_evaluate_to_zero(test_program_for_x_invert())
-    }
-
-    #[test]
-    fn constraints_evaluate_to_zero_on_program_for_xb_mul() {
-        triton_constraints_evaluate_to_zero(test_program_for_xb_mul())
-    }
-
-    #[test]
-    fn constraints_evaluate_to_zero_on_program_for_read_io_write_io() {
-        triton_constraints_evaluate_to_zero(test_program_for_read_io_write_io())
-    }
-
-    #[test]
-    fn constraints_evaluate_to_zero_on_property_based_test_program_for_assert_vector() {
-        triton_constraints_evaluate_to_zero(property_based_test_program_for_assert_vector())
-    }
-
-    #[test]
-    fn constraints_evaluate_to_zero_on_single_sponge_absorb_mem_instructions() {
-        let program = triton_program!(sponge_init sponge_absorb_mem halt);
-        let program = ProgramAndInput::new(program);
-        triton_constraints_evaluate_to_zero(program);
-    }
-
-    #[proptest(cases = 3)]
-    fn constraints_evaluate_to_zero_on_property_based_test_program_for_sponge_instructions(
-        program: ProgramForSpongeAndHashInstructions,
-    ) {
-        triton_constraints_evaluate_to_zero(program.assemble());
-    }
-
-    #[test]
-    fn constraints_evaluate_to_zero_on_property_based_test_program_for_split() {
-        triton_constraints_evaluate_to_zero(property_based_test_program_for_split())
-    }
-
-    #[test]
-    fn constraints_evaluate_to_zero_on_property_based_test_program_for_eq() {
-        triton_constraints_evaluate_to_zero(property_based_test_program_for_eq())
-    }
-
-    #[test]
-    fn constraints_evaluate_to_zero_on_property_based_test_program_for_lsb() {
-        triton_constraints_evaluate_to_zero(property_based_test_program_for_lsb())
-    }
-
-    #[test]
-    fn constraints_evaluate_to_zero_on_property_based_test_program_for_lt() {
-        triton_constraints_evaluate_to_zero(property_based_test_program_for_lt())
-    }
-
-    #[test]
-    fn constraints_evaluate_to_zero_on_property_based_test_program_for_and() {
-        triton_constraints_evaluate_to_zero(property_based_test_program_for_and())
-    }
-
-    #[test]
-    fn constraints_evaluate_to_zero_on_property_based_test_program_for_xor() {
-        triton_constraints_evaluate_to_zero(property_based_test_program_for_xor())
-    }
-
-    #[test]
-    fn constraints_evaluate_to_zero_on_property_based_test_program_for_log2floor() {
-        triton_constraints_evaluate_to_zero(property_based_test_program_for_log2floor())
-    }
-
-    #[test]
-    fn constraints_evaluate_to_zero_on_property_based_test_program_for_pow() {
-        triton_constraints_evaluate_to_zero(property_based_test_program_for_pow())
-    }
-
-    #[test]
-    fn constraints_evaluate_to_zero_on_property_based_test_program_for_div_mod() {
-        triton_constraints_evaluate_to_zero(property_based_test_program_for_div_mod())
-    }
-
-    #[test]
-    fn constraints_evaluate_to_zero_on_property_based_test_program_for_pop_count() {
-        triton_constraints_evaluate_to_zero(property_based_test_program_for_pop_count())
-    }
-
-    #[test]
-    fn constraints_evaluate_to_zero_on_property_based_test_program_for_is_u32() {
-        triton_constraints_evaluate_to_zero(property_based_test_program_for_is_u32())
-    }
-
-    #[test]
-    fn constraints_evaluate_to_zero_on_property_based_test_program_for_random_ram_access() {
-        triton_constraints_evaluate_to_zero(property_based_test_program_for_random_ram_access())
-    }
-
-    #[test]
-    fn constraints_evaluate_to_zero_on_property_based_test_program_for_xx_dot_step() {
-        triton_constraints_evaluate_to_zero(property_based_test_program_for_xx_dot_step());
-    }
-
-    #[test]
-    fn constraints_evaluate_to_zero_on_property_based_test_program_for_xb_dot_step() {
-        triton_constraints_evaluate_to_zero(property_based_test_program_for_xb_dot_step());
-    }
-
-    #[test]
-    fn can_read_twice_from_same_ram_address_within_one_cycle() {
-        for i in 0..x_field_element::EXTENSION_DEGREE {
-            // This program reads from the same address twice, even if the stack
-            // is not well-initialized.
-            let program = triton_program! {
-                dup 0
-                addi {i}
-                xx_dot_step
-                halt
-            };
-            let program_and_input = ProgramAndInput::new(program);
-            debug_assert!(program_and_input.clone().run().is_ok());
-            triton_constraints_evaluate_to_zero(program_and_input);
+        fn into_result(self) -> Result<(), Self> {
+            self.errors.is_empty().then_some(()).ok_or(self)
         }
     }
 
-    #[test]
-    fn claim_in_ram_corresponds_to_currently_running_program() {
-        triton_constraints_evaluate_to_zero(
-            test_program_claim_in_ram_corresponds_to_currently_running_program(),
-        );
+    impl core::fmt::Display for ConstraintErrorCollection {
+        fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+            for err in &self.errors {
+                writeln!(f, "{table}: {err}", table = self.table)?;
+            }
+
+            Ok(())
+        }
+    }
+
+    impl core::error::Error for ConstraintErrorCollection {}
+
+    #[derive(Debug, Copy, Clone, Eq, PartialEq, Error)]
+    enum ConstraintError {
+        #[error("initial constraint {idx} failed")]
+        Initial { idx: usize },
+
+        #[error("consistency constraint {idx} failed on row {row_idx}")]
+        Consistency { idx: usize, row_idx: usize },
+
+        #[error("transition constraint {idx} failed on row {row_idx}")]
+        Transition { idx: usize, row_idx: usize },
+
+        #[error("terminal constraint {idx} failed.")]
+        Terminal { idx: usize },
     }
 
     macro_rules! check_constraints_fn {
@@ -2527,12 +2236,13 @@ pub(crate) mod tests {
                 master_main_trace_table: ArrayView2<BFieldElement>,
                 master_aux_trace_table: ArrayView2<XFieldElement>,
                 challenges: &Challenges,
-            ) {
+            ) -> ConstraintResult {
                 assert!(master_main_trace_table.nrows() == master_aux_trace_table.nrows());
                 let challenges = &challenges.challenges;
 
+                let mut errors = ConstraintErrorCollection::new(stringify!($table));
                 let builder = ConstraintCircuitBuilder::new();
-                for (constraint_idx, constraint) in $table::initial_constraints(&builder)
+                for (idx, constraint) in $table::initial_constraints(&builder)
                     .into_iter()
                     .map(|constraint_monad| constraint_monad.consume())
                     .enumerate()
@@ -2542,15 +2252,13 @@ pub(crate) mod tests {
                         master_aux_trace_table.slice(s![..1, ..]),
                         challenges,
                     );
-                    check!(
-                        xfe!(0) == evaluated_constraint,
-                        "{}: Initial constraint {constraint_idx} failed.",
-                        stringify!($table),
-                    );
+                    if evaluated_constraint != xfe!(0) {
+                        errors.record(ConstraintError::Initial { idx });
+                    }
                 }
 
                 let builder = ConstraintCircuitBuilder::new();
-                for (constraint_idx, constraint) in $table::consistency_constraints(&builder)
+                for (idx, constraint) in $table::consistency_constraints(&builder)
                     .into_iter()
                     .map(|constraint_monad| constraint_monad.consume())
                     .enumerate()
@@ -2561,16 +2269,14 @@ pub(crate) mod tests {
                             master_aux_trace_table.slice(s![row_idx..=row_idx, ..]),
                             challenges,
                         );
-                        check!(
-                            xfe!(0) == evaluated_constraint,
-                            "{}: Consistency constraint {constraint_idx} failed on row {row_idx}.",
-                            stringify!($table),
-                        );
+                        if evaluated_constraint != xfe!(0) {
+                            errors.record(ConstraintError::Consistency { idx, row_idx });
+                        }
                     }
                 }
 
                 let builder = ConstraintCircuitBuilder::new();
-                for (constraint_idx, constraint) in $table::transition_constraints(&builder)
+                for (idx, constraint) in $table::transition_constraints(&builder)
                     .into_iter()
                     .map(|constraint_monad| constraint_monad.consume())
                     .enumerate()
@@ -2581,16 +2287,14 @@ pub(crate) mod tests {
                             master_aux_trace_table.slice(s![row_idx..=row_idx + 1, ..]),
                             challenges,
                         );
-                        check!(
-                            xfe!(0) == evaluated_constraint,
-                            "{}: Transition constraint {constraint_idx} failed on row {row_idx}.",
-                            stringify!($table),
-                        );
+                        if evaluated_constraint != xfe!(0) {
+                            errors.record(ConstraintError::Transition { idx, row_idx });
+                        }
                     }
                 }
 
                 let builder = ConstraintCircuitBuilder::new();
-                for (constraint_idx, constraint) in $table::terminal_constraints(&builder)
+                for (idx, constraint) in $table::terminal_constraints(&builder)
                     .into_iter()
                     .map(|constraint_monad| constraint_monad.consume())
                     .enumerate()
@@ -2600,12 +2304,12 @@ pub(crate) mod tests {
                         master_aux_trace_table.slice(s![-1.., ..]),
                         challenges,
                     );
-                    check!(
-                        xfe!(0) == evaluated_constraint,
-                        "{}: Terminal constraint {constraint_idx} failed.",
-                        stringify!($table),
-                    );
+                    if evaluated_constraint != xfe!(0) {
+                        errors.record(ConstraintError::Terminal { idx });
+                    }
                 }
+
+                errors.into_result()
             }
         };
     }
@@ -2621,24 +2325,356 @@ pub(crate) mod tests {
     check_constraints_fn!(fn check_u32_table_constraints for U32Table);
     check_constraints_fn!(fn check_cross_table_constraints for GrandCrossTableArg);
 
-    fn triton_constraints_evaluate_to_zero(program_and_input: ProgramAndInput) {
-        let (_, _, master_main_table, master_aux_table, challenges) =
-            master_tables_for_low_security_level(program_and_input);
+    fn triton_constraints_evaluate_to_zero(program: TestableProgram) -> ConstraintResult {
+        let artifacts = program.generate_proof_artifacts();
+        let mmt = artifacts.master_main_table.trace_table();
+        let mat = artifacts.master_aux_table.trace_table();
+        assert!(mmt.nrows() == mat.nrows());
 
-        let mbt = master_main_table.trace_table();
-        let met = master_aux_table.trace_table();
-        assert!(mbt.nrows() == met.nrows());
+        let challenges = artifacts.challenges;
+        check_program_table_constraints(mmt, mat, &challenges)?;
+        check_processor_table_constraints(mmt, mat, &challenges)?;
+        check_op_stack_table_constraints(mmt, mat, &challenges)?;
+        check_ram_table_constraints(mmt, mat, &challenges)?;
+        check_jump_stack_table_constraints(mmt, mat, &challenges)?;
+        check_hash_table_constraints(mmt, mat, &challenges)?;
+        check_cascade_table_constraints(mmt, mat, &challenges)?;
+        check_lookup_table_constraints(mmt, mat, &challenges)?;
+        check_u32_table_constraints(mmt, mat, &challenges)?;
+        check_cross_table_constraints(mmt, mat, &challenges)?;
 
-        check_program_table_constraints(mbt, met, &challenges);
-        check_processor_table_constraints(mbt, met, &challenges);
-        check_op_stack_table_constraints(mbt, met, &challenges);
-        check_ram_table_constraints(mbt, met, &challenges);
-        check_jump_stack_table_constraints(mbt, met, &challenges);
-        check_hash_table_constraints(mbt, met, &challenges);
-        check_cascade_table_constraints(mbt, met, &challenges);
-        check_lookup_table_constraints(mbt, met, &challenges);
-        check_u32_table_constraints(mbt, met, &challenges);
-        check_cross_table_constraints(mbt, met, &challenges);
+        Ok(())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_fibonacci() -> ConstraintResult {
+        let program = TestableProgram::new(crate::example_programs::FIBONACCI_SEQUENCE.clone())
+            .with_input(bfe_array![100]);
+        triton_constraints_evaluate_to_zero(program)
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_big_mmr_snippet() -> ConstraintResult {
+        let program = TestableProgram::new(
+            crate::example_programs::CALCULATE_NEW_MMR_PEAKS_FROM_APPEND_WITH_SAFE_LISTS.clone(),
+        );
+        triton_constraints_evaluate_to_zero(program)
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_program_for_halt() -> ConstraintResult {
+        triton_constraints_evaluate_to_zero(test_program_for_halt())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_program_hash_nop_nop_lt() -> ConstraintResult {
+        triton_constraints_evaluate_to_zero(test_program_hash_nop_nop_lt())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_program_for_push_pop_dup_swap_nop() -> ConstraintResult {
+        triton_constraints_evaluate_to_zero(test_program_for_push_pop_dup_swap_nop())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_program_for_divine() -> ConstraintResult {
+        triton_constraints_evaluate_to_zero(test_program_for_divine())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_program_for_skiz() -> ConstraintResult {
+        triton_constraints_evaluate_to_zero(test_program_for_skiz())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_program_for_call_recurse_return() -> ConstraintResult {
+        triton_constraints_evaluate_to_zero(test_program_for_call_recurse_return())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_program_for_recurse_or_return() -> ConstraintResult {
+        triton_constraints_evaluate_to_zero(test_program_for_recurse_or_return())
+    }
+
+    #[proptest(cases = 20)]
+    fn constraints_evaluate_to_zero_on_property_based_test_program_for_recurse_or_return(
+        program: ProgramForRecurseOrReturn,
+    ) {
+        triton_constraints_evaluate_to_zero(program.assemble())?;
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_program_for_write_mem_read_mem() -> ConstraintResult {
+        triton_constraints_evaluate_to_zero(test_program_for_write_mem_read_mem())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_program_for_hash() -> ConstraintResult {
+        triton_constraints_evaluate_to_zero(test_program_for_hash())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_program_for_merkle_step_right_sibling() -> ConstraintResult {
+        triton_constraints_evaluate_to_zero(test_program_for_merkle_step_right_sibling())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_program_for_merkle_step_left_sibling() -> ConstraintResult {
+        triton_constraints_evaluate_to_zero(test_program_for_merkle_step_left_sibling())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_program_for_merkle_step_mem_right_sibling()
+    -> ConstraintResult {
+        triton_constraints_evaluate_to_zero(test_program_for_merkle_step_mem_right_sibling())
+    }
+
+    // todo: https://github.com/rust-lang/rustfmt/issues/6521
+    #[rustfmt::skip]
+    #[test]
+    fn constraints_evaluate_to_zero_on_program_for_merkle_step_mem_left_sibling()
+    -> ConstraintResult {
+        triton_constraints_evaluate_to_zero(test_program_for_merkle_step_mem_left_sibling())
+    }
+
+    #[proptest(cases = 20)]
+    fn constraints_evaluate_to_zero_on_property_based_test_program_for_merkle_tree_update(
+        program: ProgramForMerkleTreeUpdate,
+    ) {
+        triton_constraints_evaluate_to_zero(program.assemble())?;
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_program_for_assert_vector() -> ConstraintResult {
+        triton_constraints_evaluate_to_zero(test_program_for_assert_vector())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_program_for_sponge_instructions() -> ConstraintResult {
+        triton_constraints_evaluate_to_zero(test_program_for_sponge_instructions())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_program_for_sponge_instructions_2() -> ConstraintResult {
+        triton_constraints_evaluate_to_zero(test_program_for_sponge_instructions_2())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_program_for_many_sponge_instructions() -> ConstraintResult {
+        triton_constraints_evaluate_to_zero(test_program_for_many_sponge_instructions())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_program_for_add_mul_invert() -> ConstraintResult {
+        triton_constraints_evaluate_to_zero(test_program_for_add_mul_invert())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_program_for_eq() -> ConstraintResult {
+        triton_constraints_evaluate_to_zero(test_program_for_eq())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_program_for_lsb() -> ConstraintResult {
+        triton_constraints_evaluate_to_zero(test_program_for_lsb())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_program_for_split() -> ConstraintResult {
+        triton_constraints_evaluate_to_zero(test_program_for_split())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_program_0_lt_0() -> ConstraintResult {
+        triton_constraints_evaluate_to_zero(test_program_0_lt_0())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_program_for_lt() -> ConstraintResult {
+        triton_constraints_evaluate_to_zero(test_program_for_lt())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_program_for_and() -> ConstraintResult {
+        triton_constraints_evaluate_to_zero(test_program_for_and())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_program_for_xor() -> ConstraintResult {
+        triton_constraints_evaluate_to_zero(test_program_for_xor())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_program_for_log2floor() -> ConstraintResult {
+        triton_constraints_evaluate_to_zero(test_program_for_log2floor())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_program_for_pow() -> ConstraintResult {
+        triton_constraints_evaluate_to_zero(test_program_for_pow())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_program_for_div_mod() -> ConstraintResult {
+        triton_constraints_evaluate_to_zero(test_program_for_div_mod())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_program_for_starting_with_pop_count() -> ConstraintResult {
+        triton_constraints_evaluate_to_zero(test_program_for_starting_with_pop_count())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_program_for_pop_count() -> ConstraintResult {
+        triton_constraints_evaluate_to_zero(test_program_for_pop_count())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_program_for_xx_add() -> ConstraintResult {
+        triton_constraints_evaluate_to_zero(test_program_for_xx_add())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_program_for_xx_mul() -> ConstraintResult {
+        triton_constraints_evaluate_to_zero(test_program_for_xx_mul())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_program_for_x_invert() -> ConstraintResult {
+        triton_constraints_evaluate_to_zero(test_program_for_x_invert())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_program_for_xb_mul() -> ConstraintResult {
+        triton_constraints_evaluate_to_zero(test_program_for_xb_mul())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_program_for_read_io_write_io() -> ConstraintResult {
+        triton_constraints_evaluate_to_zero(test_program_for_read_io_write_io())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_property_based_test_program_for_assert_vector()
+    -> ConstraintResult {
+        triton_constraints_evaluate_to_zero(property_based_test_program_for_assert_vector())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_single_sponge_absorb_mem_instructions() -> ConstraintResult {
+        let program = triton_program!(sponge_init sponge_absorb_mem halt);
+        let program = TestableProgram::new(program);
+        triton_constraints_evaluate_to_zero(program)
+    }
+
+    #[proptest(cases = 3)]
+    fn constraints_evaluate_to_zero_on_property_based_test_program_for_sponge_instructions(
+        program: ProgramForSpongeAndHashInstructions,
+    ) {
+        triton_constraints_evaluate_to_zero(program.assemble())?;
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_property_based_test_program_for_split() -> ConstraintResult {
+        triton_constraints_evaluate_to_zero(property_based_test_program_for_split())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_property_based_test_program_for_eq() -> ConstraintResult {
+        triton_constraints_evaluate_to_zero(property_based_test_program_for_eq())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_property_based_test_program_for_lsb() -> ConstraintResult {
+        triton_constraints_evaluate_to_zero(property_based_test_program_for_lsb())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_property_based_test_program_for_lt() -> ConstraintResult {
+        triton_constraints_evaluate_to_zero(property_based_test_program_for_lt())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_property_based_test_program_for_and() -> ConstraintResult {
+        triton_constraints_evaluate_to_zero(property_based_test_program_for_and())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_property_based_test_program_for_xor() -> ConstraintResult {
+        triton_constraints_evaluate_to_zero(property_based_test_program_for_xor())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_property_based_test_program_for_log2floor()
+    -> ConstraintResult {
+        triton_constraints_evaluate_to_zero(property_based_test_program_for_log2floor())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_property_based_test_program_for_pow() -> ConstraintResult {
+        triton_constraints_evaluate_to_zero(property_based_test_program_for_pow())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_property_based_test_program_for_div_mod() -> ConstraintResult
+    {
+        triton_constraints_evaluate_to_zero(property_based_test_program_for_div_mod())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_property_based_test_program_for_pop_count()
+    -> ConstraintResult {
+        triton_constraints_evaluate_to_zero(property_based_test_program_for_pop_count())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_property_based_test_program_for_is_u32() -> ConstraintResult
+    {
+        triton_constraints_evaluate_to_zero(property_based_test_program_for_is_u32())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_property_based_test_program_for_random_ram_access()
+    -> ConstraintResult {
+        triton_constraints_evaluate_to_zero(property_based_test_program_for_random_ram_access())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_property_based_test_program_for_xx_dot_step()
+    -> ConstraintResult {
+        triton_constraints_evaluate_to_zero(property_based_test_program_for_xx_dot_step())
+    }
+
+    #[test]
+    fn constraints_evaluate_to_zero_on_property_based_test_program_for_xb_dot_step()
+    -> ConstraintResult {
+        triton_constraints_evaluate_to_zero(property_based_test_program_for_xb_dot_step())
+    }
+
+    #[test]
+    fn can_read_twice_from_same_ram_address_within_one_cycle() -> ConstraintResult {
+        for i in 0..x_field_element::EXTENSION_DEGREE {
+            // This program reads from the same address twice, even if the stack
+            // is not well-initialized.
+            let program = triton_program! {
+                dup 0
+                addi {i}
+                xx_dot_step
+                halt
+            };
+            let program = TestableProgram::new(program);
+            debug_assert!(program.clone().run().is_ok());
+            triton_constraints_evaluate_to_zero(program)?;
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn claim_in_ram_corresponds_to_currently_running_program() -> ConstraintResult {
+        triton_constraints_evaluate_to_zero(
+            test_program_claim_in_ram_corresponds_to_currently_running_program(),
+        )
     }
 
     #[test]
@@ -2646,12 +2682,11 @@ pub(crate) mod tests {
         derived_constraints_evaluate_to_zero(test_program_for_halt());
     }
 
-    fn derived_constraints_evaluate_to_zero(program_and_input: ProgramAndInput) {
-        let (_, _, master_main_table, master_aux_table, challenges) =
-            master_tables_for_low_security_level(program_and_input);
-
-        let master_main_trace_table = master_main_table.trace_table();
-        let master_aux_trace_table = master_aux_table.trace_table();
+    fn derived_constraints_evaluate_to_zero(program: TestableProgram) {
+        let artifacts = program.generate_proof_artifacts();
+        let master_main_trace_table = artifacts.master_main_table.trace_table();
+        let master_aux_trace_table = artifacts.master_aux_table.trace_table();
+        let challenges = artifacts.challenges;
 
         let evaluated_initial_constraints = MasterAuxTable::evaluate_initial_constraints(
             master_main_trace_table.row(0),
@@ -2720,29 +2755,19 @@ pub(crate) mod tests {
 
     #[test]
     fn prove_and_verify_simple_program() {
-        prove_and_verify(
-            test_program_hash_nop_nop_lt(),
-            DEFAULT_LOG2_FRI_EXPANSION_FACTOR_FOR_TESTS,
-        );
+        test_program_hash_nop_nop_lt().prove_and_verify();
     }
 
-    #[test]
-    fn prove_and_verify_halt_with_different_fri_expansion_factors() {
-        for log_2_fri_expansion_factor in 1..5 {
-            println!("Testing with log2_fri_expansion_factor = {log_2_fri_expansion_factor}");
-            prove_and_verify(test_program_for_halt(), log_2_fri_expansion_factor);
-        }
+    #[proptest(cases = 10)]
+    fn prove_and_verify_halt_with_different_stark_parameters(#[strategy(arb())] stark: Stark) {
+        test_program_for_halt().use_stark(stark).prove_and_verify();
     }
 
     #[test]
     fn prove_and_verify_fibonacci_100() {
-        let program_and_input =
-            ProgramAndInput::new(crate::example_programs::FIBONACCI_SEQUENCE.clone())
-                .with_input(PublicInput::from(bfe_array![100]));
-        prove_and_verify(
-            program_and_input,
-            DEFAULT_LOG2_FRI_EXPANSION_FACTOR_FOR_TESTS,
-        );
+        TestableProgram::new(crate::example_programs::FIBONACCI_SEQUENCE.clone())
+            .with_input(PublicInput::from(bfe_array![100]))
+            .prove_and_verify();
     }
 
     #[test]
@@ -2761,33 +2786,26 @@ pub(crate) mod tests {
             halt
         };
 
-        let program_and_input = ProgramAndInput::new(program).with_input(input);
-        let output = program_and_input.clone().run().unwrap();
+        let program = TestableProgram::new(program).with_input(input);
+        let output = program.clone().run().unwrap();
         let expected_output = bfe_vec![1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7];
         assert!(expected_output == output);
 
-        prove_and_verify(
-            program_and_input,
-            DEFAULT_LOG2_FRI_EXPANSION_FACTOR_FOR_TESTS,
-        );
+        program.prove_and_verify();
     }
 
     #[test]
-    fn constraints_evaluate_to_zero_on_many_u32_operations() {
-        let many_u32_instructions = ProgramAndInput::new(
+    fn constraints_evaluate_to_zero_on_many_u32_operations() -> ConstraintResult {
+        let many_u32_instructions = TestableProgram::new(
             crate::example_programs::PROGRAM_WITH_MANY_U32_INSTRUCTIONS.clone(),
         );
-        triton_constraints_evaluate_to_zero(many_u32_instructions);
+        triton_constraints_evaluate_to_zero(many_u32_instructions)
     }
 
     #[test]
     fn prove_verify_many_u32_operations() {
-        prove_and_verify(
-            ProgramAndInput::new(
-                crate::example_programs::PROGRAM_WITH_MANY_U32_INSTRUCTIONS.clone(),
-            ),
-            DEFAULT_LOG2_FRI_EXPANSION_FACTOR_FOR_TESTS,
-        );
+        TestableProgram::new(crate::example_programs::PROGRAM_WITH_MANY_U32_INSTRUCTIONS.clone())
+            .prove_and_verify();
     }
 
     #[proptest]
@@ -3036,7 +3054,7 @@ pub(crate) mod tests {
     }
 
     /// A program that executes every instruction in the instruction set.
-    pub fn program_executing_every_instruction() -> ProgramAndInput {
+    pub fn program_executing_every_instruction() -> TestableProgram {
         let m_step_mem_addr = 100_000;
 
         let program = triton_program! {
@@ -3180,17 +3198,18 @@ pub(crate) mod tests {
             .with_digests([tree_node_4])
             .with_ram(ram);
 
-        ProgramAndInput::new(program)
+        TestableProgram::new(program)
             .with_input(public_input)
             .with_non_determinism(non_determinism)
     }
 
     #[test]
     fn program_executing_every_instruction_actually_executes_every_instruction() {
-        let ProgramAndInput {
+        let TestableProgram {
             program,
             public_input,
             non_determinism,
+            ..
         } = program_executing_every_instruction();
         let (aet, _) = VM::trace_execution(program, public_input, non_determinism).unwrap();
         let opcodes_of_all_executed_instructions = aet
@@ -3214,7 +3233,7 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn constraints_evaluate_to_zero_on_program_executing_every_instruction() {
-        triton_constraints_evaluate_to_zero(program_executing_every_instruction());
+    fn constraints_evaluate_to_zero_on_program_executing_every_instruction() -> ConstraintResult {
+        triton_constraints_evaluate_to_zero(program_executing_every_instruction())
     }
 }

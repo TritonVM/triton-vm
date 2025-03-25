@@ -92,9 +92,7 @@ pub(crate) fn cache_lde_trace() -> Option<CacheDecision> {
 mod tests {
     use crate::example_programs::FIBONACCI_SEQUENCE;
     use crate::prelude::*;
-    use crate::shared_tests::DEFAULT_LOG2_FRI_EXPANSION_FACTOR_FOR_TESTS;
-    use crate::shared_tests::ProgramAndInput;
-    use crate::shared_tests::prove_and_verify;
+    use crate::shared_tests::TestableProgram;
 
     use super::*;
 
@@ -111,11 +109,8 @@ mod tests {
     }
 
     fn prove_and_verify_a_triton_vm_program() {
-        let program_and_input = ProgramAndInput::new(FIBONACCI_SEQUENCE.clone())
-            .with_input(PublicInput::from(bfe_array![100]));
-        prove_and_verify(
-            program_and_input,
-            DEFAULT_LOG2_FRI_EXPANSION_FACTOR_FOR_TESTS,
-        );
+        TestableProgram::new(FIBONACCI_SEQUENCE.clone())
+            .with_input(PublicInput::from(bfe_array![100]))
+            .prove_and_verify();
     }
 }

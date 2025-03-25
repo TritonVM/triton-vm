@@ -782,6 +782,7 @@ fn instruction_from_row(row: ArrayView1<BFieldElement>) -> Option<Instruction> {
 #[cfg_attr(coverage_nightly, coverage(off))]
 pub(crate) mod tests {
     use std::collections::HashMap;
+    use std::ops::Add;
 
     use assert2::assert;
     use constraint_circuit::ConstraintCircuitBuilder;
@@ -794,13 +795,14 @@ pub(crate) mod tests {
     use ndarray::Array2;
     use proptest::collection::vec;
     use proptest_arbitrary_interop::arb;
+    use rand::distr::Distribution;
+    use rand::distr::StandardUniform;
     use strum::IntoEnumIterator;
     use test_strategy::proptest;
 
     use crate::NonDeterminism;
     use crate::error::InstructionError::DivisionByZero;
-    use crate::shared_tests::ProgramAndInput;
-    use crate::stark::tests::master_tables_for_low_security_level;
+    use crate::shared_tests::TestableProgram;
     use crate::table::master_table::MasterTable;
 
     use super::*;
@@ -811,7 +813,7 @@ pub(crate) mod tests {
     #[test]
     fn print_simple_processor_table_row() {
         let program = triton_program!(push 2 sponge_init assert halt);
-        let err = ProgramAndInput::new(program).run().unwrap_err();
+        let err = TestableProgram::new(program).run().unwrap_err();
         let state = err.vm_state;
         println!("\n{state}");
     }
@@ -831,25 +833,32 @@ pub(crate) mod tests {
     }
 
     fn test_row_from_program(program: Program, row_num: usize) -> TestRows {
-        test_row_from_program_with_input(ProgramAndInput::new(program), row_num)
+        test_row_from_testable_program(TestableProgram::new(program), row_num)
     }
 
-    fn test_row_from_program_with_input(
-        program_and_input: ProgramAndInput,
-        row_num: usize,
-    ) -> TestRows {
-        let (_, _, master_main_table, master_aux_table, challenges) =
-            master_tables_for_low_security_level(program_and_input);
+    fn test_row_from_testable_program(program: TestableProgram, row_num: usize) -> TestRows {
+        fn slice_out_2_rows<FF>(table: impl MasterTable<Field = FF>, row_num: usize) -> Array2<FF>
+        where
+            FF: Clone,
+            StandardUniform: Distribution<FF>,
+            XFieldElement: Add<FF, Output = XFieldElement>,
+        {
+            table
+                .trace_table()
+                .slice(s![row_num..=row_num + 1, ..])
+                .to_owned()
+        }
+
+        let artifacts = program.generate_proof_artifacts();
+        let consecutive_master_main_table_rows =
+            slice_out_2_rows(artifacts.master_main_table, row_num);
+        let consecutive_master_aux_table_rows =
+            slice_out_2_rows(artifacts.master_aux_table, row_num);
+
         TestRows {
-            challenges,
-            consecutive_master_main_table_rows: master_main_table
-                .trace_table()
-                .slice(s![row_num..=row_num + 1, ..])
-                .to_owned(),
-            consecutive_master_aux_table_rows: master_aux_table
-                .trace_table()
-                .slice(s![row_num..=row_num + 1, ..])
-                .to_owned(),
+            challenges: artifacts.challenges,
+            consecutive_master_main_table_rows,
+            consecutive_master_aux_table_rows,
         }
     }
 
@@ -928,8 +937,8 @@ pub(crate) mod tests {
         let program = triton_program! { divine {n} halt };
 
         let non_determinism = (1..=16).map(|b| bfe!(b)).collect_vec();
-        let program_and_input = ProgramAndInput::new(program).with_non_determinism(non_determinism);
-        let test_rows = [test_row_from_program_with_input(program_and_input, 0)];
+        let program = TestableProgram::new(program).with_non_determinism(non_determinism);
+        let test_rows = [test_row_from_testable_program(program, 0)];
         let debug_info = TestRowsDebugInfo {
             instruction: Instruction::Divine(n),
             debug_cols_curr_row: vec![MainColumn::ST0, MainColumn::ST1, MainColumn::ST2],
@@ -1137,9 +1146,9 @@ pub(crate) mod tests {
             .collect::<HashMap<_, _>>();
         let non_determinism = NonDeterminism::default().with_ram(initial_ram);
         let programs_with_input = programs.map(|program| {
-            ProgramAndInput::new(program).with_non_determinism(non_determinism.clone())
+            TestableProgram::new(program).with_non_determinism(non_determinism.clone())
         });
-        let test_rows = programs_with_input.map(|p_w_i| test_row_from_program_with_input(p_w_i, 1));
+        let test_rows = programs_with_input.map(|p_w_i| test_row_from_testable_program(p_w_i, 1));
         let debug_info = TestRowsDebugInfo {
             instruction: Instruction::ReadMem(NumberOfWords::N1),
             debug_cols_curr_row: vec![MainColumn::ST0, MainColumn::ST1],
@@ -1176,9 +1185,9 @@ pub(crate) mod tests {
         let dummy_digest = Digest::new(bfe_array![1, 2, 3, 4, 5]);
         let non_determinism = NonDeterminism::default().with_digests(vec![dummy_digest]);
         let programs_with_input = programs.map(|program| {
-            ProgramAndInput::new(program).with_non_determinism(non_determinism.clone())
+            TestableProgram::new(program).with_non_determinism(non_determinism.clone())
         });
-        let test_rows = programs_with_input.map(|p_w_i| test_row_from_program_with_input(p_w_i, 2));
+        let test_rows = programs_with_input.map(|p_w_i| test_row_from_testable_program(p_w_i, 2));
 
         let debug_info = TestRowsDebugInfo {
             instruction: Instruction::MerkleStep,
@@ -1217,9 +1226,9 @@ pub(crate) mod tests {
         let node_indices = [2, 3];
         let test_rows = node_indices
             .map(test_program)
-            .map(ProgramAndInput::new)
+            .map(TestableProgram::new)
             .map(|p| p.with_non_determinism(non_determinism.clone()))
-            .map(|p| test_row_from_program_with_input(p, 8));
+            .map(|p| test_row_from_testable_program(p, 8));
 
         let debug_info = TestRowsDebugInfo {
             instruction: Instruction::MerkleStepMem,
@@ -1448,7 +1457,7 @@ pub(crate) mod tests {
 
     #[test]
     fn division_by_zero_is_impossible() {
-        let program = ProgramAndInput::new(triton_program! { div_mod });
+        let program = TestableProgram::new(triton_program! { div_mod });
         let err = program.run().unwrap_err();
         assert_eq!(DivisionByZero, err.source);
     }
@@ -1543,8 +1552,8 @@ pub(crate) mod tests {
         let program = triton_program! {read_io {n} halt};
 
         let public_input = (1..=16).map(|i| bfe!(i)).collect_vec();
-        let program_and_input = ProgramAndInput::new(program).with_input(public_input);
-        let test_rows = [test_row_from_program_with_input(program_and_input, 0)];
+        let program = TestableProgram::new(program).with_input(public_input);
+        let test_rows = [test_row_from_testable_program(program, 0)];
         let debug_cols = [MainColumn::ST0, MainColumn::ST1, MainColumn::ST2];
         let debug_info = TestRowsDebugInfo {
             instruction: Instruction::ReadIo(n),
@@ -1559,8 +1568,8 @@ pub(crate) mod tests {
         let program = triton_program! {divine 5 write_io {n} halt};
 
         let non_determinism = (1..=16).map(|b| bfe!(b)).collect_vec();
-        let program_and_input = ProgramAndInput::new(program).with_non_determinism(non_determinism);
-        let test_rows = [test_row_from_program_with_input(program_and_input, 1)];
+        let program = TestableProgram::new(program).with_non_determinism(non_determinism);
+        let test_rows = [test_row_from_testable_program(program, 1)];
         let debug_cols = [
             MainColumn::ST0,
             MainColumn::ST1,
@@ -1598,8 +1607,8 @@ pub(crate) mod tests {
         ram.insert(bfe!(97), bfe!(5));
         ram.insert(bfe!(98), bfe!(7));
         let non_determinism = NonDeterminism::default().with_ram(ram);
-        let program_and_input = ProgramAndInput::new(program).with_non_determinism(non_determinism);
-        let test_rows = [test_row_from_program_with_input(program_and_input, 5)];
+        let program = TestableProgram::new(program).with_non_determinism(non_determinism);
+        let test_rows = [test_row_from_testable_program(program, 5)];
         let debug_info = TestRowsDebugInfo {
             instruction: Instruction::XbDotStep,
             debug_cols_curr_row: vec![
@@ -1651,8 +1660,8 @@ pub(crate) mod tests {
         ram.insert(bfe!(97), operand_1.coefficients[1]);
         ram.insert(bfe!(98), operand_1.coefficients[2]);
         let non_determinism = NonDeterminism::default().with_ram(ram);
-        let program_and_input = ProgramAndInput::new(program).with_non_determinism(non_determinism);
-        let test_rows = [test_row_from_program_with_input(program_and_input, 5)];
+        let program = TestableProgram::new(program).with_non_determinism(non_determinism);
+        let test_rows = [test_row_from_testable_program(program, 5)];
         let debug_info = TestRowsDebugInfo {
             instruction: Instruction::XxDotStep,
             debug_cols_curr_row: vec![
