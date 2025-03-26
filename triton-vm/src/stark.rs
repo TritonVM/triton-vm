@@ -195,14 +195,23 @@ impl ProverDomains {
     }
 }
 
+#[deprecated]
+#[track_caller]
+fn dbg_proof_stream(proof_stream: &ProofStream) {
+    let caller = core::panic::Location::caller();
+    let state = proof_stream.sponge.state.iter().join(", ");
+    dbg!(format!("{caller}: {state}"));
+}
+
 impl Prover {
     /// A [`Prover`] with a sane [randomness seed][seed].
     ///
     /// [seed]: Prover::set_randomness_seed_which_may_break_zero_knowledge
     pub fn new(parameters: Stark) -> Self {
+        let dbg_randomness_seed = [0_u8; 32]; // todo: this is bad
         Self {
             parameters,
-            randomness_seed: random(),
+            randomness_seed: dbg_randomness_seed,
         }
     }
 
@@ -242,6 +251,8 @@ impl Prover {
         claim: &Claim,
         aet: &AlgebraicExecutionTrace,
     ) -> Result<Proof, ProvingError> {
+        dbg!(self.parameters);
+
         profiler!(start "Fiat-Shamir: claim" ("hash"));
         let mut proof_stream = ProofStream::new();
         proof_stream.alter_fiat_shamir_state_with(claim);
@@ -258,6 +269,12 @@ impl Prover {
         );
         proof_stream.enqueue(ProofItem::Log2PaddedHeight(padded_height.ilog2()));
         profiler!(stop "derive additional parameters");
+
+        dbg!(padded_height);
+        dbg!(domains.trace.length);
+        dbg!(domains.randomized_trace.length);
+        dbg!(domains.quotient.length);
+        dbg!(domains.fri.length);
 
         profiler!(start "main tables");
         profiler!(start "create" ("gen"));
@@ -366,6 +383,7 @@ impl Prover {
         proof_stream.enqueue(ProofItem::OutOfDomainQuotientSegments(
             out_of_domain_curr_row_quot_segments,
         ));
+        dbg_proof_stream(&proof_stream); // todo: up to here, proof streams match
         profiler!(stop "out-of-domain rows");
 
         profiler!(start "Fiat-Shamir" ("hash"));
@@ -1140,6 +1158,8 @@ impl Verifier {
 
     /// See also [`Stark::verify`].
     pub fn verify(self, claim: &Claim, proof: &Proof) -> Result<(), VerificationError> {
+        dbg!(self.parameters);
+
         profiler!(start "deserialize");
         let mut proof_stream = ProofStream::try_from(proof)?;
         profiler!(stop "deserialize");
@@ -1163,6 +1183,10 @@ impl Verifier {
         let trace_domain_len =
             Stark::randomized_trace_len(padded_height, self.parameters.num_trace_randomizers) / 2;
         profiler!(stop "derive additional parameters");
+
+        dbg!(padded_height);
+        dbg!(trace_domain_len);
+        dbg!(fri.domain.length);
 
         profiler!(start "Fiat-Shamir 1" ("hash"));
         let main_merkle_tree_root = proof_stream.dequeue()?.try_into_merkle_root()?;
@@ -1197,6 +1221,7 @@ impl Verifier {
         let out_of_domain_curr_row_quot_segments = proof_stream
             .dequeue()?
             .try_into_out_of_domain_quot_segments()?;
+        dbg_proof_stream(&proof_stream); // todo: up to here, proof streams match
 
         let out_of_domain_curr_main_row = Array1::from(out_of_domain_curr_main_row.to_vec());
         let out_of_domain_curr_aux_row = Array1::from(out_of_domain_curr_aux_row.to_vec());
@@ -1270,7 +1295,7 @@ impl Verifier {
         let sum_of_evaluated_out_of_domain_quotient_segments =
             powers_of_out_of_domain_point_curr_row.dot(&out_of_domain_curr_row_quot_segments);
         if out_of_domain_quotient_value != sum_of_evaluated_out_of_domain_quotient_segments {
-            return Err(VerificationError::OutOfDomainQuotientValueMismatch);
+            return Err(VerificationError::OutOfDomainQuotientValueMismatch); // todo: this happens
         };
         profiler!(stop "verify quotient's segments");
 
@@ -2865,6 +2890,14 @@ pub(crate) mod tests {
     #[proptest(cases = 10)]
     fn prove_and_verify_halt_with_different_stark_parameters(#[strategy(arb())] stark: Stark) {
         test_program_for_halt().use_stark(stark).prove_and_verify();
+    }
+
+    #[test]
+    fn prove_and_verify_halt_with_high_security_stark() {
+        let stark = Stark::new(496, 1);
+        let program = test_program_for_halt().use_stark(stark);
+        triton_constraints_evaluate_to_zero(program.clone()).unwrap();
+        program.prove_and_verify();
     }
 
     #[test]
