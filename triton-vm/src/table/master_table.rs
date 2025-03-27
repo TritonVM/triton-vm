@@ -100,6 +100,7 @@ use crate::ndarray_helper::horizontal_multi_slice_mut;
 use crate::ndarray_helper::partial_sums;
 use crate::profiler::profiler;
 use crate::stark::NUM_RANDOMIZER_POLYNOMIALS;
+use crate::stark::ProverDomains;
 use crate::table::AuxiliaryRow;
 use crate::table::MainRow;
 use crate::table::TraceTable;
@@ -161,7 +162,7 @@ use crate::table::processor::ClkJumpDiffs;
 /// [quot_table]: Self::quotient_domain_table
 /// [master_aux_table]: MasterAuxTable
 /// [master_quot_table]: all_quotients_combined
-pub trait MasterTable: Sync
+pub(crate) trait MasterTable: Sync
 where
     StandardUniform: Distribution<Self::Field>,
     XFieldElement: Add<Self::Field, Output = XFieldElement>
@@ -179,15 +180,7 @@ where
 
     const NUM_COLUMNS: usize;
 
-    fn trace_domain(&self) -> ArithmeticDomain;
-    fn randomized_trace_domain(&self) -> ArithmeticDomain;
-
-    /// The [`ArithmeticDomain`] _just_ large enough to compute
-    /// [all quotients](all_quotients_combined).
-    fn quotient_domain(&self) -> ArithmeticDomain;
-
-    /// The [`ArithmeticDomain`] large enough for [`FRI`](crate::fri::Fri).
-    fn fri_domain(&self) -> ArithmeticDomain;
+    fn domains(&self) -> ProverDomains;
 
     /// The [`ArithmeticDomain`] to [low-degree extend] into.
     /// The larger of the [`quotient_domain`](Self::quotient_domain) and the
@@ -195,10 +188,11 @@ where
     ///
     /// [low-degree extend]: Self::maybe_low_degree_extend_all_columns
     fn evaluation_domain(&self) -> ArithmeticDomain {
-        if self.quotient_domain().length > self.fri_domain().length {
-            self.quotient_domain()
+        let domains = self.domains();
+        if domains.quotient.length > domains.fri.length {
+            domains.quotient
         } else {
-            self.fri_domain()
+            domains.fri
         }
     }
 
@@ -303,12 +297,6 @@ where
         low_degree_extended_columns: Array2<Self::Field>,
     );
 
-    #[doc(hidden)]
-    fn cache_is_empty(&self) -> bool {
-        self.fri_domain_table().is_none()
-    }
-
-    #[doc(hidden)]
     fn clear_cache(&mut self);
 
     /// Return the FRI domain view of the cached low-degree-extended table, if
@@ -331,7 +319,7 @@ where
         // would produce a challenging interface, the relevant parts are
         // reimplemented here.
 
-        let domain = self.trace_domain().domain_values();
+        let domain = self.domains().trace.domain_values();
         let domain_shift = domain.iter().map(|&d| indeterminate - d).collect();
         let domain_shift_inverses = XFieldElement::batch_inversion(domain_shift);
         let domain_over_domain_shift = domain
@@ -344,7 +332,7 @@ where
             .inverse();
 
         let ood_trace_domain_zerofier: XFieldElement =
-            self.trace_domain().zerofier().evaluate(indeterminate);
+            self.domains().trace.zerofier().evaluate(indeterminate);
 
         let trace_table = self.trace_table();
         (0..Self::NUM_COLUMNS)
@@ -370,13 +358,9 @@ where
     fn randomized_column_interpolant(&self, idx: usize) -> Polynomial<'static, Self::Field> {
         let trace_table = self.trace_table();
         let column_codeword = trace_table.column(idx);
-        let column_interpolant = self
-            .trace_domain()
-            .interpolate(column_codeword.as_slice().unwrap());
-
-        let randomizer = self
-            .trace_domain()
-            .mul_zerofier_with(self.trace_randomizer_for_column(idx));
+        let trace_domain = self.domains().trace;
+        let column_interpolant = trace_domain.interpolate(column_codeword.as_slice().unwrap());
+        let randomizer = trace_domain.mul_zerofier_with(self.trace_randomizer_for_column(idx));
 
         column_interpolant + randomizer
     }
@@ -492,7 +476,8 @@ where
             .map(|row| row.iter().zip_eq(&weights).map(|(&r, &w)| r * w).sum())
             .collect::<Vec<_>>();
         let weighted_sum_of_trace_columns = self
-            .trace_domain()
+            .domains()
+            .trace
             .interpolate(&weighted_sum_of_trace_columns);
 
         let weighted_sum_of_trace_randomizer_polynomials = weights
@@ -503,7 +488,8 @@ where
             .map(|(i, &w)| self.trace_randomizer_for_column(i).scalar_mul(w))
             .reduce(Polynomial::zero, |sum, x| sum + x);
         let randomizer_contribution = self
-            .trace_domain()
+            .domains()
+            .trace
             .mul_zerofier_with(weighted_sum_of_trace_randomizer_polynomials);
 
         weighted_sum_of_trace_columns + randomizer_contribution
@@ -524,14 +510,15 @@ where
 
         profiler!(start "recompute rows");
         // obtain the evaluation points from the FRI domain
+        let domains = self.domains();
         let indeterminates = row_indices
             .par_iter()
-            .map(|&i| self.fri_domain().domain_value(u32::try_from(i).unwrap()))
+            .map(|&i| domains.fri.domain_value(u32::try_from(i).unwrap()))
             .map(Self::Field::from)
             .collect::<Vec<_>>();
 
         // fast multi-point extrapolate every column
-        let offset = self.trace_domain().offset;
+        let offset = domains.trace.offset;
         let trace_table = self.trace_table();
         let columns = trace_table.axis_iter(Axis(1)).into_par_iter().map(|col| {
             Polynomial::coset_extrapolate(offset, col.as_slice().unwrap(), &indeterminates)
@@ -540,9 +527,10 @@ where
         // add trace randomizers to their columns
         // todo: this could be done using `Polynomial::batch_evaluate` if that
         //   function had more general trait bounds 🤷
+        let trace_domain_zerofier = domains.trace.zerofier();
         let zerofier_evals = indeterminates
             .par_iter()
-            .map(|&i| self.trace_domain().zerofier().evaluate::<_, Self::Field>(i))
+            .map(|&i| trace_domain_zerofier.evaluate::<_, Self::Field>(i))
             .collect::<Vec<_>>();
 
         let trace_randomizers = (0..Self::NUM_COLUMNS)
@@ -668,10 +656,7 @@ pub struct MasterMainTable {
     cascade_table_len: usize,
     u32_coprocessor_execution_len: usize,
 
-    trace_domain: ArithmeticDomain,
-    randomized_trace_domain: ArithmeticDomain,
-    quotient_domain: ArithmeticDomain,
-    fri_domain: ArithmeticDomain,
+    domains: ProverDomains,
 
     trace_table: Array2<BFieldElement>,
     trace_randomizer_seed: <StdRng as SeedableRng>::Seed,
@@ -683,11 +668,7 @@ pub struct MasterMainTable {
 #[derive(Debug, Clone)]
 pub struct MasterAuxTable {
     pub num_trace_randomizers: usize,
-
-    trace_domain: ArithmeticDomain,
-    randomized_trace_domain: ArithmeticDomain,
-    quotient_domain: ArithmeticDomain,
-    fri_domain: ArithmeticDomain,
+    domains: ProverDomains,
 
     trace_table: Array2<XFieldElement>,
     trace_randomizer_seed: <StdRng as SeedableRng>::Seed,
@@ -700,20 +681,8 @@ impl MasterTable for MasterMainTable {
     const NUM_COLUMNS: usize = air::table::NUM_MAIN_COLUMNS
         + crate::table::degree_lowering::DegreeLoweringMainColumn::COUNT;
 
-    fn trace_domain(&self) -> ArithmeticDomain {
-        self.trace_domain
-    }
-
-    fn randomized_trace_domain(&self) -> ArithmeticDomain {
-        self.randomized_trace_domain
-    }
-
-    fn quotient_domain(&self) -> ArithmeticDomain {
-        self.quotient_domain
-    }
-
-    fn fri_domain(&self) -> ArithmeticDomain {
-        self.fri_domain
+    fn domains(&self) -> ProverDomains {
+        self.domains
     }
 
     fn trace_table(&self) -> ArrayView2<BFieldElement> {
@@ -728,8 +697,8 @@ impl MasterTable for MasterMainTable {
         let table = &self.low_degree_extended_table.as_ref()?;
         let nrows = table.nrows();
 
-        if self.quotient_domain.length < nrows {
-            let unit_distance = nrows / self.quotient_domain.length;
+        if self.domains.quotient.length < nrows {
+            let unit_distance = nrows / self.domains.quotient.length;
             Some(table.slice(s![0..nrows;unit_distance, ..]))
         } else {
             Some(table.view())
@@ -750,8 +719,8 @@ impl MasterTable for MasterMainTable {
     fn fri_domain_table(&self) -> Option<ArrayView2<BFieldElement>> {
         let table = self.low_degree_extended_table.as_ref()?;
         let nrows = table.nrows();
-        if nrows > self.fri_domain.length {
-            let unit_step = nrows / self.fri_domain.length;
+        if nrows > self.domains.fri.length {
+            let unit_step = nrows / self.domains.fri.length;
             Some(table.slice(s![0..nrows;unit_step, ..]))
         } else {
             Some(table.view())
@@ -773,20 +742,8 @@ impl MasterTable for MasterAuxTable {
         + crate::table::degree_lowering::DegreeLoweringAuxColumn::COUNT
         + NUM_RANDOMIZER_POLYNOMIALS;
 
-    fn trace_domain(&self) -> ArithmeticDomain {
-        self.trace_domain
-    }
-
-    fn randomized_trace_domain(&self) -> ArithmeticDomain {
-        self.randomized_trace_domain
-    }
-
-    fn quotient_domain(&self) -> ArithmeticDomain {
-        self.quotient_domain
-    }
-
-    fn fri_domain(&self) -> ArithmeticDomain {
-        self.fri_domain
+    fn domains(&self) -> ProverDomains {
+        self.domains
     }
 
     fn trace_table(&self) -> ArrayView2<XFieldElement> {
@@ -800,8 +757,8 @@ impl MasterTable for MasterAuxTable {
     fn quotient_domain_table(&self) -> Option<ArrayView2<XFieldElement>> {
         let table = self.low_degree_extended_table.as_ref()?;
         let nrows = table.nrows();
-        if nrows > self.quotient_domain.length {
-            let unit_distance = nrows / self.quotient_domain.length;
+        if nrows > self.domains.quotient.length {
+            let unit_distance = nrows / self.domains.quotient.length;
             Some(table.slice(s![0..nrows;unit_distance, ..]))
         } else {
             Some(table.view())
@@ -822,8 +779,8 @@ impl MasterTable for MasterAuxTable {
     fn fri_domain_table(&self) -> Option<ArrayView2<XFieldElement>> {
         let table = self.low_degree_extended_table.as_ref()?;
         let nrows = table.nrows();
-        if nrows > self.fri_domain.length {
-            let unit_step = nrows / self.fri_domain.length;
+        if nrows > self.domains.fri.length {
+            let unit_step = nrows / self.domains.fri.length;
             Some(table.slice(s![0..nrows;unit_step, ..]))
         } else {
             Some(table.view())
@@ -843,24 +800,14 @@ type PadFunction = fn(ArrayViewMut2<BFieldElement>, usize);
 type ExtendFunction = fn(ArrayView2<BFieldElement>, ArrayViewMut2<XFieldElement>, &Challenges);
 
 impl MasterMainTable {
-    pub fn new(
+    pub(crate) fn new(
         aet: &AlgebraicExecutionTrace,
-        quotient_domain: ArithmeticDomain,
-        fri_domain: ArithmeticDomain,
+        domains: ProverDomains,
         num_trace_randomizers: usize,
         trace_randomizer_seed: <StdRng as SeedableRng>::Seed,
     ) -> Self {
-        let padded_height = aet.padded_height();
-        let num_rows = randomized_trace_len(padded_height, num_trace_randomizers);
-        let randomized_trace_domain = ArithmeticDomain::of_length(num_rows).unwrap();
-
-        // For the current approach to trace randomizers to work, the randomized
-        // trace must be _exactly_ twice as long as the trace without trace
-        // randomizers.
-        let trace_domain = randomized_trace_domain.halve().unwrap();
-
         // column majority (“`F`”) for contiguous column slices
-        let trace_table = ndarray_helper::par_zeros((trace_domain.length, Self::NUM_COLUMNS).f());
+        let trace_table = ndarray_helper::par_zeros((domains.trace.length, Self::NUM_COLUMNS).f());
 
         let mut master_main_table = Self {
             num_trace_randomizers,
@@ -871,10 +818,7 @@ impl MasterMainTable {
             hash_coprocessor_execution_len: aet.height_of_table(TableId::Hash),
             cascade_table_len: aet.height_of_table(TableId::Cascade),
             u32_coprocessor_execution_len: aet.height_of_table(TableId::U32),
-            trace_domain,
-            randomized_trace_domain,
-            quotient_domain,
-            fri_domain,
+            domains,
             trace_table,
             trace_randomizer_seed,
             low_degree_extended_table: None,
@@ -999,10 +943,7 @@ impl MasterMainTable {
 
         let mut master_aux_table = MasterAuxTable {
             num_trace_randomizers: self.num_trace_randomizers,
-            trace_domain: self.trace_domain,
-            randomized_trace_domain: self.randomized_trace_domain,
-            quotient_domain: self.quotient_domain,
-            fri_domain: self.fri_domain,
+            domains: self.domains,
             trace_table: aux_trace_table,
             trace_randomizer_seed: rng.random(),
             low_degree_extended_table: None,
@@ -1333,18 +1274,6 @@ pub fn all_quotients_combined(
     profiler!(stop "evaluate AIR, compute quotient codeword");
 
     quotient_codeword
-}
-
-/// The length of the trace-randomized, padded trace.
-///
-/// Guaranteed to be a power of two.
-pub fn randomized_trace_len(padded_height: usize, num_trace_randomizers: usize) -> usize {
-    let total_table_length = padded_height + num_trace_randomizers;
-    total_table_length.next_power_of_two()
-}
-
-pub fn interpolant_degree(padded_height: usize, num_trace_randomizers: usize) -> isize {
-    (randomized_trace_len(padded_height, num_trace_randomizers) - 1) as isize
 }
 
 #[cfg(test)]
@@ -2218,18 +2147,18 @@ mod tests {
     }
 
     fn dummy_master_aux_table() -> MasterAuxTable {
-        let trace_domain = ArithmeticDomain::of_length(1 << 8).unwrap();
-        let randomized_trace_domain = ArithmeticDomain::of_length(1 << 9).unwrap();
-        let quotient_domain = ArithmeticDomain::of_length(1 << 10).unwrap();
-        let fri_domain = ArithmeticDomain::of_length(1 << 11).unwrap();
+        let domains = ProverDomains {
+            trace: ArithmeticDomain::of_length(1 << 8).unwrap(),
+            randomized_trace: ArithmeticDomain::of_length(1 << 9).unwrap(),
+            quotient: ArithmeticDomain::of_length(1 << 10).unwrap(),
+            fri: ArithmeticDomain::of_length(1 << 11).unwrap(),
+        };
+        let trace_table = Array2::zeros((domains.trace.length, MasterAuxTable::NUM_COLUMNS));
 
         MasterAuxTable {
             num_trace_randomizers: 16,
-            trace_domain,
-            randomized_trace_domain,
-            quotient_domain,
-            fri_domain,
-            trace_table: Array2::zeros((trace_domain.length, MasterAuxTable::NUM_COLUMNS)),
+            domains,
+            trace_table,
             trace_randomizer_seed: StdRng::seed_from_u64(5323196155778693784).random(),
             low_degree_extended_table: None,
         }
@@ -2239,7 +2168,7 @@ mod tests {
     fn master_aux_table_mut() {
         let mut master_table = dummy_master_aux_table();
 
-        let num_rows = master_table.trace_domain().length;
+        let num_rows = master_table.domains().trace.length;
         Array2::from_elem((num_rows, ProgramAuxColumn::COUNT), 1.into())
             .move_into(&mut master_table.table_mut(TableId::Program));
         Array2::from_elem((num_rows, ProcessorAuxColumn::COUNT), 2.into())

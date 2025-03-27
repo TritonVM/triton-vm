@@ -17,6 +17,7 @@ use crate::fri::AuthenticationStructure;
 use crate::prelude::*;
 use crate::profiler::profiler;
 use crate::proof_item::FriResponse;
+use crate::stark::ProverDomains;
 use crate::table::master_table::MasterAuxTable;
 use crate::table::master_table::MasterMainTable;
 
@@ -206,11 +207,13 @@ impl TestableProgram {
         let padded_height = aet.padded_height();
         let fri_domain = stark.fri(padded_height).unwrap().domain;
         let max_degree = stark.max_degree(padded_height);
+        let num_trace_randomizers = stark.num_trace_randomizers;
+        let domains =
+            ProverDomains::derive(padded_height, num_trace_randomizers, fri_domain, max_degree);
 
         let mut master_main_table = MasterMainTable::new(
             &aet,
-            Prover::quotient_domain(fri_domain, max_degree).unwrap(),
-            fri_domain,
+            domains,
             stark.num_trace_randomizers,
             StdRng::seed_from_u64(6718321586953195571).random(),
         );
