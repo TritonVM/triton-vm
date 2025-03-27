@@ -17,6 +17,7 @@ use serde::Serialize;
 use twenty_first::math::ntt::intt;
 use twenty_first::math::ntt::ntt;
 use twenty_first::math::traits::FiniteField;
+use twenty_first::math::traits::ModPowU64;
 use twenty_first::math::traits::PrimitiveRootOfUnity;
 use twenty_first::prelude::*;
 
@@ -1152,6 +1153,15 @@ impl Verifier {
         let padded_height = 1 << log_2_padded_height;
         let fri = self.parameters.fri(padded_height)?;
         let merkle_tree_height = fri.domain.length.ilog2() as usize;
+
+        // The trace domain used by the prover is not necessarily of length
+        // `padded_height`. Concretely, this is the case if the number of trace
+        // randomizers is larger than `padded_height`. However, the trace domain
+        // length is guaranteed to be _exactly_ half the size of the randomized
+        // trace domain's length, due to the current approach for randomizing
+        // the trace.
+        let trace_domain_len =
+            Stark::randomized_trace_len(padded_height, self.parameters.num_trace_randomizers) / 2;
         profiler!(stop "derive additional parameters");
 
         profiler!(start "Fiat-Shamir 1" ("hash"));
@@ -1169,7 +1179,8 @@ impl Verifier {
         profiler!(stop "Fiat-Shamir 1");
 
         profiler!(start "dequeue ood point and rows" ("hash"));
-        let trace_domain_generator = ArithmeticDomain::generator_for_length(padded_height as u64)?;
+        let trace_domain_generator =
+            ArithmeticDomain::generator_for_length(trace_domain_len as u64)?;
         let out_of_domain_point_curr_row = proof_stream.sample_scalars(1)[0];
         let out_of_domain_point_next_row = trace_domain_generator * out_of_domain_point_curr_row;
         let out_of_domain_point_curr_row_pow_num_segments =
@@ -1224,7 +1235,7 @@ impl Verifier {
         profiler!(start "zerofiers");
         let initial_zerofier_inv = (out_of_domain_point_curr_row - bfe!(1)).inverse();
         let consistency_zerofier_inv =
-            (out_of_domain_point_curr_row.mod_pow_u32(padded_height as u32) - bfe!(1)).inverse();
+            (out_of_domain_point_curr_row.mod_pow_u64(trace_domain_len as u64) - bfe!(1)).inverse();
         let except_last_row = out_of_domain_point_curr_row - trace_domain_generator.inverse();
         let transition_zerofier_inv = except_last_row * consistency_zerofier_inv;
         let terminal_zerofier_inv = except_last_row.inverse(); // i.e., only last row
