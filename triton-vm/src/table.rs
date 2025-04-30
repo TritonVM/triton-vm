@@ -79,6 +79,7 @@ pub type AuxiliaryRow = [XFieldElement; MasterAuxTable::NUM_COLUMNS];
 pub type QuotientSegments = [XFieldElement; NUM_QUOTIENT_SEGMENTS];
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use std::collections::HashMap;
 

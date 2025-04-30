@@ -272,6 +272,7 @@ fn clock_jump_differences(op_stack_table: ArrayView2<BFieldElement>) -> Vec<BFie
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub(crate) mod tests {
     use assert2::assert;
     use isa::op_stack::OpStackElement;

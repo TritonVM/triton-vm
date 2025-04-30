@@ -907,6 +907,7 @@ impl ToTokens for IOList {
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use constraint_circuit::ConstraintCircuitBuilder;
     use constraint_circuit::SingleRowIndicator;

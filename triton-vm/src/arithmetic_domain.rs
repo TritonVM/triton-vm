@@ -169,6 +169,7 @@ impl ArithmeticDomain {
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use assert2::let_assert;
     use itertools::Itertools;

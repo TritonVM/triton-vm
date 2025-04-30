@@ -1,3 +1,6 @@
+// See the corresponding attribute in triton_vm/lib.rs
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
+
 pub use twenty_first;
 
 pub mod error;
@@ -331,6 +334,7 @@ macro_rules! triton_instr {
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
 

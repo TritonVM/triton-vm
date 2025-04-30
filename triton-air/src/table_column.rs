@@ -748,6 +748,7 @@ impl MasterAuxColumn for U32AuxColumn {
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use strum::IntoEnumIterator;
 

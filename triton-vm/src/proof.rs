@@ -126,6 +126,7 @@ impl Claim {
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use assert2::assert;
     use proptest::collection::vec;

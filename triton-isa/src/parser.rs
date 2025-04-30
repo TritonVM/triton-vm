@@ -894,6 +894,7 @@ pub(crate) fn turn_labels_into_addresses(
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub(crate) mod tests {
     use assert2::assert;
     use assert2::let_assert;

@@ -160,6 +160,19 @@
 //! ```
 
 #![recursion_limit = "4096"]
+//
+// If code coverage tool `cargo-llvm-cov` is running with the nightly toolchain,
+// enable the unstable “coverage” attribute. This allows using the annotation
+// `#[coverage(off)]` to explicitly exclude certain parts of the code from
+// being considered as “code under test.” Most prominently, the annotation
+// should be added to every `#[cfg(test)]` module. Since the “coverage”
+// feature is enable only conditionally, the annotation to use is:
+// #[cfg_attr(coverage_nightly, coverage(off))]
+//
+// See also:
+// - https://github.com/taiki-e/cargo-llvm-cov#exclude-code-from-coverage
+// - https://github.com/rust-lang/rust/issues/84605
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 
 pub use air;
 pub use isa;
@@ -191,6 +204,7 @@ pub mod table;
 pub mod vm;
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod shared_tests;
 
 /// Prove correct execution of a program written in Triton assembly.
@@ -281,6 +295,7 @@ pub fn verify(stark: Stark, claim: &Claim, proof: &Proof) -> bool {
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use assert2::assert;
     use assert2::let_assert;

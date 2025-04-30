@@ -90,6 +90,7 @@ unicode-width = "0.2"
 let_underscore_drop = "warn"
 missing_copy_implementations = "warn"
 missing_debug_implementations = "warn"
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(coverage,coverage_nightly)'] }
 
 [workspace.lints.clippy]
 cast_lossless = "warn"

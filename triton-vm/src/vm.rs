@@ -1515,6 +1515,7 @@ impl NonDeterminism {
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub(crate) mod tests {
     use std::ops::BitAnd;
     use std::ops::BitXor;

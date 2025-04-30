@@ -214,6 +214,7 @@ impl GrandCrossTableArg {
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use num_traits::Zero;
     use proptest::prelude::*;

@@ -609,6 +609,7 @@ impl TraceTable for HashTable {
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub(crate) mod tests {
     use air::AIR;
     use air::table::TableId;

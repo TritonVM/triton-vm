@@ -434,6 +434,7 @@ pub enum ProgramDecodingError {
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use assert2::assert;
     use assert2::let_assert;

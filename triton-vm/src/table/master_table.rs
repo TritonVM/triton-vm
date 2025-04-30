@@ -1350,6 +1350,7 @@ pub fn interpolant_degree(padded_height: usize, num_trace_randomizers: usize) ->
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use fs_err as fs;
     use std::fmt::Debug;

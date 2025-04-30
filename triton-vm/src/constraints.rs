@@ -1,7 +1,8 @@
 include!(concat!(env!("OUT_DIR"), "/tasm_constraints.rs"));
 
 #[cfg(test)]
-mod test {
+#[cfg_attr(coverage_nightly, coverage(off))]
+mod tests {
     use isa::instruction::AnInstruction;
     use itertools::Itertools;
     use ndarray::Array1;

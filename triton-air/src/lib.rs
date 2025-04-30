@@ -1,3 +1,6 @@
+// See the corresponding attribute in triton_vm/lib.rs
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
+
 use constraint_circuit::ConstraintCircuitBuilder;
 use constraint_circuit::ConstraintCircuitMonad;
 use constraint_circuit::DualRowIndicator;
@@ -65,6 +68,7 @@ pub trait AIR: private::Seal {
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
 

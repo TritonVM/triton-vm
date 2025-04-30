@@ -779,6 +779,7 @@ fn instruction_from_row(row: ArrayView1<BFieldElement>) -> Option<Instruction> {
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub(crate) mod tests {
     use std::collections::HashMap;
 

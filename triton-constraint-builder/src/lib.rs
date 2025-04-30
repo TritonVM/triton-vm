@@ -1,3 +1,6 @@
+// See the corresponding attribute in triton_vm/lib.rs
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
+
 use air::AIR;
 use air::cross_table_argument::GrandCrossTableArg;
 use air::table::cascade::CascadeTable;
@@ -202,6 +205,7 @@ impl Constraints {
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use constraint_circuit::ConstraintCircuitBuilder;
     use twenty_first::prelude::*;

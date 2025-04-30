@@ -624,6 +624,7 @@ fn codeword_as_digests(codeword: &[XFieldElement]) -> Vec<Digest> {
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use std::cmp::max;
     use std::cmp::min;

@@ -3258,6 +3258,7 @@ fn helper_variable(
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use ndarray::Array2;
     use ndarray::s;

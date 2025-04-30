@@ -88,6 +88,7 @@ pub(crate) fn cache_lde_trace() -> Option<CacheDecision> {
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use crate::example_programs::FIBONACCI_SEQUENCE;
     use crate::prelude::*;

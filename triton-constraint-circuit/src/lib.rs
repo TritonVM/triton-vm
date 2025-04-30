@@ -8,6 +8,9 @@
 //! different constraint polynomial. Because the graph has multiple roots, it is
 //! called a “multitree.”
 
+// See the corresponding attribute in triton_vm/lib.rs
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
+
 use std::cell::RefCell;
 use std::cmp;
 use std::collections::HashMap;
@@ -1130,6 +1133,7 @@ fn random_circuit_leaf<'a, II: InputIndicator + Arbitrary<'a>>(
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use std::collections::hash_map::DefaultHasher;
     use std::hash::Hasher;

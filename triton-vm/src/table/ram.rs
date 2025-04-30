@@ -402,6 +402,7 @@ fn auxiliary_column_clock_jump_difference_lookup_log_derivative(
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub(crate) mod tests {
     use proptest::prelude::*;
     use proptest_arbitrary_interop::arb;

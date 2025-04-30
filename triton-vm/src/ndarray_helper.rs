@@ -77,7 +77,8 @@ where
 }
 
 #[cfg(test)]
-mod test {
+#[cfg_attr(coverage_nightly, coverage(off))]
+mod tests {
     use itertools::Itertools;
     use ndarray::Axis;
     use ndarray::array;

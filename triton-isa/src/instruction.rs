@@ -922,6 +922,7 @@ impl AssertionError {
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub mod tests {
     use std::collections::HashMap;
 
