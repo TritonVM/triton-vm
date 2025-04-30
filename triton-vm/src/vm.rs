@@ -1542,10 +1542,9 @@ pub(crate) mod tests {
     use test_strategy::proptest;
     use twenty_first::math::other::random_elements;
 
-    use crate::shared_tests::DEFAULT_LOG2_FRI_EXPANSION_FACTOR_FOR_TESTS;
     use crate::shared_tests::LeavedMerkleTreeTestData;
-    use crate::shared_tests::ProgramAndInput;
-    use crate::shared_tests::prove_and_verify;
+    use crate::shared_tests::TestableProgram;
+    use crate::stark::Stark;
     use crate::stark::tests::program_executing_every_instruction;
 
     use super::*;
@@ -1650,7 +1649,7 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn crash_tritom_vm_with_non_empty_jump_stack_and_print_vm_error() {
+    fn crash_triton_vm_with_non_empty_jump_stack_and_print_vm_error() {
         let crashing_program = triton_program! {
             call foo halt
             foo: call bar return
@@ -1668,10 +1667,11 @@ pub(crate) mod tests {
 
     #[test]
     fn print_various_vm_states() {
-        let ProgramAndInput {
+        let TestableProgram {
             program,
             public_input,
             non_determinism,
+            ..
         } = program_executing_every_instruction();
         let mut state = VMState::new(program, public_input, non_determinism);
         while !state.halting {
@@ -1720,7 +1720,7 @@ pub(crate) mod tests {
         println!("{err}");
     }
 
-    pub(crate) fn test_program_hash_nop_nop_lt() -> ProgramAndInput {
+    pub(crate) fn test_program_hash_nop_nop_lt() -> TestableProgram {
         let push_5_zeros = triton_asm![push 0; 5];
         let program = triton_program! {
             {&push_5_zeros} hash
@@ -1731,15 +1731,15 @@ pub(crate) mod tests {
             push 3 push 2 lt assert
             halt
         };
-        ProgramAndInput::new(program)
+        TestableProgram::new(program)
     }
 
-    pub(crate) fn test_program_for_halt() -> ProgramAndInput {
-        ProgramAndInput::new(triton_program!(halt))
+    pub(crate) fn test_program_for_halt() -> TestableProgram {
+        TestableProgram::new(triton_program!(halt))
     }
 
-    pub(crate) fn test_program_for_push_pop_dup_swap_nop() -> ProgramAndInput {
-        ProgramAndInput::new(triton_program!(
+    pub(crate) fn test_program_for_push_pop_dup_swap_nop() -> TestableProgram {
+        TestableProgram::new(triton_program!(
             push 1 push 2 pop 1 assert
             push 1 dup  0 assert assert
             push 1 push 2 swap 1 assert pop 1
@@ -1747,16 +1747,16 @@ pub(crate) mod tests {
         ))
     }
 
-    pub(crate) fn test_program_for_divine() -> ProgramAndInput {
-        ProgramAndInput::new(triton_program!(divine 1 assert halt)).with_non_determinism([bfe!(1)])
+    pub(crate) fn test_program_for_divine() -> TestableProgram {
+        TestableProgram::new(triton_program!(divine 1 assert halt)).with_non_determinism([bfe!(1)])
     }
 
-    pub(crate) fn test_program_for_skiz() -> ProgramAndInput {
-        ProgramAndInput::new(triton_program!(push 1 skiz push 0 skiz assert push 1 skiz halt))
+    pub(crate) fn test_program_for_skiz() -> TestableProgram {
+        TestableProgram::new(triton_program!(push 1 skiz push 0 skiz assert push 1 skiz halt))
     }
 
-    pub(crate) fn test_program_for_call_recurse_return() -> ProgramAndInput {
-        ProgramAndInput::new(triton_program!(
+    pub(crate) fn test_program_for_call_recurse_return() -> TestableProgram {
+        TestableProgram::new(triton_program!(
             push 2
             call label
             pop 1 halt
@@ -1768,8 +1768,8 @@ pub(crate) mod tests {
         ))
     }
 
-    pub(crate) fn test_program_for_recurse_or_return() -> ProgramAndInput {
-        ProgramAndInput::new(triton_program! {
+    pub(crate) fn test_program_for_recurse_or_return() -> TestableProgram {
+        TestableProgram::new(triton_program! {
             push 5 swap 5
             push 0 swap 5
             call label
@@ -1804,7 +1804,7 @@ pub(crate) mod tests {
     }
 
     impl ProgramForRecurseOrReturn {
-        pub fn assemble(self) -> ProgramAndInput {
+        pub fn assemble(self) -> TestableProgram {
             let expected_num_iterations = self.other_iterator_values.len() + 1;
 
             let program = triton_program! {
@@ -1836,7 +1836,7 @@ pub(crate) mod tests {
 
             let mut input = self.other_iterator_values;
             input.push(self.iteration_terminator);
-            ProgramAndInput::new(program).with_input(input)
+            TestableProgram::new(program).with_input(input)
         }
     }
 
@@ -1852,8 +1852,8 @@ pub(crate) mod tests {
         assert!(InstructionError::JumpStackIsEmpty == err.source);
     }
 
-    pub(crate) fn test_program_for_write_mem_read_mem() -> ProgramAndInput {
-        ProgramAndInput::new(triton_program! {
+    pub(crate) fn test_program_for_write_mem_read_mem() -> TestableProgram {
+        TestableProgram::new(triton_program! {
             push 3 push 1 push 2    // _ 3 1 2
             push 7                  // _ 3 1 2 7
             write_mem 3             // _ 10
@@ -1864,7 +1864,7 @@ pub(crate) mod tests {
         })
     }
 
-    pub(crate) fn test_program_for_hash() -> ProgramAndInput {
+    pub(crate) fn test_program_for_hash() -> TestableProgram {
         let program = triton_program!(
             push 0 // filler to keep the OpStack large enough throughout the program
             push 0 push 0 push 1 push 2 push 3
@@ -1873,7 +1873,7 @@ pub(crate) mod tests {
         );
         let hash_input = bfe_array![3, 2, 1, 0, 0, 0, 0, 0, 0, 0];
         let digest = Tip5::hash_10(&hash_input);
-        ProgramAndInput::new(program).with_input(&digest[..=0])
+        TestableProgram::new(program).with_input(&digest[..=0])
     }
 
     /// Helper function that returns code to push a digest to the top of the
@@ -1882,7 +1882,7 @@ pub(crate) mod tests {
         triton_asm!(push {d4} push {d3} push {d2} push {d1} push {d0})
     }
 
-    pub(crate) fn test_program_for_merkle_step_right_sibling() -> ProgramAndInput {
+    pub(crate) fn test_program_for_merkle_step_right_sibling() -> TestableProgram {
         let accumulator_digest = Digest::new(bfe_array![2, 12, 22, 32, 42]);
         let divined_digest = Digest::new(bfe_array![10, 11, 12, 13, 14]);
         let expected_digest = Tip5::hash_pair(divined_digest, accumulator_digest);
@@ -1898,10 +1898,10 @@ pub(crate) mod tests {
         );
 
         let non_determinism = NonDeterminism::default().with_digests(vec![divined_digest]);
-        ProgramAndInput::new(program).with_non_determinism(non_determinism)
+        TestableProgram::new(program).with_non_determinism(non_determinism)
     }
 
-    pub(crate) fn test_program_for_merkle_step_left_sibling() -> ProgramAndInput {
+    pub(crate) fn test_program_for_merkle_step_left_sibling() -> TestableProgram {
         let accumulator_digest = Digest::new(bfe_array![2, 12, 22, 32, 42]);
         let divined_digest = Digest::new(bfe_array![10, 11, 12, 13, 14]);
         let expected_digest = Tip5::hash_pair(accumulator_digest, divined_digest);
@@ -1917,10 +1917,10 @@ pub(crate) mod tests {
         );
 
         let non_determinism = NonDeterminism::default().with_digests(vec![divined_digest]);
-        ProgramAndInput::new(program).with_non_determinism(non_determinism)
+        TestableProgram::new(program).with_non_determinism(non_determinism)
     }
 
-    pub(crate) fn test_program_for_merkle_step_mem_right_sibling() -> ProgramAndInput {
+    pub(crate) fn test_program_for_merkle_step_mem_right_sibling() -> TestableProgram {
         let accumulator_digest = Digest::new(bfe_array![2, 12, 22, 32, 42]);
         let sibling_digest = Digest::new(bfe_array![10, 11, 12, 13, 14]);
         let expected_digest = Tip5::hash_pair(sibling_digest, accumulator_digest);
@@ -1943,10 +1943,10 @@ pub(crate) mod tests {
             .zip(sibling_digest.values())
             .collect::<HashMap<_, _>>();
         let non_determinism = NonDeterminism::default().with_ram(ram);
-        ProgramAndInput::new(program).with_non_determinism(non_determinism)
+        TestableProgram::new(program).with_non_determinism(non_determinism)
     }
 
-    pub(crate) fn test_program_for_merkle_step_mem_left_sibling() -> ProgramAndInput {
+    pub(crate) fn test_program_for_merkle_step_mem_left_sibling() -> TestableProgram {
         let accumulator_digest = Digest::new(bfe_array![2, 12, 22, 32, 42]);
         let sibling_digest = Digest::new(bfe_array![10, 11, 12, 13, 14]);
         let expected_digest = Tip5::hash_pair(accumulator_digest, sibling_digest);
@@ -1969,11 +1969,12 @@ pub(crate) mod tests {
             .zip(sibling_digest.values())
             .collect::<HashMap<_, _>>();
         let non_determinism = NonDeterminism::default().with_ram(ram);
-        ProgramAndInput::new(program).with_non_determinism(non_determinism)
+        TestableProgram::new(program).with_non_determinism(non_determinism)
     }
 
     /// Test helper for property-testing instruction `merkle_step_mem` in a
-    /// meaningful context, namely, using [`MERKLE_TREE_UPDATE`].
+    /// meaningful context, namely, using
+    /// [`MERKLE_TREE_UPDATE`](crate::example_programs::MERKLE_TREE_UPDATE).
     #[derive(Debug, Clone, test_strategy::Arbitrary)]
     pub struct ProgramForMerkleTreeUpdate {
         leaved_merkle_tree: LeavedMerkleTreeTestData,
@@ -1990,7 +1991,7 @@ pub(crate) mod tests {
     }
 
     impl ProgramForMerkleTreeUpdate {
-        pub fn assemble(self) -> ProgramAndInput {
+        pub fn assemble(self) -> TestableProgram {
             let auth_path = self.authentication_path();
             let leaf_index = self.revealed_leafs_index;
             let merkle_tree = self.leaved_merkle_tree.merkle_tree;
@@ -2012,12 +2013,12 @@ pub(crate) mod tests {
             public_input.extend(old_root.reversed().values());
             public_input.extend(self.new_leaf.reversed().values());
 
-            ProgramAndInput::new(crate::example_programs::MERKLE_TREE_UPDATE.clone())
+            TestableProgram::new(crate::example_programs::MERKLE_TREE_UPDATE.clone())
                 .with_input(public_input)
                 .with_non_determinism(non_determinism)
         }
 
-        /// Checks whether the [`ProgramAndInput`] generated through
+        /// Checks whether the [`TestableProgram`] generated through
         /// [`Self::assemble`] can
         /// - be executed without crashing the VM, and
         /// - produces the correct output.
@@ -2045,17 +2046,17 @@ pub(crate) mod tests {
         }
     }
 
-    pub(crate) fn test_program_for_assert_vector() -> ProgramAndInput {
-        ProgramAndInput::new(triton_program!(
+    pub(crate) fn test_program_for_assert_vector() -> TestableProgram {
+        TestableProgram::new(triton_program!(
             push 1 push 2 push 3 push 4 push 5
             push 1 push 2 push 3 push 4 push 5
             assert_vector halt
         ))
     }
 
-    pub(crate) fn test_program_for_sponge_instructions() -> ProgramAndInput {
+    pub(crate) fn test_program_for_sponge_instructions() -> TestableProgram {
         let push_10_zeros = triton_asm![push 0; 10];
-        ProgramAndInput::new(triton_program!(
+        TestableProgram::new(triton_program!(
             sponge_init
             {&push_10_zeros} sponge_absorb
             {&push_10_zeros} sponge_absorb
@@ -2063,7 +2064,7 @@ pub(crate) mod tests {
         ))
     }
 
-    pub(crate) fn test_program_for_sponge_instructions_2() -> ProgramAndInput {
+    pub(crate) fn test_program_for_sponge_instructions_2() -> TestableProgram {
         let push_5_zeros = triton_asm![push 0; 5];
         let program = triton_program! {
             sponge_init
@@ -2072,10 +2073,10 @@ pub(crate) mod tests {
             sponge_squeeze sponge_absorb
             halt
         };
-        ProgramAndInput::new(program)
+        TestableProgram::new(program)
     }
 
-    pub(crate) fn test_program_for_many_sponge_instructions() -> ProgramAndInput {
+    pub(crate) fn test_program_for_many_sponge_instructions() -> TestableProgram {
         let push_5_zeros = triton_asm![push 0; 5];
         let push_10_zeros = triton_asm![push 0; 10];
         let program = triton_program! {         //  elements on stack
@@ -2102,10 +2103,10 @@ pub(crate) mod tests {
             {&push_10_zeros} sponge_absorb      //  0
             halt
         };
-        ProgramAndInput::new(program)
+        TestableProgram::new(program)
     }
 
-    pub(crate) fn property_based_test_program_for_assert_vector() -> ProgramAndInput {
+    pub(crate) fn property_based_test_program_for_assert_vector() -> TestableProgram {
         let mut rng = ThreadRng::default();
         let st: [BFieldElement; 5] = rng.random();
 
@@ -2114,7 +2115,7 @@ pub(crate) mod tests {
             read_io 5 assert_vector halt
         );
 
-        ProgramAndInput::new(program).with_input(st)
+        TestableProgram::new(program).with_input(st)
     }
 
     /// Test helper for [`ProgramForSpongeAndHashInstructions`].
@@ -2172,7 +2173,7 @@ pub(crate) mod tests {
     }
 
     impl ProgramForSpongeAndHashInstructions {
-        pub fn assemble(self) -> ProgramAndInput {
+        pub fn assemble(self) -> TestableProgram {
             let mut sponge = Tip5::init();
             for instruction in &self.instructions {
                 instruction.execute(&mut sponge, &self.ram);
@@ -2196,7 +2197,7 @@ pub(crate) mod tests {
                 halt
             };
 
-            ProgramAndInput::new(program)
+            TestableProgram::new(program)
                 .with_input(expected_rate)
                 .with_non_determinism(non_determinism)
         }
@@ -2209,8 +2210,8 @@ pub(crate) mod tests {
         program.assemble().run()?;
     }
 
-    pub(crate) fn test_program_for_add_mul_invert() -> ProgramAndInput {
-        ProgramAndInput::new(triton_program!(
+    pub(crate) fn test_program_for_add_mul_invert() -> TestableProgram {
+        TestableProgram::new(triton_program!(
             push  2 push -1 add assert
             push -1 push -1 mul assert
             push  5 addi -4 assert
@@ -2219,7 +2220,7 @@ pub(crate) mod tests {
         ))
     }
 
-    pub(crate) fn property_based_test_program_for_split() -> ProgramAndInput {
+    pub(crate) fn property_based_test_program_for_split() -> TestableProgram {
         let mut rng = ThreadRng::default();
         let st0 = rng.next_u64() % BFieldElement::P;
         let hi = st0 >> 32;
@@ -2227,37 +2228,37 @@ pub(crate) mod tests {
 
         let program =
             triton_program!(push {st0} split read_io 1 eq assert read_io 1 eq assert halt);
-        ProgramAndInput::new(program).with_input(bfe_array![lo, hi])
+        TestableProgram::new(program).with_input(bfe_array![lo, hi])
     }
 
-    pub(crate) fn test_program_for_eq() -> ProgramAndInput {
+    pub(crate) fn test_program_for_eq() -> TestableProgram {
         let input = bfe_array![42];
-        ProgramAndInput::new(triton_program!(read_io 1 divine 1 eq assert halt))
+        TestableProgram::new(triton_program!(read_io 1 divine 1 eq assert halt))
             .with_input(input)
             .with_non_determinism(input)
     }
 
-    pub(crate) fn property_based_test_program_for_eq() -> ProgramAndInput {
+    pub(crate) fn property_based_test_program_for_eq() -> TestableProgram {
         let mut rng = ThreadRng::default();
         let st0 = rng.next_u64() % BFieldElement::P;
         let input = bfe_array![st0];
 
         let program =
             triton_program!(push {st0} dup 0 read_io 1 eq assert dup 0 divine 1 eq assert halt);
-        ProgramAndInput::new(program)
+        TestableProgram::new(program)
             .with_input(input)
             .with_non_determinism(input)
     }
 
-    pub(crate) fn test_program_for_lsb() -> ProgramAndInput {
-        ProgramAndInput::new(triton_program!(
+    pub(crate) fn test_program_for_lsb() -> TestableProgram {
+        TestableProgram::new(triton_program!(
             push 3 call lsb assert assert halt
             lsb:
                 push 2 swap 1 div_mod return
         ))
     }
 
-    pub(crate) fn property_based_test_program_for_lsb() -> ProgramAndInput {
+    pub(crate) fn property_based_test_program_for_lsb() -> TestableProgram {
         let mut rng = ThreadRng::default();
         let st0 = rng.next_u32();
         let lsb = st0 % 2;
@@ -2268,20 +2269,20 @@ pub(crate) mod tests {
             lsb:
                 push 2 swap 1 div_mod return
         );
-        ProgramAndInput::new(program).with_input([lsb, st0_shift_right].map(|b| bfe!(b)))
+        TestableProgram::new(program).with_input([lsb, st0_shift_right].map(|b| bfe!(b)))
     }
 
-    pub(crate) fn test_program_0_lt_0() -> ProgramAndInput {
-        ProgramAndInput::new(triton_program!(push 0 push 0 lt halt))
+    pub(crate) fn test_program_0_lt_0() -> TestableProgram {
+        TestableProgram::new(triton_program!(push 0 push 0 lt halt))
     }
 
-    pub(crate) fn test_program_for_lt() -> ProgramAndInput {
-        ProgramAndInput::new(triton_program!(
+    pub(crate) fn test_program_for_lt() -> TestableProgram {
+        TestableProgram::new(triton_program!(
             push 5 push 2 lt assert push 2 push 5 lt push 0 eq assert halt
         ))
     }
 
-    pub(crate) fn property_based_test_program_for_lt() -> ProgramAndInput {
+    pub(crate) fn property_based_test_program_for_lt() -> TestableProgram {
         let mut rng = ThreadRng::default();
 
         let st1_0 = rng.next_u32();
@@ -2302,16 +2303,16 @@ pub(crate) mod tests {
             push {st1_0} push {st0_0} lt read_io 1 eq assert
             push {st1_1} push {st0_1} lt read_io 1 eq assert halt
         );
-        ProgramAndInput::new(program).with_input([result_0, result_1].map(|b| bfe!(b)))
+        TestableProgram::new(program).with_input([result_0, result_1].map(|b| bfe!(b)))
     }
 
-    pub(crate) fn test_program_for_and() -> ProgramAndInput {
-        ProgramAndInput::new(triton_program!(
+    pub(crate) fn test_program_for_and() -> TestableProgram {
+        TestableProgram::new(triton_program!(
             push 5 push 3 and assert push 12 push 5 and push 4 eq assert halt
         ))
     }
 
-    pub(crate) fn property_based_test_program_for_and() -> ProgramAndInput {
+    pub(crate) fn property_based_test_program_for_and() -> TestableProgram {
         let mut rng = ThreadRng::default();
 
         let st1_0 = rng.next_u32();
@@ -2326,16 +2327,16 @@ pub(crate) mod tests {
             push {st1_0} push {st0_0} and read_io 1 eq assert
             push {st1_1} push {st0_1} and read_io 1 eq assert halt
         );
-        ProgramAndInput::new(program).with_input([result_0, result_1].map(|b| bfe!(b)))
+        TestableProgram::new(program).with_input([result_0, result_1].map(|b| bfe!(b)))
     }
 
-    pub(crate) fn test_program_for_xor() -> ProgramAndInput {
-        ProgramAndInput::new(triton_program!(
+    pub(crate) fn test_program_for_xor() -> TestableProgram {
+        TestableProgram::new(triton_program!(
             push 7 push 6 xor assert push 5 push 12 xor push 9 eq assert halt
         ))
     }
 
-    pub(crate) fn property_based_test_program_for_xor() -> ProgramAndInput {
+    pub(crate) fn property_based_test_program_for_xor() -> TestableProgram {
         let mut rng = ThreadRng::default();
 
         let st1_0 = rng.next_u32();
@@ -2350,11 +2351,11 @@ pub(crate) mod tests {
             push {st1_0} push {st0_0} xor read_io 1 eq assert
             push {st1_1} push {st0_1} xor read_io 1 eq assert halt
         );
-        ProgramAndInput::new(program).with_input([result_0, result_1].map(|b| bfe!(b)))
+        TestableProgram::new(program).with_input([result_0, result_1].map(|b| bfe!(b)))
     }
 
-    pub(crate) fn test_program_for_log2floor() -> ProgramAndInput {
-        ProgramAndInput::new(triton_program!(
+    pub(crate) fn test_program_for_log2floor() -> TestableProgram {
+        TestableProgram::new(triton_program!(
             push  1 log_2_floor push  0 eq assert
             push  2 log_2_floor push  1 eq assert
             push  3 log_2_floor push  1 eq assert
@@ -2370,7 +2371,7 @@ pub(crate) mod tests {
         ))
     }
 
-    pub(crate) fn property_based_test_program_for_log2floor() -> ProgramAndInput {
+    pub(crate) fn property_based_test_program_for_log2floor() -> TestableProgram {
         let mut rng = ThreadRng::default();
 
         let st0_0 = rng.next_u32();
@@ -2383,11 +2384,11 @@ pub(crate) mod tests {
             push {st0_0} log_2_floor read_io 1 eq assert
             push {st0_1} log_2_floor read_io 1 eq assert halt
         );
-        ProgramAndInput::new(program).with_input([l2f_0, l2f_1].map(|b| bfe!(b)))
+        TestableProgram::new(program).with_input([l2f_0, l2f_1].map(|b| bfe!(b)))
     }
 
-    pub(crate) fn test_program_for_pow() -> ProgramAndInput {
-        ProgramAndInput::new(triton_program!(
+    pub(crate) fn test_program_for_pow() -> TestableProgram {
+        TestableProgram::new(triton_program!(
             // push [exponent] push [base] pow push [result] eq assert
             push  0 push 0 pow push    1 eq assert
             push  0 push 1 pow push    1 eq assert
@@ -2414,7 +2415,7 @@ pub(crate) mod tests {
         ))
     }
 
-    pub(crate) fn property_based_test_program_for_pow() -> ProgramAndInput {
+    pub(crate) fn property_based_test_program_for_pow() -> TestableProgram {
         let mut rng = ThreadRng::default();
 
         let base_0: BFieldElement = rng.random();
@@ -2429,14 +2430,14 @@ pub(crate) mod tests {
             push {exp_0} push {base_0} pow read_io 1 eq assert
             push {exp_1} push {base_1} pow read_io 1 eq assert halt
         );
-        ProgramAndInput::new(program).with_input([result_0, result_1])
+        TestableProgram::new(program).with_input([result_0, result_1])
     }
 
-    pub(crate) fn test_program_for_div_mod() -> ProgramAndInput {
-        ProgramAndInput::new(triton_program!(push 2 push 3 div_mod assert assert halt))
+    pub(crate) fn test_program_for_div_mod() -> TestableProgram {
+        TestableProgram::new(triton_program!(push 2 push 3 div_mod assert assert halt))
     }
 
-    pub(crate) fn property_based_test_program_for_div_mod() -> ProgramAndInput {
+    pub(crate) fn property_based_test_program_for_div_mod() -> TestableProgram {
         let mut rng = ThreadRng::default();
 
         let denominator = rng.next_u32();
@@ -2447,26 +2448,26 @@ pub(crate) mod tests {
         let program = triton_program!(
             push {denominator} push {numerator} div_mod read_io 1 eq assert read_io 1 eq assert halt
         );
-        ProgramAndInput::new(program).with_input([remainder, quotient].map(|b| bfe!(b)))
+        TestableProgram::new(program).with_input([remainder, quotient].map(|b| bfe!(b)))
     }
 
-    pub(crate) fn test_program_for_starting_with_pop_count() -> ProgramAndInput {
-        ProgramAndInput::new(triton_program!(pop_count dup 0 push 0 eq assert halt))
+    pub(crate) fn test_program_for_starting_with_pop_count() -> TestableProgram {
+        TestableProgram::new(triton_program!(pop_count dup 0 push 0 eq assert halt))
     }
 
-    pub(crate) fn test_program_for_pop_count() -> ProgramAndInput {
-        ProgramAndInput::new(triton_program!(push 10 pop_count push 2 eq assert halt))
+    pub(crate) fn test_program_for_pop_count() -> TestableProgram {
+        TestableProgram::new(triton_program!(push 10 pop_count push 2 eq assert halt))
     }
 
-    pub(crate) fn property_based_test_program_for_pop_count() -> ProgramAndInput {
+    pub(crate) fn property_based_test_program_for_pop_count() -> TestableProgram {
         let mut rng = ThreadRng::default();
         let st0 = rng.next_u32();
         let pop_count = st0.count_ones();
         let program = triton_program!(push {st0} pop_count read_io 1 eq assert halt);
-        ProgramAndInput::new(program).with_input(bfe_array![pop_count])
+        TestableProgram::new(program).with_input(bfe_array![pop_count])
     }
 
-    pub(crate) fn property_based_test_program_for_is_u32() -> ProgramAndInput {
+    pub(crate) fn property_based_test_program_for_is_u32() -> TestableProgram {
         let mut rng = ThreadRng::default();
         let st0_u32 = rng.next_u32();
         let st0_not_u32 = (u64::from(rng.next_u32()) << 32) + u64::from(rng.next_u32());
@@ -2476,10 +2477,10 @@ pub(crate) mod tests {
             is_u32:
                  split pop 1 push 0 eq return
         );
-        ProgramAndInput::new(program)
+        TestableProgram::new(program)
     }
 
-    pub(crate) fn property_based_test_program_for_random_ram_access() -> ProgramAndInput {
+    pub(crate) fn property_based_test_program_for_random_ram_access() -> TestableProgram {
         let mut rng = ThreadRng::default();
         let num_memory_accesses = rng.random_range(10..50);
         let memory_addresses: Vec<BFieldElement> = random_elements(num_memory_accesses);
@@ -2542,15 +2543,15 @@ pub(crate) mod tests {
         }
 
         let program = triton_program! { { &instructions } halt };
-        ProgramAndInput::new(program)
+        TestableProgram::new(program)
     }
 
     /// Sanity check for the relatively complex property-based test for random
     /// RAM access.
     #[test]
     fn run_dont_prove_property_based_test_for_random_ram_access() {
-        let source_code_and_input = property_based_test_program_for_random_ram_access();
-        source_code_and_input.run().unwrap();
+        let program = property_based_test_program_for_random_ram_access();
+        program.run().unwrap();
     }
 
     #[test]
@@ -2559,7 +2560,7 @@ pub(crate) mod tests {
         VM::run(program, PublicInput::default(), NonDeterminism::default()).unwrap();
     }
 
-    pub(crate) fn property_based_test_program_for_xx_dot_step() -> ProgramAndInput {
+    pub(crate) fn property_based_test_program_for_xx_dot_step() -> TestableProgram {
         let mut rng = ThreadRng::default();
         let n = rng.random_range(0..10);
 
@@ -2614,17 +2615,17 @@ pub(crate) mod tests {
             assert_vector
             halt
         };
-        ProgramAndInput::new(code)
+        TestableProgram::new(code)
     }
 
     /// Sanity check
     #[test]
     fn run_dont_prove_property_based_test_program_for_xx_dot_step() {
-        let source_code_and_input = property_based_test_program_for_xx_dot_step();
-        source_code_and_input.run().unwrap();
+        let program = property_based_test_program_for_xx_dot_step();
+        program.run().unwrap();
     }
 
-    pub(crate) fn property_based_test_program_for_xb_dot_step() -> ProgramAndInput {
+    pub(crate) fn property_based_test_program_for_xb_dot_step() -> TestableProgram {
         let mut rng = ThreadRng::default();
         let n = rng.random_range(0..10);
         let push_xfe = |x: XFieldElement| {
@@ -2688,14 +2689,14 @@ pub(crate) mod tests {
             assert_vector
             halt
         };
-        ProgramAndInput::new(code)
+        TestableProgram::new(code)
     }
 
     /// Sanity check
     #[test]
     fn run_dont_prove_property_based_test_program_for_xb_dot_step() {
-        let source_code_and_input = property_based_test_program_for_xb_dot_step();
-        source_code_and_input.run().unwrap();
+        let program = property_based_test_program_for_xb_dot_step();
+        program.run().unwrap();
     }
 
     #[proptest]
@@ -2709,13 +2710,13 @@ pub(crate) mod tests {
             is_u32:
                 split pop 1 push 0 eq return
         );
-        let program_and_input = ProgramAndInput::new(program);
-        let_assert!(Err(err) = program_and_input.run());
+        let program = TestableProgram::new(program);
+        let_assert!(Err(err) = program.run());
         let_assert!(InstructionError::AssertionFailed(_) = err.source);
     }
 
-    pub(crate) fn test_program_for_split() -> ProgramAndInput {
-        ProgramAndInput::new(triton_program!(
+    pub(crate) fn test_program_for_split() -> TestableProgram {
+        TestableProgram::new(triton_program!(
             push -2 split push 4294967295 eq assert push 4294967294 eq assert
             push -1 split push 0 eq assert push 4294967295 eq assert
             push  0 split push 0 eq assert push 0 eq assert
@@ -2726,39 +2727,39 @@ pub(crate) mod tests {
         ))
     }
 
-    pub(crate) fn test_program_for_xx_add() -> ProgramAndInput {
-        ProgramAndInput::new(triton_program!(
+    pub(crate) fn test_program_for_xx_add() -> TestableProgram {
+        TestableProgram::new(triton_program!(
             push 5 push 6 push 7 push 8 push 9 push 10 xx_add halt
         ))
     }
 
-    pub(crate) fn test_program_for_xx_mul() -> ProgramAndInput {
-        ProgramAndInput::new(triton_program!(
+    pub(crate) fn test_program_for_xx_mul() -> TestableProgram {
+        TestableProgram::new(triton_program!(
             push 5 push 6 push 7 push 8 push 9 push 10 xx_mul halt
         ))
     }
 
-    pub(crate) fn test_program_for_x_invert() -> ProgramAndInput {
-        ProgramAndInput::new(triton_program!(
+    pub(crate) fn test_program_for_x_invert() -> TestableProgram {
+        TestableProgram::new(triton_program!(
             push 5 push 6 push 7 x_invert halt
         ))
     }
 
-    pub(crate) fn test_program_for_xb_mul() -> ProgramAndInput {
-        ProgramAndInput::new(triton_program!(
+    pub(crate) fn test_program_for_xb_mul() -> TestableProgram {
+        TestableProgram::new(triton_program!(
             push 5 push 6 push 7 push 8 xb_mul halt
         ))
     }
 
-    pub(crate) fn test_program_for_read_io_write_io() -> ProgramAndInput {
+    pub(crate) fn test_program_for_read_io_write_io() -> TestableProgram {
         let program = triton_program!(
             read_io 1 assert read_io 2 dup 1 dup 1 add write_io 1 mul push 5 write_io 2 halt
         );
-        ProgramAndInput::new(program).with_input([1, 3, 14].map(|b| bfe!(b)))
+        TestableProgram::new(program).with_input([1, 3, 14].map(|b| bfe!(b)))
     }
 
     pub(crate) fn test_program_claim_in_ram_corresponds_to_currently_running_program()
-    -> ProgramAndInput {
+    -> TestableProgram {
         let program = triton_program! {
             dup 15 dup 15 dup 15 dup 15 dup 15  // _ [own_digest]
             push 4 read_mem 5 pop 1             // _ [own_digest] [claim_digest]
@@ -2773,7 +2774,7 @@ pub(crate) mod tests {
             .collect::<HashMap<_, _>>();
         let non_determinism = NonDeterminism::default().with_ram(initial_ram);
 
-        ProgramAndInput::new(program).with_non_determinism(non_determinism)
+        TestableProgram::new(program).with_non_determinism(non_determinism)
     }
 
     #[proptest]
@@ -2863,7 +2864,7 @@ pub(crate) mod tests {
             sub:
                 swap 1 push -1 mul add return
         );
-        let actual_stdout = ProgramAndInput::new(program).run()?;
+        let actual_stdout = TestableProgram::new(program).run()?;
         let expected_stdout = vec![minuend - subtrahend];
 
         prop_assert_eq!(expected_stdout, actual_stdout);
@@ -2899,26 +2900,26 @@ pub(crate) mod tests {
 
     #[test]
     fn run_tvm_merkle_step_right_sibling() {
-        let program_and_input = test_program_for_merkle_step_right_sibling();
-        let_assert!(Ok(_) = program_and_input.run());
+        let program = test_program_for_merkle_step_right_sibling();
+        let_assert!(Ok(_) = program.run());
     }
 
     #[test]
     fn run_tvm_merkle_step_left_sibling() {
-        let program_and_input = test_program_for_merkle_step_left_sibling();
-        let_assert!(Ok(_) = program_and_input.run());
+        let program = test_program_for_merkle_step_left_sibling();
+        let_assert!(Ok(_) = program.run());
     }
 
     #[test]
     fn run_tvm_merkle_step_mem_right_sibling() {
-        let program_and_input = test_program_for_merkle_step_mem_right_sibling();
-        let_assert!(Ok(_) = program_and_input.run());
+        let program = test_program_for_merkle_step_mem_right_sibling();
+        let_assert!(Ok(_) = program.run());
     }
 
     #[test]
     fn run_tvm_merkle_step_mem_left_sibling() {
-        let program_and_input = test_program_for_merkle_step_mem_left_sibling();
-        let_assert!(Ok(_) = program_and_input.run());
+        let program = test_program_for_merkle_step_mem_left_sibling();
+        let_assert!(Ok(_) = program.run());
     }
 
     #[test]
@@ -3027,10 +3028,11 @@ pub(crate) mod tests {
         program_for_merkle_tree_update: ProgramForMerkleTreeUpdate,
         #[strategy(1_usize..=4)] log_2_fri_expansion_factor: usize,
     ) {
-        prove_and_verify(
-            program_for_merkle_tree_update.assemble(),
-            log_2_fri_expansion_factor,
-        );
+        let stark = Stark::new(Stark::LOW_SECURITY_LEVEL, log_2_fri_expansion_factor);
+        program_for_merkle_tree_update
+            .assemble()
+            .use_stark(stark)
+            .prove_and_verify();
     }
 
     #[proptest]
@@ -3084,10 +3086,9 @@ pub(crate) mod tests {
     #[test]
     fn run_tvm_fibonacci() {
         for (input, expected_output) in [(0, 1), (7, 21), (11, 144)] {
-            let program_and_input =
-                ProgramAndInput::new(crate::example_programs::FIBONACCI_SEQUENCE.clone())
-                    .with_input(bfe_array![input]);
-            let_assert!(Ok(output) = program_and_input.run());
+            let program = TestableProgram::new(crate::example_programs::FIBONACCI_SEQUENCE.clone())
+                .with_input(bfe_array![input]);
+            let_assert!(Ok(output) = program.run());
             let_assert!(&[output] = &output[..]);
             assert!(expected_output == output.value(), "input was: {input}");
         }
@@ -3121,16 +3122,13 @@ pub(crate) mod tests {
         let mut initial_ram = HashMap::new();
         initial_ram.insert(bfe!(0), bfe!(42));
         let non_determinism = NonDeterminism::default().with_ram(initial_ram);
-        let program_and_input = ProgramAndInput::new(program).with_non_determinism(non_determinism);
+        let program = TestableProgram::new(program).with_non_determinism(non_determinism);
 
-        let_assert!(Ok(public_output) = program_and_input.clone().run());
+        let_assert!(Ok(public_output) = program.clone().run());
         let_assert!(&[output] = &public_output[..]);
         assert!(42 == output.value());
 
-        prove_and_verify(
-            program_and_input,
-            DEFAULT_LOG2_FRI_EXPANSION_FACTOR_FOR_TESTS,
-        );
+        program.prove_and_verify();
     }
 
     #[proptest(cases = 10)]
@@ -3150,17 +3148,14 @@ pub(crate) mod tests {
         let mut initial_ram = HashMap::new();
         initial_ram.insert(initialized_address, value);
         let non_determinism = NonDeterminism::default().with_ram(initial_ram);
-        let program_and_input = ProgramAndInput::new(program).with_non_determinism(non_determinism);
+        let program = TestableProgram::new(program).with_non_determinism(non_determinism);
 
-        let_assert!(Ok(public_output) = program_and_input.clone().run());
+        let_assert!(Ok(public_output) = program.clone().run());
         let_assert!(&[uninit_value, init_value] = &public_output[..]);
         assert!(0 == uninit_value.value());
         assert!(value == init_value);
 
-        prove_and_verify(
-            program_and_input,
-            DEFAULT_LOG2_FRI_EXPANSION_FACTOR_FOR_TESTS,
-        );
+        program.prove_and_verify();
     }
 
     #[test]
@@ -3212,13 +3207,13 @@ pub(crate) mod tests {
     }
 
     fn instruction_does_not_change_vm_state_when_crashing_vm(
-        program_and_input: ProgramAndInput,
+        program: TestableProgram,
         num_preparatory_steps: usize,
     ) {
         let mut vm_state = VMState::new(
-            program_and_input.program,
-            program_and_input.public_input,
-            program_and_input.non_determinism,
+            program.program,
+            program.public_input,
+            program.non_determinism,
         );
         for i in 0..num_preparatory_steps {
             assert!(let Ok(_) = vm_state.step(), "failed during step {i}");
@@ -3231,19 +3226,19 @@ pub(crate) mod tests {
     #[test]
     fn instruction_pop_does_not_change_vm_state_when_crashing_vm() {
         let program = triton_program! { push 0 pop 2 halt };
-        instruction_does_not_change_vm_state_when_crashing_vm(ProgramAndInput::new(program), 1);
+        instruction_does_not_change_vm_state_when_crashing_vm(TestableProgram::new(program), 1);
     }
 
     #[test]
     fn instruction_divine_does_not_change_vm_state_when_crashing_vm() {
         let program = triton_program! { divine 1 halt };
-        instruction_does_not_change_vm_state_when_crashing_vm(ProgramAndInput::new(program), 0);
+        instruction_does_not_change_vm_state_when_crashing_vm(TestableProgram::new(program), 0);
     }
 
     #[test]
     fn instruction_assert_does_not_change_vm_state_when_crashing_vm() {
         let program = triton_program! { push 0 assert halt };
-        instruction_does_not_change_vm_state_when_crashing_vm(ProgramAndInput::new(program), 1);
+        instruction_does_not_change_vm_state_when_crashing_vm(TestableProgram::new(program), 1);
     }
 
     #[test]
@@ -3251,134 +3246,134 @@ pub(crate) mod tests {
         let non_u32 = u64::from(u32::MAX) + 1;
         let program = triton_program! { push {non_u32} swap 5 merkle_step halt };
         let nondeterminism = NonDeterminism::default().with_digests([Digest::default()]);
-        let program_and_input = ProgramAndInput::new(program).with_non_determinism(nondeterminism);
-        instruction_does_not_change_vm_state_when_crashing_vm(program_and_input, 2);
+        let program = TestableProgram::new(program).with_non_determinism(nondeterminism);
+        instruction_does_not_change_vm_state_when_crashing_vm(program, 2);
     }
 
     #[test]
     fn instruction_merkle_step_does_not_change_vm_state_when_crashing_vm_no_nd_digests() {
         let valid_u32 = u64::from(u32::MAX);
         let program = triton_program! { push {valid_u32} swap 5 merkle_step halt };
-        let program_and_input = ProgramAndInput::new(program);
-        instruction_does_not_change_vm_state_when_crashing_vm(program_and_input, 2);
+        let program = TestableProgram::new(program);
+        instruction_does_not_change_vm_state_when_crashing_vm(program, 2);
     }
 
     #[test]
     fn instruction_merkle_step_mem_does_not_change_vm_state_when_crashing_vm_invalid_node_index() {
         let non_u32 = u64::from(u32::MAX) + 1;
         let program = triton_program! { push {non_u32} swap 5 merkle_step_mem halt };
-        let program_and_input = ProgramAndInput::new(program);
-        instruction_does_not_change_vm_state_when_crashing_vm(program_and_input, 2);
+        let program = TestableProgram::new(program);
+        instruction_does_not_change_vm_state_when_crashing_vm(program, 2);
     }
 
     #[test]
     fn instruction_assert_vector_does_not_change_vm_state_when_crashing_vm() {
         let program = triton_program! { push 0 push 1 push 0 push 0 push 0 assert_vector halt };
-        instruction_does_not_change_vm_state_when_crashing_vm(ProgramAndInput::new(program), 5);
+        instruction_does_not_change_vm_state_when_crashing_vm(TestableProgram::new(program), 5);
     }
 
     #[test]
     fn instruction_sponge_absorb_does_not_change_vm_state_when_crashing_vm_sponge_uninit() {
         let ten_pushes = triton_asm![push 0; 10];
         let program = triton_program! { {&ten_pushes} sponge_absorb halt };
-        instruction_does_not_change_vm_state_when_crashing_vm(ProgramAndInput::new(program), 10);
+        instruction_does_not_change_vm_state_when_crashing_vm(TestableProgram::new(program), 10);
     }
 
     #[test]
     fn instruction_sponge_absorb_does_not_change_vm_state_when_crashing_vm_stack_too_small() {
         let program = triton_program! { sponge_init sponge_absorb halt };
-        instruction_does_not_change_vm_state_when_crashing_vm(ProgramAndInput::new(program), 1);
+        instruction_does_not_change_vm_state_when_crashing_vm(TestableProgram::new(program), 1);
     }
 
     #[test]
     fn instruction_sponge_absorb_mem_does_not_change_vm_state_when_crashing_vm_sponge_uninit() {
         let program = triton_program! { sponge_absorb_mem halt };
-        instruction_does_not_change_vm_state_when_crashing_vm(ProgramAndInput::new(program), 0);
+        instruction_does_not_change_vm_state_when_crashing_vm(TestableProgram::new(program), 0);
     }
 
     #[test]
     fn instruction_sponge_squeeze_does_not_change_vm_state_when_crashing_vm() {
         let program = triton_program! { sponge_squeeze halt };
-        instruction_does_not_change_vm_state_when_crashing_vm(ProgramAndInput::new(program), 0);
+        instruction_does_not_change_vm_state_when_crashing_vm(TestableProgram::new(program), 0);
     }
 
     #[test]
     fn instruction_invert_does_not_change_vm_state_when_crashing_vm() {
         let program = triton_program! { push 0 invert halt };
-        instruction_does_not_change_vm_state_when_crashing_vm(ProgramAndInput::new(program), 1);
+        instruction_does_not_change_vm_state_when_crashing_vm(TestableProgram::new(program), 1);
     }
 
     #[test]
     fn instruction_lt_does_not_change_vm_state_when_crashing_vm() {
         let non_u32 = u64::from(u32::MAX) + 1;
         let program = triton_program! { push {non_u32} lt halt };
-        instruction_does_not_change_vm_state_when_crashing_vm(ProgramAndInput::new(program), 1);
+        instruction_does_not_change_vm_state_when_crashing_vm(TestableProgram::new(program), 1);
     }
 
     #[test]
     fn instruction_and_does_not_change_vm_state_when_crashing_vm() {
         let non_u32 = u64::from(u32::MAX) + 1;
         let program = triton_program! { push {non_u32} and halt };
-        instruction_does_not_change_vm_state_when_crashing_vm(ProgramAndInput::new(program), 1);
+        instruction_does_not_change_vm_state_when_crashing_vm(TestableProgram::new(program), 1);
     }
 
     #[test]
     fn instruction_xor_does_not_change_vm_state_when_crashing_vm() {
         let non_u32 = u64::from(u32::MAX) + 1;
         let program = triton_program! { push {non_u32} xor halt };
-        instruction_does_not_change_vm_state_when_crashing_vm(ProgramAndInput::new(program), 1);
+        instruction_does_not_change_vm_state_when_crashing_vm(TestableProgram::new(program), 1);
     }
 
     #[test]
     fn instruction_log_2_floor_on_non_u32_operand_does_not_change_vm_state_when_crashing_vm() {
         let non_u32 = u64::from(u32::MAX) + 1;
         let program = triton_program! { push {non_u32} log_2_floor halt };
-        instruction_does_not_change_vm_state_when_crashing_vm(ProgramAndInput::new(program), 1);
+        instruction_does_not_change_vm_state_when_crashing_vm(TestableProgram::new(program), 1);
     }
 
     #[test]
     fn instruction_log_2_floor_on_operand_0_does_not_change_vm_state_when_crashing_vm() {
         let program = triton_program! { push 0 log_2_floor halt };
-        instruction_does_not_change_vm_state_when_crashing_vm(ProgramAndInput::new(program), 1);
+        instruction_does_not_change_vm_state_when_crashing_vm(TestableProgram::new(program), 1);
     }
 
     #[test]
     fn instruction_pow_does_not_change_vm_state_when_crashing_vm() {
         let non_u32 = u64::from(u32::MAX) + 1;
         let program = triton_program! { push {non_u32} push 0 pow halt };
-        instruction_does_not_change_vm_state_when_crashing_vm(ProgramAndInput::new(program), 2);
+        instruction_does_not_change_vm_state_when_crashing_vm(TestableProgram::new(program), 2);
     }
 
     #[test]
     fn instruction_div_mod_on_non_u32_operand_does_not_change_vm_state_when_crashing_vm() {
         let non_u32 = u64::from(u32::MAX) + 1;
         let program = triton_program! { push {non_u32} push 0 div_mod halt };
-        instruction_does_not_change_vm_state_when_crashing_vm(ProgramAndInput::new(program), 2);
+        instruction_does_not_change_vm_state_when_crashing_vm(TestableProgram::new(program), 2);
     }
 
     #[test]
     fn instruction_div_mod_on_denominator_0_does_not_change_vm_state_when_crashing_vm() {
         let program = triton_program! { push 0 push 1 div_mod halt };
-        instruction_does_not_change_vm_state_when_crashing_vm(ProgramAndInput::new(program), 2);
+        instruction_does_not_change_vm_state_when_crashing_vm(TestableProgram::new(program), 2);
     }
 
     #[test]
     fn instruction_pop_count_does_not_change_vm_state_when_crashing_vm() {
         let non_u32 = u64::from(u32::MAX) + 1;
         let program = triton_program! { push {non_u32} pop_count halt };
-        instruction_does_not_change_vm_state_when_crashing_vm(ProgramAndInput::new(program), 1);
+        instruction_does_not_change_vm_state_when_crashing_vm(TestableProgram::new(program), 1);
     }
 
     #[test]
     fn instruction_x_invert_does_not_change_vm_state_when_crashing_vm() {
         let program = triton_program! { x_invert halt };
-        instruction_does_not_change_vm_state_when_crashing_vm(ProgramAndInput::new(program), 0);
+        instruction_does_not_change_vm_state_when_crashing_vm(TestableProgram::new(program), 0);
     }
 
     #[test]
     fn instruction_read_io_does_not_change_vm_state_when_crashing_vm() {
         let program = triton_program! { read_io 1 halt };
-        instruction_does_not_change_vm_state_when_crashing_vm(ProgramAndInput::new(program), 0);
+        instruction_does_not_change_vm_state_when_crashing_vm(TestableProgram::new(program), 0);
     }
 
     #[proptest]

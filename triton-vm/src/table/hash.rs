@@ -617,8 +617,7 @@ pub(crate) mod tests {
     use std::collections::HashMap;
     use strum::IntoEnumIterator;
 
-    use crate::shared_tests::ProgramAndInput;
-    use crate::stark::tests::master_tables_for_low_security_level;
+    use crate::shared_tests::TestableProgram;
     use crate::table::master_table::MasterTable;
     use crate::triton_asm;
     use crate::triton_program;
@@ -658,12 +657,10 @@ pub(crate) mod tests {
         dbg!(aet.height_of_table(TableId::OpStack));
         dbg!(aet.height_of_table(TableId::Cascade));
 
-        let (_, _, master_main_table, master_aux_table, challenges) =
-            master_tables_for_low_security_level(ProgramAndInput::new(program));
-        let challenges = &challenges.challenges;
-
-        let master_main_trace_table = master_main_table.trace_table();
-        let master_aux_trace_table = master_aux_table.trace_table();
+        let proof_artifacts = TestableProgram::new(program).generate_proof_artifacts();
+        let challenges = &proof_artifacts.challenges.challenges;
+        let master_main_trace_table = proof_artifacts.master_main_table.trace_table();
+        let master_aux_trace_table = proof_artifacts.master_aux_table.trace_table();
 
         let last_row = master_main_trace_table.slice(s![-1.., ..]);
         let last_opcode = last_row[[0, MainColumn::CI.master_main_index()]];
