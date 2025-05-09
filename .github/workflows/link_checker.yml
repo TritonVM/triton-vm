@@ -28,7 +28,8 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Restore lychee cache
-        uses: actions/cache@v4
+        id: restore_cache
+        uses: actions/cache/restore@v4
         with:
           path: .lycheecache
           key: cache-lychee-${{ github.sha }}
@@ -39,11 +40,22 @@ jobs:
         id: lychee_run
         with:
           args: |
-            --cache
             --verbose
             --no-progress
+            --cache
+            --cache-exclude-status 400..=599
+            --max-concurrency 1
+            --max-retries 1
+            --retry-wait-time 60
             '.'
         continue-on-error: true
+
+      - name: Save lychee cache
+        uses: actions/cache/save@v4
+        if: ${{ !cancelled() }}
+        with:
+          path: .lycheecache
+          key: ${{ steps.restore_cache.outputs.cache-primary-key }}
 
       - name: List open issues
         if: github.ref == 'refs/heads/master'
