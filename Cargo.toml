@@ -17,6 +17,7 @@ lto = "thin"
 build-override.opt-level = 3
 
 [profile.bench]
+debug = true
 lto = "thin"
 build-override.opt-level = 3
 
