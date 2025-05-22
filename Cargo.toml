@@ -66,6 +66,7 @@ indexmap = { version = "2.7.1", features = ["rayon"] }
 insta = "1.42.1"
 itertools = "0.14"
 lazy_static = "1.5"
+memory-stats = { version = "1.2", features = ["always_use_statm"] }
 ndarray = { version = "0.16", features = ["rayon"] }
 nom = "8.0.0"
 nom-language = "0.1.0"

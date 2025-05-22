@@ -31,25 +31,26 @@
 //!
 //! # A note on the `no_profile` feature design decision
 //!
-//! The feature `no_profile` _disables_ profiling, and is enabled by default.
-//! This seems backwards. However, it is an expression of how Triton VM favors
-//! performance over profiling. Note [how Cargo resolves dependencies][deps]:
-//! if some dependency is transitively declared multiple times, the _union_ of
-//! all features will be enabled.
+//! The feature `no_profile` _disables_ profiling. The feature is enabled by
+//! default, _i.e._, profiling is disabled by default. This seems backwards.
+//! However, it is an expression of favoring performance over profiling data.
 //!
-//! Imagine some dependency `foo` enables a hypothetical `do_profile` feature.
-//! If another dependency `bar` requires the most efficient proof generation,
-//! it would be slowed down by `foo` and could do nothing about it. Instead,
-//! Disabling profiling by <i>en</i>abling the feature `no_profile` allows `bar`
-//! to dictate. This:
+//! Note [how Cargo resolves dependencies][deps]: if some dependency is
+//! transitively declared multiple times, the _union_ of all features will be
+//! enabled. Imagine some dependency `foo` enables a hypothetical `do_profile`
+//! feature. If another dependency `bar` requires the most raw performance, it
+//! would be slowed down by `foo`'s desire to generate profiling data and could
+//! do nothing about it. Instead, disabling profiling by <i>en</i>abling the
+//! feature `no_profile` allows `bar` to dictate. This:
 //! 1. makes the profile reports of `foo` disappear, which is sad, but
-//! 1. lets `bar` be fast, which is more important for Triton VM.
+//! 1. lets `bar` be fast, which is more important.
 //!
 //! [proving]: crate::stark::Stark::prove
 //! [verifying]: crate::stark::Stark::verify
 //! [deps]: https://doc.rust-lang.org/cargo/reference/features.html#feature-unification
 
 use std::cell::RefCell;
+use std::cmp::Ordering;
 use std::cmp::max;
 use std::collections::HashMap;
 use std::env::var as env_var;
@@ -108,8 +109,24 @@ struct Task {
     /// The time at which this task was started last.
     start_time: Instant,
 
-    /// The number of times this task was started,
-    num_invocations: usize,
+    /// The “resident set size” (RSS), i.e., the amount of memory used by this
+    /// process, at the start of this task. In bytes.
+    ///
+    /// If the task is invoked more than once, the rss of subsequent starts
+    /// are accumulated and later averaged.
+    ///
+    /// [`None`] if the rss cannot be obtained, or if an overflow is encountered
+    /// during addition.
+    start_rss: Option<u64>,
+
+    /// The “resident set size” (RSS), i.e., the amount of memory used by this
+    /// process, at the end of this task. In bytes.
+    ///
+    /// See also [`Self::start_rss`].
+    stop_rss: Option<u64>,
+
+    /// The number of times this task was started.
+    num_invocations: u64,
 
     /// The accumulated time spent in this task, across all invocations.
     total_duration: Duration,
@@ -173,11 +190,138 @@ impl InvocationPath {
     }
 }
 
-/// The internal profiler to measure the performance of Triton VM.
+/// In bytes.
+#[derive(Debug, Copy, Clone)]
+enum RssContribution {
+    Addition(u64),
+    NoChange,
+    Removal(u64),
+}
+
+impl RssContribution {
+    fn from_diff(start: Option<u64>, end: Option<u64>) -> Option<Self> {
+        let start = start?;
+        let end = end?;
+        let contribution = match start.cmp(&end) {
+            Ordering::Less => Self::Addition(end - start),
+            Ordering::Equal => Self::NoChange,
+            Ordering::Greater => Self::Removal(start - end),
+        };
+
+        Some(contribution)
+    }
+
+    fn format_colored_aligned(self) -> ColoredString {
+        let (sign, fmt_str, color) = self.formatting_parts();
+
+        format!("{sign}{fmt_str}").color(color)
+    }
+
+    /// The raw parts for formatting `self`: sign, formatted size, color.
+    ///
+    /// Example: ('+', "1.0 KiB", Color::White)
+    fn formatting_parts(self) -> (char, String, Color) {
+        // Use IEC units because this is engineering, not marketing.
+        const KIB: u64 = 1024;
+        const MIB: u64 = KIB * KIB;
+        const GIB: u64 = MIB * KIB;
+        const TIB: u64 = GIB * KIB;
+
+        // Use SI units to determine when to print what. This ensures that cases
+        // like "1000.0 KiB" are turned into "0.1 MiB" instead.
+        const KB: u64 = 1000;
+        const MB: u64 = KB * KB;
+        const GB: u64 = MB * KB;
+        const TB: u64 = GB * KB;
+
+        let fmt = |size, unit, unit_str| {
+            let sub_unit = unit / KIB; // eg, GiB -> MiB. Must never be smaller than KiB.
+            let remainder = Self::round_decimal_fraction::<1>((size % unit) / sub_unit);
+            let size = size / unit;
+            format!("{size}.{remainder:<1} {unit_str}")
+        };
+
+        let (sign, fmt_str, r, g, b) = match self {
+            Self::Addition(v) if v >= TB => ('+', fmt(v, TIB, "TiB"), 255, 0, 0),
+            Self::Addition(v) if v >= GB => ('+', fmt(v, GIB, "GiB"), 255, 75, 0),
+            Self::Addition(v) if v >= MB => ('+', fmt(v, MIB, "MiB"), 255, 150, 0),
+            Self::Addition(v) if v >= KB => ('+', fmt(v, KIB, "KiB"), 255, 255, 120),
+            Self::Addition(v) => ('+', format!("{v} B  "), 200, 200, 200),
+
+            Self::Removal(v) if v >= TB => ('-', fmt(v, TIB, "TiB"), 0, 255, 0),
+            Self::Removal(v) if v >= GB => ('-', fmt(v, GIB, "GiB"), 50, 255, 50),
+            Self::Removal(v) if v >= MB => ('-', fmt(v, MIB, "MiB"), 99, 255, 99),
+            Self::Removal(v) if v >= KB => ('-', fmt(v, KIB, "KiB"), 150, 255, 150),
+            Self::Removal(v) => ('-', format!("{v} B  "), 200, 200, 200),
+
+            Self::NoChange => ('±', "0 B  ".to_string(), 120, 120, 120),
+        };
+        let color = Color::TrueColor { r, g, b };
+
+        (sign, fmt_str, color)
+    }
+
+    /// Treat the supplied number like the fractional part of a decimal and
+    /// round it appropriately, resulting in a number with the requested
+    /// number of digits.
+    ///
+    /// Should only be used with inputs that are sufficiently far from
+    /// `u64::MAX`.
+    ///
+    /// Examples:
+    /// - `round_decimal_fraction::<1>(9949) = 1`
+    /// - `round_decimal_fraction::<2>(9949) = 99`
+    /// - `round_decimal_fraction::<3>(9949) = 995`
+    /// - `round_decimal_fraction::<4>(9949) = 9949`
+    /// - `round_decimal_fraction::<5>(9949) = 99490`
+    ///
+    /// For more examples, see the corresponding test below.
+    fn round_decimal_fraction<const NUM_DIGITS: u32>(n: u64) -> u64 {
+        assert_ne!(0, NUM_DIGITS, "discard the input instead");
+        assert!(NUM_DIGITS < 10, "check for potential overflows");
+
+        if n == 0 {
+            return 0;
+        }
+
+        let n_digits = n.ilog10() + 1;
+        match n_digits.cmp(&NUM_DIGITS) {
+            Ordering::Equal => return n, // already done
+            Ordering::Less => return n * 10_u64.pow(NUM_DIGITS - n_digits), // tack on 0s
+            Ordering::Greater => (),     // the interesting case
+        };
+
+        let divisor = 10_u64.pow(n_digits - NUM_DIGITS);
+        let half_divisor = divisor / 2;
+        let rounded_prefix = (n + half_divisor) / divisor;
+
+        // Check if rounded_prefix "spilled over" to 10^NUM_DIGITS, meaning it
+        // has NUM_DIGITS+1 digits and its value is the smallest NUM_DIGITS+1
+        // digit number.
+        //
+        // Example: NUM_DIGITS=1, rounded_prefix=10  => 1 (10^(1-1))
+        // Example: NUM_DIGITS=2, rounded_prefix=100 => 10 (10^(2-1))
+        if rounded_prefix == 10_u64.pow(NUM_DIGITS) {
+            10_u64.pow(NUM_DIGITS - 1)
+        } else {
+            rounded_prefix
+        }
+    }
+}
+
+/// The internal profiler to measure the performance of various, user-specified
+/// sub-(sub-(sub-…)tasks
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub(crate) struct VMPerformanceProfiler {
     name: String,
     timer: Instant,
+
+    /// The maximum “resident set size” (RSS), i.e., the maximum amount of RAM
+    /// used by this process during execution. In bytes.
+    ///
+    /// This value cannot be obtained on all systems, and is generally
+    /// inaccurate due to system limitations.
+    max_rss: Option<u64>,
 
     /// An index into the `profile`. Keeps track of currently running tasks.
     active_tasks: Vec<usize>,
@@ -193,6 +337,7 @@ impl VMPerformanceProfiler {
         VMPerformanceProfiler {
             name: name.into(),
             timer: Instant::now(),
+            max_rss: resident_set_size(),
             active_tasks: vec![],
             profile: IndexMap::new(),
         }
@@ -212,6 +357,7 @@ impl VMPerformanceProfiler {
     /// Terminate the profiling session and generate a profiling report.
     pub fn finish(mut self) -> VMPerformanceProfile {
         let total_time = self.timer.elapsed();
+        let max_rss = self.max_rss;
 
         for &i in &self.active_tasks {
             self.profile[i].name.push_str(" (unfinished)");
@@ -238,6 +384,11 @@ impl VMPerformanceProfiler {
             let weight =
                 Weight::weigh(task.total_duration.as_secs_f64() / total_time.as_secs_f64());
 
+            let num_invocations = std::cmp::max(task.num_invocations, 1);
+            let mean_start_rss = task.start_rss.map(|rss| rss / num_invocations);
+            let mean_stop_rss = task.stop_rss.map(|rss| rss / num_invocations);
+            let rss_contribution = RssContribution::from_diff(mean_start_rss, mean_stop_rss);
+
             let mut ancestors = vec![];
             let mut current_ancestor_index = task.parent_index;
             while let Some(idx) = current_ancestor_index {
@@ -255,7 +406,8 @@ impl VMPerformanceProfiler {
                 name: task.name.clone(),
                 depth: task.depth,
                 duration: task.total_duration,
-                num_invocations: task.num_invocations,
+                rss_contribution,
+                num_invocations,
                 relative_time,
                 category: task.category.clone(),
                 relative_category_time,
@@ -279,6 +431,7 @@ impl VMPerformanceProfiler {
             tasks: profile,
             name: self.name.clone(),
             total_time,
+            max_rss,
             category_times,
             cycle_count: None,
             padded_height: None,
@@ -293,9 +446,13 @@ impl VMPerformanceProfiler {
         location: CodeLocation,
         category: Option<String>,
     ) {
+        let rss = resident_set_size();
+        self.max_rss = std::cmp::max(self.max_rss, rss);
+
         if env_var(ENV_VAR_PROFILER_LIVE_UPDATE).is_ok() {
             let name = name.clone().into();
-            println!("start: {name} (at {location})");
+            let rss = rss.map_or_else(|| "unknown".to_string(), |r| r.to_string());
+            println!("start: {name} (at {location}) current memory usage: {rss} bytes");
         }
 
         let parent_index = self.active_tasks.last().copied();
@@ -309,6 +466,8 @@ impl VMPerformanceProfiler {
             parent_index,
             depth: self.active_tasks.len(),
             start_time: Instant::now(),
+            start_rss: Some(0),
+            stop_rss: Some(0),
             num_invocations: 0,
             total_duration: Duration::ZERO,
             category,
@@ -316,6 +475,11 @@ impl VMPerformanceProfiler {
         let new_task = self.profile.entry(path.clone()).or_insert_with(new_task);
         new_task.start_time = Instant::now();
         new_task.num_invocations += 1;
+        new_task.start_rss = if let (Some(acc), Some(rss)) = (new_task.start_rss, rss) {
+            acc.checked_add(rss)
+        } else {
+            None
+        };
 
         let new_task_index = self.profile.get_index_of(&path).unwrap();
         self.active_tasks.push(new_task_index);
@@ -343,9 +507,19 @@ impl VMPerformanceProfiler {
         let duration = task.start_time.elapsed();
         task.total_duration += duration;
 
+        let rss = resident_set_size();
+        self.max_rss = std::cmp::max(self.max_rss, rss);
+        task.stop_rss =
+            if let (Some(_), Some(acc), Some(rss)) = (task.start_rss, task.stop_rss, rss) {
+                acc.checked_add(rss)
+            } else {
+                None
+            };
+
         if env_var(ENV_VAR_PROFILER_LIVE_UPDATE).is_ok() {
             let name = &task.name;
-            println!("stop:  {name} – took {duration:.2?}");
+            let rss = rss.map_or_else(|| "unknown".to_string(), |r| r.to_string());
+            println!("stop:  {name} – took {duration:.2?} current memory usage: {rss} bytes");
         }
     }
 }
@@ -396,7 +570,8 @@ struct TaskReport {
     name: String,
     depth: usize,
     duration: Duration,
-    num_invocations: usize,
+    rss_contribution: Option<RssContribution>,
+    num_invocations: u64,
     relative_time: f64,
     category: Option<String>,
     relative_category_time: Option<f64>,
@@ -413,6 +588,10 @@ pub struct VMPerformanceProfile {
     name: String,
     tasks: Vec<TaskReport>,
     total_time: Duration,
+
+    /// Largest measured resident set size, in bytes.
+    max_rss: Option<u64>,
+
     category_times: HashMap<String, Duration>,
     cycle_count: Option<usize>,
     padded_height: Option<usize>,
@@ -452,15 +631,16 @@ impl VMPerformanceProfile {
 impl Default for VMPerformanceProfile {
     fn default() -> Self {
         let name = if cfg!(feature = "no_profile") {
-            "Triton VM's profiler is disabled through feature `no_profile`."
+            "The performance profiler is disabled through feature `no_profile`."
         } else {
-            "Triton VM Performance Profile"
+            "Performance Profile"
         };
 
         Self {
             name: name.to_string(),
             tasks: vec![],
             total_time: Duration::default(),
+            max_rss: None,
             category_times: HashMap::default(),
             cycle_count: None,
             padded_height: None,
@@ -497,16 +677,24 @@ impl Display for VMPerformanceProfile {
 
         let total_time = Self::display_time_aligned(self.total_time).bold();
         let num_reps = format!("{:>num_reps_width$}", "#Reps").bold();
-        let share_title = "Share".to_string().bold();
-        let category_title = if self.category_times.is_empty() {
-            ColoredString::default()
+        let share_title = "Share".bold();
+        let category_title = "Category".bold();
+        let category_title_width = max_category_width + 11; // additional chars: "( - xx.xx%)"
+        let rss_title = if let Some(rss) = self.max_rss {
+            let (sign, rss_fmt, _) = RssContribution::Addition(rss).formatting_parts();
+            let sign = if sign == '+' { ' ' } else { sign };
+            format!("{sign}{rss_fmt}").bold()
         } else {
-            "Category".bold()
+            "? KiB".dimmed()
         };
-        writeln!(
-            f,
-            "{title}     {total_time}   {num_reps}   {share_title}  {category_title}"
-        )?;
+        let rss_width = 10; // e.g., +456.7 GiB
+
+        write!(f, "{title}")?;
+        write!(f, "     {total_time}")?;
+        write!(f, "   {num_reps}")?;
+        write!(f, "   {share_title}")?;
+        write!(f, "  {category_title:<category_title_width$}")?;
+        writeln!(f, "  {rss_title:>rss_width$}")?;
 
         for task in &self.tasks {
             for &ancestor_index in &task.ancestors {
@@ -520,38 +708,43 @@ impl Display for VMPerformanceProfile {
             let tracer = if is_last_sibling { "└" } else { "├" }
                 .color(max(task.weight, task.younger_max_weight).color());
             let dash = "─".color(task.weight.color());
-            write!(f, "{tracer}{dash}")?;
 
             let task_name_area = max_width - 2 * task.depth;
-            let task_name_colored = task.name.color(task.weight.color());
-            let task_name_colored = format!("{task_name_colored:<task_name_area$}");
-            let task_time = format!("{:<10}", Self::display_time_aligned(task.duration));
-            let task_time_colored = task_time.color(task.weight.color());
-            let num_iterations = format!("{:>num_reps_width$}", task.num_invocations);
-            let num_iterations_colored = num_iterations.color(task.weight.color());
+            let task_name = task.name.color(task.weight.color());
+            let task_name = format!("{task_name:<task_name_area$}");
+            let task_time = format!("{:<10}", Self::display_time_aligned(task.duration))
+                .color(task.weight.color());
+            let num_iterations =
+                format!("{:>num_reps_width$}", task.num_invocations).color(task.weight.color());
             let relative_time_string =
-                format!("{:>6}", format!("{:2.2}%", 100.0 * task.relative_time));
-            let relative_time_string_colored = relative_time_string.color(task.weight.color());
+                format!("{:5.2}%", 100.0 * task.relative_time).color(task.weight.color());
             let relative_category_time = task
                 .relative_category_time
-                .map(|t| format!("{:>6}", format!("{:2.2}%", 100.0 * t)))
-                .unwrap_or_default();
-            let maybe_category = task.category.as_ref();
-            let category_and_relative_time = maybe_category
-                .map(|cat| format!("({cat:<max_category_width$} – {relative_category_time})"))
+                .map(|t| format!("{:6.2}%", 100.0 * t))
                 .unwrap_or_default();
 
             let relative_category_color = task
                 .relative_category_time
                 .map_or(Color::White, |t| Weight::weigh(t).color());
-            let category_and_relative_time_colored =
-                category_and_relative_time.color(relative_category_color);
+            let category_and_relative_time = task
+                .category
+                .as_ref()
+                .map(|cat| format!("({cat:<max_category_width$} –{relative_category_time})"))
+                .unwrap_or_default()
+                .color(relative_category_color);
 
-            writeln!(
-                f,
-                "{task_name_colored}   {task_time_colored}  {num_iterations_colored}  \
-                 {relative_time_string_colored}  {category_and_relative_time_colored}"
-            )?;
+            let rss_contribution = task
+                .rss_contribution
+                .map(|c| c.format_colored_aligned())
+                .unwrap_or_default();
+
+            write!(f, "{tracer}{dash}")?;
+            write!(f, "{task_name}")?;
+            write!(f, "   {task_time}")?;
+            write!(f, "  {num_iterations}")?;
+            write!(f, "  {relative_time_string}")?;
+            write!(f, "  {category_and_relative_time:<category_title_width$}")?;
+            writeln!(f, "  {rss_contribution:>rss_width$}")?;
         }
 
         if !self.category_times.is_empty() {
@@ -586,6 +779,9 @@ impl Display for VMPerformanceProfile {
         }
         let tasks = self.tasks.iter();
         let num_iters = tasks.map(|t| t.num_invocations).min().unwrap_or(1);
+        let Ok(num_iters) = usize::try_from(num_iters) else {
+            return Ok(());
+        };
 
         writeln!(f)?;
         if let Some(cycles) = self.cycle_count {
@@ -611,6 +807,27 @@ impl Display for VMPerformanceProfile {
 
         Ok(())
     }
+}
+
+/// The “resident set size” (RSS) in bytes.
+///
+/// The RSS (on windows, “working set”) is the total amount of memory in use by
+/// the current process. Generally, this metric is not completely accurate. On
+/// some platforms, it cannot even be obtained.
+#[cfg(any(debug_assertions, not(feature = "no_profile")))]
+fn resident_set_size() -> Option<u64> {
+    let stats = memory_stats::memory_stats()?;
+    let rss = stats.physical_mem.try_into().ok()?;
+
+    Some(rss)
+}
+
+/// The “resident set size” (RSS) in bytes. Disabled in this build, probably
+/// because of feature [`no_profile`](crate::profiler).
+#[cfg(not(any(debug_assertions, not(feature = "no_profile"))))]
+#[inline(always)]
+fn resident_set_size() -> Option<u64> {
+    None
 }
 
 /// Start or stop a profiling task. Does nothing if the profiler is not running;
@@ -673,6 +890,40 @@ mod tests {
     use test_strategy::proptest;
 
     use super::*;
+
+    #[test]
+    fn formatting_parts() {
+        let (sign, fmt_str, _) = RssContribution::Addition(1_024).formatting_parts();
+        assert_eq!('+', sign);
+        assert_eq!("1.0 KiB", fmt_str);
+
+        let (sign, fmt_str, _) = RssContribution::Removal(37_258_841_293).formatting_parts();
+        assert_eq!('-', sign);
+        assert_eq!("34.7 GiB", fmt_str);
+
+        let (_, fmt_str, _) = RssContribution::Addition(1_000).formatting_parts();
+        assert_eq!("0.1 KiB", fmt_str);
+
+        let (_, fmt_str, _) = RssContribution::Addition(1023 * 1_024).formatting_parts();
+        assert_eq!("0.1 MiB", fmt_str);
+    }
+
+    #[test]
+    fn round_decimal_fraction() {
+        assert_eq!(9, RssContribution::round_decimal_fraction::<1>(9));
+        assert_eq!(9, RssContribution::round_decimal_fraction::<1>(94));
+        assert_eq!(1, RssContribution::round_decimal_fraction::<1>(95));
+
+        assert_eq!(90, RssContribution::round_decimal_fraction::<2>(9));
+        assert_eq!(94, RssContribution::round_decimal_fraction::<2>(94));
+        assert_eq!(95, RssContribution::round_decimal_fraction::<2>(95));
+        assert_eq!(99, RssContribution::round_decimal_fraction::<2>(9949));
+        assert_eq!(10, RssContribution::round_decimal_fraction::<2>(9950));
+
+        assert_eq!(900, RssContribution::round_decimal_fraction::<3>(9));
+        assert_eq!(940, RssContribution::round_decimal_fraction::<3>(94));
+        assert_eq!(950, RssContribution::round_decimal_fraction::<3>(95));
+    }
 
     #[test]
     fn sanity() {
