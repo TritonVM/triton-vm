@@ -257,5 +257,4 @@ For hints, see the [Tip5 paper](https://eprint.iacr.org/2023/107.pdf).
 1. `🥬^5 + state_0·🥬^4 + state_1·🥬^3 + state_2·🥬^2 + state_3·🥬 + state_4 - 🫑`
 1. `(Mode - 0)·(CI - opcode(sponge_init))·(round_no - 5)`
 
-[^oxfoi]:
-This is a special property of the Oxfoi prime.
+[^oxfoi]: This is a special property of the Oxfoi prime.

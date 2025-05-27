@@ -143,9 +143,6 @@ Otherwise, it remains unchanged.
 1. `IsHashInputPadding - 1`
 1. `(rate - 1 - IndexInChunk) · (IsTablePadding - 1)`
 
----
-
 [tip5]: https://eprint.iacr.org/2023/107.pdf
 
-[^padding]:
-See also section 2.5 “Fixed-Length versus Variable-Length” in the [Tip5 paper][tip5].
+[^padding]: See also section 2.5 “Fixed-Length versus Variable-Length” in the [Tip5 paper][tip5].
