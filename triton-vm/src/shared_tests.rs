@@ -6,19 +6,19 @@ use proptest::collection::vec;
 use proptest::prelude::*;
 use proptest_arbitrary_interop::arb;
 use rand::Rng;
-use rand::prelude::*;
+use rand::SeedableRng;
+use rand::prelude::StdRng;
 use test_strategy::Arbitrary;
 use twenty_first::prelude::*;
 
-use crate::aet::AlgebraicExecutionTrace;
+use crate::challenges::Challenges;
 use crate::error::VMError;
 use crate::fri::AuthenticationStructure;
 use crate::prelude::*;
 use crate::profiler::profiler;
 use crate::proof_item::FriResponse;
+use crate::table::master_table::MasterAuxTable;
 use crate::table::master_table::MasterMainTable;
-
-pub(crate) const DEFAULT_LOG2_FRI_EXPANSION_FACTOR_FOR_TESTS: usize = 2;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Arbitrary)]
 #[filter(!#self.0.is_zero())]
@@ -95,84 +95,23 @@ impl LeavedMerkleTreeTestData {
     }
 }
 
-/// Prove correct execution of the supplied program, then verify said proof.
-/// Also print the [`VMPerformanceProfile`][profile] for both proving and
-/// verification to standard out.
-///
-/// [profile]: crate::profiler::VMPerformanceProfile
-pub(crate) fn prove_and_verify(
-    program_and_input: ProgramAndInput,
-    log_2_fri_expansion_factor: usize,
-) {
-    let ProgramAndInput {
-        program,
-        public_input,
-        non_determinism,
-    } = program_and_input;
-
-    crate::profiler::start("");
-    profiler!(start "Pre-flight");
-    let claim = Claim::about_program(&program).with_input(public_input.clone());
-    let (aet, public_output) = VM::trace_execution(program, public_input, non_determinism).unwrap();
-    let claim = claim.with_output(public_output);
-    let stark = low_security_stark(log_2_fri_expansion_factor);
-    profiler!(stop "Pre-flight");
-
-    profiler!(start "Prove");
-    let proof = stark.prove(&claim, &aet).unwrap();
-    profiler!(stop "Prove");
-
-    profiler!(start "Verify");
-    assert!(let Ok(()) = stark.verify(&claim, &proof));
-    profiler!(stop "Verify");
-    let profile = crate::profiler::finish();
-
-    let_assert!(Ok(padded_height) = proof.padded_height());
-    let fri = stark.fri(padded_height).unwrap();
-    let profile = profile
-        .with_padded_height(padded_height)
-        .with_fri_domain_len(fri.domain.length);
-    println!("{profile}");
-}
-
-pub(crate) fn low_security_stark(log_expansion_factor: usize) -> Stark {
-    let security_level = 32;
-    Stark::new(security_level, log_expansion_factor)
-}
-
-pub(crate) fn construct_master_main_table(
-    stark: Stark,
-    aet: &AlgebraicExecutionTrace,
-) -> MasterMainTable {
-    let padded_height = aet.padded_height();
-    let fri = stark.fri(padded_height).unwrap();
-    let max_degree = stark.max_degree(padded_height);
-    let quotient_domain = Prover::quotient_domain(fri.domain, max_degree).unwrap();
-    let seed = StdRng::seed_from_u64(6718321586953195571).random();
-
-    MasterMainTable::new(
-        aet,
-        quotient_domain,
-        fri.domain,
-        stark.num_trace_randomizers,
-        seed,
-    )
-}
-
-/// Program and associated inputs.
+/// Program and associated inputs, as well as parameters with which to prove
+/// correct execution.
 #[derive(Debug, Clone, Eq, PartialEq)]
-pub(crate) struct ProgramAndInput {
+pub(crate) struct TestableProgram {
     pub program: Program,
     pub public_input: PublicInput,
     pub non_determinism: NonDeterminism,
+    pub stark: Stark,
 }
 
-impl ProgramAndInput {
+impl TestableProgram {
     pub fn new(program: Program) -> Self {
         Self {
             program,
             public_input: PublicInput::default(),
             non_determinism: NonDeterminism::default(),
+            stark: Stark::low_security(),
         }
     }
 
@@ -185,6 +124,12 @@ impl ProgramAndInput {
     #[must_use]
     pub fn with_non_determinism<ND: Into<NonDeterminism>>(mut self, non_determinism: ND) -> Self {
         self.non_determinism = non_determinism.into();
+        self
+    }
+
+    #[must_use]
+    pub fn use_stark(mut self, stark: Stark) -> Self {
+        self.stark = stark;
         self
     }
 
@@ -202,4 +147,93 @@ impl ProgramAndInput {
         let non_determinism = self.non_determinism();
         VM::run(self.program, public_input, non_determinism)
     }
+
+    /// Prove correct execution of the program, then verify said proof.
+    ///
+    /// Also print the [`VMPerformanceProfile`][profile] for both proving and
+    /// verification to standard out.
+    ///
+    /// [profile]: crate::profiler::VMPerformanceProfile
+    pub fn prove_and_verify(self) {
+        let Self {
+            program,
+            public_input,
+            non_determinism,
+            stark,
+        } = self;
+
+        crate::profiler::start("");
+        profiler!(start "Pre-flight");
+        let claim = Claim::about_program(&program).with_input(public_input.clone());
+        let (aet, public_output) =
+            VM::trace_execution(program, public_input, non_determinism).unwrap();
+        let claim = claim.with_output(public_output);
+        profiler!(stop "Pre-flight");
+
+        profiler!(start "Prove");
+        let proof = stark.prove(&claim, &aet).unwrap();
+        profiler!(stop "Prove");
+
+        profiler!(start "Verify");
+        assert!(let Ok(()) = stark.verify(&claim, &proof));
+        profiler!(stop "Verify");
+        let profile = crate::profiler::finish();
+
+        let_assert!(Ok(padded_height) = proof.padded_height());
+        assert!(aet.padded_height() == padded_height);
+
+        let fri = stark.fri(padded_height).unwrap();
+        let profile = profile
+            .with_cycle_count(aet.height_of_table(TableId::Processor))
+            .with_padded_height(padded_height)
+            .with_fri_domain_len(fri.domain.length);
+        println!("{profile}");
+    }
+
+    pub fn generate_proof_artifacts(self) -> ProofArtifacts {
+        let Self {
+            program,
+            public_input,
+            non_determinism,
+            stark,
+        } = self;
+
+        let claim = Claim::about_program(&program).with_input(public_input.clone());
+        let (aet, stdout) = VM::trace_execution(program, public_input, non_determinism).unwrap();
+        let claim = claim.with_output(stdout);
+
+        // construct master main table
+        let padded_height = aet.padded_height();
+        let fri_domain = stark.fri(padded_height).unwrap().domain;
+        let max_degree = stark.max_degree(padded_height);
+
+        let mut master_main_table = MasterMainTable::new(
+            &aet,
+            Prover::quotient_domain(fri_domain, max_degree).unwrap(),
+            fri_domain,
+            stark.num_trace_randomizers,
+            StdRng::seed_from_u64(6718321586953195571).random(),
+        );
+        master_main_table.pad();
+        let master_main_table = master_main_table;
+
+        let challenges = Challenges::placeholder(&claim);
+        let master_aux_table = master_main_table.extend(&challenges);
+
+        ProofArtifacts {
+            claim,
+            master_main_table,
+            master_aux_table,
+            challenges,
+        }
+    }
+}
+
+/// Various intermediate artifacts required for proof generation.
+#[must_use]
+pub struct ProofArtifacts {
+    pub claim: Claim,
+    pub master_main_table: MasterMainTable,
+    pub master_aux_table: MasterAuxTable,
+    pub challenges: Challenges,
 }

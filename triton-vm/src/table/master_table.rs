@@ -1387,9 +1387,7 @@ mod tests {
     use crate::constraints::static_air_constraint_evaluation_tasm;
     use crate::memory_layout::DynamicTasmConstraintEvaluationMemoryLayout;
     use crate::memory_layout::StaticTasmConstraintEvaluationMemoryLayout;
-    use crate::shared_tests::ProgramAndInput;
-    use crate::stark::tests::master_main_table_for_low_security_level;
-    use crate::stark::tests::master_tables_for_low_security_level;
+    use crate::shared_tests::TestableProgram;
     use crate::table::degree_lowering::DegreeLoweringAuxColumn;
     use crate::table::degree_lowering::DegreeLoweringMainColumn;
     use crate::triton_program;
@@ -1398,8 +1396,9 @@ mod tests {
 
     #[test]
     fn main_table_width_is_correct() {
-        let program = ProgramAndInput::new(triton_program!(halt));
-        let (_, _, master_main_table) = master_main_table_for_low_security_level(program);
+        let master_main_table = TestableProgram::new(triton_program!(halt))
+            .generate_proof_artifacts()
+            .master_main_table;
 
         assert_eq!(
             <ProgramTable as AIR>::MainColumn::COUNT,
@@ -1441,8 +1440,9 @@ mod tests {
 
     #[test]
     fn aux_table_width_is_correct() {
-        let program = ProgramAndInput::new(triton_program!(halt));
-        let (_, _, _, master_aux_table, _) = master_tables_for_low_security_level(program);
+        let master_aux_table = TestableProgram::new(triton_program!(halt))
+            .generate_proof_artifacts()
+            .master_aux_table;
 
         assert_eq!(
             <ProgramTable as AIR>::AuxColumn::COUNT,
@@ -1484,10 +1484,13 @@ mod tests {
 
     #[test]
     fn trace_tables_are_in_column_major_order() {
-        let (_, _, main, aux, _) =
-            master_tables_for_low_security_level(ProgramAndInput::new(triton_program!(halt)));
-        main.trace_table().column(0).as_slice().unwrap();
-        aux.trace_table().column(0).as_slice().unwrap();
+        let artifacts = TestableProgram::new(triton_program!(halt)).generate_proof_artifacts();
+
+        let main = artifacts.master_main_table.trace_table();
+        assert!(main.column(0).as_slice().is_some());
+
+        let aux = artifacts.master_aux_table.trace_table();
+        assert!(aux.column(0).as_slice().is_some());
     }
 
     #[test]
@@ -1511,10 +1514,9 @@ mod tests {
 
         // ensure caching _can_ happen by overwriting environment variables
         crate::config::overwrite_lde_trace_caching_to(CacheDecision::Cache);
-        let program = ProgramAndInput::new(triton_program!(halt));
-        let (_, _, main_table, aux_table, _) = master_tables_for_low_security_level(program);
-        row_hashes_are_identical(main_table);
-        row_hashes_are_identical(aux_table);
+        let artifacts = TestableProgram::new(triton_program!(halt)).generate_proof_artifacts();
+        row_hashes_are_identical(artifacts.master_main_table);
+        row_hashes_are_identical(artifacts.master_aux_table);
     }
 
     #[proptest]
@@ -1541,8 +1543,9 @@ mod tests {
 
         // ensure caching _can_ happen by overwriting environment variables
         crate::config::overwrite_lde_trace_caching_to(CacheDecision::Cache);
-        let program = ProgramAndInput::new(triton_program!(halt));
-        let (_, _, main_table, aux_table, _) = master_tables_for_low_security_level(program);
+        let artifacts = TestableProgram::new(triton_program!(halt)).generate_proof_artifacts();
+        let main_table = artifacts.master_main_table;
+        let aux_table = artifacts.master_aux_table;
 
         let len = main_table.trace_table.nrows();
         let row_indices = row_indices.into_iter().map(|idx| idx % len).collect_vec();
