@@ -444,9 +444,7 @@ where
 
         // Now knowing that the low-degree extensions are not cached, hash all
         // FRI domain rows of the table using just-in-time low-degree-extension.
-        let num_threads = std::thread::available_parallelism()
-            .map(|x| x.get())
-            .unwrap_or(1);
+        let num_threads = rayon::current_num_threads().max(1);
         let eval_domain = self.evaluation_domain();
         let mut sponge_states = vec![SpongeWithPendingAbsorb::new(); eval_domain.length];
 

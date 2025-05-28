@@ -935,9 +935,7 @@ impl Prover {
             .for_each(|mut row| intt(row.as_slice_mut().unwrap()));
 
         // scale every row by Ψ^-k · ι^(-k(j+i·M))
-        let num_threads = std::thread::available_parallelism()
-            .map(|t| t.get())
-            .unwrap_or(1);
+        let num_threads = rayon::current_num_threads().max(1);
         let chunk_size = (num_output_rows / num_threads).max(1);
         let iota_inverse = iota.inverse();
         let psi_inverse = psi.inverse();
