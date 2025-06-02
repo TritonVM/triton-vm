@@ -858,13 +858,14 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
             .collect_vec();
 
         // Computing all node degree is slow; this cache de-duplicates work.
-        let node_degrees = Self::all_nodes_in_multicircuit(&multicircuit)
-            .into_iter()
+        let all_nodes = Self::all_nodes_in_multicircuit(&multicircuit);
+        let node_degrees = all_nodes
+            .iter()
             .map(|node| (node.id, node.degree()))
             .collect::<HashMap<_, _>>();
 
         // Only nodes with degree > target_degree need changing.
-        let high_degree_nodes = Self::all_nodes_in_multicircuit(&multicircuit)
+        let high_degree_nodes = all_nodes
             .into_iter()
             .filter(|node| node_degrees[&node.id] > target_degree)
             .unique()
