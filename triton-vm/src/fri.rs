@@ -495,8 +495,8 @@ impl FriVerifier<'_> {
 }
 
 impl VerifierRound {
-    fn merkle_tree_height(&self) -> usize {
-        self.domain.length.ilog2() as usize
+    fn merkle_tree_height(&self) -> u32 {
+        self.domain.length.ilog2()
     }
 }
 

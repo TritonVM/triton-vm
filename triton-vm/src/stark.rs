@@ -1152,7 +1152,7 @@ impl Verifier {
         let log_2_padded_height = proof_stream.dequeue()?.try_into_log2_padded_height()?;
         let padded_height = 1 << log_2_padded_height;
         let fri = self.parameters.fri(padded_height)?;
-        let merkle_tree_height = fri.domain.length.ilog2() as usize;
+        let merkle_tree_height = fri.domain.length.ilog2();
 
         // The trace domain used by the prover is not necessarily of length
         // `padded_height`. Concretely, this is the case if the number of trace
