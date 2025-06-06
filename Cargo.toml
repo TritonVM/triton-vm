@@ -155,4 +155,4 @@ verbose_bit_mask = "warn"
 wildcard_imports = "warn"
 
 [patch.crates-io]
-twenty-first = { git = "https://github.com/Neptune-Crypto/twenty-first.git", rev = "585a051" }
+twenty-first = { git = "https://github.com/Neptune-Crypto/twenty-first.git", rev = "572a3aa" }
