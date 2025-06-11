@@ -73,7 +73,7 @@ impl Default for Config {
 /// make an automatic decision based on free memory. Use this function if you
 /// know your requirements better.
 ///
-/// [lde]: crate::table::master_table::MasterTable::maybe_low_degree_extend_all_columns
+/// [lde]: crate::arithmetic_domain::ArithmeticDomain::low_degree_extension
 /// [proving]: crate::stark::Stark::prove
 pub fn overwrite_lde_trace_caching_to(decision: CacheDecision) {
     CONFIG.with_borrow_mut(|config| config.cache_lde_trace_overwrite = Some(decision));

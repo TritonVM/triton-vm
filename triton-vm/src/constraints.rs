@@ -23,7 +23,6 @@ mod tests {
     use crate::table::auxiliary_table::Evaluable;
     use crate::table::master_table::MasterAuxTable;
     use crate::table::master_table::MasterMainTable;
-    use crate::table::master_table::MasterTable;
 
     use super::dynamic_air_constraint_evaluation_tasm;
     use super::static_air_constraint_evaluation_tasm;

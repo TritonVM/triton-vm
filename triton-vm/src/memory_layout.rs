@@ -8,7 +8,6 @@ use twenty_first::prelude::*;
 
 use crate::table::master_table::MasterAuxTable;
 use crate::table::master_table::MasterMainTable;
-use crate::table::master_table::MasterTable;
 
 /// Memory layout guarantees for the [Triton assembly AIR constraint
 /// evaluator][tasm_air] with input lists at dynamically known memory locations.

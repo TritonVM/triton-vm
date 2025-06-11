@@ -74,7 +74,6 @@ impl AllSubstitutions {
             use air::table_column::MasterAuxColumn;
 
             use crate::challenges::Challenges;
-            use crate::table::master_table::MasterTable;
 
             #main_repr_usize
             #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, EnumCount, EnumIter)]

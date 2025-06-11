@@ -1,3 +1,56 @@
+//! A Master Table is, in some sense, a top-level table of Triton VM. It
+//! contains all the data but little logic beyond bookkeeping and presenting the
+//! data in useful ways. Conversely, the individual tables contain no data but
+//! all the respective logic. Master Tables are responsible for managing the
+//! individual tables and for presenting the right data to the right
+//! tables, serving as a clean interface between the VM and the individual
+//! tables.
+//!
+//! As a mental model, it is perfectly fine to think of the data for the
+//! individual tables as completely separate from each other. Only the
+//! [cross-table arguments][cross_arg] link all tables together.
+//!
+//! Conceptually, there are two Master Tables: the [`MasterMainTable`], and the
+//! [`MasterAuxiliaryTable`][master_aux_table]. The lifecycle of the Master
+//! Tables is as follows:
+//! 1. The [`MasterMainTable`] is instantiated and filled using the Algebraic
+//!    Execution Trace.
+//! 2. The [`MasterMainTable`] is padded using logic from the individual tables.
+//! 3. The still-empty entries in the [`MasterMainTable`] are filled with random
+//!    elements. This step is also known as “trace randomization.”
+//! 4. If there is enough RAM, then each column of the [`MasterMainTable`] is
+//!    low-degree extended. The results are stored on the [`MasterMainTable`]
+//!    for quick access later. If there is not enough RAM, then the low-degree
+//!    extensions of the trace columns will be computed and sometimes recomputed
+//!    just-in-time, and the memory freed afterward. The caching behavior [can
+//!    be forced][overwrite_cache].
+//! 5. The [`MasterMainTable`] is used to derive the
+//!    [`MasterAuxiliaryTable`][master_aux_table] using logic from the
+//!    individual tables.
+//! 6. The [`MasterAuxiliaryTable`][master_aux_table] is trace-randomized.
+//! 7. Each column of the [`MasterAuxiliaryTable`][master_aux_table] is
+//!    [low-degree extended][lde]. The effects are the same as for the
+//!    [`MasterMainTable`].
+//! 8. Using the [`MasterMainTable`] and the
+//!    [`MasterAuxiliaryTable`][master_aux_table], the [quotient
+//!    codeword][master_quot_table] is derived using the AIR. Each individual
+//!    table defines that part of the AIR that is relevant to it.
+//!
+//! The following points are of note:
+//! - The [`MasterAuxiliaryTable`][master_aux_table]'s rightmost columns are the
+//!   randomizer codewords. These are necessary for zero-knowledge.
+//! - The cross-table argument has zero width for the [`MasterMainTable`] and
+//!   [`MasterAuxiliaryTable`][master_aux_table] but does induce a nonzero
+//!   number of constraints and thus terms in the [quotient
+//!   combination][all_quotients_combined].
+//!
+//! [cross_arg]: air::cross_table_argument::GrandCrossTableArg
+//! [overwrite_cache]: crate::config::overwrite_lde_trace_caching_to
+//! [lde]: ArithmeticDomain::low_degree_extension
+//! [quot_table]: MasterTable::quotient_domain_table
+//! [master_aux_table]: MasterAuxTable
+//! [master_quot_table]: all_quotients_combined
+
 use std::borrow::Borrow;
 use std::mem::MaybeUninit;
 use std::ops::Add;
@@ -110,58 +163,6 @@ use crate::table::auxiliary_table::all_degrees_with_origin;
 use crate::table::degree_lowering::DegreeLoweringTable;
 use crate::table::processor::ClkJumpDiffs;
 
-/// A Master Table is, in some sense, a top-level table of Triton VM. It
-/// contains all the data but little logic beyond bookkeeping and presenting the
-/// data in useful ways. Conversely, the individual tables contain no data but
-/// all the respective logic. Master Tables are responsible for managing the
-/// individual tables and for presenting the right data to the right
-/// tables, serving as a clean interface between the VM and the individual
-/// tables.
-///
-/// As a mental model, it is perfectly fine to think of the data for the
-/// individual tables as completely separate from each other. Only the
-/// [cross-table arguments][cross_arg] link all tables together.
-///
-/// Conceptually, there are two Master Tables: the [`MasterMainTable`], and the
-/// Master Auxiliary Table. The lifecycle of the Master Tables is
-/// as follows:
-/// 1. The [`MasterMainTable`] is instantiated and filled using the Algebraic
-///    Execution Trace.
-/// 2. The [`MasterMainTable`] is padded using logic from the individual tables.
-/// 3. The still-empty entries in the [`MasterMainTable`] are filled with random
-///    elements. This step is also known as “trace randomization.”
-/// 4. If there is enough RAM, then each column of the [`MasterMainTable`] is
-///    low-degree extended. The results are stored on the [`MasterMainTable`]
-///    for quick access later. If there is not enough RAM, then the low-degree
-///    extensions of the trace columns will be computed and sometimes recomputed
-///    just-in-time, and the memory freed afterward. The caching behavior [can
-///    be forced][overwrite_cache].
-/// 5. The [`MasterMainTable`] is used to derive the
-///    [`MasterAuxiliaryTable`][master_aux_table] using logic from the
-///    individual tables.
-/// 6. The [`MasterAuxiliaryTable`][master_aux_table] is trace-randomized.
-/// 7. Each column of the [`MasterAuxiliaryTable`][master_aux_table] is
-///    [low-degree extended][lde]. The effects are the same as for the
-///    [`MasterMainTable`].
-/// 8. Using the [`MasterMainTable`] and the
-///    [`MasterAuxiliaryTable`][master_aux_table], the [quotient
-///    codeword][master_quot_table] is derived using the AIR. Each individual
-///    table defines that part of the AIR that is relevant to it.
-///
-/// The following points are of note:
-/// - The [`MasterAuxiliaryTable`][master_aux_table]'s rightmost columns are the
-///   randomizer codewords. These are necessary for zero-knowledge.
-/// - The cross-table argument has zero width for the [`MasterMainTable`] and
-///   [`MasterAuxiliaryTable`][master_aux_table] but does induce a nonzero
-///   number of constraints and thus terms in the [quotient
-///   combination][all_quotients_combined].
-///
-/// [cross_arg]: air::cross_table_argument::GrandCrossTableArg
-/// [overwrite_cache]: crate::config::overwrite_lde_trace_caching_to
-/// [lde]: Self::maybe_low_degree_extend_all_columns
-/// [quot_table]: Self::quotient_domain_table
-/// [master_aux_table]: MasterAuxTable
-/// [master_quot_table]: all_quotients_combined
 pub(crate) trait MasterTable: Sync
 where
     StandardUniform: Distribution<Self::Field>,
@@ -183,8 +184,8 @@ where
     fn domains(&self) -> ProverDomains;
 
     /// The [`ArithmeticDomain`] to [low-degree extend] into.
-    /// The larger of the [`quotient_domain`](Self::quotient_domain) and the
-    /// [`fri_domain`](Self::fri_domain).
+    /// The larger of the [`quotient_domain`](ProverDomains::quotient) and the
+    /// [`fri_domain`](ProverDomains::fri).
     ///
     /// [low-degree extend]: Self::maybe_low_degree_extend_all_columns
     fn evaluation_domain(&self) -> ArithmeticDomain {
@@ -369,7 +370,7 @@ where
     /// in the corresponding column without compromising zero-knowledge.
     ///
     /// In order for the trace randomizer to not influence the trace on the
-    /// [trace domain][Self::trace_domain], it must be multiplied with a
+    /// [trace domain][ProverDomains::trace], it must be multiplied with a
     /// polynomial that evaluates to zero on that domain. The polynomial of
     /// lowest degree with this property is the corresponding
     /// [zerofier][ArithmeticDomain::zerofier]. The randomized trace column
@@ -643,7 +644,7 @@ impl SpongeWithPendingAbsorb {
     }
 }
 
-/// See [`MasterTable`].
+/// The Master Main Table, as described in the [module documentation][self].
 #[derive(Debug, Clone)]
 pub struct MasterMainTable {
     pub num_trace_randomizers: usize,
@@ -664,7 +665,8 @@ pub struct MasterMainTable {
     low_degree_extended_table: Option<Array2<BFieldElement>>,
 }
 
-/// See [`MasterTable`].
+/// The Master Auxiliary Table, as described in the
+/// [module documentation][self].
 #[derive(Debug, Clone)]
 pub struct MasterAuxTable {
     pub num_trace_randomizers: usize,
@@ -800,6 +802,11 @@ type PadFunction = fn(ArrayViewMut2<BFieldElement>, usize);
 type ExtendFunction = fn(ArrayView2<BFieldElement>, ArrayViewMut2<XFieldElement>, &Challenges);
 
 impl MasterMainTable {
+    /// The number of columns in this table.
+    //
+    // Repeated to make the constant public despite the trait being private.
+    pub const NUM_COLUMNS: usize = <Self as MasterTable>::NUM_COLUMNS;
+
     pub(crate) fn new(
         aet: &AlgebraicExecutionTrace,
         domains: ProverDomains,
@@ -1058,6 +1065,12 @@ impl MasterMainTable {
 }
 
 impl MasterAuxTable {
+    /// The number of columns in this table, including the randomizer
+    /// polynomials.
+    //
+    // Repeated to make the constant public despite the trait being private.
+    pub const NUM_COLUMNS: usize = <Self as MasterTable>::NUM_COLUMNS;
+
     fn column_indices_for_table(id: TableId) -> Range<usize> {
         match id {
             TableId::Program => AUX_PROGRAM_TABLE_START..AUX_PROGRAM_TABLE_END,

@@ -11,7 +11,6 @@ use crate::challenges::Challenges;
 pub use crate::stark::NUM_QUOTIENT_SEGMENTS;
 use crate::table::master_table::MasterAuxTable;
 use crate::table::master_table::MasterMainTable;
-use crate::table::master_table::MasterTable;
 
 pub mod auxiliary_table;
 pub mod cascade;

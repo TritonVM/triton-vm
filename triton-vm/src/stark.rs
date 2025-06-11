@@ -73,8 +73,8 @@ pub struct Stark {
     /// The number of randomizers for the execution trace. The trace randomizers
     /// are integral for achieving zero-knowledge. In particular, they
     /// achieve ZK for the (DEEP) ALI part of the zk-STARK.
-    ///
-    /// See also [`MasterTable::trace_randomizer_for_column`].
+    //
+    // See also [`MasterTable::trace_randomizer_for_column`].
     pub num_trace_randomizers: usize,
 
     /// The number of collinearity checks to perform in [FRI](Fri).
