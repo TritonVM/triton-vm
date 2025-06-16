@@ -1146,106 +1146,11 @@ mod tests {
     use proptest::collection::vec;
     use proptest::prelude::*;
     use proptest_arbitrary_interop::arb;
-    use rand::random;
     use test_strategy::proptest;
 
     use super::*;
 
     impl<II: InputIndicator> ConstraintCircuitMonad<II> {
-        /// Traverse the circuit and find all nodes that are equivalent. Note
-        /// that two nodes are equivalent if they compute the same value
-        /// on all identical inputs. Equivalence is different from
-        /// identity, which is when two nodes connect the same set of
-        /// neighbors in the same way. (There may be two different ways
-        /// to compute the same result; they are equivalent but
-        /// unequal.)
-        ///
-        /// This function returns a list of lists of equivalent nodes such that
-        /// every inner list can be reduced to a single node without changing
-        /// the circuit's function.
-        ///
-        /// Equivalent nodes are detected probabilistically using the
-        /// multivariate Schwartz-Zippel lemma. The false positive
-        /// probability is zero (we can be certain that equivalent nodes
-        /// will be found). The false negative probability is bounded by
-        /// max_degree / (2^64 - 2^32 + 1)^3.
-        pub fn find_equivalent_nodes(&self) -> Vec<Vec<Rc<RefCell<ConstraintCircuit<II>>>>> {
-            let mut id_to_eval = HashMap::new();
-            let mut eval_to_ids = HashMap::new();
-            let mut id_to_node = HashMap::new();
-            Self::probe_random(
-                &self.circuit,
-                &mut id_to_eval,
-                &mut eval_to_ids,
-                &mut id_to_node,
-                random(),
-            );
-
-            eval_to_ids
-                .values()
-                .filter(|ids| ids.len() >= 2)
-                .map(|ids| ids.iter().map(|i| id_to_node[i].clone()).collect_vec())
-                .collect_vec()
-        }
-
-        /// Populate the dictionaries such that they associate with every node
-        /// in the circuit its evaluation in a random point. The inputs
-        /// are assigned random values. Equivalent nodes are detected
-        /// based on evaluating to the same value using the
-        /// Schwartz-Zippel lemma.
-        fn probe_random(
-            circuit: &Rc<RefCell<ConstraintCircuit<II>>>,
-            id_to_eval: &mut HashMap<usize, XFieldElement>,
-            eval_to_ids: &mut HashMap<XFieldElement, Vec<usize>>,
-            id_to_node: &mut HashMap<usize, Rc<RefCell<ConstraintCircuit<II>>>>,
-            master_seed: XFieldElement,
-        ) -> XFieldElement {
-            const DOMAIN_SEPARATOR_CURR_ROW: BFieldElement = BFieldElement::new(0);
-            const DOMAIN_SEPARATOR_NEXT_ROW: BFieldElement = BFieldElement::new(1);
-            const DOMAIN_SEPARATOR_CHALLENGE: BFieldElement = BFieldElement::new(2);
-
-            let circuit_id = circuit.borrow().id;
-            if let Some(&xfe) = id_to_eval.get(&circuit_id) {
-                return xfe;
-            }
-
-            let evaluation = match &circuit.borrow().expression {
-                CircuitExpression::BConst(bfe) => bfe.lift(),
-                CircuitExpression::XConst(xfe) => *xfe,
-                CircuitExpression::Input(input) => {
-                    let [s0, s1, s2] = master_seed.coefficients;
-                    let dom_sep = if input.is_current_row() {
-                        DOMAIN_SEPARATOR_CURR_ROW
-                    } else {
-                        DOMAIN_SEPARATOR_NEXT_ROW
-                    };
-                    let i = bfe!(u64::try_from(input.column()).unwrap());
-                    let Digest([d0, d1, d2, _, _]) = Tip5::hash_varlen(&[s0, s1, s2, dom_sep, i]);
-                    xfe!([d0, d1, d2])
-                }
-                CircuitExpression::Challenge(challenge) => {
-                    let [s0, s1, s2] = master_seed.coefficients;
-                    let dom_sep = DOMAIN_SEPARATOR_CHALLENGE;
-                    let ch = bfe!(u64::try_from(*challenge).unwrap());
-                    let Digest([d0, d1, d2, _, _]) = Tip5::hash_varlen(&[s0, s1, s2, dom_sep, ch]);
-                    xfe!([d0, d1, d2])
-                }
-                CircuitExpression::BinOp(bin_op, lhs, rhs) => {
-                    let l =
-                        Self::probe_random(lhs, id_to_eval, eval_to_ids, id_to_node, master_seed);
-                    let r =
-                        Self::probe_random(rhs, id_to_eval, eval_to_ids, id_to_node, master_seed);
-                    bin_op.operation(l, r)
-                }
-            };
-
-            id_to_eval.insert(circuit_id, evaluation);
-            eval_to_ids.entry(evaluation).or_default().push(circuit_id);
-            id_to_node.insert(circuit_id, circuit.clone());
-
-            evaluation
-        }
-
         /// Check whether the given node is contained in this circuit.
         fn contains(&self, other: &Self) -> bool {
             let self_expression = &self.circuit.borrow().expression;
@@ -1695,28 +1600,6 @@ mod tests {
         assert_eq!(2, most_frequent_nodes.len());
         assert!(most_frequent_nodes.contains(&&x(2).consume()));
         assert!(most_frequent_nodes.contains(&&x(10).consume()));
-    }
-
-    #[test]
-    fn equivalent_nodes_are_detected_when_present() {
-        let builder = ConstraintCircuitBuilder::new();
-
-        let x = |i| builder.input(SingleRowIndicator::Main(i));
-        let ch = |i: usize| builder.challenge(i);
-
-        let u0 = x(0) + x(1);
-        let u1 = x(2) + x(3);
-        let v = u0 * u1;
-
-        let z0 = x(0) * x(2);
-        let z2 = x(1) * x(3);
-
-        let z1 = x(1) * x(2) + x(0) * x(3);
-        let w = v - z0 - z2;
-        assert!(w.find_equivalent_nodes().is_empty());
-
-        let o = ch(0) * z1 - ch(1) * w;
-        assert!(!o.find_equivalent_nodes().is_empty());
     }
 
     #[derive(Debug, Copy, Clone, Eq, PartialEq, test_strategy::Arbitrary)]
