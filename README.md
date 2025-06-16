@@ -1,11 +1,12 @@
 # Triton VM
 
+[![License](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![GitHub CI](https://github.com/TritonVM/triton-vm/actions/workflows/main.yml/badge.svg)](https://github.com/TritonVM/triton-vm/actions)
 [![crates.io](https://img.shields.io/crates/v/triton-vm.svg)](https://crates.io/crates/triton-vm)
+[![GitHub CI](https://github.com/TritonVM/triton-vm/actions/workflows/main.yml/badge.svg)](https://github.com/TritonVM/triton-vm/actions)
+[![Check Links](https://github.com/TritonVM/triton-vm/actions/workflows/link_checker.yml/badge.svg)](https://github.com/TritonVM/triton-vm/actions/workflows/link_checker.yml)
 [![Spec: online](https://img.shields.io/badge/Spec-online-success)](https://triton-vm.org/spec/)
 [![Coverage Status](https://coveralls.io/repos/github/TritonVM/triton-vm/badge.svg?branch=master)](https://coveralls.io/github/TritonVM/triton-vm?branch=master)
-[![Check Links](https://github.com/TritonVM/triton-vm/actions/workflows/link_checker.yml/badge.svg)](https://github.com/TritonVM/triton-vm/actions/workflows/link_checker.yml)
 
 Triton is a virtual machine that comes with Algebraic Execution Tables (AET) and Arithmetic
 Intermediate Representations (AIR) for use in combination with

@@ -26,7 +26,9 @@ We will then take care of the issue as soon as possible.
 
 ### Legal Notice
 
-When contributing to this project, you must agree that you have authored 100% of the content, that you have the necessary rights to the content and that the content you contribute may be provided under the project license.
+Any contribution intentionally submitted for inclusion in this repository, as defined in the
+Apache-2.0 license, shall be dual licensed under the [MIT](LICENSE-MIT) and
+[Apache 2.0](LICENSE-APACHE) licenses, without any additional terms or conditions.
 
 ### Reporting Bugs
 
