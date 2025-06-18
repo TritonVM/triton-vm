@@ -3,6 +3,45 @@
 All notable changes are documented in this file.
 Lines marked “(!)” indicate a breaking change.
 
+## [0.49.0](https://github.com/TritonVM/triton-vm/compare/v0.48.0..v0.49.0) - 2025-06-18
+
+### ✨ Features
+
+- Improve error messages of parser ([7ef225f1](https://github.com/TritonVM/triton-vm/commit/7ef225f1))
+- (!) Report all table heights for `VM::profile` ([f05db5ee](https://github.com/TritonVM/triton-vm/commit/f05db5ee))
+- *(parser)* Allow “generic types” in type hints ([f9e0666e](https://github.com/TritonVM/triton-vm/commit/f9e0666e))
+- *(profiler)* Report memory consumption ([0eaac39e](https://github.com/TritonVM/triton-vm/commit/0eaac39e))
+
+### 🐛 Bug Fixes
+
+- Use rayon's thread count for parallelization ([b66d0f2f](https://github.com/TritonVM/triton-vm/commit/b66d0f2f))
+- Correctly accept high-security proofs ([fd663411](https://github.com/TritonVM/triton-vm/commit/fd663411))
+
+### 📚 Documentation
+
+- Update some documentation to current lingo ([4903b6a1](https://github.com/TritonVM/triton-vm/commit/4903b6a1))
+- Mention Triton CLI in README ([a736b11f](https://github.com/TritonVM/triton-vm/commit/a736b11f))
+- Fix broken footnotes ([d39626d4](https://github.com/TritonVM/triton-vm/commit/d39626d4))
+- Link to Triton CLI's “Profiling” section ([eec84919](https://github.com/TritonVM/triton-vm/commit/eec84919))
+- Fix intra-doc links ([ac91d15d](https://github.com/TritonVM/triton-vm/commit/ac91d15d))
+
+### ⚙️ Miscellaneous
+
+- Drop unused dependencies ([426d70f1](https://github.com/TritonVM/triton-vm/commit/426d70f1))
+- (!) Upgrade to rust edition 2024 ([3cb1528d](https://github.com/TritonVM/triton-vm/commit/3cb1528d))
+- Check links ([adbce6a6](https://github.com/TritonVM/triton-vm/commit/adbce6a6))
+- Build & test mdBook ([df07acae](https://github.com/TritonVM/triton-vm/commit/df07acae))
+- Don't include tests in coverage percentage ([69ccd615](https://github.com/TritonVM/triton-vm/commit/69ccd615))
+- Update license to MIT OR Apache-2.0 ([c012d3ad](https://github.com/TritonVM/triton-vm/commit/c012d3ad))
+
+### ♻️ Refactor
+
+- (!) Clarify derivation of prover's domains ([b6a1d5f3](https://github.com/TritonVM/triton-vm/commit/b6a1d5f3))
+
+### ✅ Testing
+
+- Increase testability of constraint failures ([bda6de5c](https://github.com/TritonVM/triton-vm/commit/bda6de5c))
+
 ## [0.48.0](https://github.com/TritonVM/triton-vm/compare/v0.45.0..v0.48.0) - 2025-02-11
 
 ### 📚 Documentation
