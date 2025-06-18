@@ -2004,11 +2004,8 @@ pub(crate) mod tests {
 
             let old_leaf = Digest::from(self.leaved_merkle_tree.leaves[leaf_index]);
             let old_root = merkle_tree.root();
-            let mut public_input = vec![
-                self.auth_path_address,
-                u64::try_from(leaf_index).unwrap().into(),
-                u64::try_from(merkle_tree.height()).unwrap().into(),
-            ];
+            let mut public_input =
+                bfe_vec![self.auth_path_address, leaf_index, merkle_tree.height()];
             public_input.extend(old_leaf.reversed().values());
             public_input.extend(old_root.reversed().values());
             public_input.extend(self.new_leaf.reversed().values());
