@@ -25,6 +25,7 @@ use twenty_first::prelude::*;
 
 use crate::aet::AlgebraicExecutionTrace;
 use crate::challenges::Challenges;
+use crate::ndarray_helper::ROW_AXIS;
 use crate::ndarray_helper::contiguous_column_slices;
 use crate::ndarray_helper::horizontal_multi_slice_mut;
 use crate::profiler::profiler;
@@ -204,7 +205,7 @@ impl TraceTable for OpStackTable {
 
         let mut padding_section = op_stack_table.slice_mut(s![op_stack_table_len.., ..]);
         padding_section
-            .axis_iter_mut(Axis(0))
+            .axis_iter_mut(ROW_AXIS)
             .into_par_iter()
             .for_each(|mut row| row.assign(&padding_row));
     }
@@ -256,7 +257,7 @@ fn compare_rows(row_0: ArrayView1<BFieldElement>, row_1: ArrayView1<BFieldElemen
 
 fn clock_jump_differences(op_stack_table: ArrayView2<BFieldElement>) -> Vec<BFieldElement> {
     let mut clock_jump_differences = vec![];
-    for consecutive_rows in op_stack_table.axis_windows(Axis(0), 2) {
+    for consecutive_rows in op_stack_table.axis_windows(ROW_AXIS, 2) {
         let current_row = consecutive_rows.row(0);
         let next_row = consecutive_rows.row(1);
         let current_stack_pointer = current_row[MainColumn::StackPointer.main_index()];

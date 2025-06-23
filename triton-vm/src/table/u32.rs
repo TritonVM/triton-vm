@@ -13,7 +13,6 @@ use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView2;
 use ndarray::ArrayViewMut2;
-use ndarray::Axis;
 use ndarray::parallel::prelude::*;
 use ndarray::s;
 use num_traits::One;
@@ -23,6 +22,7 @@ use twenty_first::prelude::*;
 
 use crate::aet::AlgebraicExecutionTrace;
 use crate::challenges::Challenges;
+use crate::ndarray_helper::ROW_AXIS;
 use crate::profiler::profiler;
 use crate::table::TraceTable;
 
@@ -148,7 +148,7 @@ impl TraceTable for U32Table {
 
         main_table
             .slice_mut(s![table_len.., ..])
-            .axis_iter_mut(Axis(0))
+            .axis_iter_mut(ROW_AXIS)
             .into_par_iter()
             .for_each(|mut row| row.assign(&padding_row));
     }

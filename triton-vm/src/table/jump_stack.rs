@@ -20,6 +20,7 @@ use twenty_first::prelude::*;
 
 use crate::aet::AlgebraicExecutionTrace;
 use crate::challenges::Challenges;
+use crate::ndarray_helper::ROW_AXIS;
 use crate::ndarray_helper::contiguous_column_slices;
 use crate::ndarray_helper::horizontal_multi_slice_mut;
 use crate::profiler::profiler;
@@ -193,7 +194,7 @@ impl TraceTable for JumpStackTable {
         let mut padding_section =
             jump_stack_table.slice_mut(s![padding_section_start..padding_section_end, ..]);
         padding_section
-            .axis_iter_mut(Axis(0))
+            .axis_iter_mut(ROW_AXIS)
             .into_par_iter()
             .for_each(|padding_row| padding_row_template.clone().move_into(padding_row));
 

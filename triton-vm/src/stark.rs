@@ -29,6 +29,8 @@ use crate::error::VerificationError;
 use crate::fri;
 use crate::fri::Fri;
 use crate::ndarray_helper;
+use crate::ndarray_helper::COL_AXIS;
+use crate::ndarray_helper::ROW_AXIS;
 use crate::profiler::profiler;
 use crate::proof::Claim;
 use crate::proof::Proof;
@@ -322,7 +324,7 @@ impl Prover {
             Tip5::hash_varlen(&row_as_bfes)
         };
         let quotient_segments_rows = fri_domain_quotient_segment_codewords
-            .axis_iter(Axis(0))
+            .axis_iter(ROW_AXIS)
             .into_par_iter();
         let fri_domain_quotient_segment_codewords_digests =
             quotient_segments_rows.map(hash_row).collect::<Vec<_>>();
@@ -699,12 +701,12 @@ impl Prover {
         profiler!(start "poly interpolate" ("LDE"));
         main_table
             .trace_table_mut()
-            .axis_iter_mut(Axis(1))
+            .axis_iter_mut(COL_AXIS)
             .into_par_iter()
             .for_each(|mut column| intt(column.as_slice_mut().unwrap()));
         aux_table
             .trace_table_mut()
-            .axis_iter_mut(Axis(1))
+            .axis_iter_mut(COL_AXIS)
             .into_par_iter()
             .for_each(|mut column| intt(column.as_slice_mut().unwrap()));
         profiler!(stop "poly interpolate");
@@ -716,14 +718,14 @@ impl Prover {
             // offset by fri domain offset to avoid division-by-zero errors
             let working_domain = working_domain.with_offset(iota.mod_pow(coset_index) * psi);
             profiler!(start "poly evaluate" ("LDE"));
-            Zip::from(main_table.trace_table().axis_iter(Axis(1)))
-                .and(main_columns.axis_iter_mut(Axis(1)))
+            Zip::from(main_table.trace_table().axis_iter(COL_AXIS))
+                .and(main_columns.axis_iter_mut(COL_AXIS))
                 .par_for_each(|trace_column, target_column| {
                     let trace_poly = Polynomial::new_borrowed(trace_column.as_slice().unwrap());
                     Array1::from(working_domain.evaluate(&trace_poly)).move_into(target_column);
                 });
-            Zip::from(aux_table.trace_table().axis_iter(Axis(1)))
-                .and(aux_columns.axis_iter_mut(Axis(1)))
+            Zip::from(aux_table.trace_table().axis_iter(COL_AXIS))
+                .and(aux_columns.axis_iter_mut(COL_AXIS))
                 .par_for_each(|trace_column, target_column| {
                     let trace_poly = Polynomial::new_borrowed(trace_column.as_slice().unwrap());
                     Array1::from(working_domain.evaluate(&trace_poly)).move_into(target_column);
@@ -780,16 +782,16 @@ impl Prover {
             let trace_domain_len = u64::try_from(domains.trace.length).unwrap();
             let zerofier = working_domain.offset.mod_pow(trace_domain_len) - BFieldElement::ONE;
 
-            Zip::from(main_columns.axis_iter_mut(Axis(1)))
-                .and(main_trace_randomizers.axis_iter(Axis(0)))
+            Zip::from(main_columns.axis_iter_mut(COL_AXIS))
+                .and(main_trace_randomizers.axis_iter(ROW_AXIS))
                 .par_for_each(|mut column, randomizer_polynomial| {
                     let randomizer_codeword = working_domain.evaluate(&randomizer_polynomial[[]]);
                     for (cell, randomizer) in column.iter_mut().zip(randomizer_codeword) {
                         *cell += zerofier * randomizer;
                     }
                 });
-            Zip::from(aux_columns.axis_iter_mut(Axis(1)))
-                .and(aux_trace_randomizers.axis_iter(Axis(0)))
+            Zip::from(aux_columns.axis_iter_mut(COL_AXIS))
+                .and(aux_trace_randomizers.axis_iter(ROW_AXIS))
                 .par_for_each(|mut column, randomizer_polynomial| {
                     let randomizer_codeword = working_domain.evaluate(&randomizer_polynomial[[]]);
                     for (cell, randomizer) in column.iter_mut().zip(randomizer_codeword) {
@@ -824,12 +826,12 @@ impl Prover {
         profiler!(start "restore original trace" ("LDE"));
         main_table
             .trace_table_mut()
-            .axis_iter_mut(Axis(1))
+            .axis_iter_mut(COL_AXIS)
             .into_par_iter()
             .for_each(|mut column| ntt(column.as_slice_mut().unwrap()));
         aux_table
             .trace_table_mut()
-            .axis_iter_mut(Axis(1))
+            .axis_iter_mut(COL_AXIS)
             .into_par_iter()
             .for_each(|mut column| ntt(column.as_slice_mut().unwrap()));
         profiler!(stop "restore original trace");
@@ -989,7 +991,7 @@ impl Prover {
         // (“`C`”) to get contiguous row slices for iNTT.
         let mut quotient_segments = ndarray_helper::par_zeros((num_output_rows, NUM_SEGMENTS));
         quotient_segments
-            .axis_iter_mut(Axis(0))
+            .axis_iter_mut(ROW_AXIS)
             .into_par_iter()
             .enumerate()
             .for_each(|(output_row_idx, mut output_row)| {
@@ -1003,7 +1005,7 @@ impl Prover {
 
         // apply inverse of Vandermonde matrix for ξ = ι^L to every row
         quotient_segments
-            .axis_iter_mut(Axis(0))
+            .axis_iter_mut(ROW_AXIS)
             .into_par_iter()
             .for_each(|mut row| intt(row.as_slice_mut().unwrap()));
 
@@ -1013,7 +1015,7 @@ impl Prover {
         let iota_inverse = iota.inverse();
         let psi_inverse = psi.inverse();
         quotient_segments
-            .axis_chunks_iter_mut(Axis(0), chunk_size)
+            .axis_chunks_iter_mut(ROW_AXIS, chunk_size)
             .into_par_iter()
             .enumerate()
             .for_each(|(chunk_idx, mut chunk_of_rows)| {
@@ -1037,9 +1039,9 @@ impl Prover {
 
         let mut quotient_codewords = Array2::zeros([fri_domain.length, NUM_SEGMENTS]);
         let mut quotient_polynomials = Array1::zeros([NUM_SEGMENTS]);
-        Zip::from(quotient_segments.axis_iter(Axis(1)))
-            .and(quotient_codewords.axis_iter_mut(Axis(1)))
-            .and(quotient_polynomials.axis_iter_mut(Axis(0)))
+        Zip::from(quotient_segments.axis_iter(COL_AXIS))
+            .and(quotient_codewords.axis_iter_mut(COL_AXIS))
+            .and(quotient_polynomials.axis_iter_mut(ROW_AXIS))
             .par_for_each(|segment, target_codeword, target_polynomial| {
                 // Getting a column as a contiguous piece of memory from a
                 // row-majority matrix requires `.to_vec()`.
@@ -1472,7 +1474,7 @@ impl Verifier {
     {
         profiler!(start "collect");
         let mut row = main_row.map(|&element| element.into());
-        row.append(Axis(0), aux_row).unwrap();
+        row.append(ROW_AXIS, aux_row).unwrap();
         profiler!(stop "collect");
         profiler!(start "inner product");
         // todo: Try to get rid of this clone. The alternative line

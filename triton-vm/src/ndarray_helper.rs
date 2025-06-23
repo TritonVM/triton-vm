@@ -1,12 +1,27 @@
+//! Various helper functions and constants for [ndarray]-related operations.
+
 use std::fmt::Debug;
 use std::mem::MaybeUninit;
 
 use ndarray::Array2;
 use ndarray::ArrayViewMut2;
+use ndarray::Axis;
 use ndarray::Ix;
 use ndarray::ShapeBuilder;
 use ndarray::s;
 use num_traits::ConstZero;
+
+/// The [axis](Axis) that Triton VM uses for the rows of its tables.
+///
+/// For [one-dimensional arrays](ndarray::Array1), this is the _only_ axis.
+///
+/// Note that the [majority](ndarray::Shape) is independent of axis order.
+pub const ROW_AXIS: Axis = Axis(0);
+
+/// The [axis](Axis) that Triton VM uses for the columns of its tables.
+///
+/// Note that the [majority](ndarray::Shape) is independent of axis order.
+pub const COL_AXIS: Axis = Axis(1);
 
 /// Slice a two-dimensional array into many non-overlapping mutable subviews
 /// of the same height as the array, based on the contiguous partition induced
@@ -60,7 +75,7 @@ pub fn contiguous_column_slices(column_indices: &[usize]) -> Vec<usize> {
     .concat()
 }
 
-/// Faster than [`Array2::zeros`] through parallelism.
+/// Like [`Array2::zeros`], but faster because it uses parallelism.
 pub fn par_zeros<FF>(shape: impl ShapeBuilder<Dim = ndarray::Dim<[Ix; 2]>>) -> Array2<FF>
 where
     FF: ConstZero + Send + Sync + Copy,
@@ -80,7 +95,6 @@ where
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use itertools::Itertools;
-    use ndarray::Axis;
     use ndarray::array;
     use ndarray::concatenate;
     use num_traits::Zero;
@@ -181,7 +195,7 @@ mod tests {
             .iter()
             .map(|slice| slice.view())
             .collect_vec();
-        let expected_array = concatenate(Axis(1), &expected_views).unwrap();
+        let expected_array = concatenate(COL_AXIS, &expected_views).unwrap();
         prop_assert_eq!(expected_array, array);
     }
 

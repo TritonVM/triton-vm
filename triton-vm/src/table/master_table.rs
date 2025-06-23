@@ -149,6 +149,8 @@ use crate::challenges::Challenges;
 use crate::config::CacheDecision;
 use crate::error::ProvingError;
 use crate::ndarray_helper;
+use crate::ndarray_helper::COL_AXIS;
+use crate::ndarray_helper::ROW_AXIS;
 use crate::ndarray_helper::horizontal_multi_slice_mut;
 use crate::ndarray_helper::partial_sums;
 use crate::profiler::profiler;
@@ -249,7 +251,7 @@ where
         profiler!(start "interpolation");
         let column_indices = Array1::from_iter(0..Self::NUM_COLUMNS);
         Zip::from(column_indices.view())
-            .and(interpolation_polynomials.axis_iter_mut(Axis(0)))
+            .and(interpolation_polynomials.axis_iter_mut(ROW_AXIS))
             .par_for_each(|&col_idx, poly| {
                 let column_interpolant = self.randomized_column_interpolant(col_idx);
                 Array0::from_elem((), column_interpolant).move_into(poly);
@@ -277,8 +279,8 @@ where
         profiler!(stop "resize");
 
         profiler!(start "evaluation");
-        Zip::from(extended_columns.axis_iter_mut(Axis(1)))
-            .and(interpolation_polynomials.axis_iter(Axis(0)))
+        Zip::from(extended_columns.axis_iter_mut(COL_AXIS))
+            .and(interpolation_polynomials.axis_iter(ROW_AXIS))
             .par_for_each(|lde_column, interpolant| {
                 let lde_codeword = evaluation_domain.evaluate(&interpolant[()]);
                 Array1::from(lde_codeword).move_into(lde_column);
@@ -418,8 +420,9 @@ where
     fn hash_all_fri_domain_rows(&self) -> Vec<Digest> {
         if let Some(fri_domain_table) = self.fri_domain_table() {
             profiler!(start "hash rows" ("hash"));
-            let all_rows = fri_domain_table.axis_iter(Axis(0)).into_par_iter();
-            let all_digests = all_rows
+            let all_digests = fri_domain_table
+                .axis_iter(ROW_AXIS)
+                .into_par_iter()
                 .map(|row| Tip5::hash_varlen(&row.iter().flat_map(|e| e.encode()).collect_vec()))
                 .collect();
             profiler!(stop "hash rows");
@@ -435,11 +438,11 @@ where
 
         let column_indices = Array1::from_iter(0..Self::NUM_COLUMNS);
         let mut codewords = Array2::zeros([eval_domain.length, num_threads]);
-        for column_indices in column_indices.axis_chunks_iter(Axis(0), num_threads) {
+        for column_indices in column_indices.axis_chunks_iter(ROW_AXIS, num_threads) {
             profiler!(start "LDE" ("LDE"));
             let mut codewords = codewords.slice_mut(s![.., 0..column_indices.len()]);
             Zip::from(column_indices)
-                .and(codewords.axis_iter_mut(Axis(1)))
+                .and(codewords.axis_iter_mut(COL_AXIS))
                 .par_for_each(|&col_idx, target_column| {
                     let column_interpolant = self.randomized_column_interpolant(col_idx);
                     let lde_codeword = eval_domain.evaluate(&column_interpolant);
@@ -449,7 +452,7 @@ where
             profiler!(start "hash rows" ("hash"));
             sponge_states
                 .par_iter_mut()
-                .zip(codewords.axis_iter(Axis(0)))
+                .zip(codewords.axis_iter(ROW_AXIS))
                 .for_each(|(sponge, row)| sponge.absorb(row.iter().flat_map(|e| e.encode())));
             profiler!(stop "hash rows");
         }
@@ -472,7 +475,7 @@ where
 
         let weighted_sum_of_trace_columns = self
             .trace_table()
-            .axis_iter(Axis(0))
+            .axis_iter(ROW_AXIS)
             .into_par_iter()
             .map(|row| row.iter().zip_eq(&weights).map(|(&r, &w)| r * w).sum())
             .collect::<Vec<_>>();
@@ -521,7 +524,7 @@ where
         // fast multi-point extrapolate every column
         let offset = domains.trace.offset;
         let trace_table = self.trace_table();
-        let columns = trace_table.axis_iter(Axis(1)).into_par_iter().map(|col| {
+        let columns = trace_table.axis_iter(COL_AXIS).into_par_iter().map(|col| {
             Polynomial::coset_extrapolate(offset, col.as_slice().unwrap(), &indeterminates)
         });
 

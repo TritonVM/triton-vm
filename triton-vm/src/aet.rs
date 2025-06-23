@@ -19,12 +19,12 @@ use isa::instruction::Instruction;
 use isa::program::Program;
 use itertools::Itertools;
 use ndarray::Array2;
-use ndarray::Axis;
 use ndarray::s;
 use strum::EnumCount;
 use strum::IntoEnumIterator;
 use twenty_first::prelude::*;
 
+use crate::ndarray_helper::ROW_AXIS;
 use crate::table;
 use crate::table::op_stack::OpStackTableEntry;
 use crate::table::ram::RamTableCall;
@@ -197,7 +197,7 @@ impl AlgebraicExecutionTrace {
 
             self.increase_lookup_multiplicities(hash_trace);
             self.program_hash_trace
-                .append(Axis(0), trace_addendum.view())
+                .append(ROW_AXIS, trace_addendum.view())
                 .expect("shapes must be identical");
         }
 
@@ -269,7 +269,7 @@ impl AlgebraicExecutionTrace {
             .slice_mut(s![.., CI.main_index()])
             .fill(Instruction::Hash.opcode_b());
         self.hash_trace
-            .append(Axis(0), hash_trace_addendum.view())
+            .append(ROW_AXIS, hash_trace_addendum.view())
             .expect("shapes must be identical");
     }
 
@@ -292,7 +292,7 @@ impl AlgebraicExecutionTrace {
             .slice_mut(s![.., CI.main_index()])
             .fill(instruction.opcode_b());
         self.sponge_trace
-            .append(Axis(0), sponge_trace_addendum.view())
+            .append(ROW_AXIS, sponge_trace_addendum.view())
             .expect("shapes must be identical");
     }
 

@@ -6,7 +6,6 @@ use air::table_column::MasterAuxColumn;
 use air::table_column::MasterMainColumn;
 use ndarray::ArrayView2;
 use ndarray::ArrayViewMut2;
-use ndarray::Axis;
 use ndarray::s;
 use num_traits::ConstOne;
 use num_traits::One;
@@ -16,6 +15,7 @@ use twenty_first::prelude::*;
 
 use crate::aet::AlgebraicExecutionTrace;
 use crate::challenges::Challenges;
+use crate::ndarray_helper::ROW_AXIS;
 use crate::profiler::profiler;
 use crate::table::TraceTable;
 
@@ -40,7 +40,7 @@ impl TraceTable for CascadeTable {
 
     fn fill(mut main_table: ArrayViewMut2<BFieldElement>, aet: &AlgebraicExecutionTrace, _: ()) {
         let rows_and_multiplicities = main_table
-            .axis_iter_mut(Axis(0))
+            .axis_iter_mut(ROW_AXIS)
             .into_par_iter()
             .zip(&aet.cascade_table_lookup_multiplicities);
 

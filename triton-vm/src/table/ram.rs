@@ -26,6 +26,7 @@ use twenty_first::prelude::*;
 
 use crate::aet::AlgebraicExecutionTrace;
 use crate::challenges::Challenges;
+use crate::ndarray_helper::ROW_AXIS;
 use crate::ndarray_helper::contiguous_column_slices;
 use crate::ndarray_helper::horizontal_multi_slice_mut;
 use crate::profiler::profiler;
@@ -96,7 +97,7 @@ impl TraceTable for RamTable {
 
         let mut padding_section = main_table.slice_mut(s![table_len.., ..]);
         padding_section
-            .axis_iter_mut(Axis(0))
+            .axis_iter_mut(ROW_AXIS)
             .into_par_iter()
             .for_each(|mut row| row.assign(&padding_row));
     }
