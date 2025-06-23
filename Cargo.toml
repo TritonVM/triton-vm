@@ -61,7 +61,7 @@ assert2 = "0.3"
 colored = "3.0"
 criterion = { package = "codspeed-criterion-compat", version = "2.7", features = ["html_reports"] }
 fs-err = "3.1"
-get-size2 = { version = "0.3", features = ["derive"] }
+get-size2 = { version = "0.5", features = ["derive"] }
 indexmap = { version = "2.7.1", features = ["rayon"] }
 insta = "1.42.1"
 itertools = "0.14"
@@ -73,7 +73,7 @@ nom-language = "0.1.0"
 num-traits = "0.2"
 prettyplease = "0.2"
 proc-macro2 = "1.0"
-proptest = "1.6"
+proptest = "1.7"
 proptest-arbitrary-interop = "0.1"
 quote = "1.0"
 rand = "0.9.0"
@@ -84,7 +84,7 @@ strum = { version = "0.27", features = ["derive"] }
 syn = "2.0"
 test-strategy = "0.4.1"
 thiserror = "2.0"
-twenty-first = "0.49.0"
+twenty-first = "0.50.0"
 unicode-width = "0.2"
 
 [workspace.lints.rust]

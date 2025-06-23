@@ -138,9 +138,9 @@ use num_traits::Zero;
 use rand::distr::StandardUniform;
 use rand::prelude::*;
 use strum::EnumCount;
-use twenty_first::math::tip5::RATE;
 use twenty_first::math::traits::FiniteField;
 use twenty_first::prelude::*;
+use twenty_first::tip5::RATE;
 use twenty_first::util_types::sponge;
 
 use crate::aet::AlgebraicExecutionTrace;

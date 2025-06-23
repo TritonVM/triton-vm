@@ -44,14 +44,14 @@ pub enum ProgramMainColumn {
     /// [`Address`] modulo [`Rate`].
     ///
     /// [`Address`]: ProgramMainColumn::Address
-    /// [`Rate`]: twenty_first::math::tip5::RATE
+    /// [`Rate`]: twenty_first::tip5::RATE
     IndexInChunk,
 
     /// The inverse-or-zero of [`Rate`] - 1 - [`IndexInChunk`].
     /// Helper variable to guarantee [`IndexInChunk`]'s correct transition.
     ///
     /// [`IndexInChunk`]: ProgramMainColumn::IndexInChunk
-    /// [`Rate`]: twenty_first::math::tip5::RATE
+    /// [`Rate`]: twenty_first::tip5::RATE
     MaxMinusIndexInChunkInv,
 
     /// Padding indicator for absorbing the program into the Sponge.
@@ -78,7 +78,7 @@ pub enum ProgramAuxColumn {
     /// Resets to zero after each chunk.
     /// Relevant for program attestation.
     ///
-    /// [rate]: twenty_first::math::tip5::RATE
+    /// [rate]: twenty_first::tip5::RATE
     PrepareChunkRunningEvaluation,
 
     /// An evaluation argument over all [`RATE`][rate]-sized chunks of
@@ -89,7 +89,7 @@ pub enum ProgramAuxColumn {
     /// The counterpart to
     /// [`RcvChunkEvalArg`](HashAuxColumn::ReceiveChunkRunningEvaluation).
     ///
-    /// [rate]: twenty_first::math::tip5::RATE
+    /// [rate]: twenty_first::tip5::RATE
     /// [prep]: ProgramAuxColumn::PrepareChunkRunningEvaluation
     SendChunkRunningEvaluation,
 }
@@ -350,7 +350,7 @@ pub enum HashAuxColumn {
     /// The counterpart to
     /// [`SendChunkEvalArg`](ProgramAuxColumn::SendChunkRunningEvaluation).
     ///
-    /// [rate]: twenty_first::math::tip5::RATE
+    /// [rate]: twenty_first::tip5::RATE
     ReceiveChunkRunningEvaluation,
 
     HashInputRunningEvaluation,

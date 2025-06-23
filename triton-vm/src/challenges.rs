@@ -27,8 +27,8 @@ use std::ops::Index;
 use std::ops::Range;
 use std::ops::RangeInclusive;
 use strum::EnumCount;
-use twenty_first::math::tip5;
 use twenty_first::prelude::*;
+use twenty_first::tip5;
 
 use air::challenge_id::ChallengeId;
 use air::cross_table_argument::CrossTableArg;
