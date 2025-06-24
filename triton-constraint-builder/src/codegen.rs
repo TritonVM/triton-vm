@@ -583,12 +583,12 @@ impl TasmBackend {
          - All memory write access of the emitted code is within the bounds of the memory region
            pointed to by `*free_memory_page`.
          - `*evaluated_constraints` points to an array of [`XFieldElement`][xfe]s of length
-            [`NUM_CONSTRAINTS`][total]. Each element is the evaluation of one constraint. In
-            particular, the disjoint sequence of slices containing
-            [`NUM_INITIAL_CONSTRAINTS`][init], [`NUM_CONSISTENCY_CONSTRAINTS`][cons],
-            [`NUM_TRANSITION_CONSTRAINTS`][tran], and [`NUM_TERMINAL_CONSTRAINTS`][term]
-            (respectively and in this order) correspond to the evaluations of the initial,
-            consistency, transition, and terminal constraints.
+           [`NUM_CONSTRAINTS`][total]. Each element is the evaluation of one constraint. In
+           particular, the disjoint sequence of slices containing
+           [`NUM_INITIAL_CONSTRAINTS`][init], [`NUM_CONSISTENCY_CONSTRAINTS`][cons],
+           [`NUM_TRANSITION_CONSTRAINTS`][tran], and [`NUM_TERMINAL_CONSTRAINTS`][term]
+           (respectively and in this order) correspond to the evaluations of the initial,
+           consistency, transition, and terminal constraints.
 
          [integral]: crate::memory_layout::IntegralMemoryLayout::is_integral
          [xfe]: twenty_first::prelude::XFieldElement
@@ -625,12 +625,12 @@ impl TasmBackend {
          - All memory write access of the emitted code is within the bounds of the memory region
            pointed to by `*free_memory_page`.
          - `*evaluated_constraints` points to an array of [`XFieldElement`][xfe]s of length
-            [`NUM_CONSTRAINTS`][total]. Each element is the evaluation of one constraint. In
-            particular, the disjoint sequence of slices containing
-            [`NUM_INITIAL_CONSTRAINTS`][init], [`NUM_CONSISTENCY_CONSTRAINTS`][cons],
-            [`NUM_TRANSITION_CONSTRAINTS`][tran], and [`NUM_TERMINAL_CONSTRAINTS`][term]
-            (respectively and in this order) correspond to the evaluations of the initial,
-            consistency, transition, and terminal constraints.
+           [`NUM_CONSTRAINTS`][total]. Each element is the evaluation of one constraint. In
+           particular, the disjoint sequence of slices containing
+           [`NUM_INITIAL_CONSTRAINTS`][init], [`NUM_CONSISTENCY_CONSTRAINTS`][cons],
+           [`NUM_TRANSITION_CONSTRAINTS`][tran], and [`NUM_TERMINAL_CONSTRAINTS`][term]
+           (respectively and in this order) correspond to the evaluations of the initial,
+           consistency, transition, and terminal constraints.
 
          [integral]: crate::memory_layout::IntegralMemoryLayout::is_integral
          [xfe]: twenty_first::prelude::XFieldElement

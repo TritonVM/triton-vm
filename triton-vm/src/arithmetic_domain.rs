@@ -134,7 +134,7 @@ impl ArithmeticDomain {
 
     /// A polynomial that evaluates to 0 on (and only on)
     /// a [domain value][Self::domain_values].
-    pub fn zerofier(&self) -> Polynomial<BFieldElement> {
+    pub fn zerofier(&self) -> Polynomial<'_, BFieldElement> {
         if self.offset.is_zero() {
             return Polynomial::x_to_the(1);
         }

@@ -176,10 +176,8 @@ impl TraceTable for ProgramTable {
         }
 
         // special treatment for the last row
-        let main_rows_iter = main_table.rows().into_iter();
-        let aux_rows_iter = aux_table.rows_mut().into_iter();
-        let last_main_row = main_rows_iter.last().unwrap();
-        let mut last_aux_row = aux_rows_iter.last().unwrap();
+        let last_main_row = main_table.rows().into_iter().next_back().unwrap();
+        let mut last_aux_row = aux_table.rows_mut().into_iter().next_back().unwrap();
 
         prepare_chunk_running_evaluation = update_prepare_chunk_running_evaluation(
             last_main_row,

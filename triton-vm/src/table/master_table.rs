@@ -470,7 +470,10 @@ where
     ///
     /// Panics if the number of supplied weights is unequal to the
     /// [number of columns][Self::NUM_COLUMNS].
-    fn weighted_sum_of_columns(&self, weights: Array1<XFieldElement>) -> Polynomial<XFieldElement> {
+    fn weighted_sum_of_columns(
+        &self,
+        weights: Array1<XFieldElement>,
+    ) -> Polynomial<'_, XFieldElement> {
         assert_eq!(Self::NUM_COLUMNS, weights.len());
 
         let weighted_sum_of_trace_columns = self
@@ -690,15 +693,15 @@ impl MasterTable for MasterMainTable {
         self.domains
     }
 
-    fn trace_table(&self) -> ArrayView2<BFieldElement> {
+    fn trace_table(&self) -> ArrayView2<'_, BFieldElement> {
         self.trace_table.view()
     }
 
-    fn trace_table_mut(&mut self) -> ArrayViewMut2<BFieldElement> {
+    fn trace_table_mut(&mut self) -> ArrayViewMut2<'_, BFieldElement> {
         self.trace_table.view_mut()
     }
 
-    fn quotient_domain_table(&self) -> Option<ArrayView2<BFieldElement>> {
+    fn quotient_domain_table(&self) -> Option<ArrayView2<'_, BFieldElement>> {
         let table = &self.low_degree_extended_table.as_ref()?;
         let nrows = table.nrows();
 
@@ -721,7 +724,7 @@ impl MasterTable for MasterMainTable {
         drop(self.low_degree_extended_table.take());
     }
 
-    fn fri_domain_table(&self) -> Option<ArrayView2<BFieldElement>> {
+    fn fri_domain_table(&self) -> Option<ArrayView2<'_, BFieldElement>> {
         let table = self.low_degree_extended_table.as_ref()?;
         let nrows = table.nrows();
         if nrows > self.domains.fri.length {
@@ -751,15 +754,15 @@ impl MasterTable for MasterAuxTable {
         self.domains
     }
 
-    fn trace_table(&self) -> ArrayView2<XFieldElement> {
+    fn trace_table(&self) -> ArrayView2<'_, XFieldElement> {
         self.trace_table.slice(s![.., ..Self::NUM_COLUMNS])
     }
 
-    fn trace_table_mut(&mut self) -> ArrayViewMut2<XFieldElement> {
+    fn trace_table_mut(&mut self) -> ArrayViewMut2<'_, XFieldElement> {
         self.trace_table.slice_mut(s![.., ..Self::NUM_COLUMNS])
     }
 
-    fn quotient_domain_table(&self) -> Option<ArrayView2<XFieldElement>> {
+    fn quotient_domain_table(&self) -> Option<ArrayView2<'_, XFieldElement>> {
         let table = self.low_degree_extended_table.as_ref()?;
         let nrows = table.nrows();
         if nrows > self.domains.quotient.length {
@@ -781,7 +784,7 @@ impl MasterTable for MasterAuxTable {
         drop(self.low_degree_extended_table.take());
     }
 
-    fn fri_domain_table(&self) -> Option<ArrayView2<XFieldElement>> {
+    fn fri_domain_table(&self) -> Option<ArrayView2<'_, XFieldElement>> {
         let table = self.low_degree_extended_table.as_ref()?;
         let nrows = table.nrows();
         if nrows > self.domains.fri.length {
@@ -1016,7 +1019,7 @@ impl MasterMainTable {
         ]
     }
 
-    fn main_tables_for_extending(&self) -> [ArrayView2<BFieldElement>; TableId::COUNT] {
+    fn main_tables_for_extending(&self) -> [ArrayView2<'_, BFieldElement>; TableId::COUNT] {
         [
             self.table(TableId::Program),
             self.table(TableId::Processor),
@@ -1045,13 +1048,13 @@ impl MasterMainTable {
     }
 
     /// A view of the specified table, without any randomizers.
-    pub fn table(&self, table_id: TableId) -> ArrayView2<BFieldElement> {
+    pub fn table(&self, table_id: TableId) -> ArrayView2<'_, BFieldElement> {
         let column_indices = Self::column_indices_for_table(table_id);
         self.trace_table.slice(s![.., column_indices])
     }
 
     /// A mutable view of the specified table, without any randomizers.
-    pub fn table_mut(&mut self, table_id: TableId) -> ArrayViewMut2<BFieldElement> {
+    pub fn table_mut(&mut self, table_id: TableId) -> ArrayViewMut2<'_, BFieldElement> {
         let column_indices = Self::column_indices_for_table(table_id);
         self.trace_table.slice_mut(s![.., column_indices])
     }
@@ -1089,13 +1092,13 @@ impl MasterAuxTable {
     }
 
     /// A view of the specified table, without any randomizers.
-    pub fn table(&self, table_id: TableId) -> ArrayView2<XFieldElement> {
+    pub fn table(&self, table_id: TableId) -> ArrayView2<'_, XFieldElement> {
         let column_indices = Self::column_indices_for_table(table_id);
         self.trace_table.slice(s![.., column_indices])
     }
 
     /// A mutable view of the specified table, without any randomizers.
-    pub fn table_mut(&mut self, table_id: TableId) -> ArrayViewMut2<XFieldElement> {
+    pub fn table_mut(&mut self, table_id: TableId) -> ArrayViewMut2<'_, XFieldElement> {
         let column_indices = Self::column_indices_for_table(table_id);
         self.trace_table.slice_mut(s![.., column_indices])
     }

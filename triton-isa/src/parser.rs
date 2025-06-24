@@ -104,7 +104,7 @@ pub fn to_labelled_instructions(instructions: &[InstructionToken]) -> Vec<Labell
 }
 
 /// Parse a program
-pub(crate) fn parse(input: &str) -> Result<Vec<InstructionToken>, ParseError> {
+pub(crate) fn parse(input: &str) -> Result<Vec<InstructionToken<'_>>, ParseError<'_>> {
     let (_, instructions) = tokenize(input)
         .finish()
         .map_err(|errors| ParseError { input, errors })?;
@@ -175,7 +175,7 @@ fn errors_for_duplicate_and_missing_labels<'a>(
 }
 
 fn errors_for_labels_with_context(
-    labels: HashSet<InstructionToken>,
+    labels: HashSet<InstructionToken<'_>>,
     context: VerboseErrorKind,
 ) -> Vec<(&str, VerboseErrorKind)> {
     labels
@@ -226,7 +226,7 @@ fn ensure_assertion_context_is_matched_with_assertion<'a>(
 /// error type, but we want `nom::error::VerboseError` as it allows `context()`.
 type ParseResult<'input, Out> = IResult<&'input str, Out, VerboseError<&'input str>>;
 
-pub fn tokenize(s: &str) -> ParseResult<Vec<InstructionToken>> {
+pub fn tokenize(s: &str) -> ParseResult<'_, Vec<InstructionToken<'_>>> {
     let (s, _) = comment_or_whitespace0(s)?;
     let (s, instructions) = many0(alt((
         label,
@@ -241,7 +241,7 @@ pub fn tokenize(s: &str) -> ParseResult<Vec<InstructionToken>> {
     Ok((s, instructions))
 }
 
-fn label(label_s: &str) -> ParseResult<InstructionToken> {
+fn label(label_s: &str) -> ParseResult<'_, InstructionToken<'_>> {
     let (s, addr) = label_addr(label_s)?;
     let (s, _) = whitespace0(s)?; // whitespace between label and ':' is allowed
     let (s, _) = token0(":")(s)?; // don't require space after ':'
@@ -254,17 +254,17 @@ fn label(label_s: &str) -> ParseResult<InstructionToken> {
     Ok((s, InstructionToken::Label(addr, label_s)))
 }
 
-fn breakpoint(breakpoint_s: &str) -> ParseResult<InstructionToken> {
+fn breakpoint(breakpoint_s: &str) -> ParseResult<'_, InstructionToken<'_>> {
     let (s, _) = token1("break")(breakpoint_s)?;
     Ok((s, InstructionToken::Breakpoint(breakpoint_s)))
 }
 
-fn labelled_instruction(s_instr: &str) -> ParseResult<InstructionToken> {
+fn labelled_instruction(s_instr: &str) -> ParseResult<'_, InstructionToken<'_>> {
     let (s, instr) = an_instruction(s_instr)?;
     Ok((s, InstructionToken::Instruction(instr, s_instr)))
 }
 
-fn an_instruction(s: &str) -> ParseResult<AnInstruction<String>> {
+fn an_instruction(s: &str) -> ParseResult<'_, AnInstruction<String>> {
     // OpStack manipulation
     let pop = pop_instruction();
     let push = push_instruction();
@@ -512,7 +512,7 @@ fn write_io_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>>
     }
 }
 
-fn field_element(s_orig: &str) -> ParseResult<BFieldElement> {
+fn field_element(s_orig: &str) -> ParseResult<'_, BFieldElement> {
     let (s, n) = context(
         "expected a reasonably-sized integer",
         nom::character::complete::i128,
@@ -531,7 +531,7 @@ fn field_element(s_orig: &str) -> ParseResult<BFieldElement> {
     Ok((s, BFieldElement::new(n as u64)))
 }
 
-fn stack_register(s: &str) -> ParseResult<OpStackElement> {
+fn stack_register(s: &str) -> ParseResult<'_, OpStackElement> {
     let (s, n) = digit1(s)?;
     let stack_register = match n {
         "0" => OpStackElement::ST0,
@@ -561,7 +561,7 @@ fn stack_register(s: &str) -> ParseResult<OpStackElement> {
     Ok((s, stack_register))
 }
 
-fn number_of_words(s: &str) -> ParseResult<NumberOfWords> {
+fn number_of_words(s: &str) -> ParseResult<'_, NumberOfWords> {
     let (s, n) = digit1(s)?;
     let arg = match n {
         "1" => NumberOfWords::N1,
@@ -581,7 +581,7 @@ fn number_of_words(s: &str) -> ParseResult<NumberOfWords> {
 }
 
 /// Parse a label address. This is used in "`<label>:`" and in "`call <label>`".
-fn label_addr(s_orig: &str) -> ParseResult<String> {
+fn label_addr(s_orig: &str) -> ParseResult<'_, String> {
     let (s, addr_part_0) = context(
         "label must start with an alphabetic character or `_`",
         take_while1(|c: char| c.is_alphabetic() || c == '_'),
@@ -599,7 +599,7 @@ fn label_addr(s_orig: &str) -> ParseResult<String> {
 /// Parse 0 or more comments and/or whitespace.
 ///
 /// This is used in places where whitespace is optional (e.g. after ':').
-fn comment_or_whitespace0(s: &str) -> ParseResult<&str> {
+fn comment_or_whitespace0(s: &str) -> ParseResult<'_, &str> {
     let (s, _) = many0(alt((comment1, whitespace1))).parse(s)?;
     Ok((s, ""))
 }
@@ -616,12 +616,12 @@ fn comment_or_whitespace1<'a>(s: &'a str) -> ParseResult<'a, &'a str> {
 }
 
 /// Parse one comment
-fn comment1(s: &str) -> ParseResult<()> {
+fn comment1(s: &str) -> ParseResult<'_, ()> {
     alt((eol_comment, inline_comment)).parse(s)
 }
 
 /// Parse one “//”-comment (not including the linebreak)
-fn eol_comment(s: &str) -> ParseResult<()> {
+fn eol_comment(s: &str) -> ParseResult<'_, ()> {
     let (s, _) = tag("//").parse(s)?;
     let (s, _) = is_not("\n\r").parse(s)?;
 
@@ -629,7 +629,7 @@ fn eol_comment(s: &str) -> ParseResult<()> {
 }
 
 /// Parse one “/* … */”-comment
-fn inline_comment(s: &str) -> ParseResult<()> {
+fn inline_comment(s: &str) -> ParseResult<'_, ()> {
     let (s, _) = tag("/*").parse(s)?;
     let (s, _) = take_until("*/").parse(s)?;
     let (s, _) = tag("*/").parse(s)?;
@@ -638,13 +638,13 @@ fn inline_comment(s: &str) -> ParseResult<()> {
 }
 
 /// Parse whitespace characters (can be none)
-fn whitespace0(s: &str) -> ParseResult<()> {
+fn whitespace0(s: &str) -> ParseResult<'_, ()> {
     let (s, _) = take_while(char::is_whitespace)(s)?;
     Ok((s, ()))
 }
 
 /// Parse at least one whitespace character
-fn whitespace1(s: &str) -> ParseResult<()> {
+fn whitespace1(s: &str) -> ParseResult<'_, ()> {
     let (s, _) = take_while1(char::is_whitespace)(s)?;
     Ok((s, ()))
 }
@@ -676,7 +676,7 @@ fn token1<'a>(token: &'a str) -> impl Fn(&'a str) -> ParseResult<'a, ()> {
 /// ```text
 /// hint <variable_name>[: <type_name>] = stack\[<range_start>[..<range_end>]\]
 /// ```
-fn type_hint(s_type_hint: &str) -> ParseResult<InstructionToken> {
+fn type_hint(s_type_hint: &str) -> ParseResult<'_, InstructionToken<'_>> {
     let (s, _) = token1("hint")(s_type_hint)?;
     let (s, variable_name) = context(
         "type hint requires variable's name",
@@ -729,7 +729,7 @@ fn type_hint(s_type_hint: &str) -> ParseResult<InstructionToken> {
     Ok((s, InstructionToken::TypeHint(type_hint, s_type_hint)))
 }
 
-fn type_hint_variable_name(s: &str) -> ParseResult<String> {
+fn type_hint_variable_name(s: &str) -> ParseResult<'_, String> {
     let (s, variable_name_start) = context(
         "type hint's variable name must start with a lowercase alphabetic character or `_`",
         take_while1(|c: char| (c.is_alphabetic() && c.is_lowercase()) || c == '_'),
@@ -745,7 +745,7 @@ fn type_hint_variable_name(s: &str) -> ParseResult<String> {
     Ok((s, variable_name))
 }
 
-fn type_hint_type_name(s: &str) -> ParseResult<Option<String>> {
+fn type_hint_type_name(s: &str) -> ParseResult<'_, Option<String>> {
     #[derive(Debug, Clone)]
     pub enum TypeHintType<'a> {
         Simple(&'a str),
@@ -761,16 +761,16 @@ fn type_hint_type_name(s: &str) -> ParseResult<Option<String>> {
         }
     }
 
-    fn ty(input: &str) -> ParseResult<TypeHintType> {
+    fn ty(input: &str) -> ParseResult<'_, TypeHintType<'_>> {
         alt((generic_ty, simple_ty)).parse(input)
     }
 
-    fn simple_ty(s: &str) -> ParseResult<TypeHintType> {
+    fn simple_ty(s: &str) -> ParseResult<'_, TypeHintType<'_>> {
         let (s, ty) = ty_name(s)?;
         Ok((s, TypeHintType::Simple(ty)))
     }
 
-    fn generic_ty(s: &str) -> ParseResult<TypeHintType> {
+    fn generic_ty(s: &str) -> ParseResult<'_, TypeHintType<'_>> {
         let (s, name) = ty_name(s)?;
         let (s, _) = comment_or_whitespace0(s)?;
 
@@ -790,7 +790,7 @@ fn type_hint_type_name(s: &str) -> ParseResult<Option<String>> {
         Ok((s, ty))
     }
 
-    fn ty_name(input: &str) -> ParseResult<&str> {
+    fn ty_name(input: &str) -> ParseResult<'_, &str> {
         let (s, stars) = take_while(|c: char| c == '*').parse(input)?;
         let (s, begin) = take_while1(|c: char| c.is_ascii_alphabetic() || c == '_').parse(s)?;
         let (s, rest) = take_while(|c: char| c.is_ascii_alphanumeric() || c == '_').parse(s)?;
@@ -808,7 +808,7 @@ fn type_hint_type_name(s: &str) -> ParseResult<Option<String>> {
     Ok((s, Some(type_name.to_string())))
 }
 
-fn type_hint_ending_index(s: &str) -> ParseResult<Option<usize>> {
+fn type_hint_ending_index(s: &str) -> ParseResult<'_, Option<usize>> {
     let Ok((s, _)) = token0("..")(s) else {
         return Ok((s, None));
     };
@@ -822,14 +822,14 @@ fn type_hint_ending_index(s: &str) -> ParseResult<Option<usize>> {
     Ok((s, Some(range_end)))
 }
 
-fn assertion_context(s_ctx: &str) -> ParseResult<InstructionToken> {
+fn assertion_context(s_ctx: &str) -> ParseResult<'_, InstructionToken<'_>> {
     let (s, assertion_context) = assertion_context_id(s_ctx)?;
     let assertion_context = InstructionToken::AssertionContext(assertion_context, s_ctx);
 
     Ok((s, assertion_context))
 }
 
-fn assertion_context_id(s_ctx: &str) -> ParseResult<AssertionContext> {
+fn assertion_context_id(s_ctx: &str) -> ParseResult<'_, AssertionContext> {
     let (s, _) = token1("error_id")(s_ctx)?;
     let (s, id) = context(
         "expected a valid error ID of type i128",

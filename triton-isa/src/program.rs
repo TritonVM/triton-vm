@@ -277,7 +277,7 @@ impl Program {
     }
 
     /// Create a `Program` by parsing source code.
-    pub fn from_code(code: &str) -> Result<Self, ParseError> {
+    pub fn from_code(code: &str) -> Result<Self, ParseError<'_>> {
         parser::parse(code)
             .map(|tokens| parser::to_labelled_instructions(&tokens))
             .map(|instructions| Program::new(&instructions))
