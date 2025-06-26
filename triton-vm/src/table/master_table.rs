@@ -165,6 +165,28 @@ use crate::table::auxiliary_table::all_degrees_with_origin;
 use crate::table::degree_lowering::DegreeLoweringTable;
 use crate::table::processor::ClkJumpDiffs;
 
+/// Helper trait to turn a slice of either [`BFieldElement`]s or
+/// [`XFieldElement`]s into a slice of [`BFieldElement`]s.
+///
+/// In particular, this is helpful when writing code that is generic over the
+/// two fields but should also perform well, i.e., where calling
+/// [`BFieldCodec::encode`] (which performs allocations) is not a good idea.
+pub(crate) trait BfeSlice: FiniteField {
+    fn bfe_slice(slice: &[Self]) -> &[BFieldElement];
+}
+
+impl BfeSlice for BFieldElement {
+    fn bfe_slice(slice: &[Self]) -> &[BFieldElement] {
+        slice
+    }
+}
+
+impl BfeSlice for XFieldElement {
+    fn bfe_slice(slice: &[Self]) -> &[BFieldElement] {
+        x_field_element::as_flat_slice(slice)
+    }
+}
+
 pub(crate) trait MasterTable: Sync
 where
     StandardUniform: Distribution<Self::Field>,
@@ -172,7 +194,7 @@ where
         // _no_ clue why this is necessary
         + Add<XFieldElement, Output = XFieldElement>,
 {
-    type Field: FiniteField
+    type Field: BfeSlice
         + Add<BFieldElement, Output = Self::Field>
         + MulAssign<BFieldElement>
         + From<BFieldElement>
@@ -423,7 +445,9 @@ where
             let all_digests = fri_domain_table
                 .axis_iter(ROW_AXIS)
                 .into_par_iter()
-                .map(|row| Tip5::hash_varlen(&row.iter().flat_map(|e| e.encode()).collect_vec()))
+                .map(|row| row.to_slice().unwrap())
+                .map(Self::Field::bfe_slice)
+                .map(Tip5::hash_varlen)
                 .collect();
             profiler!(stop "hash rows");
 
@@ -453,7 +477,9 @@ where
             sponge_states
                 .par_iter_mut()
                 .zip(codewords.axis_iter(ROW_AXIS))
-                .for_each(|(sponge, row)| sponge.absorb(row.iter().flat_map(|e| e.encode())));
+                .for_each(|(sponge, row)| {
+                    sponge.absorb(Self::Field::bfe_slice(row.to_slice().unwrap()))
+                });
             profiler!(stop "hash rows");
         }
 
