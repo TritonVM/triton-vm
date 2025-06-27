@@ -3,6 +3,13 @@
 All notable changes are documented in this file.
 Lines marked “(!)” indicate a breaking change.
 
+## [0.50.0](https://github.com/TritonVM/triton-vm/compare/v0.49.0..v0.50.0) - 2025-06-27
+
+### ⚡️ Performance
+
+- Avoid allocation during RAM-frugal proving ([47509643](https://github.com/TritonVM/triton-vm/commit/47509643))
+- Don't allocate when hashing FRI table rows ([27f67129](https://github.com/TritonVM/triton-vm/commit/27f67129))
+
 ## [0.49.0](https://github.com/TritonVM/triton-vm/compare/v0.48.0..v0.49.0) - 2025-06-18
 
 ### ✨ Features
