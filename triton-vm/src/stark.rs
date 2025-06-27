@@ -1626,7 +1626,7 @@ impl Default for Prover {
 
 impl<'a> Arbitrary<'a> for Stark {
     fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
-        let security_level = u.int_in_range(1..=640)?;
+        let security_level = u.int_in_range(1..=490)?;
         let log_2_of_fri_expansion_factor = u.int_in_range(1..=8)?;
         Ok(Self::new(security_level, log_2_of_fri_expansion_factor))
     }
