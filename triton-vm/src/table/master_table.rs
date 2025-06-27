@@ -558,17 +558,15 @@ where
 
         // transpose the resulting matrix out-of-place
         let n = row_indices.len();
-        let mut rows = vec![Self::Field::ZERO; Self::NUM_COLUMNS * n];
-        for i in 0..Self::NUM_COLUMNS {
-            for j in 0..n {
-                rows[j * Self::NUM_COLUMNS + i] = columns[i * n + j];
+        let mut rows = vec![Vec::with_capacity(Self::NUM_COLUMNS); n];
+        for column in columns.chunks_exact(n) {
+            for (row, &element) in rows.iter_mut().zip(column) {
+                row.push(element)
             }
         }
         profiler!(stop "recompute rows");
 
-        rows.chunks(Self::NUM_COLUMNS)
-            .map(|row| row.to_vec())
-            .collect()
+        rows
     }
 }
 
@@ -1468,7 +1466,9 @@ mod tests {
     }
 
     #[proptest]
-    fn revealing_rows_is_independent_of_fri_table_caching(row_indices: Vec<usize>) {
+    fn revealing_rows_is_independent_of_fri_table_caching(
+        #[filter(!#row_indices.is_empty())] row_indices: Vec<usize>,
+    ) {
         fn revealed_rows_are_identical<FF>(
             mut table: impl MasterTable<Field = FF>,
             indices: &[usize],
