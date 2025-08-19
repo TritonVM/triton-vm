@@ -21,6 +21,10 @@ use std::cell::RefCell;
 
 use arbitrary::Arbitrary;
 
+pub const ENV_VAR_LDE_CACHE: &str = "TVM_LDE_TRACE";
+pub const ENV_VAR_LDE_CACHE_WITH_CACHE: &str = "cache";
+pub const ENV_VAR_LDE_CACHE_NO_CACHE: &str = "no_cache";
+
 thread_local! {
     pub(crate) static CONFIG: RefCell<Config> = RefCell::new(Config::default());
 }
@@ -45,10 +49,10 @@ struct Config {
 
 impl Config {
     pub fn new() -> Self {
-        let maybe_overwrite = std::env::var("TVM_LDE_TRACE").map(|s| s.to_ascii_lowercase());
+        let maybe_overwrite = std::env::var(ENV_VAR_LDE_CACHE).map(|s| s.to_ascii_lowercase());
         let cache_lde_trace_overwrite = match maybe_overwrite {
-            Ok(t) if &t == "cache" => Some(CacheDecision::Cache),
-            Ok(f) if &f == "no_cache" => Some(CacheDecision::NoCache),
+            Ok(t) if t == ENV_VAR_LDE_CACHE_WITH_CACHE => Some(CacheDecision::Cache),
+            Ok(f) if f == ENV_VAR_LDE_CACHE_NO_CACHE => Some(CacheDecision::NoCache),
             _ => None,
         };
 
