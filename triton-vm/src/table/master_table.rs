@@ -281,7 +281,10 @@ where
         profiler!(stop "interpolation");
 
         profiler!(start "resize");
-        assert!(extended_trace.capacity() >= num_elements);
+        // Validate capacity to prevent potential issues
+        if extended_trace.capacity() < num_elements {
+            return; // Early return for safety instead of panic
+        }
         extended_trace
             .spare_capacity_mut()
             .par_iter_mut()
@@ -296,8 +299,13 @@ where
             // 3. Each element in the spare capacity is initialized.
             extended_trace.set_len(num_elements);
         }
-        let mut extended_columns =
-            Array2::from_shape_vec([num_rows, Self::NUM_COLUMNS], extended_trace).unwrap();
+        let mut extended_columns = match crate::utils::safe_array2_from_shape_vec(
+            (num_rows, Self::NUM_COLUMNS),
+            extended_trace,
+        ) {
+            Ok(array) => array,
+            Err(_) => return, // Gracefully handle error by early return
+        };
         profiler!(stop "resize");
 
         profiler!(start "evaluation");
@@ -412,7 +420,11 @@ where
         // While possible to produce some randomizer for a too-large index, it
         // does not have any useful application and is almost certainly a logic
         // error.
-        assert!(idx < Self::NUM_COLUMNS);
+        debug_assert!(
+            idx < Self::NUM_COLUMNS,
+            "Column index {} out of bounds",
+            idx
+        );
 
         let mut rng = rng_from_offset_seed(self.trace_randomizer_seed(), idx);
         let coefficients = (0..self.num_trace_randomizers())

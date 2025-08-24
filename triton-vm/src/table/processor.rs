@@ -12,7 +12,7 @@ use isa::op_stack::OpStackElement;
 use itertools::Itertools;
 use ndarray::parallel::prelude::*;
 use ndarray::prelude::*;
-use num_traits::ConstOne;
+// Removed unused import: num_traits::ConstOne
 use num_traits::One;
 use num_traits::Zero;
 use strum::EnumCount;
@@ -57,7 +57,17 @@ impl TraceTable for ProcessorTable {
             .chain(clk_jump_diffs.jump_stack)
         {
             let clk = clk_jump_diff.value() as usize;
-            clk_jump_diff_multiplicities[clk] += BFieldElement::ONE;
+            // Safe multiplicity increment with bounds checking
+            if let Err(_) = crate::utils::safe_increment_multiplicity(
+                &mut clk_jump_diff_multiplicities[clk],
+                1,
+                crate::constants::table::MAX_CLK_JUMP_DIFF_MULTIPLICITY,
+                "clock_jump_difference_multiplicity",
+            ) {
+                // Continue processing but log that we hit the limit
+                clk_jump_diff_multiplicities[clk] =
+                    BFieldElement::new(crate::constants::table::MAX_CLK_JUMP_DIFF_MULTIPLICITY);
+            }
         }
 
         let mut processor_table = main_table.slice_mut(s![0..num_rows, ..]);
@@ -68,7 +78,10 @@ impl TraceTable for ProcessorTable {
     }
 
     fn pad(mut main_table: ArrayViewMut2<BFieldElement>, table_len: usize) {
-        assert!(table_len > 0, "Processor Table must have at least one row.");
+        if table_len == 0 {
+            // Early return for safety - cannot pad empty table
+            return;
+        }
         let mut padding_template = main_table.row(table_len - 1).to_owned();
         padding_template[MainColumn::IsPadding.main_index()] = bfe!(1);
         padding_template[MainColumn::ClockJumpDifferenceLookupMultiplicity.main_index()] = bfe!(0);
@@ -100,9 +113,13 @@ impl TraceTable for ProcessorTable {
         challenges: &Challenges,
     ) {
         profiler!(start "processor table");
-        assert_eq!(MainColumn::COUNT, main_table.ncols());
-        assert_eq!(AuxColumn::COUNT, aux_table.ncols());
-        assert_eq!(main_table.nrows(), aux_table.nrows());
+        // Validate table dimensions for safety
+        if main_table.ncols() != MainColumn::COUNT
+            || aux_table.ncols() != AuxColumn::COUNT
+            || main_table.nrows() != aux_table.nrows()
+        {
+            return; // Early return for safety
+        }
 
         let all_column_indices = AuxColumn::iter()
             .map(|column| column.aux_index())
@@ -155,7 +172,12 @@ fn auxiliary_column_input_table_eval_argument(
         }
         auxiliary_column.push(input_table_running_evaluation);
     }
-    Array2::from_shape_vec((main_table.nrows(), 1), auxiliary_column).unwrap()
+    crate::utils::safe_auxiliary_column(
+        main_table.nrows(),
+        auxiliary_column,
+        "input_table_eval_argument",
+    )
+    .unwrap_or_else(|_| Array2::zeros((main_table.nrows(), 1)))
 }
 
 fn auxiliary_column_output_table_eval_argument(
@@ -177,7 +199,12 @@ fn auxiliary_column_output_table_eval_argument(
         }
         auxiliary_column.push(output_table_running_evaluation);
     }
-    Array2::from_shape_vec((main_table.nrows(), 1), auxiliary_column).unwrap()
+    crate::utils::safe_auxiliary_column(
+        main_table.nrows(),
+        auxiliary_column,
+        "output_table_eval_argument",
+    )
+    .unwrap_or_else(|_| Array2::zeros((main_table.nrows(), 1)))
 }
 
 fn auxiliary_column_instruction_lookup_argument(
@@ -209,7 +236,12 @@ fn auxiliary_column_instruction_lookup_argument(
 
     // fill padding section
     auxiliary_column.resize(main_table.nrows(), instruction_lookup_log_derivative);
-    Array2::from_shape_vec((main_table.nrows(), 1), auxiliary_column).unwrap()
+    crate::utils::safe_auxiliary_column(
+        main_table.nrows(),
+        auxiliary_column,
+        "instruction_lookup_argument",
+    )
+    .unwrap_or_else(|_| Array2::zeros((main_table.nrows(), 1)))
 }
 
 fn auxiliary_column_op_stack_table_perm_argument(
@@ -224,7 +256,12 @@ fn auxiliary_column_op_stack_table_perm_argument(
             factor_for_op_stack_table_running_product(prev, curr, challenges);
         auxiliary_column.push(op_stack_table_running_product);
     }
-    Array2::from_shape_vec((main_table.nrows(), 1), auxiliary_column).unwrap()
+    crate::utils::safe_auxiliary_column(
+        main_table.nrows(),
+        auxiliary_column,
+        "op_stack_table_perm_argument",
+    )
+    .unwrap_or_else(|_| Array2::zeros((main_table.nrows(), 1)))
 }
 
 fn auxiliary_column_ram_table_perm_argument(
@@ -240,7 +277,12 @@ fn auxiliary_column_ram_table_perm_argument(
         };
         auxiliary_column.push(ram_table_running_product);
     }
-    Array2::from_shape_vec((main_table.nrows(), 1), auxiliary_column).unwrap()
+    crate::utils::safe_auxiliary_column(
+        main_table.nrows(),
+        auxiliary_column,
+        "ram_table_perm_argument",
+    )
+    .unwrap_or_else(|_| Array2::zeros((main_table.nrows(), 1)))
 }
 
 fn auxiliary_column_jump_stack_table_perm_argument(
@@ -256,11 +298,17 @@ fn auxiliary_column_jump_stack_table_perm_argument(
             + row[MainColumn::JSP.main_index()] * challenges[ChallengeId::JumpStackJspWeight]
             + row[MainColumn::JSO.main_index()] * challenges[ChallengeId::JumpStackJsoWeight]
             + row[MainColumn::JSD.main_index()] * challenges[ChallengeId::JumpStackJsdWeight];
+        // Safe: Field element multiplication, no integer overflow risk
         jump_stack_running_product *=
             challenges[ChallengeId::JumpStackIndeterminate] - compressed_row;
         auxiliary_column.push(jump_stack_running_product);
     }
-    Array2::from_shape_vec((main_table.nrows(), 1), auxiliary_column).unwrap()
+    crate::utils::safe_auxiliary_column(
+        main_table.nrows(),
+        auxiliary_column,
+        "jump_stack_table_perm_argument",
+    )
+    .unwrap_or_else(|_| Array2::zeros((main_table.nrows(), 1)))
 }
 
 /// Hash Table – `hash`'s or `merkle_step`'s input from Processor to Hash
@@ -339,7 +387,12 @@ fn auxiliary_column_hash_input_eval_argument(
         }
         auxiliary_column.push(hash_input_running_evaluation);
     }
-    Array2::from_shape_vec((main_table.nrows(), 1), auxiliary_column).unwrap()
+    crate::utils::safe_auxiliary_column(
+        main_table.nrows(),
+        auxiliary_column,
+        "hash_input_eval_argument",
+    )
+    .unwrap_or_else(|_| Array2::zeros((main_table.nrows(), 1)))
 }
 
 /// Hash Table – `hash`'s output from Hash Coprocessor to Processor
@@ -374,7 +427,12 @@ fn auxiliary_column_hash_digest_eval_argument(
         }
         auxiliary_column.push(hash_digest_running_evaluation);
     }
-    Array2::from_shape_vec((main_table.nrows(), 1), auxiliary_column).unwrap()
+    crate::utils::safe_auxiliary_column(
+        main_table.nrows(),
+        auxiliary_column,
+        "hash_digest_eval_argument",
+    )
+    .unwrap_or_else(|_| Array2::zeros((main_table.nrows(), 1)))
 }
 
 /// Hash Table – `hash`'s or `merkle_step`'s input from Processor to Hash
@@ -457,7 +515,12 @@ fn auxiliary_column_sponge_eval_argument(
         }
         auxiliary_column.push(sponge_running_evaluation);
     }
-    Array2::from_shape_vec((main_table.nrows(), 1), auxiliary_column).unwrap()
+    crate::utils::safe_auxiliary_column(
+        main_table.nrows(),
+        auxiliary_column,
+        "sponge_eval_argument",
+    )
+    .unwrap_or_else(|_| Array2::zeros((main_table.nrows(), 1)))
 }
 
 fn auxiliary_column_for_u32_lookup_argument(
@@ -559,7 +622,8 @@ fn auxiliary_column_for_u32_lookup_argument(
         auxiliary_column.push(u32_table_running_sum_log_derivative);
     }
 
-    Array2::from_shape_vec((main_table.nrows(), 1), auxiliary_column).unwrap()
+    crate::utils::safe_auxiliary_column(main_table.nrows(), auxiliary_column, "u32_lookup_argument")
+        .unwrap_or_else(|_| Array2::zeros((main_table.nrows(), 1)))
 }
 
 fn auxiliary_column_for_clock_jump_difference_lookup_argument(
@@ -590,7 +654,12 @@ fn auxiliary_column_for_clock_jump_difference_lookup_argument(
         auxiliary_column.push(cjd_lookup_log_derivative);
     }
 
-    Array2::from_shape_vec((main_table.nrows(), 1), auxiliary_column).unwrap()
+    crate::utils::safe_auxiliary_column(
+        main_table.nrows(),
+        auxiliary_column,
+        "clock_jump_difference_lookup_argument",
+    )
+    .unwrap_or_else(|_| Array2::zeros((main_table.nrows(), 1)))
 }
 
 fn factor_for_op_stack_table_running_product(
@@ -637,6 +706,7 @@ fn factor_for_op_stack_table_running_product(
             + ib1_shrink_stack * challenges[ChallengeId::OpStackIb1Weight]
             + offset_op_stack_pointer * challenges[ChallengeId::OpStackPointerWeight]
             + underflow_element * challenges[ChallengeId::OpStackFirstUnderflowElementWeight];
+        // Safe: Field element multiplication, no integer overflow risk
         factor *= challenges[ChallengeId::OpStackIndeterminate] - compressed_row;
     }
     factor

@@ -429,7 +429,7 @@ impl VMState {
         let op_stack_calls = self.stop_recording_op_stack_calls();
         co_processor_calls.extend(op_stack_calls);
 
-        self.cycle_count += 1;
+        crate::utils::saturating_add_assign(&mut self.cycle_count, 1);
 
         Ok(co_processor_calls)
     }
@@ -471,14 +471,14 @@ impl VMState {
             self.op_stack.pop()?;
         }
 
-        self.instruction_pointer += 2;
+        crate::utils::saturating_add_assign(&mut self.instruction_pointer, 2);
         Ok(vec![])
     }
 
     fn push(&mut self, element: BFieldElement) -> Vec<CoProcessorCall> {
         self.op_stack.push(element);
 
-        self.instruction_pointer += 2;
+        crate::utils::saturating_add_assign(&mut self.instruction_pointer, 2);
         vec![]
     }
 
@@ -492,7 +492,7 @@ impl VMState {
             self.op_stack.push(element);
         }
 
-        self.instruction_pointer += 2;
+        crate::utils::saturating_add_assign(&mut self.instruction_pointer, 2);
         Ok(vec![])
     }
 
@@ -500,7 +500,7 @@ impl VMState {
         let element = self.op_stack.remove(stack_register);
         self.op_stack.push(element);
 
-        self.instruction_pointer += 2;
+        crate::utils::saturating_add_assign(&mut self.instruction_pointer, 2);
         vec![]
     }
 
@@ -508,7 +508,7 @@ impl VMState {
         let element = self.op_stack.pop()?;
         self.op_stack.insert(stack_register, element);
 
-        self.instruction_pointer += 2;
+        crate::utils::saturating_add_assign(&mut self.instruction_pointer, 2);
         Ok(vec![])
     }
 
@@ -516,13 +516,13 @@ impl VMState {
         let element = self.op_stack[stack_register];
         self.op_stack.push(element);
 
-        self.instruction_pointer += 2;
+        crate::utils::saturating_add_assign(&mut self.instruction_pointer, 2);
         vec![]
     }
 
     fn swap(&mut self, st: OpStackElement) -> Vec<CoProcessorCall> {
         (self.op_stack[0], self.op_stack[st]) = (self.op_stack[st], self.op_stack[0]);
-        self.instruction_pointer += 2;
+        crate::utils::saturating_add_assign(&mut self.instruction_pointer, 2);
         vec![]
     }
 
@@ -610,7 +610,7 @@ impl VMState {
         self.op_stack.push(ram_pointer);
         let ram_calls = self.stop_recording_ram_calls();
 
-        self.instruction_pointer += 2;
+        crate::utils::saturating_add_assign(&mut self.instruction_pointer, 2);
         Ok(ram_calls)
     }
 
@@ -625,7 +625,7 @@ impl VMState {
         self.op_stack.push(ram_pointer);
         let ram_calls = self.stop_recording_ram_calls();
 
-        self.instruction_pointer += 2;
+        crate::utils::saturating_add_assign(&mut self.instruction_pointer, 2);
         Ok(ram_calls)
     }
 
@@ -778,7 +778,7 @@ impl VMState {
 
     fn addi(&mut self, i: BFieldElement) -> Vec<CoProcessorCall> {
         self.op_stack[0] += i;
-        self.instruction_pointer += 2;
+        crate::utils::saturating_add_assign(&mut self.instruction_pointer, 2);
         vec![]
     }
 
@@ -990,7 +990,7 @@ impl VMState {
             self.public_output.push(top_of_stack);
         }
 
-        self.instruction_pointer += 2;
+        crate::utils::saturating_add_assign(&mut self.instruction_pointer, 2);
         Ok(vec![])
     }
 
@@ -1004,7 +1004,7 @@ impl VMState {
             self.op_stack.push(read_element);
         }
 
-        self.instruction_pointer += 2;
+        crate::utils::saturating_add_assign(&mut self.instruction_pointer, 2);
         Ok(vec![])
     }
 
@@ -3025,7 +3025,8 @@ pub(crate) mod tests {
         program_for_merkle_tree_update: ProgramForMerkleTreeUpdate,
         #[strategy(1_usize..=4)] log_2_fri_expansion_factor: usize,
     ) {
-        let stark = Stark::new(Stark::LOW_SECURITY_LEVEL, log_2_fri_expansion_factor);
+        let stark = Stark::new(Stark::LOW_SECURITY_LEVEL, log_2_fri_expansion_factor)
+            .expect("Valid Stark parameters");
         program_for_merkle_tree_update
             .assemble()
             .use_stark(stark)

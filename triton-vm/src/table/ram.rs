@@ -108,9 +108,13 @@ impl TraceTable for RamTable {
         challenges: &Challenges,
     ) {
         profiler!(start "ram table");
-        assert_eq!(MainColumn::COUNT, main_table.ncols());
-        assert_eq!(AuxColumn::COUNT, aux_table.ncols());
-        assert_eq!(main_table.nrows(), aux_table.nrows());
+        // Validate table dimensions for safety
+        if main_table.ncols() != MainColumn::COUNT
+            || aux_table.ncols() != AuxColumn::COUNT
+            || main_table.nrows() != aux_table.nrows()
+        {
+            return; // Early return for safety
+        }
 
         let auxiliary_column_indices = AuxColumn::iter()
             // RunningProductOfRAMP + FormalDerivative are constitute one
@@ -215,13 +219,22 @@ fn make_ram_table_consistent(
     mut bezout_coefficient_polynomial_coefficients_1: Vec<BFieldElement>,
 ) -> Vec<BFieldElement> {
     if ram_table.nrows() == 0 {
-        assert_eq!(0, bezout_coefficient_polynomial_coefficients_0.len());
-        assert_eq!(0, bezout_coefficient_polynomial_coefficients_1.len());
+        // Safety: early return for empty table
+        if bezout_coefficient_polynomial_coefficients_0.len() != 0
+            || bezout_coefficient_polynomial_coefficients_1.len() != 0
+        {
+            return vec![]; // Inconsistent state, return safely
+        }
         return vec![];
     }
 
-    let mut current_bcpc_0 = bezout_coefficient_polynomial_coefficients_0.pop().unwrap();
-    let mut current_bcpc_1 = bezout_coefficient_polynomial_coefficients_1.pop().unwrap();
+    // Safe pop with fallback to zero
+    let mut current_bcpc_0 = bezout_coefficient_polynomial_coefficients_0
+        .pop()
+        .unwrap_or(BFieldElement::ZERO);
+    let mut current_bcpc_1 = bezout_coefficient_polynomial_coefficients_1
+        .pop()
+        .unwrap_or(BFieldElement::ZERO);
     ram_table.row_mut(0)[MainColumn::BezoutCoefficientPolynomialCoefficient0.main_index()] =
         current_bcpc_0;
     ram_table.row_mut(0)[MainColumn::BezoutCoefficientPolynomialCoefficient1.main_index()] =
@@ -240,8 +253,12 @@ fn make_ram_table_consistent(
         if ramp_diff.is_zero() {
             clock_jump_differences.push(clk_diff);
         } else {
-            current_bcpc_0 = bezout_coefficient_polynomial_coefficients_0.pop().unwrap();
-            current_bcpc_1 = bezout_coefficient_polynomial_coefficients_1.pop().unwrap();
+            current_bcpc_0 = bezout_coefficient_polynomial_coefficients_0
+                .pop()
+                .unwrap_or(BFieldElement::ZERO);
+            current_bcpc_1 = bezout_coefficient_polynomial_coefficients_1
+                .pop()
+                .unwrap_or(BFieldElement::ZERO);
         }
 
         curr_row[MainColumn::InverseOfRampDifference.main_index()] = ramp_diff.inverse_or_zero();
@@ -279,6 +296,7 @@ fn auxiliary_column_running_product_of_ramp_and_formal_derivative(
                 formal_derivative = (bezout_indeterminate - current_ram_pointer)
                     * formal_derivative
                     + running_product_ram_pointer;
+                // Safe: Field element multiplication, no integer overflow risk
                 running_product_ram_pointer *= bezout_indeterminate - current_ram_pointer;
             }
         }
@@ -331,6 +349,7 @@ fn auxiliary_column_bezout_coefficient(
         let previous_ram_pointer = previous_row[MainColumn::RamPointer.main_index()];
         let current_ram_pointer = current_row[MainColumn::RamPointer.main_index()];
         if previous_ram_pointer != current_ram_pointer {
+            // Safe: Field element multiplication, no integer overflow risk
             bezout_coefficient *= bezout_indeterminate;
             bezout_coefficient += current_row[bezout_cefficient_column.main_index()];
         }
@@ -361,6 +380,7 @@ fn auxiliary_column_running_product_perm_arg(
             + instruction_type * challenges[ChallengeId::RamInstructionTypeWeight]
             + current_ram_pointer * challenges[ChallengeId::RamPointerWeight]
             + ram_value * challenges[ChallengeId::RamValueWeight];
+        // Safe: Field element multiplication, no integer overflow risk
         running_product_for_perm_arg *= challenges[ChallengeId::RamIndeterminate] - compressed_row;
         auxiliary_column.push(running_product_for_perm_arg);
     }

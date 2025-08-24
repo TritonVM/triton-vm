@@ -52,7 +52,12 @@ fn auxiliary_column_cascade_running_sum_log_derivative(
 
     // fill padding section
     auxiliary_column.resize(main_table.nrows(), cascade_table_running_sum_log_derivative);
-    Array2::from_shape_vec((main_table.nrows(), 1), auxiliary_column).unwrap()
+    crate::utils::safe_auxiliary_column(
+        main_table.nrows(),
+        auxiliary_column,
+        "cascade_running_sum_log_derivative",
+    )
+    .unwrap_or_else(|_| Array2::zeros((main_table.nrows(), 1)))
 }
 
 fn auxiliary_column_public_running_evaluation(

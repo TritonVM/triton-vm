@@ -57,3 +57,11 @@ specification/cheatsheet.aux
 specification/cheatsheet.log
 specification/cheatsheet.synctex.gz
 triton-vm/proofs/*
+
+# Misc
+.cursor/
+docs/
+
+# Local testing scripts (audit response)
+test_audit_fixes.sh
+quick_vm_test.sh
