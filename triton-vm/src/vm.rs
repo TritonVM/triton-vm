@@ -3040,7 +3040,7 @@ pub(crate) mod tests {
         p1: (BFieldElement, BFieldElement),
         #[strategy(arb())] p2_x: BFieldElement,
     ) {
-        let p2_y = Polynomial::get_colinear_y(p0, p1, p2_x);
+        let p2_y = Polynomial::get_collinear_y(p0, p1, p2_x);
 
         let get_collinear_y_program = triton_program!(
             read_io 5                       // p0 p1 p2_x
