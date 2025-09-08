@@ -390,7 +390,7 @@ impl FriVerifier<'_> {
                 let point_b_x = domain.domain_value(b_indices[i] as u32).lift();
                 let point_a = (point_a_x, partial_codeword_a[i]);
                 let point_b = (point_b_x, partial_codeword_b[i]);
-                Polynomial::get_colinear_y(point_a, point_b, folding_challenge)
+                Polynomial::get_collinear_y(point_a, point_b, folding_challenge)
             })
             .collect()
     }
