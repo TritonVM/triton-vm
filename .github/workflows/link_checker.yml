@@ -25,7 +25,7 @@ jobs:
     # `create-issue-from-file` action blindly creates issues ad-nauseam.
     # See also: https://github.com/peter-evans/create-issue-from-file/issues/298
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Restore lychee cache
         id: restore_cache
