@@ -243,7 +243,7 @@ impl AIR for ProcessorTable {
         let constant = |c: u32| circuit_builder.b_constant(c);
         let main_row = |col: MainColumn| circuit_builder.input(Main(col.master_main_index()));
 
-        // The composition of instruction bits ib0-ib7 corresponds the current
+        // The composition of instruction bits ib0-ib6 corresponds the current
         // instruction ci.
         let ib_composition = main_row(MainColumn::IB0)
             + constant(1 << 1) * main_row(MainColumn::IB1)
@@ -252,7 +252,7 @@ impl AIR for ProcessorTable {
             + constant(1 << 4) * main_row(MainColumn::IB4)
             + constant(1 << 5) * main_row(MainColumn::IB5)
             + constant(1 << 6) * main_row(MainColumn::IB6);
-        let ci_corresponds_to_ib0_thru_ib7 = main_row(MainColumn::CI) - ib_composition;
+        let ci_corresponds_to_ib0_thru_ib6 = main_row(MainColumn::CI) - ib_composition;
 
         let ib0_is_bit = main_row(MainColumn::IB0) * (main_row(MainColumn::IB0) - constant(1));
         let ib1_is_bit = main_row(MainColumn::IB1) * (main_row(MainColumn::IB1) - constant(1));
@@ -266,7 +266,7 @@ impl AIR for ProcessorTable {
 
         // In padding rows, the clock jump difference lookup multiplicity is 0.
         // The one row exempt from this rule is the row with CLK == 1: since the
-        // memory-like tables don't have an “awareness” of padding rows, they
+        // memory-like tables don't have an "awareness" of padding rows, they
         // keep looking up clock jump differences of magnitude 1.
         let clock_jump_diff_lookup_multiplicity_is_0_in_padding_rows =
             main_row(MainColumn::IsPadding)
@@ -282,7 +282,7 @@ impl AIR for ProcessorTable {
             ib5_is_bit,
             ib6_is_bit,
             is_padding_is_bit,
-            ci_corresponds_to_ib0_thru_ib7,
+            ci_corresponds_to_ib0_thru_ib6,
             clock_jump_diff_lookup_multiplicity_is_0_in_padding_rows,
         ]
     }
@@ -1228,7 +1228,7 @@ fn instruction_recurse_or_return(
         st5_neq_st6() * (next_row(MainColumn::JSP) - curr_row(MainColumn::JSP) + one()),
     ];
     let maybe_recurse = vec![
-        // constraints are ordered to line up nicely with group “maybe_return”
+        // constraints are ordered to line up nicely with group "maybe_return"
         st5_eq_st6() * (next_row(MainColumn::JSO) - curr_row(MainColumn::JSO)),
         st5_eq_st6() * (next_row(MainColumn::JSD) - curr_row(MainColumn::JSD)),
         st5_eq_st6() * (next_row(MainColumn::IP) - curr_row(MainColumn::JSD)),
@@ -2396,7 +2396,7 @@ fn stack_grows_by_any_of(
 /// | ind_2·(rp' - rp·fac_2) |                        |                        |
 /// ```
 ///
-/// This method sums these constraints “per row”. That is, the resulting
+/// This method sums these constraints "per row". That is, the resulting
 /// constraints are:
 ///
 /// ```markdown
@@ -2826,7 +2826,7 @@ fn running_product_for_jump_stack_table_updates_correctly(
 ///    through 4. The order of those two quintuplets depends on helper variable
 ///    hv5.
 ///
-/// The Hash Table does not “know” about instruction `merkle_step`.
+/// The Hash Table does not "know" about instruction `merkle_step`.
 ///
 /// Note that using `next_row` might be confusing at first glance; See the
 /// [specification](https://triton-vm.org/spec/processor-table.html).
