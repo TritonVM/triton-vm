@@ -29,9 +29,11 @@ impl ArithmeticDomain {
     ///
     /// Errors if the domain length is not a power of 2.
     pub fn of_length(length: usize) -> Result<Self> {
+        let length_u64 = u64::try_from(length)
+            .map_err(|_| ArithmeticDomainError::PrimitiveRootNotSupported(u64::MAX))?;
         let domain = Self {
             offset: BFieldElement::ONE,
-            generator: Self::generator_for_length(length as u64)?,
+            generator: Self::generator_for_length(length_u64)?,
             length,
         };
         Ok(domain)
@@ -74,7 +76,9 @@ impl ArithmeticDomain {
             |(_, first_chunk)| evaluate_from(first_chunk),
         );
         for (chunk_index, chunk) in indexed_chunks {
-            let coefficient_index = chunk_index * u64::try_from(length).unwrap();
+            let length_u64 =
+                u64::try_from(length).expect("ArithmeticDomain length validated in of_length");
+            let coefficient_index = chunk_index * length_u64;
             let scaled_offset = offset.mod_pow(coefficient_index);
             values
                 .par_iter_mut()
@@ -140,7 +144,9 @@ impl ArithmeticDomain {
         }
 
         Polynomial::x_to_the(self.length)
-            - Polynomial::from_constant(self.offset.mod_pow(self.length as u64))
+            - Polynomial::from_constant(self.offset.mod_pow(
+                u64::try_from(self.length).expect("ArithmeticDomain length validated in of_length"),
+            ))
     }
 
     /// [`Self::zerofier`] times the argument.
@@ -152,7 +158,9 @@ impl ArithmeticDomain {
     {
         // use knowledge of zerofier's shape for faster multiplication
         polynomial.clone().shift_coefficients(self.length)
-            - polynomial.scalar_mul(self.offset.mod_pow(self.length as u64))
+            - polynomial.scalar_mul(self.offset.mod_pow(
+                u64::try_from(self.length).expect("ArithmeticDomain length validated in of_length"),
+            ))
     }
 
     pub(crate) fn halve(&self) -> Result<Self> {
