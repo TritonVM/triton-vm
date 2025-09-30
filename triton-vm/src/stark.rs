@@ -53,7 +53,10 @@ pub const NUM_QUOTIENT_SEGMENTS: usize = air::TARGET_DEGREE as usize;
 /// zero-knowledge in [FRI](Fri).
 pub const NUM_RANDOMIZER_POLYNOMIALS: usize = 1;
 
-const NUM_DEEP_CODEWORD_COMPONENTS: usize = 3;
+// Use centralized constants for better maintainability
+pub use crate::constants::vm::NUM_COSETS;
+pub use crate::constants::vm::NUM_DEEP_CODEWORD_COMPONENTS;
+pub use crate::constants::vm::RANDOMIZED_TRACE_LEN_TO_WORKING_DOMAIN_LEN_RATIO;
 
 /// Parameters for the Zero-Knowledge
 /// [Scalable Transparent ARgument of Knowledge (STARK)][stark] for Triton VM.
@@ -532,13 +535,15 @@ impl Prover {
 
         // Open quotient & combination codewords at the same positions as
         // main & aux codewords.
-        let into_fixed_width_row =
-            |row: ArrayView1<_>| -> QuotientSegments { row.to_vec().try_into().unwrap() };
-        let revealed_quotient_segments_rows = revealed_current_row_indices
+        let into_fixed_width_row = |row: ArrayView1<_>| -> Result<QuotientSegments, ProvingError> {
+            crate::utils::safe_try_into_array(row.to_vec(), "quotient segments conversion")
+        };
+        let revealed_quotient_segments_rows: Result<Vec<_>, _> = revealed_current_row_indices
             .iter()
             .map(|&i| fri_domain_quotient_segment_codewords.row(i))
             .map(into_fixed_width_row)
-            .collect_vec();
+            .collect();
+        let revealed_quotient_segments_rows = revealed_quotient_segments_rows?;
         let revealed_quotient_authentication_structure =
             quot_merkle_tree.authentication_structure(&revealed_current_row_indices)?;
         proof_stream.enqueue(ProofItem::QuotientSegmentsElements(
@@ -1025,8 +1030,10 @@ impl Prover {
                     let mut psi_iotajim_invk = XFieldElement::ONE;
                     for cell in &mut row {
                         *cell *= psi_iotajim_invk;
+                        // Note: These are field element operations, safe from integer overflow
                         psi_iotajim_invk *= psi_iotajim_inv;
                     }
+                    // Note: Field element operation, safe from integer overflow
                     psi_iotajim_inv *= iota_inverse;
                 }
             });
@@ -1491,12 +1498,12 @@ impl Verifier {
 impl Stark {
     /// # Panics
     ///
-    /// Panics if `log2_of_fri_expansion_factor` is zero.
-    pub fn new(security_level: usize, log2_of_fri_expansion_factor: usize) -> Self {
-        assert_ne!(
-            0, log2_of_fri_expansion_factor,
-            "FRI expansion factor must be greater than one."
-        );
+    /// Returns an error if `log2_of_fri_expansion_factor` is zero.
+    pub fn new(
+        security_level: usize,
+        log2_of_fri_expansion_factor: usize,
+    ) -> Result<Self, ProvingError> {
+        crate::utils::validate_fri_expansion_factor(log2_of_fri_expansion_factor)?;
 
         let fri_expansion_factor = 1 << log2_of_fri_expansion_factor;
         let num_collinearity_checks = security_level / log2_of_fri_expansion_factor;
@@ -1507,12 +1514,12 @@ impl Stark {
             + num_out_of_domain_rows * x_field_element::EXTENSION_DEGREE
             + NUM_QUOTIENT_SEGMENTS * x_field_element::EXTENSION_DEGREE;
 
-        Stark {
+        Ok(Stark {
             security_level,
             fri_expansion_factor,
             num_trace_randomizers,
             num_collinearity_checks,
-        }
+        })
     }
 
     /// Prove the correctness of the given [Claim] using the given
@@ -1615,6 +1622,7 @@ impl Default for Stark {
         let security_level = 160;
 
         Self::new(security_level, log_2_of_fri_expansion_factor)
+            .expect("Default Stark parameters should be valid")
     }
 }
 
@@ -1628,7 +1636,8 @@ impl<'a> Arbitrary<'a> for Stark {
     fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
         let security_level = u.int_in_range(1..=490)?;
         let log_2_of_fri_expansion_factor = u.int_in_range(1..=8)?;
-        Ok(Self::new(security_level, log_2_of_fri_expansion_factor))
+        Ok(Self::new(security_level, log_2_of_fri_expansion_factor)
+            .map_err(|_| arbitrary::Error::IncorrectFormat)?)
     }
 }
 
@@ -1798,6 +1807,7 @@ pub(crate) mod tests {
         pub fn low_security() -> Self {
             let log_expansion_factor = 2;
             Stark::new(Self::LOW_SECURITY_LEVEL, log_expansion_factor)
+                .expect("Valid Stark parameters")
         }
     }
 

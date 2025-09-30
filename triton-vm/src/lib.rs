@@ -187,6 +187,7 @@ pub mod aet;
 pub mod arithmetic_domain;
 pub mod challenges;
 pub mod config;
+pub mod constants;
 pub mod constraints;
 pub mod error;
 pub mod example_programs;
@@ -201,6 +202,7 @@ pub mod proof_item;
 pub mod proof_stream;
 pub mod stark;
 pub mod table;
+pub mod utils;
 pub mod vm;
 
 #[cfg(test)]

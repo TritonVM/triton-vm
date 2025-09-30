@@ -147,6 +147,28 @@ pub enum ProvingError {
         actual_len: usize,
     },
 
+    // Critical Error Handling - Issue A & F fixes
+    #[error("array creation failed: {0}")]
+    ArrayCreationError(String),
+
+    #[error("vector conversion failed: {0}")]
+    VectorConversionError(String),
+
+    #[error("invalid table length: {0}")]
+    InvalidTableLength(String),
+
+    #[error("invalid FRI expansion factor: {0}")]
+    InvalidFriExpansionFactor(String),
+
+    #[error("table constraint violation: {0}")]
+    TableConstraintViolation(String),
+
+    #[error("arithmetic overflow in operation: {0}")]
+    ArithmeticOverflow(String),
+
+    #[error("invalid multiplicity tracking: {0}")]
+    InvalidMultiplicity(String),
+
     #[error(transparent)]
     MerkleTreeError(#[from] MerkleTreeError),
 
