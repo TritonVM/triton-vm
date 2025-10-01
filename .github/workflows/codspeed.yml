@@ -36,7 +36,7 @@ jobs:
           tool: cargo-codspeed
 
       - name: Build benchmarks
-        run: cargo codspeed build ${{ matrix.benchmark }}
+        run: cargo codspeed build --bench ${{ matrix.benchmark }}
 
       - name: Run benchmarks
         uses: CodSpeedHQ/action@v3

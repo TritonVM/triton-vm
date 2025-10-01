@@ -47,7 +47,6 @@
 //! [cross_arg]: air::cross_table_argument::GrandCrossTableArg
 //! [overwrite_cache]: crate::config::overwrite_lde_trace_caching_to
 //! [lde]: ArithmeticDomain::low_degree_extension
-//! [quot_table]: MasterTable::quotient_domain_table
 //! [master_aux_table]: MasterAuxTable
 //! [master_quot_table]: all_quotients_combined
 
@@ -223,11 +222,11 @@ where
 
     /// Presents underlying trace data, excluding trace randomizers and
     /// randomizer polynomials.
-    fn trace_table(&self) -> ArrayView2<Self::Field>;
+    fn trace_table(&self) -> ArrayView2<'_, Self::Field>;
 
     /// Mutably presents underlying trace data, excluding trace randomizers and
     /// randomizer polynomials.
-    fn trace_table_mut(&mut self) -> ArrayViewMut2<Self::Field>;
+    fn trace_table_mut(&mut self) -> ArrayViewMut2<'_, Self::Field>;
 
     /// The quotient-domain view of the cached low-degree-extended table, if
     /// 1. the table has been [low-degree extended][lde], and
@@ -240,7 +239,7 @@ where
     // pointer to an array that must live somewhere and cannot live on the
     // stack. From the trait implementation we cannot access the implementing
     // object's fields.
-    fn quotient_domain_table(&self) -> Option<ArrayView2<Self::Field>>;
+    fn quotient_domain_table(&self) -> Option<ArrayView2<'_, Self::Field>>;
 
     /// Low-degree extend all columns of the trace table (including randomizers)
     /// _if_ it can be [cached]. In that case, the resulting low-degree extended
@@ -331,7 +330,7 @@ where
     /// returns a pointer to an array and that array has to live somewhere;
     /// it cannot live on stack and from the trait implementation we cannot
     /// access the implementing object's fields.
-    fn fri_domain_table(&self) -> Option<ArrayView2<Self::Field>>;
+    fn fri_domain_table(&self) -> Option<ArrayView2<'_, Self::Field>>;
 
     /// Get one row of the table at an arbitrary index. Notably, the index does
     /// not have to be in any of the domains. In other words, can be used to

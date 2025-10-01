@@ -2924,7 +2924,7 @@ pub(crate) mod tests {
         let program = triton_program!(halt push 1 push 2 add invert write_io 5);
         let_assert!(Ok((aet, _)) = VM::trace_execution(program, [].into(), [].into()));
 
-        let_assert!(Some(last_processor_row) = aet.processor_trace.rows().into_iter().last());
+        let_assert!(Some(last_processor_row) = aet.processor_trace.rows().into_iter().next_back());
         let clk_count = last_processor_row[ProcessorMainColumn::CLK.main_index()];
         assert!(BFieldElement::ZERO == clk_count);
 

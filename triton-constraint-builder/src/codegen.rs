@@ -383,7 +383,7 @@ const OUT_ARRAY_OFFSET: usize = {
 /// Convenience macro to get raw opcodes of any [`Instruction`] variant,
 /// including its argument if applicable.
 ///
-/// [labelled]: triton_vm::instruction::LabelledInstruction::Instruction
+/// [labelled]: isa::instruction::LabelledInstruction::Instruction
 macro_rules! instr {
     ($($instr:tt)*) => {{
         let instr = Instruction::$($instr)*;

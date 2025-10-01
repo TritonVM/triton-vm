@@ -21,6 +21,8 @@ use triton_vm::prelude::*;
 use triton_vm::proof_stream::ProofStream;
 use triton_vm::prove_program;
 
+const BYTES_PER_BFE: f64 = BFieldElement::BYTES as f64;
+
 /// Ties together a program and its inputs.
 struct ProgramAndInput {
     program: Program,
@@ -121,13 +123,14 @@ struct ProofSizeFormatter;
 
 impl ValueFormatter for ProofSizeFormatter {
     fn scale_values(&self, typical_value: f64, values: &mut [f64]) -> &'static str {
-        let bytes_per_bfe = 8.0;
-        let size_in_bytes = typical_value * bytes_per_bfe;
+        let size_in_bytes = typical_value * BYTES_PER_BFE;
         let order_of_magnitude = DataSizeOrderOfMagnitude::order_of_magnitude(size_in_bytes);
         let normalization_divisor = order_of_magnitude.min_bytes_in_order_of_magnitude();
-        values
-            .iter_mut()
-            .for_each(|value| *value = (*value * bytes_per_bfe) / normalization_divisor);
+        let scaling_factor = BYTES_PER_BFE / normalization_divisor;
+        for value in values {
+            *value *= scaling_factor;
+        }
+
         order_of_magnitude.abbreviation()
     }
 
@@ -141,8 +144,10 @@ impl ValueFormatter for ProofSizeFormatter {
     }
 
     fn scale_for_machines(&self, values: &mut [f64]) -> &'static str {
-        let bytes_per_bfe = 8.0;
-        values.iter_mut().for_each(|v| *v *= bytes_per_bfe);
+        for value in values {
+            *value *= BYTES_PER_BFE;
+        }
+
         DataSizeOrderOfMagnitude::Bytes.abbreviation()
     }
 }
