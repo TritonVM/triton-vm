@@ -18,6 +18,7 @@ jobs:
     name: Link Checker
     runs-on: ubuntu-latest
     permissions:
+      actions: write
       contents: read
       issues: write # required for peter-evans/create-issue-from-file
 
@@ -50,12 +51,21 @@ jobs:
             '.'
         continue-on-error: true
 
+      # Delete the old cache on hit to emulate a cache update. See
+      # https://github.com/actions/cache/issues/342.
+      - name: Delete old lychee cache
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        if: steps.restore_cache.outputs.cache-hit
+        run: gh cache delete ${{ steps.restore_cache.outputs.cache-matched-key }}
+        continue-on-error: true
+
       - name: Save lychee cache
         uses: actions/cache/save@v4
         if: ${{ !cancelled() }}
         with:
           path: .lycheecache
-          key: ${{ steps.restore_cache.outputs.cache-primary-key }}
+          key: ${{ steps.restore_cache.outputs.cache-matched-key }}
 
       - name: List open issues
         if: github.ref == 'refs/heads/master'
