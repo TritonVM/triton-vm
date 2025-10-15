@@ -243,7 +243,7 @@ impl AIR for ProcessorTable {
         let constant = |c: u32| circuit_builder.b_constant(c);
         let main_row = |col: MainColumn| circuit_builder.input(Main(col.master_main_index()));
 
-        // The composition of instruction bits ib0-ib7 corresponds the current
+        // The composition of instruction bits ib0-ib6 corresponds the current
         // instruction ci.
         let ib_composition = main_row(MainColumn::IB0)
             + constant(1 << 1) * main_row(MainColumn::IB1)
@@ -252,7 +252,7 @@ impl AIR for ProcessorTable {
             + constant(1 << 4) * main_row(MainColumn::IB4)
             + constant(1 << 5) * main_row(MainColumn::IB5)
             + constant(1 << 6) * main_row(MainColumn::IB6);
-        let ci_corresponds_to_ib0_thru_ib7 = main_row(MainColumn::CI) - ib_composition;
+        let ci_corresponds_to_ib0_thru_ib6 = main_row(MainColumn::CI) - ib_composition;
 
         let ib0_is_bit = main_row(MainColumn::IB0) * (main_row(MainColumn::IB0) - constant(1));
         let ib1_is_bit = main_row(MainColumn::IB1) * (main_row(MainColumn::IB1) - constant(1));
@@ -282,7 +282,7 @@ impl AIR for ProcessorTable {
             ib5_is_bit,
             ib6_is_bit,
             is_padding_is_bit,
-            ci_corresponds_to_ib0_thru_ib7,
+            ci_corresponds_to_ib0_thru_ib6,
             clock_jump_diff_lookup_multiplicity_is_0_in_padding_rows,
         ]
     }
