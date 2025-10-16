@@ -5,12 +5,12 @@ use criterion::criterion_main;
 use triton_vm::example_programs::FIBONACCI_SEQUENCE;
 use triton_vm::prelude::*;
 
-const FIBONACCI_INDEX: u32 = 100;
+const FIBONACCI_INDEX: u32 = 40_000;
 
 criterion_main!(benches);
 criterion_group! {
     name = benches;
-    config = Criterion::default();
+    config = Criterion::default().sample_size(10);
     targets = prove_fib
 }
 
