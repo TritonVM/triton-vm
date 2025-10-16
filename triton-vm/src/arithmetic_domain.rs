@@ -93,12 +93,9 @@ impl ArithmeticDomain {
     where
         FF: FiniteField + MulAssign<BFieldElement> + Mul<BFieldElement, Output = FF>,
     {
-        // required by `fast_coset_interpolate`
-        debug_assert_eq!(self.length, values.len());
+        debug_assert_eq!(self.length, values.len()); // required by `fast_coset_interpolate`
 
-        // generic type made explicit to avoid performance regressions due to
-        // auto-conversion
-        Polynomial::fast_coset_interpolate::<BFieldElement>(self.offset, values)
+        Polynomial::fast_coset_interpolate(self.offset, values)
     }
 
     pub fn low_degree_extension<FF>(&self, codeword: &[FF], target_domain: Self) -> Vec<FF>

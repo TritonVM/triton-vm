@@ -39,7 +39,8 @@ jobs:
         run: cargo codspeed build --bench ${{ matrix.benchmark }}
 
       - name: Run benchmarks
-        uses: CodSpeedHQ/action@v3
+        uses: CodSpeedHQ/action@v4
         with:
           run: cargo codspeed run
+          mode: "instrumentation"
           token: ${{ secrets.CODSPEED_TOKEN }}

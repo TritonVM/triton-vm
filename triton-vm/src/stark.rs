@@ -38,6 +38,7 @@ use crate::proof_item::ProofItem;
 use crate::proof_stream::ProofStream;
 use crate::table::QuotientSegments;
 use crate::table::auxiliary_table::Evaluable;
+use crate::table::master_table::BfeSlice;
 use crate::table::master_table::MasterAuxTable;
 use crate::table::master_table::MasterMainTable;
 use crate::table::master_table::MasterTable;
@@ -1104,6 +1105,11 @@ impl Prover {
             .into_par_iter()
             .flat_map(|segment| fri_domain.evaluate(segment))
             .collect();
+
+        // While later steps would benefit from row majority (“`C`”), the
+        // required `.to_standard_layout().to_owned()` is prohibitively
+        // expensive. Should we decide to chase small gains at some point,
+        // then a parallel transpose could be considered.
         Array2::from_shape_vec(
             [fri_domain.length, NUM_QUOTIENT_SEGMENTS].f(),
             fri_domain_codewords,
@@ -1338,11 +1344,10 @@ impl Verifier {
             .try_into_authentication_structure()?;
         let leaf_digests_aux = aux_table_rows
             .par_iter()
-            .map(|xvalues| {
-                let b_values = xvalues.iter().flat_map(|xfe| xfe.coefficients.to_vec());
-                Tip5::hash_varlen(&b_values.collect_vec())
-            })
-            .collect::<Vec<_>>();
+            .map(|row| row.as_slice())
+            .map(XFieldElement::bfe_slice)
+            .map(Tip5::hash_varlen)
+            .collect();
         profiler!(stop "dequeue auxiliary elements");
 
         profiler!(start "Merkle verify (auxiliary tree)" ("hash"));
@@ -1359,8 +1364,12 @@ impl Verifier {
         profiler!(start "dequeue quotient segments' elements");
         let revealed_quotient_segments_elements =
             proof_stream.dequeue()?.try_into_quot_segments_elements()?;
-        let revealed_quotient_segments_digests =
-            Self::hash_quotient_segment_elements(&revealed_quotient_segments_elements);
+        let revealed_quotient_segments_digests = revealed_quotient_segments_elements
+            .iter()
+            .map(|row| row.as_slice())
+            .map(XFieldElement::bfe_slice)
+            .map(Tip5::hash_varlen)
+            .collect();
         let revealed_quotient_authentication_structure = proof_stream
             .dequeue()?
             .try_into_authentication_structure()?;
@@ -1451,16 +1460,6 @@ impl Verifier {
         }
         profiler!(stop "linear combination");
         Ok(())
-    }
-
-    fn hash_quotient_segment_elements(quotient_segment_rows: &[QuotientSegments]) -> Vec<Digest> {
-        let interpret_xfe_as_bfes = |xfe: XFieldElement| xfe.coefficients.to_vec();
-        let collect_row_as_bfes = |row: &QuotientSegments| row.map(interpret_xfe_as_bfes).concat();
-        quotient_segment_rows
-            .iter()
-            .map(collect_row_as_bfes)
-            .map(|row| Tip5::hash_varlen(&row))
-            .collect()
     }
 
     fn linearly_sum_main_and_aux_row<FF>(

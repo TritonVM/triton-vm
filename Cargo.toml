@@ -59,9 +59,9 @@ package = "triton-isa"
 arbitrary = { version = "1", features = ["derive"] }
 assert2 = "0.3"
 colored = "3.0"
-criterion = { package = "codspeed-criterion-compat", version = "2.10", features = ["html_reports"] }
+criterion = { package = "codspeed-criterion-compat", version = "4.0", features = ["html_reports"] }
 fs-err = "3.1"
-get-size2 = { version = "0.5", features = ["derive"] }
+get-size2 = { version = "0.7", features = ["derive"] }
 indexmap = { version = "2.10.0", features = ["rayon"] }
 insta = "1.43.1"
 itertools = "0.14"
@@ -84,7 +84,7 @@ strum = { version = "0.27", features = ["derive"] }
 syn = "2.0"
 test-strategy = "0.4.2"
 thiserror = "2.0"
-twenty-first = "0.50.0"
+twenty-first = "1.0.0"
 unicode-width = "0.2"
 
 [workspace.lints.rust]
