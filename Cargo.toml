@@ -84,7 +84,7 @@ strum = { version = "0.27", features = ["derive"] }
 syn = "2.0"
 test-strategy = "0.4.2"
 thiserror = "2.0"
-twenty-first = "0.50.0"
+twenty-first = { git = "https://github.com/Neptune-Crypto/twenty-first.git", branch = "jfs/poly_scale" }
 unicode-width = "0.2"
 
 [workspace.lints.rust]
