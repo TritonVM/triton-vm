@@ -76,7 +76,7 @@ Both types of challenges are X-field elements, _i.e._, elements of $\mathbb{F}_{
     `+ IsPadding'·LookIn'`
 1. `(1 - IsPadding')·((CascadeTableServerLogDerivative' - CascadeTableServerLogDerivative)·(🧺 - 🍒·LookIn' - 🍓·LookOut') - LookupMultiplicity')`<br />
     `+ IsPadding'·(CascadeTableServerLogDerivative' - CascadeTableServerLogDerivative)`
-1. `(1 - IsPadding')·((PublicEvaluationArgument' - PublicEvaluationArgument)·(🧹 - lookup_output'))`<br />
+1. `(1 - IsPadding')·(PublicEvaluationArgument' - 🧹·PublicEvaluationArgument - LookOut')`<br />
     `+ IsPadding'·(PublicEvaluationArgument' - PublicEvaluationArgument)`
 
 ## Terminal Constraints
