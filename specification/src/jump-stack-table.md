@@ -137,6 +137,16 @@ Let all household items (🪥, 🛁, etc.) be challenges, concretely evaluation 
 Let all fruit & vegetables (🥝, 🥥, etc.) be challenges, concretely weights to compress rows, supplied by the verifier.
 Both types of challenges are X-field elements, _i.e._, elements of $\mathbb{F}_{p^3}$.
 
+## Derivation
+
+We derive constraints from the intended semantics:
+
+- Initialization fixes base values and seeds the permutation running product `rppa` with the first compressed row `(🍇·clk + 🍅·ci + 🍌·jsp + 🍏·jso + 🍐·jsd)` using indeterminate 🧴; the clock-jump log-derivative starts at 0.
+- Transitions encode that either `jsp` increments by 1 (push) or else, for non-push steps, `clk` increases by 1 unless the instruction is `call`, `return`, or `recurse_or_return` per the disjunctive cases; in “no `jsp` change” steps, the clock-jump log-derivative accumulates factor `(clk' - clk)` relative to indeterminate 🪞, else remains.
+- The permutation argument accumulates the next compressed row in every step.
+
+DNF-style disjunctions are expressed via products of linear terms per Deriving AIR Constraints.
+
 ## Initial Constraints
 
 1. Cycle count `clk` is 0.
@@ -145,6 +155,8 @@ Both types of challenges are X-field elements, _i.e._, elements of $\mathbb{F}_{
 1. Jump Stack Destination `jsd` is 0.
 1. The running product for the permutation argument with the Processor Table `rppa` has absorbed the first row with respect to challenges 🍇, 🍅, 🍌, 🍏, and 🍐 and indeterminate 🧴.
 1. The running product of clock jump differences `ClockJumpDifferenceLookupClientLogDerivative` is 0.
+
+## Appendix: Polynomial Forms
 
 ### Initial Constraints as Polynomials
 
