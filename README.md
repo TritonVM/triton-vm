@@ -10,7 +10,7 @@
 
 Triton is a virtual machine that comes with Algebraic Execution Tables (AET) and Arithmetic
 Intermediate Representations (AIR) for use in combination with
-a [STARK proof system](https://neptune.cash/learn/stark-anatomy/). It defines a Turing
+a [STARK proof system](https://aszepieniec.github.io/stark-anatomy/). It defines a Turing
 complete [Instruction Set Architecture](https://triton-vm.org/spec/isa.html), as well as the
 corresponding [arithmetization](https://triton-vm.org/spec/arithmetization.html) of the VM. The
 really cool thing about Triton VM is its efficient _recursive_ verification of the STARKs produced
