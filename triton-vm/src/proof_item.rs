@@ -195,8 +195,7 @@ pub(crate) mod tests {
         assert!(let Err(UnexpectedItem{..}) = item.clone().try_into_log2_padded_height());
         assert!(let Err(UnexpectedItem{..}) = item.clone().try_into_quot_segments_elements());
         assert!(let Err(UnexpectedItem{..}) = item.clone().try_into_fri_codeword());
-        assert!(let Err(UnexpectedItem{..}) = item.clone().try_into_fri_polynomial());
-        assert!(let Err(UnexpectedItem{..}) = item.try_into_fri_response());
+        assert!(let Err(UnexpectedItem{..}) = item.try_into_fri_polynomial());
     }
 
     #[test]
