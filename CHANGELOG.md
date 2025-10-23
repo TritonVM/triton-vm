@@ -3,6 +3,13 @@
 All notable changes are documented in this file.
 Lines marked “(!)” indicate a breaking change.
 
+## [1.0.0](https://github.com/TritonVM/triton-vm/compare/v0.50.0..v1.0.0) - 2025-10-23
+
+### ⚙️ Miscellaneous
+
+- Make environment variable name public ([#367](https://github.com/TritonVM/triton-vm/issues/367)) ([8d518985](https://github.com/TritonVM/triton-vm/commit/8d518985))
+- Upgrade dependencies ([4da0e9f6](https://github.com/TritonVM/triton-vm/commit/4da0e9f6))
+
 ## [0.50.0](https://github.com/TritonVM/triton-vm/compare/v0.49.0..v0.50.0) - 2025-06-27
 
 ### ⚡️ Performance
