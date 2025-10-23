@@ -27,7 +27,7 @@ build-override.opt-level = 3
 [workspace.package]
 version = "1.0.0"
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.89"
 authors = ["Triton Software AG"]
 license = "MIT OR Apache-2.0"
 homepage = "https://triton-vm.org/"

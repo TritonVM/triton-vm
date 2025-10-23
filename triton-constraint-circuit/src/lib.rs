@@ -1049,10 +1049,10 @@ impl<II: InputIndicator> ConstraintCircuitBuilder<II> {
         );
 
         // don't use X field if the B field suffices
-        if let CircuitExpression::XConst(xfe) = expression {
-            if let Some(bfe) = xfe.unlift() {
-                expression = CircuitExpression::BConst(bfe);
-            }
+        if let CircuitExpression::XConst(xfe) = expression
+            && let Some(bfe) = xfe.unlift()
+        {
+            expression = CircuitExpression::BConst(bfe);
         }
 
         let id = self.id_counter.borrow().to_owned();

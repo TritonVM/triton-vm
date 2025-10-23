@@ -149,10 +149,10 @@ fn identify_missing_labels<'a>(
 ) -> HashSet<InstructionToken<'a>> {
     let mut missing_labels = HashSet::default();
     for instruction in instructions {
-        if let InstructionToken::Instruction(AnInstruction::Call(label), _) = instruction {
-            if !seen_labels.contains_key(label.as_str()) {
-                missing_labels.insert(instruction.to_owned());
-            }
+        if let InstructionToken::Instruction(AnInstruction::Call(label), _) = instruction
+            && !seen_labels.contains_key(label.as_str())
+        {
+            missing_labels.insert(instruction.to_owned());
         }
     }
     missing_labels

@@ -376,7 +376,7 @@ pub const MEM_PAGE_SIZE: usize = 1 << 32;
 const OUT_ARRAY_OFFSET: usize = {
     let max_num_words_for_evaluated_constraints = 1 << 16; // magic!
     let out_array_offset_in_words = MEM_PAGE_SIZE - max_num_words_for_evaluated_constraints;
-    assert!(out_array_offset_in_words % EXTENSION_DEGREE == 0);
+    assert!(out_array_offset_in_words.is_multiple_of(EXTENSION_DEGREE));
     out_array_offset_in_words / EXTENSION_DEGREE
 };
 
