@@ -10,6 +10,7 @@
     + [Processor Table](processor-table.md)
         * [Instruction Groups](instruction-groups.md)
         * [Instruction-Specific Transition Constraints](instruction-specific-transition-constraints.md)
+* [Deriving AIR Constraints](deriving-air-constraints.md)
     + [Operational Stack Table](operational-stack-table.md)
     + [Random Access Memory Table](random-access-memory-table.md)
     + [Jump Stack Table](jump-stack-table.md)

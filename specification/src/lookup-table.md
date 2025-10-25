@@ -39,11 +39,23 @@ Let all household items (🪥, 🛁, etc.) be challenges, concretely evaluation 
 Let all fruit & vegetables (🥝, 🥥, etc.) be challenges, concretely weights to compress rows, supplied by the verifier.
 Both types of challenges are X-field elements, _i.e._, elements of $\mathbb{F}_{p^3}$.
 
+## Derivation
+
+This table's constraints are derived by describing semantics first and then translating them into gated linear relations per the guide in Deriving AIR Constraints. In brief:
+
+- Initialization sets `LookIn = 0`, seeds the cascade log-derivative with the first row's inverse term, and seeds the public evaluation accumulator with the first `LookOut`.
+- Consistency enforces `IsPadding` is boolean.
+- Transitions gate updates by `IsPadding'`: in non-padding rows, `LookIn` increments, the cascade log-derivative accumulates using the compressed row `(🍒·LookIn' + 🍓·LookOut')` with indeterminate 🧺, and the public evaluation argument accumulates `LookOut'`; in padding rows, relevant values remain.
+
+See Deriving AIR Constraints for the generic patterns used to encode “remain vs. update” and accumulator updates.
+
 ## Initial Constraints
 
 1. `LookIn` is 0.
 1. `CascadeTableServerLogDerivative` has accumulated the first row with respect to challenges 🍒 and 🍓 and indeterminate 🧺.
 1. `PublicEvaluationArgument` has accumulated the first `LookOut` with respect to indeterminate 🧹.
+
+## Appendix: Polynomial Forms
 
 ### Initial Constraints as Polynomials
 
