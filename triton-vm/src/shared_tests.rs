@@ -1,6 +1,7 @@
 use assert2::assert;
 use assert2::let_assert;
 use isa::program::Program;
+use itertools::Itertools;
 use num_traits::Zero;
 use proptest::collection::vec;
 use proptest::prelude::*;
@@ -40,13 +41,13 @@ prop_compose! {
         leading_coefficient: NonZeroXFieldElement,
         other_coefficients in vec(arb(), degree.try_into().unwrap_or(0)),
     ) -> Polynomial<'static, XFieldElement> {
-        let leading_coefficient = leading_coefficient.0;
-        let coefficients = match degree >= 0 {
-            true => [other_coefficients, vec![leading_coefficient]].concat(),
-            false => vec![],
-        };
+        let mut coefficients = other_coefficients;
+        if degree >= 0 {
+            coefficients.push(leading_coefficient.0);
+        }
         let polynomial = Polynomial::new(coefficients);
-        assert!(degree == polynomial.degree() as i64);
+        assert_eq!(degree, polynomial.degree() as i64);
+
         polynomial
     }
 }
@@ -239,4 +240,30 @@ pub struct ProofArtifacts {
     pub master_main_table: MasterMainTable,
     pub master_aux_table: MasterAuxTable,
     pub challenges: Challenges,
+}
+
+/// Test helper struct for corrupting digests. Primarily used for negative tests.
+#[derive(Debug, Clone, PartialEq, Eq, test_strategy::Arbitrary)]
+pub(crate) struct DigestCorruptor {
+    #[strategy(vec(0..Digest::LEN, 1..=Digest::LEN))]
+    #[filter(#corrupt_indices.iter().all_unique())]
+    corrupt_indices: Vec<usize>,
+
+    #[strategy(vec(arb(), #corrupt_indices.len()))]
+    corrupt_elements: Vec<BFieldElement>,
+}
+
+impl DigestCorruptor {
+    pub fn corrupt(&self, digest: &mut Digest) -> Result<(), TestCaseError> {
+        let original_digest = *digest;
+        for (&i, &element) in self.corrupt_indices.iter().zip(&self.corrupt_elements) {
+            digest.0[i] = element;
+        }
+        if *digest == original_digest {
+            let reject_reason = "corruption must change digest".into();
+            return Err(TestCaseError::Reject(reject_reason));
+        }
+
+        Ok(())
+    }
 }
