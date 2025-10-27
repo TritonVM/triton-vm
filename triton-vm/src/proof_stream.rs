@@ -126,6 +126,8 @@ mod tests {
     use assert2::let_assert;
     use itertools::Itertools;
     use proptest::collection::vec;
+    use proptest::prelude::BoxedStrategy;
+    use proptest::prelude::Strategy;
     use proptest_arbitrary_interop::arb;
     use test_strategy::proptest;
     use twenty_first::math::other::random_elements;
@@ -138,6 +140,29 @@ mod tests {
     use crate::table::QuotientSegments;
 
     use super::*;
+
+    impl ProofStream {
+        /// Test-only method to prepare this proof stream for verification.
+        ///
+        /// In production, prover and verifier don’t use the same proof
+        /// stream. Instead, the prover's proof stream is serialized, sent to
+        /// the verifier, and then deserialized. This implicitly resets the
+        /// Sponge state.
+        pub(crate) fn reset_sponge(&mut self) {
+            self.items_index = 0;
+            self.sponge = Tip5::init();
+        }
+    }
+
+    impl proptest::arbitrary::Arbitrary for ProofStream {
+        type Parameters = ();
+
+        fn arbitrary_with(_: Self::Parameters) -> Self::Strategy {
+            arb().boxed()
+        }
+
+        type Strategy = BoxedStrategy<Self>;
+    }
 
     #[proptest]
     fn serialize_proof_with_fiat_shamir(

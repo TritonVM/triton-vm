@@ -20,6 +20,8 @@ use crate::vm::VMState;
 
 pub(crate) const USIZE_TO_U64_ERR: &str =
     "internal error: type `usize` should have at most 64 bits";
+pub(crate) const U32_TO_USIZE_ERR: &str =
+    "internal error: type `usize` should have at least 32 bits";
 
 /// Indicates a runtime error that resulted in a crash of Triton VM.
 #[derive(Debug, Clone, Eq, PartialEq, Error)]
@@ -133,6 +135,64 @@ pub enum FriValidationError {
 
     #[error(transparent)]
     ArithmeticDomainError(#[from] ArithmeticDomainError),
+}
+
+/// Indicates the choice of an invalid combination of initial parameters.
+#[non_exhaustive]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Error)]
+pub enum StirParameterError {
+    #[error("the log₂ of the STIR folding factor must be greater than or equal to 2, but is {0}")]
+    TooSmallLog2FoldingFactor(usize),
+
+    #[error("the log₂ of the STIR folding factor must be less than 32, but is {0}")]
+    TooBigLog2FoldingFactor(usize),
+
+    #[error("the log₂ of the initial expansion factor must be greater than 0")]
+    TooSmallInitialExpansionFactor,
+
+    #[error("the log₂ of the initial expansion factor must be less than 32")]
+    TooBigInitialExpansionFactor,
+
+    #[error("the “high degree” threshold must be greater than or equal to the folding factor")]
+    TooLowDegreeOfHighDegreePolynomials,
+
+    #[error("the initial domain must be shorter than or equal to 2^32, but was 2^{0}")]
+    InitialDomainTooBig(u64),
+}
+
+#[non_exhaustive]
+#[derive(Debug, Error)]
+pub enum StirProvingError {
+    #[error("initial domain len ({domain_len}) must equal first codeword len ({codeword_len})")]
+    InitialCodewordMismatch {
+        domain_len: usize,
+        codeword_len: usize,
+    },
+
+    #[error(transparent)]
+    ParameterError(#[from] StirParameterError),
+}
+
+#[non_exhaustive]
+#[derive(Debug, Error)]
+pub enum StirVerificationError {
+    #[error("the number of revealed leaves does not match the number of in-domain queries")]
+    IncorrectNumberOfRevealedLeaves,
+
+    #[error("Merkle tree authentication failed")]
+    BadMerkleAuthenticationPath,
+
+    #[error("evaluations of last round's polynomial and last round codeword do not match")]
+    LastRoundPolynomialEvaluationMismatch,
+
+    #[error("last round's polynomial has too high degree")]
+    LastRoundPolynomialHasTooHighDegree,
+
+    #[error(transparent)]
+    ProofStreamError(#[from] ProofStreamError),
+
+    #[error(transparent)]
+    ParameterError(#[from] StirParameterError),
 }
 
 #[non_exhaustive]

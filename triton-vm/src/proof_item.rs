@@ -24,6 +24,14 @@ pub struct FriResponse {
     pub revealed_leaves: Vec<XFieldElement>,
 }
 
+// todo: struct name
+#[derive(Debug, Clone, Eq, PartialEq, Hash, BFieldCodec, Arbitrary)]
+pub struct StirResponse {
+    pub auth_structure: AuthenticationStructure,
+
+    pub queried_leafs: Vec<Vec<XFieldElement>>,
+}
+
 macro_rules! proof_items {
     ($($variant:ident($payload:ty) => $in_fiat_shamir_heuristic:literal, $try_into_fn:ident,)+) => {
         #[derive(
@@ -106,6 +114,7 @@ proof_items!(
     OutOfDomainMainRow(Box<MainRow<XFieldElement>>) => true, try_into_out_of_domain_main_row,
     OutOfDomainAuxRow(Box<AuxiliaryRow>) => true, try_into_out_of_domain_aux_row,
     OutOfDomainQuotientSegments(QuotientSegments) => true, try_into_out_of_domain_quot_segments,
+    StirOutOfDomainValues(Vec<XFieldElement>) => true, try_into_stir_ood_values,
 
     // implied by some Merkle root: not included in the Fiat-Shamir heuristic
     AuthenticationStructure(AuthenticationStructure) => false, try_into_authentication_structure,
@@ -116,6 +125,8 @@ proof_items!(
     FriCodeword(Vec<XFieldElement>) => false, try_into_fri_codeword,
     FriPolynomial(Polynomial<'static, XFieldElement>) => false, try_into_fri_polynomial,
     FriResponse(FriResponse) => false, try_into_fri_response,
+    StirResponse(StirResponse) => false, try_into_stir_response,
+    StirPolynomial(Polynomial<'static, XFieldElement>) => false, try_into_stir_polynomial,
 );
 
 #[cfg(test)]

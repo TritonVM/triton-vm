@@ -718,7 +718,7 @@ mod tests {
         let mut proof_stream = ProofStream::new();
         fri.prove(&codeword, &mut proof_stream).unwrap();
 
-        let mut proof_stream = prepare_proof_stream_for_verification(proof_stream);
+        proof_stream.reset_sponge();
         let verdict = fri.verify(&mut proof_stream);
         prop_assert!(verdict.is_ok());
     }
@@ -734,7 +734,7 @@ mod tests {
         let mut proof_stream = ProofStream::new();
         fri.prove(&codeword, &mut proof_stream).unwrap();
 
-        let mut proof_stream = prepare_proof_stream_for_verification(proof_stream);
+        proof_stream.reset_sponge();
         let verdict = fri.verify(&mut proof_stream);
         prop_assert!(verdict.is_ok());
     }
@@ -751,7 +751,7 @@ mod tests {
         let mut proof_stream = ProofStream::new();
         fri.prove(&codeword, &mut proof_stream).unwrap();
 
-        let mut proof_stream = prepare_proof_stream_for_verification(proof_stream);
+        proof_stream.reset_sponge();
         let verdict = fri.verify(&mut proof_stream);
         prop_assert!(verdict.is_err());
     }
@@ -847,7 +847,7 @@ mod tests {
         let mut proof_stream = ProofStream::new();
         fri.prove(&codeword, &mut proof_stream).unwrap();
 
-        let proof_stream = prepare_proof_stream_for_verification(proof_stream);
+        proof_stream.reset_sponge();
         let mut proof_stream =
             modify_last_round_codeword_in_proof_stream_using_seed(proof_stream, rng_seed);
 
@@ -856,13 +856,6 @@ mod tests {
         let FriValidationError::BadMerkleRootForLastCodeword = err else {
             return Err(TestCaseError::Fail("validation must fail".into()));
         };
-    }
-
-    #[must_use]
-    fn prepare_proof_stream_for_verification(mut proof_stream: ProofStream) -> ProofStream {
-        proof_stream.items_index = 0;
-        proof_stream.sponge = Tip5::init();
-        proof_stream
     }
 
     #[must_use]
@@ -898,7 +891,7 @@ mod tests {
         let mut proof_stream = ProofStream::new();
         fri.prove(&codeword, &mut proof_stream).unwrap();
 
-        let proof_stream = prepare_proof_stream_for_verification(proof_stream);
+        proof_stream.reset_sponge();
         let mut proof_stream =
             change_size_of_some_fri_response_in_proof_stream_using_seed(proof_stream, rng_seed);
 
@@ -953,7 +946,7 @@ mod tests {
         let mut proof_stream = ProofStream::new();
         fri.prove(&codeword, &mut proof_stream).unwrap();
 
-        let proof_stream = prepare_proof_stream_for_verification(proof_stream);
+        proof_stream.reset_sponge();
         let mut proof_stream =
             modify_some_auth_structure_in_proof_stream_using_seed(proof_stream, rng_seed);
 
@@ -1003,7 +996,7 @@ mod tests {
         let mut proof_stream = ProofStream::new();
         fri.prove(&codeword, &mut proof_stream).unwrap();
 
-        let mut proof_stream = prepare_proof_stream_for_verification(proof_stream);
+        proof_stream.reset_sponge();
         proof_stream.items.iter_mut().for_each(|item| {
             if let ProofItem::FriPolynomial(polynomial) = item {
                 *polynomial = incorrect_polynomial.clone();
@@ -1026,7 +1019,7 @@ mod tests {
         let mut proof_stream = ProofStream::new();
         fri.prove(&codeword, &mut proof_stream).unwrap();
 
-        let mut proof_stream = prepare_proof_stream_for_verification(proof_stream);
+        proof_stream.reset_sponge();
         let verdict = fri.verify(&mut proof_stream);
         let_assert!(Err(err) = verdict);
         assert!(let FriValidationError::LastRoundPolynomialHasTooHighDegree = err);

@@ -200,6 +200,7 @@ pub mod proof;
 pub mod proof_item;
 pub mod proof_stream;
 pub mod stark;
+pub mod stir;
 pub mod table;
 pub mod vm;
 
