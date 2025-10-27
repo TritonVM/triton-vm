@@ -3023,9 +3023,9 @@ pub(crate) mod tests {
     #[proptest(cases = 10)]
     fn prove_verify_merkle_tree_update(
         program_for_merkle_tree_update: ProgramForMerkleTreeUpdate,
-        #[strategy(1_usize..=4)] log_2_fri_expansion_factor: usize,
+        #[strategy(1_usize..=4)] log2_expansion_factor: usize,
     ) {
-        let stark = Stark::new(Stark::LOW_SECURITY_LEVEL, log_2_fri_expansion_factor);
+        let stark = Stark::new(Stark::LOW_SECURITY_LEVEL, log2_expansion_factor);
         program_for_merkle_tree_update
             .assemble()
             .use_stark(stark)

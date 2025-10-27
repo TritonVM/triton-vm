@@ -7,22 +7,11 @@ use twenty_first::prelude::*;
 
 use crate::error::ProofStreamError;
 use crate::error::ProofStreamError::UnexpectedItem;
-use crate::fri::AuthenticationStructure;
+use crate::stir::AuthenticationStructure;
+use crate::stir::StirResponse;
 use crate::table::AuxiliaryRow;
 use crate::table::MainRow;
 use crate::table::QuotientSegments;
-
-/// A `FriResponse` is an `AuthenticationStructure` together with the values of
-/// the revealed leaves of the Merkle tree. Together, they correspond to the
-/// queried indices of the FRI codeword (of that round).
-#[derive(Debug, Clone, Eq, PartialEq, Hash, BFieldCodec, Arbitrary)]
-pub struct FriResponse {
-    /// The authentication structure of the Merkle tree.
-    pub auth_structure: AuthenticationStructure,
-
-    /// The values of the opened leaves of the Merkle tree.
-    pub revealed_leaves: Vec<XFieldElement>,
-}
 
 macro_rules! proof_items {
     ($($variant:ident($payload:ty) => $in_fiat_shamir_heuristic:literal, $try_into_fn:ident,)+) => {
@@ -107,7 +96,8 @@ proof_items!(
     OutOfDomainMainRow(Box<MainRow<XFieldElement>>) => true, try_into_out_of_domain_main_row,
     OutOfDomainAuxRow(Box<AuxiliaryRow>) => true, try_into_out_of_domain_aux_row,
     OutOfDomainQuotientSegments(QuotientSegments) => true, try_into_out_of_domain_quot_segments,
-    FriPolynomial(Polynomial<'static, XFieldElement>) => true, try_into_fri_polynomial,
+    StirPolynomial(Polynomial<'static, XFieldElement>) => true, try_into_stir_polynomial,
+    StirOutOfDomainValues(Vec<XFieldElement>) => true, try_into_stir_ood_values,
 
     // For performance reasons (only!), the following items are not included in
     // the Fiat-Shamir heuristic. The resulting proof system is still sound if
@@ -142,14 +132,10 @@ proof_items!(
     MasterAuxTableRows(Vec<AuxiliaryRow>) => false, try_into_master_aux_table_rows,
     QuotientSegmentsElements(Vec<QuotientSegments>) => false, try_into_quot_segments_elements,
 
-    // 1. The Merkle root of the tree of the codeword is integrated into the
-    //    proof stream before the codeword is sent.
-    FriCodeword(Vec<XFieldElement>) => false, try_into_fri_codeword,
-
-    // Since a `FriResponse` is both, an authentication structure and some
+    // Since a `StirResponse` is both, an authentication structure and some
     // revealed elements, the arguments of `AuthenticationStructure` and the
     // tables' rows apply.
-    FriResponse(FriResponse) => false, try_into_fri_response,
+    StirResponse(StirResponse) => false, try_into_stir_response,
 );
 
 #[cfg(test)]
@@ -170,24 +156,24 @@ pub(crate) mod tests {
     use super::*;
 
     #[proptest]
-    fn serialize_fri_response_in_isolation(leaved_merkle_tree: LeavedMerkleTreeTestData) {
-        let fri_response = leaved_merkle_tree.into_fri_response();
-        let encoding = fri_response.encode();
-        let_assert!(Ok(decoding) = FriResponse::decode(&encoding));
-        prop_assert_eq!(fri_response, *decoding);
+    fn serialize_stir_response_in_isolation(leaved_merkle_tree: LeavedMerkleTreeTestData) {
+        let response = leaved_merkle_tree.into_stir_response();
+        let encoding = response.encode();
+        let_assert!(Ok(decoding) = StirResponse::decode(&encoding));
+        prop_assert_eq!(response, *decoding);
     }
 
     #[proptest]
-    fn serialize_fri_response_in_proof_stream(leaved_merkle_tree: LeavedMerkleTreeTestData) {
-        let fri_response = leaved_merkle_tree.into_fri_response();
+    fn serialize_stir_response_in_proof_stream(leaved_merkle_tree: LeavedMerkleTreeTestData) {
+        let response = leaved_merkle_tree.into_stir_response();
         let mut proof_stream = ProofStream::new();
-        proof_stream.enqueue(ProofItem::FriResponse(fri_response.clone()));
+        proof_stream.enqueue(ProofItem::StirResponse(response.clone()));
         let proof: Proof = proof_stream.into();
 
         let_assert!(Ok(mut proof_stream) = ProofStream::try_from(&proof));
         let_assert!(Ok(proof_item) = proof_stream.dequeue());
-        let_assert!(Ok(fri_response_) = proof_item.try_into_fri_response());
-        prop_assert_eq!(fri_response, fri_response_);
+        let_assert!(Ok(response_) = proof_item.try_into_stir_response());
+        prop_assert_eq!(response, response_);
     }
 
     #[proptest]
@@ -220,7 +206,7 @@ pub(crate) mod tests {
         let fake_root = Digest::default();
         let item = ProofItem::MerkleRoot(fake_root);
         assert!(let Err(UnexpectedItem{..}) = item.clone().try_into_authentication_structure());
-        assert!(let Err(UnexpectedItem{..}) = item.clone().try_into_fri_response());
+        assert!(let Err(UnexpectedItem{..}) = item.clone().try_into_stir_response());
         assert!(let Err(UnexpectedItem{..}) = item.clone().try_into_master_main_table_rows());
         assert!(let Err(UnexpectedItem{..}) = item.clone().try_into_master_aux_table_rows());
         assert!(let Err(UnexpectedItem{..}) = item.clone().try_into_out_of_domain_main_row());
@@ -228,16 +214,15 @@ pub(crate) mod tests {
         assert!(let Err(UnexpectedItem{..}) = item.clone().try_into_out_of_domain_quot_segments());
         assert!(let Err(UnexpectedItem{..}) = item.clone().try_into_log2_padded_height());
         assert!(let Err(UnexpectedItem{..}) = item.clone().try_into_quot_segments_elements());
-        assert!(let Err(UnexpectedItem{..}) = item.clone().try_into_fri_codeword());
-        assert!(let Err(UnexpectedItem{..}) = item.try_into_fri_polynomial());
+        assert!(let Err(UnexpectedItem{..}) = item.clone().try_into_stir_ood_values());
+        assert!(let Err(UnexpectedItem{..}) = item.try_into_stir_polynomial());
     }
 
     #[test]
     fn proof_item_payload_static_length_is_as_expected() {
         assert!(let Some(_) =  ProofItemVariant::MerkleRoot.payload_static_length());
         assert!(let Some(_) =  ProofItemVariant::Log2PaddedHeight.payload_static_length());
-        assert_eq!(None, ProofItemVariant::FriCodeword.payload_static_length());
-        assert_eq!(None, ProofItemVariant::FriResponse.payload_static_length());
+        assert_eq!(None, ProofItemVariant::StirResponse.payload_static_length());
     }
 
     #[test]
@@ -259,8 +244,8 @@ pub(crate) mod tests {
             ProofItemVariant::Log2PaddedHeight.bfield_codec_discriminant()
         );
         assert_eq!(
-            ProofItem::FriCodeword(vec![]).bfield_codec_discriminant(),
-            ProofItemVariant::FriCodeword.bfield_codec_discriminant()
+            ProofItem::StirPolynomial(Polynomial::new(vec![])).bfield_codec_discriminant(),
+            ProofItemVariant::StirPolynomial.bfield_codec_discriminant()
         );
     }
 
