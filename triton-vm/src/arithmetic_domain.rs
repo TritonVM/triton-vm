@@ -10,9 +10,12 @@ use twenty_first::math::traits::PrimitiveRootOfUnity;
 use twenty_first::prelude::*;
 
 use crate::error::ArithmeticDomainError;
+use crate::error::USIZE_TO_U64_ERR;
 
 type Result<T> = std::result::Result<T, ArithmeticDomainError>;
 
+/// A 2-ary subgroup of the multiplicative group of the
+/// [base field](BFieldElement).
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct ArithmeticDomain {
     pub offset: BFieldElement,
@@ -152,23 +155,37 @@ impl ArithmeticDomain {
             - polynomial.scalar_mul(self.offset.mod_pow(self.length as u64))
     }
 
-    pub(crate) fn halve(&self) -> Result<Self> {
-        if self.length < 2 {
-            return Err(ArithmeticDomainError::TooSmallForHalving(self.length));
+    /// Raise this domain to the given exponent.
+    ///
+    /// If `self` corresponds to the domain ο·<ω>, then raising it to the k-th
+    /// power results in a new domain ο^k·<ω^k>. This new domain is shorter
+    /// by a factor of k, but contains at minimum one element, namely ο^k.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the exponent is not a power of two.
+    pub(crate) fn pow(&self, exponent: usize) -> Result<Self> {
+        if !exponent.is_power_of_two() {
+            let err = ArithmeticDomainError::IllegalExponent(exponent);
+            return Err(err);
         }
+
+        // Since 0 is not a power of 2, this division is safe.
+        let length = (self.length / exponent).max(1);
+        let exponent = u64::try_from(exponent).expect(USIZE_TO_U64_ERR);
         let domain = Self {
-            offset: self.offset.square(),
-            generator: self.generator.square(),
-            length: self.length / 2,
+            offset: self.offset.mod_pow(exponent),
+            generator: self.generator.mod_pow(exponent),
+            length,
         };
+
         Ok(domain)
     }
 }
 
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
-mod tests {
-    use assert2::let_assert;
+pub(crate) mod tests {
     use itertools::Itertools;
     use proptest::collection::vec;
     use proptest::prelude::*;
@@ -181,27 +198,8 @@ mod tests {
     use super::*;
 
     prop_compose! {
-        fn arbitrary_domain()(
+        pub fn arbitrary_domain()(
             length in (0_usize..17).prop_map(|x| 1 << x),
-        )(
-            domain in arbitrary_domain_of_length(length),
-        ) -> ArithmeticDomain {
-            domain
-        }
-    }
-
-    prop_compose! {
-        fn arbitrary_halveable_domain()(
-            length in (2_usize..17).prop_map(|x| 1 << x),
-        )(
-            domain in arbitrary_domain_of_length(length),
-        ) -> ArithmeticDomain {
-            domain
-        }
-    }
-
-    prop_compose! {
-        fn arbitrary_domain_of_length(length: usize)(
             offset in arb(),
         ) -> ArithmeticDomain {
             ArithmeticDomain::of_length(length).unwrap().with_offset(offset)
@@ -300,30 +298,43 @@ mod tests {
     }
 
     #[proptest]
-    fn halving_domain_squares_all_points(
-        #[strategy(arbitrary_halveable_domain())] domain: ArithmeticDomain,
+    fn domain_to_the_pow_contains_points_to_the_pow(
+        #[strategy(arbitrary_domain())] big_domain: ArithmeticDomain,
+        #[strategy(0..=4)]
+        #[map(|i| 1_usize << i)]
+        exponent: usize,
     ) {
-        let half_domain = domain.halve()?;
-        prop_assert_eq!(domain.length / 2, half_domain.length);
+        let small_domain = big_domain.pow(exponent)?;
+        if big_domain.length >= exponent {
+            prop_assert_eq!(big_domain.length / exponent, small_domain.length);
+        } else {
+            prop_assert_eq!(1, small_domain.length);
+        }
 
-        let domain_points = domain.domain_values();
-        let half_domain_points = half_domain.domain_values();
-
-        for (domain_point, halved_domain_point) in domain_points
+        let exponent = exponent.try_into()?;
+        for (big_domain_point, small_domain_point) in big_domain
+            .domain_values()
             .into_iter()
-            .zip(half_domain_points.into_iter())
+            .zip(small_domain.domain_values().into_iter().cycle())
         {
-            prop_assert_eq!(domain_point.square(), halved_domain_point);
+            prop_assert_eq!(big_domain_point.mod_pow(exponent), small_domain_point);
         }
     }
 
-    #[test]
-    fn too_small_domains_cannot_be_halved() {
-        for i in [0, 1] {
-            let domain = ArithmeticDomain::of_length(i).unwrap();
-            let_assert!(Err(err) = domain.halve());
-            assert!(ArithmeticDomainError::TooSmallForHalving(i) == err);
-        }
+    #[proptest]
+    fn pow_converges_on_domain_of_len_1(
+        #[strategy(arbitrary_domain())] domain: ArithmeticDomain,
+        #[strategy(0..=4)]
+        #[map(|i| 1_usize << i)]
+        spurious_exponent: usize,
+    ) {
+        let domain = domain.pow(domain.length)?;
+        prop_assert_eq!(BFieldElement::ONE, domain.generator);
+        prop_assert_eq!(1, domain.length);
+
+        let domain = domain.pow(spurious_exponent)?;
+        prop_assert_eq!(BFieldElement::ONE, domain.generator);
+        prop_assert_eq!(1, domain.length);
     }
 
     #[proptest]

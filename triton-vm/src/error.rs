@@ -18,6 +18,9 @@ use crate::proof_item::ProofItemVariant;
 use crate::proof_stream::ProofStream;
 use crate::vm::VMState;
 
+pub(crate) const USIZE_TO_U64_ERR: &str =
+    "internal error: type `usize` should have at most 64 bits";
+
 /// Indicates a runtime error that resulted in a crash of Triton VM.
 #[derive(Debug, Clone, Eq, PartialEq, Error)]
 pub struct VMError {
@@ -49,8 +52,8 @@ pub enum ArithmeticDomainError {
     #[error("the domain's length must be a power of 2 but was {0}")]
     PrimitiveRootNotSupported(u64),
 
-    #[error("the domain's length must be at least 2 to be halved, but it was {0}")]
-    TooSmallForHalving(usize),
+    #[error("the exponent must be a power of 2, but it was {0}")]
+    IllegalExponent(usize),
 }
 
 #[non_exhaustive]

@@ -181,7 +181,7 @@ impl ProverDomains {
         let randomized_trace_len =
             Stark::randomized_trace_len(padded_height, num_trace_randomizers);
         let randomized_trace_domain = ArithmeticDomain::of_length(randomized_trace_len).unwrap();
-        let trace_domain = randomized_trace_domain.halve().unwrap();
+        let trace_domain = randomized_trace_domain.pow(2).unwrap();
 
         let max_degree = usize::try_from(max_degree).expect("AIR should constrain the VM");
         let quotient_domain_length = max_degree.next_power_of_two();
@@ -662,11 +662,10 @@ impl Prover {
         debug_assert!(RANDOMIZED_TRACE_LEN_TO_WORKING_DOMAIN_LEN_RATIO.is_power_of_two());
 
         let domains = main_table.domains();
-        let mut working_domain = domains.randomized_trace;
-        for _ in 0..RANDOMIZED_TRACE_LEN_TO_WORKING_DOMAIN_LEN_RATIO.ilog2() {
-            working_domain = working_domain.halve().unwrap();
-        }
-        let working_domain = working_domain;
+        let working_domain = domains
+            .randomized_trace
+            .pow(RANDOMIZED_TRACE_LEN_TO_WORKING_DOMAIN_LEN_RATIO)
+            .unwrap();
 
         let num_rows = working_domain.length;
         let coset_root_order = (num_rows * NUM_COSETS).try_into().unwrap();

@@ -83,7 +83,7 @@ impl FriProver<'_> {
         let previous_round = self.rounds.last().unwrap();
         let folding_challenge = self.proof_stream.sample_scalars(1)[0];
         let codeword = previous_round.split_and_fold(folding_challenge);
-        let domain = previous_round.domain.halve()?;
+        let domain = previous_round.domain.pow(2)?;
         ProverRound::new(domain, &codeword)
     }
 
@@ -220,7 +220,7 @@ impl FriVerifier<'_> {
 
         for _ in 0..self.num_rounds {
             let previous_round = self.rounds.last().unwrap();
-            let domain = previous_round.domain.halve()?;
+            let domain = previous_round.domain.pow(2)?;
             let next_round = self.construct_round_with_domain(domain)?;
             self.rounds.push(next_round);
         }
