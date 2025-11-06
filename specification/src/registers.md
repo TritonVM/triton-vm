@@ -23,7 +23,7 @@ the remaining registers exist only to enable an efficient arithmetization and ar
 ## Instruction
 
 Register `ip`, the *instruction pointer*, contains the address of the current instruction in Program Memory.
-The instruction is contained in the register *current instruction*, or `ci`.
+The [opcode](instructions.md#regarding-opcodes) of the current instruction is contained in the register *current instruction*, or `ci`.
 Register *next instruction (or argument)*, or `nia`, either contains the next instruction or the argument for the current instruction in `ci`.
 For reasons of arithmetization, `ci` is decomposed, giving rise to the *instruction bit registers*, labeled `ib0` through `ib6`.
 

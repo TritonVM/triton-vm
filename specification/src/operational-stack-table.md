@@ -188,6 +188,4 @@ Written as Disjunctive Normal Form, the same constraints can be expressed as:
 
 None.
 
----
-
 [^abbrev]: frequently abbreviated as “Op Stack”

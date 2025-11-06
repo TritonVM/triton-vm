@@ -9,7 +9,7 @@ For Triton VM, the execution trace is spread over multiple tables.
 These tables are linked by [various cryptographic arguments](table-linking.md).
 This division allows for a separation of concerns.
 For example, the main processor's trace is recorded in the [Processor Table](processor-table.md).
-The main processor can delegate the execution of somewhat-difficult-to-arithmetize instructions like `hash` or `xor` to a co-processor.
+The main processor can delegate the execution of somewhat-difficult-to-arithmetize instructions like [`hash`](instructions.md#hash) or [`xor`](instructions.md#xor) to a co-processor.
 The arithmetization of the co-processor is largely independent from the main processor and recorded in its separate trace.
 For example, [instructions relating to hashing](instructions.md#hashing) are executed by the hash co-processor.
 Its trace is recorded in the [Hash Table](hash-table.md).

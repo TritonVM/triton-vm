@@ -1,9 +1,5 @@
 # Instruction-Specific Transition Constraints
 
-## Instruction `pop` + `n`
-
-This instruction is fully constrained by its [instruction groups](instruction-groups.md)
-
 ## Instruction `push` + `a`
 
 In addition to its [instruction groups](instruction-groups.md), this instruction has the following constraints.
@@ -15,6 +11,10 @@ In addition to its [instruction groups](instruction-groups.md), this instruction
 ### Polynomials
 
 1. `st0' - nia`
+
+## Instruction `pop` + `n`
+
+This instruction is fully constrained by its [instruction groups](instruction-groups.md)
 
 ## Instruction `divine` + `n`
 
@@ -105,7 +105,7 @@ This instruction is fully constrained by its [instruction groups](instruction-gr
 
 ## Instruction `skiz`
 
-For the correct behavior of instruction `skiz`, the instruction pointer `ip` needs to increment by either 1, or 2, or 3.
+For the correct behavior of instruction [`skiz`](instructions.md#skiz), the instruction pointer `ip` needs to increment by either 1, or 2, or 3.
 The concrete value depends on the top of the stack `st0` and the next instruction, held in `nia`.
 
 Helper variable `hv0` helps with identifying whether `st0` is 0.

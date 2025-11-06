@@ -150,6 +150,4 @@ None.
 
  - `bc0 ⋅ rpp + bc1 ⋅ fd - 1`
 
----
-
 [^op_stack]: See [data structures](data-structures.md#operational-stack) and [registers](registers.md#stack) for explanations of the specific value 16.

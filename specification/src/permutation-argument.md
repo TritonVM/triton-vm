@@ -44,8 +44,6 @@ Otherwise, the Permutation Argument will fail.
 
 An example of a subset Permutation Argument can be found between the [U32 Table](u32-table.md#auxiliary-columns) and the [Processor Table](processor-table.md#auxiliary-columns).
 
----
-
 [^1]: This depends on the length $n$ of the lists $A$ and $B$ as well as the field size.
 For Triton VM, $n < 2^{32}$.
 The polynomials $f_A(X)$ and $f_B(X)$ are evaluated over the auxiliary field with $p^3 \approx 2^{192}$ elements.
