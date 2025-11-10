@@ -2,7 +2,7 @@
 
 The U32 Operations Table arithmetizes the coprocessor for “difficult” 32-bit unsigned integer operations.
 The two inputs to the U32 Operations Table are left-hand side (LHS) and right-hand side (RHS), usually corresponding to the processor's `st0` and `st1`, respectively.
-(For more details see the arithmetization of the specific [u32 instructions](instructions.md#bitwise-arithmetic-on-stack) further below.)
+(For more details see the arithmetization of the specific [u32 instructions](instructions.md#bitwise-arithmetic) further below.)
 
 To allow efficient arithmetization, a u32 instruction's result is constructed using multiple rows.
 The collection of rows arithmetizing the execution of one instruction is called a _section_.

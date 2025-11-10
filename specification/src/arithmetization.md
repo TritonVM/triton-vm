@@ -13,7 +13,7 @@ The main processor can delegate the execution of somewhat-difficult-to-arithmeti
 The arithmetization of the co-processor is largely independent from the main processor and recorded in its separate trace.
 For example, [instructions relating to hashing](instructions.md#hashing) are executed by the hash co-processor.
 Its trace is recorded in the [Hash Table](hash-table.md).
-Similarly, [bitwise instructions](instructions.md#bitwise-arithmetic-on-stack) are executed by the u32 co-processor, and the corresponding trace recorded in the [U32 Table](u32-table.md).
+Similarly, [bitwise instructions](instructions.md#bitwise-arithmetic) are executed by the u32 co-processor, and the corresponding trace recorded in the [U32 Table](u32-table.md).
 Another example for the separation of concerns is [memory consistency](memory-consistency.md), the bulk of which is delegated to the [Operational Stack Table](operational-stack-table.md), [RAM Table](random-access-memory-table.md), and [Jump Stack Table](jump-stack-table.md).
 
 ## Algebraic Execution Tables

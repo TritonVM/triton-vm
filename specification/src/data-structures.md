@@ -42,7 +42,7 @@ and [`write_mem`](instructions.md#write_mem--n).
 The initial RAM is determined by the entity running Triton VM.
 Populating RAM this way can be beneficial for a program's execution and proving time, especially if substantial amounts of data from the input streams needs to be persisted in RAM.
 This initialization is one form of secret input, and one of two mechanisms that make Triton VM a non-deterministic virtual machine.
-The other mechanism is [dedicated instructions](instructions.md#non-deterministic-instructions).
+The other mechanism is [dedicated instructions](about-instructions.md#non-deterministic-instructions).
 
 ## Jump Stack
 

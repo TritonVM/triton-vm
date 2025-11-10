@@ -1,88 +1,21 @@
 # Instructions
 
-This page describes some general properties and behaviors of Triton VM’s instructions, then lists
-and describes all the instructions that Triton VM can execute.
+Triton VM’s instructions are (loosely and informally) grouped into the following categories:
+- [Stack Manipulation](#stack-manipulation)
+- [Control Flow](#control-flow)
+- [Memory Access](#memory-access)
+- [Hashing](#hashing)
+- [Base Field Arithmetic](#base-field-arithmetic)
+- [Bitwise Arithmetic](#bitwise-arithmetic)
+- [Extension Field Arithmetic](#extension-field-arithmetic)
+- [Input/Output](#inputoutput)
+- [Many-In-One](#many-in-one)
 
-### Instruction Sizes
-
-Most instructions are contained within a single, parameterless machine word.
-They are considered single-word instructions.
-An example of a single-word instruction is `halt`.
-
-Some instructions take one machine word as argument and are so considered double-word instructions.
-They are recognized by the form “`instr` + `arg`”.
-An example of a double-word instruction is `push` + `a`, which takes immediate argument `a`.
-
-### Automatic Instruction Pointer Increment
-
-Unless a different behavior is indicated, instructions increment the
-[instruction pointer](registers.md#instruction) `ip` by their [size](#instruction-sizes).
-For example, instruction `halt` increments the `ip` by 1.
-Instruction `push` increments the `ip` by 2.
-Many [control flow instructions](#control-flow) manipulate the instruction pointer in a manner
-deviating from this general scheme.
-
-### Non-Deterministic Instructions
-
-Instructions [`divine`](#divine--n) and [`merkle_step`](#merkle_step) make Triton a virtual
-machine that can execute non-deterministic programs. As programs go, this concept is somewhat
-unusual and benefits from additional explanation.
-
-From the perspective of the program, the instruction `divine` makes some `n` elements magically
-appear on the stack. It is not at all specified what those elements are, but generally speaking,
-they have to be exactly correct, else execution fails. Hence, from the perspective of the program,
-it just non-deterministically guesses the correct values in a moment of divine clarity.
-
-Looking at the entire system, consisting of the VM, the program, and all inputs – both public and
-secret – execution _is_ deterministic: the divined values were supplied as secret input and are read
-from there.
-
-### Hashing and Sponge Instructions
-
-The instructions [`sponge_init`](#sponge_init), [`sponge_absorb`](#sponge_absorb),
-[`sponge_absorb_mem`](#sponge_absorb_mem), and [`sponge_squeeze`](#sponge_squeeze) are the interface
-for using the [Tip5](https://eprint.iacr.org/2023/107.pdf) permutation in a
-[Sponge](https://keccak.team/sponge_duplex.html) construction.
-The capacity is never accessible to the program that's being executed by Triton VM.
-
-At any given time, at most one Sponge state exists.
-In particular, Triton VM does not start with an initialized Sponge state.
-If a program uses the Sponge state, the first Sponge instruction must be `sponge_init`;
-otherwise, Triton VM will crash.
-
-Only instruction `sponge_init` resets the state of the Sponge, and only the three Sponge
-instructions influence the Sponge's state.
-Notably, executing instruction [`hash`](#hash) does not modify the Sponge's state.
-
-When using the Sponge instructions, it is the programmer's responsibility to take care of proper
-input padding:
-Triton VM cannot know the number of elements that will be absorbed.
-For more information, see section 2.5 of the [Tip5 paper](https://eprint.iacr.org/2023/107.pdf).
-
-### Regarding Opcodes
-
-An instruction's _[operation code](https://en.wikipedia.org/wiki/Opcode)_, or _opcode_, is the
-machine word uniquely identifying the instruction.
-For reasons of efficient [arithmetization](arithmetization.md), certain properties of the
-instruction are encoded in the opcode.
-Concretely, interpreting the field element in standard representation:
-- for all double-word instructions, the least significant bit is 1.
-- for all instructions shrinking the operational stack, the second-to-least significant bit is 1.
-- for all [u32 instructions](#bitwise-arithmetic-on-stack), the third-to-least significant bit is 1.
-
-The first property is used by instruction [skiz](#skiz) (see also its
-[arithmetization](instruction-specific-transition-constraints.md#instruction-skiz)).
-The second property helps with proving consistency of the
-[Op Stack](data-structures.md#operational-stack).
-The third property allows efficient arithmetization of the running product for the
-Permutation Argument between [Processor Table](processor-table.md) and [U32 Table](u32-table.md).
-
-## Summary
 
 The following table is a summary of all instructions.
 For more details, read on below.
 
-| instruction                               | short description                                    |
+| Instruction                               | Description                                          |
 |:------------------------------------------|:-----------------------------------------------------|
 | [`push` + `a`](#push--a)                  | Push `a` onto the stack.                             |
 | [`pop` + `n`](#pop--n)                    | Pop the `n` top elements from the stack.             |
@@ -166,7 +99,8 @@ Pushes `n` non-deterministic elements `a` to the stack.
 1 ⩽ `n` ⩽ 5.
 
 This is part of the interface for Triton VM’s secret input;
-see also the section regarding [non-determinism](#non-deterministic-instructions).
+see also the section regarding
+[non-determinism](about-instructions.md#non-deterministic-instructions).
 
 The name of the instruction is the verb (not the adjective) meaning “to discover by intuition or
 insight.”
@@ -275,7 +209,7 @@ An alternative perspective for this instruction is “execute if non-zero”, or
 just “if”.
 
 The amount by which `skiz` increases the instruction pointer `ip` depends on both the top of the
-stack and the [size](#instruction-sizes) of the next instruction
+stack and the [size](about-instructions.md#instruction-sizes) of the next instruction
 [in the program](data-structures.md#program-memory) (not the next instruction that gets actually
 executed).
 
@@ -477,7 +411,7 @@ Crashes Triton VM if the Sponge state is not [initialized](#sponge_init).
 | `_`       | `_ zyxwvutsrq` |
 
 
-## Base Field Arithmetic on Stack
+## Base Field Arithmetic
 
 ### add
 
@@ -532,7 +466,7 @@ Replaces the stack’s top two elements with `1` if they are equal, with `0` oth
 | `a` ≠ `b` | `_ b a`   | `_ 0`     |
 
 
-## Bitwise Arithmetic on Stack
+## Bitwise Arithmetic
 
 ### split
 
@@ -632,7 +566,7 @@ Crashes the VM if `a` is not u32.
 | `_ a`     | `_ w`     |
 
 
-## Extension Field Arithmetic on Stack
+## Extension Field Arithmetic
 
 ### xx_add
 
@@ -725,7 +659,7 @@ The 6th element of the stack `i` (also referred to as `st5`) is taken as the nod
 tree that is claimed to include data whose digest is the content of stack registers `st4` through
 `st0`, i.e., `edcba`.
 The sibling digest of `edcba` is `εδγβα` and is read from the
-[input interface of secret data](#non-deterministic-instructions).
+[input interface of secret data](about-instructions.md#non-deterministic-instructions).
 The least-significant bit of `i` indicates whether `edcba` is the digest of a left leaf or a right
 leaf of the Merkle tree's current level.
 Depending on this least significant bit of `i`, `merkle_step` either

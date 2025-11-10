@@ -97,7 +97,8 @@ In order to gauge the runtime cost for this step, the following table provides e
 ## Opcode Pressure
 
 When changing existing or introducing new instructions, one consideration is:
-how many other instructions compete for opcodes in the same [instruction category](instructions.md#regarding-opcodes)?
+how many other instructions compete for opcodes in the same
+[instruction category](about-instructions.md#regarding-opcodes)?
 The table below helps answer this question at a glance.
 
 <!-- auto-gen info start opcode_pressure -->
