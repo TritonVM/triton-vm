@@ -1,16 +1,18 @@
 # Registers
 
-This section covers all columns in the [Processor Table](processor-table.md).
+This section covers all registers.
 Only a subset of these registers relate to the instruction set;
-the remaining registers exist only to enable an efficient arithmetization and are marked with an asterisk (\*).
+the remaining registers exist only to enable an efficient arithmetization and are marked with an
+asterisk (\*).
+Each register directly corresponds to one column in the [Processor Table](processor-table.md).
 
 | Register             | Name                                      | Purpose                                                                                                                                                                                                                   |
 |:---------------------|:------------------------------------------|:--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | *`clk`               | cycle counter                             | counts the number of cycles the program has been running for                                                                                                                                                              |
 | *`IsPadding`         | padding indicator                         | indicates whether current state is only recorded to improve on STARK's computational runtime                                                                                                                              |
 | `ip`                 | instruction pointer                       | contains the memory address (in Program Memory) of the instruction                                                                                                                                                        |
-| `ci`                 | current instruction register              | contains the current instruction                                                                                                                                                                                          |
-| `nia`                | next instruction register                 | contains either the instruction at the next address in Program Memory, or the argument for the current instruction                                                                                                        |
+| `ci`                 | current instruction                       | contains the current instruction                                                                                                                                                                                          |
+| `nia`                | next instruction (or argument)            | contains either the instruction at the next address in Program Memory, or the argument for the current instruction                                                                                                        |
 | *`ib0` through `ib6` | instruction bit                           | decomposition of the instruction's opcode used to keep the AIR degree low                                                                                                                                                 |
 | `jsp`                | jump stack pointer                        | contains the memory address (in jump stack memory) of the top of the jump stack                                                                                                                                           |
 | `jso`                | jump stack origin                         | contains the value of the instruction pointer of the last `call`                                                                                                                                                          |
@@ -22,18 +24,20 @@ the remaining registers exist only to enable an efficient arithmetization and ar
 
 ## Instruction
 
-Register `ip`, the *instruction pointer*, contains the address of the current instruction in Program Memory.
-The [opcode](about-instructions.md#regarding-opcodes) of the current instruction is contained in the register *current instruction*, or `ci`.
-Register *next instruction (or argument)*, or `nia`, either contains the next instruction or the argument for the current instruction in `ci`.
-For reasons of arithmetization, `ci` is decomposed, giving rise to the *instruction bit registers*, labeled `ib0` through `ib6`.
+Register `ip`, the *instruction pointer*, contains the address of the current instruction in 
+[Program Memory](data-structures.md#program-memory).
+The [opcode](about-instructions.md#regarding-opcodes) of the current instruction is contained in
+the register *current instruction*, or `ci`.
+Register *next instruction (or argument)*, or `nia`, either contains the next instruction or,
+[if it has one](about-instructions.md#instruction-sizes), the argument of the current instruction.
+For reasons of arithmetization, `ci` is decomposed, giving rise to the *instruction bit registers*,
+labeled `ib0` through `ib6`.
 
 ## Stack
 
 The stack is represented by 16 registers called *stack registers* (`st0` – `st15`) plus the op stack underflow memory.
 The top 16 elements of the op stack are directly accessible, the remainder of the op stack, i.e, the part held in op stack underflow memory, is not.
 In order to access elements of the op stack held in op stack underflow memory, the stack has to shrink by discarding elements from the top – potentially after writing them to RAM – thus moving lower elements into the stack registers.
-
-The stack grows upwards, in line with the metaphor that justifies the name "stack".
 
 For reasons of arithmetization, the stack always contains a minimum of 16 elements.
 Trying to run an instruction which would result in a stack of smaller total length than 16 crashes the VM.
