@@ -25,6 +25,20 @@ generate or verify proofs of correct execution, or
 check out the [Triton CLI](https://github.com/TritonVM/triton-cli). If you want to use Triton VM as
 a library, check out the [examples](triton-vm/examples).
 
+## Project Status
+
+We consider Triton VM to be usable in production.
+That said, there are plans to change some of the internals significantly.
+Some of these changes might have effects on the interface as well as the ISA.
+
+As is common for rust projects, Triton VM follows
+[Cargo-style SemVer](https://doc.rust-lang.org/cargo/reference/semver.html).
+
+## Specification
+
+Triton VM’s specification can be found [online](https://triton-vm.org/spec/).
+Alternatively, you can [self-host](specification/README.md) it.
+
 ## Recursive STARKs of Computational Integrity
 
 Normally, when executing a machine – virtual or not – the flow of information can be regarded as
@@ -59,56 +73,3 @@ other proof of computational integrity – recursion!
 Of course, the Verifier can be a subroutine in a larger program.
 
 Triton VM is specifically designed to allow fast recursive verification.
-
-## Project Status
-
-Triton VM is still under construction. We currently don't recommend using it in production.
-
-Please note that the [Instruction Set Architecture](https://triton-vm.org/spec/isa.html) is not to
-be considered final. However, we don't currently foresee big changes.
-
-## Specification
-
-The specification can be found [online](https://triton-vm.org/spec/). Alternatively, you can
-self-host the [mdBook](https://rust-lang.github.io/mdBook/) by first installing the dependencies,
-then serving the mdBook.
-
-```sh
-cargo install mdbook
-cargo install mdbook-katex
-cargo install mdbook-linkcheck
-
-mdbook serve --open
-```
-
-Potentially, `~/.cargo/bin` needs to be added to the PATH.
-
-## Running the Code
-
-The Rust implementation of Triton VM resides in [triton-vm](./triton-vm) and can
-be [found on crates.io](https://crates.io/crates/triton-vm).
-
-Triton VM depends on the [`twenty-first`](https://crates.io/crates/twenty-first) cryptographic
-library.
-
-For trying out the code, [install Rust](https://www.rust-lang.org/tools/install) and run:
-
-```sh
-~ $ git clone https://github.com/TritonVM/triton-vm.git
-~ $ cd triton-vm
-~/triton-vm $ make test
-```
-
-For local development of both libraries, it is encouraged to
-follow [GitHub's fork & pull workflow][gh-fap] by forking and cloning both, place `twenty-first`
-relative to `triton-vm`, and change the dependency to be `path`-local:
-
-[gh-fap]: https://reflectoring.io/github-fork-and-pull/
-
-```sh
-~ $ git clone git@github.com:you/triton-vm.git
-~ $ git clone git@github.com:you/twenty-first.git
-~ $ cd triton-vm
-~/triton-vm $ ln -s ../twenty-first/twenty-first twenty-first
-~/triton-vm $ sed -i '/^twenty-first =/ s/{.*}/{ path = "..\/twenty-first" }/' triton-vm/Cargo.toml 
-```
