@@ -98,8 +98,6 @@ Otherwise, the Lookup Argument will fail.
 
 An example for a Lookup Argument can be found between the [Program Table](program-table.md) and the [Processor Table](processor-table.md#auxiliary-columns).
 
----
-
 [^1]: The lookup table may represent a mapping from one or more “input” elements to one or more “output” elements – see “[Compressing Multiple Elements](table-linking.md#compressing-multiple-elements).”
 
 [^2]: See Lemma 3 in [this paper](https://eprint.iacr.org/2022/1530.pdf) for a proof.

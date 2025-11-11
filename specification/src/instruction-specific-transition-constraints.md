@@ -1,9 +1,5 @@
 # Instruction-Specific Transition Constraints
 
-## Instruction `pop` + `n`
-
-This instruction is fully constrained by its [instruction groups](instruction-groups.md)
-
 ## Instruction `push` + `a`
 
 In addition to its [instruction groups](instruction-groups.md), this instruction has the following constraints.
@@ -15,6 +11,10 @@ In addition to its [instruction groups](instruction-groups.md), this instruction
 ### Polynomials
 
 1. `st0' - nia`
+
+## Instruction `pop` + `n`
+
+This instruction is fully constrained by its [instruction groups](instruction-groups.md)
 
 ## Instruction `divine` + `n`
 
@@ -105,13 +105,14 @@ This instruction is fully constrained by its [instruction groups](instruction-gr
 
 ## Instruction `skiz`
 
-For the correct behavior of instruction `skiz`, the instruction pointer `ip` needs to increment by either 1, or 2, or 3.
+For the correct behavior of instruction [`skiz`](instructions.md#skiz), the instruction pointer `ip` needs to increment by either 1, or 2, or 3.
 The concrete value depends on the top of the stack `st0` and the next instruction, held in `nia`.
 
 Helper variable `hv0` helps with identifying whether `st0` is 0.
 To this end, it holds the inverse-or-zero of `st0`, _i.e._, is 0 if and only if `st0` is 0, and is the inverse of `st0` otherwise.
 
-Efficient arithmetization of instruction `skiz` makes use of one of the properties of [opcodes](instructions.md#regarding-opcodes).
+Efficient arithmetization of instruction `skiz` makes use of one of the properties of
+[opcodes](about-instructions.md#regarding-opcodes).
 Concretely, the least significant bit of an opcode is 1 if and only if the instruction takes an argument.
 The arithmetization of `skiz` can incorporate this simple flag by decomposing `nia` into helper variable registers `hv`,
 similarly to how `ci` is (always) deconstructed into instruction bit registers `ib`.

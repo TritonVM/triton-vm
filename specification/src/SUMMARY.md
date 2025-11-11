@@ -3,6 +3,7 @@
 - [Instruction Set Architecture](isa.md)
     + [Data Structures](data-structures.md)
     + [Registers](registers.md)
+    + [About Instructions](about-instructions.md)
     + [Instructions](instructions.md)
 - [Arithmetization](arithmetization.md)
     + [Arithmetization Overview](arithmetization-overview.md)

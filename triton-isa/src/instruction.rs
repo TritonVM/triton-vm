@@ -236,8 +236,8 @@ impl<'a> Arbitrary<'a> for TypeHint {
 )]
 pub enum AnInstruction<Dest: PartialEq + Default> {
     // OpStack manipulation
-    Pop(NumberOfWords),
     Push(BFieldElement),
+    Pop(NumberOfWords),
     Divine(NumberOfWords),
     Pick(OpStackElement),
     Place(OpStackElement),

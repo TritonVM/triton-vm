@@ -6,14 +6,15 @@ The term *memory* refers to a data structure that gives read access (and possibl
 Regardless of the data structure, the address lives in the B-field.
 There are four separate notions of memory:
 
-1. *Program Memory*, from which the VM reads instructions.
+1. *Program Memory*, from which the VM reads [instructions](instructions.md).
 1. *Op Stack Memory*, which stores the operational stack.
 1. *RAM*, to which the VM can read and write field elements.
 1. *Jump Stack Memory*, which stores the entire jump stack.
 
 ## Program Memory
 
-Program memory holds the instructions of the program currently executed by Triton VM.
+Program memory holds the [instructions](instructions.md) of the program currently executed by
+Triton VM.
 It is immutable.
 
 ## Operational Stack
@@ -35,19 +36,24 @@ The motivation and the interplay between the two parts is described and exemplif
 
 Triton VM has dedicated Random Access Memory.
 It can hold up to $p$ many base field elements, where $p$ is the Oxfoi prime[^1].
-Programs can read from and write to RAM using [instructions](instructions.md#memory-access) `read_mem` and `write_mem`.
+Programs can read from and write to RAM using instructions [`read_mem`](instructions.md#read_mem--n)
+and [`write_mem`](instructions.md#write_mem--n).
 
 The initial RAM is determined by the entity running Triton VM.
 Populating RAM this way can be beneficial for a program's execution and proving time, especially if substantial amounts of data from the input streams needs to be persisted in RAM.
 This initialization is one form of secret input, and one of two mechanisms that make Triton VM a non-deterministic virtual machine.
-The other mechanism is [dedicated instructions](instructions.md#op-stack-manipulation).
+The other mechanism is [dedicated instructions](about-instructions.md#non-deterministic-instructions).
 
 ## Jump Stack
 
 Another last-in;first-out data structure, similar to the op stack.
 The jump stack keeps track of return and destination addresses.
-It changes only when control follows a `call` or `return` instruction, and might change through the `recurse_or_return` instruction.
-Furthermore, executing instructions `return`, `recurse`, and `recurse_or_return` require a non-empty jump stack.
+It changes only when control follows a [`call`](instructions.md#call--d) or
+[`return`](instructions.md#return) instruction, and might change through the
+[`recurse_or_return`](instructions.md#recurse_or_return) instruction.
+Furthermore, executing instructions [`return`](instructions.md#return),
+[`recurse`](instructions.md#recurse), and [`recurse_or_return`](instructions.md#recurse_or_return)
+require a non-empty jump stack.
 
 [^1]: Of course, the machine running Triton VM might have stricter limitations:
 storing or accessing $(2^{64} - 2^{32} + 1)\cdot 63.99$ bits $\approx 127$ EiB of data is a non-trivial engineering feat.
