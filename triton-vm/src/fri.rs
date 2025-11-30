@@ -118,14 +118,14 @@ impl FriProver<'_> {
     }
 
     fn sample_first_round_collinearity_check_indices(&mut self) {
-        let indices_upper_bound = self.first_round_domain.length;
+        let indices_upper_bound = self.first_round_domain.len();
         self.first_round_collinearity_check_indices = self
             .proof_stream
             .sample_indices(indices_upper_bound, self.num_collinearity_checks);
     }
 
     fn collinearity_check_b_indices_for_round(&self, round_number: usize) -> Vec<usize> {
-        let domain_length = self.rounds[round_number].domain.length;
+        let domain_length = self.rounds[round_number].domain.len();
         self.first_round_collinearity_check_indices
             .iter()
             .map(|&a_index| (a_index + domain_length / 2) % domain_length)
@@ -155,7 +155,7 @@ impl FriProver<'_> {
 
 impl ProverRound {
     fn new(domain: ArithmeticDomain, codeword: &[XFieldElement]) -> ProverResult<Self> {
-        debug_assert_eq!(domain.length, codeword.len());
+        debug_assert_eq!(domain.len(), codeword.len());
         let merkle_tree = Self::merkle_tree_from_codeword(codeword)?;
         let round = Self {
             domain,
@@ -174,7 +174,7 @@ impl ProverRound {
         let one = xfe!(1);
         let two_inverse = xfe!(2).inverse();
 
-        let domain_points = self.domain.domain_values();
+        let domain_points = self.domain.values();
         let domain_point_inverses = BFieldElement::batch_inversion(domain_points);
 
         let n = self.codeword.len();
@@ -267,7 +267,7 @@ impl FriVerifier<'_> {
     }
 
     fn sample_first_round_collinearity_check_indices(&mut self) {
-        let upper_bound = self.first_round_domain.length;
+        let upper_bound = self.first_round_domain.len();
         self.first_round_collinearity_check_indices = self
             .proof_stream
             .sample_indices(upper_bound, self.num_collinearity_checks);
@@ -386,8 +386,8 @@ impl FriVerifier<'_> {
 
         (0..self.num_collinearity_checks)
             .map(|i| {
-                let point_a_x = domain.domain_value(a_indices[i] as u32).lift();
-                let point_b_x = domain.domain_value(b_indices[i] as u32).lift();
+                let point_a_x = domain.value(a_indices[i] as u32).lift();
+                let point_b_x = domain.value(b_indices[i] as u32).lift();
                 let point_a = (point_a_x, partial_codeword_a[i]);
                 let point_b = (point_b_x, partial_codeword_b[i]);
                 Polynomial::get_colinear_y(point_a, point_b, folding_challenge)
@@ -396,13 +396,13 @@ impl FriVerifier<'_> {
     }
 
     fn collinearity_check_a_indices_for_round(&self, round_number: usize) -> Vec<usize> {
-        let domain_length = self.rounds[round_number].domain.length;
+        let domain_length = self.rounds[round_number].domain.len();
         let a_offset = 0;
         self.collinearity_check_indices_with_offset_and_modulus(a_offset, domain_length)
     }
 
     fn collinearity_check_b_indices_for_round(&self, round_number: usize) -> Vec<usize> {
-        let domain_length = self.rounds[round_number].domain.length;
+        let domain_length = self.rounds[round_number].domain.len();
         let b_offset = domain_length / 2;
         self.collinearity_check_indices_with_offset_and_modulus(b_offset, domain_length)
     }
@@ -496,7 +496,7 @@ impl FriVerifier<'_> {
 
 impl VerifierRound {
     fn merkle_tree_height(&self) -> u32 {
-        self.domain.length.ilog2()
+        self.domain.len().ilog2()
     }
 }
 
@@ -509,7 +509,7 @@ impl Fri {
         match expansion_factor {
             ef if ef <= 1 => return Err(FriSetupError::ExpansionFactorTooSmall),
             ef if !ef.is_power_of_two() => return Err(FriSetupError::ExpansionFactorUnsupported),
-            ef if ef > domain.length => return Err(FriSetupError::ExpansionFactorMismatch),
+            ef if ef > domain.len() => return Err(FriSetupError::ExpansionFactorMismatch),
             _ => (),
         };
 
@@ -614,8 +614,8 @@ impl Fri {
     }
 
     pub fn first_round_max_degree(&self) -> usize {
-        assert!(self.domain.length >= self.expansion_factor);
-        (self.domain.length / self.expansion_factor) - 1
+        assert!(self.domain.len() >= self.expansion_factor);
+        (self.domain.len() / self.expansion_factor) - 1
     }
 }
 
@@ -690,10 +690,10 @@ mod tests {
         // todo: Figure out by how much to oversample for the given parameters.
         let oversampling_summand = 1 << 13;
         let num_indices_to_sample = fri.num_collinearity_checks + oversampling_summand;
-        let indices = sponge.sample_indices(fri.domain.length as u32, num_indices_to_sample);
+        let indices = sponge.sample_indices(fri.domain.len() as u32, num_indices_to_sample);
         let num_unique_indices = indices.iter().unique().count();
 
-        let required_unique_indices = min(fri.domain.length, fri.num_collinearity_checks);
+        let required_unique_indices = min(fri.domain.len(), fri.num_collinearity_checks);
         prop_assert!(num_unique_indices >= required_unique_indices);
     }
 
@@ -944,7 +944,7 @@ mod tests {
         rng_seed: u64,
     ) {
         let all_authentication_structures_are_trivial =
-            fri.num_collinearity_checks >= fri.domain.length;
+            fri.num_collinearity_checks >= fri.domain.len();
         if all_authentication_structures_are_trivial {
             return Ok(());
         }

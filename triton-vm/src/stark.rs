@@ -187,7 +187,7 @@ impl ProverDomains {
         let quotient_domain_length = max_degree.next_power_of_two();
         let quotient_domain = ArithmeticDomain::of_length(quotient_domain_length)
             .unwrap()
-            .with_offset(fri_domain.offset);
+            .with_offset(fri_domain.offset());
 
         Self {
             trace: trace_domain,
@@ -336,10 +336,10 @@ impl Prover {
         proof_stream.enqueue(ProofItem::MerkleRoot(quot_merkle_tree_root));
         profiler!(stop "Merkle tree");
 
-        debug_assert_eq!(domains.fri.length, quot_merkle_tree.num_leafs());
+        debug_assert_eq!(domains.fri.len(), quot_merkle_tree.num_leafs());
 
         profiler!(start "out-of-domain rows");
-        let trace_domain_generator = master_main_table.domains().trace.generator;
+        let trace_domain_generator = master_main_table.domains().trace.generator();
         let out_of_domain_point_curr_row = proof_stream.sample_scalars(1)[0];
         let out_of_domain_point_next_row = trace_domain_generator * out_of_domain_point_curr_row;
 
@@ -375,7 +375,7 @@ impl Prover {
         let weights = LinearCombinationWeights::sample(&mut proof_stream);
         profiler!(stop "Fiat-Shamir");
 
-        let fri_domain_is_short_domain = domains.fri.length <= domains.quotient.length;
+        let fri_domain_is_short_domain = domains.fri.len() <= domains.quotient.len();
         let short_domain = if fri_domain_is_short_domain {
             domains.fri
         } else {
@@ -470,7 +470,7 @@ impl Prover {
         .zip_eq(weights.deep.as_slice().unwrap())
         .map(|(codeword, &weight)| codeword.into_par_iter().map(|c| c * weight).collect())
         .reduce(
-            || vec![XFieldElement::ZERO; short_domain.length],
+            || vec![XFieldElement::ZERO; short_domain.len()],
             |left, right| left.into_iter().zip(right).map(|(l, r)| l + r).collect(),
         );
 
@@ -485,7 +485,7 @@ impl Prover {
             profiler!(stop "LDE");
             deep_codeword
         };
-        assert_eq!(domains.fri.length, fri_combination_codeword.len());
+        assert_eq!(domains.fri.len(), fri_combination_codeword.len());
         profiler!(stop "combined DEEP polynomial");
 
         profiler!(start "FRI");
@@ -613,7 +613,7 @@ impl Prover {
             quotient_combination_weights,
         );
         let quotient_codeword = Array1::from(quotient_codeword);
-        assert_eq!(quotient_domain.length, quotient_codeword.len());
+        assert_eq!(quotient_domain.len(), quotient_codeword.len());
         profiler!(stop "quotient calculation (cached)");
 
         profiler!(start "quotient LDE" ("LDE"));
@@ -667,12 +667,12 @@ impl Prover {
             .pow(RANDOMIZED_TRACE_LEN_TO_WORKING_DOMAIN_LEN_RATIO)
             .unwrap();
 
-        let num_rows = working_domain.length;
+        let num_rows = working_domain.len();
         let coset_root_order = (num_rows * NUM_COSETS).try_into().unwrap();
 
         // the powers of ι define `NUM_COSETS`-many cosets of the working domain
         let iota = BFieldElement::primitive_root_of_unity(coset_root_order).unwrap();
-        let psi = domains.fri.offset;
+        let psi = domains.fri.offset();
 
         // for every coset, evaluate constraints
         profiler!(start "zero-initialization");
@@ -776,11 +776,11 @@ impl Prover {
             // be (-1)^i·γ^n - 1. In particular, note the term (-1)^i, which is
             // absent from the trace randomizer when evaluated on working
             // domains at most as long as the trace domain.
-            assert!(working_domain.length <= domains.trace.length);
+            assert!(working_domain.len() <= domains.trace.len());
 
             profiler!(start "trace randomizers" ("LDE"));
-            let trace_domain_len = u64::try_from(domains.trace.length).unwrap();
-            let zerofier = working_domain.offset.mod_pow(trace_domain_len) - BFieldElement::ONE;
+            let trace_domain_len = u64::try_from(domains.trace.len()).unwrap();
+            let zerofier = working_domain.offset().mod_pow(trace_domain_len) - BFieldElement::ONE;
 
             Zip::from(main_columns.axis_iter_mut(COL_AXIS))
                 .and(main_trace_randomizers.axis_iter(ROW_AXIS))
@@ -1037,7 +1037,7 @@ impl Prover {
             .unwrap()
             .with_offset(segment_domain_offset);
 
-        let mut quotient_codewords = Array2::zeros([fri_domain.length, NUM_SEGMENTS]);
+        let mut quotient_codewords = Array2::zeros([fri_domain.len(), NUM_SEGMENTS]);
         let mut quotient_polynomials = Array1::zeros([NUM_SEGMENTS]);
         Zip::from(quotient_segments.axis_iter(COL_AXIS))
             .and(quotient_codewords.axis_iter_mut(COL_AXIS))
@@ -1110,7 +1110,7 @@ impl Prover {
         // expensive. Should we decide to chase small gains at some point,
         // then a parallel transpose could be considered.
         Array2::from_shape_vec(
-            [fri_domain.length, NUM_QUOTIENT_SEGMENTS].f(),
+            [fri_domain.len(), NUM_QUOTIENT_SEGMENTS].f(),
             fri_domain_codewords,
         )
         .unwrap()
@@ -1125,7 +1125,7 @@ impl Prover {
         out_of_domain_value: XFieldElement,
     ) -> Vec<XFieldElement> {
         domain
-            .domain_values()
+            .values()
             .par_iter()
             .zip_eq(codeword)
             .map(|(&in_domain_value, &in_domain_evaluation)| {
@@ -1159,7 +1159,7 @@ impl Verifier {
         let log_2_padded_height = proof_stream.dequeue()?.try_into_log2_padded_height()?;
         let padded_height = 1 << log_2_padded_height;
         let fri = self.parameters.fri(padded_height)?;
-        let merkle_tree_height = fri.domain.length.ilog2();
+        let merkle_tree_height = fri.domain.len().ilog2();
 
         // The trace domain used by the prover is not necessarily of length
         // `padded_height`. Concretely, this is the case if the number of trace
@@ -1412,7 +1412,7 @@ impl Verifier {
         ) {
             let main_row = Array1::from(main_row.to_vec());
             let aux_row = Array1::from(aux_row.to_vec());
-            let current_fri_domain_value = fri.domain.domain_value(row_idx as u32);
+            let current_fri_domain_value = fri.domain.value(row_idx as u32);
 
             profiler!(start "main & aux elements" ("CC"));
             let main_and_aux_curr_row_element = Self::linearly_sum_main_and_aux_row(
@@ -3117,7 +3117,7 @@ pub(crate) mod tests {
                 .flat_map(|polynomial| Array1::from(fri_domain.evaluate(polynomial)))
                 .collect_vec();
             let segments_codewords =
-                Array2::from_shape_vec((fri_domain.length, N).f(), segments_codewords)?;
+                Array2::from_shape_vec((fri_domain.len(), N).f(), segments_codewords)?;
             prop_assert_eq!(segments_codewords, actual_segment_codewords);
 
             Ok(())

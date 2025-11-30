@@ -88,6 +88,6 @@ impl MemIOBench {
         profile
             .with_cycle_count(trace_len)
             .with_padded_height(padded_height)
-            .with_fri_domain_len(fri.domain.length)
+            .with_fri_domain_len(fri.domain.len())
     }
 }

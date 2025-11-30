@@ -185,7 +185,7 @@ fn program_halt() -> ProgramAndInput {
 fn log_2_fri_domain_length(stark: Stark, proof: &Proof) -> u32 {
     let padded_height = proof.padded_height().unwrap();
     let fri = stark.fri(padded_height).unwrap();
-    fri.domain.length.ilog2()
+    fri.domain.len().ilog2()
 }
 
 /// List the sizes of the proof's parts. If the same item type is contained

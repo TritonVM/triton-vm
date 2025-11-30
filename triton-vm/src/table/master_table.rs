@@ -213,7 +213,7 @@ where
     /// [low-degree extend]: Self::maybe_low_degree_extend_all_columns
     fn evaluation_domain(&self) -> ArithmeticDomain {
         let domains = self.domains();
-        if domains.quotient.length > domains.fri.length {
+        if domains.quotient.len() > domains.fri.len() {
             domains.quotient
         } else {
             domains.fri
@@ -250,7 +250,7 @@ where
     /// [cached]: crate::config::overwrite_lde_trace_caching_to
     fn maybe_low_degree_extend_all_columns(&mut self) {
         let evaluation_domain = self.evaluation_domain();
-        let num_rows = evaluation_domain.length;
+        let num_rows = evaluation_domain.len();
         let num_elements = num_rows * Self::NUM_COLUMNS;
 
         let mut extended_trace = Vec::with_capacity(0);
@@ -343,7 +343,7 @@ where
         // would produce a challenging interface, the relevant parts are
         // reimplemented here.
 
-        let domain = self.domains().trace.domain_values();
+        let domain = self.domains().trace.values();
         let domain_shift = domain.iter().map(|&d| indeterminate - d).collect();
         let domain_shift_inverses = XFieldElement::batch_inversion(domain_shift);
         let domain_over_domain_shift = domain
@@ -457,10 +457,10 @@ where
         // FRI domain rows of the table using just-in-time low-degree-extension.
         let num_threads = rayon::current_num_threads().max(1);
         let eval_domain = self.evaluation_domain();
-        let mut sponge_states = vec![SpongeWithPendingAbsorb::new(); eval_domain.length];
+        let mut sponge_states = vec![SpongeWithPendingAbsorb::new(); eval_domain.len()];
 
         let column_indices = Array1::from_iter(0..Self::NUM_COLUMNS);
-        let mut codewords = Array2::zeros([eval_domain.length, num_threads]);
+        let mut codewords = Array2::zeros([eval_domain.len(), num_threads]);
         for column_indices in column_indices.axis_chunks_iter(ROW_AXIS, num_threads) {
             profiler!(start "LDE" ("LDE"));
             let mut codewords = codewords.slice_mut(s![.., 0..column_indices.len()]);
@@ -545,12 +545,12 @@ where
         let domains = self.domains();
         let indeterminates = row_indices
             .par_iter()
-            .map(|&i| domains.fri.domain_value(u32::try_from(i).unwrap()))
+            .map(|&i| domains.fri.value(u32::try_from(i).unwrap()))
             .map(Self::Field::from)
             .collect::<Vec<_>>();
 
         // fast multi-point extrapolate every column
-        let offset = domains.trace.offset;
+        let offset = domains.trace.offset();
         let trace_table = self.trace_table();
         let columns = trace_table.axis_iter(COL_AXIS).into_par_iter().map(|col| {
             Polynomial::coset_extrapolate(offset, col.as_slice().unwrap(), &indeterminates)
@@ -728,8 +728,8 @@ impl MasterTable for MasterMainTable {
         let table = &self.low_degree_extended_table.as_ref()?;
         let nrows = table.nrows();
 
-        if self.domains.quotient.length < nrows {
-            let unit_distance = nrows / self.domains.quotient.length;
+        if self.domains.quotient.len() < nrows {
+            let unit_distance = nrows / self.domains.quotient.len();
             Some(table.slice(s![0..nrows;unit_distance, ..]))
         } else {
             Some(table.view())
@@ -750,8 +750,8 @@ impl MasterTable for MasterMainTable {
     fn fri_domain_table(&self) -> Option<ArrayView2<'_, BFieldElement>> {
         let table = self.low_degree_extended_table.as_ref()?;
         let nrows = table.nrows();
-        if nrows > self.domains.fri.length {
-            let unit_step = nrows / self.domains.fri.length;
+        if nrows > self.domains.fri.len() {
+            let unit_step = nrows / self.domains.fri.len();
             Some(table.slice(s![0..nrows;unit_step, ..]))
         } else {
             Some(table.view())
@@ -788,8 +788,8 @@ impl MasterTable for MasterAuxTable {
     fn quotient_domain_table(&self) -> Option<ArrayView2<'_, XFieldElement>> {
         let table = self.low_degree_extended_table.as_ref()?;
         let nrows = table.nrows();
-        if nrows > self.domains.quotient.length {
-            let unit_distance = nrows / self.domains.quotient.length;
+        if nrows > self.domains.quotient.len() {
+            let unit_distance = nrows / self.domains.quotient.len();
             Some(table.slice(s![0..nrows;unit_distance, ..]))
         } else {
             Some(table.view())
@@ -810,8 +810,8 @@ impl MasterTable for MasterAuxTable {
     fn fri_domain_table(&self) -> Option<ArrayView2<'_, XFieldElement>> {
         let table = self.low_degree_extended_table.as_ref()?;
         let nrows = table.nrows();
-        if nrows > self.domains.fri.length {
-            let unit_step = nrows / self.domains.fri.length;
+        if nrows > self.domains.fri.len() {
+            let unit_step = nrows / self.domains.fri.len();
             Some(table.slice(s![0..nrows;unit_step, ..]))
         } else {
             Some(table.view())
@@ -843,7 +843,7 @@ impl MasterMainTable {
         trace_randomizer_seed: <StdRng as SeedableRng>::Seed,
     ) -> Self {
         // column majority (“`F`”) for contiguous column slices
-        let trace_table = ndarray_helper::par_zeros((domains.trace.length, Self::NUM_COLUMNS).f());
+        let trace_table = ndarray_helper::par_zeros((domains.trace.len(), Self::NUM_COLUMNS).f());
 
         let mut master_main_table = Self {
             num_trace_randomizers,
@@ -1149,7 +1149,7 @@ pub fn initial_quotient_zerofier_inverse(
     quotient_domain: ArithmeticDomain,
 ) -> Array1<BFieldElement> {
     let zerofier_codeword = quotient_domain
-        .domain_values()
+        .values()
         .into_iter()
         .map(|x| x - bfe!(1))
         .collect();
@@ -1161,9 +1161,9 @@ pub fn consistency_quotient_zerofier_inverse(
     quotient_domain: ArithmeticDomain,
 ) -> Array1<BFieldElement> {
     let zerofier_codeword = quotient_domain
-        .domain_values()
+        .values()
         .iter()
-        .map(|x| x.mod_pow_u32(trace_domain.length as u32) - bfe!(1))
+        .map(|x| x.mod_pow_u32(trace_domain.len() as u32) - bfe!(1))
         .collect();
     BFieldElement::batch_inversion(zerofier_codeword).into()
 }
@@ -1172,12 +1172,12 @@ pub fn transition_quotient_zerofier_inverse(
     trace_domain: ArithmeticDomain,
     quotient_domain: ArithmeticDomain,
 ) -> Array1<BFieldElement> {
-    let trace_domain_generator_inverse = trace_domain.generator.inverse();
-    let quotient_domain_values = quotient_domain.domain_values();
+    let trace_domain_generator_inverse = trace_domain.generator().inverse();
+    let quotient_domain_values = quotient_domain.values();
 
     let subgroup_zerofier: Vec<_> = quotient_domain_values
         .par_iter()
-        .map(|domain_value| domain_value.mod_pow_u32(trace_domain.length as u32) - bfe!(1))
+        .map(|domain_value| domain_value.mod_pow_u32(trace_domain.len() as u32) - bfe!(1))
         .collect();
     let subgroup_zerofier_inverse = BFieldElement::batch_inversion(subgroup_zerofier);
     let zerofier_inverse: Vec<_> = quotient_domain_values
@@ -1196,9 +1196,9 @@ pub fn terminal_quotient_zerofier_inverse(
 ) -> Array1<BFieldElement> {
     // The zerofier for the terminal quotient has a root in the last
     // value in the cyclical group generated from the trace domain's generator.
-    let trace_domain_generator_inverse = trace_domain.generator.inverse();
+    let trace_domain_generator_inverse = trace_domain.generator().inverse();
     let zerofier_codeword = quotient_domain
-        .domain_values()
+        .values()
         .into_iter()
         .map(|x| x - trace_domain_generator_inverse)
         .collect_vec();
@@ -1226,11 +1226,11 @@ pub fn all_quotients_combined(
     quotient_weights: &[XFieldElement],
 ) -> Vec<XFieldElement> {
     assert_eq!(
-        quotient_domain.length,
+        quotient_domain.len(),
         quotient_domain_master_main_table.nrows(),
     );
     assert_eq!(
-        quotient_domain.length,
+        quotient_domain.len(),
         quotient_domain_master_aux_table.nrows()
     );
     assert_eq!(MasterAuxTable::NUM_CONSTRAINTS, quotient_weights.len());
@@ -1255,11 +1255,11 @@ pub fn all_quotients_combined(
         pairs.map(|(v, &w)| v * w).sum()
     };
 
-    let quotient_codeword = (0..quotient_domain.length)
+    let quotient_codeword = (0..quotient_domain.len())
         .into_par_iter()
         .map(|row_index| {
-            let unit_distance = quotient_domain.length / trace_domain.length;
-            let next_row_index = (row_index + unit_distance) % quotient_domain.length;
+            let unit_distance = quotient_domain.len() / trace_domain.len();
+            let next_row_index = (row_index + unit_distance) % quotient_domain.len();
             let current_row_main = quotient_domain_master_main_table.row(row_index);
             let current_row_aux = quotient_domain_master_aux_table.row(row_index);
             let next_row_main = quotient_domain_master_main_table.row(next_row_index);
@@ -1543,7 +1543,7 @@ mod tests {
         assert_eq!(big_order as usize, initial_zerofier_inv.len());
         assert_eq!(1, initial_zerofier_poly.degree());
         let initial_zerofier_eval =
-            initial_zerofier_poly.evaluate_in_same_field(small_domain.domain_value(0));
+            initial_zerofier_poly.evaluate_in_same_field(small_domain.value(0));
         assert_eq!(bfe!(0), initial_zerofier_eval);
 
         let consistency_zerofier_inv =
@@ -1553,7 +1553,7 @@ mod tests {
         let consistency_zerofier_poly = big_domain.interpolate(&consistency_zerofier);
         assert_eq!(big_order as usize, consistency_zerofier_inv.len());
         assert_eq!(small_order as isize, consistency_zerofier_poly.degree());
-        for val in small_domain.domain_values() {
+        for val in small_domain.values() {
             let consistency_zerofier_eval = consistency_zerofier_poly.evaluate_in_same_field(val);
             assert_eq!(bfe!(0), consistency_zerofier_eval);
         }
@@ -1564,7 +1564,7 @@ mod tests {
         let transition_zerofier_poly = big_domain.interpolate(&transition_zerofier);
         assert_eq!(big_order as usize, transition_zerofier_inv.len());
         assert_eq!(small_order as isize - 1, transition_zerofier_poly.degree());
-        for &val in small_domain.domain_values().iter().take(small_order - 1) {
+        for &val in small_domain.values().iter().take(small_order - 1) {
             let transition_zerofier_eval = transition_zerofier_poly.evaluate_in_same_field(val);
             assert_eq!(bfe!(0), transition_zerofier_eval);
         }
@@ -1575,7 +1575,7 @@ mod tests {
         assert_eq!(big_order as usize, terminal_zerofier_inv.len());
         assert_eq!(1, terminal_zerofier_poly.degree());
         let terminal_zerofier_eval = terminal_zerofier_poly
-            .evaluate_in_same_field(small_domain.domain_value(small_order as u32 - 1));
+            .evaluate_in_same_field(small_domain.value(small_order as u32 - 1));
         assert_eq!(bfe!(0), terminal_zerofier_eval);
     }
 
@@ -2197,7 +2197,7 @@ mod tests {
             quotient: ArithmeticDomain::of_length(1 << 10).unwrap(),
             fri: ArithmeticDomain::of_length(1 << 11).unwrap(),
         };
-        let trace_table = Array2::zeros((domains.trace.length, MasterAuxTable::NUM_COLUMNS));
+        let trace_table = Array2::zeros((domains.trace.len(), MasterAuxTable::NUM_COLUMNS));
 
         MasterAuxTable {
             num_trace_randomizers: 16,
@@ -2212,7 +2212,7 @@ mod tests {
     fn master_aux_table_mut() {
         let mut master_table = dummy_master_aux_table();
 
-        let num_rows = master_table.domains().trace.length;
+        let num_rows = master_table.domains().trace.len();
         Array2::from_elem((num_rows, ProgramAuxColumn::COUNT), 1.into())
             .move_into(&mut master_table.table_mut(TableId::Program));
         Array2::from_elem((num_rows, ProcessorAuxColumn::COUNT), 2.into())
