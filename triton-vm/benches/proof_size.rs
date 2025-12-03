@@ -21,9 +21,12 @@ use triton_vm::prelude::*;
 use triton_vm::proof_stream::ProofStream;
 use triton_vm::prove_program;
 
+const SECURITY_LEVEL: usize = 96;
+
 const BYTES_PER_BFE: f64 = BFieldElement::BYTES as f64;
 
 /// Ties together a program and its inputs.
+#[derive(Clone)]
 struct ProgramAndInput {
     program: Program,
     public_input: PublicInput,
@@ -243,14 +246,20 @@ fn sum_of_proof_lengths_for_source_code(
 ) -> ProofSize {
     let mut sum_of_proof_lengths = 0;
     for _ in 0..num_iterations {
-        let (_, _, proof) = prove_program(
-            program_and_input.program.clone(),
-            program_and_input.public_input.clone(),
-            program_and_input.non_determinism.clone(),
-        )
-        .unwrap();
+        let ProgramAndInput {
+            program,
+            public_input,
+            non_determinism,
+        } = program_and_input.to_owned();
+        let claim = Claim::new(program.hash()).with_input(public_input.clone());
+        let (aet, public_output) =
+            VM::trace_execution(program, public_input, non_determinism).unwrap();
+        let claim = claim.with_output(public_output);
+        let stark = Stark::new(SECURITY_LEVEL, 2);
+        let proof = stark.prove(&claim, &aet).unwrap();
         sum_of_proof_lengths += proof.encode().len();
     }
+
     ProofSize(sum_of_proof_lengths as f64)
 }
 
