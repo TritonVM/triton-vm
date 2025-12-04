@@ -37,6 +37,9 @@ use quote::ToTokens;
 use quote::quote;
 use twenty_first::prelude::*;
 
+/// A reference-counted [`ConstraintCircuit`].
+type RcCircuit<II> = Rc<RefCell<ConstraintCircuit<II>>>;
+
 mod private {
     // A public but un-nameable type for sealing traits.
     pub trait Seal {}
@@ -292,11 +295,7 @@ pub enum CircuitExpression<II: InputIndicator> {
     XConst(XFieldElement),
     Input(II),
     Challenge(usize),
-    BinOp(
-        BinOp,
-        Rc<RefCell<ConstraintCircuit<II>>>,
-        Rc<RefCell<ConstraintCircuit<II>>>,
-    ),
+    BinOp(BinOp, RcCircuit<II>, RcCircuit<II>),
 }
 
 impl<II: InputIndicator> Hash for CircuitExpression<II> {
@@ -393,6 +392,49 @@ impl<II: InputIndicator> Display for ConstraintCircuit<II> {
     }
 }
 
+/// An in-order iterator over [`RcCircuit`]s.
+//
+// While Morris traversal could be used, the speedup gained by this relatively
+// simple implementation is deemed enough (at the time of writing).
+#[derive(Debug, Clone)]
+struct ConstraintCircuitIter<II: InputIndicator> {
+    stack: Vec<RcCircuit<II>>,
+}
+
+impl<II: InputIndicator> Iterator for ConstraintCircuitIter<II> {
+    type Item = RcCircuit<II>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let to_yield = self.stack.pop()?;
+        if let CircuitExpression::BinOp(_, _, ref rhs) = to_yield.borrow().expression {
+            self.push_left_lineage_to_stack(Rc::clone(rhs));
+        }
+
+        Some(to_yield)
+    }
+}
+
+impl<II: InputIndicator> ConstraintCircuitIter<II> {
+    fn new(root: ConstraintCircuit<II>) -> Self {
+        let mut iterator = Self { stack: Vec::new() };
+        iterator.push_left_lineage_to_stack(Rc::new(RefCell::new(root)));
+
+        iterator
+    }
+
+    /// Push the given node, its left child, _its_ left child, and so on, to
+    /// the stack.
+    fn push_left_lineage_to_stack(&mut self, current: RcCircuit<II>) {
+        let mut current = Some(current);
+        while let Some(new_node) = current.take() {
+            if let CircuitExpression::BinOp(_, ref lhs, _) = new_node.borrow().expression {
+                current = Some(Rc::clone(lhs));
+            }
+            self.stack.push(new_node);
+        }
+    }
+}
+
 impl<II: InputIndicator> ConstraintCircuit<II> {
     fn new(id: usize, expression: CircuitExpression<II>) -> Self {
         Self {
@@ -400,6 +442,11 @@ impl<II: InputIndicator> ConstraintCircuit<II> {
             ref_count: 0,
             expression,
         }
+    }
+
+    /// Iterate all nodes in the tree in order.
+    fn into_iter(self) -> ConstraintCircuitIter<II> {
+        ConstraintCircuitIter::new(self)
     }
 
     /// Reset the reference counters for the entire subtree
@@ -481,16 +528,22 @@ impl<II: InputIndicator> ConstraintCircuit<II> {
         }
     }
 
-    /// All unique reference counters in the subtree, sorted.
+    /// All unique reference counters in the subtree, sorted ascendingly.
     pub fn all_ref_counters(&self) -> Vec<usize> {
-        let mut ref_counters = vec![self.ref_count];
-        if let CircuitExpression::BinOp(_, lhs, rhs) = &self.expression {
-            ref_counters.extend(lhs.borrow().all_ref_counters());
-            ref_counters.extend(rhs.borrow().all_ref_counters());
-        };
+        let mut ref_counters = Vec::new();
+        self.all_ref_counters_inner(&mut ref_counters);
         ref_counters.sort_unstable();
         ref_counters.dedup();
+
         ref_counters
+    }
+
+    fn all_ref_counters_inner(&self, ref_counters: &mut Vec<usize>) {
+        ref_counters.push(self.ref_count);
+        if let CircuitExpression::BinOp(_, lhs, rhs) = &self.expression {
+            lhs.borrow().all_ref_counters_inner(ref_counters);
+            rhs.borrow().all_ref_counters_inner(ref_counters);
+        };
     }
 
     /// Is the node the constant 0?
@@ -572,7 +625,7 @@ impl<II: InputIndicator> ConstraintCircuit<II> {
 /// arithmetic operations to existing instances, *e.g.*, `let c = a * b;`.
 #[derive(Clone)]
 pub struct ConstraintCircuitMonad<II: InputIndicator> {
-    pub circuit: Rc<RefCell<ConstraintCircuit<II>>>,
+    pub circuit: RcCircuit<II>,
     pub builder: ConstraintCircuitBuilder<II>,
 }
 
@@ -857,14 +910,13 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
 
         // Computing all node degree is slow; this cache de-duplicates work.
         let node_degrees = Self::all_nodes_in_multicircuit(&multicircuit)
-            .into_iter()
-            .map(|node| (node.id, node.degree()))
+            .map(|node| (node.borrow().id, node.borrow().degree()))
             .collect::<HashMap<_, _>>();
 
         // Only nodes with degree > target_degree need changing.
         let high_degree_nodes = Self::all_nodes_in_multicircuit(&multicircuit)
-            .into_iter()
-            .filter(|node| node_degrees[&node.id] > target_degree)
+            .filter(|node| node_degrees[&node.borrow().id] > target_degree)
+            .map(|node| node.borrow().clone())
             .unique()
             .collect_vec();
 
@@ -872,9 +924,8 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
         // high_degree_nodes with degree <= target_degree. Substituting a node
         // of degree 1 is both pointless and can lead to infinite iteration.
         let low_degree_nodes = Self::all_nodes_in_multicircuit(&high_degree_nodes)
-            .into_iter()
-            .filter(|node| 1 < node_degrees[&node.id] && node_degrees[&node.id] <= target_degree)
-            .map(|node| node.id)
+            .map(|node| node.borrow().id)
+            .filter(|id| 1 < node_degrees[id] && node_degrees[id] <= target_degree)
             .collect_vec();
 
         // If the resulting list is empty, there is no way forward.
@@ -906,6 +957,7 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
     }
 
     /// Returns all nodes used in the multicircuit.
+    ///
     /// This is distinct from `ConstraintCircuitBuilder::all_nodes` because it
     /// 1. only considers nodes used in the given multicircuit, not all nodes in
     ///    the builder,
@@ -914,24 +966,8 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
     /// 3. keeps duplicates, allowing to count how often a node occurs.
     pub fn all_nodes_in_multicircuit(
         multicircuit: &[ConstraintCircuit<II>],
-    ) -> Vec<ConstraintCircuit<II>> {
-        multicircuit
-            .iter()
-            .flat_map(Self::all_nodes_in_circuit)
-            .collect()
-    }
-
-    /// Internal helper function to recursively find all nodes in a circuit.
-    fn all_nodes_in_circuit(circuit: &ConstraintCircuit<II>) -> Vec<ConstraintCircuit<II>> {
-        let mut all_nodes = vec![];
-        if let CircuitExpression::BinOp(_, lhs, rhs) = circuit.expression.clone() {
-            let lhs_nodes = Self::all_nodes_in_circuit(&lhs.borrow());
-            let rhs_nodes = Self::all_nodes_in_circuit(&rhs.borrow());
-            all_nodes.extend(lhs_nodes);
-            all_nodes.extend(rhs_nodes);
-        };
-        all_nodes.push(circuit.to_owned());
-        all_nodes
+    ) -> impl Iterator<Item = RcCircuit<II>> + Clone {
+        multicircuit.iter().flat_map(|cc| cc.clone().into_iter())
     }
 
     /// Counts the number of nodes in this multicircuit. Only counts nodes that
@@ -939,7 +975,8 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
     pub fn num_visible_nodes(constraints: &[Self]) -> usize {
         constraints
             .iter()
-            .flat_map(|ccm| Self::all_nodes_in_circuit(&ccm.circuit.borrow()))
+            .flat_map(|ccm| ccm.circuit.borrow().clone().into_iter())
+            .map(|circuit| circuit.borrow().to_owned())
             .unique()
             .count()
     }
@@ -1569,7 +1606,7 @@ mod tests {
         let multicircuit = [circuit_0, circuit_1, circuit_2, circuit_3].map(|c| c.consume());
 
         let all_nodes = ConstraintCircuitMonad::all_nodes_in_multicircuit(&multicircuit);
-        let count_node = |node| all_nodes.iter().filter(|&n| n == &node).count();
+        let count_node = |node| all_nodes.clone().filter(|n| n.borrow().eq(&node)).count();
 
         let x0 = x(0).consume();
         assert_eq!(4, count_node(x0));
@@ -1593,20 +1630,21 @@ mod tests {
         assert_eq!(4, count_node(tree));
 
         let max_occurrences = all_nodes
-            .iter()
-            .map(|node| all_nodes.iter().filter(|&n| n == node).count())
+            .clone()
+            .map(|node| all_nodes.clone().filter(|n| n == &node).count())
             .max()
             .unwrap();
         assert_eq!(8, max_occurrences);
 
         let most_frequent_nodes = all_nodes
-            .iter()
-            .filter(|&node| all_nodes.iter().filter(|&n| n == node).count() == max_occurrences)
+            .clone()
+            .filter(|node| all_nodes.clone().filter(|n| n == node).count() == max_occurrences)
+            .map(|node| node.borrow().clone())
             .unique()
             .collect_vec();
         assert_eq!(2, most_frequent_nodes.len());
-        assert!(most_frequent_nodes.contains(&&x(2).consume()));
-        assert!(most_frequent_nodes.contains(&&x(10).consume()));
+        assert!(most_frequent_nodes.contains(&x(2).consume()));
+        assert!(most_frequent_nodes.contains(&x(10).consume()));
     }
 
     #[test]
