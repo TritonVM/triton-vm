@@ -942,6 +942,7 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
         constraints
             .iter()
             .flat_map(|ccm| Self::all_nodes_in_circuit(&ccm.circuit.borrow()))
+            .map(|node| node.id)
             .unique()
             .count()
     }

@@ -44,7 +44,7 @@ Before automatic degree lowering:
 | [U32Table](u32-table.md)                       |        1 |           15 |          22 |         2 |         12 |
 | [Grand Cross-Table Argument](table-linking.md) |        0 |            0 |           0 |        14 |          1 |
 | **TOTAL**                                      |   **79** |       **76** |     **150** |    **23** |     **19** |
-| (# nodes)                                      |    (534) |        (624) |      (6679) |     (213) |            |
+| (# nodes)                                      |    (239) |        (481) |      (4725) |     (108) |            |
 
 After lowering degree to 8:
 
@@ -61,7 +61,7 @@ After lowering degree to 8:
 | [U32Table](u32-table.md)                       |        1 |           18 |          24 |         2 |
 | [Grand Cross-Table Argument](table-linking.md) |        0 |            0 |           0 |        14 |
 | **TOTAL**                                      |   **79** |       **80** |     **278** |    **23** |
-| (# nodes)                                      |    (534) |        (635) |      (6956) |     (213) |
+| (# nodes)                                      |    (239) |        (484) |      (5097) |     (108) |
 
 After lowering degree to 4:
 
@@ -78,7 +78,7 @@ After lowering degree to 4:
 | [U32Table](u32-table.md)                       |        1 |           26 |          34 |         2 |
 | [Grand Cross-Table Argument](table-linking.md) |        0 |            0 |           0 |        14 |
 | **TOTAL**                                      |   **81** |       **94** |     **398** |    **23** |
-| (# nodes)                                      |    (538) |        (676) |      (7246) |     (213) |
+| (# nodes)                                      |    (239) |        (502) |      (5316) |     (108) |
 <!-- auto-gen info stop constraints_overview -->
 
 
