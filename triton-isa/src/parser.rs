@@ -1548,14 +1548,14 @@ pub(crate) mod tests {
     fn assertion_context_error_id_fails_for_invalid_id(
         #[strategy(proptest::strategy::Union::new(["assert", "assert_vector"]))]
         instruction: String,
-        #[filter(#id.parse::<i128>().is_err())] id: String,
+        #[filter(#id.trim().parse::<i128>().is_err())] id: String,
     ) {
         // A valid ID followed by a comment is valid, and therefore not relevant
         // here. This might be a monkey-patch, but I don't know how to generate
         // better input.
         if let Some(comment_idx) = id.find("//") {
             let (id, _) = id.split_at(comment_idx);
-            prop_assume!(id.parse::<i128>().is_err());
+            prop_assume!(id.trim().parse::<i128>().is_err());
         }
 
         // not using `NegativeTest`: different `id`s trigger different errors
