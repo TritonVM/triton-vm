@@ -419,18 +419,16 @@ impl<II: InputIndicator> ConstraintCircuit<II> {
     ///
     /// Panics if a duplicate ID is found.
     fn assert_unique_ids_inner(&mut self, ids: &mut HashMap<usize, ConstraintCircuit<II>>) {
+        // try to detect duplicate IDs only once for this node
+        if self.ref_count == 0 {
+            let id = self.id;
+            if let Some(other) = ids.insert(id, self.clone()) {
+                panic!("Repeated ID: {id}\nSelf:\n{self}\n{self:?}\nOther:\n{other}\n{other:?}");
+            }
+        }
+
+        // recurse in either case to correctly update ref_rount
         self.ref_count += 1;
-
-        // Try to detect duplicate IDs only once for this node.
-        if self.ref_count > 1 {
-            return;
-        }
-
-        let self_id = self.id;
-        if let Some(other) = ids.insert(self_id, self.clone()) {
-            panic!("Repeated ID: {self_id}\nSelf:\n{self}\n{self:?}\nOther:\n{other}\n{other:?}");
-        }
-
         if let CircuitExpression::BinOp(_, lhs, rhs) = &self.expression {
             lhs.borrow_mut().assert_unique_ids_inner(ids);
             rhs.borrow_mut().assert_unique_ids_inner(ids);
