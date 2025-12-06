@@ -22,7 +22,6 @@ use std::hash::Hash;
 use std::hash::Hasher;
 use std::iter::Sum;
 use std::ops::Add;
-use std::ops::AddAssign;
 use std::ops::Mul;
 use std::ops::Neg;
 use std::ops::Sub;
@@ -659,10 +658,10 @@ fn binop<II: InputIndicator>(
     }
 
     let new_id = new_node.circuit.borrow().id;
-    let maybe_existing_node = all_nodes.insert(new_id, new_node.clone());
-    let new_node_is_new = maybe_existing_node.is_none();
-    assert!(new_node_is_new, "new node must not overwrite existing node");
-    lhs.builder.id_counter.borrow_mut().add_assign(1);
+    let old = all_nodes.insert(new_id, new_node.clone());
+    assert!(old.is_none(), "new node must not overwrite existing node");
+    *lhs.builder.id_counter.borrow_mut() += 1;
+
     new_node
 }
 
@@ -674,6 +673,7 @@ fn binop_new_node<II: InputIndicator>(
     let id = lhs.builder.id_counter.borrow().to_owned();
     let expression = CircuitExpression::BinOp(binop, lhs.circuit.clone(), rhs.circuit.clone());
     let circuit = ConstraintCircuit::new(id, expression);
+
     lhs.builder.new_monad(circuit)
 }
 
@@ -1061,10 +1061,10 @@ impl<II: InputIndicator> ConstraintCircuitBuilder<II> {
             return same_node.to_owned();
         }
 
-        let maybe_previous_node = self.all_nodes.borrow_mut().insert(id, new_node.clone());
-        let new_node_is_new = maybe_previous_node.is_none();
-        assert!(new_node_is_new, "Leaf-created node must be new… {new_node}");
-        self.id_counter.borrow_mut().add_assign(1);
+        let old = self.all_nodes.borrow_mut().insert(id, new_node.clone());
+        assert!(old.is_none(), "Leaf-created node must be new… {new_node}");
+        *self.id_counter.borrow_mut() += 1;
+
         new_node
     }
 
@@ -1491,6 +1491,15 @@ mod tests {
         assert!(new_aux_constraints.is_empty());
     }
 
+    /// The multicircuit
+    ///
+    /// ```text
+    ///      ·          ·
+    ///     ╱ ╲        ╱ ╲
+    ///    ·   ╲      ·   ╲
+    ///   ╱ ╲   ╲    ╱ ╲   ╲
+    ///  0   0   0  1   1   1
+    /// ```
     fn circuit_with_multiple_options_for_degree_lowering_to_degree_2()
     -> [ConstraintCircuitMonad<SingleRowIndicator>; 2] {
         let builder = ConstraintCircuitBuilder::new();
@@ -1598,6 +1607,38 @@ mod tests {
         assert_eq!(2, most_frequent_nodes.len());
         assert!(most_frequent_nodes.contains(&&x(2).consume()));
         assert!(most_frequent_nodes.contains(&&x(10).consume()));
+    }
+
+    #[test]
+    fn visible_nodes_are_counted_correctly() {
+        let builder = ConstraintCircuitBuilder::new();
+
+        let x = |i| builder.input(SingleRowIndicator::Main(i));
+        let b_con = |i: u64| builder.b_constant(i);
+
+        // 1 node because of constant reduction
+        let tree_of_constants = b_con(42) * b_con(7) + b_con(13) - b_con(12);
+
+        // 8 nodes (4 leafs, 4 bin-ops)
+        //       ── · ─
+        //      ╱      ╲
+        //   ─ + ─ ·    +
+        //  ╱     ╱ ╲  ╱ ╲
+        // x0    -1  x1  x2
+        let circuit_1 = (x(0) - x(1)) * (x(1) + x(2));
+
+        // creates new nodes, but ignored in the multicircuit below
+        let _circuit_2 = x(1) * x(3) + (x(4) - x(5)) * x(6);
+
+        // 1 new node
+        //           ·
+        //          ╱ ╲
+        // (x1 + x2)   consts
+        let circuit_3 = (x(2) + x(1)) * tree_of_constants.clone();
+
+        let multicircuit = [tree_of_constants, circuit_1, circuit_3];
+        let num_visible = ConstraintCircuitMonad::num_visible_nodes(&multicircuit);
+        assert_eq!(10, num_visible);
     }
 
     #[derive(Debug, Copy, Clone, Eq, PartialEq, test_strategy::Arbitrary)]
