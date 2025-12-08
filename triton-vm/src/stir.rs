@@ -189,8 +189,6 @@ struct FoldingPolynomialQuery {
     /// A `k`-th root of [`Self::point`].
     root: BFieldElement,
 
-    // TODO: this is the same for all queries of one round; move out
-    //       that’s probably easiest when parsing & verification is re-combined
     /// The distance between any two `k`-th roots of [`Self::point`].
     ///
     /// In particular, the following gives all `k` such `k`-th roots:
@@ -198,6 +196,10 @@ struct FoldingPolynomialQuery {
     /// ```no_compile
     /// (0..k).map(|j| root * root_distance.mod_pow(j))
     /// ```
+    //
+    // While this is the same for all queries of one round, it wastes memory on
+    // the order of `num_queries * BFieldElement::BYTES`, which is about 1KiB.
+    // For Triton VM, that’s on the very low end of things.
     root_distance: BFieldElement,
 
     /// Corresponds to the evaluation of f_i at all `y` with
@@ -830,49 +832,50 @@ impl Stir {
     /// Turn evaluations of (previous) committed function “g” into evaluations
     /// of (current) (virtual) function “f”.
     fn subsequent_in_domain_answers(
-        quot_data: QuotientingData,
+        quotienting_data: QuotientingData,
         queries: &[FoldingPolynomialQuery],
         fold_randomness: XFieldElement,
     ) -> Vec<XFieldElement> {
+        const ONE: XFieldElement = XFieldElement::ONE;
+
         let QuotientingData {
             quotient_set,
             quotient_answers,
             degree_correction_randomness,
-        } = quot_data;
+        } = quotienting_data;
 
         let answer_poly = Polynomial::interpolate(&quotient_set, &quotient_answers);
         let zerofier = Polynomial::zerofier(&quotient_set);
+        let zerofier_degree = u32::try_from(zerofier.degree()).expect(QUOTIENT_SET_LEN_TO_U32_ERR);
 
-        let mut f_virtual_evals = Vec::with_capacity(queries.len());
-        let mut coset_evals = Vec::new();
-        for g_virtual_eval in queries {
-            coset_evals.clear(); // re-use the small allocation
+        let mut in_domain_answers = Vec::with_capacity(queries.len());
+        let mut coset_evaluations = Vec::new();
+        for query in queries {
+            coset_evaluations.clear(); // re-use the small allocation
             let mut current_root_distance = BFieldElement::ONE;
-            for &evaluation in &g_virtual_eval.values {
-                let current_root = g_virtual_eval.root * current_root_distance;
-                let answer = answer_poly.evaluate::<_, XFieldElement>(current_root);
-                let quotient = (evaluation - answer) / zerofier.evaluate(current_root);
+            for &evaluation in &query.values {
+                // quotienting
+                let current_root = query.root * current_root_distance;
+                let answer_evaluation = answer_poly.evaluate::<_, XFieldElement>(current_root);
+                let quotient = (evaluation - answer_evaluation) / zerofier.evaluate(current_root);
 
                 // degree correction
-                let zerofier_degree =
-                    u32::try_from(zerofier.degree()).expect(QUOTIENT_SET_LEN_TO_U32_ERR);
-                let common_factor = current_root * degree_correction_randomness; // TODO: variable names
-                let scale_factor = if common_factor.is_one() {
+                let common_factor = current_root * degree_correction_randomness;
+                let degree_correction_factor = if common_factor == ONE {
                     xfe!(zerofier_degree)
                 } else {
-                    (XFieldElement::ONE - common_factor.mod_pow_u32(zerofier_degree))
-                        / (XFieldElement::ONE - common_factor)
+                    (ONE - common_factor.mod_pow_u32(zerofier_degree)) / (ONE - common_factor)
                 };
 
-                coset_evals.push(scale_factor * quotient);
-                current_root_distance *= g_virtual_eval.root_distance;
+                coset_evaluations.push(degree_correction_factor * quotient);
+                current_root_distance *= query.root_distance;
             }
 
-            let poly = Polynomial::fast_coset_interpolate(g_virtual_eval.root, &coset_evals);
-            f_virtual_evals.push(poly.evaluate(fold_randomness));
+            let poly = Polynomial::fast_coset_interpolate(query.root, &coset_evaluations);
+            in_domain_answers.push(poly.evaluate(fold_randomness));
         }
 
-        f_virtual_evals
+        in_domain_answers
     }
 
     fn extract_merkle_tree_inclusion_proof(
