@@ -3,7 +3,6 @@
 
 use itertools::Itertools;
 use num_traits::ConstOne;
-use num_traits::One;
 use twenty_first::math::traits::FiniteField;
 use twenty_first::prelude::*;
 
