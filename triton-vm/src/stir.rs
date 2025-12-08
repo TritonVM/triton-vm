@@ -737,7 +737,7 @@ impl Stir {
         let round_params = self.round_params()?;
 
         let mut first_round_queries = None;
-        let mut previous_folding_artifacts = None;
+        let mut previous_quotienting_data = None;
         let mut domain = self.initial_domain()?;
         let mut commitment_to_previous_polynomial =
             proof_stream.dequeue()?.try_into_merkle_root()?;
@@ -753,7 +753,7 @@ impl Stir {
             first_round_queries
                 .get_or_insert(queries.iter().map(|q| (q.index, q.values[0])).collect());
 
-            let in_domain_answers = match previous_folding_artifacts {
+            let in_domain_answers = match previous_quotienting_data {
                 None => Self::initial_in_domain_answers(&queries, fold_randomness),
                 Some(data) => Self::subsequent_in_domain_answers(data, &queries, fold_randomness),
             };
@@ -774,7 +774,7 @@ impl Stir {
                 degree_correction_randomness,
             };
 
-            previous_folding_artifacts = Some(quotienting_data);
+            previous_quotienting_data = Some(quotienting_data);
             domain = domain.pow(2).unwrap().with_offset(domain.generator()); // TODO: this offset is wrong
             commitment_to_previous_polynomial = commitment_to_current_polynomial;
         }
@@ -796,7 +796,7 @@ impl Stir {
             .extract_merkle_tree_inclusion_proof(proof_stream, domain, final_num_queries)?
             .authenticated_queries(commitment_to_previous_polynomial)?;
 
-        let final_folds = match previous_folding_artifacts {
+        let final_folds = match previous_quotienting_data {
             None => Self::initial_in_domain_answers(&queries, folding_rand),
             Some(data) => Self::subsequent_in_domain_answers(data, &queries, folding_rand),
         };
