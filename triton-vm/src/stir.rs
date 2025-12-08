@@ -1,8 +1,6 @@
 //! The [STIR](Stir) polynomial low-degree test over the
 //! [extension field](XFieldElement).
 
-use std::iter;
-
 use itertools::Itertools;
 use num_traits::ConstOne;
 use num_traits::One;
@@ -166,25 +164,6 @@ struct LeafStackMerkleTree {
     tree: MerkleTree,
 }
 
-struct ParsedProof {
-    round_proofs: Vec<RoundProof>,
-    final_round_proof: FinalRoundProof,
-}
-
-struct RoundProof {
-    folding_randomness: XFieldElement,
-    ood_queries: Vec<XFieldElement>,
-    ood_answers: Vec<XFieldElement>,
-    folding_poly_queries: Vec<FoldingPolynomialQuery>,
-    degree_correction_randomness: XFieldElement,
-}
-
-struct FinalRoundProof {
-    folding_randomness: XFieldElement,
-    poly: Polynomial<'static, XFieldElement>,
-    folding_poly_queries: Vec<FoldingPolynomialQuery>,
-}
-
 /// A Merkle tree inclusion proof for all queries to the folding polynomial
 /// of one verifier round.
 ///
@@ -224,6 +203,12 @@ struct FoldingPolynomialQuery {
     /// Corresponds to the evaluation of f_i at all `y` with
     /// `y^k == point`.
     values: Vec<XFieldElement>,
+}
+
+struct DataToCarryBetweenRounds {
+    quotient_set: Vec<XFieldElement>,
+    quotient_answers: Vec<XFieldElement>,
+    degree_correction_randomness: XFieldElement,
 }
 
 impl Stir {
@@ -637,7 +622,7 @@ impl Stir {
             let folding_randomness = proof_stream.sample_scalars(1)[0];
             let folded_poly =
                 Self::fold_polynomial(&poly, 1 << self.log2_folding_factor, folding_randomness);
-            let small_domain = domain.pow(2).unwrap().with_offset(domain.generator());
+            let small_domain = domain.pow(2).unwrap().with_offset(domain.generator()); // TODO: this offset is wrong
             let folded_evaluations = small_domain.evaluate(&folded_poly);
             let folded_poly_commitment =
                 LeafStackMerkleTree::new(&folded_evaluations, 1 << self.log2_folding_factor);
@@ -744,120 +729,11 @@ impl Stir {
         &self,
         proof_stream: &mut ProofStream,
     ) -> VerifierResult<Vec<(usize, XFieldElement)>> {
-        let parsed_proof = self.parse_proof(proof_stream)?;
-
-        let all_folding_randomness = parsed_proof
-            .round_proofs
-            .iter()
-            .map(|r| r.folding_randomness)
-            .chain(iter::once(
-                parsed_proof.final_round_proof.folding_randomness,
-            ))
-            .collect_vec();
-        let all_folding_poly_queries = parsed_proof
-            .round_proofs
-            .iter()
-            .map(|r| &r.folding_poly_queries)
-            .chain(iter::once(
-                &parsed_proof.final_round_proof.folding_poly_queries,
-            ))
-            .collect_vec();
-
-        // TODO: variable name
-        let mut r_shift_evals = all_folding_poly_queries[0]
-            .iter()
-            .map(|query| Polynomial::fast_coset_interpolate(query.root, &query.values))
-            .map(|poly| poly.evaluate(all_folding_randomness[0]))
-            .collect_vec();
-
-        // Note that the `round_no` points to the _next_ round.
-        // It is only used to index into the `all_x` collections defined above,
-        // which include elements from the final round.
-        //
-        // TODO: I don’t think this is particularly pretty. Rework?
-        for (round_no, round_proof) in (1..).zip(&parsed_proof.round_proofs) {
-            let quotient_set = round_proof
-                .folding_poly_queries
-                .iter()
-                .map(|q| q.point.lift())
-                .chain(round_proof.ood_queries.iter().copied())
-                .collect_vec();
-            let quotient_answers = r_shift_evals
-                .iter()
-                .chain(&round_proof.ood_answers)
-                .copied()
-                .collect_vec();
-            let answer_poly = Polynomial::interpolate(&quotient_set, &quotient_answers);
-            let zerofier_poly = Polynomial::zerofier(&quotient_set);
-
-            // turn evaluations of (previous) committed function “g” into
-            // evaluations of (current) (virtual) function “f”
-            let g_virtual_evals = all_folding_poly_queries[round_no];
-            let mut f_virtual_evals = Vec::with_capacity(g_virtual_evals.len());
-            for g_virtual_eval in g_virtual_evals {
-                let mut coset_evals = Vec::with_capacity(1 << self.log2_folding_factor);
-                for (j, &evaluation) in (0..).zip(&g_virtual_eval.values) {
-                    // TODO: variable name?
-                    let root = g_virtual_eval.root * g_virtual_eval.root_distance.mod_pow(j);
-                    let quotient = (evaluation - answer_poly.evaluate::<_, XFieldElement>(root))
-                        / zerofier_poly.evaluate(root);
-
-                    // degree correction
-                    // TODO: variable names
-                    let num_terms =
-                        u32::try_from(quotient_set.len() + 1).expect(QUOTIENT_SET_LEN_TO_U32_ERR);
-                    let common_factor = root * round_proof.degree_correction_randomness;
-                    let scale_factor = if common_factor.is_one() {
-                        xfe!(num_terms)
-                    } else {
-                        (XFieldElement::ONE - common_factor.mod_pow_u32(num_terms))
-                            / (XFieldElement::ONE - common_factor)
-                    };
-
-                    coset_evals.push(scale_factor * quotient);
-                }
-
-                let f_virtual_eval =
-                    Polynomial::fast_coset_interpolate(g_virtual_eval.root, &coset_evals)
-                        .evaluate(all_folding_randomness[round_no]);
-                f_virtual_evals.push(f_virtual_eval);
-            }
-
-            r_shift_evals = f_virtual_evals;
-        }
-
-        let final_folds = r_shift_evals;
-        let final_evaluations = parsed_proof
-            .final_round_proof
-            .folding_poly_queries
-            .iter()
-            .map(|query| parsed_proof.final_round_proof.poly.evaluate(query.point));
-        if final_folds
-            .into_iter()
-            .zip(final_evaluations)
-            .any(|(fold, eval)| fold != eval)
-        {
-            return Err(StirVerificationError::LastRoundPolynomialEvaluationMismatch);
-        }
-
-        // TODO: the `query.index` is from the query_domain, but the initial
-        //       domain is folding_factor-times larger. Should consistency
-        //       with the STIR polynomial be established at _all_ query.values
-        //       instead of just the index-0 one? Currently, it only looks at
-        //       a small subset of the initial domain. That seems wrong.
-        let first_round_queries = all_folding_poly_queries[0]
-            .iter()
-            .map(|query| (query.index, query.values[0]))
-            .collect();
-
-        Ok(first_round_queries)
-    }
-
-    fn parse_proof(&self, proof_stream: &mut ProofStream) -> VerifierResult<ParsedProof> {
         let round_params = self.round_params()?;
 
+        let mut previous_round_info = None;
+        let mut first_round_queries = None;
         let mut domain = self.initial_domain()?;
-        let mut round_proofs = Vec::with_capacity(round_params.round_queries.len());
         let mut commitment_to_previous_polynomial =
             proof_stream.dequeue()?.try_into_merkle_root()?;
         for num_queries in round_params.round_queries {
@@ -866,56 +742,137 @@ impl Stir {
                 proof_stream.dequeue()?.try_into_merkle_root()?;
             let ood_queries = proof_stream.sample_scalars(num_queries.out_of_domain);
             let ood_answers = proof_stream.dequeue()?.try_into_stir_ood_values()?;
-
-            let folding_poly_queries = self
+            let queries = self
                 .extract_merkle_tree_inclusion_proof(proof_stream, domain, num_queries.in_domain)?
                 .authenticated_queries(commitment_to_previous_polynomial)?;
-            let degree_correction_randomness = proof_stream.sample_scalars(1)[0];
+            first_round_queries
+                .get_or_insert(queries.iter().map(|q| (q.index, q.values[0])).collect());
 
-            let round_proof = RoundProof {
-                folding_randomness,
-                ood_queries,
-                ood_answers,
-                folding_poly_queries,
+            // TODO: variable name
+            let r_shift_evals = if let Some(info) = previous_round_info {
+                self.complicated_way_to_get_r_shift_values(info, &queries, folding_randomness)
+            } else {
+                Self::first_time_r_shift_values(&queries, folding_randomness)
+            };
+
+            let quotient_set = queries
+                .into_iter()
+                .map(|q| q.point.lift())
+                .chain(ood_queries)
+                .collect_vec();
+            let quotient_answers = r_shift_evals.into_iter().chain(ood_answers).collect_vec();
+            let degree_correction_randomness = proof_stream.sample_scalars(1)[0];
+            let current_round_info = DataToCarryBetweenRounds {
+                quotient_set,
+                quotient_answers,
                 degree_correction_randomness,
             };
-            round_proofs.push(round_proof);
 
-            domain = domain.pow(2).unwrap().with_offset(domain.generator());
+            previous_round_info = Some(current_round_info);
+            domain = domain.pow(2).unwrap().with_offset(domain.generator()); // TODO: this offset is wrong
             commitment_to_previous_polynomial = commitment_to_current_polynomial;
         }
 
         // final round
         let folding_randomness = proof_stream.sample_scalars(1)[0];
-        let poly = proof_stream.dequeue()?.try_into_stir_polynomial()?;
+        let final_poly = proof_stream.dequeue()?.try_into_stir_polynomial()?;
 
         // for the low, low chance that the final polynomial is the zero
         // polynomial, we treat it as if it was a constant polynomial when
         // checking the degree
-        let poly_degree = poly.degree().try_into().unwrap_or(0);
+        let poly_degree = final_poly.degree().try_into().unwrap_or(0);
         if poly_degree > round_params.final_degree {
             return Err(StirVerificationError::LastRoundPolynomialHasTooHighDegree);
         }
 
-        let folding_poly_queries = self
-            .extract_merkle_tree_inclusion_proof(
-                proof_stream,
-                domain,
-                round_params.final_num_in_domain_queries,
-            )?
+        let final_num_queries = round_params.final_num_in_domain_queries;
+        let queries = self
+            .extract_merkle_tree_inclusion_proof(proof_stream, domain, final_num_queries)?
             .authenticated_queries(commitment_to_previous_polynomial)?;
 
-        let final_round_proof = FinalRoundProof {
-            folding_randomness,
-            poly,
-            folding_poly_queries,
+        let final_folds = if let Some(info) = previous_round_info {
+            self.complicated_way_to_get_r_shift_values(info, &queries, folding_randomness)
+        } else {
+            Self::first_time_r_shift_values(&queries, folding_randomness)
         };
-        let parsed_proof = ParsedProof {
-            round_proofs,
-            final_round_proof,
-        };
+        let final_evaluations = queries.iter().map(|query| final_poly.evaluate(query.point));
+        if final_folds
+            .into_iter()
+            .zip(final_evaluations)
+            .any(|(fold, eval)| fold != eval)
+        {
+            return Err(StirVerificationError::LastRoundPolynomialEvaluationMismatch);
+        }
 
-        Ok(parsed_proof)
+        let first_round_queries = first_round_queries
+            .unwrap_or_else(|| queries.iter().map(|q| (q.index, q.values[0])).collect());
+
+        Ok(first_round_queries)
+    }
+
+    // TODO: function name
+    fn first_time_r_shift_values(
+        queries: &[FoldingPolynomialQuery],
+        folding_randomness: XFieldElement,
+    ) -> Vec<XFieldElement> {
+        queries
+            .iter()
+            .map(|query| Polynomial::fast_coset_interpolate(query.root, &query.values))
+            .map(|poly| poly.evaluate(folding_randomness))
+            .collect()
+    }
+
+    /// Turn evaluations of (previous) committed function “g” into evaluations
+    /// of (current) (virtual) function “f”.
+    //
+    // TODO: reword doc string
+    // TODO: method name
+    fn complicated_way_to_get_r_shift_values(
+        &self,
+        info: DataToCarryBetweenRounds,
+        queries: &[FoldingPolynomialQuery],
+        folding_randomness: XFieldElement,
+    ) -> Vec<XFieldElement> {
+        let DataToCarryBetweenRounds {
+            quotient_set,
+            quotient_answers,
+            degree_correction_randomness,
+        } = info;
+
+        let answer_poly = Polynomial::interpolate(&quotient_set, &quotient_answers);
+        let zerofier_poly = Polynomial::zerofier(&quotient_set);
+
+        let mut f_virtual_evals = Vec::with_capacity(queries.len());
+        for g_virtual_eval in queries {
+            let mut coset_evals = Vec::with_capacity(1 << self.log2_folding_factor);
+            for (j, &evaluation) in (0..).zip(&g_virtual_eval.values) {
+                // TODO: variable name?
+                let root = g_virtual_eval.root * g_virtual_eval.root_distance.mod_pow(j);
+                let quotient = (evaluation - answer_poly.evaluate::<_, XFieldElement>(root))
+                    / zerofier_poly.evaluate(root);
+
+                // degree correction
+                // TODO: variable names
+                let num_terms =
+                    u32::try_from(quotient_set.len() + 1).expect(QUOTIENT_SET_LEN_TO_U32_ERR);
+                let common_factor = root * degree_correction_randomness;
+                let scale_factor = if common_factor.is_one() {
+                    xfe!(num_terms)
+                } else {
+                    (XFieldElement::ONE - common_factor.mod_pow_u32(num_terms))
+                        / (XFieldElement::ONE - common_factor)
+                };
+
+                coset_evals.push(scale_factor * quotient);
+            }
+
+            let f_virtual_eval =
+                Polynomial::fast_coset_interpolate(g_virtual_eval.root, &coset_evals)
+                    .evaluate(folding_randomness);
+            f_virtual_evals.push(f_virtual_eval);
+        }
+
+        f_virtual_evals
     }
 
     fn extract_merkle_tree_inclusion_proof(
