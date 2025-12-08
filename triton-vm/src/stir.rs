@@ -205,7 +205,15 @@ struct FoldingPolynomialQuery {
     values: Vec<XFieldElement>,
 }
 
-struct DataToCarryBetweenRounds {
+/// The required data to perform a quotienting step.
+///
+/// To compute the folding oracle for the next round, this data is needed in
+/// addition to the data dequeued from the proof stream.
+///
+/// The exception from this rule is the initial round, which does not require
+/// this data. Note that the initial round might coincide with the final round,
+/// in which case this struct is not created.
+struct QuotientingData {
     quotient_set: Vec<XFieldElement>,
     quotient_answers: Vec<XFieldElement>,
     degree_correction_randomness: XFieldElement,
@@ -729,7 +737,7 @@ impl Stir {
         let round_params = self.round_params()?;
 
         let mut first_round_queries = None;
-        let mut previous_round_info = None;
+        let mut previous_folding_artifacts = None;
         let mut domain = self.initial_domain()?;
         let mut commitment_to_previous_polynomial =
             proof_stream.dequeue()?.try_into_merkle_root()?;
@@ -745,9 +753,9 @@ impl Stir {
             first_round_queries
                 .get_or_insert(queries.iter().map(|q| (q.index, q.values[0])).collect());
 
-            let in_domain_answers = match previous_round_info {
+            let in_domain_answers = match previous_folding_artifacts {
                 None => Self::initial_in_domain_answers(&queries, fold_randomness),
-                Some(info) => Self::subsequent_in_domain_answers(info, &queries, fold_randomness),
+                Some(data) => Self::subsequent_in_domain_answers(data, &queries, fold_randomness),
             };
 
             let quotient_set = queries
@@ -760,13 +768,13 @@ impl Stir {
                 .chain(ood_answers)
                 .collect_vec();
             let degree_correction_randomness = proof_stream.sample_scalars(1)[0];
-            let current_round_info = DataToCarryBetweenRounds {
+            let quotienting_data = QuotientingData {
                 quotient_set,
                 quotient_answers,
                 degree_correction_randomness,
             };
 
-            previous_round_info = Some(current_round_info);
+            previous_folding_artifacts = Some(quotienting_data);
             domain = domain.pow(2).unwrap().with_offset(domain.generator()); // TODO: this offset is wrong
             commitment_to_previous_polynomial = commitment_to_current_polynomial;
         }
@@ -788,9 +796,9 @@ impl Stir {
             .extract_merkle_tree_inclusion_proof(proof_stream, domain, final_num_queries)?
             .authenticated_queries(commitment_to_previous_polynomial)?;
 
-        let final_folds = match previous_round_info {
+        let final_folds = match previous_folding_artifacts {
             None => Self::initial_in_domain_answers(&queries, folding_rand),
-            Some(info) => Self::subsequent_in_domain_answers(info, &queries, folding_rand),
+            Some(data) => Self::subsequent_in_domain_answers(data, &queries, folding_rand),
         };
         let final_evaluations = queries.iter().map(|query| final_poly.evaluate(query.point));
         if final_folds
@@ -822,42 +830,42 @@ impl Stir {
     /// Turn evaluations of (previous) committed function “g” into evaluations
     /// of (current) (virtual) function “f”.
     fn subsequent_in_domain_answers(
-        info: DataToCarryBetweenRounds,
+        quot_data: QuotientingData,
         queries: &[FoldingPolynomialQuery],
         fold_randomness: XFieldElement,
     ) -> Vec<XFieldElement> {
-        let DataToCarryBetweenRounds {
+        let QuotientingData {
             quotient_set,
             quotient_answers,
             degree_correction_randomness,
-        } = info;
+        } = quot_data;
 
         let answer_poly = Polynomial::interpolate(&quotient_set, &quotient_answers);
-        let zerofier_poly = Polynomial::zerofier(&quotient_set);
+        let zerofier = Polynomial::zerofier(&quotient_set);
 
         let mut f_virtual_evals = Vec::with_capacity(queries.len());
         let mut coset_evals = Vec::new();
         for g_virtual_eval in queries {
             coset_evals.clear(); // re-use the small allocation
-            for (j, &evaluation) in (0..).zip(&g_virtual_eval.values) {
-                // TODO: variable name?
-                let root = g_virtual_eval.root * g_virtual_eval.root_distance.mod_pow(j);
-                let quotient = (evaluation - answer_poly.evaluate::<_, XFieldElement>(root))
-                    / zerofier_poly.evaluate(root);
+            let mut current_root_distance = BFieldElement::ONE;
+            for &evaluation in &g_virtual_eval.values {
+                let current_root = g_virtual_eval.root * current_root_distance;
+                let answer = answer_poly.evaluate::<_, XFieldElement>(current_root);
+                let quotient = (evaluation - answer) / zerofier.evaluate(current_root);
 
                 // degree correction
-                // TODO: variable names
-                let num_terms =
-                    u32::try_from(quotient_set.len() + 1).expect(QUOTIENT_SET_LEN_TO_U32_ERR);
-                let common_factor = root * degree_correction_randomness;
+                let zerofier_degree =
+                    u32::try_from(zerofier.degree()).expect(QUOTIENT_SET_LEN_TO_U32_ERR);
+                let common_factor = current_root * degree_correction_randomness; // TODO: variable names
                 let scale_factor = if common_factor.is_one() {
-                    xfe!(num_terms)
+                    xfe!(zerofier_degree)
                 } else {
-                    (XFieldElement::ONE - common_factor.mod_pow_u32(num_terms))
+                    (XFieldElement::ONE - common_factor.mod_pow_u32(zerofier_degree))
                         / (XFieldElement::ONE - common_factor)
                 };
 
                 coset_evals.push(scale_factor * quotient);
+                current_root_distance *= g_virtual_eval.root_distance;
             }
 
             let poly = Polynomial::fast_coset_interpolate(g_virtual_eval.root, &coset_evals);
@@ -932,14 +940,15 @@ impl NumQueries {
 impl LeafStackMerkleTree {
     /// # Panics
     ///
-    /// TODO: if vec.len() is not a pow 2 >= stack_height, which must also be
-    ///   a pow 2
+    /// - if the `stack_height` is not a power of two
+    /// - if the codeword’s length is not a power of two
+    /// - if the codeword’s length is smaller than the `stack_height`
     fn new(codeword: &[XFieldElement], stack_height: usize) -> Self {
         let stacked_leafs = Self::stack(codeword, stack_height);
         let leaf_digests = stacked_leafs
             .iter()
             .map(|stack| XFieldElement::bfe_slice(stack))
-            .map(Tip5::hash_varlen) // TODO: use fix-len hash?
+            .map(Tip5::hash_varlen)
             .collect_vec();
         let tree = MerkleTree::par_new(&leaf_digests).unwrap();
 
