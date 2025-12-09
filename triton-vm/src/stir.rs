@@ -179,7 +179,7 @@ struct PolyFoldQueriesInclusionProof {
 /// The result of a query to the folding polynomial, yielding `k`-many
 /// (i.e., `folding_factor`-many) answers from the oracle.
 struct FoldingPolynomialQuery {
-    /// The index of the [point](Self::point) within the query domain.
+    /// The index of the [point](Self::point) within that round’s domain.
     index: usize,
 
     /// Corresponds to r_{i,j}^{shift} in the STIR paper.
@@ -611,6 +611,7 @@ impl Stir {
     ) -> ProverResult<Vec<usize>> {
         let round_params = self.round_params()?;
 
+        let folding_factor = 1 << self.log2_folding_factor;
         let mut domain = self.initial_domain()?;
         if domain.len() != codeword.len() {
             return Err(StirProvingError::InitialCodewordMismatch {
@@ -619,20 +620,19 @@ impl Stir {
             });
         }
 
-        let mut commitment = LeafStackMerkleTree::new(codeword, 1 << self.log2_folding_factor);
+        let mut commitment = LeafStackMerkleTree::new(codeword, folding_factor);
         proof_stream.enqueue(ProofItem::MerkleRoot(commitment.tree.root()));
 
         let mut poly = domain.interpolate(codeword);
         let mut first_round_queried_indices = None;
         for num_queries in round_params.round_queries {
-            let fold_randomness = proof_stream.sample_scalars(1)[0];
-            let folded_poly =
-                Self::fold_polynomial(&poly, 1 << self.log2_folding_factor, fold_randomness);
-            let small_domain = Self::next_round_domain(domain);
+            let folding_randomness = proof_stream.sample_scalars(1)[0];
+            let folded_poly = Self::fold_polynomial(&poly, folding_factor, folding_randomness);
+            let next_round_domain = Self::next_round_domain(domain);
 
-            let folded_evaluations = small_domain.evaluate(&folded_poly);
+            let folded_evaluations = next_round_domain.evaluate(&folded_poly);
             let folded_poly_commitment =
-                LeafStackMerkleTree::new(&folded_evaluations, 1 << self.log2_folding_factor);
+                LeafStackMerkleTree::new(&folded_evaluations, folding_factor);
             proof_stream.enqueue(ProofItem::MerkleRoot(folded_poly_commitment.tree.root()));
 
             let ood_queries = proof_stream.sample_scalars(num_queries.out_of_domain);
@@ -642,20 +642,24 @@ impl Stir {
                 .collect_vec();
             proof_stream.enqueue(ProofItem::StirOutOfDomainValues(ood_values.clone()));
 
-            let query_domain = domain.pow(1 << self.log2_folding_factor).unwrap();
+            let folded_domain = domain.pow(folding_factor).unwrap();
             let queried_indices = proof_stream
-                .sample_indices(query_domain.len(), num_queries.in_domain)
+                .sample_indices(domain.len(), num_queries.in_domain)
                 .into_iter() // TODO: over / rejection sample to ensure safe minimum?
                 .unique()
                 .collect_vec();
-            let inclusion_proof = commitment.inclusion_proof(&queried_indices);
+            let folded_poly_queried_indices = queried_indices
+                .iter()
+                .map(|&idx| idx % folded_domain.len())
+                .collect_vec();
+            let inclusion_proof = commitment.inclusion_proof(&folded_poly_queried_indices);
             proof_stream.enqueue(ProofItem::StirResponse(inclusion_proof));
 
             // construct the witness polynomial for the next round
-            let queried_domain_values = queried_indices
+            let queried_domain_values = folded_poly_queried_indices
                 .iter()
                 .map(|&i| u32::try_from(i).expect(DOMAIN_INDEX_TO_U32_ERR))
-                .map(|i| query_domain.value(i))
+                .map(|i| folded_domain.value(i))
                 .collect_vec();
             let points_to_quotient_out = queried_domain_values
                 .iter()
@@ -681,31 +685,31 @@ impl Stir {
 
             // carry state to next round
             poly = quotient * degree_correction_poly;
-            domain = small_domain;
+            domain = next_round_domain;
             commitment = folded_poly_commitment;
 
             first_round_queried_indices.get_or_insert(queried_indices);
         }
 
         // final round is special because there is no quotienting
-        let fold_randomness = proof_stream.sample_scalars(1)[0];
-        let final_poly =
-            Self::fold_polynomial(&poly, 1 << self.log2_folding_factor, fold_randomness);
-        proof_stream.enqueue(ProofItem::StirPolynomial(final_poly));
+        let folding_randomness = proof_stream.sample_scalars(1)[0];
+        let poly = Self::fold_polynomial(&poly, folding_factor, folding_randomness);
+        proof_stream.enqueue(ProofItem::StirPolynomial(poly));
 
-        let final_query_domain = domain.pow(1 << self.log2_folding_factor).unwrap();
-        let final_queried_indices = proof_stream
-            .sample_indices(
-                final_query_domain.len(),
-                round_params.final_num_in_domain_queries,
-            )
+        let folded_domain = domain.pow(folding_factor).unwrap();
+        let queried_indices = proof_stream
+            .sample_indices(domain.len(), round_params.final_num_in_domain_queries)
             .into_iter()
             .unique()
             .collect_vec();
-        let final_inclusion_proof = commitment.inclusion_proof(&final_queried_indices);
-        proof_stream.enqueue(ProofItem::StirResponse(final_inclusion_proof));
+        let folded_poly_queried_indices = queried_indices
+            .iter()
+            .map(|&idx| idx % folded_domain.len())
+            .collect_vec();
+        let inclusion_proof = commitment.inclusion_proof(&folded_poly_queried_indices);
+        proof_stream.enqueue(ProofItem::StirResponse(inclusion_proof));
 
-        Ok(first_round_queried_indices.unwrap_or(final_queried_indices))
+        Ok(first_round_queried_indices.unwrap_or(queried_indices))
     }
 
     /// # Panics
@@ -714,7 +718,7 @@ impl Stir {
     fn fold_polynomial<FF>(
         poly: &Polynomial<FF>,
         folding_factor: usize,
-        fold_randomness: FF,
+        folding_randomness: FF,
     ) -> Polynomial<'static, FF>
     where
         FF: FiniteField,
@@ -722,7 +726,7 @@ impl Stir {
         let folded_coefficients = poly
             .coefficients()
             .chunks(folding_factor)
-            .map(|chunk| Polynomial::new_borrowed(chunk).evaluate(fold_randomness))
+            .map(|chunk| Polynomial::new_borrowed(chunk).evaluate(folding_randomness))
             .collect();
 
         Polynomial::new(folded_coefficients)
@@ -750,7 +754,7 @@ impl Stir {
         let mut commitment_to_previous_polynomial =
             proof_stream.dequeue()?.try_into_merkle_root()?;
         for num_queries in round_params.round_queries {
-            let fold_randomness = proof_stream.sample_scalars(1)[0];
+            let folding_randomness = proof_stream.sample_scalars(1)[0];
             let commitment_to_current_polynomial =
                 proof_stream.dequeue()?.try_into_merkle_root()?;
             let ood_queries = proof_stream.sample_scalars(num_queries.out_of_domain);
@@ -758,12 +762,11 @@ impl Stir {
             let queries = self
                 .extract_merkle_tree_inclusion_proof(proof_stream, domain, num_queries.in_domain)?
                 .authenticated_queries(commitment_to_previous_polynomial)?;
-            first_round_queries
-                .get_or_insert(queries.iter().map(|q| (q.index, q.values[0])).collect());
+            first_round_queries.get_or_insert_with(|| self.extract_first_round_queries(&queries));
 
             let in_domain_answers = match previous_quotienting_data {
-                None => Self::initial_in_domain_answers(&queries, fold_randomness),
-                Some(data) => Self::subsequent_in_domain_answers(data, &queries, fold_randomness),
+                None => Self::initial_in_domain_answers(&queries, folding_randomness),
+                Some(qd) => Self::subsequent_in_domain_answers(qd, &queries, folding_randomness),
             };
 
             let quotient_set = queries
@@ -788,27 +791,27 @@ impl Stir {
         }
 
         // final round
-        let folding_rand = proof_stream.sample_scalars(1)[0];
-        let final_poly = proof_stream.dequeue()?.try_into_stir_polynomial()?;
+        let folding_randomness = proof_stream.sample_scalars(1)[0];
+        let poly = proof_stream.dequeue()?.try_into_stir_polynomial()?;
 
         // for the low, low chance that the final polynomial is the zero
         // polynomial, we treat it as if it was a constant polynomial when
         // checking the degree
-        let poly_degree = final_poly.degree().try_into().unwrap_or(0);
+        let poly_degree = poly.degree().try_into().unwrap_or(0);
         if poly_degree > round_params.final_degree {
             return Err(StirVerificationError::LastRoundPolynomialHasTooHighDegree);
         }
 
-        let final_num_queries = round_params.final_num_in_domain_queries;
+        let num_queries = round_params.final_num_in_domain_queries;
         let queries = self
-            .extract_merkle_tree_inclusion_proof(proof_stream, domain, final_num_queries)?
+            .extract_merkle_tree_inclusion_proof(proof_stream, domain, num_queries)?
             .authenticated_queries(commitment_to_previous_polynomial)?;
 
         let final_folds = match previous_quotienting_data {
-            None => Self::initial_in_domain_answers(&queries, folding_rand),
-            Some(data) => Self::subsequent_in_domain_answers(data, &queries, folding_rand),
+            None => Self::initial_in_domain_answers(&queries, folding_randomness),
+            Some(qd) => Self::subsequent_in_domain_answers(qd, &queries, folding_randomness),
         };
-        let final_evaluations = queries.iter().map(|query| final_poly.evaluate(query.point));
+        let final_evaluations = queries.iter().map(|query| poly.evaluate(query.point));
         if final_folds
             .into_iter()
             .zip(final_evaluations)
@@ -817,21 +820,18 @@ impl Stir {
             return Err(StirVerificationError::LastRoundPolynomialEvaluationMismatch);
         }
 
-        let first_round_queries = first_round_queries
-            .unwrap_or_else(|| queries.iter().map(|q| (q.index, q.values[0])).collect());
-
-        Ok(first_round_queries)
+        Ok(first_round_queries.unwrap_or_else(|| self.extract_first_round_queries(&queries)))
     }
 
     /// The evaluations of the initial (virtual) function “f”.
     fn initial_in_domain_answers(
         queries: &[FoldingPolynomialQuery],
-        fold_randomness: XFieldElement,
+        folding_randomness: XFieldElement,
     ) -> Vec<XFieldElement> {
         queries
             .iter()
             .map(|query| Polynomial::fast_coset_interpolate(query.root, &query.values))
-            .map(|poly| poly.evaluate(fold_randomness))
+            .map(|poly| poly.evaluate(folding_randomness))
             .collect()
     }
 
@@ -843,7 +843,7 @@ impl Stir {
     fn subsequent_in_domain_answers(
         quotienting_data: QuotientingData,
         queries: &[FoldingPolynomialQuery],
-        fold_randomness: XFieldElement,
+        folding_randomness: XFieldElement,
     ) -> Vec<XFieldElement> {
         const ONE: XFieldElement = XFieldElement::ONE;
 
@@ -884,21 +884,21 @@ impl Stir {
             }
 
             let poly = Polynomial::fast_coset_interpolate(query.root, &coset_evaluations);
-            in_domain_answers.push(poly.evaluate(fold_randomness));
+            in_domain_answers.push(poly.evaluate(folding_randomness));
         }
 
         in_domain_answers
     }
 
+    // TODO: move up, since it’s being called first
     fn extract_merkle_tree_inclusion_proof(
         &self,
         proof_stream: &mut ProofStream,
-        poly_domain: ArithmeticDomain,
+        round_domain: ArithmeticDomain,
         num_id_queries: usize,
     ) -> VerifierResult<PolyFoldQueriesInclusionProof> {
-        let query_domain = poly_domain.pow(1 << self.log2_folding_factor).unwrap();
         let queried_indices = proof_stream
-            .sample_indices(query_domain.len(), num_id_queries)
+            .sample_indices(round_domain.len(), num_id_queries)
             .into_iter()
             .unique()
             .collect_vec();
@@ -915,10 +915,15 @@ impl Stir {
             .iter()
             .map(|slice| XFieldElement::bfe_slice(slice))
             .map(Tip5::hash_varlen);
-        let indexed_leaf_digests = queried_indices.iter().copied().zip(leaf_digests).collect();
+        let folded_domain = round_domain.pow(1 << self.log2_folding_factor).unwrap();
+        let indexed_leaf_digests = queried_indices
+            .iter()
+            .map(|&idx| idx % folded_domain.len())
+            .zip(leaf_digests)
+            .collect();
 
-        let query_domain_len = u64::try_from(query_domain.len()).expect(USIZE_TO_U64_ERR);
-        let root_distance = poly_domain.generator().mod_pow(query_domain_len);
+        let folded_domain_len = u64::try_from(folded_domain.len()).expect(USIZE_TO_U64_ERR);
+        let root_distance = round_domain.generator().mod_pow(folded_domain_len);
         let queries = queried_indices
             .into_iter()
             .zip(inclusion_proof.queried_leafs)
@@ -926,8 +931,8 @@ impl Stir {
                 let query_index = u32::try_from(index).expect(DOMAIN_INDEX_TO_U32_ERR);
                 FoldingPolynomialQuery {
                     index,
-                    point: query_domain.value(query_index),
-                    root: poly_domain.value(query_index),
+                    point: folded_domain.value(query_index),
+                    root: round_domain.value(query_index),
                     root_distance,
                     values,
                 }
@@ -935,13 +940,49 @@ impl Stir {
             .collect();
 
         let inclusion_proof = PolyFoldQueriesInclusionProof {
-            tree_height: query_domain.len().ilog2(),
+            tree_height: folded_domain.len().ilog2(),
             queries,
             indexed_leaf_digests,
             auth_structure: inclusion_proof.auth_structure,
         };
 
         Ok(inclusion_proof)
+    }
+
+    /// Get the query indices of the first round as well as the values of the
+    /// initial codeword at those indices.
+    //
+    // The verifier queries indices in the _folded_ domain, and the prover
+    // reveals k elements per such query. In order to link the codeword of
+    // which low-degreeness was proven using STIR into the greater STARK
+    // context, one of the k revealed elements per query of the first round is
+    // used. But which one?
+    //
+    // We want the distribution of the linking indices to be uniformly random
+    // over the range [0; initial_codeword.len()).
+    // Therefore, the query indices are sampled from this range and then mapped
+    // to the range [0; folded_codeword.len()) simply by computing the modulus
+    // with the folded domain’s length. Per query, the prover answers with
+    // k points. To fetch the desired point, the query index has to be mapped
+    // into the range [0; k). This is achieved through integer devision by the
+    // folded domain’s length.
+    //
+    // TODO: fn name
+    fn extract_first_round_queries(
+        &self,
+        queries: &[FoldingPolynomialQuery],
+    ) -> Vec<(usize, XFieldElement)> {
+        let initial_folded_domain_len = self
+            .initial_domain()
+            .unwrap()
+            .pow(1 << self.log2_folding_factor)
+            .unwrap()
+            .len();
+
+        queries
+            .iter()
+            .map(|q| (q.index, q.values[q.index / initial_folded_domain_len]))
+            .collect()
     }
 }
 
@@ -1089,12 +1130,12 @@ mod tests {
     #[test]
     fn folding_polynomial_gives_expected_coefficients() {
         let folding_factor = 4;
-        let fold_randomness = bfe!(10);
+        let folding_randomness = bfe!(10);
         let poly = Polynomial::new(bfe_vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
         //                                  ╰────┬────╯ ╰──┬──────╯ ╰─┬──╯
         //                                       │     ╭───╯ ╭────────╯
         let expected = Polynomial::new(bfe_vec![4321, 8765, 109]);
-        let actual = Stir::fold_polynomial(&poly, folding_factor, fold_randomness);
+        let actual = Stir::fold_polynomial(&poly, folding_factor, folding_randomness);
 
         assert_eq!(expected, actual);
     }
@@ -1105,7 +1146,7 @@ mod tests {
         #[strategy(1..=5)]
         #[map(|exp| 1_usize << exp)]
         folding_factor: usize,
-        #[strategy(arb())] fold_randomness: BFieldElement,
+        #[strategy(arb())] folding_randomness: BFieldElement,
         #[strategy(arbitrary_domain())]
         #[filter(#old_domain.len() >= #folding_factor)]
         old_domain: ArithmeticDomain,
@@ -1119,7 +1160,7 @@ mod tests {
         // instantiated with range 0..0, causing an immediate test failure.
         let evaluation_index = evaluation_index % u32::try_from(folding_factor)?;
 
-        let folded_poly = Stir::fold_polynomial(&poly, folding_factor, fold_randomness);
+        let folded_poly = Stir::fold_polynomial(&poly, folding_factor, folding_randomness);
         let new_domain = old_domain.pow(folding_factor)?;
         let evaluation_point = new_domain.value(evaluation_index);
         let evaluation_of_folded_poly = folded_poly.evaluate::<_, BFieldElement>(evaluation_point);
@@ -1133,7 +1174,7 @@ mod tests {
             .collect_vec();
         let folding_of_evaluated_poly =
             Polynomial::fast_coset_interpolate(root_of_evaluation_point, &pre_folded_points)
-                .evaluate::<_, BFieldElement>(fold_randomness);
+                .evaluate::<_, BFieldElement>(folding_randomness);
 
         prop_assert_eq!(evaluation_of_folded_poly, folding_of_evaluated_poly);
     }
