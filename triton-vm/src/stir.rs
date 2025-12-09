@@ -837,6 +837,9 @@ impl Stir {
 
     /// Turn evaluations of (previous) committed function “g” into evaluations
     /// of (current) (virtual) function “f”.
+    ///
+    /// See also the paper’s construction 5.2, bullet point “verifier decision
+    /// phase”, subpoint 1 “main loop”, subsubpoints (b) and (c).
     fn subsequent_in_domain_answers(
         quotienting_data: QuotientingData,
         queries: &[FoldingPolynomialQuery],
@@ -852,7 +855,11 @@ impl Stir {
 
         let answer_poly = Polynomial::interpolate(&quotient_set, &quotient_answers);
         let zerofier = Polynomial::zerofier(&quotient_set);
-        let zerofier_degree = u32::try_from(zerofier.degree()).expect(QUOTIENT_SET_LEN_TO_U32_ERR);
+
+        // This is the paper’s `e := d* - d` from section 2.3. It is the
+        // difference of the target degree and the degree after quotienting.
+        let degree_difference =
+            u32::try_from(quotient_set.len() + 1).expect(QUOTIENT_SET_LEN_TO_U32_ERR);
 
         let mut in_domain_answers = Vec::with_capacity(queries.len());
         let mut coset_evaluations = Vec::new();
@@ -868,9 +875,9 @@ impl Stir {
                 // degree correction
                 let common_factor = current_root * degree_correction_randomness;
                 let degree_correction_factor = if common_factor == ONE {
-                    xfe!(zerofier_degree)
+                    xfe!(degree_difference)
                 } else {
-                    (ONE - common_factor.mod_pow_u32(zerofier_degree)) / (ONE - common_factor)
+                    (ONE - common_factor.mod_pow_u32(degree_difference)) / (ONE - common_factor)
                 };
 
                 coset_evaluations.push(degree_correction_factor * quotient);
