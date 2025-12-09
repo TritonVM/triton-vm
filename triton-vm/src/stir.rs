@@ -646,7 +646,7 @@ impl Stir {
             let queried_indices = proof_stream
                 .sample_indices(domain.len(), num_queries.in_domain)
                 .into_iter() // TODO: over / rejection sample to ensure safe minimum?
-                .unique()
+                .unique_by(|idx| idx % folded_domain.len())
                 .collect_vec();
             let folded_poly_queried_indices = queried_indices
                 .iter()
@@ -700,7 +700,7 @@ impl Stir {
         let queried_indices = proof_stream
             .sample_indices(domain.len(), round_params.final_num_in_domain_queries)
             .into_iter()
-            .unique()
+            .unique_by(|idx| idx % folded_domain.len())
             .collect_vec();
         let folded_poly_queried_indices = queried_indices
             .iter()
@@ -897,10 +897,11 @@ impl Stir {
         round_domain: ArithmeticDomain,
         num_id_queries: usize,
     ) -> VerifierResult<PolyFoldQueriesInclusionProof> {
+        let folded_domain = round_domain.pow(1 << self.log2_folding_factor).unwrap();
         let queried_indices = proof_stream
             .sample_indices(round_domain.len(), num_id_queries)
             .into_iter()
-            .unique()
+            .unique_by(|idx| idx % folded_domain.len())
             .collect_vec();
         let inclusion_proof = proof_stream.dequeue()?.try_into_stir_response()?;
 
@@ -915,7 +916,6 @@ impl Stir {
             .iter()
             .map(|slice| XFieldElement::bfe_slice(slice))
             .map(Tip5::hash_varlen);
-        let folded_domain = round_domain.pow(1 << self.log2_folding_factor).unwrap();
         let indexed_leaf_digests = queried_indices
             .iter()
             .map(|&idx| idx % folded_domain.len())
