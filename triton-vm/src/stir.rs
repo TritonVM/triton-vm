@@ -599,11 +599,12 @@ impl Stir {
     //
     // # Todo
     //
-    // - Figure out use of “shake polynomial”. I think this is Giacomo’s trick.
-    //   This makes the interpolation in the verifier superfluous.
     // - Include an ergonomic interface to extract all the data used by the
     //   verifier. For example, the verifier could always return the entire
     //   transcript, including sampled indices and other randomness.
+    // - Include profiler!(start / stop) statements (get inspired by FRI)
+    // - Figure out use of “shake polynomial”. I think this is Giacomo’s trick.
+    //   This makes the interpolation in the verifier superfluous.
     pub fn prove(
         &self,
         codeword: &[XFieldElement],
