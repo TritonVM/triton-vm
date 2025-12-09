@@ -865,10 +865,9 @@ impl Stir {
         let mut coset_evaluations = Vec::new();
         for query in queries {
             coset_evaluations.clear(); // re-use the small allocation
-            let mut current_root_distance = BFieldElement::ONE;
+            let mut current_root = query.root;
             for &evaluation in &query.values {
                 // quotienting
-                let current_root = query.root * current_root_distance;
                 let answer_evaluation = answer_poly.evaluate::<_, XFieldElement>(current_root);
                 let quotient = (evaluation - answer_evaluation) / zerofier.evaluate(current_root);
 
@@ -881,7 +880,7 @@ impl Stir {
                 };
 
                 coset_evaluations.push(degree_correction_factor * quotient);
-                current_root_distance *= query.root_distance;
+                current_root *= query.root_distance;
             }
 
             let poly = Polynomial::fast_coset_interpolate(query.root, &coset_evaluations);
