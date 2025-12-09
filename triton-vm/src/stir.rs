@@ -628,7 +628,8 @@ impl Stir {
             let fold_randomness = proof_stream.sample_scalars(1)[0];
             let folded_poly =
                 Self::fold_polynomial(&poly, 1 << self.log2_folding_factor, fold_randomness);
-            let small_domain = domain.pow(2).unwrap().with_offset(domain.generator()); // TODO: this offset is wrong
+            let small_domain = Self::next_round_domain(domain);
+
             let folded_evaluations = small_domain.evaluate(&folded_poly);
             let folded_poly_commitment =
                 LeafStackMerkleTree::new(&folded_evaluations, 1 << self.log2_folding_factor);
@@ -727,6 +728,12 @@ impl Stir {
         Polynomial::new(folded_coefficients)
     }
 
+    fn next_round_domain(domain: ArithmeticDomain) -> ArithmeticDomain {
+        let next_domain = domain.pow(2).unwrap();
+
+        next_domain.with_offset(next_domain.offset() * domain.offset())
+    }
+
     /// Verify low-degreeness of the polynomial on the proof stream.
     ///
     /// Returns the indices and revealed elements of the codeword at the top
@@ -776,7 +783,7 @@ impl Stir {
             };
 
             previous_quotienting_data = Some(quotienting_data);
-            domain = domain.pow(2).unwrap().with_offset(domain.generator()); // TODO: this offset is wrong
+            domain = Self::next_round_domain(domain);
             commitment_to_previous_polynomial = commitment_to_current_polynomial;
         }
 
