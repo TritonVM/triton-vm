@@ -823,74 +823,6 @@ impl Stir {
         Ok(stir_to_stark_links.unwrap_or_else(|| self.extract_stir_to_stark_links(&queries)))
     }
 
-    /// The evaluations of the initial (virtual) function “f”.
-    fn initial_in_domain_answers(
-        queries: &[FoldingPolynomialQuery],
-        folding_randomness: XFieldElement,
-    ) -> Vec<XFieldElement> {
-        queries
-            .iter()
-            .map(|query| Polynomial::fast_coset_interpolate(query.root, &query.values))
-            .map(|poly| poly.evaluate(folding_randomness))
-            .collect()
-    }
-
-    /// Turn evaluations of (previous) committed function “g” into evaluations
-    /// of (current) (virtual) function “f”.
-    ///
-    /// See also the paper’s construction 5.2, bullet point “verifier decision
-    /// phase”, subpoint 1 “main loop”, subsubpoints (b) and (c).
-    fn subsequent_in_domain_answers(
-        quotienting_data: QuotientingData,
-        queries: &[FoldingPolynomialQuery],
-        folding_randomness: XFieldElement,
-    ) -> Vec<XFieldElement> {
-        const ONE: XFieldElement = XFieldElement::ONE;
-
-        let QuotientingData {
-            quotient_set,
-            quotient_answers,
-            degree_correction_randomness,
-        } = quotienting_data;
-
-        let answer_poly = Polynomial::interpolate(&quotient_set, &quotient_answers);
-        let zerofier = Polynomial::zerofier(&quotient_set);
-
-        // This is the paper’s `e := d* - d` from section 2.3. It is the
-        // difference of the target degree and the degree after quotienting.
-        let degree_difference =
-            u32::try_from(quotient_set.len() + 1).expect(QUOTIENT_SET_LEN_TO_U32_ERR);
-
-        let mut in_domain_answers = Vec::with_capacity(queries.len());
-        let mut coset_evaluations = Vec::new();
-        for query in queries {
-            coset_evaluations.clear(); // re-use the small allocation
-            let mut current_root = query.root;
-            for &evaluation in &query.values {
-                // quotienting
-                let answer_evaluation = answer_poly.evaluate::<_, XFieldElement>(current_root);
-                let quotient = (evaluation - answer_evaluation) / zerofier.evaluate(current_root);
-
-                // degree correction
-                let common_factor = current_root * degree_correction_randomness;
-                let degree_correction_factor = if common_factor == ONE {
-                    xfe!(degree_difference)
-                } else {
-                    (ONE - common_factor.mod_pow_u32(degree_difference)) / (ONE - common_factor)
-                };
-
-                coset_evaluations.push(degree_correction_factor * quotient);
-                current_root *= query.root_distance;
-            }
-
-            let poly = Polynomial::fast_coset_interpolate(query.root, &coset_evaluations);
-            in_domain_answers.push(poly.evaluate(folding_randomness));
-        }
-
-        in_domain_answers
-    }
-
-    // TODO: move up, since it’s being called first
     fn extract_merkle_tree_inclusion_proof(
         &self,
         proof_stream: &mut ProofStream,
@@ -986,6 +918,73 @@ impl Stir {
             .iter()
             .map(|q| (q.index, q.values[q.index / first_folded_domain_len]))
             .collect()
+    }
+
+    /// The evaluations of the initial (virtual) function “f”.
+    fn initial_in_domain_answers(
+        queries: &[FoldingPolynomialQuery],
+        folding_randomness: XFieldElement,
+    ) -> Vec<XFieldElement> {
+        queries
+            .iter()
+            .map(|query| Polynomial::fast_coset_interpolate(query.root, &query.values))
+            .map(|poly| poly.evaluate(folding_randomness))
+            .collect()
+    }
+
+    /// Turn evaluations of (previous) committed function “g” into evaluations
+    /// of (current) (virtual) function “f”.
+    ///
+    /// See also the paper’s construction 5.2, bullet point “verifier decision
+    /// phase”, subpoint 1 “main loop”, subsubpoints (b) and (c).
+    fn subsequent_in_domain_answers(
+        quotienting_data: QuotientingData,
+        queries: &[FoldingPolynomialQuery],
+        folding_randomness: XFieldElement,
+    ) -> Vec<XFieldElement> {
+        const ONE: XFieldElement = XFieldElement::ONE;
+
+        let QuotientingData {
+            quotient_set,
+            quotient_answers,
+            degree_correction_randomness,
+        } = quotienting_data;
+
+        let answer_poly = Polynomial::interpolate(&quotient_set, &quotient_answers);
+        let zerofier = Polynomial::zerofier(&quotient_set);
+
+        // This is the paper’s `e := d* - d` from section 2.3. It is the
+        // difference of the target degree and the degree after quotienting.
+        let degree_difference =
+            u32::try_from(quotient_set.len() + 1).expect(QUOTIENT_SET_LEN_TO_U32_ERR);
+
+        let mut in_domain_answers = Vec::with_capacity(queries.len());
+        let mut coset_evaluations = Vec::new();
+        for query in queries {
+            coset_evaluations.clear(); // re-use the small allocation
+            let mut current_root = query.root;
+            for &evaluation in &query.values {
+                // quotienting
+                let answer_evaluation = answer_poly.evaluate::<_, XFieldElement>(current_root);
+                let quotient = (evaluation - answer_evaluation) / zerofier.evaluate(current_root);
+
+                // degree correction
+                let common_factor = current_root * degree_correction_randomness;
+                let degree_correction_factor = if common_factor == ONE {
+                    xfe!(degree_difference)
+                } else {
+                    (ONE - common_factor.mod_pow_u32(degree_difference)) / (ONE - common_factor)
+                };
+
+                coset_evaluations.push(degree_correction_factor * quotient);
+                current_root *= query.root_distance;
+            }
+
+            let poly = Polynomial::fast_coset_interpolate(query.root, &coset_evaluations);
+            in_domain_answers.push(poly.evaluate(folding_randomness));
+        }
+
+        in_domain_answers
     }
 }
 
