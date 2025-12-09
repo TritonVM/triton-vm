@@ -196,9 +196,9 @@ struct FoldingPolynomialQuery {
     /// (0..k).map(|j| root * root_distance.mod_pow(j))
     /// ```
     //
-    // While this is the same for all queries of one round, it wastes memory on
-    // the order of `num_queries * BFieldElement::BYTES`, which is about 1KiB.
-    // For Triton VM, that’s on the very low end of things.
+    // This is the same for all queries within one round. This duplication
+    // wastes memory on the order of `num_queries * BFieldElement::BYTES`,
+    // which is about 1KiB. For Triton VM, that’s next to nothing.
     root_distance: BFieldElement,
 
     /// Corresponds to the evaluation of f_i at all `y` with
@@ -734,7 +734,7 @@ impl Stir {
     }
 
     fn next_round_domain(domain: ArithmeticDomain) -> ArithmeticDomain {
-        let next_domain = domain.pow(2).unwrap();
+        let next_domain = domain.pow(1 << Self::LOG2_DOMAIN_SHRINKAGE).unwrap();
 
         next_domain.with_offset(next_domain.offset() * domain.offset())
     }
