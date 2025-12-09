@@ -646,7 +646,7 @@ impl Stir {
             let queried_indices = proof_stream
                 .sample_indices(query_domain.len(), num_queries.in_domain)
                 .into_iter() // TODO: over / rejection sample to ensure safe minimum?
-                .unique() // TODO: <-- avoid this if possible, but it’s probably not
+                .unique()
                 .collect_vec();
             let inclusion_proof = commitment.inclusion_proof(&queried_indices);
             proof_stream.enqueue(ProofItem::StirResponse(inclusion_proof));
