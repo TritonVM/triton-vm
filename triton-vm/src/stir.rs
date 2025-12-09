@@ -928,7 +928,8 @@ impl Stir {
             .into_iter()
             .zip(inclusion_proof.queried_leafs)
             .map(|(index, values)| {
-                let query_index = u32::try_from(index).expect(DOMAIN_INDEX_TO_U32_ERR);
+                let query_index = index % folded_domain.len();
+                let query_index = u32::try_from(query_index).expect(DOMAIN_INDEX_TO_U32_ERR);
                 FoldingPolynomialQuery {
                     index,
                     point: folded_domain.value(query_index),
