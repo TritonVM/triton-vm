@@ -748,7 +748,7 @@ impl Stir {
     ) -> VerifierResult<Vec<(usize, XFieldElement)>> {
         let round_params = self.round_params()?;
 
-        let mut first_round_queries = None;
+        let mut stir_to_stark_links = None;
         let mut previous_quotienting_data = None;
         let mut domain = self.initial_domain()?;
         let mut commitment_to_previous_polynomial =
@@ -762,7 +762,7 @@ impl Stir {
             let queries = self
                 .extract_merkle_tree_inclusion_proof(proof_stream, domain, num_queries.in_domain)?
                 .authenticated_queries(commitment_to_previous_polynomial)?;
-            first_round_queries.get_or_insert_with(|| self.extract_first_round_queries(&queries));
+            stir_to_stark_links.get_or_insert_with(|| self.extract_stir_to_stark_links(&queries));
 
             let in_domain_answers = match previous_quotienting_data {
                 None => Self::initial_in_domain_answers(&queries, folding_randomness),
@@ -820,7 +820,7 @@ impl Stir {
             return Err(StirVerificationError::LastRoundPolynomialEvaluationMismatch);
         }
 
-        Ok(first_round_queries.unwrap_or_else(|| self.extract_first_round_queries(&queries)))
+        Ok(stir_to_stark_links.unwrap_or_else(|| self.extract_stir_to_stark_links(&queries)))
     }
 
     /// The evaluations of the initial (virtual) function “f”.
@@ -952,6 +952,13 @@ impl Stir {
 
     /// Get the query indices of the first round as well as the values of the
     /// initial codeword at those indices.
+    ///
+    /// # Panics
+    ///
+    /// Might panic if the parameters for STIR are invalid. If the
+    /// [initial domain](Self::initial_domain) and the
+    /// [round parameters](Self::round_params) can be computed, then this
+    /// method will _not_ panic.
     //
     // The verifier queries indices in the _folded_ domain, and the prover
     // reveals k elements per such query. In order to link the codeword of
@@ -967,22 +974,17 @@ impl Stir {
     // k points. To fetch the desired point, the query index has to be mapped
     // into the range [0; k). This is achieved through integer devision by the
     // folded domain’s length.
-    //
-    // TODO: fn name
-    fn extract_first_round_queries(
+    fn extract_stir_to_stark_links(
         &self,
         queries: &[FoldingPolynomialQuery],
     ) -> Vec<(usize, XFieldElement)> {
-        let initial_folded_domain_len = self
-            .initial_domain()
-            .unwrap()
-            .pow(1 << self.log2_folding_factor)
-            .unwrap()
-            .len();
+        let initial_domain = self.initial_domain().unwrap();
+        let first_folded_domain = initial_domain.pow(1 << self.log2_folding_factor).unwrap();
+        let first_folded_domain_len = first_folded_domain.len();
 
         queries
             .iter()
-            .map(|q| (q.index, q.values[q.index / initial_folded_domain_len]))
+            .map(|q| (q.index, q.values[q.index / first_folded_domain_len]))
             .collect()
     }
 }
