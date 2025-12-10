@@ -1135,8 +1135,8 @@ mod tests {
         let folding_factor = 4;
         let folding_randomness = bfe!(10);
         let poly = Polynomial::new(bfe_vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
-        //                                  ╰────┬────╯ ╰──┬──────╯ ╰─┬──╯
-        //                                       │     ╭───╯ ╭────────╯
+        //                                  ╰────┬───╯  ╰─┬──────╯  ╰─┬─╯
+        //                                       │     ╭──╯  ╭────────╯
         let expected = Polynomial::new(bfe_vec![4321, 8765, 109]);
         let actual = Stir::fold_polynomial(&poly, folding_factor, folding_randomness);
 
