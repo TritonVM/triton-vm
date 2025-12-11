@@ -129,7 +129,9 @@ pub enum SoundnessAssumption {
 /// - [authentication structures][auth_struct]
 ///
 /// [auth_struct]: MerkleTreeInclusionProof::authentication_structure
-#[derive(Debug, Default, Clone, Eq, PartialEq)]
+//
+// TODO: mark #[non_exhaustive]? Otherwise prevent construction?
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct StirVerifyTranscript {
     pub initial_polynomial_commitment: Digest,
 
@@ -763,8 +765,13 @@ impl Stir {
     /// Verify that the polynomial committed to via the proof stream is of low
     /// degree.
     ///
-    /// Returns the indices and revealed elements of the codeword at the top
-    /// level of the STIR proof.
+    /// TODO:
+    /// Returns a [transcript](StirVerifyTranscript), from which the
+    /// [revealed elements (and their indices)][revealed_elements] of the
+    /// codeword of STIR’s first round can be fetched. These revealed elements
+    /// are relevant when using STIR in a bigger context.
+    ///
+    /// [revealed_elements]: Transcript::first_round_elements
     pub fn verify(
         &self,
         proof_stream: &mut ProofStream,
