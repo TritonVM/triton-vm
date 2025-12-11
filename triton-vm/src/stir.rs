@@ -395,36 +395,35 @@ impl Stir {
                 out_of_domain,
             };
 
+            // In STIR’s quotienting step, the so-called “answer” polynomial is
+            // subtracted from the folded polynomial. Both prover and verifier
+            // compute the “answer” polynomial by interpolating over all queries
+            // and their – well – answers.
+            //
+            // If the “answer” polynomial _equals_ the folded polynomial, the
+            // subsequent quotient is the zero-polynomial. This equality happens
+            // if the total number of queries exceeds the folded polynomial’s
+            // degree.
+            //
+            // It has the following consequences:
+            // 1. Even though the next round’s polynomial is the
+            //    degree-corrected quotient polynomial, no amount of
+            //    degree-correction can turn the zero-polynomial into anything
+            //    but the zero-polynomial. If the folded polynomial has a degree
+            //    that is too high, but the quotient ends up being the
+            //    zero-polynomial, then degree-correction cannot recover the
+            //    too-high-degree polynomial. In other words, the verifier will
+            //    incorrectly accept a polynomial of high degree.
+            // 2. The verifier is doing more work than is optimal, because it
+            //    just recovered the entirety of the folded polynomial. At that
+            //    point, the protocol might as well stop.
+            //
+            // Note that the first consequence does not apply to the final
+            // round, since the final round has no quotienting step. If the
+            // second consequence applies, it does not break any soundness
+            // guarantees, the protocol only becomes less efficient.
             let folded_poly_degree = poly_degree / folding_factor;
             if num_queries.total() > folded_poly_degree {
-                // In STIR’s quotienting step, the so-called “answer”
-                // polynomial is subtracted from the folded polynomial.
-                // Both prover and verifier compute the “answer” polynomial by
-                // interpolating over all queries and their – well – answers.
-                //
-                // If the “answer” polynomial _equals_ the folded polynomial,
-                // the subsequent quotient is the zero-polynomial. This
-                // equality happens if the total number of queries exceeds the
-                // folded polynomial’s degree.
-                //
-                // It has the following consequences:
-                // 1. Even though the next round’s polynomial is the
-                //    degree-corrected quotient polynomial, no amount of
-                //    degree-correction can turn the zero-polynomial into
-                //    anything but the zero-polynomial. If the folded polynomial
-                //    has a degree that is too high, but the quotient ends up
-                //    being the zero-polynomial, then degree-correction cannot
-                //    recover the too-high-degree polynomial. In other words,
-                //    the verifier will incorrectly accept a polynomial of high
-                //    degree.
-                // 2. The verifier is doing more work than is optimal, because
-                //    it just recovered the entirety of the folded polynomial.
-                //    At that point, the protocol might as well stop.
-                //
-                // Note that the first consequence does not apply to the final
-                // round, since the final round has no quotienting step. If the
-                // second consequence applies, it does not break any soundness
-                // guarantees, the protocol only becomes less efficient.
                 break;
             }
 
