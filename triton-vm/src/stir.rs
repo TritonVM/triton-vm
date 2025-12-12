@@ -647,51 +647,49 @@ impl Stir {
     //    Pr[D = d] = ((U choose d)·d!·S(n, d)) / U^n
     //              = (U choose d)/U^n · d!·S(n, d)
     //              = (U choose d)/U^n · Σ_(i=0)^d (-1)^(d-i)·(d choose i)·i^n
+    //              = (U choose d)/U^n · Σ_(i=0)^d (-1)^(d-i)·(d choose i)·i^n
+    //              = (U choose d) · Σ_(i=0)^d (-1)^(d-i)·(d choose i)·(i/U)^n
     //
     // That’s quite the mouthful! It’s complicated enough that I don’t know how
     // to solve Pr[D < k] ⩽ 2^-λ for n. Hence, the following method uses binary
     // search to figure out the smallest necessary oversampling amount.
     fn oversampling_amount(&self, log2_domain_len: u32, num_in_domain_queries: usize) -> usize {
-        fn probability_of_too_few_unique_samples(u: u128, n: u128, k: u128) -> f64 {
-            debug_assert!(n <= i32::MAX as u128);
-            debug_assert!(k <= n);
-
-            let mut total = 0.0;
+        fn probability_of_too_few_unique_samples(u: u128, k: u128, n: u128) -> f64 {
+            debug_assert!(u > 0);
+            debug_assert!(n >= k);
+            let n = i32::try_from(n).expect("internal error: too many indices to sample");
 
             // Pr[D < k] = Σ_(d=1)^(k-1) Pr[D = d]
+            let mut total = 0.0;
             for d in 1..k {
                 // “adjusted” Sterling number because the 1/d! factor is
                 // canceled by the d! number of labellings
                 // Σ_(i=0)^d (-1)^(d-i)·(d choose i)·i^n
                 let mut adjusted_stirling_no = 0.0;
                 for i in 0..=d {
-                    let sign = if (d - 1).is_multiple_of(2) { 1.0 } else { -1.0 };
-                    let d_choose_i = a_choose_b(d, i);
-                    let i_pow_n = (i as f64).powi(n as i32);
-                    adjusted_stirling_no += sign * d_choose_i * i_pow_n;
+                    let sign = if (d - i).is_multiple_of(2) { 1.0 } else { -1.0 };
+                    let d_choose_i = Stir::binomial_coefficient(d, i);
+                    let i_div_u_pow_n = ((i as f64) / (u as f64)).powi(n);
+                    adjusted_stirling_no += sign * d_choose_i * i_div_u_pow_n;
+                    dbg!(
+                        u,
+                        k,
+                        n,
+                        d,
+                        i,
+                        sign,
+                        d_choose_i,
+                        i_div_u_pow_n,
+                        adjusted_stirling_no,
+                    );
                 }
-                debug_assert!(adjusted_stirling_no >= 0.0);
-                let u_choose_d = a_choose_b(u, d);
+                debug_assert!(adjusted_stirling_no >= 0.0, "{adjusted_stirling_no}");
+                let u_choose_d = Stir::binomial_coefficient(u, d);
                 total += u_choose_d * adjusted_stirling_no;
             }
-            total /= (u as f64).powi(n as i32);
+            debug_assert!(0.0 <= total && total <= 1.0, "{total}");
 
-            total.clamp(0.0, 1.0)
-        }
-
-        fn a_choose_b(a: u128, b: u128) -> f64 {
-            if a < b {
-                return 0.0;
-            }
-
-            let mut numerator = 1.0;
-            let mut denominator = 1.0;
-            for i in 0..b.min(a - b) {
-                numerator *= (a - i) as f64;
-                denominator *= (i + 1) as f64;
-            }
-
-            numerator / denominator
+            total
         }
 
         // use the terminology defined in the method’s comment
@@ -699,21 +697,39 @@ impl Stir {
         let u = 1 << log2_domain_len;
         let k = num_in_domain_queries as u128;
 
-        // binary search
+        // oversample at most by a factor of 2
+        let initial_hi = i32::MAX as u128 - k;
         let mut lo = 0;
-        let mut hi = k; // oversample at most by a factor of 2
+        let mut hi = initial_hi;
         while lo < hi {
             let mid = lo + (hi - lo) / 2;
-            if probability_of_too_few_unique_samples(u, k + mid, k) >= target_probability {
+            if probability_of_too_few_unique_samples(u, k, k + mid) >= target_probability {
                 hi = mid;
             } else {
                 lo = mid + 1;
             }
         }
-        assert!(lo < k, "internal error: cannot oversample enough");
+        assert!(lo < initial_hi, "internal error: cannot oversample enough");
 
         // since lo < k == num_in_domain_queries, which is a usize, this is safe
+        // ^ todo
         lo as usize
+    }
+
+    // todo: leave this here? Move back in?
+    fn binomial_coefficient(n: u128, k: u128) -> f64 {
+        if n < k {
+            return 0.0;
+        }
+
+        let mut binomial_coefficient = 1.0;
+        for i in 0..k.min(n - k) {
+            binomial_coefficient *= (n - i) as f64;
+            binomial_coefficient /= (i + 1) as f64;
+        }
+        debug_assert!(binomial_coefficient >= 0.0, "{binomial_coefficient}");
+
+        binomial_coefficient
     }
 
     /// The number of out-of-domain queries for the Reed-Solomon code implied
