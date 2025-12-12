@@ -177,6 +177,14 @@ pub struct RoundTranscript {
     /// The indices of the domain points that were queried.
     pub queried_indices: Vec<usize>,
 
+    /// The amount by which to oversample the number of in-domain indices.
+    ///
+    /// Since STIR cannot tolerate re-use of any in-domain index, duplicates
+    /// have to be rejected. In order to sample unique indices efficiently,
+    /// all indices are sampled in one go and duplicates are removed afterward.
+    /// This requires a certain amount of oversampling.
+    pub oversampling_amount: usize,
+
     /// The out-of-domain points that were queried.
     pub queried_points: Vec<XFieldElement>,
 
@@ -205,6 +213,9 @@ pub struct FinalRoundTranscript {
     /// See [RoundTranscript::queried_indices].
     pub queried_indices: Vec<usize>,
 
+    /// See [RoundTranscript::oversampling_amount].
+    pub oversampling_amount: usize,
+
     /// See [RoundTranscript::auth_structure].
     pub auth_structure: AuthenticationStructure,
 }
@@ -225,6 +236,12 @@ struct RoundParams {
     /// Corresponds to the paper’s “repetition parameter” t_M.
     final_num_in_domain_queries: usize,
 
+    /// The amount by which to oversample the in-domain indices for the
+    /// final round.
+    ///
+    /// See also: [RoundTranscript::oversampling_amount].
+    final_oversampling_amount: usize,
+
     /// The degree of the final polynomial.
     ///
     /// Because folding can never (guarantee to) produce the zero-polynomial,
@@ -237,6 +254,13 @@ struct RoundParams {
 struct NumQueries {
     /// Corresponds to the paper’s “repetition parameter” t_i.
     in_domain: usize,
+
+    /// The amount by which to oversample the in-domain indices to ensure their
+    /// uniqueness.
+    ///
+    /// See also: [RoundTranscript::oversampling_amount].
+    // todo: actually use this
+    oversampling_amount: usize,
 
     /// Corresponds to the paper’s “repetition parameter” `s_i`.
     out_of_domain: usize,
@@ -361,8 +385,11 @@ impl Stir {
         };
 
         // the initial folding happens before any full round
+        // todo: ^ this is wrong. The final folding comes _after_ the full rounds.
         let mut poly_degree = self.max_degree() / folding_factor;
         let mut log2_expansion_factor = self.log2_initial_expansion_factor;
+        let mut log2_folded_domain_size =
+            self.initial_domain()?.len().ilog2() - log2_folding_factor;
         let mut round_queries = Vec::new();
 
         // Folding lowers the current degree to ⌊poly_degree / folding_factor⌋.
@@ -381,6 +408,9 @@ impl Stir {
         // folding factor is degenerate and will have been rejected earlier in
         // this method.
         while poly_degree > folding_factor {
+            let in_domain = self.num_in_domain_queries(log2_expansion_factor)?;
+            let oversampling_amount = self.oversampling_amount(log2_folded_domain_size, in_domain);
+
             // Because the out-of-domain queries are made to the folded
             // polynomial, the number of out-of-domain queries are set with
             // respect to new rate.
@@ -389,9 +419,9 @@ impl Stir {
             let log2_poly_degree = poly_degree.ilog2().try_into().expect(U32_TO_USIZE_ERR);
             let out_of_domain = self.num_ood_queries(log2_poly_degree, log2_next_expansion_factor);
 
-            let in_domain = self.num_in_domain_queries(log2_expansion_factor)?;
             let num_queries = NumQueries {
                 in_domain,
+                oversampling_amount,
                 out_of_domain,
             };
 
@@ -430,13 +460,17 @@ impl Stir {
             round_queries.push(num_queries);
             poly_degree = folded_poly_degree;
             log2_expansion_factor = log2_next_expansion_factor;
+            log2_folded_domain_size -= Self::LOG2_DOMAIN_SHRINKAGE as u32;
         }
 
         let final_num_in_domain_queries = self.num_in_domain_queries(log2_expansion_factor)?;
+        let final_oversampling_amount =
+            self.oversampling_amount(log2_folded_domain_size, final_num_in_domain_queries);
         let final_degree = poly_degree;
         let round_params = RoundParams {
             round_queries,
             final_num_in_domain_queries,
+            final_oversampling_amount,
             final_degree,
         };
 
@@ -567,6 +601,119 @@ impl Stir {
         // This is where the heuristic kicks in:
         // log₂(ρ/20) or log₂(√ρ/20)
         log2_rho_or_sqrt_rho - core::f64::consts::LOG2_10 - 1.
+    }
+
+    /// The amount by which to oversample the number of in-domain indices.
+    ///
+    /// See also the (public) docs on [RoundTranscript::oversampling_amount].
+    ///
+    /// Note that the parameter `log2_domain_len` is that of the _folded_
+    /// domain: even though indices are sampled from the round’s domain, they
+    /// have to be unique on the folded domain.
+    //
+    // The goal of this method is to figure out the smallest amount of
+    // oversampling that will yield the required number of unique indices with
+    // a high enough probability. The chosen probability is based on the
+    // requested soundness level; in particular, the probability that the
+    // number of total samples does _not_ include enough unique values must be
+    // less than or equal to 2^-λ. This is in line with all other probabilities
+    // used for failure events throughout this codebase.
+    //
+    // The combinatorics involved in this function are somewhat involved. In
+    // order to decrease the space required for the various equations and
+    // formulas below, we use the following notation:
+    // - U = `domain.len()` is the size of the universe,
+    // - k = `num_in_domain_queries` is the number of unique samples we need,
+    // - D is the actual number of unique samples, and
+    // - n is the total number of samples.
+    // This method returns (n-k) for software-engineering reasons.
+    //
+    // The failure event is D < k, and so we are interested in the probability
+    // Pr[D < k] = Σ_(d=1)^(k-1) Pr[D = d].
+    //
+    // To identify Pr[D = d]:
+    // 1. Choose d values from U, for which there are (U choose d) options.
+    // 2. For a fixed set of d labeled values, count sequences of length n
+    //    that use only those values and use each value at least once. View such
+    //    a sequence as a surjective function f: [n] → [d].
+    //    The number of such functions almost coincides with the Sterling number
+    //    of the second kind, S(n, d), which counts the number of ways to
+    //    partition a set of n labeled objects into d nonempty unlabelled
+    //    subsets. However, we must account for the fact that our subsets are
+    //    labeled. The number of labellings is d!.
+    // 3. Dividing the product of the terms identified above by the total number
+    //    of ordered sequences, U^n, gives the sought-after probability:
+    //
+    //    Pr[D = d] = ((U choose d)·d!·S(n, d)) / U^n
+    //              = (U choose d)/U^n · d!·S(n, d)
+    //              = (U choose d)/U^n · Σ_(i=0)^d (-1)^(d-i)·(d choose i)·i^n
+    //
+    // That’s quite the mouthful! It’s complicated enough that I don’t know how
+    // to solve Pr[D < k] ⩽ 2^-λ for n. Hence, the following method uses binary
+    // search to figure out the smallest necessary oversampling amount.
+    fn oversampling_amount(&self, log2_domain_len: u32, num_in_domain_queries: usize) -> usize {
+        fn probability_of_too_few_unique_samples(u: u128, n: u128, k: u128) -> f64 {
+            debug_assert!(n <= i32::MAX as u128);
+            debug_assert!(k <= n);
+
+            let mut total = 0.0;
+
+            // Pr[D < k] = Σ_(d=1)^(k-1) Pr[D = d]
+            for d in 1..k {
+                // “adjusted” Sterling number because the 1/d! factor is
+                // canceled by the d! number of labellings
+                // Σ_(i=0)^d (-1)^(d-i)·(d choose i)·i^n
+                let mut adjusted_stirling_no = 0.0;
+                for i in 0..=d {
+                    let sign = if (d - 1).is_multiple_of(2) { 1.0 } else { -1.0 };
+                    let d_choose_i = a_choose_b(d, i);
+                    let i_pow_n = (i as f64).powi(n as i32);
+                    adjusted_stirling_no += sign * d_choose_i * i_pow_n;
+                }
+                debug_assert!(adjusted_stirling_no >= 0.0);
+                let u_choose_d = a_choose_b(u, d);
+                total += u_choose_d * adjusted_stirling_no;
+            }
+            total /= (u as f64).powi(n as i32);
+
+            total.clamp(0.0, 1.0)
+        }
+
+        fn a_choose_b(a: u128, b: u128) -> f64 {
+            if a < b {
+                return 0.0;
+            }
+
+            let mut numerator = 1.0;
+            let mut denominator = 1.0;
+            for i in 0..b.min(a - b) {
+                numerator *= (a - i) as f64;
+                denominator *= (i + 1) as f64;
+            }
+
+            numerator / denominator
+        }
+
+        // use the terminology defined in the method’s comment
+        let target_probability = 2.0_f64.powf(-(self.security_level as f64));
+        let u = 1 << log2_domain_len;
+        let k = num_in_domain_queries as u128;
+
+        // binary search
+        let mut lo = 0;
+        let mut hi = k; // oversample at most by a factor of 2
+        while lo < hi {
+            let mid = lo + (hi - lo) / 2;
+            if probability_of_too_few_unique_samples(u, k + mid, k) >= target_probability {
+                hi = mid;
+            } else {
+                lo = mid + 1;
+            }
+        }
+        assert!(lo < k, "internal error: cannot oversample enough");
+
+        // since lo < k == num_in_domain_queries, which is a usize, this is safe
+        lo as usize
     }
 
     /// The number of out-of-domain queries for the Reed-Solomon code implied
@@ -731,9 +878,16 @@ impl Stir {
             proof_stream.enqueue(ProofItem::StirOutOfDomainValues(ood_values.clone()));
 
             let folded_domain = domain.pow(folding_factor).unwrap();
+            // TODO: make sure these indices are IID. In particular:
+            //   1. record _all_ sampled indices (including oversampling?)
+            //                                   ^_______________________^
+            //                           that’s probably easiest for bookkeeping
+            //   2. apply the “unique” filter only to get the folded indices
+            //   3. add doc-string to the transcript on how to use the indices
+            //      (the indices actually used are `unique_by(|i| i % …)`
             let queried_indices = proof_stream
                 .sample_indices(domain.len(), num_queries.in_domain)
-                .into_iter() // TODO: over / rejection sample to ensure safe minimum?
+                .into_iter() // TODO: over-sample to ensure safe minimum
                 .unique_by(|idx| idx % folded_domain.len())
                 .collect_vec();
             let folded_poly_queried_indices = queried_indices
@@ -884,6 +1038,7 @@ impl Stir {
             round_transcripts.push(RoundTranscript {
                 folding_randomness,
                 queried_indices,
+                oversampling_amount: num_queries.oversampling_amount,
                 queried_points: ood_queries,
                 degree_correction_randomness,
                 auth_structure,
@@ -926,13 +1081,15 @@ impl Stir {
             return Err(StirVerificationError::LastRoundPolynomialEvaluationMismatch);
         }
 
-        let partial_first_codeword =
-            partial_first_codeword.unwrap_or_else(|| self.partial_codeword(domain, &queries));
+        let oversampling_amount = round_params.final_oversampling_amount;
         let final_round_transcript = FinalRoundTranscript {
             folding_randomness,
             queried_indices,
+            oversampling_amount,
             auth_structure,
         };
+        let partial_first_codeword =
+            partial_first_codeword.unwrap_or_else(|| self.partial_codeword(domain, &queries));
         let transcript = Transcript {
             partial_first_codeword,
             rounds: round_transcripts,
