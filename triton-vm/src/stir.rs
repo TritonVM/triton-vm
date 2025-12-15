@@ -1406,6 +1406,38 @@ mod tests {
         assert_eq!(expected_2, stacks_2);
     }
 
+    /// Verify that the formula used for [Stir::oversampling_amount] holds up
+    /// stochastically.
+    #[proptest(cases = 10)]
+    fn formula_for_oversampling_amount_is_stochastically_correct(
+        #[strategy(arb())] mut tip5: Tip5,
+        #[strategy(3..=30)]
+        #[map(|x| 1_u32 << x)]
+        universe_size: u32,
+        #[strategy(1..=320.min(#universe_size as usize))] num_uniques: usize,
+        #[strategy(0..=50_usize)] margin: usize,
+    ) {
+        const DIFF_DELTA: f64 = 1e-2;
+        const NUM_RUNS: usize = 1_000_000;
+
+        tip5.permutation(); // garble
+        let mut too_few_uniques_count = 0;
+        for _ in 0..NUM_RUNS {
+            let samples = tip5.sample_indices(universe_size, num_uniques + margin);
+            if samples.into_iter().unique().count() < num_uniques {
+                too_few_uniques_count += 1;
+            }
+        }
+
+        let prediction = ((num_uniques - 1) as f64 / universe_size as f64).powi(margin as i32 + 1);
+        let actual_ratio = too_few_uniques_count as f64 / NUM_RUNS as f64;
+
+        prop_assert!(
+            (prediction - actual_ratio).abs() < DIFF_DELTA,
+            "prediction: {prediction} actual: {actual_ratio}"
+        );
+    }
+
     #[proptest]
     fn roots_of_domain_points(
         #[strategy(0..=3)]
