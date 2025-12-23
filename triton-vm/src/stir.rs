@@ -63,7 +63,7 @@ pub struct Stir {
 
     soundness: SoundnessAssumption,
 
-    /// Corresponds to the (log₂ of the) paper’s folding factor `k`.
+    /// Corresponds to the (log₂ of the) paper's folding factor `k`.
     ///
     /// Must be greater than or equal to 2, _i.e._, `k` must be greater than or
     /// equal to 4.
@@ -73,9 +73,9 @@ pub struct Stir {
     #[cfg_attr(test, strategy(2_usize..=5))]
     log2_folding_factor: usize,
 
-    /// The amount of “redundancy” in the [prover](Self::prove)’s input.
+    /// The amount of “redundancy” in the [prover](Self::prove)'s input.
     ///
-    /// In particular, the Reed-Solomon code’s rate is the reciprocal of 2
+    /// In particular, the Reed-Solomon code's rate is the reciprocal of 2
     /// raised to this value. In other words, the initial rate equals
     /// `1 / 2^initial_log2_expansion_factor`.
     ///
@@ -147,7 +147,7 @@ pub enum SoundnessAssumption {
 /// [auth_struct]: MerkleTreeInclusionProof::authentication_structure
 //
 // Marked `#[non_exhaustive]` because
-// 1. additional fields might be added in the future and I don’t want that to be
+// 1. additional fields might be added in the future and I don't want that to be
 //    a breaking change, and
 // 2. this type is not intended to be constructed anywhere but in this module.
 //
@@ -171,7 +171,7 @@ pub struct Transcript {
 #[non_exhaustive]
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct RoundTranscript {
-    /// The randomness used for folding the round’s polynomial.
+    /// The randomness used for folding the round's polynomial.
     pub folding_randomness: XFieldElement,
 
     /// The indices of the domain points that were queried.
@@ -188,15 +188,15 @@ pub struct RoundTranscript {
     /// The out-of-domain points that were queried.
     pub queried_points: Vec<XFieldElement>,
 
-    /// The randomness used to correct the polynomial’s degree after
+    /// The randomness used to correct the polynomial's degree after
     /// quotienting.
     pub degree_correction_randomness: XFieldElement,
 
-    /// The authentication structure proving the inclusion of the polynomial’s
+    /// The authentication structure proving the inclusion of the polynomial's
     /// evaluations at the [queried indices](Self::queried_indices).
     //
-    // While this does not fit the theme of “sampled randomness”, it’s useful
-    // to have direct access to anything that will end up in Triton VM’s source
+    // While this does not fit the theme of “sampled randomness”, it's useful
+    // to have direct access to anything that will end up in Triton VM's source
     // for non-deterministically guessed digests.
     pub auth_structure: AuthenticationStructure,
 }
@@ -228,12 +228,12 @@ struct RoundParams {
     /// The length of the vector corresponds to the number of full rounds.
     ///
     /// Note that there is an additional, final round. The final round is not
-    /// a full round since it doesn’t contain a quotienting step.
+    /// a full round since it doesn't contain a quotienting step.
     round_queries: Vec<NumQueries>,
 
     /// The number of in-domain queries for the final round.
     ///
-    /// Corresponds to the paper’s “repetition parameter” t_M.
+    /// Corresponds to the paper's “repetition parameter” t_M.
     final_num_in_domain_queries: usize,
 
     /// The amount by which to oversample the in-domain indices for the
@@ -252,7 +252,7 @@ struct RoundParams {
 /// The number of oracle queries in a single, full round of [STIR](Stir).
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 struct NumQueries {
-    /// Corresponds to the paper’s “repetition parameter” t_i.
+    /// Corresponds to the paper's “repetition parameter” t_i.
     in_domain: usize,
 
     /// The amount by which to oversample the in-domain indices to ensure their
@@ -262,7 +262,7 @@ struct NumQueries {
     // todo: actually use this
     oversampling_amount: usize,
 
-    /// Corresponds to the paper’s “repetition parameter” `s_i`.
+    /// Corresponds to the paper's “repetition parameter” `s_i`.
     out_of_domain: usize,
 }
 
@@ -270,7 +270,7 @@ struct NumQueries {
 ///
 /// Allows shorter Merkle inclusion proofs in [STIR](Stir): since the verifier
 /// requires all entries in a stack if it requires any entry in the stack, the
-/// entire stack might as well be the Merkle leaf’s underlying value.
+/// entire stack might as well be the Merkle leaf's underlying value.
 struct LeafStackMerkleTree {
     stacked_leafs: Vec<Vec<XFieldElement>>,
     tree: MerkleTree,
@@ -293,7 +293,7 @@ struct PolyFoldQueriesInclusionProof {
 /// The result of a query to the folding polynomial, yielding `k`-many
 /// (i.e., `folding_factor`-many) answers from the oracle.
 struct FoldingPolynomialQuery {
-    /// The index of the [point](Self::point) within that round’s domain.
+    /// The index of the [point](Self::point) within that round's domain.
     index: usize,
 
     /// Corresponds to r_{i,j}^{shift} in the STIR paper.
@@ -312,7 +312,7 @@ struct FoldingPolynomialQuery {
     //
     // This is the same for all queries within one round. This duplication
     // wastes memory on the order of `num_queries * BFieldElement::BYTES`,
-    // which is about 1KiB. For Triton VM, that’s next to nothing.
+    // which is about 1KiB. For Triton VM, that's next to nothing.
     root_distance: BFieldElement,
 
     /// Corresponds to the evaluation of f_i at all `y` with
@@ -341,13 +341,13 @@ impl Stir {
     /// log₂([BFieldElement::P] · [x_field_element::EXTENSION_DEGREE]), the
     /// difference is about 1.0e-9, while the rounding error for the “actual”
     /// log₂(|𝔽|) in double-precision IEEE 754 floating point format (i.e.,
-    /// rust’s [f64]) is about 1.2e-7.
+    /// rust's [f64]) is about 1.2e-7.
     const LOG2_FIELD_SIZE: usize = BFieldElement::BYTES * 8 * x_field_element::EXTENSION_DEGREE;
 
     /// The (log₂ of the) relative length difference of the evaluation
     /// domains of two consecutive rounds.
     //
-    // In this current implementation, the Reed-Solomon code’s domain shrinks
+    // In this current implementation, the Reed-Solomon code's domain shrinks
     // by the same amount between any two rounds. While the STIR paper does not
     // mention that this could be variable, it seems plausible that it could.
     // A future change to this implementation might make this variable.
@@ -425,18 +425,18 @@ impl Stir {
                 out_of_domain,
             };
 
-            // In STIR’s quotienting step, the so-called “answer” polynomial is
+            // In STIR's quotienting step, the so-called “answer” polynomial is
             // subtracted from the folded polynomial. Both prover and verifier
             // compute the “answer” polynomial by interpolating over all queries
             // and their – well – answers.
             //
             // If the “answer” polynomial _equals_ the folded polynomial, the
             // subsequent quotient is the zero-polynomial. This equality happens
-            // if the total number of queries exceeds the folded polynomial’s
+            // if the total number of queries exceeds the folded polynomial's
             // degree.
             //
             // It has the following consequences:
-            // 1. Even though the next round’s polynomial is the
+            // 1. Even though the next round's polynomial is the
             //    degree-corrected quotient polynomial, no amount of
             //    degree-correction can turn the zero-polynomial into anything
             //    but the zero-polynomial. If the folded polynomial has a degree
@@ -483,7 +483,7 @@ impl Stir {
     // 1 << (log2_high_degree + log2_initial_expansion_factor)
     //
     // However, because the input parameters can be waaaayy too big, a bunch of
-    // input validation is… necessary? Let’s go with “beneficial.” Whether the
+    // input validation is… necessary? Let's go with “beneficial.” Whether the
     // removal of this would be a DOS against Triton VM is somewhat doubtful,
     // but hey, better safe than sorry.
     pub(crate) fn initial_domain(&self) -> SetupResult<ArithmeticDomain> {
@@ -583,13 +583,13 @@ impl Stir {
     /// in this method.
     //
     // TODO: Giacomo thinks this can be set in a better way. Maybe it makes
-    //       more sense if it’s multiplicative?
-    // TODO: This is based on some heuristic by Giacomo. Ferdinand doesn’t
+    //       more sense if it's multiplicative?
+    // TODO: This is based on some heuristic by Giacomo. Ferdinand doesn't
     //       fully understand how this comes to be. Explore different things.
     // TODO: According to Giacomo, “Funnily enough, [η = ρ/10 or η = √ρ/10]
     //       avoids all the new attacks on proximity gaps 😉”
     //       Does a division by 20 also work? Need to investigate.
-    // TODO: Nicolas Mohnblatt has a recent write-up that’s nice:
+    // TODO: Nicolas Mohnblatt has a recent write-up that's nice:
     //       https://blog.zksecurity.xyz/posts/proximity-conjecture/
     fn log2_eta(&self, log2_expansion_factor: usize) -> f64 {
         let log2_expansion_factor = log2_expansion_factor as f64;
@@ -608,7 +608,7 @@ impl Stir {
     /// See also the (public) docs on [RoundTranscript::oversampling_amount].
     ///
     /// Note that the parameter `log2_domain_len` is that of the _folded_
-    /// domain: even though indices are sampled from the round’s domain, they
+    /// domain: even though indices are sampled from the round's domain, they
     /// have to be unique on the folded domain.
     //
     // The goal of this method is to figure out the smallest amount of
@@ -650,81 +650,88 @@ impl Stir {
     //              = (U choose d)/U^n · Σ_(i=0)^d (-1)^(d-i)·(d choose i)·i^n
     //              = (U choose d) · Σ_(i=0)^d (-1)^(d-i)·(d choose i)·(i/U)^n
     //
-    // That’s quite the mouthful! It’s complicated enough that I don’t know how
-    // to solve Pr[D < k] ⩽ 2^-λ for n. Hence, the following method uses binary
-    // search to figure out the smallest necessary oversampling amount.
+    // That's quite the mouthful! It's complicated enough that I don't know how
+    // to solve Pr[D < k] ⩽ 2^-λ for n. While it's theoretically possible to use
+    // this _exact_ probability and search for the smallest n for which
+    // Pr[D < k] ⩽ 2^-λ holds, I ran into pretty severe numerical problems when
+    // I tried to use this approach, in particular (but not limited to) around
+    // the (i/U)^n.
+    // The attempt to sidestep this problem by using the logarithm of the entire
+    // expression brings its own set of difficulties, in particular, because the
+    // logarithm of a sum is non-trivial to compute. In the end, I think it's
+    // best to bite the bullet of upper-bounding the probability.
+    //
+    // As a first step, note that the sum in Pr[D = d] is the number of
+    // surjective functions from a set of size n onto a fixed set of size d.
+    // If we remove the constraint that those functions have to be surjective
+    // and take all functions instead, the bound becomes simpler:
+    //
+    //    Pr[D = d] ⩽ (U choose d) · (d/U)^n
+    //
+    // Using this to upper-bound the probability Pr[D < k] still has a somewhat
+    // unwieldy summation going on:
+    //
+    //    Pr[D < k] ⩽ Σ_(d=1)^(k-1) (U choose d) · (d/U)^n
+    //
+    // We upper-bound this further by simply replacing each summand with the
+    // largest of the all:
+    //
+    //    Pr[D < k] ⩽ (k-1) · (U choose k-1) · ((k-1)/U)^n
+    //
+    // Finally, the expression approach something workable. Now, we can use the
+    // upper bound by the security level to solve for n:
+    //
+    //     (k-1) · (U choose k-1) · ((k-1)/U)^n ⩽ 2^-λ
+    //  ↔  log₂(k-1) + log₂(U choose k-1) + n·(log₂(k-1) - log₂(U)) ⩽ -λ
+    //
+    //         -λ - log₂(k-1) - log₂(U choose k-1)
+    //  ↔  n ⩾ ───────────────────────────────────
+    //                 log₂(k-1) - log₂(U)
+    //
+    //         λ + log₂(k-1) + log₂(U choose k-1)
+    //  ↔  n ⩾ ──────────────────────────────────
+    //                 log₂(U) - log₂(k-1)
+    //
+    // That equation is what we use in the method body. A few points of
+    // discussion remain:
+    //
+    // 1. It's quite possible that the bounds used in the above derivation can
+    //    be improved upon. If you find better bounds, feel free to change
+    //    things around.
+    // 2. How bad are the effects of the upper bounds? Good question. Short
+    //    answer: for the parameter ranges we are interested in, the bounds in
+    //    use lead to a 2-10% increase in indices to sample over what would be
+    //    optimal. For example, for λ=160, u=2^23, and k=160, the optimal n is
+    //    173 (oversampling amount 13), while this method indicates n=184
+    //    (oversampling amount 24). The 11 additional indices are superfluous
+    //    overhead of about ~6.4%.
+    //    This is not to say that the oversampling amount is always that small.
+    //    In particular, as k approaches u, the (optimal!) oversampling amount
+    //    can exceed k by multiple factors. For example, take λ=160, u=2^8, and
+    //    k=160. Then the optimal n is 574, an oversampling amount of 414! This
+    //    method indicates n=594, and the 20 superfluous indices are an overhead
+    //    of ~3.5%.
     fn oversampling_amount(&self, log2_domain_len: u32, num_in_domain_queries: usize) -> usize {
-        fn probability_of_too_few_unique_samples(u: u128, k: u128, n: u128) -> f64 {
-            debug_assert!(u > 0);
-            debug_assert!(n >= k);
-            let n = i32::try_from(n).expect("internal error: too many indices to sample");
+        assert!(num_in_domain_queries > 0, "internal error: too few queries");
 
-            // Pr[D < k] = Σ_(d=1)^(k-1) Pr[D = d]
-            let mut total = 0.0;
-            for d in 1..k {
-                // “adjusted” Sterling number because the 1/d! factor is
-                // canceled by the d! number of labellings
-                // Σ_(i=0)^d (-1)^(d-i)·(d choose i)·i^n
-                let mut adjusted_stirling_no = 0.0;
-                for i in 0..=d {
-                    let sign = if (d - i).is_multiple_of(2) { 1.0 } else { -1.0 };
-                    let d_choose_i = Stir::binomial_coefficient(d, i);
-                    let i_div_u_pow_n = ((i as f64) / (u as f64)).powi(n);
-                    adjusted_stirling_no += sign * d_choose_i * i_div_u_pow_n;
-                    dbg!(
-                        u,
-                        k,
-                        n,
-                        d,
-                        i,
-                        sign,
-                        d_choose_i,
-                        i_div_u_pow_n,
-                        adjusted_stirling_no,
-                    );
-                }
-                debug_assert!(adjusted_stirling_no >= 0.0, "{adjusted_stirling_no}");
-                let u_choose_d = Stir::binomial_coefficient(u, d);
-                total += u_choose_d * adjusted_stirling_no;
-            }
-            debug_assert!(0.0 <= total && total <= 1.0, "{total}");
+        let k_minus_1 = u64::try_from(num_in_domain_queries).expect(USIZE_TO_U64_ERR) - 1;
+        let u_choose_k_minus_1 = Self::binomial_coefficient(1 << log2_domain_len, k_minus_1);
 
-            total
-        }
+        let log2_k_minus_1 = (k_minus_1 as f64).log2();
+        let n = (self.security_level as f64 + log2_k_minus_1 + u_choose_k_minus_1.log2())
+            / (log2_domain_len as f64 - log2_k_minus_1);
 
-        // use the terminology defined in the method’s comment
-        let target_probability = 2.0_f64.powf(-(self.security_level as f64));
-        let u = 1 << log2_domain_len;
-        let k = num_in_domain_queries as u128;
-
-        // oversample at most by a factor of 2
-        let initial_hi = i32::MAX as u128 - k;
-        let mut lo = 0;
-        let mut hi = initial_hi;
-        while lo < hi {
-            let mid = lo + (hi - lo) / 2;
-            if probability_of_too_few_unique_samples(u, k, k + mid) >= target_probability {
-                hi = mid;
-            } else {
-                lo = mid + 1;
-            }
-        }
-        assert!(lo < initial_hi, "internal error: cannot oversample enough");
-
-        // since lo < k == num_in_domain_queries, which is a usize, this is safe
-        // ^ todo
-        lo as usize
+        n.ceil() as usize
     }
 
-    // todo: leave this here? Move back in?
-    fn binomial_coefficient(n: u128, k: u128) -> f64 {
-        if n < k {
+    fn binomial_coefficient(a: u64, b: u64) -> f64 {
+        if a < b {
             return 0.0;
         }
 
         let mut binomial_coefficient = 1.0;
-        for i in 0..k.min(n - k) {
-            binomial_coefficient *= (n - i) as f64;
+        for i in 0..b.min(a - b) {
+            binomial_coefficient *= (a - i) as f64;
             binomial_coefficient /= (i + 1) as f64;
         }
         debug_assert!(binomial_coefficient >= 0.0, "{binomial_coefficient}");
@@ -743,9 +750,9 @@ impl Stir {
     //   (ℓ^2 / 2)·(d / (|𝔽| - |D|))^s ⩽ 2^-security_level
     //
     // where ℓ is the list size of the Reed-Solomon code, d is the (max) degree
-    // of this round’s polynomial, 𝔽 is the field the Reed-Solomon code (and by
+    // of this round's polynomial, 𝔽 is the field the Reed-Solomon code (and by
     // extension, STIR) is defined over (in our case always the extension
-    // field), and D is this round’s domain over which the polynomial is
+    // field), and D is this round's domain over which the polynomial is
     // evaluated.
     // We start to solve for the repetition parameter s:
     //
@@ -760,9 +767,9 @@ impl Stir {
     // The assumption is reasonable (or even necessary) because polynomials
     // with degree as big (or bigger) than the field start behaving weirdly.
     // For example, the polynomial X^p over field 𝔽_p is functionally
-    // equivalent to the polynomial 1. While distinct as polynomials, it’s
+    // equivalent to the polynomial 1. While distinct as polynomials, it's
     // impossible to differentiate between the two in evaluation form.
-    // It’s also hard to argue that such polynomials are of “low degree”.
+    // It's also hard to argue that such polynomials are of “low degree”.
     // And as a final nail in the coffin, the largest possible
     // `ArithmeticDomain` we currently support has size 2^32. Polynomials of
     // higher degree cannot even be passed in to STIR.
@@ -777,9 +784,9 @@ impl Stir {
     // The difference between log₂((2^64)^3) and log₂(|𝔽| - |D|) is less than
     // 1.1e-9.
     // Representing log₂((2^64 - 2^32 + 1)^3) using double-precision IEEE 754
-    // floating point format (i.e., rust’s `f64`) gives a rounding error of
+    // floating point format (i.e., rust's `f64`) gives a rounding error of
     // about 1.2e-7. In other words, accurately computing log₂(|𝔽| - |D|)
-    // requires a specialized, high-precision floating point library. We’re
+    // requires a specialized, high-precision floating point library. We're
     // not doing that.
     //
     // Long story short:
@@ -853,7 +860,7 @@ impl Stir {
     // # Todo
     //
     // - Include profiler!(start / stop) statements (get inspired by FRI)
-    // - Figure out use of “shake polynomial”. I think this is Giacomo’s trick.
+    // - Figure out use of “shake polynomial”. I think this is Giacomo's trick.
     //   This makes the interpolation in the verifier superfluous.
     pub fn prove(
         &self,
@@ -897,7 +904,7 @@ impl Stir {
             // TODO: make sure these indices are IID. In particular:
             //   1. record _all_ sampled indices (including oversampling?)
             //                                   ^_______________________^
-            //                           that’s probably easiest for bookkeeping
+            //                           that's probably easiest for bookkeeping
             //   2. apply the “unique” filter only to get the folded indices
             //   3. add doc-string to the transcript on how to use the indices
             //      (the indices actually used are `unique_by(|i| i % …)`
@@ -1194,10 +1201,10 @@ impl Stir {
     // over the range `0..initial_codeword.len()`.
     // Therefore, the query indices are sampled from this range and then mapped
     // to the range [0; folded_codeword.len()) simply by computing the modulus
-    // with the folded domain’s length. Per query, the prover answers with
+    // with the folded domain's length. Per query, the prover answers with
     // k points. To fetch the desired point, the query index has to be mapped
     // into the range `0..k`. This is achieved through integer division by the
-    // folded domain’s length.
+    // folded domain's length.
     fn partial_codeword(
         &self,
         domain: ArithmeticDomain,
@@ -1226,7 +1233,7 @@ impl Stir {
     /// Turn evaluations of (previous) committed function “g” into evaluations
     /// of (current) (virtual) function “f”.
     ///
-    /// See also the paper’s construction 5.2, bullet point “verifier decision
+    /// See also the paper's construction 5.2, bullet point “verifier decision
     /// phase”, subpoint 1 “main loop”, subsubpoints (b) and (c).
     fn subsequent_in_domain_answers(
         quotienting_data: QuotientingData,
@@ -1244,7 +1251,7 @@ impl Stir {
         let answer_poly = Polynomial::interpolate(&quotient_set, &quotient_answers);
         let zerofier = Polynomial::zerofier(&quotient_set);
 
-        // This is the paper’s `e := d* - d` from section 2.3. It is the
+        // This is the paper's `e := d* - d` from section 2.3. It is the
         // difference of the target degree and the degree after quotienting.
         let degree_difference =
             u32::try_from(quotient_set.len() + 1).expect(QUOTIENT_SET_LEN_TO_U32_ERR);
@@ -1300,8 +1307,8 @@ impl LeafStackMerkleTree {
     /// # Panics
     ///
     /// - if the `stack_height` is not a power of two
-    /// - if the codeword’s length is not a power of two
-    /// - if the codeword’s length is smaller than the `stack_height`
+    /// - if the codeword's length is not a power of two
+    /// - if the codeword's length is smaller than the `stack_height`
     fn new(codeword: &[XFieldElement], stack_height: usize) -> Self {
         let stacked_leafs = Self::stack(codeword, stack_height);
         let leaf_digests = stacked_leafs
@@ -1406,35 +1413,32 @@ mod tests {
         assert_eq!(expected_2, stacks_2);
     }
 
-    /// Verify that the formula used for [Stir::oversampling_amount] holds up
-    /// stochastically.
     #[proptest(cases = 10)]
-    fn formula_for_oversampling_amount_is_stochastically_correct(
-        #[strategy(arb())] mut tip5: Tip5,
-        #[strategy(3..=30)]
-        #[map(|x| 1_u32 << x)]
-        universe_size: u32,
-        #[strategy(1..=320.min(#universe_size as usize))] num_uniques: usize,
-        #[strategy(0..=50_usize)] margin: usize,
+    fn oversampling_amount_is_stochastically_correct(
+        stir: Stir,
+        #[strategy(arb().no_shrink())] mut tip5: Tip5,
+        #[strategy(3..=32_u32)] log2_domain_len: u32,
+        #[strategy(1..=320.min((1 << #log2_domain_len) as usize))] num_uniques: usize,
     ) {
-        const DIFF_DELTA: f64 = 1e-2;
         const NUM_RUNS: usize = 1_000_000;
 
         tip5.permutation(); // garble
+        let margin = stir.oversampling_amount(log2_domain_len, num_uniques);
+
         let mut too_few_uniques_count = 0;
         for _ in 0..NUM_RUNS {
-            let samples = tip5.sample_indices(universe_size, num_uniques + margin);
+            let samples = tip5.sample_indices(1 << log2_domain_len, num_uniques + margin);
             if samples.into_iter().unique().count() < num_uniques {
                 too_few_uniques_count += 1;
             }
         }
 
-        let prediction = ((num_uniques - 1) as f64 / universe_size as f64).powi(margin as i32 + 1);
-        let actual_ratio = too_few_uniques_count as f64 / NUM_RUNS as f64;
+        let prob_not_enough_uniques = too_few_uniques_count as f64 / NUM_RUNS as f64;
+        let max_allowed_prob = 2.0_f64.powf(stir.security_level as f64).recip();
 
         prop_assert!(
-            (prediction - actual_ratio).abs() < DIFF_DELTA,
-            "prediction: {prediction} actual: {actual_ratio}"
+            prob_not_enough_uniques < max_allowed_prob,
+            "required: {max_allowed_prob} actual: {prob_not_enough_uniques}"
         );
     }
 
@@ -1561,7 +1565,7 @@ mod tests {
         stir.log2_initial_expansion_factor = bad_log2_initial_expansion_factor;
         let_assert!(Err(err) = stir.prove(&codeword, &mut proof_stream));
         let_assert!(StirProvingError::ParameterError(err) = err);
-        prop_assert_eq!(StirParameterError::TooBigInitialExpansionFactor, err);
+        let_assert!(StirParameterError::InitialDomainTooBig(_) = err);
     }
 
     #[proptest]
