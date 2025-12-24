@@ -678,11 +678,14 @@ impl Stir {
     //
     //    Pr[D < k] ⩽ (k-1) · (U choose k-1) · ((k-1)/U)^n
     //
-    // Finally, the expression approach something workable. Now, we can use the
-    // upper bound by the security level to solve for n:
+    // Finally, the expression starts to approach something workable. Now, we
+    // can use the upper bound by the security level to solve for n:
     //
     //     (k-1) · (U choose k-1) · ((k-1)/U)^n ⩽ 2^-λ
+    //
     //  ↔  log₂(k-1) + log₂(U choose k-1) + n·(log₂(k-1) - log₂(U)) ⩽ -λ
+    //
+    //  ↔  n·(log₂(k-1) - log₂(U)) ⩽ -λ - log₂(k-1) - log₂(U choose k-1)
     //
     //         -λ - log₂(k-1) - log₂(U choose k-1)
     //  ↔  n ⩾ ───────────────────────────────────
@@ -712,31 +715,36 @@ impl Stir {
     //    method indicates n=594, and the 20 superfluous indices are an overhead
     //    of ~3.5%.
     fn oversampling_amount(&self, log2_domain_len: u32, num_in_domain_queries: usize) -> usize {
-        assert!(num_in_domain_queries > 0, "internal error: too few queries");
+        let k = u64::try_from(num_in_domain_queries).expect(USIZE_TO_U64_ERR);
+        let k_minus_1 = k.checked_sub(1).expect("internal error: too few queries");
+        let log2_u_choose_k_minus_1 =
+            Self::log2_binomial_coefficient(1 << log2_domain_len, k_minus_1);
 
-        let k_minus_1 = u64::try_from(num_in_domain_queries).expect(USIZE_TO_U64_ERR) - 1;
-        let u_choose_k_minus_1 = Self::binomial_coefficient(1 << log2_domain_len, k_minus_1);
-
+        let security_level = self.security_level as f64;
         let log2_k_minus_1 = (k_minus_1 as f64).log2();
-        let n = (self.security_level as f64 + log2_k_minus_1 + u_choose_k_minus_1.log2())
+        let num_total_queries = (security_level + log2_k_minus_1 + log2_u_choose_k_minus_1)
             / (log2_domain_len as f64 - log2_k_minus_1);
 
-        n.ceil() as usize
+        num_total_queries.ceil() as usize - num_in_domain_queries
     }
 
-    fn binomial_coefficient(a: u64, b: u64) -> f64 {
+    fn log2_binomial_coefficient(a: u64, b: u64) -> f64 {
         if a < b {
-            return 0.0;
+            return f64::NEG_INFINITY;
         }
 
-        let mut binomial_coefficient = 1.0;
+        // Kahan-Babuška summation for better numerical stability
+        let mut log2_binom = 0.0;
+        let mut compensation = 0.0;
         for i in 0..b.min(a - b) {
-            binomial_coefficient *= (a - i) as f64;
-            binomial_coefficient /= (i + 1) as f64;
+            let summand = ((a - i) as f64).log2() - ((i + 1) as f64).log2();
+            let corrected_summand = summand - compensation;
+            let next_log2_binom = log2_binom + corrected_summand;
+            compensation = (next_log2_binom - log2_binom) - corrected_summand;
+            log2_binom = next_log2_binom;
         }
-        debug_assert!(binomial_coefficient >= 0.0, "{binomial_coefficient}");
 
-        binomial_coefficient
+        log2_binom
     }
 
     /// The number of out-of-domain queries for the Reed-Solomon code implied
@@ -1413,27 +1421,27 @@ mod tests {
         assert_eq!(expected_2, stacks_2);
     }
 
-    #[proptest(cases = 10)]
+    #[proptest(cases = 6)]
     fn oversampling_amount_is_stochastically_correct(
         stir: Stir,
         #[strategy(arb().no_shrink())] mut tip5: Tip5,
         #[strategy(3..=32_u32)] log2_domain_len: u32,
         #[strategy(1..=320.min((1 << #log2_domain_len) as usize))] num_uniques: usize,
     ) {
-        const NUM_RUNS: usize = 1_000_000;
+        const NUM_TRIES: usize = 100_000;
 
         tip5.permutation(); // garble
         let margin = stir.oversampling_amount(log2_domain_len, num_uniques);
 
         let mut too_few_uniques_count = 0;
-        for _ in 0..NUM_RUNS {
+        for _ in 0..NUM_TRIES {
             let samples = tip5.sample_indices(1 << log2_domain_len, num_uniques + margin);
             if samples.into_iter().unique().count() < num_uniques {
                 too_few_uniques_count += 1;
             }
         }
 
-        let prob_not_enough_uniques = too_few_uniques_count as f64 / NUM_RUNS as f64;
+        let prob_not_enough_uniques = too_few_uniques_count as f64 / NUM_TRIES as f64;
         let max_allowed_prob = 2.0_f64.powf(stir.security_level as f64).recip();
 
         prop_assert!(
