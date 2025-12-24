@@ -674,7 +674,7 @@ impl Stir {
     //    Pr[D < k] ⩽ Σ_(d=1)^(k-1) (U choose d) · (d/U)^n
     //
     // We upper-bound this further by simply replacing each summand with the
-    // largest of the all:
+    // largest of them all:
     //
     //    Pr[D < k] ⩽ (k-1) · (U choose k-1) · ((k-1)/U)^n
     //
@@ -1425,8 +1425,8 @@ mod tests {
     fn oversampling_amount_is_stochastically_correct(
         stir: Stir,
         #[strategy(arb().no_shrink())] mut tip5: Tip5,
-        #[strategy(3..=32_u32)] log2_domain_len: u32,
-        #[strategy(1..=320.min((1 << #log2_domain_len) as usize))] num_uniques: usize,
+        #[strategy(3..32_u32)] log2_domain_len: u32,
+        #[strategy(1..=320.min(1_usize << #log2_domain_len))] num_uniques: usize,
     ) {
         const NUM_TRIES: usize = 100_000;
 
