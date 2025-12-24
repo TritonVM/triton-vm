@@ -728,6 +728,7 @@ impl Stir {
         num_total_queries.ceil() as usize - num_in_domain_queries
     }
 
+    /// The log₂ of the binomial coefficient (a choose b).
     fn log2_binomial_coefficient(a: u64, b: u64) -> f64 {
         if a < b {
             return f64::NEG_INFINITY;
@@ -1419,6 +1420,49 @@ mod tests {
             .map(|v| v.map(|x| xfe!(x)).to_vec())
             .to_vec();
         assert_eq!(expected_2, stacks_2);
+    }
+
+    #[test]
+    fn log2_binomial_coefficient() {
+        const DELTA: f64 = 1.0e-3;
+
+        let assert_are_close = |expected: f64, (a, b)| {
+            let log2_bin_coeff = Stir::log2_binomial_coefficient(a, b);
+            let are_close = (expected - log2_bin_coeff).abs() < DELTA;
+            assert!(are_close, "{expected} ≠ {log2_bin_coeff}");
+        };
+
+        assert_are_close(0.000, (10, 0));
+        assert_are_close(3.322, (10, 1));
+        assert_are_close(5.492, (10, 2));
+        assert_are_close(6.907, (10, 3));
+        assert_are_close(7.714, (10, 4));
+        assert_are_close(7.977, (10, 5));
+        assert_are_close(7.714, (10, 6));
+        assert_are_close(6.907, (10, 7));
+        assert_are_close(5.492, (10, 8));
+        assert_are_close(3.322, (10, 9));
+        assert_are_close(0.000, (10, 10));
+
+        assert_are_close(0.00000, (500, 0));
+        assert_are_close(230.424, (500, 50));
+        assert_are_close(356.476, (500, 100));
+        assert_are_close(435.962, (500, 150));
+        assert_are_close(480.695, (500, 200));
+        assert_are_close(495.191, (500, 250));
+        assert_are_close(480.695, (500, 300));
+        assert_are_close(435.962, (500, 350));
+        assert_are_close(356.476, (500, 400));
+        assert_are_close(230.424, (500, 450));
+        assert_are_close(0.00000, (500, 500));
+
+        assert_are_close(4446.650, (1 << 13, 0b001 << 10));
+        assert_are_close(6639.372, (1 << 13, 0b010 << 10));
+        assert_are_close(7811.944, (1 << 13, 0b011 << 10));
+        assert_are_close(8185.174, (1 << 13, 0b100 << 10));
+        assert_are_close(7811.944, (1 << 13, 0b101 << 10));
+        assert_are_close(6639.372, (1 << 13, 0b110 << 10));
+        assert_are_close(4446.650, (1 << 13, 0b111 << 10));
     }
 
     #[proptest(cases = 6)]
