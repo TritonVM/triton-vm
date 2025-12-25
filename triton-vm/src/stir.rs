@@ -384,9 +384,8 @@ impl Stir {
             ));
         };
 
-        // the initial folding happens before any full round
-        // todo: ^ this is wrong. The final folding comes _after_ the full rounds.
-        let mut poly_degree = self.max_degree() / folding_factor;
+        // none of the round parameters depend on the non-folded polynomial
+        let mut folded_poly_degree = self.max_degree() / folding_factor;
         let mut log2_expansion_factor = self.log2_initial_expansion_factor;
         let mut log2_folded_domain_size =
             self.initial_domain()?.len().ilog2() - log2_folding_factor;
@@ -407,7 +406,7 @@ impl Stir {
         // Also note that a STIR instance with a “high degree” of less than the
         // folding factor is degenerate and will have been rejected earlier in
         // this method.
-        while poly_degree > folding_factor {
+        while folded_poly_degree > folding_factor {
             let in_domain = self.num_in_domain_queries(log2_expansion_factor)?;
             let oversampling_amount = self.oversampling_amount(log2_folded_domain_size, in_domain);
 
@@ -416,8 +415,12 @@ impl Stir {
             // respect to new rate.
             let log2_next_expansion_factor =
                 log2_expansion_factor + self.log2_folding_factor - Self::LOG2_DOMAIN_SHRINKAGE;
-            let log2_poly_degree = poly_degree.ilog2().try_into().expect(U32_TO_USIZE_ERR);
-            let out_of_domain = self.num_ood_queries(log2_poly_degree, log2_next_expansion_factor);
+            let log2_folded_poly_degree = folded_poly_degree
+                .ilog2()
+                .try_into()
+                .expect(U32_TO_USIZE_ERR);
+            let out_of_domain =
+                self.num_ood_queries(log2_folded_poly_degree, log2_next_expansion_factor);
 
             let num_queries = NumQueries {
                 in_domain,
@@ -452,13 +455,13 @@ impl Stir {
             // round, since the final round has no quotienting step. If the
             // second consequence applies, it does not break any soundness
             // guarantees, the protocol only becomes less efficient.
-            let folded_poly_degree = poly_degree / folding_factor;
-            if num_queries.total() > folded_poly_degree {
+            let next_folded_poly_deg = folded_poly_degree / folding_factor;
+            if num_queries.total() > next_folded_poly_deg {
                 break;
             }
 
             round_queries.push(num_queries);
-            poly_degree = folded_poly_degree;
+            folded_poly_degree = next_folded_poly_deg;
             log2_expansion_factor = log2_next_expansion_factor;
             log2_folded_domain_size -= Self::LOG2_DOMAIN_SHRINKAGE as u32;
         }
@@ -466,7 +469,7 @@ impl Stir {
         let final_num_in_domain_queries = self.num_in_domain_queries(log2_expansion_factor)?;
         let final_oversampling_amount =
             self.oversampling_amount(log2_folded_domain_size, final_num_in_domain_queries);
-        let final_degree = poly_degree;
+        let final_degree = folded_poly_degree;
         let round_params = RoundParams {
             round_queries,
             final_num_in_domain_queries,
@@ -1719,7 +1722,7 @@ mod tests {
         stir: Stir,
         #[strategy(Just(1 << #stir.log2_high_degree))] _too_high_degree: i64,
         #[strategy(#_too_high_degree..2 * #_too_high_degree)] _d: i64,
-        #[strategy(arbitrary_polynomial_of_degree(#_d))] poly: XfePoly,
+        #[strategy(arbitrary_polynomial_of_degree(#_d).no_shrink())] poly: XfePoly,
     ) {
         let codeword = stir.initial_domain()?.evaluate(&poly);
         let mut proof_stream = ProofStream::new();
