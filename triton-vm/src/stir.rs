@@ -529,6 +529,9 @@ impl Stir {
         log2_expansion_factor: usize,
     ) -> Result<usize, StirParameterError> {
         let num_uniques = self.num_unique_in_domain_queries(log2_expansion_factor)?;
+
+        // it doesn’t make sense to request more unique indices than there are
+        let num_uniques = num_uniques.min(1 << log2_domain_size);
         let num_total = self.num_total_in_domain_queries(log2_domain_size, num_uniques);
 
         Ok(num_total)
@@ -762,10 +765,16 @@ impl Stir {
     }
 
     /// The log₂ of the binomial coefficient (a choose b).
+    ///
+    /// # Panics
+    ///
+    /// Panics if `b` is smaller than `a`.
+    //
+    // While it is valid to define the binomial coefficient (a choose b) as 0
+    // if `b < a`, we don't need this functionality. I'd rather things fail
+    // early and hard instead.
     fn log2_binomial_coefficient(a: u64, b: u64) -> f64 {
-        if a < b {
-            return f64::NEG_INFINITY;
-        }
+        assert!(a >= b, "internal error: binomial coefficient with b < a");
 
         // Kahan-Babuška summation for better numerical stability
         let mut log2_binom = 0.0;
