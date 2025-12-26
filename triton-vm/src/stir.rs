@@ -530,7 +530,7 @@ impl Stir {
     ) -> Result<usize, StirParameterError> {
         let num_uniques = self.num_unique_in_domain_queries(log2_expansion_factor)?;
 
-        // it doesn’t make sense to request more unique indices than there are
+        // it doesn't make sense to request more unique indices than there are
         let num_uniques = num_uniques.min(1 << log2_domain_size);
         let num_total = self.num_total_in_domain_queries(log2_domain_size, num_uniques);
 
@@ -1086,15 +1086,15 @@ impl Stir {
                 Some(qd) => Self::subsequent_in_domain_answers(qd, &queries, folding_randomness),
             };
 
-            let quotient_set = queries
+            // queried indices are not generally unique, but have to be for
+            // interpolation (in the next round) to work
+            let (quotient_set, quotient_answers) = queries
                 .into_iter()
                 .map(|q| q.point.lift())
-                .chain(ood_queries.iter().copied())
-                .collect_vec();
-            let quotient_answers = in_domain_answers
-                .into_iter()
-                .chain(ood_answers)
-                .collect_vec();
+                .zip(in_domain_answers)
+                .chain(ood_queries.iter().copied().zip(ood_answers))
+                .unique_by(|(query_point, _)| *query_point)
+                .unzip();
             let degree_correction_randomness = proof_stream.sample_scalars(1)[0];
             let quotienting_data = QuotientingData {
                 quotient_set,
@@ -1137,15 +1137,15 @@ impl Stir {
         let auth_structure = inclusion_proof.auth_structure.clone();
         let queries = inclusion_proof.authenticated_queries(commitment_to_previous_polynomial)?;
 
-        let final_folds = match previous_quotienting_data {
+        let final_answers = match previous_quotienting_data {
             None => Self::initial_in_domain_answers(&queries, folding_randomness),
             Some(qd) => Self::subsequent_in_domain_answers(qd, &queries, folding_randomness),
         };
         let final_evaluations = queries.iter().map(|query| poly.evaluate(query.point));
-        if final_folds
+        if final_answers
             .into_iter()
             .zip(final_evaluations)
-            .any(|(fold, eval)| fold != eval)
+            .any(|(answer, evaluation)| answer != evaluation)
         {
             return Err(StirVerificationError::LastRoundPolynomialEvaluationMismatch);
         }
@@ -1351,6 +1351,7 @@ impl Transcript {
         queried_indices
             .iter()
             .map(move |&idx| idx % folded_domain_len)
+            .unique()
     }
 }
 
