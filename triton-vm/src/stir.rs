@@ -902,6 +902,7 @@ impl Stir {
     // # Todo
     //
     // - Doc string for prove
+    // - Doc string for `StirResponse`
     // - Include profiler!(start / stop) statements (get inspired by FRI)
     // - Replace FRI by STIR
     // - Implement Giacomo et al's “Interactive Proofs for Batch Polynomial
@@ -949,16 +950,16 @@ impl Stir {
             // respect to the folded domain most of the time.
             let queried_indices = proof_stream.sample_indices(domain.len(), num_queries.in_domain);
             let folded_domain = domain.pow(folding_factor).unwrap();
-            let folded_poly_queried_indices = queried_indices
+            let folded_queried_indices = queried_indices
                 .iter()
                 .map(|&idx| idx % folded_domain.len())
                 .unique()
                 .collect_vec();
-            let inclusion_proof = commitment.inclusion_proof(&folded_poly_queried_indices);
+            let inclusion_proof = commitment.inclusion_proof(&folded_queried_indices);
             proof_stream.enqueue(ProofItem::StirResponse(inclusion_proof));
 
             // construct the witness polynomial for the next round
-            let queried_domain_values = folded_poly_queried_indices
+            let queried_domain_values = folded_queried_indices
                 .iter()
                 .map(|&i| u32::try_from(i).expect(DOMAIN_INDEX_TO_U32_ERR))
                 .map(|i| folded_domain.value(i))
@@ -1752,7 +1753,7 @@ mod tests {
     fn prove_and_verify_low_degree_polynomial(
         stir: Stir,
         #[strategy(-1..=#stir.max_degree() as i64)] _d: i64,
-        #[strategy(arbitrary_polynomial_of_degree(#_d))] poly: XfePoly,
+        #[strategy(arbitrary_polynomial_of_degree(#_d).no_shrink())] poly: XfePoly,
     ) {
         let codeword = stir.initial_domain()?.evaluate(&poly);
 
