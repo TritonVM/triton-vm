@@ -746,6 +746,16 @@ impl Stir {
     //    k by multiple factors. For example, take λ=160, u=2^8, and k=160. Then
     //    the optimal n is 574, an error margin of 414! This method indicates
     //    n=594, and the 20 superfluous indices are an overhead of ~3.5%.
+    // 3. Choosing rejection sampling over oversampling has pros and cons:
+    //    + This method with all its complexity becomes superfluous.
+    //    + The number of additional indices is as small as possible since it
+    //      doesn't rely on probabilistic arguments.
+    //    - The logic for sampling indices becomes significantly more complex,
+    //      particularly in a Triton assembly context.
+    //    Tracking the actually sampled indices and the de-duplicated, folded
+    //    indices is required in either case.
+    //    We decided that the runtime complexity of rejection sampling in Triton
+    //    assembly (O(num_unique_indices²)) dominates the other points.
     fn num_total_in_domain_queries(
         &self,
         log2_domain_len: u32,
@@ -758,8 +768,9 @@ impl Stir {
 
         let security_level = self.security_level as f64;
         let log2_k_minus_1 = (k_minus_1 as f64).log2();
+        let log2_domain_len = f64::from(log2_domain_len);
         let num_total_queries = (security_level + log2_k_minus_1 + log2_u_choose_k_minus_1)
-            / (f64::from(log2_domain_len) - log2_k_minus_1);
+            / (log2_domain_len - log2_k_minus_1);
 
         num_total_queries.ceil() as usize
     }
