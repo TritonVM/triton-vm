@@ -68,9 +68,10 @@ pub struct Stir {
     /// - is perfectly complete, and
     /// - has soundness error 2^(-security_level).
     #[cfg_attr(test, strategy(16_usize..=192))]
-    security_level: usize,
+    pub security_level: usize,
 
-    soundness: SoundnessAssumption,
+    /// The soundness assumption (or lack thereof) you are willing to make.
+    pub soundness: SoundnessType,
 
     /// Corresponds to the (log₂ of the) paper's folding factor `k`.
     ///
@@ -80,7 +81,7 @@ pub struct Stir {
     // The paper allows for this to change between rounds. This (current)
     // implementation does not.
     #[cfg_attr(test, strategy(2_usize..=5))]
-    log2_folding_factor: usize,
+    pub log2_folding_factor: usize,
 
     /// The amount of “redundancy” in the [prover](Self::prove)'s input.
     ///
@@ -90,7 +91,7 @@ pub struct Stir {
     ///
     /// Must be greater than 0.
     #[cfg_attr(test, strategy(1_usize..=6))]
-    log2_initial_expansion_factor: usize,
+    pub log2_initial_expansion_factor: usize,
 
     /// The (log₂ of the) polynomial degree that is considered “high” for
     /// this STIR instance.
@@ -102,18 +103,22 @@ pub struct Stir {
     /// Must be greater than or equal to the (log₂ of the)
     /// [folding factor](Self::log2_folding_factor).
     #[cfg_attr(test, strategy(#log2_folding_factor..=15))]
-    log2_high_degree: usize,
+    pub log2_high_degree: usize,
 }
 
-/// The type of soundness assumption you are willing to make for [STIR](Stir).
+/// The type of soundness assumption (or lack thereof) you are willing to make
+/// for [STIR](Stir).
 ///
 /// The choice influences the derivation of additional parameters used in STIR,
 /// like the [number of queries](NumQueries) per round (called “t_i” in the
 /// paper). Generally, the more “daring” the assumption, the lower the runtime
-/// cost and proof size.
+/// cost and proof size, but the higher the risk that the resulting system is
+/// unsound due to as-of-yet undiscovered attacks.
+///
+/// The [`Provable`](Self::Provable) variant is generally recommended.
 #[derive(Debug, Default, Copy, Clone, Eq, PartialEq)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
-pub enum SoundnessAssumption {
+pub enum SoundnessType {
     /// Only use provable results.
     ///
     /// In particular, assume that the distance of each oracle is within the
@@ -473,14 +478,14 @@ impl Stir {
         // Folding lowers the current degree to ⌊poly_degree / folding_factor⌋.
         // Since this “bottoms out” at 0, folding too often can lead to
         // soundness problems.
-        // For example, take a current degree of 2 and a folding factor of 4.
-        // Folding results in a polynomial of degree 0. However, folding a
-        // polynomial of degree 3 _also_ results in a polynomial of degree 0,
-        // even though the degree-3 polynomial should be rejected by the
-        // verifier. The solution is to stop folding before the process
-        // “bottoms out.” Since there is one more folding step applied in the
-        // final round, no full round must reduce the degree to be less than or
-        // equal to the folding factor.
+        // For example, assume that the highest legal polynomial degree for the
+        // current round is 2 and the folding factor is 4. Folding results in a
+        // polynomial of degree 0. However, folding a polynomial of degree 3
+        // _also_ results in a polynomial of degree 0, even though the degree-3
+        // polynomial should be rejected by the verifier. The solution is to
+        // stop folding before the process “bottoms out.” Since there is one
+        // more folding step applied in the final round, no full round must
+        // reduce the degree to be less than or equal to the folding factor.
         //
         // Also note that a STIR instance with a “high degree” of less than the
         // folding factor is degenerate and will have been rejected earlier in
@@ -491,7 +496,7 @@ impl Stir {
 
             // Because the out-of-domain queries are made to the folded
             // polynomial, the number of out-of-domain queries are set with
-            // respect to new rate.
+            // respect to the new rate.
             let log2_next_expansion_factor =
                 log2_expansion_factor + self.log2_folding_factor - Self::LOG2_DOMAIN_SHRINKAGE;
             let log2_folded_poly_degree = folded_poly_degree
@@ -667,25 +672,25 @@ impl Stir {
         };
         let rate = 1.0 / f64::from(expansion_factor);
         let delta = match self.soundness {
-            SoundnessAssumption::Provable => 1.0 - rate.sqrt() - eta,
-            SoundnessAssumption::Conjectured => 1.0 - rate - eta,
+            SoundnessType::Provable => 1.0 - rate.sqrt() - eta,
+            SoundnessType::Conjectured => 1.0 - rate - eta,
         };
 
         Ok(delta)
     }
 
     /// The (log₂ of the) distance between the proximity parameter δ and the
-    /// [chosen bound](SoundnessAssumption), called η.
+    /// [chosen bound](SoundnessType), called η.
     ///
-    /// No matter the soundness assumption, the upper bound on the
+    /// No matter the soundness type, the upper bound on the
     /// [list size](Self::log2_list_size) only holds for proximity parameters δ
     /// that are slightly below the bound. This function defines just how big
     /// the distance between the proximity parameter and the bound is.
     ///
     /// For example, if the chosen bound is the
-    /// [Johnson bound](SoundnessAssumption::Provable), then δ ∈ (0, 1 - √ρ),
+    /// [Johnson bound](SoundnessType::Provable), then δ ∈ (0, 1 - √ρ),
     /// and we chose δ = 1 - √ρ - η.
-    /// For the [conjectured bound](SoundnessAssumption::Conjectured),
+    /// For the [conjectured bound](SoundnessType::Conjectured),
     /// δ ∈ (0, 1 - ρ), and we chose δ = 1 - ρ - η. In either case, η is defined
     /// in this method.
     //
@@ -703,8 +708,8 @@ impl Stir {
     fn log2_eta(&self, log2_expansion_factor: usize) -> f64 {
         let log2_expansion_factor = log2_expansion_factor as f64;
         let log2_rho_or_sqrt_rho = match self.soundness {
-            SoundnessAssumption::Provable => 0.5 * -log2_expansion_factor,
-            SoundnessAssumption::Conjectured => -log2_expansion_factor,
+            SoundnessType::Provable => 0.5 * -log2_expansion_factor,
+            SoundnessType::Conjectured => -log2_expansion_factor,
         };
 
         // This is where the heuristic kicks in:
@@ -946,12 +951,12 @@ impl Stir {
     /// degree and the given rate. The proximity parameter δ is implied by
     /// [η](Self::log2_eta).
     ///
-    /// For the [Johnson bound](SoundnessAssumption::Provable), it is shown that
+    /// For the [Johnson bound](SoundnessType::Provable), it is shown that
     /// the Reed-Solomon codes are (1-√ρ-η, 1/(2·√ρ·η))-list decodable. In
     /// other words, the list size for δ = 1-√ρ-η is
     /// ℓ = √(extension_factor)/(2·η).
     ///
-    /// For the [conjectured bound](SoundnessAssumption::Conjectured), it is
+    /// For the [conjectured bound](SoundnessType::Conjectured), it is
     /// assumed that Reed-Solomon codes are (1-ρ-η, d/(ρ·η))-list decodable. In
     /// other words, the list size for δ = 1-ρ-η is
     /// ℓ = degree·extension_factor/η.
@@ -960,8 +965,8 @@ impl Stir {
         let log2_eta = self.log2_eta(log2_expansion_factor);
 
         match self.soundness {
-            SoundnessAssumption::Provable => log2_expansion_factor as f64 / 2. - 1. - log2_eta,
-            SoundnessAssumption::Conjectured => {
+            SoundnessType::Provable => log2_expansion_factor as f64 / 2. - 1. - log2_eta,
+            SoundnessType::Conjectured => {
                 (log2_poly_degree + log2_expansion_factor) as f64 - log2_eta
             }
         }
