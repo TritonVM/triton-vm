@@ -324,15 +324,16 @@ struct StirMerkleTree {
     tree: MerkleTree,
 }
 
-/// A Merkle tree inclusion proof for all queries to the folding polynomial
-/// of one verifier round.
+/// All answered queries to the folded polynomial of one round, including the
+/// cryptographic data to prove that the answers had been committed to.
 ///
-/// This is an extended version of a [`MerkleTreeInclusionProof`] that also
-/// tracks the actual queries to the folding polynomial the prover has
-/// commited to.
-//
-// todo: struct name & doc string
-struct PolyFoldQueriesInclusionProof {
+/// Conceptually, this is an extended [`MerkleTreeInclusionProof`] that also
+/// tracks the actual queries to the folding polynomial the prover has commited
+/// to.
+///
+/// The most important functionality of this struct is to provide the
+/// [authenticated queries](Self::authenticated_queries).
+struct FoldingPolynomialQueriesInclusionProof {
     queries: Vec<FoldingPolynomialQuery>,
     auth_structure: AuthenticationStructure,
     folded_domain_len: usize,
@@ -1229,7 +1230,7 @@ impl Stir {
         proof_stream: &mut ProofStream,
         round_domain: ArithmeticDomain,
         num_id_queries: usize,
-    ) -> VerifierResult<PolyFoldQueriesInclusionProof> {
+    ) -> VerifierResult<FoldingPolynomialQueriesInclusionProof> {
         let queried_indices = proof_stream.sample_indices(round_domain.len(), num_id_queries);
         let StirResponse {
             auth_structure,
@@ -1282,7 +1283,7 @@ impl Stir {
             })
             .collect();
 
-        let inclusion_proof = PolyFoldQueriesInclusionProof {
+        let inclusion_proof = FoldingPolynomialQueriesInclusionProof {
             queries,
             auth_structure,
             folded_domain_len,
@@ -1407,8 +1408,8 @@ impl Transcript {
     /// Helper function for [RoundTranscript::folded_queried_indices] and
     /// [FinalRoundTranscript::folded_queried_indices].
     fn folded_queried_indices(
-        log2_folding_factor: usize,
         domain: ArithmeticDomain,
+        log2_folding_factor: usize,
         queried_indices: &[usize],
     ) -> impl Iterator<Item = usize> {
         let folded_domain_len = domain.pow(1 << log2_folding_factor).unwrap().len();
@@ -1425,8 +1426,8 @@ impl RoundTranscript {
     /// [RoundTranscript::queried_indices] for more details.
     pub fn folded_queried_indices(&self) -> impl Iterator<Item = usize> {
         Transcript::folded_queried_indices(
-            self.log2_folding_factor,
             self.domain,
+            self.log2_folding_factor,
             &self.queried_indices,
         )
     }
@@ -1436,8 +1437,8 @@ impl FinalRoundTranscript {
     /// See [RoundTranscript::folded_queried_indices].
     pub fn folded_queried_indices(&self) -> impl Iterator<Item = usize> {
         Transcript::folded_queried_indices(
-            self.log2_folding_factor,
             self.domain,
+            self.log2_folding_factor,
             &self.queried_indices,
         )
     }
@@ -1511,7 +1512,7 @@ impl StirMerkleTree {
     }
 }
 
-impl PolyFoldQueriesInclusionProof {
+impl FoldingPolynomialQueriesInclusionProof {
     fn authenticated_queries(
         self,
         merkle_root: Digest,
@@ -1536,11 +1537,10 @@ impl PolyFoldQueriesInclusionProof {
             authentication_structure: self.auth_structure,
         };
 
-        if inclusion_proof.verify(merkle_root) {
-            Ok(self.queries)
-        } else {
-            Err(StirVerificationError::BadMerkleAuthenticationPath)
-        }
+        inclusion_proof
+            .verify(merkle_root)
+            .then_some(self.queries)
+            .ok_or(StirVerificationError::BadMerkleAuthenticationPath)
     }
 
     fn queried_indices(&self) -> impl Iterator<Item = usize> + '_ {
