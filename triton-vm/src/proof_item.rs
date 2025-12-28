@@ -8,6 +8,7 @@ use twenty_first::prelude::*;
 use crate::error::ProofStreamError;
 use crate::error::ProofStreamError::UnexpectedItem;
 use crate::fri::AuthenticationStructure;
+use crate::stir::StirResponse;
 use crate::table::AuxiliaryRow;
 use crate::table::MainRow;
 use crate::table::QuotientSegments;
@@ -22,14 +23,6 @@ pub struct FriResponse {
 
     /// The values of the opened leaves of the Merkle tree.
     pub revealed_leaves: Vec<XFieldElement>,
-}
-
-// todo: struct name
-#[derive(Debug, Clone, Eq, PartialEq, Hash, BFieldCodec, Arbitrary)]
-pub struct StirResponse {
-    pub auth_structure: AuthenticationStructure,
-
-    pub queried_leafs: Vec<Vec<XFieldElement>>,
 }
 
 macro_rules! proof_items {

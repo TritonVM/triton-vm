@@ -3,6 +3,7 @@
 
 use std::collections::HashMap;
 
+use arbitrary::Arbitrary;
 use itertools::Itertools;
 use num_traits::ConstOne;
 use twenty_first::math::traits::FiniteField;
@@ -15,7 +16,6 @@ use crate::error::StirVerificationError;
 use crate::error::U32_TO_USIZE_ERR;
 use crate::error::USIZE_TO_U64_ERR;
 use crate::proof_item::ProofItem;
-use crate::proof_item::StirResponse;
 use crate::proof_stream::ProofStream;
 use crate::table::master_table::BfeSlice;
 
@@ -120,6 +120,29 @@ pub enum SoundnessAssumption {
     /// In particular, assume that the distance of each oracle is within the
     /// capacity bound, (1 - ρ).
     Conjectured,
+}
+
+/// A [STIR](Stir) round's revealed values together with an authentication
+/// structure.
+#[derive(Debug, Clone, Eq, PartialEq, Hash, BFieldCodec, Arbitrary)]
+pub struct StirResponse {
+    /// The revealed values of the round polynomial `f_i` for all verifier
+    /// queries.
+    ///
+    /// Each element is the answer to one query `q` to the `k`-wise folded
+    /// polynomial. This means (in case the prover is honest) the element
+    /// contains the evaluations of the round polynomial `f_i` in each of the
+    /// k-many k-th roots of `q`. In other words, each element corresponds to
+    /// the evaluation of `f_i` at all `y` with `y^k == q`.
+    pub queried_leafs: Vec<Vec<XFieldElement>>,
+
+    /// The cryptographic data proving that the revealed leafs are included
+    /// in some Merkle tree.
+    ///
+    /// Only useful in combination with a Merkle root and additional metadata,
+    /// like the height of the tree. See also:
+    /// [`MerkleTreeInclusionProof::authentication_structure`].
+    pub auth_structure: AuthenticationStructure,
 }
 
 /// A transcript of a [STIR verification](Stir::verify).
@@ -946,7 +969,6 @@ impl Stir {
     //
     // # Todo
     //
-    // - Doc string for `StirResponse`
     // - Include profiler!(start / stop) statements (get inspired by FRI)
     // - Replace FRI by STIR
     // - Implement Giacomo et al's “Interactive Proofs for Batch Polynomial
@@ -1210,8 +1232,8 @@ impl Stir {
     ) -> VerifierResult<FoldingPolynomialQueriesInclusionProof> {
         let queried_indices = proof_stream.sample_indices(round_domain.len(), num_id_queries);
         let StirResponse {
-            auth_structure,
             queried_leafs,
+            auth_structure,
         } = proof_stream.dequeue()?.try_into_stir_response()?;
 
         let folded_domain = round_domain.pow(1 << self.log2_folding_factor).unwrap();
@@ -1483,8 +1505,8 @@ impl StirMerkleTree {
         let auth_structure = self.tree.authentication_structure(indices).unwrap();
 
         StirResponse {
-            auth_structure,
             queried_leafs,
+            auth_structure,
         }
     }
 }
