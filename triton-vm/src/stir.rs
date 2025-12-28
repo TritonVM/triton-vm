@@ -272,10 +272,54 @@ struct NumQueries {
 
 /// A Merkle tree where the leafs are “stacks” of values.
 ///
-/// Allows shorter Merkle inclusion proofs in [STIR](Stir): since the verifier
-/// requires all entries in a stack if it requires any entry in the stack, the
-/// entire stack might as well be the Merkle leaf's underlying value.
-struct LeafStackMerkleTree {
+/// In particular, records the pre-image for each leaf in the Merkle tree in a
+/// way that is helpful for [STIR](Stir): Each such pre-image is a “stack” of
+/// values. This allows shorter Merkle inclusion proofs in STIR, since the
+/// verifier requires all entries in a stack if it requires any entry in the
+/// stack. Therefore, the entire stack might as well be the Merkle tree's leaf's
+/// underlying value.
+///
+/// # Example
+///
+/// Say you want to build a Merkle tree that commits to the values
+/// `[0, 1, 2, 3, 4, 5, 6, 7]`. Usually, the Merkle tree would look like this:
+///
+/// ```markdown
+///         ──── _ ────
+///        ╱           ╲
+///       _             _
+///      ╱  ╲          ╱  ╲
+///    _      _      _      _
+///   ╱ ╲    ╱ ╲    ╱ ╲    ╱ ╲
+///  _   _  _   _  _   _  _   _
+///  ↑   ↑  ↑   ↑  ↑   ↑  ↑   ↑
+///  0   1  2   3  4   5  6   7
+/// ```
+///
+/// A Merkle tree with a stack height of 2 instead looks like this:
+///
+/// ```markdown
+///         ──── _ ────
+///        ╱           ╲
+///       _             _
+///      ╱  ╲          ╱  ╲
+///    _      _      _      _
+///    ↑      ↑      ↑      ↑
+/// ╭──┴─╮ ╭──┴─╮ ╭──┴─╮ ╭──┴─╮
+/// [0, 4] [1, 5] [2, 6] [3, 7]
+/// ```
+///
+/// A Merkle tree with a stack height of 4 instead looks like this:
+///
+/// ```markdown
+///             _
+///           ╱   ╲
+///          _     _
+///          ↑     ↑
+/// ╭────────┴─╮ ╭─┴────────╮
+/// [0, 2, 4, 6] [1, 3, 5, 7]
+/// ```
+struct StirMerkleTree {
     stacked_leafs: Vec<Vec<XFieldElement>>,
     tree: MerkleTree,
 }
@@ -945,7 +989,7 @@ impl Stir {
             });
         }
 
-        let mut commitment = LeafStackMerkleTree::new(codeword, folding_factor);
+        let mut commitment = StirMerkleTree::new(codeword, folding_factor);
         proof_stream.enqueue(ProofItem::MerkleRoot(commitment.tree.root()));
 
         let mut poly = domain.interpolate(codeword);
@@ -956,8 +1000,7 @@ impl Stir {
             let next_round_domain = Self::next_round_domain(domain);
 
             let folded_evaluations = next_round_domain.evaluate(&folded_poly);
-            let folded_poly_commitment =
-                LeafStackMerkleTree::new(&folded_evaluations, folding_factor);
+            let folded_poly_commitment = StirMerkleTree::new(&folded_evaluations, folding_factor);
             proof_stream.enqueue(ProofItem::MerkleRoot(folded_poly_commitment.tree.root()));
 
             let ood_queries = proof_stream.sample_scalars(num_queries.out_of_domain);
@@ -1407,7 +1450,7 @@ impl NumQueries {
     }
 }
 
-impl LeafStackMerkleTree {
+impl StirMerkleTree {
     /// # Panics
     ///
     /// - if the `stack_height` is not a power of two
@@ -1524,11 +1567,11 @@ mod tests {
     #[test]
     fn stacking() {
         let evaluations = xfe_array![0, 1, 2, 3, 4, 5, 6, 7];
-        let stacks_4 = LeafStackMerkleTree::stack(&evaluations, 4);
+        let stacks_4 = StirMerkleTree::stack(&evaluations, 4);
         let expected_4 = vec![xfe_vec![0, 2, 4, 6], xfe_vec![1, 3, 5, 7]];
         assert_eq!(expected_4, stacks_4);
 
-        let stacks_2 = LeafStackMerkleTree::stack(&evaluations, 2);
+        let stacks_2 = StirMerkleTree::stack(&evaluations, 2);
         let expected_2 = [[0, 4], [1, 5], [2, 6], [3, 7]]
             .map(|v| v.map(|x| xfe!(x)).to_vec())
             .to_vec();
