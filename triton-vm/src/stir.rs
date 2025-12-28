@@ -1,6 +1,8 @@
 //! The [STIR](Stir) polynomial low-degree test over the
 //! [extension field](XFieldElement).
 
+use std::collections::HashMap;
+
 use itertools::Itertools;
 use num_traits::ConstOne;
 use twenty_first::math::traits::FiniteField;
@@ -284,12 +286,12 @@ struct LeafStackMerkleTree {
 /// This is an extended version of a [`MerkleTreeInclusionProof`] that also
 /// tracks the actual queries to the folding polynomial the prover has
 /// commited to.
+//
+// todo: struct name & doc string
 struct PolyFoldQueriesInclusionProof {
-    tree_height: u32,
     queries: Vec<FoldingPolynomialQuery>,
-    queried_indices: Vec<usize>,
-    indexed_leafs: Vec<(usize, Digest)>,
     auth_structure: AuthenticationStructure,
+    folded_domain_len: usize,
 }
 
 /// The result of a query to the folding polynomial, yielding `k`-many
@@ -1086,7 +1088,7 @@ impl Stir {
             let ood_answers = proof_stream.dequeue()?.try_into_stir_ood_values()?;
             let inclusion_proof =
                 self.extract_inclusion_proof(proof_stream, domain, num_queries.in_domain)?;
-            let queried_indices = inclusion_proof.queried_indices.clone();
+            let queried_indices = inclusion_proof.queried_indices().collect();
             let auth_structure = inclusion_proof.auth_structure.clone();
             let queries =
                 inclusion_proof.authenticated_queries(commitment_to_previous_polynomial)?;
@@ -1144,7 +1146,7 @@ impl Stir {
 
         let num_queries = round_params.final_num_in_domain_queries;
         let inclusion_proof = self.extract_inclusion_proof(proof_stream, domain, num_queries)?;
-        let queried_indices = inclusion_proof.queried_indices.clone();
+        let queried_indices = inclusion_proof.queried_indices().collect();
         let auth_structure = inclusion_proof.auth_structure.clone();
         let queries = inclusion_proof.authenticated_queries(commitment_to_previous_polynomial)?;
 
@@ -1185,41 +1187,40 @@ impl Stir {
         round_domain: ArithmeticDomain,
         num_id_queries: usize,
     ) -> VerifierResult<PolyFoldQueriesInclusionProof> {
-        let folded_domain = round_domain.pow(1 << self.log2_folding_factor).unwrap();
         let queried_indices = proof_stream.sample_indices(round_domain.len(), num_id_queries);
-        let inclusion_proof = proof_stream.dequeue()?.try_into_stir_response()?;
+        let StirResponse {
+            auth_structure,
+            queried_leafs,
+        } = proof_stream.dequeue()?.try_into_stir_response()?;
 
-        let folded_queried_indices = queried_indices
+        let num_leafs_in_proof = queried_leafs.len();
+        let folded_domain = round_domain.pow(1 << self.log2_folding_factor).unwrap();
+        let indexed_queried_leafs = queried_indices
             .iter()
             .map(|&idx| idx % folded_domain.len())
             .unique()
-            .collect_vec();
-        if inclusion_proof.queried_leafs.len() != folded_queried_indices.len() {
+            .zip(queried_leafs)
+            .collect::<HashMap<_, _>>();
+        if num_leafs_in_proof != indexed_queried_leafs.len() {
             return Err(StirVerificationError::IncorrectNumberOfRevealedLeaves);
         }
 
-        let leaf_digests = inclusion_proof
-            .queried_leafs
-            .iter()
-            .map(|xfe_slice| XFieldElement::bfe_slice(xfe_slice))
-            .map(Tip5::hash_varlen);
-        let indexed_leafs = folded_queried_indices
-            .into_iter()
-            .zip_eq(leaf_digests)
-            .collect();
-
         let folded_domain_len = u64::try_from(folded_domain.len()).expect(USIZE_TO_U64_ERR);
         let root_distance = round_domain.generator().mod_pow(folded_domain_len);
+        let folded_domain_len = usize::try_from(folded_domain_len).unwrap();
+
         let queries = queried_indices
-            .iter()
-            .zip(inclusion_proof.queried_leafs)
-            .map(|(&index, values)| {
-                let query_index = index % folded_domain.len();
+            .into_iter()
+            .map(|index| {
+                let query_index = index % folded_domain_len;
+                let values = indexed_queried_leafs[&query_index].clone();
                 let query_index = u32::try_from(query_index).expect(DOMAIN_INDEX_TO_U32_ERR);
+                let point = folded_domain.value(query_index);
+                let root = round_domain.value(query_index);
                 FoldingPolynomialQuery {
                     index,
-                    point: folded_domain.value(query_index),
-                    root: round_domain.value(query_index),
+                    point,
+                    root,
                     root_distance,
                     values,
                 }
@@ -1227,11 +1228,9 @@ impl Stir {
             .collect();
 
         let inclusion_proof = PolyFoldQueriesInclusionProof {
-            tree_height: folded_domain.len().ilog2(),
             queries,
-            queried_indices,
-            indexed_leafs,
-            auth_structure: inclusion_proof.auth_structure,
+            auth_structure,
+            folded_domain_len,
         };
 
         Ok(inclusion_proof)
@@ -1462,9 +1461,23 @@ impl PolyFoldQueriesInclusionProof {
         self,
         merkle_root: Digest,
     ) -> VerifierResult<Vec<FoldingPolynomialQuery>> {
+        // Even though these indices into the folded domain must be unique for
+        // the quotienting step, Merkle tree inclusion proofs can handle
+        // duplicate entries.
+        let folded_queried_indices = self
+            .queries
+            .iter()
+            .map(|q| q.index % self.folded_domain_len);
+        let leaf_digests = self
+            .queries
+            .iter()
+            .map(|q| q.values.as_slice())
+            .map(XFieldElement::bfe_slice)
+            .map(Tip5::hash_varlen);
+
         let inclusion_proof = MerkleTreeInclusionProof {
-            tree_height: self.tree_height,
-            indexed_leafs: self.indexed_leafs,
+            tree_height: self.folded_domain_len.ilog2(),
+            indexed_leafs: folded_queried_indices.zip(leaf_digests).collect(),
             authentication_structure: self.auth_structure,
         };
 
@@ -1473,6 +1486,10 @@ impl PolyFoldQueriesInclusionProof {
         } else {
             Err(StirVerificationError::BadMerkleAuthenticationPath)
         }
+    }
+
+    fn queried_indices(&self) -> impl Iterator<Item = usize> + '_ {
+        self.queries.iter().map(|q| q.index)
     }
 }
 
