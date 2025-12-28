@@ -935,40 +935,17 @@ impl Stir {
         }
     }
 
-    //                                                           in DEEP commitment
-    //
-    // - commit to f                                                    x
-    // - sample folding randomness                    (fold_rand)
-    //
-    // fold
-    // - decompose initial polynomial (of degree d)
-    //   into k polynomials (of degree d/k)
-    // - randomly combine using fold_rand             (g_poly)
-    //
-    // maybe terminate:
-    //   - if deg(g_poly) <= final_degree, send g_poly
-    //
-    // - halve domain, shift by ω                     (new_dom)
-    // - commit to g_poly evaluated over new_dom
-    //
-    // - sample ood-randomness (more than one point?) (αs)              x
-    // - evaluate g_poly over αs                      (βs)              x
-    // - send βs
-    // - sample shift-queries from domain^k           (v_i)_i           x
-    // - send evaluations of f in all v_i             (y_i)_i
-    // - send authentication paths of those evaluations
-    //
-    // quotient
-    // - interpolate (α_i, β_i)_i and (v_i, y_i)_i    (p)
-    // - quotient g_poly with respect to p:
-    //   - compute zerofier of α_i and v_i            (z_S)
-    //   - (g_poly - p) / z_S                         (f')
-    // - sample degree-correction randomness          (deg_rand)
-    // - degree-correct quotient                      (new f)
+    /// Prove that the given codeword corresponds to a polynomial of
+    /// [low degree](Self::max_degree) and populate the proof stream with the
+    /// generated proof artifacts.
+    ///
+    /// Returns the indices the verifier queried in the first round. If STIR is
+    /// used in a larger context (like a STARK), then these indices can be used
+    /// to prove that the codeword of low degree actually corresponds to some
+    /// codeword of interest, not just any codeword.
     //
     // # Todo
     //
-    // - Doc string for prove
     // - Doc string for `StirResponse`
     // - Include profiler!(start / stop) statements (get inspired by FRI)
     // - Replace FRI by STIR
