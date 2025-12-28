@@ -3,7 +3,6 @@
 //
 // # Todo
 //
-// - Include profiler!(start / stop) statements (get inspired by FRI)
 // - Replace FRI by STIR
 // - Implement Giacomo et al's “Interactive Proofs for Batch Polynomial
 //   Evaluation”. This makes interpolation in the verifier superfluous.
@@ -22,6 +21,7 @@ use crate::error::StirProvingError;
 use crate::error::StirVerificationError;
 use crate::error::U32_TO_USIZE_ERR;
 use crate::error::USIZE_TO_U64_ERR;
+use crate::profiler::profiler;
 use crate::proof_item::ProofItem;
 use crate::proof_stream::ProofStream;
 use crate::table::master_table::BfeSlice;
@@ -980,6 +980,7 @@ impl Stir {
         codeword: &[XFieldElement],
         proof_stream: &mut ProofStream,
     ) -> ProverResult<Vec<usize>> {
+        profiler!(start "initialize");
         let round_params = self.round_params()?;
 
         let folding_factor = 1 << self.log2_folding_factor;
@@ -996,7 +997,10 @@ impl Stir {
 
         let mut poly = domain.interpolate(codeword);
         let mut first_round_queried_indices = None;
+        profiler!(stop "initialize");
+
         for num_queries in round_params.round_queries {
+            profiler!(start "full rounds");
             let folding_randomness = proof_stream.sample_scalars(1)[0];
             let folded_poly = Self::fold_polynomial(&poly, folding_factor, folding_randomness);
             let next_round_domain = Self::next_round_domain(domain);
@@ -1059,9 +1063,11 @@ impl Stir {
             commitment = folded_poly_commitment;
 
             first_round_queried_indices.get_or_insert(queried_indices);
+            profiler!(stop "full rounds");
         }
 
         // final round is special because there is no quotienting
+        profiler!(start "final round");
         let folding_randomness = proof_stream.sample_scalars(1)[0];
         let poly = Self::fold_polynomial(&poly, folding_factor, folding_randomness);
         proof_stream.enqueue(ProofItem::StirPolynomial(poly));
@@ -1076,6 +1082,7 @@ impl Stir {
             .collect_vec();
         let inclusion_proof = commitment.inclusion_proof(&folded_poly_queried_indices);
         proof_stream.enqueue(ProofItem::StirResponse(inclusion_proof));
+        profiler!(stop "final round");
 
         Ok(first_round_queried_indices.unwrap_or(queried_indices))
     }
@@ -1117,15 +1124,18 @@ impl Stir {
     /// [elems]: Transcript::partial_first_codeword
     /// [idx]: Transcript::first_round_indices
     pub fn verify(&self, proof_stream: &mut ProofStream) -> VerifierResult<Transcript> {
+        profiler!(start "initialize");
         let round_params = self.round_params()?;
-
         let mut partial_first_codeword = None;
         let mut previous_quotienting_data = None;
         let mut round_transcripts = Vec::with_capacity(round_params.round_queries.len());
         let mut domain = self.initial_domain()?;
         let mut commitment_to_previous_polynomial =
             proof_stream.dequeue()?.try_into_merkle_root()?;
+        profiler!(stop "initialize");
+
         for num_queries in round_params.round_queries {
+            profiler!(start "full rounds");
             let folding_randomness = proof_stream.sample_scalars(1)[0];
             let commitment_to_current_polynomial =
                 proof_stream.dequeue()?.try_into_merkle_root()?;
@@ -1175,9 +1185,10 @@ impl Stir {
             previous_quotienting_data = Some(quotienting_data);
             domain = Self::next_round_domain(domain);
             commitment_to_previous_polynomial = commitment_to_current_polynomial;
+            profiler!(stop "full rounds");
         }
 
-        // final round
+        profiler!(start "final round");
         let folding_randomness = proof_stream.sample_scalars(1)[0];
         let poly = proof_stream.dequeue()?.try_into_stir_polynomial()?;
 
@@ -1222,6 +1233,7 @@ impl Stir {
             rounds: round_transcripts,
             final_round: final_round_transcript,
         };
+        profiler!(stop "final round");
 
         Ok(transcript)
     }
