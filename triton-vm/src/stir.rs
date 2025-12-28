@@ -1193,21 +1193,33 @@ impl Stir {
             queried_leafs,
         } = proof_stream.dequeue()?.try_into_stir_response()?;
 
-        let num_leafs_in_proof = queried_leafs.len();
         let folded_domain = round_domain.pow(1 << self.log2_folding_factor).unwrap();
-        let indexed_queried_leafs = queried_indices
+        let folded_indices = queried_indices
             .iter()
-            .map(|&idx| idx % folded_domain.len())
-            .unique()
-            .zip(queried_leafs)
-            .collect::<HashMap<_, _>>();
-        if num_leafs_in_proof != indexed_queried_leafs.len() {
+            .map(|&index| index % folded_domain.len())
+            .unique();
+        if queried_leafs.len() != folded_indices.clone().count() {
             return Err(StirVerificationError::IncorrectNumberOfRevealedLeaves);
         }
 
+        // Because of above length check, we know that the hash map contains
+        // exactly one entry per folded-domain index. This makes it safe to
+        // directly index into the map using the folded-domain indices as keys.
+        //
+        // The reason this setup is seemingly convoluted is due to the need of
+        // 1. de-duplication of folded-domain indices, and
+        // 2. preservation of all sampled indices.
+        //
+        // In particular, if two sampled indices give the same folded-domain
+        // index, both original indices must be recorded, and the corresponding
+        // (identical) revealed leaf must be associated with both queries. This
+        // requires some form of data structure from which the revealed leaf can
+        // be fetched based on the folded-domain index – a map.
+        let indexed_queried_leafs = folded_indices.zip(queried_leafs).collect::<HashMap<_, _>>();
+
         let folded_domain_len = u64::try_from(folded_domain.len()).expect(USIZE_TO_U64_ERR);
         let root_distance = round_domain.generator().mod_pow(folded_domain_len);
-        let folded_domain_len = usize::try_from(folded_domain_len).unwrap();
+        let folded_domain_len = usize::try_from(folded_domain_len).unwrap(); // ugh…
 
         let queries = queried_indices
             .into_iter()
