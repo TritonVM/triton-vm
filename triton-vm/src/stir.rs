@@ -1,5 +1,12 @@
 //! The [STIR](Stir) polynomial low-degree test over the
 //! [extension field](XFieldElement).
+//
+// # Todo
+//
+// - Include profiler!(start / stop) statements (get inspired by FRI)
+// - Replace FRI by STIR
+// - Implement Giacomo et al's “Interactive Proofs for Batch Polynomial
+//   Evaluation”. This makes interpolation in the verifier superfluous.
 
 use std::collections::HashMap;
 
@@ -682,15 +689,17 @@ impl Stir {
     /// δ ∈ (0, 1 - ρ), and we chose δ = 1 - ρ - η. In either case, η is defined
     /// in this method.
     //
-    // TODO: Giacomo thinks this can be set in a better way. Maybe it makes
-    //       more sense if it's multiplicative?
-    // TODO: This is based on some heuristic by Giacomo. Ferdinand doesn't
-    //       fully understand how this comes to be. Explore different things.
-    // TODO: According to Giacomo, “Funnily enough, [η = ρ/10 or η = √ρ/10]
-    //       avoids all the new attacks on proximity gaps 😉”
-    //       Does a division by 20 also work? Need to investigate.
-    // TODO: Nicolas Mohnblatt has a recent write-up that's nice:
-    //       https://blog.zksecurity.xyz/posts/proximity-conjecture/
+    // Giacomo thinks this can be set in a better way. Maybe it makes more sense
+    // if it's multiplicative? In either case, it's based on some heuristic by
+    // Giacomo that Ferdinand doesn't fully understand. It might be interesting
+    // to explore different things at some point.
+    //
+    // According to Giacomo: “Funnily enough, [η = ρ/10 or η = √ρ/10] avoids
+    // all the new attacks on proximity gaps 😉”. Presumably, division by 20
+    // also works.
+    //
+    // A high-level overview of the new attacks mentioned above:
+    // https://blog.zksecurity.xyz/posts/proximity-conjecture/
     fn log2_eta(&self, log2_expansion_factor: usize) -> f64 {
         let log2_expansion_factor = log2_expansion_factor as f64;
         let log2_rho_or_sqrt_rho = match self.soundness {
@@ -700,7 +709,7 @@ impl Stir {
 
         // This is where the heuristic kicks in:
         // log₂(ρ/20) or log₂(√ρ/20)
-        log2_rho_or_sqrt_rho - core::f64::consts::LOG2_10 - 1.
+        log2_rho_or_sqrt_rho - core::f64::consts::LOG2_10 - 1.0
     }
 
     /// The total amount of in-domain queries to make, including error margin.
@@ -966,13 +975,6 @@ impl Stir {
     /// used in a larger context (like a STARK), then these indices can be used
     /// to prove that the codeword of low degree actually corresponds to some
     /// codeword of interest, not just any codeword.
-    //
-    // # Todo
-    //
-    // - Include profiler!(start / stop) statements (get inspired by FRI)
-    // - Replace FRI by STIR
-    // - Implement Giacomo et al's “Interactive Proofs for Batch Polynomial
-    //   Evaluation”. This makes interpolation in the verifier superfluous.
     pub fn prove(
         &self,
         codeword: &[XFieldElement],
