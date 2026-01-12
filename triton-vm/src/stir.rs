@@ -676,8 +676,8 @@ impl StirParameters {
     //
     // Under provable list-decoding bounds, we have δ = 1 - √ρ - η,
     // under conjectured list-decoding bounds, we have δ = 1 - ρ - η,
-    // where η is the gap between the chosen bound and δ, and is defined in
-    // the corresponding method.
+    // where η (the “slackness factor”) is the gap between the chosen bound and
+    // δ (the “proximity parameter”) and is defined in the corresponding method.
     //
     // With all of these ingredients, we solve for repetition parameter t by
     // taking the log₂ on both sides:
@@ -686,8 +686,8 @@ impl StirParameters {
     // Since 0 < δ < 1, we know that log₂(1 - δ) < 0:
     //             t ⩾ -security_level / log₂(1-δ)
     fn num_unique_in_domain_queries(&self, log2_expansion_factor: usize) -> SetupResult<usize> {
-        let delta = self.delta(log2_expansion_factor)?;
-        let num_queries = -(self.security_level as f64) / (1.0 - delta).log2();
+        let proximity_parameter = self.proximity_parameter(log2_expansion_factor)?;
+        let num_queries = -(self.security_level as f64) / (1.0 - proximity_parameter).log2();
 
         Ok(num_queries.ceil() as usize)
     }
@@ -698,10 +698,10 @@ impl StirParameters {
     /// threshold for which words are considered “far” from the code.
     ///
     /// Note that there are a range of valid values for δ. This method makes a
-    /// concrete choice; see also [η](Self::log2_eta).
-    fn delta(&self, log2_expansion_factor: usize) -> SetupResult<f64> {
-        let log2_eta = self.log2_eta(log2_expansion_factor);
-        let eta = 2_f64.powf(log2_eta);
+    /// concrete choice; see also [`Self::log2_slackness_factor`].
+    fn proximity_parameter(&self, log2_expansion_factor: usize) -> SetupResult<f64> {
+        let log2_slackness_factor = self.log2_slackness_factor(log2_expansion_factor);
+        let slackness_factor = 2_f64.powf(log2_slackness_factor);
 
         let Ok(log2_expansion_factor) = u32::try_from(log2_expansion_factor) else {
             return Err(StirParameterError::TooBigInitialExpansionFactor);
@@ -710,16 +710,20 @@ impl StirParameters {
             return Err(StirParameterError::TooBigInitialExpansionFactor);
         };
         let rate = 1.0 / f64::from(expansion_factor);
-        let delta = match self.soundness {
-            SoundnessType::Provable => 1.0 - rate.sqrt() - eta,
-            SoundnessType::Conjectured => 1.0 - rate - eta,
+        let proximity_parameter = match self.soundness {
+            SoundnessType::Provable => 1.0 - rate.sqrt() - slackness_factor,
+            SoundnessType::Conjectured => 1.0 - rate - slackness_factor,
         };
 
-        Ok(delta)
+        Ok(proximity_parameter)
     }
 
     /// The (log₂ of the) distance between the proximity parameter δ and the
-    /// [chosen bound](SoundnessType), called η.
+    /// [chosen bound](SoundnessType).
+    ///
+    /// This parameter is often called η in the context of Reed-Solomon codes.
+    /// In this implementation, it is not a parameter; the choice has been
+    /// fixed.
     ///
     /// No matter the soundness type, the upper bound on the
     /// [list size](Self::log2_list_size) only holds for proximity parameters δ
@@ -744,7 +748,7 @@ impl StirParameters {
     //
     // A high-level overview of the new attacks mentioned above:
     // https://blog.zksecurity.xyz/posts/proximity-conjecture/
-    fn log2_eta(&self, log2_expansion_factor: usize) -> f64 {
+    fn log2_slackness_factor(&self, log2_expansion_factor: usize) -> f64 {
         let log2_expansion_factor = log2_expansion_factor as f64;
         let log2_rho_or_sqrt_rho = match self.soundness {
             SoundnessType::Provable => 0.5 * -log2_expansion_factor,
@@ -960,8 +964,9 @@ impl StirParameters {
     /// The list size of the Reed-Solomon code.
     ///
     /// The Reed-Solomon code in question is defined by the given polynomial
-    /// degree and the given rate. The proximity parameter δ is implied by
-    /// [η](Self::log2_eta).
+    /// degree and the given rate. The [proximity
+    /// parameter](Self::proximity_parameter) δ is implied by the [slackness
+    /// factor](Self::log2_slackness_factor) η.
     ///
     /// For the [Johnson bound](SoundnessType::Provable), it is shown that
     /// the Reed-Solomon codes are (1-√ρ-η, 1/(2·√ρ·η))-list decodable. In
@@ -974,12 +979,14 @@ impl StirParameters {
     /// ℓ = degree·extension_factor/η.
     /// See also Conjecture 5.6 in the STIR paper.
     fn log2_list_size(&self, log2_poly_degree: usize, log2_expansion_factor: usize) -> f64 {
-        let log2_eta = self.log2_eta(log2_expansion_factor);
+        let log2_slackness_factor = self.log2_slackness_factor(log2_expansion_factor);
 
         match self.soundness {
-            SoundnessType::Provable => log2_expansion_factor as f64 / 2. - 1. - log2_eta,
+            SoundnessType::Provable => {
+                log2_expansion_factor as f64 / 2. - 1. - log2_slackness_factor
+            }
             SoundnessType::Conjectured => {
-                (log2_poly_degree + log2_expansion_factor) as f64 - log2_eta
+                (log2_poly_degree + log2_expansion_factor) as f64 - log2_slackness_factor
             }
         }
     }
@@ -1672,11 +1679,9 @@ mod tests {
 
     #[test]
     fn log2_binomial_coefficient_is_close_to_precomputed_result() {
-        const DELTA: f64 = 1.0e-3;
-
         let assert_are_close = |expected: f64, (a, b)| {
             let log2_bin_coeff = log2_binomial_coefficient(a, b);
-            let are_close = (expected - log2_bin_coeff).abs() < DELTA;
+            let are_close = (expected - log2_bin_coeff).abs() < 1.0e-3;
             assert!(are_close, "{expected} ≠ {log2_bin_coeff}");
         };
 
@@ -1824,10 +1829,10 @@ mod tests {
         mut proof_stream: ProofStream,
         #[strategy(Just(#stir.initial_domain.len() as isize))] domain_length: isize,
         #[strategy(-#domain_length..=#domain_length)]
-        #[filter(#delta != &0)]
-        delta: isize,
+        #[filter(#length_difference != &0)]
+        length_difference: isize,
     ) {
-        let wrong_length = (domain_length + delta) as usize;
+        let wrong_length = (domain_length + length_difference) as usize;
         let codeword = xfe_vec![1; wrong_length];
 
         let_assert!(Err(err) = stir.prove(&codeword, &mut proof_stream));
