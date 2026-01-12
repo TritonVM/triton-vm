@@ -1636,7 +1636,9 @@ impl FoldingPolynomialQueriesInclusionProof {
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
+    use assert2::assert;
     use assert2::let_assert;
     use proptest::prelude::*;
     use proptest_arbitrary_interop::arb;
@@ -1668,13 +1670,13 @@ mod tests {
         let evaluations = xfe_array![0, 1, 2, 3, 4, 5, 6, 7];
         let stacks_4 = StirMerkleTree::stack(&evaluations, 4);
         let expected_4 = vec![xfe_vec![0, 2, 4, 6], xfe_vec![1, 3, 5, 7]];
-        assert_eq!(expected_4, stacks_4);
+        assert!(expected_4 == stacks_4);
 
         let stacks_2 = StirMerkleTree::stack(&evaluations, 2);
         let expected_2 = [[0, 4], [1, 5], [2, 6], [3, 7]]
             .map(|v| v.map(|x| xfe!(x)).to_vec())
             .to_vec();
-        assert_eq!(expected_2, stacks_2);
+        assert!(expected_2 == stacks_2);
     }
 
     #[test]
@@ -1781,7 +1783,7 @@ mod tests {
         let expected = Polynomial::new(bfe_vec![4321, 8765, 109]);
         let actual = Stir::fold_polynomial(&poly, folding_factor, folding_randomness);
 
-        assert_eq!(expected, actual);
+        assert!(expected == actual);
     }
 
     #[proptest]
@@ -1886,6 +1888,27 @@ mod tests {
         prop_assert_eq!(bad_log2_folding_factor, f);
     }
 
+    /// The proptest [`invalid_parameter_big_folding_factor_is_rejected`] does
+    /// not cover all failure paths reliably.
+    #[test]
+    fn concrete_invalid_big_parameter_folding_factor_are_rejected() {
+        fn assert_too_big_folding_factor_is_rejected(factor: usize) {
+            let params = StirParameters {
+                security_level: 42,
+                soundness: SoundnessType::default(),
+                log2_folding_factor: factor,
+                log2_initial_expansion_factor: 1,
+                log2_high_degree: factor,
+            };
+            let err = Stir::try_from(params).unwrap_err();
+
+            assert!(StirParameterError::TooBigLog2FoldingFactor(factor) == err);
+        }
+
+        assert_too_big_folding_factor_is_rejected(u32::MAX as usize);
+        assert_too_big_folding_factor_is_rejected(usize::MAX);
+    }
+
     #[proptest]
     fn invalid_parameter_small_high_degree_is_rejected(
         mut params: StirParameters,
@@ -1906,6 +1929,27 @@ mod tests {
         let_assert!(StirParameterError::InitialDomainTooBig(_) = err);
     }
 
+    /// The proptest [`too_big_initial_domain_doesnt_cause_crash`] does not
+    /// cover all failure paths reliably.
+    #[test]
+    fn concrete_too_big_initial_domain_doesnt_cause_crash() {
+        let two_thirds_u64_max = (u64::MAX as usize / 3) * 2;
+        let params = StirParameters {
+            security_level: 42,
+            soundness: SoundnessType::default(),
+            log2_folding_factor: two_thirds_u64_max,
+            log2_initial_expansion_factor: two_thirds_u64_max,
+            log2_high_degree: two_thirds_u64_max,
+        };
+        let_assert!(Err(err) = params.initial_domain());
+        assert!(StirParameterError::InitialDomainTooBig(u64::MAX) == err);
+    }
+
+    #[proptest]
+    fn try_from_and_new_correspond(params: StirParameters) {
+        prop_assert_eq!(Stir::try_from(params), Stir::new(params));
+    }
+
     #[proptest]
     fn prove_and_verify_zero_polynomial(stir: Stir) {
         let zero_poly = xfe_vec![0; stir.initial_domain.len()];
@@ -1915,6 +1959,41 @@ mod tests {
 
         proof_stream.reset_sponge();
         stir.verify(&mut proof_stream)?;
+    }
+
+    // It's quite difficult to meaningfully check that the folded query indices
+    // are _correct_. (In particular, re-implementing the method is not
+    // meaningful.) Hence, this is only a sanity check.
+    #[test]
+    fn folded_query_indices_look_sane() {
+        let params = StirParameters {
+            security_level: 42,
+            soundness: SoundnessType::default(),
+            log2_folding_factor: 2,
+            log2_initial_expansion_factor: 2,
+            log2_high_degree: 11,
+        };
+        let stir = Stir::new(params).unwrap();
+        let zero_poly = xfe_vec![0; stir.initial_domain().len()];
+        let mut proof_stream = ProofStream::new();
+        stir.prove(&zero_poly, &mut proof_stream).unwrap();
+        proof_stream.reset_sponge();
+        let transcript = stir.verify(&mut proof_stream).unwrap();
+
+        // the sanity check
+        assert!(transcript.rounds.len() > 0);
+        let domain_shrinkage = 1 << StirParameters::LOG2_DOMAIN_SHRINKAGE;
+        let mut domain = stir.initial_domain();
+        for round in &transcript.rounds {
+            domain = domain.pow(domain_shrinkage).unwrap();
+            for i in round.folded_queried_indices() {
+                assert!(i < domain.len());
+            }
+        }
+        domain = domain.pow(domain_shrinkage).unwrap();
+        for i in transcript.final_round.folded_queried_indices() {
+            assert!(i < domain.len());
+        }
     }
 
     #[proptest]
