@@ -478,6 +478,13 @@ impl StirParameters {
         (1 << self.log2_high_degree) - 1
     }
 
+    pub(crate) fn expansion_factor(&self) -> usize {
+        let err = "internal error: log₂(expansion factor) exceeds expected maximum";
+        let log2_expansion_factor = u32::try_from(self.log2_initial_expansion_factor).expect(err);
+
+        1_usize.checked_shl(log2_expansion_factor).expect(err)
+    }
+
     /// Create a new STIR instance by deriving the round parameters.
     fn try_into_stir(&self) -> SetupResult<Stir> {
         if self.log2_folding_factor < 2 {

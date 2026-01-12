@@ -1593,7 +1593,7 @@ impl Stark {
         let error_msg = "internal error: padded height drastically exceeds assumed maximum";
         let padded_height = padded_height.checked_next_power_of_two().expect(error_msg);
         let log2_high_degree = padded_height.ilog2().try_into().expect(error_msg);
-        let stir_parameters = StirParameters {
+        let mut stir_parameters = StirParameters {
             security_level: self.security_level,
             soundness: SoundnessType::Provable,
             log2_folding_factor: 2,
@@ -1619,15 +1619,14 @@ impl Stark {
         let log2_padded_height = usize::try_from(padded_height.ilog2()).expect(U32_TO_USIZE_ERR);
         let log2_max_domain_growth_factor = ArithmeticDomain::LOG2_MAX_LEN - log2_padded_height;
 
-        for log2_domain_growth_factor in 1..=log2_max_domain_growth_factor {
-            let mut parameters = stir_parameters;
-            parameters.log2_high_degree += log2_domain_growth_factor;
-            let stir = Stir::try_from(parameters)?;
+        for _ in 1..=log2_max_domain_growth_factor {
+            stir_parameters.log2_high_degree += 1;
+            let stir = Stir::try_from(stir_parameters)?;
 
             let num_trace_randomizers = self.num_trace_randomizers(&stir);
             let randomized_trace_len =
                 Self::randomized_trace_len(padded_height, num_trace_randomizers);
-            let expansion_factor = 1 << parameters.log2_initial_expansion_factor;
+            let expansion_factor = stir_parameters.expansion_factor();
             if stir.initial_domain().len() >= randomized_trace_len * expansion_factor {
                 return Ok(stir);
             }
