@@ -208,15 +208,15 @@ where
 
     /// The [`ArithmeticDomain`] to [low-degree extend] into.
     /// The larger of the [`quotient_domain`](ProverDomains::quotient) and the
-    /// [domain for the low-degree test](ProverDomains::low_deg_test).
+    /// [domain for the low-degree test](ProverDomains::ldt).
     ///
     /// [low-degree extend]: Self::maybe_low_degree_extend_all_columns
     fn evaluation_domain(&self) -> ArithmeticDomain {
         let domains = self.domains();
-        if domains.quotient.len() > domains.low_deg_test.len() {
+        if domains.quotient.len() > domains.ldt.len() {
             domains.quotient
         } else {
-            domains.low_deg_test
+            domains.ldt
         }
     }
 
@@ -244,7 +244,7 @@ where
     /// Low-degree extend all columns of the trace table (including randomizers)
     /// _if_ it can be [cached]. In that case, the resulting low-degree extended
     /// columns can be accessed using [`quotient_domain_table`][table] and
-    /// [`low_deg_test_domain_table`][Self::low_deg_test_domain_table].
+    /// [`ldt_domain_table`][Self::ldt_domain_table].
     ///
     /// [table]: Self::quotient_domain_table
     /// [cached]: crate::config::overwrite_lde_trace_caching_to
@@ -330,7 +330,7 @@ where
     /// returns a pointer to an array and that array has to live somewhere;
     /// it cannot live on stack and from the trait implementation we cannot
     /// access the implementing object's fields.
-    fn low_deg_test_domain_table(&self) -> Option<ArrayView2<'_, Self::Field>>;
+    fn ldt_domain_table(&self) -> Option<ArrayView2<'_, Self::Field>>;
 
     /// Get one row of the table at an arbitrary index. Notably, the index does
     /// not have to be in any of the domains. In other words, can be used to
@@ -432,7 +432,7 @@ where
     /// Every row gives one leaf in the tree.
     fn merkle_tree(&self) -> MerkleTree {
         profiler!(start "leafs");
-        let hashed_rows = self.hash_all_low_deg_test_domain_rows();
+        let hashed_rows = self.hash_all_ldt_domain_rows();
         profiler!(stop "leafs");
 
         profiler!(start "Merkle tree" ("hash"));
@@ -442,10 +442,10 @@ where
         merkle_tree
     }
 
-    fn hash_all_low_deg_test_domain_rows(&self) -> Vec<Digest> {
-        if let Some(low_deg_test_domain_table) = self.low_deg_test_domain_table() {
+    fn hash_all_ldt_domain_rows(&self) -> Vec<Digest> {
+        if let Some(ldt_domain_table) = self.ldt_domain_table() {
             profiler!(start "hash rows" ("hash"));
-            let all_digests = low_deg_test_domain_table
+            let all_digests = ldt_domain_table
                 .axis_iter(ROW_AXIS)
                 .into_par_iter()
                 .map(|row| row.to_slice().unwrap())
@@ -534,13 +534,13 @@ where
     /// # Panics
     ///
     /// Panics if any of the requested indices is out of range; that is, larger
-    /// than `min(self.domains().low_deg_test.len(), u32::MAX)`.
+    /// than `min(self.domains().ldt.len(), u32::MAX)`.
     fn reveal_rows(&self, row_indices: &[usize]) -> Vec<Vec<Self::Field>> {
-        if let Some(low_deg_test_domain_table) = self.low_deg_test_domain_table() {
+        if let Some(ldt_domain_table) = self.ldt_domain_table() {
             // the cache already contains the requested information
             return row_indices
                 .iter()
-                .map(|&row_idx| low_deg_test_domain_table.row(row_idx).to_vec())
+                .map(|&row_idx| ldt_domain_table.row(row_idx).to_vec())
                 .collect();
         }
 
@@ -549,7 +549,7 @@ where
         let domains = self.domains();
         let indeterminates = row_indices
             .par_iter()
-            .map(|&i| domains.low_deg_test.value(u32::try_from(i).unwrap()))
+            .map(|&i| domains.ldt.value(u32::try_from(i).unwrap()))
             .map(Self::Field::from)
             .collect::<Vec<_>>();
 
@@ -751,11 +751,11 @@ impl MasterTable for MasterMainTable {
         drop(self.low_degree_extended_table.take());
     }
 
-    fn low_deg_test_domain_table(&self) -> Option<ArrayView2<'_, BFieldElement>> {
+    fn ldt_domain_table(&self) -> Option<ArrayView2<'_, BFieldElement>> {
         let table = self.low_degree_extended_table.as_ref()?;
         let nrows = table.nrows();
-        if nrows > self.domains.low_deg_test.len() {
-            let unit_step = nrows / self.domains.low_deg_test.len();
+        if nrows > self.domains.ldt.len() {
+            let unit_step = nrows / self.domains.ldt.len();
             Some(table.slice(s![0..nrows;unit_step, ..]))
         } else {
             Some(table.view())
@@ -811,11 +811,11 @@ impl MasterTable for MasterAuxTable {
         drop(self.low_degree_extended_table.take());
     }
 
-    fn low_deg_test_domain_table(&self) -> Option<ArrayView2<'_, XFieldElement>> {
+    fn ldt_domain_table(&self) -> Option<ArrayView2<'_, XFieldElement>> {
         let table = self.low_degree_extended_table.as_ref()?;
         let nrows = table.nrows();
-        if nrows > self.domains.low_deg_test.len() {
-            let unit_step = nrows / self.domains.low_deg_test.len();
+        if nrows > self.domains.ldt.len() {
+            let unit_step = nrows / self.domains.ldt.len();
             Some(table.slice(s![0..nrows;unit_step, ..]))
         } else {
             Some(table.view())
@@ -1469,20 +1469,20 @@ mod tests {
     }
 
     #[test]
-    fn low_deg_test_domain_table_row_hashing_is_independent_of_caching() {
+    fn low_degree_test_domain_table_row_hashing_is_independent_of_caching() {
         fn row_hashes_are_identical<FF>(mut table: impl MasterTable<Field = FF>)
         where
             StandardUniform: Distribution<FF>,
             XFieldElement: Add<FF, Output = XFieldElement>,
         {
-            assert!(table.low_deg_test_domain_table().is_none());
-            let jit_digests = table.hash_all_low_deg_test_domain_rows();
+            assert!(table.ldt_domain_table().is_none());
+            let jit_digests = table.hash_all_ldt_domain_rows();
 
-            assert!(table.low_deg_test_domain_table().is_none());
+            assert!(table.ldt_domain_table().is_none());
             table.maybe_low_degree_extend_all_columns();
 
-            assert!(table.low_deg_test_domain_table().is_some());
-            let cache_digests = table.hash_all_low_deg_test_domain_rows();
+            assert!(table.ldt_domain_table().is_some());
+            let cache_digests = table.hash_all_ldt_domain_rows();
 
             assert_eq!(jit_digests, cache_digests);
         }
@@ -1506,13 +1506,13 @@ mod tests {
             StandardUniform: Distribution<FF>,
             XFieldElement: Add<FF, Output = XFieldElement>,
         {
-            assert!(table.low_deg_test_domain_table().is_none());
+            assert!(table.ldt_domain_table().is_none());
             let jit_rows = table.reveal_rows(indices);
 
-            assert!(table.low_deg_test_domain_table().is_none());
+            assert!(table.ldt_domain_table().is_none());
             table.maybe_low_degree_extend_all_columns();
 
-            assert!(table.low_deg_test_domain_table().is_some());
+            assert!(table.ldt_domain_table().is_some());
             let cache_rows = table.reveal_rows(indices);
 
             assert_eq!(jit_rows, cache_rows);
@@ -2199,7 +2199,7 @@ mod tests {
             trace: ArithmeticDomain::of_length(1 << 8).unwrap(),
             randomized_trace: ArithmeticDomain::of_length(1 << 9).unwrap(),
             quotient: ArithmeticDomain::of_length(1 << 10).unwrap(),
-            low_deg_test: ArithmeticDomain::of_length(1 << 11).unwrap(),
+            ldt: ArithmeticDomain::of_length(1 << 11).unwrap(),
         };
         let trace_table = Array2::zeros((domains.trace.len(), MasterAuxTable::NUM_COLUMNS));
 

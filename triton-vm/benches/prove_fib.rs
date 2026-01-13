@@ -35,6 +35,6 @@ fn prove_fib(c: &mut Criterion) {
     let profile = profile
         .with_cycle_count(aet.processor_trace.nrows())
         .with_padded_height(padded_height)
-        .with_low_deg_test_domain_len(stir.initial_domain().len());
+        .with_ldt_domain_len(stir.initial_domain().len());
     eprintln!("{profile}");
 }

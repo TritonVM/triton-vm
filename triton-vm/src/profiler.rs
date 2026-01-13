@@ -617,7 +617,7 @@ impl VMPerformanceProfile {
     ///
     /// Adds additional information when set.
     #[must_use]
-    pub fn with_low_deg_test_domain_len(mut self, ldt_domain_len: usize) -> Self {
+    pub fn with_ldt_domain_len(mut self, ldt_domain_len: usize) -> Self {
         self.ldt_domain_len = Some(ldt_domain_len);
         self
     }
@@ -1043,14 +1043,14 @@ mod tests {
             .clone()
             .with_cycle_count(0)
             .with_padded_height(0)
-            .with_low_deg_test_domain_len(0);
+            .with_ldt_domain_len(0);
         println!("{profile_with_optionals_set_to_0}");
 
         let profile_with_optionals_set = profile
             .clone()
             .with_cycle_count(10)
             .with_padded_height(12)
-            .with_low_deg_test_domain_len(32);
+            .with_ldt_domain_len(32);
         println!("{profile_with_optionals_set}");
     }
 

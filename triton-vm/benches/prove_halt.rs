@@ -35,6 +35,6 @@ fn prove_halt(c: &mut Criterion) {
     let profile = profile
         .with_cycle_count(aet.height_of_table(TableId::Processor))
         .with_padded_height(padded_height)
-        .with_low_deg_test_domain_len(stir.initial_domain().len());
+        .with_ldt_domain_len(stir.initial_domain().len());
     eprintln!("{profile}");
 }

@@ -182,7 +182,7 @@ fn program_halt() -> ProgramAndInput {
 }
 
 /// The base 2, integer logarithm of the length of the low-degree test domain.
-fn log_2_low_deg_test_domain_length(stark: Stark, proof: &Proof) -> u32 {
+fn log_2_ldt_domain_length(stark: Stark, proof: &Proof) -> u32 {
     let padded_height = proof.padded_height().unwrap();
     let stir = stark.stir(padded_height).unwrap();
 
@@ -268,7 +268,7 @@ fn generate_proof_and_benchmark_id(
         program_and_input.non_determinism.clone(),
     )
     .unwrap();
-    let log_2_domain_length = log_2_low_deg_test_domain_length(stark, &proof);
+    let log_2_domain_length = log_2_ldt_domain_length(stark, &proof);
     let benchmark_id = BenchmarkId::new(program_name, log_2_domain_length);
 
     (proof, benchmark_id)

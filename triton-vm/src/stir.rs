@@ -101,7 +101,7 @@ pub struct StirParameters {
     pub log2_high_degree: usize,
 }
 
-/// The [STIR] (Shift To Improve Rate) low-degree test.
+/// The “Shift to Improve Rate” (“[STIR][stir]”) low-degree test (“LDT”).
 ///
 /// STIR is an Interactive Oracle Proof of Proximity for Reed-Solomon codes.
 /// When combined with the [BCS] transform and the [Fiat-Shamir] heuristic (as
@@ -110,7 +110,7 @@ pub struct StirParameters {
 ///
 /// The central methods are [prove](Self::prove) and [verify](Self::verify).
 ///
-/// [STIR]: https://eprint.iacr.org/2024/390.pdf
+/// [stir]: https://eprint.iacr.org/2024/390.pdf
 /// [BCS]: https://eprint.iacr.org/2016/116
 /// [Fiat-Shamir]: https://link.springer.com/chapter/10.1007/3-540-47721-7_12
 #[derive(Debug, Clone, Eq, PartialEq)]

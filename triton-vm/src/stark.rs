@@ -77,7 +77,7 @@ pub struct Stark {
     /// domain and the [low-degree test domain](Stark::stir).
     ///
     /// If set to 0, generation and verification of STARK proofs will fail.
-    pub log2_low_deg_test_expansion_factor: usize,
+    pub log2_ldt_expansion_factor: usize,
 }
 
 /// The prover for Triton VM's [zk-STARK](Stark). The core method is
@@ -162,14 +162,14 @@ pub(crate) struct ProverDomains {
     /// The domain over which to perform the low-degree test.
     ///
     /// See also [Stark::stir].
-    pub low_deg_test: ArithmeticDomain,
+    pub ldt: ArithmeticDomain,
 }
 
 impl ProverDomains {
     pub fn derive(
         padded_height: usize,
         num_trace_randomizers: usize,
-        low_deg_test_domain: ArithmeticDomain,
+        ldt_domain: ArithmeticDomain,
         max_degree: isize,
     ) -> Self {
         let randomized_trace_len =
@@ -181,13 +181,13 @@ impl ProverDomains {
         let quotient_domain_length = max_degree.next_power_of_two();
         let quotient_domain = ArithmeticDomain::of_length(quotient_domain_length)
             .unwrap()
-            .with_offset(low_deg_test_domain.offset());
+            .with_offset(ldt_domain.offset());
 
         Self {
             trace: trace_domain,
             randomized_trace: randomized_trace_domain,
             quotient: quotient_domain,
-            low_deg_test: low_deg_test_domain,
+            ldt: ldt_domain,
         }
     }
 }
@@ -303,7 +303,7 @@ impl Prover {
         profiler!(stop "Fiat-Shamir");
         profiler!(stop "aux tables");
 
-        let (low_deg_test_domain_quotient_segment_codewords, quotient_segment_polynomials) =
+        let (ldt_domain_quotient_segment_codewords, quotient_segment_polynomials) =
             Self::compute_quotient_segments(
                 &mut master_main_table,
                 &mut master_aux_table,
@@ -318,20 +318,19 @@ impl Prover {
             let row_as_bfes = row.iter().map(interpret_xfe_as_bfes).concat();
             Tip5::hash_varlen(&row_as_bfes)
         };
-        let quotient_segments_rows = low_deg_test_domain_quotient_segment_codewords
+        let quotient_segments_rows = ldt_domain_quotient_segment_codewords
             .axis_iter(ROW_AXIS)
             .into_par_iter();
-        let low_deg_test_domain_quotient_segment_codewords_digests =
+        let ldt_domain_quotient_segment_codewords_digests =
             quotient_segments_rows.map(hash_row).collect::<Vec<_>>();
         profiler!(stop "hash rows of quotient segments");
         profiler!(start "Merkle tree" ("hash"));
-        let quot_merkle_tree =
-            MerkleTree::par_new(&low_deg_test_domain_quotient_segment_codewords_digests)?;
+        let quot_merkle_tree = MerkleTree::par_new(&ldt_domain_quotient_segment_codewords_digests)?;
         let quot_merkle_tree_root = quot_merkle_tree.root();
         proof_stream.enqueue(ProofItem::MerkleRoot(quot_merkle_tree_root));
         profiler!(stop "Merkle tree");
 
-        debug_assert_eq!(domains.low_deg_test.len(), quot_merkle_tree.num_leafs());
+        debug_assert_eq!(domains.ldt.len(), quot_merkle_tree.num_leafs());
 
         profiler!(start "out-of-domain rows");
         let trace_domain_generator = master_main_table.domains().trace.generator();
@@ -370,10 +369,9 @@ impl Prover {
         let weights = LinearCombinationWeights::sample(&mut proof_stream);
         profiler!(stop "Fiat-Shamir");
 
-        let low_deg_test_domain_is_short_domain =
-            domains.low_deg_test.len() <= domains.quotient.len();
-        let short_domain = if low_deg_test_domain_is_short_domain {
-            domains.low_deg_test
+        let ldt_domain_is_short_domain = domains.ldt.len() <= domains.quotient.len();
+        let short_domain = if ldt_domain_is_short_domain {
+            domains.ldt
         } else {
             domains.quotient
         };
@@ -471,17 +469,17 @@ impl Prover {
         );
 
         profiler!(stop "sum");
-        let combination_codeword = if low_deg_test_domain_is_short_domain {
+        let combination_codeword = if ldt_domain_is_short_domain {
             deep_codeword
         } else {
             profiler!(start "LDE" ("LDE"));
             let deep_codeword = domains
                 .quotient
-                .low_degree_extension(&deep_codeword, domains.low_deg_test);
+                .low_degree_extension(&deep_codeword, domains.ldt);
             profiler!(stop "LDE");
             deep_codeword
         };
-        assert_eq!(domains.low_deg_test.len(), combination_codeword.len());
+        assert_eq!(domains.ldt.len(), combination_codeword.len());
         profiler!(stop "combined DEEP polynomial");
 
         profiler!(start "Low-degree test");
@@ -528,7 +526,7 @@ impl Prover {
             |row: ArrayView1<_>| -> QuotientSegments { row.to_vec().try_into().unwrap() };
         let revealed_quotient_segments_rows = revealed_current_row_indices
             .iter()
-            .map(|&i| low_deg_test_domain_quotient_segment_codewords.row(i))
+            .map(|&i| ldt_domain_quotient_segment_codewords.row(i))
             .map(into_fixed_width_row)
             .collect_vec();
         let revealed_quotient_authentication_structure =
@@ -579,7 +577,7 @@ impl Prover {
             aux_table.clear_cache();
 
             profiler!(start "quotient calculation (just-in-time)");
-            let (low_deg_test_domain_quotient_segment_codewords, quotient_segment_polynomials) =
+            let (ldt_domain_quotient_segment_codewords, quotient_segment_polynomials) =
                 Self::compute_quotient_segments_with_jit_lde(
                     main_table,
                     aux_table,
@@ -589,7 +587,7 @@ impl Prover {
             profiler!(stop "quotient calculation (just-in-time)");
 
             return (
-                low_deg_test_domain_quotient_segment_codewords,
+                ldt_domain_quotient_segment_codewords,
                 quotient_segment_polynomials,
             );
         };
@@ -611,15 +609,14 @@ impl Prover {
         let quotient_segment_polynomials =
             Self::interpolate_quotient_segments(quotient_codeword, quotient_domain);
 
-        let low_deg_test_domain_quotient_segment_codewords =
-            Self::low_deg_test_domain_segment_polynomials(
-                quotient_segment_polynomials.view(),
-                main_table.domains().low_deg_test,
-            );
+        let ldt_domain_quotient_segment_codewords = Self::ldt_domain_segment_polynomials(
+            quotient_segment_polynomials.view(),
+            main_table.domains().ldt,
+        );
         profiler!(stop "quotient LDE");
 
         (
-            low_deg_test_domain_quotient_segment_codewords,
+            ldt_domain_quotient_segment_codewords,
             quotient_segment_polynomials,
         )
     }
@@ -665,7 +662,7 @@ impl Prover {
 
         // the powers of ι define `NUM_COSETS`-many cosets of the working domain
         let iota = BFieldElement::primitive_root_of_unity(coset_root_order).unwrap();
-        let psi = domains.low_deg_test.offset();
+        let psi = domains.ldt.offset();
 
         // for every coset, evaluate constraints
         profiler!(start "zero-initialization");
@@ -812,7 +809,7 @@ impl Prover {
             quotient_multicoset_evaluations,
             psi,
             iota,
-            domains.low_deg_test,
+            domains.ldt,
         );
         profiler!(stop "segmentify");
 
@@ -956,7 +953,7 @@ impl Prover {
         quotient_multicoset_evaluations: Array2<XFieldElement>,
         psi: BFieldElement,
         iota: BFieldElement,
-        low_deg_test_domain: ArithmeticDomain,
+        ldt_domain: ArithmeticDomain,
     ) -> (
         Array2<XFieldElement>,
         Array1<Polynomial<'static, XFieldElement>>,
@@ -1030,7 +1027,7 @@ impl Prover {
             .unwrap()
             .with_offset(segment_domain_offset);
 
-        let mut quotient_codewords = Array2::zeros([low_deg_test_domain.len(), NUM_SEGMENTS]);
+        let mut quotient_codewords = Array2::zeros([ldt_domain.len(), NUM_SEGMENTS]);
         let mut quotient_polynomials = Array1::zeros([NUM_SEGMENTS]);
         Zip::from(quotient_segments.axis_iter(COL_AXIS))
             .and(quotient_codewords.axis_iter_mut(COL_AXIS))
@@ -1039,7 +1036,7 @@ impl Prover {
                 // Getting a column as a contiguous piece of memory from a
                 // row-majority matrix requires `.to_vec()`.
                 let interpolant = segment_domain.interpolate(&segment.to_vec());
-                let lde_codeword = low_deg_test_domain.evaluate(&interpolant);
+                let lde_codeword = ldt_domain.evaluate(&interpolant);
                 Array1::from(lde_codeword).move_into(target_codeword);
                 Array0::from_elem((), interpolant).move_into(target_polynomial);
             });
@@ -1089,13 +1086,14 @@ impl Prover {
         segments.try_into().unwrap()
     }
 
-    fn low_deg_test_domain_segment_polynomials(
+    /// Th segment polynomials evaluated over the low-degree test domain.
+    fn ldt_domain_segment_polynomials(
         quotient_segment_polynomials: ArrayView1<Polynomial<XFieldElement>>,
-        low_deg_test_domain: ArithmeticDomain,
+        ldt_domain: ArithmeticDomain,
     ) -> Array2<XFieldElement> {
-        let low_deg_test_domain_codewords: Vec<_> = quotient_segment_polynomials
+        let ldt_domain_codewords: Vec<_> = quotient_segment_polynomials
             .into_par_iter()
-            .flat_map(|segment| low_deg_test_domain.evaluate(segment))
+            .flat_map(|segment| ldt_domain.evaluate(segment))
             .collect();
 
         // While later steps would benefit from row majority (“`C`”), the
@@ -1103,8 +1101,8 @@ impl Prover {
         // expensive. Should we decide to chase small gains at some point,
         // then a parallel transpose could be considered.
         Array2::from_shape_vec(
-            [low_deg_test_domain.len(), NUM_QUOTIENT_SEGMENTS].f(),
-            low_deg_test_domain_codewords,
+            [ldt_domain.len(), NUM_QUOTIENT_SEGMENTS].f(),
+            ldt_domain_codewords,
         )
         .unwrap()
     }
@@ -1304,7 +1302,7 @@ impl Verifier {
         profiler!(start "Low-degree test");
         let stir_transcript = stir.verify(&mut proof_stream)?;
         let revealed_current_row_indices = stir_transcript.first_round_indices();
-        let revealed_low_deg_test_values = &stir_transcript.partial_first_codeword;
+        let revealed_ldt_values = &stir_transcript.partial_first_codeword;
         profiler!(stop "Low-degree test");
 
         profiler!(start "check leafs");
@@ -1389,7 +1387,7 @@ impl Verifier {
         if num_revealed_elements != revealed_current_row_indices.len() {
             return Err(VerificationError::IncorrectNumberOfRowIndices);
         };
-        if num_revealed_elements != revealed_low_deg_test_values.len() {
+        if num_revealed_elements != revealed_ldt_values.len() {
             return Err(VerificationError::IncorrectNumberOfLowDegTestValues);
         };
         if num_revealed_elements != revealed_quotient_segments_elements.len() {
@@ -1407,11 +1405,11 @@ impl Verifier {
             main_table_rows,
             aux_table_rows,
             revealed_quotient_segments_elements,
-            revealed_low_deg_test_values,
+            revealed_ldt_values,
         ) {
             let main_row = Array1::from(main_row.to_vec());
             let aux_row = Array1::from(aux_row.to_vec());
-            let current_low_deg_test_domain_value = stir.initial_domain().value(row_idx as u32);
+            let current_ldt_domain_value = stir.initial_domain().value(row_idx as u32);
 
             profiler!(start "main & aux elements" ("CC"));
             let main_and_aux_curr_row_element = Self::linearly_sum_main_and_aux_row(
@@ -1426,19 +1424,19 @@ impl Verifier {
 
             profiler!(start "DEEP update");
             let main_and_aux_curr_row_deep_value = Stark::deep_update(
-                current_low_deg_test_domain_value,
+                current_ldt_domain_value,
                 main_and_aux_curr_row_element,
                 out_of_domain_point_curr_row,
                 out_of_domain_curr_row_main_and_aux_value,
             );
             let main_and_aux_next_row_deep_value = Stark::deep_update(
-                current_low_deg_test_domain_value,
+                current_ldt_domain_value,
                 main_and_aux_curr_row_element,
                 out_of_domain_point_next_row,
                 out_of_domain_next_row_main_and_aux_value,
             );
             let quot_curr_row_deep_value = Stark::deep_update(
-                current_low_deg_test_domain_value,
+                current_ldt_domain_value,
                 quotient_segments_curr_row_element,
                 out_of_domain_point_curr_row_pow_num_segments,
                 out_of_domain_curr_row_quotient_segment_value,
@@ -1486,18 +1484,22 @@ impl Verifier {
 }
 
 impl Stark {
+    /// Create a new STARK instance.
+    ///
+    /// The defining parameters are the `security_level`
+    ///
     /// # Panics
     ///
-    /// Panics if `log2_low_deg_test_expansion_factor` is zero.
-    pub fn new(security_level: usize, log2_low_deg_test_expansion_factor: usize) -> Self {
+    /// Panics if `log2_ldt_expansion_factor` is zero.
+    pub fn new(security_level: usize, log2_ldt_expansion_factor: usize) -> Self {
         assert_ne!(
-            0, log2_low_deg_test_expansion_factor,
+            0, log2_ldt_expansion_factor,
             "low-degree test expansion factor must be greater than one."
         );
 
         Stark {
             security_level,
-            log2_low_deg_test_expansion_factor,
+            log2_ldt_expansion_factor,
         }
     }
 
@@ -1570,7 +1572,7 @@ impl Stark {
         max_degree_supported_by_that_smallest_arithmetic_domain as isize
     }
 
-    /// The low-degree test, [STIR](Stir).
+    /// Derive the low-degree test (usually abbreviated “LDT”) for this STARK.
     ///
     /// The length of the [low-degree test domain](ArithmeticDomain) has a major
     /// influence on [proving](Prover::prove) time. It is influenced by the
@@ -1597,7 +1599,7 @@ impl Stark {
             security_level: self.security_level,
             soundness: SoundnessType::Provable,
             log2_folding_factor: 2,
-            log2_initial_expansion_factor: self.log2_low_deg_test_expansion_factor,
+            log2_initial_expansion_factor: self.log2_ldt_expansion_factor,
             log2_high_degree,
         };
 
@@ -1880,18 +1882,18 @@ pub(crate) mod tests {
         let weights = StdRng::seed_from_u64(1632525295622789151)
             .random::<[XFieldElement; MasterAuxTable::NUM_CONSTRAINTS]>();
 
-        debug_assert!(main.low_deg_test_domain_table().is_none());
-        debug_assert!(aux.low_deg_test_domain_table().is_none());
+        debug_assert!(main.ldt_domain_table().is_none());
+        debug_assert!(aux.ldt_domain_table().is_none());
         let jit_segments =
             Prover::compute_quotient_segments(&mut main, &mut aux, quot_dom, &ch, &weights);
 
-        debug_assert!(main.low_deg_test_domain_table().is_none());
+        debug_assert!(main.ldt_domain_table().is_none());
         main.maybe_low_degree_extend_all_columns();
-        debug_assert!(main.low_deg_test_domain_table().is_some());
+        debug_assert!(main.ldt_domain_table().is_some());
 
-        debug_assert!(aux.low_deg_test_domain_table().is_none());
+        debug_assert!(aux.ldt_domain_table().is_none());
         aux.maybe_low_degree_extend_all_columns();
-        debug_assert!(aux.low_deg_test_domain_table().is_some());
+        debug_assert!(aux.ldt_domain_table().is_some());
 
         let cache_segments =
             Prover::compute_quotient_segments(&mut main, &mut aux, quot_dom, &ch, &weights);
@@ -1928,10 +1930,10 @@ pub(crate) mod tests {
 
             if cache_decision == CacheDecision::Cache {
                 main.maybe_low_degree_extend_all_columns();
-                assert!(main.low_deg_test_domain_table().is_some());
+                assert!(main.ldt_domain_table().is_some());
 
                 aux.maybe_low_degree_extend_all_columns();
-                assert!(aux.low_deg_test_domain_table().is_some());
+                assert!(aux.ldt_domain_table().is_some());
             }
 
             let weights = StdRng::seed_from_u64(15157673430940347283)
