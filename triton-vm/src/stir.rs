@@ -940,7 +940,7 @@ impl StirParameters {
     // The assumption is reasonable (or even necessary) because polynomials
     // with degree as big (or bigger) than the field start behaving weirdly.
     // For example, the polynomial X^p over field 𝔽_p is functionally
-    // equivalent to the polynomial 1. While distinct as polynomials, it's
+    // equivalent to the polynomial X. While distinct as polynomials, it's
     // impossible to differentiate between the two in evaluation form.
     // It's also hard to argue that such polynomials are of “low degree”.
     // And as a final nail in the coffin, the largest possible
