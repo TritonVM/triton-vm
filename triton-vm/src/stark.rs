@@ -1598,15 +1598,16 @@ impl Stark {
     ///
     /// Panics if the `padded_height` exceeds `1 << (`[`usize::BITS`]` - 1)`.
     pub fn stir(&self, padded_height: usize) -> Result<Stir, StirParameterError> {
-        let error_msg = "internal error: padded height drastically exceeds assumed maximum";
-        let padded_height = padded_height.checked_next_power_of_two().expect(error_msg);
-        let log2_high_degree = padded_height.ilog2().try_into().expect(error_msg);
+        let padded_height = padded_height
+            .checked_next_power_of_two()
+            .expect("padded height drastically exceeds assumed maximum");
+        let log2_padded_height = usize::try_from(padded_height.ilog2()).expect(U32_TO_USIZE_ERR);
         let mut stir_parameters = StirParameters {
             security_level: self.security_level,
             soundness: SoundnessType::Provable,
             log2_folding_factor: 2,
             log2_initial_expansion_factor: self.log2_ldt_expansion_factor,
-            log2_high_degree,
+            log2_high_degree: log2_padded_height,
         };
 
         // The initial domain of STIR must be longer than the length of the
@@ -1624,10 +1625,11 @@ impl Stark {
         // `padded_height` is sufficiently large. It's only for very small
         // `padded_heights` that additional iterations are necessary, and there,
         // things are fast anyway.
-        let log2_padded_height = usize::try_from(padded_height.ilog2()).expect(U32_TO_USIZE_ERR);
-        let log2_max_domain_growth_factor = ArithmeticDomain::LOG2_MAX_LEN - log2_padded_height;
-
-        for _ in 1..=log2_max_domain_growth_factor {
+        //
+        // A tighter bound for the maximum number of iterations exists. However,
+        // too-large domains cause an unsuccessful derivation of STIR and an
+        // early return. Therefore, it's fine to use the absolute maximum here.
+        for _ in 0..=ArithmeticDomain::LOG2_MAX_LEN {
             stir_parameters.log2_high_degree += 1;
             let stir = Stir::try_from(stir_parameters)?;
 
