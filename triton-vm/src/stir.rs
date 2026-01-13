@@ -88,12 +88,16 @@ pub struct StirParameters {
     #[cfg_attr(test, strategy(1_usize..=6))]
     pub log2_initial_expansion_factor: usize,
 
-    /// The (log₂ of the) polynomial degree that is considered “high” for
-    /// this STIR instance.
+    /// The low-degree test's degree bound.
+    ///
+    /// In particular, the (log₂ of the) polynomial degree that is considered
+    /// “high” (_i.e._, “not low”) for this STIR instance.
     ///
     /// In other words, the low-degreeness of polynomials with degree
-    /// 2^log2_high_degree and higher cannot be [proven](Stir::prove) (in a way
-    /// that the [verifier](Stir::verify) accepts).
+    /// `2^log2_high_degree` (and higher) cannot be [proven](Stir::prove) (in a
+    /// way that the [verifier](Stir::verify) accepts). On the other hand, the
+    /// low-degreeness of polynomials with degree `2^log2_high_degree - 1` (and
+    /// lower) _can_ be proven.
     ///
     /// Must be greater than or equal to the (log₂ of the)
     /// [folding factor](Self::log2_folding_factor).
