@@ -1530,25 +1530,27 @@ impl Stark {
     /// The length of the trace-randomized, padded trace.
     ///
     /// Guaranteed to be a power of two.
+    //
+    // There are two lower bounds on the required length of the randomized
+    // trace, both of which have to be met:
+    //
+    // 1. The randomized trace domain must be long enough to include both, all
+    //    elements of the padded trace and all trace randomizers.
+    // 2. Due to the way we do trace randomization,
+    //    a. the length of the trace domain must always be exactly half the
+    //       length of the randomized trace domain, and
+    //    b. the degree of the trace-randomized interpolation polynomial for any
+    //       trace column must be less than the length of the randomized trace
+    //       domain.
+    //    These two conditions imply:
+    //
+    //       len > degree(randomized_trace_column_interpolant)
+    //     ⟺ len > num_trace_randomizers + degree(zerofier(trace_domain))
+    //     ⟺ len > num_trace_randomizers + (len / 2)
+    //     ⟺ len > 2·num_trace_randomizers
     fn randomized_trace_len(padded_height: usize, num_trace_randomizers: usize) -> usize {
-        let smallest_possible_size = padded_height + num_trace_randomizers;
-
-        // Due to the way we do trace randomization, the length of the trace
-        // domain must always be exactly half the length of the randomized trace
-        // domain.
-        // Also, the degree of the trace-randomized interpolation polynomial for
-        // any trace column must be less than the length of the randomized trace
-        // domain.
-        // Together, these conditions imply:
-        //
-        //    len > degree(randomized_trace_column_interpolant)
-        //  ⟺ len > num_trace_randomizers + degree(zerofier(trace_domain))
-        //  ⟺ len > num_trace_randomizers + (len / 2)
-        //  ⟺ len > 2·num_trace_randomizers
-        let smallest_fit_for_rand_trace_interpolation_poly = 2 * num_trace_randomizers + 1;
-
-        smallest_possible_size
-            .max(smallest_fit_for_rand_trace_interpolation_poly)
+        (padded_height + num_trace_randomizers)
+            .max(2 * num_trace_randomizers + 1)
             .next_power_of_two()
     }
 
