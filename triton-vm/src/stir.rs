@@ -194,7 +194,7 @@ pub struct StirResponse {
 ///    combination with the [indices queried in the first round][first_queries]
 ///    help link the polynomial of which STIR proves the low degree into a
 ///    greater context, like a STARK.
-/// 1. Secondarily, the sampled randomness and used authentication structures
+/// 2. Secondarily, the sampled randomness and used authentication structures
 ///    help operate, develop, and test other STIR implementations that try to
 ///    mimic this implementation exactly.
 ///
