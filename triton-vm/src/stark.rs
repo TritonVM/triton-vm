@@ -159,9 +159,13 @@ pub(crate) struct ProverDomains {
     /// makes computation for the prover as fast as possible.
     pub quotient: ArithmeticDomain,
 
-    /// The domain over which to perform the low-degree test.
+    /// The initial domain of the low-degree test.
     ///
-    /// See also [Stark::stir].
+    /// This domain coincides with the target domain of the
+    /// [LDE step](MasterTable::maybe_low_degree_extend_all_columns) and,
+    /// consequently, all committed codewords are defined over this domain.
+    ///
+    /// See also [Stark::stir] and [Stir::initial_domain].
     pub ldt: ArithmeticDomain,
 }
 
