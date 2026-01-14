@@ -486,9 +486,9 @@ impl Prover {
         assert_eq!(domains.ldt.len(), combination_codeword.len());
         profiler!(stop "combined DEEP polynomial");
 
-        profiler!(start "Low-degree test");
+        profiler!(start "low-degree test");
         let revealed_current_row_indices = stir.prove(&combination_codeword, &mut proof_stream)?;
-        profiler!(stop "Low-degree test");
+        profiler!(stop "low-degree test");
 
         profiler!(start "open trace leafs");
         // Open leafs of zipped codewords at indicated positions
@@ -1303,11 +1303,11 @@ impl Verifier {
         profiler!(stop "sum out-of-domain values");
 
         // verify low degree of combination polynomial
-        profiler!(start "Low-degree test");
+        profiler!(start "low-degree test");
         let stir_transcript = stir.verify(&mut proof_stream)?;
         let revealed_current_row_indices = stir_transcript.first_round_indices();
         let revealed_ldt_values = &stir_transcript.partial_first_codeword;
-        profiler!(stop "Low-degree test");
+        profiler!(stop "low-degree test");
 
         profiler!(start "check leafs");
         profiler!(start "dequeue main elements");
