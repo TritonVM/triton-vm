@@ -251,7 +251,7 @@ impl Prover {
         profiler!(start "derive additional parameters");
         let padded_height = aet.padded_height();
         let stir = self.parameters.stir(padded_height)?;
-        let num_trace_randomizers = self.parameters.num_trace_randomizers(&stir);
+        let num_trace_randomizers = Stark::num_trace_randomizers(&stir);
         let max_degree = self
             .parameters
             .max_degree(padded_height, num_trace_randomizers);
@@ -1158,7 +1158,7 @@ impl Verifier {
 
         let padded_height = 1 << log2_padded_height;
         let stir = self.parameters.stir(padded_height)?;
-        let num_trace_randomizers = self.parameters.num_trace_randomizers(&stir);
+        let num_trace_randomizers = Stark::num_trace_randomizers(&stir);
         let merkle_tree_height = stir.initial_domain().len().ilog2();
 
         // The trace domain used by the prover is not necessarily of length
@@ -1633,7 +1633,7 @@ impl Stark {
             stir_parameters.log2_high_degree += 1;
             let stir = Stir::try_from(stir_parameters)?;
 
-            let num_trace_randomizers = self.num_trace_randomizers(&stir);
+            let num_trace_randomizers = Self::num_trace_randomizers(&stir);
             let randomized_trace_len =
                 Self::randomized_trace_len(padded_height, num_trace_randomizers);
             let expansion_factor = stir_parameters.expansion_factor();
@@ -1650,8 +1650,16 @@ impl Stark {
         Err(StirParameterError::InitialDomainTooBig(max_domain_len))
     }
 
-    /// The number of trace randomizers to use in order to stay Zero-Knowledge.
-    pub(crate) fn num_trace_randomizers(&self, stir: &Stir) -> usize {
+    /// The number of trace randomizers to use.
+    ///
+    /// Each column of the [main](MasterMainTable) and
+    /// [auxiliary](MasterAuxTable) must be trace-randomized with this many
+    /// randomizers in order for the STARK to be Zero-Knowledge.
+    ///
+    /// The type of the trace randomizers must be of the table's corresponding
+    /// field, _i.e._, [base field](BFieldElement) elements for the main table
+    /// and [extension field](XFieldElement) elements for the auxiliary table).
+    pub(crate) fn num_trace_randomizers(stir: &Stir) -> usize {
         let num_out_of_domain_rows = 2;
 
         stir.num_first_round_queries()
@@ -1882,7 +1890,7 @@ pub(crate) mod tests {
         let ch = artifacts.challenges;
         let padded_height = main.trace_table().nrows();
         let stir = stark.stir(padded_height).unwrap();
-        let num_trace_randos = stark.num_trace_randomizers(&stir);
+        let num_trace_randos = Stark::num_trace_randomizers(&stir);
         let ldt_dom = stir.initial_domain();
         let max_degree = stark.max_degree(padded_height, num_trace_randos);
         let domains = ProverDomains::derive(padded_height, num_trace_randos, ldt_dom, max_degree);
@@ -1930,7 +1938,7 @@ pub(crate) mod tests {
             let padded_height = main.trace_table().nrows();
             let stir = stark.stir(padded_height).unwrap();
             let ldt_dom = stir.initial_domain();
-            let num_trace_randos = stark.num_trace_randomizers(&stir);
+            let num_trace_randos = Stark::num_trace_randomizers(&stir);
             let max_degree = stark.max_degree(padded_height, num_trace_randos);
             let domains =
                 ProverDomains::derive(padded_height, num_trace_randos, ldt_dom, max_degree);

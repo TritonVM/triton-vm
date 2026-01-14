@@ -216,7 +216,7 @@ impl TestableProgram {
         // construct master main table
         let padded_height = aet.padded_height();
         let stir = stark.stir(padded_height).unwrap();
-        let num_trace_randomizers = stark.num_trace_randomizers(&stir);
+        let num_trace_randomizers = Stark::num_trace_randomizers(&stir);
         let ldt_domain = stir.initial_domain();
         let max_degree = stark.max_degree(padded_height, num_trace_randomizers);
         let domains =
