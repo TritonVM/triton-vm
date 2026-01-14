@@ -807,7 +807,7 @@ impl StirParameters {
     // 2. For a fixed set of d labeled values, count sequences of length n
     //    that use only those values and use each value at least once. View such
     //    a sequence as a surjective function f: [n] → [d].
-    //    The number of such functions almost coincides with the Sterling number
+    //    The number of such functions almost coincides with the Stirling number
     //    of the second kind, S(n, d), which counts the number of ways to
     //    partition a set of n labeled objects into d nonempty unlabelled
     //    subsets. However, we must account for the fact that our subsets are
@@ -844,27 +844,28 @@ impl StirParameters {
     //
     //    Pr[D < k] ⩽ Σ_(d=1)^(k-1) (U choose d) · (d/U)^n
     //
-    // We upper-bound this further by simply replacing each summand with the
-    // largest of them all:
+    // We upper-bound this further by replacing each summand with the largest
+    // of them all. The factor `(d/U)^n` can easily be upper bounded by
+    // `((k-1)/U)^n`. The binomial coefficient requires a little more care. For
+    // a given `U`, the largest binomial coefficient is `(U choose U//2)`. If
+    // `k - 1 > U // 2`, then that largest binomial coefficient should be used.
+    // Otherwise, the largest binomial coefficient in any of the summands is
+    // `(U choose k-1)`. To finish simplifying the sum, define
+    // `l = min(k - 1, U // 2)` and use it in the binomial coefficient:
     //
-    //    Pr[D < k] ⩽ (k-1) · (U choose k-1) · ((k-1)/U)^n
+    //    Pr[D < k] ⩽ (k-1) · (U choose l) · ((k-1)/U)^n
     //
     // Finally, the expression starts to approach something workable. Now, we
     // can use the upper bound by the security level to solve for n:
     //
-    //     (k-1) · (U choose k-1) · ((k-1)/U)^n ⩽ 2^-λ
+    //                         (k-1) · (U choose l) · ((k-1)/U)^n ⩽ 2^-λ
+    //  ↔  log₂(k-1) + log₂(U choose l) + n·(log₂(k-1) - log₂(U)) ⩽ -λ
+    //  ↔  n·(log₂(k-1) - log₂(U)) ⩽ -λ - log₂(k-1) - log₂(U choose l)
+    //  ↔  n·(log₂(U) - log₂(k-1)) ⩾ λ + log₂(k-1) + log₂(U choose l)
     //
-    //  ↔  log₂(k-1) + log₂(U choose k-1) + n·(log₂(k-1) - log₂(U)) ⩽ -λ
-    //
-    //  ↔  n·(log₂(k-1) - log₂(U)) ⩽ -λ - log₂(k-1) - log₂(U choose k-1)
-    //
-    //         -λ - log₂(k-1) - log₂(U choose k-1)
-    //  ↔  n ⩾ ───────────────────────────────────
-    //                 log₂(k-1) - log₂(U)
-    //
-    //         λ + log₂(k-1) + log₂(U choose k-1)
-    //  ↔  n ⩾ ──────────────────────────────────
-    //                 log₂(U) - log₂(k-1)
+    //         λ + log₂(k-1) + log₂(U choose l)
+    //  ↔  n ⩾ ────────────────────────────────
+    //               log₂(U) - log₂(k-1)
     //
     // That equation is what we use in the method body. A few points of
     // discussion remain:
@@ -883,17 +884,17 @@ impl StirParameters {
     //    particular, as k approaches u, the (optimal!) error margin can exceed
     //    k by multiple factors. For example, take λ=160, u=2^8, and k=160. Then
     //    the optimal n is 574, an error margin of 414! This method indicates
-    //    n=594, and the 20 superfluous indices are an overhead of ~3.5%.
+    //    n=610, and the 36 superfluous indices are an overhead of ~6.3%.
     // 3. Choosing rejection sampling over oversampling has pros and cons:
     //    + This method with all its complexity becomes superfluous.
     //    + The number of additional indices is as small as possible since it
     //      doesn't rely on probabilistic arguments.
     //    - The logic for sampling indices becomes significantly more complex,
     //      particularly in a Triton assembly context.
-    //    Tracking the actually sampled indices and the de-duplicated, folded
-    //    indices is required in either case.
     //    We decided that the runtime complexity of rejection sampling in Triton
     //    assembly (O(num_unique_indices²)) dominates the other points.
+    //    Tracking the actually sampled indices and the folded & de-duplicated
+    //    indices is required in either case.
     fn num_total_in_domain_queries(
         &self,
         log2_domain_len: u32,
@@ -901,12 +902,14 @@ impl StirParameters {
     ) -> usize {
         let k = u64::try_from(num_in_domain_queries).expect(USIZE_TO_U64_ERR);
         let k_minus_1 = k.checked_sub(1).expect("internal error: too few queries");
-        let log2_u_choose_k_minus_1 = log2_binomial_coefficient(1 << log2_domain_len, k_minus_1);
+        let domain_len = 1 << log2_domain_len;
+        let l = k_minus_1.min(domain_len / 2);
+        let log2_u_choose_l = log2_binomial_coefficient(domain_len, l);
 
         let security_level = self.security_level as f64;
         let log2_k_minus_1 = (k_minus_1 as f64).log2();
         let log2_domain_len = f64::from(log2_domain_len);
-        let num_total_queries = (security_level + log2_k_minus_1 + log2_u_choose_k_minus_1)
+        let num_total_queries = (security_level + log2_k_minus_1 + log2_u_choose_l)
             / (log2_domain_len - log2_k_minus_1);
 
         num_total_queries.ceil() as usize
