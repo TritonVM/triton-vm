@@ -58,7 +58,8 @@ impl Constraints {
 
     pub fn initial_constraints() -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
         let circuit_builder = ConstraintCircuitBuilder::new();
-        vec![
+
+        [
             ProgramTable::initial_constraints(&circuit_builder),
             ProcessorTable::initial_constraints(&circuit_builder),
             OpStackTable::initial_constraints(&circuit_builder),
@@ -75,7 +76,8 @@ impl Constraints {
 
     pub fn consistency_constraints() -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
         let circuit_builder = ConstraintCircuitBuilder::new();
-        vec![
+
+        [
             ProgramTable::consistency_constraints(&circuit_builder),
             ProcessorTable::consistency_constraints(&circuit_builder),
             OpStackTable::consistency_constraints(&circuit_builder),
@@ -92,7 +94,8 @@ impl Constraints {
 
     pub fn transition_constraints() -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
         let circuit_builder = ConstraintCircuitBuilder::new();
-        vec![
+
+        [
             ProgramTable::transition_constraints(&circuit_builder),
             ProcessorTable::transition_constraints(&circuit_builder),
             OpStackTable::transition_constraints(&circuit_builder),
@@ -109,7 +112,8 @@ impl Constraints {
 
     pub fn terminal_constraints() -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
         let circuit_builder = ConstraintCircuitBuilder::new();
-        vec![
+
+        [
             ProgramTable::terminal_constraints(&circuit_builder),
             ProcessorTable::terminal_constraints(&circuit_builder),
             OpStackTable::terminal_constraints(&circuit_builder),

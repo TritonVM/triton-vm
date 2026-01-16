@@ -67,7 +67,7 @@ insta = "1.43.1"
 itertools = "0.14"
 lazy_static = "1.5"
 memory-stats = { version = "1.2", features = ["always_use_statm"] }
-ndarray = { version = "0.16", features = ["rayon"] }
+ndarray = { version = "0.17", features = ["rayon"] }
 nom = "8.0.0"
 nom-language = "0.1.0"
 num-traits = "0.2"
@@ -84,7 +84,7 @@ strum = { version = "0.27", features = ["derive"] }
 syn = "2.0"
 test-strategy = "0.4.2"
 thiserror = "2.0"
-twenty-first = "1.0.0"
+twenty-first = "1.1.0"
 unicode-width = "0.2"
 
 [workspace.lints.rust]
