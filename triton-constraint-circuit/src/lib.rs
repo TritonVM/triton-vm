@@ -300,21 +300,26 @@ pub enum CircuitExpression<II: InputIndicator> {
 
 impl<II: InputIndicator> Hash for CircuitExpression<II> {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        // domain separation
+        // use domain separation to prevent weird hash collisions
         match self {
-            CircuitExpression::BConst(..) => 0.hash(state),
-            CircuitExpression::XConst(..) => 1.hash(state),
-            CircuitExpression::Input(..) => 2.hash(state),
-            CircuitExpression::Challenge(..) => 3.hash(state),
-            CircuitExpression::BinOp(..) => 4.hash(state),
-        }
-
-        match self {
-            Self::BConst(bfe) => bfe.hash(state),
-            Self::XConst(xfe) => xfe.hash(state),
-            Self::Input(index) => index.hash(state),
-            Self::Challenge(table_challenge_id) => table_challenge_id.hash(state),
+            Self::BConst(bfe) => {
+                0_usize.hash(state);
+                bfe.hash(state);
+            }
+            Self::XConst(xfe) => {
+                1_usize.hash(state);
+                xfe.hash(state);
+            }
+            Self::Input(index) => {
+                2_usize.hash(state);
+                index.hash(state);
+            }
+            Self::Challenge(id) => {
+                3_usize.hash(state);
+                id.hash(state);
+            }
             Self::BinOp(binop, lhs, rhs) => {
+                4_usize.hash(state);
                 binop.hash(state);
                 lhs.borrow().hash(state);
                 rhs.borrow().hash(state);
