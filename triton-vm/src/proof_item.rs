@@ -103,18 +103,52 @@ macro_rules! proof_items {
 
 proof_items!(
     MerkleRoot(Digest) => true, try_into_merkle_root,
+    Log2PaddedHeight(u32) => true, try_into_log2_padded_height,
     OutOfDomainMainRow(Box<MainRow<XFieldElement>>) => true, try_into_out_of_domain_main_row,
     OutOfDomainAuxRow(Box<AuxiliaryRow>) => true, try_into_out_of_domain_aux_row,
     OutOfDomainQuotientSegments(QuotientSegments) => true, try_into_out_of_domain_quot_segments,
+    FriPolynomial(Polynomial<'static, XFieldElement>) => true, try_into_fri_polynomial,
 
-    // implied by some Merkle root: not included in the Fiat-Shamir heuristic
+    // For performance reasons (only!), the following items are not included in
+    // the Fiat-Shamir heuristic. The resulting proof system is still sound if
+    // (and only if!) the prover has already committed to the item in question
+    // in some other fashion.
+    //
+    // Before including additional items in the section below, make certain that
+    // the prover is _actually_ committed to the item in some other fashion.
+    // An oversight will lead (and has led) to soundness vulnerabilities. If you
+    // are unsure, better err on the side of performance degradation than on the
+    // side of an unsound verifier.
+    //
+    // Ideally, write down the argument right above the item; bonus points if
+    // you write down a proof instead. This helps in making assumptions (more)
+    // explicit.
+
+    // 1. An authentication structure is only valid with respect to some
+    //    `MerkleRoot`.
+    // 2. Merkle roots alter the Fiat-Shamir state, committing the prover.
+    // 3. For every authentication structure we supply, the corresponding Merkle
+    //    root is integrated into the proof stream first.
+    // 4. The verifier samples the indices the prover should open.
     AuthenticationStructure(AuthenticationStructure) => false, try_into_authentication_structure,
+
+    // 1. A (main, aux, or quotient-segment) row is only hashed in full, never
+    //    partially.
+    // 2. All rows of a table are put into a Merkle tree.
+    // 3. The root of that tree is integrated into the proof stream before
+    //    any row is revealed.
+    // 4. The verifier dictates which rows to reveal.
     MasterMainTableRows(Vec<MainRow<BFieldElement>>) => false, try_into_master_main_table_rows,
     MasterAuxTableRows(Vec<AuxiliaryRow>) => false, try_into_master_aux_table_rows,
-    Log2PaddedHeight(u32) => false, try_into_log2_padded_height,
     QuotientSegmentsElements(Vec<QuotientSegments>) => false, try_into_quot_segments_elements,
+
+    // 1. The Merkle root of the tree of the codeword is integrated into the
+    //    proof stream before the codeword is sent.
     FriCodeword(Vec<XFieldElement>) => false, try_into_fri_codeword,
-    FriPolynomial(Polynomial<'static, XFieldElement>) => false, try_into_fri_polynomial,
+
+    // Since a `FriResponse` is both, an authentication structure and some
+    // revealed elements, the arguments of `AuthenticationStructure` and the
+    // tables' rows apply.
     FriResponse(FriResponse) => false, try_into_fri_response,
 );
 

@@ -1012,7 +1012,7 @@ mod tests {
 
         let verdict = fri.verify(&mut proof_stream);
         let_assert!(Err(err) = verdict);
-        assert!(let FriValidationError::LastRoundPolynomialEvaluationMismatch = err);
+        assert!(let FriValidationError::BadMerkleAuthenticationPath = err);
     }
 
     #[proptest]

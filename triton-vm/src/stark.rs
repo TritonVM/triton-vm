@@ -1156,8 +1156,12 @@ impl Verifier {
         profiler!(stop "Fiat-Shamir: Claim");
 
         profiler!(start "derive additional parameters");
-        let log_2_padded_height = proof_stream.dequeue()?.try_into_log2_padded_height()?;
-        let padded_height = 1 << log_2_padded_height;
+        let log2_padded_height = proof_stream.dequeue()?.try_into_log2_padded_height()?;
+        if log2_padded_height >= 32 {
+            return Err(VerificationError::Log2PaddedHeightTooLarge);
+        };
+
+        let padded_height = 1 << log2_padded_height;
         let fri = self.parameters.fri(padded_height)?;
         let merkle_tree_height = fri.domain.len().ilog2();
 
@@ -1912,12 +1916,35 @@ pub(crate) mod tests {
 
         insta::assert_snapshot!(
             Tip5::hash(&proof),
-            @"17275651906185656762,\
-              13250937299792022858,\
-              05731754925513787901,\
-              05512095638892086027,\
-              08634562101877660478",
+            @"08133801845754967830,\
+              12011037839595956778,\
+              14175473847383162005,\
+              05024926201443895262,\
+              17294001373192224874",
         );
+    }
+
+    #[proptest]
+    fn too_high_padded_height_results_in_immediate_verification_failure(
+        #[strategy(32_u32..)] height: u32,
+    ) {
+        let program = triton_program!(halt);
+        let claim = Claim::about_program(&program);
+        let (aet, _) =
+            VM::trace_execution(program, PublicInput::default(), NonDeterminism::default())?;
+
+        let stark = Stark::low_security();
+        let proof = stark.prove(&claim, &aet)?;
+        let mut proof_stream = ProofStream::try_from(&proof)?;
+        for proof_item in &mut proof_stream.items {
+            if let ProofItem::Log2PaddedHeight(h) = proof_item {
+                *h = height
+            };
+        }
+        let proof = Proof::from(proof_stream);
+
+        let verdict = stark.verify(&claim, &proof);
+        let_assert!(Err(VerificationError::Log2PaddedHeightTooLarge) = verdict);
     }
 
     #[test]
