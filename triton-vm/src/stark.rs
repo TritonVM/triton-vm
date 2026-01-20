@@ -3340,4 +3340,19 @@ pub(crate) mod tests {
     fn constraints_evaluate_to_zero_on_program_executing_every_instruction() -> ConstraintResult {
         triton_constraints_evaluate_to_zero(program_executing_every_instruction())
     }
+
+    /// Verify that the program-hashing logic has not regressed.
+    ///
+    /// If a change is intentional, update the expected snapshot.
+    #[test]
+    fn program_hash_is_unchanged() {
+        insta::assert_snapshot!(
+            program_executing_every_instruction().program.hash(),
+            @"16249222752446630867,\
+              09491561388146595314,\
+              17212103075750520093,\
+              13456916676490887543,\
+              03342244920869747600",
+        );
+    }
 }
