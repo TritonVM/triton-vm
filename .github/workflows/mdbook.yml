@@ -15,17 +15,15 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - uses: jontze/action-mdbook@v3
+      - uses: jontze/action-mdbook@v4
         with:
           token: ${{secrets.GITHUB_TOKEN}}
-          mdbook-version: "~0.4.45"
-          use-linkcheck: true
-          linkcheck-version: "~0.7.7"
+          mdbook-version: "~0.5.2"
           use-katex: true
 
           # See https://github.com/lzanini/mdbook-katex/releases for releases
           # that have associated binary artifacts
-          katex-version: "~0.9.3-binaries"
+          katex-version: "~0.10.0-alpha-binaries"
 
       - name: Build mdBook
         run: mdbook build ./specification

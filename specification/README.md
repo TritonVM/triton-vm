@@ -10,7 +10,7 @@ Then, install mdBook as well as the
 we use:
 
 ```sh
-cargo install mdbook mdbook-katex mdbook-linkcheck
+cargo install mdbook mdbook-katex
 ```
 
 Finally, you can serve and open the specification:
