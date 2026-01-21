@@ -3,6 +3,37 @@
 All notable changes are documented in this file.
 Lines marked “(!)” indicate a breaking change.
 
+## [2.0.0](https://github.com/TritonVM/triton-vm/compare/v1.0.0..v2.0.0) - 2026-01-21
+
+### ✨ Features
+
+- (!) Raise an ArithmeticDomain to any exponent ([7d9b54fe](https://github.com/TritonVM/triton-vm/commit/7d9b54fe))
+
+### 🐛 Bug Fixes
+
+- (!) Consider FRI polynomial in Fiat-Shamir state ([3a045d63](https://github.com/TritonVM/triton-vm/commit/3a045d63))
+
+### ⚡️ Performance
+
+- *(build)* Reduce allocations when building ([59ac8dae](https://github.com/TritonVM/triton-vm/commit/59ac8dae))
+- *(build)* Speed up constraint circuit hashing ([3b45421c](https://github.com/TritonVM/triton-vm/commit/3b45421c))
+- Improve compile times through faster hashing ([5337de08](https://github.com/TritonVM/triton-vm/commit/5337de08))
+
+### 📚 Documentation
+
+- Decrease width of spec page “instructions” ([7bd77d33](https://github.com/TritonVM/triton-vm/commit/7bd77d33))
+- Add draft for Tip9, “polynomial registers” ([c429f60b](https://github.com/TritonVM/triton-vm/commit/c429f60b))
+- Add TIP-0010 ([e1593be3](https://github.com/TritonVM/triton-vm/commit/e1593be3))
+
+### ⚙️ Miscellaneous
+
+- Reflect true MSRV ([44a6240d](https://github.com/TritonVM/triton-vm/commit/44a6240d))
+- Adapt to latest Codspeed changes ([f0536892](https://github.com/TritonVM/triton-vm/commit/f0536892))
+
+### ♻️ Refactor
+
+- (!) *(ArithmeticDomain)* Uphold invariants ([59dd3b4d](https://github.com/TritonVM/triton-vm/commit/59dd3b4d))
+
 ## [1.0.0](https://github.com/TritonVM/triton-vm/compare/v0.50.0..v1.0.0) - 2025-10-23
 
 ### ⚙️ Miscellaneous
