@@ -6,6 +6,7 @@ use itertools::Itertools;
 use strum::EnumCount;
 use twenty_first::prelude::*;
 
+use crate::error::USIZE_TO_U64_ERR;
 use crate::table::master_table::MasterAuxTable;
 use crate::table::master_table::MasterMainTable;
 
@@ -83,14 +84,25 @@ pub trait IntegralMemoryLayout {
 
 impl IntegralMemoryLayout for StaticTasmConstraintEvaluationMemoryLayout {
     fn memory_regions(&self) -> Box<[MemoryRegion]> {
+        let as_u64 = |x: usize| u64::try_from(x).expect(USIZE_TO_U64_ERR);
+
+        let num_main_cols = as_u64(MasterMainTable::NUM_COLUMNS);
+        let num_aux_cols = as_u64(MasterAuxTable::NUM_COLUMNS);
+        let num_challenge_ids = as_u64(ChallengeId::COUNT);
+
+        debug_assert!(num_main_cols <= MEM_PAGE_SIZE);
+        debug_assert!(num_aux_cols <= MEM_PAGE_SIZE);
+        debug_assert!(num_challenge_ids <= MEM_PAGE_SIZE);
+
         let all_regions = [
             MemoryRegion::new(self.free_mem_page_ptr, MEM_PAGE_SIZE),
-            MemoryRegion::new(self.curr_main_row_ptr, MasterMainTable::NUM_COLUMNS),
-            MemoryRegion::new(self.curr_aux_row_ptr, MasterAuxTable::NUM_COLUMNS),
-            MemoryRegion::new(self.next_main_row_ptr, MasterMainTable::NUM_COLUMNS),
-            MemoryRegion::new(self.next_aux_row_ptr, MasterAuxTable::NUM_COLUMNS),
-            MemoryRegion::new(self.challenges_ptr, ChallengeId::COUNT),
+            MemoryRegion::new(self.curr_main_row_ptr, num_main_cols),
+            MemoryRegion::new(self.curr_aux_row_ptr, num_aux_cols),
+            MemoryRegion::new(self.next_main_row_ptr, num_main_cols),
+            MemoryRegion::new(self.next_aux_row_ptr, num_aux_cols),
+            MemoryRegion::new(self.challenges_ptr, num_challenge_ids),
         ];
+
         Box::new(all_regions)
     }
 }
@@ -99,7 +111,7 @@ impl IntegralMemoryLayout for DynamicTasmConstraintEvaluationMemoryLayout {
     fn memory_regions(&self) -> Box<[MemoryRegion]> {
         let all_regions = [
             MemoryRegion::new(self.free_mem_page_ptr, MEM_PAGE_SIZE),
-            MemoryRegion::new(self.challenges_ptr, ChallengeId::COUNT),
+            MemoryRegion::new(self.challenges_ptr, ChallengeId::COUNT as u64),
         ];
         Box::new(all_regions)
     }
@@ -112,9 +124,9 @@ pub struct MemoryRegion {
 }
 
 impl MemoryRegion {
-    pub fn new<A: Into<u64>>(address: A, size: usize) -> Self {
+    pub fn new<A: Into<u64>>(address: A, size: u64) -> Self {
         let start = bfe!(address.into());
-        let size = u64::try_from(size).unwrap();
+
         Self { start, size }
     }
 
@@ -139,17 +151,17 @@ impl MemoryRegion {
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use proptest::prelude::*;
-    use proptest_arbitrary_interop::arb;
-    use test_strategy::proptest;
+    use proptest_arbitrary_adapter::arb;
     use twenty_first::bfe;
 
     use super::*;
+    use crate::tests::proptest;
+    use crate::tests::test;
 
     impl Default for StaticTasmConstraintEvaluationMemoryLayout {
         /// For testing purposes only.
         fn default() -> Self {
-            let mem_page_size = MEM_PAGE_SIZE as u64;
-            let mem_page = |i| bfe!(i * mem_page_size);
+            let mem_page = |i| bfe!(i * MEM_PAGE_SIZE);
             StaticTasmConstraintEvaluationMemoryLayout {
                 free_mem_page_ptr: mem_page(0),
                 curr_main_row_ptr: mem_page(1),
@@ -164,8 +176,7 @@ mod tests {
     impl Default for DynamicTasmConstraintEvaluationMemoryLayout {
         /// For testing purposes only.
         fn default() -> Self {
-            let mem_page_size = MEM_PAGE_SIZE as u64;
-            let mem_page = |i| bfe!(i * mem_page_size);
+            let mem_page = |i| bfe!(i * MEM_PAGE_SIZE);
             DynamicTasmConstraintEvaluationMemoryLayout {
                 free_mem_page_ptr: mem_page(0),
                 challenges_ptr: mem_page(1),
@@ -173,7 +184,7 @@ mod tests {
         }
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn size_0_memory_region_contains_no_addresses(
         #[strategy(arb())] region_start: BFieldElement,
         #[strategy(arb())] address: BFieldElement,
@@ -183,7 +194,7 @@ mod tests {
         prop_assert!(!region.contains_address(address));
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn size_1_memory_region_contains_only_start_address(
         #[strategy(arb())] region_start: BFieldElement,
         #[strategy(arb())]
@@ -195,13 +206,13 @@ mod tests {
         prop_assert!(!region.contains_address(address));
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn definitely_integral_memory_layout_is_detected_as_integral() {
         assert!(StaticTasmConstraintEvaluationMemoryLayout::default().is_integral());
         assert!(DynamicTasmConstraintEvaluationMemoryLayout::default().is_integral());
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn definitely_non_integral_memory_layout_is_detected_as_non_integral() {
         let layout = StaticTasmConstraintEvaluationMemoryLayout {
             free_mem_page_ptr: bfe!(0),
@@ -220,7 +231,7 @@ mod tests {
         assert!(!layout.is_integral());
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn memory_layout_integrity_check_does_not_panic_due_to_arithmetic_overflow() {
         let mem_layout = DynamicTasmConstraintEvaluationMemoryLayout {
             free_mem_page_ptr: bfe!(BFieldElement::MAX),

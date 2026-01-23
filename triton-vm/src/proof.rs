@@ -131,12 +131,13 @@ mod tests {
     use assert2::assert;
     use proptest::collection::vec;
     use proptest::prelude::*;
-    use proptest_arbitrary_interop::arb;
+    use proptest_arbitrary_adapter::arb;
     use rand::prelude::*;
-    use test_strategy::proptest;
 
     use crate::prelude::*;
     use crate::proof_item::ProofItem;
+    use crate::tests::proptest;
+    use crate::tests::test;
 
     use super::*;
 
@@ -147,7 +148,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn claim_accepts_various_types_for_public_input() {
         let _claim = Claim::default()
             .with_input(bfe_vec![42])
@@ -155,21 +156,21 @@ mod tests {
             .with_input(PublicInput::new(bfe_vec![42]));
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn decode_proof(#[strategy(arb())] proof: Proof) {
         let encoded = proof.encode();
         let decoded = *Proof::decode(&encoded).unwrap();
         prop_assert_eq!(proof, decoded);
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn decode_claim(#[strategy(arb())] claim: Claim) {
         let encoded = claim.encode();
         let decoded = *Claim::decode(&encoded).unwrap();
         prop_assert_eq!(claim, decoded);
     }
 
-    #[proptest(cases = 10)]
+    #[macro_rules_attr::apply(proptest(cases = 10))]
     fn proof_with_no_padded_height_gives_err(#[strategy(arb())] root: Digest) {
         let mut proof_stream = ProofStream::new();
         proof_stream.enqueue(ProofItem::MerkleRoot(root));
@@ -178,7 +179,7 @@ mod tests {
         assert!(maybe_padded_height.is_err());
     }
 
-    #[proptest(cases = 10)]
+    #[macro_rules_attr::apply(proptest(cases = 10))]
     fn proof_with_multiple_padded_height_gives_err(#[strategy(arb())] root: Digest) {
         let mut proof_stream = ProofStream::new();
         proof_stream.enqueue(ProofItem::Log2PaddedHeight(8));
@@ -189,14 +190,14 @@ mod tests {
         assert!(maybe_padded_height.is_err());
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn decoding_arbitrary_proof_data_does_not_panic(
         #[strategy(vec(arb(), 0..1_000))] proof_data: Vec<BFieldElement>,
     ) {
         let _proof = Proof::decode(&proof_data);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn current_proof_version_is_still_current() {
         let program = triton_program! {
             pick 11 pick 12 pick 13 pick 14 pick 15

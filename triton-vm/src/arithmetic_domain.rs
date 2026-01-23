@@ -280,13 +280,13 @@ pub(crate) mod tests {
     use itertools::Itertools;
     use proptest::collection::vec;
     use proptest::prelude::*;
-    use proptest_arbitrary_interop::arb;
-    use test_strategy::proptest;
-
-    use crate::shared_tests::arbitrary_polynomial;
-    use crate::shared_tests::arbitrary_polynomial_of_degree;
+    use proptest_arbitrary_adapter::arb;
 
     use super::*;
+    use crate::shared_tests::arbitrary_polynomial;
+    use crate::shared_tests::arbitrary_polynomial_of_degree;
+    use crate::tests::proptest;
+    use crate::tests::test;
 
     prop_compose! {
         pub fn arbitrary_domain()(
@@ -297,7 +297,7 @@ pub(crate) mod tests {
         }
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn evaluate_empty_polynomial(
         #[strategy(arbitrary_domain())] domain: ArithmeticDomain,
         #[strategy(arbitrary_polynomial_of_degree(-1))] poly: Polynomial<'static, XFieldElement>,
@@ -305,7 +305,7 @@ pub(crate) mod tests {
         domain.evaluate(&poly);
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn evaluate_constant_polynomial(
         #[strategy(arbitrary_domain())] domain: ArithmeticDomain,
         #[strategy(arbitrary_polynomial_of_degree(0))] poly: Polynomial<'static, XFieldElement>,
@@ -313,7 +313,7 @@ pub(crate) mod tests {
         domain.evaluate(&poly);
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn evaluate_linear_polynomial(
         #[strategy(arbitrary_domain())] domain: ArithmeticDomain,
         #[strategy(arbitrary_polynomial_of_degree(1))] poly: Polynomial<'static, XFieldElement>,
@@ -321,7 +321,7 @@ pub(crate) mod tests {
         domain.evaluate(&poly);
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn evaluate_polynomial(
         #[strategy(arbitrary_domain())] domain: ArithmeticDomain,
         #[strategy(arbitrary_polynomial())] polynomial: Polynomial<'static, XFieldElement>,
@@ -329,7 +329,7 @@ pub(crate) mod tests {
         domain.evaluate(&polynomial);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn domain_values() {
         let poly = Polynomial::<BFieldElement>::x_to_the(3);
         let x_cubed_coefficients = poly.clone().into_coefficients();
@@ -364,7 +364,7 @@ pub(crate) mod tests {
         }
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn low_degree_extension() {
         let short_domain_len = 32;
         let long_domain_len = 128;
@@ -386,7 +386,7 @@ pub(crate) mod tests {
         assert_eq!(short_codeword, long_codeword_sub_view);
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn domain_to_the_pow_contains_points_to_the_pow(
         #[strategy(arbitrary_domain())] big_domain: ArithmeticDomain,
         #[strategy(0..=4)]
@@ -410,7 +410,7 @@ pub(crate) mod tests {
         }
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn pow_converges_on_domain_of_len_1(
         #[strategy(arbitrary_domain())] domain: ArithmeticDomain,
         #[strategy(0..=4)]
@@ -426,7 +426,7 @@ pub(crate) mod tests {
         prop_assert_eq!(1, domain.length);
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn can_evaluate_polynomial_larger_than_domain(
         #[strategy(1_usize..10)] _log_domain_length: usize,
         #[strategy(1_usize..5)] _expansion_factor: usize,
@@ -444,13 +444,13 @@ pub(crate) mod tests {
         assert_eq!(values0, values1);
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn zerofier_is_actually_zerofier(#[strategy(arbitrary_domain())] domain: ArithmeticDomain) {
         let actual_zerofier = Polynomial::zerofier(&domain.values());
         prop_assert_eq!(actual_zerofier, domain.zerofier());
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn multiplication_with_zerofier_is_identical_to_method_mul_with_zerofier(
         #[strategy(arbitrary_domain())] domain: ArithmeticDomain,
         #[strategy(arbitrary_polynomial())] polynomial: Polynomial<'static, XFieldElement>,

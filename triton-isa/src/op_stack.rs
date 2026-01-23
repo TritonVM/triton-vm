@@ -688,7 +688,7 @@ mod tests {
     use assert2::let_assert;
     use proptest::collection::vec;
     use proptest::prelude::*;
-    use proptest_arbitrary_interop::arb;
+    use proptest_arbitrary_adapter::arb;
     use strum::IntoEnumIterator;
     use test_strategy::proptest;
 
