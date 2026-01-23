@@ -218,7 +218,7 @@ impl GrandCrossTableArg {
 mod tests {
     use num_traits::Zero;
     use proptest::prelude::*;
-    use proptest_arbitrary_interop::arb;
+    use proptest_arbitrary_adapter::arb;
     use test_strategy::proptest;
 
     use super::*;

@@ -406,26 +406,27 @@ fn auxiliary_column_clock_jump_difference_lookup_log_derivative(
 #[cfg_attr(coverage_nightly, coverage(off))]
 pub(crate) mod tests {
     use proptest::prelude::*;
-    use proptest_arbitrary_interop::arb;
-    use test_strategy::proptest;
+    use proptest_arbitrary_adapter::arb;
 
     use super::*;
+    use crate::tests::proptest;
+    use crate::tests::test;
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn ram_table_call_can_be_converted_to_table_row(
         #[strategy(arb())] ram_table_call: RamTableCall,
     ) {
         ram_table_call.to_table_row();
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn bezout_coefficient_polynomials_of_empty_ram_table_are_default() {
         let (a, b) = bezout_coefficient_polynomials_coefficients(&[]);
         assert_eq!(a, vec![]);
         assert_eq!(b, vec![]);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn bezout_coefficient_polynomials_are_as_expected() {
         let rp = bfe_array![1, 2, 3];
         let (a, b) = bezout_coefficient_polynomials_coefficients(&rp);
@@ -437,7 +438,7 @@ pub(crate) mod tests {
         assert_eq!(expected_b, *b);
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn bezout_coefficient_polynomials_agree_with_xgcd(
         #[strategy(arb())]
         #[filter(#ram_pointers.iter().all_unique())]
@@ -459,7 +460,7 @@ pub(crate) mod tests {
         prop_assert_eq!(b, b_xgcd);
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn bezout_coefficients_are_actually_bezout_coefficients(
         #[strategy(arb())]
         #[filter(!#ram_pointers.is_empty())]

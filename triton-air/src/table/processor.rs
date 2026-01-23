@@ -3264,7 +3264,7 @@ mod tests {
     use ndarray::s;
     use num_traits::identities::Zero;
     use proptest::prop_assert_eq;
-    use proptest_arbitrary_interop::arb;
+    use proptest_arbitrary_adapter::arb;
     use test_strategy::proptest;
 
     use crate::table::NUM_AUX_COLUMNS;

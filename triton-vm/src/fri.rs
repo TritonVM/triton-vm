@@ -633,13 +633,14 @@ mod tests {
     use assert2::let_assert;
     use itertools::Itertools;
     use proptest::prelude::*;
-    use proptest_arbitrary_interop::arb;
+    use proptest_arbitrary_adapter::arb;
     use rand::prelude::*;
-    use test_strategy::proptest;
 
     use crate::error::FriValidationError;
     use crate::shared_tests::arbitrary_polynomial;
     use crate::shared_tests::arbitrary_polynomial_of_degree;
+    use crate::tests::proptest;
+    use crate::tests::test;
 
     use super::*;
 
@@ -682,7 +683,7 @@ mod tests {
         type Strategy = BoxedStrategy<Self>;
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn sample_indices(fri: Fri, #[strategy(arb())] initial_absorb: [BFieldElement; tip5::RATE]) {
         let mut sponge = Tip5::init();
         sponge.absorb(initial_absorb);
@@ -697,7 +698,7 @@ mod tests {
         prop_assert!(num_unique_indices >= required_unique_indices);
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn num_rounds_are_reasonable(fri: Fri) {
         let expected_last_round_max_degree = fri.first_round_max_degree() >> fri.num_rounds();
         prop_assert_eq!(expected_last_round_max_degree, fri.last_round_max_degree());
@@ -707,7 +708,7 @@ mod tests {
         }
     }
 
-    #[proptest(cases = 20)]
+    #[macro_rules_attr::apply(proptest(cases = 20))]
     fn prove_and_verify_low_degree_of_twice_cubing_plus_one(
         #[strategy(arbitrary_fri_supporting_degree(3))] fri: Fri,
     ) {
@@ -723,7 +724,7 @@ mod tests {
         prop_assert!(verdict.is_ok());
     }
 
-    #[proptest(cases = 50)]
+    #[macro_rules_attr::apply(proptest(cases = 50))]
     fn prove_and_verify_low_degree_polynomial(
         fri: Fri,
         #[strategy(-1_i64..=#fri.first_round_max_degree() as i64)] _degree: i64,
@@ -739,7 +740,7 @@ mod tests {
         prop_assert!(verdict.is_ok());
     }
 
-    #[proptest(cases = 50)]
+    #[macro_rules_attr::apply(proptest(cases = 50))]
     fn prove_and_fail_to_verify_high_degree_polynomial(
         fri: Fri,
         #[strategy(Just((1 + #fri.first_round_max_degree()) as i64))] _too_high_degree: i64,
@@ -756,12 +757,12 @@ mod tests {
         prop_assert!(verdict.is_err());
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn smallest_possible_fri_has_no_rounds() {
         assert_eq!(0, smallest_fri().num_rounds());
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn smallest_possible_fri_can_only_verify_constant_polynomials() {
         assert_eq!(0, smallest_fri().first_round_max_degree());
     }
@@ -773,7 +774,7 @@ mod tests {
         Fri::new(domain, expansion_factor, num_collinearity_checks).unwrap()
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn too_small_expansion_factor_is_rejected() {
         let domain = ArithmeticDomain::of_length(2).unwrap();
         let expansion_factor = 1;
@@ -782,20 +783,25 @@ mod tests {
         assert_eq!(FriSetupError::ExpansionFactorTooSmall, err);
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn expansion_factor_not_a_power_of_two_is_rejected(
-        #[strategy(2_usize..(1 << 32))]
+        #[strategy(2_usize..=(1 << 31))]
         #[filter(!#expansion_factor.is_power_of_two())]
         expansion_factor: usize,
     ) {
+        #[cfg(target_pointer_width = "32")]
+        let largest_supported_domain_size = 1 << 31;
+
+        #[cfg(target_pointer_width = "64")]
         let largest_supported_domain_size = 1 << 32;
+
         let domain = ArithmeticDomain::of_length(largest_supported_domain_size).unwrap();
         let num_collinearity_checks = 1;
         let err = Fri::new(domain, expansion_factor, num_collinearity_checks).unwrap_err();
         prop_assert_eq!(FriSetupError::ExpansionFactorUnsupported, err);
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn domain_size_smaller_than_expansion_factor_is_rejected(
         #[strategy(1_usize..32)] log_2_expansion_factor: usize,
         #[strategy(..#log_2_expansion_factor)] log_2_domain_length: usize,
@@ -810,7 +816,7 @@ mod tests {
 
     // todo: add test fuzzing proof_stream
 
-    #[proptest(cases = 50)]
+    #[macro_rules_attr::apply(proptest(cases = 50))]
     fn serialization(
         fri: Fri,
         #[strategy(-1_i64..=#fri.first_round_max_degree() as i64)] _degree: i64,
@@ -837,7 +843,7 @@ mod tests {
         }
     }
 
-    #[proptest(cases = 50)]
+    #[macro_rules_attr::apply(proptest(cases = 50))]
     fn last_round_codeword_unequal_to_last_round_commitment_results_in_validation_failure(
         fri: Fri,
         #[strategy(arbitrary_polynomial())] polynomial: XfePoly,
@@ -888,7 +894,7 @@ mod tests {
         }
     }
 
-    #[proptest(cases = 50)]
+    #[macro_rules_attr::apply(proptest(cases = 50))]
     fn revealing_wrong_number_of_leaves_results_in_validation_failure(
         fri: Fri,
         #[strategy(arbitrary_polynomial())] polynomial: XfePoly,
@@ -937,7 +943,7 @@ mod tests {
         }
     }
 
-    #[proptest(cases = 50)]
+    #[macro_rules_attr::apply(proptest(cases = 50))]
     fn incorrect_authentication_structure_results_in_validation_failure(
         fri: Fri,
         #[strategy(arbitrary_polynomial())] polynomial: XfePoly,
@@ -992,7 +998,7 @@ mod tests {
         }
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn incorrect_last_round_polynomial_results_in_verification_failure(
         fri: Fri,
         #[strategy(arbitrary_polynomial())] fri_polynomial: XfePoly,
@@ -1015,7 +1021,7 @@ mod tests {
         assert!(let FriValidationError::BadMerkleAuthenticationPath = err);
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn codeword_corresponding_to_high_degree_polynomial_results_in_verification_failure(
         fri: Fri,
         #[strategy(Just(#fri.first_round_max_degree() as i64 + 1))] _min_fail_deg: i64,
@@ -1032,7 +1038,7 @@ mod tests {
         assert!(let FriValidationError::LastRoundPolynomialHasTooHighDegree = err);
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn verifying_arbitrary_proof_does_not_panic(
         fri: Fri,
         #[strategy(arb())] mut proof_stream: ProofStream,

@@ -388,8 +388,9 @@ mod tests {
 
     use super::*;
     use crate::prelude::*;
+    use crate::tests::test;
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn pad_program_requiring_no_padding_zeros() {
         let eight_nops = triton_asm![nop; 8];
         let program = triton_program!({&eight_nops} halt);
@@ -399,7 +400,7 @@ mod tests {
         assert!(expected == padded_program);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn height_of_any_table_can_be_computed() {
         let program = triton_program!(halt);
         let (aet, _) =
