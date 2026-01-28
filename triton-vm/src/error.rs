@@ -80,6 +80,63 @@ pub enum ProofStreamError {
     DecodingError(#[from] <ProofStream as BFieldCodec>::Error),
 }
 
+#[non_exhaustive]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Error)]
+pub enum FriSetupError {
+    #[error("the expansion factor must be greater than 1")]
+    ExpansionFactorTooSmall,
+
+    #[error("the expansion factor must be a power of 2")]
+    ExpansionFactorUnsupported,
+
+    #[error("the expansion factor must be smaller than the domain length")]
+    ExpansionFactorMismatch,
+
+    #[error(transparent)]
+    ArithmeticDomainError(#[from] ArithmeticDomainError),
+}
+
+#[non_exhaustive]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Error)]
+pub enum FriProvingError {
+    #[error(transparent)]
+    MerkleTreeError(#[from] MerkleTreeError),
+
+    #[error(transparent)]
+    ArithmeticDomainError(#[from] ArithmeticDomainError),
+}
+
+#[non_exhaustive]
+#[derive(Debug, Error)]
+pub enum FriValidationError {
+    #[error("the number of revealed leaves does not match the number of collinearity checks")]
+    IncorrectNumberOfRevealedLeaves,
+
+    #[error("Merkle tree authentication failed")]
+    BadMerkleAuthenticationPath,
+
+    #[error("computed and received codeword of last round do not match")]
+    LastCodewordMismatch,
+
+    #[error("evaluations of last round's polynomial and last round codeword do not match")]
+    LastRoundPolynomialEvaluationMismatch,
+
+    #[error("last round's polynomial has too high degree")]
+    LastRoundPolynomialHasTooHighDegree,
+
+    #[error("received codeword of last round does not correspond to its commitment")]
+    BadMerkleRootForLastCodeword,
+
+    #[error(transparent)]
+    ProofStreamError(#[from] ProofStreamError),
+
+    #[error(transparent)]
+    MerkleTreeError(#[from] MerkleTreeError),
+
+    #[error(transparent)]
+    ArithmeticDomainError(#[from] ArithmeticDomainError),
+}
+
 /// Indicates the choice of an invalid combination of initial parameters.
 #[non_exhaustive]
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Error)]

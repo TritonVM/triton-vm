@@ -191,6 +191,7 @@ pub mod constraints;
 pub mod error;
 pub mod example_programs;
 pub mod execution_trace_profiler;
+pub mod fri;
 pub mod memory_layout;
 mod ndarray_helper;
 pub mod prelude;

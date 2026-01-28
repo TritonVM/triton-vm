@@ -23,11 +23,10 @@ use crate::error::StirVerificationError;
 use crate::error::U32_TO_USIZE_ERR;
 use crate::error::USIZE_TO_U64_ERR;
 use crate::profiler::profiler;
+use crate::proof_item::AuthenticationStructure;
 use crate::proof_item::ProofItem;
 use crate::proof_stream::ProofStream;
 use crate::table::master_table::BfeSlice;
-
-pub type AuthenticationStructure = Vec<Digest>;
 
 type SetupResult<T> = Result<T, StirParameterError>;
 type ProverResult<T> = Result<T, StirProvingError>;
@@ -1168,7 +1167,7 @@ impl Stir {
         profiler!(start "final round");
         let folding_randomness = proof_stream.sample_scalars(1)[0];
         let poly = Self::fold_polynomial(&poly, folding_factor, folding_randomness);
-        proof_stream.enqueue(ProofItem::StirPolynomial(poly));
+        proof_stream.enqueue(ProofItem::Polynomial(poly));
 
         let folded_domain = domain.pow(folding_factor).unwrap();
         let queried_indices = proof_stream
@@ -1289,7 +1288,7 @@ impl Stir {
 
         profiler!(start "final round");
         let folding_randomness = proof_stream.sample_scalars(1)[0];
-        let poly = proof_stream.dequeue()?.try_into_stir_polynomial()?;
+        let poly = proof_stream.dequeue()?.try_into_polynomial()?;
 
         // for the low, low chance that the final polynomial is the zero
         // polynomial, we treat it as if it was a constant polynomial when
@@ -2079,7 +2078,7 @@ mod tests {
                 (MerkleRoot(p), MerkleRoot(v)) => prop_assert_eq!(p, v),
                 (StirOutOfDomainValues(p), StirOutOfDomainValues(v)) => prop_assert_eq!(p, v),
                 (StirResponse(p), StirResponse(v)) => prop_assert_eq!(p, v),
-                (StirPolynomial(p), StirPolynomial(v)) => prop_assert_eq!(p, v),
+                (Polynomial(p), Polynomial(v)) => prop_assert_eq!(p, v),
                 _ => panic!("Unknown items.\nProver: {prover_item:?}\nVerifier: {verifier_item:?}"),
             }
         }
@@ -2121,7 +2120,7 @@ mod tests {
                     corrupt_slice(list, vec_index / num_lists, random_xfe)?;
                 }
             }
-            ProofItem::StirPolynomial(poly) => {
+            ProofItem::Polynomial(poly) => {
                 let mut coefficients = poly.coefficients().to_vec();
                 corrupt_slice(&mut coefficients, vec_index, random_xfe)?;
                 *poly = Polynomial::new(coefficients);
