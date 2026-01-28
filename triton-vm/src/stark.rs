@@ -1602,6 +1602,14 @@ impl Stark {
             .checked_next_power_of_two()
             .expect("padded height drastically exceeds assumed maximum");
         let log2_padded_height = usize::try_from(padded_height.ilog2()).expect(U32_TO_USIZE_ERR);
+
+        // The reason that the bound at which a polynomial is considered to be
+        // of “high” degree equals the padded height is a bit subtle:
+        // A polynomial interpolating through `padded_height` points is of
+        // degree `padded_height - 1`. This is the highest degree that the
+        // low-degree test should accept as “low.” Polynomials of degree
+        // `padded_height` (and higher) have “high” degree.
+        let log2_high_degree_bound = log2_padded_height;
         let mut stir_parameters = StirParameters {
             security_level: self.security_level,
             soundness: SoundnessType::Provable,
