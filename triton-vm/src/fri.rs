@@ -1,3 +1,4 @@
+use arbitrary::Arbitrary;
 use itertools::Itertools;
 use num_traits::Zero;
 use rayon::prelude::*;
@@ -10,15 +11,13 @@ use crate::error::FriProvingError;
 use crate::error::FriSetupError;
 use crate::error::FriValidationError;
 use crate::profiler::profiler;
-use crate::proof_item::FriResponse;
+use crate::proof_item::AuthenticationStructure;
 use crate::proof_item::ProofItem;
 use crate::proof_stream::ProofStream;
 
 pub(crate) type SetupResult<T> = Result<T, FriSetupError>;
 pub(crate) type ProverResult<T> = Result<T, FriProvingError>;
 pub(crate) type VerifierResult<T> = Result<T, FriValidationError>;
-
-pub type AuthenticationStructure = Vec<Digest>;
 
 #[derive(Debug, Copy, Clone)]
 pub struct Fri {
@@ -42,6 +41,17 @@ struct ProverRound {
     domain: ArithmeticDomain,
     codeword: Vec<XFieldElement>,
     merkle_tree: MerkleTree,
+}
+
+/// A [FRI](Fri) round's revealed values together with an authentication
+/// structure.
+#[derive(Debug, Clone, Eq, PartialEq, Hash, BFieldCodec, Arbitrary)]
+pub struct FriResponse {
+    /// The values of the queried leaves of the Merkle tree.
+    pub queried_leaves: Vec<XFieldElement>,
+
+    /// The authentication structure of the Merkle tree.
+    pub auth_structure: AuthenticationStructure,
 }
 
 impl FriProver<'_> {
@@ -98,7 +108,7 @@ impl FriProver<'_> {
         let last_polynomial = ArithmeticDomain::of_length(last_codeword.len())
             .unwrap()
             .interpolate(last_codeword);
-        let proof_item = ProofItem::FriPolynomial(last_polynomial);
+        let proof_item = ProofItem::Polynomial(last_polynomial);
         self.proof_stream.enqueue(proof_item);
     }
 
@@ -138,14 +148,14 @@ impl FriProver<'_> {
         indices: &[usize],
     ) -> ProverResult<()> {
         let codeword = &self.rounds[round_number].codeword;
-        let revealed_leaves = indices.iter().map(|&i| codeword[i]).collect_vec();
+        let queried_leaves = indices.iter().map(|&i| codeword[i]).collect_vec();
 
         let merkle_tree = &self.rounds[round_number].merkle_tree;
         let auth_structure = merkle_tree.authentication_structure(indices)?;
 
         let fri_response = FriResponse {
+            queried_leaves,
             auth_structure,
-            revealed_leaves,
         };
         let proof_item = ProofItem::FriResponse(fri_response);
         self.proof_stream.enqueue(proof_item);
@@ -226,7 +236,7 @@ impl FriVerifier<'_> {
         }
 
         self.last_round_codeword = self.proof_stream.dequeue()?.try_into_fri_codeword()?;
-        self.last_round_polynomial = self.proof_stream.dequeue()?.try_into_fri_polynomial()?;
+        self.last_round_polynomial = self.proof_stream.dequeue()?.try_into_polynomial()?;
         Ok(())
     }
 
@@ -290,12 +300,12 @@ impl FriVerifier<'_> {
     ) -> VerifierResult<AuthenticationStructure> {
         let fri_response = self.proof_stream.dequeue()?.try_into_fri_response()?;
         let FriResponse {
+            queried_leaves,
             auth_structure,
-            revealed_leaves,
         } = fri_response;
 
-        self.assert_enough_leaves_were_received(&revealed_leaves)?;
-        self.rounds[0].partial_codeword_a = revealed_leaves;
+        self.assert_enough_leaves_were_received(&queried_leaves)?;
+        self.rounds[0].partial_codeword_a = queried_leaves;
         Ok(auth_structure)
     }
 
@@ -305,12 +315,12 @@ impl FriVerifier<'_> {
     ) -> VerifierResult<AuthenticationStructure> {
         let fri_response = self.proof_stream.dequeue()?.try_into_fri_response()?;
         let FriResponse {
+            queried_leaves,
             auth_structure,
-            revealed_leaves,
         } = fri_response;
 
-        self.assert_enough_leaves_were_received(&revealed_leaves)?;
-        self.rounds[round_number].partial_codeword_b = revealed_leaves;
+        self.assert_enough_leaves_were_received(&queried_leaves)?;
+        self.rounds[round_number].partial_codeword_b = queried_leaves;
         Ok(auth_structure)
     }
 
@@ -637,11 +647,10 @@ mod tests {
     use rand::prelude::*;
     use test_strategy::proptest;
 
+    use super::*;
     use crate::error::FriValidationError;
     use crate::shared_tests::arbitrary_polynomial;
     use crate::shared_tests::arbitrary_polynomial_of_degree;
-
-    use super::*;
 
     /// A type alias exclusive to this test module.
     type XfePoly = Polynomial<'static, XFieldElement>;
@@ -672,7 +681,7 @@ mod tests {
         }
     }
 
-    impl Arbitrary for Fri {
+    impl proptest::prelude::Arbitrary for Fri {
         type Parameters = ();
 
         fn arbitrary_with(_: Self::Parameters) -> Self::Strategy {
@@ -831,7 +840,7 @@ mod tests {
                 (PI::MerkleRoot(p), PI::MerkleRoot(v)) => prop_assert_eq!(p, v),
                 (PI::FriResponse(p), PI::FriResponse(v)) => prop_assert_eq!(p, v),
                 (PI::FriCodeword(p), PI::FriCodeword(v)) => prop_assert_eq!(p, v),
-                (PI::FriPolynomial(p), PI::FriPolynomial(v)) => prop_assert_eq!(p, v),
+                (PI::Polynomial(p), PI::Polynomial(v)) => prop_assert_eq!(p, v),
                 _ => panic!("Unknown items.\nProver: {prover_item:?}\nVerifier: {verifier_item:?}"),
             }
         }
@@ -919,18 +928,18 @@ mod tests {
 
         let mut rng = StdRng::seed_from_u64(seed);
         let fri_response = fri_responses.choose(&mut rng).unwrap();
-        let revealed_leaves = &mut fri_response.revealed_leaves;
-        let modification_index = rng.random_range(0..revealed_leaves.len());
+        let queried_leaves = &mut fri_response.queried_leaves;
+        let modification_index = rng.random_range(0..queried_leaves.len());
         if rng.random() {
-            revealed_leaves.remove(modification_index);
+            queried_leaves.remove(modification_index);
         } else {
-            revealed_leaves.insert(modification_index, rng.random());
+            queried_leaves.insert(modification_index, rng.random());
         };
 
         proof_stream
     }
 
-    fn fri_response_filter() -> fn(&mut ProofItem) -> Option<&mut super::FriResponse> {
+    fn fri_response_filter() -> fn(&mut ProofItem) -> Option<&mut FriResponse> {
         |proof_item| match proof_item {
             ProofItem::FriResponse(fri_response) => Some(fri_response),
             _ => None,
@@ -1005,7 +1014,7 @@ mod tests {
 
         let mut proof_stream = prepare_proof_stream_for_verification(proof_stream);
         proof_stream.items.iter_mut().for_each(|item| {
-            if let ProofItem::FriPolynomial(polynomial) = item {
+            if let ProofItem::Polynomial(polynomial) = item {
                 *polynomial = incorrect_polynomial.clone();
             }
         });

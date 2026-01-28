@@ -83,11 +83,11 @@ impl MemIOBench {
 
         let trace_len = aet.height().height;
         let padded_height = proof.padded_height().unwrap();
-        let fri = stark.fri(padded_height).unwrap();
+        let stir = stark.stir(padded_height).unwrap();
 
         profile
             .with_cycle_count(trace_len)
             .with_padded_height(padded_height)
-            .with_fri_domain_len(fri.domain.len())
+            .with_ldt_domain_len(stir.initial_domain().len())
     }
 }

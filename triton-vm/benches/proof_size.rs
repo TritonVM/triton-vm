@@ -181,11 +181,12 @@ fn program_halt() -> ProgramAndInput {
     ProgramAndInput::new(triton_program!(halt))
 }
 
-/// The base 2, integer logarithm of the FRI domain length.
-fn log_2_fri_domain_length(stark: Stark, proof: &Proof) -> u32 {
+/// The base 2, integer logarithm of the length of the low-degree test domain.
+fn log_2_ldt_domain_length(stark: Stark, proof: &Proof) -> u32 {
     let padded_height = proof.padded_height().unwrap();
-    let fri = stark.fri(padded_height).unwrap();
-    fri.domain.len().ilog2()
+    let stir = stark.stir(padded_height).unwrap();
+
+    stir.initial_domain().len().ilog2()
 }
 
 /// List the sizes of the proof's parts. If the same item type is contained
@@ -256,7 +257,7 @@ fn sum_of_proof_lengths_for_source_code(
 
 /// Given the name and source for some program, generate a proof for its correct
 /// execution and a benchmark ID for that proof. The benchmark ID contains the
-/// length of the FRI domain.
+/// length of the low-degree test domain.
 fn generate_proof_and_benchmark_id(
     program_name: &str,
     program_and_input: &ProgramAndInput,
@@ -267,8 +268,9 @@ fn generate_proof_and_benchmark_id(
         program_and_input.non_determinism.clone(),
     )
     .unwrap();
-    let log_2_fri_domain_length = log_2_fri_domain_length(stark, &proof);
-    let benchmark_id = BenchmarkId::new(program_name, log_2_fri_domain_length);
+    let log_2_domain_length = log_2_ldt_domain_length(stark, &proof);
+    let benchmark_id = BenchmarkId::new(program_name, log_2_domain_length);
+
     (proof, benchmark_id)
 }
 

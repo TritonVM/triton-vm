@@ -43,8 +43,8 @@ pub trait Evaluable<FF: FiniteField> {
 }
 
 /// Helps debugging and benchmarking. The maximal degree achieved in any table
-/// dictates the length of the FRI domain, which in turn is responsible for the
-/// main performance bottleneck.
+/// dictates the length of the low-degree test domain, which in turn is
+/// responsible for the main performance bottleneck.
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub(crate) struct DegreeWithOrigin {
     pub degree: isize,
