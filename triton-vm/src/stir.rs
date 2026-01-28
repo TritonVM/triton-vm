@@ -94,15 +94,15 @@ pub struct StirParameters {
     /// “high” (_i.e._, “not low”) for this STIR instance.
     ///
     /// In other words, the low-degreeness of polynomials with degree
-    /// `2^log2_high_degree` (and higher) cannot be [proven](Stir::prove) (in a
-    /// way that the [verifier](Stir::verify) accepts). On the other hand, the
-    /// low-degreeness of polynomials with degree `2^log2_high_degree - 1` (and
-    /// lower) _can_ be proven.
+    /// `2^log2_high_degree_bound` (and higher) cannot be [proven](Stir::prove)
+    /// (in a way that the [verifier](Stir::verify) accepts). On the other hand,
+    /// the low-degreeness of polynomials with degree
+    /// `2^log2_high_degree_bound - 1` (and lower) _can_ be proven.
     ///
     /// Must be greater than or equal to the (log₂ of the)
     /// [folding factor](Self::log2_folding_factor).
     #[cfg_attr(test, strategy(#log2_folding_factor..=15))]
-    pub log2_high_degree: usize,
+    pub log2_high_degree_bound: usize,
 }
 
 /// The “Shift to Improve Rate” (“[STIR][stir]”) low-degree test (“LDT”).
@@ -479,7 +479,7 @@ impl StirParameters {
     /// The highest polynomial degree for which low-degreeness can be proven
     /// with the STIR instance corresponding to these parameters.
     pub fn max_degree(&self) -> usize {
-        (1 << self.log2_high_degree) - 1
+        (1 << self.log2_high_degree_bound) - 1
     }
 
     pub(crate) fn expansion_factor(&self) -> usize {
@@ -499,7 +499,7 @@ impl StirParameters {
         if self.log2_initial_expansion_factor == 0 {
             return Err(StirParameterError::TooSmallInitialExpansionFactor);
         }
-        if self.log2_high_degree < self.log2_folding_factor {
+        if self.log2_high_degree_bound < self.log2_folding_factor {
             return Err(StirParameterError::TooLowDegreeOfHighDegreePolynomials);
         }
 
@@ -623,7 +623,7 @@ impl StirParameters {
     /// The domain for the initial codeword of the [prover](Stir::prove).
     //
     // The first part of this method essentially only computes:
-    // 1 << (log2_high_degree + log2_initial_expansion_factor)
+    // 1 << (log2_high_degree_bound + log2_initial_expansion_factor)
     //
     // However, because the input parameters can be waaaayy too big, a bunch of
     // input validation is… necessary? Let's go with “beneficial.” Whether the
@@ -633,9 +633,10 @@ impl StirParameters {
         let as_u64 = |int| u64::try_from(int).expect(USIZE_TO_U64_ERR);
         let error = |x| Err(StirParameterError::InitialDomainTooBig(x));
 
-        let log2_high_degree = as_u64(self.log2_high_degree);
+        let log2_high_degree_bound = as_u64(self.log2_high_degree_bound);
         let log2_expansion_factor = as_u64(self.log2_initial_expansion_factor);
-        let Some(log2_domain_len) = log2_high_degree.checked_add(log2_expansion_factor) else {
+        let Some(log2_domain_len) = log2_high_degree_bound.checked_add(log2_expansion_factor)
+        else {
             return error(u64::MAX);
         };
         let Ok(log2_domain_len) = u32::try_from(log2_domain_len) else {
@@ -1896,7 +1897,7 @@ mod tests {
         #[strategy(64_usize..)] bad_log2_folding_factor: usize,
     ) {
         params.log2_folding_factor = bad_log2_folding_factor;
-        params.log2_high_degree = bad_log2_folding_factor;
+        params.log2_high_degree_bound = bad_log2_folding_factor;
         let_assert!(Err(err) = Stir::try_from(params));
         let_assert!(StirParameterError::TooBigLog2FoldingFactor(f) = err);
         prop_assert_eq!(bad_log2_folding_factor, f);
@@ -1912,7 +1913,7 @@ mod tests {
                 soundness: SoundnessType::default(),
                 log2_folding_factor: factor,
                 log2_initial_expansion_factor: 1,
-                log2_high_degree: factor,
+                log2_high_degree_bound: factor,
             };
             let err = Stir::try_from(params).unwrap_err();
 
@@ -1924,11 +1925,11 @@ mod tests {
     }
 
     #[proptest]
-    fn invalid_parameter_small_high_degree_is_rejected(
+    fn invalid_parameter_small_high_degree_bound_is_rejected(
         mut params: StirParameters,
-        #[strategy(..#params.log2_folding_factor)] bad_log2_high_degree: usize,
+        #[strategy(..#params.log2_folding_factor)] bad_log2_high_degree_bound: usize,
     ) {
-        params.log2_high_degree = bad_log2_high_degree;
+        params.log2_high_degree_bound = bad_log2_high_degree_bound;
         let_assert!(Err(err) = Stir::try_from(params));
         prop_assert_eq!(StirParameterError::TooLowDegreeOfHighDegreePolynomials, err);
     }
@@ -1936,9 +1937,9 @@ mod tests {
     #[proptest]
     fn too_big_initial_domain_doesnt_cause_crash(
         mut params: StirParameters,
-        #[strategy(33 - #params.log2_initial_expansion_factor..=64)] log2_high_degree: usize,
+        #[strategy(33 - #params.log2_initial_expansion_factor..=64)] log2_high_degree_bound: usize,
     ) {
-        params.log2_high_degree = log2_high_degree;
+        params.log2_high_degree_bound = log2_high_degree_bound;
         let_assert!(Err(err) = params.initial_domain());
         let_assert!(StirParameterError::InitialDomainTooBig(_) = err);
     }
@@ -1953,7 +1954,7 @@ mod tests {
             soundness: SoundnessType::default(),
             log2_folding_factor: two_thirds_u64_max,
             log2_initial_expansion_factor: two_thirds_u64_max,
-            log2_high_degree: two_thirds_u64_max,
+            log2_high_degree_bound: two_thirds_u64_max,
         };
         let_assert!(Err(err) = params.initial_domain());
         assert!(StirParameterError::InitialDomainTooBig(u64::MAX) == err);
@@ -1985,7 +1986,7 @@ mod tests {
             soundness: SoundnessType::default(),
             log2_folding_factor: 2,
             log2_initial_expansion_factor: 2,
-            log2_high_degree: 11,
+            log2_high_degree_bound: 11,
         };
         let stir = Stir::new(params).unwrap();
         let zero_poly = xfe_vec![0; stir.initial_domain().len()];
@@ -2042,7 +2043,7 @@ mod tests {
     #[proptest]
     fn prove_and_fail_to_verify_high_degree_polynomial(
         params: StirParameters,
-        #[strategy(Just(1 << #params.log2_high_degree))] _too_high_degree: i64,
+        #[strategy(Just(1 << #params.log2_high_degree_bound))] _too_high_degree: i64,
         #[strategy(#_too_high_degree..2 * #_too_high_degree)] _d: i64,
         #[strategy(arbitrary_polynomial_of_degree(#_d).no_shrink())] poly: XfePoly,
     ) {

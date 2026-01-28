@@ -1607,17 +1607,17 @@ impl Stark {
             soundness: SoundnessType::Provable,
             log2_folding_factor: 2,
             log2_initial_expansion_factor: self.log2_ldt_expansion_factor,
-            log2_high_degree: log2_padded_height,
+            log2_high_degree_bound,
         };
 
         // The initial domain of STIR must be longer than the length of the
         // randomized trace (after accounting for the expansion factor).
         // However, the STIR instance itself influences the number of trace
         // randomizers, and good luck writing out the direct dependency between
-        // the `log2_high_degree` and the number of trace randomizers. I'm sure
-        // it can be done, I'm not sure if it's worth the effort. Instead, we
-        // perform a linear search for the smallest factor by which to grow the
-        // initial domain such that it is big enough.
+        // the `log2_high_degree_bound` and the number of trace randomizers. I'm
+        // sure it can be done, I'm not sure if it's worth the effort. Instead,
+        // we perform a linear search for the smallest factor by which to grow
+        // the initial domain such that it is big enough.
         //
         // While a binary search would be faster asymptotically, we expect to
         // find the factor very quickly (usually on the first iteration) since a
@@ -1630,7 +1630,7 @@ impl Stark {
         // too-large domains cause an unsuccessful derivation of STIR and an
         // early return. Therefore, it's fine to use the absolute maximum here.
         for _ in 0..=ArithmeticDomain::LOG2_MAX_LEN {
-            stir_parameters.log2_high_degree += 1;
+            stir_parameters.log2_high_degree_bound += 1;
             let stir = Stir::try_from(stir_parameters)?;
 
             let num_trace_randomizers = Self::num_trace_randomizers(&stir);
