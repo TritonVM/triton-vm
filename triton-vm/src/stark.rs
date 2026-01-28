@@ -1586,9 +1586,14 @@ impl Stark {
     /// expansion factor, a parameter.
     ///
     /// In principle, the low-degree test domain length is also influenced by
-    /// the AIR's degree (see [`air::TARGET_DEGREE`]). However, by segmenting
-    /// the quotient polynomial into `TARGET_DEGREE`-many parts, that influence
-    /// is mitigated.
+    /// the AIR's degree (see [`air::TARGET_DEGREE`]) as well as the number of
+    /// quotient segments (see [`NUM_QUOTIENT_SEGMENTS`]): the higher the AIR's
+    /// degree, and the lower the number of quotient segments, the larger the
+    /// required low-degree test domain (with limits on all contributing
+    /// factors).
+    /// By choosing a number of segments that equals the AIR's degree, the
+    /// influence of the AIR degree on the low-degree test domain can be fully
+    /// mitigated.
     ///
     /// The parameter `padded_height` must be a power of 2. To ensure proper
     /// operation of this method, the parameter is
