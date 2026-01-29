@@ -132,9 +132,9 @@ mod tests {
     use test_strategy::proptest;
     use twenty_first::math::other::random_elements;
 
+    use crate::low_degree_test::stir::StirResponse;
     use crate::proof_item::ProofItem;
     use crate::shared_tests::LeavedMerkleTreeTestData;
-    use crate::stir::StirResponse;
     use crate::table::AuxiliaryRow;
     use crate::table::MainRow;
     use crate::table::QuotientSegments;

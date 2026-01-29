@@ -7,8 +7,8 @@ use twenty_first::prelude::*;
 
 use crate::error::ProofStreamError;
 use crate::error::ProofStreamError::UnexpectedItem;
-use crate::fri::FriResponse;
-use crate::stir::StirResponse;
+use crate::low_degree_test::fri::FriResponse;
+use crate::low_degree_test::stir::StirResponse;
 use crate::table::AuxiliaryRow;
 use crate::table::MainRow;
 use crate::table::QuotientSegments;

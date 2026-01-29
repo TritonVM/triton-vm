@@ -15,11 +15,11 @@ use twenty_first::prelude::*;
 use crate::arithmetic_domain::ArithmeticDomain;
 use crate::challenges::Challenges;
 use crate::error::VMError;
+use crate::low_degree_test::stir::StirResponse;
 use crate::prelude::*;
 use crate::profiler::profiler;
 use crate::proof_item::AuthenticationStructure;
 use crate::stark::ProverDomains;
-use crate::stir::StirResponse;
 use crate::table::master_table::MasterAuxTable;
 use crate::table::master_table::MasterMainTable;
 
