@@ -48,54 +48,8 @@ Please complete the following steps in advance to help us fix any potential bug 
 
 #### How Do I Submit a Good Bug Report?
 
-> You must never report security related issues, vulnerabilities or bugs including sensitive information to the issue tracker, or elsewhere in public.
-Instead, sensitive bugs must be sent by email to <ferdinand@neptune.cash>.
-
-<details><summary>Please use this PGP key to encrypt sensitive information.</summary>
-<pre>
------BEGIN PGP PUBLIC KEY BLOCK-----
-
-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
-=8K5o
------END PGP PUBLIC KEY BLOCK-----
-</pre>
-</details>
+> You must never report security related issues, vulnerabilities or bugs including sensitive information to the issue tracker, or elsewhere in public;
+> please refer to [`SECURITY.md`](SECURITY.md) for such cases.
 
 We use GitHub issues to track bugs and errors.
 If you run into an issue with the project:
