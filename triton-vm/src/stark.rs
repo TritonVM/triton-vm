@@ -1582,8 +1582,8 @@ impl Stark {
     ///
     /// The length of the [low-degree test domain](ArithmeticDomain) has a major
     /// influence on [proving](Prover::prove) time. It is influenced by the
-    /// length of the [execution trace](AlgebraicExecutionTrace) and the STIR
-    /// expansion factor, a parameter.
+    /// length of the [execution trace](AlgebraicExecutionTrace) and the
+    /// [expansion factor](Self::log2_ldt_expansion_factor), a parameter.
     ///
     /// In principle, the low-degree test domain length is also influenced by
     /// the AIR's degree (see [`air::TARGET_DEGREE`]) as well as the number of
