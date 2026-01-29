@@ -24,8 +24,8 @@ use twenty_first::prelude::*;
 use crate::aet::AlgebraicExecutionTrace;
 use crate::arithmetic_domain::ArithmeticDomain;
 use crate::challenges::Challenges;
+use crate::error::LdtParameterError;
 use crate::error::ProvingError;
-use crate::error::StirParameterError;
 use crate::error::U32_TO_USIZE_ERR;
 use crate::error::USIZE_TO_U64_ERR;
 use crate::error::VerificationError;
@@ -1602,7 +1602,7 @@ impl Stark {
     /// # Panics
     ///
     /// Panics if the `padded_height` exceeds `1 << (`[`usize::BITS`]` - 1)`.
-    pub fn stir(&self, padded_height: usize) -> Result<Stir, StirParameterError> {
+    pub fn stir(&self, padded_height: usize) -> Result<Stir, LdtParameterError> {
         let padded_height = padded_height
             .checked_next_power_of_two()
             .expect("padded height drastically exceeds assumed maximum");
@@ -1660,7 +1660,7 @@ impl Stark {
             .try_into()
             .expect(USIZE_TO_U64_ERR);
 
-        Err(StirParameterError::InitialDomainTooBig(max_domain_len))
+        Err(LdtParameterError::InitialDomainTooBig(max_domain_len))
     }
 
     /// The number of trace randomizers to use.

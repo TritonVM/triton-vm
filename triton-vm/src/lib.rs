@@ -349,12 +349,9 @@ mod tests {
         implements_auto_traits::<error::VMError>();
         implements_auto_traits::<error::ArithmeticDomainError>();
         implements_auto_traits::<error::ProofStreamError>();
-        implements_auto_traits::<error::FriSetupError>();
-        implements_auto_traits::<error::FriProvingError>();
-        implements_auto_traits::<error::FriValidationError>();
-        implements_auto_traits::<error::StirParameterError>();
-        implements_auto_traits::<error::StirProvingError>();
-        implements_auto_traits::<error::StirVerificationError>();
+        implements_auto_traits::<error::LdtParameterError>();
+        implements_auto_traits::<error::LdtProvingError>();
+        implements_auto_traits::<error::LdtVerificationError>();
         implements_auto_traits::<error::ProvingError>();
         implements_auto_traits::<error::VerificationError>();
 

@@ -17,9 +17,9 @@ use twenty_first::math::traits::FiniteField;
 use twenty_first::prelude::*;
 
 use crate::arithmetic_domain::ArithmeticDomain;
-use crate::error::StirParameterError;
-use crate::error::StirProvingError;
-use crate::error::StirVerificationError;
+use crate::error::LdtParameterError;
+use crate::error::LdtProvingError;
+use crate::error::LdtVerificationError;
 use crate::error::U32_TO_USIZE_ERR;
 use crate::error::USIZE_TO_U64_ERR;
 use crate::profiler::profiler;
@@ -28,9 +28,9 @@ use crate::proof_item::ProofItem;
 use crate::proof_stream::ProofStream;
 use crate::table::master_table::BfeSlice;
 
-type SetupResult<T> = Result<T, StirParameterError>;
-type ProverResult<T> = Result<T, StirProvingError>;
-type VerifierResult<T> = Result<T, StirVerificationError>;
+type SetupResult<T> = Result<T, LdtParameterError>;
+type ProverResult<T> = Result<T, LdtProvingError>;
+type VerifierResult<T> = Result<T, LdtVerificationError>;
 
 /// An [`ArithmeticDomain`] can have at most 2^32 elements. Converting a usize
 /// that represents a (valid) domain index to a u32 can never fail.
@@ -450,7 +450,7 @@ struct QuotientingData {
 }
 
 impl TryFrom<StirParameters> for Stir {
-    type Error = StirParameterError;
+    type Error = LdtParameterError;
 
     fn try_from(params: StirParameters) -> SetupResult<Self> {
         params.try_into_stir()
@@ -492,24 +492,24 @@ impl StirParameters {
     /// Create a new STIR instance by deriving the round parameters.
     fn try_into_stir(&self) -> SetupResult<Stir> {
         if self.log2_folding_factor < 2 {
-            return Err(StirParameterError::TooSmallLog2FoldingFactor(
+            return Err(LdtParameterError::TooSmallLog2FoldingFactor(
                 self.log2_folding_factor,
             ));
         }
         if self.log2_initial_expansion_factor == 0 {
-            return Err(StirParameterError::TooSmallInitialExpansionFactor);
+            return Err(LdtParameterError::TooSmallInitialExpansionFactor);
         }
         if self.log2_high_degree_bound < self.log2_folding_factor {
-            return Err(StirParameterError::TooLowDegreeOfHighDegreePolynomials);
+            return Err(LdtParameterError::TooLowDegreeOfHighDegreePolynomials);
         }
 
         let Ok(log2_folding_factor) = u32::try_from(self.log2_folding_factor) else {
-            return Err(StirParameterError::TooBigLog2FoldingFactor(
+            return Err(LdtParameterError::TooBigLog2FoldingFactor(
                 self.log2_folding_factor,
             ));
         };
         let Some(folding_factor) = 1_usize.checked_shl(log2_folding_factor) else {
-            return Err(StirParameterError::TooBigLog2FoldingFactor(
+            return Err(LdtParameterError::TooBigLog2FoldingFactor(
                 self.log2_folding_factor,
             ));
         };
@@ -631,7 +631,7 @@ impl StirParameters {
     // but hey, better safe than sorry.
     fn initial_domain(&self) -> SetupResult<ArithmeticDomain> {
         let as_u64 = |int| u64::try_from(int).expect(USIZE_TO_U64_ERR);
-        let error = |x| Err(StirParameterError::InitialDomainTooBig(x));
+        let error = |x| Err(LdtParameterError::InitialDomainTooBig(x));
 
         let log2_high_degree_bound = as_u64(self.log2_high_degree_bound);
         let log2_expansion_factor = as_u64(self.log2_initial_expansion_factor);
@@ -647,7 +647,7 @@ impl StirParameters {
         };
 
         let domain = ArithmeticDomain::of_length(domain_len)
-            .map_err(|_| StirParameterError::InitialDomainTooBig(log2_domain_len.into()))?
+            .map_err(|_| LdtParameterError::InitialDomainTooBig(log2_domain_len.into()))?
             .with_offset(BFieldElement::generator());
 
         Ok(domain)
@@ -660,7 +660,7 @@ impl StirParameters {
         &self,
         log2_domain_size: u32,
         log2_expansion_factor: usize,
-    ) -> Result<usize, StirParameterError> {
+    ) -> Result<usize, LdtParameterError> {
         let num_uniques = self.num_unique_in_domain_queries(log2_expansion_factor)?;
 
         // it doesn't make sense to request more unique indices than there are
@@ -716,10 +716,10 @@ impl StirParameters {
         let slackness_factor = 2_f64.powf(log2_slackness_factor);
 
         let Ok(log2_expansion_factor) = u32::try_from(log2_expansion_factor) else {
-            return Err(StirParameterError::TooBigInitialExpansionFactor);
+            return Err(LdtParameterError::TooBigInitialExpansionFactor);
         };
         let Some(expansion_factor) = 1_u32.checked_shl(log2_expansion_factor) else {
-            return Err(StirParameterError::TooBigInitialExpansionFactor);
+            return Err(LdtParameterError::TooBigInitialExpansionFactor);
         };
         let rate = 1.0 / f64::from(expansion_factor);
         let proximity_parameter = match self.soundness {
@@ -1083,7 +1083,7 @@ impl Stir {
         profiler!(start "initialize");
         let mut domain = self.initial_domain;
         if domain.len() != codeword.len() {
-            return Err(StirProvingError::InitialCodewordMismatch {
+            return Err(LdtProvingError::InitialCodewordMismatch {
                 domain_len: domain.len(),
                 codeword_len: codeword.len(),
             });
@@ -1296,7 +1296,7 @@ impl Stir {
         // checking the degree
         let poly_degree = poly.degree().try_into().unwrap_or(0);
         if poly_degree > self.round_params.final_degree {
-            return Err(StirVerificationError::LastRoundPolynomialHasTooHighDegree);
+            return Err(LdtVerificationError::LastRoundPolynomialHasTooHighDegree);
         }
 
         let num_queries = self.round_params.final_num_in_domain_queries;
@@ -1315,7 +1315,7 @@ impl Stir {
             .zip(final_evaluations)
             .any(|(answer, evaluation)| answer != evaluation)
         {
-            return Err(StirVerificationError::LastRoundPolynomialEvaluationMismatch);
+            return Err(LdtVerificationError::LastRoundPolynomialEvaluationMismatch);
         }
 
         let final_round_transcript = FinalRoundTranscript {
@@ -1355,7 +1355,7 @@ impl Stir {
             .map(|&index| index % folded_domain.len())
             .unique();
         if queried_leafs.len() != folded_indices.clone().count() {
-            return Err(StirVerificationError::IncorrectNumberOfRevealedLeaves);
+            return Err(LdtVerificationError::IncorrectNumberOfRevealedLeaves);
         }
 
         // Because of above length check, we know that the hash map contains
@@ -1642,7 +1642,7 @@ impl FoldingPolynomialQueriesInclusionProof {
         inclusion_proof
             .verify(merkle_root)
             .then_some(self.queries)
-            .ok_or(StirVerificationError::BadMerkleAuthenticationPath)
+            .ok_or(LdtVerificationError::BadMerkleAuthenticationPath)
     }
 
     fn queried_indices(&self) -> impl Iterator<Item = usize> + '_ {
@@ -1854,7 +1854,7 @@ mod tests {
 
         let_assert!(Err(err) = stir.prove(&codeword, &mut proof_stream));
         let_assert!(
-            StirProvingError::InitialCodewordMismatch {
+            LdtProvingError::InitialCodewordMismatch {
                 domain_len,
                 codeword_len
             } = err
@@ -1867,7 +1867,7 @@ mod tests {
     fn invalid_parameter_initial_expansion_factor_1_is_rejected(mut params: StirParameters) {
         params.log2_initial_expansion_factor = 0;
         let_assert!(Err(err) = Stir::try_from(params));
-        prop_assert_eq!(StirParameterError::TooSmallInitialExpansionFactor, err);
+        prop_assert_eq!(LdtParameterError::TooSmallInitialExpansionFactor, err);
     }
 
     #[proptest]
@@ -1877,7 +1877,7 @@ mod tests {
     ) {
         params.log2_initial_expansion_factor = bad_log2_initial_expansion_factor;
         let_assert!(Err(err) = Stir::try_from(params));
-        let_assert!(StirParameterError::InitialDomainTooBig(_) = err);
+        let_assert!(LdtParameterError::InitialDomainTooBig(_) = err);
     }
 
     #[proptest]
@@ -1887,7 +1887,7 @@ mod tests {
     ) {
         params.log2_folding_factor = bad_log2_folding_factor;
         let_assert!(Err(err) = Stir::try_from(params));
-        let_assert!(StirParameterError::TooSmallLog2FoldingFactor(f) = err);
+        let_assert!(LdtParameterError::TooSmallLog2FoldingFactor(f) = err);
         prop_assert_eq!(bad_log2_folding_factor, f);
     }
 
@@ -1899,7 +1899,7 @@ mod tests {
         params.log2_folding_factor = bad_log2_folding_factor;
         params.log2_high_degree_bound = bad_log2_folding_factor;
         let_assert!(Err(err) = Stir::try_from(params));
-        let_assert!(StirParameterError::TooBigLog2FoldingFactor(f) = err);
+        let_assert!(LdtParameterError::TooBigLog2FoldingFactor(f) = err);
         prop_assert_eq!(bad_log2_folding_factor, f);
     }
 
@@ -1917,7 +1917,7 @@ mod tests {
             };
             let err = Stir::try_from(params).unwrap_err();
 
-            assert!(StirParameterError::TooBigLog2FoldingFactor(factor) == err);
+            assert!(LdtParameterError::TooBigLog2FoldingFactor(factor) == err);
         }
 
         assert_too_big_folding_factor_is_rejected(u32::MAX as usize);
@@ -1931,7 +1931,7 @@ mod tests {
     ) {
         params.log2_high_degree_bound = bad_log2_high_degree_bound;
         let_assert!(Err(err) = Stir::try_from(params));
-        prop_assert_eq!(StirParameterError::TooLowDegreeOfHighDegreePolynomials, err);
+        prop_assert_eq!(LdtParameterError::TooLowDegreeOfHighDegreePolynomials, err);
     }
 
     #[proptest]
@@ -1941,7 +1941,7 @@ mod tests {
     ) {
         params.log2_high_degree_bound = log2_high_degree_bound;
         let_assert!(Err(err) = params.initial_domain());
-        let_assert!(StirParameterError::InitialDomainTooBig(_) = err);
+        let_assert!(LdtParameterError::InitialDomainTooBig(_) = err);
     }
 
     /// The proptest [`too_big_initial_domain_doesnt_cause_crash`] does not
@@ -1957,7 +1957,7 @@ mod tests {
             log2_high_degree_bound: two_thirds_u64_max,
         };
         let_assert!(Err(err) = params.initial_domain());
-        assert!(StirParameterError::InitialDomainTooBig(u64::MAX) == err);
+        assert!(LdtParameterError::InitialDomainTooBig(u64::MAX) == err);
     }
 
     #[proptest]
