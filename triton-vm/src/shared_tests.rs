@@ -1,6 +1,7 @@
 use assert2::assert;
 use assert2::let_assert;
 use isa::program::Program;
+use itertools::Itertools;
 use num_traits::Zero;
 use proptest::collection::vec;
 use proptest::prelude::*;
@@ -11,12 +12,13 @@ use rand::prelude::StdRng;
 use test_strategy::Arbitrary;
 use twenty_first::prelude::*;
 
+use crate::arithmetic_domain::ArithmeticDomain;
 use crate::challenges::Challenges;
 use crate::error::VMError;
-use crate::fri::AuthenticationStructure;
+use crate::low_degree_test::stir::StirResponse;
 use crate::prelude::*;
 use crate::profiler::profiler;
-use crate::proof_item::FriResponse;
+use crate::proof_item::AuthenticationStructure;
 use crate::stark::ProverDomains;
 use crate::table::master_table::MasterAuxTable;
 use crate::table::master_table::MasterMainTable;
@@ -40,13 +42,13 @@ prop_compose! {
         leading_coefficient: NonZeroXFieldElement,
         other_coefficients in vec(arb(), degree.try_into().unwrap_or(0)),
     ) -> Polynomial<'static, XFieldElement> {
-        let leading_coefficient = leading_coefficient.0;
-        let coefficients = match degree >= 0 {
-            true => [other_coefficients, vec![leading_coefficient]].concat(),
-            false => vec![],
-        };
+        let mut coefficients = other_coefficients;
+        if degree >= 0 {
+            coefficients.push(leading_coefficient.0);
+        }
         let polynomial = Polynomial::new(coefficients);
         assert!(degree == polynomial.degree() as i64);
+
         polynomial
     }
 }
@@ -68,9 +70,6 @@ pub(crate) struct LeavedMerkleTreeTestData {
     #[strategy(Just(MerkleTree::par_new(&#leaves_as_digests).unwrap()))]
     pub merkle_tree: MerkleTree,
 
-    #[strategy(Just(#revealed_indices.iter().map(|&i| #leaves[i]).collect()))]
-    pub revealed_leaves: Vec<XFieldElement>,
-
     #[strategy(Just(#merkle_tree.authentication_structure(&#revealed_indices).unwrap()))]
     pub auth_structure: AuthenticationStructure,
 }
@@ -80,18 +79,29 @@ impl LeavedMerkleTreeTestData {
         self.merkle_tree.root()
     }
 
-    pub fn leaves(&self) -> &[XFieldElement] {
-        &self.leaves
+    /// A polynomial interpolating all the tree's leaves.
+    pub fn interpolated_leaves(&self) -> Polynomial<'static, XFieldElement> {
+        let domain = ArithmeticDomain::of_length(self.num_leaves()).unwrap();
+
+        domain.interpolate(&self.leaves)
     }
 
     pub fn num_leaves(&self) -> usize {
         self.leaves.len()
     }
 
-    pub fn into_fri_response(self) -> FriResponse {
-        FriResponse {
+    pub fn into_stir_response(self) -> StirResponse {
+        // use an implicit folding factor of 1, which is illegal in STIR but
+        // doesn't matter for the testing purposes here
+        let queried_leafs = self
+            .revealed_indices
+            .iter()
+            .map(|&i| vec![self.leaves[i]])
+            .collect();
+
+        StirResponse {
+            queried_leafs,
             auth_structure: self.auth_structure,
-            revealed_leaves: self.revealed_leaves,
         }
     }
 }
@@ -183,11 +193,11 @@ impl TestableProgram {
         let_assert!(Ok(padded_height) = proof.padded_height());
         assert!(aet.padded_height() == padded_height);
 
-        let fri = stark.fri(padded_height).unwrap();
+        let ldt = stark.ldt(padded_height).unwrap();
         let profile = profile
             .with_cycle_count(aet.height_of_table(TableId::Processor))
             .with_padded_height(padded_height)
-            .with_fri_domain_len(fri.domain.len());
+            .with_ldt_domain_len(ldt.initial_domain().len());
         println!("{profile}");
     }
 
@@ -205,16 +215,17 @@ impl TestableProgram {
 
         // construct master main table
         let padded_height = aet.padded_height();
-        let fri_domain = stark.fri(padded_height).unwrap().domain;
-        let max_degree = stark.max_degree(padded_height);
-        let num_trace_randomizers = stark.num_trace_randomizers;
+        let ldt = stark.ldt(padded_height).unwrap();
+        let num_trace_randomizers = Stark::num_trace_randomizers(&*ldt);
+        let ldt_domain = ldt.initial_domain();
+        let max_degree = stark.max_degree(padded_height, num_trace_randomizers);
         let domains =
-            ProverDomains::derive(padded_height, num_trace_randomizers, fri_domain, max_degree);
+            ProverDomains::derive(padded_height, num_trace_randomizers, ldt_domain, max_degree);
 
         let mut master_main_table = MasterMainTable::new(
             &aet,
             domains,
-            stark.num_trace_randomizers,
+            num_trace_randomizers,
             StdRng::seed_from_u64(6718321586953195571).random(),
         );
         master_main_table.pad();
@@ -239,4 +250,30 @@ pub struct ProofArtifacts {
     pub master_main_table: MasterMainTable,
     pub master_aux_table: MasterAuxTable,
     pub challenges: Challenges,
+}
+
+/// Test helper struct for corrupting digests. Primarily used for negative tests.
+#[derive(Debug, Clone, PartialEq, Eq, test_strategy::Arbitrary)]
+pub(crate) struct DigestCorruptor {
+    #[strategy(vec(0..Digest::LEN, 1..=Digest::LEN))]
+    #[filter(#corrupt_indices.iter().all_unique())]
+    corrupt_indices: Vec<usize>,
+
+    #[strategy(vec(arb(), #corrupt_indices.len()))]
+    corrupt_elements: Vec<BFieldElement>,
+}
+
+impl DigestCorruptor {
+    pub fn corrupt(&self, digest: &mut Digest) -> Result<(), TestCaseError> {
+        let original_digest = *digest;
+        for (&i, &element) in self.corrupt_indices.iter().zip(&self.corrupt_elements) {
+            digest.0[i] = element;
+        }
+        if *digest == original_digest {
+            let reject_reason = "corruption must change digest".into();
+            return Err(TestCaseError::Reject(reject_reason));
+        }
+
+        Ok(())
+    }
 }

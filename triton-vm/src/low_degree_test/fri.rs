@@ -1,3 +1,4 @@
+use arbitrary::Arbitrary;
 use itertools::Itertools;
 use num_traits::Zero;
 use rayon::prelude::*;
@@ -6,25 +7,71 @@ use twenty_first::math::traits::FiniteField;
 use twenty_first::prelude::*;
 
 use crate::arithmetic_domain::ArithmeticDomain;
-use crate::error::FriProvingError;
-use crate::error::FriSetupError;
-use crate::error::FriValidationError;
+use crate::error::LdtParameterError;
+use crate::error::LdtProvingError;
+use crate::error::LdtVerificationError;
+use crate::low_degree_test::LowDegreeTest;
+use crate::low_degree_test::SoundnessType;
+use crate::low_degree_test::VerifierTranscript;
 use crate::profiler::profiler;
-use crate::proof_item::FriResponse;
+use crate::proof_item::AuthenticationStructure;
 use crate::proof_item::ProofItem;
 use crate::proof_stream::ProofStream;
 
-pub(crate) type SetupResult<T> = Result<T, FriSetupError>;
-pub(crate) type ProverResult<T> = Result<T, FriProvingError>;
-pub(crate) type VerifierResult<T> = Result<T, FriValidationError>;
+pub(crate) type SetupResult<T> = Result<T, LdtParameterError>;
+pub(crate) type ProverResult<T> = Result<T, LdtProvingError>;
+pub(crate) type VerifierResult<T> = Result<T, LdtVerificationError>;
 
-pub type AuthenticationStructure = Vec<Digest>;
+/// The initial parameters from which to derive a [FRI](Fri) instance.
+///
+/// This struct captures the defining protocol parameters. It can be used to
+/// [create an instance of FRI](Fri::new).
+/// Note that this is a fallible operation because there are invalid parameter
+/// combinations. The documentation on this struct's fields informs about the
+/// legal parameter space.
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+#[cfg_attr(test, derive(test_strategy::Arbitrary))]
+pub struct FriParameters {
+    /// The desired security level in bits.
+    ///
+    /// Concretely, the system
+    /// - is perfectly complete, and
+    /// - has soundness error 2^(-security_level).
+    #[cfg_attr(test, strategy(16_usize..=192))]
+    pub security_level: usize,
 
-#[derive(Debug, Copy, Clone)]
+    /// The soundness assumption (or lack thereof) you are willing to make.
+    pub soundness: SoundnessType,
+
+    /// The amount of “redundancy” in the [prover](Fri::prove)'s input.
+    ///
+    /// In particular, the Reed-Solomon code's rate is the reciprocal of 2
+    /// raised to this value. In other words, the initial rate equals
+    /// `1 / 2^initial_log2_expansion_factor`.
+    ///
+    /// Must be greater than 0.
+    #[cfg_attr(test, strategy(1_usize..=6))]
+    pub log2_initial_expansion_factor: usize,
+
+    /// The low-degree test's degree bound.
+    ///
+    /// In particular, the (log₂ of the) polynomial degree that is considered
+    /// “high” (_i.e._, “not low”) for this STIR instance.
+    ///
+    /// In other words, the low-degreeness of polynomials with degree
+    /// `2^log2_high_degree_bound` (and higher) cannot be [proven](Fri::prove)
+    /// (in a way that the [verifier](Fri::verify) accepts). On the other hand,
+    /// the low-degreeness of polynomials with degree
+    /// `2^log2_high_degree_bound - 1` (and lower) _can_ be proven.
+    #[cfg_attr(test, strategy(0_usize..=15))]
+    pub log2_high_degree_bound: usize,
+}
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct Fri {
-    pub expansion_factor: usize,
-    pub num_collinearity_checks: usize,
-    pub domain: ArithmeticDomain,
+    expansion_factor: usize,
+    num_collinearity_checks: usize,
+    domain: ArithmeticDomain,
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -42,6 +89,43 @@ struct ProverRound {
     domain: ArithmeticDomain,
     codeword: Vec<XFieldElement>,
     merkle_tree: MerkleTree,
+}
+
+/// A [FRI](Fri) round's revealed values together with an authentication
+/// structure.
+#[derive(Debug, Clone, Eq, PartialEq, Hash, BFieldCodec, Arbitrary)]
+pub struct FriResponse {
+    /// The values of the queried leaves of the Merkle tree.
+    pub queried_leaves: Vec<XFieldElement>,
+
+    /// The authentication structure of the Merkle tree.
+    pub auth_structure: AuthenticationStructure,
+}
+
+/// A transcript of a [FRI verification](Fri::verify).
+///
+/// For additional details, see [`VerifierTranscript`].
+//
+// Marked `#[non_exhaustive]` because
+// 1. additional fields might be added in the future and I don't want that to be
+//    a breaking change, and
+// 2. this type is not intended to be constructed anywhere but in this module.
+//
+// Also applies to the other “Transcript” structs.
+#[non_exhaustive]
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct Transcript {
+    // todo: use relevant fields (compare to STIR)
+    pub partial_first_codeword: Vec<XFieldElement>,
+    pub first_round_indices: Vec<usize>,
+}
+
+impl TryFrom<FriParameters> for Fri {
+    type Error = LdtParameterError;
+
+    fn try_from(params: FriParameters) -> SetupResult<Self> {
+        params.try_into_fri()
+    }
 }
 
 impl FriProver<'_> {
@@ -83,7 +167,8 @@ impl FriProver<'_> {
         let previous_round = self.rounds.last().unwrap();
         let folding_challenge = self.proof_stream.sample_scalars(1)[0];
         let codeword = previous_round.split_and_fold(folding_challenge);
-        let domain = previous_round.domain.pow(2)?;
+        let domain = previous_round.domain.pow(2).unwrap();
+
         ProverRound::new(domain, &codeword)
     }
 
@@ -98,23 +183,21 @@ impl FriProver<'_> {
         let last_polynomial = ArithmeticDomain::of_length(last_codeword.len())
             .unwrap()
             .interpolate(last_codeword);
-        let proof_item = ProofItem::FriPolynomial(last_polynomial);
+        let proof_item = ProofItem::Polynomial(last_polynomial);
         self.proof_stream.enqueue(proof_item);
     }
 
-    fn query(&mut self) -> ProverResult<()> {
+    fn query(&mut self) {
         self.sample_first_round_collinearity_check_indices();
 
         let initial_a_indices = self.first_round_collinearity_check_indices.clone();
-        self.authentically_reveal_codeword_of_round_at_indices(0, &initial_a_indices)?;
+        self.authentically_reveal_codeword_of_round_at_indices(0, &initial_a_indices);
 
         let num_rounds_that_have_a_next_round = self.rounds.len() - 1;
         for round_number in 0..num_rounds_that_have_a_next_round {
             let b_indices = self.collinearity_check_b_indices_for_round(round_number);
-            self.authentically_reveal_codeword_of_round_at_indices(round_number, &b_indices)?;
+            self.authentically_reveal_codeword_of_round_at_indices(round_number, &b_indices);
         }
-
-        Ok(())
     }
 
     fn sample_first_round_collinearity_check_indices(&mut self) {
@@ -132,31 +215,40 @@ impl FriProver<'_> {
             .collect()
     }
 
+    /// # Panics
+    ///
+    /// Panics if any of the indices is bigger than (or equal to) the number of
+    /// leafs in the respective round's Merkle tree.
     fn authentically_reveal_codeword_of_round_at_indices(
         &mut self,
         round_number: usize,
         indices: &[usize],
-    ) -> ProverResult<()> {
+    ) {
         let codeword = &self.rounds[round_number].codeword;
-        let revealed_leaves = indices.iter().map(|&i| codeword[i]).collect_vec();
+        let queried_leaves = indices.iter().map(|&i| codeword[i]).collect_vec();
 
         let merkle_tree = &self.rounds[round_number].merkle_tree;
-        let auth_structure = merkle_tree.authentication_structure(indices)?;
+        let auth_structure = merkle_tree.authentication_structure(indices).unwrap();
 
         let fri_response = FriResponse {
+            queried_leaves,
             auth_structure,
-            revealed_leaves,
         };
         let proof_item = ProofItem::FriResponse(fri_response);
         self.proof_stream.enqueue(proof_item);
-        Ok(())
     }
 }
 
 impl ProverRound {
     fn new(domain: ArithmeticDomain, codeword: &[XFieldElement]) -> ProverResult<Self> {
-        debug_assert_eq!(domain.len(), codeword.len());
-        let merkle_tree = Self::merkle_tree_from_codeword(codeword)?;
+        if domain.len() != codeword.len() {
+            return Err(LdtProvingError::InitialCodewordMismatch {
+                domain_len: domain.len(),
+                codeword_len: codeword.len(),
+            });
+        }
+
+        let merkle_tree = Self::merkle_tree_from_codeword(codeword);
         let round = Self {
             domain,
             codeword: codeword.to_vec(),
@@ -165,9 +257,13 @@ impl ProverRound {
         Ok(round)
     }
 
-    fn merkle_tree_from_codeword(codeword: &[XFieldElement]) -> ProverResult<MerkleTree> {
+    /// # Panics
+    ///
+    /// Panics if the codeword's length is not a power of two.
+    fn merkle_tree_from_codeword(codeword: &[XFieldElement]) -> MerkleTree {
         let digests: Vec<_> = codeword.par_iter().map(|&xfe| xfe.into()).collect();
-        MerkleTree::par_new(&digests).map_err(FriProvingError::MerkleTreeError)
+
+        MerkleTree::par_new(&digests).unwrap()
     }
 
     fn split_and_fold(&self, folding_challenge: XFieldElement) -> Vec<XFieldElement> {
@@ -220,13 +316,13 @@ impl FriVerifier<'_> {
 
         for _ in 0..self.num_rounds {
             let previous_round = self.rounds.last().unwrap();
-            let domain = previous_round.domain.pow(2)?;
+            let domain = previous_round.domain.pow(2).unwrap();
             let next_round = self.construct_round_with_domain(domain)?;
             self.rounds.push(next_round);
         }
 
         self.last_round_codeword = self.proof_stream.dequeue()?.try_into_fri_codeword()?;
-        self.last_round_polynomial = self.proof_stream.dequeue()?.try_into_fri_polynomial()?;
+        self.last_round_polynomial = self.proof_stream.dequeue()?.try_into_polynomial()?;
         Ok(())
     }
 
@@ -290,12 +386,12 @@ impl FriVerifier<'_> {
     ) -> VerifierResult<AuthenticationStructure> {
         let fri_response = self.proof_stream.dequeue()?.try_into_fri_response()?;
         let FriResponse {
+            queried_leaves,
             auth_structure,
-            revealed_leaves,
         } = fri_response;
 
-        self.assert_enough_leaves_were_received(&revealed_leaves)?;
-        self.rounds[0].partial_codeword_a = revealed_leaves;
+        self.assert_enough_leaves_were_received(&queried_leaves)?;
+        self.rounds[0].partial_codeword_a = queried_leaves;
         Ok(auth_structure)
     }
 
@@ -305,19 +401,20 @@ impl FriVerifier<'_> {
     ) -> VerifierResult<AuthenticationStructure> {
         let fri_response = self.proof_stream.dequeue()?.try_into_fri_response()?;
         let FriResponse {
+            queried_leaves,
             auth_structure,
-            revealed_leaves,
         } = fri_response;
 
-        self.assert_enough_leaves_were_received(&revealed_leaves)?;
-        self.rounds[round_number].partial_codeword_b = revealed_leaves;
+        self.assert_enough_leaves_were_received(&queried_leaves)?;
+        self.rounds[round_number].partial_codeword_b = queried_leaves;
         Ok(auth_structure)
     }
 
     fn assert_enough_leaves_were_received(&self, leaves: &[XFieldElement]) -> VerifierResult<()> {
-        match self.num_collinearity_checks == leaves.len() {
-            true => Ok(()),
-            false => Err(FriValidationError::IncorrectNumberOfRevealedLeaves),
+        if self.num_collinearity_checks == leaves.len() {
+            Ok(())
+        } else {
+            Err(LdtVerificationError::IncorrectNumberOfRevealedLeaves)
         }
     }
 
@@ -337,9 +434,11 @@ impl FriVerifier<'_> {
             indexed_leafs,
             authentication_structure,
         };
-        match inclusion_proof.verify(round.merkle_root) {
-            true => Ok(()),
-            false => Err(FriValidationError::BadMerkleAuthenticationPath),
+
+        if inclusion_proof.verify(round.merkle_root) {
+            Ok(())
+        } else {
+            Err(LdtVerificationError::BadMerkleAuthenticationPath)
         }
     }
 
@@ -360,9 +459,11 @@ impl FriVerifier<'_> {
             indexed_leafs,
             authentication_structure,
         };
-        match inclusion_proof.verify(round.merkle_root) {
-            true => Ok(()),
-            false => Err(FriValidationError::BadMerkleAuthenticationPath),
+
+        if inclusion_proof.verify(round.merkle_root) {
+            Ok(())
+        } else {
+            Err(LdtVerificationError::BadMerkleAuthenticationPath)
         }
     }
 
@@ -421,20 +522,23 @@ impl FriVerifier<'_> {
     fn authenticate_last_round_codeword(&mut self) -> VerifierResult<()> {
         self.assert_last_round_codeword_matches_last_round_commitment()?;
         self.assert_last_round_codeword_agrees_with_last_round_folded_codeword()?;
-        self.assert_last_round_codeword_corresponds_to_low_degree_polynomial()
+        self.assert_last_round_codeword_corresponds_to_low_degree_polynomial()?;
+
+        Ok(())
     }
 
     fn assert_last_round_codeword_matches_last_round_commitment(&self) -> VerifierResult<()> {
-        match self.last_round_merkle_root() == self.last_round_codeword_merkle_root()? {
-            true => Ok(()),
-            false => Err(FriValidationError::BadMerkleRootForLastCodeword),
+        if self.last_round_merkle_root() == self.last_round_codeword_merkle_root()? {
+            Ok(())
+        } else {
+            Err(LdtVerificationError::BadMerkleRootForLastCodeword)
         }
     }
 
     fn last_round_codeword_merkle_root(&self) -> VerifierResult<Digest> {
         let codeword_digests = codeword_as_digests(&self.last_round_codeword);
         let merkle_tree = MerkleTree::sequential_new(&codeword_digests)
-            .map_err(FriValidationError::MerkleTreeError)?;
+            .map_err(LdtVerificationError::MerkleTreeError)?;
 
         Ok(merkle_tree.root())
     }
@@ -448,9 +552,11 @@ impl FriVerifier<'_> {
     ) -> VerifierResult<()> {
         let partial_folded_codeword = self.folded_last_round_codeword_at_indices_a();
         let partial_received_codeword = self.received_last_round_codeword_at_indices_a();
-        match partial_received_codeword == partial_folded_codeword {
-            true => Ok(()),
-            false => Err(FriValidationError::LastCodewordMismatch),
+
+        if partial_received_codeword == partial_folded_codeword {
+            Ok(())
+        } else {
+            Err(LdtVerificationError::LastCodewordMismatch)
         }
     }
 
@@ -471,7 +577,7 @@ impl FriVerifier<'_> {
         &mut self,
     ) -> VerifierResult<()> {
         if self.last_round_polynomial.degree() > self.last_round_max_degree.try_into().unwrap() {
-            return Err(FriValidationError::LastRoundPolynomialHasTooHighDegree);
+            return Err(LdtVerificationError::LastRoundPolynomialHasTooHighDegree);
         }
 
         let indeterminate = self.proof_stream.sample_scalars(1)[0];
@@ -480,17 +586,20 @@ impl FriVerifier<'_> {
             .evaluate_in_same_field(indeterminate);
         let barycentric_evaluation = barycentric_evaluate(&self.last_round_codeword, indeterminate);
         if horner_evaluation != barycentric_evaluation {
-            return Err(FriValidationError::LastRoundPolynomialEvaluationMismatch);
+            return Err(LdtVerificationError::LastRoundPolynomialEvaluationMismatch);
         }
 
         Ok(())
     }
 
-    fn first_round_partially_revealed_codeword(&self) -> Vec<(usize, XFieldElement)> {
-        self.collinearity_check_a_indices_for_round(0)
-            .into_iter()
-            .zip_eq(self.rounds[0].partial_codeword_a.clone())
-            .collect()
+    fn transcript(self) -> Transcript {
+        let partial_first_codeword = self.rounds[0].partial_codeword_a.clone();
+        let first_round_indices = self.collinearity_check_a_indices_for_round(0);
+
+        Transcript {
+            partial_first_codeword,
+            first_round_indices,
+        }
     }
 }
 
@@ -500,28 +609,18 @@ impl VerifierRound {
     }
 }
 
-impl Fri {
-    pub fn new(
-        domain: ArithmeticDomain,
-        expansion_factor: usize,
-        num_collinearity_checks: usize,
-    ) -> SetupResult<Self> {
-        match expansion_factor {
-            ef if ef <= 1 => return Err(FriSetupError::ExpansionFactorTooSmall),
-            ef if !ef.is_power_of_two() => return Err(FriSetupError::ExpansionFactorUnsupported),
-            ef if ef > domain.len() => return Err(FriSetupError::ExpansionFactorMismatch),
-            _ => (),
-        };
+impl super::private::Seal for Fri {}
 
-        Ok(Self {
-            expansion_factor,
-            num_collinearity_checks,
-            domain,
-        })
+impl LowDegreeTest for Fri {
+    fn initial_domain(&self) -> ArithmeticDomain {
+        self.domain
     }
 
-    /// Create a FRI proof and return a-indices of revealed elements of round 0.
-    pub fn prove(
+    fn num_first_round_queries(&self) -> usize {
+        self.num_collinearity_checks
+    }
+
+    fn prove(
         &self,
         codeword: &[XFieldElement],
         proof_stream: &mut ProofStream,
@@ -529,7 +628,7 @@ impl Fri {
         let mut prover = self.prover(proof_stream);
 
         prover.commit(codeword)?;
-        prover.query()?;
+        prover.query();
 
         // Sample one XFieldElement from Fiat-Shamir and then throw it away.
         // This scalar is the indeterminate for the low degree test using the
@@ -539,6 +638,69 @@ impl Fri {
         prover.proof_stream.sample_scalars(1);
 
         Ok(prover.first_round_collinearity_check_indices)
+    }
+
+    fn verify(&self, proof_stream: &mut ProofStream) -> VerifierResult<VerifierTranscript> {
+        profiler!(start "init");
+        let mut verifier = self.verifier(proof_stream);
+        verifier.initialize()?;
+        profiler!(stop "init");
+
+        profiler!(start "fold all rounds");
+        verifier.compute_last_round_folded_partial_codeword()?;
+        profiler!(stop "fold all rounds");
+
+        profiler!(start "authenticate last round codeword");
+        verifier.authenticate_last_round_codeword()?;
+        profiler!(stop "authenticate last round codeword");
+
+        Ok(VerifierTranscript::Fri(verifier.transcript()))
+    }
+}
+
+impl FriParameters {
+    pub fn try_into_fri(self) -> SetupResult<Fri> {
+        todo!()
+    }
+
+    pub(crate) fn expansion_factor(&self) -> usize {
+        let err = "internal error: log₂(expansion factor) exceeds expected maximum";
+        let log2_expansion_factor = u32::try_from(self.log2_initial_expansion_factor).expect(err);
+
+        1_usize.checked_shl(log2_expansion_factor).expect(err)
+    }
+}
+
+impl Fri {
+    pub fn new(
+        domain: ArithmeticDomain,
+        log2_expansion_factor: u32,
+        num_collinearity_checks: usize,
+    ) -> SetupResult<Self> {
+        if log2_expansion_factor == 0 {
+            return Err(LdtParameterError::TooSmallInitialExpansionFactor);
+        }
+        if log2_expansion_factor > ArithmeticDomain::LOG2_MAX_LEN.try_into().unwrap() {
+            return Err(LdtParameterError::TooBigInitialExpansionFactor);
+        }
+        let Some(expansion_factor) = 1_usize.checked_shl(log2_expansion_factor) else {
+            return Err(LdtParameterError::TooBigInitialExpansionFactor);
+        };
+        if expansion_factor > domain.len() {
+            return Err(LdtParameterError::TooBigInitialExpansionFactor);
+        }
+
+        Ok(Self {
+            expansion_factor,
+            num_collinearity_checks,
+            domain,
+        })
+    }
+
+    /// The highest polynomial degree for which low-degreeness can be proven
+    /// with this FRI instance.
+    pub fn max_degree(&self) -> usize {
+        (self.domain.len() / self.expansion_factor) - 1
     }
 
     fn prover<'stream>(
@@ -553,29 +715,6 @@ impl Fri {
             num_collinearity_checks: self.num_collinearity_checks,
             first_round_collinearity_check_indices: vec![],
         }
-    }
-
-    /// Verify low-degreeness of the polynomial on the proof stream.
-    /// Returns the indices and revealed elements of the codeword at the top
-    /// level of the FRI proof.
-    pub fn verify(
-        &self,
-        proof_stream: &mut ProofStream,
-    ) -> VerifierResult<Vec<(usize, XFieldElement)>> {
-        profiler!(start "init");
-        let mut verifier = self.verifier(proof_stream);
-        verifier.initialize()?;
-        profiler!(stop "init");
-
-        profiler!(start "fold all rounds");
-        verifier.compute_last_round_folded_partial_codeword()?;
-        profiler!(stop "fold all rounds");
-
-        profiler!(start "authenticate last round codeword");
-        verifier.authenticate_last_round_codeword()?;
-        profiler!(stop "authenticate last round codeword");
-
-        Ok(verifier.first_round_partially_revealed_codeword())
     }
 
     fn verifier<'stream>(
@@ -595,8 +734,8 @@ impl Fri {
         }
     }
 
-    pub fn num_rounds(&self) -> usize {
-        let first_round_code_dimension = self.first_round_max_degree() + 1;
+    fn num_rounds(&self) -> usize {
+        let first_round_code_dimension = self.max_degree() + 1;
         let max_num_rounds = first_round_code_dimension.next_power_of_two().ilog2();
 
         // Skip rounds for which Merkle tree verification cost exceeds
@@ -609,13 +748,8 @@ impl Fri {
         num_rounds.try_into().unwrap()
     }
 
-    pub fn last_round_max_degree(&self) -> usize {
-        self.first_round_max_degree() >> self.num_rounds()
-    }
-
-    pub fn first_round_max_degree(&self) -> usize {
-        assert!(self.domain.len() >= self.expansion_factor);
-        (self.domain.len() / self.expansion_factor) - 1
+    fn last_round_max_degree(&self) -> usize {
+        self.max_degree() >> self.num_rounds()
     }
 }
 
@@ -637,18 +771,16 @@ mod tests {
     use rand::prelude::*;
     use test_strategy::proptest;
 
-    use crate::error::FriValidationError;
+    use super::*;
     use crate::shared_tests::arbitrary_polynomial;
     use crate::shared_tests::arbitrary_polynomial_of_degree;
-
-    use super::*;
 
     /// A type alias exclusive to this test module.
     type XfePoly = Polynomial<'static, XFieldElement>;
 
     prop_compose! {
         fn arbitrary_fri_supporting_degree(min_supported_degree: i64)(
-            log_2_expansion_factor in 1_usize..=8
+            log_2_expansion_factor in 1_u32..=8
         )(
             log_2_expansion_factor in Just(log_2_expansion_factor),
             log_2_domain_length in log_2_expansion_factor..=18,
@@ -668,11 +800,11 @@ mod tests {
             let maybe_domain = ArithmeticDomain::of_length(domain_length);
             let fri_domain = maybe_domain.unwrap().with_offset(offset);
 
-            Fri::new(fri_domain, expansion_factor, num_collinearity_checks).unwrap()
+            Fri::new(fri_domain, log_2_expansion_factor, num_collinearity_checks).unwrap()
         }
     }
 
-    impl Arbitrary for Fri {
+    impl proptest::prelude::Arbitrary for Fri {
         type Parameters = ();
 
         fn arbitrary_with(_: Self::Parameters) -> Self::Strategy {
@@ -699,7 +831,7 @@ mod tests {
 
     #[proptest]
     fn num_rounds_are_reasonable(fri: Fri) {
-        let expected_last_round_max_degree = fri.first_round_max_degree() >> fri.num_rounds();
+        let expected_last_round_max_degree = fri.max_degree() >> fri.num_rounds();
         prop_assert_eq!(expected_last_round_max_degree, fri.last_round_max_degree());
         if fri.num_rounds() > 0 {
             prop_assert!(fri.num_collinearity_checks <= expected_last_round_max_degree);
@@ -726,10 +858,10 @@ mod tests {
     #[proptest(cases = 50)]
     fn prove_and_verify_low_degree_polynomial(
         fri: Fri,
-        #[strategy(-1_i64..=#fri.first_round_max_degree() as i64)] _degree: i64,
+        #[strategy(-1_i64..=#fri.max_degree() as i64)] _degree: i64,
         #[strategy(arbitrary_polynomial_of_degree(#_degree))] polynomial: XfePoly,
     ) {
-        debug_assert!(polynomial.degree() <= fri.first_round_max_degree() as isize);
+        debug_assert!(polynomial.degree() <= fri.max_degree() as isize);
         let codeword = fri.domain.evaluate(&polynomial);
         let mut proof_stream = ProofStream::new();
         fri.prove(&codeword, &mut proof_stream).unwrap();
@@ -742,11 +874,11 @@ mod tests {
     #[proptest(cases = 50)]
     fn prove_and_fail_to_verify_high_degree_polynomial(
         fri: Fri,
-        #[strategy(Just((1 + #fri.first_round_max_degree()) as i64))] _too_high_degree: i64,
+        #[strategy(Just((1 + #fri.max_degree()) as i64))] _too_high_degree: i64,
         #[strategy(#_too_high_degree..2 * #_too_high_degree)] _degree: i64,
         #[strategy(arbitrary_polynomial_of_degree(#_degree))] polynomial: XfePoly,
     ) {
-        debug_assert!(polynomial.degree() > fri.first_round_max_degree() as isize);
+        debug_assert!(polynomial.degree() > fri.max_degree() as isize);
         let codeword = fri.domain.evaluate(&polynomial);
         let mut proof_stream = ProofStream::new();
         fri.prove(&codeword, &mut proof_stream).unwrap();
@@ -763,57 +895,40 @@ mod tests {
 
     #[test]
     fn smallest_possible_fri_can_only_verify_constant_polynomials() {
-        assert_eq!(0, smallest_fri().first_round_max_degree());
+        assert_eq!(0, smallest_fri().max_degree());
     }
 
     fn smallest_fri() -> Fri {
         let domain = ArithmeticDomain::of_length(2).unwrap();
-        let expansion_factor = 2;
+        let log2_expansion_factor = 1;
         let num_collinearity_checks = 1;
-        Fri::new(domain, expansion_factor, num_collinearity_checks).unwrap()
+        Fri::new(domain, log2_expansion_factor, num_collinearity_checks).unwrap()
     }
 
     #[test]
     fn too_small_expansion_factor_is_rejected() {
         let domain = ArithmeticDomain::of_length(2).unwrap();
-        let expansion_factor = 1;
+        let log2_expansion_factor = 0;
         let num_collinearity_checks = 1;
-        let err = Fri::new(domain, expansion_factor, num_collinearity_checks).unwrap_err();
-        assert_eq!(FriSetupError::ExpansionFactorTooSmall, err);
-    }
-
-    #[proptest]
-    fn expansion_factor_not_a_power_of_two_is_rejected(
-        #[strategy(2_usize..(1 << 32))]
-        #[filter(!#expansion_factor.is_power_of_two())]
-        expansion_factor: usize,
-    ) {
-        let largest_supported_domain_size = 1 << 32;
-        let domain = ArithmeticDomain::of_length(largest_supported_domain_size).unwrap();
-        let num_collinearity_checks = 1;
-        let err = Fri::new(domain, expansion_factor, num_collinearity_checks).unwrap_err();
-        prop_assert_eq!(FriSetupError::ExpansionFactorUnsupported, err);
+        let err = Fri::new(domain, log2_expansion_factor, num_collinearity_checks).unwrap_err();
+        assert_eq!(LdtParameterError::TooSmallInitialExpansionFactor, err);
     }
 
     #[proptest]
     fn domain_size_smaller_than_expansion_factor_is_rejected(
-        #[strategy(1_usize..32)] log_2_expansion_factor: usize,
-        #[strategy(..#log_2_expansion_factor)] log_2_domain_length: usize,
+        #[strategy(1_u32..32)] log_2_expansion_factor: u32,
+        #[strategy(..#log_2_expansion_factor)] log_2_domain_length: u32,
     ) {
-        let expansion_factor = 1 << log_2_expansion_factor;
-        let domain_length = 1 << log_2_domain_length;
-        let domain = ArithmeticDomain::of_length(domain_length).unwrap();
+        let domain = ArithmeticDomain::of_length(1 << log_2_domain_length)?;
         let num_collinearity_checks = 1;
-        let err = Fri::new(domain, expansion_factor, num_collinearity_checks).unwrap_err();
-        prop_assert_eq!(FriSetupError::ExpansionFactorMismatch, err);
+        let err = Fri::new(domain, log_2_expansion_factor, num_collinearity_checks).unwrap_err();
+        prop_assert_eq!(LdtParameterError::TooBigInitialExpansionFactor, err);
     }
-
-    // todo: add test fuzzing proof_stream
 
     #[proptest(cases = 50)]
     fn serialization(
         fri: Fri,
-        #[strategy(-1_i64..=#fri.first_round_max_degree() as i64)] _degree: i64,
+        #[strategy(-1_i64..=#fri.max_degree() as i64)] _degree: i64,
         #[strategy(arbitrary_polynomial_of_degree(#_degree))] polynomial: XfePoly,
     ) {
         let codeword = fri.domain.evaluate(&polynomial);
@@ -831,7 +946,7 @@ mod tests {
                 (PI::MerkleRoot(p), PI::MerkleRoot(v)) => prop_assert_eq!(p, v),
                 (PI::FriResponse(p), PI::FriResponse(v)) => prop_assert_eq!(p, v),
                 (PI::FriCodeword(p), PI::FriCodeword(v)) => prop_assert_eq!(p, v),
-                (PI::FriPolynomial(p), PI::FriPolynomial(v)) => prop_assert_eq!(p, v),
+                (PI::Polynomial(p), PI::Polynomial(v)) => prop_assert_eq!(p, v),
                 _ => panic!("Unknown items.\nProver: {prover_item:?}\nVerifier: {verifier_item:?}"),
             }
         }
@@ -853,7 +968,7 @@ mod tests {
 
         let verdict = fri.verify(&mut proof_stream);
         let err = verdict.unwrap_err();
-        let FriValidationError::BadMerkleRootForLastCodeword = err else {
+        let LdtVerificationError::BadMerkleRootForLastCodeword = err else {
             return Err(TestCaseError::Fail("validation must fail".into()));
         };
     }
@@ -904,7 +1019,7 @@ mod tests {
 
         let verdict = fri.verify(&mut proof_stream);
         let err = verdict.unwrap_err();
-        let FriValidationError::IncorrectNumberOfRevealedLeaves = err else {
+        let LdtVerificationError::IncorrectNumberOfRevealedLeaves = err else {
             return Err(TestCaseError::Fail("validation must fail".into()));
         };
     }
@@ -919,18 +1034,18 @@ mod tests {
 
         let mut rng = StdRng::seed_from_u64(seed);
         let fri_response = fri_responses.choose(&mut rng).unwrap();
-        let revealed_leaves = &mut fri_response.revealed_leaves;
-        let modification_index = rng.random_range(0..revealed_leaves.len());
+        let queried_leaves = &mut fri_response.queried_leaves;
+        let modification_index = rng.random_range(0..queried_leaves.len());
         if rng.random() {
-            revealed_leaves.remove(modification_index);
+            queried_leaves.remove(modification_index);
         } else {
-            revealed_leaves.insert(modification_index, rng.random());
+            queried_leaves.insert(modification_index, rng.random());
         };
 
         proof_stream
     }
 
-    fn fri_response_filter() -> fn(&mut ProofItem) -> Option<&mut super::FriResponse> {
+    fn fri_response_filter() -> fn(&mut ProofItem) -> Option<&mut FriResponse> {
         |proof_item| match proof_item {
             ProofItem::FriResponse(fri_response) => Some(fri_response),
             _ => None,
@@ -959,7 +1074,7 @@ mod tests {
 
         let verdict = fri.verify(&mut proof_stream);
         let_assert!(Err(err) = verdict);
-        assert!(let FriValidationError::BadMerkleAuthenticationPath = err);
+        assert!(let LdtVerificationError::BadMerkleAuthenticationPath = err);
     }
 
     #[must_use]
@@ -1005,20 +1120,20 @@ mod tests {
 
         let mut proof_stream = prepare_proof_stream_for_verification(proof_stream);
         proof_stream.items.iter_mut().for_each(|item| {
-            if let ProofItem::FriPolynomial(polynomial) = item {
+            if let ProofItem::Polynomial(polynomial) = item {
                 *polynomial = incorrect_polynomial.clone();
             }
         });
 
         let verdict = fri.verify(&mut proof_stream);
         let_assert!(Err(err) = verdict);
-        assert!(let FriValidationError::BadMerkleAuthenticationPath = err);
+        assert!(let LdtVerificationError::BadMerkleAuthenticationPath = err);
     }
 
     #[proptest]
     fn codeword_corresponding_to_high_degree_polynomial_results_in_verification_failure(
         fri: Fri,
-        #[strategy(Just(#fri.first_round_max_degree() as i64 + 1))] _min_fail_deg: i64,
+        #[strategy(Just(#fri.max_degree() as i64 + 1))] _min_fail_deg: i64,
         #[strategy(#_min_fail_deg..2 * #_min_fail_deg)] _degree: i64,
         #[strategy(arbitrary_polynomial_of_degree(#_degree))] poly: XfePoly,
     ) {
@@ -1029,7 +1144,7 @@ mod tests {
         let mut proof_stream = prepare_proof_stream_for_verification(proof_stream);
         let verdict = fri.verify(&mut proof_stream);
         let_assert!(Err(err) = verdict);
-        assert!(let FriValidationError::LastRoundPolynomialHasTooHighDegree = err);
+        assert!(let LdtVerificationError::LastRoundPolynomialHasTooHighDegree = err);
     }
 
     #[proptest]
