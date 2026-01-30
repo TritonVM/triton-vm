@@ -54,6 +54,21 @@ pub struct FriResponse {
     pub auth_structure: AuthenticationStructure,
 }
 
+/// A transcript of a [FRI verification](Fri::verify).
+///
+/// For additional details, see
+/// [`VerifierTranscript`](super::VerificationTranscript).
+//
+// Marked `#[non_exhaustive]` because
+// 1. additional fields might be added in the future and I don't want that to be
+//    a breaking change, and
+// 2. this type is not intended to be constructed anywhere but in this module.
+//
+// Also applies to the other “Transcript” structs.
+#[non_exhaustive]
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct Transcript {}
+
 impl FriProver<'_> {
     fn commit(&mut self, codeword: &[XFieldElement]) -> ProverResult<()> {
         self.commit_to_first_round(codeword)?;
